@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gte, like, lte, or, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { getPool } from "./db-connection";
 import {
   errorLibrary, faturamento, InsertRetrabalho, retrabalhos, InsertUser, users,
   knowledgeBase, InsertKnowledgeItem,
@@ -25,7 +26,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _db = drizzle(getPool());
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -56,7 +57,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
     if (!values.lastSignedIn) values.lastSignedIn = new Date();
     if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+    await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -301,7 +302,11 @@ export async function getEvolucaoMensal(tipoRegistro?: "retrabalho" | "cnq") {
     evitavel: sql<number>`SUM(CASE WHEN ${retrabalhos.classe} = 'EVITÁVEL' THEN 1 ELSE 0 END)`,
     inevitavel: sql<number>`SUM(CASE WHEN ${retrabalhos.classe} = 'INEVITÁVEL' THEN 1 ELSE 0 END)`,
   }).from(retrabalhos).where(whereClause).groupBy(retrabalhos.mes).orderBy(
-    sql`FIELD(${retrabalhos.mes}, 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO')`
+    sql`CASE ${retrabalhos.mes}
+      WHEN 'JANEIRO' THEN 1 WHEN 'FEVEREIRO' THEN 2 WHEN 'MARÇO' THEN 3 WHEN 'ABRIL' THEN 4
+      WHEN 'MAIO' THEN 5 WHEN 'JUNHO' THEN 6 WHEN 'JULHO' THEN 7 WHEN 'AGOSTO' THEN 8
+      WHEN 'SETEMBRO' THEN 9 WHEN 'OUTUBRO' THEN 10 WHEN 'NOVEMBRO' THEN 11 WHEN 'DEZEMBRO' THEN 12
+      ELSE 13 END`
   );
   // Preencher todos os meses até o mês atual com 0 para evitar gaps no gráfico
   const MESES_ORDEM = ['JANEIRO','FEVEREIRO','MARÇO','ABRIL','MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO'];
@@ -331,7 +336,7 @@ export async function getReincidencia(filter: RetrabalhosFilter = {}) {
     setor: retrabalhos.setor,
     count: count(),
     custo: sql<number>`COALESCE(SUM(CAST(${retrabalhos.total} AS DECIMAL(10,2))), 0)`,
-    responsaveis: sql<string>`GROUP_CONCAT(DISTINCT ${retrabalhos.responsavel} SEPARATOR ', ')`,
+    responsaveis: sql<string>`STRING_AGG(DISTINCT ${retrabalhos.responsavel}, ', ')`,
   }).from(retrabalhos).where(whereClause).groupBy(retrabalhos.codigoErro, retrabalhos.setor).having(sql`COUNT(*) >= 2`).orderBy(desc(count()));
 }
 
@@ -581,116 +586,56 @@ export async function deletePop(id: number) {
 
 // ─── LOCAL USERS ─────────────────────────────────────────────────────────────
 
+// A tabela `local_users` foi recriada no Postgres a partir do schema Drizzle
+// (name/email/passwordHash/role/active — ver drizzle/0000_abnormal_morlocks.sql),
+// diferente da tabela legada do MySQL (nome/setor/ativo). O ETL
+// (scripts/migrate-mysql-to-postgres.ts) já fez esse remapeamento na carga
+// dos dados, então as colunas do schema batem com a tabela real.
 export async function listLocalUsers() {
-  try {
-    // ⚠️ A tabela real tem colunas diferentes do schema Drizzle:
-    //   nome (não name), setor (não role), ativo TINYINT (não active ENUM)
-    // Usamos mysql2 direto para evitar SQL inválido.
-    const { selectQuery } = await import('./db-connection');
-    const rows: any[] = await selectQuery(
-      `SELECT id, nome AS name, email,
-              setor AS role,
-              CASE WHEN ativo = 1 THEN 'sim' ELSE 'nao' END AS active,
-              createdAt
-       FROM local_users
-       ORDER BY nome`,
-      [],
-    );
-    console.log(`✅ [DB] listLocalUsers retornou ${rows.length} usuários`);
-    return rows;
-  } catch (erro: any) {
-    console.error(`❌ [DB] Erro em listLocalUsers:`, erro.message);
-    return [];
-  }
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(localUsers).orderBy(asc(localUsers.name));
 }
 
 export async function getLocalUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return null;
-  const { selectQuery } = await import('./db-connection');
-  const rows: any[] = await selectQuery(
-    `SELECT id, nome AS name, email,
-            setor AS role,
-            CASE WHEN ativo = 1 THEN 'sim' ELSE 'nao' END AS active,
-            createdAt
-     FROM local_users WHERE email = ? LIMIT 1`,
-    [email],
-  );
+  const rows = await db.select().from(localUsers).where(eq(localUsers.email, email)).limit(1);
   return rows[0] ?? null;
 }
 
 export async function getLocalUserByName(name: string) {
   const db = await getDb();
   if (!db) return null;
-  const { selectQuery } = await import('./db-connection');
-  const rows: any[] = await selectQuery(
-    `SELECT id, nome AS name, email,
-            setor AS role,
-            CASE WHEN ativo = 1 THEN 'sim' ELSE 'nao' END AS active,
-            createdAt
-     FROM local_users WHERE nome = ? LIMIT 1`,
-    [name],
-  );
+  const rows = await db.select().from(localUsers).where(eq(localUsers.name, name)).limit(1);
   return rows[0] ?? null;
 }
 
 export async function getLocalUserById(id: number) {
   const db = await getDb();
   if (!db) return null;
-  const { selectQuery } = await import('./db-connection');
-  const rows: any[] = await selectQuery(
-    `SELECT id, nome AS name, email,
-            setor AS role,
-            CASE WHEN ativo = 1 THEN 'sim' ELSE 'nao' END AS active,
-            createdAt
-     FROM local_users WHERE id = ? LIMIT 1`,
-    [id],
-  );
+  const rows = await db.select().from(localUsers).where(eq(localUsers.id, id)).limit(1);
   return rows[0] ?? null;
 }
 
 export async function createLocalUser(data: InsertLocalUser) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  // Mapeia campos do schema Drizzle (camelCase) para colunas reais do banco
-  const { mutationQuery } = await import('./db-connection');
-  const result: any = await mutationQuery(
-    `INSERT INTO local_users (nome, email, setor, cargo, ativo)
-     VALUES (?, ?, ?, ?, 1)`,
-    [
-      (data as any).name ?? (data as any).nome,
-      (data as any).email ?? null,
-      (data as any).role ?? (data as any).setor ?? null,
-      (data as any).cargo ?? null,
-    ],
-  );
-  return { insertId: result?.insertId };
+  const [result] = await db.insert(localUsers).values(data).returning();
+  return result;
 }
 
 export async function updateLocalUser(id: number, data: Partial<InsertLocalUser>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const { mutationQuery } = await import('./db-connection');
-  const sets: string[] = [];
-  const params: any[] = [];
-  const d = data as any;
-  if (d.name !== undefined)  { sets.push('nome = ?');  params.push(d.name); }
-  if (d.nome !== undefined)  { sets.push('nome = ?');  params.push(d.nome); }
-  if (d.email !== undefined) { sets.push('email = ?'); params.push(d.email); }
-  if (d.role !== undefined)  { sets.push('setor = ?'); params.push(d.role); }
-  if (d.setor !== undefined) { sets.push('setor = ?'); params.push(d.setor); }
-  if (d.active !== undefined){ sets.push('ativo = ?'); params.push(d.active === 'sim' ? 1 : 0); }
-  if (d.ativo !== undefined) { sets.push('ativo = ?'); params.push(d.ativo ? 1 : 0); }
-  if (sets.length === 0) return;
-  params.push(id);
-  return mutationQuery(`UPDATE local_users SET ${sets.join(', ')} WHERE id = ?`, params);
+  if (Object.keys(data).length === 0) return;
+  return db.update(localUsers).set(data).where(eq(localUsers.id, id));
 }
 
 export async function deleteLocalUser(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const { mutationQuery } = await import('./db-connection');
-  return mutationQuery('DELETE FROM local_users WHERE id = ?', [id]);
+  return db.delete(localUsers).where(eq(localUsers.id, id));
 }
 
 // ─── ROLE PERMISSIONS ────────────────────────────────────────────────────────
@@ -838,8 +783,8 @@ export async function addPriceTableSection(data: {
     contentJson: data.contentJson,
     notes: data.notes ?? null,
     sectionOrder: data.sectionOrder ?? maxOrder + 1,
-  });
-  return (result as { insertId: number }).insertId;
+  }).returning({ id: priceTableSections.id });
+  return result.id;
 }
 
 export async function deletePriceTableSection(id: number): Promise<void> {
@@ -973,8 +918,8 @@ export async function getCargoById(id: number): Promise<CargoFuncao | null> {
 export async function createCargo(data: InsertCargoFuncao): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(cargosFuncoes).values(data);
-  return (result as any).insertId as number;
+  const [result] = await db.insert(cargosFuncoes).values(data).returning({ id: cargosFuncoes.id });
+  return result.id;
 }
 
 export async function updateCargo(id: number, data: Partial<InsertCargoFuncao>): Promise<void> {
@@ -1139,9 +1084,8 @@ export async function createAnaliseCurriculo(input: InsertAnaliseCurriculo): Pro
   const db = await getDb();
   if (!db) return null;
   try {
-    const result = await db.insert(analiseCurriculos).values(input);
-    const id = result[0].insertId;
-    return getAnaliseCurriculoById(id as number);
+    const [result] = await db.insert(analiseCurriculos).values(input).returning({ id: analiseCurriculos.id });
+    return getAnaliseCurriculoById(result.id);
   } catch (error) {
     console.error("[DB] Error creating analise_curriculo:", error);
     return null;
