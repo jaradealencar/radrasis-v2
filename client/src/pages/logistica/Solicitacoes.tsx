@@ -173,8 +173,8 @@ function formatarEntregaOS(entrega?: string | null, aprovacao?: string | null): 
   const jaBR = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (jaBR) return `${jaBR[1]}/${jaBR[2]}/${jaBR[3]}`;
 
-  // "10 DIAS ÚTEIS" → soma dias úteis à data de aprovação
-  const diasUteis = texto.match(/(\d+)\s*DIAS?\s*[ÚU]TEIS?/i);
+  // "10 DIAS ÚTEIS" ou "1 DIA ÚTIL" → soma dias úteis à data de aprovação
+  const diasUteis = texto.match(/(\d+)\s*DIAS?\s*(?:[ÚU]TEIS?|[ÚU]TIL)/i);
   if (diasUteis) {
     const base = aprovacao?.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
     if (base) {

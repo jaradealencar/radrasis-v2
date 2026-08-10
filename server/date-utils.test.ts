@@ -9,28 +9,28 @@ import {
 describe("date-utils", () => {
   describe("adicionarDiasUteis", () => {
     it("adiciona 1 dia útil (segunda para terça)", () => {
-      // 16/07/2026 é uma segunda-feira
-      const data = new Date(2026, 6, 16); // mês 6 = julho
+      // 13/07/2026 é uma segunda-feira
+      const data = new Date(2026, 6, 13); // mês 6 = julho
       const resultado = adicionarDiasUteis(data, 1);
-      expect(formatarData(resultado)).toBe("17/07/2026"); // terça
+      expect(formatarData(resultado)).toBe("14/07/2026"); // terça
     });
 
     it("adiciona 3 dias úteis (segunda para quinta)", () => {
-      const data = new Date(2026, 6, 16); // segunda
+      const data = new Date(2026, 6, 13); // segunda
       const resultado = adicionarDiasUteis(data, 3);
-      expect(formatarData(resultado)).toBe("20/07/2026"); // quinta
+      expect(formatarData(resultado)).toBe("16/07/2026"); // quinta
     });
 
     it("pula fim de semana ao adicionar dias úteis", () => {
-      const data = new Date(2026, 6, 16); // segunda
+      const data = new Date(2026, 6, 13); // segunda
       const resultado = adicionarDiasUteis(data, 5); // pula sábado 18 e domingo 19
-      expect(formatarData(resultado)).toBe("23/07/2026"); // quinta da semana seguinte
+      expect(formatarData(resultado)).toBe("20/07/2026"); // segunda da semana seguinte
     });
 
     it("adiciona 10 dias úteis (segunda para segunda da semana seguinte)", () => {
-      const data = new Date(2026, 6, 16); // segunda 16/07
+      const data = new Date(2026, 6, 13); // segunda 13/07
       const resultado = adicionarDiasUteis(data, 10);
-      expect(formatarData(resultado)).toBe("30/07/2026"); // quinta 30/07
+      expect(formatarData(resultado)).toBe("27/07/2026"); // segunda 27/07
     });
   });
 
@@ -67,13 +67,13 @@ describe("date-utils", () => {
 
   describe("calcularDataEntrega", () => {
     it("converte '10 DIAS ÚTEIS' em data de calendário", () => {
-      // 16/07/2026 (segunda) + 10 dias úteis = 30/07/2026
-      const resultado = calcularDataEntrega(new Date(2026, 6, 16), "10 DIAS ÚTEIS");
-      expect(resultado).toBe("30/07/2026");
+      // 13/07/2026 (segunda) + 10 dias úteis = 27/07/2026
+      const resultado = calcularDataEntrega(new Date(2026, 6, 13), "10 DIAS ÚTEIS");
+      expect(resultado).toBe("27/07/2026");
     });
 
     it("retorna data original se não for 'X DIAS ÚTEIS'", () => {
-      const resultado = calcularDataEntrega(new Date(2026, 6, 16), "26/07/2026");
+      const resultado = calcularDataEntrega(new Date(2026, 6, 13), "26/07/2026");
       expect(resultado).toBe("26/07/2026");
     });
 
