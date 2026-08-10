@@ -1,0 +1,1 @@
+ALTER TABLE `retrabalhos` ADD `tipoResponsavel` enum('operador','gestor') DEFAULT 'operador';

@@ -1,0 +1,40 @@
+CREATE TABLE `custos_fixos` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`plano` varchar(256) NOT NULL,
+	`categoria` varchar(128) NOT NULL,
+	`grupoCategoria` varchar(64) NOT NULL,
+	`fornecedor` varchar(256) NOT NULL,
+	`tipo` varchar(64) NOT NULL,
+	`valor` decimal(14,2) NOT NULL DEFAULT '0',
+	`vencimento` int,
+	`observacao` text,
+	`ativo` boolean NOT NULL DEFAULT true,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `custos_fixos_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE `dividas_parcelamentos` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`plano` varchar(256) NOT NULL,
+	`categoria` varchar(128) NOT NULL,
+	`fornecedor` varchar(256) NOT NULL,
+	`jan_valor` decimal(14,2),
+	`fev_valor` decimal(14,2),
+	`mar_valor` decimal(14,2),
+	`abr_valor` decimal(14,2),
+	`mai_valor` decimal(14,2),
+	`jun_valor` decimal(14,2),
+	`jul_valor` decimal(14,2),
+	`ago_valor` decimal(14,2),
+	`set_valor` decimal(14,2),
+	`out_valor` decimal(14,2),
+	`nov_valor` decimal(14,2),
+	`dez_valor` decimal(14,2),
+	`media` decimal(14,2),
+	`observacao` text,
+	`ativo` boolean NOT NULL DEFAULT true,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `dividas_parcelamentos_id` PRIMARY KEY(`id`)
+);

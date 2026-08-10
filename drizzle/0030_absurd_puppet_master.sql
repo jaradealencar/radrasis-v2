@@ -1,0 +1,1 @@
+ALTER TABLE `biblioteca_arquivos` ADD `conteudoExtraido` mediumtext;

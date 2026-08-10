@@ -1,0 +1,28 @@
+diff --git a/node_modules/wouter/esm/index.js b/node_modules/wouter/esm/index.js
+index c83bc63..bcae513 100644
+--- a/node_modules/wouter/esm/index.js
++++ b/node_modules/wouter/esm/index.js
+@@ -338,6 +338,23 @@ const Switch = ({ children, location }) => {
+   const router = useRouter();
+   const [originalLocation] = useLocationFromRouter(router);
+ 
++  // Collect all route paths to window object
++  if (typeof window !== 'undefined') {
++    if (!window.__WOUTER_ROUTES__) {
++      window.__WOUTER_ROUTES__ = [];
++    }
++
++    const allChildren = flattenChildren(children);
++    allChildren.forEach((element) => {
++      if (isValidElement(element) && element.props.path) {
++        const path = element.props.path;
++        if (!window.__WOUTER_ROUTES__.includes(path)) {
++          window.__WOUTER_ROUTES__.push(path);
++        }
++      }
++    });
++  }
++
+   for (const element of flattenChildren(children)) {
+     let match = 0;
+ 

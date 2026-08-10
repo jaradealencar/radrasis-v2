@@ -1,0 +1,1 @@
+ALTER TABLE `performance_auditada` ADD `cotacoes_novos` int DEFAULT 0 NOT NULL;

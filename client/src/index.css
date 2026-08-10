@@ -1,0 +1,333 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  /* Light Professional Theme */
+  --radius: 0.5rem;
+  --background: oklch(0.97 0.005 240);
+  --foreground: oklch(0.18 0.025 245);
+  --card: oklch(1.0 0.0 0);
+  --card-foreground: oklch(0.18 0.025 245);
+  --popover: oklch(1.0 0.0 0);
+  --popover-foreground: oklch(0.18 0.025 245);
+  --primary: oklch(0.46 0.20 245);
+  --primary-foreground: oklch(0.98 0.005 240);
+  --secondary: oklch(0.93 0.015 245);
+  --secondary-foreground: oklch(0.30 0.04 245);
+  --muted: oklch(0.94 0.01 245);
+  --muted-foreground: oklch(0.50 0.04 245);
+  --accent: oklch(0.91 0.025 245);
+  --accent-foreground: oklch(0.25 0.05 245);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+  --border: oklch(0.87 0.015 245);
+  --input: oklch(0.93 0.01 245);
+  --ring: oklch(0.46 0.20 245);
+  --chart-1: oklch(0.46 0.20 245);
+  --chart-2: oklch(0.60 0.18 195);
+  --chart-3: oklch(0.55 0.18 150);
+  --chart-4: oklch(0.62 0.18 60);
+  --chart-5: oklch(0.55 0.22 25);
+  /* Sidebar — Letreiros Express (preto profundo) */
+  --sidebar: oklch(0.12 0.015 245);
+  --sidebar-foreground: oklch(0.88 0.01 240);
+  --sidebar-primary: oklch(0.52 0.18 240);
+  --sidebar-primary-foreground: oklch(0.98 0.005 240);
+  --sidebar-accent: oklch(0.20 0.025 245);
+  --sidebar-accent-foreground: oklch(0.92 0.01 240);
+  --sidebar-border: oklch(0.22 0.02 245);
+  --sidebar-ring: oklch(0.52 0.18 240);
+  /* Custom vars — light palette */
+  --bp-grid: rgba(30, 111, 217, 0.05);
+  --bp-grid-major: rgba(30, 111, 217, 0.09);
+  --bp-border: #e2e8f0;
+  --bp-cyan: #0ea5e9;
+  --bp-blue: #1e6fd9;
+  --bp-blue-light: #3b8ef0;
+  --bp-text: #1e293b;
+  --bp-text-dim: #64748b;
+  --bp-text-muted: #94a3b8;
+  --bp-card: #ffffff;
+  --bp-elevated: #f8fafc;
+}
+
+/* ─── TipTap Rich Text Editor ─────────────────────────────────────────── */
+.ProseMirror {
+  outline: none;
+  line-height: 1.7;
+  min-height: inherit;
+}
+.ProseMirror p {
+  margin: 0 0 0.75em;
+  line-height: 1.7;
+}
+.ProseMirror p:last-child { margin-bottom: 0; }
+.ProseMirror h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 1em 0 0.5em;
+  color: #1e293b;
+  line-height: 1.4;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.25em;
+}
+.ProseMirror h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0.85em 0 0.4em;
+  color: #334155;
+  line-height: 1.4;
+}
+.ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.5em 0 0.75em;
+}
+.ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5em 0 0.75em;
+}
+.ProseMirror li {
+  margin: 0.3em 0;
+  line-height: 1.6;
+}
+.ProseMirror li p { margin: 0; }
+.ProseMirror strong { font-weight: 700; }
+.ProseMirror em { font-style: italic; }
+.ProseMirror u { text-decoration: underline; }
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) { @apply cursor-pointer; }
+}
+
+/* ─── Blueprint Utilities ─────────────────────────────────────────────── */
+.blueprint-bg {
+  background-color: #f1f5f9;
+  background-image:
+    linear-gradient(var(--bp-grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bp-grid-major) 1px, transparent 1px),
+    linear-gradient(var(--bp-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bp-grid) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+}
+
+.tech-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  position: relative;
+  overflow: hidden;
+}
+.tech-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--bp-blue), var(--bp-cyan), transparent);
+}
+
+.corner-bracket { position: relative; }
+.corner-bracket::before, .corner-bracket::after {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  border-color: var(--bp-blue);
+  border-style: solid;
+  opacity: 0.25;
+}
+.corner-bracket::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+.corner-bracket::after { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+
+.badge-evitavel {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+.badge-inevitavel {
+  background: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fcd34d;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+.badge-interno {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.badge-externo {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.metric-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.text-cyan { color: var(--bp-cyan); }
+.text-bp-dim { color: var(--bp-text-dim); }
+.text-bp-muted { color: var(--bp-text-muted); }
+.border-bp { border-color: var(--bp-border); }
+.bg-bp-card { background: var(--bp-card); }
+.bg-bp-elevated { background: var(--bp-elevated); }
+
+.alert-critical {
+  background: #fff1f2;
+  border: 1px solid #fca5a5;
+  border-left: 3px solid #dc2626;
+}
+.alert-warning {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-left: 3px solid #d97706;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line { stroke: rgba(30, 111, 217, 0.08) !important; }
+.recharts-text { fill: #64748b !important; }
+.recharts-legend-item-text { color: #64748b !important; }
+
+.tech-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.tech-table td {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  color: #1e293b;
+}
+.tech-table tr:hover td { background: #f8fafc; }
+
+@layer components {
+  /**
+   * Custom container utility that centers content and adds responsive padding.
+   *
+   * This overrides Tailwind's default container behavior to:
+   * - Auto-center content (mx-auto)
+   * - Add responsive horizontal padding
+   * - Set max-width for large screens
+   *
+   * Usage: <div className="container">...</div>
+   *
+   * For custom widths, use max-w-* utilities directly:
+   * <div className="max-w-6xl mx-auto px-4">...</div>
+   */
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem; /* 16px - mobile padding */
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem; /* 24px - tablet padding */
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem; /* 32px - desktop padding */
+      padding-right: 2rem;
+      max-width: 1280px; /* Standard content width */
+    }
+  }
+}

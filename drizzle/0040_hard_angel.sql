@@ -1,0 +1,2 @@
+ALTER TABLE `local_users` MODIFY COLUMN `role` enum('master','admin','gestor','vendas','logistica','producao','financeiro','empacotamento') NOT NULL DEFAULT 'vendas';--> statement-breakpoint
+ALTER TABLE `role_permissions` MODIFY COLUMN `role` enum('master','admin','gestor','vendas','logistica','producao','financeiro','empacotamento') NOT NULL;

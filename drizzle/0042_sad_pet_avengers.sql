@@ -1,0 +1,1 @@
+ALTER TABLE `crm_contatos` MODIFY COLUMN `canal` enum('whatsapp','telefone','email','visita','outro','perdida') NOT NULL DEFAULT 'whatsapp';
