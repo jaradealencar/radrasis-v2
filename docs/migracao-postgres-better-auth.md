@@ -28,41 +28,60 @@ Decisões já tomadas (não reabrir sem motivo forte):
 - **Fase 2, parte 1 — `server/db-connection.ts`**: reescrito com `pg.Pool`,
   mesma interface pública (`selectQuery`/`mutationQuery`/`executeQuery`),
   convertendo `?` → `$1,$2,...` internamente.
+- **Tarefa 2.2 — `server/db.ts`**: `drizzle-orm/mysql2` → `drizzle-orm/node-postgres`
+  (reaproveitando o `pg.Pool` de `db-connection.ts` via `drizzle(getPool())`).
+  `.onDuplicateKeyUpdate()` → `.onConflictDoUpdate({ target, set })`.
+  `FIELD(...)` (ordenação de meses) → `CASE ... END`; `GROUP_CONCAT(... SEPARATOR)`
+  → `STRING_AGG(...)`. Leituras de `.insertId` (mysql2) trocadas por `.returning()`
+  (node-postgres não tem `insertId` nativo). **`local_users` resolvido nesta
+  tarefa** (ver achado corrigido abaixo) — as 7 funções (`listLocalUsers` etc.)
+  agora usam `db.select()/insert()/update()/delete()` normais sobre
+  `drizzle/schema.ts`, sem SQL cru.
+- **Gap encontrado e corrigido fora do escopo original da 2.2**: três arquivos
+  vivos (importados por `server/routers.ts`) ainda instanciavam seu próprio
+  `drizzle(process.env.DATABASE_URL!)` com `drizzle-orm/mysql2` — quebrado em
+  runtime contra a connection string do Postgres. Corrigidos com o mesmo
+  padrão mecânico da 2.2 (trocar driver, reusar `getPool()`):
+  - `server/pcp-helpers.ts` — trocado; também tinha `resultado[0].insertId`
+    (2 call sites) → `.returning()`.
+  - `server/routers/performance.ts` — trocado; `MONTH()/YEAR()` (MySQL) →
+    `EXTRACT(MONTH FROM ...)/EXTRACT(YEAR FROM ...)`; `insertId` → `.returning()`.
+  - Corrigir esses dois arquivos expôs um problema latente em `drizzle/schema.ts`:
+    colunas `date(...)` (`feriados.data`, `producaoOrdens.dataEntrada/dataPrazo`,
+    `producaoSetores.dataInicio/dataFim/dataFimPrevista`) usavam o modo padrão
+    (`string`) do pg-core, mas o código sempre tratou esses campos como `Date`
+    (`.getTime()`, `.toISOString()` etc. — comportamento herdado do mysql2, que
+    retorna `Date` para colunas `DATE`). Ajustado pra `date(..., { mode: "date" })`
+    nessas 6 colunas. Isso também destravou ~2100 erros de tipo em cascata que
+    o `pcp-helpers.ts` quebrado estava propagando pra outros arquivos (69 → 24
+    arquivos com erro no `yarn check` geral do repo).
+  - **`server/routers/empacotamento.ts` (2725 linhas) tem o mesmo padrão
+    quebrado e ainda não foi corrigido** — é grande demais pra essa tarefa,
+    ver Tarefa 2.4b abaixo.
 
-### Achado importante herdado pra próximas tarefas: `local_users` é uma tabela legada
+### Achado importante (corrigido na Tarefa 2.2): `local_users` batia com o schema legado do MySQL, não com o Postgres
 
-O `local_users` real (produção) tem colunas `nome, email, setor, cargo, ativo`
-— **não** `name, email, passwordHash, role, active` como o `schema.ts`
-declara. O login por bcrypt em `server/routers.ts` (`localAuth.login`) nunca
-funcionou de fato pra essas linhas: `createLocalUser` em `server/db.ts` nem
-grava `passwordHash`. Isso já está documentado em comentários no próprio
-`server/db.ts` (linha ~586). A 1 linha real foi migrada pro Postgres com uma
-senha placeholder inutilizável — quem pegar a Fase 3 vai precisar decidir se
-recria essa conta do zero via Better Auth ou se implementa um fluxo de reset.
+**Estado antigo (só valia pro MySQL/produção antiga):** a tabela real tinha
+colunas `nome, email, setor, cargo, ativo` — diferente de
+`name, email, passwordHash, role, active` do `schema.ts`.
+
+**Estado atual (Postgres, pós-ETL):** o ETL (`scripts/migrate-mysql-to-postgres.ts`,
+`transformLocalUsersRow`) já fez esse remapeamento na carga — a tabela
+`local_users` no Postgres foi criada a partir do `schema.ts`
+(`drizzle/0000_abnormal_morlocks.sql`) e **tem exatamente as colunas do
+schema**. Ou seja, o schema declarado bate com a tabela real agora; o SQL cru
+que existia em `server/db.ts` pra contornar essa divergência não é mais
+necessário e foi removido na Tarefa 2.2.
+
+O login por bcrypt continua não funcionando pra a 1 linha real migrada — ela
+tem uma senha placeholder inutilizável (ver comentário em
+`scripts/migrate-mysql-to-postgres.ts`). Quem pegar a Fase 3 ainda precisa
+decidir se recria essa conta do zero via Better Auth ou implementa um fluxo
+de reset.
 
 ---
 
 ## Fase 2 — Camada de conexão e SQL cru (restante)
-
-### Tarefa 2.2 — Modernizar `server/db.ts` pro Drizzle + Postgres
-
-- Trocar `drizzle-orm/mysql2` por `drizzle-orm/node-postgres` (usa o `pg.Pool`,
-  não precisa recriar conexão — pode importar de `db-connection.ts`).
-- `.onDuplicateKeyUpdate()` → `.onConflictDoUpdate()`.
-- As ~14 queries cruas restantes nesse arquivo → `db.select()/insert()/update()`
-  sobre `drizzle/schema.ts`.
-- As funções de `local_users` (`listLocalUsers`, `getLocalUserByEmail`,
-  `getLocalUserByName`, `getLocalUserById`, `createLocalUser`,
-  `updateLocalUser`, `deleteLocalUser`, linhas ~585-694) hoje fazem SQL cru
-  contra as colunas reais (`nome/setor/ativo`) com alias pro nome do schema.
-  Ao portar: **não** simplesmente trocar pra `db.select().from(localUsers)`
-  direto, porque o schema declarado não bate com a tabela real (ver achado
-  acima). Ou ajusta o schema pra bater com a tabela real, ou resolve isso
-  junto com a Fase 3 (pode fazer mais sentido deixar esse pedaço específico
-  pra Fase 3, já que ele vai ser substituído pelas tabelas do Better Auth de
-  qualquer forma — decidir ao pegar a tarefa).
-- **Verificação**: `yarn check` limpo; nenhuma função deste arquivo deve mais
-  importar `mysql2`.
 
 ### Tarefa 2.3 — Modernizar `server/db-helpers-select.ts` (21 queries cruas) e `server/db-helpers.ts` (6 queries cruas)
 
@@ -86,6 +105,22 @@ recria essa conta do zero via Better Auth ou se implementa um fluxo de reset.
   `drizzle/0002_fix_erp_os_cache.sql` como referência do tipo de ajuste
   necessário).
 - **Verificação**: `yarn check` limpo; testes relacionados a logística.
+
+### Tarefa 2.4b — Modernizar `server/routers/empacotamento.ts` (2725 linhas)
+
+- Mesmo problema estrutural que a 2.2 resolveu em `db.ts`: o arquivo instancia
+  seu próprio `drizzle(process.env.DATABASE_URL!)` com `drizzle-orm/mysql2` —
+  quebrado em runtime contra Postgres (o router está registrado em
+  `server/routers.ts`, então isso está ativo em produção agora).
+- Comentários no próprio arquivo (`✅ mysql2 direto — o schema do Drizzle não
+  reflete as colunas reais`, linhas ~587/725/784/809/836/992) sugerem que,
+  como em `local_users`, pode haver divergência schema-vs-tabela-real que
+  precisa ser conferida linha a linha antes de portar — não assumir que é só
+  trocar o driver.
+- `server/empacotamento.test.ts` também importa `drizzle-orm/mysql2` direto —
+  portar junto.
+- **Verificação**: `yarn check` limpo; `yarn test` sem falhas novas; testes de
+  empacotamento (kanban, apontamento de tempo, checklist) passando.
 
 ### Tarefa 2.5 — Portar mecanicamente o SQL cru restante (sintaxe MySQL → Postgres)
 
@@ -118,8 +153,9 @@ Conversões a aplicar:
 
 - `yarn add better-auth`, configurar com adapter Drizzle apontando pro
   schema Postgres.
-- Decidir o que fazer com a tabela `local_users` legada (ver achado no topo
-  deste arquivo) — as tabelas do Better Auth (`user`, `session`, `account`,
+- Decidir o que fazer com a tabela `local_users` (ver achado na seção
+  "Concluído" acima — schema já bate com a tabela, só falta o hash de senha
+  usável) — as tabelas do Better Auth (`user`, `session`, `account`,
   `verification`) substituem tanto `users` (OAuth) quanto `local_users`.
 - Campo `role` do `user` usa o vocabulário de negócio já existente
   (`master, admin, gestor, vendas, logistica, producao, financeiro,

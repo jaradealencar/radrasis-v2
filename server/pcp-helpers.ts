@@ -1,5 +1,6 @@
 import { and, eq, gte, lte, desc } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { getPool } from "./db-connection";
 import {
   producaoOrdens,
   producaoSetores,
@@ -21,7 +22,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 async function getDb() {
   if (_db) return _db;
   if (!ENV.databaseUrl) throw new Error("DATABASE_URL not set");
-  _db = drizzle(ENV.databaseUrl);
+  _db = drizzle(getPool());
   return _db;
 }
 
@@ -302,7 +303,7 @@ export async function criarSetoresOrdem(
 
     const { dataInicio, dataFim, dias } = setoresMap[setor];
 
-    const resultado = await db.insert(producaoSetores).values({
+    const [resultado] = await db.insert(producaoSetores).values({
       ordemId,
       setorNome: setor,
       sequencia,
@@ -310,13 +311,10 @@ export async function criarSetoresOrdem(
       diasAlocados: dias,
       dataFimPrevista: dataFim,
       dependeDe: config.dependeDe.length > 0 ? JSON.stringify(config.dependeDe) : null,
-    });
+    }).returning();
 
-    const setorId = resultado[0].insertId as number;
-    const setor_inserido = await db.select().from(producaoSetores).where(eq(producaoSetores.id, setorId)).limit(1);
-
-    if (setor_inserido.length > 0) {
-      setoresCriados.push(setor_inserido[0]);
+    if (resultado) {
+      setoresCriados.push(resultado);
     }
 
     sequencia++;
@@ -330,9 +328,8 @@ export async function criarSetoresOrdem(
 export async function criarOrdemProducao(input: InsertProducaoOrdem): Promise<ProducaoOrdem | null> {
   const db = await getDb();
   try {
-    const resultado = await db.insert(producaoOrdens).values(input);
-    const id = resultado[0].insertId as number;
-    return getOrdemProducaoById(id);
+    const [resultado] = await db.insert(producaoOrdens).values(input).returning({ id: producaoOrdens.id });
+    return getOrdemProducaoById(resultado.id);
   } catch (error) {
     console.error("[PCP] Erro ao criar ordem:", error);
     return null;

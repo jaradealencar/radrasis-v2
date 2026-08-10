@@ -1596,7 +1596,7 @@ export type InsertAnaliseCurriculo = typeof analiseCurriculos.$inferInsert;
 
 export const feriados = pgTable("feriados", {
   id: serial("id").primaryKey(),
-  data: date("data").notNull().unique(),
+  data: date("data", { mode: "date" }).notNull().unique(),
   descricao: varchar("descricao", { length: 128 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -1620,8 +1620,8 @@ export const producaoOrdens = pgTable("producao_ordens", {
   clienteNome: varchar("clienteNome", { length: 256 }).notNull(),
   clienteId: varchar("clienteId", { length: 64 }),
   descricaoPedido: text("descricaoPedido"),
-  dataEntrada: date("dataEntrada").notNull(),
-  dataPrazo: date("dataPrazo").notNull(),
+  dataEntrada: date("dataEntrada", { mode: "date" }).notNull(),
+  dataPrazo: date("dataPrazo", { mode: "date" }).notNull(),
   diasUteisTotais: integer("diasUteisTotais").notNull(),
   statusGeral: producaoStatusGeralEnum("statusGeral").default("nao_iniciado").notNull(),
   temPintura: boolean("temPintura").default(false).notNull(),
@@ -1648,9 +1648,9 @@ export const producaoSetores = pgTable("producao_setores", {
   sequencia: integer("sequencia").notNull(),
   status: producaoSetorStatusEnum("status").default("nao_iniciado").notNull(),
   diasAlocados: integer("diasAlocados").notNull(),
-  dataInicio: date("dataInicio"),
-  dataFim: date("dataFim"),
-  dataFimPrevista: date("dataFimPrevista").notNull(),
+  dataInicio: date("dataInicio", { mode: "date" }),
+  dataFim: date("dataFim", { mode: "date" }),
+  dataFimPrevista: date("dataFimPrevista", { mode: "date" }).notNull(),
   emRisco: boolean("emRisco").default(false).notNull(),
   dependeDe: varchar("dependeDe", { length: 256 }),
   atualizadoEm: timestamp("atualizadoEm").defaultNow().notNull(),

@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { getPool } from "../db-connection";
 import { performanceMensal, retrabalhos as retrabalhosTable, faturamento as faturamentoTable } from "../../drizzle/schema";
 import { eq, and, asc, sql } from "drizzle-orm";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 function getDb() {
-  if (!_db) _db = drizzle(process.env.DATABASE_URL!);
+  if (!_db) _db = drizzle(getPool());
   return _db;
 }
 const db = {
@@ -46,7 +47,7 @@ export const performanceRouter = router({
         .select({ total: sql<number>`COUNT(*)` })
         .from(retrabalhosTable)
         .where(
-          sql`MONTH(${retrabalhosTable.data}) = ${input.mes} AND YEAR(${retrabalhosTable.data}) = ${input.ano}`
+          sql`EXTRACT(MONTH FROM ${retrabalhosTable.data}) = ${input.mes} AND EXTRACT(YEAR FROM ${retrabalhosTable.data}) = ${input.ano}`
         );
       const retrabCount = [{ total: Number(retrabCountRows[0]?.total ?? 0) }];
 
@@ -197,8 +198,8 @@ export const performanceRouter = router({
           .where(eq(performanceMensal.id, existing[0].id));
         return { action: "updated", id: existing[0].id };
       } else {
-        const result = await db.insert(performanceMensal).values({ mes, ano, ...data });
-        return { action: "created", id: (result as any).insertId };
+        const [result] = await db.insert(performanceMensal).values({ mes, ano, ...data }).returning({ id: performanceMensal.id });
+        return { action: "created", id: result.id };
       }
     }),
 
