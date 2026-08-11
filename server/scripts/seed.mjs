@@ -1,10 +1,9 @@
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import pg from "pg";
 import dotenv from "dotenv";
 dotenv.config();
 
-const connection = await mysql.createConnection(process.env.DATABASE_URL);
-const db = drizzle(connection);
+const connection = new pg.Client({ connectionString: process.env.DATABASE_URL });
+await connection.connect();
 
 // ─── Biblioteca de Erros ───────────────────────────────────────────────────
 const errorLibraryData = [
@@ -183,8 +182,8 @@ const retrabalhosData = [
 // ─── Inserção ──────────────────────────────────────────────────────────────
 console.log("Inserindo biblioteca de erros...");
 for (const item of errorLibraryData) {
-  await connection.execute(
-    `INSERT IGNORE INTO error_library (code, category, description, correction) VALUES (?, ?, ?, ?)`,
+  await connection.query(
+    `INSERT INTO error_library (code, category, description, correction) VALUES ($1, $2, $3, $4) ON CONFLICT (code) DO NOTHING`,
     [item.code, item.category, item.description, item.correction]
   );
 }
@@ -192,8 +191,8 @@ console.log(`✓ ${errorLibraryData.length} erros inseridos`);
 
 console.log("Inserindo retrabalhos históricos...");
 for (const r of retrabalhosData) {
-  await connection.execute(
-    `INSERT INTO retrabalhos (osRetrabalhada, osOriginal, data, setor, tipo, custo, frete, total, codigoErro, responsavel, descricao, classe, mes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  await connection.query(
+    `INSERT INTO retrabalhos ("osRetrabalhada", "osOriginal", data, setor, tipo, custo, frete, total, "codigoErro", responsavel, descricao, classe, mes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [r.osRetrabalhada, r.osOriginal, r.data, r.setor, r.tipo, r.custo, r.frete, r.total, r.codigoErro, r.responsavel, r.descricao, r.classe, r.mes]
   );
 }

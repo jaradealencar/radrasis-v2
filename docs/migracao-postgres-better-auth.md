@@ -220,31 +220,60 @@ de reset.
   - `addCidade`/`ER_DUP_ENTRY` do achado da Tarefa 2.4 é o único código morto
     conhecido que sobrou por perto — não relacionado a este arquivo.
 
-## Fase 2 — Camada de conexão e SQL cru (restante)
+- **Tarefa 2.5 — Porte mecânico do SQL cru restante (sintaxe MySQL →
+  Postgres) em 3 partes, fecha a Fase 2**:
+  1. `server/transportadoras-completude.ts` (painel de completude de
+     cadastro): mesmo achado de coluna faltante que `cotacoes_frete` teve na
+     2.3 — `origem/bairro/cep/cidade/uf/cnpj` existem nas 808 transportadoras
+     reais do MySQL/TiDB mas nunca foram portadas pro schema; resolvido
+     estendendo `drizzle/schema.ts` (migration `0004_strong_devos.sql`) e
+     fazendo backfill das 808 linhas. Sintaxe corrigida: crase → aspas
+     duplas, `CAST(x AS CHAR)` → `AS TEXT`, e um bug sutil de dialeto que só
+     aparece em runtime: `SUM(<expressão booleana>)` funciona no MySQL
+     (coerção implícita bool→int) mas o Postgres recusa (`function sum(boolean)
+     does not exist`) — precisa de `SUM(CASE WHEN ... THEN 1 ELSE 0 END)`.
+  2. `server/sync/scheduled-sync-os.ts`, `server/routers/admin.ts`,
+     `server/integrations/mubisys-frete.ts` (fluxo de sincronização de OS —
+     `erp_os_cache`/`sync_logs`): mesmo problema de identificador sem aspas,
+     espalhado pelos 3 arquivos. Um bug real e silencioso: `ORDER BY
+     dataExecucao` sem aspas em `obterStatusSincronizacao()` fazia a query
+     falhar e cair no `catch`, reportando status `ERRO` no painel mesmo
+     logo depois de uma sincronização bem-sucedida (`SUCESSO`) — só ficou
+     visível ao rodar os testes de verdade contra Postgres.
+  3. Varredura geral no resto do server: só **3** fragmentos MySQL-específicos
+     de verdade sobraram nos ~35 usos de `sql\`...\`` dos routers restantes —
+     `DATE_FORMAT(...)` em `qualidade.ts` (trocado por `TO_CHAR(..., 'YYYY-MM')`).
+     A maioria dos `sql\`...\`` já usava sintaxe padrão (como os de
+     `empacotamento.ts` na 2.4b). Separado disso, uma varredura por
+     `.insertId` sem `.returning()` (o mesmo padrão mecânico já usado em
+     toda a Fase 2) achou **17 call sites** ainda quebrados em 9 arquivos
+     (`bibliotecaArquivos.ts`, `crm.ts`, `custoLed.ts`, `desempenhoColabMensal.ts`,
+     `financeiro.ts`, `metaProdutos.ts`, `metas.ts`, `qualidade.ts`,
+     `routers.ts` via `db/db.ts:createPop`) — todo INSERT nesses pontos
+     devolvia `id: undefined` pro client, silenciosamente.
+  - **Verificação**: `yarn check` (26 → 18 erros, todos pré-existentes e sem
+    relação com a migração — ver "Pontas soltas conhecidas" no `AGENTS.md`);
+    `yarn test` com 135 passando, só 2 falhas de variável de ambiente
+    `MUBISYS_ACCESS_TOKEN`/`MUBISYS_PUBLIC_KEY` ausente (não relacionadas ao
+    banco).
 
-### Tarefa 2.5 — Portar mecanicamente o SQL cru restante (sintaxe MySQL → Postgres)
+**Fase 2 encerrada** — toda a camada de acesso a dados do app (`server/`,
+exceto os arquivos mortos já documentados no `AGENTS.md`) roda sobre
+`drizzle-orm/node-postgres` (via `getPool()` compartilhado) ou SQL cru já
+portado pra sintaxe Postgres. Incluídos de brinde nesta tarefa (achados ao
+varrer `mysql2` no repo inteiro): `server/scripts/seed.mjs` e
+`server/scripts/seed-operacoes.mjs` (scripts de seed pra popular um banco
+novo) também foram portados pro driver `pg`.
 
-Arquivos: `server/transportadoras-completude.ts`, `server/scheduled-sync-os.ts`,
-`server/routers/admin.ts`, `server/mubisys-frete.ts`, e os ~82 fragmentos
-`sql\`...\`` espalhados em 8 routers (`crm.ts`, `performanceComercial.ts`,
-`qualidade.ts`, etc. — `empacotamento.ts` saiu dessa lista, ver Tarefa 2.4b
-acima: os fragmentos `sql\`...\`` lá já eram SQL padrão, sem sintaxe MySQL).
-
-Conversões a aplicar:
-- `DATE_SUB(NOW(), INTERVAL 30 DAY)` → `NOW() - INTERVAL '30 days'`
-- `IFNULL` → `COALESCE`
-- `GROUP_CONCAT` → `STRING_AGG`
-- Identificadores camelCase em SQL cru precisam de aspas duplas no Postgres
-  (`"osNumero"`, não `osNumero` — MySQL não é case-sensitive por padrão pra
-  isso, Postgres dobra pra minúsculo sem aspas)
-- INSERTs cru que hoje dependem de `result.insertId` (mysql2) precisam
-  ganhar `RETURNING id` — `db-connection.ts` já foi ajustado pra preencher
-  `insertId` a partir de `RETURNING id` quando presente, mas cada INSERT
-  cru individual ainda precisa da cláusula. `grep -rn "\.insertId\|\.affectedRows" server/` lista os ~43 call sites afetados.
-- `server/scheduled-sync-os.ts` já tem comentários corretos sobre as colunas
-  reais de `erp_os_cache` (vendedor/dataAprovacao) — não devem precisar de
-  mudança de nome de coluna, só sintaxe.
-- **Verificação**: `yarn check` limpo; `yarn test` sem falhas novas.
+**Não incluído, e não deveria ser tocado sem necessidade**: o diretório
+`scripts/` (raiz do repo, diferente de `server/scripts/`) ainda tem ~8
+scripts com `mysql2` (`create-master.mjs`, `enriquecer-transportadoras.mjs`,
+`import-frenet.mjs`, `seed-custos-fixos.mjs`, `seed-knowledge-base.mjs`,
+`seed-price-table.mjs`, `seed-transportadoras*.mjs`, `setup-price-history.mjs`).
+Mesma categoria de `scripts/migrate-mysql-to-postgres.ts` (já documentado
+acima): scripts pontuais de importação/enriquecimento já aplicados contra a
+produção antiga — ficam como registro histórico, não precisam portar a
+menos que alguém precise rodá-los de novo contra uma base nova.
 
 ---
 

@@ -1,6 +1,7 @@
-import mysql from 'mysql2/promise';
+import pg from 'pg';
 
-const conn = await mysql.createConnection(process.env.DATABASE_URL);
+const conn = new pg.Client({ connectionString: process.env.DATABASE_URL });
+await conn.connect();
 
 // ─── FORNECEDORES ─────────────────────────────────────────────────────────────
 const fornecedores = [
@@ -16,8 +17,8 @@ const fornecedores = [
 
 for (const f of fornecedores) {
   try {
-    await conn.execute(
-      `INSERT INTO suppliers (name, company, category, supplies, phone, paymentTerms, notes, active) VALUES (?, ?, ?, ?, ?, ?, ?, 'sim')`,
+    await conn.query(
+      `INSERT INTO suppliers (name, company, category, supplies, phone, "paymentTerms", notes, active) VALUES ($1, $2, $3, $4, $5, $6, $7, 'sim')`,
       [f.name, f.company, f.category, f.supplies, f.phone, f.paymentTerms, f.notes]
     );
   } catch(e) { console.log('Fornecedor skip:', e.message.substring(0,60)); }
@@ -141,8 +142,8 @@ O operador de expedição é responsável pela conferência final. Qualquer dive
 
 for (const k of conhecimentos) {
   try {
-    await conn.execute(
-      `INSERT INTO knowledge_base (title, content, category, subcategory, keywords) VALUES (?, ?, ?, ?, ?)`,
+    await conn.query(
+      `INSERT INTO knowledge_base (title, content, category, subcategory, keywords) VALUES ($1, $2, $3, $4, $5)`,
       [k.title, k.content, k.category, k.subcategory || null, k.keywords || null]
     );
   } catch(e) { console.log('Conhecimento skip:', e.message.substring(0,60)); }
@@ -163,8 +164,8 @@ const rotinas = [
 
 for (const r of rotinas) {
   try {
-    await conn.execute(
-      `INSERT INTO routines (title, description, frequency, assignedTo, status) VALUES (?, ?, ?, ?, ?)`,
+    await conn.query(
+      `INSERT INTO routines (title, description, frequency, "assignedTo", status) VALUES ($1, $2, $3, $4, $5)`,
       [r.title, r.description, r.frequency, r.assignedTo, r.status]
     );
   } catch(e) { console.log('Rotina skip:', e.message.substring(0,60)); }
@@ -244,8 +245,8 @@ O colaborador que recusar usar EPI estará sujeito a medidas disciplinares confo
 
 for (const r of regs) {
   try {
-    await conn.execute(
-      `INSERT INTO regulations (title, type, content, version, active) VALUES (?, ?, ?, ?, 'sim')`,
+    await conn.query(
+      `INSERT INTO regulations (title, type, content, version, active) VALUES ($1, $2, $3, $4, 'sim')`,
       [r.title, r.type, r.content, r.version]
     );
   } catch(e) { console.log('Regulamento skip:', e.message.substring(0,60)); }
@@ -329,8 +330,8 @@ const popsData = [
 
 for (const p of popsData) {
   try {
-    await conn.execute(
-      `INSERT INTO pops (code, title, sector, objective, steps, responsible, version, active) VALUES (?, ?, ?, ?, ?, ?, '1.0', 'sim')`,
+    await conn.query(
+      `INSERT INTO pops (code, title, sector, objective, steps, responsible, version, active) VALUES ($1, $2, $3, $4, $5, $6, '1.0', 'sim')`,
       [p.code, p.title, p.sector, p.objective, p.steps, p.responsible]
     );
   } catch(e) { console.log('POP skip:', e.message.substring(0,60)); }
