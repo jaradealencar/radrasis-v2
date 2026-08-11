@@ -10,7 +10,7 @@ import {
   ImagePlus, ImageOff, Shield, Target, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation, useSearch } from "wouter";
 import * as XLSX from "xlsx";
 

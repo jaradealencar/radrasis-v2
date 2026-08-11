@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { Pencil, Save, X, Info, FileText, Search, Filter, ChevronDown, ChevronUp, Plus, Trash2, Copy, Check, Download, History, Clock } from "lucide-react";
 import { useState, useMemo, useRef, useCallback } from "react";
-import DashboardLayout from "../components/DashboardLayout";
-import RichTextEditor from "../components/RichTextEditor";
+import DashboardLayout from "../../components/DashboardLayout";
+import RichTextEditor from "../../components/RichTextEditor";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

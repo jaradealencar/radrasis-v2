@@ -6,8 +6,8 @@ import {
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
-import RichTextEditor from "../components/RichTextEditor";
+import DashboardLayout from "../../components/DashboardLayout";
+import RichTextEditor from "../../components/RichTextEditor";
 import { useLocalAuth } from "@/contexts/LocalAuthContext";
 
 const CATEGORIES = ["Comercial", "Administrativo", "Financeiro", "Produção", "Logística", "RH", "TI", "Geral"];

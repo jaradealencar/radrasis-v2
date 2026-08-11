@@ -10,42 +10,42 @@ import { useVendedorAlertas } from "@/hooks/useVendedorAlertas";
 // Retrabalhos
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
-import Retrabalhos from "./pages/Retrabalhos";
-import InserirRapido from "./pages/InserirRapido";
-import NovoRetrabalho from "./pages/NovoRetrabalho";
-import EditarRetrabalho from "./pages/EditarRetrabalho";
-import BibliotecaErros from "./pages/BibliotecaErros";
-import Reincidencia from "./pages/Reincidencia";
-import Relatorio from "./pages/Relatorio";
-import Insights from "./pages/Insights";
+import Retrabalhos from "./pages/retrabalhos/Retrabalhos";
+import InserirRapido from "./pages/retrabalhos/InserirRapido";
+import NovoRetrabalho from "./pages/retrabalhos/NovoRetrabalho";
+import EditarRetrabalho from "./pages/retrabalhos/EditarRetrabalho";
+import BibliotecaErros from "./pages/retrabalhos/BibliotecaErros";
+import Reincidencia from "./pages/retrabalhos/Reincidencia";
+import Relatorio from "./pages/retrabalhos/Relatorio";
+import Insights from "./pages/retrabalhos/Insights";
 
 // Operações
-import Conhecimento from "./pages/Conhecimento";
-import BibliotecaArquivos from "./pages/BibliotecaArquivos";
-import SugestoesConhecimento from "./pages/SugestoesConhecimento";
-import Fornecedores from "./pages/Fornecedores";
-import Rotinas from "./pages/Rotinas";
-import Regulamentos from "./pages/Regulamentos";
-import Pops from "./pages/Pops";
-import PopRelatorio from "./pages/PopRelatorio";
+import Conhecimento from "./pages/operacoes/Conhecimento";
+import BibliotecaArquivos from "./pages/operacoes/BibliotecaArquivos";
+import SugestoesConhecimento from "./pages/operacoes/SugestoesConhecimento";
+import Fornecedores from "./pages/operacoes/Fornecedores";
+import Rotinas from "./pages/operacoes/Rotinas";
+import Regulamentos from "./pages/operacoes/Regulamentos";
+import Pops from "./pages/operacoes/Pops";
+import PopRelatorio from "./pages/operacoes/PopRelatorio";
 
 // Comercial
-import TabelaPrecos from "./pages/TabelaPrecos";
+import TabelaPrecos from "./pages/comercial/TabelaPrecos";
 import PerformanceComercial from "./pages/comercial/PerformanceComercial";
 import MetasComerciais from "./pages/comercial/MetasComerciais";
-import CRM from "./pages/CRM";
+import CRM from "./pages/comercial/CRM";
 import PlanosAcaoComercial from "./pages/comercial/PlanosAcaoComercial";
 import DiagnosticoApi from "./pages/comercial/DiagnosticoApi";
 import CrmAuditoria from "./pages/comercial/CrmAuditoria";
 // Financeiro
-import Financeiro from "./pages/Financeiro";
-import Cargos from "./pages/Cargos";
-import PCP from "./pages/PCP";
-import AnaliseAtrasos from "./pages/AnaliseAtrasos";
-import GestaoAtrasos from "./pages/GestaoAtrasos";
+import Financeiro from "./pages/financeiro/Financeiro";
+import Cargos from "./pages/financeiro/Cargos";
+import PCP from "./pages/financeiro/PCP";
+import AnaliseAtrasos from "./pages/financeiro/AnaliseAtrasos";
+import GestaoAtrasos from "./pages/financeiro/GestaoAtrasos";
 
 // Admin
-import Admin from "./pages/Admin";
+import Admin from "./pages/admin/Admin";
 import LogisticaDashboard from "./pages/logistica/LogisticaDashboard";
 import Solicitacoes from "./pages/logistica/Solicitacoes";
 import Transportadoras from "./pages/logistica/Transportadoras";
@@ -64,7 +64,7 @@ import MetasOperacionais from "./pages/operacoes/MetasOperacionais";
 import AcessoNegado from "./pages/AcessoNegado";
 import Auditoria from "./pages/Auditoria";
 import LocalLogin from "./pages/LocalLogin";
-import CargoseFuncoes from "./pages/CargoseFuncoes";
+import CargoseFuncoes from "./pages/operacoes/CargoseFuncoes";
 import ProtectedRoute from "./components/ProtectedRoute";
 import IdleTimeoutWarning from "./components/IdleTimeoutWarning";
 // Qualidade

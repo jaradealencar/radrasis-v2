@@ -2,8 +2,8 @@ import { trpc } from "@/lib/trpc";
 import { ChevronDown, ChevronUp, Edit2, Plus, Save, ScrollText, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
-import RichTextEditor from "../components/RichTextEditor";
+import DashboardLayout from "../../components/DashboardLayout";
+import RichTextEditor from "../../components/RichTextEditor";
 
 const TYPES = [
   { value: "regulamento", label: "Regulamento" },

@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import { useState } from "react";
 import FilterBar, { FilterState } from "@/components/FilterBar";
 import { AlertTriangle, TrendingUp, Zap } from "lucide-react";

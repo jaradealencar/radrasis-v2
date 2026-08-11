@@ -6,10 +6,10 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation } from "wouter";
 import { downloadPopAsPdf } from "@/lib/popPdf";
-import RichTextEditor from "../components/RichTextEditor";
+import RichTextEditor from "../../components/RichTextEditor";
 
 const SECTORS = [
   "SOLDA","PINTURA","EXPEDIÇÃO","PROJETO","FIBRA","ROUTER","CO2",

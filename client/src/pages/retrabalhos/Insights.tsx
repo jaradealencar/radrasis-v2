@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import { useState } from "react";
 import FilterBar, { FilterState } from "@/components/FilterBar";
 import { Brain, Loader2, RefreshCw, Sparkles } from "lucide-react";

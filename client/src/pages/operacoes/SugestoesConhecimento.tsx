@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import {
   Lightbulb, CheckCircle, XCircle, Clock, User, MessageSquare, ChevronDown, ChevronUp, Sparkles
 } from "lucide-react";

@@ -6,10 +6,10 @@ import {
   GitMerge, AlertTriangle, UserCheck, Clock, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
-import RichTextEditor from "../components/RichTextEditor";
-import ImageUploadField from "../components/ImageUploadField";
-import { CurriculumUploadSection } from "../components/CurriculumUploadSection";
+import DashboardLayout from "../../components/DashboardLayout";
+import RichTextEditor from "../../components/RichTextEditor";
+import ImageUploadField from "../../components/ImageUploadField";
+import { CurriculumUploadSection } from "../../components/CurriculumUploadSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Cargo = {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import RetrabalhForm, { FormData } from "@/components/RetrabalhForm";

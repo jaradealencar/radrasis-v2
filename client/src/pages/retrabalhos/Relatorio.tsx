@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import { useState, useMemo, useEffect } from "react";
 import { useSearch } from "wouter";
 import FilterBar, { FilterState } from "@/components/FilterBar";

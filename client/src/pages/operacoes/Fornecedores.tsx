@@ -2,7 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Building2, Mail, MessageCircle, Phone, Plus, Search, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 
 const CATEGORIES = ["Matéria-Prima", "Embalagem", "Serviços", "Tecnologia", "Logística", "Manutenção", "Outros"];
 

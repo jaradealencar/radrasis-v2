@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FileText, Download, Eye, Users, TrendingUp, Calendar, Filter } from "lucide-react";
-import DashboardLayout from "../components/DashboardLayout";
-import { trpc } from "../lib/trpc";
+import DashboardLayout from "../../components/DashboardLayout";
+import { trpc } from "../../lib/trpc";
 
 function formatDate(d: Date | string | null | undefined) {
   if (!d) return "—";

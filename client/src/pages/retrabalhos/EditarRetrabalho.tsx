@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../components/DashboardLayout";
+import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
 import RetrabalhForm, { FormData } from "@/components/RetrabalhForm";

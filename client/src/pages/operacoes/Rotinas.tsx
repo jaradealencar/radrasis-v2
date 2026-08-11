@@ -5,9 +5,9 @@ import {
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../components/DashboardLayout";
-import RichTextEditor from "../components/RichTextEditor";
-import UserSelect from "../components/UserSelect";
+import DashboardLayout from "../../components/DashboardLayout";
+import RichTextEditor from "../../components/RichTextEditor";
+import UserSelect from "../../components/UserSelect";
 
 const FREQUENCIES: { value: string; label: string; cor: string; dias: number | null }[] = [
   { value: "diaria",     label: "Diária",     cor: "#ef4444", dias: 1  },
