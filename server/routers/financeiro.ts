@@ -96,8 +96,8 @@ export const financeiroRouter = router({
         await db.update(financeiroMensal).set(data).where(eq(financeiroMensal.id, existing[0].id));
         return { ...existing[0], ...data };
       } else {
-        const result = await db.insert(financeiroMensal).values({ mes: input.mes, ano: input.ano, ...data });
-        return { id: Number(result[0].insertId), mes: input.mes, ano: input.ano, ...data };
+        const [result] = await db.insert(financeiroMensal).values({ mes: input.mes, ano: input.ano, ...data }).returning({ id: financeiroMensal.id });
+        return { id: result.id, mes: input.mes, ano: input.ano, ...data };
       }
     }),
 
@@ -150,8 +150,8 @@ export const financeiroRouter = router({
         await db.update(custoMarketing).set(data).where(eq(custoMarketing.id, existing[0].id));
         return { ...existing[0], ...data };
       } else {
-        const result = await db.insert(custoMarketing).values({ mes: input.mes, ano: input.ano, ...data });
-        return { id: Number(result[0].insertId), mes: input.mes, ano: input.ano, ...data };
+        const [result] = await db.insert(custoMarketing).values({ mes: input.mes, ano: input.ano, ...data }).returning({ id: custoMarketing.id });
+        return { id: result.id, mes: input.mes, ano: input.ano, ...data };
       }
     }),
 
@@ -193,8 +193,8 @@ export const financeiroRouter = router({
         await db.update(custosFixos).set(data).where(eq(custosFixos.id, input.id));
         return { id: input.id, ...data };
       } else {
-        const result = await db.insert(custosFixos).values(data);
-        return { id: Number(result[0].insertId), ...data };
+        const [result] = await db.insert(custosFixos).values(data).returning({ id: custosFixos.id });
+        return { id: result.id, ...data };
       }
     }),
 

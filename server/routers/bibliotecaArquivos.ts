@@ -151,8 +151,8 @@ export const bibliotecaArquivosRouter = router({
         uploadedBy: input.uploadedBy ?? null,
         visualizacoes: 0,
         conteudoExtraido: conteudoExtraido ?? null,
-      });
-      return { success: true, id: (result as any).insertId, conteudoExtraido: !!conteudoExtraido };
+      }).returning({ id: bibliotecaArquivos.id });
+      return { success: true, id: result.id, conteudoExtraido: !!conteudoExtraido };
     }),
 
   // Re-extrair texto de um arquivo já existente (para arquivos enviados antes desta feature)

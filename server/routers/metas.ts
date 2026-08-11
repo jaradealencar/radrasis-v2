@@ -93,14 +93,11 @@ export const metasRouter = router({
           .where(eq(metasOperacionais.id, id));
         return updated[0];
       } else {
-        const result = await db
+        const [inserted] = await db
           .insert(metasOperacionais)
-          .values(data as any);
-        const inserted = await db
-          .select()
-          .from(metasOperacionais)
-          .where(eq(metasOperacionais.id, (result as any).insertId));
-        return inserted[0];
+          .values(data as any)
+          .returning();
+        return inserted;
       }
     }),
 });

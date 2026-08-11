@@ -39,8 +39,8 @@ export const custoLedRouter = router({
         await db.update(ledTipos).set(payload).where(eq(ledTipos.id, id));
         return { ok: true, id };
       } else {
-        const [res] = await db.insert(ledTipos).values(payload);
-        return { ok: true, id: (res as any).insertId };
+        const [res] = await db.insert(ledTipos).values(payload).returning({ id: ledTipos.id });
+        return { ok: true, id: res.id };
       }
     }),
 
@@ -102,8 +102,8 @@ export const custoLedRouter = router({
         await db.update(custoLedLancamentos).set(payload).where(eq(custoLedLancamentos.id, id));
         return { ok: true, id };
       } else {
-        const [res] = await db.insert(custoLedLancamentos).values(payload);
-        return { ok: true, id: (res as any).insertId };
+        const [res] = await db.insert(custoLedLancamentos).values(payload).returning({ id: custoLedLancamentos.id });
+        return { ok: true, id: res.id };
       }
     }),
 

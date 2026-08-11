@@ -751,8 +751,8 @@ export const crmRouter = router({
         titulo: input.titulo,
         conteudo: input.conteudo,
         conteudo_voz: input.conteudo_voz ?? null,
-      });
-      return { ok: true, id: (inserted as any).insertId };
+      }).returning({ id: crmScripts.id });
+      return { ok: true, id: inserted.id };
     }),
 
   deleteScript: protectedProcedure

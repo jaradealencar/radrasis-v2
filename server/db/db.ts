@@ -571,7 +571,8 @@ export async function getPopById(id: number) {
 export async function createPop(data: InsertPop) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  return db.insert(pops).values(data);
+  const [result] = await db.insert(pops).values(data).returning({ id: pops.id });
+  return result;
 }
 export async function updatePop(id: number, data: Partial<InsertPop>) {
   const db = await getDb();

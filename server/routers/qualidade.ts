@@ -105,7 +105,7 @@ export const acoesCorretivasRouter = router({
           .where(eq(acoesCorretivas.retrabalhoid, input.retrabalhoid));
         return { id: existing[0].id, action: "updated" };
       } else {
-        const result = await db.insert(acoesCorretivas).values({
+        const [result] = await db.insert(acoesCorretivas).values({
           retrabalhoid: input.retrabalhoid,
           status: input.status,
           acaoTomada: input.acaoTomada ?? null,
@@ -115,8 +115,8 @@ export const acoesCorretivasRouter = router({
           custoAdicional: input.custoAdicional ? String(input.custoAdicional) : "0",
           observacoes: input.observacoes ?? null,
           registradoPor: input.registradoPor ?? null,
-        });
-        return { id: (result as any).insertId, action: "created" };
+        }).returning({ id: acoesCorretivas.id });
+        return { id: result.id, action: "created" };
       }
     }),
 
@@ -203,12 +203,12 @@ export const metasRetrabalhoRouter = router({
         await db.update(metasRetrabalho).set(values).where(eq(metasRetrabalho.id, existing[0].id));
         return { id: existing[0].id, action: "updated" };
       } else {
-        const result = await db.insert(metasRetrabalho).values({
+        const [result] = await db.insert(metasRetrabalho).values({
           ano: input.ano,
           mes: input.mes ?? null,
           ...values,
-        });
-        return { id: (result as any).insertId, action: "created" };
+        }).returning({ id: metasRetrabalho.id });
+        return { id: result.id, action: "created" };
       }
     }),
 
@@ -326,7 +326,7 @@ export const planosAcaoRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      const result = await db.insert(planosAcao).values({
+      const [result] = await db.insert(planosAcao).values({
         codigoErro: input.codigoErro,
         setor: input.setor ?? null,
         titulo: input.titulo,
@@ -341,8 +341,8 @@ export const planosAcaoRouter = router({
         errosResolvidos: input.errosResolvidos ? JSON.stringify(input.errosResolvidos) : null,
         metodologia: input.metodologia ?? "ambos",
         codigosErro: input.codigosErro ? JSON.stringify(input.codigosErro) : null,
-      });
-      return { id: (result as any).insertId };
+      }).returning({ id: planosAcao.id });
+      return { id: result.id };
     }),
 
   update: publicProcedure
@@ -404,13 +404,13 @@ export const planosAcaoRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      const result = await db.insert(ishikawaCausas).values({
+      const [result] = await db.insert(ishikawaCausas).values({
         planoId: input.planoId,
         categoria: input.categoria,
         causa: input.causa,
         prioridade: input.prioridade ?? "media",
-      });
-      return { id: (result as any).insertId };
+      }).returning({ id: ishikawaCausas.id });
+      return { id: result.id };
     }),
 
   // Ishikawa: atualizar causa
@@ -463,7 +463,7 @@ export const planosAcaoRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      const result = await db.insert(acoes5w2h).values({
+      const [result] = await db.insert(acoes5w2h).values({
         planoId: input.planoId,
         what: input.what,
         why: input.why ?? null,
@@ -474,8 +474,8 @@ export const planosAcaoRouter = router({
         howMuch: input.howMuch ?? null,
         causaId: input.causaId ?? null,
         status: "pendente",
-      });
-      return { id: (result as any).insertId };
+      }).returning({ id: acoes5w2h.id });
+      return { id: result.id };
     }),
 
   // 5W2H: atualizar ação
@@ -590,7 +590,7 @@ export const planosAcaoRouter = router({
       // Inserir as ações no banco
       const insertedIds: number[] = [];
       for (const acao of acoes.slice(0, qtd)) {
-        const result = await db.insert(acoes5w2h).values({
+        const [result] = await db.insert(acoes5w2h).values({
           planoId: input.planoId,
           what: acao.what ?? "",
           why: acao.why ?? null,
@@ -600,8 +600,8 @@ export const planosAcaoRouter = router({
           how: acao.how ?? null,
           howMuch: acao.howMuch ?? null,
           status: "pendente",
-        });
-        insertedIds.push((result as any).insertId);
+        }).returning({ id: acoes5w2h.id });
+        insertedIds.push(result.id);
       }
       return { success: true, count: insertedIds.length, ids: insertedIds };
     }),
@@ -893,15 +893,15 @@ export const desempenhoColaboradorRouter = router({
       const db = await getDb();
       if (!db) return [];
       const rows = await db.select({
-        mes: sql<string>`DATE_FORMAT(${retrabalhos.data}, '%Y-%m')`,
+        mes: sql<string>`TO_CHAR(${retrabalhos.data}, 'YYYY-MM')`,
         total: sql<number>`COUNT(*)`,
         custoTotal: sql<number>`SUM(${retrabalhos.total})`,
         evitaveis: sql<number>`SUM(CASE WHEN ${retrabalhos.classe} = 'EVITÁVEL' THEN 1 ELSE 0 END)`,
       })
         .from(retrabalhos)
         .where(eq(retrabalhos.responsavel, input.responsavel))
-        .groupBy(sql`DATE_FORMAT(${retrabalhos.data}, '%Y-%m')`)
-        .orderBy(sql`DATE_FORMAT(${retrabalhos.data}, '%Y-%m')`);
+        .groupBy(sql`TO_CHAR(${retrabalhos.data}, 'YYYY-MM')`)
+        .orderBy(sql`TO_CHAR(${retrabalhos.data}, 'YYYY-MM')`);
       return rows;
     }),
 

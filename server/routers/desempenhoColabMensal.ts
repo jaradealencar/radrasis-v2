@@ -108,8 +108,8 @@ export const desempenhoColabMensalRouter = router({
           .where(eq(desempenhoColaboradorMensal.id, existing[0].id));
         return { id: existing[0].id, action: "updated" };
       } else {
-        const result = await db.insert(desempenhoColaboradorMensal).values(payload);
-        return { id: (result as any).insertId, action: "created" };
+        const [result] = await db.insert(desempenhoColaboradorMensal).values(payload).returning({ id: desempenhoColaboradorMensal.id });
+        return { id: result.id, action: "created" };
       }
     }),
 

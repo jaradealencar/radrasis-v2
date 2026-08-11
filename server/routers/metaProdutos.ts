@@ -46,8 +46,8 @@ export const metaProdutosRouter = router({
           metaParticipacaoPct: String(data.metaParticipacaoPct),
           observacao: data.observacao ?? null,
           ativo: data.ativo,
-        });
-        return { success: true, id: result.insertId };
+        }).returning({ id: metaProdutos.id });
+        return { success: true, id: result.id };
       }
     }),
 

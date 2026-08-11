@@ -798,7 +798,7 @@ O POP deve ser prático, direto e aplicável no chão de fábrica. Use linguagem
             responsible: "",
             version: "1.0",
           });
-          return { action: "created", popCode, popId: (result as any).insertId, title: parsed.title, stepsText, parsed };
+          return { action: "created", popCode, popId: result.id, title: parsed.title, stepsText, parsed };
         }
       }),
 
@@ -1021,7 +1021,7 @@ O POP deve:
             responsible: "",
             version: "1.0",
           });
-          return { action: "created", popCode, popId: (result as any).insertId, title: parsed.title, stepsText, parsed, errorImages };
+          return { action: "created", popCode, popId: result.id, title: parsed.title, stepsText, parsed, errorImages };
         }
       }),
 
