@@ -30,6 +30,35 @@ yarn db:push     # drizzle-kit generate && drizzle-kit migrate
 Variáveis de ambiente: ver `.env.example`. `DATABASE_URL` (MySQL) é
 obrigatória para rodar o server ou os scripts em `scripts/`.
 
+## Banco de dados — sempre via migration
+
+Nunca altere o schema do banco rodando SQL direto (`psql`, script one-off,
+`pool.query`/`mutationQuery` solto para `ALTER TABLE`/`CREATE TYPE`/etc.).
+Toda mudança de estrutura (coluna, tipo, enum, índice) segue este fluxo:
+
+1. Edite `drizzle/schema.ts`.
+2. Rode `npx drizzle-kit generate` para gerar a migration numerada em `drizzle/`.
+3. **Revise o SQL gerado antes de aplicar** — drizzle-kit não lida sozinho
+   com tudo (ex: mudar os valores de um enum já em uso exige editar a
+   migration à mão para adicionar um `USING CASE ...` que remapeia os
+   dados já gravados; senão o `ALTER TYPE` quebra contra linhas existentes).
+4. Aplique com `npx drizzle-kit migrate` (ou `yarn db:push`, que já faz
+   generate + migrate).
+
+Scripts one-off pra *dado* (backfill pontual, copiar de uma tabela legada)
+são aceitáveis fora desse fluxo — a regra é sobre *estrutura*. Migration
+sempre vai commitada junto com a mudança de `schema.ts` que a gerou.
+
+## Commits por fase de planejamento
+
+Documentos de planejamento/sprint (ex:
+`docs/migracao-postgres-better-auth.md`) dividem o trabalho em
+fases/tarefas numeradas. Ao concluir uma fase ou tarefa inteira, faça um
+commit próprio pra ela antes de seguir pra próxima — não acumule várias
+fases num commit só, e não deixe uma fase concluída sem commit. Atualize o
+próprio documento (marcando a tarefa como concluída, registrando achados)
+como parte desse commit.
+
 ## Estrutura
 
 ```
