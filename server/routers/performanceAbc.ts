@@ -249,7 +249,7 @@ export const performanceAbcRouter = router({
           const despacho = c.dataDespacho ? new Date(c.dataDespacho) : null;
           const atrasado = despacho
             ? despacho > prevista
-            : c.status === "concluido" && prevista < new Date();
+            : c.status === "enviada" && prevista < new Date();
           if (atrasado) {
             atrasosMap[nome] = (atrasosMap[nome] ?? 0) + 1;
           }

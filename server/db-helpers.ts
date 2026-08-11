@@ -1,9 +1,21 @@
 /**
- * Helpers de banco de dados com SQL puro
- * Usa prepared statements para segurança e performance
+ * Helpers de banco de dados para cotações de frete — Drizzle query builder.
  */
 
-import { mutationQuery, selectQuery } from './db-connection';
+import { desc, eq, gte, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { getPool } from "./db-connection";
+import { cotacoesFrete, InsertCotacaoFrete } from "../drizzle/schema";
+import { ENV } from "./_core/env";
+
+let _db: ReturnType<typeof drizzle> | null = null;
+
+async function getDb() {
+  if (_db) return _db;
+  if (!ENV.databaseUrl) throw new Error("DATABASE_URL not set");
+  _db = drizzle(getPool());
+  return _db;
+}
 
 export interface CotacaoFreteData {
   solicitanteNome?: string;
@@ -21,7 +33,7 @@ export interface CotacaoFreteData {
   quantidadeVolumes?: number;
   volumesJson?: string;
   empacotadores?: string;
-  /** Dados próprios da OS consultada (cada OS tem os seus) */
+  /** Dados próprios da OS consultada (cache/API MubiSys) */
   osAprovacao?: string;
   osEntrega?: string;
   osVendedor?: string;
@@ -35,8 +47,9 @@ export interface CotacaoFreteResult {
 }
 
 /**
- * Criar nova cotação de frete usando SQL puro
+ * Criar nova cotação de frete.
  * Insere apenas os campos com valores, deixando o banco aplicar defaults
+ * (ex: status = 'aberta').
  */
 export async function criarCotacaoFrete(
   dados: CotacaoFreteData
@@ -45,47 +58,32 @@ export async function criarCotacaoFrete(
     console.log('📝 [CRIAR-COTACAO] Iniciando criação de cotação...');
     console.log('📝 [CRIAR-COTACAO] Dados:', dados);
 
-    // SQL com prepared statement - insere apenas campos com valor
-    // NOTA: tipoMaterial foi removido pois não existe na tabela real
-    const sql = `
-      INSERT INTO cotacoes_frete 
-      (osNumero, solicitanteNome, destinatarioNome, destinatarioCnpj, cepDestino, 
-       municipio, estado, dimensoesLargura, dimensoesAltura, 
-       dimensoesComprimento, pesoKg, quantidadeVolumes, volumesJson, observacoes, empacotadores,
-       osAprovacao, osEntrega, osVendedor, status) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    const db = await getDb();
+    const insertData: InsertCotacaoFrete = {
+      destinatarioNome: dados.destinatarioNome,
+      municipio: dados.municipio,
+      estado: dados.estado,
+      osNumero: dados.osNumero ?? null,
+      solicitanteNome: dados.solicitanteNome ?? null,
+      destinatarioCnpj: dados.destinatarioCnpj ?? null,
+      cepDestino: dados.cepDestino ?? null,
+      dimensoesLargura: dados.dimensoesLargura != null ? String(dados.dimensoesLargura) : null,
+      dimensoesAltura: dados.dimensoesAltura != null ? String(dados.dimensoesAltura) : null,
+      dimensoesComprimento: dados.dimensoesComprimento != null ? String(dados.dimensoesComprimento) : null,
+      pesoKg: dados.pesoKg != null ? String(dados.pesoKg) : null,
+      quantidadeVolumes: dados.quantidadeVolumes ?? 1,
+      volumesJson: dados.volumesJson ?? null,
+      observacoes: dados.observacoes ?? null,
+      empacotadores: dados.empacotadores ?? null,
+      osAprovacao: dados.osAprovacao ?? null,
+      osEntrega: dados.osEntrega ?? null,
+      osVendedor: dados.osVendedor ?? null,
+    };
 
-    // Valores em ordem exata dos placeholders
-    const values = [
-      dados.osNumero || null,
-      dados.solicitanteNome || null,
-      dados.destinatarioNome,
-      dados.destinatarioCnpj || null,
-      dados.cepDestino || null,
-      dados.municipio,
-      dados.estado,
-      dados.dimensoesLargura || null,
-      dados.dimensoesAltura || null,
-      dados.dimensoesComprimento || null,
-      dados.pesoKg || null,
-      dados.quantidadeVolumes || 1,
-      dados.volumesJson || null,
-      dados.observacoes || null,
-      dados.empacotadores || null,
-      dados.osAprovacao || null,
-      dados.osEntrega || null,
-      dados.osVendedor || null,
-      'aberta' // Status padrão para novas cotações (enum real no banco: aberta, cotando, cotada, enviada)
-    ];
+    console.log('📝 [CRIAR-COTACAO] Insert:', insertData);
 
-    console.log('📝 [CRIAR-COTACAO] SQL:', sql);
-    console.log('📝 [CRIAR-COTACAO] Valores:', values);
-
-    // Executar INSERT
-    const result = await mutationQuery(sql, values);
-
-    const insertId = (result as any).insertId;
+    const [result] = await db.insert(cotacoesFrete).values(insertData).returning({ id: cotacoesFrete.id });
+    const insertId = result.id;
 
     console.log('✅ [CRIAR-COTACAO] Sucesso! ID:', insertId);
 
@@ -108,9 +106,9 @@ export async function criarCotacaoFrete(
  */
 export async function buscarCotacaoPorId(id: number) {
   try {
-    const sql = 'SELECT * FROM cotacoes_frete WHERE id = ?';
-    const result = await selectQuery(sql, [id]);
-    return result[0] || null;
+    const db = await getDb();
+    const [result] = await db.select().from(cotacoesFrete).where(eq(cotacoesFrete.id, id));
+    return result ?? null;
   } catch (error: any) {
     console.error('❌ [BUSCAR-COTACAO] Erro:', error);
     return null;
@@ -118,22 +116,31 @@ export async function buscarCotacaoPorId(id: number) {
 }
 
 /**
- * Listar cotações com paginação
+ * Listar cotações com paginação (últimos 30 dias)
  */
 export async function listarCotacoes(page: number = 1, pageSize: number = 15) {
   try {
+    const db = await getDb();
     const offset = (page - 1) * pageSize;
-    
-    const sql = `
-      SELECT id, solicitanteNome, destinatarioNome, municipio, estado, 
-             pesoKg, status, createdAt 
-      FROM cotacoes_frete 
-      WHERE createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      ORDER BY createdAt DESC 
-      LIMIT ? OFFSET ?
-    `;
+    const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const result = await selectQuery(sql, [pageSize, offset]);
+    const result = await db
+      .select({
+        id: cotacoesFrete.id,
+        solicitanteNome: cotacoesFrete.solicitanteNome,
+        destinatarioNome: cotacoesFrete.destinatarioNome,
+        municipio: cotacoesFrete.municipio,
+        estado: cotacoesFrete.estado,
+        pesoKg: cotacoesFrete.pesoKg,
+        status: cotacoesFrete.status,
+        createdAt: cotacoesFrete.createdAt,
+      })
+      .from(cotacoesFrete)
+      .where(gte(cotacoesFrete.createdAt, trintaDiasAtras))
+      .orderBy(desc(cotacoesFrete.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
     return result;
   } catch (error: any) {
     console.error('❌ [LISTAR-COTACOES] Erro:', error);
@@ -142,18 +149,17 @@ export async function listarCotacoes(page: number = 1, pageSize: number = 15) {
 }
 
 /**
- * Contar total de cotações
+ * Contar total de cotações (últimos 30 dias)
  */
 export async function contarCotacoes() {
   try {
-    const sql = `
-      SELECT COUNT(*) as total 
-      FROM cotacoes_frete 
-      WHERE createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-    `;
-
-    const result = await selectQuery(sql, []);
-    return result[0]?.total || 0;
+    const db = await getDb();
+    const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [result] = await db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(cotacoesFrete)
+      .where(gte(cotacoesFrete.createdAt, trintaDiasAtras));
+    return Number(result?.total ?? 0);
   } catch (error: any) {
     console.error('❌ [CONTAR-COTACOES] Erro:', error);
     return 0;
@@ -163,11 +169,15 @@ export async function contarCotacoes() {
 /**
  * Atualizar status de cotação
  */
-export async function atualizarStatusCotacao(id: number, status: string) {
+export async function atualizarStatusCotacao(id: number, status: InsertCotacaoFrete["status"]) {
   try {
-    const sql = 'UPDATE cotacoes_frete SET status = ? WHERE id = ?';
-    const result = await mutationQuery(sql, [status, id]);
-    return (result as any).affectedRows > 0;
+    const db = await getDb();
+    const result = await db
+      .update(cotacoesFrete)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(cotacoesFrete.id, id))
+      .returning({ id: cotacoesFrete.id });
+    return result.length > 0;
   } catch (error: any) {
     console.error('❌ [ATUALIZAR-STATUS] Erro:', error);
     return false;

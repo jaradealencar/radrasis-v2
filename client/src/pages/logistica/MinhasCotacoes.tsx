@@ -285,9 +285,9 @@ export default function MinhasCotacoes() {
   );
   const refresh = () => utils.cotacoesFrete.listMinhas.invalidate();
 
-  const pendentes = minhasCotacoes.filter(c => c.status === "fila" || c.status === "em_cotacao");
-  const prontas = minhasCotacoes.filter(c => c.status === "pronto");
-  const concluidas = minhasCotacoes.filter(c => c.status === "concluido");
+  const pendentes = minhasCotacoes.filter(c => c.status === "aberta" || c.status === "cotando" || c.status === "selecao");
+  const prontas = minhasCotacoes.filter(c => c.status === "cotada");
+  const concluidas = minhasCotacoes.filter(c => c.status === "enviada");
 
   if (isLoading) {
     return <div className="p-6"><div className="h-8 bg-muted animate-pulse rounded w-48" /></div>;

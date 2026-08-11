@@ -12,11 +12,11 @@ describe('Romaneio em PDF (endpoint romaneioPdf)', () => {
   beforeAll(async () => {
     const res: any = await mutationQuery(
       `INSERT INTO cotacoes_frete
-        (osNumero, destinatarioNome, destinatarioCnpj, cepDestino, municipio, estado,
-         dimensoesLargura, dimensoesComprimento, dimensoesAltura, pesoKg, quantidadeVolumes, volumesJson,
-         status, modalidadeFrete, osAprovacao, osEntrega, osVendedor, empacotadores, solicitanteNome,
-         observacoes, fotosJson)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        ("osNumero", "destinatarioNome", "destinatarioCnpj", "cepDestino", municipio, estado,
+         "dimensoesLargura", "dimensoesComprimento", "dimensoesAltura", "pesoKg", "quantidadeVolumes", "volumesJson",
+         status, "modalidadeFrete", "osAprovacao", "osEntrega", "osVendedor", empacotadores, "solicitanteNome",
+         observacoes, "fotosJson")
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
       [
         'PDF-TEST', 'CLIENTE PDF', '99.888.777/0001-66', '01310-100', 'SAO PAULO', 'SP',
         50, 70, 30, 18.5, 1,
@@ -28,15 +28,15 @@ describe('Romaneio em PDF (endpoint romaneioPdf)', () => {
     cotacaoId = Number(res.insertId);
 
     await mutationQuery(
-      `INSERT INTO cotacao_opcoes (cotacaoId, transportadoraId, transportadoraNome, valorFrete, prazoEntrega, selecionada)
-       VALUES (?,?,?,?,?,?)`,
-      [cotacaoId, 1, 'Braspress', 412.35, '4 dias úteis', 1],
+      `INSERT INTO cotacao_opcoes ("cotacaoId", "transportadoraId", "transportadoraNome", "valorFrete", "prazoDias", "tipoPrazo", selecionada)
+       VALUES (?,?,?,?,?,?,?)`,
+      [cotacaoId, 1, 'Braspress', 412.35, 4, 'uteis', 'sim'],
     );
   }, 30000);
 
   afterAll(async () => {
     if (cotacaoId) {
-      await mutationQuery('DELETE FROM cotacao_opcoes WHERE cotacaoId = ?', [cotacaoId]);
+      await mutationQuery('DELETE FROM cotacao_opcoes WHERE "cotacaoId" = ?', [cotacaoId]);
       await mutationQuery('DELETE FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
     }
   }, 30000);

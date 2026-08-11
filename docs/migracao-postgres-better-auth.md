@@ -79,31 +79,102 @@ tem uma senha placeholder inutilizável (ver comentário em
 decidir se recria essa conta do zero via Better Auth ou implementa um fluxo
 de reset.
 
----
+- **Tarefa 2.3 — `server/db-helpers.ts` e `server/db-helpers-select.ts`**:
+  reescritos pra Drizzle query builder sobre `cotacoesFrete`/`cotacaoOpcoes`.
+  Achado maior que o previsto originalmente nesta tarefa (a nota abaixo sobre
+  vocabulário de status estava subestimada) — dois gaps schema-vs-realidade
+  foram descobertos comparando a tabela real do Postgres (Neon) contra a
+  tabela real do MySQL/TiDB de produção (via credencial fornecida pelo
+  usuário na hora, só pra investigação):
+  1. **`cotacoes_frete` tinha 9 colunas usadas de verdade pelo front (Kanban,
+     `NovaCotacaoDialog`, romaneio) que nunca existiram em `schema.ts`** —
+     nem antes da Fase 1 (mesmo padrão do `local_users` pré-2.2, só que não
+     detectado até agora): `osNumero`, `modalidadeFrete`, `quantidadeVolumes`,
+     `volumesJson`, `fotosJson`, `empacotadores`, `osAprovacao`, `osEntrega`,
+     `osVendedor`. Resolvido **estendendo o schema** (não simplificando o
+     front): colunas adicionadas em `drizzle/schema.ts`, migration
+     `drizzle/0003_far_dorian_gray.sql` aplicada em produção (Neon), e as 2
+     linhas reais que tinham esses dados no MySQL foram copiadas via script
+     one-off (não é o ETL de `scripts/migrate-mysql-to-postgres.ts` — essas
+     tabelas não passaram por ele). `empacotamentoId` (MySQL) **não** foi
+     restaurado — já está superado por `empacotamentoPedidoId` +
+     `empacotamentoPedidoNumero`, que já existiam no schema e já são usados
+     por `create`/`empacotamento.ts`.
+  2. **Vocabulário do enum `cotacao_status` divergia do front inteiro.** A
+     Fase 1 criou `cotacao_status` como `fila/em_cotacao/pronto/concluido/
+     cancelado` — um vocabulário que nunca existiu no MySQL nem no client
+     (`Solicitacoes.tsx`, que já está em produção com colunas de Kanban,
+     drag-and-drop etc. usando `aberta/cotando/selecao/cotada/enviada/
+     cancelada`, idêntico ao enum real do MySQL). Resolvido trocando o pgEnum
+     pro vocabulário do MySQL/front (mesma migration `0003`, com `USING CASE`
+     pra remapear os 2 valores já gravados em produção: `fila→aberta`,
+     `em_cotacao→cotando`). Zero mudança no client. Consumidores que ainda
+     usavam o vocabulário velho do pgEnum foram corrigidos: `logistica.ts`
+     (`dashboard`, `assertividade`, `metricasRetrabalho`),
+     `performanceAbc.ts`, `MinhasCotacoes.tsx`, `Assertividade.tsx` (esta
+     também tinha um bug pré-existente não relacionado: lia
+     `cotacoesFrete.list.useQuery({})` como se devolvesse um array, mas o
+     procedure devolve `{data, pagination}`).
+  3. `cotacao_opcoes` **não precisou de mudança de schema** — as colunas
+     estruturadas (`prazoDias`/`modal`/`tipoPrazo`/`selecionada` enum
+     `sim`/`nao`) já batiam com o design que o resto do código (client
+     `romaneio.ts`, `logistica.ts:addOpcao/updateOpcao`) já esperava; só o
+     código legado em `db-helpers-select.ts` (e o `romaneioPdf` de
+     `logistica.ts`) ainda usava o campo de texto livre `prazoEntrega` (que
+     nunca existiu no schema Postgres) e `selecionada` como tinyint 0/1 —
+     portado pra usar as colunas estruturadas diretamente.
+  - Como consequência direta (arquivo/tabela idênticos), a Tarefa 2.4 abaixo
+    já saiu parcialmente resolvida: `server/routers/logistica.ts` também
+    tinha `drizzle(process.env.DATABASE_URL!)` com `drizzle-orm/mysql2`
+    quebrado (mesmo padrão da 2.2) — corrigido pro pool compartilhado via
+    `getPool()`. Todas as procedures de `cotacoesFrete`/`cotacaoOpcoes`
+    (`list`, `get`, `getDetalhes`, `create`, `update`, `updateStatus`,
+    `listMinhas`, `uploadFotos`, `removerFoto`, `romaneioPdf`, `addOpcao`,
+    `listOpcoes`, `updateOpcao`, `removeOpcao`, `selecionarOpcao`,
+    `deleteByEmpacotamentoPedidoId`, `dashboard`, `assertividade`,
+    `metricasRetrabalho`) foram portadas nesta tarefa. `update` também tinha
+    um bug de sintaxe MySQL (crase `` ` `` em vez de aspas duplas) que
+    quebrava toda edição de cotação contra Postgres — corrigido junto.
+    **Ainda restam ~15 queries cruas em `logistica.ts` fora do domínio de
+    `cotacoesFrete`** (CRUD de `transportadoras`, `cte_importacoes`) — ver
+    Tarefa 2.4 abaixo, que encolheu mas não fechou.
+  - Testes de `cotacoes_frete`/`cotacao_opcoes` (`kanban-5-estagios.test.ts`,
+    `card-kanban-completo.test.ts`, `cotacao-opcoes.test.ts`,
+    `romaneio-pdf.test.ts`) tinham o próprio SQL cru de fixture quebrado
+    contra Postgres (identificadores camelCase sem aspas, sem `RETURNING
+    id`) — corrigidos junto, senão não dava pra validar a tarefa. Todos
+    passam agora (`DATABASE_URL` precisa estar no ambiente do shell pra
+    `yarn test` rodar essas suítes — `server/_core/index.ts` carrega
+    `dotenv/config`, mas os testes importam os módulos direto e pulam esse
+    entrypoint).
+  - **Gap encontrado e não corrigido (fora do escopo desta tarefa)**: as
+    mesmas duas classes de bug (identificador camelCase sem aspas em SQL cru,
+    e `mysql2`/sintaxe MySQL solta) também aparecem em
+    `server/transportadora-cobertura.test.ts`,
+    `server/transportadoras-completude.test.ts` (`coberturaTotal`,
+    `transportadoraId`) e no bloco "Cache de OS e log de sincronização" de
+    `card-kanban-completo.test.ts` (`erp_os_cache`/`sync_logs`, `DESCRIBE`,
+    `dataAprovacao`) — todos já cobertos pelas Tarefas 2.4/2.5 abaixo, só
+    confirmando que continuam quebrados.
 
 ## Fase 2 — Camada de conexão e SQL cru (restante)
 
-### Tarefa 2.3 — Modernizar `server/db-helpers-select.ts` (21 queries cruas) e `server/db-helpers.ts` (6 queries cruas)
+### Tarefa 2.4 — Modernizar `server/routers/logistica.ts` (~15 queries cruas restantes)
 
-- Mesma ideia da 2.2: converter pra `db.select()/insert()/update()` sobre o
-  schema Postgres.
-- Ficar atento a `excluirCotacoesPorStatus` (`db-helpers-select.ts:148`, usa
-  status `'aberta'` como default) e ao comentário em `db-helpers.ts:79` sobre
-  o "enum real no banco: aberta, cotando, cotada, enviada" — esse é o mesmo
-  vocabulário antigo de `cotacoes_frete.status` que o ETL já teve que
-  remapear pro vocabulário novo do pgEnum (`fila/em_cotacao/pronto/
-  concluido/cancelado`, ver `scripts/migrate-mysql-to-postgres.ts`). Esse
-  código legado provavelmente ainda escreve no vocabulário antigo — ajustar
-  pra escrever/comparar com os valores novos do enum ao portar.
-- **Verificação**: `yarn check` limpo.
-
-### Tarefa 2.4 — Modernizar `server/routers/logistica.ts` (15 queries cruas)
-
-- Converter pra Drizzle query builder.
-- Reconciliar os pontos onde comentários já apontam divergência schema-vs-
-  tabela-real (mesmo padrão do `erp_os_cache` que a Fase 1 já corrigiu — ver
-  `drizzle/0002_fix_erp_os_cache.sql` como referência do tipo de ajuste
-  necessário).
+- A parte de `cotacoesFrete`/`cotacaoOpcoes` deste arquivo (incluindo o
+  `drizzle(process.env.DATABASE_URL!)` quebrado no topo do arquivo) já foi
+  corrigida na Tarefa 2.3 (ver nota acima) — o que resta aqui é só o CRUD de
+  `transportadoras` (`transportadorasRouter`) e `cte_importacoes`
+  (`cteImportacoes.create`), que já rodam sobre o `getDb()` correto mas ainda
+  têm SQL cru/`.insertId` solto em alguns pontos (2 já corrigidos de
+  passagem: `transportadoras.create` e `cte.create` agora usam
+  `.returning()`).
+- Converter o restante pra Drizzle query builder.
+- `server/transportadora-cobertura.test.ts` e
+  `server/transportadoras-completude.test.ts` têm o mesmo problema de
+  identificador camelCase sem aspas em SQL cru que os testes de
+  `cotacoes_frete` tinham (ver Tarefa 2.3) — mesma correção mecânica
+  necessária lá.
 - **Verificação**: `yarn check` limpo; testes relacionados a logística.
 
 ### Tarefa 2.4b — Modernizar `server/routers/empacotamento.ts` (2725 linhas)

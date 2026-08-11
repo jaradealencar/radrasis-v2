@@ -25,8 +25,10 @@ export const routineStatusEnum = pgEnum("routine_status", ["pendente", "em_dia",
 export const regulationTypeEnum = pgEnum("regulation_type", ["regulamento", "memorando", "politica", "procedimento"]);
 export const popAcessoTipoEnum = pgEnum("pop_acesso_tipo", ["visualizacao", "download"]);
 export const formaCotacaoEnum = pgEnum("forma_cotacao", ["site", "whatsapp", "telefone", "email"]);
-export const cotacaoStatusEnum = pgEnum("cotacao_status", ["fila", "em_cotacao", "pronto", "concluido", "cancelado"]);
+// Vocabulário do Kanban de fretes (client/src/pages/logistica/Solicitacoes.tsx) — mesmo do MySQL/TiDB original.
+export const cotacaoStatusEnum = pgEnum("cotacao_status", ["aberta", "cotando", "selecao", "cotada", "enviada", "cancelada"]);
 export const tipoPrazoEnum = pgEnum("tipo_prazo", ["uteis", "corridos"]);
+export const modalidadeFreteEnum = pgEnum("modalidade_frete", ["cif", "fob"]);
 export const auditoriaAcaoEnum = pgEnum("auditoria_acao", ["CRIACAO", "EDICAO", "EXCLUSAO"]);
 export const kanbanStatusEnum = pgEnum("kanban_status", ["aguardando", "embalando", "patio", "abandonado"]);
 export const acaoCorretivaStatusEnum = pgEnum("acao_corretiva_status", ["aberto", "em_tratamento", "resolvido"]);
@@ -425,6 +427,7 @@ export type InsertTransportadoraCidade = typeof transportadoraCidades.$inferInse
 // Solicitações de cotação de frete
 export const cotacoesFrete = pgTable("cotacoes_frete", {
   id: serial("id").primaryKey(),
+  osNumero: varchar("osNumero", { length: 32 }),
   solicitanteId: integer("solicitanteId"), // local_users.id
   solicitanteNome: varchar("solicitanteNome", { length: 128 }),
   destinatarioNome: varchar("destinatarioNome", { length: 256 }),
@@ -432,6 +435,7 @@ export const cotacoesFrete = pgTable("cotacoes_frete", {
   cepDestino: varchar("cepDestino", { length: 10 }),
   municipio: varchar("municipio", { length: 128 }),
   estado: varchar("estado", { length: 2 }),
+  modalidadeFrete: modalidadeFreteEnum("modalidadeFrete"),
   dimensoesLargura: decimal("dimensoesLargura", { precision: 8, scale: 2 }),
   dimensoesAltura: decimal("dimensoesAltura", { precision: 8, scale: 2 }),
   dimensoesComprimento: decimal("dimensoesComprimento", { precision: 8, scale: 2 }),
@@ -442,7 +446,14 @@ export const cotacoesFrete = pgTable("cotacoes_frete", {
   fotoUrl: text("fotoUrl"),
   empacotamentoPedidoId: integer("empacotamentoPedidoId"),
   empacotamentoPedidoNumero: varchar("empacotamentoPedidoNumero", { length: 64 }),
-  status: cotacaoStatusEnum("status").default("fila").notNull(),
+  status: cotacaoStatusEnum("status").default("aberta").notNull(),
+  quantidadeVolumes: integer("quantidadeVolumes").default(1),
+  volumesJson: text("volumesJson"),
+  fotosJson: text("fotosJson"),
+  empacotadores: varchar("empacotadores", { length: 512 }),
+  osAprovacao: varchar("osAprovacao", { length: 64 }), // texto livre vindo do cache MubiSys, ex: "17/07/2026 às 10:36"
+  osEntrega: varchar("osEntrega", { length: 64 }),
+  osVendedor: varchar("osVendedor", { length: 128 }),
   transportadoraSelecionadaId: integer("transportadoraSelecionadaId"),
   horarioDecisaoMs: varchar("horarioDecisaoMs", { length: 8 }), // ex: "14:30" — horário limite de decisão no fuso MS
   dataSource: varchar("dataSource", { length: 32 }), // 'mub' | 'brasilapi' | null

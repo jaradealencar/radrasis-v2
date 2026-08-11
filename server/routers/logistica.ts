@@ -2,7 +2,6 @@ import { z } from "zod";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, like, sql, inArray } from "drizzle-orm";
-import { criarCotacaoFrete } from '../db-helpers';
 import {
   listarCotacoesFrete,
   obterCotacaoDetalhes,
@@ -12,8 +11,10 @@ import {
   atualizarOpcaoFrete,
   removerOpcaoFrete,
   selecionarOpcaoFrete,
+  normalizarOpcao,
 } from '../db-helpers-select';
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { getPool } from "../db-connection";
 import { buscarDadosOSParaFrete, obterCotacoesFreteSimuladas } from "../mubisys-frete";
 import * as https from "https";
 import {
@@ -36,10 +37,10 @@ import {
 
 let _db: ReturnType<typeof drizzle> | null = null;
 function getDb() {
-  if (!_db) _db = drizzle(process.env.DATABASE_URL!);
+  if (!_db) _db = drizzle(getPool());
   return _db;
 }
-const db = { 
+const db = {
   select: () => getDb().select(),
   insert: (t: any) => getDb().insert(t),
   update: (t: any) => getDb().update(t),
@@ -132,8 +133,8 @@ export const transportadorasRouter = router({
       coberturaTotal: z.number().int().min(0).max(1).optional(),
     }))
     .mutation(async ({ input }) => {
-      const [result] = await db.insert(transportadoras).values(input as any);
-      return { id: Number((result as any).insertId) };
+      const [result] = await db.insert(transportadoras).values(input as any).returning({ id: transportadoras.id });
+      return { id: result.id };
     }),
 
   update: publicProcedure
@@ -489,14 +490,9 @@ export const cotacoesFreteRouter = router({
   romaneioPdf: publicProcedure
     .input(z.object({ ids: z.array(z.number()).min(1) }))
     .mutation(async ({ input }) => {
-      const { selectQuery } = await import("../db-connection");
       const { jsPDF } = await import("jspdf");
 
-      const placeholders = input.ids.map(() => "?").join(",");
-      const cotacoes = await selectQuery(
-        `SELECT * FROM cotacoes_frete WHERE id IN (${placeholders})`,
-        input.ids,
-      );
+      const cotacoes = await db.select().from(cotacoesFrete).where(inArray(cotacoesFrete.id, input.ids));
 
       const doc = new jsPDF({ unit: "pt", format: "a4" });
       const margem = 40;
@@ -525,13 +521,19 @@ export const cotacoesFreteRouter = router({
       y += 8;
 
       for (const c of cotacoes) {
-        const ops = await selectQuery(
-          "SELECT transportadoraNome, valorFrete, prazoEntrega, selecionada FROM cotacao_opcoes WHERE cotacaoId = ?",
-          [c.id],
-        );
+        const ops = await getDb()
+          .select({
+            transportadoraNome: cotacaoOpcoes.transportadoraNome,
+            valorFrete: cotacaoOpcoes.valorFrete,
+            prazoDias: cotacaoOpcoes.prazoDias,
+            tipoPrazo: cotacaoOpcoes.tipoPrazo,
+            selecionada: cotacaoOpcoes.selecionada,
+          })
+          .from(cotacaoOpcoes)
+          .where(eq(cotacaoOpcoes.cotacaoId, c.id));
         const escolhida =
-          ops.find((o: any) => Number(o.selecionada) === 1) ??
-          ops.filter((o: any) => Number(o.valorFrete) > 0).sort((a: any, b: any) => a.valorFrete - b.valorFrete)[0] ??
+          ops.find((o) => o.selecionada === "sim") ??
+          ops.filter((o) => Number(o.valorFrete) > 0).sort((a, b) => Number(a.valorFrete) - Number(b.valorFrete))[0] ??
           null;
 
         let volumes: any[] = [];
@@ -561,7 +563,9 @@ export const cotacoesFreteRouter = router({
         volumes.forEach((v, i) => {
           escreve(`   Vol ${i + 1}: ${Number(v.largura ?? 0)}×${Number(v.comprimento ?? 0)}×${Number(v.altura ?? 0)} cm · ${(Number(v.peso ?? 0)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} kg`);
         });
-        const prazo = escolhida?.prazoEntrega ? String(escolhida.prazoEntrega) : "—";
+        const prazo = escolhida?.prazoDias != null
+          ? `${escolhida.prazoDias} dias ${escolhida.tipoPrazo === "corridos" ? "corridos" : "úteis"}`
+          : "—";
         escreve(`Transportadora: ${escolhida?.transportadoraNome ?? "—"}   |   Frete: ${moeda(escolhida?.valorFrete)}   |   Prazo: ${prazo}`);
         if (c.observacoes) escreve(`Observações: ${c.observacoes}`);
         escreve("Recebido por: ______________________________   Data: ____/____/______");
@@ -720,37 +724,18 @@ export const cotacoesFreteRouter = router({
       if (input.empacotamentoPedidoId) insertData.empacotamentoPedidoId = input.empacotamentoPedidoId;
       if (input.empacotamentoPedidoNumero) insertData.empacotamentoPedidoNumero = input.empacotamentoPedidoNumero;
       if (input.tipoMaterial) insertData.tipoMaterial = input.tipoMaterial;
-      
+      if (input.dataEntregaPrevista) insertData.dataEntregaPrevista = input.dataEntregaPrevista;
+      if (input.osNumero) insertData.osNumero = input.osNumero;
+      if (input.volumesJson || input.dimensoes) insertData.volumesJson = input.volumesJson || input.dimensoes;
+      if (input.quantidadeVolumes) insertData.quantidadeVolumes = input.quantidadeVolumes;
+      if (input.empacotadores) insertData.empacotadores = input.empacotadores;
+      if (input.osAprovacao) insertData.osAprovacao = input.osAprovacao;
+      if (input.osEntrega || input.dataEntregaPrevista) insertData.osEntrega = input.osEntrega || input.dataEntregaPrevista;
+      if (input.osVendedor) insertData.osVendedor = input.osVendedor;
+
       try {
-        // ✅ SOLUÇÃO FINAL: Usar SQL puro com mysql2 e DATABASE_URL
-        const resultado = await criarCotacaoFrete({
-          solicitanteNome: input.solicitanteNome,
-          destinatarioNome: input.destinatarioNome,
-          destinatarioCnpj: input.destinatarioCnpj,
-          cepDestino: input.cepDestino,
-          municipio: input.municipio,
-          estado: input.estado,
-          dimensoesLargura: dimensoesLargura ?? undefined,
-          dimensoesAltura: dimensoesAltura ?? undefined,
-          dimensoesComprimento: dimensoesComprimento ?? undefined,
-          pesoKg: pesoKg ?? undefined,
-          observacoes: input.observacoes,
-          osNumero: input.osNumero,
-          volumesJson: input.volumesJson || input.dimensoes,
-          quantidadeVolumes: input.quantidadeVolumes,
-          empacotadores: input.empacotadores,
-          osAprovacao: input.osAprovacao,
-          osEntrega: input.osEntrega || input.dataEntregaPrevista,
-          osVendedor: input.osVendedor,
-        });
-        
-        if (!resultado.success) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: resultado.error || 'Erro ao criar cotação'
-          });
-        }
-        
+        const [resultado] = await db.insert(cotacoesFrete).values(insertData as typeof cotacoesFrete.$inferInsert).returning({ id: cotacoesFrete.id });
+
         console.log("✅ [CREATE] Cotação criada com sucesso! ID:", resultado.id);
         return { success: true, id: resultado.id };
       } catch (error: any) {
@@ -781,67 +766,59 @@ export const cotacoesFreteRouter = router({
       fotosJson: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      // ✅ mysql2 direto — o schema do Drizzle não reflete as colunas reais
-      const { mutationQuery } = await import('../db-connection');
       const { id, ...fields } = input;
-      const permitidas = [
-        'destinatarioNome', 'destinatarioCnpj', 'municipio', 'estado', 'cepDestino',
-        'pesoKg', 'valorNf', 'observacoes', 'observacaoGol', 'solicitanteNome',
-        'horarioDecisaoMs', 'dataEntregaPrevista', 'modalidadeFrete', 'fotosJson',
-      ];
-      const sets: string[] = [];
-      const valores: any[] = [];
-      for (const [chave, valor] of Object.entries(fields)) {
-        if (valor === undefined || !permitidas.includes(chave)) continue;
-        sets.push(`\`${chave}\` = ?`);
-        valores.push(valor);
-      }
-      if (sets.length === 0) return { ok: true };
-      sets.push('updatedAt = NOW()');
-      valores.push(id);
-      await mutationQuery(`UPDATE cotacoes_frete SET ${sets.join(', ')} WHERE id = ?`, valores);
+      const sets: Partial<typeof cotacoesFrete.$inferInsert> = {};
+      if (fields.destinatarioNome !== undefined) sets.destinatarioNome = fields.destinatarioNome;
+      if (fields.destinatarioCnpj !== undefined) sets.destinatarioCnpj = fields.destinatarioCnpj;
+      if (fields.municipio !== undefined) sets.municipio = fields.municipio;
+      if (fields.estado !== undefined) sets.estado = fields.estado;
+      if (fields.cepDestino !== undefined) sets.cepDestino = fields.cepDestino;
+      if (fields.pesoKg !== undefined) sets.pesoKg = fields.pesoKg;
+      if (fields.valorNf !== undefined) sets.valorNf = fields.valorNf;
+      if (fields.observacoes !== undefined) sets.observacoes = fields.observacoes;
+      if (fields.observacaoGol !== undefined) sets.observacaoGol = fields.observacaoGol;
+      if (fields.solicitanteNome !== undefined) sets.solicitanteNome = fields.solicitanteNome;
+      if (fields.horarioDecisaoMs !== undefined) sets.horarioDecisaoMs = fields.horarioDecisaoMs;
+      if (fields.dataEntregaPrevista !== undefined) sets.dataEntregaPrevista = fields.dataEntregaPrevista as any;
+      if (fields.modalidadeFrete !== undefined) sets.modalidadeFrete = fields.modalidadeFrete;
+      if (fields.fotosJson !== undefined) sets.fotosJson = fields.fotosJson;
+      if (Object.keys(sets).length === 0) return { ok: true };
+      sets.updatedAt = new Date();
+      await db.update(cotacoesFrete).set(sets).where(eq(cotacoesFrete.id, id));
       return { ok: true };
     }),
 
   listMinhas: publicProcedure
     .input(z.object({ solicitanteId: z.number().optional(), solicitanteNome: z.string().optional() }))
     .query(async ({ input }) => {
-      // ✅ mysql2 direto — o schema do Drizzle não bate com as colunas reais
-      const { selectQuery } = await import('../db-connection');
-      let rows: any[] = await selectQuery(
-        'SELECT * FROM cotacoes_frete ORDER BY createdAt DESC',
-        [],
-      );
+      let rows = await db.select().from(cotacoesFrete).orderBy(desc(cotacoesFrete.createdAt));
       if (input.solicitanteId) {
         rows = rows.filter(r => r.solicitanteId === input.solicitanteId);
       } else if (input.solicitanteNome) {
         const nome = input.solicitanteNome.toLowerCase().trim();
         rows = rows.filter(r => (r.solicitanteNome ?? "").toLowerCase().trim() === nome);
       }
-      const ids = rows.map(r => Number(r.id));
+      const ids = rows.map(r => r.id);
       const opcoes = await listarOpcoesPorCotacoes(ids);
       return rows.map(c => ({
         ...c,
-        opcoes: opcoes.filter((o: any) => o.cotacaoId === c.id),
+        opcoes: opcoes.filter((o: any) => o.cotacaoId === c.id).map(normalizarOpcao),
       }));
     }),
 
   updateStatus: publicProcedure
     .input(z.object({
       id: z.number(),
-      // Valores reais do ENUM no banco MySQL
       status: z.enum(["aberta", "cotando", "selecao", "cotada", "enviada", "cancelada"]),
     }))
     .mutation(async ({ input }) => {
-      // ✅ mysql2 direto — evita Drizzle gerar SQL com colunas inexistentes
-      const { mutationQuery } = await import('../db-connection');
-      const result: any = await mutationQuery(
-        'UPDATE cotacoes_frete SET status = ?, updatedAt = NOW() WHERE id = ?',
-        [input.status, input.id],
-      );
-      const afetados = Number(result?.affectedRows ?? 0);
-      console.log(`✅ [UPDATE-STATUS] Cotação #${input.id} → ${input.status} (${afetados} linha(s))`);
-      if (afetados === 0) {
+      const result = await db
+        .update(cotacoesFrete)
+        .set({ status: input.status, updatedAt: new Date() })
+        .where(eq(cotacoesFrete.id, input.id))
+        .returning({ id: cotacoesFrete.id });
+      console.log(`✅ [UPDATE-STATUS] Cotação #${input.id} → ${input.status} (${result.length} linha(s))`);
+      if (result.length === 0) {
         throw new TRPCError({ code: 'NOT_FOUND', message: `Cotação #${input.id} não encontrada` });
       }
       return { ok: true, id: input.id, status: input.status };
@@ -861,15 +838,14 @@ export const cotacoesFreteRouter = router({
       })).min(1).max(10),
     }))
     .mutation(async ({ input }) => {
-      const { selectQuery, mutationQuery } = await import('../db-connection');
       const { storagePut } = await import('../storage');
 
-      const atuais = await selectQuery('SELECT fotosJson FROM cotacoes_frete WHERE id = ?', [input.id]);
-      if (atuais.length === 0) {
+      const [atual] = await getDb().select({ fotosJson: cotacoesFrete.fotosJson }).from(cotacoesFrete).where(eq(cotacoesFrete.id, input.id));
+      if (!atual) {
         throw new TRPCError({ code: 'NOT_FOUND', message: `Cotação #${input.id} não encontrada` });
       }
       let urls: string[] = [];
-      try { urls = atuais[0].fotosJson ? JSON.parse(atuais[0].fotosJson) : []; } catch { urls = []; }
+      try { urls = atual.fotosJson ? JSON.parse(atual.fotosJson) : []; } catch { urls = []; }
 
       for (const foto of input.fotos) {
         const limpo = foto.conteudoBase64.replace(/^data:[^;]+;base64,/, '');
@@ -880,10 +856,7 @@ export const cotacoesFreteRouter = router({
         urls.push(url);
       }
 
-      await mutationQuery(
-        'UPDATE cotacoes_frete SET fotosJson = ?, updatedAt = NOW() WHERE id = ?',
-        [JSON.stringify(urls), input.id],
-      );
+      await db.update(cotacoesFrete).set({ fotosJson: JSON.stringify(urls), updatedAt: new Date() }).where(eq(cotacoesFrete.id, input.id));
       console.log(`✅ [FOTOS] Cotação #${input.id} agora tem ${urls.length} foto(s)`);
       return { ok: true, fotos: urls };
     }),
@@ -892,18 +865,14 @@ export const cotacoesFreteRouter = router({
   removerFoto: publicProcedure
     .input(z.object({ id: z.number(), indice: z.number().min(0) }))
     .mutation(async ({ input }) => {
-      const { selectQuery, mutationQuery } = await import('../db-connection');
-      const rows = await selectQuery('SELECT fotosJson FROM cotacoes_frete WHERE id = ?', [input.id]);
-      if (rows.length === 0) {
+      const [row] = await getDb().select({ fotosJson: cotacoesFrete.fotosJson }).from(cotacoesFrete).where(eq(cotacoesFrete.id, input.id));
+      if (!row) {
         throw new TRPCError({ code: 'NOT_FOUND', message: `Cotação #${input.id} não encontrada` });
       }
       let urls: string[] = [];
-      try { urls = rows[0].fotosJson ? JSON.parse(rows[0].fotosJson) : []; } catch { urls = []; }
+      try { urls = row.fotosJson ? JSON.parse(row.fotosJson) : []; } catch { urls = []; }
       urls.splice(input.indice, 1);
-      await mutationQuery(
-        'UPDATE cotacoes_frete SET fotosJson = ?, updatedAt = NOW() WHERE id = ?',
-        [JSON.stringify(urls), input.id],
-      );
+      await db.update(cotacoesFrete).set({ fotosJson: JSON.stringify(urls), updatedAt: new Date() }).where(eq(cotacoesFrete.id, input.id));
       return { ok: true, fotos: urls };
     }),
 
@@ -1009,9 +978,9 @@ export const cotacoesFreteRouter = router({
   dashboard: publicProcedure.query(async () => {
     const todas = await db.select().from(cotacoesFrete).orderBy(desc(cotacoesFrete.createdAt));
     const total = todas.length;
-    const concluidas = todas.filter(c => c.status === "concluido").length;
-    const emAndamento = todas.filter(c => ["fila", "em_cotacao", "pronto"].includes(c.status)).length;
-    const fila = todas.filter(c => c.status === "fila").length;
+    const concluidas = todas.filter(c => c.status === "enviada").length;
+    const emAndamento = todas.filter(c => ["cotando", "selecao", "cotada"].includes(c.status)).length;
+    const fila = todas.filter(c => c.status === "aberta").length;
     // Últimos 30 dias
     const limite = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const recentes = todas.filter(c => new Date(c.createdAt) >= limite);
@@ -1097,7 +1066,7 @@ export const cotacoesFreteRouter = router({
     .query(async ({ input }) => {
       // Buscar todas as cotações concluídas com dataDespacho preenchido
       const rows = await db.select().from(cotacoesFrete)
-        .where(eq(cotacoesFrete.status, "concluido"))
+        .where(eq(cotacoesFrete.status, "enviada"))
         .orderBy(desc(cotacoesFrete.dataDespacho));
       // Filtrar apenas as que têm dataDespacho e dataEntregaPrevista
       const comDatas = rows.filter(r => r.dataDespacho && r.dataEntregaPrevista);
@@ -1190,7 +1159,7 @@ export const cotacoesFreteRouter = router({
     .query(async ({ input }) => {
       // Buscar todos os pedidos com dataDespacho e dataEntregaPrevista
       const todos = await db.select().from(cotacoesFrete)
-        .where(eq(cotacoesFrete.status, "concluido"));
+        .where(eq(cotacoesFrete.status, "enviada"));
       const comDatas = todos.filter(r => r.dataDespacho && r.dataEntregaPrevista);
       let filtrados = comDatas;
       if (input.de) {
@@ -1334,8 +1303,8 @@ export const cteRouter = router({
         ...input,
         transportadoraNome,
         dataEmissao: input.dataEmissao ? new Date(input.dataEmissao) : undefined,
-      } as any);
-      return { id: (result as any).insertId };
+      } as any).returning({ id: cteImportacoes.id });
+      return { id: result.id };
     }),
 
   stats: publicProcedure.query(async () => {

@@ -24,7 +24,8 @@ export default function Assertividade() {
   const [formMotivoRetrabalho, setFormMotivoRetrabalho] = useState("");
   const [formTemRetrabalho, setFormTemRetrabalho] = useState(false);
 
-  const { data: cotacoes = [] } = trpc.cotacoesFrete.list.useQuery({});
+  const { data: cotacoesList } = trpc.cotacoesFrete.list.useQuery({ pageSize: 100 });
+  const cotacoes = cotacoesList?.data ?? [];
   const { data: prazoStats, isLoading: prazoLoading, refetch: refetchPrazo } = trpc.cotacoesFrete.assertividade.useQuery({
     de: filtroDe || undefined,
     ate: filtroAte || undefined,
@@ -79,9 +80,9 @@ export default function Assertividade() {
 
   // Métricas calculadas localmente
   const totalCotacoes = cotacoes.length;
-  const concluidas = cotacoes.filter((c: any) => c.status === "concluido").length;
-  const emAndamento = cotacoes.filter((c: any) => c.status === "fila" || c.status === "em_cotacao").length;
-  const prontas = cotacoes.filter((c: any) => c.status === "pronto").length;
+  const concluidas = cotacoes.filter((c: any) => c.status === "enviada").length;
+  const emAndamento = cotacoes.filter((c: any) => c.status === "aberta" || c.status === "cotando" || c.status === "selecao").length;
+  const prontas = cotacoes.filter((c: any) => c.status === "cotada").length;
   const taxaConclusao = totalCotacoes > 0 ? Math.round((concluidas / totalCotacoes) * 100) : 0;
 
   // Ranking de transportadoras por uso

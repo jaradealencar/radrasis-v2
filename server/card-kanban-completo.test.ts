@@ -15,12 +15,12 @@ describe('Card do Kanban — dados completos em todos os estágios', () => {
   beforeAll(async () => {
     const res: any = await mutationQuery(
       `INSERT INTO cotacoes_frete
-         (osNumero, solicitanteNome, destinatarioNome, destinatarioCnpj, cepDestino,
-          municipio, estado, pesoKg, quantidadeVolumes, volumesJson, status, createdAt, updatedAt)
+         ("osNumero", "solicitanteNome", "destinatarioNome", "destinatarioCnpj", "cepDestino",
+          municipio, estado, "pesoKg", "quantidadeVolumes", "volumesJson", status, "createdAt", "updatedAt")
        VALUES (?, 'Teste Vitest', 'DESTINATARIO TESTE', '00.000.000/0001-00', '01310-100',
                'SAO PAULO', 'SP', '25.5', 2,
                '[{"largura":40,"comprimento":60,"altura":30,"peso":12.5},{"largura":50,"comprimento":80,"altura":25,"peso":13}]',
-               'aberta', NOW(), NOW())`,
+               'aberta', NOW(), NOW()) RETURNING id`,
       [OS_TESTE],
     );
     cotacaoId = Number(res?.insertId ?? 0);
@@ -29,7 +29,7 @@ describe('Card do Kanban — dados completos em todos os estágios', () => {
 
   afterAll(async () => {
     if (cotacaoId) {
-      await mutationQuery('DELETE FROM cotacao_opcoes WHERE cotacaoId = ?', [cotacaoId]);
+      await mutationQuery('DELETE FROM cotacao_opcoes WHERE "cotacaoId" = ?', [cotacaoId]);
       await mutationQuery('DELETE FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
     }
   });
@@ -49,7 +49,7 @@ describe('Card do Kanban — dados completos em todos os estágios', () => {
 
   it('persiste valor em reais e dias úteis preenchidos no card', async () => {
     const opcoes = await selectQuery(
-      'SELECT id FROM cotacao_opcoes WHERE cotacaoId = ? ORDER BY id ASC',
+      'SELECT id FROM cotacao_opcoes WHERE "cotacaoId" = ? ORDER BY id ASC',
       [cotacaoId],
     );
     const alvo = Number(opcoes[0].id);
@@ -87,17 +87,19 @@ describe('Card do Kanban — dados completos em todos os estágios', () => {
     }
   });
 
-  it('normaliza prazo em texto e flag de selecionada vindos do banco', () => {
-    const uteis = normalizarOpcao({ id: 1, cotacaoId: 2, prazoEntrega: '5 dias úteis', valorFrete: '99.90', selecionada: 1 });
+  it('normaliza prazo estruturado e flag de selecionada (enum) vindos do banco', () => {
+    const uteis = normalizarOpcao({ id: 1, cotacaoId: 2, prazoDias: 5, tipoPrazo: 'uteis', valorFrete: '99.90', selecionada: 'sim' });
     expect(uteis.prazoDias).toBe(5);
     expect(uteis.tipoPrazo).toBe('uteis');
     expect(uteis.selecionada).toBe('sim');
+    expect(uteis.prazoEntrega).toBe('5 dias úteis');
 
-    const corridos = normalizarOpcao({ id: 2, cotacaoId: 2, prazoEntrega: '7 dias corridos', valorFrete: null, selecionada: 0 });
+    const corridos = normalizarOpcao({ id: 2, cotacaoId: 2, prazoDias: 7, tipoPrazo: 'corridos', valorFrete: null, selecionada: 'nao' });
     expect(corridos.prazoDias).toBe(7);
     expect(corridos.tipoPrazo).toBe('corridos');
     expect(corridos.selecionada).toBe('nao');
     expect(corridos.valorFrete).toBe('0');
+    expect(corridos.prazoEntrega).toBe('7 dias corridos');
   });
 });
 

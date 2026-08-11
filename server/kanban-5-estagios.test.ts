@@ -9,8 +9,8 @@ let cotacaoViaHelperId = 0;
 describe('Kanban de frete — 5 estágios, CIF/FOB e fotos', () => {
   beforeAll(async () => {
     const res: any = await mutationQuery(
-      `INSERT INTO cotacoes_frete (osNumero, destinatarioNome, destinatarioCnpj, cepDestino, municipio, estado, pesoKg, quantidadeVolumes, volumesJson, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO cotacoes_frete ("osNumero", "destinatarioNome", "destinatarioCnpj", "cepDestino", municipio, estado, "pesoKg", "quantidadeVolumes", "volumesJson", status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         'TEST-KB5', 'CLIENTE KANBAN VITEST', '00.000.000/0001-00', '16900-000',
         'ANDRADINA', 'SP', '12.5', 2,
@@ -27,11 +27,11 @@ describe('Kanban de frete — 5 estágios, CIF/FOB e fotos', () => {
 
   afterAll(async () => {
     if (cotacaoId) {
-      await mutationQuery('DELETE FROM cotacao_opcoes WHERE cotacaoId = ?', [cotacaoId]);
+      await mutationQuery('DELETE FROM cotacao_opcoes WHERE "cotacaoId" = ?', [cotacaoId]);
       await mutationQuery('DELETE FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
     }
     if (cotacaoViaHelperId) {
-      await mutationQuery('DELETE FROM cotacao_opcoes WHERE cotacaoId = ?', [cotacaoViaHelperId]);
+      await mutationQuery('DELETE FROM cotacao_opcoes WHERE "cotacaoId" = ?', [cotacaoViaHelperId]);
       await mutationQuery('DELETE FROM cotacoes_frete WHERE id = ?', [cotacaoViaHelperId]);
     }
   });
@@ -72,24 +72,24 @@ describe('Kanban de frete — 5 estágios, CIF/FOB e fotos', () => {
 
   it('grava e alterna a modalidade de frete entre CIF e FOB', async () => {
     for (const modalidade of ['cif', 'fob']) {
-      await mutationQuery('UPDATE cotacoes_frete SET modalidadeFrete = ? WHERE id = ?', [modalidade, cotacaoId]);
-      const rows = await selectQuery('SELECT modalidadeFrete FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
+      await mutationQuery('UPDATE cotacoes_frete SET "modalidadeFrete" = ? WHERE id = ?', [modalidade, cotacaoId]);
+      const rows = await selectQuery('SELECT "modalidadeFrete" FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
       expect(rows[0].modalidadeFrete).toBe(modalidade);
     }
-    await mutationQuery('UPDATE cotacoes_frete SET modalidadeFrete = NULL WHERE id = ?', [cotacaoId]);
-    const rows = await selectQuery('SELECT modalidadeFrete FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
+    await mutationQuery('UPDATE cotacoes_frete SET "modalidadeFrete" = NULL WHERE id = ?', [cotacaoId]);
+    const rows = await selectQuery('SELECT "modalidadeFrete" FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
     expect(rows[0].modalidadeFrete).toBeNull();
   });
 
   it('armazena e remove URLs de fotografias em fotosJson', async () => {
     const urls = ['/manus-storage/foto-a.jpg', '/manus-storage/foto-b.jpg'];
-    await mutationQuery('UPDATE cotacoes_frete SET fotosJson = ? WHERE id = ?', [JSON.stringify(urls), cotacaoId]);
-    let rows = await selectQuery('SELECT fotosJson FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
+    await mutationQuery('UPDATE cotacoes_frete SET "fotosJson" = ? WHERE id = ?', [JSON.stringify(urls), cotacaoId]);
+    let rows = await selectQuery('SELECT "fotosJson" FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
     expect(JSON.parse(rows[0].fotosJson)).toEqual(urls);
 
     const restantes = urls.slice(1);
-    await mutationQuery('UPDATE cotacoes_frete SET fotosJson = ? WHERE id = ?', [JSON.stringify(restantes), cotacaoId]);
-    rows = await selectQuery('SELECT fotosJson FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
+    await mutationQuery('UPDATE cotacoes_frete SET "fotosJson" = ? WHERE id = ?', [JSON.stringify(restantes), cotacaoId]);
+    rows = await selectQuery('SELECT "fotosJson" FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
     expect(JSON.parse(rows[0].fotosJson)).toEqual(restantes);
   });
 
@@ -114,7 +114,7 @@ describe('Kanban de frete — 5 estágios, CIF/FOB e fotos', () => {
     expect(cotacaoViaHelperId).toBeGreaterThan(0);
 
     const rows = await selectQuery(
-      'SELECT osAprovacao, osEntrega, osVendedor FROM cotacoes_frete WHERE id = ?',
+      'SELECT "osAprovacao", "osEntrega", "osVendedor" FROM cotacoes_frete WHERE id = ?',
       [cotacaoViaHelperId],
     );
     expect(rows[0].osAprovacao).toBe('2026-08-07');
@@ -137,7 +137,7 @@ describe('Kanban de frete — 5 estágios, CIF/FOB e fotos', () => {
 
   it('cada OS mantém seus próprios dados, sem herdar de outra solicitação', async () => {
     const rows = await selectQuery(
-      'SELECT id, osVendedor FROM cotacoes_frete WHERE id IN (?, ?)',
+      'SELECT id, "osVendedor" FROM cotacoes_frete WHERE id IN (?, ?)',
       [cotacaoId, cotacaoViaHelperId],
     );
     const doPrimeiro = rows.find((r: any) => Number(r.id) === cotacaoId);

@@ -14,8 +14,8 @@ let cotacaoId = 0;
 describe('cotacao_opcoes — helpers mysql2', () => {
   beforeAll(async () => {
     const res: any = await mutationQuery(
-      `INSERT INTO cotacoes_frete (osNumero, destinatarioNome, municipio, estado, status)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO cotacoes_frete ("osNumero", "destinatarioNome", municipio, estado, status)
+       VALUES (?, ?, ?, ?, ?) RETURNING id`,
       ['TEST-OPC', 'CLIENTE TESTE VITEST', 'ANDRADINA', 'SP', 'cotando'],
     );
     cotacaoId = Number(res?.insertId ?? 0);
@@ -24,7 +24,7 @@ describe('cotacao_opcoes — helpers mysql2', () => {
 
   afterAll(async () => {
     if (cotacaoId) {
-      await mutationQuery('DELETE FROM cotacao_opcoes WHERE cotacaoId = ?', [cotacaoId]);
+      await mutationQuery('DELETE FROM cotacao_opcoes WHERE "cotacaoId" = ?', [cotacaoId]);
       await mutationQuery('DELETE FROM cotacoes_frete WHERE id = ?', [cotacaoId]);
     }
   });
@@ -50,9 +50,10 @@ describe('cotacao_opcoes — helpers mysql2', () => {
     const opcoes = await listarOpcoesFrete(cotacaoId);
     const alvo = opcoes[0];
     await atualizarOpcaoFrete(Number(alvo.id), { valorFrete: '150,50', prazoDias: 3, tipoPrazo: 'uteis' });
-    const rows = await selectQuery('SELECT valorFrete, prazoEntrega FROM cotacao_opcoes WHERE id = ?', [alvo.id]);
+    const rows = await selectQuery('SELECT "valorFrete", "prazoDias", "tipoPrazo" FROM cotacao_opcoes WHERE id = ?', [alvo.id]);
     expect(Number(rows[0].valorFrete)).toBeCloseTo(150.5, 2);
-    expect(String(rows[0].prazoEntrega)).toContain('3 dias');
+    expect(Number(rows[0].prazoDias)).toBe(3);
+    expect(rows[0].tipoPrazo).toBe('uteis');
   });
 
   it('lista opções de várias cotações de uma vez', async () => {
