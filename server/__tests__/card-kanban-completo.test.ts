@@ -118,8 +118,11 @@ describe('Cache de OS e log de sincronização', () => {
   });
 
   it('cache de OS usa a coluna vendedor (e não nomeVendedor)', async () => {
-    const colunas = await selectQuery('DESCRIBE erp_os_cache', []);
-    const nomes = colunas.map((c: any) => c.Field);
+    const colunas = await selectQuery(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'erp_os_cache'`,
+      [],
+    );
+    const nomes = colunas.map((c: any) => c.column_name);
     expect(nomes).toContain('vendedor');
     expect(nomes).toContain('dataAprovacao');
     expect(nomes).not.toContain('nomeVendedor');
@@ -127,8 +130,8 @@ describe('Cache de OS e log de sincronização', () => {
 
   it('cache tem OS com aprovação e vendedor preenchidos pela sincronização', async () => {
     const rows = await selectQuery(
-      `SELECT COUNT(*) AS comDados FROM erp_os_cache
-       WHERE dataAprovacao IS NOT NULL AND dataAprovacao <> ''
+      `SELECT COUNT(*) AS "comDados" FROM erp_os_cache
+       WHERE "dataAprovacao" IS NOT NULL AND "dataAprovacao" <> ''
          AND vendedor IS NOT NULL AND vendedor <> ''`,
       [],
     );

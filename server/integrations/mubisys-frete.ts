@@ -62,7 +62,7 @@ export async function buscarDadosOSParaFrete(osNumero: string): Promise<DadosFre
     // ✅ PASSO 1: Buscar NO CACHE LOCAL (rápido, <1ms)
     console.log("🔍 [Frete-Cache] Buscando OS", osNumero, "no cache local...");
     
-    const sql = 'SELECT * FROM erp_os_cache WHERE numeroOs = ?';
+    const sql = 'SELECT * FROM erp_os_cache WHERE "numeroOs" = ?';
     const result = await selectQuery(sql, [osNumero]);
     const osCache = result[0];
     
@@ -150,13 +150,13 @@ export async function buscarDadosOSParaFrete(osNumero: string): Promise<DadosFre
 async function gravarNoCache(dados: DadosFreteAutomatico): Promise<void> {
   try {
     const { mutationQuery } = await import("../db/db-connection");
-    const existente = await selectQuery("SELECT id FROM erp_os_cache WHERE numeroOs = ?", [dados.osNumero]);
+    const existente = await selectQuery(`SELECT id FROM erp_os_cache WHERE "numeroOs" = ?`, [dados.osNumero]);
     if (existente && existente.length > 0) {
       await mutationQuery(
         `UPDATE erp_os_cache SET
-           razaoSocial = ?, cnpj = ?, cep = ?, municipio = ?, estado = ?, endereco = ?,
-           dataAprovacao = ?, vendedor = ?, dataUltimaAtualizacao = NOW(), sincronizadoEm = NOW()
-         WHERE numeroOs = ?`,
+           "razaoSocial" = ?, cnpj = ?, cep = ?, municipio = ?, estado = ?, endereco = ?,
+           "dataAprovacao" = ?, vendedor = ?, "dataUltimaAtualizacao" = NOW(), "sincronizadoEm" = NOW()
+         WHERE "numeroOs" = ?`,
         [
           dados.clienteNome, dados.clienteCnpj, dados.cep, dados.municipio, dados.estado,
           dados.endereco, dados.aprovacao || null, dados.vendedor || "", dados.osNumero,
@@ -165,8 +165,8 @@ async function gravarNoCache(dados: DadosFreteAutomatico): Promise<void> {
     } else {
       await mutationQuery(
         `INSERT INTO erp_os_cache
-           (numeroOs, razaoSocial, cnpj, cep, municipio, estado, endereco,
-            dataAprovacao, vendedor, status, dataUltimaAtualizacao, sincronizadoEm, criadoEm)
+           ("numeroOs", "razaoSocial", cnpj, cep, municipio, estado, endereco,
+            "dataAprovacao", vendedor, status, "dataUltimaAtualizacao", "sincronizadoEm", "criadoEm")
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativa', NOW(), NOW(), NOW())`,
         [
           dados.osNumero, dados.clienteNome, dados.clienteCnpj, dados.cep, dados.municipio,

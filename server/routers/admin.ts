@@ -1,18 +1,14 @@
 import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
-// ⚠️ Este módulo usa mysql2 direto: o schema do Drizzle divergia das tabelas
-// reais sync_logs e erp_os_cache, o que fazia o painel exibir "Desconhecido".
 
 export const adminRouter = router({
   // ✅ Obter status de sincronização
   obterStatusSincronizacao: publicProcedure.query(async () => {
     try {
-      // ⚠️ Drizzle declara colunas que divergem da tabela real; usamos mysql2 direto,
-      // igual ao restante do módulo de logística.
       const { selectQuery } = await import("../db/db-connection");
 
       const logs = await selectQuery(
-        "SELECT dataExecucao, status, quantidadeOsImportadas, mensagemErro FROM sync_logs ORDER BY dataExecucao DESC LIMIT 1",
+        `SELECT "dataExecucao", status, "quantidadeOsImportadas", "mensagemErro" FROM sync_logs ORDER BY "dataExecucao" DESC LIMIT 1`,
         [],
       );
       const ultimoLog = logs?.[0] ?? null;
@@ -79,8 +75,8 @@ export const adminRouter = router({
         const { selectQuery } = await import("../db/db-connection");
         const limite = Math.max(1, Math.min(Number(input.limite) || 10, 100));
         const logs = await selectQuery(
-          `SELECT id, dataExecucao, status, quantidadeOsImportadas, mensagemErro
-           FROM sync_logs ORDER BY dataExecucao DESC LIMIT ${limite}`,
+          `SELECT id, "dataExecucao", status, "quantidadeOsImportadas", "mensagemErro"
+           FROM sync_logs ORDER BY "dataExecucao" DESC LIMIT ${limite}`,
           [],
         );
 
@@ -108,7 +104,7 @@ export const adminRouter = router({
 
       const { mutationQuery } = await import("../db/db-connection");
       const resultado: any = await mutationQuery(
-        "DELETE FROM erp_os_cache WHERE sincronizadoEm < ?",
+        `DELETE FROM erp_os_cache WHERE "sincronizadoEm" < ?`,
         [dataLimite],
       );
       const removidas = Number(resultado?.affectedRows ?? 0);

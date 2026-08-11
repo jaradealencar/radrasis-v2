@@ -78,7 +78,7 @@ export async function sincronizarOSDoMubiSys(): Promise<SyncLogEntry> {
 
         // Verificar se já existe no cache
         const existente = await selectQuery(
-          'SELECT id FROM erp_os_cache WHERE numeroOs = ?',
+          'SELECT id FROM erp_os_cache WHERE "numeroOs" = ?',
           [numeroOs]
         );
 
@@ -89,12 +89,12 @@ export async function sincronizarOSDoMubiSys(): Promise<SyncLogEntry> {
         if (existente && existente.length > 0) {
           // Atualizar
           await mutationQuery(
-            `UPDATE erp_os_cache SET 
-              razaoSocial = ?, cnpj = ?, email = ?, cep = ?, 
+            `UPDATE erp_os_cache SET
+              "razaoSocial" = ?, cnpj = ?, email = ?, cep = ?,
               municipio = ?, estado = ?, endereco = ?,
-              dataAprovacao = ?, dataEntregaPrevista = ?, vendedor = ?,
-              dataUltimaAtualizacao = NOW(), sincronizadoEm = NOW()
-            WHERE numeroOs = ?`,
+              "dataAprovacao" = ?, "dataEntregaPrevista" = ?, vendedor = ?,
+              "dataUltimaAtualizacao" = NOW(), "sincronizadoEm" = NOW()
+            WHERE "numeroOs" = ?`,
             [
               os.cliente,
               os.cliente_cnpj_cpf,
@@ -113,10 +113,10 @@ export async function sincronizarOSDoMubiSys(): Promise<SyncLogEntry> {
         } else {
           // Inserir
           await mutationQuery(
-            `INSERT INTO erp_os_cache 
-              (numeroOs, razaoSocial, cnpj, email, cep, municipio, estado, endereco,
-               dataAprovacao, dataEntregaPrevista, vendedor, status, 
-               dataUltimaAtualizacao, sincronizadoEm, criadoEm)
+            `INSERT INTO erp_os_cache
+              ("numeroOs", "razaoSocial", cnpj, email, cep, municipio, estado, endereco,
+               "dataAprovacao", "dataEntregaPrevista", vendedor, status,
+               "dataUltimaAtualizacao", "sincronizadoEm", "criadoEm")
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
             [
               numeroOs,
@@ -195,10 +195,8 @@ function normalizarData(valor: string | null | undefined): string | null {
 export async function registrarLogSincronizacao(log: SyncLogEntry): Promise<void> {
   try {
     await mutationQuery(
-      // ⚠️ Colunas reais (DESCRIBE sync_logs): dataExecucao, quantidadeOsImportadas,
-      //    status ENUM('SUCESSO','ERRO','PENDENTE'), mensagemErro
       `INSERT INTO sync_logs
-        (dataExecucao, quantidadeOsImportadas, status, mensagemErro)
+        ("dataExecucao", "quantidadeOsImportadas", status, "mensagemErro")
       VALUES (?, ?, ?, ?)`,
       [
         log.dataExecucao,
@@ -218,7 +216,7 @@ export async function registrarLogSincronizacao(log: SyncLogEntry): Promise<void
 export async function obterStatusSincronizacao() {
   try {
     const logs = await selectQuery(
-      `SELECT * FROM sync_logs ORDER BY dataExecucao DESC LIMIT 1`,
+      `SELECT * FROM sync_logs ORDER BY "dataExecucao" DESC LIMIT 1`,
       []
     );
 
