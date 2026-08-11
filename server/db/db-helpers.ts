@@ -5,8 +5,8 @@
 import { desc, eq, gte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { getPool } from "./db-connection";
-import { cotacoesFrete, InsertCotacaoFrete } from "../drizzle/schema";
-import { ENV } from "./_core/env";
+import { cotacoesFrete, InsertCotacaoFrete } from "../../drizzle/schema";
+import { ENV } from "../_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 

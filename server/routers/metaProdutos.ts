@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { getDb } from "../db";
+import { getDb } from "../db/db";
 import { metaProdutos } from "../../drizzle/schema";
 import { eq, asc } from "drizzle-orm";
 

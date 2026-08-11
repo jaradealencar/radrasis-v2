@@ -1,4 +1,4 @@
-import { selectQuery, mutationQuery } from './db-connection';
+import { selectQuery, mutationQuery } from '../db/db-connection';
 
 /**
  * Campos monitorados na subaba de completude do cadastro de transportadoras.

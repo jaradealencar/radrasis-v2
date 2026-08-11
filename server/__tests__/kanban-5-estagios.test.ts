@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { selectQuery, mutationQuery } from './db-connection';
-import { listarCotacoesFrete } from './db-helpers-select';
-import { criarCotacaoFrete } from './db-helpers';
+import { selectQuery, mutationQuery } from '../db/db-connection';
+import { listarCotacoesFrete } from '../db/db-helpers-select';
+import { criarCotacaoFrete } from '../db/db-helpers';
 
 let cotacaoId = 0;
 let cotacaoViaHelperId = 0;

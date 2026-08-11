@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../_core/trpc";
-import { getDb } from "../db";
+import { getDb } from "../db/db";
 import { desempenhoColaboradorMensal } from "../../drizzle/schema";
 import { and, eq, asc } from "drizzle-orm";
 

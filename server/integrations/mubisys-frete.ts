@@ -3,8 +3,8 @@
  * Busca dados de OS: PRIMEIRO no cache local, DEPOIS na API (fallback)
  */
 import { buscarOSPorNumero } from "./mubisys-client";
-import { selectQuery } from "./db-connection";
-import { erpOsCache } from "../drizzle/schema";
+import { selectQuery } from "../db/db-connection";
+import { erpOsCache } from "../../drizzle/schema";
 
 export interface FreteOpcao {
   transportadora: string;
@@ -149,7 +149,7 @@ export async function buscarDadosOSParaFrete(osNumero: string): Promise<DadosFre
 /** Grava/atualiza a OS no cache local usando os nomes reais das colunas. */
 async function gravarNoCache(dados: DadosFreteAutomatico): Promise<void> {
   try {
-    const { mutationQuery } = await import("./db-connection");
+    const { mutationQuery } = await import("../db/db-connection");
     const existente = await selectQuery("SELECT id FROM erp_os_cache WHERE numeroOs = ?", [dados.osNumero]);
     if (existente && existente.length > 0) {
       await mutationQuery(

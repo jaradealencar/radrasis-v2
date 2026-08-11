@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from 'express';
-import { sdk } from './_core/sdk';
+import { sdk } from '../_core/sdk';
 import { sincronizarOSDoMubiSys, obterStatusSincronizacao } from './scheduled-sync-os';
 
 export async function handleSincronizarOS(req: Request, res: Response) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { getDb } from "../db";
+import { getDb } from "../db/db";
 import { ledTipos, custoLedLancamentos } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 

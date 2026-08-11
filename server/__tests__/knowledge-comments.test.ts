@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the db module
-vi.mock("./db", () => ({
+vi.mock("../db/db", () => ({
   listKnowledgeComments: vi.fn(),
   createKnowledgeComment: vi.fn(),
   deleteKnowledgeComment: vi.fn(),
@@ -11,7 +11,7 @@ import {
   listKnowledgeComments,
   createKnowledgeComment,
   deleteKnowledgeComment,
-} from "./db";
+} from "../db/db";
 
 describe("Knowledge Comments DB helpers", () => {
   beforeEach(() => {

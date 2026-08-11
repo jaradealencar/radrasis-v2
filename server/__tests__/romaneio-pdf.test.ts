@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { appRouter } from './routers';
-import { selectQuery, mutationQuery } from './db-connection';
+import { appRouter } from '../routers';
+import { selectQuery, mutationQuery } from '../db/db-connection';
 
 /**
  * Valida que o endpoint romaneioPdf produz um PDF real (assinatura %PDF)

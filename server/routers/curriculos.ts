@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
-import { storagePut } from "../storage";
+import { storagePut } from "../db/storage";
 import {
   createAnaliseCurriculo,
   getAnaliseCurriculosByCargo,
   updateAnaliseCurriculo,
   getCargoById,
-} from "../db";
+} from "../db/db";
 
 export const curriculosRouter = router({
   // Upload currículo e iniciar análise

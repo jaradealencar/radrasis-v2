@@ -4,7 +4,7 @@
  * Busca OSs dos últimos 30 dias e armazena em cache local
  */
 
-import { getDb } from "./db";
+import { getDb } from "../db/db";
 
 let db: any = null;
 
@@ -14,9 +14,9 @@ async function initDb() {
   }
   return db;
 }
-import { syncLogs, erpOsCache, InsertErpOsCache, InsertSyncLog } from "../drizzle/schema";
+import { syncLogs, erpOsCache, InsertErpOsCache, InsertSyncLog } from "../../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
-import { buscarDadosOSParaFrete } from "./mubisys-frete";
+import { buscarDadosOSParaFrete } from "../integrations/mubisys-frete";
 
 interface ErpOsData {
   numero_os: string;

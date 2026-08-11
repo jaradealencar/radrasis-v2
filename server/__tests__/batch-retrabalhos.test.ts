@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { getDb } from "./db";
-import { createBatchRetrabalhos } from "./db";
-import { errorLibrary, retrabalhos } from "../drizzle/schema";
+import { getDb } from "../db/db";
+import { createBatchRetrabalhos } from "../db/db";
+import { errorLibrary, retrabalhos } from "../../drizzle/schema";
 import { eq, inArray, like } from "drizzle-orm";
 
 describe("createBatchRetrabalhos", () => {

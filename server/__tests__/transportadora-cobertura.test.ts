@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { selectQuery, mutationQuery } from './db-connection';
+import { selectQuery, mutationQuery } from '../db/db-connection';
 
 const NOME_TESTE = 'TRANSPORTADORA VITEST NACIONAL';
 let idTeste = 0;

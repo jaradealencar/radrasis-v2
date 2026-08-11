@@ -2,7 +2,7 @@
 
 import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
-import { db } from "../db";
+import { db } from "../db/db";
 import { cotacoesFrete, cotacaoOpcoes, cotacaoComentarios } from "../../drizzle/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 

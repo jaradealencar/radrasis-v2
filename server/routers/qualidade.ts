@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
-import { getDb } from "../db";
+import { getDb } from "../db/db";
 import {
   acoesCorretivas, alertasSistema, metasRetrabalho, planosAcao, retrabalhos,
   ishikawaCausas, acoes5w2h,

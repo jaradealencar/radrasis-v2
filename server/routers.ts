@@ -31,7 +31,7 @@ import {
   createLocalUser, updateLocalUser, deleteLocalUser,
   getAllRolePermissions, setRolePermission, getPermissionsForRole,
   getFinanceiros, getFinanceiroByMesAno, upsertFinanceiro,
-} from "./db";
+} from "./db/db";
 import {
   getErrorLibrary,
   getErrorByCode,
@@ -61,7 +61,7 @@ import {
   insertAuditLog,
   listKnowledgeSuggestions, createKnowledgeSuggestion, updateKnowledgeSuggestion, deleteKnowledgeSuggestion,
   listArquivosBibliotecaComConteudo,
-} from "./db";
+} from "./db/db";
 
 const filterSchema = z.object({
   mes: z.string().optional(),
@@ -119,7 +119,7 @@ export const appRouter = router({
         mimeType: z.string().default("image/jpeg"),
       }))
       .mutation(async ({ input }) => {
-        const { storagePut } = await import("./storage");
+        const { storagePut } = await import("./db/storage");
         const buffer = Buffer.from(input.fileBase64, "base64");
         const key = `error-library/${input.code}/${Date.now()}-${input.fileName}`;
         const { url } = await storagePut(key, buffer, input.mimeType);
@@ -521,7 +521,7 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
         }
 
         // 3) Chamar Gemini
-        const { askGemini } = await import("./gemini");
+        const { askGemini } = await import("./integrations/gemini");
         const systemPrompt = hasInternalContent
           ? `Você é um assistente especialista nos processos internos da empresa Letreiros Express. Use o contexto interno fornecido como base principal para responder. Se o contexto não for suficiente, complemente com seu conhecimento geral. Seja objetivo e prático. Responda em no máximo 3 parágrafos curtos.`
           : `Você é um assistente especialista em processos industriais e produção de letreiros. A pergunta não possui informações na base interna da empresa. Responda com base no seu conhecimento geral de forma objetiva e prática. Deixe claro que esta é uma resposta geral, não baseada em dados internos da empresa. Responda em no máximo 3 parágrafos curtos.`;
@@ -1049,7 +1049,7 @@ O POP deve:
         mimeType: z.string().default("image/jpeg"),
       }))
       .mutation(async ({ input }) => {
-        const { storagePut } = await import("./storage");
+        const { storagePut } = await import("./db/storage");
         const buffer = Buffer.from(input.fileBase64, "base64");
         const key = `pops/${input.popId}/${Date.now()}-${input.fileName}`;
         const { url } = await storagePut(key, buffer, input.mimeType);
@@ -1089,7 +1089,7 @@ O POP deve:
         tipo: z.enum(["visualizacao", "download"]).default("visualizacao"),
       }))
       .mutation(async ({ input, ctx }) => {
-        const { getDb } = await import("./db");
+        const { getDb } = await import("./db/db");
         const db = await getDb();
         if (!db) return { success: false };
         const { popAcessos } = await import("../drizzle/schema");
@@ -1113,7 +1113,7 @@ O POP deve:
         dataFim: z.string().optional(),
       }).optional())
       .query(async ({ input }) => {
-        const { getDb } = await import("./db");
+        const { getDb } = await import("./db/db");
         const db = await getDb();
         if (!db) return [];
         const { popAcessos } = await import("../drizzle/schema");
@@ -1130,7 +1130,7 @@ O POP deve:
 
     // Estatísticas de acessos por POP
     estatisticasAcessos: protectedProcedure.query(async () => {
-      const { getDb } = await import("./db");
+      const { getDb } = await import("./db/db");
       const db = await getDb();
       if (!db) return [];
       const { popAcessos } = await import("../drizzle/schema");
@@ -1448,14 +1448,14 @@ O POP deve:
     buscarDadosOS: publicProcedure
       .input(z.object({ osNumero: z.string() }))
       .mutation(async ({ input }) => {
-        const { buscarDadosOSParaFrete } = await import("./mubisys-frete");
+        const { buscarDadosOSParaFrete } = await import("./integrations/mubisys-frete");
         return buscarDadosOSParaFrete(input.osNumero);
       }),
     analisarAssertividade: publicProcedure
       .input(z.object({ tipo: z.string(), pergunta: z.string().optional() }))
       .mutation(async ({ input }) => {
         // Coletar dados do banco para contexto
-        const { getDb } = await import("./db");
+        const { getDb } = await import("./db/db");
         const db2 = await getDb();
         const { cotacoesFrete, cotacaoOpcoes, transportadoras: transpTable } = await import("../drizzle/schema");
         const cotacoes = db2 ? await db2.select().from(cotacoesFrete).limit(50) : [];

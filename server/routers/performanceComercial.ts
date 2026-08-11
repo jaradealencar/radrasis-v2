@@ -1,7 +1,7 @@
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { z } from "zod";
 import https from "https";
-import { getDb } from "../db";
+import { getDb } from "../db/db";
 import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaClientesCache, performanceAuditada, mubisysApiCache, clienteNovosContato } from "../../drizzle/schema";
 import { eq, and, sql } from "drizzle-orm";
 

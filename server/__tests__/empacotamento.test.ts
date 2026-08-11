@@ -1,15 +1,15 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { appRouter } from "./routers";
-import type { TrpcContext } from "./_core/context";
+import { appRouter } from "../routers";
+import type { TrpcContext } from "../_core/context";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { getPool } from "./db-connection";
+import { getPool } from "../db/db-connection";
 import {
   empacotamentoModelos,
   empacotamentoModelosCaixa,
   empacotamentoPedidos,
   empacotamentoTabelaPrecos,
   empacotamentoChecklistItens,
-} from "../drizzle/schema";
+} from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 // ─── Context helper ──────────────────────────────────────────────────────────

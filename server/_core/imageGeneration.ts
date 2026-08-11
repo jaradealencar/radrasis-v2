@@ -15,7 +15,7 @@
  *     }]
  *   });
  */
-import { storagePut } from "server/storage";
+import { storagePut } from "server/db/storage";
 import { ENV } from "./env";
 
 export type GenerateImageOptions = {

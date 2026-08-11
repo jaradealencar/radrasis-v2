@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { getPool } from "../db-connection";
+import { getPool } from "../db/db-connection";
 import { performanceMensal, retrabalhos as retrabalhosTable, faturamento as faturamentoTable } from "../../drizzle/schema";
 import { eq, and, asc, sql } from "drizzle-orm";
 

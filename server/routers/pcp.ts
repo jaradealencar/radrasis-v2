@@ -14,12 +14,12 @@ import {
   seedFeriados,
   seedMotivosAtraso,
   deletarOrdemProducao,
-} from "../pcp-helpers";
+} from "../db/pcp-helpers";
 import {
   listarOSMubiSys,
   buscarOSPorId,
   verificarConexaoMubiSys,
-} from "../mubisys-client";
+} from "../integrations/mubisys-client";
 
 export const pcpRouter = router({
   // Inicializar dados padrão (feriados e motivos)

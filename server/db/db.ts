@@ -18,8 +18,8 @@ import {
   knowledgeSuggestions, InsertKnowledgeSuggestion,
   analiseCurriculos, InsertAnaliseCurriculo, AnaliseCurriculo,
   financeirosMensais,
-} from "../drizzle/schema";
-import { ENV } from "./_core/env";
+} from "../../drizzle/schema";
+import { ENV } from "../_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -968,7 +968,7 @@ export async function deleteKnowledgeSuggestion(id: number) {
 export async function listArquivosBibliotecaComConteudo() {
   const db = await getDb();
   if (!db) return [];
-  const { bibliotecaArquivos } = await import("../drizzle/schema");
+  const { bibliotecaArquivos } = await import("../../drizzle/schema");
   const rows = await db
     .select({
       id: bibliotecaArquivos.id,

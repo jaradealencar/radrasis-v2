@@ -3,7 +3,7 @@ import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 import { ENV } from "./env";
 import jwt from "jsonwebtoken";
-import { getLocalUserByEmail, getLocalUserById } from "../db";
+import { getLocalUserByEmail, getLocalUserById } from "../db/db";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];

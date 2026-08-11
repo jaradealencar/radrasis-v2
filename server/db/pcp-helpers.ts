@@ -14,8 +14,8 @@ import {
   InsertProducaoHistoricoAlteracao,
   ProducaoOrdem,
   ProducaoSetor,
-} from "../drizzle/schema";
-import { ENV } from "./_core/env";
+} from "../../drizzle/schema";
+import { ENV } from "../_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -479,4 +479,4 @@ export async function deletarOrdemProducao(ordemId: number): Promise<boolean> {
     return false;
   }
 }
-import { buscarOSPorNumero, listarOSMubiSys, type MubiSysOS as MubiSysOSReal } from "./mubisys-client";
+import { buscarOSPorNumero, listarOSMubiSys, type MubiSysOS as MubiSysOSReal } from "../integrations/mubisys-client";

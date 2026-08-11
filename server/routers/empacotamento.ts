@@ -90,7 +90,7 @@ async function buscarOsMubisys(numeroOs: string): Promise<{
   }
 }
 import { drizzle } from "drizzle-orm/node-postgres";
-import { getPool } from "../db-connection";
+import { getPool } from "../db/db-connection";
 import {
   empacotamentoModelos,
   empacotamentoPedidos,
@@ -112,7 +112,7 @@ import {
   empacotamentoSessoesPausas,
 } from "../../drizzle/schema";
 import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
-import { storagePut } from "../storage";
+import { storagePut } from "../db/storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 function getDb() {

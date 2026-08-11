@@ -90,7 +90,7 @@ async function startServer() {
   );
 
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
-  const { handleSincronizarOS, handleStatusSincronizacao } = await import("../scheduled-sync-os-handler");
+  const { handleSincronizarOS, handleStatusSincronizacao } = await import("../sync/scheduled-sync-os-handler");
   app.post("/api/scheduled/sincronizarOS", handleSincronizarOS);
   app.get("/api/scheduled/sincronizarOS/status", handleStatusSincronizacao);
 

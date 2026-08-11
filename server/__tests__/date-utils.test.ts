@@ -4,7 +4,7 @@ import {
   formatarData,
   extrairDiasUteis,
   calcularDataEntrega,
-} from "./date-utils";
+} from "../utils/date-utils";
 
 describe("date-utils", () => {
   describe("adicionarDiasUteis", () => {

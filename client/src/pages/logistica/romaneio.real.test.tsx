@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import { montarRomaneioHtml, type CotacaoRomaneio } from './romaneio';
-import { selectQuery } from '../../../../server/db-connection';
+import { selectQuery } from '../../../../server/db/db-connection';
 
 describe('Romaneio com dados reais do banco', () => {
   it('gera o documento dos pedidos prontos para despacho', async () => {

@@ -5,8 +5,8 @@ import {
   atualizarOpcaoFrete,
   removerOpcaoFrete,
   listarOpcoesPorCotacoes,
-} from './db-helpers-select';
-import { selectQuery, mutationQuery } from './db-connection';
+} from '../db/db-helpers-select';
+import { selectQuery, mutationQuery } from '../db/db-connection';
 
 // Cotação de teste criada e removida ao final
 let cotacaoId = 0;

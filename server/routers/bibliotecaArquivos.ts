@@ -1,6 +1,6 @@
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { z } from "zod";
-import { getDb } from "../db";
+import { getDb } from "../db/db";
 import { bibliotecaArquivos, type BibliotecaArquivo } from "../../drizzle/schema";
 import { eq, desc, sql } from "drizzle-orm";
 
@@ -14,7 +14,7 @@ async function extrairTextoArquivo(
 ): Promise<string | null> {
   try {
     const { invokeLLM } = await import("../_core/llm");
-    const { storagePut } = await import("../storage");
+    const { storagePut } = await import("../db/storage");
 
     const isPdf = mimeType === "application/pdf";
     const isImage = mimeType.startsWith("image/");
@@ -120,7 +120,7 @@ export const bibliotecaArquivosRouter = router({
       uploadedBy: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { storagePut } = await import("../storage");
+      const { storagePut } = await import("../db/storage");
       const buffer = Buffer.from(input.fileBase64, "base64");
       const safeFileName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
       const key = `biblioteca-arquivos/${Date.now()}-${safeFileName}`;
@@ -164,7 +164,7 @@ export const bibliotecaArquivosRouter = router({
       const [arquivo] = await db.select().from(bibliotecaArquivos).where(eq(bibliotecaArquivos.id, input.id));
       if (!arquivo) throw new Error("Arquivo não encontrado");
 
-      const { storageGet } = await import("../storage");
+      const { storageGet } = await import("../db/storage");
       const { url } = await storageGet(arquivo.fileKey);
       const baseUrl = (process.env.BUILT_IN_FORGE_API_URL ?? "").replace("/api/forge", "");
       const absoluteUrl = url.startsWith("http") ? url : `${baseUrl}${url}`;

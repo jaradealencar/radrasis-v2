@@ -12,10 +12,10 @@ import {
   removerOpcaoFrete,
   selecionarOpcaoFrete,
   normalizarOpcao,
-} from '../db-helpers-select';
+} from '../db/db-helpers-select';
 import { drizzle } from "drizzle-orm/node-postgres";
-import { getPool } from "../db-connection";
-import { buscarDadosOSParaFrete, obterCotacoesFreteSimuladas } from "../mubisys-frete";
+import { getPool } from "../db/db-connection";
+import { buscarDadosOSParaFrete, obterCotacoesFreteSimuladas } from "../integrations/mubisys-frete";
 import * as https from "https";
 import {
   transportadoras,
@@ -293,7 +293,7 @@ export const transportadorasRouter = router({
   // ─── Subaba de completude de dados ──────────────────────────────────────
   /** Contagens gerais: total, ativas, inativas, origem e alcance nacional. */
   panoramaCadastro: publicProcedure.query(async () => {
-    const { panoramaCadastro } = await import('../transportadoras-completude');
+    const { panoramaCadastro } = await import('../utils/transportadoras-completude');
     return panoramaCadastro();
   }),
 
@@ -304,7 +304,7 @@ export const transportadorasRouter = router({
       origem: z.enum(['Frenet', 'Manual', 'todas']).optional().default('todas'),
     }).optional())
     .query(async ({ input }) => {
-      const { resumoCompletude } = await import('../transportadoras-completude');
+      const { resumoCompletude } = await import('../utils/transportadoras-completude');
       return resumoCompletude({ status: input?.status, origem: input?.origem });
     }),
 
@@ -320,7 +320,7 @@ export const transportadorasRouter = router({
       modo: z.enum(['vazios', 'preenchidos', 'todos']).optional().default('vazios'),
     }))
     .query(async ({ input }) => {
-      const { listarPendentesPorCampo } = await import('../transportadoras-completude');
+      const { listarPendentesPorCampo } = await import('../utils/transportadoras-completude');
       return listarPendentesPorCampo(input.campo, input.busca, input.page, input.pageSize, {
         status: input.status,
         origem: input.origem,
@@ -336,7 +336,7 @@ export const transportadorasRouter = router({
       valor: z.string().nullable(),
     }))
     .mutation(async ({ input }) => {
-      const { atualizarCampoTransportadora } = await import('../transportadoras-completude');
+      const { atualizarCampoTransportadora } = await import('../utils/transportadoras-completude');
       try {
         return await atualizarCampoTransportadora(input.id, input.campo, input.valor);
       } catch (erro: any) {
@@ -348,7 +348,7 @@ export const transportadorasRouter = router({
   definirStatus: publicProcedure
     .input(z.object({ id: z.number(), ativa: z.boolean() }))
     .mutation(async ({ input }) => {
-      const { definirStatusTransportadora } = await import('../transportadoras-completude');
+      const { definirStatusTransportadora } = await import('../utils/transportadoras-completude');
       return definirStatusTransportadora(input.id, input.ativa);
     }),
 
@@ -360,7 +360,7 @@ export const transportadorasRouter = router({
       valor: z.string().nullable(),
     }))
     .mutation(async ({ input }) => {
-      const { atualizarCampoEmLote } = await import('../transportadoras-completude');
+      const { atualizarCampoEmLote } = await import('../utils/transportadoras-completude');
       try {
         return await atualizarCampoEmLote(input.ids, input.campo, input.valor);
       } catch (erro: any) {
@@ -835,7 +835,7 @@ export const cotacoesFreteRouter = router({
       })).min(1).max(10),
     }))
     .mutation(async ({ input }) => {
-      const { storagePut } = await import('../storage');
+      const { storagePut } = await import('../db/storage');
 
       const [atual] = await getDb().select({ fotosJson: cotacoesFrete.fotosJson }).from(cotacoesFrete).where(eq(cotacoesFrete.id, input.id));
       if (!atual) {
@@ -955,7 +955,7 @@ export const cotacoesFreteRouter = router({
   delete: publicProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      const { excluirCotacaoFrete } = await import('../db-helpers-select');
+      const { excluirCotacaoFrete } = await import('../db/db-helpers-select');
       await excluirCotacaoFrete(input.id);
       return { ok: true };
     }),

@@ -8,9 +8,9 @@
  * 4. Remove OSs antigas automaticamente
  */
 
-import { defineHeartbeatJob } from "./_core/heartbeat";
-import { db } from "./db";
-import { syncLogs, erpOsCache, InsertErpOsCache } from "../drizzle/schema";
+import { defineHeartbeatJob } from "../_core/heartbeat";
+import { db } from "../db/db";
+import { syncLogs, erpOsCache, InsertErpOsCache } from "../../drizzle/schema";
 import { eq, sql, lt } from "drizzle-orm";
 
 /**

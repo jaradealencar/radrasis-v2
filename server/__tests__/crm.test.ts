@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock do módulo de banco de dados
-vi.mock("./db", () => ({
+vi.mock("../db/db", () => ({
   getDb: vi.fn().mockResolvedValue({
     select: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
@@ -17,7 +17,7 @@ vi.mock("./db", () => ({
 }));
 
 // Mock do módulo LLM
-vi.mock("./_core/llm", () => ({
+vi.mock("../_core/llm", () => ({
   invokeLLM: vi.fn().mockResolvedValue({
     choices: [{ message: { content: "Boa sorte hoje, vendedor!" } }],
   }),

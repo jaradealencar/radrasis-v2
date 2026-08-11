@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut } from "../storage";
-import { listCargos, getCargoById, createCargo, updateCargo, deleteCargo } from "../db";
+import { storagePut } from "../db/storage";
+import { listCargos, getCargoById, createCargo, updateCargo, deleteCargo } from "../db/db";
 
 const cargoSchema = z.object({
   titulo: z.string().min(1).max(128),

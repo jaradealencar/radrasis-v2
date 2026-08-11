@@ -1,8 +1,8 @@
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { getPool } from "./db-connection";
-import { cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, InsertCotacaoOpcao } from "../drizzle/schema";
-import { ENV } from "./_core/env";
+import { cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, InsertCotacaoOpcao } from "../../drizzle/schema";
+import { ENV } from "../_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 

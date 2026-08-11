@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { selectQuery, mutationQuery } from './db-connection';
+import { selectQuery, mutationQuery } from '../db/db-connection';
 import {
   resumoCompletude,
   listarPendentesPorCampo,
@@ -8,7 +8,7 @@ import {
   definirStatusTransportadora,
   panoramaCadastro,
   CAMPOS_COMPLETUDE,
-} from './transportadoras-completude';
+} from '../utils/transportadoras-completude';
 
 const NOME_TESTE = 'ZZZ VITEST COMPLETUDE';
 let id = 0;

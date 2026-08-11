@@ -11,8 +11,8 @@
  *    dataAprovacao (varchar 64) — texto livre, não date
  */
 
-import { selectQuery, mutationQuery } from './db-connection';
-import { listarOSMubiSys, MubiSysListResponse, MubiSysOS } from './mubisys-client';
+import { selectQuery, mutationQuery } from '../db/db-connection';
+import { listarOSMubiSys, MubiSysListResponse, MubiSysOS } from '../integrations/mubisys-client';
 
 export interface SyncLogEntry {
   dataExecucao: Date;

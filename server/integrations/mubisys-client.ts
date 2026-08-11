@@ -5,7 +5,7 @@
  * Autenticação: header Access-Token
  * Base URL: https://api.mubisys.com/api/{publicKey}/...
  */
-import { ENV } from "./_core/env";
+import { ENV } from "../_core/env";
 
 const BASE_URL = "https://api.mubisys.com/api";
 

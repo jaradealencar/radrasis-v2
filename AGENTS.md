@@ -69,7 +69,14 @@ client/src/          frontend (Vite root = client/)
 server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
   routers/             sub-routers por domínio (logistica.ts, pcp.ts, admin.ts, ...)
-  db.ts, db-connection.ts, db-helpers*.ts   acesso a dados (Drizzle + mysql2 puro)
+  db/                  acesso a dados (Drizzle + mysql2 puro): db.ts, db-connection.ts,
+                       db-helpers*.ts, storage.ts, pcp-helpers.ts
+  integrations/        clientes de APIs externas: gemini.ts, mubisys-client.ts, mubisys-frete.ts
+  sync/                sincronização com o ERP: sync-erp.ts, scheduled-sync-os*.ts,
+                       heartbeat-sync-erp.ts
+  utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
+  scripts/             scripts de seed do server (seed.mjs, seed-operacoes.mjs)
+  __tests__/           testes do server (*.test.ts)
   _core/               infra do template (auth, contexto tRPC, vite dev middleware)
 shared/               tipos e constantes usados por client e server
 drizzle/              schema.ts + migrations (numeradas, geradas por drizzle-kit)
@@ -102,12 +109,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
 
 ## Pontas soltas conhecidas (não introduzidas por esta reorganização)
 
-- `server/heartbeat-sync-erp.ts` e `server/routers/logistica-refactor.ts`
+- `server/sync/heartbeat-sync-erp.ts` e `server/routers/logistica-refactor.ts`
   são protótipos não finalizados — não são importados por nada e não
-  compilam (`heartbeat-sync-erp.ts` referencia um módulo `./_core/heartbeat`
+  compilam (`heartbeat-sync-erp.ts` referencia um módulo `../_core/heartbeat`
   que não existe; `logistica-refactor.ts` importa um export `db` que
-  `server/db.ts` não tem). O sync de ERP que está realmente ativo é
-  `server/scheduled-sync-os.ts` + `server/scheduled-sync-os-handler.ts`,
+  `server/db/db.ts` não tem). O sync de ERP que está realmente ativo é
+  `server/sync/scheduled-sync-os.ts` + `server/sync/scheduled-sync-os-handler.ts`,
   registrado em `server/_core/index.ts`.
 - `docs/archive/versoes-divergentes/0003_aromatic_lilith.sql` é uma migration
   órfã (o número 0003 colide com uma migration já existente na sequência

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the database module
-vi.mock("./db", () => ({
+vi.mock("../db/db", () => ({
   getKpis: vi.fn(),
   getEvolucaoMensal: vi.fn(),
   getRetrabalhosAll: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock("./db", () => ({
   updateRetrabalho: vi.fn(),
 }));
 
-import { getKpis, getEvolucaoMensal, createRetrabalho, updateRetrabalho } from "./db";
+import { getKpis, getEvolucaoMensal, createRetrabalho, updateRetrabalho } from "../db/db";
 
 describe("CNQ - Custos da Não-Qualidade", () => {
   beforeEach(() => {

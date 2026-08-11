@@ -9,7 +9,7 @@ export const adminRouter = router({
     try {
       // ⚠️ Drizzle declara colunas que divergem da tabela real; usamos mysql2 direto,
       // igual ao restante do módulo de logística.
-      const { selectQuery } = await import("../db-connection");
+      const { selectQuery } = await import("../db/db-connection");
 
       const logs = await selectQuery(
         "SELECT dataExecucao, status, quantidadeOsImportadas, mensagemErro FROM sync_logs ORDER BY dataExecucao DESC LIMIT 1",
@@ -55,7 +55,7 @@ export const adminRouter = router({
       console.log("🔄 [Admin] Iniciando sincronização manual...");
 
       // Usa a rotina corrigida (colunas reais do cache + log em sync_logs)
-      const { sincronizarOSDoMubiSys } = await import("../scheduled-sync-os");
+      const { sincronizarOSDoMubiSys } = await import("../sync/scheduled-sync-os");
       const resultado = await sincronizarOSDoMubiSys();
 
       console.log("✅ [Admin] Sincronização manual concluída:", resultado);
@@ -76,7 +76,7 @@ export const adminRouter = router({
     .input(z.object({ limite: z.number().default(10) }))
     .query(async ({ input }) => {
       try {
-        const { selectQuery } = await import("../db-connection");
+        const { selectQuery } = await import("../db/db-connection");
         const limite = Math.max(1, Math.min(Number(input.limite) || 10, 100));
         const logs = await selectQuery(
           `SELECT id, dataExecucao, status, quantidadeOsImportadas, mensagemErro
@@ -106,7 +106,7 @@ export const adminRouter = router({
       const dataLimite = new Date();
       dataLimite.setDate(dataLimite.getDate() - 30);
 
-      const { mutationQuery } = await import("../db-connection");
+      const { mutationQuery } = await import("../db/db-connection");
       const resultado: any = await mutationQuery(
         "DELETE FROM erp_os_cache WHERE sincronizadoEm < ?",
         [dataLimite],

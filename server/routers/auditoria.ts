@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { listAuditLogs } from "../db";
+import { listAuditLogs } from "../db/db";
 
 export const auditoriaRouter = router({
   /**

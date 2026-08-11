@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { getDb } from "./db";
-import { auditoriaRetrabalhos } from "../drizzle/schema";
-import { insertAuditLog, listAuditLogs } from "./db";
+import { getDb } from "../db/db";
+import { auditoriaRetrabalhos } from "../../drizzle/schema";
+import { insertAuditLog, listAuditLogs } from "../db/db";
 import { eq } from "drizzle-orm";
 
 // ─── Testes de integração para o módulo de Auditoria ────────────────────────

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { selectQuery, mutationQuery } from './db-connection';
-import { listarCotacoesFrete, normalizarOpcao, adicionarOpcaoFrete, atualizarOpcaoFrete } from './db-helpers-select';
+import { selectQuery, mutationQuery } from '../db/db-connection';
+import { listarCotacoesFrete, normalizarOpcao, adicionarOpcaoFrete, atualizarOpcaoFrete } from '../db/db-helpers-select';
 
 /**
  * Garante os requisitos explícitos do card do Kanban:
@@ -105,7 +105,7 @@ describe('Card do Kanban — dados completos em todos os estágios', () => {
 
 describe('Cache de OS e log de sincronização', () => {
   it('grava log de sincronização nas colunas reais de sync_logs', async () => {
-    const { registrarLogSincronizacao, obterStatusSincronizacao } = await import('./scheduled-sync-os');
+    const { registrarLogSincronizacao, obterStatusSincronizacao } = await import('../sync/scheduled-sync-os');
     await registrarLogSincronizacao({
       dataExecucao: new Date(),
       quantidadeOsImportadas: 7,
