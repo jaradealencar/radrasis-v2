@@ -157,25 +157,30 @@ de reset.
     `dataAprovacao`) — todos já cobertos pelas Tarefas 2.4/2.5 abaixo, só
     confirmando que continuam quebrados.
 
+- **Tarefa 2.4 — `server/routers/logistica.ts` (resto do arquivo)**: acabou
+  saindo praticamente de graça da 2.3. O CRUD de `transportadoras`
+  (`transportadorasRouter`) e `cte_importacoes` (`cteRouter`) já estava
+  todo escrito com Drizzle query builder — só rodava sobre o
+  `drizzle(process.env.DATABASE_URL!)`/mysql2 quebrado que a 2.3 já trocou
+  pelo `getPool()` compartilhado. Não sobrou SQL cru nenhum no arquivo
+  (confirmado por grep). O que restava mesmo: duas linhas de comentário
+  desatualizadas ("mysql2 direto") em código que já não fazia isso, e
+  `.returning({ id })` faltando em `transportadoras.create`/`cte.create`
+  (corrigidos junto na 2.3). `addCidade` tem um catch por
+  `e.code === 'ER_DUP_ENTRY'` pra evitar duplicata — mas nunca existiu
+  constraint UNIQUE em `transportadora_cidades`, nem no MySQL original
+  (conferido em `docs/archive/mysql-migrations/`), então esse catch é código
+  morto desde antes da migração — **não é** uma divergência introduzida pelo
+  Postgres, por isso não foi mexido aqui (decisão de produto — criar a
+  constraint agora mudaria comportamento existente).
+  - **Gap encontrado, fora do escopo**: `server/transportadora-cobertura.test.ts`
+    e `server/transportadoras-completude.test.ts` têm o mesmo problema de
+    identificador camelCase sem aspas em SQL cru de fixture que os testes de
+    `cotacoes_frete` tinham (ver Tarefa 2.3) — cobertos pela Tarefa 2.5
+    abaixo (`server/transportadoras-completude.ts` já está na lista de
+    arquivos dessa tarefa).
+
 ## Fase 2 — Camada de conexão e SQL cru (restante)
-
-### Tarefa 2.4 — Modernizar `server/routers/logistica.ts` (~15 queries cruas restantes)
-
-- A parte de `cotacoesFrete`/`cotacaoOpcoes` deste arquivo (incluindo o
-  `drizzle(process.env.DATABASE_URL!)` quebrado no topo do arquivo) já foi
-  corrigida na Tarefa 2.3 (ver nota acima) — o que resta aqui é só o CRUD de
-  `transportadoras` (`transportadorasRouter`) e `cte_importacoes`
-  (`cteImportacoes.create`), que já rodam sobre o `getDb()` correto mas ainda
-  têm SQL cru/`.insertId` solto em alguns pontos (2 já corrigidos de
-  passagem: `transportadoras.create` e `cte.create` agora usam
-  `.returning()`).
-- Converter o restante pra Drizzle query builder.
-- `server/transportadora-cobertura.test.ts` e
-  `server/transportadoras-completude.test.ts` têm o mesmo problema de
-  identificador camelCase sem aspas em SQL cru que os testes de
-  `cotacoes_frete` tinham (ver Tarefa 2.3) — mesma correção mecânica
-  necessária lá.
-- **Verificação**: `yarn check` limpo; testes relacionados a logística.
 
 ### Tarefa 2.4b — Modernizar `server/routers/empacotamento.ts` (2725 linhas)
 

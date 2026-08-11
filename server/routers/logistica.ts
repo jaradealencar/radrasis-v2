@@ -588,14 +588,11 @@ export const cotacoesFreteRouter = router({
       pageSize: z.number().optional().default(15),
     }))
     .query(async ({ input }) => {
-      // ✅ SOLUÇÃO DO PDF: Usar mysql2 direto para SELECT, como no INSERT
       // ⚠️ NÃO aplicar filtro padrão de status: o Kanban precisa de TODOS os status
-      // (aberta/cotando/cotada/enviada) para distribuir os cards nas 4 colunas.
+      // (aberta/cotando/selecao/cotada/enviada) para distribuir os cards nas colunas.
       // Só filtra quando o cliente pedir explicitamente um status.
       const result = await listarCotacoesFrete(input.page, input.pageSize || 15, input.status);
-      
-      console.log("✅ [LIST] Query mysql2 executada com sucesso");
-      
+
       return {
         data: result.data,
         pagination: {
@@ -958,7 +955,6 @@ export const cotacoesFreteRouter = router({
   delete: publicProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      // ✅ mysql2 direto: evita o Drizzle gerar SQL com colunas inexistentes
       const { excluirCotacaoFrete } = await import('../db-helpers-select');
       await excluirCotacaoFrete(input.id);
       return { ok: true };
