@@ -135,9 +135,8 @@ de reset.
     `metricasRetrabalho`) foram portadas nesta tarefa. `update` também tinha
     um bug de sintaxe MySQL (crase `` ` `` em vez de aspas duplas) que
     quebrava toda edição de cotação contra Postgres — corrigido junto.
-    **Ainda restam ~15 queries cruas em `logistica.ts` fora do domínio de
-    `cotacoesFrete`** (CRUD de `transportadoras`, `cte_importacoes`) — ver
-    Tarefa 2.4 abaixo, que encolheu mas não fechou.
+    O resto do arquivo (CRUD de `transportadoras`, `cte_importacoes`) foi
+    fechado na Tarefa 2.4 logo abaixo.
   - Testes de `cotacoes_frete`/`cotacao_opcoes` (`kanban-5-estagios.test.ts`,
     `card-kanban-completo.test.ts`, `cotacao-opcoes.test.ts`,
     `romaneio-pdf.test.ts`) tinham o próprio SQL cru de fixture quebrado
@@ -180,30 +179,56 @@ de reset.
     abaixo (`server/transportadoras-completude.ts` já está na lista de
     arquivos dessa tarefa).
 
+- **Tarefa 2.4b — `server/routers/empacotamento.ts` (2725 linhas)**: a doc
+  original superestimou o risco aqui — a suspeita de divergência
+  schema-vs-tabela-real (baseada em comentários que a doc citava em linhas
+  específicas) não se confirmou; esses comentários não existem mais no
+  arquivo (ou nunca existiram nessa forma). Conferido column-a-column contra
+  o MySQL/TiDB real: as 18 tabelas `empacotamento_*` **de fato têm um design
+  bem diferente** entre MySQL e `schema.ts` (não é só rename — algumas,
+  como `empacotamento_consumo_caixa` e `empacotamento_custo_funcionario`,
+  mudaram de propósito: de log por-pedido pra tabela de fórmula/cadastro de
+  taxa) — mas isso não importa pra esta tarefa porque **o arquivo já estava
+  100% escrito contra o schema novo**, usando Drizzle query builder em todo
+  lugar. Confirmado batendo o client (`Empacotamento.tsx`, 3700+ linhas): usa
+  só os nomes de campo novos (`kanbanStatus`, `numeroPedido`, `operadorNome`,
+  `marcadoPor`...), zero ocorrência do vocabulário MySQL antigo. Ou seja,
+  schema.ts + client + a maior parte do router já estavam alinhados; só
+  faltava o mesmo problema mecânico de sempre:
+  - `drizzle(process.env.DATABASE_URL!)` com `drizzle-orm/mysql2` (linha
+    ~92/118) — trocado pro `getPool()` compartilhado, mesmo padrão da 2.2.
+    Isso sozinho já causava um efeito cascata: **324 erros de tipo em
+    `client/src/pages/logistica/Empacotamento.tsx`** desapareceram junto
+    (mesmo fenômeno do `pcp-helpers.ts` na 2.2 — os tipos do tRPC propagam
+    pro client, e um router quebrado gera erro em cascata em quem o
+    consome). `yarn check` geral caiu de 782 pra 26 erros.
+  - 6 pontos de `.insertId`/`LAST_INSERT_ID()` (padrão mysql2, não existe em
+    `pg`) — trocados por `.returning({ id })`. Dois deles usavam
+    `LAST_INSERT_ID()` numa segunda query separada só pra setar uma coluna
+    (`precoAtualizadoEm`, `fatorM2`) na linha recém-inserida — simplificado
+    incluindo o valor direto no INSERT em vez de precisar de uma segunda
+    query.
+  - Achado à parte, sem relação com o schema do empacotamento: 3 pontos onde
+    o router grava `cotacoesFrete.status` (a integração automática que cria
+    um card de frete quando um pedido de empacotamento vai pro pátio) usando
+    o vocabulário velho do enum (`'fila'`, `'cancelado'`) que a Tarefa 2.3 já
+    tinha substituído — corrigido pra `'aberta'`/`'cancelada'`.
+  - `server/empacotamento.test.ts` tinha o mesmo `drizzle-orm/mysql2` solto —
+    trocado junto. As 14 suítes de teste (modelos, checklist, preços,
+    kanban, relatório) passam agora; antes nem chegavam a rodar contra
+    Postgres de verdade.
+  - `addCidade`/`ER_DUP_ENTRY` do achado da Tarefa 2.4 é o único código morto
+    conhecido que sobrou por perto — não relacionado a este arquivo.
+
 ## Fase 2 — Camada de conexão e SQL cru (restante)
-
-### Tarefa 2.4b — Modernizar `server/routers/empacotamento.ts` (2725 linhas)
-
-- Mesmo problema estrutural que a 2.2 resolveu em `db.ts`: o arquivo instancia
-  seu próprio `drizzle(process.env.DATABASE_URL!)` com `drizzle-orm/mysql2` —
-  quebrado em runtime contra Postgres (o router está registrado em
-  `server/routers.ts`, então isso está ativo em produção agora).
-- Comentários no próprio arquivo (`✅ mysql2 direto — o schema do Drizzle não
-  reflete as colunas reais`, linhas ~587/725/784/809/836/992) sugerem que,
-  como em `local_users`, pode haver divergência schema-vs-tabela-real que
-  precisa ser conferida linha a linha antes de portar — não assumir que é só
-  trocar o driver.
-- `server/empacotamento.test.ts` também importa `drizzle-orm/mysql2` direto —
-  portar junto.
-- **Verificação**: `yarn check` limpo; `yarn test` sem falhas novas; testes de
-  empacotamento (kanban, apontamento de tempo, checklist) passando.
 
 ### Tarefa 2.5 — Portar mecanicamente o SQL cru restante (sintaxe MySQL → Postgres)
 
 Arquivos: `server/transportadoras-completude.ts`, `server/scheduled-sync-os.ts`,
 `server/routers/admin.ts`, `server/mubisys-frete.ts`, e os ~82 fragmentos
-`sql\`...\`` espalhados em 9 routers (`crm.ts`, `empacotamento.ts`,
-`performanceComercial.ts`, `qualidade.ts`, etc.).
+`sql\`...\`` espalhados em 8 routers (`crm.ts`, `performanceComercial.ts`,
+`qualidade.ts`, etc. — `empacotamento.ts` saiu dessa lista, ver Tarefa 2.4b
+acima: os fragmentos `sql\`...\`` lá já eram SQL padrão, sem sintaxe MySQL).
 
 Conversões a aplicar:
 - `DATE_SUB(NOW(), INTERVAL 30 DAY)` → `NOW() - INTERVAL '30 days'`

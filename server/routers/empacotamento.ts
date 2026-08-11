@@ -89,7 +89,8 @@ async function buscarOsMubisys(numeroOs: string): Promise<{
     return null;
   }
 }
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { getPool } from "../db-connection";
 import {
   empacotamentoModelos,
   empacotamentoPedidos,
@@ -115,7 +116,7 @@ import { storagePut } from "../storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 function getDb() {
-  if (!_db) _db = drizzle(process.env.DATABASE_URL!);
+  if (!_db) _db = drizzle(getPool());
   return _db;
 }
 const db = {
@@ -784,8 +785,8 @@ export const empacotamentoRouter = router({
           cnpjCliente: input.cnpjCliente ?? null,
           cepCliente: input.cepCliente ?? null,
           enderecoCliente: input.enderecoCliente ?? null,
-        } as Record<string, unknown>);
-        return { success: true, id: result.insertId as number };
+        } as Record<string, unknown>).returning({ id: empacotamentoPedidos.id });
+        return { success: true, id: result.id };
       }),
 
     update: publicProcedure
@@ -891,14 +892,14 @@ export const empacotamentoRouter = router({
                 dimensoesComprimento: pedido.profundidadeCm ?? undefined,
                 pesoKg: (pedido as any).pesoKg ?? undefined,
                 tipoMaterial: pedido.modeloNome ?? undefined,
-                status: "fila",
+                status: "aberta",
               } as any);
             }
             // Se já existe, reativar o card cancelado/removido se estiver cancelado
             else {
               await getDb()
                 .update(cotacoesFrete)
-                .set({ status: "fila" } as any)
+                .set({ status: "aberta" } as any)
                 .where(
                   eq(cotacoesFrete.empacotamentoPedidoId, input.id)
                 );
@@ -911,7 +912,7 @@ export const empacotamentoRouter = router({
           // Cancelar card de frete que ainda está na fila (não iniciado)
           await getDb()
             .update(cotacoesFrete)
-            .set({ status: "cancelado" } as any)
+            .set({ status: "cancelada" } as any)
             .where(
               eq(cotacoesFrete.empacotamentoPedidoId, input.id)
             );
@@ -1107,7 +1108,7 @@ export const empacotamentoRouter = router({
           );
         if (existing.length > 0) return { success: true, id: existing[0].id };
 
-        const result = await getDb()
+        const [result] = await getDb()
           .insert(empacotamentoPedidoUsuarios)
           .values({
             pedidoId: input.pedidoId,
@@ -1115,7 +1116,8 @@ export const empacotamentoRouter = router({
             usuarioNome: input.usuarioNome,
             iniciadoEm: new Date(),
             ativo: 1,
-          });
+          })
+          .returning({ id: empacotamentoPedidoUsuarios.id });
         // Mover pedido para "embalando" se ainda estiver aguardando
         const pedidos = await getDb()
           .select()
@@ -1127,7 +1129,7 @@ export const empacotamentoRouter = router({
             .set({ kanbanStatus: "embalando" })
             .where(eq(empacotamentoPedidos.id, input.pedidoId));
         }
-        return { success: true, id: (result as { insertId?: number })?.insertId };
+        return { success: true, id: result.id };
       }),
 
     sair: publicProcedure
@@ -1395,15 +1397,14 @@ export const empacotamentoRouter = router({
         categoria: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        await getDb().insert(empacotamentoInsumos).values({
+        const [result] = await getDb().insert(empacotamentoInsumos).values({
           nome: input.nome,
           unidadeMedida: input.unidadeMedida,
           custoUnitario: String(input.custoUnitario),
           categoria: input.categoria ?? null,
-        });
-        // Atualizar precoAtualizadoEm separadamente (coluna nova não no schema original)
-        await getDb().execute(sql`UPDATE empacotamento_insumos SET precoAtualizadoEm = NOW() WHERE id = LAST_INSERT_ID()`);
-        return { success: true };
+          precoAtualizadoEm: new Date(),
+        }).returning({ id: empacotamentoInsumos.id });
+        return { success: true, id: result.id };
       }),
 
     update: publicProcedure
@@ -1705,11 +1706,11 @@ export const empacotamentoRouter = router({
             .set({ tempoSegundos: input.tempoSegundosAtual })
             .where(eq(empacotamentoPedidoUsuarios.id, input.pedidoUsuarioId));
         }
-        const result = await getDb().insert(empacotamentoCronometroPausas).values({
+        const [result] = await getDb().insert(empacotamentoCronometroPausas).values({
           pedidoUsuarioId: input.pedidoUsuarioId,
           pausadoEm: new Date(),
-        });
-        return { success: true, id: (result as { insertId?: number })?.insertId };
+        }).returning({ id: empacotamentoCronometroPausas.id });
+        return { success: true, id: result.id };
       }),
 
     retomar: publicProcedure
@@ -2275,16 +2276,18 @@ export const empacotamentoRouter = router({
             eq(empacotamentoInsumosLetreiro.insumoId, input.insumoId),
           ));
         if (existing.length > 0) {
-          await getDb().execute(sql`UPDATE empacotamento_insumos_letreiro SET fatorM2 = ${input.fatorM2}, observacao = ${input.observacao ?? null} WHERE id = ${existing[0].id}`);
+          await getDb()
+            .update(empacotamentoInsumosLetreiro)
+            .set({ fatorM2: String(input.fatorM2), observacao: input.observacao ?? null })
+            .where(eq(empacotamentoInsumosLetreiro.id, existing[0].id));
         } else {
           await getDb().insert(empacotamentoInsumosLetreiro).values({
             modeloLetreiId: input.modeloLetreiId,
             insumoId: input.insumoId,
             quantidade: String(input.fatorM2), // compatibilidade legado
+            fatorM2: String(input.fatorM2),
             observacao: input.observacao ?? null,
           });
-          // Atualizar fatorM2 na linha recém-inserida
-          await getDb().execute(sql`UPDATE empacotamento_insumos_letreiro SET fatorM2 = ${input.fatorM2} WHERE id = LAST_INSERT_ID()`);
         }
         return { success: true };
       }),
@@ -2417,15 +2420,15 @@ export const empacotamentoRouter = router({
           return { success: true, sessaoId: existente[0].id, action: 'already_active' };
         }
         const agoraUtcSeg = Math.floor(Date.now() / 1000);
-        const result = await getDb().insert(empacotamentoSessoes).values({
+        const [result] = await getDb().insert(empacotamentoSessoes).values({
           pedidoId: input.pedidoId,
           operadorId: input.operadorId,
           operadorNome: input.operadorNome,
           iniciadoEm: agoraUtcSeg,
           status: 'ativo',
           totalSegundos: 0,
-        });
-        return { success: true, sessaoId: (result as any).insertId, action: 'started' };
+        }).returning({ id: empacotamentoSessoes.id });
+        return { success: true, sessaoId: result.id, action: 'started' };
       }),
 
     // Pausa a sessão ativa

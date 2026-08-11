@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { getPool } from "./db-connection";
 import {
   empacotamentoModelos,
   empacotamentoModelosCaixa,
@@ -39,7 +40,7 @@ let createdPrecoId: number | null = null;
 let createdChecklistItemId: number | null = null;
 
 beforeAll(() => {
-  db = drizzle(process.env.DATABASE_URL!);
+  db = drizzle(getPool());
 });
 
 afterAll(async () => {
