@@ -2,14 +2,13 @@ import { and, asc, count, desc, eq, gte, like, lte, or, sql } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/node-postgres";
 import { getPool } from "./db-connection";
 import {
-  errorLibrary, faturamento, InsertRetrabalho, retrabalhos, InsertUser, users,
+  errorLibrary, faturamento, InsertRetrabalho, retrabalhos,
   knowledgeBase, InsertKnowledgeItem,
   knowledgeComments, InsertKnowledgeComment,
   suppliers, InsertSupplier,
   routines, InsertRoutine,
   regulations, InsertRegulation,
   pops, InsertPop,
-  localUsers, InsertLocalUser,
   rolePermissions,
   AppRole, PAGE_KEYS,
   priceTableSections, PriceTableSection, priceTableMeta, priceTableHistory,
@@ -19,7 +18,6 @@ import {
   analiseCurriculos, InsertAnaliseCurriculo, AnaliseCurriculo,
   financeirosMensais,
 } from "../../drizzle/schema";
-import { ENV } from "../_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -33,42 +31,6 @@ export async function getDb() {
     }
   }
   return _db;
-}
-
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) throw new Error("User openId is required for upsert");
-  const db = await getDb();
-  if (!db) return;
-  try {
-    const values: InsertUser = { openId: user.openId };
-    const updateSet: Record<string, unknown> = {};
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-    textFields.forEach(assignNullable);
-    if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
-    if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
-    else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
-    if (!values.lastSignedIn) values.lastSignedIn = new Date();
-    if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-    await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
-  }
-}
-
-export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
 }
 
 // ─── Error Library ─────────────────────────────────────────────────────────
@@ -585,60 +547,6 @@ export async function deletePop(id: number) {
   return db.delete(pops).where(eq(pops.id, id));
 }
 
-// ─── LOCAL USERS ─────────────────────────────────────────────────────────────
-
-// A tabela `local_users` foi recriada no Postgres a partir do schema Drizzle
-// (name/email/passwordHash/role/active — ver drizzle/0000_abnormal_morlocks.sql),
-// diferente da tabela legada do MySQL (nome/setor/ativo). O ETL
-// (scripts/migrate-mysql-to-postgres.ts) já fez esse remapeamento na carga
-// dos dados, então as colunas do schema batem com a tabela real.
-export async function listLocalUsers() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(localUsers).orderBy(asc(localUsers.name));
-}
-
-export async function getLocalUserByEmail(email: string) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(localUsers).where(eq(localUsers.email, email)).limit(1);
-  return rows[0] ?? null;
-}
-
-export async function getLocalUserByName(name: string) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(localUsers).where(eq(localUsers.name, name)).limit(1);
-  return rows[0] ?? null;
-}
-
-export async function getLocalUserById(id: number) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(localUsers).where(eq(localUsers.id, id)).limit(1);
-  return rows[0] ?? null;
-}
-
-export async function createLocalUser(data: InsertLocalUser) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const [result] = await db.insert(localUsers).values(data).returning();
-  return result;
-}
-
-export async function updateLocalUser(id: number, data: Partial<InsertLocalUser>) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  if (Object.keys(data).length === 0) return;
-  return db.update(localUsers).set(data).where(eq(localUsers.id, id));
-}
-
-export async function deleteLocalUser(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  return db.delete(localUsers).where(eq(localUsers.id, id));
-}
-
 // ─── ROLE PERMISSIONS ────────────────────────────────────────────────────────
 
 export async function getRolePermissions(role: AppRole) {
@@ -830,7 +738,7 @@ export interface AuditLogInput {
   osRetrabalhada?: string | null;
   osOriginal?: string | null;
   acao: "CRIACAO" | "EDICAO" | "EXCLUSAO";
-  usuarioId?: number | null;
+  usuarioId?: string | null;
   usuarioNome?: string | null;
   usuarioRole?: string | null;
   detalhes?: Record<string, unknown> | null;
@@ -853,7 +761,7 @@ export async function insertAuditLog(data: AuditLogInput): Promise<void> {
 
 export interface ListAuditLogsFilter {
   acao?: "CRIACAO" | "EDICAO" | "EXCLUSAO";
-  usuarioId?: number;
+  usuarioId?: string;
   retrabalhoId?: number;
   osRetrabalhada?: string;
   dataInicio?: Date;

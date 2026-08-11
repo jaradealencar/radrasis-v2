@@ -1,22 +1,26 @@
 /**
  * Handler HTTP para CRON job de sincronização de OS
  * Endpoint: POST /api/scheduled/sincronizarOS
- * Autenticação: via CRON token (user.isCron === true)
+ * Autenticação: header `x-cron-secret` comparado contra CRON_SECRET.
+ *
+ * Antes da Fase 3 este endpoint checava `sdk.authenticateRequest(req).isCron`
+ * (SDK OAuth do Manus) — mas `User`/`sdk` nunca tiveram esses campos de
+ * verdade (o cast `as any` escondia isso); nunca funcionou como controle de
+ * acesso real. Com o SDK do Manus removido, substituído por um segredo
+ * compartilhado simples.
  */
 
 import { Request, Response } from 'express';
-import { sdk } from '../_core/sdk';
 import { sincronizarOSDoMubiSys, obterStatusSincronizacao } from './scheduled-sync-os';
 
 export async function handleSincronizarOS(req: Request, res: Response) {
   try {
-    // Autenticar como CRON job
-    const user = await (sdk as any).authenticateRequest(req);
-    if (!user.isCron || !user.taskUid) {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret || req.headers['x-cron-secret'] !== cronSecret) {
       return res.status(403).json({ error: 'cron-only', message: 'Este endpoint é apenas para CRON jobs' });
     }
 
-    console.log(`🔄 [CRON] Sincronização de OS iniciada pelo CRON job: ${user.taskUid}`);
+    console.log(`🔄 [CRON] Sincronização de OS iniciada`);
 
     // Executar sincronização
     const resultado = await sincronizarOSDoMubiSys();

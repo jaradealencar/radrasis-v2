@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
-import { localUsers } from "../../drizzle/schema";
+import { user as userTable } from "../../drizzle/schema";
 import https from "https";
 
 // ─── HELPER: Buscar OS no Mubisys ERP ────────────────────────────────────────
@@ -1091,7 +1091,7 @@ export const empacotamentoRouter = router({
     entrar: publicProcedure
       .input(z.object({
         pedidoId: z.number(),
-        usuarioId: z.number().optional(),
+        usuarioId: z.string().optional(),
         usuarioNome: z.string().min(1),
       }))
       .mutation(async ({ input }) => {
@@ -1163,7 +1163,7 @@ export const empacotamentoRouter = router({
     // Retorna o registro ativo do operador (por usuarioId ou nome) e o pedido correspondente
     pedidoAtivoDoOperador: publicProcedure
       .input(z.object({
-        usuarioId: z.number().optional(),
+        usuarioId: z.string().optional(),
         usuarioNome: z.string().optional(),
       }))
       .query(async ({ input }) => {
@@ -1639,17 +1639,17 @@ export const empacotamentoRouter = router({
       // Retorna todos os usuários ativos para seleção de operador
       // Prioriza role empacotamento, mas inclui todos para flexibilidade
       return await getDb()
-        .select({ id: localUsers.id, name: localUsers.name, role: localUsers.role })
-        .from(localUsers)
-        .orderBy(asc(localUsers.name));
+        .select({ id: userTable.id, name: userTable.name, role: userTable.role })
+        .from(userTable)
+        .orderBy(asc(userTable.name));
     }),
     listEmpacotadores: publicProcedure.query(async () => {
       // Lista apenas empacotadores para seleção rápida no kanban
       const rows = await getDb()
-        .select({ id: localUsers.id, name: localUsers.name, role: localUsers.role })
-        .from(localUsers)
-        .where(eq(localUsers.role, "empacotamento"))
-        .orderBy(asc(localUsers.name));
+        .select({ id: userTable.id, name: userTable.name, role: userTable.role })
+        .from(userTable)
+        .where(eq(userTable.role, "empacotamento"))
+        .orderBy(asc(userTable.name));
       return rows;
     }),
   }),
@@ -2306,7 +2306,7 @@ export const empacotamentoRouter = router({
   sessoes: router({
     // Retorna a sessão ativa (ativo/pausado) de um operador em um pedido
     getAtiva: publicProcedure
-      .input(z.object({ pedidoId: z.number(), operadorId: z.number() }))
+      .input(z.object({ pedidoId: z.number(), operadorId: z.string() }))
       .query(async ({ input }) => {
         const rows = await getDb()
           .select()
@@ -2400,7 +2400,7 @@ export const empacotamentoRouter = router({
 
     // Inicia uma nova sessão operacional
     iniciar: publicProcedure
-      .input(z.object({ pedidoId: z.number(), operadorId: z.number(), operadorNome: z.string() }))
+      .input(z.object({ pedidoId: z.number(), operadorId: z.string(), operadorNome: z.string() }))
       .mutation(async ({ input }) => {
         // Verificar se já tem sessão ativa ou pausada
         const existente = await getDb()

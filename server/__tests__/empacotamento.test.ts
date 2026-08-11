@@ -16,15 +16,10 @@ import { eq } from "drizzle-orm";
 function createCtx(): TrpcContext {
   return {
     user: {
-      id: 1,
-      openId: "test-user",
+      id: "test-user",
       email: "test@example.com",
       name: "Test User",
-      loginMethod: "local",
       role: "admin",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastSignedIn: new Date(),
     },
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: { clearCookie: () => {} } as unknown as TrpcContext["res"],

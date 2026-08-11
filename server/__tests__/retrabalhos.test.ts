@@ -2,37 +2,18 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
 
-function createCtx(role: "admin" | "user" = "admin"): TrpcContext {
+function createCtx(role: "admin" | "vendas" = "admin"): TrpcContext {
   return {
     user: {
-      id: 1,
-      openId: "test-user",
+      id: "test-user",
       email: "test@example.com",
       name: "Test User",
-      loginMethod: "manus",
       role,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastSignedIn: new Date(),
     },
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: { clearCookie: () => {} } as unknown as TrpcContext["res"],
   };
 }
-
-describe("auth.logout", () => {
-  it("clears the session cookie and reports success", async () => {
-    const cleared: string[] = [];
-    const ctx: TrpcContext = {
-      ...createCtx(),
-      res: { clearCookie: (name: string) => cleared.push(name) } as unknown as TrpcContext["res"],
-    };
-    const caller = appRouter.createCaller(ctx);
-    const result = await caller.auth.logout();
-    expect(result.success).toBe(true);
-    expect(cleared.length).toBe(1);
-  });
-});
 
 describe("errorLibrary", () => {
   it("returns a list of errors", async () => {

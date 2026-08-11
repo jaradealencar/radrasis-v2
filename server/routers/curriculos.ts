@@ -32,7 +32,7 @@ export const curriculosRouter = router({
           curriculoUrl: url,
           curriculoKey: key,
           status: "analisando",
-          uploadedBy: ctx.user.openId,
+          uploadedBy: ctx.user.id,
           uploadedByName: ctx.user.name ?? ctx.user.email ?? "Usuário",
         });
 

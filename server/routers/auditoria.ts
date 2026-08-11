@@ -11,7 +11,7 @@ export const auditoriaRouter = router({
     .input(
       z.object({
         acao: z.enum(["CRIACAO", "EDICAO", "EXCLUSAO"]).optional(),
-        usuarioId: z.number().int().positive().optional(),
+        usuarioId: z.string().optional(),
         retrabalhoId: z.number().int().positive().optional(),
         osRetrabalhada: z.string().max(32).optional(),
         dataInicio: z.string().optional(), // ISO date string "YYYY-MM-DD"

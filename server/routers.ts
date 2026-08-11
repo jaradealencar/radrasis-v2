@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { COOKIE_NAME } from "@shared/const";
 import { transportadorasRouter, cotacoesFreteRouter, cteRouter } from "./routers/logistica";
 import { acoesCorretivasRouter, metasRetrabalhoRouter, planosAcaoRouter, alertasRouter, desempenhoColaboradorRouter } from "./routers/qualidade";
 import { metasRouter } from "./routers/metas";
@@ -19,16 +18,17 @@ import { performanceComercialRouter } from "./routers/performanceComercial";
 import { crmRouter } from "./routers/crm";
 import { custoLedRouter } from "./routers/custoLed";
 import { adminRouter } from "./routers/admin";
-import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, requireRole, router } from "./_core/trpc";
+import { auth } from "./_core/auth";
+import { fromNodeHeaders } from "better-auth/node";
 import { invokeLLM } from "./_core/llm";
-import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
-import { APP_ROLES, PAGE_KEYS } from "../drizzle/schema";
+import type { TrpcContext } from "./_core/context";
+import { APP_ROLES, PAGE_KEYS, user as userTable } from "../drizzle/schema";
+import { asc, eq, isNull, or, count as sqlCount } from "drizzle-orm";
+import { getDb } from "./db/db";
 import {
-  listLocalUsers, getLocalUserByEmail, getLocalUserById, getLocalUserByName,
-  createLocalUser, updateLocalUser, deleteLocalUser,
   getAllRolePermissions, setRolePermission, getPermissionsForRole,
   getFinanceiros, getFinanceiroByMesAno, upsertFinanceiro,
 } from "./db/db";
@@ -63,6 +63,32 @@ import {
   listArquivosBibliotecaComConteudo,
 } from "./db/db";
 
+async function countUsers(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [row] = await db.select({ n: sqlCount() }).from(userTable);
+  return row?.n ?? 0;
+}
+
+function assertAdminOrMaster(ctx: TrpcContext): void {
+  if (!ctx.user || (ctx.user.role !== "admin" && ctx.user.role !== "master")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Apenas Admin ou Master podem gerenciar usuários." });
+  }
+}
+
+// E-mail sintético (nunca usado pra comunicação) pra usuários sem e-mail
+// real (roles producao/empacotamento) — o Better Auth exige `email` único
+// no core mesmo com o plugin `username` habilitado.
+function slugifyName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+  return slug || "usuario";
+}
+
 const filterSchema = z.object({
   mes: z.string().optional(),
   setor: z.string().optional(),
@@ -79,14 +105,6 @@ export const appRouter = router({
   system: systemRouter,
   // Painel "Status de Sincronização ERP" (cache de OS dos últimos 30 dias + logs)
   admin: adminRouter,
-  auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return { success: true } as const;
-    }),
-  }),
 
   // ─── Error Library ──────────────────────────────────────────────────────
   errorLibrary: router({
@@ -559,11 +577,12 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
       }))
       .mutation(({ input, ctx }) => createKnowledgeSuggestion({
         ...input,
-        autorId: ctx.user?.id ? Number(ctx.user.id) : undefined,
+        autorId: ctx.user?.id ?? undefined,
         autorNome: ctx.user?.name ?? "Usuário",
       } as any)),
     // Master aprova: cria artigo na base de conhecimento
     approve: protectedProcedure
+      .use(requireRole("admin", "master"))
       .input(z.object({
         id: z.number(),
         titulo: z.string(),
@@ -571,10 +590,7 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
         conteudo: z.string(),
         observacao: z.string().optional(),
       }))
-      .mutation(async ({ input, ctx }) => {
-        if (ctx.localUser?.role !== "master" && ctx.localUser?.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o master pode aprovar sugestões." });
-        }
+      .mutation(async ({ input }) => {
         // Criar artigo na base de conhecimento
         await createKnowledge({ title: input.titulo, content: input.conteudo, category: input.categoria });
         // Atualizar status da sugestão
@@ -587,11 +603,9 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
         return { success: true };
       }),
     reject: protectedProcedure
+      .use(requireRole("admin", "master"))
       .input(z.object({ id: z.number(), observacao: z.string().optional() }))
-      .mutation(async ({ input, ctx }) => {
-        if (ctx.localUser?.role !== "master" && ctx.localUser?.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o master pode rejeitar sugestões." });
-        }
+      .mutation(async ({ input }) => {
         await updateKnowledgeSuggestion(input.id, { status: "rejeitado", observacaoMaster: input.observacao });
         return { success: true };
       }),
@@ -1151,82 +1165,40 @@ O POP deve:
     }),
   }),
 
-  // ─── LOCAL AUTH (e-mail + senha) ─────────────────────────────────────────
-  localAuth: router({
-    login: publicProcedure
-      .input(z.object({ emailOrName: z.string().min(1), password: z.string().min(1) }))
-      .mutation(async ({ input, ctx }) => {
-        // Tenta por e-mail primeiro; se não encontrar, tenta por nome (para usuários de produção)
-        const isEmail = input.emailOrName.includes("@");
-        let user = isEmail
-          ? await getLocalUserByEmail(input.emailOrName.toLowerCase().trim())
-          : await getLocalUserByName(input.emailOrName.trim());
-        // Fallback: se veio como e-mail mas não achou, tenta por nome
-        if (!user && isEmail) user = await getLocalUserByName(input.emailOrName.trim());
-        if (!user || user.active !== "sim") {
-          throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais inválidas" });
-        }
-        const valid = await bcrypt.compare(input.password, user.passwordHash);
-        if (!valid) {
-          throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais inválidas" });
-        }
-        // Cria sessão: reutiliza o mesmo cookie de sessão do sistema
-        const jwt = await import("jsonwebtoken");
-        const token = jwt.default.sign(
-          { localUserId: user.id, email: user.email, role: user.role, name: user.name },
-          process.env.JWT_SECRET ?? "secret",
-          { expiresIn: "7d" }
-        );
-        ctx.res.cookie("local_session", token, {
-          ...getSessionCookieOptions(ctx.req),
-          maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
-        const permissions = await getPermissionsForRole(user.role);
-        return { id: user.id, name: user.name, email: user.email, role: user.role, permissions };
-      }),
-
-    logout: publicProcedure.mutation(({ ctx }) => {
-      ctx.res.clearCookie("local_session");
-      return { ok: true };
-    }),
-
-    me: publicProcedure.query(async ({ ctx }) => {
-      const cookie = ctx.req.cookies?.local_session;
-      if (!cookie) return null;
-      try {
-        const jwt = await import("jsonwebtoken");
-        const decoded = jwt.default.verify(cookie, process.env.JWT_SECRET ?? "secret") as any;
-        const user = await getLocalUserById(decoded.localUserId);
-        if (!user || user.active !== "sim") return null;
-        const permissions = await getPermissionsForRole(user.role);
-        return { id: user.id, name: user.name, email: user.email, role: user.role, permissions };
-      } catch { return null; }
-    }),
-
-    // Retorna o localUser resolvido pelo contexto (funciona tanto para login local quanto OAuth)
-    myLocalRole: publicProcedure.query(async ({ ctx }) => {
-      if (!ctx.localUser) return null;
-      return { id: ctx.localUser.id, name: ctx.localUser.name, role: ctx.localUser.role };
-    }),
-  }),
-
-  // ─── GERENCIAMENTO DE USUÁRIOS LOCAIS (master/admin) ─────────────────────
+  // ─── GERENCIAMENTO DE USUÁRIOS (master/admin) ────────────────────────────
+  // Login/logout/sessão em si ficam a cargo do Better Auth (/api/auth/*,
+  // authClient no client) — esta seção só cobre o CRUD administrativo, que
+  // continua tendo regras de negócio próprias (modo bootstrap, roles sem
+  // e-mail) sem equivalente pronto no plugin admin.
   localUsers: router({
     // Endpoint público para seletores de responsável em todo o sistema
     activeList: publicProcedure.query(async () => {
-      const allUsers = await listLocalUsers();
-      return allUsers
-        .filter(u => u.active === "sim")
-        .map(u => ({ id: u.id, name: u.name, role: u.role }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      const db = await getDb();
+      if (!db) return [];
+      const rows = await db
+        .select({ id: userTable.id, name: userTable.name, role: userTable.role })
+        .from(userTable)
+        .where(or(isNull(userTable.banned), eq(userTable.banned, false)))
+        .orderBy(asc(userTable.name));
+      return rows;
     }),
     list: publicProcedure.query(async ({ ctx }) => {
-      const allUsers = await listLocalUsers();
+      const db = await getDb();
+      if (!db) return [];
+      const total = await countUsers();
       // Modo bootstrap: se não há usuários, permite acesso livre
-      if (allUsers.length === 0) return allUsers;
-      const role = ctx.localUser?.role ?? ctx.user?.role;
-      if (role !== "admin" && role !== "master") throw new TRPCError({ code: "FORBIDDEN" });
-      return allUsers;
+      if (total > 0) assertAdminOrMaster(ctx);
+      const rows = await db
+        .select({
+          id: userTable.id, name: userTable.name, email: userTable.email,
+          username: userTable.username, role: userTable.role, banned: userTable.banned,
+        })
+        .from(userTable)
+        .orderBy(asc(userTable.name));
+      // "active" (sim/nao) é o vocabulário usado no resto do app —
+      // mapeado aqui a partir de `banned` (Better Auth) pra não precisar
+      // reescrever a UI existente (client/src/pages/admin/Usuarios.tsx).
+      return rows.map(u => ({ ...u, active: u.banned ? ("nao" as const) : ("sim" as const) }));
     }),
 
     create: publicProcedure
@@ -1234,79 +1206,85 @@ O POP deve:
         name: z.string().min(2),
         email: z.string().email().optional(),
         password: z.string().min(6),
-        role: z.enum(["master", "admin", "gestor", "vendas", "logistica", "producao", "financeiro", "empacotamento"]),
+        role: z.enum(APP_ROLES),
       }))
       .mutation(async ({ input, ctx }) => {
-        const allUsers = await listLocalUsers();
+        const total = await countUsers();
         // Modo bootstrap: se não há usuários, qualquer um pode criar o primeiro
-        if (allUsers.length > 0) {
-          // Verificar role: primeiro localUser (local_users), depois OAuth user
-          const localRole = ctx.localUser?.role;
-          const oauthRole = ctx.user?.role;
-          const role = localRole || oauthRole;
-          // Master do OAuth ou Admin/Master local podem criar
-          const isMasterOrAdmin = (role === "admin" || role === "master") || (oauthRole === "master");
-          if (!isMasterOrAdmin) throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem permissão para criar usuários. Apenas Admin ou Master podem criar novos usuários." });
-        }
+        if (total > 0) assertAdminOrMaster(ctx);
         // Usuários de produção/empacotamento podem ser criados sem e-mail
         const needsEmail = input.role !== "producao" && input.role !== "empacotamento";
         if (needsEmail && !input.email) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "E-mail obrigatório para esta função" });
         }
-        if (input.email) {
-          const existing = await getLocalUserByEmail(input.email.toLowerCase());
-          if (existing) throw new TRPCError({ code: "CONFLICT", message: "E-mail já cadastrado" });
-        }
-        // Verificar duplicidade de nome para usuários sem e-mail
-        const existingName = await getLocalUserByName(input.name.trim());
-        if (existingName) throw new TRPCError({ code: "CONFLICT", message: "Já existe um usuário com esse nome" });
-        const passwordHash = await bcrypt.hash(input.password, 10);
-        return createLocalUser({
-          name: input.name.trim(),
-          email: input.email ? input.email.toLowerCase() : undefined,
-          passwordHash,
-          role: input.role,
-          active: "sim",
+        const name = input.name.trim();
+        // Com e-mail real: username = e-mail (login por e-mail OU nome
+        // funciona igual pra todo mundo). Sem e-mail: só existe o e-mail
+        // sintético (não serve pra digitar no login), então username vira
+        // o slug do nome — é isso que o usuário de fato vai digitar.
+        const email = input.email
+          ? input.email.toLowerCase()
+          : `${slugifyName(name)}@local.internal`;
+        const username = input.email ? email : slugifyName(name);
+        // Chamada server-trusted (sem headers): a autorização já foi feita
+        // acima (bootstrap ou assertAdminOrMaster) — não depende de o
+        // chamador já ter uma sessão do Better Auth reconhecida como admin,
+        // o que é necessário pro próprio modo bootstrap funcionar.
+        const { user } = await auth.api.createUser({
+          body: {
+            email,
+            password: input.password,
+            name,
+            role: input.role,
+            data: { username, displayUsername: name },
+          },
         });
+        return { id: user.id, name: user.name, email: user.email, role: input.role };
       }),
 
     update: publicProcedure
       .input(z.object({
-        id: z.number(),
+        id: z.string(),
         name: z.string().min(2).optional(),
-        role: z.enum(["master", "admin", "gestor", "vendas", "logistica", "producao", "financeiro", "empacotamento"]).optional(),
+        role: z.enum(APP_ROLES).optional(),
         password: z.string().min(6).optional(),
         active: z.enum(["sim", "nao"]).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        const allUsers = await listLocalUsers();
-        if (allUsers.length > 0) {
-          const role = ctx.localUser?.role ?? ctx.user?.role;
-          if (role !== "admin" && role !== "master") throw new TRPCError({ code: "FORBIDDEN" });
+        const total = await countUsers();
+        if (total > 0) assertAdminOrMaster(ctx);
+        const headers = fromNodeHeaders(ctx.req.headers);
+        const { id, password, active, ...rest } = input;
+        if (Object.keys(rest).length > 0) {
+          await auth.api.adminUpdateUser({ body: { userId: id, data: rest }, headers });
         }
-        const { id, password, ...rest } = input;
-        const data: Record<string, unknown> = { ...rest };
-        if (password) data.passwordHash = await bcrypt.hash(password, 10);
-        return updateLocalUser(id, data as any);
+        if (password) {
+          await auth.api.setUserPassword({ body: { userId: id, newPassword: password }, headers });
+        }
+        if (active === "nao") {
+          await auth.api.banUser({ body: { userId: id }, headers });
+        } else if (active === "sim") {
+          await auth.api.unbanUser({ body: { userId: id }, headers });
+        }
+        return { ok: true };
       }),
 
     delete: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const allUsers = await listLocalUsers();
-        if (allUsers.length > 0) {
-          const role = ctx.localUser?.role ?? ctx.user?.role;
-          if (role !== "admin" && role !== "master") throw new TRPCError({ code: "FORBIDDEN" });
-        }
-        return deleteLocalUser(input.id);
+        const total = await countUsers();
+        if (total > 0) assertAdminOrMaster(ctx);
+        await auth.api.removeUser({
+          body: { userId: input.id },
+          headers: fromNodeHeaders(ctx.req.headers),
+        });
+        return { ok: true };
       }),
   }),
 
   // ─── PERMISSÕES POR ROLE ──────────────────────────────────────────────────
   permissions: router({
-    getAll: protectedProcedure.query(async ({ ctx }) => {
-      const role = ctx.localUser?.role ?? ctx.user?.role;
-      if (role !== "admin" && role !== "master") throw new TRPCError({ code: "FORBIDDEN" });
+    getAll: protectedProcedure.use(requireRole("admin", "master")).query(async () => {
       const rows = await getAllRolePermissions();
       // Retorna matriz: { role: { pageKey: boolean } }
       const matrix: Record<string, Record<string, boolean>> = {};
@@ -1324,25 +1302,20 @@ O POP deve:
     }),
 
     set: protectedProcedure
+      .use(requireRole("admin", "master"))
       .input(z.object({
-        role: z.enum(["master", "admin", "gestor", "vendas", "logistica", "producao", "financeiro", "empacotamento"]),
+        role: z.enum(APP_ROLES),
         pageKey: z.string(),
         canAccess: z.boolean(),
       }))
-      .mutation(async ({ input, ctx }) => {
-        const role = ctx.localUser?.role ?? ctx.user?.role;
-        if (role !== "admin" && role !== "master") throw new TRPCError({ code: "FORBIDDEN" });
+      .mutation(async ({ input }) => {
         return setRolePermission(input.role, input.pageKey, input.canAccess ? "sim" : "nao");
       }),
 
     myPermissions: publicProcedure.query(async ({ ctx }) => {
       // Retorna as páginas que o usuário atual pode acessar
-      if (!ctx.user) {
-        // Verifica cookie local
-        return [];
-      }
-      const role = ctx.user.role as any;
-      return getPermissionsForRole(role);
+      if (!ctx.user) return [];
+      return getPermissionsForRole(ctx.user.role);
     }),
   }),
   // ─── COMENTÁRIOS DA BASE DE CONHECIMENTO ──────────────────────────────────────────────────────

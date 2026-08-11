@@ -1,12 +1,12 @@
 import "dotenv/config";
 import express from "express";
-import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import net from "net";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./auth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -68,17 +68,21 @@ async function startServer() {
     legacyHeaders: false,
     message: { error: "Muitas tentativas de login. Aguarde 1 minuto e tente novamente." },
   });
-  app.use("/api/trpc/localAuth.login", loginLimiter);
-  app.use("/api/oauth", loginLimiter);
+  app.use("/api/auth/sign-in", loginLimiter);
+  app.use("/api/auth/sign-up", loginLimiter);
+
+  // ── Better Auth ────────────────────────────────────────────────────────────
+  // Precisa ser montado ANTES do express.json(): o handler do Better Auth lê
+  // o corpo da requisição sozinho, e rodar o parser do Express antes faz o
+  // client dele ficar pendurado em "pending".
+  app.all("/api/auth/*", toNodeHandler(auth));
 
   // ── Body parser ───────────────────────────────────────────────────────────
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  app.use(cookieParser());
 
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
 
   // tRPC API
   app.use(

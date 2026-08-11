@@ -29,7 +29,7 @@ async function logAtividade(ctx: TrpcContext, opts: {
     const agora = new Date();
     await db.insert(crmAtividadeLog).values({
       vendedor: opts.vendedor,
-      localUserId: ctx.localUser?.id ?? null,
+      localUserId: ctx.user?.id ?? null,
       acao: opts.acao,
       orcamentoId: opts.orcamentoId ?? null,
       empresa: opts.empresa ?? null,
@@ -366,7 +366,7 @@ export const crmRouter = router({
       });
       if (!alvo) throw new TRPCError({ code: "NOT_FOUND", message: "Contato não encontrado para essa data." });
       await db.delete(crmContatos).where(eq(crmContatos.id, alvo.id));
-      const vendedor = ctx.localUser?.name ?? "desconhecido";
+      const vendedor = ctx.user?.name ?? "desconhecido";
       await logAtividade(ctx, { vendedor, acao: "desfazarContato", orcamentoId: input.orcamentoId, detalhe: `contato de ${input.data} removido` });
       return { ok: true };
     }),
@@ -647,7 +647,7 @@ export const crmRouter = router({
       vendedor: z.string(),
       mes: z.number(),
       ano: z.number(),
-      usuarioId: z.number().nullable(),
+      usuarioId: z.string().nullable(),
       usuarioNome: z.string().nullable(),
     }))
     .mutation(async ({ input }) => {

@@ -583,7 +583,7 @@ export const cotacoesFreteRouter = router({
   list: publicProcedure
     .input(z.object({
       status: z.string().optional(),
-      solicitanteId: z.number().optional(),
+      solicitanteId: z.string().optional(),
       page: z.number().optional().default(1),
       pageSize: z.number().optional().default(15),
     }))
@@ -633,7 +633,7 @@ export const cotacoesFreteRouter = router({
 
   create: publicProcedure
     .input(z.object({
-      solicitanteId: z.number().optional(),
+      solicitanteId: z.string().optional(),
       solicitanteNome: z.string().optional(),
       destinatarioNome: z.string(),
       destinatarioCnpj: z.string().optional(),
@@ -786,7 +786,7 @@ export const cotacoesFreteRouter = router({
     }),
 
   listMinhas: publicProcedure
-    .input(z.object({ solicitanteId: z.number().optional(), solicitanteNome: z.string().optional() }))
+    .input(z.object({ solicitanteId: z.string().optional(), solicitanteNome: z.string().optional() }))
     .query(async ({ input }) => {
       let rows = await db.select().from(cotacoesFrete).orderBy(desc(cotacoesFrete.createdAt));
       if (input.solicitanteId) {

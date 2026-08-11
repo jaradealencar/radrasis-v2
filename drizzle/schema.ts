@@ -14,7 +14,6 @@ import {
 
 // ─── ENUMS (Postgres exige tipos nomeados; MySQL permitia enum inline) ───────
 
-export const oauthRoleEnum = pgEnum("oauth_role", ["user", "admin"]);
 export const tipoRegistroEnum = pgEnum("tipo_registro", ["retrabalho", "cnq"]);
 export const retrabalhoTipoEnum = pgEnum("retrabalho_tipo", ["INTERNO", "EXTERNO"]);
 export const tipoResponsavelEnum = pgEnum("tipo_responsavel", ["operador", "gestor"]);
@@ -56,21 +55,6 @@ export const cnqTipoEnum = pgEnum("cnq_tipo", ["interno", "externo"]);
 export const abcClassificacaoEnum = pgEnum("abc_classificacao", ["A", "B", "C"]);
 export const planoAcaoComercialStatusEnum = pgEnum("plano_acao_comercial_status", ["pendente", "em_andamento", "concluido", "cancelado"]);
 export const prioridadeComCriticaEnum = pgEnum("prioridade_com_critica", ["baixa", "media", "alta", "critica"]);
-
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: oauthRoleEnum("role").default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
-
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
 
 // Biblioteca de classificação de erros
 export const errorLibrary = pgTable("error_library", {
@@ -310,26 +294,13 @@ export const PAGE_KEYS = [
 ] as const;
 export type PageKey = typeof PAGE_KEYS[number];
 
-// Usuários locais criados pelo master (e-mail + senha)
-export const localUsers = pgTable("local_users", {
-  id: serial("id").primaryKey(),
-  name: varchar("name", { length: 128 }).notNull(),
-  email: varchar("email", { length: 320 }).unique(),
-  passwordHash: varchar("passwordHash", { length: 256 }).notNull(),
-  role: appRoleEnum("role").notNull().default("vendas"),
-  active: simNaoEnum("active").default("sim").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type LocalUser = typeof localUsers.$inferSelect;
-export type InsertLocalUser = typeof localUsers.$inferInsert;
-
 // ─── BETTER AUTH (Fase 3 da migração) ───────────────────────────────────────
 // Nomes de tabela/export em singular (user/session/account/verification) não
 // seguem a convenção plural do resto deste arquivo — é o nome de modelo
 // padrão que o drizzleAdapter do Better Auth espera encontrar como chave do
-// módulo de schema. `local_users`/`users` (OAuth) são removidas na Tarefa 3.2
-// quando o código que os consome também sai.
+// módulo de schema. Substituem as antigas `local_users`/`users` (OAuth),
+// removidas nesta mesma tarefa (Fase 3, Tarefa 3.2) junto com o código que
+// as consumia.
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -495,7 +466,7 @@ export type InsertTransportadoraCidade = typeof transportadoraCidades.$inferInse
 export const cotacoesFrete = pgTable("cotacoes_frete", {
   id: serial("id").primaryKey(),
   osNumero: varchar("osNumero", { length: 32 }),
-  solicitanteId: integer("solicitanteId"), // local_users.id
+  solicitanteId: text("solicitanteId"), // user.id (Better Auth)
   solicitanteNome: varchar("solicitanteNome", { length: 128 }),
   destinatarioNome: varchar("destinatarioNome", { length: 256 }),
   destinatarioCnpj: varchar("destinatarioCnpj", { length: 32 }),
@@ -558,7 +529,7 @@ export type InsertCotacaoOpcao = typeof cotacaoOpcoes.$inferInsert;
 export const cotacaoComentarios = pgTable("cotacao_comentarios", {
   id: serial("id").primaryKey(),
   cotacaoId: integer("cotacaoId").notNull(),
-  autorId: integer("autorId"),
+  autorId: text("autorId"), // user.id (Better Auth)
   autorNome: varchar("autorNome", { length: 128 }).notNull().default("Sistema"),
   texto: text("texto"),
   audioUrl: varchar("audioUrl", { length: 512 }),
@@ -646,7 +617,7 @@ export const auditoriaRetrabalhos = pgTable("auditoria_retrabalhos", {
   osRetrabalhada: varchar("osRetrabalhada", { length: 32 }),
   osOriginal: varchar("osOriginal", { length: 64 }),
   acao: auditoriaAcaoEnum("acao").notNull(),
-  usuarioId: integer("usuarioId"),
+  usuarioId: text("usuarioId"), // user.id (Better Auth)
   usuarioNome: varchar("usuarioNome", { length: 128 }),
   usuarioRole: varchar("usuarioRole", { length: 32 }),
   detalhes: text("detalhes"),
@@ -778,7 +749,7 @@ export type InsertEmpacotamentoPedido = typeof empacotamentoPedidos.$inferInsert
 export const empacotamentoPedidoUsuarios = pgTable("empacotamento_pedido_usuarios", {
   id: serial("id").primaryKey(),
   pedidoId: integer("pedidoId").notNull(),
-  usuarioId: integer("usuarioId"),
+  usuarioId: text("usuarioId"), // user.id (Better Auth)
   usuarioNome: varchar("usuarioNome", { length: 128 }).notNull(),
   iniciadoEm: timestamp("iniciadoEm"),
   finalizadoEm: timestamp("finalizadoEm"),
@@ -913,7 +884,7 @@ export type InsertEmpacotamentoPedidoChecklistLetreiro = typeof empacotamentoPed
 export const empacotamentoSessoes = pgTable("empacotamento_sessoes", {
   id: serial("id").primaryKey(),
   pedidoId: integer("pedidoId").notNull(),
-  operadorId: integer("operadorId").notNull(),
+  operadorId: text("operadorId").notNull(), // user.id (Better Auth)
   operadorNome: varchar("operadorNome", { length: 128 }).notNull(),
   iniciadoEm: integer("iniciadoEm").notNull(),
   finalizadoEm: integer("finalizadoEm"),
@@ -942,7 +913,7 @@ export const knowledgeSuggestions = pgTable("knowledge_suggestions", {
   pergunta: text("pergunta").notNull(),
   conteudoSugerido: text("conteudoSugerido").notNull(),
   fonte: varchar("fonte", { length: 32 }).notNull().default("manual"),
-  autorId: integer("autorId"),
+  autorId: text("autorId"), // user.id (Better Auth)
   autorNome: varchar("autorNome", { length: 128 }),
   status: varchar("status", { length: 32 }).notNull().default("pendente"),
   tituloSugerido: varchar("tituloSugerido", { length: 256 }),
@@ -1308,7 +1279,7 @@ export const crmMetas = pgTable("crm_metas", {
   ano: integer("ano").notNull(),
   metaValor: decimal("metaValor", { precision: 14, scale: 2 }).default("0").notNull(),
   metaQtdOs: integer("metaQtdOs").default(0).notNull(),
-  usuarioVinculadoId: integer("usuarioVinculadoId"),
+  usuarioVinculadoId: text("usuarioVinculadoId"), // user.id (Better Auth)
   usuarioVinculadoNome: varchar("usuarioVinculadoNome", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -1567,7 +1538,7 @@ export type InsertMubisysApiCache = typeof mubisysApiCache.$inferInsert;
 export const crmAtividadeLog = pgTable("crm_atividade_log", {
   id: serial("id").primaryKey(),
   vendedor: varchar("vendedor", { length: 128 }).notNull(),
-  localUserId: integer("local_user_id"),
+  localUserId: text("local_user_id"), // user.id (Better Auth)
   acao: varchar("acao", { length: 64 }).notNull(),
   orcamentoId: varchar("orcamento_id", { length: 32 }),
   empresa: varchar("empresa", { length: 256 }),

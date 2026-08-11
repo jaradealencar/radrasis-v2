@@ -43,6 +43,13 @@
       "when": 1786471006373,
       "tag": "0005_robust_ulik",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786472842164,
+      "tag": "0006_colossal_the_hood",
+      "breakpoints": true
     }
   ]
 }
