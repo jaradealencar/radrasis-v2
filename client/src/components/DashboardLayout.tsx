@@ -1,4 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { Home } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -49,7 +49,6 @@ import {
 import { ReactNode, useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
 import { trpc } from "@/lib/trpc";
 
 interface NavItem {
@@ -155,17 +154,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  const { loading, user } = useAuth();
-  const { localUser, canAccess } = useLocalAuth();
-  const utils = trpc.useUtils();
+  const { user, isLoading: loading, canAccess, logout } = useAuth();
   const { data: alertasCounts } = trpc.alertas.countAtivos.useQuery(undefined, { refetchInterval: 60000 });
   const { data: rotinasPendentes } = trpc.routines.pending.useQuery(undefined, { refetchInterval: 120000 });
-  const logoutLocalMut = trpc.localAuth.logout.useMutation({
-    onSuccess: () => {
-      utils.localAuth.me.invalidate();
-      window.location.href = "/";
-    },
-  });
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -180,10 +171,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  const activeUser = localUser ?? user;
-  const activeRole = localUser?.role ?? (user?.role === "admin" ? "admin" : "user");
   const handleLogout = () => {
-    if (localUser) logoutLocalMut.mutate();
+    if (user) logout().then(() => { window.location.href = "/"; });
   };
 
   // Filtrar itens por busca — DEVE estar antes do return condicional (regra dos hooks)
@@ -203,9 +192,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return results;
   }, [searchQuery, canAccess]);
 
-  if (loading && !localUser) return <DashboardLayoutSkeleton />;
+  if (loading && !user) return <DashboardLayoutSkeleton />;
 
-  const initials = (activeUser?.name ?? "U")
+  const initials = (user?.name ?? "U")
     .split(" ")
     .map((n: string) => n[0])
     .slice(0, 2)
@@ -360,7 +349,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         className="px-3 py-3 flex-shrink-0"
         style={{ borderTop: "1px solid oklch(0.22 0.02 245)" }}
       >
-        {activeUser ? (
+        {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2.5 w-full rounded-lg px-2 py-2 transition-colors hover:bg-white/5 focus:outline-none">
@@ -374,10 +363,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </Avatar>
                 <div className="flex-1 min-w-0 text-left">
                   <div className="text-[0.8rem] font-semibold truncate" style={{ color: "oklch(0.88 0.005 240)" }}>
-                    {activeUser.name}
+                    {user.name}
                   </div>
                   <div className="text-[0.65rem] font-medium" style={{ color: "oklch(0.52 0.18 240)" }}>
-                    {ROLE_LABELS[activeRole] ?? "Usuário"}
+                    {ROLE_LABELS[user.role ?? ""] ?? "Usuário"}
                   </div>
                 </div>
               </button>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   MessageCircle, Trophy, XCircle, Loader2, RefreshCw, Users, Calendar,
@@ -471,8 +471,8 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function CRM() {
-  const { localUser } = useLocalAuth();
-  const isAdmin = localUser?.role === "admin" || localUser?.role === "master" || localUser?.role === "gestor";
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "master" || user?.role === "gestor";
 
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -483,10 +483,10 @@ export default function CRM() {
   // Vendedor: admin/gestor/master vê todos; vendedor comum vê apenas as suas
   const [vendedor, setVendedor] = useState("");
   useEffect(() => {
-    if (localUser && !isAdmin) {
-      setVendedor(localUser.name ?? "");
+    if (user && !isAdmin) {
+      setVendedor(user.name ?? "");
     }
-  }, [localUser, isAdmin]);
+  }, [user, isAdmin]);
   const [dataInicio, setDataInicio] = useState(`${anoAtual}-${pad(mesAtual)}-01`);
   const [dataFim, setDataFim] = useState(`${anoAtual}-${pad(mesAtual)}-${pad(lastDay)}`);
   const [verHistorico, setVerHistorico] = useState(false);
@@ -850,7 +850,7 @@ export default function CRM() {
               </thead>
               <tbody>
                 {propostasAtivas.map(p => (
-                  <PropostaRow key={p.id} p={p} vendedor={vendedor || localUser?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
+                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
                 ))}
               </tbody>
             </table>
@@ -995,7 +995,7 @@ export default function CRM() {
                 </thead>
                 <tbody>
                   {propostasHistorico.map(p => (
-                    <PropostaRow key={p.id} p={p} vendedor={vendedor || localUser?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
+                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
                   ))}
                 </tbody>
               </table>

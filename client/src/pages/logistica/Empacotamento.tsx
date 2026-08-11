@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
-import { useLocalAuth, LocalUser } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   Package, CheckCircle2, Clock, AlertCircle, Plus, Trash2, Search,
@@ -109,7 +109,7 @@ function TemporizadorSessao({
   compact = false,
 }: {
   pedidoId: number;
-  operadorId: number;
+  operadorId: string;
   operadorNome: string;
   compact?: boolean;
 }) {
@@ -273,7 +273,7 @@ const KANBAN_COLS: { id: KanbanStatus; label: string; color: string; icon: React
 ];
 
 export default function Empacotamento() {
-  const { localUser } = useLocalAuth();
+  const { user: localUser } = useAuth();
   // Supervisor = qualquer role exceto 'empacotamento' puro (operadores de chão de fábrica)
   // Isso garante que admin, master, logistica, vendas, producao, financeiro vejam as abas Gerenciar e Relatório
   const isAdmin = localUser?.role !== "empacotamento";
@@ -367,7 +367,7 @@ export default function Empacotamento() {
 }
 
 // ─── KANBAN ──────────────────────────────────────────────────────────────────
-function KanbanView({ localUser, isAdmin }: { localUser: ReturnType<typeof useLocalAuth>["localUser"]; isAdmin: boolean }) {
+function KanbanView({ localUser, isAdmin }: { localUser: ReturnType<typeof useAuth>["user"]; isAdmin: boolean }) {
   const utils = trpc.useUtils();
   const { data: todos = [], isLoading, refetch } = trpc.empacotamento.pedidos.list.useQuery({ kanbanStatus: "todos" }, { refetchInterval: 5000 });
   const { data: resumo } = trpc.empacotamento.relatorio.resumoDia.useQuery();
@@ -535,7 +535,7 @@ function KanbanCard({
   pedido, localUser, isAdmin, onAbrir, onMover, onDragStart, onDragEnd
 }: {
   pedido: Pedido;
-  localUser: ReturnType<typeof useLocalAuth>["localUser"];
+  localUser: ReturnType<typeof useAuth>["user"];
   isAdmin: boolean;
   onAbrir: () => void;
   onMover: (s: KanbanStatus) => void;
@@ -697,7 +697,7 @@ function PedidoDetalheModal({
   onRefresh: () => void;
 }) {
   // Auth resolvida DENTRO do modal — nunca depende de prop que pode chegar null
-  const { localUser, isLoading: authLoading } = useLocalAuth();
+  const { user: localUser, isLoading: authLoading } = useAuth();
   const utils = trpc.useUtils();
 
   // query de usuários: sempre ativa (não depende do auth — exibe para todos)
@@ -748,9 +748,8 @@ function PedidoDetalheModal({
   // Rastreia qual operador foi selecionado nesta sessão para este pedido
   // Persiste em sessionStorage para sobreviver ao fechar/reabrir o modal
   const sessionKey = `empac_op_${pedido.id}`;
-  const [operadorSelecionadoId, setOperadorSelecionadoId] = useState<number | null>(() => {
-    const saved = sessionStorage.getItem(sessionKey);
-    return saved ? parseInt(saved, 10) : null;
+  const [operadorSelecionadoId, setOperadorSelecionadoId] = useState<string | null>(() => {
+    return sessionStorage.getItem(sessionKey);
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -1157,7 +1156,7 @@ function NovoPedidoBtn({ onCreated }: { onCreated: () => void }) {
     modeloCaixaId: form.modeloCaixaId ? parseInt(form.modeloCaixaId) : undefined,
     metrosQuadrados: form.metrosQuadrados ? parseFloat(form.metrosQuadrados) : undefined,
   }, { enabled: !!(form.modeloId || form.modeloCaixaId) });
-  const [operadoresSelecionados, setOperadoresSelecionados] = useState<number[]>([]);
+  const [operadoresSelecionados, setOperadoresSelecionados] = useState<string[]>([]);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const handleSubmit = async () => {
     if (!form.numeroPedido || !form.cliente) return;
@@ -3101,7 +3100,7 @@ function ProdutividadeAdmin() {
 }
 
 // ─── OPERADOR VIEW — Interface Mobile/Tablet para Operadores ─────────────────
-function OperadorView({ localUser, isAdmin }: { localUser: ReturnType<typeof useLocalAuth>["localUser"]; isAdmin: boolean }) {
+function OperadorView({ localUser, isAdmin }: { localUser: ReturnType<typeof useAuth>["user"]; isAdmin: boolean }) {
   const utils = trpc.useUtils();
   const { data: pedidosEmbalando = [] } = trpc.empacotamento.pedidos.list.useQuery({ kanbanStatus: "embalando" }, { refetchInterval: 10000 });
   const { data: pedidosAguardando = [] } = trpc.empacotamento.pedidos.list.useQuery({ kanbanStatus: "aguardando" }, { refetchInterval: 10000 });
@@ -3111,7 +3110,7 @@ function OperadorView({ localUser, isAdmin }: { localUser: ReturnType<typeof use
   });
 
   const [pedidoSelecionado, setPedidoSelecionado] = useState<Pedido | null>(null);
-  const [operadorAtual, setOperadorAtual] = useState<{ id: number; name: string } | null>(
+  const [operadorAtual, setOperadorAtual] = useState<{ id: string; name: string } | null>(
     localUser ? { id: localUser.id, name: localUser.name } : null
   );
   const [mostrarTrocarOperador, setMostrarTrocarOperador] = useState(false);
@@ -3309,7 +3308,7 @@ function OperadorPedidoCard({ pedido, onSelecionar, acao = "abrir" }: {
 // Tela de pedido ativo para o operador
 function OperadorPedidoAtivo({ pedido, operador, onFinalizar, onRefresh }: {
   pedido: Pedido;
-  operador: { id: number; name: string } | null;
+  operador: { id: string; name: string } | null;
   onFinalizar: () => void;
   onRefresh: () => void;
 }) {

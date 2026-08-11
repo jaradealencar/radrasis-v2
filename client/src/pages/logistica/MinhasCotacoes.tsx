@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Truck, MapPin, Package, MessageSquare, CheckCircle2, Eye, Clock , Home } from "lucide-react";
 import { toast } from "sonner";
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -274,7 +274,7 @@ function NovaSolicitacaoDialog({ onSuccess, solicitanteNome }: { onSuccess: () =
 
 export default function MinhasCotacoes() {
   const utils = trpc.useUtils();
-  const { localUser } = useLocalAuth();
+  const { user: localUser } = useAuth();
   const nome = localUser?.name ?? "";
   const userId = localUser?.id;
 

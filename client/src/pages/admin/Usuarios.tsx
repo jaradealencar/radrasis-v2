@@ -185,8 +185,8 @@ function UsuariosList() {
   const utils = trpc.useUtils();
   const { data: usuarios = [], isLoading } = trpc.localUsers.list.useQuery();
   const [showCreate, setShowCreate] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [resetPasswordId, setResetPasswordId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
 
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "vendas" as string });

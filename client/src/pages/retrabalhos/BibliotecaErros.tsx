@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { downloadPopParsedAsPdf } from "@/lib/popPdfFromParsed";
 import RichTextEditor from "@/components/RichTextEditor";

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
-import { trpc } from "@/lib/trpc";
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { Clock, LogOut, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -9,25 +8,17 @@ const WARNING_DURATION_MS = 2 * 60 * 1000; // 2 minutos de aviso
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;    // 30 minutos de inatividade
 
 export default function IdleTimeoutWarning() {
-  const { localUser, refetch } = useLocalAuth();
+  const { user, logout } = useAuth();
   const [showWarning, setShowWarning] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(Math.floor(WARNING_DURATION_MS / 1000));
 
-  const utils = trpc.useUtils();
-  const logoutMut = trpc.localAuth.logout.useMutation({
-    onSuccess: () => {
-      utils.localAuth.me.invalidate();
-      window.location.href = "/";
-    },
-  });
-
   const handleLogout = () => {
     setShowWarning(false);
-    logoutMut.mutate();
+    logout().then(() => { window.location.href = "/"; });
   };
 
   const { resetTimers } = useIdleTimeout({
-    enabled: !!localUser,
+    enabled: !!user,
     timeoutMs: IDLE_TIMEOUT_MS,
     warningMs: WARNING_DURATION_MS,
     onWarn: () => {
@@ -63,7 +54,7 @@ export default function IdleTimeoutWarning() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  if (!showWarning || !localUser) return null;
+  if (!showWarning || !user) return null;
 
   return (
     <div

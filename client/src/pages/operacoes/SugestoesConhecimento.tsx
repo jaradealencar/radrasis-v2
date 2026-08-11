@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import { useState } from "react";
 import { toast } from "sonner";
 import DashboardLayout from "../../components/DashboardLayout";
@@ -17,9 +18,8 @@ export default function SugestoesConhecimento() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [observacao, setObservacao] = useState<Record<number, string>>({});
 
-  // Usa myLocalRole que funciona tanto para login local quanto OAuth
-  const { data: myRole } = trpc.localAuth.myLocalRole.useQuery();
-  const isMaster = myRole?.role === "master" || myRole?.role === "admin";
+  const { user } = useAuth();
+  const isMaster = user?.role === "master" || user?.role === "admin";
 
   const { data, isLoading, refetch } = trpc.knowledgeSuggestions.list.useQuery(
     { status: statusFilter || undefined },

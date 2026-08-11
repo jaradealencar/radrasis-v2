@@ -277,57 +277,127 @@ menos que alguém precise rodá-los de novo contra uma base nova.
 
 ---
 
-## Fase 3 — Auth: consolidar em Better Auth (local only)
+## Fase 3 — Auth: consolidar em Better Auth (local only) ✅ Concluída
 
-### Tarefa 3.1 — Instalar e configurar Better Auth
+- **Tarefa 3.1 — Instalar e configurar Better Auth**: `yarn add better-auth`
+  (pacote principal, `1.6.26` na época) — achado não previsto pela doc: o
+  adapter Drizzle (`better-auth/adapters/drizzle`) re-exporta em runtime de
+  `@better-auth/drizzle-adapter`, um pacote **separado** não listado nas
+  `dependencies` do pacote principal; precisou `yarn add
+  @better-auth/drizzle-adapter @better-auth/core` também, senão quebra em
+  runtime (`Cannot find package`). `drizzle-orm` teve que subir de
+  `^0.44.5` pra `^0.45.2` (peer dependency do Better Auth) — sem impacto,
+  `npx tsc --noEmit` continuou nos mesmos 18 erros pré-existentes depois do
+  bump.
+  - `drizzle/schema.ts` ganhou as 4 tabelas (`user`, `session`, `account`,
+    `verification`) — nomes em singular (convenção do Better Auth, não do
+    resto do arquivo) precisam bater com as chaves do módulo de schema
+    passado pro adapter. `user.id` é `text` (string gerada), não `serial`
+    como o resto do schema — consequência que só apareceu na Tarefa 3.2
+    (ver achado abaixo).
+  - `server/_core/auth.ts`: `emailAndPassword.password.hash/verify`
+    sobrescritos com `bcryptjs` (mesma lib do resto do app). Plugin
+    `admin`: **achado** — `adminRoles: ["admin","master"]` sozinho não
+    basta, o plugin valida esses valores contra `roles` (mapa de
+    permissão) e falha na inicialização se não achar; e só declarar
+    `admin`/`master` em `roles` não bastava depois (Tarefa 3.2), porque
+    `createUser`/`setRole` também validam o `role` do **usuário sendo
+    criado** contra esse mesmo mapa — teve que cobrir as 8 roles de
+    negócio inteiras (as 6 sem gerência de usuário ganham `userAc`, sem
+    permissão extra). Plugin `username`: validador padrão só aceita
+    alfanumérico+underscore, mas o username pode ser um e-mail (com `@`/`.`)
+    ou o slug de um nome (com `.`) — precisou de `usernameValidator` custom.
+  - Tabelas antigas (`users`/`local_users`) só foram dropadas na Tarefa 3.2,
+    junto do código que ainda as consumia — mantém cada commit num estado
+    verificável (não dava pra tirar as tabelas sem tirar quem as usa).
 
-- `yarn add better-auth`, configurar com adapter Drizzle apontando pro
-  schema Postgres.
-- Decidir o que fazer com a tabela `local_users` (ver achado na seção
-  "Concluído" acima — schema já bate com a tabela, só falta o hash de senha
-  usável) — as tabelas do Better Auth (`user`, `session`, `account`,
-  `verification`) substituem tanto `users` (OAuth) quanto `local_users`.
-- Campo `role` do `user` usa o vocabulário de negócio já existente
-  (`master, admin, gestor, vendas, logistica, producao, financeiro,
-  empacotamento`), não o `"user"|"admin"` genérico do OAuth.
-- Configurar verificação de senha customizada com `bcrypt.compare` pros
-  hashes que já existem (nenhum local_user real tem hash válido hoje, mas o
-  suporte deve existir pra quando alguém recriar contas).
+- **Tarefa 3.2 — Remover Manus OAuth e unificar `ctx.user`**: removidos
+  `server/_core/oauth.ts`, `sdk.ts`, `types/manusTypes.ts`,
+  `types/cookie.d.ts` (shim só usado pelo sdk.ts) e `cookies.ts`
+  (`getSessionCookieOptions` não tinha mais nenhum consumidor fora desses
+  arquivos — achado: a doc suspeitava que teria "lógica Manus-específica"
+  dentro dele, mas o arquivo já era genérico, só ficou órfão). Handler do
+  Better Auth montado em `app.all("/api/auth/*", toNodeHandler(auth))`
+  **antes** do `express.json()` — gotcha real do Better Auth, senão o
+  client trava em "pending". `context.ts` reescrito com um único `ctx.user`
+  via `auth.api.getSession`; `trpc.ts` ganhou `requireRole(...roles)`, e
+  `adminProcedure` passou a checar role de negócio (`admin`/`master`) em
+  vez do `"user"|"admin"` genérico do OAuth — corrige de brinde o bug morto
+  de `routers.ts:1248` (branch `oauthRole === "master"` que nunca era
+  verdadeira, a branch inteira deixou de existir).
+  - **Achado maior, fora do escopo original da tarefa**: `user.id` (Better
+    Auth) é `text`, não `integer` como `local_users.id` era — quebra
+    qualquer coluna que guardava esse id como FK informal (sem constraint
+    de verdade, só convenção). Achadas e migradas pra `text` (migration
+    `0006_colossal_the_hood.sql`, com `USING col::text` explícito —
+    drizzle-kit não gera isso sozinho e o cast integer→text não é
+    implícito no Postgres): `cotacoes_frete.solicitanteId`,
+    `crm_atividade_log.local_user_id`, `cotacao_comentarios.autorId`,
+    `auditoria_retrabalhos.usuarioId`,
+    `empacotamento_pedido_usuarios.usuarioId`,
+    `empacotamento_sessoes.operadorId`, `knowledge_suggestions.autorId`,
+    `crm_metas.usuarioVinculadoId` — 8 colunas ao todo, só 2 delas citadas
+    na doc original. Zod schemas (`z.number()` → `z.string()`) e o client
+    (Empacotamento.tsx, MinhasCotacoes.tsx, Auditoria.tsx, crm.ts) ajustados
+    junto — só comparações de igualdade/exibição, nenhuma lógica numérica
+    dependia desses ids, então o porte foi mecânico.
+  - **Achado à parte, sem relação com auth**: `server/sync/scheduled-sync-os-handler.ts`
+    autenticava o endpoint de CRON (`POST /api/scheduled/sincronizarOS`)
+    checando `sdk.authenticateRequest(req).isCron`/`.taskUid` — campos que
+    **nunca existiram** no tipo `User` real (só acessíveis via um cast
+    `as any` que escondia o erro de tipo); não há nenhuma outra referência
+    a `isCron`/`taskUid` no repo nem config de cron externo versionada.
+    Susbtituído por um segredo compartilhado simples (header
+    `x-cron-secret` == env `CRON_SECRET`) — quem dispara esse endpoint
+    externamente precisa ser reconfigurado com o header novo.
+  - `localUsers.create/update/delete` reescritos sobre
+    `auth.api.createUser/adminUpdateUser/setUserPassword/removeUser`
+    (`banned` mapeado de/pra `active: "sim"/"nao"` só na resposta, pra não
+    precisar reescrever a UI existente). `createUser` é chamado **sem**
+    `headers` (chamada "server-trusted") deliberadamente — o próprio
+    Better Auth trata chamadas sem headers como internas/confiáveis e pula
+    a checagem de sessão dele, o que é necessário pro modo bootstrap (criar
+    o primeiro usuário sem ninguém logado) funcionar; a autorização de
+    verdade já é feita antes, à mão (`assertAdminOrMaster`/contagem de
+    usuários). Já `adminUpdateUser`/`setUserPassword`/`removeUser`/
+    `banUser`/`unbanUser` exigem uma sessão Better Auth válida com role
+    admin/master — por isso passam `headers: fromNodeHeaders(ctx.req.headers)`.
 
-### Tarefa 3.2 — Remover Manus OAuth e unificar `ctx.user`
-
-- Remover: `server/_core/oauth.ts`, `server/_core/sdk.ts`,
-  `server/_core/types/manusTypes.ts`, lógica Manus-específica em
-  `server/_core/cookies.ts`.
-- Reescrever `server/_core/context.ts`: um único `ctx.user` vindo da sessão
-  do Better Auth, sem a síntese dupla `ctx.user`/`ctx.localUser` atual.
-- Reescrever `server/_core/trpc.ts`: `publicProcedure`, `protectedProcedure`,
-  e um helper `requireRole(...roles)` reusável — hoje há ~10+ checagens de
-  role feitas à mão espalhadas em `routers.ts`, cada uma reimplementando
-  `ctx.localUser?.role ?? ctx.user?.role`. Isso também corrige o bug do
-  `"master"` morto em `routers.ts:1248` (compara contra um tipo que nunca
-  pode ser `"master"`).
-
-### Tarefa 3.3 — Unificar auth no client
-
-- `client/src/contexts/LocalAuthContext.tsx` + `client/src/_core/hooks/useAuth.ts`
-  → um único hook baseado em `better-auth/react`.
-- 14 arquivos consomem um ou outro hoje — atualizar os call sites (padrão se
-  repete: ler `user`/`role`, checar permissão de página, chamar login/logout).
-- `client/src/pages/LocalLogin.tsx`: trocar a chamada tRPC `localAuth.login`
-  pelo `signIn` do client do Better Auth.
-- **Verificação**: login local funciona ponta a ponta; páginas com
-  role-gating continuam bloqueando/liberando certo pros 8 roles de negócio.
+- **Tarefa 3.3 — Unificar auth no client**: hook único
+  `client/src/hooks/useAuth.ts` substitui `LocalAuthContext.tsx` (removido,
+  não precisa mais de Provider — o client do Better Auth é um store global)
+  e o antigo `client/src/_core/hooks/useAuth.ts` (removido, `_core/`
+  ficou vazio nos dois lados — client e server — e foi removido). Novo
+  `client/src/lib/auth-client.ts` (`createAuthClient` + plugins
+  `adminClient`/`usernameClient`). 15 arquivos (não 14 — achado:
+  `SugestoesConhecimento.tsx` chamava `trpc.localAuth.myLocalRole` direto,
+  fora do padrão dos outros 14) atualizados. `LocalLogin.tsx`: removido o
+  botão "Login com Manus/Google"; login por e-mail OU nome preservado
+  normalizando o texto digitado (mesmo slug usado no `localUsers.create`)
+  antes de chamar `authClient.signIn.username()`. `client/src/const.ts`
+  (só tinha `getLoginUrl`/`startLogin`, Manus) e o redirect-pra-Manus em
+  `main.tsx` removidos — sem sessão, o app já é aberto por design, não tem
+  mais URL externa de login pra redirecionar.
+  - **Verificação end-to-end** (via curl contra o servidor local, banco
+    Neon real, limpo depois): bootstrap (0 usuários → cria o primeiro sem
+    sessão) → login por e-mail → `localUsers.list` como master → criação de
+    usuário `producao` sem e-mail → login pelo nome digitado igual o
+    usuário via de fato ("João da Silva", com acento) → `banUser`
+    (desativar) → tentativa de login de usuário banido rejeitada →
+    `permissions.myPermissions` → sign-out → endpoint de CRON rejeitando
+    sem `CRON_SECRET` e aceitando com o secret certo. Todos os passos
+    funcionaram como esperado. `npx tsc --noEmit`: 17 erros (os mesmos
+    pré-existentes, um a menos que antes — o de `routers.ts:1248` foi
+    corrigido). `yarn test`: 133/135 (as 2 falhas são de
+    `card-kanban-completo.test.ts`, dependem de haver OS reais no MubiSys
+    num intervalo de datas — sem relação com auth, já falhavam antes).
 
 ---
 
 ## Fase 5 — Limpeza final
 
-- `package.json`: remover `mysql2`.
-- `.env.example`: remover menção a MySQL; adicionar var de secret do Better
-  Auth se precisar.
-- `AGENTS.md`: atualizar stack (Postgres em vez de MySQL, Better Auth em vez
-  de OAuth Manus + local auth).
+- `package.json`: remover `mysql2` (único item que falta — `.env.example`
+  e `AGENTS.md` já foram atualizados na Fase 3).
 - Testes de servidor que hoje falham só por causa do MySQL devem passar a
   rodar de verdade contra o Postgres.
-- `yarn check` + `yarn test` como verificação final de toda a migração.
+- `npx tsc --noEmit` + `yarn test` como verificação final de toda a migração.

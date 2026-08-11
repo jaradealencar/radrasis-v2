@@ -1,4 +1,4 @@
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import AcessoNegado from "@/pages/AcessoNegado";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
@@ -14,13 +14,13 @@ interface ProtectedRouteProps {
  * - Se com permissão: renderiza o conteúdo
  */
 export default function ProtectedRoute({ pageKey, children }: ProtectedRouteProps) {
-  const { localUser, isLoading, canAccess } = useLocalAuth();
+  const { user, isLoading, canAccess } = useAuth();
 
   // Enquanto carrega as permissões, exibe skeleton
   if (isLoading) return <DashboardLayoutSkeleton />;
 
   // Sem usuário logado: acesso aberto (sistema interno sem login obrigatório)
-  if (!localUser) return <>{children}</>;
+  if (!user) return <>{children}</>;
 
   // Verifica permissão
   if (!canAccess(pageKey)) return <AcessoNegado />;

@@ -4,7 +4,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { LocalAuthProvider, useLocalAuth } from "./contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { useVendedorAlertas } from "@/hooks/useVendedorAlertas";
 
 // Retrabalhos
@@ -192,10 +192,9 @@ function Router() {
   );
 }
 
-// Componente interno que usa o hook de alertas (precisa estar dentro do LocalAuthProvider)
 function VendedorAlertasWatcher() {
-  const { localUser } = useLocalAuth();
-  useVendedorAlertas(localUser?.name);
+  const { user } = useAuth();
+  useVendedorAlertas(user?.name);
   return null;
 }
 
@@ -205,11 +204,9 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster richColors position="top-right" />
-          <LocalAuthProvider>
-            <VendedorAlertasWatcher />
-            <Router />
-            <IdleTimeoutWarning />
-          </LocalAuthProvider>
+          <VendedorAlertasWatcher />
+          <Router />
+          <IdleTimeoutWarning />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

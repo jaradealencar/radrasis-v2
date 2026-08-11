@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Truck, MapPin, Package, MessageSquare, ChevronLeft, ChevronRight, X, CheckCircle2, Eye, Copy, ClipboardCheck, Home, Trash2, Clock, User, Printer, Download } from "lucide-react";
 import { toast } from "sonner";
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
 import { montarRomaneioHtml, type CotacaoRomaneio } from "./romaneio";
 
@@ -616,7 +616,7 @@ function CotacaoCard({ cotacao, onRefresh, isVendedor }: { cotacao: Cotacao; onR
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buscarDadosQuery.data]);
 
-  const { localUser: cardUser } = useLocalAuth();
+  const { user: cardUser } = useAuth();
   // Admin/logistica podem excluir em qualquer estágio; vendedor pode excluir nos estágios 1, 2 e 3
   const podeExcluir = ["admin", "supervisor", "master", "logistica"].includes(cardUser?.role ?? "")
     || (cardUser?.role === "vendas" && cotacao.status !== "concluido");
@@ -1722,8 +1722,8 @@ function KanbanView({ cotacoes, onRefresh, isVendedor, pageNumber, setPageNumber
 
 export default function Solicitacoes() {
   const utils = trpc.useUtils();
-  const { localUser } = useLocalAuth();
-  
+  const { user: localUser } = useAuth();
+
   // ✅ MELHORIA 2: Cache inteligente com React Query + Paginação Server-Side
   // Configuração de cache: mantém dados por 5 minutos, refetch em background a cada 2 minutos
   const [pageNumber, setPageNumber] = useState(1);

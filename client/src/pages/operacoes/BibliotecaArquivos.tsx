@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/../../client/src/_core/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
   Upload, Search, FileText, FileImage, File, FileSpreadsheet,

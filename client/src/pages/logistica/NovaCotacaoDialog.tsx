@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, X, Truck, CheckCircle2, Loader2, MapPin, Camera, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { useCepLookup } from "@/hooks/useCepLookup";
 
 interface Volume {
@@ -77,7 +77,7 @@ export function NovaCotacaoDialog({ onSuccess }: { onSuccess: () => void }) {
 
   const [transportadorasDisponiveis, setTransportadorasDisponiveis] = useState<any[]>([]);
   const [horarioCriacao, setHorarioCriacao] = useState<Date | null>(null);
-  const { localUser } = useLocalAuth();
+  const { user: localUser } = useAuth();
   const solicitanteNome = localUser?.name || "Usuário";
 
   // ── Empacotadores responsáveis pela embalagem (até 3) ──────────────────────

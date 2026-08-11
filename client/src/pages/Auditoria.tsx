@@ -61,7 +61,7 @@ type AuditRow = {
   osRetrabalhada: string | null;
   osOriginal: string | null;
   acao: AcaoType;
-  usuarioId: number | null;
+  usuarioId: string | null;
   usuarioNome: string | null;
   usuarioRole: string | null;
   detalhes: Record<string, unknown> | null;

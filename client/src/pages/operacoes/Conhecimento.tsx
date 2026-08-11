@@ -8,7 +8,7 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
-import { useLocalAuth } from "@/contexts/LocalAuthContext";
+import { useAuth } from "@/hooks/useAuth";
 
 const CATEGORIES = ["Comercial", "Administrativo", "Financeiro", "Produção", "Logística", "RH", "TI", "Geral"];
 
@@ -413,8 +413,8 @@ export default function Conhecimento() {
   const [suggestTitle, setSuggestTitle] = useState("");
   const [suggestCategory, setSuggestCategory] = useState("Geral");
   const [suggestContent, setSuggestContent] = useState("");
-  const { localUser } = useLocalAuth();
-  const isMaster = localUser?.role === "master" || localUser?.role === "admin";
+  const { user } = useAuth();
+  const isMaster = user?.role === "master" || user?.role === "admin";
 
   const { data, isLoading, refetch } = trpc.knowledge.list.useQuery({ search, category });
   const createMut = trpc.knowledge.create.useMutation({
