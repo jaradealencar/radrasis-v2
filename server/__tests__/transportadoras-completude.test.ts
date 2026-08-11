@@ -17,14 +17,14 @@ let idSecundario = 0;
 describe('Completude de dados das transportadoras', () => {
   beforeAll(async () => {
     const res: any = await mutationQuery(
-      `INSERT INTO transportadoras (nome, ativa, modais, coberturaTotal) VALUES (?, 'sim', ?, 0)`,
+      `INSERT INTO transportadoras (nome, ativa, modais, "coberturaTotal") VALUES (?, 'sim', ?, 0) RETURNING id`,
       [NOME_TESTE, JSON.stringify(['rodoviario'])],
     );
     id = Number(res?.insertId ?? 0);
     expect(id).toBeGreaterThan(0);
 
     const res2: any = await mutationQuery(
-      `INSERT INTO transportadoras (nome, ativa, modais, coberturaTotal, endereco) VALUES (?, 'sim', ?, 0, ?)`,
+      `INSERT INTO transportadoras (nome, ativa, modais, "coberturaTotal", endereco) VALUES (?, 'sim', ?, 0, ?) RETURNING id`,
       [`${NOME_TESTE} B`, JSON.stringify(['rodoviario']), 'Rua Preenchida, 10'],
     );
     idSecundario = Number(res2?.insertId ?? 0);
@@ -116,7 +116,7 @@ describe('Completude de dados das transportadoras', () => {
     const r = await atualizarCampoEmLote([id, idSecundario], 'formaCotacao', 'whatsapp');
     expect(r.afetados).toBe(2);
     const rows = await selectQuery(
-      'SELECT formaCotacao FROM transportadoras WHERE id IN (?, ?)',
+      'SELECT "formaCotacao" FROM transportadoras WHERE id IN (?, ?)',
       [id, idSecundario],
     );
     expect(rows.every((l: any) => l.formaCotacao === 'whatsapp')).toBe(true);
@@ -125,7 +125,7 @@ describe('Completude de dados das transportadoras', () => {
   it('preenche o campo e o registro sai da lista de pendentes', async () => {
     await atualizarCampoTransportadora(id, 'nomeContato', 'Maria da Logística');
 
-    const rows = await selectQuery('SELECT nomeContato FROM transportadoras WHERE id = ?', [id]);
+    const rows = await selectQuery('SELECT "nomeContato" FROM transportadoras WHERE id = ?', [id]);
     expect(rows[0].nomeContato).toBe('Maria da Logística');
 
     const depoisLista = await listarPendentesPorCampo('nomeContato', NOME_TESTE, 1, 20, { status: 'ativas' });

@@ -376,6 +376,12 @@ export const transportadoras = pgTable("transportadoras", {
   ultAtualizCidades: varchar("ultAtualizCidades", { length: 16 }), // YYYY-MM-DD
   coberturaTotal: integer("coberturaTotal").default(0), // 1 = atende todos os municípios do Brasil
   contatoRastreio: text("contatoRastreio"),
+  origem: varchar("origem", { length: 40 }).default("Manual").notNull(), // 'Frenet' | 'Manual'
+  bairro: varchar("bairro", { length: 160 }),
+  cep: varchar("cep", { length: 20 }),
+  cidade: varchar("cidade", { length: 160 }),
+  uf: varchar("uf", { length: 2 }),
+  cnpj: varchar("cnpj", { length: 24 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

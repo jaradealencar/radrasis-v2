@@ -37,7 +37,7 @@ export type FiltroOrigem = 'Frenet' | 'Manual' | 'todas';
 
 /** Expressão SQL que identifica um campo vazio (NULL ou string em branco). */
 function expressaoVazio(campo: string) {
-  return `(\`${campo}\` IS NULL OR TRIM(CAST(\`${campo}\` AS CHAR)) = '')`;
+  return `("${campo}" IS NULL OR TRIM(CAST("${campo}" AS TEXT)) = '')`;
 }
 
 /** Monta o WHERE base (status + origem + busca) compartilhado pelas consultas. */
@@ -72,7 +72,7 @@ export async function panoramaCadastro() {
        SUM(CASE WHEN ativa = 'sim' THEN 0 ELSE 1 END) AS inativas,
        SUM(CASE WHEN origem = 'Frenet' THEN 1 ELSE 0 END) AS frenet,
        SUM(CASE WHEN origem <> 'Frenet' OR origem IS NULL THEN 1 ELSE 0 END) AS manual,
-       SUM(CASE WHEN coberturaTotal = 1 THEN 1 ELSE 0 END) AS nacionais
+       SUM(CASE WHEN "coberturaTotal" = 1 THEN 1 ELSE 0 END) AS nacionais
      FROM transportadoras`,
     [],
   );
@@ -94,7 +94,7 @@ export async function panoramaCadastro() {
 export async function resumoCompletude(opts: { status?: FiltroStatus; origem?: FiltroOrigem } = {}) {
   const base = whereBase(opts);
   const selects = CAMPOS_COMPLETUDE
-    .map(c => `SUM(${expressaoVazio(c.campo)}) AS \`${c.campo}\``)
+    .map(c => `SUM(CASE WHEN ${expressaoVazio(c.campo)} THEN 1 ELSE 0 END) AS "${c.campo}"`)
     .join(', ');
   const rows = await selectQuery(
     `SELECT COUNT(*) AS total, ${selects} FROM transportadoras ${base.clausula}`,
@@ -130,7 +130,7 @@ export async function resumoCompletude(opts: { status?: FiltroStatus; origem?: F
   const contagens = await selectQuery(
     `SELECT
        SUM(CASE WHEN ${todos.join(' OR ')} THEN 0 ELSE 1 END) AS completos,
-       SUM(CASE WHEN ${criticos.join(' OR ')} THEN 1 ELSE 0 END) AS comCriticoVazio
+       SUM(CASE WHEN ${criticos.join(' OR ')} THEN 1 ELSE 0 END) AS "comCriticoVazio"
      FROM transportadoras ${base.clausula}`,
     base.params,
   );
@@ -178,9 +178,9 @@ export async function listarPendentesPorCampo(
   const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
 
   const rows = await selectQuery(
-    `SELECT id, nome, site, endereco, nomeContato, telefoneContato, whatsappContato,
-            nomeContatoNegocial, emailContatoNegocial, formaCotacao, modais, pesoMaxKg,
-            referencia, horarioLimiteColeta, coberturaTotal,
+    `SELECT id, nome, site, endereco, "nomeContato", "telefoneContato", "whatsappContato",
+            "nomeContatoNegocial", "emailContatoNegocial", "formaCotacao", modais, "pesoMaxKg",
+            referencia, "horarioLimiteColeta", "coberturaTotal",
             bairro, cep, cidade, uf, cnpj, ativa, origem
      FROM transportadoras ${where}
      ORDER BY nome
@@ -225,7 +225,7 @@ export async function atualizarCampoTransportadora(id: number, campo: string, va
   }
   const valorFinal = valor === null || valor.trim() === '' ? null : valor.trim();
   const res: any = await mutationQuery(
-    `UPDATE transportadoras SET \`${campo}\` = ?, updatedAt = NOW() WHERE id = ?`,
+    `UPDATE transportadoras SET "${campo}" = ?, "updatedAt" = NOW() WHERE id = ?`,
     [valorFinal, id],
   );
   return { ok: true, afetados: Number(res?.affectedRows ?? 0) };
@@ -234,7 +234,7 @@ export async function atualizarCampoTransportadora(id: number, campo: string, va
 /** Liga/desliga o status ativo da transportadora direto na listagem. */
 export async function definirStatusTransportadora(id: number, ativa: boolean) {
   const res: any = await mutationQuery(
-    `UPDATE transportadoras SET ativa = ?, updatedAt = NOW() WHERE id = ?`,
+    `UPDATE transportadoras SET ativa = ?, "updatedAt" = NOW() WHERE id = ?`,
     [ativa ? 'sim' : 'nao', id],
   );
   return { ok: true, afetados: Number(res?.affectedRows ?? 0) };
@@ -250,7 +250,7 @@ export async function atualizarCampoEmLote(ids: number[], campo: string, valor: 
   const valorFinal = valor === null || valor.trim() === '' ? null : valor.trim();
   const placeholders = alvos.map(() => '?').join(', ');
   const res: any = await mutationQuery(
-    `UPDATE transportadoras SET \`${campo}\` = ?, updatedAt = NOW() WHERE id IN (${placeholders})`,
+    `UPDATE transportadoras SET "${campo}" = ?, "updatedAt" = NOW() WHERE id IN (${placeholders})`,
     [valorFinal, ...alvos],
   );
   return { ok: true, afetados: Number(res?.affectedRows ?? 0) };
