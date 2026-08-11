@@ -538,15 +538,16 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
           });
         }
 
-        // 3) Chamar Gemini
-        const { askGemini } = await import("./integrations/gemini");
+        // 3) Chamar LLM
+        const { invokeLLM } = await import("./_core/llm");
         const systemPrompt = hasInternalContent
           ? `Você é um assistente especialista nos processos internos da empresa Letreiros Express. Use o contexto interno fornecido como base principal para responder. Se o contexto não for suficiente, complemente com seu conhecimento geral. Seja objetivo e prático. Responda em no máximo 3 parágrafos curtos.`
           : `Você é um assistente especialista em processos industriais e produção de letreiros. A pergunta não possui informações na base interna da empresa. Responda com base no seu conhecimento geral de forma objetiva e prática. Deixe claro que esta é uma resposta geral, não baseada em dados internos da empresa. Responda em no máximo 3 parágrafos curtos.`;
 
-        const geminiAnswer = await askGemini([
-          { role: "user" as const, parts: [{ text: `${systemPrompt}\n\n${contextText ? `Contexto interno:\n${contextText}\n\n` : ""}Pergunta: ${input.question}` }] },
-        ]);
+        const llmResponse = await invokeLLM({
+          messages: [{ role: "user", content: `${systemPrompt}\n\n${contextText ? `Contexto interno:\n${contextText}\n\n` : ""}Pergunta: ${input.question}` }],
+        });
+        const geminiAnswer = (llmResponse.choices?.[0]?.message?.content as string) ?? "";
 
         return {
           internalSources: {

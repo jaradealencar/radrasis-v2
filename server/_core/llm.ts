@@ -16,11 +16,8 @@ export type ImageContent = {
 };
 
 export type FileContent = {
-  type: "file_url";
-  file_url: {
-    url: string;
-    mime_type?: "audio/mpeg" | "audio/wav" | "application/pdf" | "audio/mp4" | "video/mp4" ;
-  };
+  type: "file";
+  file: { filename?: string; file_data: string } | { file_id: string };
 };
 
 export type MessageContent = string | TextContent | ImageContent | FileContent;
@@ -57,6 +54,7 @@ export type ToolChoice =
 
 export type InvokeParams = {
   messages: Message[];
+  model?: string;
   tools?: Tool[];
   toolChoice?: ToolChoice;
   tool_choice?: ToolChoice;
@@ -129,7 +127,7 @@ const normalizeContentPart = (
     return part;
   }
 
-  if (part.type === "file_url") {
+  if (part.type === "file") {
     return part;
   }
 
@@ -209,16 +207,71 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_FILES_URL = "https://api.openai.com/v1/files";
 
 const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
+  if (!ENV.openaiApiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
 };
+
+// Base64 infla o arquivo em ~33%; acima disso o request combinado passa
+// perto do teto de 32MB da OpenAI, então usamos a Files API em vez de inline.
+const MAX_INLINE_FILE_BYTES = 20 * 1024 * 1024;
+
+async function uploadFileToOpenAI(
+  buffer: Buffer,
+  filename: string
+): Promise<string> {
+  assertApiKey();
+
+  const form = new FormData();
+  form.append("purpose", "user_data");
+  form.append("file", new Blob([new Uint8Array(buffer)]), filename);
+
+  const response = await fetch(OPENAI_FILES_URL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ENV.openaiApiKey}` },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `OpenAI file upload failed: ${response.status} ${response.statusText} – ${errorText}`
+    );
+  }
+
+  const data = (await response.json()) as { id: string };
+  return data.id;
+}
+
+// Monta o content part de arquivo (PDF etc.) pro invokeLLM. Base64 inline
+// pra arquivos pequenos/médios; acima do limite, sobe pra Files API e manda
+// só o file_id.
+export async function buildFileContent(
+  base64: string,
+  mimeType: string,
+  filename: string
+): Promise<FileContent> {
+  const buffer = Buffer.from(base64, "base64");
+
+  if (buffer.byteLength > MAX_INLINE_FILE_BYTES) {
+    const file_id = await uploadFileToOpenAI(buffer, filename);
+    return { type: "file", file: { file_id } };
+  }
+
+  return {
+    type: "file",
+    file: { filename, file_data: `data:${mimeType};base64,${base64}` },
+  };
+}
+
+// Monta o content part de imagem pro invokeLLM a partir de base64.
+export function buildImageContent(base64: string, mimeType: string): ImageContent {
+  return { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } };
+}
 
 const normalizeResponseFormat = ({
   responseFormat,
@@ -280,7 +333,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: params.model ?? "gpt-5-mini",
     messages: messages.map(normalizeMessage),
   };
 
@@ -296,11 +349,6 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
-  }
-
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
     response_format,
@@ -312,11 +360,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(OPENAI_API_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${ENV.openaiApiKey}`,
     },
     body: JSON.stringify(payload),
   });

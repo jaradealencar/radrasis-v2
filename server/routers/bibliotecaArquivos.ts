@@ -13,8 +13,7 @@ async function extrairTextoArquivo(
   descricao?: string
 ): Promise<string | null> {
   try {
-    const { invokeLLM } = await import("../_core/llm");
-    const { storagePut } = await import("../db/storage");
+    const { invokeLLM, buildFileContent, buildImageContent } = await import("../_core/llm");
 
     const isPdf = mimeType === "application/pdf";
     const isImage = mimeType.startsWith("image/");
@@ -25,19 +24,9 @@ async function extrairTextoArquivo(
     }
 
     if (isPdf || isImage) {
-      // Fazer upload temporário para obter URL acessível pelo LLM
-      const buffer = Buffer.from(fileBase64, "base64");
-      const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const tempKey = `temp-extract/${Date.now()}-${safeFileName}`;
-      const { url } = await storagePut(tempKey, buffer, mimeType);
-
-      // Construir URL absoluta para o LLM
-      const baseUrl = (process.env.BUILT_IN_FORGE_API_URL ?? "").replace("/api/forge", "");
-      const absoluteUrl = url.startsWith("http") ? url : `${baseUrl}${url}`;
-
       const contentItem = isPdf
-        ? { type: "file_url" as const, file_url: { url: absoluteUrl, mime_type: "application/pdf" as const } }
-        : { type: "image_url" as const, image_url: { url: absoluteUrl } };
+        ? await buildFileContent(fileBase64, mimeType, fileName)
+        : buildImageContent(fileBase64, mimeType);
 
       const response = await invokeLLM({
         messages: [{
@@ -48,7 +37,7 @@ async function extrairTextoArquivo(
               type: "text" as const,
               text: `Extraia e transcreva TODO o conteúdo textual deste arquivo "${nome}". Inclua títulos, tabelas, listas e parágrafos. Retorne apenas o texto extraído, sem comentários adicionais.`,
             },
-          ] as any,
+          ],
         }],
       });
       return (response?.choices?.[0]?.message?.content as string | null) ?? null;
@@ -164,22 +153,26 @@ export const bibliotecaArquivosRouter = router({
       const [arquivo] = await db.select().from(bibliotecaArquivos).where(eq(bibliotecaArquivos.id, input.id));
       if (!arquivo) throw new Error("Arquivo não encontrado");
 
-      const { storageGet } = await import("../db/storage");
-      const { url } = await storageGet(arquivo.fileKey);
-      const baseUrl = (process.env.BUILT_IN_FORGE_API_URL ?? "").replace("/api/forge", "");
-      const absoluteUrl = url.startsWith("http") ? url : `${baseUrl}${url}`;
-
-      const { invokeLLM } = await import("../_core/llm");
+      const { invokeLLM, buildFileContent } = await import("../_core/llm");
       let conteudoExtraido: string | null = null;
 
       if (arquivo.mimeType === "application/pdf") {
+        const { storageGetSignedUrl } = await import("../db/storage");
+        const signedUrl = await storageGetSignedUrl(arquivo.fileKey);
+        const fileResp = await fetch(signedUrl);
+        if (!fileResp.ok) {
+          throw new Error(`Falha ao baixar arquivo do storage (${fileResp.status})`);
+        }
+        const fileBase64 = Buffer.from(await fileResp.arrayBuffer()).toString("base64");
+        const fileContent = await buildFileContent(fileBase64, arquivo.mimeType, arquivo.fileName);
+
         const response = await invokeLLM({
           messages: [{
             role: "user" as const,
             content: [
-              { type: "file_url" as const, file_url: { url: absoluteUrl, mime_type: "application/pdf" as const } },
+              fileContent,
               { type: "text" as const, text: `Extraia e transcreva TODO o conteúdo textual deste arquivo "${arquivo.nome}". Retorne apenas o texto extraído.` },
-            ] as any,
+            ],
           }],
         });
         conteudoExtraido = (response?.choices?.[0]?.message?.content as string | null) ?? null;

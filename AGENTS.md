@@ -166,7 +166,7 @@ server/
   routers/             sub-routers por domínio (logistica.ts, pcp.ts, admin.ts, ...)
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts, pcp-helpers.ts
-  integrations/        clientes de APIs externas: gemini.ts, mubisys-client.ts, mubisys-frete.ts
+  integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts
   sync/                sincronização com o ERP: sync-erp.ts, scheduled-sync-os*.ts,
                        heartbeat-sync-erp.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
@@ -205,12 +205,17 @@ nem mocks da camada de dados.
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias
   partes já não valem pra este repo, ver aviso na seção "O que é este
   projeto" acima.
-- `docs/biblioteca-arquivos-extracao-sem-llm.md` — outro plano de trabalho
-  ativo (mesmo formato do doc de migração: fases/tarefas coladas como
-  contexto de conversa), sobre trocar a extração de texto de upload
-  (`server/routers/bibliotecaArquivos.ts`) de "LLM especula pelo nome do
-  arquivo" pra extração real via libs JS. Ainda não commitado — confira
-  `git log`/`git status` pra saber se já avançou.
+- `docs/sprint-saida-forge/` — plano de trabalho ativo pra tirar a
+  dependência do Forge (Manus) e do Gemini: LLM na OpenAI, storage no
+  UploadThing, notificação via alertas do próprio app, extração de texto
+  sem LLM, e limpeza final. **Formato diferente dos outros docs de sprint:
+  é uma pasta, com `README.md` (contexto + decisões + regras) e um arquivo
+  por fase.** Ao atacar uma fase, cole o `README.md` + o arquivo daquela
+  fase. Substitui e funde dois documentos anteriores
+  (`biblioteca-arquivos-extracao-sem-llm.md` e
+  `migracao-openai-uploadthing.md`), que mexiam no mesmo código. Fase 1
+  (`invokeLLM` → OpenAI, remoção do Gemini) concluída — confira
+  `git log`/`git status` pra saber se as demais já avançaram.
 - `docs/base-conhecimento-*.md`, `docs/tabela-precos-conteudo.md` —
   conteúdo/dados de negócio usados para popular features específicas (base
   de conhecimento do chat, tabela de preços), não documentação de

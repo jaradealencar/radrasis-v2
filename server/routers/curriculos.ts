@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { invokeLLM } from "../_core/llm";
+import { invokeLLM, buildFileContent } from "../_core/llm";
 import { storagePut } from "../db/storage";
 import {
   createAnaliseCurriculo,
@@ -47,6 +47,11 @@ export const curriculosRouter = router({
         }
 
         // 4. Invocar LLM com o prompt específico
+        const fileContent = await buildFileContent(
+          input.fileContent,
+          input.fileType,
+          input.fileName
+        );
         const llmResponse = await invokeLLM({
           messages: [
             {
@@ -60,13 +65,7 @@ export const curriculosRouter = router({
                   type: "text",
                   text: `Por favor, analise o currículo anexado e forneça a triagem conforme as instruções.`,
                 },
-                {
-                  type: "file_url",
-                  file_url: {
-                    url: url,
-                    mime_type: input.fileType as "application/pdf" | "text/plain",
-                  },
-                },
+                fileContent,
               ],
             },
           ],
