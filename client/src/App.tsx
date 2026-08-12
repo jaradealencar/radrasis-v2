@@ -40,7 +40,6 @@ import CrmAuditoria from "./pages/comercial/CrmAuditoria";
 // Financeiro
 import Financeiro from "./pages/financeiro/Financeiro";
 import Cargos from "./pages/financeiro/Cargos";
-import PCP from "./pages/financeiro/PCP";
 import AnaliseAtrasos from "./pages/financeiro/AnaliseAtrasos";
 import GestaoAtrasos from "./pages/financeiro/GestaoAtrasos";
 
@@ -106,7 +105,6 @@ function Router() {
       {/* Financeiro */}
       <Route path="/financeiro" component={Financeiro} />
       <Route path="/cargos" component={Cargos} />
-      <Route path="/pcp" component={PCP} />
       <Route path="/analise-atrasos" component={AnaliseAtrasos} />
       <Route path="/gestao-atrasos" component={GestaoAtrasos} />
       {/* Comercial */}

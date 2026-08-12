@@ -104,7 +104,7 @@ negócio, não técnica — não descubra isso no meio da implementação.
 
 ---
 
-## Tarefa 1 — Remover a página e a rota (client)
+## Tarefa 1 — Remover a página e a rota (client) ✅ feito em 12/08/2026
 
 1. Delete `client/src/pages/financeiro/PCP.tsx`.
 2. Em `client/src/App.tsx`, apague o import (linha 43) e a `<Route
@@ -127,6 +127,14 @@ DELETE FROM role_permissions WHERE "pageKey" = 'pcp';
 `client/` não retorna nada.
 
 **Commit:** `chore(pcp): remove página e rota do PCP`
+
+**Notas da execução:** `npx tsc --noEmit` deu 0 erros antes e depois (o
+baseline de 16 erros de 11/08 não existe mais — provavelmente corrigido em
+commit posterior; não investigado, fora de escopo). O grupo de menu
+"Produção" em `DashboardLayout.tsx` não ficou vazio (ainda tem "Gestão de
+Atrasos" e "Análise de Atrasos"), então só a linha do PCP foi removida. O
+`DELETE FROM role_permissions WHERE "pageKey" = 'pcp';` fica pendente para
+a Tarefa 3 (precisa de acesso ao banco).
 
 ---
 

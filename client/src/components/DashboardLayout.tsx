@@ -97,7 +97,6 @@ const navSections: NavSection[] = [
   {
     label: "Produção",
     items: [
-      { label: "PCP - Controle de Produção", href: "/pcp", icon: <Activity size={15} />, pageKey: "pcp" },
       { label: "Gestão de Atrasos", href: "/gestao-atrasos", icon: <AlertTriangle size={15} />, pageKey: "gestao-atrasos" },
       { label: "Análise de Atrasos", href: "/analise-atrasos", icon: <AlertTriangle size={15} />, pageKey: "analise-atrasos" },
     ],
