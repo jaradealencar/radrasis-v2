@@ -7,6 +7,10 @@ import {
 } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableHeader, TableBody, TableFooter,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import { TrendingUp, TrendingDown, Minus, BarChart2, Trophy, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -448,24 +452,23 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
             </span>
           )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left py-3 px-4 text-slate-500 font-semibold uppercase tracking-wide sticky left-0 bg-slate-50 min-w-[140px]">
+        <Table className="text-xs">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="sticky left-0 bg-slate-50 min-w-[140px]">
                   Vendedor
-                </th>
+                </TableHead>
                 {chartData.map((d, i) => (
-                  <th key={i} className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap min-w-[70px]">
+                  <TableHead key={i} className="text-right min-w-[70px]">
                     {d.label}
-                  </th>
+                  </TableHead>
                 ))}
-                <th className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap bg-amber-50 min-w-[80px]">
+                <TableHead className="text-right bg-amber-50 min-w-[80px]">
                   Média
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {(vendedorFoco ? rankingData.filter(r => r.vendedor === vendedorFoco) : rankingData).map((item, idx) => {
                 const cor = CORES_VENDEDORES[todosVendedores.indexOf(item.vendedor) % CORES_VENDEDORES.length];
                 const valores = chartData.map(d => d[item.vendedor] != null ? Number(d[item.vendedor]) : null);
@@ -477,18 +480,18 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
                 const minVal = Math.min(...valoresValidos.filter(v => v > 0), maxVal);
 
                 return (
-                  <tr key={item.vendedor} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3 px-4 sticky left-0 bg-white">
+                  <TableRow key={item.vendedor}>
+                    <TableCell className="sticky left-0 bg-white">
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cor }} />
                         <span className="font-semibold text-slate-700 truncate max-w-[120px]" title={item.vendedor}>
                           {item.vendedor}
                         </span>
                       </div>
-                    </td>
+                    </TableCell>
                     {valores.map((v, i) => {
                       if (v === null) return (
-                        <td key={i} className="py-3 px-3 text-right text-slate-300">—</td>
+                        <TableCell key={i} className="text-right text-slate-300">—</TableCell>
                       );
                       // Heatmap: intensidade proporcional ao valor
                       const intensity = maxVal > minVal ? (v - minVal) / (maxVal - minVal) : 0.5;
@@ -497,9 +500,9 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
                       const isPiorPositivo = v === minVal && v > 0;
                       const atingiuMeta = metaValor !== null && v >= metaValor;
                       return (
-                        <td
+                        <TableCell
                           key={i}
-                          className="py-3 px-3 text-right font-mono"
+                          className="text-right font-mono"
                           style={{
                             background: isMelhor
                               ? `${cor}22`
@@ -510,21 +513,21 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
                         >
                           {indicador.fmt(v)}
                           {atingiuMeta && <span className="ml-1 text-[9px] text-green-500">✓</span>}
-                        </td>
+                        </TableCell>
                       );
                     })}
-                    <td className="py-3 px-3 text-right font-mono font-bold text-amber-700 bg-amber-50">
+                    <TableCell className="text-right font-mono font-bold text-amber-700 bg-amber-50">
                       {media !== null ? indicador.fmt(media) : "—"}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100 border-t-2 border-slate-200">
-                <td className="py-3 px-4 font-bold text-slate-600 sticky left-0 bg-slate-100">
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell className="font-bold text-slate-600 sticky left-0 bg-slate-100">
                   Total / Média
-                </td>
+                </TableCell>
                 {chartData.map((d, i) => {
                   const vals = todosVendedores
                     .map(v => d[v] != null ? Number(d[v]) : null)
@@ -535,12 +538,12 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
                       : vals.reduce((a, b) => a + b, 0)
                     : null;
                   return (
-                    <td key={i} className="py-3 px-3 text-right font-mono font-semibold text-slate-700">
+                    <TableCell key={i} className="text-right font-mono font-semibold text-slate-700">
                       {agg !== null ? indicador.fmt(agg) : "—"}
-                    </td>
+                    </TableCell>
                   );
                 })}
-                <td className="py-3 px-3 text-right font-mono font-bold text-amber-800 bg-amber-50">
+                <TableCell className="text-right font-mono font-bold text-amber-800 bg-amber-50">
                   {(() => {
                     const allVals = rankingData.map(r => indicador.isPct ? r.media : r.total).filter(v => v > 0);
                     const agg = allVals.length > 0
@@ -550,11 +553,10 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
                       : null;
                     return agg !== null ? indicador.fmt(agg) : "—";
                   })()}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
       </div>
 
     </div>

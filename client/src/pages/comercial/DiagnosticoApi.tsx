@@ -2,6 +2,10 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import { RefreshCw, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
 // Valores de referência do Excel de Maio 2026
@@ -145,28 +149,28 @@ export default function DiagnosticoApi() {
                 Período: {data.periodo.datainicial} a {data.periodo.datafinal} · Excel de referência: Resultado_35377822_05_2026(3).xls
               </p>
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-xs uppercase tracking-widest text-slate-500">
-                  <th className="text-left px-5 py-3">Indicador</th>
-                  <th className="text-right px-5 py-3">Valor ERP (API)</th>
-                  <th className="text-right px-5 py-3">Valor Excel</th>
-                  <th className="text-right px-5 py-3">Diferença</th>
-                  <th className="text-center px-5 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Indicador</TableHead>
+                  <TableHead className="text-right">Valor ERP (API)</TableHead>
+                  <TableHead className="text-right">Valor Excel</TableHead>
+                  <TableHead className="text-right">Diferença</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((row, i) => {
                   const { d, pct, ok } = diff(row.erp, row.excel);
                   return (
-                    <tr key={i} className="border-t border-slate-100 hover:bg-slate-50">
-                      <td className="px-5 py-3 font-medium text-slate-700">{row.indicador}</td>
-                      <td className="px-5 py-3 text-right font-mono text-slate-800">{row.fmt(row.erp)}</td>
-                      <td className="px-5 py-3 text-right font-mono text-slate-500">{row.fmt(row.excel)}</td>
-                      <td className={`px-5 py-3 text-right font-mono text-xs ${ok ? 'text-green-600' : 'text-red-600'}`}>
+                    <TableRow key={i}>
+                      <TableCell className="font-medium text-slate-700">{row.indicador}</TableCell>
+                      <TableCell className="text-right font-mono text-slate-800">{row.fmt(row.erp)}</TableCell>
+                      <TableCell className="text-right font-mono text-slate-500">{row.fmt(row.excel)}</TableCell>
+                      <TableCell className={`text-right font-mono text-xs ${ok ? 'text-green-600' : 'text-red-600'}`}>
                         {d >= 0 ? '+' : ''}{row.fmt(d)} ({pct}%)
-                      </td>
-                      <td className="px-5 py-3 text-center">
+                      </TableCell>
+                      <TableCell className="text-center">
                         {ok ? (
                           <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
                             ✅ VALIDADO
@@ -176,12 +180,12 @@ export default function DiagnosticoApi() {
                             ⚠️ DIVERGÊNCIA
                           </Badge>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           {/* Detalhes técnicos */}

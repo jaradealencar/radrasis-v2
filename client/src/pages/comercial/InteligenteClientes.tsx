@@ -8,6 +8,10 @@ import {
   AlertTriangle, Percent, ChevronDown, ChevronUp, CalendarDays,
   Snowflake, Zap, Lock, Unlock,
 } from "lucide-react";
+import {
+  Table, TableHeader, TableBody, TableFooter,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import KpiCard from "@/components/KpiCard";
 import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
@@ -499,80 +503,78 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Todos os 7 indicadores por vendedor</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left py-3 px-4 text-slate-500 font-semibold uppercase tracking-wide sticky left-0 bg-slate-50 min-w-[140px]">Vendedor</th>
-                      <th className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap">
+              <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="sticky left-0 bg-slate-50 min-w-[140px]">Vendedor</TableHead>
+                      <TableHead className="text-right">
                         <span title="Clientes distintos com OS aprovada no período">Únicos</span>
-                      </th>
-                      <th className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap">
+                      </TableHead>
+                      <TableHead className="text-right">
                         <span title="% de clientes novos entre os únicos do vendedor">% Novos</span>
-                      </th>
-                      <th className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap">
+                      </TableHead>
+                      <TableHead className="text-right">
                         <span title="Taxa de recompra geral do vendedor">Recompra</span>
-                      </th>
-                      <th className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap">
+                      </TableHead>
+                      <TableHead className="text-right">
                         <span title="Taxa de recompra dos clientes novos do vendedor">Recompra Novos</span>
-                      </th>
-                      <th className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap">
+                      </TableHead>
+                      <TableHead className="text-right">
                         <span title="Média de OS por cliente do vendedor no período">Média OS/Cliente</span>
-                      </th>
-                      <th className="text-right py-3 px-3 text-slate-500 font-semibold uppercase tracking-wide whitespace-nowrap">
+                      </TableHead>
+                      <TableHead className="text-right">
                         <span title="Dias médios entre envio da proposta e aprovação da OS">Tempo Médio</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {dadosVendedores.map((v: any, idx: number) => {
                       const cor = chartColor(idx);
                       const recompraColor = (pct: number) => pct >= 40 ? "#22c55e" : pct >= 20 ? "#f59e0b" : "#ef4444";
                       return (
-                        <tr key={v.vendedor} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                          <td className="py-3 px-4 sticky left-0 bg-white">
+                        <TableRow key={v.vendedor}>
+                          <TableCell className="sticky left-0 bg-white">
                             <div className="flex items-center gap-2">
                               <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cor }} />
                               <span className="font-semibold text-slate-700 truncate max-w-[130px]" title={v.vendedor}>{v.vendedor}</span>
                             </div>
-                          </td>
-                          <td className="py-3 px-3 text-right font-bold text-slate-800">{v.clientesUnicos}</td>
-                          <td className="py-3 px-3 text-right">
+                          </TableCell>
+                          <TableCell className="text-right font-bold text-slate-800">{v.clientesUnicos}</TableCell>
+                          <TableCell className="text-right">
                             <span className="font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{v.pctClientesNovos}%</span>
-                          </td>
-                          <td className="py-3 px-3 text-right">
+                          </TableCell>
+                          <TableCell className="text-right">
                             <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: recompraColor(v.taxaRecompra), background: recompraColor(v.taxaRecompra) + "15" }}>
                               {v.taxaRecompra}%
                             </span>
-                          </td>
-                          <td className="py-3 px-3 text-right">
+                          </TableCell>
+                          <TableCell className="text-right">
                             <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: recompraColor(v.taxaRecompraNovosPct), background: recompraColor(v.taxaRecompraNovosPct) + "15" }}>
                               {v.taxaRecompraNovosPct}%
                             </span>
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono text-slate-700 font-semibold">{v.mediaComprasPorCliente}x</td>
-                          <td className="py-3 px-3 text-right font-mono text-slate-600">
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-slate-700 font-semibold">{v.mediaComprasPorCliente}x</TableCell>
+                          <TableCell className="text-right font-mono text-slate-600">
                             {v.tempoMedioFechamento !== null ? `${v.tempoMedioFechamento}d` : <span className="text-slate-300">—</span>}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-100 border-t-2 border-slate-200">
-                      <td className="py-3 px-4 font-bold text-slate-600 sticky left-0 bg-slate-100">Total / Média</td>
-                      <td className="py-3 px-3 text-right font-bold text-slate-800">{data.clientesUnicosAno}</td>
-                      <td className="py-3 px-3 text-right font-bold text-green-700">{data.pctClientesNovos}%</td>
-                      <td className="py-3 px-3 text-right font-bold text-purple-700">{data.taxaRecompra}%</td>
-                      <td className="py-3 px-3 text-right font-bold text-amber-700">{data.taxaRecompraNovosPct}%</td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-700">{data.mediaComprasPorCliente}x</td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-700">
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell className="font-bold text-slate-600 sticky left-0 bg-slate-100">Total / Média</TableCell>
+                      <TableCell className="text-right font-bold text-slate-800">{data.clientesUnicosAno}</TableCell>
+                      <TableCell className="text-right font-bold text-green-700">{data.pctClientesNovos}%</TableCell>
+                      <TableCell className="text-right font-bold text-purple-700">{data.taxaRecompra}%</TableCell>
+                      <TableCell className="text-right font-bold text-amber-700">{data.taxaRecompraNovosPct}%</TableCell>
+                      <TableCell className="text-right font-mono font-bold text-slate-700">{data.mediaComprasPorCliente}x</TableCell>
+                      <TableCell className="text-right font-mono font-bold text-slate-700">
                         {data.tempoMedioPropostaFechamento !== null ? `${data.tempoMedioPropostaFechamento}d` : "—"}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                      </TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
               {data.porVendedor.length > 6 && (
                 <button
                   onClick={() => setExpandirVendedores(!expandirVendedores)}

@@ -20,6 +20,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table, TableHeader, TableBody, TableFooter,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
 import { fmtNum, fmtBrl } from "@/lib/format";
@@ -1198,25 +1202,25 @@ export default function PerformanceComercial() {
                     </div>
 
                     {/* Tabela comparativa */}
-                    <div className="overflow-x-auto">
+                    <div>
                       <p className="text-xs font-semibold text-slate-700 mb-2">Tabela Comparativa Detalhada</p>
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b-2 border-slate-200 bg-slate-50">
-                            <th className="text-left py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Mês</th>
-                            <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Cotações</th>
-                            <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Vendas Realizadas</th>
-                            <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Taxa Conv.</th>
-                            <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Valor Orçado</th>
-                            <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Faturamento</th>
-                            <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Taxa Fat.</th>
-                            <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Ticket Médio</th>
-                            <th className="text-right py-2.5 px-3 text-teal-600 font-semibold uppercase tracking-wide">OS Novos</th>
-                            <th className="text-right py-2.5 px-3 text-teal-600 font-semibold uppercase tracking-wide">Fat. Novos</th>
-                            <th className="text-right py-2.5 px-3 text-teal-600 font-semibold uppercase tracking-wide">Ticket Novos</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                      <Table className="text-xs">
+                        <TableHeader>
+                          <TableRow className="bg-slate-50">
+                            <TableHead>Mês</TableHead>
+                            <TableHead className="text-right">Cotações</TableHead>
+                            <TableHead className="text-right">Vendas Realizadas</TableHead>
+                            <TableHead className="text-right">Taxa Conv.</TableHead>
+                            <TableHead className="text-right">Valor Orçado</TableHead>
+                            <TableHead className="text-right">Faturamento</TableHead>
+                            <TableHead className="text-right">Taxa Fat.</TableHead>
+                            <TableHead className="text-right">Ticket Médio</TableHead>
+                            <TableHead className="text-right text-teal-600">OS Novos</TableHead>
+                            <TableHead className="text-right text-teal-600">Fat. Novos</TableHead>
+                            <TableHead className="text-right text-teal-600">Ticket Novos</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {dados.map((r: any, i: number) => {
                             const isAtual = r.mes === mesSelecionado && r.ano === anoSelecionado;
                             const maxFat = Math.max(...dados.map((d: any) => d.faturamento ?? 0));
@@ -1224,29 +1228,27 @@ export default function PerformanceComercial() {
                             const atingiuFat = metaGeral?.metaFaturamento && r.faturamento >= Number(metaGeral.metaFaturamento);
                             const atingiuOS = metaGeral?.metaOsGeradas && r.osGeradas >= Number(metaGeral.metaOsGeradas);
                             return (
-                              <tr key={i} className={`border-b border-slate-100 transition-colors ${
-                                isAtual ? "bg-blue-50 font-semibold" : "hover:bg-slate-50"
-                              }`}>
-                                <td className="py-2.5 px-3">
+                              <TableRow key={i} className={isAtual ? "bg-blue-50 font-semibold" : ""}>
+                                <TableCell>
                                   <div className="flex items-center gap-2">
                                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: chartColor(i) }} />
                                     <span className="text-slate-700">{r.label}</span>
                                     {isAtual && <Badge variant="secondary" className="text-[10px] py-0">atual</Badge>}
                                   </div>
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono text-blue-700">{r.cotacoes}</td>
-                                <td className={`py-2.5 px-3 text-right font-mono ${atingiuOS ? "text-green-700 font-bold" : "text-purple-700"}`}>
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-blue-700">{r.cotacoes}</TableCell>
+                                <TableCell className={`text-right font-mono ${atingiuOS ? "text-green-700 font-bold" : "text-purple-700"}`}>
                                   {r.osGeradas}{atingiuOS ? " ✓" : ""}
-                                </td>
-                                <td className="py-2.5 px-3 text-right">
+                                </TableCell>
+                                <TableCell className="text-right">
                                   <span className={`font-bold ${
                                     r.taxaConversao >= 30 ? "text-green-600" : r.taxaConversao >= 15 ? "text-amber-600" : "text-red-600"
                                   }`}>{r.taxaConversao}%</span>
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-slate-600">
                                   R$ {Number(r.valorOrcado).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-right">
+                                </TableCell>
+                                <TableCell className="text-right">
                                   <div className="flex flex-col items-end gap-0.5">
                                     <span className={`font-mono font-semibold ${atingiuFat ? "text-green-700" : "text-green-700"}`}>
                                       R$ {Number(r.faturamento).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{atingiuFat ? " ✓" : ""}
@@ -1260,65 +1262,65 @@ export default function PerformanceComercial() {
                                       </div>
                                     )}
                                   </div>
-                                </td>
-                                <td className="py-2.5 px-3 text-right">
+                                </TableCell>
+                                <TableCell className="text-right">
                                   <span className={`font-bold ${
                                     r.taxaFaturamento >= 30 ? "text-green-600" : r.taxaFaturamento >= 15 ? "text-amber-600" : "text-red-600"
                                   }`}>{r.taxaFaturamento}%</span>
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-slate-600">
                                   R$ {Number(r.ticketMedio).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono text-teal-700">{r.osNovos ?? 0}</td>
-                                <td className="py-2.5 px-3 text-right font-mono text-teal-700">
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-teal-700">{r.osNovos ?? 0}</TableCell>
+                                <TableCell className="text-right font-mono text-teal-700">
                                   R$ {Number(r.faturamentoNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono text-teal-700">
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-teal-700">
                                   R$ {Number(r.ticketMedioNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             );
                           })}
-                        </tbody>
-                        <tfoot>
+                        </TableBody>
+                        <TableFooter>
                           {(() => {
                             const dadosParaMedia = dados;
                             if (dadosParaMedia.length === 0) return null;
                             const avg = (key: string) =>
                               dadosParaMedia.reduce((acc: number, d: any) => acc + (Number(d[key]) || 0), 0) / dadosParaMedia.length;
                             return (
-                              <tr className="border-t-2 border-amber-300 bg-amber-50">
-                                <td className="py-2.5 px-3">
+                              <TableRow className="bg-amber-50">
+                                <TableCell>
                                   <div className="flex items-center gap-2">
                                     <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
                                     <span className="text-amber-700 font-bold text-xs">Média</span>
                                   </div>
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">{avg("cotacoes").toFixed(0)}</td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">{avg("osGeradas").toFixed(0)}</td>
-                                <td className="py-2.5 px-3 text-right font-bold text-amber-700">{avg("taxaConversao").toFixed(1)}%</td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("cotacoes").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("osGeradas").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-bold text-amber-700">{avg("taxaConversao").toFixed(1)}%</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("valorOrcado").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("faturamento").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-bold text-amber-700">{avg("taxaFaturamento").toFixed(1)}%</td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-amber-700">{avg("taxaFaturamento").toFixed(1)}%</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("ticketMedio").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">{avg("osNovos").toFixed(0)}</td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("osNovos").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("faturamentoNovos").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("ticketMedioNovos").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             );
                           })()}
-                        </tfoot>
-                      </table>
+                        </TableFooter>
+                      </Table>
                     </div>
 
                   </div>
@@ -1350,55 +1352,55 @@ export default function PerformanceComercial() {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-x-auto mb-4">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Mês</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Cotações</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Vendas Realizadas</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Taxa Conv.</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Valor Orçado</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Faturamento</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Taxa Fat.</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Ticket Médio</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                  <div className="mb-4">
+                    <Table className="text-xs">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Mês</TableHead>
+                          <TableHead className="text-right">Cotações</TableHead>
+                          <TableHead className="text-right">Vendas Realizadas</TableHead>
+                          <TableHead className="text-right">Taxa Conv.</TableHead>
+                          <TableHead className="text-right">Valor Orçado</TableHead>
+                          <TableHead className="text-right">Faturamento</TableHead>
+                          <TableHead className="text-right">Taxa Fat.</TableHead>
+                          <TableHead className="text-right">Ticket Médio</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {(comparativo ?? []).filter((r): r is NonNullable<typeof r> => r != null).map((r, i) => {
                           const isAtual = r.mes === mesSelecionado && r.ano === anoSelecionado;
                           return (
-                            <tr key={i} className={`border-b border-slate-100 ${isAtual ? "bg-blue-50 font-semibold" : "hover:bg-slate-50"}`}>
-                              <td className="py-2.5 px-3 text-slate-700">
+                            <TableRow key={i} className={isAtual ? "bg-blue-50 font-semibold" : ""}>
+                              <TableCell className="text-slate-700">
                                 {r.label}
                                 {isAtual && <Badge variant="secondary" className="ml-2 text-[10px] py-0">atual</Badge>}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-blue-700">{r.cotacoes}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-purple-700">{r.osGeradas}</td>
-                              <td className="py-2.5 px-3 text-right">
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-blue-700">{r.cotacoes}</TableCell>
+                              <TableCell className="text-right font-mono text-purple-700">{r.osGeradas}</TableCell>
+                              <TableCell className="text-right">
                                 <span className={`font-bold ${r.taxaConversao >= 30 ? "text-green-600" : r.taxaConversao >= 15 ? "text-amber-600" : "text-red-600"}`}>
                                   {r.taxaConversao}%
                                 </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-slate-600">
                                 R$ {Number(r.valorOrcado).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-green-700 font-semibold">
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-green-700 font-semibold">
                                 R$ {Number(r.faturamento).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                              </td>
-                              <td className="py-2.5 px-3 text-right">
+                              </TableCell>
+                              <TableCell className="text-right">
                                 <span className={`font-bold ${r.taxaFaturamento >= 30 ? "text-green-600" : r.taxaFaturamento >= 15 ? "text-amber-600" : "text-red-600"}`}>
                                   {r.taxaFaturamento}%
                                 </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-slate-600">
                                 R$ {Number(r.ticketMedio).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           );
                         })}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={comparativo ?? []} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
@@ -1521,37 +1523,36 @@ export default function PerformanceComercial() {
                   <p className="text-xs text-slate-400 mb-3">
                     Empresas que aparecem pela primeira vez no histórico de OS — clique no ícone para abrir conversa no WhatsApp.
                   </p>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Empresa</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Contato</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Cidade</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">UF</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Vendedor</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">OS</th>
-                          <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Valor OS</th>
-                          <th className="text-center py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">WhatsApp</th>
-                          <th className="text-center py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide" title="Marque quando entrar em contato com o cliente">Contatado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                  <Table className="text-xs">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Empresa</TableHead>
+                          <TableHead>Contato</TableHead>
+                          <TableHead>Cidade</TableHead>
+                          <TableHead>UF</TableHead>
+                          <TableHead>Vendedor</TableHead>
+                          <TableHead>OS</TableHead>
+                          <TableHead className="text-right">Valor OS</TableHead>
+                          <TableHead className="text-center">WhatsApp</TableHead>
+                          <TableHead className="text-center" title="Marque quando entrar em contato com o cliente">Contatado</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {(clientesNovos.lista ?? []).map((c: any, i: number) => {
                           const empresaKey = (c.empresa ?? "").toLowerCase().trim();
                           const jaContatado = contatadosMap?.[empresaKey]?.contatado ?? false;
                           return (
-                          <tr key={i} className={`border-b border-slate-100 transition-colors ${jaContatado ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-teal-50'}`}>
-                            <td className="py-2.5 px-3 font-medium text-slate-800">{c.empresa}</td>
-                            <td className="py-2.5 px-3 text-slate-600">{c.contato || <span className="text-slate-300">—</span>}</td>
-                            <td className="py-2.5 px-3 text-slate-600">{c.cidade || <span className="text-slate-300">—</span>}</td>
-                            <td className="py-2.5 px-3 text-slate-600 font-medium">{c.estado || <span className="text-slate-300">—</span>}</td>
-                            <td className="py-2.5 px-3 text-slate-600">{c.vendedor}</td>
-                            <td className="py-2.5 px-3 font-mono text-blue-700">{c.osNumero ?? "—"}</td>
-                            <td className="py-2.5 px-3 text-right font-mono text-green-700">
+                          <TableRow key={i} className={jaContatado ? 'bg-green-50 hover:bg-green-100' : ''}>
+                            <TableCell className="font-medium text-slate-800">{c.empresa}</TableCell>
+                            <TableCell className="text-slate-600">{c.contato || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-slate-600">{c.cidade || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-slate-600 font-medium">{c.estado || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-slate-600">{c.vendedor}</TableCell>
+                            <TableCell className="font-mono text-blue-700">{c.osNumero ?? "—"}</TableCell>
+                            <TableCell className="text-right font-mono text-green-700">
                               {c.valorOs ? `R$ ${Number(c.valorOs).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
-                            </td>
-                            <td className="py-2.5 px-3 text-center">
+                            </TableCell>
+                            <TableCell className="text-center">
                               {c.whatsappLink ? (
                                 <a
                                   href={c.whatsappLink}
@@ -1568,8 +1569,8 @@ export default function PerformanceComercial() {
                                   <Phone className="w-3 h-3" /> sem tel.
                                 </span>
                               )}
-                            </td>
-                            <td className="py-2.5 px-3 text-center">
+                            </TableCell>
+                            <TableCell className="text-center">
                               <button
                                 onClick={() => setContatadoMut.mutate({ empresa: c.empresa, mes: mesSelecionado, ano: anoSelecionado, contatado: !jaContatado })}
                                 disabled={setContatadoMut.isPending}
@@ -1582,13 +1583,12 @@ export default function PerformanceComercial() {
                               >
                                 {jaContatado && <Check className="w-3 h-3" />}
                               </button>
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                           );
                         })}
-                      </tbody>
-                    </table>
-                  </div>
+                      </TableBody>
+                    </Table>
                 </div>
               )}
             </div>
@@ -1621,49 +1621,48 @@ export default function PerformanceComercial() {
               </div>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Vendedor</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Cotações</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Vendas Realizadas</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Taxa Conv.</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Valor Orçado</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Faturamento</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Taxa Fat.</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Ticket Médio</th>
-                    <th className="text-right py-2 px-3 text-teal-600 font-semibold uppercase tracking-wide text-[10px]">Conv. Novos</th>
-                    <th className="text-right py-2 px-3 text-teal-600 font-semibold uppercase tracking-wide text-[10px]">Fat. Novos</th>
-                    {editingMetas && <th className="py-2 px-3"></th>}
-                  </tr>
+            <Table className="text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Vendedor</TableHead>
+                    <TableHead className="text-right">Cotações</TableHead>
+                    <TableHead className="text-right">Vendas Realizadas</TableHead>
+                    <TableHead className="text-right">Taxa Conv.</TableHead>
+                    <TableHead className="text-right">Valor Orçado</TableHead>
+                    <TableHead className="text-right">Faturamento</TableHead>
+                    <TableHead className="text-right">Taxa Fat.</TableHead>
+                    <TableHead className="text-right">Ticket Médio</TableHead>
+                    <TableHead className="text-right text-teal-600 text-[10px]">Conv. Novos</TableHead>
+                    <TableHead className="text-right text-teal-600 text-[10px]">Fat. Novos</TableHead>
+                    {editingMetas && <TableHead></TableHead>}
+                  </TableRow>
                   {editingMetas && (
-                    <tr className="border-b border-blue-200 bg-blue-50/60">
-                      <td className="py-1.5 px-3 text-blue-600 font-semibold text-[10px] uppercase tracking-wide flex items-center gap-1">
+                    <TableRow className="bg-blue-50/60">
+                      <TableCell className="text-blue-600 font-semibold text-[10px] uppercase tracking-wide flex items-center gap-1">
                         <Target className="w-3 h-3" /> Metas
-                      </td>
-                      <td className="py-1.5 px-3 text-right text-blue-500 text-[10px]">Nº cotações</td>
-                      <td className="py-1.5 px-3 text-right text-blue-500 text-[10px]">Nº vendas</td>
-                      <td className="py-1.5 px-3 text-right text-blue-500 text-[10px]">% conversão</td>
-                      <td className="py-1.5 px-3 text-right text-blue-500 text-[10px]">—</td>
-                      <td className="py-1.5 px-3 text-right text-blue-500 text-[10px]">R$ faturamento</td>
-                      <td className="py-1.5 px-3 text-right text-blue-500 text-[10px]">—</td>
-                      <td className="py-1.5 px-3 text-right text-blue-500 text-[10px]">R$ ticket médio</td>
-                      <td className="py-1.5 px-3 text-right text-teal-600 text-[10px]">% conv. novos</td>
-                      <td className="py-1.5 px-3 text-right text-teal-600 text-[10px]">% fat. novos</td>
-                      <td className="py-1.5 px-3"></td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="text-right text-blue-500 text-[10px]">Nº cotações</TableCell>
+                      <TableCell className="text-right text-blue-500 text-[10px]">Nº vendas</TableCell>
+                      <TableCell className="text-right text-blue-500 text-[10px]">% conversão</TableCell>
+                      <TableCell className="text-right text-blue-500 text-[10px]">—</TableCell>
+                      <TableCell className="text-right text-blue-500 text-[10px]">R$ faturamento</TableCell>
+                      <TableCell className="text-right text-blue-500 text-[10px]">—</TableCell>
+                      <TableCell className="text-right text-blue-500 text-[10px]">R$ ticket médio</TableCell>
+                      <TableCell className="text-right text-teal-600 text-[10px]">% conv. novos</TableCell>
+                      <TableCell className="text-right text-teal-600 text-[10px]">% fat. novos</TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
                   )}
-                </thead>
-                <tbody>
+                </TableHeader>
+                <TableBody>
                   {vendedoresData.map((v, i) => {
                     const meta = metasPorVendedor[v.vendedorFull];
                     return (
-                      <tr key={i} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="py-2.5 px-3 font-medium text-slate-700" title={v.vendedorFull}>{v.vendedor}</td>
+                      <TableRow key={i}>
+                        <TableCell className="font-medium text-slate-700" title={v.vendedorFull}>{v.vendedor}</TableCell>
 
                         {/* Cotações */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-mono text-blue-700 font-semibold">{v.cotacoes}</span>
                             {editingMetas && (
@@ -1676,10 +1675,10 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.cotacoes} meta={meta.metaCotacoes} color="#3b82f6" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Vendas Realizadas */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-mono text-purple-700">{v.osGeradas}</span>
                             {editingMetas && (
@@ -1692,10 +1691,10 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.osGeradas} meta={meta.metaVendas} color="#8b5cf6" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Taxa Conversão */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className={`font-bold ${v.taxa >= 30 ? "text-green-600" : v.taxa >= 15 ? "text-amber-600" : "text-red-600"}`}>
                               {v.taxa}%
@@ -1710,10 +1709,10 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.taxa} meta={Number(meta.metaConversao)} color="#22c55e" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Valor Orçado */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-mono text-slate-500">
                               R$ {v.valorOrc.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -1728,10 +1727,10 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.valorOrc} meta={Number(meta.metaValorOrcado)} color="#64748b" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Faturamento */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-mono text-green-700 font-semibold">
                               R$ {v.valorOs.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -1746,10 +1745,10 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.valorOs} meta={Number(meta.metaFaturamento)} color="#22c55e" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Taxa Faturamento */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className={`font-bold ${v.taxaFat >= 30 ? "text-green-600" : v.taxaFat >= 15 ? "text-amber-600" : "text-red-600"}`}>
                               {v.taxaFat}%
@@ -1764,10 +1763,10 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.taxaFat} meta={Number(meta.metaTaxaFaturamento)} color="#f59e0b" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Ticket Médio */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-mono text-slate-600">
                               R$ {v.ticketMedio.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -1782,9 +1781,9 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.ticketMedio} meta={Number(meta.metaTicketMedio)} color="#64748b" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
                         {/* Conv. Novos — sempre visível */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-bold text-teal-700">{v.taxaConversaoNovos ?? 0}%</span>
                             {editingMetas && (
@@ -1797,10 +1796,10 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.taxaConversaoNovos ?? 0} meta={Number(meta.metaConversaoNovos)} color="#0d9488" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Fat. Novos — sempre visível */}
-                        <td className="py-2.5 px-3 text-right">
+                        <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-bold text-cyan-700">{v.taxaFaturamentoNovos ?? 0}%</span>
                             {editingMetas && (
@@ -1813,11 +1812,11 @@ export default function PerformanceComercial() {
                               <ProgressBar real={v.taxaFaturamentoNovos ?? 0} meta={Number(meta.metaTaxaFaturamentoNovos)} color="#0891b2" />
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
                         {/* Botão excluir meta do vendedor */}
                         {editingMetas && (
-                          <td className="py-2.5 px-2 text-center">
+                          <TableCell className="text-center">
                             {meta?.id ? (
                               <button
                                 onClick={() => {
@@ -1833,88 +1832,88 @@ export default function PerformanceComercial() {
                             ) : (
                               <span className="text-slate-200 text-xs">—</span>
                             )}
-                          </td>
+                          </TableCell>
                         )}
-                      </tr>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-                <tfoot>
+                </TableBody>
+                <TableFooter>
                   {/* Linha de Metas Gerais */}
                   {editingMetas && (
-                    <tr className="bg-indigo-50 border-t-2 border-indigo-200">
-                      <td className="py-2.5 px-3">
+                    <TableRow className="bg-indigo-50">
+                      <TableCell>
                         <div className="flex items-center gap-1.5">
                           <Target className="w-3.5 h-3.5 text-indigo-600" />
                           <span className="text-xs font-bold text-indigo-700">META GERAL</span>
                         </div>
                         <p className="text-[10px] text-indigo-400 mt-0.5">Metas globais da empresa</p>
-                      </td>
+                      </TableCell>
                       {/* Meta Cotações */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaCotacoes ?? null}
                           onSave={val => handleSaveMeta("GERAL", "metaCotacoes", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Vendas Realizadas */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaOsGeradas ?? null}
                           onSave={val => handleSaveMeta("GERAL", "metaOsGeradas", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Taxa Conversão */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaConversao ? Number(metaGeral.metaConversao) : null}
                           onSave={val => handleSaveMeta("GERAL", "metaConversao", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Valor Orçado */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaValorOrcado ? Number(metaGeral.metaValorOrcado) : null}
                           onSave={val => handleSaveMeta("GERAL", "metaValorOrcado", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Faturamento */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaFaturamento ? Number(metaGeral.metaFaturamento) : null}
                           onSave={val => handleSaveMeta("GERAL", "metaFaturamento", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Taxa Faturamento */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaTaxaFaturamento ? Number(metaGeral.metaTaxaFaturamento) : null}
                           onSave={val => handleSaveMeta("GERAL", "metaTaxaFaturamento", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Ticket Médio */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaTicketMedio ? Number(metaGeral.metaTicketMedio) : null}
                           onSave={val => handleSaveMeta("GERAL", "metaTicketMedio", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Taxa Conversão Novos */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaConversaoNovos ? Number(metaGeral.metaConversaoNovos) : null}
                           onSave={val => handleSaveMeta("GERAL", "metaConversaoNovos", val)}
                         />
-                      </td>
+                      </TableCell>
                       {/* Meta Taxa Faturamento Novos */}
-                      <td className="py-2.5 px-3 text-right">
+                      <TableCell className="text-right">
                         <MetaCell
                           value={metaGeral?.metaTaxaFaturamentoNovos ? Number(metaGeral.metaTaxaFaturamentoNovos) : null}
                           onSave={val => handleSaveMeta("GERAL", "metaTaxaFaturamentoNovos", val)}
                         />
-                      </td>
+                      </TableCell>
                       {editingMetas && (
-                        <td className="py-2.5 px-2 text-center">
+                        <TableCell className="text-center">
                           {metaGeral?.id ? (
                             <button
                               onClick={() => {
@@ -1930,50 +1929,50 @@ export default function PerformanceComercial() {
                           ) : (
                             <span className="text-slate-200 text-xs">—</span>
                           )}
-                        </td>
+                        </TableCell>
                       )}
-                    </tr>
+                    </TableRow>
                   )}
                   {!editingMetas && metaGeral && (
-                    <tr className="bg-indigo-50/50 border-t border-indigo-100">
-                      <td className="py-2 px-3">
+                    <TableRow className="bg-indigo-50/50">
+                      <TableCell>
                         <div className="flex items-center gap-1.5">
                           <Target className="w-3 h-3 text-indigo-500" />
                           <span className="text-[11px] font-bold text-indigo-600">META GERAL</span>
                         </div>
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {metaGeral.metaCotacoes ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-indigo-600">{metaGeral.metaCotacoes}</span>
                             <MetaBadge real={mesDados?.cotacoes ?? 0} meta={metaGeral.metaCotacoes} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {metaGeral.metaOsGeradas ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-indigo-600">{metaGeral.metaOsGeradas}</span>
                             <MetaBadge real={mesDados?.osGeradas ?? 0} meta={metaGeral.metaOsGeradas} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {metaGeral.metaConversao ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-indigo-600">{Number(metaGeral.metaConversao)}%</span>
                             <MetaBadge real={Number(mesDados?.taxaConversao ?? 0)} meta={Number(metaGeral.metaConversao)} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {metaGeral.metaValorOrcado ? (
                           <span className="text-[11px] font-mono text-indigo-600">
                             R$ {Number(metaGeral.metaValorOrcado).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {metaGeral.metaFaturamento ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-indigo-600">
@@ -1982,16 +1981,16 @@ export default function PerformanceComercial() {
                             <MetaBadge real={mesDados?.faturamento ?? 0} meta={Number(metaGeral.metaFaturamento)} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {metaGeral.metaTaxaFaturamento ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-indigo-600">{Number(metaGeral.metaTaxaFaturamento)}%</span>
                             <MetaBadge real={Number(mesDados?.taxaFaturamento ?? 0)} meta={Number(metaGeral.metaTaxaFaturamento)} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {metaGeral.metaTicketMedio ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-indigo-600">
@@ -1999,68 +1998,67 @@ export default function PerformanceComercial() {
                             </span>
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
+                      </TableCell>
                       {/* Conv. Novos */}
-                      <td className="py-2 px-3 text-right">
+                      <TableCell className="text-right">
                         {metaGeral.metaConversaoNovos ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-teal-700">{Number(metaGeral.metaConversaoNovos)}%</span>
                             <MetaBadge real={Number((clientesNovos as any)?.taxaConversaoNovos ?? 0)} meta={Number(metaGeral.metaConversaoNovos)} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
+                      </TableCell>
                       {/* Fat. Novos */}
-                      <td className="py-2 px-3 text-right">
+                      <TableCell className="text-right">
                         {metaGeral.metaTaxaFaturamentoNovos ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-teal-700">{Number(metaGeral.metaTaxaFaturamentoNovos)}%</span>
                             <MetaBadge real={Number((clientesNovos as any)?.taxaFaturamentoNovos ?? 0)} meta={Number(metaGeral.metaTaxaFaturamentoNovos)} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )}
-                  <tr className="bg-slate-50 font-bold border-t-2 border-slate-200">
-                    <td className="py-2 px-3 text-slate-700">TOTAL</td>
-                    <td className="py-2 px-3 text-right font-mono text-blue-700">{mesDados?.cotacoes ?? 0}</td>
-                    <td className="py-2 px-3 text-right font-mono text-purple-700">{mesDados?.osGeradas ?? 0}</td>
-                    <td className="py-2 px-3 text-right">
+                  <TableRow>
+                    <TableCell className="text-slate-700">TOTAL</TableCell>
+                    <TableCell className="text-right font-mono text-blue-700">{mesDados?.cotacoes ?? 0}</TableCell>
+                    <TableCell className="text-right font-mono text-purple-700">{mesDados?.osGeradas ?? 0}</TableCell>
+                    <TableCell className="text-right">
                       <span className={`font-bold ${Number(mesDados?.taxaConversao) >= 30 ? "text-green-600" : Number(mesDados?.taxaConversao) >= 15 ? "text-amber-600" : "text-red-600"}`}>
                         {mesDados?.taxaConversao ?? 0}%
                       </span>
-                    </td>
-                    <td className="py-2 px-3 text-right font-mono text-slate-600">
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-slate-600">
                       R$ {(mesDados?.valorOrcado ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="py-2 px-3 text-right font-mono text-green-700">
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-green-700">
                       R$ {(mesDados?.faturamento ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="py-2 px-3 text-right">
+                    </TableCell>
+                    <TableCell className="text-right">
                       <span className={`font-bold ${Number(mesDados?.taxaFaturamento) >= 30 ? "text-green-600" : Number(mesDados?.taxaFaturamento) >= 15 ? "text-amber-600" : "text-red-600"}`}>
                         {mesDados?.taxaFaturamento ?? 0}%
                       </span>
-                    </td>
-                    <td className="py-2 px-3 text-right font-mono text-slate-600">
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-slate-600">
                       {mesDados?.osGeradas && mesDados.osGeradas > 0
                         ? `R$ ${Math.round((mesDados.faturamento ?? 0) / mesDados.osGeradas).toLocaleString("pt-BR")}`
                         : "—"}
-                    </td>
+                    </TableCell>
                     {/* Conv. Novos total */}
-                    <td className="py-2 px-3 text-right">
+                    <TableCell className="text-right">
                       <span className={`font-bold ${Number((clientesNovos as any)?.taxaConversaoNovos ?? 0) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaConversaoNovos ?? 0) >= 15 ? "text-amber-600" : "text-teal-700"}`}>
                         {(clientesNovos as any)?.taxaConversaoNovos ?? 0}%
                       </span>
-                    </td>
+                    </TableCell>
                     {/* Fat. Novos total */}
-                    <td className="py-2 px-3 text-right">
+                    <TableCell className="text-right">
                       <span className={`font-bold ${Number((clientesNovos as any)?.taxaFaturamentoNovos ?? 0) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaFaturamentoNovos ?? 0) >= 15 ? "text-amber-600" : "text-cyan-700"}`}>
                         {(clientesNovos as any)?.taxaFaturamentoNovos ?? 0}%
                       </span>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
 
             {/* Gráfico de faturamento por vendedor */}
             <div className="mt-6">
@@ -2095,22 +2093,21 @@ export default function PerformanceComercial() {
                 </h2>
                 <span className="ml-auto text-xs text-slate-400">Todos os vendedores · 4 taxas</span>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left py-2.5 px-4 text-slate-500 font-semibold uppercase tracking-wide">Vendedor</th>
-                      <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">Cot.</th>
-                      <th className="text-right py-2.5 px-3 text-slate-500 font-semibold uppercase tracking-wide">OS</th>
-                      <th className="text-right py-2.5 px-3 text-blue-600 font-semibold uppercase tracking-wide">Conv. Pedido</th>
-                      <th className="text-right py-2.5 px-3 text-blue-600 font-semibold uppercase tracking-wide">Conv. Fat.</th>
-                      <th className="text-right py-2.5 px-3 text-yellow-600 font-semibold uppercase tracking-wide">Cot. ⭐</th>
-                      <th className="text-right py-2.5 px-3 text-yellow-600 font-semibold uppercase tracking-wide">OS ⭐</th>
-                      <th className="text-right py-2.5 px-3 text-yellow-600 font-semibold uppercase tracking-wide">Conv. Pedido ⭐</th>
-                      <th className="text-right py-2.5 px-3 text-yellow-600 font-semibold uppercase tracking-wide">Conv. Fat. ⭐</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendedor</TableHead>
+                      <TableHead className="text-right">Cot.</TableHead>
+                      <TableHead className="text-right">OS</TableHead>
+                      <TableHead className="text-right text-blue-600">Conv. Pedido</TableHead>
+                      <TableHead className="text-right text-blue-600">Conv. Fat.</TableHead>
+                      <TableHead className="text-right text-yellow-600">Cot. ⭐</TableHead>
+                      <TableHead className="text-right text-yellow-600">OS ⭐</TableHead>
+                      <TableHead className="text-right text-yellow-600">Conv. Pedido ⭐</TableHead>
+                      <TableHead className="text-right text-yellow-600">Conv. Fat. ⭐</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {vendedoresData.map((v: any, i: number) => {
                       const novos = novosLower[v.vendedorFull.toLowerCase()] as any;
                       const taxaConvN = novos?.taxaConvNovos ?? 0;
@@ -2118,67 +2115,66 @@ export default function PerformanceComercial() {
                       const taxaColor = (t: number) =>
                         t >= 30 ? "text-green-600" : t >= 15 ? "text-amber-600" : "text-red-500";
                       return (
-                        <tr key={i} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                          <td className="py-2.5 px-4 font-medium text-slate-800">{v.vendedorFull}</td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">{v.cotacoes}</td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">{v.osGeradas}</td>
-                          <td className="py-2.5 px-3 text-right">
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-slate-800">{v.vendedorFull}</TableCell>
+                          <TableCell className="text-right font-mono text-slate-600">{v.cotacoes}</TableCell>
+                          <TableCell className="text-right font-mono text-slate-600">{v.osGeradas}</TableCell>
+                          <TableCell className="text-right">
                             <span className={`font-bold ${taxaColor(v.taxa)}`}>{v.taxa}%</span>
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
+                          </TableCell>
+                          <TableCell className="text-right">
                             <span className={`font-bold ${taxaColor(v.taxaFat)}`}>{v.taxaFat}%</span>
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono text-yellow-700">
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-yellow-700">
                             {novos ? novos.cotacoesNovos : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono text-yellow-700">
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-yellow-700">
                             {novos ? novos.osNovos : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
+                          </TableCell>
+                          <TableCell className="text-right">
                             {novos
                               ? <span className={`font-bold ${taxaColor(taxaConvN)}`}>{taxaConvN}%</span>
                               : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
+                          </TableCell>
+                          <TableCell className="text-right">
                             {novos
                               ? <span className={`font-bold ${taxaColor(taxaFatN)}`}>{taxaFatN}%</span>
                               : <span className="text-slate-300">—</span>}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-50 font-bold border-t-2 border-slate-200">
-                      <td className="py-2 px-4 text-slate-700">TOTAL</td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-700">{mesDados?.cotacoes ?? 0}</td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-700">{mesDados?.osGeradas ?? 0}</td>
-                      <td className="py-2 px-3 text-right">
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell className="text-slate-700">TOTAL</TableCell>
+                      <TableCell className="text-right font-mono text-slate-700">{mesDados?.cotacoes ?? 0}</TableCell>
+                      <TableCell className="text-right font-mono text-slate-700">{mesDados?.osGeradas ?? 0}</TableCell>
+                      <TableCell className="text-right">
                         <span className={`font-bold ${ Number(mesDados?.taxaConversao) >= 30 ? "text-green-600" : Number(mesDados?.taxaConversao) >= 15 ? "text-amber-600" : "text-red-500"}`}>
                           {mesDados?.taxaConversao ?? 0}%
                         </span>
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         <span className={`font-bold ${ Number(mesDados?.taxaFaturamento) >= 30 ? "text-green-600" : Number(mesDados?.taxaFaturamento) >= 15 ? "text-amber-600" : "text-red-500"}`}>
                           {mesDados?.taxaFaturamento ?? 0}%
                         </span>
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono text-yellow-700">{clientesNovos?.cotacoesNovos ?? "—"}</td>
-                      <td className="py-2 px-3 text-right font-mono text-yellow-700">{clientesNovos?.osNovos ?? "—"}</td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-yellow-700">{clientesNovos?.cotacoesNovos ?? "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-yellow-700">{clientesNovos?.osNovos ?? "—"}</TableCell>
+                      <TableCell className="text-right">
                         <span className={`font-bold ${ Number(clientesNovos?.taxaConversaoNovos) >= 30 ? "text-green-600" : Number(clientesNovos?.taxaConversaoNovos) >= 15 ? "text-amber-600" : "text-red-500"}`}>
                           {clientesNovos?.taxaConversaoNovos ?? 0}%
                         </span>
-                      </td>
-                      <td className="py-2 px-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         <span className={`font-bold ${ Number((clientesNovos as any)?.taxaFaturamentoNovos) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaFaturamentoNovos) >= 15 ? "text-amber-600" : "text-red-500"}`}>
                           {(clientesNovos as any)?.taxaFaturamentoNovos ?? 0}%
                         </span>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                      </TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
               <p className="text-xs text-slate-400 px-5 py-3">⭐ = métricas exclusivas de clientes novos (sem compra anterior)</p>
             </div>
           );
@@ -2358,29 +2354,29 @@ export default function PerformanceComercial() {
                     Clientes identificados como novos em {MESES_NOMES[mesSelecionado - 1]}/{anoSelecionado}
                   </h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Empresa</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Vendedor</th>
-                          <th className="text-center py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                    <Table className="text-xs">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Empresa</TableHead>
+                          <TableHead>Vendedor</TableHead>
+                          <TableHead className="text-center">Ação</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {clientesNovos.lista.map((c: any, i: number) => {
                           const jaTemOverride = (clienteOverridesList ?? []).some(
                             (ov: any) => ov.empresaOriginal === c.empresa
                           );
                           return (
-                            <tr key={i} className={`border-b border-slate-100 ${jaTemOverride ? "bg-orange-50" : "hover:bg-slate-50"}`}>
-                              <td className="py-2.5 px-3 font-medium text-slate-800">
+                            <TableRow key={i} className={jaTemOverride ? "bg-orange-50" : ""}>
+                              <TableCell className="font-medium text-slate-800">
                                 {c.empresa}
                                 {jaTemOverride && (
                                   <Badge variant="outline" className="ml-2 text-[10px] py-0 border-orange-300 text-orange-600">override</Badge>
                                 )}
-                              </td>
-                              <td className="py-2.5 px-3 text-slate-600">{c.vendedor}</td>
-                              <td className="py-2.5 px-3 text-center">
+                              </TableCell>
+                              <TableCell className="text-slate-600">{c.vendedor}</TableCell>
+                              <TableCell className="text-center">
                                 {!jaTemOverride ? (
                                   <Button
                                     size="sm"
@@ -2397,12 +2393,12 @@ export default function PerformanceComercial() {
                                 ) : (
                                   <span className="text-orange-500 text-xs font-medium">✓ Corrigido</span>
                                 )}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           );
                         })}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 </div>
               )}
@@ -2414,31 +2410,31 @@ export default function PerformanceComercial() {
                     Overrides cadastrados ({clienteOverridesList.length})
                   </h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Empresa</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Status</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Motivo</th>
-                          <th className="text-left py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Por</th>
-                          <th className="text-center py-2 px-3 text-slate-500 font-semibold uppercase tracking-wide">Remover</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                    <Table className="text-xs">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Empresa</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Motivo</TableHead>
+                          <TableHead>Por</TableHead>
+                          <TableHead className="text-center">Remover</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {clienteOverridesList.map((ov: any) => (
-                          <tr key={ov.id} className="border-b border-slate-100 hover:bg-slate-50">
-                            <td className="py-2.5 px-3 font-medium text-slate-800">{ov.empresaOriginal}</td>
-                            <td className="py-2.5 px-3">
+                          <TableRow key={ov.id}>
+                            <TableCell className="font-medium text-slate-800">{ov.empresaOriginal}</TableCell>
+                            <TableCell>
                               <Badge
                                 variant="outline"
                                 className={ov.status === "recorrente" ? "border-blue-300 text-blue-700 bg-blue-50" : "border-teal-300 text-teal-700 bg-teal-50"}
                               >
                                 {ov.status === "recorrente" ? "Recorrente" : "Novo"}
                               </Badge>
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-500 max-w-[200px] truncate">{ov.motivo ?? "—"}</td>
-                            <td className="py-2.5 px-3 text-slate-500">{ov.criadoPor ?? "—"}</td>
-                            <td className="py-2.5 px-3 text-center">
+                            </TableCell>
+                            <TableCell className="text-slate-500 max-w-[200px] truncate">{ov.motivo ?? "—"}</TableCell>
+                            <TableCell className="text-slate-500">{ov.criadoPor ?? "—"}</TableCell>
+                            <TableCell className="text-center">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -2448,11 +2444,11 @@ export default function PerformanceComercial() {
                                 <X className="w-3 h-3" />
                                 Remover
                               </Button>
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 </div>
               )}
@@ -2586,16 +2582,15 @@ export default function PerformanceComercial() {
           <div className="space-y-4">
             {/* Tabela de auditoria — scroll horizontal no mobile */}
             <div className="rounded-lg border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm min-w-[300px]">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="text-left px-3 py-2.5 text-slate-600 font-semibold">Indicador</th>
-                      <th className="text-right px-3 py-2.5 text-slate-600 font-semibold">Valor ERP</th>
-                      <th className="text-center px-2 py-2.5 text-slate-600 font-semibold hidden sm:table-cell">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
+              <Table className="text-xs sm:text-sm min-w-[300px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Indicador</TableHead>
+                      <TableHead className="text-right">Valor ERP</TableHead>
+                      <TableHead className="text-center hidden sm:table-cell">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {[
                       { label: 'Cotações Enviadas', value: (mesDados as any)?.cotacoes ?? 0, fmt: (v: number) => v.toLocaleString('pt-BR') },
                       { label: 'Vendas Realizadas', value: (mesDados as any)?.osGeradas ?? 0, fmt: (v: number) => v.toLocaleString('pt-BR') },
@@ -2605,19 +2600,18 @@ export default function PerformanceComercial() {
                       { label: 'Clientes Novos', value: (mesDados as any)?.clientesNovos ?? (clientesNovos as any)?.total ?? 0, fmt: (v: number) => v.toLocaleString('pt-BR') },
                       { label: 'Taxa Conv. Novos', value: (mesDados as any)?.taxaConvNovos ?? (clientesNovos as any)?.taxaConversaoNovos ?? 0, fmt: (v: number) => `${v.toFixed(1)}%` },
                     ].map(row => (
-                      <tr key={row.label} className="hover:bg-slate-50">
-                        <td className="px-3 py-2.5 text-slate-700 font-medium">{row.label}</td>
-                        <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-800">{row.fmt(row.value)}</td>
-                        <td className="px-2 py-2.5 text-center hidden sm:table-cell">
+                      <TableRow key={row.label}>
+                        <TableCell className="text-slate-700 font-medium">{row.label}</TableCell>
+                        <TableCell className="text-right font-mono font-semibold text-slate-800">{row.fmt(row.value)}</TableCell>
+                        <TableCell className="text-center hidden sm:table-cell">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
                             ✓ ERP
                           </span>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
             </div>
 
             {/* Aviso */}

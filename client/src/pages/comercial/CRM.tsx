@@ -25,6 +25,10 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
 } from "@/components/ui/tooltip";
 import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const OPCOES_RESPOSTA = [
@@ -280,17 +284,17 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
 
   return (
     <>
-      <tr className={`border-b transition-colors ${rowBg}`}>
+      <TableRow className={`transition-colors ${rowBg}`}>
         {/* Nº OS */}
-        <td className="px-3 py-3 whitespace-nowrap">
+        <TableCell>
           <button onClick={() => setModalStatus(true)} className="text-blue-600 hover:text-blue-800 font-bold text-sm underline underline-offset-2">
             #{p.sequencial || p.id}
           </button>
           <div className="text-xs text-muted-foreground mt-0.5">{fmtDate(p.dataCriacao)}</div>
-        </td>
+        </TableCell>
 
         {/* Miniatura / Razão Social */}
-        <td className="px-3 py-3 min-w-[170px]">
+        <TableCell className="min-w-[170px] whitespace-normal">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
               style={{ backgroundColor: `hsl(${(p.nomeCliente.charCodeAt(0) * 47) % 360}, 60%, 45%)` }}>
@@ -317,10 +321,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
               <div className="text-xs text-muted-foreground">{fmt(p.valor)}</div>
             </div>
           </div>
-        </td>
+        </TableCell>
 
         {/* Nome do Contato / WhatsApp */}
-        <td className="px-3 py-3 min-w-[140px]">
+        <TableCell className="min-w-[140px] whitespace-normal">
           <div className="text-sm font-medium">{p.nomeContato || "—"}</div>
           {waLink && (
             <a href={waLink} target="_blank" rel="noopener noreferrer"
@@ -328,17 +332,17 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
               <MessageCircle className="w-3 h-3" /> WhatsApp
             </a>
           )}
-        </td>
+        </TableCell>
 
         {/* Vendedor (quando "todos") */}
         {showVendedor && (
-          <td className="px-3 py-3 whitespace-nowrap">
+          <TableCell>
             <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">{p.vendedor}</span>
-          </td>
+          </TableCell>
         )}
 
         {/* Faixas agrupadas */}
-        <td className="px-2 py-3">
+        <TableCell className="whitespace-normal">
           <div className="flex gap-1.5 flex-wrap">
             <ScriptsFaixaPopover
               faixa={1} label="Faixa 1 (1-3 du)" bgCls="bg-yellow-50 border-yellow-200"
@@ -368,28 +372,28 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
               {renderFaixaContent(dates.slice(7, 15))}
             </ScriptsFaixaPopover>
           </div>
-        </td>
+        </TableCell>
 
         {/* Perdida */}
-        <td className="px-2 py-3 text-center">
+        <TableCell className="text-center">
           <button onClick={() => marcarPerdida.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
             disabled={marcarPerdida.isPending}
             className="w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como perdida">
             {marcarPerdida.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
           </button>
-        </td>
+        </TableCell>
 
         {/* Venci */}
-        <td className="px-2 py-3 text-center">
+        <TableCell className="text-center">
           <button onClick={() => marcarGanha.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
             disabled={marcarGanha.isPending}
             className="w-8 h-8 rounded-full bg-green-100 hover:bg-green-200 text-green-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como ganha">
             {marcarGanha.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trophy className="w-3.5 h-3.5" />}
           </button>
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
 
       {/* Modal: registrar contato */}
       <Dialog open={!!modalContato && !modalContato?.desfazer} onOpenChange={() => setModalContato(null)}>
@@ -835,26 +839,24 @@ export default function CRM() {
             <p className="text-xs mt-1">Tente ajustar os filtros.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                  <th className="px-3 py-3 text-left whitespace-nowrap">Nº OS</th>
-                  <th className="px-3 py-3 text-left">Miniatura / Razão Social</th>
-                  <th className="px-3 py-3 text-left">Nome do Cliente</th>
-                  {showVendedor && <th className="px-3 py-3 text-left">Vendedor</th>}
-                  <th className="px-2 py-3 text-left">Faixas de Acompanhamento</th>
-                  <th className="px-2 py-3 text-center">Perdida</th>
-                  <th className="px-2 py-3 text-center">Venci</th>
-                </tr>
-              </thead>
-              <tbody>
+          <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nº OS</TableHead>
+                  <TableHead>Miniatura / Razão Social</TableHead>
+                  <TableHead>Nome do Cliente</TableHead>
+                  {showVendedor && <TableHead>Vendedor</TableHead>}
+                  <TableHead>Faixas de Acompanhamento</TableHead>
+                  <TableHead className="text-center">Perdida</TableHead>
+                  <TableHead className="text-center">Venci</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {propostasAtivas.map(p => (
                   <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
         )}
       </div>
 
@@ -980,26 +982,24 @@ export default function CRM() {
             {verHistorico ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {verHistorico && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                    <th className="px-3 py-3 text-left">Nº OS</th>
-                    <th className="px-3 py-3 text-left">Miniatura / Razão Social</th>
-                    <th className="px-3 py-3 text-left">Nome do Cliente</th>
-                    {showVendedor && <th className="px-3 py-3 text-left">Vendedor</th>}
-                    <th className="px-2 py-3 text-left">Faixas</th>
-                    <th className="px-2 py-3 text-center">Perdida</th>
-                    <th className="px-2 py-3 text-center">Venci</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nº OS</TableHead>
+                    <TableHead>Miniatura / Razão Social</TableHead>
+                    <TableHead>Nome do Cliente</TableHead>
+                    {showVendedor && <TableHead>Vendedor</TableHead>}
+                    <TableHead>Faixas</TableHead>
+                    <TableHead className="text-center">Perdida</TableHead>
+                    <TableHead className="text-center">Venci</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {propostasHistorico.map(p => (
                     <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </div>
       )}
@@ -1113,46 +1113,44 @@ export default function CRM() {
                         <TrendingUp className="w-4 h-4 text-blue-600" /> Ranking de Engajamento
                       </h3>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-gray-50 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                            <th className="px-4 py-2.5 text-left">#</th>
-                            <th className="px-4 py-2.5 text-left">Vendedor</th>
-                            <th className="px-4 py-2.5 text-center">Contatos</th>
-                            <th className="px-4 py-2.5 text-center">Descartes</th>
-                            <th className="px-4 py-2.5 text-center">Aderência</th>
-                            <th className="px-4 py-2.5 text-center">Score</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>#</TableHead>
+                            <TableHead>Vendedor</TableHead>
+                            <TableHead className="text-center">Contatos</TableHead>
+                            <TableHead className="text-center">Descartes</TableHead>
+                            <TableHead className="text-center">Aderência</TableHead>
+                            <TableHead className="text-center">Score</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {aud.blocoF.map((v, i) => (
-                            <tr key={v.vendedor} className="border-b hover:bg-gray-50">
-                              <td className="px-4 py-2.5 font-bold text-muted-foreground">{i+1}º</td>
-                              <td className="px-4 py-2.5 font-medium">{v.vendedor}</td>
-                              <td className="px-4 py-2.5 text-center">
+                            <TableRow key={v.vendedor}>
+                              <TableCell className="font-bold text-muted-foreground">{i+1}º</TableCell>
+                              <TableCell className="font-medium">{v.vendedor}</TableCell>
+                              <TableCell className="text-center">
                                 <span className="inline-flex items-center gap-1 text-green-700 font-semibold">
                                   <CheckCircle2 className="w-3.5 h-3.5" />{v.totalContatos}
                                 </span>
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
+                              </TableCell>
+                              <TableCell className="text-center">
                                 <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
                                   <Trash2 className="w-3.5 h-3.5" />{v.totalDescartes}
                                 </span>
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
+                              </TableCell>
+                              <TableCell className="text-center">
                                 <span className={`font-semibold ${
                                   v.aderencia >= 80 ? 'text-green-600' : v.aderencia >= 50 ? 'text-amber-600' : 'text-red-600'
                                 }`}>{v.aderencia}%</span>
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
+                              </TableCell>
+                              <TableCell className="text-center">
                                 <span className="font-bold text-blue-700">{v.score}</span>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </TableBody>
+                      </Table>
                   </div>
                 )}
 
@@ -1164,36 +1162,34 @@ export default function CRM() {
                         <Target className="w-4 h-4 text-purple-600" /> Volume de Contatos por Faixa
                       </h3>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-gray-50 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                            <th className="px-4 py-2.5 text-left">Vendedor</th>
-                            <th className="px-4 py-2.5 text-center">Faixa 1 (D+1 a D+5)</th>
-                            <th className="px-4 py-2.5 text-center">Faixa 2 (D+6 a D+10)</th>
-                            <th className="px-4 py-2.5 text-center">Faixa 3 (D+11 a D+15)</th>
-                            <th className="px-4 py-2.5 text-center">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Vendedor</TableHead>
+                            <TableHead className="text-center">Faixa 1 (D+1 a D+5)</TableHead>
+                            <TableHead className="text-center">Faixa 2 (D+6 a D+10)</TableHead>
+                            <TableHead className="text-center">Faixa 3 (D+11 a D+15)</TableHead>
+                            <TableHead className="text-center">Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {aud.blocoB.map(v => (
-                            <tr key={v.vendedor} className="border-b hover:bg-gray-50">
-                              <td className="px-4 py-2.5 font-medium">{v.vendedor}</td>
-                              <td className="px-4 py-2.5 text-center">
+                            <TableRow key={v.vendedor}>
+                              <TableCell className="font-medium">{v.vendedor}</TableCell>
+                              <TableCell className="text-center">
                                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">{v.faixa1}</span>
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
+                              </TableCell>
+                              <TableCell className="text-center">
                                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold text-sm">{v.faixa2}</span>
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
+                              </TableCell>
+                              <TableCell className="text-center">
                                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 font-bold text-sm">{v.faixa3}</span>
-                              </td>
-                              <td className="px-4 py-2.5 text-center font-bold">{v.total}</td>
-                            </tr>
+                              </TableCell>
+                              <TableCell className="text-center font-bold">{v.total}</TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </TableBody>
+                      </Table>
                   </div>
                 )}
 
@@ -1220,47 +1216,45 @@ export default function CRM() {
                       Nenhuma exclusão registrada no período.
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-gray-50 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                            <th className="px-4 py-2.5 text-left">Data/Hora</th>
-                            <th className="px-4 py-2.5 text-left">Empresa</th>
-                            <th className="px-4 py-2.5 text-left">Vendedor</th>
-                            <th className="px-4 py-2.5 text-left">OS</th>
-                            <th className="px-4 py-2.5 text-center">Faixa 1</th>
-                            <th className="px-4 py-2.5 text-center">Faixa 2</th>
-                            <th className="px-4 py-2.5 text-center">Faixa 3</th>
-                            <th className="px-4 py-2.5 text-center">Completo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Data/Hora</TableHead>
+                            <TableHead>Empresa</TableHead>
+                            <TableHead>Vendedor</TableHead>
+                            <TableHead>OS</TableHead>
+                            <TableHead className="text-center">Faixa 1</TableHead>
+                            <TableHead className="text-center">Faixa 2</TableHead>
+                            <TableHead className="text-center">Faixa 3</TableHead>
+                            <TableHead className="text-center">Completo</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {aud.blocoH.map((e, i) => {
                             const dt = new Date(e.dataExclusao);
                             const hBr = ((dt.getUTCHours() - 3) + 24) % 24;
                             const dtBr = new Date(dt.getTime() - 3*60*60*1000);
                             const dataFmt = `${String(dtBr.getUTCDate()).padStart(2,'0')}/${String(dtBr.getUTCMonth()+1).padStart(2,'0')} ${String(hBr).padStart(2,'0')}:${String(dt.getUTCMinutes()).padStart(2,'0')}`;
                             return (
-                              <tr key={i} className={`border-b hover:bg-gray-50 ${e.todasFaixas ? 'bg-red-50' : ''}` }>
-                                <td className="px-4 py-2.5 text-xs text-muted-foreground font-mono">{dataFmt}</td>
-                                <td className="px-4 py-2.5 font-medium max-w-[180px] truncate" title={e.empresa}>{e.empresa || '—'}</td>
-                                <td className="px-4 py-2.5 text-sm">{e.vendedor}</td>
-                                <td className="px-4 py-2.5 text-xs text-muted-foreground font-mono">{e.orcamentoId || '—'}</td>
-                                <td className="px-4 py-2.5 text-center">{e.temFaixa1 ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300 text-lg">·</span>}</td>
-                                <td className="px-4 py-2.5 text-center">{e.temFaixa2 ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300 text-lg">·</span>}</td>
-                                <td className="px-4 py-2.5 text-center">{e.temFaixa3 ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300 text-lg">·</span>}</td>
-                                <td className="px-4 py-2.5 text-center">
+                              <TableRow key={i} className={e.todasFaixas ? 'bg-red-50' : ''}>
+                                <TableCell className="text-xs text-muted-foreground font-mono">{dataFmt}</TableCell>
+                                <TableCell className="font-medium max-w-[180px] truncate" title={e.empresa}>{e.empresa || '—'}</TableCell>
+                                <TableCell className="text-sm">{e.vendedor}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground font-mono">{e.orcamentoId || '—'}</TableCell>
+                                <TableCell className="text-center">{e.temFaixa1 ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300 text-lg">·</span>}</TableCell>
+                                <TableCell className="text-center">{e.temFaixa2 ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300 text-lg">·</span>}</TableCell>
+                                <TableCell className="text-center">{e.temFaixa3 ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300 text-lg">·</span>}</TableCell>
+                                <TableCell className="text-center">
                                   {e.todasFaixas
                                     ? <Badge variant="destructive" className="text-[10px] px-1.5 py-0">3/3</Badge>
                                     : <span className="text-xs text-muted-foreground">{e.faixasCompletas}/3</span>
                                   }
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
+                        </TableBody>
+                      </Table>
                   )}
                 </div>
 
@@ -1273,35 +1267,33 @@ export default function CRM() {
                         <Badge variant="secondary" className="text-xs">{aud.blocoD.length}</Badge>
                       </h3>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-gray-50 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                            <th className="px-4 py-2.5 text-left">Empresa</th>
-                            <th className="px-4 py-2.5 text-left">Vendedor</th>
-                            <th className="px-4 py-2.5 text-center">Dias sem contato</th>
-                            <th className="px-4 py-2.5 text-center">Risco</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Empresa</TableHead>
+                            <TableHead>Vendedor</TableHead>
+                            <TableHead className="text-center">Dias sem contato</TableHead>
+                            <TableHead className="text-center">Risco</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {aud.blocoD.map((p, i) => (
-                            <tr key={i} className="border-b hover:bg-gray-50">
-                              <td className="px-4 py-2.5 font-medium max-w-[200px] truncate" title={p.empresa}>{p.empresa}</td>
-                              <td className="px-4 py-2.5">{p.vendedor}</td>
-                              <td className="px-4 py-2.5 text-center font-bold">{p.diasSemContato}</td>
-                              <td className="px-4 py-2.5 text-center">
+                            <TableRow key={i}>
+                              <TableCell className="font-medium max-w-[200px] truncate" title={p.empresa}>{p.empresa}</TableCell>
+                              <TableCell>{p.vendedor}</TableCell>
+                              <TableCell className="text-center font-bold">{p.diasSemContato}</TableCell>
+                              <TableCell className="text-center">
                                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                                   p.risco === 'critico' ? 'bg-red-100 text-red-700' :
                                   p.risco === 'alto' ? 'bg-orange-100 text-orange-700' :
                                   p.risco === 'medio' ? 'bg-amber-100 text-amber-700' :
                                   'bg-gray-100 text-gray-600'
                                 }`}>{p.risco}</span>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </TableBody>
+                      </Table>
                   </div>
                 )}
 
@@ -1344,25 +1336,24 @@ export default function CRM() {
                         <Activity className="w-4 h-4 text-indigo-600" /> Aderência à Rotina (Manhã / Tarde)
                       </h3>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-gray-50 text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                            <th className="px-4 py-2.5 text-left">Vendedor</th>
-                            <th className="px-4 py-2.5 text-center">Manhãs OK</th>
-                            <th className="px-4 py-2.5 text-center">Tardes OK</th>
-                            <th className="px-4 py-2.5 text-center">Total Dias</th>
-                            <th className="px-4 py-2.5 text-center">Aderência</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Vendedor</TableHead>
+                            <TableHead className="text-center">Manhãs OK</TableHead>
+                            <TableHead className="text-center">Tardes OK</TableHead>
+                            <TableHead className="text-center">Total Dias</TableHead>
+                            <TableHead className="text-center">Aderência</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {aud.blocoA.map(v => (
-                            <tr key={v.vendedor} className="border-b hover:bg-gray-50">
-                              <td className="px-4 py-2.5 font-medium">{v.vendedor}</td>
-                              <td className="px-4 py-2.5 text-center">{v.manhasOk}/{v.totalDias}</td>
-                              <td className="px-4 py-2.5 text-center">{v.tardesOk}/{v.totalDias}</td>
-                              <td className="px-4 py-2.5 text-center">{v.totalDias}</td>
-                              <td className="px-4 py-2.5 text-center">
+                            <TableRow key={v.vendedor}>
+                              <TableCell className="font-medium">{v.vendedor}</TableCell>
+                              <TableCell className="text-center">{v.manhasOk}/{v.totalDias}</TableCell>
+                              <TableCell className="text-center">{v.tardesOk}/{v.totalDias}</TableCell>
+                              <TableCell className="text-center">{v.totalDias}</TableCell>
+                              <TableCell className="text-center">
                                 <div className="flex items-center gap-2 justify-center">
                                   <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
                                     <div className={`h-full rounded-full ${
@@ -1373,12 +1364,11 @@ export default function CRM() {
                                     v.aderencia >= 80 ? 'text-green-600' : v.aderencia >= 50 ? 'text-amber-600' : 'text-red-600'
                                   }`}>{v.aderencia}%</span>
                                 </div>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </TableBody>
+                      </Table>
                   </div>
                 )}
 

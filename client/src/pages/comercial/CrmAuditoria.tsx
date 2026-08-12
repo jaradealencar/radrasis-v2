@@ -4,6 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
+import {
   CheckCircle2, XCircle, AlertTriangle, TrendingUp, Users,
   Calendar, Clock, Zap, Target, Trash2, ChevronLeft, ChevronRight,
   Activity, Info
@@ -165,29 +169,28 @@ export default function CrmAuditoria() {
               {vendedores.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-6">Nenhuma atividade registrada nesta semana.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100">
-                        <th className="text-left py-2 pr-4 text-slate-500 font-medium min-w-[160px]">Vendedor</th>
+                <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[160px]">Vendedor</TableHead>
                         {diasSemana.map(d => (
-                          <th key={d} className="text-center py-2 px-1 text-slate-500 font-medium">
+                          <TableHead key={d} className="text-center">
                             {formatDateShort(d)}
-                          </th>
+                          </TableHead>
                         ))}
-                        <th className="text-center py-2 px-2 text-slate-500 font-medium">Aderência</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                        <TableHead className="text-center">Aderência</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {data.blocoA.map(row => (
-                        <tr key={row.vendedor} className="border-b border-slate-50 hover:bg-slate-50">
-                          <td className={`py-3 pr-4 font-semibold ${corVendedor(row.vendedor)}`}>
+                        <TableRow key={row.vendedor}>
+                          <TableCell className={`font-semibold ${corVendedor(row.vendedor)}`}>
                             {row.vendedor}
-                          </td>
+                          </TableCell>
                           {diasSemana.map(d => {
                             const cel = row.dias[d] ?? { manha: false, tarde: false, acoes: 0 };
                             return (
-                              <td key={d} className="py-2 px-1 text-center">
+                              <TableCell key={d} className="text-center">
                                 <button
                                   onClick={() => { setDrillVendedor(row.vendedor); setDrillDia(d); }}
                                   className="hover:opacity-80 transition-opacity"
@@ -195,20 +198,19 @@ export default function CrmAuditoria() {
                                 >
                                   <CelulaRotina manha={cel.manha} tarde={cel.tarde} acoes={cel.acoes} />
                                 </button>
-                              </td>
+                              </TableCell>
                             );
                           })}
-                          <td className="py-2 px-2 text-center">
+                          <TableCell className="text-center">
                             {aderenciaBadge(row.aderencia)}
                             <div className="text-[10px] text-slate-400 mt-0.5">
                               {row.manhasOk}M / {row.tardesOk}T
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
               )}
               <p className="text-xs text-slate-400 mt-3 flex items-center gap-1">
                 <Info className="w-3 h-3" />
@@ -266,35 +268,35 @@ export default function CrmAuditoria() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-xs text-slate-500">
-                      <th className="text-left pb-2">Vendedor</th>
-                      <th className="text-center pb-2">F1</th>
-                      <th className="text-center pb-2">F2</th>
-                      <th className="text-center pb-2">F3</th>
-                      <th className="text-center pb-2">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendedor</TableHead>
+                      <TableHead className="text-center">F1</TableHead>
+                      <TableHead className="text-center">F2</TableHead>
+                      <TableHead className="text-center">F3</TableHead>
+                      <TableHead className="text-center">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {data.blocoB.map(row => (
-                      <tr key={row.vendedor} className="border-b border-slate-50">
-                        <td className={`py-2 text-xs font-semibold ${corVendedor(row.vendedor)}`}>
+                      <TableRow key={row.vendedor}>
+                        <TableCell className={`text-xs font-semibold ${corVendedor(row.vendedor)}`}>
                           {row.vendedor.split(" ")[0]}
-                        </td>
-                        <td className="py-2 text-center text-xs">{row.faixa1}</td>
-                        <td className="py-2 text-center text-xs">{row.faixa2}</td>
-                        <td className="py-2 text-center text-xs">{row.faixa3}</td>
-                        <td className="py-2 text-center">
+                        </TableCell>
+                        <TableCell className="text-center text-xs">{row.faixa1}</TableCell>
+                        <TableCell className="text-center text-xs">{row.faixa2}</TableCell>
+                        <TableCell className="text-center text-xs">{row.faixa3}</TableCell>
+                        <TableCell className="text-center">
                           <Badge variant="outline" className="text-xs">{row.total}</Badge>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
                     {data.blocoB.length === 0 && (
-                      <tr><td colSpan={5} className="py-4 text-center text-xs text-slate-400">Sem dados</td></tr>
+                      <TableRow><TableCell colSpan={5} className="text-center text-xs text-slate-400">Sem dados</TableCell></TableRow>
                     )}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
                 <p className="text-[10px] text-slate-400 mt-2">F1=1º contato · F2=2º contato · F3=3º+</p>
               </CardContent>
             </Card>
@@ -395,34 +397,32 @@ export default function CrmAuditoria() {
                   <span className="text-sm font-medium">Nenhuma proposta no limbo. Excelente!</span>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-xs text-slate-500">
-                        <th className="text-left pb-2">Orçamento</th>
-                        <th className="text-left pb-2">Empresa</th>
-                        <th className="text-left pb-2">Vendedor</th>
-                        <th className="text-center pb-2">Dias sem contato</th>
-                        <th className="text-center pb-2">Risco</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Orçamento</TableHead>
+                        <TableHead>Empresa</TableHead>
+                        <TableHead>Vendedor</TableHead>
+                        <TableHead className="text-center">Dias sem contato</TableHead>
+                        <TableHead className="text-center">Risco</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {data.blocoD.map((row, i) => (
-                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
-                          <td className="py-2 font-mono text-xs text-slate-500">{row.orcamentoId}</td>
-                          <td className="py-2 font-medium text-slate-700">{row.empresa}</td>
-                          <td className={`py-2 font-semibold text-xs ${corVendedor(row.vendedor)}`}>{row.vendedor.split(" ")[0]}</td>
-                          <td className="py-2 text-center">
+                        <TableRow key={i}>
+                          <TableCell className="font-mono text-xs text-slate-500">{row.orcamentoId}</TableCell>
+                          <TableCell className="font-medium text-slate-700">{row.empresa}</TableCell>
+                          <TableCell className={`font-semibold text-xs ${corVendedor(row.vendedor)}`}>{row.vendedor.split(" ")[0]}</TableCell>
+                          <TableCell className="text-center">
                             <span className={`font-bold ${row.diasSemContato >= 16 ? "text-red-600" : row.diasSemContato >= 7 ? "text-orange-600" : "text-amber-600"}`}>
                               {row.diasSemContato}d
                             </span>
-                          </td>
-                          <td className="py-2 text-center">{riscoBadge(row.risco)}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell className="text-center">{riscoBadge(row.risco)}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
               )}
             </CardContent>
           </Card>
