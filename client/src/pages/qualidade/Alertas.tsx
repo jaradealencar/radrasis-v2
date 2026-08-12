@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -142,13 +143,13 @@ export default function Alertas() {
       {isLoading ? (
         <div className="text-center py-12 text-slate-400">Carregando alertas...</div>
       ) : alertas.length === 0 ? (
-        <Card className="border-dashed border-2 border-slate-300">
-          <CardContent className="p-10 text-center">
-            <BellOff size={32} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-slate-500 font-medium">Nenhum alerta encontrado</p>
-            <p className="text-slate-400 text-sm mt-1">Clique em "Gerar Alertas" para verificar reincidências e metas automaticamente.</p>
-          </CardContent>
-        </Card>
+        <Empty className="border-2 border-slate-300">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><BellOff /></EmptyMedia>
+            <EmptyTitle>Nenhum alerta encontrado</EmptyTitle>
+            <EmptyDescription>Clique em "Gerar Alertas" para verificar reincidências e metas automaticamente.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-2">
           {(alertas as any[]).map(alerta => {

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Target, TrendingUp, Users, DollarSign, BarChart2, Percent,
   Save, Edit2, ChevronDown, ChevronUp, Trash2, Link2, UserPlus, Star,
@@ -362,7 +363,11 @@ export default function MetasComerciais() {
           {loadingMes ? (
             <div className="text-sm text-slate-400 py-8 text-center">Carregando dados...</div>
           ) : vendedores.length === 0 ? (
-            <div className="text-sm text-slate-400 py-8 text-center">Nenhum dado disponível para este mês.</div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhum dado disponível para este mês.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div className="space-y-3">
               {vendedores.map((v: any) => {

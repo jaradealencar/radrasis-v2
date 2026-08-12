@@ -5,6 +5,7 @@ import { ShieldCheck, Search, ChevronLeft, ChevronRight, Eye, X, Plus, Pencil, T
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
@@ -325,10 +326,12 @@ export default function Auditoria() {
               Carregando eventos...
             </div>
           ) : rows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-2">
-              <ShieldCheck size={32} className="text-slate-200" />
-              <p className="text-slate-400 text-sm">Nenhum evento de auditoria encontrado.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><ShieldCheck /></EmptyMedia>
+                <EmptyTitle>Nenhum evento de auditoria encontrado.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <Table>
               <TableHeader>

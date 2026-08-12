@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
@@ -167,7 +168,11 @@ export default function CrmAuditoria() {
             </CardHeader>
             <CardContent>
               {vendedores.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-6">Nenhuma atividade registrada nesta semana.</p>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Nenhuma atividade registrada nesta semana.</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <Table>
                     <TableHeader>
@@ -335,7 +340,11 @@ export default function CrmAuditoria() {
                     </div>
                   ))}
                   {data.blocoC.length === 0 && (
-                    <p className="text-xs text-slate-400 text-center py-4">Sem dados</p>
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyTitle>Sem dados</EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   )}
                 </div>
                 <p className="text-[10px] text-slate-400 mt-3">Meta: ≥ 5 descartes/semana por vendedor</p>
@@ -371,7 +380,11 @@ export default function CrmAuditoria() {
                     </div>
                   ))}
                   {data.blocoF.length === 0 && (
-                    <p className="text-xs text-slate-400 text-center py-4">Sem dados</p>
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyTitle>Sem dados</EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   )}
                 </div>
                 <p className="text-[10px] text-slate-400 mt-3">Score = contatos×2 + descartes + aderência%</p>
@@ -392,10 +405,12 @@ export default function CrmAuditoria() {
             </CardHeader>
             <CardContent>
               {data.blocoD.length === 0 ? (
-                <div className="flex items-center gap-2 text-emerald-600 py-4">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span className="text-sm font-medium">Nenhuma proposta no limbo. Excelente!</span>
-                </div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon"><CheckCircle2 className="text-emerald-600" /></EmptyMedia>
+                    <EmptyTitle>Nenhuma proposta no limbo. Excelente!</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <Table>
                     <TableHeader>
@@ -440,10 +455,12 @@ export default function CrmAuditoria() {
             </CardHeader>
             <CardContent>
               {data.blocoE.length === 0 ? (
-                <div className="flex items-center gap-2 text-emerald-600 py-2">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span className="text-sm font-medium">Nenhum alerta de velocidade suspeita nesta semana.</span>
-                </div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon"><CheckCircle2 className="text-emerald-600" /></EmptyMedia>
+                    <EmptyTitle>Nenhum alerta de velocidade suspeita nesta semana.</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <div className="space-y-3">
                   {data.blocoE.map((alerta, i) => (
@@ -513,10 +530,12 @@ export default function CrmAuditoria() {
       )}
 
       {!isLoading && !data && (
-        <div className="text-center py-12 text-slate-400">
-          <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>Nenhum dado disponível para o período selecionado.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Users /></EmptyMedia>
+            <EmptyTitle>Nenhum dado disponível para o período selecionado.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       )}
     </div>
   );

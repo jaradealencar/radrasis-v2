@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -695,11 +696,13 @@ function MetasProdutosTab() {
               <RefreshCw className="w-4 h-4 animate-spin" /> Carregando...
             </div>
           ) : !metasList || metasList.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <ShoppingBag className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhum produto monitorado ainda.</p>
-              <p className="text-xs mt-1">Busque um produto no ERP acima ou clique em "Adicionar Produto".</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><ShoppingBag /></EmptyMedia>
+                <EmptyTitle>Nenhum produto monitorado ainda.</EmptyTitle>
+                <EmptyDescription>Busque um produto no ERP acima ou clique em "Adicionar Produto".</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <Table>
               <TableHeader><TableRow>

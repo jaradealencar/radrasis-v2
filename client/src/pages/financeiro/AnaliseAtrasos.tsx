@@ -2,6 +2,11 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -497,10 +502,15 @@ export default function AnaliseAtrasosPage() {
       )}
 
       {registros.length === 0 && (
-        <Card className="p-12 text-center">
-          <p className="text-gray-600">
-            Nenhum registro de atraso ainda. Comece a adicionar dados acima!
-          </p>
+        <Card className="p-12">
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>
+                Nenhum registro de atraso ainda. Comece a adicionar dados
+                acima!
+              </EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         </Card>
       )}
     </div>

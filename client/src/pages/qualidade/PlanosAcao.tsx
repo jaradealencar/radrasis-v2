@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +17,9 @@ import {
 } from "@/components/ui/table";
 import {
   GitBranch, Plus, AlertTriangle, Edit2, Trash2, ChevronDown, ChevronUp,
-  Fish, Table2, X, CheckCircle2, Clock, Loader2, Eye, FileDown, Sparkles
+  Fish, Table2, X, CheckCircle2, Clock, Eye, FileDown, Sparkles
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import PageHeader from "@/components/PageHeader";
@@ -276,7 +278,7 @@ function Tabela5W2H({ planoId, titulo, problemaRaiz, codigoErro }: { planoId: nu
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => gerarIA.mutate({ planoId, titulo, problemaRaiz: problemaRaiz ?? undefined, codigoErro, quantidade: 5 })} disabled={gerarIA.isPending} className="gap-1.5 h-8 text-purple-600 border-purple-200 hover:bg-purple-50">
-            {gerarIA.isPending ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Gerar com IA
+            {gerarIA.isPending ? <Spinner className="size-[13px]" /> : <Sparkles size={13} />} Gerar com IA
           </Button>
           <Button size="sm" onClick={() => setAddingOpen(true)} className="gap-1.5 h-8">
             <Plus size={13} /> Nova Ação
@@ -287,11 +289,13 @@ function Tabela5W2H({ planoId, titulo, problemaRaiz, codigoErro }: { planoId: nu
       {isLoading ? (
         <div className="text-center py-6 text-slate-400 text-sm">Carregando ações...</div>
       ) : acoes.length === 0 && !addingOpen ? (
-        <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl">
-          <Table2 size={28} className="mx-auto mb-2 text-slate-300" />
-          <p className="text-slate-400 text-sm">Nenhuma ação cadastrada</p>
-          <p className="text-slate-300 text-xs mt-1">Clique em "Nova Ação" para adicionar ações práticas ao plano</p>
-        </div>
+        <Empty className="border-2 border-slate-200 rounded-xl">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Table2 /></EmptyMedia>
+            <EmptyTitle>Nenhuma ação cadastrada</EmptyTitle>
+            <EmptyDescription>Clique em "Nova Ação" para adicionar ações práticas ao plano</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="rounded-xl border border-slate-200">
           <Table className="text-xs">
@@ -612,7 +616,7 @@ function DetalhePlano({ plano, onClose }: { plano: any; onClose: () => void }) {
               disabled={exporting || !exportData}
               className="gap-1.5 text-xs h-8"
             >
-              {exporting ? <Loader2 size={12} className="animate-spin" /> : <FileDown size={12} />}
+              {exporting ? <Spinner className="size-3" /> : <FileDown size={12} />}
               {exporting ? "Gerando..." : "Exportar PDF"}
             </Button>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
@@ -920,13 +924,13 @@ export default function PlanosAcao() {
         {isLoading ? (
           <div className="text-center py-12 text-slate-400">Carregando...</div>
         ) : filtrados.length === 0 ? (
-          <Card className="border-dashed border-2 border-slate-300">
-            <CardContent className="p-10 text-center">
-              <GitBranch size={32} className="mx-auto mb-3 text-slate-300" />
-              <p className="text-slate-500 font-medium">Nenhum plano de ação encontrado</p>
-              <p className="text-slate-400 text-sm mt-1">Crie um plano para erros reincidentes ou causas raiz identificadas.</p>
-            </CardContent>
-          </Card>
+          <Empty className="border-2 border-slate-300">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><GitBranch /></EmptyMedia>
+              <EmptyTitle>Nenhum plano de ação encontrado</EmptyTitle>
+              <EmptyDescription>Crie um plano para erros reincidentes ou causas raiz identificadas.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="space-y-3">
             {filtrados.map((p: any) => {

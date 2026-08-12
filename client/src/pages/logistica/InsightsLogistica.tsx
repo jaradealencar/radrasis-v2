@@ -8,6 +8,7 @@ import { Brain, Sparkles, TrendingUp, Package, Truck, AlertTriangle, RefreshCw, 
 import { Streamdown } from "streamdown";
 import PageHeader from "@/components/PageHeader";
 import { STATUS_COLORS } from "@/lib/chartColors";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 const ANALISES_PREDEFINIDAS = [
   { id: "eficiencia", label: "Eficiência de Entregas", icon: <Truck size={16} />, prompt: "Analise a eficiência das entregas da logística da empresa Letreiros Express. Avalie prazos, transportadoras com melhor e pior desempenho, e dê recomendações práticas para melhorar a assertividade." },
@@ -192,10 +193,14 @@ export default function InsightsLogistica() {
       {/* Estado vazio */}
       {historico.length === 0 && !carregando && (
         <Card className="border-dashed border-slate-200">
-          <CardContent className="py-12 text-center">
-            <Brain size={40} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-slate-500 font-medium">Nenhuma análise realizada ainda</p>
-            <p className="text-sm text-slate-400 mt-1">Clique em uma análise rápida ou faça uma pergunta livre acima</p>
+          <CardContent className="py-12">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Brain /></EmptyMedia>
+                <EmptyTitle>Nenhuma análise realizada ainda</EmptyTitle>
+                <EmptyDescription>Clique em uma análise rápida ou faça uma pergunta livre acima</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           </CardContent>
         </Card>
       )}

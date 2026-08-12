@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FileText, Download, Eye, Users, TrendingUp, Calendar, Filter } from "lucide-react";
 import DashboardLayout from "../../components/DashboardLayout";
 import { trpc } from "../../lib/trpc";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
@@ -108,11 +109,13 @@ export default function PopRelatorio() {
           {loadingEst ? (
             <div className="text-center py-12 text-gray-400">Carregando...</div>
           ) : (estatisticas ?? []).length === 0 ? (
-            <div className="text-center py-12">
-              <FileText size={36} className="mx-auto mb-3 text-gray-300" />
-              <p className="text-gray-500 text-sm">Nenhum acesso registrado ainda.</p>
-              <p className="text-gray-400 text-xs mt-1">Os acessos serão registrados automaticamente quando os usuários abrirem ou baixarem POPs.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><FileText /></EmptyMedia>
+                <EmptyTitle>Nenhum acesso registrado ainda.</EmptyTitle>
+                <EmptyDescription>Os acessos serão registrados automaticamente quando os usuários abrirem ou baixarem POPs.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <Table>
               <TableHeader>
@@ -211,10 +214,12 @@ export default function PopRelatorio() {
             {loadingAcessos ? (
               <div className="text-center py-12 text-gray-400">Carregando...</div>
             ) : (acessos ?? []).length === 0 ? (
-              <div className="text-center py-12">
-                <Eye size={36} className="mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-500 text-sm">Nenhum acesso encontrado com os filtros selecionados.</p>
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><Eye /></EmptyMedia>
+                  <EmptyTitle>Nenhum acesso encontrado com os filtros selecionados.</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
             ) : (
               <Table>
                 <TableHeader>

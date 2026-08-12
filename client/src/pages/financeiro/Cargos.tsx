@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Streamdown } from "streamdown";
 import { ChevronDown, ChevronUp, Users } from "lucide-react";
 
@@ -31,8 +32,12 @@ export default function Cargos() {
 
         {cargos.length === 0 ? (
           <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-muted-foreground">Nenhum cargo cadastrado ainda.</p>
+            <CardContent className="p-8">
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>Nenhum cargo cadastrado ainda.</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
             </CardContent>
           </Card>
         ) : (

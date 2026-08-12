@@ -16,6 +16,7 @@ import KpiCard from "@/components/KpiCard";
 import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
 import { fmtNum } from "@/lib/format";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -331,14 +332,14 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
 
       {/* ── Sem dados ── */}
       {!carregando && (!data || data.clientesUnicosAno === 0) && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center">
-          <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-sm font-semibold text-slate-500">
-            Sem dados para {formatarPeriodo(dataInicial, dataFinal)}
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            Clique em "Atualizar Dados" para buscar do ERP
-          </p>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Users /></EmptyMedia>
+              <EmptyTitle>Sem dados para {formatarPeriodo(dataInicial, dataFinal)}</EmptyTitle>
+              <EmptyDescription>Clique em "Atualizar Dados" para buscar do ERP</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </div>
       )}
 
@@ -437,11 +438,13 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
                 <h3 className="text-sm font-bold text-slate-700">Tempo Proposta → Fechamento</h3>
               </div>
               {!temDadosTempo ? (
-                <div className="py-8 text-center text-slate-400 text-sm">
-                  <Clock className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                  <p>Sem dados de tempo disponíveis</p>
-                  <p className="text-xs mt-1">Requer campo de número do orçamento nas OS da API</p>
-                </div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon"><Clock /></EmptyMedia>
+                    <EmptyTitle>Sem dados de tempo disponíveis</EmptyTitle>
+                    <EmptyDescription>Requer campo de número do orçamento nas OS da API</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
@@ -471,9 +474,11 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
                 <h3 className="text-sm font-bold text-slate-700">Distribuição do Tempo de Fechamento</h3>
               </div>
               {dadosTempo.every((d: { faixa: string; quantidade: number }) => d.quantidade === 0) ? (
-                <div className="py-8 text-center text-slate-400 text-sm">
-                  <p>Sem dados de distribuição disponíveis</p>
-                </div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Sem dados de distribuição disponíveis</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={dadosTempo} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>

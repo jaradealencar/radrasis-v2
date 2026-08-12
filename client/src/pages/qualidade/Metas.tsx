@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -160,13 +161,13 @@ export default function Metas() {
           ))}
         </div>
       ) : (
-        <Card className="border-dashed border-2 border-slate-300">
-          <CardContent className="p-8 text-center">
-            <Target size={32} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-slate-500 font-medium">Nenhuma meta definida para {anoAtual}</p>
-            <p className="text-slate-400 text-sm mt-1">Clique em "Definir Meta" para estabelecer os benchmarks do ano.</p>
-          </CardContent>
-        </Card>
+        <Empty className="border-2 border-slate-300">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Target /></EmptyMedia>
+            <EmptyTitle>Nenhuma meta definida para {anoAtual}</EmptyTitle>
+            <EmptyDescription>Clique em "Definir Meta" para estabelecer os benchmarks do ano.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
       {/* Gráfico de evolução mensal */}

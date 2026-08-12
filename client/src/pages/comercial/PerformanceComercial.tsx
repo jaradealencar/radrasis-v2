@@ -16,6 +16,7 @@ import {
   MessageCircle, Phone, Star, UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -875,7 +876,13 @@ export default function PerformanceComercial() {
                 ticketNovos: novosMap.get(r.mes) ?? 0,
               }));
             if (chartData.length === 0) return (
-              <div className="h-48 flex items-center justify-center text-slate-400 text-sm">Sem dados para o período</div>
+              <div className="h-48">
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Sem dados para o período</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              </div>
             );
             return (
               <ResponsiveContainer width="100%" height={260}>
@@ -1023,13 +1030,19 @@ export default function PerformanceComercial() {
 
               {/* Conteúdo da comparação */}
               {comparaMesesSelecionados.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">
-                  Selecione pelo menos um mês acima para comparar
-                </div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Selecione pelo menos um mês acima para comparar</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : loadingComparaMeses ? (
                 <div className="p-8 text-center text-slate-400 text-sm animate-pulse">Carregando dados...</div>
               ) : (comparaMesesDados ?? []).filter(Boolean).length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">Sem dados para os meses selecionados</div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Sem dados para os meses selecionados</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (() => {
                 const dados = ((comparaMesesDados ?? []).filter(Boolean) as any[]);
 
@@ -1517,7 +1530,11 @@ export default function PerformanceComercial() {
               {loadingClientesNovos ? (
                 <div className="text-sm text-slate-400 py-4 text-center animate-pulse">Buscando clientes e telefones no ERP...</div>
               ) : !clientesNovos || clientesNovos.total === 0 ? (
-                <div className="text-sm text-slate-400 py-4 text-center">Nenhum cliente novo identificado neste mês.</div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Nenhum cliente novo identificado neste mês.</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <div className="space-y-3">
                   <p className="text-xs text-slate-400 mb-3">
@@ -2454,7 +2471,11 @@ export default function PerformanceComercial() {
               )}
 
               {(!clienteOverridesList || clienteOverridesList.length === 0) && (!clientesNovos || clientesNovos.lista.length === 0) && (
-                <p className="text-sm text-slate-400 text-center py-4">Nenhum override cadastrado e nenhum cliente novo no mês selecionado.</p>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Nenhum override cadastrado e nenhum cliente novo no mês selecionado.</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               )}
             </div>
           )}

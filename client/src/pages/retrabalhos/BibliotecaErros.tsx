@@ -5,7 +5,7 @@ import { downloadPopParsedAsPdf } from "@/lib/popPdfFromParsed";
 import RichTextEditor from "@/components/RichTextEditor";
 import {
   Search, Pencil, Check, X, BookOpen, ChevronDown, ChevronRight,
-  Wrench, Plus, Trash2, Sparkles, Loader2, ExternalLink,
+  Wrench, Plus, Trash2, Sparkles, ExternalLink,
   AlertTriangle, ClipboardCheck, GitMerge, Download,
   ImagePlus, ImageOff, Shield, Target, Eye,
 } from "lucide-react";
@@ -14,6 +14,8 @@ import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation, useSearch } from "wouter";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
+import { Spinner } from "@/components/ui/spinner";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; dot: string; text: string; accent: string }> = {
   "SOLDA":       { bg: "#fff7ed", border: "#fed7aa", dot: "#f97316", text: "#c2410c", accent: "#ea580c" },
@@ -244,7 +246,7 @@ function PopPreviewModal({ pop, mode, onClose }: { pop: GeneratedPop; mode: "gen
               className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-semibold transition-colors text-white"
               style={{ background: exporting ? "#94a3b8" : accentColor }}
             >
-              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              {exporting ? <Spinner /> : <Download size={14} />}
               {exporting ? "Exportando..." : "Exportar PDF"}
             </button>
             <button
@@ -354,7 +356,7 @@ function IncorporateModal({
             style={{ background: "oklch(0.52 0.18 240)" }}
           >
             {incorporateMut.isPending ? (
-              <><Loader2 size={14} className="animate-spin" /> Incorporando...</>
+              <><Spinner /> Incorporando...</>
             ) : (
               <><GitMerge size={14} /> Incorporar com IA</>
             )}
@@ -532,7 +534,7 @@ function ErrorRow({
               title={item.imageUrl ? "Substituir imagem de referência" : "Adicionar imagem de referência"}
             >
               {uploadingImg
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+                ? <Spinner className="size-3.5 text-emerald-500" />
                 : <ImagePlus className="w-3.5 h-3.5" style={{ color: item.imageUrl ? "#10b981" : undefined }} />
               }
               <input
@@ -927,10 +929,12 @@ export default function BibliotecaErros() {
       )}
 
       {!isLoading && grouped.length === 0 && (
-        <div className="text-center py-16">
-          <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-500">Nenhum erro encontrado{search ? ` para "${search}"` : ""}.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><BookOpen /></EmptyMedia>
+            <EmptyTitle>Nenhum erro encontrado{search ? ` para "${search}"` : ""}.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       )}
 
       {/* Modal de resultado da geração de POP por categoria */}
@@ -978,7 +982,7 @@ export default function BibliotecaErros() {
                       title={`Gerar POP unificado para a categoria ${category}`}
                     >
                       {isGenerating
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        ? <Spinner className="size-3" />
                         : <Sparkles className="w-3 h-3" />
                       }
                       {isGenerating ? "Gerando..." : "Gerar POP"}

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import CompletudeTransportadoras from "./CompletudeTransportadoras";
 import { Link } from "wouter";
 import PageHeader from "@/components/PageHeader";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   Truck, Globe, Clock, MapPin, Package, User, Phone, MessageCircle,
   Building2, Star, Plus, Trash2, Edit, ArrowLeft, Eye, EyeOff,
@@ -590,7 +591,13 @@ function TransportadoraView({ detalhe, onEdit, onDelete, onBack }: {
                 <button onClick={() => removeCidade.mutate({ id: c.id })} className="text-gray-300 hover:text-red-500 flex-shrink-0 p-0.5"><Trash2 className="w-3 h-3" /></button>
               </div>
             ))}
-            {cidadesFiltradas.length === 0 && <p className="text-xs text-gray-400 text-center py-4">Nenhuma cidade encontrada.</p>}
+            {cidadesFiltradas.length === 0 && (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>Nenhuma cidade encontrada</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
           </div>
         </div>
       )}
@@ -602,7 +609,13 @@ function TransportadoraView({ detalhe, onEdit, onDelete, onBack }: {
             <Input placeholder="Endereço (opcional)" value={novaFilialEnd} onChange={e => setNovaFilialEnd(e.target.value)} className="flex-1" />
             <Button size="sm" onClick={() => { if (novaFilialNome) addFilial.mutate({ transportadoraId: detalhe.id, nome: novaFilialNome, endereco: novaFilialEnd || undefined }); }} className="gap-1"><Plus className="w-4 h-4" /> Adicionar</Button>
           </div>
-          {detalhe.filiais.length === 0 ? <p className="text-sm text-gray-400 text-center py-6">Nenhuma filial cadastrada.</p> : (
+          {detalhe.filiais.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhuma filial cadastrada</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : (
             <div className="flex flex-col gap-2">
               {detalhe.filiais.map(f => (
                 <div key={f.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
@@ -794,7 +807,12 @@ export default function Transportadoras() {
       {isLoading ? (
         <div className="flex justify-center py-20"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
       ) : lista.length === 0 ? (
-        <div className="text-center py-20 text-gray-400"><Truck className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>Nenhuma transportadora encontrada.</p></div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Truck /></EmptyMedia>
+            <EmptyTitle>Nenhuma transportadora encontrada</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {lista.map(t => <TransportadoraCard key={t.id} t={t} onClick={() => { setSelectedId(t.id); setMode("view"); }} />)}

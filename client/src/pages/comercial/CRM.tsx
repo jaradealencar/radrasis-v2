@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
-  MessageCircle, Trophy, XCircle, Loader2, RefreshCw, Users, Calendar,
+  MessageCircle, Trophy, XCircle, RefreshCw, Users, Calendar,
   CheckSquare, Square, Clock, ThumbsUp, AlertCircle, AlertTriangle,
   ChevronDown, ChevronUp, Star,
   Activity, CheckCircle2, Target, Trash2, TrendingUp, Zap, Info,
@@ -17,6 +17,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -380,7 +382,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
             disabled={marcarPerdida.isPending}
             className="w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como perdida">
-            {marcarPerdida.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+            {marcarPerdida.isPending ? <Spinner className="size-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
           </button>
         </TableCell>
 
@@ -390,7 +392,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
             disabled={marcarGanha.isPending}
             className="w-8 h-8 rounded-full bg-green-100 hover:bg-green-200 text-green-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como ganha">
-            {marcarGanha.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trophy className="w-3.5 h-3.5" />}
+            {marcarGanha.isPending ? <Spinner className="size-3.5" /> : <Trophy className="w-3.5 h-3.5" />}
           </button>
         </TableCell>
       </TableRow>
@@ -425,7 +427,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
           <DialogFooter className="mt-4">
             <Button variant="outline" size="sm" onClick={() => setModalContato(null)}>Cancelar</Button>
             <Button size="sm" onClick={confirmContato} disabled={!respostaSelecionada || registrarContato.isPending} className="gap-1">
-              {registrarContato.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Confirmar
+              {registrarContato.isPending && <Spinner className="size-3.5" />} Confirmar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -443,7 +445,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
           <DialogFooter className="mt-4">
             <Button variant="outline" size="sm" onClick={() => setModalContato(null)}>Cancelar</Button>
             <Button variant="destructive" size="sm" onClick={confirmDesfazer} disabled={desfazarContato.isPending} className="gap-1">
-              {desfazarContato.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Remover contato
+              {desfazarContato.isPending && <Spinner className="size-3.5" />} Remover contato
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -459,12 +461,12 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2"
               onClick={() => marcarGanha.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
               disabled={marcarGanha.isPending}>
-              {marcarGanha.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trophy className="w-4 h-4" />} Ganha
+              {marcarGanha.isPending ? <Spinner /> : <Trophy className="w-4 h-4" />} Ganha
             </Button>
             <Button variant="outline" className="flex-1 border-red-300 text-red-600 hover:bg-red-50 gap-2"
               onClick={() => marcarPerdida.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
               disabled={marcarPerdida.isPending}>
-              {marcarPerdida.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />} Perdida
+              {marcarPerdida.isPending ? <Spinner /> : <XCircle className="w-4 h-4" />} Perdida
             </Button>
           </div>
         </DialogContent>
@@ -829,15 +831,17 @@ export default function CRM() {
         </div>
         {isLoading ? (
           <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <Spinner className="size-5" />
             <span className="text-sm">Carregando propostas do ERP...</span>
           </div>
         ) : propostasAtivas.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <CheckSquare className="w-10 h-10 mx-auto mb-3 text-green-400" />
-            <p className="text-sm font-medium">Nenhuma proposta encontrada.</p>
-            <p className="text-xs mt-1">Tente ajustar os filtros.</p>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><CheckSquare className="text-green-400" /></EmptyMedia>
+              <EmptyTitle>Nenhuma proposta encontrada.</EmptyTitle>
+              <EmptyDescription>Tente ajustar os filtros.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <Table>
               <TableHeader>
@@ -1062,7 +1066,7 @@ export default function CRM() {
 
           {auditoriaLoading && (
             <div className="flex items-center justify-center py-16 gap-3 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Spinner className="size-5" />
               <span className="text-sm">Carregando dados de auditoria...</span>
             </div>
           )}
@@ -1212,9 +1216,11 @@ export default function CRM() {
                     </div>
                   </div>
                   {aud.blocoH.length === 0 ? (
-                    <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-                      Nenhuma exclusão registrada no período.
-                    </div>
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyTitle>Nenhuma exclusão registrada no período.</EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   ) : (
                     <Table>
                         <TableHeader>
@@ -1373,9 +1379,11 @@ export default function CRM() {
                 )}
 
                 {aud.vendedores.length === 0 && (
-                  <div className="bg-gray-50 border rounded-xl p-8 text-center text-sm text-muted-foreground">
-                    Nenhuma atividade registrada no período selecionado.
-                  </div>
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyTitle>Nenhuma atividade registrada no período selecionado.</EmptyTitle>
+                    </EmptyHeader>
+                  </Empty>
                 )}
               </div>
             );

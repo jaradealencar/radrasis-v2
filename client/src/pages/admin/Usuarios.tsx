@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
@@ -298,10 +299,12 @@ function UsuariosList() {
       {isLoading ? (
         <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />)}</div>
       ) : usuarios.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p>Nenhum usuário cadastrado.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Users /></EmptyMedia>
+            <EmptyTitle>Nenhum usuário cadastrado.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-2">
           {usuarios.map((u: any) => (

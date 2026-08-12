@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
   TableHeader,
@@ -326,7 +327,11 @@ export default function GestaoAtrasosPage() {
           <h2 className="text-lg font-bold text-gray-900 mb-4">Gargalos Principais</h2>
           <div className="space-y-3">
             {analiseGargalos.length === 0 ? (
-              <p className="text-sm text-gray-500">Nenhum atraso registrado ainda</p>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>Nenhum atraso registrado ainda</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
             ) : (
               analiseGargalos.map((gargalo, idx) => (
                 <div key={idx} className="p-3 bg-gray-50 rounded-lg">

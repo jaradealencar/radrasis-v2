@@ -22,6 +22,7 @@ import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from "@/components/ui/empty";
 
 // ─── Tipos internos ──────────────────────────────────────────────────────────
 type KanbanStatus = "aguardando" | "embalando" | "patio" | "abandonado";
@@ -507,7 +508,11 @@ function KanbanView({ localUser, isAdmin }: { localUser: ReturnType<typeof useAu
                 />
               ))}
               {porColuna(col.id).length === 0 && (
-                <div className="text-center py-6 text-gray-400 text-sm">Vazio</div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Vazio</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               )}
             </div>
           </div>
@@ -1899,7 +1904,13 @@ function ChecklistModal({ caixa, onClose }: { caixa: { id: number; nome: string 
               <Plus className="w-4 h-4" />
             </Button>
           </div>
-          {itens.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Nenhum item ainda.</p>}
+          {itens.length === 0 && (
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhum item ainda.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          )}
           <div className="space-y-1 max-h-64 overflow-y-auto">
             {itens.map((item, i) => (
               <div key={item.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
@@ -2130,7 +2141,13 @@ function InsumosModeloCaixaModal({ caixa, onClose }: { caixa: { id: number; nome
             <Plus className="w-4 h-4 mr-1" /> Adicionar Insumo
           </Button>
           <div className="space-y-1 max-h-56 overflow-y-auto">
-            {insumosCaixa.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Nenhum insumo configurado.</p>}
+            {insumosCaixa.length === 0 && (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>Nenhum insumo configurado.</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
             {insumosCaixa.map((ic: any) => (
               <div key={ic.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
                 <div>
@@ -2202,7 +2219,13 @@ function InsumosLetreirosModal({ letreiro, onClose }: { letreiro: { id: number; 
             <Plus className="w-4 h-4 mr-1" /> Adicionar Insumo
           </Button>
           <div className="space-y-1 max-h-56 overflow-y-auto">
-            {insumosLetreiro.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Nenhum insumo configurado.</p>}
+            {insumosLetreiro.length === 0 && (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>Nenhum insumo configurado.</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
             {insumosLetreiro.map((il: any) => (
               <div key={il.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
                 <div>
@@ -2368,7 +2391,11 @@ function RelatorioView() {
               <h3 className="font-semibold text-gray-800">Comissão por Operador</h3>
             </div>
             {data.porOperador.length === 0 && (
-              <div className="text-center py-8 text-gray-400">Nenhum dado no período.</div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>Nenhum dado no período.</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
             )}
             {data.porOperador.map((op) => (
               <div key={op.operadorNome} className="flex items-center justify-between px-4 py-3 border-b last:border-0 hover:bg-gray-50">
@@ -2390,10 +2417,12 @@ function RelatorioView() {
         <div className="space-y-4">
           {loadingExp && <div className="text-center py-8 text-gray-400">Carregando pedidos expedidos...</div>}
           {!loadingExp && expedidos.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
-              <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>Nenhum pedido expedido no período selecionado.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Package /></EmptyMedia>
+                <EmptyTitle>Nenhum pedido expedido no período selecionado.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           )}
           {!loadingExp && expedidos.length > 0 && (
             <>
@@ -2613,11 +2642,13 @@ function InsumosAdmin() {
       })}
 
       {insumos.length === 0 && (
-        <div className="text-center py-8 text-gray-400">
-          <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
-          <p>Nenhum insumo cadastrado.</p>
-          <p className="text-xs mt-1">Cadastre os materiais de embalagem para calcular o custo das caixas.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Package /></EmptyMedia>
+            <EmptyTitle>Nenhum insumo cadastrado.</EmptyTitle>
+            <EmptyDescription>Cadastre os materiais de embalagem para calcular o custo das caixas.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
     </div>
   );
@@ -3030,10 +3061,12 @@ function ProdutividadeAdmin() {
         {loadingRel && <p className="text-sm text-gray-400 text-center py-4">Carregando...</p>}
 
         {relatorio && relatorio.colaboradores.length === 0 && (
-          <div className="text-center py-6 text-gray-400">
-            <Timer className="w-8 h-8 mx-auto mb-2 opacity-40" />
-            <p>Nenhum registro no período selecionado.</p>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Timer /></EmptyMedia>
+              <EmptyTitle>Nenhum registro no período selecionado.</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         )}
 
         {relatorio && relatorio.colaboradores.length > 0 && (
@@ -3182,9 +3215,14 @@ function OperadorView({ localUser, isAdmin }: { localUser: ReturnType<typeof use
                 </button>
               ))}
               {empacotadores.length === 0 && (
-                <p className="col-span-2 text-xs text-gray-400 text-center py-2">
-                  Nenhum empacotador cadastrado. Peça ao supervisor para cadastrar.
-                </p>
+                <div className="col-span-2">
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyTitle>Nenhum empacotador cadastrado.</EmptyTitle>
+                      <EmptyDescription>Peça ao supervisor para cadastrar.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                </div>
               )}
             </div>
           </div>
@@ -3243,11 +3281,13 @@ function OperadorView({ localUser, isAdmin }: { localUser: ReturnType<typeof use
           )}
 
           {pedidosEmbalando.length === 0 && pedidosAguardando.length === 0 && (
-            <div className="text-center py-16 text-gray-400">
-              <PackageCheck className="w-16 h-16 mx-auto mb-3 text-gray-200" />
-              <p className="font-medium">Nenhum pedido pendente</p>
-              <p className="text-sm mt-1">Todos os pedidos foram finalizados!</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><PackageCheck /></EmptyMedia>
+                <EmptyTitle>Nenhum pedido pendente</EmptyTitle>
+                <EmptyDescription>Todos os pedidos foram finalizados!</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         </>
       )}
@@ -3919,7 +3959,11 @@ function DashboardEmpacotamentoView() {
               );
             })()}
             {(!relatorio || relatorio.colaboradores.length === 0) && (
-              <p className="text-xs text-indigo-400 text-center py-2">Sem dados no período para exibir progresso de metas.</p>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>Sem dados no período para exibir progresso de metas.</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
             )}
           </div>
           {relatorio && relatorio.colaboradores.length > 0 ? (
@@ -3998,10 +4042,12 @@ function DashboardEmpacotamentoView() {
               </button>
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-400">
-              <BarChart3 className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-              <p>Nenhum dado de produtividade no período selecionado.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><BarChart3 /></EmptyMedia>
+                <EmptyTitle>Nenhum dado de produtividade no período selecionado.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           )}
         </>
       )}
@@ -4158,11 +4204,13 @@ function DashboardEmpacotamentoView() {
               })}
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-400">
-              <Timer className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-              <p>Nenhum pedido finalizado no período selecionado.</p>
-              <p className="text-xs mt-1">Configure o tempo estimado nos modelos de caixa e letreiro para ver a comparação.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Timer /></EmptyMedia>
+                <EmptyTitle>Nenhum pedido finalizado no período selecionado.</EmptyTitle>
+                <EmptyDescription>Configure o tempo estimado nos modelos de caixa e letreiro para ver a comparação.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         </div>
       )}
@@ -4230,11 +4278,13 @@ function DashboardEmpacotamentoView() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-400">
-              <BarChart3 className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-              <p>Nenhum dado de evolucao no periodo selecionado.</p>
-              <p className="text-xs mt-1">Finalize pedidos com tempo registrado para ver a evolucao diaria.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><BarChart3 /></EmptyMedia>
+                <EmptyTitle>Nenhum dado de evolucao no periodo selecionado.</EmptyTitle>
+                <EmptyDescription>Finalize pedidos com tempo registrado para ver a evolucao diaria.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         </div>
       )}
@@ -4271,11 +4321,13 @@ function DashboardEmpacotamentoView() {
             const ranking = filtroRanking === "semanal" ? rankingSemanal : rankingMensal;
             if (!ranking || ranking.length === 0) {
               return (
-                <div className="text-center py-12 text-gray-400">
-                  <Users className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-                  <p>Nenhum dado de ranking no periodo selecionado.</p>
-                  <p className="text-xs mt-1">Os operadores precisam ter pedidos finalizados com cronometro ativo.</p>
-                </div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon"><Users /></EmptyMedia>
+                    <EmptyTitle>Nenhum dado de ranking no periodo selecionado.</EmptyTitle>
+                    <EmptyDescription>Os operadores precisam ter pedidos finalizados com cronometro ativo.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               );
             }
             const medalhas = ["1o", "2o", "3o"];
@@ -4349,10 +4401,12 @@ function DashboardEmpacotamentoView() {
             </div>
           </div>
           {registrosTempo.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <p className="text-sm">Nenhum registro de tempo no período selecionado.</p>
-              <p className="text-xs mt-1">Os operadores precisam clicar em "Registrar" no temporizador.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhum registro de tempo no período selecionado.</EmptyTitle>
+                <EmptyDescription>Os operadores precisam clicar em "Registrar" no temporizador.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div className="divide-y divide-gray-50">
               {registrosTempo.map(reg => (
@@ -4406,10 +4460,12 @@ function DashboardEmpacotamentoView() {
             </div>
           </div>
           {previstoVsRealizado.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <p className="text-sm">Nenhum dado no período selecionado.</p>
-              <p className="text-xs mt-1">Configure o tempo estimado nos modelos de caixa/letreiro e registre sessões de empacotamento.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhum dado no período selecionado.</EmptyTitle>
+                <EmptyDescription>Configure o tempo estimado nos modelos de caixa/letreiro e registre sessões de empacotamento.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div>
               <Table>

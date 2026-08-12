@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { CheckCircle, XCircle, Search, MapPin, Truck , Home } from "lucide-react";
 import { Link } from "wouter";
 import PageHeader from "@/components/PageHeader";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const ESTADOS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
@@ -155,9 +156,13 @@ export default function ConsultaCobertura() {
 
       {!buscou && (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <MapPin className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>Digite uma cidade e estado para consultar a cobertura das transportadoras.</p>
+          <CardContent className="py-12">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><MapPin /></EmptyMedia>
+                <EmptyTitle>Digite uma cidade e estado para consultar a cobertura das transportadoras</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           </CardContent>
         </Card>
       )}

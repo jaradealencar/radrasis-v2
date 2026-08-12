@@ -2,8 +2,9 @@ import { trpc } from "@/lib/trpc";
 import DashboardLayout from "../../components/DashboardLayout";
 import { useState } from "react";
 import FilterBar, { FilterState } from "@/components/FilterBar";
-import { Brain, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Brain, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Streamdown } from "streamdown";
 
 const INFO_CARDS = [
@@ -63,7 +64,7 @@ export default function Insights() {
               </p>
               <Button onClick={handleGenerate} disabled={generateMut.isPending} className="gap-2 bg-purple-600 hover:bg-purple-700 text-white">
                 {generateMut.isPending ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" />Analisando dados...</>
+                  <><Spinner />Analisando dados...</>
                 ) : generated ? (
                   <><RefreshCw className="w-4 h-4" />Regenerar Insights</>
                 ) : (

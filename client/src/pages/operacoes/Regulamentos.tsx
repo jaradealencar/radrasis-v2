@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const TYPES = [
   { value: "regulamento", label: "Regulamento" },
@@ -139,10 +140,12 @@ export default function Regulamentos() {
       {isLoading ? (
         <div className="text-center py-12 text-gray-400">Carregando...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12">
-          <ScrollText size={40} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-500 text-sm">Nenhum documento encontrado.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><ScrollText /></EmptyMedia>
+            <EmptyTitle>Nenhum documento encontrado.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-3">
           {items.map(item => (

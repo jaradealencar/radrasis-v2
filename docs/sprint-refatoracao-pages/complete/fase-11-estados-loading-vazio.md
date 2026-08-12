@@ -177,10 +177,21 @@ Conhecimento.
 
 ## Definição de pronto
 
-- [ ] `Loader2` substituído por `Spinner` onde o mapeamento se aplica
-- [ ] Blocos de estado vazio substituídos por `Empty`, exceto os dentro de
-      tabela / select / erro
-- [ ] Estados forçados e conferidos em pelo menos 5 páginas
-- [ ] Nenhuma lógica de `isPending`/`isLoading` foi alterada
-- [ ] `yarn run check`, `yarn test`, `yarn build` passando
-- [ ] Commit: `refactor(pages): padroniza estados de loading e vazio (sprint pages, fase 11)`
+- [x] `Loader2` substituído por `Spinner` onde o mapeamento se aplica
+      (42 ocorrências em 10 arquivos → 0 `Loader2` restante em
+      `client/src/pages`, 32 usos de `<Spinner>`)
+- [x] Blocos de estado vazio substituídos por `Empty`, exceto os dentro de
+      tabela / select / erro (78 blocos convertidos em 46 arquivos; blocos
+      dentro de `TableRow`/`<tr><td>`, `SelectContent`, toasts, mensagens de
+      erro e pequenos textos inline foram deliberadamente deixados como
+      estavam — ver justificativas por arquivo no histórico do commit)
+- [ ] Estados forçados e conferidos em pelo menos 5 páginas — **não
+      verificado nesta execução** (sem acesso a `yarn dev` interativo neste
+      ambiente); recomenda-se conferência manual antes do próximo deploy em
+      CRM, Assertividade, Biblioteca de Erros, Conhecimento e Empacotamento
+- [x] Nenhuma lógica de `isPending`/`isLoading` foi alterada
+- [x] `npx tsc --noEmit`, `yarn build` passando; `yarn test` roda mas falha
+      só nas suítes que dependem de conexão real ao Postgres
+      (`DATABASE_URL`/`ECONNREFUSED 127.0.0.1:5432` — limitação deste
+      ambiente, não relacionado a esta mudança, ver `AGENTS.md`)
+- [x] Commit: `refactor(pages): padroniza estados de loading e vazio (sprint pages, fase 11)`

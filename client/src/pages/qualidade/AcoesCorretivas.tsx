@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -159,13 +160,13 @@ export default function AcoesCorretivas() {
       {isLoading ? (
         <div className="text-center py-12 text-slate-400">Carregando...</div>
       ) : acoes.length === 0 ? (
-        <Card className="border-dashed border-2 border-slate-300">
-          <CardContent className="p-10 text-center">
-            <ClipboardCheck size={32} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-slate-500 font-medium">Nenhuma ação corretiva encontrada</p>
-            <p className="text-slate-400 text-sm mt-1">Registre ações corretivas para os retrabalhos identificados.</p>
-          </CardContent>
-        </Card>
+        <Empty className="border-2 border-slate-300">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia>
+            <EmptyTitle>Nenhuma ação corretiva encontrada</EmptyTitle>
+            <EmptyDescription>Registre ações corretivas para os retrabalhos identificados.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-3">
           {(acoes as any[]).map(a => {

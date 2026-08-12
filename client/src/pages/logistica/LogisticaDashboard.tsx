@@ -11,7 +11,8 @@ import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { Truck, Clock, CheckCircle, ListOrdered, TrendingUp, Home, Calendar, ChevronUp, ChevronDown, Minus, Tag, X, AlertCircle, Loader2 } from "lucide-react";
+import { Truck, Clock, CheckCircle, ListOrdered, TrendingUp, Home, Calendar, ChevronUp, ChevronDown, Minus, Tag, X, AlertCircle } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Link } from "wouter";
 import PageHeader from "@/components/PageHeader";
@@ -177,7 +178,7 @@ export default function LogisticaDashboard() {
         </CardHeader>
         <CardContent className="space-y-4">
           {prazoLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Loader2 className="w-4 h-4 animate-spin" />Carregando dados de prazo...</div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Spinner />Carregando dados de prazo...</div>
           ) : !prazoStats || prazoStats.total === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Calendar className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -271,7 +272,7 @@ export default function LogisticaDashboard() {
         </CardHeader>
         <CardContent className="space-y-4">
           {metricasRetLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Loader2 className="w-4 h-4 animate-spin" />Carregando métricas de retrabalho...</div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Spinner />Carregando métricas de retrabalho...</div>
           ) : !metricasRet || metricasRet.totalAtrasados === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Tag className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -398,7 +399,7 @@ export default function LogisticaDashboard() {
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setModalRetrabalho(null)}>Cancelar</Button>
             <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white" onClick={handleSalvarRetrabalho} disabled={marcarRetrabalho.isPending || (formTemRetrabalho && !formTipoRetrabalho)}>
-              {marcarRetrabalho.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Tag className="w-3 h-3 mr-1" />}
+              {marcarRetrabalho.isPending ? <Spinner className="size-3 mr-1" /> : <Tag className="w-3 h-3 mr-1" />}
               Salvar
             </Button>
           </DialogFooter>

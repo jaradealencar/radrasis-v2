@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import CnqPanel from "@/components/CnqPanel";
@@ -115,10 +116,12 @@ export default function Dashboard() {
             <span className="text-3xl font-bold text-red-600">{diario?.hoje?.length ?? 0}</span>
           </div>
           {!diario?.hoje?.length ? (
-            <div className="text-center py-6 text-slate-400">
-              <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhum retrabalho ou CNQ registrado hoje.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Clock /></EmptyMedia>
+                <EmptyTitle>Nenhum retrabalho ou CNQ registrado hoje.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
               {diario.hoje.map((r: any) => (
@@ -173,10 +176,12 @@ export default function Dashboard() {
             <span className="text-3xl font-bold text-amber-600">{diario?.ontem?.length ?? 0}</span>
           </div>
           {!diario?.ontem?.length ? (
-            <div className="text-center py-6 text-slate-400">
-              <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhum retrabalho ou CNQ registrado ontem.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><CalendarDays /></EmptyMedia>
+                <EmptyTitle>Nenhum retrabalho ou CNQ registrado ontem.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
               {diario.ontem.map((r: any) => (

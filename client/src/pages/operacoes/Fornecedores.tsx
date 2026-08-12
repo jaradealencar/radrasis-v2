@@ -3,6 +3,7 @@ import { Building2, Mail, MessageCircle, Phone, Plus, Search, Trash2, X } from "
 import { useState } from "react";
 import { toast } from "sonner";
 import DashboardLayout from "../../components/DashboardLayout";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const CATEGORIES = ["Matéria-Prima", "Embalagem", "Serviços", "Tecnologia", "Logística", "Manutenção", "Outros"];
 
@@ -136,10 +137,12 @@ export default function Fornecedores() {
       {isLoading ? (
         <div className="text-center py-12 text-gray-400">Carregando...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12">
-          <Building2 size={40} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-500 text-sm">Nenhum fornecedor encontrado.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Building2 /></EmptyMedia>
+            <EmptyTitle>Nenhum fornecedor encontrado.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-3">
           {items.map(item => (

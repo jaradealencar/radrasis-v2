@@ -1,9 +1,11 @@
 import { trpc } from "@/lib/trpc";
 import {
   BookOpen, Brain, ChevronDown, ChevronUp, Plus, Search, Tag,
-  Trash2, X, MessageSquare, Send, Download, FileText, Loader2, Edit2, Save,
+  Trash2, X, MessageSquare, Send, Download, FileText, Edit2, Save,
   Sparkles, CheckCircle, AlertCircle, Lightbulb, ThumbsUp, FolderOpen, Eye, ExternalLink
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import DashboardLayout from "../../components/DashboardLayout";
@@ -224,7 +226,7 @@ function CommentsSection({ articleId }: { articleId: number }) {
             className="px-3 py-2 rounded-lg text-white disabled:opacity-40 transition-colors flex items-center gap-1.5 text-sm font-medium"
             style={{ background: "oklch(0.52 0.18 240)" }}
           >
-            {createMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {createMut.isPending ? <Spinner /> : <Send size={14} />}
           </button>
         </div>
       </div>
@@ -330,7 +332,7 @@ function ArticleCard({
                 title="Exportar como PDF"
                 className="p-1.5 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-colors disabled:opacity-50"
               >
-                {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                {exporting ? <Spinner className="size-[13px]" /> : <Download size={13} />}
               </button>
               <button
                 onClick={e => { e.stopPropagation(); if (confirm("Remover artigo?")) onDelete(); }}
@@ -514,7 +516,7 @@ export default function Conhecimento() {
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 transition-colors"
             style={{ background: "oklch(0.52 0.18 240)" }}
           >
-            {aiLoading ? <Loader2 size={14} className="animate-spin" /> : "Perguntar"}
+            {aiLoading ? <Spinner /> : "Perguntar"}
           </button>
         </div>
 
@@ -832,10 +834,12 @@ export default function Conhecimento() {
       {isLoading ? (
         <div className="text-center py-12 text-gray-400">Carregando...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12">
-          <BookOpen size={40} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-500 text-sm">Nenhum artigo encontrado.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><BookOpen /></EmptyMedia>
+            <EmptyTitle>Nenhum artigo encontrado.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-3">
           {items.map(item => (

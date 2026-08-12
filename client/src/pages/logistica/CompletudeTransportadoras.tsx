@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
@@ -374,9 +375,11 @@ export default function CompletudeTransportadoras() {
               <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : registros.length === 0 ? (
-            <p className="py-10 text-center text-sm text-gray-500">
-              Nenhuma transportadora neste recorte.
-            </p>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhuma transportadora neste recorte</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div>
               <Table className="text-sm">

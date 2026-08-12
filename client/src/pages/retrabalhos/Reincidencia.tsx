@@ -4,6 +4,7 @@ import { useState } from "react";
 import FilterBar, { FilterState } from "@/components/FilterBar";
 import { AlertTriangle, TrendingUp, Zap } from "lucide-react";
 import { ErrorCodeBadge, useErrorMap } from "@/components/ErrorCodeBadge";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 
 type TabType = "retrabalho" | "cnq";
 
@@ -106,9 +107,11 @@ export default function Reincidencia() {
         )}
 
         {!isLoading && (reincidencia?.length ?? 0) === 0 && (
-          <div className="text-center py-8 text-slate-400">
-            Nenhuma reincidência de {activeTab === "retrabalho" ? "retrabalho" : "CNQ"} encontrada com os filtros aplicados.
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>Nenhuma reincidência de {activeTab === "retrabalho" ? "retrabalho" : "CNQ"} encontrada com os filtros aplicados.</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         )}
 
         <div className="divide-y divide-slate-100">
@@ -174,9 +177,11 @@ export default function Reincidencia() {
         </div>
         <div className="p-4 space-y-2">
           {(byResp ?? []).filter(r => r.responsavel && r.count >= 2).length === 0 && (
-            <div className="text-center py-4 text-slate-400 text-sm">
-              Nenhum responsável com 2+ {activeTab === "retrabalho" ? "retrabalhos" : "CNQ"} reincidentes.
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhum responsável com 2+ {activeTab === "retrabalho" ? "retrabalhos" : "CNQ"} reincidentes.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           )}
           {(byResp ?? []).filter(r => r.responsavel && r.count >= 2).map((r, i) => {
             const max = byResp?.filter(x => x.responsavel)?.[0]?.count ?? 1;

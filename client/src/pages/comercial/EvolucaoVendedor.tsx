@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table, TableHeader, TableBody, TableFooter,
   TableRow, TableHead, TableCell,
@@ -226,8 +227,12 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
 
   if (!multiMesDados || multiMesDados.filter(Boolean).length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-slate-400 text-sm">
-        Sem dados disponíveis para o período selecionado.
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10">
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Sem dados disponíveis para o período selecionado.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       </div>
     );
   }

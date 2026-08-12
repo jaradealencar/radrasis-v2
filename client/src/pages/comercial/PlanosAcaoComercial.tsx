@@ -2,6 +2,7 @@ import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -714,7 +715,11 @@ export default function PlanosAcaoComercial() {
                   <PlanoCard key={plano.id} plano={plano} onUpdate={handleAtualizarPlano} onDelete={handleDeletarPlano} />
                 ))}
                 {planos.filter(p => p.tipo === "permanente").length === 0 && (
-                  <p className="text-sm text-slate-400 italic text-center py-4">Nenhuma rotina permanente cadastrada.</p>
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyTitle>Nenhuma rotina permanente cadastrada.</EmptyTitle>
+                    </EmptyHeader>
+                  </Empty>
                 )}
               </div>
             </div>
@@ -733,7 +738,11 @@ export default function PlanosAcaoComercial() {
                   <PlanoCard key={plano.id} plano={plano} onUpdate={handleAtualizarPlano} onDelete={handleDeletarPlano} />
                 ))}
                 {planos.filter(p => p.tipo === "conclusao").length === 0 && (
-                  <p className="text-sm text-slate-400 italic text-center py-4">Nenhuma ação com prazo cadastrada.</p>
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyTitle>Nenhuma ação com prazo cadastrada.</EmptyTitle>
+                    </EmptyHeader>
+                  </Empty>
                 )}
               </div>
             </div>

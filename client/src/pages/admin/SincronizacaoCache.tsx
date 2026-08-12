@@ -3,7 +3,8 @@ import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Database, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { RefreshCw, Database, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import PageHeader from "@/components/PageHeader";
 
@@ -49,7 +50,7 @@ export default function SincronizacaoCache() {
   const getStatusIcon = () => {
     if (isSuccess) return <CheckCircle2 className="w-5 h-5 text-green-600" />;
     if (isError) return <AlertCircle className="w-5 h-5 text-red-600" />;
-    if (isPending) return <Loader2 className="w-5 h-5 text-yellow-600 animate-spin" />;
+    if (isPending) return <Spinner className="size-5 text-yellow-600" />;
     return <Database className="w-5 h-5 text-slate-600" />;
   };
 
@@ -148,7 +149,7 @@ export default function SincronizacaoCache() {
           >
             {isSyncing || forcarSincronizacao.isPending ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Spinner className="mr-2" />
                 Sincronizando...
               </>
             ) : (

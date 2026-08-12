@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import UserSelect from "../../components/UserSelect";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const FREQUENCIES: { value: string; label: string; cor: string; dias: number | null }[] = [
   { value: "diaria",     label: "Diária",     cor: "#ef4444", dias: 1  },
@@ -289,10 +290,12 @@ export default function Rotinas() {
       {isLoading ? (
         <div className="text-center py-12 text-gray-400">Carregando...</div>
       ) : items.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl py-12 text-center text-gray-400">
-          <CalendarCheck size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Nenhuma rotina cadastrada.</p>
-        </div>
+        <Empty className="bg-white border border-gray-200 rounded-xl">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><CalendarCheck /></EmptyMedia>
+            <EmptyTitle>Nenhuma rotina cadastrada.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-6">
           {byFreq.map(group => {

@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
 import PageHeader from "@/components/PageHeader";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 const STATUS_LABELS: Record<string, string> = {
   fila: "Aguardando Cotação",
@@ -315,11 +316,13 @@ export default function MinhasCotacoes() {
       />
 
       {minhasCotacoes.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">Nenhuma solicitação encontrada</p>
-          <p className="text-sm mt-1">Clique em "Nova Solicitação de Frete" para começar</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Package /></EmptyMedia>
+            <EmptyTitle>Nenhuma solicitação encontrada</EmptyTitle>
+            <EmptyDescription>Clique em "Nova Solicitação de Frete" para começar</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
       {prontas.length > 0 && (

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -322,15 +323,17 @@ export default function BibliotecaArquivos() {
 
       {/* Lista de Arquivos */}
       {arquivos.length === 0 ? (
-        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-16 text-center">
-          <FolderOpen size={48} className="mx-auto text-slate-300 mb-4" />
-          <p className="text-slate-500 font-medium">Nenhum arquivo encontrado</p>
-          <p className="text-slate-400 text-sm mt-1">
-            {busca || categoriaFiltro !== "Todos"
-              ? "Tente ajustar os filtros de busca"
-              : "Clique em \"Enviar Arquivo\" para começar"}
-          </p>
-        </div>
+        <Empty className="border border-dashed border-slate-300 rounded-xl bg-white">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FolderOpen /></EmptyMedia>
+            <EmptyTitle>Nenhum arquivo encontrado</EmptyTitle>
+            <EmptyDescription>
+              {busca || categoriaFiltro !== "Todos"
+                ? "Tente ajustar os filtros de busca"
+                : "Clique em \"Enviar Arquivo\" para começar"}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {(arquivos as Arquivo[]).map((arquivo) => (

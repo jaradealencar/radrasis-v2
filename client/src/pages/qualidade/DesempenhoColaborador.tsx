@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyContent } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -255,12 +256,18 @@ export default function DesempenhoColaborador() {
           <TabsContent key={cat.key} value={cat.key} className="mt-4 space-y-4">
             {colaboradores.length === 0 ? (
               <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  <Users size={40} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Nenhum dado lançado para {cat.label} em {anoSel}.</p>
-                  <Button size="sm" onClick={abrirNovo} className="mt-3 gap-1">
-                    <Plus size={13} /> Lançar primeiro registro
-                  </Button>
+                <CardContent>
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon"><Users /></EmptyMedia>
+                      <EmptyTitle>Nenhum dado lançado para {cat.label} em {anoSel}.</EmptyTitle>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button size="sm" onClick={abrirNovo} className="gap-1">
+                        <Plus size={13} /> Lançar primeiro registro
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
                 </CardContent>
               </Card>
             ) : (

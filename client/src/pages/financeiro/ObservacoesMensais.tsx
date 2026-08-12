@@ -8,8 +8,9 @@ import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import {
   FileText, Sparkles, Save, Truck, Package, TrendingUp, TrendingDown,
-  AlertTriangle, ChevronLeft, ChevronRight, Loader2,
+  AlertTriangle, ChevronLeft, ChevronRight,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -291,7 +292,7 @@ export default function ObservacoesMensais({ anoSel }: { anoSel: number }) {
                 disabled={gerarAnaliseMut.isPending || salvarMut.isPending}
               >
                 {gerarAnaliseMut.isPending ? (
-                  <Loader2 size={14} className="mr-1 animate-spin" />
+                  <Spinner className="size-3.5 mr-1" />
                 ) : (
                   <Sparkles size={14} className="mr-1" />
                 )}
@@ -365,7 +366,7 @@ export default function ObservacoesMensais({ anoSel }: { anoSel: number }) {
           <CardContent>
             {gerarAnaliseMut.isPending ? (
               <div className="flex items-center gap-3 py-8 justify-center text-muted-foreground">
-                <Loader2 size={20} className="animate-spin" />
+                <Spinner className="size-5" />
                 <span>Analisando dados financeiros e gerando relatório...</span>
               </div>
             ) : obs?.analiseIa ? (

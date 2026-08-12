@@ -11,6 +11,7 @@ import { FileText, Plus, Truck, Calendar, DollarSign, Search, TrendingUp, Packag
 import { toast } from "sonner";
 import { Link } from "wouter";
 import PageHeader from "@/components/PageHeader";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 type CteRow = {
   id: number;
@@ -222,11 +223,13 @@ export default function ImportarCte() {
 
       {/* Lista de CT-es */}
       {filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">Nenhum CT-e encontrado</p>
-          <p className="text-sm mt-1">Registre o primeiro CT-e clicando em "Registrar CT-e"</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileText /></EmptyMedia>
+            <EmptyTitle>Nenhum CT-e encontrado</EmptyTitle>
+            <EmptyDescription>Registre o primeiro CT-e clicando em "Registrar CT-e"</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-2">
           {filtered.map((cte) => (

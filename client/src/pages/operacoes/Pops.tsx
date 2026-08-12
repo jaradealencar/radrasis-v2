@@ -10,6 +10,7 @@ import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation } from "wouter";
 import { downloadPopAsPdf } from "@/lib/popPdf";
 import RichTextEditor from "../../components/RichTextEditor";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 const SECTORS = [
   "SOLDA","PINTURA","EXPEDIÇÃO","PROJETO","FIBRA","ROUTER","CO2",
@@ -313,7 +314,12 @@ function PopAttachments({ item, onUpdated }: { item: any; onUpdated: () => void 
         </label>
       </div>
       {attachments.length === 0 ? (
-        <p className="text-xs text-slate-400 italic">Nenhuma imagem anexada. Clique em "Adicionar Imagem" para incluir fotos, diagramas ou referências visuais ao procedimento.</p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Nenhuma imagem anexada.</EmptyTitle>
+            <EmptyDescription>Clique em "Adicionar Imagem" para incluir fotos, diagramas ou referências visuais ao procedimento.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {attachments.map((url, i) => (
@@ -545,16 +551,18 @@ export default function Pops() {
       {isLoading ? (
         <div className="text-center py-12 text-gray-400">Carregando...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-12">
-          <FileText size={40} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-500 text-sm">Nenhum POP encontrado.</p>
-          {filterType === "ai" && (
-            <p className="text-xs text-slate-400 mt-2">
-              Gere POPs automaticamente na{" "}
-              <button onClick={() => navigate("/biblioteca")} className="text-blue-500 underline">Biblioteca de Erros</button>
-            </p>
-          )}
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileText /></EmptyMedia>
+            <EmptyTitle>Nenhum POP encontrado.</EmptyTitle>
+            {filterType === "ai" && (
+              <EmptyDescription>
+                Gere POPs automaticamente na{" "}
+                <button onClick={() => navigate("/biblioteca")} className="text-blue-500 underline">Biblioteca de Erros</button>
+              </EmptyDescription>
+            )}
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-3">
           {items.map(item => {

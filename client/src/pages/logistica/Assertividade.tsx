@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { TrendingUp, Brain, Truck, MapPin, CheckCircle2, Clock, AlertTriangle, Loader2, BarChart3, Home, Calendar, ChevronUp, ChevronDown, Minus, Tag, X, AlertCircle } from "lucide-react";
+import { TrendingUp, Brain, Truck, MapPin, CheckCircle2, Clock, AlertTriangle, BarChart3, Home, Calendar, ChevronUp, ChevronDown, Minus, Tag, X, AlertCircle } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -210,7 +211,7 @@ export default function Assertividade() {
 
           {prazoLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Spinner />
               Carregando dados de prazo...
             </div>
           ) : !prazoStats || prazoStats.total === 0 ? (
@@ -324,7 +325,7 @@ export default function Assertividade() {
         <CardContent className="space-y-4">
           {metricasRetLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Spinner />
               Carregando métricas de retrabalho...
             </div>
           ) : !metricasRet || metricasRet.totalAtrasados === 0 ? (
@@ -464,7 +465,7 @@ export default function Assertividade() {
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setModalRetrabalho(null)}>Cancelar</Button>
             <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white" onClick={handleSalvarRetrabalho} disabled={marcarRetrabalho.isPending || (formTemRetrabalho && !formTipoRetrabalho)}>
-              {marcarRetrabalho.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Tag className="w-3 h-3 mr-1" />}
+              {marcarRetrabalho.isPending ? <Spinner className="size-3 mr-1" /> : <Tag className="w-3 h-3 mr-1" />}
               Salvar
             </Button>
           </DialogFooter>
@@ -592,13 +593,13 @@ export default function Assertividade() {
               disabled={carregando || !pergunta.trim()}
               onClick={() => handleAnalisar("pergunta")}
             >
-              {carregando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+              {carregando ? <Spinner /> : <Brain className="w-4 h-4" />}
             </Button>
           </div>
 
           {carregando && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Spinner />
               Analisando dados com IA...
             </div>
           )}

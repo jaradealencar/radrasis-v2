@@ -10,6 +10,7 @@ import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import ImageUploadField from "../../components/ImageUploadField";
 import { CurriculumUploadSection } from "../../components/CurriculumUploadSection";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyContent } from "@/components/ui/empty";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Cargo = {
@@ -465,13 +466,17 @@ export default function CargoseFuncoes() {
         {isLoading ? (
           <div className="flex items-center justify-center py-20 text-slate-400">Carregando...</div>
         ) : !cargos?.length ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-            <Briefcase size={40} className="opacity-30" />
-            <p className="text-sm">Nenhum cargo cadastrado ainda.</p>
-            <button onClick={openNew} className="text-sm text-blue-600 hover:underline font-medium">
-              Criar o primeiro cargo
-            </button>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Briefcase /></EmptyMedia>
+              <EmptyTitle>Nenhum cargo cadastrado ainda.</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <button onClick={openNew} className="text-sm text-blue-600 hover:underline font-medium">
+                Criar o primeiro cargo
+              </button>
+            </EmptyContent>
+          </Empty>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {cargos.map(c => (

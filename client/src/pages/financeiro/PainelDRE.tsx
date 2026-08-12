@@ -2,6 +2,13 @@ import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty";
+import {
   Table,
   TableHeader,
   TableBody,
@@ -244,11 +251,15 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
 
   if (comparativoData.filter(d => d.temDados).length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-        <BarChart2 size={40} className="opacity-30" />
-        <p className="text-sm">Nenhum dado de fechamento disponível para {anoSel}.</p>
-        <p className="text-xs">Cadastre os dados mensais na aba Financeiro.</p>
-      </div>
+      <Empty className="py-20">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <BarChart2 />
+          </EmptyMedia>
+          <EmptyTitle>Nenhum dado de fechamento disponível para {anoSel}.</EmptyTitle>
+          <EmptyDescription>Cadastre os dados mensais na aba Financeiro.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, X, Truck, CheckCircle2, Loader2, MapPin, Camera, Trash2 } from "lucide-react";
+import { Plus, X, Truck, CheckCircle2, MapPin, Camera, Trash2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useCepLookup } from "@/hooks/useCepLookup";
@@ -412,7 +413,7 @@ export function NovaCotacaoDialog({ onSuccess }: { onSuccess: () => void }) {
               >
                 {isLoading || buscarOSMutation.isPending ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Spinner className="mr-2" />
                     Buscando...
                   </>
                 ) : (
@@ -759,7 +760,7 @@ export function NovaCotacaoDialog({ onSuccess }: { onSuccess: () => void }) {
           >
             {create.isPending ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                <Spinner className="size-5 mr-2" />
                 Criando Solicitação...
               </>
             ) : (

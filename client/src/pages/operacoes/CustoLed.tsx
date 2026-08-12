@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -378,7 +379,11 @@ function CustoLedTab() {
         </CardHeader>
         <CardContent>
           {tipos.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-4">Nenhum tipo de LED cadastrado. Clique em "Novo Tipo" para começar.</p>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Nenhum tipo de LED cadastrado. Clique em "Novo Tipo" para começar.</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <Table>
                 <TableHeader>
@@ -442,11 +447,15 @@ function CustoLedTab() {
         </CardHeader>
         <CardContent>
           {lancamentos.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-6">
-              {tipos.length === 0
-                ? "Cadastre pelo menos um tipo de LED antes de adicionar lançamentos."
-                : `Nenhum lançamento em ${MESES.find(m => m.num === mes)?.label} ${ano}. Clique em "Novo Lançamento" para adicionar.`}
-            </p>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>
+                  {tipos.length === 0
+                    ? "Cadastre pelo menos um tipo de LED antes de adicionar lançamentos."
+                    : `Nenhum lançamento em ${MESES.find(m => m.num === mes)?.label} ${ano}. Clique em "Novo Lançamento" para adicionar.`}
+                </EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <Table>
                 <TableHeader>

@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -529,10 +530,12 @@ function SearchResults({ sections, query }: { sections: Section[]; query: string
 
   if (matches.length === 0) {
     return (
-      <div className="text-center py-12 text-slate-400">
-        <Search className="w-8 h-8 mx-auto mb-2 opacity-40" />
-        <p className="text-sm">Nenhuma seção encontrada para "<strong>{query}</strong>".</p>
-      </div>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon"><Search /></EmptyMedia>
+          <EmptyTitle>Nenhuma seção encontrada para "<strong>{query}</strong>".</EmptyTitle>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
@@ -918,18 +921,22 @@ export default function TabelaPrecos() {
                     ))}
                   </div>
                 ) : sectionsNCForPage(Number(p.key)).length === 0 ? (
-                  <div className="text-center py-16 text-slate-400">
-                    <Plus className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">Nenhuma seção nesta página</p>
-                    <p className="text-xs mt-1">Clique em <strong>Nova Seção</strong> para adicionar.</p>
-                    <Button
-                      size="sm"
-                      className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => { setNewSectionPage(Number(p.key)); setShowAddModal(true); }}
-                    >
-                      <Plus className="w-4 h-4 mr-1" /> Nova Seção
-                    </Button>
-                  </div>
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon"><Plus /></EmptyMedia>
+                      <EmptyTitle>Nenhuma seção nesta página</EmptyTitle>
+                      <EmptyDescription>Clique em <strong>Nova Seção</strong> para adicionar.</EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => { setNewSectionPage(Number(p.key)); setShowAddModal(true); }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Nova Seção
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
                 ) : (
                   <div className="space-y-4">
                     {sectionsNCForPage(Number(p.key)).map(section => (
@@ -1102,7 +1109,11 @@ export default function TabelaPrecos() {
                   ))}
                 </div>
               ) : sectionsForPage(Number(p.key)).length === 0 ? (
-                <div className="text-center py-12 text-slate-400">Nenhuma seção encontrada para esta página.</div>
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Nenhuma seção encontrada para esta página.</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 sectionsForPage(Number(p.key)).map(section => (
                   <EditableSection key={section.id} section={section as Section} />
@@ -1125,11 +1136,13 @@ export default function TabelaPrecos() {
             </DialogTitle>
           </DialogHeader>
           {!history || history.length === 0 ? (
-            <div className="text-center py-10 text-slate-400">
-              <History className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Nenhuma alteração registrada ainda.</p>
-              <p className="text-xs mt-1">As próximas edições aparecerão aqui.</p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><History /></EmptyMedia>
+                <EmptyTitle>Nenhuma alteração registrada ainda.</EmptyTitle>
+                <EmptyDescription>As próximas edições aparecerão aqui.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div className="space-y-2">
               {[...history].reverse().map((h) => (

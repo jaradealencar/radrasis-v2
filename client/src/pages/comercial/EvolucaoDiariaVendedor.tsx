@@ -7,6 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import { chartColor } from "@/lib/chartColors";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 
 const INDICADORES = [
   { id: "os",  label: "Vendas Realizadas",  acumId: "acumOs",  fmt: "num" as const },
@@ -105,8 +106,12 @@ export default function EvolucaoDiariaVendedor({ mes, ano }: Props) {
 
   if (!data || data.dias.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
-        <p className="text-sm text-slate-500">Nenhum dado disponível para {MESES[mes - 1]}/{ano}.</p>
+      <div className="bg-white rounded-xl border border-slate-200 p-8">
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Nenhum dado disponível para {MESES[mes - 1]}/{ano}.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       </div>
     );
   }

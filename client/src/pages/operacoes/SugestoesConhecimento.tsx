@@ -6,6 +6,7 @@ import DashboardLayout from "../../components/DashboardLayout";
 import {
   Lightbulb, CheckCircle, XCircle, Clock, User, MessageSquare, ChevronDown, ChevronUp, Sparkles
 } from "lucide-react";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   pendente: { label: "Pendente", color: "#b45309", bg: "#fef3c7" },
@@ -74,10 +75,12 @@ export default function SugestoesConhecimento() {
       {isLoading ? (
         <div className="text-center py-12 text-gray-400">Carregando...</div>
       ) : suggestions.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <Lightbulb size={32} className="mx-auto mb-3 opacity-30" />
-          <p>Nenhuma sugestão encontrada.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Lightbulb /></EmptyMedia>
+            <EmptyTitle>Nenhuma sugestão encontrada.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="space-y-3">
           {suggestions.map((s: any) => {

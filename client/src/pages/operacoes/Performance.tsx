@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyContent } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -727,10 +728,12 @@ function GraficoEvolucaoProdutos() {
           <span className="text-sm">Carregando dados...</span>
         </div>
       ) : chartData.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <ShoppingBag className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">Nenhum dado disponível para os meses selecionados.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><ShoppingBag /></EmptyMedia>
+            <EmptyTitle>Nenhum dado disponível para os meses selecionados.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <>
           <ResponsiveContainer width="100%" height={340}>
@@ -869,10 +872,12 @@ function PainelAbcProdutos({ mes, ano }: { mes: number; ano: number }) {
       </div>
 
       {items.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground">
-          <ShoppingBag className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">Nenhum dado disponível para este mês.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><ShoppingBag /></EmptyMedia>
+            <EmptyTitle>Nenhum dado disponível para este mês.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <Accordion type="multiple" className="space-y-2">
           {/* Classe A */}
@@ -1067,10 +1072,12 @@ function PainelAbcClientes({ mes, ano }: { mes: number; ano: number }) {
       </div>
 
       {items.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground">
-          <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">Nenhum dado disponível para este mês.</p>
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Users /></EmptyMedia>
+            <EmptyTitle>Nenhum dado disponível para este mês.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <Accordion type="multiple" className="space-y-2">
           <AccordionItem value="A" className="border rounded-lg overflow-hidden">
@@ -1538,13 +1545,15 @@ export default function Performance() {
       </div>
 
       {rows.length === 0 ? (
-        <Card className="text-center py-16">
-          <CardContent>
-            <BarChart2 className="w-12 h-12 mx-auto mb-3 text-muted-foreground opacity-40" />
-            <p className="text-muted-foreground">Nenhum dado registrado ainda.</p>
-            <Button onClick={handleNew} className="mt-4 gap-2"><Plus className="w-4 h-4" /> Adicionar primeiro mês</Button>
-          </CardContent>
-        </Card>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><BarChart2 /></EmptyMedia>
+            <EmptyTitle>Nenhum dado registrado ainda.</EmptyTitle>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button onClick={handleNew} className="gap-2"><Plus className="w-4 h-4" /> Adicionar primeiro mês</Button>
+          </EmptyContent>
+        </Empty>
       ) : (
         <Tabs defaultValue="dashboard">
           <TabsList className="mb-4 flex-wrap h-auto gap-1">
