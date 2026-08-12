@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import PageHeader from "@/components/PageHeader";
 import { Target, CheckCircle2, AlertTriangle, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-
-const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+import { MESES_ABREV, fmtBrl } from "@/lib/format";
+import { chartColor } from "@/lib/chartColors";
 
 export default function Metas() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -72,7 +74,7 @@ export default function Metas() {
 
   // Dados para gráfico
   const chartData = (evolucao as any[]).map((e, i) => ({
-    mes: MESES[i] ?? String(i + 1),
+    mes: MESES_ABREV[i] ?? String(i + 1),
     retrabalhos: e.total ?? 0,
     custo: Number(e.custoTotal ?? 0),
   }));
@@ -102,8 +104,8 @@ export default function Metas() {
     },
     {
       label: "Custo Máximo / Mês",
-      meta: metaVigente.metaMaxCustoMes ? `R$ ${Number(metaVigente.metaMaxCustoMes).toLocaleString("pt-BR")}` : null,
-      atual: `R$ ${custoTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+      meta: metaVigente.metaMaxCustoMes ? fmtBrl(Number(metaVigente.metaMaxCustoMes)) : null,
+      atual: fmtBrl(custoTotal),
       ok: checkMeta(custoTotal, Number(metaVigente.metaMaxCustoMes ?? null), "max"),
     },
     {
@@ -116,17 +118,16 @@ export default function Metas() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Metas e Benchmarks</h1>
-          <p className="text-slate-500 text-sm mt-1">Defina metas anuais e acompanhe o desempenho em relação a elas.</p>
-        </div>
-        <Button onClick={() => abrirModal(metaVigente ?? undefined)} className="gap-2">
-          <Target size={15} />
-          {metaVigente ? `Editar Meta ${anoAtual}` : `Definir Meta ${anoAtual}`}
-        </Button>
-      </div>
+      <PageHeader
+        title="Metas e Benchmarks"
+        description="Defina metas anuais e acompanhe o desempenho em relação a elas."
+        actions={
+          <Button onClick={() => abrirModal(metaVigente ?? undefined)} className="gap-2">
+            <Target size={15} />
+            {metaVigente ? `Editar Meta ${anoAtual}` : `Definir Meta ${anoAtual}`}
+          </Button>
+        }
+      />
 
       {/* Indicadores vs Meta */}
       {metaVigente ? (
@@ -182,7 +183,7 @@ export default function Metas() {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="retrabalhos" name="Retrabalhos" fill="#6366f1" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="retrabalhos" name="Retrabalhos" fill={chartColor(0)} radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -196,34 +197,34 @@ export default function Metas() {
             <CardTitle className="text-base">Histórico de Metas por Ano</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-slate-50">
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Ano</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Máx. Retrabalhos/Mês</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Máx. % Faturamento</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Máx. Custo/Mês</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Máx. Reincidências</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead>Ano</TableHead>
+                  <TableHead>Máx. Retrabalhos/Mês</TableHead>
+                  <TableHead>Máx. % Faturamento</TableHead>
+                  <TableHead>Máx. Custo/Mês</TableHead>
+                  <TableHead>Máx. Reincidências</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {(metas as any[]).map(m => (
-                  <tr key={m.id} className="border-b hover:bg-slate-50">
-                    <td className="px-4 py-3 font-bold text-slate-800">{m.ano}{m.mes ? `/${String(m.mes).padStart(2, "0")}` : ""}</td>
-                    <td className="px-4 py-3 text-slate-600">{m.metaMaxRetrabalhosMes ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{m.metaMaxPercFaturamento ? `≤ ${m.metaMaxPercFaturamento}%` : "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{m.metaMaxCustoMes ? `R$ ${Number(m.metaMaxCustoMes).toLocaleString("pt-BR")}` : "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{m.metaMaxReincidencias ?? "—"}</td>
-                    <td className="px-4 py-3">
+                  <TableRow key={m.id}>
+                    <TableCell className="font-bold text-slate-800">{m.ano}{m.mes ? `/${String(m.mes).padStart(2, "0")}` : ""}</TableCell>
+                    <TableCell className="text-slate-600">{m.metaMaxRetrabalhosMes ?? "—"}</TableCell>
+                    <TableCell className="text-slate-600">{m.metaMaxPercFaturamento ? `≤ ${m.metaMaxPercFaturamento}%` : "—"}</TableCell>
+                    <TableCell className="text-slate-600">{m.metaMaxCustoMes ? fmtBrl(Number(m.metaMaxCustoMes)) : "—"}</TableCell>
+                    <TableCell className="text-slate-600">{m.metaMaxReincidencias ?? "—"}</TableCell>
+                    <TableCell>
                       <Button size="sm" variant="ghost" onClick={() => abrirModal(m)} className="gap-1">
                         <Edit2 size={13} /> Editar
                       </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}
