@@ -4,8 +4,42 @@ import { getDb } from "../db/db";
 import { bibliotecaArquivos, type BibliotecaArquivo } from "../../drizzle/schema";
 import { eq, desc, sql } from "drizzle-orm";
 
-// Extrai texto de um arquivo via LLM (PDFs, imagens, TXT, outros)
-async function extrairTextoArquivo(
+const MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MIME_XLS = "application/vnd.ms-excel";
+
+// Extrai texto de um PDF real via pdf-parse. Retorna null se o PDF não tiver camada de texto (escaneado).
+async function extrairTextoPdf(buffer: Buffer): Promise<string | null> {
+  // importar o arquivo interno, não a raiz do pacote: a raiz roda um bloco de
+  // debug quando require.main === module que quebra em alguns bundlers
+  const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+  const result = await pdfParse(buffer);
+  const texto = result.text?.trim() ?? "";
+  return texto.length >= 50 ? texto : null;
+}
+
+async function extrairTextoDocx(buffer: Buffer): Promise<string | null> {
+  const mammoth = await import("mammoth");
+  const { value } = await mammoth.extractRawText({ buffer });
+  return value?.trim() || null;
+}
+
+async function extrairTextoXlsx(buffer: Buffer): Promise<string | null> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const partes = workbook.SheetNames.map((nomeAba) => {
+    const sheet = workbook.Sheets[nomeAba];
+    return `# ${nomeAba}\n${XLSX.utils.sheet_to_csv(sheet)}`;
+  });
+  const texto = partes.join("\n\n").trim();
+  return texto || null;
+}
+
+// Extrai texto de um arquivo. PDF/DOCX/XLSX são lidos de verdade in-process;
+// imagem e PDF escaneado caem no LLM de visão; os demais tipos (pptx, odt...)
+// seguem com o resumo especulativo do LLM — limitação conhecida e deliberada,
+// não um esquecimento (fora do escopo desta fase).
+export async function extrairTextoArquivo(
   fileBase64: string,
   mimeType: string,
   fileName: string,
@@ -13,14 +47,30 @@ async function extrairTextoArquivo(
   descricao?: string
 ): Promise<string | null> {
   try {
+    const isText = mimeType === "text/plain";
+    if (isText) {
+      return Buffer.from(fileBase64, "base64").toString("utf-8").slice(0, 50000);
+    }
+
+    const buffer = Buffer.from(fileBase64, "base64");
+
+    if (mimeType === MIME_DOCX) {
+      return await extrairTextoDocx(buffer);
+    }
+
+    if (mimeType === MIME_XLSX || mimeType === MIME_XLS) {
+      return await extrairTextoXlsx(buffer);
+    }
+
     const { invokeLLM, buildFileContent, buildImageContent } = await import("../_core/llm");
 
     const isPdf = mimeType === "application/pdf";
     const isImage = mimeType.startsWith("image/");
-    const isText = mimeType === "text/plain";
 
-    if (isText) {
-      return Buffer.from(fileBase64, "base64").toString("utf-8").slice(0, 50000);
+    if (isPdf) {
+      const textoPdf = await extrairTextoPdf(buffer);
+      if (textoPdf) return textoPdf;
+      // PDF sem camada de texto (escaneado) — cai no fallback de LLM visão abaixo
     }
 
     if (isPdf || isImage) {
@@ -43,7 +93,7 @@ async function extrairTextoArquivo(
       return (response?.choices?.[0]?.message?.content as string | null) ?? null;
     }
 
-    // Para outros tipos (Word, Excel, etc.) — gerar resumo baseado no nome/descrição
+    // Para outros tipos (PowerPoint, ODT, etc.) — gerar resumo baseado no nome/descrição
     const response = await invokeLLM({
       messages: [{
         role: "user",
@@ -153,38 +203,19 @@ export const bibliotecaArquivosRouter = router({
       const [arquivo] = await db.select().from(bibliotecaArquivos).where(eq(bibliotecaArquivos.id, input.id));
       if (!arquivo) throw new Error("Arquivo não encontrado");
 
-      const { invokeLLM, buildFileContent } = await import("../_core/llm");
-      let conteudoExtraido: string | null = null;
-
-      if (arquivo.mimeType === "application/pdf") {
-        const { storageGetSignedUrl } = await import("../db/storage");
-        const signedUrl = await storageGetSignedUrl(arquivo.fileKey);
-        const fileResp = await fetch(signedUrl);
-        if (!fileResp.ok) {
-          throw new Error(`Falha ao baixar arquivo do storage (${fileResp.status})`);
-        }
-        const fileBase64 = Buffer.from(await fileResp.arrayBuffer()).toString("base64");
-        const fileContent = await buildFileContent(fileBase64, arquivo.mimeType, arquivo.fileName);
-
-        const response = await invokeLLM({
-          messages: [{
-            role: "user" as const,
-            content: [
-              fileContent,
-              { type: "text" as const, text: `Extraia e transcreva TODO o conteúdo textual deste arquivo "${arquivo.nome}". Retorne apenas o texto extraído.` },
-            ],
-          }],
-        });
-        conteudoExtraido = (response?.choices?.[0]?.message?.content as string | null) ?? null;
-      } else {
-        const response = await invokeLLM({
-          messages: [{
-            role: "user",
-            content: `Arquivo: "${arquivo.nome}"\nTipo: ${arquivo.mimeType}\nDescrição: ${arquivo.descricao ?? "sem descrição"}\n\nGere um resumo do conteúdo provável deste documento para uso como referência em consultas internas da empresa Letreiros Express.`,
-          }],
-        });
-        conteudoExtraido = (response?.choices?.[0]?.message?.content as string | null) ?? null;
+      const fileResp = await fetch(arquivo.fileUrl);
+      if (!fileResp.ok) {
+        throw new Error(`Falha ao baixar arquivo do storage (${fileResp.status})`);
       }
+      const fileBase64 = Buffer.from(await fileResp.arrayBuffer()).toString("base64");
+
+      const conteudoExtraido = await extrairTextoArquivo(
+        fileBase64,
+        arquivo.mimeType,
+        arquivo.fileName,
+        arquivo.nome,
+        arquivo.descricao ?? undefined
+      );
 
       await db.update(bibliotecaArquivos).set({ conteudoExtraido }).where(eq(bibliotecaArquivos.id, input.id));
       return { success: true, conteudoExtraido: !!conteudoExtraido };
