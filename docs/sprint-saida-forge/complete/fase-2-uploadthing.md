@@ -1,5 +1,13 @@
 # Fase 2 — Storage: Forge (S3 via presign) → UploadThing
 
+> ✅ **Concluída** (2.1, 2.2, 2.4). **2.3 (migração dos arquivos já
+> enviados) foi decidida como fora de escopo**: o dono do projeto vai
+> recriar o banco (usuários e arquivos reenviados) depois, então os arquivos
+> antigos no Forge não precisam ser preservados. Não foi escrito
+> `server/scripts/migrar-storage-uploadthing.mjs`. URLs antigas
+> (`/manus-storage/...`) salvas no banco vão quebrar — aceito pela mesma
+> decisão.
+
 > Leia o `README.md` desta pasta antes de começar — inclusive o
 > **bloqueador** sobre as credenciais do Forge, que decide se a Tarefa 2.3 é
 > viável.
@@ -79,6 +87,11 @@ depois `ufsUrl`; versões diferentes devolvem coisas diferentes e uma delas
 pode estar deprecada. Faça um upload de teste e inspecione o objeto
 `res.data` antes de fixar o código.
 
+> Confirmado com upload de teste real (`uploadthing@7.7.4`): `res.data.url`
+> e `res.data.appUrl` vêm com warning de depreciado; `res.data.ufsUrl` é o
+> campo certo. `res.data.key` também confirmado. Arquivo de teste subido,
+> verificado (200 na URL) e apagado via `utapi.deleteFiles`.
+
 Sobre `appendHashSuffix` (o sufixo aleatório que evita colisão de nome): o
 UploadThing **já gera uma key única própria**, então essa função vira
 redundante — pode apagar. O `relKey` que os call sites passam (ex:
@@ -110,6 +123,11 @@ redundante — mesma análise da `storageGet`.
 **Não remova nenhuma das duas no automático.** Rode uma busca por
 `storageGet` e `storageGetSignedUrl` no repo, olhe cada uso, e só então
 decida. São poucos.
+
+> Feito: `storageGet` não tinha nenhum call site — removida. `storageGetSignedUrl`
+> tinha um único call site, em `bibliotecaArquivos.ts` (`reextrairTexto`),
+> baixando o PDF pra reenviar pro LLM — trocado para `fetch(arquivo.fileUrl)`
+> direto (a coluna já guarda a URL). `storageGetSignedUrl` removida.
 
 ---
 
