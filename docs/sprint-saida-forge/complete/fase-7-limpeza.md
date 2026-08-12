@@ -1,5 +1,17 @@
 # Fase 7 — Limpeza final do Forge
 
+> ✅ **CONCLUÍDA.** Módulos mortos deletados (7.1), envs residuais (Forge e
+> OAuth do template) removidas de `env.ts`/`.env.example` (7.2),
+> `vite-plugin-manus-runtime`/`allowedHosts` de domínios Manus removidos de
+> `vite.config.ts` — o debug collector (`vitePluginManusDebugCollector`) foi
+> mantido por ainda ser útil em dev local (7.2), e `AGENTS.md` atualizado
+> (7.3). Busca por `forge`/`gemini` no repo (fora de `docs/archive/`) não
+> encontrou código ativo dependendo de nenhum dos dois — os poucos hits em
+> `Conhecimento.tsx`/`InsightsLogistica.tsx`/`crm.ts`/`routers.ts` são só
+> nomes de campo e texto de UI herdados de quando a Fase 1 usava Gemini
+> direto; a chamada por trás já é `invokeLLM` (OpenAI). Renomear isso ficou
+> fora do escopo desta fase.
+
 > Leia o `README.md` desta pasta antes de começar.
 
 **Objetivo:** remover do repo tudo que sobrou do Forge e do template Manus,
