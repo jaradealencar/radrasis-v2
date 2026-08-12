@@ -3,6 +3,10 @@ import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import { Search, AlertTriangle, CheckCircle2, Pencil, Layers, Power, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
@@ -374,11 +378,11 @@ export default function CompletudeTransportadoras() {
               Nenhuma transportadora neste recorte.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
-                  <tr>
-                    <th className="w-9 px-3 py-2">
+            <div>
+              <Table className="text-sm">
+                <TableHeader className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500">
+                  <TableRow>
+                    <TableHead className="w-9">
                       <input
                         type="checkbox"
                         checked={todosMarcados}
@@ -390,25 +394,25 @@ export default function CompletudeTransportadoras() {
                           )
                         }
                       />
-                    </th>
-                    <th className="px-3 py-2 text-left">Transportadora</th>
-                    <th className="px-3 py-2 text-left w-28">Modal</th>
-                    <th className="px-3 py-2 text-left w-24">Origem</th>
-                    <th className="px-3 py-2 text-left">Contato / Endereço</th>
-                    <th className="px-3 py-2 text-left">{grupoAtivo?.titulo}</th>
-                    <th className="px-3 py-2 text-left w-32">Completude</th>
-                    <th className="px-3 py-2 text-left w-24">Status</th>
-                    <th className="px-3 py-2 text-right w-32">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
+                    </TableHead>
+                    <TableHead>Transportadora</TableHead>
+                    <TableHead className="w-28">Modal</TableHead>
+                    <TableHead className="w-24">Origem</TableHead>
+                    <TableHead>Contato / Endereço</TableHead>
+                    <TableHead>{grupoAtivo?.titulo}</TableHead>
+                    <TableHead className="w-32">Completude</TableHead>
+                    <TableHead className="w-24">Status</TableHead>
+                    <TableHead className="text-right w-32">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {registros.map((t: any) => {
                     const valorAtual = valorDoCampo(t);
                     const emEdicao = editando === t.id;
                     const ativaSim = t.ativa === "sim";
                     return (
-                      <tr key={t.id} className="hover:bg-gray-50/60">
-                        <td className="px-3 py-2 align-top">
+                      <TableRow key={t.id} className="hover:bg-gray-50/60">
+                        <TableCell className="align-top">
                           <input
                             type="checkbox"
                             checked={selecionados.includes(t.id)}
@@ -418,8 +422,8 @@ export default function CompletudeTransportadoras() {
                               )
                             }
                           />
-                        </td>
-                        <td className="px-3 py-2 align-top">
+                        </TableCell>
+                        <TableCell className="align-top">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="font-medium text-gray-900 truncate">{t.nome}</span>
                             {t.origem === "Frenet" && (
@@ -447,9 +451,9 @@ export default function CompletudeTransportadoras() {
                               </a>
                             )}
                           </p>
-                        </td>
-                        <td className="px-3 py-2 align-top text-[11px] text-gray-600">{modaisDe(t)}</td>
-                        <td className="px-3 py-2 align-top">
+                        </TableCell>
+                        <TableCell className="align-top text-[11px] text-gray-600">{modaisDe(t)}</TableCell>
+                        <TableCell className="align-top">
                           <Badge
                             variant="outline"
                             className={`text-[10px] ${
@@ -460,8 +464,8 @@ export default function CompletudeTransportadoras() {
                           >
                             {t.origem === "Frenet" ? "[Frenet]" : "Manual"}
                           </Badge>
-                        </td>
-                        <td className="px-3 py-2 align-top text-[11px] text-gray-600">
+                        </TableCell>
+                        <TableCell className="align-top text-[11px] text-gray-600">
                           <p className="truncate">
                             {t.telefoneContato || t.whatsappContato || t.emailContatoNegocial || (
                               <span className="text-red-600">sem contato</span>
@@ -470,8 +474,8 @@ export default function CompletudeTransportadoras() {
                           <p className="truncate text-gray-400">
                             {t.endereco || <span className="text-red-500">sem endereço</span>}
                           </p>
-                        </td>
-                        <td className="px-3 py-2 align-top">
+                        </TableCell>
+                        <TableCell className="align-top">
                           {emEdicao ? (
                             <div className="space-y-2">
                               {grupoAtivo?.tipo === "enum-forma" ? (
@@ -520,8 +524,8 @@ export default function CompletudeTransportadoras() {
                               em branco
                             </Badge>
                           )}
-                        </td>
-                        <td className="px-3 py-2 align-top">
+                        </TableCell>
+                        <TableCell className="align-top">
                           <div className="flex items-center gap-1.5">
                             <div className="h-1.5 w-14 rounded-full bg-gray-100 overflow-hidden shrink-0">
                               <div
@@ -571,8 +575,8 @@ export default function CompletudeTransportadoras() {
                               )}
                             </div>
                           )}
-                        </td>
-                        <td className="px-3 py-2 align-top">
+                        </TableCell>
+                        <TableCell className="align-top">
                           <button
                             onClick={() => alternarStatus.mutate({ id: t.id, ativa: !ativaSim })}
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
@@ -585,8 +589,8 @@ export default function CompletudeTransportadoras() {
                             <Power className="w-3 h-3" />
                             {ativaSim ? "Ativa" : "Inativa"}
                           </button>
-                        </td>
-                        <td className="px-3 py-2 align-top text-right">
+                        </TableCell>
+                        <TableCell className="align-top text-right">
                           {!emEdicao && (
                             <Button
                               size="sm"
@@ -598,12 +602,12 @@ export default function CompletudeTransportadoras() {
                               {valorAtual ? "Editar" : "Preencher"}
                             </Button>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
 

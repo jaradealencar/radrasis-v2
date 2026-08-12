@@ -18,6 +18,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 
 // ─── Tipos internos ──────────────────────────────────────────────────────────
 type KanbanStatus = "aguardando" | "embalando" | "patio" | "abandonado";
@@ -2271,36 +2275,36 @@ function TabelaPrecosAdmin() {
         </Button>
       </div>
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="text-left px-4 py-3 text-gray-600">Modelo</th>
-              <th className="text-left px-4 py-3 text-gray-600">Caixa</th>
-              <th className="text-right px-4 py-3 text-gray-600">Comissão</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader className="bg-gray-50">
+            <TableRow>
+              <TableHead className="text-gray-600">Modelo</TableHead>
+              <TableHead className="text-gray-600">Caixa</TableHead>
+              <TableHead className="text-right text-gray-600">Comissão</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {precos.map(p => {
               const modelo = modelos.find(m => m.id === p.modeloId);
               return (
-                <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-700">{modelo?.nome ?? `ID ${p.modeloId}`}</td>
-                  <td className="px-4 py-3"><span className="bg-gray-100 px-2 py-0.5 rounded text-xs font-medium">{p.tipoCaixa}</span></td>
-                  <td className="px-4 py-3 text-right font-semibold text-emerald-600">R$ {parseFloat(String(p.valorComissao)).toFixed(2)}</td>
-                  <td className="px-4 py-3 text-right">
+                <TableRow key={p.id}>
+                  <TableCell className="text-gray-700">{modelo?.nome ?? `ID ${p.modeloId}`}</TableCell>
+                  <TableCell><span className="bg-gray-100 px-2 py-0.5 rounded text-xs font-medium">{p.tipoCaixa}</span></TableCell>
+                  <TableCell className="text-right font-semibold text-emerald-600">R$ {parseFloat(String(p.valorComissao)).toFixed(2)}</TableCell>
+                  <TableCell className="text-right">
                     <button onClick={() => deleteMutation.mutate({ id: p.id })} className="text-red-400 hover:text-red-600">
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })}
             {precos.length === 0 && (
-              <tr><td colSpan={4} className="text-center py-8 text-gray-400">Nenhum preço cadastrado.</td></tr>
+              <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-400">Nenhum preço cadastrado.</TableCell></TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );
@@ -2761,16 +2765,16 @@ function PrecificacaoAdmin() {
               </div>
             )}
             <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left px-3 py-2 text-gray-600 font-medium">Insumo</th>
-                    <th className="text-left px-3 py-2 text-gray-600 font-medium">Fórmula</th>
-                    <th className="text-right px-3 py-2 text-gray-600 font-medium">Fator</th>
-                    <th className="text-right px-3 py-2 text-gray-600 font-medium">Ação</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader className="bg-gray-50">
+                  <TableRow>
+                    <TableHead>Insumo</TableHead>
+                    <TableHead>Fórmula</TableHead>
+                    <TableHead className="text-right">Fator</TableHead>
+                    <TableHead className="text-right">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {insumos.map(ins => {
                     const consumoExistente = consumos.find(c => c.insumoId === ins.id);
                     const cfg = insumoConfig[ins.id] ?? {
@@ -2782,12 +2786,12 @@ function PrecificacaoAdmin() {
                       setInsumoConfig(p => ({ ...p, [ins.id]: { ...cfg, ...upd } }));
                     const isGeom = cfg.formula !== "fixo";
                     return (
-                      <tr key={ins.id} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="px-3 py-2">
+                      <TableRow key={ins.id}>
+                        <TableCell>
                           <span className="font-medium text-gray-800">{ins.nome}</span>
                           <span className="text-xs text-gray-400 ml-1">({ins.unidadeMedida})</span>
-                        </td>
-                        <td className="px-3 py-2">
+                        </TableCell>
+                        <TableCell>
                           <Select value={cfg.formula} onValueChange={v => setCfg({ formula: v })}>
                             <SelectTrigger className="h-7 text-xs w-44">
                               <SelectValue />
@@ -2796,16 +2800,16 @@ function PrecificacaoAdmin() {
                               {FORMULAS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
                             </SelectContent>
                           </Select>
-                        </td>
-                        <td className="px-3 py-2">
+                        </TableCell>
+                        <TableCell>
                           <Input
                             type="number" step="0.001" className="w-20 h-7 text-xs text-right"
                             placeholder={isGeom ? "fator" : "qtd"}
                             value={isGeom ? cfg.fator : cfg.qtd}
                             onChange={e => isGeom ? setCfg({ fator: e.target.value }) : setCfg({ qtd: e.target.value })}
                           />
-                        </td>
-                        <td className="px-3 py-2 text-right">
+                        </TableCell>
+                        <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Button
                               size="sm" variant="outline" className="h-7 px-2 text-xs"
@@ -2826,12 +2830,12 @@ function PrecificacaoAdmin() {
                               </button>
                             )}
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
               {insumos.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Cadastre insumos primeiro na aba "Insumos".</p>}
             </div>
           </div>
@@ -2870,26 +2874,26 @@ function PrecificacaoAdmin() {
               </div>
               {calc.detalhesInsumos.length > 0 && (
                 <div className="bg-gray-50 rounded-xl overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="text-left px-3 py-2 text-gray-600">Insumo</th>
-                        <th className="text-right px-3 py-2 text-gray-600">Qtd</th>
-                        <th className="text-right px-3 py-2 text-gray-600">Custo Unit.</th>
-                        <th className="text-right px-3 py-2 text-gray-600">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table className="text-xs">
+                    <TableHeader className="bg-gray-100">
+                      <TableRow>
+                        <TableHead>Insumo</TableHead>
+                        <TableHead className="text-right">Qtd</TableHead>
+                        <TableHead className="text-right">Custo Unit.</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {calc.detalhesInsumos.map((d, i) => (
-                        <tr key={i} className="border-t border-gray-200">
-                          <td className="px-3 py-1.5 text-gray-700">{d.nome}</td>
-                          <td className="px-3 py-1.5 text-right text-gray-600">{d.quantidadeReal?.toFixed(4) ?? '0'} {d.unidade}</td>
-                          <td className="px-3 py-1.5 text-right text-gray-600">R$ {d.custoUnit.toFixed(4)}</td>
-                          <td className="px-3 py-1.5 text-right font-medium text-gray-800">R$ {d.custoTotal.toFixed(4)}</td>
-                        </tr>
+                        <TableRow key={i}>
+                          <TableCell className="py-1.5 text-gray-700">{d.nome}</TableCell>
+                          <TableCell className="py-1.5 text-right text-gray-600">{d.quantidadeReal?.toFixed(4) ?? '0'} {d.unidade}</TableCell>
+                          <TableCell className="py-1.5 text-right text-gray-600">R$ {d.custoUnit.toFixed(4)}</TableCell>
+                          <TableCell className="py-1.5 text-right font-medium text-gray-800">R$ {d.custoTotal.toFixed(4)}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               )}
               {calc.custoTotal === 0 && (
@@ -4407,30 +4411,30 @@ function DashboardEmpacotamentoView() {
               <p className="text-xs mt-1">Configure o tempo estimado nos modelos de caixa/letreiro e registre sessões de empacotamento.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-gray-500 text-xs uppercase">
-                    <th className="text-left px-4 py-3">Pedido</th>
-                    <th className="text-right px-4 py-3">Previsto</th>
-                    <th className="text-right px-4 py-3">Realizado</th>
-                    <th className="text-right px-4 py-3">Variação</th>
-                    <th className="text-left px-4 py-3">Status</th>
-                    <th className="text-right px-4 py-3">Data</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
+            <div>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <TableHead>Pedido</TableHead>
+                    <TableHead className="text-right">Previsto</TableHead>
+                    <TableHead className="text-right">Realizado</TableHead>
+                    <TableHead className="text-right">Variação</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Data</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {previstoVsRealizado.map(row => {
                     const prevMin = row.tempoEstimadoSegundos > 0 ? `${Math.floor(row.tempoEstimadoSegundos / 60)}min` : '—';
                     const realMin = `${Math.floor(row.tempoRealizadoSegundos / 60)}min ${row.tempoRealizadoSegundos % 60}s`;
                     const variacao = row.variacaoPct;
                     const semPrevisto = row.tempoEstimadoSegundos === 0;
                     return (
-                      <tr key={row.pedidoId} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-semibold text-gray-900">#{row.pedidoCodigo}</td>
-                        <td className="px-4 py-3 text-right text-gray-500">{prevMin}</td>
-                        <td className="px-4 py-3 text-right text-gray-700 font-medium">{realMin}</td>
-                        <td className="px-4 py-3 text-right">
+                      <TableRow key={row.pedidoId}>
+                        <TableCell className="font-semibold text-gray-900">#{row.pedidoCodigo}</TableCell>
+                        <TableCell className="text-right text-gray-500">{prevMin}</TableCell>
+                        <TableCell className="text-right text-gray-700 font-medium">{realMin}</TableCell>
+                        <TableCell className="text-right">
                           {semPrevisto ? (
                             <span className="text-gray-400 text-xs">Sem meta</span>
                           ) : variacao !== null ? (
@@ -4438,8 +4442,8 @@ function DashboardEmpacotamentoView() {
                               {variacao > 0 ? '+' : ''}{variacao}%
                             </span>
                           ) : '—'}
-                        </td>
-                        <td className="px-4 py-3">
+                        </TableCell>
+                        <TableCell>
                           {semPrevisto ? (
                             <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Sem meta</span>
                           ) : variacao !== null && variacao > 10 ? (
@@ -4449,15 +4453,15 @@ function DashboardEmpacotamentoView() {
                           ) : (
                             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Dentro do previsto</span>
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-right text-xs text-gray-400">
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-gray-400">
                           {row.registradoEm > 0 ? new Date(row.registradoEm * 1000).toLocaleDateString('pt-BR') : ''}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>
@@ -4971,39 +4975,39 @@ function PainelCentralProdutividade() {
           </div>
 
           {/* Tabela de visualização atual */}
-          <div className="overflow-x-auto">
+          <div>
             <p className="text-xs font-medium text-gray-500 mb-2">Valores atuais por modelo:</p>
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="text-left p-2 border border-gray-200">Tipo</th>
-                  <th className="text-left p-2 border border-gray-200">Nome</th>
-                  <th className="text-right p-2 border border-gray-200">Tempo/m²</th>
-                  <th className="text-right p-2 border border-gray-200">Tempo/aresta</th>
-                  <th className="text-right p-2 border border-gray-200">Produtividade</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow className="bg-gray-100">
+                  <TableHead className="border border-gray-200">Tipo</TableHead>
+                  <TableHead className="border border-gray-200">Nome</TableHead>
+                  <TableHead className="text-right border border-gray-200">Tempo/m²</TableHead>
+                  <TableHead className="text-right border border-gray-200">Tempo/aresta</TableHead>
+                  <TableHead className="text-right border border-gray-200">Produtividade</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {letreiros.map(l => (
-                  <tr key={`l-${l.id}`} className="hover:bg-gray-50">
-                    <td className="p-2 border border-gray-200 text-indigo-600 font-medium">Letreiro</td>
-                    <td className="p-2 border border-gray-200">{l.nome}</td>
-                    <td className="p-2 border border-gray-200 text-right">{(l as any).tempoPorM2Min ? `${parseFloat(String((l as any).tempoPorM2Min)).toFixed(1)} min` : "—"}</td>
-                    <td className="p-2 border border-gray-200 text-right text-gray-400">—</td>
-                    <td className="p-2 border border-gray-200 text-right">{(l as any).valorProdutividadePorMinLetreiro ? `R$ ${parseFloat(String((l as any).valorProdutividadePorMinLetreiro)).toFixed(4)}/min` : "—"}</td>
-                  </tr>
+                  <TableRow key={`l-${l.id}`}>
+                    <TableCell className="border border-gray-200 text-indigo-600 font-medium">Letreiro</TableCell>
+                    <TableCell className="border border-gray-200">{l.nome}</TableCell>
+                    <TableCell className="border border-gray-200 text-right">{(l as any).tempoPorM2Min ? `${parseFloat(String((l as any).tempoPorM2Min)).toFixed(1)} min` : "—"}</TableCell>
+                    <TableCell className="border border-gray-200 text-right text-gray-400">—</TableCell>
+                    <TableCell className="border border-gray-200 text-right">{(l as any).valorProdutividadePorMinLetreiro ? `R$ ${parseFloat(String((l as any).valorProdutividadePorMinLetreiro)).toFixed(4)}/min` : "—"}</TableCell>
+                  </TableRow>
                 ))}
                 {caixas.map(c => (
-                  <tr key={`c-${c.id}`} className="hover:bg-gray-50">
-                    <td className="p-2 border border-gray-200 text-emerald-600 font-medium">Caixa</td>
-                    <td className="p-2 border border-gray-200">{c.nome}</td>
-                    <td className="p-2 border border-gray-200 text-right">{(c as any).tempoPorM2Min ? `${parseFloat(String((c as any).tempoPorM2Min)).toFixed(1)} min` : "—"}</td>
-                    <td className="p-2 border border-gray-200 text-right">{(c as any).tempoPorMetroArestaMin ? `${parseFloat(String((c as any).tempoPorMetroArestaMin)).toFixed(2)} min/m` : "—"}</td>
-                    <td className="p-2 border border-gray-200 text-right">{(c as any).valorProdutividadePorCm2 ? `R$ ${parseFloat(String((c as any).valorProdutividadePorCm2)).toFixed(6)}/cm²` : "—"}</td>
-                  </tr>
+                  <TableRow key={`c-${c.id}`}>
+                    <TableCell className="border border-gray-200 text-emerald-600 font-medium">Caixa</TableCell>
+                    <TableCell className="border border-gray-200">{c.nome}</TableCell>
+                    <TableCell className="border border-gray-200 text-right">{(c as any).tempoPorM2Min ? `${parseFloat(String((c as any).tempoPorM2Min)).toFixed(1)} min` : "—"}</TableCell>
+                    <TableCell className="border border-gray-200 text-right">{(c as any).tempoPorMetroArestaMin ? `${parseFloat(String((c as any).tempoPorMetroArestaMin)).toFixed(2)} min/m` : "—"}</TableCell>
+                    <TableCell className="border border-gray-200 text-right">{(c as any).valorProdutividadePorCm2 ? `R$ ${parseFloat(String((c as any).valorProdutividadePorCm2)).toFixed(6)}/cm²` : "—"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}

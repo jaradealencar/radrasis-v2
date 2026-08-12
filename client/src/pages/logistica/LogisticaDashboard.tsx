@@ -7,6 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import { Truck, Clock, CheckCircle, ListOrdered, TrendingUp, Home, Calendar, ChevronUp, ChevronDown, Minus, Tag, X, AlertCircle, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Link } from "wouter";
@@ -199,31 +203,31 @@ export default function LogisticaDashboard() {
                   <p className="text-xs text-red-600 mt-0.5">{prazoStats.atrasados} de {prazoStats.total}</p>
                 </div>
               </div>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">OS / ID</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Destinatário</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Material</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Destino</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Prev. Entrega</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Data Despacho</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Diferença</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Situação</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Retrabalho</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className="rounded-lg border border-gray-200">
+                <Table className="text-xs">
+                  <TableHeader className="bg-gray-50">
+                    <TableRow>
+                      <TableHead className="text-gray-600">OS / ID</TableHead>
+                      <TableHead className="text-gray-600">Destinatário</TableHead>
+                      <TableHead className="text-gray-600">Material</TableHead>
+                      <TableHead className="text-gray-600">Destino</TableHead>
+                      <TableHead className="text-gray-600">Prev. Entrega</TableHead>
+                      <TableHead className="text-gray-600">Data Despacho</TableHead>
+                      <TableHead className="text-gray-600">Diferença</TableHead>
+                      <TableHead className="text-gray-600">Situação</TableHead>
+                      <TableHead className="text-gray-600">Retrabalho</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {prazoStats.pedidos.map((p: any) => (
-                      <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="px-3 py-2 font-mono text-gray-700">{p.empacotamentoPedidoNumero ? `OS #${p.empacotamentoPedidoNumero}` : `#${p.id}`}</td>
-                        <td className="px-3 py-2 text-gray-700 max-w-[140px] truncate">{p.destinatarioNome ?? "—"}</td>
-                        <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate">{p.tipoMaterial ?? "—"}</td>
-                        <td className="px-3 py-2 text-gray-500">{p.municipio && p.estado ? `${p.municipio}/${p.estado}` : "—"}</td>
-                        <td className="px-3 py-2 text-gray-700">{formatDate(p.dataEntregaPrevista)}</td>
-                        <td className="px-3 py-2 text-gray-700">{formatDate(p.dataDespacho)}</td>
-                        <td className="px-3 py-2">
+                      <TableRow key={p.id} className="hover:bg-gray-50">
+                        <TableCell className="font-mono text-gray-700">{p.empacotamentoPedidoNumero ? `OS #${p.empacotamentoPedidoNumero}` : `#${p.id}`}</TableCell>
+                        <TableCell className="text-gray-700 max-w-[140px] truncate">{p.destinatarioNome ?? "—"}</TableCell>
+                        <TableCell className="text-gray-500 max-w-[100px] truncate">{p.tipoMaterial ?? "—"}</TableCell>
+                        <TableCell className="text-gray-500">{p.municipio && p.estado ? `${p.municipio}/${p.estado}` : "—"}</TableCell>
+                        <TableCell className="text-gray-700">{formatDate(p.dataEntregaPrevista)}</TableCell>
+                        <TableCell className="text-gray-700">{formatDate(p.dataDespacho)}</TableCell>
+                        <TableCell>
                           {p.diffDias === 0 ? (
                             <span className="flex items-center gap-1 text-green-700"><Minus className="w-3 h-3" /> No dia</span>
                           ) : p.diffDias < 0 ? (
@@ -231,13 +235,13 @@ export default function LogisticaDashboard() {
                           ) : (
                             <span className="flex items-center gap-1 text-red-700"><ChevronDown className="w-3 h-3" /> {p.diffDias}d atraso</span>
                           )}
-                        </td>
-                        <td className="px-3 py-2">
+                        </TableCell>
+                        <TableCell>
                           {p.situacao === "no_prazo" && <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">No Prazo</Badge>}
                           {p.situacao === "antecipado" && <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">Antecipado</Badge>}
                           {p.situacao === "atrasado" && <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">Atrasado</Badge>}
-                        </td>
-                        <td className="px-3 py-2">
+                        </TableCell>
+                        <TableCell>
                           {p.situacao === "atrasado" ? (
                             <button onClick={() => handleAbrirModalRetrabalho(p)} className={`flex items-center gap-1 text-xs rounded-full px-2 py-0.5 border transition-colors ${p.temRetrabalho ? "bg-orange-100 text-orange-800 border-orange-300 font-semibold" : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200"}`}>
                               <Tag className="w-3 h-3" />{p.temRetrabalho ? (p.tipoRetrabalho ?? "Com Retrabalho") : "Marcar"}
@@ -245,11 +249,11 @@ export default function LogisticaDashboard() {
                           ) : (
                             <span className="text-xs text-gray-300">—</span>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </>
           )}
@@ -323,29 +327,29 @@ export default function LogisticaDashboard() {
               {metricasRet.comRetrabalho > 0 && (
                 <div>
                   <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Pedidos Atrasados com Retrabalho</h4>
-                  <div className="overflow-x-auto rounded-lg border border-orange-200">
-                    <table className="w-full text-xs">
-                      <thead className="bg-orange-50">
-                        <tr>
-                          <th className="text-left px-3 py-2 font-semibold text-orange-700">OS / ID</th>
-                          <th className="text-left px-3 py-2 font-semibold text-orange-700">Destinatário</th>
-                          <th className="text-left px-3 py-2 font-semibold text-orange-700">Atraso</th>
-                          <th className="text-left px-3 py-2 font-semibold text-orange-700">Tipo Retrabalho</th>
-                          <th className="text-left px-3 py-2 font-semibold text-orange-700">Motivo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                  <div className="rounded-lg border border-orange-200">
+                    <Table className="text-xs">
+                      <TableHeader className="bg-orange-50">
+                        <TableRow>
+                          <TableHead className="text-orange-700">OS / ID</TableHead>
+                          <TableHead className="text-orange-700">Destinatário</TableHead>
+                          <TableHead className="text-orange-700">Atraso</TableHead>
+                          <TableHead className="text-orange-700">Tipo Retrabalho</TableHead>
+                          <TableHead className="text-orange-700">Motivo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {metricasRet.lista.filter((p: any) => p.temRetrabalho).map((p: any) => (
-                          <tr key={p.id} className="border-t border-orange-100 hover:bg-orange-50">
-                            <td className="px-3 py-2 font-mono text-gray-700">{p.empacotamentoPedidoNumero ? `OS #${p.empacotamentoPedidoNumero}` : `#${p.id}`}</td>
-                            <td className="px-3 py-2 text-gray-700 max-w-[120px] truncate">{p.destinatarioNome ?? "—"}</td>
-                            <td className="px-3 py-2 text-red-700 font-semibold">+{p.diffDias}d</td>
-                            <td className="px-3 py-2"><Badge className="bg-orange-100 text-orange-800 border-orange-200 text-xs">{p.tipoRetrabalho ?? "Não categorizado"}</Badge></td>
-                            <td className="px-3 py-2 text-gray-500 max-w-[160px] truncate">{p.motivoRetrabalho ?? "—"}</td>
-                          </tr>
+                          <TableRow key={p.id} className="hover:bg-orange-50">
+                            <TableCell className="font-mono text-gray-700">{p.empacotamentoPedidoNumero ? `OS #${p.empacotamentoPedidoNumero}` : `#${p.id}`}</TableCell>
+                            <TableCell className="text-gray-700 max-w-[120px] truncate">{p.destinatarioNome ?? "—"}</TableCell>
+                            <TableCell className="text-red-700 font-semibold">+{p.diffDias}d</TableCell>
+                            <TableCell><Badge className="bg-orange-100 text-orange-800 border-orange-200 text-xs">{p.tipoRetrabalho ?? "Não categorizado"}</Badge></TableCell>
+                            <TableCell className="text-gray-500 max-w-[160px] truncate">{p.motivoRetrabalho ?? "—"}</TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 </div>
               )}
