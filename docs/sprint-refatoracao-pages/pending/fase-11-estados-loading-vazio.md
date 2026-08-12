@@ -8,7 +8,7 @@ Independente das fases 2–10 — pode sair a qualquer momento depois da 1.
 
 O projeto tem `ui/spinner.tsx` e `ui/empty.tsx` (shadcn) instalados com
 **adoção zero**. Enquanto isso, as páginas montam à mão o estado de
-carregando (`<Loader2 className="animate-spin" />` em ~11 arquivos, 47
+carregando (`<Loader2 className="animate-spin" />` em ~10 arquivos, 42
 ocorrências) e o estado vazio (`<p>Nenhum registro encontrado</p>` em
 variações espalhadas).
 
@@ -25,7 +25,7 @@ grep -rn "Loader2" --include="*.tsx" client/src/pages
 ```
 
 Concentração: `comercial/CRM.tsx` (9), `logistica/Assertividade.tsx` (6),
-`retrabalhos/BibliotecaErros.tsx` (5), `financeiro/PCP.tsx` (5),
+`retrabalhos/BibliotecaErros.tsx` (5),
 `operacoes/Conhecimento.tsx` (4), `logistica/LogisticaDashboard.tsx` (4), e
 mais 5 arquivos com 2–3 cada.
 
@@ -172,7 +172,7 @@ banco cheio e a rede rápida. Para forçá-los:
 - **Vazio** — aplique um filtro que não retorna nada (período futuro, texto
   de busca sem correspondência).
 
-Confira em pelo menos: CRM, Assertividade, Biblioteca de Erros, PCP,
+Confira em pelo menos: CRM, Assertividade, Biblioteca de Erros,
 Conhecimento.
 
 ## Definição de pronto

@@ -4,7 +4,7 @@ Guia para agentes de IA (e humanos) trabalhando neste repositório.
 
 ## O que é este projeto
 
-Radrasys — sistema interno de gestão (logística, qualidade, PCP, comercial,
+Radrasys — sistema interno de gestão (logística, qualidade, comercial,
 financeiro, RH) originado do template "Manus webdev fullstack", mas já sem
 nenhuma dependência do Forge (Manus) ou do Gemini — banco é Postgres, auth é
 Better Auth local-only, LLM é OpenAI, storage é UploadThing (ver
@@ -167,9 +167,9 @@ client/src/          frontend (Vite root = client/)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
 server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
-  routers/             sub-routers por domínio (logistica.ts, pcp.ts, admin.ts, ...)
+  routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
-                       db-helpers*.ts, storage.ts, pcp-helpers.ts
+                       db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts
   sync/                sincronização com o ERP: sync-erp.ts, scheduled-sync-os*.ts,
                        heartbeat-sync-erp.ts

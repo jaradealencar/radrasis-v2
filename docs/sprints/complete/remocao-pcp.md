@@ -220,7 +220,7 @@ MubiSys no shell de teste (nenhuma nova falha).
 
 ---
 
-## Tarefa 4 — Documentação
+## Tarefa 4 — Documentação ✅ feito em 12/08/2026
 
 1. `AGENTS.md`: linha 7 (descrição do sistema — tirar "PCP" da lista de
    domínios), linha 166 (`routers/` cita `pcp.ts`) e linha 168 (`db/` cita
@@ -235,6 +235,21 @@ MubiSys no shell de teste (nenhuma nova falha).
 4. Mova este arquivo de `docs/sprints/pending/` para `docs/sprints/complete/`.
 
 **Commit:** `docs(pcp): atualiza AGENTS.md e sprints após remoção do PCP`
+
+**Notas da execução:** feito conforme especificado. Além disso, o arquivo
+`docs/sprint-refatoracao-pages/pending/fase-11-estados-loading-vazio.md`
+(o arquivo se moveu de `docs/sprint-refatoracao-pages/` para
+`docs/sprint-refatoracao-pages/pending/` em commit anterior à esta sprint —
+localizado pelo nome, não pelo caminho do inventário) teve a contagem total
+de "Loader2" ajustada de "~11 arquivos, 47 ocorrências" para "~10 arquivos,
+42 ocorrências" (a entrada `financeiro/PCP.tsx (5)` saiu da lista de
+concentração).
+
+Achado fora do escopo desta sprint, não corrigido aqui: existe um arquivo
+novo e ainda não commitado, `docs/funcionalidades.md`, que documenta o PCP
+como módulo ativo (seção "6. Produção / PCP", rotas `/pcp`, `pcp.criarOrdemPorOS`
+etc.) — ele já cita a existência desta sprint de remoção, mas ficou
+desatualizado depois da execução. Precisa de uma revisão separada.
 
 ---
 
