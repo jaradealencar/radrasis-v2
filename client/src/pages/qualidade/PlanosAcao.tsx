@@ -11,6 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
+import {
   GitBranch, Plus, AlertTriangle, Edit2, Trash2, ChevronDown, ChevronUp,
   Fish, Table2, X, CheckCircle2, Clock, Loader2, Eye, FileDown, Sparkles
 } from "lucide-react";
@@ -289,54 +293,54 @@ function Tabela5W2H({ planoId, titulo, problemaRaiz, codigoErro }: { planoId: nu
           <p className="text-slate-300 text-xs mt-1">Clique em "Nova Ação" para adicionar ações práticas ao plano</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 w-8">#</th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[160px]">O Quê? <span className="font-normal text-slate-400">(What)</span></th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[120px]">Por Quê? <span className="font-normal text-slate-400">(Why)</span></th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[100px]">Onde? <span className="font-normal text-slate-400">(Where)</span></th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[100px]">Quem? <span className="font-normal text-slate-400">(Who)</span></th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[90px]">Quando? <span className="font-normal text-slate-400">(When)</span></th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[140px]">Como? <span className="font-normal text-slate-400">(How)</span></th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[90px]">Quanto? <span className="font-normal text-slate-400">(How Much)</span></th>
-                <th className="text-left px-3 py-2.5 font-semibold text-slate-600 min-w-[110px]">Status</th>
-                <th className="px-3 py-2.5 w-16"></th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="rounded-xl border border-slate-200">
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead className="w-8">#</TableHead>
+                <TableHead className="min-w-[160px]">O Quê? <span className="font-normal text-slate-400">(What)</span></TableHead>
+                <TableHead className="min-w-[120px]">Por Quê? <span className="font-normal text-slate-400">(Why)</span></TableHead>
+                <TableHead className="min-w-[100px]">Onde? <span className="font-normal text-slate-400">(Where)</span></TableHead>
+                <TableHead className="min-w-[100px]">Quem? <span className="font-normal text-slate-400">(Who)</span></TableHead>
+                <TableHead className="min-w-[90px]">Quando? <span className="font-normal text-slate-400">(When)</span></TableHead>
+                <TableHead className="min-w-[140px]">Como? <span className="font-normal text-slate-400">(How)</span></TableHead>
+                <TableHead className="min-w-[90px]">Quanto? <span className="font-normal text-slate-400">(How Much)</span></TableHead>
+                <TableHead className="min-w-[110px]">Status</TableHead>
+                <TableHead className="w-16"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {acoes.map((a: any, idx: number) => (
-                <tr key={a.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                <TableRow key={a.id}>
                   {editingId === a.id ? (
                     <>
-                      <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                      <td className="px-2 py-1"><Textarea value={editForm.what} onChange={e => setEditForm(f => ({ ...f, what: e.target.value }))} rows={2} className="text-xs min-w-[140px]" /></td>
-                      <td className="px-2 py-1"><Textarea value={editForm.why} onChange={e => setEditForm(f => ({ ...f, why: e.target.value }))} rows={2} className="text-xs min-w-[100px]" /></td>
-                      <td className="px-2 py-1"><Input value={editForm.where} onChange={e => setEditForm(f => ({ ...f, where: e.target.value }))} className="text-xs h-7" /></td>
-                      <td className="px-2 py-1"><Input value={editForm.who} onChange={e => setEditForm(f => ({ ...f, who: e.target.value }))} className="text-xs h-7" /></td>
-                      <td className="px-2 py-1"><Input value={editForm.when} onChange={e => setEditForm(f => ({ ...f, when: e.target.value }))} className="text-xs h-7" /></td>
-                      <td className="px-2 py-1"><Textarea value={editForm.how} onChange={e => setEditForm(f => ({ ...f, how: e.target.value }))} rows={2} className="text-xs min-w-[120px]" /></td>
-                      <td className="px-2 py-1"><Input value={editForm.howMuch} onChange={e => setEditForm(f => ({ ...f, howMuch: e.target.value }))} className="text-xs h-7" /></td>
-                      <td className="px-2 py-1 text-slate-400 text-xs">—</td>
-                      <td className="px-2 py-1">
+                      <TableCell className="text-slate-400">{idx + 1}</TableCell>
+                      <TableCell className="px-2 py-1"><Textarea value={editForm.what} onChange={e => setEditForm(f => ({ ...f, what: e.target.value }))} rows={2} className="text-xs min-w-[140px]" /></TableCell>
+                      <TableCell className="px-2 py-1"><Textarea value={editForm.why} onChange={e => setEditForm(f => ({ ...f, why: e.target.value }))} rows={2} className="text-xs min-w-[100px]" /></TableCell>
+                      <TableCell className="px-2 py-1"><Input value={editForm.where} onChange={e => setEditForm(f => ({ ...f, where: e.target.value }))} className="text-xs h-7" /></TableCell>
+                      <TableCell className="px-2 py-1"><Input value={editForm.who} onChange={e => setEditForm(f => ({ ...f, who: e.target.value }))} className="text-xs h-7" /></TableCell>
+                      <TableCell className="px-2 py-1"><Input value={editForm.when} onChange={e => setEditForm(f => ({ ...f, when: e.target.value }))} className="text-xs h-7" /></TableCell>
+                      <TableCell className="px-2 py-1"><Textarea value={editForm.how} onChange={e => setEditForm(f => ({ ...f, how: e.target.value }))} rows={2} className="text-xs min-w-[120px]" /></TableCell>
+                      <TableCell className="px-2 py-1"><Input value={editForm.howMuch} onChange={e => setEditForm(f => ({ ...f, howMuch: e.target.value }))} className="text-xs h-7" /></TableCell>
+                      <TableCell className="px-2 py-1 text-slate-400 text-xs">—</TableCell>
+                      <TableCell className="px-2 py-1">
                         <div className="flex gap-1">
                           <button onClick={() => updateAcao.mutate({ id: a.id, ...editForm })} className="text-xs bg-green-600 text-white px-2 py-1 rounded">OK</button>
                           <button onClick={() => setEditingId(null)} className="text-xs bg-slate-200 px-2 py-1 rounded">×</button>
                         </div>
-                      </td>
+                      </TableCell>
                     </>
                   ) : (
                     <>
-                      <td className="px-3 py-2.5 text-slate-400 font-medium">{idx + 1}</td>
-                      <td className="px-3 py-2.5 font-medium text-slate-800 leading-relaxed">{a.what}</td>
-                      <td className="px-3 py-2.5 text-slate-600 leading-relaxed">{a.why || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-slate-600">{a.where || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-slate-600">{a.who || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-slate-600">{a.when || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-slate-600 leading-relaxed">{a.how || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-slate-600">{a.howMuch || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-2.5">
+                      <TableCell className="text-slate-400 font-medium">{idx + 1}</TableCell>
+                      <TableCell className="font-medium text-slate-800 leading-relaxed">{a.what}</TableCell>
+                      <TableCell className="text-slate-600 leading-relaxed">{a.why || <span className="text-slate-300">—</span>}</TableCell>
+                      <TableCell className="text-slate-600">{a.where || <span className="text-slate-300">—</span>}</TableCell>
+                      <TableCell className="text-slate-600">{a.who || <span className="text-slate-300">—</span>}</TableCell>
+                      <TableCell className="text-slate-600">{a.when || <span className="text-slate-300">—</span>}</TableCell>
+                      <TableCell className="text-slate-600 leading-relaxed">{a.how || <span className="text-slate-300">—</span>}</TableCell>
+                      <TableCell className="text-slate-600">{a.howMuch || <span className="text-slate-300">—</span>}</TableCell>
+                      <TableCell>
                         <select
                           value={a.status ?? "pendente"}
                           onChange={e => updateAcao.mutate({ id: a.id, status: e.target.value as any })}
@@ -346,19 +350,19 @@ function Tabela5W2H({ planoId, titulo, problemaRaiz, codigoErro }: { planoId: nu
                           <option value="em_andamento">Em Andamento</option>
                           <option value="concluido">Concluído</option>
                         </select>
-                      </td>
-                      <td className="px-3 py-2.5">
+                      </TableCell>
+                      <TableCell>
                         <div className="flex gap-1">
                           <button onClick={() => { setEditingId(a.id); setEditForm({ what: a.what ?? "", why: a.why ?? "", where: a.where ?? "", who: a.who ?? "", when: a.when ?? "", how: a.how ?? "", howMuch: a.howMuch ?? "" }); }} className="text-slate-400 hover:text-blue-600"><Edit2 size={12} /></button>
                           <button onClick={() => { if (confirm("Remover esta ação?")) deleteAcao.mutate({ id: a.id }); }} className="text-slate-400 hover:text-red-600"><Trash2 size={12} /></button>
                         </div>
-                      </td>
+                      </TableCell>
                     </>
                   )}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 

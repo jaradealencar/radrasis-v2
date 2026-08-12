@@ -3,6 +3,10 @@ import { toast } from "sonner";
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { Plus, Trash2, Save, ChevronDown, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Table, TableHeader, TableBody, TableFooter,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import DashboardLayout from "@/components/DashboardLayout";
 import UserSelect from "@/components/UserSelect";
 
@@ -177,224 +181,221 @@ export default function InserirRapido() {
 
         {/* Table */}
         <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">Classif.</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">OS Retrab. *</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">OS Original</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Data</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-36">Setor *</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">Tipo</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Mês</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Cód. Erro</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">Custo (R$)</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24">Frete (R$)</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-24" title="Horas que o retrabalho impactou na produção">Horas Imp.</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-32">Responsável *</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap w-28">Classe</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide w-48">Descrição</th>
-                  <th className="px-3 py-2.5 text-center font-semibold text-slate-500 uppercase tracking-wide w-20">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, idx) => {
-                  const errInfo = row.codigoErro ? errorMap.get(row.codigoErro) : null;
-                  const rowBg = row.saved ? "bg-green-50" : row.error ? "bg-red-50" : idx % 2 === 0 ? "bg-white" : "bg-slate-50/50";
-                  return (
-                    <tr key={row.id} data-row={row.id} className={`border-b border-slate-100 hover:bg-blue-50/30 transition-colors group ${rowBg}`}>
-                      {/* Tipo Registro */}
-                      <td className="px-1.5 py-1">
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead className="uppercase tracking-wide w-24">Classif.</TableHead>
+                <TableHead className="uppercase tracking-wide w-28">OS Retrab. *</TableHead>
+                <TableHead className="uppercase tracking-wide w-24">OS Original</TableHead>
+                <TableHead className="uppercase tracking-wide w-32">Data</TableHead>
+                <TableHead className="uppercase tracking-wide w-36">Setor *</TableHead>
+                <TableHead className="uppercase tracking-wide w-24">Tipo</TableHead>
+                <TableHead className="uppercase tracking-wide w-28">Mês</TableHead>
+                <TableHead className="uppercase tracking-wide w-32">Cód. Erro</TableHead>
+                <TableHead className="uppercase tracking-wide w-24">Custo (R$)</TableHead>
+                <TableHead className="uppercase tracking-wide w-24">Frete (R$)</TableHead>
+                <TableHead className="uppercase tracking-wide w-24" title="Horas que o retrabalho impactou na produção">Horas Imp.</TableHead>
+                <TableHead className="uppercase tracking-wide w-32">Responsável *</TableHead>
+                <TableHead className="uppercase tracking-wide w-28">Classe</TableHead>
+                <TableHead className="uppercase tracking-wide w-48">Descrição</TableHead>
+                <TableHead className="text-center uppercase tracking-wide w-20">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row, idx) => {
+                const errInfo = row.codigoErro ? errorMap.get(row.codigoErro) : null;
+                const rowBg = row.saved ? "bg-green-50" : row.error ? "bg-red-50" : idx % 2 === 0 ? "bg-white" : "bg-slate-50/50";
+                return (
+                  <TableRow key={row.id} data-row={row.id} className={`hover:bg-blue-50/30 group ${rowBg}`}>
+                    {/* Tipo Registro */}
+                    <TableCell className="px-1.5 py-1">
+                      <select
+                        className={`${selCls} ${row.tipoRegistro === "cnq" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}`}
+                        value={row.tipoRegistro}
+                        onChange={e => set(row.id, "tipoRegistro", e.target.value)}
+                      >
+                        <option value="retrabalho">Retrab.</option>
+                        <option value="cnq">CNQ</option>
+                      </select>
+                    </TableCell>
+                    {/* OS Retrabalhada */}
+                    <TableCell className="px-1.5 py-1">
+                      <input
+                        className={`${inputCls} font-mono font-semibold text-slate-800`}
+                        value={row.osRetrabalhada}
+                        onChange={e => set(row.id, "osRetrabalhada", e.target.value)}
+                        placeholder="Ex: 6280"
+                        autoFocus={idx === rows.length - 1}
+                      />
+                    </TableCell>
+                    {/* OS Original */}
+                    <TableCell className="px-1.5 py-1">
+                      <input
+                        className={`${inputCls} font-mono text-slate-600`}
+                        value={row.osOriginal}
+                        onChange={e => set(row.id, "osOriginal", e.target.value)}
+                        placeholder="Ex: 6205"
+                      />
+                    </TableCell>
+                    {/* Data */}
+                    <TableCell className="px-1.5 py-1">
+                      <input
+                        type="date"
+                        className={`${inputCls}`}
+                        value={row.data}
+                        onChange={e => set(row.id, "data", e.target.value)}
+                      />
+                    </TableCell>
+                    {/* Setor */}
+                    <TableCell className="px-1.5 py-1">
+                      <select className={selCls} value={row.setor} onChange={e => set(row.id, "setor", e.target.value)}>
+                        <option value="">— Setor —</option>
+                        {setores.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </TableCell>
+                    {/* Tipo */}
+                    <TableCell className="px-1.5 py-1">
+                      <select className={selCls} value={row.tipo} onChange={e => set(row.id, "tipo", e.target.value as "INTERNO" | "EXTERNO")}>
+                        <option value="INTERNO">Interno</option>
+                        <option value="EXTERNO">Externo</option>
+                      </select>
+                    </TableCell>
+                    {/* Mês */}
+                    <TableCell className="px-1.5 py-1">
+                      <select className={selCls} value={row.mes} onChange={e => set(row.id, "mes", e.target.value)}>
+                        {MESES.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </TableCell>
+                    {/* Código Erro */}
+                    <TableCell className="px-1.5 py-1">
+                      <div className="relative group/err">
                         <select
-                          className={`${selCls} ${row.tipoRegistro === "cnq" ? "text-amber-700 font-semibold" : "text-blue-700 font-semibold"}`}
-                          value={row.tipoRegistro}
-                          onChange={e => set(row.id, "tipoRegistro", e.target.value)}
+                          className={`${selCls} ${row.codigoErro ? "text-blue-700 font-semibold" : ""}`}
+                          value={row.codigoErro}
+                          onChange={e => set(row.id, "codigoErro", e.target.value)}
                         >
-                          <option value="retrabalho">Retrab.</option>
-                          <option value="cnq">CNQ</option>
+                          <option value="">— Código —</option>
+                          {allCodes.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
-                      </td>
-                      {/* OS Retrabalhada */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          className={`${inputCls} font-mono font-semibold text-slate-800`}
-                          value={row.osRetrabalhada}
-                          onChange={e => set(row.id, "osRetrabalhada", e.target.value)}
-                          placeholder="Ex: 6280"
-                          autoFocus={idx === rows.length - 1}
-                        />
-                      </td>
-                      {/* OS Original */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          className={`${inputCls} font-mono text-slate-600`}
-                          value={row.osOriginal}
-                          onChange={e => set(row.id, "osOriginal", e.target.value)}
-                          placeholder="Ex: 6205"
-                        />
-                      </td>
-                      {/* Data */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          type="date"
-                          className={`${inputCls}`}
-                          value={row.data}
-                          onChange={e => set(row.id, "data", e.target.value)}
-                        />
-                      </td>
-                      {/* Setor */}
-                      <td className="px-1.5 py-1">
-                        <select className={selCls} value={row.setor} onChange={e => set(row.id, "setor", e.target.value)}>
-                          <option value="">— Setor —</option>
-                          {setores.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </td>
-                      {/* Tipo */}
-                      <td className="px-1.5 py-1">
-                        <select className={selCls} value={row.tipo} onChange={e => set(row.id, "tipo", e.target.value as "INTERNO" | "EXTERNO")}>
-                          <option value="INTERNO">Interno</option>
-                          <option value="EXTERNO">Externo</option>
-                        </select>
-                      </td>
-                      {/* Mês */}
-                      <td className="px-1.5 py-1">
-                        <select className={selCls} value={row.mes} onChange={e => set(row.id, "mes", e.target.value)}>
-                          {MESES.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                      </td>
-                      {/* Código Erro */}
-                      <td className="px-1.5 py-1">
-                        <div className="relative group/err">
-                          <select
-                            className={`${selCls} ${row.codigoErro ? "text-blue-700 font-semibold" : ""}`}
-                            value={row.codigoErro}
-                            onChange={e => set(row.id, "codigoErro", e.target.value)}
-                          >
-                            <option value="">— Código —</option>
-                            {allCodes.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                          {errInfo && (
-                            <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/err:block w-64 p-2.5 rounded-lg bg-slate-800 text-white text-xs shadow-xl border border-slate-600">
-                              <p className="font-bold text-blue-300 mb-1">{errInfo.code} — {errInfo.category}</p>
-                              <p className="text-slate-200 mb-1">{errInfo.description}</p>
-                              <p className="text-green-300">✓ {errInfo.correction}</p>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      {/* Custo */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className={`${inputCls} font-mono`}
-                          value={row.custo}
-                          onChange={e => set(row.id, "custo", e.target.value)}
-                          placeholder="0,00"
-                        />
-                      </td>
-                      {/* Frete */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className={`${inputCls} font-mono`}
-                          value={row.frete}
-                          onChange={e => set(row.id, "frete", e.target.value)}
-                          placeholder="0,00"
-                        />
-                      </td>
-                      {/* Horas de Impacto */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          type="number"
-                          step="0.25"
-                          min="0"
-                          className={`${inputCls} font-mono`}
-                          value={row.horasImpacto}
-                          onChange={e => set(row.id, "horasImpacto", e.target.value)}
-                          placeholder="0h"
-                          title="Horas de impacto no negócio"
-                        />
-                      </td>
-                      {/* Responsável */}
-                      <td className="px-1.5 py-1">
-                        <UserSelect
-                          value={row.responsavel}
-                          onChange={name => set(row.id, "responsavel", name)}
-                          placeholder="—"
-                          className={selCls}
-                        />
-                      </td>
-                      {/* Classe */}
-                      <td className="px-1.5 py-1">
-                        <select
-                          className={`${selCls} font-semibold ${row.classe === "EVITÁVEL" ? "text-red-600" : "text-amber-600"}`}
-                          value={row.classe}
-                          onChange={e => set(row.id, "classe", e.target.value as "EVITÁVEL" | "INEVITÁVEL")}
-                        >
-                          <option value="EVITÁVEL">EVITÁVEL</option>
-                          <option value="INEVITÁVEL">INEVITÁVEL</option>
-                        </select>
-                      </td>
-                      {/* Descrição */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          className={inputCls}
-                          value={row.descricao}
-                          onChange={e => set(row.id, "descricao", e.target.value)}
-                          onKeyDown={e => handleKeyDown(e, row.id, "descricao")}
-                          placeholder="Descrição breve..."
-                        />
-                      </td>
-                      {/* Ações */}
-                      <td className="px-1.5 py-1">
-                        <div className="flex items-center justify-center gap-1">
-                          {row.saved ? (
-                            <span className="text-green-600 text-xs font-semibold">✓ Salvo</span>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => saveRow(row)}
-                                disabled={row.saving}
-                                className="p-1 rounded text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
-                                title="Salvar esta linha"
-                              >
-                                <Save className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => removeRow(row.id)}
-                                className="p-1 rounded text-red-400 hover:bg-red-100 transition-colors"
-                                title="Remover linha"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                        {row.error && <p className="text-red-500 text-xs mt-0.5 text-center">{row.error}</p>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {/* Footer totals */}
-              <tfoot>
-                <tr className="bg-slate-100 border-t-2 border-slate-200">
-                  <td colSpan={7} className="px-3 py-2 text-xs font-semibold text-slate-600">
-                    {rows.length} linha{rows.length !== 1 ? "s" : ""} — {rows.filter(r => r.saved).length} salva{rows.filter(r => r.saved).length !== 1 ? "s" : ""}
-                  </td>
-                  <td colSpan={2} className="px-3 py-2 text-xs font-bold font-mono text-slate-800 text-right">
-                    Total: R$ {totalCusto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  </td>
-                  <td colSpan={4} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                        {errInfo && (
+                          <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/err:block w-64 p-2.5 rounded-lg bg-slate-800 text-white text-xs shadow-xl border border-slate-600">
+                            <p className="font-bold text-blue-300 mb-1">{errInfo.code} — {errInfo.category}</p>
+                            <p className="text-slate-200 mb-1">{errInfo.description}</p>
+                            <p className="text-green-300">✓ {errInfo.correction}</p>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    {/* Custo */}
+                    <TableCell className="px-1.5 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className={`${inputCls} font-mono`}
+                        value={row.custo}
+                        onChange={e => set(row.id, "custo", e.target.value)}
+                        placeholder="0,00"
+                      />
+                    </TableCell>
+                    {/* Frete */}
+                    <TableCell className="px-1.5 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className={`${inputCls} font-mono`}
+                        value={row.frete}
+                        onChange={e => set(row.id, "frete", e.target.value)}
+                        placeholder="0,00"
+                      />
+                    </TableCell>
+                    {/* Horas de Impacto */}
+                    <TableCell className="px-1.5 py-1">
+                      <input
+                        type="number"
+                        step="0.25"
+                        min="0"
+                        className={`${inputCls} font-mono`}
+                        value={row.horasImpacto}
+                        onChange={e => set(row.id, "horasImpacto", e.target.value)}
+                        placeholder="0h"
+                        title="Horas de impacto no negócio"
+                      />
+                    </TableCell>
+                    {/* Responsável */}
+                    <TableCell className="px-1.5 py-1">
+                      <UserSelect
+                        value={row.responsavel}
+                        onChange={name => set(row.id, "responsavel", name)}
+                        placeholder="—"
+                        className={selCls}
+                      />
+                    </TableCell>
+                    {/* Classe */}
+                    <TableCell className="px-1.5 py-1">
+                      <select
+                        className={`${selCls} font-semibold ${row.classe === "EVITÁVEL" ? "text-red-600" : "text-amber-600"}`}
+                        value={row.classe}
+                        onChange={e => set(row.id, "classe", e.target.value as "EVITÁVEL" | "INEVITÁVEL")}
+                      >
+                        <option value="EVITÁVEL">EVITÁVEL</option>
+                        <option value="INEVITÁVEL">INEVITÁVEL</option>
+                      </select>
+                    </TableCell>
+                    {/* Descrição */}
+                    <TableCell className="px-1.5 py-1">
+                      <input
+                        className={inputCls}
+                        value={row.descricao}
+                        onChange={e => set(row.id, "descricao", e.target.value)}
+                        onKeyDown={e => handleKeyDown(e, row.id, "descricao")}
+                        placeholder="Descrição breve..."
+                      />
+                    </TableCell>
+                    {/* Ações */}
+                    <TableCell className="px-1.5 py-1">
+                      <div className="flex items-center justify-center gap-1">
+                        {row.saved ? (
+                          <span className="text-green-600 text-xs font-semibold">✓ Salvo</span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => saveRow(row)}
+                              disabled={row.saving}
+                              className="p-1 rounded text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                              title="Salvar esta linha"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => removeRow(row.id)}
+                              className="p-1 rounded text-red-400 hover:bg-red-100 transition-colors"
+                              title="Remover linha"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {row.error && <p className="text-red-500 text-xs mt-0.5 text-center">{row.error}</p>}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+            <TableFooter>
+              <TableRow className="bg-slate-100 border-t-2 border-slate-200">
+                <TableCell colSpan={7} className="text-xs font-semibold text-slate-600">
+                  {rows.length} linha{rows.length !== 1 ? "s" : ""} — {rows.filter(r => r.saved).length} salva{rows.filter(r => r.saved).length !== 1 ? "s" : ""}
+                </TableCell>
+                <TableCell colSpan={2} className="text-xs font-bold font-mono text-slate-800 text-right">
+                  Total: R$ {totalCusto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </TableCell>
+                <TableCell colSpan={4} />
+              </TableRow>
+            </TableFooter>
+          </Table>
         </div>
 
         {/* Hint */}

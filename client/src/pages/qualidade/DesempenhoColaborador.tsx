@@ -7,6 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
@@ -420,103 +424,101 @@ export default function DesempenhoColaborador() {
                         {/* Tabela mensal */}
                         <div>
                           <div className="text-sm font-medium mb-2">Histórico Mensal</div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm border-collapse">
-                              <thead>
-                                <tr className="bg-muted/50">
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Mês</th>
-                                  {cat.key === "soldador" && (
-                                    <>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Metros Soldados</th>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Retrabalhos</th>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Faltas</th>
-                                    </>
-                                  )}
-                                  {cat.key === "vendedor" && (
-                                    <>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Propostas</th>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Vendas</th>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Faturamento</th>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Ticket Médio</th>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Faltas</th>
-                                    </>
-                                  )}
-                                  {cat.key === "operador_maquinas" && (
-                                    <>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Trabalhos</th>
-                                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Faltas</th>
-                                    </>
-                                  )}
-                                  <th className="text-center px-3 py-2 text-xs font-medium text-muted-foreground">Ações</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {meses.map((m, i) => {
-                                  const prev = meses[i - 1] ?? null;
-                                  return (
-                                    <tr key={m.mes} className="border-t hover:bg-muted/30">
-                                      <td className="px-3 py-2 font-medium">{MESES[m.mes - 1]}</td>
-                                      {cat.key === "soldador" && (
-                                        <>
-                                          <td className="px-3 py-2 text-right text-orange-600 font-semibold">
-                                            {fmtNum(m.metrosSoldados ? parseFloat(m.metrosSoldados) : null, 1)}m
-                                            <Seta
-                                              atual={m.metrosSoldados ? parseFloat(m.metrosSoldados) : null}
-                                              anterior={prev?.metrosSoldados ? parseFloat(prev.metrosSoldados) : null}
-                                            />
-                                          </td>
-                                          <td className="px-3 py-2 text-right text-red-500 font-semibold">
-                                            {m.numRetrabalhos ?? 0}
-                                            <Seta atual={m.numRetrabalhos} anterior={prev?.numRetrabalhos ?? null} />
-                                          </td>
-                                          <td className="px-3 py-2 text-right">{m.numFaltas ?? 0}</td>
-                                        </>
-                                      )}
-                                      {cat.key === "vendedor" && (
-                                        <>
-                                          <td className="px-3 py-2 text-right text-blue-600 font-semibold">
-                                            {m.numPropostas ?? 0}
-                                            <Seta atual={m.numPropostas} anterior={prev?.numPropostas ?? null} />
-                                          </td>
-                                          <td className="px-3 py-2 text-right text-emerald-600 font-semibold">
-                                            {m.numVendas ?? 0}
-                                            <Seta atual={m.numVendas} anterior={prev?.numVendas ?? null} />
-                                          </td>
-                                          <td className="px-3 py-2 text-right text-emerald-600 font-semibold">
-                                            {fmtBRL(m.faturamentoVendedor)}
-                                            <Seta
-                                              atual={m.faturamentoVendedor ? parseFloat(m.faturamentoVendedor) : null}
-                                              anterior={prev?.faturamentoVendedor ? parseFloat(prev.faturamentoVendedor) : null}
-                                            />
-                                          </td>
-                                          <td className="px-3 py-2 text-right">{fmtBRL(m.ticketMedioVendedor)}</td>
-                                          <td className="px-3 py-2 text-right">{m.numFaltas ?? 0}</td>
-                                        </>
-                                      )}
-                                      {cat.key === "operador_maquinas" && (
-                                        <>
-                                          <td className="px-3 py-2 text-right text-purple-600 font-semibold">
-                                            {m.numTrabalhos ?? 0}
-                                            <Seta atual={m.numTrabalhos} anterior={prev?.numTrabalhos ?? null} />
-                                          </td>
-                                          <td className="px-3 py-2 text-right">{m.numFaltas ?? 0}</td>
-                                        </>
-                                      )}
-                                      <td className="px-3 py-2 text-center">
-                                        <Button
-                                          variant="ghost" size="sm"
-                                          onClick={() => abrirEditar(m)}
-                                          className="h-6 w-6 p-0"
-                                        >
-                                          <Edit3 size={12} />
-                                        </Button>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/50">
+                                <TableHead>Mês</TableHead>
+                                {cat.key === "soldador" && (
+                                  <>
+                                    <TableHead className="text-right">Metros Soldados</TableHead>
+                                    <TableHead className="text-right">Retrabalhos</TableHead>
+                                    <TableHead className="text-right">Faltas</TableHead>
+                                  </>
+                                )}
+                                {cat.key === "vendedor" && (
+                                  <>
+                                    <TableHead className="text-right">Propostas</TableHead>
+                                    <TableHead className="text-right">Vendas</TableHead>
+                                    <TableHead className="text-right">Faturamento</TableHead>
+                                    <TableHead className="text-right">Ticket Médio</TableHead>
+                                    <TableHead className="text-right">Faltas</TableHead>
+                                  </>
+                                )}
+                                {cat.key === "operador_maquinas" && (
+                                  <>
+                                    <TableHead className="text-right">Trabalhos</TableHead>
+                                    <TableHead className="text-right">Faltas</TableHead>
+                                  </>
+                                )}
+                                <TableHead className="text-center">Ações</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {meses.map((m, i) => {
+                                const prev = meses[i - 1] ?? null;
+                                return (
+                                  <TableRow key={m.mes}>
+                                    <TableCell className="font-medium">{MESES[m.mes - 1]}</TableCell>
+                                    {cat.key === "soldador" && (
+                                      <>
+                                        <TableCell className="text-right text-orange-600 font-semibold">
+                                          {fmtNum(m.metrosSoldados ? parseFloat(m.metrosSoldados) : null, 1)}m
+                                          <Seta
+                                            atual={m.metrosSoldados ? parseFloat(m.metrosSoldados) : null}
+                                            anterior={prev?.metrosSoldados ? parseFloat(prev.metrosSoldados) : null}
+                                          />
+                                        </TableCell>
+                                        <TableCell className="text-right text-red-500 font-semibold">
+                                          {m.numRetrabalhos ?? 0}
+                                          <Seta atual={m.numRetrabalhos} anterior={prev?.numRetrabalhos ?? null} />
+                                        </TableCell>
+                                        <TableCell className="text-right">{m.numFaltas ?? 0}</TableCell>
+                                      </>
+                                    )}
+                                    {cat.key === "vendedor" && (
+                                      <>
+                                        <TableCell className="text-right text-blue-600 font-semibold">
+                                          {m.numPropostas ?? 0}
+                                          <Seta atual={m.numPropostas} anterior={prev?.numPropostas ?? null} />
+                                        </TableCell>
+                                        <TableCell className="text-right text-emerald-600 font-semibold">
+                                          {m.numVendas ?? 0}
+                                          <Seta atual={m.numVendas} anterior={prev?.numVendas ?? null} />
+                                        </TableCell>
+                                        <TableCell className="text-right text-emerald-600 font-semibold">
+                                          {fmtBRL(m.faturamentoVendedor)}
+                                          <Seta
+                                            atual={m.faturamentoVendedor ? parseFloat(m.faturamentoVendedor) : null}
+                                            anterior={prev?.faturamentoVendedor ? parseFloat(prev.faturamentoVendedor) : null}
+                                          />
+                                        </TableCell>
+                                        <TableCell className="text-right">{fmtBRL(m.ticketMedioVendedor)}</TableCell>
+                                        <TableCell className="text-right">{m.numFaltas ?? 0}</TableCell>
+                                      </>
+                                    )}
+                                    {cat.key === "operador_maquinas" && (
+                                      <>
+                                        <TableCell className="text-right text-purple-600 font-semibold">
+                                          {m.numTrabalhos ?? 0}
+                                          <Seta atual={m.numTrabalhos} anterior={prev?.numTrabalhos ?? null} />
+                                        </TableCell>
+                                        <TableCell className="text-right">{m.numFaltas ?? 0}</TableCell>
+                                      </>
+                                    )}
+                                    <TableCell className="text-center">
+                                      <Button
+                                        variant="ghost" size="sm"
+                                        onClick={() => abrirEditar(m)}
+                                        className="h-6 w-6 p-0"
+                                      >
+                                        <Edit3 size={12} />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
                         </div>
                       </div>
                     )}

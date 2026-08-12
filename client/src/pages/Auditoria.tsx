@@ -5,6 +5,10 @@ import { ShieldCheck, Search, ChevronLeft, ChevronRight, Eye, X, Plus, Pencil, T
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -326,64 +330,62 @@ export default function Auditoria() {
               <p className="text-slate-400 text-sm">Nenhum evento de auditoria encontrado.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Data/Hora</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ação</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">OS Retrabalho</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">OS Original</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Usuário</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Perfil</th>
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="hover:bg-slate-50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedRow(row)}
-                    >
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap font-mono text-xs">
-                        {formatDate(row.createdAt)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <AcaoBadge acao={row.acao} />
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-700 font-medium">
-                        {row.osRetrabalhada ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-500">
-                        {row.osOriginal ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {row.usuarioNome ?? <span className="text-slate-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.usuarioRole ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 capitalize">
-                            {row.usuarioRole}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedRow(row); }}
-                          className="text-slate-400 hover:text-blue-500 transition-colors"
-                          title="Ver detalhes"
-                        >
-                          <Eye size={15} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead className="uppercase tracking-wide">Data/Hora</TableHead>
+                  <TableHead className="uppercase tracking-wide">Ação</TableHead>
+                  <TableHead className="uppercase tracking-wide">OS Retrabalho</TableHead>
+                  <TableHead className="uppercase tracking-wide">OS Original</TableHead>
+                  <TableHead className="uppercase tracking-wide">Usuário</TableHead>
+                  <TableHead className="uppercase tracking-wide">Perfil</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-slate-50">
+                {rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedRow(row)}
+                  >
+                    <TableCell className="text-slate-500 font-mono text-xs">
+                      {formatDate(row.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <AcaoBadge acao={row.acao} />
+                    </TableCell>
+                    <TableCell className="font-mono text-slate-700 font-medium">
+                      {row.osRetrabalhada ?? "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-slate-500">
+                      {row.osOriginal ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-slate-700">
+                      {row.usuarioNome ?? <span className="text-slate-300">—</span>}
+                    </TableCell>
+                    <TableCell>
+                      {row.usuarioRole ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 capitalize">
+                          {row.usuarioRole}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedRow(row); }}
+                        className="text-slate-400 hover:text-blue-500 transition-colors"
+                        title="Ver detalhes"
+                      >
+                        <Eye size={15} />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
 
           {/* Paginação */}

@@ -11,6 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
+import {
   Users, Plus, Shield, Edit, Trash2, Key, CheckCircle, XCircle,
   Lock, Unlock, ChevronDown, ChevronUp
 } from "lucide-react";
@@ -136,26 +140,26 @@ function PermissoesPanel() {
         <div key={group.group}>
           <h3 className="font-semibold text-sm mb-2 text-muted-foreground uppercase tracking-wide">{group.group}</h3>
           <div className="border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium">Página / Módulo</th>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead>Página / Módulo</TableHead>
                   {roleKeys.map(r => (
-                    <th key={r} className="px-2 py-2 text-center font-medium min-w-[80px]">
+                    <TableHead key={r} className="text-center min-w-[80px]">
                       <RoleBadge role={r} />
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {group.pages.map((page, idx) => (
-                  <tr key={page.key} className={idx % 2 === 0 ? "bg-background" : "bg-muted/20"}>
-                    <td className="px-3 py-2 font-medium">{page.label}</td>
+                  <TableRow key={page.key} className={idx % 2 === 0 ? "bg-background" : "bg-muted/20"}>
+                    <TableCell className="font-medium">{page.label}</TableCell>
                     {roleKeys.map(role => {
                       const allowed = isAllowed(role, page.key);
                       const isMaster = role === "master";
                       return (
-                        <td key={role} className="px-2 py-2 text-center">
+                        <TableCell key={role} className="text-center">
                           {isMaster ? (
                             <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
                           ) : (
@@ -167,13 +171,13 @@ function PermissoesPanel() {
                               <span className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${allowed ? "translate-x-1.5" : "-translate-x-1.5"}`}></span>
                             </button>
                           )}
-                        </td>
+                        </TableCell>
                       );
                     })}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       ))}
