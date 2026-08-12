@@ -138,7 +138,7 @@ a Tarefa 3 (precisa de acesso ao banco).
 
 ---
 
-## Tarefa 2 — Remover o router e os helpers (server)
+## Tarefa 2 — Remover o router e os helpers (server) ✅ feito em 12/08/2026
 
 1. Delete `server/routers/pcp.ts` e `server/db/pcp-helpers.ts`.
 2. Em `server/routers.ts`, apague o import (linha 13) e a entrada `pcp:
@@ -155,6 +155,14 @@ neste arquivo — **não remova nesta sprint**, é outro escopo.
 app sobe sem erro de router faltando.
 
 **Commit:** `chore(pcp): remove pcpRouter e pcp-helpers`
+
+**Notas da execução:** `npx tsc --noEmit` deu 0 erros depois. `yarn test`
+tem 19 testes falhando, todos por falta de `DATABASE_URL`/credenciais MubiSys
+no shell (erro de conexão Postgres / env var ausente) — nenhuma falha é do
+PCP, não existe `pcp.test.ts`. Confirmado: `buscarOSPorId` e
+`verificarConexaoMubiSys`, exports de `mubisys-client.ts`, ficaram **sem
+nenhum call site** depois da remoção do `pcp.ts` — não removidos nesta
+sprint (fora de escopo), registrados aqui para decisão futura.
 
 ---
 
