@@ -1,0 +1,1 @@
+ALTER TYPE "public"."alerta_tipo" ADD VALUE 'manual';

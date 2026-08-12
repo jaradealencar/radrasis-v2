@@ -14,6 +14,7 @@ const TIPO_LABELS: Record<string, string> = {
   prazo_vencido: "Prazo Vencido",
   novo_retrabalho: "Novo Retrabalho",
   atraso_expedicao: "Atraso na Expedição",
+  manual: "Notificação",
 };
 
 const SEV_CONFIG: Record<string, { icon: any; color: string; bg: string; border: string }> = {
