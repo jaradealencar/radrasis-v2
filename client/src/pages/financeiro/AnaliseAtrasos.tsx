@@ -4,6 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -331,50 +339,48 @@ export default function AnaliseAtrasosPage() {
             <h2 className="text-lg font-bold mb-4">
               📊 Análise Detalhada por Setor
             </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="px-4 py-2 text-left">Setor</th>
-                    <th className="px-4 py-2 text-center">OSs Atrasadas</th>
-                    <th className="px-4 py-2 text-center">Total de Horas</th>
-                    <th className="px-4 py-2 text-center">% Retrabalho</th>
-                    <th className="px-4 py-2 text-left">Motivo Principal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analisePorSetor
-                    .sort((a, b) => b.totalHoras - a.totalHoras)
-                    .map((analise) => (
-                      <tr key={analise.setor} className="border-b hover:bg-gray-50">
-                        <td className="px-4 py-2 font-medium">{analise.setor}</td>
-                        <td className="px-4 py-2 text-center">
-                          {analise.quantidadeOSs}
-                        </td>
-                        <td className="px-4 py-2 text-center font-bold text-red-600">
-                          {analise.totalHoras}h
-                        </td>
-                        <td className="px-4 py-2 text-center">
-                          <span
-                            className={`px-2 py-1 rounded text-white text-xs font-bold ${
-                              analise.percentualRetrabalho > 50
-                                ? "bg-red-600"
-                                : analise.percentualRetrabalho > 25
-                                ? "bg-orange-600"
-                                : "bg-green-600"
-                            }`}
-                          >
-                            {analise.percentualRetrabalho}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 text-xs">
-                          {analise.motivoPrincipal}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-100">
+                  <TableHead>Setor</TableHead>
+                  <TableHead className="text-center">OSs Atrasadas</TableHead>
+                  <TableHead className="text-center">Total de Horas</TableHead>
+                  <TableHead className="text-center">% Retrabalho</TableHead>
+                  <TableHead>Motivo Principal</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {analisePorSetor
+                  .sort((a, b) => b.totalHoras - a.totalHoras)
+                  .map((analise) => (
+                    <TableRow key={analise.setor}>
+                      <TableCell className="font-medium">{analise.setor}</TableCell>
+                      <TableCell className="text-center">
+                        {analise.quantidadeOSs}
+                      </TableCell>
+                      <TableCell className="text-center font-bold text-red-600">
+                        {analise.totalHoras}h
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span
+                          className={`px-2 py-1 rounded text-white text-xs font-bold ${
+                            analise.percentualRetrabalho > 50
+                              ? "bg-red-600"
+                              : analise.percentualRetrabalho > 25
+                              ? "bg-orange-600"
+                              : "bg-green-600"
+                          }`}
+                        >
+                          {analise.percentualRetrabalho}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="whitespace-normal text-xs">
+                        {analise.motivoPrincipal}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
           </Card>
 
           {/* Motivos de Atraso */}
@@ -448,46 +454,44 @@ export default function AnaliseAtrasosPage() {
           {/* Registros Detalhados */}
           <Card className="p-6">
             <h2 className="text-lg font-bold mb-4">📋 Registros Detalhados</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="px-4 py-2 text-left">OS</th>
-                    <th className="px-4 py-2 text-left">Setor</th>
-                    <th className="px-4 py-2 text-left">Motivo</th>
-                    <th className="px-4 py-2 text-center">Horas</th>
-                    <th className="px-4 py-2 text-center">Retrabalho</th>
-                    <th className="px-4 py-2 text-left">Data</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {registros.map((registro, idx) => (
-                    <tr key={idx} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium">
-                        {registro.osNumero}
-                      </td>
-                      <td className="px-4 py-2">{registro.setor}</td>
-                      <td className="px-4 py-2 text-xs">{registro.motivo}</td>
-                      <td className="px-4 py-2 text-center font-bold">
-                        {registro.horasAtraso}h
-                      </td>
-                      <td className="px-4 py-2 text-center">
-                        {registro.temRetrabalho ? (
-                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">
-                            Sim
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">
-                            Não
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2">{registro.data}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-100">
+                  <TableHead>OS</TableHead>
+                  <TableHead>Setor</TableHead>
+                  <TableHead>Motivo</TableHead>
+                  <TableHead className="text-center">Horas</TableHead>
+                  <TableHead className="text-center">Retrabalho</TableHead>
+                  <TableHead>Data</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {registros.map((registro, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell className="font-medium">
+                      {registro.osNumero}
+                    </TableCell>
+                    <TableCell>{registro.setor}</TableCell>
+                    <TableCell className="whitespace-normal text-xs">{registro.motivo}</TableCell>
+                    <TableCell className="text-center font-bold">
+                      {registro.horasAtraso}h
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {registro.temRetrabalho ? (
+                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">
+                          Sim
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">
+                          Não
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>{registro.data}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </Card>
         </>
       )}

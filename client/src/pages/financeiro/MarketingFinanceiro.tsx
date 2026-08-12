@@ -3,6 +3,15 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line,
@@ -367,164 +376,162 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
           </p>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-xs text-muted-foreground bg-slate-50">
-                  <th className="text-left py-2.5 px-3 font-semibold">Mês</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">Investimento</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">Clientes Novos</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">CAC</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">Fat. Clientes Novos</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">Retorno Real (51%)</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">ROI (R$)</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">ROI (%)</th>
-                  <th className="text-center py-2.5 px-3 font-semibold">Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dadosFiltrados.map(({ mes, nome, investimento, clientesNovosQtd, faturamentoNovos, retornoReal, cac, roiReais, roiPct }) => {
-                  const mk = custoMarketingMap[mes];
-                  const isEditing = marketingEditando === mes;
-                  return (
-                    <tr key={mes} className="border-b last:border-0 hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-medium">{nome}</td>
-                      <td className="py-2.5 px-3 text-right">
-                        {isEditing ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <span className="text-muted-foreground text-xs">R$</span>
-                            <Input
-                              className="w-32 h-7 text-right text-sm"
-                              value={marketingInput}
-                              onChange={e => setMarketingInput(e.target.value)}
-                              placeholder="0,00"
-                              autoFocus
-                              onKeyDown={e => {
-                                if (e.key === "Enter") {
-                                  const val = parseFloat(marketingInput.replace(/\./g, "").replace(",", "."));
-                                  if (isNaN(val) || val < 0) { toast.error("Valor inválido"); return; }
-                                  upsertMarketing.mutate({ mes, ano: anoSel, investimento: val, observacao: marketingObs || null });
-                                }
-                                if (e.key === "Escape") setMarketingEditando(null);
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <span className={investimento != null ? "font-semibold text-purple-700" : "text-muted-foreground"}>
-                            {investimento != null ? fmtBRL(investimento) : "—"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {clientesNovosQtd != null
-                          ? <span className="font-medium text-blue-700">{clientesNovosQtd}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {cac != null
-                          ? <span className="font-semibold text-orange-600">{fmtBRL(cac)}</span>
-                          : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {faturamentoNovos != null
-                          ? <span className="font-medium text-emerald-700">{fmtBRL(faturamentoNovos)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {retornoReal != null
-                          ? <span className="font-medium text-teal-700">{fmtBRL(retornoReal)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {roiReais != null
-                          ? <span className={`font-bold ${roiReais >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtBRL(roiReais)}</span>
-                          : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        {roiPct != null
-                          ? <span className={`font-bold ${roiPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>{roiPct.toFixed(0)}%</span>
-                          : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {isEditing ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              size="sm" variant="ghost"
-                              className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700"
-                              onClick={() => {
+          <Table>
+            <TableHeader>
+              <TableRow className="text-xs text-muted-foreground bg-slate-50">
+                <TableHead className="font-semibold">Mês</TableHead>
+                <TableHead className="text-right font-semibold">Investimento</TableHead>
+                <TableHead className="text-right font-semibold">Clientes Novos</TableHead>
+                <TableHead className="text-right font-semibold">CAC</TableHead>
+                <TableHead className="text-right font-semibold">Fat. Clientes Novos</TableHead>
+                <TableHead className="text-right font-semibold">Retorno Real (51%)</TableHead>
+                <TableHead className="text-right font-semibold">ROI (R$)</TableHead>
+                <TableHead className="text-right font-semibold">ROI (%)</TableHead>
+                <TableHead className="text-center font-semibold">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dadosFiltrados.map(({ mes, nome, investimento, clientesNovosQtd, faturamentoNovos, retornoReal, cac, roiReais, roiPct }) => {
+                const mk = custoMarketingMap[mes];
+                const isEditing = marketingEditando === mes;
+                return (
+                  <TableRow key={mes}>
+                    <TableCell className="font-medium">{nome}</TableCell>
+                    <TableCell className="text-right">
+                      {isEditing ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-muted-foreground text-xs">R$</span>
+                          <Input
+                            className="w-32 h-7 text-right text-sm"
+                            value={marketingInput}
+                            onChange={e => setMarketingInput(e.target.value)}
+                            placeholder="0,00"
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
                                 const val = parseFloat(marketingInput.replace(/\./g, "").replace(",", "."));
                                 if (isNaN(val) || val < 0) { toast.error("Valor inválido"); return; }
                                 upsertMarketing.mutate({ mes, ano: anoSel, investimento: val, observacao: marketingObs || null });
-                              }}
-                              disabled={upsertMarketing.isPending}
-                            >
-                              <Check size={14} />
-                            </Button>
-                            <Button
-                              size="sm" variant="ghost"
-                              className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
-                              onClick={() => setMarketingEditando(null)}
-                            >
-                              <X size={14} />
-                            </Button>
-                          </div>
-                        ) : (
+                              }
+                              if (e.key === "Escape") setMarketingEditando(null);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <span className={investimento != null ? "font-semibold text-purple-700" : "text-muted-foreground"}>
+                          {investimento != null ? fmtBRL(investimento) : "—"}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {clientesNovosQtd != null
+                        ? <span className="font-medium text-blue-700">{clientesNovosQtd}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {cac != null
+                        ? <span className="font-semibold text-orange-600">{fmtBRL(cac)}</span>
+                        : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {faturamentoNovos != null
+                        ? <span className="font-medium text-emerald-700">{fmtBRL(faturamentoNovos)}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {retornoReal != null
+                        ? <span className="font-medium text-teal-700">{fmtBRL(retornoReal)}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {roiReais != null
+                        ? <span className={`font-bold ${roiReais >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtBRL(roiReais)}</span>
+                        : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {roiPct != null
+                        ? <span className={`font-bold ${roiPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>{roiPct.toFixed(0)}%</span>
+                        : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {isEditing ? (
+                        <div className="flex items-center justify-center gap-1">
                           <Button
                             size="sm" variant="ghost"
-                            className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600"
+                            className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700"
                             onClick={() => {
-                              setMarketingEditando(mes);
-                              setMarketingInput(investimento != null ? investimento.toFixed(2).replace(".", ",") : "");
-                              setMarketingObs(mk?.observacao ?? "");
+                              const val = parseFloat(marketingInput.replace(/\./g, "").replace(",", "."));
+                              if (isNaN(val) || val < 0) { toast.error("Valor inválido"); return; }
+                              upsertMarketing.mutate({ mes, ano: anoSel, investimento: val, observacao: marketingObs || null });
                             }}
+                            disabled={upsertMarketing.isPending}
                           >
-                            <Edit3 size={13} />
+                            <Check size={14} />
                           </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {totalInvestido > 0 && (
-                <tfoot className="bg-slate-50 border-t-2 border-slate-300">
-                  <tr>
-                    <td className="py-2.5 px-3 font-bold text-sm">
-                      {mesFiltro != null ? MESES[mesFiltro - 1] : `Total ${anoSel}`}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-purple-700">{fmtBRL(totalInvestido)}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-blue-700">{totalClientesNovos}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-orange-600">
-                      {cacMedio != null ? fmtBRL(cacMedio) : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">{fmtBRL(totalFaturamentoNovos)}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-teal-700">{fmtBRL(totalRetornoReal)}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-600">
-                      {roiTotalReais != null ? fmtBRL(roiTotalReais) : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-600">
-                      {roiTotalPct != null ? `${roiTotalPct.toFixed(0)}%` : "—"}
-                    </td>
-                    <td />
-                  </tr>
-                  {mesFiltro === null && (
-                    <tr className="border-t border-slate-200">
-                      <td className="py-2 px-3 text-xs text-muted-foreground font-medium">Média mensal</td>
-                      <td colSpan={4} />
-                      <td colSpan={1} />
-                      <td className="py-2 px-3 text-right text-xs font-semibold text-emerald-600">
-                        {roiMedioReais != null ? fmtBRL(roiMedioReais) : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-right text-xs font-semibold text-emerald-600">
-                        {roiMedioPct != null ? `${roiMedioPct.toFixed(0)}%` : "—"}
-                      </td>
-                      <td />
-                    </tr>
-                  )}
-                </tfoot>
-              )}
-            </table>
-          </div>
+                          <Button
+                            size="sm" variant="ghost"
+                            className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                            onClick={() => setMarketingEditando(null)}
+                          >
+                            <X size={14} />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600"
+                          onClick={() => {
+                            setMarketingEditando(mes);
+                            setMarketingInput(investimento != null ? investimento.toFixed(2).replace(".", ",") : "");
+                            setMarketingObs(mk?.observacao ?? "");
+                          }}
+                        >
+                          <Edit3 size={13} />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+            {totalInvestido > 0 && (
+              <TableFooter className="bg-slate-50 border-t-2 border-slate-300">
+                <TableRow>
+                  <TableCell className="font-bold text-sm">
+                    {mesFiltro != null ? MESES[mesFiltro - 1] : `Total ${anoSel}`}
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-purple-700">{fmtBRL(totalInvestido)}</TableCell>
+                  <TableCell className="text-right font-bold text-blue-700">{totalClientesNovos}</TableCell>
+                  <TableCell className="text-right font-bold text-orange-600">
+                    {cacMedio != null ? fmtBRL(cacMedio) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-emerald-700">{fmtBRL(totalFaturamentoNovos)}</TableCell>
+                  <TableCell className="text-right font-bold text-teal-700">{fmtBRL(totalRetornoReal)}</TableCell>
+                  <TableCell className="text-right font-bold text-emerald-600">
+                    {roiTotalReais != null ? fmtBRL(roiTotalReais) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-emerald-600">
+                    {roiTotalPct != null ? `${roiTotalPct.toFixed(0)}%` : "—"}
+                  </TableCell>
+                  <TableCell />
+                </TableRow>
+                {mesFiltro === null && (
+                  <TableRow>
+                    <TableCell className="text-xs text-muted-foreground font-medium">Média mensal</TableCell>
+                    <TableCell colSpan={4} />
+                    <TableCell colSpan={1} />
+                    <TableCell className="text-right text-xs font-semibold text-emerald-600">
+                      {roiMedioReais != null ? fmtBRL(roiMedioReais) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-xs font-semibold text-emerald-600">
+                      {roiMedioPct != null ? `${roiMedioPct.toFixed(0)}%` : "—"}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                )}
+              </TableFooter>
+            )}
+          </Table>
         </CardContent>
       </Card>
     </div>

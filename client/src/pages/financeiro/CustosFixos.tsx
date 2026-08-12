@@ -5,6 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RTooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Treemap,
 } from "recharts";
@@ -413,31 +422,31 @@ export default function CustosFixos() {
           </div>
 
           {/* Tabela detalhada */}
-          <div className="overflow-x-auto border-t">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Grupo</th>
-                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Categoria</th>
-                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Fornecedor</th>
-                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Tipo</th>
-                  <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Valor/Mês</th>
-                  <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">% do Total</th>
-                  <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Venc.</th>
-                  <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="border-t">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs uppercase tracking-wide">Grupo</TableHead>
+                  <TableHead className="text-xs uppercase tracking-wide">Categoria</TableHead>
+                  <TableHead className="text-xs uppercase tracking-wide">Fornecedor</TableHead>
+                  <TableHead className="text-xs uppercase tracking-wide">Tipo</TableHead>
+                  <TableHead className="text-right text-xs uppercase tracking-wide">Valor/Mês</TableHead>
+                  <TableHead className="text-right text-xs uppercase tracking-wide">% do Total</TableHead>
+                  <TableHead className="text-center text-xs uppercase tracking-wide">Venc.</TableHead>
+                  <TableHead className="text-center text-xs uppercase tracking-wide">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {custosFiltered.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Nenhum item encontrado
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
                 {custosFiltered.map((c) => (
-                  <tr key={c.id} className="border-t hover:bg-muted/30 transition-colors">
-                    <td className="py-2 px-3">
+                  <TableRow key={c.id}>
+                    <TableCell>
                       <span
                         className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
                         style={{
@@ -448,18 +457,18 @@ export default function CustosFixos() {
                         {GRUPO_ICONES[c.grupoCategoria]}
                         {c.grupoCategoria}
                       </span>
-                    </td>
-                    <td className="py-2 px-3 font-medium">{c.categoria}</td>
-                    <td className="py-2 px-3 text-muted-foreground">{c.fornecedor}</td>
-                    <td className="py-2 px-3">
+                    </TableCell>
+                    <TableCell className="font-medium">{c.categoria}</TableCell>
+                    <TableCell className="text-muted-foreground">{c.fornecedor}</TableCell>
+                    <TableCell>
                       <Badge variant={c.tipo === "Fixa" ? "default" : "secondary"} className="text-xs">
                         {c.tipo}
                       </Badge>
-                    </td>
-                    <td className="py-2 px-3 text-right font-semibold">
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
                       {c.valor > 0 ? fmtBRL(c.valor) : <span className="text-muted-foreground text-xs">Reserva anual</span>}
-                    </td>
-                    <td className="py-2 px-3 text-right">
+                    </TableCell>
+                    <TableCell className="text-right">
                       {c.valor > 0 && totalFixo > 0 ? (
                         <div className="flex items-center justify-end gap-2">
                           <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -476,11 +485,11 @@ export default function CustosFixos() {
                           </span>
                         </div>
                       ) : "—"}
-                    </td>
-                    <td className="py-2 px-3 text-center text-muted-foreground text-xs">
+                    </TableCell>
+                    <TableCell className="text-center text-muted-foreground text-xs">
                       {c.vencimento ? `Dia ${c.vencimento}` : "—"}
-                    </td>
-                    <td className="py-2 px-3 text-center">
+                    </TableCell>
+                    <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => abrirEditar(c)}
@@ -497,24 +506,24 @@ export default function CustosFixos() {
                           <Trash2 size={13} />
                         </button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
+              </TableBody>
               {custosFiltered.length > 0 && (
-                <tfoot className="bg-muted/50 border-t-2">
-                  <tr>
-                    <td colSpan={4} className="py-2 px-3 font-bold text-sm">
+                <TableFooter>
+                  <TableRow>
+                    <TableCell colSpan={4} className="font-bold text-sm">
                       Total ({custosFiltered.length} itens)
-                    </td>
-                    <td className="py-2 px-3 text-right font-bold text-red-600">
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-red-600">
                       {fmtBRL(custosFiltered.reduce((s, c) => s + c.valor, 0))}
-                    </td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
+                    </TableCell>
+                    <TableCell colSpan={2} />
+                  </TableRow>
+                </TableFooter>
               )}
-            </table>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -563,67 +572,65 @@ export default function CustosFixos() {
           </div>
 
           {/* Tabela de dívidas */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Credor</th>
-                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Categoria</th>
-                  {MESES_ABREV.map(m => (
-                    <th key={m} className={`text-right py-2 px-2 font-medium text-xs uppercase tracking-wide ${
-                      MESES_ABREV[mesDivida - 1] === m ? "text-amber-600 bg-amber-50" : "text-muted-foreground"
-                    }`}>{m}</th>
-                  ))}
-                  <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground bg-muted">Média</th>
-                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground">Obs.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dividas.map((d) => {
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs uppercase tracking-wide">Credor</TableHead>
+                <TableHead className="text-xs uppercase tracking-wide">Categoria</TableHead>
+                {MESES_ABREV.map(m => (
+                  <TableHead key={m} className={`text-right text-xs uppercase tracking-wide ${
+                    MESES_ABREV[mesDivida - 1] === m ? "text-amber-600 bg-amber-50" : ""
+                  }`}>{m}</TableHead>
+                ))}
+                <TableHead className="text-right text-xs uppercase tracking-wide bg-muted">Média</TableHead>
+                <TableHead className="text-xs uppercase tracking-wide">Obs.</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dividas.map((d) => {
+                return (
+                  <TableRow key={d.id}>
+                    <TableCell className="font-medium">{d.fornecedor}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">{d.categoria}</Badge>
+                    </TableCell>
+                    {MESES_KEYS.map((key, i) => (
+                      <TableCell key={key} className={`text-right text-xs ${
+                        i + 1 === mesDivida ? "bg-amber-50 font-semibold text-amber-700" : ""
+                      }`}>
+                        {d[key] != null ? fmtBRL(d[key]) : <span className="text-muted-foreground/40">—</span>}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-right font-semibold bg-muted/30">
+                      {fmtBRL(d.media)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">
+                      {d.observacao || "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={2} className="font-bold text-sm">Total</TableCell>
+                {MESES_KEYS.map((key, i) => {
+                  const tot = dividas.reduce((s, d) => s + (d[key] ?? 0), 0);
                   return (
-                    <tr key={d.id} className="border-t hover:bg-muted/30 transition-colors">
-                      <td className="py-2 px-3 font-medium">{d.fornecedor}</td>
-                      <td className="py-2 px-3">
-                        <Badge variant="outline" className="text-xs">{d.categoria}</Badge>
-                      </td>
-                      {MESES_KEYS.map((key, i) => (
-                        <td key={key} className={`py-2 px-2 text-right text-xs ${
-                          i + 1 === mesDivida ? "bg-amber-50 font-semibold text-amber-700" : ""
-                        }`}>
-                          {d[key] != null ? fmtBRL(d[key]) : <span className="text-muted-foreground/40">—</span>}
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 text-right font-semibold bg-muted/30">
-                        {fmtBRL(d.media)}
-                      </td>
-                      <td className="py-2 px-3 text-xs text-muted-foreground max-w-[160px] truncate">
-                        {d.observacao || "—"}
-                      </td>
-                    </tr>
+                    <TableCell key={key} className={`text-right text-xs font-bold ${
+                      i + 1 === mesDivida ? "bg-amber-100 text-amber-700" : ""
+                    }`}>
+                      {tot > 0 ? fmtBRL(tot) : "—"}
+                    </TableCell>
                   );
                 })}
-              </tbody>
-              <tfoot className="bg-muted/50 border-t-2">
-                <tr>
-                  <td colSpan={2} className="py-2 px-3 font-bold text-sm">Total</td>
-                  {MESES_KEYS.map((key, i) => {
-                    const tot = dividas.reduce((s, d) => s + (d[key] ?? 0), 0);
-                    return (
-                      <td key={key} className={`py-2 px-2 text-right text-xs font-bold ${
-                        i + 1 === mesDivida ? "bg-amber-100 text-amber-700" : ""
-                      }`}>
-                        {tot > 0 ? fmtBRL(tot) : "—"}
-                      </td>
-                    );
-                  })}
-                  <td className="py-2 px-3 text-right font-bold text-amber-600 bg-muted/30">
-                    {fmtBRL(totalDividaMedia)}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                <TableCell className="text-right font-bold text-amber-600 bg-muted/30">
+                  {fmtBRL(totalDividaMedia)}
+                </TableCell>
+                <TableCell />
+              </TableRow>
+            </TableFooter>
+          </Table>
         </CardContent>
       </Card>
 

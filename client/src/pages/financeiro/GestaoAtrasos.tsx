@@ -3,6 +3,14 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertCircle, Plus, BarChart3, TrendingDown, AlertTriangle } from "lucide-react";
@@ -376,52 +384,50 @@ export default function GestaoAtrasosPage() {
       {/* Tabela de Registros */}
       <Card className="p-6">
         <h2 className="text-lg font-bold text-gray-900 mb-4">Registros Detalhados</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-gray-200">
-              <tr>
-                <th className="text-left py-3 px-4 font-semibold text-gray-900">OS</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-900">Setor</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-900">Motivo</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-900">Horas</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-900">Retrabalho</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-900">Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {registros.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-8 text-gray-500">
-                    Nenhum atraso registrado
-                  </td>
-                </tr>
-              ) : (
-                registros.map((reg) => (
-                  <tr key={reg.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium text-gray-900">{reg.osNumero}</td>
-                    <td className="py-3 px-4 text-gray-700">{reg.setor}</td>
-                    <td className="py-3 px-4 text-gray-700 text-xs">{reg.motivo}</td>
-                    <td className="py-3 px-4 font-semibold text-red-600">{reg.horasAtraso}h</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-semibold ${
-                          reg.temRetrabalho
-                            ? "bg-red-100 text-red-800"
-                            : "bg-green-100 text-green-800"
-                        }`}
-                      >
-                        {reg.temRetrabalho ? "Sim" : "Não"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-gray-600">
-                      {new Date(reg.dataCriacao).toLocaleDateString("pt-BR")}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="font-semibold text-gray-900">OS</TableHead>
+              <TableHead className="font-semibold text-gray-900">Setor</TableHead>
+              <TableHead className="font-semibold text-gray-900">Motivo</TableHead>
+              <TableHead className="font-semibold text-gray-900">Horas</TableHead>
+              <TableHead className="font-semibold text-gray-900">Retrabalho</TableHead>
+              <TableHead className="font-semibold text-gray-900">Data</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {registros.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                  Nenhum atraso registrado
+                </TableCell>
+              </TableRow>
+            ) : (
+              registros.map((reg) => (
+                <TableRow key={reg.id}>
+                  <TableCell className="font-medium text-gray-900">{reg.osNumero}</TableCell>
+                  <TableCell className="text-gray-700">{reg.setor}</TableCell>
+                  <TableCell className="whitespace-normal text-gray-700 text-xs">{reg.motivo}</TableCell>
+                  <TableCell className="font-semibold text-red-600">{reg.horasAtraso}h</TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-semibold ${
+                        reg.temRetrabalho
+                          ? "bg-red-100 text-red-800"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {reg.temRetrabalho ? "Sim" : "Não"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-gray-600">
+                    {new Date(reg.dataCriacao).toLocaleDateString("pt-BR")}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
       </Card>
     </div>
   );

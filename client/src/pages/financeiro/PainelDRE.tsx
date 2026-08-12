@@ -2,6 +2,14 @@ import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell,
   AreaChart, Area, ReferenceLine,
@@ -367,66 +375,62 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Mês</th>
-                      <th className="text-right px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Faturamento</th>
-                      <th className="text-right px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Desp. Fixas</th>
-                      <th className="text-right px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Desp. Variáveis</th>
-                      <th className="text-right px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Total Desp.</th>
-                      <th className="text-right px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Lucro Líquido</th>
-                      <th className="text-right px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Margem</th>
-                      <th className="text-right px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wide">Acumulado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {acumulados.acumuladoMes.map((d, i) => {
-                      const comp = comparativoData[i];
-                      const isLucro = d.lucroMes != null && d.lucroMes >= 0;
-                      const isAcumLucro = d.acumulado >= 0;
-                      return (
-                        <tr key={d.mes} className={`border-b transition-colors ${
-                          !comp.temDados ? "opacity-40" : "hover:bg-slate-50/50"
-                        }`}>
-                          <td className="px-4 py-2 font-semibold text-slate-700">{d.label}</td>
-                          <td className="text-right px-3 py-2 font-mono text-emerald-700">{comp.faturamento != null ? fmtFull(comp.faturamento) : "—"}</td>
-                          <td className="text-right px-3 py-2 font-mono text-red-500">{comp.despesasFixas != null ? fmtFull(comp.despesasFixas) : "—"}</td>
-                          <td className="text-right px-3 py-2 font-mono text-red-400">{comp.despesasVariaveis != null ? fmtFull(comp.despesasVariaveis) : "—"}</td>
-                          <td className="text-right px-3 py-2 font-mono text-red-600 font-semibold">{comp.totalDespesas != null ? fmtFull(comp.totalDespesas) : "—"}</td>
-                          <td className={`text-right px-3 py-2 font-mono font-bold ${
-                            !comp.temDados ? "text-muted-foreground" : isLucro ? "text-emerald-700" : "text-red-600"
-                          }`}>{d.lucroMes != null ? fmtFull(d.lucroMes) : "—"}</td>
-                          <td className={`text-right px-3 py-2 font-mono ${
-                            comp.margem == null ? "text-muted-foreground" : comp.margem >= 0 ? "text-blue-700" : "text-red-500"
-                          }`}>{comp.margem != null ? fmtPct(comp.margem) : "—"}</td>
-                          <td className={`text-right px-3 py-2 font-mono font-bold ${
-                            isAcumLucro ? "text-emerald-700" : "text-red-600"
-                          }`}>{comp.temDados ? fmtFull(d.acumulado) : "—"}</td>
-                        </tr>
-                      );
-                    })}
-                    {/* Linha de médias */}
-                    <tr className="bg-blue-50 border-t-2 border-blue-200 font-bold">
-                      <td className="px-4 py-2.5 text-blue-800">Média Mensal</td>
-                      <td className="text-right px-3 py-2.5 font-mono text-emerald-700">{acumulados.fatMedia != null ? fmtFull(acumulados.fatMedia) : "—"}</td>
-                      <td className="text-right px-3 py-2.5 font-mono text-red-500">—</td>
-                      <td className="text-right px-3 py-2.5 font-mono text-red-400">—</td>
-                      <td className="text-right px-3 py-2.5 font-mono text-red-600">{acumulados.despMedia != null ? fmtFull(acumulados.despMedia) : "—"}</td>
-                      <td className={`text-right px-3 py-2.5 font-mono ${
-                        acumulados.lucroMedia != null && acumulados.lucroMedia >= 0 ? "text-emerald-700" : "text-red-600"
-                      }`}>{acumulados.lucroMedia != null ? fmtFull(acumulados.lucroMedia) : "—"}</td>
-                      <td className={`text-right px-3 py-2.5 font-mono ${
-                        acumulados.margemMedia != null && acumulados.margemMedia >= 0 ? "text-blue-700" : "text-red-500"
-                      }`}>{acumulados.margemMedia != null ? fmtPct(acumulados.margemMedia) : "—"}</td>
-                      <td className={`text-right px-3 py-2.5 font-mono ${
-                        acumulados.lucroTotal >= 0 ? "text-emerald-700" : "text-red-600"
-                      }`}>{fmtFull(acumulados.lucroTotal)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow className="bg-slate-50 border-slate-200">
+                    <TableHead className="font-semibold text-slate-600 uppercase tracking-wide">Mês</TableHead>
+                    <TableHead className="text-right font-semibold text-slate-600 uppercase tracking-wide">Faturamento</TableHead>
+                    <TableHead className="text-right font-semibold text-slate-600 uppercase tracking-wide">Desp. Fixas</TableHead>
+                    <TableHead className="text-right font-semibold text-slate-600 uppercase tracking-wide">Desp. Variáveis</TableHead>
+                    <TableHead className="text-right font-semibold text-slate-600 uppercase tracking-wide">Total Desp.</TableHead>
+                    <TableHead className="text-right font-semibold text-slate-600 uppercase tracking-wide">Lucro Líquido</TableHead>
+                    <TableHead className="text-right font-semibold text-slate-600 uppercase tracking-wide">Margem</TableHead>
+                    <TableHead className="text-right font-semibold text-slate-600 uppercase tracking-wide">Acumulado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {acumulados.acumuladoMes.map((d, i) => {
+                    const comp = comparativoData[i];
+                    const isLucro = d.lucroMes != null && d.lucroMes >= 0;
+                    const isAcumLucro = d.acumulado >= 0;
+                    return (
+                      <TableRow key={d.mes} className={!comp.temDados ? "opacity-40" : ""}>
+                        <TableCell className="font-semibold text-slate-700">{d.label}</TableCell>
+                        <TableCell className="text-right font-mono text-emerald-700">{comp.faturamento != null ? fmtFull(comp.faturamento) : "—"}</TableCell>
+                        <TableCell className="text-right font-mono text-red-500">{comp.despesasFixas != null ? fmtFull(comp.despesasFixas) : "—"}</TableCell>
+                        <TableCell className="text-right font-mono text-red-400">{comp.despesasVariaveis != null ? fmtFull(comp.despesasVariaveis) : "—"}</TableCell>
+                        <TableCell className="text-right font-mono text-red-600 font-semibold">{comp.totalDespesas != null ? fmtFull(comp.totalDespesas) : "—"}</TableCell>
+                        <TableCell className={`text-right font-mono font-bold ${
+                          !comp.temDados ? "text-muted-foreground" : isLucro ? "text-emerald-700" : "text-red-600"
+                        }`}>{d.lucroMes != null ? fmtFull(d.lucroMes) : "—"}</TableCell>
+                        <TableCell className={`text-right font-mono ${
+                          comp.margem == null ? "text-muted-foreground" : comp.margem >= 0 ? "text-blue-700" : "text-red-500"
+                        }`}>{comp.margem != null ? fmtPct(comp.margem) : "—"}</TableCell>
+                        <TableCell className={`text-right font-mono font-bold ${
+                          isAcumLucro ? "text-emerald-700" : "text-red-600"
+                        }`}>{comp.temDados ? fmtFull(d.acumulado) : "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {/* Linha de médias */}
+                  <TableRow className="bg-blue-50 border-t-2 border-blue-200 font-bold">
+                    <TableCell className="text-blue-800">Média Mensal</TableCell>
+                    <TableCell className="text-right font-mono text-emerald-700">{acumulados.fatMedia != null ? fmtFull(acumulados.fatMedia) : "—"}</TableCell>
+                    <TableCell className="text-right font-mono text-red-500">—</TableCell>
+                    <TableCell className="text-right font-mono text-red-400">—</TableCell>
+                    <TableCell className="text-right font-mono text-red-600">{acumulados.despMedia != null ? fmtFull(acumulados.despMedia) : "—"}</TableCell>
+                    <TableCell className={`text-right font-mono ${
+                      acumulados.lucroMedia != null && acumulados.lucroMedia >= 0 ? "text-emerald-700" : "text-red-600"
+                    }`}>{acumulados.lucroMedia != null ? fmtFull(acumulados.lucroMedia) : "—"}</TableCell>
+                    <TableCell className={`text-right font-mono ${
+                      acumulados.margemMedia != null && acumulados.margemMedia >= 0 ? "text-blue-700" : "text-red-500"
+                    }`}>{acumulados.margemMedia != null ? fmtPct(acumulados.margemMedia) : "—"}</TableCell>
+                    <TableCell className={`text-right font-mono ${
+                      acumulados.lucroTotal >= 0 ? "text-emerald-700" : "text-red-600"
+                    }`}>{fmtFull(acumulados.lucroTotal)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </div>
@@ -695,64 +699,62 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs uppercase tracking-wide w-64">Linha DRE</th>
-                  {dadosOrdenados.map(d => (
-                    <th key={`${d.ano}-${d.mes}`} className="text-right px-3 py-2.5 font-semibold text-slate-600 text-xs uppercase tracking-wide">
-                      {MESES_ABREV[d.mes - 1]}/{String(d.ano).slice(2)}
-                    </th>
-                  ))}
-                  <th className="text-right px-3 py-2.5 font-semibold text-slate-600 text-xs uppercase tracking-wide">Média</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tabelaDRE.map((linha, idx) => {
-                  const isSubtotal = linha.subtotal;
-                  const isDestaque = linha.destaque;
-                  const valores = dadosOrdenados.map(d => (d as any)[linha.key] as number | null);
-                  const media = valores.filter(v => v != null).length > 0
-                    ? valores.filter(v => v != null).reduce((s, v) => s + v!, 0) / valores.filter(v => v != null).length
-                    : null;
-                  return (
-                    <tr
-                      key={idx}
-                      className={`border-b transition-colors ${
-                        isDestaque
-                          ? "bg-blue-50 border-blue-200 font-bold"
-                          : isSubtotal
-                          ? "bg-slate-50 font-semibold"
-                          : "hover:bg-slate-50/50"
-                      }`}
-                    >
-                      <td className={`px-4 py-2 text-xs ${isDestaque ? "text-blue-800" : isSubtotal ? "text-slate-700" : "text-slate-600"}`}>
-                        {linha.label}
-                      </td>
-                      {valores.map((v, i) => (
-                        <td key={i} className={`text-right px-3 py-2 text-xs font-mono ${
-                          v == null ? "text-muted-foreground" :
-                          isDestaque ? (v >= 0 ? "text-emerald-700" : "text-red-600") :
-                          isSubtotal ? "text-slate-800" :
-                          linha.positivo ? "text-emerald-700" : "text-red-600"
-                        }`}>
-                          {v != null ? fmtFull(v) : "—"}
-                        </td>
-                      ))}
-                      <td className={`text-right px-3 py-2 text-xs font-mono ${
-                        media == null ? "text-muted-foreground" :
-                        isDestaque ? (media >= 0 ? "text-emerald-700 font-bold" : "text-red-600 font-bold") :
-                        "text-slate-600"
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50 border-slate-200">
+                <TableHead className="text-slate-600 text-xs uppercase tracking-wide w-64">Linha DRE</TableHead>
+                {dadosOrdenados.map(d => (
+                  <TableHead key={`${d.ano}-${d.mes}`} className="text-right text-slate-600 text-xs uppercase tracking-wide">
+                    {MESES_ABREV[d.mes - 1]}/{String(d.ano).slice(2)}
+                  </TableHead>
+                ))}
+                <TableHead className="text-right text-slate-600 text-xs uppercase tracking-wide">Média</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tabelaDRE.map((linha, idx) => {
+                const isSubtotal = linha.subtotal;
+                const isDestaque = linha.destaque;
+                const valores = dadosOrdenados.map(d => (d as any)[linha.key] as number | null);
+                const media = valores.filter(v => v != null).length > 0
+                  ? valores.filter(v => v != null).reduce((s, v) => s + v!, 0) / valores.filter(v => v != null).length
+                  : null;
+                return (
+                  <TableRow
+                    key={idx}
+                    className={
+                      isDestaque
+                        ? "bg-blue-50 border-blue-200 font-bold"
+                        : isSubtotal
+                        ? "bg-slate-50 font-semibold"
+                        : ""
+                    }
+                  >
+                    <TableCell className={`whitespace-normal text-xs ${isDestaque ? "text-blue-800" : isSubtotal ? "text-slate-700" : "text-slate-600"}`}>
+                      {linha.label}
+                    </TableCell>
+                    {valores.map((v, i) => (
+                      <TableCell key={i} className={`text-right text-xs font-mono ${
+                        v == null ? "text-muted-foreground" :
+                        isDestaque ? (v >= 0 ? "text-emerald-700" : "text-red-600") :
+                        isSubtotal ? "text-slate-800" :
+                        linha.positivo ? "text-emerald-700" : "text-red-600"
                       }`}>
-                        {media != null ? fmtFull(media) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        {v != null ? fmtFull(v) : "—"}
+                      </TableCell>
+                    ))}
+                    <TableCell className={`text-right text-xs font-mono ${
+                      media == null ? "text-muted-foreground" :
+                      isDestaque ? (media >= 0 ? "text-emerald-700 font-bold" : "text-red-600 font-bold") :
+                      "text-slate-600"
+                    }`}>
+                      {media != null ? fmtFull(media) : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
@@ -765,61 +767,61 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-2.5 font-semibold text-slate-600 text-xs uppercase tracking-wide">Componente</th>
-                  {dadosOrdenados.map(d => (
-                    <th key={`${d.ano}-${d.mes}`} className="text-right px-3 py-2.5 font-semibold text-slate-600 text-xs uppercase tracking-wide">
-                      {MESES_ABREV[d.mes - 1]}/{String(d.ano).slice(2)}
-                    </th>
-                  ))}
-                  <th className="text-right px-3 py-2.5 font-semibold text-slate-600 text-xs uppercase tracking-wide">Média</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { label: "Matéria Prima", key: "percMateriaPrima", color: "bg-amber-400" },
-                  { label: "Fixo Rateado", key: "percFixoRateado", color: "bg-indigo-400" },
-                  { label: "Tributos", key: "percTributos", color: "bg-red-400" },
-                  { label: "Comissão Interna", key: "percComissaoInterna", color: "bg-emerald-400" },
-                  { label: "Descontos", key: "percDescontos", color: "bg-slate-400" },
-                  { label: "Resultado Efetivo", key: "margemResultadoEfetivo", color: "bg-violet-500" },
-                ].map((linha, idx) => {
-                  const valores = dadosOrdenados.map(d => (d as any)[linha.key] as number | null);
-                  const media = valores.filter(v => v != null).length > 0
-                    ? valores.filter(v => v != null).reduce((s, v) => s + v!, 0) / valores.filter(v => v != null).length
-                    : null;
-                  const isResultado = linha.key === "margemResultadoEfetivo";
-                  return (
-                    <tr key={idx} className={`border-b hover:bg-slate-50/50 ${isResultado ? "bg-violet-50 font-semibold" : ""}`}>
-                      <td className="px-4 py-2 text-xs text-slate-700 flex items-center gap-2">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50 border-slate-200">
+                <TableHead className="text-slate-600 text-xs uppercase tracking-wide">Componente</TableHead>
+                {dadosOrdenados.map(d => (
+                  <TableHead key={`${d.ano}-${d.mes}`} className="text-right text-slate-600 text-xs uppercase tracking-wide">
+                    {MESES_ABREV[d.mes - 1]}/{String(d.ano).slice(2)}
+                  </TableHead>
+                ))}
+                <TableHead className="text-right text-slate-600 text-xs uppercase tracking-wide">Média</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[
+                { label: "Matéria Prima", key: "percMateriaPrima", color: "bg-amber-400" },
+                { label: "Fixo Rateado", key: "percFixoRateado", color: "bg-indigo-400" },
+                { label: "Tributos", key: "percTributos", color: "bg-red-400" },
+                { label: "Comissão Interna", key: "percComissaoInterna", color: "bg-emerald-400" },
+                { label: "Descontos", key: "percDescontos", color: "bg-slate-400" },
+                { label: "Resultado Efetivo", key: "margemResultadoEfetivo", color: "bg-violet-500" },
+              ].map((linha, idx) => {
+                const valores = dadosOrdenados.map(d => (d as any)[linha.key] as number | null);
+                const media = valores.filter(v => v != null).length > 0
+                  ? valores.filter(v => v != null).reduce((s, v) => s + v!, 0) / valores.filter(v => v != null).length
+                  : null;
+                const isResultado = linha.key === "margemResultadoEfetivo";
+                return (
+                  <TableRow key={idx} className={isResultado ? "bg-violet-50 font-semibold" : ""}>
+                    <TableCell className="text-xs text-slate-700">
+                      <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-sm ${linha.color}`} />
                         {linha.label}
-                      </td>
-                      {valores.map((v, i) => (
-                        <td key={i} className={`text-right px-3 py-2 text-xs font-mono ${
-                          v == null ? "text-muted-foreground" :
-                          isResultado ? (v >= 0 ? "text-violet-700 font-bold" : "text-red-600 font-bold") :
-                          "text-slate-700"
-                        }`}>
-                          {v != null ? fmtPct(v) : "—"}
-                        </td>
-                      ))}
-                      <td className={`text-right px-3 py-2 text-xs font-mono ${
-                        media == null ? "text-muted-foreground" :
-                        isResultado ? (media >= 0 ? "text-violet-700 font-bold" : "text-red-600 font-bold") :
-                        "text-slate-600"
+                      </div>
+                    </TableCell>
+                    {valores.map((v, i) => (
+                      <TableCell key={i} className={`text-right text-xs font-mono ${
+                        v == null ? "text-muted-foreground" :
+                        isResultado ? (v >= 0 ? "text-violet-700 font-bold" : "text-red-600 font-bold") :
+                        "text-slate-700"
                       }`}>
-                        {media != null ? fmtPct(media) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        {v != null ? fmtPct(v) : "—"}
+                      </TableCell>
+                    ))}
+                    <TableCell className={`text-right text-xs font-mono ${
+                      media == null ? "text-muted-foreground" :
+                      isResultado ? (media >= 0 ? "text-violet-700 font-bold" : "text-red-600 font-bold") :
+                      "text-slate-600"
+                    }`}>
+                      {media != null ? fmtPct(media) : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
