@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { invokeLLM, buildFileContent } from "../_core/llm";
+import { invokeLLM, buildFileContent, TextContent } from "../_core/llm";
 import { storagePut } from "../db/storage";
 import {
   createAnaliseCurriculo,
@@ -71,7 +71,12 @@ export const curriculosRouter = router({
           ],
         });
 
-        const resultado = llmResponse.choices?.[0]?.message?.content || "";
+        const messageContent = llmResponse.choices?.[0]?.message?.content;
+        const resultado = typeof messageContent === "string"
+          ? messageContent
+          : Array.isArray(messageContent)
+            ? messageContent.filter((c): c is TextContent => c.type === "text").map(c => c.text).join("\n")
+            : "";
 
         // 5. Atualizar registro com resultado
         await updateAnaliseCurriculo(analise.id, {

@@ -1600,7 +1600,8 @@ export const performanceComercialRouter = router({
           motivo: input.motivo ?? null,
           criadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
         })
-        .onDuplicateKeyUpdate({
+        .onConflictDoUpdate({
+          target: clienteOverrides.empresa,
           set: {
             status: input.status,
             motivo: input.motivo ?? null,

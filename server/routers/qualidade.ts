@@ -707,7 +707,7 @@ export const alertasRouter = router({
           descricao: `Retrabalho registrado em ${new Date(r.data).toLocaleDateString("pt-BR")} ainda não possui ação corretiva cadastrada.`,
           referenciaId: r.id,
           referenciaTipo: "retrabalho",
-          referenciaExtra: r.osRetrabalhada,
+          referenciaExtra: r.osRetrabalhada ?? undefined,
         });
         gerados++;
       }
