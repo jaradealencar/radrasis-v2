@@ -71,3 +71,33 @@ de terceiros.
 `yarn test` sem **falhas novas** em relação à lista que você anotou no começo.
 
 **Commit sugerido:** `test(biblioteca): cobre extração nativa e fallback de LLM (Fase 4)`
+
+---
+
+## Status: concluída (2026-08-12)
+
+Criado `server/__tests__/bibliotecaArquivos.test.ts` com 5 testes cobrindo a
+Tarefa 4.1.
+
+### Descobertas / desvios do plano
+
+- **`extrairTextoArquivo` precisou virar `export`** em
+  `server/routers/bibliotecaArquivos.ts` — antes só era usada internamente
+  pelo router. Sem isso não dava pra importar a função no teste.
+- **DOCX e PDF testados via mock das libs** (`mammoth`, `pdf-parse`), como o
+  próprio plano permitia — provando o roteamento por `mimeType` e o
+  conteúdo retornado, sem montar binário válido à mão.
+- **XLSX testado com arquivo real em memória** via `XLSX.utils.book_new()` +
+  `XLSX.write(wb, { type: "buffer" })`, sem mock — mais barato que mockar
+  nesse caso.
+- Ao importar `mammoth` no teste, usar `import * as mammoth from "mammoth"`
+  (namespace), não `import mammoth from "mammoth"` (default) — o código
+  fonte também acessa via `await import("mammoth")` (namespace), e o mock
+  de `vi.mock("mammoth", ...)` só expõe os exports nomeados.
+
+### Baseline anotado antes de começar
+
+`yarn test` já falhava em 2 testes antes desta fase, ambos em
+`mubisys.test.ts` (`MUBISYS_ACCESS_TOKEN`/`MUBISYS_PUBLIC_KEY` não
+configurados no ambiente local — credencial ausente, não bug). Depois da
+fase: mesmos 2 falhando, 138 passando (5 novos, todos verdes).
