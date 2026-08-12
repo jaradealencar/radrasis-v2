@@ -21,6 +21,8 @@ import {
   PieChart, Edit3, Check, X, ChevronDown, ChevronUp,
   Info, Download, BarChart2, ReceiptText, FileText,
 } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import { STATUS_COLORS } from "@/lib/chartColors";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -305,28 +307,25 @@ export default function Financeiro() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Cabeçalho */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Wallet className="text-emerald-600" size={28} />
-            Painel Financeiro
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Faturamento oficial, despesas e colaboradores — fonte única para todo o sistema
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a - 1)}>← {anoSel - 1}</Button>
-          <span className="font-semibold text-lg px-2">{anoSel}</span>
-          <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a + 1)}>{anoSel + 1} →</Button>
-          <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5">
-            <Download size={14} /> CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportExcel} className="gap-1.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50">
-            <Download size={14} /> Excel
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Painel Financeiro"
+        description="Faturamento oficial, despesas e colaboradores — fonte única para todo o sistema"
+        icon={Wallet}
+        iconColor={STATUS_COLORS.positivo}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a - 1)}>← {anoSel - 1}</Button>
+            <span className="font-semibold text-lg px-2">{anoSel}</span>
+            <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a + 1)}>{anoSel + 1} →</Button>
+            <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5">
+              <Download size={14} /> CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportExcel} className="gap-1.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50">
+              <Download size={14} /> Excel
+            </Button>
+          </div>
+        }
+      />
 
       {/* Navegação por abas */}
       <div className="flex gap-1 border-b pb-0">

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle, XCircle, Search, MapPin, Truck , Home } from "lucide-react";
 import { Link } from "wouter";
+import PageHeader from "@/components/PageHeader";
 
 const ESTADOS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
@@ -44,13 +45,11 @@ export default function ConsultaCobertura() {
           VOLTAR PARA HOME
         </Link>
       </div>
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <MapPin className="w-6 h-6 text-blue-500" />
-          Consulta de Cobertura
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">Verifique quais transportadoras atendem uma cidade</p>
-      </div>
+      <PageHeader
+        title="Consulta de Cobertura"
+        description="Verifique quais transportadoras atendem uma cidade"
+        icon={MapPin}
+      />
 
       <Card>
         <CardContent className="pt-6">

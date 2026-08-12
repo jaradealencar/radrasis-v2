@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, Database, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import PageHeader from "@/components/PageHeader";
 
 export default function SincronizacaoCache() {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -61,12 +62,10 @@ export default function SincronizacaoCache() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold">📊 Status de Sincronização ERP</h1>
-        <p className="text-slate-600">
-          Monitore o cache local de Ordens de Serviço (OSs) sincronizadas do MubiSys
-        </p>
-      </div>
+      <PageHeader
+        title="📊 Status de Sincronização ERP"
+        description="Monitore o cache local de Ordens de Serviço (OSs) sincronizadas do MubiSys"
+      />
 
       {/* ✅ Card Principal de Status */}
       <Card className={`border-2 p-6 ${getStatusColor()}`}>

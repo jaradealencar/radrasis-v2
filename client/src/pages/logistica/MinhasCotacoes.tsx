@@ -10,6 +10,7 @@ import { Plus, Truck, MapPin, Package, MessageSquare, CheckCircle2, Eye, Clock ,
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
+import PageHeader from "@/components/PageHeader";
 
 const STATUS_LABELS: Record<string, string> = {
   fila: "Aguardando Cotação",
@@ -306,18 +307,12 @@ export default function MinhasCotacoes() {
           VOLTAR PARA HOME
         </Link>
       </div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Package className="w-6 h-6 text-blue-500" />
-            Minhas Solicitações de Frete
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            {nome ? `Solicitações de ${nome}` : "Suas solicitações de cotação de frete"} — {minhasCotacoes.length} total
-          </p>
-        </div>
-        <NovaSolicitacaoDialog onSuccess={refresh} solicitanteNome={nome} />
-      </div>
+      <PageHeader
+        title="Minhas Solicitações de Frete"
+        description={`${nome ? `Solicitações de ${nome}` : "Suas solicitações de cotação de frete"} — ${minhasCotacoes.length} total`}
+        icon={Package}
+        actions={<NovaSolicitacaoDialog onSuccess={refresh} solicitanteNome={nome} />}
+      />
 
       {minhasCotacoes.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">

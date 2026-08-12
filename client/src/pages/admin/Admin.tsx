@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, ShieldCheck, Users, Lock, KeyRound } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
 
 const ROLES = [
   { value: "master", label: "Master", color: "bg-purple-100 text-purple-800" },
@@ -357,12 +358,11 @@ export default function Admin() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6" /> Administração
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">Gerencie usuários do sistema e configure permissões de acesso por perfil.</p>
-      </div>
+      <PageHeader
+        title="Administração"
+        description="Gerencie usuários do sistema e configure permissões de acesso por perfil."
+        icon={ShieldCheck}
+      />
 
       <Tabs defaultValue="usuarios">
         <TabsList className="bg-gray-100">

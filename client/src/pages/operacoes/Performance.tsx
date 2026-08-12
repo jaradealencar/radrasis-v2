@@ -336,7 +336,7 @@ function FormularioPerformance({ initial, onSaved, onClose }: {
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({
+function KpiCardOperacoes({
   title, value, unit, meta, icon: Icon, color, trend, invertMeta, statusColor, statusLabel, pctMeta, isGood,
 }: {
   title: string; value: string | number | null | undefined; unit?: string;
@@ -1583,25 +1583,25 @@ export default function Performance() {
               <>
                 {/* KPIs principais — linha 1 */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <KpiCard title="Faturamento" value={n(rowAtual.faturamentoRealizado) > 0 ? fmtBRL(n(rowAtual.faturamentoRealizado)) : "—"}
+                  <KpiCardOperacoes title="Faturamento" value={n(rowAtual.faturamentoRealizado) > 0 ? fmtBRL(n(rowAtual.faturamentoRealizado)) : "—"}
                     meta={fmtBRL(metaFatAtual)}
                     icon={DollarSign} color="bg-emerald-500"
                     pctMeta={pctMetaFat ?? undefined}
                     statusLabel={pctMetaFat != null ? `${pctMetaFat.toFixed(1)}% da meta` : undefined}
                     isGood={pctMetaFat != null && pctMetaFat >= 100}
                     trend={n(rowAtual.faturamentoRealizado) >= metaFatAtual ? "up" : "down"} />
-                  <KpiCard title="Ticket Médio" value={ticketMedio != null ? fmtBRL(ticketMedio) : "—"}
+                  <KpiCardOperacoes title="Ticket Médio" value={ticketMedio != null ? fmtBRL(ticketMedio) : "—"}
                     meta={fmtBRL(metaTicketMedio)}
                     icon={Receipt} color="bg-teal-500"
                     pctMeta={ticketMedio != null ? (ticketMedio / metaTicketMedio) * 100 : undefined}
                     statusLabel={ticketMedio != null ? `${((ticketMedio / metaTicketMedio) * 100).toFixed(1)}% da meta` : undefined}
                     isGood={ticketMedio != null && ticketMedio >= metaTicketMedio}
                     trend={ticketMedio != null ? (ticketMedio >= metaTicketMedio ? "up" : "down") : "neutral"} />
-                  <KpiCard title="Entrega no Prazo" value={n(rowAtual.projetosEntregues) > 0 ? `${fmt((n(rowAtual.projetosNoPrazo) / n(rowAtual.projetosEntregues)) * 100, 1)}%` : "—"}
+                  <KpiCardOperacoes title="Entrega no Prazo" value={n(rowAtual.projetosEntregues) > 0 ? `${fmt((n(rowAtual.projetosNoPrazo) / n(rowAtual.projetosEntregues)) * 100, 1)}%` : "—"}
                     meta={`≥ ${n(rowAtual.metaEntregaNoPrazoPct) || metaEntregaConfig}%`}
                     icon={Clock} color="bg-blue-500"
                     trend={n(rowAtual.projetosEntregues) > 0 && (n(rowAtual.projetosNoPrazo) / n(rowAtual.projetosEntregues)) * 100 >= (n(rowAtual.metaEntregaNoPrazoPct) || metaEntregaConfig) ? "up" : "down"} />
-                  <KpiCard title="Taxa de Retrabalho"
+                  <KpiCardOperacoes title="Taxa de Retrabalho"
                     value={(rowAtual.pedidosAutoCount ?? 0) > 0 ? `${fmt(((rowAtual.retrabalhosAutoCount ?? 0) / (rowAtual.pedidosAutoCount ?? 1)) * 100, 2)}%` : "—"}
                     meta={`≤ ${n(rowAtual.metaRetrabalhoPct) || metaRetrabConfig}%`}
                     icon={AlertTriangle} color="bg-orange-500" invertMeta />
@@ -1612,40 +1612,40 @@ export default function Performance() {
                   {(() => {
                     const osVal = rowAtual.osGeradas ?? rowAtual.totalPedidos;
                     return (
-                      <KpiCard title="OS Geradas" value={osVal ?? "—"} unit="OS"
+                      <KpiCardOperacoes title="OS Geradas" value={osVal ?? "—"} unit="OS"
                         meta={rowAtual.metaOsGeradas ?? undefined}
                         icon={BarChart2} color="bg-blue-500"
                         trend={rowAtual.metaOsGeradas && osVal != null ? (osVal >= rowAtual.metaOsGeradas ? "up" : "down") : "neutral"} />
                     );
                   })()}
-                  <KpiCard title="OS Expedidas" value={rowAtual.osExpedicao ?? "—"} unit="OS"
+                  <KpiCardOperacoes title="OS Expedidas" value={rowAtual.osExpedicao ?? "—"} unit="OS"
                     meta={rowAtual.metaOsExpedicao ?? undefined}
                     icon={CheckCircle} color="bg-green-500" />
-                  <KpiCard title="Produção Solda" value={rowAtual.producaoInternaSolda ?? "—"} unit="m"
+                  <KpiCardOperacoes title="Produção Solda" value={rowAtual.producaoInternaSolda ?? "—"} unit="m"
                     meta={rowAtual.metaProducaoSolda ?? undefined}
                     icon={Hammer} color="bg-orange-500" />
-                  <KpiCard title="Metros Terceirizados" value={rowAtual.metrosTerceirizados ?? "—"} unit="m"
+                  <KpiCardOperacoes title="Metros Terceirizados" value={rowAtual.metrosTerceirizados ?? "—"} unit="m"
                     icon={Package} color="bg-purple-500" />
                 </div>
 
                 {/* KPIs Financeiros — linha 3 (dados do módulo Financeiro) */}
                 {(financeiroAtual || lucroLiquido != null || receitaPorColaborador != null) && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <KpiCard
+                    <KpiCardOperacoes
                       title="Faturamento Oficial"
                       value={faturamentoOficial > 0 ? fmtBRL(faturamentoOficial) : "—"}
                       meta={financeiroAtual?.faturamentoOficial ? "Fonte: Módulo Financeiro" : "Fonte: Performance"}
                       icon={DollarSign} color="bg-emerald-600"
                       trend={faturamentoOficial >= metaFatAtual ? "up" : "down"}
                     />
-                    <KpiCard
+                    <KpiCardOperacoes
                       title="Lucro Líquido"
                       value={lucroLiquido != null ? fmtBRL(lucroLiquido) : "—"}
                       meta={lucroLiquido != null && faturamentoOficial > 0 ? `${fmt((lucroLiquido / faturamentoOficial) * 100, 1)}% de margem` : "Informe despesas no Financeiro"}
                       icon={Wallet} color="bg-indigo-500"
                       trend={lucroLiquido != null ? (lucroLiquido > 0 ? "up" : "down") : "neutral"}
                     />
-                    <KpiCard
+                    <KpiCardOperacoes
                       title="Receita / Colaborador"
                       value={receitaPorColaborador != null ? fmtBRL(receitaPorColaborador) : "—"}
                       meta={financeiroAtual?.numColaboradores ? `${financeiroAtual.numColaboradores} colaboradores` : "Informe colaboradores no Financeiro"}

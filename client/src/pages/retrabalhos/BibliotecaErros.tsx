@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation, useSearch } from "wouter";
 import * as XLSX from "xlsx";
+import PageHeader from "@/components/PageHeader";
 
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; dot: string; text: string; accent: string }> = {
   "SOLDA":       { bg: "#fff7ed", border: "#fed7aa", dot: "#f97316", text: "#c2410c", accent: "#ea580c" },
@@ -678,52 +679,46 @@ export default function BibliotecaErros() {
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex items-start justify-between mb-6 gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "oklch(0.52 0.18 240 / 0.1)" }}>
-            <BookOpen size={18} style={{ color: "oklch(0.52 0.18 240)" }} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: "#0f172a" }}>Biblioteca de Erros e CNQ</h1>
-            <p className="text-sm text-gray-500">
-              {errorLib?.length ?? 0} itens em {grouped.length} categorias
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => setExpandedCats(new Set(allCats))} className="text-xs text-blue-600 hover:underline">Expandir tudo</button>
-          <span className="text-slate-300">|</span>
-          <button onClick={() => setExpandedCats(new Set())} className="text-xs text-slate-500 hover:underline">Recolher</button>
-          {/* Botão Exportar Excel */}
-          <button
-            onClick={() => {
-              const allErrors = (errorLib ?? []);
-              if (allErrors.length === 0) { toast.error("Nenhum erro para exportar."); return; }
-              const wsData = [
-                ["Código", "Categoria", "Descrição", "Ação / Correção"],
-                ...allErrors.map(e => [e.code, e.category, e.description, e.correction]),
-              ];
-              const ws = XLSX.utils.aoa_to_sheet(wsData);
-              ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 60 }, { wch: 80 }];
-              const wb = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(wb, ws, "Biblioteca de Erros");
-              const today = new Date().toISOString().slice(0, 10);
-              XLSX.writeFile(wb, `biblioteca-erros-${today}.xlsx`);
-              toast.success(`${allErrors.length} erros exportados com sucesso!`);
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 transition-colors ml-1"
-          >
-            <Download size={14} /> Exportar Excel
-          </button>
-          <button
-            onClick={() => setShowNew(!showNew)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white ml-1"
-            style={{ background: "oklch(0.52 0.18 240)" }}
-          >
-            <Plus size={15} /> Novo Erro
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Biblioteca de Erros e CNQ"
+        description={`${errorLib?.length ?? 0} itens em ${grouped.length} categorias`}
+        icon={BookOpen}
+        actions={
+          <>
+            <button onClick={() => setExpandedCats(new Set(allCats))} className="text-xs text-blue-600 hover:underline">Expandir tudo</button>
+            <span className="text-slate-300">|</span>
+            <button onClick={() => setExpandedCats(new Set())} className="text-xs text-slate-500 hover:underline">Recolher</button>
+            {/* Botão Exportar Excel */}
+            <button
+              onClick={() => {
+                const allErrors = (errorLib ?? []);
+                if (allErrors.length === 0) { toast.error("Nenhum erro para exportar."); return; }
+                const wsData = [
+                  ["Código", "Categoria", "Descrição", "Ação / Correção"],
+                  ...allErrors.map(e => [e.code, e.category, e.description, e.correction]),
+                ];
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+                ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 60 }, { wch: 80 }];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Biblioteca de Erros");
+                const today = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(wb, `biblioteca-erros-${today}.xlsx`);
+                toast.success(`${allErrors.length} erros exportados com sucesso!`);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 transition-colors ml-1"
+            >
+              <Download size={14} /> Exportar Excel
+            </button>
+            <button
+              onClick={() => setShowNew(!showNew)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white ml-1"
+              style={{ background: "oklch(0.52 0.18 240)" }}
+            >
+              <Plus size={15} /> Novo Erro
+            </button>
+          </>
+        }
+      />
 
       {/* Banner explicativo */}
       {canEdit && (

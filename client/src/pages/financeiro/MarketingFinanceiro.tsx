@@ -11,6 +11,7 @@ import {
 import {
   TrendingUp, Edit3, Check, X, DollarSign, Users, Target, Percent, Filter,
 } from "lucide-react";
+import KpiCard from "@/components/KpiCard";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -30,28 +31,6 @@ function fmtBRLShort(v: number): string {
   if (Math.abs(v) >= 1_000_000) return "R$ " + (v / 1_000_000).toFixed(1) + "M";
   if (Math.abs(v) >= 1_000) return "R$ " + (v / 1_000).toFixed(0) + "k";
   return fmtBRL(v);
-}
-
-function KpiCard({
-  titulo, valor, sub, cor, icon, valor2,
-}: {
-  titulo: string; valor: string; sub?: string; cor: string; icon: React.ReactNode; valor2?: string;
-}) {
-  return (
-    <Card className="border-l-4" style={{ borderLeftColor: cor }}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{titulo}</span>
-          <span style={{ color: cor }}>{icon}</span>
-        </div>
-        <div className="text-2xl font-bold" style={{ color: cor }}>{valor}</div>
-        {valor2 && (
-          <div className="text-sm font-semibold mt-0.5" style={{ color: cor, opacity: 0.8 }}>{valor2}</div>
-        )}
-        {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
-      </CardContent>
-    </Card>
-  );
 }
 
 interface Props {
@@ -238,43 +217,56 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <KpiCard
-            titulo="Total Investido em Mkt"
-            valor={fmtBRL(totalInvestido)}
+            label="Total Investido em Mkt"
+            value={fmtBRL(totalInvestido)}
             sub={`${dadosFiltrados.filter(d => d.investimento != null).length} meses`}
-            cor="#7c3aed"
+            color="#7c3aed"
             icon={<DollarSign size={18} />}
+            variant="border"
           />
           <KpiCard
-            titulo="Fat. Clientes Novos"
-            valor={fmtBRLShort(totalFaturamentoNovos)}
+            label="Fat. Clientes Novos"
+            value={fmtBRLShort(totalFaturamentoNovos)}
             sub={`Retorno real (51%): ${fmtBRLShort(totalRetornoReal)}`}
-            cor="#16a34a"
+            color="#16a34a"
             icon={<TrendingUp size={18} />}
+            variant="border"
           />
           <KpiCard
-            titulo="Clientes Novos"
-            valor={String(totalClientesNovos)}
+            label="Clientes Novos"
+            value={String(totalClientesNovos)}
             sub="Sem compra anterior"
-            cor="#2563eb"
+            color="#2563eb"
             icon={<Users size={18} />}
+            variant="border"
           />
           <KpiCard
-            titulo="CAC Médio"
-            valor={cacMedio != null ? fmtBRL(cacMedio) : "—"}
+            label="CAC Médio"
+            value={cacMedio != null ? fmtBRL(cacMedio) : "—"}
             sub="Custo por cliente novo"
-            cor="#ea580c"
+            color="#ea580c"
             icon={<Target size={18} />}
+            variant="border"
           />
           <KpiCard
-            titulo="ROI de Marketing"
-            valor={roiTotalReais != null ? fmtBRLShort(roiTotalReais) : "—"}
-            valor2={roiTotalPct != null ? `${roiTotalPct.toFixed(0)}% sobre investimento` : undefined}
+            label="ROI de Marketing"
+            value={
+              <>
+                {roiTotalReais != null ? fmtBRLShort(roiTotalReais) : "—"}
+                {roiTotalPct != null && (
+                  <span className="block text-sm font-semibold mt-0.5 opacity-80">
+                    {roiTotalPct.toFixed(0)}% sobre investimento
+                  </span>
+                )}
+              </>
+            }
             sub={[
               `Média mensal: ${roiMedioReais != null ? fmtBRLShort(roiMedioReais) : "—"} / ${roiMedioPct != null ? roiMedioPct.toFixed(0) + "%" : "—"}`,
               roiPorCliente != null ? `ROI por cliente: ${fmtBRL(roiPorCliente)}` : "",
             ].filter(Boolean).join(" · ")}
-            cor={roiTotalReais != null && roiTotalReais >= 0 ? "#16a34a" : "#dc2626"}
+            color={roiTotalReais != null && roiTotalReais >= 0 ? "#16a34a" : "#dc2626"}
             icon={<Percent size={18} />}
+            variant="border"
           />
         </div>
       </div>

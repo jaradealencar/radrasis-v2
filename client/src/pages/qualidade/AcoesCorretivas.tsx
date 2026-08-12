@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { ClipboardCheck, CheckCircle2, Clock, AlertTriangle, Edit2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import PageHeader from "@/components/PageHeader";
 
 const STATUS_COLORS: Record<string, string> = {
   aberto: "bg-red-100 text-red-700 border-red-200",
@@ -113,15 +114,15 @@ export default function AcoesCorretivas() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Ações Corretivas</h1>
-          <p className="text-slate-500 text-sm mt-1">Registre e acompanhe o ciclo de resolução de cada retrabalho.</p>
-        </div>
-        <Button onClick={abrirNova} className="gap-2">
-          <Plus size={15} /> Nova Ação
-        </Button>
-      </div>
+      <PageHeader
+        title="Ações Corretivas"
+        description="Registre e acompanhe o ciclo de resolução de cada retrabalho."
+        actions={
+          <Button onClick={abrirNova} className="gap-2">
+            <Plus size={15} /> Nova Ação
+          </Button>
+        }
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-4">

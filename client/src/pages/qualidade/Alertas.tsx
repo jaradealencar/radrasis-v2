@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bell, BellOff, AlertTriangle, Info, CheckCircle2, Archive, RefreshCw, Zap } from "lucide-react";
 import { toast } from "sonner";
+import PageHeader from "@/components/PageHeader";
 
 const TIPO_LABELS: Record<string, string> = {
   reincidencia: "Reincidência",
@@ -59,26 +60,26 @@ export default function Alertas() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Alertas do Sistema</h1>
-          <p className="text-slate-500 text-sm mt-1">Notificações automáticas de reincidências, metas e prazos.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => gerarMut.mutate()} disabled={gerarMut.isPending} className="gap-2">
-            <Zap size={14} />
-            {gerarMut.isPending ? "Gerando..." : "Gerar Alertas"}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { refetch(); refetchCounts(); }} className="gap-2">
-            <RefreshCw size={14} /> Atualizar
-          </Button>
-          {(counts?.total ?? 0) > 0 && (
-            <Button size="sm" onClick={marcarTodosLidos} className="gap-2">
-              <CheckCircle2 size={14} /> Marcar todos como lidos
+      <PageHeader
+        title="Alertas do Sistema"
+        description="Notificações automáticas de reincidências, metas e prazos."
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => gerarMut.mutate()} disabled={gerarMut.isPending} className="gap-2">
+              <Zap size={14} />
+              {gerarMut.isPending ? "Gerando..." : "Gerar Alertas"}
             </Button>
-          )}
-        </div>
-      </div>
+            <Button variant="outline" size="sm" onClick={() => { refetch(); refetchCounts(); }} className="gap-2">
+              <RefreshCw size={14} /> Atualizar
+            </Button>
+            {(counts?.total ?? 0) > 0 && (
+              <Button size="sm" onClick={marcarTodosLidos} className="gap-2">
+                <CheckCircle2 size={14} /> Marcar todos como lidos
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-4">

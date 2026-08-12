@@ -15,28 +15,9 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import CnqPanel from "@/components/CnqPanel";
+import KpiCard from "@/components/KpiCard";
 
 const COLORS = ["#1e6fd9", "#0ea5e9", "#22c55e", "#f97316", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#eab308"];
-
-function KpiCard({ label, value, sub, icon: Icon, color, accent }: {
-  label: string; value: string; sub?: string; icon: React.ElementType; color: string; accent?: boolean;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col gap-3 relative overflow-hidden">
-      {accent && <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: `linear-gradient(90deg, ${color}, transparent)` }} />}
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-1 text-slate-500">{label}</p>
-          <p className="text-2xl font-bold metric-value" style={{ color }}>{value}</p>
-          {sub && <p className="text-xs mt-1 text-slate-400">{sub}</p>}
-        </div>
-        <div className="p-2.5 rounded-lg" style={{ background: `${color}15` }}>
-          <Icon className="w-5 h-5" style={{ color }} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -251,13 +232,13 @@ export default function Dashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
-        <KpiCard label="Total de Retrabalhos" value={String(kpis?.totalRetrabalhos ?? 0)} icon={Wrench} color="#1e6fd9" accent />
-        <KpiCard label="Total de CNQ" value={String(kpis?.totalCnq ?? 0)} icon={AlertTriangle} color="#f59e0b" accent />
-        <KpiCard label="Custo Total" value={`R$ ${(kpis?.custoTotal ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} color="#ef4444" accent />
-        <KpiCard label="Custo Médio" value={`R$ ${(kpis?.custoMedio ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={BarChart3} color="#f97316" accent />
-        <KpiCard label="Horas de Impacto" value={`${(kpis?.horasTotal ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1 })}h`} sub="Total de horas impactadas" icon={Clock} color="#7c3aed" accent />
-        <KpiCard label="Evitáveis" value={`${kpis?.pctEvitavel ?? 0}%`} sub={`${kpis?.evitavel ?? 0} de ${(kpis?.totalRetrabalhos ?? 0) + (kpis?.totalCnq ?? 0)}`} icon={AlertTriangle} color="#dc2626" accent />
-        <KpiCard label="% do Faturamento" value={pctFaturamento ? `${pctFaturamento}%` : "—"} sub={pctFaturamento ? "Custo retrabalho/fat." : "Dados parciais"} icon={Percent} color="#8b5cf6" accent />
+        <KpiCard label="Total de Retrabalhos" value={String(kpis?.totalRetrabalhos ?? 0)} icon={Wrench} color="#1e6fd9" />
+        <KpiCard label="Total de CNQ" value={String(kpis?.totalCnq ?? 0)} icon={AlertTriangle} color="#f59e0b" />
+        <KpiCard label="Custo Total" value={`R$ ${(kpis?.custoTotal ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={DollarSign} color="#ef4444" />
+        <KpiCard label="Custo Médio" value={`R$ ${(kpis?.custoMedio ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`} icon={BarChart3} color="#f97316" />
+        <KpiCard label="Horas de Impacto" value={`${(kpis?.horasTotal ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1 })}h`} sub="Total de horas impactadas" icon={Clock} color="#7c3aed" />
+        <KpiCard label="Evitáveis" value={`${kpis?.pctEvitavel ?? 0}%`} sub={`${kpis?.evitavel ?? 0} de ${(kpis?.totalRetrabalhos ?? 0) + (kpis?.totalCnq ?? 0)}`} icon={AlertTriangle} color="#dc2626" />
+        <KpiCard label="% do Faturamento" value={pctFaturamento ? `${pctFaturamento}%` : "—"} sub={pctFaturamento ? "Custo retrabalho/fat." : "Dados parciais"} icon={Percent} color="#8b5cf6" />
         {/* Indicador Pedidos vs Retrabalhos */}
         {(() => {
           const totalPedidos = faturamentoData?.reduce((s, f) => s + f.totalPedidos, 0) ?? 0;

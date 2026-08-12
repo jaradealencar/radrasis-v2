@@ -70,7 +70,7 @@ function MetaBadge({
   );
 }
 
-function KpiCard({ label, value, sub, icon: Icon, color, meta, metaReal, metaTarget, isCurrency, isPct }: {
+function KpiCardComMeta({ label, value, sub, icon: Icon, color, meta, metaReal, metaTarget, isCurrency, isPct }: {
   label: string; value: string; sub?: string; icon: React.ElementType; color: string;
   meta?: string; metaReal?: number; metaTarget?: number; isCurrency?: boolean; isPct?: boolean;
 }) {
@@ -681,7 +681,7 @@ export default function PerformanceComercial() {
           </div>
         ) : mesDados ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-            <KpiCard
+            <KpiCardComMeta
               label="Cotações Enviadas"
               value={String(mesDados.cotacoes ?? 0)}
               sub={`${MESES_NOMES[mesSelecionado - 1]} ${anoSelecionado}`}
@@ -690,7 +690,7 @@ export default function PerformanceComercial() {
               metaReal={mesDados.cotacoes ?? 0}
               metaTarget={metaGeral?.metaCotacoes ?? undefined}
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Vendas Realizadas"
               value={String(mesDados.osGeradas ?? 0)}
               sub="Vendas aprovadas no mês"
@@ -699,7 +699,7 @@ export default function PerformanceComercial() {
               metaReal={mesDados.osGeradas ?? 0}
               metaTarget={metaGeral?.metaOsGeradas ?? undefined}
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Taxa de Conversão"
               value={`${mesDados.taxaConversao ?? 0}%`}
               sub="Vendas / Cotações"
@@ -709,7 +709,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaConversao ? Number(metaGeral.metaConversao) : undefined}
               isPct
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Valor Orçado"
               value={`R$ ${(mesDados.valorOrcado ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
               sub="Total das cotações"
@@ -719,7 +719,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaValorOrcado ? Number(metaGeral.metaValorOrcado) : undefined}
               isCurrency
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Faturamento Gerado"
               value={`R$ ${(mesDados.faturamento ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
               sub="Total das OS normais"
@@ -729,7 +729,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaFaturamento ? Number(metaGeral.metaFaturamento) : undefined}
               isCurrency
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Taxa de Faturamento"
               value={`${mesDados.taxaFaturamento ?? 0}%`}
               sub="Faturamento / Orçado"
@@ -739,7 +739,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaTaxaFaturamento ? Number(metaGeral.metaTaxaFaturamento) : undefined}
               isPct
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Clientes Novos"
               value={loadingClientesNovos ? "..." : String(clientesNovos?.total ?? 0)}
               sub="1ª OS no histórico"
@@ -748,7 +748,7 @@ export default function PerformanceComercial() {
               metaReal={clientesNovos?.total ?? 0}
               metaTarget={metaGeral?.metaClientesNovos ?? undefined}
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Cotações (Novos)"
               value={loadingClientesNovos ? "..." : String(clientesNovos?.cotacoesNovos ?? 0)}
               sub="Cotações de novos clientes"
@@ -757,7 +757,7 @@ export default function PerformanceComercial() {
               metaReal={clientesNovos?.cotacoesNovos ?? 0}
               metaTarget={metaGeral?.metaCotacoesNovos ?? undefined}
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Vendas (Novos Clientes)"
               value={loadingClientesNovos ? "..." : String(clientesNovos?.osNovos ?? 0)}
               sub="Vendas de clientes novos (incl. recompras)"
@@ -766,7 +766,7 @@ export default function PerformanceComercial() {
               metaReal={clientesNovos?.osNovos ?? 0}
               metaTarget={metaGeral?.metaOsNovos ?? undefined}
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Faturamento (Novos)"
               value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoNovos ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
               sub="Total das OS de novos clientes"
@@ -777,7 +777,7 @@ export default function PerformanceComercial() {
               isCurrency
             />
             {/* Quatro taxas de conversão: Geral (pedido + fat) e Novos (pedido + fat) */}
-            <KpiCard
+            <KpiCardComMeta
               label="Taxa Conv. Geral"
               value={`${mesDados.taxaConversao ?? 0}%`}
               sub="Vendas / Cotações (todos)"
@@ -787,7 +787,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaConversao ? Number(metaGeral.metaConversao) : undefined}
               isPct
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Taxa Fat. Geral"
               value={`${mesDados.taxaFaturamento ?? 0}%`}
               sub="Fat. / Orçado (todos)"
@@ -797,7 +797,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaTaxaFaturamento ? Number(metaGeral.metaTaxaFaturamento) : undefined}
               isPct
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Taxa Conv. Novos"
               value={loadingClientesNovos ? "..." : `${clientesNovos?.taxaConversaoNovos ?? 0}%`}
               sub="Vendas / Cotações (novos)"
@@ -807,7 +807,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaConversaoNovos ? Number(metaGeral.metaConversaoNovos) : undefined}
               isPct
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Taxa Fat. Novos"
               value={loadingClientesNovos ? "..." : `${(clientesNovos as any)?.taxaFaturamentoNovos ?? 0}%`}
               sub="Fat. / Orçado (novos)"
@@ -817,7 +817,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaTaxaFaturamentoNovos ? Number(metaGeral.metaTaxaFaturamentoNovos) : undefined}
               isPct
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Ticket Médio Geral"
               value={`R$ ${Number(mesDados.ticketMedio ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
               sub="Faturamento / Vendas realizadas"
@@ -827,7 +827,7 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaTicketMedio ? Number(metaGeral.metaTicketMedio) : undefined}
               isCurrency
             />
-            <KpiCard
+            <KpiCardComMeta
               label="Ticket Médio Novos"
               value={(() => {
                 const fat = Number((clientesNovos as any)?.faturamentoNovos ?? 0);

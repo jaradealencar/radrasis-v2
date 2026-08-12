@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import KpiCard from "@/components/KpiCard";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmtBRL(v: number | null | undefined): string {
@@ -76,26 +77,6 @@ function CustomBarTooltip({ active, payload, label }: any) {
         </div>
       ))}
     </div>
-  );
-}
-
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({
-  titulo, valor, sub, cor, icon, destaque
-}: {
-  titulo: string; valor: string; sub?: string; cor: string; icon: React.ReactNode; destaque?: boolean;
-}) {
-  return (
-    <Card className={`border-l-4 ${destaque ? "shadow-md" : ""}`} style={{ borderLeftColor: cor }}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{titulo}</span>
-          <span style={{ color: cor }}>{icon}</span>
-        </div>
-        <div className="text-2xl font-bold" style={{ color: cor }}>{valor}</div>
-        {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -275,34 +256,38 @@ export default function CustosFixos() {
       {/* ─── KPIs Principais ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard
-          titulo="Total Custos Fixos"
-          valor={fmtBRL(totalFixo)}
+          label="Total Custos Fixos"
+          value={fmtBRL(totalFixo)}
           sub={`${custosFixos.length} itens cadastrados`}
-          cor="#ef4444"
+          color="#ef4444"
           icon={<TrendingDown size={20} />}
-          destaque
+          variant="border"
+          className="shadow-md"
         />
         <KpiCard
-          titulo="Dívidas / Parcelamentos"
-          valor={fmtBRL(totalDividaMedia)}
+          label="Dívidas / Parcelamentos"
+          value={fmtBRL(totalDividaMedia)}
           sub="Média mensal 2026"
-          cor="#f59e0b"
+          color="#f59e0b"
           icon={<CreditCard size={20} />}
+          variant="border"
         />
         <KpiCard
-          titulo="Comprometimento Total"
-          valor={fmtBRL(totalGeral)}
+          label="Comprometimento Total"
+          value={fmtBRL(totalGeral)}
           sub="Fixos + dívidas/mês"
-          cor="#8b5cf6"
+          color="#8b5cf6"
           icon={<DollarSign size={20} />}
-          destaque
+          variant="border"
+          className="shadow-md"
         />
         <KpiCard
-          titulo="Maior Grupo"
-          valor={porGrupo[0]?.grupo ?? "—"}
+          label="Maior Grupo"
+          value={porGrupo[0]?.grupo ?? "—"}
           sub={porGrupo[0] ? `${fmtBRL(porGrupo[0].valor)} (${fmtPct(porGrupo[0].pct)})` : ""}
-          cor="#3b82f6"
+          color="#3b82f6"
           icon={<Users size={20} />}
+          variant="border"
         />
       </div>
 

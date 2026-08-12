@@ -15,6 +15,7 @@ import {
   Lock, Unlock, ChevronDown, ChevronUp
 } from "lucide-react";
 import { toast } from "sonner";
+import PageHeader from "@/components/PageHeader";
 
 const ROLES: Record<string, { label: string; color: string; description: string }> = {
   master: { label: "Master", color: "bg-purple-100 text-purple-700", description: "Acesso total ao sistema, gerencia usuários e permissões" },
@@ -379,13 +380,11 @@ function UsuariosList() {
 export default function Usuarios() {
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Users className="w-6 h-6 text-blue-500" />
-          Usuários e Permissões
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">Gerencie usuários do sistema e configure o que cada função pode acessar</p>
-      </div>
+      <PageHeader
+        title="Usuários e Permissões"
+        description="Gerencie usuários do sistema e configure o que cada função pode acessar"
+        icon={Users}
+      />
 
       {/* Legenda de funções */}
       <Card>

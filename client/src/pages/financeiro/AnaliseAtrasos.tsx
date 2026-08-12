@@ -24,6 +24,7 @@ import {
   Cell,
 } from "recharts";
 import { AlertTriangle, TrendingDown, Clock, AlertCircle } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
 
 const SETORES = [
   "Comercial",
@@ -171,12 +172,10 @@ export default function AnaliseAtrasosPage() {
   return (
     <div className="w-full max-w-7xl mx-auto p-4 md:p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold text-gray-900">Análise de Atrasos</h1>
-        <p className="text-gray-600">
-          Inteligência de gargalos, causa-raiz e recomendações de ação
-        </p>
-      </div>
+      <PageHeader
+        title="Análise de Atrasos"
+        description="Inteligência de gargalos, causa-raiz e recomendações de ação"
+      />
 
       {/* KPIs Principais */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

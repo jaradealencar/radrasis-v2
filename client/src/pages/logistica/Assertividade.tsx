@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import PageHeader from "@/components/PageHeader";
+import { STATUS_COLORS } from "@/lib/chartColors";
 
 export default function Assertividade() {
   const [analise, setAnalise] = useState<string | null>(null);
@@ -129,15 +131,12 @@ export default function Assertividade() {
         </Link>
       </div>
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Brain className="w-6 h-6 text-purple-500" />
-          Assertividade Logística
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Análise inteligente de cotações históricas e sugestões de melhoria
-        </p>
-      </div>
+      <PageHeader
+        title="Assertividade Logística"
+        description="Análise inteligente de cotações históricas e sugestões de melhoria"
+        icon={Brain}
+        iconColor={STATUS_COLORS.destaque}
+      />
 
       {/* Cards de métricas gerais */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

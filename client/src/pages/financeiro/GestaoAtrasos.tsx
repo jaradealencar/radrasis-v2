@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertCircle, Plus, BarChart3, TrendingDown, AlertTriangle } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
 import { toast } from "sonner";
 
 const SETORES = [
@@ -157,10 +158,10 @@ export default function GestaoAtrasosPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Gestão de Atrasos</h1>
-        <p className="text-gray-600">Registre e analise atrasos de produção para identificar gargalos</p>
-      </div>
+      <PageHeader
+        title="Gestão de Atrasos"
+        description="Registre e analise atrasos de produção para identificar gargalos"
+      />
 
       {/* Botão Registrar Atraso */}
       <div className="mb-6">

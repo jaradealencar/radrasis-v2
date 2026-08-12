@@ -16,6 +16,7 @@ import {
   Users, Hammer, ShoppingBag, Settings2, Plus, Edit3, Trash2,
   TrendingUp, TrendingDown, ChevronDown, ChevronUp, BarChart2,
 } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -216,29 +217,25 @@ export default function DesempenhoColaborador() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Cabeçalho */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Users className="text-blue-600" size={28} />
-            Desempenho por Colaborador
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Métricas mensais por categoria — comparativo mês a mês
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a - 1)}>
-            ← {anoSel - 1}
-          </Button>
-          <span className="font-semibold text-lg px-2">{anoSel}</span>
-          <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a + 1)}>
-            {anoSel + 1} →
-          </Button>
-          <Button size="sm" onClick={abrirNovo} className="gap-1.5 bg-blue-600 hover:bg-blue-700">
-            <Plus size={14} /> Lançar Dados
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Desempenho por Colaborador"
+        description="Métricas mensais por categoria — comparativo mês a mês"
+        icon={Users}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a - 1)}>
+              ← {anoSel - 1}
+            </Button>
+            <span className="font-semibold text-lg px-2">{anoSel}</span>
+            <Button variant="outline" size="sm" onClick={() => setAnoSel(a => a + 1)}>
+              {anoSel + 1} →
+            </Button>
+            <Button size="sm" onClick={abrirNovo} className="gap-1.5 bg-blue-600 hover:bg-blue-700">
+              <Plus size={14} /> Lançar Dados
+            </Button>
+          </>
+        }
+      />
 
       {/* Abas de categoria */}
       <Tabs value={categoriaSel} onValueChange={(v) => setCategoriaSel(v as Categoria)}>

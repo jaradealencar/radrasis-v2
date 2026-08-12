@@ -10,6 +10,8 @@ import {
   TrendingUp, TrendingDown, DollarSign, BarChart2,
   PieChart as PieIcon, AlertTriangle, CheckCircle2, Minus,
 } from "lucide-react";
+import KpiCard from "@/components/KpiCard";
+import { STATUS_COLORS } from "@/lib/chartColors";
 
 const MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -37,48 +39,28 @@ function delta(curr: number | null | undefined, prev: number | null | undefined)
   return ((curr - prev) / Math.abs(prev)) * 100;
 }
 
-// KPI Card estilo Power BI
-function KpiCard({
-  label, value, sub, trend, color = "emerald", icon: Icon,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  trend?: number | null;
-  color?: "emerald" | "red" | "blue" | "amber" | "violet" | "slate";
-  icon?: React.ElementType;
-}) {
-  const colors = {
-    emerald: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", accent: "bg-emerald-500" },
-    red:     { bg: "bg-red-50",     border: "border-red-200",     text: "text-red-700",     accent: "bg-red-500" },
-    blue:    { bg: "bg-blue-50",    border: "border-blue-200",    text: "text-blue-700",    accent: "bg-blue-500" },
-    amber:   { bg: "bg-amber-50",   border: "border-amber-200",   text: "text-amber-700",   accent: "bg-amber-500" },
-    violet:  { bg: "bg-violet-50",  border: "border-violet-200",  text: "text-violet-700",  accent: "bg-violet-500" },
-    slate:   { bg: "bg-slate-50",   border: "border-slate-200",   text: "text-slate-700",   accent: "bg-slate-500" },
-  };
-  const c = colors[color];
+// Mapeamento das cores semânticas locais para a paleta compartilhada
+const KPI_COLOR_MAP = {
+  emerald: STATUS_COLORS.positivo,
+  red: STATUS_COLORS.negativo,
+  blue: STATUS_COLORS.info,
+  amber: STATUS_COLORS.atencao,
+  violet: STATUS_COLORS.destaque,
+  slate: STATUS_COLORS.neutro,
+} as const;
+
+function kpiSub(sub: string | undefined, trend: number | null | undefined) {
+  if (sub == null && trend == null) return undefined;
   return (
-    <div className={`rounded-xl border ${c.border} ${c.bg} p-4 relative overflow-hidden`}>
-      <div className={`absolute top-0 left-0 w-1 h-full ${c.accent} rounded-l-xl`} />
-      <div className="pl-2">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
-          {Icon && <Icon size={14} className={c.text} />}
-        </div>
-        <div className={`text-2xl font-bold ${c.text} leading-tight`}>{value}</div>
-        {(sub || trend != null) && (
-          <div className="flex items-center gap-2 mt-1">
-            {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
-            {trend != null && (
-              <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${trend >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                {trend >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                {Math.abs(trend).toFixed(1)}% vs mês ant.
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+    <span className="flex items-center gap-2">
+      {sub}
+      {trend != null && (
+        <span className={`inline-flex items-center gap-0.5 font-semibold ${trend >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+          {trend >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+          {Math.abs(trend).toFixed(1)}% vs mês ant.
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -329,29 +311,33 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
               label="Faturamento Acumulado"
               value={fmt(acumulados.fatTotal)}
               sub={`Média: ${fmt(acumulados.fatMedia)}/mês`}
-              color="emerald"
+              color={KPI_COLOR_MAP.emerald}
               icon={DollarSign}
+              variant="border"
             />
             <KpiCard
               label="Total Despesas Acum."
               value={fmt(acumulados.despTotal)}
               sub={`Média: ${fmt(acumulados.despMedia)}/mês`}
-              color="red"
+              color={KPI_COLOR_MAP.red}
               icon={TrendingDown}
+              variant="border"
             />
             <KpiCard
               label={acumulados.lucroTotal >= 0 ? "Lucro Acumulado" : "Prejuízo Acumulado"}
               value={fmt(acumulados.lucroTotal)}
               sub={`Média: ${fmt(acumulados.lucroMedia)}/mês`}
-              color={acumulados.lucroTotal >= 0 ? "blue" : "red"}
+              color={acumulados.lucroTotal >= 0 ? KPI_COLOR_MAP.blue : KPI_COLOR_MAP.red}
               icon={acumulados.lucroTotal >= 0 ? CheckCircle2 : AlertTriangle}
+              variant="border"
             />
             <KpiCard
               label="Margem Média"
               value={fmtPct(acumulados.margemMedia)}
               sub={`${acumulados.mesesComDados} meses com dados`}
-              color={acumulados.margemMedia != null && acumulados.margemMedia >= 0 ? "violet" : "red"}
+              color={acumulados.margemMedia != null && acumulados.margemMedia >= 0 ? KPI_COLOR_MAP.violet : KPI_COLOR_MAP.red}
               icon={BarChart2}
+              variant="border"
             />
           </div>
 
@@ -524,36 +510,39 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
               <KpiCard
                 label="Receita Op. Bruta"
                 value={fmt(sel.receitaOperacionalBruta)}
-                sub={`Pedidos: ${fmt(sel.valorPedidos)}`}
-                trend={delta(sel.receitaOperacionalBruta, prev?.receitaOperacionalBruta)}
-                color="emerald"
+                sub={kpiSub(`Pedidos: ${fmt(sel.valorPedidos)}`, delta(sel.receitaOperacionalBruta, prev?.receitaOperacionalBruta))}
+                color={KPI_COLOR_MAP.emerald}
                 icon={DollarSign}
+                variant="border"
               />
               <KpiCard
                 label="Total Saídas"
                 value={fmt(sel.totalSaidas)}
-                sub="Todas as despesas"
-                trend={delta(sel.totalSaidas, prev?.totalSaidas)}
-                color="red"
+                sub={kpiSub("Todas as despesas", delta(sel.totalSaidas, prev?.totalSaidas))}
+                color={KPI_COLOR_MAP.red}
                 icon={TrendingDown}
+                variant="border"
               />
               <KpiCard
                 label="Lucro Operacional"
                 value={fmt(sel.lucroOperacional)}
-                sub={sel.lucroOperacional != null && sel.receitaOperacionalBruta
-                  ? fmtPct(sel.lucroOperacional / sel.receitaOperacionalBruta)
-                  : undefined}
-                trend={delta(sel.lucroOperacional, prev?.lucroOperacional)}
-                color={sel.lucroOperacional != null && sel.lucroOperacional >= 0 ? "blue" : "red"}
+                sub={kpiSub(
+                  sel.lucroOperacional != null && sel.receitaOperacionalBruta
+                    ? fmtPct(sel.lucroOperacional / sel.receitaOperacionalBruta)
+                    : undefined,
+                  delta(sel.lucroOperacional, prev?.lucroOperacional)
+                )}
+                color={sel.lucroOperacional != null && sel.lucroOperacional >= 0 ? KPI_COLOR_MAP.blue : KPI_COLOR_MAP.red}
                 icon={BarChart2}
+                variant="border"
               />
               <KpiCard
                 label="Lucro / Prejuízo Líquido"
                 value={fmt(sel.lucroLiquido)}
-                sub={`Resultado Efetivo: ${fmtPct(sel.margemResultadoEfetivo)}`}
-                trend={delta(sel.lucroLiquido, prev?.lucroLiquido)}
-                color={sel.lucroLiquido != null && sel.lucroLiquido >= 0 ? "emerald" : "red"}
+                sub={kpiSub(`Resultado Efetivo: ${fmtPct(sel.margemResultadoEfetivo)}`, delta(sel.lucroLiquido, prev?.lucroLiquido))}
+                color={sel.lucroLiquido != null && sel.lucroLiquido >= 0 ? KPI_COLOR_MAP.emerald : KPI_COLOR_MAP.red}
                 icon={sel.lucroLiquido != null && sel.lucroLiquido >= 0 ? CheckCircle2 : AlertTriangle}
+                variant="border"
               />
             </div>
 
@@ -563,26 +552,30 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
                 label="Margem Resultado Efetivo"
                 value={fmtPct(sel.margemResultadoEfetivo)}
                 sub="Sobre valor dos pedidos"
-                color="violet"
+                color={KPI_COLOR_MAP.violet}
                 icon={PieIcon}
+                variant="border"
               />
               <KpiCard
                 label="Mat. Prima / Pedidos"
                 value={fmtPct(sel.percMateriaPrima)}
                 sub={fmt(sel.materiaPrima)}
-                color="amber"
+                color={KPI_COLOR_MAP.amber}
+                variant="border"
               />
               <KpiCard
                 label="Fixo Rateado / Pedidos"
                 value={fmtPct(sel.percFixoRateado)}
                 sub={fmt(sel.despesasFixas)}
-                color="slate"
+                color={KPI_COLOR_MAP.slate}
+                variant="border"
               />
               <KpiCard
                 label="Tributos / Pedidos"
                 value={fmtPct(sel.percTributos)}
                 sub={fmt(sel.impostosVendas)}
-                color="amber"
+                color={KPI_COLOR_MAP.amber}
+                variant="border"
               />
             </div>
           </div>

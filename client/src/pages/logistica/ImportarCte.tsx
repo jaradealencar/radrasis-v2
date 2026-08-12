@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileText, Plus, Truck, Calendar, DollarSign, Search, TrendingUp, Package , Home } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import PageHeader from "@/components/PageHeader";
 
 type CteRow = {
   id: number;
@@ -160,16 +161,12 @@ export default function ImportarCte() {
         </Link>
       </div>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="w-6 h-6 text-blue-500" />
-            Conhecimentos de Transporte (CT-e)
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">Registro e acompanhamento de CT-es emitidos</p>
-        </div>
-        <NovoCteDialog onSuccess={refetch} transportadoras={transportadoras} />
-      </div>
+      <PageHeader
+        title="Conhecimentos de Transporte (CT-e)"
+        description="Registro e acompanhamento de CT-es emitidos"
+        icon={FileText}
+        actions={<NovoCteDialog onSuccess={refetch} transportadoras={transportadoras} />}
+      />
 
       {/* Cards de resumo */}
       {stats && (

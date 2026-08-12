@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Truck, Clock, CheckCircle, ListOrdered, TrendingUp, Home, Calendar, ChevronUp, ChevronDown, Minus, Tag, X, AlertCircle, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Link } from "wouter";
+import PageHeader from "@/components/PageHeader";
 import { toast } from "sonner";
 
 function formatDate(val: any) {
@@ -101,13 +102,11 @@ export default function LogisticaDashboard() {
           VOLTAR PARA HOME
         </Link>
       </div>
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Truck className="w-6 h-6 text-blue-500" />
-          Dashboard de Logística
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">Visão geral das cotações de frete, prazo de expedição e retrabalhos</p>
-      </div>
+      <PageHeader
+        title="Dashboard de Logística"
+        description="Visão geral das cotações de frete, prazo de expedição e retrabalhos"
+        icon={Truck}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map(s => (

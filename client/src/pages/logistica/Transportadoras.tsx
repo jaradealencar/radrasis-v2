@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import CompletudeTransportadoras from "./CompletudeTransportadoras";
 import { Link } from "wouter";
+import PageHeader from "@/components/PageHeader";
 import {
   Truck, Globe, Clock, MapPin, Package, User, Phone, MessageCircle,
   Building2, Star, Plus, Trash2, Edit, ArrowLeft, Eye, EyeOff,
@@ -747,15 +748,15 @@ export default function Transportadoras() {
           VOLTAR PARA HOME
         </Link>
       </div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Transportadoras</h1>
-          <p className="text-sm text-gray-500">{lista.length} transportadoras cadastradas</p>
-        </div>
-        {abaPrincipal === "cadastro" && (
-          <Button onClick={() => setShowNew(true)} className="gap-2 bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4" /> Nova Transportadora</Button>
-        )}
-      </div>
+      <PageHeader
+        title="Transportadoras"
+        description={`${lista.length} transportadoras cadastradas`}
+        actions={
+          abaPrincipal === "cadastro" && (
+            <Button onClick={() => setShowNew(true)} className="gap-2 bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4" /> Nova Transportadora</Button>
+          )
+        }
+      />
 
       {/* Subabas: Cadastro e Completude de Dados */}
       <div className="flex items-center gap-1 border-b border-gray-200">

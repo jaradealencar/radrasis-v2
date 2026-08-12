@@ -8,6 +8,7 @@ import {
   AlertTriangle, Percent, ChevronDown, ChevronUp, CalendarDays,
   Snowflake, Zap, Lock, Unlock,
 } from "lucide-react";
+import KpiCard from "@/components/KpiCard";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -36,38 +37,6 @@ function formatarDataCalculo(d: any) {
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return null;
   return dt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-// ─── KPI Card ────────────────────────────────────────────────────────────────
-
-function KpiCard({
-  icon: Icon, label, value, sub, cor, loading, destaque,
-}: {
-  icon: any; label: string; value: string; sub?: string; cor: string; loading?: boolean; destaque?: boolean;
-}) {
-  if (loading) {
-    return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 animate-pulse">
-        <div className="h-4 bg-slate-200 rounded w-3/4 mb-3" />
-        <div className="h-8 bg-slate-200 rounded w-1/2" />
-      </div>
-    );
-  }
-  return (
-    <div className="bg-white rounded-xl border shadow-sm p-5 relative overflow-hidden" style={{ borderColor: destaque ? cor + "60" : "#e2e8f0" }}>
-      <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: `linear-gradient(90deg, ${cor}, transparent)` }} />
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 leading-tight">{label}</p>
-          <p className="text-2xl font-black text-slate-800 leading-none">{value}</p>
-          {sub && <p className="text-[11px] text-slate-400 mt-1.5 leading-tight">{sub}</p>}
-        </div>
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: cor + "18" }}>
-          <Icon className="w-5 h-5" style={{ color: cor }} />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -406,29 +375,29 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
                 label="Clientes Únicos"
                 value={data.clientesUnicosAno.toLocaleString("pt-BR")}
                 sub="Empresas distintas com OS aprovada"
-                cor="#3b82f6"
+                color="#3b82f6"
               />
               <KpiCard
                 icon={UserPlus}
                 label="% Clientes Novos"
                 value={`${data.pctClientesNovos}%`}
                 sub={`${data.clientesNovosAno} novos de ${data.clientesUnicosAno} únicos`}
-                cor="#22c55e"
+                color="#22c55e"
               />
               <KpiCard
                 icon={ShoppingCart}
                 label="Média de OS por Cliente"
                 value={`${data.mediaComprasPorCliente}x`}
                 sub="Pedidos médios por cliente no período"
-                cor="#8b5cf6"
+                color="#8b5cf6"
               />
               <KpiCard
                 icon={AlertTriangle}
                 label="Sem Compra +6 Meses"
                 value={`${data.pctClientesSemCompra6Meses}%`}
                 sub={`${data.clientesSemCompra6Meses} clientes inativos`}
-                cor={data.pctClientesSemCompra6Meses >= 40 ? "#ef4444" : data.pctClientesSemCompra6Meses >= 20 ? "#f59e0b" : "#22c55e"}
-                destaque={data.pctClientesSemCompra6Meses >= 30}
+                color={data.pctClientesSemCompra6Meses >= 40 ? "#ef4444" : data.pctClientesSemCompra6Meses >= 20 ? "#f59e0b" : "#22c55e"}
+                className={data.pctClientesSemCompra6Meses >= 30 ? "shadow-md" : undefined}
               />
             </div>
           </div>
@@ -442,28 +411,28 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
                 label="Taxa de Recompra Geral"
                 value={`${data.taxaRecompra}%`}
                 sub="Clientes que compraram em 2+ meses"
-                cor="#8b5cf6"
+                color="#8b5cf6"
               />
               <KpiCard
                 icon={Percent}
                 label="Recompra — Clientes Novos"
                 value={`${data.taxaRecompraNovosPct}%`}
                 sub={`${data.clientesNovosQueRecompraram} de ${data.clientesNovosAno} novos recompraram`}
-                cor="#f59e0b"
+                color="#f59e0b"
               />
               <KpiCard
                 icon={Clock}
                 label="Tempo Médio Fechamento"
                 value={data.tempoMedioPropostaFechamento !== null ? `${data.tempoMedioPropostaFechamento} dias` : "—"}
                 sub={data.tempoMedianaPropostaFechamento !== null ? `Mediana: ${data.tempoMedianaPropostaFechamento} dias` : "Requer orçamento vinculado"}
-                cor="#0ea5e9"
+                color="#0ea5e9"
               />
               <KpiCard
                 icon={TrendingUp}
                 label="Intervalo de Fechamento"
                 value={data.tempoP25 !== null && data.tempoP75 !== null ? `${data.tempoP25}–${data.tempoP75}d` : "—"}
                 sub="P25 a P75 (50% central das OS)"
-                cor="#14b8a6"
+                color="#14b8a6"
               />
             </div>
           </div>

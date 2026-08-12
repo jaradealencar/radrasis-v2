@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Brain, Sparkles, TrendingUp, Package, Truck, AlertTriangle, RefreshCw, ChevronRight, BarChart2 } from "lucide-react";
 import { Streamdown } from "streamdown";
+import PageHeader from "@/components/PageHeader";
+import { STATUS_COLORS } from "@/lib/chartColors";
 
 const ANALISES_PREDEFINIDAS = [
   { id: "eficiencia", label: "Eficiência de Entregas", icon: <Truck size={16} />, prompt: "Analise a eficiência das entregas da logística da empresa Letreiros Express. Avalie prazos, transportadoras com melhor e pior desempenho, e dê recomendações práticas para melhorar a assertividade." },
@@ -71,21 +73,19 @@ export default function InsightsLogistica() {
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex items-start justify-between mb-6 gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "oklch(0.45 0.22 280 / 0.12)" }}>
-            <Brain size={20} style={{ color: "oklch(0.45 0.22 280)" }} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Insights de IA — Logística</h1>
-            <p className="text-sm text-slate-500">Análises inteligentes do setor de logística com Gemini AI</p>
-          </div>
-        </div>
-        <Badge variant="outline" className="flex items-center gap-1.5 text-purple-700 border-purple-200 bg-purple-50">
-          <Sparkles size={12} />
-          Powered by Gemini
-        </Badge>
-      </div>
+      <PageHeader
+        title="Insights de IA — Logística"
+        description="Análises inteligentes do setor de logística com Gemini AI"
+        icon={Brain}
+        iconColor={STATUS_COLORS.destaque}
+        actions={
+          <Badge variant="outline" className="flex items-center gap-1.5 text-purple-700 border-purple-200 bg-purple-50">
+            <Sparkles size={12} />
+            Powered by Gemini
+          </Badge>
+        }
+        className="mb-6"
+      />
 
       {/* Análises Predefinidas */}
       <div className="mb-6">

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+import PageHeader from "@/components/PageHeader";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -856,15 +857,15 @@ export default function PlanosAcao() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">Planos de Ação</h1>
-            <p className="text-slate-500 text-sm mt-1">Metodologia Ishikawa (6M) + 5W2H para análise e eliminação de causas de retrabalho.</p>
-          </div>
-          <Button onClick={() => abrirNovo()} className="gap-2">
-            <Plus size={15} /> Novo Plano
-          </Button>
-        </div>
+        <PageHeader
+          title="Planos de Ação"
+          description="Metodologia Ishikawa (6M) + 5W2H para análise e eliminação de causas de retrabalho."
+          actions={
+            <Button onClick={() => abrirNovo()} className="gap-2">
+              <Plus size={15} /> Novo Plano
+            </Button>
+          }
+        />
 
         {/* Alerta de reincidências sem plano */}
         {reincidenciasSemPlano.length > 0 && (
