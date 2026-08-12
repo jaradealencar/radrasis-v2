@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
 import { STATUS_COLORS } from "@/lib/chartColors";
+import ChartTooltip from "@/components/ChartTooltip";
 
 const MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -61,38 +62,6 @@ function kpiSub(sub: string | undefined, trend: number | null | undefined) {
         </span>
       )}
     </span>
-  );
-}
-
-// Tooltip customizado
-function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-3 text-sm min-w-[200px]">
-      <div className="font-semibold text-slate-700 mb-2 border-b pb-1">{label}</div>
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex justify-between gap-4 py-0.5">
-          <span style={{ color: p.color }} className="font-medium">{p.name}</span>
-          <span className="font-bold text-slate-800">{fmtFull(p.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Tooltip de percentual
-function PctTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-3 text-sm min-w-[180px]">
-      <div className="font-semibold text-slate-700 mb-2 border-b pb-1">{label}</div>
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex justify-between gap-4 py-0.5">
-          <span style={{ color: p.color }} className="font-medium">{p.name}</span>
-          <span className="font-bold text-slate-800">{(p.value * 100).toFixed(1)}%</span>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -355,7 +324,7 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tickFormatter={v => fmt(v, "")} tick={{ fontSize: 10 }} width={65} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip format={fmtFull} />} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <ReferenceLine y={0} stroke="#e2e8f0" strokeWidth={2} />
                   <Bar dataKey="lucroMes" name="Lucro do Mês" fill="#6366f1" radius={[4, 4, 0, 0]} opacity={0.8} />
@@ -379,7 +348,7 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tickFormatter={v => fmt(v, "")} tick={{ fontSize: 10 }} width={65} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip format={fmtFull} />} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="faturamento" name="Faturamento" fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.85} />
                   <Bar dataKey="totalDespesas" name="Total Despesas" fill="#f87171" radius={[4, 4, 0, 0]} opacity={0.8} />
@@ -598,7 +567,7 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={v => fmt(v, "")} tick={{ fontSize: 10 }} width={65} />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<ChartTooltip format={fmtFull} />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="Receita Op." fill="#10b981" radius={[4, 4, 0, 0]} opacity={0.9} />
                 <Bar dataKey="Total Saídas" fill="#f87171" radius={[4, 4, 0, 0]} opacity={0.85} />
@@ -632,7 +601,7 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={v => (v * 100).toFixed(0) + "%"} tick={{ fontSize: 10 }} width={45} />
-                <Tooltip content={<PctTooltip />} />
+                <Tooltip content={<ChartTooltip format={fmtPct} />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <ReferenceLine y={0} stroke="#e2e8f0" strokeWidth={1.5} />
                 <Area dataKey="Resultado Efetivo %" stroke="#8b5cf6" fill="url(#gradViolet)" strokeWidth={2.5} dot={{ r: 4 }} type="monotone" />
@@ -659,7 +628,7 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={v => (v * 100).toFixed(0) + "%"} tick={{ fontSize: 10 }} width={40} />
-                <Tooltip content={<PctTooltip />} />
+                <Tooltip content={<ChartTooltip format={fmtPct} />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="Mat. Prima" stackId="a" fill="#f59e0b" opacity={0.9} />
                 <Bar dataKey="Fixo Rateado" stackId="a" fill="#6366f1" opacity={0.9} />

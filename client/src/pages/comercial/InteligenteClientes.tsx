@@ -9,6 +9,9 @@ import {
   Snowflake, Zap, Lock, Unlock,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
+import ChartTooltip from "@/components/ChartTooltip";
+import { chartColor } from "@/lib/chartColors";
+import { fmtNum } from "@/lib/format";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -37,21 +40,6 @@ function formatarDataCalculo(d: any) {
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return null;
   return dt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-xl p-3 text-xs bg-white border border-slate-200 shadow-xl min-w-[160px]">
-      <p className="font-bold mb-2 text-slate-700">{label}</p>
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">{p.name}</span>
-          <span className="font-bold text-slate-800">{p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 // ─── Seletor de Período ───────────────────────────────────────────────────────
@@ -488,7 +476,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="faixa" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={<ChartTooltip format={fmtNum} />} />
                     <Bar dataKey="quantidade" name="OS" radius={[4, 4, 0, 0]}>
                       {dadosTempo.map((_: any, index: number) => {
                         const intensity = dadosTempo.length > 1 ? index / (dadosTempo.length - 1) : 0.5;
@@ -538,8 +526,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
                   </thead>
                   <tbody>
                     {dadosVendedores.map((v: any, idx: number) => {
-                      const CORES = ["#3b82f6","#8b5cf6","#22c55e","#f59e0b","#ef4444","#0ea5e9","#a855f7","#ec4899","#14b8a6","#f97316"];
-                      const cor = CORES[idx % CORES.length];
+                      const cor = chartColor(idx);
                       const recompraColor = (pct: number) => pct >= 40 ? "#22c55e" : pct >= 20 ? "#f59e0b" : "#ef4444";
                       return (
                         <tr key={v.vendedor} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">

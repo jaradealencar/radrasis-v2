@@ -16,20 +16,9 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import CnqPanel from "@/components/CnqPanel";
 import KpiCard from "@/components/KpiCard";
-
-const COLORS = ["#1e6fd9", "#0ea5e9", "#22c55e", "#f97316", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#eab308"];
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg p-3 text-xs bg-white border border-slate-200 shadow-lg">
-      <p className="font-bold mb-1 text-slate-700">{label}</p>
-      {payload.map((p: any, i: number) => (
-        <p key={i} style={{ color: p.color }}>{p.name}: {typeof p.value === "number" && p.name?.includes("R$") ? `R$ ${p.value.toFixed(2)}` : p.value}</p>
-      ))}
-    </div>
-  );
-};
+import ChartTooltip from "@/components/ChartTooltip";
+import { chartColor } from "@/lib/chartColors";
+import { fmtNum } from "@/lib/format";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -547,9 +536,9 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" tick={{ fontSize: 10 }} />
               <YAxis type="category" dataKey="setor" tick={{ fontSize: 10 }} width={90} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<ChartTooltip format={fmtNum} />} />
               <Bar dataKey="count" name="Ocorrências" radius={[0, 3, 3, 0]}>
-                {(bySetor ?? []).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                {(bySetor ?? []).map((_, i) => <Cell key={i} fill={chartColor(i)} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -571,9 +560,9 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" tick={{ fontSize: 10 }} />
               <YAxis type="category" dataKey="codigoErro" tick={{ fontSize: 10 }} width={70} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<ChartTooltip format={fmtNum} />} />
               <Bar dataKey="count" name="Ocorrências" fill="#1e6fd9" radius={[0, 3, 3, 0]}>
-                {(byErro ?? []).slice(0, 10).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                {(byErro ?? []).slice(0, 10).map((_, i) => <Cell key={i} fill={chartColor(i)} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -590,7 +579,7 @@ export default function Dashboard() {
                 <Cell fill="#ff6b6b" />
                 <Cell fill="#ffb74d" />
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<ChartTooltip format={fmtNum} />} />
               <Legend iconType="circle" iconSize={8} />
             </PieChart>
           </ResponsiveContainer>
@@ -636,7 +625,7 @@ export default function Dashboard() {
                 <span className="text-xs w-24 sm:w-28 truncate shrink-0 text-slate-600">{r.responsavel}</span>
                 <div className="flex-1 h-5 rounded overflow-hidden bg-slate-100">
                   <div className="h-full rounded flex items-center px-2 transition-all"
-                    style={{ width: `${pct}%`, background: `${COLORS[i % COLORS.length]}25`, borderLeft: `2px solid ${COLORS[i % COLORS.length]}` }}>
+                    style={{ width: `${pct}%`, background: `${chartColor(i)}25`, borderLeft: `2px solid ${chartColor(i)}` }}>
                   </div>
                 </div>
                 <span className="text-xs font-mono w-8 text-right shrink-0 text-slate-800 font-semibold">{r.count}</span>

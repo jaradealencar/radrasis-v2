@@ -22,6 +22,7 @@ import {
   GitCompare, Receipt, AlertCircle, Timer, Wallet, UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { chartColor } from "@/lib/chartColors";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -1261,8 +1262,6 @@ function PainelComparacao({ rows }: { rows: PerformanceRow[] }) {
       return entry;
     });
 
-  const COLORS = ["#3b82f6", "#10b981", "#f59e0b"];
-
   return (
     <div className="space-y-6">
       {/* Seletor de meses */}
@@ -1304,7 +1303,7 @@ function PainelComparacao({ rows }: { rows: PerformanceRow[] }) {
                   <tr className="border-b">
                     <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Indicador</th>
                     {selecionados.map((r, i) => (
-                      <th key={r.id} className="text-right py-2 px-3 font-medium" style={{ color: COLORS[i] }}>
+                      <th key={r.id} className="text-right py-2 px-3 font-medium" style={{ color: chartColor(i) }}>
                         {MESES[r.mes - 1].slice(0, 3)} {r.ano}
                       </th>
                     ))}
@@ -1375,7 +1374,7 @@ function PainelComparacao({ rows }: { rows: PerformanceRow[] }) {
                       <Tooltip formatter={(v: number) => fmtBRL(v)} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       {selecionados.map((r, i) => (
-                        <Bar key={r.id} dataKey={`${MESES[r.mes - 1].slice(0, 3)} ${r.ano}`} fill={COLORS[i]} radius={[0, 4, 4, 0]} />
+                        <Bar key={r.id} dataKey={`${MESES[r.mes - 1].slice(0, 3)} ${r.ano}`} fill={chartColor(i)} radius={[0, 4, 4, 0]} />
                       ))}
                     </BarChart>
                   </ResponsiveContainer>
@@ -1394,7 +1393,7 @@ function PainelComparacao({ rows }: { rows: PerformanceRow[] }) {
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       {selecionados.map((r, i) => (
-                        <Bar key={r.id} dataKey={`${MESES[r.mes - 1].slice(0, 3)} ${r.ano}`} fill={COLORS[i]} radius={[0, 4, 4, 0]} />
+                        <Bar key={r.id} dataKey={`${MESES[r.mes - 1].slice(0, 3)} ${r.ano}`} fill={chartColor(i)} radius={[0, 4, 4, 0]} />
                       ))}
                     </BarChart>
                   </ResponsiveContainer>

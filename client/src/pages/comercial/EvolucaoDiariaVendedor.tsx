@@ -6,11 +6,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-
-const CORES = [
-  "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6",
-  "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#84cc16",
-];
+import { chartColor } from "@/lib/chartColors";
 
 const INDICADORES = [
   { id: "os",  label: "Vendas Realizadas",  acumId: "acumOs",  fmt: "num" as const },
@@ -223,7 +219,7 @@ export default function EvolucaoDiariaVendedor({ mes, ano }: Props) {
                   key={v}
                   type="monotone"
                   dataKey={v}
-                  stroke={CORES[i % CORES.length]}
+                  stroke={chartColor(i)}
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
@@ -250,7 +246,7 @@ export default function EvolucaoDiariaVendedor({ mes, ano }: Props) {
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {vendedoresFiltrados.map((v, i) => (
-                <Bar key={v} dataKey={v} fill={CORES[i % CORES.length]} radius={[2, 2, 0, 0]} />
+                <Bar key={v} dataKey={v} fill={chartColor(i)} radius={[2, 2, 0, 0]} />
               ))}
             </BarChart>
           ) as any}
@@ -261,7 +257,7 @@ export default function EvolucaoDiariaVendedor({ mes, ano }: Props) {
       {/* Cards de totais por vendedor (clicáveis para filtrar) */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         {vendedores.map((v, i) => {
-          const cor = CORES[i % CORES.length];
+          const cor = chartColor(i);
           const ativo = vendedoresSelecionados.size === 0 || vendedoresSelecionados.has(v);
           const pv = (ultimoDia?.porVendedor ?? {})[v] as any;
           const totalOs = pv?.acumOs ?? 0;

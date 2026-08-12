@@ -20,6 +20,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import ChartTooltip from "@/components/ChartTooltip";
+import { chartColor } from "@/lib/chartColors";
+import { fmtNum, fmtBrl } from "@/lib/format";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -1025,7 +1028,6 @@ export default function PerformanceComercial() {
                 <div className="p-8 text-center text-slate-400 text-sm">Sem dados para os meses selecionados</div>
               ) : (() => {
                 const dados = ((comparaMesesDados ?? []).filter(Boolean) as any[]);
-                const COLORS = ["#3b82f6", "#8b5cf6", "#22c55e", "#f59e0b", "#ef4444", "#0ea5e9", "#a855f7", "#ec4899"];
 
                 return (
                   <div className="p-5 space-y-6">
@@ -1104,7 +1106,7 @@ export default function PerformanceComercial() {
                                       : null;
                                     return (
                                       <div key={i} className={`flex items-center gap-2 rounded px-1 py-0.5 ${atingiu ? "bg-green-50 border border-green-200" : ""}`}>
-                                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
+                                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: chartColor(i) }} />
                                         <span className="text-[10px] text-slate-500 shrink-0 w-12 truncate">{v.label}</span>
                                         <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
                                           <div
@@ -1144,7 +1146,7 @@ export default function PerformanceComercial() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                           <YAxis tick={{ fontSize: 11 }} />
-                          <Tooltip content={<CustomTooltip />} />
+                          <Tooltip content={<ChartTooltip format={fmtNum} />} />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                           <Bar dataKey="cotacoes" name="Cotações" fill="#3b82f6" radius={[4,4,0,0]} />
                           <Bar dataKey="osGeradas" name="Vendas Realizadas" fill="#8b5cf6" radius={[4,4,0,0]} />
@@ -1227,7 +1229,7 @@ export default function PerformanceComercial() {
                               }`}>
                                 <td className="py-2.5 px-3">
                                   <div className="flex items-center gap-2">
-                                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: chartColor(i) }} />
                                     <span className="text-slate-700">{r.label}</span>
                                     {isAtual && <Badge variant="secondary" className="text-[10px] py-0">atual</Badge>}
                                   </div>
@@ -1403,7 +1405,7 @@ export default function PerformanceComercial() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                       <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip content={<CustomTooltip />} />
+                      <Tooltip content={<ChartTooltip format={fmtNum} />} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Bar dataKey="cotacoes" name="Cotações" fill="#3b82f6" radius={[3,3,0,0]} />
                       <Bar dataKey="osGeradas" name="Vendas Realizadas" fill="#8b5cf6" radius={[3,3,0,0]} />
@@ -2068,7 +2070,7 @@ export default function PerformanceComercial() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="vendedor" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" interval={0} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip format={fmtBrl} />} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="valorOrc" name="R$ Orçado" fill="#94a3b8" radius={[3,3,0,0]} />
                   <Bar dataKey="valorOs" name="R$ Faturamento" fill="#22c55e" radius={[3,3,0,0]} />

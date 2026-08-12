@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { STATUS_COLORS } from "@/lib/chartColors";
+import ChartTooltip from "@/components/ChartTooltip";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -108,22 +109,6 @@ function Seta({ atual, anterior, label }: { atual: number | null; anterior: numb
       {Math.abs(diff).toFixed(1)}%
       {label && <span className="text-muted-foreground font-normal ml-0.5">{label}</span>}
     </span>
-  );
-}
-
-// Tooltip customizado do gráfico
-function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white border rounded-lg shadow-lg p-3 text-sm min-w-[180px]">
-      <div className="font-semibold mb-2">{label}</div>
-      {payload.map((p: any) => (
-        <div key={p.name} className="flex justify-between gap-4">
-          <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-medium">{fmtBRL(p.value)}</span>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -470,7 +455,7 @@ export default function Financeiro() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={fmtBRLShort} tick={{ fontSize: 11 }} width={75} />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<ChartTooltip format={fmtBRL} />} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="Faturamento" fill="#10b981" radius={[3, 3, 0, 0]} opacity={0.85} />
                 <Bar dataKey="Desp. Fixas" fill="#f87171" radius={[3, 3, 0, 0]} opacity={0.75} />
