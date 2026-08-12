@@ -5,17 +5,21 @@ Guia para agentes de IA (e humanos) trabalhando neste repositório.
 ## O que é este projeto
 
 Radrasys — sistema interno de gestão (logística, qualidade, PCP, comercial,
-financeiro, RH) construído sobre o template "Manus webdev fullstack"
-(ver `docs/webdev-template-guide.md` para as convenções originais do
+financeiro, RH) originado do template "Manus webdev fullstack", mas já sem
+nenhuma dependência do Forge (Manus) ou do Gemini — banco é Postgres, auth é
+Better Auth local-only, LLM é OpenAI, storage é UploadThing (ver
+`docs/webdev-template-guide.md` para as convenções originais do
 template — **cuidado**: esse doc ainda descreve o template original em
-MySQL/Manus OAuth "puro"; onde ele divergir do que está escrito aqui, este
-AGENTS.md vale, não ele).
+MySQL/Manus OAuth/Forge "puro"; onde ele divergir do que está escrito aqui,
+este AGENTS.md vale, não ele).
 
 Stack: React 19 + Tailwind 4 + Vite 7 no client (SPA servida pelo próprio
 Express); Express 4 + tRPC 11 no server (`superjson` como transformer —
 `Date`/`Map`/etc. atravessam o wire sem serialização manual); Drizzle ORM
 **sobre PostgreSQL (Neon)**, driver `pg`/`drizzle-orm/node-postgres`;
-autenticação própria via **Better Auth** (local-only, e-mail+senha).
+autenticação própria via **Better Auth** (local-only, e-mail+senha); LLM via
+**OpenAI** (`server/_core/llm.ts`); storage de arquivo via **UploadThing**
+(`server/db/storage.ts`).
 
 ⚠️ **Migração em andamento MySQL→PostgreSQL + auth própria (Better Auth) —
 Fases 1-3 concluídas, falta a Fase 5.** O banco já é Postgres de verdade e
@@ -205,17 +209,14 @@ nem mocks da camada de dados.
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias
   partes já não valem pra este repo, ver aviso na seção "O que é este
   projeto" acima.
-- `docs/sprint-saida-forge/` — plano de trabalho ativo pra tirar a
-  dependência do Forge (Manus) e do Gemini: LLM na OpenAI, storage no
-  UploadThing, notificação via alertas do próprio app, extração de texto
-  sem LLM, e limpeza final. **Formato diferente dos outros docs de sprint:
-  é uma pasta, com `README.md` (contexto + decisões + regras) e um arquivo
-  por fase.** Ao atacar uma fase, cole o `README.md` + o arquivo daquela
-  fase. Substitui e funde dois documentos anteriores
-  (`biblioteca-arquivos-extracao-sem-llm.md` e
-  `migracao-openai-uploadthing.md`), que mexiam no mesmo código. Fase 1
-  (`invokeLLM` → OpenAI, remoção do Gemini) concluída — confira
-  `git log`/`git status` pra saber se as demais já avançaram.
+- `docs/sprint-saida-forge/` — **sprint concluída**: tirou a dependência do
+  Forge (Manus) e do Gemini do repo (LLM na OpenAI, storage no UploadThing,
+  notificação via alertas do próprio app, extração de texto sem LLM, e
+  limpeza final dos módulos/envs/config residuais). **Formato diferente dos
+  outros docs de sprint: é uma pasta, com `README.md` (contexto + decisões)
+  e um arquivo por fase, cada fase concluída movida pra
+  `docs/sprint-saida-forge/complete/`.** Mantida como histórico — não é mais
+  plano ativo.
 - `docs/base-conhecimento-*.md`, `docs/tabela-precos-conteudo.md` —
   conteúdo/dados de negócio usados para popular features específicas (base
   de conhecimento do chat, tabela de preços), não documentação de
@@ -254,8 +255,9 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   do Drizzle). Não aplique sem antes conferir contra `drizzle/schema.ts`.
 - `npx tsc --noEmit` (rode assim, não `yarn check` — esse é o comando nativo
   do Yarn pra checar o lockfile, não o script `check` do `package.json`)
-  acusa **17 erros de tipo pré-existentes**, sem relação com a migração pra
-  Postgres/Better Auth: `client/src/pages/financeiro/Cargos.tsx`,
+  acusa **14 erros de tipo pré-existentes** (contagem varia um pouco entre
+  execuções — checado após a Fase 7 do `docs/sprint-saida-forge`), sem
+  relação com a migração pra Postgres/Better Auth ou com o Forge:
   `client/src/pages/operacoes/CargoseFuncoes.tsx`,
   `server/routers/curriculos.ts`, `server/routers/logistica-refactor.ts`
   (protótipo morto, ver item acima), `server/routers/performanceComercial.ts`,
@@ -263,6 +265,18 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (protótipo morto), `server/sync/sync-erp.ts`. São bugs do código de
   negócio, não da estrutura do projeto — não tente "corrigir" todos de uma
   vez numa tarefa não relacionada.
+- **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
+  o LLM já ser 100% OpenAI desde a Fase 1 do `docs/sprint-saida-forge`:
+  `geminiAnswer`/`geminiAnswerIsGeneral` (`server/routers.ts`,
+  `client/src/pages/operacoes/Conhecimento.tsx`), o enum
+  `z.enum(["gemini", "manual"])` em `server/routers.ts`, e textos "Powered by
+  Gemini"/"Gemini está analisando..." em
+  `client/src/pages/logistica/InsightsLogistica.tsx` e
+  `client/src/pages/operacoes/SugestoesConhecimento.tsx`. Não é integração
+  ativa (não chama SDK/API do Gemini) — é só nome/copy que ficou pra trás.
+  Fora do escopo da Fase 7 (que tratava só de módulos/env/config mortos do
+  Forge); renomear é tarefa separada, cuidado com o enum `"gemini"` que pode
+  estar persistido em dados existentes.
 
 ## Patches
 

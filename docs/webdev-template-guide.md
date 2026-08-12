@@ -5,6 +5,14 @@ description: Manus webdev fullstack (web-db-user) projects — the complete deve
 
 # Web App Template (tRPC + Manus Auth + Database)
 
+> ⚠️ **Este documento descreve o template original ("puro"), não o estado
+> atual deste repo.** Desde a migração pra Postgres/Better Auth e a saída do
+> Forge (Manus) e do Gemini (ver `AGENTS.md` e `docs/sprint-saida-forge/`),
+> as seções sobre **Manus OAuth**, **Forge** (LLM/storage/notificação/mapas
+> via proxy) e **MySQL** já não valem — o projeto usa Better Auth
+> local-only, OpenAI, UploadThing e PostgreSQL (Neon). Onde este guia
+> divergir do `AGENTS.md`, o `AGENTS.md` vale, não este documento.
+
 This template gives you a React 19 + Tailwind 4 + Express 4 + tRPC 11 stack with Manus OAuth already wired. Procedures are your contracts, types flow end to end, and authentication "just works".
 
 ---
