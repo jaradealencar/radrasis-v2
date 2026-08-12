@@ -25,6 +25,8 @@ type Cargo = {
   condicoes: string | null;
   imagemDivulgacaoUrl: string | null;
   imagemDivulgacaoKey: string | null;
+  roteiroEntrevista: string | null;
+  promptAnaliseIA: string | null;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: Date | string;
@@ -417,6 +419,8 @@ export default function CargoseFuncoes() {
       riscos: c.riscos ?? "",
       requisitos: c.requisitos ?? "",
       condicoes: c.condicoes ?? "",
+      imagemDivulgacaoUrl: c.imagemDivulgacaoUrl ?? "",
+      imagemDivulgacaoKey: c.imagemDivulgacaoKey ?? "",
     });
     setMode("edit");
   };

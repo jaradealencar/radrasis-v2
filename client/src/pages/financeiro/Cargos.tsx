@@ -9,7 +9,7 @@ import { ChevronDown, ChevronUp, Users } from "lucide-react";
 
 export default function Cargos() {
   const [expandedCargoId, setExpandedCargoId] = useState<number | null>(null);
-  const { data: cargos = [] } = trpc.cargosFuncoes.list.useQuery();
+  const { data: cargos = [] } = trpc.cargos.list.useQuery();
 
   const toggleExpand = (id: number) => {
     setExpandedCargoId(expandedCargoId === id ? null : id);
