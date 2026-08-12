@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   Target, Clock, AlertTriangle, DollarSign, TrendingUp,
@@ -637,20 +641,20 @@ function MetasProdutosTab() {
           )}
           {erpData && erpData.produtos.length > 0 && (
             <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-xs">
-                <thead><tr className="bg-muted/50">
-                  <th className="text-left px-3 py-2">Produto</th>
-                  <th className="text-left px-3 py-2">Código</th>
-                  <th className="text-left px-3 py-2">Categoria</th>
-                  <th className="px-3 py-2"></th>
-                </tr></thead>
-                <tbody>
+              <Table className="text-xs">
+                <TableHeader><TableRow className="bg-muted/50">
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Código</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead></TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
                   {erpData.produtos.slice(0, 20).map((p) => (
-                    <tr key={p.id} className="border-t hover:bg-muted/30">
-                      <td className="px-3 py-1.5 font-medium">{p.nome}</td>
-                      <td className="px-3 py-1.5 text-muted-foreground">{p.codigo}</td>
-                      <td className="px-3 py-1.5 text-muted-foreground">{p.categoria || "—"}</td>
-                      <td className="px-3 py-1.5">
+                    <TableRow key={p.id}>
+                      <TableCell className="py-1.5 font-medium">{p.nome}</TableCell>
+                      <TableCell className="py-1.5 text-muted-foreground">{p.codigo}</TableCell>
+                      <TableCell className="py-1.5 text-muted-foreground">{p.categoria || "—"}</TableCell>
+                      <TableCell className="py-1.5">
                         <Button
                           size="sm"
                           variant="outline"
@@ -659,11 +663,11 @@ function MetasProdutosTab() {
                         >
                           + Adicionar
                         </Button>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
@@ -697,24 +701,24 @@ function MetasProdutosTab() {
               <p className="text-xs mt-1">Busque um produto no ERP acima ou clique em "Adicionar Produto".</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead><tr className="border-b text-xs text-muted-foreground">
-                <th className="text-left py-2">Produto</th>
-                <th className="text-left py-2">Código</th>
-                <th className="text-right py-2">Meta %</th>
-                <th className="text-left py-2 pl-4">Observação</th>
-                <th className="py-2"></th>
-              </tr></thead>
-              <tbody>
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Produto</TableHead>
+                <TableHead>Código</TableHead>
+                <TableHead className="text-right">Meta %</TableHead>
+                <TableHead className="pl-4">Observação</TableHead>
+                <TableHead></TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
                 {metasList.map((m) => (
-                  <tr key={m.id} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="py-2 font-medium">{m.nomeProduto}</td>
-                    <td className="py-2 text-muted-foreground text-xs">{m.codigoProduto || "—"}</td>
-                    <td className="py-2 text-right">
+                  <TableRow key={m.id}>
+                    <TableCell className="font-medium">{m.nomeProduto}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{m.codigoProduto || "—"}</TableCell>
+                    <TableCell className="text-right">
                       <Badge variant="outline" className="font-mono">{parseFloat(String(m.metaParticipacaoPct)).toFixed(1)}%</Badge>
-                    </td>
-                    <td className="py-2 pl-4 text-xs text-muted-foreground max-w-[200px] truncate">{m.observacao || "—"}</td>
-                    <td className="py-2">
+                    </TableCell>
+                    <TableCell className="pl-4 text-xs text-muted-foreground max-w-[200px] truncate">{m.observacao || "—"}</TableCell>
+                    <TableCell>
                       <div className="flex gap-1 justify-end">
                         <Button
                           size="sm" variant="ghost" className="h-7 w-7 p-0"
@@ -738,11 +742,11 @@ function MetasProdutosTab() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

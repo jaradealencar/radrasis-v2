@@ -2,6 +2,10 @@ import { useState } from "react";
 import { FileText, Download, Eye, Users, TrendingUp, Calendar, Filter } from "lucide-react";
 import DashboardLayout from "../../components/DashboardLayout";
 import { trpc } from "../../lib/trpc";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 
 function formatDate(d: Date | string | null | undefined) {
   if (!d) return "—";
@@ -110,44 +114,44 @@ export default function PopRelatorio() {
               <p className="text-gray-400 text-xs mt-1">Os acessos serão registrados automaticamente quando os usuários abrirem ou baixarem POPs.</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Título</th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead>Código</TableHead>
+                  <TableHead>Título</TableHead>
+                  <TableHead className="text-center">
                     <span className="flex items-center justify-center gap-1"><Eye size={11} /> Visualizações</span>
-                  </th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  </TableHead>
+                  <TableHead className="text-center">
                     <span className="flex items-center justify-center gap-1"><Download size={11} /> Downloads</span>
-                  </th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Último Acesso</th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                  <TableHead className="text-center">Total</TableHead>
+                  <TableHead>Último Acesso</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {(estatisticas ?? []).map((row: EstatRow, i: number) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4">
+                  <TableRow key={i}>
+                    <TableCell>
                       <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">{row.popCode}</span>
-                    </td>
-                    <td className="py-3 px-4 text-gray-700 font-medium">{row.popTitle}</td>
-                    <td className="py-3 px-4 text-center">
+                    </TableCell>
+                    <TableCell className="text-gray-700 font-medium">{row.popTitle}</TableCell>
+                    <TableCell className="text-center">
                       <span className="inline-flex items-center gap-1 text-purple-700 font-semibold">
                         <Eye size={12} /> {Number(row.totalVisualizacoes ?? 0)}
                       </span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
+                    </TableCell>
+                    <TableCell className="text-center">
                       <span className="inline-flex items-center gap-1 text-green-700 font-semibold">
                         <Download size={12} /> {Number(row.totalDownloads ?? 0)}
                       </span>
-                    </td>
-                    <td className="py-3 px-4 text-center font-bold text-gray-800">{Number(row.total ?? 0)}</td>
-                    <td className="py-3 px-4 text-xs text-gray-500">{formatDate(row.ultimoAcesso)}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-gray-800">{Number(row.total ?? 0)}</TableCell>
+                    <TableCell className="text-xs text-gray-500">{formatDate(row.ultimoAcesso)}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </div>
       )}
@@ -212,28 +216,28 @@ export default function PopRelatorio() {
                 <p className="text-gray-500 text-sm">Nenhum acesso encontrado com os filtros selecionados.</p>
               </div>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data/Hora</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Usuário</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">POP</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead>Data/Hora</TableHead>
+                    <TableHead>Usuário</TableHead>
+                    <TableHead>POP</TableHead>
+                    <TableHead className="text-center">Tipo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {(acessos ?? []).map((row: AcessoRow, i: number) => (
-                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="py-2.5 px-4 text-xs text-gray-500 whitespace-nowrap">{formatDate(row.createdAt)}</td>
-                      <td className="py-2.5 px-4">
+                    <TableRow key={i}>
+                      <TableCell className="text-xs text-gray-500 whitespace-nowrap">{formatDate(row.createdAt)}</TableCell>
+                      <TableCell>
                         <div className="font-medium text-gray-800 text-sm">{row.usuarioNome}</div>
 
-                      </td>
-                      <td className="py-2.5 px-4">
+                      </TableCell>
+                      <TableCell>
                         <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 mr-2">{row.popCode}</span>
                         <span className="text-sm text-gray-700">{row.popTitle}</span>
-                      </td>
-                      <td className="py-2.5 px-4 text-center">
+                      </TableCell>
+                      <TableCell className="text-center">
                         {row.tipo === "download" ? (
                           <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-green-50 text-green-700">
                             <Download size={10} /> Download
@@ -243,11 +247,11 @@ export default function PopRelatorio() {
                             <Eye size={10} /> Visualização
                           </span>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           </div>
         </>

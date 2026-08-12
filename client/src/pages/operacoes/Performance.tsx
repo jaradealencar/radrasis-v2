@@ -12,6 +12,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
+  Table, TableHeader, TableBody, TableFooter,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
+import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceLine, Cell, PieChart, Pie,
 } from "recharts";
@@ -787,37 +791,37 @@ function GraficoEvolucaoProdutos() {
 
           {showTabela && (
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-muted/50">
-                    <th className="text-left px-3 py-2 font-medium">Produto</th>
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Produto</TableHead>
                     {mesesLabels.map(l => (
-                      <th key={l} className="text-right px-3 py-2 font-medium">{l}</th>
+                      <TableHead key={l} className="text-right">{l}</TableHead>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {tabela.map((row, idx) => (
-                    <tr key={idx} className="border-t hover:bg-muted/30">
-                      <td className="px-3 py-1.5 font-medium max-w-[200px] truncate">
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium max-w-[200px] truncate">
                         <span
                           className="inline-block w-2.5 h-2.5 rounded-full mr-1.5"
                           style={{ backgroundColor: PROD_COLORS[idx % PROD_COLORS.length] }}
                         />
                         {row.produto}
-                      </td>
+                      </TableCell>
                       {mesesLabels.map(l => (
-                        <td key={l} className="text-right px-3 py-1.5 tabular-nums">
+                        <TableCell key={l} className="text-right tabular-nums">
                           {viewMode === "pct"
                             ? `${row[l] ?? 0}%`
                             : `R$ ${Number(row[`${l}_valor`] ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`
                           }
-                        </td>
+                        </TableCell>
                       ))}
-                    </tr>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </>
@@ -882,28 +886,28 @@ function PainelAbcProdutos({ mes, ano }: { mes: number; ano: number }) {
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-3">
               <p className="text-xs text-muted-foreground mb-3">Produtos que representam até 80% do faturamento — foco principal.</p>
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-muted-foreground">
-                  <th className="text-left py-1 pr-2">#</th>
-                  <th className="text-left py-1">Produto</th>
-                  <th className="text-right py-1 px-2">Qtd</th>
-                  <th className="text-right py-1 px-2">Total</th>
-                  <th className="text-right py-1 px-2">%</th>
-                  <th className="text-right py-1">% Acum.</th>
-                </tr></thead>
-                <tbody>
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="pr-2">#</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-right">Qtd</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">%</TableHead>
+                  <TableHead className="text-right">% Acum.</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
                   {classA.map((item, idx) => (
-                    <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="py-1.5 pr-2 text-muted-foreground text-xs">{idx + 1}</td>
-                      <td className="py-1.5 font-medium max-w-[200px] truncate">{item.nome}</td>
-                      <td className="py-1.5 text-right px-2 text-muted-foreground">{item.count}</td>
-                      <td className="py-1.5 text-right px-2 font-medium">{fmtBRL(item.total)}</td>
-                      <td className="py-1.5 text-right px-2 text-green-700">{item.pct}%</td>
-                      <td className="py-1.5 text-right text-muted-foreground">{item.pctAcum}%</td>
-                    </tr>
+                    <TableRow key={idx}>
+                      <TableCell className="pr-2 text-muted-foreground text-xs">{idx + 1}</TableCell>
+                      <TableCell className="font-medium max-w-[200px] truncate">{item.nome}</TableCell>
+                      <TableCell className="text-right px-2 text-muted-foreground">{item.count}</TableCell>
+                      <TableCell className="text-right px-2 font-medium">{fmtBRL(item.total)}</TableCell>
+                      <TableCell className="text-right px-2 text-green-700">{item.pct}%</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{item.pctAcum}%</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </AccordionContent>
           </AccordionItem>
 
@@ -918,28 +922,28 @@ function PainelAbcProdutos({ mes, ano }: { mes: number; ano: number }) {
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-3">
               <p className="text-xs text-muted-foreground mb-3">Produtos que representam de 80% a 95% do faturamento acumulado.</p>
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-muted-foreground">
-                  <th className="text-left py-1 pr-2">#</th>
-                  <th className="text-left py-1">Produto</th>
-                  <th className="text-right py-1 px-2">Qtd</th>
-                  <th className="text-right py-1 px-2">Total</th>
-                  <th className="text-right py-1 px-2">%</th>
-                  <th className="text-right py-1">% Acum.</th>
-                </tr></thead>
-                <tbody>
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="pr-2">#</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-right">Qtd</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">%</TableHead>
+                  <TableHead className="text-right">% Acum.</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
                   {classB.map((item, idx) => (
-                    <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="py-1.5 pr-2 text-muted-foreground text-xs">{classA.length + idx + 1}</td>
-                      <td className="py-1.5 font-medium max-w-[200px] truncate">{item.nome}</td>
-                      <td className="py-1.5 text-right px-2 text-muted-foreground">{item.count}</td>
-                      <td className="py-1.5 text-right px-2 font-medium">{fmtBRL(item.total)}</td>
-                      <td className="py-1.5 text-right px-2 text-yellow-700">{item.pct}%</td>
-                      <td className="py-1.5 text-right text-muted-foreground">{item.pctAcum}%</td>
-                    </tr>
+                    <TableRow key={idx}>
+                      <TableCell className="pr-2 text-muted-foreground text-xs">{classA.length + idx + 1}</TableCell>
+                      <TableCell className="font-medium max-w-[200px] truncate">{item.nome}</TableCell>
+                      <TableCell className="text-right px-2 text-muted-foreground">{item.count}</TableCell>
+                      <TableCell className="text-right px-2 font-medium">{fmtBRL(item.total)}</TableCell>
+                      <TableCell className="text-right px-2 text-yellow-700">{item.pct}%</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{item.pctAcum}%</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </AccordionContent>
           </AccordionItem>
 
@@ -954,28 +958,28 @@ function PainelAbcProdutos({ mes, ano }: { mes: number; ano: number }) {
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-3">
               <p className="text-xs text-muted-foreground mb-3">Produtos que representam os últimos 5% do faturamento acumulado.</p>
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-muted-foreground">
-                  <th className="text-left py-1 pr-2">#</th>
-                  <th className="text-left py-1">Produto</th>
-                  <th className="text-right py-1 px-2">Qtd</th>
-                  <th className="text-right py-1 px-2">Total</th>
-                  <th className="text-right py-1 px-2">%</th>
-                  <th className="text-right py-1">% Acum.</th>
-                </tr></thead>
-                <tbody>
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="pr-2">#</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-right">Qtd</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">%</TableHead>
+                  <TableHead className="text-right">% Acum.</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
                   {classC.map((item, idx) => (
-                    <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="py-1.5 pr-2 text-muted-foreground text-xs">{classA.length + classB.length + idx + 1}</td>
-                      <td className="py-1.5 font-medium max-w-[200px] truncate">{item.nome}</td>
-                      <td className="py-1.5 text-right px-2 text-muted-foreground">{item.count}</td>
-                      <td className="py-1.5 text-right px-2 font-medium">{fmtBRL(item.total)}</td>
-                      <td className="py-1.5 text-right px-2 text-slate-500">{item.pct}%</td>
-                      <td className="py-1.5 text-right text-muted-foreground">{item.pctAcum}%</td>
-                    </tr>
+                    <TableRow key={idx}>
+                      <TableCell className="pr-2 text-muted-foreground text-xs">{classA.length + classB.length + idx + 1}</TableCell>
+                      <TableCell className="font-medium max-w-[200px] truncate">{item.nome}</TableCell>
+                      <TableCell className="text-right px-2 text-muted-foreground">{item.count}</TableCell>
+                      <TableCell className="text-right px-2 font-medium">{fmtBRL(item.total)}</TableCell>
+                      <TableCell className="text-right px-2 text-slate-500">{item.pct}%</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{item.pctAcum}%</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -1019,9 +1023,9 @@ function PainelAbcClientes({ mes, ano }: { mes: number; ano: number }) {
     const temRetrabalho = (retrabalhosPorCliente[item.nome] ?? 0) > 0;
     const temAtraso = (atrasosPorCliente[item.nome] ?? 0) > 0;
     return (
-      <tr className="border-b last:border-0 hover:bg-muted/30">
-        <td className="py-1.5 pr-2 text-muted-foreground text-xs">{rank}</td>
-        <td className="py-1.5 max-w-[180px]">
+      <TableRow>
+        <TableCell className="pr-2 text-muted-foreground text-xs">{rank}</TableCell>
+        <TableCell className="max-w-[180px]">
           <div className="font-medium truncate">{item.nome}</div>
           <div className="flex gap-1 mt-0.5">
             {temRetrabalho && (
@@ -1035,12 +1039,12 @@ function PainelAbcClientes({ mes, ano }: { mes: number; ano: number }) {
               </span>
             )}
           </div>
-        </td>
-        <td className="py-1.5 text-right px-2 text-muted-foreground">{item.count}</td>
-        <td className="py-1.5 text-right px-2 font-medium">{fmtBRL(item.total)}</td>
-        <td className="py-1.5 text-right px-2">{item.pct}%</td>
-        <td className="py-1.5 text-right text-muted-foreground">{item.pctAcum}%</td>
-      </tr>
+        </TableCell>
+        <TableCell className="text-right px-2 text-muted-foreground">{item.count}</TableCell>
+        <TableCell className="text-right px-2 font-medium">{fmtBRL(item.total)}</TableCell>
+        <TableCell className="text-right px-2">{item.pct}%</TableCell>
+        <TableCell className="text-right text-muted-foreground">{item.pctAcum}%</TableCell>
+      </TableRow>
     );
   };
 
@@ -1079,17 +1083,17 @@ function PainelAbcClientes({ mes, ano }: { mes: number; ano: number }) {
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-3">
               <p className="text-xs text-muted-foreground mb-3">Clientes que representam até 80% do faturamento — relacionamento prioritário.</p>
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-muted-foreground">
-                  <th className="text-left py-1 pr-2">#</th>
-                  <th className="text-left py-1">Cliente</th>
-                  <th className="text-right py-1 px-2">OS</th>
-                  <th className="text-right py-1 px-2">Total</th>
-                  <th className="text-right py-1 px-2">%</th>
-                  <th className="text-right py-1">% Acum.</th>
-                </tr></thead>
-                <tbody>{classA.map((item, idx) => <ClienteRow key={idx} item={item} rank={idx + 1} />)}</tbody>
-              </table>
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="pr-2">#</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-right">OS</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">%</TableHead>
+                  <TableHead className="text-right">% Acum.</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>{classA.map((item, idx) => <ClienteRow key={idx} item={item} rank={idx + 1} />)}</TableBody>
+              </Table>
             </AccordionContent>
           </AccordionItem>
 
@@ -1103,17 +1107,17 @@ function PainelAbcClientes({ mes, ano }: { mes: number; ano: number }) {
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-3">
               <p className="text-xs text-muted-foreground mb-3">Clientes que representam de 80% a 95% do faturamento acumulado.</p>
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-muted-foreground">
-                  <th className="text-left py-1 pr-2">#</th>
-                  <th className="text-left py-1">Cliente</th>
-                  <th className="text-right py-1 px-2">OS</th>
-                  <th className="text-right py-1 px-2">Total</th>
-                  <th className="text-right py-1 px-2">%</th>
-                  <th className="text-right py-1">% Acum.</th>
-                </tr></thead>
-                <tbody>{classB.map((item, idx) => <ClienteRow key={idx} item={item} rank={classA.length + idx + 1} />)}</tbody>
-              </table>
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="pr-2">#</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-right">OS</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">%</TableHead>
+                  <TableHead className="text-right">% Acum.</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>{classB.map((item, idx) => <ClienteRow key={idx} item={item} rank={classA.length + idx + 1} />)}</TableBody>
+              </Table>
             </AccordionContent>
           </AccordionItem>
 
@@ -1127,17 +1131,17 @@ function PainelAbcClientes({ mes, ano }: { mes: number; ano: number }) {
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-3">
               <p className="text-xs text-muted-foreground mb-3">Clientes que representam os últimos 5% do faturamento acumulado.</p>
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-muted-foreground">
-                  <th className="text-left py-1 pr-2">#</th>
-                  <th className="text-left py-1">Cliente</th>
-                  <th className="text-right py-1 px-2">OS</th>
-                  <th className="text-right py-1 px-2">Total</th>
-                  <th className="text-right py-1 px-2">%</th>
-                  <th className="text-right py-1">% Acum.</th>
-                </tr></thead>
-                <tbody>{classC.map((item, idx) => <ClienteRow key={idx} item={item} rank={classA.length + classB.length + idx + 1} />)}</tbody>
-              </table>
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead className="pr-2">#</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-right">OS</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">%</TableHead>
+                  <TableHead className="text-right">% Acum.</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>{classC.map((item, idx) => <ClienteRow key={idx} item={item} rank={classA.length + classB.length + idx + 1} />)}</TableBody>
+              </Table>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -1298,21 +1302,21 @@ function PainelComparacao({ rows }: { rows: PerformanceRow[] }) {
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Comparativo de Indicadores</CardTitle></CardHeader>
             <CardContent className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Indicador</th>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Indicador</TableHead>
                     {selecionados.map((r, i) => (
-                      <th key={r.id} className="text-right py-2 px-3 font-medium" style={{ color: chartColor(i) }}>
+                      <TableHead key={r.id} className="text-right" style={{ color: chartColor(i) }}>
                         {MESES[r.mes - 1].slice(0, 3)} {r.ano}
-                      </th>
+                      </TableHead>
                     ))}
                     {selecionados.length === 2 && (
-                      <th className="text-right py-2 px-3 font-medium text-muted-foreground">Variação</th>
+                      <TableHead className="text-right">Variação</TableHead>
                     )}
-                  </tr>
-                </thead>
-                <tbody>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {indicadores.map(ind => {
                     const nums = selecionados.map(r => ind.getNum(r));
                     const variacao = selecionados.length === 2 && nums[0] > 0
@@ -1322,20 +1326,20 @@ function PainelComparacao({ rows }: { rows: PerformanceRow[] }) {
                       ? (ind.higherIsBetter ? variacao >= 0 : variacao <= 0)
                       : null;
                     return (
-                      <tr key={ind.label} className="border-b hover:bg-muted/30">
-                        <td className="py-2 pr-4">
+                      <TableRow key={ind.label}>
+                        <TableCell>
                           <div className="flex items-center gap-2">
                             <ind.icon className="w-3.5 h-3.5 text-muted-foreground" />
                             <span className="font-medium">{ind.label}</span>
                           </div>
-                        </td>
+                        </TableCell>
                         {selecionados.map((r, i) => (
-                          <td key={r.id} className="text-right py-2 px-3 font-mono text-sm">
+                          <TableCell key={r.id} className="text-right font-mono text-sm">
                             {ind.getValue(r)}
-                          </td>
+                          </TableCell>
                         ))}
                         {selecionados.length === 2 && (
-                          <td className={`text-right py-2 px-3 text-sm font-semibold ${
+                          <TableCell className={`text-right text-sm font-semibold ${
                             variacao == null ? "text-muted-foreground" :
                             variacaoOk ? "text-green-600" : "text-red-600"
                           }`}>
@@ -1345,13 +1349,13 @@ function PainelComparacao({ rows }: { rows: PerformanceRow[] }) {
                                 {variacao > 0 ? "+" : ""}{fmt(variacao, 1)}%
                               </span>
                             ) : "—"}
-                          </td>
+                          </TableCell>
                         )}
-                      </tr>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
 
@@ -1834,19 +1838,19 @@ export default function Performance() {
             <Card>
               <CardHeader><CardTitle className="text-base">Tabela Comparativa</CardTitle></CardHeader>
               <CardContent className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Mês</th>
-                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Faturamento</th>
-                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">% Meta Fat.</th>
-                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Ticket Médio</th>
-                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">OS Geradas</th>
-                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">OS Expedidas</th>
-                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Prod. Solda</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mês</TableHead>
+                      <TableHead className="text-right">Faturamento</TableHead>
+                      <TableHead className="text-right">% Meta Fat.</TableHead>
+                      <TableHead className="text-right">Ticket Médio</TableHead>
+                      <TableHead className="text-right">OS Geradas</TableHead>
+                      <TableHead className="text-right">OS Expedidas</TableHead>
+                      <TableHead className="text-right">Prod. Solda</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {rows.map(r => {
                       const fat = n(r.faturamentoRealizado);
                       const metaF = n(r.metaFaturamento) || metaFatConfig;
@@ -1854,21 +1858,21 @@ export default function Performance() {
                       const ped = n((r as any).totalPedidos) || n(r.osGeradas);
                       const ticket = fat > 0 && ped > 0 ? fat / ped : null;
                       return (
-                        <tr key={r.id} className="border-b hover:bg-muted/30 cursor-pointer" onClick={() => handleEdit(r)}>
-                          <td className="py-2 pr-4 font-medium">{MESES[r.mes - 1]} {r.ano}</td>
-                          <td className="text-right py-2 px-2">{fat > 0 ? fmtBRL(fat) : "—"}</td>
-                          <td className={`text-right py-2 px-2 font-medium ${pct == null ? "" : pct >= 100 ? "text-green-600" : "text-red-600"}`}>
+                        <TableRow key={r.id} className="cursor-pointer" onClick={() => handleEdit(r)}>
+                          <TableCell className="font-medium">{MESES[r.mes - 1]} {r.ano}</TableCell>
+                          <TableCell className="text-right">{fat > 0 ? fmtBRL(fat) : "—"}</TableCell>
+                          <TableCell className={`text-right font-medium ${pct == null ? "" : pct >= 100 ? "text-green-600" : "text-red-600"}`}>
                             {pct != null ? `${fmt(pct, 1)}%` : "—"}
-                          </td>
-                          <td className="text-right py-2 px-2 text-teal-700 font-medium">{ticket != null ? fmtBRL(ticket) : "—"}</td>
-                          <td className="text-right py-2 px-2">{r.osGeradas ?? (r as any).totalPedidos ?? "—"}</td>
-                          <td className="text-right py-2 px-2">{r.osExpedicao ?? "—"}</td>
-                          <td className="text-right py-2 px-2">{r.producaoInternaSolda ? `${r.producaoInternaSolda}m` : "—"}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell className="text-right text-teal-700 font-medium">{ticket != null ? fmtBRL(ticket) : "—"}</TableCell>
+                          <TableCell className="text-right">{r.osGeradas ?? (r as any).totalPedidos ?? "—"}</TableCell>
+                          <TableCell className="text-right">{r.osExpedicao ?? "—"}</TableCell>
+                          <TableCell className="text-right">{r.producaoInternaSolda ? `${r.producaoInternaSolda}m` : "—"}</TableCell>
+                        </TableRow>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>

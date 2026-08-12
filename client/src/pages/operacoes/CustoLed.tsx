@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Table, TableHeader, TableBody,
+  TableRow, TableHead, TableCell,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   TrendingUp, TrendingDown, DollarSign, Wrench, Users, BarChart3,
@@ -376,27 +380,26 @@ function CustoLedTab() {
           {tipos.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-4">Nenhum tipo de LED cadastrado. Clique em "Novo Tipo" para começar.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Nome</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Descrição</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Custo Unit.</th>
-                    <th className="text-center py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Unidade</th>
-                    <th className="text-center py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead className="text-right">Custo Unit.</TableHead>
+                    <TableHead className="text-center">Unidade</TableHead>
+                    <TableHead className="text-center">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {tipos.map(t => (
-                    <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                      <td className="py-2 px-3 font-medium text-slate-800">{t.nome}</td>
-                      <td className="py-2 px-3 text-slate-500">{t.descricao || "—"}</td>
-                      <td className="py-2 px-3 text-right font-semibold text-blue-700">{fmtR(parseFloat(String(t.custoUnitario)))}</td>
-                      <td className="py-2 px-3 text-center">
+                    <TableRow key={t.id}>
+                      <TableCell className="font-medium text-slate-800">{t.nome}</TableCell>
+                      <TableCell className="text-slate-500">{t.descricao || "—"}</TableCell>
+                      <TableCell className="text-right font-semibold text-blue-700">{fmtR(parseFloat(String(t.custoUnitario)))}</TableCell>
+                      <TableCell className="text-center">
                         <Badge variant="outline" className="text-xs">{t.unidade}</Badge>
-                      </td>
-                      <td className="py-2 px-3 text-center">
+                      </TableCell>
+                      <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1">
                           <Button size="sm" variant="ghost" onClick={() => openEditTipo(t)} className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600">
                             <Pencil size={13} />
@@ -405,12 +408,11 @@ function CustoLedTab() {
                             <Trash2 size={13} />
                           </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>
@@ -446,27 +448,26 @@ function CustoLedTab() {
                 : `Nenhum lançamento em ${MESES.find(m => m.num === mes)?.label} ${ano}. Clique em "Novo Lançamento" para adicionar.`}
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">OS</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tipo LED</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Qtd Prevista</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Custo Previsto</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Qtd Efetiva</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Custo Efetivo</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Resultado</th>
-                    <th className="text-center py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>OS</TableHead>
+                    <TableHead>Tipo LED</TableHead>
+                    <TableHead className="text-right">Qtd Prevista</TableHead>
+                    <TableHead className="text-right">Custo Previsto</TableHead>
+                    <TableHead className="text-right">Qtd Efetiva</TableHead>
+                    <TableHead className="text-right">Custo Efetivo</TableHead>
+                    <TableHead className="text-right">Resultado</TableHead>
+                    <TableHead className="text-center">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {lancamentos.map(l => {
                     const resultado = l.diferenca;
                     return (
-                      <tr key={l.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="py-2 px-3 font-mono font-semibold text-slate-800">{l.os}</td>
-                        <td className="py-2 px-3 text-slate-600">
+                      <TableRow key={l.id}>
+                        <TableCell className="font-mono font-semibold text-slate-800">{l.os}</TableCell>
+                        <TableCell className="text-slate-600">
                           <span>{l.tipoNome}</span>
                           {l.isMistura && (
                             <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-amber-600 font-medium">
@@ -474,28 +475,28 @@ function CustoLedTab() {
                               <span className="bg-amber-50 border border-amber-200 rounded px-1">{l.tipoEfetivoNome}</span>
                             </span>
                           )}
-                        </td>
-                        <td className="py-2 px-3 text-right text-slate-700">{fmt(parseFloat(String(l.qtdPrevista)), 0)}</td>
-                        <td className="py-2 px-3 text-right font-medium text-slate-700">{fmtR(l.custoPrevisto)}</td>
-                        <td className="py-2 px-3 text-right">
+                        </TableCell>
+                        <TableCell className="text-right text-slate-700">{fmt(parseFloat(String(l.qtdPrevista)), 0)}</TableCell>
+                        <TableCell className="text-right font-medium text-slate-700">{fmtR(l.custoPrevisto)}</TableCell>
+                        <TableCell className="text-right">
                           {l.qtdEfetiva != null
                             ? <span className="text-slate-700">{fmt(parseFloat(String(l.qtdEfetiva)), 0)}</span>
                             : <span className="text-slate-300 italic text-xs">—</span>}
-                        </td>
-                        <td className="py-2 px-3 text-right font-medium">
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
                           {l.custoEfetivo != null
                             ? <span className="text-slate-700">{fmtR(l.custoEfetivo)}</span>
                             : <span className="text-slate-300 italic text-xs">—</span>}
-                        </td>
-                        <td className="py-2 px-3 text-right">
+                        </TableCell>
+                        <TableCell className="text-right">
                           {resultado != null ? (
                             <span className={`font-bold flex items-center justify-end gap-1 ${resultado <= 0 ? "text-green-600" : "text-red-600"}`}>
                               {resultado <= 0 ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
                               {resultado <= 0 ? "−" : "+"}{fmtR(Math.abs(resultado))}
                             </span>
                           ) : <span className="text-slate-300 italic text-xs">—</span>}
-                        </td>
-                        <td className="py-2 px-3 text-center">
+                        </TableCell>
+                        <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-1">
                             <Button size="sm" variant="ghost" onClick={() => openEditLanc(l)} className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600">
                               <Pencil size={13} />
@@ -504,13 +505,12 @@ function CustoLedTab() {
                               <Trash2 size={13} />
                             </Button>
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
           )}
         </CardContent>
       </Card>
