@@ -57,6 +57,13 @@
       "when": 1786538037060,
       "tag": "0007_gifted_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786540123952,
+      "tag": "0008_mixed_pestilence",
+      "breakpoints": true
     }
   ]
 }

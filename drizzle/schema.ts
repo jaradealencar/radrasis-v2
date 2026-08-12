@@ -44,9 +44,6 @@ export const clienteOverrideStatusEnum = pgEnum("cliente_override_status", ["rec
 export const statusValidacaoEnum = pgEnum("status_validacao", ["pendente", "validado", "corrigido_excel"]);
 export const turnoEnum = pgEnum("turno", ["manha", "tarde", "noite"]);
 export const analiseCurriculoStatusEnum = pgEnum("analise_curriculo_status", ["pendente", "analisando", "concluido", "erro"]);
-export const producaoStatusGeralEnum = pgEnum("producao_status_geral", ["nao_iniciado", "em_andamento", "concluido", "atrasado"]);
-export const producaoSetorStatusEnum = pgEnum("producao_setor_status", ["nao_iniciado", "em_andamento", "concluido", "atrasado", "bloqueado"]);
-export const producaoAlertaTipoEnum = pgEnum("producao_alerta_tipo", ["em_risco", "atrasado", "bloqueado", "dependencia_nao_concluida"]);
 export const syncStatusEnum = pgEnum("sync_status", ["SUCESSO", "ERRO", "PENDENTE"]);
 // Enums das 13 tabelas que não estavam declaradas no schema (existem no banco real)
 export const clienteCadastroStatusEnum = pgEnum("cliente_cadastro_status", ["ativo", "inativo", "prospect"]);
@@ -1641,104 +1638,6 @@ export const analiseCurriculos = pgTable("analise_curriculos", {
 export type AnaliseCurriculo = typeof analiseCurriculos.$inferSelect;
 export type InsertAnaliseCurriculo = typeof analiseCurriculos.$inferInsert;
 
-// ─── PCP: Programa de Controle de Produção ──────────────────────────────────────
-
-export const feriados = pgTable("feriados", {
-  id: serial("id").primaryKey(),
-  data: date("data", { mode: "date" }).notNull().unique(),
-  descricao: varchar("descricao", { length: 128 }).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-export type Feriado = typeof feriados.$inferSelect;
-export type InsertFeriado = typeof feriados.$inferInsert;
-
-export const motivosAtraso = pgTable("motivos_atraso", {
-  id: serial("id").primaryKey(),
-  motivo: varchar("motivo", { length: 256 }).notNull().unique(),
-  ativo: boolean("ativo").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type MotivoAtraso = typeof motivosAtraso.$inferSelect;
-export type InsertMotivoAtraso = typeof motivosAtraso.$inferInsert;
-
-// Ordens de Produção (espelhadas do MubiSys)
-export const producaoOrdens = pgTable("producao_ordens", {
-  id: serial("id").primaryKey(),
-  osNumero: varchar("osNumero", { length: 32 }).notNull().unique(),
-  clienteNome: varchar("clienteNome", { length: 256 }).notNull(),
-  clienteId: varchar("clienteId", { length: 64 }),
-  descricaoPedido: text("descricaoPedido"),
-  dataEntrada: date("dataEntrada", { mode: "date" }).notNull(),
-  dataPrazo: date("dataPrazo", { mode: "date" }).notNull(),
-  diasUteisTotais: integer("diasUteisTotais").notNull(),
-  statusGeral: producaoStatusGeralEnum("statusGeral").default("nao_iniciado").notNull(),
-  temPintura: boolean("temPintura").default(false).notNull(),
-  temPvcExpandido: boolean("temPvcExpandido").default(false).notNull(),
-  temAcrilico: boolean("temAcrilico").default(false).notNull(),
-  temGalvanizado: boolean("temGalvanizado").default(false).notNull(),
-  temInox: boolean("temInox").default(false).notNull(),
-  temPerfil: boolean("temPerfil").default(false).notNull(),
-  temLed: boolean("temLed").default(false).notNull(),
-  temAdesivo: boolean("temAdesivo").default(false).notNull(),
-  temGabarito: boolean("temGabarito").default(false).notNull(),
-  criadoPor: varchar("criadoPor", { length: 128 }),
-  criadoEm: timestamp("criadoEm").defaultNow().notNull(),
-  atualizadoEm: timestamp("atualizadoEm").defaultNow().notNull(),
-});
-export type ProducaoOrdem = typeof producaoOrdens.$inferSelect;
-export type InsertProducaoOrdem = typeof producaoOrdens.$inferInsert;
-
-// Setores de Produção (um por ordem)
-export const producaoSetores = pgTable("producao_setores", {
-  id: serial("id").primaryKey(),
-  ordemId: integer("ordemId").notNull().references(() => producaoOrdens.id, { onDelete: "cascade" }),
-  setorNome: varchar("setorNome", { length: 128 }).notNull(),
-  sequencia: integer("sequencia").notNull(),
-  status: producaoSetorStatusEnum("status").default("nao_iniciado").notNull(),
-  diasAlocados: integer("diasAlocados").notNull(),
-  dataInicio: date("dataInicio", { mode: "date" }),
-  dataFim: date("dataFim", { mode: "date" }),
-  dataFimPrevista: date("dataFimPrevista", { mode: "date" }).notNull(),
-  emRisco: boolean("emRisco").default(false).notNull(),
-  dependeDe: varchar("dependeDe", { length: 256 }),
-  atualizadoEm: timestamp("atualizadoEm").defaultNow().notNull(),
-});
-export type ProducaoSetor = typeof producaoSetores.$inferSelect;
-export type InsertProducaoSetor = typeof producaoSetores.$inferInsert;
-
-// Alertas de Produção
-export const producaoAlertas = pgTable("producao_alertas", {
-  id: serial("id").primaryKey(),
-  ordemId: integer("ordemId").notNull().references(() => producaoOrdens.id, { onDelete: "cascade" }),
-  setorId: integer("setorId").references(() => producaoSetores.id, { onDelete: "cascade" }),
-  tipoAlerta: producaoAlertaTipoEnum("tipoAlerta").notNull(),
-  motivo: varchar("motivo", { length: 256 }),
-  motivoAtrasoId: integer("motivoAtrasoId").references(() => motivosAtraso.id),
-  descricao: text("descricao"),
-  resolvido: boolean("resolvido").default(false).notNull(),
-  resolvidoEm: timestamp("resolvidoEm"),
-  criadoEm: timestamp("criadoEm").defaultNow().notNull(),
-  atualizadoEm: timestamp("atualizadoEm").defaultNow().notNull(),
-});
-export type ProducaoAlerta = typeof producaoAlertas.$inferSelect;
-export type InsertProducaoAlerta = typeof producaoAlertas.$inferInsert;
-
-// Histórico de Alterações de Prazos (auditoria)
-export const producaoHistoricoAltracoes = pgTable("producao_historico_alteracoes", {
-  id: serial("id").primaryKey(),
-  ordemId: integer("ordemId").notNull().references(() => producaoOrdens.id, { onDelete: "cascade" }),
-  setorId: integer("setorId").references(() => producaoSetores.id, { onDelete: "cascade" }),
-  tipoAlteracao: varchar("tipoAlteracao", { length: 128 }).notNull(),
-  valorAnterior: text("valorAnterior"),
-  valorNovo: text("valorNovo"),
-  motivo: text("motivo"),
-  alteradoPor: varchar("alteradoPor", { length: 128 }).notNull(),
-  criadoEm: timestamp("criadoEm").defaultNow().notNull(),
-});
-export type ProducaoHistoricoAlteracao = typeof producaoHistoricoAltracoes.$inferSelect;
-export type InsertProducaoHistoricoAlteracao = typeof producaoHistoricoAltracoes.$inferInsert;
-
 // ─── SINCRONIZAÇÃO COM ERP (CACHING LOCAL) ────────────────────────────────────
 
 export const syncLogs = pgTable("sync_logs", {
@@ -1952,32 +1851,6 @@ export const planosAcaoQualidade = pgTable("planos_acao_qualidade", {
 });
 export type PlanoAcaoQualidade = typeof planosAcaoQualidade.$inferSelect;
 export type InsertPlanoAcaoQualidade = typeof planosAcaoQualidade.$inferInsert;
-
-export const producaoOrdensNew = pgTable("producao_ordens_new", {
-  id: serial("id").primaryKey(),
-  osNumero: varchar("osNumero", { length: 32 }).notNull().unique(),
-  clienteNome: varchar("clienteNome", { length: 256 }).notNull(),
-  clienteId: varchar("clienteId", { length: 64 }),
-  descricaoPedido: text("descricaoPedido"),
-  dataEntrada: date("dataEntrada").notNull(),
-  dataPrazo: date("dataPrazo").notNull(),
-  diasUteisTotais: integer("diasUteisTotais").notNull(),
-  statusGeral: producaoStatusGeralEnum("statusGeral").notNull().default("nao_iniciado"),
-  temPintura: boolean("temPintura").notNull().default(false),
-  temPvcExpandido: boolean("temPvcExpandido").notNull().default(false),
-  temAcrilico: boolean("temAcrilico").notNull().default(false),
-  temGalvanizado: boolean("temGalvanizado").notNull().default(false),
-  temInox: boolean("temInox").notNull().default(false),
-  temPerfil: boolean("temPerfil").notNull().default(false),
-  temLed: boolean("temLed").notNull().default(false),
-  temAdesivo: boolean("temAdesivo").notNull().default(false),
-  temGabarito: boolean("temGabarito").notNull().default(false),
-  criadoPor: varchar("criadoPor", { length: 128 }),
-  criadoEm: timestamp("criadoEm").defaultNow().notNull(),
-  atualizadoEm: timestamp("atualizadoEm").defaultNow().notNull(),
-});
-export type ProducaoOrdemNew = typeof producaoOrdensNew.$inferSelect;
-export type InsertProducaoOrdemNew = typeof producaoOrdensNew.$inferInsert;
 
 export const regulamentos = pgTable("regulamentos", {
   id: serial("id").primaryKey(),

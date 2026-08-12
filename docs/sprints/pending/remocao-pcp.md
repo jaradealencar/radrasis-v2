@@ -166,7 +166,7 @@ sprint (fora de escopo), registrados aqui para decisão futura.
 
 ---
 
-## Tarefa 3 — Remover schema e tabelas (depende da confirmação acima)
+## Tarefa 3 — Remover schema e tabelas (depende da confirmação acima) ✅ feito em 12/08/2026
 
 Ordem obrigatória, seguindo a regra de migrations do projeto:
 
@@ -201,6 +201,22 @@ schema e banco têm que continuar batendo.
 precisam de `DATABASE_URL` exportada no shell), e o app sobe e navega.
 
 **Commit:** `chore(pcp): dropa tabelas e enums do PCP`
+
+**Notas da execução:** Confirmação de dados rodada em 12/08/2026 — as 6
+tabelas (`producao_ordens`, `producao_setores`, `producao_alertas`,
+`producao_historico_alteracoes`, `feriados`, `motivos_atraso`) estavam
+todas com 0 linhas, inclusive as seeds. Owner do projeto autorizou seguir
+direto com o DROP, sem exportar dados. Migration `0008_mixed_pestilence.sql`
+gerada e revisada: dropa as 7 tabelas (`producao_ordens_new` incluída) e os
+3 enums do PCP, mantém `sync_logs`/`erp_os_cache`/`syncStatusEnum`
+intactos. O `DELETE FROM role_permissions WHERE "pageKey" = 'pcp'` foi
+adicionado à mesma migration (em vez de rodado à parte). Migration aplicada
+com `npx drizzle-kit migrate` e verificada por query direta pós-aplicação:
+as 7 tabelas e 3 enums não existem mais, `sync_logs`/`erp_os_cache`/
+`sync_status` seguem existindo, e `role_permissions` tem 0 linhas com
+`pageKey = 'pcp'`. `npx tsc --noEmit` deu 0 erros; `yarn test` manteve as
+mesmas 19 falhas pré-existentes por falta de `DATABASE_URL`/credenciais
+MubiSys no shell de teste (nenhuma nova falha).
 
 ---
 
