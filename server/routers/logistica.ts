@@ -13,7 +13,7 @@ import {
   selecionarOpcaoFrete,
   normalizarOpcao,
 } from '../db/db-helpers-select';
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "../db/db-connection";
 import { buscarDadosOSParaFrete, obterCotacoesFreteSimuladas } from "../integrations/mubisys-frete";
 import * as https from "https";

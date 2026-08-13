@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin, username } from "better-auth/plugins";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import bcrypt from "bcryptjs";
 import { getPool } from "../db/db-connection";
 import * as schema from "../../drizzle/schema";

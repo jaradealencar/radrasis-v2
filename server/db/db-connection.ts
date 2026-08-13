@@ -1,24 +1,42 @@
 /**
- * Conexão com banco de dados PostgreSQL usando pg (node-postgres)
- * Usa DATABASE_URL para conexão (mesma variável do Drizzle)
+ * Conexão com banco de dados PostgreSQL (Neon) usando o driver serverless.
+ * Usa DATABASE_URL para conexão (mesma variável do Drizzle).
+ *
+ * Por que o driver serverless e não o `pg`: em ambiente serverless (Vercel)
+ * cada instância fria abriria conexões TCP novas no caminho crítico da
+ * primeira requisição, e instâncias mortas deixariam conexões penduradas até
+ * o timeout do servidor. O driver do Neon fala com o banco pelo proxy dele,
+ * sem TCP persistente.
+ *
+ * A API é drop-in compatível com a do `pg` (`.query(text, values)` →
+ * `{ rows, rowCount }`), então nada abaixo desta função precisou mudar.
  */
 
-import pg from 'pg';
+import { Pool, neonConfig, type QueryResult } from '@neondatabase/serverless';
 
-let pool: pg.Pool | null = null;
+// Faz cada `pool.query()` avulso ir por HTTP (fetch) em vez de abrir uma
+// sessão WebSocket. É o modo mais barato e o que serve para 100% do uso
+// atual do projeto — não há transação multi-statement nem `pool.connect()`
+// em lugar nenhum (validado no passo 2.0 da fase).
+//
+// ⚠️ Se algum dia o projeto precisar de `db.transaction(...)`, isto aqui
+// deixa de bastar: transação exige a sessão WebSocket. Nesse caso, pare e
+// trate como decisão de arquitetura.
+neonConfig.poolQueryViaFetch = true;
 
-export function getPool(): pg.Pool {
+let pool: Pool | null = null;
+
+export function getPool(): Pool {
   if (pool) {
     return pool;
   }
 
   try {
-    pool = new pg.Pool({
+    pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: 10,
     });
 
-    console.log('✅ [DB-CONNECTION] Pool de conexões criado com sucesso');
+    console.log('✅ [DB-CONNECTION] Pool (Neon serverless) criado com sucesso');
     return pool;
   } catch (error) {
     console.error('❌ [DB-CONNECTION] Erro ao criar pool:', error);
@@ -42,7 +60,7 @@ function toPgPlaceholders(sql: string): string {
 export async function executeQuery(
   sql: string,
   values: any[] = []
-): Promise<pg.QueryResult> {
+): Promise<QueryResult> {
   const pool = getPool();
 
   try {

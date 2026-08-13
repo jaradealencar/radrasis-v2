@@ -3,7 +3,7 @@
  */
 
 import { desc, eq, gte, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "./db-connection";
 import { cotacoesFrete, InsertCotacaoFrete } from "../../drizzle/schema";
 import { ENV } from "../_core/env";

@@ -1,5 +1,5 @@
 import { and, count, desc, eq, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "./db-connection";
 import { cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, InsertCotacaoOpcao } from "../../drizzle/schema";
 import { ENV } from "../_core/env";

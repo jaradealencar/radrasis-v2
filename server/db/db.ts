@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, gte, like, lte, or, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "./db-connection";
 import {
   errorLibrary, faturamento, InsertRetrabalho, retrabalhos,

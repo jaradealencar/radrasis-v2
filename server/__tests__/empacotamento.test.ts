@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "../db/db-connection";
 import {
   empacotamentoModelos,

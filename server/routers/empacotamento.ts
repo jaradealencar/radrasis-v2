@@ -89,7 +89,7 @@ async function buscarOsMubisys(numeroOs: string): Promise<{
     return null;
   }
 }
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "../db/db-connection";
 import {
   empacotamentoModelos,
