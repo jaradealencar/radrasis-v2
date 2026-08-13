@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { enviarArquivo } from "@/lib/upload";
 import {
   ChevronDown, ChevronUp, FileText, Plus, Trash2, X,
   Sparkles, CheckCircle2, AlertTriangle, ClipboardCheck,
@@ -272,13 +273,14 @@ function PopAttachments({ item, onUpdated }: { item: any; onUpdated: () => void 
     if (file.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande. Máximo 5MB."); return; }
     setUploading(true);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+      const enviado = await enviarArquivo("imagem", file);
+      await uploadMut.mutateAsync({
+        popId: item.id,
+        fileName: enviado.fileName,
+        url: enviado.url,
+        key: enviado.key,
+        mimeType: enviado.mimeType,
       });
-      await uploadMut.mutateAsync({ popId: item.id, fileName: file.name, fileBase64: base64, mimeType: file.type });
       toast.success("Imagem adicionada ao POP!");
       onUpdated();
     } catch {

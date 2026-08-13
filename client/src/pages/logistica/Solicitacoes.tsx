@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { enviarArquivos } from "@/lib/upload";
 import { NovaCotacaoDialog } from "./NovaCotacaoDialog";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -691,12 +692,8 @@ function CotacaoCard({ cotacao, onRefresh, isVendedor }: { cotacao: Cotacao; onR
   const anexarFotos = async (arquivos: File[]) => {
     setEnviandoFoto(true);
     try {
-      const payload = await Promise.all(arquivos.slice(0, 10).map(arq => new Promise<{ nome: string; conteudoBase64: string; tipo: string }>((resolve, reject) => {
-        const leitor = new FileReader();
-        leitor.onload = () => resolve({ nome: arq.name, conteudoBase64: String(leitor.result), tipo: arq.type || "image/jpeg" });
-        leitor.onerror = () => reject(new Error(`Falha ao ler ${arq.name}`));
-        leitor.readAsDataURL(arq);
-      })));
+      const enviadas = await enviarArquivos("imagem", arquivos.slice(0, 10));
+      const payload = enviadas.map(({ fileName, url, key, mimeType }) => ({ nome: fileName, url, key, tipo: mimeType }));
       uploadFotos.mutate({ id: cotacao.id, fotos: payload });
     } catch (err: any) {
       setEnviandoFoto(false);

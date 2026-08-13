@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
+import { enviarArquivos } from "@/lib/upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -116,7 +117,10 @@ export function NovaCotacaoDialog({ onSuccess }: { onSuccess: () => void }) {
     });
     setTransportadorasDisponiveis([]);
     setEmpacotadoresSelecionados([]);
-    setFotosPendentes([]);
+    setFotosPendentes(prev => {
+      prev.forEach(f => URL.revokeObjectURL(f.preview));
+      return [];
+    });
     
     // Limpar storage
     if (typeof window !== "undefined") {
@@ -254,35 +258,20 @@ export function NovaCotacaoDialog({ onSuccess }: { onSuccess: () => void }) {
   // ── Fotografias da mercadoria anexadas já na abertura da solicitação ──────
   // Os arquivos ficam em memória até a cotação existir (o upload precisa do id),
   // e são enviados ao S3 imediatamente após a criação.
-  const [fotosPendentes, setFotosPendentes] = useState<Array<{ nome: string; conteudoBase64: string; tipo: string; preview: string }>>([]);
+  const [fotosPendentes, setFotosPendentes] = useState<Array<{ nome: string; file: File; tipo: string; preview: string }>>([]);
   const [lendoFotos, setLendoFotos] = useState(false);
   const uploadFotos = trpc.cotacoesFrete.uploadFotos.useMutation();
 
   const selecionarFotos = async (arquivos: File[]) => {
     if (arquivos.length === 0) return;
-    setLendoFotos(true);
-    try {
-      const lidos = await Promise.all(
-        arquivos.slice(0, 10).map(
-          arq =>
-            new Promise<{ nome: string; conteudoBase64: string; tipo: string; preview: string }>((resolve, reject) => {
-              const leitor = new FileReader();
-              leitor.onload = () => {
-                const conteudo = String(leitor.result);
-                resolve({ nome: arq.name, conteudoBase64: conteudo, tipo: arq.type || "image/jpeg", preview: conteudo });
-              };
-              leitor.onerror = () => reject(new Error(`Falha ao ler ${arq.name}`));
-              leitor.readAsDataURL(arq);
-            }),
-        ),
-      );
-      setFotosPendentes(prev => [...prev, ...lidos].slice(0, 10));
-      toast.success(`${lidos.length} fotografia(s) anexada(s) à solicitação`);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Falha ao ler as fotografias");
-    } finally {
-      setLendoFotos(false);
-    }
+    const lidos = arquivos.slice(0, 10).map(arq => ({
+      nome: arq.name,
+      file: arq,
+      tipo: arq.type || "image/jpeg",
+      preview: URL.createObjectURL(arq),
+    }));
+    setFotosPendentes(prev => [...prev, ...lidos].slice(0, 10));
+    toast.success(`${lidos.length} fotografia(s) anexada(s) à solicitação`);
   };
 
   const create = trpc.cotacoesFrete.create.useMutation({
@@ -292,9 +281,10 @@ export function NovaCotacaoDialog({ onSuccess }: { onSuccess: () => void }) {
       // desde o primeiro estágio do Kanban.
       if (fotosPendentes.length > 0) {
         try {
+          const enviadas = await enviarArquivos("imagem", fotosPendentes.map(f => f.file));
           await uploadFotos.mutateAsync({
             id: Number(result.id),
-            fotos: fotosPendentes.map(({ nome, conteudoBase64, tipo }) => ({ nome, conteudoBase64, tipo })),
+            fotos: enviadas.map(({ fileName, url, key, mimeType }) => ({ nome: fileName, url, key, tipo: mimeType })),
           });
           toast.success(`${fotosPendentes.length} fotografia(s) anexada(s) ao card`);
         } catch (err: any) {
@@ -665,7 +655,10 @@ export function NovaCotacaoDialog({ onSuccess }: { onSuccess: () => void }) {
                     />
                     <button
                       type="button"
-                      onClick={() => setFotosPendentes(prev => prev.filter((_, idx) => idx !== i))}
+                      onClick={() => setFotosPendentes(prev => {
+                        URL.revokeObjectURL(prev[i].preview);
+                        return prev.filter((_, idx) => idx !== i);
+                      })}
                       aria-label={`Remover ${foto.nome}`}
                       className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700"
                     >

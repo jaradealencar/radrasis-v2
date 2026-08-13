@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { enviarArquivo } from "@/lib/upload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Upload, CheckCircle, XCircle, AlertCircle } from "lucide-react";
@@ -32,22 +33,18 @@ export function CurriculumUploadSection({
 
     setIsUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const content = e.target?.result as string;
-        const base64 = content.split(",")[1] || content;
+      const enviado = await enviarArquivo("documento", selectedFile);
 
-        await uploadMutation.mutateAsync({
-          cargoId,
-          fileName: selectedFile.name,
-          fileContent: base64,
-          fileType: selectedFile.type || "application/pdf",
-        });
+      await uploadMutation.mutateAsync({
+        cargoId,
+        fileName: enviado.fileName,
+        url: enviado.url,
+        key: enviado.key,
+        fileType: enviado.mimeType || "application/pdf",
+      });
 
-        setSelectedFile(null);
-        listQuery.refetch();
-      };
-      reader.readAsDataURL(selectedFile);
+      setSelectedFile(null);
+      listQuery.refetch();
     } catch (error) {
       console.error("Erro ao fazer upload:", error);
     } finally {

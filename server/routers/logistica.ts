@@ -822,21 +822,20 @@ export const cotacoesFreteRouter = router({
     }),
 
   /**
-   * Anexa fotografias à cotação. As imagens chegam em base64 (data URL),
-   * são gravadas no S3 e as URLs resultantes ficam em `fotosJson`.
+   * Anexa fotografias à cotação. As imagens já sobem direto para o
+   * UploadThing pelo client; aqui só gravamos as URLs em `fotosJson`.
    */
   uploadFotos: publicProcedure
     .input(z.object({
       id: z.number(),
       fotos: z.array(z.object({
         nome: z.string(),
-        conteudoBase64: z.string(),
+        url: z.string().url(),
+        key: z.string().min(1),
         tipo: z.string().optional(),
       })).min(1).max(10),
     }))
     .mutation(async ({ input }) => {
-      const { storagePut } = await import('../db/storage');
-
       const [atual] = await getDb().select({ fotosJson: cotacoesFrete.fotosJson }).from(cotacoesFrete).where(eq(cotacoesFrete.id, input.id));
       if (!atual) {
         throw new TRPCError({ code: 'NOT_FOUND', message: `Cotação #${input.id} não encontrada` });
@@ -845,12 +844,7 @@ export const cotacoesFreteRouter = router({
       try { urls = atual.fotosJson ? JSON.parse(atual.fotosJson) : []; } catch { urls = []; }
 
       for (const foto of input.fotos) {
-        const limpo = foto.conteudoBase64.replace(/^data:[^;]+;base64,/, '');
-        const buffer = Buffer.from(limpo, 'base64');
-        const extensao = (foto.nome.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
-        const chave = `cotacoes-frete/${input.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extensao}`;
-        const { url } = await storagePut(chave, buffer, foto.tipo || 'image/jpeg');
-        urls.push(url);
+        urls.push(foto.url);
       }
 
       await db.update(cotacoesFrete).set({ fotosJson: JSON.stringify(urls), updatedAt: new Date() }).where(eq(cotacoesFrete.id, input.id));

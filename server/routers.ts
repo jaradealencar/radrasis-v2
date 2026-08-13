@@ -132,16 +132,13 @@ export const appRouter = router({
       .input(z.object({
         code: z.string(),
         fileName: z.string(),
-        fileBase64: z.string(),
+        url: z.string().url(),
+        key: z.string().min(1),
         mimeType: z.string().default("image/jpeg"),
       }))
       .mutation(async ({ input }) => {
-        const { storagePut } = await import("./db/storage");
-        const buffer = Buffer.from(input.fileBase64, "base64");
-        const key = `error-library/${input.code}/${Date.now()}-${input.fileName}`;
-        const { url } = await storagePut(key, buffer, input.mimeType);
-        await updateErrorItem(input.code, { imageUrl: url, imageKey: key } as any);
-        return { url, key };
+        await updateErrorItem(input.code, { imageUrl: input.url, imageKey: input.key } as any);
+        return { url: input.url, key: input.key };
       }),
     removeImage: protectedProcedure
       .input(z.object({ code: z.string() }))
@@ -1059,14 +1056,11 @@ O POP deve:
       .input(z.object({
         popId: z.number(),
         fileName: z.string(),
-        fileBase64: z.string(), // base64 da imagem
+        url: z.string().url(),
+        key: z.string().min(1),
         mimeType: z.string().default("image/jpeg"),
       }))
       .mutation(async ({ input }) => {
-        const { storagePut } = await import("./db/storage");
-        const buffer = Buffer.from(input.fileBase64, "base64");
-        const key = `pops/${input.popId}/${Date.now()}-${input.fileName}`;
-        const { url } = await storagePut(key, buffer, input.mimeType);
         // Busca o POP e adiciona a imagem à lista de attachments
         const pop = await getPopById(input.popId);
         if (!pop) throw new TRPCError({ code: "NOT_FOUND", message: "POP não encontrado" });
@@ -1074,9 +1068,9 @@ O POP deve:
         try {
           attachments = pop.attachments ? JSON.parse(pop.attachments as string) : [];
         } catch { attachments = []; }
-        attachments.push(url);
+        attachments.push(input.url);
         await updatePop(input.popId, { attachments: JSON.stringify(attachments) } as any);
-        return { url, attachments };
+        return { url: input.url, attachments };
       }),
 
     // Remove imagem de anexo do POP

@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { enviarArquivo } from "@/lib/upload";
 import { useAuth } from "@/hooks/useAuth";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { downloadPopParsedAsPdf } from "@/lib/popPdfFromParsed";
@@ -396,15 +397,17 @@ function ErrorRow({
     if (file.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande. Máximo 5MB."); return; }
     setUploadingImg(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = (e.target?.result as string).split(",")[1];
-        await uploadImageMut.mutateAsync({ code: item.code, fileName: file.name, fileBase64: base64, mimeType: file.type });
-        utils.errorLibrary.list.invalidate();
-        toast.success("Imagem de referência salva!");
-        setUploadingImg(false);
-      };
-      reader.readAsDataURL(file);
+      const enviado = await enviarArquivo("imagem", file);
+      await uploadImageMut.mutateAsync({
+        code: item.code,
+        fileName: enviado.fileName,
+        url: enviado.url,
+        key: enviado.key,
+        mimeType: enviado.mimeType,
+      });
+      utils.errorLibrary.list.invalidate();
+      toast.success("Imagem de referência salva!");
+      setUploadingImg(false);
     } catch { toast.error("Erro ao fazer upload da imagem."); setUploadingImg(false); }
   };
 

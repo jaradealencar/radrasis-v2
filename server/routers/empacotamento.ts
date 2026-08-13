@@ -112,7 +112,6 @@ import {
   empacotamentoSessoesPausas,
 } from "../../drizzle/schema";
 import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
-import { storagePut } from "../db/storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 function getDb() {
@@ -935,41 +934,35 @@ export const empacotamentoRouter = router({
     uploadArquivo: publicProcedure
       .input(z.object({
         pedidoId: z.number(),
-        base64: z.string(),
+        url: z.string().url(),
+        key: z.string().min(1),
         mimeType: z.string(),
         fileName: z.string(),
       }))
       .mutation(async ({ input }) => {
-        const buffer = Buffer.from(input.base64, "base64");
-        const ext = input.fileName.split(".").pop() ?? "png";
-        const key = `empacotamento/pedido-${input.pedidoId}-${Date.now()}.${ext}`;
-        const { url } = await storagePut(key, buffer, input.mimeType);
         const tipo = input.mimeType.includes("pdf") ? "pdf" : "image";
         await db.update(empacotamentoPedidos)
-          .set({ arquivoUrl: url, arquivoKey: key, arquivoTipo: tipo })
+          .set({ arquivoUrl: input.url, arquivoKey: input.key, arquivoTipo: tipo })
           .where(eq(empacotamentoPedidos.id, input.pedidoId));
-        return { url, key };
+        return { url: input.url, key: input.key };
       }),
 
     uploadFoto: publicProcedure
       .input(z.object({
         pedidoId: z.number(),
-        base64: z.string(),
+        url: z.string().url(),
+        key: z.string().min(1),
         mimeType: z.string(),
         usuarioNome: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        const buffer = Buffer.from(input.base64, "base64");
-        const ext = input.mimeType.includes("png") ? "png" : "jpg";
-        const key = `empacotamento/foto-${input.pedidoId}-${Date.now()}.${ext}`;
-        const { url } = await storagePut(key, buffer, input.mimeType);
         await db.insert(empacotamentoPedidoFotos).values({
           pedidoId: input.pedidoId,
-          storageKey: key,
-          url,
+          storageKey: input.key,
+          url: input.url,
           usuarioNome: input.usuarioNome ?? null,
         });
-        return { url, key };
+        return { url: input.url, key: input.key };
       }),
 
     listFotos: publicProcedure
@@ -985,34 +978,30 @@ export const empacotamentoRouter = router({
     atualizarFotoAnotada: publicProcedure
       .input(z.object({
         fotoId: z.number(),
-        base64: z.string(), // PNG com anotações
+        url: z.string().url(),
+        key: z.string().min(1),
       }))
       .mutation(async ({ input }) => {
-        const buffer = Buffer.from(input.base64, "base64");
-        const key = `empacotamento/foto-anotada-${input.fotoId}-${Date.now()}.png`;
-        const { url } = await storagePut(key, buffer, "image/png");
         await getDb()
           .update(empacotamentoPedidoFotos)
-          .set({ url, storageKey: key })
+          .set({ url: input.url, storageKey: input.key })
           .where(eq(empacotamentoPedidoFotos.id, input.fotoId));
-        return { url };
+        return { url: input.url };
       }),
 
     // Salva o arquivo do supervisor (imagem) com anotações canvas
     atualizarArquivoPedidoAnotado: publicProcedure
       .input(z.object({
         pedidoId: z.number(),
-        base64: z.string(), // PNG com anotações
+        url: z.string().url(),
+        key: z.string().min(1),
       }))
       .mutation(async ({ input }) => {
-        const buffer = Buffer.from(input.base64, "base64");
-        const key = `empacotamento/arquivo-anotado-${input.pedidoId}-${Date.now()}.png`;
-        const { url } = await storagePut(key, buffer, "image/png");
         await getDb()
           .update(empacotamentoPedidos)
-          .set({ arquivoUrl: url, arquivoKey: key, arquivoTipo: "image" })
+          .set({ arquivoUrl: input.url, arquivoKey: input.key, arquivoTipo: "image" })
           .where(eq(empacotamentoPedidos.id, input.pedidoId));
-        return { url };
+        return { url: input.url };
       }),
     // Verifica se um pedido pode ir para o pátio (checklist + operador)
     checkPendencias: publicProcedure

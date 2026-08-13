@@ -100,16 +100,26 @@ export async function createApp(): Promise<Express> {
   //
   // Não "simplifique" isto para um caminho só sem testar OS DOIS ambientes.
   if (IS_SERVERLESS) {
-    app.use(express.json({ limit: "50mb" }));
-    app.use(express.urlencoded({ limit: "50mb", extended: true }));
+    // 2mb é folga larga para payload de mutation tRPC (JSON de formulário).
+    // Arquivos NÃO passam mais por aqui — sobem direto para o UploadThing
+    // (ver client/src/lib/upload.ts). O limite antigo de 50mb existia por
+    // causa do base64 embutido no payload, e nem funcionaria em serverless: a
+    // Vercel corta o corpo da requisição em 4.5mb, sem override.
+    app.use(express.json({ limit: "2mb" }));
+    app.use(express.urlencoded({ limit: "2mb", extended: true }));
 
     const { authWebHandler } = await import("./auth-web-handler");
     app.all("/api/auth/*", authWebHandler);
   } else {
     app.all("/api/auth/*", toNodeHandler(auth));
 
-    app.use(express.json({ limit: "50mb" }));
-    app.use(express.urlencoded({ limit: "50mb", extended: true }));
+    // 2mb é folga larga para payload de mutation tRPC (JSON de formulário).
+    // Arquivos NÃO passam mais por aqui — sobem direto para o UploadThing
+    // (ver client/src/lib/upload.ts). O limite antigo de 50mb existia por
+    // causa do base64 embutido no payload, e nem funcionaria em serverless: a
+    // Vercel corta o corpo da requisição em 4.5mb, sem override.
+    app.use(express.json({ limit: "2mb" }));
+    app.use(express.urlencoded({ limit: "2mb", extended: true }));
   }
 
   // ── UploadThing: rota de upload direto do browser ─────────────────────────

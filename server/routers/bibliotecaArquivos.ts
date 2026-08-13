@@ -153,21 +153,22 @@ export const bibliotecaArquivosRouter = router({
       subcategoria: z.string().optional(),
       tags: z.string().optional(),
       fileName: z.string().min(1),
-      fileBase64: z.string().min(1),
+      url: z.string().url(),
+      key: z.string().min(1),
       mimeType: z.string().min(1),
       fileSize: z.number().int().nonnegative(),
       uploadedBy: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { storagePut } = await import("../db/storage");
-      const buffer = Buffer.from(input.fileBase64, "base64");
-      const safeFileName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const key = `biblioteca-arquivos/${Date.now()}-${safeFileName}`;
-      const { url } = await storagePut(key, buffer, input.mimeType);
+      // O arquivo já está no UploadThing (upload direto do browser). Para a
+      // extração de texto precisamos do conteúdo — buscamos de volta pela
+      // URL, mesmo padrão já usado em reextrairTexto (abaixo).
+      const fileResp = await fetch(input.url);
+      const fileBase64 = Buffer.from(await fileResp.arrayBuffer()).toString("base64");
 
       // Extrair texto do arquivo via LLM
       const conteudoExtraido = await extrairTextoArquivo(
-        input.fileBase64,
+        fileBase64,
         input.mimeType,
         input.fileName,
         input.nome,
@@ -182,8 +183,8 @@ export const bibliotecaArquivosRouter = router({
         categoria: input.categoria,
         subcategoria: input.subcategoria ?? null,
         tags: input.tags ?? null,
-        fileKey: key,
-        fileUrl: url,
+        fileKey: input.key,
+        fileUrl: input.url,
         fileName: input.fileName,
         mimeType: input.mimeType,
         fileSize: input.fileSize,

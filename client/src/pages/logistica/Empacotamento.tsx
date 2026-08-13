@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { enviarArquivo, base64ParaFile } from "@/lib/upload";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
@@ -790,20 +791,17 @@ function PedidoDetalheModal({
     sairMutation.mutate({ id, tempoSegundos: 0 });
   };
 
-  const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      uploadFotoMutation.mutate({
-        pedidoId: pedido.id,
-        base64,
-        mimeType: file.type,
-        usuarioNome: localUser?.name ?? nomeOperador,
-      });
-    };
-    reader.readAsDataURL(file);
+    const enviado = await enviarArquivo("imagem", file);
+    uploadFotoMutation.mutate({
+      pedidoId: pedido.id,
+      url: enviado.url,
+      key: enviado.key,
+      mimeType: enviado.mimeType,
+      usuarioNome: localUser?.name ?? nomeOperador,
+    });
   };
 
   const isChecked = (itemId: number) => checklistPedido.some(c => c.itemId === itemId && c.marcado === 1);
@@ -1087,19 +1085,15 @@ function NovoPedidoBtn({ onCreated }: { onCreated: () => void }) {
     onSuccess: async (pedidoCriado) => {
       // Se há arquivo selecionado, fazer upload imediatamente após criar o pedido
       if (arquivo && pedidoCriado?.id) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const base64 = (ev.target?.result as string)?.split(",")[1];
-          if (base64) {
-            uploadMutation.mutate({
-              pedidoId: pedidoCriado.id,
-              base64,
-              mimeType: arquivo.type || "image/png",
-              fileName: arquivo.name,
-            });
-          }
-        };
-        reader.readAsDataURL(arquivo);
+        const rota = arquivo.type.startsWith("image/") ? "imagem" : "documento";
+        const enviado = await enviarArquivo(rota, arquivo);
+        uploadMutation.mutate({
+          pedidoId: pedidoCriado.id,
+          url: enviado.url,
+          key: enviado.key,
+          mimeType: enviado.mimeType || "image/png",
+          fileName: enviado.fileName,
+        });
       }
       setOpen(false);
       onCreated();
@@ -3416,15 +3410,11 @@ function OperadorPedidoAtivo({ pedido, operador, onFinalizar, onRefresh }: {
   const temMedidasOperador = !!(dimL && dimA && dimP && parseFloat(dimL) > 0 && parseFloat(dimA) > 0 && parseFloat(dimP) > 0);
   const podeFinalizar = obrigatoriosPendentes.length === 0 && temFotoOperador && temPesoOperador && temMedidasOperador;
 
-  const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      uploadFotoMutation.mutate({ pedidoId: pedido.id, base64, mimeType: file.type, usuarioNome: operador?.name ?? "Operador" });
-    };
-    reader.readAsDataURL(file);
+    const enviado = await enviarArquivo("imagem", file);
+    uploadFotoMutation.mutate({ pedidoId: pedido.id, url: enviado.url, key: enviado.key, mimeType: enviado.mimeType, usuarioNome: operador?.name ?? "Operador" });
   };
 
   const prazoStr = prazoLabel(pedido.prazoEntrega, pedido.horarioMaximo);
@@ -4533,7 +4523,9 @@ function ArquivoSupervisorComAnotacao({ url, pedidoId, onSaved }: { url: string;
 
   const handleSalvar = async (base64: string) => {
     try {
-      const result = await salvarMutation.mutateAsync({ pedidoId, base64 });
+      const file = base64ParaFile(base64, `anotacao-${Date.now()}.png`, "image/png");
+      const enviado = await enviarArquivo("imagem", file);
+      const result = await salvarMutation.mutateAsync({ pedidoId, url: enviado.url, key: enviado.key });
       setUrlAtual(result.url);
       onSaved?.(result.url);
       toast("Anotações salvas!");
@@ -4857,7 +4849,9 @@ function CanvasAnnotator({ imageUrl, fotoId, onClose, onSaved }: { imageUrl: str
       const combined = await getCombinedCanvas();
       const base64 = combined.toDataURL("image/png").split(",")[1];
       if (fotoId) {
-        const result = await salvarNoBanco.mutateAsync({ fotoId, base64 });
+        const file = base64ParaFile(base64, `anotacao-${Date.now()}.png`, "image/png");
+        const enviado = await enviarArquivo("imagem", file);
+        const result = await salvarNoBanco.mutateAsync({ fotoId, url: enviado.url, key: enviado.key });
         toast("Anotações salvas!");
         onSaved?.(result.url);
       } else {

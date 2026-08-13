@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
+import { enviarArquivo } from "@/lib/upload";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
@@ -216,24 +217,21 @@ export default function BibliotecaArquivos() {
 
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = (e.target?.result as string).split(",")[1];
-        await uploadMutation.mutateAsync({
-          nome: formNome.trim(),
-          descricao: formDescricao.trim() || undefined,
-          categoria: formCategoria,
-          subcategoria: formSubcategoria.trim() || undefined,
-          tags: formTags.trim() || undefined,
-          fileName: selectedFile.name,
-          fileBase64: base64,
-          mimeType: selectedFile.type || "application/octet-stream",
-          fileSize: selectedFile.size,
-          uploadedBy: user?.name ?? undefined,
-        });
-        setUploading(false);
-      };
-      reader.readAsDataURL(selectedFile);
+      const enviado = await enviarArquivo("documento", selectedFile);
+      await uploadMutation.mutateAsync({
+        nome: formNome.trim(),
+        descricao: formDescricao.trim() || undefined,
+        categoria: formCategoria,
+        subcategoria: formSubcategoria.trim() || undefined,
+        tags: formTags.trim() || undefined,
+        fileName: enviado.fileName,
+        url: enviado.url,
+        key: enviado.key,
+        mimeType: enviado.mimeType || "application/octet-stream",
+        fileSize: enviado.fileSize,
+        uploadedBy: user?.name ?? undefined,
+      });
+      setUploading(false);
     } catch {
       setUploading(false);
     }

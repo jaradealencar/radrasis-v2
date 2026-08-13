@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { invokeLLM, buildFileContent, TextContent } from "../_core/llm";
-import { storagePut } from "../db/storage";
 import {
   createAnaliseCurriculo,
   getAnaliseCurriculosByCargo,
@@ -15,22 +14,18 @@ export const curriculosRouter = router({
     .input(z.object({
       cargoId: z.number(),
       fileName: z.string(),
-      fileContent: z.string(), // base64 ou texto
+      url: z.string().url(),
+      key: z.string().min(1),
       fileType: z.string(), // application/pdf, text/plain, etc
     }))
     .mutation(async ({ input, ctx }) => {
       try {
-        // 1. Salvar arquivo no S3
-        const buffer = Buffer.from(input.fileContent, "base64");
-        const storageKey = `curriculos/${input.cargoId}/${Date.now()}-${input.fileName}`;
-        const { url, key } = await storagePut(storageKey, buffer, input.fileType);
-
-        // 2. Criar registro no banco
+        // 1. Criar registro no banco
         const analise = await createAnaliseCurriculo({
           cargoId: input.cargoId,
           curriculoFileName: input.fileName,
-          curriculoUrl: url,
-          curriculoKey: key,
+          curriculoUrl: input.url,
+          curriculoKey: input.key,
           status: "analisando",
           uploadedBy: ctx.user.id,
           uploadedByName: ctx.user.name ?? ctx.user.email ?? "Usuário",
@@ -47,8 +42,10 @@ export const curriculosRouter = router({
         }
 
         // 4. Invocar LLM com o prompt específico
+        const fileResp = await fetch(input.url);
+        const fileBase64 = Buffer.from(await fileResp.arrayBuffer()).toString("base64");
         const fileContent = await buildFileContent(
-          input.fileContent,
+          fileBase64,
           input.fileType,
           input.fileName
         );
