@@ -1,0 +1,10 @@
+node_modules
+dist
+docs
+.manus-logs
+attached_assets
+drizzle/meta
+scripts
+server/__tests__
+**/*.test.ts
+**/*.test.tsx
