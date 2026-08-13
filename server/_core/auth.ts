@@ -14,10 +14,35 @@ import { APP_ROLES } from "../../drizzle/schema";
 // resto do server.
 const db = drizzle(getPool());
 
+/**
+ * URL base do Better Auth.
+ *
+ * - Local e produção: `BETTER_AUTH_URL` explícita (é o domínio final, estável).
+ * - Preview na Vercel: cada deploy ganha um host novo em `VERCEL_URL`, então
+ *   não dá para fixar por variável — derivamos dele.
+ *
+ * Se as duas faltarem, `undefined` faz o Better Auth inferir a URL a partir
+ * dos headers da requisição. Funciona, mas é o caminho menos previsível —
+ * por isso `BETTER_AUTH_URL` está na tabela obrigatória da Fase 8.
+ */
+function resolveBaseURL(): string | undefined {
+  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return undefined;
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL,
+  baseURL: resolveBaseURL(),
+  // Deploys de preview: cada um tem host próprio, e o Better Auth barra
+  // origem que não conhece. `baseURL` já entra na lista automaticamente;
+  // isto cobre o caso de a requisição chegar pelo domínio de produção
+  // enquanto a função roda num deploy de preview.
+  trustedOrigins: [
+    ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+  ],
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
