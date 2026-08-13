@@ -2929,6 +2929,14 @@
   resolved "https://registry.yarnpkg.com/@uploadthing/mime-types/-/mime-types-0.3.6.tgz#925cfaaba3c5d85026ea2826e06b503f54487c10"
   integrity sha512-t3tTzgwFV9+1D7lNDYc7Lr7kBwotHaX0ZsvoCGe7xGnXKo9z0jG2Sjl/msll12FeoLj77nyhsxevXyGpQDBvLg==
 
+"@uploadthing/react@^7.3.3":
+  version "7.3.3"
+  resolved "https://registry.yarnpkg.com/@uploadthing/react/-/react-7.3.3.tgz#512fc032b32493e721c95154ad02b43ce779c206"
+  integrity sha512-GhKbK42jL2Qs7OhRd2Z6j0zTLsnJTRJH31nR7RZnUYVoRh2aS/NabMAnHBNqfunIAGXVaA717Pvzq7vtxuPTmQ==
+  dependencies:
+    "@uploadthing/shared" "7.1.10"
+    file-selector "0.6.0"
+
 "@uploadthing/shared@7.1.10":
   version "7.1.10"
   resolved "https://registry.yarnpkg.com/@uploadthing/shared/-/shared-7.1.10.tgz#6dd8c9f3414084adc720f88f69b8b1e9a2b12bb8"
@@ -4388,6 +4396,13 @@ fflate@^0.8.1:
   version "0.8.3"
   resolved "https://registry.yarnpkg.com/fflate/-/fflate-0.8.3.tgz#bc27d8eb30343d4d512abb03480202ce65d825fc"
   integrity sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==
+
+file-selector@0.6.0:
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/file-selector/-/file-selector-0.6.0.tgz#fa0a8d9007b829504db4d07dd4de0310b65287dc"
+  integrity sha512-QlZ5yJC0VxHxQQsQhXvBaC7VRJ2uaxTf+Tfpu4Z/OcVQJVpZO+DGU0rkoVW5ce2SccxugvpBJoMvUs59iILYdw==
+  dependencies:
+    tslib "^2.4.0"
 
 fill-range@^7.1.1:
   version "7.1.1"

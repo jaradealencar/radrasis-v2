@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
-import { storagePut } from "../db/storage";
 import { listCargos, getCargoById, createCargo, updateCargo, deleteCargo } from "../db/db";
 
 const cargoSchema = z.object({
@@ -55,21 +54,20 @@ export const cargosRouter = router({
       return { ok: true };
     }),
 
+  /**
+   * O arquivo agora sobe direto do browser para o UploadThing (ver
+   * client/src/lib/upload.ts); esta procedure só recebe o resultado.
+   * Mantida para não quebrar o contrato do client e para o caso de passar a
+   * registrar o upload no banco.
+   */
   uploadImage: protectedProcedure
     .input(z.object({
-      base64: z.string(),
+      url: z.string().url(),
+      key: z.string().min(1),
       fileName: z.string(),
       mimeType: z.string(),
     }))
     .mutation(async ({ input }) => {
-      try {
-        const buffer = Buffer.from(input.base64, "base64");
-        const storageKey = `cargos/imagens/${Date.now()}-${input.fileName}`;
-        const { url, key } = await storagePut(storageKey, buffer, input.mimeType);
-        return { url, key, success: true };
-      } catch (error) {
-        console.error("[Cargos] Erro ao fazer upload de imagem:", error);
-        throw new Error("Falha ao fazer upload da imagem");
-      }
+      return { url: input.url, key: input.key, success: true };
     }),
 });

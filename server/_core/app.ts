@@ -112,6 +112,15 @@ export async function createApp(): Promise<Express> {
     app.use(express.urlencoded({ limit: "50mb", extended: true }));
   }
 
+  // ── UploadThing: rota de upload direto do browser ─────────────────────────
+  // O arquivo NÃO passa por aqui — este endpoint só assina a permissão de
+  // upload e recebe o callback de conclusão. Ver docs/sprint-migracao-vercel,
+  // Fase 7: em serverless o corpo de uma requisição é limitado a 4.5 MB, o
+  // que inviabilizava o upload via base64 no payload do tRPC.
+  const { createRouteHandler } = await import("uploadthing/express");
+  const { uploadRouter } = await import("./uploadthing");
+  app.use("/api/uploadthing", createRouteHandler({ router: uploadRouter }));
+
   // tRPC API
   app.use(
     "/api/trpc",

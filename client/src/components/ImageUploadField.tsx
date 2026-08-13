@@ -1,6 +1,7 @@
 import { Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { enviarArquivo } from "@/lib/upload";
 
 interface ImageUploadFieldProps {
   label: string;
@@ -22,20 +23,16 @@ export default function ImageUploadField({ label, value, onChange }: ImageUpload
     }
 
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
-        const base64Data = base64.split(",")[1] || base64;
+      const enviado = await enviarArquivo("imagem", file);
+      const res = await uploadMutation.mutateAsync({
+        url: enviado.url,
+        key: enviado.key,
+        fileName: enviado.fileName,
+        mimeType: enviado.mimeType,
+      });
 
-        await uploadMutation.mutateAsync({
-          base64: base64Data,
-          fileName: file.name,
-          mimeType: file.type,
-        });
-
-        toast.success("Imagem enviada com sucesso!");
-      };
-      reader.readAsDataURL(file);
+      onChange(res.url, res.key);
+      toast.success("Imagem enviada com sucesso!");
     } catch (err) {
       toast.error("Erro ao fazer upload da imagem");
       console.error(err);
