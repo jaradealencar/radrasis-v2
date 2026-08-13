@@ -294,6 +294,16 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   Fora do escopo da Fase 7 (que tratava só de módulos/env/config mortos do
   Forge); renomear é tarefa separada, cuidado com o enum `"gemini"` que pode
   estar persistido em dados existentes.
+- **Sem rate limiting de aplicação quando roda na Vercel.** O
+  `express-rate-limit` de `server/_core/app.ts` fica atrás de um
+  `if (!IS_SERVERLESS)`: o MemoryStore dele conta por processo, e em
+  serverless isso significa um contador por instância — limite efetivo
+  indeterminado e reset a cada cold start. Foi uma decisão consciente da
+  `docs/sprint-migracao-vercel` (Fase 4), não um esquecimento. No `yarn dev` /
+  `yarn start` o rate limiting continua ativo e inalterado (300 req/min geral,
+  10/min em sign-in e sign-up). Para reativar em produção seria preciso um
+  store distribuído (Redis) ou regra de firewall na Vercel — nenhum dos dois
+  está implementado.
 
 ## Patches
 

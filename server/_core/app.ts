@@ -9,6 +9,15 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 
 /**
+ * `true` quando o app está rodando como função serverless na Vercel.
+ *
+ * A Vercel define VERCEL=1 em runtime, em produção e em preview. Usamos isso
+ * para desligar middlewares que dependem de estado in-process — hoje só o
+ * rate limiting (ver bloco abaixo).
+ */
+const IS_SERVERLESS = process.env.VERCEL === "1";
+
+/**
  * Monta o Express com toda a API (auth, tRPC, cron) e devolve o app.
  *
  * ⚠️ Este arquivo NÃO pode importar `./vite` — nem direta nem
@@ -23,7 +32,9 @@ import { createContext } from "./context";
 export async function createApp(): Promise<Express> {
   const app = express();
 
-  // Confiar no proxy reverso (necessário para rate limiting correto em produção)
+  // Confiar no proxy reverso: faz req.ip / req.protocol refletirem o cliente
+  // real por trás do proxy (Vercel em produção, qualquer reverse proxy no
+  // deploy Node tradicional).
   app.set("trust proxy", 1);
 
   // ── Segurança: Headers HTTP (helmet) ─────────────────────────────────────
@@ -37,38 +48,69 @@ export async function createApp(): Promise<Express> {
   );
 
   // ── Segurança: Rate Limiting ──────────────────────────────────────────────
-  // Limite geral: 300 requisições por minuto por IP (proteção contra DDoS/scraping)
-  const generalLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 300,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: "Muitas requisições. Tente novamente em alguns instantes." },
-    skip: (req) => req.path.startsWith("/__manus__"), // Não limitar ferramentas internas
-  });
-  app.use("/api", generalLimiter);
+  // Só no servidor Node de vida longa (yarn dev / yarn start).
+  //
+  // O `express-rate-limit` conta requisições num MemoryStore dentro do
+  // processo. Em serverless cada instância teria o seu próprio contador, o
+  // limite efetivo viraria "300 × instâncias vivas" e todo cold start daria
+  // um reset grátis — proteção nenhuma, com a aparência de proteção. Pior
+  // que não ter.
+  //
+  // ⚠️ CONSEQUÊNCIA ACEITA E CONHECIDA: na Vercel a API roda SEM rate
+  // limiting de aplicação. A proteção que resta é a mitigação de DDoS nativa
+  // da plataforma (camada de rede) e, no login, o próprio Better Auth. Se
+  // isso deixar de ser aceitável, a saída é um store distribuído (Redis) ou
+  // regra de firewall na Vercel — nenhuma das duas está no escopo desta
+  // sprint. Ver docs/sprint-migracao-vercel/README.md.
+  if (!IS_SERVERLESS) {
+    // Limite geral: 300 requisições por minuto por IP (proteção contra DDoS/scraping)
+    const generalLimiter = rateLimit({
+      windowMs: 60 * 1000,
+      max: 300,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "Muitas requisições. Tente novamente em alguns instantes." },
+      skip: (req) => req.path.startsWith("/__manus__"), // Não limitar ferramentas internas
+    });
+    app.use("/api", generalLimiter);
 
-  // Limite estrito para login: 10 tentativas por minuto por IP (proteção contra brute-force)
-  const loginLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: "Muitas tentativas de login. Aguarde 1 minuto e tente novamente." },
-  });
-  app.use("/api/auth/sign-in", loginLimiter);
-  app.use("/api/auth/sign-up", loginLimiter);
+    // Limite estrito para login: 10 tentativas por minuto por IP (proteção contra brute-force)
+    const loginLimiter = rateLimit({
+      windowMs: 60 * 1000,
+      max: 10,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "Muitas tentativas de login. Aguarde 1 minuto e tente novamente." },
+    });
+    app.use("/api/auth/sign-in", loginLimiter);
+    app.use("/api/auth/sign-up", loginLimiter);
+  }
 
-  // ── Better Auth ────────────────────────────────────────────────────────────
-  // Precisa ser montado ANTES do express.json(): o handler do Better Auth lê
-  // o corpo da requisição sozinho, e rodar o parser do Express antes faz o
-  // client dele ficar pendurado em "pending".
-  app.all("/api/auth/*", toNodeHandler(auth));
+  // ── Better Auth + body parser ─────────────────────────────────────────────
+  // A ordem entre os dois é INVERTIDA entre os ambientes, de propósito:
+  //
+  // • Node tradicional: `toNodeHandler` lê o corpo do stream, então precisa
+  //   vir ANTES do express.json() — se o parser rodar primeiro, o client do
+  //   Better Auth fica pendurado em "pending".
+  //
+  // • Serverless (Vercel): o runtime já consumiu o stream antes de invocar a
+  //   função. O `toNodeHandler` esperaria para sempre. Então deixamos o
+  //   parser rodar primeiro e reconstruímos o Request web a partir de
+  //   req.body (ver ./auth-web-handler).
+  //
+  // Não "simplifique" isto para um caminho só sem testar OS DOIS ambientes.
+  if (IS_SERVERLESS) {
+    app.use(express.json({ limit: "50mb" }));
+    app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // ── Body parser ───────────────────────────────────────────────────────────
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+    const { authWebHandler } = await import("./auth-web-handler");
+    app.all("/api/auth/*", authWebHandler);
+  } else {
+    app.all("/api/auth/*", toNodeHandler(auth));
+
+    app.use(express.json({ limit: "50mb" }));
+    app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  }
 
   // tRPC API
   app.use(
