@@ -1,11 +1,12 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useVendedorAlertas } from "@/hooks/useVendedorAlertas";
+import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 
 // Retrabalhos
 import Home from "./pages/Home";
@@ -163,7 +164,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/operacoes/custo-led">
-        <ProtectedRoute pageKey="operacoes-custo-solda">
+        <ProtectedRoute pageKey="operacoes-custo-led">
           <CustoLed />
         </ProtectedRoute>
       </Route>
@@ -196,15 +197,28 @@ function VendedorAlertasWatcher() {
   return null;
 }
 
+// Login é obrigatório para toda a aplicação: qualquer rota fora de /login
+// exige sessão ativa, senão redireciona para a tela de login.
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const [location] = useLocation();
+
+  if (isLoading) return <DashboardLayoutSkeleton />;
+  if (!user && location !== "/login") return <Redirect to="/login" />;
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster richColors position="top-right" />
-          <VendedorAlertasWatcher />
-          <Router />
-          <IdleTimeoutWarning />
+          <AuthGate>
+            <VendedorAlertasWatcher />
+            <Router />
+            <IdleTimeoutWarning />
+          </AuthGate>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

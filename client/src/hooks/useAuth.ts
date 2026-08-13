@@ -19,10 +19,8 @@ export function useAuth() {
   });
   const permissions = permsQuery.data ?? [];
 
-  // Sem usuário logado: modo aberto — tudo visível (sistema interno sem
-  // login obrigatório, comportamento preservado da Fase 2).
   const canAccess = (pageKey: string): boolean => {
-    if (!user) return true;
+    if (!user) return false;
     if (user.role === "master" || user.role === "admin") return true;
     return permissions.includes(pageKey);
   };

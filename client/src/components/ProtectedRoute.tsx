@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import AcessoNegado from "@/pages/AcessoNegado";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import { Redirect } from "wouter";
 
 interface ProtectedRouteProps {
   pageKey: string;
@@ -10,19 +11,17 @@ interface ProtectedRouteProps {
 /**
  * Guard de rota que verifica se o usuário tem permissão para acessar a página.
  * - Se ainda carregando: exibe skeleton
+ * - Sem usuário logado: redireciona para /login (login é obrigatório para todo o app)
  * - Se sem permissão: exibe página 403
  * - Se com permissão: renderiza o conteúdo
  */
 export default function ProtectedRoute({ pageKey, children }: ProtectedRouteProps) {
   const { user, isLoading, canAccess } = useAuth();
 
-  // Enquanto carrega as permissões, exibe skeleton
   if (isLoading) return <DashboardLayoutSkeleton />;
 
-  // Sem usuário logado: acesso aberto (sistema interno sem login obrigatório)
-  if (!user) return <>{children}</>;
+  if (!user) return <Redirect to="/login" />;
 
-  // Verifica permissão
   if (!canAccess(pageKey)) return <AcessoNegado />;
 
   return <>{children}</>;
