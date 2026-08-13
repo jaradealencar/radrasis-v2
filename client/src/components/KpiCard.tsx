@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -18,11 +18,11 @@ interface KpiCardProps {
 
 function renderIcon(icon: KpiCardProps["icon"], color: string) {
   if (!icon) return null;
-  if (typeof icon === "function") {
-    const Icon = icon as LucideIcon;
-    return <Icon className="w-5 h-5" style={{ color }} />;
+  if (isValidElement(icon)) {
+    return <span style={{ color }}>{icon}</span>;
   }
-  return <span style={{ color }}>{icon}</span>;
+  const Icon = icon as LucideIcon;
+  return <Icon className="w-5 h-5" style={{ color }} />;
 }
 
 export default function KpiCard({
