@@ -10,20 +10,35 @@
  *
  * - Preserva os ids originais (INSERT explícito, sem deixar o serial gerar
  *   novos) e realinha as sequences do Postgres no final.
- * - Insere primeiro as tabelas "pai" (cargos, cargos_funcoes, motivos_atraso,
- *   producao_ordens) antes das que têm FK declarada no schema, pra não violar
- *   constraint.
+ * - Insere primeiro as tabelas "pai" (cargos, cargos_funcoes) antes das que
+ *   têm FK declarada no schema, pra não violar constraint.
  * - Não migra `__drizzle_migrations` (bookkeeping do MySQL, não é dado da app).
+ * - Pula automaticamente qualquer pgTable do schema.ts que não exista na
+ *   origem MySQL — cobre as tabelas do Better Auth (`user`, `session`,
+ *   `account`, `verification`), que substituíram a antiga autenticação por
+ *   OAuth/local_users e nunca existiram no banco de origem (ver comentário
+ *   em drizzle/schema.ts sobre a Fase 3, Tarefa 3.2).
  * - Idempotente por tabela: se a tabela de destino já tem linhas, pula (não
  *   duplica em caso de reexecução parcial).
+ * - Ao final, garante o usuário admin inicial ("Daniel Jara", login
+ *   daniel_jara / SEED_ADMIN_PASSWORD) via Better Auth e cria conta pros
+ *   demais funcionários ativos de `local_users` (senha temporária
+ *   aleatória, impressa no console) — o banco de origem usava OAuth do
+ *   Google e não guardava nenhuma senha (tabela `users`), e `local_users`
+ *   era só um cadastro de contato sem credencial de verdade, então não há
+ *   senha nenhuma pra migrar em nenhum dos dois casos; as contas são
+ *   criadas do zero.
  */
 import "dotenv/config";
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
 import pg from "pg";
-import bcrypt from "bcryptjs";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "../drizzle/schema";
+import { eq } from "drizzle-orm";
+import { auth } from "../server/_core/auth";
+import { getDb } from "../server/db/db";
+import { user as userTable, APP_ROLES } from "../drizzle/schema";
 
 const MYSQL_URL = process.env.MYSQL_SOURCE_URL;
 const PG_URL = process.env.DATABASE_URL;
@@ -38,7 +53,7 @@ if (!PG_URL) {
 }
 
 // Ordem: tabelas referenciadas por FK primeiro
-const PARENT_TABLES = ["cargos", "cargos_funcoes", "motivos_atraso", "producao_ordens"];
+const PARENT_TABLES = ["cargos", "cargos_funcoes"];
 
 function orderTables(tableExports: Array<{ name: string; table: any }>) {
   const parents = tableExports.filter((t) => PARENT_TABLES.includes(t.name));
@@ -78,33 +93,12 @@ const STATUS_REMAP: Record<string, Record<string, Record<string, string>>> = {
   },
 };
 
-const APP_ROLES = ["master", "admin", "gestor", "vendas", "logistica", "producao", "financeiro", "empacotamento"];
-
-// local_users no MySQL real é uma tabela de contatos antiga (nome/setor/cargo/ativo)
-// que nunca teve passwordHash nem role de verdade — server/db.ts já documenta isso
-// ("A tabela real tem colunas diferentes do schema Drizzle"). O login por bcrypt
-// nunca funcionou pra essas linhas legadas. Migramos o registro preservando nome/
-// e-mail/status, mas com uma senha placeholder impossível de adivinhar — o usuário
-// precisa redefinir a senha (ou a conta é recriada do zero na Fase 3, com Better Auth).
-const UNUSABLE_PASSWORD_HASH = bcrypt.hashSync(`migrated-${crypto.randomUUID()}-needs-reset`, 10);
-
-function transformLocalUsersRow(row: any): any {
-  const role = APP_ROLES.includes(row.setor) ? row.setor : "vendas";
-  return {
-    id: row.id,
-    name: row.nome,
-    email: row.email,
-    passwordHash: UNUSABLE_PASSWORD_HASH,
-    role,
-    active: Number(row.ativo) === 1 ? "sim" : "nao",
-    createdAt: row.createdAt,
-    updatedAt: row.createdAt,
-  };
-}
-
-const ROW_TRANSFORM: Record<string, (row: any) => any> = {
-  local_users: transformLocalUsersRow,
-};
+// `local_users` (contatos antigos, sem senha real) e `users` (OAuth do
+// Google, também sem senha) não têm mais tabela correspondente no schema.ts
+// — foram substituídas pelo Better Auth (`user`/`account`/`session`) na Fase
+// 3. Não há nenhuma senha pra preservar dessas tabelas: o admin inicial é
+// criado do zero em `ensureAdminUser()`, no final deste script.
+const ROW_TRANSFORM: Record<string, (row: any) => any> = {};
 
 // Mapeia o columnType (+ enumValues, quando aplicável) do Drizzle pra uma função
 // de coerção do valor vindo do mysql2.
@@ -134,6 +128,105 @@ function coerceValue(value: unknown, column: { columnType: string; enumValues?: 
   return value;
 }
 
+// Nome/senha do usuário admin inicial, criado via Better Auth ao final da
+// migração — mesmo caminho de server/scripts/seed-admin-user.ts (auth.api.
+// createUser), pra gerar hash bcrypt e linhas em `user`/`account` consistentes
+// com o resto do app. O login exibido pro usuário ("daniel_jara") é
+// normalizado pela mesma slugifyName() da tela de login (client/src/pages/
+// LocalLogin.tsx) e vira "daniel.jara" — é o valor que fica salvo em
+// user.username.
+function slugifyName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+  return slug || "usuario";
+}
+
+const ADMIN_NAME = "Daniel Jara";
+const ADMIN_USERNAME = slugifyName(ADMIN_NAME);
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "12345678";
+const ADMIN_EMAIL = `${ADMIN_USERNAME}@local.internal`;
+
+async function ensureAdminUser(): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("⚠ Não foi possível conectar ao Postgres para criar o usuário admin (DATABASE_URL ausente/inválida).");
+    return;
+  }
+  const [existing] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.username, ADMIN_USERNAME));
+  if (existing) {
+    console.log(`\n⏭  Usuário admin "${ADMIN_USERNAME}" já existe (id=${existing.id}) — nada a fazer.`);
+    return;
+  }
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    console.warn(`⚠ SEED_ADMIN_PASSWORD não definida — usando senha padrão "12345678". Troque-a após o primeiro login.`);
+  }
+  const { user } = await auth.api.createUser({
+    body: {
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+      name: ADMIN_NAME,
+      role: "admin",
+      data: { username: ADMIN_USERNAME, displayUsername: ADMIN_NAME },
+    },
+  });
+  console.log(`\n✓ Usuário admin criado: login="${ADMIN_USERNAME}" senha="${ADMIN_PASSWORD}" id=${user.id}`);
+}
+
+// `local_users` era a tabela de contatos/funcionários do sistema antigo —
+// nunca teve senha real (nem lá o login por ela funcionava, ver comentário
+// no topo do arquivo), então não há credencial pra migrar. Pra cada
+// funcionário ativo, cria a conta do zero no Better Auth com uma senha
+// temporária aleatória — o admin repassa ao funcionário, que troca no
+// primeiro acesso.
+async function ensureEmployeeUsers(localUsersRows: any[]): Promise<void> {
+  const activeRows = localUsersRows.filter((r) => Number(r.ativo) === 1 && r.nome);
+  if (activeRows.length === 0) return;
+
+  const db = await getDb();
+  if (!db) {
+    console.warn("⚠ Não foi possível conectar ao Postgres para criar contas de funcionários (local_users).");
+    return;
+  }
+
+  console.log(`\n=== Contas de funcionários (local_users → Better Auth) ===`);
+  for (const row of activeRows) {
+    const username = slugifyName(row.nome);
+    if (username === ADMIN_USERNAME) continue; // já é o admin, não duplica
+
+    const [existing] = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.username, username));
+    if (existing) {
+      console.log(`⏭  "${username}" já existe (id=${existing.id}) — pulando.`);
+      continue;
+    }
+
+    const role = APP_ROLES.includes(row.setor) ? row.setor : "vendas";
+    const email = row.email?.trim() ? row.email.trim().toLowerCase() : `${username}@local.internal`;
+    // Sem senha de origem pra reaproveitar — gera uma temporária aleatória.
+    const tempPassword = crypto.randomBytes(9).toString("base64url");
+
+    try {
+      const { user } = await auth.api.createUser({
+        body: {
+          email,
+          password: tempPassword,
+          name: row.nome,
+          role,
+          data: { username, displayUsername: row.nome },
+        },
+      });
+      console.log(
+        `✓ "${username}" criado (role=${role}) — senha temporária: ${tempPassword} (id=${user.id}). Repasse ao funcionário e peça troca no primeiro acesso.`
+      );
+    } catch (err: any) {
+      console.error(`✗ Falha ao criar "${username}": ${err.message}`);
+    }
+  }
+}
+
 async function main() {
   const mysqlConn = await mysql.createConnection({
     uri: MYSQL_URL!.split("?")[0],
@@ -141,8 +234,28 @@ async function main() {
   });
   const pgPool = new pg.Pool({ connectionString: PG_URL });
 
-  const tables = orderTables(collectPgTables());
+  // Só migra tabelas que existem de fato na origem — o schema.ts atual já
+  // inclui as tabelas do Better Auth (user/session/account/verification),
+  // que nunca existiram no MySQL de origem (ver cabeçalho do arquivo).
+  const [sourceTableRows] = (await mysqlConn.query("SHOW TABLES")) as any;
+  const sourceTableKey = sourceTableRows.length ? Object.keys(sourceTableRows[0])[0] : null;
+  const sourceTableNames = new Set<string>(sourceTableRows.map((r: any) => r[sourceTableKey!]));
+
+  const allTables = orderTables(collectPgTables());
+  const tables = allTables.filter((t) => sourceTableNames.has(t.name));
+  const skippedNoSource = allTables.filter((t) => !sourceTableNames.has(t.name));
+  if (skippedNoSource.length > 0) {
+    console.log(`⏭  Tabelas do schema novo sem correspondente na origem (não migradas): ${skippedNoSource.map((t) => t.name).join(", ")}`);
+  }
   console.log(`${tables.length} tabelas a migrar.\n`);
+
+  // `local_users` não é mais um pgTable do schema novo (virou Better Auth),
+  // então não entra no loop de cópia genérica abaixo — capturamos os
+  // registros aqui, antes de fechar a conexão, pra criar as contas de
+  // funcionário no final (ver ensureEmployeeUsers).
+  const localUsersRows: any[] = sourceTableNames.has("local_users")
+    ? ((await mysqlConn.query("SELECT * FROM `local_users`")) as any)[0]
+    : [];
 
   const report: Array<{ table: string; source: number; inserted: number; skipped: boolean }> = [];
 
@@ -218,6 +331,21 @@ async function main() {
 
   await mysqlConn.end();
   await pgPool.end();
+
+  // Independente de divergências na cópia de dados: garante que o admin
+  // inicial existe (a origem não tinha nenhuma senha migrável — ver
+  // cabeçalho do arquivo) e cria conta pros demais funcionários ativos
+  // achados em local_users.
+  try {
+    await ensureAdminUser();
+  } catch (err: any) {
+    console.error(`✗ Falha ao criar usuário admin: ${err.message}`);
+  }
+  try {
+    await ensureEmployeeUsers(localUsersRows);
+  } catch (err: any) {
+    console.error(`✗ Falha ao criar contas de funcionários: ${err.message}`);
+  }
 
   if (mismatches > 0) process.exit(1);
 }
