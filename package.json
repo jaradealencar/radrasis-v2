@@ -12,6 +12,7 @@
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "db:clean": "node server/scripts/clean-db.mjs",
+    "db:seed-admin": "tsx server/scripts/seed-admin-user.ts",
     "postinstall": "patch-package"
   },
   "dependencies": {
