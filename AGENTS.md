@@ -189,6 +189,23 @@ docs/                 documentação viva + docs/archive (ver abaixo)
 Import aliases (`vite.config.ts` / `tsconfig.json`): `@/` → `client/src/`,
 `@shared/` → `shared/`.
 
+## Convenções do client (`client/src/pages`)
+
+Fruto da sprint de refatoração de `pages/` — reaproveite estes componentes
+em vez de reescrever o padrão:
+
+- Tabela de dados usa `@/components/ui/table` — **não** escreva `<table>` na
+  mão. Exceção: HTML montado em string para exportação (Excel/impressão).
+- Cabeçalho de página usa `@/components/PageHeader`.
+- Card de indicador usa `@/components/KpiCard`.
+- Tooltip de gráfico recharts usa `@/components/ChartTooltip`.
+- Formatação de moeda/número/data/percentual vem de `@/lib/format` — não
+  crie `toLocaleString` inline nem formatador local.
+- Cor de série de gráfico vem de `@/lib/chartColors` (`chartColor(i)` para
+  categórica, `STATUS_COLORS` para semântica).
+- Estados de carregando e vazio usam `@/components/ui/spinner` e
+  `@/components/ui/empty`.
+
 ## Testes
 
 `yarn test` (vitest, `environment: "node"`) roda tudo que casar com

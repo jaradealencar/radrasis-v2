@@ -21,18 +21,18 @@ fase por commit**. O objetivo é reduzir o volume de código em
 
 | # | Arquivo | O que faz | Depende de |
 |---|---------|-----------|------------|
-| 1 | [fase-01-fundacao.md](fase-01-fundacao.md) | Cria as primitivas compartilhadas + refatora 1 página piloto | — |
-| 2 | [fase-02-formatadores.md](fase-02-formatadores.md) | Substitui formatadores locais por `lib/format.ts` | 1 |
-| 3 | [fase-03-page-header.md](fase-03-page-header.md) | 134 cabeçalhos manuais → `<PageHeader>` | 1 |
-| 4 | [fase-04-kpi-card.md](fase-04-kpi-card.md) | 7 `KpiCard` locais → `components/KpiCard.tsx` | 1, 2 |
-| 5 | [fase-05-graficos.md](fase-05-graficos.md) | 7 `CustomTooltip` locais + paleta de cores hardcoded | 1, 2 |
-| 6 | [fase-06-tabelas-a-qualidade-retrabalhos-admin.md](fase-06-tabelas-a-qualidade-retrabalhos-admin.md) | `<table>` cru → `ui/table` (8 arq., 8 tabelas) | 1 |
-| 7 | [fase-07-tabelas-b-financeiro.md](fase-07-tabelas-b-financeiro.md) | idem — financeiro (5 arq., 9 tabelas) | 6 |
-| 8 | [fase-08-tabelas-c-logistica.md](fase-08-tabelas-c-logistica.md) | idem — logística (4 arq., 10 tabelas) | 6 |
-| 9 | [fase-09-tabelas-d-operacoes.md](fase-09-tabelas-d-operacoes.md) | idem — operações (4 arq., 15 tabelas) | 6 |
-| 10 | [fase-10-tabelas-e-comercial.md](fase-10-tabelas-e-comercial.md) | idem — comercial (7 arq., 23 tabelas) | 6 |
-| 11 | [fase-11-estados-loading-vazio.md](fase-11-estados-loading-vazio.md) | Loading/vazio ad-hoc → `ui/spinner` + `ui/empty` | 1 |
-| 12 | [fase-12-limpeza.md](fase-12-limpeza.md) | Varredura final, remoção de mortos, fechamento | 1–11 |
+| 1 | ✅ [fase-01-fundacao.md](fase-01-fundacao.md) | Cria as primitivas compartilhadas + refatora 1 página piloto | — |
+| 2 | ✅ [fase-02-formatadores.md](fase-02-formatadores.md) | Substitui formatadores locais por `lib/format.ts` | 1 |
+| 3 | ✅ [fase-03-page-header.md](fase-03-page-header.md) | 134 cabeçalhos manuais → `<PageHeader>` | 1 |
+| 4 | ✅ [fase-04-kpi-card.md](fase-04-kpi-card.md) | 7 `KpiCard` locais → `components/KpiCard.tsx` | 1, 2 |
+| 5 | ✅ [fase-05-graficos.md](fase-05-graficos.md) | 7 `CustomTooltip` locais + paleta de cores hardcoded | 1, 2 |
+| 6 | ✅ [fase-06-tabelas-a-qualidade-retrabalhos-admin.md](fase-06-tabelas-a-qualidade-retrabalhos-admin.md) | `<table>` cru → `ui/table` (8 arq., 8 tabelas) | 1 |
+| 7 | ✅ [fase-07-tabelas-b-financeiro.md](fase-07-tabelas-b-financeiro.md) | idem — financeiro (5 arq., 9 tabelas) | 6 |
+| 8 | ✅ [fase-08-tabelas-c-logistica.md](fase-08-tabelas-c-logistica.md) | idem — logística (4 arq., 10 tabelas) | 6 |
+| 9 | ✅ [fase-09-tabelas-d-operacoes.md](fase-09-tabelas-d-operacoes.md) | idem — operações (4 arq., 15 tabelas) | 6 |
+| 10 | ✅ [fase-10-tabelas-e-comercial.md](fase-10-tabelas-e-comercial.md) | idem — comercial (7 arq., 23 tabelas) | 6 |
+| 11 | ✅ [fase-11-estados-loading-vazio.md](fase-11-estados-loading-vazio.md) | Loading/vazio ad-hoc → `ui/spinner` + `ui/empty` | 1 |
+| 12 | ✅ [fase-12-limpeza.md](fase-12-limpeza.md) | Varredura final, remoção de mortos, fechamento | 1–11 |
 
 **Ordem obrigatória: a Fase 1 vem primeiro.** Ela cria os arquivos que todas
 as outras importam. Depois disso:
@@ -151,11 +151,67 @@ grep -rn "<table" --include="*.tsx" client/src/pages | wc -l
 
 ## Meta da sprint
 
-| Métrica | Antes | Meta |
-|---|---|---|
-| Linhas em `pages/` | ~43.200 | ≤ 38.000 |
-| `<table>` cru em JSX | 65 | 0 |
-| Arquivos usando `ui/table` | 2 | ~31 |
-| `KpiCard` definidos localmente | 7 | 0 |
-| `CustomTooltip` definidos localmente | 7 | 0 |
-| Formatadores de data/moeda locais | 10+ | 0 |
+| Métrica | Antes | Meta | Real |
+|---|---|---|---|
+| Linhas em `pages/` | ~43.200 | ≤ 38.000 | 42.779 |
+| `<table>` cru em JSX | 65 | 0 (2 export ficam) | 4 (2 export + 2 adiadas, ver abaixo) |
+| Arquivos usando `ui/table` | 2 | ~31 | 28 |
+| `KpiCard` definidos localmente | 7 | 0 | 2 (justificados, ver abaixo) |
+| `CustomTooltip` definidos localmente | 7 | 0 | 2 (justificados, ver abaixo) |
+| Formatadores de data/moeda locais | 10+ | 0 | 4 (justificados, ver abaixo) |
+
+A redução de linhas ficou bem abaixo da meta (42.779 vs. ≤ 38.000) — como
+previsto no guia da Fase 12, não forçamos o número. O ganho real desta
+sprint não é a contagem de linhas e sim a eliminação de duplicação:
+`ui/table` foi de 2 para 28 arquivos, e a maior parte das 65 tabelas cruas,
+dos 7 `KpiCard` e dos 7 `CustomTooltip` locais viraram componente
+compartilhado. Páginas grandes como `logistica/Empacotamento.tsx` (5.012
+linhas) continuam praticamente do mesmo tamanho porque a sprint não mexeu
+em quebra de arquivo — só em duplicação de padrão de UI.
+
+## Não feito nesta sprint
+
+- **`retrabalhos/Retrabalhos.tsx` e `retrabalhos/Relatorio.tsx`** continuam
+  com `<table>` cru. Dependem inteiramente da classe `.tech-table`
+  (`client/src/index.css:274-290`, sem paddings/cores Tailwind de
+  fallback); a Fase 6 já registrou essa decisão no commit
+  `8c81cfc` e a Fase 12 não teve como verificar visualmente a conversão
+  (sem ferramenta de screenshot no ambiente), então manteve o adiamento.
+  Fica para quando alguém puder conferir na tela.
+- **`comercial/PerformanceComercial.tsx`** mantém `KpiCardComMeta` e
+  `CustomTooltip` locais — os cards precisam de `meta`/`metaReal`/
+  `metaTarget` e o tooltip escolhe o formato (R$ / % / número cru) por
+  nome de série, nenhum dos dois coberto pelo `KpiCard`/`ChartTooltip`
+  compartilhados.
+- **`operacoes/Performance.tsx`** mantém `KpiCardOperacoes` local — mesma
+  razão do item acima: barra de status, badge de % de meta e seta de
+  tendência não têm equivalente no `KpiCard` compartilhado.
+- **`comercial/EvolucaoVendedor.tsx`** mantém `CustomTooltip` local — ordena
+  as séries por valor decrescente e formata cada uma pelo indicador
+  selecionado; o `ChartTooltip` compartilhado não ordena payload.
+- **`comercial/CrmAuditoria.tsx`** mantém `formatDate`/`formatDateShort`
+  locais — fazem parsing de string `YYYY-MM-DD` sem passar por `Date`,
+  evitando o shift de fuso horário que `new Date("YYYY-MM-DD")` introduz;
+  `formatDateShort` também inclui o dia da semana, que `lib/format` não
+  tem.
+- **`comercial/EvolucaoDiariaVendedor.tsx`** mantém `fmtBrl` local — sem
+  casas decimais (rótulo de gráfico), diferente do `fmtBrl` compartilhado
+  (sempre 2 casas).
+- **`logistica/Transportadoras.tsx`** mantém `formatDate` local — em caso
+  de data inválida devolve a string original em vez de "—", um fallback
+  que `lib/format` não replica.
+- `logistica/Empacotamento.tsx` (5.012 linhas) precisa ser quebrado em
+  componentes — sprint própria.
+- `comercial/PerformanceComercial.tsx` (2.773 linhas) — idem.
+- `operacoes/Performance.tsx` (1.980 linhas) — idem.
+- Adoção de `ui/chart.tsx` (shadcn) nos gráficos recharts — sprint própria.
+- `ui/field`, `ui/item`, `ui/input-group`, `ui/button-group` seguem com
+  adoção zero; os formulários das páginas ainda montam `Label` + `Input`
+  na mão.
+- `ui/pagination` usado em 1 arquivo; várias listas longas ainda renderizam
+  tudo de uma vez.
+- Encontramos, fora do escopo mecânico da Fase 12 (que só varre
+  `formatDate`/`fmtBrl`/`formatCurrency`/`fmtDate`), outras ~20 páginas com
+  variações locais de `fmtNum`/`fmtBRL`/`MESES`/`MESES_ABREV` que duplicam
+  `lib/format.ts` — não convertidas aqui para não expandir o escopo da fase
+  de fechamento; candidato a uma sprint de formatadores fase 2.

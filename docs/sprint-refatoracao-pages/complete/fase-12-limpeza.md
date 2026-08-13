@@ -106,12 +106,12 @@ Preencha a tabela de resultado:
 
 | Métrica | Antes | Meta | Real |
 |---|---|---|---|
-| Linhas em `pages/` | ~43.200 | ≤ 38.000 | ? |
-| `<table>` cru em JSX | 65 | 2 (só export) | ? |
-| Arquivos usando `ui/table` | 2 | ~31 | ? |
-| `KpiCard` locais | 7 | 0 | ? |
-| `CustomTooltip` locais | 7 | 0 | ? |
-| Formatadores locais | 10+ | 0 | ? |
+| Linhas em `pages/` | ~43.200 | ≤ 38.000 | 42.779 |
+| `<table>` cru em JSX | 65 | 2 (só export) | 4 (2 export + 2 adiadas, `.tech-table`) |
+| Arquivos usando `ui/table` | 2 | ~31 | 28 |
+| `KpiCard` locais | 7 | 0 | 2 (justificados) |
+| `CustomTooltip` locais | 7 | 0 | 2 (justificados) |
+| Formatadores locais | 10+ | 0 | 4 (justificados) |
 
 **Se a redução de linhas ficou bem abaixo da meta, não force.** O número é
 uma expectativa, não um contrato — melhor 40.000 linhas consistentes que
