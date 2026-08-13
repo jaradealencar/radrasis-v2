@@ -7,11 +7,7 @@ import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-
-function formatDate(d: Date | string | null | undefined) {
-  if (!d) return "—";
-  return new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
+import { fmtDateTime } from "@/lib/format";
 
 export default function PopRelatorio() {
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "visualizacao" | "download">("todos");
@@ -150,7 +146,7 @@ export default function PopRelatorio() {
                       </span>
                     </TableCell>
                     <TableCell className="text-center font-bold text-gray-800">{Number(row.total ?? 0)}</TableCell>
-                    <TableCell className="text-xs text-gray-500">{formatDate(row.ultimoAcesso)}</TableCell>
+                    <TableCell className="text-xs text-gray-500">{fmtDateTime(row.ultimoAcesso)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -233,7 +229,7 @@ export default function PopRelatorio() {
                 <TableBody>
                   {(acessos ?? []).map((row: AcessoRow, i: number) => (
                     <TableRow key={i}>
-                      <TableCell className="text-xs text-gray-500 whitespace-nowrap">{formatDate(row.createdAt)}</TableCell>
+                      <TableCell className="text-xs text-gray-500 whitespace-nowrap">{fmtDateTime(row.createdAt)}</TableCell>
                       <TableCell>
                         <div className="font-medium text-gray-800 text-sm">{row.usuarioNome}</div>
 

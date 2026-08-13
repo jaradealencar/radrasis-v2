@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ErrorCodeBadge, useErrorMap } from "@/components/ErrorCodeBadge";
 import { toast } from "sonner";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { fmtBrl } from "@/lib/format";
 
 // Paleta de cores para as categorias
 const CATEGORY_COLORS: Record<string, string> = {
@@ -39,10 +40,6 @@ function getCategoryColor(cat: string | null, idx: number): string {
   return CATEGORY_COLORS[cat] ?? COLOR_FALLBACKS[idx % COLOR_FALLBACKS.length];
 }
 
-function formatCurrency(val: number) {
-  return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
-}
-
 // Tooltip customizado para o gráfico de pizza
 function CustomPieTooltip({ active, payload, type }: { active?: boolean; payload?: any[]; type: "count" | "cost" }) {
   if (!active || !payload?.length) return null;
@@ -53,7 +50,7 @@ function CustomPieTooltip({ active, payload, type }: { active?: boolean; payload
       {type === "count" ? (
         <p className="text-blue-600 font-bold">{d.value} retrabalhos ({d.payload.pct}%)</p>
       ) : (
-        <p className="text-red-600 font-bold">{formatCurrency(d.value)} ({d.payload.pct}%)</p>
+        <p className="text-red-600 font-bold">{fmtBrl(d.value)} ({d.payload.pct}%)</p>
       )}
     </div>
   );
@@ -372,7 +369,7 @@ export default function Relatorio() {
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
                     <span className="text-slate-600">{d.name}</span>
                   </div>
-                  <span className="font-semibold text-slate-800">{formatCurrency(d.value)} <span className="text-slate-400 font-normal">({d.pct}%)</span></span>
+                  <span className="font-semibold text-slate-800">{fmtBrl(d.value)} <span className="text-slate-400 font-normal">({d.pct}%)</span></span>
                 </div>
               ))}
             </div>

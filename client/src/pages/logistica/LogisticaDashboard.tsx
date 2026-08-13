@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { fmtDate } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,13 +18,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Link } from "wouter";
 import PageHeader from "@/components/PageHeader";
 import { toast } from "sonner";
-
-function formatDate(val: any) {
-  if (!val) return "—";
-  const d = new Date(val);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("pt-BR");
-}
 
 export default function LogisticaDashboard() {
   const [filtroDe, setFiltroDe] = useState("");
@@ -226,8 +220,8 @@ export default function LogisticaDashboard() {
                         <TableCell className="text-gray-700 max-w-[140px] truncate">{p.destinatarioNome ?? "—"}</TableCell>
                         <TableCell className="text-gray-500 max-w-[100px] truncate">{p.tipoMaterial ?? "—"}</TableCell>
                         <TableCell className="text-gray-500">{p.municipio && p.estado ? `${p.municipio}/${p.estado}` : "—"}</TableCell>
-                        <TableCell className="text-gray-700">{formatDate(p.dataEntregaPrevista)}</TableCell>
-                        <TableCell className="text-gray-700">{formatDate(p.dataDespacho)}</TableCell>
+                        <TableCell className="text-gray-700">{fmtDate(p.dataEntregaPrevista)}</TableCell>
+                        <TableCell className="text-gray-700">{fmtDate(p.dataDespacho)}</TableCell>
                         <TableCell>
                           {p.diffDias === 0 ? (
                             <span className="flex items-center gap-1 text-green-700"><Minus className="w-3 h-3" /> No dia</span>

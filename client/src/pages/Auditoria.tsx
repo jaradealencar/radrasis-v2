@@ -5,6 +5,7 @@ import { ShieldCheck, Search, ChevronLeft, ChevronRight, Eye, X, Plus, Pencil, T
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { fmtDateTime } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   Table, TableHeader, TableBody,
@@ -47,15 +48,6 @@ function AcaoBadge({ acao }: { acao: AcaoType }) {
       {cfg.label}
     </span>
   );
-}
-
-function formatDate(d: Date | string | null | undefined) {
-  if (!d) return "—";
-  const date = d instanceof Date ? d : new Date(d);
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
 }
 
 // ─── Drawer de detalhes ──────────────────────────────────────────────────────
@@ -154,7 +146,7 @@ function DetalhesDrawer({ row, onClose }: { row: AuditRow; onClose: () => void }
             </div>
             <div>
               <div className="font-semibold text-slate-800 text-sm">Evento #{row.id}</div>
-              <div className="text-xs text-slate-400">{formatDate(row.createdAt)}</div>
+              <div className="text-xs text-slate-400">{fmtDateTime(row.createdAt)}</div>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -353,7 +345,7 @@ export default function Auditoria() {
                     onClick={() => setSelectedRow(row)}
                   >
                     <TableCell className="text-slate-500 font-mono text-xs">
-                      {formatDate(row.createdAt)}
+                      {fmtDateTime(row.createdAt)}
                     </TableCell>
                     <TableCell>
                       <AcaoBadge acao={row.acao} />

@@ -22,6 +22,7 @@ import {
   TrendingUp, TrendingDown, ChevronDown, ChevronUp, BarChart2,
 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import ChartTooltip from "@/components/ChartTooltip";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -86,24 +87,7 @@ function emptyForm(categoria: Categoria, ano: number): FormState {
   };
 }
 
-function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white border rounded-lg shadow-lg p-3 text-sm min-w-[160px]">
-      <div className="font-semibold mb-1">{label}</div>
-      {payload.map((p: any) => (
-        <div key={p.name} className="flex justify-between gap-3">
-          <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-medium">
-            {typeof p.value === "number" && p.value > 1000
-              ? fmtBRL(p.value)
-              : fmtNum(p.value, p.value % 1 !== 0 ? 1 : 0)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
+const tooltipFmt = (v: number) => (v > 1000 ? fmtBRL(v) : fmtNum(v, v % 1 !== 0 ? 1 : 0));
 
 export default function DesempenhoColaborador() {
   const anoAtual = new Date().getFullYear();
@@ -401,7 +385,7 @@ export default function DesempenhoColaborador() {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                                 <YAxis tick={{ fontSize: 10 }} width={40} />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<ChartTooltip format={tooltipFmt} />} />
                                 <Legend wrapperStyle={{ fontSize: 11 }} />
                                 {cat.key === "soldador" && (
                                   <>
