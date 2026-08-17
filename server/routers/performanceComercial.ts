@@ -256,12 +256,18 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
       setCacheWithTTL(osCacheKey, allOs, mes, ano);
       setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
     } else {
-      // Buscar da API MubiSys SEQUENCIALMENTE (primeiro OS, depois orçamentos)
-      // Busca sequencial evita sobrecarga na API e reduz chance de timeout
+      // Buscar da API MubiSys EM PARALELO — são dois endpoints independentes
+      // (`ordem-servico` e `orcamento`), cada um já com seu próprio timeout
+      // (TIMEOUT_LISTA_MS). Buscar em série somava ~40-50s (25s OS + 15-25s
+      // orçamentos), quase estourando o timeout de 50s do getMes/getAno e o
+      // maxDuration:60s da Vercel. Em paralelo o tempo total cai para o maior
+      // dos dois (~25s), igual à concorrência já usada em getAno/getClientesNovosAno.
       // OS: filtrodata=APROVACAO (data de aprovação = faturamento real, igual ao relatório de Vendas do MubiSys)
-      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
       // Orçamentos: filtrodata=CADASTRO (data de criação = quando a cotação foi enviada)
-      const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal });
+      const [osResult, orcResult] = await Promise.all([
+        listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
+        listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal }),
+      ]);
       allOs = osResult.itens;
       allOrc = orcResult.itens;
       // Salvar em memória sempre (mesmo parcial — melhor que zero para o usuário atual)
@@ -1216,16 +1222,49 @@ export const performanceComercialRouter = router({
       const todasOsAno = db ? await db.select().from(historicoOs).where(eq(historicoOs.ano, ano)) : [];
       const todosOrcAno = db ? await db.select().from(historicoOrcamentos).where(eq(historicoOrcamentos.ano, ano)) : [];
 
+      // Pré-buscar snapshots congelados do ano inteiro em uma única query — meses
+      // já auditados/congelados nunca precisam bater na API MubiSys (mesmo padrão
+      // de getMes/getMultiMes). Sem isso, getAno reconsultava os 12 meses na API
+      // a cada expiração do TTL de 6h, mesmo para meses já congelados.
+      const snapsCongeladosAno = db ? await db.select().from(performanceAuditada)
+        .where(and(eq(performanceAuditada.ano, ano), eq(performanceAuditada.congelado, true))) : [];
+      const snapMapAno = new Map<number, typeof snapsCongeladosAno[0]>();
+      for (const s of snapsCongeladosAno) snapMapAno.set(s.mes, s);
+      const MESES_NOMES_ANO = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
       const meses = Array.from({ length: 12 }, (_, i) => i + 1);
-      // Usar API Mubisys para TODOS os meses (não só o atual) — mesmo padrão de
-      // getMes/getMultiMes, para os números baterem entre telas. Concorrência
-      // limitada a 2 (igual getClientesNovosAno) para não disparar 12 chamadas
-      // simultâneas à API MubiSys na primeira carga do ano.
+      // Usar API Mubisys para os meses não-congelados (não só o atual) — mesmo
+      // padrão de getMes/getMultiMes, para os números baterem entre telas.
+      // Concorrência limitada a 2 (igual getClientesNovosAno) para não disparar
+      // várias chamadas simultâneas à API MubiSys na primeira carga do ano.
       const CONCURRENCY = 2;
       const results: any[] = new Array(meses.length).fill(null);
       for (let i = 0; i < meses.length; i += CONCURRENCY) {
         const batch = meses.slice(i, i + CONCURRENCY);
         const batchResults = await Promise.all(batch.map(async (mes) => {
+          // ─── SNAPSHOT CONGELADO: retornar do banco imediatamente, sem tocar a API ───
+          const snap = snapMapAno.get(mes);
+          if (snap) {
+            const valorOrcadoSnap = parseFloat(String(snap.valorOrcado ?? 0));
+            const faturamentoSnap = parseFloat(String(snap.faturamento ?? 0));
+            const osGeradasSnap = snap.osNormais ?? 0;
+            return {
+              label: `${MESES_NOMES_ANO[mes - 1]}/${String(ano).slice(2)}`,
+              mes, ano,
+              cotacoes: snap.cotacoes ?? 0,
+              osGeradas: osGeradasSnap,
+              valorOrcado: valorOrcadoSnap,
+              faturamento: faturamentoSnap,
+              custo: 0,
+              resultado: 0,
+              taxaConversao: parseFloat(String(snap.taxaConversao ?? 0)),
+              taxaFaturamento: valorOrcadoSnap > 0 ? parseFloat(((faturamentoSnap / valorOrcadoSnap) * 100).toFixed(2)) : 0,
+              ticketMedio: osGeradasSnap > 0 ? parseFloat((faturamentoSnap / osGeradasSnap).toFixed(2)) : 0,
+              margemPct: 0,
+              porVendedor: [],
+            };
+          }
+          // ───────────────────────────────────────────────────────────────────────
           let raw: any = null;
           if (publicKey && accessToken) {
             try {

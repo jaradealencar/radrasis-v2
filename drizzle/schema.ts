@@ -2,6 +2,7 @@ import {
   boolean,
   date,
   decimal,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -1242,7 +1243,9 @@ export const historicoOs = pgTable("historico_os", {
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  mesAnoIdx: index("historico_os_mes_ano_idx").on(t.mes, t.ano),
+}));
 export type HistoricoOs = typeof historicoOs.$inferSelect;
 export type InsertHistoricoOs = typeof historicoOs.$inferInsert;
 
@@ -1263,7 +1266,9 @@ export const historicoOrcamentos = pgTable("historico_orcamentos", {
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t.mes, t.ano),
+}));
 export type HistoricoOrcamento = typeof historicoOrcamentos.$inferSelect;
 export type InsertHistoricoOrcamento = typeof historicoOrcamentos.$inferInsert;
 
@@ -1497,7 +1502,9 @@ export const performanceAuditada = pgTable("performance_auditada", {
   listaClientesNovos: text("lista_clientes_novos"), // mediumtext → text
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  mesAnoIdx: index("performance_auditada_mes_ano_idx").on(t.mes, t.ano),
+}));
 export type PerformanceAuditada = typeof performanceAuditada.$inferSelect;
 export type InsertPerformanceAuditada = typeof performanceAuditada.$inferInsert;
 
