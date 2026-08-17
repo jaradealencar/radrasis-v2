@@ -1,6 +1,7 @@
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { z } from "zod";
-import https from "https";
+import { ENV } from "../_core/env";
+import { listarOSMubiSys, listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
 import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaClientesCache, performanceAuditada, mubisysApiCache, clienteNovosContato } from "../../drizzle/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -93,52 +94,6 @@ function setCache(key: string, data: any): void {
 
 function deleteCache(key: string): void {
   apiCache.delete(key);
-}
-
-// ─── Helper ERP Mubisys ──────────────────────────────────────────────────────
-
-function fetchMubisys(
-  publicKey: string,
-  accessToken: string,
-  path: string,
-  timeoutMs = 90000
-): Promise<{ status: number; data: Record<string, unknown> }> {
-  return new Promise((resolve) => {
-    const url = `https://api.mubisys.com/api/${publicKey}${path}`;
-    const req = https.get(
-      url,
-      { headers: { "Access-Token": accessToken, Accept: "application/json" } },
-      (res) => {
-        let body = "";
-        res.on("data", (c: Buffer) => (body += c));
-        res.on("end", () => {
-          try { resolve({ status: res.statusCode ?? 0, data: JSON.parse(body) }); }
-          catch { resolve({ status: res.statusCode ?? 0, data: {} }); }
-        });
-      }
-    );
-    req.on("error", () => resolve({ status: 0, data: {} }));
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve({ status: 0, data: { error: "timeout" } }); });
-  });
-}
-
-// Wrapper com retry automático: tenta até 3 vezes com backoff de 3s entre tentativas
-async function fetchMubisysWithRetry(
-  publicKey: string,
-  accessToken: string,
-  path: string,
-  maxRetries = 3,
-  timeoutMs = 90000
-): Promise<{ status: number; data: Record<string, unknown> }> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const result = await fetchMubisys(publicKey, accessToken, path, timeoutMs);
-    if (result.status !== 0) return result; // sucesso
-    if (attempt < maxRetries) {
-      // Aguardar 3s antes de tentar novamente
-      await new Promise(r => setTimeout(r, 3000));
-    }
-  }
-  return { status: 0, data: { error: "timeout after retries" } };
 }
 
 // ─── Buscar dados do banco (histórico importado) ─────────────────────────────
@@ -269,47 +224,6 @@ async function _getMesFromApiImpl(publicKey: string, accessToken: string, mes: n
   const datainicial = `${ano}-${pad(mes)}-01`;
   const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
 
-  // Buscar OS e Orçamentos com paginação correta
-  // A API MubiSys retorna: { data: [...], pagination: { current_page, last_page, per_page, total } }
-  // IMPORTANTE: per_page=500 causa timeout para /orcamento (payload muito grande).
-  // Usar per_page=500 apenas para OS (poucos registros), per_page=200 para orçamentos.
-  // Busca paginada SEQUENCIAL com retry por página
-  // IMPORTANTE: busca sequencial (não paralela) para evitar sobrecarga na API MubiSys
-  // Cada página tem até 3 tentativas com timeout de 90s antes de desistir
-  async function fetchAll(path: string, perPage = 200): Promise<{ items: any[]; complete: boolean }> {
-    let page = 1;
-    let lastPage = 1;
-    const all: any[] = [];
-    let complete = false;
-    while (true) {
-      // Usar retry automático por página (3 tentativas, 90s timeout cada)
-      const resp = await fetchMubisysWithRetry(publicKey, accessToken, `${path}&page=${page}&per_page=${perPage}`, 3, 90000);
-      const data = resp.data as any;
-      if (resp.status === 0) {
-        // Timeout mesmo após 3 tentativas — dados incompletos, NÃO salvar no cache persistente
-        console.error(`[MubiSys] fetchAll timeout na página ${page} de ${path} (${all.length} itens coletados até agora)`);
-        break;
-      }
-      const items: any[] = Array.isArray(data?.data) ? data.data : [];
-      all.push(...items);
-      // Estrutura de paginação: data.pagination.last_page
-      const pagination = data?.pagination;
-      if (pagination?.last_page) lastPage = pagination.last_page;
-      // Parar se chegou na ultima pagina ou sem mais itens
-      if (page >= lastPage || items.length === 0) {
-        complete = true; // Todas as páginas buscadas com sucesso
-        break;
-      }
-      page++;
-      // Limite de seguranca: no maximo 50 paginas (10000 registros)
-      if (page > 50) {
-        complete = true; // Limite atingido — considerar completo
-        break;
-      }
-    }
-    return { items: all, complete };
-  }
-
   // Verificar cache de dados brutos (memória primeiro, depois banco persistente)
   // O cache persistente sobrevive a reinicializações do servidor — evita cotações/faturamento zerados
   const rawCacheKey = `raw_${mes}_${ano}`;
@@ -338,21 +252,21 @@ async function _getMesFromApiImpl(publicKey: string, accessToken: string, mes: n
       // Buscar da API MubiSys SEQUENCIALMENTE (primeiro OS, depois orçamentos)
       // Busca sequencial evita sobrecarga na API e reduz chance de timeout
       // OS: filtrodata=APROVACAO (data de aprovação = faturamento real, igual ao relatório de Vendas do MubiSys)
-      const osResult = await fetchAll(`/ordem-servico?status=TODOS&filtrodata=APROVACAO&tipo=Normal&datainicial=${datainicial}&datafinal=${datafinal}`, 500);
+      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
       // Orçamentos: filtrodata=CADASTRO (data de criação = quando a cotação foi enviada)
-      const orcResult = await fetchAll(`/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${datainicial}&datafinal=${datafinal}`, 200);
-      allOs = osResult.items;
-      allOrc = orcResult.items;
+      const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal });
+      allOs = osResult.itens;
+      allOrc = orcResult.itens;
       // Salvar em memória sempre (mesmo parcial — melhor que zero para o usuário atual)
       setCacheWithTTL(osCacheKey, allOs, mes, ano);
       setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
       // Cache persistente: SOMENTE salvar se AMBAS as buscas foram completas
       // Dados parciais no cache persistente causam cotações/faturamento errados após restart
-      if (osResult.complete && orcResult.complete) {
+      if (osResult.completo && orcResult.completo) {
         setDbCache(rawCacheKey, mes, ano, allOs, allOrc).catch(() => {});
         console.log(`[MubiSys] Cache persistente salvo para ${mes}/${ano}: ${allOs.length} OS, ${allOrc.length} orçamentos`);
       } else {
-        console.warn(`[MubiSys] Busca incompleta para ${mes}/${ano} — cache persistente NÃO salvo (OS: ${osResult.complete}, Orc: ${orcResult.complete})`);
+        console.warn(`[MubiSys] Busca incompleta para ${mes}/${ano} — cache persistente NÃO salvo (OS: ${osResult.completo}, Orc: ${orcResult.completo})`);
       }
     }
   }
@@ -589,8 +503,8 @@ async function getClientesNovosMes(mes: number, ano: number, includeTelefones = 
   // Se mês congelado mas sem lista salva: calcular e salvar ao final
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
-  const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-  const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+  const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+  const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
 
   // Sem credenciais da API não é possível calcular corretamente
   if (!publicKey || !accessToken) return EMPTY;
@@ -653,27 +567,10 @@ async function getClientesNovosMes(mes: number, ano: number, includeTelefones = 
         setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
       } else {
         // Buscar da API MubiSys
-        let page = 1;
-        while (true) {
-          const resp = await fetchMubisys(publicKey, accessToken,
-            `/ordem-servico?status=TODOS&filtrodata=APROVACAO&tipo=Normal&datainicial=${di}&datafinal=${df}&page=${page}&per_page=500`);
-          const data = resp.data as any;
-          const items: any[] = Array.isArray(data?.data) ? data.data : [];
-          allOsApi.push(...items);
-          if (page >= (data?.pagination?.last_page ?? 1)) break;
-          page++;
-        }
-        const orcList: any[] = [];
-        let pageOrc = 1;
-        while (true) {
-          const resp = await fetchMubisys(publicKey, accessToken,
-            `/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${di}&datafinal=${df}&page=${pageOrc}&per_page=200`);
-          const data = resp.data as any;
-          const items: any[] = Array.isArray(data?.data) ? data.data : [];
-          orcList.push(...items);
-          if (pageOrc >= (data?.pagination?.last_page ?? 1)) break;
-          pageOrc++;
-        }
+        const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
+        allOsApi = osResult.itens;
+        const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
+        const orcList = orcResult.itens;
         setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
         setCacheWithTTL(orcCacheKey, orcList, mes, ano);
         setDbCache(rawCacheKeyNovos, mes, ano, allOsApi, orcList).catch(() => {});
@@ -970,8 +867,8 @@ export const performanceComercialRouter = router({
       if (isMesAtual || forceRefresh) {
         // Mês atual ou refresh forçado: tentar API em tempo real
         // Timeout de 180s para dar tempo à busca sequencial de 4 páginas de orçamentos
-        const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-        const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+        const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+        const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
         if (publicKey && accessToken) {
           try {
             const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 180000));
@@ -1009,8 +906,8 @@ export const performanceComercialRouter = router({
     }))
     .query(async ({ input }) => {
       const now = new Date();
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const db = await getDb();
 
       // Buscar todos os dados do banco em uma única query por ano
@@ -1315,8 +1212,8 @@ export const performanceComercialRouter = router({
       const now = new Date();
       const mesAtual = now.getMonth() + 1;
       const anoAtual = now.getFullYear();
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const db = await getDb();
 
       // Buscar TODOS os dados do ano em uma única query (muito mais rápido)
@@ -1437,8 +1334,8 @@ export const performanceComercialRouter = router({
     .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
     .query(async ({ input }) => {
       const { mes, ano } = input;
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       if (!publicKey || !accessToken) return { dias: [], vendedores: [] };
 
       // Reutilizar cache de OS brutas do mês (já populado pelo getMes)
@@ -1452,23 +1349,12 @@ export const performanceComercialRouter = router({
         const lastDay = new Date(ano, mes, 0).getDate();
         const datainicial = `${ano}-${pad(mes)}-01`;
         const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-        async function fetchAllLocal(path: string, perPage = 200) {
-          let page = 1; const all: any[] = [];
-          while (true) {
-            const resp = await fetchMubisys(publicKey, accessToken, `${path}&page=${page}&per_page=${perPage}`);
-            const data = resp.data as any;
-            if (resp.status === 0) break;
-            const items: any[] = Array.isArray(data?.data) ? data.data : [];
-            all.push(...items);
-            if (page >= (data?.pagination?.last_page ?? 1) || items.length === 0) break;
-            page++; if (page > 50) break;
-          }
-          return all;
-        }
-        [allOs, allOrc] = await Promise.all([
-          fetchAllLocal(`/ordem-servico?status=TODOS&filtrodata=APROVACAO&tipo=Normal&datainicial=${datainicial}&datafinal=${datafinal}`, 500),
-          fetchAllLocal(`/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${datainicial}&datafinal=${datafinal}`, 200),
+        const [osResult, orcResult] = await Promise.all([
+          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
+          listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal }),
         ]);
+        allOs = osResult.itens;
+        allOrc = orcResult.itens;
         setCacheWithTTL(osCacheKey, allOs, mes, ano);
         setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
       }
@@ -1637,8 +1523,8 @@ export const performanceComercialRouter = router({
       const df = `${dataFinal}-${String(lastDayFim).padStart(2, '0')}`;
       const ano = anoIni; // usado para buscar clientes anteriores no histórico
       const periodoKey = `${dataInicial}_${dataFinal}`;
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const EMPTY = {
         clientesUnicosAno: 0,
         taxaRecompra: 0,
@@ -1694,31 +1580,16 @@ export const performanceComercialRouter = router({
       const memCached = getCached(cacheKey);
       if (memCached) return memCached;
 
-      async function fetchAllPagesIC(path: string, perPage = 200): Promise<any[]> {
-        let page = 1;
-        const all: any[] = [];
-        while (true) {
-          // IMPORTANTE: per_page=500 causa timeout para /orcamento. Usar 500 apenas para OS, 200 para orçamentos.
-          const resp = await fetchMubisys(publicKey, accessToken, `${path}&page=${page}&per_page=${perPage}`);
-          const data = resp.data as any;
-          if (resp.status === 0) break;
-          const items: any[] = Array.isArray(data?.data) ? data.data : [];
-          all.push(...items);
-          if (page >= (data?.pagination?.last_page ?? 1) || items.length === 0) break;
-          page++;
-          if (page > 50) break;
-        }
-        return all;
-      }
-
       let allOsAno: any[] = [];
       let allOrcAno: any[] = [];
 
       try {
-        [allOsAno, allOrcAno] = await Promise.all([
-          fetchAllPagesIC(`/ordem-servico?status=TODOS&filtrodata=APROVACAO&tipo=Normal&datainicial=${di}&datafinal=${df}`, 500),
-          fetchAllPagesIC(`/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${di}&datafinal=${df}`, 200),
+        const [osResult, orcResult] = await Promise.all([
+          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
+          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
         ]);
+        allOsAno = osResult.itens;
+        allOrcAno = orcResult.itens;
       } catch {
         return EMPTY;
       }
@@ -2105,8 +1976,6 @@ export const performanceComercialRouter = router({
   diagnosticoApi: protectedProcedure
     .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
     .query(async ({ input }) => {
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
       const { mes, ano } = input;
       const pad = (n: number) => String(n).padStart(2, '0');
       const lastDay = new Date(ano, mes, 0).getDate();
@@ -2114,27 +1983,12 @@ export const performanceComercialRouter = router({
       const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
 
       // Buscar OS (todas as páginas)
-      async function fetchAllDiag(path: string, perPage: number) {
-        let page = 1; let lastPage = 1; const all: any[] = [];
-        while (true) {
-          const resp = await fetchMubisys(publicKey, accessToken, `${path}&page=${page}&per_page=${perPage}`);
-          const data = resp.data as any;
-          if (resp.status === 0) break;
-          const items: any[] = Array.isArray(data?.data) ? data.data : [];
-          all.push(...items);
-          const pagination = data?.pagination;
-          if (pagination?.last_page) lastPage = pagination.last_page;
-          if (page >= lastPage || items.length === 0) break;
-          page++;
-          if (page > 50) break;
-        }
-        return all;
-      }
-
-      const [allOs, allOrc] = await Promise.all([
-        fetchAllDiag(`/ordem-servico?status=TODOS&filtrodata=APROVACAO&tipo=Normal&datainicial=${datainicial}&datafinal=${datafinal}`, 500),
-        fetchAllDiag(`/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${datainicial}&datafinal=${datafinal}`, 200),
+      const [osResult, orcResult] = await Promise.all([
+        listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
+        listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal }),
       ]);
+      const allOs = osResult.itens as any[];
+      const allOrc = orcResult.itens as any[];
 
       // Campos disponíveis
       const osCampos = allOs.length > 0 ? Object.keys(allOs[0]) : [];
@@ -2208,8 +2062,8 @@ export const performanceComercialRouter = router({
       meses: z.array(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
     }))
     .query(async ({ input }) => {
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const resultados: any[] = [];
 
       for (const { mes, ano } of input.meses) {

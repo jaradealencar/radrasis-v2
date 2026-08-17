@@ -189,16 +189,17 @@ async function mubisysGetOrNull<T>(
 async function listarTudo<T>(
   path: string,
   params: Record<string, string>,
-  opts?: { timeoutMs?: number; maxPaginas?: number },
+  opts?: { timeoutMs?: number; maxPaginas?: number; perPage?: number },
 ): Promise<{ itens: T[]; completo: boolean }> {
   const maxPaginas = opts?.maxPaginas ?? 50;
+  const perPage = opts?.perPage ?? 500;
   const itens: T[] = [];
   let pagina = 1;
 
   while (pagina <= maxPaginas) {
     const resp = await mubisysGetOrNull<MubiSysListResponse<T>>(
       path,
-      { ...params, page: String(pagina), per_page: "500" },
+      { ...params, page: String(pagina), per_page: String(perPage) },
       opts,
     );
     // 404 na primeira página = janela sem resultado. Não é erro.
@@ -286,7 +287,10 @@ export async function listarOrcamentosMubiSys(opts: {
       datainicial: opts.datainicial,
       datafinal: opts.datafinal,
     },
-    { timeoutMs: TIMEOUT_LISTA_MS },
+    // per_page=500 (padrão de listarTudo) estoura TIMEOUT_LISTA_MS em janelas de
+    // mês cheio (~800 orçamentos) — medido em 17/08/2026. 200 reduz o payload por
+    // página o bastante para caber no orçamento de tempo sem precisar de retry.
+    { timeoutMs: TIMEOUT_LISTA_MS, perPage: 200 },
   );
 }
 
@@ -308,29 +312,59 @@ export async function listarProdutos(): Promise<any[]> {
   return itens;
 }
 
+// ─── Token: aviso de expiração ───────────────────────────────────────────────
+
+/** Decodifica o `exp` (epoch em segundos) do JWT em MUBISYS_ACCESS_TOKEN, sem
+ *  validar assinatura — só para diagnóstico, não para autenticação. */
+function decodificarExpToken(): number | undefined {
+  const token = ENV.MUBISYS_ACCESS_TOKEN;
+  if (!token) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+    return typeof payload?.exp === "number" ? payload.exp : undefined;
+  } catch {
+    // Token não-JWT ou formato inesperado: não é motivo para derrubar nada.
+    return undefined;
+  }
+}
+
+function expDoToken(): string | undefined {
+  const exp = decodificarExpToken();
+  return exp ? new Date(exp * 1000).toISOString() : undefined;
+}
+
+/** Avisa se o token está vencido. A API hoje não valida `exp` — se um dia
+ *  validar, toda a integração cai de uma vez e este log é a única pista. */
+function avisarSeTokenVencido(): void {
+  const exp = decodificarExpToken();
+  if (exp && exp * 1000 < Date.now()) {
+    console.warn(
+      `⚠️ [MubiSys] Token com exp vencido em ${new Date(exp * 1000).toISOString()}. ` +
+        `A API ainda aceita, mas isso pode mudar sem aviso — renove no painel do ERP.`,
+    );
+  }
+}
+avisarSeTokenVencido();
+
 // ─── Verificar conectividade ─────────────────────────────────────────────────
 
+/**
+ * Health check barato: uma consulta pontual (`buscarClientePorId`), não a
+ * listagem de OS (~25 s/mês). 404 conta como saudável — a autenticação
+ * funcionou, só o cliente 1 não existe. Só falha de rede/timeout ou erro de
+ * autorização (`MubiSysError`) marca `ok: false`.
+ */
 export async function verificarConexaoMubiSys(): Promise<{
   ok: boolean;
-  empresa?: string;
-  totalOS?: number;
+  tokenExpiradoEm?: string;
+  latenciaMs?: number;
   erro?: string;
 }> {
+  const inicio = Date.now();
   try {
-    const hoje = new Date();
-    const mesAtras = new Date(hoje);
-    mesAtras.setMonth(mesAtras.getMonth() - 1);
-    const fmt = (d: Date) => d.toISOString().split("T")[0];
-
-    const resp = await listarOSMubiSys({
-      status: "TODOS",
-      datainicial: fmt(mesAtras),
-      datafinal: fmt(hoje),
-    });
-
-    const empresa = resp.itens[0]?.empresa ?? "Empresa não identificada";
-    return { ok: true, empresa, totalOS: resp.itens.length };
-  } catch (err: any) {
-    return { ok: false, erro: err.message };
+    await buscarClientePorId(1);
+    return { ok: true, latenciaMs: Date.now() - inicio, tokenExpiradoEm: expDoToken() };
+  } catch (erro: any) {
+    return { ok: false, latenciaMs: Date.now() - inicio, erro: erro?.message, tokenExpiradoEm: expDoToken() };
   }
 }

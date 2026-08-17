@@ -3,42 +3,10 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { abcCache } from "../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
-import https from "https";
+import { ENV } from "../_core/env";
+import { listarOSMubiSys, listarProdutos } from "../integrations/mubisys-client";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function fetchMubisysOsList(
-  publicKey: string,
-  accessToken: string,
-  datainicial: string,
-  datafinal: string,
-  page = 1
-): Promise<{ status: number; data: Record<string, unknown> }> {
-  return new Promise((resolve) => {
-    const path = `/ordem-servico?status=TODOS&filtrodata=CADASTRO&datainicial=${datainicial}&datafinal=${datafinal}&page=${page}&per_page=500`;
-    const url = `https://api.mubisys.com/api/${publicKey}${path}`;
-    const req = https.get(
-      url,
-      { headers: { "Access-Token": accessToken, Accept: "application/json" } },
-      (res) => {
-        let body = "";
-        res.on("data", (c: Buffer) => (body += c));
-        res.on("end", () => {
-          try {
-            resolve({ status: res.statusCode ?? 0, data: JSON.parse(body) });
-          } catch {
-            resolve({ status: res.statusCode ?? 0, data: {} });
-          }
-        });
-      }
-    );
-    req.on("error", () => resolve({ status: 0, data: {} }));
-    req.setTimeout(20000, () => {
-      req.destroy();
-      resolve({ status: 0, data: { error: "timeout" } });
-    });
-  });
-}
 
 interface OsItem {
   cliente?: string;
@@ -56,39 +24,13 @@ interface OsItem {
   }>;
 }
 
-async function fetchAllOsForMonth(
-  publicKey: string,
-  accessToken: string,
-  ano: number,
-  mes: number
-): Promise<OsItem[]> {
-  const start = `${ano}-${String(mes).padStart(2, "0")}-01`;
+async function fetchAllOsForMonth(ano: number, mes: number): Promise<OsItem[]> {
+  const datainicial = `${ano}-${String(mes).padStart(2, "0")}-01`;
   const lastDay = new Date(ano, mes, 0).getDate();
-  const end = `${ano}-${String(mes).padStart(2, "0")}-${lastDay}`;
+  const datafinal = `${ano}-${String(mes).padStart(2, "0")}-${lastDay}`;
 
-  let all: OsItem[] = [];
-  let page = 1;
-
-  while (true) {
-    const { status, data } = await fetchMubisysOsList(
-      publicKey,
-      accessToken,
-      start,
-      end,
-      page
-    );
-    if (status !== 201) break;
-
-    const items = (data as { data?: OsItem[] }).data ?? [];
-    all = all.concat(items);
-
-    const pagination = (data as { pagination?: { last_page?: number } })
-      .pagination;
-    if (!pagination || page >= (pagination.last_page ?? 1)) break;
-    page++;
-  }
-
-  return all;
+  const { itens } = await listarOSMubiSys({ status: "TODOS", filtrodata: "CADASTRO", datainicial, datafinal });
+  return itens as unknown as OsItem[];
 }
 
 interface AbcItem {
@@ -302,14 +244,14 @@ export const performanceAbcRouter = router({
       }
 
       // Fetch from ERP
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
 
       if (!publicKey || !accessToken) {
         return { items: [], totalOs: 0, faturamento: 0, fromCache: false, updatedAt: new Date() };
       }
 
-      const osArray = await fetchAllOsForMonth(publicKey, accessToken, ano, mes);
+      const osArray = await fetchAllOsForMonth(ano, mes);
 
       const result =
         tipo === "clientes"
@@ -434,42 +376,21 @@ export const performanceAbcRouter = router({
   getProdutosERP: protectedProcedure
     .input(z.object({ busca: z.string().optional().default("") }))
     .query(async ({ input }) => {
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       if (!publicKey || !accessToken) return { produtos: [] };
 
-      const { busca } = input;
-      const searchParam = busca ? `&search=${encodeURIComponent(busca)}` : "";
-
-      const result = await new Promise<{ status: number; data: Record<string, unknown> }>((resolve) => {
-        const path = `/produto?per_page=100&page=1${searchParam}`;
-        const url = `https://api.mubisys.com/api/${publicKey}${path}`;
-        const req = https.get(
-          url,
-          { headers: { "Access-Token": accessToken, Accept: "application/json" } },
-          (res) => {
-            let body = "";
-            res.on("data", (c: Buffer) => (body += c));
-            res.on("end", () => {
-              try { resolve({ status: res.statusCode ?? 0, data: JSON.parse(body) }); }
-              catch { resolve({ status: res.statusCode ?? 0, data: {} }); }
-            });
-          }
-        );
-        req.on("error", () => resolve({ status: 0, data: {} }));
-        req.setTimeout(15000, () => { req.destroy(); resolve({ status: 0, data: {} }); });
-      });
-
-      if (result.status !== 200 && result.status !== 201) return { produtos: [] };
-
-      const rawData = (result.data as { data?: unknown[] }).data ?? [];
-      const produtos = (rawData as Record<string, unknown>[]).map((p) => ({
-        id: String(p.id ?? p.codigo ?? ""),
-        nome: String(p.nome ?? p.descricao ?? p.name ?? ""),
-        codigo: String(p.codigo ?? p.id ?? ""),
-        categoria: String(p.categoria ?? p.group ?? ""),
-        ativo: p.ativo !== false,
-      })).filter(p => p.nome);
+      // O parâmetro `search` da API é ignorado (verificado) — filtrar em memória.
+      const termo = input.busca.trim().toLowerCase();
+      const produtos = (await listarProdutos())
+        .map((p: any) => ({
+          id: String(p.id ?? p.codigo ?? ""),
+          nome: String(p.nome ?? p.descricao ?? ""),
+          codigo: String(p.codigo ?? p.id ?? ""),
+          categoria: String(p.categoria ?? ""),
+          ativo: p.ativo !== false,
+        }))
+        .filter(p => p.nome && (!termo || p.nome.toLowerCase().includes(termo)));
 
       return { produtos };
     }),

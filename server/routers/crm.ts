@@ -42,7 +42,7 @@ async function logAtividade(ctx: TrpcContext, opts: {
   }
 }
 import { eq, and, desc, sql } from "drizzle-orm";
-import https from "https";
+import { listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 // ─── Helpers Mubisys ──────────────────────────────────────────────────────────
 
 // Normaliza nome de empresa: minúsculas, sem acentos, sem pontuação extra
@@ -54,37 +54,6 @@ function normalizeEmpresa(nome: string): string {
     .replace(/[^a-z0-9\s]/g, "")    // remove pontuação
     .replace(/\s+/g, " ")            // colapsa espaços
     .trim();
-}
-
-function fetchMubisys(publicKey: string, accessToken: string, path: string): Promise<any> {
-  return new Promise((resolve) => {
-    const url = `https://api.mubisys.com/api/${publicKey}${path}`;
-    const req = https.get(url, { headers: { "Access-Token": accessToken, Accept: "application/json" } }, (res) => {
-      let body = "";
-      res.on("data", (c: Buffer) => (body += c));
-      res.on("end", () => {
-        try { resolve(JSON.parse(body)); }
-        catch { resolve(null); }
-      });
-    });
-    req.on("error", () => resolve(null));
-    req.setTimeout(25000, () => { req.destroy(); resolve(null); });
-  });
-}
-
-async function fetchAllPages(publicKey: string, accessToken: string, path: string) {
-  let page = 1;
-  const all: any[] = [];
-  while (true) {
-    const resp: any = await fetchMubisys(publicKey, accessToken, `${path}&page=${page}&per_page=100`);
-    const data = resp?.data ?? resp;
-    const items: any[] = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
-    all.push(...items);
-    const lastPage = data?.pagination?.last_page ?? 1;
-    if (page >= lastPage || items.length === 0) break;
-    page++;
-  }
-  return all;
 }
 
 function parseDate(str: string | null | undefined): Date | null {
@@ -131,9 +100,6 @@ export const crmRouter = router({
       preset: z.enum(["hoje", "7dias", "15dias", "mes", "personalizado"]).optional(),
     }))
     .query(async ({ ctx, input }) => {
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY!;
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN!;
-
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const fmtDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -165,14 +131,14 @@ export const crmRouter = router({
       // independente de quando foram criadas (evita perder propostas antigas ainda abertas)
       const diAberto = fmtDate(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
       const dfAberto = fmtDate(now);
-      const todosAbertos = await fetchAllPages(publicKey, accessToken, `/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${diAberto}&datafinal=${dfAberto}`);
+      const { itens: todosAbertos } = await listarOrcamentosMubiSys({ datainicial: diAberto, datafinal: dfAberto });
       const abertos = todosAbertos.filter((o: any) => {
         const s = (o.status || "").toLowerCase();
         return s === "em aberto" || s === "em andamento" || s === "pendente";
       });
 
       // Buscar propostas fechadas: usa o período selecionado pelo usuário (para stats do mês)
-      const todosPeriodo = await fetchAllPages(publicKey, accessToken, `/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${di}&datafinal=${df}`);
+      const { itens: todosPeriodo } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df });
       const fechados = todosPeriodo.filter((o: any) => {
         const s = (o.status || "").toLowerCase();
         return s === "aprovado" || s === "faturado" || s === "concluido" || s === "concluído";
@@ -535,9 +501,6 @@ export const crmRouter = router({
 
   // Visão do diretor: todos os vendedores
   getVendedores: protectedProcedure.query(async () => {
-    const publicKey = process.env.MUBISYS_PUBLIC_KEY!;
-    const accessToken = process.env.MUBISYS_ACCESS_TOKEN!;
-
     const now = new Date();
     const mes = now.getMonth() + 1;
     const ano = now.getFullYear();
@@ -549,20 +512,20 @@ export const crmRouter = router({
     const diAberto = `${ano - 1}-${pad(mes)}-${pad(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getDate())}`;
     const dfAberto = df;
 
-    const todosAbertos = await fetchAllPages(publicKey, accessToken, `/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${diAberto}&datafinal=${dfAberto}`);
+    const { itens: todosAbertos } = await listarOrcamentosMubiSys({ datainicial: diAberto, datafinal: dfAberto });
     const abertos = todosAbertos.filter((o: any) => { const s = (o.status||"").toLowerCase(); return s==="em aberto"||s==="em andamento"||s==="pendente"; });
-    const todosPeriodo = await fetchAllPages(publicKey, accessToken, `/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${di}&datafinal=${df}`);
+    const { itens: todosPeriodo } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df });
     const fechados = todosPeriodo.filter((o: any) => { const s = (o.status||"").toLowerCase(); return s==="aprovado"||s==="faturado"||s==="concluido"||s==="concluído"; });
 
     // Agrupar por vendedor
     const vendedores: Record<string, { abertos: number; valorAberto: number; fechados: number; valorFechado: number }> = {};
-    for (const o of abertos) {
+    for (const o of abertos as any[]) {
       const v = o.vendedor || "Sem Vendedor";
       if (!vendedores[v]) vendedores[v] = { abertos: 0, valorAberto: 0, fechados: 0, valorFechado: 0 };
       vendedores[v].abertos++;
       vendedores[v].valorAberto += parseFloat(o.valor_total ?? "0");
     }
-    for (const o of fechados) {
+    for (const o of fechados as any[]) {
       const v = o.vendedor || "Sem Vendedor";
       if (!vendedores[v]) vendedores[v] = { abertos: 0, valorAberto: 0, fechados: 0, valorFechado: 0 };
       vendedores[v].fechados++;
@@ -671,27 +634,6 @@ export const crmRouter = router({
         });
       }
       return { ok: true };
-    }),
-
-  // DEBUG: inspecionar estrutura de um orçamento da API MubiSys
-  debugOrcamento: protectedProcedure
-    .input(z.object({ orcamentoId: z.string().optional() }))
-    .query(async ({ input }) => {
-      const publicKey = process.env.MUBISYS_PUBLIC_KEY!;
-      const accessToken = process.env.MUBISYS_ACCESS_TOKEN!;
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const mes = now.getMonth() + 1;
-      const ano = now.getFullYear();
-      const lastDay = new Date(ano, mes, 0).getDate();
-      const di = `${ano}-${pad(mes)}-01`;
-      const df = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-      const todos = await fetchAllPages(publicKey, accessToken, `/orcamento?status=TODOS&filtrodata=CADASTRO&datainicial=${di}&datafinal=${df}`);
-      const sample = input.orcamentoId
-        ? todos.find((o: any) => String(o.id) === input.orcamentoId)
-        : todos[0];
-      if (!sample) return { error: "Nenhum orçamento encontrado", keys: [] };
-      return { keys: Object.keys(sample), sample };
     }),
 
   // Excluir vendedor das metas (remove todos os registros de metas do vendedor)
