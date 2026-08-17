@@ -3,7 +3,7 @@ dist
 docs
 .manus-logs
 attached_assets
-drizzle/meta
+drizzle/meta/*_snapshot.json
 /scripts
 server/__tests__
 **/*.test.ts
