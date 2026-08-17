@@ -19,6 +19,14 @@ export default function SincronizacaoCache() {
     }
   );
 
+  // ✅ Health check do ERP (Fase 5) — consulta pontual e barata, não a listagem
+  const { data: conexaoErp, isLoading: isLoadingConexao } = trpc.admin.verificarConexaoErp.useQuery(
+    undefined,
+    {
+      refetchInterval: 60000, // Atualizar a cada 60s
+    }
+  );
+
   // ✅ Mutation para forçar sincronização manual
   const forcarSincronizacao = trpc.admin.forcarSincronizacaoManual.useMutation({
     onSuccess: () => {
@@ -67,6 +75,26 @@ export default function SincronizacaoCache() {
         title="📊 Status de Sincronização ERP"
         description="Monitore o cache local de Ordens de Serviço (OSs) sincronizadas do MubiSys"
       />
+
+      {/* ✅ Badge de conectividade com o ERP (Fase 5) */}
+      <div className="flex flex-wrap items-center gap-2">
+        {isLoadingConexao ? (
+          <Badge variant="secondary">Verificando conexão com o ERP…</Badge>
+        ) : conexaoErp?.ok ? (
+          <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+            ✅ ERP acessível{conexaoErp.latenciaMs != null ? ` · ${conexaoErp.latenciaMs} ms` : ""}
+          </Badge>
+        ) : (
+          <Badge variant="destructive">
+            ❌ ERP inacessível{conexaoErp?.erro ? `: ${conexaoErp.erro}` : ""}
+          </Badge>
+        )}
+        {conexaoErp?.tokenExpiradoEm && (
+          <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+            ⚠️ Token vencido em {new Date(conexaoErp.tokenExpiradoEm).toLocaleDateString("pt-BR")}
+          </Badge>
+        )}
+      </div>
 
       {/* ✅ Card Principal de Status */}
       <Card className={`border-2 p-6 ${getStatusColor()}`}>

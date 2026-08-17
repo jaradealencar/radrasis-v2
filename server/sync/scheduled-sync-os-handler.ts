@@ -58,9 +58,17 @@ export async function handleSincronizarOS(req: Request, res: Response) {
 /**
  * Endpoint para obter o status da última sincronização
  * GET /api/scheduled/sincronizarOS/status
+ * Autenticação: mesmo `x-cron-secret` do POST (Fase 5, achado A9). O painel
+ * admin usa o procedure tRPC `admin.obterStatusSincronizacao`, não esta rota
+ * — quem consulta isso é o operador do QStash.
  */
 export async function handleStatusSincronizacao(req: Request, res: Response) {
   try {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret || req.headers['x-cron-secret'] !== cronSecret) {
+      return res.status(403).json({ error: 'cron-only', message: 'Este endpoint é apenas para CRON jobs' });
+    }
+
     const status = await obterStatusSincronizacao();
     return res.json({
       ok: true,

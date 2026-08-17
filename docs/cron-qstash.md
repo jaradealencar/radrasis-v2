@@ -67,8 +67,11 @@ Ver os comandos `curl` em
 
 ## Status da última execução
 
-`GET /api/scheduled/sincronizarOS/status` — não exige segredo, devolve o
-resultado da última sincronização.
+`GET /api/scheduled/sincronizarOS/status` — desde a Fase 5, exige o mesmo
+header `x-cron-secret` do POST. Devolve 403 sem o header ou com o valor
+errado. O painel `/admin/sincronizacao-cache` não usa esta rota; ele lê o
+status via procedure tRPC `admin.obterStatusSincronizacao` (protegido por
+`adminProcedure`).
 
 ## Armadilhas conhecidas
 
@@ -85,5 +88,7 @@ resultado da última sincronização.
   assinatura do QStash (`Receiver`) seria uma proteção *adicional* à do
   `x-cron-secret`, mas trocaria configuração por código novo e uma
   dependência. Fora do escopo; se for desejável depois, é tarefa separada.
-- **O endpoint de status é público.** `GET .../status` não checa segredo
-  nenhum — já era assim antes desta sprint. Não é regressão, mas vale saber.
+- **O endpoint de status exige `x-cron-secret`** (corrigido na Fase 5; antes
+  disso era público e vazava data da última execução, contagem de OS e a
+  mensagem de erro crua do ERP). Se algo que consultava a rota sem o header
+  parar de funcionar, é este o motivo.

@@ -1,5 +1,6 @@
-import { publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, router } from "../_core/trpc";
 import { z } from "zod";
+import { verificarConexaoMubiSys } from "../integrations/mubisys-client";
 
 /** Próxima execução do lote 1 do agendamento (06:00 UTC = 03:00 BRT). Ver docs/cron-qstash.md. */
 function calcularProximaExecucao(): string {
@@ -15,7 +16,7 @@ export const adminRouter = router({
   // porque o agendamento roda em 4 lotes/dia (Fase 3 da sprint MubiSys): ler
   // só a última linha mostraria apenas o lote mais recente e subestimaria o
   // total de OS importadas no dia.
-  obterStatusSincronizacao: publicProcedure.query(async () => {
+  obterStatusSincronizacao: adminProcedure.query(async () => {
     try {
       const { selectQuery } = await import("../db/db-connection");
 
@@ -79,7 +80,7 @@ export const adminRouter = router({
 
   // ✅ Forçar sincronização manual — mesma janela padrão (8/0) do lote 1 do
   // agendamento. Para os 30 dias completos, rodar os quatro lotes manualmente.
-  forcarSincronizacaoManual: publicProcedure
+  forcarSincronizacaoManual: adminProcedure
     .input(
       z
         .object({
@@ -110,7 +111,7 @@ export const adminRouter = router({
     }),
 
   // ✅ Obter histórico de sincronizações
-  obterHistoricoSincronizacoes: publicProcedure
+  obterHistoricoSincronizacoes: adminProcedure
     .input(z.object({ limite: z.number().default(10) }))
     .query(async ({ input }) => {
       try {
@@ -137,7 +138,7 @@ export const adminRouter = router({
     }),
 
   // ✅ Limpar cache de OSs antigas (>30 dias)
-  limparCacheAntigo: publicProcedure.mutation(async () => {
+  limparCacheAntigo: adminProcedure.mutation(async () => {
     try {
       console.log("🗑️ [Admin] Limpando cache de OSs antigas...");
 
@@ -161,5 +162,11 @@ export const adminRouter = router({
       console.error("[Admin] Erro ao limpar cache:", error);
       throw new Error(`Erro ao limpar cache: ${error.message}`);
     }
+  }),
+
+  // ✅ Health check barato do ERP (Fase 5) — consulta pontual, não a listagem
+  // de ~25s. Ver verificarConexaoMubiSys em mubisys-client.ts.
+  verificarConexaoErp: adminProcedure.query(async () => {
+    return verificarConexaoMubiSys();
   }),
 });
