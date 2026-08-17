@@ -13,6 +13,13 @@
 import { Request, Response } from 'express';
 import { sincronizarOSDoMubiSys, obterStatusSincronizacao } from './scheduled-sync-os';
 
+/** Sem teto, um `?dias=3650` recria o estouro de maxDuration que a Fase 3 resolveu. */
+function clampParam(valor: unknown, min: number, max: number, padrao: number): number {
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return padrao;
+  return Math.min(Math.max(n, min), max);
+}
+
 export async function handleSincronizarOS(req: Request, res: Response) {
   try {
     const cronSecret = process.env.CRON_SECRET;
@@ -20,10 +27,13 @@ export async function handleSincronizarOS(req: Request, res: Response) {
       return res.status(403).json({ error: 'cron-only', message: 'Este endpoint é apenas para CRON jobs' });
     }
 
-    console.log(`🔄 [CRON] Sincronização de OS iniciada`);
+    const dias = clampParam(req.query.dias, 1, 31, 8);
+    const offset = clampParam(req.query.offset, 0, 365, 0);
+
+    console.log(`🔄 [CRON] Sincronização de OS iniciada (dias=${dias}, offset=${offset})`);
 
     // Executar sincronização
-    const resultado = await sincronizarOSDoMubiSys();
+    const resultado = await sincronizarOSDoMubiSys({ dias, offset });
 
     console.log(`✅ [CRON] Sincronização concluída: ${resultado.quantidadeOsImportadas} OS processadas`);
 

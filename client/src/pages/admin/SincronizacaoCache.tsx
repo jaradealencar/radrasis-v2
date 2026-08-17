@@ -174,12 +174,15 @@ export default function SincronizacaoCache() {
         <div className="space-y-3 text-sm text-slate-700">
           <div className="flex gap-3">
             <span className="font-bold text-blue-600 min-w-fit">1️⃣ Sincronização Diária:</span>
-            <span>O sistema sincroniza automaticamente todas as noites às 02:00 AM</span>
+            <span>
+              O sistema roda automaticamente em <strong>4 lotes</strong>, a partir das 03:00 BRT —
+              é normal ver 4 linhas por dia no histórico, não é duplicação
+            </span>
           </div>
 
           <div className="flex gap-3">
             <span className="font-bold text-blue-600 min-w-fit">2️⃣ Cache Local:</span>
-            <span>As OSs dos últimos 30 dias são armazenadas localmente para acesso rápido</span>
+            <span>As OSs dos últimos ~32 dias são armazenadas localmente para acesso rápido</span>
           </div>
 
           <div className="flex gap-3">
@@ -208,9 +211,12 @@ export default function SincronizacaoCache() {
             </div>
 
             <div className="bg-slate-50 rounded-lg p-4">
-              <p className="text-sm text-slate-600">Taxa de Sucesso</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">
-                {isSuccess ? "100%" : isError ? "0%" : "N/A"}
+              <p className="text-sm text-slate-600">Execuções (últimas 24h)</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">
+                {status?.execucoes24h ?? 0}
+                <span className="text-sm font-normal text-slate-500 ml-1">
+                  · {status?.quantidadeImportada ?? 0} OS
+                </span>
               </p>
             </div>
           </div>

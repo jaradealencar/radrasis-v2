@@ -1,4 +1,21 @@
 /**
+ * Converte data em dd/mm/aaaa (ou já em aaaa-mm-dd/ISO) para aaaa-mm-dd.
+ * Usada para gravar em colunas `date` do Postgres (ex.: erp_os_cache.dataEntregaPrevista).
+ * Textos como "10 DIAS ÚTEIS" (prazo, não data) não casam em nenhuma regex e retornam null —
+ * não usar como fallback de data.
+ */
+export function normalizarData(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  const iso = texto.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  return null;
+}
+
+/**
  * Calcula a data final adicionando dias úteis (pulando fins de semana) a uma data inicial.
  * @param dataInicial - Data de início (Date ou timestamp em ms)
  * @param diasUteis - Número de dias úteis a adicionar

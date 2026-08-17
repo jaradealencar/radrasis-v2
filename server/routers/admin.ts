@@ -1,35 +1,66 @@
 import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 
+/** Próxima execução do lote 1 do agendamento (06:00 UTC = 03:00 BRT). Ver docs/cron-qstash.md. */
+function calcularProximaExecucao(): string {
+  const agora = new Date();
+  const proxima = new Date(agora);
+  proxima.setUTCHours(6, 0, 0, 0);
+  if (proxima <= agora) proxima.setUTCDate(proxima.getUTCDate() + 1);
+  return proxima.toISOString();
+}
+
 export const adminRouter = router({
-  // ✅ Obter status de sincronização
+  // ✅ Obter status de sincronização — agrega as execuções das últimas 24h
+  // porque o agendamento roda em 4 lotes/dia (Fase 3 da sprint MubiSys): ler
+  // só a última linha mostraria apenas o lote mais recente e subestimaria o
+  // total de OS importadas no dia.
   obterStatusSincronizacao: publicProcedure.query(async () => {
     try {
       const { selectQuery } = await import("../db/db-connection");
 
       const logs = await selectQuery(
-        `SELECT "dataExecucao", status, "quantidadeOsImportadas", "mensagemErro" FROM sync_logs ORDER BY "dataExecucao" DESC LIMIT 1`,
+        `SELECT "dataExecucao", status, "quantidadeOsImportadas", "mensagemErro", "tempoExecucaoMs"
+         FROM sync_logs
+         WHERE "dataExecucao" >= NOW() - INTERVAL '24 hours'
+         ORDER BY "dataExecucao" DESC`,
         [],
       );
-      const ultimoLog = logs?.[0] ?? null;
 
       const countRows = await selectQuery("SELECT COUNT(*) AS total FROM erp_os_cache", []);
       const totalOs = Number(countRows?.[0]?.total ?? 0);
 
-      // Calcular próxima execução (02:00 AM do próximo dia)
-      const agora = new Date();
-      const proximaExecucao = new Date(agora);
-      proximaExecucao.setDate(proximaExecucao.getDate() + 1);
-      proximaExecucao.setHours(2, 0, 0, 0);
+      if (!logs || logs.length === 0) {
+        return {
+          status: "NUNCA_EXECUTADO",
+          ultimaSincronizacao: null,
+          proximaExecucao: calcularProximaExecucao(),
+          totalOs,
+          mensagemErro: null,
+          tempoExecucaoMs: null,
+          quantidadeImportada: 0,
+          execucoes24h: 0,
+        };
+      }
+
+      const algumErro = logs.find((l: any) => l.status === "ERRO");
+      const algumPendente = logs.some((l: any) => l.status === "PENDENTE");
+      const status = algumErro ? "ERRO" : algumPendente ? "PENDENTE" : "SUCESSO";
+      const quantidadeImportada = logs.reduce(
+        (soma: number, l: any) => soma + Number(l.quantidadeOsImportadas ?? 0),
+        0,
+      );
+      const ultimoLog = logs[0];
 
       return {
-        status: ultimoLog?.status || "NUNCA_EXECUTADO",
-        ultimaSincronizacao: ultimoLog?.dataExecucao ?? null,
-        proximaExecucao: proximaExecucao.toISOString(),
+        status,
+        ultimaSincronizacao: ultimoLog.dataExecucao,
+        proximaExecucao: calcularProximaExecucao(),
         totalOs,
-        mensagemErro: ultimoLog?.mensagemErro ?? null,
-        tempoExecucaoMs: null,
-        quantidadeImportada: Number(ultimoLog?.quantidadeOsImportadas ?? 0),
+        mensagemErro: algumErro?.mensagemErro ?? null,
+        tempoExecucaoMs: ultimoLog.tempoExecucaoMs ?? null,
+        quantidadeImportada,
+        execucoes24h: logs.length,
       };
     } catch (error: any) {
       console.error("[Admin] Erro ao obter status:", error);
@@ -41,31 +72,42 @@ export const adminRouter = router({
         mensagemErro: error.message,
         tempoExecucaoMs: null,
         quantidadeImportada: 0,
+        execucoes24h: 0,
       };
     }
   }),
 
-  // ✅ Forçar sincronização manual
-  forcarSincronizacaoManual: publicProcedure.mutation(async () => {
-    try {
-      console.log("🔄 [Admin] Iniciando sincronização manual...");
+  // ✅ Forçar sincronização manual — mesma janela padrão (8/0) do lote 1 do
+  // agendamento. Para os 30 dias completos, rodar os quatro lotes manualmente.
+  forcarSincronizacaoManual: publicProcedure
+    .input(
+      z
+        .object({
+          dias: z.number().min(1).max(31).optional(),
+          offset: z.number().min(0).max(365).optional(),
+        })
+        .optional(),
+    )
+    .mutation(async ({ input }) => {
+      try {
+        console.log("🔄 [Admin] Iniciando sincronização manual...", input);
 
-      // Usa a rotina corrigida (colunas reais do cache + log em sync_logs)
-      const { sincronizarOSDoMubiSys } = await import("../sync/scheduled-sync-os");
-      const resultado = await sincronizarOSDoMubiSys();
+        // Usa a rotina corrigida (colunas reais do cache + log em sync_logs)
+        const { sincronizarOSDoMubiSys } = await import("../sync/scheduled-sync-os");
+        const resultado = await sincronizarOSDoMubiSys({ dias: input?.dias, offset: input?.offset });
 
-      console.log("✅ [Admin] Sincronização manual concluída:", resultado);
+        console.log("✅ [Admin] Sincronização manual concluída:", resultado);
 
-      return {
-        success: true,
-        mensagem: `Sincronização concluída: ${resultado.quantidadeOsImportadas} OS processadas`,
-        resultado,
-      };
-    } catch (error: any) {
-      console.error("[Admin] Erro ao forçar sincronização:", error);
-      throw new Error(`Erro ao sincronizar: ${error.message}`);
-    }
-  }),
+        return {
+          success: true,
+          mensagem: `Sincronização concluída: ${resultado.quantidadeOsImportadas} OS processadas`,
+          resultado,
+        };
+      } catch (error: any) {
+        console.error("[Admin] Erro ao forçar sincronização:", error);
+        throw new Error(`Erro ao sincronizar: ${error.message}`);
+      }
+    }),
 
   // ✅ Obter histórico de sincronizações
   obterHistoricoSincronizacoes: publicProcedure
@@ -75,7 +117,7 @@ export const adminRouter = router({
         const { selectQuery } = await import("../db/db-connection");
         const limite = Math.max(1, Math.min(Number(input.limite) || 10, 100));
         const logs = await selectQuery(
-          `SELECT id, "dataExecucao", status, "quantidadeOsImportadas", "mensagemErro"
+          `SELECT id, "dataExecucao", status, "quantidadeOsImportadas", "mensagemErro", "tempoExecucaoMs"
            FROM sync_logs ORDER BY "dataExecucao" DESC LIMIT ${limite}`,
           [],
         );
@@ -86,7 +128,7 @@ export const adminRouter = router({
           status: log.status,
           quantidadeOsImportadas: Number(log.quantidadeOsImportadas ?? 0),
           mensagemErro: log.mensagemErro ?? null,
-          tempoExecucaoMs: null,
+          tempoExecucaoMs: log.tempoExecucaoMs ?? null,
         }));
       } catch (error: any) {
         console.error("[Admin] Erro ao obter histórico:", error);

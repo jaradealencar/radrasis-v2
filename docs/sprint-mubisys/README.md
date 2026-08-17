@@ -20,7 +20,7 @@ dado errado, caber no ambiente serverless e existir **em um lugar só**.
 |---|---------|-----------|---------|------------|
 | 1 | [fase-01-cliente-unico.md](pending/fase-01-cliente-unico.md) | Reescreve `mubisys-client.ts` como único caminho HTTP (timeout, 200/201, 404, paginação, busca por número) | A2, A8 | — |
 | 2 | [fase-02-dados-errados-frete.md](pending/fase-02-dados-errados-frete.md) | 🔴 Corrige CNPJ/cliente errado no frete e o cache incompleto | A1, A5, A6 | 1 |
-| 3 | [fase-03-sync-diario.md](pending/fase-03-sync-diario.md) | Faz o sync diário caber em 60 s e paginar | A3 | 1 |
+| 3 | [fase-03-sync-diario.md](complete/fase-03-sync-diario.md) | Faz o sync diário caber em 60 s e paginar | A3 | 1 |
 | 4 | [fase-04-migrar-consumidores.md](pending/fase-04-migrar-consumidores.md) | Migra CRM, Performance Comercial, ABC e Empacotamento para o cliente único | A4, A7 | 1, 2, 3 |
 | 5 | [fase-05-seguranca-e-saude.md](pending/fase-05-seguranca-e-saude.md) | Fecha endpoints admin, health check, rotação de token | A9, A10 | 1 |
 | 6 | [fase-06-testes-e-docs.md](pending/fase-06-testes-e-docs.md) | Testes reais, documentação, limpeza de código morto | A11, A12, A13 | 1–5 |

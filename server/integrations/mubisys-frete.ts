@@ -5,6 +5,7 @@
 import { buscarOSPorNumero } from "./mubisys-client";
 import { selectQuery } from "../db/db-connection";
 import { erpOsCache } from "../../drizzle/schema";
+import { normalizarData } from "../utils/date-utils";
 
 export interface FreteOpcao {
   transportadora: string;
@@ -31,18 +32,6 @@ export interface DadosFreteAutomatico {
   vendedor?: string;
   /** E-mail de contato do cliente (próprio de cada OS) */
   email?: string;
-}
-
-/** dd/mm/aaaa -> aaaa-mm-dd (coluna dataEntregaPrevista é DATE). "" se não reconhecer. */
-function normalizarData(valor: string | null | undefined): string | null {
-  if (!valor) return null;
-  const texto = String(valor).trim();
-  if (!texto) return null;
-  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
-  const iso = texto.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (iso) return iso[1];
-  return null;
 }
 
 /** Formata datas do ERP para exibição (dd/mm/aaaa ou dd/mm/aaaa às HH:MM). */
