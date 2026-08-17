@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { user as userTable } from "../../drizzle/schema";
-import https from "https";
+import { buscarOSPorNumero } from "../integrations/mubisys-client";
 
 // ─── HELPER: Buscar OS no Mubisys ERP ────────────────────────────────────────
 async function buscarOsMubisys(numeroOs: string): Promise<{
@@ -16,78 +16,57 @@ async function buscarOsMubisys(numeroOs: string): Promise<{
   alturaM: number | null;
   metrosQuadrados: number | null;
 } | null> {
-  const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-  const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
-  if (!publicKey || !accessToken) return null;
-  try {
-    const url = `https://api.mubisys.com/api/${publicKey}/ordem-servico/numero/${encodeURIComponent(numeroOs)}`;
-    const data = await new Promise<string>((resolve, reject) => {
-      const req = https.get(url, { headers: { "Access-Token": accessToken, "Accept": "application/json" } }, (res) => {
-        let body = "";
-        res.on("data", (chunk: Buffer) => body += chunk);
-        res.on("end", () => resolve(body));
-      });
-      req.on("error", reject);
-      req.setTimeout(8000, () => { req.destroy(); reject(new Error("timeout")); });
-    });
-    const json = JSON.parse(data);
-    if (!json || json.error || !json.cliente) return null;
-    // Extrair CNPJ/CPF do campo cliente (ex: "RONAN MACIEL FIALHO 02886829129")
-    const clienteStr: string = json.cliente ?? "";
-    const cnpjMatch = clienteStr.match(/(\d{2}\.?\d{3}\.?\d{3}\/?\d{0,4}-?\d{0,2}|\d{11,14})$/);
-    const cnpj = cnpjMatch ? cnpjMatch[0].trim() : "";
-    const nomeCliente = cnpjMatch ? clienteStr.replace(cnpjMatch[0], "").trim() : clienteStr.trim();
-    const enderecos: any[] = json.cliente_endereco ?? [];
-    const end = enderecos[0] ?? {};
-    const cep = (end.cep ?? "").replace(/\D/g, "");
-    const endereco = [end.logradouro, end.numero, end.complemento, end.bairro].filter(Boolean).join(", ");
-    // Extrair medidas dos itens com "letreiro" no nome e somar os m²
-    // Suporta tanto itens diretos quanto itens_agrupados (quando a OS agrupa sub-itens)
-    const itens: any[] = json.itens ?? [];
-    let larguraM: number | null = null;
-    let alturaM: number | null = null;
-    let metrosQuadrados: number | null = null;
-    let totalM2 = 0;
-    let primeiroLetreiro: { l: number; a: number } | null = null;
-    // Flatten: itens diretos + sub-itens agrupados
-    const todosItens: any[] = [];
-    for (const item of itens) {
-      todosItens.push(item);
-      if (Array.isArray(item.itens_agrupados)) {
-        for (const sub of item.itens_agrupados) todosItens.push(sub);
-      }
+  const os = await buscarOSPorNumero(numeroOs);
+  if (!os) return null;
+
+  const end = os.cliente_endereco?.[0];
+  const cep = (end?.cep ?? "").replace(/\D/g, "");
+  const endereco = [end?.logradouro, end?.numero, (end as any)?.complemento, end?.bairro].filter(Boolean).join(", ");
+
+  // Extrair medidas dos itens com "letreiro" no nome e somar os m²
+  // Suporta tanto itens diretos quanto itens_agrupados (quando a OS agrupa sub-itens)
+  const itens: any[] = os.itens ?? [];
+  let larguraM: number | null = null;
+  let alturaM: number | null = null;
+  let metrosQuadrados: number | null = null;
+  let totalM2 = 0;
+  let primeiroLetreiro: { l: number; a: number } | null = null;
+  // Flatten: itens diretos + sub-itens agrupados
+  const todosItens: any[] = [];
+  for (const item of itens) {
+    todosItens.push(item);
+    if (Array.isArray(item.itens_agrupados)) {
+      for (const sub of item.itens_agrupados) todosItens.push(sub);
     }
-    for (const item of todosItens) {
-      const nomeItem: string = (item.item ?? item.descricao ?? "").toLowerCase();
-      if (!nomeItem.includes("letreiro")) continue;
-      const l = parseFloat(String(item.largura ?? 0));
-      const a = parseFloat(String(item.altura ?? 0));
-      const qtd = parseFloat(String(item.quantidade ?? 1)) || 1;
-      if (l > 0 && a > 0) {
-        totalM2 += l * a * qtd;
-        if (!primeiroLetreiro) primeiroLetreiro = { l, a };
-      }
-    }
-    if (totalM2 > 0) {
-      larguraM = primeiroLetreiro?.l ?? null;
-      alturaM = primeiroLetreiro?.a ?? null;
-      metrosQuadrados = parseFloat(totalM2.toFixed(4));
-    }
-    return {
-      nomeCliente,
-      cnpj,
-      cep,
-      endereco,
-      cidade: end.cidade ?? "",
-      estado: end.estado ?? "",
-      empresa: json.empresa ?? "",
-      larguraM,
-      alturaM,
-      metrosQuadrados,
-    };
-  } catch {
-    return null;
   }
+  for (const item of todosItens) {
+    const nomeItem: string = (item.item ?? item.descricao ?? "").toLowerCase();
+    if (!nomeItem.includes("letreiro")) continue;
+    const l = parseFloat(String(item.largura ?? 0));
+    const a = parseFloat(String(item.altura ?? 0));
+    const qtd = parseFloat(String(item.quantidade ?? 1)) || 1;
+    if (l > 0 && a > 0) {
+      totalM2 += l * a * qtd;
+      if (!primeiroLetreiro) primeiroLetreiro = { l, a };
+    }
+  }
+  if (totalM2 > 0) {
+    larguraM = primeiroLetreiro?.l ?? null;
+    alturaM = primeiroLetreiro?.a ?? null;
+    metrosQuadrados = parseFloat(totalM2.toFixed(4));
+  }
+  return {
+    nomeCliente: String(os.cliente ?? "").trim(),
+    cnpj: os.cliente_cnpj_cpf ?? "",
+    cep,
+    endereco,
+    cidade: end?.cidade ?? "",
+    estado: end?.estado ?? "",
+    empresa: os.empresa ?? "",
+    larguraM,
+    alturaM,
+    metrosQuadrados,
+  };
 }
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "../db/db-connection";

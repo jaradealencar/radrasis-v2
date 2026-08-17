@@ -16,6 +16,7 @@ import {
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { getPool } from "../db/db-connection";
 import { buscarDadosOSParaFrete, obterCotacoesFreteSimuladas } from "../integrations/mubisys-frete";
+import { buscarOSPorNumero, buscarClientePorId } from "../integrations/mubisys-client";
 import * as https from "https";
 import {
   transportadoras,
@@ -371,115 +372,48 @@ export const transportadorasRouter = router({
 
 // ─── COTAÇÕES DE FRETE ────────────────────────────────────────────────────────
 
+/** Formata CNPJ/CPF cru ou já pontuado. Devolve "" se não for nem um nem outro. */
+function formatarDocumento(valor: string | null | undefined): string {
+  const nums = String(valor ?? "").replace(/\D/g, "");
+  if (nums.length === 14) return nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  if (nums.length === 11) return nums.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  return String(valor ?? "").trim();
+}
+
 // Busca dados do cliente no Mubisys pelo número da OS
 async function fetchDadosOsMub(numeroOs: string): Promise<{ nomeCliente: string; cnpj: string; cep: string; endereco: string; cidade: string; estado: string; valorNf: string; vendedor: string; dataEntregaPrevista: string; dataAprovacao: string } | null> {
-  const publicKey = process.env.MUBISYS_PUBLIC_KEY ?? "";
-  const accessToken = process.env.MUBISYS_ACCESS_TOKEN ?? "";
-  if (!publicKey || !accessToken) return null;
-  try {
-    const url = `https://api.mubisys.com/api/${publicKey}/ordem-servico/numero/${encodeURIComponent(numeroOs)}`;
-    const data = await new Promise<string>((resolve, reject) => {
-      const req = https.get(url, { headers: { "Access-Token": accessToken, "Accept": "application/json" } }, (res) => {
-        let body = "";
-        res.on("data", (chunk: Buffer) => body += chunk);
-        res.on("end", () => resolve(body));
-      });
-      req.on("error", reject);
-      req.setTimeout(8000, () => { req.destroy(); reject(new Error("timeout")); });
-    });
-    const json = JSON.parse(data);
-    if (!json || json.error || !json.cliente) return null;
-    const clienteStr: string = json.cliente ?? "";
+  const os = await buscarOSPorNumero(numeroOs);
+  if (!os) return null;
 
-    // Tentar campo dedicado de CNPJ/CPF primeiro (alguns endpoints retornam cnpj_cpf ou documento)
-    let cnpj = "";
-    let nomeCliente = clienteStr.trim();
-    const cnpjDedicado: string = json.cnpj_cpf ?? json.cnpj ?? json.cpf_cnpj ?? json.documento ?? "";
-    if (cnpjDedicado) {
-      const nums = cnpjDedicado.replace(/\D/g, "");
-      if (nums.length === 14) {
-        cnpj = nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-      } else if (nums.length === 11) {
-        cnpj = nums.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-      } else if (nums.length > 0) {
-        cnpj = cnpjDedicado.trim();
-      }
-    }
+  const end = os.cliente_endereco?.[0];
 
-    // Se não encontrou campo dedicado, tentar extrair do início da string cliente
-    // Formato Mubisys: "54.324.273 NOME DO CLIENTE" ou "12.345.678/0001-99 NOME"
-    if (!cnpj) {
-      // Tenta CNPJ completo (14 dígitos com pontuação) no início
-      const cnpjInicioMatch = clienteStr.match(/^(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\s/);
-      if (cnpjInicioMatch) {
-        cnpj = cnpjInicioMatch[1];
-        nomeCliente = clienteStr.replace(cnpjInicioMatch[0], "").trim();
-      } else {
-        // Tenta sequência de dígitos/pontos no início (CNPJ parcial ou CPF)
-        const numInicioMatch = clienteStr.match(/^([\d.\/-]{8,20})\s/);
-        if (numInicioMatch) {
-          const nums = numInicioMatch[1].replace(/\D/g, "");
-          if (nums.length >= 8) {
-            cnpj = numInicioMatch[1].trim();
-            nomeCliente = clienteStr.replace(numInicioMatch[0], "").trim();
-          }
-        }
-      }
-    }
+  // O CNPJ vem na própria OS. A chamada extra a /cliente só existe para o caso
+  // (raro) de a OS vir sem ele — e usa cliente_id, NUNCA o id do endereço.
+  let cnpj = formatarDocumento(os.cliente_cnpj_cpf);
+  let nomeCliente = String(os.cliente ?? "").trim();
 
-    // Fallback: tentar extrair qualquer sequência numérica que pareça CNPJ/CPF em qualquer posição
-    if (!cnpj) {
-      const cnpjQualquerMatch = clienteStr.match(/(\d{2}\.?\d{3}\.?\d{3}\/?\d{0,4}-?\d{0,2})/);
-      if (cnpjQualquerMatch) {
-        cnpj = cnpjQualquerMatch[0].trim();
-        nomeCliente = clienteStr.replace(cnpjQualquerMatch[0], "").trim();
-      }
+  if (!cnpj && os.cliente_id) {
+    const cli = await buscarClientePorId(os.cliente_id);
+    if (cli) {
+      cnpj = formatarDocumento(cli.cnpj_cpf);
+      if (!nomeCliente) nomeCliente = cli.razao_social ?? "";
     }
-    const enderecos: any[] = json.cliente_endereco ?? [];
-    const end = enderecos[0] ?? {};
-    const cep = (end.cep ?? "").replace(/\D/g, "");
-    const endereco = [end.logradouro, end.numero, end.complemento, end.bairro].filter(Boolean).join(", ");
-    // Extrair valor total (usado como valor da NF)
-    const valorNf = json.valor_total ? String(Number(json.valor_total).toFixed(2)) : "";
-    // Extrair nome do vendedor
-    const vendedor = json.vendedor ?? "";
-    // ── BUSCAR CNPJ VIA ENDPOINT DEDICADO DE CLIENTE ──────────────────────────
-    // A OS não retorna cnpj_cpf diretamente. O ID do cliente está em cliente_endereco[0].id
-    // Endpoint: GET /api/{publicKey}/cliente/{clienteId} → retorna cnpj_cpf
-    console.log(`[Mubisys] OS ${numeroOs} → cliente="${clienteStr}" end.id=${end.id} cnpj_inicial="${cnpj}"`);
-    if (!cnpj && end.id) {
-      try {
-        const clienteUrl = `https://api.mubisys.com/api/${publicKey}/cliente/${end.id}`;
-        const clienteData = await new Promise<string>((resolve, reject) => {
-          const req2 = https.get(clienteUrl, { headers: { "Access-Token": accessToken, "Accept": "application/json" } }, (res2) => {
-            let body2 = "";
-            res2.on("data", (c: Buffer) => body2 += c);
-            res2.on("end", () => resolve(body2));
-          });
-          req2.on("error", reject);
-          req2.setTimeout(6000, () => { req2.destroy(); reject(new Error("timeout")); });
-        });
-        const clienteJson = JSON.parse(clienteData);
-        const cnpjRaw: string = clienteJson.cnpj_cpf ?? clienteJson.cnpj ?? clienteJson.documento ?? "";
-        if (cnpjRaw) {
-          const nums = cnpjRaw.replace(/\D/g, "");
-          if (nums.length === 14) {
-            cnpj = nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-          } else if (nums.length === 11) {
-            cnpj = nums.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-          } else if (nums.length > 0) {
-            cnpj = cnpjRaw.trim();
-          }
-        }
-        // Usar razao_social como nome se ainda não temos
-        if (!nomeCliente && clienteJson.razao_social) nomeCliente = clienteJson.razao_social;
-        console.log(`[Mubisys] cliente/${end.id} → cnpj="${cnpj}" nome="${nomeCliente}"`);
-      } catch(e: any) { console.warn(`[Mubisys] Erro ao buscar cliente/${end.id}:`, e.message); }
-    }
-    const dataEntregaPrevista: string = json.data_entrega ?? json.prazo ?? "";
-    const dataAprovacao: string = json.data_aprovacao ?? json.dataAprovacao ?? "";
-    return { nomeCliente, cnpj, cep, endereco, cidade: end.cidade ?? "", estado: end.estado ?? "", valorNf, vendedor, dataEntregaPrevista, dataAprovacao };
-  } catch { return null; }
+  }
+
+  return {
+    nomeCliente,
+    cnpj,
+    cep: (end?.cep ?? "").replace(/\D/g, ""),
+    endereco: [end?.logradouro, end?.numero, (end as any)?.complemento, end?.bairro].filter(Boolean).join(", "),
+    cidade: end?.cidade ?? "",
+    estado: end?.estado ?? "",
+    valorNf: os.valor_total ? String(Number(os.valor_total).toFixed(2)) : "",
+    vendedor: os.vendedor ?? "",
+    // `prazo` é texto livre ("02 dias úteis") — não serve como data. Só
+    // data_entrega entra aqui.
+    dataEntregaPrevista: os.data_entrega ?? "",
+    dataAprovacao: os.data_aprovacao ?? "",
+  };
 }
 
 export const cotacoesFreteRouter = router({

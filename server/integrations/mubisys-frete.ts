@@ -29,23 +29,50 @@ export interface DadosFreteAutomatico {
   entrega?: string;
   /** Vendedor responsável pela OS (próprio de cada OS) */
   vendedor?: string;
+  /** E-mail de contato do cliente (próprio de cada OS) */
+  email?: string;
+}
+
+/** dd/mm/aaaa -> aaaa-mm-dd (coluna dataEntregaPrevista é DATE). "" se não reconhecer. */
+function normalizarData(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  const iso = texto.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  return null;
 }
 
 /** Formata datas do ERP para exibição (dd/mm/aaaa ou dd/mm/aaaa às HH:MM). */
 function formatarDataOS(valor: unknown): string {
   if (!valor) return "";
+  // A coluna `dataEntregaPrevista` é `date`: o driver do Postgres devolve
+  // Date em UTC-meia-noite, não string. `String(Date)` cai no formato longo
+  // ("Wed Aug 05 2026...") e não bate com nenhuma regex abaixo.
+  if (valor instanceof Date) {
+    const dia = String(valor.getUTCDate()).padStart(2, "0");
+    const mes = String(valor.getUTCMonth() + 1).padStart(2, "0");
+    const ano = valor.getUTCFullYear();
+    return `${dia}/${mes}/${ano}`;
+  }
   const texto = String(valor).trim();
   if (!texto) return "";
   // Já vem formatado (ex.: "07/08/2026 às 15:45" ou "07/08/2026 15:45")
   if (/^\d{2}\/\d{2}\/\d{4}/.test(texto)) return texto.replace(/\s+(\d{2}:\d{2})/, " às $1");
+  const temHora = /\d{2}:\d{2}/.test(texto);
   // ISO ou "YYYY-MM-DD HH:MM:SS"
   const iso = texto.replace(" ", "T");
   const data = new Date(iso);
   if (Number.isNaN(data.getTime())) return texto;
-  const dia = String(data.getDate()).padStart(2, "0");
-  const mes = String(data.getMonth() + 1).padStart(2, "0");
-  const ano = data.getFullYear();
-  const temHora = /\d{2}:\d{2}/.test(texto);
+  // Datas sem hora (ex.: "2026-08-05") são interpretadas pelo JS como
+  // UTC-meia-noite. Ler com getters locais desloca a data em 1 dia em fusos
+  // atrás de UTC — usar getters UTC nesse caso. Com hora, a string já foi
+  // parseada como horário local (sem "Z"), então os getters locais batem.
+  const dia = String(temHora ? data.getDate() : data.getUTCDate()).padStart(2, "0");
+  const mes = String((temHora ? data.getMonth() : data.getUTCMonth()) + 1).padStart(2, "0");
+  const ano = temHora ? data.getFullYear() : data.getUTCFullYear();
   if (!temHora) return `${dia}/${mes}/${ano}`;
   const hora = String(data.getHours()).padStart(2, "0");
   const minuto = String(data.getMinutes()).padStart(2, "0");
@@ -117,27 +144,33 @@ export async function buscarDadosOSParaFrete(osNumero: string): Promise<DadosFre
       return null;
     }
 
+    // Datas cruas da OS — só formatadas na resposta. O cache grava o valor cru
+    // (ver gravarNoCache), para não misturar formatos com o sync diário.
+    const dataAprovacaoRaw = os.data_aprovacao ?? "";
+    const dataEntregaRaw = os.data_entrega ?? "";
+
     // ✅ Mapeamento com fallbacks para variações de campo
     const resultado = {
       osNumero: String(os.sequencial_ordem || (os as any).numero || os.id || osNumero),
       clienteNome: os.cliente || (os as any).nomeCliente || (os as any).razaoSocial || (os as any).nomeEmpresa || "",
-      clienteCnpj: os.cliente_cnpj_cpf || (os as any).cnpj || (os as any).cnpjCliente || "",
+      clienteCnpj: os.cliente_cnpj_cpf || "",
       municipio: endereco.cidade || endereco.municipio || endereco.localidade || "",
       estado: endereco.estado || endereco.uf || "",
       cep: endereco.cep || "",
       endereco: `${endereco.logradouro || ""}, ${endereco.numero || ""}, ${endereco.bairro || ""}`,
       peso_kg: undefined, // Será preenchido pelo usuário
-      valor_nf: (os as any).valor_total || 0,
+      valor_nf: os.valor_total || 0,
       // Dados próprios de cada OS
-      aprovacao: formatarDataOS(os.data_aprovacao ?? (os as any).dataAprovacao),
-      entrega: formatarDataOS(os.data_entrega ?? (os as any).prazo ?? (os as any).dataEntrega),
+      aprovacao: formatarDataOS(dataAprovacaoRaw),
+      entrega: formatarDataOS(dataEntregaRaw),
       vendedor: os.vendedor || (os as any).atendente || "",
+      email: os.cliente_contato?.[0]?.email ?? "",
     };
-    
+
     console.log("✅ [Frete-API] Retornando dados da OS:", resultado);
     // Persistir no cache para que a próxima consulta seja instantânea e o card
     // nunca fique sem Aprovação/Entrega/Vendedor.
-    await gravarNoCache(resultado);
+    await gravarNoCache(resultado, { aprovacaoRaw: dataAprovacaoRaw, entregaRaw: dataEntregaRaw });
     return resultado;
   } catch (error) {
     console.error("[Frete-Cache] Erro ao buscar OS:", error);
@@ -146,31 +179,45 @@ export async function buscarDadosOSParaFrete(osNumero: string): Promise<DadosFre
   }
 }
 
-/** Grava/atualiza a OS no cache local usando os nomes reais das colunas. */
-async function gravarNoCache(dados: DadosFreteAutomatico): Promise<void> {
+/**
+ * Grava/atualiza a OS no cache local usando os nomes reais das colunas.
+ * `aprovacaoRaw`/`entregaRaw` são os valores crus vindos da OS (não os
+ * formatados em `dados.aprovacao`/`dados.entrega`) — a coluna `dataAprovacao`
+ * precisa do mesmo formato cru usado pelo sync diário, e `dataEntregaPrevista`
+ * é `date`: só aceita `aaaa-mm-dd`.
+ */
+async function gravarNoCache(
+  dados: DadosFreteAutomatico,
+  raw: { aprovacaoRaw: string; entregaRaw: string },
+): Promise<void> {
   try {
     const { mutationQuery } = await import("../db/db-connection");
+    const dataEntregaPrevista = normalizarData(raw.entregaRaw);
     const existente = await selectQuery(`SELECT id FROM erp_os_cache WHERE "numeroOs" = ?`, [dados.osNumero]);
     if (existente && existente.length > 0) {
       await mutationQuery(
         `UPDATE erp_os_cache SET
-           "razaoSocial" = ?, cnpj = ?, cep = ?, municipio = ?, estado = ?, endereco = ?,
-           "dataAprovacao" = ?, vendedor = ?, "dataUltimaAtualizacao" = NOW(), "sincronizadoEm" = NOW()
+           "razaoSocial" = ?, cnpj = ?, email = ?, cep = ?, municipio = ?, estado = ?, endereco = ?,
+           "dataAprovacao" = ?, "dataEntregaPrevista" = ?, "valorTotal" = ?, vendedor = ?,
+           "dataUltimaAtualizacao" = NOW(), "sincronizadoEm" = NOW()
          WHERE "numeroOs" = ?`,
         [
-          dados.clienteNome, dados.clienteCnpj, dados.cep, dados.municipio, dados.estado,
-          dados.endereco, dados.aprovacao || null, dados.vendedor || "", dados.osNumero,
+          dados.clienteNome, dados.clienteCnpj, dados.email || null, dados.cep, dados.municipio, dados.estado,
+          dados.endereco, raw.aprovacaoRaw || null, dataEntregaPrevista, dados.valor_nf ?? null,
+          dados.vendedor || "", dados.osNumero,
         ],
       );
     } else {
       await mutationQuery(
         `INSERT INTO erp_os_cache
-           ("numeroOs", "razaoSocial", cnpj, cep, municipio, estado, endereco,
-            "dataAprovacao", vendedor, status, "dataUltimaAtualizacao", "sincronizadoEm", "criadoEm")
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativa', NOW(), NOW(), NOW())`,
+           ("numeroOs", "razaoSocial", cnpj, email, cep, municipio, estado, endereco,
+            "dataAprovacao", "dataEntregaPrevista", "valorTotal", vendedor, status,
+            "dataUltimaAtualizacao", "sincronizadoEm", "criadoEm")
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativa', NOW(), NOW(), NOW())`,
         [
-          dados.osNumero, dados.clienteNome, dados.clienteCnpj, dados.cep, dados.municipio,
-          dados.estado, dados.endereco, dados.aprovacao || null, dados.vendedor || "",
+          dados.osNumero, dados.clienteNome, dados.clienteCnpj, dados.email || null, dados.cep, dados.municipio,
+          dados.estado, dados.endereco, raw.aprovacaoRaw || null, dataEntregaPrevista, dados.valor_nf ?? null,
+          dados.vendedor || "",
         ],
       );
     }
