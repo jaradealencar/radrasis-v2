@@ -6,11 +6,23 @@ import { createApp } from "./app";
  *
  * Não fica em `api/` porque a Vercel só transpila o arquivo de entrada — os
  * módulos que ele importa (este arquivo importa `./app`, que importa boa
- * parte do server) precisam vir todos já empacotados num único arquivo
- * autocontido. `yarn build:api` (esbuild --bundle) gera esse pacote em
- * `api/index.js` a partir daqui; `api/index.ts` não existe mais no repo de
- * propósito, pra não haver dois arquivos (fonte + gerado) disputando a mesma
- * rota `/api`. Ver `vercel.json` (buildCommand + functions).
+ * parte do server) não são empacotados junto automaticamente, e o import
+ * relativo sem extensão (`moduleResolution: "bundler"` no tsconfig) quebra
+ * em runtime com `type: module` puro. `yarn build:api` (esbuild --bundle)
+ * gera um `api/index.js` autocontido, sem nenhum import local sobrando, a
+ * partir daqui.
+ *
+ * Esse `api/index.js` gerado FICA COMMITADO no repo (não é gitignored):
+ * a Vercel valida o glob de `functions` em `vercel.json` contra os arquivos
+ * já existentes em `api/` ANTES de rodar o `buildCommand` — se o arquivo só
+ * aparecesse depois do build, o deploy falha com "the pattern doesn't match
+ * any Serverless Functions". O `buildCommand` roda `yarn build:api` de novo
+ * e sobrescreve esse arquivo com uma versão fresca antes do deploy, então a
+ * cópia commitada só precisa existir pra satisfazer essa validação — o
+ * conteúdo publicado é sempre o gerado no build. `api/index.ts` não existe
+ * mais no repo de propósito, pra não haver dois arquivos (fonte + gerado)
+ * disputando a mesma rota `/api`. Ver `vercel.json` (buildCommand +
+ * functions).
  *
  * A Vercel roda `api/index.js` (o bundle gerado) como uma função. Um app
  * Express é uma função `(req, res)`, então serve direto de handler — não

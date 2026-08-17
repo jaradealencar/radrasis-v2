@@ -8,11 +8,6 @@ build/
 *.dist
 .vercel/
 
-# Bundle da função serverless da Vercel, gerado por `yarn build:api`
-# (esbuild empacota server/_core/serverless-handler.ts pra cá)
-api/index.js
-api/index.js.map
-
 # Environment variables
 .env
 .env.local
