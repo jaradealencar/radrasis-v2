@@ -1338,12 +1338,12 @@ O POP deve:
   }),
 
   price: router({
-    list: publicProcedure
+    list: protectedProcedure
       .input(z.object({ page: z.number().optional() }))
       .query(async ({ input }) => {
         return listPriceTableSections(input.page);
       }),
-    getMeta: publicProcedure
+    getMeta: protectedProcedure
       .query(async () => {
         return getPriceTableMeta();
       }),
@@ -1366,17 +1366,17 @@ O POP deve:
         contentJson: z.string(),
         notes: z.string().nullable().optional(),
       }))
-      .mutation(async ({ input }) => {
-        const id = await addPriceTableSection(input);
+      .mutation(async ({ input, ctx }) => {
+        const id = await addPriceTableSection(input, ctx.user.name ?? ctx.user.email ?? "usuário");
         return { ok: true, id };
       }),
     deleteSection: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await deletePriceTableSection(input.id);
+      .mutation(async ({ input, ctx }) => {
+        await deletePriceTableSection(input.id, ctx.user.name ?? ctx.user.email ?? "usuário");
         return { ok: true };
       }),
-    getHistory: publicProcedure
+    getHistory: protectedProcedure
       .input(z.object({ limit: z.number().optional() }))
       .query(async ({ input }) => {
         return listPriceTableHistory(input.limit ?? 100);

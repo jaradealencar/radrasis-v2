@@ -67,6 +67,18 @@ async function deleteDbCache(cacheKey: string): Promise<void> {
   } catch {}
 }
 
+/** Normaliza nome de empresa para chave de comparação: minúsculas, sem acentos,
+ * sem pontuação. Precisa ser idêntica à normalização usada em upsertClienteOverride
+ * (routers.ts), senão overrides manuais nunca casam com nomes acentuados. */
+function normalizeEmpresaKey(s: string): string {
+  return (s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]/g, "")
+    .trim();
+}
+
 function isMesAtual(mes: number, ano: number): boolean {
   const now = new Date();
   return mes === now.getMonth() + 1 && ano === now.getFullYear();
@@ -85,11 +97,6 @@ function setCacheWithTTL(key: string, data: any, mes: number, ano: number): void
   if (isMesAtual(mes, ano)) {
     setTimeout(() => apiCache.delete(key), CACHE_TTL_ATUAL_MS);
   }
-}
-
-// Manter compatibilidade com setCache existente
-function setCache(key: string, data: any): void {
-  apiCache.set(key, { data, ts: Date.now() });
 }
 
 function deleteCache(key: string): void {
@@ -194,7 +201,7 @@ async function getMesFromDb(mes: number, ano: number) {
 // Mapa de promessas em andamento para deduplicar chamadas simultâneas
 const pendingApiCalls = new Map<string, Promise<any>>();
 
-async function getMesFromApi(publicKey: string, accessToken: string, mes: number, ano: number) {
+async function getMesFromApi(mes: number, ano: number) {
   const cacheKey = `mes_${mes}_${ano}`;
   
   // Verificar cache primeiro
@@ -205,8 +212,8 @@ async function getMesFromApi(publicKey: string, accessToken: string, mes: number
   const existing = pendingApiCalls.get(cacheKey);
   if (existing) return existing;
   
-  const promise = _getMesFromApiImpl(publicKey, accessToken, mes, ano).then(result => {
-    setCache(cacheKey, result);
+  const promise = _getMesFromApiImpl(mes, ano).then(result => {
+    setCacheWithTTL(cacheKey, result, mes, ano);
     pendingApiCalls.delete(cacheKey);
     return result;
   }).catch(err => {
@@ -218,7 +225,7 @@ async function getMesFromApi(publicKey: string, accessToken: string, mes: number
   return promise;
 }
 
-async function _getMesFromApiImpl(publicKey: string, accessToken: string, mes: number, ano: number) {
+async function _getMesFromApiImpl(mes: number, ano: number) {
   const pad = (n: number) => String(n).padStart(2, "0");
   const lastDay = new Date(ano, mes, 0).getDate();
   const datainicial = `${ano}-${pad(mes)}-01`;
@@ -413,7 +420,7 @@ type VendedorNovosStats = {
   taxaFatNovos: number;
 };
 
-async function getClientesNovosMes(mes: number, ano: number, includeTelefones = true): Promise<{
+async function getClientesNovosMes(mes: number, ano: number): Promise<{
   total: number;
   cotacoesNovos: number;
   osNovos: number;
@@ -460,7 +467,7 @@ async function getClientesNovosMes(mes: number, ano: number, includeTelefones = 
       .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)));
     // Clientes anteriores para identificar novos
     const clientesAntSnap = await db.select({ empresa: historicoOs.empresa }).from(historicoOs)
-      .where(sql`(${historicoOs.ano} < ${mes === 1 ? ano : ano}) AND (${historicoOs.mes} < ${mes} OR ${historicoOs.ano} < ${ano})`);
+      .where(sql`(${historicoOs.ano} < ${ano}) OR (${historicoOs.ano} = ${ano} AND ${historicoOs.mes} < ${mes})`);
     const setAntSnap = new Set(clientesAntSnap.map(r => (r.empresa ?? "").toLowerCase().trim()));
     for (const orc of orcMesSnap) {
       const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
@@ -528,22 +535,12 @@ async function getClientesNovosMes(mes: number, ano: number, includeTelefones = 
   const di = `${ano}-${pad(mes)}-01`;
   const df = `${ano}-${pad(mes)}-${pad(lastDay)}`;
 
-  // Tentar usar cache do getMesFromApi para evitar chamadas duplicadas
-  const cacheKey = `mes_${mes}_${ano}`;
-  const cachedMes = getCached(cacheKey);
-  
   let allOsApi: any[] = [];
   let allOrcApiPrefetched: any[] | null = null; // será preenchido se vier do cache
   
-  if (cachedMes) {
-    // Reconstruir allOsApi a partir do cache (formato da API)
-    // Não temos os dados brutos, precisamos buscar da API mesmo
-    // Mas podemos usar o cache para os orçamentos
-  }
-  
   try {
     // Usar getMesFromApi que já tem cache e deduplicação
-    const mesData = await getMesFromApi(publicKey, accessToken, mes, ano);
+    const mesData = await getMesFromApi(mes, ano);
     // Reconstruir lista de OS a partir dos dados agregados não é possível
     // Precisamos buscar OS individuais para identificar clientes
     // Usar cache de OS brutas separado (memória + banco persistente)
@@ -620,7 +617,8 @@ async function getClientesNovosMes(mes: number, ano: number, includeTelefones = 
     if (!clienteKey) continue;
 
     // Verificar override manual: "recorrente" exclui; "novo" força inclusão
-    const overrideStatus = overrideMap.get(clienteKey);
+    // Usa chave normalizada (sem acentos) — igual à gravada em upsertClienteOverride
+    const overrideStatus = overrideMap.get(normalizeEmpresaKey(nomeCliente));
     // CORREÇÃO: remover a condição clientesAnteriores.length === 0 que descartava todos em jan
     // Se não há histórico anterior, todos os clientes do mês são novos por definição
     const isNovoByHistory = !setAnteriores.has(clienteKey);
@@ -707,7 +705,7 @@ async function getClientesNovosMes(mes: number, ano: number, includeTelefones = 
         ? String((clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? "")
         : String(clienteRaw ?? "");
       const clienteKey = nomeCliente.toLowerCase().trim();
-      const orcOverride = overrideMap.get(clienteKey);
+      const orcOverride = overrideMap.get(normalizeEmpresaKey(nomeCliente));
       const isNovoOrc = orcOverride === "recorrente" ? false
         : orcOverride === "novo" ? true
         : !setAnteriores.has(clienteKey);
@@ -793,8 +791,6 @@ export const performanceComercialRouter = router({
     .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020), forceRefresh: z.boolean().optional().default(false) }))
     .query(async ({ input }) => {
       const { mes, ano, forceRefresh } = input;
-      const now = new Date();
-      const isMesAtual = mes === now.getMonth() + 1 && ano === now.getFullYear();
 
       // ─── SNAPSHOT ESTÁTICO: verificar dados congelados ANTES de qualquer chamada à API ───
       // Dados congelados têm prioridade absoluta — nunca são sobrescritos por consultas automáticas.
@@ -864,22 +860,25 @@ export const performanceComercialRouter = router({
 
       let raw: any = null;
 
-      if (isMesAtual || forceRefresh) {
-        // Mês atual ou refresh forçado: tentar API em tempo real
-        // Timeout de 180s para dar tempo à busca sequencial de 4 páginas de orçamentos
-        const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-        const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-        if (publicKey && accessToken) {
-          try {
-            const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 180000));
-            raw = await Promise.race([getMesFromApi(publicKey, accessToken, mes, ano), timeoutPromise]);
-          } catch {
-            raw = null;
-          }
+      // Usar API Mubisys para TODOS os meses (não só o atual) — mesmo padrão de
+      // getMultiMes/getAno/getClientesNovosAno, para os números baterem entre telas.
+      // A API tem cache próprio (memória + mubisys_api_cache no banco, 6h para meses
+      // históricos), então repetir a mesma consulta não implica repetir a chamada HTTP.
+      // Timeout de 50s — abaixo do maxDuration:60s do vercel.json. Um valor
+      // maior nunca dispara: a função é morta pela Vercel antes, sem fallback
+      // para o banco. Com 50s, o race resolve a tempo de cair no getMesFromDb.
+      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
+      if (publicKey && accessToken) {
+        try {
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 50000));
+          raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
+        } catch {
+          raw = null;
         }
       }
 
-      // Se não conseguiu da API ou é mês histórico, usar banco
+      // Se não conseguiu da API, usar banco local como fallback
       if (!raw) {
         raw = await getMesFromDb(mes, ano);
       }
@@ -949,7 +948,7 @@ export const performanceComercialRouter = router({
               const clienteKey = (os.empresa ?? "").toLowerCase().trim();
               if (!clienteKey) continue;
               clientesEsteMes.add(clienteKey);
-              const overrideStatus = overrideMap.get(clienteKey);
+              const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
               const isNovo = overrideStatus === "recorrente" ? false
                 : overrideStatus === "novo" ? true
                 : !clientesVistoAte.has(clienteKey);
@@ -965,7 +964,7 @@ export const performanceComercialRouter = router({
             for (const orc of orcMes) {
               const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
               if (!clienteKey) continue;
-              const overrideStatus = overrideMap.get(clienteKey);
+              const overrideStatus = overrideMap.get(normalizeEmpresaKey(orc.empresa ?? ""));
               const isNovo = overrideStatus === "recorrente" ? false
                 : overrideStatus === "novo" ? true
                 : !clientesVistoAte.has(clienteKey);
@@ -1045,7 +1044,7 @@ export const performanceComercialRouter = router({
               const timeoutPromise = new Promise<null>((_, reject) =>
                 setTimeout(() => reject(new Error("timeout")), 40000)
               );
-              raw = await Promise.race([getMesFromApi(publicKey, accessToken, mes, ano), timeoutPromise]);
+              raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
             } catch {
               raw = null; // fallback para banco local
             }
@@ -1123,7 +1122,7 @@ export const performanceComercialRouter = router({
         .where(and(eq(metasComerciais.mes, input.mes), eq(metasComerciais.ano, input.ano)));
     }),
 
-  upsertMeta: publicProcedure
+  upsertMeta: protectedProcedure
     .input(z.object({
       vendedor: z.string().min(1),
       mes: z.number().min(1).max(12),
@@ -1195,7 +1194,7 @@ export const performanceComercialRouter = router({
       return { ok: true };
     }),
 
-  deleteMeta: publicProcedure
+  deleteMeta: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -1209,9 +1208,6 @@ export const performanceComercialRouter = router({
     .input(z.object({ ano: z.number().min(2020) }))
     .query(async ({ input }) => {
       const { ano } = input;
-      const now = new Date();
-      const mesAtual = now.getMonth() + 1;
-      const anoAtual = now.getFullYear();
       const publicKey = ENV.MUBISYS_PUBLIC_KEY;
       const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const db = await getDb();
@@ -1221,12 +1217,23 @@ export const performanceComercialRouter = router({
       const todosOrcAno = db ? await db.select().from(historicoOrcamentos).where(eq(historicoOrcamentos.ano, ano)) : [];
 
       const meses = Array.from({ length: 12 }, (_, i) => i + 1);
-      const results = await Promise.all(
-        meses.map(async (mes) => {
-          const isMesAtual = mes === mesAtual && ano === anoAtual;
+      // Usar API Mubisys para TODOS os meses (não só o atual) — mesmo padrão de
+      // getMes/getMultiMes, para os números baterem entre telas. Concorrência
+      // limitada a 2 (igual getClientesNovosAno) para não disparar 12 chamadas
+      // simultâneas à API MubiSys na primeira carga do ano.
+      const CONCURRENCY = 2;
+      const results: any[] = new Array(meses.length).fill(null);
+      for (let i = 0; i < meses.length; i += CONCURRENCY) {
+        const batch = meses.slice(i, i + CONCURRENCY);
+        const batchResults = await Promise.all(batch.map(async (mes) => {
           let raw: any = null;
-          if (isMesAtual && publicKey && accessToken) {
-            raw = await getMesFromApi(publicKey, accessToken, mes, ano);
+          if (publicKey && accessToken) {
+            try {
+              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 50000));
+              raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
+            } catch {
+              raw = null;
+            }
           }
           if (!raw) {
             // Usar dados já carregados em memória (sem nova query ao banco)
@@ -1271,13 +1278,14 @@ export const performanceComercialRouter = router({
           }
           if (!raw) return null;
           return calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
-        })
-      );
+        }));
+        batch.forEach((mes, j) => { results[mes - 1] = batchResults[j]; });
+      }
       return results; // array de 12, null para meses sem dados
     }),
 
   // Clientes novos do mês (primeira compra)
-  getClientesNovos: publicProcedure
+  getClientesNovos: protectedProcedure
     .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
     .query(async ({ input }) => {
       return getClientesNovosMes(input.mes, input.ano);
@@ -1303,7 +1311,7 @@ export const performanceComercialRouter = router({
         const batch = meses.slice(i, i + CONCURRENCY);
         const batchResults = await Promise.allSettled(
           batch.map(async (mes) => {
-            const dados = await getClientesNovosMes(mes, ano, false);
+            const dados = await getClientesNovosMes(mes, ano);
             return {
               mes,
               ticketMedioNovos: dados.ticketMedioNovos,
@@ -2057,22 +2065,23 @@ export const performanceComercialRouter = router({
     }),
 
   // Auditoria de múltiplos meses — usa mesma lógica validada do getMes
-  auditarMeses: publicProcedure
+  auditarMeses: protectedProcedure
     .input(z.object({
       meses: z.array(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
     }))
     .query(async ({ input }) => {
-      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const resultados: any[] = [];
 
       for (const { mes, ano } of input.meses) {
         try {
+          // 50s por mês — abaixo do maxDuration:60s. Com múltiplos meses na
+          // mesma requisição o total ainda pode ultrapassar 60s (soma sequencial);
+          // isso é uma limitação estrutural do endpoint, não resolvida por este timeout.
           const timeoutPromise = new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error("timeout_90s")), 90000)
+            setTimeout(() => reject(new Error("timeout_50s")), 50000)
           );
           const raw = await Promise.race([
-            getMesFromApi(publicKey, accessToken, mes, ano),
+            getMesFromApi(mes, ano),
             timeoutPromise,
           ]);
           if (!raw) {
@@ -2150,7 +2159,7 @@ export const performanceComercialRouter = router({
     }),
 
   /** Marca ou desmarca um cliente como contatado */
-  setContatado: publicProcedure
+  setContatado: protectedProcedure
     .input(z.object({
       empresa: z.string().min(1),
       mes: z.number().min(1).max(12),

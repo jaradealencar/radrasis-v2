@@ -1444,8 +1444,12 @@ export default function PerformanceComercial() {
               {vendedoresData.slice(0, 3).map((v: any, i: number) => {
                 const medalColors = ["#f59e0b", "#94a3b8", "#cd7f32"];
                 const medalLabels = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
-                // Dados de clientes novos para este vendedor
-                const novos = (clientesNovos as any)?.porVendedorNovos?.[v.vendedorFull] as {
+                // Dados de clientes novos para este vendedor — mesma normalização de
+                // busca (exata ou case-insensitive) usada em vendedoresData acima
+                const novosMapTop3 = (clientesNovos as any)?.porVendedorNovos ?? {};
+                const keyNormTop3 = String(v.vendedorFull).trim().toLowerCase();
+                const novos = (novosMapTop3[v.vendedorFull] ?? novosMapTop3[keyNormTop3] ??
+                  Object.entries(novosMapTop3).find(([k]) => k.toLowerCase() === keyNormTop3)?.[1]) as {
                   clientesNovos: number; osNovos: number; faturamentoNovos: number;
                   cotacoesNovos: number; valorOrcadoNovos: number;
                   taxaConvNovos: number; taxaFatNovos: number;

@@ -604,11 +604,15 @@ export async function getPermissionsForRole(role: AppRole): Promise<string[]> {
 export async function listPriceTableSections(page?: number): Promise<PriceTableSection[]> {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select().from(priceTableSections)
+  if (page !== undefined) {
+    return db.select().from(priceTableSections)
+      .where(eq(priceTableSections.page, page))
+      .orderBy(priceTableSections.page, priceTableSections.sectionOrder)
+      .limit(200);
+  }
+  return db.select().from(priceTableSections)
     .orderBy(priceTableSections.page, priceTableSections.sectionOrder)
     .limit(200);
-  if (page !== undefined) return rows.filter(r => r.page === page);
-  return rows;
 }
 
 export async function updatePriceTableSection(
@@ -623,11 +627,6 @@ export async function updatePriceTableSection(
   await db.update(priceTableSections)
     .set({ ...data })
     .where(eq(priceTableSections.id, id));
-  // Incrementar versão e registrar histórico
-  const meta = await getPriceTableMeta();
-  const current = parseInt(meta?.versao ?? "0", 10) || 0;
-  const nextVersao = String(current + 1).padStart(3, "0");
-  await incrementPriceTableVersion();
   // Registrar cada campo alterado no histórico
   const campos: Array<{ campo: string; antes: string; depois: string }> = [];
   if (data.contentJson !== undefined && before?.contentJson !== data.contentJson) {
@@ -639,6 +638,13 @@ export async function updatePriceTableSection(
   if (data.notes !== undefined && before?.notes !== data.notes) {
     campos.push({ campo: "notes", antes: before?.notes ?? "", depois: data.notes ?? "" });
   }
+  // Nada mudou de fato — não incrementa versão nem registra histórico
+  if (campos.length === 0) return;
+
+  const meta = await getPriceTableMeta();
+  const current = parseInt(meta?.versao ?? "0", 10) || 0;
+  const nextVersao = String(current + 1).padStart(3, "0");
+  await incrementPriceTableVersion();
   for (const c of campos) {
     await db.insert(priceTableHistory).values({
       versao: nextVersao,
@@ -656,7 +662,7 @@ export async function listPriceTableHistory(limit = 50): Promise<typeof priceTab
   const db = await getDb();
   if (!db) return [];
   return db.select().from(priceTableHistory)
-    .orderBy(priceTableHistory.createdAt)
+    .orderBy(desc(priceTableHistory.createdAt))
     .limit(limit);
 }
 
@@ -680,7 +686,7 @@ export async function addPriceTableSection(data: {
   contentJson: string;
   notes?: string | null;
   sectionOrder?: number;
-}): Promise<number> {
+}, autor?: string): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const existing = await db.select().from(priceTableSections)
@@ -693,13 +699,43 @@ export async function addPriceTableSection(data: {
     notes: data.notes ?? null,
     sectionOrder: data.sectionOrder ?? maxOrder + 1,
   }).returning({ id: priceTableSections.id });
+
+  const meta = await getPriceTableMeta();
+  const current = parseInt(meta?.versao ?? "0", 10) || 0;
+  const nextVersao = String(current + 1).padStart(3, "0");
+  await incrementPriceTableVersion();
+  await db.insert(priceTableHistory).values({
+    versao: nextVersao,
+    sectionId: result.id,
+    sectionTitle: data.sectionTitle,
+    autor: autor ?? "sistema",
+    campoAlterado: "secao_criada",
+    valorAnterior: "",
+    valorNovo: data.sectionTitle,
+  });
   return result.id;
 }
 
-export async function deletePriceTableSection(id: number): Promise<void> {
+export async function deletePriceTableSection(id: number, autor?: string): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  const [before] = await db.select().from(priceTableSections).where(eq(priceTableSections.id, id)).limit(1);
   await db.delete(priceTableSections).where(eq(priceTableSections.id, id));
+  if (!before) return;
+
+  const meta = await getPriceTableMeta();
+  const current = parseInt(meta?.versao ?? "0", 10) || 0;
+  const nextVersao = String(current + 1).padStart(3, "0");
+  await incrementPriceTableVersion();
+  await db.insert(priceTableHistory).values({
+    versao: nextVersao,
+    sectionId: id,
+    sectionTitle: before.sectionTitle,
+    autor: autor ?? "sistema",
+    campoAlterado: "secao_removida",
+    valorAnterior: before.sectionTitle,
+    valorNovo: "",
+  });
 }
 
 export async function getPriceTableMeta(): Promise<{ versao: string; dataModificacao: Date } | null> {

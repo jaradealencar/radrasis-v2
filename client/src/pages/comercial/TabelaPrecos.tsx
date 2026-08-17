@@ -389,6 +389,15 @@ function SmartEditor({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // ─── EditableSection ─────────────────────────────────────────────────────────
 
 function EditableSection({ section, highlight }: { section: Section; highlight?: string }) {
@@ -433,8 +442,8 @@ function EditableSection({ section, highlight }: { section: Section; highlight?:
                   .replace(" \u2014 Clientes Brasil", "")
                   .replace(" \u2014 Clientes MS", "");
                 const displayTitle = highlight
-                  ? <span dangerouslySetInnerHTML={{ __html: baseTitle.replace(
-                      new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
+                  ? <span dangerouslySetInnerHTML={{ __html: escapeHtml(baseTitle).replace(
+                      new RegExp(`(${escapeHtml(highlight).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
                       '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>'
                     ) }} />
                   : baseTitle;
@@ -772,7 +781,7 @@ export default function TabelaPrecos() {
   const [filterPage, setFilterPage] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
   const { data: allSections, isLoading } = trpc.price.list.useQuery({});
-  const { data: allSectionsNC, isLoading: isLoadingNC } = trpc.price.list.useQuery({});
+  const isLoadingNC = isLoading;
   const { data: meta } = trpc.price.getMeta.useQuery();
   const [showHistory, setShowHistory] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1145,7 +1154,7 @@ export default function TabelaPrecos() {
             </Empty>
           ) : (
             <div className="space-y-2">
-              {[...history].reverse().map((h) => (
+              {history.map((h) => (
                 <div key={h.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50 text-sm">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
