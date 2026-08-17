@@ -3,7 +3,7 @@
 **Levantamento feito em 17/08/2026.** Os contratos abaixo não foram deduzidos
 da documentação: foram **medidos** contra `https://api.mubisys.com` com as
 credenciais do `.env` do projeto (chamadas somente de leitura). Onde a
-documentação oficial (`docs/api/mubisys-openapi-v1.json`) diverge do medido,
+documentação oficial (`docs/api/mubisys-postman-collection.json`) diverge do medido,
 vale o medido — e isso está sinalizado.
 
 O plano de correção derivado deste documento está em
@@ -28,7 +28,7 @@ O plano de correção derivado deste documento está em
 
 ### Endpoints usados que **não estão** na coleção oficial
 
-`docs/api/mubisys-openapi-v1.json` é uma **coleção Postman** (não um documento
+`docs/api/mubisys-postman-collection.json` é uma **coleção Postman** (não um documento
 OpenAPI, apesar do nome). Ela não lista:
 
 - `GET /ordem-servico/numero/{sequencial_ordem}` — **existe e funciona**
@@ -122,6 +122,11 @@ referências fora do próprio arquivo.
 Severidade: 🔴 dado errado ou fluxo quebrado · 🟠 falha intermitente/em
 produção · 🟡 dívida técnica.
 
+**Status (atualizado na Fase 6 de `docs/sprint-mubisys/`, 17/08/2026): todos os
+13 achados abaixo estão resolvidos.** O texto de cada achado é mantido como
+foi escrito no levantamento original — é o registro do que aconteceu, não uma
+lista de tarefas; a linha "✅ Resolvido" ao final de cada um diz onde.
+
 ### A1 🔴 Cotação de frete grava CNPJ e razão social de **outro cliente**
 
 `server/routers/logistica.ts:446-478`. O código busca o CNPJ em
@@ -141,6 +146,8 @@ Comprovação com a OS 6917:
 Ambas devolvem HTTP 200 sem erro. O CNPJ errado vai para a cotação, o romaneio
 de despacho e o CT-e. **É o achado mais grave da integração.**
 
+✅ **Resolvido na Fase 2** (`docs/sprint-mubisys/complete/fase-02-dados-errados-frete.md`).
+
 ### A2 🔴 `buscarOSPorNumero` quase nunca acha a OS
 
 `server/integrations/mubisys-client.ts:171`. Para achar uma OS pelo número,
@@ -151,6 +158,8 @@ listagem custa ~25 s por mês de janela.
 
 Existe endpoint direto para isso: `GET /ordem-servico/numero/{n}`, 226 ms
 (usado em `logistica.ts` e `empacotamento.ts`, mas **não** no cliente oficial).
+
+✅ **Resolvido na Fase 1** (`docs/sprint-mubisys/complete/fase-01-cliente-unico.md`).
 
 ### A3 🟠 Sync diário não cabe no `maxDuration` de 60 s da Vercel
 
@@ -167,7 +176,9 @@ mais de 500 OS, o excedente é silenciosamente ignorado.
 > passa a aceitar uma janela parametrizada (`dias`/`offset`) e o agendador
 > dispara 4 lotes escalonados, cobrindo os mesmos ~30 dias. Descartadas as
 > alternativas de reduzir a janela coberta e de subir o `maxDuration` (que
-> exigiria plano Vercel Pro). Ver `sprint-mubisys/pending/fase-03-sync-diario.md` §4.
+> exigiria plano Vercel Pro). Ver `sprint-mubisys/complete/fase-03-sync-diario.md` §4.
+
+✅ **Resolvido na Fase 3** (`docs/sprint-mubisys/complete/fase-03-sync-diario.md`).
 
 ### A4 🟠 Timeouts maiores que o tempo de vida da função
 
@@ -176,6 +187,10 @@ tentativas** (`fetchMubisysWithRetry`, linha 126). Na Vercel a função morre ao
 60 s: o retry nunca chega a acontecer, o usuário recebe erro genérico de
 gateway, e o cache persistente não é gravado (por desenho, só grava se a busca
 foi completa) — então a próxima requisição repete a busca inteira.
+
+✅ **Resolvido na Fase 4** (`docs/sprint-mubisys/complete/fase-04-migrar-consumidores.md`) —
+`performanceComercial.ts` migrado para o cliente único, sem o timeout/retry
+antigo.
 
 ### A5 🟠 Fallback do cache de frete grava registro incompleto
 
@@ -190,11 +205,16 @@ Também há inconsistência de formato: o frete grava `dataAprovacao` já
 formatada (`"03/08/2026 às 08:38"`), enquanto o sync grava o valor cru
 (`"2026-08-03 08:38:30"`), na mesma coluna.
 
+✅ **Resolvido na Fase 2** (`docs/sprint-mubisys/complete/fase-02-dados-errados-frete.md`).
+
 ### A6 🟡 Extração de CNPJ por regex em `empacotamento.ts`
 
 `server/routers/empacotamento.ts:37`. Mesma premissa errada de A1 (CNPJ
 embutido na string `cliente`). Impacto menor — o CNPJ é opcional nesse fluxo —
 mas o campo `cliente_cnpj_cpf` está ali, de graça.
+
+✅ **Resolvido na Fase 4** (`docs/sprint-mubisys/complete/fase-04-migrar-consumidores.md`) —
+`empacotamento.ts` migrado para o cliente único, que já expõe `cliente_cnpj_cpf`.
 
 ### A7 🟡 "Buscar Produto no ERP" não filtra nada
 
@@ -204,12 +224,17 @@ ignora (verificado). O client (`MetasOperacionais.tsx:557`) não refiltra: faz
 do cadastro, sejam quais forem. Como o cadastro tem só 65 produtos e
 `per_page=100` traz todos, **filtrar em memória no server resolve**.
 
+✅ **Resolvido na Fase 4** (`docs/sprint-mubisys/complete/fase-04-migrar-consumidores.md`).
+
 ### A8 🟡 Tratamento de 404 como falha genérica
 
 A API devolve 404 + `{"error":"Não encontrado"}` para janela sem resultado ou
 OS inexistente. Nenhum dos seis clientes distingue "não existe" de "deu erro":
 `mubisys-client.ts` lança exceção genérica; os outros devolvem `null`. O
 usuário vê "erro ao buscar" quando deveria ver "OS não encontrada".
+
+✅ **Resolvido na Fase 1** (`docs/sprint-mubisys/complete/fase-01-cliente-unico.md`) para
+`mubisys-client.ts`, e na Fase 4 para os consumidores migrados.
 
 ### A9 🟡 Endpoints administrativos da sync sem autenticação
 
@@ -220,6 +245,10 @@ ou apaga cache. O projeto já tem `adminProcedure` (`server/_core/trpc.ts:48`).
 O endpoint HTTP `GET /api/scheduled/sincronizarOS/status` também é público
 (está registrado em `docs/cron-qstash.md`).
 
+✅ **Resolvido na Fase 5** (`docs/sprint-mubisys/complete/fase-05-seguranca-e-saude.md`) —
+as quatro procedures viraram `adminProcedure`, e o endpoint de status passou a
+exigir `x-cron-secret`.
+
 ### A10 🟡 Token JWT com `exp` vencido, aceito pela API
 
 O token no `.env` tem `exp: 1777952499` → **05/05/2026**. A API continua
@@ -228,6 +257,12 @@ valida a expiração hoje. É uma dependência de um comportamento não
 documentado do fornecedor: no dia em que passarem a validar, **toda** a
 integração cai de uma vez. Não há rotação, health check nem alerta.
 
+✅ **Resolvido na Fase 5** (`docs/sprint-mubisys/complete/fase-05-seguranca-e-saude.md`) —
+aviso de token vencido no boot (`avisarSeTokenVencido`) e `verificarConexaoMubiSys`
+reescrita como health check barato, exposta em `admin.verificarConexaoErp` e
+visível no painel `/admin/sincronizacao-cache`. Rotação de token continua manual
+(não automatizável sem acesso ao painel do ERP).
+
 ### A11 🟡 Testes que não testam a integração
 
 `server/__tests__/mubisys.test.ts` verifica se as variáveis de ambiente
@@ -235,6 +270,11 @@ existem e faz uma chamada de conectividade que se auto-ignora em caso de
 lentidão. Como a listagem leva ~25 s e o teste aborta em 20 s, **na prática o
 único teste real é pulado quase sempre**. Nenhum mapeamento de campo, nenhuma
 paginação, nenhum tratamento de erro tem cobertura.
+
+✅ **Resolvido na Fase 6** (`docs/sprint-mubisys/complete/fase-06-testes-e-docs.md`) —
+`mubisys.test.ts` reescrito com testes de mapeamento offline (fixture da OS 6917,
+`fetch` mockado) que sempre rodam, mais um teste de contrato online, opcional,
+ligado por `MUBISYS_TESTE_CONTRATO=1`.
 
 ### A12 🟡 Documentação interna desatualizada
 
@@ -249,6 +289,11 @@ paginação, nenhum tratamento de erro tem cobertura.
   OS *aprovadas* no mês. O código está certo; a linha do `todo.md` é a errada e
   será corrigida na Fase 6.
 
+✅ **Resolvido na Fase 6** (`docs/sprint-mubisys/complete/fase-06-testes-e-docs.md`) —
+`AGENTS.md` corrigido, arquivo renomeado para
+`docs/api/mubisys-postman-collection.json` (com `docs/api/README.md` explicando
+a lacuna do `/ordem-servico/numero/{n}`), e `todo.md:1404` corrigido.
+
 ### A13 🟡 Frete "cotado" é simulado
 
 `obterCotacoesFreteSimuladas` (`mubisys-frete.ts:186`) devolve Sedex/PAC/Loggi
@@ -256,6 +301,12 @@ com preço `peso × 2,5 + valor × 1%`. É consumido por `logistica.ts:1340`. N�
 integração com o ERP nem com transportadora — é placeholder. Está registrado
 aqui porque vive no arquivo `mubisys-frete.ts` e é fácil confundir com dado
 real do ERP.
+
+✅ **Resolvido na Fase 6** (`docs/sprint-mubisys/complete/fase-06-testes-e-docs.md`) —
+escopo era só deixar explícito, não implementar cotação real (decidido desde o
+início da sprint): a função agora tem um comentário `⚠️ PLACEHOLDER` no topo.
+Não há UI consumindo o resultado hoje (`obterCotacoesFreteSimuladas` é
+alcançável só pela procedure `logistica.obterCotacoes`, sem chamador no client).
 
 ---
 

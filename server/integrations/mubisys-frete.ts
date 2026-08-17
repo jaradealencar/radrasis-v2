@@ -217,7 +217,11 @@ async function gravarNoCache(
 }
 
 /**
- * Simula cotações de frete baseadas em município, estado, peso e valor
+ * ⚠️ PLACEHOLDER — não é cotação real de frete.
+ * Não consulta o MubiSys nem transportadora: devolve 4 transportadoras fixas
+ * com preço calculado por fórmula. Consumido por logistica.ts (obterCotacoes).
+ * Substituir por integração real é trabalho fora da sprint de consolidação
+ * do ERP (ver docs/integracao-mubisys.md, achado A13).
  */
 export async function obterCotacoesFreteSimuladas(
   municipio: string,

@@ -415,10 +415,13 @@ Todas via OpenAI (`server/_core/llm.ts`).
 
 ## 13. Integrações externas
 
-- **MubiSys (ERP)** — `server/integrations/mubisys-client.ts` e
-  `mubisys-frete.ts`. API Open v1.0.0, autenticada por header `Access-Token`.
-  Fornece OS, clientes, itens, valores, vendedor, prazos e dados de frete.
-  Resultados cacheados em `erp_os_cache` e `mubisys_api_cache`.
+- **MubiSys (ERP)** — cliente único em `server/integrations/mubisys-client.ts`
+  (`mubisys-frete.ts` consome esse cliente para o fluxo de frete). API Open
+  v1.0.0, autenticada por header `Access-Token`. Fornece OS, clientes, itens,
+  valores, vendedor, prazos e dados de frete. Resultados cacheados em
+  `erp_os_cache` e `mubisys_api_cache`. Levantamento completo do contrato da
+  API, achados e histórico da consolidação em
+  [`docs/integracao-mubisys.md`](integracao-mubisys.md).
 - **OpenAI** — chat completions + upload de arquivos.
 - **UploadThing / S3** — storage de imagens, fotos e documentos.
 - **CRON externo** — dispara a sincronização diária de OS.

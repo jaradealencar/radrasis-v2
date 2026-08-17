@@ -1,0 +1,67 @@
+{
+  "id": 32833,
+  "empresa": "Radrasys Comunicação Visual",
+  "cliente": "CLIENTE TESTE COMUNICACAO VISUAL",
+  "cliente_id": 2931,
+  "cliente_cnpj_cpf": "11.222.333/0001-44",
+  "cliente_contato": [
+    {
+      "id": 5810,
+      "nome_contato": "Fulano de Tal",
+      "celular": "(11) 99999-0000",
+      "email": "contato@clienteteste.example",
+      "departamento": "Comercial",
+      "status": "ATIVO"
+    }
+  ],
+  "cliente_endereco": [
+    {
+      "id": 2924,
+      "cep": "01310-100",
+      "logradouro": "Avenida Paulista",
+      "numero": "1000",
+      "bairro": "Bela Vista",
+      "cidade": "São Paulo",
+      "estado": "SP"
+    }
+  ],
+  "sequencial_ordem": 6917,
+  "numero_pedido_compra": "PC-2026-0917",
+  "status": "CONCLUIDO",
+  "status_financeiro": "PAGO",
+  "nome_trabalho": "Letreiro em ACM 3x1m",
+  "tipo": "Normal",
+  "logistica": "ENTREGA",
+  "prazo": "02 dias úteis",
+  "data_entrega": "2026-08-05",
+  "data_cadastro": "2026-08-01 10:12:00",
+  "data_aprovacao": "2026-08-03 08:38:30",
+  "data_faturamento": "2026-08-05 17:00:00",
+  "data_cancelamento": null,
+  "motivo_cancelamento": null,
+  "observacao_geral": "Entregar em horário comercial.",
+  "observacao_producao": "Conferir cor do ACM antes de liberar.",
+  "valor_total": 4500.00,
+  "valor_custo": 2100.00,
+  "valor_margem": 2400.00,
+  "processos_previstos": "Impressão, corte, montagem",
+  "tempo_total_previsto": 16,
+  "vendedor": "Vendedora Teste",
+  "atendente": "Atendente Teste",
+  "itens": [
+    {
+      "id": 91201,
+      "posicao": 1,
+      "item": "Letreiro",
+      "modelo": "Caixa alta",
+      "variacao": "ACM",
+      "descricao": "Letreiro em ACM com iluminação em LED",
+      "largura": "3.00",
+      "altura": "1.00",
+      "quantidade": 1,
+      "valor_unitario": 4500.00,
+      "valor_total": 4500.00
+    }
+  ],
+  "imagens": []
+}

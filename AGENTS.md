@@ -171,8 +171,8 @@ server/
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts
-  sync/                sincronização com o ERP: sync-erp.ts, scheduled-sync-os*.ts,
-                       heartbeat-sync-erp.ts
+  sync/                sincronização com o ERP: scheduled-sync-os.ts,
+                       scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
   scripts/             scripts de seed do server (seed.mjs, seed-operacoes.mjs)
   __tests__/           testes do server (*.test.ts)
@@ -260,28 +260,15 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
 
 ## Pontas soltas conhecidas (não introduzidas por esta reorganização)
 
-- `server/sync/heartbeat-sync-erp.ts` e `server/routers/logistica-refactor.ts`
-  são protótipos não finalizados — não são importados por nada e não
-  compilam (`heartbeat-sync-erp.ts` referencia um módulo `../_core/heartbeat`
-  que não existe; `logistica-refactor.ts` importa um export `db` que
-  `server/db/db.ts` não tem). O sync de ERP que está realmente ativo é
-  `server/sync/scheduled-sync-os.ts` + `server/sync/scheduled-sync-os-handler.ts`,
-  registrado em `server/_core/index.ts`.
 - `docs/archive/versoes-divergentes/0003_aromatic_lilith.sql` é uma migration
   órfã (o número 0003 colide com uma migration já existente na sequência
   do Drizzle). Não aplique sem antes conferir contra `drizzle/schema.ts`.
 - `npx tsc --noEmit` (rode assim, não `yarn check` — esse é o comando nativo
-  do Yarn pra checar o lockfile, não o script `check` do `package.json`)
-  acusa **14 erros de tipo pré-existentes** (contagem varia um pouco entre
-  execuções — checado após a Fase 7 do `docs/sprint-saida-forge`), sem
-  relação com a migração pra Postgres/Better Auth ou com o Forge:
-  `client/src/pages/operacoes/CargoseFuncoes.tsx`,
-  `server/routers/curriculos.ts`, `server/routers/logistica-refactor.ts`
-  (protótipo morto, ver item acima), `server/routers/performanceComercial.ts`,
-  `server/routers/qualidade.ts`, `server/sync/heartbeat-sync-erp.ts`
-  (protótipo morto), `server/sync/sync-erp.ts`. São bugs do código de
-  negócio, não da estrutura do projeto — não tente "corrigir" todos de uma
-  vez numa tarefa não relacionada.
+  do Yarn pra checar o lockfile, não o script `check` do `package.json`) não
+  acusa erros de tipo (checado na Fase 6 do `docs/sprint-mubisys/`, 17/08/2026).
+  Os protótipos mortos citados em versões anteriores desta nota
+  (`server/sync/heartbeat-sync-erp.ts`, `server/routers/logistica-refactor.ts`)
+  não existem mais no repo.
 - **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
   o LLM já ser 100% OpenAI desde a Fase 1 do `docs/sprint-saida-forge`:
   `geminiAnswer`/`geminiAnswerIsGeneral` (`server/routers.ts`,

@@ -1401,7 +1401,9 @@
 - [x] PDF do POP corrigido com html2canvas (renderização fiel ao visual web, sem fonte monoespaçada)
 
 ## Correções Performance Comercial (22/05/2026)
-- [x] Correção crítica: filtrodata=APROVACAO → filtrodata=CADASTRO nas OS da API MubiSys (performanceComercial.ts)
+- [x] `filtrodata=APROVACAO` nas OS da API MubiSys (performanceComercial.ts) —
+      confirmado em 17/08/2026: o faturamento do mês conta as OS **aprovadas**
+      no mês. A entrada anterior desta linha dizia o oposto e estava errada.
 - [x] per_page aumentado para 500 em ambas as funções fetchAll (OS e orçamentos)
 - [x] Correção bug versao===versao_atual que descartava ~200 cotações (352 vs 552)
 - [x] TypeError corrigido no Mês Vigente (acesso inseguro a porVendedor[Daniel Alencar])
