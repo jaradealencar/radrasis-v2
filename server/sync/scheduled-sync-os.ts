@@ -36,7 +36,7 @@ export async function sincronizarOSDoMubiSys(): Promise<SyncLogEntry> {
     // 1. Buscar todas as OS do MubiSys
     console.log(`📡 [SYNC-OS] Buscando OS da API MubiSys...`);
     const response = await listarOSMubiSys({ datainicial: dataInicio.toISOString().split('T')[0], datafinal: new Date().toISOString().split('T')[0] });
-    const osLista = response?.data || [];
+    const osLista = response?.itens || [];
     
     if (!osLista || osLista.length === 0) {
       console.warn(`⚠️ [SYNC-OS] API retornou lista vazia`);

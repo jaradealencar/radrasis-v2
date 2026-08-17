@@ -101,14 +101,56 @@ export interface MubiSysOrcamento {
   }>;
 }
 
+export interface MubiSysCliente {
+  id: number;
+  razao_social: string;
+  cnpj_cpf: string;
+  [k: string]: unknown;
+}
+
 // ─── Cliente HTTP ────────────────────────────────────────────────────────────
 
-async function mubisysGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+/** Erro de comunicação com o ERP. 404 NÃO produz erro — ver mubisysGetOrNull. */
+export class MubiSysError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "MubiSysError";
+  }
+}
+
+/** Timeout padrão. A listagem de OS é lenta (~25 s/mês) — ver TIMEOUT_LISTA_MS. */
+const TIMEOUT_PADRAO_MS = 30_000;
+
+/** Consulta pontual (por número/id/cliente): rápida, ~0,2–1 s medidos. */
+export const TIMEOUT_PONTUAL_MS = 10_000;
+/** Listagem paginada: ~25 s por mês de janela, medido em 17/08/2026. */
+export const TIMEOUT_LISTA_MS = 45_000;
+
+async function mubisysGet<T>(
+  path: string,
+  params?: Record<string, string>,
+  opts?: { timeoutMs?: number },
+): Promise<T> {
+  const resultado = await mubisysGetOrNull<T>(path, params, opts);
+  if (resultado === null) {
+    throw new MubiSysError(`MubiSys: recurso não encontrado (${path})`, 404);
+  }
+  return resultado;
+}
+
+/** Igual a mubisysGet, mas devolve null em 404 em vez de lançar. */
+async function mubisysGetOrNull<T>(
+  path: string,
+  params?: Record<string, string>,
+  opts?: { timeoutMs?: number },
+): Promise<T | null> {
   const token = ENV.MUBISYS_ACCESS_TOKEN;
   const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-
   if (!token || !publicKey) {
-    throw new Error("Credenciais MubiSys não configuradas (MUBISYS_ACCESS_TOKEN e MUBISYS_PUBLIC_KEY)");
+    throw new MubiSysError(
+      "Credenciais MubiSys não configuradas (MUBISYS_ACCESS_TOKEN e MUBISYS_PUBLIC_KEY)",
+      0,
+    );
   }
 
   const url = new URL(`${BASE_URL}/${publicKey}/${path}`);
@@ -116,19 +158,61 @@ async function mubisysGet<T>(path: string, params?: Record<string, string>): Pro
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      "Access-Token": token,
-      "Accept": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`MubiSys API error ${response.status}: ${body.slice(0, 200)}`);
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      headers: { "Access-Token": token, Accept: "application/json" },
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? TIMEOUT_PADRAO_MS),
+    });
+  } catch (erro: any) {
+    // AbortSignal.timeout() lança TimeoutError; falha de rede lança TypeError.
+    throw new MubiSysError(`MubiSys inacessível (${erro?.name ?? "erro"}): ${path}`, 0);
   }
 
-  return response.json() as Promise<T>;
+  // 404 = "não existe" ou "janela sem resultado". É resposta válida, não falha.
+  if (response.status === 404) return null;
+
+  // ⚠️ A API responde 201 em listagens e 200 em /cliente/{id}. Testar por
+  // faixa, nunca por igualdade — ver docs/integracao-mubisys.md §1.
+  if (response.status < 200 || response.status >= 300) {
+    const body = await response.text().catch(() => "");
+    throw new MubiSysError(
+      `MubiSys API error ${response.status}: ${body.slice(0, 200)}`,
+      response.status,
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
+/** Percorre todas as páginas de um endpoint de lista do ERP. */
+async function listarTudo<T>(
+  path: string,
+  params: Record<string, string>,
+  opts?: { timeoutMs?: number; maxPaginas?: number },
+): Promise<{ itens: T[]; completo: boolean }> {
+  const maxPaginas = opts?.maxPaginas ?? 50;
+  const itens: T[] = [];
+  let pagina = 1;
+
+  while (pagina <= maxPaginas) {
+    const resp = await mubisysGetOrNull<MubiSysListResponse<T>>(
+      path,
+      { ...params, page: String(pagina), per_page: "500" },
+      opts,
+    );
+    // 404 na primeira página = janela sem resultado. Não é erro.
+    if (!resp) return { itens, completo: true };
+
+    itens.push(...resp.data);
+    const ultima = resp.pagination?.last_page ?? 1;
+    if (pagina >= ultima || resp.data.length === 0) return { itens, completo: true };
+    pagina++;
+  }
+
+  // Estourou o teto de páginas: o chamador precisa saber que os dados estão
+  // incompletos (não gravar em cache persistente nesse caso).
+  return { itens, completo: false };
 }
 
 // ─── Ordens de Serviço ───────────────────────────────────────────────────────
@@ -155,39 +239,36 @@ export async function listarOSMubiSys(opts: {
   filtrodata?: OSFiltroDatas;
   datainicial: string;
   datafinal: string;
-}): Promise<MubiSysListResponse<MubiSysOS>> {
-  return mubisysGet<MubiSysListResponse<MubiSysOS>>("ordem-servico", {
-    status: opts.status ?? "TODOS",
-    filtrodata: opts.filtrodata ?? "CADASTRO",
-    datainicial: opts.datainicial,
-    datafinal: opts.datafinal,
-  });
-}
-
-export async function buscarOSPorId(id: number): Promise<MubiSysOS> {
-  return mubisysGet<MubiSysOS>(`ordem-servico/${id}`);
-}
-
-export async function buscarOSPorNumero(numero: string): Promise<MubiSysOS | null> {
-  // A API não tem busca por número diretamente — busca nos últimos 6 meses
-  const hoje = new Date();
-  const seisAtras = new Date(hoje);
-  seisAtras.setMonth(seisAtras.getMonth() - 6);
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
-
-  const resp = await listarOSMubiSys({
-    status: "TODOS",
-    datainicial: fmt(seisAtras),
-    datafinal: fmt(hoje),
-  });
-
-  const encontrada = resp.data.find(
-    (os) =>
-      String(os.sequencial_ordem) === String(numero) ||
-      String(os.id) === String(numero) ||
-      os.numero_pedido_compra === numero
+}): Promise<{ itens: MubiSysOS[]; completo: boolean }> {
+  return listarTudo<MubiSysOS>(
+    "ordem-servico",
+    {
+      status: opts.status ?? "TODOS",
+      filtrodata: opts.filtrodata ?? "CADASTRO",
+      datainicial: opts.datainicial,
+      datafinal: opts.datafinal,
+    },
+    { timeoutMs: TIMEOUT_LISTA_MS },
   );
-  return encontrada ?? null;
+}
+
+export async function buscarOSPorId(id: number): Promise<MubiSysOS | null> {
+  return mubisysGetOrNull<MubiSysOS>(`ordem-servico/${id}`, undefined, {
+    timeoutMs: TIMEOUT_PONTUAL_MS,
+  });
+}
+
+/**
+ * Busca uma OS pelo número visível (sequencial_ordem).
+ * Endpoint não documentado na coleção Postman, mas em produção e rápido
+ * (~0,2 s). Devolve null quando a OS não existe (404).
+ */
+export async function buscarOSPorNumero(numero: string): Promise<MubiSysOS | null> {
+  return mubisysGetOrNull<MubiSysOS>(
+    `ordem-servico/numero/${encodeURIComponent(numero)}`,
+    undefined,
+    { timeoutMs: TIMEOUT_PONTUAL_MS },
+  );
 }
 
 // ─── Orçamentos ──────────────────────────────────────────────────────────────
@@ -196,20 +277,35 @@ export async function listarOrcamentosMubiSys(opts: {
   status?: "TODOS" | "ABERTO" | "CANCELADO" | "APROVADO";
   datainicial: string;
   datafinal: string;
-}): Promise<MubiSysListResponse<MubiSysOrcamento>> {
-  return mubisysGet<MubiSysListResponse<MubiSysOrcamento>>("orcamento", {
-    status: opts.status ?? "TODOS",
-    filtrodata: "CADASTRO",
-    datainicial: opts.datainicial,
-    datafinal: opts.datafinal,
-  });
+}): Promise<{ itens: MubiSysOrcamento[]; completo: boolean }> {
+  return listarTudo<MubiSysOrcamento>(
+    "orcamento",
+    {
+      status: opts.status ?? "TODOS",
+      filtrodata: "CADASTRO",
+      datainicial: opts.datainicial,
+      datafinal: opts.datafinal,
+    },
+    { timeoutMs: TIMEOUT_LISTA_MS },
+  );
 }
 
 // ─── Clientes ────────────────────────────────────────────────────────────────
 
-export async function listarClientesMubiSys(): Promise<any[]> {
-  const resp = await mubisysGet<any>("cliente");
-  return Array.isArray(resp) ? resp : (resp as any).data ?? [];
+/** GET /cliente/{id} — responde 200 (não 201). Use SEMPRE o `cliente_id` da
+ *  OS, nunca o id de `cliente_endereco[0]`: são tabelas diferentes e a API
+ *  aceita os dois, devolvendo clientes distintos (ver achado A1). */
+export async function buscarClientePorId(clienteId: number): Promise<MubiSysCliente | null> {
+  return mubisysGetOrNull<MubiSysCliente>(`cliente/${clienteId}`, undefined, {
+    timeoutMs: TIMEOUT_PONTUAL_MS,
+  });
+}
+
+/** GET /produto — o parâmetro `search` da API é ignorado (verificado); filtre
+ *  em memória no chamador. */
+export async function listarProdutos(): Promise<any[]> {
+  const { itens } = await listarTudo<any>("produto", {}, { timeoutMs: TIMEOUT_PONTUAL_MS });
+  return itens;
 }
 
 // ─── Verificar conectividade ─────────────────────────────────────────────────
@@ -232,8 +328,8 @@ export async function verificarConexaoMubiSys(): Promise<{
       datafinal: fmt(hoje),
     });
 
-    const empresa = resp.data[0]?.empresa ?? "Empresa não identificada";
-    return { ok: true, empresa, totalOS: resp.pagination.total };
+    const empresa = resp.itens[0]?.empresa ?? "Empresa não identificada";
+    return { ok: true, empresa, totalOS: resp.itens.length };
   } catch (err: any) {
     return { ok: false, erro: err.message };
   }
