@@ -6,7 +6,7 @@ import {
 import {
   Users, UserPlus, RefreshCw, Clock, TrendingUp, ShoppingCart,
   AlertTriangle, Percent, ChevronDown, ChevronUp, CalendarDays,
-  Snowflake, Zap, Lock, Unlock,
+  Snowflake, Zap, Lock, Unlock, DollarSign, Repeat, PieChart, Trophy, UserCheck,
 } from "lucide-react";
 import {
   Table, TableHeader, TableBody, TableFooter,
@@ -15,7 +15,7 @@ import {
 import KpiCard from "@/components/KpiCard";
 import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
-import { fmtNum } from "@/lib/format";
+import { fmtNum, fmtBrl } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -430,7 +430,167 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
             </div>
           </div>
 
-          {/* ── Seção 3: Distribuição do tempo ── */}
+          {/* ── Relatório: Recompra — Novos vs Reativados ── */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-700">Taxa de Recompra — Novos vs. Reativados</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Novo: nunca comprou antes. Reativado: já foi cliente, mas ficou 6+ meses sem comprar e voltou.
+              </p>
+            </div>
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[140px]">Categoria</TableHead>
+                  <TableHead className="text-right">Clientes</TableHead>
+                  <TableHead className="text-right">Recompraram (2+ meses)</TableHead>
+                  <TableHead className="text-right">Taxa de Recompra</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="flex items-center gap-2">
+                    <UserPlus className="w-3.5 h-3.5 text-green-500" />
+                    <span className="font-semibold text-slate-700">Clientes Novos</span>
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-slate-800">{data.clientesNovosPuro}</TableCell>
+                  <TableCell className="text-right text-slate-600">{data.clientesNovosPuroComRecompra}</TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-bold px-2 py-0.5 rounded-full text-green-700 bg-green-50">
+                      {data.taxaRecompraNovosPuroPct}%
+                    </span>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="flex items-center gap-2">
+                    <UserCheck className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="font-semibold text-slate-700">Clientes Reativados</span>
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-slate-800">{data.clientesReativados}</TableCell>
+                  <TableCell className="text-right text-slate-600">{data.clientesReativadosComRecompra}</TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-bold px-2 py-0.5 rounded-full text-amber-700 bg-amber-50">
+                      {data.taxaRecompraReativadosPct}%
+                    </span>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* ── Seção 3: Ciclo de Vendas e Receita Recorrente ── */}
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Ciclo de Vendas e Receita Recorrente</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <KpiCard
+                icon={Zap}
+                label="Ciclo até 3 dias"
+                value={`${data.pctCicloAte3Dias}%`}
+                sub="OS aprovadas em até 3 dias após o orçamento"
+                color="#22c55e"
+              />
+              <KpiCard
+                icon={Clock}
+                label="Ciclo 4 a 7 dias"
+                value={`${data.pctCiclo4a7Dias}%`}
+                sub="OS aprovadas entre 4 e 7 dias após o orçamento"
+                color="#f59e0b"
+              />
+              <KpiCard
+                icon={AlertTriangle}
+                label="Ciclo acima de 7 dias"
+                value={`${data.pctCicloMais7Dias}%`}
+                sub="OS aprovadas com mais de 7 dias após o orçamento"
+                color="#ef4444"
+              />
+              <KpiCard
+                icon={Repeat}
+                label="Frequência de Compra"
+                value={data.frequenciaCompraDias !== null ? `${data.frequenciaCompraDias}d` : "—"}
+                sub="Intervalo médio entre pedidos do mesmo cliente"
+                color="#0ea5e9"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              <KpiCard
+                icon={DollarSign}
+                label="MRR Aproximado"
+                value={fmtBrl(data.mrrAproximado)}
+                sub={`${data.clientesRecorrentesMRR} clientes com cadência recorrente`}
+                color="#8b5cf6"
+              />
+              <KpiCard
+                icon={TrendingUp}
+                label="ARR Aproximado"
+                value={fmtBrl(data.arrAproximado)}
+                sub="MRR aproximado × 12"
+                color="#8b5cf6"
+              />
+              <KpiCard
+                icon={Percent}
+                label="% Faturamento Recorrente"
+                value={`${data.pctFaturamentoRecorrente}%`}
+                sub="Do faturamento do período veio de clientes recorrentes"
+                color="#6366f1"
+              />
+            </div>
+          </div>
+
+          {/* ── Seção 4: Concentração de Receita ── */}
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Concentração de Receita</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <KpiCard
+                icon={PieChart}
+                label="Receita no Top 20% de Clientes"
+                value={`${data.pctReceitaTop20}%`}
+                sub="Quanto do faturamento vem dos clientes que mais compram — risco de dependência"
+                color={data.pctReceitaTop20 >= 70 ? "#ef4444" : data.pctReceitaTop20 >= 50 ? "#f59e0b" : "#22c55e"}
+              />
+              <KpiCard
+                icon={DollarSign}
+                label="Ticket Médio por Cliente"
+                value={fmtBrl(data.ticketMedioPorCliente)}
+                sub="Faturamento total dividido pelos clientes únicos do período"
+                color="#3b82f6"
+              />
+            </div>
+            {data.topClientesPorFaturamento.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-bold text-slate-700">Top 10 Clientes por Faturamento</h3>
+                </div>
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[160px]">Cliente</TableHead>
+                      <TableHead className="text-right">Faturamento</TableHead>
+                      <TableHead className="text-right">OS</TableHead>
+                      <TableHead className="text-right">Ticket Médio</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.topClientesPorFaturamento.map((c: any, idx: number) => (
+                      <TableRow key={c.cliente}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-slate-400 w-4">{idx + 1}</span>
+                            <span className="font-semibold text-slate-700 truncate max-w-[220px]" title={c.cliente}>{c.cliente}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold text-slate-800">{fmtBrl(c.faturamento)}</TableCell>
+                        <TableCell className="text-right text-slate-600">{c.qtdOs}</TableCell>
+                        <TableCell className="text-right font-mono text-slate-600">{fmtBrl(c.ticketMedio)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          {/* ── Seção 5: Distribuição do tempo ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -603,6 +763,11 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
               <p>• <strong>Média de OS por cliente:</strong> total de OS normais dividido pelo número de clientes únicos</p>
               <p>• <strong>Sem compra +6 meses:</strong> clientes cuja última OS aprovada foi há mais de 6 meses</p>
               <p>• <strong>Tempo proposta→fechamento:</strong> dias entre o cadastro do orçamento e a aprovação da OS vinculada. Requer que a OS tenha o campo "número do orçamento" preenchido no ERP.</p>
+              <p>• <strong>Ciclo de vendas (faixas):</strong> % das OS com tempo calculado que fecharam em até 3 dias, de 4 a 7 dias, e acima de 7 dias após o orçamento.</p>
+              <p>• <strong>Frequência de compra:</strong> intervalo médio, em dias, entre pedidos consecutivos do mesmo cliente — calculado por cliente e depois pela média entre os clientes com 2+ compras no período.</p>
+              <p>• <strong>MRR/ARR aproximado:</strong> o Mubisys não tem conceito de contrato ativo ou assinatura — é uma <strong>estimativa</strong>. Cliente "recorrente" é o que comprou em pelo menos metade dos meses do período (mínimo 2 meses); o faturamento desses clientes dividido pelos meses do período vira o MRR aproximado, e ARR = MRR × 12.</p>
+              <p>• <strong>Novo vs. Reativado:</strong> mesma regra usada em Performance Comercial — "novo" nunca teve OS aprovada antes; "reativado" já foi cliente, mas ficou 6 meses ou mais sem comprar antes de voltar no período.</p>
+              <p>• <strong>Receita no Top 20%:</strong> % do faturamento do período concentrado nos 20% de clientes que mais compraram (curva de Pareto) — indica dependência de poucos clientes.</p>
             </div>
           </div>
         </>

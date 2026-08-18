@@ -112,11 +112,13 @@ const navSections: NavSection[] = [
     items: [
       { label: "Tabela de Preços", href: "/tabela-precos", icon: <Tag size={15} />, pageKey: "tabela-preco" },
       { label: "Performance Comercial", href: "/comercial/performance", icon: <TrendingUp size={15} />, pageKey: "comercial-performance" },
+      { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },
       { label: "Metas Comerciais", href: "/comercial/metas", icon: <Target size={15} />, pageKey: "comercial-metas" },
       { label: "CRM de Propostas", href: "/comercial/crm", icon: <Handshake size={15} />, pageKey: "comercial-crm" },
       { label: "Planos de Ação Comercial", href: "/comercial/planos-acao", icon: <Lightbulb size={15} />, pageKey: "comercial-planos-acao" },
       { label: "Diagnóstico de Dados", href: "/comercial/diagnostico-api", icon: <FlaskConical size={15} />, pageKey: "comercial-performance" },
       { label: "Auditoria do CRM", href: "/comercial/crm-auditoria", icon: <Activity size={15} />, pageKey: "crm-auditoria" },
+      { label: "Insights de IA", href: "/comercial/insights-ia", icon: <Brain size={15} />, pageKey: "comercial-insights-ia" },
     ],
   },
   {

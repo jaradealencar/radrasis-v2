@@ -107,7 +107,7 @@ function deleteCache(key: string): void {
 
 /** Filtra OS normais do banco local: exclui retrabalhos (tipoOs começa com 'Retrabalho'),
  * amostras, cortesias, canceladas e registros sem tipoOs (NULL = importação antiga sem custo). */
-function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): boolean {
+export function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): boolean {
   if (os.tipoOs === null || os.tipoOs === undefined) return false;
   const tipo = (os.tipoOs ?? "").toLowerCase();
   const status = (os.status ?? "").toLowerCase();
@@ -128,13 +128,13 @@ function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): b
 // nunca da API ao vivo — ver buscarTodasComprasValidas/ultimaCompraAntesDe abaixo.
 const MESES_INATIVIDADE_PARA_NOVO = 6;
 
-type CompraMinima = { empresa: string; mes: number; ano: number };
+export type CompraMinima = { empresa: string; mes: number; ano: number };
 
 /** Busca TODAS as OS válidas (histórico completo, qualquer ano) já reduzidas a
  * {empresa, mes, ano} — base para calcular a última compra de cada cliente antes
  * de qualquer mês de referência. Uma única query cobre todos os meses avaliados
  * pelo chamador (o filtro "antes de X" é aplicado depois, em memória). */
-async function buscarTodasComprasValidas(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<CompraMinima[]> {
+export async function buscarTodasComprasValidas(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<CompraMinima[]> {
   const rows = await db.select({
     empresa: historicoOs.empresa,
     mes: historicoOs.mes,
@@ -155,7 +155,7 @@ async function buscarTodasComprasValidas(db: NonNullable<Awaited<ReturnType<type
 /** Para cada cliente, encontra o mês/ano da compra válida mais recente estritamente
  * anterior a (mes, ano). Usa a lista completa pré-carregada por buscarTodasComprasValidas
  * — pode ser chamada repetidamente (uma por mês avaliado) sem custo de banco. */
-function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: number): Map<string, { mes: number; ano: number }> {
+export function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: number): Map<string, { mes: number; ano: number }> {
   const map = new Map<string, { mes: number; ano: number }>();
   for (const c of compras) {
     if (c.ano > ano || (c.ano === ano && c.mes >= mes)) continue; // não é "antes" do mês de referência
@@ -169,7 +169,7 @@ function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: number):
 
 /** Aplica a regra de "cliente novo": sem compra anterior, ou última compra há
  * MESES_INATIVIDADE_PARA_NOVO meses ou mais (contagem de meses de calendário). */
-function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | undefined, mes: number, ano: number): boolean {
+export function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | undefined, mes: number, ano: number): boolean {
   if (!ultima) return true;
   const gapMeses = (ano - ultima.ano) * 12 + (mes - ultima.mes);
   return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
@@ -1639,6 +1639,23 @@ export const performanceComercialRouter = router({
         tempoMedianaPropostaFechamento: null as number | null,
         tempoP25: null as number | null,
         tempoP75: null as number | null,
+        pctCicloAte3Dias: 0,
+        pctCiclo4a7Dias: 0,
+        pctCicloMais7Dias: 0,
+        frequenciaCompraDias: null as number | null,
+        mrrAproximado: 0,
+        arrAproximado: 0,
+        clientesRecorrentesMRR: 0,
+        pctFaturamentoRecorrente: 0,
+        clientesNovosPuro: 0,
+        clientesNovosPuroComRecompra: 0,
+        taxaRecompraNovosPuroPct: 0,
+        clientesReativados: 0,
+        clientesReativadosComRecompra: 0,
+        taxaRecompraReativadosPct: 0,
+        pctReceitaTop20: 0,
+        ticketMedioPorCliente: 0,
+        topClientesPorFaturamento: [] as Array<{ cliente: string; faturamento: number; qtdOs: number; ticketMedio: number }>,
         porVendedor: [] as Array<{
           vendedor: string;
           clientesUnicos: number;
@@ -1683,15 +1700,18 @@ export const performanceComercialRouter = router({
       let allOsAno: any[] = [];
       let allOrcAno: any[] = [];
 
+      // Buscar sequencialmente, não em paralelo: medido em 18/08/2026 que disparar
+      // ordem-servico e orcamento juntos via Promise.all faz as duas chamadas
+      // competirem e estourarem TIMEOUT_LISTA_MS (45s) — mesmo uma janela de 1 mês,
+      // que sozinha completa em ~31s. Sequencial é mais lento no caso ideal, mas
+      // muito mais previsível (cada chamada tem o timeout inteiro só pra ela).
       try {
-        const [osResult, orcResult] = await Promise.all([
-          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
-          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
-        ]);
+        const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
         allOsAno = osResult.itens;
+        const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
         allOrcAno = orcResult.itens;
-      } catch {
-        return EMPTY;
+      } catch (e: any) {
+        return { ...EMPTY, _erro: e?.message || "Não foi possível buscar os dados do ERP. Tente um período menor." };
       }
 
       const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
@@ -1749,6 +1769,64 @@ export const performanceComercialRouter = router({
 
       const taxaRecompra = clientesUnicosSet.size > 0
         ? parseFloat(((clientesComRecompra / clientesUnicosSet.size) * 100).toFixed(1))
+        : 0;
+
+      // ── Novo (puro) vs Reativado — mesma regra canônica do getMes ────────────
+      // (ver comentário em isClienteNovoPorRecencia, linha ~121): "novo" = nunca
+      // comprou; "reativado" = comprou antes, mas ficou 6+ meses sem comprar.
+      // Aqui aplicamos por cliente, no mês da SUA primeira OS dentro do período
+      // selecionado (não no mês do período inteiro, que pode abranger vários meses).
+      const primeiraCompraNoPeriodo: Record<string, { mes: number; ano: number }> = {};
+      for (const os of osNormais) {
+        const cliente = normNome(os.cliente || os.empresa || "");
+        if (!cliente) continue;
+        const dataStr = os.data_aprovacao || os.data_cadastro;
+        if (!dataStr) continue;
+        const dt = new Date(dataStr);
+        if (isNaN(dt.getTime())) continue;
+        const mesOs = dt.getMonth() + 1;
+        const anoOs = dt.getFullYear();
+        const atual = primeiraCompraNoPeriodo[cliente];
+        if (!atual || anoOs < atual.ano || (anoOs === atual.ano && mesOs < atual.mes)) {
+          primeiraCompraNoPeriodo[cliente] = { mes: mesOs, ano: anoOs };
+        }
+      }
+      const gruposPorMesAno = new Map<string, string[]>();
+      for (const [cliente, ref] of Object.entries(primeiraCompraNoPeriodo)) {
+        const key = `${ref.mes}-${ref.ano}`;
+        if (!gruposPorMesAno.has(key)) gruposPorMesAno.set(key, []);
+        gruposPorMesAno.get(key)!.push(cliente);
+      }
+      const comprasHistoricoCompleto = dbForHistory
+        ? (await buscarTodasComprasValidas(dbForHistory)).map(c => ({ ...c, empresa: normNome(c.empresa) }))
+        : [];
+      const clientesNovosPuroSet = new Set<string>();
+      const clientesReativadosSet = new Set<string>();
+      for (const [key, clientesGrupo] of gruposPorMesAno) {
+        const [mesStr, anoStr] = key.split("-");
+        const mesRef = Number(mesStr);
+        const anoRef = Number(anoStr);
+        const ultimaMap = ultimaCompraAntesDe(comprasHistoricoCompleto, mesRef, anoRef);
+        for (const cliente of clientesGrupo) {
+          const ultima = ultimaMap.get(cliente);
+          if (!isClienteNovoPorRecencia(ultima, mesRef, anoRef)) continue; // já era cliente ativo
+          if (!ultima) clientesNovosPuroSet.add(cliente);
+          else clientesReativadosSet.add(cliente);
+        }
+      }
+      let clientesNovosPuroComRecompra = 0;
+      for (const cliente of clientesNovosPuroSet) {
+        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesNovosPuroComRecompra++;
+      }
+      let clientesReativadosComRecompra = 0;
+      for (const cliente of clientesReativadosSet) {
+        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesReativadosComRecompra++;
+      }
+      const taxaRecompraNovosPuroPct = clientesNovosPuroSet.size > 0
+        ? parseFloat((clientesNovosPuroComRecompra / clientesNovosPuroSet.size * 100).toFixed(1))
+        : 0;
+      const taxaRecompraReativadosPct = clientesReativadosSet.size > 0
+        ? parseFloat((clientesReativadosComRecompra / clientesReativadosSet.size * 100).toFixed(1))
         : 0;
 
       let clientesNovosQueRecompraram = 0;
@@ -1884,6 +1962,105 @@ export const performanceComercialRouter = router({
         quantidade: tempos.filter(t => t >= f.min && t <= f.max).length,
       }));
 
+      // ── Ciclo de vendas em 3 faixas (% do total de OS com tempo calculado) ───
+      const pctCicloAte3Dias = tempos.length > 0
+        ? parseFloat((tempos.filter(t => t <= 3).length / tempos.length * 100).toFixed(1))
+        : 0;
+      const pctCiclo4a7Dias = tempos.length > 0
+        ? parseFloat((tempos.filter(t => t >= 4 && t <= 7).length / tempos.length * 100).toFixed(1))
+        : 0;
+      const pctCicloMais7Dias = tempos.length > 0
+        ? parseFloat((tempos.filter(t => t > 7).length / tempos.length * 100).toFixed(1))
+        : 0;
+
+      // ── Frequência de compra: intervalo médio (dias) entre pedidos do mesmo cliente ──
+      // Calculado por cliente (média dos intervalos entre compras consecutivas) e depois
+      // pela média entre clientes, para não deixar clientes muito ativos dominarem o número.
+      const datasPorCliente: Record<string, Date[]> = {};
+      for (const os of osNormais) {
+        const cliente = normNome(os.cliente || os.empresa || "");
+        if (!cliente) continue;
+        const dataStr = os.data_aprovacao || os.data_cadastro;
+        if (!dataStr) continue;
+        const dt = new Date(dataStr);
+        if (isNaN(dt.getTime())) continue;
+        if (!datasPorCliente[cliente]) datasPorCliente[cliente] = [];
+        datasPorCliente[cliente].push(dt);
+      }
+      const intervalosMediosPorCliente: number[] = [];
+      for (const datas of Object.values(datasPorCliente)) {
+        if (datas.length < 2) continue;
+        const sorted = [...datas].sort((a, b) => a.getTime() - b.getTime());
+        const diffs: number[] = [];
+        for (let i = 1; i < sorted.length; i++) {
+          diffs.push((sorted[i].getTime() - sorted[i - 1].getTime()) / (1000 * 60 * 60 * 24));
+        }
+        intervalosMediosPorCliente.push(diffs.reduce((a, b) => a + b, 0) / diffs.length);
+      }
+      const frequenciaCompraDias = intervalosMediosPorCliente.length > 0
+        ? parseFloat((intervalosMediosPorCliente.reduce((a, b) => a + b, 0) / intervalosMediosPorCliente.length).toFixed(1))
+        : null;
+
+      // ── MRR/ARR aproximado ────────────────────────────────────────────────────
+      // Não existe conceito de "contrato ativo" nem receita recorrente no ERP (Mubisys
+      // é orçamento/OS avulsos, sem assinatura). Aproximação: cliente "recorrente" é o
+      // que comprou em pelo menos metade dos meses do período (mínimo 2 meses); o
+      // faturamento desses clientes, dividido pelos meses do período, vira o "MRR
+      // aproximado" — e ARR = MRR × 12. É uma estimativa de cadência, não um contrato real.
+      const totalMesesPeriodo = (anoFim - anoIni) * 12 + (mesFim - mesIni) + 1;
+      const thresholdRecorrenteMRR = Math.max(2, Math.ceil(totalMesesPeriodo * 0.5));
+      const clientesRecorrentesMRRSet = new Set<string>();
+      for (const [cliente, meses] of Object.entries(comprasPorCliente)) {
+        if (meses.size >= thresholdRecorrenteMRR) clientesRecorrentesMRRSet.add(cliente);
+      }
+      const faturamentoPorClienteIC: Record<string, number> = {};
+      const nomeOriginalPorClienteIC: Record<string, string> = {};
+      let faturamentoTotalPeriodoIC = 0;
+      for (const os of osNormais) {
+        const cliente = normNome(os.cliente || os.empresa || "");
+        if (!cliente) continue;
+        const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
+        faturamentoPorClienteIC[cliente] = (faturamentoPorClienteIC[cliente] ?? 0) + valor;
+        faturamentoTotalPeriodoIC += valor;
+        if (!nomeOriginalPorClienteIC[cliente]) nomeOriginalPorClienteIC[cliente] = String(os.cliente || os.empresa || "");
+      }
+      let faturamentoRecorrenteIC = 0;
+      for (const cliente of clientesRecorrentesMRRSet) {
+        faturamentoRecorrenteIC += faturamentoPorClienteIC[cliente] ?? 0;
+      }
+      const mrrAproximado = totalMesesPeriodo > 0
+        ? parseFloat((faturamentoRecorrenteIC / totalMesesPeriodo).toFixed(2))
+        : 0;
+      const arrAproximado = parseFloat((mrrAproximado * 12).toFixed(2));
+      const pctFaturamentoRecorrente = faturamentoTotalPeriodoIC > 0
+        ? parseFloat((faturamentoRecorrenteIC / faturamentoTotalPeriodoIC * 100).toFixed(1))
+        : 0;
+
+      // ── Concentração de receita (curva de Pareto) e top clientes ─────────────
+      // Quanto do faturamento do período vem dos 20% de clientes que mais compraram —
+      // mede dependência de poucos clientes (risco de concentração de carteira).
+      const clientesOrdenadosPorFaturamento = Object.entries(faturamentoPorClienteIC)
+        .sort((a, b) => b[1] - a[1]);
+      const top20PctCount = Math.max(1, Math.ceil(clientesOrdenadosPorFaturamento.length * 0.2));
+      const faturamentoTop20Pct = clientesOrdenadosPorFaturamento
+        .slice(0, top20PctCount)
+        .reduce((acc, [, v]) => acc + v, 0);
+      const pctReceitaTop20 = faturamentoTotalPeriodoIC > 0
+        ? parseFloat((faturamentoTop20Pct / faturamentoTotalPeriodoIC * 100).toFixed(1))
+        : 0;
+      const ticketMedioPorCliente = clientesUnicosSet.size > 0
+        ? parseFloat((faturamentoTotalPeriodoIC / clientesUnicosSet.size).toFixed(2))
+        : 0;
+      const topClientesPorFaturamento = clientesOrdenadosPorFaturamento.slice(0, 10).map(([clienteKey, faturamento]) => {
+        const qtdOs = osPorCliente[clienteKey] ?? 0;
+        return {
+          cliente: nomeOriginalPorClienteIC[clienteKey] ?? clienteKey,
+          faturamento: parseFloat(faturamento.toFixed(2)),
+          qtdOs,
+          ticketMedio: qtdOs > 0 ? parseFloat((faturamento / qtdOs).toFixed(2)) : 0,
+        };
+      });
+
       const todosVendedoresIC = new Set([
         ...Object.keys(clientesPorVendedor),
         ...Object.keys(clientesNovosSetPorVendedor),
@@ -1942,6 +2119,23 @@ export const performanceComercialRouter = router({
         tempoMedianaPropostaFechamento: stats.mediana,
         tempoP25: stats.p25,
         tempoP75: stats.p75,
+        pctCicloAte3Dias,
+        pctCiclo4a7Dias,
+        pctCicloMais7Dias,
+        frequenciaCompraDias,
+        mrrAproximado,
+        arrAproximado,
+        clientesRecorrentesMRR: clientesRecorrentesMRRSet.size,
+        pctFaturamentoRecorrente,
+        clientesNovosPuro: clientesNovosPuroSet.size,
+        clientesNovosPuroComRecompra,
+        taxaRecompraNovosPuroPct,
+        clientesReativados: clientesReativadosSet.size,
+        clientesReativadosComRecompra,
+        taxaRecompraReativadosPct,
+        pctReceitaTop20,
+        ticketMedioPorCliente,
+        topClientesPorFaturamento,
         porVendedor,
         distribuicaoTempo,
       };
