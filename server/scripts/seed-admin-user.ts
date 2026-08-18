@@ -23,7 +23,7 @@ function slugifyName(name: string): string {
 // endpoint `localUsers.create` (server/routers.ts), via `auth.api.createUser`
 // do Better Auth, pra garantir hash de senha (bcrypt) e linhas em
 // `user`/`account` consistentes com o resto do app.
-const NAME = "Daniel Jara";
+const NAME = process.env.SEED_ADMIN_NAME || "Daniel Jara";
 const USERNAME = slugifyName(NAME);
 const PASSWORD = process.env.SEED_ADMIN_PASSWORD;
 const EMAIL = `${USERNAME}@local.internal`;
