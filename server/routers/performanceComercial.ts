@@ -118,6 +118,63 @@ function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): b
   return true;
 }
 
+// ─── Lógica do Cliente Novo e Reativado ──────────────────────────────────────
+// Nome de referência do projeto para esta regra de negócio — usar este termo em
+// conversas/PRs/commits futuros que mexerem nela, em vez de reexplicar do zero.
+// Um cliente conta como "novo" na análise de um mês se (a) nunca teve nenhuma OS
+// válida antes desse mês, OU (b) a última compra válida dele foi há 6 meses ou
+// mais (cliente "reativado" após período de inatividade). Toda a base de "quem
+// comprou antes" vem de historico_os (histórico real importado do MubiSys),
+// nunca da API ao vivo — ver buscarTodasComprasValidas/ultimaCompraAntesDe abaixo.
+const MESES_INATIVIDADE_PARA_NOVO = 6;
+
+type CompraMinima = { empresa: string; mes: number; ano: number };
+
+/** Busca TODAS as OS válidas (histórico completo, qualquer ano) já reduzidas a
+ * {empresa, mes, ano} — base para calcular a última compra de cada cliente antes
+ * de qualquer mês de referência. Uma única query cobre todos os meses avaliados
+ * pelo chamador (o filtro "antes de X" é aplicado depois, em memória). */
+async function buscarTodasComprasValidas(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<CompraMinima[]> {
+  const rows = await db.select({
+    empresa: historicoOs.empresa,
+    mes: historicoOs.mes,
+    ano: historicoOs.ano,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status,
+  }).from(historicoOs);
+  const compras: CompraMinima[] = [];
+  for (const r of rows) {
+    if (!isOsNormalDb(r)) continue;
+    const empresa = (r.empresa ?? "").toLowerCase().trim();
+    if (!empresa) continue;
+    compras.push({ empresa, mes: r.mes, ano: r.ano });
+  }
+  return compras;
+}
+
+/** Para cada cliente, encontra o mês/ano da compra válida mais recente estritamente
+ * anterior a (mes, ano). Usa a lista completa pré-carregada por buscarTodasComprasValidas
+ * — pode ser chamada repetidamente (uma por mês avaliado) sem custo de banco. */
+function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: number): Map<string, { mes: number; ano: number }> {
+  const map = new Map<string, { mes: number; ano: number }>();
+  for (const c of compras) {
+    if (c.ano > ano || (c.ano === ano && c.mes >= mes)) continue; // não é "antes" do mês de referência
+    const atual = map.get(c.empresa);
+    if (!atual || c.ano > atual.ano || (c.ano === atual.ano && c.mes > atual.mes)) {
+      map.set(c.empresa, { mes: c.mes, ano: c.ano });
+    }
+  }
+  return map;
+}
+
+/** Aplica a regra de "cliente novo": sem compra anterior, ou última compra há
+ * MESES_INATIVIDADE_PARA_NOVO meses ou mais (contagem de meses de calendário). */
+function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | undefined, mes: number, ano: number): boolean {
+  if (!ultima) return true;
+  const gapMeses = (ano - ultima.ano) * 12 + (mes - ultima.mes);
+  return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
+}
+
 async function getMesFromDb(mes: number, ano: number) {
   const db = await getDb();
   if (!db) return null;
@@ -256,8 +313,13 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
       setCacheWithTTL(osCacheKey, allOs, mes, ano);
       setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
     } else {
-      // Buscar da API MubiSys SEQUENCIALMENTE (primeiro OS, depois orçamentos)
-      // Busca sequencial evita sobrecarga na API e reduz chance de timeout
+      // Buscar da API MubiSys SEQUENCIALMENTE (primeiro OS, depois orçamentos).
+      // Testado empiricamente em 17/08/2026: rodar as duas em paralelo (Promise.all)
+      // não trouxe ganho consistente — a API do MubiSys é instável por natureza (o
+      // mesmo endpoint de OS sozinho variou de ~5s a timeout de 45s+ entre chamadas)
+      // e paralelizar arrisca a chamada de OS (normalmente rápida) competir por
+      // recursos com a de orçamentos (mais lenta) e estourar o timeout também.
+      // Busca sequencial evita sobrecarga na API e reduz chance de timeout.
       // OS: filtrodata=APROVACAO (data de aprovação = faturamento real, igual ao relatório de Vendas do MubiSys)
       const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
       // Orçamentos: filtrodata=CADASTRO (data de criação = quando a cotação foi enviada)
@@ -465,13 +527,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     // Buscar cotações por vendedor do banco local para calcular taxaConvNovos
     const orcMesSnap = await db.select().from(historicoOrcamentos)
       .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)));
-    // Clientes anteriores para identificar novos
-    const clientesAntSnap = await db.select({ empresa: historicoOs.empresa }).from(historicoOs)
-      .where(sql`(${historicoOs.ano} < ${ano}) OR (${historicoOs.ano} = ${ano} AND ${historicoOs.mes} < ${mes})`);
-    const setAntSnap = new Set(clientesAntSnap.map(r => (r.empresa ?? "").toLowerCase().trim()));
+    // Clientes anteriores para identificar novos (nunca compraram ou inativos há 6+ meses)
+    const comprasSnap = await buscarTodasComprasValidas(db);
+    const ultimaCompraSnap = ultimaCompraAntesDe(comprasSnap, mes, ano);
     for (const orc of orcMesSnap) {
       const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
-      if (!clienteKey || setAntSnap.has(clienteKey)) continue;
+      if (!clienteKey || !isClienteNovoPorRecencia(ultimaCompraSnap.get(clienteKey), mes, ano)) continue;
       const vendedor = orc.vendedor || "Sem Vendedor";
       if (!porVendedorNovosSnap[vendedor]) {
         porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
@@ -521,13 +582,10 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   const overrideMap = new Map<string, "recorrente" | "novo">();
   for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
 
-  // FONTE DE VERDADE: usar banco local para histórico anterior (quem comprou antes deste mês)
-  // O banco local é suficiente para determinar se um cliente é recorrente ou novo
-  const clientesAnteriores = await db
-    .select({ empresa: historicoOs.empresa })
-    .from(historicoOs)
-    .where(sql`(${historicoOs.ano} < ${ano}) OR (${historicoOs.ano} = ${ano} AND ${historicoOs.mes} < ${mes})`);
-  const setAnteriores = new Set(clientesAnteriores.map(r => (r.empresa ?? "").toLowerCase().trim()));
+  // FONTE DE VERDADE: usar banco local para histórico anterior (quem comprou antes deste mês,
+  // e quando foi a última vez — necessário pra regra de reativação de 6 meses)
+  const todasComprasValidas = await buscarTodasComprasValidas(db);
+  const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
 
   // FONTE DE VERDADE: usar API Mubisys para buscar OS do mês (dados em tempo real, completos)
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -619,9 +677,8 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     // Verificar override manual: "recorrente" exclui; "novo" força inclusão
     // Usa chave normalizada (sem acentos) — igual à gravada em upsertClienteOverride
     const overrideStatus = overrideMap.get(normalizeEmpresaKey(nomeCliente));
-    // CORREÇÃO: remover a condição clientesAnteriores.length === 0 que descartava todos em jan
-    // Se não há histórico anterior, todos os clientes do mês são novos por definição
-    const isNovoByHistory = !setAnteriores.has(clienteKey);
+    // Regra de negócio: "novo" = nunca comprou OU está inativo há 6+ meses (reativado)
+    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
     const isNovo = overrideStatus === "recorrente" ? false
       : overrideStatus === "novo" ? true
       : isNovoByHistory;
@@ -708,7 +765,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       const orcOverride = overrideMap.get(normalizeEmpresaKey(nomeCliente));
       const isNovoOrc = orcOverride === "recorrente" ? false
         : orcOverride === "novo" ? true
-        : !setAnteriores.has(clienteKey);
+        : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
       if (clienteKey && isNovoOrc) {
         cotacoesNovos++;
         const valor = parseFloat(String(orc.valor_total ?? orc.valor ?? orc.total ?? orc.valorTotal ?? "0")) || 0;
@@ -864,14 +921,18 @@ export const performanceComercialRouter = router({
       // getMultiMes/getAno/getClientesNovosAno, para os números baterem entre telas.
       // A API tem cache próprio (memória + mubisys_api_cache no banco, 6h para meses
       // históricos), então repetir a mesma consulta não implica repetir a chamada HTTP.
-      // Timeout de 50s — abaixo do maxDuration:60s do vercel.json. Um valor
-      // maior nunca dispara: a função é morta pela Vercel antes, sem fallback
-      // para o banco. Com 50s, o race resolve a tempo de cair no getMesFromDb.
+      // Timeout de 55s — abaixo do maxDuration:60s do vercel.json, com folga
+      // mínima pro fallback (getMesFromDb + query de totalPedidos) rodar depois
+      // do race. Medido em 17/08/2026: a busca sequencial de um mês cheio pode
+      // levar 40-60s (a API MubiSys é instável — o mesmo endpoint variou de ~5s
+      // a timeout de 45s+ entre chamadas), então 55s reduz — mas não elimina —
+      // a chance de perder a corrida. Um valor maior nunca dispara: a função é
+      // morta pela Vercel antes, sem fallback para o banco.
       const publicKey = ENV.MUBISYS_PUBLIC_KEY;
       const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       if (publicKey && accessToken) {
         try {
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 50000));
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 55000));
           raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
         } catch {
           raw = null;
@@ -927,31 +988,29 @@ export const performanceComercialRouter = router({
         const overrideMap = new Map<string, "recorrente" | "novo">();
         for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
 
+        // Histórico completo (todos os anos) — a regra de "novo" (nunca comprou OU
+        // inativo há 6+ meses) exige saber a última compra de cada cliente, que pode
+        // ter sido em qualquer ano anterior, não só dentro de anoSet.
+        const todasComprasValidas = await buscarTodasComprasValidas(db);
+
         for (const ano of anoSet) {
           const todasOsAno = dbDataByAno.get(ano)?.os ?? [];
           const todasOrcAno = dbDataByAno.get(ano)?.orc ?? [];
-          // Clientes que compraram antes deste ano
-          const clientesAntes = db ? await db
-            .select({ empresa: historicoOs.empresa })
-            .from(historicoOs)
-            .where(sql`${historicoOs.ano} < ${ano}`) : [];
-          const clientesVistoAte = new Set<string>(clientesAntes.map(r => (r.empresa ?? "").toLowerCase().trim()));
 
           const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
           for (let mes = 1; mes <= mesAtual; mes++) {
+            const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
             const osMes = todasOsAno.filter(o => o.mes === mes);
             const orcMes = todasOrcAno.filter(o => o.mes === mes);
-            const clientesEsteMes = new Set<string>();
             let osNovos = 0, faturamentoNovos = 0;
             for (const os of osMes) {
               if (!isOsNormalDb(os)) continue; // excluir retrabalhos, amostras, cortesias, canceladas
               const clienteKey = (os.empresa ?? "").toLowerCase().trim();
               if (!clienteKey) continue;
-              clientesEsteMes.add(clienteKey);
               const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
               const isNovo = overrideStatus === "recorrente" ? false
                 : overrideStatus === "novo" ? true
-                : !clientesVistoAte.has(clienteKey);
+                : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
               if (isNovo) {
                 const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
                 osNovos++;
@@ -967,13 +1026,12 @@ export const performanceComercialRouter = router({
               const overrideStatus = overrideMap.get(normalizeEmpresaKey(orc.empresa ?? ""));
               const isNovo = overrideStatus === "recorrente" ? false
                 : overrideStatus === "novo" ? true
-                : !clientesVistoAte.has(clienteKey);
+                : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
               if (isNovo) {
                 cotacoesNovos++;
                 valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
               }
             }
-            Array.from(clientesEsteMes).forEach(c => clientesVistoAte.add(c));
             const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
             const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat(((osNovos / cotacoesNovos) * 100).toFixed(1)) : 0;
             const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat(((faturamentoNovos / valorOrcadoNovos) * 100).toFixed(1)) : 0;
@@ -1216,20 +1274,54 @@ export const performanceComercialRouter = router({
       const todasOsAno = db ? await db.select().from(historicoOs).where(eq(historicoOs.ano, ano)) : [];
       const todosOrcAno = db ? await db.select().from(historicoOrcamentos).where(eq(historicoOrcamentos.ano, ano)) : [];
 
+      // Pré-buscar snapshots congelados do ano inteiro em uma única query — meses
+      // já auditados/congelados nunca precisam bater na API MubiSys (mesmo padrão
+      // de getMes/getMultiMes). Sem isso, getAno reconsultava os 12 meses na API
+      // a cada expiração do TTL de 6h, mesmo para meses já congelados.
+      const snapsCongeladosAno = db ? await db.select().from(performanceAuditada)
+        .where(and(eq(performanceAuditada.ano, ano), eq(performanceAuditada.congelado, true))) : [];
+      const snapMapAno = new Map<number, typeof snapsCongeladosAno[0]>();
+      for (const s of snapsCongeladosAno) snapMapAno.set(s.mes, s);
+      const MESES_NOMES_ANO = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
       const meses = Array.from({ length: 12 }, (_, i) => i + 1);
-      // Usar API Mubisys para TODOS os meses (não só o atual) — mesmo padrão de
-      // getMes/getMultiMes, para os números baterem entre telas. Concorrência
-      // limitada a 2 (igual getClientesNovosAno) para não disparar 12 chamadas
-      // simultâneas à API MubiSys na primeira carga do ano.
+      // Usar API Mubisys para os meses não-congelados (não só o atual) — mesmo
+      // padrão de getMes/getMultiMes, para os números baterem entre telas.
+      // Concorrência limitada a 2 (igual getClientesNovosAno) para não disparar
+      // várias chamadas simultâneas à API MubiSys na primeira carga do ano.
       const CONCURRENCY = 2;
       const results: any[] = new Array(meses.length).fill(null);
       for (let i = 0; i < meses.length; i += CONCURRENCY) {
         const batch = meses.slice(i, i + CONCURRENCY);
         const batchResults = await Promise.all(batch.map(async (mes) => {
+          // ─── SNAPSHOT CONGELADO: retornar do banco imediatamente, sem tocar a API ───
+          const snap = snapMapAno.get(mes);
+          if (snap) {
+            const valorOrcadoSnap = parseFloat(String(snap.valorOrcado ?? 0));
+            const faturamentoSnap = parseFloat(String(snap.faturamento ?? 0));
+            const osGeradasSnap = snap.osNormais ?? 0;
+            return {
+              label: `${MESES_NOMES_ANO[mes - 1]}/${String(ano).slice(2)}`,
+              mes, ano,
+              cotacoes: snap.cotacoes ?? 0,
+              osGeradas: osGeradasSnap,
+              valorOrcado: valorOrcadoSnap,
+              faturamento: faturamentoSnap,
+              custo: 0,
+              resultado: 0,
+              taxaConversao: parseFloat(String(snap.taxaConversao ?? 0)),
+              taxaFaturamento: valorOrcadoSnap > 0 ? parseFloat(((faturamentoSnap / valorOrcadoSnap) * 100).toFixed(2)) : 0,
+              ticketMedio: osGeradasSnap > 0 ? parseFloat((faturamentoSnap / osGeradasSnap).toFixed(2)) : 0,
+              margemPct: 0,
+              porVendedor: [],
+            };
+          }
+          // ───────────────────────────────────────────────────────────────────────
           let raw: any = null;
           if (publicKey && accessToken) {
             try {
-              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 50000));
+              // 55s — mesma folga de getMes, ver comentário lá.
+              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 55000));
               raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
             } catch {
               raw = null;

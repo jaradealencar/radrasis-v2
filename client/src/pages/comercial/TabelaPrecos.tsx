@@ -108,12 +108,12 @@ function MarginTable({ columns, rows }: { columns: string[]; rows: MarginRow[] }
   return (
     <Table className="border-collapse">
       <TableHeader>
-        <TableRow className="bg-slate-800 text-white">
+        <TableRow className="bg-slate-100">
           {rows.length > 1 && (
-            <TableHead className="text-center border border-slate-600 min-w-[140px]">{columns[0] ?? ""}</TableHead>
+            <TableHead className="text-center border border-slate-300 min-w-[140px] text-slate-800 font-semibold">{columns[0] ?? ""}</TableHead>
           )}
           {(rows.length > 1 ? columns.slice(1) : columns).map((col, i) => (
-            <TableHead key={i} className="text-center border border-slate-600">{col}</TableHead>
+            <TableHead key={i} className="text-center border border-slate-300 text-slate-800 font-semibold">{col}</TableHead>
           ))}
         </TableRow>
       </TableHeader>

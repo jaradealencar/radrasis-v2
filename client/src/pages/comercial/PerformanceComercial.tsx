@@ -280,8 +280,11 @@ export default function PerformanceComercial() {
     return result;
   }, [mesSelecionado, anoSelecionado]);
 
-  // staleTime de 5 min para evitar refetch desnecessário das queries lentas (API Mubisys)
-  const STALE_5MIN = { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false };
+  // staleTime de 5 min para evitar refetch desnecessário das queries lentas (API Mubisys).
+  // retry: 1 (em vez do padrão 3 do React Query) — se a consulta já levou ~50s e falhou
+  // por timeout, repetir automaticamente só multiplica a espera sem nenhum ganho: o cache
+  // da API MubiSys continua frio, então cada nova tentativa reproduz o mesmo custo.
+  const STALE_5MIN = { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false, retry: 1 };
 
   const { data: mesDados, isLoading: loadingMes, refetch: refetchMes } =
     trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
