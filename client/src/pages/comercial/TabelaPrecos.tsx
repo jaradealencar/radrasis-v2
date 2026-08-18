@@ -622,78 +622,66 @@ function gerarPdfTabela(sections: Section[], meta: { versao: string; dataModific
 
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titulo} v${versao}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  @page{size:A4;margin:9mm 11mm}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter','Segoe UI',Arial,sans-serif;font-size:11.5px;color:#1e293b;background:#fff}
-  /* ─── CAPA ─── */
-  .cover{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#1e40af 100%);color:#fff;padding:56px 48px 44px;position:relative;overflow:hidden}
-  .cover::before{content:'';position:absolute;top:-60px;right:-60px;width:220px;height:220px;background:rgba(255,255,255,0.04);border-radius:50%}
-  .cover::after{content:'';position:absolute;bottom:-40px;left:60px;width:160px;height:160px;background:rgba(255,255,255,0.03);border-radius:50%}
-  .cover-eyebrow{font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#93c5fd;margin-bottom:12px}
-  .cover-logo{font-size:30px;font-weight:800;letter-spacing:-0.5px;margin-bottom:8px}
-  .cover-logo span{color:#60a5fa}
-  .cover-title{font-size:36px;font-weight:700;margin:16px 0 10px;line-height:1.2}
-  .cover-divider{width:56px;height:4px;background:#60a5fa;border-radius:2px;margin:16px 0}
-  .cover-meta{font-size:12px;opacity:0.85;margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .cover-badge{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);border-radius:20px;padding:4px 14px;font-size:11px;font-weight:600;backdrop-filter:blur(4px)}
-  .cover-sep{opacity:0.3}
+  body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;line-height:1.3;color:#1e293b;background:#fff}
+  /* ─── CABEÇALHO DO DOCUMENTO (compacto, não ocupa página própria) ─── */
+  .doc-header{background:linear-gradient(135deg,#0f172a,#1e40af);color:#fff;border-radius:6px;padding:7px 14px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .doc-header-title{font-size:15px;font-weight:800;letter-spacing:-0.2px}
+  .doc-header-title span{color:#93c5fd;font-weight:800}
+  .doc-header-sub{font-size:10px;opacity:0.75;font-weight:400;margin-left:6px}
+  .doc-header-meta{display:flex;gap:6px;align-items:center;font-size:10px;opacity:0.9;flex-wrap:wrap}
+  .doc-header-badge{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:12px;padding:2px 9px;font-weight:700;white-space:nowrap}
   /* ─── SEÇÕES ─── */
   .page-section{margin:0}
-  .page-header{padding:16px 48px 12px;display:flex;align-items:center;gap:14px;border-bottom:3px solid}
-  .page-header-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px}
-  .page-header-info{}
-  .page-header-title{font-size:18px;font-weight:700;line-height:1.2}
-  .page-header-sub{font-size:11px;opacity:0.6;margin-top:2px}
-  .section-block{margin:0 48px 20px;padding-top:14px}
-  .section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0;color:#475569;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .section-title::before{content:'';display:inline-block;width:4px;height:14px;border-radius:2px;background:currentColor;opacity:0.5;flex-shrink:0}
-  .section-badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.3px;border:1.5px solid;margin-left:4px}
+  .page-header{padding:4px 0;display:flex;align-items:baseline;gap:8px;border-bottom:2px solid;margin:6px 0 5px}
+  .page-header-icon{width:19px;height:19px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px}
+  .page-header-title{font-size:13.5px;font-weight:700;line-height:1.2}
+  .page-header-sub{font-size:9.5px;opacity:0.65;font-weight:400}
+  .section-block{margin:0 0 6px;padding-top:1px}
+  .section-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:3px;padding-bottom:2px;border-bottom:1px solid #e2e8f0;color:#475569;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .section-title::before{content:'';display:inline-block;width:3px;height:11px;border-radius:2px;background:currentColor;opacity:0.5;flex-shrink:0}
+  .section-badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:16px;font-size:8.5px;font-weight:700;letter-spacing:0.2px;border:1px solid;margin-left:2px}
   /* ─── TABELAS ─── */
-  table{width:100%;border-collapse:separate;border-spacing:0;border-radius:8px;overflow:hidden;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
+  table{width:100%;border-collapse:separate;border-spacing:0;border-radius:5px;overflow:hidden;font-size:10.5px;box-shadow:0 1px 2px rgba(0,0,0,0.07)}
   thead tr{color:#fff}
-  thead th{padding:9px 14px;text-align:center;font-weight:700;font-size:10.5px;letter-spacing:0.3px}
-  thead th:first-child{text-align:left;border-radius:8px 0 0 0}
-  thead th:last-child{border-radius:0 8px 0 0}
-  tbody td{padding:8px 14px;text-align:center;border-bottom:1px solid #f1f5f9;font-size:11px}
+  thead th{padding:3px 7px;text-align:center;font-weight:700;font-size:9.5px;letter-spacing:0.2px}
+  thead th:first-child{text-align:left;border-radius:5px 0 0 0}
+  thead th:last-child{border-radius:0 5px 0 0}
+  tbody td{padding:2.5px 7px;text-align:center;border-bottom:1px solid #f1f5f9;font-size:10.5px}
   tbody td:first-child{text-align:left;font-weight:600;color:#1e3a5f}
   tbody tr:last-child td{border-bottom:none}
-  tbody tr:last-child td:first-child{border-radius:0 0 0 8px}
-  tbody tr:last-child td:last-child{border-radius:0 0 8px 0}
+  tbody tr:last-child td:first-child{border-radius:0 0 0 5px}
+  tbody tr:last-child td:last-child{border-radius:0 0 5px 0}
   tbody tr:nth-child(even) td{background:#f8fafc}
-  tbody td .val{font-weight:700;color:#0f4c81;font-size:11.5px}
+  tbody td .val{font-weight:700;color:#0f4c81;font-size:11px}
   /* ─── CONFIG GRID ─── */
-  .config-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .config-item{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#f8fafc;border-radius:8px;border-left:4px solid #3b82f6}
-  .config-label{color:#64748b;font-size:10.5px;font-weight:500}
-  .config-value{font-weight:800;color:#1e3a5f;font-size:12.5px}
+  .config-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px}
+  .config-item{display:flex;justify-content:space-between;align-items:center;padding:3px 8px;background:#f8fafc;border-radius:5px;border-left:3px solid #3b82f6}
+  .config-label{color:#64748b;font-size:9.5px;font-weight:500}
+  .config-value{font-weight:800;color:#1e3a5f;font-size:11.5px}
   /* ─── LISTA ─── */
   .list-items{padding-left:0;list-style:none}
-  .list-items li{padding:5px 0 5px 20px;position:relative;color:#374151;border-bottom:1px solid #f1f5f9;font-size:11px}
-  .list-items li:before{content:"›";position:absolute;left:4px;color:#3b82f6;font-weight:700;font-size:14px;line-height:1.2}
+  .list-items li{padding:2px 0 2px 14px;position:relative;color:#374151;border-bottom:1px solid #f1f5f9;font-size:10.5px}
+  .list-items li:before{content:"›";position:absolute;left:2px;color:#3b82f6;font-weight:700;font-size:12px;line-height:1.2}
   /* ─── NOTA ─── */
-  .note-box{margin-top:10px;padding:8px 14px;background:linear-gradient(135deg,#fffbeb,#fef3c7);border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;font-size:10px;color:#78350f;display:flex;gap:8px;align-items:flex-start}
-  .note-icon{flex-shrink:0;font-size:13px}
+  .note-box{margin-top:3px;padding:3px 8px;background:linear-gradient(135deg,#fffbeb,#fef3c7);border-left:3px solid #f59e0b;border-radius:0 5px 5px 0;font-size:9.5px;color:#78350f;display:flex;gap:6px;align-items:flex-start}
+  .note-icon{flex-shrink:0;font-size:11px}
   /* ─── RODAPÉ ─── */
-  .footer{margin-top:28px;padding:14px 48px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:9.5px;color:#94a3b8}
-  .footer-brand{font-weight:700;color:#64748b;font-size:10.5px}
+  .footer{margin-top:6px;padding:4px 0;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}
+  .footer-brand{font-weight:700;color:#64748b;font-size:9.5px}
   @media print{
-    body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:11.5px}
-    .page-section{page-break-inside:avoid}
+    body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:11px}
     .section-block{page-break-inside:avoid}
-    .cover{page-break-after:always}
     table{page-break-inside:avoid}
   }
 </style></head><body>
-<div class="cover">
-  <div class="cover-eyebrow">Letreiros Express &mdash; Uso Interno</div>
-  <div class="cover-logo">LETREIROS <span>EXPRESS</span></div>
-  <div class="cover-title">${titulo}</div>
-  <div class="cover-divider"></div>
-  <div class="cover-meta">
-    <span class="cover-badge">&#x1F4CB; Versão ${versao}</span>
-    <span class="cover-sep">&bull;</span>
+<div class="doc-header">
+  <div class="doc-header-title">LETREIROS <span>EXPRESS</span><span class="doc-header-sub">${titulo} &mdash; Uso Interno</span></div>
+  <div class="doc-header-meta">
+    <span class="doc-header-badge">Versão ${versao}</span>
     <span>Modificado em ${dataStr}</span>
-    <span class="cover-sep">&bull;</span>
+    <span>&bull;</span>
     <span>Emitido em ${new Date().toLocaleDateString("pt-BR")}</span>
   </div>
 </div>`;
@@ -710,12 +698,9 @@ function gerarPdfTabela(sections: Section[], meta: { versao: string; dataModific
     if (!pageSections.length) continue;
     const color = pageColors[page] ?? "#1e3a5f";
     html += `<div class="page-section">
-      <div class="page-header" style="border-color:${color};background:linear-gradient(135deg,${color}12,${color}06)">
+      <div class="page-header" style="border-color:${color}">
         <div class="page-header-icon" style="background:${color}18;color:${color}">${pageIcons[page] ?? "&#x1F4C4;"}</div>
-        <div class="page-header-info">
-          <div class="page-header-title" style="color:${color}">${pageNames[page] ?? "Página " + page}</div>
-          <div class="page-header-sub">${pageSubtitles[page] ?? ""}</div>
-        </div>
+        <div class="page-header-title" style="color:${color}">${pageNames[page] ?? "Página " + page}<span class="page-header-sub"> — ${pageSubtitles[page] ?? ""}</span></div>
       </div>`;
     for (const sec of pageSections) {
       const lbl = getSectionLabel(sec.sectionTitle);
