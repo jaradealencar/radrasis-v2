@@ -134,10 +134,20 @@ interface InteligenteClientesProps {
   anoSelecionado: number;
 }
 
+/** Período inicial de um ano: só o mês corrente (ano atual) ou só dezembro (anos
+ * passados) — nunca o ano inteiro. A busca é ao vivo na API do Mubisys, que mede
+ * ~25-45s POR MÊS (ver docs/integracao-mubisys.md); abrir a aba já disparando
+ * vários meses de uma vez estoura o timeout quase sempre. O usuário pode alargar
+ * manualmente pelo seletor de período — aí sabendo que vai demorar mais. */
+function periodoInicialDoAno(ano: number): string {
+  const atual = new Date();
+  return ano === atual.getFullYear() ? `${ano}-${pad(atual.getMonth() + 1)}` : `${ano}-12`;
+}
+
 export default function InteligenteClientes({ anoSelecionado }: InteligenteClientesProps) {
   const [expandirVendedores, setExpandirVendedores] = useState(false);
-  const [dataInicial, setDataInicial] = useState(`${anoSelecionado}-01`);
-  const [dataFinal, setDataFinal] = useState(anoMesAtual());
+  const [dataInicial, setDataInicial] = useState(() => periodoInicialDoAno(anoSelecionado));
+  const [dataFinal, setDataFinal] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [forcarAtualizacao, setForcarAtualizacao] = useState(false);
   const [showDescongelarConfirm, setShowDescongelarConfirm] = useState(false);
   // Indicador de velocidade
@@ -149,8 +159,9 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
   useEffect(() => {
     if (anoSelecionado !== anoRef.current) {
       anoRef.current = anoSelecionado;
-      setDataInicial(`${anoSelecionado}-01`);
-      setDataFinal(anoSelecionado === new Date().getFullYear() ? anoMesAtual() : `${anoSelecionado}-12`);
+      const periodo = periodoInicialDoAno(anoSelecionado);
+      setDataInicial(periodo);
+      setDataFinal(periodo);
       setForcarAtualizacao(false);
     }
   }, [anoSelecionado]);
@@ -198,6 +209,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
   const dadosVendedores = (data?.porVendedor ?? []).slice(0, expandirVendedores ? 999 : 6);
   const calculadoEm = formatarDataCalculo(data?._calculadoEm);
   const carregando = isLoading || isFetching;
+  const erroBusca = (data as any)?._erro as string | undefined;
   const isCongelado = (data as any)?._congelado === true;
   const congeladoEm = formatarDataCalculo((data as any)?._congeladoEm);
   const fonteLabel = isCongelado ? 'congelado' : ((data as any)?._fonte === 'cache' ? 'cache' : 'tempo-real');
@@ -296,7 +308,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
               <p className="text-sm font-bold text-slate-700">
                 Analisando clientes — {formatarPeriodo(dataInicial, dataFinal)}
               </p>
-              <p className="text-xs text-slate-400 mt-1">Isso pode levar até 30 segundos na primeira carga do período</p>
+              <p className="text-xs text-slate-400 mt-1">A primeira carga de um período busca direto no ERP e pode levar 1-2 minutos — quanto mais meses, mais demora</p>
             </div>
             {/* Barra de progresso animada */}
             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
@@ -330,8 +342,25 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
         </div>
       )}
 
+      {/* ── Erro na busca (timeout ou falha do ERP) ── */}
+      {!carregando && erroBusca && (!data || data.clientesUnicosAno === 0) && (
+        <div className="bg-white rounded-xl border border-red-200 shadow-sm p-10">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><AlertTriangle className="text-red-500" /></EmptyMedia>
+              <EmptyTitle>Não foi possível buscar os dados do ERP</EmptyTitle>
+              <EmptyDescription>
+                {erroBusca}
+                <br />
+                Períodos muito largos (vários meses) demoram muito na API do Mubisys e podem expirar. Tente um período menor, como só o mês atual.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </div>
+      )}
+
       {/* ── Sem dados ── */}
-      {!carregando && (!data || data.clientesUnicosAno === 0) && (
+      {!carregando && !erroBusca && (!data || data.clientesUnicosAno === 0) && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10">
           <Empty>
             <EmptyHeader>
