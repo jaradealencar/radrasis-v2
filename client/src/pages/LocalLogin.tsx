@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { authClient } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,7 @@ export default function LocalLogin() {
   const [error, setError] = useState("");
   const [isPending, setIsPending] = useState(false);
   const [, navigate] = useLocation();
+  const { refetch: refetchSession } = useSession();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,11 +35,19 @@ export default function LocalLogin() {
     const isEmail = emailOrName.includes("@");
     const username = isEmail ? emailOrName.trim().toLowerCase() : slugifyName(emailOrName);
     const { error: signInError } = await authClient.signIn.username({ username, password });
-    setIsPending(false);
     if (signInError) {
+      setIsPending(false);
       setError(signInError.message || "Credenciais inválidas");
       return;
     }
+    // O signIn resolve antes da store de sessão do Better Auth (a mesma
+    // usada por useAuth()/AuthGate) ser atualizada — ela é sincronizada de
+    // forma assíncrona/adiada em segundo plano. Esperar esse refetch aqui
+    // garante que a store já reflete o usuário logado antes de navegar; sem
+    // isso, o AuthGate ainda enxerga `user === null` no primeiro clique e
+    // devolve pro login.
+    await refetchSession();
+    setIsPending(false);
     navigate("/");
   };
 
