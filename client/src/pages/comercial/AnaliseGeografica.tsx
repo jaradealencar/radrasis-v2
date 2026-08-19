@@ -138,9 +138,11 @@ export default function AnaliseGeografica() {
   const exportarClientesExcel = async (estado?: string) => {
     setExportando(estado ?? "*");
     try {
-      const clientes = await utils.analiseGeografica.getListaClientes.fetch(
-        estado ? { estado } : undefined,
-      );
+      const clientes = await utils.analiseGeografica.getListaClientes.fetch({
+        ano,
+        mes: mes || null,
+        estado: estado ?? null,
+      });
       if (!clientes || clientes.length === 0) {
         toast.error(estado ? `Nenhum cliente encontrado para ${estado}.` : "Nenhum cliente encontrado para exportar.");
         return;
@@ -163,8 +165,8 @@ export default function AnaliseGeografica() {
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, estado ? `Clientes ${estado}` : "Clientes por Estado");
-      const today = new Date().toISOString().slice(0, 10);
-      const arquivo = estado ? `clientes-${estado}-${today}.xlsx` : `clientes-por-estado-${today}.xlsx`;
+      const periodo = mes ? `${ano}-${String(mes).padStart(2, "0")}` : String(ano);
+      const arquivo = estado ? `clientes-${estado}-${periodo}.xlsx` : `clientes-por-estado-${periodo}.xlsx`;
       XLSX.writeFile(wb, arquivo);
       toast.success(`${clientes.length} clientes exportados com sucesso!`);
     } catch {
@@ -184,7 +186,7 @@ export default function AnaliseGeografica() {
               Análise Geográfica
             </h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              Distribuição de OS e faturamento por Estado — cruzamento com o cadastro de clientes
+              Distribuição de OS e faturamento por Estado — dados em tempo real da API Mubisys
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -193,7 +195,7 @@ export default function AnaliseGeografica() {
               disabled={exportando !== null}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Download size={14} /> {exportando === "*" ? "Exportando…" : "Exportar todos os Estados (Excel)"}
+              <Download size={14} /> {exportando === "*" ? "Exportando…" : "Exportar clientes do período (Excel)"}
             </button>
             <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
               <SelectTrigger className="w-40 h-9 text-sm">
