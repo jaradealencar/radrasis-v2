@@ -257,6 +257,33 @@ export const analiseGeograficaRouter = router({
     };
   }),
 
+  // DIAGNÓSTICO TEMPORÁRIO — remover depois de confirmar a chamada à API em produção.
+  _diagChamadaApi: publicProcedure.query(async () => {
+    const t0 = Date.now();
+    try {
+      const resultado = await listarOSMubiSys({
+        status: "TODOS",
+        filtrodata: "APROVACAO",
+        datainicial: "2026-08-01",
+        datafinal: "2026-08-19",
+      });
+      return {
+        ok: true,
+        ms: Date.now() - t0,
+        completo: resultado.completo,
+        qtdItens: resultado.itens.length,
+      };
+    } catch (erro: any) {
+      return {
+        ok: false,
+        ms: Date.now() - t0,
+        erroNome: erro?.name ?? null,
+        erroMensagem: String(erro?.message ?? erro),
+        erroStatus: erro?.status ?? null,
+      };
+    }
+  }),
+
   getAnosDisponiveis: publicProcedure.query(async () => {
     const anoAtual = new Date().getFullYear();
     const db = await getDb();
