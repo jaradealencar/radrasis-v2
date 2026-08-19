@@ -246,6 +246,17 @@ function agregarPorEstado(linhas: LinhaOs[]) {
 }
 
 export const analiseGeograficaRouter = router({
+  // DIAGNÓSTICO TEMPORÁRIO — remover depois de confirmar as credenciais em produção.
+  _diagCredenciais: publicProcedure.query(async () => {
+    return {
+      hasPublicKey: !!ENV.MUBISYS_PUBLIC_KEY,
+      hasToken: !!ENV.MUBISYS_ACCESS_TOKEN,
+      publicKeyLen: ENV.MUBISYS_PUBLIC_KEY.length,
+      tokenLen: ENV.MUBISYS_ACCESS_TOKEN.length,
+      publicKeyPrefix: ENV.MUBISYS_PUBLIC_KEY.slice(0, 6),
+    };
+  }),
+
   getAnosDisponiveis: publicProcedure.query(async () => {
     const anoAtual = new Date().getFullYear();
     const db = await getDb();
