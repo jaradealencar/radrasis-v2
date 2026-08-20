@@ -949,9 +949,26 @@ export const performanceComercialRouter = router({
       }
 
       // Se não conseguiu da API, usar banco local como fallback
-      const viaApi = raw !== null;
+      let viaApi = raw !== null;
       if (!raw) {
         raw = await getMesFromDb(mes, ano);
+      }
+
+      // ─── SANITY CHECK: API "bem-sucedida" mas zerada ───────────────────────
+      // A API MubiSys às vezes responde 200/201 com lista vazia de forma
+      // transitória (falha intermitente do lado deles, não timeout — não cai
+      // no catch acima). Para um mês que não é o atual, zero OS E zero
+      // orçamentos ao mesmo tempo é implausível se já existe sync local.
+      // Nesse caso, preferir o banco local em vez de aceitar o zero da API
+      // como se fosse dado real. Ver conversa 20/08/2026: Julho/2026 mostrou
+      // "TEMPO REAL" com todos os KPIs zerados enquanto o banco local já
+      // tinha 171 OS e 831 orçamentos sincronizados para o mês.
+      if (viaApi && !isMesAtual(mes, ano) && raw.osNormais?.total === 0 && raw.orcamentos?.total === 0) {
+        const local = await getMesFromDb(mes, ano);
+        if (local && (local.osNormais.total > 0 || local.orcamentos.total > 0)) {
+          raw = local;
+          viaApi = false;
+        }
       }
 
       if (!raw) return null;
@@ -1352,6 +1369,14 @@ export const performanceComercialRouter = router({
             } catch {
               raw = null;
             }
+          }
+          // A API MubiSys às vezes responde "com sucesso" mas vazia de forma
+          // transitória (não é timeout, não cai no catch acima). Pra um mês
+          // que não é o atual, zero OS e zero orçamentos ao mesmo tempo é
+          // implausível se já existe sync local — nesse caso, tratar como se
+          // a API não tivesse respondido e cair no fallback local abaixo.
+          if (raw && !isMesAtual(mes, ano) && raw.osNormais?.total === 0 && raw.orcamentos?.total === 0) {
+            raw = null;
           }
           if (!raw) {
             // Usar dados já carregados em memória (sem nova query ao banco)
