@@ -104,17 +104,23 @@ async function lerCacheOsBrutas(db: NonNullable<Awaited<ReturnType<typeof getDb>
   }
 }
 
+// Mês fechado não muda mais os dados — 30 dias evita rebuscar da API MubiSys
+// (lenta e instável, ~25-45s por mês, às vezes timeout) toda vez que o cache
+// expira. Mesmo valor usado em Performance Comercial (CACHE_TTL_HISTORICO_PERSISTENTE_MS).
+const TTL_MES_ATUAL_MS = 60 * 60 * 1000; // 1 hora — mês em andamento, dados mudam
+const TTL_MES_FECHADO_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+
 async function buscarOsBrutasDoMes(
   db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
   mes: number,
   ano: number,
-): Promise<{ itens: any[]; completo: boolean }> {
+): Promise<{ itens: any[]; completo: boolean; viaApi: boolean }> {
   const compartilhado = await lerCacheOsBrutas(db, `raw_${mes}_${ano}`);
-  if (compartilhado) return { itens: compartilhado, completo: true };
+  if (compartilhado) return { itens: compartilhado, completo: true, viaApi: false };
 
   const cacheKeyProprio = `geo_raw_${mes}_${ano}`;
   const proprio = await lerCacheOsBrutas(db, cacheKeyProprio);
-  if (proprio) return { itens: proprio, completo: true };
+  if (proprio) return { itens: proprio, completo: true, viaApi: false };
 
   const pad = (n: number) => String(n).padStart(2, "0");
   const lastDay = new Date(ano, mes, 0).getDate();
@@ -124,7 +130,7 @@ async function buscarOsBrutasDoMes(
 
   if (resultado.completo) {
     const now = new Date();
-    const ttlMs = isMesAtual(mes, ano) ? 60 * 60 * 1000 : 6 * 60 * 60 * 1000;
+    const ttlMs = isMesAtual(mes, ano) ? TTL_MES_ATUAL_MS : TTL_MES_FECHADO_MS;
     const expiresAt = new Date(now.getTime() + ttlMs);
     const existing = await db.select({ id: mubisysApiCache.id }).from(mubisysApiCache)
       .where(eq(mubisysApiCache.cacheKey, cacheKeyProprio)).limit(1);
@@ -136,7 +142,7 @@ async function buscarOsBrutasDoMes(
     }
   }
 
-  return resultado;
+  return { ...resultado, viaApi: true };
 }
 
 /** Fallback: snapshot local (`historico_os`, importado anteriormente),
@@ -155,41 +161,51 @@ async function linhasDoMesLocal(
   return rows.map((r) => ({ estado: r.estado, cidade: r.cidade, empresa: r.empresa ?? "", valorTotal: Number(r.valorTotal ?? 0) }));
 }
 
+type LinhasDoMesResult = { linhas: LinhaOs[]; viaApi: boolean };
+
 /** Busca as OS de um mês — API MubiSys em tempo real (com timeout de 55s,
  * mesma folga usada em Performance Comercial), caindo para o snapshot local
- * se a API não estiver configurada, falhar ou não responder a tempo. */
+ * se a API não estiver configurada, falhar ou não responder a tempo.
+ * `viaApi: false` sinaliza que o resultado veio do fallback local — front
+ * usa isso pra não mostrar "0 OS" como se fosse um período realmente vazio. */
 async function linhasDoMes(
   db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
   mes: number,
   ano: number,
-): Promise<LinhaOs[]> {
+): Promise<LinhasDoMesResult> {
   if (ENV.MUBISYS_PUBLIC_KEY && ENV.MUBISYS_ACCESS_TOKEN) {
     try {
       const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 55000));
       const resultado = await Promise.race([buscarOsBrutasDoMes(db, mes, ano), timeoutPromise]);
       if (resultado) {
-        return resultado.itens.filter(osValidaMubisys).map(normalizarOsMubisys);
+        return { linhas: resultado.itens.filter(osValidaMubisys).map(normalizarOsMubisys), viaApi: true };
       }
     } catch {
       // API falhou — cai para o fallback local abaixo
     }
   }
-  return linhasDoMesLocal(db, mes, ano);
+  return { linhas: await linhasDoMesLocal(db, mes, ano), viaApi: false };
 }
+
+type LinhasDoAnoResult = { linhas: LinhaOs[]; mesesFallback: number[] };
 
 /** Busca o ano inteiro (12 meses), com concorrência limitada a 2 chamadas
  * simultâneas — mesmo padrão de `getAno` em Performance Comercial, pra não
  * disparar 12 chamadas de uma vez na API MubiSys. */
-async function linhasDoAno(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, ano: number): Promise<LinhaOs[]> {
+async function linhasDoAno(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, ano: number): Promise<LinhasDoAnoResult> {
   const meses = Array.from({ length: 12 }, (_, i) => i + 1);
   const CONCURRENCY = 2;
   let todas: LinhaOs[] = [];
+  const mesesFallback: number[] = [];
   for (let i = 0; i < meses.length; i += CONCURRENCY) {
     const batch = meses.slice(i, i + CONCURRENCY);
     const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db, mes, ano)));
-    for (const r of resultados) todas = todas.concat(r);
+    batch.forEach((mes, idx) => {
+      todas = todas.concat(resultados[idx].linhas);
+      if (!resultados[idx].viaApi) mesesFallback.push(mes);
+    });
   }
-  return todas;
+  return { linhas: todas, mesesFallback };
 }
 
 function agregarPorEstado(linhas: LinhaOs[]) {
@@ -265,10 +281,23 @@ export const analiseGeograficaRouter = router({
     }))
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return { estados: [], totalOs: 0, totalFaturamento: 0, semEstado: 0, semEstadoFaturamento: 0 };
+      if (!db) return { estados: [], totalOs: 0, totalFaturamento: 0, semEstado: 0, semEstadoFaturamento: 0, mesesFallback: [] as number[] };
 
-      const linhas = input.mes ? await linhasDoMes(db, input.mes, input.ano) : await linhasDoAno(db, input.ano);
-      return agregarPorEstado(linhas);
+      let linhas: LinhaOs[];
+      let mesesFallback: number[];
+      if (input.mes) {
+        const resultado = await linhasDoMes(db, input.mes, input.ano);
+        linhas = resultado.linhas;
+        mesesFallback = resultado.viaApi ? [] : [input.mes];
+      } else {
+        const resultado = await linhasDoAno(db, input.ano);
+        linhas = resultado.linhas;
+        mesesFallback = resultado.mesesFallback;
+      }
+      // mesesFallback: meses cujo dado veio do snapshot local (API MubiSys
+      // falhou/deu timeout), não da API — front usa isso pra avisar que o
+      // resultado pode estar incompleto em vez de mostrar como definitivo.
+      return { ...agregarPorEstado(linhas), mesesFallback };
     }),
 
   getEvolucaoMensal: publicProcedure
@@ -283,7 +312,7 @@ export const analiseGeograficaRouter = router({
       for (let i = 0; i < meses.length; i += CONCURRENCY) {
         const batch = meses.slice(i, i + CONCURRENCY);
         const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db, mes, input.ano)));
-        batch.forEach((mes, idx) => { porMesLinhas[mes - 1] = resultados[idx]; });
+        batch.forEach((mes, idx) => { porMesLinhas[mes - 1] = resultados[idx].linhas; });
       }
 
       const totalPorEstado = new Map<string, number>();
@@ -326,7 +355,7 @@ export const analiseGeograficaRouter = router({
       const db = await getDb();
       if (!db) return [];
 
-      const linhas = input.mes ? await linhasDoMes(db, input.mes, input.ano) : await linhasDoAno(db, input.ano);
+      const linhas = input.mes ? (await linhasDoMes(db, input.mes, input.ano)).linhas : (await linhasDoAno(db, input.ano)).linhas;
 
       const porCliente = new Map<string, { estado: string; empresa: string; cidade: string; qtdOs: number; faturamento: number }>();
       for (const r of linhas) {

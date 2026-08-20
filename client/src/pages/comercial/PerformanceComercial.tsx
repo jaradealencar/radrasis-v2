@@ -317,6 +317,11 @@ export default function PerformanceComercial() {
     : auditoriaData ? 'auditado'
     : 'tempo-real';
 
+  // API MubiSys falhou/deu timeout e os números vieram do snapshot local
+  // (historico_os) em vez da API — pode estar desatualizado ou zerado se o
+  // mês ainda não foi importado. Não mostrar isso como "tempo real" normal.
+  const dadosDeFallbackLocal = fonteStatus === 'tempo-real' && (mesDados as any)?._origemDados === 'local';
+
   const { data: evolucao, isLoading: loadingEvolucao, refetch: refetchEvolucao } =
     trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao }, STALE_5MIN);
 
@@ -539,9 +544,17 @@ export default function PerformanceComercial() {
                   ✅ AUDITADO
                 </span>
               )}
-              {!loadingMes && fonteStatus === 'tempo-real' && (
+              {!loadingMes && fonteStatus === 'tempo-real' && !dadosDeFallbackLocal && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-200">
                   ⚡ TEMPO REAL
+                </span>
+              )}
+              {!loadingMes && dadosDeFallbackLocal && (
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200"
+                  title="A API MubiSys não respondeu a tempo. Estes números vêm do snapshot local, que pode estar desatualizado ou zerado se o mês ainda não foi importado."
+                >
+                  ⚠️ API INDISPONÍVEL — dados locais
                 </span>
               )}
               {/* Indicador de velocidade de carregamento */}

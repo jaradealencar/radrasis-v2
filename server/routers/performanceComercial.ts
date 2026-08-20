@@ -7,10 +7,19 @@ import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, fa
 import { eq, and, sql } from "drizzle-orm";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
-// TTL: 5 minutos para mês atual, 6 horas para meses históricos (dados não mudam)
+// TTL: 60 minutos para mês atual, 6 horas para meses históricos (dados não mudam).
+// Vive só enquanto a instância serverless estiver quente — não é o cache que
+// resolve reinicialização, ver CACHE_TTL_HISTORICO_PERSISTENTE_MS abaixo.
 const apiCache = new Map<string, { data: any; ts: number }>();
 const CACHE_TTL_ATUAL_MS = 60 * 60 * 1000;      // 60 minutos (evita rebusca frequente na API)
 const CACHE_TTL_HISTORICO_MS = 6 * 60 * 60 * 1000; // 6 horas
+
+// TTL do cache PERSISTENTE (banco, sobrevive a restart) para mês fechado.
+// Mês fechado não muda mais — 30 dias evita rebuscar da API MubiSys (lenta e
+// instável, ~25-45s por mês, às vezes timeout) toda vez que expira. Medido em
+// 20/08/2026: a API chegou a dar timeout em 3 tentativas seguidas de 50s cada
+// pra listar um único mês, então esse cache precisa durar o quanto der.
+const CACHE_TTL_HISTORICO_PERSISTENTE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 
 // ─── Cache persistente no banco de dados ─────────────────────────────────────
 // Sobrevive a reinicializações do servidor. Evita cotações/faturamento zerados
@@ -42,7 +51,7 @@ async function setDbCache(cacheKey: string, mes: number, ano: number, allOs: any
     const db = await getDb();
     if (!db) return;
     const now = new Date();
-    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_MS;
+    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_PERSISTENTE_MS;
     const expiresAt = new Date(now.getTime() + ttlMs);
     // Upsert: atualizar se já existe, inserir se não
     const existing = await db.select({ id: mubisysApiCache.id }).from(mubisysApiCache)
@@ -940,6 +949,7 @@ export const performanceComercialRouter = router({
       }
 
       // Se não conseguiu da API, usar banco local como fallback
+      const viaApi = raw !== null;
       if (!raw) {
         raw = await getMesFromDb(mes, ano);
       }
@@ -956,7 +966,12 @@ export const performanceComercialRouter = router({
           .where(and(sql`UPPER(${faturamento.mes}) = ${mesNome}`, eq(faturamento.ano, ano))).limit(1);
         if (fatRow.length > 0 && fatRow[0].totalPedidos > 0) totalPedidosBanco = fatRow[0].totalPedidos;
       }
-      return { ...metrics, totalPedidosBanco };
+      // _origemDados: 'api' = veio da API MubiSys agora (ou do cache dela);
+      // 'local' = API falhou/deu timeout, caiu pro snapshot local importado
+      // (historico_os) — pode estar desatualizado ou zerado se o mês ainda
+      // não foi importado. Front usa isso pra não mostrar R$ 0 como se fosse
+      // faturamento real quando na verdade é "não conseguimos consultar".
+      return { ...metrics, totalPedidosBanco, _origemDados: viaApi ? 'api' as const : 'local' as const };
     }),
 
   // Múltiplos meses para comparativo e gráfico de evolução
