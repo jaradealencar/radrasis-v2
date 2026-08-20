@@ -11,6 +11,7 @@ import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 // Retrabalhos
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import Metricas from "./pages/Metricas";
 import Retrabalhos from "./pages/retrabalhos/Retrabalhos";
 import InserirRapido from "./pages/retrabalhos/InserirRapido";
 import NovoRetrabalho from "./pages/retrabalhos/NovoRetrabalho";
@@ -87,6 +88,7 @@ function Router() {
       <Route path="/reincidencia" component={Reincidencia} />
       <Route path="/relatorio" component={Relatorio} />
       <Route path="/insights" component={Insights} />
+      <Route path="/metricas" component={Metricas} />
       {/* Operações */}
       <Route path="/conhecimento" component={Conhecimento} />
       <Route path="/biblioteca-arquivos" component={BibliotecaArquivos} />

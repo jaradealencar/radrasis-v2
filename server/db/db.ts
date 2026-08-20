@@ -17,7 +17,9 @@ import {
   knowledgeSuggestions, InsertKnowledgeSuggestion,
   analiseCurriculos, InsertAnaliseCurriculo, AnaliseCurriculo,
   financeirosMensais,
+  metricas,
 } from "../../drizzle/schema";
+import { resumirDiffTabelaPrecos } from "../integrations/priceTableDiff";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -615,6 +617,22 @@ export async function listPriceTableSections(page?: number): Promise<PriceTableS
     .limit(200);
 }
 
+/** Registra automaticamente em Métricas cada alteração na Tabela de Preços,
+ * com descrição legível (produto, faixas e percentuais) — ver [[metricas]]. */
+async function registrarMetricaTabelaPrecos(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  params: { secao: string; observacao: string; qtd: number; autor?: string },
+): Promise<void> {
+  await db.insert(metricas).values({
+    nome: "Alteração na Tabela de Preços",
+    valor: String(params.qtd),
+    unidade: "un",
+    dataApuracao: new Date().toISOString().slice(0, 10),
+    observacao: `${params.secao}: ${params.observacao}`,
+    criadoPorNome: params.autor ?? "sistema",
+  });
+}
+
 export async function updatePriceTableSection(
   id: number,
   data: { sectionTitle?: string; contentJson?: string; notes?: string | null },
@@ -656,6 +674,30 @@ export async function updatePriceTableSection(
       valorNovo: c.depois,
     });
   }
+
+  // Métrica automática: uma linha por chamada, resumindo todos os campos
+  // alterados nesta edição (produto + faixas/percentuais quando aplicável).
+  const partes: string[] = [];
+  let qtd = 0;
+  for (const c of campos) {
+    if (c.campo === "contentJson") {
+      const { resumo, qtdAlteracoes } = resumirDiffTabelaPrecos(c.antes, c.depois);
+      partes.push(resumo);
+      qtd += qtdAlteracoes;
+    } else if (c.campo === "sectionTitle") {
+      partes.push(`título: "${c.antes}" → "${c.depois}"`);
+      qtd += 1;
+    } else if (c.campo === "notes") {
+      partes.push("observação da seção atualizada");
+      qtd += 1;
+    }
+  }
+  await registrarMetricaTabelaPrecos(db, {
+    secao: before?.sectionTitle ?? `seção #${id}`,
+    observacao: partes.join(" | "),
+    qtd: qtd || campos.length,
+    autor,
+  });
 }
 
 export async function listPriceTableHistory(limit = 50): Promise<typeof priceTableHistory.$inferSelect[]> {
@@ -713,6 +755,12 @@ export async function addPriceTableSection(data: {
     valorAnterior: "",
     valorNovo: data.sectionTitle,
   });
+  await registrarMetricaTabelaPrecos(db, {
+    secao: data.sectionTitle,
+    observacao: "seção adicionada à Tabela de Preços",
+    qtd: 1,
+    autor,
+  });
   return result.id;
 }
 
@@ -735,6 +783,12 @@ export async function deletePriceTableSection(id: number, autor?: string): Promi
     campoAlterado: "secao_removida",
     valorAnterior: before.sectionTitle,
     valorNovo: "",
+  });
+  await registrarMetricaTabelaPrecos(db, {
+    secao: before.sectionTitle,
+    observacao: "seção removida da Tabela de Preços",
+    qtd: 1,
+    autor,
   });
 }
 

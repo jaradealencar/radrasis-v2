@@ -65,6 +65,12 @@ interface NavSection {
 
 const navSections: NavSection[] = [
   {
+    label: "Métricas",
+    items: [
+      { label: "Métricas", href: "/metricas", icon: <Activity size={15} />, pageKey: "metricas" },
+    ],
+  },
+  {
     label: "Retrabalhos",
     items: [
       { label: "Painel", href: "/", icon: <LayoutDashboard size={15} />, pageKey: "painel" },

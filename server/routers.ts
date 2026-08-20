@@ -16,6 +16,7 @@ import { metaProdutosRouter } from "./routers/metaProdutos";
 import { performanceComercialRouter } from "./routers/performanceComercial";
 import { insightsComerciaisRouter } from "./routers/insightsComerciais";
 import { analiseGeograficaRouter } from "./routers/analiseGeografica";
+import { metricasRouter } from "./routers/metricas";
 import { crmRouter } from "./routers/crm";
 import { custoLedRouter } from "./routers/custoLed";
 import { adminRouter } from "./routers/admin";
@@ -1390,6 +1391,7 @@ O POP deve:
   performanceComercial: performanceComercialRouter,
   insightsComerciais: insightsComerciaisRouter,
   analiseGeografica: analiseGeograficaRouter,
+  metricas: metricasRouter,
   crm: crmRouter,
   custoLed: custoLedRouter,
   auditoria: auditoriaRouter,

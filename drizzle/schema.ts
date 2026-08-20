@@ -289,6 +289,7 @@ export const PAGE_KEYS = [
   "comercial-tabela-preco", "comercial-planos-acao", "comercial-geografia", "comercial-insights-ia",
   "qualidade-planos", "qualidade-desempenho",
   "logistica-cte", "logistica-insights-ia",
+  "metricas",
 ] as const;
 export type PageKey = typeof PAGE_KEYS[number];
 
@@ -1878,3 +1879,18 @@ export const regulamentos = pgTable("regulamentos", {
 });
 export type RegulamentoItem = typeof regulamentos.$inferSelect;
 export type InsertRegulamentoItem = typeof regulamentos.$inferInsert;
+
+// ─── Métricas (indicadores livres apurados manualmente, com data) ───────────
+export const metricas = pgTable("metricas", {
+  id: serial("id").primaryKey(),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  valor: decimal("valor", { precision: 14, scale: 4 }).notNull(),
+  unidade: varchar("unidade", { length: 16 }).default("%"),
+  dataApuracao: date("dataApuracao").notNull(),
+  observacao: text("observacao"),
+  criadoPorNome: varchar("criadoPorNome", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type Metrica = typeof metricas.$inferSelect;
+export type InsertMetrica = typeof metricas.$inferInsert;
