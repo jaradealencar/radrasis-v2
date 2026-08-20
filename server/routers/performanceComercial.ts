@@ -1302,13 +1302,21 @@ export const performanceComercialRouter = router({
       const meses = Array.from({ length: 12 }, (_, i) => i + 1);
       // Usar API Mubisys para os meses não-congelados (não só o atual) — mesmo
       // padrão de getMes/getMultiMes, para os números baterem entre telas.
-      // Concorrência limitada a 2 (igual getClientesNovosAno) para não disparar
-      // várias chamadas simultâneas à API MubiSys na primeira carga do ano.
-      const CONCURRENCY = 2;
-      const results: any[] = new Array(meses.length).fill(null);
-      for (let i = 0; i < meses.length; i += CONCURRENCY) {
-        const batch = meses.slice(i, i + CONCURRENCY);
-        const batchResults = await Promise.all(batch.map(async (mes) => {
+      //
+      // Todos os meses em paralelo (Promise.all), igual getMultiMes — não em
+      // lotes sequenciais de 2. Testado em 20/08/2026 chamando a API
+      // diretamente: uma requisição isolada pode responder em ~26s, mas a
+      // mesma requisição, em outra tentativa, dá timeout completo aos 45s —
+      // é flakiness real da API (não gargalo de concorrência: 1, 2 ou 8
+      // chamadas simultâneas se comportam igual). Não dá pra garantir que
+      // TODOS os meses respondam via API dentro do orçamento de tempo, então
+      // o desenho certo é: tentar todos em paralelo (não somar timeouts em
+      // série — isso é o que estourava o maxDuration:60s do vercel.json,
+      // matando a função inteira antes de qualquer fallback rodar, e
+      // aparecia no front como "Sem dados para o período" mesmo com os
+      // meses já sincronizados no banco local) e aceitar o fallback local
+      // para quem não respondeu a tempo. Pior caso ~45s, dentro do limite.
+      const results: any[] = await Promise.all(meses.map(async (mes) => {
           // ─── SNAPSHOT CONGELADO: retornar do banco imediatamente, sem tocar a API ───
           const snap = snapMapAno.get(mes);
           if (snap) {
@@ -1335,8 +1343,11 @@ export const performanceComercialRouter = router({
           let raw: any = null;
           if (publicKey && accessToken) {
             try {
-              // 55s — mesma folga de getMes, ver comentário lá.
-              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 55000));
+              // 45s — mesmo teto usado em listarOSMubiSys/TIMEOUT_LISTA_MS.
+              // Cada mês corre em paralelo com os outros 11, então esse
+              // timeout não se acumula: o pior caso do getAno inteiro é
+              // ~45s, com folga dentro do maxDuration:60s do vercel.json.
+              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 45000));
               raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
             } catch {
               raw = null;
@@ -1385,9 +1396,7 @@ export const performanceComercialRouter = router({
           }
           if (!raw) return null;
           return calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
-        }));
-        batch.forEach((mes, j) => { results[mes - 1] = batchResults[j]; });
-      }
+      }));
       return results; // array de 12, null para meses sem dados
     }),
 

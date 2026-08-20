@@ -333,7 +333,7 @@ export default function PerformanceComercial() {
 
   const { data: metas, refetch: refetchMetas } =
     trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
-  const { data: dadosAno, isLoading: loadingAno } =
+  const { data: dadosAno, isLoading: loadingAno, isError: errorAno } =
     trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, STALE_5MIN);
   const { data: clientesNovos, isLoading: loadingClientesNovos } =
     trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
@@ -895,7 +895,11 @@ export default function PerformanceComercial() {
               <div className="h-48">
                 <Empty>
                   <EmptyHeader>
-                    <EmptyTitle>Sem dados para o período</EmptyTitle>
+                    <EmptyTitle>
+                      {errorAno
+                        ? "⚠️ API MubiSys indisponível — não foi possível carregar os dados"
+                        : "Sem dados para o período"}
+                    </EmptyTitle>
                   </EmptyHeader>
                 </Empty>
               </div>
