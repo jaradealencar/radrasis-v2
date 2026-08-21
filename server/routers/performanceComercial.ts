@@ -51,7 +51,7 @@ async function setDbCache(cacheKey: string, mes: number, ano: number, allOs: any
     const db = await getDb();
     if (!db) return;
     const now = new Date();
-    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_PERSISTENTE_MS;
+    const ttlMs = isMesFechado(mes, ano) ? CACHE_TTL_HISTORICO_PERSISTENTE_MS : CACHE_TTL_ATUAL_MS;
     const expiresAt = new Date(now.getTime() + ttlMs);
     // Upsert: atualizar se já existe, inserir se não
     const existing = await db.select({ id: mubisysApiCache.id }).from(mubisysApiCache)
@@ -91,6 +91,19 @@ function normalizeEmpresaKey(s: string): string {
 function isMesAtual(mes: number, ano: number): boolean {
   const now = new Date();
   return mes === now.getMonth() + 1 && ano === now.getFullYear();
+}
+
+/** Mês estritamente anterior ao atual — só esses têm dado definitivo (não muda
+ * mais) e podem levar o TTL de 30 dias do cache persistente. Meses futuros
+ * (ex: consultados via getAno para o ano corrente inteiro) SEMPRE respondem
+ * "0 OS, 0 orçamentos" na API antes de começarem — cachear isso por 30 dias
+ * faria o dashboard continuar mostrando zero por semanas depois que o mês
+ * realmente começasse e vendas reais entrassem. */
+function isMesFechado(mes: number, ano: number): boolean {
+  const now = new Date();
+  const anoAtual = now.getFullYear();
+  const mesAtualNum = now.getMonth() + 1;
+  return ano < anoAtual || (ano === anoAtual && mes < mesAtualNum);
 }
 
 function getCached(key: string): any | null {
@@ -263,6 +276,18 @@ async function getMesFromDb(mes: number, ano: number) {
 }
 
 // ─── Buscar dados da API ERP (mês atual em tempo real) ───────────────────────
+
+// Corrida contra timeout: procedures que rodam no mesmo lote HTTP batched de
+// getMes (httpBatchLink) precisam desistir da API MubiSys antes do
+// maxDuration:60s do vercel.json — senão prendem a requisição batched inteira
+// até a função ser morta pela Vercel, o que aparece como loop infinito de
+// retry no front (mês vigente, sem cache quente para escapar do caminho lento).
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
+  ]);
+}
 
 // Mapa de promessas em andamento para deduplicar chamadas simultâneas
 const pendingApiCalls = new Map<string, Promise<any>>();
@@ -604,10 +629,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
 
   let allOsApi: any[] = [];
   let allOrcApiPrefetched: any[] | null = null; // será preenchido se vier do cache
-  
+
   try {
-    // Usar getMesFromApi que já tem cache e deduplicação
-    const mesData = await getMesFromApi(mes, ano);
+    // Usar getMesFromApi que já tem cache e deduplicação (também popula os_raw/orc_raw
+    // como efeito colateral). Timeout de 45s: este procedure roda no mesmo lote HTTP
+    // batched de getMes, então precisa desistir bem antes do maxDuration:60s.
+    await withTimeout(getMesFromApi(mes, ano), 45000, "timeout_clientes_novos");
     // Reconstruir lista de OS a partir dos dados agregados não é possível
     // Precisamos buscar OS individuais para identificar clientes
     // Usar cache de OS brutas separado (memória + banco persistente)
@@ -616,7 +643,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     const orcCacheKey = `orc_raw_${mes}_${ano}`;
     const cachedOs = getCached(osCacheKey);
     const cachedOrc = getCached(orcCacheKey);
-    
+
     if (cachedOs && cachedOrc) {
       // Cache em memória disponível
       allOsApi = cachedOs;
@@ -630,10 +657,17 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
         setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
       } else {
-        // Buscar da API MubiSys
-        const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
+        // Buscar da API MubiSys (cache acima ficou frio mesmo após getMesFromApi
+        // resolver — caso raro; ainda assim protegido por timeout próprio)
+        const [osResult, orcResult] = await withTimeout(
+          Promise.all([
+            listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
+            listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
+          ]),
+          15000,
+          "timeout_clientes_novos_raw"
+        );
         allOsApi = osResult.itens;
-        const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
         const orcList = orcResult.itens;
         setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
         setCacheWithTTL(orcCacheKey, orcList, mes, ano);
@@ -930,18 +964,21 @@ export const performanceComercialRouter = router({
       // getMultiMes/getAno/getClientesNovosAno, para os números baterem entre telas.
       // A API tem cache próprio (memória + mubisys_api_cache no banco, 6h para meses
       // históricos), então repetir a mesma consulta não implica repetir a chamada HTTP.
-      // Timeout de 55s — abaixo do maxDuration:60s do vercel.json, com folga
-      // mínima pro fallback (getMesFromDb + query de totalPedidos) rodar depois
-      // do race. Medido em 17/08/2026: a busca sequencial de um mês cheio pode
-      // levar 40-60s (a API MubiSys é instável — o mesmo endpoint variou de ~5s
-      // a timeout de 45s+ entre chamadas), então 55s reduz — mas não elimina —
-      // a chance de perder a corrida. Um valor maior nunca dispara: a função é
-      // morta pela Vercel antes, sem fallback para o banco.
+      // Timeout de 42s — mesma margem usada em getClientesNovos/getMultiMes/getAno
+      // (40-45s) neste arquivo, não os 55s que este procedure tinha antes. 55s contra
+      // um maxDuration:60s deixava só ~5s pro fallback (getMesFromDb + query de
+      // totalPedidos) e a serialização da resposta rodarem DEPOIS do race — e este
+      // procedure roda batched (httpBatchLink) junto de getClientesNovos/getAuditoria,
+      // então qualquer contenção empurrava o total pra cima de 60s, a Vercel matava a
+      // função sem resposta nenhuma, e o front (com retry:1) refazia o mesmo caminho
+      // lento do zero — visto como "loop infinito" ao trocar pro mês vigente (cache
+      // garantidamente frio). 42s alinha com o restante do arquivo e devolve a mesma
+      // folga de ~18s que as outras procedures já têm.
       const publicKey = ENV.MUBISYS_PUBLIC_KEY;
       const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       if (publicKey && accessToken) {
         try {
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 55000));
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 42000));
           raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
         } catch {
           raw = null;
@@ -1443,35 +1480,36 @@ export const performanceComercialRouter = router({
       // FONTE ÚNICA DE VERDADE: usar getClientesNovosMes para cada mês
       // Isso garante que Marketing e Performance Comercial usem exatamente os mesmos dados
       // (API MubiSys + snapshots congelados), eliminando divergências com o banco local.
-      // Executa em paralelo com concorrência limitada a 2 para não sobrecarregar a API MubiSys
+      //
+      // Todos os meses em paralelo (Promise.allSettled), igual getAno (ver bc14862) —
+      // não em lotes sequenciais de 2. Lotes de 2 esperavam até ~45-60s por lote (o
+      // timeout interno de getClientesNovosMes/getMesFromApi), e com até 6 lotes (12
+      // meses) o pior caso somava 270-360s, estourando o maxDuration:60s do
+      // vercel.json — a Vercel matava a função ANTES de qualquer fallback rodar. Como
+      // esta procedure roda batched (httpBatchLink) junto de getMes/getAno/
+      // getClientesNovos na carga inicial da tela, isso derrubava a resposta HTTP
+      // inteira e o dashboard inteiro aparecia vazio, não só o gráfico anual de
+      // clientes novos. Buscar em paralelo limita o pior caso a ~45-60s (dominado
+      // pelo mês mais lento, não pela soma), igual ao restante do arquivo.
       const meses = Array.from({ length: mesAtual }, (_, i) => i + 1);
-      const CONCURRENCY = 2;
-      const results: Array<{ mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; clientesNovosUnicos: number }> = [];
-
-      for (let i = 0; i < meses.length; i += CONCURRENCY) {
-        const batch = meses.slice(i, i + CONCURRENCY);
-        const batchResults = await Promise.allSettled(
-          batch.map(async (mes) => {
-            const dados = await getClientesNovosMes(mes, ano);
-            return {
-              mes,
-              ticketMedioNovos: dados.ticketMedioNovos,
-              osNovos: dados.osNovos,
-              faturamentoNovos: dados.faturamentoNovos,
-              clientesNovosUnicos: dados.total,
-            };
-          })
-        );
-        for (let j = 0; j < batchResults.length; j++) {
-          const r = batchResults[j];
-          const mes = batch[j];
-          if (r.status === "fulfilled") {
-            results.push(r.value);
-          } else {
-            results.push({ mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, clientesNovosUnicos: 0 });
-          }
-        }
-      }
+      const settled = await Promise.allSettled(
+        meses.map(async (mes) => {
+          const dados = await getClientesNovosMes(mes, ano);
+          return {
+            mes,
+            ticketMedioNovos: dados.ticketMedioNovos,
+            osNovos: dados.osNovos,
+            faturamentoNovos: dados.faturamentoNovos,
+            clientesNovosUnicos: dados.total,
+          };
+        })
+      );
+      const results = settled.map((r, i) => {
+        const mes = meses[i];
+        return r.status === "fulfilled"
+          ? r.value
+          : { mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, clientesNovosUnicos: 0 };
+      });
 
       // Ordenar por mês para garantir ordem correta
       results.sort((a, b) => a.mes - b.mes);
@@ -1498,14 +1536,25 @@ export const performanceComercialRouter = router({
         const lastDay = new Date(ano, mes, 0).getDate();
         const datainicial = `${ano}-${pad(mes)}-01`;
         const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-        const [osResult, orcResult] = await Promise.all([
-          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
-          listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal }),
-        ]);
-        allOs = osResult.itens;
-        allOrc = orcResult.itens;
-        setCacheWithTTL(osCacheKey, allOs, mes, ano);
-        setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
+        try {
+          // Timeout de 45s: este procedure roda no mesmo lote HTTP batched de
+          // getMes (maxDuration:60s do vercel.json), precisa desistir antes disso.
+          const [osResult, orcResult] = await withTimeout(
+            Promise.all([
+              listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
+              listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal }),
+            ]),
+            45000,
+            "timeout_evolucao_diaria"
+          );
+          allOs = osResult.itens;
+          allOrc = orcResult.itens;
+          setCacheWithTTL(osCacheKey, allOs, mes, ano);
+          setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
+        } catch {
+          // API lenta/indisponível: devolver vazio em vez de travar o lote inteiro
+          return { dias: [], vendedores: [] };
+        }
       }
 
       const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
