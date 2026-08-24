@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 
 type TransportadoraItem = {
-  id: number; nome: string; site?: string | null; endereco?: string | null;
+  id: number; nome: string; site?: string | null; endereco?: string | null; googleMapsUrl?: string | null;
   modais?: string | null; realizaColeta?: string | null; ativa?: string | null;
   nomeContato?: string | null; whatsappContato?: string | null; telefoneContato?: string | null;
   nomeContatoNegocial?: string | null; whatsappContatoNegocial?: string | null;
@@ -193,7 +193,7 @@ function TransportadoraCard({ t, onClick }: { t: TransportadoraItem; onClick: ()
 }
 
 type FormData = {
-  nome: string; site: string; endereco: string; referencia: string;
+  nome: string; site: string; endereco: string; googleMapsUrl: string; referencia: string;
   nomeContato: string; whatsappContato: string; telefoneContato: string;
   formaCotacao: string; horarioLimiteColeta: string; horarioLimiteMercadoria: string;
   distanciaSedMin: string; realizaColeta: boolean; ultAtualizTabela: string;
@@ -208,7 +208,7 @@ type FormData = {
 
 function defaultForm(t?: TransportadoraDetalhe | null): FormData {
   return {
-    nome: t?.nome ?? "", site: t?.site ?? "", endereco: t?.endereco ?? "", referencia: t?.referencia ?? "",
+    nome: t?.nome ?? "", site: t?.site ?? "", endereco: t?.endereco ?? "", googleMapsUrl: t?.googleMapsUrl ?? "", referencia: t?.referencia ?? "",
     nomeContato: t?.nomeContato ?? "", whatsappContato: t?.whatsappContato ?? "", telefoneContato: t?.telefoneContato ?? "",
     formaCotacao: t?.formaCotacao ?? "whatsapp", horarioLimiteColeta: t?.horarioLimiteColeta ?? "",
     horarioLimiteMercadoria: t?.horarioLimiteMercadoria ?? "",
@@ -252,6 +252,7 @@ function TransportadoraForm({ detalhe, onSave, onCancel }: {
         <div className="flex flex-col gap-4">
           <div><Label>Nome *</Label><Input className="mt-1" value={form.nome} onChange={e => set("nome", e.target.value)} placeholder="Nome da transportadora" /></div>
           <div><Label>Endereço</Label><Input className="mt-1" value={form.endereco} onChange={e => set("endereco", e.target.value)} /></div>
+          <div><Label>Link do Google Maps</Label><Input className="mt-1" value={form.googleMapsUrl} onChange={e => set("googleMapsUrl", e.target.value)} placeholder="https://maps.google.com/..." /></div>
           <div><Label>Referência</Label><Input className="mt-1" value={form.referencia} onChange={e => set("referencia", e.target.value)} placeholder="Ex: próximo à rodoviária" /></div>
           <div><Label>Site</Label><Input className="mt-1" value={form.site} onChange={e => set("site", e.target.value)} placeholder="https://..." /></div>
           <div className="border-t pt-4">
@@ -473,6 +474,12 @@ function TransportadoraView({ detalhe, onEdit, onDelete, onBack }: {
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1"><Building2 className="w-3.5 h-3.5" /> Endereço</p>
                 <p className="text-sm text-gray-700">{detalhe.endereco}{detalhe.referencia ? ` — ${detalhe.referencia}` : ""}</p>
+              </div>
+            )}
+            {detalhe.googleMapsUrl && (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1"><MapPin className="w-3.5 h-3.5" /> Google Maps</p>
+                <a href={detalhe.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">Ver no mapa</a>
               </div>
             )}
             {detalhe.site && (
@@ -698,6 +705,7 @@ export default function Transportadoras() {
   function handleSave(form: FormData) {
     const payload = {
       nome: form.nome, site: form.site || undefined, endereco: form.endereco || undefined,
+      googleMapsUrl: form.googleMapsUrl || undefined,
       referencia: form.referencia || undefined, nomeContato: form.nomeContato || undefined,
       whatsappContato: form.whatsappContato || undefined, telefoneContato: form.telefoneContato || undefined,
       nomeContatoNegocial: form.nomeContatoNegocial || undefined, whatsappContatoNegocial: form.whatsappContatoNegocial || undefined,

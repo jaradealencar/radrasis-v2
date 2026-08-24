@@ -1,0 +1,1 @@
+ALTER TABLE "transportadoras" ADD COLUMN "googleMapsUrl" varchar(512);

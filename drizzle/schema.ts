@@ -413,6 +413,7 @@ export const transportadoras = pgTable("transportadoras", {
   cidade: varchar("cidade", { length: 160 }),
   uf: varchar("uf", { length: 2 }),
   cnpj: varchar("cnpj", { length: 24 }),
+  googleMapsUrl: varchar("googleMapsUrl", { length: 512 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
