@@ -11,6 +11,7 @@ import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 // Retrabalhos
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import Metricas from "./pages/Metricas";
 import Retrabalhos from "./pages/retrabalhos/Retrabalhos";
 import InserirRapido from "./pages/retrabalhos/InserirRapido";
 import NovoRetrabalho from "./pages/retrabalhos/NovoRetrabalho";
@@ -33,11 +34,13 @@ import PopRelatorio from "./pages/operacoes/PopRelatorio";
 // Comercial
 import TabelaPrecos from "./pages/comercial/TabelaPrecos";
 import PerformanceComercial from "./pages/comercial/PerformanceComercial";
+import AnaliseGeografica from "./pages/comercial/AnaliseGeografica";
 import MetasComerciais from "./pages/comercial/MetasComerciais";
 import CRM from "./pages/comercial/CRM";
 import PlanosAcaoComercial from "./pages/comercial/PlanosAcaoComercial";
 import DiagnosticoApi from "./pages/comercial/DiagnosticoApi";
 import CrmAuditoria from "./pages/comercial/CrmAuditoria";
+import InsightsIA from "./pages/comercial/InsightsIA";
 // Financeiro
 import Financeiro from "./pages/financeiro/Financeiro";
 import Cargos from "./pages/financeiro/Cargos";
@@ -85,6 +88,7 @@ function Router() {
       <Route path="/reincidencia" component={Reincidencia} />
       <Route path="/relatorio" component={Relatorio} />
       <Route path="/insights" component={Insights} />
+      <Route path="/metricas" component={Metricas} />
       {/* Operações */}
       <Route path="/conhecimento" component={Conhecimento} />
       <Route path="/biblioteca-arquivos" component={BibliotecaArquivos} />
@@ -111,10 +115,12 @@ function Router() {
       {/* Comercial */}
       <Route path="/tabela-precos" component={TabelaPrecos} />
       <Route path="/comercial/performance" component={PerformanceComercial} />
+      <Route path="/comercial/geografia" component={AnaliseGeografica} />
       <Route path="/comercial/metas" component={MetasComerciais} />
       <Route path="/comercial/crm" component={CRM} />
       <Route path="/comercial/planos-acao" component={PlanosAcaoComercial} />
       <Route path="/comercial/diagnostico-api" component={DiagnosticoApi} />
+      <Route path="/comercial/insights-ia" component={InsightsIA} />
       <Route path="/comercial/crm-auditoria">
         <ProtectedRoute pageKey="crm-auditoria">
           <CrmAuditoria />

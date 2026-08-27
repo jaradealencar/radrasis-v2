@@ -71,6 +71,20 @@
       "when": 1787001032705,
       "tag": "0009_concerned_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787025306401,
+      "tag": "0010_loose_sleeper",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787173209921,
+      "tag": "0011_demonic_hannibal_king",
+      "breakpoints": true
     }
   ]
 }

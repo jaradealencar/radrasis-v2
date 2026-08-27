@@ -7,10 +7,19 @@ import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, fa
 import { eq, and, sql } from "drizzle-orm";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
-// TTL: 5 minutos para mês atual, 6 horas para meses históricos (dados não mudam)
+// TTL: 60 minutos para mês atual, 6 horas para meses históricos (dados não mudam).
+// Vive só enquanto a instância serverless estiver quente — não é o cache que
+// resolve reinicialização, ver CACHE_TTL_HISTORICO_PERSISTENTE_MS abaixo.
 const apiCache = new Map<string, { data: any; ts: number }>();
 const CACHE_TTL_ATUAL_MS = 60 * 60 * 1000;      // 60 minutos (evita rebusca frequente na API)
 const CACHE_TTL_HISTORICO_MS = 6 * 60 * 60 * 1000; // 6 horas
+
+// TTL do cache PERSISTENTE (banco, sobrevive a restart) para mês fechado.
+// Mês fechado não muda mais — 30 dias evita rebuscar da API MubiSys (lenta e
+// instável, ~25-45s por mês, às vezes timeout) toda vez que expira. Medido em
+// 20/08/2026: a API chegou a dar timeout em 3 tentativas seguidas de 50s cada
+// pra listar um único mês, então esse cache precisa durar o quanto der.
+const CACHE_TTL_HISTORICO_PERSISTENTE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 
 // ─── Cache persistente no banco de dados ─────────────────────────────────────
 // Sobrevive a reinicializações do servidor. Evita cotações/faturamento zerados
@@ -42,7 +51,7 @@ async function setDbCache(cacheKey: string, mes: number, ano: number, allOs: any
     const db = await getDb();
     if (!db) return;
     const now = new Date();
-    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_MS;
+    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_PERSISTENTE_MS;
     const expiresAt = new Date(now.getTime() + ttlMs);
     // Upsert: atualizar se já existe, inserir se não
     const existing = await db.select({ id: mubisysApiCache.id }).from(mubisysApiCache)
@@ -107,7 +116,7 @@ function deleteCache(key: string): void {
 
 /** Filtra OS normais do banco local: exclui retrabalhos (tipoOs começa com 'Retrabalho'),
  * amostras, cortesias, canceladas e registros sem tipoOs (NULL = importação antiga sem custo). */
-function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): boolean {
+export function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): boolean {
   if (os.tipoOs === null || os.tipoOs === undefined) return false;
   const tipo = (os.tipoOs ?? "").toLowerCase();
   const status = (os.status ?? "").toLowerCase();
@@ -128,13 +137,13 @@ function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): b
 // nunca da API ao vivo — ver buscarTodasComprasValidas/ultimaCompraAntesDe abaixo.
 const MESES_INATIVIDADE_PARA_NOVO = 6;
 
-type CompraMinima = { empresa: string; mes: number; ano: number };
+export type CompraMinima = { empresa: string; mes: number; ano: number };
 
 /** Busca TODAS as OS válidas (histórico completo, qualquer ano) já reduzidas a
  * {empresa, mes, ano} — base para calcular a última compra de cada cliente antes
  * de qualquer mês de referência. Uma única query cobre todos os meses avaliados
  * pelo chamador (o filtro "antes de X" é aplicado depois, em memória). */
-async function buscarTodasComprasValidas(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<CompraMinima[]> {
+export async function buscarTodasComprasValidas(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<CompraMinima[]> {
   const rows = await db.select({
     empresa: historicoOs.empresa,
     mes: historicoOs.mes,
@@ -155,7 +164,7 @@ async function buscarTodasComprasValidas(db: NonNullable<Awaited<ReturnType<type
 /** Para cada cliente, encontra o mês/ano da compra válida mais recente estritamente
  * anterior a (mes, ano). Usa a lista completa pré-carregada por buscarTodasComprasValidas
  * — pode ser chamada repetidamente (uma por mês avaliado) sem custo de banco. */
-function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: number): Map<string, { mes: number; ano: number }> {
+export function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: number): Map<string, { mes: number; ano: number }> {
   const map = new Map<string, { mes: number; ano: number }>();
   for (const c of compras) {
     if (c.ano > ano || (c.ano === ano && c.mes >= mes)) continue; // não é "antes" do mês de referência
@@ -169,7 +178,7 @@ function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: number):
 
 /** Aplica a regra de "cliente novo": sem compra anterior, ou última compra há
  * MESES_INATIVIDADE_PARA_NOVO meses ou mais (contagem de meses de calendário). */
-function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | undefined, mes: number, ano: number): boolean {
+export function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | undefined, mes: number, ano: number): boolean {
   if (!ultima) return true;
   const gapMeses = (ano - ultima.ano) * 12 + (mes - ultima.mes);
   return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
@@ -940,8 +949,26 @@ export const performanceComercialRouter = router({
       }
 
       // Se não conseguiu da API, usar banco local como fallback
+      let viaApi = raw !== null;
       if (!raw) {
         raw = await getMesFromDb(mes, ano);
+      }
+
+      // ─── SANITY CHECK: API "bem-sucedida" mas zerada ───────────────────────
+      // A API MubiSys às vezes responde 200/201 com lista vazia de forma
+      // transitória (falha intermitente do lado deles, não timeout — não cai
+      // no catch acima). Para um mês que não é o atual, zero OS E zero
+      // orçamentos ao mesmo tempo é implausível se já existe sync local.
+      // Nesse caso, preferir o banco local em vez de aceitar o zero da API
+      // como se fosse dado real. Ver conversa 20/08/2026: Julho/2026 mostrou
+      // "TEMPO REAL" com todos os KPIs zerados enquanto o banco local já
+      // tinha 171 OS e 831 orçamentos sincronizados para o mês.
+      if (viaApi && !isMesAtual(mes, ano) && raw.osNormais?.total === 0 && raw.orcamentos?.total === 0) {
+        const local = await getMesFromDb(mes, ano);
+        if (local && (local.osNormais.total > 0 || local.orcamentos.total > 0)) {
+          raw = local;
+          viaApi = false;
+        }
       }
 
       if (!raw) return null;
@@ -956,7 +983,12 @@ export const performanceComercialRouter = router({
           .where(and(sql`UPPER(${faturamento.mes}) = ${mesNome}`, eq(faturamento.ano, ano))).limit(1);
         if (fatRow.length > 0 && fatRow[0].totalPedidos > 0) totalPedidosBanco = fatRow[0].totalPedidos;
       }
-      return { ...metrics, totalPedidosBanco };
+      // _origemDados: 'api' = veio da API MubiSys agora (ou do cache dela);
+      // 'local' = API falhou/deu timeout, caiu pro snapshot local importado
+      // (historico_os) — pode estar desatualizado ou zerado se o mês ainda
+      // não foi importado. Front usa isso pra não mostrar R$ 0 como se fosse
+      // faturamento real quando na verdade é "não conseguimos consultar".
+      return { ...metrics, totalPedidosBanco, _origemDados: viaApi ? 'api' as const : 'local' as const };
     }),
 
   // Múltiplos meses para comparativo e gráfico de evolução
@@ -1287,13 +1319,21 @@ export const performanceComercialRouter = router({
       const meses = Array.from({ length: 12 }, (_, i) => i + 1);
       // Usar API Mubisys para os meses não-congelados (não só o atual) — mesmo
       // padrão de getMes/getMultiMes, para os números baterem entre telas.
-      // Concorrência limitada a 2 (igual getClientesNovosAno) para não disparar
-      // várias chamadas simultâneas à API MubiSys na primeira carga do ano.
-      const CONCURRENCY = 2;
-      const results: any[] = new Array(meses.length).fill(null);
-      for (let i = 0; i < meses.length; i += CONCURRENCY) {
-        const batch = meses.slice(i, i + CONCURRENCY);
-        const batchResults = await Promise.all(batch.map(async (mes) => {
+      //
+      // Todos os meses em paralelo (Promise.all), igual getMultiMes — não em
+      // lotes sequenciais de 2. Testado em 20/08/2026 chamando a API
+      // diretamente: uma requisição isolada pode responder em ~26s, mas a
+      // mesma requisição, em outra tentativa, dá timeout completo aos 45s —
+      // é flakiness real da API (não gargalo de concorrência: 1, 2 ou 8
+      // chamadas simultâneas se comportam igual). Não dá pra garantir que
+      // TODOS os meses respondam via API dentro do orçamento de tempo, então
+      // o desenho certo é: tentar todos em paralelo (não somar timeouts em
+      // série — isso é o que estourava o maxDuration:60s do vercel.json,
+      // matando a função inteira antes de qualquer fallback rodar, e
+      // aparecia no front como "Sem dados para o período" mesmo com os
+      // meses já sincronizados no banco local) e aceitar o fallback local
+      // para quem não respondeu a tempo. Pior caso ~45s, dentro do limite.
+      const results: any[] = await Promise.all(meses.map(async (mes) => {
           // ─── SNAPSHOT CONGELADO: retornar do banco imediatamente, sem tocar a API ───
           const snap = snapMapAno.get(mes);
           if (snap) {
@@ -1320,12 +1360,23 @@ export const performanceComercialRouter = router({
           let raw: any = null;
           if (publicKey && accessToken) {
             try {
-              // 55s — mesma folga de getMes, ver comentário lá.
-              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 55000));
+              // 45s — mesmo teto usado em listarOSMubiSys/TIMEOUT_LISTA_MS.
+              // Cada mês corre em paralelo com os outros 11, então esse
+              // timeout não se acumula: o pior caso do getAno inteiro é
+              // ~45s, com folga dentro do maxDuration:60s do vercel.json.
+              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 45000));
               raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
             } catch {
               raw = null;
             }
+          }
+          // A API MubiSys às vezes responde "com sucesso" mas vazia de forma
+          // transitória (não é timeout, não cai no catch acima). Pra um mês
+          // que não é o atual, zero OS e zero orçamentos ao mesmo tempo é
+          // implausível se já existe sync local — nesse caso, tratar como se
+          // a API não tivesse respondido e cair no fallback local abaixo.
+          if (raw && !isMesAtual(mes, ano) && raw.osNormais?.total === 0 && raw.orcamentos?.total === 0) {
+            raw = null;
           }
           if (!raw) {
             // Usar dados já carregados em memória (sem nova query ao banco)
@@ -1370,9 +1421,7 @@ export const performanceComercialRouter = router({
           }
           if (!raw) return null;
           return calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
-        }));
-        batch.forEach((mes, j) => { results[mes - 1] = batchResults[j]; });
-      }
+      }));
       return results; // array de 12, null para meses sem dados
     }),
 
@@ -1639,6 +1688,23 @@ export const performanceComercialRouter = router({
         tempoMedianaPropostaFechamento: null as number | null,
         tempoP25: null as number | null,
         tempoP75: null as number | null,
+        pctCicloAte3Dias: 0,
+        pctCiclo4a7Dias: 0,
+        pctCicloMais7Dias: 0,
+        frequenciaCompraDias: null as number | null,
+        mrrAproximado: 0,
+        arrAproximado: 0,
+        clientesRecorrentesMRR: 0,
+        pctFaturamentoRecorrente: 0,
+        clientesNovosPuro: 0,
+        clientesNovosPuroComRecompra: 0,
+        taxaRecompraNovosPuroPct: 0,
+        clientesReativados: 0,
+        clientesReativadosComRecompra: 0,
+        taxaRecompraReativadosPct: 0,
+        pctReceitaTop20: 0,
+        ticketMedioPorCliente: 0,
+        topClientesPorFaturamento: [] as Array<{ cliente: string; faturamento: number; qtdOs: number; ticketMedio: number }>,
         porVendedor: [] as Array<{
           vendedor: string;
           clientesUnicos: number;
@@ -1683,15 +1749,18 @@ export const performanceComercialRouter = router({
       let allOsAno: any[] = [];
       let allOrcAno: any[] = [];
 
+      // Buscar sequencialmente, não em paralelo: medido em 18/08/2026 que disparar
+      // ordem-servico e orcamento juntos via Promise.all faz as duas chamadas
+      // competirem e estourarem TIMEOUT_LISTA_MS (45s) — mesmo uma janela de 1 mês,
+      // que sozinha completa em ~31s. Sequencial é mais lento no caso ideal, mas
+      // muito mais previsível (cada chamada tem o timeout inteiro só pra ela).
       try {
-        const [osResult, orcResult] = await Promise.all([
-          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
-          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
-        ]);
+        const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
         allOsAno = osResult.itens;
+        const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
         allOrcAno = orcResult.itens;
-      } catch {
-        return EMPTY;
+      } catch (e: any) {
+        return { ...EMPTY, _erro: e?.message || "Não foi possível buscar os dados do ERP. Tente um período menor." };
       }
 
       const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
@@ -1749,6 +1818,64 @@ export const performanceComercialRouter = router({
 
       const taxaRecompra = clientesUnicosSet.size > 0
         ? parseFloat(((clientesComRecompra / clientesUnicosSet.size) * 100).toFixed(1))
+        : 0;
+
+      // ── Novo (puro) vs Reativado — mesma regra canônica do getMes ────────────
+      // (ver comentário em isClienteNovoPorRecencia, linha ~121): "novo" = nunca
+      // comprou; "reativado" = comprou antes, mas ficou 6+ meses sem comprar.
+      // Aqui aplicamos por cliente, no mês da SUA primeira OS dentro do período
+      // selecionado (não no mês do período inteiro, que pode abranger vários meses).
+      const primeiraCompraNoPeriodo: Record<string, { mes: number; ano: number }> = {};
+      for (const os of osNormais) {
+        const cliente = normNome(os.cliente || os.empresa || "");
+        if (!cliente) continue;
+        const dataStr = os.data_aprovacao || os.data_cadastro;
+        if (!dataStr) continue;
+        const dt = new Date(dataStr);
+        if (isNaN(dt.getTime())) continue;
+        const mesOs = dt.getMonth() + 1;
+        const anoOs = dt.getFullYear();
+        const atual = primeiraCompraNoPeriodo[cliente];
+        if (!atual || anoOs < atual.ano || (anoOs === atual.ano && mesOs < atual.mes)) {
+          primeiraCompraNoPeriodo[cliente] = { mes: mesOs, ano: anoOs };
+        }
+      }
+      const gruposPorMesAno = new Map<string, string[]>();
+      for (const [cliente, ref] of Object.entries(primeiraCompraNoPeriodo)) {
+        const key = `${ref.mes}-${ref.ano}`;
+        if (!gruposPorMesAno.has(key)) gruposPorMesAno.set(key, []);
+        gruposPorMesAno.get(key)!.push(cliente);
+      }
+      const comprasHistoricoCompleto = dbForHistory
+        ? (await buscarTodasComprasValidas(dbForHistory)).map(c => ({ ...c, empresa: normNome(c.empresa) }))
+        : [];
+      const clientesNovosPuroSet = new Set<string>();
+      const clientesReativadosSet = new Set<string>();
+      for (const [key, clientesGrupo] of gruposPorMesAno) {
+        const [mesStr, anoStr] = key.split("-");
+        const mesRef = Number(mesStr);
+        const anoRef = Number(anoStr);
+        const ultimaMap = ultimaCompraAntesDe(comprasHistoricoCompleto, mesRef, anoRef);
+        for (const cliente of clientesGrupo) {
+          const ultima = ultimaMap.get(cliente);
+          if (!isClienteNovoPorRecencia(ultima, mesRef, anoRef)) continue; // já era cliente ativo
+          if (!ultima) clientesNovosPuroSet.add(cliente);
+          else clientesReativadosSet.add(cliente);
+        }
+      }
+      let clientesNovosPuroComRecompra = 0;
+      for (const cliente of clientesNovosPuroSet) {
+        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesNovosPuroComRecompra++;
+      }
+      let clientesReativadosComRecompra = 0;
+      for (const cliente of clientesReativadosSet) {
+        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesReativadosComRecompra++;
+      }
+      const taxaRecompraNovosPuroPct = clientesNovosPuroSet.size > 0
+        ? parseFloat((clientesNovosPuroComRecompra / clientesNovosPuroSet.size * 100).toFixed(1))
+        : 0;
+      const taxaRecompraReativadosPct = clientesReativadosSet.size > 0
+        ? parseFloat((clientesReativadosComRecompra / clientesReativadosSet.size * 100).toFixed(1))
         : 0;
 
       let clientesNovosQueRecompraram = 0;
@@ -1884,6 +2011,105 @@ export const performanceComercialRouter = router({
         quantidade: tempos.filter(t => t >= f.min && t <= f.max).length,
       }));
 
+      // ── Ciclo de vendas em 3 faixas (% do total de OS com tempo calculado) ───
+      const pctCicloAte3Dias = tempos.length > 0
+        ? parseFloat((tempos.filter(t => t <= 3).length / tempos.length * 100).toFixed(1))
+        : 0;
+      const pctCiclo4a7Dias = tempos.length > 0
+        ? parseFloat((tempos.filter(t => t >= 4 && t <= 7).length / tempos.length * 100).toFixed(1))
+        : 0;
+      const pctCicloMais7Dias = tempos.length > 0
+        ? parseFloat((tempos.filter(t => t > 7).length / tempos.length * 100).toFixed(1))
+        : 0;
+
+      // ── Frequência de compra: intervalo médio (dias) entre pedidos do mesmo cliente ──
+      // Calculado por cliente (média dos intervalos entre compras consecutivas) e depois
+      // pela média entre clientes, para não deixar clientes muito ativos dominarem o número.
+      const datasPorCliente: Record<string, Date[]> = {};
+      for (const os of osNormais) {
+        const cliente = normNome(os.cliente || os.empresa || "");
+        if (!cliente) continue;
+        const dataStr = os.data_aprovacao || os.data_cadastro;
+        if (!dataStr) continue;
+        const dt = new Date(dataStr);
+        if (isNaN(dt.getTime())) continue;
+        if (!datasPorCliente[cliente]) datasPorCliente[cliente] = [];
+        datasPorCliente[cliente].push(dt);
+      }
+      const intervalosMediosPorCliente: number[] = [];
+      for (const datas of Object.values(datasPorCliente)) {
+        if (datas.length < 2) continue;
+        const sorted = [...datas].sort((a, b) => a.getTime() - b.getTime());
+        const diffs: number[] = [];
+        for (let i = 1; i < sorted.length; i++) {
+          diffs.push((sorted[i].getTime() - sorted[i - 1].getTime()) / (1000 * 60 * 60 * 24));
+        }
+        intervalosMediosPorCliente.push(diffs.reduce((a, b) => a + b, 0) / diffs.length);
+      }
+      const frequenciaCompraDias = intervalosMediosPorCliente.length > 0
+        ? parseFloat((intervalosMediosPorCliente.reduce((a, b) => a + b, 0) / intervalosMediosPorCliente.length).toFixed(1))
+        : null;
+
+      // ── MRR/ARR aproximado ────────────────────────────────────────────────────
+      // Não existe conceito de "contrato ativo" nem receita recorrente no ERP (Mubisys
+      // é orçamento/OS avulsos, sem assinatura). Aproximação: cliente "recorrente" é o
+      // que comprou em pelo menos metade dos meses do período (mínimo 2 meses); o
+      // faturamento desses clientes, dividido pelos meses do período, vira o "MRR
+      // aproximado" — e ARR = MRR × 12. É uma estimativa de cadência, não um contrato real.
+      const totalMesesPeriodo = (anoFim - anoIni) * 12 + (mesFim - mesIni) + 1;
+      const thresholdRecorrenteMRR = Math.max(2, Math.ceil(totalMesesPeriodo * 0.5));
+      const clientesRecorrentesMRRSet = new Set<string>();
+      for (const [cliente, meses] of Object.entries(comprasPorCliente)) {
+        if (meses.size >= thresholdRecorrenteMRR) clientesRecorrentesMRRSet.add(cliente);
+      }
+      const faturamentoPorClienteIC: Record<string, number> = {};
+      const nomeOriginalPorClienteIC: Record<string, string> = {};
+      let faturamentoTotalPeriodoIC = 0;
+      for (const os of osNormais) {
+        const cliente = normNome(os.cliente || os.empresa || "");
+        if (!cliente) continue;
+        const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
+        faturamentoPorClienteIC[cliente] = (faturamentoPorClienteIC[cliente] ?? 0) + valor;
+        faturamentoTotalPeriodoIC += valor;
+        if (!nomeOriginalPorClienteIC[cliente]) nomeOriginalPorClienteIC[cliente] = String(os.cliente || os.empresa || "");
+      }
+      let faturamentoRecorrenteIC = 0;
+      for (const cliente of clientesRecorrentesMRRSet) {
+        faturamentoRecorrenteIC += faturamentoPorClienteIC[cliente] ?? 0;
+      }
+      const mrrAproximado = totalMesesPeriodo > 0
+        ? parseFloat((faturamentoRecorrenteIC / totalMesesPeriodo).toFixed(2))
+        : 0;
+      const arrAproximado = parseFloat((mrrAproximado * 12).toFixed(2));
+      const pctFaturamentoRecorrente = faturamentoTotalPeriodoIC > 0
+        ? parseFloat((faturamentoRecorrenteIC / faturamentoTotalPeriodoIC * 100).toFixed(1))
+        : 0;
+
+      // ── Concentração de receita (curva de Pareto) e top clientes ─────────────
+      // Quanto do faturamento do período vem dos 20% de clientes que mais compraram —
+      // mede dependência de poucos clientes (risco de concentração de carteira).
+      const clientesOrdenadosPorFaturamento = Object.entries(faturamentoPorClienteIC)
+        .sort((a, b) => b[1] - a[1]);
+      const top20PctCount = Math.max(1, Math.ceil(clientesOrdenadosPorFaturamento.length * 0.2));
+      const faturamentoTop20Pct = clientesOrdenadosPorFaturamento
+        .slice(0, top20PctCount)
+        .reduce((acc, [, v]) => acc + v, 0);
+      const pctReceitaTop20 = faturamentoTotalPeriodoIC > 0
+        ? parseFloat((faturamentoTop20Pct / faturamentoTotalPeriodoIC * 100).toFixed(1))
+        : 0;
+      const ticketMedioPorCliente = clientesUnicosSet.size > 0
+        ? parseFloat((faturamentoTotalPeriodoIC / clientesUnicosSet.size).toFixed(2))
+        : 0;
+      const topClientesPorFaturamento = clientesOrdenadosPorFaturamento.slice(0, 10).map(([clienteKey, faturamento]) => {
+        const qtdOs = osPorCliente[clienteKey] ?? 0;
+        return {
+          cliente: nomeOriginalPorClienteIC[clienteKey] ?? clienteKey,
+          faturamento: parseFloat(faturamento.toFixed(2)),
+          qtdOs,
+          ticketMedio: qtdOs > 0 ? parseFloat((faturamento / qtdOs).toFixed(2)) : 0,
+        };
+      });
+
       const todosVendedoresIC = new Set([
         ...Object.keys(clientesPorVendedor),
         ...Object.keys(clientesNovosSetPorVendedor),
@@ -1942,6 +2168,23 @@ export const performanceComercialRouter = router({
         tempoMedianaPropostaFechamento: stats.mediana,
         tempoP25: stats.p25,
         tempoP75: stats.p75,
+        pctCicloAte3Dias,
+        pctCiclo4a7Dias,
+        pctCicloMais7Dias,
+        frequenciaCompraDias,
+        mrrAproximado,
+        arrAproximado,
+        clientesRecorrentesMRR: clientesRecorrentesMRRSet.size,
+        pctFaturamentoRecorrente,
+        clientesNovosPuro: clientesNovosPuroSet.size,
+        clientesNovosPuroComRecompra,
+        taxaRecompraNovosPuroPct,
+        clientesReativados: clientesReativadosSet.size,
+        clientesReativadosComRecompra,
+        taxaRecompraReativadosPct,
+        pctReceitaTop20,
+        ticketMedioPorCliente,
+        topClientesPorFaturamento,
         porVendedor,
         distribuicaoTempo,
       };

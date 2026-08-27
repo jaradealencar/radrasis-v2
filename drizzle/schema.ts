@@ -286,9 +286,10 @@ export const PAGE_KEYS = [
   "financeiro",
   "admin", "admin-usuarios", "admin-permissoes",
   "comercial-performance", "comercial-metas", "comercial-crm", "comercial-crm-config",
-  "comercial-tabela-preco", "comercial-planos-acao",
+  "comercial-tabela-preco", "comercial-planos-acao", "comercial-geografia", "comercial-insights-ia",
   "qualidade-planos", "qualidade-desempenho",
   "logistica-cte", "logistica-insights-ia",
+  "metricas",
 ] as const;
 export type PageKey = typeof PAGE_KEYS[number];
 
@@ -1240,11 +1241,17 @@ export const historicoOs = pgTable("historico_os", {
   resultadoPct: decimal("resultadoPct", { precision: 7, scale: 2 }),
   contribuicaoReais: decimal("contribuicaoReais", { precision: 14, scale: 2 }),
   contribuicaoPct: decimal("contribuicaoPct", { precision: 7, scale: 2 }),
+  // Cidade/Estado do cliente, resolvidos por cruzamento com o cadastro de
+  // clientes na importação (o relatório de vendas do ERP não traz endereço)
+  // — usados pela Análise Geográfica em comercial/geografia.
+  cidade: varchar("cidade", { length: 128 }),
+  estado: varchar("estado", { length: 2 }),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({
   mesAnoIdx: index("historico_os_mes_ano_idx").on(t.mes, t.ano),
+  estadoIdx: index("historico_os_estado_idx").on(t.estado),
 }));
 export type HistoricoOs = typeof historicoOs.$inferSelect;
 export type InsertHistoricoOs = typeof historicoOs.$inferInsert;
@@ -1872,3 +1879,18 @@ export const regulamentos = pgTable("regulamentos", {
 });
 export type RegulamentoItem = typeof regulamentos.$inferSelect;
 export type InsertRegulamentoItem = typeof regulamentos.$inferInsert;
+
+// ─── Métricas (indicadores livres apurados manualmente, com data) ───────────
+export const metricas = pgTable("metricas", {
+  id: serial("id").primaryKey(),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  valor: decimal("valor", { precision: 14, scale: 4 }).notNull(),
+  unidade: varchar("unidade", { length: 16 }).default("%"),
+  dataApuracao: date("dataApuracao").notNull(),
+  observacao: text("observacao"),
+  criadoPorNome: varchar("criadoPorNome", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type Metrica = typeof metricas.$inferSelect;
+export type InsertMetrica = typeof metricas.$inferInsert;

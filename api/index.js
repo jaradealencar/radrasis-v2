@@ -167,6 +167,7 @@ __export(schema_exports, {
   metasComerciais: () => metasComerciais,
   metasOperacionais: () => metasOperacionais,
   metasRetrabalho: () => metasRetrabalho,
+  metricas: () => metricas,
   modalidadeFreteEnum: () => modalidadeFreteEnum,
   mubisysApiCache: () => mubisysApiCache,
   observacoesFinanceirasMensais: () => observacoesFinanceirasMensais,
@@ -219,6 +220,7 @@ import {
   boolean,
   date,
   decimal,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -228,7 +230,7 @@ import {
   uniqueIndex,
   varchar
 } from "drizzle-orm/pg-core";
-var tipoRegistroEnum, retrabalhoTipoEnum, tipoResponsavelEnum, retrabalhoClasseEnum, simNaoEnum, routineFrequencyEnum, routineStatusEnum, regulationTypeEnum, popAcessoTipoEnum, formaCotacaoEnum, cotacaoStatusEnum, tipoPrazoEnum, modalidadeFreteEnum, auditoriaAcaoEnum, kanbanStatusEnum, acaoCorretivaStatusEnum, planoAcaoStatusEnum, ishikawaCategoriaEnum, prioridadeEnum, acao5w2hStatusEnum, alertaTipoEnum, alertaSeveridadeEnum, alertaStatusEnum, abcTipoEnum, crmCanalEnum, clienteOverrideStatusEnum, statusValidacaoEnum, turnoEnum, analiseCurriculoStatusEnum, syncStatusEnum, clienteCadastroStatusEnum, crmPropostaStatusEnum, cnqTipoEnum, abcClassificacaoEnum, planoAcaoComercialStatusEnum, prioridadeComCriticaEnum, errorLibrary, retrabalhos, faturamento, knowledgeBase, suppliers, routines, regulations, pops, popAcessos, knowledgeComments, priceTableSections, priceTableMeta, priceTableHistory, APP_ROLES, appRoleEnum, PAGE_KEYS, user, session, account, verification, rolePermissions, transportadoras, transportadoraAvaliacoes, transportadoraFiliais, transportadoraCidades, cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, cteImportacoes, performanceMensal, auditoriaRetrabalhos, cargosFuncoes, empacotamentoModelos, empacotamentoTabelaPrecos, empacotamentoModelosCaixa, empacotamentoChecklistItens, empacotamentoPedidos, empacotamentoPedidoUsuarios, empacotamentoPedidoFotos, empacotamentoPedidoChecklist, empacotamentoInsumos, empacotamentoConsumoCaixa, empacotamentoCustoFuncionario, empacotamentoInsumosLetreiro, empacotamentoCronometroPausas, empacotamentoConfigProdutividade, empacotamentoChecklistLetreitoItens, empacotamentoPedidoChecklistLetreiro, empacotamentoSessoes, empacotamentoSessoesPausas, knowledgeSuggestions, acoesCorretivas, planosAcao, ishikawaCausas, acoes5w2h, metasRetrabalho, alertasSistema, bibliotecaArquivos, abcCache, metasOperacionais, financeiroMensal, observacoesFinanceirasMensais, desempenhoColaboradorMensal, metaProdutos, metasComerciais, historicoOs, historicoOrcamentos, crmMetas, crmContatos, clienteOverrides, custoMarketing, custosFixos, dividasParcelamentos, dreMensal, crmScripts, inteligenciaClientesCache, ledTipos, custoLedLancamentos, crmFaixaEtiquetas, performanceAuditada, clienteNovosContato, mubisysApiCache, crmAtividadeLog, financeirosMensais, cargos, responsabilidadesCargo, kpisCargo, analiseCurriculos, syncLogs, erpOsCache, clientes, crmPropostas, performanceComercial, custoLed, cotacoesItens, cnqRegistros, errosPadrao, ishikawaPlanos, performanceAbc, planosAcaoComercial, planosAcaoQualidade, regulamentos;
+var tipoRegistroEnum, retrabalhoTipoEnum, tipoResponsavelEnum, retrabalhoClasseEnum, simNaoEnum, routineFrequencyEnum, routineStatusEnum, regulationTypeEnum, popAcessoTipoEnum, formaCotacaoEnum, cotacaoStatusEnum, tipoPrazoEnum, modalidadeFreteEnum, auditoriaAcaoEnum, kanbanStatusEnum, acaoCorretivaStatusEnum, planoAcaoStatusEnum, ishikawaCategoriaEnum, prioridadeEnum, acao5w2hStatusEnum, alertaTipoEnum, alertaSeveridadeEnum, alertaStatusEnum, abcTipoEnum, crmCanalEnum, clienteOverrideStatusEnum, statusValidacaoEnum, turnoEnum, analiseCurriculoStatusEnum, syncStatusEnum, clienteCadastroStatusEnum, crmPropostaStatusEnum, cnqTipoEnum, abcClassificacaoEnum, planoAcaoComercialStatusEnum, prioridadeComCriticaEnum, errorLibrary, retrabalhos, faturamento, knowledgeBase, suppliers, routines, regulations, pops, popAcessos, knowledgeComments, priceTableSections, priceTableMeta, priceTableHistory, APP_ROLES, appRoleEnum, PAGE_KEYS, user, session, account, verification, rolePermissions, transportadoras, transportadoraAvaliacoes, transportadoraFiliais, transportadoraCidades, cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, cteImportacoes, performanceMensal, auditoriaRetrabalhos, cargosFuncoes, empacotamentoModelos, empacotamentoTabelaPrecos, empacotamentoModelosCaixa, empacotamentoChecklistItens, empacotamentoPedidos, empacotamentoPedidoUsuarios, empacotamentoPedidoFotos, empacotamentoPedidoChecklist, empacotamentoInsumos, empacotamentoConsumoCaixa, empacotamentoCustoFuncionario, empacotamentoInsumosLetreiro, empacotamentoCronometroPausas, empacotamentoConfigProdutividade, empacotamentoChecklistLetreitoItens, empacotamentoPedidoChecklistLetreiro, empacotamentoSessoes, empacotamentoSessoesPausas, knowledgeSuggestions, acoesCorretivas, planosAcao, ishikawaCausas, acoes5w2h, metasRetrabalho, alertasSistema, bibliotecaArquivos, abcCache, metasOperacionais, financeiroMensal, observacoesFinanceirasMensais, desempenhoColaboradorMensal, metaProdutos, metasComerciais, historicoOs, historicoOrcamentos, crmMetas, crmContatos, clienteOverrides, custoMarketing, custosFixos, dividasParcelamentos, dreMensal, crmScripts, inteligenciaClientesCache, ledTipos, custoLedLancamentos, crmFaixaEtiquetas, performanceAuditada, clienteNovosContato, mubisysApiCache, crmAtividadeLog, financeirosMensais, cargos, responsabilidadesCargo, kpisCargo, analiseCurriculos, syncLogs, erpOsCache, clientes, crmPropostas, performanceComercial, custoLed, cotacoesItens, cnqRegistros, errosPadrao, ishikawaPlanos, performanceAbc, planosAcaoComercial, planosAcaoQualidade, regulamentos, metricas;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -479,10 +481,13 @@ var init_schema = __esm({
       "comercial-crm-config",
       "comercial-tabela-preco",
       "comercial-planos-acao",
+      "comercial-geografia",
+      "comercial-insights-ia",
       "qualidade-planos",
       "qualidade-desempenho",
       "logistica-cte",
-      "logistica-insights-ia"
+      "logistica-insights-ia",
+      "metricas"
     ];
     user = pgTable("user", {
       id: text("id").primaryKey(),
@@ -1273,10 +1278,18 @@ var init_schema = __esm({
       resultadoPct: decimal("resultadoPct", { precision: 7, scale: 2 }),
       contribuicaoReais: decimal("contribuicaoReais", { precision: 14, scale: 2 }),
       contribuicaoPct: decimal("contribuicaoPct", { precision: 7, scale: 2 }),
+      // Cidade/Estado do cliente, resolvidos por cruzamento com o cadastro de
+      // clientes na importação (o relatório de vendas do ERP não traz endereço)
+      // — usados pela Análise Geográfica em comercial/geografia.
+      cidade: varchar("cidade", { length: 128 }),
+      estado: varchar("estado", { length: 2 }),
       mes: integer("mes").notNull(),
       ano: integer("ano").notNull(),
       createdAt: timestamp("createdAt").defaultNow().notNull()
-    });
+    }, (t2) => ({
+      mesAnoIdx: index("historico_os_mes_ano_idx").on(t2.mes, t2.ano),
+      estadoIdx: index("historico_os_estado_idx").on(t2.estado)
+    }));
     historicoOrcamentos = pgTable("historico_orcamentos", {
       id: serial("id").primaryKey(),
       orcNumero: varchar("orcNumero", { length: 32 }),
@@ -1293,7 +1306,9 @@ var init_schema = __esm({
       mes: integer("mes").notNull(),
       ano: integer("ano").notNull(),
       createdAt: timestamp("createdAt").defaultNow().notNull()
-    });
+    }, (t2) => ({
+      mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t2.mes, t2.ano)
+    }));
     crmMetas = pgTable("crm_metas", {
       id: serial("id").primaryKey(),
       vendedor: varchar("vendedor", { length: 128 }).notNull(),
@@ -1484,7 +1499,9 @@ var init_schema = __esm({
       // mediumtext → text
       createdAt: timestamp("createdAt").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
-    });
+    }, (t2) => ({
+      mesAnoIdx: index("performance_auditada_mes_ano_idx").on(t2.mes, t2.ano)
+    }));
     clienteNovosContato = pgTable("cliente_novos_contato", {
       id: serial("id").primaryKey(),
       empresa: varchar("empresa", { length: 256 }).notNull(),
@@ -1771,6 +1788,17 @@ var init_schema = __esm({
       conteudo: text("conteudo"),
       versao: varchar("versao", { length: 16 }).default("1.0"),
       ativo: boolean("ativo").notNull().default(true),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    metricas = pgTable("metricas", {
+      id: serial("id").primaryKey(),
+      nome: varchar("nome", { length: 256 }).notNull(),
+      valor: decimal("valor", { precision: 14, scale: 4 }).notNull(),
+      unidade: varchar("unidade", { length: 16 }).default("%"),
+      dataApuracao: date("dataApuracao").notNull(),
+      observacao: text("observacao"),
+      criadoPorNome: varchar("criadoPorNome", { length: 128 }),
       createdAt: timestamp("createdAt").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
     });
@@ -2797,6 +2825,52 @@ var init_llm = __esm({
   }
 });
 
+// server/integrations/priceTableDiff.ts
+function resumirDiffTabelaPrecos(anteriorRaw, novoRaw) {
+  let antes;
+  let novo;
+  try {
+    antes = JSON.parse(anteriorRaw || "{}");
+    novo = JSON.parse(novoRaw || "{}");
+  } catch {
+    return { resumo: "conte\xFAdo alterado", qtdAlteracoes: 1 };
+  }
+  const linhasAntes = Array.isArray(antes.rows) ? antes.rows : [];
+  const linhasNovo = Array.isArray(novo.rows) ? novo.rows : [];
+  const colunas = Array.isArray(novo.columns) ? novo.columns : [];
+  const offsetColuna = novo.type === "margin_table_multi" ? 1 : 0;
+  const diffs = [];
+  const max = Math.max(linhasAntes.length, linhasNovo.length);
+  for (let i = 0; i < max; i++) {
+    const a = linhasAntes[i];
+    const n = linhasNovo[i];
+    if (!a || !n) continue;
+    const label = n.label ?? a.label ?? `linha ${i + 1}`;
+    const valoresAntes = Array.isArray(a.values) ? a.values : [a.value];
+    const valoresNovo = Array.isArray(n.values) ? n.values : [n.value];
+    const maxCol = Math.max(valoresAntes.length, valoresNovo.length);
+    for (let j = 0; j < maxCol; j++) {
+      const va = valoresAntes[j];
+      const vn = valoresNovo[j];
+      if (va === vn || vn === void 0) continue;
+      const coluna = colunas[j + offsetColuna];
+      const contexto = [label, coluna].filter(Boolean).join(" / ");
+      diffs.push(`${contexto || `campo ${j + 1}`}: ${va ?? "\u2014"} \u2192 ${vn}`);
+    }
+  }
+  if (diffs.length === 0) {
+    return { resumo: "estrutura da tabela alterada (sem mudan\xE7a de valor detectada)", qtdAlteracoes: 1 };
+  }
+  const LIMITE = 6;
+  const resumo = diffs.length > LIMITE ? `${diffs.slice(0, LIMITE).join("; ")}; +${diffs.length - LIMITE} outra(s) faixa(s)` : diffs.join("; ");
+  return { resumo, qtdAlteracoes: diffs.length };
+}
+var init_priceTableDiff = __esm({
+  "server/integrations/priceTableDiff.ts"() {
+    "use strict";
+  }
+});
+
 // server/db/db.ts
 var db_exports = {};
 __export(db_exports, {
@@ -3388,6 +3462,16 @@ async function listPriceTableSections(page) {
   }
   return db5.select().from(priceTableSections).orderBy(priceTableSections.page, priceTableSections.sectionOrder).limit(200);
 }
+async function registrarMetricaTabelaPrecos(db5, params) {
+  await db5.insert(metricas).values({
+    nome: "Altera\xE7\xE3o na Tabela de Pre\xE7os",
+    valor: String(params.qtd),
+    unidade: "un",
+    dataApuracao: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+    observacao: `${params.secao}: ${params.observacao}`,
+    criadoPorNome: params.autor ?? "sistema"
+  });
+}
 async function updatePriceTableSection(id, data, autor) {
   const db5 = await getDb3();
   if (!db5) return;
@@ -3419,6 +3503,27 @@ async function updatePriceTableSection(id, data, autor) {
       valorNovo: c.depois
     });
   }
+  const partes = [];
+  let qtd = 0;
+  for (const c of campos) {
+    if (c.campo === "contentJson") {
+      const { resumo, qtdAlteracoes } = resumirDiffTabelaPrecos(c.antes, c.depois);
+      partes.push(resumo);
+      qtd += qtdAlteracoes;
+    } else if (c.campo === "sectionTitle") {
+      partes.push(`t\xEDtulo: "${c.antes}" \u2192 "${c.depois}"`);
+      qtd += 1;
+    } else if (c.campo === "notes") {
+      partes.push("observa\xE7\xE3o da se\xE7\xE3o atualizada");
+      qtd += 1;
+    }
+  }
+  await registrarMetricaTabelaPrecos(db5, {
+    secao: before?.sectionTitle ?? `se\xE7\xE3o #${id}`,
+    observacao: partes.join(" | "),
+    qtd: qtd || campos.length,
+    autor
+  });
 }
 async function listPriceTableHistory(limit = 50) {
   const db5 = await getDb3();
@@ -3462,6 +3567,12 @@ async function addPriceTableSection(data, autor) {
     valorAnterior: "",
     valorNovo: data.sectionTitle
   });
+  await registrarMetricaTabelaPrecos(db5, {
+    secao: data.sectionTitle,
+    observacao: "se\xE7\xE3o adicionada \xE0 Tabela de Pre\xE7os",
+    qtd: 1,
+    autor
+  });
   return result.id;
 }
 async function deletePriceTableSection(id, autor) {
@@ -3482,6 +3593,12 @@ async function deletePriceTableSection(id, autor) {
     campoAlterado: "secao_removida",
     valorAnterior: before.sectionTitle,
     valorNovo: ""
+  });
+  await registrarMetricaTabelaPrecos(db5, {
+    secao: before.sectionTitle,
+    observacao: "se\xE7\xE3o removida da Tabela de Pre\xE7os",
+    qtd: 1,
+    autor
   });
 }
 async function getPriceTableMeta() {
@@ -3717,6 +3834,7 @@ var init_db = __esm({
     "use strict";
     init_db_connection();
     init_schema();
+    init_priceTableDiff();
     _db3 = null;
   }
 });
@@ -4098,7 +4216,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { toNodeHandler } from "better-auth/node";
 
 // server/routers.ts
-import { z as z20 } from "zod";
+import { z as z23 } from "zod";
 
 // server/routers/logistica.ts
 import { z } from "zod";
@@ -6405,7 +6523,7 @@ var observacoesFinanceirasRouter = router({
   gerarAnalise: protectedProcedure.input(z5.object({ mes: z5.number(), ano: z5.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
-    const MESES_NOMES = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const MESES_NOMES2 = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     const obsRows = await db5.select().from(observacoesFinanceirasMensais).where(and6(
       eq7(observacoesFinanceirasMensais.mes, input.mes),
       eq7(observacoesFinanceirasMensais.ano, input.ano)
@@ -6444,7 +6562,7 @@ var observacoesFinanceirasRouter = router({
     }
     const prompt = `Voc\xEA \xE9 um analista financeiro s\xEAnior da empresa Letreiros Express, uma ind\xFAstria de comunica\xE7\xE3o visual (letreiros, placas, pain\xE9is de LED).
 
-Analise detalhadamente o m\xEAs de ${MESES_NOMES[input.mes]}/${input.ano} com base nos dados abaixo e nas observa\xE7\xF5es do gestor.
+Analise detalhadamente o m\xEAs de ${MESES_NOMES2[input.mes]}/${input.ano} com base nos dados abaixo e nas observa\xE7\xF5es do gestor.
 
 ## DADOS FINANCEIROS DO M\xCAS
 
@@ -6781,7 +6899,7 @@ var performanceRouter = router({
     );
     const retrabCount = [{ total: Number(retrabCountRows[0]?.total ?? 0) }];
     const fatRows = await db3.select().from(faturamento).where(eq9(faturamento.ano, input.ano));
-    const MESES_NOMES = [
+    const MESES_NOMES2 = [
       "Janeiro",
       "Fevereiro",
       "Mar\xE7o",
@@ -6795,7 +6913,7 @@ var performanceRouter = router({
       "Novembro",
       "Dezembro"
     ];
-    const nomeMes = MESES_NOMES[input.mes - 1];
+    const nomeMes = MESES_NOMES2[input.mes - 1];
     const fatMes = fatRows.find(
       (f2) => f2.mes.toUpperCase() === nomeMes.toUpperCase() || f2.mes === String(input.mes)
     );
@@ -7016,7 +7134,7 @@ var performanceAbcRouter = router({
     const dbClient = await getDb3();
     if (!dbClient) return { retrabalhos: {}, atrasos: {} };
     const { cotacoesFrete: cotacoesFrete2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-    const { sql: sqlFn, gte: gte5, lte: lte4 } = await import("drizzle-orm");
+    const { sql: sqlFn, gte: gte6, lte: lte5 } = await import("drizzle-orm");
     const startDate = new Date(ano, mes - 1, 1);
     const endDate = new Date(ano, mes, 0, 23, 59, 59);
     const cotacoes = await dbClient.select({
@@ -7137,10 +7255,10 @@ var performanceAbcRouter = router({
       }
     }
     const topProdutos = Object.entries(prodTotals).sort((a, b) => b[1] - a[1]).slice(0, topN).map(([nome]) => nome);
-    const MESES_NOMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const mesesLabels = meses.map(({ mes, ano }) => `${MESES_NOMES[mes - 1]} ${ano}`);
+    const MESES_NOMES2 = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const mesesLabels = meses.map(({ mes, ano }) => `${MESES_NOMES2[mes - 1]} ${ano}`);
     const chartData = caches.map(({ mes, ano, items }) => {
-      const label = `${MESES_NOMES[mes - 1]} ${ano}`;
+      const label = `${MESES_NOMES2[mes - 1]} ${ano}`;
       const faturamentoTotal = items.reduce((s, i) => s + i.total, 0);
       const row = { mes: label };
       for (const prod of topProdutos) {
@@ -7152,7 +7270,7 @@ var performanceAbcRouter = router({
     const tabela = topProdutos.map((prod) => {
       const row = { produto: prod };
       for (const c of caches) {
-        const label = `${MESES_NOMES[c.mes - 1]} ${c.ano}`;
+        const label = `${MESES_NOMES2[c.mes - 1]} ${c.ano}`;
         const faturamentoTotal = c.items.reduce((s, i) => s + i.total, 0);
         const item = c.items.find((i) => i.nome === prod);
         row[label] = item && faturamentoTotal > 0 ? parseFloat((item.total / faturamentoTotal * 100).toFixed(1)) : 0;
@@ -9490,6 +9608,7 @@ import { eq as eq14, and as and11, sql as sql8 } from "drizzle-orm";
 var apiCache = /* @__PURE__ */ new Map();
 var CACHE_TTL_ATUAL_MS = 60 * 60 * 1e3;
 var CACHE_TTL_HISTORICO_MS = 6 * 60 * 60 * 1e3;
+var CACHE_TTL_HISTORICO_PERSISTENTE_MS = 30 * 24 * 60 * 60 * 1e3;
 async function getDbCache(cacheKey) {
   try {
     const db5 = await getDb3();
@@ -9513,7 +9632,7 @@ async function setDbCache(cacheKey, mes, ano, allOs, allOrc) {
     const db5 = await getDb3();
     if (!db5) return;
     const now = /* @__PURE__ */ new Date();
-    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_MS;
+    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_PERSISTENTE_MS;
     const expiresAt = new Date(now.getTime() + ttlMs);
     const existing = await db5.select({ id: mubisysApiCache.id }).from(mubisysApiCache).where(eq14(mubisysApiCache.cacheKey, cacheKey)).limit(1);
     if (existing.length > 0) {
@@ -9566,6 +9685,40 @@ function isOsNormalDb(os) {
   if (tipo === "cortesia") return false;
   if (status === "cancelada") return false;
   return true;
+}
+var MESES_INATIVIDADE_PARA_NOVO = 6;
+async function buscarTodasComprasValidas(db5) {
+  const rows = await db5.select({
+    empresa: historicoOs.empresa,
+    mes: historicoOs.mes,
+    ano: historicoOs.ano,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status
+  }).from(historicoOs);
+  const compras = [];
+  for (const r of rows) {
+    if (!isOsNormalDb(r)) continue;
+    const empresa = (r.empresa ?? "").toLowerCase().trim();
+    if (!empresa) continue;
+    compras.push({ empresa, mes: r.mes, ano: r.ano });
+  }
+  return compras;
+}
+function ultimaCompraAntesDe(compras, mes, ano) {
+  const map = /* @__PURE__ */ new Map();
+  for (const c of compras) {
+    if (c.ano > ano || c.ano === ano && c.mes >= mes) continue;
+    const atual = map.get(c.empresa);
+    if (!atual || c.ano > atual.ano || c.ano === atual.ano && c.mes > atual.mes) {
+      map.set(c.empresa, { mes: c.mes, ano: c.ano });
+    }
+  }
+  return map;
+}
+function isClienteNovoPorRecencia(ultima, mes, ano) {
+  if (!ultima) return true;
+  const gapMeses = (ano - ultima.ano) * 12 + (mes - ultima.mes);
+  return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
 }
 async function getMesFromDb(mes, ano) {
   const db5 = await getDb3();
@@ -9726,7 +9879,7 @@ async function _getMesFromApiImpl(mes, ano) {
   };
 }
 function calcMetrics(osNormais, orcamentos, mes, ano) {
-  const MESES_NOMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const MESES_NOMES2 = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   const taxaConversao = orcamentos.total > 0 ? parseFloat((osNormais.total / orcamentos.total * 100).toFixed(1)) : 0;
   const taxaFaturamento = orcamentos.valorTotal > 0 ? parseFloat((osNormais.valorTotal / orcamentos.valorTotal * 100).toFixed(1)) : 0;
   const ticketMedio = osNormais.total > 0 ? parseFloat((osNormais.valorTotal / osNormais.total).toFixed(2)) : 0;
@@ -9757,7 +9910,7 @@ function calcMetrics(osNormais, orcamentos, mes, ano) {
     };
   }).sort((a, b) => b.cotacoes - a.cotacoes);
   return {
-    label: `${MESES_NOMES[mes - 1]}/${String(ano).slice(2)}`,
+    label: `${MESES_NOMES2[mes - 1]}/${String(ano).slice(2)}`,
     mes,
     ano,
     cotacoes: orcamentos.total,
@@ -9798,11 +9951,11 @@ async function getClientesNovosMes(mes, ano) {
       porVendedorNovosSnap[vendedor].faturamentoNovos = parseFloat((porVendedorNovosSnap[vendedor].faturamentoNovos + valor).toFixed(2));
     }
     const orcMesSnap = await db5.select().from(historicoOrcamentos).where(and11(eq14(historicoOrcamentos.mes, mes), eq14(historicoOrcamentos.ano, ano)));
-    const clientesAntSnap = await db5.select({ empresa: historicoOs.empresa }).from(historicoOs).where(sql8`(${historicoOs.ano} < ${ano}) OR (${historicoOs.ano} = ${ano} AND ${historicoOs.mes} < ${mes})`);
-    const setAntSnap = new Set(clientesAntSnap.map((r) => (r.empresa ?? "").toLowerCase().trim()));
+    const comprasSnap = await buscarTodasComprasValidas(db5);
+    const ultimaCompraSnap = ultimaCompraAntesDe(comprasSnap, mes, ano);
     for (const orc of orcMesSnap) {
       const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
-      if (!clienteKey || setAntSnap.has(clienteKey)) continue;
+      if (!clienteKey || !isClienteNovoPorRecencia(ultimaCompraSnap.get(clienteKey), mes, ano)) continue;
       const vendedor = orc.vendedor || "Sem Vendedor";
       if (!porVendedorNovosSnap[vendedor]) {
         porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
@@ -9838,8 +9991,8 @@ async function getClientesNovosMes(mes, ano) {
   const overrides = await db5.select().from(clienteOverrides);
   const overrideMap = /* @__PURE__ */ new Map();
   for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
-  const clientesAnteriores = await db5.select({ empresa: historicoOs.empresa }).from(historicoOs).where(sql8`(${historicoOs.ano} < ${ano}) OR (${historicoOs.ano} = ${ano} AND ${historicoOs.mes} < ${mes})`);
-  const setAnteriores = new Set(clientesAnteriores.map((r) => (r.empresa ?? "").toLowerCase().trim()));
+  const todasComprasValidas = await buscarTodasComprasValidas(db5);
+  const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
   const pad = (n) => String(n).padStart(2, "0");
   const lastDay = new Date(ano, mes, 0).getDate();
   const di = `${ano}-${pad(mes)}-01`;
@@ -9902,7 +10055,7 @@ async function getClientesNovosMes(mes, ano) {
     const clienteKey = nomeCliente.toLowerCase().trim();
     if (!clienteKey) continue;
     const overrideStatus = overrideMap.get(normalizeEmpresaKey(nomeCliente));
-    const isNovoByHistory = !setAnteriores.has(clienteKey);
+    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
     const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isNovoByHistory;
     if (isNovo) {
       const vendedor = String(os.vendedor ?? "Sem Vendedor");
@@ -9967,7 +10120,7 @@ async function getClientesNovosMes(mes, ano) {
       const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null ? String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "") : String(clienteRaw ?? "");
       const clienteKey = nomeCliente.toLowerCase().trim();
       const orcOverride = overrideMap.get(normalizeEmpresaKey(nomeCliente));
-      const isNovoOrc = orcOverride === "recorrente" ? false : orcOverride === "novo" ? true : !setAnteriores.has(clienteKey);
+      const isNovoOrc = orcOverride === "recorrente" ? false : orcOverride === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
       if (clienteKey && isNovoOrc) {
         cotacoesNovos++;
         const valor = parseFloat(String(orc.valor_total ?? orc.valor ?? orc.total ?? orc.valorTotal ?? "0")) || 0;
@@ -10084,12 +10237,13 @@ var performanceComercialRouter = router({
     const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
     if (publicKey && accessToken) {
       try {
-        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 5e4));
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 55e3));
         raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
       } catch {
         raw = null;
       }
     }
+    const viaApi = raw !== null;
     if (!raw) {
       raw = await getMesFromDb(mes, ano);
     }
@@ -10103,7 +10257,7 @@ var performanceComercialRouter = router({
       const fatRow = await db22.select({ totalPedidos: faturamento.totalPedidos }).from(faturamento).where(and11(sql8`UPPER(${faturamento.mes}) = ${mesNome}`, eq14(faturamento.ano, ano))).limit(1);
       if (fatRow.length > 0 && fatRow[0].totalPedidos > 0) totalPedidosBanco = fatRow[0].totalPedidos;
     }
-    return { ...metrics, totalPedidosBanco };
+    return { ...metrics, totalPedidosBanco, _origemDados: viaApi ? "api" : "local" };
   }),
   // Múltiplos meses para comparativo e gráfico de evolução
   getMultiMes: publicProcedure.input(z15.object({
@@ -10125,24 +10279,22 @@ var performanceComercialRouter = router({
       const overrides = await db5.select().from(clienteOverrides);
       const overrideMap = /* @__PURE__ */ new Map();
       for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
+      const todasComprasValidas = await buscarTodasComprasValidas(db5);
       for (const ano of anoSet) {
         const todasOsAno = dbDataByAno.get(ano)?.os ?? [];
         const todasOrcAno = dbDataByAno.get(ano)?.orc ?? [];
-        const clientesAntes = db5 ? await db5.select({ empresa: historicoOs.empresa }).from(historicoOs).where(sql8`${historicoOs.ano} < ${ano}`) : [];
-        const clientesVistoAte = new Set(clientesAntes.map((r) => (r.empresa ?? "").toLowerCase().trim()));
         const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
         for (let mes = 1; mes <= mesAtual; mes++) {
+          const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
           const osMes = todasOsAno.filter((o) => o.mes === mes);
           const orcMes = todasOrcAno.filter((o) => o.mes === mes);
-          const clientesEsteMes = /* @__PURE__ */ new Set();
           let osNovos = 0, faturamentoNovos = 0;
           for (const os of osMes) {
             if (!isOsNormalDb(os)) continue;
             const clienteKey = (os.empresa ?? "").toLowerCase().trim();
             if (!clienteKey) continue;
-            clientesEsteMes.add(clienteKey);
             const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
-            const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : !clientesVistoAte.has(clienteKey);
+            const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
             if (isNovo) {
               const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
               osNovos++;
@@ -10155,13 +10307,12 @@ var performanceComercialRouter = router({
             const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
             if (!clienteKey) continue;
             const overrideStatus = overrideMap.get(normalizeEmpresaKey(orc.empresa ?? ""));
-            const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : !clientesVistoAte.has(clienteKey);
+            const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
             if (isNovo) {
               cotacoesNovos++;
               valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
             }
           }
-          Array.from(clientesEsteMes).forEach((c) => clientesVistoAte.add(c));
           const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
           const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat((osNovos / cotacoesNovos * 100).toFixed(1)) : 0;
           const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat((faturamentoNovos / valorOrcadoNovos * 100).toFixed(1)) : 0;
@@ -10368,16 +10519,42 @@ var performanceComercialRouter = router({
     const db5 = await getDb3();
     const todasOsAno = db5 ? await db5.select().from(historicoOs).where(eq14(historicoOs.ano, ano)) : [];
     const todosOrcAno = db5 ? await db5.select().from(historicoOrcamentos).where(eq14(historicoOrcamentos.ano, ano)) : [];
+    const snapsCongeladosAno = db5 ? await db5.select().from(performanceAuditada).where(and11(eq14(performanceAuditada.ano, ano), eq14(performanceAuditada.congelado, true))) : [];
+    const snapMapAno = /* @__PURE__ */ new Map();
+    for (const s of snapsCongeladosAno) snapMapAno.set(s.mes, s);
+    const MESES_NOMES_ANO = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
     const meses = Array.from({ length: 12 }, (_, i) => i + 1);
     const CONCURRENCY = 2;
     const results = new Array(meses.length).fill(null);
     for (let i = 0; i < meses.length; i += CONCURRENCY) {
       const batch = meses.slice(i, i + CONCURRENCY);
       const batchResults = await Promise.all(batch.map(async (mes) => {
+        const snap = snapMapAno.get(mes);
+        if (snap) {
+          const valorOrcadoSnap = parseFloat(String(snap.valorOrcado ?? 0));
+          const faturamentoSnap = parseFloat(String(snap.faturamento ?? 0));
+          const osGeradasSnap = snap.osNormais ?? 0;
+          return {
+            label: `${MESES_NOMES_ANO[mes - 1]}/${String(ano).slice(2)}`,
+            mes,
+            ano,
+            cotacoes: snap.cotacoes ?? 0,
+            osGeradas: osGeradasSnap,
+            valorOrcado: valorOrcadoSnap,
+            faturamento: faturamentoSnap,
+            custo: 0,
+            resultado: 0,
+            taxaConversao: parseFloat(String(snap.taxaConversao ?? 0)),
+            taxaFaturamento: valorOrcadoSnap > 0 ? parseFloat((faturamentoSnap / valorOrcadoSnap * 100).toFixed(2)) : 0,
+            ticketMedio: osGeradasSnap > 0 ? parseFloat((faturamentoSnap / osGeradasSnap).toFixed(2)) : 0,
+            margemPct: 0,
+            porVendedor: []
+          };
+        }
         let raw = null;
         if (publicKey && accessToken) {
           try {
-            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 5e4));
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 55e3));
             raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
           } catch {
             raw = null;
@@ -10644,6 +10821,23 @@ var performanceComercialRouter = router({
       tempoMedianaPropostaFechamento: null,
       tempoP25: null,
       tempoP75: null,
+      pctCicloAte3Dias: 0,
+      pctCiclo4a7Dias: 0,
+      pctCicloMais7Dias: 0,
+      frequenciaCompraDias: null,
+      mrrAproximado: 0,
+      arrAproximado: 0,
+      clientesRecorrentesMRR: 0,
+      pctFaturamentoRecorrente: 0,
+      clientesNovosPuro: 0,
+      clientesNovosPuroComRecompra: 0,
+      taxaRecompraNovosPuroPct: 0,
+      clientesReativados: 0,
+      clientesReativadosComRecompra: 0,
+      taxaRecompraReativadosPct: 0,
+      pctReceitaTop20: 0,
+      ticketMedioPorCliente: 0,
+      topClientesPorFaturamento: [],
       porVendedor: [],
       distribuicaoTempo: []
     };
@@ -10669,14 +10863,12 @@ var performanceComercialRouter = router({
     let allOsAno = [];
     let allOrcAno = [];
     try {
-      const [osResult, orcResult] = await Promise.all([
-        listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
-        listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df })
-      ]);
+      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
       allOsAno = osResult.itens;
+      const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
       allOrcAno = orcResult.itens;
-    } catch {
-      return EMPTY;
+    } catch (e) {
+      return { ...EMPTY, _erro: e?.message || "N\xE3o foi poss\xEDvel buscar os dados do ERP. Tente um per\xEDodo menor." };
     }
     const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
     const osNormais = allOsAno.filter(
@@ -10719,6 +10911,52 @@ var performanceComercialRouter = router({
       if (meses.size >= 2) clientesComRecompra++;
     }
     const taxaRecompra = clientesUnicosSet.size > 0 ? parseFloat((clientesComRecompra / clientesUnicosSet.size * 100).toFixed(1)) : 0;
+    const primeiraCompraNoPeriodo = {};
+    for (const os of osNormais) {
+      const cliente = normNome(os.cliente || os.empresa || "");
+      if (!cliente) continue;
+      const dataStr = os.data_aprovacao || os.data_cadastro;
+      if (!dataStr) continue;
+      const dt = new Date(dataStr);
+      if (isNaN(dt.getTime())) continue;
+      const mesOs = dt.getMonth() + 1;
+      const anoOs = dt.getFullYear();
+      const atual = primeiraCompraNoPeriodo[cliente];
+      if (!atual || anoOs < atual.ano || anoOs === atual.ano && mesOs < atual.mes) {
+        primeiraCompraNoPeriodo[cliente] = { mes: mesOs, ano: anoOs };
+      }
+    }
+    const gruposPorMesAno = /* @__PURE__ */ new Map();
+    for (const [cliente, ref] of Object.entries(primeiraCompraNoPeriodo)) {
+      const key = `${ref.mes}-${ref.ano}`;
+      if (!gruposPorMesAno.has(key)) gruposPorMesAno.set(key, []);
+      gruposPorMesAno.get(key).push(cliente);
+    }
+    const comprasHistoricoCompleto = dbForHistory ? (await buscarTodasComprasValidas(dbForHistory)).map((c) => ({ ...c, empresa: normNome(c.empresa) })) : [];
+    const clientesNovosPuroSet = /* @__PURE__ */ new Set();
+    const clientesReativadosSet = /* @__PURE__ */ new Set();
+    for (const [key, clientesGrupo] of gruposPorMesAno) {
+      const [mesStr, anoStr] = key.split("-");
+      const mesRef = Number(mesStr);
+      const anoRef = Number(anoStr);
+      const ultimaMap = ultimaCompraAntesDe(comprasHistoricoCompleto, mesRef, anoRef);
+      for (const cliente of clientesGrupo) {
+        const ultima = ultimaMap.get(cliente);
+        if (!isClienteNovoPorRecencia(ultima, mesRef, anoRef)) continue;
+        if (!ultima) clientesNovosPuroSet.add(cliente);
+        else clientesReativadosSet.add(cliente);
+      }
+    }
+    let clientesNovosPuroComRecompra = 0;
+    for (const cliente of clientesNovosPuroSet) {
+      if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesNovosPuroComRecompra++;
+    }
+    let clientesReativadosComRecompra = 0;
+    for (const cliente of clientesReativadosSet) {
+      if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesReativadosComRecompra++;
+    }
+    const taxaRecompraNovosPuroPct = clientesNovosPuroSet.size > 0 ? parseFloat((clientesNovosPuroComRecompra / clientesNovosPuroSet.size * 100).toFixed(1)) : 0;
+    const taxaRecompraReativadosPct = clientesReativadosSet.size > 0 ? parseFloat((clientesReativadosComRecompra / clientesReativadosSet.size * 100).toFixed(1)) : 0;
     let clientesNovosQueRecompraram = 0;
     const clientesNovosQueRecompraramPorVendedor = {};
     for (const cliente of clientesNovosSet) {
@@ -10819,6 +11057,69 @@ var performanceComercialRouter = router({
       faixa: f2.label,
       quantidade: tempos.filter((t2) => t2 >= f2.min && t2 <= f2.max).length
     }));
+    const pctCicloAte3Dias = tempos.length > 0 ? parseFloat((tempos.filter((t2) => t2 <= 3).length / tempos.length * 100).toFixed(1)) : 0;
+    const pctCiclo4a7Dias = tempos.length > 0 ? parseFloat((tempos.filter((t2) => t2 >= 4 && t2 <= 7).length / tempos.length * 100).toFixed(1)) : 0;
+    const pctCicloMais7Dias = tempos.length > 0 ? parseFloat((tempos.filter((t2) => t2 > 7).length / tempos.length * 100).toFixed(1)) : 0;
+    const datasPorCliente = {};
+    for (const os of osNormais) {
+      const cliente = normNome(os.cliente || os.empresa || "");
+      if (!cliente) continue;
+      const dataStr = os.data_aprovacao || os.data_cadastro;
+      if (!dataStr) continue;
+      const dt = new Date(dataStr);
+      if (isNaN(dt.getTime())) continue;
+      if (!datasPorCliente[cliente]) datasPorCliente[cliente] = [];
+      datasPorCliente[cliente].push(dt);
+    }
+    const intervalosMediosPorCliente = [];
+    for (const datas of Object.values(datasPorCliente)) {
+      if (datas.length < 2) continue;
+      const sorted = [...datas].sort((a, b) => a.getTime() - b.getTime());
+      const diffs = [];
+      for (let i = 1; i < sorted.length; i++) {
+        diffs.push((sorted[i].getTime() - sorted[i - 1].getTime()) / (1e3 * 60 * 60 * 24));
+      }
+      intervalosMediosPorCliente.push(diffs.reduce((a, b) => a + b, 0) / diffs.length);
+    }
+    const frequenciaCompraDias = intervalosMediosPorCliente.length > 0 ? parseFloat((intervalosMediosPorCliente.reduce((a, b) => a + b, 0) / intervalosMediosPorCliente.length).toFixed(1)) : null;
+    const totalMesesPeriodo = (anoFim - anoIni) * 12 + (mesFim - mesIni) + 1;
+    const thresholdRecorrenteMRR = Math.max(2, Math.ceil(totalMesesPeriodo * 0.5));
+    const clientesRecorrentesMRRSet = /* @__PURE__ */ new Set();
+    for (const [cliente, meses] of Object.entries(comprasPorCliente)) {
+      if (meses.size >= thresholdRecorrenteMRR) clientesRecorrentesMRRSet.add(cliente);
+    }
+    const faturamentoPorClienteIC = {};
+    const nomeOriginalPorClienteIC = {};
+    let faturamentoTotalPeriodoIC = 0;
+    for (const os of osNormais) {
+      const cliente = normNome(os.cliente || os.empresa || "");
+      if (!cliente) continue;
+      const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
+      faturamentoPorClienteIC[cliente] = (faturamentoPorClienteIC[cliente] ?? 0) + valor;
+      faturamentoTotalPeriodoIC += valor;
+      if (!nomeOriginalPorClienteIC[cliente]) nomeOriginalPorClienteIC[cliente] = String(os.cliente || os.empresa || "");
+    }
+    let faturamentoRecorrenteIC = 0;
+    for (const cliente of clientesRecorrentesMRRSet) {
+      faturamentoRecorrenteIC += faturamentoPorClienteIC[cliente] ?? 0;
+    }
+    const mrrAproximado = totalMesesPeriodo > 0 ? parseFloat((faturamentoRecorrenteIC / totalMesesPeriodo).toFixed(2)) : 0;
+    const arrAproximado = parseFloat((mrrAproximado * 12).toFixed(2));
+    const pctFaturamentoRecorrente = faturamentoTotalPeriodoIC > 0 ? parseFloat((faturamentoRecorrenteIC / faturamentoTotalPeriodoIC * 100).toFixed(1)) : 0;
+    const clientesOrdenadosPorFaturamento = Object.entries(faturamentoPorClienteIC).sort((a, b) => b[1] - a[1]);
+    const top20PctCount = Math.max(1, Math.ceil(clientesOrdenadosPorFaturamento.length * 0.2));
+    const faturamentoTop20Pct = clientesOrdenadosPorFaturamento.slice(0, top20PctCount).reduce((acc, [, v]) => acc + v, 0);
+    const pctReceitaTop20 = faturamentoTotalPeriodoIC > 0 ? parseFloat((faturamentoTop20Pct / faturamentoTotalPeriodoIC * 100).toFixed(1)) : 0;
+    const ticketMedioPorCliente = clientesUnicosSet.size > 0 ? parseFloat((faturamentoTotalPeriodoIC / clientesUnicosSet.size).toFixed(2)) : 0;
+    const topClientesPorFaturamento = clientesOrdenadosPorFaturamento.slice(0, 10).map(([clienteKey, faturamento2]) => {
+      const qtdOs = osPorCliente[clienteKey] ?? 0;
+      return {
+        cliente: nomeOriginalPorClienteIC[clienteKey] ?? clienteKey,
+        faturamento: parseFloat(faturamento2.toFixed(2)),
+        qtdOs,
+        ticketMedio: qtdOs > 0 ? parseFloat((faturamento2 / qtdOs).toFixed(2)) : 0
+      };
+    });
     const todosVendedoresIC = /* @__PURE__ */ new Set([
       ...Object.keys(clientesPorVendedor),
       ...Object.keys(clientesNovosSetPorVendedor)
@@ -10871,6 +11172,23 @@ var performanceComercialRouter = router({
       tempoMedianaPropostaFechamento: stats.mediana,
       tempoP25: stats.p25,
       tempoP75: stats.p75,
+      pctCicloAte3Dias,
+      pctCiclo4a7Dias,
+      pctCicloMais7Dias,
+      frequenciaCompraDias,
+      mrrAproximado,
+      arrAproximado,
+      clientesRecorrentesMRR: clientesRecorrentesMRRSet.size,
+      pctFaturamentoRecorrente,
+      clientesNovosPuro: clientesNovosPuroSet.size,
+      clientesNovosPuroComRecompra,
+      taxaRecompraNovosPuroPct,
+      clientesReativados: clientesReativadosSet.size,
+      clientesReativadosComRecompra,
+      taxaRecompraReativadosPct,
+      pctReceitaTop20,
+      ticketMedioPorCliente,
+      topClientesPorFaturamento,
       porVendedor,
       distribuicaoTempo
     };
@@ -11129,14 +11447,559 @@ var performanceComercialRouter = router({
   })
 });
 
-// server/routers/crm.ts
+// server/routers/insightsComerciais.ts
 import { z as z16 } from "zod";
+init_db();
+init_schema();
+init_llm();
+import { eq as eq15, and as and12 } from "drizzle-orm";
+var MESES_NOMES = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+function fmtR2(v) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+function mesAnterior(mes, ano) {
+  return mes === 1 ? { mes: 12, ano: ano - 1 } : { mes: mes - 1, ano };
+}
+async function coletarDados(db5, mes, ano) {
+  const osRows = await db5.select().from(historicoOs).where(and12(eq15(historicoOs.mes, mes), eq15(historicoOs.ano, ano)));
+  const orcRows = await db5.select().from(historicoOrcamentos).where(and12(eq15(historicoOrcamentos.mes, mes), eq15(historicoOrcamentos.ano, ano)));
+  const osNormais = osRows.filter(isOsNormalDb);
+  let faturamento2 = 0, custo = 0, resultado = 0;
+  const porVendedor = {};
+  const faturamentoPorCliente = {};
+  for (const os of osNormais) {
+    const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+    const c = parseFloat(String(os.custosTotal ?? "0")) || 0;
+    const r = parseFloat(String(os.resultadoReais ?? "0")) || 0;
+    faturamento2 += valor;
+    custo += c;
+    resultado += r;
+    const vendedor = os.vendedor || "Sem Vendedor";
+    if (!porVendedor[vendedor]) porVendedor[vendedor] = { total: 0, faturamento: 0 };
+    porVendedor[vendedor].total++;
+    porVendedor[vendedor].faturamento += valor;
+    const empresa = (os.empresa ?? "").trim();
+    if (empresa) faturamentoPorCliente[empresa] = (faturamentoPorCliente[empresa] ?? 0) + valor;
+  }
+  let valorOrcado = 0;
+  for (const orc of orcRows) valorOrcado += parseFloat(String(orc.total ?? "0")) || 0;
+  const margemPct = faturamento2 > 0 ? resultado / faturamento2 * 100 : 0;
+  const ticketMedio = osNormais.length > 0 ? faturamento2 / osNormais.length : 0;
+  const taxaConversao = orcRows.length > 0 ? osNormais.length / orcRows.length * 100 : 0;
+  const taxaFaturamento = valorOrcado > 0 ? faturamento2 / valorOrcado * 100 : 0;
+  const todasCompras = await buscarTodasComprasValidas(db5);
+  const ultimaMap = ultimaCompraAntesDe(todasCompras, mes, ano);
+  const clientesUnicos = /* @__PURE__ */ new Set();
+  const clientesNovos = /* @__PURE__ */ new Set();
+  for (const os of osNormais) {
+    const empresa = (os.empresa ?? "").toLowerCase().trim();
+    if (!empresa) continue;
+    clientesUnicos.add(empresa);
+    if (isClienteNovoPorRecencia(ultimaMap.get(empresa), mes, ano)) clientesNovos.add(empresa);
+  }
+  const topClientes = Object.entries(faturamentoPorCliente).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([cliente, valor]) => ({ cliente, valor }));
+  const topVendedores = Object.entries(porVendedor).sort((a, b) => b[1].faturamento - a[1].faturamento).map(([vendedor, v]) => ({ vendedor, ...v }));
+  const dreRows = await db5.select().from(dreMensal).where(and12(eq15(dreMensal.ano, ano), eq15(dreMensal.mes, mes))).limit(1);
+  const dre = dreRows[0] ?? null;
+  const finRows = await db5.select().from(financeiroMensal).where(and12(eq15(financeiroMensal.mes, mes), eq15(financeiroMensal.ano, ano))).limit(1);
+  const fin = finRows[0] ?? null;
+  return {
+    comercial: {
+      totalOs: osNormais.length,
+      faturamento: faturamento2,
+      custo,
+      resultado,
+      margemPct,
+      ticketMedio,
+      totalOrcamentos: orcRows.length,
+      valorOrcado,
+      taxaConversao,
+      taxaFaturamento,
+      clientesUnicos: clientesUnicos.size,
+      clientesNovos: clientesNovos.size,
+      topClientes,
+      topVendedores
+    },
+    dre,
+    fin
+  };
+}
+function montarPrompt(mes, ano, atual, anterior, perguntaExtra) {
+  const c = atual.comercial;
+  const cAnt = anterior.comercial;
+  const varFat = cAnt.faturamento > 0 ? (c.faturamento - cAnt.faturamento) / cAnt.faturamento * 100 : null;
+  const { mes: mesAnt, ano: anoAnt } = mesAnterior(mes, ano);
+  return `Voc\xEA \xE9 um consultor comercial e financeiro s\xEAnior da Radrasis (Letreiros Express), uma ind\xFAstria de comunica\xE7\xE3o visual (letreiros, placas, pain\xE9is de LED) no Brasil.
+
+Analise os dados reais de ${MESES_NOMES[mes]}/${ano}, comparados ao m\xEAs anterior, e gere um diagn\xF3stico pr\xE1tico focado em DUAS perguntas: como vender mais, e como lucrar mais.
+
+## DESEMPENHO COMERCIAL \u2014 ${MESES_NOMES[mes]}/${ano}
+- OS aprovadas (vendas): ${c.totalOs}
+- Faturamento: ${fmtR2(c.faturamento)}${varFat !== null ? ` (${varFat >= 0 ? "+" : ""}${varFat.toFixed(1)}% vs. ${MESES_NOMES[mesAnt]}/${anoAnt})` : ""}
+- Custo total: ${fmtR2(c.custo)}
+- Resultado (lucro operacional das OS): ${fmtR2(c.resultado)} (margem de ${c.margemPct.toFixed(1)}%)
+- Ticket m\xE9dio: ${fmtR2(c.ticketMedio)}
+- Or\xE7amentos emitidos: ${c.totalOrcamentos}, somando ${fmtR2(c.valorOrcado)}
+- Taxa de convers\xE3o (or\xE7amento \u2192 venda): ${c.taxaConversao.toFixed(1)}%
+- Taxa de faturamento (venda / or\xE7ado): ${c.taxaFaturamento.toFixed(1)}%
+- Clientes \xFAnicos atendidos: ${c.clientesUnicos} (${c.clientesNovos} novos ou reativados ap\xF3s 6+ meses de inatividade)
+
+### Top 5 Clientes por Faturamento
+${c.topClientes.length > 0 ? c.topClientes.map((t2, i) => `${i + 1}. ${t2.cliente} \u2014 ${fmtR2(t2.valor)}`).join("\n") : "(sem dados)"}
+
+### Faturamento por Vendedor
+${c.topVendedores.length > 0 ? c.topVendedores.map((v) => `- ${v.vendedor}: ${v.total} OS, ${fmtR2(v.faturamento)}`).join("\n") : "(sem dados)"}
+
+## M\xCAS ANTERIOR (${MESES_NOMES[mesAnt]}/${anoAnt}) \u2014 PARA COMPARA\xC7\xC3O
+- Faturamento: ${fmtR2(cAnt.faturamento)}
+- Resultado: ${fmtR2(cAnt.resultado)} (margem de ${cAnt.margemPct.toFixed(1)}%)
+- Taxa de convers\xE3o: ${cAnt.taxaConversao.toFixed(1)}%
+- Clientes \xFAnicos: ${cAnt.clientesUnicos} (${cAnt.clientesNovos} novos/reativados)
+
+## DADOS FINANCEIROS DO M\xCAS
+${atual.dre ? `- Receita Operacional Bruta (DRE): ${fmtR2(Number(atual.dre.receitaOperacionalBruta || 0))}
+- Despesas Fixas: ${fmtR2(Number(atual.dre.despesasFixas || 0))}
+- Despesas com Pessoal: ${fmtR2(Number(atual.dre.despesasPessoal || 0))}
+- Lucro L\xEDquido (DRE): ${fmtR2(Number(atual.dre.lucroLiquido || 0))}` : "- DRE n\xE3o dispon\xEDvel para este m\xEAs."}
+${atual.fin ? `- Resultado Efetivo: ${fmtR2(Number(atual.fin.resultadoEfetivo || 0))}
+- Saldo do M\xEAs (caixa): ${fmtR2(Number(atual.fin.saldoMes || 0))}` : "- Financeiro mensal n\xE3o dispon\xEDvel para este m\xEAs."}
+
+## INSTRU\xC7\xD5ES
+
+${perguntaExtra ? `O gestor fez a seguinte pergunta espec\xEDfica sobre este m\xEAs: "${perguntaExtra}"
+
+Responda essa pergunta primeiro, com base nos dados acima, e depois complemente com o que achar relevante.` : `Produza uma an\xE1lise estruturada em t\xF3picos:
+
+1. **Diagn\xF3stico R\xE1pido**: 2-3 frases sobre o resultado do m\xEAs (vendas e lucro), comparado ao anterior.
+2. **Oportunidades de Aumentar Vendas**: com base na taxa de convers\xE3o, ticket m\xE9dio, clientes novos/reativados e concentra\xE7\xE3o nos top clientes/vendedores, aponte 2-4 oportunidades concretas (ex: vendedor com baixa convers\xE3o, cliente grande que sumiu, ticket m\xE9dio caindo).
+3. **Oportunidades de Aumentar o Lucro**: com base na margem, custo e despesas fixas, aponte 2-4 oportunidades concretas (ex: margem menor que o m\xEAs anterior, custo fixo desproporcional ao faturamento).
+4. **Riscos**: concentra\xE7\xE3o de receita em poucos clientes, queda de convers\xE3o, etc.
+5. **Plano de A\xE7\xE3o \u2014 Pr\xF3ximos 30 dias**: 3-5 a\xE7\xF5es priorizadas e espec\xEDficas, cada uma ligada a um n\xFAmero dos dados acima.
+
+Seja direto e espec\xEDfico com os n\xFAmeros fornecidos. N\xE3o invente dados que n\xE3o est\xE3o aqui.`}
+
+Use linguagem profissional mas direta. Formate com Markdown (negrito, listas).`;
+}
+var insightsComerciaisRouter = router({
+  // Diagnóstico completo do mês: vendas + lucro
+  gerarDiagnostico: protectedProcedure.input(z16.object({ mes: z16.number().min(1).max(12), ano: z16.number().min(2020) })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
+    const { mes: mesAnt, ano: anoAnt } = mesAnterior(input.mes, input.ano);
+    const [atual, anterior] = await Promise.all([
+      coletarDados(db5, input.mes, input.ano),
+      coletarDados(db5, mesAnt, anoAnt)
+    ]);
+    const prompt = montarPrompt(input.mes, input.ano, atual, anterior);
+    const response = await invokeLLM({
+      messages: [
+        { role: "system", content: "Voc\xEA \xE9 um consultor comercial e financeiro especializado em pequenas e m\xE9dias ind\xFAstrias brasileiras. Responda sempre em portugu\xEAs brasileiro, com foco em a\xE7\xF5es pr\xE1ticas para vender mais e lucrar mais." },
+        { role: "user", content: prompt }
+      ]
+    });
+    const rawContent = response.choices?.[0]?.message?.content;
+    const analise = typeof rawContent === "string" ? rawContent : "N\xE3o foi poss\xEDvel gerar a an\xE1lise.";
+    return { analise, resumo: atual.comercial };
+  }),
+  // Pergunta livre com o mesmo contexto de dados do mês
+  perguntar: protectedProcedure.input(z16.object({ mes: z16.number().min(1).max(12), ano: z16.number().min(2020), pergunta: z16.string().min(3) })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
+    const { mes: mesAnt, ano: anoAnt } = mesAnterior(input.mes, input.ano);
+    const [atual, anterior] = await Promise.all([
+      coletarDados(db5, input.mes, input.ano),
+      coletarDados(db5, mesAnt, anoAnt)
+    ]);
+    const prompt = montarPrompt(input.mes, input.ano, atual, anterior, input.pergunta);
+    const response = await invokeLLM({
+      messages: [
+        { role: "system", content: "Voc\xEA \xE9 um consultor comercial e financeiro especializado em pequenas e m\xE9dias ind\xFAstrias brasileiras. Responda sempre em portugu\xEAs brasileiro, com foco em a\xE7\xF5es pr\xE1ticas para vender mais e lucrar mais." },
+        { role: "user", content: prompt }
+      ]
+    });
+    const rawContent = response.choices?.[0]?.message?.content;
+    const resposta = typeof rawContent === "string" ? rawContent : "N\xE3o foi poss\xEDvel gerar a resposta.";
+    return { resposta };
+  })
+});
+
+// server/routers/analiseGeografica.ts
+init_env();
+init_db();
+init_mubisys_client();
+init_schema();
+import { z as z17 } from "zod";
+import { eq as eq16, and as and13, ne } from "drizzle-orm";
+function osValidaCondition() {
+  return ne(historicoOs.status, "Cancelada");
+}
+function osValidaMubisys(os) {
+  return String(os.status ?? "").toLowerCase() !== "cancelada";
+}
+function tituloCidade(s) {
+  return s.toLowerCase().split(" ").map((w) => w.length <= 2 ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+var UFS_VALIDAS = /* @__PURE__ */ new Set([
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO"
+]);
+function normalizarUf(uf) {
+  if (!uf) return null;
+  const s = String(uf).trim().toUpperCase();
+  return UFS_VALIDAS.has(s) ? s : null;
+}
+function extrairClienteOs(os) {
+  const raw = os.cliente;
+  if (typeof raw === "object" && raw !== null) {
+    return String(raw?.nome ?? raw?.razao_social ?? "").trim();
+  }
+  return String(raw ?? "").trim();
+}
+function extrairEnderecoOs(os) {
+  const enderecos = Array.isArray(os.cliente_endereco) ? os.cliente_endereco : os.cliente_endereco ? [os.cliente_endereco] : [];
+  const primeiro = enderecos[0];
+  const cidade = primeiro?.cidade ? String(primeiro.cidade).trim() : null;
+  const estado = primeiro?.estado || primeiro?.uf ? String(primeiro.estado || primeiro.uf).trim() : null;
+  return { cidade, estado };
+}
+function normalizarOsMubisys(os) {
+  const endereco = extrairEnderecoOs(os);
+  return {
+    estado: endereco.estado,
+    cidade: endereco.cidade,
+    empresa: extrairClienteOs(os),
+    valorTotal: parseFloat(String(os.valor_total ?? "0")) || 0
+  };
+}
+function isMesAtual2(mes, ano) {
+  const now = /* @__PURE__ */ new Date();
+  return mes === now.getMonth() + 1 && ano === now.getFullYear();
+}
+async function lerCacheOsBrutas(db5, cacheKey) {
+  const rows = await db5.select().from(mubisysApiCache).where(eq16(mubisysApiCache.cacheKey, cacheKey)).limit(1);
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  if (/* @__PURE__ */ new Date() > new Date(row.expiresAt) || !row.osData) return null;
+  try {
+    return JSON.parse(row.osData);
+  } catch {
+    return null;
+  }
+}
+var TTL_MES_ATUAL_MS = 60 * 60 * 1e3;
+var TTL_MES_FECHADO_MS = 30 * 24 * 60 * 60 * 1e3;
+async function buscarOsBrutasDoMes(db5, mes, ano) {
+  const compartilhado = await lerCacheOsBrutas(db5, `raw_${mes}_${ano}`);
+  if (compartilhado) return { itens: compartilhado, completo: true, viaApi: false };
+  const cacheKeyProprio = `geo_raw_${mes}_${ano}`;
+  const proprio = await lerCacheOsBrutas(db5, cacheKeyProprio);
+  if (proprio) return { itens: proprio, completo: true, viaApi: false };
+  const pad = (n) => String(n).padStart(2, "0");
+  const lastDay = new Date(ano, mes, 0).getDate();
+  const datainicial = `${ano}-${pad(mes)}-01`;
+  const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
+  const resultado = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
+  if (resultado.completo) {
+    const now = /* @__PURE__ */ new Date();
+    const ttlMs = isMesAtual2(mes, ano) ? TTL_MES_ATUAL_MS : TTL_MES_FECHADO_MS;
+    const expiresAt = new Date(now.getTime() + ttlMs);
+    const existing = await db5.select({ id: mubisysApiCache.id }).from(mubisysApiCache).where(eq16(mubisysApiCache.cacheKey, cacheKeyProprio)).limit(1);
+    const payload = { osData: JSON.stringify(resultado.itens), fetchedAt: now, expiresAt };
+    if (existing.length > 0) {
+      await db5.update(mubisysApiCache).set(payload).where(eq16(mubisysApiCache.cacheKey, cacheKeyProprio));
+    } else {
+      await db5.insert(mubisysApiCache).values({ cacheKey: cacheKeyProprio, mes, ano, ...payload });
+    }
+  }
+  return { ...resultado, viaApi: true };
+}
+async function linhasDoMesLocal(db5, mes, ano) {
+  const rows = await db5.select({
+    estado: historicoOs.estado,
+    cidade: historicoOs.cidade,
+    empresa: historicoOs.empresa,
+    valorTotal: historicoOs.valorTotal
+  }).from(historicoOs).where(and13(eq16(historicoOs.mes, mes), eq16(historicoOs.ano, ano), osValidaCondition()));
+  return rows.map((r) => ({ estado: r.estado, cidade: r.cidade, empresa: r.empresa ?? "", valorTotal: Number(r.valorTotal ?? 0) }));
+}
+async function linhasDoMes(db5, mes, ano) {
+  if (ENV.MUBISYS_PUBLIC_KEY && ENV.MUBISYS_ACCESS_TOKEN) {
+    try {
+      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 55e3));
+      const resultado = await Promise.race([buscarOsBrutasDoMes(db5, mes, ano), timeoutPromise]);
+      if (resultado) {
+        return { linhas: resultado.itens.filter(osValidaMubisys).map(normalizarOsMubisys), viaApi: true };
+      }
+    } catch {
+    }
+  }
+  return { linhas: await linhasDoMesLocal(db5, mes, ano), viaApi: false };
+}
+async function linhasDoAno(db5, ano) {
+  const meses = Array.from({ length: 12 }, (_, i) => i + 1);
+  const CONCURRENCY = 2;
+  let todas = [];
+  const mesesFallback = [];
+  for (let i = 0; i < meses.length; i += CONCURRENCY) {
+    const batch = meses.slice(i, i + CONCURRENCY);
+    const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db5, mes, ano)));
+    batch.forEach((mes, idx) => {
+      todas = todas.concat(resultados[idx].linhas);
+      if (!resultados[idx].viaApi) mesesFallback.push(mes);
+    });
+  }
+  return { linhas: todas, mesesFallback };
+}
+function agregarPorEstado(linhas) {
+  const porEstado = /* @__PURE__ */ new Map();
+  let totalOs = 0;
+  let totalFaturamento = 0;
+  let semEstado = 0;
+  let semEstadoFaturamento = 0;
+  for (const r of linhas) {
+    const valor = r.valorTotal;
+    totalOs++;
+    totalFaturamento += valor;
+    const estado = normalizarUf(r.estado);
+    if (!estado) {
+      semEstado++;
+      semEstadoFaturamento += valor;
+      continue;
+    }
+    if (!porEstado.has(estado)) {
+      porEstado.set(estado, { qtdOs: 0, faturamento: 0, clientes: /* @__PURE__ */ new Set(), cidades: /* @__PURE__ */ new Map() });
+    }
+    const e = porEstado.get(estado);
+    e.qtdOs++;
+    e.faturamento += valor;
+    e.clientes.add((r.empresa ?? "").trim().toUpperCase());
+    const cidadeNome = r.cidade ? tituloCidade(r.cidade.trim()) : "\u2014";
+    if (!e.cidades.has(cidadeNome)) e.cidades.set(cidadeNome, { qtdOs: 0, faturamento: 0 });
+    const c = e.cidades.get(cidadeNome);
+    c.qtdOs++;
+    c.faturamento += valor;
+  }
+  const estados = Array.from(porEstado.entries()).map(([estado, d]) => ({
+    estado,
+    qtdOs: d.qtdOs,
+    pctOs: totalOs > 0 ? d.qtdOs / totalOs * 100 : 0,
+    faturamento: d.faturamento,
+    pctFaturamento: totalFaturamento > 0 ? d.faturamento / totalFaturamento * 100 : 0,
+    qtdClientes: d.clientes.size,
+    ticketMedio: d.qtdOs > 0 ? d.faturamento / d.qtdOs : 0,
+    topCidades: Array.from(d.cidades.entries()).map(([cidade, cd]) => ({ cidade, qtdOs: cd.qtdOs, faturamento: cd.faturamento })).sort((a, b) => b.faturamento - a.faturamento).slice(0, 5)
+  })).sort((a, b) => b.faturamento - a.faturamento);
+  return { estados, totalOs, totalFaturamento, semEstado, semEstadoFaturamento };
+}
+var analiseGeograficaRouter = router({
+  getAnosDisponiveis: publicProcedure.query(async () => {
+    const anoAtual = (/* @__PURE__ */ new Date()).getFullYear();
+    const db5 = await getDb3();
+    if (!db5) return [anoAtual, anoAtual - 1, anoAtual - 2];
+    const rows = await db5.selectDistinct({ ano: historicoOs.ano }).from(historicoOs);
+    const anos = new Set(rows.map((r) => r.ano));
+    anos.add(anoAtual);
+    anos.add(anoAtual - 1);
+    return Array.from(anos).sort((a, b) => b - a);
+  }),
+  getPorEstado: publicProcedure.input(z17.object({
+    ano: z17.number(),
+    // null/undefined = ano inteiro
+    mes: z17.number().min(1).max(12).nullable().optional()
+  })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return { estados: [], totalOs: 0, totalFaturamento: 0, semEstado: 0, semEstadoFaturamento: 0, mesesFallback: [] };
+    let linhas;
+    let mesesFallback;
+    if (input.mes) {
+      const resultado = await linhasDoMes(db5, input.mes, input.ano);
+      linhas = resultado.linhas;
+      mesesFallback = resultado.viaApi ? [] : [input.mes];
+    } else {
+      const resultado = await linhasDoAno(db5, input.ano);
+      linhas = resultado.linhas;
+      mesesFallback = resultado.mesesFallback;
+    }
+    return { ...agregarPorEstado(linhas), mesesFallback };
+  }),
+  getEvolucaoMensal: publicProcedure.input(z17.object({ ano: z17.number() })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return { meses: [], topEstados: [] };
+    const meses = Array.from({ length: 12 }, (_, i) => i + 1);
+    const CONCURRENCY = 2;
+    const porMesLinhas = new Array(12);
+    for (let i = 0; i < meses.length; i += CONCURRENCY) {
+      const batch = meses.slice(i, i + CONCURRENCY);
+      const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db5, mes, input.ano)));
+      batch.forEach((mes, idx) => {
+        porMesLinhas[mes - 1] = resultados[idx].linhas;
+      });
+    }
+    const totalPorEstado = /* @__PURE__ */ new Map();
+    for (const linhas of porMesLinhas) {
+      for (const r of linhas) {
+        const estado = normalizarUf(r.estado);
+        if (!estado) continue;
+        totalPorEstado.set(estado, (totalPorEstado.get(estado) ?? 0) + r.valorTotal);
+      }
+    }
+    const topEstados = Array.from(totalPorEstado.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([uf]) => uf);
+    const topSet = new Set(topEstados);
+    const mesesResult = meses.map((mes) => {
+      const valores = { outros: 0 };
+      for (const r of porMesLinhas[mes - 1]) {
+        const estado = normalizarUf(r.estado);
+        const key = estado && topSet.has(estado) ? estado : "outros";
+        valores[key] = (valores[key] ?? 0) + r.valorTotal;
+      }
+      return { mes, ...valores };
+    });
+    return { meses: mesesResult, topEstados };
+  }),
+  /** Lista de clientes por Estado, no período selecionado — usada para
+   * exportação em Excel na Análise Geográfica. Se `estado` for informado,
+   * retorna só os clientes daquele Estado (ex.: MS, SP, PR). */
+  getListaClientes: publicProcedure.input(z17.object({
+    ano: z17.number(),
+    mes: z17.number().min(1).max(12).nullable().optional(),
+    estado: z17.string().length(2).nullable().optional()
+  })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const linhas = input.mes ? (await linhasDoMes(db5, input.mes, input.ano)).linhas : (await linhasDoAno(db5, input.ano)).linhas;
+    const porCliente = /* @__PURE__ */ new Map();
+    for (const r of linhas) {
+      const estado = normalizarUf(r.estado);
+      if (!estado) continue;
+      if (input.estado && estado !== input.estado) continue;
+      const empresaNorm = (r.empresa ?? "").trim().toUpperCase();
+      if (!empresaNorm) continue;
+      const key = `${estado}__${empresaNorm}`;
+      if (!porCliente.has(key)) {
+        porCliente.set(key, {
+          estado,
+          empresa: (r.empresa ?? "").trim(),
+          cidade: r.cidade ? tituloCidade(r.cidade.trim()) : "\u2014",
+          qtdOs: 0,
+          faturamento: 0
+        });
+      }
+      const c = porCliente.get(key);
+      c.qtdOs++;
+      c.faturamento += r.valorTotal;
+    }
+    return Array.from(porCliente.values()).sort((a, b) => {
+      if (a.estado !== b.estado) return a.estado.localeCompare(b.estado);
+      return b.faturamento - a.faturamento;
+    });
+  })
+});
+
+// server/routers/metricas.ts
+init_db();
+init_schema();
+import { z as z18 } from "zod";
+import { and as and14, desc as desc8, eq as eq17, gte as gte5, lte as lte4 } from "drizzle-orm";
+var metricasRouter = router({
+  list: publicProcedure.input(z18.object({
+    nome: z18.string().optional(),
+    dataInicio: z18.string().optional(),
+    // AAAA-MM-DD
+    dataFim: z18.string().optional()
+  }).optional()).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const conditions = [];
+    if (input?.nome) conditions.push(eq17(metricas.nome, input.nome));
+    if (input?.dataInicio) conditions.push(gte5(metricas.dataApuracao, input.dataInicio));
+    if (input?.dataFim) conditions.push(lte4(metricas.dataApuracao, input.dataFim));
+    return db5.select().from(metricas).where(conditions.length ? and14(...conditions) : void 0).orderBy(desc8(metricas.dataApuracao), desc8(metricas.id));
+  }),
+  nomesDistintos: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const rows = await db5.selectDistinct({ nome: metricas.nome }).from(metricas);
+    return rows.map((r) => r.nome).sort((a, b) => a.localeCompare(b));
+  }),
+  create: protectedProcedure.input(z18.object({
+    nome: z18.string().min(1, "Informe o nome do indicador"),
+    valor: z18.number(),
+    unidade: z18.string().max(16).default("%"),
+    dataApuracao: z18.string(),
+    // AAAA-MM-DD
+    observacao: z18.string().optional().nullable()
+  })).mutation(async ({ input, ctx }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("Banco de dados indispon\xEDvel");
+    const [row] = await db5.insert(metricas).values({
+      nome: input.nome.trim(),
+      valor: String(input.valor),
+      unidade: input.unidade,
+      dataApuracao: input.dataApuracao,
+      observacao: input.observacao ?? null,
+      criadoPorNome: ctx.user?.name ?? ctx.user?.email ?? "sistema"
+    }).returning();
+    return row;
+  }),
+  update: protectedProcedure.input(z18.object({
+    id: z18.number(),
+    nome: z18.string().min(1).optional(),
+    valor: z18.number().optional(),
+    unidade: z18.string().max(16).optional(),
+    dataApuracao: z18.string().optional(),
+    observacao: z18.string().optional().nullable()
+  })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("Banco de dados indispon\xEDvel");
+    const { id, valor, ...rest } = input;
+    const [row] = await db5.update(metricas).set({
+      ...rest,
+      ...valor !== void 0 ? { valor: String(valor) } : {},
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq17(metricas.id, id)).returning();
+    return row;
+  }),
+  delete: protectedProcedure.input(z18.object({ id: z18.number() })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("Banco de dados indispon\xEDvel");
+    await db5.delete(metricas).where(eq17(metricas.id, input.id));
+    return { success: true };
+  })
+});
+
+// server/routers/crm.ts
+import { z as z19 } from "zod";
 import { TRPCError as TRPCError3 } from "@trpc/server";
 init_llm();
 init_db();
 init_schema();
 init_mubisys_client();
-import { eq as eq15, and as and12, desc as desc8, sql as sql9 } from "drizzle-orm";
+import { eq as eq18, and as and15, desc as desc9, sql as sql9 } from "drizzle-orm";
 function calcTurno(date2) {
   const h = date2.getHours();
   const hBrasilia = (h - 3 + 24) % 24;
@@ -11187,15 +12050,15 @@ var MOTIVACIONAL_PROMPTS = [
 ];
 var crmRouter = router({
   // Buscar propostas abertas do vendedor logado (ou de um vendedor específico para diretor)
-  getPropostas: protectedProcedure.input(z16.object({
-    vendedor: z16.string().optional(),
+  getPropostas: protectedProcedure.input(z19.object({
+    vendedor: z19.string().optional(),
     // se omitido, usa o nome do usuário logado
-    mes: z16.number().min(1).max(12).optional(),
-    ano: z16.number().optional(),
-    dataInicio: z16.string().optional(),
+    mes: z19.number().min(1).max(12).optional(),
+    ano: z19.number().optional(),
+    dataInicio: z19.string().optional(),
     // YYYY-MM-DD — filtro manual de datas
-    dataFim: z16.string().optional(),
-    preset: z16.enum(["hoje", "7dias", "15dias", "mes", "personalizado"]).optional()
+    dataFim: z19.string().optional(),
+    preset: z19.enum(["hoje", "7dias", "15dias", "mes", "personalizado"]).optional()
   })).query(async ({ ctx, input }) => {
     const now = /* @__PURE__ */ new Date();
     const pad = (n) => String(n).padStart(2, "0");
@@ -11244,7 +12107,7 @@ var crmRouter = router({
     const propostasFechadas = filtrar(fechados);
     const idsAbertos = propostasAbertas.map((o) => String(o.id));
     const db5 = await getDb3();
-    const contatosDb = idsAbertos.length > 0 ? await db5.select().from(crmContatos).orderBy(desc8(crmContatos.contatadoEm)) : [];
+    const contatosDb = idsAbertos.length > 0 ? await db5.select().from(crmContatos).orderBy(desc9(crmContatos.contatadoEm)) : [];
     const contatosPorOrc = {};
     for (const c of contatosDb) {
       if (!contatosPorOrc[c.orcamentoId]) contatosPorOrc[c.orcamentoId] = [];
@@ -11359,26 +12222,26 @@ var crmRouter = router({
     };
   }),
   // Desfazer contato registrado
-  desfazarContato: protectedProcedure.input(z16.object({
-    orcamentoId: z16.string(),
-    data: z16.string()
+  desfazarContato: protectedProcedure.input(z19.object({
+    orcamentoId: z19.string(),
+    data: z19.string()
     // ISO string da data do contato a remover
   })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
-    const todos = await db5.select().from(crmContatos).where(eq15(crmContatos.orcamentoId, input.orcamentoId)).orderBy(desc8(crmContatos.contatadoEm));
+    const todos = await db5.select().from(crmContatos).where(eq18(crmContatos.orcamentoId, input.orcamentoId)).orderBy(desc9(crmContatos.contatadoEm));
     const dataAlvo = new Date(input.data);
     const alvo = todos.find((c) => {
       const d = new Date(c.contatadoEm);
       return d.getFullYear() === dataAlvo.getFullYear() && d.getMonth() === dataAlvo.getMonth() && d.getDate() === dataAlvo.getDate();
     });
     if (!alvo) throw new TRPCError3({ code: "NOT_FOUND", message: "Contato n\xE3o encontrado para essa data." });
-    await db5.delete(crmContatos).where(eq15(crmContatos.id, alvo.id));
+    await db5.delete(crmContatos).where(eq18(crmContatos.id, alvo.id));
     const vendedor = ctx.user?.name ?? "desconhecido";
     await logAtividade(ctx, { vendedor, acao: "desfazarContato", orcamentoId: input.orcamentoId, detalhe: `contato de ${input.data} removido` });
     return { ok: true };
   }),
   // Marcar proposta como ganha
-  marcarGanha: protectedProcedure.input(z16.object({ orcamentoId: z16.string(), vendedor: z16.string(), empresa: z16.string() })).mutation(async ({ ctx, input }) => {
+  marcarGanha: protectedProcedure.input(z19.object({ orcamentoId: z19.string(), vendedor: z19.string(), empresa: z19.string() })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
     const existing = await db5.select().from(crmContatos).where(sql9`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'garantiu_fechamento'`).limit(1);
     if (existing.length === 0) {
@@ -11395,7 +12258,7 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Marcar proposta como perdida
-  marcarPerdida: protectedProcedure.input(z16.object({ orcamentoId: z16.string(), vendedor: z16.string(), empresa: z16.string() })).mutation(async ({ ctx, input }) => {
+  marcarPerdida: protectedProcedure.input(z19.object({ orcamentoId: z19.string(), vendedor: z19.string(), empresa: z19.string() })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
     const existing = await db5.select().from(crmContatos).where(sql9`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'perdida'`).limit(1);
     if (existing.length === 0) {
@@ -11412,10 +12275,10 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Mensagem motivacional via Gemini
-  getMensagemMotivacional: protectedProcedure.input(z16.object({
-    propostasOntem: z16.number(),
-    pendentesFollowup: z16.number(),
-    nomeVendedor: z16.string()
+  getMensagemMotivacional: protectedProcedure.input(z19.object({
+    propostasOntem: z19.number(),
+    pendentesFollowup: z19.number(),
+    nomeVendedor: z19.string()
   })).query(async ({ input }) => {
     const promptTemplate = MOTIVACIONAL_PROMPTS[Math.floor(Math.random() * MOTIVACIONAL_PROMPTS.length)];
     const prompt = promptTemplate.replace("{propostas}", String(input.propostasOntem)).replace("{pendentes}", String(input.pendentesFollowup));
@@ -11433,18 +12296,18 @@ var crmRouter = router({
     }
   }),
   // Registrar contato
-  registrarContato: protectedProcedure.input(z16.object({
-    orcamentoId: z16.string(),
-    empresa: z16.string(),
-    vendedor: z16.string(),
-    canal: z16.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento"]),
-    observacao: z16.string().nullable().optional(),
-    dataContato: z16.string().optional()
+  registrarContato: protectedProcedure.input(z19.object({
+    orcamentoId: z19.string(),
+    empresa: z19.string(),
+    vendedor: z19.string(),
+    canal: z19.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento"]),
+    observacao: z19.string().nullable().optional(),
+    dataContato: z19.string().optional()
     // ISO string da data clicada
   })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
-    const existentes = await db5.select().from(crmContatos).where(and12(
-      eq15(crmContatos.orcamentoId, input.orcamentoId),
+    const existentes = await db5.select().from(crmContatos).where(and15(
+      eq18(crmContatos.orcamentoId, input.orcamentoId),
       sql9`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
     ));
     const numeroContato = existentes.length + 1;
@@ -11471,30 +12334,30 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Buscar/salvar meta do vendedor
-  getMeta: protectedProcedure.input(z16.object({ vendedor: z16.string(), mes: z16.number(), ano: z16.number() })).query(async ({ input }) => {
+  getMeta: protectedProcedure.input(z19.object({ vendedor: z19.string(), mes: z19.number(), ano: z19.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
-    const rows = await db5.select().from(crmMetas).where(and12(
-      eq15(crmMetas.vendedor, input.vendedor),
-      eq15(crmMetas.mes, input.mes),
-      eq15(crmMetas.ano, input.ano)
+    const rows = await db5.select().from(crmMetas).where(and15(
+      eq18(crmMetas.vendedor, input.vendedor),
+      eq18(crmMetas.mes, input.mes),
+      eq18(crmMetas.ano, input.ano)
     ));
     return rows[0] ?? null;
   }),
-  saveMeta: protectedProcedure.input(z16.object({
-    vendedor: z16.string(),
-    mes: z16.number(),
-    ano: z16.number(),
-    metaValor: z16.number(),
-    metaQtdOs: z16.number()
+  saveMeta: protectedProcedure.input(z19.object({
+    vendedor: z19.string(),
+    mes: z19.number(),
+    ano: z19.number(),
+    metaValor: z19.number(),
+    metaQtdOs: z19.number()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmMetas).where(and12(
-      eq15(crmMetas.vendedor, input.vendedor),
-      eq15(crmMetas.mes, input.mes),
-      eq15(crmMetas.ano, input.ano)
+    const existing = await db5.select().from(crmMetas).where(and15(
+      eq18(crmMetas.vendedor, input.vendedor),
+      eq18(crmMetas.mes, input.mes),
+      eq18(crmMetas.ano, input.ano)
     ));
     if (existing.length > 0) {
-      await db5.update(crmMetas).set({ metaValor: String(input.metaValor), metaQtdOs: input.metaQtdOs }).where(eq15(crmMetas.id, existing[0].id));
+      await db5.update(crmMetas).set({ metaValor: String(input.metaValor), metaQtdOs: input.metaQtdOs }).where(eq18(crmMetas.id, existing[0].id));
     } else {
       await db5.insert(crmMetas).values({
         vendedor: input.vendedor,
@@ -11541,7 +12404,7 @@ var crmRouter = router({
       vendedores[v].valorFechado += parseFloat(o.valor_total ?? "0");
     }
     const db5 = await getDb3();
-    const metas = await db5.select().from(crmMetas).where(and12(eq15(crmMetas.mes, mes), eq15(crmMetas.ano, ano)));
+    const metas = await db5.select().from(crmMetas).where(and15(eq18(crmMetas.mes, mes), eq18(crmMetas.ano, ano)));
     const metaMap = {};
     for (const m of metas) metaMap[m.vendedor] = m;
     return Object.entries(vendedores).map(([nome, dados]) => ({
@@ -11552,30 +12415,30 @@ var crmRouter = router({
     })).sort((a, b) => b.valorFechado - a.valorFechado);
   }),
   // Contatos já registrados de uma proposta
-  getContatos: protectedProcedure.input(z16.object({ orcamentoId: z16.string() })).query(async ({ input }) => {
+  getContatos: protectedProcedure.input(z19.object({ orcamentoId: z19.string() })).query(async ({ input }) => {
     const db5 = await getDb3();
-    return db5.select().from(crmContatos).where(eq15(crmContatos.orcamentoId, input.orcamentoId)).orderBy(crmContatos.numeroContato);
+    return db5.select().from(crmContatos).where(eq18(crmContatos.orcamentoId, input.orcamentoId)).orderBy(crmContatos.numeroContato);
   }),
   // Buscar metas do mês com usuário vinculado
-  getMetas: protectedProcedure.input(z16.object({ mes: z16.number().optional(), ano: z16.number().optional() })).query(async ({ input }) => {
+  getMetas: protectedProcedure.input(z19.object({ mes: z19.number().optional(), ano: z19.number().optional() })).query(async ({ input }) => {
     const db5 = await getDb3();
     const now = /* @__PURE__ */ new Date();
     const mes = input.mes ?? now.getMonth() + 1;
     const ano = input.ano ?? now.getFullYear();
-    return db5.select().from(crmMetas).where(and12(eq15(crmMetas.mes, mes), eq15(crmMetas.ano, ano))).orderBy(crmMetas.vendedor);
+    return db5.select().from(crmMetas).where(and15(eq18(crmMetas.mes, mes), eq18(crmMetas.ano, ano))).orderBy(crmMetas.vendedor);
   }),
   // Salvar meta (cria ou atualiza)
-  salvarMeta: protectedProcedure.input(z16.object({
-    vendedor: z16.string(),
-    mes: z16.number(),
-    ano: z16.number(),
-    metaValor: z16.number().optional(),
-    metaQtdOs: z16.number().optional()
+  salvarMeta: protectedProcedure.input(z19.object({
+    vendedor: z19.string(),
+    mes: z19.number(),
+    ano: z19.number(),
+    metaValor: z19.number().optional(),
+    metaQtdOs: z19.number().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmMetas).where(and12(eq15(crmMetas.vendedor, input.vendedor), eq15(crmMetas.mes, input.mes), eq15(crmMetas.ano, input.ano))).limit(1);
+    const existing = await db5.select().from(crmMetas).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano))).limit(1);
     if (existing.length > 0) {
-      await db5.update(crmMetas).set({ metaValor: String(input.metaValor ?? 0), metaQtdOs: input.metaQtdOs ?? 0 }).where(and12(eq15(crmMetas.vendedor, input.vendedor), eq15(crmMetas.mes, input.mes), eq15(crmMetas.ano, input.ano)));
+      await db5.update(crmMetas).set({ metaValor: String(input.metaValor ?? 0), metaQtdOs: input.metaQtdOs ?? 0 }).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano)));
     } else {
       await db5.insert(crmMetas).values({
         vendedor: input.vendedor,
@@ -11588,17 +12451,17 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Vincular usuário do sistema a um vendedor
-  vincularUsuarioMeta: protectedProcedure.input(z16.object({
-    vendedor: z16.string(),
-    mes: z16.number(),
-    ano: z16.number(),
-    usuarioId: z16.string().nullable(),
-    usuarioNome: z16.string().nullable()
+  vincularUsuarioMeta: protectedProcedure.input(z19.object({
+    vendedor: z19.string(),
+    mes: z19.number(),
+    ano: z19.number(),
+    usuarioId: z19.string().nullable(),
+    usuarioNome: z19.string().nullable()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmMetas).where(and12(eq15(crmMetas.vendedor, input.vendedor), eq15(crmMetas.mes, input.mes), eq15(crmMetas.ano, input.ano))).limit(1);
+    const existing = await db5.select().from(crmMetas).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano))).limit(1);
     if (existing.length > 0) {
-      await db5.update(crmMetas).set({ usuarioVinculadoId: input.usuarioId, usuarioVinculadoNome: input.usuarioNome }).where(and12(eq15(crmMetas.vendedor, input.vendedor), eq15(crmMetas.mes, input.mes), eq15(crmMetas.ano, input.ano)));
+      await db5.update(crmMetas).set({ usuarioVinculadoId: input.usuarioId, usuarioVinculadoNome: input.usuarioNome }).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano)));
     } else {
       await db5.insert(crmMetas).values({
         vendedor: input.vendedor,
@@ -11613,34 +12476,34 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Excluir vendedor das metas (remove todos os registros de metas do vendedor)
-  excluirVendedorMeta: protectedProcedure.input(z16.object({ vendedor: z16.string(), mes: z16.number(), ano: z16.number() })).mutation(async ({ input }) => {
+  excluirVendedorMeta: protectedProcedure.input(z19.object({ vendedor: z19.string(), mes: z19.number(), ano: z19.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    await db5.delete(crmMetas).where(and12(eq15(crmMetas.vendedor, input.vendedor), eq15(crmMetas.mes, input.mes), eq15(crmMetas.ano, input.ano)));
+    await db5.delete(crmMetas).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano)));
     return { ok: true };
   }),
   // ─── Scripts de vendas por faixa ─────────────────────────────────────────────
-  listScripts: protectedProcedure.input(z16.object({ faixa: z16.number().min(1).max(20) })).query(async ({ input }) => {
+  listScripts: protectedProcedure.input(z19.object({ faixa: z19.number().min(1).max(20) })).query(async ({ input }) => {
     const db5 = await getDb3();
-    return db5.select().from(crmScripts).where(and12(eq15(crmScripts.faixa, input.faixa), eq15(crmScripts.ativo, true))).orderBy(crmScripts.ordem);
+    return db5.select().from(crmScripts).where(and15(eq18(crmScripts.faixa, input.faixa), eq18(crmScripts.ativo, true))).orderBy(crmScripts.ordem);
   }),
-  updateScript: protectedProcedure.input(z16.object({
-    id: z16.number(),
-    titulo: z16.string().max(128).optional(),
-    conteudo: z16.string().min(1),
-    conteudo_voz: z16.string().optional()
+  updateScript: protectedProcedure.input(z19.object({
+    id: z19.number(),
+    titulo: z19.string().max(128).optional(),
+    conteudo: z19.string().min(1),
+    conteudo_voz: z19.string().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    await db5.update(crmScripts).set({ titulo: input.titulo, conteudo: input.conteudo, conteudo_voz: input.conteudo_voz ?? null }).where(eq15(crmScripts.id, input.id));
+    await db5.update(crmScripts).set({ titulo: input.titulo, conteudo: input.conteudo, conteudo_voz: input.conteudo_voz ?? null }).where(eq18(crmScripts.id, input.id));
     return { ok: true };
   }),
-  addScript: protectedProcedure.input(z16.object({
-    faixa: z16.number().min(1).max(20),
-    titulo: z16.string().max(128).optional(),
-    conteudo: z16.string().min(1),
-    conteudo_voz: z16.string().optional()
+  addScript: protectedProcedure.input(z19.object({
+    faixa: z19.number().min(1).max(20),
+    titulo: z19.string().max(128).optional(),
+    conteudo: z19.string().min(1),
+    conteudo_voz: z19.string().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select({ ordem: crmScripts.ordem }).from(crmScripts).where(eq15(crmScripts.faixa, input.faixa)).orderBy(desc8(crmScripts.ordem)).limit(1);
+    const existing = await db5.select({ ordem: crmScripts.ordem }).from(crmScripts).where(eq18(crmScripts.faixa, input.faixa)).orderBy(desc9(crmScripts.ordem)).limit(1);
     const nextOrdem = (existing[0]?.ordem ?? 0) + 1;
     const [inserted] = await db5.insert(crmScripts).values({
       faixa: input.faixa,
@@ -11651,24 +12514,24 @@ var crmRouter = router({
     }).returning({ id: crmScripts.id });
     return { ok: true, id: inserted.id };
   }),
-  deleteScript: protectedProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+  deleteScript: protectedProcedure.input(z19.object({ id: z19.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    await db5.update(crmScripts).set({ ativo: false }).where(eq15(crmScripts.id, input.id));
+    await db5.update(crmScripts).set({ ativo: false }).where(eq18(crmScripts.id, input.id));
     return { ok: true };
   }),
-  incrementCopiaCount: protectedProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+  incrementCopiaCount: protectedProcedure.input(z19.object({ id: z19.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     await db5.execute(sql9`UPDATE crm_scripts SET copia_count = copia_count + 1 WHERE id = ${input.id}`);
     return { ok: true };
   }),
-  reorderScripts: protectedProcedure.input(z16.object({
-    faixa: z16.number().min(1).max(20),
-    orderedIds: z16.array(z16.number())
+  reorderScripts: protectedProcedure.input(z19.object({
+    faixa: z19.number().min(1).max(20),
+    orderedIds: z19.array(z19.number())
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     await Promise.all(
       input.orderedIds.map(
-        (id, index) => db5.update(crmScripts).set({ ordem: index }).where(eq15(crmScripts.id, id))
+        (id, index2) => db5.update(crmScripts).set({ ordem: index2 }).where(eq18(crmScripts.id, id))
       )
     );
     return { ok: true };
@@ -11682,14 +12545,14 @@ var crmRouter = router({
     for (const row of rows) result[row.faixa] = row.label;
     return result;
   }),
-  saveFaixaEtiqueta: protectedProcedure.input(z16.object({
-    faixa: z16.number().min(1).max(3),
-    label: z16.string().min(1).max(128)
+  saveFaixaEtiqueta: protectedProcedure.input(z19.object({
+    faixa: z19.number().min(1).max(3),
+    label: z19.string().min(1).max(128)
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmFaixaEtiquetas).where(eq15(crmFaixaEtiquetas.faixa, input.faixa));
+    const existing = await db5.select().from(crmFaixaEtiquetas).where(eq18(crmFaixaEtiquetas.faixa, input.faixa));
     if (existing.length > 0) {
-      await db5.update(crmFaixaEtiquetas).set({ label: input.label }).where(eq15(crmFaixaEtiquetas.faixa, input.faixa));
+      await db5.update(crmFaixaEtiquetas).set({ label: input.label }).where(eq18(crmFaixaEtiquetas.faixa, input.faixa));
     } else {
       await db5.insert(crmFaixaEtiquetas).values({ faixa: input.faixa, label: input.label });
     }
@@ -11701,22 +12564,22 @@ var crmRouter = router({
    * Inclui os 7 blocos: rotina, volume por faixa, descartes, limbo, velocidade suspeita,
    * ranking e diagnóstico.
    */
-  getAuditoria: protectedProcedure.input(z16.object({
-    dataInicio: z16.string(),
+  getAuditoria: protectedProcedure.input(z19.object({
+    dataInicio: z19.string(),
     // ISO date "YYYY-MM-DD"
-    dataFim: z16.string(),
+    dataFim: z19.string(),
     // ISO date "YYYY-MM-DD"
-    vendedor: z16.string().optional()
+    vendedor: z19.string().optional()
     // undefined = todos
   })).query(async ({ input }) => {
     const db5 = await getDb3();
     const inicio = /* @__PURE__ */ new Date(input.dataInicio + "T03:00:00.000Z");
     const fim = /* @__PURE__ */ new Date(input.dataFim + "T26:59:59.999Z");
-    const logsWhere = input.vendedor ? and12(
+    const logsWhere = input.vendedor ? and15(
       sql9`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
       sql9`${crmAtividadeLog.realizadaEm} <= ${fim}`,
-      eq15(crmAtividadeLog.vendedor, input.vendedor)
-    ) : and12(
+      eq18(crmAtividadeLog.vendedor, input.vendedor)
+    ) : and15(
       sql9`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
       sql9`${crmAtividadeLog.realizadaEm} <= ${fim}`
     );
@@ -11759,7 +12622,7 @@ var crmRouter = router({
       const aderencia = totalDias > 0 ? Math.round((manhasOk + tardesOk) / (totalDias * 2) * 100) : 0;
       return { vendedor: v, manhasOk, tardesOk, totalDias, aderencia, dias: diasDetalhes };
     });
-    const contatosNoPeriodo = await db5.select().from(crmContatos).where(and12(
+    const contatosNoPeriodo = await db5.select().from(crmContatos).where(and15(
       sql9`${crmContatos.contatadoEm} >= ${inicio}`,
       sql9`${crmContatos.contatadoEm} <= ${fim}`,
       sql9`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
@@ -11904,16 +12767,16 @@ var crmRouter = router({
    * Retorna o log bruto de atividade de um vendedor em um dia específico.
    * Usado para drill-down no calendário.
    */
-  getLogDia: protectedProcedure.input(z16.object({
-    vendedor: z16.string(),
-    data: z16.string()
+  getLogDia: protectedProcedure.input(z19.object({
+    vendedor: z19.string(),
+    data: z19.string()
     // "YYYY-MM-DD"
   })).query(async ({ input }) => {
     const db5 = await getDb3();
     const inicio = /* @__PURE__ */ new Date(input.data + "T03:00:00.000Z");
     const fim = /* @__PURE__ */ new Date(input.data + "T26:59:59.999Z");
-    const logs = await db5.select().from(crmAtividadeLog).where(and12(
-      eq15(crmAtividadeLog.vendedor, input.vendedor),
+    const logs = await db5.select().from(crmAtividadeLog).where(and15(
+      eq18(crmAtividadeLog.vendedor, input.vendedor),
       sql9`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
       sql9`${crmAtividadeLog.realizadaEm} <= ${fim}`
     )).orderBy(crmAtividadeLog.realizadaEm);
@@ -11931,10 +12794,10 @@ var crmRouter = router({
 });
 
 // server/routers/custoLed.ts
-import { z as z17 } from "zod";
+import { z as z20 } from "zod";
 init_db();
 init_schema();
-import { eq as eq16, and as and13 } from "drizzle-orm";
+import { eq as eq19, and as and16 } from "drizzle-orm";
 var custoLedRouter = router({
   // Listar todos os tipos de LED ativos
   listTipos: publicProcedure.query(async () => {
@@ -11943,13 +12806,13 @@ var custoLedRouter = router({
     return db5.select().from(ledTipos).orderBy(ledTipos.nome);
   }),
   // Criar ou atualizar tipo de LED
-  upsertTipo: protectedProcedure.input(z17.object({
-    id: z17.number().optional(),
-    nome: z17.string().min(1),
-    descricao: z17.string().optional(),
-    custoUnitario: z17.number().min(0),
-    unidade: z17.string().default("un"),
-    ativo: z17.enum(["sim", "nao"]).default("sim")
+  upsertTipo: protectedProcedure.input(z20.object({
+    id: z20.number().optional(),
+    nome: z20.string().min(1),
+    descricao: z20.string().optional(),
+    custoUnitario: z20.number().min(0),
+    unidade: z20.string().default("un"),
+    ativo: z20.enum(["sim", "nao"]).default("sim")
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
@@ -11962,7 +12825,7 @@ var custoLedRouter = router({
       ativo: data.ativo
     };
     if (id) {
-      await db5.update(ledTipos).set(payload).where(eq16(ledTipos.id, id));
+      await db5.update(ledTipos).set(payload).where(eq19(ledTipos.id, id));
       return { ok: true, id };
     } else {
       const [res] = await db5.insert(ledTipos).values(payload).returning({ id: ledTipos.id });
@@ -11970,34 +12833,34 @@ var custoLedRouter = router({
     }
   }),
   // Excluir tipo de LED
-  deleteTipo: protectedProcedure.input(z17.object({ id: z17.number() })).mutation(async ({ input }) => {
+  deleteTipo: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
-    await db5.delete(ledTipos).where(eq16(ledTipos.id, input.id));
+    await db5.delete(ledTipos).where(eq19(ledTipos.id, input.id));
     return { ok: true };
   }),
   // ─── Lançamentos de custo de LED por OS ──────────────────────────────────────
   // Listar lançamentos de um mês/ano
-  listLancamentos: publicProcedure.input(z17.object({ mes: z17.number(), ano: z17.number() })).query(async ({ input }) => {
+  listLancamentos: publicProcedure.input(z20.object({ mes: z20.number(), ano: z20.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
-    const rows = await db5.select().from(custoLedLancamentos).where(and13(
-      eq16(custoLedLancamentos.mes, input.mes),
-      eq16(custoLedLancamentos.ano, input.ano)
+    const rows = await db5.select().from(custoLedLancamentos).where(and16(
+      eq19(custoLedLancamentos.mes, input.mes),
+      eq19(custoLedLancamentos.ano, input.ano)
     )).orderBy(custoLedLancamentos.os, custoLedLancamentos.createdAt);
     return rows;
   }),
   // Criar ou atualizar lançamento
-  upsertLancamento: protectedProcedure.input(z17.object({
-    id: z17.number().optional(),
-    os: z17.string().min(1),
-    ledTipoId: z17.number(),
-    ledTipoEfetivoId: z17.number().nullable().optional(),
-    qtdPrevista: z17.number().min(0),
-    qtdEfetiva: z17.number().min(0).nullable().optional(),
-    mes: z17.number().min(1).max(12),
-    ano: z17.number(),
-    observacao: z17.string().optional()
+  upsertLancamento: protectedProcedure.input(z20.object({
+    id: z20.number().optional(),
+    os: z20.string().min(1),
+    ledTipoId: z20.number(),
+    ledTipoEfetivoId: z20.number().nullable().optional(),
+    qtdPrevista: z20.number().min(0),
+    qtdEfetiva: z20.number().min(0).nullable().optional(),
+    mes: z20.number().min(1).max(12),
+    ano: z20.number(),
+    observacao: z20.string().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
@@ -12013,7 +12876,7 @@ var custoLedRouter = router({
       observacao: data.observacao ?? null
     };
     if (id) {
-      await db5.update(custoLedLancamentos).set(payload).where(eq16(custoLedLancamentos.id, id));
+      await db5.update(custoLedLancamentos).set(payload).where(eq19(custoLedLancamentos.id, id));
       return { ok: true, id };
     } else {
       const [res] = await db5.insert(custoLedLancamentos).values(payload).returning({ id: custoLedLancamentos.id });
@@ -12021,20 +12884,20 @@ var custoLedRouter = router({
     }
   }),
   // Excluir lançamento
-  deleteLancamento: protectedProcedure.input(z17.object({ id: z17.number() })).mutation(async ({ input }) => {
+  deleteLancamento: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
-    await db5.delete(custoLedLancamentos).where(eq16(custoLedLancamentos.id, input.id));
+    await db5.delete(custoLedLancamentos).where(eq19(custoLedLancamentos.id, input.id));
     return { ok: true };
   }),
   // Resumo mensal: total previsto, efetivo, diferença (por tipo de LED)
-  getResumoMensal: publicProcedure.input(z17.object({ mes: z17.number(), ano: z17.number() })).query(async ({ input }) => {
+  getResumoMensal: publicProcedure.input(z20.object({ mes: z20.number(), ano: z20.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return { lancamentos: [], tipos: [], totalPrevisto: 0, totalEfetivo: 0, diferenca: 0 };
     const [lancamentos, tipos] = await Promise.all([
-      db5.select().from(custoLedLancamentos).where(and13(
-        eq16(custoLedLancamentos.mes, input.mes),
-        eq16(custoLedLancamentos.ano, input.ano)
+      db5.select().from(custoLedLancamentos).where(and16(
+        eq19(custoLedLancamentos.mes, input.mes),
+        eq19(custoLedLancamentos.ano, input.ano)
       )),
       db5.select().from(ledTipos)
     ]);
@@ -12074,7 +12937,7 @@ var custoLedRouter = router({
 
 // server/routers/admin.ts
 init_mubisys_client();
-import { z as z18 } from "zod";
+import { z as z21 } from "zod";
 function calcularProximaExecucao() {
   const agora = /* @__PURE__ */ new Date();
   const proxima = new Date(agora);
@@ -12146,9 +13009,9 @@ var adminRouter = router({
   // ✅ Forçar sincronização manual — mesma janela padrão (8/0) do lote 1 do
   // agendamento. Para os 30 dias completos, rodar os quatro lotes manualmente.
   forcarSincronizacaoManual: adminProcedure.input(
-    z18.object({
-      dias: z18.number().min(1).max(31).optional(),
-      offset: z18.number().min(0).max(365).optional()
+    z21.object({
+      dias: z21.number().min(1).max(31).optional(),
+      offset: z21.number().min(0).max(365).optional()
     }).optional()
   ).mutation(async ({ input }) => {
     try {
@@ -12167,7 +13030,7 @@ var adminRouter = router({
     }
   }),
   // ✅ Obter histórico de sincronizações
-  obterHistoricoSincronizacoes: adminProcedure.input(z18.object({ limite: z18.number().default(10) })).query(async ({ input }) => {
+  obterHistoricoSincronizacoes: adminProcedure.input(z21.object({ limite: z21.number().default(10) })).query(async ({ input }) => {
     try {
       const { selectQuery: selectQuery2 } = await Promise.resolve().then(() => (init_db_connection(), db_connection_exports));
       const limite = Math.max(1, Math.min(Number(input.limite) || 10, 100));
@@ -12220,7 +13083,7 @@ var adminRouter = router({
 });
 
 // server/_core/systemRouter.ts
-import { z as z19 } from "zod";
+import { z as z22 } from "zod";
 
 // server/_core/notification.ts
 import { TRPCError as TRPCError4 } from "@trpc/server";
@@ -12271,16 +13134,16 @@ async function notifyOwner(payload) {
 // server/_core/systemRouter.ts
 var systemRouter = router({
   health: publicProcedure.input(
-    z19.object({
-      timestamp: z19.number().min(0, "timestamp cannot be negative")
+    z22.object({
+      timestamp: z22.number().min(0, "timestamp cannot be negative")
     })
   ).query(() => ({
     ok: true
   })),
   notifyOwner: adminProcedure.input(
-    z19.object({
-      title: z19.string().min(1, "title is required"),
-      content: z19.string().min(1, "content is required")
+    z22.object({
+      title: z22.string().min(1, "title is required"),
+      content: z22.string().min(1, "content is required")
     })
   ).mutation(async ({ input }) => {
     const delivered = await notifyOwner(input);
@@ -12299,7 +13162,7 @@ init_db();
 init_db();
 import { fromNodeHeaders } from "better-auth/node";
 import { TRPCError as TRPCError5 } from "@trpc/server";
-import { asc as asc6, eq as eq17, isNull as isNull2, or as or2, count as sqlCount } from "drizzle-orm";
+import { asc as asc6, eq as eq20, isNull as isNull2, or as or2, count as sqlCount } from "drizzle-orm";
 async function countUsers() {
   const db5 = await getDb3();
   if (!db5) return 0;
@@ -12315,16 +13178,16 @@ function slugifyName(name) {
   const slug = name.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
   return slug || "usuario";
 }
-var filterSchema = z20.object({
-  mes: z20.string().optional(),
-  setor: z20.string().optional(),
-  tipo: z20.string().optional(),
-  responsavel: z20.string().optional(),
-  classe: z20.string().optional(),
-  dataInicio: z20.date().optional(),
-  dataFim: z20.date().optional(),
-  search: z20.string().optional(),
-  tipoRegistro: z20.enum(["retrabalho", "cnq"]).optional()
+var filterSchema = z23.object({
+  mes: z23.string().optional(),
+  setor: z23.string().optional(),
+  tipo: z23.string().optional(),
+  responsavel: z23.string().optional(),
+  classe: z23.string().optional(),
+  dataInicio: z23.date().optional(),
+  dataFim: z23.date().optional(),
+  search: z23.string().optional(),
+  tipoRegistro: z23.enum(["retrabalho", "cnq"]).optional()
 });
 var appRouter = router({
   system: systemRouter,
@@ -12333,89 +13196,89 @@ var appRouter = router({
   // ─── Error Library ──────────────────────────────────────────────────────
   errorLibrary: router({
     list: publicProcedure.query(() => getErrorLibrary()),
-    byCode: publicProcedure.input(z20.object({ code: z20.string() })).query(({ input }) => getErrorByCode(input.code)),
-    updateCorrection: protectedProcedure.input(z20.object({ code: z20.string(), correction: z20.string().min(1) })).mutation(({ input }) => updateErrorCorrection(input.code, input.correction)),
-    create: protectedProcedure.input(z20.object({
-      code: z20.string().min(1),
-      category: z20.string().min(1),
-      description: z20.string().min(1),
-      correction: z20.string().min(1),
-      tipoRegistro: z20.enum(["retrabalho", "cnq"]).default("retrabalho")
+    byCode: publicProcedure.input(z23.object({ code: z23.string() })).query(({ input }) => getErrorByCode(input.code)),
+    updateCorrection: protectedProcedure.input(z23.object({ code: z23.string(), correction: z23.string().min(1) })).mutation(({ input }) => updateErrorCorrection(input.code, input.correction)),
+    create: protectedProcedure.input(z23.object({
+      code: z23.string().min(1),
+      category: z23.string().min(1),
+      description: z23.string().min(1),
+      correction: z23.string().min(1),
+      tipoRegistro: z23.enum(["retrabalho", "cnq"]).default("retrabalho")
     })).mutation(({ input }) => createErrorLibraryItem(input)),
-    updateItem: protectedProcedure.input(z20.object({
-      code: z20.string(),
-      description: z20.string().min(1).optional(),
-      correction: z20.string().min(1).optional()
+    updateItem: protectedProcedure.input(z23.object({
+      code: z23.string(),
+      description: z23.string().min(1).optional(),
+      correction: z23.string().min(1).optional()
     })).mutation(({ input }) => updateErrorItem(input.code, { description: input.description, correction: input.correction })),
-    uploadImage: protectedProcedure.input(z20.object({
-      code: z20.string(),
-      fileName: z20.string(),
-      url: z20.string().url(),
-      key: z20.string().min(1),
-      mimeType: z20.string().default("image/jpeg")
+    uploadImage: protectedProcedure.input(z23.object({
+      code: z23.string(),
+      fileName: z23.string(),
+      url: z23.string().url(),
+      key: z23.string().min(1),
+      mimeType: z23.string().default("image/jpeg")
     })).mutation(async ({ input }) => {
       await updateErrorItem(input.code, { imageUrl: input.url, imageKey: input.key });
       return { url: input.url, key: input.key };
     }),
-    removeImage: protectedProcedure.input(z20.object({ code: z20.string() })).mutation(async ({ input }) => {
+    removeImage: protectedProcedure.input(z23.object({ code: z23.string() })).mutation(async ({ input }) => {
       await updateErrorItem(input.code, { imageUrl: null, imageKey: null });
       return { success: true };
     }),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => deleteErrorLibraryItem(input.id))
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteErrorLibraryItem(input.id))
   }),
   faturamento: router({
     list: publicProcedure.query(() => getFaturamento()),
-    upsert: publicProcedure.input(z20.object({ mes: z20.string(), ano: z20.number(), valorFaturado: z20.number(), totalPedidos: z20.number() })).mutation(({ input }) => upsertFaturamento(input.mes, input.ano, input.valorFaturado, input.totalPedidos))
+    upsert: publicProcedure.input(z23.object({ mes: z23.string(), ano: z23.number(), valorFaturado: z23.number(), totalPedidos: z23.number() })).mutation(({ input }) => upsertFaturamento(input.mes, input.ano, input.valorFaturado, input.totalPedidos))
   }),
   financeiros: router({
     list: publicProcedure.query(() => getFinanceiros()),
-    byMesAno: publicProcedure.input(z20.object({ mes: z20.number(), ano: z20.number() })).query(({ input }) => getFinanceiroByMesAno(input.mes, input.ano)),
-    upsert: protectedProcedure.input(z20.object({
-      mes: z20.number(),
-      ano: z20.number(),
-      receitaBruta: z20.number().optional(),
-      receitaOperacional: z20.number().optional(),
-      receitaFinanceira: z20.number().optional(),
-      despesasTotal: z20.number().optional(),
-      despesasFixas: z20.number().optional(),
-      despesasVariaveis: z20.number().optional(),
-      despesasPessoal: z20.number().optional(),
-      despesasFinanceiras: z20.number().optional(),
-      despesasImpostos: z20.number().optional(),
-      lucroGruto: z20.number().optional(),
-      lucroOperacional: z20.number().optional(),
-      lucroLiquido: z20.number().optional(),
-      entradas: z20.number().optional(),
-      saidas: z20.number().optional(),
-      saldoMes: z20.number().optional(),
-      observacoes: z20.string().optional()
+    byMesAno: publicProcedure.input(z23.object({ mes: z23.number(), ano: z23.number() })).query(({ input }) => getFinanceiroByMesAno(input.mes, input.ano)),
+    upsert: protectedProcedure.input(z23.object({
+      mes: z23.number(),
+      ano: z23.number(),
+      receitaBruta: z23.number().optional(),
+      receitaOperacional: z23.number().optional(),
+      receitaFinanceira: z23.number().optional(),
+      despesasTotal: z23.number().optional(),
+      despesasFixas: z23.number().optional(),
+      despesasVariaveis: z23.number().optional(),
+      despesasPessoal: z23.number().optional(),
+      despesasFinanceiras: z23.number().optional(),
+      despesasImpostos: z23.number().optional(),
+      lucroGruto: z23.number().optional(),
+      lucroOperacional: z23.number().optional(),
+      lucroLiquido: z23.number().optional(),
+      entradas: z23.number().optional(),
+      saidas: z23.number().optional(),
+      saldoMes: z23.number().optional(),
+      observacoes: z23.string().optional()
     })).mutation(({ input }) => upsertFinanceiro(input))
   }),
   // ─── Retrabalhos ────────────────────────────────────────────────────────
   retrabalhos: router({
-    list: publicProcedure.input(z20.object({ filter: filterSchema.optional(), page: z20.number().default(1), pageSize: z20.number().default(50) })).query(({ input }) => listRetrabalhos(input.filter ?? {}, input.page, input.pageSize)),
+    list: publicProcedure.input(z23.object({ filter: filterSchema.optional(), page: z23.number().default(1), pageSize: z23.number().default(50) })).query(({ input }) => listRetrabalhos(input.filter ?? {}, input.page, input.pageSize)),
     all: publicProcedure.input(filterSchema.optional()).query(({ input }) => getRetrabalhosAll(input ?? {})),
-    byId: publicProcedure.input(z20.object({ id: z20.number() })).query(({ input }) => getRetrabalhosById(input.id)),
-    create: protectedProcedure.input(z20.object({
-      titulo: z20.string().optional().nullable(),
-      osRetrabalhada: z20.string().optional().nullable(),
+    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getRetrabalhosById(input.id)),
+    create: protectedProcedure.input(z23.object({
+      titulo: z23.string().optional().nullable(),
+      osRetrabalhada: z23.string().optional().nullable(),
       // Opcional para CNQ
-      osOriginal: z20.string().optional().nullable(),
+      osOriginal: z23.string().optional().nullable(),
       // Opcional para CNQ
-      data: z20.date(),
-      setor: z20.string(),
-      tipo: z20.enum(["INTERNO", "EXTERNO"]),
-      custo: z20.string().default("0"),
-      frete: z20.string().default("0"),
-      total: z20.string().default("0"),
-      codigoErro: z20.string().optional().nullable(),
-      responsavel: z20.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
-      tipoResponsavel: z20.enum(["operador", "gestor"]).default("operador"),
-      descricao: z20.string().optional().nullable(),
-      classe: z20.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
-      horasImpacto: z20.union([z20.number(), z20.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
-      mes: z20.string().optional().nullable(),
-      tipoRegistro: z20.enum(["retrabalho", "cnq"]).default("retrabalho")
+      data: z23.date(),
+      setor: z23.string(),
+      tipo: z23.enum(["INTERNO", "EXTERNO"]),
+      custo: z23.string().default("0"),
+      frete: z23.string().default("0"),
+      total: z23.string().default("0"),
+      codigoErro: z23.string().optional().nullable(),
+      responsavel: z23.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
+      tipoResponsavel: z23.enum(["operador", "gestor"]).default("operador"),
+      descricao: z23.string().optional().nullable(),
+      classe: z23.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
+      horasImpacto: z23.union([z23.number(), z23.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
+      mes: z23.string().optional().nullable(),
+      tipoRegistro: z23.enum(["retrabalho", "cnq"]).default("retrabalho")
     })).mutation(async ({ input, ctx }) => {
       const result = await createRetrabalho(input);
       const newId = result?.id ?? null;
@@ -12432,26 +13295,26 @@ var appRouter = router({
       });
       return result;
     }),
-    createBatch: protectedProcedure.input(z20.object({
-      titulo: z20.string().optional().nullable(),
-      osRetrabalhada: z20.string().optional().nullable(),
+    createBatch: protectedProcedure.input(z23.object({
+      titulo: z23.string().optional().nullable(),
+      osRetrabalhada: z23.string().optional().nullable(),
       // Opcional para CNQ
-      osOriginal: z20.string().optional().nullable(),
+      osOriginal: z23.string().optional().nullable(),
       // Opcional para CNQ
-      data: z20.date(),
-      setor: z20.string(),
-      tipo: z20.enum(["INTERNO", "EXTERNO"]),
-      custo: z20.string().default("0"),
-      frete: z20.string().default("0"),
-      total: z20.string().default("0"),
-      responsavel: z20.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
-      tipoResponsavel: z20.enum(["operador", "gestor"]).default("operador"),
-      descricao: z20.string().optional().nullable(),
-      classe: z20.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
-      horasImpacto: z20.union([z20.number(), z20.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
-      mes: z20.string().optional().nullable(),
-      tipoRegistro: z20.enum(["retrabalho", "cnq"]).default("retrabalho"),
-      errorIds: z20.array(z20.number()).min(1, "Selecione pelo menos um erro")
+      data: z23.date(),
+      setor: z23.string(),
+      tipo: z23.enum(["INTERNO", "EXTERNO"]),
+      custo: z23.string().default("0"),
+      frete: z23.string().default("0"),
+      total: z23.string().default("0"),
+      responsavel: z23.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
+      tipoResponsavel: z23.enum(["operador", "gestor"]).default("operador"),
+      descricao: z23.string().optional().nullable(),
+      classe: z23.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
+      horasImpacto: z23.union([z23.number(), z23.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
+      mes: z23.string().optional().nullable(),
+      tipoRegistro: z23.enum(["retrabalho", "cnq"]).default("retrabalho"),
+      errorIds: z23.array(z23.number()).min(1, "Selecione pelo menos um erro")
     })).mutation(async ({ input, ctx }) => {
       const { errorIds, ...baseData } = input;
       const results = await createBatchRetrabalhos(baseData, errorIds);
@@ -12471,26 +13334,26 @@ var appRouter = router({
       });
       return { success: true, count: results.length, results };
     }),
-    update: protectedProcedure.input(z20.object({
-      id: z20.number(),
-      data: z20.object({
-        titulo: z20.string().optional().nullable(),
-        osRetrabalhada: z20.string().optional(),
-        osOriginal: z20.string().optional(),
-        data: z20.date().optional(),
-        setor: z20.string().optional(),
-        tipo: z20.enum(["INTERNO", "EXTERNO"]).optional(),
-        custo: z20.string().optional(),
-        frete: z20.string().optional(),
-        total: z20.string().optional(),
-        codigoErro: z20.string().optional().nullable(),
-        responsavel: z20.string().optional().nullable(),
-        tipoResponsavel: z20.enum(["operador", "gestor"]).optional(),
-        descricao: z20.string().optional().nullable(),
-        classe: z20.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]).optional(),
-        horasImpacto: z20.union([z20.number(), z20.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
-        mes: z20.string().optional().nullable(),
-        tipoRegistro: z20.enum(["retrabalho", "cnq"]).optional()
+    update: protectedProcedure.input(z23.object({
+      id: z23.number(),
+      data: z23.object({
+        titulo: z23.string().optional().nullable(),
+        osRetrabalhada: z23.string().optional(),
+        osOriginal: z23.string().optional(),
+        data: z23.date().optional(),
+        setor: z23.string().optional(),
+        tipo: z23.enum(["INTERNO", "EXTERNO"]).optional(),
+        custo: z23.string().optional(),
+        frete: z23.string().optional(),
+        total: z23.string().optional(),
+        codigoErro: z23.string().optional().nullable(),
+        responsavel: z23.string().optional().nullable(),
+        tipoResponsavel: z23.enum(["operador", "gestor"]).optional(),
+        descricao: z23.string().optional().nullable(),
+        classe: z23.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]).optional(),
+        horasImpacto: z23.union([z23.number(), z23.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
+        mes: z23.string().optional().nullable(),
+        tipoRegistro: z23.enum(["retrabalho", "cnq"]).optional()
       })
     })).mutation(async ({ input, ctx }) => {
       const before = await getRetrabalhosById(input.id);
@@ -12508,7 +13371,7 @@ var appRouter = router({
       });
       return result;
     }),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input, ctx }) => {
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(async ({ input, ctx }) => {
       const before = await getRetrabalhosById(input.id);
       const result = await deleteRetrabalho(input.id);
       insertAuditLog({
@@ -12623,12 +13486,12 @@ Seja direto, t\xE9cnico e pr\xE1tico. Use dados espec\xEDficos dos n\xFAmeros fo
   }),
   // ─── OPERAÇÕES: Base de Conhecimento ────────────────────────────────────
   knowledge: router({
-    list: publicProcedure.input(z20.object({ search: z20.string().optional(), category: z20.string().optional() }).optional()).query(({ input }) => listKnowledge(input?.search, input?.category)),
-    byId: publicProcedure.input(z20.object({ id: z20.number() })).query(({ input }) => getKnowledgeById(input.id)),
-    create: protectedProcedure.input(z20.object({ title: z20.string(), content: z20.string(), category: z20.string(), subcategory: z20.string().optional().nullable(), keywords: z20.string().optional().nullable() })).mutation(({ input }) => createKnowledge(input)),
-    update: protectedProcedure.input(z20.object({ id: z20.number(), data: z20.object({ title: z20.string().optional(), content: z20.string().optional(), category: z20.string().optional(), subcategory: z20.string().optional().nullable(), keywords: z20.string().optional().nullable() }) })).mutation(({ input }) => updateKnowledge(input.id, input.data)),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => deleteKnowledge(input.id)),
-    askAI: protectedProcedure.input(z20.object({ question: z20.string() })).mutation(async ({ input, ctx }) => {
+    list: publicProcedure.input(z23.object({ search: z23.string().optional(), category: z23.string().optional() }).optional()).query(({ input }) => listKnowledge(input?.search, input?.category)),
+    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getKnowledgeById(input.id)),
+    create: protectedProcedure.input(z23.object({ title: z23.string(), content: z23.string(), category: z23.string(), subcategory: z23.string().optional().nullable(), keywords: z23.string().optional().nullable() })).mutation(({ input }) => createKnowledge(input)),
+    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ title: z23.string().optional(), content: z23.string().optional(), category: z23.string().optional(), subcategory: z23.string().optional().nullable(), keywords: z23.string().optional().nullable() }) })).mutation(({ input }) => updateKnowledge(input.id, input.data)),
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteKnowledge(input.id)),
+    askAI: protectedProcedure.input(z23.object({ question: z23.string() })).mutation(async ({ input, ctx }) => {
       const [allKnowledge, allErrors, allPops, allArquivos] = await Promise.all([
         listKnowledge(input.question),
         getErrorLibrary(),
@@ -12710,25 +13573,25 @@ ${contextText}
   }),
   // ─── SUGESTÕES DE INCORPORAÇÃO NA BASE DE CONHECIMENTO ──────────────────
   knowledgeSuggestions: router({
-    list: protectedProcedure.input(z20.object({ status: z20.string().optional() }).optional()).query(({ input }) => listKnowledgeSuggestions(input?.status)),
-    create: protectedProcedure.input(z20.object({
-      pergunta: z20.string(),
-      conteudoSugerido: z20.string(),
-      fonte: z20.enum(["gemini", "manual"]).default("manual"),
-      tituloSugerido: z20.string().optional(),
-      categoriaSugerida: z20.string().optional()
+    list: protectedProcedure.input(z23.object({ status: z23.string().optional() }).optional()).query(({ input }) => listKnowledgeSuggestions(input?.status)),
+    create: protectedProcedure.input(z23.object({
+      pergunta: z23.string(),
+      conteudoSugerido: z23.string(),
+      fonte: z23.enum(["gemini", "manual"]).default("manual"),
+      tituloSugerido: z23.string().optional(),
+      categoriaSugerida: z23.string().optional()
     })).mutation(({ input, ctx }) => createKnowledgeSuggestion({
       ...input,
       autorId: ctx.user?.id ?? void 0,
       autorNome: ctx.user?.name ?? "Usu\xE1rio"
     })),
     // Master aprova: cria artigo na base de conhecimento
-    approve: protectedProcedure.use(requireRole("admin", "master")).input(z20.object({
-      id: z20.number(),
-      titulo: z20.string(),
-      categoria: z20.string(),
-      conteudo: z20.string(),
-      observacao: z20.string().optional()
+    approve: protectedProcedure.use(requireRole("admin", "master")).input(z23.object({
+      id: z23.number(),
+      titulo: z23.string(),
+      categoria: z23.string(),
+      conteudo: z23.string(),
+      observacao: z23.string().optional()
     })).mutation(async ({ input }) => {
       await createKnowledge({ title: input.titulo, content: input.conteudo, category: input.categoria });
       await updateKnowledgeSuggestion(input.id, {
@@ -12739,73 +13602,73 @@ ${contextText}
       });
       return { success: true };
     }),
-    reject: protectedProcedure.use(requireRole("admin", "master")).input(z20.object({ id: z20.number(), observacao: z20.string().optional() })).mutation(async ({ input }) => {
+    reject: protectedProcedure.use(requireRole("admin", "master")).input(z23.object({ id: z23.number(), observacao: z23.string().optional() })).mutation(async ({ input }) => {
       await updateKnowledgeSuggestion(input.id, { status: "rejeitado", observacaoMaster: input.observacao });
       return { success: true };
     }),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => deleteKnowledgeSuggestion(input.id))
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteKnowledgeSuggestion(input.id))
   }),
   // ─── OPERAÇÕES: Fornecedores ─────────────────────────────────────────────
   suppliers: router({
-    list: publicProcedure.input(z20.object({ search: z20.string().optional(), category: z20.string().optional() }).optional()).query(({ input }) => listSuppliers(input?.search, input?.category)),
-    byId: publicProcedure.input(z20.object({ id: z20.number() })).query(({ input }) => getSupplierById(input.id)),
-    create: protectedProcedure.input(z20.object({ name: z20.string(), company: z20.string().optional().nullable(), category: z20.string(), supplies: z20.string().optional().nullable(), contact: z20.string().optional().nullable(), phone: z20.string().optional().nullable(), email: z20.string().optional().nullable(), paymentTerms: z20.string().optional().nullable(), notes: z20.string().optional().nullable() })).mutation(({ input, ctx }) => createSupplier({ ...input, createdByNome: ctx.user.name ?? ctx.user.email ?? "sistema", updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
-    update: protectedProcedure.input(z20.object({ id: z20.number(), data: z20.object({ name: z20.string().optional(), company: z20.string().optional().nullable(), category: z20.string().optional(), supplies: z20.string().optional().nullable(), contact: z20.string().optional().nullable(), phone: z20.string().optional().nullable(), email: z20.string().optional().nullable(), paymentTerms: z20.string().optional().nullable(), notes: z20.string().optional().nullable(), active: z20.enum(["sim", "nao"]).optional() }) })).mutation(({ input, ctx }) => updateSupplier(input.id, { ...input.data, updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => deleteSupplier(input.id))
+    list: publicProcedure.input(z23.object({ search: z23.string().optional(), category: z23.string().optional() }).optional()).query(({ input }) => listSuppliers(input?.search, input?.category)),
+    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getSupplierById(input.id)),
+    create: protectedProcedure.input(z23.object({ name: z23.string(), company: z23.string().optional().nullable(), category: z23.string(), supplies: z23.string().optional().nullable(), contact: z23.string().optional().nullable(), phone: z23.string().optional().nullable(), email: z23.string().optional().nullable(), paymentTerms: z23.string().optional().nullable(), notes: z23.string().optional().nullable() })).mutation(({ input, ctx }) => createSupplier({ ...input, createdByNome: ctx.user.name ?? ctx.user.email ?? "sistema", updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
+    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ name: z23.string().optional(), company: z23.string().optional().nullable(), category: z23.string().optional(), supplies: z23.string().optional().nullable(), contact: z23.string().optional().nullable(), phone: z23.string().optional().nullable(), email: z23.string().optional().nullable(), paymentTerms: z23.string().optional().nullable(), notes: z23.string().optional().nullable(), active: z23.enum(["sim", "nao"]).optional() }) })).mutation(({ input, ctx }) => updateSupplier(input.id, { ...input.data, updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteSupplier(input.id))
   }),
   // ─── OPERAÇÕES: Rotinas ──────────────────────────────────────────────────────────────────
   routines: router({
     list: publicProcedure.query(() => listRoutines()),
     pending: publicProcedure.query(() => listPendingRoutines()),
-    create: protectedProcedure.input(z20.object({
-      title: z20.string(),
-      description: z20.string().optional().nullable(),
-      frequency: z20.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]),
-      assignedTo: z20.string().optional().nullable(),
-      startDate: z20.string().optional().nullable(),
-      calendarDates: z20.string().optional().nullable()
+    create: protectedProcedure.input(z23.object({
+      title: z23.string(),
+      description: z23.string().optional().nullable(),
+      frequency: z23.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]),
+      assignedTo: z23.string().optional().nullable(),
+      startDate: z23.string().optional().nullable(),
+      calendarDates: z23.string().optional().nullable()
     })).mutation(({ input }) => createRoutine(input)),
-    update: protectedProcedure.input(z20.object({
-      id: z20.number(),
-      data: z20.object({
-        title: z20.string().optional(),
-        description: z20.string().optional().nullable(),
-        frequency: z20.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]).optional(),
-        assignedTo: z20.string().optional().nullable(),
-        status: z20.enum(["pendente", "em_dia", "atrasada"]).optional(),
-        lastDone: z20.date().optional().nullable(),
-        startDate: z20.string().optional().nullable(),
-        calendarDates: z20.string().optional().nullable(),
-        nextDue: z20.date().optional().nullable()
+    update: protectedProcedure.input(z23.object({
+      id: z23.number(),
+      data: z23.object({
+        title: z23.string().optional(),
+        description: z23.string().optional().nullable(),
+        frequency: z23.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]).optional(),
+        assignedTo: z23.string().optional().nullable(),
+        status: z23.enum(["pendente", "em_dia", "atrasada"]).optional(),
+        lastDone: z23.date().optional().nullable(),
+        startDate: z23.string().optional().nullable(),
+        calendarDates: z23.string().optional().nullable(),
+        nextDue: z23.date().optional().nullable()
       })
     })).mutation(({ input }) => updateRoutine(input.id, input.data)),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => deleteRoutine(input.id)),
-    markDone: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => markRoutineDone(input.id))
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteRoutine(input.id)),
+    markDone: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => markRoutineDone(input.id))
   }),
   // ─── OPERAÇÕES: Regulamentos ─────────────────────────────────────────────────────
   regulations: router({
-    list: publicProcedure.input(z20.object({ type: z20.string().optional() }).optional()).query(({ input }) => listRegulations(input?.type)),
-    byId: publicProcedure.input(z20.object({ id: z20.number() })).query(({ input }) => getRegulationById(input.id)),
-    create: protectedProcedure.input(z20.object({ title: z20.string(), type: z20.enum(["regulamento", "memorando", "politica", "procedimento"]), content: z20.string(), version: z20.string().optional().nullable() })).mutation(({ input }) => createRegulation(input)),
-    update: protectedProcedure.input(z20.object({ id: z20.number(), data: z20.object({ title: z20.string().optional(), type: z20.enum(["regulamento", "memorando", "politica", "procedimento"]).optional(), content: z20.string().optional(), version: z20.string().optional().nullable(), active: z20.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updateRegulation(input.id, input.data)),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => deleteRegulation(input.id))
+    list: publicProcedure.input(z23.object({ type: z23.string().optional() }).optional()).query(({ input }) => listRegulations(input?.type)),
+    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getRegulationById(input.id)),
+    create: protectedProcedure.input(z23.object({ title: z23.string(), type: z23.enum(["regulamento", "memorando", "politica", "procedimento"]), content: z23.string(), version: z23.string().optional().nullable() })).mutation(({ input }) => createRegulation(input)),
+    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ title: z23.string().optional(), type: z23.enum(["regulamento", "memorando", "politica", "procedimento"]).optional(), content: z23.string().optional(), version: z23.string().optional().nullable(), active: z23.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updateRegulation(input.id, input.data)),
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteRegulation(input.id))
   }),
   // ─── OPERAÇÕES: POPs ─────────────────────────────────────────────────────
   pops: router({
-    list: publicProcedure.input(z20.object({ sector: z20.string().optional() }).optional()).query(({ input }) => listPops(input?.sector)),
-    byId: publicProcedure.input(z20.object({ id: z20.number() })).query(({ input }) => getPopById(input.id)),
-    create: protectedProcedure.input(z20.object({ code: z20.string(), title: z20.string(), sector: z20.string(), objective: z20.string().optional().nullable(), steps: z20.string(), responsible: z20.string().optional().nullable(), version: z20.string().optional().nullable() })).mutation(({ input }) => createPop(input)),
-    update: protectedProcedure.input(z20.object({ id: z20.number(), data: z20.object({ code: z20.string().optional(), title: z20.string().optional(), sector: z20.string().optional(), objective: z20.string().optional().nullable(), steps: z20.string().optional(), responsible: z20.string().optional().nullable(), version: z20.string().optional().nullable(), active: z20.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updatePop(input.id, input.data)),
-    delete: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(({ input }) => deletePop(input.id)),
+    list: publicProcedure.input(z23.object({ sector: z23.string().optional() }).optional()).query(({ input }) => listPops(input?.sector)),
+    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getPopById(input.id)),
+    create: protectedProcedure.input(z23.object({ code: z23.string(), title: z23.string(), sector: z23.string(), objective: z23.string().optional().nullable(), steps: z23.string(), responsible: z23.string().optional().nullable(), version: z23.string().optional().nullable() })).mutation(({ input }) => createPop(input)),
+    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ code: z23.string().optional(), title: z23.string().optional(), sector: z23.string().optional(), objective: z23.string().optional().nullable(), steps: z23.string().optional(), responsible: z23.string().optional().nullable(), version: z23.string().optional().nullable(), active: z23.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updatePop(input.id, input.data)),
+    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deletePop(input.id)),
     // Gera um POP automaticamente via IA a partir de um erro da biblioteca
-    generateFromError: protectedProcedure.input(z20.object({
-      errorCode: z20.string(),
-      errorDescription: z20.string(),
-      errorCategory: z20.string(),
-      correction: z20.string(),
+    generateFromError: protectedProcedure.input(z23.object({
+      errorCode: z23.string(),
+      errorDescription: z23.string(),
+      errorCategory: z23.string(),
+      correction: z23.string(),
       // histórico de ocorrências para enriquecer o contexto
-      occurrenceCount: z20.number().optional(),
-      totalCost: z20.number().optional()
+      occurrenceCount: z23.number().optional(),
+      totalCost: z23.number().optional()
     })).mutation(async ({ input }) => {
       const prompt = `Voc\xEA \xE9 um especialista em qualidade e processos industriais de uma f\xE1brica de letreiros chamada Letreiros Express.
 
@@ -12913,12 +13776,12 @@ O POP deve ser pr\xE1tico, direto e aplic\xE1vel no ch\xE3o de f\xE1brica. Use l
       }
     }),
     // Incorpora o conhecimento de um erro a um POP existente via IA
-    incorporateError: protectedProcedure.input(z20.object({
-      popId: z20.number(),
-      errorCode: z20.string(),
-      errorDescription: z20.string(),
-      errorCategory: z20.string(),
-      correction: z20.string()
+    incorporateError: protectedProcedure.input(z23.object({
+      popId: z23.number(),
+      errorCode: z23.string(),
+      errorDescription: z23.string(),
+      errorCategory: z23.string(),
+      correction: z23.string()
     })).mutation(async ({ input }) => {
       const pop = await getPopById(input.popId);
       if (!pop) throw new Error("POP n\xE3o encontrado");
@@ -13013,13 +13876,13 @@ Use linguagem simples e imperativa ("Verifique...", "Aplique...", "Confirme...")
       return { popId: input.popId, popCode: pop.code, title: pop.title, newVersion, stepsText, parsed };
     }),
     // Gera um POP unificado por categoria abrangendo todos os erros da categoria
-    generateFromCategory: protectedProcedure.input(z20.object({
-      category: z20.string(),
-      errors: z20.array(z20.object({
-        code: z20.string(),
-        description: z20.string(),
-        correction: z20.string(),
-        imageUrl: z20.string().optional().nullable()
+    generateFromCategory: protectedProcedure.input(z23.object({
+      category: z23.string(),
+      errors: z23.array(z23.object({
+        code: z23.string(),
+        description: z23.string(),
+        correction: z23.string(),
+        imageUrl: z23.string().optional().nullable()
       }))
     })).mutation(async ({ input }) => {
       const errorsText = input.errors.map(
@@ -13125,25 +13988,25 @@ O POP deve:
       }
     }),
     // Edição manual de texto do POP
-    updateContent: publicProcedure.input(z20.object({
-      id: z20.number(),
-      title: z20.string().optional(),
-      objective: z20.string().optional().nullable(),
-      steps: z20.string().optional(),
-      responsible: z20.string().optional().nullable(),
-      version: z20.string().optional().nullable(),
-      sector: z20.string().optional()
+    updateContent: publicProcedure.input(z23.object({
+      id: z23.number(),
+      title: z23.string().optional(),
+      objective: z23.string().optional().nullable(),
+      steps: z23.string().optional(),
+      responsible: z23.string().optional().nullable(),
+      version: z23.string().optional().nullable(),
+      sector: z23.string().optional()
     })).mutation(({ input }) => {
       const { id, ...data } = input;
       return updatePop(id, data);
     }),
     // Upload de imagem em anexo ao POP
-    uploadImage: publicProcedure.input(z20.object({
-      popId: z20.number(),
-      fileName: z20.string(),
-      url: z20.string().url(),
-      key: z20.string().min(1),
-      mimeType: z20.string().default("image/jpeg")
+    uploadImage: publicProcedure.input(z23.object({
+      popId: z23.number(),
+      fileName: z23.string(),
+      url: z23.string().url(),
+      key: z23.string().min(1),
+      mimeType: z23.string().default("image/jpeg")
     })).mutation(async ({ input }) => {
       const pop = await getPopById(input.popId);
       if (!pop) throw new TRPCError5({ code: "NOT_FOUND", message: "POP n\xE3o encontrado" });
@@ -13158,7 +14021,7 @@ O POP deve:
       return { url: input.url, attachments };
     }),
     // Remove imagem de anexo do POP
-    removeImage: publicProcedure.input(z20.object({ popId: z20.number(), url: z20.string() })).mutation(async ({ input }) => {
+    removeImage: publicProcedure.input(z23.object({ popId: z23.number(), url: z23.string() })).mutation(async ({ input }) => {
       const pop = await getPopById(input.popId);
       if (!pop) throw new TRPCError5({ code: "NOT_FOUND", message: "POP n\xE3o encontrado" });
       let attachments = [];
@@ -13172,11 +14035,11 @@ O POP deve:
       return { attachments };
     }),
     // Registrar acesso (visualização) a um POP
-    registrarAcesso: protectedProcedure.input(z20.object({
-      popId: z20.number(),
-      popCode: z20.string(),
-      popTitle: z20.string(),
-      tipo: z20.enum(["visualizacao", "download"]).default("visualizacao")
+    registrarAcesso: protectedProcedure.input(z23.object({
+      popId: z23.number(),
+      popCode: z23.string(),
+      popTitle: z23.string(),
+      tipo: z23.enum(["visualizacao", "download"]).default("visualizacao")
     })).mutation(async ({ input, ctx }) => {
       const { getDb: getDb6 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db5 = await getDb6();
@@ -13193,12 +14056,12 @@ O POP deve:
       return { success: true };
     }),
     // Relatório de acessos/downloads de POPs
-    relatorioAcessos: protectedProcedure.input(z20.object({
-      popId: z20.number().optional(),
-      tipo: z20.enum(["visualizacao", "download", "todos"]).default("todos"),
-      dataInicio: z20.string().optional(),
+    relatorioAcessos: protectedProcedure.input(z23.object({
+      popId: z23.number().optional(),
+      tipo: z23.enum(["visualizacao", "download", "todos"]).default("todos"),
+      dataInicio: z23.string().optional(),
       // ISO date string
-      dataFim: z20.string().optional()
+      dataFim: z23.string().optional()
     }).optional()).query(async ({ input }) => {
       const { getDb: getDb6 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db5 = await getDb6();
@@ -13242,7 +14105,7 @@ O POP deve:
     activeList: publicProcedure.query(async () => {
       const db5 = await getDb3();
       if (!db5) return [];
-      const rows = await db5.select({ id: user.id, name: user.name, role: user.role }).from(user).where(or2(isNull2(user.banned), eq17(user.banned, false))).orderBy(asc6(user.name));
+      const rows = await db5.select({ id: user.id, name: user.name, role: user.role }).from(user).where(or2(isNull2(user.banned), eq20(user.banned, false))).orderBy(asc6(user.name));
       return rows;
     }),
     list: publicProcedure.query(async ({ ctx }) => {
@@ -13260,11 +14123,11 @@ O POP deve:
       }).from(user).orderBy(asc6(user.name));
       return rows.map((u) => ({ ...u, active: u.banned ? "nao" : "sim" }));
     }),
-    create: publicProcedure.input(z20.object({
-      name: z20.string().min(2),
-      email: z20.string().email().optional(),
-      password: z20.string().min(6),
-      role: z20.enum(APP_ROLES)
+    create: publicProcedure.input(z23.object({
+      name: z23.string().min(2),
+      email: z23.string().email().optional(),
+      password: z23.string().min(6),
+      role: z23.enum(APP_ROLES)
     })).mutation(async ({ input, ctx }) => {
       const total = await countUsers();
       if (total > 0) assertAdminOrMaster(ctx);
@@ -13286,12 +14149,12 @@ O POP deve:
       });
       return { id: user2.id, name: user2.name, email: user2.email, role: input.role };
     }),
-    update: publicProcedure.input(z20.object({
-      id: z20.string(),
-      name: z20.string().min(2).optional(),
-      role: z20.enum(APP_ROLES).optional(),
-      password: z20.string().min(6).optional(),
-      active: z20.enum(["sim", "nao"]).optional()
+    update: publicProcedure.input(z23.object({
+      id: z23.string(),
+      name: z23.string().min(2).optional(),
+      role: z23.enum(APP_ROLES).optional(),
+      password: z23.string().min(6).optional(),
+      active: z23.enum(["sim", "nao"]).optional()
     })).mutation(async ({ input, ctx }) => {
       const total = await countUsers();
       if (total > 0) assertAdminOrMaster(ctx);
@@ -13310,7 +14173,7 @@ O POP deve:
       }
       return { ok: true };
     }),
-    delete: publicProcedure.input(z20.object({ id: z20.string() })).mutation(async ({ input, ctx }) => {
+    delete: publicProcedure.input(z23.object({ id: z23.string() })).mutation(async ({ input, ctx }) => {
       const total = await countUsers();
       if (total > 0) assertAdminOrMaster(ctx);
       await auth.api.removeUser({
@@ -13337,10 +14200,10 @@ O POP deve:
       }
       return matrix;
     }),
-    set: protectedProcedure.use(requireRole("admin", "master")).input(z20.object({
-      role: z20.enum(APP_ROLES),
-      pageKey: z20.string(),
-      canAccess: z20.boolean()
+    set: protectedProcedure.use(requireRole("admin", "master")).input(z23.object({
+      role: z23.enum(APP_ROLES),
+      pageKey: z23.string(),
+      canAccess: z23.boolean()
     })).mutation(async ({ input }) => {
       return setRolePermission(input.role, input.pageKey, input.canAccess ? "sim" : "nao");
     }),
@@ -13351,53 +14214,53 @@ O POP deve:
   }),
   // ─── COMENTÁRIOS DA BASE DE CONHECIMENTO ──────────────────────────────────────────────────────
   knowledgeComments: router({
-    list: publicProcedure.input(z20.object({ knowledgeId: z20.number() })).query(async ({ input }) => {
+    list: publicProcedure.input(z23.object({ knowledgeId: z23.number() })).query(async ({ input }) => {
       return listKnowledgeComments(input.knowledgeId);
     }),
-    create: publicProcedure.input(z20.object({
-      knowledgeId: z20.number(),
-      author: z20.string().min(1).max(128).default("Equipe"),
-      content: z20.string().min(1)
+    create: publicProcedure.input(z23.object({
+      knowledgeId: z23.number(),
+      author: z23.string().min(1).max(128).default("Equipe"),
+      content: z23.string().min(1)
     })).mutation(async ({ input }) => {
       await createKnowledgeComment(input);
       return { ok: true };
     }),
-    delete: publicProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input }) => {
+    delete: publicProcedure.input(z23.object({ id: z23.number() })).mutation(async ({ input }) => {
       await deleteKnowledgeComment(input.id);
       return { ok: true };
     })
   }),
   price: router({
-    list: protectedProcedure.input(z20.object({ page: z20.number().optional() })).query(async ({ input }) => {
+    list: protectedProcedure.input(z23.object({ page: z23.number().optional() })).query(async ({ input }) => {
       return listPriceTableSections(input.page);
     }),
     getMeta: protectedProcedure.query(async () => {
       return getPriceTableMeta();
     }),
-    update: protectedProcedure.input(z20.object({
-      id: z20.number(),
-      sectionTitle: z20.string().optional(),
-      contentJson: z20.string().optional(),
-      notes: z20.string().nullable().optional()
+    update: protectedProcedure.input(z23.object({
+      id: z23.number(),
+      sectionTitle: z23.string().optional(),
+      contentJson: z23.string().optional(),
+      notes: z23.string().nullable().optional()
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       await updatePriceTableSection(id, data, ctx.user.name ?? ctx.user.email ?? "usu\xE1rio");
       return { ok: true };
     }),
-    addSection: protectedProcedure.input(z20.object({
-      page: z20.number(),
-      sectionTitle: z20.string(),
-      contentJson: z20.string(),
-      notes: z20.string().nullable().optional()
+    addSection: protectedProcedure.input(z23.object({
+      page: z23.number(),
+      sectionTitle: z23.string(),
+      contentJson: z23.string(),
+      notes: z23.string().nullable().optional()
     })).mutation(async ({ input, ctx }) => {
       const id = await addPriceTableSection(input, ctx.user.name ?? ctx.user.email ?? "usu\xE1rio");
       return { ok: true, id };
     }),
-    deleteSection: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input, ctx }) => {
+    deleteSection: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(async ({ input, ctx }) => {
       await deletePriceTableSection(input.id, ctx.user.name ?? ctx.user.email ?? "usu\xE1rio");
       return { ok: true };
     }),
-    getHistory: protectedProcedure.input(z20.object({ limit: z20.number().optional() })).query(async ({ input }) => {
+    getHistory: protectedProcedure.input(z23.object({ limit: z23.number().optional() })).query(async ({ input }) => {
       return listPriceTableHistory(input.limit ?? 100);
     })
   }),
@@ -13405,6 +14268,9 @@ O POP deve:
   performance: performanceRouter,
   performanceAbc: performanceAbcRouter,
   performanceComercial: performanceComercialRouter,
+  insightsComerciais: insightsComerciaisRouter,
+  analiseGeografica: analiseGeograficaRouter,
+  metricas: metricasRouter,
   crm: crmRouter,
   custoLed: custoLedRouter,
   auditoria: auditoriaRouter,
@@ -13429,11 +14295,11 @@ O POP deve:
   cotacoesFrete: cotacoesFreteRouter,
   cte: cteRouter,
   logistica: router({
-    buscarDadosOS: publicProcedure.input(z20.object({ osNumero: z20.string() })).mutation(async ({ input }) => {
+    buscarDadosOS: publicProcedure.input(z23.object({ osNumero: z23.string() })).mutation(async ({ input }) => {
       const { buscarDadosOSParaFrete: buscarDadosOSParaFrete2 } = await Promise.resolve().then(() => (init_mubisys_frete(), mubisys_frete_exports));
       return buscarDadosOSParaFrete2(input.osNumero);
     }),
-    analisarAssertividade: publicProcedure.input(z20.object({ tipo: z20.string(), pergunta: z20.string().optional() })).mutation(async ({ input }) => {
+    analisarAssertividade: publicProcedure.input(z23.object({ tipo: z23.string(), pergunta: z23.string().optional() })).mutation(async ({ input }) => {
       const { getDb: getDb6 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db22 = await getDb6();
       const { cotacoesFrete: cotacoesFrete2, cotacaoOpcoes: cotacaoOpcoes2, transportadoras: transpTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
