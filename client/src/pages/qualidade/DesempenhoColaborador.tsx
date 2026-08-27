@@ -98,7 +98,8 @@ export default function DesempenhoColaborador() {
   const [isEditing, setIsEditing] = useState(false);
   const [expandedColab, setExpandedColab] = useState<string | null>(null);
 
-  const { data: registros = [], refetch } = trpc.desempenhoColabMensal.list.useQuery({
+  const utils = trpc.useUtils();
+  const { data: registros = [] } = trpc.desempenhoColabMensal.list.useQuery({
     ano: anoSel,
     categoria: categoriaSel,
   });
@@ -107,13 +108,13 @@ export default function DesempenhoColaborador() {
     onSuccess: () => {
       toast.success("Dados salvos com sucesso!");
       setModalOpen(false);
-      refetch();
+      utils.desempenhoColabMensal.list.invalidate({ ano: anoSel, categoria: categoriaSel });
     },
     onError: (e) => toast.error("Erro ao salvar: " + e.message),
   });
 
   const deleteColab = trpc.desempenhoColabMensal.deleteColaborador.useMutation({
-    onSuccess: () => { toast.success("Colaborador removido."); refetch(); },
+    onSuccess: () => { toast.success("Colaborador removido."); utils.desempenhoColabMensal.list.invalidate({ ano: anoSel, categoria: categoriaSel }); },
     onError: (e) => toast.error("Erro: " + e.message),
   });
 

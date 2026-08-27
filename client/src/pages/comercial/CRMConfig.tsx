@@ -64,7 +64,8 @@ function FaixaEtiquetaForm({ faixa, defaultLabel }: { faixa: 1 | 2 | 3; defaultL
 }
 
 function MetaForm({ vendedor, mes, ano }: { vendedor: string; mes: number; ano: number }) {
-  const { data, refetch } = trpc.crm.getMeta.useQuery({ vendedor, mes, ano });
+  const utils = trpc.useUtils();
+  const { data } = trpc.crm.getMeta.useQuery({ vendedor, mes, ano });
   const [valor, setValor] = useState("");
   const [qtd, setQtd] = useState("");
   const [saved, setSaved] = useState(false);
@@ -73,7 +74,7 @@ function MetaForm({ vendedor, mes, ano }: { vendedor: string; mes: number; ano: 
     onSuccess: () => {
       toast.success(`Meta de ${vendedor} salva!`);
       setSaved(true);
-      refetch();
+      utils.crm.getMeta.invalidate({ vendedor, mes, ano });
     },
     onError: (e) => toast.error(`Erro: ${e.message}`),
   });

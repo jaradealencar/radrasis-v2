@@ -232,7 +232,22 @@ confirmar que a lista atualiza sem precisar de F5.
 
 ---
 
-## Tarefa 4 — Padronizar invalidação manual (demais módulos)
+## Tarefa 4 — Padronizar invalidação manual (demais módulos) ✅ concluída (27/08/2026)
+
+Os 9 arquivos migraram de `refetch()` para `utils.invalidate()`. Notas:
+- `Alertas.tsx` e `ConsultaCobertura.tsx`: os `refetch()` restantes são
+  botão manual de "Atualizar" e disparo de busca (`enabled: false`),
+  não `onSuccess` de mutation — ficaram como estavam, como esperado.
+- `SincronizacaoCache.tsx`: só o `refetch()` do botão "forçar
+  sincronização" virou `utils.admin.obterStatusSincronizacao.invalidate()`;
+  os dois `refetchInterval` (30s/60s) não foram tocados.
+- `useAuth.ts`: só `permsQuery.refetch()` virou
+  `utils.permissions.myPermissions.invalidate()`; `refetchSession()`
+  (Better Auth) não muda, como a nota do inventário já previa.
+- `BibliotecaErros.tsx` e `Financeiro.tsx` já tinham `trpc.useUtils()`
+  declarado no componente — reaproveitado em vez de duplicar.
+
+`npx tsc --noEmit`: 0 erros.
 
 Mesmo procedimento da Tarefa 3, para o "Grupo comercial / qualidade /
 retrabalhos / financeiro / logística / admin / hooks" do inventário (9

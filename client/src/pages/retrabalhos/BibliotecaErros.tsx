@@ -565,12 +565,13 @@ function ErrorRow({
 }
 
 export default function BibliotecaErros() {
-  const { data: errorLib, isLoading, refetch } = trpc.errorLibrary.list.useQuery();
+  const utilsMain = trpc.useUtils();
+  const { data: errorLib, isLoading } = trpc.errorLibrary.list.useQuery();
   const { data: popsList } = trpc.pops.list.useQuery({});
   const { data: planosAcaoList = [] } = trpc.planosAcao.list.useQuery({});
   const createMut = trpc.errorLibrary.create.useMutation({
     onSuccess: () => {
-      refetch();
+      utilsMain.errorLibrary.list.invalidate();
       setShowNew(false);
       setNewForm({ ...EMPTY_NEW });
       toast.success("Erro cadastrado na biblioteca!");
@@ -586,9 +587,8 @@ export default function BibliotecaErros() {
       }
     }
   });
-  const deleteMut = trpc.errorLibrary.delete.useMutation({ onSuccess: () => { refetch(); toast.success("Erro removido."); } });
+  const deleteMut = trpc.errorLibrary.delete.useMutation({ onSuccess: () => { utilsMain.errorLibrary.list.invalidate(); toast.success("Erro removido."); } });
   const generateCategoryPopMut = trpc.pops.generateFromCategory.useMutation();
-  const utilsMain = trpc.useUtils();
   const [categoryPopResult, setCategoryPopResult] = useState<{ cat: string; pop: GeneratedPop } | null>(null);
   const [generatingCat, setGeneratingCat] = useState<string | null>(null);
   // Mapear todos os códigos de erro que têm plano de ação vinculado

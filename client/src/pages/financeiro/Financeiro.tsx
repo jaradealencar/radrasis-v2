@@ -120,17 +120,16 @@ export default function Financeiro() {
   const [expandedMes, setExpandedMes] = useState<number | null>(null);
 
   const [abaAtiva, setAbaAtiva] = useState<"painel" | "custos" | "marketing" | "observacoes" | "dados-mensais">("painel");
-  const { data: registros = [], refetch } = trpc.financeiro.list.useQuery({ ano: anoSel });
+  const utils = trpc.useUtils();
+  const { data: registros = [] } = trpc.financeiro.list.useQuery({ ano: anoSel });
   const upsert = trpc.financeiro.upsert.useMutation({
     onSuccess: () => {
       toast.success("Dados financeiros salvos com sucesso!");
       setEditingMes(null);
-      refetch();
+      utils.financeiro.list.invalidate({ ano: anoSel });
     },
     onError: (e) => toast.error("Erro ao salvar: " + e.message),
   });
-
-  const utils = trpc.useUtils();
 
   const registroMap = useMemo(() => {
     const m: Record<number, typeof registros[0]> = {};
