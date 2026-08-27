@@ -147,7 +147,14 @@ navegar entre 2-3 páginas, confirmar que carrega normalmente.
 
 ---
 
-## Tarefa 2 — Remover overrides de `staleTime` que perderam a razão de ser
+## Tarefa 2 — Remover overrides de `staleTime` que perderam a razão de ser ✅ concluída (27/08/2026)
+
+`STALE_5MIN` em `PerformanceComercial.tsx` virou `RETRY_1` (só
+`refetchOnWindowFocus`/`retry`, sem `staleTime`) nos 9 usos.
+`EvolucaoVendedor.tsx` perdeu o `staleTime`, mantendo
+`refetchOnWindowFocus: false`. `EvolucaoDiariaVendedor.tsx` teve o objeto
+de opções removido por inteiro (só tinha `staleTime`). `npx tsc --noEmit`:
+0 erros.
 
 Segue a coluna "Decisão" do inventário acima. Remova **apenas** os 3
 overrides marcados "remover o override" / "remover":

@@ -103,7 +103,7 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
 
   const { data: multiMesDados, isLoading } = trpc.performanceComercial.getMultiMes.useQuery(
     { meses: mesesEvolucao },
-    { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
+    { refetchOnWindowFocus: false }
   );
 
   const indicador = INDICADORES.find(i => i.key === indicadorKey) ?? INDICADORES[0];

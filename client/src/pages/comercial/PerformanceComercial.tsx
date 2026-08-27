@@ -280,18 +280,17 @@ export default function PerformanceComercial() {
     return result;
   }, [mesSelecionado, anoSelecionado]);
 
-  // staleTime de 5 min para evitar refetch desnecessário das queries lentas (API Mubisys).
   // retry: 1 (em vez do padrão 3 do React Query) — se a consulta já levou ~50s e falhou
   // por timeout, repetir automaticamente só multiplica a espera sem nenhum ganho: o cache
   // da API MubiSys continua frio, então cada nova tentativa reproduz o mesmo custo.
-  const STALE_5MIN = { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false, retry: 1 };
+  const RETRY_1 = { refetchOnWindowFocus: false, retry: 1 };
 
   const { data: mesDados, isLoading: loadingMes, refetch: refetchMes } =
-    trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
 
   // Query de auditoria para o mês selecionado
   const { data: auditoriaData, refetch: refetchAuditoria } =
-    trpc.performanceComercial.getAuditoria.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getAuditoria.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
 
   const salvarAuditoriaMut = trpc.performanceComercial.salvarAuditoria.useMutation({
     onSuccess: () => { refetchAuditoria(); },
@@ -318,36 +317,36 @@ export default function PerformanceComercial() {
     : 'tempo-real';
 
   const { data: evolucao, isLoading: loadingEvolucao, refetch: refetchEvolucao } =
-    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao }, STALE_5MIN);
+    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao }, RETRY_1);
 
   const { data: comparativo, isLoading: loadingComparativo } =
     trpc.performanceComercial.getMultiMes.useQuery(
       { meses: mesesComparativo },
-      { enabled: showComparativo, ...STALE_5MIN }
+      { enabled: showComparativo, ...RETRY_1 }
     );
 
   const { data: metas, refetch: refetchMetas } =
-    trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
   const { data: dadosAno, isLoading: loadingAno } =
-    trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, RETRY_1);
   const { data: clientesNovos, isLoading: loadingClientesNovos } =
-    trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
 
   // Controle de contato com clientes novos
   const { data: contatadosMap, refetch: refetchContatados } =
-    trpc.performanceComercial.getContatados.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getContatados.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
   const setContatadoMut = trpc.performanceComercial.setContatado.useMutation({
     onSuccess: () => { refetchContatados(); },
   });
 
   const { data: clientesNovosAno, isLoading: loadingClientesNovosAno } =
-    trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSelecionado }, RETRY_1);
 
   // Query de comparação multi-mês (Power BI)
   const { data: comparaMesesDados, isLoading: loadingComparaMeses } =
     trpc.performanceComercial.getMultiMes.useQuery(
       { meses: comparaMesesSelecionados },
-      { enabled: showComparaMeses && comparaMesesSelecionados.length > 0, ...STALE_5MIN }
+      { enabled: showComparaMeses && comparaMesesSelecionados.length > 0, ...RETRY_1 }
     );
 
   // Metas globais (vendedor = "GERAL")
