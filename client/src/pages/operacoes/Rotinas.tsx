@@ -140,13 +140,15 @@ export default function Rotinas() {
   const [expandedId, setExpandedId]           = useState<number | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
-  const { data, isLoading, refetch } = trpc.routines.list.useQuery();
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.routines.list.useQuery();
   const { data: pendingData }        = trpc.routines.pending.useQuery();
 
-  const createMut   = trpc.routines.create.useMutation({ onSuccess: () => { refetch(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Rotina criada!"); } });
-  const updateMut   = trpc.routines.update.useMutation({ onSuccess: () => { refetch(); setEditingId(null); toast.success("Rotina atualizada!"); } });
-  const deleteMut   = trpc.routines.delete.useMutation({ onSuccess: () => { refetch(); toast.success("Rotina removida."); } });
-  const markDoneMut = trpc.routines.markDone.useMutation({ onSuccess: () => { refetch(); toast.success("Rotina concluída!"); } });
+  const invalidateRotinas = () => { utils.routines.list.invalidate(); utils.routines.pending.invalidate(); };
+  const createMut   = trpc.routines.create.useMutation({ onSuccess: () => { invalidateRotinas(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Rotina criada!"); } });
+  const updateMut   = trpc.routines.update.useMutation({ onSuccess: () => { invalidateRotinas(); setEditingId(null); toast.success("Rotina atualizada!"); } });
+  const deleteMut   = trpc.routines.delete.useMutation({ onSuccess: () => { invalidateRotinas(); toast.success("Rotina removida."); } });
+  const markDoneMut = trpc.routines.markDone.useMutation({ onSuccess: () => { invalidateRotinas(); toast.success("Rotina concluída!"); } });
 
   const items   = data ?? [];
   const pending = pendingData ?? [];

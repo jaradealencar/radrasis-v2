@@ -166,24 +166,31 @@ export default function BibliotecaArquivos() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Queries
-  const { data: arquivos = [], refetch } = trpc.bibliotecaArquivos.list.useQuery({
+  const utils = trpc.useUtils();
+  const { data: arquivos = [] } = trpc.bibliotecaArquivos.list.useQuery({
     categoria: categoriaFiltro === "Todos" ? undefined : categoriaFiltro,
     busca: busca || undefined,
   });
   const { data: categorias = [] } = trpc.bibliotecaArquivos.categorias.useQuery();
   const { data: stats } = trpc.bibliotecaArquivos.stats.useQuery();
 
+  const invalidateArquivos = () => {
+    utils.bibliotecaArquivos.list.invalidate();
+    utils.bibliotecaArquivos.categorias.invalidate();
+    utils.bibliotecaArquivos.stats.invalidate();
+  };
+
   // Mutations
   const uploadMutation = trpc.bibliotecaArquivos.upload.useMutation({
-    onSuccess: () => { refetch(); toast.success("Arquivo enviado com sucesso!"); resetForm(); setModalUpload(false); },
+    onSuccess: () => { invalidateArquivos(); toast.success("Arquivo enviado com sucesso!"); resetForm(); setModalUpload(false); },
     onError: (e) => toast.error("Erro ao enviar arquivo: " + e.message),
   });
   const deleteMutation = trpc.bibliotecaArquivos.delete.useMutation({
-    onSuccess: () => { refetch(); toast.success("Arquivo removido."); },
+    onSuccess: () => { invalidateArquivos(); toast.success("Arquivo removido."); },
     onError: (e) => toast.error("Erro ao remover: " + e.message),
   });
   const updateMutation = trpc.bibliotecaArquivos.update.useMutation({
-    onSuccess: () => { refetch(); toast.success("Arquivo atualizado."); setModalEditar(null); },
+    onSuccess: () => { invalidateArquivos(); toast.success("Arquivo atualizado."); setModalEditar(null); },
     onError: (e) => toast.error("Erro ao atualizar: " + e.message),
   });
   const viewMutation = trpc.bibliotecaArquivos.incrementView.useMutation();

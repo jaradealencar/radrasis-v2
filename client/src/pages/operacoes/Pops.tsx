@@ -360,11 +360,12 @@ export default function Pops() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [filterType, setFilterType] = useState<"all" | "ai" | "manual">("all");
 
-  const { data, isLoading, refetch } = trpc.pops.list.useQuery({ sector: filterSector || undefined });
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.pops.list.useQuery({ sector: filterSector || undefined });
   const createMut = trpc.pops.create.useMutation({
-    onSuccess: () => { refetch(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("POP criado!"); }
+    onSuccess: () => { utils.pops.list.invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("POP criado!"); }
   });
-  const deleteMut = trpc.pops.delete.useMutation({ onSuccess: () => { refetch(); toast.success("POP removido."); } });
+  const deleteMut = trpc.pops.delete.useMutation({ onSuccess: () => { utils.pops.list.invalidate(); toast.success("POP removido."); } });
   const registrarAcessoMut = trpc.pops.registrarAcesso.useMutation();
 
   const allItems = data ?? [];
@@ -671,7 +672,7 @@ export default function Pops() {
                   <PopEditPanel
                     item={item}
                     onClose={() => setEditingId(null)}
-                    onSaved={() => refetch()}
+                    onSaved={() => utils.pops.list.invalidate()}
                   />
                 )}
 
@@ -701,7 +702,7 @@ export default function Pops() {
                         Responsável: <strong>{item.responsible}</strong>
                       </p>
                     )}
-                    <PopAttachments item={item} onUpdated={() => refetch()} />
+                    <PopAttachments item={item} onUpdated={() => utils.pops.list.invalidate()} />
                   </div>
                 )}
               </div>

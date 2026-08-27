@@ -22,18 +22,23 @@ export default function SugestoesConhecimento() {
   const { user } = useAuth();
   const isMaster = user?.role === "master" || user?.role === "admin";
 
-  const { data, isLoading, refetch } = trpc.knowledgeSuggestions.list.useQuery(
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.knowledgeSuggestions.list.useQuery(
     { status: statusFilter || undefined },
     { refetchInterval: 15000 }
   );
 
   const approveMut = trpc.knowledgeSuggestions.approve.useMutation({
-    onSuccess: () => { toast.success("Artigo incorporado à Base de Conhecimento!"); refetch(); },
+    onSuccess: () => {
+      toast.success("Artigo incorporado à Base de Conhecimento!");
+      utils.knowledgeSuggestions.list.invalidate();
+      utils.knowledge.list.invalidate();
+    },
     onError: (e: any) => toast.error(e.message || "Erro ao aprovar."),
   });
 
   const rejectMut = trpc.knowledgeSuggestions.reject.useMutation({
-    onSuccess: () => { toast.success("Sugestão rejeitada."); refetch(); },
+    onSuccess: () => { toast.success("Sugestão rejeitada."); utils.knowledgeSuggestions.list.invalidate(); },
     onError: (e: any) => toast.error(e.message || "Erro ao rejeitar."),
   });
 

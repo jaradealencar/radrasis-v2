@@ -387,17 +387,18 @@ async function generatePDF(cargo: Cargo) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function CargoseFuncoes() {
-  const { data: cargos, isLoading, refetch } = trpc.cargos.list.useQuery();
+  const utils = trpc.useUtils();
+  const { data: cargos, isLoading } = trpc.cargos.list.useQuery();
   const createMut = trpc.cargos.create.useMutation({
-    onSuccess: () => { refetch(); setMode("list"); toast.success("Cargo criado com sucesso!"); },
+    onSuccess: () => { utils.cargos.list.invalidate(); setMode("list"); toast.success("Cargo criado com sucesso!"); },
     onError: (e) => toast.error("Erro ao criar: " + e.message),
   });
   const updateMut = trpc.cargos.update.useMutation({
-    onSuccess: () => { refetch(); setMode("view"); toast.success("Cargo atualizado!"); },
+    onSuccess: () => { utils.cargos.list.invalidate(); setMode("view"); toast.success("Cargo atualizado!"); },
     onError: (e) => toast.error("Erro ao salvar: " + e.message),
   });
   const deleteMut = trpc.cargos.delete.useMutation({
-    onSuccess: () => { refetch(); setMode("list"); setSelected(null); toast.success("Cargo removido."); },
+    onSuccess: () => { utils.cargos.list.invalidate(); setMode("list"); setSelected(null); toast.success("Cargo removido."); },
     onError: (e) => toast.error("Erro ao excluir: " + e.message),
   });
 

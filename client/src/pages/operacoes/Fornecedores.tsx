@@ -16,10 +16,11 @@ export default function Fornecedores() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editId, setEditId] = useState<number | null>(null);
 
-  const { data, isLoading, refetch } = trpc.suppliers.list.useQuery({ search, category });
-  const createMut = trpc.suppliers.create.useMutation({ onSuccess: () => { refetch(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor cadastrado!"); } });
-  const updateMut = trpc.suppliers.update.useMutation({ onSuccess: () => { refetch(); setEditId(null); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor atualizado!"); } });
-  const deleteMut = trpc.suppliers.delete.useMutation({ onSuccess: () => { refetch(); toast.success("Fornecedor removido."); } });
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.suppliers.list.useQuery({ search, category });
+  const createMut = trpc.suppliers.create.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor cadastrado!"); } });
+  const updateMut = trpc.suppliers.update.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); setEditId(null); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor atualizado!"); } });
+  const deleteMut = trpc.suppliers.delete.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); toast.success("Fornecedor removido."); } });
 
   const items = data ?? [];
 

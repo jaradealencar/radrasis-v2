@@ -183,7 +183,27 @@ confirmar que os dados carregam.
 
 ---
 
-## Tarefa 3 — Padronizar invalidação manual (operações)
+## Tarefa 3 — Padronizar invalidação manual (operações) ✅ concluída (27/08/2026)
+
+Os 11 arquivos do grupo operações migraram de `refetch()` para
+`utils.<router>.<query>.invalidate()`. Notas do que fugiu do óbvio:
+- `Rotinas.tsx`: as 4 mutations invalidam tanto `routines.list` quanto
+  `routines.pending`, já que os badges de "rotinas pendentes" usam a
+  segunda query.
+- `CustoLed.tsx` tem dois componentes (`CustoSoldaTab`, `CustoLedTab`);
+  em `CustoLedTab`, as mutations de tipo de LED (`upsertTipo`/`deleteTipo`)
+  também invalidam `getResumoMensal`, pois o custo por tipo entra no
+  cálculo do resumo.
+- `SugestoesConhecimento.tsx`: `approve` invalida também
+  `knowledge.list` (não só `knowledgeSuggestions.list`), porque aprovar
+  uma sugestão cria um artigo que aparece na Base de Conhecimento
+  (`Conhecimento.tsx`).
+- `BibliotecaArquivos.tsx`: upload/update/delete invalidam `list`,
+  `categorias` e `stats` juntos.
+- `refetchInterval` das tabelas do inventário (`SugestoesConhecimento.tsx`
+  15s) não foi tocado, como esperado.
+
+`npx tsc --noEmit`: 0 erros.
 
 Para cada arquivo do "Grupo operações" no inventário:
 

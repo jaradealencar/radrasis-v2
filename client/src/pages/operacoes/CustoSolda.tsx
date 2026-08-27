@@ -127,12 +127,13 @@ export default function CustoSolda() {
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [ano, setAno] = useState(now.getFullYear());
 
-  const { data: registro, isLoading: isLoadingRegistro, refetch } = trpc.performance.getByMesAno.useQuery({ mes, ano });
+  const utils = trpc.useUtils();
+  const { data: registro, isLoading: isLoadingRegistro } = trpc.performance.getByMesAno.useQuery({ mes, ano });
 
   const upsertMut = trpc.performance.upsert.useMutation({
     onSuccess: () => {
       toast.success("Parâmetros salvos com sucesso!");
-      refetch();
+      utils.performance.getByMesAno.invalidate({ mes, ano });
     },
     onError: () => toast.error("Erro ao salvar parâmetros"),
   });
