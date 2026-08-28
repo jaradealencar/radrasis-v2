@@ -184,6 +184,27 @@ export function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | 
   return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
 }
 
+/** Reindexação de um mapa "última compra por empresa" (chaves em toLowerCase().trim(),
+ * vindas de historico_os) para chaves normalizadas com normalizeEmpresaKey (sem acentos/
+ * pontuação). Necessário sempre que o lado que vai consultar o mapa usa nome de cliente
+ * vindo da API MubiSys ao vivo (getClientesNovosMes), pois a grafia entre a API e a
+ * importação local diverge em acentuação/pontuação e o match por toLowerCase().trim()
+ * puro falha silenciosamente — isClienteNovoPorRecencia(undefined, ...) sempre retorna
+ * true, fazendo o cliente contar como "novo" mesmo já tendo comprado antes. Quando
+ * ambos os lados da comparação vêm do banco local (ex.: getMultiMes, insightsComerciais),
+ * essa reindexação não é necessária pois a grafia já é idêntica dos dois lados. */
+function reindexarPorChaveNormalizada(mapa: Map<string, { mes: number; ano: number }>): Map<string, { mes: number; ano: number }> {
+  const normalizado = new Map<string, { mes: number; ano: number }>();
+  for (const [chave, ultima] of mapa) {
+    const chaveNorm = normalizeEmpresaKey(chave);
+    const existente = normalizado.get(chaveNorm);
+    if (!existente || ultima.ano > existente.ano || (ultima.ano === existente.ano && ultima.mes > existente.mes)) {
+      normalizado.set(chaveNorm, ultima);
+    }
+  }
+  return normalizado;
+}
+
 async function getMesFromDb(mes: number, ano: number) {
   const db = await getDb();
   if (!db) return null;
@@ -595,6 +616,10 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   // e quando foi a última vez — necessário pra regra de reativação de 6 meses)
   const todasComprasValidas = await buscarTodasComprasValidas(db);
   const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+  // Nomes de cliente aqui vêm da API MubiSys ao vivo (nomeCliente), não do banco local —
+  // precisa da versão com chave normalizada (ver reindexarPorChaveNormalizada) para casar
+  // corretamente com o histórico importado, senão quase todo cliente aparenta ser "novo".
+  const ultimaCompraPorClienteNorm = reindexarPorChaveNormalizada(ultimaCompraPorCliente);
 
   // FONTE DE VERDADE: usar API Mubisys para buscar OS do mês (dados em tempo real, completos)
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -687,7 +712,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     // Usa chave normalizada (sem acentos) — igual à gravada em upsertClienteOverride
     const overrideStatus = overrideMap.get(normalizeEmpresaKey(nomeCliente));
     // Regra de negócio: "novo" = nunca comprou OU está inativo há 6+ meses (reativado)
-    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente)), mes, ano);
     const isNovo = overrideStatus === "recorrente" ? false
       : overrideStatus === "novo" ? true
       : isNovoByHistory;
@@ -774,7 +799,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       const orcOverride = overrideMap.get(normalizeEmpresaKey(nomeCliente));
       const isNovoOrc = orcOverride === "recorrente" ? false
         : orcOverride === "novo" ? true
-        : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+        : isClienteNovoPorRecencia(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente)), mes, ano);
       if (clienteKey && isNovoOrc) {
         cotacoesNovos++;
         const valor = parseFloat(String(orc.valor_total ?? orc.valor ?? orc.total ?? orc.valorTotal ?? "0")) || 0;

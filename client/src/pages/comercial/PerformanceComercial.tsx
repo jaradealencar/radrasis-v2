@@ -703,7 +703,7 @@ export default function PerformanceComercial() {
             {undefined}
           </div>
         ) : mesDados ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             <KpiCardComMeta
               label="Cotações Enviadas"
               value={String(mesDados.cotacoes ?? 0)}
@@ -721,16 +721,6 @@ export default function PerformanceComercial() {
               color="#8b5cf6"
               metaReal={mesDados.osGeradas ?? 0}
               metaTarget={metaGeral?.metaOsGeradas ?? undefined}
-            />
-            <KpiCardComMeta
-              label="Taxa de Conversão"
-              value={`${mesDados.taxaConversao ?? 0}%`}
-              sub="Vendas / Cotações"
-              icon={Percent}
-              color={Number(mesDados.taxaConversao) >= 30 ? "#22c55e" : Number(mesDados.taxaConversao) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number(mesDados.taxaConversao ?? 0)}
-              metaTarget={metaGeral?.metaConversao ? Number(metaGeral.metaConversao) : undefined}
-              isPct
             />
             <KpiCardComMeta
               label="Valor Orçado"
@@ -751,16 +741,6 @@ export default function PerformanceComercial() {
               metaReal={mesDados.faturamento ?? 0}
               metaTarget={metaGeral?.metaFaturamento ? Number(metaGeral.metaFaturamento) : undefined}
               isCurrency
-            />
-            <KpiCardComMeta
-              label="Taxa de Faturamento"
-              value={`${mesDados.taxaFaturamento ?? 0}%`}
-              sub="Faturamento / Orçado"
-              icon={Percent}
-              color={Number(mesDados.taxaFaturamento) >= 30 ? "#22c55e" : Number(mesDados.taxaFaturamento) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number(mesDados.taxaFaturamento ?? 0)}
-              metaTarget={metaGeral?.metaTaxaFaturamento ? Number(metaGeral.metaTaxaFaturamento) : undefined}
-              isPct
             />
             <KpiCardComMeta
               label="Clientes Novos"
@@ -799,7 +779,6 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaFaturamentoNovos ? Number(metaGeral.metaFaturamentoNovos) : undefined}
               isCurrency
             />
-            {/* Quatro taxas de conversão: Geral (pedido + fat) e Novos (pedido + fat) */}
             <KpiCardComMeta
               label="Taxa Conv. Geral"
               value={`${mesDados.taxaConversao ?? 0}%`}
@@ -852,20 +831,11 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Ticket Médio Novos"
-              value={(() => {
-                const fat = Number((clientesNovos as any)?.faturamentoNovos ?? 0);
-                const os = Number((clientesNovos as any)?.osNovos ?? 0);
-                const ticket = os > 0 ? fat / os : 0;
-                return loadingClientesNovos ? "..." : `R$ ${ticket.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-              })()}
+              value={loadingClientesNovos ? "..." : `R$ ${Number((clientesNovos as any)?.ticketMedioNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
               sub="Fat. novos / OS novos"
               icon={TrendingUp}
               color="#f59e0b"
-              metaReal={(() => {
-                const fat = Number((clientesNovos as any)?.faturamentoNovos ?? 0);
-                const os = Number((clientesNovos as any)?.osNovos ?? 0);
-                return os > 0 ? fat / os : 0;
-              })()}
+              metaReal={Number((clientesNovos as any)?.ticketMedioNovos ?? 0)}
               metaTarget={metaGeral?.metaTicketMedioNovos ? Number(metaGeral.metaTicketMedioNovos) : undefined}
               isCurrency
             />
