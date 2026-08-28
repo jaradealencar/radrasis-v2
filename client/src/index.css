@@ -266,6 +266,15 @@
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.28 0.02 245) transparent;
+}
+.sidebar-nav::-webkit-scrollbar { width: 5px; height: 5px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: oklch(0.28 0.02 245); border-radius: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.02 245); }
+
 .recharts-cartesian-grid-horizontal line,
 .recharts-cartesian-grid-vertical line { stroke: rgba(30, 111, 217, 0.08) !important; }
 .recharts-text { fill: #64748b !important; }
