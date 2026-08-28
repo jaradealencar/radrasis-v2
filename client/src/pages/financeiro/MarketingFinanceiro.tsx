@@ -248,7 +248,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
           <KpiCard
             label="Clientes Novos"
             value={String(totalClientesNovos)}
-            sub="Sem compra anterior"
+            sub="Novos ou reativados (6+ meses sem pedir)"
             color="#2563eb"
             icon={<Users size={18} />}
             variant="border"
@@ -288,7 +288,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
       <div className="flex items-start gap-2 bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800">
         <Percent size={13} className="mt-0.5 shrink-0" />
         <span>
-          <strong>Metodologia ROI:</strong> O retorno real do marketing é calculado como <strong>51% do faturamento de clientes novos</strong> (margem operacional estimada).
+          <strong>Metodologia ROI:</strong> "Clientes novos" considera clientes que nunca compraram <strong>ou</strong> ficaram <strong>6+ meses sem pedir e voltaram</strong> (reativados). O retorno real do marketing é calculado como <strong>51% do faturamento desses clientes</strong> (margem operacional estimada).
           ROI em R$ = Retorno Real − Investimento &nbsp;|&nbsp; ROI em % = (Retorno Real − Investimento) ÷ Investimento × 100
         </span>
       </div>
