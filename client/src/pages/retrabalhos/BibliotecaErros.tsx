@@ -11,7 +11,6 @@ import {
   ImagePlus, ImageOff, Shield, Target, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation, useSearch } from "wouter";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
@@ -682,7 +681,7 @@ export default function BibliotecaErros() {
   };
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <PageHeader
         title="Biblioteca de Erros e CNQ"
@@ -1026,6 +1025,6 @@ export default function BibliotecaErros() {
           );
         })}
       </div>
-    </DashboardLayout>
+    </>
   );
 }

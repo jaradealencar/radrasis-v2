@@ -1,5 +1,4 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import FilterBar, { FilterState } from "@/components/FilterBar";
@@ -40,7 +39,6 @@ export default function Retrabalhos() {
   const total = data?.total ?? 0;
 
   return (
-    <DashboardLayout>
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -167,6 +165,5 @@ export default function Retrabalhos() {
         )}
       </div>
     </div>
-    </DashboardLayout>
   );
 }

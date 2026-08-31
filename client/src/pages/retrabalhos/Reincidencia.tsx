@@ -1,5 +1,4 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useState } from "react";
 import FilterBar, { FilterState } from "@/components/FilterBar";
 import { AlertTriangle, TrendingUp, Zap } from "lucide-react";
@@ -32,7 +31,6 @@ export default function Reincidencia() {
   ];
 
   return (
-    <DashboardLayout>
     <div className="p-6 space-y-5">
       {/* Header */}
       <div>
@@ -205,6 +203,5 @@ export default function Reincidencia() {
         </div>
       </div>
     </div>
-    </DashboardLayout>
   );
 }

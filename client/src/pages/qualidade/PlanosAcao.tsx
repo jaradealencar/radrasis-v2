@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import DashboardLayout from "@/components/DashboardLayout";
 import PageHeader from "@/components/PageHeader";
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -862,7 +861,6 @@ export default function PlanosAcao() {
   const reincidenciasSemPlano = (reincidencias as any[]).filter(r => r.codigoErro && !codigosComPlano.has(r.codigoErro) && (r.total ?? r.count ?? 0) >= 3);
 
   return (
-    <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
         <PageHeader
@@ -1018,6 +1016,5 @@ export default function PlanosAcao() {
           <DetalhePlano plano={detalhePlano} onClose={() => setDetalhePlano(null)} />
         )}
       </div>
-    </DashboardLayout>
   );
 }

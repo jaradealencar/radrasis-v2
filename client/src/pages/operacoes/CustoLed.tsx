@@ -1,4 +1,3 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -727,7 +726,6 @@ function CustoLedTab() {
 // ─── Página Principal: Custo de LED ─────────────────────────────────────────────────
 export default function CustoLed() {
   return (
-    <DashboardLayout>
       <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="mb-6">
@@ -739,6 +737,5 @@ export default function CustoLed() {
         </div>
         <CustoLedTab />
       </div>
-    </DashboardLayout>
   );
 }

@@ -8,7 +8,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -456,7 +455,7 @@ export default function Conhecimento() {
   const items = data ?? [];
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -856,6 +855,6 @@ export default function Conhecimento() {
           ))}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

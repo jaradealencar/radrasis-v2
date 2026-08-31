@@ -2,7 +2,6 @@ import { trpc } from "@/lib/trpc";
 import { Building2, Mail, MessageCircle, Phone, Plus, Search, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const CATEGORIES = ["Matéria-Prima", "Embalagem", "Serviços", "Tecnologia", "Logística", "Manutenção", "Outros"];
@@ -39,7 +38,7 @@ export default function Fornecedores() {
   }
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -216,6 +215,6 @@ export default function Fornecedores() {
           ))}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

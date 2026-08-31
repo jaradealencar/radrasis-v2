@@ -1,5 +1,4 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useState } from "react";
 import FilterBar, { FilterState } from "@/components/FilterBar";
 import { Brain, RefreshCw, Sparkles } from "lucide-react";
@@ -36,7 +35,6 @@ export default function Insights() {
   };
 
   return (
-    <DashboardLayout>
       <div className="p-6 space-y-5">
         {/* Header */}
         <div>
@@ -129,6 +127,5 @@ export default function Insights() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
 }

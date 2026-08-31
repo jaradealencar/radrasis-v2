@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -234,7 +233,6 @@ export default function MetasComerciais() {
   ];
 
   return (
-    <DashboardLayout>
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -559,6 +557,5 @@ export default function MetasComerciais() {
           Taxa Conversão = Vendas Realizadas / Cotações · Taxa Faturamento = Faturamento OS / Valor Orçado · Clientes Novos = primeira compra no histórico
         </p>
       </div>
-    </DashboardLayout>
   );
 }

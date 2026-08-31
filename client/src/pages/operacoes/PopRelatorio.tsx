@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { FileText, Download, Eye, Users, TrendingUp, Calendar, Filter } from "lucide-react";
-import DashboardLayout from "../../components/DashboardLayout";
 import { trpc } from "../../lib/trpc";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
@@ -34,7 +33,7 @@ export default function PopRelatorio() {
   const usuariosUnicos = new Set((acessos ?? []).map((a: AcessoRow) => a.usuarioNome)).size;
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -257,6 +256,6 @@ export default function PopRelatorio() {
           </div>
         </>
       )}
-    </DashboardLayout>
+    </>
   );
 }

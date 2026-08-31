@@ -4,7 +4,6 @@ import EvolucaoVendedor from "./EvolucaoVendedor";
 import EvolucaoDiariaVendedor from "./EvolucaoDiariaVendedor";
 import InteligenteClientes from "./InteligenteClientes";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import DashboardLayout from "@/components/DashboardLayout";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -487,7 +486,7 @@ export default function PerformanceComercial() {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header — mobile-first: empilhado no mobile, lado a lado no desktop */}
         <div className="flex flex-col gap-3">
@@ -2777,7 +2776,7 @@ export default function PerformanceComercial() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </>
   );
 }
 

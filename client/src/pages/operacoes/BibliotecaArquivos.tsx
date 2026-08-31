@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { enviarArquivo } from "@/lib/upload";
 import { useAuth } from "@/hooks/useAuth";
@@ -260,7 +259,6 @@ export default function BibliotecaArquivos() {
   const todasCategorias = ["Todos", ...Array.from(new Set([...CATEGORIAS_PADRAO, ...categorias]))];
 
   return (
-    <DashboardLayout>
     <div className="space-y-8 p-2">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -582,6 +580,5 @@ export default function BibliotecaArquivos() {
         </DialogContent>
       </Dialog>
     </div>
-    </DashboardLayout>
   );
 }

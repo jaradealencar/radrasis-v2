@@ -1,5 +1,4 @@
 import { useState } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,6 @@ export default function Cargos() {
   };
 
   return (
-    <DashboardLayout>
       <div className="space-y-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-blue-600 mb-0.5">Gestão Organizacional</p>
@@ -147,6 +145,5 @@ export default function Cargos() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
 }

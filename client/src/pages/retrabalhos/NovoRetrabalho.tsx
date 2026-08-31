@@ -1,5 +1,4 @@
 import { useState } from "react";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import RetrabalhForm, { FormData } from "@/components/RetrabalhForm";
@@ -88,7 +87,6 @@ export default function NovoRetrabalho() {
   };
 
   return (
-    <DashboardLayout>
       <div className="p-6 max-w-3xl mx-auto">
         <button
           onClick={() => setLocation("/retrabalhos")}
@@ -149,6 +147,5 @@ export default function NovoRetrabalho() {
           tipoRegistro="retrabalho"
         />
       </div>
-    </DashboardLayout>
   );
 }

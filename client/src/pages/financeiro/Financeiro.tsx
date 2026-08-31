@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import CustosFixos from "./CustosFixos";
 import MarketingFinanceiro from "./MarketingFinanceiro";
 import PainelDRE from "./PainelDRE";
@@ -290,7 +289,6 @@ export default function Financeiro() {
   }
 
   return (
-    <DashboardLayout>
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Cabeçalho */}
       <PageHeader
@@ -780,6 +778,5 @@ export default function Financeiro() {
 
       </> /* fim aba Painel legado */}
     </div>
-    </DashboardLayout>
   );
 }

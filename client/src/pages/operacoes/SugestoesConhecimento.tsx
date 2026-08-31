@@ -2,7 +2,6 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import {
   Lightbulb, CheckCircle, XCircle, Clock, User, MessageSquare, ChevronDown, ChevronUp, Sparkles
 } from "lucide-react";
@@ -45,7 +44,7 @@ export default function SugestoesConhecimento() {
   const suggestions = data ?? [];
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -204,6 +203,6 @@ export default function SugestoesConhecimento() {
           })}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

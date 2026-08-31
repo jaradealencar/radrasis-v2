@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import UserSelect from "../../components/UserSelect";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -175,7 +174,7 @@ export default function Rotinas() {
   const fi = (freq: string) => FREQUENCIES.find(f => f.value === freq)!;
 
   return (
-    <DashboardLayout>
+    <>
       {/* Banner de pendências */}
       {!bannerDismissed && pending.length > 0 && (
         <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -419,6 +418,6 @@ export default function Rotinas() {
           })}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

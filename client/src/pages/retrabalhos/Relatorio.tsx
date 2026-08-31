@@ -1,5 +1,4 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useState, useMemo, useEffect } from "react";
 import { useSearch } from "wouter";
 import FilterBar, { FilterState } from "@/components/FilterBar";
@@ -209,7 +208,6 @@ export default function Relatorio() {
   };
 
   return (
-    <DashboardLayout>
     <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -511,6 +509,5 @@ export default function Relatorio() {
         </div>
       </div>
     </div>
-    </DashboardLayout>
   );
 }

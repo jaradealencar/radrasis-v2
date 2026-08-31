@@ -6,7 +6,6 @@ import {
   GitMerge, AlertTriangle, UserCheck, Clock, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import ImageUploadField from "../../components/ImageUploadField";
 import { CurriculumUploadSection } from "../../components/CurriculumUploadSection";
@@ -445,7 +444,7 @@ export default function CargoseFuncoes() {
   // ── LISTA ──────────────────────────────────────────────────────────────────
   if (mode === "list") {
     return (
-      <DashboardLayout>
+      <>
         <div className="flex items-start justify-between mb-6 gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full flex items-center justify-center"
@@ -551,14 +550,14 @@ export default function CargoseFuncoes() {
             ))}
           </div>
         )}
-      </DashboardLayout>
+      </>
     );
   }
 
   // ── VISUALIZAÇÃO ───────────────────────────────────────────────────────────
   if (mode === "view" && selected) {
     return (
-      <DashboardLayout>
+      <>
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => setMode("list")}
@@ -671,7 +670,7 @@ export default function CargoseFuncoes() {
             </div>
           )}
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
@@ -680,7 +679,7 @@ export default function CargoseFuncoes() {
   const isSaving = createMut.isPending || updateMut.isPending;
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => setMode(isNew ? "list" : "view")}
@@ -748,6 +747,6 @@ export default function CargoseFuncoes() {
           ))}
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 }

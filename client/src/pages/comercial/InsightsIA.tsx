@@ -1,5 +1,4 @@
 import { useState } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -87,7 +86,7 @@ export default function InsightsIA() {
   const resumo = diagnosticoMut.data?.resumo;
 
   return (
-    <DashboardLayout>
+    <>
       <PageHeader
         title="Insights de IA — Comercial"
         description="Análise de performance comercial e financeira com dicas para vender mais e lucrar mais"
@@ -253,6 +252,6 @@ export default function InsightsIA() {
           </CardContent>
         </Card>
       )}
-    </DashboardLayout>
+    </>
   );
 }

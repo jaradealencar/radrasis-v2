@@ -2,7 +2,6 @@ import { trpc } from "@/lib/trpc";
 import { ChevronDown, ChevronUp, Edit2, Plus, Save, ScrollText, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
@@ -59,7 +58,7 @@ export default function Regulamentos() {
   }
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -254,6 +253,6 @@ export default function Regulamentos() {
           ))}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

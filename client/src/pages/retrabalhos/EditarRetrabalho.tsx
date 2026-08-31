@@ -1,5 +1,4 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
 import RetrabalhForm, { FormData } from "@/components/RetrabalhForm";
@@ -85,7 +84,6 @@ export default function EditarRetrabalho() {
   };
 
   return (
-    <DashboardLayout>
     <div className="p-6 max-w-3xl mx-auto">
       <button onClick={() => setLocation("/retrabalhos")} className="flex items-center gap-2 text-sm mb-6 text-slate-500 hover:text-slate-700 transition-colors">
         <ArrowLeft className="w-4 h-4" />
@@ -100,6 +98,5 @@ export default function EditarRetrabalho() {
         <RetrabalhForm initial={initial} onSubmit={handleSubmit} loading={updateMut.isPending} submitLabel="Atualizar Retrabalho" />
       </div>
     </div>
-    </DashboardLayout>
   );
 }

@@ -13,7 +13,6 @@ import {
 import { toast } from "sonner";
 import { Pencil, Save, X, Info, FileText, Search, Filter, ChevronDown, ChevronUp, Plus, Trash2, Copy, Check, Download, History, Clock } from "lucide-react";
 import { useState, useMemo, useRef, useCallback } from "react";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -822,7 +821,7 @@ export default function TabelaPrecos() {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       {/* Navegação de Sub-abas */}
       <div className="flex gap-2 mb-6 border-b border-slate-200 pb-0">
         <button
@@ -1170,6 +1169,6 @@ export default function TabelaPrecos() {
           )}
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </>
   );
 }

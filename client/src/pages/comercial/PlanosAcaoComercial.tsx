@@ -1,5 +1,4 @@
 import { useState } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -638,7 +637,6 @@ export default function PlanosAcaoComercial() {
   };
 
   return (
-    <DashboardLayout>
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -960,6 +958,5 @@ export default function PlanosAcaoComercial() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
 }

@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation } from "wouter";
 import { downloadPopAsPdf } from "@/lib/popPdf";
 import RichTextEditor from "../../components/RichTextEditor";
@@ -383,7 +382,7 @@ export default function Pops() {
   const uniqueSectors = Array.from(new Set(allItems.map(i => i.sector))).sort();
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -710,6 +709,6 @@ export default function Pops() {
           })}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }
