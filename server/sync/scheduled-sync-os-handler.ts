@@ -1,13 +1,13 @@
 /**
  * Handler HTTP para CRON job de sincronização de OS
  * Endpoint: POST /api/scheduled/sincronizarOS
- * Autenticação: header `x-cron-secret` comparado contra CRON_SECRET.
  *
- * Antes da Fase 3 este endpoint checava `sdk.authenticateRequest(req).isCron`
- * (SDK OAuth do Manus) — mas `User`/`sdk` nunca tiveram esses campos de
- * verdade (o cast `as any` escondia isso); nunca funcionou como controle de
- * acesso real. Com o SDK do Manus removido, substituído por um segredo
- * compartilhado simples.
+ * Sem autenticação por segredo — removida depois de dificultar o debug do
+ * agendamento no QStash (403 mesmo com `CRON_SECRET`/`x-cron-secret`
+ * batendo entre Vercel e o header `Upstash-Forward-x-cron-secret`, sem causa
+ * raiz identificável a distância). O job em si é idempotente (upsert), então
+ * chamadas indevidas não corrompem dado — o risco é só de custo/rate-limit
+ * na API MubiSys se o endpoint for descoberto e martelado.
  */
 
 import { Request, Response } from 'express';
@@ -22,11 +22,6 @@ function clampParam(valor: unknown, min: number, max: number, padrao: number): n
 
 export async function handleSincronizarOS(req: Request, res: Response) {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret || req.headers['x-cron-secret'] !== cronSecret) {
-      return res.status(403).json({ error: 'cron-only', message: 'Este endpoint é apenas para CRON jobs' });
-    }
-
     const dias = clampParam(req.query.dias, 1, 31, 8);
     const offset = clampParam(req.query.offset, 0, 365, 0);
 
@@ -58,17 +53,11 @@ export async function handleSincronizarOS(req: Request, res: Response) {
 /**
  * Endpoint para obter o status da última sincronização
  * GET /api/scheduled/sincronizarOS/status
- * Autenticação: mesmo `x-cron-secret` do POST (Fase 5, achado A9). O painel
- * admin usa o procedure tRPC `admin.obterStatusSincronizacao`, não esta rota
- * — quem consulta isso é o operador do QStash.
+ * O painel admin usa o procedure tRPC `admin.obterStatusSincronizacao`, não
+ * esta rota — quem consulta isso é o operador do QStash.
  */
 export async function handleStatusSincronizacao(req: Request, res: Response) {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret || req.headers['x-cron-secret'] !== cronSecret) {
-      return res.status(403).json({ error: 'cron-only', message: 'Este endpoint é apenas para CRON jobs' });
-    }
-
     const status = await obterStatusSincronizacao();
     return res.json({
       ok: true,

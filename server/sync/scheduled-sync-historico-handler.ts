@@ -1,8 +1,8 @@
 /**
  * Handler HTTP para CRON job de sincronização de `historico_os`/`historico_orcamentos`
  * Endpoint: POST /api/scheduled/sincronizarHistorico
- * Autenticação: header `x-cron-secret` comparado contra CRON_SECRET (mesmo
- * segredo do endpoint irmão em scheduled-sync-os-handler.ts).
+ *
+ * Sem autenticação por segredo — ver justificativa em scheduled-sync-os-handler.ts.
  *
  * Query params opcionais `mes`/`ano`: sincroniza só aquele mês (uso manual/
  * backfill pontual). Sem eles, sincroniza o mês corrente + `mesesAtras`
@@ -20,11 +20,6 @@ function clampParam(valor: unknown, min: number, max: number, padrao: number): n
 
 export async function handleSincronizarHistorico(req: Request, res: Response) {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret || req.headers['x-cron-secret'] !== cronSecret) {
-      return res.status(403).json({ error: 'cron-only', message: 'Este endpoint é apenas para CRON jobs' });
-    }
-
     const mesParam = req.query.mes;
     const anoParam = req.query.ano;
 
