@@ -533,6 +533,17 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
               <div className="w-3 h-0.5 bg-blue-500 rounded" />
               Indicadores — {label}
             </div>
+            {sel.lucroLiquido == null && sel.receitaOperacionalBruta != null && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-3">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>
+                  <strong>DRE parcial para {label}:</strong> Receita, custo de matéria-prima,
+                  despesas fixas e impostos vêm do ERP (MubiSys) e estão completos. Faltam despesas
+                  com pessoal, financeiras e não-operacionais — por isso Lucro Operacional e Lucro
+                  Líquido aparecem como "—" em vez de um valor incompleto.
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KpiCard
                 label="Receita Op. Bruta"
