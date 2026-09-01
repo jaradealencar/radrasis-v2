@@ -665,10 +665,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
         setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
       } else {
-        // Buscar da API MubiSys
-        const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
+        // Buscar da API MubiSys — em paralelo, cada chamada já tem seu próprio timeout (TIMEOUT_LISTA_MS)
+        const [osResult, orcResult] = await Promise.all([
+          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
+          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
+        ]);
         allOsApi = osResult.itens;
-        const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
         const orcList = orcResult.itens;
         setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
         setCacheWithTTL(orcCacheKey, orcList, mes, ano);
