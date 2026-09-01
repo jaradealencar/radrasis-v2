@@ -150,6 +150,16 @@ const navSections: NavSection[] = [
   },
 ];
 
+// Remove acentos/cedilha pra busca não depender de o usuário digitar exatamente
+// "Políticas"/"Solicitações" — casa "politicas"/"solicitacoes" também.
+function normalizeSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+}
+
 const ROLE_LABELS: Record<string, string> = {
   master: "Master",
   admin: "Administrador",
@@ -185,12 +195,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // Filtrar itens por busca — DEVE estar antes do return condicional (regra dos hooks)
   const filteredSections = useMemo(() => {
     if (!searchQuery.trim()) return null;
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeSearch(searchQuery);
     const results: NavItem[] = [];
     for (const section of navSections) {
       for (const item of section.items) {
         if (!item.pageKey || canAccess(item.pageKey)) {
-          if (item.label.toLowerCase().includes(q)) {
+          if (normalizeSearch(item.label).includes(q)) {
             results.push(item);
           }
         }
