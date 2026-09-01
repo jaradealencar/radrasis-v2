@@ -512,6 +512,62 @@ type VendedorNovosStats = {
   taxaFatNovos: number;
 };
 
+/** Estatísticas de "clientes novos/reativados" de um mês, calculadas 100% a
+ * partir do histórico local (historico_os) — nunca chama a API MubiSys ao
+ * vivo. Usada por getClientesNovosAno para meses não congelados: somar até
+ * 12 chamadas de API (uma por mês, ~20-45s cada, ver getClientesNovosMes)
+ * estourava o maxDuration de 60s da Vercel e o painel de Marketing carregava
+ * zerado, sem erro visível (investigação de 01/09/2026). historico_os já é
+ * fonte de verdade para "quem comprou antes" (ver isClienteNovoPorRecencia);
+ * aqui também vira fonte para "quem comprou neste mês", então dispensa
+ * reindexarPorChaveNormalizada — os dois lados da comparação vêm da mesma
+ * tabela, com a mesma grafia. */
+function calcularNovosDoMesLocal(
+  mes: number,
+  ano: number,
+  osDoAno: Array<{ empresa: string | null; tipoOs: string | null; status: string | null; mes: number; valorOs: string | null; valorTotal: string | null }>,
+  todasComprasValidas: CompraMinima[],
+  overrideMap: Map<string, "recorrente" | "novo">,
+): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; clientesNovosUnicos: number; clientesReativados: number } {
+  const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+  const osMes = osDoAno.filter(os => os.mes === mes);
+
+  let osNovos = 0;
+  let faturamentoNovos = 0;
+  let clientesReativados = 0;
+  const clientesVistos = new Set<string>();
+
+  for (const os of osMes) {
+    if (!isOsNormalDb(os)) continue;
+    const clienteKey = (os.empresa ?? "").toLowerCase().trim();
+    if (!clienteKey) continue;
+
+    const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
+    const isNovo = overrideStatus === "recorrente" ? false
+      : overrideStatus === "novo" ? true
+      : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+    if (!isNovo) continue;
+
+    const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+    osNovos++;
+    faturamentoNovos += valor;
+
+    if (!clientesVistos.has(clienteKey)) {
+      clientesVistos.add(clienteKey);
+      if (ultimaCompraPorCliente.get(clienteKey)) clientesReativados++;
+    }
+  }
+
+  return {
+    mes,
+    ticketMedioNovos: osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0,
+    osNovos,
+    faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
+    clientesNovosUnicos: clientesVistos.size,
+    clientesReativados,
+  };
+}
+
 async function getClientesNovosMes(mes: number, ano: number): Promise<{
   total: number;
   totalReativados: number;
@@ -1474,49 +1530,63 @@ export const performanceComercialRouter = router({
       return getClientesNovosMes(input.mes, input.ano);
     }),
 
-  // Clientes novos de todos os meses do ano (para gráfico anual) — versão otimizada
+  // Clientes novos de todos os meses do ano (para gráfico anual) — lê do histórico local
   getClientesNovosAno: publicProcedure
     .input(z.object({ ano: z.number().min(2020) }))
     .query(async ({ input }) => {
       const { ano } = input;
       const now = new Date();
       const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
-
-      // FONTE ÚNICA DE VERDADE: usar getClientesNovosMes para cada mês
-      // Isso garante que Marketing e Performance Comercial usem exatamente os mesmos dados
-      // (API MubiSys + snapshots congelados), eliminando divergências com o banco local.
-      // Executa em paralelo com concorrência limitada a 2 para não sobrecarregar a API MubiSys
       const meses = Array.from({ length: mesAtual }, (_, i) => i + 1);
-      const CONCURRENCY = 2;
-      const results: Array<{ mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; clientesNovosUnicos: number; clientesReativados: number }> = [];
 
-      for (let i = 0; i < meses.length; i += CONCURRENCY) {
-        const batch = meses.slice(i, i + CONCURRENCY);
-        const batchResults = await Promise.allSettled(
-          batch.map(async (mes) => {
-            const dados = await getClientesNovosMes(mes, ano);
-            return {
-              mes,
-              ticketMedioNovos: dados.ticketMedioNovos,
-              osNovos: dados.osNovos,
-              faturamentoNovos: dados.faturamentoNovos,
-              clientesNovosUnicos: dados.total,
-              clientesReativados: dados.totalReativados,
-            };
-          })
-        );
-        for (let j = 0; j < batchResults.length; j++) {
-          const r = batchResults[j];
-          const mes = batch[j];
-          if (r.status === "fulfilled") {
-            results.push(r.value);
-          } else {
-            results.push({ mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, clientesNovosUnicos: 0, clientesReativados: 0 });
-          }
-        }
+      const db = await getDb();
+      if (!db) {
+        return meses.map(mes => ({
+          mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0,
+          clientesNovosUnicos: 0, clientesReativados: 0, origem: "indisponivel" as const,
+        }));
       }
 
-      // Ordenar por mês para garantir ordem correta
+      // Meses auditados/congelados: manter o caminho existente — getClientesNovosMes já
+      // retorna do snapshot salvo em performanceAuditada, sem chamar a API ao vivo.
+      const snapsCongelados = await db.select({ mes: performanceAuditada.mes }).from(performanceAuditada)
+        .where(and(eq(performanceAuditada.ano, ano), eq(performanceAuditada.congelado, true)));
+      const congeladosSet = new Set(snapsCongelados.map(s => s.mes));
+
+      // Demais meses: calcular 100% do histórico local (historico_os), sem tocar a API
+      // MubiSys ao vivo — ver calcularNovosDoMesLocal. historico_os sincroniza 1x/dia
+      // (server/sync/scheduled-sync-historico.ts), então o mês corrente pode ficar até
+      // ~1 dia defasado; meses fechados não têm essa limitação.
+      const overrides = await db.select().from(clienteOverrides);
+      const overrideMap = new Map<string, "recorrente" | "novo">();
+      for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
+
+      const todasComprasValidas = await buscarTodasComprasValidas(db);
+      const osDoAno = await db.select({
+        empresa: historicoOs.empresa,
+        tipoOs: historicoOs.tipoOs,
+        status: historicoOs.status,
+        mes: historicoOs.mes,
+        valorOs: historicoOs.valorOs,
+        valorTotal: historicoOs.valorTotal,
+      }).from(historicoOs).where(eq(historicoOs.ano, ano));
+
+      const results = await Promise.all(meses.map(async (mes) => {
+        if (congeladosSet.has(mes)) {
+          const dados = await getClientesNovosMes(mes, ano);
+          return {
+            mes,
+            ticketMedioNovos: dados.ticketMedioNovos,
+            osNovos: dados.osNovos,
+            faturamentoNovos: dados.faturamentoNovos,
+            clientesNovosUnicos: dados.total,
+            clientesReativados: dados.totalReativados,
+            origem: "congelado" as const,
+          };
+        }
+        return { ...calcularNovosDoMesLocal(mes, ano, osDoAno, todasComprasValidas, overrideMap), origem: "local" as const };
+      }));
+
       results.sort((a, b) => a.mes - b.mes);
       return results;
     }),

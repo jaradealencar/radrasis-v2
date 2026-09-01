@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,6 +86,29 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   useEffect(() => {
     if (errorClientesNovos) setErroDispensado(false);
   }, [errorClientesNovos]);
+
+  // ─── Indicador de fonte/velocidade dos dados (mesmo padrão de PerformanceComercial.tsx) ───
+  const loadStartRef = useRef<number>(0);
+  const [loadTimeMs, setLoadTimeMs] = useState<number | null>(null);
+  useEffect(() => {
+    loadStartRef.current = Date.now();
+    setLoadTimeMs(null);
+  }, [anoSel]);
+  useEffect(() => {
+    if (!loadingClientesNovos && clientesNovosAno && loadStartRef.current > 0) {
+      setLoadTimeMs(Date.now() - loadStartRef.current);
+      loadStartRef.current = 0;
+    }
+  }, [loadingClientesNovos, clientesNovosAno]);
+
+  // "local" = veio do histórico sincronizado (historico_os), não de uma consulta ao vivo
+  // à API MubiSys — ver getClientesNovosAno. "congelado" = mês auditado/fechado.
+  const origemDados = useMemo(() => {
+    if (!clientesNovosAno.length) return null;
+    if (clientesNovosAno.some((r: any) => r.origem === "indisponivel")) return "indisponivel";
+    if (clientesNovosAno.every((r: any) => r.origem === "congelado")) return "congelado";
+    return "local";
+  }, [clientesNovosAno]);
 
   const upsertMarketing = trpc.financeiro.upsertCustoMarketing.useMutation({
     onSuccess: () => {
@@ -267,9 +290,44 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
           Filtrar por mês:
         </div>
         {loadingClientesNovos && (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground ml-2">
-            <Loader2 size={12} className="animate-spin" />
-            Carregando dados do MubiSys...
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 animate-pulse ml-2">
+            <Loader2 size={11} className="animate-spin" />
+            BUSCANDO DADOS...
+          </span>
+        )}
+        {!loadingClientesNovos && origemDados === "local" && (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 ml-2"
+            title="Números de clientes novos vêm da sincronização diária do histórico do MubiSys (historico_os), não de uma consulta ao vivo. O mês corrente pode ficar até ~1 dia defasado."
+          >
+            🗄️ DADOS LOCAIS (sync diário)
+          </span>
+        )}
+        {!loadingClientesNovos && origemDados === "congelado" && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 ml-2">
+            🔒 CONGELADO
+          </span>
+        )}
+        {!loadingClientesNovos && origemDados === "indisponivel" && (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 ml-2"
+            title="Não foi possível conectar ao banco de dados para calcular clientes novos."
+          >
+            ⚠️ BANCO INDISPONÍVEL
+          </span>
+        )}
+        {loadTimeMs !== null && !loadingClientesNovos && (
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+              loadTimeMs < 2000
+                ? "bg-green-50 text-green-600 border-green-200"
+                : loadTimeMs < 10000
+                ? "bg-amber-50 text-amber-600 border-amber-200"
+                : "bg-red-50 text-red-600 border-red-200"
+            }`}
+            title="Tempo de resposta da consulta"
+          >
+            {loadTimeMs < 1000 ? `${loadTimeMs}ms` : `${(loadTimeMs / 1000).toFixed(1)}s`}
           </span>
         )}
         <button
