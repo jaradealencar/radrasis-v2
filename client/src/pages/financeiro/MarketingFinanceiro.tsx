@@ -103,7 +103,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   }, [custoMarketingAno]);
 
   const clientesNovosMap = useMemo(() => {
-    const m: Record<number, { osNovos: number; faturamentoNovos: number; ticketMedioNovos: number; clientesNovosUnicos: number }> = {};
+    const m: Record<number, { osNovos: number; faturamentoNovos: number; ticketMedioNovos: number; clientesNovosUnicos: number; clientesReativados: number }> = {};
     for (const r of clientesNovosAno) m[r.mes] = r;
     return m;
   }, [clientesNovosAno]);
@@ -115,6 +115,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     const novos = clientesNovosMap[mes];
     const investimento = mk ? parseFloat(mk.investimento) : null;
     const clientesNovosQtd = novos?.clientesNovosUnicos ?? null;
+    const clientesReativadosQtd = novos?.clientesReativados ?? null;
     const faturamentoNovos = novos?.faturamentoNovos ?? null;
     const pedidosNovos = novos?.osNovos ?? null;
 
@@ -135,7 +136,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
 
     return {
       mes, nome, abrev: MESES_ABREV[idx],
-      investimento, clientesNovosQtd, faturamentoNovos, pedidosNovos,
+      investimento, clientesNovosQtd, clientesReativadosQtd, faturamentoNovos, pedidosNovos,
       retornoReal, cac, roiReais, roiPct,
     };
   }), [custoMarketingMap, clientesNovosMap]);
@@ -158,6 +159,9 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
 
   const totalClientesNovos = useMemo(() =>
     dadosFiltrados.reduce((s, d) => s + (d.clientesNovosQtd ?? 0), 0), [dadosFiltrados]);
+
+  const totalClientesReativados = useMemo(() =>
+    dadosFiltrados.reduce((s, d) => s + (d.clientesReativadosQtd ?? 0), 0), [dadosFiltrados]);
 
   const totalFaturamentoNovos = useMemo(() =>
     dadosFiltrados.reduce((s, d) => s + (d.faturamentoNovos ?? 0), 0), [dadosFiltrados]);
@@ -457,6 +461,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 <TableHead className="font-semibold">Mês</TableHead>
                 <TableHead className="text-right font-semibold">Investimento</TableHead>
                 <TableHead className="text-right font-semibold">Clientes Novos</TableHead>
+                <TableHead className="text-right font-semibold">Reativados</TableHead>
                 <TableHead className="text-right font-semibold">Pedidos</TableHead>
                 <TableHead className="text-right font-semibold">CAC</TableHead>
                 <TableHead className="text-right font-semibold">Fat. Clientes Novos</TableHead>
@@ -467,7 +472,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dadosFiltrados.map(({ mes, nome, investimento, clientesNovosQtd, faturamentoNovos, pedidosNovos, retornoReal, cac, roiReais, roiPct }) => {
+              {dadosFiltrados.map(({ mes, nome, investimento, clientesNovosQtd, clientesReativadosQtd, faturamentoNovos, pedidosNovos, retornoReal, cac, roiReais, roiPct }) => {
                 const mk = custoMarketingMap[mes];
                 const isEditing = marketingEditando === mes;
                 return (
@@ -502,6 +507,11 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                     <TableCell className="text-right">
                       {clientesNovosQtd != null
                         ? <span className="font-medium text-blue-700">{clientesNovosQtd}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {clientesReativadosQtd != null
+                        ? <span className="font-medium text-amber-700">{clientesReativadosQtd}</span>
                         : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="text-right">
@@ -583,6 +593,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                   </TableCell>
                   <TableCell className="text-right font-bold text-purple-700">{fmtBRL(totalInvestido)}</TableCell>
                   <TableCell className="text-right font-bold text-blue-700">{totalClientesNovos}</TableCell>
+                  <TableCell className="text-right font-bold text-amber-700">{totalClientesReativados}</TableCell>
                   <TableCell className="text-right font-bold text-indigo-700">{totalPedidosNovos}</TableCell>
                   <TableCell className="text-right font-bold text-orange-600">
                     {cacMedio != null ? fmtBRL(cacMedio) : "—"}
@@ -600,7 +611,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 {mesFiltro === null && (
                   <TableRow>
                     <TableCell className="text-xs text-muted-foreground font-medium">Média mensal</TableCell>
-                    <TableCell colSpan={5} />
+                    <TableCell colSpan={6} />
                     <TableCell colSpan={1} />
                     <TableCell className="text-right text-xs font-semibold text-emerald-600">
                       {roiMedioReais != null ? fmtBRL(roiMedioReais) : "—"}
