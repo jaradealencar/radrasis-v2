@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,16 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line,
@@ -19,8 +29,13 @@ import {
 } from "recharts";
 import {
   TrendingUp, Edit3, Check, X, DollarSign, Users, Target, Percent, Filter,
+  Loader2, AlertTriangle,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
+
+// Retry único: se a API do MubiSys estiver lenta/indisponível, tentar de novo
+// automaticamente só multiplica a espera pelo mesmo resultado (ver PerformanceComercial.tsx)
+const RETRY_MUBISYS = { retry: 1, refetchOnWindowFocus: false } as const;
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -53,8 +68,24 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   // Filtro de mês: null = todos os meses
   const [mesFiltro, setMesFiltro] = useState<number | null>(null);
 
-  const { data: custoMarketingAno = [], refetch: refetchMarketing } = trpc.financeiro.getCustoMarketingAno.useQuery({ ano: anoSel });
-  const { data: clientesNovosAno = [] } = trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSel });
+  const {
+    data: custoMarketingAno = [],
+    isLoading: loadingMarketing,
+    refetch: refetchMarketing,
+  } = trpc.financeiro.getCustoMarketingAno.useQuery({ ano: anoSel });
+
+  const {
+    data: clientesNovosAno = [],
+    isLoading: loadingClientesNovos,
+    isError: errorClientesNovos,
+    refetch: refetchClientesNovos,
+  } = trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSel }, RETRY_MUBISYS);
+
+  // Reaparece automaticamente se uma nova tentativa também falhar
+  const [erroDispensado, setErroDispensado] = useState(false);
+  useEffect(() => {
+    if (errorClientesNovos) setErroDispensado(false);
+  }, [errorClientesNovos]);
 
   const upsertMarketing = trpc.financeiro.upsertCustoMarketing.useMutation({
     onSuccess: () => {
@@ -188,8 +219,42 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
 
   const labelFiltro = mesFiltro != null ? MESES[mesFiltro - 1] : `Ano ${anoSel}`;
 
+  // Primeira carga do custo de marketing (fonte principal da aba) ainda em andamento
+  if (loadingMarketing) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+        <Loader2 size={28} className="animate-spin" />
+        <p className="text-sm">Carregando dados de marketing...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+
+      {/* ─── Modal de erro: falha ao buscar dados do MubiSys ────────────────────── */}
+      <AlertDialog
+        open={errorClientesNovos && !erroDispensado}
+        onOpenChange={(open) => { if (!open) setErroDispensado(true); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-amber-500" />
+              Erro ao buscar dados do MubiSys
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Não foi possível carregar os dados de clientes novos (via API do MubiSys) para calcular CAC e ROI. Isso costuma acontecer quando a API do MubiSys está lenta ou temporariamente indisponível. Os valores de investimento em marketing continuam disponíveis normalmente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar sem esses dados</AlertDialogCancel>
+            <AlertDialogAction onClick={() => refetchClientesNovos()}>
+              Tentar novamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ─── Filtro de mês ──────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -197,6 +262,12 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
           <Filter size={13} />
           Filtrar por mês:
         </div>
+        {loadingClientesNovos && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground ml-2">
+            <Loader2 size={12} className="animate-spin" />
+            Carregando dados do MubiSys...
+          </span>
+        )}
         <button
           onClick={() => setMesFiltro(null)}
           className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
