@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "historico_orcamentos_orc_numero_idx" ON "historico_orcamentos" USING btree ("orcNumero");--> statement-breakpoint
+CREATE UNIQUE INDEX "historico_os_os_numero_idx" ON "historico_os" USING btree ("osNumero");

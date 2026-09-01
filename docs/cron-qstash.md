@@ -1,7 +1,15 @@
 # CRON: sincronização de OS via Upstash QStash
 
-O job `POST /api/scheduled/sincronizarOS` é agendado pelo **Upstash QStash**,
-não pelo Vercel Cron. Não existe agendador dentro do repositório.
+Existem **dois** jobs agendados pelo **Upstash QStash** (não pelo Vercel
+Cron); nenhum agendador vive dentro do repositório:
+
+| Job | Alimenta | Propósito |
+|---|---|---|
+| `POST /api/scheduled/sincronizarOS` | `erp_os_cache` | janela rolante curta (~32 dias), dados "quentes" pra funcionalidades que só precisam do recente |
+| `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
+
+Este documento cobre o primeiro em detalhe; o segundo está descrito na seção
+"Sincronização de histórico" mais abaixo.
 
 ## Agendamento planejado: 4 lotes escalonados
 
@@ -92,3 +100,46 @@ status via procedure tRPC `admin.obterStatusSincronizacao` (protegido por
   disso era público e vazava data da última execução, contagem de OS e a
   mensagem de erro crua do ERP). Se algo que consultava a rota sem o header
   parar de funcionar, é este o motivo.
+
+## Sincronização de histórico (`historico_os` / `historico_orcamentos`)
+
+Job novo (ver `server/sync/scheduled-sync-historico.ts`), separado do
+`sincronizarOS` acima. Alimenta a base permanente que `historico_os`/
+`historico_orcamentos` deveriam ter desde o início — até 01/09/2026 essas
+tabelas ficaram **vazias em produção** (só existiam no banco de
+desenvolvimento, de uma importação manual de 18/08/2026), o que fazia a regra
+de "cliente novo/reativado/recorrente" (`isClienteNovoPorRecencia` em
+`server/routers/performanceComercial.ts`) tratar praticamente todo mundo como
+"novo" — sem base de "quem já comprou antes", todo cliente parecia sem
+histórico. Corrigido copiando o histórico do DEV pro PROD e criando este job
+pra manter os dois em dia dali pra frente.
+
+- **Endpoint:** `POST /api/scheduled/sincronizarHistorico`
+- **Autenticação:** mesmo header `x-cron-secret` do job de OS.
+- **Parâmetros (query string, opcionais):**
+  - `mesesAtras` (padrão `1`): sincroniza o mês corrente + N meses anteriores.
+    Sincronizar o mês anterior de novo (não só o corrente) é intencional —
+    faturamento e status de OS aprovadas no fim do mês ainda mudam depois que
+    o mês vira.
+  - `mes`/`ano`: se os dois forem passados, ignora `mesesAtras` e sincroniza
+    **só** aquele mês — uso manual, pra backfill pontual de um mês específico.
+- **Upsert idempotente:** grava por `INSERT ... ON CONFLICT ("osNumero"/"orcNumero") DO UPDATE`
+  (índice único da migration `0012_silky_odin.sql`) — rodar o mesmo mês várias
+  vezes nunca duplica linha.
+- **Agendamento sugerido:** 1x por dia, um único schedule (não precisa dos 4
+  lotes do `sincronizarOS` — um mês inteiro de OS+orçamentos cabe num único
+  upsert em lote dentro do `maxDuration` de 60s; ver comentário de topo do
+  arquivo de sync sobre por que a gravação é em lotes multi-linha e não um
+  INSERT por registro).
+
+```
+POST https://SEU-DOMINIO.com/api/scheduled/sincronizarHistorico
+Cron (UTC): 0 7 * * *     (roda depois do sincronizarOS, sem necessidade real de ordem)
+Header:     x-cron-secret: <mesmo CRON_SECRET>
+Retries:    2
+```
+
+> ⚠️ Verificado em 01/09/2026: o `MUBISYS_ACCESS_TOKEN` atual está com `exp`
+> vencido desde 31/08/2026. A API ainda aceita o token vencido, mas isso pode
+> parar de funcionar sem aviso — renove no painel do MubiSys antes de
+> depender deste cron em produção.
