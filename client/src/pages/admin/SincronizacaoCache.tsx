@@ -12,7 +12,8 @@ export default function SincronizacaoCache() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   // ✅ Buscar status de sincronização
-  const { data: status, isLoading, refetch } = trpc.admin.obterStatusSincronizacao.useQuery(
+  const utils = trpc.useUtils();
+  const { data: status, isLoading } = trpc.admin.obterStatusSincronizacao.useQuery(
     undefined,
     {
       refetchInterval: 30000, // Atualizar a cada 30s
@@ -33,7 +34,7 @@ export default function SincronizacaoCache() {
       toast.success("✅ Sincronização iniciada! Aguarde...");
       setIsSyncing(true);
       setTimeout(() => {
-        refetch();
+        utils.admin.obterStatusSincronizacao.invalidate();
         setIsSyncing(false);
       }, 3000);
     },

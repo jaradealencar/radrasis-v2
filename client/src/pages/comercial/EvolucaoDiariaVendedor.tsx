@@ -37,10 +37,7 @@ export default function EvolucaoDiariaVendedor({ mes, ano }: Props) {
   const [exportando, setExportando] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
 
-  const { data, isLoading } = trpc.performanceComercial.getEvolucaoDiariaMes.useQuery(
-    { mes, ano },
-    { staleTime: 5 * 60 * 1000 }
-  );
+  const { data, isLoading } = trpc.performanceComercial.getEvolucaoDiariaMes.useQuery({ mes, ano });
 
   const ind = INDICADORES.find(i => i.id === indicador)!;
   const campo = modo === "acumulado" ? ind.acumId : ind.id;

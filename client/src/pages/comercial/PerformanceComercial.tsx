@@ -4,7 +4,6 @@ import EvolucaoVendedor from "./EvolucaoVendedor";
 import EvolucaoDiariaVendedor from "./EvolucaoDiariaVendedor";
 import InteligenteClientes from "./InteligenteClientes";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import DashboardLayout from "@/components/DashboardLayout";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -280,18 +279,17 @@ export default function PerformanceComercial() {
     return result;
   }, [mesSelecionado, anoSelecionado]);
 
-  // staleTime de 5 min para evitar refetch desnecessário das queries lentas (API Mubisys).
   // retry: 1 (em vez do padrão 3 do React Query) — se a consulta já levou ~50s e falhou
   // por timeout, repetir automaticamente só multiplica a espera sem nenhum ganho: o cache
   // da API MubiSys continua frio, então cada nova tentativa reproduz o mesmo custo.
-  const STALE_5MIN = { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false, retry: 1 };
+  const RETRY_1 = { refetchOnWindowFocus: false, retry: 1 };
 
   const { data: mesDados, isLoading: loadingMes, refetch: refetchMes } =
-    trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
 
   // Query de auditoria para o mês selecionado
   const { data: auditoriaData, refetch: refetchAuditoria } =
-    trpc.performanceComercial.getAuditoria.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getAuditoria.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
 
   const salvarAuditoriaMut = trpc.performanceComercial.salvarAuditoria.useMutation({
     onSuccess: () => { refetchAuditoria(); },
@@ -323,36 +321,36 @@ export default function PerformanceComercial() {
   const dadosDeFallbackLocal = fonteStatus === 'tempo-real' && (mesDados as any)?._origemDados === 'local';
 
   const { data: evolucao, isLoading: loadingEvolucao, refetch: refetchEvolucao } =
-    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao }, STALE_5MIN);
+    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao }, RETRY_1);
 
   const { data: comparativo, isLoading: loadingComparativo } =
     trpc.performanceComercial.getMultiMes.useQuery(
       { meses: mesesComparativo },
-      { enabled: showComparativo, ...STALE_5MIN }
+      { enabled: showComparativo, ...RETRY_1 }
     );
 
   const { data: metas, refetch: refetchMetas } =
-    trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
   const { data: dadosAno, isLoading: loadingAno, isError: errorAno } =
-    trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, RETRY_1);
   const { data: clientesNovos, isLoading: loadingClientesNovos } =
-    trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
 
   // Controle de contato com clientes novos
   const { data: contatadosMap, refetch: refetchContatados } =
-    trpc.performanceComercial.getContatados.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getContatados.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
   const setContatadoMut = trpc.performanceComercial.setContatado.useMutation({
     onSuccess: () => { refetchContatados(); },
   });
 
   const { data: clientesNovosAno, isLoading: loadingClientesNovosAno } =
-    trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSelecionado }, STALE_5MIN);
+    trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSelecionado }, RETRY_1);
 
   // Query de comparação multi-mês (Power BI)
   const { data: comparaMesesDados, isLoading: loadingComparaMeses } =
     trpc.performanceComercial.getMultiMes.useQuery(
       { meses: comparaMesesSelecionados },
-      { enabled: showComparaMeses && comparaMesesSelecionados.length > 0, ...STALE_5MIN }
+      { enabled: showComparaMeses && comparaMesesSelecionados.length > 0, ...RETRY_1 }
     );
 
   // Metas globais (vendedor = "GERAL")
@@ -488,7 +486,7 @@ export default function PerformanceComercial() {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header — mobile-first: empilhado no mobile, lado a lado no desktop */}
         <div className="flex flex-col gap-3">
@@ -704,7 +702,7 @@ export default function PerformanceComercial() {
             {undefined}
           </div>
         ) : mesDados ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             <KpiCardComMeta
               label="Cotações Enviadas"
               value={String(mesDados.cotacoes ?? 0)}
@@ -722,16 +720,6 @@ export default function PerformanceComercial() {
               color="#8b5cf6"
               metaReal={mesDados.osGeradas ?? 0}
               metaTarget={metaGeral?.metaOsGeradas ?? undefined}
-            />
-            <KpiCardComMeta
-              label="Taxa de Conversão"
-              value={`${mesDados.taxaConversao ?? 0}%`}
-              sub="Vendas / Cotações"
-              icon={Percent}
-              color={Number(mesDados.taxaConversao) >= 30 ? "#22c55e" : Number(mesDados.taxaConversao) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number(mesDados.taxaConversao ?? 0)}
-              metaTarget={metaGeral?.metaConversao ? Number(metaGeral.metaConversao) : undefined}
-              isPct
             />
             <KpiCardComMeta
               label="Valor Orçado"
@@ -752,16 +740,6 @@ export default function PerformanceComercial() {
               metaReal={mesDados.faturamento ?? 0}
               metaTarget={metaGeral?.metaFaturamento ? Number(metaGeral.metaFaturamento) : undefined}
               isCurrency
-            />
-            <KpiCardComMeta
-              label="Taxa de Faturamento"
-              value={`${mesDados.taxaFaturamento ?? 0}%`}
-              sub="Faturamento / Orçado"
-              icon={Percent}
-              color={Number(mesDados.taxaFaturamento) >= 30 ? "#22c55e" : Number(mesDados.taxaFaturamento) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number(mesDados.taxaFaturamento ?? 0)}
-              metaTarget={metaGeral?.metaTaxaFaturamento ? Number(metaGeral.metaTaxaFaturamento) : undefined}
-              isPct
             />
             <KpiCardComMeta
               label="Clientes Novos"
@@ -800,7 +778,6 @@ export default function PerformanceComercial() {
               metaTarget={metaGeral?.metaFaturamentoNovos ? Number(metaGeral.metaFaturamentoNovos) : undefined}
               isCurrency
             />
-            {/* Quatro taxas de conversão: Geral (pedido + fat) e Novos (pedido + fat) */}
             <KpiCardComMeta
               label="Taxa Conv. Geral"
               value={`${mesDados.taxaConversao ?? 0}%`}
@@ -853,20 +830,11 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Ticket Médio Novos"
-              value={(() => {
-                const fat = Number((clientesNovos as any)?.faturamentoNovos ?? 0);
-                const os = Number((clientesNovos as any)?.osNovos ?? 0);
-                const ticket = os > 0 ? fat / os : 0;
-                return loadingClientesNovos ? "..." : `R$ ${ticket.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-              })()}
+              value={loadingClientesNovos ? "..." : `R$ ${Number((clientesNovos as any)?.ticketMedioNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
               sub="Fat. novos / OS novos"
               icon={TrendingUp}
               color="#f59e0b"
-              metaReal={(() => {
-                const fat = Number((clientesNovos as any)?.faturamentoNovos ?? 0);
-                const os = Number((clientesNovos as any)?.osNovos ?? 0);
-                return os > 0 ? fat / os : 0;
-              })()}
+              metaReal={Number((clientesNovos as any)?.ticketMedioNovos ?? 0)}
               metaTarget={metaGeral?.metaTicketMedioNovos ? Number(metaGeral.metaTicketMedioNovos) : undefined}
               isCurrency
             />
@@ -2808,7 +2776,7 @@ export default function PerformanceComercial() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </>
   );
 }
 

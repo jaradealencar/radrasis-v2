@@ -7,7 +7,6 @@ import {
   Table, TableHeader, TableBody, TableFooter,
   TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import DashboardLayout from "@/components/DashboardLayout";
 import UserSelect from "@/components/UserSelect";
 
 const MESES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
@@ -150,7 +149,6 @@ export default function InserirRapido() {
   const totalCusto = rows.reduce((s, r) => s + (parseFloat(r.custo) || 0) + (parseFloat(r.frete) || 0), 0);
 
   return (
-    <DashboardLayout>
       <div className="space-y-4">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -408,6 +406,5 @@ export default function InserirRapido() {
           </p>
         </div>
       </div>
-    </DashboardLayout>
   );
 }

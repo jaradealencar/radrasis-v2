@@ -44,6 +44,27 @@ Parâmetros que a coleção não documenta e que **a API ignora**:
   não documentado; a filtragem por tipo é refeita em memória logo abaixo, então
   o parâmetro é inócuo na prática, mas não deve ser lido como filtro efetivo.
 
+### `datainicial`/`datafinal` cortam a borda do período (fuso?)
+
+Medido em 01/09/2026: `GET /ordem-servico?filtrodata=APROVACAO&datainicial=2026-08-01&datafinal=2026-08-31&status=TODOS`
+devolveu **155** OS tipo Normal; o painel web, com o mesmo filtro, mostra
+**160**. Pedindo a mesma API com 1 dia de folga em cada ponta
+(`2026-07-31`..`2026-09-01`) e refiltrando pelo texto de `data_aprovacao`
+(que vem sem timezone, ex. `"2026-08-03 08:38:30"`) o total bate certinho com
+o painel: 160. Ou seja, o corte que a própria API aplica em `datainicial`/
+`datafinal` descarta registros perto da borda do primeiro dia do período —
+consistente com o servidor comparando em UTC contra um campo gravado em
+horário local (BRT, UTC-3). Não foi confirmada a causa exata (não há acesso
+ao código do ERP), só o efeito.
+
+**Correção aplicada em `mubisys-client.ts`:** `listarOSMubiSys` e
+`listarOrcamentosMubiSys` agora pedem a janela com 1 dia de folga em cada
+ponta e refiltram os resultados no cliente comparando a parte `YYYY-MM-DD` do
+campo de data correspondente ao `filtrodata` pedido. Isso é transparente para
+quem chama — a assinatura e o retorno não mudaram, só o total bate com o
+painel agora. Não se aplica a `filtrodata=PREV_ENTREGA`: o campo `prazo` é
+texto livre ("02 dias úteis"), não há data para refiltrar.
+
 ### Formato dos campos de OS (medido na OS 6917)
 
 ```

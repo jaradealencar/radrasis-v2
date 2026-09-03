@@ -13,6 +13,7 @@ export function useAuth() {
   const { data, isPending, refetch: refetchSession } = useSession();
   const user = data?.user ?? null;
 
+  const utils = trpc.useUtils();
   const permsQuery = trpc.permissions.myPermissions.useQuery(undefined, {
     enabled: !!user,
     staleTime: 30_000,
@@ -33,7 +34,7 @@ export function useAuth() {
 
   const refetch = () => {
     refetchSession();
-    permsQuery.refetch();
+    utils.permissions.myPermissions.invalidate();
   };
 
   return { user, permissions, isLoading, canAccess, logout, refetch };

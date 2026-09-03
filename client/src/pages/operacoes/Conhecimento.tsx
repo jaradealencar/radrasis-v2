@@ -8,7 +8,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -151,13 +150,14 @@ function CommentsSection({ articleId }: { articleId: number }) {
   const [author, setAuthor] = useState("Equipe");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: comments, refetch } = trpc.knowledgeComments.list.useQuery({ knowledgeId: articleId });
+  const utils = trpc.useUtils();
+  const { data: comments } = trpc.knowledgeComments.list.useQuery({ knowledgeId: articleId });
   const createMut = trpc.knowledgeComments.create.useMutation({
-    onSuccess: () => { refetch(); setNewComment(""); toast.success("Comentário adicionado!"); },
+    onSuccess: () => { utils.knowledgeComments.list.invalidate({ knowledgeId: articleId }); setNewComment(""); toast.success("Comentário adicionado!"); },
     onError: () => toast.error("Erro ao adicionar comentário."),
   });
   const deleteMut = trpc.knowledgeComments.delete.useMutation({
-    onSuccess: () => { refetch(); toast.success("Comentário removido."); },
+    onSuccess: () => { utils.knowledgeComments.list.invalidate({ knowledgeId: articleId }); toast.success("Comentário removido."); },
   });
 
   const list = comments ?? [];
@@ -418,16 +418,17 @@ export default function Conhecimento() {
   const { user } = useAuth();
   const isMaster = user?.role === "master" || user?.role === "admin";
 
-  const { data, isLoading, refetch } = trpc.knowledge.list.useQuery({ search, category });
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.knowledge.list.useQuery({ search, category });
   const createMut = trpc.knowledge.create.useMutation({
     onSuccess: () => {
-      refetch();
+      utils.knowledge.list.invalidate();
       setShowForm(false);
       setForm({ title: "", category: "Geral", content: "", keywords: "" });
       toast.success("Artigo criado!");
     }
   });
-  const deleteMut = trpc.knowledge.delete.useMutation({ onSuccess: () => { refetch(); toast.success("Artigo removido."); } });
+  const deleteMut = trpc.knowledge.delete.useMutation({ onSuccess: () => { utils.knowledge.list.invalidate(); toast.success("Artigo removido."); } });
   const aiMut = trpc.knowledge.askAI.useMutation({
     onMutate: () => setAiLoading(true),
     onSuccess: (d) => { setAiResult(d); setAiLoading(false); },
@@ -445,7 +446,7 @@ export default function Conhecimento() {
   const approveMut = trpc.knowledgeSuggestions.approve.useMutation({
     onSuccess: () => {
       toast.success("Artigo incorporado à Base de Conhecimento!");
-      refetch();
+      utils.knowledge.list.invalidate();
       setShowSuggestModal(false);
     },
     onError: (e) => toast.error(e.message || "Erro ao incorporar."),
@@ -454,7 +455,7 @@ export default function Conhecimento() {
   const items = data ?? [];
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -849,11 +850,11 @@ export default function Conhecimento() {
               expanded={expandedId === item.id}
               onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
               onDelete={() => deleteMut.mutate({ id: item.id })}
-              onUpdated={() => refetch()}
+              onUpdated={() => utils.knowledge.list.invalidate()}
             />
           ))}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

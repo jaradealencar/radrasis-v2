@@ -2,7 +2,6 @@ import { trpc } from "@/lib/trpc";
 import { ChevronDown, ChevronUp, Edit2, Plus, Save, ScrollText, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
@@ -32,15 +31,16 @@ export default function Regulamentos() {
   const [editVersion, setEditVersion] = useState("");
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
-  const { data, isLoading, refetch } = trpc.regulations.list.useQuery({ type: filterType || undefined });
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.regulations.list.useQuery({ type: filterType || undefined });
   const createMut = trpc.regulations.create.useMutation({
-    onSuccess: () => { refetch(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Documento criado!"); }
+    onSuccess: () => { utils.regulations.list.invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Documento criado!"); }
   });
   const updateMut = trpc.regulations.update.useMutation({
-    onSuccess: () => { refetch(); setEditingId(null); toast.success("Documento atualizado!"); }
+    onSuccess: () => { utils.regulations.list.invalidate(); setEditingId(null); toast.success("Documento atualizado!"); }
   });
   const deleteMut = trpc.regulations.delete.useMutation({
-    onSuccess: () => { refetch(); toast.success("Documento removido."); }
+    onSuccess: () => { utils.regulations.list.invalidate(); toast.success("Documento removido."); }
   });
 
   const items = data ?? [];
@@ -58,7 +58,7 @@ export default function Regulamentos() {
   }
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -253,6 +253,6 @@ export default function Regulamentos() {
           ))}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

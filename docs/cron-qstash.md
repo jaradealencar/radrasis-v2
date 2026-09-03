@@ -1,7 +1,15 @@
 # CRON: sincronização de OS via Upstash QStash
 
-O job `POST /api/scheduled/sincronizarOS` é agendado pelo **Upstash QStash**,
-não pelo Vercel Cron. Não existe agendador dentro do repositório.
+Existem **dois** jobs agendados pelo **Upstash QStash** (não pelo Vercel
+Cron); nenhum agendador vive dentro do repositório:
+
+| Job | Alimenta | Propósito |
+|---|---|---|
+| `POST /api/scheduled/sincronizarOS` | `erp_os_cache` | janela rolante curta (~32 dias), dados "quentes" pra funcionalidades que só precisam do recente |
+| `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
+
+Este documento cobre o primeiro em detalhe; o segundo está descrito na seção
+"Sincronização de histórico" mais abaixo.
 
 ## Agendamento planejado: 4 lotes escalonados
 
@@ -19,7 +27,7 @@ schedules**, cada um cobrindo 8 dias, escalonados de 10 em 10 minutos.
 | Campo | Valor |
 |---|---|
 | Retries | 2 (por lote) |
-| Autenticação | header `x-cron-secret`, encaminhado pelo QStash via `Upstash-Forward-x-cron-secret` |
+| Autenticação | nenhuma — ver "Sem autenticação por segredo" abaixo |
 | Cobertura total | 32 dias, com sobreposição de borda entre lotes |
 
 A janela vai de `hoje - offset - dias` até `hoje - offset`. A sobreposição é
@@ -63,15 +71,31 @@ Precisa do `QSTASH_TOKEN` (painel do Upstash → QStash → Details). Ele **não
 é variável de runtime da aplicação e não deve estar configurado na Vercel.
 
 Ver os comandos `curl` em
-`docs/sprint-migracao-vercel/complete/fase-06-cron-qstash.md`.
+`docs/sprint-migracao-vercel/complete/fase-06-cron-qstash.md` — o header
+`Upstash-Forward-x-cron-secret` desses comandos não é mais necessário (ver
+abaixo), mas não tem problema mantê-lo, o handler simplesmente ignora.
 
 ## Status da última execução
 
-`GET /api/scheduled/sincronizarOS/status` — desde a Fase 5, exige o mesmo
-header `x-cron-secret` do POST. Devolve 403 sem o header ou com o valor
-errado. O painel `/admin/sincronizacao-cache` não usa esta rota; ele lê o
+`GET /api/scheduled/sincronizarOS/status` — público, sem autenticação (ver
+abaixo). O painel `/admin/sincronizacao-cache` não usa esta rota; ele lê o
 status via procedure tRPC `admin.obterStatusSincronizacao` (protegido por
 `adminProcedure`).
+
+## Sem autenticação por segredo
+
+Os endpoints `/api/scheduled/sincronizarOS`, `/api/scheduled/sincronizarOS/status`
+e `/api/scheduled/sincronizarHistorico` **não checam mais** `x-cron-secret`/
+`CRON_SECRET` — checagem removida em 01/09/2026 depois de bloquear a
+depuração do agendamento no QStash: o request chegava com o header batendo
+(confirmado manualmente com `curl` e comparando o valor salvo na Vercel) e
+mesmo assim voltava 403, sem causa raiz identificável a distância. Circular
+`CRON_SECRET`/rotação de secret deixou de valer a pena frente ao risco: os
+jobs são idempotentes (upsert por chave única), então uma chamada indevida
+não corrompe dado — o pior caso é custo/rate-limit na API MubiSys se a URL
+for descoberta e martelada. `CRON_SECRET` continua existindo no `.env`/Vercel
+sem uso; pode ser removido quando não sobrar dúvida de que não vai precisar
+reativar a checagem.
 
 ## Armadilhas conhecidas
 
@@ -80,15 +104,50 @@ status via procedure tRPC `admin.obterStatusSincronizacao` (protegido por
   de funcionar sozinho. Só criar o agendamento depois que o domínio final
   existir (Fase 8).
 - **Expressão cron em UTC.** `0 6 * * *` não é 6h da manhã no Brasil.
-- **Sem `CRON_SECRET` configurado na Vercel, o endpoint devolve 403** — e o
-  handler trata "segredo ausente" e "segredo errado" da mesma forma. Se o
-  QStash reportar 403 em série, a primeira hipótese é variável de ambiente
-  faltando, não header errado.
-- **Não adicionar `@upstash/qstash` como dependência.** A verificação de
-  assinatura do QStash (`Receiver`) seria uma proteção *adicional* à do
-  `x-cron-secret`, mas trocaria configuração por código novo e uma
-  dependência. Fora do escopo; se for desejável depois, é tarefa separada.
-- **O endpoint de status exige `x-cron-secret`** (corrigido na Fase 5; antes
-  disso era público e vazava data da última execução, contagem de OS e a
-  mensagem de erro crua do ERP). Se algo que consultava a rota sem o header
-  parar de funcionar, é este o motivo.
+- **Não adicionar `@upstash/qstash` como dependência** só para verificação de
+  assinatura (`Receiver`) — decisão mantida mesmo depois de remover o
+  `x-cron-secret`; se algum dia a exposição pública desses endpoints virar
+  problema real, isso volta à mesa como alternativa mais robusta que um
+  segredo compartilhado simples.
+
+## Sincronização de histórico (`historico_os` / `historico_orcamentos`)
+
+Job novo (ver `server/sync/scheduled-sync-historico.ts`), separado do
+`sincronizarOS` acima. Alimenta a base permanente que `historico_os`/
+`historico_orcamentos` deveriam ter desde o início — até 01/09/2026 essas
+tabelas ficaram **vazias em produção** (só existiam no banco de
+desenvolvimento, de uma importação manual de 18/08/2026), o que fazia a regra
+de "cliente novo/reativado/recorrente" (`isClienteNovoPorRecencia` em
+`server/routers/performanceComercial.ts`) tratar praticamente todo mundo como
+"novo" — sem base de "quem já comprou antes", todo cliente parecia sem
+histórico. Corrigido copiando o histórico do DEV pro PROD e criando este job
+pra manter os dois em dia dali pra frente.
+
+- **Endpoint:** `POST /api/scheduled/sincronizarHistorico`
+- **Autenticação:** nenhuma — ver "Sem autenticação por segredo" acima.
+- **Parâmetros (query string, opcionais):**
+  - `mesesAtras` (padrão `1`): sincroniza o mês corrente + N meses anteriores.
+    Sincronizar o mês anterior de novo (não só o corrente) é intencional —
+    faturamento e status de OS aprovadas no fim do mês ainda mudam depois que
+    o mês vira.
+  - `mes`/`ano`: se os dois forem passados, ignora `mesesAtras` e sincroniza
+    **só** aquele mês — uso manual, pra backfill pontual de um mês específico.
+- **Upsert idempotente:** grava por `INSERT ... ON CONFLICT ("osNumero"/"orcNumero") DO UPDATE`
+  (índice único da migration `0012_silky_odin.sql`) — rodar o mesmo mês várias
+  vezes nunca duplica linha.
+- **Agendamento sugerido:** 1x por dia, um único schedule (não precisa dos 4
+  lotes do `sincronizarOS` — um mês inteiro de OS+orçamentos cabe num único
+  upsert em lote dentro do `maxDuration` de 60s; ver comentário de topo do
+  arquivo de sync sobre por que a gravação é em lotes multi-linha e não um
+  INSERT por registro).
+
+```
+POST https://SEU-DOMINIO.com/api/scheduled/sincronizarHistorico
+Cron (UTC): 0 7 * * *     (roda depois do sincronizarOS, sem necessidade real de ordem)
+Retries:    2
+```
+
+> ⚠️ Verificado em 01/09/2026: o `MUBISYS_ACCESS_TOKEN` atual está com `exp`
+> vencido desde 31/08/2026. A API ainda aceita o token vencido, mas isso pode
+> parar de funcionar sem aviso — renove no painel do MubiSys antes de
+> depender deste cron em produção.

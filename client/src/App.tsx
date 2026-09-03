@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Redirect, Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import DashboardLayout from "./components/DashboardLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useVendedorAlertas } from "@/hooks/useVendedorAlertas";
@@ -76,121 +78,128 @@ import PlanosAcao from "./pages/qualidade/PlanosAcao";
 import DesempenhoColaborador from "./pages/qualidade/DesempenhoColaborador";
 import Alertas from "./pages/qualidade/Alertas";
 
+// Envolve uma página com a sidebar/topbar global. Não usar para páginas de
+// tela cheia (login, 403, 404), que não devem ter navegação lateral.
+function L({ children }: { children: ReactNode }) {
+  return <DashboardLayout>{children}</DashboardLayout>;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/retrabalhos" component={Retrabalhos} />
-      <Route path="/inserir" component={InserirRapido} />
-      <Route path="/retrabalhos/novo" component={NovoRetrabalho} />
-      <Route path="/retrabalhos/:id/editar" component={EditarRetrabalho} />
-      <Route path="/biblioteca" component={BibliotecaErros} />
-      <Route path="/reincidencia" component={Reincidencia} />
-      <Route path="/relatorio" component={Relatorio} />
-      <Route path="/insights" component={Insights} />
-      <Route path="/metricas" component={Metricas} />
+      <Route path="/"><L><Dashboard /></L></Route>
+      <Route path="/retrabalhos"><L><Retrabalhos /></L></Route>
+      <Route path="/inserir"><L><InserirRapido /></L></Route>
+      <Route path="/retrabalhos/novo"><L><NovoRetrabalho /></L></Route>
+      <Route path="/retrabalhos/:id/editar"><L><EditarRetrabalho /></L></Route>
+      <Route path="/biblioteca"><L><BibliotecaErros /></L></Route>
+      <Route path="/reincidencia"><L><Reincidencia /></L></Route>
+      <Route path="/relatorio"><L><Relatorio /></L></Route>
+      <Route path="/insights"><L><Insights /></L></Route>
+      <Route path="/metricas"><L><Metricas /></L></Route>
       {/* Operações */}
-      <Route path="/conhecimento" component={Conhecimento} />
-      <Route path="/biblioteca-arquivos" component={BibliotecaArquivos} />
-      <Route path="/sugestoes-conhecimento" component={SugestoesConhecimento} />
-      <Route path="/fornecedores" component={Fornecedores} />
-      <Route path="/rotinas" component={Rotinas} />
-      <Route path="/regulamentos" component={Regulamentos} />
-      <Route path="/pops" component={Pops} />
+      <Route path="/conhecimento"><L><Conhecimento /></L></Route>
+      <Route path="/biblioteca-arquivos"><L><BibliotecaArquivos /></L></Route>
+      <Route path="/sugestoes-conhecimento"><L><SugestoesConhecimento /></L></Route>
+      <Route path="/fornecedores"><L><Fornecedores /></L></Route>
+      <Route path="/rotinas"><L><Rotinas /></L></Route>
+      <Route path="/regulamentos"><L><Regulamentos /></L></Route>
+      <Route path="/pops"><L><Pops /></L></Route>
       <Route path="/pops-relatorio">
         <ProtectedRoute pageKey="pops-relatorio">
-          <PopRelatorio />
+          <L><PopRelatorio /></L>
         </ProtectedRoute>
       </Route>
       <Route path="/cargos-funcoes">
         <ProtectedRoute pageKey="cargos-funcoes">
-          <CargoseFuncoes />
+          <L><CargoseFuncoes /></L>
         </ProtectedRoute>
       </Route>
       {/* Financeiro */}
-      <Route path="/financeiro" component={Financeiro} />
-      <Route path="/cargos" component={Cargos} />
-      <Route path="/analise-atrasos" component={AnaliseAtrasos} />
-      <Route path="/gestao-atrasos" component={GestaoAtrasos} />
+      <Route path="/financeiro"><L><Financeiro /></L></Route>
+      <Route path="/cargos"><L><Cargos /></L></Route>
+      <Route path="/analise-atrasos"><L><AnaliseAtrasos /></L></Route>
+      <Route path="/gestao-atrasos"><L><GestaoAtrasos /></L></Route>
       {/* Comercial */}
-      <Route path="/tabela-precos" component={TabelaPrecos} />
-      <Route path="/comercial/performance" component={PerformanceComercial} />
-      <Route path="/comercial/geografia" component={AnaliseGeografica} />
-      <Route path="/comercial/metas" component={MetasComerciais} />
-      <Route path="/comercial/crm" component={CRM} />
-      <Route path="/comercial/planos-acao" component={PlanosAcaoComercial} />
-      <Route path="/comercial/diagnostico-api" component={DiagnosticoApi} />
-      <Route path="/comercial/insights-ia" component={InsightsIA} />
+      <Route path="/tabela-precos"><L><TabelaPrecos /></L></Route>
+      <Route path="/comercial/performance"><L><PerformanceComercial /></L></Route>
+      <Route path="/comercial/geografia"><L><AnaliseGeografica /></L></Route>
+      <Route path="/comercial/metas"><L><MetasComerciais /></L></Route>
+      <Route path="/comercial/crm"><L><CRM /></L></Route>
+      <Route path="/comercial/planos-acao"><L><PlanosAcaoComercial /></L></Route>
+      <Route path="/comercial/diagnostico-api"><L><DiagnosticoApi /></L></Route>
+      <Route path="/comercial/insights-ia"><L><InsightsIA /></L></Route>
       <Route path="/comercial/crm-auditoria">
         <ProtectedRoute pageKey="crm-auditoria">
-          <CrmAuditoria />
+          <L><CrmAuditoria /></L>
         </ProtectedRoute>
       </Route>
       {/* Administração — protegida por role */}
       <Route path="/admin">
         <ProtectedRoute pageKey="admin">
-          <Admin />
+          <L><Admin /></L>
         </ProtectedRoute>
       </Route>
       <Route path="/admin/usuarios">
         <ProtectedRoute pageKey="admin">
-          <Usuarios />
+          <L><Usuarios /></L>
         </ProtectedRoute>
       </Route>
       <Route path="/admin/sincronizacao-cache">
         <ProtectedRoute pageKey="admin">
-          <SincronizacaoCache />
+          <L><SincronizacaoCache /></L>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/logistica" component={LogisticaDashboard} />
-      <Route path="/logistica/dashboard" component={LogisticaDashboard} />
-      <Route path="/logistica/solicitacoes" component={Solicitacoes} />
-      <Route path="/logistica/transportadoras" component={Transportadoras} />
-      <Route path="/logistica/consulta" component={ConsultaCobertura} />
-      <Route path="/logistica/minhas-cotacoes" component={MinhasCotacoes} />
-      <Route path="/logistica/importar-cte" component={ImportarCte} />
-      <Route path="/logistica/assertividade" component={Assertividade} />
-      <Route path="/logistica/empacotamento" component={Empacotamento} />
-      <Route path="/logistica/insights-ia" component={InsightsLogistica} />
+      <Route path="/logistica"><L><LogisticaDashboard /></L></Route>
+      <Route path="/logistica/dashboard"><L><LogisticaDashboard /></L></Route>
+      <Route path="/logistica/solicitacoes"><L><Solicitacoes /></L></Route>
+      <Route path="/logistica/transportadoras"><L><Transportadoras /></L></Route>
+      <Route path="/logistica/consulta"><L><ConsultaCobertura /></L></Route>
+      <Route path="/logistica/minhas-cotacoes"><L><MinhasCotacoes /></L></Route>
+      <Route path="/logistica/importar-cte"><L><ImportarCte /></L></Route>
+      <Route path="/logistica/assertividade"><L><Assertividade /></L></Route>
+      <Route path="/logistica/empacotamento"><L><Empacotamento /></L></Route>
+      <Route path="/logistica/insights-ia"><L><InsightsLogistica /></L></Route>
 
       <Route path="/operacoes/metas">
         <ProtectedRoute pageKey="operacoes-performance">
-          <MetasOperacionais />
+          <L><MetasOperacionais /></L>
         </ProtectedRoute>
       </Route>
       <Route path="/operacoes/performance">
         <ProtectedRoute pageKey="operacoes-performance">
-          <Performance />
+          <L><Performance /></L>
         </ProtectedRoute>
       </Route>
       <Route path="/operacoes/custo-solda">
         <ProtectedRoute pageKey="operacoes-custo-solda">
-          <CustoSolda />
+          <L><CustoSolda /></L>
         </ProtectedRoute>
       </Route>
       <Route path="/operacoes/custo-led">
         <ProtectedRoute pageKey="operacoes-custo-led">
-          <CustoLed />
+          <L><CustoLed /></L>
         </ProtectedRoute>
       </Route>
       {/* Auditoria */}
       <Route path="/auditoria">
         <ProtectedRoute pageKey="auditoria">
-          <Auditoria />
+          <L><Auditoria /></L>
         </ProtectedRoute>
       </Route>
       {/* Qualidade */}
-      <Route path="/qualidade/acoes-corretivas" component={AcoesCorretivas} />
-      <Route path="/qualidade/planos-acao" component={PlanosAcao} />
-      <Route path="/qualidade/desempenho" component={DesempenhoColaborador} />
-      <Route path="/qualidade/alertas" component={Alertas} />
-      {/* Acesso negado */}
+      <Route path="/qualidade/acoes-corretivas"><L><AcoesCorretivas /></L></Route>
+      <Route path="/qualidade/planos-acao"><L><PlanosAcao /></L></Route>
+      <Route path="/qualidade/desempenho"><L><DesempenhoColaborador /></L></Route>
+      <Route path="/qualidade/alertas"><L><Alertas /></L></Route>
+      {/* Acesso negado — tela cheia, sem sidebar */}
       <Route path="/403" component={AcessoNegado} />
-      {/* Login local */}
+      {/* Login local — tela cheia, sem sidebar */}
       <Route path="/login" component={LocalLogin} />
       {/* Legacy */}
-      <Route path="/home" component={Home} />
+      <Route path="/home"><L><Home /></L></Route>
+      {/* Não encontrado — tela cheia, sem sidebar */}
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

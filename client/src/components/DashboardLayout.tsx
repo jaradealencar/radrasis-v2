@@ -150,6 +150,16 @@ const navSections: NavSection[] = [
   },
 ];
 
+// Remove acentos/cedilha pra busca não depender de o usuário digitar exatamente
+// "Políticas"/"Solicitações" — casa "politicas"/"solicitacoes" também.
+function normalizeSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+}
+
 const ROLE_LABELS: Record<string, string> = {
   master: "Master",
   admin: "Administrador",
@@ -185,12 +195,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // Filtrar itens por busca — DEVE estar antes do return condicional (regra dos hooks)
   const filteredSections = useMemo(() => {
     if (!searchQuery.trim()) return null;
-    const q = searchQuery.toLowerCase().trim();
+    const q = normalizeSearch(searchQuery);
     const results: NavItem[] = [];
     for (const section of navSections) {
       for (const item of section.items) {
         if (!item.pageKey || canAccess(item.pageKey)) {
-          if (item.label.toLowerCase().includes(q)) {
+          if (normalizeSearch(item.label).includes(q)) {
             results.push(item);
           }
         }
@@ -286,7 +296,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       {/* Nav sections */}
-      <nav className="flex-1 py-2 overflow-y-auto">
+      <nav className="sidebar-nav flex-1 py-2 overflow-y-auto">
         {filteredSections !== null ? (
           // Modo busca: mostrar resultados flat
           <div className="mb-2">
@@ -411,12 +421,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
       {/* ── Sidebar desktop (estático) ── */}
       <aside
-        className="hidden lg:flex flex-col flex-shrink-0"
+        className="hidden lg:flex flex-col flex-shrink-0 sticky top-0"
         style={{
           width: 240,
           background: "oklch(0.12 0.015 245)",
           borderRight: "1px solid oklch(0.22 0.02 245)",
-          minHeight: "100vh",
+          height: "100vh",
         }}
       >
         {sidebarContent}
@@ -424,9 +434,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
       {/* ── Sidebar mobile (deslizante) ── */}
       <aside
-        className="lg:hidden fixed top-0 left-0 z-50 flex flex-col h-full transition-transform duration-300 ease-in-out"
+        className="lg:hidden fixed top-0 left-0 z-50 flex flex-col transition-transform duration-300 ease-in-out overflow-hidden"
         style={{
           width: 260,
+          height: "100vh",
           background: "oklch(0.12 0.015 245)",
           borderRight: "1px solid oklch(0.22 0.02 245)",
           transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",

@@ -1,6 +1,6 @@
 {
-  "id": "1755bc8a-d7ab-41b1-9d18-ef533379ac6e",
-  "prevId": "396cf3b1-6fa7-4e69-96ee-b3fbce7aba38",
+  "id": "c1f41858-45a4-45c5-935e-cf32086ee2a6",
+  "prevId": "1755bc8a-d7ab-41b1-9d18-ef533379ac6e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2504,6 +2504,94 @@
         "observacao": {
           "name": "observacao",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.custo_marketing_itens": {
+      "name": "custo_marketing_itens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mes": {
+          "name": "mes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ano": {
+          "name": "ano",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "categoria": {
+          "name": "categoria",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'aquisicao'"
+        },
+        "fornecedor": {
+          "name": "fornecedor",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "despesa": {
+          "name": "despesa",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "descricao": {
+          "name": "descricao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valor": {
+          "name": "valor",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dataVencimento": {
+          "name": "dataVencimento",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },

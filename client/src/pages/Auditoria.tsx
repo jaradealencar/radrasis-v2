@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "@/components/DashboardLayout";
 import { ShieldCheck, Search, ChevronLeft, ChevronRight, Eye, X, Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -219,7 +218,7 @@ export default function Auditoria() {
   const handleFilterChange = () => setPage(1);
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -418,6 +417,6 @@ export default function Auditoria() {
       {selectedRow && (
         <DetalhesDrawer row={selectedRow} onClose={() => setSelectedRow(null)} />
       )}
-    </DashboardLayout>
+    </>
   );
 }

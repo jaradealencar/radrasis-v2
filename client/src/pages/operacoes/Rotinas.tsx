@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import RichTextEditor from "../../components/RichTextEditor";
 import UserSelect from "../../components/UserSelect";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -140,13 +139,15 @@ export default function Rotinas() {
   const [expandedId, setExpandedId]           = useState<number | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
-  const { data, isLoading, refetch } = trpc.routines.list.useQuery();
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.routines.list.useQuery();
   const { data: pendingData }        = trpc.routines.pending.useQuery();
 
-  const createMut   = trpc.routines.create.useMutation({ onSuccess: () => { refetch(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Rotina criada!"); } });
-  const updateMut   = trpc.routines.update.useMutation({ onSuccess: () => { refetch(); setEditingId(null); toast.success("Rotina atualizada!"); } });
-  const deleteMut   = trpc.routines.delete.useMutation({ onSuccess: () => { refetch(); toast.success("Rotina removida."); } });
-  const markDoneMut = trpc.routines.markDone.useMutation({ onSuccess: () => { refetch(); toast.success("Rotina concluída!"); } });
+  const invalidateRotinas = () => { utils.routines.list.invalidate(); utils.routines.pending.invalidate(); };
+  const createMut   = trpc.routines.create.useMutation({ onSuccess: () => { invalidateRotinas(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Rotina criada!"); } });
+  const updateMut   = trpc.routines.update.useMutation({ onSuccess: () => { invalidateRotinas(); setEditingId(null); toast.success("Rotina atualizada!"); } });
+  const deleteMut   = trpc.routines.delete.useMutation({ onSuccess: () => { invalidateRotinas(); toast.success("Rotina removida."); } });
+  const markDoneMut = trpc.routines.markDone.useMutation({ onSuccess: () => { invalidateRotinas(); toast.success("Rotina concluída!"); } });
 
   const items   = data ?? [];
   const pending = pendingData ?? [];
@@ -173,7 +174,7 @@ export default function Rotinas() {
   const fi = (freq: string) => FREQUENCIES.find(f => f.value === freq)!;
 
   return (
-    <DashboardLayout>
+    <>
       {/* Banner de pendências */}
       {!bannerDismissed && pending.length > 0 && (
         <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -417,6 +418,6 @@ export default function Rotinas() {
           })}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

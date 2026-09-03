@@ -1,4 +1,3 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -90,9 +89,10 @@ function CustoSoldaTab() {
   });
   const [saved, setSaved] = useState(false);
 
-  const { data: registro, isLoading, refetch } = trpc.performance.getByMesAno.useQuery({ mes, ano });
+  const utils = trpc.useUtils();
+  const { data: registro, isLoading } = trpc.performance.getByMesAno.useQuery({ mes, ano });
   const upsertMut = trpc.performance.upsert.useMutation({
-    onSuccess: () => { toast.success("Dados salvos!"); setSaved(true); refetch(); },
+    onSuccess: () => { toast.success("Dados salvos!"); setSaved(true); utils.performance.getByMesAno.invalidate({ mes, ano }); },
     onError: () => toast.error("Erro ao salvar"),
   });
 
@@ -301,24 +301,25 @@ function CustoLedTab() {
   const [lancForm, setLancForm] = useState<LancamentoForm>({ os: "", ledTipoId: "", ledTipoEfetivoId: "", qtdPrevista: "", qtdEfetiva: "", observacao: "" });
 
   // Queries
-  const { data: tipos = [], refetch: refetchTipos } = trpc.custoLed.listTipos.useQuery();
-  const { data: resumo, refetch: refetchResumo } = trpc.custoLed.getResumoMensal.useQuery({ mes, ano });
+  const utils = trpc.useUtils();
+  const { data: tipos = [] } = trpc.custoLed.listTipos.useQuery();
+  const { data: resumo } = trpc.custoLed.getResumoMensal.useQuery({ mes, ano });
 
   // Mutations
   const upsertTipo = trpc.custoLed.upsertTipo.useMutation({
-    onSuccess: () => { toast.success("Tipo de LED salvo!"); setTipoModal(false); refetchTipos(); },
+    onSuccess: () => { toast.success("Tipo de LED salvo!"); setTipoModal(false); utils.custoLed.listTipos.invalidate(); utils.custoLed.getResumoMensal.invalidate(); },
     onError: () => toast.error("Erro ao salvar tipo de LED"),
   });
   const deleteTipo = trpc.custoLed.deleteTipo.useMutation({
-    onSuccess: () => { toast.success("Tipo removido"); refetchTipos(); },
+    onSuccess: () => { toast.success("Tipo removido"); utils.custoLed.listTipos.invalidate(); utils.custoLed.getResumoMensal.invalidate(); },
     onError: () => toast.error("Erro ao remover"),
   });
   const upsertLanc = trpc.custoLed.upsertLancamento.useMutation({
-    onSuccess: () => { toast.success("Lançamento salvo!"); setLancModal(false); refetchResumo(); },
+    onSuccess: () => { toast.success("Lançamento salvo!"); setLancModal(false); utils.custoLed.getResumoMensal.invalidate(); },
     onError: () => toast.error("Erro ao salvar lançamento"),
   });
   const deleteLanc = trpc.custoLed.deleteLancamento.useMutation({
-    onSuccess: () => { toast.success("Lançamento removido"); refetchResumo(); },
+    onSuccess: () => { toast.success("Lançamento removido"); utils.custoLed.getResumoMensal.invalidate(); },
     onError: () => toast.error("Erro ao remover"),
   });
 
@@ -725,7 +726,6 @@ function CustoLedTab() {
 // ─── Página Principal: Custo de LED ─────────────────────────────────────────────────
 export default function CustoLed() {
   return (
-    <DashboardLayout>
       <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="mb-6">
@@ -737,6 +737,5 @@ export default function CustoLed() {
         </div>
         <CustoLedTab />
       </div>
-    </DashboardLayout>
   );
 }

@@ -1,5 +1,4 @@
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "@/components/DashboardLayout";
 import { useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -178,7 +177,6 @@ export default function AnaliseGeografica() {
   };
 
   return (
-    <DashboardLayout>
       <div className="p-4 sm:p-6 max-w-[1600px] mx-auto space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -428,6 +426,5 @@ export default function AnaliseGeografica() {
           </>
         )}
       </div>
-    </DashboardLayout>
   );
 }

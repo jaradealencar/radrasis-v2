@@ -2,7 +2,6 @@ import { trpc } from "@/lib/trpc";
 import { Building2, Mail, MessageCircle, Phone, Plus, Search, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 const CATEGORIES = ["Matéria-Prima", "Embalagem", "Serviços", "Tecnologia", "Logística", "Manutenção", "Outros"];
@@ -16,10 +15,11 @@ export default function Fornecedores() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editId, setEditId] = useState<number | null>(null);
 
-  const { data, isLoading, refetch } = trpc.suppliers.list.useQuery({ search, category });
-  const createMut = trpc.suppliers.create.useMutation({ onSuccess: () => { refetch(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor cadastrado!"); } });
-  const updateMut = trpc.suppliers.update.useMutation({ onSuccess: () => { refetch(); setEditId(null); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor atualizado!"); } });
-  const deleteMut = trpc.suppliers.delete.useMutation({ onSuccess: () => { refetch(); toast.success("Fornecedor removido."); } });
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.suppliers.list.useQuery({ search, category });
+  const createMut = trpc.suppliers.create.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor cadastrado!"); } });
+  const updateMut = trpc.suppliers.update.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); setEditId(null); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor atualizado!"); } });
+  const deleteMut = trpc.suppliers.delete.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); toast.success("Fornecedor removido."); } });
 
   const items = data ?? [];
 
@@ -38,7 +38,7 @@ export default function Fornecedores() {
   }
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -215,6 +215,6 @@ export default function Fornecedores() {
           ))}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

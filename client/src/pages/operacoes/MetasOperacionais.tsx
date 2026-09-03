@@ -106,10 +106,11 @@ export default function MetasOperacionais() {
   const [saved, setSaved] = useState(false);
   const anoAtual = new Date().getFullYear();
 
-  const { data: metas, isLoading, refetch } = trpc.metasOperacionais.get.useQuery({ ano: anoAtual });
+  const utils = trpc.useUtils();
+  const { data: metas, isLoading } = trpc.metasOperacionais.get.useQuery({ ano: anoAtual });
   const upsert = trpc.metasOperacionais.upsert.useMutation({
     onSuccess: () => {
-      refetch();
+      utils.metasOperacionais.get.invalidate({ ano: anoAtual });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
       toast.success("Metas salvas com sucesso!", { description: "As configurações foram atualizadas." });

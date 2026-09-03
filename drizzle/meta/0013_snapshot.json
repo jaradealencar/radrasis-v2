@@ -1,5 +1,5 @@
 {
-  "id": "1755bc8a-d7ab-41b1-9d18-ef533379ac6e",
+  "id": "396cf3b1-6fa7-4e69-96ee-b3fbce7aba38",
   "prevId": "d412f7a7-9151-4626-9952-210325bfd9f6",
   "version": "7",
   "dialect": "postgresql",
@@ -2479,20 +2479,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
-        },
-        "investimento_aquisicao": {
-          "name": "investimento_aquisicao",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "investimento_reativacao": {
-          "name": "investimento_reativacao",
-          "type": "numeric(14, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
         },
         "investimento": {
           "name": "investimento",
@@ -5189,6 +5175,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "historico_orcamentos_orc_numero_idx": {
+          "name": "historico_orcamentos_orc_numero_idx",
+          "columns": [
+            {
+              "expression": "orcNumero",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5429,6 +5430,21 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "historico_os_os_numero_idx": {
+          "name": "historico_os_os_numero_idx",
+          "columns": [
+            {
+              "expression": "osNumero",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}

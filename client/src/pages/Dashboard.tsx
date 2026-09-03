@@ -1,6 +1,5 @@
 import { trpc } from "@/lib/trpc";
 import { useState, useMemo } from "react";
-import DashboardLayout from "../components/DashboardLayout";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, ComposedChart
@@ -80,7 +79,6 @@ export default function Dashboard() {
   }, [evolucao, faturamentoMap, faturamentoData]);
 
   return (
-    <DashboardLayout>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -644,6 +642,5 @@ export default function Dashboard() {
       </div>
 
     </div>
-    </DashboardLayout>
   );
 }

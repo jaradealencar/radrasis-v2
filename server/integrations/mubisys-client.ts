@@ -185,6 +185,35 @@ async function mubisysGetOrNull<T>(
   return (await response.json()) as T;
 }
 
+/**
+ * A API do MubiSys corta `datainicial`/`datafinal` de um jeito que perde
+ * registros perto da borda do primeiro dia do período (155 vs 160 OS
+ * aprovadas em um mês, medido em 01/09/2026 contra o painel web — ver
+ * docs/integracao-mubisys.md §1 "datainicial/datafinal cortam a borda").
+ * Contorno: pedir a API com 1 dia de folga em cada ponta e refiltrar aqui
+ * pelo campo de data real (sem timezone, ex. "2026-08-03 08:38:30"),
+ * comparando só a parte "YYYY-MM-DD" contra a janela pedida originalmente.
+ */
+function ajustarDias(dataISO: string, dias: number): string {
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1, dia));
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+function refiltrarPorJanela<T>(
+  itens: T[],
+  campo: keyof T,
+  datainicial: string,
+  datafinal: string,
+): T[] {
+  return itens.filter((item) => {
+    const valor = item[campo] as unknown as string | null;
+    const dia = valor?.slice(0, 10);
+    return !!dia && dia >= datainicial && dia <= datafinal;
+  });
+}
+
 /** Percorre todas as páginas de um endpoint de lista do ERP. */
 async function listarTudo<T>(
   path: string,
@@ -235,22 +264,39 @@ export type OSFiltroDatas =
   | "FATURAMENTO"
   | "CANCELAMENTO";
 
+/** Campo de data em MubiSysOS correspondente a cada valor de `filtrodata`.
+ *  `PREV_ENTREGA` não tem entrada: `prazo` é texto livre ("02 dias úteis"),
+ *  não há data para refiltrar — esse modo não recebe o contorno de borda. */
+const CAMPO_DATA_OS: Partial<Record<OSFiltroDatas, keyof MubiSysOS>> = {
+  CADASTRO: "data_cadastro",
+  APROVACAO: "data_aprovacao",
+  ENTREGA: "data_entrega",
+  FATURAMENTO: "data_faturamento",
+  CANCELAMENTO: "data_cancelamento",
+};
+
 export async function listarOSMubiSys(opts: {
   status?: OSStatus;
   filtrodata?: OSFiltroDatas;
   datainicial: string;
   datafinal: string;
 }): Promise<{ itens: MubiSysOS[]; completo: boolean }> {
-  return listarTudo<MubiSysOS>(
+  const filtrodata = opts.filtrodata ?? "CADASTRO";
+  const campo = CAMPO_DATA_OS[filtrodata];
+
+  const { itens, completo } = await listarTudo<MubiSysOS>(
     "ordem-servico",
     {
       status: opts.status ?? "TODOS",
-      filtrodata: opts.filtrodata ?? "CADASTRO",
-      datainicial: opts.datainicial,
-      datafinal: opts.datafinal,
+      filtrodata,
+      datainicial: campo ? ajustarDias(opts.datainicial, -1) : opts.datainicial,
+      datafinal: campo ? ajustarDias(opts.datafinal, 1) : opts.datafinal,
     },
     { timeoutMs: TIMEOUT_LISTA_MS },
   );
+
+  if (!campo) return { itens, completo };
+  return { itens: refiltrarPorJanela(itens, campo, opts.datainicial, opts.datafinal), completo };
 }
 
 export async function buscarOSPorId(id: number): Promise<MubiSysOS | null> {
@@ -279,19 +325,23 @@ export async function listarOrcamentosMubiSys(opts: {
   datainicial: string;
   datafinal: string;
 }): Promise<{ itens: MubiSysOrcamento[]; completo: boolean }> {
-  return listarTudo<MubiSysOrcamento>(
+  const { itens, completo } = await listarTudo<MubiSysOrcamento>(
     "orcamento",
     {
       status: opts.status ?? "TODOS",
       filtrodata: "CADASTRO",
-      datainicial: opts.datainicial,
-      datafinal: opts.datafinal,
+      datainicial: ajustarDias(opts.datainicial, -1),
+      datafinal: ajustarDias(opts.datafinal, 1),
     },
     // per_page=500 (padrão de listarTudo) estoura TIMEOUT_LISTA_MS em janelas de
     // mês cheio (~800 orçamentos) — medido em 17/08/2026. 200 reduz o payload por
     // página o bastante para caber no orçamento de tempo sem precisar de retry.
     { timeoutMs: TIMEOUT_LISTA_MS, perPage: 200 },
   );
+  return {
+    itens: refiltrarPorJanela(itens, "data_cadastro", opts.datainicial, opts.datafinal),
+    completo,
+  };
 }
 
 // ─── Clientes ────────────────────────────────────────────────────────────────

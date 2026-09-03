@@ -145,5 +145,8 @@ export async function createApp(): Promise<Express> {
   app.post("/api/scheduled/sincronizarOS", handleSincronizarOS);
   app.get("/api/scheduled/sincronizarOS/status", handleStatusSincronizacao);
 
+  const { handleSincronizarHistorico } = await import("../sync/scheduled-sync-historico-handler");
+  app.post("/api/scheduled/sincronizarHistorico", handleSincronizarHistorico);
+
   return app;
 }

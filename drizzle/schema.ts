@@ -1253,6 +1253,9 @@ export const historicoOs = pgTable("historico_os", {
 }, (t) => ({
   mesAnoIdx: index("historico_os_mes_ano_idx").on(t.mes, t.ano),
   estadoIdx: index("historico_os_estado_idx").on(t.estado),
+  // Permite upsert idempotente por OS (sync incremental) — sem isso, rodar o
+  // sync duas vezes pro mesmo mês duplicava toda OS já importada.
+  osNumeroIdx: uniqueIndex("historico_os_os_numero_idx").on(t.osNumero),
 }));
 export type HistoricoOs = typeof historicoOs.$inferSelect;
 export type InsertHistoricoOs = typeof historicoOs.$inferInsert;
@@ -1276,6 +1279,7 @@ export const historicoOrcamentos = pgTable("historico_orcamentos", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({
   mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t.mes, t.ano),
+  orcNumeroIdx: uniqueIndex("historico_orcamentos_orc_numero_idx").on(t.orcNumero),
 }));
 export type HistoricoOrcamento = typeof historicoOrcamentos.$inferSelect;
 export type InsertHistoricoOrcamento = typeof historicoOrcamentos.$inferInsert;

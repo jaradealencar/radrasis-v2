@@ -10,7 +10,8 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      staleTime: 30_000,
+      // 1h — dados considerados frescos por padrão; invalidação manual via utils.invalidate() nas mutations
+      staleTime: 60 * 60 * 1000,
     },
   },
 });

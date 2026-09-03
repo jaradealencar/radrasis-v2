@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,16 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line,
@@ -19,12 +29,17 @@ import {
 } from "recharts";
 import {
   TrendingUp, Edit3, Check, X, DollarSign, Users, Target, Percent, Filter, Upload, RefreshCw,
+  Loader2, AlertTriangle,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
 import ImportarCustoMarketing from "./ImportarCustoMarketing";
 import DetalhamentoMarketing from "./DetalhamentoMarketing";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LayoutGrid, ListTree } from "lucide-react";
+
+// Retry único: se a API do MubiSys estiver lenta/indisponível, tentar de novo
+// automaticamente só multiplica a espera pelo mesmo resultado (ver PerformanceComercial.tsx)
+const RETRY_MUBISYS = { retry: 1, refetchOnWindowFocus: false } as const;
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -59,8 +74,47 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   // Filtro de mês: null = todos os meses
   const [mesFiltro, setMesFiltro] = useState<number | null>(null);
 
-  const { data: custoMarketingAno = [], refetch: refetchMarketing } = trpc.financeiro.getCustoMarketingAno.useQuery({ ano: anoSel });
-  const { data: clientesNovosAno = [] } = trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSel });
+  const {
+    data: custoMarketingAno = [],
+    isLoading: loadingMarketing,
+    refetch: refetchMarketing,
+  } = trpc.financeiro.getCustoMarketingAno.useQuery({ ano: anoSel });
+
+  const {
+    data: clientesNovosAno = [],
+    isLoading: loadingClientesNovos,
+    isError: errorClientesNovos,
+    refetch: refetchClientesNovos,
+  } = trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSel }, RETRY_MUBISYS);
+
+  // Reaparece automaticamente se uma nova tentativa também falhar
+  const [erroDispensado, setErroDispensado] = useState(false);
+  useEffect(() => {
+    if (errorClientesNovos) setErroDispensado(false);
+  }, [errorClientesNovos]);
+
+  // ─── Indicador de fonte/velocidade dos dados (mesmo padrão de PerformanceComercial.tsx) ───
+  const loadStartRef = useRef<number>(0);
+  const [loadTimeMs, setLoadTimeMs] = useState<number | null>(null);
+  useEffect(() => {
+    loadStartRef.current = Date.now();
+    setLoadTimeMs(null);
+  }, [anoSel]);
+  useEffect(() => {
+    if (!loadingClientesNovos && clientesNovosAno && loadStartRef.current > 0) {
+      setLoadTimeMs(Date.now() - loadStartRef.current);
+      loadStartRef.current = 0;
+    }
+  }, [loadingClientesNovos, clientesNovosAno]);
+
+  // "local" = veio do histórico sincronizado (historico_os), não de uma consulta ao vivo
+  // à API MubiSys — ver getClientesNovosAno. "congelado" = mês auditado/fechado.
+  const origemDados = useMemo(() => {
+    if (!clientesNovosAno.length) return null;
+    if (clientesNovosAno.some((r: any) => r.origem === "indisponivel")) return "indisponivel";
+    if (clientesNovosAno.every((r: any) => r.origem === "congelado")) return "congelado";
+    return "local";
+  }, [clientesNovosAno]);
 
   const upsertMarketing = trpc.financeiro.upsertCustoMarketing.useMutation({
     onSuccess: () => {
@@ -78,7 +132,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   }, [custoMarketingAno]);
 
   const clientesNovosMap = useMemo(() => {
-    const m: Record<number, { osNovos: number; faturamentoNovos: number; ticketMedioNovos: number; clientesNovosUnicos: number }> = {};
+    const m: Record<number, { osNovos: number; faturamentoNovos: number; ticketMedioNovos: number; clientesNovosUnicos: number; clientesReativados: number }> = {};
     for (const r of clientesNovosAno) m[r.mes] = r;
     return m;
   }, [clientesNovosAno]);
@@ -92,6 +146,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     const investimentoReativacao = mk ? parseFloat(mk.investimentoReativacao) : null;
     const investimento = mk ? parseFloat(mk.investimento) : null;
     const clientesNovosQtd = novos?.clientesNovosUnicos ?? null;
+    const clientesReativadosQtd = novos?.clientesReativados ?? null;
     const faturamentoNovos = novos?.faturamentoNovos ?? null;
     const pedidosNovos = novos?.osNovos ?? null;
 
@@ -114,7 +169,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     return {
       mes, nome, abrev: MESES_ABREV[idx],
       investimentoAquisicao, investimentoReativacao, investimento,
-      clientesNovosQtd, faturamentoNovos, pedidosNovos,
+      clientesNovosQtd, clientesReativadosQtd, faturamentoNovos, pedidosNovos,
       retornoReal, cac, roiReais, roiPct,
     };
   }), [custoMarketingMap, clientesNovosMap]);
@@ -143,6 +198,9 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
 
   const totalClientesNovos = useMemo(() =>
     dadosFiltrados.reduce((s, d) => s + (d.clientesNovosQtd ?? 0), 0), [dadosFiltrados]);
+
+  const totalClientesReativados = useMemo(() =>
+    dadosFiltrados.reduce((s, d) => s + (d.clientesReativadosQtd ?? 0), 0), [dadosFiltrados]);
 
   const totalFaturamentoNovos = useMemo(() =>
     dadosFiltrados.reduce((s, d) => s + (d.faturamentoNovos ?? 0), 0), [dadosFiltrados]);
@@ -205,6 +263,16 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
 
   const labelFiltro = mesFiltro != null ? MESES[mesFiltro - 1] : `Ano ${anoSel}`;
 
+  // Primeira carga do custo de marketing (fonte principal da aba) ainda em andamento
+  if (loadingMarketing) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+        <Loader2 size={28} className="animate-spin" />
+        <p className="text-sm">Carregando dados de marketing...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="geral">
@@ -219,6 +287,30 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
 
         <TabsContent value="geral" className="space-y-6 pt-4">
 
+      {/* ─── Modal de erro: falha ao buscar dados do MubiSys ────────────────────── */}
+      <AlertDialog
+        open={errorClientesNovos && !erroDispensado}
+        onOpenChange={(open) => { if (!open) setErroDispensado(true); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-amber-500" />
+              Erro ao buscar dados do MubiSys
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Não foi possível carregar os dados de clientes novos (via API do MubiSys) para calcular CAC e ROI. Isso costuma acontecer quando a API do MubiSys está lenta ou temporariamente indisponível. Os valores de investimento em marketing continuam disponíveis normalmente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar sem esses dados</AlertDialogCancel>
+            <AlertDialogAction onClick={() => refetchClientesNovos()}>
+              Tentar novamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ─── Filtro de mês + Importar ───────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
@@ -226,6 +318,47 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             <Filter size={13} />
             Filtrar por mês:
           </div>
+          {loadingClientesNovos && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 animate-pulse ml-2">
+              <Loader2 size={11} className="animate-spin" />
+              BUSCANDO DADOS...
+            </span>
+          )}
+          {!loadingClientesNovos && origemDados === "local" && (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 ml-2"
+              title="Números de clientes novos vêm da sincronização diária do histórico do MubiSys (historico_os), não de uma consulta ao vivo. O mês corrente pode ficar até ~1 dia defasado."
+            >
+              🗄️ DADOS LOCAIS (sync diário)
+            </span>
+          )}
+          {!loadingClientesNovos && origemDados === "congelado" && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 ml-2">
+              🔒 CONGELADO
+            </span>
+          )}
+          {!loadingClientesNovos && origemDados === "indisponivel" && (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 ml-2"
+              title="Não foi possível conectar ao banco de dados para calcular clientes novos."
+            >
+              ⚠️ BANCO INDISPONÍVEL
+            </span>
+          )}
+          {loadTimeMs !== null && !loadingClientesNovos && (
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+                loadTimeMs < 2000
+                  ? "bg-green-50 text-green-600 border-green-200"
+                  : loadTimeMs < 10000
+                  ? "bg-amber-50 text-amber-600 border-amber-200"
+                  : "bg-red-50 text-red-600 border-red-200"
+              }`}
+              title="Tempo de resposta da consulta"
+            >
+              {loadTimeMs < 1000 ? `${loadTimeMs}ms` : `${(loadTimeMs / 1000).toFixed(1)}s`}
+            </span>
+          )}
           <button
             onClick={() => setMesFiltro(null)}
             className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
@@ -302,7 +435,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
           <KpiCard
             label="Clientes Novos"
             value={String(totalClientesNovos)}
-            sub="Sem compra anterior"
+            sub="Novos ou reativados (6+ meses sem pedir)"
             color="#2563eb"
             icon={<Users size={18} />}
             variant="border"
@@ -342,7 +475,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
       <div className="flex items-start gap-2 bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800">
         <Percent size={13} className="mt-0.5 shrink-0" />
         <span>
-          <strong>Metodologia ROI:</strong> O investimento em marketing é dividido em <strong>Aquisição</strong> (atrai clientes novos) e <strong>Reativação</strong> (resgata clientes 6+ meses sem comprar).
+          <strong>Metodologia ROI:</strong> O investimento em marketing é dividido em <strong>Aquisição</strong> (atrai clientes novos) e <strong>Reativação</strong> (resgata clientes 6+ meses sem comprar). "Clientes novos" considera clientes que nunca compraram <strong>ou</strong> ficaram <strong>6+ meses sem pedir e voltaram</strong> (reativados, mostrados na coluna própria).
           O retorno real considerado no ROI é <strong>51% do faturamento de clientes novos</strong> (margem operacional estimada), comparado apenas ao investimento em <strong>aquisição</strong> — a reativação não gera "cliente novo" e por isso não entra nesse cálculo.
           ROI em R$ = Retorno Real − Invest. Aquisição &nbsp;|&nbsp; ROI em % = (Retorno Real − Invest. Aquisição) ÷ Invest. Aquisição × 100
         </span>
@@ -444,6 +577,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 <TableHead className="text-right font-semibold">Aquisição</TableHead>
                 <TableHead className="text-right font-semibold">Reativação</TableHead>
                 <TableHead className="text-right font-semibold">Clientes Novos</TableHead>
+                <TableHead className="text-right font-semibold">Reativados</TableHead>
                 <TableHead className="text-right font-semibold">Pedidos</TableHead>
                 <TableHead className="text-right font-semibold">CAC Aquisição</TableHead>
                 <TableHead className="text-right font-semibold">Fat. Clientes Novos</TableHead>
@@ -454,7 +588,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dadosFiltrados.map(({ mes, nome, investimentoAquisicao, investimentoReativacao, clientesNovosQtd, faturamentoNovos, pedidosNovos, retornoReal, cac, roiReais, roiPct }) => {
+              {dadosFiltrados.map(({ mes, nome, investimentoAquisicao, investimentoReativacao, clientesNovosQtd, clientesReativadosQtd, faturamentoNovos, pedidosNovos, retornoReal, cac, roiReais, roiPct }) => {
                 const mk = custoMarketingMap[mes];
                 const isEditing = marketingEditando === mes;
                 return (
@@ -516,6 +650,11 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                     <TableCell className="text-right">
                       {clientesNovosQtd != null
                         ? <span className="font-medium text-blue-700">{clientesNovosQtd}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {clientesReativadosQtd != null
+                        ? <span className="font-medium text-amber-700">{clientesReativadosQtd}</span>
                         : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="text-right">
@@ -600,6 +739,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                   <TableCell className="text-right font-bold text-purple-700">{fmtBRL(totalInvestidoAquisicao)}</TableCell>
                   <TableCell className="text-right font-bold text-cyan-700">{fmtBRL(totalInvestidoReativacao)}</TableCell>
                   <TableCell className="text-right font-bold text-blue-700">{totalClientesNovos}</TableCell>
+                  <TableCell className="text-right font-bold text-amber-700">{totalClientesReativados}</TableCell>
                   <TableCell className="text-right font-bold text-indigo-700">{totalPedidosNovos}</TableCell>
                   <TableCell className="text-right font-bold text-orange-600">
                     {cacMedio != null ? fmtBRL(cacMedio) : "—"}

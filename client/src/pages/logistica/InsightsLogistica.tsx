@@ -1,5 +1,4 @@
 import { useState } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,7 +71,7 @@ export default function InsightsLogistica() {
   }
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <PageHeader
         title="Insights de IA — Logística"
@@ -204,6 +203,6 @@ export default function InsightsLogistica() {
           </CardContent>
         </Card>
       )}
-    </DashboardLayout>
+    </>
   );
 }

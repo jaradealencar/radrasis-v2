@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { enviarArquivo } from "@/lib/upload";
 import { useAuth } from "@/hooks/useAuth";
@@ -166,24 +165,31 @@ export default function BibliotecaArquivos() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Queries
-  const { data: arquivos = [], refetch } = trpc.bibliotecaArquivos.list.useQuery({
+  const utils = trpc.useUtils();
+  const { data: arquivos = [] } = trpc.bibliotecaArquivos.list.useQuery({
     categoria: categoriaFiltro === "Todos" ? undefined : categoriaFiltro,
     busca: busca || undefined,
   });
   const { data: categorias = [] } = trpc.bibliotecaArquivos.categorias.useQuery();
   const { data: stats } = trpc.bibliotecaArquivos.stats.useQuery();
 
+  const invalidateArquivos = () => {
+    utils.bibliotecaArquivos.list.invalidate();
+    utils.bibliotecaArquivos.categorias.invalidate();
+    utils.bibliotecaArquivos.stats.invalidate();
+  };
+
   // Mutations
   const uploadMutation = trpc.bibliotecaArquivos.upload.useMutation({
-    onSuccess: () => { refetch(); toast.success("Arquivo enviado com sucesso!"); resetForm(); setModalUpload(false); },
+    onSuccess: () => { invalidateArquivos(); toast.success("Arquivo enviado com sucesso!"); resetForm(); setModalUpload(false); },
     onError: (e) => toast.error("Erro ao enviar arquivo: " + e.message),
   });
   const deleteMutation = trpc.bibliotecaArquivos.delete.useMutation({
-    onSuccess: () => { refetch(); toast.success("Arquivo removido."); },
+    onSuccess: () => { invalidateArquivos(); toast.success("Arquivo removido."); },
     onError: (e) => toast.error("Erro ao remover: " + e.message),
   });
   const updateMutation = trpc.bibliotecaArquivos.update.useMutation({
-    onSuccess: () => { refetch(); toast.success("Arquivo atualizado."); setModalEditar(null); },
+    onSuccess: () => { invalidateArquivos(); toast.success("Arquivo atualizado."); setModalEditar(null); },
     onError: (e) => toast.error("Erro ao atualizar: " + e.message),
   });
   const viewMutation = trpc.bibliotecaArquivos.incrementView.useMutation();
@@ -253,7 +259,6 @@ export default function BibliotecaArquivos() {
   const todasCategorias = ["Todos", ...Array.from(new Set([...CATEGORIAS_PADRAO, ...categorias]))];
 
   return (
-    <DashboardLayout>
     <div className="space-y-8 p-2">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -575,6 +580,5 @@ export default function BibliotecaArquivos() {
         </DialogContent>
       </Dialog>
     </div>
-    </DashboardLayout>
   );
 }

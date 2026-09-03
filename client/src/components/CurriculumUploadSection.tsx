@@ -18,6 +18,7 @@ export function CurriculumUploadSection({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  const utils = trpc.useUtils();
   const uploadMutation = trpc.curriculos.uploadAndAnalyze.useMutation();
   const listQuery = trpc.curriculos.listByCargo.useQuery({ cargoId });
 
@@ -44,7 +45,7 @@ export function CurriculumUploadSection({
       });
 
       setSelectedFile(null);
-      listQuery.refetch();
+      utils.curriculos.listByCargo.invalidate({ cargoId });
     } catch (error) {
       console.error("Erro ao fazer upload:", error);
     } finally {

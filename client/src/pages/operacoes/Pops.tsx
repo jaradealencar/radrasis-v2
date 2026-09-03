@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import DashboardLayout from "../../components/DashboardLayout";
 import { useLocation } from "wouter";
 import { downloadPopAsPdf } from "@/lib/popPdf";
 import RichTextEditor from "../../components/RichTextEditor";
@@ -360,11 +359,12 @@ export default function Pops() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [filterType, setFilterType] = useState<"all" | "ai" | "manual">("all");
 
-  const { data, isLoading, refetch } = trpc.pops.list.useQuery({ sector: filterSector || undefined });
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.pops.list.useQuery({ sector: filterSector || undefined });
   const createMut = trpc.pops.create.useMutation({
-    onSuccess: () => { refetch(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("POP criado!"); }
+    onSuccess: () => { utils.pops.list.invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("POP criado!"); }
   });
-  const deleteMut = trpc.pops.delete.useMutation({ onSuccess: () => { refetch(); toast.success("POP removido."); } });
+  const deleteMut = trpc.pops.delete.useMutation({ onSuccess: () => { utils.pops.list.invalidate(); toast.success("POP removido."); } });
   const registrarAcessoMut = trpc.pops.registrarAcesso.useMutation();
 
   const allItems = data ?? [];
@@ -382,7 +382,7 @@ export default function Pops() {
   const uniqueSectors = Array.from(new Set(allItems.map(i => i.sector))).sort();
 
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div className="flex items-center gap-3">
@@ -671,7 +671,7 @@ export default function Pops() {
                   <PopEditPanel
                     item={item}
                     onClose={() => setEditingId(null)}
-                    onSaved={() => refetch()}
+                    onSaved={() => utils.pops.list.invalidate()}
                   />
                 )}
 
@@ -701,7 +701,7 @@ export default function Pops() {
                         Responsável: <strong>{item.responsible}</strong>
                       </p>
                     )}
-                    <PopAttachments item={item} onUpdated={() => refetch()} />
+                    <PopAttachments item={item} onUpdated={() => utils.pops.list.invalidate()} />
                   </div>
                 )}
               </div>
@@ -709,6 +709,6 @@ export default function Pops() {
           })}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }

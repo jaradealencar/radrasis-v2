@@ -199,6 +199,27 @@ export function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | 
   return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
 }
 
+/** Reindexação de um mapa "última compra por empresa" (chaves em toLowerCase().trim(),
+ * vindas de historico_os) para chaves normalizadas com normalizeEmpresaKey (sem acentos/
+ * pontuação). Necessário sempre que o lado que vai consultar o mapa usa nome de cliente
+ * vindo da API MubiSys ao vivo (getClientesNovosMes), pois a grafia entre a API e a
+ * importação local diverge em acentuação/pontuação e o match por toLowerCase().trim()
+ * puro falha silenciosamente — isClienteNovoPorRecencia(undefined, ...) sempre retorna
+ * true, fazendo o cliente contar como "novo" mesmo já tendo comprado antes. Quando
+ * ambos os lados da comparação vêm do banco local (ex.: getMultiMes, insightsComerciais),
+ * essa reindexação não é necessária pois a grafia já é idêntica dos dois lados. */
+function reindexarPorChaveNormalizada(mapa: Map<string, { mes: number; ano: number }>): Map<string, { mes: number; ano: number }> {
+  const normalizado = new Map<string, { mes: number; ano: number }>();
+  for (const [chave, ultima] of mapa) {
+    const chaveNorm = normalizeEmpresaKey(chave);
+    const existente = normalizado.get(chaveNorm);
+    if (!existente || ultima.ano > existente.ano || (ultima.ano === existente.ano && ultima.mes > existente.mes)) {
+      normalizado.set(chaveNorm, ultima);
+    }
+  }
+  return normalizado;
+}
+
 async function getMesFromDb(mes: number, ano: number) {
   const db = await getDb();
   if (!db) return null;
@@ -546,8 +567,65 @@ type VendedorNovosStats = {
   taxaFatNovos: number;
 };
 
+/** Estatísticas de "clientes novos/reativados" de um mês, calculadas 100% a
+ * partir do histórico local (historico_os) — nunca chama a API MubiSys ao
+ * vivo. Usada por getClientesNovosAno para meses não congelados: somar até
+ * 12 chamadas de API (uma por mês, ~20-45s cada, ver getClientesNovosMes)
+ * estourava o maxDuration de 60s da Vercel e o painel de Marketing carregava
+ * zerado, sem erro visível (investigação de 01/09/2026). historico_os já é
+ * fonte de verdade para "quem comprou antes" (ver isClienteNovoPorRecencia);
+ * aqui também vira fonte para "quem comprou neste mês", então dispensa
+ * reindexarPorChaveNormalizada — os dois lados da comparação vêm da mesma
+ * tabela, com a mesma grafia. */
+function calcularNovosDoMesLocal(
+  mes: number,
+  ano: number,
+  osDoAno: Array<{ empresa: string | null; tipoOs: string | null; status: string | null; mes: number; valorOs: string | null; valorTotal: string | null }>,
+  todasComprasValidas: CompraMinima[],
+  overrideMap: Map<string, "recorrente" | "novo">,
+): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; clientesNovosUnicos: number; clientesReativados: number } {
+  const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+  const osMes = osDoAno.filter(os => os.mes === mes);
+
+  let osNovos = 0;
+  let faturamentoNovos = 0;
+  let clientesReativados = 0;
+  const clientesVistos = new Set<string>();
+
+  for (const os of osMes) {
+    if (!isOsNormalDb(os)) continue;
+    const clienteKey = (os.empresa ?? "").toLowerCase().trim();
+    if (!clienteKey) continue;
+
+    const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
+    const isNovo = overrideStatus === "recorrente" ? false
+      : overrideStatus === "novo" ? true
+      : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+    if (!isNovo) continue;
+
+    const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+    osNovos++;
+    faturamentoNovos += valor;
+
+    if (!clientesVistos.has(clienteKey)) {
+      clientesVistos.add(clienteKey);
+      if (ultimaCompraPorCliente.get(clienteKey)) clientesReativados++;
+    }
+  }
+
+  return {
+    mes,
+    ticketMedioNovos: osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0,
+    osNovos,
+    faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
+    clientesNovosUnicos: clientesVistos.size,
+    clientesReativados,
+  };
+}
+
 async function getClientesNovosMes(mes: number, ano: number): Promise<{
   total: number;
+  totalReativados: number;
   cotacoesNovos: number;
   osNovos: number;
   faturamentoNovos: number;
@@ -560,7 +638,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   lista: Array<{ empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null; telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string }>;
 }> {
   const db = await getDb();
-  const EMPTY = { total: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
+  const EMPTY = { total: 0, totalReativados: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
   if (!db) return EMPTY;
 
   // ─── SNAPSHOT CONGELADO: verificar se já tem lista salva ───
@@ -594,6 +672,14 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     // Clientes anteriores para identificar novos (nunca compraram ou inativos há 6+ meses)
     const comprasSnap = await buscarTodasComprasValidas(db);
     const ultimaCompraSnap = ultimaCompraAntesDe(comprasSnap, mes, ano);
+    // Reativados = clientes novos (lista salva) que já tinham comprado antes (ultima existe),
+    // mas ficaram 6+ meses sem pedir. "Novo puro" = nunca comprou (ultima ausente).
+    const ultimaCompraSnapNorm = reindexarPorChaveNormalizada(ultimaCompraSnap);
+    const clientesUnicosSnap = new Set(listaSnap.map(item => normalizeEmpresaKey(item.empresa)));
+    let totalReativadosSnap = 0;
+    for (const chave of clientesUnicosSnap) {
+      if (ultimaCompraSnapNorm.get(chave)) totalReativadosSnap++;
+    }
     for (const orc of orcMesSnap) {
       const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
       if (!clienteKey || !isClienteNovoPorRecencia(ultimaCompraSnap.get(clienteKey), mes, ano)) continue;
@@ -620,6 +706,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
 
     return {
       total: s.clientesNovos ?? 0,
+      totalReativados: totalReativadosSnap,
       cotacoesNovos: cotacoesNovosSnap,
       osNovos: s.clientesNovos ?? 0,
       faturamentoNovos: parseFloat(String(s.faturamentoNovos ?? 0)),
@@ -650,6 +737,10 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   // e quando foi a última vez — necessário pra regra de reativação de 6 meses)
   const todasComprasValidas = await buscarTodasComprasValidas(db);
   const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+  // Nomes de cliente aqui vêm da API MubiSys ao vivo (nomeCliente), não do banco local —
+  // precisa da versão com chave normalizada (ver reindexarPorChaveNormalizada) para casar
+  // corretamente com o histórico importado, senão quase todo cliente aparenta ser "novo".
+  const ultimaCompraPorClienteNorm = reindexarPorChaveNormalizada(ultimaCompraPorCliente);
 
   // FONTE DE VERDADE: usar API Mubisys para buscar OS do mês (dados em tempo real, completos)
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -687,16 +778,11 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
         setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
       } else {
-        // Buscar da API MubiSys (cache acima ficou frio mesmo após getMesFromApi
-        // resolver — caso raro; ainda assim protegido por timeout próprio)
-        const [osResult, orcResult] = await withTimeout(
-          Promise.all([
-            listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
-            listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
-          ]),
-          15000,
-          "timeout_clientes_novos_raw"
-        );
+        // Buscar da API MubiSys — em paralelo, cada chamada já tem seu próprio timeout (TIMEOUT_LISTA_MS)
+        const [osResult, orcResult] = await Promise.all([
+          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
+          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
+        ]);
         allOsApi = osResult.itens;
         const orcList = orcResult.itens;
         setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
@@ -730,6 +816,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   const porVendedor: Record<string, number> = {};
   const porVendedorNovosOs: Record<string, { osNovos: number; faturamentoNovos: number; clientesNovos: number; nomeOriginal: string }> = {};
   let total = 0;
+  let totalReativados = 0;
   let osNovosCount = 0;
   let faturamentoNovos = 0;
   const clientesVistos = new Set<string>();
@@ -751,7 +838,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     // Usa chave normalizada (sem acentos) — igual à gravada em upsertClienteOverride
     const overrideStatus = overrideMap.get(normalizeEmpresaKey(nomeCliente));
     // Regra de negócio: "novo" = nunca comprou OU está inativo há 6+ meses (reativado)
-    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente)), mes, ano);
     const isNovo = overrideStatus === "recorrente" ? false
       : overrideStatus === "novo" ? true
       : isNovoByHistory;
@@ -768,6 +855,9 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       if (!clientesVistos.has(clienteKey)) {
         clientesVistos.add(clienteKey);
         total++;
+        // Reativado = já tinha comprado antes (ultima compra existe), mas ficou 6+ meses sem pedir.
+        // "Novo puro" = nunca comprou (sem registro de última compra).
+        if (ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente))) totalReativados++;
         porVendedor[vendedor] = (porVendedor[vendedor] ?? 0) + 1;
         porVendedorNovosOs[vendedorKey].clientesNovos++;
         // Extrair contato e cidade DIRETAMENTE da OS (campos cliente_contato e cliente_endereco)
@@ -838,7 +928,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       const orcOverride = overrideMap.get(normalizeEmpresaKey(nomeCliente));
       const isNovoOrc = orcOverride === "recorrente" ? false
         : orcOverride === "novo" ? true
-        : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+        : isClienteNovoPorRecencia(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente)), mes, ano);
       if (clienteKey && isNovoOrc) {
         cotacoesNovos++;
         const valor = parseFloat(String(orc.valor_total ?? orc.valor ?? orc.total ?? orc.valorTotal ?? "0")) || 0;
@@ -899,6 +989,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
 
   return {
     total,
+    totalReativados,
     cotacoesNovos,
     osNovos,
     faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
@@ -1499,31 +1590,49 @@ export const performanceComercialRouter = router({
       return getClientesNovosMes(input.mes, input.ano);
     }),
 
-  // Clientes novos de todos os meses do ano (para gráfico anual) — versão otimizada
+  // Clientes novos de todos os meses do ano (para gráfico anual) — lê do histórico local
   getClientesNovosAno: publicProcedure
     .input(z.object({ ano: z.number().min(2020) }))
     .query(async ({ input }) => {
       const { ano } = input;
       const now = new Date();
       const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
-
-      // FONTE ÚNICA DE VERDADE: usar getClientesNovosMes para cada mês
-      // Isso garante que Marketing e Performance Comercial usem exatamente os mesmos dados
-      // (API MubiSys + snapshots congelados), eliminando divergências com o banco local.
-      //
-      // Todos os meses em paralelo (Promise.allSettled), igual getAno (ver bc14862) —
-      // não em lotes sequenciais de 2. Lotes de 2 esperavam até ~45-60s por lote (o
-      // timeout interno de getClientesNovosMes/getMesFromApi), e com até 6 lotes (12
-      // meses) o pior caso somava 270-360s, estourando o maxDuration:60s do
-      // vercel.json — a Vercel matava a função ANTES de qualquer fallback rodar. Como
-      // esta procedure roda batched (httpBatchLink) junto de getMes/getAno/
-      // getClientesNovos na carga inicial da tela, isso derrubava a resposta HTTP
-      // inteira e o dashboard inteiro aparecia vazio, não só o gráfico anual de
-      // clientes novos. Buscar em paralelo limita o pior caso a ~45-60s (dominado
-      // pelo mês mais lento, não pela soma), igual ao restante do arquivo.
       const meses = Array.from({ length: mesAtual }, (_, i) => i + 1);
-      const settled = await Promise.allSettled(
-        meses.map(async (mes) => {
+
+      const db = await getDb();
+      if (!db) {
+        return meses.map(mes => ({
+          mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0,
+          clientesNovosUnicos: 0, clientesReativados: 0, origem: "indisponivel" as const,
+        }));
+      }
+
+      // Meses auditados/congelados: manter o caminho existente — getClientesNovosMes já
+      // retorna do snapshot salvo em performanceAuditada, sem chamar a API ao vivo.
+      const snapsCongelados = await db.select({ mes: performanceAuditada.mes }).from(performanceAuditada)
+        .where(and(eq(performanceAuditada.ano, ano), eq(performanceAuditada.congelado, true)));
+      const congeladosSet = new Set(snapsCongelados.map(s => s.mes));
+
+      // Demais meses: calcular 100% do histórico local (historico_os), sem tocar a API
+      // MubiSys ao vivo — ver calcularNovosDoMesLocal. historico_os sincroniza 1x/dia
+      // (server/sync/scheduled-sync-historico.ts), então o mês corrente pode ficar até
+      // ~1 dia defasado; meses fechados não têm essa limitação.
+      const overrides = await db.select().from(clienteOverrides);
+      const overrideMap = new Map<string, "recorrente" | "novo">();
+      for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
+
+      const todasComprasValidas = await buscarTodasComprasValidas(db);
+      const osDoAno = await db.select({
+        empresa: historicoOs.empresa,
+        tipoOs: historicoOs.tipoOs,
+        status: historicoOs.status,
+        mes: historicoOs.mes,
+        valorOs: historicoOs.valorOs,
+        valorTotal: historicoOs.valorTotal,
+      }).from(historicoOs).where(eq(historicoOs.ano, ano));
+
+      const results = await Promise.all(meses.map(async (mes) => {
+        if (congeladosSet.has(mes)) {
           const dados = await getClientesNovosMes(mes, ano);
           return {
             mes,
@@ -1531,17 +1640,13 @@ export const performanceComercialRouter = router({
             osNovos: dados.osNovos,
             faturamentoNovos: dados.faturamentoNovos,
             clientesNovosUnicos: dados.total,
+            clientesReativados: dados.totalReativados,
+            origem: "congelado" as const,
           };
-        })
-      );
-      const results = settled.map((r, i) => {
-        const mes = meses[i];
-        return r.status === "fulfilled"
-          ? r.value
-          : { mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, clientesNovosUnicos: 0 };
-      });
+        }
+        return { ...calcularNovosDoMesLocal(mes, ano, osDoAno, todasComprasValidas, overrideMap), origem: "local" as const };
+      }));
 
-      // Ordenar por mês para garantir ordem correta
       results.sort((a, b) => a.mes - b.mes);
       return results;
     }),

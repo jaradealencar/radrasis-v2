@@ -57,10 +57,23 @@ afterEach(() => {
 
 describe("mubisys-client — paginação e erros (offline, fetch mockado)", () => {
   it("envelope de lista com last_page:3 percorre as 3 páginas (A2/A3)", async () => {
+    // data_cadastro dentro da janela pedida: necessário porque listarOSMubiSys
+    // agora refiltra pelo campo de data real (ver "datainicial/datafinal cortam
+    // a borda" em docs/integracao-mubisys.md §1) — sem o campo, o refiltro
+    // descartaria todos os itens do mock.
     const paginas: Record<number, unknown> = {
-      1: { pagination: { current_page: 1, last_page: 3, per_page: 2, total: 6 }, data: [{ id: 1 }, { id: 2 }] },
-      2: { pagination: { current_page: 2, last_page: 3, per_page: 2, total: 6 }, data: [{ id: 3 }, { id: 4 }] },
-      3: { pagination: { current_page: 3, last_page: 3, per_page: 2, total: 6 }, data: [{ id: 5 }, { id: 6 }] },
+      1: {
+        pagination: { current_page: 1, last_page: 3, per_page: 2, total: 6 },
+        data: [{ id: 1, data_cadastro: "2026-08-05" }, { id: 2, data_cadastro: "2026-08-05" }],
+      },
+      2: {
+        pagination: { current_page: 2, last_page: 3, per_page: 2, total: 6 },
+        data: [{ id: 3, data_cadastro: "2026-08-10" }, { id: 4, data_cadastro: "2026-08-10" }],
+      },
+      3: {
+        pagination: { current_page: 3, last_page: 3, per_page: 2, total: 6 },
+        data: [{ id: 5, data_cadastro: "2026-08-20" }, { id: 6, data_cadastro: "2026-08-20" }],
+      },
     };
     const fetchMock = vi.fn(async (url: string | URL) => {
       const pagina = Number(new URL(url).searchParams.get("page"));
@@ -73,6 +86,30 @@ describe("mubisys-client — paginação e erros (offline, fetch mockado)", () =
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(completo).toBe(true);
     expect(itens.map((i: any) => i.id)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("pede a API com 1 dia de folga em cada ponta e refiltra pelo campo de data real", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const params = new URL(url).searchParams;
+      expect(params.get("datainicial")).toBe("2026-07-31");
+      expect(params.get("datafinal")).toBe("2026-09-01");
+      return respostaJson(
+        {
+          pagination: { current_page: 1, last_page: 1, per_page: 500, total: 3 },
+          data: [
+            { id: 1, data_cadastro: "2026-07-31" }, // fora da janela pedida (só entrou pela folga)
+            { id: 2, data_cadastro: "2026-08-15" }, // dentro
+            { id: 3, data_cadastro: "2026-09-01" }, // fora da janela pedida (só entrou pela folga)
+          ],
+        },
+        201,
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { itens } = await listarOSMubiSys({ datainicial: "2026-08-01", datafinal: "2026-08-31" });
+
+    expect(itens.map((i: any) => i.id)).toEqual([2]);
   });
 
   it("resposta 404 vira null, não exceção (A8)", async () => {

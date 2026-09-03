@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyContent } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
@@ -1521,7 +1520,6 @@ export default function Performance() {
   const pctMetaFat = fat > 0 && metaFatAtual > 0 ? (fat / metaFatAtual) * 100 : null;
 
   return (
-    <DashboardLayout>
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1987,6 +1985,5 @@ export default function Performance() {
         </Tabs>
       )}
     </div>
-    </DashboardLayout>
   );
 }

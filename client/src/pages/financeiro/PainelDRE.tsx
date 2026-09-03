@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Empty,
   EmptyHeader,
@@ -23,7 +24,7 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, DollarSign, BarChart2,
-  PieChart as PieIcon, AlertTriangle, CheckCircle2, Minus,
+  PieChart as PieIcon, AlertTriangle, CheckCircle2, Minus, Loader2,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
 import { STATUS_COLORS } from "@/lib/chartColors";
@@ -82,12 +83,26 @@ function kpiSub(sub: string | undefined, trend: number | null | undefined) {
 
 const PIE_COLORS = ["#10b981", "#f87171", "#fb923c", "#6366f1", "#f59e0b", "#06b6d4"];
 
+// Retry único: uma segunda tentativa idêntica não resolve uma falha real de conexão/consulta
+const RETRY_1 = { retry: 1 } as const;
+
 export default function PainelDRE({ anoSel }: { anoSel: number }) {
   const [mesSel, setMesSel] = useState<number | null>(null);
   const [abaAtiva, setAbaAtiva] = useState<"dre" | "comparativo">("dre");
 
-  const { data: dreDados = [] } = trpc.financeiro.getDreMensal.useQuery({ ano: anoSel });
-  const { data: finDados = [] } = trpc.financeiro.list.useQuery({ ano: anoSel });
+  const {
+    data: dreDados = [],
+    isLoading: loadingDre,
+    isError: errorDre,
+    refetch: refetchDre,
+  } = trpc.financeiro.getDreMensal.useQuery({ ano: anoSel }, RETRY_1);
+
+  const {
+    data: finDados = [],
+    isLoading: loadingFin,
+    isError: errorFin,
+    refetch: refetchFin,
+  } = trpc.financeiro.list.useQuery({ ano: anoSel }, RETRY_1);
 
   // Ordenar por ano/mês
   const dadosOrdenados = useMemo(() => {
@@ -248,6 +263,34 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
     ];
     return linhas;
   }, []);
+
+  if (loadingDre || loadingFin) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+        <Loader2 size={28} className="animate-spin" />
+        <p className="text-sm">Carregando dados financeiros...</p>
+      </div>
+    );
+  }
+
+  if (errorDre || errorFin) {
+    return (
+      <Empty className="py-20">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <AlertTriangle />
+          </EmptyMedia>
+          <EmptyTitle>Não foi possível carregar os dados financeiros de {anoSel}.</EmptyTitle>
+          <EmptyDescription>
+            Falha ao consultar o servidor. Verifique sua conexão e tente novamente.
+          </EmptyDescription>
+        </EmptyHeader>
+        <Button variant="outline" size="sm" onClick={() => { refetchDre(); refetchFin(); }}>
+          Tentar novamente
+        </Button>
+      </Empty>
+    );
+  }
 
   if (comparativoData.filter(d => d.temDados).length === 0) {
     return (
@@ -490,6 +533,17 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
               <div className="w-3 h-0.5 bg-blue-500 rounded" />
               Indicadores — {label}
             </div>
+            {sel.lucroLiquido == null && sel.receitaOperacionalBruta != null && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-3">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>
+                  <strong>DRE parcial para {label}:</strong> Receita, custo de matéria-prima,
+                  despesas fixas e impostos vêm do ERP (MubiSys) e estão completos. Faltam despesas
+                  com pessoal, financeiras e não-operacionais — por isso Lucro Operacional e Lucro
+                  Líquido aparecem como "—" em vez de um valor incompleto.
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KpiCard
                 label="Receita Op. Bruta"

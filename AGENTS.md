@@ -137,15 +137,28 @@ Manus (achado durante a migração: só funcionava por acaso/nunca, escondido
 atrás de um cast `as any`). Se algo externo dispara esse endpoint
 periodicamente, precisa ser reconfigurado com o novo header/segredo.
 
-## Commits por fase de planejamento
+## Commits ao final de sprint/tarefa/fix
 
-Documentos de planejamento/sprint (ex:
-`docs/migracao-postgres-better-auth.md`) dividem o trabalho em
-fases/tarefas numeradas. Ao concluir uma fase ou tarefa inteira, faça um
-commit próprio pra ela antes de seguir pra próxima — não acumule várias
-fases num commit só, e não deixe uma fase concluída sem commit. Atualize o
-próprio documento (marcando a tarefa como concluída, registrando achados)
-como parte desse commit.
+**Toda sprint, tarefa ou fix concluído termina com um commit** — não deixe
+trabalho pronto (e validado: typecheck/testes relevantes rodados) parado
+sem commitar, e não acumule várias tarefas/fixes não relacionados num
+commit só. Isso vale tanto pra fases numeradas de um doc de planejamento
+(ex: `docs/migracao-postgres-better-auth.md`) quanto pra qualquer tarefa
+avulsa (bugfix, ajuste pontual, feature pequena) pedida fora de um doc de
+sprint.
+
+- Documentos de planejamento/sprint dividem o trabalho em fases/tarefas
+  numeradas. Ao concluir uma fase ou tarefa inteira, faça um commit
+  próprio pra ela antes de seguir pra próxima. Atualize o próprio
+  documento (marcando a tarefa como concluída, registrando achados) como
+  parte desse commit.
+- Fora de um doc de sprint: ao terminar qualquer tarefa/fix pedido, revise
+  o que está pendente (`git status`/`git diff`) e commit antes de
+  considerar a tarefa encerrada — não espere o usuário pedir o commit
+  explicitamente.
+- Exceção: se o próprio usuário pedir explicitamente pra não commitar
+  ainda (quer revisar antes, trabalho intermediário/experimental), respeite
+  e avise que o commit ficou pendente.
 
 **Ao final de toda tarefa** (não só as de um doc de planejamento — vale pra
 qualquer trabalho concluído no repo), verifique se este `AGENTS.md`
