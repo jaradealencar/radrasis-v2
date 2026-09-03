@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
-import { financeiroMensal, custoMarketing, custosFixos, dividasParcelamentos, dreMensal } from "../../drizzle/schema";
+import { financeiroMensal, custoMarketing, custoMarketingItens, custosFixos, dividasParcelamentos, dreMensal } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 
 export const financeiroRouter = router({
@@ -131,7 +131,8 @@ export const financeiroRouter = router({
     .input(z.object({
       mes: z.number().min(1).max(12),
       ano: z.number().min(2020).max(2100),
-      investimento: z.number().min(0),
+      investimentoAquisicao: z.number().min(0),
+      investimentoReativacao: z.number().min(0),
       observacao: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -143,7 +144,9 @@ export const financeiroRouter = router({
         .where(and(eq(custoMarketing.mes, input.mes), eq(custoMarketing.ano, input.ano)))
         .limit(1);
       const data = {
-        investimento: String(input.investimento),
+        investimentoAquisicao: String(input.investimentoAquisicao),
+        investimentoReativacao: String(input.investimentoReativacao),
+        investimento: String(input.investimentoAquisicao + input.investimentoReativacao),
         observacao: input.observacao ?? null,
       };
       if (existing.length > 0) {
@@ -153,6 +156,69 @@ export const financeiroRouter = router({
         const [result] = await db.insert(custoMarketing).values({ mes: input.mes, ano: input.ano, ...data }).returning({ id: custoMarketing.id });
         return { id: result.id, mes: input.mes, ano: input.ano, ...data };
       }
+    }),
+
+  // Importação em lote (planilha): agrega valores por mês/ano/categoria e faz upsert
+  importCustoMarketingLote: publicProcedure
+    .input(z.array(z.object({
+      mes: z.number().min(1).max(12),
+      ano: z.number().min(2020).max(2100),
+      categoria: z.enum(["aquisicao", "reativacao"]),
+      valor: z.number().min(0),
+    })))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+
+      const agregados = new Map<string, { mes: number; ano: number; aquisicao: number; reativacao: number }>();
+      for (const linha of input) {
+        const chave = `${linha.ano}-${linha.mes}`;
+        const atual = agregados.get(chave) ?? { mes: linha.mes, ano: linha.ano, aquisicao: 0, reativacao: 0 };
+        if (linha.categoria === "aquisicao") atual.aquisicao += linha.valor;
+        else atual.reativacao += linha.valor;
+        agregados.set(chave, atual);
+      }
+
+      const resultados = [];
+      for (const { mes, ano, aquisicao, reativacao } of agregados.values()) {
+        const existing = await db
+          .select()
+          .from(custoMarketing)
+          .where(and(eq(custoMarketing.mes, mes), eq(custoMarketing.ano, ano)))
+          .limit(1);
+
+        const aquisicaoTotal = (existing[0] ? Number(existing[0].investimentoAquisicao) : 0) + aquisicao;
+        const reativacaoTotal = (existing[0] ? Number(existing[0].investimentoReativacao) : 0) + reativacao;
+        const data = {
+          investimentoAquisicao: String(aquisicaoTotal),
+          investimentoReativacao: String(reativacaoTotal),
+          investimento: String(aquisicaoTotal + reativacaoTotal),
+        };
+
+        if (existing.length > 0) {
+          await db.update(custoMarketing).set(data).where(eq(custoMarketing.id, existing[0].id));
+          resultados.push({ id: existing[0].id, mes, ano, ...data });
+        } else {
+          const [result] = await db.insert(custoMarketing).values({ mes, ano, ...data }).returning({ id: custoMarketing.id });
+          resultados.push({ id: result.id, mes, ano, ...data });
+        }
+      }
+      return resultados;
+    }),
+
+  // ─── Lançamentos detalhados de Marketing (fornecedor/despesa) ────────────────
+  getCustoMarketingItensAno: publicProcedure
+    .input(z.object({ ano: z.number() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const rows = await db
+        .select()
+        .from(custoMarketingItens)
+        .where(eq(custoMarketingItens.ano, input.ano));
+      return rows
+        .map(r => ({ ...r, valor: Number(r.valor) }))
+        .sort((a, b) => a.mes !== b.mes ? a.mes - b.mes : (a.dataVencimento?.getTime() ?? 0) - (b.dataVencimento?.getTime() ?? 0));
     }),
 
   // ─── Custos Fixos ────────────────────────────────────────────────────────────

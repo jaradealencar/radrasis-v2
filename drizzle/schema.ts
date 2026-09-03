@@ -1330,6 +1330,9 @@ export const custoMarketing = pgTable("custo_marketing", {
   id: serial("id").primaryKey(),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
+  investimentoAquisicao: decimal("investimento_aquisicao", { precision: 14, scale: 2 }).notNull().default("0"),
+  investimentoReativacao: decimal("investimento_reativacao", { precision: 14, scale: 2 }).notNull().default("0"),
+  // Soma de investimentoAquisicao + investimentoReativacao, mantida por compatibilidade com consumidores existentes
   investimento: decimal("investimento", { precision: 14, scale: 2 }).notNull().default("0"),
   observacao: text("observacao"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1337,6 +1340,24 @@ export const custoMarketing = pgTable("custo_marketing", {
 });
 export type CustoMarketing = typeof custoMarketing.$inferSelect;
 export type InsertCustoMarketing = typeof custoMarketing.$inferInsert;
+
+// ─── Lançamentos detalhados de Marketing (linhas do relatório de contas a pagar) ──
+export const custoMarketingItens = pgTable("custo_marketing_itens", {
+  id: serial("id").primaryKey(),
+  mes: integer("mes").notNull(),
+  ano: integer("ano").notNull(),
+  categoria: varchar("categoria", { length: 32 }).notNull().default("aquisicao"), // "aquisicao" | "reativacao"
+  fornecedor: varchar("fornecedor", { length: 256 }).notNull(),
+  tipo: varchar("tipo", { length: 128 }),
+  despesa: varchar("despesa", { length: 256 }),
+  descricao: text("descricao"),
+  valor: decimal("valor", { precision: 14, scale: 2 }).notNull(),
+  dataVencimento: timestamp("dataVencimento"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type CustoMarketingItem = typeof custoMarketingItens.$inferSelect;
+export type InsertCustoMarketingItem = typeof custoMarketingItens.$inferInsert;
 
 // ─── Custos Fixos Mensais ─────────────────────────────────────────────────────
 export const custosFixos = pgTable("custos_fixos", {

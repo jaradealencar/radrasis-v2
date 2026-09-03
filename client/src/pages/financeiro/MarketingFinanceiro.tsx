@@ -18,9 +18,13 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine,
 } from "recharts";
 import {
-  TrendingUp, Edit3, Check, X, DollarSign, Users, Target, Percent, Filter,
+  TrendingUp, Edit3, Check, X, DollarSign, Users, Target, Percent, Filter, Upload, RefreshCw,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
+import ImportarCustoMarketing from "./ImportarCustoMarketing";
+import DetalhamentoMarketing from "./DetalhamentoMarketing";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { LayoutGrid, ListTree } from "lucide-react";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -48,8 +52,10 @@ interface Props {
 
 export default function MarketingFinanceiro({ anoSel }: Props) {
   const [marketingEditando, setMarketingEditando] = useState<number | null>(null);
-  const [marketingInput, setMarketingInput] = useState("");
+  const [marketingInputAquisicao, setMarketingInputAquisicao] = useState("");
+  const [marketingInputReativacao, setMarketingInputReativacao] = useState("");
   const [marketingObs, setMarketingObs] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
   // Filtro de mês: null = todos os meses
   const [mesFiltro, setMesFiltro] = useState<number | null>(null);
 
@@ -82,29 +88,33 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     const mes = idx + 1;
     const mk = custoMarketingMap[mes];
     const novos = clientesNovosMap[mes];
+    const investimentoAquisicao = mk ? parseFloat(mk.investimentoAquisicao) : null;
+    const investimentoReativacao = mk ? parseFloat(mk.investimentoReativacao) : null;
     const investimento = mk ? parseFloat(mk.investimento) : null;
     const clientesNovosQtd = novos?.clientesNovosUnicos ?? null;
     const faturamentoNovos = novos?.faturamentoNovos ?? null;
     const pedidosNovos = novos?.osNovos ?? null;
 
-    // CAC = Investimento / Nº Clientes Novos
-    const cac = investimento != null && clientesNovosQtd != null && clientesNovosQtd > 0
-      ? investimento / clientesNovosQtd : null;
+    // CAC de aquisição = Investimento em Aquisição / Nº Clientes Novos
+    // (reativação não gera "cliente novo", não entra nesse cálculo)
+    const cac = investimentoAquisicao != null && clientesNovosQtd != null && clientesNovosQtd > 0
+      ? investimentoAquisicao / clientesNovosQtd : null;
 
     // Retorno real = 51% do faturamento de clientes novos
     const retornoReal = faturamentoNovos != null ? faturamentoNovos * MARGEM_MARKETING : null;
 
-    // ROI em R$ = Retorno Real - Investimento
-    const roiReais = retornoReal != null && investimento != null
-      ? retornoReal - investimento : null;
+    // ROI em R$ = Retorno Real - Investimento em Aquisição
+    const roiReais = retornoReal != null && investimentoAquisicao != null
+      ? retornoReal - investimentoAquisicao : null;
 
-    // ROI em % = (Retorno Real - Investimento) / Investimento × 100
-    const roiPct = roiReais != null && investimento != null && investimento > 0
-      ? (roiReais / investimento) * 100 : null;
+    // ROI em % = (Retorno Real - Investimento em Aquisição) / Investimento em Aquisição × 100
+    const roiPct = roiReais != null && investimentoAquisicao != null && investimentoAquisicao > 0
+      ? (roiReais / investimentoAquisicao) * 100 : null;
 
     return {
       mes, nome, abrev: MESES_ABREV[idx],
-      investimento, clientesNovosQtd, faturamentoNovos, pedidosNovos,
+      investimentoAquisicao, investimentoReativacao, investimento,
+      clientesNovosQtd, faturamentoNovos, pedidosNovos,
       retornoReal, cac, roiReais, roiPct,
     };
   }), [custoMarketingMap, clientesNovosMap]);
@@ -122,6 +132,12 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   );
 
   // ─── KPIs agregados (baseados no filtro) ────────────────────────────────────
+  const totalInvestidoAquisicao = useMemo(() =>
+    dadosFiltrados.reduce((s, d) => s + (d.investimentoAquisicao ?? 0), 0), [dadosFiltrados]);
+
+  const totalInvestidoReativacao = useMemo(() =>
+    dadosFiltrados.reduce((s, d) => s + (d.investimentoReativacao ?? 0), 0), [dadosFiltrados]);
+
   const totalInvestido = useMemo(() =>
     dadosFiltrados.reduce((s, d) => s + (d.investimento ?? 0), 0), [dadosFiltrados]);
 
@@ -142,10 +158,10 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     return com.reduce((s, d) => s + (d.cac ?? 0), 0) / com.length;
   }, [dadosFiltrados]);
 
-  // ROI total em R$ e %
-  const roiTotalReais = totalInvestido > 0 ? totalRetornoReal - totalInvestido : null;
-  const roiTotalPct = totalInvestido > 0 && roiTotalReais != null
-    ? (roiTotalReais / totalInvestido) * 100 : null;
+  // ROI total em R$ e % — considera só o investimento em aquisição (reativação não gera "cliente novo")
+  const roiTotalReais = totalInvestidoAquisicao > 0 ? totalRetornoReal - totalInvestidoAquisicao : null;
+  const roiTotalPct = totalInvestidoAquisicao > 0 && roiTotalReais != null
+    ? (roiTotalReais / totalInvestidoAquisicao) * 100 : null;
 
   // ROI por cliente novo = ROI total R$ / total de clientes novos
   const roiPorCliente = roiTotalReais != null && totalClientesNovos > 0
@@ -168,7 +184,8 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   const dadosGrafico = useMemo(() =>
     mesesComDados.map(d => ({
       mes: d.abrev,
-      "Investimento": d.investimento ?? 0,
+      "Aquisição": d.investimentoAquisicao ?? 0,
+      "Reativação": d.investimentoReativacao ?? 0,
       "Fat. Clientes Novos": d.faturamentoNovos ?? 0,
       "Retorno Real (51%)": d.retornoReal ?? 0,
     })),
@@ -190,37 +207,66 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
 
   return (
     <div className="space-y-6">
+      <Tabs defaultValue="geral">
+        <TabsList>
+          <TabsTrigger value="geral" className="gap-1.5">
+            <LayoutGrid size={14} /> Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="detalhamento" className="gap-1.5">
+            <ListTree size={14} /> Detalhamento por Fornecedor
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ─── Filtro de mês ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Filter size={13} />
-          Filtrar por mês:
-        </div>
-        <button
-          onClick={() => setMesFiltro(null)}
-          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-            mesFiltro === null
-              ? "bg-purple-600 text-white border-purple-600"
-              : "bg-white text-slate-600 border-slate-200 hover:border-purple-300"
-          }`}
-        >
-          Todos
-        </button>
-        {mesesComDados.map(d => (
+        <TabsContent value="geral" className="space-y-6 pt-4">
+
+      {/* ─── Filtro de mês + Importar ───────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Filter size={13} />
+            Filtrar por mês:
+          </div>
           <button
-            key={d.mes}
-            onClick={() => setMesFiltro(mesFiltro === d.mes ? null : d.mes)}
+            onClick={() => setMesFiltro(null)}
             className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-              mesFiltro === d.mes
+              mesFiltro === null
                 ? "bg-purple-600 text-white border-purple-600"
                 : "bg-white text-slate-600 border-slate-200 hover:border-purple-300"
             }`}
           >
-            {d.abrev}
+            Todos
           </button>
-        ))}
+          {mesesComDados.map(d => (
+            <button
+              key={d.mes}
+              onClick={() => setMesFiltro(mesFiltro === d.mes ? null : d.mes)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                mesFiltro === d.mes
+                  ? "bg-purple-600 text-white border-purple-600"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-purple-300"
+              }`}
+            >
+              {d.abrev}
+            </button>
+          ))}
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50"
+          onClick={() => setImportOpen(true)}
+        >
+          <Upload size={14} />
+          Importar planilha
+        </Button>
       </div>
+
+      <ImportarCustoMarketing
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        anoSel={anoSel}
+        onImported={() => refetchMarketing()}
+      />
 
       {/* ─── KPIs ──────────────────────────────────────────────────────────────── */}
       <div>
@@ -228,13 +274,21 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
           <div className="w-3 h-0.5 bg-purple-500 rounded" />
           Indicadores — {labelFiltro}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard
             label="Total Investido em Mkt"
             value={fmtBRL(totalInvestido)}
             sub={`${dadosFiltrados.filter(d => d.investimento != null).length} meses`}
             color="#7c3aed"
             icon={<DollarSign size={18} />}
+            variant="border"
+          />
+          <KpiCard
+            label="Invest. Reativação"
+            value={fmtBRL(totalInvestidoReativacao)}
+            sub="Clientes 6+ meses sem comprar"
+            color="#0891b2"
+            icon={<RefreshCw size={18} />}
             variant="border"
           />
           <KpiCard
@@ -254,9 +308,9 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             variant="border"
           />
           <KpiCard
-            label="CAC Médio"
+            label="CAC de Aquisição"
             value={cacMedio != null ? fmtBRL(cacMedio) : "—"}
-            sub="Custo por cliente novo"
+            sub="Invest. aquisição / cliente novo"
             color="#ea580c"
             icon={<Target size={18} />}
             variant="border"
@@ -268,7 +322,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 {roiTotalReais != null ? fmtBRLShort(roiTotalReais) : "—"}
                 {roiTotalPct != null && (
                   <span className="block text-sm font-semibold mt-0.5 opacity-80">
-                    {roiTotalPct.toFixed(0)}% sobre investimento
+                    {roiTotalPct.toFixed(0)}% sobre aquisição
                   </span>
                 )}
               </>
@@ -288,8 +342,9 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
       <div className="flex items-start gap-2 bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800">
         <Percent size={13} className="mt-0.5 shrink-0" />
         <span>
-          <strong>Metodologia ROI:</strong> O retorno real do marketing é calculado como <strong>51% do faturamento de clientes novos</strong> (margem operacional estimada).
-          ROI em R$ = Retorno Real − Investimento &nbsp;|&nbsp; ROI em % = (Retorno Real − Investimento) ÷ Investimento × 100
+          <strong>Metodologia ROI:</strong> O investimento em marketing é dividido em <strong>Aquisição</strong> (atrai clientes novos) e <strong>Reativação</strong> (resgata clientes 6+ meses sem comprar).
+          O retorno real considerado no ROI é <strong>51% do faturamento de clientes novos</strong> (margem operacional estimada), comparado apenas ao investimento em <strong>aquisição</strong> — a reativação não gera "cliente novo" e por isso não entra nesse cálculo.
+          ROI em R$ = Retorno Real − Invest. Aquisição &nbsp;|&nbsp; ROI em % = (Retorno Real − Invest. Aquisição) ÷ Invest. Aquisição × 100
         </span>
       </div>
 
@@ -301,7 +356,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp size={16} className="text-purple-600" />
-                Investimento vs Faturamento vs Retorno Real
+                Investimento (Aquisição x Reativação) vs Retorno Real
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -312,7 +367,8 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v: number) => fmtBRL(v)} />
                   <Legend iconSize={10} />
-                  <Bar dataKey="Investimento" fill="#7c3aed" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Aquisição" stackId="mkt" fill="#7c3aed" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Reativação" stackId="mkt" fill="#0891b2" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="Fat. Clientes Novos" fill="#16a34a" radius={[3, 3, 0, 0]} opacity={0.7} />
                   <Bar dataKey="Retorno Real (51%)" fill="#059669" radius={[3, 3, 0, 0]} />
                 </BarChart>
@@ -376,18 +432,20 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             Custo de Marketing e ROI — {labelFiltro}
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Preencha o investimento mensal em marketing. Os demais campos são calculados automaticamente.
+            Preencha o investimento mensal em Aquisição e Reativação. Os demais campos são calculados automaticamente.
           </p>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="text-xs text-muted-foreground bg-slate-50">
                 <TableHead className="font-semibold">Mês</TableHead>
-                <TableHead className="text-right font-semibold">Investimento</TableHead>
+                <TableHead className="text-right font-semibold">Aquisição</TableHead>
+                <TableHead className="text-right font-semibold">Reativação</TableHead>
                 <TableHead className="text-right font-semibold">Clientes Novos</TableHead>
                 <TableHead className="text-right font-semibold">Pedidos</TableHead>
-                <TableHead className="text-right font-semibold">CAC</TableHead>
+                <TableHead className="text-right font-semibold">CAC Aquisição</TableHead>
                 <TableHead className="text-right font-semibold">Fat. Clientes Novos</TableHead>
                 <TableHead className="text-right font-semibold">Retorno Real (51%)</TableHead>
                 <TableHead className="text-right font-semibold">ROI (R$)</TableHead>
@@ -396,7 +454,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dadosFiltrados.map(({ mes, nome, investimento, clientesNovosQtd, faturamentoNovos, pedidosNovos, retornoReal, cac, roiReais, roiPct }) => {
+              {dadosFiltrados.map(({ mes, nome, investimentoAquisicao, investimentoReativacao, clientesNovosQtd, faturamentoNovos, pedidosNovos, retornoReal, cac, roiReais, roiPct }) => {
                 const mk = custoMarketingMap[mes];
                 const isEditing = marketingEditando === mes;
                 return (
@@ -407,24 +465,51 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                         <div className="flex items-center justify-end gap-1">
                           <span className="text-muted-foreground text-xs">R$</span>
                           <Input
-                            className="w-32 h-7 text-right text-sm"
-                            value={marketingInput}
-                            onChange={e => setMarketingInput(e.target.value)}
+                            className="w-28 h-7 text-right text-sm"
+                            value={marketingInputAquisicao}
+                            onChange={e => setMarketingInputAquisicao(e.target.value)}
                             placeholder="0,00"
                             autoFocus
                             onKeyDown={e => {
                               if (e.key === "Enter") {
-                                const val = parseFloat(marketingInput.replace(/\./g, "").replace(",", "."));
-                                if (isNaN(val) || val < 0) { toast.error("Valor inválido"); return; }
-                                upsertMarketing.mutate({ mes, ano: anoSel, investimento: val, observacao: marketingObs || null });
+                                const valAq = parseFloat(marketingInputAquisicao.replace(/\./g, "").replace(",", "."));
+                                const valRe = parseFloat(marketingInputReativacao.replace(/\./g, "").replace(",", "."));
+                                if (isNaN(valAq) || valAq < 0 || isNaN(valRe) || valRe < 0) { toast.error("Valor inválido"); return; }
+                                upsertMarketing.mutate({ mes, ano: anoSel, investimentoAquisicao: valAq, investimentoReativacao: valRe, observacao: marketingObs || null });
                               }
                               if (e.key === "Escape") setMarketingEditando(null);
                             }}
                           />
                         </div>
                       ) : (
-                        <span className={investimento != null ? "font-semibold text-purple-700" : "text-muted-foreground"}>
-                          {investimento != null ? fmtBRL(investimento) : "—"}
+                        <span className={investimentoAquisicao != null ? "font-semibold text-purple-700" : "text-muted-foreground"}>
+                          {investimentoAquisicao != null ? fmtBRL(investimentoAquisicao) : "—"}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isEditing ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-muted-foreground text-xs">R$</span>
+                          <Input
+                            className="w-28 h-7 text-right text-sm"
+                            value={marketingInputReativacao}
+                            onChange={e => setMarketingInputReativacao(e.target.value)}
+                            placeholder="0,00"
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                const valAq = parseFloat(marketingInputAquisicao.replace(/\./g, "").replace(",", "."));
+                                const valRe = parseFloat(marketingInputReativacao.replace(/\./g, "").replace(",", "."));
+                                if (isNaN(valAq) || valAq < 0 || isNaN(valRe) || valRe < 0) { toast.error("Valor inválido"); return; }
+                                upsertMarketing.mutate({ mes, ano: anoSel, investimentoAquisicao: valAq, investimentoReativacao: valRe, observacao: marketingObs || null });
+                              }
+                              if (e.key === "Escape") setMarketingEditando(null);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <span className={investimentoReativacao != null ? "font-semibold text-cyan-700" : "text-muted-foreground"}>
+                          {investimentoReativacao != null ? fmtBRL(investimentoReativacao) : "—"}
                         </span>
                       )}
                     </TableCell>
@@ -441,7 +526,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                     <TableCell className="text-right">
                       {cac != null
                         ? <span className="font-semibold text-orange-600">{fmtBRL(cac)}</span>
-                        : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
+                        : <span className="text-muted-foreground">{investimentoAquisicao != null ? "sem dados" : "—"}</span>}
                     </TableCell>
                     <TableCell className="text-right">
                       {faturamentoNovos != null
@@ -456,12 +541,12 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                     <TableCell className="text-right">
                       {roiReais != null
                         ? <span className={`font-bold ${roiReais >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtBRL(roiReais)}</span>
-                        : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
+                        : <span className="text-muted-foreground">{investimentoAquisicao != null ? "sem dados" : "—"}</span>}
                     </TableCell>
                     <TableCell className="text-right">
                       {roiPct != null
                         ? <span className={`font-bold ${roiPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>{roiPct.toFixed(0)}%</span>
-                        : <span className="text-muted-foreground">{investimento != null ? "sem dados" : "—"}</span>}
+                        : <span className="text-muted-foreground">{investimentoAquisicao != null ? "sem dados" : "—"}</span>}
                     </TableCell>
                     <TableCell className="text-center">
                       {isEditing ? (
@@ -470,9 +555,10 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                             size="sm" variant="ghost"
                             className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700"
                             onClick={() => {
-                              const val = parseFloat(marketingInput.replace(/\./g, "").replace(",", "."));
-                              if (isNaN(val) || val < 0) { toast.error("Valor inválido"); return; }
-                              upsertMarketing.mutate({ mes, ano: anoSel, investimento: val, observacao: marketingObs || null });
+                              const valAq = parseFloat(marketingInputAquisicao.replace(/\./g, "").replace(",", "."));
+                              const valRe = parseFloat(marketingInputReativacao.replace(/\./g, "").replace(",", "."));
+                              if (isNaN(valAq) || valAq < 0 || isNaN(valRe) || valRe < 0) { toast.error("Valor inválido"); return; }
+                              upsertMarketing.mutate({ mes, ano: anoSel, investimentoAquisicao: valAq, investimentoReativacao: valRe, observacao: marketingObs || null });
                             }}
                             disabled={upsertMarketing.isPending}
                           >
@@ -492,7 +578,8 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                           className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600"
                           onClick={() => {
                             setMarketingEditando(mes);
-                            setMarketingInput(investimento != null ? investimento.toFixed(2).replace(".", ",") : "");
+                            setMarketingInputAquisicao(investimentoAquisicao != null ? investimentoAquisicao.toFixed(2).replace(".", ",") : "");
+                            setMarketingInputReativacao(investimentoReativacao != null ? investimentoReativacao.toFixed(2).replace(".", ",") : "");
                             setMarketingObs(mk?.observacao ?? "");
                           }}
                         >
@@ -510,7 +597,8 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                   <TableCell className="font-bold text-sm">
                     {mesFiltro != null ? MESES[mesFiltro - 1] : `Total ${anoSel}`}
                   </TableCell>
-                  <TableCell className="text-right font-bold text-purple-700">{fmtBRL(totalInvestido)}</TableCell>
+                  <TableCell className="text-right font-bold text-purple-700">{fmtBRL(totalInvestidoAquisicao)}</TableCell>
+                  <TableCell className="text-right font-bold text-cyan-700">{fmtBRL(totalInvestidoReativacao)}</TableCell>
                   <TableCell className="text-right font-bold text-blue-700">{totalClientesNovos}</TableCell>
                   <TableCell className="text-right font-bold text-indigo-700">{totalPedidosNovos}</TableCell>
                   <TableCell className="text-right font-bold text-orange-600">
@@ -529,7 +617,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 {mesFiltro === null && (
                   <TableRow>
                     <TableCell className="text-xs text-muted-foreground font-medium">Média mensal</TableCell>
-                    <TableCell colSpan={5} />
+                    <TableCell colSpan={6} />
                     <TableCell colSpan={1} />
                     <TableCell className="text-right text-xs font-semibold text-emerald-600">
                       {roiMedioReais != null ? fmtBRL(roiMedioReais) : "—"}
@@ -543,8 +631,15 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
               </TableFooter>
             )}
           </Table>
+          </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="detalhamento" className="pt-4">
+          <DetalhamentoMarketing anoSel={anoSel} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
