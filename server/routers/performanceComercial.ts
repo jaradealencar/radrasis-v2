@@ -24,7 +24,7 @@ const CACHE_TTL_HISTORICO_PERSISTENTE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 // ─── Cache persistente no banco de dados ─────────────────────────────────────
 // Sobrevive a reinicializações do servidor. Evita cotações/faturamento zerados
 // após restart quando a API MubiSys está lenta ou com timeout.
-async function getDbCache(cacheKey: string): Promise<{ allOs: any[]; allOrc: any[] } | null> {
+async function getDbCache(cacheKey: string, opts?: { ignorarExpiracao?: boolean }): Promise<{ allOs: any[]; allOrc: any[] } | null> {
   try {
     const db = await getDb();
     if (!db) return null;
@@ -32,8 +32,10 @@ async function getDbCache(cacheKey: string): Promise<{ allOs: any[]; allOrc: any
       .where(eq(mubisysApiCache.cacheKey, cacheKey)).limit(1);
     if (rows.length === 0) return null;
     const row = rows[0];
-    // Verificar se expirou
-    if (new Date() > new Date(row.expiresAt)) {
+    // Verificar se expirou — pulado quando ignorarExpiracao=true (usado só como
+    // referência de plausibilidade, ver checagem de zero implausível no mês vigente
+    // em _getMesFromApiImpl; nesse caso não queremos apagar o único backup bom).
+    if (!opts?.ignorarExpiracao && new Date() > new Date(row.expiresAt)) {
       // Expirado — apagar e retornar null para forçar nova busca
       await db.delete(mubisysApiCache).where(eq(mubisysApiCache.cacheKey, cacheKey));
       return null;
@@ -360,15 +362,43 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
       const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal });
       allOs = osResult.itens;
       allOrc = orcResult.itens;
+
+      // ─── SANITY CHECK: zero implausível no MÊS VIGENTE ───────────────────
+      // MubiSys às vezes responde 200 com lista vazia de forma transitória
+      // (falha intermitente do lado deles, não timeout — ver TIMEOUT_LISTA_MS
+      // e comentário em getMes). Para meses fechados já existe proteção
+      // comparando com historico_os (banco local importado) — mas o mês
+      // vigente não é importado ao vivo, então o banco local também estaria
+      // zerado e não serve de referência. Em vez disso, comparamos com o
+      // último resultado NÃO-VAZIO já cacheado para este mês (mesmo expirado):
+      // dado aprovado/orçado não desaparece, então um zero repentino depois de
+      // já ter havido dado é implausível — preferimos servir o cache anterior
+      // (levemente desatualizado) a mostrar R$ 0 por um glitch passageiro.
+      // Validado em 03/09/2026: getMes com forceRefresh voltou 0/0 duas vezes
+      // seguidas para Set/2026 enquanto uma consulta direta à mesma janela
+      // devolvia 24 OS / 97 orçamentos; chamadas subsequentes já vieram certas.
+      let usouCacheAnteriorPorZeroImplausivel = false;
+      if (isMesAtual(mes, ano) && allOs.length === 0 && allOrc.length === 0) {
+        const anterior = await getDbCache(rawCacheKey, { ignorarExpiracao: true });
+        if (anterior && (anterior.allOs.length > 0 || anterior.allOrc.length > 0)) {
+          console.warn(`[MubiSys] Resposta zerada implausível para mês vigente ${mes}/${ano} — usando último cache não-vazio (${anterior.allOs.length} OS, ${anterior.allOrc.length} orçamentos) em vez do zero.`);
+          allOs = anterior.allOs;
+          allOrc = anterior.allOrc;
+          usouCacheAnteriorPorZeroImplausivel = true;
+        }
+      }
+
       // Salvar em memória sempre (mesmo parcial — melhor que zero para o usuário atual)
       setCacheWithTTL(osCacheKey, allOs, mes, ano);
       setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
-      // Cache persistente: SOMENTE salvar se AMBAS as buscas foram completas
-      // Dados parciais no cache persistente causam cotações/faturamento errados após restart
-      if (osResult.completo && orcResult.completo) {
+      // Cache persistente: SOMENTE salvar se AMBAS as buscas foram completas.
+      // Dados parciais no cache persistente causam cotações/faturamento errados
+      // após restart. Também não sobrescrever com o zero implausível substituído
+      // acima — isso apagaria o próprio backup que acabamos de usar.
+      if (osResult.completo && orcResult.completo && !usouCacheAnteriorPorZeroImplausivel) {
         setDbCache(rawCacheKey, mes, ano, allOs, allOrc).catch(() => {});
         console.log(`[MubiSys] Cache persistente salvo para ${mes}/${ano}: ${allOs.length} OS, ${allOrc.length} orçamentos`);
-      } else {
+      } else if (!usouCacheAnteriorPorZeroImplausivel) {
         console.warn(`[MubiSys] Busca incompleta para ${mes}/${ano} — cache persistente NÃO salvo (OS: ${osResult.completo}, Orc: ${orcResult.completo})`);
       }
     }
