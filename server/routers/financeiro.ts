@@ -3,6 +3,81 @@ import { router, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { financeiroMensal, custoMarketing, custoMarketingItens, custosFixos, dividasParcelamentos, dreMensal } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
+import { perguntarSobreFinanceiro, type MensagemChat } from "../integrations/anthropic-client";
+
+const MESES_NOMES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const fmtR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** Monta o contexto de dados financeiros (texto) enviado como system message ao Claude.
+ *  Reconstruído a cada pergunta para refletir o estado mais recente do banco. */
+async function montarContextoFinanceiro(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<string> {
+  const [mensal, dre, fixosAtivos, marketingRows, dividasAtivas] = await Promise.all([
+    db.select().from(financeiroMensal),
+    db.select().from(dreMensal),
+    db.select().from(custosFixos).where(eq(custosFixos.ativo, true)),
+    db.select().from(custoMarketing),
+    db.select().from(dividasParcelamentos).where(eq(dividasParcelamentos.ativo, true)),
+  ]);
+
+  const linhasMensal = mensal
+    .sort((a, b) => (a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes))
+    .map(r => {
+      const campos: string[] = [];
+      const add = (label: string, v: string | number | null) => { if (v != null) campos.push(`${label}=${fmtR(Number(v))}`); };
+      add("Faturamento", r.faturamentoOficial);
+      add("DespFixas", r.despesasFixas);
+      add("DespVariaveis", r.despesasVariaveis);
+      add("LucroLiquido", r.lucroLiquido);
+      add("SaldoMes", r.saldoMes);
+      add("TL1", r.tl1); add("TL2", r.tl2); add("TL3", r.tl3);
+      add("ImpostoDAS", r.impostoDas); add("ICMS_DIFAL", r.impostoIcmsDifal); add("DAEMS", r.impostoDaems);
+      add("ComissoesBV", r.comissoesBv); add("ProdutividadeSolda", r.produtividadeSolda);
+      add("FreteRetrabalho", r.freteRetrabalho); add("DevSoftware", r.devSoftware);
+      if (r.numColaboradores != null) campos.push(`Colaboradores=${r.numColaboradores}`);
+      return `${MESES_NOMES[r.mes]}/${r.ano}: ${campos.join(", ") || "(sem dados preenchidos)"}`;
+    });
+
+  const linhasDre = dre
+    .sort((a, b) => (a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes))
+    .map(r => {
+      const campos: string[] = [];
+      const add = (label: string, v: string | number | null) => { if (v != null) campos.push(`${label}=${fmtR(Number(v))}`); };
+      add("ReceitaOpBruta", r.receitaOperacionalBruta);
+      add("LucroBruto", r.lucroBruto);
+      add("LucroOperacional", r.lucroOperacional);
+      add("LucroLiquido", r.lucroLiquido);
+      add("MateriaPrima", r.materiaPrima);
+      add("DespesasFixas", r.despesasFixas);
+      return `${MESES_NOMES[r.mes]}/${r.ano}: ${campos.join(", ") || "(sem dados)"}`;
+    });
+
+  const totalCustosFixos = fixosAtivos.reduce((s, c) => s + Number(c.valor || 0), 0);
+  const totalMarketing = marketingRows.reduce((s, m) => s + Number(m.investimento || 0), 0);
+
+  return `## DADOS FINANCEIROS DISPONÍVEIS (banco de produção, consultado agora)
+
+### Painel Financeiro mensal (financeiro_mensal) — fonte oficial de faturamento
+${linhasMensal.length ? linhasMensal.join("\n") : "Nenhum mês cadastrado."}
+
+### DRE Gerencial mensal (dre_mensal) — alimentado pelo ERP (MubiSys), pode divergir do faturamento oficial acima
+${linhasDre.length ? linhasDre.join("\n") : "Nenhum mês cadastrado."}
+
+### Custos Fixos ativos cadastrados
+Total mensal previsto: ${fmtR(totalCustosFixos)} (${fixosAtivos.length} itens ativos)
+
+### Marketing
+Investimento total acumulado (todos os meses cadastrados): ${fmtR(totalMarketing)}
+
+### Dívidas e Parcelamentos ativos
+${dividasAtivas.length} registro(s) ativo(s).
+
+## O QUE NÃO ESTÁ DISPONÍVEL NESTE CONTEXTO (não invente estes números)
+- Orçado/Budget mensal (não existe cadastro de metas no sistema hoje)
+- Depreciação/amortização e juros separados de despesas fixas (portanto EBITDA calculado aqui é aproximado e coincide com Lucro Líquido)
+- Dados por cliente/produto/canal (necessários para Coorte, Pareto, LTV/CAC, margem de contribuição por canal)
+- Capital investido e patrimônio líquido (necessários para ROIC/ROE)
+- Prazos de recebimento/pagamento (necessários para Capital de Giro e Ciclo de Caixa)`;
+}
 
 export const financeiroRouter = router({
   // Buscar dados financeiros de um mês/ano específico
@@ -336,5 +411,24 @@ export const financeiroRouter = router({
           percComissaoInterna: r.percComissaoInterna ? Number(r.percComissaoInterna) : null,
           percDescontos: r.percDescontos ? Number(r.percDescontos) : null,
         }));
+    }),
+
+  // ─── Chat de IA (CFO virtual) ──────────────────────────────────────────────
+  perguntarIA: publicProcedure
+    .input(z.object({
+      pergunta: z.string().min(1),
+      historico: z.array(z.object({
+        role: z.enum(["user", "assistant"]),
+        texto: z.string(),
+      })).default([]),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+
+      const contexto = await montarContextoFinanceiro(db);
+      const historico: MensagemChat[] = input.historico;
+      const resposta = await perguntarSobreFinanceiro(contexto, historico, input.pergunta);
+      return { resposta };
     }),
 });

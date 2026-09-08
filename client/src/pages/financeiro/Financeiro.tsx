@@ -3,6 +3,7 @@ import CustosFixos from "./CustosFixos";
 import MarketingFinanceiro from "./MarketingFinanceiro";
 import PainelDRE from "./PainelDRE";
 import ObservacoesMensais from "./ObservacoesMensais";
+import ChatFinanceiro from "./ChatFinanceiro";
 import PainelFinanceiro from "@/components/PainelFinanceiro";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,7 @@ import {
 import {
   Wallet, TrendingUp, TrendingDown, Users, DollarSign,
   PieChart, Edit3, Check, X, ChevronDown, ChevronUp,
-  Info, Download, BarChart2, ReceiptText, FileText,
+  Info, Download, BarChart2, ReceiptText, FileText, Sparkles,
 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { STATUS_COLORS } from "@/lib/chartColors";
@@ -119,7 +120,7 @@ export default function Financeiro() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [expandedMes, setExpandedMes] = useState<number | null>(null);
 
-  const [abaAtiva, setAbaAtiva] = useState<"painel" | "custos" | "marketing" | "observacoes" | "dados-mensais">("painel");
+  const [abaAtiva, setAbaAtiva] = useState<"painel" | "custos" | "marketing" | "observacoes" | "dados-mensais" | "chat">("painel");
   const utils = trpc.useUtils();
   const { data: registros = [] } = trpc.financeiro.list.useQuery({ ano: anoSel });
   const upsert = trpc.financeiro.upsert.useMutation({
@@ -368,6 +369,17 @@ export default function Financeiro() {
           <DollarSign size={15} />
           Dados Mensais
         </button>
+        <button
+          onClick={() => setAbaAtiva("chat")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+            abaAtiva === "chat"
+              ? "border-purple-500 text-purple-700 bg-purple-50"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+        >
+          <Sparkles size={15} />
+          Assistente IA
+        </button>
       </div>
 
       {/* Conteúdo da aba Observações */}
@@ -381,6 +393,9 @@ export default function Financeiro() {
 
       {/* Conteúdo da aba Marketing */}
       {abaAtiva === "marketing" && <MarketingFinanceiro anoSel={anoSel} />}
+
+      {/* Conteúdo da aba Assistente IA */}
+      {abaAtiva === "chat" && <ChatFinanceiro />}
 
       {/* Conteúdo da aba Painel — visível apenas quando abaAtiva === "painel" */}
       {abaAtiva === "painel" && <PainelDRE anoSel={anoSel} />}
