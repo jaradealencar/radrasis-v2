@@ -24,7 +24,7 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, DollarSign, BarChart2,
-  PieChart as PieIcon, AlertTriangle, CheckCircle2, Minus, Loader2,
+  PieChart as PieIcon, AlertTriangle, CheckCircle2, Minus, Loader2, Info,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
 import { STATUS_COLORS } from "@/lib/chartColors";
@@ -197,37 +197,66 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
     };
   }, [comparativoData]);
 
-  const ultimo = dadosOrdenados[dadosOrdenados.length - 1] ?? null;
-  const penultimo = dadosOrdenados[dadosOrdenados.length - 2] ?? null;
+  // dre_mensal (ERP) tem prioridade; quando um campo vem NULL de lá (ex: despesas com
+  // pessoal/financeiras não existem no ERP), completa com financeiro_mensal quando
+  // disponível — mesma fonte que a aba Comparativo Anual já usa. `_fallback` marca
+  // linhas que usaram esse complemento, para não passar impressão de dado 100% ERP.
+  const dadosComFallback = useMemo(() => dadosOrdenados.map(d => {
+    const fin = finMap[d.mes];
+    const finFat = fin?.faturamentoOficial ? parseFloat(fin.faturamentoOficial) : null;
+    const finFixas = fin?.despesasFixas ? parseFloat(fin.despesasFixas) : null;
+    const finVar = fin?.despesasVariaveis ? parseFloat(fin.despesasVariaveis) : null;
+    const finTotalDesp = (finFixas != null && finVar != null) ? finFixas + finVar : null;
+    const finLucro = fin?.lucroLiquido ? parseFloat(fin.lucroLiquido) : null;
+
+    const receitaOperacionalBruta = d.receitaOperacionalBruta ?? finFat;
+    const totalSaidas = d.totalSaidas ?? finTotalDesp;
+    const lucroLiquido = d.lucroLiquido ?? finLucro;
+    // Sem quebra de pessoal/financeiras/não-operacionais no complemento, então o
+    // "operacional" aproximado aqui coincide com o líquido — mesma limitação já
+    // documentada no chat de IA e no formulário de Dados Mensais.
+    const lucroOperacional = d.lucroOperacional ?? lucroLiquido;
+    const margemResultadoEfetivo = d.margemResultadoEfetivo
+      ?? (receitaOperacionalBruta && lucroLiquido != null ? lucroLiquido / receitaOperacionalBruta : null);
+    const despesasFixas = d.despesasFixas ?? finFixas;
+    const despesaVariavel = d.despesaVariavel ?? finVar;
+
+    const usouFallback = d.totalSaidas == null && finTotalDesp != null;
+
+    return { ...d, receitaOperacionalBruta, totalSaidas, lucroOperacional, lucroLiquido, margemResultadoEfetivo, despesasFixas, despesaVariavel, usouFallback };
+  }), [dadosOrdenados, finMap]);
+
+  const ultimo = dadosComFallback[dadosComFallback.length - 1] ?? null;
+  const penultimo = dadosComFallback[dadosComFallback.length - 2] ?? null;
 
   // Métricas do último mês disponível
   const mesLabel = ultimo ? `${MESES_ABREV[(ultimo.mes - 1)]}/${ultimo.ano}` : "—";
 
   // Dados para gráficos
-  const chartDRE = useMemo(() => dadosOrdenados.map(d => ({
+  const chartDRE = useMemo(() => dadosComFallback.map(d => ({
     name: `${MESES_ABREV[(d.mes - 1)]}/${String(d.ano).slice(2)}`,
     "Receita Op.": d.receitaOperacionalBruta,
     "Total Saídas": d.totalSaidas,
     "Lucro Operacional": d.lucroOperacional,
     "Lucro Líquido": d.lucroLiquido,
-  })), [dadosOrdenados]);
+  })), [dadosComFallback]);
 
-  const chartMargem = useMemo(() => dadosOrdenados.map(d => ({
+  const chartMargem = useMemo(() => dadosComFallback.map(d => ({
     name: `${MESES_ABREV[(d.mes - 1)]}/${String(d.ano).slice(2)}`,
     "Resultado Efetivo %": d.margemResultadoEfetivo,
     "Lucro Operacional %": d.lucroOperacional != null && d.receitaOperacionalBruta
       ? d.lucroOperacional / d.receitaOperacionalBruta
       : null,
-  })), [dadosOrdenados]);
+  })), [dadosComFallback]);
 
-  const chartComposicao = useMemo(() => dadosOrdenados.map(d => ({
+  const chartComposicao = useMemo(() => dadosComFallback.map(d => ({
     name: `${MESES_ABREV[(d.mes - 1)]}/${String(d.ano).slice(2)}`,
     "Mat. Prima": d.percMateriaPrima,
     "Fixo Rateado": d.percFixoRateado,
     "Tributos": d.percTributos,
     "Comissão": d.percComissaoInterna,
     "Descontos": d.percDescontos,
-  })), [dadosOrdenados]);
+  })), [dadosComFallback]);
 
   // Composição de custos do último mês para o gráfico de pizza
   const pieData = useMemo(() => {
@@ -523,8 +552,8 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
       {(() => {
         // Usa dre_mensal se disponível, senão usa o último mês com dados DRE
         const selMes = mesSel ?? ultimo?.mes ?? todosMeses[todosMeses.length - 1];
-        const sel = dadosOrdenados.find(d => d.mes === selMes) ?? ultimo;
-        const prev = sel ? dadosOrdenados[dadosOrdenados.indexOf(sel) - 1] ?? null : null;
+        const sel = dadosComFallback.find(d => d.mes === selMes) ?? ultimo;
+        const prev = sel ? dadosComFallback[dadosComFallback.indexOf(sel) - 1] ?? null : null;
         if (!sel) return null;
         const label = `${MESES_ABREV[sel.mes - 1]}/${sel.ano}`;
         return (
@@ -533,6 +562,15 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
               <div className="w-3 h-0.5 bg-blue-500 rounded" />
               Indicadores — {label}
             </div>
+            {sel.usouFallback && (
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 mb-3">
+                <Info size={13} className="mt-0.5 shrink-0" />
+                <span>
+                  Total de Saídas, Lucro e Margens deste mês vêm do <strong>Painel Financeiro</strong> (Dados
+                  Mensais), não do ERP — a Receita Operacional Bruta acima é a única linha 100% ERP (MubiSys).
+                </span>
+              </div>
+            )}
             {sel.lucroLiquido == null && sel.receitaOperacionalBruta != null && (
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-3">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -768,9 +806,10 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
             <TableHeader>
               <TableRow className="bg-slate-50 border-slate-200">
                 <TableHead className="text-slate-600 text-xs uppercase tracking-wide w-64">Linha DRE</TableHead>
-                {dadosOrdenados.map(d => (
+                {dadosComFallback.map(d => (
                   <TableHead key={`${d.ano}-${d.mes}`} className="text-right text-slate-600 text-xs uppercase tracking-wide">
                     {MESES_ABREV[d.mes - 1]}/{String(d.ano).slice(2)}
+                    {d.usouFallback && <span title="Complementado pelo Painel Financeiro" className="text-blue-500">*</span>}
                   </TableHead>
                 ))}
                 <TableHead className="text-right text-slate-600 text-xs uppercase tracking-wide">Média</TableHead>
@@ -780,7 +819,7 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
               {tabelaDRE.map((linha, idx) => {
                 const isSubtotal = linha.subtotal;
                 const isDestaque = linha.destaque;
-                const valores = dadosOrdenados.map(d => (d as any)[linha.key] as number | null);
+                const valores = dadosComFallback.map(d => (d as any)[linha.key] as number | null);
                 const media = valores.filter(v => v != null).length > 0
                   ? valores.filter(v => v != null).reduce((s, v) => s + v!, 0) / valores.filter(v => v != null).length
                   : null;
