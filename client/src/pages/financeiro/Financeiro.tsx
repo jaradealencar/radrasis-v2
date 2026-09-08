@@ -4,6 +4,7 @@ import MarketingFinanceiro from "./MarketingFinanceiro";
 import PainelDRE from "./PainelDRE";
 import ObservacoesMensais from "./ObservacoesMensais";
 import ChatFinanceiro from "./ChatFinanceiro";
+import RadarMargens from "./RadarMargens";
 import PainelFinanceiro from "@/components/PainelFinanceiro";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -120,7 +121,7 @@ export default function Financeiro() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [expandedMes, setExpandedMes] = useState<number | null>(null);
 
-  const [abaAtiva, setAbaAtiva] = useState<"painel" | "custos" | "marketing" | "observacoes" | "dados-mensais" | "chat">("painel");
+  const [abaAtiva, setAbaAtiva] = useState<"painel" | "custos" | "marketing" | "observacoes" | "dados-mensais" | "chat" | "radar-margens">("painel");
   const utils = trpc.useUtils();
   const { data: registros = [] } = trpc.financeiro.list.useQuery({ ano: anoSel });
   const upsert = trpc.financeiro.upsert.useMutation({
@@ -370,6 +371,17 @@ export default function Financeiro() {
           Dados Mensais
         </button>
         <button
+          onClick={() => setAbaAtiva("radar-margens")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+            abaAtiva === "radar-margens"
+              ? "border-indigo-500 text-indigo-700 bg-indigo-50"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+        >
+          <BarChart2 size={15} />
+          Radar de Margens
+        </button>
+        <button
           onClick={() => setAbaAtiva("chat")}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
             abaAtiva === "chat"
@@ -396,6 +408,7 @@ export default function Financeiro() {
 
       {/* Conteúdo da aba Assistente IA */}
       {abaAtiva === "chat" && <ChatFinanceiro />}
+      {abaAtiva === "radar-margens" && <RadarMargens anoSel={anoSel} />}
 
       {/* Conteúdo da aba Painel — visível apenas quando abaAtiva === "painel" */}
       {abaAtiva === "painel" && <PainelDRE anoSel={anoSel} />}

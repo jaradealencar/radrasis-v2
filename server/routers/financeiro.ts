@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
-import { financeiroMensal, custoMarketing, custoMarketingItens, custosFixos, dividasParcelamentos, dreMensal } from "../../drizzle/schema";
+import { financeiroMensal, custoMarketing, custoMarketingItens, custosFixos, dividasParcelamentos, dreMensal, historicoOs } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { perguntarSobreFinanceiro, type MensagemChat } from "../integrations/anthropic-client";
+import { isOsNormalDb } from "./performanceComercial";
 
 const MESES_NOMES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const fmtR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -412,6 +413,113 @@ export const financeiroRouter = router({
           percDescontos: r.percDescontos ? Number(r.percDescontos) : null,
         }));
     }),
+
+  // ─── Radar de Margens (histórico completo por O.S. em historico_os, agrupado
+  // pelo mês/ano em que a O.S. foi vendida — mesma base do backfill do dre_mensal,
+  // mas com resultado líquido e margem de contribuição por O.S., que dre_mensal
+  // não tem, e ranking por vendedor) ──────────────────────────────────────────
+  getRadarMargens: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return { meses: [], vendedores: [] };
+
+    const rows = await db.select({
+      mes: historicoOs.mes,
+      ano: historicoOs.ano,
+      tipoOs: historicoOs.tipoOs,
+      status: historicoOs.status,
+      vendedor: historicoOs.vendedor,
+      valorOs: historicoOs.valorOs,
+      materiaPrima: historicoOs.materiaPrima,
+      custoFixo: historicoOs.custoFixo,
+      maoDeObra: historicoOs.maoDeObra,
+      tarifasFinanceiras: historicoOs.tarifasFinanceiras,
+      comissoesInternas: historicoOs.comissoesInternas,
+      comissoesExternas: historicoOs.comissoesExternas,
+      terceirizados: historicoOs.terceirizados,
+      tributos: historicoOs.tributos,
+      resultadoReais: historicoOs.resultadoReais,
+      contribuicaoReais: historicoOs.contribuicaoReais,
+    }).from(historicoOs);
+
+    const num = (v: string | null | undefined) => parseFloat(String(v ?? "0")) || 0;
+
+    interface MesAcc {
+      mes: number; ano: number; count: number; valorOs: number;
+      materiaPrima: number; custoFixo: number; maoDeObra: number; tarifasFinanceiras: number;
+      comissoes: number; terceirizados: number; tributos: number;
+      resultado: number; contribuicao: number;
+    }
+    const novoMesAcc = (mes: number, ano: number): MesAcc => ({
+      mes, ano, count: 0, valorOs: 0, materiaPrima: 0, custoFixo: 0, maoDeObra: 0,
+      tarifasFinanceiras: 0, comissoes: 0, terceirizados: 0, tributos: 0, resultado: 0, contribuicao: 0,
+    });
+
+    const porMes = new Map<string, MesAcc>();
+    const porVendedor = new Map<string, { vendedor: string; count: number; valorOs: number; resultado: number; contribuicao: number }>();
+
+    for (const os of rows) {
+      if (!isOsNormalDb(os)) continue;
+      const valorOs = num(os.valorOs);
+
+      const chaveMes = `${os.ano}-${String(os.mes).padStart(2, "0")}`;
+      const acc = porMes.get(chaveMes) ?? novoMesAcc(os.mes, os.ano);
+      acc.count += 1;
+      acc.valorOs += valorOs;
+      acc.materiaPrima += num(os.materiaPrima);
+      acc.custoFixo += num(os.custoFixo);
+      acc.maoDeObra += num(os.maoDeObra);
+      acc.tarifasFinanceiras += num(os.tarifasFinanceiras);
+      acc.comissoes += num(os.comissoesInternas) + num(os.comissoesExternas);
+      acc.terceirizados += num(os.terceirizados);
+      acc.tributos += num(os.tributos);
+      acc.resultado += num(os.resultadoReais);
+      acc.contribuicao += num(os.contribuicaoReais);
+      porMes.set(chaveMes, acc);
+
+      const vendedor = os.vendedor || "Sem vendedor";
+      const vAcc = porVendedor.get(vendedor) ?? { vendedor, count: 0, valorOs: 0, resultado: 0, contribuicao: 0 };
+      vAcc.count += 1;
+      vAcc.valorOs += valorOs;
+      vAcc.resultado += num(os.resultadoReais);
+      vAcc.contribuicao += num(os.contribuicaoReais);
+      porVendedor.set(vendedor, vAcc);
+    }
+
+    const meses = [...porMes.values()]
+      .sort((a, b) => (a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes))
+      .map(m => {
+        const variavel = m.materiaPrima + m.tributos + m.comissoes + m.terceirizados;
+        const fixo = m.custoFixo + m.maoDeObra + m.tarifasFinanceiras;
+        return {
+          mes: m.mes,
+          ano: m.ano,
+          label: `${MESES_NOMES[m.mes].slice(0, 3)}/${String(m.ano).slice(2)}`,
+          count: m.count,
+          valorOs: m.valorOs,
+          variavel,
+          fixo,
+          materiaPrima: m.materiaPrima,
+          custoFixoPuro: m.custoFixo,
+          maoDeObra: m.maoDeObra,
+          resultado: m.resultado,
+          contribuicao: m.contribuicao,
+          resultadoPct: m.valorOs ? (m.resultado / m.valorOs) * 100 : 0,
+          contribuicaoPct: m.valorOs ? (m.contribuicao / m.valorOs) * 100 : 0,
+          ticketMedio: m.count ? m.valorOs / m.count : 0,
+        };
+      });
+
+    const vendedores = [...porVendedor.values()]
+      .filter(v => v.count >= 5)
+      .sort((a, b) => b.valorOs - a.valorOs)
+      .map(v => ({
+        ...v,
+        resultadoPct: v.valorOs ? (v.resultado / v.valorOs) * 100 : 0,
+        contribuicaoPct: v.valorOs ? (v.contribuicao / v.valorOs) * 100 : 0,
+      }));
+
+    return { meses, vendedores };
+  }),
 
   // ─── Chat de IA (CFO virtual) ──────────────────────────────────────────────
   perguntarIA: publicProcedure
