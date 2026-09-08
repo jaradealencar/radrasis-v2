@@ -27,7 +27,7 @@ import {
 import KpiCard from "@/components/KpiCard";
 import { STATUS_COLORS } from "@/lib/chartColors";
 import ChartTooltip from "@/components/ChartTooltip";
-import { fmtBrl, fmtBrlCompact, fmtPct, fmtNum } from "@/lib/format";
+import { fmtBrl, fmtBrlCompact, fmtPct, fmtNum, MESES_ABREV } from "@/lib/format";
 
 const RETRY_1 = { retry: 1 } as const;
 
@@ -47,6 +47,21 @@ export default function RadarMargens({ anoSel }: { anoSel: number }) {
     isError,
     refetch,
   } = trpc.financeiro.getRadarMargens.useQuery(undefined, RETRY_1);
+
+  // Último mês fechado do calendário real — evita comparar um mês corrente ainda
+  // incompleto (poucos dias) contra o mesmo mês inteiro do ano anterior, o que
+  // faria a recompra do ano corrente parecer artificialmente mais baixa (o
+  // cliente ainda não teve tempo de voltar).
+  const mesLimiteRetencao = useMemo(() => {
+    const m = new Date().getMonth(); // 0 = jan; já é "mês anterior" 1-indexado
+    return m === 0 ? 12 : m;
+  }, []);
+  const { data: retencaoData } = trpc.financeiro.getRetencaoClientes.useQuery(
+    { mesLimite: mesLimiteRetencao },
+    RETRY_1,
+  );
+  const retAnoAtual = retencaoData?.anos.find(a => a.ano === anoSel);
+  const retAnoAnterior = retencaoData?.anos.find(a => a.ano === anoSel - 1);
 
   const meses = data?.meses ?? [];
   const vendedores = data?.vendedores ?? [];
@@ -257,6 +272,60 @@ export default function RadarMargens({ anoSel }: { anoSel: number }) {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Retenção de clientes — compra única × recompra × intervalo */}
+      {retAnoAtual && retAnoAnterior && (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500" />
+              Retenção de Clientes — {anoSel} vs. {anoSel - 1}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3">
+              Comparando janeiro a {MESES_ABREV[mesLimiteRetencao - 1]} nos dois anos — mesmo recorte, pra
+              não penalizar {anoSel} por ainda não ter tido tempo de os clientes recentes voltarem a comprar.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { ano: anoSel - 1, r: retAnoAnterior },
+                { ano: anoSel, r: retAnoAtual },
+              ].map(({ ano, r }) => (
+                <div key={ano} className={`rounded-xl border p-4 ${ano === anoSel ? "border-indigo-300 bg-indigo-50/40" : "border-slate-200 bg-slate-50"}`}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
+                    {ano} (jan–{MESES_ABREV[mesLimiteRetencao - 1]}) · {fmtNum(r.totalClientes)} clientes ativos
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm text-slate-600">Compra única</span>
+                      <span className="font-mono font-bold text-amber-600">{fmtNum(r.unicos)} <span className="text-xs text-muted-foreground">({fmtPct(r.unicosPct)})</span></span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm text-slate-600">Com recompra</span>
+                      <span className="font-mono font-bold text-emerald-700">{fmtNum(r.recompra)} <span className="text-xs text-muted-foreground">({fmtPct(r.recompraPct)})</span></span>
+                    </div>
+                    <div className="flex justify-between items-baseline pt-2 border-t border-slate-200">
+                      <span className="text-sm text-slate-600">Intervalo médio entre compras</span>
+                      <span className="font-mono font-bold text-indigo-700">{r.intervaloMedioDias != null ? `${fmtNum(r.intervaloMedioDias, 0)} dias` : "—"}</span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm text-slate-600">Intervalo mediano</span>
+                      <span className="font-mono text-slate-700">{r.intervaloMedianaDias != null ? `${fmtNum(r.intervaloMedianaDias, 0)} dias` : "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {retAnoAtual.recompraPct < retAnoAnterior.recompraPct && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-3">
+                A taxa de recompra caiu {fmtPct(retAnoAnterior.recompraPct - retAnoAtual.recompraPct)} pontos em relação a {anoSel - 1}
+                {" "}— {fmtNum(retAnoAnterior.totalClientes - retAnoAtual.totalClientes)} clientes ativos a menos no mesmo recorte.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

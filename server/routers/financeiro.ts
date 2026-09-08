@@ -521,6 +521,103 @@ export const financeiroRouter = router({
     return { meses, vendedores };
   }),
 
+  // ─── Retenção de clientes (compra única × recompra × intervalo entre compras,
+  // por ano de venda — mesma base do Radar de Margens) ──────────────────────────
+  getRetencaoClientes: publicProcedure
+    .input(z.object({
+      // Restringe todos os anos ao mesmo recorte jan-mesLimite — sem isso, um ano
+      // corrente parcial (poucos meses) parece ter menos recompra só por ainda não
+      // ter tido tempo de o cliente voltar, não porque a retenção caiu de verdade.
+      mesLimite: z.number().min(1).max(12).optional(),
+    }).optional())
+    .query(async ({ input }) => {
+    const db = await getDb();
+    if (!db) return { anos: [] };
+    const mesLimite = input?.mesLimite;
+
+    const rows = await db.select({
+      ano: historicoOs.ano,
+      mes: historicoOs.mes,
+      empresa: historicoOs.empresa,
+      dataAprovacao: historicoOs.dataAprovacao,
+      valorOs: historicoOs.valorOs,
+      tipoOs: historicoOs.tipoOs,
+      status: historicoOs.status,
+    }).from(historicoOs);
+
+    const num = (v: string | null | undefined) => parseFloat(String(v ?? "0")) || 0;
+
+    // dataAprovacao tem dois formatos no banco: ISO "2026-09-01 07:42:07" (sync
+    // recente) e BR "22/05/2023 18:29" (importação antiga) — trata os dois.
+    function parseData(s: string | null): Date | null {
+      if (!s) return null;
+      let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+      if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s);
+      if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+      return null;
+    }
+
+    interface ClienteAcc { count: number; valor: number; datas: Date[] }
+    const porAno = new Map<number, Map<string, ClienteAcc>>();
+
+    for (const os of rows) {
+      if (!isOsNormalDb(os)) continue;
+      if (mesLimite && os.mes > mesLimite) continue;
+      const empresa = (os.empresa ?? "").trim();
+      if (!empresa) continue;
+      const dt = parseData(os.dataAprovacao);
+      if (!dt) continue;
+
+      const ano = os.ano;
+      if (!porAno.has(ano)) porAno.set(ano, new Map());
+      const clientes = porAno.get(ano)!;
+      const c = clientes.get(empresa) ?? { count: 0, valor: 0, datas: [] };
+      c.count += 1;
+      c.valor += num(os.valorOs);
+      c.datas.push(dt);
+      clientes.set(empresa, c);
+    }
+
+    const anos = [...porAno.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([ano, clientes]) => {
+        let unicos = 0, unicosValor = 0, recompra = 0, recompraValor = 0;
+        const intervalos: number[] = [];
+        for (const c of clientes.values()) {
+          if (c.count === 1) {
+            unicos += 1;
+            unicosValor += c.valor;
+          } else {
+            recompra += 1;
+            recompraValor += c.valor;
+            const datasOrdenadas = [...c.datas].sort((a, b) => a.getTime() - b.getTime());
+            for (let i = 1; i < datasOrdenadas.length; i++) {
+              const dias = (datasOrdenadas[i].getTime() - datasOrdenadas[i - 1].getTime()) / 86_400_000;
+              if (dias >= 0) intervalos.push(dias);
+            }
+          }
+        }
+        intervalos.sort((a, b) => a - b);
+        const totalClientes = unicos + recompra;
+        return {
+          ano,
+          totalClientes,
+          unicos,
+          unicosValor,
+          unicosPct: totalClientes ? (unicos / totalClientes) * 100 : 0,
+          recompra,
+          recompraValor,
+          recompraPct: totalClientes ? (recompra / totalClientes) * 100 : 0,
+          intervaloMedioDias: intervalos.length ? intervalos.reduce((a, b) => a + b, 0) / intervalos.length : null,
+          intervaloMedianaDias: intervalos.length ? intervalos[Math.floor(intervalos.length / 2)] : null,
+          amostraIntervalos: intervalos.length,
+        };
+      });
+
+    return { anos };
+  }),
+
   // ─── Chat de IA (CFO virtual) ──────────────────────────────────────────────
   perguntarIA: publicProcedure
     .input(z.object({
