@@ -34,7 +34,10 @@ export default function ImportarFechamentoMensal({ open, onOpenChange, onImporte
   const [nomeArquivo, setNomeArquivo] = useState<string | null>(null);
   const [lendo, setLendo] = useState(false);
   const [resultado, setResultado] = useState<{
-    mesesProcessados: Array<{ mes: number; ano: number; status: "criado" | "atualizado"; camposVazios: string[] }>;
+    mesesProcessados: Array<{
+      mes: number; ano: number; status: "criado" | "atualizado"; camposVazios: string[];
+      faturamentoOrigem: "manual" | "aproximado_caixa" | "sem_dado";
+    }>;
     camposNaoEncontradosNaPlanilha: string[];
   } | null>(null);
 
@@ -82,7 +85,10 @@ export default function ImportarFechamentoMensal({ open, onOpenChange, onImporte
             Envie o export <strong>"Fechamento -AAAA.MM.xlsx"</strong> (Google Sheets). O servidor lê a aba{" "}
             <strong>"Fluxo de Caixa"</strong> e grava/atualiza todos os meses presentes no cabeçalho em
             financeiro_mensal — despesas fixas/variáveis, TL1/TL2/TL3, impostos, comissões e afins.
-            O <strong>Faturamento Oficial continua manual</strong> (formulário existente), o upload não mexe nele.
+            Se o <strong>Faturamento Oficial</strong> de um mês já foi confirmado com a contabilidade, ele{" "}
+            <strong>nunca é sobrescrito</strong>. Se ainda estiver vazio, é preenchido com a linha "1 - Receitas"
+            (caixa) como aproximação — que sabidamente não bate exato com o valor oficial — e fica marcado como
+            "aproximado" no resumo abaixo para você revisar.
           </div>
 
           <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 rounded-lg p-6 cursor-pointer hover:border-blue-400 transition-colors">
@@ -126,6 +132,21 @@ export default function ImportarFechamentoMensal({ open, onOpenChange, onImporte
                           ({m.status === "criado" ? "novo registro" : "atualizado"})
                         </span>
                       </div>
+                      {m.faturamentoOrigem === "aproximado_caixa" && (
+                        <div className="mt-1 text-amber-700 flex items-start gap-1.5">
+                          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                          <span>
+                            Faturamento Oficial preenchido <strong>por aproximação</strong> (Receitas de caixa da
+                            planilha) — confira com a contabilidade e ajuste no formulário se necessário.
+                          </span>
+                        </div>
+                      )}
+                      {m.faturamentoOrigem === "sem_dado" && (
+                        <div className="mt-1 text-amber-700 flex items-start gap-1.5">
+                          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                          <span>Faturamento Oficial continua vazio — a planilha não trouxe a linha "1 - Receitas" para este mês.</span>
+                        </div>
+                      )}
                       {vaziosDoMes.length > 0 && (
                         <div className="mt-1 text-amber-700 flex items-start gap-1.5">
                           <AlertTriangle size={12} className="mt-0.5 shrink-0" />

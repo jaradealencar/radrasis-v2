@@ -260,6 +260,10 @@ const LABEL_TL1 = "(=) TL1";
 const LABEL_TL2 = "(=) TL2";
 const LABEL_TL3 = "(=) TL3";
 const LABEL_RESULTADO = "Resultado";
+// "1 - Receitas" é caixa (entradas bancárias), não faturamento por competência —
+// usada só como aproximação do Faturamento Oficial quando ele ainda não foi
+// digitado manualmente (nunca sobrescreve um valor já confirmado com a contabilidade).
+const LABEL_RECEITAS_CAIXA = "1 - Receitas";
 
 // Mapeamento validado com o usuário para abr-jul/2026 (ver _import_financeiro_mensal.mts).
 // A busca pela linha usa a primeira ocorrência exata do texto na coluna A, o que
@@ -312,6 +316,7 @@ interface MesFechamento {
   mes: number;
   ano: number;
   valores: Record<string, number | null>;
+  receitaCaixa: number | null;
 }
 
 function parsePlanilhaFechamento(buffer: Buffer): { meses: MesFechamento[]; camposAusentes: string[] } {
@@ -358,6 +363,7 @@ function parsePlanilhaFechamento(buffer: Buffer): { meses: MesFechamento[]; camp
   const linhaResultado = linhaPorLabel.get(LABEL_RESULTADO);
   const linhaTl3 = linhaPorLabel.get(LABEL_TL3);
   if (linhaResultado == null && linhaTl3 == null) camposAusentes.push("tl3");
+  const linhaReceitasCaixa = linhaPorLabel.get(LABEL_RECEITAS_CAIXA);
 
   const meses: MesFechamento[] = colunasMes.map(({ col, mes, ano }) => {
     const valores: Record<string, number | null> = {};
@@ -371,7 +377,8 @@ function parsePlanilhaFechamento(buffer: Buffer): { meses: MesFechamento[]; camp
     if (tl3 == null && linhaTl3 != null) tl3 = parseValorMonetario(rows[linhaTl3]?.[col]);
     valores.tl3 = tl3;
     valores.saldoMes = tl3;
-    return { mes, ano, valores };
+    const receitaCaixa = linhaReceitasCaixa != null ? parseValorMonetario(rows[linhaReceitasCaixa]?.[col]) : null;
+    return { mes, ano, valores, receitaCaixa };
   });
 
   return { meses, camposAusentes };
@@ -477,7 +484,11 @@ export const financeiroRouter = router({
   // Upload da planilha de fechamento mensal ("Fechamento -AAAA.MM.xlsx", aba
   // "Fluxo de Caixa") — processa no servidor e faz upsert por mês/ano em
   // financeiro_mensal, com os mesmos campos que o formulário/`upsert` já usa.
-  // faturamentoOficial nunca é tocado aqui: continua exclusivamente manual.
+  // faturamentoOficial: se já houver valor cadastrado manualmente (conferido com
+  // a contabilidade), nunca é sobrescrito. Se estiver vazio, é preenchido com a
+  // linha "1 - Receitas" (caixa) como aproximação — sabidamente não bate exato
+  // com o valor oficial (~1-5% de diferença observada), por isso fica marcado
+  // como "aproximado" no retorno para revisão posterior.
   uploadFechamentoMensal: publicProcedure
     .input(z.object({
       arquivoBase64: z.string().min(1),
@@ -498,9 +509,10 @@ export const financeiroRouter = router({
 
       const mesesProcessados: Array<{
         mes: number; ano: number; status: "criado" | "atualizado"; camposVazios: string[];
+        faturamentoOrigem: "manual" | "aproximado_caixa" | "sem_dado";
       }> = [];
 
-      for (const { mes, ano, valores } of meses) {
+      for (const { mes, ano, valores, receitaCaixa } of meses) {
         const existing = await db
           .select()
           .from(financeiroMensal)
@@ -518,10 +530,20 @@ export const financeiroRouter = router({
           }
         }
 
-        // lucroBruto/lucroLiquido = faturamentoOficial - despesasFixas - despesasVariaveis,
-        // só recalculado se faturamentoOficial já estiver cadastrado manualmente para o mês.
-        const faturamentoAtual = existing[0]?.faturamentoOficial != null
+        let faturamentoAtual = existing[0]?.faturamentoOficial != null
           ? parseFloat(existing[0].faturamentoOficial) : null;
+        let faturamentoOrigem: "manual" | "aproximado_caixa" | "sem_dado" = "manual";
+        if (faturamentoAtual == null) {
+          if (receitaCaixa != null) {
+            faturamentoAtual = receitaCaixa;
+            data.faturamentoOficial = receitaCaixa.toFixed(2);
+            faturamentoOrigem = "aproximado_caixa";
+          } else {
+            faturamentoOrigem = "sem_dado";
+          }
+        }
+
+        // lucroBruto/lucroLiquido = faturamentoOficial - despesasFixas - despesasVariaveis
         if (faturamentoAtual != null && valores.despesasFixas != null && valores.despesasVariaveis != null) {
           const lucro = faturamentoAtual - valores.despesasFixas - valores.despesasVariaveis;
           data.lucroBruto = lucro.toFixed(2);
@@ -530,10 +552,10 @@ export const financeiroRouter = router({
 
         if (existing.length > 0) {
           await db.update(financeiroMensal).set(data).where(eq(financeiroMensal.id, existing[0].id));
-          mesesProcessados.push({ mes, ano, status: "atualizado", camposVazios });
+          mesesProcessados.push({ mes, ano, status: "atualizado", camposVazios, faturamentoOrigem });
         } else {
           await db.insert(financeiroMensal).values({ mes, ano, ...data });
-          mesesProcessados.push({ mes, ano, status: "criado", camposVazios });
+          mesesProcessados.push({ mes, ano, status: "criado", camposVazios, faturamentoOrigem });
         }
       }
 
