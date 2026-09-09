@@ -5,7 +5,6 @@ import PainelDRE from "./PainelDRE";
 import ObservacoesMensais from "./ObservacoesMensais";
 import ChatFinanceiro from "./ChatFinanceiro";
 import RadarMargens from "./RadarMargens";
-import PainelFinanceiro from "@/components/PainelFinanceiro";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -397,9 +396,6 @@ export default function Financeiro() {
       {/* Conteúdo da aba Observações */}
       {abaAtiva === "observacoes" && <ObservacoesMensais anoSel={anoSel} />}
 
-      {/* Conteúdo da aba Dados Mensais */}
-      {abaAtiva === "dados-mensais" && <PainelFinanceiro />}
-
       {/* Conteúdo da aba Custos Fixos */}
       {abaAtiva === "custos" && <CustosFixos />}
 
@@ -412,7 +408,10 @@ export default function Financeiro() {
 
       {/* Conteúdo da aba Painel — visível apenas quando abaAtiva === "painel" */}
       {abaAtiva === "painel" && <PainelDRE anoSel={anoSel} />}
-      {false && <>
+
+      {/* Conteúdo da aba Dados Mensais — tabela/editor de financeiro_mensal (mesma
+          fonte que o upload de Fechamento e o Painel DRE gravam/leem) */}
+      {abaAtiva === "dados-mensais" && <>
 
       {/* Aviso de fonte única */}
       <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
@@ -804,7 +803,7 @@ export default function Financeiro() {
 
 
 
-      </> /* fim aba Painel legado */}
+      </>}
     </div>
   );
 }
