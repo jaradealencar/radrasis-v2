@@ -9,15 +9,151 @@ import { isOsNormalDb } from "./performanceComercial";
 const MESES_NOMES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const fmtR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+/** Agrega historico_os por mês e por vendedor — mesma base usada pela aba
+ *  Radar de Margens e pelo contexto do chat de IA (ambos precisam do mesmo
+ *  cálculo de resultado líquido / margem de contribuição por O.S.). */
+async function calcularRadarMargens(db: Db) {
+  const rows = await db.select({
+    mes: historicoOs.mes,
+    ano: historicoOs.ano,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status,
+    vendedor: historicoOs.vendedor,
+    valorOs: historicoOs.valorOs,
+    materiaPrima: historicoOs.materiaPrima,
+    custoFixo: historicoOs.custoFixo,
+    maoDeObra: historicoOs.maoDeObra,
+    tarifasFinanceiras: historicoOs.tarifasFinanceiras,
+    comissoesInternas: historicoOs.comissoesInternas,
+    comissoesExternas: historicoOs.comissoesExternas,
+    terceirizados: historicoOs.terceirizados,
+    tributos: historicoOs.tributos,
+    resultadoReais: historicoOs.resultadoReais,
+    contribuicaoReais: historicoOs.contribuicaoReais,
+  }).from(historicoOs);
+
+  const num = (v: string | null | undefined) => parseFloat(String(v ?? "0")) || 0;
+
+  interface MesAcc {
+    mes: number; ano: number; count: number; valorOs: number;
+    materiaPrima: number; custoFixo: number; maoDeObra: number; tarifasFinanceiras: number;
+    comissoes: number; terceirizados: number; tributos: number;
+    resultado: number; contribuicao: number;
+  }
+  const novoMesAcc = (mes: number, ano: number): MesAcc => ({
+    mes, ano, count: 0, valorOs: 0, materiaPrima: 0, custoFixo: 0, maoDeObra: 0,
+    tarifasFinanceiras: 0, comissoes: 0, terceirizados: 0, tributos: 0, resultado: 0, contribuicao: 0,
+  });
+
+  const porMes = new Map<string, MesAcc>();
+  const porVendedor = new Map<string, { vendedor: string; count: number; valorOs: number; resultado: number; contribuicao: number }>();
+  // Status de todas as O.S. "normais" (exclui só retrabalho/amostra/cortesia,
+  // mantém canceladas) por ano — para o card "Situação das O.S.", que precisa
+  // mostrar as canceladas mesmo elas ficando fora do cálculo de margem abaixo.
+  const porAnoStatus = new Map<string, { ano: number; status: string; count: number }>();
+
+  for (const os of rows) {
+    const tipo = (os.tipoOs ?? "").toLowerCase();
+    const tipoNormal = os.tipoOs != null && !tipo.startsWith("retrabalho") && tipo !== "amostra" && tipo !== "cortesia";
+    if (tipoNormal) {
+      const status = os.status || "Sem status";
+      const chaveStatus = `${os.ano}-${status}`;
+      const sAcc = porAnoStatus.get(chaveStatus) ?? { ano: os.ano, status, count: 0 };
+      sAcc.count += 1;
+      porAnoStatus.set(chaveStatus, sAcc);
+    }
+
+    if (!isOsNormalDb(os)) continue;
+    const valorOs = num(os.valorOs);
+
+    const chaveMes = `${os.ano}-${String(os.mes).padStart(2, "0")}`;
+    const acc = porMes.get(chaveMes) ?? novoMesAcc(os.mes, os.ano);
+    acc.count += 1;
+    acc.valorOs += valorOs;
+    acc.materiaPrima += num(os.materiaPrima);
+    acc.custoFixo += num(os.custoFixo);
+    acc.maoDeObra += num(os.maoDeObra);
+    acc.tarifasFinanceiras += num(os.tarifasFinanceiras);
+    acc.comissoes += num(os.comissoesInternas) + num(os.comissoesExternas);
+    acc.terceirizados += num(os.terceirizados);
+    acc.tributos += num(os.tributos);
+    acc.resultado += num(os.resultadoReais);
+    acc.contribuicao += num(os.contribuicaoReais);
+    porMes.set(chaveMes, acc);
+
+    const vendedor = os.vendedor || "Sem vendedor";
+    const vAcc = porVendedor.get(vendedor) ?? { vendedor, count: 0, valorOs: 0, resultado: 0, contribuicao: 0 };
+    vAcc.count += 1;
+    vAcc.valorOs += valorOs;
+    vAcc.resultado += num(os.resultadoReais);
+    vAcc.contribuicao += num(os.contribuicaoReais);
+    porVendedor.set(vendedor, vAcc);
+  }
+
+  const meses = [...porMes.values()]
+    .sort((a, b) => (a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes))
+    .map(m => {
+      const variavel = m.materiaPrima + m.tributos + m.comissoes + m.terceirizados;
+      const fixo = m.custoFixo + m.maoDeObra + m.tarifasFinanceiras;
+      const pct = (v: number) => (m.valorOs ? (v / m.valorOs) * 100 : 0);
+      return {
+        mes: m.mes,
+        ano: m.ano,
+        label: `${MESES_NOMES[m.mes].slice(0, 3)}/${String(m.ano).slice(2)}`,
+        count: m.count,
+        valorOs: m.valorOs,
+        variavel,
+        fixo,
+        materiaPrima: m.materiaPrima,
+        custoFixoPuro: m.custoFixo,
+        maoDeObra: m.maoDeObra,
+        tributos: m.tributos,
+        comissoes: m.comissoes,
+        terceirizados: m.terceirizados,
+        resultado: m.resultado,
+        contribuicao: m.contribuicao,
+        resultadoPct: pct(m.resultado),
+        contribuicaoPct: pct(m.contribuicao),
+        ticketMedio: m.count ? m.valorOs / m.count : 0,
+        fixoPorOS: m.count ? fixo / m.count : 0,
+        variavelPct: pct(variavel),
+        fixoPct: pct(fixo),
+        materiaPrimaPct: pct(m.materiaPrima),
+        tributosPct: pct(m.tributos),
+        comissoesPct: pct(m.comissoes),
+        terceirizadosPct: pct(m.terceirizados),
+        custoFixoPuroPct: pct(m.custoFixo),
+        maoDeObraPct: pct(m.maoDeObra),
+      };
+    });
+
+  const vendedores = [...porVendedor.values()]
+    .filter(v => v.count >= 5)
+    .sort((a, b) => b.valorOs - a.valorOs)
+    .map(v => ({
+      ...v,
+      resultadoPct: v.valorOs ? (v.resultado / v.valorOs) * 100 : 0,
+      contribuicaoPct: v.valorOs ? (v.contribuicao / v.valorOs) * 100 : 0,
+    }));
+
+  const statusPorAno = [...porAnoStatus.values()].sort((a, b) =>
+    a.ano !== b.ano ? a.ano - b.ano : b.count - a.count);
+
+  return { meses, vendedores, statusPorAno };
+}
+
 /** Monta o contexto de dados financeiros (texto) enviado como system message ao Claude.
  *  Reconstruído a cada pergunta para refletir o estado mais recente do banco. */
 async function montarContextoFinanceiro(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<string> {
-  const [mensal, dre, fixosAtivos, marketingRows, dividasAtivas] = await Promise.all([
+  const [mensal, dre, fixosAtivos, marketingRows, dividasAtivas, radar] = await Promise.all([
     db.select().from(financeiroMensal),
     db.select().from(dreMensal),
     db.select().from(custosFixos).where(eq(custosFixos.ativo, true)),
     db.select().from(custoMarketing),
     db.select().from(dividasParcelamentos).where(eq(dividasParcelamentos.ativo, true)),
+    calcularRadarMargens(db),
   ]);
 
   const linhasMensal = mensal
@@ -55,6 +191,25 @@ async function montarContextoFinanceiro(db: NonNullable<Awaited<ReturnType<typeo
   const totalCustosFixos = fixosAtivos.reduce((s, c) => s + Number(c.valor || 0), 0);
   const totalMarketing = marketingRows.reduce((s, m) => s + Number(m.investimento || 0), 0);
 
+  // Resumo do Radar de Margens (historico_os): totais por ano + ranking de vendedores,
+  // pra que o chat consiga responder perguntas sobre margem/vendedor sem inventar números.
+  const porAno = new Map<number, { count: number; valorOs: number; resultado: number; contribuicao: number }>();
+  for (const m of radar.meses) {
+    const a = porAno.get(m.ano) ?? { count: 0, valorOs: 0, resultado: 0, contribuicao: 0 };
+    a.count += m.count; a.valorOs += m.valorOs; a.resultado += m.resultado; a.contribuicao += m.contribuicao;
+    porAno.set(m.ano, a);
+  }
+  const linhasRadarAno = [...porAno.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([ano, a]) => {
+      const resPct = a.valorOs ? (a.resultado / a.valorOs) * 100 : 0;
+      const conPct = a.valorOs ? (a.contribuicao / a.valorOs) * 100 : 0;
+      return `${ano}: ${a.count} O.S. vendidas, ValorVendido=${fmtR(a.valorOs)}, ResultadoLiquido=${fmtR(a.resultado)} (${resPct.toFixed(1)}%), MargemContribuicao=${fmtR(a.contribuicao)} (${conPct.toFixed(1)}%)`;
+    });
+  const linhasVendedores = radar.vendedores
+    .slice(0, 8)
+    .map(v => `${v.vendedor}: ${v.count} O.S., ValorVendido=${fmtR(v.valorOs)}, MargemLiquida=${v.resultadoPct.toFixed(1)}%, MargemContribuicao=${v.contribuicaoPct.toFixed(1)}%`);
+
   return `## DADOS FINANCEIROS DISPONÍVEIS (banco de produção, consultado agora)
 
 ### Painel Financeiro mensal (financeiro_mensal) — fonte oficial de faturamento
@@ -72,10 +227,17 @@ Investimento total acumulado (todos os meses cadastrados): ${fmtR(totalMarketing
 ### Dívidas e Parcelamentos ativos
 ${dividasAtivas.length} registro(s) ativo(s).
 
+### Radar de Margens (historico_os) — resultado líquido e margem de contribuição por O.S., agrupado pelo mês em que a O.S. foi vendida/aprovada (não pela data de faturamento). Exclui retrabalho, amostra, cortesia e canceladas.
+Totais por ano:
+${linhasRadarAno.length ? linhasRadarAno.join("\n") : "Sem histórico de O.S. sincronizado."}
+
+Ranking de vendedores (histórico completo, mínimo 5 O.S.):
+${linhasVendedores.length ? linhasVendedores.join("\n") : "Sem vendedores com volume suficiente."}
+
 ## O QUE NÃO ESTÁ DISPONÍVEL NESTE CONTEXTO (não invente estes números)
 - Orçado/Budget mensal (não existe cadastro de metas no sistema hoje)
 - Depreciação/amortização e juros separados de despesas fixas (portanto EBITDA calculado aqui é aproximado e coincide com Lucro Líquido)
-- Dados por cliente/produto/canal (necessários para Coorte, Pareto, LTV/CAC, margem de contribuição por canal)
+- Dados por produto/canal (o Radar de Margens acima cobre vendedor, mas não produto/canal — necessários para Pareto, LTV/CAC completos)
 - Capital investido e patrimônio líquido (necessários para ROIC/ROE)
 - Prazos de recebimento/pagamento (necessários para Capital de Giro e Ciclo de Caixa)`;
 }
@@ -420,105 +582,8 @@ export const financeiroRouter = router({
   // não tem, e ranking por vendedor) ──────────────────────────────────────────
   getRadarMargens: publicProcedure.query(async () => {
     const db = await getDb();
-    if (!db) return { meses: [], vendedores: [] };
-
-    const rows = await db.select({
-      mes: historicoOs.mes,
-      ano: historicoOs.ano,
-      tipoOs: historicoOs.tipoOs,
-      status: historicoOs.status,
-      vendedor: historicoOs.vendedor,
-      valorOs: historicoOs.valorOs,
-      materiaPrima: historicoOs.materiaPrima,
-      custoFixo: historicoOs.custoFixo,
-      maoDeObra: historicoOs.maoDeObra,
-      tarifasFinanceiras: historicoOs.tarifasFinanceiras,
-      comissoesInternas: historicoOs.comissoesInternas,
-      comissoesExternas: historicoOs.comissoesExternas,
-      terceirizados: historicoOs.terceirizados,
-      tributos: historicoOs.tributos,
-      resultadoReais: historicoOs.resultadoReais,
-      contribuicaoReais: historicoOs.contribuicaoReais,
-    }).from(historicoOs);
-
-    const num = (v: string | null | undefined) => parseFloat(String(v ?? "0")) || 0;
-
-    interface MesAcc {
-      mes: number; ano: number; count: number; valorOs: number;
-      materiaPrima: number; custoFixo: number; maoDeObra: number; tarifasFinanceiras: number;
-      comissoes: number; terceirizados: number; tributos: number;
-      resultado: number; contribuicao: number;
-    }
-    const novoMesAcc = (mes: number, ano: number): MesAcc => ({
-      mes, ano, count: 0, valorOs: 0, materiaPrima: 0, custoFixo: 0, maoDeObra: 0,
-      tarifasFinanceiras: 0, comissoes: 0, terceirizados: 0, tributos: 0, resultado: 0, contribuicao: 0,
-    });
-
-    const porMes = new Map<string, MesAcc>();
-    const porVendedor = new Map<string, { vendedor: string; count: number; valorOs: number; resultado: number; contribuicao: number }>();
-
-    for (const os of rows) {
-      if (!isOsNormalDb(os)) continue;
-      const valorOs = num(os.valorOs);
-
-      const chaveMes = `${os.ano}-${String(os.mes).padStart(2, "0")}`;
-      const acc = porMes.get(chaveMes) ?? novoMesAcc(os.mes, os.ano);
-      acc.count += 1;
-      acc.valorOs += valorOs;
-      acc.materiaPrima += num(os.materiaPrima);
-      acc.custoFixo += num(os.custoFixo);
-      acc.maoDeObra += num(os.maoDeObra);
-      acc.tarifasFinanceiras += num(os.tarifasFinanceiras);
-      acc.comissoes += num(os.comissoesInternas) + num(os.comissoesExternas);
-      acc.terceirizados += num(os.terceirizados);
-      acc.tributos += num(os.tributos);
-      acc.resultado += num(os.resultadoReais);
-      acc.contribuicao += num(os.contribuicaoReais);
-      porMes.set(chaveMes, acc);
-
-      const vendedor = os.vendedor || "Sem vendedor";
-      const vAcc = porVendedor.get(vendedor) ?? { vendedor, count: 0, valorOs: 0, resultado: 0, contribuicao: 0 };
-      vAcc.count += 1;
-      vAcc.valorOs += valorOs;
-      vAcc.resultado += num(os.resultadoReais);
-      vAcc.contribuicao += num(os.contribuicaoReais);
-      porVendedor.set(vendedor, vAcc);
-    }
-
-    const meses = [...porMes.values()]
-      .sort((a, b) => (a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes))
-      .map(m => {
-        const variavel = m.materiaPrima + m.tributos + m.comissoes + m.terceirizados;
-        const fixo = m.custoFixo + m.maoDeObra + m.tarifasFinanceiras;
-        return {
-          mes: m.mes,
-          ano: m.ano,
-          label: `${MESES_NOMES[m.mes].slice(0, 3)}/${String(m.ano).slice(2)}`,
-          count: m.count,
-          valorOs: m.valorOs,
-          variavel,
-          fixo,
-          materiaPrima: m.materiaPrima,
-          custoFixoPuro: m.custoFixo,
-          maoDeObra: m.maoDeObra,
-          resultado: m.resultado,
-          contribuicao: m.contribuicao,
-          resultadoPct: m.valorOs ? (m.resultado / m.valorOs) * 100 : 0,
-          contribuicaoPct: m.valorOs ? (m.contribuicao / m.valorOs) * 100 : 0,
-          ticketMedio: m.count ? m.valorOs / m.count : 0,
-        };
-      });
-
-    const vendedores = [...porVendedor.values()]
-      .filter(v => v.count >= 5)
-      .sort((a, b) => b.valorOs - a.valorOs)
-      .map(v => ({
-        ...v,
-        resultadoPct: v.valorOs ? (v.resultado / v.valorOs) * 100 : 0,
-        contribuicaoPct: v.valorOs ? (v.contribuicao / v.valorOs) * 100 : 0,
-      }));
-
-    return { meses, vendedores };
+    if (!db) return { meses: [], vendedores: [], statusPorAno: [] };
+    return calcularRadarMargens(db);
   }),
 
   // ─── Retenção de clientes (compra única × recompra × intervalo entre compras,
