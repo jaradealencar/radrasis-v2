@@ -24,11 +24,12 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, DollarSign, BarChart2,
-  PieChart as PieIcon, AlertTriangle, CheckCircle2, Minus, Loader2, Info,
+  PieChart as PieIcon, AlertTriangle, CheckCircle2, Minus, Loader2, Info, Upload,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
 import { STATUS_COLORS } from "@/lib/chartColors";
 import ChartTooltip from "@/components/ChartTooltip";
+import ImportarFechamentoMensal from "./ImportarFechamentoMensal";
 
 const MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -89,6 +90,7 @@ const RETRY_1 = { retry: 1 } as const;
 export default function PainelDRE({ anoSel }: { anoSel: number }) {
   const [mesSel, setMesSel] = useState<number | null>(null);
   const [abaAtiva, setAbaAtiva] = useState<"dre" | "comparativo">("dre");
+  const [uploadAberto, setUploadAberto] = useState(false);
 
   const {
     data: dreDados = [],
@@ -339,28 +341,40 @@ export default function PainelDRE({ anoSel }: { anoSel: number }) {
     <div className="space-y-6">
 
       {/* Abas DRE / Comparativo */}
-      <div className="flex gap-1 border-b">
-        <button
-          onClick={() => setAbaAtiva("dre")}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-            abaAtiva === "dre"
-              ? "border-blue-600 text-blue-700 bg-blue-50"
-              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-        >
-          DRE Gerencial
-        </button>
-        <button
-          onClick={() => setAbaAtiva("comparativo")}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-            abaAtiva === "comparativo"
-              ? "border-emerald-600 text-emerald-700 bg-emerald-50"
-              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-        >
-          Comparativo Anual
-        </button>
+      <div className="flex items-center justify-between border-b">
+        <div className="flex gap-1">
+          <button
+            onClick={() => setAbaAtiva("dre")}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              abaAtiva === "dre"
+                ? "border-blue-600 text-blue-700 bg-blue-50"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            DRE Gerencial
+          </button>
+          <button
+            onClick={() => setAbaAtiva("comparativo")}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              abaAtiva === "comparativo"
+                ? "border-emerald-600 text-emerald-700 bg-emerald-50"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            Comparativo Anual
+          </button>
+        </div>
+        <Button variant="outline" size="sm" className="gap-1.5 mb-1" onClick={() => setUploadAberto(true)}>
+          <Upload size={14} />
+          Importar Fechamento Mensal
+        </Button>
       </div>
+
+      <ImportarFechamentoMensal
+        open={uploadAberto}
+        onOpenChange={setUploadAberto}
+        onImported={() => { refetchFin(); refetchDre(); }}
+      />
 
       {/* Aba Comparativo Anual */}
       {abaAtiva === "comparativo" && (

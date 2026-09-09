@@ -1,10 +1,12 @@
 import { z } from "zod";
+import * as XLSX from "xlsx";
 import { router, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { financeiroMensal, custoMarketing, custoMarketingItens, custosFixos, dividasParcelamentos, dreMensal, historicoOs } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { perguntarSobreFinanceiro, type MensagemChat } from "../integrations/anthropic-client";
 import { isOsNormalDb } from "./performanceComercial";
+import { TRPCError } from "@trpc/server";
 
 const MESES_NOMES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const fmtR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -242,6 +244,139 @@ ${linhasVendedores.length ? linhasVendedores.join("\n") : "Sem vendedores com vo
 - Prazos de recebimento/pagamento (necessários para Capital de Giro e Ciclo de Caixa)`;
 }
 
+// ─── Upload da planilha de Fechamento Financeiro Mensal (aba "Fluxo de Caixa") ──
+// Substitui o processo manual (ver _import_financeiro_mensal.mts na raiz do
+// projeto) de copiar valores linha a linha do export "Fechamento -AAAA.MM.xlsx"
+// (Google Sheets) para financeiro_mensal.
+
+const MESES_ABREV_PT: Record<string, number> = {
+  jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
+  jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12,
+};
+
+const LABEL_DESPESAS_FIXAS = "(-) Despesas Fixas (Exceto Dívidas e Investimentos)";
+const LABEL_DESPESAS_VARIAVEIS = "(-) Despesas Variáveis";
+const LABEL_TL1 = "(=) TL1";
+const LABEL_TL2 = "(=) TL2";
+const LABEL_TL3 = "(=) TL3";
+const LABEL_RESULTADO = "Resultado";
+
+// Mapeamento validado com o usuário para abr-jul/2026 (ver _import_financeiro_mensal.mts).
+// A busca pela linha usa a primeira ocorrência exata do texto na coluna A, o que
+// naturalmente ignora o bloco de percentuais duplicado mais abaixo na planilha.
+const CAMPOS_FECHAMENTO: Array<{ campo: string; label: string }> = [
+  { campo: "despesasFixas", label: LABEL_DESPESAS_FIXAS },
+  { campo: "despesasVariaveis", label: LABEL_DESPESAS_VARIAVEIS },
+  { campo: "tl1", label: LABEL_TL1 },
+  { campo: "tl2", label: LABEL_TL2 },
+  { campo: "impostoDas", label: "2 . 1 . 1 . 1 - DAS Simples Nacional" },
+  { campo: "impostoIcmsDifal", label: "2 . 1 . 1 . 3 - ICMS DIFAL e EQUALIZADOR" },
+  { campo: "impostoDaems", label: "2 . 1 . 1 . 4 - DAEMS" },
+  { campo: "comissoesBv", label: "2 . 1 . 2 . 1 - Comissões BV | Vendas Externas" },
+  { campo: "freteRetrabalho", label: "2 . 1 . 2 . 3 - Frete Retrabalho" },
+  { campo: "produtividadeSolda", label: "2 . 4 . 4 - Produtividade Solda" },
+  { campo: "devSoftware", label: "2 . 9 . 6 - Desenvolvimento de Software" },
+];
+
+const CAMPOS_LABELS_PT: Record<string, string> = {
+  despesasFixas: "Despesas Fixas",
+  despesasVariaveis: "Despesas Variáveis",
+  tl1: "TL1",
+  tl2: "TL2",
+  tl3: "TL3 (Resultado)",
+  saldoMes: "Saldo do Mês",
+  impostoDas: "DAS Simples Nacional",
+  impostoIcmsDifal: "ICMS DIFAL",
+  impostoDaems: "DAEMS",
+  comissoesBv: "Comissões BV",
+  freteRetrabalho: "Frete Retrabalho",
+  produtividadeSolda: "Produtividade Solda",
+  devSoftware: "Desenvolvimento de Software",
+};
+
+/** Converte uma célula de valor monetário da planilha em número.
+ *  "R$ -" ou "-" isolado significa zero real, nunca "sem dado" — só uma célula
+ *  genuinamente vazia (defval null do sheet_to_json) vira null. */
+function parseValorMonetario(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return v;
+  const s = String(v).trim();
+  if (s === "") return null;
+  if (/^-?\s*(r\$)?\s*-\s*$/i.test(s)) return 0;
+  const limpo = s.replace(/r\$/i, "").replace(/\s/g, "").replace(/,/g, "");
+  const n = parseFloat(limpo);
+  return isNaN(n) ? null : n;
+}
+
+interface MesFechamento {
+  mes: number;
+  ano: number;
+  valores: Record<string, number | null>;
+}
+
+function parsePlanilhaFechamento(buffer: Buffer): { meses: MesFechamento[]; camposAusentes: string[] } {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  const nomeAba = wb.SheetNames.find(n => n.trim().toLowerCase() === "fluxo de caixa")
+    ?? wb.SheetNames.find(n => n.toLowerCase().includes("fluxo de caixa"));
+  if (!nomeAba) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: `Aba "Fluxo de Caixa" não encontrada no arquivo. Abas disponíveis: ${wb.SheetNames.join(", ")}` });
+  }
+  const ws = wb.Sheets[nomeAba];
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  if (rows.length === 0) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: `A aba "Fluxo de Caixa" está vazia.` });
+  }
+
+  // Colunas de mês: cabeçalho no formato "Jan/2026" (a planilha pode ter espaços
+  // de padding em volta, tratados pelo trim; várias colunas de mês coexistem).
+  const header = rows[0] ?? [];
+  const colunasMes: Array<{ col: number; mes: number; ano: number }> = [];
+  for (let col = 1; col < header.length; col++) {
+    const raw = header[col];
+    if (typeof raw !== "string") continue;
+    const m = /^([A-Za-z]{3})\/(\d{4})$/.exec(raw.trim());
+    if (!m) continue;
+    const mes = MESES_ABREV_PT[m[1].toLowerCase()];
+    if (!mes) continue;
+    colunasMes.push({ col, mes, ano: parseInt(m[2], 10) });
+  }
+  if (colunasMes.length === 0) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: `Não encontrei colunas de mês (ex: "Jan/2026") no cabeçalho da aba "Fluxo de Caixa".` });
+  }
+
+  const linhaPorLabel = new Map<string, number>();
+  for (let i = 1; i < rows.length; i++) {
+    const cel = rows[i]?.[0];
+    if (typeof cel !== "string") continue;
+    const texto = cel.trim();
+    if (!linhaPorLabel.has(texto)) linhaPorLabel.set(texto, i);
+  }
+
+  const camposAusentes = CAMPOS_FECHAMENTO
+    .filter(({ label }) => !linhaPorLabel.has(label))
+    .map(({ campo }) => campo);
+  const linhaResultado = linhaPorLabel.get(LABEL_RESULTADO);
+  const linhaTl3 = linhaPorLabel.get(LABEL_TL3);
+  if (linhaResultado == null && linhaTl3 == null) camposAusentes.push("tl3");
+
+  const meses: MesFechamento[] = colunasMes.map(({ col, mes, ano }) => {
+    const valores: Record<string, number | null> = {};
+    for (const { campo, label } of CAMPOS_FECHAMENTO) {
+      const linha = linhaPorLabel.get(label);
+      valores[campo] = linha != null ? parseValorMonetario(rows[linha]?.[col]) : null;
+    }
+    // TL3/Saldo do mês: prioriza a linha "Resultado" (mais casas decimais),
+    // cai para "(=) TL3" se ela não existir ou vier vazia para este mês.
+    let tl3: number | null = linhaResultado != null ? parseValorMonetario(rows[linhaResultado]?.[col]) : null;
+    if (tl3 == null && linhaTl3 != null) tl3 = parseValorMonetario(rows[linhaTl3]?.[col]);
+    valores.tl3 = tl3;
+    valores.saldoMes = tl3;
+    return { mes, ano, valores };
+  });
+
+  return { meses, camposAusentes };
+}
+
 export const financeiroRouter = router({
   // Buscar dados financeiros de um mês/ano específico
   get: publicProcedure
@@ -337,6 +472,76 @@ export const financeiroRouter = router({
         const [result] = await db.insert(financeiroMensal).values({ mes: input.mes, ano: input.ano, ...data }).returning({ id: financeiroMensal.id });
         return { id: result.id, mes: input.mes, ano: input.ano, ...data };
       }
+    }),
+
+  // Upload da planilha de fechamento mensal ("Fechamento -AAAA.MM.xlsx", aba
+  // "Fluxo de Caixa") — processa no servidor e faz upsert por mês/ano em
+  // financeiro_mensal, com os mesmos campos que o formulário/`upsert` já usa.
+  // faturamentoOficial nunca é tocado aqui: continua exclusivamente manual.
+  uploadFechamentoMensal: publicProcedure
+    .input(z.object({
+      arquivoBase64: z.string().min(1),
+      nomeArquivo: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(input.arquivoBase64, "base64");
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Arquivo inválido." });
+      }
+
+      const { meses, camposAusentes } = parsePlanilhaFechamento(buffer);
+
+      const mesesProcessados: Array<{
+        mes: number; ano: number; status: "criado" | "atualizado"; camposVazios: string[];
+      }> = [];
+
+      for (const { mes, ano, valores } of meses) {
+        const existing = await db
+          .select()
+          .from(financeiroMensal)
+          .where(and(eq(financeiroMensal.mes, mes), eq(financeiroMensal.ano, ano)))
+          .limit(1);
+
+        const data: Record<string, string | null> = {};
+        const camposVazios: string[] = [];
+        for (const [campo, valor] of Object.entries(valores)) {
+          if (valor == null) {
+            camposVazios.push(CAMPOS_LABELS_PT[campo] ?? campo);
+            data[campo] = null;
+          } else {
+            data[campo] = valor.toFixed(2);
+          }
+        }
+
+        // lucroBruto/lucroLiquido = faturamentoOficial - despesasFixas - despesasVariaveis,
+        // só recalculado se faturamentoOficial já estiver cadastrado manualmente para o mês.
+        const faturamentoAtual = existing[0]?.faturamentoOficial != null
+          ? parseFloat(existing[0].faturamentoOficial) : null;
+        if (faturamentoAtual != null && valores.despesasFixas != null && valores.despesasVariaveis != null) {
+          const lucro = faturamentoAtual - valores.despesasFixas - valores.despesasVariaveis;
+          data.lucroBruto = lucro.toFixed(2);
+          data.lucroLiquido = lucro.toFixed(2);
+        }
+
+        if (existing.length > 0) {
+          await db.update(financeiroMensal).set(data).where(eq(financeiroMensal.id, existing[0].id));
+          mesesProcessados.push({ mes, ano, status: "atualizado", camposVazios });
+        } else {
+          await db.insert(financeiroMensal).values({ mes, ano, ...data });
+          mesesProcessados.push({ mes, ano, status: "criado", camposVazios });
+        }
+      }
+
+      return {
+        nomeArquivo: input.nomeArquivo ?? null,
+        mesesProcessados: mesesProcessados.sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes),
+        camposNaoEncontradosNaPlanilha: camposAusentes.map(c => CAMPOS_LABELS_PT[c] ?? c),
+      };
     }),
 
   // ─── Custo Marketing ─────────────────────────────────────────────────────────
