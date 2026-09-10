@@ -833,7 +833,7 @@ export default function TabelaPrecos() {
           }`}
         >
           <FileText className="w-4 h-4 inline mr-1.5" />
-          Tabela de Preços
+          Tabela Clientes Antigos
         </button>
         <button
           onClick={() => setTabelaAtiva("novo_cliente")}
@@ -963,7 +963,7 @@ export default function TabelaPrecos() {
       <div className="mb-5">
         <div className="flex items-center gap-3 mb-1 flex-wrap">
           <FileText className="w-6 h-6 text-blue-600" />
-          <h1 className="text-2xl font-bold text-slate-900">Tabela de Preços</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Tabela Clientes Antigos</h1>
           {meta && (
             <Badge className="bg-blue-600 text-white text-xs">
               v{meta.versao} — {new Date(meta.dataModificacao).toLocaleDateString("pt-BR")}
@@ -983,7 +983,7 @@ export default function TabelaPrecos() {
               size="sm"
               variant="outline"
               className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
-              onClick={() => gerarPdfTabela(allSections ?? [], meta ?? null)}
+              onClick={() => gerarPdfTabela(allSections ?? [], meta ?? null, "Tabela Clientes Antigos")}
               disabled={isLoading}
             >
               <Download className="w-4 h-4" />
@@ -1125,7 +1125,7 @@ export default function TabelaPrecos() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="w-5 h-5 text-blue-600" />
-              Histórico de Versões da Tabela de Preços
+              Histórico de Versões da Tabela Clientes Antigos
             </DialogTitle>
           </DialogHeader>
           {!history || history.length === 0 ? (
