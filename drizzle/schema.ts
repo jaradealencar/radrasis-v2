@@ -1345,6 +1345,26 @@ export const custoMarketing = pgTable("custo_marketing", {
 export type CustoMarketing = typeof custoMarketing.$inferSelect;
 export type InsertCustoMarketing = typeof custoMarketing.$inferInsert;
 
+// ─── Auditoria de Custo de Marketing ───────────────────────────────────────
+// Criada em 09/09/2026 depois de investigação de dados de investimento
+// (Jan-Jul/2026) que sumiram sem rastro — sem essa tabela não havia como
+// saber quem/quando alterou ou apagou um valor. Ver upsertCustoMarketing.
+export const auditoriaCustoMarketing = pgTable("auditoria_custo_marketing", {
+  id: serial("id").primaryKey(),
+  custoMarketingId: integer("custoMarketingId"),
+  mes: integer("mes").notNull(),
+  ano: integer("ano").notNull(),
+  acao: auditoriaAcaoEnum("acao").notNull(),
+  usuarioId: text("usuarioId"),
+  usuarioNome: varchar("usuarioNome", { length: 128 }),
+  usuarioRole: varchar("usuarioRole", { length: 32 }),
+  valoresAnteriores: text("valoresAnteriores"), // JSON: snapshot antes da alteração (null em CRIACAO)
+  valoresNovos: text("valoresNovos"), // JSON: snapshot depois da alteração (null em EXCLUSAO)
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type AuditoriaCustoMarketing = typeof auditoriaCustoMarketing.$inferSelect;
+export type InsertAuditoriaCustoMarketing = typeof auditoriaCustoMarketing.$inferInsert;
+
 // ─── Lançamentos detalhados de Marketing (linhas do relatório de contas a pagar) ──
 export const custoMarketingItens = pgTable("custo_marketing_itens", {
   id: serial("id").primaryKey(),

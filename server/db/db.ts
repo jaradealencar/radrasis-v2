@@ -18,6 +18,7 @@ import {
   analiseCurriculos, InsertAnaliseCurriculo, AnaliseCurriculo,
   financeirosMensais,
   metricas,
+  auditoriaCustoMarketing, AuditoriaCustoMarketing,
 } from "../../drizzle/schema";
 import { resumirDiffTabelaPrecos } from "../integrations/priceTableDiff";
 
@@ -847,6 +848,46 @@ export async function insertAuditLog(data: AuditLogInput): Promise<void> {
     usuarioRole: data.usuarioRole ?? null,
     detalhes: data.detalhes ? JSON.stringify(data.detalhes) : null,
   });
+}
+
+// ─── AUDITORIA DE CUSTO DE MARKETING ─────────────────────────────────────────
+// Ver nota em drizzle/schema.ts (auditoriaCustoMarketing): criada depois de
+// dados de investimento (Jan-Jul/2026) sumirem sem rastro.
+
+export interface AuditLogCustoMarketingInput {
+  custoMarketingId?: number | null;
+  mes: number;
+  ano: number;
+  acao: "CRIACAO" | "EDICAO" | "EXCLUSAO";
+  usuarioId?: string | null;
+  usuarioNome?: string | null;
+  usuarioRole?: string | null;
+  valoresAnteriores?: Record<string, unknown> | null;
+  valoresNovos?: Record<string, unknown> | null;
+}
+
+export async function insertAuditLogCustoMarketing(data: AuditLogCustoMarketingInput): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(auditoriaCustoMarketing).values({
+    custoMarketingId: data.custoMarketingId ?? null,
+    mes: data.mes,
+    ano: data.ano,
+    acao: data.acao,
+    usuarioId: data.usuarioId ?? null,
+    usuarioNome: data.usuarioNome ?? null,
+    usuarioRole: data.usuarioRole ?? null,
+    valoresAnteriores: data.valoresAnteriores ? JSON.stringify(data.valoresAnteriores) : null,
+    valoresNovos: data.valoresNovos ? JSON.stringify(data.valoresNovos) : null,
+  });
+}
+
+export async function listAuditLogsCustoMarketing(ano: number): Promise<AuditoriaCustoMarketing[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(auditoriaCustoMarketing)
+    .where(eq(auditoriaCustoMarketing.ano, ano))
+    .orderBy(desc(auditoriaCustoMarketing.createdAt));
 }
 
 export interface ListAuditLogsFilter {

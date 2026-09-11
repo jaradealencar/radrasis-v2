@@ -1,7 +1,7 @@
 import { z } from "zod";
 import * as XLSX from "xlsx";
 import { router, publicProcedure } from "../_core/trpc";
-import { getDb } from "../db/db";
+import { getDb, insertAuditLogCustoMarketing, listAuditLogsCustoMarketing } from "../db/db";
 import { financeiroMensal, custoMarketing, custoMarketingItens, custosFixos, dividasParcelamentos, dreMensal, historicoOs } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { perguntarSobreFinanceiro, type MensagemChat } from "../integrations/anthropic-client";
@@ -600,7 +600,7 @@ export const financeiroRouter = router({
       investimentoReativacao: z.number().min(0),
       observacao: z.string().nullable().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
       const existing = await db
@@ -614,14 +614,36 @@ export const financeiroRouter = router({
         investimento: String(input.investimentoAquisicao + input.investimentoReativacao),
         observacao: input.observacao ?? null,
       };
+      const usuario = {
+        usuarioId: ctx.user?.id ?? null,
+        usuarioNome: ctx.user?.name ?? null,
+        usuarioRole: ctx.user?.role ?? null,
+      };
       if (existing.length > 0) {
         await db.update(custoMarketing).set(data).where(eq(custoMarketing.id, existing[0].id));
+        insertAuditLogCustoMarketing({
+          custoMarketingId: existing[0].id,
+          mes: input.mes, ano: input.ano, acao: "EDICAO", ...usuario,
+          valoresAnteriores: existing[0],
+          valoresNovos: { ...existing[0], ...data },
+        }).catch(() => {});
         return { ...existing[0], ...data };
       } else {
         const [result] = await db.insert(custoMarketing).values({ mes: input.mes, ano: input.ano, ...data }).returning({ id: custoMarketing.id });
+        insertAuditLogCustoMarketing({
+          custoMarketingId: result.id,
+          mes: input.mes, ano: input.ano, acao: "CRIACAO", ...usuario,
+          valoresAnteriores: null,
+          valoresNovos: { id: result.id, mes: input.mes, ano: input.ano, ...data },
+        }).catch(() => {});
         return { id: result.id, mes: input.mes, ano: input.ano, ...data };
       }
     }),
+
+  // Histórico de auditoria de custo_marketing (quem/quando criou ou editou um valor)
+  getAuditoriaCustoMarketing: publicProcedure
+    .input(z.object({ ano: z.number() }))
+    .query(({ input }) => listAuditLogsCustoMarketing(input.ano)),
 
   // Importação em lote (planilha): agrega valores por mês/ano/categoria e faz upsert
   importCustoMarketingLote: publicProcedure
@@ -631,9 +653,14 @@ export const financeiroRouter = router({
       categoria: z.enum(["aquisicao", "reativacao"]),
       valor: z.number().min(0),
     })))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      const usuario = {
+        usuarioId: ctx.user?.id ?? null,
+        usuarioNome: ctx.user?.name ?? null,
+        usuarioRole: ctx.user?.role ?? null,
+      };
 
       const agregados = new Map<string, { mes: number; ano: number; aquisicao: number; reativacao: number }>();
       for (const linha of input) {
@@ -662,9 +689,21 @@ export const financeiroRouter = router({
 
         if (existing.length > 0) {
           await db.update(custoMarketing).set(data).where(eq(custoMarketing.id, existing[0].id));
+          insertAuditLogCustoMarketing({
+            custoMarketingId: existing[0].id,
+            mes, ano, acao: "EDICAO", ...usuario,
+            valoresAnteriores: existing[0],
+            valoresNovos: { ...existing[0], ...data },
+          }).catch(() => {});
           resultados.push({ id: existing[0].id, mes, ano, ...data });
         } else {
           const [result] = await db.insert(custoMarketing).values({ mes, ano, ...data }).returning({ id: custoMarketing.id });
+          insertAuditLogCustoMarketing({
+            custoMarketingId: result.id,
+            mes, ano, acao: "CRIACAO", ...usuario,
+            valoresAnteriores: null,
+            valoresNovos: { id: result.id, mes, ano, ...data },
+          }).catch(() => {});
           resultados.push({ id: result.id, mes, ano, ...data });
         }
       }
