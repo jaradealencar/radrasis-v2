@@ -260,7 +260,14 @@ export default function RadarMargens({ anoSel }: { anoSel: number }) {
   const maoDeObraTotalAnterior = somar(anoAnteriorComparavel, "maoDeObra");
   const deltaMaoDeObraTotal = maoDeObraTotalAnterior ? ((maoDeObraTotalAtual / maoDeObraTotalAnterior) - 1) * 100 : null;
 
-  const maxValorVendedor = vendedores.length ? Math.max(...vendedores.map(v => v.valorOs)) : 0;
+  // Ranking restrito à equipe de vendas atual — os demais nomes no histórico
+  // são vendedores que já saíram ou tinham volume irrelevante.
+  const VENDEDORES_ATUAIS = ["Letícia Carozzo", "Karize Boaventura", "Álvaro Campos Lôbo Júnior"];
+  const vendedoresExibidos = useMemo(
+    () => vendedores.filter(v => VENDEDORES_ATUAIS.includes(v.vendedor)),
+    [vendedores],
+  );
+  const maxValorVendedor = vendedoresExibidos.length ? Math.max(...vendedoresExibidos.map(v => v.valorOs)) : 0;
 
   const statusAno = useMemo(() => statusPorAno.filter(s => s.ano === anoSel), [statusPorAno, anoSel]);
   const totalStatusAno = statusAno.reduce((a, s) => a + s.count, 0);
@@ -652,22 +659,21 @@ export default function RadarMargens({ anoSel }: { anoSel: number }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-1">
-            {vendedores.map(v => {
-              const largura = maxValorVendedor ? Math.max((v.valorOs / maxValorVendedor) * 100, 6) : 0;
+            {vendedoresExibidos.map(v => {
+              const largura = maxValorVendedor ? Math.max((v.valorOs / maxValorVendedor) * 100, 3) : 0;
               return (
-                <div key={v.vendedor} className="grid grid-cols-[150px_1fr_84px] items-center gap-3 py-1.5 border-b border-slate-100 last:border-0">
+                <div key={v.vendedor} className="grid grid-cols-[150px_1fr_90px_84px] items-center gap-3 py-1.5 border-b border-slate-100 last:border-0">
                   <div className="text-xs font-semibold text-slate-700 truncate">
                     {v.vendedor}
                     <span className="block text-[10px] font-normal text-slate-400 font-mono">{fmtNum(v.count)} O.S.</span>
                   </div>
                   <div className="h-5 rounded bg-slate-100 relative overflow-hidden">
                     <div
-                      className="h-full rounded flex items-center justify-end px-2"
+                      className="h-full rounded"
                       style={{ width: `${largura}%`, background: COR_VENDIDO }}
-                    >
-                      <span className="text-[10px] font-mono text-white whitespace-nowrap">{fmtBrlCompact(v.valorOs)}</span>
-                    </div>
+                    />
                   </div>
+                  <span className="text-[11px] font-mono text-slate-600 whitespace-nowrap text-right">{fmtBrlCompact(v.valorOs)}</span>
                   <div className="text-right font-mono">
                     <b className="block text-sm text-emerald-700">{fmtPct(v.resultadoPct)}</b>
                     <span className="text-[9px] text-slate-400 uppercase tracking-wide">margem líq.</span>
