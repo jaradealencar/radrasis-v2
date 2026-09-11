@@ -148,30 +148,78 @@ async function upsertEmLotes(table: string, cols: string[], linhas: Record<strin
   return processadas;
 }
 
+/** Tamanho de cada janela ao fatiar um mês em sub-períodos — ver nota acima
+ * de sincronizarHistoricoDoMubiSys sobre por que o mês inteiro num único
+ * request estoura o timeout. */
+const DIAS_POR_JANELA = 7;
+
+function fatiarEmJanelas(di: string, df: string, diasPorJanela: number): Array<{ di: string; df: string }> {
+  const [anoI, mesI, diaI] = di.split('-').map(Number);
+  const inicio = new Date(Date.UTC(anoI, mesI - 1, diaI));
+  const [anoF, mesF, diaF] = df.split('-').map(Number);
+  const fim = new Date(Date.UTC(anoF, mesF - 1, diaF));
+
+  const janelas: Array<{ di: string; df: string }> = [];
+  let cursor = new Date(inicio);
+  while (cursor <= fim) {
+    const janelaFim = new Date(cursor);
+    janelaFim.setUTCDate(janelaFim.getUTCDate() + diasPorJanela - 1);
+    if (janelaFim > fim) janelaFim.setTime(fim.getTime());
+    janelas.push({ di: cursor.toISOString().slice(0, 10), df: janelaFim.toISOString().slice(0, 10) });
+    cursor = new Date(janelaFim);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return janelas;
+}
+
 /**
  * Sincroniza um único mês-calendário (mes/ano) de `historico_os` +
  * `historico_orcamentos` a partir da API MubiSys ao vivo.
+ *
+ * O mês inteiro NUNCA é pedido num único request: medido em 09/09/2026, só a
+ * listagem de orçamentos de 9 dias já levou ~17s — um mês inteiro (~30 dias)
+ * extrapola para perto/além do timeout de 45s (TIMEOUT_LISTA_MS), e é
+ * exatamente isso que fez a sincronização de historico_os parar de avançar
+ * a partir de 01/09/2026 (ver docs/cron-qstash.md). Em vez de fatiar em
+ * chamadas sequenciais (mesma lentidão total, só distribuída), as janelas
+ * de `DIAS_POR_JANELA` dias são todas buscadas em paralelo — o tempo total
+ * fica perto do de uma única janela, não da soma de todas.
  */
 export async function sincronizarHistoricoDoMubiSys(mes: number, ano: number): Promise<SincronizarHistoricoResultado> {
   const lastDay = new Date(ano, mes, 0).getDate();
   const di = `${ano}-${pad(mes)}-01`;
-  const df = `${ano}-${pad(mes)}-${pad(lastDay)}`;
+  // Mês corrente: não faz sentido pedir dias futuros do mês (só desperdiça
+  // tempo de request sem trazer nada) — capar em hoje.
+  const hoje = new Date();
+  const ehMesCorrente = ano === hoje.getFullYear() && mes === hoje.getMonth() + 1;
+  const df = ehMesCorrente
+    ? `${ano}-${pad(mes)}-${pad(hoje.getDate())}`
+    : `${ano}-${pad(mes)}-${pad(lastDay)}`;
 
   try {
-    console.log(`🔄 [SYNC-HISTORICO] Sincronizando ${pad(mes)}/${ano} (${di}..${df})`);
+    const janelas = fatiarEmJanelas(di, df, DIAS_POR_JANELA);
+    console.log(`🔄 [SYNC-HISTORICO] Sincronizando ${pad(mes)}/${ano} (${di}..${df}) em ${janelas.length} janela(s) paralela(s)`);
 
-    const [osResult, orcResult] = await Promise.all([
-      listarOSMubiSys({ status: 'TODOS', filtrodata: 'APROVACAO', datainicial: di, datafinal: df }),
-      listarOrcamentosMubiSys({ status: 'TODOS', datainicial: di, datafinal: df }),
-    ]);
+    const resultados = await Promise.all(janelas.map(async (janela) => {
+      const [osResult, orcResult] = await Promise.all([
+        listarOSMubiSys({ status: 'TODOS', filtrodata: 'APROVACAO', datainicial: janela.di, datafinal: janela.df }),
+        listarOrcamentosMubiSys({ status: 'TODOS', datainicial: janela.di, datafinal: janela.df }),
+      ]);
+      return { osResult, orcResult };
+    }));
 
-    if (!osResult.completo) console.warn(`⚠️ [SYNC-HISTORICO] Listagem de OS incompleta para ${mes}/${ano} — teto de páginas atingido`);
-    if (!orcResult.completo) console.warn(`⚠️ [SYNC-HISTORICO] Listagem de orçamentos incompleta para ${mes}/${ano} — teto de páginas atingido`);
+    const osItens = resultados.flatMap(r => r.osResult.itens);
+    const orcItens = resultados.flatMap(r => r.orcResult.itens);
+    const osCompleto = resultados.every(r => r.osResult.completo);
+    const orcCompleto = resultados.every(r => r.orcResult.completo);
 
-    const linhasOs = osResult.itens
+    if (!osCompleto) console.warn(`⚠️ [SYNC-HISTORICO] Listagem de OS incompleta para ${mes}/${ano} — teto de páginas atingido`);
+    if (!orcCompleto) console.warn(`⚠️ [SYNC-HISTORICO] Listagem de orçamentos incompleta para ${mes}/${ano} — teto de páginas atingido`);
+
+    const linhasOs = osItens
       .map(os => osParaLinha(os, mes, ano))
       .filter(l => l.osNumero);
-    const linhasOrc = orcResult.itens
+    const linhasOrc = orcItens
       .map(orc => orcParaLinha(orc, mes, ano))
       .filter(l => l.orcNumero);
 
