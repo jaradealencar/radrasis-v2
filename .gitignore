@@ -116,3 +116,6 @@ client/public/__manus__/version.json
 
 # Database dumps (contain production data, never commit)
 docs/database-backup/
+
+# Coleta bruta de orçamentos do ERP (dados de produção, ~13 MB por rodada)
+scripts/_orcamentos-raw/
