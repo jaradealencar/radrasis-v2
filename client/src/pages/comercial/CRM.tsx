@@ -495,6 +495,8 @@ export default function CRM() {
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
   const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
+  // Busca padrão cobre 30 dias; ativar para incluir propostas abertas há mais tempo (raro)
+  const [buscarAntigas, setBuscarAntigas] = useState(false);
 
   // ─── Estados da aba Auditoria ────────────────────────────────────────────────
   const [audVendedor, setAudVendedor] = useState<string>("__todos__");
@@ -515,11 +517,13 @@ export default function CRM() {
   );
 
   const { data, isLoading, refetch } = trpc.crm.getPropostas.useQuery(
-    { vendedor: vendedor || undefined, preset: "personalizado", dataInicio, dataFim },
-    { refetchOnWindowFocus: false }
+    { vendedor: vendedor || undefined, preset: "personalizado", dataInicio, dataFim, buscarAntigas },
+    // retry: 1 (em vez do padrão 3 do React Query) — consulta ao MubiSys pode ser lenta;
+    // se falhar, falha rápido em vez de travar minutos em retries exponenciais
+    { refetchOnWindowFocus: false, retry: 1 }
   );
 
-  const { data: vendedoresData } = trpc.crm.getVendedores.useQuery(undefined, { refetchOnWindowFocus: false });
+  const { data: vendedoresData } = trpc.crm.getVendedores.useQuery(undefined, { refetchOnWindowFocus: false, retry: 1 });
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
   const stats = data?.stats;
@@ -754,6 +758,27 @@ export default function CRM() {
               <SelectItem value="faixa3">Faixa 3 (D+11 a D+15)</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        {/* Buscar propostas mais antigas (raro: proposta aberta há mais de 30 dias) */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-transparent select-none">.</label>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button onClick={() => setBuscarAntigas(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
+                    buscarAntigas ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-slate-500"
+                  }`}>
+                  <Clock className="w-3.5 h-3.5" />
+                  {buscarAntigas ? "Buscando até 90 dias ✕" : "Buscar mais antigas"}
+                  {isLoading && buscarAntigas && <Spinner className="size-3" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs max-w-[220px]">
+                Por padrão, o CRM busca propostas abertas nos últimos 30 dias. Ative para incluir até 90 dias — a busca pode demorar mais.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 

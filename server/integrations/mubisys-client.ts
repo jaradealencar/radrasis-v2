@@ -324,6 +324,8 @@ export async function listarOrcamentosMubiSys(opts: {
   status?: "TODOS" | "ABERTO" | "CANCELADO" | "APROVADO";
   datainicial: string;
   datafinal: string;
+  /** Itens por página. Padrão 200 — ver nota abaixo sobre degradação não-linear com per_page maior. */
+  perPage?: number;
 }): Promise<{ itens: MubiSysOrcamento[]; completo: boolean }> {
   const { itens, completo } = await listarTudo<MubiSysOrcamento>(
     "orcamento",
@@ -336,7 +338,11 @@ export async function listarOrcamentosMubiSys(opts: {
     // per_page=500 (padrão de listarTudo) estoura TIMEOUT_LISTA_MS em janelas de
     // mês cheio (~800 orçamentos) — medido em 17/08/2026. 200 reduz o payload por
     // página o bastante para caber no orçamento de tempo sem precisar de retry.
-    { timeoutMs: TIMEOUT_LISTA_MS, perPage: 200 },
+    // Medido em 12/09/2026: o tempo por página NÃO escala linear com per_page — com
+    // per_page=200 a API degrada a cada página (21s, 24s, >45s/timeout na 3ª), enquanto
+    // per_page=50 fica estável em ~3,5-4,7s por página. Chamadores sensíveis a esse
+    // limite (ex.: CRM) devem passar um perPage menor.
+    { timeoutMs: TIMEOUT_LISTA_MS, perPage: opts.perPage ?? 200 },
   );
   return {
     itens: refiltrarPorJanela(itens, "data_cadastro", opts.datainicial, opts.datafinal),
