@@ -3,6 +3,7 @@ import type { MetaComercial } from "../../../../drizzle/schema";
 import EvolucaoVendedor from "./EvolucaoVendedor";
 import EvolucaoDiariaVendedor from "./EvolucaoDiariaVendedor";
 import InteligenteClientes from "./InteligenteClientes";
+import PropostasAltoValor from "./PropostasAltoValor";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
@@ -840,6 +841,9 @@ export default function PerformanceComercial() {
             />
           </div>
         ) : null}
+
+        {/* Propostas de alto valor (acima de R$ 8.000) precisando de follow-up */}
+        <PropostasAltoValor mes={mesSelecionado} ano={anoSelecionado} />
 
         {/* Gráfico de Evolução do Ticket Médio — ano inteiro */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
