@@ -183,7 +183,11 @@ server/
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
-  integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts
+  integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
+                       opencnpj-client.ts (consulta de CNPJ, sem chave)
+  services/            lógica de cálculo pura (sem I/O), reutilizada por routers:
+                       inteligenciaClientes.ts (RFM/classificação/funil/previsão
+                       comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
