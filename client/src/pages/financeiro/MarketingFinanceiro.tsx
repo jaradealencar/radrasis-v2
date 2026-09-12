@@ -157,6 +157,10 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     const cac = investimentoAquisicao != null && clientesNovosQtd != null && clientesNovosQtd > 0
       ? investimentoAquisicao / clientesNovosQtd : null;
 
+    // Custo de reativação por cliente = Investimento em Reativação / Nº Clientes Reativados
+    const custoReativacao = investimentoReativacao != null && clientesReativadosQtd != null && clientesReativadosQtd > 0
+      ? investimentoReativacao / clientesReativadosQtd : null;
+
     // Retorno real = 51% do faturamento de clientes novos
     const retornoReal = faturamentoNovos != null ? faturamentoNovos * MARGEM_MARKETING : null;
 
@@ -172,7 +176,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
       mes, nome, abrev: MESES_ABREV[idx],
       investimentoAquisicao, investimentoReativacao, investimento,
       clientesNovosQtd, clientesReativadosQtd, faturamentoNovos, faturamentoReativados, pedidosNovos,
-      retornoReal, cac, roiReais, roiPct,
+      retornoReal, cac, custoReativacao, roiReais, roiPct,
     };
   }), [custoMarketingMap, clientesNovosMap]);
 
@@ -221,6 +225,12 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     return com.reduce((s, d) => s + (d.cac ?? 0), 0) / com.length;
   }, [dadosFiltrados]);
 
+  const custoReativacaoMedio = useMemo(() => {
+    const com = dadosFiltrados.filter(d => d.custoReativacao != null);
+    if (!com.length) return null;
+    return com.reduce((s, d) => s + (d.custoReativacao ?? 0), 0) / com.length;
+  }, [dadosFiltrados]);
+
   // ROI total em R$ e % — considera só o investimento em aquisição (reativação não gera "cliente novo")
   const roiTotalReais = totalInvestidoAquisicao > 0 ? totalRetornoReal - totalInvestidoAquisicao : null;
   const roiTotalPct = totalInvestidoAquisicao > 0 && roiTotalReais != null
@@ -249,6 +259,8 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
       mes: d.abrev,
       "Aquisição": d.investimentoAquisicao ?? 0,
       "Reativação": d.investimentoReativacao ?? 0,
+      "CAC Aquisição": d.cac ?? 0,
+      "Custo Reativação": d.custoReativacao ?? 0,
       "Fat. Clientes Novos": d.faturamentoNovos ?? 0,
       "Fat. Reativados (incluso)": d.faturamentoReativados ?? 0,
       "Retorno Real (51%)": d.retornoReal ?? 0,
@@ -455,6 +467,14 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             variant="border"
           />
           <KpiCard
+            label="Custo de Reativação"
+            value={custoReativacaoMedio != null ? fmtBRL(custoReativacaoMedio) : "—"}
+            sub="Invest. reativação / cliente reativado"
+            color="#b45309"
+            icon={<RefreshCw size={18} />}
+            variant="border"
+          />
+          <KpiCard
             label="ROI de Marketing"
             value={
               <>
@@ -586,6 +606,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 <TableHead className="text-right font-semibold">Reativados</TableHead>
                 <TableHead className="text-right font-semibold">Pedidos</TableHead>
                 <TableHead className="text-right font-semibold">CAC Aquisição</TableHead>
+                <TableHead className="text-right font-semibold" title="Investimento em Reativação dividido pelo nº de clientes reativados no mês.">Custo Reativação</TableHead>
                 <TableHead className="text-right font-semibold">Fat. Clientes Novos</TableHead>
                 <TableHead className="text-right font-semibold" title="Parcela de Fat. Clientes Novos que veio de clientes reativados — está incluída na coluna anterior, não somada a ela.">Fat. Reativados</TableHead>
                 <TableHead className="text-right font-semibold">Retorno Real (51%)</TableHead>
@@ -595,7 +616,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dadosFiltrados.map(({ mes, nome, investimentoAquisicao, investimentoReativacao, clientesNovosQtd, clientesReativadosQtd, faturamentoNovos, faturamentoReativados, pedidosNovos, retornoReal, cac, roiReais, roiPct }) => {
+              {dadosFiltrados.map(({ mes, nome, investimentoAquisicao, investimentoReativacao, clientesNovosQtd, clientesReativadosQtd, faturamentoNovos, faturamentoReativados, pedidosNovos, retornoReal, cac, custoReativacao, roiReais, roiPct }) => {
                 const mk = custoMarketingMap[mes];
                 const isEditing = marketingEditando === mes;
                 return (
@@ -673,6 +694,11 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                       {cac != null
                         ? <span className="font-semibold text-orange-600">{fmtBRL(cac)}</span>
                         : <span className="text-muted-foreground">{investimentoAquisicao != null ? "sem dados" : "—"}</span>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {custoReativacao != null
+                        ? <span className="font-semibold text-amber-800">{fmtBRL(custoReativacao)}</span>
+                        : <span className="text-muted-foreground">{investimentoReativacao != null && investimentoReativacao > 0 ? "sem dados" : "—"}</span>}
                     </TableCell>
                     <TableCell className="text-right">
                       {faturamentoNovos != null
@@ -756,6 +782,9 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                   <TableCell className="text-right font-bold text-orange-600">
                     {cacMedio != null ? fmtBRL(cacMedio) : "—"}
                   </TableCell>
+                  <TableCell className="text-right font-bold text-amber-800">
+                    {custoReativacaoMedio != null ? fmtBRL(custoReativacaoMedio) : "—"}
+                  </TableCell>
                   <TableCell className="text-right font-bold text-emerald-700">{fmtBRL(totalFaturamentoNovos)}</TableCell>
                   <TableCell className="text-right font-bold text-amber-700">{fmtBRL(totalFaturamentoReativados)}</TableCell>
                   <TableCell className="text-right font-bold text-teal-700">{fmtBRL(totalRetornoReal)}</TableCell>
@@ -770,7 +799,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 {mesFiltro === null && (
                   <TableRow>
                     <TableCell className="text-xs text-muted-foreground font-medium">Média mensal</TableCell>
-                    <TableCell colSpan={9} />
+                    <TableCell colSpan={10} />
                     <TableCell className="text-right text-xs font-semibold text-emerald-600">
                       {roiMedioReais != null ? fmtBRL(roiMedioReais) : "—"}
                     </TableCell>
