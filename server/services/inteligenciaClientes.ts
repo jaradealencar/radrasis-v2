@@ -1123,3 +1123,114 @@ export function montarContextoAssistenteClientes(
     })),
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── Tempo entre orçamento e pedido fechado (para calibrar follow-up) ────────
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTANTE — leia antes de usar este número: o ERP exportado não guarda um
+// campo que ligue o orcNumero ao osNumero que ele gerou (ver nota acima).
+// Este cálculo é uma APROXIMAÇÃO por pareamento heurístico: para cada
+// orçamento com status de aceite (STATUS_GANHO), procura a primeira OS válida
+// da MESMA EMPRESA cuja data de aprovação seja igual ou posterior à data de
+// cadastro do orçamento, dentro de uma janela máxima de dias — pareamento
+// guloso 1:1 (uma OS não é usada para mais de um orçamento) para reduzir o
+// risco de casar o orçamento errado quando o cliente tem várias compras
+// próximas no tempo. Não é um vínculo confirmado pelo ERP — é a única forma
+// possível de estimar isso com os dados disponíveis, e deve ser lido como
+// tal (amostra e taxa de pareamento sempre exibidas).
+
+export const JANELA_MAXIMA_ORCAMENTO_PEDIDO_DIAS = 90;
+
+export interface TempoOrcamentoPedido {
+  amostra: number; // quantos orçamentos ganhos conseguiram parear com uma OS
+  totalOrcamentosGanhos: number; // total de orçamentos com status de aceite no período
+  taxaPareamentoPct: number | null;
+  mediaDias: number | null;
+  medianaDias: number | null;
+  p25Dias: number | null;
+  p75Dias: number | null;
+  /** Sugestões de follow-up baseadas nos percentis reais (P25/mediana/P75) —
+   * heurística de acompanhamento, não uma regra validada estatisticamente. */
+  sugestaoFollowUpDias: { primeiro: number; segundo: number; terceiro: number } | null;
+}
+
+function percentil(valoresAsc: number[], p: number): number {
+  if (valoresAsc.length === 0) return 0;
+  const idx = Math.min(valoresAsc.length - 1, Math.max(0, Math.ceil((p / 100) * valoresAsc.length) - 1));
+  return valoresAsc[idx];
+}
+
+export function calcularTempoOrcamentoPedido(
+  orcRows: OrcamentoRow[],
+  osRows: OsRow[],
+  janelaMaximaDias = JANELA_MAXIMA_ORCAMENTO_PEDIDO_DIAS,
+): TempoOrcamentoPedido {
+  // Agrupa OS válidas por empresa, ordenadas por data de aprovação
+  const osPorEmpresa = new Map<string, Date[]>();
+  for (const r of osRows) {
+    if (!isOsNormalDb(r)) continue;
+    const data = parseDataFlexivel(r.dataAprovacao);
+    const empresa = (r.empresa ?? "").trim();
+    if (!data || !empresa) continue;
+    const key = normalizeEmpresaKey(empresa);
+    if (!osPorEmpresa.has(key)) osPorEmpresa.set(key, []);
+    osPorEmpresa.get(key)!.push(data);
+  }
+  for (const lista of osPorEmpresa.values()) lista.sort((a, b) => a.getTime() - b.getTime());
+  const osUsada = new Map<string, Set<number>>(); // empresaKey -> índices de OS já pareadas
+
+  // Orçamentos ganhos, ordenados por empresa e por data de cadastro (pareamento guloso, do mais antigo pro mais novo)
+  const orcamentosGanhos = orcRows
+    .filter(r => STATUS_GANHO.has((r.status ?? "").trim().toLowerCase()))
+    .map(r => ({ empresaKey: normalizeEmpresaKey((r.empresa ?? "").trim()), data: parseDataFlexivel(r.dataCadastro) }))
+    .filter((r): r is { empresaKey: string; data: Date } => !!r.data && !!r.empresaKey)
+    .sort((a, b) => a.data.getTime() - b.data.getTime());
+
+  const diasAteFechamento: number[] = [];
+  for (const orc of orcamentosGanhos) {
+    const listaOs = osPorEmpresa.get(orc.empresaKey);
+    if (!listaOs) continue;
+    if (!osUsada.has(orc.empresaKey)) osUsada.set(orc.empresaKey, new Set());
+    const usadas = osUsada.get(orc.empresaKey)!;
+    for (let i = 0; i < listaOs.length; i++) {
+      if (usadas.has(i)) continue;
+      const osData = listaOs[i];
+      if (osData < orc.data) continue; // OS precisa vir depois (ou no mesmo dia) do orçamento
+      const gap = diasEntre(osData, orc.data);
+      if (gap > janelaMaximaDias) break; // lista ordenada — próximas OS só ficam mais distantes
+      diasAteFechamento.push(gap);
+      usadas.add(i);
+      break;
+    }
+  }
+
+  diasAteFechamento.sort((a, b) => a - b);
+  const n = diasAteFechamento.length;
+  const mediana = n > 0 ? (n % 2 === 0 ? (diasAteFechamento[n / 2 - 1] + diasAteFechamento[n / 2]) / 2 : diasAteFechamento[(n - 1) / 2]) : null;
+  const p25 = n > 0 ? percentil(diasAteFechamento, 25) : null;
+  const p75 = n > 0 ? percentil(diasAteFechamento, 75) : null;
+
+  // Sugestão baseada nos percentis reais (não em frações da mediana): com
+  // mediana muito baixa (conversão quase no mesmo dia, comum neste negócio),
+  // uma fração da mediana colapsaria em "1 dia" repetido — os percentis já
+  // capturam a dispersão real. Garante que os três contatos fiquem
+  // estritamente crescentes mesmo quando os percentis empatam.
+  let sugestao: { primeiro: number; segundo: number; terceiro: number } | null = null;
+  if (mediana !== null && p25 !== null && p75 !== null) {
+    const primeiro = Math.max(1, p25);
+    const segundo = Math.max(primeiro + 1, Math.round(mediana));
+    const terceiro = Math.max(segundo + 1, p75);
+    sugestao = { primeiro, segundo, terceiro };
+  }
+
+  return {
+    amostra: n,
+    totalOrcamentosGanhos: orcamentosGanhos.length,
+    taxaPareamentoPct: orcamentosGanhos.length > 0 ? (n / orcamentosGanhos.length) * 100 : null,
+    mediaDias: n > 0 ? diasAteFechamento.reduce((s, d) => s + d, 0) / n : null,
+    medianaDias: mediana,
+    p25Dias: p25,
+    p75Dias: p75,
+    sugestaoFollowUpDias: sugestao,
+  };
+}

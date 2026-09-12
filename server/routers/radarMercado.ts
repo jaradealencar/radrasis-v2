@@ -4,7 +4,7 @@ import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { radarMercadoConfig, sinaisMercado } from "../../drizzle/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { buscarNaWeb, buscaConfigurada } from "../integrations/google-search-client";
+import { buscarNaWeb, buscaConfigurada } from "../integrations/serpapi-client";
 import { invokeLLM } from "../_core/llm";
 
 // ─── Configuração padrão combinada com o usuário em 2026-09 ──────────────────
@@ -120,7 +120,7 @@ export const radarMercadoRouter = router({
     const db = await getDb();
     if (!db) throw new Error("DB indisponível");
     if (!buscaConfigurada()) {
-      throw new Error("Radar sem busca configurada — falta GOOGLE_SEARCH_API_KEY/GOOGLE_SEARCH_CX no servidor (ver .env.example).");
+      throw new Error("Radar sem busca configurada — falta SERPAPI_KEY no servidor (ver .env.example).");
     }
     const config = parseConfig(await carregarConfig(db));
 

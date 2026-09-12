@@ -690,6 +690,56 @@ function VistaFilaAcoes() {
 
 // ─── Vista: Funil de Orçamentos ────────────────────────────────────────────────
 
+function SecaoTempoFollowUp() {
+  const { data, isLoading } = trpc.performanceComercial.getTempoOrcamentoPedido.useQuery();
+  if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-40 animate-pulse" />;
+  if (!data) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-4 border-b border-slate-100">
+        <h3 className="text-sm font-bold text-slate-700">Tempo entre orçamento e pedido fechado</h3>
+        <p className="text-xs text-amber-600 mt-0.5">
+          Aproximação: o ERP não guarda o vínculo direto entre orçamento e pedido — este número casa cada orçamento aprovado com a OS mais próxima da mesma empresa, dentro de {JANELA_MAXIMA_DIAS_LABEL} dias. Trate como estimativa, não fato confirmado.
+        </p>
+      </div>
+      {data.amostra === 0 ? (
+        <div className="p-6 text-xs text-slate-400">Amostra insuficiente para calcular (nenhum orçamento pareado com uma OS).</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4">
+            <KpiCard icon={Clock3} label="Mediana" value={data.medianaDias !== null ? `${Math.round(data.medianaDias)} dias` : "—"} sub={`Amostra: ${data.amostra} de ${data.totalOrcamentosGanhos} (${fmtPct(data.taxaPareamentoPct ?? 0)} pareados)`} color="#0ea5e9" />
+            <KpiCard icon={Clock3} label="Média" value={data.mediaDias !== null ? `${data.mediaDias.toFixed(1)} dias` : "—"} sub="Sensível a outliers — prefira a mediana" color="#94a3b8" />
+            <KpiCard icon={Clock3} label="P25–P75" value={data.p25Dias !== null && data.p75Dias !== null ? `${data.p25Dias}–${data.p75Dias}d` : "—"} sub="50% central dos casos" color="#8b5cf6" />
+            <KpiCard icon={Clock3} label="Taxa de pareamento" value={data.taxaPareamentoPct !== null ? fmtPct(data.taxaPareamentoPct) : "—"} sub="Quanto maior, mais confiável a amostra" color={data.taxaPareamentoPct && data.taxaPareamentoPct >= 50 ? "#22c55e" : "#f59e0b"} />
+          </div>
+          {data.sugestaoFollowUpDias && (
+            <div className="px-4 pb-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sugestão de follow-up (percentis reais)</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.primeiro}d</p>
+                  <p className="text-[10px] text-blue-500">1º contato</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.segundo}d</p>
+                  <p className="text-[10px] text-blue-500">2º contato</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.terceiro}d</p>
+                  <p className="text-[10px] text-blue-500">3º contato (último antes de considerar perdido)</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const JANELA_MAXIMA_DIAS_LABEL = 90;
+
 function VistaFunil() {
   const { data, isLoading } = trpc.performanceComercial.getFunilOrcamentos.useQuery();
   if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-64 animate-pulse" />;
@@ -706,6 +756,8 @@ function VistaFunil() {
         <KpiCard icon={HelpCircle} label="Aprovado, depois cancelado" value={fmtNum(data.taxaConversao.aprovadoMasCanceladoDepois)} sub="Fora do cálculo de conversão" color="#94a3b8" />
         <KpiCard icon={Layers} label="Status distintos" value={fmtNum(data.porStatus.length)} sub="Etapas usadas pela equipe" color="#8b5cf6" />
       </div>
+
+      <SecaoTempoFollowUp />
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">Orçamentos por status</h3></div>

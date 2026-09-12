@@ -13,9 +13,14 @@ exige ("não invente minha cidade ou área de atendimento").
   usuário, não inferido sozinho).
 - **Público-alvo**: só gráficas e empresas de comunicação visual (não outros
   ramos) — reflete o modelo de terceirização do negócio.
-- **Fonte de busca**: Google Custom Search JSON API (paga, ~US$5/1000 buscas
-  acima da cota gratuita de 100/dia) — decisão explícita do usuário de
-  contratar a API em vez de ficar só com entrada manual.
+- **Fonte de busca**: SerpAPI (serpapi.com) — decisão explícita do usuário de
+  contratar uma API de busca em vez de ficar só com entrada manual. A escolha
+  inicial foi Google Custom Search JSON API, mas o Google fechou essa API
+  para contas novas em 2025 (confirmado em 2026-09: chave e projeto novos
+  retornam `API_KEY_SERVICE_BLOCKED` mesmo com tudo configurado corretamente
+  — não é erro de configuração, é bloqueio de política para contas criadas
+  depois do fechamento). Trocado para SerpAPI por ser cadastro só com e-mail,
+  sem a burocracia de projeto/faturamento do Google Cloud.
 
 ## Como funciona
 
@@ -23,8 +28,8 @@ exige ("não invente minha cidade ou área de atendimento").
    concorrentes conhecidos, termos de busca e exclusões — tudo editável pela
    tela (`/comercial/radar-mercado`, botão "Configurar").
 2. Ao clicar "Buscar sinais agora", o sistema roda cada termo de busca
-   configurado contra `server/integrations/google-search-client.ts`
-   (Google Custom Search), deduplicando por hash da URL contra
+   configurado contra `server/integrations/serpapi-client.ts` (SerpAPI),
+   deduplicando por hash da URL contra
    `sinais_mercado` (nunca reprocessa o mesmo link).
 3. Cada resultado novo passa por uma extração estruturada via IA
    (`invokeLLM` com `response_format: json_schema`) que decide se é
@@ -38,10 +43,10 @@ exige ("não invente minha cidade ou área de atendimento").
 
 ## Limitação sem a chave configurada
 
-Sem `GOOGLE_SEARCH_API_KEY`/`GOOGLE_SEARCH_CX` (ver `.env.example`), a
-configuração fica pronta e editável, mas o botão "Buscar sinais agora" erra
-com uma mensagem clara em vez de simular dados — nunca inventa sinal sem
-fonte real, conforme exigido pelo prompt de origem.
+Sem `SERPAPI_KEY` (ver `.env.example`), a configuração fica pronta e
+editável, mas o botão "Buscar sinais agora" erra com uma mensagem clara em
+vez de simular dados — nunca inventa sinal sem fonte real, conforme exigido
+pelo prompt de origem.
 
 ## Limitações conhecidas
 

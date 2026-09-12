@@ -122,3 +122,6 @@ scripts/_orcamentos-raw/
 
 # Permissões locais do Claude Code (pessoais por máquina/sessão, não compartilhar)
 .claude/settings.local.json
+
+.vercel
+.env*

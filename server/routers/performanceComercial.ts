@@ -7,7 +7,7 @@ import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, fa
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
-  calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados,
+  calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
@@ -2148,6 +2148,20 @@ export const performanceComercialRouter = router({
       if (!db) throw new Error("DB indisponível");
       const rows = await db.select().from(historicoOrcamentos);
       return calcularFunilOrcamentos(rows as any, new Date());
+    }),
+
+  /** Tempo entre orçamento aprovado e pedido fechado — aproximação por
+   * pareamento heurístico (ver aviso em calcularTempoOrcamentoPedido), usada
+   * para calibrar o prazo ideal de follow-up. */
+  getTempoOrcamentoPedido: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const [orcRows, osRows] = await Promise.all([
+        db.select().from(historicoOrcamentos),
+        db.select().from(historicoOs),
+      ]);
+      return calcularTempoOrcamentoPedido(orcRows as any, osRows as any);
     }),
 
   // ─── Previsões 30/60/90 dias ──────────────────────────────────────────────────

@@ -118,7 +118,7 @@ export default function RadarMercado() {
       {configurada?.configurada === false && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 flex items-start gap-2">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          Busca automática ainda não configurada — falta GOOGLE_SEARCH_API_KEY/GOOGLE_SEARCH_CX no servidor. A configuração de região/segmentos/termos já pode ser ajustada abaixo, mas nenhum sinal será coletado até a chave ser adicionada.
+          Busca automática ainda não configurada — falta SERPAPI_KEY no servidor. A configuração de região/segmentos/termos já pode ser ajustada abaixo, mas nenhum sinal será coletado até a chave ser adicionada.
         </div>
       )}
 
