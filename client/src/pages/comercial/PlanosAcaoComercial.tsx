@@ -600,9 +600,96 @@ function PerfilCard({ perfil, onSave }: { perfil: PerfilVendedor; onSave: (p: Pe
 }
 
 // ─── Página Principal ─────────────────────────────────────────────────────────
+// ─── Aba: Backlog Estratégico (conectada ao banco — planos_acao_comercial) ────
+// Diferente das outras abas desta tela (conteúdo fixo em estado local, some ao
+// recarregar a página): esta é persistida de verdade, para acompanhar e
+// discutir com o usuário ao longo do tempo as ideias de crescimento/recompra
+// levantadas junto com Inteligência de Clientes (setembro/2026).
+
+const PRIORIDADE_INFO: Record<string, { label: string; cor: string }> = {
+  critica: { label: "Crítica", cor: "bg-red-50 text-red-700 border-red-200" },
+  alta: { label: "Alta", cor: "bg-orange-50 text-orange-700 border-orange-200" },
+  media: { label: "Média", cor: "bg-amber-50 text-amber-700 border-amber-200" },
+  baixa: { label: "Baixa", cor: "bg-slate-100 text-slate-500 border-slate-200" },
+};
+
+const STATUS_LABEL_BACKLOG: Record<string, string> = {
+  pendente: "Pendente", em_andamento: "Em andamento", concluido: "Concluído", cancelado: "Cancelado",
+};
+
+function BacklogEstrategico() {
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.planosAcaoComercial.listar.useQuery();
+  const atualizarMut = trpc.planosAcaoComercial.atualizar.useMutation({
+    onSuccess: () => utils.planosAcaoComercial.listar.invalidate(),
+  });
+  const [observacaoLocal, setObservacaoLocal] = useState<Record<number, string>>({});
+
+  if (isLoading) return <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />)}</div>;
+  if (!data || data.length === 0) {
+    return <Empty><EmptyHeader><EmptyTitle>Nenhum item no backlog ainda.</EmptyTitle></EmptyHeader></Empty>;
+  }
+
+  const ordem = { critica: 0, alta: 1, media: 2, baixa: 3 };
+  const lista = [...data].sort((a, b) => (ordem[a.prioridade as keyof typeof ordem] ?? 9) - (ordem[b.prioridade as keyof typeof ordem] ?? 9));
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        Ideias de crescimento e recompra discutidas com a IA em Inteligência de Clientes — atualize o status e deixe observações aqui para continuarmos a conversa.
+      </p>
+      {lista.map(item => (
+        <Card key={item.id} className="border-slate-200">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex-1 min-w-[200px]">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${PRIORIDADE_INFO[item.prioridade ?? "media"]?.cor}`}>
+                    {PRIORIDADE_INFO[item.prioridade ?? "media"]?.label}
+                  </span>
+                  <span className="text-[11px] text-slate-400">{STATUS_LABEL_BACKLOG[item.status]}</span>
+                </div>
+                <p className="text-sm font-bold text-slate-800">{item.titulo}</p>
+                {item.descricao && <p className="text-xs text-slate-500 mt-1">{item.descricao}</p>}
+              </div>
+              <select
+                value={item.status}
+                onChange={e => atualizarMut.mutate({ id: item.id, status: e.target.value as any })}
+                className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+              >
+                {Object.entries(STATUS_LABEL_BACKLOG).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            {item.observacoes && <p className="text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-2">{item.observacoes}</p>}
+            <div className="flex items-center gap-2">
+              <input
+                value={observacaoLocal[item.id] ?? ""}
+                onChange={e => setObservacaoLocal(prev => ({ ...prev, [item.id]: e.target.value }))}
+                placeholder="Adicionar observação..."
+                className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5"
+              />
+              <Button
+                size="sm" variant="outline"
+                onClick={() => {
+                  const texto = observacaoLocal[item.id];
+                  if (!texto?.trim()) return;
+                  atualizarMut.mutate({ id: item.id, observacoes: texto.trim() });
+                  setObservacaoLocal(prev => ({ ...prev, [item.id]: "" }));
+                }}
+              >
+                Salvar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function PlanosAcaoComercial() {
   const [perfis, setPerfis] = useState<PerfilVendedor[]>(VENDEDORES_INICIAIS);
-  const [abaAtiva, setAbaAtiva] = useState<"planos" | "campanha" | "perfis">("planos");
+  const [abaAtiva, setAbaAtiva] = useState<"planos" | "campanha" | "perfis" | "backlog">("planos");
   const [planos, setPlanos] = useState<PlanoAcao[]>(PLANOS_INICIAIS);
   const [adicionandoPlano, setAdicionandoPlano] = useState(false);
   const [novoPlano, setNovoPlano] = useState<Omit<PlanoAcao, "id">>({ titulo: "", descricao: "", tipo: "conclusao", status: "pendente", dataConclusao: "", icone: "Target", cor: "#6366f1" });
@@ -667,6 +754,7 @@ export default function PlanosAcaoComercial() {
             { key: "planos", label: "Planos de Ação", icon: <CalendarCheck size={15} /> },
             { key: "campanha", label: "Campanha Primeira Compra", icon: <Target size={15} /> },
             { key: "perfis", label: "Perfis WhatsApp", icon: <User size={15} /> },
+            { key: "backlog", label: "Backlog Estratégico", icon: <Sparkles size={15} /> },
           ] as const).map(aba => (
             <button
               key={aba.key}
@@ -957,6 +1045,9 @@ export default function PlanosAcaoComercial() {
             </Card>
           </div>
         )}
+
+        {/* ─── ABA: Backlog Estratégico ───────────────────────────────────────── */}
+        {abaAtiva === "backlog" && <BacklogEstrategico />}
       </div>
   );
 }

@@ -166,7 +166,7 @@ export const DICIONARIO_METRICAS: MetricaDicionario[] = [
   {
     id: "recompra_novos_reativados",
     nome: "Recompra de clientes novos e reativados",
-    formula: "Reaproveita a regra \"Cliente Novo e Reativado\" (nunca comprou antes da janela, ou última compra 6+ meses antes dela). Taxa de recompra = % desses clientes que fez pelo menos mais uma compra válida depois, até hoje. Distribuição de quantidade de compras = % que ficou em exatamente 1/2/3/4+ compras (contando a de entrada) desde a qualificação até hoje.",
+    formula: "Reaproveita a regra \"Cliente Novo e Reativado\" (nunca comprou antes da janela, ou última compra 6+ meses antes dela). Taxa de recompra = % desses clientes que fez pelo menos mais uma compra válida depois, até hoje. Distribuição de quantidade de compras = % que ficou em exatamente 1/2/3/4+ compras (contando a de entrada) desde a qualificação até hoje. Faturamento no período = soma do valor de todos os pedidos válidos desses clientes dentro do período selecionado (não inclui compras feitas depois do período).",
     periodo: "Coorte qualificada dentro do período selecionado; recompra observada até a data de referência (hoje), não até o fim do período",
     limitacoes: "Clientes qualificados perto do fim do período têm menos tempo para recomprar até hoje — a taxa tende a subir se o período for revisitado mais adiante.",
   },
@@ -610,6 +610,7 @@ export interface DetalheClienteRecompra {
   dataRecompra: string | null;
   diasAteRecompra: number | null;
   qtdComprasDesdeQualificacao: number; // inclui a própria compra de entrada — 1 = nunca recomprou
+  valorNoPeriodo: number; // soma do valor de todos os pedidos válidos desse cliente dentro do período selecionado
 }
 
 export interface FaixaQtdCompras {
@@ -626,6 +627,10 @@ export interface GrupoRecompra {
    * qualificação (contando a compra de entrada) até a data de referência —
    * responde "quantos compraram só 1 vez, quantos 2, 3, 4 ou mais". */
   distribuicaoQtdCompras: FaixaQtdCompras[];
+  /** Soma do valor de todos os pedidos válidos desses clientes DENTRO do
+   * período selecionado (não conta compras feitas depois do período, mesmo
+   * que contem para a taxa de recompra). */
+  faturamentoNoPeriodo: number;
   detalhes: DetalheClienteRecompra[];
 }
 
@@ -671,6 +676,7 @@ export function calcularRecompraNovosReativados(
       dataRecompra: recompra ? comprasDepois[0].data.toISOString() : null,
       diasAteRecompra: recompra ? diasEntre(comprasDepois[0].data, primeiraNoPeriodo.data) : null,
       qtdComprasDesdeQualificacao: 1 + comprasDepois.length,
+      valorNoPeriodo: comprasNoPeriodo.reduce((s, c) => s + c.valor, 0),
     };
     (categoria === "novo" ? novos : reativados).push(detalhe);
   }
@@ -697,6 +703,7 @@ export function calcularRecompraNovosReativados(
       comRecompra,
       taxaPct: lista.length > 0 ? (comRecompra / lista.length) * 100 : null,
       distribuicaoQtdCompras: distribuir(lista),
+      faturamentoNoPeriodo: lista.reduce((s, d) => s + d.valorNoPeriodo, 0),
       detalhes: lista.sort((a, b) => (a.recompra === b.recompra ? 0 : a.recompra ? 1 : -1)),
     };
   };

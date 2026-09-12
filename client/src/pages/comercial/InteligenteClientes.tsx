@@ -393,9 +393,13 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
                 <p className="text-xs text-slate-400">Nenhum cliente nesta categoria no período.</p>
               ) : (
                 <>
-                  <div className="flex items-baseline gap-2 mb-3">
+                  <div className="flex items-baseline gap-2 mb-2">
                     <span className="text-2xl font-bold text-slate-800">{grupo.taxaPct !== null ? fmtPct(grupo.taxaPct) : "—"}</span>
                     <span className="text-xs text-slate-400">recompraram ({grupo.comRecompra} de {grupo.total})</span>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg px-3 py-2 mb-3">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold">Faturamento no período</p>
+                    <p className="text-lg font-bold text-slate-800">{fmtBrl(grupo.faturamentoNoPeriodo)}</p>
                   </div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Quantidade de compras desde então</p>
                   <div className="space-y-1">
