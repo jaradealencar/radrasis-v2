@@ -148,5 +148,8 @@ export async function createApp(): Promise<Express> {
   const { handleSincronizarHistorico } = await import("../sync/scheduled-sync-historico-handler");
   app.post("/api/scheduled/sincronizarHistorico", handleSincronizarHistorico);
 
+  const { handleSincronizarCrmAbertos } = await import("../sync/scheduled-sync-crm-abertos-handler");
+  app.post("/api/scheduled/sincronizarCrmAbertos", handleSincronizarCrmAbertos);
+
   return app;
 }

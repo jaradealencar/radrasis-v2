@@ -1,15 +1,17 @@
 # CRON: sincronização de OS via Upstash QStash
 
-Existem **dois** jobs agendados pelo **Upstash QStash** (não pelo Vercel
+Existem **três** jobs agendados pelo **Upstash QStash** (não pelo Vercel
 Cron); nenhum agendador vive dentro do repositório:
 
 | Job | Alimenta | Propósito |
 |---|---|---|
 | `POST /api/scheduled/sincronizarOS` | `erp_os_cache` | janela rolante curta (~32 dias), dados "quentes" pra funcionalidades que só precisam do recente |
 | `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
+| `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave `crm_abertos_15d`) | orçamentos "em aberto" (15 dias) que o CRM de Propostas mostra — ver seção "Sincronização de abertos do CRM" mais abaixo |
 
-Este documento cobre o primeiro em detalhe; o segundo está descrito na seção
-"Sincronização de histórico" mais abaixo.
+Este documento cobre o primeiro em detalhe; os outros dois estão descritos nas
+seções "Sincronização de histórico" e "Sincronização de abertos do CRM" mais
+abaixo.
 
 ## Agendamento planejado: 4 lotes escalonados
 
@@ -151,3 +153,37 @@ Retries:    2
 > vencido desde 31/08/2026. A API ainda aceita o token vencido, mas isso pode
 > parar de funcionar sem aviso — renove no painel do MubiSys antes de
 > depender deste cron em produção.
+
+## Sincronização de abertos do CRM (`mubisys_api_cache`, chave `crm_abertos_15d`)
+
+Criado em 12/09/2026 para corrigir o CRM de Propostas (`client/src/pages/comercial/CRM.tsx`
++ `server/routers/crm.ts`), que travava buscando **12 meses** inteiros de orçamentos ao vivo
+a cada carregamento de página. Ver `server/sync/crm-abertos-cache.ts` para o racional
+completo.
+
+- **Endpoint:** `POST /api/scheduled/sincronizarCrmAbertos`
+- **Autenticação:** nenhuma — ver "Sem autenticação por segredo" acima.
+- **Sem parâmetros.** Sempre sincroniza a janela padrão (15 dias, `status=ABERTO`).
+- **Upsert idempotente:** sobrescreve a mesma linha de `mubisys_api_cache` (chave
+  `crm_abertos_15d`) a cada execução — chamadas repetidas ou fora de hora não corrompem nada.
+
+```
+POST https://SEU-DOMINIO.com/api/scheduled/sincronizarCrmAbertos
+Cron (UTC): */10 * * * *     (a cada 10 minutos)
+Retries:    2
+```
+
+> ⚠️ **A API MubiSys é muito mais instável do que o volume de dados sugere.**
+> Medido em 12/09/2026: a mesma busca de 15 dias levou 25s numa execução e
+> 117s em outra, sem mudança de código nem de volume. Por isso a leitura em
+> `getPropostas`/`getVendedores` **nunca** trava esperando esta sincronização
+> terminar — ela sempre serve o que já estiver em `mubisys_api_cache`, por
+> mais velho que esteja (a tela mostra "atualizado há X"), e só faz busca ao
+> vivo síncrona no bootstrap (cache nunca populado, ex.: logo após o primeiro
+> deploy). Se este cron falhar ou atrasar algumas vezes seguidas, o único
+> efeito é a tela ficar mais desatualizada — nunca lenta ou quebrada.
+>
+> Pelo mesmo motivo, **não crie um segundo schedule para a janela estendida**
+> (30 dias, botão "Buscar mais antigas" na tela) — ela é usada sob demanda,
+> raramente, e aceita o risco de eventualmente demorar ou falhar num clique
+> isolado. Não vale manter mais um job rodando de fundo para isso.

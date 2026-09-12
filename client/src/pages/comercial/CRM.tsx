@@ -68,6 +68,22 @@ function fmtShort(d: Date) {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+// A lista de propostas abertas vem de um cache atualizado por um job em segundo plano
+// (não é busca ao vivo a cada carregamento — ver server/sync/crm-abertos-cache.ts), daí
+// mostrar "atualizado há X" em vez de fingir que é sempre em tempo real.
+function fmtTempoRelativo(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "agora";
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const dias = Math.floor(h / 24);
+  return `há ${dias}d`;
+}
+
 // Gera 15 datas a partir de D+1 usando parsing LOCAL (evita timezone shift)
 function parseDateLocal(dataCriacao: string): { y: number; m: number; d: number } | null {
   if (!dataCriacao) return null;
@@ -495,7 +511,7 @@ export default function CRM() {
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
   const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
-  // Busca padrão cobre 30 dias; ativar para incluir propostas abertas há mais tempo (raro)
+  // Busca padrão cobre 15 dias; ativar para incluir propostas abertas há mais tempo (raro)
   const [buscarAntigas, setBuscarAntigas] = useState(false);
 
   // ─── Estados da aba Auditoria ────────────────────────────────────────────────
@@ -516,7 +532,7 @@ export default function CRM() {
     { refetchOnWindowFocus: false, enabled: abaAtiva === "auditoria" }
   );
 
-  const { data, isLoading, refetch } = trpc.crm.getPropostas.useQuery(
+  const { data, isLoading, isError, error, refetch } = trpc.crm.getPropostas.useQuery(
     { vendedor: vendedor || undefined, preset: "personalizado", dataInicio, dataFim, buscarAntigas },
     // retry: 1 (em vez do padrão 3 do React Query) — consulta ao MubiSys pode ser lenta;
     // se falhar, falha rápido em vez de travar minutos em retries exponenciais
@@ -527,6 +543,7 @@ export default function CRM() {
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
   const stats = data?.stats;
+  const abertosAtualizadoEm = fmtTempoRelativo((data as any)?.abertosAtualizadoEm);
 
   // Filtros
   const propostasAtivas = useMemo(() => {
@@ -621,7 +638,14 @@ export default function CRM() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">CRM de Propostas</h1>
-          <p className="text-sm text-muted-foreground">Propostas em aberto · {vendedorAtual}</p>
+          <p className="text-sm text-muted-foreground">
+            Propostas em aberto · {vendedorAtual}
+            {abertosAtualizadoEm && !buscarAntigas && (
+              <span className="ml-2 text-xs text-gray-400" title="Lista de propostas abertas atualizada em segundo plano, não em tempo real">
+                · atualizado {abertosAtualizadoEm}
+              </span>
+            )}
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 self-start sm:self-auto">
           <RefreshCw className="w-4 h-4" /> Atualizar
@@ -759,7 +783,7 @@ export default function CRM() {
             </SelectContent>
           </Select>
         </div>
-        {/* Buscar propostas mais antigas (raro: proposta aberta há mais de 30 dias) */}
+        {/* Buscar propostas mais antigas (raro: proposta aberta há mais de 15 dias) */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-transparent select-none">.</label>
           <TooltipProvider>
@@ -770,12 +794,12 @@ export default function CRM() {
                     buscarAntigas ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-slate-500"
                   }`}>
                   <Clock className="w-3.5 h-3.5" />
-                  {buscarAntigas ? "Buscando até 90 dias ✕" : "Buscar mais antigas"}
+                  {buscarAntigas ? "Buscando até 30 dias ✕" : "Buscar mais antigas"}
                   {isLoading && buscarAntigas && <Spinner className="size-3" />}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs max-w-[220px]">
-                Por padrão, o CRM busca propostas abertas nos últimos 30 dias. Ative para incluir até 90 dias — a busca pode demorar mais.
+                Por padrão, o CRM busca propostas abertas nos últimos 15 dias. Ative para incluir até 30 dias — a busca pode demorar mais.
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -852,6 +876,19 @@ export default function CRM() {
           <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
             <Spinner className="size-5" />
             <span className="text-sm">Carregando propostas do ERP...</span>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-2 text-center px-4">
+            <AlertTriangle className="w-6 h-6 text-red-500" />
+            <span className="text-sm font-semibold text-red-700">Não foi possível carregar as propostas.</span>
+            <span className="text-xs text-muted-foreground max-w-md">
+              {buscarAntigas
+                ? "A busca de propostas mais antigas pode demorar e falhar em horários de lentidão do ERP. Tente novamente em alguns minutos."
+                : (error?.message || "Tente novamente em instantes.")}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-1 gap-2">
+              <RefreshCw className="w-3.5 h-3.5" /> Tentar de novo
+            </Button>
           </div>
         ) : propostasAtivas.length === 0 ? (
           <Empty>
