@@ -57,6 +57,8 @@ export const inteligenciaAcaoTipoEnum = pgEnum("inteligencia_acao_tipo", ["prime
 export const inteligenciaAcaoStatusEnum = pgEnum("inteligencia_acao_status", ["pendente", "concluida", "adiada", "descartada"]);
 export const inteligenciaAcaoResultadoEnum = pgEnum("inteligencia_acao_resultado", ["contato_realizado", "sem_resposta", "projeto_futuro", "orcamento_solicitado", "compra", "adiamento", "sem_interesse"]);
 export const scoreLeadCnpjEnum = pgEnum("score_lead_cnpj", ["A", "B", "C", "D"]);
+export const nivelConfiancaSinalEnum = pgEnum("nivel_confianca_sinal", ["confirmado", "inferencia"]);
+export const statusSinalMercadoEnum = pgEnum("status_sinal_mercado", ["novo", "qualificando", "oportunidade", "associado_cliente", "descartado", "expirado"]);
 
 // Biblioteca de classificação de erros
 export const errorLibrary = pgTable("error_library", {
@@ -1587,6 +1589,53 @@ export const clientesPerfilCnpj = pgTable("clientes_perfil_cnpj", {
 });
 export type ClientePerfilCnpj = typeof clientesPerfilCnpj.$inferSelect;
 export type InsertClientePerfilCnpj = typeof clientesPerfilCnpj.$inferInsert;
+
+// ─── Radar de Mercado (sinais externos) ──────────────────────────────────────
+// Ver docs/radar-mercado.md. Configuração definida com o usuário em 2026-09:
+// regiões Centro-Oeste/Sudeste/Sul, segmentos gráficas e comunicação visual.
+// Busca real via Google Custom Search (server/integrations/google-search-client.ts)
+// — sem GOOGLE_SEARCH_API_KEY/GOOGLE_SEARCH_CX configuradas, a config fica
+// pronta mas a busca automática não roda (nunca inventa sinal sem fonte).
+export const radarMercadoConfig = pgTable("radar_mercado_config", {
+  id: serial("id").primaryKey(), // single-row: sempre id=1
+  regioesJson: text("regioes_json").notNull(), // array de UF, ex: ["MS","MT","GO","DF","SP",...]
+  segmentosAlvoJson: text("segmentos_alvo_json").notNull(), // ex: ["Gráficas","Comunicação visual"]
+  concorrentesConhecidosJson: text("concorrentes_conhecidos_json").notNull().default("[]"),
+  termosBuscaJson: text("termos_busca_json").notNull(), // templates de busca, ex: "gráfica nova {cidade}"
+  exclusoesJson: text("exclusoes_json").notNull().default("[]"), // termos/domínios a ignorar
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type RadarMercadoConfig = typeof radarMercadoConfig.$inferSelect;
+export type InsertRadarMercadoConfig = typeof radarMercadoConfig.$inferInsert;
+
+export const sinaisMercado = pgTable("sinais_mercado", {
+  id: serial("id").primaryKey(),
+  empresa: varchar("empresa", { length: 256 }),
+  localizacaoTexto: varchar("localizacao_texto", { length: 256 }),
+  uf: varchar("uf", { length: 2 }),
+  municipio: varchar("municipio", { length: 128 }),
+  tipoEvento: varchar("tipo_evento", { length: 64 }), // inauguração, reforma, expansão, edital, concorrente, outro
+  evidenciaTrecho: text("evidencia_trecho").notNull(), // trecho/síntese da fonte, nunca a página inteira
+  url: text("url").notNull(),
+  urlHash: varchar("url_hash", { length: 64 }).notNull().unique(), // sha256(url) — deduplicação
+  publicador: varchar("publicador", { length: 256 }),
+  dataPublicacao: varchar("data_publicacao", { length: 32 }), // texto — nem toda fonte dá data ISO
+  dataEvento: varchar("data_evento", { length: 32 }),
+  dataColeta: timestamp("data_coleta").defaultNow().notNull(),
+  nivelConfianca: nivelConfiancaSinalEnum("nivel_confianca").notNull().default("inferencia"),
+  relacaoProdutos: text("relacao_produtos"), // por que isso interessa ao nosso catálogo — null se não avaliado
+  proximoPasso: text("proximo_passo"),
+  validadeAte: date("validade_ate"), // sinal deixa de ser considerado novo depois dessa data
+  jaClienteEmpresaKey: varchar("ja_cliente_empresa_key", { length: 256 }), // vínculo com historico_os, se identificado
+  status: statusSinalMercadoEnum("status").notNull().default("novo"),
+  termoBuscaOrigem: varchar("termo_busca_origem", { length: 256 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (t) => ({
+  statusIdx: index("sinais_mercado_status_idx").on(t.status),
+}));
+export type SinalMercado = typeof sinaisMercado.$inferSelect;
+export type InsertSinalMercado = typeof sinaisMercado.$inferInsert;
 
 export const ledTipos = pgTable("led_tipos", {
   id: serial("id").primaryKey(),

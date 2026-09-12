@@ -169,6 +169,13 @@
       "when": 1789238292336,
       "tag": "0023_smooth_ser_duncan",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789240438346,
+      "tag": "0024_wealthy_mattie_franklin",
+      "breakpoints": true
     }
   ]
 }
