@@ -18,7 +18,7 @@
  * Cancelada, e exclui linhas com tipoOs nulo (duplicatas antigas sem custo).
  */
 
-import { isOsNormalDb, normalizeEmpresaKey } from "../routers/performanceComercial";
+import { isOsNormalDb, normalizeEmpresaKey, MESES_INATIVIDADE_PARA_NOVO } from "../routers/performanceComercial";
 
 // ─── Constantes de negócio (parâmetros configuráveis — ver dicionário) ───────
 
@@ -162,6 +162,13 @@ export const DICIONARIO_METRICAS: MetricaDicionario[] = [
     formula: "Primeira compra (1 compra válida no histórico) · Recompra observada (2+ compras, sem sinal de atraso ou variação relevante) · Em crescimento / Redução de volume (variação ≥20% entre a janela atual e a anterior de mesmo tamanho) · Intervalo acima do habitual (razão de atraso ≥1,5) · Histórico insuficiente (menos de 3 compras válidas).",
     periodo: "Calculada na data de referência, usando todo o histórico do cliente",
     limitacoes: "É uma classificação calculada, não uma avaliação comercial confirmada — não implica que o cliente foi perdido.",
+  },
+  {
+    id: "recompra_novos_reativados",
+    nome: "Recompra de clientes novos e reativados",
+    formula: "Reaproveita a regra \"Cliente Novo e Reativado\" (nunca comprou antes da janela, ou última compra 6+ meses antes dela). Taxa de recompra = % desses clientes que fez pelo menos mais uma compra válida depois, até hoje. Distribuição de quantidade de compras = % que ficou em exatamente 1/2/3/4+ compras (contando a de entrada) desde a qualificação até hoje.",
+    periodo: "Coorte qualificada dentro do período selecionado; recompra observada até a data de referência (hoje), não até o fim do período",
+    limitacoes: "Clientes qualificados perto do fim do período têm menos tempo para recomprar até hoje — a taxa tende a subir se o período for revisitado mais adiante.",
   },
 ];
 
@@ -312,6 +319,7 @@ export interface AnaliseCliente {
   qtdIntervalos: number;
   razaoAtraso: number | null;
   valorTotalHistorico: number;
+  ticketMedioHistorico: number; // valorTotalHistorico ÷ totalComprasValidas — usado para priorizar contato por faturamento médio
   valorJanelaAtual: number;
   valorJanelaAnterior: number;
   variacaoVolumePct: number | null;
@@ -397,6 +405,7 @@ export function analisarCliente(
     qtdIntervalos: intervalosDias.length,
     razaoAtraso,
     valorTotalHistorico: valorSomaHistorico,
+    ticketMedioHistorico: valorSomaHistorico / validas.length,
     valorJanelaAtual,
     valorJanelaAnterior,
     variacaoVolumePct,
@@ -581,12 +590,132 @@ export function calcularVisaoGeral(
   };
 }
 
+// ─── Recompra de clientes novos e reativados ─────────────────────────────────
+// Reaproveita a mesma regra de negócio "Lógica do Cliente Novo e Reativado" já
+// usada no resto da Performance Comercial (MESES_INATIVIDADE_PARA_NOVO = 6 —
+// ver server/routers/performanceComercial.ts): um cliente conta como "novo" se
+// nunca comprou antes da janela selecionada, e como "reativado" se a última
+// compra antes da janela foi há 6 meses de calendário ou mais. Aqui a pergunta
+// adicional é: entre os que entraram como novos/reativados nessa janela,
+// quantos voltaram a comprar depois (até a data de referência)?
+
+function gapMesesCalendario(recente: Date, antiga: Date): number {
+  return (recente.getFullYear() - antiga.getFullYear()) * 12 + (recente.getMonth() - antiga.getMonth());
+}
+
+export interface DetalheClienteRecompra {
+  empresa: string;
+  dataQualificacao: string; // ISO — data da 1ª compra (novo) ou da compra que reativou o cliente
+  recompra: boolean;
+  dataRecompra: string | null;
+  diasAteRecompra: number | null;
+  qtdComprasDesdeQualificacao: number; // inclui a própria compra de entrada — 1 = nunca recomprou
+}
+
+export interface FaixaQtdCompras {
+  faixa: "1" | "2" | "3" | "4+";
+  quantidade: number;
+  pct: number;
+}
+
+export interface GrupoRecompra {
+  total: number;
+  comRecompra: number;
+  taxaPct: number | null;
+  /** Distribuição de quantas compras cada cliente do grupo fez desde a
+   * qualificação (contando a compra de entrada) até a data de referência —
+   * responde "quantos compraram só 1 vez, quantos 2, 3, 4 ou mais". */
+  distribuicaoQtdCompras: FaixaQtdCompras[];
+  detalhes: DetalheClienteRecompra[];
+}
+
+export interface RecompraNovosReativados {
+  periodo: { dataInicial: string; dataFinal: string };
+  mesesInatividadeParaReativado: number;
+  novos: GrupoRecompra;
+  reativados: GrupoRecompra;
+}
+
+export function calcularRecompraNovosReativados(
+  base: Map<string, ClienteBase>,
+  dataInicial: Date,
+  dataFinal: Date,
+  dataRef: Date,
+): RecompraNovosReativados {
+  const novos: DetalheClienteRecompra[] = [];
+  const reativados: DetalheClienteRecompra[] = [];
+
+  for (const cliente of base.values()) {
+    const comprasNoPeriodo = cliente.compras.filter(c => c.data >= dataInicial && c.data <= dataFinal);
+    if (comprasNoPeriodo.length === 0) continue;
+    const primeiraNoPeriodo = comprasNoPeriodo[0];
+
+    const comprasAntes = cliente.compras.filter(c => c.data < dataInicial);
+    let categoria: "novo" | "reativado" | null = null;
+    if (comprasAntes.length === 0) {
+      categoria = "novo";
+    } else {
+      const ultimaAntes = comprasAntes[comprasAntes.length - 1].data;
+      if (gapMesesCalendario(primeiraNoPeriodo.data, ultimaAntes) >= MESES_INATIVIDADE_PARA_NOVO) {
+        categoria = "reativado";
+      }
+    }
+    if (!categoria) continue; // recompra normal — não é nem novo nem reativado, fora desta métrica
+
+    const comprasDepois = cliente.compras.filter(c => c.data > primeiraNoPeriodo.data && c.data <= dataRef);
+    const recompra = comprasDepois.length > 0;
+    const detalhe: DetalheClienteRecompra = {
+      empresa: cliente.empresaExibicao,
+      dataQualificacao: primeiraNoPeriodo.data.toISOString(),
+      recompra,
+      dataRecompra: recompra ? comprasDepois[0].data.toISOString() : null,
+      diasAteRecompra: recompra ? diasEntre(comprasDepois[0].data, primeiraNoPeriodo.data) : null,
+      qtdComprasDesdeQualificacao: 1 + comprasDepois.length,
+    };
+    (categoria === "novo" ? novos : reativados).push(detalhe);
+  }
+
+  const distribuir = (lista: DetalheClienteRecompra[]): FaixaQtdCompras[] => {
+    const total = lista.length;
+    const contagem = { "1": 0, "2": 0, "3": 0, "4+": 0 };
+    for (const d of lista) {
+      const qtd = d.qtdComprasDesdeQualificacao;
+      const chave = qtd >= 4 ? "4+" : (String(qtd) as "1" | "2" | "3");
+      contagem[chave]++;
+    }
+    return (["1", "2", "3", "4+"] as const).map(faixa => ({
+      faixa,
+      quantidade: contagem[faixa],
+      pct: total > 0 ? (contagem[faixa] / total) * 100 : 0,
+    }));
+  };
+
+  const agrupar = (lista: DetalheClienteRecompra[]): GrupoRecompra => {
+    const comRecompra = lista.filter(d => d.recompra).length;
+    return {
+      total: lista.length,
+      comRecompra,
+      taxaPct: lista.length > 0 ? (comRecompra / lista.length) * 100 : null,
+      distribuicaoQtdCompras: distribuir(lista),
+      detalhes: lista.sort((a, b) => (a.recompra === b.recompra ? 0 : a.recompra ? 1 : -1)),
+    };
+  };
+
+  return {
+    periodo: { dataInicial: dataInicial.toISOString().slice(0, 10), dataFinal: dataFinal.toISOString().slice(0, 10) },
+    mesesInatividadeParaReativado: MESES_INATIVIDADE_PARA_NOVO,
+    novos: agrupar(novos),
+    reativados: agrupar(reativados),
+  };
+}
+
 // ─── Fila de ações (candidatos — persistência fica no router) ────────────────
 
 export interface AcaoCandidata {
   tipo: "primeira_sem_segunda" | "atraso_recompra" | "alto_volume_baixa_margem";
   empresaKey: string;
   empresa: string;
+  vendedor: string; // vendedor da compra mais recente do cliente — representativo, não necessariamente exclusivo
   titulo: string;
   motivo: string;
   evidencia: Record<string, unknown>;
@@ -615,6 +744,7 @@ export function calcularCandidatosAcao(base: Map<string, ClienteBase>, dataRef: 
     if (validas.length === 0) continue;
     const ultimaCompra = validas[validas.length - 1].data;
     const diasDesdeUltima = diasEntre(dataRef, ultimaCompra);
+    const vendedorAtual = validas[validas.length - 1].vendedor || "Sem vendedor";
 
     // 1) Primeira compra sem segunda
     if (validas.length === 1 && diasDesdeUltima >= PRIMEIRA_COMPRA_DIAS_MIN_CONTATO && diasDesdeUltima <= PRIMEIRA_COMPRA_DIAS_MAX_CONTATO) {
@@ -625,6 +755,7 @@ export function calcularCandidatosAcao(base: Map<string, ClienteBase>, dataRef: 
         tipo: "primeira_sem_segunda",
         empresaKey: cliente.empresaKey,
         empresa: cliente.empresaExibicao,
+        vendedor: vendedorAtual,
         titulo: `Acompanhar 1ª compra sem repetição — ${cliente.empresaExibicao}`,
         motivo: `Fez a primeira compra válida em ${ultimaCompra.toLocaleDateString("pt-BR")} (${diasDesdeUltima} dias atrás) e ainda não fez uma segunda compra.`,
         evidencia: { osNumero: validas[0].osNumero, data: ultimaCompra.toISOString(), valor: validas[0].valor, diasDesdeUltima },
@@ -650,6 +781,7 @@ export function calcularCandidatosAcao(base: Map<string, ClienteBase>, dataRef: 
             tipo: "atraso_recompra",
             empresaKey: cliente.empresaKey,
             empresa: cliente.empresaExibicao,
+            vendedor: vendedorAtual,
             titulo: `Atraso na recompra — ${cliente.empresaExibicao}`,
             motivo: `Costuma comprar a cada ${Math.round(medianaInt)} dias (mediana de ${intervalosDias.length} intervalos); já se passaram ${diasDesdeUltima} dias desde a última compra (${ultimaCompra.toLocaleDateString("pt-BR")}).`,
             evidencia: { medianaIntervaloDias: Math.round(medianaInt), qtdIntervalos: intervalosDias.length, diasDesdeUltima, razaoAtraso: Number(razao.toFixed(2)), ultimaCompra: ultimaCompra.toISOString() },
@@ -676,6 +808,7 @@ export function calcularCandidatosAcao(base: Map<string, ClienteBase>, dataRef: 
             tipo: "alto_volume_baixa_margem",
             empresaKey: cliente.empresaKey,
             empresa: cliente.empresaExibicao,
+            vendedor: vendedorAtual,
             titulo: `Alto volume, margem baixa — ${cliente.empresaExibicao}`,
             motivo: `Comprou R$ ${valor12m.toLocaleString("pt-BR", { minimumFractionDigits: 0 })} nos últimos 12 meses (top 20% da carteira), com margem de contribuição de ${margemPct.toFixed(1)}% — abaixo do limiar de ${MARGEM_BAIXA_LIMIAR_PCT}%.`,
             evidencia: { valor12m, margemPct: Number(margemPct.toFixed(1)), qtdPedidos12m: comprasUltimos12m.length },
@@ -928,5 +1061,58 @@ export function calcularPrevisaoComercial(
     carteiraConfirmadaSemPrazo: carteiraSemPrazo,
     faixas,
     estimativaSazonalidade,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── Assistente de IA (seção 9 do prompt de origem) ──────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// A IA nunca soma/calcula dados brutos — ela só interpreta resultados já
+// calculados pelas funções acima. Quem chama o LLM é o router (tem acesso a
+// invokeLLM); este módulo só monta o prompt e o contexto, de forma pura.
+
+export const VERSAO_PROMPT_ASSISTENTE_CLIENTES = "v1";
+
+export const PROMPT_ASSISTENTE_CLIENTES_V1 = `Você é o analista comercial da empresa, especializado em comunicação visual (letras, letreiros, letras-caixa, fachadas) e relações B2B. Ajude o usuário a aumentar recompra lucrativa e melhorar a previsibilidade com base em dados verificáveis.
+
+Você recebe, a cada pergunta, um contexto estruturado com os resultados JÁ CALCULADOS pelo sistema para o período selecionado: visão geral de clientes (RFM, classificação, concentração, margem, segunda compra em X dias), funil de orçamentos, previsão comercial 30/60/90 dias e a fila de ações pendentes. Use somente esses números — nunca invente clientes, valores ou fatos que não estejam no contexto fornecido. Se a pergunta pedir algo que o contexto não cobre, diga isso explicitamente e sugira qual tela ou filtro poderia trazer a resposta.
+
+Separe sempre fato observado (o que está no contexto), hipótese (sua interpretação) e ação recomendada. Diferencie ausência de dado de valor zero, associação de causalidade de correlação, e pontuação de prioridade de probabilidade de compra.
+
+Não trate um comprador ocasional como cliente de assinatura. Considere a frequência histórica, a margem disponível e a irregularidade natural de projetos de comunicação visual (não é um negócio de recorrência mensal automática).
+
+Previsões no contexto são estimativas com premissas explícitas — nunca as apresente como garantia, nem invente percentuais ou datas exatas de recompra além do que está no contexto.
+
+Toda recomendação deve dizer para quem é, qual o motivo (citando o número ou classificação que a sustenta), e qual seria o próximo passo. Não prometa condições comerciais (desconto, prazo, crédito) e não afirme ter executado nenhuma ação no sistema — você só responde perguntas, não aciona nada.
+
+Responda em português do Brasil, com frases claras e diretas. Explique termos técnicos (RFM, coorte, margem de contribuição) só quando isso ajudar a resposta, sem virar aula.`;
+
+export interface ContextoAssistenteClientes {
+  periodo: { dataInicial: string; dataFinal: string };
+  visaoGeral: VisaoGeralClientes;
+  funil: FunilOrcamentos;
+  previsao: PrevisaoComercial;
+  filaAcoesPendentesResumo: Array<{ tipo: string; empresa: string; motivo: string; prioridade: number }>;
+}
+
+/** Monta o contexto estruturado enviado ao LLM — só os campos necessários,
+ * nunca a base de clientes inteira. Trunca a fila de ações às N mais
+ * prioritárias para manter o prompt enxuto. */
+export function montarContextoAssistenteClientes(
+  visaoGeral: VisaoGeralClientes,
+  funil: FunilOrcamentos,
+  previsao: PrevisaoComercial,
+  candidatosAcao: AcaoCandidata[],
+  periodo: { dataInicial: string; dataFinal: string },
+  limiteAcoes = 15,
+): ContextoAssistenteClientes {
+  return {
+    periodo,
+    visaoGeral,
+    funil,
+    previsao,
+    filaAcoesPendentesResumo: candidatosAcao.slice(0, limiteAcoes).map(c => ({
+      tipo: c.tipo, empresa: c.empresa, motivo: c.motivo, prioridade: c.prioridade,
+    })),
   };
 }

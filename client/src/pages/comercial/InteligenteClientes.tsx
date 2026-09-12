@@ -4,6 +4,7 @@ import {
   Users, UserPlus, TrendingDown, ShoppingCart,
   AlertTriangle, Percent, CalendarDays, DollarSign, Repeat, Trophy, Info,
   CheckCircle2, XCircle, Clock3, ChevronRight, HelpCircle, Filter, Layers,
+  Download, Sparkles, Send, UserCheck, SlidersHorizontal,
 } from "lucide-react";
 import {
   Table, TableHeader, TableBody, TableFooter,
@@ -329,6 +330,8 @@ function VistaVisaoGeral({ dataInicial, dataFinal }: { dataInicial: string; data
         </Table>
       </div>
 
+      <SecaoRecompraNovosReativados dataInicial={dataInicial} dataFinal={dataFinal} />
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100">
           <h3 className="text-sm font-bold text-slate-700">Top clientes por valor comprado no período</h3>
@@ -359,11 +362,80 @@ function VistaVisaoGeral({ dataInicial, dataFinal }: { dataInicial: string; data
   );
 }
 
+// ─── Seção: Recompra de Clientes Novos e Reativados ──────────────────────────
+
+function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial: string; dataFinal: string }) {
+  const { data, isLoading } = trpc.performanceComercial.getRecompraNovosReativados.useQuery({ dataInicial, dataFinal });
+  if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-40 animate-pulse" />;
+  if (!data) return null;
+
+  const grupos: Array<{ chave: "novos" | "reativados"; label: string; icone: string }> = [
+    { chave: "novos", label: "Clientes Novos", icone: "🆕" },
+    { chave: "reativados", label: "Clientes Reativados", icone: "🔄" },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-4 border-b border-slate-100">
+        <h3 className="text-sm font-bold text-slate-700">Recompra — Clientes Novos e Reativados</h3>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Novo: nunca comprou antes do período. Reativado: última compra {data.mesesInatividadeParaReativado}+ meses antes do período.
+          Recompra é medida até hoje, não só dentro do período.
+        </p>
+      </div>
+      <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+        {grupos.map(g => {
+          const grupo = data[g.chave];
+          return (
+            <div key={g.chave} className="p-4">
+              <p className="text-xs font-bold text-slate-600 mb-2">{g.icone} {g.label} ({grupo.total})</p>
+              {grupo.total === 0 ? (
+                <p className="text-xs text-slate-400">Nenhum cliente nesta categoria no período.</p>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-2 mb-3">
+                    <span className="text-2xl font-bold text-slate-800">{grupo.taxaPct !== null ? fmtPct(grupo.taxaPct) : "—"}</span>
+                    <span className="text-xs text-slate-400">recompraram ({grupo.comRecompra} de {grupo.total})</span>
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Quantidade de compras desde então</p>
+                  <div className="space-y-1">
+                    {grupo.distribuicaoQtdCompras.map(f => (
+                      <div key={f.faixa} className="flex items-center gap-2 text-xs">
+                        <span className="w-14 text-slate-500 font-mono">{f.faixa}x</span>
+                        <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${f.pct}%` }} />
+                        </div>
+                        <span className="w-20 text-right text-slate-600">{f.quantidade} ({fmtPct(f.pct)})</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Vista: Clientes ────────────────────────────────────────────────────────
 
 function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFinal: string }) {
   const [empresaSelecionada, setEmpresaSelecionada] = useState<string | null>(null);
+  const [diasMin, setDiasMin] = useState("");
+  const [diasMax, setDiasMax] = useState("");
+  const [ordenarPorTicket, setOrdenarPorTicket] = useState(false);
   const { data, isLoading } = trpc.performanceComercial.listarClientesInteligencia.useQuery({ dataInicial, dataFinal });
+
+  const filtrados = useMemo(() => {
+    if (!data) return [];
+    const min = diasMin !== "" ? Number(diasMin) : null;
+    const max = diasMax !== "" ? Number(diasMax) : null;
+    let lista = data.filter(c => (min === null || c.diasDesdeUltimaCompra >= min) && (max === null || c.diasDesdeUltimaCompra <= max));
+    if (ordenarPorTicket) lista = [...lista].sort((a, b) => b.ticketMedioHistorico - a.ticketMedioHistorico);
+    return lista;
+  }, [data, diasMin, diasMax, ordenarPorTicket]);
 
   if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-64 animate-pulse" />;
   if (!data || data.length === 0) {
@@ -375,69 +447,177 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-slate-100">
-        <h3 className="text-sm font-bold text-slate-700">Clientes do período ({data.length})</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Clique em um cliente para ver a ficha completa. Ordenado por quem precisa de mais atenção primeiro.</p>
+    <div className="space-y-3">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
+        <span className="flex items-center gap-1 text-[11px] font-bold text-slate-500"><SlidersHorizontal className="w-3.5 h-3.5" /> Faixa de dias sem compra:</span>
+        <input type="number" min={0} placeholder="mín" value={diasMin} onChange={e => setDiasMin(e.target.value)} className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5" />
+        <span className="text-xs text-slate-400">até</span>
+        <input type="number" min={0} placeholder="máx" value={diasMax} onChange={e => setDiasMax(e.target.value)} className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5" />
+        {(diasMin !== "" || diasMax !== "") && (
+          <button onClick={() => { setDiasMin(""); setDiasMax(""); }} className="text-[11px] text-slate-400 hover:text-slate-600 underline">limpar</button>
+        )}
+        <div className="w-px h-5 bg-slate-200" />
+        <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 cursor-pointer">
+          <input type="checkbox" checked={ordenarPorTicket} onChange={e => setOrdenarPorTicket(e.target.checked)} />
+          Priorizar por faturamento médio (ticket histórico)
+        </label>
       </div>
-      <Table className="text-xs">
-        <TableHeader>
-          <TableRow>
-            <TableHead>Cliente</TableHead>
-            <TableHead>Classificação</TableHead>
-            <TableHead className="text-right">Valor no período</TableHead>
-            <TableHead className="text-right">Dias desde última compra</TableHead>
-            <TableHead className="text-right">Razão de atraso</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map(c => (
-            <TableRow key={c.empresaKey} className="cursor-pointer hover:bg-slate-50" onClick={() => setEmpresaSelecionada(c.empresaKey)}>
-              <TableCell className="font-semibold">{c.empresaExibicao}</TableCell>
-              <TableCell>
-                <Badge className={CLASSIFICACAO_INFO[c.classificacao]?.cor ?? ""}>
-                  {CLASSIFICACAO_INFO[c.classificacao]?.icone} {CLASSIFICACAO_INFO[c.classificacao]?.label}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right">{fmtBrl(c.valorJanelaAtual)}</TableCell>
-              <TableCell className="text-right">{c.diasDesdeUltimaCompra}</TableCell>
-              <TableCell className="text-right">{c.razaoAtraso !== null ? `${c.razaoAtraso.toFixed(1)}x` : "—"}</TableCell>
-              <TableCell><ChevronRight className="w-3.5 h-3.5 text-slate-300" /></TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      <FichaClienteModal empresaKey={empresaSelecionada} onClose={() => setEmpresaSelecionada(null)} />
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100">
+          <h3 className="text-sm font-bold text-slate-700">Clientes ({filtrados.length}{filtrados.length !== data.length ? ` de ${data.length}` : ""})</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Clique em um cliente para ver a ficha completa. {ordenarPorTicket ? "Ordenado por faturamento médio histórico." : "Ordenado por quem precisa de mais atenção primeiro."}
+          </p>
+        </div>
+        {filtrados.length === 0 ? (
+          <div className="p-8"><Empty><EmptyHeader><EmptyTitle>Nenhum cliente nessa faixa de dias</EmptyTitle></EmptyHeader></Empty></div>
+        ) : (
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Classificação</TableHead>
+                <TableHead className="text-right">Valor no período</TableHead>
+                <TableHead className="text-right">Ticket médio histórico</TableHead>
+                <TableHead className="text-right">Dias desde última compra</TableHead>
+                <TableHead className="text-right">Razão de atraso</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtrados.map(c => (
+                <TableRow key={c.empresaKey} className="cursor-pointer hover:bg-slate-50" onClick={() => setEmpresaSelecionada(c.empresaKey)}>
+                  <TableCell className="font-semibold">{c.empresaExibicao}</TableCell>
+                  <TableCell>
+                    <Badge className={CLASSIFICACAO_INFO[c.classificacao]?.cor ?? ""}>
+                      {CLASSIFICACAO_INFO[c.classificacao]?.icone} {CLASSIFICACAO_INFO[c.classificacao]?.label}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">{fmtBrl(c.valorJanelaAtual)}</TableCell>
+                  <TableCell className="text-right font-semibold">{fmtBrl(c.ticketMedioHistorico)}</TableCell>
+                  <TableCell className="text-right">{c.diasDesdeUltimaCompra}</TableCell>
+                  <TableCell className="text-right">{c.razaoAtraso !== null ? `${c.razaoAtraso.toFixed(1)}x` : "—"}</TableCell>
+                  <TableCell><ChevronRight className="w-3.5 h-3.5 text-slate-300" /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        <FichaClienteModal empresaKey={empresaSelecionada} onClose={() => setEmpresaSelecionada(null)} />
+      </div>
     </div>
   );
 }
 
 // ─── Vista: Fila de Ações ──────────────────────────────────────────────────────
 
+/** Modal simples para escolher o resultado do contato ao concluir uma ação —
+ * substitui o antigo window.prompt() de texto livre pelas opções estruturadas
+ * do enum inteligencia_acao_resultado (seção 8 do prompt de origem). */
+function ConcluirAcaoModal({ acaoId, onClose, onConfirm }: {
+  acaoId: number | null; onClose: () => void;
+  onConfirm: (resultado: string, observacao: string) => void;
+}) {
+  const [resultado, setResultado] = useState("contato_realizado");
+  const [observacao, setObservacao] = useState("");
+  useEffect(() => { setResultado("contato_realizado"); setObservacao(""); }, [acaoId]);
+
+  return (
+    <Dialog open={acaoId !== null} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Concluir ação — qual foi o resultado?</DialogTitle>
+          <DialogDescription>Use isso depois de já ter contatado o cliente, não antes.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <select value={resultado} onChange={e => setResultado(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2">
+            {RESULTADO_OPCOES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+          <textarea
+            value={observacao} onChange={e => setObservacao(e.target.value)}
+            placeholder="Observação (opcional)" rows={2}
+            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 resize-none"
+          />
+          <button
+            onClick={() => onConfirm(resultado, observacao)}
+            className="w-full py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg"
+          >
+            Confirmar conclusão
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function VistaFilaAcoes() {
   const [filtroStatus, setFiltroStatus] = useState<string>("pendente");
+  const [filtroVendedor, setFiltroVendedor] = useState<string>("");
+  const [concluindoId, setConcluindoId] = useState<number | null>(null);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.performanceComercial.getFilaAcoesClientes.useQuery({ status: filtroStatus as any || undefined });
+  const { data, isLoading } = trpc.performanceComercial.getFilaAcoesClientes.useQuery({
+    status: (filtroStatus as any) || undefined,
+    vendedor: filtroVendedor || undefined,
+  });
+  const { data: vendedores } = trpc.performanceComercial.getVendedoresFilaAcoes.useQuery();
   const atualizarMut = trpc.performanceComercial.atualizarAcaoCliente.useMutation({
     onSuccess: () => utils.performanceComercial.getFilaAcoesClientes.invalidate(),
   });
+  const gerarPdfMut = trpc.performanceComercial.gerarFilaAcoesPdf.useMutation({
+    onSuccess: (res) => {
+      const binario = atob(res.pdfBase64);
+      const bytes = new Uint8Array(binario.length);
+      for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = res.fileName; link.click();
+      URL.revokeObjectURL(url);
+      setGerandoPdf(false);
+    },
+    onError: () => setGerandoPdf(false),
+  });
+
+  function handleGerarPdf() {
+    setGerandoPdf(true);
+    gerarPdfMut.mutate({ status: (filtroStatus as any) || undefined, vendedor: filtroVendedor || undefined });
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Filter className="w-3.5 h-3.5 text-slate-400" />
-        {["pendente", "adiada", "concluida", "descartada", ""].map(s => (
-          <button
-            key={s || "todas"}
-            onClick={() => setFiltroStatus(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-              filtroStatus === s ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-200 hover:border-blue-400"
-            }`}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter className="w-3.5 h-3.5 text-slate-400" />
+          {["pendente", "adiada", "concluida", "descartada", ""].map(s => (
+            <button
+              key={s || "todas"}
+              onClick={() => setFiltroStatus(s)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                filtroStatus === s ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-200 hover:border-blue-400"
+              }`}
+            >
+              {s === "" ? "Todas" : s === "pendente" ? "Pendentes" : s === "adiada" ? "Adiadas" : s === "concluida" ? "Concluídas" : "Descartadas"}
+            </button>
+          ))}
+          <div className="w-px h-5 bg-slate-200 mx-1" />
+          <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+          <select
+            value={filtroVendedor}
+            onChange={e => setFiltroVendedor(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700"
           >
-            {s === "" ? "Todas" : s === "pendente" ? "Pendentes" : s === "adiada" ? "Adiadas" : s === "concluida" ? "Concluídas" : "Descartadas"}
-          </button>
-        ))}
+            <option value="">Todos os vendedores</option>
+            {(vendedores ?? []).map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <button
+          onClick={handleGerarPdf}
+          disabled={gerandoPdf || !data || data.length === 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:border-blue-400 hover:text-blue-600 disabled:opacity-50"
+        >
+          <Download className="w-3.5 h-3.5" /> {gerandoPdf ? "Gerando..." : "Gerar PDF"}
+        </button>
       </div>
 
       {isLoading && <div className="bg-white rounded-xl border border-slate-200 h-40 animate-pulse" />}
@@ -451,9 +631,10 @@ function VistaFilaAcoes() {
           <div key={acao.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <Badge className={TIPO_ACAO_INFO[acao.tipo]?.cor ?? ""}>{TIPO_ACAO_INFO[acao.tipo]?.label}</Badge>
                   <span className="text-[10px] text-slate-400 font-mono">prioridade {acao.prioridade}</span>
+                  {acao.vendedor && <span className="text-[10px] text-slate-400">· vendedor: {acao.vendedor}</span>}
                 </div>
                 <p className="text-sm font-bold text-slate-800">{acao.titulo}</p>
                 <p className="text-xs text-slate-500 mt-1">{acao.motivo}</p>
@@ -462,10 +643,7 @@ function VistaFilaAcoes() {
               {acao.status === "pendente" && (
                 <div className="flex flex-col gap-1.5 shrink-0">
                   <button
-                    onClick={() => {
-                      const resultado = window.prompt("Resultado do contato (opcional): " + RESULTADO_OPCOES.map(r => r.label).join(" / "));
-                      atualizarMut.mutate({ id: acao.id, status: "concluida", resultadoObservacao: resultado || undefined });
-                    }}
+                    onClick={() => setConcluindoId(acao.id)}
                     className="flex items-center gap-1 px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-lg text-[11px] font-bold hover:bg-green-100"
                   >
                     <CheckCircle2 className="w-3 h-3" /> Concluir
@@ -486,13 +664,22 @@ function VistaFilaAcoes() {
               )}
               {acao.status !== "pendente" && (
                 <Badge className="bg-slate-100 text-slate-500 border-slate-200">
-                  {acao.status === "concluida" ? "Concluída" : acao.status === "adiada" ? `Adiada até ${fmtDate(acao.prazo)}` : "Descartada"}
+                  {acao.status === "concluida" ? `Concluída${acao.resultado ? " — " + (RESULTADO_OPCOES.find(r => r.value === acao.resultado)?.label ?? acao.resultado) : ""}` : acao.status === "adiada" ? `Adiada até ${fmtDate(acao.prazo)}` : "Descartada"}
                 </Badge>
               )}
             </div>
           </div>
         ))}
       </div>
+      <ConcluirAcaoModal
+        acaoId={concluindoId}
+        onClose={() => setConcluindoId(null)}
+        onConfirm={(resultado, observacao) => {
+          if (concluindoId === null) return;
+          atualizarMut.mutate({ id: concluindoId, status: "concluida", resultado: resultado as any, resultadoObservacao: observacao || undefined });
+          setConcluindoId(null);
+        }}
+      />
     </div>
   );
 }
@@ -619,6 +806,201 @@ function VistaPrevisoes() {
   );
 }
 
+// ─── Vista: Assistente de IA ──────────────────────────────────────────────────
+
+interface MensagemChat { pergunta: string; resposta: string; }
+
+function VistaAssistente({ dataInicial, dataFinal }: { dataInicial: string; dataFinal: string }) {
+  const [pergunta, setPergunta] = useState("");
+  const [historico, setHistorico] = useState<MensagemChat[]>([]);
+  const perguntarMut = trpc.performanceComercial.perguntarInteligenciaClientes.useMutation({
+    onSuccess: (res) => setHistorico(h => [...h, { pergunta, resposta: res.resposta }]),
+  });
+
+  function enviar() {
+    if (!pergunta.trim() || perguntarMut.isPending) return;
+    perguntarMut.mutate({ pergunta: pergunta.trim(), dataInicial, dataFinal });
+    setPergunta("");
+  }
+
+  const SUGESTOES = [
+    "Quais clientes eu preciso acompanhar hoje?",
+    "Quais clientes aumentaram compras mas estão com margem baixa?",
+    "Quanto dos próximos 60 dias está confirmado e quanto é estimativa?",
+    "Explique o que é RFM e como foi aplicado aqui.",
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-700 flex items-start gap-2">
+        <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        Responde só com base nos números já calculados para o período selecionado acima — não inventa clientes nem valores. Previsões e prioridades continuam sendo estimativas, não garantias.
+      </div>
+
+      {historico.length === 0 && (
+        <div className="flex flex-wrap gap-2">
+          {SUGESTOES.map(s => (
+            <button key={s} onClick={() => setPergunta(s)} className="text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-full text-slate-600 hover:border-purple-300 hover:text-purple-600">
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {historico.map((m, i) => (
+          <div key={i} className="space-y-2">
+            <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-800 self-end max-w-[80%] ml-auto">{m.pergunta}</div>
+            <div className="bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{m.resposta}</div>
+          </div>
+        ))}
+        {perguntarMut.isPending && <div className="bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-xs text-slate-400 animate-pulse">Pensando...</div>}
+        {perguntarMut.isError && <p className="text-xs text-red-600">{(perguntarMut.error as any)?.message ?? "Erro ao perguntar."}</p>}
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex items-center gap-2">
+        <input
+          value={pergunta}
+          onChange={e => setPergunta(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") enviar(); }}
+          placeholder="Pergunte sobre os clientes deste período..."
+          className="flex-1 text-sm border-none outline-none"
+        />
+        <button onClick={enviar} disabled={perguntarMut.isPending || !pergunta.trim()} className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg">
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Vista: Perfil de Clientes por CNPJ ───────────────────────────────────────
+
+function VistaPerfilCnpj() {
+  const [cnpjInputs, setCnpjInputs] = useState<Record<string, string>>({});
+  const utils = trpc.useUtils();
+  const { data: agregado, isLoading: loadingAgregado } = trpc.perfilClientesCnpj.getPerfilAgregado.useQuery();
+  const { data: semCnpj, isLoading: loadingSemCnpj } = trpc.perfilClientesCnpj.listarClientesSemCnpj.useQuery({ limite: 30 });
+  const vincularMut = trpc.perfilClientesCnpj.vincularCnpj.useMutation({
+    onSuccess: () => {
+      utils.perfilClientesCnpj.getPerfilAgregado.invalidate();
+      utils.perfilClientesCnpj.listarClientesSemCnpj.invalidate();
+    },
+  });
+  const sincronizarMut = trpc.perfilClientesCnpj.sincronizarDeErpCache.useMutation({
+    onSuccess: () => {
+      utils.perfilClientesCnpj.getPerfilAgregado.invalidate();
+      utils.perfilClientesCnpj.listarClientesSemCnpj.invalidate();
+    },
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+        O histórico de pedidos não guarda CNPJ dos clientes — cada empresa precisa ser vinculada a um CNPJ manualmente (ou via o botão abaixo, que aproveita CNPJs já capturados por outra funcionalidade). Todo número aqui é sobre a amostra já vinculada, não a carteira inteira — a cobertura é sempre mostrada.
+      </div>
+
+      {loadingAgregado ? (
+        <div className="bg-white rounded-xl border border-slate-200 h-40 animate-pulse" />
+      ) : agregado && (
+        <>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cobertura</p>
+                <p className="text-2xl font-bold text-slate-800">{fmtNum(agregado.totalMapeados)} <span className="text-sm text-slate-400 font-normal">de {fmtNum(agregado.totalClientesBase)} clientes ({fmtPct(agregado.coberturaPct)})</span></p>
+              </div>
+              <button
+                onClick={() => sincronizarMut.mutate()}
+                disabled={sincronizarMut.isPending}
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> {sincronizarMut.isPending ? "Sincronizando..." : "Buscar CNPJs já conhecidos"}
+              </button>
+            </div>
+            {sincronizarMut.data && (
+              <p className="text-[11px] text-slate-500 mt-2">
+                {sincronizarMut.data.sucesso} vinculados, {sincronizarMut.data.falha} falharam, de {sincronizarMut.data.tentativas} candidatos encontrados.
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KpiCard icon={CalendarDays} label="Fundadas há 3+ anos" value={agregado.pctIdadeMaior3Anos !== null ? fmtPct(agregado.pctIdadeMaior3Anos) : "—"} sub="Entre os clientes já vinculados" color="#22c55e" />
+            <KpiCard icon={UserCheck} label="2+ sócios no QSA" value={agregado.pctDoisOuMaisSocios !== null ? fmtPct(agregado.pctDoisOuMaisSocios) : "—"} sub="Entre os clientes já vinculados" color="#8b5cf6" />
+            <KpiCard icon={Users} label="Clientes vinculados" value={fmtNum(agregado.totalMapeados)} sub={`${fmtPct(agregado.coberturaPct)} da carteira`} color="#3b82f6" />
+            <KpiCard icon={Trophy} label="Porte mais comum" value={agregado.distribuicaoPorte[0]?.chave ?? "—"} sub={agregado.distribuicaoPorte[0] ? fmtPct(agregado.distribuicaoPorte[0].pct) : ""} color="#f59e0b" />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            {[
+              { titulo: "Distribuição por porte", dados: agregado.distribuicaoPorte },
+              { titulo: "Distribuição por idade da empresa", dados: agregado.distribuicaoIdade.map(d => ({ chave: d.chave, quantidade: d.quantidade, pct: d.pct })) },
+              { titulo: "Natureza jurídica (top 8)", dados: agregado.distribuicaoNaturezaJuridica },
+              { titulo: "UF (top 8)", dados: agregado.distribuicaoUf },
+            ].map(bloco => (
+              <div key={bloco.titulo} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                <p className="text-xs font-bold text-slate-600 mb-2">{bloco.titulo}</p>
+                {bloco.dados.length === 0 ? <p className="text-xs text-slate-400">Sem dados suficientes.</p> : (
+                  <div className="space-y-1.5">
+                    {bloco.dados.map(d => (
+                      <div key={d.chave} className="flex items-center gap-2 text-xs">
+                        <span className="w-28 truncate text-slate-600">{d.chave}</span>
+                        <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${d.pct}%` }} />
+                        </div>
+                        <span className="w-16 text-right text-slate-500">{d.quantidade} ({fmtPct(d.pct)})</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100">
+          <h3 className="text-sm font-bold text-slate-700">Vincular CNPJ manualmente</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Clientes com maior valor histórico comprado, ainda sem CNPJ vinculado.</p>
+        </div>
+        {loadingSemCnpj ? <div className="p-6 text-xs text-slate-400">Carregando...</div> : (
+          <Table className="text-xs">
+            <TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead className="text-right">Valor histórico</TableHead><TableHead>CNPJ</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {(semCnpj ?? []).map(c => (
+                <TableRow key={c.empresaKey}>
+                  <TableCell className="font-semibold">{c.empresa}</TableCell>
+                  <TableCell className="text-right">{fmtBrl(c.valorHistorico)}</TableCell>
+                  <TableCell>
+                    <input
+                      value={cnpjInputs[c.empresaKey] ?? ""}
+                      onChange={e => setCnpjInputs(prev => ({ ...prev, [c.empresaKey]: e.target.value }))}
+                      placeholder="00.000.000/0001-00"
+                      className="w-40 text-xs border border-slate-200 rounded-lg px-2 py-1"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <button
+                      onClick={() => vincularMut.mutate({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, cnpj: cnpjInputs[c.empresaKey] ?? "" })}
+                      disabled={!cnpjInputs[c.empresaKey] || vincularMut.isPending}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-bold rounded-lg"
+                    >
+                      Vincular
+                    </button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        {vincularMut.isError && <p className="text-xs text-red-600 p-3">{(vincularMut.error as any)?.message}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 interface InteligenteClientesProps {
@@ -630,7 +1012,7 @@ function periodoInicialDoAno(ano: number): string {
   return ano === atual.getFullYear() ? `${ano}-${pad(atual.getMonth() + 1)}` : `${ano}-12`;
 }
 
-type Vista = "visao-geral" | "clientes" | "fila" | "funil" | "previsoes";
+type Vista = "visao-geral" | "clientes" | "fila" | "funil" | "previsoes" | "assistente" | "perfil-cnpj";
 
 const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "visao-geral", label: "Visão Geral", icon: "📊" },
@@ -638,6 +1020,8 @@ const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "fila", label: "Fila de Ações", icon: "✅" },
   { id: "funil", label: "Funil", icon: "🔻" },
   { id: "previsoes", label: "Previsões", icon: "🔮" },
+  { id: "assistente", label: "Assistente", icon: "✨" },
+  { id: "perfil-cnpj", label: "Perfil (CNPJ)", icon: "🏢" },
 ];
 
 export default function InteligenteClientes({ anoSelecionado }: InteligenteClientesProps) {
@@ -693,6 +1077,8 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       {vista === "fila" && <VistaFilaAcoes />}
       {vista === "funil" && <VistaFunil />}
       {vista === "previsoes" && <VistaPrevisoes />}
+      {vista === "assistente" && <VistaAssistente dataInicial={dataInicial} dataFinal={dataFinal} />}
+      {vista === "perfil-cnpj" && <VistaPerfilCnpj />}
     </div>
   );
 }

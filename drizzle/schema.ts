@@ -1497,6 +1497,7 @@ export const inteligenciaAcoesClientes = pgTable("inteligencia_acoes_clientes", 
   tipo: inteligenciaAcaoTipoEnum("tipo").notNull(),
   empresaKey: varchar("empresa_key", { length: 256 }).notNull(), // normalizeEmpresaKey(empresa) — chave de idempotência
   empresa: varchar("empresa", { length: 256 }).notNull(), // nome de exibição (grafia mais recente observada)
+  vendedor: varchar("vendedor", { length: 128 }), // vendedor da compra mais recente do cliente — para filtrar a fila por responsável
   titulo: varchar("titulo", { length: 256 }).notNull(),
   motivo: text("motivo").notNull(),
   evidenciaJson: text("evidencia_json").notNull(), // fatos que sustentam a ação (datas, valores, cálculo)
@@ -1542,6 +1543,8 @@ export const leadsCnpjQualificados = pgTable("leads_cnpj_qualificados", {
   fatoresScoreJson: text("fatores_score_json"),
   qsaJson: text("qsa_json"),
   dadosJson: text("dados_json").notNull(), // resposta bruta da OpenCNPJ, para auditoria
+  resumoIa: text("resumo_ia"), // texto gerado pelo prompt v1 (potencial/argumento/quem abordar) — null se rejeitado ou IA indisponível
+  versaoPromptIa: varchar("versao_prompt_ia", { length: 16 }),
   versaoRegra: varchar("versao_regra", { length: 16 }).notNull().default("v1"),
   consultadoPor: varchar("consultado_por", { length: 128 }),
   consultadoEm: timestamp("consultado_em").defaultNow().notNull(),
@@ -1550,6 +1553,40 @@ export const leadsCnpjQualificados = pgTable("leads_cnpj_qualificados", {
 });
 export type LeadCnpjQualificado = typeof leadsCnpjQualificados.$inferSelect;
 export type InsertLeadCnpjQualificado = typeof leadsCnpjQualificados.$inferInsert;
+
+// ─── Perfil de clientes por CNPJ (Inteligência de Clientes) ──────────────────
+// Enriquecimento do cadastro de clientes (historico_os.empresa, texto livre,
+// sem CNPJ) via OpenCNPJ. historico_os NÃO tem CNPJ — a origem "erp_os_cache"
+// cobre só ~130 de ~1.365 clientes distintos (cache de outra funcionalidade,
+// cotação de frete); o restante depende de vínculo manual, um cliente de cada
+// vez. Por isso todo relatório agregado precisa mostrar cobertura (mapeados/
+// total), nunca ser lido como um retrato de 100% da carteira.
+export const origemVinculoCnpjEnum = pgEnum("origem_vinculo_cnpj", ["erp_os_cache", "manual"]);
+
+export const clientesPerfilCnpj = pgTable("clientes_perfil_cnpj", {
+  id: serial("id").primaryKey(),
+  empresaKey: varchar("empresa_key", { length: 256 }).notNull().unique(), // normalizeEmpresaKey(empresa) de historico_os
+  empresaExibicao: varchar("empresa_exibicao", { length: 256 }).notNull(),
+  cnpj: varchar("cnpj", { length: 14 }).notNull(),
+  razaoSocial: varchar("razao_social", { length: 256 }),
+  situacaoCadastral: varchar("situacao_cadastral", { length: 32 }),
+  dataInicioAtividade: varchar("data_inicio_atividade", { length: 32 }),
+  idadeAnos: decimal("idade_anos", { precision: 5, scale: 1 }),
+  porte: varchar("porte", { length: 16 }),
+  naturezaJuridica: varchar("natureza_juridica", { length: 128 }),
+  qtdSocios: integer("qtd_socios"),
+  capitalSocial: decimal("capital_social", { precision: 16, scale: 2 }),
+  uf: varchar("uf", { length: 2 }),
+  municipio: varchar("municipio", { length: 128 }),
+  cnaePrincipal: varchar("cnae_principal", { length: 16 }),
+  dadosJson: text("dados_json").notNull(), // resposta bruta da OpenCNPJ
+  origem: origemVinculoCnpjEnum("origem").notNull(),
+  vinculadoPor: varchar("vinculado_por", { length: 128 }),
+  vinculadoEm: timestamp("vinculado_em").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type ClientePerfilCnpj = typeof clientesPerfilCnpj.$inferSelect;
+export type InsertClientePerfilCnpj = typeof clientesPerfilCnpj.$inferInsert;
 
 export const ledTipos = pgTable("led_tipos", {
   id: serial("id").primaryKey(),
@@ -1633,6 +1670,27 @@ export const clienteNovosContato = pgTable("cliente_novos_contato", {
 });
 export type ClienteNovosContato = typeof clienteNovosContato.$inferSelect;
 export type InsertClienteNovosContato = typeof clienteNovosContato.$inferInsert;
+
+// ─── Follow-up de propostas de alto valor (Performance Comercial) ────────────
+// Histórico de contatos feitos em propostas acima do valor de corte (padrão
+// R$ 8.000): cada linha é UM contato registrado (não um checkbox), permitindo
+// múltiplas tentativas de follow-up por proposta com motivo e usuário de cada uma.
+export const performancePropostasFollowup = pgTable("performance_propostas_followup", {
+  id: serial("id").primaryKey(),
+  orcNumero: varchar("orcNumero", { length: 32 }).notNull(),
+  empresa: varchar("empresa", { length: 256 }).notNull(),
+  mes: integer("mes").notNull(),
+  ano: integer("ano").notNull(),
+  usuarioId: text("usuarioId"),
+  usuarioNome: varchar("usuarioNome", { length: 128 }).notNull(),
+  motivo: text("motivo").notNull(),
+  contatadoEm: timestamp("contatadoEm").defaultNow().notNull(),
+}, (t) => ({
+  orcNumeroIdx: index("performance_propostas_followup_orc_idx").on(t.orcNumero),
+  mesAnoIdx: index("performance_propostas_followup_mes_ano_idx").on(t.mes, t.ano),
+}));
+export type PerformancePropostaFollowup = typeof performancePropostasFollowup.$inferSelect;
+export type InsertPerformancePropostaFollowup = typeof performancePropostasFollowup.$inferInsert;
 
 // Cache persistente de dados brutos da API MubiSys
 export const mubisysApiCache = pgTable("mubisys_api_cache", {

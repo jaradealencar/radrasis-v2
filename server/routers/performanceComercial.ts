@@ -3,14 +3,16 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato } from "../../drizzle/schema";
+import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup } from "../../drizzle/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
-  calcularFunilOrcamentos, calcularPrevisaoComercial,
+  calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados,
+  montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
+import { invokeLLM } from "../_core/llm";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
 // TTL: 60 minutos para mês atual, 6 horas para meses históricos (dados não mudam).
@@ -156,7 +158,7 @@ export function isOsNormalDb(os: { tipoOs?: string | null; status?: string | nul
 // mais (cliente "reativado" após período de inatividade). Toda a base de "quem
 // comprou antes" vem de historico_os (histórico real importado do MubiSys),
 // nunca da API ao vivo — ver buscarTodasComprasValidas/ultimaCompraAntesDe abaixo.
-const MESES_INATIVIDADE_PARA_NOVO = 6;
+export const MESES_INATIVIDADE_PARA_NOVO = 6;
 
 export type CompraMinima = { empresa: string; mes: number; ano: number };
 
@@ -1029,6 +1031,62 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     porVendedorNovos,
     lista,
   };
+}
+
+// ─── Fila de ações de Inteligência de Clientes — sincronização idempotente ───
+// Compartilhada por getFilaAcoesClientes e gerarFilaAcoesPdf, para não gerar
+// a fila duas vezes (uma para exibir, outra para o PDF) com regras divergentes.
+async function sincronizarFilaAcoesClientes(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
+  const rows = await db.select().from(historicoOs);
+  const base = construirBaseClientes(rows as any);
+  const dataRef = new Date();
+  const candidatos = calcularCandidatosAcao(base, dataRef);
+
+  // Upsert idempotente: não recria ação resolvida (concluída/descartada) há menos de
+  // DIAS_COOLDOWN_ACAO_RESOLVIDA dias; caso contrário, atualiza motivo/evidência/prioridade
+  // de uma ação pendente/adiada já existente, ou cria uma nova.
+  const cutoff = new Date(dataRef.getTime() - DIAS_COOLDOWN_ACAO_RESOLVIDA * 86400000);
+  for (const cand of candidatos) {
+    const existentes = await db.select().from(inteligenciaAcoesClientes)
+      .where(and(eq(inteligenciaAcoesClientes.tipo, cand.tipo), eq(inteligenciaAcoesClientes.empresaKey, cand.empresaKey)))
+      .limit(1);
+    const existente = existentes[0];
+    if (existente) {
+      const resolvidaRecente = existente.resolvidoEm && new Date(existente.resolvidoEm) > cutoff
+        && (existente.status === "concluida" || existente.status === "descartada");
+      if (resolvidaRecente) continue; // não reabrir — usuário acabou de tratar
+      if (existente.status === "adiada" && existente.prazo && new Date(existente.prazo) > dataRef) continue; // respeitar adiamento
+      await db.update(inteligenciaAcoesClientes)
+        .set({
+          empresa: cand.empresa,
+          vendedor: cand.vendedor,
+          titulo: cand.titulo,
+          motivo: cand.motivo,
+          evidenciaJson: JSON.stringify(cand.evidencia),
+          prioridade: cand.prioridade,
+          prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
+          dataAnalise: dataRef,
+          updatedAt: dataRef,
+          // Reabre uma ação concluída/descartada antiga (fora do cooldown) sem perder o histórico de resultado
+          ...(existente.status === "concluida" || existente.status === "descartada" ? { status: "pendente" as const, resolvidoEm: null } : {}),
+        })
+        .where(eq(inteligenciaAcoesClientes.id, existente.id));
+    } else {
+      await db.insert(inteligenciaAcoesClientes).values({
+        tipo: cand.tipo,
+        empresaKey: cand.empresaKey,
+        empresa: cand.empresa,
+        vendedor: cand.vendedor,
+        titulo: cand.titulo,
+        motivo: cand.motivo,
+        evidenciaJson: JSON.stringify(cand.evidencia),
+        prioridade: cand.prioridade,
+        prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
+        versaoRegra: VERSAO_REGRA_ATUAL,
+        dataAnalise: dataRef,
+      });
+    }
+  }
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -1961,62 +2019,17 @@ export const performanceComercialRouter = router({
     .input(z.object({
       status: z.enum(["pendente", "concluida", "adiada", "descartada"]).optional(),
       responsavel: z.string().optional(),
+      vendedor: z.string().optional(),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      const rows = await db.select().from(historicoOs);
-      const base = construirBaseClientes(rows as any);
-      const dataRef = new Date();
-      const candidatos = calcularCandidatosAcao(base, dataRef);
-
-      // Upsert idempotente: não recria ação resolvida (concluída/descartada) há menos de
-      // DIAS_COOLDOWN_ACAO_RESOLVIDA dias; caso contrário, atualiza motivo/evidência/prioridade
-      // de uma ação pendente/adiada já existente, ou cria uma nova.
-      const cutoff = new Date(dataRef.getTime() - DIAS_COOLDOWN_ACAO_RESOLVIDA * 86400000);
-      for (const cand of candidatos) {
-        const existentes = await db.select().from(inteligenciaAcoesClientes)
-          .where(and(eq(inteligenciaAcoesClientes.tipo, cand.tipo), eq(inteligenciaAcoesClientes.empresaKey, cand.empresaKey)))
-          .limit(1);
-        const existente = existentes[0];
-        if (existente) {
-          const resolvidaRecente = existente.resolvidoEm && new Date(existente.resolvidoEm) > cutoff
-            && (existente.status === "concluida" || existente.status === "descartada");
-          if (resolvidaRecente) continue; // não reabrir — usuário acabou de tratar
-          if (existente.status === "adiada" && existente.prazo && new Date(existente.prazo) > dataRef) continue; // respeitar adiamento
-          await db.update(inteligenciaAcoesClientes)
-            .set({
-              empresa: cand.empresa,
-              titulo: cand.titulo,
-              motivo: cand.motivo,
-              evidenciaJson: JSON.stringify(cand.evidencia),
-              prioridade: cand.prioridade,
-              prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
-              dataAnalise: dataRef,
-              updatedAt: dataRef,
-              // Reabre uma ação concluída/descartada antiga (fora do cooldown) sem perder o histórico de resultado
-              ...(existente.status === "concluida" || existente.status === "descartada" ? { status: "pendente" as const, resolvidoEm: null } : {}),
-            })
-            .where(eq(inteligenciaAcoesClientes.id, existente.id));
-        } else {
-          await db.insert(inteligenciaAcoesClientes).values({
-            tipo: cand.tipo,
-            empresaKey: cand.empresaKey,
-            empresa: cand.empresa,
-            titulo: cand.titulo,
-            motivo: cand.motivo,
-            evidenciaJson: JSON.stringify(cand.evidencia),
-            prioridade: cand.prioridade,
-            prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
-            versaoRegra: VERSAO_REGRA_ATUAL,
-            dataAnalise: dataRef,
-          });
-        }
-      }
+      await sincronizarFilaAcoesClientes(db);
 
       const filtros = [] as any[];
       if (input.status) filtros.push(eq(inteligenciaAcoesClientes.status, input.status));
       if (input.responsavel) filtros.push(eq(inteligenciaAcoesClientes.responsavel, input.responsavel));
+      if (input.vendedor) filtros.push(eq(inteligenciaAcoesClientes.vendedor, input.vendedor));
       const fila = await db.select().from(inteligenciaAcoesClientes)
         .where(filtros.length > 0 ? and(...filtros) : undefined)
         .orderBy(desc(inteligenciaAcoesClientes.prioridade));
@@ -2025,6 +2038,77 @@ export const performanceComercialRouter = router({
         evidencia: JSON.parse(a.evidenciaJson),
         prioridadeFatores: a.prioridadeFatoresJson ? JSON.parse(a.prioridadeFatoresJson) : null,
       }));
+    }),
+
+  /** Lista de vendedores distintos já presentes na fila — para popular o filtro. */
+  getVendedoresFilaAcoes: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new Error("DB indisponível");
+    const rows = await db.selectDistinct({ vendedor: inteligenciaAcoesClientes.vendedor }).from(inteligenciaAcoesClientes);
+    return rows.map(r => r.vendedor).filter((v): v is string => !!v).sort();
+  }),
+
+  /** Gera um PDF (texto, paginado) da fila de ações filtrada — mesmo padrão de
+   * server/routers/logistica.ts::romaneioPdf (jsPDF no servidor, retorna base64). */
+  gerarFilaAcoesPdf: publicProcedure
+    .input(z.object({
+      status: z.enum(["pendente", "concluida", "adiada", "descartada"]).optional(),
+      vendedor: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      await sincronizarFilaAcoesClientes(db);
+
+      const filtros = [] as any[];
+      if (input.status) filtros.push(eq(inteligenciaAcoesClientes.status, input.status));
+      if (input.vendedor) filtros.push(eq(inteligenciaAcoesClientes.vendedor, input.vendedor));
+      const fila = await db.select().from(inteligenciaAcoesClientes)
+        .where(filtros.length > 0 ? and(...filtros) : undefined)
+        .orderBy(desc(inteligenciaAcoesClientes.prioridade));
+
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const margem = 40;
+      const limiteY = 800;
+      let y = 48;
+      const escreve = (texto: string, negrito = false, tamanho = 9) => {
+        const linhas = doc.splitTextToSize(texto, 515);
+        for (const linha of linhas) {
+          if (y > limiteY) { doc.addPage(); y = 48; }
+          doc.setFont("helvetica", negrito ? "bold" : "normal");
+          doc.setFontSize(tamanho);
+          doc.text(linha, margem, y);
+          y += tamanho + 4;
+        }
+      };
+
+      const tituloTipo: Record<string, string> = {
+        primeira_sem_segunda: "1ª compra sem repetição",
+        atraso_recompra: "Atraso na recompra",
+        alto_volume_baixa_margem: "Alto volume, margem baixa",
+      };
+
+      escreve("Fila de Ações — Inteligência de Clientes", true, 14);
+      escreve(`Filtros: status=${input.status ?? "todos"} · vendedor=${input.vendedor ?? "todos"}`);
+      escreve(`Total de ações: ${fila.length} · Emitido em ${new Date().toLocaleString("pt-BR")}`);
+      y += 8;
+
+      for (const a of fila) {
+        escreve(`${a.empresa}  —  ${tituloTipo[a.tipo] ?? a.tipo}`, true, 11);
+        escreve(`Vendedor: ${a.vendedor ?? "—"}   |   Prioridade: ${a.prioridade}   |   Status: ${a.status}`);
+        escreve(a.motivo);
+        if (a.proximoPasso) escreve(`Próximo passo: ${a.proximoPasso}`);
+        if (a.resultado) escreve(`Resultado: ${a.resultado}${a.resultadoObservacao ? " — " + a.resultadoObservacao : ""}`);
+        y += 6;
+      }
+
+      const pdfBase64 = doc.output("datauristring").split(",")[1];
+      return {
+        pdfBase64,
+        fileName: `fila-acoes-clientes-${new Date().toISOString().slice(0, 10)}.pdf`,
+        totalAcoes: fila.length,
+      };
     }),
 
   atualizarAcaoCliente: protectedProcedure
@@ -2078,6 +2162,60 @@ export const performanceComercialRouter = router({
       ]);
       const funil = calcularFunilOrcamentos(orcRows as any, new Date());
       return calcularPrevisaoComercial(osRows as any, orcRows as any, funil, new Date());
+    }),
+
+  getRecompraNovosReativados: publicProcedure
+    .input(z.object({
+      dataInicial: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      dataFinal: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const rows = await db.select().from(historicoOs);
+      const base = construirBaseClientes(rows as any);
+      return calcularRecompraNovosReativados(base, new Date(input.dataInicial), new Date(`${input.dataFinal}T23:59:59`), new Date());
+    }),
+
+  // ─── Assistente de IA (Inteligência de Clientes) ─────────────────────────────
+  // Ver docs/inteligencia-clientes.md seção "Assistente de IA". Usa só os
+  // resultados já calculados pelas funções acima como contexto — nunca soma
+  // dados brutos, nunca recebe a base de clientes inteira.
+  perguntarInteligenciaClientes: protectedProcedure
+    .input(z.object({
+      pergunta: z.string().min(3),
+      dataInicial: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      dataFinal: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const dataRef = new Date();
+      const dataInicial = new Date(input.dataInicial);
+      const dataFinal = new Date(`${input.dataFinal}T23:59:59`);
+
+      const [osRows, orcRows] = await Promise.all([
+        db.select().from(historicoOs),
+        db.select().from(historicoOrcamentos),
+      ]);
+      const base = construirBaseClientes(osRows as any);
+      const visaoGeral = calcularVisaoGeral(base, dataInicial, dataFinal, dataRef);
+      const funil = calcularFunilOrcamentos(orcRows as any, dataRef);
+      const previsao = calcularPrevisaoComercial(osRows as any, orcRows as any, funil, dataRef);
+      const candidatosAcao = calcularCandidatosAcao(base, dataRef);
+      const contexto = montarContextoAssistenteClientes(visaoGeral, funil, previsao, candidatosAcao, {
+        dataInicial: input.dataInicial, dataFinal: input.dataFinal,
+      });
+
+      const resp = await invokeLLM({
+        messages: [
+          { role: "system", content: PROMPT_ASSISTENTE_CLIENTES_V1 },
+          { role: "user", content: `Contexto (dados já calculados pelo sistema, em JSON):\n${JSON.stringify(contexto)}\n\nPergunta do usuário: ${input.pergunta}` },
+        ],
+      });
+      const conteudo = resp.choices?.[0]?.message?.content;
+      const resposta = typeof conteudo === "string" ? conteudo : "Não foi possível gerar a resposta — tente novamente.";
+      return { resposta, versaoPrompt: VERSAO_PROMPT_ASSISTENTE_CLIENTES };
     }),
 
   // ─── SISTEMA DE AUDITORIA E CONGELAMENTO DE DADOS ────────────────────────────
@@ -2360,5 +2498,125 @@ export const performanceComercialRouter = router({
         });
       }
       return { ok: true };
+    }),
+
+  // ─── Propostas de alto valor (padrão: acima de R$ 8.000) ───────────────────
+  // Lista as propostas do mês/ano em aberto (exclui canceladas/excluídas e as
+  // já convertidas em venda/faturamento — essas não precisam mais de follow-up)
+  // acima do valor de corte, com telefone/WhatsApp quando disponível e o
+  // histórico de contatos já registrados por quem fez o follow-up.
+  getPropostasAltoValor: publicProcedure
+    .input(z.object({
+      mes: z.number().min(1).max(12),
+      ano: z.number().min(2020),
+      valorMinimo: z.number().min(0).default(8000),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { propostas: [] as any[] };
+      const { mes, ano, valorMinimo } = input;
+
+      const orcRows = await db.select().from(historicoOrcamentos)
+        .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)));
+
+      const STATUS_FINALIZADOS = ["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido", "aprovado", "faturado", "concluido", "concluído"];
+      const candidatas = orcRows.filter(orc => {
+        const valor = parseFloat(String(orc.total ?? "0")) || 0;
+        if (valor < valorMinimo) return false;
+        const status = (orc.status ?? "").toLowerCase();
+        return !STATUS_FINALIZADOS.includes(status);
+      });
+
+      if (candidatas.length === 0) return { propostas: [] as any[] };
+
+      // Telefone/contato: best-effort a partir do cache de dados brutos da API MubiSys
+      // já buscado para este mês (getMesFromApi popula orc_raw_{mes}_{ano} / raw_{mes}_{ano}).
+      // Não dispara uma nova busca na API só por causa do telefone — historico_orcamentos
+      // não guarda telefone e a tabela `clientes` está vazia (ver comentário no schema),
+      // então sem esse cache quente a proposta aparece sem botão de WhatsApp.
+      const orcCacheKey = `orc_raw_${mes}_${ano}`;
+      let allOrcApi: any[] | null = getCached(orcCacheKey);
+      if (!allOrcApi) {
+        const dbCached = await getDbCache(`raw_${mes}_${ano}`);
+        allOrcApi = dbCached?.allOrc ?? null;
+      }
+      const telefonePorOrcNumero = new Map<string, { telefone: string; contato: string }>();
+      if (allOrcApi) {
+        for (const o of allOrcApi) {
+          const numero = String(o.sequencial_orcamento ?? o.id ?? "");
+          if (!numero) continue;
+          const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : (o.cliente_contato ? [o.cliente_contato] : []);
+          const primeiro = contatosOrc[0];
+          const telefone = primeiro?.celular || primeiro?.telefone || primeiro?.fone || "";
+          const contato = primeiro?.nome_contato || primeiro?.nome || "";
+          if (telefone) telefonePorOrcNumero.set(numero, { telefone, contato });
+        }
+      }
+
+      function formatWhatsApp(tel: string): string {
+        const digits = tel.replace(/\D/g, "");
+        if (!digits) return "";
+        const num = digits.startsWith("55") ? digits : `55${digits}`;
+        return `https://wa.me/${num}`;
+      }
+
+      const followupsDb = await db.select().from(performancePropostasFollowup)
+        .where(and(eq(performancePropostasFollowup.mes, mes), eq(performancePropostasFollowup.ano, ano)))
+        .orderBy(desc(performancePropostasFollowup.contatadoEm));
+      const followupsPorOrc = new Map<string, typeof followupsDb>();
+      for (const f of followupsDb) {
+        if (!followupsPorOrc.has(f.orcNumero)) followupsPorOrc.set(f.orcNumero, []);
+        followupsPorOrc.get(f.orcNumero)!.push(f);
+      }
+
+      const propostas = candidatas.map(orc => {
+        const numero = orc.orcNumero ?? "";
+        const tel = telefonePorOrcNumero.get(numero);
+        const followups = followupsPorOrc.get(numero) ?? [];
+        return {
+          orcNumero: numero,
+          empresa: orc.empresa ?? "",
+          vendedor: orc.vendedor ?? "",
+          valor: parseFloat(String(orc.total ?? "0")) || 0,
+          dataCadastro: orc.dataCadastro ?? null,
+          status: orc.status ?? null,
+          telefone: tel?.telefone ?? null,
+          contato: tel?.contato ?? null,
+          whatsappLink: tel?.telefone ? formatWhatsApp(tel.telefone) : null,
+          followups: followups.map(f => ({
+            id: f.id,
+            usuarioNome: f.usuarioNome,
+            motivo: f.motivo,
+            contatadoEm: f.contatadoEm,
+          })),
+          qtdFollowups: followups.length,
+        };
+      }).sort((a, b) => b.valor - a.valor);
+
+      return { propostas };
+    }),
+
+  /** Registra um contato/follow-up feito em uma proposta de alto valor. */
+  registrarFollowupProposta: protectedProcedure
+    .input(z.object({
+      orcNumero: z.string().min(1),
+      empresa: z.string().min(1),
+      mes: z.number().min(1).max(12),
+      ano: z.number().min(2020),
+      motivo: z.string().min(3, "Descreva o motivo do contato"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const [row] = await db.insert(performancePropostasFollowup).values({
+        orcNumero: input.orcNumero,
+        empresa: input.empresa,
+        mes: input.mes,
+        ano: input.ano,
+        usuarioId: ctx.user?.id ?? null,
+        usuarioNome: ctx.user?.name ?? "Desconhecido",
+        motivo: input.motivo,
+      }).returning();
+      return row;
     }),
 });

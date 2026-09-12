@@ -1,9 +1,13 @@
 /**
  * Qualificação determinística de leads B2B a partir de dados de CNPJ.
  * Ver docs/inteligencia-mercado-leads-cnpj.md para a especificação completa
- * (CNAEs-alvo, matriz de score, prompt de IA — não acionado por este código).
+ * (CNAEs-alvo, matriz de score, prompt de IA).
  *
- * Função pura, sem I/O: recebe o JSON já obtido de server/integrations/opencnpj-client.ts.
+ * O cálculo de score (`qualificarLeadCnpj`) é puro, sem I/O. O prompt de IA
+ * (`PROMPT_LEAD_CNPJ_V1` + `montarMensagemLeadCnpj`) também é puro — quem
+ * efetivamente chama o LLM é o router (`server/routers/leadsCnpj.ts`), que é
+ * quem tem acesso a `invokeLLM`. Mantém a mesma separação entre cálculo
+ * determinístico e chamada de IA usada no resto do sistema.
  */
 
 import type { OpenCnpjResponse } from "../integrations/opencnpj-client";
@@ -64,11 +68,14 @@ export interface ResultadoQualificacaoLead {
   } | null;
 }
 
+/** A OpenCNPJ devolve o porte por extenso com a sigla entre parênteses (ex.
+ * "Microempresa (ME)", "Empresa de Pequeno Porte (EPP)"), confirmado por
+ * chamada real — não a sigla sozinha. Casar por substring, não igualdade. */
 function pontosPorte(porte: string): number {
   const p = porte.trim().toLowerCase();
-  if (p === "demais") return 100;
-  if (p === "epp") return 80;
-  if (p === "me") return 40;
+  if (p.includes("demais") || p.includes("grande")) return 100;
+  if (p.includes("epp") || p.includes("pequeno porte")) return 80;
+  if (p.includes("me") || p.includes("microempresa")) return 40;
   return 40; // porte desconhecido — tratado como o mais conservador dos conhecidos
 }
 
@@ -172,4 +179,45 @@ export function qualificarLeadCnpj(dados: OpenCnpjResponse, hoje: Date = new Dat
       ajusteConfiancaMedia,
     },
   };
+}
+
+// ─── Prompt de IA (v1) — ver docs/inteligencia-mercado-leads-cnpj.md seção 4 ──
+
+export const VERSAO_PROMPT_LEAD_CNPJ = "v1";
+
+export const PROMPT_LEAD_CNPJ_V1 = `Você é um analista de qualificação de leads B2B para uma fábrica de letras metálicas, letras-caixa, letreiros luminosos e fachadas comerciais que vende exclusivamente por terceirização — para gráficas, agências de comunicação visual, birôs de impressão e empresas de sinalização, nunca para o cliente final.
+
+Você recebe: os dados cadastrais de uma empresa já aprovada pela regra de filtro (situação ativa, CNAE compatível) e o score determinístico (A/B/C/D) já calculado pelo sistema, com os fatores que o compuseram. Não recalcule o score nem invente dados que não estejam no JSON fornecido.
+
+Produza três seções, curtas e diretas:
+
+1. "Potencial do lead": com base em porte, capital social, idade da empresa e o(s) CNAE(s) que bateram na lista-alvo, estime se a empresa provavelmente compra letreiro em volume alto, médio ou baixo — e diga explicitamente que é uma estimativa por porte cadastral, não um dado de compra real (o sistema não tem acesso ao volume de compras dessa empresa).
+
+2. "Argumento de venda B2B": aponte a dor de terceirização mais provável para o perfil dessa empresa (ex.: uma empresa de instalação de painéis sem CNAE de fabricação provavelmente terceiriza 100% da produção; uma agência de design provavelmente não tem estrutura fabril nenhuma; uma gráfica com CNAE de impressão publicitária pode estar tentando expandir para letreiro sem ter maquinário). Formule como uma pergunta ou abertura de conversa, nunca como afirmação de fato sobre a empresa específica.
+
+3. "Quem abordar": olhando o QSA, identifique o(s) sócio(s) com qualificação mais provável de decidir sobre fornecedores (ex.: "Administrador", "Sócio-Administrador", "Diretor") — se houver mais de um nome plausível, liste todos sem apontar um único "responsável" fabricado. Se o QSA não tiver ninguém com qualificação decisória clara, diga isso e sugira abordar pelo contato institucional da empresa.
+
+Nunca prometa condições comerciais, nunca afirme que a empresa "com certeza" compra ou vai comprar, e nunca trate o score de aderência como uma garantia. Separe sempre fato cadastral (o que está no JSON) de hipótese comercial (o que você está inferindo). Responda em português do Brasil.`;
+
+/** Monta a mensagem de usuário enviada ao LLM: só os campos relevantes já
+ * aprovados e o resultado do scorer — nunca a base de clientes nem dados de
+ * outros leads (princípio de contexto mínimo necessário). */
+export function montarMensagemLeadCnpj(dados: OpenCnpjResponse, resultado: ResultadoQualificacaoLead): string {
+  const cadastro = {
+    razao_social: dados.razao_social,
+    nome_fantasia: dados.nome_fantasia,
+    municipio: dados.municipio,
+    uf: dados.uf,
+    porte_empresa: dados.porte_empresa,
+    capital_social: dados.capital_social,
+    data_inicio_atividade: dados.data_inicio_atividade,
+    natureza_juridica: dados.natureza_juridica,
+    QSA: (dados.QSA ?? []).map(s => ({ nome: s.nome_socio, qualificacao: s.qualificacao_socio, desde: s.data_entrada_sociedade })),
+  };
+  return JSON.stringify({
+    dadosCadastrais: cadastro,
+    cnaesQueBateramNaListaAlvo: resultado.cnaesRelevantes,
+    scoreCalculado: resultado.score,
+    fatoresDoScore: resultado.fatoresScore,
+  }, null, 2);
 }

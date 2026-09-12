@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { fmtBrl, fmtDate } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { Search, Building2, AlertTriangle, CheckCircle2, XCircle, Users2 } from "lucide-react";
+import { Search, Building2, AlertTriangle, CheckCircle2, XCircle, Users2, Sparkles } from "lucide-react";
 
 const SCORE_COR: Record<string, string> = {
   A: "bg-green-50 text-green-700 border-green-200",
@@ -126,6 +126,18 @@ export default function QualificacaoLeadsCnpj() {
                 ))}
               </div>
             </div>
+          )}
+
+          {resultado.resumoIa && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <p className="text-[10px] font-bold text-purple-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" /> Análise gerada por IA — hipótese, não fato confirmado
+              </p>
+              <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{resultado.resumoIa}</div>
+            </div>
+          )}
+          {resultado.resultado.aprovado && !resultado.resumoIa && (
+            <p className="text-[11px] text-slate-400">Resumo de IA indisponível (verifique a configuração de OPENAI_API_KEY no servidor).</p>
           )}
 
           {resultado.dados.QSA?.length > 0 && (

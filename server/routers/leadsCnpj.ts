@@ -4,7 +4,8 @@ import { getDb } from "../db/db";
 import { leadsCnpjQualificados } from "../../drizzle/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { consultarCnpj, normalizarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
-import { qualificarLeadCnpj } from "../services/qualificacaoLeadCnpj";
+import { qualificarLeadCnpj, PROMPT_LEAD_CNPJ_V1, VERSAO_PROMPT_LEAD_CNPJ, montarMensagemLeadCnpj } from "../services/qualificacaoLeadCnpj";
+import { invokeLLM } from "../_core/llm";
 
 export const leadsCnpjRouter = router({
   // ─── Qualificação de Leads por CNPJ ──────────────────────────────────────
@@ -29,6 +30,25 @@ export const leadsCnpjRouter = router({
       const resultado = qualificarLeadCnpj(dados);
       const agora = new Date();
 
+      // Gera o resumo de IA só para leads aprovados — best-effort: se a IA falhar
+      // (sem chave configurada, erro de rede etc.), o lead continua salvo sem o
+      // resumo em vez de quebrar a consulta inteira.
+      let resumoIa: string | null = null;
+      if (resultado.aprovado) {
+        try {
+          const resp = await invokeLLM({
+            messages: [
+              { role: "system", content: PROMPT_LEAD_CNPJ_V1 },
+              { role: "user", content: montarMensagemLeadCnpj(dados, resultado) },
+            ],
+          });
+          const conteudo = resp.choices?.[0]?.message?.content;
+          resumoIa = typeof conteudo === "string" ? conteudo : null;
+        } catch {
+          resumoIa = null; // sem chave configurada ou falha da API — não bloqueia a consulta
+        }
+      }
+
       const valores = {
         cnpj: cnpjLimpo,
         razaoSocial: dados.razao_social,
@@ -47,6 +67,8 @@ export const leadsCnpjRouter = router({
         fatoresScoreJson: resultado.fatoresScore ? JSON.stringify(resultado.fatoresScore) : null,
         qsaJson: JSON.stringify(dados.QSA ?? []),
         dadosJson: JSON.stringify(dados),
+        resumoIa,
+        versaoPromptIa: resumoIa ? VERSAO_PROMPT_LEAD_CNPJ : null,
         consultadoPor: ctx.user?.name ?? ctx.user?.id ?? "desconhecido",
         consultadoEm: agora,
         updatedAt: agora,
@@ -61,7 +83,7 @@ export const leadsCnpjRouter = router({
         await db.insert(leadsCnpjQualificados).values(valores);
       }
 
-      return { dados, resultado };
+      return { dados, resultado, resumoIa };
     }),
 
   listar: protectedProcedure

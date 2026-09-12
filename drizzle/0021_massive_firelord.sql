@@ -1,0 +1,1 @@
+ALTER TABLE "inteligencia_acoes_clientes" ADD COLUMN "vendedor" varchar(128);
