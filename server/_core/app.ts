@@ -151,5 +151,8 @@ export async function createApp(): Promise<Express> {
   const { handleSincronizarCrmAbertos } = await import("../sync/scheduled-sync-crm-abertos-handler");
   app.post("/api/scheduled/sincronizarCrmAbertos", handleSincronizarCrmAbertos);
 
+  const { handleSincronizarCrmFechados } = await import("../sync/scheduled-sync-crm-fechados-handler");
+  app.post("/api/scheduled/sincronizarCrmFechados", handleSincronizarCrmFechados);
+
   return app;
 }

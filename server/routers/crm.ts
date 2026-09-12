@@ -8,6 +8,7 @@ import {
   CACHE_KEY_ABERTOS_PADRAO, CACHE_KEY_ABERTOS_ESTENDIDO,
   JANELA_ABERTOS_DIAS_PADRAO, JANELA_ABERTOS_DIAS_MAX,
   getCrmAbertosCache, refreshCrmAbertosCache,
+  CACHE_KEY_FECHADOS, refreshCrmFechadosCache, inicioJanelaFechadosCache,
 } from "../sync/crm-abertos-cache";
 import type { TrpcContext } from "../_core/context";
 
@@ -78,6 +79,27 @@ function diasDesde(str: string | null | undefined): number | null {
 // que getPropostas/getVendedores quase nunca precisem bater ao vivo no MubiSys — o fallback
 // de busca ao vivo abaixo só roda se o cache expirar (cron atrasado/fora do ar) ou no modo
 // "buscar mais antigas" (30 dias, não mantido quente por cron — ver refreshCrmAbertosCache).
+
+/**
+ * Propostas "fechadas" (aprovado/faturado/concluído) criadas no período [di, df].
+ * Mesmo problema/solução do cache de abertos: se o período pedido cabe inteiro
+ * na janela rolante cacheada (últimos 45 dias, ver JANELA_FECHADOS_DIAS), filtra
+ * em memória sem bater no MubiSys; caso contrário (período customizado mais
+ * antigo — raro), busca ao vivo só para esse caso, aceitando o risco de demora
+ * que já existia antes desta correção.
+ */
+async function buscarOrcamentosPeriodo(di: string, df: string): Promise<any[]> {
+  if (di >= inicioJanelaFechadosCache()) {
+    const cacheHit = await getCrmAbertosCache(CACHE_KEY_FECHADOS);
+    const todos = cacheHit ? cacheHit.itens : await refreshCrmFechadosCache();
+    return todos.filter((o: any) => {
+      const dia = (o.data_cadastro || "").slice(0, 10);
+      return dia && dia >= di && dia <= df;
+    });
+  }
+  const { itens } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df, perPage: 50 });
+  return itens;
+}
 
 // Janela de follow-up sugerida com base nos dados históricos
 function janelaSugerida(diasCriado: number): string {
@@ -156,7 +178,7 @@ export const crmRouter = router({
       // por trás. Paralelizar pareceria uma otimização óbvia, mas piora ou quebra tudo.
       const todosAbertos = cacheHit ? cacheHit.itens : await refreshCrmAbertosCache(cacheKey, janelaDias);
       const abertosAtualizadoEm = (cacheHit?.fetchedAt ?? new Date()).toISOString();
-      const { itens: todosPeriodo } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df, perPage: 50 });
+      const todosPeriodo = await buscarOrcamentosPeriodo(di, df);
       const abertos = todosAbertos.filter((o: any) => {
         const s = (o.status || "").toLowerCase();
         return s === "em aberto" || s === "em andamento" || s === "pendente";
@@ -536,7 +558,7 @@ export const crmRouter = router({
     // duplicar a busca/gravação no MubiSys.
     const cacheHit = await getCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO);
     const todosAbertos = cacheHit ? cacheHit.itens : await refreshCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO, JANELA_ABERTOS_DIAS_PADRAO);
-    const { itens: todosPeriodo } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df, perPage: 50 });
+    const todosPeriodo = await buscarOrcamentosPeriodo(di, df);
     const abertos = todosAbertos.filter((o: any) => { const s = (o.status||"").toLowerCase(); return s==="em aberto"||s==="em andamento"||s==="pendente"; });
     const fechados = todosPeriodo.filter((o: any) => { const s = (o.status||"").toLowerCase(); return s==="aprovado"||s==="faturado"||s==="concluido"||s==="concluído"; });
 

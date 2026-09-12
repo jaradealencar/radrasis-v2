@@ -51,6 +51,15 @@ export const JANELA_ABERTOS_DIAS_MAX = 30;
 export const CACHE_KEY_ABERTOS_PADRAO = "crm_abertos_15d";
 export const CACHE_KEY_ABERTOS_ESTENDIDO = "crm_abertos_30d";
 
+// Cache rolante para as propostas "fechadas" (usado nas estatísticas do período
+// selecionado na tela). Mesmo problema do "abertos": buscar ao vivo o período
+// escolhido pelo usuário (ex.: "Este mês" = até 31 dias) tem o mesmo risco de
+// demora/instabilidade — ver server/sync/scheduled-sync-crm-fechados.ts.
+// 45 dias cobre com folga os presets do front (hoje/7dias/15dias/mês) porque
+// "mês" nunca recua mais que ~31 dias a partir de hoje.
+export const JANELA_FECHADOS_DIAS = 45;
+export const CACHE_KEY_FECHADOS = "crm_fechados_45d";
+
 export interface CrmAbertosCacheHit {
   itens: any[];
   fetchedAt: Date;
@@ -118,5 +127,28 @@ export async function refreshCrmAbertosCache(cacheKey: string, janelaDias: numbe
     status: "ABERTO", datainicial: diAberto, datafinal: dfAberto, perPage: 50,
   });
   await setCrmAbertosCache(cacheKey, itens);
+  return itens;
+}
+
+/** Data (YYYY-MM-DD) a partir da qual o cache de "fechados" tem cobertura garantida. */
+export function inicioJanelaFechadosCache(): string {
+  return fmtDate(new Date(Date.now() - JANELA_FECHADOS_DIAS * 24 * 60 * 60 * 1000));
+}
+
+/**
+ * Busca ao vivo no MubiSys e grava no cache de "fechados". Sem filtro de
+ * `status` na chamada (igual ao comportamento original) — o filtro de quais
+ * status contam como "fechado" (aprovado/faturado/concluído) é sempre feito
+ * client-side em crm.ts, e testado que o parâmetro `status` da API não reduz
+ * o volume retornado de forma confiável (ver nota em listarOrcamentosMubiSys).
+ */
+export async function refreshCrmFechadosCache(): Promise<any[]> {
+  const now = new Date();
+  const diFechados = fmtDate(new Date(now.getTime() - JANELA_FECHADOS_DIAS * 24 * 60 * 60 * 1000));
+  const dfFechados = fmtDate(now);
+  const { itens } = await listarOrcamentosMubiSys({
+    datainicial: diFechados, datafinal: dfFechados, perPage: 50,
+  });
+  await setCrmAbertosCache(CACHE_KEY_FECHADOS, itens);
   return itens;
 }

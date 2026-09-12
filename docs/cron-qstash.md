@@ -8,6 +8,7 @@ Cron); nenhum agendador vive dentro do repositório:
 | `POST /api/scheduled/sincronizarOS` | `erp_os_cache` | janela rolante curta (~32 dias), dados "quentes" pra funcionalidades que só precisam do recente |
 | `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
 | `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave `crm_abertos_15d`) | orçamentos "em aberto" (15 dias) que o CRM de Propostas mostra — ver seção "Sincronização de abertos do CRM" mais abaixo |
+| `POST /api/scheduled/sincronizarCrmFechados` | `mubisys_api_cache` (chave `crm_fechados_45d`) | orçamentos "fechados" (45 dias) usados nas estatísticas do período selecionado no CRM — mesma seção |
 
 Este documento cobre o primeiro em detalhe; os outros dois estão descritos nas
 seções "Sincronização de histórico" e "Sincronização de abertos do CRM" mais
@@ -187,3 +188,30 @@ Retries:    2
 > (30 dias, botão "Buscar mais antigas" na tela) — ela é usada sob demanda,
 > raramente, e aceita o risco de eventualmente demorar ou falhar num clique
 > isolado. Não vale manter mais um job rodando de fundo para isso.
+
+## Sincronização de fechados do CRM (`mubisys_api_cache`, chave `crm_fechados_45d`)
+
+Job irmão do anterior, mesma motivação. As estatísticas do período selecionado
+na tela (propostas fechadas/valor fechado) também bateram ao vivo no MubiSys
+sem cache — mesmo risco de demora/instabilidade. Ver
+`buscarOrcamentosPeriodo` em `server/routers/crm.ts`.
+
+- **Endpoint:** `POST /api/scheduled/sincronizarCrmFechados`
+- **Autenticação:** nenhuma.
+- **Sem parâmetros.** Sincroniza uma janela rolante de 45 dias (sem filtro de
+  `status` na chamada — o filtro de quais status contam como "fechado" é
+  sempre feito client-side).
+- **Por que 45 dias e não 15:** cobre com folga o preset "Este mês" do front
+  (até ~31 dias) mais margem. Um período customizado mais antigo que isso cai
+  fora do cache e ainda faz busca ao vivo (raro, aceitável).
+
+```
+POST https://SEU-DOMINIO.com/api/scheduled/sincronizarCrmFechados
+Cron (UTC): */15 * * * *     (a cada 15 minutos — não precisa ser tão frequente quanto o de abertos)
+Retries:    2
+```
+
+Mesmo aviso do job de abertos sobre instabilidade da API MubiSys se aplica
+aqui: rodar como job SEPARADO (não somado ao de abertos na mesma invocação)
+é intencional — as duas buscas já podem sozinhas se aproximar do
+`maxDuration` de 60s quando a API está lenta.
