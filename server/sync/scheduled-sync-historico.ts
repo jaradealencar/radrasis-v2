@@ -150,8 +150,30 @@ async function upsertEmLotes(table: string, cols: string[], linhas: Record<strin
 
 /** Tamanho de cada janela ao fatiar um mês em sub-períodos — ver nota acima
  * de sincronizarHistoricoDoMubiSys sobre por que o mês inteiro num único
- * request estoura o timeout. */
-const DIAS_POR_JANELA = 7;
+ * request estoura o timeout.
+ *
+ * 2 dias, e não mais: medido em 12/09/2026, a listagem de orçamentos custa
+ * ~0,3s por item devolvido, e a paginação dentro de uma janela é sequencial.
+ * 2 dias (~80 orçamentos) fecha em ~26s; 4 dias (~143) já vai a 42s e 7 dias
+ * estoura o TIMEOUT_LISTA_MS de 45s. O ganho vem de rodar as janelas em
+ * paralelo, não de deixá-las grandes. */
+const DIAS_POR_JANELA = 2;
+
+/** A API do ERP derruba a conexão com frequência (TimeoutError) quando está
+ * sob carga. Uma segunda tentativa quase sempre passa, e o custo de tentar de
+ * novo é muito menor que o de perder a janela inteira. */
+async function comTentativas<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
+  let ultimoErro: unknown;
+  for (let i = 1; i <= tentativas; i++) {
+    try {
+      return await fn();
+    } catch (erro) {
+      ultimoErro = erro;
+      if (i < tentativas) await new Promise(r => setTimeout(r, 3_000 * i));
+    }
+  }
+  throw ultimoErro;
+}
 
 function fatiarEmJanelas(di: string, df: string, diasPorJanela: number): Array<{ di: string; df: string }> {
   const [anoI, mesI, diaI] = di.split('-').map(Number);
@@ -198,15 +220,29 @@ export async function sincronizarHistoricoDoMubiSys(mes: number, ano: number): P
 
   try {
     const janelas = fatiarEmJanelas(di, df, DIAS_POR_JANELA);
-    console.log(`🔄 [SYNC-HISTORICO] Sincronizando ${pad(mes)}/${ano} (${di}..${df}) em ${janelas.length} janela(s) paralela(s)`);
+    console.log(`🔄 [SYNC-HISTORICO] Sincronizando ${pad(mes)}/${ano} (${di}..${df}) em ${janelas.length} janela(s)`);
 
-    const resultados = await Promise.all(janelas.map(async (janela) => {
-      const [osResult, orcResult] = await Promise.all([
-        listarOSMubiSys({ status: 'TODOS', filtrodata: 'APROVACAO', datainicial: janela.di, datafinal: janela.df }),
-        listarOrcamentosMubiSys({ status: 'TODOS', datainicial: janela.di, datafinal: janela.df }),
-      ]);
-      return { osResult, orcResult };
-    }));
+    // Uma janela por vez. Disparar as janelas em paralelo parece atraente, mas
+    // a API do ERP serializa as requisições: medido em 12/09/2026, uma janela
+    // de 2 dias sozinha responde em ~26s e as mesmas 6 janelas em paralelo
+    // estouram todas o TIMEOUT_LISTA_MS de 45s ao mesmo tempo. Sequencial é
+    // mais lento no total, mas é o único modo que conclui.
+    const resultados: Array<{ osResult: Awaited<ReturnType<typeof listarOSMubiSys>>; orcResult: Awaited<ReturnType<typeof listarOrcamentosMubiSys>> }> = [];
+    const janelasFalhadas: string[] = [];
+    for (const janela of janelas) {
+      try {
+        const osResult = await comTentativas(() => listarOSMubiSys({ status: 'TODOS', filtrodata: 'APROVACAO', datainicial: janela.di, datafinal: janela.df }));
+        const orcResult = await comTentativas(() => listarOrcamentosMubiSys({ status: 'TODOS', datainicial: janela.di, datafinal: janela.df }));
+        resultados.push({ osResult, orcResult });
+      } catch (erroJanela: any) {
+        // Uma janela que não fecha não pode descartar as que já vieram: o
+        // upsert é idempotente, então gravar o parcial e deixar a próxima
+        // execução refazer a janela perdida é melhor que perder tudo.
+        janelasFalhadas.push(`${janela.di}..${janela.df}`);
+        console.warn(`⚠️ [SYNC-HISTORICO] Janela ${janela.di}..${janela.df} falhou (${erroJanela?.message}) — seguindo com as demais`);
+      }
+    }
+    if (janelasFalhadas.length === janelas.length) throw new Error(`Todas as ${janelas.length} janelas falharam`);
 
     const osItens = resultados.flatMap(r => r.osResult.itens);
     const orcItens = resultados.flatMap(r => r.orcResult.itens);
