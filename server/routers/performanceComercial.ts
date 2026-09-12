@@ -583,12 +583,13 @@ function calcularNovosDoMesLocal(
   osDoAno: Array<{ empresa: string | null; tipoOs: string | null; status: string | null; mes: number; valorOs: string | null; valorTotal: string | null }>,
   todasComprasValidas: CompraMinima[],
   overrideMap: Map<string, "recorrente" | "novo">,
-): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; clientesNovosUnicos: number; clientesReativados: number } {
+): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; faturamentoReativados: number; clientesNovosUnicos: number; clientesReativados: number } {
   const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
   const osMes = osDoAno.filter(os => os.mes === mes);
 
   let osNovos = 0;
   let faturamentoNovos = 0;
+  let faturamentoReativados = 0;
   let clientesReativados = 0;
   const clientesVistos = new Set<string>();
 
@@ -604,12 +605,17 @@ function calcularNovosDoMesLocal(
     if (!isNovo) continue;
 
     const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+    const jaComprouAntes = Boolean(ultimaCompraPorCliente.get(clienteKey));
     osNovos++;
     faturamentoNovos += valor;
+    // faturamentoReativados é SUBCONJUNTO de faturamentoNovos, não uma parcela
+    // somada: conta as OS dos clientes que já tinham comprado antes e voltaram
+    // após 6+ meses. O faturamento de "novo puro" é a diferença entre os dois.
+    if (jaComprouAntes) faturamentoReativados += valor;
 
     if (!clientesVistos.has(clienteKey)) {
       clientesVistos.add(clienteKey);
-      if (ultimaCompraPorCliente.get(clienteKey)) clientesReativados++;
+      if (jaComprouAntes) clientesReativados++;
     }
   }
 
@@ -618,6 +624,7 @@ function calcularNovosDoMesLocal(
     ticketMedioNovos: osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0,
     osNovos,
     faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
+    faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
     clientesNovosUnicos: clientesVistos.size,
     clientesReativados,
   };
@@ -629,6 +636,8 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   cotacoesNovos: number;
   osNovos: number;
   faturamentoNovos: number;
+  /** Subconjunto de faturamentoNovos: o que veio de clientes reativados. */
+  faturamentoReativados: number;
   ticketMedioNovos: number;
   valorOrcadoNovos: number;
   taxaConversaoNovos: number;
@@ -638,7 +647,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   lista: Array<{ empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null; telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string }>;
 }> {
   const db = await getDb();
-  const EMPTY = { total: 0, totalReativados: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
+  const EMPTY = { total: 0, totalReativados: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
   if (!db) return EMPTY;
 
   // ─── SNAPSHOT CONGELADO: verificar se já tem lista salva ───
@@ -680,6 +689,13 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     for (const chave of clientesUnicosSnap) {
       if (ultimaCompraSnapNorm.get(chave)) totalReativadosSnap++;
     }
+    // Faturamento vindo de reativados: soma por OS da lista salva (não por cliente),
+    // porque um reativado pode ter mais de uma OS no mês.
+    let faturamentoReativadosSnap = 0;
+    for (const item of listaSnap) {
+      if (!ultimaCompraSnapNorm.get(normalizeEmpresaKey(item.empresa))) continue;
+      faturamentoReativadosSnap += parseFloat(String(item.valorOs ?? "0")) || 0;
+    }
     for (const orc of orcMesSnap) {
       const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
       if (!clienteKey || !isClienteNovoPorRecencia(ultimaCompraSnap.get(clienteKey), mes, ano)) continue;
@@ -710,6 +726,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       cotacoesNovos: cotacoesNovosSnap,
       osNovos: s.clientesNovos ?? 0,
       faturamentoNovos: parseFloat(String(s.faturamentoNovos ?? 0)),
+      faturamentoReativados: parseFloat(faturamentoReativadosSnap.toFixed(2)),
       ticketMedioNovos: s.clientesNovos ? parseFloat(String(s.faturamentoNovos ?? 0)) / s.clientesNovos : 0,
       valorOrcadoNovos: 0,
       taxaConversaoNovos: taxaConvNovosSnap,
@@ -819,6 +836,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   let totalReativados = 0;
   let osNovosCount = 0;
   let faturamentoNovos = 0;
+  let faturamentoReativados = 0;
   const clientesVistos = new Set<string>();
   // listaRaw agora inclui contato e cidade extraídos diretamente da OS
   // Os campos cliente_contato e cliente_endereco já vêm na resposta da OS com dados do CLIENTE
@@ -847,7 +865,10 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       const vendedor = String(os.vendedor ?? "Sem Vendedor");
       const vendedorKey = vendedor.toLowerCase().trim();
       const valorOs = parseFloat(String(os.valor_total ?? "0")) || 0;
+      const jaComprouAntes = Boolean(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente)));
       faturamentoNovos += valorOs;
+      // Subconjunto de faturamentoNovos — ver nota em calcularNovosDoMesLocal.
+      if (jaComprouAntes) faturamentoReativados += valorOs;
       osNovosCount++;
       if (!porVendedorNovosOs[vendedorKey]) porVendedorNovosOs[vendedorKey] = { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: vendedor };
       porVendedorNovosOs[vendedorKey].osNovos++;
@@ -857,7 +878,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         total++;
         // Reativado = já tinha comprado antes (ultima compra existe), mas ficou 6+ meses sem pedir.
         // "Novo puro" = nunca comprou (sem registro de última compra).
-        if (ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente))) totalReativados++;
+        if (jaComprouAntes) totalReativados++;
         porVendedor[vendedor] = (porVendedor[vendedor] ?? 0) + 1;
         porVendedorNovosOs[vendedorKey].clientesNovos++;
         // Extrair contato e cidade DIRETAMENTE da OS (campos cliente_contato e cliente_endereco)
@@ -993,6 +1014,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     cotacoesNovos,
     osNovos,
     faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
+    faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
     ticketMedioNovos,
     valorOrcadoNovos: parseFloat(valorOrcadoNovos.toFixed(2)),
     taxaConversaoNovos,
@@ -1602,7 +1624,7 @@ export const performanceComercialRouter = router({
       const db = await getDb();
       if (!db) {
         return meses.map(mes => ({
-          mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0,
+          mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0,
           clientesNovosUnicos: 0, clientesReativados: 0, origem: "indisponivel" as const,
         }));
       }
@@ -1639,6 +1661,7 @@ export const performanceComercialRouter = router({
             ticketMedioNovos: dados.ticketMedioNovos,
             osNovos: dados.osNovos,
             faturamentoNovos: dados.faturamentoNovos,
+            faturamentoReativados: dados.faturamentoReativados,
             clientesNovosUnicos: dados.total,
             clientesReativados: dados.totalReativados,
             origem: "congelado" as const,
