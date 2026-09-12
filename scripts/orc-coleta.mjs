@@ -12,7 +12,10 @@ const BASE = `https://api.mubisys.com/api/${KEY}`;
 const OUT_DIR = path.join(process.cwd(), "scripts", "_orcamentos-raw");
 const PER_PAGE = 100;
 const TIMEOUT_MS = 150_000;
-const MAX_TENTATIVAS = 3;
+// A conexão com a API cai com frequência (ENOTFOUND/AbortError) em execuções
+// longas. Tentativas com espera crescente absorvem quedas de alguns minutos.
+const MAX_TENTATIVAS = 6;
+const ESPERA_BASE_MS = 5_000;
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -41,8 +44,9 @@ async function getPagina(datainicial, datafinal, page) {
       return await r.json();
     } catch (e) {
       if (tentativa === MAX_TENTATIVAS) throw e;
-      console.log(`      tentativa ${tentativa} falhou (${e.name}), repetindo em 5s...`);
-      await new Promise(res => setTimeout(res, 5000));
+      const espera = ESPERA_BASE_MS * 2 ** (tentativa - 1);
+      console.log(`      tentativa ${tentativa} falhou (${e.name}), repetindo em ${espera / 1000}s...`);
+      await new Promise(res => setTimeout(res, espera));
     } finally { clearTimeout(timer); }
   }
 }
@@ -58,6 +62,7 @@ for (const ano of [2025, 2026]) {
 console.log(`Coletando ${meses.length} meses de orçamentos...\n`);
 const t0 = Date.now();
 let totalGeral = 0;
+const falhados = [];
 
 for (const { ano, mes } of meses) {
   const tag = `${ano}-${String(mes).padStart(2, "0")}`;
@@ -81,15 +86,23 @@ for (const { ano, mes } of meses) {
   let page = 1;
   let ultimaPagina = 1;
 
-  do {
-    const resp = await getPagina(di, df, page);
-    const linhas = resp.data ?? [];
-    acumulado.push(...linhas);
-    ultimaPagina = resp.pagination?.last_page ?? 1;
-    if (linhas.length === 0) break;
-    process.stdout.write(`\r[${tag}] página ${page}/${ultimaPagina} — ${acumulado.length} registros`);
-    page++;
-  } while (page <= ultimaPagina && page <= 60);
+  // Um mês que falhe não derruba a execução: registra e segue para o próximo.
+  // O mês incompleto fica sem arquivo, então a próxima rodada o refaz.
+  try {
+    do {
+      const resp = await getPagina(di, df, page);
+      const linhas = resp.data ?? [];
+      acumulado.push(...linhas);
+      ultimaPagina = resp.pagination?.last_page ?? 1;
+      if (linhas.length === 0) break;
+      process.stdout.write(`\r[${tag}] página ${page}/${ultimaPagina} — ${acumulado.length} registros`);
+      page++;
+    } while (page <= ultimaPagina && page <= 60);
+  } catch (e) {
+    falhados.push(tag);
+    console.log(`\r[${tag}] FALHOU na página ${page} (${e.name}) — sem arquivo, será refeito na próxima rodada.`);
+    continue;
+  }
 
   // Refiltra pela janela real do mês (descarta a folga de ±1 dia)
   const doMes = acumulado.filter(o => {
@@ -104,4 +117,5 @@ for (const { ano, mes } of meses) {
 }
 
 console.log(`\nConcluído: ${totalGeral} orçamentos em ${((Date.now()-t0)/60000).toFixed(1)} min.`);
+if (falhados.length) console.log(`Meses que falharam (rode de novo): ${falhados.join(", ")}`);
 console.log(`Arquivos em: ${OUT_DIR}`);
