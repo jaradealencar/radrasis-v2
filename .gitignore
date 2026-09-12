@@ -119,3 +119,6 @@ docs/database-backup/
 
 # Coleta bruta de orçamentos do ERP (dados de produção, ~13 MB por rodada)
 scripts/_orcamentos-raw/
+
+# Permissões locais do Claude Code (pessoais por máquina/sessão, não compartilhar)
+.claude/settings.local.json
