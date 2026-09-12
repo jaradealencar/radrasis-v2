@@ -934,9 +934,12 @@ function VistaAssistente({ dataInicial, dataFinal }: { dataInicial: string; data
 
 function VistaPerfilCnpj() {
   const [cnpjInputs, setCnpjInputs] = useState<Record<string, string>>({});
+  const [dataInicial, setDataInicial] = useState("");
+  const [dataFinal, setDataFinal] = useState("");
   const utils = trpc.useUtils();
+  const filtroData = { dataInicial: dataInicial || undefined, dataFinal: dataFinal || undefined };
   const { data: agregado, isLoading: loadingAgregado } = trpc.perfilClientesCnpj.getPerfilAgregado.useQuery();
-  const { data: semCnpj, isLoading: loadingSemCnpj } = trpc.perfilClientesCnpj.listarClientesSemCnpj.useQuery({ limite: 30 });
+  const { data: semCnpj, isLoading: loadingSemCnpj } = trpc.perfilClientesCnpj.listarClientesSemCnpj.useQuery({ limite: 30, ...filtroData });
   const vincularMut = trpc.perfilClientesCnpj.vincularCnpj.useMutation({
     onSuccess: () => {
       utils.perfilClientesCnpj.getPerfilAgregado.invalidate();
@@ -949,11 +952,44 @@ function VistaPerfilCnpj() {
       utils.perfilClientesCnpj.listarClientesSemCnpj.invalidate();
     },
   });
+  const enriquecerMubisysMut = trpc.perfilClientesCnpj.enriquecerViaMubisys.useMutation({
+    onSuccess: () => {
+      utils.perfilClientesCnpj.getPerfilAgregado.invalidate();
+      utils.perfilClientesCnpj.listarClientesSemCnpj.invalidate();
+    },
+  });
 
   return (
     <div className="space-y-5">
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
-        O histórico de pedidos não guarda CNPJ dos clientes — cada empresa precisa ser vinculada a um CNPJ manualmente (ou via o botão abaixo, que aproveita CNPJs já capturados por outra funcionalidade). Todo número aqui é sobre a amostra já vinculada, não a carteira inteira — a cobertura é sempre mostrada.
+        O histórico de pedidos não guarda CNPJ dos clientes — o botão "Preencher automaticamente via MubiSys" consulta a API do ERP ao vivo (que traz o CNPJ de cada cliente) e enriquece direto, sem digitar nada. Todo número aqui é sobre a amostra já vinculada, não a carteira inteira — a cobertura é sempre mostrada.
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Filtrar por data de compra (opcional — aplica ao vincular e ao preenchimento automático)</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="date" value={dataInicial} onChange={e => setDataInicial(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5" />
+          <span className="text-xs text-slate-400">até</span>
+          <input type="date" value={dataFinal} onChange={e => setDataFinal(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5" />
+          {(dataInicial || dataFinal) && (
+            <button onClick={() => { setDataInicial(""); setDataFinal(""); }} className="text-[11px] text-slate-400 hover:text-slate-600 underline">limpar</button>
+          )}
+          <div className="flex-1" />
+          <button
+            onClick={() => enriquecerMubisysMut.mutate({ limite: 15, ...filtroData })}
+            disabled={enriquecerMubisysMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> {enriquecerMubisysMut.isPending ? "Consultando o ERP..." : "Preencher automaticamente via MubiSys"}
+          </button>
+        </div>
+        {enriquecerMubisysMut.data && (
+          <p className="text-[11px] text-slate-500 mt-2">
+            {enriquecerMubisysMut.data.sucessoCnpj} vinculados · {enriquecerMubisysMut.data.pessoaFisica} pessoa física (pulados) · {enriquecerMubisysMut.data.semDocumento} sem documento no ERP · {enriquecerMubisysMut.data.falhaErp} falha ao consultar OS · {enriquecerMubisysMut.data.falhaOpenCnpj} falha ao consultar CNPJ
+            {enriquecerMubisysMut.data.restantes > 0 && ` · ${enriquecerMubisysMut.data.restantes} clientes restantes (clique de novo para continuar)`}
+          </p>
+        )}
+        {enriquecerMubisysMut.isError && <p className="text-xs text-red-600 mt-2">{(enriquecerMubisysMut.error as any)?.message}</p>}
       </div>
 
       {loadingAgregado ? (

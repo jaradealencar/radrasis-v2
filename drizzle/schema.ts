@@ -1535,7 +1535,7 @@ export const leadsCnpjQualificados = pgTable("leads_cnpj_qualificados", {
   municipio: varchar("municipio", { length: 128 }),
   cnaePrincipal: varchar("cnae_principal", { length: 16 }),
   situacaoCadastral: varchar("situacao_cadastral", { length: 32 }),
-  porte: varchar("porte", { length: 16 }),
+  porte: varchar("porte", { length: 40 }),
   capitalSocial: decimal("capital_social", { precision: 16, scale: 2 }),
   dataInicioAtividade: varchar("data_inicio_atividade", { length: 32 }),
   aprovado: boolean("aprovado").notNull().default(false),
@@ -1563,7 +1563,7 @@ export type InsertLeadCnpjQualificado = typeof leadsCnpjQualificados.$inferInser
 // cotação de frete); o restante depende de vínculo manual, um cliente de cada
 // vez. Por isso todo relatório agregado precisa mostrar cobertura (mapeados/
 // total), nunca ser lido como um retrato de 100% da carteira.
-export const origemVinculoCnpjEnum = pgEnum("origem_vinculo_cnpj", ["erp_os_cache", "manual"]);
+export const origemVinculoCnpjEnum = pgEnum("origem_vinculo_cnpj", ["erp_os_cache", "manual", "mubisys"]);
 
 export const clientesPerfilCnpj = pgTable("clientes_perfil_cnpj", {
   id: serial("id").primaryKey(),
@@ -1574,7 +1574,7 @@ export const clientesPerfilCnpj = pgTable("clientes_perfil_cnpj", {
   situacaoCadastral: varchar("situacao_cadastral", { length: 32 }),
   dataInicioAtividade: varchar("data_inicio_atividade", { length: 32 }),
   idadeAnos: decimal("idade_anos", { precision: 5, scale: 1 }),
-  porte: varchar("porte", { length: 16 }),
+  porte: varchar("porte", { length: 40 }),
   naturezaJuridica: varchar("natureza_juridica", { length: 128 }),
   qtdSocios: integer("qtd_socios"),
   capitalSocial: decimal("capital_social", { precision: 16, scale: 2 }),

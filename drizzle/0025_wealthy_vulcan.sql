@@ -1,0 +1,1 @@
+ALTER TYPE "public"."origem_vinculo_cnpj" ADD VALUE 'mubisys';
