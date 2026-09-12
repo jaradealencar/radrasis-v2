@@ -56,6 +56,7 @@ export const prioridadeComCriticaEnum = pgEnum("prioridade_com_critica", ["baixa
 export const inteligenciaAcaoTipoEnum = pgEnum("inteligencia_acao_tipo", ["primeira_sem_segunda", "atraso_recompra", "alto_volume_baixa_margem"]);
 export const inteligenciaAcaoStatusEnum = pgEnum("inteligencia_acao_status", ["pendente", "concluida", "adiada", "descartada"]);
 export const inteligenciaAcaoResultadoEnum = pgEnum("inteligencia_acao_resultado", ["contato_realizado", "sem_resposta", "projeto_futuro", "orcamento_solicitado", "compra", "adiamento", "sem_interesse"]);
+export const scoreLeadCnpjEnum = pgEnum("score_lead_cnpj", ["A", "B", "C", "D"]);
 
 // Biblioteca de classificação de erros
 export const errorLibrary = pgTable("error_library", {
@@ -1518,6 +1519,37 @@ export const inteligenciaAcoesClientes = pgTable("inteligencia_acoes_clientes", 
 }));
 export type InteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferSelect;
 export type InsertInteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferInsert;
+
+// ─── Qualificação de leads B2B por CNPJ ──────────────────────────────────────
+// Ver docs/inteligencia-mercado-leads-cnpj.md — fonte de dados OpenCNPJ,
+// regra de rejeição e matriz de score em server/services/qualificacaoLeadCnpj.ts.
+export const leadsCnpjQualificados = pgTable("leads_cnpj_qualificados", {
+  id: serial("id").primaryKey(),
+  cnpj: varchar("cnpj", { length: 14 }).notNull().unique(), // sem máscara
+  razaoSocial: varchar("razao_social", { length: 256 }).notNull(),
+  nomeFantasia: varchar("nome_fantasia", { length: 256 }),
+  uf: varchar("uf", { length: 2 }),
+  municipio: varchar("municipio", { length: 128 }),
+  cnaePrincipal: varchar("cnae_principal", { length: 16 }),
+  situacaoCadastral: varchar("situacao_cadastral", { length: 32 }),
+  porte: varchar("porte", { length: 16 }),
+  capitalSocial: decimal("capital_social", { precision: 16, scale: 2 }),
+  dataInicioAtividade: varchar("data_inicio_atividade", { length: 32 }),
+  aprovado: boolean("aprovado").notNull().default(false),
+  score: scoreLeadCnpjEnum("score"), // null quando rejeitado automaticamente
+  motivoRejeicao: text("motivo_rejeicao"),
+  cnaesRelevantesJson: text("cnaes_relevantes_json"), // CNAEs que bateram na lista-alvo
+  fatoresScoreJson: text("fatores_score_json"),
+  qsaJson: text("qsa_json"),
+  dadosJson: text("dados_json").notNull(), // resposta bruta da OpenCNPJ, para auditoria
+  versaoRegra: varchar("versao_regra", { length: 16 }).notNull().default("v1"),
+  consultadoPor: varchar("consultado_por", { length: 128 }),
+  consultadoEm: timestamp("consultado_em").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type LeadCnpjQualificado = typeof leadsCnpjQualificados.$inferSelect;
+export type InsertLeadCnpjQualificado = typeof leadsCnpjQualificados.$inferInsert;
 
 export const ledTipos = pgTable("led_tipos", {
   id: serial("id").primaryKey(),

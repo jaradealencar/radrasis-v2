@@ -1,0 +1,27 @@
+CREATE TYPE "public"."score_lead_cnpj" AS ENUM('A', 'B', 'C', 'D');--> statement-breakpoint
+CREATE TABLE "leads_cnpj_qualificados" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"cnpj" varchar(14) NOT NULL,
+	"razao_social" varchar(256) NOT NULL,
+	"nome_fantasia" varchar(256),
+	"uf" varchar(2),
+	"municipio" varchar(128),
+	"cnae_principal" varchar(16),
+	"situacao_cadastral" varchar(32),
+	"porte" varchar(16),
+	"capital_social" numeric(16, 2),
+	"data_inicio_atividade" varchar(32),
+	"aprovado" boolean DEFAULT false NOT NULL,
+	"score" "score_lead_cnpj",
+	"motivo_rejeicao" text,
+	"cnaes_relevantes_json" text,
+	"fatores_score_json" text,
+	"qsa_json" text,
+	"dados_json" text NOT NULL,
+	"versao_regra" varchar(16) DEFAULT 'v1' NOT NULL,
+	"consultado_por" varchar(128),
+	"consultado_em" timestamp DEFAULT now() NOT NULL,
+	"createdAt" timestamp DEFAULT now() NOT NULL,
+	"updatedAt" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "leads_cnpj_qualificados_cnpj_unique" UNIQUE("cnpj")
+);
