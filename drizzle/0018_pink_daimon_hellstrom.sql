@@ -1,0 +1,1 @@
+DROP TABLE "inteligencia_clientes_cache" CASCADE;

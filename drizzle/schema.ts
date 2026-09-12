@@ -53,6 +53,9 @@ export const cnqTipoEnum = pgEnum("cnq_tipo", ["interno", "externo"]);
 export const abcClassificacaoEnum = pgEnum("abc_classificacao", ["A", "B", "C"]);
 export const planoAcaoComercialStatusEnum = pgEnum("plano_acao_comercial_status", ["pendente", "em_andamento", "concluido", "cancelado"]);
 export const prioridadeComCriticaEnum = pgEnum("prioridade_com_critica", ["baixa", "media", "alta", "critica"]);
+export const inteligenciaAcaoTipoEnum = pgEnum("inteligencia_acao_tipo", ["primeira_sem_segunda", "atraso_recompra", "alto_volume_baixa_margem"]);
+export const inteligenciaAcaoStatusEnum = pgEnum("inteligencia_acao_status", ["pendente", "concluida", "adiada", "descartada"]);
+export const inteligenciaAcaoResultadoEnum = pgEnum("inteligencia_acao_resultado", ["contato_realizado", "sem_resposta", "projeto_futuro", "orcamento_solicitado", "compra", "adiamento", "sem_interesse"]);
 
 // Biblioteca de classificação de erros
 export const errorLibrary = pgTable("error_library", {
@@ -1481,16 +1484,40 @@ export const crmScripts = pgTable("crm_scripts", {
 export type CrmScript = typeof crmScripts.$inferSelect;
 export type InsertCrmScript = typeof crmScripts.$inferInsert;
 
-export const inteligenciaClientesCache = pgTable("inteligencia_clientes_cache", {
+// ─── Inteligência de Clientes (recompra) — fila de ações ─────────────────────
+// Substitui o antigo cache/congelamento por período (removido: o cálculo passou
+// a ser feito direto sobre historico_os, local e rápido, sem depender da API
+// MubiSys ao vivo — não precisa mais "congelar" para evitar recálculo lento).
+// Fila de ações sugeridas (recompra, atraso, margem baixa) — gerada por regra
+// determinística a partir de historico_os, persistida para permitir atribuir,
+// concluir, adiar ou descartar sem recriar a mesma ação a cada carregamento.
+export const inteligenciaAcoesClientes = pgTable("inteligencia_acoes_clientes", {
   id: serial("id").primaryKey(),
-  periodoKey: varchar("periodo_key", { length: 32 }).notNull(),
-  dadosJson: text("dados_json").notNull(), // mediumtext → text
-  calculadoEm: timestamp("calculado_em").defaultNow().notNull(),
-  congelado: boolean("congelado").default(false).notNull(),
-  congeladoEm: timestamp("congelado_em"),
-});
-export type InteligenciaClientesCache = typeof inteligenciaClientesCache.$inferSelect;
-export type InsertInteligenciaClientesCache = typeof inteligenciaClientesCache.$inferInsert;
+  tipo: inteligenciaAcaoTipoEnum("tipo").notNull(),
+  empresaKey: varchar("empresa_key", { length: 256 }).notNull(), // normalizeEmpresaKey(empresa) — chave de idempotência
+  empresa: varchar("empresa", { length: 256 }).notNull(), // nome de exibição (grafia mais recente observada)
+  titulo: varchar("titulo", { length: 256 }).notNull(),
+  motivo: text("motivo").notNull(),
+  evidenciaJson: text("evidencia_json").notNull(), // fatos que sustentam a ação (datas, valores, cálculo)
+  prioridade: integer("prioridade").notNull().default(0), // 0-100, prioridade operacional (não é probabilidade de compra)
+  prioridadeFatoresJson: text("prioridade_fatores_json"), // componentes/pesos que formaram a prioridade
+  status: inteligenciaAcaoStatusEnum("status").notNull().default("pendente"),
+  responsavel: varchar("responsavel", { length: 128 }),
+  proximoPasso: text("proximo_passo"),
+  prazo: date("prazo"),
+  resultado: inteligenciaAcaoResultadoEnum("resultado"),
+  resultadoObservacao: text("resultado_observacao"),
+  versaoRegra: varchar("versao_regra", { length: 16 }).notNull().default("v1"),
+  dataAnalise: timestamp("data_analise").defaultNow().notNull(), // quando a evidência foi calculada
+  resolvidoEm: timestamp("resolvido_em"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (t) => ({
+  tipoEmpresaUnique: uniqueIndex("inteligencia_acoes_tipo_empresa_unique").on(t.tipo, t.empresaKey),
+  statusIdx: index("inteligencia_acoes_status_idx").on(t.status),
+}));
+export type InteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferSelect;
+export type InsertInteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferInsert;
 
 export const ledTipos = pgTable("led_tipos", {
   id: serial("id").primaryKey(),

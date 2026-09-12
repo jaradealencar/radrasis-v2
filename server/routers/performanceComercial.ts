@@ -3,8 +3,14 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaClientesCache, performanceAuditada, mubisysApiCache, clienteNovosContato } from "../../drizzle/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato } from "../../drizzle/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
+import {
+  construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
+  calcularFunilOrcamentos, calcularPrevisaoComercial,
+  DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
+  type AnaliseCliente,
+} from "../services/inteligenciaClientes";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
 // TTL: 60 minutos para mês atual, 6 horas para meses históricos (dados não mudam).
@@ -81,7 +87,7 @@ async function deleteDbCache(cacheKey: string): Promise<void> {
 /** Normaliza nome de empresa para chave de comparação: minúsculas, sem acentos,
  * sem pontuação. Precisa ser idêntica à normalização usada em upsertClienteOverride
  * (routers.ts), senão overrides manuais nunca casam com nomes acentuados. */
-function normalizeEmpresaKey(s: string): string {
+export function normalizeEmpresaKey(s: string): string {
   return (s ?? "")
     .toLowerCase()
     .normalize("NFD")
@@ -1863,565 +1869,215 @@ export const performanceComercialRouter = router({
     }),
 
   // ─── Inteligência de Clientes ─────────────────────────────────────────────
+  // Reescrito em setembro/2026 (ver docs/inteligencia-clientes.md) — calcula tudo
+  // localmente a partir de historico_os (nunca mais a API MubiSys ao vivo), por isso
+  // não há mais congelamento: o cálculo é determinístico e rápido, não muda entre uma
+  // consulta e outra a não ser que o histórico local seja reimportado.
 
-  getInteligenteClientes: publicProcedure
+  getVisaoGeralClientes: publicProcedure
     .input(z.object({
-      dataInicial: z.string().regex(/^\d{4}-\d{2}$/).default(`${new Date().getFullYear()}-01`),
-      dataFinal: z.string().regex(/^\d{4}-\d{2}$/).default(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`),
-      forcarAtualizacao: z.boolean().optional().default(false),
+      dataInicial: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      dataFinal: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     }))
     .query(async ({ input }) => {
-      const { dataInicial, dataFinal, forcarAtualizacao } = input;
-      const [anoIni, mesIni] = dataInicial.split('-').map(Number);
-      const [anoFim, mesFim] = dataFinal.split('-').map(Number);
-      const di = `${dataInicial}-01`;
-      const lastDayFim = new Date(anoFim, mesFim, 0).getDate();
-      const df = `${dataFinal}-${String(lastDayFim).padStart(2, '0')}`;
-      const ano = anoIni; // usado para buscar clientes anteriores no histórico
-      const periodoKey = `${dataInicial}_${dataFinal}`;
-      const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-      const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-      const EMPTY = {
-        clientesUnicosAno: 0,
-        taxaRecompra: 0,
-        clientesNovosAno: 0,
-        pctClientesNovos: 0,
-        clientesNovosQueRecompraram: 0,
-        taxaRecompraNovosPct: 0,
-        mediaComprasPorCliente: 0,
-        pctClientesSemCompra6Meses: 0,
-        clientesSemCompra6Meses: 0,
-        tempoMedioPropostaFechamento: null as number | null,
-        tempoMedianaPropostaFechamento: null as number | null,
-        tempoP25: null as number | null,
-        tempoP75: null as number | null,
-        pctCicloAte3Dias: 0,
-        pctCiclo4a7Dias: 0,
-        pctCicloMais7Dias: 0,
-        frequenciaCompraDias: null as number | null,
-        mrrAproximado: 0,
-        arrAproximado: 0,
-        clientesRecorrentesMRR: 0,
-        pctFaturamentoRecorrente: 0,
-        clientesNovosPuro: 0,
-        clientesNovosPuroComRecompra: 0,
-        taxaRecompraNovosPuroPct: 0,
-        clientesReativados: 0,
-        clientesReativadosComRecompra: 0,
-        taxaRecompraReativadosPct: 0,
-        pctReceitaTop20: 0,
-        ticketMedioPorCliente: 0,
-        topClientesPorFaturamento: [] as Array<{ cliente: string; faturamento: number; qtdOs: number; ticketMedio: number }>,
-        porVendedor: [] as Array<{
-          vendedor: string;
-          clientesUnicos: number;
-          clientesNovos: number;
-          pctClientesNovos: number;
-          clientesNovosQueRecompraram: number;
-          taxaRecompra: number;
-          taxaRecompraNovosPct: number;
-          mediaComprasPorCliente: number;
-          tempoMedioFechamento: number | null;
-        }>,
-        distribuicaoTempo: [] as Array<{ faixa: string; quantidade: number }>,
-      };
-
-      if (!publicKey || !accessToken) return EMPTY;
-
-      // ── Cache em banco: carrega instantaneamente, só recalcula quando solicitado ──
       const db = await getDb();
-      if (db) {
-        const rows = await db.select().from(inteligenciaClientesCache)
-          .where(eq(inteligenciaClientesCache.periodoKey, periodoKey))
+      if (!db) throw new Error("DB indisponível");
+      const rows = await db.select().from(historicoOs);
+      const base = construirBaseClientes(rows as any);
+      const dataRef = new Date();
+      const visaoGeral = calcularVisaoGeral(base, new Date(input.dataInicial), new Date(`${input.dataFinal}T23:59:59`), dataRef);
+      return { visaoGeral, dicionarioMetricas: DICIONARIO_METRICAS };
+    }),
+
+  listarClientesInteligencia: publicProcedure
+    .input(z.object({
+      dataInicial: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      dataFinal: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const rows = await db.select().from(historicoOs);
+      const base = construirBaseClientes(rows as any);
+      const dataRef = new Date();
+      const dataInicial = new Date(input.dataInicial);
+      const dataFinal = new Date(`${input.dataFinal}T23:59:59`);
+      const clientes: AnaliseCliente[] = [];
+      for (const cliente of base.values()) {
+        const comprasNoPeriodo = cliente.compras.filter(c => c.data >= dataInicial && c.data <= dataFinal);
+        if (comprasNoPeriodo.length === 0) continue;
+        const analise = analisarCliente(cliente, dataRef, dataInicial, dataFinal);
+        if (analise) clientes.push(analise);
+      }
+      // Ordenação padrão: prioriza quem precisa de atenção (atraso/redução) antes de quem está bem
+      const ordemClassificacao: Record<string, number> = {
+        intervalo_acima_habitual: 0,
+        reducao_volume: 1,
+        historico_insuficiente: 2,
+        primeira_compra: 3,
+        recompra_observada: 4,
+        em_crescimento: 5,
+      };
+      clientes.sort((a, b) => (ordemClassificacao[a.classificacao] ?? 9) - (ordemClassificacao[b.classificacao] ?? 9) || b.valorJanelaAtual - a.valorJanelaAtual);
+      return clientes;
+    }),
+
+  getFichaCliente: publicProcedure
+    .input(z.object({ empresaKey: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const rows = await db.select().from(historicoOs);
+      const base = construirBaseClientes(rows as any);
+      const cliente = base.get(input.empresaKey);
+      if (!cliente) return null;
+      const dataRef = new Date();
+      // Ficha usa o histórico completo como "período" para a análise (comparação de
+      // janelas usa os últimos 12 meses vs. os 12 meses anteriores, mais estável para
+      // uma ficha individual do que o período curto escolhido na visão geral).
+      const dataFinal = dataRef;
+      const dataInicial = new Date(dataRef);
+      dataInicial.setFullYear(dataInicial.getFullYear() - 1);
+      const analise = analisarCliente(cliente, dataRef, dataInicial, dataFinal);
+      return {
+        empresaKey: cliente.empresaKey,
+        empresaExibicao: cliente.empresaExibicao,
+        historico: cliente.compras.map(c => ({
+          osNumero: c.osNumero,
+          data: c.data.toISOString(),
+          valor: c.valor,
+          custo: c.custo,
+          contribuicao: c.contribuicao,
+          vendedor: c.vendedor,
+          cidade: c.cidade,
+          estado: c.estado,
+          trabalho: c.trabalho,
+        })),
+        analise,
+      };
+    }),
+
+  getFilaAcoesClientes: publicProcedure
+    .input(z.object({
+      status: z.enum(["pendente", "concluida", "adiada", "descartada"]).optional(),
+      responsavel: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const rows = await db.select().from(historicoOs);
+      const base = construirBaseClientes(rows as any);
+      const dataRef = new Date();
+      const candidatos = calcularCandidatosAcao(base, dataRef);
+
+      // Upsert idempotente: não recria ação resolvida (concluída/descartada) há menos de
+      // DIAS_COOLDOWN_ACAO_RESOLVIDA dias; caso contrário, atualiza motivo/evidência/prioridade
+      // de uma ação pendente/adiada já existente, ou cria uma nova.
+      const cutoff = new Date(dataRef.getTime() - DIAS_COOLDOWN_ACAO_RESOLVIDA * 86400000);
+      for (const cand of candidatos) {
+        const existentes = await db.select().from(inteligenciaAcoesClientes)
+          .where(and(eq(inteligenciaAcoesClientes.tipo, cand.tipo), eq(inteligenciaAcoesClientes.empresaKey, cand.empresaKey)))
           .limit(1);
-        if (rows.length > 0) {
-          const row = rows[0];
-          // Se congelado, SEMPRE retornar do banco (nunca recalcular)
-          if (row.congelado || !forcarAtualizacao) {
-            const cached = JSON.parse(row.dadosJson);
-            cached._calculadoEm = row.calculadoEm;
-            cached._fonte = row.congelado ? 'congelado' : 'cache';
-            cached._congelado = row.congelado;
-            cached._congeladoEm = row.congeladoEm;
-            return cached;
-          }
+        const existente = existentes[0];
+        if (existente) {
+          const resolvidaRecente = existente.resolvidoEm && new Date(existente.resolvidoEm) > cutoff
+            && (existente.status === "concluida" || existente.status === "descartada");
+          if (resolvidaRecente) continue; // não reabrir — usuário acabou de tratar
+          if (existente.status === "adiada" && existente.prazo && new Date(existente.prazo) > dataRef) continue; // respeitar adiamento
+          await db.update(inteligenciaAcoesClientes)
+            .set({
+              empresa: cand.empresa,
+              titulo: cand.titulo,
+              motivo: cand.motivo,
+              evidenciaJson: JSON.stringify(cand.evidencia),
+              prioridade: cand.prioridade,
+              prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
+              dataAnalise: dataRef,
+              updatedAt: dataRef,
+              // Reabre uma ação concluída/descartada antiga (fora do cooldown) sem perder o histórico de resultado
+              ...(existente.status === "concluida" || existente.status === "descartada" ? { status: "pendente" as const, resolvidoEm: null } : {}),
+            })
+            .where(eq(inteligenciaAcoesClientes.id, existente.id));
+        } else {
+          await db.insert(inteligenciaAcoesClientes).values({
+            tipo: cand.tipo,
+            empresaKey: cand.empresaKey,
+            empresa: cand.empresa,
+            titulo: cand.titulo,
+            motivo: cand.motivo,
+            evidenciaJson: JSON.stringify(cand.evidencia),
+            prioridade: cand.prioridade,
+            prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
+            versaoRegra: VERSAO_REGRA_ATUAL,
+            dataAnalise: dataRef,
+          });
         }
       }
 
-      // Cache em memória (deduplicar chamadas simultâneas)
-      const cacheKey = `inteligente_clientes_${periodoKey}`;
-      const memCached = getCached(cacheKey);
-      if (memCached) return memCached;
-
-      let allOsAno: any[] = [];
-      let allOrcAno: any[] = [];
-
-      // Buscar sequencialmente, não em paralelo: medido em 18/08/2026 que disparar
-      // ordem-servico e orcamento juntos via Promise.all faz as duas chamadas
-      // competirem e estourarem TIMEOUT_LISTA_MS (45s) — mesmo uma janela de 1 mês,
-      // que sozinha completa em ~31s. Sequencial é mais lento no caso ideal, mas
-      // muito mais previsível (cada chamada tem o timeout inteiro só pra ela).
-      try {
-        const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
-        allOsAno = osResult.itens;
-        const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
-        allOrcAno = orcResult.itens;
-      } catch (e: any) {
-        return { ...EMPTY, _erro: e?.message || "Não foi possível buscar os dados do ERP. Tente um período menor." };
-      }
-
-      const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
-      const osNormais = allOsAno.filter((os: any) =>
-        !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) &&
-        (os.status || "").toLowerCase() !== "cancelada"
-      );
-
-      const normNome = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
-
-      const clientesUnicosSet = new Set<string>();
-      const clientesPorVendedor: Record<string, Set<string>> = {};
-
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        const vendedor = os.vendedor || "Sem Vendedor";
-        if (!cliente) continue;
-        clientesUnicosSet.add(cliente);
-        if (!clientesPorVendedor[vendedor]) clientesPorVendedor[vendedor] = new Set();
-        clientesPorVendedor[vendedor].add(cliente);
-      }
-
-      const dbForHistory = await getDb();
-      const clientesAnteriores = dbForHistory ? await dbForHistory
-        .select({ empresa: historicoOs.empresa })
-        .from(historicoOs)
-        .where(sql`${historicoOs.ano} < ${ano}`) : [];
-      const setAnteriores = new Set(clientesAnteriores.map((r: any) => normNome(r.empresa ?? "")));
-
-      const clientesNovosSet = new Set<string>();
-      const clientesNovosSetPorVendedor: Record<string, Set<string>> = {};
-
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        const vendedor = os.vendedor || "Sem Vendedor";
-        if (!cliente || setAnteriores.has(cliente)) continue;
-        clientesNovosSet.add(cliente);
-        if (!clientesNovosSetPorVendedor[vendedor]) clientesNovosSetPorVendedor[vendedor] = new Set();
-        clientesNovosSetPorVendedor[vendedor].add(cliente);
-      }
-
-      const comprasPorCliente: Record<string, Set<string>> = {};
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        if (!cliente) continue;
-        const mesStr = (os.data_aprovacao || os.data_cadastro || "").substring(0, 7);
-        if (!comprasPorCliente[cliente]) comprasPorCliente[cliente] = new Set();
-        if (mesStr) comprasPorCliente[cliente].add(mesStr);
-      }
-
-      let clientesComRecompra = 0;
-      for (const [, meses] of Object.entries(comprasPorCliente)) {
-        if (meses.size >= 2) clientesComRecompra++;
-      }
-
-      const taxaRecompra = clientesUnicosSet.size > 0
-        ? parseFloat(((clientesComRecompra / clientesUnicosSet.size) * 100).toFixed(1))
-        : 0;
-
-      // ── Novo (puro) vs Reativado — mesma regra canônica do getMes ────────────
-      // (ver comentário em isClienteNovoPorRecencia, linha ~121): "novo" = nunca
-      // comprou; "reativado" = comprou antes, mas ficou 6+ meses sem comprar.
-      // Aqui aplicamos por cliente, no mês da SUA primeira OS dentro do período
-      // selecionado (não no mês do período inteiro, que pode abranger vários meses).
-      const primeiraCompraNoPeriodo: Record<string, { mes: number; ano: number }> = {};
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        if (!cliente) continue;
-        const dataStr = os.data_aprovacao || os.data_cadastro;
-        if (!dataStr) continue;
-        const dt = new Date(dataStr);
-        if (isNaN(dt.getTime())) continue;
-        const mesOs = dt.getMonth() + 1;
-        const anoOs = dt.getFullYear();
-        const atual = primeiraCompraNoPeriodo[cliente];
-        if (!atual || anoOs < atual.ano || (anoOs === atual.ano && mesOs < atual.mes)) {
-          primeiraCompraNoPeriodo[cliente] = { mes: mesOs, ano: anoOs };
-        }
-      }
-      const gruposPorMesAno = new Map<string, string[]>();
-      for (const [cliente, ref] of Object.entries(primeiraCompraNoPeriodo)) {
-        const key = `${ref.mes}-${ref.ano}`;
-        if (!gruposPorMesAno.has(key)) gruposPorMesAno.set(key, []);
-        gruposPorMesAno.get(key)!.push(cliente);
-      }
-      const comprasHistoricoCompleto = dbForHistory
-        ? (await buscarTodasComprasValidas(dbForHistory)).map(c => ({ ...c, empresa: normNome(c.empresa) }))
-        : [];
-      const clientesNovosPuroSet = new Set<string>();
-      const clientesReativadosSet = new Set<string>();
-      for (const [key, clientesGrupo] of gruposPorMesAno) {
-        const [mesStr, anoStr] = key.split("-");
-        const mesRef = Number(mesStr);
-        const anoRef = Number(anoStr);
-        const ultimaMap = ultimaCompraAntesDe(comprasHistoricoCompleto, mesRef, anoRef);
-        for (const cliente of clientesGrupo) {
-          const ultima = ultimaMap.get(cliente);
-          if (!isClienteNovoPorRecencia(ultima, mesRef, anoRef)) continue; // já era cliente ativo
-          if (!ultima) clientesNovosPuroSet.add(cliente);
-          else clientesReativadosSet.add(cliente);
-        }
-      }
-      let clientesNovosPuroComRecompra = 0;
-      for (const cliente of clientesNovosPuroSet) {
-        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesNovosPuroComRecompra++;
-      }
-      let clientesReativadosComRecompra = 0;
-      for (const cliente of clientesReativadosSet) {
-        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesReativadosComRecompra++;
-      }
-      const taxaRecompraNovosPuroPct = clientesNovosPuroSet.size > 0
-        ? parseFloat((clientesNovosPuroComRecompra / clientesNovosPuroSet.size * 100).toFixed(1))
-        : 0;
-      const taxaRecompraReativadosPct = clientesReativadosSet.size > 0
-        ? parseFloat((clientesReativadosComRecompra / clientesReativadosSet.size * 100).toFixed(1))
-        : 0;
-
-      let clientesNovosQueRecompraram = 0;
-      const clientesNovosQueRecompraramPorVendedor: Record<string, number> = {};
-
-      for (const cliente of clientesNovosSet) {
-        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesNovosQueRecompraram++;
-      }
-
-      for (const [vendedor, setNovos] of Object.entries(clientesNovosSetPorVendedor)) {
-        let count = 0;
-        for (const cliente of setNovos) {
-          if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) count++;
-        }
-        clientesNovosQueRecompraramPorVendedor[vendedor] = count;
-      }
-
-      // ── Média de compras (OS) por cliente no ano ──────────────────────────────
-      // Conta total de OS por cliente e calcula a média
-      const osPorCliente: Record<string, number> = {};
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        if (!cliente) continue;
-        osPorCliente[cliente] = (osPorCliente[cliente] ?? 0) + 1;
-      }
-      const totalOsNormais = Object.values(osPorCliente).reduce((a, b) => a + b, 0);
-      const mediaComprasPorCliente = clientesUnicosSet.size > 0
-        ? parseFloat((totalOsNormais / clientesUnicosSet.size).toFixed(1))
-        : 0;
-
-      // ── Clientes sem compra há mais de 6 meses (relativo a hoje) ─────────────
-      // Considera apenas clientes que compraram no ano selecionado
-      const hoje = new Date();
-      const seisAtras = new Date(hoje);
-      seisAtras.setMonth(seisAtras.getMonth() - 6);
-
-      // Última data de OS por cliente (no ano selecionado)
-      const ultimaCompraCliente: Record<string, Date> = {};
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        if (!cliente) continue;
-        const dataStr = os.data_aprovacao || os.data_cadastro;
-        if (!dataStr) continue;
-        const dt = new Date(dataStr);
-        if (isNaN(dt.getTime())) continue;
-        if (!ultimaCompraCliente[cliente] || dt > ultimaCompraCliente[cliente]) {
-          ultimaCompraCliente[cliente] = dt;
-        }
-      }
-
-      let clientesSemCompra6Meses = 0;
-      const clientesSemCompra6MesesPorVendedor: Record<string, number> = {};
-      for (const cliente of clientesUnicosSet) {
-        const ultima = ultimaCompraCliente[cliente];
-        if (!ultima || ultima < seisAtras) clientesSemCompra6Meses++;
-      }
-      // Por vendedor
-      for (const [vendedor, setClientes] of Object.entries(clientesPorVendedor)) {
-        let count = 0;
-        for (const cliente of setClientes) {
-          const ultima = ultimaCompraCliente[cliente];
-          if (!ultima || ultima < seisAtras) count++;
-        }
-        clientesSemCompra6MesesPorVendedor[vendedor] = count;
-      }
-
-      const pctClientesSemCompra6Meses = clientesUnicosSet.size > 0
-        ? parseFloat(((clientesSemCompra6Meses / clientesUnicosSet.size) * 100).toFixed(1))
-        : 0;
-
-      // ── % de clientes novos entre clientes únicos ─────────────────────────────
-      const pctClientesNovos = clientesUnicosSet.size > 0
-        ? parseFloat(((clientesNovosSet.size / clientesUnicosSet.size) * 100).toFixed(1))
-        : 0;
-
-      // ── Taxa de recompra de novos clientes ────────────────────────────────────
-      const taxaRecompraNovosPct = clientesNovosSet.size > 0
-        ? parseFloat(((clientesNovosQueRecompraram / clientesNovosSet.size) * 100).toFixed(1))
-        : 0;
-
-      const orcPorNumero: Record<string, any> = {};
-      // NÃO filtrar por versao === versao_atual: a API já retorna apenas a versão atual por padrão
-      const orcVersaoAtualIC = allOrcAno;
-      for (const orc of orcVersaoAtualIC) {
-        const num = String(orc.numero || orc.id || "");
-        if (num) orcPorNumero[num] = orc;
-      }
-
-      const tempos: number[] = [];
-      const temposPorVendedor: Record<string, number[]> = {};
-
-      for (const os of osNormais) {
-        const dataAprov = os.data_aprovacao || os.data_cadastro;
-        const orcNum = String(os.orcamento_numero || os.orcamento || os.numero_orcamento || "");
-        if (!dataAprov || !orcNum) continue;
-        const orc = orcPorNumero[orcNum];
-        if (!orc) continue;
-        const dataCad = orc.data_cadastro;
-        if (!dataCad) continue;
-        const dtAprov = new Date(dataAprov);
-        const dtCad = new Date(dataCad);
-        const diffDias = (dtAprov.getTime() - dtCad.getTime()) / (1000 * 60 * 60 * 24);
-        if (diffDias < 0 || diffDias > 365) continue;
-        tempos.push(diffDias);
-        const vendedor = os.vendedor || "Sem Vendedor";
-        if (!temposPorVendedor[vendedor]) temposPorVendedor[vendedor] = [];
-        temposPorVendedor[vendedor].push(diffDias);
-      }
-
-      const calcStats = (arr: number[]) => {
-        if (arr.length === 0) return { media: null as number | null, mediana: null as number | null, p25: null as number | null, p75: null as number | null };
-        const sorted = [...arr].sort((a, b) => a - b);
-        const media = parseFloat((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1));
-        const mid = Math.floor(sorted.length / 2);
-        const mediana = parseFloat((sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]).toFixed(1));
-        const p25 = parseFloat(sorted[Math.floor(sorted.length * 0.25)].toFixed(1));
-        const p75 = parseFloat(sorted[Math.floor(sorted.length * 0.75)].toFixed(1));
-        return { media, mediana, p25, p75 };
-      };
-
-      const stats = calcStats(tempos);
-
-      const faixas = [
-        { label: "Mesmo dia", min: 0, max: 0 },
-        { label: "1-3 dias", min: 1, max: 3 },
-        { label: "4-7 dias", min: 4, max: 7 },
-        { label: "8-15 dias", min: 8, max: 15 },
-        { label: "16-30 dias", min: 16, max: 30 },
-        { label: ">30 dias", min: 31, max: 999 },
-      ];
-      const distribuicaoTempo = faixas.map(f => ({
-        faixa: f.label,
-        quantidade: tempos.filter(t => t >= f.min && t <= f.max).length,
+      const filtros = [] as any[];
+      if (input.status) filtros.push(eq(inteligenciaAcoesClientes.status, input.status));
+      if (input.responsavel) filtros.push(eq(inteligenciaAcoesClientes.responsavel, input.responsavel));
+      const fila = await db.select().from(inteligenciaAcoesClientes)
+        .where(filtros.length > 0 ? and(...filtros) : undefined)
+        .orderBy(desc(inteligenciaAcoesClientes.prioridade));
+      return fila.map(a => ({
+        ...a,
+        evidencia: JSON.parse(a.evidenciaJson),
+        prioridadeFatores: a.prioridadeFatoresJson ? JSON.parse(a.prioridadeFatoresJson) : null,
       }));
+    }),
 
-      // ── Ciclo de vendas em 3 faixas (% do total de OS com tempo calculado) ───
-      const pctCicloAte3Dias = tempos.length > 0
-        ? parseFloat((tempos.filter(t => t <= 3).length / tempos.length * 100).toFixed(1))
-        : 0;
-      const pctCiclo4a7Dias = tempos.length > 0
-        ? parseFloat((tempos.filter(t => t >= 4 && t <= 7).length / tempos.length * 100).toFixed(1))
-        : 0;
-      const pctCicloMais7Dias = tempos.length > 0
-        ? parseFloat((tempos.filter(t => t > 7).length / tempos.length * 100).toFixed(1))
-        : 0;
+  atualizarAcaoCliente: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      status: z.enum(["pendente", "concluida", "adiada", "descartada"]).optional(),
+      responsavel: z.string().nullable().optional(),
+      proximoPasso: z.string().nullable().optional(),
+      prazo: z.string().nullable().optional(), // YYYY-MM-DD
+      resultado: z.enum(["contato_realizado", "sem_resposta", "projeto_futuro", "orcamento_solicitado", "compra", "adiamento", "sem_interesse"]).nullable().optional(),
+      resultadoObservacao: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const { id, ...campos } = input;
+      const set: Record<string, unknown> = { updatedAt: new Date() };
+      if (campos.status !== undefined) {
+        set.status = campos.status;
+        set.resolvidoEm = (campos.status === "concluida" || campos.status === "descartada") ? new Date() : null;
+      }
+      if (campos.responsavel !== undefined) set.responsavel = campos.responsavel;
+      if (campos.proximoPasso !== undefined) set.proximoPasso = campos.proximoPasso;
+      if (campos.prazo !== undefined) set.prazo = campos.prazo;
+      if (campos.resultado !== undefined) set.resultado = campos.resultado;
+      if (campos.resultadoObservacao !== undefined) set.resultadoObservacao = campos.resultadoObservacao;
+      await db.update(inteligenciaAcoesClientes).set(set).where(eq(inteligenciaAcoesClientes.id, id));
+      return { ok: true };
+    }),
 
-      // ── Frequência de compra: intervalo médio (dias) entre pedidos do mesmo cliente ──
-      // Calculado por cliente (média dos intervalos entre compras consecutivas) e depois
-      // pela média entre clientes, para não deixar clientes muito ativos dominarem o número.
-      const datasPorCliente: Record<string, Date[]> = {};
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        if (!cliente) continue;
-        const dataStr = os.data_aprovacao || os.data_cadastro;
-        if (!dataStr) continue;
-        const dt = new Date(dataStr);
-        if (isNaN(dt.getTime())) continue;
-        if (!datasPorCliente[cliente]) datasPorCliente[cliente] = [];
-        datasPorCliente[cliente].push(dt);
-      }
-      const intervalosMediosPorCliente: number[] = [];
-      for (const datas of Object.values(datasPorCliente)) {
-        if (datas.length < 2) continue;
-        const sorted = [...datas].sort((a, b) => a.getTime() - b.getTime());
-        const diffs: number[] = [];
-        for (let i = 1; i < sorted.length; i++) {
-          diffs.push((sorted[i].getTime() - sorted[i - 1].getTime()) / (1000 * 60 * 60 * 24));
-        }
-        intervalosMediosPorCliente.push(diffs.reduce((a, b) => a + b, 0) / diffs.length);
-      }
-      const frequenciaCompraDias = intervalosMediosPorCliente.length > 0
-        ? parseFloat((intervalosMediosPorCliente.reduce((a, b) => a + b, 0) / intervalosMediosPorCliente.length).toFixed(1))
-        : null;
+  // ─── Funil de Orçamentos (analítico, histórico local — complementa o CRM operacional
+  // em server/routers/crm.ts, que busca orçamentos ao vivo na API MubiSys) ────────────
 
-      // ── MRR/ARR aproximado ────────────────────────────────────────────────────
-      // Não existe conceito de "contrato ativo" nem receita recorrente no ERP (Mubisys
-      // é orçamento/OS avulsos, sem assinatura). Aproximação: cliente "recorrente" é o
-      // que comprou em pelo menos metade dos meses do período (mínimo 2 meses); o
-      // faturamento desses clientes, dividido pelos meses do período, vira o "MRR
-      // aproximado" — e ARR = MRR × 12. É uma estimativa de cadência, não um contrato real.
-      const totalMesesPeriodo = (anoFim - anoIni) * 12 + (mesFim - mesIni) + 1;
-      const thresholdRecorrenteMRR = Math.max(2, Math.ceil(totalMesesPeriodo * 0.5));
-      const clientesRecorrentesMRRSet = new Set<string>();
-      for (const [cliente, meses] of Object.entries(comprasPorCliente)) {
-        if (meses.size >= thresholdRecorrenteMRR) clientesRecorrentesMRRSet.add(cliente);
-      }
-      const faturamentoPorClienteIC: Record<string, number> = {};
-      const nomeOriginalPorClienteIC: Record<string, string> = {};
-      let faturamentoTotalPeriodoIC = 0;
-      for (const os of osNormais) {
-        const cliente = normNome(os.cliente || os.empresa || "");
-        if (!cliente) continue;
-        const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
-        faturamentoPorClienteIC[cliente] = (faturamentoPorClienteIC[cliente] ?? 0) + valor;
-        faturamentoTotalPeriodoIC += valor;
-        if (!nomeOriginalPorClienteIC[cliente]) nomeOriginalPorClienteIC[cliente] = String(os.cliente || os.empresa || "");
-      }
-      let faturamentoRecorrenteIC = 0;
-      for (const cliente of clientesRecorrentesMRRSet) {
-        faturamentoRecorrenteIC += faturamentoPorClienteIC[cliente] ?? 0;
-      }
-      const mrrAproximado = totalMesesPeriodo > 0
-        ? parseFloat((faturamentoRecorrenteIC / totalMesesPeriodo).toFixed(2))
-        : 0;
-      const arrAproximado = parseFloat((mrrAproximado * 12).toFixed(2));
-      const pctFaturamentoRecorrente = faturamentoTotalPeriodoIC > 0
-        ? parseFloat((faturamentoRecorrenteIC / faturamentoTotalPeriodoIC * 100).toFixed(1))
-        : 0;
+  getFunilOrcamentos: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const rows = await db.select().from(historicoOrcamentos);
+      return calcularFunilOrcamentos(rows as any, new Date());
+    }),
 
-      // ── Concentração de receita (curva de Pareto) e top clientes ─────────────
-      // Quanto do faturamento do período vem dos 20% de clientes que mais compraram —
-      // mede dependência de poucos clientes (risco de concentração de carteira).
-      const clientesOrdenadosPorFaturamento = Object.entries(faturamentoPorClienteIC)
-        .sort((a, b) => b[1] - a[1]);
-      const top20PctCount = Math.max(1, Math.ceil(clientesOrdenadosPorFaturamento.length * 0.2));
-      const faturamentoTop20Pct = clientesOrdenadosPorFaturamento
-        .slice(0, top20PctCount)
-        .reduce((acc, [, v]) => acc + v, 0);
-      const pctReceitaTop20 = faturamentoTotalPeriodoIC > 0
-        ? parseFloat((faturamentoTop20Pct / faturamentoTotalPeriodoIC * 100).toFixed(1))
-        : 0;
-      const ticketMedioPorCliente = clientesUnicosSet.size > 0
-        ? parseFloat((faturamentoTotalPeriodoIC / clientesUnicosSet.size).toFixed(2))
-        : 0;
-      const topClientesPorFaturamento = clientesOrdenadosPorFaturamento.slice(0, 10).map(([clienteKey, faturamento]) => {
-        const qtdOs = osPorCliente[clienteKey] ?? 0;
-        return {
-          cliente: nomeOriginalPorClienteIC[clienteKey] ?? clienteKey,
-          faturamento: parseFloat(faturamento.toFixed(2)),
-          qtdOs,
-          ticketMedio: qtdOs > 0 ? parseFloat((faturamento / qtdOs).toFixed(2)) : 0,
-        };
-      });
+  // ─── Previsões 30/60/90 dias ──────────────────────────────────────────────────
 
-      const todosVendedoresIC = new Set([
-        ...Object.keys(clientesPorVendedor),
-        ...Object.keys(clientesNovosSetPorVendedor),
+  getPrevisaoComercial: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const [osRows, orcRows] = await Promise.all([
+        db.select().from(historicoOs),
+        db.select().from(historicoOrcamentos),
       ]);
-
-      const porVendedor = Array.from(todosVendedoresIC)
-        .filter(v => v !== "Sem Vendedor")
-        .map(v => {
-          const unicos = clientesPorVendedor[v]?.size ?? 0;
-          const novos = clientesNovosSetPorVendedor[v]?.size ?? 0;
-          const novosRecompra = clientesNovosQueRecompraramPorVendedor[v] ?? 0;
-          const temposV = temposPorVendedor[v] ?? [];
-          const statsV = calcStats(temposV);
-          let recompraV = 0;
-          if (clientesPorVendedor[v]) {
-            for (const cliente of clientesPorVendedor[v]) {
-              if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) recompraV++;
-            }
-          }
-          const taxaRecompraV = unicos > 0 ? parseFloat(((recompraV / unicos) * 100).toFixed(1)) : 0;
-          const taxaRecompraNovosPctV = novos > 0 ? parseFloat(((novosRecompra / novos) * 100).toFixed(1)) : 0;
-          const pctNovosV = unicos > 0 ? parseFloat(((novos / unicos) * 100).toFixed(1)) : 0;
-          // Média de compras por cliente do vendedor
-          let totalOsV = 0;
-          if (clientesPorVendedor[v]) {
-            for (const cliente of clientesPorVendedor[v]) {
-              totalOsV += osPorCliente[cliente] ?? 0;
-            }
-          }
-          const mediaComprasV = unicos > 0 ? parseFloat((totalOsV / unicos).toFixed(1)) : 0;
-          return {
-            vendedor: v,
-            clientesUnicos: unicos,
-            clientesNovos: novos,
-            pctClientesNovos: pctNovosV,
-            clientesNovosQueRecompraram: novosRecompra,
-            taxaRecompra: taxaRecompraV,
-            taxaRecompraNovosPct: taxaRecompraNovosPctV,
-            mediaComprasPorCliente: mediaComprasV,
-            tempoMedioFechamento: statsV.media,
-          };
-        })
-        .sort((a, b) => b.clientesUnicos - a.clientesUnicos);
-
-      const result = {
-        clientesUnicosAno: clientesUnicosSet.size,
-        taxaRecompra,
-        clientesNovosAno: clientesNovosSet.size,
-        pctClientesNovos,
-        clientesNovosQueRecompraram,
-        taxaRecompraNovosPct,
-        mediaComprasPorCliente,
-        pctClientesSemCompra6Meses,
-        clientesSemCompra6Meses,
-        tempoMedioPropostaFechamento: stats.media,
-        tempoMedianaPropostaFechamento: stats.mediana,
-        tempoP25: stats.p25,
-        tempoP75: stats.p75,
-        pctCicloAte3Dias,
-        pctCiclo4a7Dias,
-        pctCicloMais7Dias,
-        frequenciaCompraDias,
-        mrrAproximado,
-        arrAproximado,
-        clientesRecorrentesMRR: clientesRecorrentesMRRSet.size,
-        pctFaturamentoRecorrente,
-        clientesNovosPuro: clientesNovosPuroSet.size,
-        clientesNovosPuroComRecompra,
-        taxaRecompraNovosPuroPct,
-        clientesReativados: clientesReativadosSet.size,
-        clientesReativadosComRecompra,
-        taxaRecompraReativadosPct,
-        pctReceitaTop20,
-        ticketMedioPorCliente,
-        topClientesPorFaturamento,
-        porVendedor,
-        distribuicaoTempo,
-      };
-
-      // Salvar no cache em memória
-      setCacheWithTTL(cacheKey, result, new Date().getMonth() + 1, ano);
-
-      // Salvar no banco de dados (upsert por periodoKey)
-      if (db) {
-        try {
-          const existing = await db.select({ id: inteligenciaClientesCache.id })
-            .from(inteligenciaClientesCache)
-            .where(eq(inteligenciaClientesCache.periodoKey, periodoKey))
-            .limit(1);
-          if (existing.length > 0) {
-            await db.update(inteligenciaClientesCache)
-              .set({ dadosJson: JSON.stringify(result), calculadoEm: new Date() })
-              .where(eq(inteligenciaClientesCache.periodoKey, periodoKey));
-          } else {
-            await db.insert(inteligenciaClientesCache)
-              .values({ periodoKey, dadosJson: JSON.stringify(result), calculadoEm: new Date() });
-          }
-        } catch (e) {
-          // Não bloquear o retorno se o cache falhar
-          console.error('[IC cache] Erro ao salvar cache:', e);
-        }
-      }
-
-      const resultWithTs = { ...result, _calculadoEm: new Date() };
-      return resultWithTs;
+      const funil = calcularFunilOrcamentos(orcRows as any, new Date());
+      return calcularPrevisaoComercial(osRows as any, orcRows as any, funil, new Date());
     }),
 
   // ─── SISTEMA DE AUDITORIA E CONGELAMENTO DE DADOS ────────────────────────────
@@ -2648,40 +2304,6 @@ export const performanceComercialRouter = router({
       }
 
       return resultados;
-    }),
-
-  // ─── CONGELAMENTO DA INTELIGÊNCIA DE CLIENTES ────────────────────────────────
-
-  /** Congela o cache de inteligência de clientes para um período específico */
-  congelarInteligencia: protectedProcedure
-    .input(z.object({
-      periodoKey: z.string().regex(/^\d{4}-\d{2}_\d{4}-\d{2}$/),
-    }))
-    .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error('DB indisponível');
-      const rows = await db.select().from(inteligenciaClientesCache)
-        .where(eq(inteligenciaClientesCache.periodoKey, input.periodoKey))
-        .limit(1);
-      if (rows.length === 0) throw new Error('Nenhum dado calculado para este período. Clique em "Atualizar Dados" primeiro.');
-      await db.update(inteligenciaClientesCache)
-        .set({ congelado: true, congeladoEm: new Date() })
-        .where(eq(inteligenciaClientesCache.periodoKey, input.periodoKey));
-      return { ok: true };
-    }),
-
-  /** Descongela o cache de inteligência de clientes para um período específico */
-  descongelarInteligencia: protectedProcedure
-    .input(z.object({
-      periodoKey: z.string().regex(/^\d{4}-\d{2}_\d{4}-\d{2}$/),
-    }))
-    .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error('DB indisponível');
-      await db.update(inteligenciaClientesCache)
-        .set({ congelado: false, congeladoEm: null })
-        .where(eq(inteligenciaClientesCache.periodoKey, input.periodoKey));
-      return { ok: true };
     }),
 
   /** Retorna o mapa de clientes contatados para um mês/ano */
