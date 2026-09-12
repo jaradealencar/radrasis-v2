@@ -698,35 +698,40 @@ function SecaoTempoFollowUp() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="p-4 border-b border-slate-100">
-        <h3 className="text-sm font-bold text-slate-700">Tempo entre orçamento e pedido fechado</h3>
-        <p className="text-xs text-amber-600 mt-0.5">
-          Aproximação: o ERP não guarda o vínculo direto entre orçamento e pedido — este número casa cada orçamento aprovado com a OS mais próxima da mesma empresa, dentro de {JANELA_MAXIMA_DIAS_LABEL} dias. Trate como estimativa, não fato confirmado.
+        <h3 className="text-sm font-bold text-slate-700">Prazo de fechamento: orçamento → pedido (dias úteis)</h3>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Quanto tempo, em dias úteis (seg-sex), leva entre o orçamento ser aberto e virar pedido — use isso para calibrar até quando um follow-up ainda faz sentido.
+        </p>
+        <p className="text-xs text-amber-600 mt-1">
+          Aproximação: o ERP não guarda o vínculo direto entre orçamento e pedido — este número casa cada orçamento aprovado com a OS mais próxima da mesma empresa, dentro de {JANELA_MAXIMA_DIAS_LABEL} dias corridos. Não desconta feriados, só fins de semana. Trate como estimativa, não fato confirmado.
         </p>
       </div>
       {data.amostra === 0 ? (
         <div className="p-6 text-xs text-slate-400">Amostra insuficiente para calcular (nenhum orçamento pareado com uma OS).</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4">
-            <KpiCard icon={Clock3} label="Mediana" value={data.medianaDias !== null ? `${Math.round(data.medianaDias)} dias` : "—"} sub={`Amostra: ${data.amostra} de ${data.totalOrcamentosGanhos} (${fmtPct(data.taxaPareamentoPct ?? 0)} pareados)`} color="#0ea5e9" />
-            <KpiCard icon={Clock3} label="Média" value={data.mediaDias !== null ? `${data.mediaDias.toFixed(1)} dias` : "—"} sub="Sensível a outliers — prefira a mediana" color="#94a3b8" />
-            <KpiCard icon={Clock3} label="P25–P75" value={data.p25Dias !== null && data.p75Dias !== null ? `${data.p25Dias}–${data.p75Dias}d` : "—"} sub="50% central dos casos" color="#8b5cf6" />
-            <KpiCard icon={Clock3} label="Taxa de pareamento" value={data.taxaPareamentoPct !== null ? fmtPct(data.taxaPareamentoPct) : "—"} sub="Quanto maior, mais confiável a amostra" color={data.taxaPareamentoPct && data.taxaPareamentoPct >= 50 ? "#22c55e" : "#f59e0b"} />
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 p-4">
+            <KpiCard icon={Clock3} label="Mediana" value={data.medianaDias !== null ? `${Math.round(data.medianaDias)}du` : "—"} sub="Metade fecha em até este prazo" color="#0ea5e9" />
+            <KpiCard icon={Clock3} label="Média" value={data.mediaDias !== null ? `${data.mediaDias.toFixed(1)}du` : "—"} sub="Sensível a outliers — prefira a mediana" color="#94a3b8" />
+            <KpiCard icon={Clock3} label="P25–P75" value={data.p25Dias !== null && data.p75Dias !== null ? `${data.p25Dias}–${data.p75Dias}du` : "—"} sub="50% central dos casos" color="#8b5cf6" />
+            <KpiCard icon={Clock3} label="P90" value={data.p90Dias !== null ? `${data.p90Dias}du` : "—"} sub="90% dos casos fecham até aqui" color="#f59e0b" />
+            <KpiCard icon={Clock3} label="Mín–Máx" value={data.minDias !== null && data.maxDias !== null ? `${data.minDias}–${data.maxDias}du` : "—"} sub="Faixa completa observada" color="#64748b" />
+            <KpiCard icon={Clock3} label="Taxa de pareamento" value={data.taxaPareamentoPct !== null ? fmtPct(data.taxaPareamentoPct) : "—"} sub={`Amostra: ${data.amostra} de ${data.totalOrcamentosGanhos}`} color={data.taxaPareamentoPct && data.taxaPareamentoPct >= 50 ? "#22c55e" : "#f59e0b"} />
           </div>
           {data.sugestaoFollowUpDias && (
             <div className="px-4 pb-4">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sugestão de follow-up (percentis reais)</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prazo sugerido de follow-up (dias úteis, baseado nos percentis reais)</p>
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-blue-50 rounded-lg p-3 text-center">
-                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.primeiro}d</p>
+                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.primeiro}du</p>
                   <p className="text-[10px] text-blue-500">1º contato</p>
                 </div>
                 <div className="bg-blue-50 rounded-lg p-3 text-center">
-                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.segundo}d</p>
+                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.segundo}du</p>
                   <p className="text-[10px] text-blue-500">2º contato</p>
                 </div>
                 <div className="bg-blue-50 rounded-lg p-3 text-center">
-                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.terceiro}d</p>
+                  <p className="text-lg font-bold text-blue-700">{data.sugestaoFollowUpDias.terceiro}du</p>
                   <p className="text-[10px] text-blue-500">3º contato (último antes de considerar perdido)</p>
                 </div>
               </div>

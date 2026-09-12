@@ -298,6 +298,24 @@ function diasEntre(a: Date, b: Date): number {
   return Math.round((a.getTime() - b.getTime()) / 86400000);
 }
 
+/** Dias ÚTEIS (seg-sex) estritamente entre `inicio` e `fim` — conta cada dia de
+ * semana de (inicio, fim], sem contar o próprio dia inicial. Não desconta
+ * feriados (o sistema não tem calendário de feriados) — é uma aproximação
+ * conservadora usada só para prazo de follow-up comercial, onde fins de semana
+ * é o que mais distorce a régua de "quantos dias eu tenho pra agir". */
+function diasUteisEntre(fim: Date, inicio: Date): number {
+  if (fim <= inicio) return 0;
+  const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate());
+  const alvo = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
+  let count = 0;
+  while (cursor < alvo) {
+    cursor.setDate(cursor.getDate() + 1);
+    const diaSemana = cursor.getDay(); // 0 = domingo, 6 = sábado
+    if (diaSemana !== 0 && diaSemana !== 6) count++;
+  }
+  return count;
+}
+
 // ─── Classificação de cliente ─────────────────────────────────────────────────
 
 export type ClassificacaoCliente =
@@ -1145,10 +1163,18 @@ export interface TempoOrcamentoPedido {
   amostra: number; // quantos orçamentos ganhos conseguiram parear com uma OS
   totalOrcamentosGanhos: number; // total de orçamentos com status de aceite no período
   taxaPareamentoPct: number | null;
+  // Todos os campos de dias abaixo são DIAS ÚTEIS (seg-sex, sem descontar
+  // feriados) entre o cadastro do orçamento e a aprovação da OS pareada —
+  // ver diasUteisEntre. Escolhido porque o prazo de follow-up é definido em
+  // dias de trabalho, não em dias corridos (um fim de semana no meio não deve
+  // "contar" contra o prazo que o vendedor tem para agir).
   mediaDias: number | null;
   medianaDias: number | null;
   p25Dias: number | null;
   p75Dias: number | null;
+  p90Dias: number | null;
+  minDias: number | null;
+  maxDias: number | null;
   /** Sugestões de follow-up baseadas nos percentis reais (P25/mediana/P75) —
    * heurística de acompanhamento, não uma regra validada estatisticamente. */
   sugestaoFollowUpDias: { primeiro: number; segundo: number; terceiro: number } | null;
@@ -1196,9 +1222,12 @@ export function calcularTempoOrcamentoPedido(
       if (usadas.has(i)) continue;
       const osData = listaOs[i];
       if (osData < orc.data) continue; // OS precisa vir depois (ou no mesmo dia) do orçamento
-      const gap = diasEntre(osData, orc.data);
-      if (gap > janelaMaximaDias) break; // lista ordenada — próximas OS só ficam mais distantes
-      diasAteFechamento.push(gap);
+      const gapCorrido = diasEntre(osData, orc.data);
+      if (gapCorrido > janelaMaximaDias) break; // lista ordenada — próximas OS só ficam mais distantes
+      // A janela de pareamento acima é em dias corridos (limite de plausibilidade
+      // de que a OS pertence a este orçamento); a métrica reportada é em dias
+      // úteis (ver comentário na interface TempoOrcamentoPedido).
+      diasAteFechamento.push(diasUteisEntre(osData, orc.data));
       usadas.add(i);
       break;
     }
@@ -1209,6 +1238,7 @@ export function calcularTempoOrcamentoPedido(
   const mediana = n > 0 ? (n % 2 === 0 ? (diasAteFechamento[n / 2 - 1] + diasAteFechamento[n / 2]) / 2 : diasAteFechamento[(n - 1) / 2]) : null;
   const p25 = n > 0 ? percentil(diasAteFechamento, 25) : null;
   const p75 = n > 0 ? percentil(diasAteFechamento, 75) : null;
+  const p90 = n > 0 ? percentil(diasAteFechamento, 90) : null;
 
   // Sugestão baseada nos percentis reais (não em frações da mediana): com
   // mediana muito baixa (conversão quase no mesmo dia, comum neste negócio),
@@ -1231,6 +1261,9 @@ export function calcularTempoOrcamentoPedido(
     medianaDias: mediana,
     p25Dias: p25,
     p75Dias: p75,
+    p90Dias: p90,
+    minDias: n > 0 ? diasAteFechamento[0] : null,
+    maxDias: n > 0 ? diasAteFechamento[n - 1] : null,
     sugestaoFollowUpDias: sugestao,
   };
 }
