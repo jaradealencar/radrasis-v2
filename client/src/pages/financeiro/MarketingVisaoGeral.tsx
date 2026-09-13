@@ -85,6 +85,7 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
       { investimento: investReativ, margemContribuicao: margemReativados },
     ]);
     const fatTotal = fatNovos + fatReativados + fatRecorrente;
+    const pctFaturamentoNovos = fatTotal > 0 ? (fatNovos / fatTotal) * 100 : null;
     const pctFaturamentoReativados = fatTotal > 0 ? (fatReativados / fatTotal) * 100 : null;
     const pedidosPorCliente = clientesTotal > 0 ? pedidosTotal / clientesTotal : null;
 
@@ -92,7 +93,7 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
       investAquis, investReativ, clientesNovos, eventosReativados, clientesRecorrentes,
       fatNovos, fatReativados, fatRecorrente, margemNovos, margemReativados, margemRecorrente,
       cac, custoReativ, resultadoNovo, resultadoReativado, consolidado,
-      pctFaturamentoReativados, pedidosPorCliente,
+      pctFaturamentoNovos, pctFaturamentoReativados, pedidosPorCliente,
     };
   }, [mesesCompletos]);
 
@@ -226,6 +227,11 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
             label="Resultado após Marketing" value={totais.consolidado.resultado != null ? fmtBrl(totais.consolidado.resultado) : "—"}
             sub={totais.consolidado.roiPct != null ? `ROI consolidado: ${fmtPct(totais.consolidado.roiPct)}` : undefined}
             tooltip="Margem de contribuição (novos + reativados) menos o investimento total em marketing do período."
+          />
+          <KpiCard
+            variant="border" color="#2563eb" icon={<Percent size={18} />}
+            label="% do Faturamento vindo de Novos" value={totais.pctFaturamentoNovos != null ? fmtPct(totais.pctFaturamentoNovos) : "—"}
+            tooltip="Faturamento de clientes novos ÷ faturamento total (novos + recorrentes ativos + reativados) do período."
           />
           <KpiCard
             variant="border" color="#0891b2" icon={<Percent size={18} />}

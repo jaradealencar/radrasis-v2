@@ -744,12 +744,20 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Clientes Novos"
-              value={loadingClientesNovos ? "..." : String(clientesNovos?.total ?? 0)}
-              sub={loadingClientesNovos ? "1ª compra ou reativação" : `1ª compra ou reativação (${clientesNovos?.totalReativados ?? 0} reativados, 6+ meses sem comprar)`}
+              value={loadingClientesNovos ? "..." : String(clientesNovos?.totalPuros ?? 0)}
+              sub="Nunca compraram antes (reativados na coluna ao lado)"
               icon={UserPlus}
               color="#0ea5e9"
-              metaReal={clientesNovos?.total ?? 0}
+              metaReal={clientesNovos?.totalPuros ?? 0}
               metaTarget={metaGeral?.metaClientesNovos ?? undefined}
+            />
+            <KpiCardComMeta
+              label="Clientes Reativados"
+              value={loadingClientesNovos ? "..." : String(clientesNovos?.totalReativados ?? 0)}
+              sub="Já compraram antes e voltaram após 6+ meses sem pedir"
+              icon={Users}
+              color="#f97316"
+              metaReal={clientesNovos?.totalReativados ?? 0}
             />
             <KpiCardComMeta
               label="Cotações (Novos)"
@@ -763,7 +771,7 @@ export default function PerformanceComercial() {
             <KpiCardComMeta
               label="Vendas (Novos Clientes)"
               value={loadingClientesNovos ? "..." : String(clientesNovos?.osNovos ?? 0)}
-              sub="Vendas de clientes novos (incl. recompras)"
+              sub="Pedidos de novos + reativados no mês (incl. recompras)"
               icon={CheckCircle2}
               color="#06b6d4"
               metaReal={clientesNovos?.osNovos ?? 0}
@@ -771,12 +779,21 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Faturamento (Novos)"
-              value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoNovos ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              sub="Total das OS de novos clientes"
+              value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoNovosPuros ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              sub="Só clientes que nunca compraram antes"
               icon={DollarSign}
               color="#f59e0b"
-              metaReal={(clientesNovos as any)?.faturamentoNovos ?? 0}
+              metaReal={(clientesNovos as any)?.faturamentoNovosPuros ?? 0}
               metaTarget={metaGeral?.metaFaturamentoNovos ? Number(metaGeral.metaFaturamentoNovos) : undefined}
+              isCurrency
+            />
+            <KpiCardComMeta
+              label="Faturamento (Reativados)"
+              value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoReativados ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              sub="Faturamento de clientes reativados"
+              icon={DollarSign}
+              color="#fb923c"
+              metaReal={(clientesNovos as any)?.faturamentoReativados ?? 0}
               isCurrency
             />
             <KpiCardComMeta
