@@ -13,6 +13,7 @@ import {
 import type { TrpcContext } from "../_core/context";
 import {
   construirMapaConversaoClientes, calcularTaxaConversaoNovosRecente, calcularProbabilidade, normalizeEmpresaKey,
+  construirMapaFaixaTicket,
 } from "../services/probabilidadeCompra";
 
 // ─── Helper: calcular turno a partir do horário ───────────────────────────────
@@ -325,9 +326,11 @@ export const crmRouter = router({
       // propostas ficam sem probabilidade em vez de quebrar a listagem inteira.
       let mapaConversao: Awaited<ReturnType<typeof construirMapaConversaoClientes>> | null = null;
       let taxaNovosDoMes: number | null = null;
+      let mapaFaixaTicket: Awaited<ReturnType<typeof construirMapaFaixaTicket>> | undefined;
       try {
         mapaConversao = await construirMapaConversaoClientes(db);
         taxaNovosDoMes = await calcularTaxaConversaoNovosRecente(db);
+        mapaFaixaTicket = await construirMapaFaixaTicket(db);
       } catch {
         mapaConversao = null;
       }
@@ -350,7 +353,7 @@ export const crmRouter = router({
           : overrideStatus === "novo" ? true
           : isNovoByHistory;
         const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao
-          ? calcularProbabilidade({ clienteNovo, nomeCliente, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes })
+          ? calcularProbabilidade({ clienteNovo, nomeCliente, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes, mapaFaixaTicket })
           : { probabilidade: null as number | null, explicacao: [] as string[] };
         const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente))?.qtdCompras ?? 0;
         // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —

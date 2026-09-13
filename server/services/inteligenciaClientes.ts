@@ -980,6 +980,67 @@ export function calcularFunilOrcamentos(rows: OrcamentoRow[], hoje: Date): Funil
   };
 }
 
+// ─── Conversão por faixa de tíquete ────────────────────────────────────────────
+//
+// Análise feita pelo usuário fora do sistema (12/09/2026): agrupando os
+// orçamentos decididos (ganhos + perdidos) por faixa de valor, a taxa de
+// conversão cai de forma consistente conforme o tíquete aumenta (de ~59% em
+// "até R$330" para ~17% em "R$12k+") — confirmado por duas fontes de dados
+// independentes. As faixas abaixo replicam exatamente os limites usados
+// naquela análise, para que o painel do sistema bata com o que já foi
+// validado. Também alimenta o Score de Probabilidade de Compra (ver
+// server/services/probabilidadeCompra.ts) como um fator independente do
+// ticket médio individual do cliente — este é o efeito da carteira inteira.
+
+export interface FaixaTicketConversao {
+  faixa: string;
+  ganhos: number;
+  perdidos: number;
+  /** null quando não há nenhuma decisão (ganho ou perdido) nessa faixa. */
+  taxaConversaoPct: number | null;
+}
+
+/** Limite superior (inclusive) de cada faixa, em R$ — a última faixa
+ * ("R$12k+") não tem limite superior. */
+const FAIXAS_TICKET: Array<{ faixa: string; ate: number }> = [
+  { faixa: "Até R$330", ate: 330 },
+  { faixa: "R$335~750", ate: 750 },
+  { faixa: "R$760~1.300", ate: 1300 },
+  { faixa: "R$1.301~5.490", ate: 5490 },
+  { faixa: "R$5.500~8.000", ate: 8000 },
+  { faixa: "R$8.010~12.000", ate: 12000 },
+  { faixa: "R$12k+", ate: Infinity },
+];
+
+/** Rótulo da faixa em que um valor de orçamento se encaixa — usado tanto para
+ * montar a tabela quanto para o Score de Probabilidade de Compra localizar a
+ * taxa de conversão da faixa de uma proposta específica. */
+export function faixaTicketDoValor(valor: number): string {
+  return (FAIXAS_TICKET.find(f => valor <= f.ate) ?? FAIXAS_TICKET[FAIXAS_TICKET.length - 1]).faixa;
+}
+
+/** Conversão (ganhos vs. perdidos) por faixa de valor do orçamento — só
+ * considera orçamentos já decididos (STATUS_GANHO/STATUS_PERDIDO); "em
+ * aberto" ainda não tem desfecho e entraria como ruído. */
+export function calcularConversaoPorFaixaTicket(
+  rows: Array<{ status: string | null; total: string | null }>,
+): FaixaTicketConversao[] {
+  const buckets = FAIXAS_TICKET.map(f => ({ faixa: f.faixa, ate: f.ate, ganhos: 0, perdidos: 0 }));
+  for (const r of rows) {
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    const ganho = STATUS_GANHO.has(statusKey);
+    const perdido = STATUS_PERDIDO.has(statusKey);
+    if (!ganho && !perdido) continue;
+    const valor = toNum(r.total);
+    const bucket = buckets.find(b => valor <= b.ate) ?? buckets[buckets.length - 1];
+    if (ganho) bucket.ganhos++; else bucket.perdidos++;
+  }
+  return buckets.map(({ faixa, ganhos, perdidos }) => {
+    const total = ganhos + perdidos;
+    return { faixa, ganhos, perdidos, taxaConversaoPct: total > 0 ? (ganhos / total) * 100 : null };
+  });
+}
+
 // ─── Previsões 30/60/90 dias ──────────────────────────────────────────────────
 
 export interface FaixaPrevisao {

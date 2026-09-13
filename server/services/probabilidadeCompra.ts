@@ -25,7 +25,7 @@
  */
 
 import { historicoOrcamentos, historicoOs } from "../../drizzle/schema";
-import { STATUS_GANHO, parseDataFlexivel } from "./inteligenciaClientes";
+import { STATUS_GANHO, parseDataFlexivel, calcularConversaoPorFaixaTicket, faixaTicketDoValor, type FaixaTicketConversao } from "./inteligenciaClientes";
 
 export const MIN_AMOSTRA_TAXA_INDIVIDUAL = 3;
 
@@ -51,9 +51,11 @@ export interface ConversaoCliente {
   taxaIndividual: number | null;
   /** null quando não há nenhum orçamento com valor registrado. */
   ticketMedio: number | null;
-  /** Número de OS (ordens de serviço) já realizadas por esse cliente, via
-   * historico_os — usado por ex. para elegibilidade de parcelamento
-   * (clientes com mais de N compras). */
+  /** Número de compras em todo o histórico local disponível (historico_os +
+   * historico_orcamentos fechados — ver nota em construirMapaConversaoClientes
+   * sobre o buraco de nov/dez de 2025 não coberto por nenhuma tabela local).
+   * Usado por ex. para elegibilidade de parcelamento (clientes com mais de
+   * N compras). */
   qtdCompras: number;
 }
 
@@ -100,8 +102,15 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     if (fechou) fechadosGeral++;
   }
 
-  // Número de compras reais (OS já realizadas) por cliente — usado, por exemplo,
-  // para elegibilidade de parcelamento (clientes com mais de N compras).
+  // Número de compras em TODO o histórico disponível — soma duas fontes que,
+  // medido em 13/09/2026, não se sobrepõem no tempo (sem risco de contar a
+  // mesma compra duas vezes):
+  //   - historico_os: 02/2024 a 10/2025 (parou de sincronizar depois disso)
+  //   - historico_orcamentos (STATUS_GANHO, já contado acima em acc.fechados): 01/2026 em diante
+  // Existe um buraco real de nov/dez de 2025 que nenhuma tabela local cobre —
+  // 3 tentativas de rodar POST /api/scheduled/sincronizarHistorico?mes=11&ano=2025
+  // deram timeout (60s) em produção. Compras feitas SÓ nesses 2 meses (e nunca
+  // antes nem depois) não entram na contagem — caso raro, mas real.
   const osRows = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
   const qtdComprasPorCliente = new Map<string, number>();
   for (const r of osRows as Array<{ empresa: string | null }>) {
@@ -117,7 +126,7 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
       orcamentosFechados: acc.fechados,
       taxaIndividual: acc.total >= MIN_AMOSTRA_TAXA_INDIVIDUAL ? (acc.fechados / acc.total) * 100 : null,
       ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
-      qtdCompras: qtdComprasPorCliente.get(empresaKey) ?? 0,
+      qtdCompras: (qtdComprasPorCliente.get(empresaKey) ?? 0) + acc.fechados,
     });
   }
   // Clientes com OS mas sem nenhum orçamento correspondente em historico_orcamentos
@@ -130,6 +139,31 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
 
   const taxaGeral = totalGeral > 0 ? (fechadosGeral / totalGeral) * 100 : 0;
   return { porCliente: resultado, taxaGeral };
+}
+
+/** Amostra mínima (ganhos+perdidos) para confiar na taxa de conversão de uma
+ * faixa de tíquete — abaixo disso, o ajuste no score é ignorado (instável
+ * demais com poucos casos decididos). */
+const MIN_AMOSTRA_FAIXA_TICKET = 5;
+/** Teto do ajuste de score pela faixa de tíquete, em pontos percentuais —
+ * mesma ordem de grandeza do ajuste por ticket médio individual já existente
+ * (-10/-20pp), para nenhum dos dois fatores dominar sozinho o resultado. */
+const AJUSTE_FAIXA_TICKET_MAX_PP = 15;
+
+/**
+ * Conversão (ganhos vs. perdidos) por faixa de valor de orçamento, indexada
+ * pelo rótulo da faixa (ver calcularConversaoPorFaixaTicket/faixaTicketDoValor
+ * em inteligenciaClientes.ts) — usada por calcularProbabilidade para ajustar o
+ * score pelo efeito da carteira inteira (tíquetes maiores convertem menos),
+ * independente do histórico individual do cliente.
+ */
+export async function construirMapaFaixaTicket(db: any): Promise<Map<string, FaixaTicketConversao>> {
+  const linhas = await db.select({
+    status: historicoOrcamentos.status,
+    total: historicoOrcamentos.total,
+  }).from(historicoOrcamentos);
+  const faixas = calcularConversaoPorFaixaTicket(linhas as Array<{ status: string | null; total: string | null }>);
+  return new Map(faixas.map(f => [f.faixa, f]));
 }
 
 /**
@@ -238,6 +272,10 @@ export function calcularProbabilidade(opts: {
   valorProposta: number;
   mapa: MapaConversaoClientes;
   taxaNovosDoMes: number | null;
+  /** Opcional: quando informado, soma um ajuste pela taxa de conversão da
+   * faixa de tíquete da proposta (ver construirMapaFaixaTicket) — efeito da
+   * carteira inteira, independente do ticket médio individual do cliente. */
+  mapaFaixaTicket?: Map<string, FaixaTicketConversao>;
 }): ResultadoProbabilidade {
   const empresaKey = normalizeEmpresaKey(opts.nomeCliente);
   const conversao = empresaKey ? opts.mapa.porCliente.get(empresaKey) : undefined;
@@ -269,6 +307,19 @@ export function calcularProbabilidade(opts: {
     } else if (ratio > 1) {
       probabilidade -= 10;
       explicacao.push(`Ajuste: -10pp (proposta ${ratio.toFixed(1)}x acima do ticket médio deste cliente)`);
+    }
+  }
+
+  if (opts.valorProposta > 0 && opts.mapaFaixaTicket) {
+    const faixa = opts.mapaFaixaTicket.get(faixaTicketDoValor(opts.valorProposta));
+    const amostraFaixa = faixa ? faixa.ganhos + faixa.perdidos : 0;
+    if (faixa && faixa.taxaConversaoPct != null && amostraFaixa >= MIN_AMOSTRA_FAIXA_TICKET) {
+      const delta = faixa.taxaConversaoPct - opts.mapa.taxaGeral;
+      const ajusteFaixa = Math.max(-AJUSTE_FAIXA_TICKET_MAX_PP, Math.min(AJUSTE_FAIXA_TICKET_MAX_PP, delta));
+      if (Math.abs(ajusteFaixa) >= 1) {
+        probabilidade += ajusteFaixa;
+        explicacao.push(`Ajuste: ${ajusteFaixa >= 0 ? "+" : ""}${ajusteFaixa.toFixed(0)}pp (faixa "${faixa.faixa}" converte ${faixa.taxaConversaoPct.toFixed(0)}% vs. ${opts.mapa.taxaGeral.toFixed(0)}% da carteira)`);
+      }
     }
   }
 

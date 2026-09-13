@@ -385,10 +385,12 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
                           {p.qtdComprasCliente}x comprou
                         </span>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs">
+                      <TooltipContent side="top" className="text-xs max-w-[220px]">
                         {p.qtdComprasCliente > LIMIAR_PARCELAMENTO
-                          ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras)`
-                          : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} anterior${p.qtdComprasCliente === 1 ? "" : "es"}`}
+                          ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras no histórico)`
+                          : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
+                        <br />
+                        <span className="text-gray-400">Histórico local (2024 em diante); nov-dez/2025 não sincronizados, pode faltar alguma compra desse período.</span>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
