@@ -23,9 +23,6 @@ import { diasUteisEntre as diasUteisEntreCompartilhado } from "../../shared/dias
 
 // ─── Constantes de negócio (parâmetros configuráveis — ver dicionário) ───────
 
-/** Janelas de "segunda compra em X dias" oferecidas na coorte. */
-export const JANELAS_SEGUNDA_COMPRA = [30, 60, 90] as const;
-
 /** Cliente com apenas 1 compra válida em todo o histórico: sem base para
  * mediana de intervalo, comparação de tendência etc. */
 export const HISTORICO_MINIMO_COMPRAS_PARA_TENDENCIA = 3;
@@ -135,13 +132,6 @@ export const DICIONARIO_METRICAS: MetricaDicionario[] = [
     formula: "Dias desde a última compra válida ÷ mediana dos intervalos entre compras válidas do próprio cliente (exige 3+ compras).",
     periodo: "Calculado na data de referência",
     limitacoes: "Heurística de acompanhamento, não é probabilidade de perda do cliente. Sem histórico suficiente, aparece como \"histórico insuficiente\".",
-  },
-  {
-    id: "segunda_compra_x_dias",
-    nome: "Segunda compra em X dias",
-    formula: "Entre os clientes cuja primeira compra observada caiu no período selecionado e cuja janela de X dias já se completou (hoje - primeira compra ≥ X), % que fez uma segunda compra válida em até X dias.",
-    periodo: "Coorte de primeira compra dentro do período selecionado",
-    limitacoes: "Clientes cuja janela de X dias ainda não se completou são excluídos do denominador — não contam como \"não recompraram\".",
   },
   {
     id: "concentracao",
@@ -441,14 +431,6 @@ export interface RfmCliente {
   scoreValor: number; // 1-5, 5 = maior valor
 }
 
-export interface SegundaCompraResultado {
-  janelaDias: number;
-  coorteTotal: number; // clientes de 1ª compra no período com janela já completa
-  coorteAindaEmObservacao: number; // 1ª compra no período mas janela ainda não completou
-  fizeramSegundaCompra: number;
-  taxaPct: number | null; // null se coorteTotal === 0
-}
-
 export interface VisaoGeralClientes {
   periodo: { dataInicial: string; dataFinal: string };
   dataReferencia: string;
@@ -463,7 +445,6 @@ export interface VisaoGeralClientes {
   valorTotalPeriodo: number;
   ticketMedioPedido: number | null;
   qtdPedidosValidos: number;
-  segundaCompra: SegundaCompraResultado[];
   rfm: RfmCliente[];
   amostraPequena: boolean; // n < 20 clientes no período — RFM em quintil não é confiável
   topClientesPorValor: Array<{ empresa: string; valor: number; qtdPedidos: number }>;
@@ -552,29 +533,6 @@ export function calcularVisaoGeral(
     };
   }).sort((a, b) => (b.scoreRecencia + b.scoreFrequencia + b.scoreValor) - (a.scoreRecencia + a.scoreFrequencia + a.scoreValor));
 
-  // Segunda compra em X/Y/Z dias — coorte de 1ª compra observada no período
-  const coorte = clientesDoPeriodo.filter(c => c.primeiraCompra >= dataInicial && c.primeiraCompra <= dataFinal);
-  const segundaCompra: SegundaCompraResultado[] = JANELAS_SEGUNDA_COMPRA.map(janelaDias => {
-    let coorteTotal = 0, aindaEmObservacao = 0, fizeramSegunda = 0;
-    for (const c of coorte) {
-      const janelaCompleta = diasEntre(dataRef, c.primeiraCompra) >= janelaDias;
-      if (!janelaCompleta) { aindaEmObservacao++; continue; }
-      coorteTotal++;
-      const clienteFull = base.get(c.empresaKey)!;
-      const segundaCompraData = clienteFull.compras[1]?.data;
-      if (segundaCompraData && diasEntre(segundaCompraData, c.primeiraCompra) <= janelaDias) {
-        fizeramSegunda++;
-      }
-    }
-    return {
-      janelaDias,
-      coorteTotal,
-      coorteAindaEmObservacao: aindaEmObservacao,
-      fizeramSegundaCompra: fizeramSegunda,
-      taxaPct: coorteTotal > 0 ? (fizeramSegunda / coorteTotal) * 100 : null,
-    };
-  });
-
   const topClientesPorValor = porValorDesc.slice(0, 10).map(c => ({
     empresa: c.empresaExibicao,
     valor: c.valorJanelaAtual,
@@ -595,7 +553,6 @@ export function calcularVisaoGeral(
     valorTotalPeriodo,
     ticketMedioPedido: qtdPedidosValidos > 0 ? valorTotalPeriodo / qtdPedidosValidos : null,
     qtdPedidosValidos,
-    segundaCompra,
     rfm,
     amostraPequena: clientesCompradoresPeriodo < 20,
     topClientesPorValor,

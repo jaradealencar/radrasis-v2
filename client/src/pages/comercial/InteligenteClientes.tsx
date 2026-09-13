@@ -339,35 +339,6 @@ function VistaVisaoGeral({ dataInicial, dataFinal }: { dataInicial: string; data
       <SecaoTempoFollowUp />
       <SecaoConversaoPorFaixaTicket />
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <h3 className="text-sm font-bold text-slate-700">Segunda compra em X dias</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Clientes cuja primeira compra observada caiu neste período, e que fizeram (ou não) uma segunda compra dentro da janela.</p>
-        </div>
-        <Table className="text-xs">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Janela</TableHead>
-              <TableHead className="text-right">Coorte (janela completa)</TableHead>
-              <TableHead className="text-right">Ainda em observação</TableHead>
-              <TableHead className="text-right">Fizeram 2ª compra</TableHead>
-              <TableHead className="text-right">Taxa</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {vg.segundaCompra.map(s => (
-              <TableRow key={s.janelaDias}>
-                <TableCell className="font-semibold">{s.janelaDias} dias</TableCell>
-                <TableCell className="text-right">{s.coorteTotal}</TableCell>
-                <TableCell className="text-right text-slate-400">{s.coorteAindaEmObservacao}</TableCell>
-                <TableCell className="text-right">{s.fizeramSegundaCompra}</TableCell>
-                <TableCell className="text-right font-bold">{s.taxaPct !== null ? fmtPct(s.taxaPct) : "sem coorte"}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
       <SecaoRecompraNovosReativados dataInicial={dataInicial} dataFinal={dataFinal} />
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
