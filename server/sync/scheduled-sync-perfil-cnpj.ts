@@ -21,7 +21,7 @@
  */
 
 import { getDb } from "../db/db";
-import { clientesPerfilCnpj, historicoOs } from "../../drizzle/schema";
+import { clientesPerfilCnpj, clientesPerfilCnpjDescartados, historicoOs } from "../../drizzle/schema";
 import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
 import { buscarOSPorNumero } from "../integrations/mubisys-client";
 import { isOsNormalDb, normalizeEmpresaKey } from "../routers/performanceComercial";
@@ -109,15 +109,17 @@ export async function sincronizarPerfilCnpj(): Promise<SincronizarPerfilCnpjResu
     const db = await getDb();
     if (!db) throw new Error("DB indisponível");
 
-    const [osRows, mapeados] = await Promise.all([
+    const [osRows, mapeados, descartados] = await Promise.all([
       db.select({
         empresa: historicoOs.empresa, tipoOs: historicoOs.tipoOs, status: historicoOs.status,
         valorTotal: historicoOs.valorTotal, valorOs: historicoOs.valorOs,
         osNumero: historicoOs.osNumero, dataAprovacao: historicoOs.dataAprovacao,
       }).from(historicoOs),
       db.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj),
+      db.select({ empresaKey: clientesPerfilCnpjDescartados.empresaKey }).from(clientesPerfilCnpjDescartados),
     ]);
     const jaMapeados = new Set(mapeados.map(m => m.empresaKey));
+    const jaDescartados = new Set(descartados.map(d => d.empresaKey));
 
     const porCliente = new Map<string, { empresa: string; valor: number; osMaisRecente: string | null; dataMaisRecente: Date | null }>();
     for (const r of osRows as any[]) {
@@ -125,7 +127,7 @@ export async function sincronizarPerfilCnpj(): Promise<SincronizarPerfilCnpjResu
       const nome = (r.empresa ?? "").trim();
       if (!nome) continue;
       const key = normalizeEmpresaKey(nome);
-      if (jaMapeados.has(key)) continue;
+      if (jaMapeados.has(key) || jaDescartados.has(key)) continue;
       const dataOs = parseDataOsFlexivel(r.dataAprovacao);
       const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
       const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
@@ -157,10 +159,22 @@ export async function sincronizarPerfilCnpj(): Promise<SincronizarPerfilCnpjResu
         continue;
       }
       const doc = osErp?.cliente_cnpj_cpf;
-      if (!doc) { semDocumento++; continue; }
+      if (!doc) {
+        semDocumento++;
+        await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
+        continue;
+      }
       const { tipo, limpo } = classificarDocumento(doc);
-      if (tipo === "cpf") { pessoaFisica++; continue; }
-      if (tipo === "invalido") { semDocumento++; continue; }
+      if (tipo === "cpf") {
+        pessoaFisica++;
+        await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "pessoa_fisica" }).onConflictDoNothing();
+        continue;
+      }
+      if (tipo === "invalido") {
+        semDocumento++;
+        await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
+        continue;
+      }
 
       try {
         const dados = await consultarCnpj(limpo);
@@ -174,7 +188,10 @@ export async function sincronizarPerfilCnpj(): Promise<SincronizarPerfilCnpjResu
         sucessoCnpj++;
       } catch (e) {
         falhaOpenCnpj++;
-        if (!(e instanceof CnpjNaoEncontradoError)) {
+        if (e instanceof CnpjNaoEncontradoError) {
+          // Permanente: esse CNPJ não existe na Receita Federal, não vai mudar em uma próxima tentativa.
+          await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "cnpj_nao_encontrado" }).onConflictDoNothing();
+        } else {
           console.error(`  [SYNC-PERFIL-CNPJ] falha inesperada em ${c.empresa}:`, (e as Error)?.message ?? e);
         }
       }

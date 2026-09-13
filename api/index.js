@@ -105,6 +105,7 @@ __export(schema_exports, {
   clienteOverrides: () => clienteOverrides,
   clientes: () => clientes,
   clientesPerfilCnpj: () => clientesPerfilCnpj,
+  clientesPerfilCnpjDescartados: () => clientesPerfilCnpjDescartados,
   cnqRegistros: () => cnqRegistros,
   cnqTipoEnum: () => cnqTipoEnum,
   cotacaoComentarios: () => cotacaoComentarios,
@@ -180,6 +181,7 @@ __export(schema_exports, {
   metasRetrabalho: () => metasRetrabalho,
   metricas: () => metricas,
   modalidadeFreteEnum: () => modalidadeFreteEnum,
+  motivoDescarteCnpjEnum: () => motivoDescarteCnpjEnum,
   mubisysApiCache: () => mubisysApiCache,
   nivelConfiancaSinalEnum: () => nivelConfiancaSinalEnum,
   observacoesFinanceirasMensais: () => observacoesFinanceirasMensais,
@@ -248,7 +250,7 @@ import {
   uniqueIndex,
   varchar
 } from "drizzle-orm/pg-core";
-var tipoRegistroEnum, retrabalhoTipoEnum, tipoResponsavelEnum, retrabalhoClasseEnum, simNaoEnum, routineFrequencyEnum, routineStatusEnum, regulationTypeEnum, popAcessoTipoEnum, formaCotacaoEnum, cotacaoStatusEnum, tipoPrazoEnum, modalidadeFreteEnum, auditoriaAcaoEnum, kanbanStatusEnum, acaoCorretivaStatusEnum, planoAcaoStatusEnum, ishikawaCategoriaEnum, prioridadeEnum, acao5w2hStatusEnum, alertaTipoEnum, alertaSeveridadeEnum, alertaStatusEnum, abcTipoEnum, crmCanalEnum, clienteOverrideStatusEnum, statusValidacaoEnum, turnoEnum, analiseCurriculoStatusEnum, syncStatusEnum, clienteCadastroStatusEnum, crmPropostaStatusEnum, cnqTipoEnum, abcClassificacaoEnum, planoAcaoComercialStatusEnum, prioridadeComCriticaEnum, inteligenciaAcaoTipoEnum, inteligenciaAcaoStatusEnum, inteligenciaAcaoResultadoEnum, scoreLeadCnpjEnum, nivelConfiancaSinalEnum, statusSinalMercadoEnum, errorLibrary, retrabalhos, faturamento, knowledgeBase, suppliers, routines, regulations, pops, popAcessos, knowledgeComments, priceTableSections, priceTableMeta, priceTableHistory, APP_ROLES, appRoleEnum, PAGE_KEYS, user, session, account, verification, rolePermissions, transportadoras, transportadoraAvaliacoes, transportadoraFiliais, transportadoraCidades, cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, cteImportacoes, performanceMensal, auditoriaRetrabalhos, cargosFuncoes, empacotamentoModelos, empacotamentoTabelaPrecos, empacotamentoModelosCaixa, empacotamentoChecklistItens, empacotamentoPedidos, empacotamentoPedidoUsuarios, empacotamentoPedidoFotos, empacotamentoPedidoChecklist, empacotamentoInsumos, empacotamentoConsumoCaixa, empacotamentoCustoFuncionario, empacotamentoInsumosLetreiro, empacotamentoCronometroPausas, empacotamentoConfigProdutividade, empacotamentoChecklistLetreitoItens, empacotamentoPedidoChecklistLetreiro, empacotamentoSessoes, empacotamentoSessoesPausas, knowledgeSuggestions, acoesCorretivas, planosAcao, ishikawaCausas, acoes5w2h, metasRetrabalho, alertasSistema, bibliotecaArquivos, abcCache, metasOperacionais, financeiroMensal, observacoesFinanceirasMensais, desempenhoColaboradorMensal, metaProdutos, metasComerciais, historicoOs, historicoOrcamentos, crmMetas, crmContatos, clienteOverrides, custoMarketing, auditoriaCustoMarketing, custoMarketingItens, marketingConfig, marketingConfigAuditoria, custosFixos, dividasParcelamentos, dreMensal, crmScripts, inteligenciaAcoesClientes, inteligenciaClientesAcessos, inteligenciaClientesContatos, leadsCnpjQualificados, origemVinculoCnpjEnum, clientesPerfilCnpj, radarMercadoConfig, sinaisMercado, ledTipos, custoLedLancamentos, crmFaixaEtiquetas, performanceAuditada, clienteNovosContato, performancePropostasFollowup, mubisysApiCache, crmAtividadeLog, financeirosMensais, cargos, responsabilidadesCargo, kpisCargo, analiseCurriculos, syncLogs, erpOsCache, clientes, crmPropostas, performanceComercial, custoLed, cotacoesItens, cnqRegistros, errosPadrao, ishikawaPlanos, performanceAbc, planosAcaoComercial, planosAcaoQualidade, regulamentos, metricas;
+var tipoRegistroEnum, retrabalhoTipoEnum, tipoResponsavelEnum, retrabalhoClasseEnum, simNaoEnum, routineFrequencyEnum, routineStatusEnum, regulationTypeEnum, popAcessoTipoEnum, formaCotacaoEnum, cotacaoStatusEnum, tipoPrazoEnum, modalidadeFreteEnum, auditoriaAcaoEnum, kanbanStatusEnum, acaoCorretivaStatusEnum, planoAcaoStatusEnum, ishikawaCategoriaEnum, prioridadeEnum, acao5w2hStatusEnum, alertaTipoEnum, alertaSeveridadeEnum, alertaStatusEnum, abcTipoEnum, crmCanalEnum, clienteOverrideStatusEnum, statusValidacaoEnum, turnoEnum, analiseCurriculoStatusEnum, syncStatusEnum, clienteCadastroStatusEnum, crmPropostaStatusEnum, cnqTipoEnum, abcClassificacaoEnum, planoAcaoComercialStatusEnum, prioridadeComCriticaEnum, inteligenciaAcaoTipoEnum, inteligenciaAcaoStatusEnum, inteligenciaAcaoResultadoEnum, scoreLeadCnpjEnum, nivelConfiancaSinalEnum, statusSinalMercadoEnum, errorLibrary, retrabalhos, faturamento, knowledgeBase, suppliers, routines, regulations, pops, popAcessos, knowledgeComments, priceTableSections, priceTableMeta, priceTableHistory, APP_ROLES, appRoleEnum, PAGE_KEYS, user, session, account, verification, rolePermissions, transportadoras, transportadoraAvaliacoes, transportadoraFiliais, transportadoraCidades, cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, cteImportacoes, performanceMensal, auditoriaRetrabalhos, cargosFuncoes, empacotamentoModelos, empacotamentoTabelaPrecos, empacotamentoModelosCaixa, empacotamentoChecklistItens, empacotamentoPedidos, empacotamentoPedidoUsuarios, empacotamentoPedidoFotos, empacotamentoPedidoChecklist, empacotamentoInsumos, empacotamentoConsumoCaixa, empacotamentoCustoFuncionario, empacotamentoInsumosLetreiro, empacotamentoCronometroPausas, empacotamentoConfigProdutividade, empacotamentoChecklistLetreitoItens, empacotamentoPedidoChecklistLetreiro, empacotamentoSessoes, empacotamentoSessoesPausas, knowledgeSuggestions, acoesCorretivas, planosAcao, ishikawaCausas, acoes5w2h, metasRetrabalho, alertasSistema, bibliotecaArquivos, abcCache, metasOperacionais, financeiroMensal, observacoesFinanceirasMensais, desempenhoColaboradorMensal, metaProdutos, metasComerciais, historicoOs, historicoOrcamentos, crmMetas, crmContatos, clienteOverrides, custoMarketing, auditoriaCustoMarketing, custoMarketingItens, marketingConfig, marketingConfigAuditoria, custosFixos, dividasParcelamentos, dreMensal, crmScripts, inteligenciaAcoesClientes, inteligenciaClientesAcessos, inteligenciaClientesContatos, leadsCnpjQualificados, origemVinculoCnpjEnum, clientesPerfilCnpj, motivoDescarteCnpjEnum, clientesPerfilCnpjDescartados, radarMercadoConfig, sinaisMercado, ledTipos, custoLedLancamentos, crmFaixaEtiquetas, performanceAuditada, clienteNovosContato, performancePropostasFollowup, mubisysApiCache, crmAtividadeLog, financeirosMensais, cargos, responsabilidadesCargo, kpisCargo, analiseCurriculos, syncLogs, erpOsCache, clientes, crmPropostas, performanceComercial, custoLed, cotacoesItens, cnqRegistros, errosPadrao, ishikawaPlanos, performanceAbc, planosAcaoComercial, planosAcaoQualidade, regulamentos, metricas;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -1660,6 +1662,14 @@ var init_schema = __esm({
       vinculadoPor: varchar("vinculado_por", { length: 128 }),
       vinculadoEm: timestamp("vinculado_em").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    motivoDescarteCnpjEnum = pgEnum("motivo_descarte_cnpj", ["pessoa_fisica", "sem_documento", "cnpj_nao_encontrado"]);
+    clientesPerfilCnpjDescartados = pgTable("clientes_perfil_cnpj_descartados", {
+      id: serial("id").primaryKey(),
+      empresaKey: varchar("empresa_key", { length: 256 }).notNull().unique(),
+      empresaExibicao: varchar("empresa_exibicao", { length: 256 }).notNull(),
+      motivo: motivoDescarteCnpjEnum("motivo").notNull(),
+      descartadoEm: timestamp("descartado_em").defaultNow().notNull()
     });
     radarMercadoConfig = pgTable("radar_mercado_config", {
       id: serial("id").primaryKey(),
@@ -8711,7 +8721,7 @@ async function sincronizarPerfilCnpj() {
   try {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
-    const [osRows, mapeados] = await Promise.all([
+    const [osRows, mapeados, descartados] = await Promise.all([
       db5.select({
         empresa: historicoOs.empresa,
         tipoOs: historicoOs.tipoOs,
@@ -8721,16 +8731,18 @@ async function sincronizarPerfilCnpj() {
         osNumero: historicoOs.osNumero,
         dataAprovacao: historicoOs.dataAprovacao
       }).from(historicoOs),
-      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj)
+      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj),
+      db5.select({ empresaKey: clientesPerfilCnpjDescartados.empresaKey }).from(clientesPerfilCnpjDescartados)
     ]);
     const jaMapeados = new Set(mapeados.map((m) => m.empresaKey));
+    const jaDescartados = new Set(descartados.map((d) => d.empresaKey));
     const porCliente = /* @__PURE__ */ new Map();
     for (const r of osRows) {
       if (!isOsNormalDb(r)) continue;
       const nome = (r.empresa ?? "").trim();
       if (!nome) continue;
       const key = normalizeEmpresaKey(nome);
-      if (jaMapeados.has(key)) continue;
+      if (jaMapeados.has(key) || jaDescartados.has(key)) continue;
       const dataOs = parseDataOsFlexivel2(r.dataAprovacao);
       const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
       const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
@@ -8757,15 +8769,18 @@ async function sincronizarPerfilCnpj() {
       const doc = osErp?.cliente_cnpj_cpf;
       if (!doc) {
         semDocumento++;
+        await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
         continue;
       }
       const { tipo, limpo } = classificarDocumento2(doc);
       if (tipo === "cpf") {
         pessoaFisica++;
+        await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "pessoa_fisica" }).onConflictDoNothing();
         continue;
       }
       if (tipo === "invalido") {
         semDocumento++;
+        await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
         continue;
       }
       try {
@@ -8785,7 +8800,9 @@ async function sincronizarPerfilCnpj() {
         sucessoCnpj++;
       } catch (e) {
         falhaOpenCnpj++;
-        if (!(e instanceof CnpjNaoEncontradoError)) {
+        if (e instanceof CnpjNaoEncontradoError) {
+          await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "cnpj_nao_encontrado" }).onConflictDoNothing();
+        } else {
           console.error(`  [SYNC-PERFIL-CNPJ] falha inesperada em ${c.empresa}:`, e?.message ?? e);
         }
       }
@@ -16982,7 +16999,7 @@ var perfilClientesCnpjRouter = router({
   })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
-    const [osRows, mapeados] = await Promise.all([
+    const [osRows, mapeados, descartados] = await Promise.all([
       db5.select({
         empresa: historicoOs.empresa,
         tipoOs: historicoOs.tipoOs,
@@ -16992,9 +17009,11 @@ var perfilClientesCnpjRouter = router({
         osNumero: historicoOs.osNumero,
         dataAprovacao: historicoOs.dataAprovacao
       }).from(historicoOs),
-      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj)
+      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj),
+      db5.select({ empresaKey: clientesPerfilCnpjDescartados.empresaKey }).from(clientesPerfilCnpjDescartados)
     ]);
     const jaMapeados = new Set(mapeados.map((m) => m.empresaKey));
+    const jaDescartados = new Set(descartados.map((d) => d.empresaKey));
     const dataIni = input.dataInicial ? new Date(input.dataInicial) : null;
     const dataFim = input.dataFinal ? /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`) : null;
     const porCliente = /* @__PURE__ */ new Map();
@@ -17006,7 +17025,7 @@ var perfilClientesCnpjRouter = router({
       if (dataIni && (!dataOs || dataOs < dataIni)) continue;
       if (dataFim && (!dataOs || dataOs > dataFim)) continue;
       const key = normalizeEmpresaKey(nome);
-      if (jaMapeados.has(key)) continue;
+      if (jaMapeados.has(key) || jaDescartados.has(key)) continue;
       const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
       const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
       atual.valor += valor;
@@ -17106,7 +17125,7 @@ var perfilClientesCnpjRouter = router({
   })).mutation(async ({ input, ctx }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
-    const [osRows, mapeados] = await Promise.all([
+    const [osRows, mapeados, descartados] = await Promise.all([
       db5.select({
         empresa: historicoOs.empresa,
         tipoOs: historicoOs.tipoOs,
@@ -17116,9 +17135,11 @@ var perfilClientesCnpjRouter = router({
         osNumero: historicoOs.osNumero,
         dataAprovacao: historicoOs.dataAprovacao
       }).from(historicoOs),
-      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj)
+      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj),
+      db5.select({ empresaKey: clientesPerfilCnpjDescartados.empresaKey }).from(clientesPerfilCnpjDescartados)
     ]);
     const jaMapeados = new Set(mapeados.map((m) => m.empresaKey));
+    const jaDescartados = new Set(descartados.map((d) => d.empresaKey));
     const dataIni = input.dataInicial ? new Date(input.dataInicial) : null;
     const dataFim = input.dataFinal ? /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`) : null;
     const porCliente = /* @__PURE__ */ new Map();
@@ -17130,7 +17151,7 @@ var perfilClientesCnpjRouter = router({
       if (dataIni && (!dataOs || dataOs < dataIni)) continue;
       if (dataFim && (!dataOs || dataOs > dataFim)) continue;
       const key = normalizeEmpresaKey(nome);
-      if (jaMapeados.has(key)) continue;
+      if (jaMapeados.has(key) || jaDescartados.has(key)) continue;
       const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
       const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
       atual.valor += valor;
@@ -17154,15 +17175,18 @@ var perfilClientesCnpjRouter = router({
       const doc = osErp?.cliente_cnpj_cpf;
       if (!doc) {
         semDocumento++;
+        await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
         continue;
       }
       const { tipo, limpo } = classificarDocumento(doc);
       if (tipo === "cpf") {
         pessoaFisica++;
+        await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "pessoa_fisica" }).onConflictDoNothing();
         continue;
       }
       if (tipo === "invalido") {
         semDocumento++;
+        await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
         continue;
       }
       try {
@@ -17179,8 +17203,11 @@ var perfilClientesCnpjRouter = router({
           updatedAt: agora
         });
         sucessoCnpj++;
-      } catch {
+      } catch (e) {
         falhaOpenCnpj++;
+        if (e instanceof CnpjNaoEncontradoError) {
+          await db5.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "cnpj_nao_encontrado" }).onConflictDoNothing();
+        }
       }
     }
     return {

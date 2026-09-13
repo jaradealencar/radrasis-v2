@@ -1696,6 +1696,28 @@ export const clientesPerfilCnpj = pgTable("clientes_perfil_cnpj", {
 export type ClientePerfilCnpj = typeof clientesPerfilCnpj.$inferSelect;
 export type InsertClientePerfilCnpj = typeof clientesPerfilCnpj.$inferInsert;
 
+// ─── Perfil de Clientes por CNPJ — candidatos descartados ────────────────────
+// Descoberto em 13/09/2026: rodando o backfill completo em produção, 931 dos
+// 1.077 candidatos eram pessoa física e 78 não tinham documento no ERP — como
+// nenhum dos dois nunca era gravado em clientesPerfilCnpj, TODO enriquecimento
+// futuro (botão manual, script de backfill, cron sincronizarPerfilCnpj)
+// reconsultava a mesma OS e a mesma pessoa física pra sempre, desperdiçando o
+// orçamento de tempo/chamadas do cron inteiro em candidatos que nunca vão
+// resolver. Esta tabela registra esse resultado permanente, separada de
+// clientesPerfilCnpj (que exige cnpj/dadosJson preenchidos e alimenta a
+// cobertura mostrada no painel) para não contaminar as estatísticas de
+// "clientes vinculados" com quem não tem CNPJ nenhum.
+export const motivoDescarteCnpjEnum = pgEnum("motivo_descarte_cnpj", ["pessoa_fisica", "sem_documento", "cnpj_nao_encontrado"]);
+
+export const clientesPerfilCnpjDescartados = pgTable("clientes_perfil_cnpj_descartados", {
+  id: serial("id").primaryKey(),
+  empresaKey: varchar("empresa_key", { length: 256 }).notNull().unique(),
+  empresaExibicao: varchar("empresa_exibicao", { length: 256 }).notNull(),
+  motivo: motivoDescarteCnpjEnum("motivo").notNull(),
+  descartadoEm: timestamp("descartado_em").defaultNow().notNull(),
+});
+export type ClientePerfilCnpjDescartado = typeof clientesPerfilCnpjDescartados.$inferSelect;
+
 // ─── Radar de Mercado (sinais externos) ──────────────────────────────────────
 // Ver docs/radar-mercado.md. Configuração definida com o usuário em 2026-09:
 // regiões Centro-Oeste/Sudeste/Sul, segmentos gráficas e comunicação visual.

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db/db";
-import { clientesPerfilCnpj, historicoOs, erpOsCache } from "../../drizzle/schema";
+import { clientesPerfilCnpj, clientesPerfilCnpjDescartados, historicoOs, erpOsCache } from "../../drizzle/schema";
 import { eq, sql } from "drizzle-orm";
 import { consultarCnpj, normalizarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
 import { buscarOSPorNumero } from "../integrations/mubisys-client";
@@ -91,15 +91,17 @@ export const perfilClientesCnpjRouter = router({
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      const [osRows, mapeados] = await Promise.all([
+      const [osRows, mapeados, descartados] = await Promise.all([
         db.select({
           empresa: historicoOs.empresa, tipoOs: historicoOs.tipoOs, status: historicoOs.status,
           valorTotal: historicoOs.valorTotal, valorOs: historicoOs.valorOs,
           osNumero: historicoOs.osNumero, dataAprovacao: historicoOs.dataAprovacao,
         }).from(historicoOs),
         db.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj),
+        db.select({ empresaKey: clientesPerfilCnpjDescartados.empresaKey }).from(clientesPerfilCnpjDescartados),
       ]);
       const jaMapeados = new Set(mapeados.map(m => m.empresaKey));
+      const jaDescartados = new Set(descartados.map(d => d.empresaKey));
       const dataIni = input.dataInicial ? new Date(input.dataInicial) : null;
       const dataFim = input.dataFinal ? new Date(`${input.dataFinal}T23:59:59`) : null;
 
@@ -112,7 +114,7 @@ export const perfilClientesCnpjRouter = router({
         if (dataIni && (!dataOs || dataOs < dataIni)) continue;
         if (dataFim && (!dataOs || dataOs > dataFim)) continue;
         const key = normalizeEmpresaKey(nome);
-        if (jaMapeados.has(key)) continue;
+        if (jaMapeados.has(key) || jaDescartados.has(key)) continue;
         const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
         const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
         atual.valor += valor;
@@ -221,15 +223,17 @@ export const perfilClientesCnpjRouter = router({
       if (!db) throw new Error("DB indisponível");
 
       // Reaproveita a mesma lógica de listagem para pegar os candidatos e o osReferencia de cada um
-      const [osRows, mapeados] = await Promise.all([
+      const [osRows, mapeados, descartados] = await Promise.all([
         db.select({
           empresa: historicoOs.empresa, tipoOs: historicoOs.tipoOs, status: historicoOs.status,
           valorTotal: historicoOs.valorTotal, valorOs: historicoOs.valorOs,
           osNumero: historicoOs.osNumero, dataAprovacao: historicoOs.dataAprovacao,
         }).from(historicoOs),
         db.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj),
+        db.select({ empresaKey: clientesPerfilCnpjDescartados.empresaKey }).from(clientesPerfilCnpjDescartados),
       ]);
       const jaMapeados = new Set(mapeados.map(m => m.empresaKey));
+      const jaDescartados = new Set(descartados.map(d => d.empresaKey));
       const dataIni = input.dataInicial ? new Date(input.dataInicial) : null;
       const dataFim = input.dataFinal ? new Date(`${input.dataFinal}T23:59:59`) : null;
       const porCliente = new Map<string, { empresa: string; valor: number; osMaisRecente: string | null; dataMaisRecente: Date | null }>();
@@ -241,7 +245,7 @@ export const perfilClientesCnpjRouter = router({
         if (dataIni && (!dataOs || dataOs < dataIni)) continue;
         if (dataFim && (!dataOs || dataOs > dataFim)) continue;
         const key = normalizeEmpresaKey(nome);
-        if (jaMapeados.has(key)) continue;
+        if (jaMapeados.has(key) || jaDescartados.has(key)) continue;
         const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
         const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
         atual.valor += valor;
@@ -268,10 +272,22 @@ export const perfilClientesCnpjRouter = router({
           falhaErp++; continue;
         }
         const doc = osErp?.cliente_cnpj_cpf;
-        if (!doc) { semDocumento++; continue; }
+        if (!doc) {
+          semDocumento++;
+          await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
+          continue;
+        }
         const { tipo, limpo } = classificarDocumento(doc);
-        if (tipo === "cpf") { pessoaFisica++; continue; }
-        if (tipo === "invalido") { semDocumento++; continue; }
+        if (tipo === "cpf") {
+          pessoaFisica++;
+          await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "pessoa_fisica" }).onConflictDoNothing();
+          continue;
+        }
+        if (tipo === "invalido") {
+          semDocumento++;
+          await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "sem_documento" }).onConflictDoNothing();
+          continue;
+        }
 
         try {
           const dados = await consultarCnpj(limpo);
@@ -282,8 +298,11 @@ export const perfilClientesCnpjRouter = router({
             vinculadoEm: agora, updatedAt: agora,
           });
           sucessoCnpj++;
-        } catch {
+        } catch (e) {
           falhaOpenCnpj++;
+          if (e instanceof CnpjNaoEncontradoError) {
+            await db.insert(clientesPerfilCnpjDescartados).values({ empresaKey: c.empresaKey, empresaExibicao: c.empresa, motivo: "cnpj_nao_encontrado" }).onConflictDoNothing();
+          }
         }
       }
 

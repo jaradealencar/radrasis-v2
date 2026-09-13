@@ -1,0 +1,1 @@
+ALTER TYPE "public"."motivo_descarte_cnpj" ADD VALUE 'cnpj_nao_encontrado';
