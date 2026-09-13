@@ -583,9 +583,12 @@ type VendedorNovosStats = {
  * estourava o maxDuration de 60s da Vercel e o painel de Marketing carregava
  * zerado, sem erro visível (investigação de 01/09/2026). historico_os já é
  * fonte de verdade para "quem comprou antes" (ver isClienteNovoPorRecencia);
- * aqui também vira fonte para "quem comprou neste mês", então dispensa
- * reindexarPorChaveNormalizada — os dois lados da comparação vêm da mesma
- * tabela, com a mesma grafia. */
+ * aqui também vira fonte para "quem comprou neste mês". Ainda assim, aplica
+ * reindexarPorChaveNormalizada: mesmo os dois lados vindo da mesma tabela, a
+ * grafia da mesma empresa pode divergir entre lotes de importação (acentos,
+ * pontuação) — sem normalizar, "clientesNovosUnicos" pode divergir do mesmo
+ * cálculo feito em construirBaseClientes (Inteligência de Clientes), que já
+ * normaliza por padrão. */
 function calcularNovosDoMesLocal(
   mes: number,
   ano: number,
@@ -593,7 +596,13 @@ function calcularNovosDoMesLocal(
   todasComprasValidas: CompraMinima[],
   overrideMap: Map<string, "recorrente" | "novo">,
 ): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; faturamentoReativados: number; clientesNovosUnicos: number; clientesReativados: number } {
-  const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+  // Reindexado com normalizeEmpresaKey (mesma chave usada pela Inteligência de
+  // Clientes em construirBaseClientes) para que a mesma empresa gravada com
+  // grafias diferentes em historico_os ao longo do tempo (acentuação/pontuação
+  // divergente entre lotes de importação) conte como um único cliente — sem
+  // isso, "clientesNovosUnicos" deste painel pode ficar inflado em relação ao
+  // equivalente na Inteligência de Clientes.
+  const ultimaCompraPorCliente = reindexarPorChaveNormalizada(ultimaCompraAntesDe(todasComprasValidas, mes, ano));
   const osMes = osDoAno.filter(os => os.mes === mes);
 
   let osNovos = 0;
@@ -604,10 +613,10 @@ function calcularNovosDoMesLocal(
 
   for (const os of osMes) {
     if (!isOsNormalDb(os)) continue;
-    const clienteKey = (os.empresa ?? "").toLowerCase().trim();
+    const clienteKey = normalizeEmpresaKey(os.empresa ?? "");
     if (!clienteKey) continue;
 
-    const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
+    const overrideStatus = overrideMap.get(clienteKey);
     const isNovo = overrideStatus === "recorrente" ? false
       : overrideStatus === "novo" ? true
       : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);

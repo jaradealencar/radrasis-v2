@@ -16,6 +16,10 @@ import {
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as ChartTooltip, ResponsiveContainer, Cell,
+} from "recharts";
 import KpiCard from "@/components/KpiCard";
 import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
@@ -753,6 +757,37 @@ function SecaoTempoFollowUp() {
             <KpiCard icon={Clock3} label="Mín–Máx" value={data.minDias !== null && data.maxDias !== null ? `${data.minDias}–${data.maxDias}du` : "—"} sub="Faixa completa observada" color="#64748b" />
             <KpiCard icon={Clock3} label="Taxa de pareamento" value={data.taxaPareamentoPct !== null ? fmtPct(data.taxaPareamentoPct) : "—"} sub={`Amostra: ${data.amostra} de ${data.totalOrcamentosGanhos}`} color={data.taxaPareamentoPct && data.taxaPareamentoPct >= 50 ? "#22c55e" : "#f59e0b"} />
           </div>
+          {data.distribuicaoDias && data.distribuicaoDias.length > 0 && (
+            <div className="px-4 pb-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                Distribuição: % dos casos que fecham em cada dia útil
+              </p>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={data.distribuicaoDias} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    tickFormatter={v => `${v}%`}
+                    width={36}
+                  />
+                  <ChartTooltip
+                    formatter={(v: number, _n, item: any) => [`${v.toFixed(1)}% (${item.payload.quantidade} casos)`, "% da amostra"]}
+                    labelFormatter={label => `Fecha em ${label}`}
+                    contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                  />
+                  <Bar dataKey="percentual" radius={[3, 3, 0, 0]}>
+                    {data.distribuicaoDias.map((d, i) => (
+                      <Cell key={i} fill={d.dias === 0 ? "#0ea5e9" : "#38bdf8"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Último balde ("{data.distribuicaoDias[data.distribuicaoDias.length - 1].label}") agrupa toda a cauda longa.
+              </p>
+            </div>
+          )}
           {data.sugestaoFollowUpDias && (
             <div className="px-4 pb-4">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prazo sugerido de follow-up (dias úteis, baseado nos percentis reais)</p>

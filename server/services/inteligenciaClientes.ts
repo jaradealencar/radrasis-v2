@@ -215,7 +215,7 @@ export interface ClienteBase {
  * do XLSX do MubiSys) e o restante em "aaaa-mm-dd[ hh:mm:ss]" (registros vindos da
  * API ao vivo) — confirmado por auditoria direta no banco (setembro/2026). Um parser
  * que assumisse só um dos formatos ficaria com ~97% das datas erradas ou inválidas. */
-function parseDataFlexivel(s: string | null): Date | null {
+export function parseDataFlexivel(s: string | null): Date | null {
   if (!s) return null;
   const texto = s.trim();
   if (!texto) return null;
@@ -1178,7 +1178,15 @@ export interface TempoOrcamentoPedido {
   /** Sugestões de follow-up baseadas nos percentis reais (P25/mediana/P75) —
    * heurística de acompanhamento, não uma regra validada estatisticamente. */
   sugestaoFollowUpDias: { primeiro: number; segundo: number; terceiro: number } | null;
+  /** Distribuição de frequência: quantos casos (e que % da amostra) fecham em
+   * cada dia útil, de 0 até DISTRIBUICAO_DIAS_MAX; o restante (cauda longa) é
+   * agrupado no último balde "DISTRIBUICAO_DIAS_MAX+". Serve para responder
+   * "em quantos dias, exatamente, os outros 50% fecham" — os percentis sozinhos
+   * não deixam essa distribuição visível. */
+  distribuicaoDias: { dias: number; label: string; quantidade: number; percentual: number }[];
 }
+
+const DISTRIBUICAO_DIAS_MAX = 10;
 
 function percentil(valoresAsc: number[], p: number): number {
   if (valoresAsc.length === 0) return 0;
@@ -1253,6 +1261,26 @@ export function calcularTempoOrcamentoPedido(
     sugestao = { primeiro, segundo, terceiro };
   }
 
+  // Distribuição de frequência por dia útil: baldes individuais de 0 até
+  // DISTRIBUICAO_DIAS_MAX, cauda longa agrupada no último balde "X+".
+  const contagemPorDia = new Map<number, number>();
+  for (const d of diasAteFechamento) {
+    const chave = d > DISTRIBUICAO_DIAS_MAX ? DISTRIBUICAO_DIAS_MAX + 1 : d;
+    contagemPorDia.set(chave, (contagemPorDia.get(chave) ?? 0) + 1);
+  }
+  const distribuicaoDias: TempoOrcamentoPedido["distribuicaoDias"] = [];
+  for (let d = 0; d <= DISTRIBUICAO_DIAS_MAX; d++) {
+    const quantidade = contagemPorDia.get(d) ?? 0;
+    distribuicaoDias.push({ dias: d, label: `${d}du`, quantidade, percentual: n > 0 ? (quantidade / n) * 100 : 0 });
+  }
+  const quantidadeCauda = contagemPorDia.get(DISTRIBUICAO_DIAS_MAX + 1) ?? 0;
+  distribuicaoDias.push({
+    dias: DISTRIBUICAO_DIAS_MAX + 1,
+    label: `${DISTRIBUICAO_DIAS_MAX}+du`,
+    quantidade: quantidadeCauda,
+    percentual: n > 0 ? (quantidadeCauda / n) * 100 : 0,
+  });
+
   return {
     amostra: n,
     totalOrcamentosGanhos: orcamentosGanhos.length,
@@ -1265,5 +1293,6 @@ export function calcularTempoOrcamentoPedido(
     minDias: n > 0 ? diasAteFechamento[0] : null,
     maxDias: n > 0 ? diasAteFechamento[n - 1] : null,
     sugestaoFollowUpDias: sugestao,
+    distribuicaoDias,
   };
 }

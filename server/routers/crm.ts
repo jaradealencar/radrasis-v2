@@ -12,7 +12,7 @@ import {
 } from "../sync/crm-abertos-cache";
 import type { TrpcContext } from "../_core/context";
 import {
-  construirMapaConversaoClientes, calcularTaxaConversaoNovosDoMes, calcularProbabilidade,
+  construirMapaConversaoClientes, calcularTaxaConversaoNovosRecente, calcularProbabilidade, normalizeEmpresaKey,
 } from "../services/probabilidadeCompra";
 
 // ─── Helper: calcular turno a partir do horário ───────────────────────────────
@@ -327,7 +327,7 @@ export const crmRouter = router({
       let taxaNovosDoMes: number | null = null;
       try {
         mapaConversao = await construirMapaConversaoClientes(db);
-        taxaNovosDoMes = await calcularTaxaConversaoNovosDoMes(db, clientesComCompra);
+        taxaNovosDoMes = await calcularTaxaConversaoNovosRecente(db);
       } catch {
         mapaConversao = null;
       }
@@ -352,7 +352,13 @@ export const crmRouter = router({
         const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao
           ? calcularProbabilidade({ clienteNovo, nomeCliente, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes })
           : { probabilidade: null as number | null, explicacao: [] as string[] };
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao };
+        const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente))?.qtdCompras ?? 0;
+        // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —
+        // mesmo formato do endereço em MubiSysOS, apesar de não estar no tipo MubiSysOrcamento.
+        const estadoCliente: string | null = Array.isArray((orc as any)?.cliente_endereco) && (orc as any).cliente_endereco[0]?.estado
+          ? String((orc as any).cliente_endereco[0].estado).toUpperCase()
+          : null;
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, estadoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),

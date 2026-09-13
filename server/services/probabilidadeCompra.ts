@@ -7,7 +7,10 @@
  * cliente — ver plano de "Score de Probabilidade de Compra no CRM (Fase 1)".
  *
  * Fórmula:
- *   - Cliente novo: base = taxa de conversão dos clientes novos do mês corrente.
+ *   - Cliente novo: base = taxa de conversão dos clientes novos, em média
+ *     móvel de uma janela "madura" (meses 2 a 12 atrás — exclui orçamentos
+ *     recentes demais para já terem sido decididos, ver nota em
+ *     calcularTaxaConversaoNovosRecente).
  *   - Cliente recorrente: base = taxa de conversão INDIVIDUAL dele
  *     (orçamentos que fez vs. que fecharam, historicoOrcamentos) — com
  *     amostra mínima de MIN_AMOSTRA_TAXA_INDIVIDUAL; abaixo disso, usa a
@@ -21,9 +24,8 @@
  * o CRM e a Inteligência de Clientes concordem sobre o mesmo cliente.
  */
 
-import { and, eq } from "drizzle-orm";
-import { historicoOrcamentos } from "../../drizzle/schema";
-import { STATUS_GANHO } from "./inteligenciaClientes";
+import { historicoOrcamentos, historicoOs } from "../../drizzle/schema";
+import { STATUS_GANHO, parseDataFlexivel } from "./inteligenciaClientes";
 
 export const MIN_AMOSTRA_TAXA_INDIVIDUAL = 3;
 
@@ -49,6 +51,10 @@ export interface ConversaoCliente {
   taxaIndividual: number | null;
   /** null quando não há nenhum orçamento com valor registrado. */
   ticketMedio: number | null;
+  /** Número de OS (ordens de serviço) já realizadas por esse cliente, via
+   * historico_os — usado por ex. para elegibilidade de parcelamento
+   * (clientes com mais de N compras). */
+  qtdCompras: number;
 }
 
 export interface MapaConversaoClientes {
@@ -94,6 +100,16 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     if (fechou) fechadosGeral++;
   }
 
+  // Número de compras reais (OS já realizadas) por cliente — usado, por exemplo,
+  // para elegibilidade de parcelamento (clientes com mais de N compras).
+  const osRows = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
+  const qtdComprasPorCliente = new Map<string, number>();
+  for (const r of osRows as Array<{ empresa: string | null }>) {
+    const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
+    if (!empresaKey) continue;
+    qtdComprasPorCliente.set(empresaKey, (qtdComprasPorCliente.get(empresaKey) ?? 0) + 1);
+  }
+
   const resultado = new Map<string, ConversaoCliente>();
   for (const [empresaKey, acc] of porCliente.entries()) {
     resultado.set(empresaKey, {
@@ -101,7 +117,15 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
       orcamentosFechados: acc.fechados,
       taxaIndividual: acc.total >= MIN_AMOSTRA_TAXA_INDIVIDUAL ? (acc.fechados / acc.total) * 100 : null,
       ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
+      qtdCompras: qtdComprasPorCliente.get(empresaKey) ?? 0,
     });
+  }
+  // Clientes com OS mas sem nenhum orçamento correspondente em historico_orcamentos
+  // (bases diferentes, cobertura não é 100% igual) — ainda entram no mapa só com qtdCompras.
+  for (const [empresaKey, qtd] of qtdComprasPorCliente.entries()) {
+    if (!resultado.has(empresaKey)) {
+      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd });
+    }
   }
 
   const taxaGeral = totalGeral > 0 ? (fechadosGeral / totalGeral) * 100 : 0;
@@ -109,34 +133,85 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
 }
 
 /**
- * Taxa de conversão dos orçamentos do mês corrente cujo cliente NÃO está em
- * `clientesComCompra` — mesmo Set que server/routers/crm.ts já constrói a
- * partir de historico_os para decidir o flag `clienteNovo` de cada proposta.
- * Reaproveitar esse Set (em vez de recalcular "cliente novo" com outra
- * regra) mantém a mesma definição de "novo" usada no resto do CRM.
+ * Janela "madura" para conversão de clientes novos: meses MES_FIM_JANELA_NOVOS
+ * a MES_INICIO_JANELA_NOVOS atrás (não os últimos meses corridos).
  *
- * Devolve `null` (não `0`) quando ainda não há NENHUM orçamento de cliente
- * novo neste mês (comum no início do mês) — distinção importante: "sem dado
- * ainda" não é o mesmo que "converteu 0%". O chamador cai para a taxa geral
- * da carteira nesse caso (ver calcularProbabilidade).
+ * Descoberto na prática (12/09/2026): orçamentos dos últimos ~2 meses vêm
+ * quase 100% com status "Em aberto" — o cliente ainda não decidiu, o ciclo de
+ * fechamento leva mais tempo que isso. Uma janela móvel simples (ex.: "últimos
+ * 3 meses") mede sobretudo pedidos ainda em aberto e artificialmente encolhe
+ * a taxa para perto de 0% — foi o que causou o "5% em quase toda proposta de
+ * cliente novo" percebido pelo usuário (taxa real conhecida: 3-15%). Pular os
+ * 2 meses mais recentes dá tempo de a maioria dos pedidos já ter sido
+ * decidida, sem cair no outro extremo de misturar anos de histórico.
  */
-export async function calcularTaxaConversaoNovosDoMes(db: any, clientesComCompra: Set<string>): Promise<number | null> {
+const MES_FIM_JANELA_NOVOS = 2;   // exclui os 2 meses mais recentes (ainda "imaturos")
+const MES_INICIO_JANELA_NOVOS = 12; // olha até 12 meses atrás
+
+/**
+ * Taxa de conversão dos orçamentos de clientes novos na janela madura (ver
+ * MES_FIM_JANELA_NOVOS/MES_INICIO_JANELA_NOVOS acima).
+ *
+ * "Novo" aqui é decidido POR ORÇAMENTO, comparando a data do orçamento com a
+ * PRIMEIRA compra já registrada daquele cliente em historico_os — não um
+ * `Set` estático de "já comprou alguma vez". Isso corrige um bug real
+ * encontrado em 12/09/2026: um `Set` global de "clientes que já compraram"
+ * exclui justamente os clientes novos que ACABARAM de converter (assim que
+ * fecham, passam a existir em historico_os e somem do grupo "novo" — inclusive
+ * retroativamente, no próprio orçamento que os converteu). Isso travava a taxa
+ * de conversão de novos artificialmente perto de 0%, não importa a janela de
+ * tempo escolhida. Com a comparação por data, um orçamento conta como "de
+ * cliente novo" se, NA DATA daquele orçamento, o cliente ainda não tinha
+ * nenhuma compra anterior — mesmo que ele tenha convertido depois.
+ *
+ * Devolve `null` (não `0`) quando não há NENHUM orçamento de cliente novo
+ * nessa janela — distinção importante: "sem dado ainda" não é o mesmo que
+ * "converteu 0%". O chamador cai para a taxa geral da carteira nesse caso
+ * (ver calcularProbabilidade).
+ */
+export async function calcularTaxaConversaoNovosRecente(db: any): Promise<number | null> {
   const now = new Date();
-  const mes = now.getMonth() + 1;
-  const ano = now.getFullYear();
+  const janelas: Array<{ mes: number; ano: number }> = [];
+  for (let i = MES_FIM_JANELA_NOVOS; i < MES_INICIO_JANELA_NOVOS; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    janelas.push({ mes: d.getMonth() + 1, ano: d.getFullYear() });
+  }
+  const janelasSet = new Set(janelas.map(j => `${j.ano}-${j.mes}`));
+
+  // Primeira compra registrada de cada cliente (historico_os) — usada para
+  // saber se, NA DATA de um orçamento específico, o cliente já tinha comprado
+  // antes ou não.
+  const osRows = await db.select({
+    empresa: historicoOs.empresa,
+    dataAprovacao: historicoOs.dataAprovacao,
+  }).from(historicoOs);
+  const primeiraCompraPorCliente = new Map<string, Date>();
+  for (const r of osRows as Array<{ empresa: string | null; dataAprovacao: string | null }>) {
+    const key = normalizeEmpresaKey(r.empresa ?? "");
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (!key || !data) continue;
+    const atual = primeiraCompraPorCliente.get(key);
+    if (!atual || data < atual) primeiraCompraPorCliente.set(key, data);
+  }
 
   const linhas = await db.select({
     empresa: historicoOrcamentos.empresa,
     status: historicoOrcamentos.status,
-  }).from(historicoOrcamentos).where(
-    and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)),
-  );
+    dataCadastro: historicoOrcamentos.dataCadastro,
+    mes: historicoOrcamentos.mes,
+    ano: historicoOrcamentos.ano,
+  }).from(historicoOrcamentos);
 
   let total = 0;
   let fechados = 0;
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null }>) {
-    const nomeKey = (r.empresa ?? "").toLowerCase().trim();
-    if (!nomeKey || clientesComCompra.has(nomeKey)) continue; // já comprou antes = não é "novo"
+  for (const r of linhas as Array<{ empresa: string | null; status: string | null; dataCadastro: string | null; mes: number; ano: number }>) {
+    if (!janelasSet.has(`${r.ano}-${r.mes}`)) continue;
+    const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
+    if (!empresaKey) continue;
+    const dataOrcamento = parseDataFlexivel(r.dataCadastro);
+    const primeiraCompra = primeiraCompraPorCliente.get(empresaKey);
+    const eraNovoNaData = !primeiraCompra || !dataOrcamento || primeiraCompra >= dataOrcamento;
+    if (!eraNovoNaData) continue; // já tinha comprado antes desse orçamento = não era "novo"
     total++;
     if (STATUS_GANHO.has((r.status ?? "").trim().toLowerCase())) fechados++;
   }
@@ -155,7 +230,7 @@ const PROB_MAX = 95;
 /**
  * Calcula a probabilidade de fechamento de UMA proposta. Função pura e
  * síncrona — toda a leitura de dados já aconteceu em
- * construirMapaConversaoClientes/calcularTaxaConversaoNovosDoMes.
+ * construirMapaConversaoClientes/calcularTaxaConversaoNovosRecente.
  */
 export function calcularProbabilidade(opts: {
   clienteNovo: boolean;
@@ -171,10 +246,10 @@ export function calcularProbabilidade(opts: {
 
   if (opts.clienteNovo && opts.taxaNovosDoMes != null) {
     base = opts.taxaNovosDoMes;
-    explicacao.push(`Base: ${base.toFixed(0)}% (conversão média de clientes novos este mês)`);
+    explicacao.push(`Base: ${base.toFixed(0)}% (conversão média de clientes novos, últimos ${MES_INICIO_JANELA_NOVOS} meses)`);
   } else if (opts.clienteNovo) {
     base = opts.mapa.taxaGeral;
-    explicacao.push(`Base: ${base.toFixed(0)}% (conversão geral da carteira — ainda não há orçamentos de clientes novos este mês)`);
+    explicacao.push(`Base: ${base.toFixed(0)}% (conversão geral da carteira — sem orçamentos de clientes novos recentes)`);
   } else if (conversao?.taxaIndividual != null) {
     base = conversao.taxaIndividual;
     explicacao.push(`Base: ${base.toFixed(0)}% (${conversao.orcamentosFechados} de ${conversao.totalOrcamentos} orçamentos fechados deste cliente)`);

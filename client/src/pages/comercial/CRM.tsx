@@ -61,7 +61,12 @@ type Proposta = {
   meta2Contatos: boolean;
   probabilidadeCompra: number | null;
   probabilidadeExplicacao: string[];
+  qtdComprasCliente: number;
+  estadoCliente: string | null;
 };
+
+// Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
+const LIMIAR_PARCELAMENTO = 3;
 
 // ─── Score de Probabilidade de Compra (Fase 1) ────────────────────────────────
 function probabilidadeCor(p: number) {
@@ -359,10 +364,35 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
                     </Tooltip>
                   </TooltipProvider>
                 )}
+                {p.estadoCliente && (
+                  <span className="flex-shrink-0 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1" title={`Cliente em ${p.estadoCliente}`}>
+                    {p.estadoCliente}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
                 <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
+                {p.qtdComprasCliente > 0 && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] cursor-default ${
+                          p.qtdComprasCliente > LIMIAR_PARCELAMENTO
+                            ? "font-bold bg-indigo-100 text-indigo-700 border-indigo-200"
+                            : "text-gray-500 bg-gray-50 border-gray-200"
+                        }`}>
+                          {p.qtdComprasCliente}x comprou
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        {p.qtdComprasCliente > LIMIAR_PARCELAMENTO
+                          ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras)`
+                          : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} anterior${p.qtdComprasCliente === 1 ? "" : "es"}`}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
             </div>
           </div>
@@ -541,7 +571,8 @@ export default function CRM() {
   const [verHistorico, setVerHistorico] = useState(false);
   const [apenasNovos, setApenasNovos] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
-  const [apenasAltaProbabilidade, setApenasAltaProbabilidade] = useState(false);
+  const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
+  const [apenasMS, setApenasMS] = useState(false);
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
@@ -617,10 +648,19 @@ export default function CRM() {
       // Ordenar do maior para o menor valor quando filtro Hoje estiver ativo
       list = [...list].sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0));
     }
-    if (apenasAltaProbabilidade) list = list.filter(p => (p.probabilidadeCompra ?? 0) >= 50);
+    if (filtroProbabilidade !== "todas") {
+      list = list.filter(p => {
+        const prob = p.probabilidadeCompra;
+        if (prob == null) return false;
+        if (filtroProbabilidade === "alta") return prob >= 50;
+        if (filtroProbabilidade === "media") return prob >= 25 && prob < 50;
+        return prob < 25; // baixa
+      });
+    }
+    if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa, apenasAltaProbabilidade, ordenarPorProbabilidade]);
+  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -847,19 +887,32 @@ export default function CRM() {
             <TrendingUp className="w-3.5 h-3.5" /> Probabilidade
           </label>
           <div className="flex gap-2">
+            <Select value={filtroProbabilidade} onValueChange={(v: any) => setFiltroProbabilidade(v)}>
+              <SelectTrigger className="h-9 text-sm w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas</SelectItem>
+                <SelectItem value="alta">🟢 Alta (≥50%)</SelectItem>
+                <SelectItem value="media">🟡 Média (25-49%)</SelectItem>
+                <SelectItem value="baixa">🔴 Baixa (&lt;25%)</SelectItem>
+              </SelectContent>
+            </Select>
             <button onClick={() => setOrdenarPorProbabilidade(v => !v)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
                 ordenarPorProbabilidade ? "bg-green-600 text-white border-green-600 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-green-500"
               }`}>
               <TrendingUp className="w-3.5 h-3.5" /> {ordenarPorProbabilidade ? "Ordenado ✕" : "Ordenar"}
             </button>
-            <button onClick={() => setApenasAltaProbabilidade(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
-                apenasAltaProbabilidade ? "bg-green-100 text-green-700 border-green-300" : "bg-white text-gray-600 border-gray-300 hover:border-green-400"
-              }`}>
-              {apenasAltaProbabilidade ? "≥50% ✕" : "Só ≥50%"}
-            </button>
           </div>
+        </div>
+        {/* Filtro por estado do cliente (MS) */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-transparent select-none">.</label>
+          <button onClick={() => setApenasMS(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
+              apenasMS ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-slate-500"
+            }`}>
+            {apenasMS ? "Só MS ✕" : "Só MS"}
+          </button>
         </div>
       </div>
 
