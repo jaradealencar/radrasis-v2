@@ -132,7 +132,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   }, [custoMarketingAno]);
 
   const clientesNovosMap = useMemo(() => {
-    const m: Record<number, { osNovos: number; faturamentoNovos: number; faturamentoReativados: number; ticketMedioNovos: number; clientesNovosUnicos: number; clientesReativados: number }> = {};
+    const m: Record<number, { osNovos: number; faturamentoNovos: number; faturamentoReativados: number; faturamentoNovosPuros: number; ticketMedioNovos: number; clientesNovosUnicos: number; clientesReativados: number; clientesNovosPuros: number }> = {};
     for (const r of clientesNovosAno) m[r.mes] = r;
     return m;
   }, [clientesNovosAno]);
@@ -145,10 +145,11 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     const investimentoAquisicao = mk ? parseFloat(mk.investimentoAquisicao) : null;
     const investimentoReativacao = mk ? parseFloat(mk.investimentoReativacao) : null;
     const investimento = mk ? parseFloat(mk.investimento) : null;
-    const clientesNovosQtd = novos?.clientesNovosUnicos ?? null;
+    // Novos e reativados são perfis diferentes de cliente — mantidos separados,
+    // nunca somados um dentro do outro (nem em quantidade, nem em faturamento).
+    const clientesNovosQtd = novos?.clientesNovosPuros ?? null;
     const clientesReativadosQtd = novos?.clientesReativados ?? null;
-    const faturamentoNovos = novos?.faturamentoNovos ?? null;
-    // Subconjunto de faturamentoNovos — ver nota em calcularNovosDoMesLocal (backend).
+    const faturamentoNovos = novos?.faturamentoNovosPuros ?? null;
     const faturamentoReativados = novos?.faturamentoReativados ?? null;
     const pedidosNovos = novos?.osNovos ?? null;
 
@@ -262,7 +263,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
       "CAC Aquisição": d.cac ?? 0,
       "Custo Reativação": d.custoReativacao ?? 0,
       "Fat. Clientes Novos": d.faturamentoNovos ?? 0,
-      "Fat. Reativados (incluso)": d.faturamentoReativados ?? 0,
+      "Fat. Reativados": d.faturamentoReativados ?? 0,
       "Retorno Real (51%)": d.retornoReal ?? 0,
     })),
     [mesesComDados]
@@ -453,7 +454,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
           <KpiCard
             label="Clientes Novos"
             value={String(totalClientesNovos)}
-            sub="Novos ou reativados (6+ meses sem pedir)"
+            sub={`Nunca compraram antes · ${totalClientesReativados} reativados (à parte)`}
             color="#2563eb"
             icon={<Users size={18} />}
             variant="border"
@@ -501,8 +502,8 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
       <div className="flex items-start gap-2 bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800">
         <Percent size={13} className="mt-0.5 shrink-0" />
         <span>
-          <strong>Metodologia ROI:</strong> O investimento em marketing é dividido em <strong>Aquisição</strong> (atrai clientes novos) e <strong>Reativação</strong> (resgata clientes 6+ meses sem comprar). "Clientes novos" considera clientes que nunca compraram <strong>ou</strong> ficaram <strong>6+ meses sem pedir e voltaram</strong> (reativados, mostrados na coluna própria).
-          O retorno real considerado no ROI é <strong>51% do faturamento de clientes novos</strong> (margem operacional estimada), comparado apenas ao investimento em <strong>aquisição</strong> — a reativação não gera "cliente novo" e por isso não entra nesse cálculo.
+          <strong>Metodologia ROI:</strong> O investimento em marketing é dividido em <strong>Aquisição</strong> (atrai clientes novos) e <strong>Reativação</strong> (resgata clientes 6+ meses sem comprar). <strong>Clientes Novos</strong> e <strong>Reativados</strong> são perfis diferentes e ficam em colunas separadas — o mesmo vale para o faturamento de cada grupo (nunca somados um dentro do outro).
+          O retorno real considerado no ROI é <strong>51% do faturamento de clientes genuinamente novos</strong> (margem operacional estimada, excluindo reativados), comparado apenas ao investimento em <strong>aquisição</strong>. O custo de reativação (Invest. Reativação ÷ Clientes Reativados) é calculado à parte.
           ROI em R$ = Retorno Real − Invest. Aquisição &nbsp;|&nbsp; ROI em % = (Retorno Real − Invest. Aquisição) ÷ Invest. Aquisição × 100
         </span>
       </div>
@@ -602,13 +603,13 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 <TableHead className="font-semibold">Mês</TableHead>
                 <TableHead className="text-right font-semibold">Aquisição</TableHead>
                 <TableHead className="text-right font-semibold">Reativação</TableHead>
-                <TableHead className="text-right font-semibold" title="Inclui reativados (clientes que já compraram antes e voltaram após 6+ meses sem pedir) — não é só quem nunca comprou.">Clientes Novos</TableHead>
-                <TableHead className="text-right font-semibold" title="Parcela de Clientes Novos que veio de reativação — está incluída na coluna anterior, não somada a ela.">Reativados</TableHead>
-                <TableHead className="text-right font-semibold">Pedidos</TableHead>
+                <TableHead className="text-right font-semibold" title="Somente clientes que nunca compraram antes — não inclui reativados (coluna própria ao lado).">Clientes Novos</TableHead>
+                <TableHead className="text-right font-semibold" title="Clientes que já haviam comprado antes e ficaram 6+ meses sem pedir — categoria separada de Clientes Novos, não somada a ela.">Reativados</TableHead>
+                <TableHead className="text-right font-semibold" title="Total de pedidos de clientes novos + reativados no mês.">Pedidos</TableHead>
                 <TableHead className="text-right font-semibold">CAC Aquisição</TableHead>
                 <TableHead className="text-right font-semibold" title="Investimento em Reativação dividido pelo nº de clientes reativados no mês.">Custo Reativação</TableHead>
-                <TableHead className="text-right font-semibold">Fat. Clientes Novos</TableHead>
-                <TableHead className="text-right font-semibold" title="Parcela de Fat. Clientes Novos que veio de clientes reativados — está incluída na coluna anterior, não somada a ela.">Fat. Reativados</TableHead>
+                <TableHead className="text-right font-semibold" title="Faturamento apenas de clientes genuinamente novos — não inclui o faturamento de reativados (coluna própria ao lado).">Fat. Clientes Novos</TableHead>
+                <TableHead className="text-right font-semibold" title="Faturamento de clientes reativados — categoria separada de Fat. Clientes Novos, não somada a ela.">Fat. Reativados</TableHead>
                 <TableHead className="text-right font-semibold">Retorno Real (51%)</TableHead>
                 <TableHead className="text-right font-semibold">ROI (R$)</TableHead>
                 <TableHead className="text-right font-semibold">ROI (%)</TableHead>

@@ -596,7 +596,7 @@ function calcularNovosDoMesLocal(
   osDoAno: Array<{ empresa: string | null; tipoOs: string | null; status: string | null; mes: number; valorOs: string | null; valorTotal: string | null }>,
   todasComprasValidas: CompraMinima[],
   overrideMap: Map<string, "recorrente" | "novo">,
-): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; faturamentoReativados: number; clientesNovosUnicos: number; clientesReativados: number } {
+): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; faturamentoReativados: number; faturamentoNovosPuros: number; clientesNovosUnicos: number; clientesReativados: number; clientesNovosPuros: number } {
   // Reindexado com normalizeEmpresaKey (mesma chave usada pela Inteligência de
   // Clientes em construirBaseClientes) para que a mesma empresa gravada com
   // grafias diferentes em historico_os ao longo do tempo (acentuação/pontuação
@@ -644,19 +644,28 @@ function calcularNovosDoMesLocal(
     osNovos,
     faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
     faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
+    // Faturamento de clientes genuinamente novos, SEM os reativados — ver nota em getClientesNovosMes.
+    faturamentoNovosPuros: parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2)),
     clientesNovosUnicos: clientesVistos.size,
     clientesReativados,
+    // Clientes genuinamente novos (nunca compraram antes), SEM os reativados — perfis
+    // diferentes de cliente, não devem ser somados na mesma métrica (ver MarketingFinanceiro.tsx).
+    clientesNovosPuros: clientesVistos.size - clientesReativados,
   };
 }
 
 async function getClientesNovosMes(mes: number, ano: number): Promise<{
   total: number;
   totalReativados: number;
+  /** Clientes genuinamente novos (nunca compraram antes), sem os reativados — ver nota em calcularNovosDoMesLocal. */
+  totalPuros: number;
   cotacoesNovos: number;
   osNovos: number;
   faturamentoNovos: number;
   /** Subconjunto de faturamentoNovos: o que veio de clientes reativados. */
   faturamentoReativados: number;
+  /** Faturamento de clientes genuinamente novos, sem os reativados. */
+  faturamentoNovosPuros: number;
   ticketMedioNovos: number;
   valorOrcadoNovos: number;
   taxaConversaoNovos: number;
@@ -666,7 +675,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   lista: Array<{ empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null; telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string }>;
 }> {
   const db = await getDb();
-  const EMPTY = { total: 0, totalReativados: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
+  const EMPTY = { total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
   if (!db) return EMPTY;
 
   // ─── SNAPSHOT CONGELADO: verificar se já tem lista salva ───
@@ -742,10 +751,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     return {
       total: s.clientesNovos ?? 0,
       totalReativados: totalReativadosSnap,
+      totalPuros: (s.clientesNovos ?? 0) - totalReativadosSnap,
       cotacoesNovos: cotacoesNovosSnap,
       osNovos: s.clientesNovos ?? 0,
       faturamentoNovos: parseFloat(String(s.faturamentoNovos ?? 0)),
       faturamentoReativados: parseFloat(faturamentoReativadosSnap.toFixed(2)),
+      faturamentoNovosPuros: parseFloat((parseFloat(String(s.faturamentoNovos ?? 0)) - faturamentoReativadosSnap).toFixed(2)),
       ticketMedioNovos: s.clientesNovos ? parseFloat(String(s.faturamentoNovos ?? 0)) / s.clientesNovos : 0,
       valorOrcadoNovos: 0,
       taxaConversaoNovos: taxaConvNovosSnap,
@@ -1030,10 +1041,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   return {
     total,
     totalReativados,
+    totalPuros: total - totalReativados,
     cotacoesNovos,
     osNovos,
     faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
     faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
+    faturamentoNovosPuros: parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2)),
     ticketMedioNovos,
     valorOrcadoNovos: parseFloat(valorOrcadoNovos.toFixed(2)),
     taxaConversaoNovos,
@@ -1699,8 +1712,8 @@ export const performanceComercialRouter = router({
       const db = await getDb();
       if (!db) {
         return meses.map(mes => ({
-          mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0,
-          clientesNovosUnicos: 0, clientesReativados: 0, origem: "indisponivel" as const,
+          mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0,
+          clientesNovosUnicos: 0, clientesReativados: 0, clientesNovosPuros: 0, origem: "indisponivel" as const,
         }));
       }
 
@@ -1737,8 +1750,10 @@ export const performanceComercialRouter = router({
             osNovos: dados.osNovos,
             faturamentoNovos: dados.faturamentoNovos,
             faturamentoReativados: dados.faturamentoReativados,
+            faturamentoNovosPuros: dados.faturamentoNovosPuros,
             clientesNovosUnicos: dados.total,
             clientesReativados: dados.totalReativados,
+            clientesNovosPuros: dados.totalPuros,
             origem: "congelado" as const,
           };
         }
