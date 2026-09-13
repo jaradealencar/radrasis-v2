@@ -70,3 +70,33 @@ export async function perguntarSobreFinanceiro(
   if (!textBlock) throw new Error("Claude não retornou texto na resposta.");
   return textBlock.text;
 }
+
+/**
+ * Chama o Claude com um system prompt e um contexto de dados já calculados (JSON
+ * serializado pelo caller) mais uma pergunta única — sem histórico de conversa.
+ * Usado pelo Assistente de Inteligência de Clientes (server/routers/performanceComercial.ts),
+ * que refaz o contexto do zero a cada pergunta em vez de manter uma conversa contínua.
+ */
+export async function perguntarSobreClientes(
+  systemPrompt: string,
+  contextoDados: string,
+  pergunta: string,
+): Promise<string> {
+  const anthropic = getClient();
+
+  const response = await anthropic.messages.create({
+    model: "claude-opus-5",
+    max_tokens: 4096,
+    system: [
+      { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+      { type: "text", text: contextoDados },
+    ],
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
+    messages: [{ role: "user", content: pergunta }],
+  });
+
+  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+  if (!textBlock) throw new Error("Claude não retornou texto na resposta.");
+  return textBlock.text;
+}

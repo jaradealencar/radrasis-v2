@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import {
-  Users, UserPlus, TrendingDown, ShoppingCart,
+  Users, UserPlus, TrendingDown, TrendingUp, ShoppingCart,
   AlertTriangle, Percent, CalendarDays, DollarSign, Repeat, Trophy, Info,
   CheckCircle2, XCircle, Clock3, ChevronRight, HelpCircle, Filter, Layers,
   Download, Sparkles, Send, UserCheck, SlidersHorizontal,
@@ -13,6 +13,9 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
 import KpiCard from "@/components/KpiCard";
 import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
@@ -42,6 +45,34 @@ const CLASSIFICACAO_INFO: Record<string, { label: string; cor: string; icone: st
   intervalo_acima_habitual: { label: "Atraso na recompra", cor: "bg-amber-50 text-amber-700 border-amber-200", icone: "⏰" },
   historico_insuficiente: { label: "Histórico insuficiente", cor: "bg-slate-50 text-slate-500 border-slate-200", icone: "❔" },
 };
+
+// Score de Probabilidade de Compra (Fase 1) — mesma fórmula/cores do CRM de
+// Propostas (client/src/pages/comercial/CRM.tsx), sem ajuste por proposta
+// específica (aqui é o perfil do cliente, não uma proposta em aberto).
+function ProbabilidadeBadge({ p, explicacao }: { p: number | null | undefined; explicacao?: string[] }) {
+  if (p == null) return <span className="text-slate-300">—</span>;
+  const cor = p >= 50 ? "text-green-700 bg-green-100 border-green-200"
+    : p >= 25 ? "text-amber-700 bg-amber-100 border-amber-200"
+    : "text-red-700 bg-red-100 border-red-200";
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold cursor-default ${cor}`}>
+            <TrendingUp className="w-2.5 h-2.5" /> {p}%
+          </span>
+        </TooltipTrigger>
+        {explicacao && explicacao.length > 0 && (
+          <TooltipContent side="top" className="text-xs max-w-[260px]">
+            <div className="space-y-0.5">
+              {explicacao.map((linha, i) => <p key={i}>{linha}</p>)}
+            </div>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 const TIPO_ACAO_INFO: Record<string, { label: string; cor: string }> = {
   primeira_sem_segunda: { label: "1ª compra sem repetição", cor: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -301,6 +332,8 @@ function VistaVisaoGeral({ dataInicial, dataFinal }: { dataInicial: string; data
         <KpiCard icon={TrendingDown} label="Redução de volume" value={fmtNum(vg.classificacoes.reducao_volume)} sub="Comprando menos que na janela anterior" color="#ef4444" />
       </div>
 
+      <SecaoTempoFollowUp />
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100">
           <h3 className="text-sm font-bold text-slate-700">Segunda compra em X dias</h3>
@@ -482,6 +515,7 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
               <TableRow>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Classificação</TableHead>
+                <TableHead>Probabilidade</TableHead>
                 <TableHead className="text-right">Valor no período</TableHead>
                 <TableHead className="text-right">Ticket médio histórico</TableHead>
                 <TableHead className="text-right">Dias desde última compra</TableHead>
@@ -498,6 +532,7 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
                       {CLASSIFICACAO_INFO[c.classificacao]?.icone} {CLASSIFICACAO_INFO[c.classificacao]?.label}
                     </Badge>
                   </TableCell>
+                  <TableCell><ProbabilidadeBadge p={c.probabilidadeCompra} explicacao={c.probabilidadeExplicacao} /></TableCell>
                   <TableCell className="text-right">{fmtBrl(c.valorJanelaAtual)}</TableCell>
                   <TableCell className="text-right font-semibold">{fmtBrl(c.ticketMedioHistorico)}</TableCell>
                   <TableCell className="text-right">{c.diasDesdeUltimaCompra}</TableCell>
@@ -761,8 +796,6 @@ function VistaFunil() {
         <KpiCard icon={HelpCircle} label="Aprovado, depois cancelado" value={fmtNum(data.taxaConversao.aprovadoMasCanceladoDepois)} sub="Fora do cálculo de conversão" color="#94a3b8" />
         <KpiCard icon={Layers} label="Status distintos" value={fmtNum(data.porStatus.length)} sub="Etapas usadas pela equipe" color="#8b5cf6" />
       </div>
-
-      <SecaoTempoFollowUp />
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">Orçamentos por status</h3></div>

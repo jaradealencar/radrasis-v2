@@ -12,7 +12,8 @@ import {
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
-import { invokeLLM } from "../_core/llm";
+import { construirMapaConversaoClientes, calcularProbabilidade } from "../services/probabilidadeCompra";
+import { perguntarSobreClientes } from "../integrations/anthropic-client";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
 // TTL: 60 minutos para mês atual, 6 horas para meses históricos (dados não mudam).
@@ -1977,7 +1978,25 @@ export const performanceComercialRouter = router({
         em_crescimento: 5,
       };
       clientes.sort((a, b) => (ordemClassificacao[a.classificacao] ?? 9) - (ordemClassificacao[b.classificacao] ?? 9) || b.valorJanelaAtual - a.valorJanelaAtual);
-      return clientes;
+
+      // Score de Probabilidade de Compra (Fase 1) — mesma fórmula/base do CRM
+      // (server/routers/crm.ts), sem o ajuste por proposta específica (não há
+      // uma proposta em aberto associada a este card, só o perfil do cliente).
+      try {
+        const mapaConversao = await construirMapaConversaoClientes(db);
+        return clientes.map(c => {
+          const { probabilidade, explicacao } = calcularProbabilidade({
+            clienteNovo: false, // esta tela só lista quem já comprou — nunca é "cliente novo"
+            nomeCliente: c.empresaExibicao,
+            valorProposta: 0, // sem proposta específica aqui — sem ajuste por valor
+            mapa: mapaConversao,
+            taxaNovosDoMes: 0,
+          });
+          return { ...c, probabilidadeCompra: probabilidade, probabilidadeExplicacao: explicacao };
+        });
+      } catch {
+        return clientes.map(c => ({ ...c, probabilidadeCompra: null as number | null, probabilidadeExplicacao: [] as string[] }));
+      }
     }),
 
   getFichaCliente: publicProcedure
@@ -2221,14 +2240,11 @@ export const performanceComercialRouter = router({
         dataInicial: input.dataInicial, dataFinal: input.dataFinal,
       });
 
-      const resp = await invokeLLM({
-        messages: [
-          { role: "system", content: PROMPT_ASSISTENTE_CLIENTES_V1 },
-          { role: "user", content: `Contexto (dados já calculados pelo sistema, em JSON):\n${JSON.stringify(contexto)}\n\nPergunta do usuário: ${input.pergunta}` },
-        ],
-      });
-      const conteudo = resp.choices?.[0]?.message?.content;
-      const resposta = typeof conteudo === "string" ? conteudo : "Não foi possível gerar a resposta — tente novamente.";
+      const resposta = await perguntarSobreClientes(
+        PROMPT_ASSISTENTE_CLIENTES_V1,
+        `Contexto (dados já calculados pelo sistema, em JSON):\n${JSON.stringify(contexto)}`,
+        input.pergunta,
+      );
       return { resposta, versaoPrompt: VERSAO_PROMPT_ASSISTENTE_CLIENTES };
     }),
 

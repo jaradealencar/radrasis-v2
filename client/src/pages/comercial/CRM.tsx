@@ -59,7 +59,37 @@ type Proposta = {
   qtdContatos: number;
   contato1NoPrazo: boolean | null;
   meta2Contatos: boolean;
+  probabilidadeCompra: number | null;
+  probabilidadeExplicacao: string[];
 };
+
+// ─── Score de Probabilidade de Compra (Fase 1) ────────────────────────────────
+function probabilidadeCor(p: number) {
+  if (p >= 50) return { text: "text-green-700", bg: "bg-green-100 border-green-200" };
+  if (p >= 25) return { text: "text-amber-700", bg: "bg-amber-100 border-amber-200" };
+  return { text: "text-red-700", bg: "bg-red-100 border-red-200" };
+}
+
+function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: string[] }) {
+  if (p == null) return null;
+  const cor = probabilidadeCor(p);
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold cursor-default ${cor.bg} ${cor.text}`}>
+            <TrendingUp className="w-2.5 h-2.5" /> {p}%
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs max-w-[260px]">
+          <div className="space-y-0.5">
+            {explicacao.map((linha, i) => <p key={i}>{linha}</p>)}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -330,7 +360,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
                   </TooltipProvider>
                 )}
               </div>
-              <div className="text-xs text-muted-foreground">{fmt(p.valor)}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
+                <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
+              </div>
             </div>
           </div>
         </TableCell>
@@ -508,6 +541,8 @@ export default function CRM() {
   const [verHistorico, setVerHistorico] = useState(false);
   const [apenasNovos, setApenasNovos] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
+  const [apenasAltaProbabilidade, setApenasAltaProbabilidade] = useState(false);
+  const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
   const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
@@ -582,8 +617,10 @@ export default function CRM() {
       // Ordenar do maior para o menor valor quando filtro Hoje estiver ativo
       list = [...list].sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0));
     }
+    if (apenasAltaProbabilidade) list = list.filter(p => (p.probabilidadeCompra ?? 0) >= 50);
+    if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa]);
+  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa, apenasAltaProbabilidade, ordenarPorProbabilidade]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -803,6 +840,26 @@ export default function CRM() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        </div>
+        {/* Score de Probabilidade de Compra (Fase 1) */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+            <TrendingUp className="w-3.5 h-3.5" /> Probabilidade
+          </label>
+          <div className="flex gap-2">
+            <button onClick={() => setOrdenarPorProbabilidade(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
+                ordenarPorProbabilidade ? "bg-green-600 text-white border-green-600 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-green-500"
+              }`}>
+              <TrendingUp className="w-3.5 h-3.5" /> {ordenarPorProbabilidade ? "Ordenado ✕" : "Ordenar"}
+            </button>
+            <button onClick={() => setApenasAltaProbabilidade(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
+                apenasAltaProbabilidade ? "bg-green-100 text-green-700 border-green-300" : "bg-white text-gray-600 border-gray-300 hover:border-green-400"
+              }`}>
+              {apenasAltaProbabilidade ? "≥50% ✕" : "Só ≥50%"}
+            </button>
+          </div>
         </div>
       </div>
 

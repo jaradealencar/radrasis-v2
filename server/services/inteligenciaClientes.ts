@@ -877,8 +877,8 @@ export interface OrcamentoRow {
  * ambíguo "aprovado mas depois cancelado" — usados tanto no funil quanto nas
  * previsões. Reaproveitam o vocabulário de status já usado pela equipe no ERP,
  * sem inventar novas etapas. */
-const STATUS_GANHO = new Set(["aprovado", "em produção", "entregue", "concluída"]);
-const STATUS_PERDIDO = new Set(["reprovado", "cancelada"]);
+export const STATUS_GANHO = new Set(["aprovado", "em produção", "entregue", "concluída"]);
+export const STATUS_PERDIDO = new Set(["reprovado", "cancelada"]);
 const STATUS_AMBIGUO_APROVADO_CANCELADO = "orc.: aprovado | os.:cancelada";
 const STATUS_ABERTO = "em aberto";
 

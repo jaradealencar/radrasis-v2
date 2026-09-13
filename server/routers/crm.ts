@@ -11,6 +11,9 @@ import {
   CACHE_KEY_FECHADOS, refreshCrmFechadosCache, inicioJanelaFechadosCache,
 } from "../sync/crm-abertos-cache";
 import type { TrpcContext } from "../_core/context";
+import {
+  construirMapaConversaoClientes, calcularTaxaConversaoNovosDoMes, calcularProbabilidade,
+} from "../services/probabilidadeCompra";
 
 // ─── Helper: calcular turno a partir do horário ───────────────────────────────
 function calcTurno(date: Date): "manha" | "tarde" | "noite" {
@@ -317,6 +320,17 @@ export const crmRouter = router({
       } catch {
         // Se falhar, clientesComCompra fica vazio — nenhuma estrela será exibida (evita falso positivo)
       }
+      // Score de Probabilidade de Compra (Fase 1) — consulta local ao Postgres
+      // (historico_orcamentos), sem depender do MubiSys. Se falhar, todas as
+      // propostas ficam sem probabilidade em vez de quebrar a listagem inteira.
+      let mapaConversao: Awaited<ReturnType<typeof construirMapaConversaoClientes>> | null = null;
+      let taxaNovosDoMes: number | null = null;
+      try {
+        mapaConversao = await construirMapaConversaoClientes(db);
+        taxaNovosDoMes = await calcularTaxaConversaoNovosDoMes(db, clientesComCompra);
+      } catch {
+        mapaConversao = null;
+      }
       // Enriquecer com telefone e clienteNovo
       const propostasComTelefone = propostasFiltradas.map(p => {
         const telefone = telefonesMap[p.id] ?? null;
@@ -335,7 +349,10 @@ export const crmRouter = router({
         const clienteNovo = overrideStatus === "recorrente" ? false
           : overrideStatus === "novo" ? true
           : isNovoByHistory;
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo };
+        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao
+          ? calcularProbabilidade({ clienteNovo, nomeCliente, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes })
+          : { probabilidade: null as number | null, explicacao: [] as string[] };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
