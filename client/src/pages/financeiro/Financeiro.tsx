@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import CustosFixos from "./CustosFixos";
-import MarketingFinanceiro from "./MarketingFinanceiro";
 import PainelDRE from "./PainelDRE";
 import ObservacoesMensais from "./ObservacoesMensais";
 import ChatFinanceiro from "./ChatFinanceiro";
@@ -120,7 +119,7 @@ export default function Financeiro() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [expandedMes, setExpandedMes] = useState<number | null>(null);
 
-  const [abaAtiva, setAbaAtiva] = useState<"painel" | "custos" | "marketing" | "observacoes" | "dados-mensais" | "chat" | "radar-margens">("painel");
+  const [abaAtiva, setAbaAtiva] = useState<"painel" | "custos" | "observacoes" | "dados-mensais" | "chat" | "radar-margens">("painel");
   const utils = trpc.useUtils();
   const { data: registros = [] } = trpc.financeiro.list.useQuery({ ano: anoSel });
   const upsert = trpc.financeiro.upsert.useMutation({
@@ -337,17 +336,6 @@ export default function Financeiro() {
           Custos Fixos
         </button>
         <button
-          onClick={() => setAbaAtiva("marketing")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-            abaAtiva === "marketing"
-              ? "border-purple-500 text-purple-700 bg-purple-50"
-              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-        >
-          <TrendingUp size={15} />
-          Crescimento e Resultado
-        </button>
-        <button
           onClick={() => setAbaAtiva("observacoes")}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
             abaAtiva === "observacoes"
@@ -398,9 +386,6 @@ export default function Financeiro() {
 
       {/* Conteúdo da aba Custos Fixos */}
       {abaAtiva === "custos" && <CustosFixos />}
-
-      {/* Conteúdo da aba Marketing */}
-      {abaAtiva === "marketing" && <MarketingFinanceiro anoSel={anoSel} />}
 
       {/* Conteúdo da aba Assistente IA */}
       {abaAtiva === "chat" && <ChatFinanceiro />}

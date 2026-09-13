@@ -26,6 +26,7 @@ import KpiCard from "@/components/KpiCard";
 import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
+import MarketingFinanceiro from "@/pages/financeiro/MarketingFinanceiro";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1513,10 +1514,11 @@ function periodoInicialDoAno(ano: number): string {
   return ano === atual.getFullYear() ? `${ano}-${pad(atual.getMonth() + 1)}` : `${ano}-12`;
 }
 
-type Vista = "visao-geral" | "clientes" | "fila" | "funil" | "previsoes" | "assistente" | "perfil-cnpj" | "equipe";
+type Vista = "visao-geral" | "crescimento" | "clientes" | "fila" | "funil" | "previsoes" | "assistente" | "perfil-cnpj" | "equipe";
 
 const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "visao-geral", label: "Visão Geral", icon: "📊" },
+  { id: "crescimento", label: "Crescimento e Resultado", icon: "📈" },
   { id: "clientes", label: "Clientes", icon: "👥" },
   { id: "fila", label: "Fila de Ações", icon: "✅" },
   { id: "funil", label: "Funil", icon: "🔻" },
@@ -1532,7 +1534,11 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
   const [dataInicialMes, setDataInicialMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [dataFinalMes, setDataFinalMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [vista, setVista] = useState<Vista>("visao-geral");
-  const vistasVisiveis = useMemo(() => VISTAS.filter(v => v.id !== "equipe" || isAdmin), [isAdmin]);
+  // "equipe" e "crescimento" ficam restritas a admin/master/gestor — esta última
+  // mostra CAC, ROI, lucro/prejuízo e ponto de equilíbrio, dado sensível demais
+  // pra ficar exposto a qualquer papel que um dia ganhe acesso a Performance
+  // Comercial (hoje a página inteira já é admin-only, mas isso é reforço).
+  const vistasVisiveis = useMemo(() => VISTAS.filter(v => (v.id !== "equipe" && v.id !== "crescimento") || isAdmin), [isAdmin]);
 
   // Registra 1 acesso por montagem — dá ao gestor visibilidade de quem de fato
   // usa este painel (aba "Equipe"). Falha silenciosa: não deve travar a tela.
@@ -1589,6 +1595,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       </div>
 
       {vista === "visao-geral" && <VistaVisaoGeral dataInicial={dataInicial} dataFinal={dataFinal} />}
+      {vista === "crescimento" && isAdmin && <MarketingFinanceiro anoSel={anoSelecionado} />}
       {vista === "clientes" && <VistaClientes dataInicial={dataInicial} dataFinal={dataFinal} />}
       {vista === "fila" && <VistaFilaAcoes />}
       {vista === "funil" && <VistaFunil />}
