@@ -19,6 +19,7 @@
  */
 
 import { isOsNormalDb, normalizeEmpresaKey, MESES_INATIVIDADE_PARA_NOVO } from "../routers/performanceComercial";
+import { diasUteisEntre as diasUteisEntreCompartilhado } from "../../shared/dias-uteis";
 
 // ─── Constantes de negócio (parâmetros configuráveis — ver dicionário) ───────
 
@@ -302,18 +303,11 @@ function diasEntre(a: Date, b: Date): number {
  * semana de (inicio, fim], sem contar o próprio dia inicial. Não desconta
  * feriados (o sistema não tem calendário de feriados) — é uma aproximação
  * conservadora usada só para prazo de follow-up comercial, onde fins de semana
- * é o que mais distorce a régua de "quantos dias eu tenho pra agir". */
+ * é o que mais distorce a régua de "quantos dias eu tenho pra agir".
+ * Mantido aqui com a assinatura (fim, inicio) usada pelos call sites deste
+ * arquivo; delega para a versão canônica compartilhada (inicio, fim). */
 function diasUteisEntre(fim: Date, inicio: Date): number {
-  if (fim <= inicio) return 0;
-  const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate());
-  const alvo = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
-  let count = 0;
-  while (cursor < alvo) {
-    cursor.setDate(cursor.getDate() + 1);
-    const diaSemana = cursor.getDay(); // 0 = domingo, 6 = sábado
-    if (diaSemana !== 0 && diaSemana !== 6) count++;
-  }
-  return count;
+  return diasUteisEntreCompartilhado(inicio, fim);
 }
 
 // ─── Classificação de cliente ─────────────────────────────────────────────────
@@ -880,7 +874,7 @@ export interface OrcamentoRow {
 export const STATUS_GANHO = new Set(["aprovado", "em produção", "entregue", "concluída"]);
 export const STATUS_PERDIDO = new Set(["reprovado", "cancelada"]);
 const STATUS_AMBIGUO_APROVADO_CANCELADO = "orc.: aprovado | os.:cancelada";
-const STATUS_ABERTO = "em aberto";
+export const STATUS_ABERTO = "em aberto";
 
 
 export interface FunilOrcamentos {
@@ -1019,17 +1013,38 @@ export function faixaTicketDoValor(valor: number): string {
   return (FAIXAS_TICKET.find(f => valor <= f.ate) ?? FAIXAS_TICKET[FAIXAS_TICKET.length - 1]).faixa;
 }
 
-/** Conversão (ganhos vs. perdidos) por faixa de valor do orçamento — só
- * considera orçamentos já decididos (STATUS_GANHO/STATUS_PERDIDO); "em
- * aberto" ainda não tem desfecho e entraria como ruído. */
+/** Conversão (ganhos vs. perdidos) por faixa de valor do orçamento.
+ *
+ * IMPORTANTE (descoberto em 13/09/2026): contar só STATUS_GANHO/STATUS_PERDIDO
+ * e ignorar "Em aberto" como "ainda não decidido" produz um artefato grave
+ * nesta base — medido: de 5.920 orçamentos, 4.705 (79%) estão "Em aberto", mas
+ * só 3 EM TODA A HISTÓRIA foram formalmente marcados "Reprovado"/"Cancelada".
+ * A equipe de vendas, na prática, nunca fecha formalmente uma cotação perdida
+ * — ela só fica "Em aberto" para sempre. Ignorá-las inflava a conversão para
+ * ~99-100% em toda faixa (viés de sobrevivência: só quem ganha fecha o status).
+ * Medido: 84% dos "Em aberto" já estão com a validade vencida (mediana de 125
+ * dias de idade) — ou seja, são perdas de fato, só nunca formalizadas.
+ * Por isso, "Em aberto" com validade vencida conta como perdido (mesmo sinal
+ * já usado em decisoesVencidas, calcularFunilOrcamentos); só "Em aberto"
+ * ainda dentro do prazo fica de fora (esse sim ainda não tem desfecho). */
 export function calcularConversaoPorFaixaTicket(
-  rows: Array<{ status: string | null; total: string | null }>,
+  rows: Array<{ status: string | null; total: string | null; dataCadastro: string | null; validade: string | null }>,
+  hoje: Date,
 ): FaixaTicketConversao[] {
   const buckets = FAIXAS_TICKET.map(f => ({ faixa: f.faixa, ate: f.ate, ganhos: 0, perdidos: 0 }));
   for (const r of rows) {
     const statusKey = (r.status ?? "").trim().toLowerCase();
     const ganho = STATUS_GANHO.has(statusKey);
-    const perdido = STATUS_PERDIDO.has(statusKey);
+    let perdido = STATUS_PERDIDO.has(statusKey);
+    if (!ganho && !perdido && statusKey === STATUS_ABERTO) {
+      const dataCadastro = parseDataFlexivel(r.dataCadastro);
+      const validadeDias = toNum(r.validade);
+      if (dataCadastro && validadeDias > 0) {
+        const dataVencimento = new Date(dataCadastro);
+        dataVencimento.setDate(dataVencimento.getDate() + validadeDias);
+        if (dataVencimento < hoje) perdido = true;
+      }
+    }
     if (!ganho && !perdido) continue;
     const valor = toNum(r.total);
     const bucket = buckets.find(b => valor <= b.ate) ?? buckets[buckets.length - 1];

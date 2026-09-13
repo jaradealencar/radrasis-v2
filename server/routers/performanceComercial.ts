@@ -2189,8 +2189,10 @@ export const performanceComercialRouter = router({
       const rows = await db.select({
         status: historicoOrcamentos.status,
         total: historicoOrcamentos.total,
+        dataCadastro: historicoOrcamentos.dataCadastro,
+        validade: historicoOrcamentos.validade,
       }).from(historicoOrcamentos);
-      return calcularConversaoPorFaixaTicket(rows as any);
+      return calcularConversaoPorFaixaTicket(rows as any, new Date());
     }),
 
   /** Tempo entre orçamento aprovado e pedido fechado — aproximação por

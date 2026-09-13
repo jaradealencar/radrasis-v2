@@ -47,12 +47,24 @@ import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
  */
 const DIAS_PRESUMIDO_PERDIDO = 30;
 
-function foiPerdido(status: string | null, dataCadastro: string | null, agora: Date): boolean {
+/** "Em aberto" perdido presumido: usa a validade REAL do orçamento (mesmo
+ * critério de calcularConversaoPorFaixaTicket, inteligenciaClientes.ts —
+ * unificado em 13/09/2026 para os dois cálculos concordarem) quando ela está
+ * preenchida; cai para um limiar fixo de DIAS_PRESUMIDO_PERDIDO só nos ~9%
+ * dos casos sem validade cadastrada (medido em 13/09/2026), pra não perder
+ * esses orçamentos como "nunca decidido". */
+function foiPerdido(status: string | null, dataCadastro: string | null, validade: string | null, agora: Date): boolean {
   const statusKey = (status ?? "").trim().toLowerCase();
   if (STATUS_PERDIDO.has(statusKey)) return true;
   if (statusKey !== "em aberto") return false;
   const data = parseDataFlexivel(dataCadastro);
   if (!data) return false;
+  const validadeDias = parseFloat(String(validade ?? "0")) || 0;
+  if (validadeDias > 0) {
+    const dataVencimento = new Date(data);
+    dataVencimento.setDate(dataVencimento.getDate() + validadeDias);
+    return dataVencimento < agora;
+  }
   const dias = (agora.getTime() - data.getTime()) / (1000 * 60 * 60 * 24);
   return dias > DIAS_PRESUMIDO_PERDIDO;
 }
@@ -191,8 +203,13 @@ export async function construirMapaFaixaTicket(db: any): Promise<Map<string, Fai
   const linhas = await db.select({
     status: historicoOrcamentos.status,
     total: historicoOrcamentos.total,
+    dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade,
   }).from(historicoOrcamentos);
-  const faixas = calcularConversaoPorFaixaTicket(linhas as Array<{ status: string | null; total: string | null }>);
+  const faixas = calcularConversaoPorFaixaTicket(
+    linhas as Array<{ status: string | null; total: string | null; dataCadastro: string | null; validade: string | null }>,
+    new Date(),
+  );
   return new Map(faixas.map(f => [f.faixa, f]));
 }
 
@@ -256,6 +273,7 @@ export async function calcularTaxaConversaoNovosRecente(db: any): Promise<number
     empresa: historicoOrcamentos.empresa,
     status: historicoOrcamentos.status,
     dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade,
     mes: historicoOrcamentos.mes,
     ano: historicoOrcamentos.ano,
   }).from(historicoOrcamentos);
@@ -263,7 +281,7 @@ export async function calcularTaxaConversaoNovosRecente(db: any): Promise<number
   const agora = new Date();
   let ganhos = 0;
   let perdidos = 0;
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null; dataCadastro: string | null; mes: number; ano: number }>) {
+  for (const r of linhas as Array<{ empresa: string | null; status: string | null; dataCadastro: string | null; validade: string | null; mes: number; ano: number }>) {
     if (!janelasSet.has(`${r.ano}-${r.mes}`)) continue;
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     if (!empresaKey) continue;
@@ -273,7 +291,7 @@ export async function calcularTaxaConversaoNovosRecente(db: any): Promise<number
     if (!eraNovoNaData) continue; // já tinha comprado antes desse orçamento = não era "novo"
     const statusKey = (r.status ?? "").trim().toLowerCase();
     if (STATUS_GANHO.has(statusKey)) ganhos++;
-    else if (foiPerdido(r.status, r.dataCadastro, agora)) perdidos++;
+    else if (foiPerdido(r.status, r.dataCadastro, r.validade, agora)) perdidos++;
     // resto (em aberto recente, status ambíguo etc.): não entra na conta ainda
   }
   const total = ganhos + perdidos;
@@ -321,18 +339,19 @@ export async function construirMapaConversaoPorRegiao(db: any): Promise<Map<stri
     empresa: historicoOrcamentos.empresa,
     status: historicoOrcamentos.status,
     dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade,
   }).from(historicoOrcamentos);
 
   const agora = new Date();
   const porRegiao = new Map<string, { ganhos: number; perdidos: number }>();
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null; dataCadastro: string | null }>) {
+  for (const r of linhas as Array<{ empresa: string | null; status: string | null; dataCadastro: string | null; validade: string | null }>) {
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     const uf = estadoMaisRecentePorCliente.get(empresaKey)?.estado;
     const regiao = uf ? UF_PARA_REGIAO[uf] : undefined;
     if (!regiao) continue; // cliente sem UF conhecida — fora da contagem
     const statusKey = (r.status ?? "").trim().toLowerCase();
     const ganho = STATUS_GANHO.has(statusKey);
-    const perdido = !ganho && foiPerdido(r.status, r.dataCadastro, agora);
+    const perdido = !ganho && foiPerdido(r.status, r.dataCadastro, r.validade, agora);
     if (!ganho && !perdido) continue; // "em aberto" recente e afins: não decidido ainda
 
     let acc = porRegiao.get(regiao);
