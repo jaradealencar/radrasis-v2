@@ -39,13 +39,21 @@ import { listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 // para uma eventual UI que sinalize "desatualizado" quando muito velho.
 export const CRM_CACHE_TTL_MS = 20 * 60 * 1000;
 
-// 15 dias por padrão: cobre com folga o que realmente importa (o próprio
-// sistema classifica >30 dias como "perdido") e mantém o volume por chamada
-// menor — mas dado que o tempo de resposta do MubiSys varia muito (25s a
-// 117s medidos para a mesma janela em 12/09/2026), isso reduz o risco médio,
-// não o elimina. É por isso que a leitura nunca depende de terminar a tempo
-// dentro do request do usuário — ver nota de topo do arquivo.
-export const JANELA_ABERTOS_DIAS_PADRAO = 15;
+// 21 dias por padrão (setembro/2026: subiu de 15 para 21 junto da redefinição
+// das faixas de follow-up do CRM — ver crm_faixa_etiquetas/getFaixaEtiquetas
+// em server/routers/crm.ts). A Faixa 3 hoje termina em D+10 dias ÚTEIS, que no
+// pior caso (início numa sexta ou segunda) corresponde a até 14 dias CORRIDOS
+// — 21 dá folga confortável mesmo assim, e ainda mantém o volume por chamada
+// bem menor que os 30 dias do modo "buscar mais antigas". IMPORTANTE: esta
+// constante não é lida dinamicamente da config de faixas (que é editável via
+// CRMConfig/Inteligência de Clientes sem deploy) — se o gestor alargar a
+// Faixa 3 para muito além de D+10 dias úteis, revisar este valor também.
+// Quanto ao tamanho em si: dado que o tempo de resposta do MubiSys varia
+// muito (25s a 117s medidos para a mesma janela em 12/09/2026), aumentar a
+// janela reduz o risco médio de não cobrir uma proposta ainda aberta, mas não
+// elimina o risco de timeout — é por isso que a leitura nunca depende de
+// terminar a tempo dentro do request do usuário (ver nota de topo do arquivo).
+export const JANELA_ABERTOS_DIAS_PADRAO = 21;
 export const JANELA_ABERTOS_DIAS_MAX = 30;
 
 export const CACHE_KEY_ABERTOS_PADRAO = "crm_abertos_15d";

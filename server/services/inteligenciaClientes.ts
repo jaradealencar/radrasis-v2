@@ -313,6 +313,7 @@ export type ClassificacaoCliente =
 export interface AnaliseCliente {
   empresaKey: string;
   empresaExibicao: string;
+  vendedor: string; // vendedor da compra mais recente do cliente — mesma convenção de inteligencia_acoes_clientes
   totalComprasValidas: number;
   primeiraCompra: Date;
   ultimaCompra: Date;
@@ -399,6 +400,7 @@ export function analisarCliente(
   return {
     empresaKey: cliente.empresaKey,
     empresaExibicao: cliente.empresaExibicao,
+    vendedor: validas[validas.length - 1].vendedor || "Sem vendedor",
     totalComprasValidas: validas.length,
     primeiraCompra,
     ultimaCompra,

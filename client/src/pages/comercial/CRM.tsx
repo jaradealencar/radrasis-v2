@@ -28,10 +28,20 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
 } from "@/components/ui/tooltip";
 import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
+import type { FaixaConfig } from "@/components/FaixaDiasConfigForm";
+import { gerarDatasUteis } from "@shared/dias-uteis";
 import {
   Table, TableHeader, TableBody,
   TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
+
+// Mesmos defaults do backend (server/routers/crm.ts, FAIXA_DEFAULTS) — usado só
+// enquanto trpc.crm.getFaixaEtiquetas ainda não respondeu (primeiro carregamento).
+const FAIXA_DEFAULTS_CLIENTE: Record<1 | 2 | 3, FaixaConfig> = {
+  1: { faixa: 1, label: "Faixa 1 (1-2 du)", diasInicio: 1, diasFim: 2 },
+  2: { faixa: 2, label: "Faixa 2 (3-5 du)", diasInicio: 3, diasFim: 5 },
+  3: { faixa: 3, label: "Faixa 3 (6-10 du)", diasInicio: 6, diasFim: 10 },
+};
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const OPCOES_RESPOSTA = [
@@ -145,15 +155,33 @@ function parseDateLocal(dataCriacao: string): { y: number; m: number; d: number 
   }
   return null;
 }
-function getDates(dataCriacao: string): Date[] {
+// Gera as `quantidade` datas ÚTEIS D+1..D+N a partir da data de criação (pula
+// sábado/domingo — ver @shared/dias-uteis). `quantidade` normalmente é o
+// diasFim da Faixa 3 configurada (crm.getFaixaEtiquetas), cobrindo todas as
+// faixas de uma vez.
+function getDates(dataCriacao: string, quantidade: number): Date[] {
   const parsed = parseDateLocal(dataCriacao);
   if (!parsed) return [];
   const { y, m, d } = parsed;
-  return Array.from({ length: 15 }, (_, i) => new Date(y, m - 1, d + i + 1));
+  return gerarDatasUteis(new Date(y, m - 1, d), quantidade);
+}
+
+// Fatia as datas de uma faixa a partir da config (dias 1-indexados).
+function datasDaFaixa(dates: Date[], faixa: FaixaConfig): Date[] {
+  return dates.slice(faixa.diasInicio - 1, faixa.diasFim);
+}
+
+// A qual faixa pertence a N-ésima data útil (1-indexado) — null se estiver
+// num intervalo não coberto por nenhuma faixa configurada (gap deliberado).
+function faixaDaPosicao(posicao: number, faixas: FaixaConfig[]): 1 | 2 | 3 | null {
+  for (const f of faixas) {
+    if (posicao >= f.diasInicio && posicao <= f.diasFim) return f.faixa;
+  }
+  return null;
 }
 
 function toDateKey(d: Date) {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function buildWaLink(tel: string | null | undefined) {
@@ -169,8 +197,9 @@ function getCanalInfo(canal: string) {
 }
 
 // ─── PropostaRow ─────────────────────────────────────────────────────────────
-function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
+function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   p: Proposta; vendedor: string; onRefresh: () => void; showVendedor: boolean;
+  faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
 }) {
   const [modalStatus, setModalStatus] = useState(false);
   // modalContato: null = fechado; { date, desfazer } = aberto
@@ -208,7 +237,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
-  const dates = getDates(p.dataCriacao);
+  const dates = getDates(p.dataCriacao, faixasConfig[3].diasFim);
   const waLink = buildWaLink(p.telefone);
 
   // Mapear contatos por chave de data
@@ -225,9 +254,9 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
   const hoje = new Date();
   const hojeKey = toDateKey(hoje);
 
-  const rowBg = p.diasAberto > 15 ? "bg-red-50 hover:bg-red-100"
-    : p.diasAberto > 7 ? "bg-amber-50 hover:bg-amber-100"
-    : p.diasAberto > 3 ? "bg-yellow-50 hover:bg-yellow-100"
+  const rowBg = p.diasAberto > faixasConfig[3].diasFim ? "bg-red-50 hover:bg-red-100"
+    : p.diasAberto > faixasConfig[2].diasFim ? "bg-amber-50 hover:bg-amber-100"
+    : p.diasAberto > faixasConfig[1].diasFim ? "bg-yellow-50 hover:bg-yellow-100"
     : "bg-white hover:bg-gray-50";
 
   const confirmContato = () => {
@@ -281,52 +310,6 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
         })}
       </div>
     </>
-  );
-
-  // Renderizar um grupo de células (faixa) — mantido para compatibilidade
-  const renderFaixa = (faixaDates: Date[], label: string, bgCls: string) => (
-    <div className={`rounded-lg border px-2 py-1.5 ${bgCls}`}>
-      <div className="text-[9px] font-bold text-center text-gray-500 mb-1 uppercase tracking-wide">{label}</div>
-      <div className="text-[8px] text-center text-gray-400 mb-1.5 leading-tight">
-        {faixaDates.map(dt => fmtShort(dt)).join(" ")}
-      </div>
-      <div className="flex gap-1 justify-center">
-        {faixaDates.map((dt, i) => {
-          const key = toDateKey(dt);
-          const isPast = key <= hojeKey;
-          const contato = contatoMap[key];
-          const canalInfo = contato ? getCanalInfo(contato.canal) : null;
-
-          if (contato && canalInfo) {
-            return (
-              <button key={i}
-                onClick={() => setModalContato({ date: dt, desfazer: true })}
-                title={`${canalInfo.label} — clique para desfazer`}
-                className="w-6 h-6 rounded flex items-center justify-center text-sm hover:opacity-70 transition-opacity cursor-pointer bg-white border border-gray-200 shadow-sm"
-              >
-                {canalInfo.emoji}
-              </button>
-            );
-          }
-
-          // Todas as células são clicáveis — futuras ficam levemente opacas mas ainda clicáveis
-          const isFuture = key > hojeKey;
-          return (
-            <button key={i}
-              onClick={() => { setModalContato({ date: dt, desfazer: false }); setRespostaSelecionada(null); setObs(""); }}
-              title={`Registrar contato em ${fmtShort(dt)}`}
-              className={`w-6 h-6 rounded border-2 bg-white active:scale-95 transition-all cursor-pointer flex items-center justify-center ${
-                isFuture
-                  ? "border-blue-200 hover:border-blue-400 hover:bg-blue-50 text-blue-400"
-                  : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
-              }`}
-            >
-              <span className="text-[7px] font-bold text-gray-500 leading-tight">{fmtShort(dt)}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 
   return (
@@ -422,31 +405,31 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor }: {
         <TableCell className="whitespace-normal">
           <div className="flex gap-1.5 flex-wrap">
             <ScriptsFaixaPopover
-              faixa={1} label="Faixa 1 (1-3 du)" bgCls="bg-yellow-50 border-yellow-200"
+              faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
               nomeCliente={p.nomeContato || p.nomeCliente}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
             >
-              {renderFaixaContent(dates.slice(0, 3))}
+              {renderFaixaContent(datasDaFaixa(dates, faixasConfig[1]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={2} label="Faixa 2 (4-7 du)" bgCls="bg-pink-50 border-pink-200"
+              faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
               nomeCliente={p.nomeContato || p.nomeCliente}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
             >
-              {renderFaixaContent(dates.slice(3, 7))}
+              {renderFaixaContent(datasDaFaixa(dates, faixasConfig[2]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={3} label="Faixa 3 (8-15 du)" bgCls="bg-orange-50 border-orange-200"
+              faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
               nomeCliente={p.nomeContato || p.nomeCliente}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
             >
-              {renderFaixaContent(dates.slice(7, 15))}
+              {renderFaixaContent(datasDaFaixa(dates, faixasConfig[3]))}
             </ScriptsFaixaPopover>
           </div>
         </TableCell>
@@ -608,6 +591,9 @@ export default function CRM() {
   );
 
   const { data: vendedoresData } = trpc.crm.getVendedores.useQuery(undefined, { refetchOnWindowFocus: false, retry: 1 });
+  const { data: faixasData } = trpc.crm.getFaixaEtiquetas.useQuery();
+  const faixasConfig: Record<1 | 2 | 3, FaixaConfig> = faixasData ?? FAIXA_DEFAULTS_CLIENTE;
+  const faixasOrdenadas = useMemo(() => [faixasConfig[1], faixasConfig[2], faixasConfig[3]], [faixasConfig]);
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
   const stats = data?.stats;
@@ -625,26 +611,23 @@ export default function CRM() {
       }
     }
     if (filtroFaixa !== "todas") {
-      const hoje = new Date();
-      const hojeKey = `${hoje.getFullYear()}-${hoje.getMonth()}-${hoje.getDate()}`;
+      const hojeKey = toDateKey(new Date());
+      const maxDias = faixasConfig[3].diasFim;
       list = list.filter(p => {
-        const dates = getDates(p.dataCriacao);
+        const dates = getDates(p.dataCriacao, maxDias);
         if (dates.length === 0) return false;
-        const faixa1Dates = dates.slice(0, 5);
-        const faixa2Dates = dates.slice(5, 10);
-        const faixa3Dates = dates.slice(10, 15);
-        const inFaixa = (fd: Date[]) => fd.some(d => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` === hojeKey);
-        if (filtroFaixa === "faixa1") return inFaixa(faixa1Dates);
-        if (filtroFaixa === "faixa2") return inFaixa(faixa2Dates);
-        if (filtroFaixa === "faixa3") return inFaixa(faixa3Dates);
+        const inFaixa = (f: FaixaConfig) => datasDaFaixa(dates, f).some(d => toDateKey(d) === hojeKey);
+        if (filtroFaixa === "faixa1") return inFaixa(faixasConfig[1]);
+        if (filtroFaixa === "faixa2") return inFaixa(faixasConfig[2]);
+        if (filtroFaixa === "faixa3") return inFaixa(faixasConfig[3]);
         return true;
       });
     }
     if (apenasHoje) {
-      const hoje = new Date();
-      const hojeKey = toDateKey(hoje);
+      const hojeKey = toDateKey(new Date());
+      const maxDias = faixasConfig[3].diasFim;
       list = list.filter(p => {
-        const dates = getDates(p.dataCriacao);
+        const dates = getDates(p.dataCriacao, maxDias);
         return dates.some(d => toDateKey(d) === hojeKey);
       });
       // Ordenar do maior para o menor valor quando filtro Hoje estiver ativo
@@ -662,17 +645,17 @@ export default function CRM() {
     if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade]);
+  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
 
   // Alerta de acompanhamento atrasado
   const propostasAtrasadas = useMemo(() => {
-    const hoje = new Date();
-    const hojeKey = toDateKey(hoje);
+    const hojeKey = toDateKey(new Date());
+    const maxDias = faixasConfig[3].diasFim;
     return propostasAtivas.filter(p => {
-      const dates = getDates(p.dataCriacao);
+      const dates = getDates(p.dataCriacao, maxDias);
       const contatosDatas = new Set<string>();
       if (p.contato1?.data) { const d = new Date(p.contato1.data); contatosDatas.add(toDateKey(d)); }
       if (p.contato2?.data) { const d = new Date(p.contato2.data); contatosDatas.add(toDateKey(d)); }
@@ -681,33 +664,34 @@ export default function CRM() {
         return key < hojeKey && !contatosDatas.has(key);
       });
     });
-  }, [propostasAtivas]);
+  }, [propostasAtivas, faixasConfig]);
 
   // Painel de agenda diária: propostas que têm hoje dentro de sua faixa e ainda sem contato hoje
   const agendaDiaria = useMemo(() => {
-    const hoje = new Date();
-    const hojeKey = toDateKey(hoje);
+    const hojeKey = toDateKey(new Date());
+    const maxDias = faixasConfig[3].diasFim;
     const faixa1: Proposta[] = [];
     const faixa2: Proposta[] = [];
     const faixa3: Proposta[] = [];
     for (const p of propostasAtivas) {
-      const dates = getDates(p.dataCriacao); // 15 datas: D+1..D+15
+      const dates = getDates(p.dataCriacao, maxDias); // D+1..D+maxDias (dias úteis)
       const contatosDatas = new Set<string>();
       if (p.contato1?.data) { const d = new Date(p.contato1.data); contatosDatas.add(toDateKey(d)); }
       if (p.contato2?.data) { const d = new Date(p.contato2.data); contatosDatas.add(toDateKey(d)); }
       // Verificar se hoje está em alguma das faixas e sem contato
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < dates.length; i++) {
         const key = toDateKey(dates[i]);
         if (key === hojeKey && !contatosDatas.has(key)) {
-          if (i < 5) faixa1.push(p);
-          else if (i < 10) faixa2.push(p);
-          else faixa3.push(p);
+          const faixa = faixaDaPosicao(i + 1, faixasOrdenadas);
+          if (faixa === 1) faixa1.push(p);
+          else if (faixa === 2) faixa2.push(p);
+          else if (faixa === 3) faixa3.push(p);
           break;
         }
       }
     }
     return { faixa1, faixa2, faixa3 };
-  }, [propostasAtivas]);
+  }, [propostasAtivas, faixasConfig, faixasOrdenadas]);
 
   const vendedorAtual = vendedor || "Todos os vendedores";
 
@@ -824,9 +808,8 @@ export default function CRM() {
         </div>
         {/* Filtro Contatar Hoje */}
         {(() => {
-          const hoje = new Date();
-          const hojeKey = toDateKey(hoje);
-          const countHoje = propostas.filter(p => !p.meta2Contatos && getDates(p.dataCriacao).some(d => toDateKey(d) === hojeKey)).length;
+          const hojeKey = toDateKey(new Date());
+          const countHoje = propostas.filter(p => !p.meta2Contatos && getDates(p.dataCriacao, faixasConfig[3].diasFim).some(d => toDateKey(d) === hojeKey)).length;
           return (
             <button onClick={() => setApenasHoje(!apenasHoje)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${
@@ -856,9 +839,9 @@ export default function CRM() {
             <SelectTrigger className="h-9 text-sm w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas as faixas</SelectItem>
-              <SelectItem value="faixa1">Faixa 1 (D+1 a D+5)</SelectItem>
-              <SelectItem value="faixa2">Faixa 2 (D+6 a D+10)</SelectItem>
-              <SelectItem value="faixa3">Faixa 3 (D+11 a D+15)</SelectItem>
+              <SelectItem value="faixa1">{faixasConfig[1].label}</SelectItem>
+              <SelectItem value="faixa2">{faixasConfig[2].label}</SelectItem>
+              <SelectItem value="faixa3">{faixasConfig[3].label}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1025,7 +1008,7 @@ export default function CRM() {
               </TableHeader>
               <TableBody>
                 {propostasAtivas.map(p => (
-                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
+                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
                 ))}
               </TableBody>
             </Table>
@@ -1053,7 +1036,7 @@ export default function CRM() {
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <div className="text-xs font-bold text-yellow-700 mb-2 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
-                Faixa 1 — D+1 a D+5
+                {faixasConfig[1].label}
                 <span className="ml-auto bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200">
                   {agendaDiaria.faixa1.length}
                 </span>
@@ -1082,7 +1065,7 @@ export default function CRM() {
             <div className="bg-pink-50 border border-pink-200 rounded-lg p-3">
               <div className="text-xs font-bold text-pink-700 mb-2 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
-                Faixa 2 — D+6 a D+10
+                {faixasConfig[2].label}
                 <span className="ml-auto bg-pink-100 text-pink-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold border border-pink-200">
                   {agendaDiaria.faixa2.length}
                 </span>
@@ -1111,7 +1094,7 @@ export default function CRM() {
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
               <div className="text-xs font-bold text-orange-700 mb-2 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />
-                Faixa 3 — D+11 a D+15
+                {faixasConfig[3].label}
                 <span className="ml-auto bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold border border-orange-200">
                   {agendaDiaria.faixa3.length}
                 </span>
@@ -1168,7 +1151,7 @@ export default function CRM() {
                 </TableHeader>
                 <TableBody>
                   {propostasHistorico.map(p => (
-                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} />
+                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
                   ))}
                 </TableBody>
               </Table>

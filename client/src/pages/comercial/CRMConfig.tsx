@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Target, TrendingUp, Save, Tag } from "lucide-react";
+import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
 
 const VENDEDORES = [
   "Letícia Carozzo",
@@ -17,51 +18,6 @@ const VENDEDORES = [
   "Joice",
   "Rogério de Almeida",
 ];
-
-function FaixaEtiquetaForm({ faixa, defaultLabel }: { faixa: 1 | 2 | 3; defaultLabel: string }) {
-  const utils = trpc.useUtils();
-  const [label, setLabel] = useState(defaultLabel);
-  const [saved, setSaved] = useState(false);
-
-  const save = trpc.crm.saveFaixaEtiqueta.useMutation({
-    onSuccess: () => {
-      toast.success(`Etiqueta da Faixa ${faixa} salva!`);
-      setSaved(true);
-      utils.crm.getFaixaEtiquetas.invalidate();
-    },
-    onError: (e) => toast.error(`Erro: ${e.message}`),
-  });
-
-  const faixaColors = [
-    "",
-    "border-yellow-300 bg-yellow-50 text-yellow-800",
-    "border-pink-300 bg-pink-50 text-pink-800",
-    "border-orange-300 bg-orange-50 text-orange-800",
-  ];
-
-  return (
-    <div className="flex items-center gap-3 flex-wrap py-3 border-b last:border-0">
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 flex-shrink-0 ${faixaColors[faixa]}`}>
-        {faixa}
-      </div>
-      <Input
-        value={label}
-        onChange={e => { setLabel(e.target.value); setSaved(false); }}
-        placeholder={`Nome da Faixa ${faixa}`}
-        className="h-8 text-sm flex-1 min-w-[180px]"
-      />
-      <Button
-        size="sm"
-        className="h-8 text-xs gap-1"
-        disabled={save.isPending || !label.trim()}
-        onClick={() => save.mutate({ faixa, label: label.trim() })}
-      >
-        <Save className="w-3 h-3" />
-        {save.isPending ? "Salvando..." : saved ? "Salvo ✓" : "Salvar"}
-      </Button>
-    </div>
-  );
-}
 
 function MetaForm({ vendedor, mes, ano }: { vendedor: string; mes: number; ano: number }) {
   const utils = trpc.useUtils();
@@ -135,7 +91,6 @@ export default function CRMConfig() {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [ano, setAno] = useState(now.getFullYear());
-  const { data: etiquetas } = trpc.crm.getFaixaEtiquetas.useQuery();
 
   const meses = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -180,25 +135,22 @@ export default function CRMConfig() {
         </CardContent>
       </Card>
 
-      {/* Etiquetas das Faixas */}
+      {/* Faixas de follow-up */}
       <Card className="border shadow-sm">
         <CardHeader className="pb-2 pt-4 px-4">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Tag className="w-4 h-4 text-violet-500" />
-            Etiquetas das Faixas do CRM
+            Faixas de Follow-up do CRM
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
           <div className="text-xs text-muted-foreground mb-3">
-            Personalize os nomes das faixas exibidos no CRM para todos os vendedores.
+            Defina o nome e os dias úteis (após o envio do orçamento) de cada
+            faixa de acompanhamento, usados em Propostas em Aberto para todos
+            os vendedores. Também editável em Inteligência de Clientes, ao
+            lado da distribuição real de tempo até o fechamento.
           </div>
-          {([1, 2, 3] as const).map(f => (
-            <FaixaEtiquetaForm
-              key={f}
-              faixa={f}
-              defaultLabel={etiquetas?.[f] ?? `Faixa ${f}`}
-            />
-          ))}
+          <FaixaDiasConfigForm />
         </CardContent>
       </Card>
 

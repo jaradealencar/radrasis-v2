@@ -4,8 +4,10 @@ import {
   Users, UserPlus, TrendingDown, TrendingUp, ShoppingCart,
   AlertTriangle, Percent, CalendarDays, DollarSign, Repeat, Trophy, Info,
   CheckCircle2, XCircle, Clock3, ChevronRight, HelpCircle, Filter, Layers,
-  Download, Sparkles, Send, UserCheck, SlidersHorizontal,
+  Download, Sparkles, Send, UserCheck, SlidersHorizontal, MessageSquareText,
+  Eye, ShieldCheck,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Table, TableHeader, TableBody, TableFooter,
   TableRow, TableHead, TableCell,
@@ -18,11 +20,12 @@ import {
 } from "@/components/ui/tooltip";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip as ChartTooltip, ResponsiveContainer, Cell,
+  Tooltip as ChartTooltip, ResponsiveContainer, Cell, ReferenceArea,
 } from "recharts";
 import KpiCard from "@/components/KpiCard";
 import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -434,21 +437,101 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
 
 // ─── Vista: Clientes ────────────────────────────────────────────────────────
 
+/** Modal para o vendedor confirmar que entrou em contato com o cliente,
+ * com observação livre opcional — fica visível para o gestor na aba Equipe. */
+function ConfirmarContatoModal({ cliente, onClose, onConfirm, isPending }: {
+  cliente: { empresaKey: string; empresaExibicao: string } | null;
+  onClose: () => void;
+  onConfirm: (observacao: string) => void;
+  isPending: boolean;
+}) {
+  const [observacao, setObservacao] = useState("");
+  useEffect(() => { setObservacao(""); }, [cliente?.empresaKey]);
+
+  return (
+    <Dialog open={!!cliente} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Confirmar contato — {cliente?.empresaExibicao}</DialogTitle>
+          <DialogDescription>Registra que você entrou em contato com este cliente. Fica visível para o gestor.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <textarea
+            value={observacao} onChange={e => setObservacao(e.target.value)}
+            placeholder="O que foi conversado? (opcional)" rows={3}
+            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 resize-none"
+          />
+          <button
+            onClick={() => onConfirm(observacao)}
+            disabled={isPending}
+            className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg"
+          >
+            {isPending ? "Salvando..." : "Confirmar contato realizado"}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function diasAtras(data: string | Date): number {
+  const d = typeof data === "string" ? new Date(data) : data;
+  return Math.max(0, Math.round((Date.now() - d.getTime()) / 86400000));
+}
+
 function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFinal: string }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "master" || user?.role === "gestor";
   const [empresaSelecionada, setEmpresaSelecionada] = useState<string | null>(null);
   const [diasMin, setDiasMin] = useState("");
   const [diasMax, setDiasMax] = useState("");
   const [ordenarPorTicket, setOrdenarPorTicket] = useState(false);
+  const [filtroVendedor, setFiltroVendedor] = useState("");
+  const [contatandoCliente, setContatandoCliente] = useState<{ empresaKey: string; empresaExibicao: string } | null>(null);
   const { data, isLoading } = trpc.performanceComercial.listarClientesInteligencia.useQuery({ dataInicial, dataFinal });
+  const utils = trpc.useUtils();
+  const { data: contatos } = trpc.performanceComercial.getContatosClientes.useQuery({ limite: 500 });
+  const registrarContatoMut = trpc.performanceComercial.registrarContatoCliente.useMutation({
+    onSuccess: () => {
+      utils.performanceComercial.getContatosClientes.invalidate();
+      setContatandoCliente(null);
+    },
+  });
+
+  // Vendedor comum vê por padrão só a própria carteira; gestor/admin vê todos
+  // e pode trocar — mesmo padrão de client/src/pages/comercial/CRM.tsx.
+  useEffect(() => {
+    if (user && !isAdmin) setFiltroVendedor(user.name ?? "");
+  }, [user, isAdmin]);
+
+  const vendedores = useMemo(() => {
+    if (!data) return [];
+    return [...new Set(data.map(c => c.vendedor))].sort();
+  }, [data]);
+
+  const ultimoContatoPorCliente = useMemo(() => {
+    const mapa = new Map<string, { vendedor: string; contatadoEm: string; observacao: string | null }>();
+    for (const c of contatos ?? []) {
+      const atual = mapa.get(c.empresaKey);
+      if (!atual || new Date(c.contatadoEm) > new Date(atual.contatadoEm)) {
+        mapa.set(c.empresaKey, { vendedor: c.vendedor, contatadoEm: c.contatadoEm as unknown as string, observacao: c.observacao });
+      }
+    }
+    return mapa;
+  }, [contatos]);
 
   const filtrados = useMemo(() => {
     if (!data) return [];
     const min = diasMin !== "" ? Number(diasMin) : null;
     const max = diasMax !== "" ? Number(diasMax) : null;
-    let lista = data.filter(c => (min === null || c.diasDesdeUltimaCompra >= min) && (max === null || c.diasDesdeUltimaCompra <= max));
+    let lista = data.filter(c =>
+      (min === null || c.diasDesdeUltimaCompra >= min) &&
+      (max === null || c.diasDesdeUltimaCompra <= max) &&
+      (filtroVendedor === "" || c.vendedor === filtroVendedor)
+    );
     if (ordenarPorTicket) lista = [...lista].sort((a, b) => b.ticketMedioHistorico - a.ticketMedioHistorico);
     return lista;
-  }, [data, diasMin, diasMax, ordenarPorTicket]);
+  }, [data, diasMin, diasMax, ordenarPorTicket, filtroVendedor]);
 
   if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-64 animate-pulse" />;
   if (!data || data.length === 0) {
@@ -470,6 +553,16 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
           <button onClick={() => { setDiasMin(""); setDiasMax(""); }} className="text-[11px] text-slate-400 hover:text-slate-600 underline">limpar</button>
         )}
         <div className="w-px h-5 bg-slate-200" />
+        <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+        <select
+          value={filtroVendedor}
+          onChange={e => setFiltroVendedor(e.target.value)}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700"
+        >
+          <option value="">Todos os vendedores</option>
+          {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <div className="w-px h-5 bg-slate-200" />
         <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 cursor-pointer">
           <input type="checkbox" checked={ordenarPorTicket} onChange={e => setOrdenarPorTicket(e.target.checked)} />
           Priorizar por faturamento médio (ticket histórico)
@@ -490,36 +583,83 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Vendedor</TableHead>
                 <TableHead>Classificação</TableHead>
                 <TableHead>Probabilidade</TableHead>
                 <TableHead className="text-right">Valor no período</TableHead>
                 <TableHead className="text-right">Ticket médio histórico</TableHead>
                 <TableHead className="text-right">Dias desde última compra</TableHead>
                 <TableHead className="text-right">Razão de atraso</TableHead>
+                <TableHead>Último contato</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtrados.map(c => (
-                <TableRow key={c.empresaKey} className="cursor-pointer hover:bg-slate-50" onClick={() => setEmpresaSelecionada(c.empresaKey)}>
-                  <TableCell className="font-semibold">{c.empresaExibicao}</TableCell>
-                  <TableCell>
-                    <Badge className={CLASSIFICACAO_INFO[c.classificacao]?.cor ?? ""}>
-                      {CLASSIFICACAO_INFO[c.classificacao]?.icone} {CLASSIFICACAO_INFO[c.classificacao]?.label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell><ProbabilidadeBadge p={c.probabilidadeCompra} explicacao={c.probabilidadeExplicacao} /></TableCell>
-                  <TableCell className="text-right">{fmtBrl(c.valorJanelaAtual)}</TableCell>
-                  <TableCell className="text-right font-semibold">{fmtBrl(c.ticketMedioHistorico)}</TableCell>
-                  <TableCell className="text-right">{c.diasDesdeUltimaCompra}</TableCell>
-                  <TableCell className="text-right">{c.razaoAtraso !== null ? `${c.razaoAtraso.toFixed(1)}x` : "—"}</TableCell>
-                  <TableCell><ChevronRight className="w-3.5 h-3.5 text-slate-300" /></TableCell>
-                </TableRow>
-              ))}
+              {filtrados.map(c => {
+                const contato = ultimoContatoPorCliente.get(c.empresaKey);
+                return (
+                  <TableRow key={c.empresaKey} className="cursor-pointer hover:bg-slate-50" onClick={() => setEmpresaSelecionada(c.empresaKey)}>
+                    <TableCell className="font-semibold">{c.empresaExibicao}</TableCell>
+                    <TableCell className="text-slate-500">{c.vendedor}</TableCell>
+                    <TableCell>
+                      <Badge className={CLASSIFICACAO_INFO[c.classificacao]?.cor ?? ""}>
+                        {CLASSIFICACAO_INFO[c.classificacao]?.icone} {CLASSIFICACAO_INFO[c.classificacao]?.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell><ProbabilidadeBadge p={c.probabilidadeCompra} explicacao={c.probabilidadeExplicacao} /></TableCell>
+                    <TableCell className="text-right">{fmtBrl(c.valorJanelaAtual)}</TableCell>
+                    <TableCell className="text-right font-semibold">{fmtBrl(c.ticketMedioHistorico)}</TableCell>
+                    <TableCell className="text-right">{c.diasDesdeUltimaCompra}</TableCell>
+                    <TableCell className="text-right">{c.razaoAtraso !== null ? `${c.razaoAtraso.toFixed(1)}x` : "—"}</TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      {contato ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center gap-1 text-emerald-700 cursor-default">
+                                <CheckCircle2 className="w-3 h-3" /> {contato.vendedor} · há {diasAtras(contato.contatadoEm)}d
+                              </span>
+                            </TooltipTrigger>
+                            {contato.observacao && (
+                              <TooltipContent side="top" className="text-xs max-w-[240px]">{contato.observacao}</TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <span className="text-slate-300">Sem registro</span>
+                      )}
+                    </TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setContatandoCliente({ empresaKey: c.empresaKey, empresaExibicao: c.empresaExibicao })}
+                          className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-bold hover:bg-blue-100 whitespace-nowrap"
+                        >
+                          <MessageSquareText className="w-3 h-3" /> Confirmar contato
+                        </button>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-300 cursor-pointer" onClick={() => setEmpresaSelecionada(c.empresaKey)} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
         <FichaClienteModal empresaKey={empresaSelecionada} onClose={() => setEmpresaSelecionada(null)} />
+        <ConfirmarContatoModal
+          cliente={contatandoCliente}
+          isPending={registrarContatoMut.isPending}
+          onClose={() => setContatandoCliente(null)}
+          onConfirm={observacao => {
+            if (!contatandoCliente) return;
+            registrarContatoMut.mutate({
+              empresaKey: contatandoCliente.empresaKey,
+              empresa: contatandoCliente.empresaExibicao,
+              observacao: observacao || undefined,
+            });
+          }}
+        />
       </div>
     </div>
   );
@@ -712,8 +852,20 @@ function pctAcumulado(distribuicaoDias: { dias: number; percentual: number }[], 
     .reduce((s, d) => s + d.percentual, 0);
 }
 
+// Cores por faixa consistentes com CRM.tsx/ScriptsFaixaPopover (1=amarelo, 2=rosa, 3=laranja).
+const FAIXA_OVERLAY_COR: Record<1 | 2 | 3, string> = { 1: "#facc15", 2: "#f472b6", 3: "#fb923c" };
+
+/** Acha o label do balde de distribuicaoDias correspondente a um dia (1-indexado).
+ * Dias além do maior balde nomeado caem na cauda ("10+du") — usa o último balde. */
+function labelDoDia(dist: { dias: number; label: string }[], dia: number): string | undefined {
+  const exato = dist.find(d => d.dias === dia);
+  if (exato) return exato.label;
+  return dist.length > 0 ? dist[dist.length - 1].label : undefined;
+}
+
 function SecaoTempoFollowUp() {
   const { data, isLoading } = trpc.performanceComercial.getTempoOrcamentoPedido.useQuery();
+  const { data: faixasConfig } = trpc.crm.getFaixaEtiquetas.useQuery();
   if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-40 animate-pulse" />;
   if (!data) return null;
 
@@ -770,10 +922,30 @@ function SecaoTempoFollowUp() {
                       <Cell key={i} fill={d.dias === 0 ? "#0ea5e9" : "#38bdf8"} />
                     ))}
                   </Bar>
+                  {faixasConfig && ([1, 2, 3] as const).map(n => {
+                    const f = faixasConfig[n];
+                    const x1 = labelDoDia(dist, f.diasInicio);
+                    const x2 = labelDoDia(dist, f.diasFim);
+                    if (!x1 || !x2) return null;
+                    return (
+                      <ReferenceArea
+                        key={n}
+                        x1={x1}
+                        x2={x2}
+                        fill={FAIXA_OVERLAY_COR[n]}
+                        fillOpacity={0.14}
+                        stroke={FAIXA_OVERLAY_COR[n]}
+                        strokeOpacity={0.4}
+                        ifOverflow="extendDomain"
+                        label={{ value: f.label, position: "insideTop", fontSize: 9, fill: FAIXA_OVERLAY_COR[n] }}
+                      />
+                    );
+                  })}
                 </BarChart>
               </ResponsiveContainer>
               <p className="text-[10px] text-slate-400 mt-1">
                 Último balde ("{data.distribuicaoDias[data.distribuicaoDias.length - 1].label}") agrupa toda a cauda longa.
+                {faixasConfig && " As faixas sombreadas mostram as faixas de follow-up configuradas atualmente (editável abaixo)."}
               </p>
             </div>
           )}
@@ -796,6 +968,12 @@ function SecaoTempoFollowUp() {
               </div>
             </div>
           )}
+          <div className="px-4 pb-4 pt-1 border-t border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+              Faixas de follow-up do CRM — ajuste com base na distribuição acima
+            </p>
+            <FaixaDiasConfigForm variant="compact" />
+          </div>
         </>
       )}
     </div>
@@ -1212,6 +1390,118 @@ function VistaPerfilCnpj() {
   );
 }
 
+// ─── Vista: Equipe (gestor) ────────────────────────────────────────────────────
+// Pedido do gestor (13/09/2026): visibilidade de quem da equipe está de fato
+// usando este painel, e das confirmações de contato registradas por cliente.
+// Só aparece nas VISTAS para admin/master/gestor (ver componente principal).
+
+const JANELAS_ACESSO = [7, 30, 90] as const;
+
+function VistaEquipe() {
+  const [janelaDias, setJanelaDias] = useState<number>(30);
+  const [filtroVendedorContatos, setFiltroVendedorContatos] = useState("");
+  const { data: acessos, isLoading: loadingAcessos } = trpc.performanceComercial.getAcessosInteligenciaClientes.useQuery({ dias: janelaDias });
+  const { data: contatos, isLoading: loadingContatos } = trpc.performanceComercial.getContatosClientes.useQuery({
+    vendedor: filtroVendedorContatos || undefined,
+    limite: 200,
+  });
+
+  const vendedoresContato = useMemo(() => [...new Set((contatos ?? []).map(c => c.vendedor))].sort(), [contatos]);
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Eye className="w-4 h-4 text-slate-400" /> Acessos ao painel</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Quem entrou na aba "Clientes" da Inteligência de Clientes e quando foi a última vez.</p>
+          </div>
+          <div className="flex items-center gap-1">
+            {JANELAS_ACESSO.map(d => (
+              <button
+                key={d}
+                onClick={() => setJanelaDias(d)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                  janelaDias === d ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-200 hover:border-blue-400"
+                }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+        </div>
+        {loadingAcessos ? (
+          <div className="p-6 text-xs text-slate-400">Carregando...</div>
+        ) : !acessos || acessos.length === 0 ? (
+          <div className="p-8"><Empty><EmptyHeader><EmptyMedia variant="icon"><Eye /></EmptyMedia><EmptyTitle>Ninguém acessou este painel nos últimos {janelaDias} dias</EmptyTitle></EmptyHeader></Empty></div>
+        ) : (
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Usuário</TableHead>
+                <TableHead className="text-right">Acessos no período</TableHead>
+                <TableHead>Último acesso</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {acessos.map(a => (
+                <TableRow key={a.userId}>
+                  <TableCell className="font-semibold">{a.userName}</TableCell>
+                  <TableCell className="text-right">{a.qtdAcessos}</TableCell>
+                  <TableCell>{fmtDateTime(a.ultimoAcesso)} <span className="text-slate-400">(há {diasAtras(a.ultimoAcesso)}d)</span></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><MessageSquareText className="w-4 h-4 text-slate-400" /> Confirmações de contato</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Registros feitos pelos vendedores na aba "Clientes" (mais recentes primeiro, até 200).</p>
+          </div>
+          <select
+            value={filtroVendedorContatos}
+            onChange={e => setFiltroVendedorContatos(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700"
+          >
+            <option value="">Todos os vendedores</option>
+            {vendedoresContato.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        {loadingContatos ? (
+          <div className="p-6 text-xs text-slate-400">Carregando...</div>
+        ) : !contatos || contatos.length === 0 ? (
+          <div className="p-8"><Empty><EmptyHeader><EmptyMedia variant="icon"><MessageSquareText /></EmptyMedia><EmptyTitle>Nenhuma confirmação de contato registrada ainda</EmptyTitle></EmptyHeader></Empty></div>
+        ) : (
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Vendedor</TableHead>
+                <TableHead>Quando</TableHead>
+                <TableHead>Observação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {contatos.map(c => (
+                <TableRow key={c.id}>
+                  <TableCell className="font-semibold">{c.empresa}</TableCell>
+                  <TableCell>{c.vendedor}</TableCell>
+                  <TableCell className="whitespace-nowrap">{fmtDateTime(c.contatadoEm)}</TableCell>
+                  <TableCell className="text-slate-500 max-w-[320px] truncate" title={c.observacao ?? ""}>{c.observacao ?? "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 interface InteligenteClientesProps {
@@ -1223,7 +1513,7 @@ function periodoInicialDoAno(ano: number): string {
   return ano === atual.getFullYear() ? `${ano}-${pad(atual.getMonth() + 1)}` : `${ano}-12`;
 }
 
-type Vista = "visao-geral" | "clientes" | "fila" | "funil" | "previsoes" | "assistente" | "perfil-cnpj";
+type Vista = "visao-geral" | "clientes" | "fila" | "funil" | "previsoes" | "assistente" | "perfil-cnpj" | "equipe";
 
 const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "visao-geral", label: "Visão Geral", icon: "📊" },
@@ -1233,12 +1523,27 @@ const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "previsoes", label: "Previsões", icon: "🔮" },
   { id: "assistente", label: "Assistente", icon: "✨" },
   { id: "perfil-cnpj", label: "Perfil (CNPJ)", icon: "🏢" },
+  { id: "equipe", label: "Equipe", icon: "🛡️" },
 ];
 
 export default function InteligenteClientes({ anoSelecionado }: InteligenteClientesProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "master" || user?.role === "gestor";
   const [dataInicialMes, setDataInicialMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [dataFinalMes, setDataFinalMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [vista, setVista] = useState<Vista>("visao-geral");
+  const vistasVisiveis = useMemo(() => VISTAS.filter(v => v.id !== "equipe" || isAdmin), [isAdmin]);
+
+  // Registra 1 acesso por montagem — dá ao gestor visibilidade de quem de fato
+  // usa este painel (aba "Equipe"). Falha silenciosa: não deve travar a tela.
+  const registrarAcessoMut = trpc.performanceComercial.registrarAcessoInteligenciaClientes.useMutation();
+  const acessoRegistradoRef = useRef(false);
+  useEffect(() => {
+    if (acessoRegistradoRef.current || !user) return;
+    acessoRegistradoRef.current = true;
+    registrarAcessoMut.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const anoRef = useRef(anoSelecionado);
   useEffect(() => {
@@ -1270,7 +1575,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       </div>
 
       <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
-        {VISTAS.map(v => (
+        {vistasVisiveis.map(v => (
           <button
             key={v.id}
             onClick={() => setVista(v.id)}
@@ -1290,6 +1595,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       {vista === "previsoes" && <VistaPrevisoes />}
       {vista === "assistente" && <VistaAssistente dataInicial={dataInicial} dataFinal={dataFinal} />}
       {vista === "perfil-cnpj" && <VistaPerfilCnpj />}
+      {vista === "equipe" && isAdmin && <VistaEquipe />}
     </div>
   );
 }

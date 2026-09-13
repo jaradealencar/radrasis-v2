@@ -560,15 +560,16 @@ export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente
     .map((id) => scripts?.find((s) => s.id === id))
     .filter(Boolean) as ScriptRow[];
 
-  const FAIXA_LABELS: Record<number, string> = {
-    1:  "Faixa 1 — Follow-up imediato (dias úteis 1–3)",
-    2:  "Faixa 2 — Acompanhamento (dias úteis 4–7)",
-    3:  "Faixa 3 — Encerramento (dias úteis 8–15)",
+  // Faixas 1/2/3 usam o label vindo por prop (config de crm.getFaixaEtiquetas,
+  // ver CRM.tsx) — não hardcoded aqui, para não haver uma 2ª fonte divergente
+  // dos dias configurados. Faixas 11/12/13 são categorias de resposta do
+  // canal, sem config própria, mantidas fixas.
+  const FAIXA_LABELS_FIXOS: Record<number, string> = {
     11: "Scripts — Não retornou",
     12: "Scripts — Esperando cliente",
     13: "Scripts — Garantiu fechamento",
   };
-  const faixaLabel = FAIXA_LABELS[faixa] ?? label;
+  const faixaLabel = FAIXA_LABELS_FIXOS[faixa] ?? label;
   const safeColors = colors ?? FAIXA_COLORS[1];
 
   const vars = { nomeCliente, produto, valor, vendedor };

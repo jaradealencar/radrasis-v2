@@ -1,3 +1,10 @@
+import { adicionarDiasUteis } from "../../shared/dias-uteis";
+
+/** Reexportado de @shared/dias-uteis (isomórfico client+server) — mantido aqui
+ * para não quebrar os imports existentes de quem calcula prazo de entrega de
+ * produção a partir de "X DIAS ÚTEIS". */
+export { adicionarDiasUteis };
+
 /**
  * Converte data em dd/mm/aaaa (ou já em aaaa-mm-dd/ISO) para aaaa-mm-dd.
  * Usada para gravar em colunas `date` do Postgres (ex.: erp_os_cache.dataEntregaPrevista).
@@ -13,28 +20,6 @@ export function normalizarData(valor: string | null | undefined): string | null 
   const iso = texto.match(/^(\d{4}-\d{2}-\d{2})/);
   if (iso) return iso[1];
   return null;
-}
-
-/**
- * Calcula a data final adicionando dias úteis (pulando fins de semana) a uma data inicial.
- * @param dataInicial - Data de início (Date ou timestamp em ms)
- * @param diasUteis - Número de dias úteis a adicionar
- * @returns Data final como Date
- */
-export function adicionarDiasUteis(dataInicial: Date | number, diasUteis: number): Date {
-  const data = dataInicial instanceof Date ? new Date(dataInicial) : new Date(dataInicial);
-  let diasAdicionados = 0;
-
-  while (diasAdicionados < diasUteis) {
-    data.setDate(data.getDate() + 1);
-    const diaSemana = data.getDay();
-    // 0 = domingo, 6 = sábado
-    if (diaSemana !== 0 && diaSemana !== 6) {
-      diasAdicionados++;
-    }
-  }
-
-  return data;
 }
 
 /**

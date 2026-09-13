@@ -16,6 +16,16 @@ import {
   construirMapaFaixaTicket, construirMapaConversaoPorRegiao,
 } from "../services/probabilidadeCompra";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
+import { diasUteisEntre } from "../../shared/dias-uteis";
+
+// ─── Faixas de follow-up (config compartilhada) ──────────────────────────────
+export type FaixaConfig = { faixa: 1 | 2 | 3; label: string; diasInicio: number; diasFim: number };
+
+export const FAIXA_DEFAULTS: Record<1 | 2 | 3, FaixaConfig> = {
+  1: { faixa: 1, label: "Faixa 1 (1-2 du)", diasInicio: 1, diasFim: 2 },
+  2: { faixa: 2, label: "Faixa 2 (3-5 du)", diasInicio: 3, diasFim: 5 },
+  3: { faixa: 3, label: "Faixa 3 (6-10 du)", diasInicio: 6, diasFim: 10 },
+};
 
 // ─── Helper: calcular turno a partir do horário ───────────────────────────────
 function calcTurno(date: Date): "manha" | "tarde" | "noite" {
@@ -73,12 +83,6 @@ function parseDate(str: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function diasDesde(str: string | null | undefined): number | null {
-  const d = parseDate(str);
-  if (!d) return null;
-  return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
-}
-
 // Cache de "orçamentos abertos" (server/sync/crm-abertos-cache.ts): mantido quente por um
 // job agendado (server/sync/scheduled-sync-crm-abertos.ts, ver docs/cron-qstash.md) para
 // que getPropostas/getVendedores quase nunca precisem bater ao vivo no MubiSys — o fallback
@@ -106,7 +110,13 @@ async function buscarOrcamentosPeriodo(di: string, df: string): Promise<any[]> {
   return itens;
 }
 
-// Janela de follow-up sugerida com base nos dados históricos
+// Janela de follow-up sugerida com base nos dados históricos.
+// NOTA (2026-09): cortes em dias CORRIDOS, independentes da config de Faixas
+// do CRM (`crmFaixaEtiquetas`, dias ÚTEIS, editável via CRMConfig/Inteligência
+// de Clientes). O campo `janela` retornado a partir daqui não é consumido em
+// nenhum lugar do frontend hoje (ver tipo `Proposta` em `client/src/pages/
+// comercial/CRM.tsx`) — mantido como está para não alterar comportamento não
+// solicitado; considerar remoção ou realinhamento numa limpeza futura.
 function janelaSugerida(diasCriado: number): string {
   if (diasCriado <= 3) return "urgente";      // dentro da janela de 60%
   if (diasCriado <= 7) return "atencao";      // janela de 13,6%
@@ -225,7 +235,8 @@ export const crmRouter = router({
       const propostas = propostasAbertas.map((o: any) => {
         const orcId = String(o.id);
         const contatos = contatosPorOrc[orcId] ?? [];
-        const diasCriado = diasDesde(o.data_cadastro) ?? 0;
+        const dataCriacaoDate = parseDate(o.data_cadastro);
+        const diasCriado = dataCriacaoDate ? diasUteisEntre(dataCriacaoDate, new Date()) : 0;
         const primeiroContato = contatos.find(c => c.numeroContato === 1);
         const segundoContato = contatos.find(c => c.numeroContato === 2);
         const diasAteContato1 = primeiroContato
@@ -808,30 +819,64 @@ export const crmRouter = router({
       return { ok: true };
     }),
 
-  // ─── Etiquetas das Faixas ────────────────────────────────────────────────────
+  // ─── Faixas de follow-up (dias úteis + etiqueta) ─────────────────────────────
+  // Fonte única de verdade para os cortes de dias das 3 faixas de follow-up,
+  // consumida por CRM.tsx (colunas/filtro/agenda), ScriptsFaixaPopover.tsx,
+  // CRMConfig.tsx e InteligenteClientes.tsx (SecaoTempoFollowUp). Defaults
+  // calibrados em setembro/2026 pela distribuição real de dias úteis até o
+  // fechamento (calcularTempoOrcamentoPedido): cum. 0-2du≈67%, 0-5du≈79%,
+  // 0-10du≈89% dos orçamentos ganhos observados.
   getFaixaEtiquetas: protectedProcedure
     .query(async () => {
       const db = (await getDb())!;
       const rows = await db.select().from(crmFaixaEtiquetas).orderBy(crmFaixaEtiquetas.faixa);
-      // Garantir que as 3 faixas existam com valores padrão
-      const defaults: Record<number, string> = { 1: 'Faixa 1 (1-3 du)', 2: 'Faixa 2 (4-7 du)', 3: 'Faixa 3 (8-15 du)' };
-      const result: Record<number, string> = { ...defaults };
-      for (const row of rows) result[row.faixa] = row.label;
+      const result: Record<1 | 2 | 3, FaixaConfig> = { ...FAIXA_DEFAULTS };
+      for (const row of rows) {
+        if (row.faixa === 1 || row.faixa === 2 || row.faixa === 3) {
+          result[row.faixa] = { faixa: row.faixa, label: row.label, diasInicio: row.diasInicio, diasFim: row.diasFim };
+        }
+      }
       return result;
     }),
 
-  saveFaixaEtiqueta: protectedProcedure
+  saveFaixas: protectedProcedure
     .input(z.object({
-      faixa: z.number().min(1).max(3),
-      label: z.string().min(1).max(128),
+      faixas: z.array(z.object({
+        faixa: z.number().int().min(1).max(3),
+        label: z.string().min(1).max(128),
+        diasInicio: z.number().int().min(1),
+        diasFim: z.number().int().min(1),
+      })).length(3),
     }))
     .mutation(async ({ input }) => {
+      const ordenadas = [...input.faixas].sort((a, b) => a.faixa - b.faixa);
+      const faixasVistas = new Set(ordenadas.map(f => f.faixa));
+      if (faixasVistas.size !== 3 || ![1, 2, 3].every(f => faixasVistas.has(f))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "É necessário enviar exatamente as faixas 1, 2 e 3." });
+      }
+      for (const f of ordenadas) {
+        if (f.diasFim < f.diasInicio) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Faixa ${f.faixa}: o dia final não pode ser menor que o dia inicial.` });
+        }
+      }
+      for (let i = 1; i < ordenadas.length; i++) {
+        if (ordenadas[i].diasInicio <= ordenadas[i - 1].diasFim) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Faixa ${ordenadas[i].faixa} (dia ${ordenadas[i].diasInicio}) não pode começar antes ou no mesmo dia em que termina a Faixa ${ordenadas[i - 1].faixa} (dia ${ordenadas[i - 1].diasFim}).`,
+          });
+        }
+      }
       const db = (await getDb())!;
-      const existing = await db.select().from(crmFaixaEtiquetas).where(eq(crmFaixaEtiquetas.faixa, input.faixa));
-      if (existing.length > 0) {
-        await db.update(crmFaixaEtiquetas).set({ label: input.label }).where(eq(crmFaixaEtiquetas.faixa, input.faixa));
-      } else {
-        await db.insert(crmFaixaEtiquetas).values({ faixa: input.faixa, label: input.label });
+      for (const f of ordenadas) {
+        const existing = await db.select().from(crmFaixaEtiquetas).where(eq(crmFaixaEtiquetas.faixa, f.faixa));
+        if (existing.length > 0) {
+          await db.update(crmFaixaEtiquetas)
+            .set({ label: f.label, diasInicio: f.diasInicio, diasFim: f.diasFim })
+            .where(eq(crmFaixaEtiquetas.faixa, f.faixa));
+        } else {
+          await db.insert(crmFaixaEtiquetas).values({ faixa: f.faixa, label: f.label, diasInicio: f.diasInicio, diasFim: f.diasFim });
+        }
       }
       return { ok: true };
     }),

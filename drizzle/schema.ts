@@ -1523,6 +1523,39 @@ export const inteligenciaAcoesClientes = pgTable("inteligencia_acoes_clientes", 
 export type InteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferSelect;
 export type InsertInteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferInsert;
 
+// ─── Inteligência de Clientes — acesso ao painel e confirmação de contato ────
+// Pedido do gestor (13/09/2026): saber se os vendedores estão de fato usando a
+// tela "Clientes" da Inteligência de Clientes, e permitir que cada vendedor
+// confirme (com observação livre) que entrou em contato com um cliente listado.
+// Tabelas dedicadas em vez de reaproveitar crm_atividade_log/crm_contatos
+// porque aquelas são específicas do módulo CRM de propostas (aderência de
+// rotina manhã/tarde, contato por orçamento) — misturar mudaria a semântica
+// dos cálculos de auditoria já existentes ali.
+export const inteligenciaClientesAcessos = pgTable("inteligencia_clientes_acessos", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(), // user.id (Better Auth)
+  userName: varchar("user_name", { length: 128 }).notNull(),
+  acessadoEm: timestamp("acessado_em").defaultNow().notNull(),
+}, (t) => ({
+  userIdx: index("inteligencia_clientes_acessos_user_idx").on(t.userId, t.acessadoEm),
+}));
+export type InteligenciaClientesAcesso = typeof inteligenciaClientesAcessos.$inferSelect;
+export type InsertInteligenciaClientesAcesso = typeof inteligenciaClientesAcessos.$inferInsert;
+
+export const inteligenciaClientesContatos = pgTable("inteligencia_clientes_contatos", {
+  id: serial("id").primaryKey(),
+  empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
+  empresa: varchar("empresa", { length: 256 }).notNull(),
+  userId: text("user_id").notNull(), // user.id (Better Auth)
+  vendedor: varchar("vendedor", { length: 128 }).notNull(), // nome de exibição no momento do registro
+  observacao: text("observacao"),
+  contatadoEm: timestamp("contatado_em").defaultNow().notNull(),
+}, (t) => ({
+  empresaIdx: index("inteligencia_clientes_contatos_empresa_idx").on(t.empresaKey, t.contatadoEm),
+}));
+export type InteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferSelect;
+export type InsertInteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferInsert;
+
 // ─── Qualificação de leads B2B por CNPJ ──────────────────────────────────────
 // Ver docs/inteligencia-mercado-leads-cnpj.md — fonte de dados OpenCNPJ,
 // regra de rejeição e matriz de score em server/services/qualificacaoLeadCnpj.ts.
@@ -1671,6 +1704,8 @@ export const crmFaixaEtiquetas = pgTable("crm_faixa_etiquetas", {
   id: serial("id").primaryKey(),
   faixa: integer("faixa").notNull(),
   label: varchar("label", { length: 128 }).notNull(),
+  diasInicio: integer("dias_inicio").notNull(),
+  diasFim: integer("dias_fim").notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type CrmFaixaEtiqueta = typeof crmFaixaEtiquetas.$inferSelect;
