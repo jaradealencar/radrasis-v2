@@ -1,10 +1,15 @@
-import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
+import { router, publicProcedure, protectedProcedure, requireRole } from "../_core/trpc";
 import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup } from "../../drizzle/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, inteligenciaClientesAcessos, inteligenciaClientesContatos } from "../../drizzle/schema";
+import { eq, and, desc, gte, sql } from "drizzle-orm";
+
+// Endpoints de monitoramento de equipe (acessos ao painel) — só quem pode agir
+// como gestor sobre a equipe comercial deve ver isso, mesmo padrão de
+// isAdmin usado em client/src/pages/comercial/CRM.tsx.
+const gestorProcedure = protectedProcedure.use(requireRole("admin", "master", "gestor"));
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
@@ -202,11 +207,22 @@ export function ultimaCompraAntesDe(compras: CompraMinima[], mes: number, ano: n
 }
 
 /** Aplica a regra de "cliente novo": sem compra anterior, ou última compra há
- * MESES_INATIVIDADE_PARA_NOVO meses ou mais (contagem de meses de calendário). */
-export function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | undefined, mes: number, ano: number): boolean {
+ * `mesesInatividade` meses ou mais (contagem de meses de calendário). O 4º
+ * parâmetro é opcional e default MESES_INATIVIDADE_PARA_NOVO (6) — todo
+ * call-site existente (Performance Comercial, Inteligência de Clientes,
+ * snapshots de performance_auditada) continua passando só 3 argumentos e tem
+ * comportamento idêntico. Só o relatório de Marketing/Crescimento e Resultado
+ * passa um valor vindo de marketing_config, para não afetar as demais telas
+ * já validadas — ver server/services/marketingFinanceiroClientes.ts. */
+export function isClienteNovoPorRecencia(
+  ultima: { mes: number; ano: number } | undefined,
+  mes: number,
+  ano: number,
+  mesesInatividade: number = MESES_INATIVIDADE_PARA_NOVO,
+): boolean {
   if (!ultima) return true;
   const gapMeses = (ano - ultima.ano) * 12 + (mes - ultima.mes);
-  return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
+  return gapMeses >= mesesInatividade;
 }
 
 /** Reindexação de um mapa "última compra por empresa" (chaves em toLowerCase().trim(),
@@ -218,7 +234,7 @@ export function isClienteNovoPorRecencia(ultima: { mes: number; ano: number } | 
  * true, fazendo o cliente contar como "novo" mesmo já tendo comprado antes. Quando
  * ambos os lados da comparação vêm do banco local (ex.: getMultiMes, insightsComerciais),
  * essa reindexação não é necessária pois a grafia já é idêntica dos dois lados. */
-function reindexarPorChaveNormalizada(mapa: Map<string, { mes: number; ano: number }>): Map<string, { mes: number; ano: number }> {
+export function reindexarPorChaveNormalizada(mapa: Map<string, { mes: number; ano: number }>): Map<string, { mes: number; ano: number }> {
   const normalizado = new Map<string, { mes: number; ano: number }>();
   for (const [chave, ultima] of mapa) {
     const chaveNorm = normalizeEmpresaKey(chave);
@@ -590,7 +606,7 @@ type VendedorNovosStats = {
  * pontuação) — sem normalizar, "clientesNovosUnicos" pode divergir do mesmo
  * cálculo feito em construirBaseClientes (Inteligência de Clientes), que já
  * normaliza por padrão. */
-function calcularNovosDoMesLocal(
+export function calcularNovosDoMesLocal(
   mes: number,
   ano: number,
   osDoAno: Array<{ empresa: string | null; tipoOs: string | null; status: string | null; mes: number; valorOs: string | null; valorTotal: string | null }>,
@@ -2181,6 +2197,93 @@ export const performanceComercialRouter = router({
       if (campos.resultadoObservacao !== undefined) set.resultadoObservacao = campos.resultadoObservacao;
       await db.update(inteligenciaAcoesClientes).set(set).where(eq(inteligenciaAcoesClientes.id, id));
       return { ok: true };
+    }),
+
+  // ─── Inteligência de Clientes — acesso ao painel e confirmação de contato ──
+  // Pedido do gestor (13/09/2026): saber se a equipe está de fato usando a aba
+  // "Clientes" e permitir que cada vendedor confirme contato com um cliente
+  // listado, com observação livre (ver drizzle/schema.ts para o porquê de
+  // tabelas dedicadas em vez de reaproveitar crm_atividade_log/crm_contatos).
+
+  /** Registra um acesso à aba "Clientes" — chamado uma vez por montagem do
+   * componente no front. Silencioso o suficiente para não travar a tela por
+   * causa disso: falhas aqui não devem impedir o uso do painel. */
+  registrarAcessoInteligenciaClientes: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) return { ok: false };
+      await db.insert(inteligenciaClientesAcessos).values({
+        userId: ctx.user.id,
+        userName: ctx.user.name,
+      });
+      return { ok: true };
+    }),
+
+  /** Para o gestor: quem da equipe acessou a aba nos últimos `dias` dias,
+   * quantas vezes e quando foi a última. */
+  getAcessosInteligenciaClientes: gestorProcedure
+    .input(z.object({ dias: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const desde = new Date(Date.now() - input.dias * 86400000);
+      const rows = await db.select().from(inteligenciaClientesAcessos)
+        .where(gte(inteligenciaClientesAcessos.acessadoEm, desde))
+        .orderBy(desc(inteligenciaClientesAcessos.acessadoEm));
+      const porUsuario = new Map<string, { userId: string; userName: string; qtdAcessos: number; ultimoAcesso: Date }>();
+      for (const r of rows) {
+        const atual = porUsuario.get(r.userId);
+        if (!atual) {
+          porUsuario.set(r.userId, { userId: r.userId, userName: r.userName, qtdAcessos: 1, ultimoAcesso: r.acessadoEm });
+        } else {
+          atual.qtdAcessos++;
+        }
+      }
+      return [...porUsuario.values()].sort((a, b) => b.ultimoAcesso.getTime() - a.ultimoAcesso.getTime());
+    }),
+
+  /** Vendedor confirma que entrou em contato com um cliente da lista, com
+   * observação livre opcional — fica visível para o gestor em getContatosClientes. */
+  registrarContatoCliente: protectedProcedure
+    .input(z.object({
+      empresaKey: z.string().min(1),
+      empresa: z.string().min(1),
+      observacao: z.string().max(2000).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      await db.insert(inteligenciaClientesContatos).values({
+        empresaKey: input.empresaKey,
+        empresa: input.empresa,
+        userId: ctx.user.id,
+        vendedor: ctx.user.name,
+        observacao: input.observacao || null,
+      });
+      return { ok: true };
+    }),
+
+  /** Lista confirmações de contato — sem filtro, dá a ficha de um cliente
+   * (histórico); com filtro de vendedor/dias, dá a visão do gestor sobre a
+   * equipe toda. */
+  getContatosClientes: protectedProcedure
+    .input(z.object({
+      empresaKey: z.string().optional(),
+      vendedor: z.string().optional(),
+      dias: z.number().int().min(1).max(365).optional(),
+      limite: z.number().int().min(1).max(500).default(200),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const filtros = [] as any[];
+      if (input.empresaKey) filtros.push(eq(inteligenciaClientesContatos.empresaKey, input.empresaKey));
+      if (input.vendedor) filtros.push(eq(inteligenciaClientesContatos.vendedor, input.vendedor));
+      if (input.dias) filtros.push(gte(inteligenciaClientesContatos.contatadoEm, new Date(Date.now() - input.dias * 86400000)));
+      return db.select().from(inteligenciaClientesContatos)
+        .where(filtros.length > 0 ? and(...filtros) : undefined)
+        .orderBy(desc(inteligenciaClientesContatos.contatadoEm))
+        .limit(input.limite);
     }),
 
   // ─── Funil de Orçamentos (analítico, histórico local — complementa o CRM operacional

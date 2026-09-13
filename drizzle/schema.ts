@@ -1336,14 +1336,23 @@ export type ClienteOverride = typeof clienteOverrides.$inferSelect;
 export type InsertClienteOverride = typeof clienteOverrides.$inferInsert;
 
 // ─── Custo de Marketing por mês ───────────────────────────────────────────────
+// investimentoAquisicao/investimentoReativacao/investimento são nullable (sem
+// default) de propósito: null = "mês não preenchido", "0.00" = "preenchido
+// como zero explicitamente". Antes desta migração o schema forçava default
+// "0", tornando as duas situações indistinguíveis — ver relatório de
+// Marketing (MarketingFinanceiro.tsx) e shared/marketing-financeiro.ts.
+// Linhas gravadas antes da migração com "0.00" continuam ambíguas (o dado de
+// "nunca preenchido" não existia antes) — não há como recuperar isso
+// retroativamente, só documentar a limitação na UI.
 export const custoMarketing = pgTable("custo_marketing", {
   id: serial("id").primaryKey(),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
-  investimentoAquisicao: decimal("investimento_aquisicao", { precision: 14, scale: 2 }).notNull().default("0"),
-  investimentoReativacao: decimal("investimento_reativacao", { precision: 14, scale: 2 }).notNull().default("0"),
-  // Soma de investimentoAquisicao + investimentoReativacao, mantida por compatibilidade com consumidores existentes
-  investimento: decimal("investimento", { precision: 14, scale: 2 }).notNull().default("0"),
+  investimentoAquisicao: decimal("investimento_aquisicao", { precision: 14, scale: 2 }),
+  investimentoReativacao: decimal("investimento_reativacao", { precision: 14, scale: 2 }),
+  // Soma de investimentoAquisicao + investimentoReativacao, mantida por compatibilidade com consumidores existentes.
+  // null somente se os dois componentes forem null.
+  investimento: decimal("investimento", { precision: 14, scale: 2 }),
   observacao: text("observacao"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -1388,6 +1397,70 @@ export const custoMarketingItens = pgTable("custo_marketing_itens", {
 });
 export type CustoMarketingItem = typeof custoMarketingItens.$inferSelect;
 export type InsertCustoMarketingItem = typeof custoMarketingItens.$inferInsert;
+
+// ─── Configuração do relatório de Marketing (metas, semáforos, parâmetros) ────
+// Linha única (sempre id=1 na prática — getMarketingConfig busca a mais
+// recente e usa defaults em código se a tabela estiver vazia, mesmo padrão de
+// crm.getFaixaEtiquetas/FAIXA_DEFAULTS). Os defaults abaixo são idênticos ao
+// comportamento hardcoded que o relatório tinha antes desta config existir
+// (6 meses de inatividade, 51% de margem estimada, sem janela de atribuição)
+// — isso garante que os números não mudam até o usuário salvar uma alteração.
+export const marketingConfig = pgTable("marketing_config", {
+  id: serial("id").primaryKey(),
+  // Meses de calendário sem compra para o cliente contar como "reativado" ao
+  // comprar de novo. Independente de MESES_INATIVIDADE_PARA_NOVO
+  // (performanceComercial.ts) — de propósito: mudar este valor não pode
+  // afetar Performance Comercial/Inteligência de Clientes/snapshots já
+  // auditados, só o relatório de Marketing. Ver server/services/marketingFinanceiroClientes.ts.
+  mesesInatividadeReativacao: integer("mesesInatividadeReativacao").notNull().default(6),
+  // Usado só como fallback quando o pedido não tem historico_os.contribuicaoReais
+  // preenchido — o método primário de margem é o valor real por pedido.
+  percentualMargemFallback: decimal("percentualMargemFallback", { precision: 5, scale: 2 }).notNull().default("51.00"),
+  cacMaximo: decimal("cacMaximo", { precision: 14, scale: 2 }),
+  custoReativacaoMaximo: decimal("custoReativacaoMaximo", { precision: 14, scale: 2 }),
+  roiMinimoPct: decimal("roiMinimoPct", { precision: 7, scale: 2 }),
+  ticketMedioMinimo: decimal("ticketMedioMinimo", { precision: 14, scale: 2 }),
+  metaClientesNovosMes: integer("metaClientesNovosMes"),
+  metaClientesReativadosMes: integer("metaClientesReativadosMes"),
+  aumentoMaximoCacMensalPct: decimal("aumentoMaximoCacMensalPct", { precision: 7, scale: 2 }),
+  // 0 = sem janela (atribui todo o faturamento do mês calendário ao grupo do
+  // cliente naquele mês — comportamento atual/padrão). 30/60/90 = atribui só
+  // o faturamento do cliente dentro de N dias da data em que ele virou
+  // novo/reativado.
+  janelaAtribuicaoDias: integer("janelaAtribuicaoDias").notNull().default(0),
+  // ── Campos da aba "Resultado Geral e Ponto de Equilíbrio" ──
+  // Direcionador usado para ratear custo fixo em análises gerenciais por
+  // pedido/vendedor (nunca na ponte de resultado consolidada, que sempre usa
+  // financeiro_mensal.despesasFixas real). Valores válidos: "pedidos" |
+  // "faturamento" | "custo_direto" | "rateio_erp" | "personalizado".
+  // "rateio_erp" reaproveita historico_os.custoFixo (já calculado pelo MubiSys).
+  direcionadorRateio: varchar("direcionadorRateio", { length: 32 }).notNull().default("faturamento"),
+  // Documenta a suposição de que despesasFixas/despesasFinanceiras de
+  // financeiro_mensal NÃO incluem o investimento de custo_marketing (fontes
+  // diferentes) — se marcado true, o investimento de marketing não é
+  // subtraído de novo como linha própria na ponte de resultado, para não
+  // contar 2x.
+  custosFinanceirosIncluemMarketing: boolean("custosFinanceirosIncluemMarketing").notNull().default(false),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type MarketingConfig = typeof marketingConfig.$inferSelect;
+export type InsertMarketingConfig = typeof marketingConfig.$inferInsert;
+
+// ─── Auditoria de Configuração de Marketing ──────────────────────────────────
+// Mesmo padrão/motivo de auditoriaCustoMarketing acima — registrar quem/quando
+// alterou metas e parâmetros que mudam os números do relatório inteiro.
+export const marketingConfigAuditoria = pgTable("marketing_config_auditoria", {
+  id: serial("id").primaryKey(),
+  acao: auditoriaAcaoEnum("acao").notNull(),
+  usuarioId: text("usuarioId"),
+  usuarioNome: varchar("usuarioNome", { length: 128 }),
+  usuarioRole: varchar("usuarioRole", { length: 32 }),
+  valoresAnteriores: text("valoresAnteriores"), // JSON: snapshot antes da alteração (null em CRIACAO)
+  valoresNovos: text("valoresNovos"), // JSON: snapshot depois da alteração (null em EXCLUSAO)
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type MarketingConfigAuditoria = typeof marketingConfigAuditoria.$inferSelect;
+export type InsertMarketingConfigAuditoria = typeof marketingConfigAuditoria.$inferInsert;
 
 // ─── Custos Fixos Mensais ─────────────────────────────────────────────────────
 export const custosFixos = pgTable("custos_fixos", {

@@ -204,6 +204,20 @@
       "when": 1789309435597,
       "tag": "0028_glamorous_misty_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789310324223,
+      "tag": "0029_long_shatterstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789322998578,
+      "tag": "0030_sturdy_bruce_banner",
+      "breakpoints": true
     }
   ]
 }

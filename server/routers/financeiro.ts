@@ -16,7 +16,7 @@ type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 /** Agrega historico_os por mês e por vendedor — mesma base usada pela aba
  *  Radar de Margens e pelo contexto do chat de IA (ambos precisam do mesmo
  *  cálculo de resultado líquido / margem de contribuição por O.S.). */
-async function calcularRadarMargens(db: Db) {
+export async function calcularRadarMargens(db: Db) {
   const rows = await db.select({
     mes: historicoOs.mes,
     ano: historicoOs.ano,
@@ -596,8 +596,12 @@ export const financeiroRouter = router({
     .input(z.object({
       mes: z.number().min(1).max(12),
       ano: z.number().min(2020).max(2100),
-      investimentoAquisicao: z.number().min(0),
-      investimentoReativacao: z.number().min(0),
+      // Tri-state: campo OMITIDO mantém o valor já gravado (update parcial);
+      // null LIMPA o campo (marca como "não preenchido", distinto de zero);
+      // número define o valor. Nunca força "0" silenciosamente — ver
+      // drizzle/schema.ts (custoMarketing) para o motivo da coluna ser nullable.
+      investimentoAquisicao: z.number().min(0).nullable().optional(),
+      investimentoReativacao: z.number().min(0).nullable().optional(),
       observacao: z.string().nullable().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -608,11 +612,21 @@ export const financeiroRouter = router({
         .from(custoMarketing)
         .where(and(eq(custoMarketing.mes, input.mes), eq(custoMarketing.ano, input.ano)))
         .limit(1);
+
+      const aquisicaoFinal = input.investimentoAquisicao !== undefined
+        ? input.investimentoAquisicao
+        : existing[0]?.investimentoAquisicao != null ? Number(existing[0].investimentoAquisicao) : null;
+      const reativacaoFinal = input.investimentoReativacao !== undefined
+        ? input.investimentoReativacao
+        : existing[0]?.investimentoReativacao != null ? Number(existing[0].investimentoReativacao) : null;
+
       const data = {
-        investimentoAquisicao: String(input.investimentoAquisicao),
-        investimentoReativacao: String(input.investimentoReativacao),
-        investimento: String(input.investimentoAquisicao + input.investimentoReativacao),
-        observacao: input.observacao ?? null,
+        investimentoAquisicao: aquisicaoFinal != null ? String(aquisicaoFinal) : null,
+        investimentoReativacao: reativacaoFinal != null ? String(reativacaoFinal) : null,
+        // Soma dos dois componentes — null só se os DOIS estiverem vazios (nunca
+        // trata "não preenchido" como zero na soma).
+        investimento: (aquisicaoFinal == null && reativacaoFinal == null) ? null : String((aquisicaoFinal ?? 0) + (reativacaoFinal ?? 0)),
+        observacao: input.observacao !== undefined ? input.observacao : (existing[0]?.observacao ?? null),
       };
       const usuario = {
         usuarioId: ctx.user?.id ?? null,
@@ -679,8 +693,12 @@ export const financeiroRouter = router({
           .where(and(eq(custoMarketing.mes, mes), eq(custoMarketing.ano, ano)))
           .limit(1);
 
-        const aquisicaoTotal = (existing[0] ? Number(existing[0].investimentoAquisicao) : 0) + aquisicao;
-        const reativacaoTotal = (existing[0] ? Number(existing[0].investimentoReativacao) : 0) + reativacao;
+        // ?? 0 explícito: investimentoAquisicao/Reativacao agora são nullable
+        // (não preenchido != zero) — aqui a importação sempre SOMA um valor
+        // numérico ao que já existe, então "não preenchido" vira 0 só para
+        // efeito desta soma incremental, nunca grava null por cima de um valor.
+        const aquisicaoTotal = (existing[0]?.investimentoAquisicao != null ? Number(existing[0].investimentoAquisicao) : 0) + aquisicao;
+        const reativacaoTotal = (existing[0]?.investimentoReativacao != null ? Number(existing[0].investimentoReativacao) : 0) + reativacao;
         const data = {
           investimentoAquisicao: String(aquisicaoTotal),
           investimentoReativacao: String(reativacaoTotal),

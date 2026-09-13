@@ -345,7 +345,7 @@ export default function Financeiro() {
           }`}
         >
           <TrendingUp size={15} />
-          Marketing
+          Crescimento e Resultado
         </button>
         <button
           onClick={() => setAbaAtiva("observacoes")}

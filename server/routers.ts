@@ -3,6 +3,7 @@ import { transportadorasRouter, cotacoesFreteRouter, cteRouter } from "./routers
 import { acoesCorretivasRouter, metasRetrabalhoRouter, planosAcaoRouter, alertasRouter, desempenhoColaboradorRouter } from "./routers/qualidade";
 import { metasRouter } from "./routers/metas";
 import { financeiroRouter } from "./routers/financeiro";
+import { marketingFinanceiroRouter } from "./routers/marketingFinanceiro";
 import { observacoesFinanceirasRouter } from "./routers/observacoesFinanceiras";
 import { bibliotecaArquivosRouter } from "./routers/bibliotecaArquivos";
 import { performanceRouter } from "./routers/performance";
@@ -1417,6 +1418,7 @@ O POP deve:
   metasOperacionais: metasRouter,
   metaProdutos: metaProdutosRouter,
   financeiro: financeiroRouter,
+  marketingFinanceiro: marketingFinanceiroRouter,
   observacoesFinanceiras: observacoesFinanceirasRouter,
   desempenhoColabMensal: desempenhoColabMensalRouter,
   // LOGISTICA ────────────────────────────────────────────────────────────────────

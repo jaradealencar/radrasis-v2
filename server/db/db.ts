@@ -19,6 +19,7 @@ import {
   financeirosMensais,
   metricas,
   auditoriaCustoMarketing, AuditoriaCustoMarketing,
+  marketingConfigAuditoria, MarketingConfigAuditoria,
 } from "../../drizzle/schema";
 import { resumirDiffTabelaPrecos } from "../integrations/priceTableDiff";
 
@@ -888,6 +889,41 @@ export async function listAuditLogsCustoMarketing(ano: number): Promise<Auditori
   return db.select().from(auditoriaCustoMarketing)
     .where(eq(auditoriaCustoMarketing.ano, ano))
     .orderBy(desc(auditoriaCustoMarketing.createdAt));
+}
+
+// ─── AUDITORIA DE CONFIGURAÇÃO DE MARKETING ──────────────────────────────────
+// Mesmo padrão/motivo da auditoria de Custo de Marketing acima — registra
+// quem/quando alterou metas e parâmetros que mudam os números de todo o
+// relatório de Marketing/Resultado Geral (marketing_config).
+
+export interface AuditLogMarketingConfigInput {
+  acao: "CRIACAO" | "EDICAO" | "EXCLUSAO";
+  usuarioId?: string | null;
+  usuarioNome?: string | null;
+  usuarioRole?: string | null;
+  valoresAnteriores?: Record<string, unknown> | null;
+  valoresNovos?: Record<string, unknown> | null;
+}
+
+export async function insertAuditLogMarketingConfig(data: AuditLogMarketingConfigInput): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(marketingConfigAuditoria).values({
+    acao: data.acao,
+    usuarioId: data.usuarioId ?? null,
+    usuarioNome: data.usuarioNome ?? null,
+    usuarioRole: data.usuarioRole ?? null,
+    valoresAnteriores: data.valoresAnteriores ? JSON.stringify(data.valoresAnteriores) : null,
+    valoresNovos: data.valoresNovos ? JSON.stringify(data.valoresNovos) : null,
+  });
+}
+
+export async function listAuditLogsMarketingConfig(limit = 50): Promise<MarketingConfigAuditoria[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(marketingConfigAuditoria)
+    .orderBy(desc(marketingConfigAuditoria.createdAt))
+    .limit(limit);
 }
 
 export interface ListAuditLogsFilter {

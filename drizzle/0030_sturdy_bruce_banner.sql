@@ -1,0 +1,2 @@
+ALTER TABLE "marketing_config" ADD COLUMN "direcionadorRateio" varchar(32) DEFAULT 'faturamento' NOT NULL;--> statement-breakpoint
+ALTER TABLE "marketing_config" ADD COLUMN "custosFinanceirosIncluemMarketing" boolean DEFAULT false NOT NULL;
