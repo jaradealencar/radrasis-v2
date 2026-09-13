@@ -730,10 +730,27 @@ function VistaFilaAcoes() {
 
 // ─── Vista: Funil de Orçamentos ────────────────────────────────────────────────
 
+/** Soma o `percentual` de data.distribuicaoDias para dias no intervalo
+ * [deDias, ateDias] (ambos inclusive) — usado para transformar o gráfico de
+ * distribuição em números diretos ("fecha em até X dias: Y%"), já que o
+ * usuário achou o gráfico difícil de ler e os cards de percentil (P25-P75,
+ * P90, Mín-Máx) pouco úteis no dia a dia (13/09/2026). */
+function pctAcumulado(distribuicaoDias: { dias: number; percentual: number }[], deDias: number, ateDias: number): number {
+  return distribuicaoDias
+    .filter(d => d.dias >= deDias && d.dias <= ateDias)
+    .reduce((s, d) => s + d.percentual, 0);
+}
+
 function SecaoTempoFollowUp() {
   const { data, isLoading } = trpc.performanceComercial.getTempoOrcamentoPedido.useQuery();
   if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-40 animate-pulse" />;
   if (!data) return null;
+
+  const dist = data.distribuicaoDias ?? [];
+  const ateUmDia = pctAcumulado(dist, 0, 1);
+  const ateTresDias = pctAcumulado(dist, 0, 3);
+  const ateSeteDias = pctAcumulado(dist, 0, 7);
+  const depoisDeSeteDias = Math.max(0, 100 - ateSeteDias);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -752,10 +769,10 @@ function SecaoTempoFollowUp() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 p-4">
             <KpiCard icon={Clock3} label="Mediana" value={data.medianaDias !== null ? `${Math.round(data.medianaDias)}du` : "—"} sub="Metade fecha em até este prazo" color="#0ea5e9" />
-            <KpiCard icon={Clock3} label="Média" value={data.mediaDias !== null ? `${data.mediaDias.toFixed(1)}du` : "—"} sub="Sensível a outliers — prefira a mediana" color="#94a3b8" />
-            <KpiCard icon={Clock3} label="P25–P75" value={data.p25Dias !== null && data.p75Dias !== null ? `${data.p25Dias}–${data.p75Dias}du` : "—"} sub="50% central dos casos" color="#8b5cf6" />
-            <KpiCard icon={Clock3} label="P90" value={data.p90Dias !== null ? `${data.p90Dias}du` : "—"} sub="90% dos casos fecham até aqui" color="#f59e0b" />
-            <KpiCard icon={Clock3} label="Mín–Máx" value={data.minDias !== null && data.maxDias !== null ? `${data.minDias}–${data.maxDias}du` : "—"} sub="Faixa completa observada" color="#64748b" />
+            <KpiCard icon={Clock3} label="Fecha em até 1 dia" value={dist.length > 0 ? fmtPct(ateUmDia) : "—"} sub="Dos casos decididos" color="#0ea5e9" />
+            <KpiCard icon={Clock3} label="Fecha em até 3 dias" value={dist.length > 0 ? fmtPct(ateTresDias) : "—"} sub="Acumulado desde o dia 0" color="#38bdf8" />
+            <KpiCard icon={Clock3} label="Fecha em até 7 dias" value={dist.length > 0 ? fmtPct(ateSeteDias) : "—"} sub="Acumulado desde o dia 0" color="#8b5cf6" />
+            <KpiCard icon={Clock3} label="Depois de 7 dias" value={dist.length > 0 ? fmtPct(depoisDeSeteDias) : "—"} sub={data.maxDias !== null ? `Cauda longa — até ${data.maxDias}du no pior caso` : "Cauda longa"} color="#f59e0b" />
             <KpiCard icon={Clock3} label="Taxa de pareamento" value={data.taxaPareamentoPct !== null ? fmtPct(data.taxaPareamentoPct) : "—"} sub={`Amostra: ${data.amostra} de ${data.totalOrcamentosGanhos}`} color={data.taxaPareamentoPct && data.taxaPareamentoPct >= 50 ? "#22c55e" : "#f59e0b"} />
           </div>
           {data.distribuicaoDias && data.distribuicaoDias.length > 0 && (

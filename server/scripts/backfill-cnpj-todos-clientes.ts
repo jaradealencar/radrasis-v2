@@ -18,9 +18,31 @@ import { isOsNormalDb, normalizeEmpresaKey } from "../routers/performanceComerci
  *
  * Pequeno delay entre clientes para não sobrecarregar a OpenCNPJ (API pública gratuita,
  * sem limite documentado, mas sem motivo pra martelar sem necessidade).
+ *
+ * Retry com backoff em buscarOSPorNumero: na primeira rodada completa (13/09/2026,
+ * 1335 candidatos), 623 (~47%) falharam nessa chamada por erro de rede/timeout —
+ * bem acima do "~0,2s, rápido" documentado em mubisys-client.ts — enquanto a OpenCNPJ
+ * teve 0 falhas nas mesmas condições. Isso aponta para instabilidade do MubiSys sob
+ * carga sustentada (chamadas sequenciais por ~23min), não erro sistemático — por isso
+ * vale re-tentar antes de desistir do cliente.
  */
 
-const DELAY_MS = 250;
+const DELAY_MS = 400;
+const MAX_TENTATIVAS_OS = 3;
+const RETRY_BACKOFF_MS = [800, 2000];
+
+async function buscarOSPorNumeroComRetry(numero: string): ReturnType<typeof buscarOSPorNumero> {
+  let ultimoErro: unknown;
+  for (let tentativa = 0; tentativa < MAX_TENTATIVAS_OS; tentativa++) {
+    try {
+      return await buscarOSPorNumero(numero);
+    } catch (e) {
+      ultimoErro = e;
+      if (tentativa < MAX_TENTATIVAS_OS - 1) await sleep(RETRY_BACKOFF_MS[tentativa]);
+    }
+  }
+  throw ultimoErro;
+}
 
 function parseDataOsFlexivel(s: string | null): Date | null {
   if (!s) return null;
@@ -112,7 +134,7 @@ async function main() {
     const c = candidatos[i];
     let osErp;
     try {
-      osErp = await buscarOSPorNumero(c.osReferencia!);
+      osErp = await buscarOSPorNumeroComRetry(c.osReferencia!);
     } catch {
       falhaErp++;
       await sleep(DELAY_MS);
