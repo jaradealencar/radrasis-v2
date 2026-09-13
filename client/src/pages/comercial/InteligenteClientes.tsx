@@ -337,6 +337,7 @@ function VistaVisaoGeral({ dataInicial, dataFinal }: { dataInicial: string; data
       </div>
 
       <SecaoTempoFollowUp />
+      <SecaoConversaoPorFaixaTicket />
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100">
@@ -809,6 +810,63 @@ function SecaoTempoFollowUp() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function SecaoConversaoPorFaixaTicket() {
+  const { data, isLoading } = trpc.performanceComercial.getConversaoPorFaixaTicket.useQuery();
+  if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-40 animate-pulse" />;
+  if (!data) return null;
+  const totalDecidido = data.reduce((s, f) => s + f.ganhos + f.perdidos, 0);
+  if (totalDecidido === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-4 border-b border-slate-100">
+        <h3 className="text-sm font-bold text-slate-700">Conversão por faixa de tíquete</h3>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Dos orçamentos já decididos (ganhos + perdidos), qual % fecha em cada faixa de valor — quanto maior o tíquete, menor a taxa de fechamento histórica. Esse mesmo efeito também entra como fator no Score de Probabilidade de Compra.
+        </p>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4 p-4">
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="faixa" tick={{ fontSize: 9, fill: "#94a3b8" }} interval={0} angle={-20} textAnchor="end" height={50} />
+            <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={v => `${v}%`} width={36} />
+            <ChartTooltip
+              formatter={(v: number, _n, item: any) => [`${v.toFixed(1)}% (${item.payload.ganhos}G / ${item.payload.perdidos}P)`, "Conversão"]}
+              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+            />
+            <Bar dataKey="taxaConversaoPct" radius={[3, 3, 0, 0]}>
+              {data.map((f, i) => (
+                <Cell key={i} fill={f.taxaConversaoPct == null ? "#e2e8f0" : f.taxaConversaoPct >= 45 ? "#22c55e" : f.taxaConversaoPct >= 25 ? "#f59e0b" : "#ef4444"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        <Table className="text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Faixa</TableHead>
+              <TableHead className="text-right">Ganhos</TableHead>
+              <TableHead className="text-right">Perdidos</TableHead>
+              <TableHead className="text-right">Conversão</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map(f => (
+              <TableRow key={f.faixa}>
+                <TableCell className="font-medium">{f.faixa}</TableCell>
+                <TableCell className="text-right">{fmtNum(f.ganhos)}</TableCell>
+                <TableCell className="text-right">{fmtNum(f.perdidos)}</TableCell>
+                <TableCell className="text-right font-bold">{f.taxaConversaoPct !== null ? fmtPct(f.taxaConversaoPct) : "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

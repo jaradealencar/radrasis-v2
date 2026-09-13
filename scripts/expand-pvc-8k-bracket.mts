@@ -4,7 +4,18 @@
  * uma nova faixa "R$8k+" com margem 0% em todas as linhas.
  */
 import "dotenv/config";
-import { listPriceTableSections, updatePriceTableSection, getPriceTableMeta } from "../server/db/db";
+
+const USE_PROD = process.argv.includes("--prod");
+if (USE_PROD) {
+  if (!process.env.PRODUCTION_DATABASE_URL) {
+    console.error("PRODUCTION_DATABASE_URL não definida no .env");
+    process.exit(1);
+  }
+  process.env.DATABASE_URL = process.env.PRODUCTION_DATABASE_URL;
+  console.log("Usando PRODUCTION_DATABASE_URL (banco do site publicado)");
+}
+
+const { listPriceTableSections, updatePriceTableSection, getPriceTableMeta } = await import("../server/db/db");
 
 const TITLE_MATCH = "PVC (5/10/15/16mm) de todas as cores e acrílico e ACM";
 const OLD_LAST_COLUMN = "R$4.8k+";

@@ -13,8 +13,9 @@ import {
 import type { TrpcContext } from "../_core/context";
 import {
   construirMapaConversaoClientes, calcularTaxaConversaoNovosRecente, calcularProbabilidade, normalizeEmpresaKey,
-  construirMapaFaixaTicket,
+  construirMapaFaixaTicket, construirMapaConversaoPorRegiao,
 } from "../services/probabilidadeCompra";
+import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 
 // ─── Helper: calcular turno a partir do horário ───────────────────────────────
 function calcTurno(date: Date): "manha" | "tarde" | "noite" {
@@ -327,10 +328,12 @@ export const crmRouter = router({
       let mapaConversao: Awaited<ReturnType<typeof construirMapaConversaoClientes>> | null = null;
       let taxaNovosDoMes: number | null = null;
       let mapaFaixaTicket: Awaited<ReturnType<typeof construirMapaFaixaTicket>> | undefined;
+      let mapaRegiao: Awaited<ReturnType<typeof construirMapaConversaoPorRegiao>> | undefined;
       try {
         mapaConversao = await construirMapaConversaoClientes(db);
         taxaNovosDoMes = await calcularTaxaConversaoNovosRecente(db);
         mapaFaixaTicket = await construirMapaFaixaTicket(db);
+        mapaRegiao = await construirMapaConversaoPorRegiao(db);
       } catch {
         mapaConversao = null;
       }
@@ -352,16 +355,18 @@ export const crmRouter = router({
         const clienteNovo = overrideStatus === "recorrente" ? false
           : overrideStatus === "novo" ? true
           : isNovoByHistory;
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao
-          ? calcularProbabilidade({ clienteNovo, nomeCliente, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes, mapaFaixaTicket })
-          : { probabilidade: null as number | null, explicacao: [] as string[] };
-        const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente))?.qtdCompras ?? 0;
         // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —
         // mesmo formato do endereço em MubiSysOS, apesar de não estar no tipo MubiSysOrcamento.
-        const estadoCliente: string | null = Array.isArray((orc as any)?.cliente_endereco) && (orc as any).cliente_endereco[0]?.estado
-          ? String((orc as any).cliente_endereco[0].estado).toUpperCase()
+        // normalizarUf rejeita lixo (variações, texto vazio) — melhor null do que uma UF inválida.
+        const estadoCliente: string | null = Array.isArray((orc as any)?.cliente_endereco)
+          ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, estadoCliente };
+        const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
+        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao
+          ? calcularProbabilidade({ clienteNovo, nomeCliente, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes, mapaFaixaTicket, mapaRegiao, regiaoCliente })
+          : { probabilidade: null as number | null, explicacao: [] as string[] };
+        const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente))?.qtdCompras ?? 0;
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, estadoCliente, regiaoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),

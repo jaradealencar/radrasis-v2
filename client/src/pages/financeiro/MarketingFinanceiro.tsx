@@ -602,8 +602,8 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 <TableHead className="font-semibold">Mês</TableHead>
                 <TableHead className="text-right font-semibold">Aquisição</TableHead>
                 <TableHead className="text-right font-semibold">Reativação</TableHead>
-                <TableHead className="text-right font-semibold">Clientes Novos</TableHead>
-                <TableHead className="text-right font-semibold">Reativados</TableHead>
+                <TableHead className="text-right font-semibold" title="Inclui reativados (clientes que já compraram antes e voltaram após 6+ meses sem pedir) — não é só quem nunca comprou.">Clientes Novos</TableHead>
+                <TableHead className="text-right font-semibold" title="Parcela de Clientes Novos que veio de reativação — está incluída na coluna anterior, não somada a ela.">Reativados</TableHead>
                 <TableHead className="text-right font-semibold">Pedidos</TableHead>
                 <TableHead className="text-right font-semibold">CAC Aquisição</TableHead>
                 <TableHead className="text-right font-semibold" title="Investimento em Reativação dividido pelo nº de clientes reativados no mês.">Custo Reativação</TableHead>

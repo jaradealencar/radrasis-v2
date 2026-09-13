@@ -745,7 +745,7 @@ export default function PerformanceComercial() {
             <KpiCardComMeta
               label="Clientes Novos"
               value={loadingClientesNovos ? "..." : String(clientesNovos?.total ?? 0)}
-              sub="1ª OS no histórico"
+              sub={loadingClientesNovos ? "1ª compra ou reativação" : `1ª compra ou reativação (${clientesNovos?.totalReativados ?? 0} reativados, 6+ meses sem comprar)`}
               icon={UserPlus}
               color="#0ea5e9"
               metaReal={clientesNovos?.total ?? 0}

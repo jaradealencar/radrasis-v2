@@ -8,6 +8,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
+  calcularConversaoPorFaixaTicket,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
@@ -2176,6 +2177,20 @@ export const performanceComercialRouter = router({
       if (!db) throw new Error("DB indisponível");
       const rows = await db.select().from(historicoOrcamentos);
       return calcularFunilOrcamentos(rows as any, new Date());
+    }),
+
+  /** Conversão por faixa de valor do orçamento — quanto maior o tíquete,
+   * menor a taxa histórica de fechamento. Mesmo cálculo usado como fator no
+   * Score de Probabilidade de Compra (ver construirMapaFaixaTicket). */
+  getConversaoPorFaixaTicket: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const rows = await db.select({
+        status: historicoOrcamentos.status,
+        total: historicoOrcamentos.total,
+      }).from(historicoOrcamentos);
+      return calcularConversaoPorFaixaTicket(rows as any);
     }),
 
   /** Tempo entre orçamento aprovado e pedido fechado — aproximação por

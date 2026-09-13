@@ -38,13 +38,13 @@ function tituloCidade(s: string): string {
     .join(" ");
 }
 
-const UFS_VALIDAS = new Set([
+export const UFS_VALIDAS = new Set([
   "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
   "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
   "RS", "RO", "RR", "SC", "SP", "SE", "TO",
 ]);
 
-function normalizarUf(uf: string | null | undefined): string | null {
+export function normalizarUf(uf: string | null | undefined): string | null {
   if (!uf) return null;
   const s = String(uf).trim().toUpperCase();
   return UFS_VALIDAS.has(s) ? s : null;

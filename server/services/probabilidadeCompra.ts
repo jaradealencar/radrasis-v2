@@ -1,31 +1,61 @@
 /**
- * Score de Probabilidade de Compra — Fase 1.
+ * Score de Probabilidade de Compra.
  *
  * Usado por server/routers/crm.ts (cada proposta) e por
  * server/routers/performanceComercial.ts (listarClientesInteligencia, cada
  * cliente) para que os dois módulos mostrem o mesmo número para o mesmo
- * cliente — ver plano de "Score de Probabilidade de Compra no CRM (Fase 1)".
+ * cliente.
  *
  * Fórmula:
- *   - Cliente novo: base = taxa de conversão dos clientes novos, em média
- *     móvel de uma janela "madura" (meses 2 a 12 atrás — exclui orçamentos
- *     recentes demais para já terem sido decididos, ver nota em
- *     calcularTaxaConversaoNovosRecente).
+ *   - Cliente novo: base = taxa de conversão dos clientes novos nos últimos
+ *     3 meses, contando só orçamentos DECIDIDOS (ganho ou perdido) — ver nota
+ *     em calcularTaxaConversaoNovosRecente.
  *   - Cliente recorrente: base = taxa de conversão INDIVIDUAL dele
  *     (orçamentos que fez vs. que fecharam, historicoOrcamentos) — com
  *     amostra mínima de MIN_AMOSTRA_TAXA_INDIVIDUAL; abaixo disso, usa a
  *     taxa geral da carteira (instável demais com 1-2 orçamentos).
- *   - Ajuste: proposta muito acima do ticket médio histórico do cliente
- *     reduz a probabilidade (mais dinheiro em jogo, mais difícil fechar).
+ *   - Ajustes (aditivos, cada um só aplica com amostra mínima própria):
+ *     ticket médio individual do cliente, faixa de valor da carteira
+ *     (construirMapaFaixaTicket) e região geográfica do cliente
+ *     (construirMapaConversaoPorRegiao).
  *
- * Fora de escopo desta fase (ver plano): cruzamento com CNPJ e com Análise
- * Geográfica. A chave de agrupamento é sempre normalizeEmpresaKey — mesma
- * chave usada em performanceComercial.ts/inteligenciaClientes.ts, para que
- * o CRM e a Inteligência de Clientes concordem sobre o mesmo cliente.
+ * Fora de escopo: cruzamento com CNPJ (idade da empresa, sócios). A chave de
+ * agrupamento é sempre normalizeEmpresaKey — mesma chave usada em
+ * performanceComercial.ts/inteligenciaClientes.ts, para que o CRM e a
+ * Inteligência de Clientes concordem sobre o mesmo cliente.
  */
 
 import { historicoOrcamentos, historicoOs } from "../../drizzle/schema";
-import { STATUS_GANHO, parseDataFlexivel, calcularConversaoPorFaixaTicket, faixaTicketDoValor, type FaixaTicketConversao } from "./inteligenciaClientes";
+import { STATUS_GANHO, STATUS_PERDIDO, parseDataFlexivel, calcularConversaoPorFaixaTicket, faixaTicketDoValor, type FaixaTicketConversao } from "./inteligenciaClientes";
+import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
+
+/**
+ * "Perdido" explícito (STATUS_PERDIDO) OU "em aberto" há mais de
+ * DIAS_PRESUMIDO_PERDIDO dias — mesmo limiar que server/routers/crm.ts já usa
+ * (`janelaSugerida`: >30 dias = "perdido").
+ *
+ * Descoberto em 13/09/2026 medindo a distribuição real de status em
+ * historico_orcamentos: só 3 de 5.920 linhas (em TODOS os meses de 2026, não
+ * só os recentes) têm status "Reprovado"/"Cancelada" — a equipe, na prática,
+ * nunca fecha formalmente uma proposta perdida no ERP, só abandona como "Em
+ * aberto" para sempre. Contar só STATUS_PERDIDO explícito faz qualquer
+ * cálculo "só decididos" (aqui e na análise de faixa de tíquete do usuário em
+ * inteligenciaClientes.ts) dar ~100% de conversão — não é sinal real, é
+ * artefato de como o time usa o sistema. Tratar "em aberto" antigo como
+ * perdido presumido corrige isso sem abandonar a filosofia "só contar o que
+ * já teve tempo de ser decidido".
+ */
+const DIAS_PRESUMIDO_PERDIDO = 30;
+
+function foiPerdido(status: string | null, dataCadastro: string | null, agora: Date): boolean {
+  const statusKey = (status ?? "").trim().toLowerCase();
+  if (STATUS_PERDIDO.has(statusKey)) return true;
+  if (statusKey !== "em aberto") return false;
+  const data = parseDataFlexivel(dataCadastro);
+  if (!data) return false;
+  const dias = (agora.getTime() - data.getTime()) / (1000 * 60 * 60 * 24);
+  return dias > DIAS_PRESUMIDO_PERDIDO;
+}
 
 export const MIN_AMOSTRA_TAXA_INDIVIDUAL = 3;
 
@@ -166,25 +196,20 @@ export async function construirMapaFaixaTicket(db: any): Promise<Map<string, Fai
   return new Map(faixas.map(f => [f.faixa, f]));
 }
 
-/**
- * Janela "madura" para conversão de clientes novos: meses MES_FIM_JANELA_NOVOS
- * a MES_INICIO_JANELA_NOVOS atrás (não os últimos meses corridos).
- *
- * Descoberto na prática (12/09/2026): orçamentos dos últimos ~2 meses vêm
- * quase 100% com status "Em aberto" — o cliente ainda não decidiu, o ciclo de
- * fechamento leva mais tempo que isso. Uma janela móvel simples (ex.: "últimos
- * 3 meses") mede sobretudo pedidos ainda em aberto e artificialmente encolhe
- * a taxa para perto de 0% — foi o que causou o "5% em quase toda proposta de
- * cliente novo" percebido pelo usuário (taxa real conhecida: 3-15%). Pular os
- * 2 meses mais recentes dá tempo de a maioria dos pedidos já ter sido
- * decidida, sem cair no outro extremo de misturar anos de histórico.
- */
-const MES_FIM_JANELA_NOVOS = 2;   // exclui os 2 meses mais recentes (ainda "imaturos")
-const MES_INICIO_JANELA_NOVOS = 12; // olha até 12 meses atrás
+/** Janela de meses para conversão de clientes novos — pedido do usuário
+ * (13/09/2026) para alinhar com a metodologia da faixa de tíquete: em vez de
+ * "pular meses imaturos" (abordagem anterior), conta só orçamentos DECIDIDOS
+ * (ganho ou perdido) — um orçamento ainda "em aberto" simplesmente não entra
+ * na conta, então não precisa de nenhum deslocamento artificial de janela. */
+const MESES_JANELA_NOVOS = 3;
 
 /**
- * Taxa de conversão dos orçamentos de clientes novos na janela madura (ver
- * MES_FIM_JANELA_NOVOS/MES_INICIO_JANELA_NOVOS acima).
+ * Taxa de conversão dos orçamentos de clientes novos nos últimos
+ * MESES_JANELA_NOVOS meses (por dataCadastro), contando só orçamentos
+ * DECIDIDOS (STATUS_GANHO ou STATUS_PERDIDO) — mesma filosofia de
+ * calcularConversaoPorFaixaTicket (inteligenciaClientes.ts): um orçamento
+ * "em aberto" ainda não tem resposta, então não entra nem no numerador nem
+ * no denominador, em vez de contar como "não fechou".
  *
  * "Novo" aqui é decidido POR ORÇAMENTO, comparando a data do orçamento com a
  * PRIMEIRA compra já registrada daquele cliente em historico_os — não um
@@ -192,21 +217,20 @@ const MES_INICIO_JANELA_NOVOS = 12; // olha até 12 meses atrás
  * encontrado em 12/09/2026: um `Set` global de "clientes que já compraram"
  * exclui justamente os clientes novos que ACABARAM de converter (assim que
  * fecham, passam a existir em historico_os e somem do grupo "novo" — inclusive
- * retroativamente, no próprio orçamento que os converteu). Isso travava a taxa
- * de conversão de novos artificialmente perto de 0%, não importa a janela de
- * tempo escolhida. Com a comparação por data, um orçamento conta como "de
- * cliente novo" se, NA DATA daquele orçamento, o cliente ainda não tinha
- * nenhuma compra anterior — mesmo que ele tenha convertido depois.
+ * retroativamente, no próprio orçamento que os converteu). Com a comparação
+ * por data, um orçamento conta como "de cliente novo" se, NA DATA daquele
+ * orçamento, o cliente ainda não tinha nenhuma compra anterior — mesmo que
+ * ele tenha convertido depois.
  *
- * Devolve `null` (não `0`) quando não há NENHUM orçamento de cliente novo
- * nessa janela — distinção importante: "sem dado ainda" não é o mesmo que
- * "converteu 0%". O chamador cai para a taxa geral da carteira nesse caso
- * (ver calcularProbabilidade).
+ * Devolve `null` (não `0`) quando não há NENHUM orçamento decidido de
+ * cliente novo nessa janela — distinção importante: "sem dado ainda" não é o
+ * mesmo que "converteu 0%". O chamador cai para a taxa geral da carteira
+ * nesse caso (ver calcularProbabilidade).
  */
 export async function calcularTaxaConversaoNovosRecente(db: any): Promise<number | null> {
   const now = new Date();
   const janelas: Array<{ mes: number; ano: number }> = [];
-  for (let i = MES_FIM_JANELA_NOVOS; i < MES_INICIO_JANELA_NOVOS; i++) {
+  for (let i = 0; i < MESES_JANELA_NOVOS; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     janelas.push({ mes: d.getMonth() + 1, ano: d.getFullYear() });
   }
@@ -236,8 +260,9 @@ export async function calcularTaxaConversaoNovosRecente(db: any): Promise<number
     ano: historicoOrcamentos.ano,
   }).from(historicoOrcamentos);
 
-  let total = 0;
-  let fechados = 0;
+  const agora = new Date();
+  let ganhos = 0;
+  let perdidos = 0;
   for (const r of linhas as Array<{ empresa: string | null; status: string | null; dataCadastro: string | null; mes: number; ano: number }>) {
     if (!janelasSet.has(`${r.ano}-${r.mes}`)) continue;
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
@@ -246,11 +271,84 @@ export async function calcularTaxaConversaoNovosRecente(db: any): Promise<number
     const primeiraCompra = primeiraCompraPorCliente.get(empresaKey);
     const eraNovoNaData = !primeiraCompra || !dataOrcamento || primeiraCompra >= dataOrcamento;
     if (!eraNovoNaData) continue; // já tinha comprado antes desse orçamento = não era "novo"
-    total++;
-    if (STATUS_GANHO.has((r.status ?? "").trim().toLowerCase())) fechados++;
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    if (STATUS_GANHO.has(statusKey)) ganhos++;
+    else if (foiPerdido(r.status, r.dataCadastro, agora)) perdidos++;
+    // resto (em aberto recente, status ambíguo etc.): não entra na conta ainda
   }
+  const total = ganhos + perdidos;
   if (total === 0) return null;
-  return (fechados / total) * 100;
+  return (ganhos / total) * 100;
+}
+
+export interface RegiaoConversao {
+  regiao: string;
+  ganhos: number;
+  perdidos: number;
+  taxaConversaoPct: number | null;
+}
+
+/**
+ * Conversão (ganhos vs. perdidos) por região do Brasil — mesma filosofia de
+ * calcularConversaoPorFaixaTicket (só orçamentos DECIDIDOS, sem janela de
+ * tempo), mas indexada por região em vez de faixa de valor.
+ *
+ * `historico_orcamentos` não tem NENHUMA coluna de cidade/estado — a região
+ * de cada orçamento é derivada cruzando pelo mesmo `empresaKey`
+ * (normalizeEmpresaKey) com o Estado mais recente daquele cliente em
+ * `historico_os` (que tem `estado`, preenchido direto do MubiSys no sync).
+ * Cliente sem nenhum registro em historico_os (nunca teve OS, ou caiu no
+ * buraco de sincronização de nov-dez/2025) fica de fora da contagem — mesmo
+ * critério de "sem dado suficiente" usado no resto do módulo.
+ */
+export async function construirMapaConversaoPorRegiao(db: any): Promise<Map<string, RegiaoConversao>> {
+  const osRows = await db.select({
+    empresa: historicoOs.empresa,
+    estado: historicoOs.estado,
+    dataAprovacao: historicoOs.dataAprovacao,
+  }).from(historicoOs);
+  const estadoMaisRecentePorCliente = new Map<string, { estado: string; data: Date }>();
+  for (const r of osRows as Array<{ empresa: string | null; estado: string | null; dataAprovacao: string | null }>) {
+    const key = normalizeEmpresaKey(r.empresa ?? "");
+    const uf = normalizarUf(r.estado);
+    if (!key || !uf) continue;
+    const data = parseDataFlexivel(r.dataAprovacao) ?? new Date(0);
+    const atual = estadoMaisRecentePorCliente.get(key);
+    if (!atual || data > atual.data) estadoMaisRecentePorCliente.set(key, { estado: uf, data });
+  }
+
+  const linhas = await db.select({
+    empresa: historicoOrcamentos.empresa,
+    status: historicoOrcamentos.status,
+    dataCadastro: historicoOrcamentos.dataCadastro,
+  }).from(historicoOrcamentos);
+
+  const agora = new Date();
+  const porRegiao = new Map<string, { ganhos: number; perdidos: number }>();
+  for (const r of linhas as Array<{ empresa: string | null; status: string | null; dataCadastro: string | null }>) {
+    const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
+    const uf = estadoMaisRecentePorCliente.get(empresaKey)?.estado;
+    const regiao = uf ? UF_PARA_REGIAO[uf] : undefined;
+    if (!regiao) continue; // cliente sem UF conhecida — fora da contagem
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    const ganho = STATUS_GANHO.has(statusKey);
+    const perdido = !ganho && foiPerdido(r.status, r.dataCadastro, agora);
+    if (!ganho && !perdido) continue; // "em aberto" recente e afins: não decidido ainda
+
+    let acc = porRegiao.get(regiao);
+    if (!acc) { acc = { ganhos: 0, perdidos: 0 }; porRegiao.set(regiao, acc); }
+    if (ganho) acc.ganhos++; else acc.perdidos++;
+  }
+
+  const resultado = new Map<string, RegiaoConversao>();
+  for (const [regiao, acc] of porRegiao.entries()) {
+    const total = acc.ganhos + acc.perdidos;
+    resultado.set(regiao, {
+      regiao, ganhos: acc.ganhos, perdidos: acc.perdidos,
+      taxaConversaoPct: total > 0 ? (acc.ganhos / total) * 100 : null,
+    });
+  }
+  return resultado;
 }
 
 export interface ResultadoProbabilidade {
@@ -260,6 +358,11 @@ export interface ResultadoProbabilidade {
 
 const PROB_MIN = 5;
 const PROB_MAX = 95;
+/** Amostra mínima e teto de ajuste por região — mesmos valores da faixa de
+ * tíquete (MIN_AMOSTRA_FAIXA_TICKET/AJUSTE_FAIXA_TICKET_MAX_PP), para
+ * nenhum dos fatores dominar sozinho o resultado. */
+const MIN_AMOSTRA_REGIAO = 5;
+const AJUSTE_REGIAO_MAX_PP = 15;
 
 /**
  * Calcula a probabilidade de fechamento de UMA proposta. Função pura e
@@ -276,6 +379,11 @@ export function calcularProbabilidade(opts: {
    * faixa de tíquete da proposta (ver construirMapaFaixaTicket) — efeito da
    * carteira inteira, independente do ticket médio individual do cliente. */
   mapaFaixaTicket?: Map<string, FaixaTicketConversao>;
+  /** Opcional: mapa de conversão por região (ver construirMapaConversaoPorRegiao)
+   * + a região do cliente desta proposta — aplica o mesmo tipo de ajuste da
+   * faixa de tíquete, mas pela região geográfica do cliente. */
+  mapaRegiao?: Map<string, RegiaoConversao>;
+  regiaoCliente?: string | null;
 }): ResultadoProbabilidade {
   const empresaKey = normalizeEmpresaKey(opts.nomeCliente);
   const conversao = empresaKey ? opts.mapa.porCliente.get(empresaKey) : undefined;
@@ -284,7 +392,7 @@ export function calcularProbabilidade(opts: {
 
   if (opts.clienteNovo && opts.taxaNovosDoMes != null) {
     base = opts.taxaNovosDoMes;
-    explicacao.push(`Base: ${base.toFixed(0)}% (conversão média de clientes novos, últimos ${MES_INICIO_JANELA_NOVOS} meses)`);
+    explicacao.push(`Base: ${base.toFixed(0)}% (conversão média de clientes novos, últimos ${MESES_JANELA_NOVOS} meses)`);
   } else if (opts.clienteNovo) {
     base = opts.mapa.taxaGeral;
     explicacao.push(`Base: ${base.toFixed(0)}% (conversão geral da carteira — sem orçamentos de clientes novos recentes)`);
@@ -310,15 +418,40 @@ export function calcularProbabilidade(opts: {
     }
   }
 
+  // Faixa de tíquete e região são sinais da CARTEIRA INTEIRA (misturam cliente
+  // novo e recorrente) — para um recorrente, isso complementa uma taxa
+  // individual já sólida; para um novo, é o único sinal "parecido com
+  // personalização" que existe, então aplicar o mesmo peso cheio infla a
+  // confiança demais (percebido pelo usuário em 13/09/2026: novos apareciam
+  // com ~25% quando a taxa base conhecida de novos é ~15%). Peso reduzido pela
+  // metade para cliente novo, cheio para recorrente — não remove o sinal,
+  // só reconhece que ele é menos confiável sem histórico individual do cliente.
+  const pesoAjustePortfolio = opts.clienteNovo ? 0.5 : 1;
+
   if (opts.valorProposta > 0 && opts.mapaFaixaTicket) {
     const faixa = opts.mapaFaixaTicket.get(faixaTicketDoValor(opts.valorProposta));
     const amostraFaixa = faixa ? faixa.ganhos + faixa.perdidos : 0;
     if (faixa && faixa.taxaConversaoPct != null && amostraFaixa >= MIN_AMOSTRA_FAIXA_TICKET) {
       const delta = faixa.taxaConversaoPct - opts.mapa.taxaGeral;
-      const ajusteFaixa = Math.max(-AJUSTE_FAIXA_TICKET_MAX_PP, Math.min(AJUSTE_FAIXA_TICKET_MAX_PP, delta));
+      const ajusteFaixa = Math.max(-AJUSTE_FAIXA_TICKET_MAX_PP, Math.min(AJUSTE_FAIXA_TICKET_MAX_PP, delta)) * pesoAjustePortfolio;
       if (Math.abs(ajusteFaixa) >= 1) {
         probabilidade += ajusteFaixa;
-        explicacao.push(`Ajuste: ${ajusteFaixa >= 0 ? "+" : ""}${ajusteFaixa.toFixed(0)}pp (faixa "${faixa.faixa}" converte ${faixa.taxaConversaoPct.toFixed(0)}% vs. ${opts.mapa.taxaGeral.toFixed(0)}% da carteira)`);
+        const sufixoPeso = opts.clienteNovo ? " (peso reduzido — cliente novo)" : "";
+        explicacao.push(`Ajuste: ${ajusteFaixa >= 0 ? "+" : ""}${ajusteFaixa.toFixed(0)}pp (faixa "${faixa.faixa}" converte ${faixa.taxaConversaoPct.toFixed(0)}% vs. ${opts.mapa.taxaGeral.toFixed(0)}% da carteira${sufixoPeso})`);
+      }
+    }
+  }
+
+  if (opts.regiaoCliente && opts.mapaRegiao) {
+    const regiao = opts.mapaRegiao.get(opts.regiaoCliente);
+    const amostraRegiao = regiao ? regiao.ganhos + regiao.perdidos : 0;
+    if (regiao && regiao.taxaConversaoPct != null && amostraRegiao >= MIN_AMOSTRA_REGIAO) {
+      const delta = regiao.taxaConversaoPct - opts.mapa.taxaGeral;
+      const ajusteRegiao = Math.max(-AJUSTE_REGIAO_MAX_PP, Math.min(AJUSTE_REGIAO_MAX_PP, delta)) * pesoAjustePortfolio;
+      if (Math.abs(ajusteRegiao) >= 1) {
+        probabilidade += ajusteRegiao;
+        const sufixoPeso = opts.clienteNovo ? " (peso reduzido — cliente novo)" : "";
+        explicacao.push(`Ajuste: ${ajusteRegiao >= 0 ? "+" : ""}${ajusteRegiao.toFixed(0)}pp (região ${opts.regiaoCliente} converte ${regiao.taxaConversaoPct.toFixed(0)}% vs. ${opts.mapa.taxaGeral.toFixed(0)}% da carteira${sufixoPeso})`);
       }
     }
   }
