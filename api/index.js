@@ -33,16 +33,16 @@ function getPool() {
     throw error;
   }
 }
-function toPgPlaceholders(sql10) {
+function toPgPlaceholders(sql11) {
   let i = 0;
-  return sql10.replace(/\?/g, () => `$${++i}`);
+  return sql11.replace(/\?/g, () => `$${++i}`);
 }
-async function executeQuery(sql10, values = []) {
+async function executeQuery(sql11, values = []) {
   const pool2 = getPool();
   try {
-    console.log("\u{1F4DD} [QUERY] SQL:", sql10);
+    console.log("\u{1F4DD} [QUERY] SQL:", sql11);
     console.log("\u{1F4DD} [QUERY] Values:", values);
-    const result = await pool2.query(toPgPlaceholders(sql10), values);
+    const result = await pool2.query(toPgPlaceholders(sql11), values);
     console.log("\u2705 [QUERY] Sucesso");
     return result;
   } catch (error) {
@@ -50,12 +50,12 @@ async function executeQuery(sql10, values = []) {
     throw error;
   }
 }
-async function selectQuery(sql10, values = []) {
-  const result = await executeQuery(sql10, values);
+async function selectQuery(sql11, values = []) {
+  const result = await executeQuery(sql11, values);
   return result.rows;
 }
-async function mutationQuery(sql10, values = []) {
-  const result = await executeQuery(sql10, values);
+async function mutationQuery(sql11, values = []) {
+  const result = await executeQuery(sql11, values);
   return {
     rows: result.rows,
     rowCount: result.rowCount ?? 0,
@@ -94,6 +94,7 @@ __export(schema_exports, {
   analiseCurriculos: () => analiseCurriculos,
   appRoleEnum: () => appRoleEnum,
   auditoriaAcaoEnum: () => auditoriaAcaoEnum,
+  auditoriaCustoMarketing: () => auditoriaCustoMarketing,
   auditoriaRetrabalhos: () => auditoriaRetrabalhos,
   bibliotecaArquivos: () => bibliotecaArquivos,
   cargos: () => cargos,
@@ -103,6 +104,7 @@ __export(schema_exports, {
   clienteOverrideStatusEnum: () => clienteOverrideStatusEnum,
   clienteOverrides: () => clienteOverrides,
   clientes: () => clientes,
+  clientesPerfilCnpj: () => clientesPerfilCnpj,
   cnqRegistros: () => cnqRegistros,
   cnqTipoEnum: () => cnqTipoEnum,
   cotacaoComentarios: () => cotacaoComentarios,
@@ -122,6 +124,7 @@ __export(schema_exports, {
   custoLed: () => custoLed,
   custoLedLancamentos: () => custoLedLancamentos,
   custoMarketing: () => custoMarketing,
+  custoMarketingItens: () => custoMarketingItens,
   custosFixos: () => custosFixos,
   desempenhoColaboradorMensal: () => desempenhoColaboradorMensal,
   dividasParcelamentos: () => dividasParcelamentos,
@@ -153,7 +156,12 @@ __export(schema_exports, {
   formaCotacaoEnum: () => formaCotacaoEnum,
   historicoOrcamentos: () => historicoOrcamentos,
   historicoOs: () => historicoOs,
-  inteligenciaClientesCache: () => inteligenciaClientesCache,
+  inteligenciaAcaoResultadoEnum: () => inteligenciaAcaoResultadoEnum,
+  inteligenciaAcaoStatusEnum: () => inteligenciaAcaoStatusEnum,
+  inteligenciaAcaoTipoEnum: () => inteligenciaAcaoTipoEnum,
+  inteligenciaAcoesClientes: () => inteligenciaAcoesClientes,
+  inteligenciaClientesAcessos: () => inteligenciaClientesAcessos,
+  inteligenciaClientesContatos: () => inteligenciaClientesContatos,
   ishikawaCategoriaEnum: () => ishikawaCategoriaEnum,
   ishikawaCausas: () => ishikawaCausas,
   ishikawaPlanos: () => ishikawaPlanos,
@@ -162,7 +170,10 @@ __export(schema_exports, {
   knowledgeComments: () => knowledgeComments,
   knowledgeSuggestions: () => knowledgeSuggestions,
   kpisCargo: () => kpisCargo,
+  leadsCnpjQualificados: () => leadsCnpjQualificados,
   ledTipos: () => ledTipos,
+  marketingConfig: () => marketingConfig,
+  marketingConfigAuditoria: () => marketingConfigAuditoria,
   metaProdutos: () => metaProdutos,
   metasComerciais: () => metasComerciais,
   metasOperacionais: () => metasOperacionais,
@@ -170,11 +181,14 @@ __export(schema_exports, {
   metricas: () => metricas,
   modalidadeFreteEnum: () => modalidadeFreteEnum,
   mubisysApiCache: () => mubisysApiCache,
+  nivelConfiancaSinalEnum: () => nivelConfiancaSinalEnum,
   observacoesFinanceirasMensais: () => observacoesFinanceirasMensais,
+  origemVinculoCnpjEnum: () => origemVinculoCnpjEnum,
   performanceAbc: () => performanceAbc,
   performanceAuditada: () => performanceAuditada,
   performanceComercial: () => performanceComercial,
   performanceMensal: () => performanceMensal,
+  performancePropostasFollowup: () => performancePropostasFollowup,
   planoAcaoComercialStatusEnum: () => planoAcaoComercialStatusEnum,
   planoAcaoStatusEnum: () => planoAcaoStatusEnum,
   planosAcao: () => planosAcao,
@@ -188,6 +202,7 @@ __export(schema_exports, {
   priceTableSections: () => priceTableSections,
   prioridadeComCriticaEnum: () => prioridadeComCriticaEnum,
   prioridadeEnum: () => prioridadeEnum,
+  radarMercadoConfig: () => radarMercadoConfig,
   regulamentos: () => regulamentos,
   regulationTypeEnum: () => regulationTypeEnum,
   regulations: () => regulations,
@@ -199,8 +214,11 @@ __export(schema_exports, {
   routineFrequencyEnum: () => routineFrequencyEnum,
   routineStatusEnum: () => routineStatusEnum,
   routines: () => routines,
+  scoreLeadCnpjEnum: () => scoreLeadCnpjEnum,
   session: () => session,
   simNaoEnum: () => simNaoEnum,
+  sinaisMercado: () => sinaisMercado,
+  statusSinalMercadoEnum: () => statusSinalMercadoEnum,
   statusValidacaoEnum: () => statusValidacaoEnum,
   suppliers: () => suppliers,
   syncLogs: () => syncLogs,
@@ -230,7 +248,7 @@ import {
   uniqueIndex,
   varchar
 } from "drizzle-orm/pg-core";
-var tipoRegistroEnum, retrabalhoTipoEnum, tipoResponsavelEnum, retrabalhoClasseEnum, simNaoEnum, routineFrequencyEnum, routineStatusEnum, regulationTypeEnum, popAcessoTipoEnum, formaCotacaoEnum, cotacaoStatusEnum, tipoPrazoEnum, modalidadeFreteEnum, auditoriaAcaoEnum, kanbanStatusEnum, acaoCorretivaStatusEnum, planoAcaoStatusEnum, ishikawaCategoriaEnum, prioridadeEnum, acao5w2hStatusEnum, alertaTipoEnum, alertaSeveridadeEnum, alertaStatusEnum, abcTipoEnum, crmCanalEnum, clienteOverrideStatusEnum, statusValidacaoEnum, turnoEnum, analiseCurriculoStatusEnum, syncStatusEnum, clienteCadastroStatusEnum, crmPropostaStatusEnum, cnqTipoEnum, abcClassificacaoEnum, planoAcaoComercialStatusEnum, prioridadeComCriticaEnum, errorLibrary, retrabalhos, faturamento, knowledgeBase, suppliers, routines, regulations, pops, popAcessos, knowledgeComments, priceTableSections, priceTableMeta, priceTableHistory, APP_ROLES, appRoleEnum, PAGE_KEYS, user, session, account, verification, rolePermissions, transportadoras, transportadoraAvaliacoes, transportadoraFiliais, transportadoraCidades, cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, cteImportacoes, performanceMensal, auditoriaRetrabalhos, cargosFuncoes, empacotamentoModelos, empacotamentoTabelaPrecos, empacotamentoModelosCaixa, empacotamentoChecklistItens, empacotamentoPedidos, empacotamentoPedidoUsuarios, empacotamentoPedidoFotos, empacotamentoPedidoChecklist, empacotamentoInsumos, empacotamentoConsumoCaixa, empacotamentoCustoFuncionario, empacotamentoInsumosLetreiro, empacotamentoCronometroPausas, empacotamentoConfigProdutividade, empacotamentoChecklistLetreitoItens, empacotamentoPedidoChecklistLetreiro, empacotamentoSessoes, empacotamentoSessoesPausas, knowledgeSuggestions, acoesCorretivas, planosAcao, ishikawaCausas, acoes5w2h, metasRetrabalho, alertasSistema, bibliotecaArquivos, abcCache, metasOperacionais, financeiroMensal, observacoesFinanceirasMensais, desempenhoColaboradorMensal, metaProdutos, metasComerciais, historicoOs, historicoOrcamentos, crmMetas, crmContatos, clienteOverrides, custoMarketing, custosFixos, dividasParcelamentos, dreMensal, crmScripts, inteligenciaClientesCache, ledTipos, custoLedLancamentos, crmFaixaEtiquetas, performanceAuditada, clienteNovosContato, mubisysApiCache, crmAtividadeLog, financeirosMensais, cargos, responsabilidadesCargo, kpisCargo, analiseCurriculos, syncLogs, erpOsCache, clientes, crmPropostas, performanceComercial, custoLed, cotacoesItens, cnqRegistros, errosPadrao, ishikawaPlanos, performanceAbc, planosAcaoComercial, planosAcaoQualidade, regulamentos, metricas;
+var tipoRegistroEnum, retrabalhoTipoEnum, tipoResponsavelEnum, retrabalhoClasseEnum, simNaoEnum, routineFrequencyEnum, routineStatusEnum, regulationTypeEnum, popAcessoTipoEnum, formaCotacaoEnum, cotacaoStatusEnum, tipoPrazoEnum, modalidadeFreteEnum, auditoriaAcaoEnum, kanbanStatusEnum, acaoCorretivaStatusEnum, planoAcaoStatusEnum, ishikawaCategoriaEnum, prioridadeEnum, acao5w2hStatusEnum, alertaTipoEnum, alertaSeveridadeEnum, alertaStatusEnum, abcTipoEnum, crmCanalEnum, clienteOverrideStatusEnum, statusValidacaoEnum, turnoEnum, analiseCurriculoStatusEnum, syncStatusEnum, clienteCadastroStatusEnum, crmPropostaStatusEnum, cnqTipoEnum, abcClassificacaoEnum, planoAcaoComercialStatusEnum, prioridadeComCriticaEnum, inteligenciaAcaoTipoEnum, inteligenciaAcaoStatusEnum, inteligenciaAcaoResultadoEnum, scoreLeadCnpjEnum, nivelConfiancaSinalEnum, statusSinalMercadoEnum, errorLibrary, retrabalhos, faturamento, knowledgeBase, suppliers, routines, regulations, pops, popAcessos, knowledgeComments, priceTableSections, priceTableMeta, priceTableHistory, APP_ROLES, appRoleEnum, PAGE_KEYS, user, session, account, verification, rolePermissions, transportadoras, transportadoraAvaliacoes, transportadoraFiliais, transportadoraCidades, cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, cteImportacoes, performanceMensal, auditoriaRetrabalhos, cargosFuncoes, empacotamentoModelos, empacotamentoTabelaPrecos, empacotamentoModelosCaixa, empacotamentoChecklistItens, empacotamentoPedidos, empacotamentoPedidoUsuarios, empacotamentoPedidoFotos, empacotamentoPedidoChecklist, empacotamentoInsumos, empacotamentoConsumoCaixa, empacotamentoCustoFuncionario, empacotamentoInsumosLetreiro, empacotamentoCronometroPausas, empacotamentoConfigProdutividade, empacotamentoChecklistLetreitoItens, empacotamentoPedidoChecklistLetreiro, empacotamentoSessoes, empacotamentoSessoesPausas, knowledgeSuggestions, acoesCorretivas, planosAcao, ishikawaCausas, acoes5w2h, metasRetrabalho, alertasSistema, bibliotecaArquivos, abcCache, metasOperacionais, financeiroMensal, observacoesFinanceirasMensais, desempenhoColaboradorMensal, metaProdutos, metasComerciais, historicoOs, historicoOrcamentos, crmMetas, crmContatos, clienteOverrides, custoMarketing, auditoriaCustoMarketing, custoMarketingItens, marketingConfig, marketingConfigAuditoria, custosFixos, dividasParcelamentos, dreMensal, crmScripts, inteligenciaAcoesClientes, inteligenciaClientesAcessos, inteligenciaClientesContatos, leadsCnpjQualificados, origemVinculoCnpjEnum, clientesPerfilCnpj, radarMercadoConfig, sinaisMercado, ledTipos, custoLedLancamentos, crmFaixaEtiquetas, performanceAuditada, clienteNovosContato, performancePropostasFollowup, mubisysApiCache, crmAtividadeLog, financeirosMensais, cargos, responsabilidadesCargo, kpisCargo, analiseCurriculos, syncLogs, erpOsCache, clientes, crmPropostas, performanceComercial, custoLed, cotacoesItens, cnqRegistros, errosPadrao, ishikawaPlanos, performanceAbc, planosAcaoComercial, planosAcaoQualidade, regulamentos, metricas;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -270,6 +288,12 @@ var init_schema = __esm({
     abcClassificacaoEnum = pgEnum("abc_classificacao", ["A", "B", "C"]);
     planoAcaoComercialStatusEnum = pgEnum("plano_acao_comercial_status", ["pendente", "em_andamento", "concluido", "cancelado"]);
     prioridadeComCriticaEnum = pgEnum("prioridade_com_critica", ["baixa", "media", "alta", "critica"]);
+    inteligenciaAcaoTipoEnum = pgEnum("inteligencia_acao_tipo", ["primeira_sem_segunda", "atraso_recompra", "alto_volume_baixa_margem"]);
+    inteligenciaAcaoStatusEnum = pgEnum("inteligencia_acao_status", ["pendente", "concluida", "adiada", "descartada"]);
+    inteligenciaAcaoResultadoEnum = pgEnum("inteligencia_acao_resultado", ["contato_realizado", "sem_resposta", "projeto_futuro", "orcamento_solicitado", "compra", "adiamento", "sem_interesse"]);
+    scoreLeadCnpjEnum = pgEnum("score_lead_cnpj", ["A", "B", "C", "D"]);
+    nivelConfiancaSinalEnum = pgEnum("nivel_confianca_sinal", ["confirmado", "inferencia"]);
+    statusSinalMercadoEnum = pgEnum("status_sinal_mercado", ["novo", "qualificando", "oportunidade", "associado_cliente", "descartado", "expirado"]);
     errorLibrary = pgTable("error_library", {
       id: serial("id").primaryKey(),
       code: varchar("code", { length: 20 }).notNull().unique(),
@@ -594,6 +618,7 @@ var init_schema = __esm({
       cidade: varchar("cidade", { length: 160 }),
       uf: varchar("uf", { length: 2 }),
       cnpj: varchar("cnpj", { length: 24 }),
+      googleMapsUrl: varchar("googleMapsUrl", { length: 512 }),
       createdAt: timestamp("createdAt").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
     });
@@ -1288,7 +1313,10 @@ var init_schema = __esm({
       createdAt: timestamp("createdAt").defaultNow().notNull()
     }, (t2) => ({
       mesAnoIdx: index("historico_os_mes_ano_idx").on(t2.mes, t2.ano),
-      estadoIdx: index("historico_os_estado_idx").on(t2.estado)
+      estadoIdx: index("historico_os_estado_idx").on(t2.estado),
+      // Permite upsert idempotente por OS (sync incremental) — sem isso, rodar o
+      // sync duas vezes pro mesmo mês duplicava toda OS já importada.
+      osNumeroIdx: uniqueIndex("historico_os_os_numero_idx").on(t2.osNumero)
     }));
     historicoOrcamentos = pgTable("historico_orcamentos", {
       id: serial("id").primaryKey(),
@@ -1307,7 +1335,8 @@ var init_schema = __esm({
       ano: integer("ano").notNull(),
       createdAt: timestamp("createdAt").defaultNow().notNull()
     }, (t2) => ({
-      mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t2.mes, t2.ano)
+      mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t2.mes, t2.ano),
+      orcNumeroIdx: uniqueIndex("historico_orcamentos_orc_numero_idx").on(t2.orcNumero)
     }));
     crmMetas = pgTable("crm_metas", {
       id: serial("id").primaryKey(),
@@ -1347,10 +1376,94 @@ var init_schema = __esm({
       id: serial("id").primaryKey(),
       mes: integer("mes").notNull(),
       ano: integer("ano").notNull(),
-      investimento: decimal("investimento", { precision: 14, scale: 2 }).notNull().default("0"),
+      investimentoAquisicao: decimal("investimento_aquisicao", { precision: 14, scale: 2 }),
+      investimentoReativacao: decimal("investimento_reativacao", { precision: 14, scale: 2 }),
+      // Soma de investimentoAquisicao + investimentoReativacao, mantida por compatibilidade com consumidores existentes.
+      // null somente se os dois componentes forem null.
+      investimento: decimal("investimento", { precision: 14, scale: 2 }),
       observacao: text("observacao"),
       createdAt: timestamp("createdAt").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    auditoriaCustoMarketing = pgTable("auditoria_custo_marketing", {
+      id: serial("id").primaryKey(),
+      custoMarketingId: integer("custoMarketingId"),
+      mes: integer("mes").notNull(),
+      ano: integer("ano").notNull(),
+      acao: auditoriaAcaoEnum("acao").notNull(),
+      usuarioId: text("usuarioId"),
+      usuarioNome: varchar("usuarioNome", { length: 128 }),
+      usuarioRole: varchar("usuarioRole", { length: 32 }),
+      valoresAnteriores: text("valoresAnteriores"),
+      // JSON: snapshot antes da alteração (null em CRIACAO)
+      valoresNovos: text("valoresNovos"),
+      // JSON: snapshot depois da alteração (null em EXCLUSAO)
+      createdAt: timestamp("createdAt").defaultNow().notNull()
+    });
+    custoMarketingItens = pgTable("custo_marketing_itens", {
+      id: serial("id").primaryKey(),
+      mes: integer("mes").notNull(),
+      ano: integer("ano").notNull(),
+      categoria: varchar("categoria", { length: 32 }).notNull().default("aquisicao"),
+      // "aquisicao" | "reativacao"
+      fornecedor: varchar("fornecedor", { length: 256 }).notNull(),
+      tipo: varchar("tipo", { length: 128 }),
+      despesa: varchar("despesa", { length: 256 }),
+      descricao: text("descricao"),
+      valor: decimal("valor", { precision: 14, scale: 2 }).notNull(),
+      dataVencimento: timestamp("dataVencimento"),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    marketingConfig = pgTable("marketing_config", {
+      id: serial("id").primaryKey(),
+      // Meses de calendário sem compra para o cliente contar como "reativado" ao
+      // comprar de novo. Independente de MESES_INATIVIDADE_PARA_NOVO
+      // (performanceComercial.ts) — de propósito: mudar este valor não pode
+      // afetar Performance Comercial/Inteligência de Clientes/snapshots já
+      // auditados, só o relatório de Marketing. Ver server/services/marketingFinanceiroClientes.ts.
+      mesesInatividadeReativacao: integer("mesesInatividadeReativacao").notNull().default(6),
+      // Usado só como fallback quando o pedido não tem historico_os.contribuicaoReais
+      // preenchido — o método primário de margem é o valor real por pedido.
+      percentualMargemFallback: decimal("percentualMargemFallback", { precision: 5, scale: 2 }).notNull().default("51.00"),
+      cacMaximo: decimal("cacMaximo", { precision: 14, scale: 2 }),
+      custoReativacaoMaximo: decimal("custoReativacaoMaximo", { precision: 14, scale: 2 }),
+      roiMinimoPct: decimal("roiMinimoPct", { precision: 7, scale: 2 }),
+      ticketMedioMinimo: decimal("ticketMedioMinimo", { precision: 14, scale: 2 }),
+      metaClientesNovosMes: integer("metaClientesNovosMes"),
+      metaClientesReativadosMes: integer("metaClientesReativadosMes"),
+      aumentoMaximoCacMensalPct: decimal("aumentoMaximoCacMensalPct", { precision: 7, scale: 2 }),
+      // 0 = sem janela (atribui todo o faturamento do mês calendário ao grupo do
+      // cliente naquele mês — comportamento atual/padrão). 30/60/90 = atribui só
+      // o faturamento do cliente dentro de N dias da data em que ele virou
+      // novo/reativado.
+      janelaAtribuicaoDias: integer("janelaAtribuicaoDias").notNull().default(0),
+      // ── Campos da aba "Resultado Geral e Ponto de Equilíbrio" ──
+      // Direcionador usado para ratear custo fixo em análises gerenciais por
+      // pedido/vendedor (nunca na ponte de resultado consolidada, que sempre usa
+      // financeiro_mensal.despesasFixas real). Valores válidos: "pedidos" |
+      // "faturamento" | "custo_direto" | "rateio_erp" | "personalizado".
+      // "rateio_erp" reaproveita historico_os.custoFixo (já calculado pelo MubiSys).
+      direcionadorRateio: varchar("direcionadorRateio", { length: 32 }).notNull().default("faturamento"),
+      // Documenta a suposição de que despesasFixas/despesasFinanceiras de
+      // financeiro_mensal NÃO incluem o investimento de custo_marketing (fontes
+      // diferentes) — se marcado true, o investimento de marketing não é
+      // subtraído de novo como linha própria na ponte de resultado, para não
+      // contar 2x.
+      custosFinanceirosIncluemMarketing: boolean("custosFinanceirosIncluemMarketing").notNull().default(false),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    marketingConfigAuditoria = pgTable("marketing_config_auditoria", {
+      id: serial("id").primaryKey(),
+      acao: auditoriaAcaoEnum("acao").notNull(),
+      usuarioId: text("usuarioId"),
+      usuarioNome: varchar("usuarioNome", { length: 128 }),
+      usuarioRole: varchar("usuarioRole", { length: 32 }),
+      valoresAnteriores: text("valoresAnteriores"),
+      // JSON: snapshot antes da alteração (null em CRIACAO)
+      valoresNovos: text("valoresNovos"),
+      // JSON: snapshot depois da alteração (null em EXCLUSAO)
+      createdAt: timestamp("createdAt").defaultNow().notNull()
     });
     custosFixos = pgTable("custos_fixos", {
       id: serial("id").primaryKey(),
@@ -1436,15 +1549,165 @@ var init_schema = __esm({
       createdAt: timestamp("createdAt").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
     });
-    inteligenciaClientesCache = pgTable("inteligencia_clientes_cache", {
+    inteligenciaAcoesClientes = pgTable("inteligencia_acoes_clientes", {
       id: serial("id").primaryKey(),
-      periodoKey: varchar("periodo_key", { length: 32 }).notNull(),
+      tipo: inteligenciaAcaoTipoEnum("tipo").notNull(),
+      empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
+      // normalizeEmpresaKey(empresa) — chave de idempotência
+      empresa: varchar("empresa", { length: 256 }).notNull(),
+      // nome de exibição (grafia mais recente observada)
+      vendedor: varchar("vendedor", { length: 128 }),
+      // vendedor da compra mais recente do cliente — para filtrar a fila por responsável
+      titulo: varchar("titulo", { length: 256 }).notNull(),
+      motivo: text("motivo").notNull(),
+      evidenciaJson: text("evidencia_json").notNull(),
+      // fatos que sustentam a ação (datas, valores, cálculo)
+      prioridade: integer("prioridade").notNull().default(0),
+      // 0-100, prioridade operacional (não é probabilidade de compra)
+      prioridadeFatoresJson: text("prioridade_fatores_json"),
+      // componentes/pesos que formaram a prioridade
+      status: inteligenciaAcaoStatusEnum("status").notNull().default("pendente"),
+      responsavel: varchar("responsavel", { length: 128 }),
+      proximoPasso: text("proximo_passo"),
+      prazo: date("prazo"),
+      resultado: inteligenciaAcaoResultadoEnum("resultado"),
+      resultadoObservacao: text("resultado_observacao"),
+      versaoRegra: varchar("versao_regra", { length: 16 }).notNull().default("v1"),
+      dataAnalise: timestamp("data_analise").defaultNow().notNull(),
+      // quando a evidência foi calculada
+      resolvidoEm: timestamp("resolvido_em"),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    }, (t2) => ({
+      tipoEmpresaUnique: uniqueIndex("inteligencia_acoes_tipo_empresa_unique").on(t2.tipo, t2.empresaKey),
+      statusIdx: index("inteligencia_acoes_status_idx").on(t2.status)
+    }));
+    inteligenciaClientesAcessos = pgTable("inteligencia_clientes_acessos", {
+      id: serial("id").primaryKey(),
+      userId: text("user_id").notNull(),
+      // user.id (Better Auth)
+      userName: varchar("user_name", { length: 128 }).notNull(),
+      acessadoEm: timestamp("acessado_em").defaultNow().notNull()
+    }, (t2) => ({
+      userIdx: index("inteligencia_clientes_acessos_user_idx").on(t2.userId, t2.acessadoEm)
+    }));
+    inteligenciaClientesContatos = pgTable("inteligencia_clientes_contatos", {
+      id: serial("id").primaryKey(),
+      empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
+      empresa: varchar("empresa", { length: 256 }).notNull(),
+      userId: text("user_id").notNull(),
+      // user.id (Better Auth)
+      vendedor: varchar("vendedor", { length: 128 }).notNull(),
+      // nome de exibição no momento do registro
+      observacao: text("observacao"),
+      contatadoEm: timestamp("contatado_em").defaultNow().notNull()
+    }, (t2) => ({
+      empresaIdx: index("inteligencia_clientes_contatos_empresa_idx").on(t2.empresaKey, t2.contatadoEm)
+    }));
+    leadsCnpjQualificados = pgTable("leads_cnpj_qualificados", {
+      id: serial("id").primaryKey(),
+      cnpj: varchar("cnpj", { length: 14 }).notNull().unique(),
+      // sem máscara
+      razaoSocial: varchar("razao_social", { length: 256 }).notNull(),
+      nomeFantasia: varchar("nome_fantasia", { length: 256 }),
+      uf: varchar("uf", { length: 2 }),
+      municipio: varchar("municipio", { length: 128 }),
+      cnaePrincipal: varchar("cnae_principal", { length: 16 }),
+      situacaoCadastral: varchar("situacao_cadastral", { length: 32 }),
+      porte: varchar("porte", { length: 40 }),
+      capitalSocial: decimal("capital_social", { precision: 16, scale: 2 }),
+      dataInicioAtividade: varchar("data_inicio_atividade", { length: 32 }),
+      aprovado: boolean("aprovado").notNull().default(false),
+      score: scoreLeadCnpjEnum("score"),
+      // null quando rejeitado automaticamente
+      motivoRejeicao: text("motivo_rejeicao"),
+      cnaesRelevantesJson: text("cnaes_relevantes_json"),
+      // CNAEs que bateram na lista-alvo
+      fatoresScoreJson: text("fatores_score_json"),
+      qsaJson: text("qsa_json"),
       dadosJson: text("dados_json").notNull(),
-      // mediumtext → text
-      calculadoEm: timestamp("calculado_em").defaultNow().notNull(),
-      congelado: boolean("congelado").default(false).notNull(),
-      congeladoEm: timestamp("congelado_em")
+      // resposta bruta da OpenCNPJ, para auditoria
+      resumoIa: text("resumo_ia"),
+      // texto gerado pelo prompt v1 (potencial/argumento/quem abordar) — null se rejeitado ou IA indisponível
+      versaoPromptIa: varchar("versao_prompt_ia", { length: 16 }),
+      versaoRegra: varchar("versao_regra", { length: 16 }).notNull().default("v1"),
+      consultadoPor: varchar("consultado_por", { length: 128 }),
+      consultadoEm: timestamp("consultado_em").defaultNow().notNull(),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
     });
+    origemVinculoCnpjEnum = pgEnum("origem_vinculo_cnpj", ["erp_os_cache", "manual", "mubisys"]);
+    clientesPerfilCnpj = pgTable("clientes_perfil_cnpj", {
+      id: serial("id").primaryKey(),
+      empresaKey: varchar("empresa_key", { length: 256 }).notNull().unique(),
+      // normalizeEmpresaKey(empresa) de historico_os
+      empresaExibicao: varchar("empresa_exibicao", { length: 256 }).notNull(),
+      cnpj: varchar("cnpj", { length: 14 }).notNull(),
+      razaoSocial: varchar("razao_social", { length: 256 }),
+      situacaoCadastral: varchar("situacao_cadastral", { length: 32 }),
+      dataInicioAtividade: varchar("data_inicio_atividade", { length: 32 }),
+      idadeAnos: decimal("idade_anos", { precision: 5, scale: 1 }),
+      porte: varchar("porte", { length: 40 }),
+      naturezaJuridica: varchar("natureza_juridica", { length: 128 }),
+      qtdSocios: integer("qtd_socios"),
+      capitalSocial: decimal("capital_social", { precision: 16, scale: 2 }),
+      uf: varchar("uf", { length: 2 }),
+      municipio: varchar("municipio", { length: 128 }),
+      cnaePrincipal: varchar("cnae_principal", { length: 16 }),
+      dadosJson: text("dados_json").notNull(),
+      // resposta bruta da OpenCNPJ
+      origem: origemVinculoCnpjEnum("origem").notNull(),
+      vinculadoPor: varchar("vinculado_por", { length: 128 }),
+      vinculadoEm: timestamp("vinculado_em").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    radarMercadoConfig = pgTable("radar_mercado_config", {
+      id: serial("id").primaryKey(),
+      // single-row: sempre id=1
+      regioesJson: text("regioes_json").notNull(),
+      // array de UF, ex: ["MS","MT","GO","DF","SP",...]
+      segmentosAlvoJson: text("segmentos_alvo_json").notNull(),
+      // ex: ["Gráficas","Comunicação visual"]
+      concorrentesConhecidosJson: text("concorrentes_conhecidos_json").notNull().default("[]"),
+      termosBuscaJson: text("termos_busca_json").notNull(),
+      // templates de busca, ex: "gráfica nova {cidade}"
+      exclusoesJson: text("exclusoes_json").notNull().default("[]"),
+      // termos/domínios a ignorar
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    });
+    sinaisMercado = pgTable("sinais_mercado", {
+      id: serial("id").primaryKey(),
+      empresa: varchar("empresa", { length: 256 }),
+      localizacaoTexto: varchar("localizacao_texto", { length: 256 }),
+      uf: varchar("uf", { length: 2 }),
+      municipio: varchar("municipio", { length: 128 }),
+      tipoEvento: varchar("tipo_evento", { length: 64 }),
+      // inauguração, reforma, expansão, edital, concorrente, outro
+      evidenciaTrecho: text("evidencia_trecho").notNull(),
+      // trecho/síntese da fonte, nunca a página inteira
+      url: text("url").notNull(),
+      urlHash: varchar("url_hash", { length: 64 }).notNull().unique(),
+      // sha256(url) — deduplicação
+      publicador: varchar("publicador", { length: 256 }),
+      dataPublicacao: varchar("data_publicacao", { length: 32 }),
+      // texto — nem toda fonte dá data ISO
+      dataEvento: varchar("data_evento", { length: 32 }),
+      dataColeta: timestamp("data_coleta").defaultNow().notNull(),
+      nivelConfianca: nivelConfiancaSinalEnum("nivel_confianca").notNull().default("inferencia"),
+      relacaoProdutos: text("relacao_produtos"),
+      // por que isso interessa ao nosso catálogo — null se não avaliado
+      proximoPasso: text("proximo_passo"),
+      validadeAte: date("validade_ate"),
+      // sinal deixa de ser considerado novo depois dessa data
+      jaClienteEmpresaKey: varchar("ja_cliente_empresa_key", { length: 256 }),
+      // vínculo com historico_os, se identificado
+      status: statusSinalMercadoEnum("status").notNull().default("novo"),
+      termoBuscaOrigem: varchar("termo_busca_origem", { length: 256 }),
+      createdAt: timestamp("createdAt").defaultNow().notNull(),
+      updatedAt: timestamp("updatedAt").defaultNow().notNull()
+    }, (t2) => ({
+      statusIdx: index("sinais_mercado_status_idx").on(t2.status)
+    }));
     ledTipos = pgTable("led_tipos", {
       id: serial("id").primaryKey(),
       nome: varchar("nome", { length: 128 }).notNull(),
@@ -1473,6 +1736,8 @@ var init_schema = __esm({
       id: serial("id").primaryKey(),
       faixa: integer("faixa").notNull(),
       label: varchar("label", { length: 128 }).notNull(),
+      diasInicio: integer("dias_inicio").notNull(),
+      diasFim: integer("dias_fim").notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
     });
     performanceAuditada = pgTable("performance_auditada", {
@@ -1512,6 +1777,20 @@ var init_schema = __esm({
       createdAt: timestamp("createdAt").defaultNow().notNull(),
       updatedAt: timestamp("updatedAt").defaultNow().notNull()
     });
+    performancePropostasFollowup = pgTable("performance_propostas_followup", {
+      id: serial("id").primaryKey(),
+      orcNumero: varchar("orcNumero", { length: 32 }).notNull(),
+      empresa: varchar("empresa", { length: 256 }).notNull(),
+      mes: integer("mes").notNull(),
+      ano: integer("ano").notNull(),
+      usuarioId: text("usuarioId"),
+      usuarioNome: varchar("usuarioNome", { length: 128 }).notNull(),
+      motivo: text("motivo").notNull(),
+      contatadoEm: timestamp("contatadoEm").defaultNow().notNull()
+    }, (t2) => ({
+      orcNumeroIdx: index("performance_propostas_followup_orc_idx").on(t2.orcNumero),
+      mesAnoIdx: index("performance_propostas_followup_mes_ano_idx").on(t2.mes, t2.ano)
+    }));
     mubisysApiCache = pgTable("mubisys_api_cache", {
       id: serial("id").primaryKey(),
       cacheKey: varchar("cache_key", { length: 64 }).notNull().unique(),
@@ -1880,6 +2159,59 @@ var init_auth = __esm({
   }
 });
 
+// shared/const.ts
+var UNAUTHED_ERR_MSG, NOT_ADMIN_ERR_MSG;
+var init_const = __esm({
+  "shared/const.ts"() {
+    "use strict";
+    UNAUTHED_ERR_MSG = "Please login (10001)";
+    NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+  }
+});
+
+// server/_core/trpc.ts
+import { initTRPC, TRPCError } from "@trpc/server";
+import superjson from "superjson";
+function requireRole(...roles) {
+  return t.middleware(async ({ ctx, next }) => {
+    if (!ctx.user || !roles.includes(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+    }
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.user
+      }
+    });
+  });
+}
+var t, router, publicProcedure, requireUser, protectedProcedure, adminProcedure;
+var init_trpc = __esm({
+  "server/_core/trpc.ts"() {
+    "use strict";
+    init_const();
+    t = initTRPC.context().create({
+      transformer: superjson
+    });
+    router = t.router;
+    publicProcedure = t.procedure;
+    requireUser = t.middleware(async (opts) => {
+      const { ctx, next } = opts;
+      if (!ctx.user) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+      }
+      return next({
+        ctx: {
+          ...ctx,
+          user: ctx.user
+        }
+      });
+    });
+    protectedProcedure = t.procedure.use(requireUser);
+    adminProcedure = t.procedure.use(requireRole("admin", "master"));
+  }
+});
+
 // server/_core/env.ts
 var ENV;
 var init_env = __esm({
@@ -1890,8 +2222,14 @@ var init_env = __esm({
       databaseUrl: process.env.DATABASE_URL ?? "",
       isProduction: process.env.NODE_ENV === "production",
       openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
       MUBISYS_ACCESS_TOKEN: process.env.MUBISYS_ACCESS_TOKEN ?? "",
-      MUBISYS_PUBLIC_KEY: process.env.MUBISYS_PUBLIC_KEY ?? ""
+      MUBISYS_PUBLIC_KEY: process.env.MUBISYS_PUBLIC_KEY ?? "",
+      // Radar de Mercado (Inteligência de Clientes) — SerpAPI (serpapi.com). Trocado
+      // do Google Custom Search JSON API em 2026-09 porque o Google fechou essa API
+      // para contas novas em 2025 (ver docs/radar-mercado.md). Sem essa chave, o
+      // radar fica com a configuração pronta mas a busca desativada.
+      serpapiKey: process.env.SERPAPI_KEY ?? ""
     };
   }
 });
@@ -2110,6 +2448,19 @@ async function mubisysGetOrNull(path, params, opts) {
   }
   return await response.json();
 }
+function ajustarDias(dataISO, dias) {
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1, dia));
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+function refiltrarPorJanela(itens, campo, datainicial, datafinal) {
+  return itens.filter((item) => {
+    const valor = item[campo];
+    const dia = valor?.slice(0, 10);
+    return !!dia && dia >= datainicial && dia <= datafinal;
+  });
+}
 async function listarTudo(path, params, opts) {
   const maxPaginas = opts?.maxPaginas ?? 50;
   const perPage = opts?.perPage ?? 500;
@@ -2130,16 +2481,20 @@ async function listarTudo(path, params, opts) {
   return { itens, completo: false };
 }
 async function listarOSMubiSys(opts) {
-  return listarTudo(
+  const filtrodata = opts.filtrodata ?? "CADASTRO";
+  const campo = CAMPO_DATA_OS[filtrodata];
+  const { itens, completo } = await listarTudo(
     "ordem-servico",
     {
       status: opts.status ?? "TODOS",
-      filtrodata: opts.filtrodata ?? "CADASTRO",
-      datainicial: opts.datainicial,
-      datafinal: opts.datafinal
+      filtrodata,
+      datainicial: campo ? ajustarDias(opts.datainicial, -1) : opts.datainicial,
+      datafinal: campo ? ajustarDias(opts.datafinal, 1) : opts.datafinal
     },
     { timeoutMs: TIMEOUT_LISTA_MS }
   );
+  if (!campo) return { itens, completo };
+  return { itens: refiltrarPorJanela(itens, campo, opts.datainicial, opts.datafinal), completo };
 }
 async function buscarOSPorNumero(numero) {
   return mubisysGetOrNull(
@@ -2149,19 +2504,27 @@ async function buscarOSPorNumero(numero) {
   );
 }
 async function listarOrcamentosMubiSys(opts) {
-  return listarTudo(
+  const { itens, completo } = await listarTudo(
     "orcamento",
     {
       status: opts.status ?? "TODOS",
       filtrodata: "CADASTRO",
-      datainicial: opts.datainicial,
-      datafinal: opts.datafinal
+      datainicial: ajustarDias(opts.datainicial, -1),
+      datafinal: ajustarDias(opts.datafinal, 1)
     },
     // per_page=500 (padrão de listarTudo) estoura TIMEOUT_LISTA_MS em janelas de
     // mês cheio (~800 orçamentos) — medido em 17/08/2026. 200 reduz o payload por
     // página o bastante para caber no orçamento de tempo sem precisar de retry.
-    { timeoutMs: TIMEOUT_LISTA_MS, perPage: 200 }
+    // Medido em 12/09/2026: o tempo por página NÃO escala linear com per_page — com
+    // per_page=200 a API degrada a cada página (21s, 24s, >45s/timeout na 3ª), enquanto
+    // per_page=50 fica estável em ~3,5-4,7s por página. Chamadores sensíveis a esse
+    // limite (ex.: CRM) devem passar um perPage menor.
+    { timeoutMs: TIMEOUT_LISTA_MS, perPage: opts.perPage ?? 200 }
   );
+  return {
+    itens: refiltrarPorJanela(itens, "data_cadastro", opts.datainicial, opts.datafinal),
+    completo
+  };
 }
 async function buscarClientePorId(clienteId) {
   return mubisysGetOrNull(`cliente/${clienteId}`, void 0, {
@@ -2203,7 +2566,7 @@ async function verificarConexaoMubiSys() {
     return { ok: false, latenciaMs: Date.now() - inicio, erro: erro?.message, tokenExpiradoEm: expDoToken() };
   }
 }
-var BASE_URL, MubiSysError, TIMEOUT_PADRAO_MS, TIMEOUT_PONTUAL_MS, TIMEOUT_LISTA_MS;
+var BASE_URL, MubiSysError, TIMEOUT_PADRAO_MS, TIMEOUT_PONTUAL_MS, TIMEOUT_LISTA_MS, CAMPO_DATA_OS;
 var init_mubisys_client = __esm({
   "server/integrations/mubisys-client.ts"() {
     "use strict";
@@ -2219,7 +2582,36 @@ var init_mubisys_client = __esm({
     TIMEOUT_PADRAO_MS = 3e4;
     TIMEOUT_PONTUAL_MS = 1e4;
     TIMEOUT_LISTA_MS = 45e3;
+    CAMPO_DATA_OS = {
+      CADASTRO: "data_cadastro",
+      APROVACAO: "data_aprovacao",
+      ENTREGA: "data_entrega",
+      FATURAMENTO: "data_faturamento",
+      CANCELAMENTO: "data_cancelamento"
+    };
     avisarSeTokenVencido();
+  }
+});
+
+// shared/dias-uteis.ts
+function ehDiaUtil(d) {
+  const diaSemana = d.getDay();
+  return diaSemana !== 0 && diaSemana !== 6;
+}
+function diasUteisEntre(inicio, fim) {
+  if (fim <= inicio) return 0;
+  const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate());
+  const alvo = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
+  let count3 = 0;
+  while (cursor < alvo) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (ehDiaUtil(cursor)) count3++;
+  }
+  return count3;
+}
+var init_dias_uteis = __esm({
+  "shared/dias-uteis.ts"() {
+    "use strict";
   }
 });
 
@@ -2237,6 +2629,7 @@ function normalizarData(valor) {
 var init_date_utils = __esm({
   "server/utils/date-utils.ts"() {
     "use strict";
+    init_dias_uteis();
   }
 });
 
@@ -2272,8 +2665,8 @@ function formatarDataOS(valor) {
 async function buscarDadosOSParaFrete(osNumero) {
   try {
     console.log("\u{1F50D} [Frete-Cache] Buscando OS", osNumero, "no cache local...");
-    const sql10 = 'SELECT * FROM erp_os_cache WHERE "numeroOs" = ?';
-    const result = await selectQuery(sql10, [osNumero]);
+    const sql11 = 'SELECT * FROM erp_os_cache WHERE "numeroOs" = ?';
+    const result = await selectQuery(sql11, [osNumero]);
     const osCache = result[0];
     const cacheCompleto = !!(osCache && osCache.numeroOs && String(osCache.dataAprovacao ?? "").trim() && String(osCache.vendedor ?? "").trim());
     if (osCache && osCache.numeroOs && cacheCompleto) {
@@ -2928,8 +3321,12 @@ __export(db_exports, {
   getSupplierById: () => getSupplierById,
   incrementPriceTableVersion: () => incrementPriceTableVersion,
   insertAuditLog: () => insertAuditLog,
+  insertAuditLogCustoMarketing: () => insertAuditLogCustoMarketing,
+  insertAuditLogMarketingConfig: () => insertAuditLogMarketingConfig,
   listArquivosBibliotecaComConteudo: () => listArquivosBibliotecaComConteudo,
   listAuditLogs: () => listAuditLogs,
+  listAuditLogsCustoMarketing: () => listAuditLogsCustoMarketing,
+  listAuditLogsMarketingConfig: () => listAuditLogsMarketingConfig,
   listCargos: () => listCargos,
   listKnowledge: () => listKnowledge,
   listKnowledgeComments: () => listKnowledgeComments,
@@ -3636,6 +4033,43 @@ async function insertAuditLog(data) {
     detalhes: data.detalhes ? JSON.stringify(data.detalhes) : null
   });
 }
+async function insertAuditLogCustoMarketing(data) {
+  const db5 = await getDb3();
+  if (!db5) return;
+  await db5.insert(auditoriaCustoMarketing).values({
+    custoMarketingId: data.custoMarketingId ?? null,
+    mes: data.mes,
+    ano: data.ano,
+    acao: data.acao,
+    usuarioId: data.usuarioId ?? null,
+    usuarioNome: data.usuarioNome ?? null,
+    usuarioRole: data.usuarioRole ?? null,
+    valoresAnteriores: data.valoresAnteriores ? JSON.stringify(data.valoresAnteriores) : null,
+    valoresNovos: data.valoresNovos ? JSON.stringify(data.valoresNovos) : null
+  });
+}
+async function listAuditLogsCustoMarketing(ano) {
+  const db5 = await getDb3();
+  if (!db5) return [];
+  return db5.select().from(auditoriaCustoMarketing).where(eq3(auditoriaCustoMarketing.ano, ano)).orderBy(desc3(auditoriaCustoMarketing.createdAt));
+}
+async function insertAuditLogMarketingConfig(data) {
+  const db5 = await getDb3();
+  if (!db5) return;
+  await db5.insert(marketingConfigAuditoria).values({
+    acao: data.acao,
+    usuarioId: data.usuarioId ?? null,
+    usuarioNome: data.usuarioNome ?? null,
+    usuarioRole: data.usuarioRole ?? null,
+    valoresAnteriores: data.valoresAnteriores ? JSON.stringify(data.valoresAnteriores) : null,
+    valoresNovos: data.valoresNovos ? JSON.stringify(data.valoresNovos) : null
+  });
+}
+async function listAuditLogsMarketingConfig(limit = 50) {
+  const db5 = await getDb3();
+  if (!db5) return [];
+  return db5.select().from(marketingConfigAuditoria).orderBy(desc3(marketingConfigAuditoria.createdAt)).limit(limit);
+}
 async function listAuditLogs(filter = {}) {
   const db5 = await getDb3();
   if (!db5) return { rows: [], total: 0 };
@@ -3836,6 +4270,3654 @@ var init_db = __esm({
     init_schema();
     init_priceTableDiff();
     _db3 = null;
+  }
+});
+
+// server/integrations/anthropic-client.ts
+import Anthropic from "@anthropic-ai/sdk";
+function getClient() {
+  if (!ENV.anthropicApiKey) {
+    throw new Error("ANTHROPIC_API_KEY n\xE3o configurada \u2014 o chat de IA do Painel Financeiro est\xE1 desativado.");
+  }
+  if (!client) client = new Anthropic({ apiKey: ENV.anthropicApiKey });
+  return client;
+}
+async function perguntarSobreFinanceiro(contextoDados, historico, pergunta) {
+  const anthropic = getClient();
+  const messages = [
+    ...historico.map((m) => ({
+      role: m.role,
+      content: m.texto
+    })),
+    { role: "user", content: pergunta }
+  ];
+  const response = await anthropic.messages.create({
+    model: "claude-opus-5",
+    max_tokens: 4096,
+    system: [
+      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+      { type: "text", text: contextoDados }
+    ],
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
+    messages
+  });
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock) throw new Error("Claude n\xE3o retornou texto na resposta.");
+  return textBlock.text;
+}
+async function perguntarSobreClientes(systemPrompt, contextoDados, pergunta) {
+  const anthropic = getClient();
+  const response = await anthropic.messages.create({
+    model: "claude-opus-5",
+    max_tokens: 4096,
+    system: [
+      { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+      { type: "text", text: contextoDados }
+    ],
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
+    messages: [{ role: "user", content: pergunta }]
+  });
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock) throw new Error("Claude n\xE3o retornou texto na resposta.");
+  return textBlock.text;
+}
+var client, SYSTEM_PROMPT;
+var init_anthropic_client = __esm({
+  "server/integrations/anthropic-client.ts"() {
+    "use strict";
+    init_env();
+    client = null;
+    SYSTEM_PROMPT = `Voc\xEA \xE9 um CFO s\xEAnior atuando como consultor interno da Radra (Letreiros Express), uma ind\xFAstria de comunica\xE7\xE3o visual (letreiros, placas, pain\xE9is de LED). Voc\xEA responde perguntas do gestor sobre a sa\xFAde financeira da empresa usando os dados reais fornecidos no contexto abaixo.
+
+Use, quando fizerem sentido para a pergunta, estes frameworks de an\xE1lise financeira:
+- EBITDA e Margem EBITDA
+- Margem de Contribui\xE7\xE3o por canal/produto
+- LTV vs. CAC (Lifetime Value / Customer Acquisition Cost)
+- Working Capital (Capital de Giro) e Ciclo de Caixa
+- ROIC e ROE
+- An\xE1lise de Vari\xE2ncia (Or\xE7ado vs. Realizado)
+- An\xE1lise de Coorte (reten\xE7\xE3o por m\xEAs de entrada do cliente)
+- An\xE1lise de Sensibilidade / Cen\xE1rios (Otimista, Base, Pessimista)
+- An\xE1lise de Pareto (80/20) por produto/cliente
+- Regress\xE3o linear / tend\xEAncia de vendas (forecasting)
+
+Regra inegoci\xE1vel: NUNCA invente ou estime um n\xFAmero financeiro como se fosse dado real. Se o dado necess\xE1rio para responder algo com precis\xE3o n\xE3o estiver no contexto fornecido, diga explicitamente que falta esse dado e o que seria preciso para calcul\xE1-lo \u2014 n\xE3o preencha a lacuna com um chute. Voc\xEA pode fazer proje\xE7\xF5es/estimativas explicitamente rotuladas como tal (ex: "proje\xE7\xE3o baseada em regress\xE3o linear sobre os \xFAltimos N meses"), mas nunca as apresente como n\xFAmero realizado.
+
+Seja direto e quantitativo. Responda em portugu\xEAs do Brasil.`;
+  }
+});
+
+// server/services/inteligenciaClientes.ts
+function parseDataFlexivel(s) {
+  if (!s) return null;
+  const texto = s.trim();
+  if (!texto) return null;
+  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (br) {
+    const [, dia, mes, ano, h, min, seg] = br;
+    const d = new Date(Number(ano), Number(mes) - 1, Number(dia), Number(h ?? 0), Number(min ?? 0), Number(seg ?? 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (iso) {
+    const [, ano, mes, dia, h, min, seg] = iso;
+    const d = new Date(Number(ano), Number(mes) - 1, Number(dia), Number(h ?? 0), Number(min ?? 0), Number(seg ?? 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+function toNum(v) {
+  const n = parseFloat(String(v ?? "0"));
+  return isNaN(n) ? 0 : n;
+}
+function toNumOrNull(v) {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = parseFloat(String(v));
+  return isNaN(n) ? null : n;
+}
+function construirBaseClientes(rows) {
+  const base = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    if (!isOsNormalDb(r)) continue;
+    const empresaBruta = (r.empresa ?? "").trim();
+    if (!empresaBruta) continue;
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (!data) continue;
+    const key = normalizeEmpresaKey(empresaBruta);
+    let cliente = base.get(key);
+    if (!cliente) {
+      cliente = { empresaKey: key, empresaExibicao: empresaBruta, compras: [] };
+      base.set(key, cliente);
+    }
+    cliente.compras.push({
+      osNumero: r.osNumero ?? "",
+      data,
+      valor: toNum(r.valorOs ?? r.valorTotal),
+      custo: toNumOrNull(r.custosTotal),
+      contribuicao: toNumOrNull(r.contribuicaoReais),
+      vendedor: r.vendedor,
+      cidade: r.cidade,
+      estado: r.estado,
+      trabalho: r.trabalho ?? null
+    });
+  }
+  for (const cliente of base.values()) {
+    cliente.compras.sort((a, b) => a.data.getTime() - b.data.getTime());
+    cliente.empresaExibicao = cliente.compras[cliente.compras.length - 1].vendedor ? cliente.empresaExibicao : cliente.empresaExibicao;
+  }
+  return base;
+}
+function mediana(valores) {
+  if (valores.length === 0) return null;
+  const s = [...valores].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
+}
+function diasEntre(a, b) {
+  return Math.round((a.getTime() - b.getTime()) / 864e5);
+}
+function diasUteisEntre2(fim, inicio) {
+  return diasUteisEntre(inicio, fim);
+}
+function analisarCliente(cliente, dataRef, dataInicial, dataFinal) {
+  const validas = cliente.compras;
+  if (validas.length === 0) return null;
+  const primeiraCompra = validas[0].data;
+  const ultimaCompra = validas[validas.length - 1].data;
+  const diasDesdeUltimaCompra = diasEntre(dataRef, ultimaCompra);
+  const intervalosDias = [];
+  for (let i = 1; i < validas.length; i++) {
+    intervalosDias.push(diasEntre(validas[i].data, validas[i - 1].data));
+  }
+  const medianaIntervaloDias = mediana(intervalosDias);
+  const razaoAtraso = medianaIntervaloDias && medianaIntervaloDias > 0 ? diasDesdeUltimaCompra / medianaIntervaloDias : null;
+  const duracaoJanelaMs = dataFinal.getTime() - dataInicial.getTime();
+  const dataInicialAnterior = new Date(dataInicial.getTime() - duracaoJanelaMs - 864e5);
+  const dataFinalAnterior = new Date(dataInicial.getTime() - 864e5);
+  let valorJanelaAtual = 0, valorJanelaAnterior = 0;
+  let custoConhecidoTotal = true;
+  let contribSomaHistorico = 0, valorSomaHistorico = 0;
+  for (const c of validas) {
+    valorSomaHistorico += c.valor;
+    if (c.contribuicao !== null) contribSomaHistorico += c.contribuicao;
+    else custoConhecidoTotal = false;
+    if (c.data >= dataInicial && c.data <= dataFinal) valorJanelaAtual += c.valor;
+    if (c.data >= dataInicialAnterior && c.data <= dataFinalAnterior) valorJanelaAnterior += c.valor;
+  }
+  const margemHistoricaPct = custoConhecidoTotal && valorSomaHistorico > 0 ? contribSomaHistorico / valorSomaHistorico * 100 : null;
+  const variacaoVolumePct = valorJanelaAnterior > 0 ? (valorJanelaAtual - valorJanelaAnterior) / valorJanelaAnterior * 100 : valorJanelaAtual > 0 ? null : 0;
+  let classificacao;
+  let confianca = "alta";
+  if (validas.length === 1) {
+    classificacao = "primeira_compra";
+  } else if (validas.length < HISTORICO_MINIMO_COMPRAS_PARA_TENDENCIA) {
+    classificacao = "historico_insuficiente";
+    confianca = "baixa";
+  } else if (razaoAtraso !== null && razaoAtraso >= RAZAO_ATRASO_LIMIAR) {
+    classificacao = "intervalo_acima_habitual";
+  } else if (variacaoVolumePct !== null && variacaoVolumePct >= VARIACAO_VOLUME_LIMIAR_PCT) {
+    classificacao = "em_crescimento";
+  } else if (variacaoVolumePct !== null && variacaoVolumePct <= -VARIACAO_VOLUME_LIMIAR_PCT) {
+    classificacao = "reducao_volume";
+  } else {
+    classificacao = "recompra_observada";
+  }
+  return {
+    empresaKey: cliente.empresaKey,
+    empresaExibicao: cliente.empresaExibicao,
+    vendedor: validas[validas.length - 1].vendedor || "Sem vendedor",
+    totalComprasValidas: validas.length,
+    primeiraCompra,
+    ultimaCompra,
+    diasDesdeUltimaCompra,
+    medianaIntervaloDias,
+    qtdIntervalos: intervalosDias.length,
+    razaoAtraso,
+    valorTotalHistorico: valorSomaHistorico,
+    ticketMedioHistorico: valorSomaHistorico / validas.length,
+    valorJanelaAtual,
+    valorJanelaAnterior,
+    variacaoVolumePct,
+    margemHistoricaPct,
+    classificacao,
+    confiancaClassificacao: confianca,
+    sinalizacoes: []
+    // preenchido depois, em calcularVisaoGeral (precisa da distribuição do grupo)
+  };
+}
+function scoreQuintil(valor, ordenadosAsc) {
+  if (ordenadosAsc.length <= 1) return 3;
+  const idx = ordenadosAsc.findIndex((v) => v >= valor);
+  const posicao = idx === -1 ? ordenadosAsc.length - 1 : idx;
+  const percentil2 = posicao / (ordenadosAsc.length - 1);
+  return Math.min(5, Math.max(1, Math.ceil(percentil2 * 5) || 1));
+}
+function calcularVisaoGeral(base, dataInicial, dataFinal, dataRef) {
+  const classificacoes = {
+    primeira_compra: 0,
+    recompra_observada: 0,
+    em_crescimento: 0,
+    reducao_volume: 0,
+    intervalo_acima_habitual: 0,
+    historico_insuficiente: 0
+  };
+  const clientesDoPeriodo = [];
+  let valorTotalPeriodo = 0;
+  let qtdPedidosValidos = 0;
+  let contribSomaPeriodo = 0;
+  let custoConhecidoPeriodo = true;
+  let algumPedidoNoPeriodo = false;
+  for (const cliente of base.values()) {
+    const comprasNoPeriodo = cliente.compras.filter((c) => c.data >= dataInicial && c.data <= dataFinal);
+    if (comprasNoPeriodo.length === 0) continue;
+    const analise = analisarCliente(cliente, dataRef, dataInicial, dataFinal);
+    if (!analise) continue;
+    clientesDoPeriodo.push(analise);
+    classificacoes[analise.classificacao]++;
+    for (const c of comprasNoPeriodo) {
+      algumPedidoNoPeriodo = true;
+      valorTotalPeriodo += c.valor;
+      qtdPedidosValidos++;
+      if (c.contribuicao !== null) contribSomaPeriodo += c.contribuicao;
+      else custoConhecidoPeriodo = false;
+    }
+  }
+  const clientesCompradoresPeriodo = clientesDoPeriodo.length;
+  const primeiraCompraObservada = clientesDoPeriodo.filter((c) => c.primeiraCompra >= dataInicial && c.primeiraCompra <= dataFinal).length;
+  const recompraNoPeriodo = clientesCompradoresPeriodo - primeiraCompraObservada;
+  const porValorDesc = [...clientesDoPeriodo].sort((a, b) => b.valorJanelaAtual - a.valorJanelaAtual);
+  const qtdTop20 = Math.max(1, Math.round(porValorDesc.length * (1 - ALTO_VOLUME_PERCENTIL)));
+  const valorTop20 = porValorDesc.slice(0, qtdTop20).reduce((s, c) => s + c.valorJanelaAtual, 0);
+  const margemContribuicaoPct = algumPedidoNoPeriodo && custoConhecidoPeriodo && valorTotalPeriodo > 0 ? contribSomaPeriodo / valorTotalPeriodo * 100 : null;
+  const margemContribuicaoCobertura = !algumPedidoNoPeriodo ? "indisponivel" : custoConhecidoPeriodo ? "completa" : "parcial";
+  const recencias = clientesDoPeriodo.map((c) => c.diasDesdeUltimaCompra).sort((a, b) => a - b);
+  const frequencias = clientesDoPeriodo.map((c) => c.totalComprasValidas).sort((a, b) => a - b);
+  const valores = clientesDoPeriodo.map((c) => c.valorJanelaAtual).sort((a, b) => a - b);
+  const rfm = clientesDoPeriodo.map((c) => {
+    const frequenciaPeriodo = base.get(c.empresaKey).compras.filter((x) => x.data >= dataInicial && x.data <= dataFinal).length;
+    return {
+      empresaKey: c.empresaKey,
+      empresaExibicao: c.empresaExibicao,
+      recenciaDias: c.diasDesdeUltimaCompra,
+      frequencia: frequenciaPeriodo,
+      valorMonetario: c.valorJanelaAtual,
+      // recência: quanto menor, melhor (score maior) → inverte a escala
+      scoreRecencia: 6 - scoreQuintil(c.diasDesdeUltimaCompra, recencias),
+      scoreFrequencia: scoreQuintil(frequenciaPeriodo, frequencias),
+      scoreValor: scoreQuintil(c.valorJanelaAtual, valores)
+    };
+  }).sort((a, b) => b.scoreRecencia + b.scoreFrequencia + b.scoreValor - (a.scoreRecencia + a.scoreFrequencia + a.scoreValor));
+  const topClientesPorValor = porValorDesc.slice(0, 10).map((c) => ({
+    empresa: c.empresaExibicao,
+    valor: c.valorJanelaAtual,
+    qtdPedidos: base.get(c.empresaKey).compras.filter((x) => x.data >= dataInicial && x.data <= dataFinal).length
+  }));
+  return {
+    periodo: { dataInicial: dataInicial.toISOString().slice(0, 10), dataFinal: dataFinal.toISOString().slice(0, 10) },
+    dataReferencia: dataRef.toISOString(),
+    clientesCompradoresPeriodo,
+    primeiraCompraObservada,
+    recompraNoPeriodo,
+    classificacoes,
+    concentracaoTop20PctClientes: qtdTop20,
+    concentracaoTop20PctReceitaPct: valorTotalPeriodo > 0 ? valorTop20 / valorTotalPeriodo * 100 : null,
+    margemContribuicaoPct,
+    margemContribuicaoCobertura,
+    valorTotalPeriodo,
+    ticketMedioPedido: qtdPedidosValidos > 0 ? valorTotalPeriodo / qtdPedidosValidos : null,
+    qtdPedidosValidos,
+    rfm,
+    amostraPequena: clientesCompradoresPeriodo < 20,
+    topClientesPorValor
+  };
+}
+function gapMesesCalendario(recente, antiga) {
+  return (recente.getFullYear() - antiga.getFullYear()) * 12 + (recente.getMonth() - antiga.getMonth());
+}
+function calcularRecompraNovosReativados(base, dataInicial, dataFinal, dataRef) {
+  const novos = [];
+  const reativados = [];
+  for (const cliente of base.values()) {
+    const comprasNoPeriodo = cliente.compras.filter((c) => c.data >= dataInicial && c.data <= dataFinal);
+    if (comprasNoPeriodo.length === 0) continue;
+    const primeiraNoPeriodo = comprasNoPeriodo[0];
+    const comprasAntes = cliente.compras.filter((c) => c.data < dataInicial);
+    let categoria = null;
+    if (comprasAntes.length === 0) {
+      categoria = "novo";
+    } else {
+      const ultimaAntes = comprasAntes[comprasAntes.length - 1].data;
+      if (gapMesesCalendario(primeiraNoPeriodo.data, ultimaAntes) >= MESES_INATIVIDADE_PARA_NOVO) {
+        categoria = "reativado";
+      }
+    }
+    if (!categoria) continue;
+    const comprasDepois = cliente.compras.filter((c) => c.data > primeiraNoPeriodo.data && c.data <= dataRef);
+    const recompra = comprasDepois.length > 0;
+    const detalhe = {
+      empresa: cliente.empresaExibicao,
+      dataQualificacao: primeiraNoPeriodo.data.toISOString(),
+      recompra,
+      dataRecompra: recompra ? comprasDepois[0].data.toISOString() : null,
+      diasAteRecompra: recompra ? diasEntre(comprasDepois[0].data, primeiraNoPeriodo.data) : null,
+      qtdComprasDesdeQualificacao: 1 + comprasDepois.length,
+      valorNoPeriodo: comprasNoPeriodo.reduce((s, c) => s + c.valor, 0)
+    };
+    (categoria === "novo" ? novos : reativados).push(detalhe);
+  }
+  const distribuir = (lista) => {
+    const total = lista.length;
+    const contagem = { "1": 0, "2": 0, "3": 0, "4+": 0 };
+    for (const d of lista) {
+      const qtd = d.qtdComprasDesdeQualificacao;
+      const chave = qtd >= 4 ? "4+" : String(qtd);
+      contagem[chave]++;
+    }
+    return ["1", "2", "3", "4+"].map((faixa) => ({
+      faixa,
+      quantidade: contagem[faixa],
+      pct: total > 0 ? contagem[faixa] / total * 100 : 0
+    }));
+  };
+  const agrupar = (lista) => {
+    const comRecompra = lista.filter((d) => d.recompra).length;
+    return {
+      total: lista.length,
+      comRecompra,
+      taxaPct: lista.length > 0 ? comRecompra / lista.length * 100 : null,
+      distribuicaoQtdCompras: distribuir(lista),
+      faturamentoNoPeriodo: lista.reduce((s, d) => s + d.valorNoPeriodo, 0),
+      detalhes: lista.sort((a, b) => a.recompra === b.recompra ? 0 : a.recompra ? 1 : -1)
+    };
+  };
+  return {
+    periodo: { dataInicial: dataInicial.toISOString().slice(0, 10), dataFinal: dataFinal.toISOString().slice(0, 10) },
+    mesesInatividadeParaReativado: MESES_INATIVIDADE_PARA_NOVO,
+    novos: agrupar(novos),
+    reativados: agrupar(reativados)
+  };
+}
+function calcularCandidatosAcao(base, dataRef) {
+  const candidatos = [];
+  const doze_meses_atras = new Date(dataRef);
+  doze_meses_atras.setFullYear(doze_meses_atras.getFullYear() - 1);
+  const valoresUltimos12m = [...base.values()].map((c) => ({ key: c.empresaKey, valor: c.compras.filter((x) => x.data >= doze_meses_atras && x.data <= dataRef).reduce((s, x) => s + x.valor, 0) })).filter((x) => x.valor > 0).sort((a, b) => a.valor - b.valor);
+  const limiarAltoVolume = valoresUltimos12m.length > 0 ? valoresUltimos12m[Math.floor(valoresUltimos12m.length * ALTO_VOLUME_PERCENTIL)]?.valor ?? Infinity : Infinity;
+  for (const cliente of base.values()) {
+    const validas = cliente.compras;
+    if (validas.length === 0) continue;
+    const ultimaCompra = validas[validas.length - 1].data;
+    const diasDesdeUltima = diasEntre(dataRef, ultimaCompra);
+    const vendedorAtual = validas[validas.length - 1].vendedor || "Sem vendedor";
+    if (validas.length === 1 && diasDesdeUltima >= PRIMEIRA_COMPRA_DIAS_MIN_CONTATO && diasDesdeUltima <= PRIMEIRA_COMPRA_DIAS_MAX_CONTATO) {
+      const urgencia = Math.min(100, (diasDesdeUltima - PRIMEIRA_COMPRA_DIAS_MIN_CONTATO) / (PRIMEIRA_COMPRA_DIAS_MAX_CONTATO - PRIMEIRA_COMPRA_DIAS_MIN_CONTATO) * 100);
+      const relevancia = Math.min(100, validas[0].valor / 5e3 * 100);
+      const prioridade = Math.round(urgencia * 0.6 + relevancia * 0.4);
+      candidatos.push({
+        tipo: "primeira_sem_segunda",
+        empresaKey: cliente.empresaKey,
+        empresa: cliente.empresaExibicao,
+        vendedor: vendedorAtual,
+        titulo: `Acompanhar 1\xAA compra sem repeti\xE7\xE3o \u2014 ${cliente.empresaExibicao}`,
+        motivo: `Fez a primeira compra v\xE1lida em ${ultimaCompra.toLocaleDateString("pt-BR")} (${diasDesdeUltima} dias atr\xE1s) e ainda n\xE3o fez uma segunda compra.`,
+        evidencia: { osNumero: validas[0].osNumero, data: ultimaCompra.toISOString(), valor: validas[0].valor, diasDesdeUltima },
+        prioridade,
+        prioridadeFatores: { urgencia: Math.round(urgencia), relevanciaEconomica: Math.round(relevancia) }
+      });
+    }
+    if (validas.length >= HISTORICO_MINIMO_COMPRAS_PARA_TENDENCIA) {
+      const intervalosDias = [];
+      for (let i = 1; i < validas.length; i++) intervalosDias.push(diasEntre(validas[i].data, validas[i - 1].data));
+      const medianaInt = mediana(intervalosDias);
+      if (medianaInt && medianaInt > 0) {
+        const razao = diasDesdeUltima / medianaInt;
+        if (razao >= RAZAO_ATRASO_LIMIAR && diasDesdeUltima <= 365) {
+          const urgencia = Math.min(100, razao / 3 * 100);
+          const valor12m2 = valoresUltimos12m.find((v) => v.key === cliente.empresaKey)?.valor ?? 0;
+          const relevancia = Math.min(100, valor12m2 / 2e4 * 100);
+          const prioridade = Math.round(urgencia * 0.6 + relevancia * 0.4);
+          candidatos.push({
+            tipo: "atraso_recompra",
+            empresaKey: cliente.empresaKey,
+            empresa: cliente.empresaExibicao,
+            vendedor: vendedorAtual,
+            titulo: `Atraso na recompra \u2014 ${cliente.empresaExibicao}`,
+            motivo: `Costuma comprar a cada ${Math.round(medianaInt)} dias (mediana de ${intervalosDias.length} intervalos); j\xE1 se passaram ${diasDesdeUltima} dias desde a \xFAltima compra (${ultimaCompra.toLocaleDateString("pt-BR")}).`,
+            evidencia: { medianaIntervaloDias: Math.round(medianaInt), qtdIntervalos: intervalosDias.length, diasDesdeUltima, razaoAtraso: Number(razao.toFixed(2)), ultimaCompra: ultimaCompra.toISOString() },
+            prioridade,
+            prioridadeFatores: { urgencia: Math.round(urgencia), relevanciaEconomica: Math.round(relevancia) }
+          });
+        }
+      }
+    }
+    const comprasUltimos12m = validas.filter((c) => c.data >= doze_meses_atras && c.data <= dataRef);
+    const valor12m = comprasUltimos12m.reduce((s, c) => s + c.valor, 0);
+    if (valor12m >= limiarAltoVolume && comprasUltimos12m.length > 0) {
+      const comCusto = comprasUltimos12m.filter((c) => c.contribuicao !== null);
+      if (comCusto.length === comprasUltimos12m.length) {
+        const contrib12m = comCusto.reduce((s, c) => s + (c.contribuicao ?? 0), 0);
+        const margemPct = valor12m > 0 ? contrib12m / valor12m * 100 : null;
+        if (margemPct !== null && margemPct < MARGEM_BAIXA_LIMIAR_PCT) {
+          const relevancia = Math.min(100, valor12m / 5e4 * 100);
+          const urgencia = Math.min(100, (MARGEM_BAIXA_LIMIAR_PCT - margemPct) / MARGEM_BAIXA_LIMIAR_PCT * 100);
+          const prioridade = Math.round(relevancia * 0.6 + urgencia * 0.4);
+          candidatos.push({
+            tipo: "alto_volume_baixa_margem",
+            empresaKey: cliente.empresaKey,
+            empresa: cliente.empresaExibicao,
+            vendedor: vendedorAtual,
+            titulo: `Alto volume, margem baixa \u2014 ${cliente.empresaExibicao}`,
+            motivo: `Comprou R$ ${valor12m.toLocaleString("pt-BR", { minimumFractionDigits: 0 })} nos \xFAltimos 12 meses (top 20% da carteira), com margem de contribui\xE7\xE3o de ${margemPct.toFixed(1)}% \u2014 abaixo do limiar de ${MARGEM_BAIXA_LIMIAR_PCT}%.`,
+            evidencia: { valor12m, margemPct: Number(margemPct.toFixed(1)), qtdPedidos12m: comprasUltimos12m.length },
+            prioridade,
+            prioridadeFatores: { relevanciaEconomica: Math.round(relevancia), urgencia: Math.round(urgencia) }
+          });
+        }
+      }
+    }
+  }
+  return candidatos.sort((a, b) => b.prioridade - a.prioridade);
+}
+function calcularFunilOrcamentos(rows, hoje) {
+  const porStatusMap = /* @__PURE__ */ new Map();
+  const porVendedorMap = /* @__PURE__ */ new Map();
+  const perdasMap = /* @__PURE__ */ new Map();
+  const idadeBuckets = [
+    { faixa: "0-7 dias", min: 0, max: 7, quantidade: 0, valor: 0 },
+    { faixa: "8-15 dias", min: 8, max: 15, quantidade: 0, valor: 0 },
+    { faixa: "16-30 dias", min: 16, max: 30, quantidade: 0, valor: 0 },
+    { faixa: "31-60 dias", min: 31, max: 60, quantidade: 0, valor: 0 },
+    { faixa: "60+ dias", min: 61, max: Infinity, quantidade: 0, valor: 0 }
+  ];
+  let anoMin = Infinity, anoMax = -Infinity;
+  let decididoGanho = 0, decididoPerdido = 0, aprovadoCancelado = 0;
+  let vencidasQtd = 0, vencidasValor = 0;
+  for (const r of rows) {
+    anoMin = Math.min(anoMin, r.ano);
+    anoMax = Math.max(anoMax, r.ano);
+    const status = (r.status ?? "").trim();
+    const statusKey = status.toLowerCase();
+    const valor = toNum(r.total);
+    const statusAtual = porStatusMap.get(status) ?? { quantidade: 0, valor: 0 };
+    statusAtual.quantidade++;
+    statusAtual.valor += valor;
+    porStatusMap.set(status, statusAtual);
+    const vendedor = r.vendedor || "Sem vendedor";
+    const vendedorAtual = porVendedorMap.get(vendedor) ?? { quantidade: 0, valor: 0 };
+    vendedorAtual.quantidade++;
+    vendedorAtual.valor += valor;
+    porVendedorMap.set(vendedor, vendedorAtual);
+    if (r.motivoCancelamento && r.motivoCancelamento.trim()) {
+      const motivo = r.motivoCancelamento.trim();
+      perdasMap.set(motivo, (perdasMap.get(motivo) ?? 0) + 1);
+    }
+    if (statusKey === STATUS_AMBIGUO_APROVADO_CANCELADO) {
+      aprovadoCancelado++;
+    } else if (STATUS_GANHO.has(statusKey)) {
+      decididoGanho++;
+    } else if (STATUS_PERDIDO.has(statusKey)) {
+      decididoPerdido++;
+    } else if (statusKey === STATUS_ABERTO) {
+      const dataCadastro = parseDataFlexivel(r.dataCadastro);
+      if (dataCadastro) {
+        const idadeDias = diasEntre(hoje, dataCadastro);
+        const bucket = idadeBuckets.find((b) => idadeDias >= b.min && idadeDias <= b.max);
+        if (bucket) {
+          bucket.quantidade++;
+          bucket.valor += valor;
+        }
+        const validadeDias = toNum(r.validade);
+        const dataVencimento = new Date(dataCadastro);
+        dataVencimento.setDate(dataVencimento.getDate() + validadeDias);
+        if (validadeDias > 0 && dataVencimento < hoje) {
+          vencidasQtd++;
+          vencidasValor += valor;
+        }
+      }
+    }
+  }
+  const totalDecidido = decididoGanho + decididoPerdido;
+  return {
+    cobertura: {
+      anoInicio: isFinite(anoMin) ? anoMin : hoje.getFullYear(),
+      anoFim: isFinite(anoMax) ? anoMax : hoje.getFullYear(),
+      observacao: "historico_orcamentos cobre apenas o(s) ano(s) listado(s) \u2014 sem compara\xE7\xE3o hist\xF3rica multi-ano at\xE9 o hist\xF3rico local ser ampliado."
+    },
+    porStatus: [...porStatusMap.entries()].map(([status, v]) => ({ status, ...v })).sort((a, b) => b.valor - a.valor),
+    emAbertoPorIdadeDias: idadeBuckets.map(({ faixa, quantidade, valor }) => ({ faixa, quantidade, valor })),
+    porVendedor: [...porVendedorMap.entries()].map(([vendedor, v]) => ({ vendedor, ...v })).sort((a, b) => b.valor - a.valor),
+    decisoesVencidas: { quantidade: vencidasQtd, valor: vencidasValor },
+    perdasComMotivo: [...perdasMap.entries()].map(([motivo, quantidade]) => ({ motivo, quantidade })).sort((a, b) => b.quantidade - a.quantidade),
+    taxaConversao: {
+      decididoGanho,
+      decididoPerdido,
+      aprovadoMasCanceladoDepois: aprovadoCancelado,
+      taxaPct: totalDecidido > 0 ? decididoGanho / totalDecidido * 100 : null
+    }
+  };
+}
+function faixaTicketDoValor(valor) {
+  return (FAIXAS_TICKET.find((f2) => valor <= f2.ate) ?? FAIXAS_TICKET[FAIXAS_TICKET.length - 1]).faixa;
+}
+function calcularConversaoPorFaixaTicket(rows, hoje) {
+  const buckets = FAIXAS_TICKET.map((f2) => ({ faixa: f2.faixa, ate: f2.ate, ganhos: 0, perdidos: 0 }));
+  for (const r of rows) {
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    const ganho = STATUS_GANHO.has(statusKey);
+    let perdido = STATUS_PERDIDO.has(statusKey);
+    if (!ganho && !perdido && statusKey === STATUS_ABERTO) {
+      const dataCadastro = parseDataFlexivel(r.dataCadastro);
+      const validadeDias = toNum(r.validade);
+      if (dataCadastro && validadeDias > 0) {
+        const dataVencimento = new Date(dataCadastro);
+        dataVencimento.setDate(dataVencimento.getDate() + validadeDias);
+        if (dataVencimento < hoje) perdido = true;
+      }
+    }
+    if (!ganho && !perdido) continue;
+    const valor = toNum(r.total);
+    const bucket = buckets.find((b) => valor <= b.ate) ?? buckets[buckets.length - 1];
+    if (ganho) bucket.ganhos++;
+    else bucket.perdidos++;
+  }
+  return buckets.map(({ faixa, ganhos, perdidos }) => {
+    const total = ganhos + perdidos;
+    return { faixa, ganhos, perdidos, taxaConversaoPct: total > 0 ? ganhos / total * 100 : null };
+  });
+}
+function calcularPrevisaoComercial(osRows, orcRows, funil, hoje) {
+  const faixasDef = [
+    { faixa: "1-30", min: 1, max: 30 },
+    { faixa: "31-60", min: 31, max: 60 },
+    { faixa: "61-90", min: 61, max: 90 }
+  ];
+  const faixas = faixasDef.map((f2) => ({ faixa: f2.faixa, carteiraConfirmada: 0, oportunidadesAbertasEstimativa: 0 }));
+  let carteiraSemPrazo = 0;
+  for (const r of osRows) {
+    if (!isOsNormalDb(r)) continue;
+    const statusKey = (r.status ?? "").toLowerCase();
+    if (statusKey !== "aprovado" && statusKey !== "em produ\xE7\xE3o") continue;
+    const valor = toNum(r.valorOs ?? r.valorTotal);
+    const dataEntrega = parseDataFlexivel(r.dataEntrega);
+    if (!dataEntrega) {
+      carteiraSemPrazo += valor;
+      continue;
+    }
+    const diasAteEntrega = diasEntre(dataEntrega, hoje);
+    const faixa = faixasDef.find((f2) => diasAteEntrega >= f2.min && diasAteEntrega <= f2.max);
+    if (faixa) {
+      const alvo = faixas.find((f2) => f2.faixa === faixa.faixa);
+      alvo.carteiraConfirmada += valor;
+    }
+  }
+  const pesoConversao = (funil.taxaConversao.taxaPct ?? 0) / 100;
+  for (const r of orcRows) {
+    if ((r.status ?? "").toLowerCase() !== "em aberto") continue;
+    const dataCadastro = parseDataFlexivel(r.dataCadastro);
+    if (!dataCadastro) continue;
+    const validadeDias = toNum(r.validade);
+    const dataVencimento = new Date(dataCadastro);
+    dataVencimento.setDate(dataVencimento.getDate() + validadeDias);
+    if (dataVencimento < hoje) continue;
+    const diasAteDecisao = diasEntre(dataVencimento, hoje);
+    const faixa = faixasDef.find((f2) => diasAteDecisao >= f2.min && diasAteDecisao <= f2.max);
+    if (!faixa) continue;
+    const alvo = faixas.find((f2) => f2.faixa === faixa.faixa);
+    alvo.oportunidadesAbertasEstimativa += toNum(r.total) * pesoConversao;
+  }
+  const porMesAno = /* @__PURE__ */ new Map();
+  for (const r of osRows) {
+    if (!isOsNormalDb(r)) continue;
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (!data) continue;
+    const chave = `${data.getFullYear()}-${data.getMonth() + 1}`;
+    porMesAno.set(chave, (porMesAno.get(chave) ?? 0) + toNum(r.valorOs ?? r.valorTotal));
+  }
+  const estimativaSazonalidade = [];
+  for (let offset = 0; offset < 3; offset++) {
+    const dataAlvo = new Date(hoje.getFullYear(), hoje.getMonth() + offset, 1);
+    const mesAlvo = dataAlvo.getMonth() + 1;
+    const anosConsiderados = [];
+    let soma = 0;
+    for (let anoOffset = 1; anoOffset <= 3; anoOffset++) {
+      const ano = dataAlvo.getFullYear() - anoOffset;
+      const valor = porMesAno.get(`${ano}-${mesAlvo}`);
+      if (valor !== void 0) {
+        anosConsiderados.push(ano);
+        soma += valor;
+      }
+    }
+    estimativaSazonalidade.push({
+      mesAlvo: `${String(mesAlvo).padStart(2, "0")}/${dataAlvo.getFullYear()}`,
+      mediaHistorica: anosConsiderados.length > 0 ? soma / anosConsiderados.length : null,
+      anosConsiderados
+    });
+  }
+  return {
+    dataReferencia: hoje.toISOString(),
+    premissas: [
+      "Carteira confirmada usa a data de entrega prevista (dataEntrega) das OS j\xE1 aprovadas/em produ\xE7\xE3o \u2014 n\xE3o \xE9 a data de faturamento.",
+      "Oportunidades abertas s\xE3o estimativa (valor do or\xE7amento \xD7 taxa de convers\xE3o hist\xF3rica do funil), nunca somada \xE0 carteira confirmada.",
+      "Estimativa por sazonalidade \xE9 refer\xEAncia de compara\xE7\xE3o (m\xE9dia hist\xF3rica do mesmo m\xEAs), n\xE3o uma parcela a somar \xE0s demais.",
+      funil.cobertura.observacao
+    ],
+    carteiraConfirmadaSemPrazo: carteiraSemPrazo,
+    faixas,
+    estimativaSazonalidade
+  };
+}
+function montarContextoAssistenteClientes(visaoGeral, funil, previsao, candidatosAcao, periodo, limiteAcoes = 15) {
+  return {
+    periodo,
+    visaoGeral,
+    funil,
+    previsao,
+    filaAcoesPendentesResumo: candidatosAcao.slice(0, limiteAcoes).map((c) => ({
+      tipo: c.tipo,
+      empresa: c.empresa,
+      motivo: c.motivo,
+      prioridade: c.prioridade
+    }))
+  };
+}
+function percentil(valoresAsc, p) {
+  if (valoresAsc.length === 0) return 0;
+  const idx = Math.min(valoresAsc.length - 1, Math.max(0, Math.ceil(p / 100 * valoresAsc.length) - 1));
+  return valoresAsc[idx];
+}
+function calcularTempoOrcamentoPedido(orcRows, osRows, janelaMaximaDias = JANELA_MAXIMA_ORCAMENTO_PEDIDO_DIAS) {
+  const osPorEmpresa = /* @__PURE__ */ new Map();
+  for (const r of osRows) {
+    if (!isOsNormalDb(r)) continue;
+    const data = parseDataFlexivel(r.dataAprovacao);
+    const empresa = (r.empresa ?? "").trim();
+    if (!data || !empresa) continue;
+    const key = normalizeEmpresaKey(empresa);
+    if (!osPorEmpresa.has(key)) osPorEmpresa.set(key, []);
+    osPorEmpresa.get(key).push(data);
+  }
+  for (const lista of osPorEmpresa.values()) lista.sort((a, b) => a.getTime() - b.getTime());
+  const osUsada = /* @__PURE__ */ new Map();
+  const orcamentosGanhos = orcRows.filter((r) => STATUS_GANHO.has((r.status ?? "").trim().toLowerCase())).map((r) => ({ empresaKey: normalizeEmpresaKey((r.empresa ?? "").trim()), data: parseDataFlexivel(r.dataCadastro) })).filter((r) => !!r.data && !!r.empresaKey).sort((a, b) => a.data.getTime() - b.data.getTime());
+  const diasAteFechamento = [];
+  for (const orc of orcamentosGanhos) {
+    const listaOs = osPorEmpresa.get(orc.empresaKey);
+    if (!listaOs) continue;
+    if (!osUsada.has(orc.empresaKey)) osUsada.set(orc.empresaKey, /* @__PURE__ */ new Set());
+    const usadas = osUsada.get(orc.empresaKey);
+    for (let i = 0; i < listaOs.length; i++) {
+      if (usadas.has(i)) continue;
+      const osData = listaOs[i];
+      if (osData < orc.data) continue;
+      const gapCorrido = diasEntre(osData, orc.data);
+      if (gapCorrido > janelaMaximaDias) break;
+      diasAteFechamento.push(diasUteisEntre2(osData, orc.data));
+      usadas.add(i);
+      break;
+    }
+  }
+  diasAteFechamento.sort((a, b) => a - b);
+  const n = diasAteFechamento.length;
+  const mediana3 = n > 0 ? n % 2 === 0 ? (diasAteFechamento[n / 2 - 1] + diasAteFechamento[n / 2]) / 2 : diasAteFechamento[(n - 1) / 2] : null;
+  const p25 = n > 0 ? percentil(diasAteFechamento, 25) : null;
+  const p75 = n > 0 ? percentil(diasAteFechamento, 75) : null;
+  const p90 = n > 0 ? percentil(diasAteFechamento, 90) : null;
+  let sugestao = null;
+  if (mediana3 !== null && p25 !== null && p75 !== null) {
+    const primeiro = Math.max(1, p25);
+    const segundo = Math.max(primeiro + 1, Math.round(mediana3));
+    const terceiro = Math.max(segundo + 1, p75);
+    sugestao = { primeiro, segundo, terceiro };
+  }
+  const contagemPorDia = /* @__PURE__ */ new Map();
+  for (const d of diasAteFechamento) {
+    const chave = d > DISTRIBUICAO_DIAS_MAX ? DISTRIBUICAO_DIAS_MAX + 1 : d;
+    contagemPorDia.set(chave, (contagemPorDia.get(chave) ?? 0) + 1);
+  }
+  const distribuicaoDias = [];
+  for (let d = 0; d <= DISTRIBUICAO_DIAS_MAX; d++) {
+    const quantidade = contagemPorDia.get(d) ?? 0;
+    distribuicaoDias.push({ dias: d, label: `${d}du`, quantidade, percentual: n > 0 ? quantidade / n * 100 : 0 });
+  }
+  const quantidadeCauda = contagemPorDia.get(DISTRIBUICAO_DIAS_MAX + 1) ?? 0;
+  distribuicaoDias.push({
+    dias: DISTRIBUICAO_DIAS_MAX + 1,
+    label: `${DISTRIBUICAO_DIAS_MAX}+du`,
+    quantidade: quantidadeCauda,
+    percentual: n > 0 ? quantidadeCauda / n * 100 : 0
+  });
+  return {
+    amostra: n,
+    totalOrcamentosGanhos: orcamentosGanhos.length,
+    taxaPareamentoPct: orcamentosGanhos.length > 0 ? n / orcamentosGanhos.length * 100 : null,
+    mediaDias: n > 0 ? diasAteFechamento.reduce((s, d) => s + d, 0) / n : null,
+    medianaDias: mediana3,
+    p25Dias: p25,
+    p75Dias: p75,
+    p90Dias: p90,
+    minDias: n > 0 ? diasAteFechamento[0] : null,
+    maxDias: n > 0 ? diasAteFechamento[n - 1] : null,
+    sugestaoFollowUpDias: sugestao,
+    distribuicaoDias
+  };
+}
+var HISTORICO_MINIMO_COMPRAS_PARA_TENDENCIA, RAZAO_ATRASO_LIMIAR, VARIACAO_VOLUME_LIMIAR_PCT, MARGEM_BAIXA_LIMIAR_PCT, ALTO_VOLUME_PERCENTIL, PRIMEIRA_COMPRA_DIAS_MIN_CONTATO, PRIMEIRA_COMPRA_DIAS_MAX_CONTATO, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL, DICIONARIO_METRICAS, STATUS_GANHO, STATUS_PERDIDO, STATUS_AMBIGUO_APROVADO_CANCELADO, STATUS_ABERTO, FAIXAS_TICKET, VERSAO_PROMPT_ASSISTENTE_CLIENTES, PROMPT_ASSISTENTE_CLIENTES_V1, JANELA_MAXIMA_ORCAMENTO_PEDIDO_DIAS, DISTRIBUICAO_DIAS_MAX;
+var init_inteligenciaClientes = __esm({
+  "server/services/inteligenciaClientes.ts"() {
+    "use strict";
+    init_performanceComercial();
+    init_dias_uteis();
+    HISTORICO_MINIMO_COMPRAS_PARA_TENDENCIA = 3;
+    RAZAO_ATRASO_LIMIAR = 1.5;
+    VARIACAO_VOLUME_LIMIAR_PCT = 20;
+    MARGEM_BAIXA_LIMIAR_PCT = 15;
+    ALTO_VOLUME_PERCENTIL = 0.8;
+    PRIMEIRA_COMPRA_DIAS_MIN_CONTATO = 30;
+    PRIMEIRA_COMPRA_DIAS_MAX_CONTATO = 120;
+    DIAS_COOLDOWN_ACAO_RESOLVIDA = 30;
+    VERSAO_REGRA_ATUAL = "v1";
+    DICIONARIO_METRICAS = [
+      {
+        id: "pedido_valido",
+        nome: "Pedido v\xE1lido",
+        formula: "OS com tipoOs preenchido, diferente de Retrabalho/Amostra/Cortesia, e status diferente de Cancelada.",
+        periodo: "N/A (filtro aplicado a toda OS antes de qualquer c\xE1lculo)",
+        limitacoes: "Linhas com tipoOs nulo s\xE3o duplicatas de importa\xE7\xF5es antigas sem custo e s\xE3o sempre exclu\xEDdas, mesmo que representem um pedido real."
+      },
+      {
+        id: "data_do_pedido",
+        nome: "Data do pedido",
+        formula: "Data de aprova\xE7\xE3o da OS (dataAprovacao).",
+        periodo: "N/A",
+        limitacoes: "N\xE3o \xE9 data de faturamento nem de entrega \u2014 100% das OS t\xEAm data de aprova\xE7\xE3o, mas ~2% n\xE3o t\xEAm data de faturamento (pedidos ainda em produ\xE7\xE3o)."
+      },
+      {
+        id: "clientes_compradores_periodo",
+        nome: "Clientes compradores no per\xEDodo",
+        formula: "Contagem de empresas distintas (normalizadas) com pelo menos um pedido v\xE1lido cuja data de aprova\xE7\xE3o cai dentro do per\xEDodo selecionado.",
+        periodo: "Per\xEDodo selecionado no filtro",
+        limitacoes: 'N\xE3o \xE9 uma classifica\xE7\xE3o permanente de "cliente ativo" \u2014 \xE9 s\xF3 quem comprou nessa janela espec\xEDfica.'
+      },
+      {
+        id: "primeira_compra_observada",
+        nome: "Primeira compra observada",
+        formula: "Empresa cujo primeiro pedido v\xE1lido em todo o hist\xF3rico local (desde 2023) cai dentro do per\xEDodo selecionado.",
+        periodo: "Per\xEDodo selecionado no filtro",
+        limitacoes: '"Observada" porque o hist\xF3rico local come\xE7a em 2023 \u2014 n\xE3o prova que o cliente nunca comprou antes disso, s\xF3 que n\xE3o h\xE1 registro.'
+      },
+      {
+        id: "recompra_no_periodo",
+        nome: "Recompra no per\xEDodo",
+        formula: "Empresa com 2 ou mais pedidos v\xE1lidos no hist\xF3rico total, cujo pedido mais recente dentro do per\xEDodo n\xE3o \xE9 a primeira compra dela.",
+        periodo: "Per\xEDodo selecionado no filtro",
+        limitacoes: "\u2014"
+      },
+      {
+        id: "rfm_recencia",
+        nome: "RFM \u2014 Rec\xEAncia",
+        formula: "Dias entre a data de refer\xEAncia (hoje) e a data do pedido v\xE1lido mais recente do cliente, em todo o hist\xF3rico.",
+        periodo: "Calculado na data de refer\xEAncia, n\xE3o depende do per\xEDodo selecionado",
+        limitacoes: "\u2014"
+      },
+      {
+        id: "rfm_frequencia",
+        nome: "RFM \u2014 Frequ\xEAncia",
+        formula: "Quantidade de pedidos v\xE1lidos do cliente dentro do per\xEDodo selecionado.",
+        periodo: "Per\xEDodo selecionado no filtro",
+        limitacoes: "Pedidos divididos ou revisados contam pelo n\xFAmero de OS distintas geradas, n\xE3o pelo n\xFAmero de itens."
+      },
+      {
+        id: "rfm_valor",
+        nome: "RFM \u2014 Valor monet\xE1rio",
+        formula: "Soma do valor dos pedidos v\xE1lidos do cliente dentro do per\xEDodo selecionado.",
+        periodo: "Per\xEDodo selecionado no filtro",
+        limitacoes: "Valor bruto do pedido (valorOs), n\xE3o desconta custo \u2014 n\xE3o \xE9 margem."
+      },
+      {
+        id: "razao_atraso_recompra",
+        nome: "Raz\xE3o de atraso na recompra",
+        formula: "Dias desde a \xFAltima compra v\xE1lida \xF7 mediana dos intervalos entre compras v\xE1lidas do pr\xF3prio cliente (exige 3+ compras).",
+        periodo: "Calculado na data de refer\xEAncia",
+        limitacoes: 'Heur\xEDstica de acompanhamento, n\xE3o \xE9 probabilidade de perda do cliente. Sem hist\xF3rico suficiente, aparece como "hist\xF3rico insuficiente".'
+      },
+      {
+        id: "concentracao",
+        nome: "Concentra\xE7\xE3o de carteira",
+        formula: "Participa\xE7\xE3o (%) da receita dos clientes no top 20% por valor comprado, sobre a receita total v\xE1lida do per\xEDodo selecionado.",
+        periodo: "Per\xEDodo selecionado no filtro",
+        limitacoes: "\u2014"
+      },
+      {
+        id: "margem_contribuicao",
+        nome: "Margem de contribui\xE7\xE3o",
+        formula: "Soma da contribui\xE7\xE3o (contribuicaoReais, j\xE1 calculada pelo ERP) dividida pela soma do valor (valorTotal) dos pedidos v\xE1lidos do per\xEDodo \u2014 margem agregada, n\xE3o m\xE9dia dos percentuais individuais.",
+        periodo: "Per\xEDodo selecionado no filtro",
+        limitacoes: "A metodologia de custo (materiaPrima, m\xE3o de obra, custo fixo, comiss\xF5es, tributos) \xE9 a do ERP MubiSys \u2014 este sistema n\xE3o recalcula custo, s\xF3 agrega o que j\xE1 vem importado."
+      },
+      {
+        id: "classificacao_cliente",
+        nome: "Classifica\xE7\xE3o do cliente",
+        formula: "Primeira compra (1 compra v\xE1lida no hist\xF3rico) \xB7 Recompra observada (2+ compras, sem sinal de atraso ou varia\xE7\xE3o relevante) \xB7 Em crescimento / Redu\xE7\xE3o de volume (varia\xE7\xE3o \u226520% entre a janela atual e a anterior de mesmo tamanho) \xB7 Intervalo acima do habitual (raz\xE3o de atraso \u22651,5) \xB7 Hist\xF3rico insuficiente (menos de 3 compras v\xE1lidas).",
+        periodo: "Calculada na data de refer\xEAncia, usando todo o hist\xF3rico do cliente",
+        limitacoes: "\xC9 uma classifica\xE7\xE3o calculada, n\xE3o uma avalia\xE7\xE3o comercial confirmada \u2014 n\xE3o implica que o cliente foi perdido."
+      },
+      {
+        id: "recompra_novos_reativados",
+        nome: "Recompra de clientes novos e reativados",
+        formula: 'Reaproveita a regra "Cliente Novo e Reativado" (nunca comprou antes da janela, ou \xFAltima compra 6+ meses antes dela). Taxa de recompra = % desses clientes que fez pelo menos mais uma compra v\xE1lida depois, at\xE9 hoje. Distribui\xE7\xE3o de quantidade de compras = % que ficou em exatamente 1/2/3/4+ compras (contando a de entrada) desde a qualifica\xE7\xE3o at\xE9 hoje. Faturamento no per\xEDodo = soma do valor de todos os pedidos v\xE1lidos desses clientes dentro do per\xEDodo selecionado (n\xE3o inclui compras feitas depois do per\xEDodo).',
+        periodo: "Coorte qualificada dentro do per\xEDodo selecionado; recompra observada at\xE9 a data de refer\xEAncia (hoje), n\xE3o at\xE9 o fim do per\xEDodo",
+        limitacoes: "Clientes qualificados perto do fim do per\xEDodo t\xEAm menos tempo para recomprar at\xE9 hoje \u2014 a taxa tende a subir se o per\xEDodo for revisitado mais adiante."
+      }
+    ];
+    STATUS_GANHO = /* @__PURE__ */ new Set(["aprovado", "em produ\xE7\xE3o", "entregue", "conclu\xEDda"]);
+    STATUS_PERDIDO = /* @__PURE__ */ new Set(["reprovado", "cancelada"]);
+    STATUS_AMBIGUO_APROVADO_CANCELADO = "orc.: aprovado | os.:cancelada";
+    STATUS_ABERTO = "em aberto";
+    FAIXAS_TICKET = [
+      { faixa: "At\xE9 R$330", ate: 330 },
+      { faixa: "R$335~750", ate: 750 },
+      { faixa: "R$760~1.300", ate: 1300 },
+      { faixa: "R$1.301~5.490", ate: 5490 },
+      { faixa: "R$5.500~8.000", ate: 8e3 },
+      { faixa: "R$8.010~12.000", ate: 12e3 },
+      { faixa: "R$12k+", ate: Infinity }
+    ];
+    VERSAO_PROMPT_ASSISTENTE_CLIENTES = "v1";
+    PROMPT_ASSISTENTE_CLIENTES_V1 = `Voc\xEA \xE9 o analista comercial da empresa, especializado em comunica\xE7\xE3o visual (letras, letreiros, letras-caixa, fachadas) e rela\xE7\xF5es B2B. Ajude o usu\xE1rio a aumentar recompra lucrativa e melhorar a previsibilidade com base em dados verific\xE1veis.
+
+Voc\xEA recebe, a cada pergunta, um contexto estruturado com os resultados J\xC1 CALCULADOS pelo sistema para o per\xEDodo selecionado: vis\xE3o geral de clientes (RFM, classifica\xE7\xE3o, concentra\xE7\xE3o, margem, segunda compra em X dias), funil de or\xE7amentos, previs\xE3o comercial 30/60/90 dias e a fila de a\xE7\xF5es pendentes. Use somente esses n\xFAmeros \u2014 nunca invente clientes, valores ou fatos que n\xE3o estejam no contexto fornecido. Se a pergunta pedir algo que o contexto n\xE3o cobre, diga isso explicitamente e sugira qual tela ou filtro poderia trazer a resposta.
+
+Separe sempre fato observado (o que est\xE1 no contexto), hip\xF3tese (sua interpreta\xE7\xE3o) e a\xE7\xE3o recomendada. Diferencie aus\xEAncia de dado de valor zero, associa\xE7\xE3o de causalidade de correla\xE7\xE3o, e pontua\xE7\xE3o de prioridade de probabilidade de compra.
+
+N\xE3o trate um comprador ocasional como cliente de assinatura. Considere a frequ\xEAncia hist\xF3rica, a margem dispon\xEDvel e a irregularidade natural de projetos de comunica\xE7\xE3o visual (n\xE3o \xE9 um neg\xF3cio de recorr\xEAncia mensal autom\xE1tica).
+
+Previs\xF5es no contexto s\xE3o estimativas com premissas expl\xEDcitas \u2014 nunca as apresente como garantia, nem invente percentuais ou datas exatas de recompra al\xE9m do que est\xE1 no contexto.
+
+Toda recomenda\xE7\xE3o deve dizer para quem \xE9, qual o motivo (citando o n\xFAmero ou classifica\xE7\xE3o que a sustenta), e qual seria o pr\xF3ximo passo. N\xE3o prometa condi\xE7\xF5es comerciais (desconto, prazo, cr\xE9dito) e n\xE3o afirme ter executado nenhuma a\xE7\xE3o no sistema \u2014 voc\xEA s\xF3 responde perguntas, n\xE3o aciona nada.
+
+Responda em portugu\xEAs do Brasil, com frases claras e diretas. Explique termos t\xE9cnicos (RFM, coorte, margem de contribui\xE7\xE3o) s\xF3 quando isso ajudar a resposta, sem virar aula.`;
+    JANELA_MAXIMA_ORCAMENTO_PEDIDO_DIAS = 90;
+    DISTRIBUICAO_DIAS_MAX = 10;
+  }
+});
+
+// server/routers/analiseGeografica.ts
+import { z as z4 } from "zod";
+import { eq as eq6, and as and5, ne } from "drizzle-orm";
+function osValidaCondition() {
+  return ne(historicoOs.status, "Cancelada");
+}
+function osValidaMubisys(os) {
+  return String(os.status ?? "").toLowerCase() !== "cancelada";
+}
+function tituloCidade(s) {
+  return s.toLowerCase().split(" ").map((w) => w.length <= 2 ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+function normalizarUf(uf) {
+  if (!uf) return null;
+  const s = String(uf).trim().toUpperCase();
+  return UFS_VALIDAS.has(s) ? s : null;
+}
+function extrairClienteOs(os) {
+  const raw = os.cliente;
+  if (typeof raw === "object" && raw !== null) {
+    return String(raw?.nome ?? raw?.razao_social ?? "").trim();
+  }
+  return String(raw ?? "").trim();
+}
+function extrairEnderecoOs(os) {
+  const enderecos = Array.isArray(os.cliente_endereco) ? os.cliente_endereco : os.cliente_endereco ? [os.cliente_endereco] : [];
+  const primeiro = enderecos[0];
+  const cidade = primeiro?.cidade ? String(primeiro.cidade).trim() : null;
+  const estado = primeiro?.estado || primeiro?.uf ? String(primeiro.estado || primeiro.uf).trim() : null;
+  return { cidade, estado };
+}
+function normalizarOsMubisys(os) {
+  const endereco = extrairEnderecoOs(os);
+  return {
+    estado: endereco.estado,
+    cidade: endereco.cidade,
+    empresa: extrairClienteOs(os),
+    valorTotal: parseFloat(String(os.valor_total ?? "0")) || 0
+  };
+}
+function isMesAtual(mes, ano) {
+  const now = /* @__PURE__ */ new Date();
+  return mes === now.getMonth() + 1 && ano === now.getFullYear();
+}
+async function lerCacheOsBrutas(db5, cacheKey) {
+  const rows = await db5.select().from(mubisysApiCache).where(eq6(mubisysApiCache.cacheKey, cacheKey)).limit(1);
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  if (/* @__PURE__ */ new Date() > new Date(row.expiresAt) || !row.osData) return null;
+  try {
+    return JSON.parse(row.osData);
+  } catch {
+    return null;
+  }
+}
+async function buscarOsBrutasDoMes(db5, mes, ano) {
+  const compartilhado = await lerCacheOsBrutas(db5, `raw_${mes}_${ano}`);
+  if (compartilhado) return { itens: compartilhado, completo: true, viaApi: false };
+  const cacheKeyProprio = `geo_raw_${mes}_${ano}`;
+  const proprio = await lerCacheOsBrutas(db5, cacheKeyProprio);
+  if (proprio) return { itens: proprio, completo: true, viaApi: false };
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const lastDay = new Date(ano, mes, 0).getDate();
+  const datainicial = `${ano}-${pad2(mes)}-01`;
+  const datafinal = `${ano}-${pad2(mes)}-${pad2(lastDay)}`;
+  const resultado = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
+  if (resultado.completo) {
+    const now = /* @__PURE__ */ new Date();
+    const ttlMs = isMesAtual(mes, ano) ? TTL_MES_ATUAL_MS : TTL_MES_FECHADO_MS;
+    const expiresAt = new Date(now.getTime() + ttlMs);
+    const existing = await db5.select({ id: mubisysApiCache.id }).from(mubisysApiCache).where(eq6(mubisysApiCache.cacheKey, cacheKeyProprio)).limit(1);
+    const payload = { osData: JSON.stringify(resultado.itens), fetchedAt: now, expiresAt };
+    if (existing.length > 0) {
+      await db5.update(mubisysApiCache).set(payload).where(eq6(mubisysApiCache.cacheKey, cacheKeyProprio));
+    } else {
+      await db5.insert(mubisysApiCache).values({ cacheKey: cacheKeyProprio, mes, ano, ...payload });
+    }
+  }
+  return { ...resultado, viaApi: true };
+}
+async function linhasDoMesLocal(db5, mes, ano) {
+  const rows = await db5.select({
+    estado: historicoOs.estado,
+    cidade: historicoOs.cidade,
+    empresa: historicoOs.empresa,
+    valorTotal: historicoOs.valorTotal
+  }).from(historicoOs).where(and5(eq6(historicoOs.mes, mes), eq6(historicoOs.ano, ano), osValidaCondition()));
+  return rows.map((r) => ({ estado: r.estado, cidade: r.cidade, empresa: r.empresa ?? "", valorTotal: Number(r.valorTotal ?? 0) }));
+}
+async function linhasDoMes(db5, mes, ano) {
+  if (ENV.MUBISYS_PUBLIC_KEY && ENV.MUBISYS_ACCESS_TOKEN) {
+    try {
+      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 55e3));
+      const resultado = await Promise.race([buscarOsBrutasDoMes(db5, mes, ano), timeoutPromise]);
+      if (resultado) {
+        return { linhas: resultado.itens.filter(osValidaMubisys).map(normalizarOsMubisys), viaApi: true };
+      }
+    } catch {
+    }
+  }
+  return { linhas: await linhasDoMesLocal(db5, mes, ano), viaApi: false };
+}
+async function linhasDoAno(db5, ano) {
+  const meses = Array.from({ length: 12 }, (_, i) => i + 1);
+  const CONCURRENCY = 2;
+  let todas = [];
+  const mesesFallback = [];
+  for (let i = 0; i < meses.length; i += CONCURRENCY) {
+    const batch = meses.slice(i, i + CONCURRENCY);
+    const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db5, mes, ano)));
+    batch.forEach((mes, idx) => {
+      todas = todas.concat(resultados[idx].linhas);
+      if (!resultados[idx].viaApi) mesesFallback.push(mes);
+    });
+  }
+  return { linhas: todas, mesesFallback };
+}
+function agregarPorEstado(linhas) {
+  const porEstado = /* @__PURE__ */ new Map();
+  let totalOs = 0;
+  let totalFaturamento = 0;
+  let semEstado = 0;
+  let semEstadoFaturamento = 0;
+  for (const r of linhas) {
+    const valor = r.valorTotal;
+    totalOs++;
+    totalFaturamento += valor;
+    const estado = normalizarUf(r.estado);
+    if (!estado) {
+      semEstado++;
+      semEstadoFaturamento += valor;
+      continue;
+    }
+    if (!porEstado.has(estado)) {
+      porEstado.set(estado, { qtdOs: 0, faturamento: 0, clientes: /* @__PURE__ */ new Set(), cidades: /* @__PURE__ */ new Map() });
+    }
+    const e = porEstado.get(estado);
+    e.qtdOs++;
+    e.faturamento += valor;
+    e.clientes.add((r.empresa ?? "").trim().toUpperCase());
+    const cidadeNome = r.cidade ? tituloCidade(r.cidade.trim()) : "\u2014";
+    if (!e.cidades.has(cidadeNome)) e.cidades.set(cidadeNome, { qtdOs: 0, faturamento: 0 });
+    const c = e.cidades.get(cidadeNome);
+    c.qtdOs++;
+    c.faturamento += valor;
+  }
+  const estados = Array.from(porEstado.entries()).map(([estado, d]) => ({
+    estado,
+    qtdOs: d.qtdOs,
+    pctOs: totalOs > 0 ? d.qtdOs / totalOs * 100 : 0,
+    faturamento: d.faturamento,
+    pctFaturamento: totalFaturamento > 0 ? d.faturamento / totalFaturamento * 100 : 0,
+    qtdClientes: d.clientes.size,
+    ticketMedio: d.qtdOs > 0 ? d.faturamento / d.qtdOs : 0,
+    topCidades: Array.from(d.cidades.entries()).map(([cidade, cd]) => ({ cidade, qtdOs: cd.qtdOs, faturamento: cd.faturamento })).sort((a, b) => b.faturamento - a.faturamento).slice(0, 5)
+  })).sort((a, b) => b.faturamento - a.faturamento);
+  return { estados, totalOs, totalFaturamento, semEstado, semEstadoFaturamento };
+}
+var UFS_VALIDAS, TTL_MES_ATUAL_MS, TTL_MES_FECHADO_MS, analiseGeograficaRouter;
+var init_analiseGeografica = __esm({
+  "server/routers/analiseGeografica.ts"() {
+    "use strict";
+    init_trpc();
+    init_env();
+    init_db();
+    init_mubisys_client();
+    init_schema();
+    UFS_VALIDAS = /* @__PURE__ */ new Set([
+      "AC",
+      "AL",
+      "AP",
+      "AM",
+      "BA",
+      "CE",
+      "DF",
+      "ES",
+      "GO",
+      "MA",
+      "MT",
+      "MS",
+      "MG",
+      "PA",
+      "PB",
+      "PR",
+      "PE",
+      "PI",
+      "RJ",
+      "RN",
+      "RS",
+      "RO",
+      "RR",
+      "SC",
+      "SP",
+      "SE",
+      "TO"
+    ]);
+    TTL_MES_ATUAL_MS = 60 * 60 * 1e3;
+    TTL_MES_FECHADO_MS = 30 * 24 * 60 * 60 * 1e3;
+    analiseGeograficaRouter = router({
+      getAnosDisponiveis: publicProcedure.query(async () => {
+        const anoAtual = (/* @__PURE__ */ new Date()).getFullYear();
+        const db5 = await getDb3();
+        if (!db5) return [anoAtual, anoAtual - 1, anoAtual - 2];
+        const rows = await db5.selectDistinct({ ano: historicoOs.ano }).from(historicoOs);
+        const anos = new Set(rows.map((r) => r.ano));
+        anos.add(anoAtual);
+        anos.add(anoAtual - 1);
+        return Array.from(anos).sort((a, b) => b - a);
+      }),
+      getPorEstado: publicProcedure.input(z4.object({
+        ano: z4.number(),
+        // null/undefined = ano inteiro
+        mes: z4.number().min(1).max(12).nullable().optional()
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) return { estados: [], totalOs: 0, totalFaturamento: 0, semEstado: 0, semEstadoFaturamento: 0, mesesFallback: [] };
+        let linhas;
+        let mesesFallback;
+        if (input.mes) {
+          const resultado = await linhasDoMes(db5, input.mes, input.ano);
+          linhas = resultado.linhas;
+          mesesFallback = resultado.viaApi ? [] : [input.mes];
+        } else {
+          const resultado = await linhasDoAno(db5, input.ano);
+          linhas = resultado.linhas;
+          mesesFallback = resultado.mesesFallback;
+        }
+        return { ...agregarPorEstado(linhas), mesesFallback };
+      }),
+      getEvolucaoMensal: publicProcedure.input(z4.object({ ano: z4.number() })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) return { meses: [], topEstados: [] };
+        const meses = Array.from({ length: 12 }, (_, i) => i + 1);
+        const CONCURRENCY = 2;
+        const porMesLinhas = new Array(12);
+        for (let i = 0; i < meses.length; i += CONCURRENCY) {
+          const batch = meses.slice(i, i + CONCURRENCY);
+          const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db5, mes, input.ano)));
+          batch.forEach((mes, idx) => {
+            porMesLinhas[mes - 1] = resultados[idx].linhas;
+          });
+        }
+        const totalPorEstado = /* @__PURE__ */ new Map();
+        for (const linhas of porMesLinhas) {
+          for (const r of linhas) {
+            const estado = normalizarUf(r.estado);
+            if (!estado) continue;
+            totalPorEstado.set(estado, (totalPorEstado.get(estado) ?? 0) + r.valorTotal);
+          }
+        }
+        const topEstados = Array.from(totalPorEstado.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([uf]) => uf);
+        const topSet = new Set(topEstados);
+        const mesesResult = meses.map((mes) => {
+          const valores = { outros: 0 };
+          for (const r of porMesLinhas[mes - 1]) {
+            const estado = normalizarUf(r.estado);
+            const key = estado && topSet.has(estado) ? estado : "outros";
+            valores[key] = (valores[key] ?? 0) + r.valorTotal;
+          }
+          return { mes, ...valores };
+        });
+        return { meses: mesesResult, topEstados };
+      }),
+      /** Lista de clientes por Estado, no período selecionado — usada para
+       * exportação em Excel na Análise Geográfica. Se `estado` for informado,
+       * retorna só os clientes daquele Estado (ex.: MS, SP, PR). */
+      getListaClientes: publicProcedure.input(z4.object({
+        ano: z4.number(),
+        mes: z4.number().min(1).max(12).nullable().optional(),
+        estado: z4.string().length(2).nullable().optional()
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) return [];
+        const linhas = input.mes ? (await linhasDoMes(db5, input.mes, input.ano)).linhas : (await linhasDoAno(db5, input.ano)).linhas;
+        const porCliente = /* @__PURE__ */ new Map();
+        for (const r of linhas) {
+          const estado = normalizarUf(r.estado);
+          if (!estado) continue;
+          if (input.estado && estado !== input.estado) continue;
+          const empresaNorm = (r.empresa ?? "").trim().toUpperCase();
+          if (!empresaNorm) continue;
+          const key = `${estado}__${empresaNorm}`;
+          if (!porCliente.has(key)) {
+            porCliente.set(key, {
+              estado,
+              empresa: (r.empresa ?? "").trim(),
+              cidade: r.cidade ? tituloCidade(r.cidade.trim()) : "\u2014",
+              qtdOs: 0,
+              faturamento: 0
+            });
+          }
+          const c = porCliente.get(key);
+          c.qtdOs++;
+          c.faturamento += r.valorTotal;
+        }
+        return Array.from(porCliente.values()).sort((a, b) => {
+          if (a.estado !== b.estado) return a.estado.localeCompare(b.estado);
+          return b.faturamento - a.faturamento;
+        });
+      })
+    });
+  }
+});
+
+// server/utils/regioesBrasil.ts
+var UF_PARA_REGIAO;
+var init_regioesBrasil = __esm({
+  "server/utils/regioesBrasil.ts"() {
+    "use strict";
+    init_analiseGeografica();
+    UF_PARA_REGIAO = {
+      AC: "Norte",
+      AM: "Norte",
+      AP: "Norte",
+      PA: "Norte",
+      RO: "Norte",
+      RR: "Norte",
+      TO: "Norte",
+      AL: "Nordeste",
+      BA: "Nordeste",
+      CE: "Nordeste",
+      MA: "Nordeste",
+      PB: "Nordeste",
+      PE: "Nordeste",
+      PI: "Nordeste",
+      RN: "Nordeste",
+      SE: "Nordeste",
+      DF: "Centro-Oeste",
+      GO: "Centro-Oeste",
+      MS: "Centro-Oeste",
+      MT: "Centro-Oeste",
+      ES: "Sudeste",
+      MG: "Sudeste",
+      RJ: "Sudeste",
+      SP: "Sudeste",
+      PR: "Sul",
+      RS: "Sul",
+      SC: "Sul"
+    };
+  }
+});
+
+// server/services/probabilidadeCompra.ts
+function foiPerdido(status, dataCadastro, validade, agora) {
+  const statusKey = (status ?? "").trim().toLowerCase();
+  if (STATUS_PERDIDO.has(statusKey)) return true;
+  if (statusKey !== "em aberto") return false;
+  const data = parseDataFlexivel(dataCadastro);
+  if (!data) return false;
+  const validadeDias = parseFloat(String(validade ?? "0")) || 0;
+  if (validadeDias > 0) {
+    const dataVencimento = new Date(data);
+    dataVencimento.setDate(dataVencimento.getDate() + validadeDias);
+    return dataVencimento < agora;
+  }
+  const dias = (agora.getTime() - data.getTime()) / (1e3 * 60 * 60 * 24);
+  return dias > DIAS_PRESUMIDO_PERDIDO;
+}
+function normalizeEmpresaKey2(s) {
+  return (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
+}
+async function construirMapaConversaoClientes(db5) {
+  const linhas = await db5.select({
+    empresa: historicoOrcamentos.empresa,
+    status: historicoOrcamentos.status,
+    total: historicoOrcamentos.total
+  }).from(historicoOrcamentos);
+  const porCliente = /* @__PURE__ */ new Map();
+  let totalGeral = 0;
+  let fechadosGeral = 0;
+  for (const r of linhas) {
+    const empresaKey = normalizeEmpresaKey2(r.empresa ?? "");
+    if (!empresaKey) continue;
+    const fechou = STATUS_GANHO.has((r.status ?? "").trim().toLowerCase());
+    const valor = r.total != null ? parseFloat(r.total) : NaN;
+    let acc = porCliente.get(empresaKey);
+    if (!acc) {
+      acc = { total: 0, fechados: 0, somaValor: 0, qtdComValor: 0 };
+      porCliente.set(empresaKey, acc);
+    }
+    acc.total++;
+    if (fechou) acc.fechados++;
+    if (!isNaN(valor)) {
+      acc.somaValor += valor;
+      acc.qtdComValor++;
+    }
+    totalGeral++;
+    if (fechou) fechadosGeral++;
+  }
+  const osRows = await db5.select({ empresa: historicoOs.empresa }).from(historicoOs);
+  const qtdComprasPorCliente = /* @__PURE__ */ new Map();
+  for (const r of osRows) {
+    const empresaKey = normalizeEmpresaKey2(r.empresa ?? "");
+    if (!empresaKey) continue;
+    qtdComprasPorCliente.set(empresaKey, (qtdComprasPorCliente.get(empresaKey) ?? 0) + 1);
+  }
+  const resultado = /* @__PURE__ */ new Map();
+  for (const [empresaKey, acc] of porCliente.entries()) {
+    resultado.set(empresaKey, {
+      totalOrcamentos: acc.total,
+      orcamentosFechados: acc.fechados,
+      taxaIndividual: acc.total >= MIN_AMOSTRA_TAXA_INDIVIDUAL ? acc.fechados / acc.total * 100 : null,
+      ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
+      qtdCompras: (qtdComprasPorCliente.get(empresaKey) ?? 0) + acc.fechados
+    });
+  }
+  for (const [empresaKey, qtd] of qtdComprasPorCliente.entries()) {
+    if (!resultado.has(empresaKey)) {
+      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd });
+    }
+  }
+  const taxaGeral = totalGeral > 0 ? fechadosGeral / totalGeral * 100 : 0;
+  return { porCliente: resultado, taxaGeral };
+}
+async function construirMapaFaixaTicket(db5) {
+  const linhas = await db5.select({
+    status: historicoOrcamentos.status,
+    total: historicoOrcamentos.total,
+    dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade
+  }).from(historicoOrcamentos);
+  const faixas = calcularConversaoPorFaixaTicket(
+    linhas,
+    /* @__PURE__ */ new Date()
+  );
+  return new Map(faixas.map((f2) => [f2.faixa, f2]));
+}
+async function calcularTaxaConversaoNovosRecente(db5) {
+  const now = /* @__PURE__ */ new Date();
+  const janelas = [];
+  for (let i = 0; i < MESES_JANELA_NOVOS; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    janelas.push({ mes: d.getMonth() + 1, ano: d.getFullYear() });
+  }
+  const janelasSet = new Set(janelas.map((j) => `${j.ano}-${j.mes}`));
+  const osRows = await db5.select({
+    empresa: historicoOs.empresa,
+    dataAprovacao: historicoOs.dataAprovacao
+  }).from(historicoOs);
+  const primeiraCompraPorCliente = /* @__PURE__ */ new Map();
+  for (const r of osRows) {
+    const key = normalizeEmpresaKey2(r.empresa ?? "");
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (!key || !data) continue;
+    const atual = primeiraCompraPorCliente.get(key);
+    if (!atual || data < atual) primeiraCompraPorCliente.set(key, data);
+  }
+  const linhas = await db5.select({
+    empresa: historicoOrcamentos.empresa,
+    status: historicoOrcamentos.status,
+    dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade,
+    mes: historicoOrcamentos.mes,
+    ano: historicoOrcamentos.ano
+  }).from(historicoOrcamentos);
+  const agora = /* @__PURE__ */ new Date();
+  let ganhos = 0;
+  let perdidos = 0;
+  for (const r of linhas) {
+    if (!janelasSet.has(`${r.ano}-${r.mes}`)) continue;
+    const empresaKey = normalizeEmpresaKey2(r.empresa ?? "");
+    if (!empresaKey) continue;
+    const dataOrcamento = parseDataFlexivel(r.dataCadastro);
+    const primeiraCompra = primeiraCompraPorCliente.get(empresaKey);
+    const eraNovoNaData = !primeiraCompra || !dataOrcamento || primeiraCompra >= dataOrcamento;
+    if (!eraNovoNaData) continue;
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    if (STATUS_GANHO.has(statusKey)) ganhos++;
+    else if (foiPerdido(r.status, r.dataCadastro, r.validade, agora)) perdidos++;
+  }
+  const total = ganhos + perdidos;
+  if (total === 0) return null;
+  return ganhos / total * 100;
+}
+async function construirMapaConversaoPorRegiao(db5) {
+  const osRows = await db5.select({
+    empresa: historicoOs.empresa,
+    estado: historicoOs.estado,
+    dataAprovacao: historicoOs.dataAprovacao
+  }).from(historicoOs);
+  const estadoMaisRecentePorCliente = /* @__PURE__ */ new Map();
+  for (const r of osRows) {
+    const key = normalizeEmpresaKey2(r.empresa ?? "");
+    const uf = normalizarUf(r.estado);
+    if (!key || !uf) continue;
+    const data = parseDataFlexivel(r.dataAprovacao) ?? /* @__PURE__ */ new Date(0);
+    const atual = estadoMaisRecentePorCliente.get(key);
+    if (!atual || data > atual.data) estadoMaisRecentePorCliente.set(key, { estado: uf, data });
+  }
+  const linhas = await db5.select({
+    empresa: historicoOrcamentos.empresa,
+    status: historicoOrcamentos.status,
+    dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade
+  }).from(historicoOrcamentos);
+  const agora = /* @__PURE__ */ new Date();
+  const porRegiao = /* @__PURE__ */ new Map();
+  for (const r of linhas) {
+    const empresaKey = normalizeEmpresaKey2(r.empresa ?? "");
+    const uf = estadoMaisRecentePorCliente.get(empresaKey)?.estado;
+    const regiao = uf ? UF_PARA_REGIAO[uf] : void 0;
+    if (!regiao) continue;
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    const ganho = STATUS_GANHO.has(statusKey);
+    const perdido = !ganho && foiPerdido(r.status, r.dataCadastro, r.validade, agora);
+    if (!ganho && !perdido) continue;
+    let acc = porRegiao.get(regiao);
+    if (!acc) {
+      acc = { ganhos: 0, perdidos: 0 };
+      porRegiao.set(regiao, acc);
+    }
+    if (ganho) acc.ganhos++;
+    else acc.perdidos++;
+  }
+  const resultado = /* @__PURE__ */ new Map();
+  for (const [regiao, acc] of porRegiao.entries()) {
+    const total = acc.ganhos + acc.perdidos;
+    resultado.set(regiao, {
+      regiao,
+      ganhos: acc.ganhos,
+      perdidos: acc.perdidos,
+      taxaConversaoPct: total > 0 ? acc.ganhos / total * 100 : null
+    });
+  }
+  return resultado;
+}
+function calcularProbabilidade(opts) {
+  const empresaKey = normalizeEmpresaKey2(opts.nomeCliente);
+  const conversao = empresaKey ? opts.mapa.porCliente.get(empresaKey) : void 0;
+  const explicacao = [];
+  let base;
+  if (opts.clienteNovo && opts.taxaNovosDoMes != null) {
+    base = opts.taxaNovosDoMes;
+    explicacao.push(`Base: ${base.toFixed(0)}% (convers\xE3o m\xE9dia de clientes novos, \xFAltimos ${MESES_JANELA_NOVOS} meses)`);
+  } else if (opts.clienteNovo) {
+    base = opts.mapa.taxaGeral;
+    explicacao.push(`Base: ${base.toFixed(0)}% (convers\xE3o geral da carteira \u2014 sem or\xE7amentos de clientes novos recentes)`);
+  } else if (conversao?.taxaIndividual != null) {
+    base = conversao.taxaIndividual;
+    explicacao.push(`Base: ${base.toFixed(0)}% (${conversao.orcamentosFechados} de ${conversao.totalOrcamentos} or\xE7amentos fechados deste cliente)`);
+  } else {
+    base = opts.mapa.taxaGeral;
+    const amostra = conversao ? `${conversao.totalOrcamentos} or\xE7amento${conversao.totalOrcamentos === 1 ? "" : "s"}` : "sem hist\xF3rico suficiente";
+    explicacao.push(`Base: ${base.toFixed(0)}% (convers\xE3o geral da carteira \u2014 ${amostra} deste cliente, amostra pequena demais para taxa individual)`);
+  }
+  let probabilidade = base;
+  const ticketMedio = conversao?.ticketMedio;
+  if (!opts.clienteNovo && ticketMedio && ticketMedio > 0 && opts.valorProposta > 0) {
+    const ratio = opts.valorProposta / ticketMedio;
+    if (ratio > 2) {
+      probabilidade -= 20;
+      explicacao.push(`Ajuste: -20pp (proposta ${ratio.toFixed(1)}x acima do ticket m\xE9dio deste cliente)`);
+    } else if (ratio > 1) {
+      probabilidade -= 10;
+      explicacao.push(`Ajuste: -10pp (proposta ${ratio.toFixed(1)}x acima do ticket m\xE9dio deste cliente)`);
+    }
+  }
+  const pesoAjustePortfolio = opts.clienteNovo ? 0.5 : 1;
+  if (opts.valorProposta > 0 && opts.mapaFaixaTicket) {
+    const faixa = opts.mapaFaixaTicket.get(faixaTicketDoValor(opts.valorProposta));
+    const amostraFaixa = faixa ? faixa.ganhos + faixa.perdidos : 0;
+    if (faixa && faixa.taxaConversaoPct != null && amostraFaixa >= MIN_AMOSTRA_FAIXA_TICKET) {
+      const delta = faixa.taxaConversaoPct - opts.mapa.taxaGeral;
+      const ajusteFaixa = Math.max(-AJUSTE_FAIXA_TICKET_MAX_PP, Math.min(AJUSTE_FAIXA_TICKET_MAX_PP, delta)) * pesoAjustePortfolio;
+      if (Math.abs(ajusteFaixa) >= 1) {
+        probabilidade += ajusteFaixa;
+        const sufixoPeso = opts.clienteNovo ? " (peso reduzido \u2014 cliente novo)" : "";
+        explicacao.push(`Ajuste: ${ajusteFaixa >= 0 ? "+" : ""}${ajusteFaixa.toFixed(0)}pp (faixa "${faixa.faixa}" converte ${faixa.taxaConversaoPct.toFixed(0)}% vs. ${opts.mapa.taxaGeral.toFixed(0)}% da carteira${sufixoPeso})`);
+      }
+    }
+  }
+  if (opts.regiaoCliente && opts.mapaRegiao) {
+    const regiao = opts.mapaRegiao.get(opts.regiaoCliente);
+    const amostraRegiao = regiao ? regiao.ganhos + regiao.perdidos : 0;
+    if (regiao && regiao.taxaConversaoPct != null && amostraRegiao >= MIN_AMOSTRA_REGIAO) {
+      const delta = regiao.taxaConversaoPct - opts.mapa.taxaGeral;
+      const ajusteRegiao = Math.max(-AJUSTE_REGIAO_MAX_PP, Math.min(AJUSTE_REGIAO_MAX_PP, delta)) * pesoAjustePortfolio;
+      if (Math.abs(ajusteRegiao) >= 1) {
+        probabilidade += ajusteRegiao;
+        const sufixoPeso = opts.clienteNovo ? " (peso reduzido \u2014 cliente novo)" : "";
+        explicacao.push(`Ajuste: ${ajusteRegiao >= 0 ? "+" : ""}${ajusteRegiao.toFixed(0)}pp (regi\xE3o ${opts.regiaoCliente} converte ${regiao.taxaConversaoPct.toFixed(0)}% vs. ${opts.mapa.taxaGeral.toFixed(0)}% da carteira${sufixoPeso})`);
+      }
+    }
+  }
+  probabilidade = Math.min(PROB_MAX, Math.max(PROB_MIN, Math.round(probabilidade)));
+  return { probabilidade, explicacao };
+}
+var DIAS_PRESUMIDO_PERDIDO, MIN_AMOSTRA_TAXA_INDIVIDUAL, MIN_AMOSTRA_FAIXA_TICKET, AJUSTE_FAIXA_TICKET_MAX_PP, MESES_JANELA_NOVOS, PROB_MIN, PROB_MAX, MIN_AMOSTRA_REGIAO, AJUSTE_REGIAO_MAX_PP;
+var init_probabilidadeCompra = __esm({
+  "server/services/probabilidadeCompra.ts"() {
+    "use strict";
+    init_schema();
+    init_inteligenciaClientes();
+    init_regioesBrasil();
+    DIAS_PRESUMIDO_PERDIDO = 30;
+    MIN_AMOSTRA_TAXA_INDIVIDUAL = 3;
+    MIN_AMOSTRA_FAIXA_TICKET = 5;
+    AJUSTE_FAIXA_TICKET_MAX_PP = 15;
+    MESES_JANELA_NOVOS = 3;
+    PROB_MIN = 5;
+    PROB_MAX = 95;
+    MIN_AMOSTRA_REGIAO = 5;
+    AJUSTE_REGIAO_MAX_PP = 15;
+  }
+});
+
+// server/routers/performanceComercial.ts
+import { z as z5 } from "zod";
+import { eq as eq7, and as and6, desc as desc6, gte as gte3, sql as sql4 } from "drizzle-orm";
+async function getDbCache(cacheKey, opts) {
+  try {
+    const db5 = await getDb3();
+    if (!db5) return null;
+    const rows = await db5.select().from(mubisysApiCache).where(eq7(mubisysApiCache.cacheKey, cacheKey)).limit(1);
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    if (!opts?.ignorarExpiracao && /* @__PURE__ */ new Date() > new Date(row.expiresAt)) {
+      await db5.delete(mubisysApiCache).where(eq7(mubisysApiCache.cacheKey, cacheKey));
+      return null;
+    }
+    const allOs = row.osData ? JSON.parse(row.osData) : [];
+    const allOrc = row.orcData ? JSON.parse(row.orcData) : [];
+    return { allOs, allOrc };
+  } catch {
+    return null;
+  }
+}
+async function setDbCache(cacheKey, mes, ano, allOs, allOrc) {
+  try {
+    const db5 = await getDb3();
+    if (!db5) return;
+    const now = /* @__PURE__ */ new Date();
+    const ttlMs = isMesFechado(mes, ano) ? CACHE_TTL_HISTORICO_PERSISTENTE_MS : CACHE_TTL_ATUAL_MS;
+    const expiresAt = new Date(now.getTime() + ttlMs);
+    const existing = await db5.select({ id: mubisysApiCache.id }).from(mubisysApiCache).where(eq7(mubisysApiCache.cacheKey, cacheKey)).limit(1);
+    if (existing.length > 0) {
+      await db5.update(mubisysApiCache).set({ osData: JSON.stringify(allOs), orcData: JSON.stringify(allOrc), fetchedAt: now, expiresAt }).where(eq7(mubisysApiCache.cacheKey, cacheKey));
+    } else {
+      await db5.insert(mubisysApiCache).values({ cacheKey, mes, ano, osData: JSON.stringify(allOs), orcData: JSON.stringify(allOrc), fetchedAt: now, expiresAt });
+    }
+  } catch {
+  }
+}
+async function deleteDbCache(cacheKey) {
+  try {
+    const db5 = await getDb3();
+    if (!db5) return;
+    await db5.delete(mubisysApiCache).where(eq7(mubisysApiCache.cacheKey, cacheKey));
+  } catch {
+  }
+}
+function normalizeEmpresaKey(s) {
+  return (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
+}
+function isMesAtual2(mes, ano) {
+  const now = /* @__PURE__ */ new Date();
+  return mes === now.getMonth() + 1 && ano === now.getFullYear();
+}
+function isMesFechado(mes, ano) {
+  const now = /* @__PURE__ */ new Date();
+  const anoAtual = now.getFullYear();
+  const mesAtualNum = now.getMonth() + 1;
+  return ano < anoAtual || ano === anoAtual && mes < mesAtualNum;
+}
+function getCached(key) {
+  const entry = apiCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL_HISTORICO_MS) {
+    apiCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+function setCacheWithTTL(key, data, mes, ano) {
+  apiCache.set(key, { data, ts: Date.now() });
+  if (isMesAtual2(mes, ano)) {
+    setTimeout(() => apiCache.delete(key), CACHE_TTL_ATUAL_MS);
+  }
+}
+function deleteCache(key) {
+  apiCache.delete(key);
+}
+function isOsNormalDb(os) {
+  if (os.tipoOs === null || os.tipoOs === void 0) return false;
+  const tipo = (os.tipoOs ?? "").toLowerCase();
+  const status = (os.status ?? "").toLowerCase();
+  if (tipo.startsWith("retrabalho")) return false;
+  if (tipo === "amostra") return false;
+  if (tipo === "cortesia") return false;
+  if (status === "cancelada") return false;
+  return true;
+}
+async function buscarTodasComprasValidas(db5) {
+  const rows = await db5.select({
+    empresa: historicoOs.empresa,
+    mes: historicoOs.mes,
+    ano: historicoOs.ano,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status
+  }).from(historicoOs);
+  const compras = [];
+  for (const r of rows) {
+    if (!isOsNormalDb(r)) continue;
+    const empresa = (r.empresa ?? "").toLowerCase().trim();
+    if (!empresa) continue;
+    compras.push({ empresa, mes: r.mes, ano: r.ano });
+  }
+  return compras;
+}
+function ultimaCompraAntesDe(compras, mes, ano) {
+  const map = /* @__PURE__ */ new Map();
+  for (const c of compras) {
+    if (c.ano > ano || c.ano === ano && c.mes >= mes) continue;
+    const atual = map.get(c.empresa);
+    if (!atual || c.ano > atual.ano || c.ano === atual.ano && c.mes > atual.mes) {
+      map.set(c.empresa, { mes: c.mes, ano: c.ano });
+    }
+  }
+  return map;
+}
+function isClienteNovoPorRecencia(ultima, mes, ano, mesesInatividade = MESES_INATIVIDADE_PARA_NOVO) {
+  if (!ultima) return true;
+  const gapMeses = (ano - ultima.ano) * 12 + (mes - ultima.mes);
+  return gapMeses >= mesesInatividade;
+}
+function reindexarPorChaveNormalizada(mapa) {
+  const normalizado = /* @__PURE__ */ new Map();
+  for (const [chave, ultima] of mapa) {
+    const chaveNorm = normalizeEmpresaKey(chave);
+    const existente = normalizado.get(chaveNorm);
+    if (!existente || ultima.ano > existente.ano || ultima.ano === existente.ano && ultima.mes > existente.mes) {
+      normalizado.set(chaveNorm, ultima);
+    }
+  }
+  return normalizado;
+}
+async function getMesFromDb(mes, ano) {
+  const db5 = await getDb3();
+  if (!db5) return null;
+  const osRows = await db5.select().from(historicoOs).where(and6(eq7(historicoOs.mes, mes), eq7(historicoOs.ano, ano)));
+  const orcRows = await db5.select().from(historicoOrcamentos).where(and6(eq7(historicoOrcamentos.mes, mes), eq7(historicoOrcamentos.ano, ano)));
+  const osNormais = osRows.filter((os) => {
+    if (os.tipoOs === null || os.tipoOs === void 0) return false;
+    const tipo = os.tipoOs;
+    const status = (os.status ?? "").toLowerCase();
+    if (tipo.toLowerCase().startsWith("retrabalho")) return false;
+    if (tipo.toLowerCase() === "amostra") return false;
+    if (tipo.toLowerCase() === "cortesia") return false;
+    if (status === "cancelada") return false;
+    return true;
+  });
+  const osPorVendedor = {};
+  let totalValorOs = 0;
+  let totalCustoOs = 0;
+  let totalResultadoOs = 0;
+  for (const os of osNormais) {
+    const vendedor = os.vendedor || "Sem Vendedor";
+    const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+    const custo = parseFloat(String(os.custosTotal ?? "0")) || 0;
+    const resultado = parseFloat(String(os.resultadoReais ?? "0")) || 0;
+    totalValorOs += valor;
+    totalCustoOs += custo;
+    totalResultadoOs += resultado;
+    if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
+    osPorVendedor[vendedor].total++;
+    osPorVendedor[vendedor].valor += valor;
+    osPorVendedor[vendedor].custo += custo;
+    osPorVendedor[vendedor].resultado += resultado;
+  }
+  const orcPorVendedor = {};
+  let totalValorOrc = 0;
+  for (const orc of orcRows) {
+    const vendedor = orc.vendedor || "Sem Vendedor";
+    const valor = parseFloat(String(orc.total ?? "0")) || 0;
+    totalValorOrc += valor;
+    if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
+    orcPorVendedor[vendedor].total++;
+    orcPorVendedor[vendedor].valor += valor;
+  }
+  return {
+    osNormais: {
+      total: osNormais.length,
+      valorTotal: totalValorOs,
+      custo: totalCustoOs,
+      resultado: totalResultadoOs,
+      porVendedor: osPorVendedor
+    },
+    orcamentos: {
+      total: orcRows.length,
+      valorTotal: totalValorOrc,
+      porVendedor: orcPorVendedor
+    }
+  };
+}
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label)), ms))
+  ]);
+}
+async function getMesFromApi(mes, ano) {
+  const cacheKey = `mes_${mes}_${ano}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+  const existing = pendingApiCalls.get(cacheKey);
+  if (existing) return existing;
+  const promise = _getMesFromApiImpl(mes, ano).then((result) => {
+    setCacheWithTTL(cacheKey, result, mes, ano);
+    pendingApiCalls.delete(cacheKey);
+    return result;
+  }).catch((err) => {
+    pendingApiCalls.delete(cacheKey);
+    throw err;
+  });
+  pendingApiCalls.set(cacheKey, promise);
+  return promise;
+}
+async function _getMesFromApiImpl(mes, ano) {
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const lastDay = new Date(ano, mes, 0).getDate();
+  const datainicial = `${ano}-${pad2(mes)}-01`;
+  const datafinal = `${ano}-${pad2(mes)}-${pad2(lastDay)}`;
+  const rawCacheKey = `raw_${mes}_${ano}`;
+  const osCacheKey = `os_raw_${mes}_${ano}`;
+  const orcCacheKey = `orc_raw_${mes}_${ano}`;
+  const cachedOs = getCached(osCacheKey);
+  const cachedOrc = getCached(orcCacheKey);
+  let allOs;
+  let allOrc;
+  if (cachedOs && cachedOrc) {
+    allOs = cachedOs;
+    allOrc = cachedOrc;
+  } else {
+    const dbCached = await getDbCache(rawCacheKey);
+    if (dbCached) {
+      allOs = dbCached.allOs;
+      allOrc = dbCached.allOrc;
+      setCacheWithTTL(osCacheKey, allOs, mes, ano);
+      setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
+    } else {
+      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
+      const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal });
+      allOs = osResult.itens;
+      allOrc = orcResult.itens;
+      let usouCacheAnteriorPorZeroImplausivel = false;
+      if (isMesAtual2(mes, ano) && allOs.length === 0 && allOrc.length === 0) {
+        const anterior = await getDbCache(rawCacheKey, { ignorarExpiracao: true });
+        if (anterior && (anterior.allOs.length > 0 || anterior.allOrc.length > 0)) {
+          console.warn(`[MubiSys] Resposta zerada implaus\xEDvel para m\xEAs vigente ${mes}/${ano} \u2014 usando \xFAltimo cache n\xE3o-vazio (${anterior.allOs.length} OS, ${anterior.allOrc.length} or\xE7amentos) em vez do zero.`);
+          allOs = anterior.allOs;
+          allOrc = anterior.allOrc;
+          usouCacheAnteriorPorZeroImplausivel = true;
+        }
+      }
+      setCacheWithTTL(osCacheKey, allOs, mes, ano);
+      setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
+      if (osResult.completo && orcResult.completo && !usouCacheAnteriorPorZeroImplausivel) {
+        setDbCache(rawCacheKey, mes, ano, allOs, allOrc).catch(() => {
+        });
+        console.log(`[MubiSys] Cache persistente salvo para ${mes}/${ano}: ${allOs.length} OS, ${allOrc.length} or\xE7amentos`);
+      } else if (!usouCacheAnteriorPorZeroImplausivel) {
+        console.warn(`[MubiSys] Busca incompleta para ${mes}/${ano} \u2014 cache persistente N\xC3O salvo (OS: ${osResult.completo}, Orc: ${orcResult.completo})`);
+      }
+    }
+  }
+  const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
+  const osNormais = allOs.filter(
+    (os) => !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) && (os.status || "").toLowerCase() !== "cancelada"
+  );
+  const osPorVendedor = {};
+  let totalValorOs = 0;
+  let totalCustoOs = 0;
+  let totalResultadoOs = 0;
+  for (const os of osNormais) {
+    const vendedor = os.vendedor || "Sem Vendedor";
+    const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
+    const custo = parseFloat(String(os.valor_custo ?? "0")) || 0;
+    const resultado = parseFloat(String(os.valor_margem ?? "0")) || 0;
+    totalValorOs += valor;
+    totalCustoOs += custo;
+    totalResultadoOs += resultado;
+    if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
+    osPorVendedor[vendedor].total++;
+    osPorVendedor[vendedor].valor += valor;
+    osPorVendedor[vendedor].custo += custo;
+    osPorVendedor[vendedor].resultado += resultado;
+  }
+  const STATUS_EXCLUIDOS_ORC = ["cancelada", "cancelado", "exclu\xEDda", "exclu\xEDdo", "excluida", "excluido"];
+  const orcVersaoAtual = allOrc.filter(
+    (orc) => !STATUS_EXCLUIDOS_ORC.includes((orc.status ?? "").toLowerCase())
+  );
+  const orcPorVendedor = {};
+  let totalValorOrc = 0;
+  for (const orc of orcVersaoAtual) {
+    const vendedor = orc.vendedor || "Sem Vendedor";
+    const vt = parseFloat(String(orc.valor_total ?? "0")) || 0;
+    const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
+    const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
+    const valor = vt > 0 ? vt : vc + vm;
+    totalValorOrc += valor;
+    if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
+    orcPorVendedor[vendedor].total++;
+    orcPorVendedor[vendedor].valor += valor;
+  }
+  return {
+    osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor },
+    orcamentos: { total: orcVersaoAtual.length, valorTotal: totalValorOrc, porVendedor: orcPorVendedor }
+  };
+}
+function calcMetrics(osNormais, orcamentos, mes, ano) {
+  const MESES_NOMES3 = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const taxaConversao = orcamentos.total > 0 ? parseFloat((osNormais.total / orcamentos.total * 100).toFixed(1)) : 0;
+  const taxaFaturamento = orcamentos.valorTotal > 0 ? parseFloat((osNormais.valorTotal / orcamentos.valorTotal * 100).toFixed(1)) : 0;
+  const ticketMedio = osNormais.total > 0 ? parseFloat((osNormais.valorTotal / osNormais.total).toFixed(2)) : 0;
+  const margemPct = osNormais.valorTotal > 0 ? parseFloat((osNormais.resultado / osNormais.valorTotal * 100).toFixed(1)) : 0;
+  const todosVendedores = /* @__PURE__ */ new Set([
+    ...Object.keys(osNormais.porVendedor),
+    ...Object.keys(orcamentos.porVendedor)
+  ]);
+  const porVendedor = Array.from(todosVendedores).map((vendedor) => {
+    const os = osNormais.porVendedor[vendedor] ?? { total: 0, valor: 0, custo: 0, resultado: 0 };
+    const orc = orcamentos.porVendedor[vendedor] ?? { total: 0, valor: 0 };
+    const conv = orc.total > 0 ? parseFloat((os.total / orc.total * 100).toFixed(1)) : 0;
+    const taxaFat = orc.valor > 0 ? parseFloat((os.valor / orc.valor * 100).toFixed(1)) : 0;
+    const ticket = os.total > 0 ? parseFloat((os.valor / os.total).toFixed(2)) : 0;
+    const margem = os.valor > 0 ? parseFloat((os.resultado / os.valor * 100).toFixed(1)) : 0;
+    return {
+      vendedor,
+      cotacoes: orc.total,
+      valorOrcado: parseFloat(orc.valor.toFixed(2)),
+      osGeradas: os.total,
+      faturamento: parseFloat(os.valor.toFixed(2)),
+      custo: parseFloat(os.custo.toFixed(2)),
+      resultado: parseFloat(os.resultado.toFixed(2)),
+      taxaConversao: conv,
+      taxaFaturamento: taxaFat,
+      ticketMedio: ticket,
+      margemPct: margem
+    };
+  }).sort((a, b) => b.cotacoes - a.cotacoes);
+  return {
+    label: `${MESES_NOMES3[mes - 1]}/${String(ano).slice(2)}`,
+    mes,
+    ano,
+    cotacoes: orcamentos.total,
+    osGeradas: osNormais.total,
+    valorOrcado: parseFloat(orcamentos.valorTotal.toFixed(2)),
+    faturamento: parseFloat(osNormais.valorTotal.toFixed(2)),
+    custo: parseFloat(osNormais.custo.toFixed(2)),
+    resultado: parseFloat(osNormais.resultado.toFixed(2)),
+    taxaConversao,
+    taxaFaturamento,
+    ticketMedio,
+    margemPct,
+    porVendedor
+  };
+}
+function calcularNovosDoMesLocal(mes, ano, osDoAno, todasComprasValidas, overrideMap) {
+  const ultimaCompraPorCliente = reindexarPorChaveNormalizada(ultimaCompraAntesDe(todasComprasValidas, mes, ano));
+  const osMes = osDoAno.filter((os) => os.mes === mes);
+  let osNovos = 0;
+  let faturamentoNovos = 0;
+  let faturamentoReativados = 0;
+  let clientesReativados = 0;
+  const clientesVistos = /* @__PURE__ */ new Set();
+  for (const os of osMes) {
+    if (!isOsNormalDb(os)) continue;
+    const clienteKey = normalizeEmpresaKey(os.empresa ?? "");
+    if (!clienteKey) continue;
+    const overrideStatus = overrideMap.get(clienteKey);
+    const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+    if (!isNovo) continue;
+    const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+    const jaComprouAntes = Boolean(ultimaCompraPorCliente.get(clienteKey));
+    osNovos++;
+    faturamentoNovos += valor;
+    if (jaComprouAntes) faturamentoReativados += valor;
+    if (!clientesVistos.has(clienteKey)) {
+      clientesVistos.add(clienteKey);
+      if (jaComprouAntes) clientesReativados++;
+    }
+  }
+  return {
+    mes,
+    ticketMedioNovos: osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0,
+    osNovos,
+    faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
+    faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
+    // Faturamento de clientes genuinamente novos, SEM os reativados — ver nota em getClientesNovosMes.
+    faturamentoNovosPuros: parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2)),
+    clientesNovosUnicos: clientesVistos.size,
+    clientesReativados,
+    // Clientes genuinamente novos (nunca compraram antes), SEM os reativados — perfis
+    // diferentes de cliente, não devem ser somados na mesma métrica (ver MarketingFinanceiro.tsx).
+    clientesNovosPuros: clientesVistos.size - clientesReativados
+  };
+}
+async function getClientesNovosMes(mes, ano) {
+  const db5 = await getDb3();
+  const EMPTY = { total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
+  if (!db5) return EMPTY;
+  const snapCongelado = await db5.select().from(performanceAuditada).where(and6(eq7(performanceAuditada.mes, mes), eq7(performanceAuditada.ano, ano), eq7(performanceAuditada.congelado, true))).limit(1);
+  if (snapCongelado.length > 0 && snapCongelado[0].listaClientesNovos) {
+    const s = snapCongelado[0];
+    let listaSnap = [];
+    try {
+      listaSnap = JSON.parse(s.listaClientesNovos ?? "[]");
+    } catch {
+      listaSnap = [];
+    }
+    const porVendedorNovosSnap = {};
+    for (const item of listaSnap) {
+      const vendedor = item.vendedor || "Sem Vendedor";
+      const valor = parseFloat(String(item.valorOs ?? "0")) || 0;
+      if (!porVendedorNovosSnap[vendedor]) {
+        porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
+      }
+      porVendedorNovosSnap[vendedor].clientesNovos++;
+      porVendedorNovosSnap[vendedor].osNovos++;
+      porVendedorNovosSnap[vendedor].faturamentoNovos = parseFloat((porVendedorNovosSnap[vendedor].faturamentoNovos + valor).toFixed(2));
+    }
+    const orcMesSnap = await db5.select().from(historicoOrcamentos).where(and6(eq7(historicoOrcamentos.mes, mes), eq7(historicoOrcamentos.ano, ano)));
+    const comprasSnap = await buscarTodasComprasValidas(db5);
+    const ultimaCompraSnap = ultimaCompraAntesDe(comprasSnap, mes, ano);
+    const ultimaCompraSnapNorm = reindexarPorChaveNormalizada(ultimaCompraSnap);
+    const clientesUnicosSnap = new Set(listaSnap.map((item) => normalizeEmpresaKey(item.empresa)));
+    let totalReativadosSnap = 0;
+    for (const chave of clientesUnicosSnap) {
+      if (ultimaCompraSnapNorm.get(chave)) totalReativadosSnap++;
+    }
+    let faturamentoReativadosSnap = 0;
+    for (const item of listaSnap) {
+      if (!ultimaCompraSnapNorm.get(normalizeEmpresaKey(item.empresa))) continue;
+      faturamentoReativadosSnap += parseFloat(String(item.valorOs ?? "0")) || 0;
+    }
+    for (const orc of orcMesSnap) {
+      const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
+      if (!clienteKey || !isClienteNovoPorRecencia(ultimaCompraSnap.get(clienteKey), mes, ano)) continue;
+      const vendedor = orc.vendedor || "Sem Vendedor";
+      if (!porVendedorNovosSnap[vendedor]) {
+        porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
+      }
+      porVendedorNovosSnap[vendedor].cotacoesNovos++;
+      porVendedorNovosSnap[vendedor].valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
+    }
+    for (const v of Object.keys(porVendedorNovosSnap)) {
+      const entry = porVendedorNovosSnap[v];
+      entry.taxaConvNovos = entry.cotacoesNovos > 0 ? parseFloat((entry.osNovos / entry.cotacoesNovos * 100).toFixed(1)) : 0;
+      entry.taxaFatNovos = entry.valorOrcadoNovos > 0 ? parseFloat((entry.faturamentoNovos / entry.valorOrcadoNovos * 100).toFixed(1)) : 0;
+      entry.valorOrcadoNovos = parseFloat(entry.valorOrcadoNovos.toFixed(2));
+    }
+    const cotacoesNovosSnap = (s.cotacoesNovos ?? 0) > 0 ? s.cotacoesNovos ?? 0 : Object.values(porVendedorNovosSnap).reduce((acc, v) => acc + v.cotacoesNovos, 0);
+    const taxaConvNovosSnap = parseFloat(String(s.taxaConvNovos ?? 0)) > 0 ? parseFloat(String(s.taxaConvNovos ?? 0)) : cotacoesNovosSnap > 0 ? parseFloat(((s.clientesNovos ?? 0) / cotacoesNovosSnap * 100).toFixed(1)) : 0;
+    return {
+      total: s.clientesNovos ?? 0,
+      totalReativados: totalReativadosSnap,
+      totalPuros: (s.clientesNovos ?? 0) - totalReativadosSnap,
+      cotacoesNovos: cotacoesNovosSnap,
+      osNovos: s.clientesNovos ?? 0,
+      faturamentoNovos: parseFloat(String(s.faturamentoNovos ?? 0)),
+      faturamentoReativados: parseFloat(faturamentoReativadosSnap.toFixed(2)),
+      faturamentoNovosPuros: parseFloat((parseFloat(String(s.faturamentoNovos ?? 0)) - faturamentoReativadosSnap).toFixed(2)),
+      ticketMedioNovos: s.clientesNovos ? parseFloat(String(s.faturamentoNovos ?? 0)) / s.clientesNovos : 0,
+      valorOrcadoNovos: 0,
+      taxaConversaoNovos: taxaConvNovosSnap,
+      taxaFaturamentoNovos: 0,
+      porVendedor: {},
+      porVendedorNovos: porVendedorNovosSnap,
+      lista: listaSnap
+    };
+  }
+  const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+  const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
+  if (!publicKey || !accessToken) return EMPTY;
+  const overrides = await db5.select().from(clienteOverrides);
+  const overrideMap = /* @__PURE__ */ new Map();
+  for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
+  const todasComprasValidas = await buscarTodasComprasValidas(db5);
+  const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+  const ultimaCompraPorClienteNorm = reindexarPorChaveNormalizada(ultimaCompraPorCliente);
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const lastDay = new Date(ano, mes, 0).getDate();
+  const di = `${ano}-${pad2(mes)}-01`;
+  const df = `${ano}-${pad2(mes)}-${pad2(lastDay)}`;
+  let allOsApi = [];
+  let allOrcApiPrefetched = null;
+  try {
+    await withTimeout(getMesFromApi(mes, ano), 45e3, "timeout_clientes_novos");
+    const rawCacheKeyNovos = `raw_${mes}_${ano}`;
+    const osCacheKey = `os_raw_${mes}_${ano}`;
+    const orcCacheKey = `orc_raw_${mes}_${ano}`;
+    const cachedOs = getCached(osCacheKey);
+    const cachedOrc = getCached(orcCacheKey);
+    if (cachedOs && cachedOrc) {
+      allOsApi = cachedOs;
+      allOrcApiPrefetched = cachedOrc;
+    } else {
+      const dbCachedNovos = await getDbCache(rawCacheKeyNovos);
+      if (dbCachedNovos) {
+        allOsApi = dbCachedNovos.allOs;
+        allOrcApiPrefetched = dbCachedNovos.allOrc;
+        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
+        setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
+      } else {
+        const [osResult, orcResult] = await Promise.all([
+          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
+          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df })
+        ]);
+        allOsApi = osResult.itens;
+        const orcList = orcResult.itens;
+        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
+        setCacheWithTTL(orcCacheKey, orcList, mes, ano);
+        setDbCache(rawCacheKeyNovos, mes, ano, allOsApi, orcList).catch(() => {
+        });
+        allOrcApiPrefetched = orcList;
+      }
+    }
+  } catch {
+    const osMesDb = await db5.select().from(historicoOs).where(and6(eq7(historicoOs.mes, mes), eq7(historicoOs.ano, ano)));
+    allOsApi = osMesDb.map((os) => ({
+      cliente: os.empresa,
+      vendedor: os.vendedor,
+      numero: os.osNumero,
+      valor_total: os.valorOs ?? os.valorTotal,
+      tipo: os.tipoOs ?? "",
+      status: os.status ?? ""
+    }));
+  }
+  const osNormaisApi = allOsApi.filter(
+    (os) => (os.tipo || "").toLowerCase() !== "retrabalho" && (os.tipo || "").toLowerCase() !== "amostra" && (os.tipo || "").toLowerCase() !== "cortesia" && (os.status || "").toLowerCase() !== "cancelada"
+  );
+  const porVendedor = {};
+  const porVendedorNovosOs = {};
+  let total = 0;
+  let totalReativados = 0;
+  let osNovosCount = 0;
+  let faturamentoNovos = 0;
+  let faturamentoReativados = 0;
+  const clientesVistos = /* @__PURE__ */ new Set();
+  const listaRaw = [];
+  for (const os of osNormaisApi) {
+    const clienteRaw = os.cliente;
+    const nomeCliente2 = typeof clienteRaw === "object" && clienteRaw !== null ? String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "") : String(clienteRaw ?? "");
+    const clienteKey = nomeCliente2.toLowerCase().trim();
+    if (!clienteKey) continue;
+    const overrideStatus = overrideMap.get(normalizeEmpresaKey(nomeCliente2));
+    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente2)), mes, ano);
+    const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isNovoByHistory;
+    if (isNovo) {
+      const vendedor = String(os.vendedor ?? "Sem Vendedor");
+      const vendedorKey = vendedor.toLowerCase().trim();
+      const valorOs = parseFloat(String(os.valor_total ?? "0")) || 0;
+      const jaComprouAntes = Boolean(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente2)));
+      faturamentoNovos += valorOs;
+      if (jaComprouAntes) faturamentoReativados += valorOs;
+      osNovosCount++;
+      if (!porVendedorNovosOs[vendedorKey]) porVendedorNovosOs[vendedorKey] = { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: vendedor };
+      porVendedorNovosOs[vendedorKey].osNovos++;
+      porVendedorNovosOs[vendedorKey].faturamentoNovos += valorOs;
+      if (!clientesVistos.has(clienteKey)) {
+        clientesVistos.add(clienteKey);
+        total++;
+        if (jaComprouAntes) totalReativados++;
+        porVendedor[vendedor] = (porVendedor[vendedor] ?? 0) + 1;
+        porVendedorNovosOs[vendedorKey].clientesNovos++;
+        const contatosOs = Array.isArray(os.cliente_contato) ? os.cliente_contato : os.cliente_contato ? [os.cliente_contato] : [];
+        const enderecosOs = Array.isArray(os.cliente_endereco) ? os.cliente_endereco : os.cliente_endereco ? [os.cliente_endereco] : [];
+        const primeiroContato = contatosOs[0];
+        const primeiroEndereco2 = enderecosOs[0];
+        const telefoneOs = primeiroContato?.celular || primeiroContato?.telefone || primeiroContato?.fone || "";
+        const contatoOs = primeiroContato?.nome_contato || primeiroContato?.nome || "";
+        const cidadeOs = primeiroEndereco2?.cidade || "";
+        const estadoOs = primeiroEndereco2?.estado || primeiroEndereco2?.uf || "";
+        listaRaw.push({ empresa: nomeCliente2, vendedor, osNumero: String(os.numero ?? ""), valorOs: String(os.valor_total ?? ""), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs });
+      }
+    }
+  }
+  function formatWhatsApp(tel) {
+    if (!tel) return "";
+    const digits = tel.replace(/\D/g, "");
+    if (!digits) return "";
+    const num2 = digits.startsWith("55") ? digits : `55${digits}`;
+    return `https://wa.me/${num2}`;
+  }
+  const lista = [];
+  for (const item of listaRaw) {
+    lista.push({
+      ...item,
+      whatsappLink: formatWhatsApp(item.telefone)
+    });
+  }
+  let cotacoesNovos = 0;
+  let valorOrcadoNovos = 0;
+  const porVendedorNovosOrc = {};
+  {
+    let allOrcApi = [];
+    if (allOrcApiPrefetched !== null) {
+      const STATUS_EXCL_ORC = ["cancelada", "cancelado", "exclu\xEDda", "exclu\xEDdo", "excluida", "excluido"];
+      allOrcApi = allOrcApiPrefetched.filter(
+        (orc) => !STATUS_EXCL_ORC.includes((orc.status ?? "").toLowerCase())
+      );
+    } else {
+      const orcMes = await db5.select().from(historicoOrcamentos).where(and6(eq7(historicoOrcamentos.mes, mes), eq7(historicoOrcamentos.ano, ano)));
+      allOrcApi = orcMes.map((orc) => ({
+        cliente: orc.empresa,
+        vendedor: orc.vendedor,
+        valor_total: orc.total
+      }));
+    }
+    for (const orc of allOrcApi) {
+      const clienteRaw = orc.cliente;
+      const nomeCliente2 = typeof clienteRaw === "object" && clienteRaw !== null ? String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "") : String(clienteRaw ?? "");
+      const clienteKey = nomeCliente2.toLowerCase().trim();
+      const orcOverride = overrideMap.get(normalizeEmpresaKey(nomeCliente2));
+      const isNovoOrc = orcOverride === "recorrente" ? false : orcOverride === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente2)), mes, ano);
+      if (clienteKey && isNovoOrc) {
+        cotacoesNovos++;
+        const valor = parseFloat(String(orc.valor_total ?? orc.valor ?? orc.total ?? orc.valorTotal ?? "0")) || 0;
+        valorOrcadoNovos += valor;
+        const vendedorOrcRaw = String(orc.vendedor ?? orc.usuario ?? "Sem Vendedor");
+        const vendedorOrcKey = vendedorOrcRaw.toLowerCase().trim();
+        if (!porVendedorNovosOrc[vendedorOrcKey]) porVendedorNovosOrc[vendedorOrcKey] = { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: vendedorOrcRaw };
+        porVendedorNovosOrc[vendedorOrcKey].cotacoesNovos++;
+        porVendedorNovosOrc[vendedorOrcKey].valorOrcadoNovos += valor;
+      }
+    }
+  }
+  const osNovos = osNovosCount;
+  const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat((osNovos / cotacoesNovos * 100).toFixed(1)) : 0;
+  const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat((faturamentoNovos / valorOrcadoNovos * 100).toFixed(1)) : 0;
+  const todosVendedoresNovos = Array.from(/* @__PURE__ */ new Set([
+    ...Object.keys(porVendedorNovosOs),
+    ...Object.keys(porVendedorNovosOrc)
+  ]));
+  const porVendedorNovos = {};
+  for (const v of todosVendedoresNovos) {
+    const os = porVendedorNovosOs[v] ?? { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: v };
+    const orc = porVendedorNovosOrc[v] ?? { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: v };
+    const nomeDisplay = orc.nomeOriginal !== v ? orc.nomeOriginal : os.nomeOriginal;
+    const taxaConvNovos = orc.cotacoesNovos > 0 ? parseFloat((os.osNovos / orc.cotacoesNovos * 100).toFixed(1)) : 0;
+    const taxaFatNovos = orc.valorOrcadoNovos > 0 ? parseFloat((os.faturamentoNovos / orc.valorOrcadoNovos * 100).toFixed(1)) : 0;
+    porVendedorNovos[nomeDisplay] = {
+      clientesNovos: os.clientesNovos,
+      osNovos: os.osNovos,
+      faturamentoNovos: parseFloat(os.faturamentoNovos.toFixed(2)),
+      cotacoesNovos: orc.cotacoesNovos,
+      valorOrcadoNovos: parseFloat(orc.valorOrcadoNovos.toFixed(2)),
+      taxaConvNovos,
+      taxaFatNovos
+    };
+  }
+  const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
+  if (snapCongelado.length > 0 && !snapCongelado[0].listaClientesNovos && lista.length > 0) {
+    db5.update(performanceAuditada).set({ listaClientesNovos: JSON.stringify(lista) }).where(and6(eq7(performanceAuditada.mes, mes), eq7(performanceAuditada.ano, ano))).execute().catch(() => {
+    });
+  }
+  return {
+    total,
+    totalReativados,
+    totalPuros: total - totalReativados,
+    cotacoesNovos,
+    osNovos,
+    faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
+    faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
+    faturamentoNovosPuros: parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2)),
+    ticketMedioNovos,
+    valorOrcadoNovos: parseFloat(valorOrcadoNovos.toFixed(2)),
+    taxaConversaoNovos,
+    taxaFaturamentoNovos,
+    porVendedor,
+    porVendedorNovos,
+    lista
+  };
+}
+async function sincronizarFilaAcoesClientes(db5) {
+  const rows = await db5.select().from(historicoOs);
+  const base = construirBaseClientes(rows);
+  const dataRef = /* @__PURE__ */ new Date();
+  const candidatos = calcularCandidatosAcao(base, dataRef);
+  const cutoff = new Date(dataRef.getTime() - DIAS_COOLDOWN_ACAO_RESOLVIDA * 864e5);
+  for (const cand of candidatos) {
+    const existentes = await db5.select().from(inteligenciaAcoesClientes).where(and6(eq7(inteligenciaAcoesClientes.tipo, cand.tipo), eq7(inteligenciaAcoesClientes.empresaKey, cand.empresaKey))).limit(1);
+    const existente = existentes[0];
+    if (existente) {
+      const resolvidaRecente = existente.resolvidoEm && new Date(existente.resolvidoEm) > cutoff && (existente.status === "concluida" || existente.status === "descartada");
+      if (resolvidaRecente) continue;
+      if (existente.status === "adiada" && existente.prazo && new Date(existente.prazo) > dataRef) continue;
+      await db5.update(inteligenciaAcoesClientes).set({
+        empresa: cand.empresa,
+        vendedor: cand.vendedor,
+        titulo: cand.titulo,
+        motivo: cand.motivo,
+        evidenciaJson: JSON.stringify(cand.evidencia),
+        prioridade: cand.prioridade,
+        prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
+        dataAnalise: dataRef,
+        updatedAt: dataRef,
+        // Reabre uma ação concluída/descartada antiga (fora do cooldown) sem perder o histórico de resultado
+        ...existente.status === "concluida" || existente.status === "descartada" ? { status: "pendente", resolvidoEm: null } : {}
+      }).where(eq7(inteligenciaAcoesClientes.id, existente.id));
+    } else {
+      await db5.insert(inteligenciaAcoesClientes).values({
+        tipo: cand.tipo,
+        empresaKey: cand.empresaKey,
+        empresa: cand.empresa,
+        vendedor: cand.vendedor,
+        titulo: cand.titulo,
+        motivo: cand.motivo,
+        evidenciaJson: JSON.stringify(cand.evidencia),
+        prioridade: cand.prioridade,
+        prioridadeFatoresJson: JSON.stringify(cand.prioridadeFatores),
+        versaoRegra: VERSAO_REGRA_ATUAL,
+        dataAnalise: dataRef
+      });
+    }
+  }
+}
+var gestorProcedure, apiCache, CACHE_TTL_ATUAL_MS, CACHE_TTL_HISTORICO_MS, CACHE_TTL_HISTORICO_PERSISTENTE_MS, MESES_INATIVIDADE_PARA_NOVO, pendingApiCalls, performanceComercialRouter;
+var init_performanceComercial = __esm({
+  "server/routers/performanceComercial.ts"() {
+    "use strict";
+    init_trpc();
+    init_env();
+    init_mubisys_client();
+    init_db();
+    init_schema();
+    init_inteligenciaClientes();
+    init_probabilidadeCompra();
+    init_anthropic_client();
+    gestorProcedure = protectedProcedure.use(requireRole("admin", "master", "gestor"));
+    apiCache = /* @__PURE__ */ new Map();
+    CACHE_TTL_ATUAL_MS = 60 * 60 * 1e3;
+    CACHE_TTL_HISTORICO_MS = 6 * 60 * 60 * 1e3;
+    CACHE_TTL_HISTORICO_PERSISTENTE_MS = 30 * 24 * 60 * 60 * 1e3;
+    MESES_INATIVIDADE_PARA_NOVO = 6;
+    pendingApiCalls = /* @__PURE__ */ new Map();
+    performanceComercialRouter = router({
+      // Dados de um mês específico
+      getMes: publicProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020), forceRefresh: z5.boolean().optional().default(false) })).query(async ({ input }) => {
+        const { mes, ano, forceRefresh } = input;
+        if (!forceRefresh) {
+          const dbSnap = await getDb3();
+          if (dbSnap) {
+            const snap = await dbSnap.select().from(performanceAuditada).where(and6(eq7(performanceAuditada.mes, mes), eq7(performanceAuditada.ano, ano), eq7(performanceAuditada.congelado, true))).limit(1);
+            if (snap.length > 0) {
+              const s = snap[0];
+              return {
+                cotacoes: s.cotacoes,
+                osGeradas: s.osNormais,
+                taxaConversao: parseFloat(String(s.taxaConversao)),
+                taxaFaturamento: s.valorOrcado && parseFloat(String(s.valorOrcado)) > 0 ? parseFloat((parseFloat(String(s.faturamento)) / parseFloat(String(s.valorOrcado)) * 100).toFixed(2)) : 0,
+                ticketMedio: s.osNormais > 0 ? parseFloat((parseFloat(String(s.faturamento)) / s.osNormais).toFixed(2)) : 0,
+                margemPct: 0,
+                custo: 0,
+                resultado: 0,
+                label: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][s.mes - 1]}/${String(s.ano).slice(2)}`,
+                mes: s.mes,
+                ano: s.ano,
+                faturamento: parseFloat(String(s.faturamento)),
+                valorOrcado: parseFloat(String(s.valorOrcado)),
+                clientesNovos: s.clientesNovos,
+                taxaConvNovos: parseFloat(String(s.taxaConvNovos)),
+                faturamentoNovos: parseFloat(String(s.faturamentoNovos)),
+                totalPedidosBanco: null,
+                _fonte: "congelado",
+                _statusValidacao: s.statusValidacao,
+                _dataAuditoria: s.dataAuditoria,
+                _dataCongelamento: s.dataCongelamento,
+                _auditadoPor: s.auditadoPor,
+                // Campos extras para compatibilidade com o restante da UI
+                porVendedor: {},
+                top3Vendedores: [],
+                metaAtingida: false,
+                metaCotacoes: 0,
+                metaOs: 0,
+                metaFaturamento: 0,
+                metaTaxaConversao: 0
+              };
+            }
+          }
+        }
+        if (forceRefresh) {
+          const osCacheKey = `os_raw_${mes}_${ano}`;
+          const orcCacheKey = `orc_raw_${mes}_${ano}`;
+          const mesCacheKey = `mes_${mes}_${ano}`;
+          const rawCacheKey = `raw_${mes}_${ano}`;
+          deleteCache(osCacheKey);
+          deleteCache(orcCacheKey);
+          deleteCache(mesCacheKey);
+          deleteDbCache(rawCacheKey).catch(() => {
+          });
+        }
+        let raw = null;
+        const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+        const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
+        if (publicKey && accessToken) {
+          try {
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 42e3));
+            raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
+          } catch {
+            raw = null;
+          }
+        }
+        let viaApi = raw !== null;
+        if (!raw) {
+          raw = await getMesFromDb(mes, ano);
+        }
+        if (viaApi && !isMesAtual2(mes, ano) && raw.osNormais?.total === 0 && raw.orcamentos?.total === 0) {
+          const local = await getMesFromDb(mes, ano);
+          if (local && (local.osNormais.total > 0 || local.orcamentos.total > 0)) {
+            raw = local;
+            viaApi = false;
+          }
+        }
+        if (!raw) return null;
+        const metrics = calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
+        const db22 = await getDb3();
+        let totalPedidosBanco = null;
+        if (db22) {
+          const MESES_NOMES_UPPER = ["JANEIRO", "FEVEREIRO", "MAR\xC7O", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
+          const mesNome = MESES_NOMES_UPPER[mes - 1];
+          const fatRow = await db22.select({ totalPedidos: faturamento.totalPedidos }).from(faturamento).where(and6(sql4`UPPER(${faturamento.mes}) = ${mesNome}`, eq7(faturamento.ano, ano))).limit(1);
+          if (fatRow.length > 0 && fatRow[0].totalPedidos > 0) totalPedidosBanco = fatRow[0].totalPedidos;
+        }
+        return { ...metrics, totalPedidosBanco, _origemDados: viaApi ? "api" : "local" };
+      }),
+      // Múltiplos meses para comparativo e gráfico de evolução
+      getMultiMes: publicProcedure.input(z5.object({
+        meses: z5.array(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) }))
+      })).query(async ({ input }) => {
+        const now = /* @__PURE__ */ new Date();
+        const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+        const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
+        const db5 = await getDb3();
+        const anoSet = Array.from(new Set(input.meses.map((m) => m.ano)));
+        const dbDataByAno = /* @__PURE__ */ new Map();
+        for (const ano of anoSet) {
+          const osRows = db5 ? await db5.select().from(historicoOs).where(eq7(historicoOs.ano, ano)) : [];
+          const orcRows = db5 ? await db5.select().from(historicoOrcamentos).where(eq7(historicoOrcamentos.ano, ano)) : [];
+          dbDataByAno.set(ano, { os: osRows, orc: orcRows });
+        }
+        const novosMap = /* @__PURE__ */ new Map();
+        if (db5) {
+          const overrides = await db5.select().from(clienteOverrides);
+          const overrideMap = /* @__PURE__ */ new Map();
+          for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
+          const todasComprasValidas = await buscarTodasComprasValidas(db5);
+          for (const ano of anoSet) {
+            const todasOsAno = dbDataByAno.get(ano)?.os ?? [];
+            const todasOrcAno = dbDataByAno.get(ano)?.orc ?? [];
+            const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
+            for (let mes = 1; mes <= mesAtual; mes++) {
+              const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+              const osMes = todasOsAno.filter((o) => o.mes === mes);
+              const orcMes = todasOrcAno.filter((o) => o.mes === mes);
+              let osNovos = 0, faturamentoNovos = 0;
+              for (const os of osMes) {
+                if (!isOsNormalDb(os)) continue;
+                const clienteKey = (os.empresa ?? "").toLowerCase().trim();
+                if (!clienteKey) continue;
+                const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
+                const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+                if (isNovo) {
+                  const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+                  osNovos++;
+                  faturamentoNovos += valor;
+                }
+              }
+              let cotacoesNovos = 0;
+              let valorOrcadoNovos = 0;
+              for (const orc of orcMes) {
+                const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
+                if (!clienteKey) continue;
+                const overrideStatus = overrideMap.get(normalizeEmpresaKey(orc.empresa ?? ""));
+                const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
+                if (isNovo) {
+                  cotacoesNovos++;
+                  valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
+                }
+              }
+              const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
+              const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat((osNovos / cotacoesNovos * 100).toFixed(1)) : 0;
+              const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat((faturamentoNovos / valorOrcadoNovos * 100).toFixed(1)) : 0;
+              novosMap.set(`${mes}_${ano}`, { osNovos, faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)), ticketMedioNovos, cotacoesNovos, taxaConversaoNovos, taxaFaturamentoNovos });
+            }
+          }
+        }
+        const mesesSolicitados = input.meses;
+        const snapsCongelados = db5 ? await db5.select().from(performanceAuditada).where(and6(
+          eq7(performanceAuditada.congelado, true),
+          sql4`(${performanceAuditada.mes}, ${performanceAuditada.ano}) IN (${sql4.join(
+            mesesSolicitados.map((m) => sql4`(${m.mes}, ${m.ano})`),
+            sql4`, `
+          )})`
+        )) : [];
+        const snapMap = /* @__PURE__ */ new Map();
+        for (const s of snapsCongelados) snapMap.set(`${s.mes}_${s.ano}`, s);
+        const results = await Promise.all(
+          input.meses.map(async ({ mes, ano }) => {
+            const snap = snapMap.get(`${mes}_${ano}`);
+            if (snap) {
+              const novos2 = novosMap.get(`${mes}_${ano}`);
+              const cotacoesNovosSnap = (snap.cotacoesNovos ?? 0) > 0 ? snap.cotacoesNovos ?? 0 : novos2?.cotacoesNovos ?? 0;
+              const osNovosSnap = novos2?.osNovos ?? snap.clientesNovos ?? 0;
+              const taxaConvNovosSnap = parseFloat(String(snap.taxaConvNovos ?? 0)) > 0 ? parseFloat(String(snap.taxaConvNovos ?? 0)) : cotacoesNovosSnap > 0 ? parseFloat((osNovosSnap / cotacoesNovosSnap * 100).toFixed(1)) : 0;
+              return {
+                mes,
+                ano,
+                label: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][mes - 1]}/${String(ano).slice(2)}`,
+                cotacoes: snap.cotacoes ?? 0,
+                osGeradas: snap.osNormais ?? 0,
+                taxaConversao: parseFloat(String(snap.taxaConversao ?? 0)),
+                taxaFaturamento: snap.valorOrcado && parseFloat(String(snap.valorOrcado)) > 0 ? parseFloat((parseFloat(String(snap.faturamento ?? 0)) / parseFloat(String(snap.valorOrcado)) * 100).toFixed(2)) : 0,
+                faturamento: parseFloat(String(snap.faturamento ?? 0)),
+                valorOrcado: parseFloat(String(snap.valorOrcado ?? 0)),
+                ticketMedio: snap.osNormais ? parseFloat(String(snap.faturamento ?? 0)) / snap.osNormais : 0,
+                margemPct: 0,
+                custo: 0,
+                resultado: 0,
+                clientesNovos: snap.clientesNovos ?? 0,
+                // Expor como taxaConversaoNovos (nome usado pelo frontend) E taxaConvNovos (compat)
+                taxaConvNovos: taxaConvNovosSnap,
+                taxaConversaoNovos: taxaConvNovosSnap,
+                faturamentoNovos: parseFloat(String(snap.faturamentoNovos ?? 0)),
+                osNovos: osNovosSnap,
+                ticketMedioNovos: novos2?.ticketMedioNovos ?? 0,
+                cotacoesNovos: cotacoesNovosSnap,
+                taxaFaturamentoNovos: novos2?.taxaFaturamentoNovos ?? 0,
+                porVendedor: []
+                // array vazio para compatibilidade com EvolucaoVendedor
+              };
+            }
+            let raw = null;
+            if (publicKey && accessToken) {
+              try {
+                const timeoutPromise = new Promise(
+                  (_, reject) => setTimeout(() => reject(new Error("timeout")), 4e4)
+                );
+                raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
+              } catch {
+                raw = null;
+              }
+            }
+            const isMesAtualMulti = mes === now.getMonth() + 1 && ano === now.getFullYear();
+            if (!raw) {
+              const anoData = dbDataByAno.get(ano);
+              if (!anoData && !isMesAtualMulti) return null;
+              const osRows = (anoData?.os ?? []).filter((o) => o.mes === mes);
+              const orcRows = (anoData?.orc ?? []).filter((o) => o.mes === mes);
+              if (osRows.length === 0 && orcRows.length === 0 && !isMesAtualMulti) return null;
+              const osNormais = osRows.filter((os) => {
+                if (os.tipoOs === null || os.tipoOs === void 0) return false;
+                const tipo = os.tipoOs;
+                const status = (os.status ?? "").toLowerCase();
+                if (tipo.toLowerCase().startsWith("retrabalho")) return false;
+                if (tipo.toLowerCase() === "amostra" || tipo.toLowerCase() === "cortesia") return false;
+                if (status === "cancelada") return false;
+                return true;
+              });
+              const osPorVendedor = {};
+              let totalValorOs = 0, totalCustoOs = 0, totalResultadoOs = 0;
+              for (const os of osNormais) {
+                const vendedor = os.vendedor || "Sem Vendedor";
+                const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+                const custo = parseFloat(String(os.custosTotal ?? "0")) || 0;
+                const resultado = parseFloat(String(os.resultadoReais ?? "0")) || 0;
+                totalValorOs += valor;
+                totalCustoOs += custo;
+                totalResultadoOs += resultado;
+                if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
+                osPorVendedor[vendedor].total++;
+                osPorVendedor[vendedor].valor += valor;
+                osPorVendedor[vendedor].custo += custo;
+                osPorVendedor[vendedor].resultado += resultado;
+              }
+              const orcPorVendedor = {};
+              let totalValorOrc = 0;
+              for (const orc of orcRows) {
+                const vendedor = orc.vendedor || "Sem Vendedor";
+                const valor = parseFloat(String(orc.total ?? "0")) || 0;
+                totalValorOrc += valor;
+                if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
+                orcPorVendedor[vendedor].total++;
+                orcPorVendedor[vendedor].valor += valor;
+              }
+              raw = {
+                osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor },
+                orcamentos: { total: orcRows.length, valorTotal: totalValorOrc, porVendedor: orcPorVendedor }
+              };
+            }
+            if (!raw && isMesAtualMulti) {
+              raw = {
+                osNormais: { total: 0, valorTotal: 0, custo: 0, resultado: 0, porVendedor: {} },
+                orcamentos: { total: 0, valorTotal: 0, porVendedor: {} }
+              };
+            }
+            if (!raw) return null;
+            const novos = novosMap.get(`${mes}_${ano}`) ?? { osNovos: 0, faturamentoNovos: 0, ticketMedioNovos: 0, cotacoesNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0 };
+            return { ...calcMetrics(raw.osNormais, raw.orcamentos, mes, ano), ...novos };
+          })
+        );
+        return results.filter(Boolean);
+      }),
+      // ─── Metas por vendedor ────────────────────────────────────────────────────
+      getMetas: publicProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) return [];
+        return db5.select().from(metasComerciais).where(and6(eq7(metasComerciais.mes, input.mes), eq7(metasComerciais.ano, input.ano)));
+      }),
+      upsertMeta: protectedProcedure.input(z5.object({
+        vendedor: z5.string().min(1),
+        mes: z5.number().min(1).max(12),
+        ano: z5.number().min(2020),
+        metaCotacoes: z5.number().nullable().optional(),
+        metaVendas: z5.number().nullable().optional(),
+        metaFaturamento: z5.number().nullable().optional(),
+        metaConversao: z5.number().nullable().optional(),
+        metaTicketMedio: z5.number().nullable().optional(),
+        // Novos campos
+        metaOsGeradas: z5.number().nullable().optional(),
+        metaClientesNovos: z5.number().nullable().optional(),
+        metaOsNovos: z5.number().nullable().optional(),
+        metaCotacoesNovos: z5.number().nullable().optional(),
+        metaFaturamentoNovos: z5.number().nullable().optional(),
+        metaTaxaFaturamento: z5.number().nullable().optional(),
+        metaTaxaFaturamentoNovos: z5.number().nullable().optional(),
+        metaConversaoNovos: z5.number().nullable().optional(),
+        metaTicketMedioNovos: z5.number().nullable().optional(),
+        metaValorOrcado: z5.number().nullable().optional()
+      })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
+        const toStr = (v) => v != null ? String(v) : null;
+        const setData = {
+          metaCotacoes: input.metaCotacoes ?? null,
+          metaVendas: input.metaVendas ?? null,
+          metaFaturamento: toStr(input.metaFaturamento),
+          metaConversao: toStr(input.metaConversao),
+          metaTicketMedio: toStr(input.metaTicketMedio),
+          metaOsGeradas: input.metaOsGeradas ?? null,
+          metaClientesNovos: input.metaClientesNovos ?? null,
+          metaOsNovos: input.metaOsNovos ?? null,
+          metaCotacoesNovos: input.metaCotacoesNovos ?? null,
+          metaFaturamentoNovos: toStr(input.metaFaturamentoNovos),
+          metaTaxaFaturamento: toStr(input.metaTaxaFaturamento),
+          metaTaxaFaturamentoNovos: toStr(input.metaTaxaFaturamentoNovos),
+          metaConversaoNovos: toStr(input.metaConversaoNovos),
+          metaTicketMedioNovos: toStr(input.metaTicketMedioNovos),
+          metaValorOrcado: toStr(input.metaValorOrcado),
+          updatedAt: /* @__PURE__ */ new Date()
+        };
+        const existing = await db5.select().from(metasComerciais).where(and6(
+          eq7(metasComerciais.vendedor, input.vendedor),
+          eq7(metasComerciais.mes, input.mes),
+          eq7(metasComerciais.ano, input.ano)
+        ));
+        if (existing.length > 0) {
+          await db5.update(metasComerciais).set(setData).where(and6(
+            eq7(metasComerciais.vendedor, input.vendedor),
+            eq7(metasComerciais.mes, input.mes),
+            eq7(metasComerciais.ano, input.ano)
+          ));
+        } else {
+          await db5.insert(metasComerciais).values({
+            vendedor: input.vendedor,
+            mes: input.mes,
+            ano: input.ano,
+            ...setData
+          });
+        }
+        return { ok: true };
+      }),
+      deleteMeta: protectedProcedure.input(z5.object({ id: z5.number() })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
+        await db5.delete(metasComerciais).where(eq7(metasComerciais.id, input.id));
+        return { ok: true };
+      }),
+      // Todos os meses de um ano para comparativo anual
+      getAno: publicProcedure.input(z5.object({ ano: z5.number().min(2020) })).query(async ({ input }) => {
+        const { ano } = input;
+        const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+        const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
+        const db5 = await getDb3();
+        const todasOsAno = db5 ? await db5.select().from(historicoOs).where(eq7(historicoOs.ano, ano)) : [];
+        const todosOrcAno = db5 ? await db5.select().from(historicoOrcamentos).where(eq7(historicoOrcamentos.ano, ano)) : [];
+        const snapsCongeladosAno = db5 ? await db5.select().from(performanceAuditada).where(and6(eq7(performanceAuditada.ano, ano), eq7(performanceAuditada.congelado, true))) : [];
+        const snapMapAno = /* @__PURE__ */ new Map();
+        for (const s of snapsCongeladosAno) snapMapAno.set(s.mes, s);
+        const MESES_NOMES_ANO = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+        const meses = Array.from({ length: 12 }, (_, i) => i + 1);
+        const results = await Promise.all(meses.map(async (mes) => {
+          const snap = snapMapAno.get(mes);
+          if (snap) {
+            const valorOrcadoSnap = parseFloat(String(snap.valorOrcado ?? 0));
+            const faturamentoSnap = parseFloat(String(snap.faturamento ?? 0));
+            const osGeradasSnap = snap.osNormais ?? 0;
+            return {
+              label: `${MESES_NOMES_ANO[mes - 1]}/${String(ano).slice(2)}`,
+              mes,
+              ano,
+              cotacoes: snap.cotacoes ?? 0,
+              osGeradas: osGeradasSnap,
+              valorOrcado: valorOrcadoSnap,
+              faturamento: faturamentoSnap,
+              custo: 0,
+              resultado: 0,
+              taxaConversao: parseFloat(String(snap.taxaConversao ?? 0)),
+              taxaFaturamento: valorOrcadoSnap > 0 ? parseFloat((faturamentoSnap / valorOrcadoSnap * 100).toFixed(2)) : 0,
+              ticketMedio: osGeradasSnap > 0 ? parseFloat((faturamentoSnap / osGeradasSnap).toFixed(2)) : 0,
+              margemPct: 0,
+              porVendedor: []
+            };
+          }
+          let raw = null;
+          if (publicKey && accessToken) {
+            try {
+              const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 45e3));
+              raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
+            } catch {
+              raw = null;
+            }
+          }
+          if (raw && !isMesAtual2(mes, ano) && raw.osNormais?.total === 0 && raw.orcamentos?.total === 0) {
+            raw = null;
+          }
+          if (!raw) {
+            const osRows = todasOsAno.filter((o) => o.mes === mes);
+            const orcRows = todosOrcAno.filter((o) => o.mes === mes);
+            if (osRows.length === 0 && orcRows.length === 0) return null;
+            const osNormais = osRows.filter((os) => {
+              if (os.tipoOs === null || os.tipoOs === void 0) return false;
+              const tipo = os.tipoOs;
+              const status = (os.status ?? "").toLowerCase();
+              if (tipo.toLowerCase().startsWith("retrabalho")) return false;
+              if (tipo.toLowerCase() === "amostra") return false;
+              if (tipo.toLowerCase() === "cortesia") return false;
+              if (status === "cancelada") return false;
+              return true;
+            });
+            const osPorVendedor = {};
+            let totalValorOs = 0, totalCustoOs = 0, totalResultadoOs = 0;
+            for (const os of osNormais) {
+              const vendedor = os.vendedor || "Sem Vendedor";
+              const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+              const custo = parseFloat(String(os.custosTotal ?? "0")) || 0;
+              const resultado = parseFloat(String(os.resultadoReais ?? "0")) || 0;
+              totalValorOs += valor;
+              totalCustoOs += custo;
+              totalResultadoOs += resultado;
+              if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
+              osPorVendedor[vendedor].total++;
+              osPorVendedor[vendedor].valor += valor;
+              osPorVendedor[vendedor].custo += custo;
+              osPorVendedor[vendedor].resultado += resultado;
+            }
+            const orcPorVendedor = {};
+            let totalValorOrc = 0;
+            for (const orc of orcRows) {
+              const vendedor = orc.vendedor || "Sem Vendedor";
+              const valor = parseFloat(String(orc.total ?? "0")) || 0;
+              totalValorOrc += valor;
+              if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
+              orcPorVendedor[vendedor].total++;
+              orcPorVendedor[vendedor].valor += valor;
+            }
+            raw = {
+              osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor },
+              orcamentos: { total: orcRows.length, valorTotal: totalValorOrc, porVendedor: orcPorVendedor }
+            };
+          }
+          if (!raw) return null;
+          return calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
+        }));
+        return results;
+      }),
+      // Clientes novos do mês (primeira compra)
+      getClientesNovos: protectedProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).query(async ({ input }) => {
+        return getClientesNovosMes(input.mes, input.ano);
+      }),
+      // Clientes novos de todos os meses do ano (para gráfico anual) — lê do histórico local
+      getClientesNovosAno: publicProcedure.input(z5.object({ ano: z5.number().min(2020) })).query(async ({ input }) => {
+        const { ano } = input;
+        const now = /* @__PURE__ */ new Date();
+        const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
+        const meses = Array.from({ length: mesAtual }, (_, i) => i + 1);
+        const db5 = await getDb3();
+        if (!db5) {
+          return meses.map((mes) => ({
+            mes,
+            ticketMedioNovos: 0,
+            osNovos: 0,
+            faturamentoNovos: 0,
+            faturamentoReativados: 0,
+            faturamentoNovosPuros: 0,
+            clientesNovosUnicos: 0,
+            clientesReativados: 0,
+            clientesNovosPuros: 0,
+            origem: "indisponivel"
+          }));
+        }
+        const snapsCongelados = await db5.select({ mes: performanceAuditada.mes }).from(performanceAuditada).where(and6(eq7(performanceAuditada.ano, ano), eq7(performanceAuditada.congelado, true)));
+        const congeladosSet = new Set(snapsCongelados.map((s) => s.mes));
+        const overrides = await db5.select().from(clienteOverrides);
+        const overrideMap = /* @__PURE__ */ new Map();
+        for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
+        const todasComprasValidas = await buscarTodasComprasValidas(db5);
+        const osDoAno = await db5.select({
+          empresa: historicoOs.empresa,
+          tipoOs: historicoOs.tipoOs,
+          status: historicoOs.status,
+          mes: historicoOs.mes,
+          valorOs: historicoOs.valorOs,
+          valorTotal: historicoOs.valorTotal
+        }).from(historicoOs).where(eq7(historicoOs.ano, ano));
+        const results = await Promise.all(meses.map(async (mes) => {
+          if (congeladosSet.has(mes)) {
+            const dados = await getClientesNovosMes(mes, ano);
+            return {
+              mes,
+              ticketMedioNovos: dados.ticketMedioNovos,
+              osNovos: dados.osNovos,
+              faturamentoNovos: dados.faturamentoNovos,
+              faturamentoReativados: dados.faturamentoReativados,
+              faturamentoNovosPuros: dados.faturamentoNovosPuros,
+              clientesNovosUnicos: dados.total,
+              clientesReativados: dados.totalReativados,
+              clientesNovosPuros: dados.totalPuros,
+              origem: "congelado"
+            };
+          }
+          return { ...calcularNovosDoMesLocal(mes, ano, osDoAno, todasComprasValidas, overrideMap), origem: "local" };
+        }));
+        results.sort((a, b) => a.mes - b.mes);
+        return results;
+      }),
+      // Evolucao diaria do mes vigente por vendedor
+      getEvolucaoDiariaMes: publicProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).query(async ({ input }) => {
+        const { mes, ano } = input;
+        const publicKey = ENV.MUBISYS_PUBLIC_KEY;
+        const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
+        if (!publicKey || !accessToken) return { dias: [], vendedores: [] };
+        const osCacheKey = `os_raw_${mes}_${ano}`;
+        const orcCacheKey = `orc_raw_${mes}_${ano}`;
+        let allOs = getCached(osCacheKey);
+        let allOrc = getCached(orcCacheKey);
+        if (!allOs || !allOrc) {
+          const pad3 = (n) => String(n).padStart(2, "0");
+          const lastDay2 = new Date(ano, mes, 0).getDate();
+          const datainicial = `${ano}-${pad3(mes)}-01`;
+          const datafinal = `${ano}-${pad3(mes)}-${pad3(lastDay2)}`;
+          try {
+            const [osResult, orcResult] = await withTimeout(
+              Promise.all([
+                listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
+                listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal })
+              ]),
+              45e3,
+              "timeout_evolucao_diaria"
+            );
+            allOs = osResult.itens;
+            allOrc = orcResult.itens;
+            setCacheWithTTL(osCacheKey, allOs, mes, ano);
+            setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
+          } catch {
+            return { dias: [], vendedores: [] };
+          }
+        }
+        const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
+        const osNormais = allOs.filter(
+          (os) => !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) && (os.status || "").toLowerCase() !== "cancelada"
+        );
+        const STATUS_EXCLUIDOS_ORC_DIARIO = ["cancelada", "cancelado", "exclu\xEDda", "exclu\xEDdo", "excluida", "excluido"];
+        const orcVersaoAtual = allOrc.filter(
+          (orc) => !STATUS_EXCLUIDOS_ORC_DIARIO.includes((orc.status ?? "").toLowerCase())
+        );
+        const osPorDia = {};
+        for (const os of osNormais) {
+          const dataAprov = (os.data_aprovacao || os.data_cadastro || "").substring(0, 10);
+          if (!dataAprov) continue;
+          const vendedor = os.vendedor || "Sem Vendedor";
+          const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
+          if (!osPorDia[dataAprov]) osPorDia[dataAprov] = {};
+          if (!osPorDia[dataAprov][vendedor]) osPorDia[dataAprov][vendedor] = { os: 0, faturamento: 0 };
+          osPorDia[dataAprov][vendedor].os++;
+          osPorDia[dataAprov][vendedor].faturamento += valor;
+        }
+        const orcPorDia = {};
+        for (const orc of orcVersaoAtual) {
+          const dataCad = (orc.data_cadastro || "").substring(0, 10);
+          if (!dataCad) continue;
+          const vendedor = orc.vendedor || "Sem Vendedor";
+          const vt = parseFloat(String(orc.valor_total ?? "0")) || 0;
+          const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
+          const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
+          const valor = vt > 0 ? vt : vc + vm;
+          if (!orcPorDia[dataCad]) orcPorDia[dataCad] = {};
+          if (!orcPorDia[dataCad][vendedor]) orcPorDia[dataCad][vendedor] = { cotacoes: 0, valorOrcado: 0 };
+          orcPorDia[dataCad][vendedor].cotacoes++;
+          orcPorDia[dataCad][vendedor].valorOrcado += valor;
+        }
+        const pad2 = (n) => String(n).padStart(2, "0");
+        const lastDay = new Date(ano, mes, 0).getDate();
+        const today = /* @__PURE__ */ new Date();
+        const todayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+        const acumOs = {};
+        const acumFat = {};
+        const acumCot = {};
+        const acumOrc = {};
+        const dias = [];
+        for (let d = 1; d <= lastDay; d++) {
+          const dStr = `${ano}-${pad2(mes)}-${pad2(d)}`;
+          if (dStr > todayStr) break;
+          const label = `${pad2(d)}/${pad2(mes)}`;
+          const osHoje = osPorDia[dStr] ?? {};
+          const orcHoje = orcPorDia[dStr] ?? {};
+          const todosVend = /* @__PURE__ */ new Set([...Object.keys(osHoje), ...Object.keys(orcHoje)]);
+          for (const v of todosVend) {
+            acumOs[v] = (acumOs[v] ?? 0) + (osHoje[v]?.os ?? 0);
+            acumFat[v] = (acumFat[v] ?? 0) + (osHoje[v]?.faturamento ?? 0);
+            acumCot[v] = (acumCot[v] ?? 0) + (orcHoje[v]?.cotacoes ?? 0);
+            acumOrc[v] = (acumOrc[v] ?? 0) + (orcHoje[v]?.valorOrcado ?? 0);
+          }
+          const ponto = { dia: d, label, data: dStr };
+          for (const v of todosVend) {
+            ponto[`${v}__os`] = osHoje[v]?.os ?? 0;
+            ponto[`${v}__fat`] = parseFloat((osHoje[v]?.faturamento ?? 0).toFixed(2));
+            ponto[`${v}__cot`] = orcHoje[v]?.cotacoes ?? 0;
+            ponto[`${v}__orc`] = parseFloat((orcHoje[v]?.valorOrcado ?? 0).toFixed(2));
+          }
+          for (const v of Object.keys(acumOs)) {
+            ponto[`${v}__os_ac`] = acumOs[v];
+            ponto[`${v}__fat_ac`] = parseFloat(acumFat[v].toFixed(2));
+          }
+          for (const v of Object.keys(acumCot)) {
+            ponto[`${v}__cot_ac`] = acumCot[v];
+            ponto[`${v}__orc_ac`] = parseFloat(acumOrc[v].toFixed(2));
+          }
+          dias.push(ponto);
+        }
+        const vendedores = Array.from(/* @__PURE__ */ new Set([
+          ...Object.keys(acumOs),
+          ...Object.keys(acumCot)
+        ])).filter((v) => v !== "Sem Vendedor").sort();
+        return { dias, vendedores };
+      }),
+      // ─── Overrides manuais de status de cliente ────────────────────────────────
+      listClienteOverrides: publicProcedure.query(async () => {
+        const db5 = await getDb3();
+        if (!db5) return [];
+        return db5.select().from(clienteOverrides).orderBy(clienteOverrides.empresaOriginal);
+      }),
+      upsertClienteOverride: protectedProcedure.input(z5.object({
+        empresaOriginal: z5.string().min(1),
+        status: z5.enum(["recorrente", "novo"]),
+        motivo: z5.string().optional()
+      })).mutation(async ({ input, ctx }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
+        const empresaNorm = input.empresaOriginal.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
+        await db5.insert(clienteOverrides).values({
+          empresa: empresaNorm,
+          empresaOriginal: input.empresaOriginal,
+          status: input.status,
+          motivo: input.motivo ?? null,
+          criadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido"
+        }).onConflictDoUpdate({
+          target: clienteOverrides.empresa,
+          set: {
+            status: input.status,
+            motivo: input.motivo ?? null,
+            criadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido"
+          }
+        });
+        return { ok: true };
+      }),
+      deleteClienteOverride: protectedProcedure.input(z5.object({ id: z5.number() })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
+        await db5.delete(clienteOverrides).where(eq7(clienteOverrides.id, input.id));
+        return { ok: true };
+      }),
+      // ─── Inteligência de Clientes ─────────────────────────────────────────────
+      // Reescrito em setembro/2026 (ver docs/inteligencia-clientes.md) — calcula tudo
+      // localmente a partir de historico_os (nunca mais a API MubiSys ao vivo), por isso
+      // não há mais congelamento: o cálculo é determinístico e rápido, não muda entre uma
+      // consulta e outra a não ser que o histórico local seja reimportado.
+      getVisaoGeralClientes: publicProcedure.input(z5.object({
+        dataInicial: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dataFinal: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const rows = await db5.select().from(historicoOs);
+        const base = construirBaseClientes(rows);
+        const dataRef = /* @__PURE__ */ new Date();
+        const visaoGeral = calcularVisaoGeral(base, new Date(input.dataInicial), /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`), dataRef);
+        return { visaoGeral, dicionarioMetricas: DICIONARIO_METRICAS };
+      }),
+      listarClientesInteligencia: publicProcedure.input(z5.object({
+        dataInicial: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dataFinal: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const rows = await db5.select().from(historicoOs);
+        const base = construirBaseClientes(rows);
+        const dataRef = /* @__PURE__ */ new Date();
+        const dataInicial = new Date(input.dataInicial);
+        const dataFinal = /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`);
+        const clientes2 = [];
+        for (const cliente of base.values()) {
+          const comprasNoPeriodo = cliente.compras.filter((c) => c.data >= dataInicial && c.data <= dataFinal);
+          if (comprasNoPeriodo.length === 0) continue;
+          const analise = analisarCliente(cliente, dataRef, dataInicial, dataFinal);
+          if (analise) clientes2.push(analise);
+        }
+        const ordemClassificacao = {
+          intervalo_acima_habitual: 0,
+          reducao_volume: 1,
+          historico_insuficiente: 2,
+          primeira_compra: 3,
+          recompra_observada: 4,
+          em_crescimento: 5
+        };
+        clientes2.sort((a, b) => (ordemClassificacao[a.classificacao] ?? 9) - (ordemClassificacao[b.classificacao] ?? 9) || b.valorJanelaAtual - a.valorJanelaAtual);
+        try {
+          const mapaConversao = await construirMapaConversaoClientes(db5);
+          return clientes2.map((c) => {
+            const { probabilidade, explicacao } = calcularProbabilidade({
+              clienteNovo: false,
+              // esta tela só lista quem já comprou — nunca é "cliente novo"
+              nomeCliente: c.empresaExibicao,
+              valorProposta: 0,
+              // sem proposta específica aqui — sem ajuste por valor
+              mapa: mapaConversao,
+              taxaNovosDoMes: 0
+            });
+            return { ...c, probabilidadeCompra: probabilidade, probabilidadeExplicacao: explicacao };
+          });
+        } catch {
+          return clientes2.map((c) => ({ ...c, probabilidadeCompra: null, probabilidadeExplicacao: [] }));
+        }
+      }),
+      getFichaCliente: publicProcedure.input(z5.object({ empresaKey: z5.string().min(1) })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const rows = await db5.select().from(historicoOs);
+        const base = construirBaseClientes(rows);
+        const cliente = base.get(input.empresaKey);
+        if (!cliente) return null;
+        const dataRef = /* @__PURE__ */ new Date();
+        const dataFinal = dataRef;
+        const dataInicial = new Date(dataRef);
+        dataInicial.setFullYear(dataInicial.getFullYear() - 1);
+        const analise = analisarCliente(cliente, dataRef, dataInicial, dataFinal);
+        return {
+          empresaKey: cliente.empresaKey,
+          empresaExibicao: cliente.empresaExibicao,
+          historico: cliente.compras.map((c) => ({
+            osNumero: c.osNumero,
+            data: c.data.toISOString(),
+            valor: c.valor,
+            custo: c.custo,
+            contribuicao: c.contribuicao,
+            vendedor: c.vendedor,
+            cidade: c.cidade,
+            estado: c.estado,
+            trabalho: c.trabalho
+          })),
+          analise
+        };
+      }),
+      getFilaAcoesClientes: publicProcedure.input(z5.object({
+        status: z5.enum(["pendente", "concluida", "adiada", "descartada"]).optional(),
+        responsavel: z5.string().optional(),
+        vendedor: z5.string().optional()
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        await sincronizarFilaAcoesClientes(db5);
+        const filtros = [];
+        if (input.status) filtros.push(eq7(inteligenciaAcoesClientes.status, input.status));
+        if (input.responsavel) filtros.push(eq7(inteligenciaAcoesClientes.responsavel, input.responsavel));
+        if (input.vendedor) filtros.push(eq7(inteligenciaAcoesClientes.vendedor, input.vendedor));
+        const fila = await db5.select().from(inteligenciaAcoesClientes).where(filtros.length > 0 ? and6(...filtros) : void 0).orderBy(desc6(inteligenciaAcoesClientes.prioridade));
+        return fila.map((a) => ({
+          ...a,
+          evidencia: JSON.parse(a.evidenciaJson),
+          prioridadeFatores: a.prioridadeFatoresJson ? JSON.parse(a.prioridadeFatoresJson) : null
+        }));
+      }),
+      /** Lista de vendedores distintos já presentes na fila — para popular o filtro. */
+      getVendedoresFilaAcoes: publicProcedure.query(async () => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const rows = await db5.selectDistinct({ vendedor: inteligenciaAcoesClientes.vendedor }).from(inteligenciaAcoesClientes);
+        return rows.map((r) => r.vendedor).filter((v) => !!v).sort();
+      }),
+      /** Gera um PDF (texto, paginado) da fila de ações filtrada — mesmo padrão de
+       * server/routers/logistica.ts::romaneioPdf (jsPDF no servidor, retorna base64). */
+      gerarFilaAcoesPdf: publicProcedure.input(z5.object({
+        status: z5.enum(["pendente", "concluida", "adiada", "descartada"]).optional(),
+        vendedor: z5.string().optional()
+      })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        await sincronizarFilaAcoesClientes(db5);
+        const filtros = [];
+        if (input.status) filtros.push(eq7(inteligenciaAcoesClientes.status, input.status));
+        if (input.vendedor) filtros.push(eq7(inteligenciaAcoesClientes.vendedor, input.vendedor));
+        const fila = await db5.select().from(inteligenciaAcoesClientes).where(filtros.length > 0 ? and6(...filtros) : void 0).orderBy(desc6(inteligenciaAcoesClientes.prioridade));
+        const { jsPDF } = await import("jspdf");
+        const doc = new jsPDF({ unit: "pt", format: "a4" });
+        const margem = 40;
+        const limiteY = 800;
+        let y = 48;
+        const escreve = (texto, negrito = false, tamanho = 9) => {
+          const linhas = doc.splitTextToSize(texto, 515);
+          for (const linha of linhas) {
+            if (y > limiteY) {
+              doc.addPage();
+              y = 48;
+            }
+            doc.setFont("helvetica", negrito ? "bold" : "normal");
+            doc.setFontSize(tamanho);
+            doc.text(linha, margem, y);
+            y += tamanho + 4;
+          }
+        };
+        const tituloTipo = {
+          primeira_sem_segunda: "1\xAA compra sem repeti\xE7\xE3o",
+          atraso_recompra: "Atraso na recompra",
+          alto_volume_baixa_margem: "Alto volume, margem baixa"
+        };
+        escreve("Fila de A\xE7\xF5es \u2014 Intelig\xEAncia de Clientes", true, 14);
+        escreve(`Filtros: status=${input.status ?? "todos"} \xB7 vendedor=${input.vendedor ?? "todos"}`);
+        escreve(`Total de a\xE7\xF5es: ${fila.length} \xB7 Emitido em ${(/* @__PURE__ */ new Date()).toLocaleString("pt-BR")}`);
+        y += 8;
+        for (const a of fila) {
+          escreve(`${a.empresa}  \u2014  ${tituloTipo[a.tipo] ?? a.tipo}`, true, 11);
+          escreve(`Vendedor: ${a.vendedor ?? "\u2014"}   |   Prioridade: ${a.prioridade}   |   Status: ${a.status}`);
+          escreve(a.motivo);
+          if (a.proximoPasso) escreve(`Pr\xF3ximo passo: ${a.proximoPasso}`);
+          if (a.resultado) escreve(`Resultado: ${a.resultado}${a.resultadoObservacao ? " \u2014 " + a.resultadoObservacao : ""}`);
+          y += 6;
+        }
+        const pdfBase64 = doc.output("datauristring").split(",")[1];
+        return {
+          pdfBase64,
+          fileName: `fila-acoes-clientes-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.pdf`,
+          totalAcoes: fila.length
+        };
+      }),
+      atualizarAcaoCliente: protectedProcedure.input(z5.object({
+        id: z5.number(),
+        status: z5.enum(["pendente", "concluida", "adiada", "descartada"]).optional(),
+        responsavel: z5.string().nullable().optional(),
+        proximoPasso: z5.string().nullable().optional(),
+        prazo: z5.string().nullable().optional(),
+        // YYYY-MM-DD
+        resultado: z5.enum(["contato_realizado", "sem_resposta", "projeto_futuro", "orcamento_solicitado", "compra", "adiamento", "sem_interesse"]).nullable().optional(),
+        resultadoObservacao: z5.string().nullable().optional()
+      })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const { id, ...campos } = input;
+        const set = { updatedAt: /* @__PURE__ */ new Date() };
+        if (campos.status !== void 0) {
+          set.status = campos.status;
+          set.resolvidoEm = campos.status === "concluida" || campos.status === "descartada" ? /* @__PURE__ */ new Date() : null;
+        }
+        if (campos.responsavel !== void 0) set.responsavel = campos.responsavel;
+        if (campos.proximoPasso !== void 0) set.proximoPasso = campos.proximoPasso;
+        if (campos.prazo !== void 0) set.prazo = campos.prazo;
+        if (campos.resultado !== void 0) set.resultado = campos.resultado;
+        if (campos.resultadoObservacao !== void 0) set.resultadoObservacao = campos.resultadoObservacao;
+        await db5.update(inteligenciaAcoesClientes).set(set).where(eq7(inteligenciaAcoesClientes.id, id));
+        return { ok: true };
+      }),
+      // ─── Inteligência de Clientes — acesso ao painel e confirmação de contato ──
+      // Pedido do gestor (13/09/2026): saber se a equipe está de fato usando a aba
+      // "Clientes" e permitir que cada vendedor confirme contato com um cliente
+      // listado, com observação livre (ver drizzle/schema.ts para o porquê de
+      // tabelas dedicadas em vez de reaproveitar crm_atividade_log/crm_contatos).
+      /** Registra um acesso à aba "Clientes" — chamado uma vez por montagem do
+       * componente no front. Silencioso o suficiente para não travar a tela por
+       * causa disso: falhas aqui não devem impedir o uso do painel. */
+      registrarAcessoInteligenciaClientes: protectedProcedure.mutation(async ({ ctx }) => {
+        const db5 = await getDb3();
+        if (!db5) return { ok: false };
+        await db5.insert(inteligenciaClientesAcessos).values({
+          userId: ctx.user.id,
+          userName: ctx.user.name
+        });
+        return { ok: true };
+      }),
+      /** Para o gestor: quem da equipe acessou a aba nos últimos `dias` dias,
+       * quantas vezes e quando foi a última. */
+      getAcessosInteligenciaClientes: gestorProcedure.input(z5.object({ dias: z5.number().int().min(1).max(365).default(30) })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const desde = new Date(Date.now() - input.dias * 864e5);
+        const rows = await db5.select().from(inteligenciaClientesAcessos).where(gte3(inteligenciaClientesAcessos.acessadoEm, desde)).orderBy(desc6(inteligenciaClientesAcessos.acessadoEm));
+        const porUsuario = /* @__PURE__ */ new Map();
+        for (const r of rows) {
+          const atual = porUsuario.get(r.userId);
+          if (!atual) {
+            porUsuario.set(r.userId, { userId: r.userId, userName: r.userName, qtdAcessos: 1, ultimoAcesso: r.acessadoEm });
+          } else {
+            atual.qtdAcessos++;
+          }
+        }
+        return [...porUsuario.values()].sort((a, b) => b.ultimoAcesso.getTime() - a.ultimoAcesso.getTime());
+      }),
+      /** Vendedor confirma que entrou em contato com um cliente da lista, com
+       * observação livre opcional — fica visível para o gestor em getContatosClientes. */
+      registrarContatoCliente: protectedProcedure.input(z5.object({
+        empresaKey: z5.string().min(1),
+        empresa: z5.string().min(1),
+        observacao: z5.string().max(2e3).optional()
+      })).mutation(async ({ ctx, input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        await db5.insert(inteligenciaClientesContatos).values({
+          empresaKey: input.empresaKey,
+          empresa: input.empresa,
+          userId: ctx.user.id,
+          vendedor: ctx.user.name,
+          observacao: input.observacao || null
+        });
+        return { ok: true };
+      }),
+      /** Lista confirmações de contato — sem filtro, dá a ficha de um cliente
+       * (histórico); com filtro de vendedor/dias, dá a visão do gestor sobre a
+       * equipe toda. */
+      getContatosClientes: protectedProcedure.input(z5.object({
+        empresaKey: z5.string().optional(),
+        vendedor: z5.string().optional(),
+        dias: z5.number().int().min(1).max(365).optional(),
+        limite: z5.number().int().min(1).max(500).default(200)
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const filtros = [];
+        if (input.empresaKey) filtros.push(eq7(inteligenciaClientesContatos.empresaKey, input.empresaKey));
+        if (input.vendedor) filtros.push(eq7(inteligenciaClientesContatos.vendedor, input.vendedor));
+        if (input.dias) filtros.push(gte3(inteligenciaClientesContatos.contatadoEm, new Date(Date.now() - input.dias * 864e5)));
+        return db5.select().from(inteligenciaClientesContatos).where(filtros.length > 0 ? and6(...filtros) : void 0).orderBy(desc6(inteligenciaClientesContatos.contatadoEm)).limit(input.limite);
+      }),
+      // ─── Funil de Orçamentos (analítico, histórico local — complementa o CRM operacional
+      // em server/routers/crm.ts, que busca orçamentos ao vivo na API MubiSys) ────────────
+      getFunilOrcamentos: publicProcedure.query(async () => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const rows = await db5.select().from(historicoOrcamentos);
+        return calcularFunilOrcamentos(rows, /* @__PURE__ */ new Date());
+      }),
+      /** Conversão por faixa de valor do orçamento — quanto maior o tíquete,
+       * menor a taxa histórica de fechamento. Mesmo cálculo usado como fator no
+       * Score de Probabilidade de Compra (ver construirMapaFaixaTicket). */
+      getConversaoPorFaixaTicket: publicProcedure.query(async () => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const rows = await db5.select({
+          status: historicoOrcamentos.status,
+          total: historicoOrcamentos.total,
+          dataCadastro: historicoOrcamentos.dataCadastro,
+          validade: historicoOrcamentos.validade
+        }).from(historicoOrcamentos);
+        return calcularConversaoPorFaixaTicket(rows, /* @__PURE__ */ new Date());
+      }),
+      /** Tempo entre orçamento aprovado e pedido fechado — aproximação por
+       * pareamento heurístico (ver aviso em calcularTempoOrcamentoPedido), usada
+       * para calibrar o prazo ideal de follow-up. */
+      getTempoOrcamentoPedido: publicProcedure.query(async () => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const [orcRows, osRows] = await Promise.all([
+          db5.select().from(historicoOrcamentos),
+          db5.select().from(historicoOs)
+        ]);
+        return calcularTempoOrcamentoPedido(orcRows, osRows);
+      }),
+      // ─── Previsões 30/60/90 dias ──────────────────────────────────────────────────
+      getPrevisaoComercial: publicProcedure.query(async () => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const [osRows, orcRows] = await Promise.all([
+          db5.select().from(historicoOs),
+          db5.select().from(historicoOrcamentos)
+        ]);
+        const funil = calcularFunilOrcamentos(orcRows, /* @__PURE__ */ new Date());
+        return calcularPrevisaoComercial(osRows, orcRows, funil, /* @__PURE__ */ new Date());
+      }),
+      getRecompraNovosReativados: publicProcedure.input(z5.object({
+        dataInicial: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dataFinal: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const rows = await db5.select().from(historicoOs);
+        const base = construirBaseClientes(rows);
+        return calcularRecompraNovosReativados(base, new Date(input.dataInicial), /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`), /* @__PURE__ */ new Date());
+      }),
+      // ─── Assistente de IA (Inteligência de Clientes) ─────────────────────────────
+      // Ver docs/inteligencia-clientes.md seção "Assistente de IA". Usa só os
+      // resultados já calculados pelas funções acima como contexto — nunca soma
+      // dados brutos, nunca recebe a base de clientes inteira.
+      perguntarInteligenciaClientes: protectedProcedure.input(z5.object({
+        pergunta: z5.string().min(3),
+        dataInicial: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dataFinal: z5.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+      })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const dataRef = /* @__PURE__ */ new Date();
+        const dataInicial = new Date(input.dataInicial);
+        const dataFinal = /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`);
+        const [osRows, orcRows] = await Promise.all([
+          db5.select().from(historicoOs),
+          db5.select().from(historicoOrcamentos)
+        ]);
+        const base = construirBaseClientes(osRows);
+        const visaoGeral = calcularVisaoGeral(base, dataInicial, dataFinal, dataRef);
+        const funil = calcularFunilOrcamentos(orcRows, dataRef);
+        const previsao = calcularPrevisaoComercial(osRows, orcRows, funil, dataRef);
+        const candidatosAcao = calcularCandidatosAcao(base, dataRef);
+        const contexto = montarContextoAssistenteClientes(visaoGeral, funil, previsao, candidatosAcao, {
+          dataInicial: input.dataInicial,
+          dataFinal: input.dataFinal
+        });
+        const resposta = await perguntarSobreClientes(
+          PROMPT_ASSISTENTE_CLIENTES_V1,
+          `Contexto (dados j\xE1 calculados pelo sistema, em JSON):
+${JSON.stringify(contexto)}`,
+          input.pergunta
+        );
+        return { resposta, versaoPrompt: VERSAO_PROMPT_ASSISTENTE_CLIENTES };
+      }),
+      // ─── SISTEMA DE AUDITORIA E CONGELAMENTO DE DADOS ────────────────────────────
+      /** Busca os dados auditados de um mês (congelado ou pendente) */
+      getAuditoria: publicProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) return null;
+        const rows = await db5.select().from(performanceAuditada).where(and6(eq7(performanceAuditada.mes, input.mes), eq7(performanceAuditada.ano, input.ano))).limit(1);
+        return rows.length > 0 ? rows[0] : null;
+      }),
+      /** Salva um snapshot dos dados atuais do ERP como auditoria pendente */
+      salvarAuditoria: protectedProcedure.input(z5.object({
+        mes: z5.number().min(1).max(12),
+        ano: z5.number().min(2020),
+        cotacoes: z5.number(),
+        osNormais: z5.number(),
+        taxaConversao: z5.number(),
+        faturamento: z5.number(),
+        valorOrcado: z5.number(),
+        clientesNovos: z5.number(),
+        cotacoesNovos: z5.number().default(0),
+        taxaConvNovos: z5.number(),
+        faturamentoNovos: z5.number(),
+        statusValidacao: z5.enum(["pendente", "validado", "corrigido_excel"]).default("validado"),
+        fonteExcel: z5.string().optional(),
+        observacoes: z5.string().optional()
+      })).mutation(async ({ input, ctx }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const existing = await db5.select({ id: performanceAuditada.id }).from(performanceAuditada).where(and6(eq7(performanceAuditada.mes, input.mes), eq7(performanceAuditada.ano, input.ano))).limit(1);
+        const values = {
+          mes: input.mes,
+          ano: input.ano,
+          cotacoes: input.cotacoes,
+          osNormais: input.osNormais,
+          taxaConversao: String(input.taxaConversao),
+          faturamento: String(input.faturamento),
+          valorOrcado: String(input.valorOrcado),
+          clientesNovos: input.clientesNovos,
+          cotacoesNovos: input.cotacoesNovos ?? 0,
+          taxaConvNovos: String(input.taxaConvNovos),
+          faturamentoNovos: String(input.faturamentoNovos),
+          statusValidacao: input.statusValidacao,
+          fonteExcel: input.fonteExcel,
+          observacoes: input.observacoes,
+          auditadoPor: ctx.user?.name ?? "sistema",
+          dataAuditoria: /* @__PURE__ */ new Date(),
+          congelado: false
+        };
+        if (existing.length > 0) {
+          await db5.update(performanceAuditada).set(values).where(eq7(performanceAuditada.id, existing[0].id));
+        } else {
+          await db5.insert(performanceAuditada).values(values);
+        }
+        return { ok: true };
+      }),
+      /** Congela os dados auditados de um mês — impede sobrescrita automática */
+      congelarAuditoria: protectedProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        await db5.update(performanceAuditada).set({ congelado: true, dataCongelamento: /* @__PURE__ */ new Date() }).where(and6(eq7(performanceAuditada.mes, input.mes), eq7(performanceAuditada.ano, input.ano)));
+        deleteCache(`mes_${input.mes}_${input.ano}`);
+        deleteCache(`os_raw_${input.mes}_${input.ano}`);
+        deleteCache(`orc_raw_${input.mes}_${input.ano}`);
+        return { ok: true };
+      }),
+      /** Descongela (recalibragem) — permite que o sistema busque dados frescos da API */
+      descongelarAuditoria: protectedProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        await db5.update(performanceAuditada).set({ congelado: false, dataCongelamento: null }).where(and6(eq7(performanceAuditada.mes, input.mes), eq7(performanceAuditada.ano, input.ano)));
+        deleteCache(`mes_${input.mes}_${input.ano}`);
+        deleteCache(`os_raw_${input.mes}_${input.ano}`);
+        deleteCache(`orc_raw_${input.mes}_${input.ano}`);
+        return { ok: true };
+      }),
+      /** Diagnóstico: retorna dados brutos da API MubiSys para auditoria cruzada com Excel */
+      diagnosticoApi: protectedProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).query(async ({ input }) => {
+        const { mes, ano } = input;
+        const pad2 = (n) => String(n).padStart(2, "0");
+        const lastDay = new Date(ano, mes, 0).getDate();
+        const datainicial = `${ano}-${pad2(mes)}-01`;
+        const datafinal = `${ano}-${pad2(mes)}-${pad2(lastDay)}`;
+        const [osResult, orcResult] = await Promise.all([
+          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
+          listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal })
+        ]);
+        const allOs = osResult.itens;
+        const allOrc = orcResult.itens;
+        const osCampos = allOs.length > 0 ? Object.keys(allOs[0]) : [];
+        const orcCampos = allOrc.length > 0 ? Object.keys(allOrc[0]) : [];
+        const osPorStatus = {};
+        for (const o of allOs) {
+          const s = String(o.status ?? o.situacao ?? "N/A");
+          osPorStatus[s] = (osPorStatus[s] ?? 0) + 1;
+        }
+        const osPorTipo = {};
+        for (const o of allOs) {
+          const t2 = String(o.tipo ?? o.tipo_os ?? "N/A");
+          osPorTipo[t2] = (osPorTipo[t2] ?? 0) + 1;
+        }
+        const campoValorOs = osCampos.find((c) => ["valor_total", "total", "valor", "vl_total"].includes(c));
+        const valorTotalOs = allOs.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOs ?? ""] ?? 0)) || 0), 0);
+        const campoValorOrc = orcCampos.find((c) => ["valor_total", "total", "valor", "vl_total"].includes(c));
+        const valorTotalOrc = allOrc.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOrc ?? ""] ?? 0)) || 0), 0);
+        const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
+        const osNormais = allOs.filter(
+          (o) => !TIPOS_EXCLUIDOS.includes((o.tipo || "").toLowerCase()) && (o.status || "").toLowerCase() !== "cancelada"
+        );
+        const valorFaturamento = osNormais.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOs ?? ""] ?? 0)) || 0), 0);
+        const osPorVendedor = {};
+        for (const o of osNormais) {
+          const v = String(o.vendedor ?? o.nome_vendedor ?? "Sem Vendedor");
+          osPorVendedor[v] = (osPorVendedor[v] ?? 0) + 1;
+        }
+        return {
+          periodo: { datainicial, datafinal },
+          os: {
+            totalBruto: allOs.length,
+            totalNormais: osNormais.length,
+            porStatus: osPorStatus,
+            porTipo: osPorTipo,
+            porVendedor: osPorVendedor,
+            campos: osCampos,
+            campoValor: campoValorOs,
+            valorTotal: valorTotalOs,
+            faturamento: valorFaturamento,
+            exemplos: allOs.slice(0, 3)
+          },
+          orcamentos: {
+            total: allOrc.length,
+            campos: orcCampos,
+            campoValor: campoValorOrc,
+            valorTotal: valorTotalOrc,
+            exemplos: allOrc.slice(0, 3)
+          },
+          taxaConversao: allOrc.length > 0 ? osNormais.length / allOrc.length * 100 : 0
+        };
+      }),
+      // Auditoria de múltiplos meses — usa mesma lógica validada do getMes
+      auditarMeses: protectedProcedure.input(z5.object({
+        meses: z5.array(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) }))
+      })).query(async ({ input }) => {
+        const resultados = [];
+        for (const { mes, ano } of input.meses) {
+          try {
+            const timeoutPromise = new Promise(
+              (_, reject) => setTimeout(() => reject(new Error("timeout_50s")), 5e4)
+            );
+            const raw = await Promise.race([
+              getMesFromApi(mes, ano),
+              timeoutPromise
+            ]);
+            if (!raw) {
+              resultados.push({ mes, ano, erro: "sem_dados" });
+              continue;
+            }
+            const metrics = calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
+            resultados.push({
+              mes,
+              ano,
+              osGeradas: metrics.osGeradas,
+              cotacoes: metrics.cotacoes,
+              faturamento: metrics.faturamento,
+              valorOrcado: metrics.valorOrcado,
+              taxaConversao: metrics.taxaConversao,
+              taxaFaturamento: metrics.taxaFaturamento,
+              ticketMedio: metrics.ticketMedio
+            });
+          } catch (e) {
+            resultados.push({ mes, ano, erro: e?.message ?? "erro_desconhecido" });
+          }
+        }
+        return resultados;
+      }),
+      /** Retorna o mapa de clientes contatados para um mês/ano */
+      getContatados: publicProcedure.input(z5.object({ mes: z5.number().min(1).max(12), ano: z5.number().min(2020) })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) return {};
+        const rows = await db5.select().from(clienteNovosContato).where(and6(eq7(clienteNovosContato.mes, input.mes), eq7(clienteNovosContato.ano, input.ano)));
+        const mapa = {};
+        for (const r of rows) {
+          mapa[r.empresa.toLowerCase().trim()] = { contatado: r.contatado, dataContato: r.dataContato };
+        }
+        return mapa;
+      }),
+      /** Marca ou desmarca um cliente como contatado */
+      setContatado: protectedProcedure.input(z5.object({
+        empresa: z5.string().min(1),
+        mes: z5.number().min(1).max(12),
+        ano: z5.number().min(2020),
+        contatado: z5.boolean()
+      })).mutation(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const key = input.empresa.toLowerCase().trim();
+        const existing = await db5.select().from(clienteNovosContato).where(and6(
+          eq7(clienteNovosContato.empresa, key),
+          eq7(clienteNovosContato.mes, input.mes),
+          eq7(clienteNovosContato.ano, input.ano)
+        )).limit(1);
+        if (existing.length > 0) {
+          await db5.update(clienteNovosContato).set({ contatado: input.contatado, dataContato: input.contatado ? /* @__PURE__ */ new Date() : null }).where(and6(
+            eq7(clienteNovosContato.empresa, key),
+            eq7(clienteNovosContato.mes, input.mes),
+            eq7(clienteNovosContato.ano, input.ano)
+          ));
+        } else {
+          await db5.insert(clienteNovosContato).values({
+            empresa: key,
+            mes: input.mes,
+            ano: input.ano,
+            contatado: input.contatado,
+            dataContato: input.contatado ? /* @__PURE__ */ new Date() : null
+          });
+        }
+        return { ok: true };
+      }),
+      // ─── Propostas de alto valor (padrão: acima de R$ 8.000) ───────────────────
+      // Lista as propostas do mês/ano em aberto (exclui canceladas/excluídas e as
+      // já convertidas em venda/faturamento — essas não precisam mais de follow-up)
+      // acima do valor de corte, com telefone/WhatsApp quando disponível e o
+      // histórico de contatos já registrados por quem fez o follow-up.
+      getPropostasAltoValor: publicProcedure.input(z5.object({
+        mes: z5.number().min(1).max(12),
+        ano: z5.number().min(2020),
+        valorMinimo: z5.number().min(0).default(8e3)
+      })).query(async ({ input }) => {
+        const db5 = await getDb3();
+        if (!db5) return { propostas: [] };
+        const { mes, ano, valorMinimo } = input;
+        const orcRows = await db5.select().from(historicoOrcamentos).where(and6(eq7(historicoOrcamentos.mes, mes), eq7(historicoOrcamentos.ano, ano)));
+        const STATUS_FINALIZADOS = ["cancelada", "cancelado", "exclu\xEDda", "exclu\xEDdo", "excluida", "excluido", "aprovado", "faturado", "concluido", "conclu\xEDdo"];
+        const candidatas = orcRows.filter((orc) => {
+          const valor = parseFloat(String(orc.total ?? "0")) || 0;
+          if (valor < valorMinimo) return false;
+          const status = (orc.status ?? "").toLowerCase();
+          return !STATUS_FINALIZADOS.includes(status);
+        });
+        if (candidatas.length === 0) return { propostas: [] };
+        const orcCacheKey = `orc_raw_${mes}_${ano}`;
+        let allOrcApi = getCached(orcCacheKey);
+        if (!allOrcApi) {
+          const dbCached = await getDbCache(`raw_${mes}_${ano}`);
+          allOrcApi = dbCached?.allOrc ?? null;
+        }
+        const telefonePorOrcNumero = /* @__PURE__ */ new Map();
+        if (allOrcApi) {
+          for (const o of allOrcApi) {
+            const numero = String(o.sequencial_orcamento ?? o.id ?? "");
+            if (!numero) continue;
+            const contatosOrc = Array.isArray(o.cliente_contato) ? o.cliente_contato : o.cliente_contato ? [o.cliente_contato] : [];
+            const primeiro = contatosOrc[0];
+            const telefone = primeiro?.celular || primeiro?.telefone || primeiro?.fone || "";
+            const contato = primeiro?.nome_contato || primeiro?.nome || "";
+            if (telefone) telefonePorOrcNumero.set(numero, { telefone, contato });
+          }
+        }
+        function formatWhatsApp(tel) {
+          const digits = tel.replace(/\D/g, "");
+          if (!digits) return "";
+          const num2 = digits.startsWith("55") ? digits : `55${digits}`;
+          return `https://wa.me/${num2}`;
+        }
+        const followupsDb = await db5.select().from(performancePropostasFollowup).where(and6(eq7(performancePropostasFollowup.mes, mes), eq7(performancePropostasFollowup.ano, ano))).orderBy(desc6(performancePropostasFollowup.contatadoEm));
+        const followupsPorOrc = /* @__PURE__ */ new Map();
+        for (const f2 of followupsDb) {
+          if (!followupsPorOrc.has(f2.orcNumero)) followupsPorOrc.set(f2.orcNumero, []);
+          followupsPorOrc.get(f2.orcNumero).push(f2);
+        }
+        const propostas = candidatas.map((orc) => {
+          const numero = orc.orcNumero ?? "";
+          const tel = telefonePorOrcNumero.get(numero);
+          const followups = followupsPorOrc.get(numero) ?? [];
+          return {
+            orcNumero: numero,
+            empresa: orc.empresa ?? "",
+            vendedor: orc.vendedor ?? "",
+            valor: parseFloat(String(orc.total ?? "0")) || 0,
+            dataCadastro: orc.dataCadastro ?? null,
+            status: orc.status ?? null,
+            telefone: tel?.telefone ?? null,
+            contato: tel?.contato ?? null,
+            whatsappLink: tel?.telefone ? formatWhatsApp(tel.telefone) : null,
+            followups: followups.map((f2) => ({
+              id: f2.id,
+              usuarioNome: f2.usuarioNome,
+              motivo: f2.motivo,
+              contatadoEm: f2.contatadoEm
+            })),
+            qtdFollowups: followups.length
+          };
+        }).sort((a, b) => b.valor - a.valor);
+        return { propostas };
+      }),
+      /** Registra um contato/follow-up feito em uma proposta de alto valor. */
+      registrarFollowupProposta: protectedProcedure.input(z5.object({
+        orcNumero: z5.string().min(1),
+        empresa: z5.string().min(1),
+        mes: z5.number().min(1).max(12),
+        ano: z5.number().min(2020),
+        motivo: z5.string().min(3, "Descreva o motivo do contato")
+      })).mutation(async ({ input, ctx }) => {
+        const db5 = await getDb3();
+        if (!db5) throw new Error("DB indispon\xEDvel");
+        const [row] = await db5.insert(performancePropostasFollowup).values({
+          orcNumero: input.orcNumero,
+          empresa: input.empresa,
+          mes: input.mes,
+          ano: input.ano,
+          usuarioId: ctx.user?.id ?? null,
+          usuarioNome: ctx.user?.name ?? "Desconhecido",
+          motivo: input.motivo
+        }).returning();
+        return row;
+      })
+    });
+  }
+});
+
+// server/sync/crm-abertos-cache.ts
+import { eq as eq20 } from "drizzle-orm";
+async function getCrmAbertosCache(cacheKey) {
+  try {
+    const db5 = await getDb3();
+    const rows = await db5.select().from(mubisysApiCache).where(eq20(mubisysApiCache.cacheKey, cacheKey)).limit(1);
+    const row = rows[0];
+    if (!row || !row.orcData) return null;
+    return { itens: JSON.parse(row.orcData), fetchedAt: row.fetchedAt };
+  } catch {
+    return null;
+  }
+}
+async function setCrmAbertosCache(cacheKey, itens) {
+  try {
+    const db5 = await getDb3();
+    const now = /* @__PURE__ */ new Date();
+    const expiresAt = new Date(now.getTime() + CRM_CACHE_TTL_MS);
+    const orcData = JSON.stringify(itens);
+    const existing = await db5.select({ id: mubisysApiCache.id }).from(mubisysApiCache).where(eq20(mubisysApiCache.cacheKey, cacheKey)).limit(1);
+    if (existing.length > 0) {
+      await db5.update(mubisysApiCache).set({ orcData, fetchedAt: now, expiresAt, updatedAt: now }).where(eq20(mubisysApiCache.cacheKey, cacheKey));
+    } else {
+      await db5.insert(mubisysApiCache).values({
+        cacheKey,
+        mes: now.getMonth() + 1,
+        ano: now.getFullYear(),
+        osData: null,
+        orcData,
+        fetchedAt: now,
+        expiresAt
+      });
+    }
+  } catch {
+  }
+}
+async function refreshCrmAbertosCache(cacheKey, janelaDias) {
+  const now = /* @__PURE__ */ new Date();
+  const diAberto = fmtDate(new Date(now.getTime() - janelaDias * 24 * 60 * 60 * 1e3));
+  const dfAberto = fmtDate(now);
+  const { itens } = await listarOrcamentosMubiSys({
+    status: "ABERTO",
+    datainicial: diAberto,
+    datafinal: dfAberto,
+    perPage: 50
+  });
+  await setCrmAbertosCache(cacheKey, itens);
+  return itens;
+}
+function inicioJanelaFechadosCache() {
+  return fmtDate(new Date(Date.now() - JANELA_FECHADOS_DIAS * 24 * 60 * 60 * 1e3));
+}
+async function refreshCrmFechadosCache() {
+  const now = /* @__PURE__ */ new Date();
+  const diFechados = fmtDate(new Date(now.getTime() - JANELA_FECHADOS_DIAS * 24 * 60 * 60 * 1e3));
+  const dfFechados = fmtDate(now);
+  const { itens } = await listarOrcamentosMubiSys({
+    datainicial: diFechados,
+    datafinal: dfFechados,
+    perPage: 50
+  });
+  await setCrmAbertosCache(CACHE_KEY_FECHADOS, itens);
+  return itens;
+}
+var CRM_CACHE_TTL_MS, JANELA_ABERTOS_DIAS_PADRAO, JANELA_ABERTOS_DIAS_MAX, CACHE_KEY_ABERTOS_PADRAO, CACHE_KEY_ABERTOS_ESTENDIDO, JANELA_FECHADOS_DIAS, CACHE_KEY_FECHADOS, fmtDate;
+var init_crm_abertos_cache = __esm({
+  "server/sync/crm-abertos-cache.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_mubisys_client();
+    CRM_CACHE_TTL_MS = 20 * 60 * 1e3;
+    JANELA_ABERTOS_DIAS_PADRAO = 21;
+    JANELA_ABERTOS_DIAS_MAX = 30;
+    CACHE_KEY_ABERTOS_PADRAO = "crm_abertos_15d";
+    CACHE_KEY_ABERTOS_ESTENDIDO = "crm_abertos_30d";
+    JANELA_FECHADOS_DIAS = 45;
+    CACHE_KEY_FECHADOS = "crm_fechados_45d";
+    fmtDate = (d) => {
+      const pad2 = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    };
+  }
+});
+
+// server/integrations/opencnpj-client.ts
+function normalizarCnpj(cnpj) {
+  const limpo = cnpj.replace(/[^\dA-Za-z]/g, "");
+  if (limpo.length !== 14) {
+    throw new Error(`CNPJ inv\xE1lido: "${cnpj}" (esperado 14 caracteres ap\xF3s remover pontua\xE7\xE3o, recebido ${limpo.length}).`);
+  }
+  return limpo;
+}
+async function consultarCnpj(cnpj) {
+  const cnpjLimpo = normalizarCnpj(cnpj);
+  let resp;
+  try {
+    resp = await fetch(`https://api.opencnpj.org/${cnpjLimpo}`, {
+      headers: { Accept: "application/json" }
+    });
+  } catch (e) {
+    throw new Error(`Falha de rede ao consultar OpenCNPJ: ${e?.message ?? "erro desconhecido"}`);
+  }
+  if (resp.status === 404) throw new CnpjNaoEncontradoError(cnpjLimpo);
+  if (!resp.ok) throw new Error(`OpenCNPJ retornou status ${resp.status} para o CNPJ ${cnpjLimpo}.`);
+  return await resp.json();
+}
+var CnpjNaoEncontradoError;
+var init_opencnpj_client = __esm({
+  "server/integrations/opencnpj-client.ts"() {
+    "use strict";
+    CnpjNaoEncontradoError = class extends Error {
+      constructor(cnpj) {
+        super(`CNPJ ${cnpj} n\xE3o encontrado na base da Receita Federal.`);
+        this.name = "CnpjNaoEncontradoError";
+      }
+    };
   }
 });
 
@@ -4154,10 +8236,6 @@ function clampParam(valor, min, max, padrao) {
 }
 async function handleSincronizarOS(req, res) {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret || req.headers["x-cron-secret"] !== cronSecret) {
-      return res.status(403).json({ error: "cron-only", message: "Este endpoint \xE9 apenas para CRON jobs" });
-    }
     const dias = clampParam(req.query.dias, 1, 31, 8);
     const offset = clampParam(req.query.offset, 0, 365, 0);
     console.log(`\u{1F504} [CRON] Sincroniza\xE7\xE3o de OS iniciada (dias=${dias}, offset=${offset})`);
@@ -4182,10 +8260,6 @@ async function handleSincronizarOS(req, res) {
 }
 async function handleStatusSincronizacao(req, res) {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret || req.headers["x-cron-secret"] !== cronSecret) {
-      return res.status(403).json({ error: "cron-only", message: "Este endpoint \xE9 apenas para CRON jobs" });
-    }
     const status = await obterStatusSincronizacao();
     return res.json({
       ok: true,
@@ -4206,6 +8280,554 @@ var init_scheduled_sync_os_handler = __esm({
   }
 });
 
+// server/sync/scheduled-sync-historico.ts
+function nomeCliente(clienteRaw) {
+  if (typeof clienteRaw === "object" && clienteRaw !== null) {
+    return String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "");
+  }
+  return String(clienteRaw ?? "");
+}
+function primeiroEndereco(os) {
+  const e = os.cliente_endereco?.[0];
+  return { cidade: e?.cidade ?? "", estado: e?.estado ?? "" };
+}
+function osParaLinha(os, mes, ano) {
+  const valorTotal = Number(os.valor_total) || 0;
+  const valorDesconto = Number(os.valor_desconto) || 0;
+  const valorCusto = Number(os.valor_custo) || 0;
+  const valorMargem = Number(os.valor_margem) || 0;
+  const resultadoPct = valorTotal > 0 ? valorMargem / valorTotal * 100 : 0;
+  const { cidade, estado } = primeiroEndereco(os);
+  return {
+    osNumero: String(os.sequencial_ordem || os.numero_pedido_compra || os.id || ""),
+    tipoOs: os.tipo ?? "",
+    empresa: nomeCliente(os.cliente),
+    trabalho: os.nome_trabalho ?? null,
+    logistica: os.logistica ?? null,
+    dataAprovacao: os.data_aprovacao ?? null,
+    dataEntrega: os.data_entrega ?? null,
+    dataFaturamento: os.data_faturamento ?? null,
+    status: os.status ?? null,
+    vendedor: os.vendedor || os.atendente || null,
+    valorTotal: valorTotal.toFixed(2),
+    descontos: valorDesconto.toFixed(2),
+    valorOs: (valorTotal - valorDesconto).toFixed(2),
+    materiaPrima: (Number(os.valor_materia_prima) || 0).toFixed(2),
+    custoFixo: (Number(os.valor_fixo_rateado) || 0).toFixed(2),
+    maoDeObra: (Number(os.valor_processos_realizados) || 0).toFixed(2),
+    tarifasFinanceiras: "0.00",
+    comissoesInternas: (Number(os.valor_comissao_interna) || 0).toFixed(2),
+    comissoesExternas: (Number(os.valor_comissao_externa) || 0).toFixed(2),
+    terceirizados: (Number(os.valor_terceiros) || 0).toFixed(2),
+    tributos: (Number(os.valor_tributos) || 0).toFixed(2),
+    custosTotal: valorCusto.toFixed(2),
+    resultadoReais: valorMargem.toFixed(2),
+    resultadoPct: resultadoPct.toFixed(2),
+    contribuicaoReais: valorMargem.toFixed(2),
+    contribuicaoPct: resultadoPct.toFixed(2),
+    cidade,
+    estado: estado ? String(estado).slice(0, 2) : null,
+    mes,
+    ano
+  };
+}
+function orcParaLinha(orc, mes, ano) {
+  return {
+    orcNumero: String(orc.sequencial_orcamento || orc.id || ""),
+    empresa: nomeCliente(orc.cliente),
+    trabalho: orc.nome_trabalho ?? null,
+    dataCadastro: orc.data_cadastro ?? null,
+    validade: orc.validade != null ? String(orc.validade) : null,
+    vendedor: orc.vendedor ?? null,
+    status: orc.status ?? null,
+    motivoCancelamento: orc.motivo_cancelamento ?? null,
+    total: (Number(orc.valor_total) || 0).toFixed(2),
+    custosTotal: (Number(orc.valor_custo) || 0).toFixed(2),
+    margemLiquida: (Number(orc.valor_margem) || 0).toFixed(2),
+    mes,
+    ano
+  };
+}
+async function upsertEmLotes(table, cols, linhas, conflictCol, batchSize = 150) {
+  if (linhas.length === 0) return 0;
+  const pool2 = getPool();
+  const colList = cols.map((c) => `"${c}"`).join(", ");
+  const updateSet = cols.filter((c) => c !== conflictCol).map((c) => `"${c}" = EXCLUDED."${c}"`).join(", ");
+  let processadas = 0;
+  for (let i = 0; i < linhas.length; i += batchSize) {
+    const lote = linhas.slice(i, i + batchSize);
+    const values = [];
+    const tuplas = lote.map((linha, r) => {
+      const base = r * cols.length;
+      values.push(...cols.map((c) => linha[c] ?? null));
+      return "(" + cols.map((_, ci) => `$${base + ci + 1}`).join(", ") + ")";
+    });
+    const sql11 = `INSERT INTO ${table} (${colList}) VALUES ${tuplas.join(", ")}
+      ON CONFLICT ("${conflictCol}") DO UPDATE SET ${updateSet}`;
+    await pool2.query(sql11, values);
+    processadas += lote.length;
+  }
+  return processadas;
+}
+async function comTentativas(fn, tentativas = 3) {
+  let ultimoErro;
+  for (let i = 1; i <= tentativas; i++) {
+    try {
+      return await fn();
+    } catch (erro) {
+      ultimoErro = erro;
+      if (i < tentativas) await new Promise((r) => setTimeout(r, 3e3 * i));
+    }
+  }
+  throw ultimoErro;
+}
+function fatiarEmJanelas(di, df, diasPorJanela) {
+  const [anoI, mesI, diaI] = di.split("-").map(Number);
+  const inicio = new Date(Date.UTC(anoI, mesI - 1, diaI));
+  const [anoF, mesF, diaF] = df.split("-").map(Number);
+  const fim = new Date(Date.UTC(anoF, mesF - 1, diaF));
+  const janelas = [];
+  let cursor = new Date(inicio);
+  while (cursor <= fim) {
+    const janelaFim = new Date(cursor);
+    janelaFim.setUTCDate(janelaFim.getUTCDate() + diasPorJanela - 1);
+    if (janelaFim > fim) janelaFim.setTime(fim.getTime());
+    janelas.push({ di: cursor.toISOString().slice(0, 10), df: janelaFim.toISOString().slice(0, 10) });
+    cursor = new Date(janelaFim);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return janelas;
+}
+async function sincronizarHistoricoDoMubiSys(mes, ano) {
+  const lastDay = new Date(ano, mes, 0).getDate();
+  const di = `${ano}-${pad(mes)}-01`;
+  const hoje = /* @__PURE__ */ new Date();
+  const ehMesCorrente = ano === hoje.getFullYear() && mes === hoje.getMonth() + 1;
+  const df = ehMesCorrente ? `${ano}-${pad(mes)}-${pad(hoje.getDate())}` : `${ano}-${pad(mes)}-${pad(lastDay)}`;
+  try {
+    const janelas = fatiarEmJanelas(di, df, DIAS_POR_JANELA);
+    console.log(`\u{1F504} [SYNC-HISTORICO] Sincronizando ${pad(mes)}/${ano} (${di}..${df}) em ${janelas.length} janela(s)`);
+    const resultados = [];
+    const janelasFalhadas = [];
+    for (const janela of janelas) {
+      try {
+        const osResult = await comTentativas(() => listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: janela.di, datafinal: janela.df }));
+        const orcResult = await comTentativas(() => listarOrcamentosMubiSys({ status: "TODOS", datainicial: janela.di, datafinal: janela.df }));
+        resultados.push({ osResult, orcResult });
+      } catch (erroJanela) {
+        janelasFalhadas.push(`${janela.di}..${janela.df}`);
+        console.warn(`\u26A0\uFE0F [SYNC-HISTORICO] Janela ${janela.di}..${janela.df} falhou (${erroJanela?.message}) \u2014 seguindo com as demais`);
+      }
+    }
+    if (janelasFalhadas.length === janelas.length) throw new Error(`Todas as ${janelas.length} janelas falharam`);
+    const osItens = resultados.flatMap((r) => r.osResult.itens);
+    const orcItens = resultados.flatMap((r) => r.orcResult.itens);
+    const osCompleto = resultados.every((r) => r.osResult.completo);
+    const orcCompleto = resultados.every((r) => r.orcResult.completo);
+    if (!osCompleto) console.warn(`\u26A0\uFE0F [SYNC-HISTORICO] Listagem de OS incompleta para ${mes}/${ano} \u2014 teto de p\xE1ginas atingido`);
+    if (!orcCompleto) console.warn(`\u26A0\uFE0F [SYNC-HISTORICO] Listagem de or\xE7amentos incompleta para ${mes}/${ano} \u2014 teto de p\xE1ginas atingido`);
+    const linhasOs = osItens.map((os) => osParaLinha(os, mes, ano)).filter((l) => l.osNumero);
+    const linhasOrc = orcItens.map((orc) => orcParaLinha(orc, mes, ano)).filter((l) => l.orcNumero);
+    const osProcessadas = await upsertEmLotes("historico_os", HISTORICO_OS_COLS, linhasOs, "osNumero");
+    const orcamentosProcessados = await upsertEmLotes("historico_orcamentos", HISTORICO_ORC_COLS, linhasOrc, "orcNumero");
+    console.log(`\u2705 [SYNC-HISTORICO] ${pad(mes)}/${ano}: ${osProcessadas} OS, ${orcamentosProcessados} or\xE7amentos`);
+    return { mes, ano, osProcessadas, orcamentosProcessados, status: "SUCESSO" };
+  } catch (erro) {
+    console.error(`\u274C [SYNC-HISTORICO] Erro ao sincronizar ${mes}/${ano}:`, erro);
+    return { mes, ano, osProcessadas: 0, orcamentosProcessados: 0, status: "ERRO", mensagemErro: erro?.message || "Erro desconhecido" };
+  }
+}
+async function sincronizarHistoricoRecente(mesesAtras = 1) {
+  const hoje = /* @__PURE__ */ new Date();
+  const resultados = [];
+  for (let i = 0; i <= mesesAtras; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    resultados.push(await sincronizarHistoricoDoMubiSys(d.getMonth() + 1, d.getFullYear()));
+  }
+  return resultados;
+}
+var pad, HISTORICO_OS_COLS, HISTORICO_ORC_COLS, DIAS_POR_JANELA;
+var init_scheduled_sync_historico = __esm({
+  "server/sync/scheduled-sync-historico.ts"() {
+    "use strict";
+    init_db_connection();
+    init_mubisys_client();
+    pad = (n) => String(n).padStart(2, "0");
+    HISTORICO_OS_COLS = [
+      "osNumero",
+      "tipoOs",
+      "empresa",
+      "trabalho",
+      "logistica",
+      "dataAprovacao",
+      "dataEntrega",
+      "dataFaturamento",
+      "status",
+      "vendedor",
+      "valorTotal",
+      "descontos",
+      "valorOs",
+      "materiaPrima",
+      "custoFixo",
+      "maoDeObra",
+      "tarifasFinanceiras",
+      "comissoesInternas",
+      "comissoesExternas",
+      "terceirizados",
+      "tributos",
+      "custosTotal",
+      "resultadoReais",
+      "resultadoPct",
+      "contribuicaoReais",
+      "contribuicaoPct",
+      "cidade",
+      "estado",
+      "mes",
+      "ano"
+    ];
+    HISTORICO_ORC_COLS = [
+      "orcNumero",
+      "empresa",
+      "trabalho",
+      "dataCadastro",
+      "validade",
+      "vendedor",
+      "status",
+      "motivoCancelamento",
+      "total",
+      "custosTotal",
+      "margemLiquida",
+      "mes",
+      "ano"
+    ];
+    DIAS_POR_JANELA = 2;
+  }
+});
+
+// server/sync/scheduled-sync-historico-handler.ts
+var scheduled_sync_historico_handler_exports = {};
+__export(scheduled_sync_historico_handler_exports, {
+  handleSincronizarHistorico: () => handleSincronizarHistorico
+});
+function clampParam2(valor, min, max, padrao) {
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return padrao;
+  return Math.min(Math.max(n, min), max);
+}
+async function handleSincronizarHistorico(req, res) {
+  try {
+    const mesParam = req.query.mes;
+    const anoParam = req.query.ano;
+    if (mesParam !== void 0 && anoParam !== void 0) {
+      const mes = clampParam2(mesParam, 1, 12, (/* @__PURE__ */ new Date()).getMonth() + 1);
+      const ano = clampParam2(anoParam, 2020, 2100, (/* @__PURE__ */ new Date()).getFullYear());
+      const resultado = await sincronizarHistoricoDoMubiSys(mes, ano);
+      return res.json({ ok: resultado.status === "SUCESSO", resultado, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+    }
+    const mesesAtras = clampParam2(req.query.mesesAtras, 0, 6, 1);
+    const resultados = await sincronizarHistoricoRecente(mesesAtras);
+    const ok = resultados.every((r) => r.status === "SUCESSO");
+    return res.status(ok ? 200 : 207).json({ ok, resultados, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  } catch (erro) {
+    console.error(`\u274C [CRON] Erro na sincroniza\xE7\xE3o de hist\xF3rico:`, erro);
+    return res.status(500).json({
+      error: erro?.message || "Erro desconhecido",
+      stack: erro?.stack,
+      context: { url: req.url, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
+    });
+  }
+}
+var init_scheduled_sync_historico_handler = __esm({
+  "server/sync/scheduled-sync-historico-handler.ts"() {
+    "use strict";
+    init_scheduled_sync_historico();
+  }
+});
+
+// server/sync/scheduled-sync-crm-abertos.ts
+async function sincronizarCrmAbertos() {
+  const inicio = Date.now();
+  try {
+    const itens = await refreshCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO, JANELA_ABERTOS_DIAS_PADRAO);
+    const tempoExecucaoMs = Date.now() - inicio;
+    console.log(`\u2705 [SYNC-CRM-ABERTOS] ${itens.length} or\xE7amentos em cache em ${tempoExecucaoMs}ms`);
+    return { ok: true, quantidade: itens.length, tempoExecucaoMs };
+  } catch (erro) {
+    const tempoExecucaoMs = Date.now() - inicio;
+    console.error(`\u274C [SYNC-CRM-ABERTOS] Erro:`, erro);
+    return { ok: false, quantidade: 0, tempoExecucaoMs, erro: erro?.message || "Erro desconhecido" };
+  }
+}
+var init_scheduled_sync_crm_abertos = __esm({
+  "server/sync/scheduled-sync-crm-abertos.ts"() {
+    "use strict";
+    init_crm_abertos_cache();
+  }
+});
+
+// server/sync/scheduled-sync-crm-abertos-handler.ts
+var scheduled_sync_crm_abertos_handler_exports = {};
+__export(scheduled_sync_crm_abertos_handler_exports, {
+  handleSincronizarCrmAbertos: () => handleSincronizarCrmAbertos
+});
+async function handleSincronizarCrmAbertos(req, res) {
+  try {
+    const resultado = await sincronizarCrmAbertos();
+    return res.json({ ok: resultado.ok, resultado, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  } catch (erro) {
+    console.error(`\u274C [CRON] Erro na sincroniza\xE7\xE3o de abertos do CRM:`, erro);
+    return res.status(500).json({
+      error: erro?.message || "Erro desconhecido",
+      context: { url: req.url, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
+    });
+  }
+}
+var init_scheduled_sync_crm_abertos_handler = __esm({
+  "server/sync/scheduled-sync-crm-abertos-handler.ts"() {
+    "use strict";
+    init_scheduled_sync_crm_abertos();
+  }
+});
+
+// server/sync/scheduled-sync-crm-fechados.ts
+async function sincronizarCrmFechados() {
+  const inicio = Date.now();
+  try {
+    const itens = await refreshCrmFechadosCache();
+    const tempoExecucaoMs = Date.now() - inicio;
+    console.log(`\u2705 [SYNC-CRM-FECHADOS] ${itens.length} or\xE7amentos em cache (${CACHE_KEY_FECHADOS}) em ${tempoExecucaoMs}ms`);
+    return { ok: true, quantidade: itens.length, tempoExecucaoMs };
+  } catch (erro) {
+    const tempoExecucaoMs = Date.now() - inicio;
+    console.error(`\u274C [SYNC-CRM-FECHADOS] Erro:`, erro);
+    return { ok: false, quantidade: 0, tempoExecucaoMs, erro: erro?.message || "Erro desconhecido" };
+  }
+}
+var init_scheduled_sync_crm_fechados = __esm({
+  "server/sync/scheduled-sync-crm-fechados.ts"() {
+    "use strict";
+    init_crm_abertos_cache();
+  }
+});
+
+// server/sync/scheduled-sync-crm-fechados-handler.ts
+var scheduled_sync_crm_fechados_handler_exports = {};
+__export(scheduled_sync_crm_fechados_handler_exports, {
+  handleSincronizarCrmFechados: () => handleSincronizarCrmFechados
+});
+async function handleSincronizarCrmFechados(req, res) {
+  try {
+    const resultado = await sincronizarCrmFechados();
+    return res.json({ ok: resultado.ok, resultado, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  } catch (erro) {
+    console.error(`\u274C [CRON] Erro na sincroniza\xE7\xE3o de fechados do CRM:`, erro);
+    return res.status(500).json({
+      error: erro?.message || "Erro desconhecido",
+      context: { url: req.url, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
+    });
+  }
+}
+var init_scheduled_sync_crm_fechados_handler = __esm({
+  "server/sync/scheduled-sync-crm-fechados-handler.ts"() {
+    "use strict";
+    init_scheduled_sync_crm_fechados();
+  }
+});
+
+// server/sync/scheduled-sync-perfil-cnpj.ts
+function parseDataOsFlexivel2(s) {
+  if (!s) return null;
+  const texto = s.trim();
+  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  return null;
+}
+function classificarDocumento2(doc) {
+  const limpo = doc.replace(/\D/g, "");
+  if (limpo.length === 14) return { tipo: "cnpj", limpo };
+  if (limpo.length === 11) return { tipo: "cpf", limpo };
+  return { tipo: "invalido", limpo };
+}
+function extrairCamposPerfil2(dados) {
+  const idadeAnos2 = (() => {
+    const d = new Date(dados.data_inicio_atividade);
+    if (isNaN(d.getTime())) return null;
+    return Number(((Date.now() - d.getTime()) / (365.25 * 864e5)).toFixed(1));
+  })();
+  return {
+    razaoSocial: dados.razao_social,
+    situacaoCadastral: dados.situacao_cadastral || null,
+    dataInicioAtividade: dados.data_inicio_atividade || null,
+    idadeAnos: idadeAnos2 !== null ? String(idadeAnos2) : null,
+    porte: dados.porte_empresa || null,
+    naturezaJuridica: dados.natureza_juridica || null,
+    qtdSocios: Array.isArray(dados.QSA) ? dados.QSA.length : null,
+    capitalSocial: dados.capital_social ? dados.capital_social.replace(/\./g, "").replace(",", ".") : null,
+    uf: dados.uf || null,
+    municipio: dados.municipio || null,
+    cnaePrincipal: dados.cnae_principal || null,
+    dadosJson: JSON.stringify(dados)
+  };
+}
+async function buscarOSPorNumeroComRetry(numero) {
+  let ultimoErro;
+  for (let tentativa = 0; tentativa < MAX_TENTATIVAS_OS; tentativa++) {
+    try {
+      return await buscarOSPorNumero(numero);
+    } catch (e) {
+      ultimoErro = e;
+      if (tentativa < MAX_TENTATIVAS_OS - 1) await sleep(RETRY_BACKOFF_MS[tentativa]);
+    }
+  }
+  throw ultimoErro;
+}
+async function sincronizarPerfilCnpj() {
+  const inicio = Date.now();
+  const vazio = {
+    totalCandidatos: 0,
+    processados: 0,
+    sucessoCnpj: 0,
+    pessoaFisica: 0,
+    semDocumento: 0,
+    falhaErp: 0,
+    falhaOpenCnpj: 0,
+    restantes: 0
+  };
+  try {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const [osRows, mapeados] = await Promise.all([
+      db5.select({
+        empresa: historicoOs.empresa,
+        tipoOs: historicoOs.tipoOs,
+        status: historicoOs.status,
+        valorTotal: historicoOs.valorTotal,
+        valorOs: historicoOs.valorOs,
+        osNumero: historicoOs.osNumero,
+        dataAprovacao: historicoOs.dataAprovacao
+      }).from(historicoOs),
+      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj)
+    ]);
+    const jaMapeados = new Set(mapeados.map((m) => m.empresaKey));
+    const porCliente = /* @__PURE__ */ new Map();
+    for (const r of osRows) {
+      if (!isOsNormalDb(r)) continue;
+      const nome = (r.empresa ?? "").trim();
+      if (!nome) continue;
+      const key = normalizeEmpresaKey(nome);
+      if (jaMapeados.has(key)) continue;
+      const dataOs = parseDataOsFlexivel2(r.dataAprovacao);
+      const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
+      const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
+      atual.valor += valor;
+      if (r.osNumero && dataOs && (!atual.dataMaisRecente || dataOs > atual.dataMaisRecente)) {
+        atual.osMaisRecente = r.osNumero;
+        atual.dataMaisRecente = dataOs;
+      }
+      porCliente.set(key, atual);
+    }
+    const todosCandidatos = [...porCliente.entries()].map(([empresaKey, v]) => ({ empresaKey, empresa: v.empresa, osReferencia: v.osMaisRecente })).filter((c) => !!c.osReferencia).sort((a, b) => porCliente.get(b.empresaKey).valor - porCliente.get(a.empresaKey).valor);
+    const candidatos = todosCandidatos.slice(0, LIMITE_CANDIDATOS);
+    let sucessoCnpj = 0, pessoaFisica = 0, semDocumento = 0, falhaErp = 0, falhaOpenCnpj = 0, processados = 0;
+    for (const c of candidatos) {
+      if (Date.now() - inicio > LIMITE_TEMPO_MS) break;
+      processados++;
+      let osErp;
+      try {
+        osErp = await buscarOSPorNumeroComRetry(c.osReferencia);
+      } catch {
+        falhaErp++;
+        continue;
+      }
+      const doc = osErp?.cliente_cnpj_cpf;
+      if (!doc) {
+        semDocumento++;
+        continue;
+      }
+      const { tipo, limpo } = classificarDocumento2(doc);
+      if (tipo === "cpf") {
+        pessoaFisica++;
+        continue;
+      }
+      if (tipo === "invalido") {
+        semDocumento++;
+        continue;
+      }
+      try {
+        const dados = await consultarCnpj(limpo);
+        const campos = extrairCamposPerfil2(dados);
+        const agora = /* @__PURE__ */ new Date();
+        await db5.insert(clientesPerfilCnpj).values({
+          empresaKey: c.empresaKey,
+          empresaExibicao: c.empresa,
+          cnpj: limpo,
+          ...campos,
+          origem: "mubisys",
+          vinculadoPor: "cron-sincronizarPerfilCnpj",
+          vinculadoEm: agora,
+          updatedAt: agora
+        });
+        sucessoCnpj++;
+      } catch (e) {
+        falhaOpenCnpj++;
+        if (!(e instanceof CnpjNaoEncontradoError)) {
+          console.error(`  [SYNC-PERFIL-CNPJ] falha inesperada em ${c.empresa}:`, e?.message ?? e);
+        }
+      }
+    }
+    const restantes = Math.max(0, todosCandidatos.length - processados);
+    const tempoExecucaoMs = Date.now() - inicio;
+    console.log(`\u2705 [SYNC-PERFIL-CNPJ] processados=${processados} sucesso=${sucessoCnpj} pessoaFisica=${pessoaFisica} semDocumento=${semDocumento} falhaErp=${falhaErp} falhaOpenCnpj=${falhaOpenCnpj} restantes=${restantes} em ${tempoExecucaoMs}ms`);
+    return { ok: true, totalCandidatos: todosCandidatos.length, processados, sucessoCnpj, pessoaFisica, semDocumento, falhaErp, falhaOpenCnpj, restantes, tempoExecucaoMs };
+  } catch (erro) {
+    const tempoExecucaoMs = Date.now() - inicio;
+    console.error("\u274C [SYNC-PERFIL-CNPJ] Erro:", erro);
+    return { ok: false, ...vazio, tempoExecucaoMs, erro: erro?.message || "Erro desconhecido" };
+  }
+}
+var LIMITE_CANDIDATOS, LIMITE_TEMPO_MS, MAX_TENTATIVAS_OS, RETRY_BACKOFF_MS, sleep;
+var init_scheduled_sync_perfil_cnpj = __esm({
+  "server/sync/scheduled-sync-perfil-cnpj.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    init_opencnpj_client();
+    init_mubisys_client();
+    init_performanceComercial();
+    LIMITE_CANDIDATOS = 40;
+    LIMITE_TEMPO_MS = 45e3;
+    MAX_TENTATIVAS_OS = 2;
+    RETRY_BACKOFF_MS = [800];
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  }
+});
+
+// server/sync/scheduled-sync-perfil-cnpj-handler.ts
+var scheduled_sync_perfil_cnpj_handler_exports = {};
+__export(scheduled_sync_perfil_cnpj_handler_exports, {
+  handleSincronizarPerfilCnpj: () => handleSincronizarPerfilCnpj
+});
+async function handleSincronizarPerfilCnpj(req, res) {
+  try {
+    const resultado = await sincronizarPerfilCnpj();
+    return res.json({ ok: resultado.ok, resultado, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  } catch (erro) {
+    console.error("\u274C [CRON] Erro na sincroniza\xE7\xE3o de perfil CNPJ:", erro);
+    return res.status(500).json({
+      error: erro?.message || "Erro desconhecido",
+      context: { url: req.url, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
+    });
+  }
+}
+var init_scheduled_sync_perfil_cnpj_handler = __esm({
+  "server/sync/scheduled-sync-perfil-cnpj-handler.ts"() {
+    "use strict";
+    init_scheduled_sync_perfil_cnpj();
+  }
+});
+
 // server/_core/app.ts
 init_auth();
 import "dotenv/config";
@@ -4216,57 +8838,16 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { toNodeHandler } from "better-auth/node";
 
 // server/routers.ts
-import { z as z23 } from "zod";
+import { z as z28 } from "zod";
 
 // server/routers/logistica.ts
-import { z } from "zod";
-
-// shared/const.ts
-var UNAUTHED_ERR_MSG = "Please login (10001)";
-var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
-
-// server/_core/trpc.ts
-import { initTRPC, TRPCError } from "@trpc/server";
-import superjson from "superjson";
-var t = initTRPC.context().create({
-  transformer: superjson
-});
-var router = t.router;
-var publicProcedure = t.procedure;
-var requireUser = t.middleware(async (opts) => {
-  const { ctx, next } = opts;
-  if (!ctx.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
-  }
-  return next({
-    ctx: {
-      ...ctx,
-      user: ctx.user
-    }
-  });
-});
-var protectedProcedure = t.procedure.use(requireUser);
-function requireRole(...roles) {
-  return t.middleware(async ({ ctx, next }) => {
-    if (!ctx.user || !roles.includes(ctx.user.role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
-    }
-    return next({
-      ctx: {
-        ...ctx,
-        user: ctx.user
-      }
-    });
-  });
-}
-var adminProcedure = t.procedure.use(requireRole("admin", "master"));
-
-// server/routers/logistica.ts
+init_trpc();
 init_db_helpers_select();
 init_db_connection();
 init_mubisys_frete();
 init_mubisys_client();
 init_schema();
+import { z } from "zod";
 import { TRPCError as TRPCError2 } from "@trpc/server";
 import { and as and2, desc as desc2, eq as eq2, like, inArray as inArray2 } from "drizzle-orm";
 import { drizzle as drizzle3 } from "drizzle-orm/neon-serverless";
@@ -4320,6 +8901,7 @@ var transportadorasRouter = router({
     nome: z.string().min(2),
     site: z.string().optional(),
     endereco: z.string().optional(),
+    googleMapsUrl: z.string().optional(),
     referencia: z.string().optional(),
     nomeContato: z.string().optional(),
     telefoneContato: z.string().optional(),
@@ -4360,6 +8942,7 @@ var transportadorasRouter = router({
     nome: z.string().optional(),
     site: z.string().optional(),
     endereco: z.string().optional(),
+    googleMapsUrl: z.string().optional(),
     referencia: z.string().optional(),
     nomeContato: z.string().optional(),
     telefoneContato: z.string().optional(),
@@ -4542,16 +9125,16 @@ async function fetchDadosOsMub(numeroOs) {
   if (!os) return null;
   const end = os.cliente_endereco?.[0];
   let cnpj = formatarDocumento(os.cliente_cnpj_cpf);
-  let nomeCliente = String(os.cliente ?? "").trim();
+  let nomeCliente2 = String(os.cliente ?? "").trim();
   if (!cnpj && os.cliente_id) {
     const cli = await buscarClientePorId(os.cliente_id);
     if (cli) {
       cnpj = formatarDocumento(cli.cnpj_cpf);
-      if (!nomeCliente) nomeCliente = cli.razao_social ?? "";
+      if (!nomeCliente2) nomeCliente2 = cli.razao_social ?? "";
     }
   }
   return {
-    nomeCliente,
+    nomeCliente: nomeCliente2,
     cnpj,
     cep: (end?.cep ?? "").replace(/\D/g, ""),
     endereco: [end?.logradouro, end?.numero, end?.complemento, end?.bairro].filter(Boolean).join(", "),
@@ -5288,9 +9871,10 @@ var cteRouter = router({
 });
 
 // server/routers/qualidade.ts
-import { z as z2 } from "zod";
+init_trpc();
 init_llm();
 init_db();
+import { z as z2 } from "zod";
 
 // server/db/alertas-helpers.ts
 init_schema();
@@ -6063,9 +10647,10 @@ var desempenhoColaboradorRouter = router({
 });
 
 // server/routers/metas.ts
-import { z as z3 } from "zod";
+init_trpc();
 init_db();
 init_schema();
+import { z as z3 } from "zod";
 import { eq as eq5, desc as desc5 } from "drizzle-orm";
 var metasUpsertSchema = z3.object({
   id: z3.number().optional(),
@@ -6136,20 +10721,345 @@ var metasRouter = router({
 });
 
 // server/routers/financeiro.ts
-import { z as z4 } from "zod";
+init_trpc();
 init_db();
 init_schema();
-import { eq as eq6, and as and5 } from "drizzle-orm";
+init_anthropic_client();
+init_performanceComercial();
+import { z as z6 } from "zod";
+import * as XLSX from "xlsx";
+import { eq as eq8, and as and7 } from "drizzle-orm";
+import { TRPCError as TRPCError3 } from "@trpc/server";
+var MESES_NOMES = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+var fmtR = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+async function calcularRadarMargens(db5) {
+  const rows = await db5.select({
+    mes: historicoOs.mes,
+    ano: historicoOs.ano,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status,
+    vendedor: historicoOs.vendedor,
+    valorOs: historicoOs.valorOs,
+    materiaPrima: historicoOs.materiaPrima,
+    custoFixo: historicoOs.custoFixo,
+    maoDeObra: historicoOs.maoDeObra,
+    tarifasFinanceiras: historicoOs.tarifasFinanceiras,
+    comissoesInternas: historicoOs.comissoesInternas,
+    comissoesExternas: historicoOs.comissoesExternas,
+    terceirizados: historicoOs.terceirizados,
+    tributos: historicoOs.tributos,
+    resultadoReais: historicoOs.resultadoReais,
+    contribuicaoReais: historicoOs.contribuicaoReais
+  }).from(historicoOs);
+  const num2 = (v) => parseFloat(String(v ?? "0")) || 0;
+  const novoMesAcc = (mes, ano) => ({
+    mes,
+    ano,
+    count: 0,
+    valorOs: 0,
+    materiaPrima: 0,
+    custoFixo: 0,
+    maoDeObra: 0,
+    tarifasFinanceiras: 0,
+    comissoes: 0,
+    terceirizados: 0,
+    tributos: 0,
+    resultado: 0,
+    contribuicao: 0
+  });
+  const porMes = /* @__PURE__ */ new Map();
+  const porVendedor = /* @__PURE__ */ new Map();
+  const porAnoStatus = /* @__PURE__ */ new Map();
+  for (const os of rows) {
+    const tipo = (os.tipoOs ?? "").toLowerCase();
+    const tipoNormal = os.tipoOs != null && !tipo.startsWith("retrabalho") && tipo !== "amostra" && tipo !== "cortesia";
+    if (tipoNormal) {
+      const status = os.status || "Sem status";
+      const chaveStatus = `${os.ano}-${status}`;
+      const sAcc = porAnoStatus.get(chaveStatus) ?? { ano: os.ano, status, count: 0 };
+      sAcc.count += 1;
+      porAnoStatus.set(chaveStatus, sAcc);
+    }
+    if (!isOsNormalDb(os)) continue;
+    const valorOs = num2(os.valorOs);
+    const chaveMes = `${os.ano}-${String(os.mes).padStart(2, "0")}`;
+    const acc = porMes.get(chaveMes) ?? novoMesAcc(os.mes, os.ano);
+    acc.count += 1;
+    acc.valorOs += valorOs;
+    acc.materiaPrima += num2(os.materiaPrima);
+    acc.custoFixo += num2(os.custoFixo);
+    acc.maoDeObra += num2(os.maoDeObra);
+    acc.tarifasFinanceiras += num2(os.tarifasFinanceiras);
+    acc.comissoes += num2(os.comissoesInternas) + num2(os.comissoesExternas);
+    acc.terceirizados += num2(os.terceirizados);
+    acc.tributos += num2(os.tributos);
+    acc.resultado += num2(os.resultadoReais);
+    acc.contribuicao += num2(os.contribuicaoReais);
+    porMes.set(chaveMes, acc);
+    const vendedor = os.vendedor || "Sem vendedor";
+    const vAcc = porVendedor.get(vendedor) ?? { vendedor, count: 0, valorOs: 0, resultado: 0, contribuicao: 0 };
+    vAcc.count += 1;
+    vAcc.valorOs += valorOs;
+    vAcc.resultado += num2(os.resultadoReais);
+    vAcc.contribuicao += num2(os.contribuicaoReais);
+    porVendedor.set(vendedor, vAcc);
+  }
+  const meses = [...porMes.values()].sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes).map((m) => {
+    const variavel = m.materiaPrima + m.tributos + m.comissoes + m.terceirizados;
+    const fixo = m.custoFixo + m.maoDeObra + m.tarifasFinanceiras;
+    const pct = (v) => m.valorOs ? v / m.valorOs * 100 : 0;
+    return {
+      mes: m.mes,
+      ano: m.ano,
+      label: `${MESES_NOMES[m.mes].slice(0, 3)}/${String(m.ano).slice(2)}`,
+      count: m.count,
+      valorOs: m.valorOs,
+      variavel,
+      fixo,
+      materiaPrima: m.materiaPrima,
+      custoFixoPuro: m.custoFixo,
+      maoDeObra: m.maoDeObra,
+      tributos: m.tributos,
+      comissoes: m.comissoes,
+      terceirizados: m.terceirizados,
+      resultado: m.resultado,
+      contribuicao: m.contribuicao,
+      resultadoPct: pct(m.resultado),
+      contribuicaoPct: pct(m.contribuicao),
+      ticketMedio: m.count ? m.valorOs / m.count : 0,
+      fixoPorOS: m.count ? fixo / m.count : 0,
+      variavelPct: pct(variavel),
+      fixoPct: pct(fixo),
+      materiaPrimaPct: pct(m.materiaPrima),
+      tributosPct: pct(m.tributos),
+      comissoesPct: pct(m.comissoes),
+      terceirizadosPct: pct(m.terceirizados),
+      custoFixoPuroPct: pct(m.custoFixo),
+      maoDeObraPct: pct(m.maoDeObra)
+    };
+  });
+  const vendedores = [...porVendedor.values()].filter((v) => v.count >= 5).sort((a, b) => b.valorOs - a.valorOs).map((v) => ({
+    ...v,
+    resultadoPct: v.valorOs ? v.resultado / v.valorOs * 100 : 0,
+    contribuicaoPct: v.valorOs ? v.contribuicao / v.valorOs * 100 : 0
+  }));
+  const statusPorAno = [...porAnoStatus.values()].sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : b.count - a.count);
+  return { meses, vendedores, statusPorAno };
+}
+async function montarContextoFinanceiro(db5) {
+  const [mensal, dre, fixosAtivos, marketingRows, dividasAtivas, radar] = await Promise.all([
+    db5.select().from(financeiroMensal),
+    db5.select().from(dreMensal),
+    db5.select().from(custosFixos).where(eq8(custosFixos.ativo, true)),
+    db5.select().from(custoMarketing),
+    db5.select().from(dividasParcelamentos).where(eq8(dividasParcelamentos.ativo, true)),
+    calcularRadarMargens(db5)
+  ]);
+  const linhasMensal = mensal.sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes).map((r) => {
+    const campos = [];
+    const add = (label, v) => {
+      if (v != null) campos.push(`${label}=${fmtR(Number(v))}`);
+    };
+    add("Faturamento", r.faturamentoOficial);
+    add("DespFixas", r.despesasFixas);
+    add("DespVariaveis", r.despesasVariaveis);
+    add("LucroLiquido", r.lucroLiquido);
+    add("SaldoMes", r.saldoMes);
+    add("TL1", r.tl1);
+    add("TL2", r.tl2);
+    add("TL3", r.tl3);
+    add("ImpostoDAS", r.impostoDas);
+    add("ICMS_DIFAL", r.impostoIcmsDifal);
+    add("DAEMS", r.impostoDaems);
+    add("ComissoesBV", r.comissoesBv);
+    add("ProdutividadeSolda", r.produtividadeSolda);
+    add("FreteRetrabalho", r.freteRetrabalho);
+    add("DevSoftware", r.devSoftware);
+    if (r.numColaboradores != null) campos.push(`Colaboradores=${r.numColaboradores}`);
+    return `${MESES_NOMES[r.mes]}/${r.ano}: ${campos.join(", ") || "(sem dados preenchidos)"}`;
+  });
+  const linhasDre = dre.sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes).map((r) => {
+    const campos = [];
+    const add = (label, v) => {
+      if (v != null) campos.push(`${label}=${fmtR(Number(v))}`);
+    };
+    add("ReceitaOpBruta", r.receitaOperacionalBruta);
+    add("LucroBruto", r.lucroBruto);
+    add("LucroOperacional", r.lucroOperacional);
+    add("LucroLiquido", r.lucroLiquido);
+    add("MateriaPrima", r.materiaPrima);
+    add("DespesasFixas", r.despesasFixas);
+    return `${MESES_NOMES[r.mes]}/${r.ano}: ${campos.join(", ") || "(sem dados)"}`;
+  });
+  const totalCustosFixos = fixosAtivos.reduce((s, c) => s + Number(c.valor || 0), 0);
+  const totalMarketing = marketingRows.reduce((s, m) => s + Number(m.investimento || 0), 0);
+  const porAno = /* @__PURE__ */ new Map();
+  for (const m of radar.meses) {
+    const a = porAno.get(m.ano) ?? { count: 0, valorOs: 0, resultado: 0, contribuicao: 0 };
+    a.count += m.count;
+    a.valorOs += m.valorOs;
+    a.resultado += m.resultado;
+    a.contribuicao += m.contribuicao;
+    porAno.set(m.ano, a);
+  }
+  const linhasRadarAno = [...porAno.entries()].sort((a, b) => a[0] - b[0]).map(([ano, a]) => {
+    const resPct = a.valorOs ? a.resultado / a.valorOs * 100 : 0;
+    const conPct = a.valorOs ? a.contribuicao / a.valorOs * 100 : 0;
+    return `${ano}: ${a.count} O.S. vendidas, ValorVendido=${fmtR(a.valorOs)}, ResultadoLiquido=${fmtR(a.resultado)} (${resPct.toFixed(1)}%), MargemContribuicao=${fmtR(a.contribuicao)} (${conPct.toFixed(1)}%)`;
+  });
+  const linhasVendedores = radar.vendedores.slice(0, 8).map((v) => `${v.vendedor}: ${v.count} O.S., ValorVendido=${fmtR(v.valorOs)}, MargemLiquida=${v.resultadoPct.toFixed(1)}%, MargemContribuicao=${v.contribuicaoPct.toFixed(1)}%`);
+  return `## DADOS FINANCEIROS DISPON\xCDVEIS (banco de produ\xE7\xE3o, consultado agora)
+
+### Painel Financeiro mensal (financeiro_mensal) \u2014 fonte oficial de faturamento
+${linhasMensal.length ? linhasMensal.join("\n") : "Nenhum m\xEAs cadastrado."}
+
+### DRE Gerencial mensal (dre_mensal) \u2014 alimentado pelo ERP (MubiSys), pode divergir do faturamento oficial acima
+${linhasDre.length ? linhasDre.join("\n") : "Nenhum m\xEAs cadastrado."}
+
+### Custos Fixos ativos cadastrados
+Total mensal previsto: ${fmtR(totalCustosFixos)} (${fixosAtivos.length} itens ativos)
+
+### Marketing
+Investimento total acumulado (todos os meses cadastrados): ${fmtR(totalMarketing)}
+
+### D\xEDvidas e Parcelamentos ativos
+${dividasAtivas.length} registro(s) ativo(s).
+
+### Radar de Margens (historico_os) \u2014 resultado l\xEDquido e margem de contribui\xE7\xE3o por O.S., agrupado pelo m\xEAs em que a O.S. foi vendida/aprovada (n\xE3o pela data de faturamento). Exclui retrabalho, amostra, cortesia e canceladas.
+Totais por ano:
+${linhasRadarAno.length ? linhasRadarAno.join("\n") : "Sem hist\xF3rico de O.S. sincronizado."}
+
+Ranking de vendedores (hist\xF3rico completo, m\xEDnimo 5 O.S.):
+${linhasVendedores.length ? linhasVendedores.join("\n") : "Sem vendedores com volume suficiente."}
+
+## O QUE N\xC3O EST\xC1 DISPON\xCDVEL NESTE CONTEXTO (n\xE3o invente estes n\xFAmeros)
+- Or\xE7ado/Budget mensal (n\xE3o existe cadastro de metas no sistema hoje)
+- Deprecia\xE7\xE3o/amortiza\xE7\xE3o e juros separados de despesas fixas (portanto EBITDA calculado aqui \xE9 aproximado e coincide com Lucro L\xEDquido)
+- Dados por produto/canal (o Radar de Margens acima cobre vendedor, mas n\xE3o produto/canal \u2014 necess\xE1rios para Pareto, LTV/CAC completos)
+- Capital investido e patrim\xF4nio l\xEDquido (necess\xE1rios para ROIC/ROE)
+- Prazos de recebimento/pagamento (necess\xE1rios para Capital de Giro e Ciclo de Caixa)`;
+}
+var MESES_ABREV_PT = {
+  jan: 1,
+  fev: 2,
+  mar: 3,
+  abr: 4,
+  mai: 5,
+  jun: 6,
+  jul: 7,
+  ago: 8,
+  set: 9,
+  out: 10,
+  nov: 11,
+  dez: 12
+};
+var LABEL_DESPESAS_FIXAS = "(-) Despesas Fixas (Exceto D\xEDvidas e Investimentos)";
+var LABEL_DESPESAS_VARIAVEIS = "(-) Despesas Vari\xE1veis";
+var LABEL_TL1 = "(=) TL1";
+var LABEL_TL2 = "(=) TL2";
+var LABEL_TL3 = "(=) TL3";
+var LABEL_RESULTADO = "Resultado";
+var LABEL_RECEITAS_CAIXA = "1 - Receitas";
+var CAMPOS_FECHAMENTO = [
+  { campo: "despesasFixas", label: LABEL_DESPESAS_FIXAS },
+  { campo: "despesasVariaveis", label: LABEL_DESPESAS_VARIAVEIS },
+  { campo: "tl1", label: LABEL_TL1 },
+  { campo: "tl2", label: LABEL_TL2 },
+  { campo: "impostoDas", label: "2 . 1 . 1 . 1 - DAS Simples Nacional" },
+  { campo: "impostoIcmsDifal", label: "2 . 1 . 1 . 3 - ICMS DIFAL e EQUALIZADOR" },
+  { campo: "impostoDaems", label: "2 . 1 . 1 . 4 - DAEMS" },
+  { campo: "comissoesBv", label: "2 . 1 . 2 . 1 - Comiss\xF5es BV | Vendas Externas" },
+  { campo: "freteRetrabalho", label: "2 . 1 . 2 . 3 - Frete Retrabalho" },
+  { campo: "produtividadeSolda", label: "2 . 4 . 4 - Produtividade Solda" },
+  { campo: "devSoftware", label: "2 . 9 . 6 - Desenvolvimento de Software" }
+];
+var CAMPOS_LABELS_PT = {
+  despesasFixas: "Despesas Fixas",
+  despesasVariaveis: "Despesas Vari\xE1veis",
+  tl1: "TL1",
+  tl2: "TL2",
+  tl3: "TL3 (Resultado)",
+  saldoMes: "Saldo do M\xEAs",
+  impostoDas: "DAS Simples Nacional",
+  impostoIcmsDifal: "ICMS DIFAL",
+  impostoDaems: "DAEMS",
+  comissoesBv: "Comiss\xF5es BV",
+  freteRetrabalho: "Frete Retrabalho",
+  produtividadeSolda: "Produtividade Solda",
+  devSoftware: "Desenvolvimento de Software"
+};
+function parseValorMonetario(v) {
+  if (v == null) return null;
+  if (typeof v === "number") return v;
+  const s = String(v).trim();
+  if (s === "") return null;
+  if (/^-?\s*(r\$)?\s*-\s*$/i.test(s)) return 0;
+  const limpo = s.replace(/r\$/i, "").replace(/\s/g, "").replace(/,/g, "");
+  const n = parseFloat(limpo);
+  return isNaN(n) ? null : n;
+}
+function parsePlanilhaFechamento(buffer) {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  const nomeAba = wb.SheetNames.find((n) => n.trim().toLowerCase() === "fluxo de caixa") ?? wb.SheetNames.find((n) => n.toLowerCase().includes("fluxo de caixa"));
+  if (!nomeAba) {
+    throw new TRPCError3({ code: "BAD_REQUEST", message: `Aba "Fluxo de Caixa" n\xE3o encontrada no arquivo. Abas dispon\xEDveis: ${wb.SheetNames.join(", ")}` });
+  }
+  const ws = wb.Sheets[nomeAba];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  if (rows.length === 0) {
+    throw new TRPCError3({ code: "BAD_REQUEST", message: `A aba "Fluxo de Caixa" est\xE1 vazia.` });
+  }
+  const header = rows[0] ?? [];
+  const colunasMes = [];
+  for (let col = 1; col < header.length; col++) {
+    const raw = header[col];
+    if (typeof raw !== "string") continue;
+    const m = /^([A-Za-z]{3})\/(\d{4})$/.exec(raw.trim());
+    if (!m) continue;
+    const mes = MESES_ABREV_PT[m[1].toLowerCase()];
+    if (!mes) continue;
+    colunasMes.push({ col, mes, ano: parseInt(m[2], 10) });
+  }
+  if (colunasMes.length === 0) {
+    throw new TRPCError3({ code: "BAD_REQUEST", message: `N\xE3o encontrei colunas de m\xEAs (ex: "Jan/2026") no cabe\xE7alho da aba "Fluxo de Caixa".` });
+  }
+  const linhaPorLabel = /* @__PURE__ */ new Map();
+  for (let i = 1; i < rows.length; i++) {
+    const cel = rows[i]?.[0];
+    if (typeof cel !== "string") continue;
+    const texto = cel.trim();
+    if (!linhaPorLabel.has(texto)) linhaPorLabel.set(texto, i);
+  }
+  const camposAusentes = CAMPOS_FECHAMENTO.filter(({ label }) => !linhaPorLabel.has(label)).map(({ campo }) => campo);
+  const linhaResultado = linhaPorLabel.get(LABEL_RESULTADO);
+  const linhaTl3 = linhaPorLabel.get(LABEL_TL3);
+  if (linhaResultado == null && linhaTl3 == null) camposAusentes.push("tl3");
+  const linhaReceitasCaixa = linhaPorLabel.get(LABEL_RECEITAS_CAIXA);
+  const meses = colunasMes.map(({ col, mes, ano }) => {
+    const valores = {};
+    for (const { campo, label } of CAMPOS_FECHAMENTO) {
+      const linha = linhaPorLabel.get(label);
+      valores[campo] = linha != null ? parseValorMonetario(rows[linha]?.[col]) : null;
+    }
+    let tl3 = linhaResultado != null ? parseValorMonetario(rows[linhaResultado]?.[col]) : null;
+    if (tl3 == null && linhaTl3 != null) tl3 = parseValorMonetario(rows[linhaTl3]?.[col]);
+    valores.tl3 = tl3;
+    valores.saldoMes = tl3;
+    const receitaCaixa = linhaReceitasCaixa != null ? parseValorMonetario(rows[linhaReceitasCaixa]?.[col]) : null;
+    return { mes, ano, valores, receitaCaixa };
+  });
+  return { meses, camposAusentes };
+}
 var financeiroRouter = router({
   // Buscar dados financeiros de um mês/ano específico
-  get: publicProcedure.input(z4.object({ mes: z4.number(), ano: z4.number() })).query(async ({ input }) => {
+  get: publicProcedure.input(z6.object({ mes: z6.number(), ano: z6.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return null;
-    const rows = await db5.select().from(financeiroMensal).where(and5(eq6(financeiroMensal.mes, input.mes), eq6(financeiroMensal.ano, input.ano))).limit(1);
+    const rows = await db5.select().from(financeiroMensal).where(and7(eq8(financeiroMensal.mes, input.mes), eq8(financeiroMensal.ano, input.ano))).limit(1);
     return rows[0] ?? null;
   }),
   // Listar todos os registros financeiros
-  list: publicProcedure.input(z4.object({ ano: z4.number().optional() }).optional()).query(async ({ input }) => {
+  list: publicProcedure.input(z6.object({ ano: z6.number().optional() }).optional()).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
     const rows = await db5.select().from(financeiroMensal);
@@ -6157,34 +11067,34 @@ var financeiroRouter = router({
     return rows.sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes);
   }),
   // Criar ou atualizar registro financeiro mensal
-  upsert: publicProcedure.input(z4.object({
-    mes: z4.number().min(1).max(12),
-    ano: z4.number().min(2020).max(2100),
-    faturamentoOficial: z4.number().nullable().optional(),
-    despesasFixas: z4.number().nullable().optional(),
-    despesasVariaveis: z4.number().nullable().optional(),
-    numColaboradores: z4.number().int().nullable().optional(),
-    lucroBruto: z4.number().nullable().optional(),
-    lucroLiquido: z4.number().nullable().optional(),
-    notas: z4.string().nullable().optional(),
+  upsert: publicProcedure.input(z6.object({
+    mes: z6.number().min(1).max(12),
+    ano: z6.number().min(2020).max(2100),
+    faturamentoOficial: z6.number().nullable().optional(),
+    despesasFixas: z6.number().nullable().optional(),
+    despesasVariaveis: z6.number().nullable().optional(),
+    numColaboradores: z6.number().int().nullable().optional(),
+    lucroBruto: z6.number().nullable().optional(),
+    lucroLiquido: z6.number().nullable().optional(),
+    notas: z6.string().nullable().optional(),
     // Novos campos a partir de Abr/2026
-    impostoDas: z4.number().nullable().optional(),
-    impostoIcmsDifal: z4.number().nullable().optional(),
-    impostoDaems: z4.number().nullable().optional(),
-    comissoesBv: z4.number().nullable().optional(),
-    produtividadeSolda: z4.number().nullable().optional(),
-    freteRetrabalho: z4.number().nullable().optional(),
-    devSoftware: z4.number().nullable().optional(),
-    receitaOperacionalOs: z4.number().nullable().optional(),
-    resultadoEfetivo: z4.number().nullable().optional(),
-    saldoMes: z4.number().nullable().optional(),
-    tl1: z4.number().nullable().optional(),
-    tl2: z4.number().nullable().optional(),
-    tl3: z4.number().nullable().optional()
+    impostoDas: z6.number().nullable().optional(),
+    impostoIcmsDifal: z6.number().nullable().optional(),
+    impostoDaems: z6.number().nullable().optional(),
+    comissoesBv: z6.number().nullable().optional(),
+    produtividadeSolda: z6.number().nullable().optional(),
+    freteRetrabalho: z6.number().nullable().optional(),
+    devSoftware: z6.number().nullable().optional(),
+    receitaOperacionalOs: z6.number().nullable().optional(),
+    resultadoEfetivo: z6.number().nullable().optional(),
+    saldoMes: z6.number().nullable().optional(),
+    tl1: z6.number().nullable().optional(),
+    tl2: z6.number().nullable().optional(),
+    tl3: z6.number().nullable().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    const existing = await db5.select().from(financeiroMensal).where(and5(eq6(financeiroMensal.mes, input.mes), eq6(financeiroMensal.ano, input.ano))).limit(1);
+    const existing = await db5.select().from(financeiroMensal).where(and7(eq8(financeiroMensal.mes, input.mes), eq8(financeiroMensal.ano, input.ano))).limit(1);
     const toStr = (v) => v != null ? String(v) : null;
     const data = {
       faturamentoOficial: toStr(input.faturamentoOficial),
@@ -6210,64 +11120,235 @@ var financeiroRouter = router({
       tl3: toStr(input.tl3)
     };
     if (existing.length > 0) {
-      await db5.update(financeiroMensal).set(data).where(eq6(financeiroMensal.id, existing[0].id));
+      await db5.update(financeiroMensal).set(data).where(eq8(financeiroMensal.id, existing[0].id));
       return { ...existing[0], ...data };
     } else {
       const [result] = await db5.insert(financeiroMensal).values({ mes: input.mes, ano: input.ano, ...data }).returning({ id: financeiroMensal.id });
       return { id: result.id, mes: input.mes, ano: input.ano, ...data };
     }
   }),
-  // ─── Custo Marketing ─────────────────────────────────────────────────────────
-  getCustoMarketing: publicProcedure.input(z4.object({ mes: z4.number(), ano: z4.number() })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return null;
-    const rows = await db5.select().from(custoMarketing).where(and5(eq6(custoMarketing.mes, input.mes), eq6(custoMarketing.ano, input.ano))).limit(1);
-    return rows[0] ?? null;
-  }),
-  getCustoMarketingAno: publicProcedure.input(z4.object({ ano: z4.number() })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return [];
-    const rows = await db5.select().from(custoMarketing).where(eq6(custoMarketing.ano, input.ano));
-    return rows.sort((a, b) => a.mes - b.mes);
-  }),
-  upsertCustoMarketing: publicProcedure.input(z4.object({
-    mes: z4.number().min(1).max(12),
-    ano: z4.number().min(2020).max(2100),
-    investimento: z4.number().min(0),
-    observacao: z4.string().nullable().optional()
+  // Upload da planilha de fechamento mensal ("Fechamento -AAAA.MM.xlsx", aba
+  // "Fluxo de Caixa") — processa no servidor e faz upsert por mês/ano em
+  // financeiro_mensal, com os mesmos campos que o formulário/`upsert` já usa.
+  // faturamentoOficial: se já houver valor cadastrado manualmente (conferido com
+  // a contabilidade), nunca é sobrescrito. Se estiver vazio, é preenchido com a
+  // linha "1 - Receitas" (caixa) como aproximação — sabidamente não bate exato
+  // com o valor oficial (~1-5% de diferença observada), por isso fica marcado
+  // como "aproximado" no retorno para revisão posterior.
+  uploadFechamentoMensal: publicProcedure.input(z6.object({
+    arquivoBase64: z6.string().min(1),
+    nomeArquivo: z6.string().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
+    if (!db5) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    let buffer;
+    try {
+      buffer = Buffer.from(input.arquivoBase64, "base64");
+    } catch {
+      throw new TRPCError3({ code: "BAD_REQUEST", message: "Arquivo inv\xE1lido." });
+    }
+    const { meses, camposAusentes } = parsePlanilhaFechamento(buffer);
+    const mesesProcessados = [];
+    for (const { mes, ano, valores, receitaCaixa } of meses) {
+      const existing = await db5.select().from(financeiroMensal).where(and7(eq8(financeiroMensal.mes, mes), eq8(financeiroMensal.ano, ano))).limit(1);
+      const data = {};
+      const camposVazios = [];
+      for (const [campo, valor] of Object.entries(valores)) {
+        if (valor == null) {
+          camposVazios.push(CAMPOS_LABELS_PT[campo] ?? campo);
+          data[campo] = null;
+        } else {
+          data[campo] = valor.toFixed(2);
+        }
+      }
+      let faturamentoAtual = existing[0]?.faturamentoOficial != null ? parseFloat(existing[0].faturamentoOficial) : null;
+      let faturamentoOrigem = "manual";
+      if (faturamentoAtual == null) {
+        if (receitaCaixa != null) {
+          faturamentoAtual = receitaCaixa;
+          data.faturamentoOficial = receitaCaixa.toFixed(2);
+          faturamentoOrigem = "aproximado_caixa";
+        } else {
+          faturamentoOrigem = "sem_dado";
+        }
+      }
+      if (faturamentoAtual != null && valores.despesasFixas != null && valores.despesasVariaveis != null) {
+        const lucro = faturamentoAtual - valores.despesasFixas - valores.despesasVariaveis;
+        data.lucroBruto = lucro.toFixed(2);
+        data.lucroLiquido = lucro.toFixed(2);
+      }
+      if (existing.length > 0) {
+        await db5.update(financeiroMensal).set(data).where(eq8(financeiroMensal.id, existing[0].id));
+        mesesProcessados.push({ mes, ano, status: "atualizado", camposVazios, faturamentoOrigem });
+      } else {
+        await db5.insert(financeiroMensal).values({ mes, ano, ...data });
+        mesesProcessados.push({ mes, ano, status: "criado", camposVazios, faturamentoOrigem });
+      }
+    }
+    return {
+      nomeArquivo: input.nomeArquivo ?? null,
+      mesesProcessados: mesesProcessados.sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes),
+      camposNaoEncontradosNaPlanilha: camposAusentes.map((c) => CAMPOS_LABELS_PT[c] ?? c)
+    };
+  }),
+  // ─── Custo Marketing ─────────────────────────────────────────────────────────
+  getCustoMarketing: publicProcedure.input(z6.object({ mes: z6.number(), ano: z6.number() })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return null;
+    const rows = await db5.select().from(custoMarketing).where(and7(eq8(custoMarketing.mes, input.mes), eq8(custoMarketing.ano, input.ano))).limit(1);
+    return rows[0] ?? null;
+  }),
+  getCustoMarketingAno: publicProcedure.input(z6.object({ ano: z6.number() })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const rows = await db5.select().from(custoMarketing).where(eq8(custoMarketing.ano, input.ano));
+    return rows.sort((a, b) => a.mes - b.mes);
+  }),
+  upsertCustoMarketing: publicProcedure.input(z6.object({
+    mes: z6.number().min(1).max(12),
+    ano: z6.number().min(2020).max(2100),
+    // Tri-state: campo OMITIDO mantém o valor já gravado (update parcial);
+    // null LIMPA o campo (marca como "não preenchido", distinto de zero);
+    // número define o valor. Nunca força "0" silenciosamente — ver
+    // drizzle/schema.ts (custoMarketing) para o motivo da coluna ser nullable.
+    investimentoAquisicao: z6.number().min(0).nullable().optional(),
+    investimentoReativacao: z6.number().min(0).nullable().optional(),
+    observacao: z6.string().nullable().optional()
+  })).mutation(async ({ input, ctx }) => {
+    const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    const existing = await db5.select().from(custoMarketing).where(and5(eq6(custoMarketing.mes, input.mes), eq6(custoMarketing.ano, input.ano))).limit(1);
+    const existing = await db5.select().from(custoMarketing).where(and7(eq8(custoMarketing.mes, input.mes), eq8(custoMarketing.ano, input.ano))).limit(1);
+    const aquisicaoFinal = input.investimentoAquisicao !== void 0 ? input.investimentoAquisicao : existing[0]?.investimentoAquisicao != null ? Number(existing[0].investimentoAquisicao) : null;
+    const reativacaoFinal = input.investimentoReativacao !== void 0 ? input.investimentoReativacao : existing[0]?.investimentoReativacao != null ? Number(existing[0].investimentoReativacao) : null;
     const data = {
-      investimento: String(input.investimento),
-      observacao: input.observacao ?? null
+      investimentoAquisicao: aquisicaoFinal != null ? String(aquisicaoFinal) : null,
+      investimentoReativacao: reativacaoFinal != null ? String(reativacaoFinal) : null,
+      // Soma dos dois componentes — null só se os DOIS estiverem vazios (nunca
+      // trata "não preenchido" como zero na soma).
+      investimento: aquisicaoFinal == null && reativacaoFinal == null ? null : String((aquisicaoFinal ?? 0) + (reativacaoFinal ?? 0)),
+      observacao: input.observacao !== void 0 ? input.observacao : existing[0]?.observacao ?? null
+    };
+    const usuario = {
+      usuarioId: ctx.user?.id ?? null,
+      usuarioNome: ctx.user?.name ?? null,
+      usuarioRole: ctx.user?.role ?? null
     };
     if (existing.length > 0) {
-      await db5.update(custoMarketing).set(data).where(eq6(custoMarketing.id, existing[0].id));
+      await db5.update(custoMarketing).set(data).where(eq8(custoMarketing.id, existing[0].id));
+      insertAuditLogCustoMarketing({
+        custoMarketingId: existing[0].id,
+        mes: input.mes,
+        ano: input.ano,
+        acao: "EDICAO",
+        ...usuario,
+        valoresAnteriores: existing[0],
+        valoresNovos: { ...existing[0], ...data }
+      }).catch(() => {
+      });
       return { ...existing[0], ...data };
     } else {
       const [result] = await db5.insert(custoMarketing).values({ mes: input.mes, ano: input.ano, ...data }).returning({ id: custoMarketing.id });
+      insertAuditLogCustoMarketing({
+        custoMarketingId: result.id,
+        mes: input.mes,
+        ano: input.ano,
+        acao: "CRIACAO",
+        ...usuario,
+        valoresAnteriores: null,
+        valoresNovos: { id: result.id, mes: input.mes, ano: input.ano, ...data }
+      }).catch(() => {
+      });
       return { id: result.id, mes: input.mes, ano: input.ano, ...data };
     }
+  }),
+  // Histórico de auditoria de custo_marketing (quem/quando criou ou editou um valor)
+  getAuditoriaCustoMarketing: publicProcedure.input(z6.object({ ano: z6.number() })).query(({ input }) => listAuditLogsCustoMarketing(input.ano)),
+  // Importação em lote (planilha): agrega valores por mês/ano/categoria e faz upsert
+  importCustoMarketingLote: publicProcedure.input(z6.array(z6.object({
+    mes: z6.number().min(1).max(12),
+    ano: z6.number().min(2020).max(2100),
+    categoria: z6.enum(["aquisicao", "reativacao"]),
+    valor: z6.number().min(0)
+  }))).mutation(async ({ input, ctx }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB unavailable");
+    const usuario = {
+      usuarioId: ctx.user?.id ?? null,
+      usuarioNome: ctx.user?.name ?? null,
+      usuarioRole: ctx.user?.role ?? null
+    };
+    const agregados = /* @__PURE__ */ new Map();
+    for (const linha of input) {
+      const chave = `${linha.ano}-${linha.mes}`;
+      const atual = agregados.get(chave) ?? { mes: linha.mes, ano: linha.ano, aquisicao: 0, reativacao: 0 };
+      if (linha.categoria === "aquisicao") atual.aquisicao += linha.valor;
+      else atual.reativacao += linha.valor;
+      agregados.set(chave, atual);
+    }
+    const resultados = [];
+    for (const { mes, ano, aquisicao, reativacao } of agregados.values()) {
+      const existing = await db5.select().from(custoMarketing).where(and7(eq8(custoMarketing.mes, mes), eq8(custoMarketing.ano, ano))).limit(1);
+      const aquisicaoTotal = (existing[0]?.investimentoAquisicao != null ? Number(existing[0].investimentoAquisicao) : 0) + aquisicao;
+      const reativacaoTotal = (existing[0]?.investimentoReativacao != null ? Number(existing[0].investimentoReativacao) : 0) + reativacao;
+      const data = {
+        investimentoAquisicao: String(aquisicaoTotal),
+        investimentoReativacao: String(reativacaoTotal),
+        investimento: String(aquisicaoTotal + reativacaoTotal)
+      };
+      if (existing.length > 0) {
+        await db5.update(custoMarketing).set(data).where(eq8(custoMarketing.id, existing[0].id));
+        insertAuditLogCustoMarketing({
+          custoMarketingId: existing[0].id,
+          mes,
+          ano,
+          acao: "EDICAO",
+          ...usuario,
+          valoresAnteriores: existing[0],
+          valoresNovos: { ...existing[0], ...data }
+        }).catch(() => {
+        });
+        resultados.push({ id: existing[0].id, mes, ano, ...data });
+      } else {
+        const [result] = await db5.insert(custoMarketing).values({ mes, ano, ...data }).returning({ id: custoMarketing.id });
+        insertAuditLogCustoMarketing({
+          custoMarketingId: result.id,
+          mes,
+          ano,
+          acao: "CRIACAO",
+          ...usuario,
+          valoresAnteriores: null,
+          valoresNovos: { id: result.id, mes, ano, ...data }
+        }).catch(() => {
+        });
+        resultados.push({ id: result.id, mes, ano, ...data });
+      }
+    }
+    return resultados;
+  }),
+  // ─── Lançamentos detalhados de Marketing (fornecedor/despesa) ────────────────
+  getCustoMarketingItensAno: publicProcedure.input(z6.object({ ano: z6.number() })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const rows = await db5.select().from(custoMarketingItens).where(eq8(custoMarketingItens.ano, input.ano));
+    return rows.map((r) => ({ ...r, valor: Number(r.valor) })).sort((a, b) => a.mes !== b.mes ? a.mes - b.mes : (a.dataVencimento?.getTime() ?? 0) - (b.dataVencimento?.getTime() ?? 0));
   }),
   // ─── Custos Fixos ────────────────────────────────────────────────────────────
   getCustosFixos: publicProcedure.query(async () => {
     const db5 = await getDb3();
     if (!db5) return [];
-    const rows = await db5.select().from(custosFixos).where(eq6(custosFixos.ativo, true));
+    const rows = await db5.select().from(custosFixos).where(eq8(custosFixos.ativo, true));
     return rows.map((r) => ({ ...r, valor: Number(r.valor) }));
   }),
-  upsertCustoFixo: publicProcedure.input(z4.object({
-    id: z4.number().optional(),
-    plano: z4.string(),
-    categoria: z4.string(),
-    grupoCategoria: z4.string(),
-    fornecedor: z4.string(),
-    tipo: z4.string(),
-    valor: z4.number().min(0),
-    vencimento: z4.number().nullable().optional(),
-    observacao: z4.string().nullable().optional()
+  upsertCustoFixo: publicProcedure.input(z6.object({
+    id: z6.number().optional(),
+    plano: z6.string(),
+    categoria: z6.string(),
+    grupoCategoria: z6.string(),
+    fornecedor: z6.string(),
+    tipo: z6.string(),
+    valor: z6.number().min(0),
+    vencimento: z6.number().nullable().optional(),
+    observacao: z6.string().nullable().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
@@ -6282,24 +11363,24 @@ var financeiroRouter = router({
       observacao: input.observacao ?? null
     };
     if (input.id) {
-      await db5.update(custosFixos).set(data).where(eq6(custosFixos.id, input.id));
+      await db5.update(custosFixos).set(data).where(eq8(custosFixos.id, input.id));
       return { id: input.id, ...data };
     } else {
       const [result] = await db5.insert(custosFixos).values(data).returning({ id: custosFixos.id });
       return { id: result.id, ...data };
     }
   }),
-  deleteCustoFixo: publicProcedure.input(z4.object({ id: z4.number() })).mutation(async ({ input }) => {
+  deleteCustoFixo: publicProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    await db5.update(custosFixos).set({ ativo: false }).where(eq6(custosFixos.id, input.id));
+    await db5.update(custosFixos).set({ ativo: false }).where(eq8(custosFixos.id, input.id));
     return { ok: true };
   }),
   // ─── Dívidas e Parcelamentos ─────────────────────────────────────────────────
   getDividas: publicProcedure.query(async () => {
     const db5 = await getDb3();
     if (!db5) return [];
-    const rows = await db5.select().from(dividasParcelamentos).where(eq6(dividasParcelamentos.ativo, true));
+    const rows = await db5.select().from(dividasParcelamentos).where(eq8(dividasParcelamentos.ativo, true));
     return rows.map((r) => ({
       ...r,
       media: r.media ? Number(r.media) : null,
@@ -6318,7 +11399,7 @@ var financeiroRouter = router({
     }));
   }),
   // ─── DRE Mensal ──────────────────────────────────────────────────────────────
-  getDreMensal: publicProcedure.input(z4.object({ ano: z4.number().optional() })).query(async ({ input }) => {
+  getDreMensal: publicProcedure.input(z6.object({ ano: z6.number().optional() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
     const rows = await db5.select().from(dreMensal);
@@ -6352,53 +11433,844 @@ var financeiroRouter = router({
       percComissaoInterna: r.percComissaoInterna ? Number(r.percComissaoInterna) : null,
       percDescontos: r.percDescontos ? Number(r.percDescontos) : null
     }));
+  }),
+  // ─── Radar de Margens (histórico completo por O.S. em historico_os, agrupado
+  // pelo mês/ano em que a O.S. foi vendida — mesma base do backfill do dre_mensal,
+  // mas com resultado líquido e margem de contribuição por O.S., que dre_mensal
+  // não tem, e ranking por vendedor) ──────────────────────────────────────────
+  getRadarMargens: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    if (!db5) return { meses: [], vendedores: [], statusPorAno: [] };
+    return calcularRadarMargens(db5);
+  }),
+  // ─── Retenção de clientes (compra única × recompra × intervalo entre compras,
+  // por ano de venda — mesma base do Radar de Margens) ──────────────────────────
+  getRetencaoClientes: publicProcedure.input(z6.object({
+    // Restringe todos os anos ao mesmo recorte jan-mesLimite — sem isso, um ano
+    // corrente parcial (poucos meses) parece ter menos recompra só por ainda não
+    // ter tido tempo de o cliente voltar, não porque a retenção caiu de verdade.
+    mesLimite: z6.number().min(1).max(12).optional()
+  }).optional()).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return { anos: [] };
+    const mesLimite = input?.mesLimite;
+    const rows = await db5.select({
+      ano: historicoOs.ano,
+      mes: historicoOs.mes,
+      empresa: historicoOs.empresa,
+      dataAprovacao: historicoOs.dataAprovacao,
+      valorOs: historicoOs.valorOs,
+      tipoOs: historicoOs.tipoOs,
+      status: historicoOs.status
+    }).from(historicoOs);
+    const num2 = (v) => parseFloat(String(v ?? "0")) || 0;
+    function parseData(s) {
+      if (!s) return null;
+      let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+      if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s);
+      if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+      return null;
+    }
+    const porAno = /* @__PURE__ */ new Map();
+    for (const os of rows) {
+      if (!isOsNormalDb(os)) continue;
+      if (mesLimite && os.mes > mesLimite) continue;
+      const empresa = (os.empresa ?? "").trim();
+      if (!empresa) continue;
+      const dt = parseData(os.dataAprovacao);
+      if (!dt) continue;
+      const ano = os.ano;
+      if (!porAno.has(ano)) porAno.set(ano, /* @__PURE__ */ new Map());
+      const clientes2 = porAno.get(ano);
+      const c = clientes2.get(empresa) ?? { count: 0, valor: 0, datas: [] };
+      c.count += 1;
+      c.valor += num2(os.valorOs);
+      c.datas.push(dt);
+      clientes2.set(empresa, c);
+    }
+    const anos = [...porAno.entries()].sort((a, b) => a[0] - b[0]).map(([ano, clientes2]) => {
+      let unicos = 0, unicosValor = 0, recompra = 0, recompraValor = 0;
+      const intervalos = [];
+      for (const c of clientes2.values()) {
+        if (c.count === 1) {
+          unicos += 1;
+          unicosValor += c.valor;
+        } else {
+          recompra += 1;
+          recompraValor += c.valor;
+          const datasOrdenadas = [...c.datas].sort((a, b) => a.getTime() - b.getTime());
+          for (let i = 1; i < datasOrdenadas.length; i++) {
+            const dias = (datasOrdenadas[i].getTime() - datasOrdenadas[i - 1].getTime()) / 864e5;
+            if (dias >= 0) intervalos.push(dias);
+          }
+        }
+      }
+      intervalos.sort((a, b) => a - b);
+      const totalClientes = unicos + recompra;
+      return {
+        ano,
+        totalClientes,
+        unicos,
+        unicosValor,
+        unicosPct: totalClientes ? unicos / totalClientes * 100 : 0,
+        recompra,
+        recompraValor,
+        recompraPct: totalClientes ? recompra / totalClientes * 100 : 0,
+        intervaloMedioDias: intervalos.length ? intervalos.reduce((a, b) => a + b, 0) / intervalos.length : null,
+        intervaloMedianaDias: intervalos.length ? intervalos[Math.floor(intervalos.length / 2)] : null,
+        amostraIntervalos: intervalos.length
+      };
+    });
+    return { anos };
+  }),
+  // ─── Chat de IA (CFO virtual) ──────────────────────────────────────────────
+  perguntarIA: publicProcedure.input(z6.object({
+    pergunta: z6.string().min(1),
+    historico: z6.array(z6.object({
+      role: z6.enum(["user", "assistant"]),
+      texto: z6.string()
+    })).default([])
+  })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB unavailable");
+    const contexto = await montarContextoFinanceiro(db5);
+    const historico = input.historico;
+    const resposta = await perguntarSobreFinanceiro(contexto, historico, input.pergunta);
+    return { resposta };
+  })
+});
+
+// server/routers/marketingFinanceiro.ts
+init_trpc();
+init_db();
+init_schema();
+init_performanceComercial();
+import { z as z7 } from "zod";
+import { eq as eq10, and as and8 } from "drizzle-orm";
+
+// server/services/marketingFinanceiroClientes.ts
+init_schema();
+init_performanceComercial();
+import { eq as eq9 } from "drizzle-orm";
+
+// shared/marketing-financeiro.ts
+function round2(v) {
+  return Math.round((v + Number.EPSILON) * 100) / 100;
+}
+function safeDiv(dividendo, divisor) {
+  if (dividendo == null || divisor == null || divisor === 0 || !isFinite(dividendo) || !isFinite(divisor)) return null;
+  const r = dividendo / divisor;
+  return isFinite(r) ? r : null;
+}
+function pctSobre(parte, base) {
+  const r = safeDiv(parte ?? null, base ?? null);
+  return r == null ? null : round2(r * 100);
+}
+function cacPonderado(investimentoTotalAquisicao, clientesNovosTotal) {
+  const r = safeDiv(investimentoTotalAquisicao, clientesNovosTotal);
+  return r == null ? null : round2(r);
+}
+function custoReativacaoPonderado(investimentoTotalReativacao, eventosReativacaoTotal) {
+  const r = safeDiv(investimentoTotalReativacao, eventosReativacaoTotal);
+  return r == null ? null : round2(r);
+}
+function margemDoPedido(pedido, percentualMargemFallback) {
+  if (pedido.contribuicaoReais != null) {
+    return { valor: pedido.contribuicaoReais, origem: "real" };
+  }
+  return { valor: round2(pedido.valorOs * (percentualMargemFallback / 100)), origem: "estimada" };
+}
+function agregarMargem(pedidos, percentualMargemFallback) {
+  if (pedidos.length === 0) {
+    return { margemTotal: 0, origem: "sem-dado", pctPedidosComMargemReal: null, qtdPedidos: 0 };
+  }
+  let margemTotal = 0;
+  let qtdReal = 0;
+  for (const p of pedidos) {
+    const m = margemDoPedido(p, percentualMargemFallback);
+    margemTotal += m.valor;
+    if (m.origem === "real") qtdReal++;
+  }
+  const origem = qtdReal === pedidos.length ? "real" : qtdReal === 0 ? "estimada" : "mista";
+  return {
+    margemTotal: round2(margemTotal),
+    origem,
+    pctPedidosComMargemReal: round2(qtdReal / pedidos.length * 100),
+    qtdPedidos: pedidos.length
+  };
+}
+function agregarLinhas(linhas, percentualMargemFallback) {
+  const clientesUnicos = new Set(linhas.map((l) => l.clienteKey).filter((k) => k));
+  return {
+    qtdOs: linhas.length,
+    qtdClientesUnicos: clientesUnicos.size,
+    faturamento: round2(linhas.reduce((s, l) => s + l.valorOs, 0)),
+    margem: agregarMargem(linhas.map((l) => ({ valorOs: l.valorOs, contribuicaoReais: l.contribuicaoReais })), percentualMargemFallback)
+  };
+}
+function calcularResultadoGrupo(investimento, margemContribuicao, faturamento2) {
+  const resultado = investimento == null ? null : round2(margemContribuicao - investimento);
+  const roiPct = investimento == null ? null : pctSobre(resultado, investimento);
+  const roas = investimento == null ? null : (() => {
+    const r = safeDiv(faturamento2, investimento);
+    return r == null ? null : round2(r * 100) / 100;
+  })();
+  return { investimento, margemContribuicao, faturamento: faturamento2, resultado, roiPct, roas };
+}
+function calcularResultadoConsolidado(grupos) {
+  const investimentoTotal = grupos.every((g) => g.investimento == null) ? null : grupos.reduce((s, g) => s + (g.investimento ?? 0), 0);
+  const margemTotal = round2(grupos.reduce((s, g) => s + g.margemContribuicao, 0));
+  const resultado = investimentoTotal == null ? null : round2(margemTotal - investimentoTotal);
+  const roiPct = investimentoTotal == null ? null : pctSobre(resultado, investimentoTotal);
+  return { investimento: investimentoTotal, margemContribuicao: margemTotal, faturamento: margemTotal, resultado, roiPct, roas: null };
+}
+function mediana2(valores) {
+  if (valores.length === 0) return null;
+  const ord = [...valores].sort((a, b) => a - b);
+  const meio = Math.floor(ord.length / 2);
+  return ord.length % 2 !== 0 ? ord[meio] : round2((ord[meio - 1] + ord[meio]) / 2);
+}
+function participacaoTopN(valores, n) {
+  if (valores.length === 0) return null;
+  const total = valores.reduce((s, v) => s + v, 0);
+  if (total === 0) return 0;
+  const topN = [...valores].sort((a, b) => b - a).slice(0, n).reduce((s, v) => s + v, 0);
+  return round2(topN / total * 100);
+}
+function conciliar(totalReferencia, valoresPorCategoria) {
+  const somaCategorias = round2(valoresPorCategoria.reduce((s, v) => s + v, 0));
+  const divergencia = round2(totalReferencia - somaCategorias);
+  return {
+    totalReferencia: round2(totalReferencia),
+    somaCategorias,
+    divergencia,
+    divergenciaPct: pctSobre(divergencia, totalReferencia),
+    conciliado: Math.abs(divergencia) <= 0.05
+  };
+}
+
+// server/services/marketingFinanceiroClientes.ts
+var num = (v) => parseFloat(String(v ?? "0")) || 0;
+var numOuNull = (v) => v == null ? null : parseFloat(v) || 0;
+async function buscarOsDoAno(db5, ano) {
+  return db5.select({
+    osNumero: historicoOs.osNumero,
+    empresa: historicoOs.empresa,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status,
+    mes: historicoOs.mes,
+    ano: historicoOs.ano,
+    valorOs: historicoOs.valorOs,
+    valorTotal: historicoOs.valorTotal,
+    contribuicaoReais: historicoOs.contribuicaoReais,
+    vendedor: historicoOs.vendedor,
+    cidade: historicoOs.cidade,
+    estado: historicoOs.estado,
+    dataAprovacao: historicoOs.dataAprovacao
+  }).from(historicoOs).where(eq9(historicoOs.ano, ano));
+}
+async function buscarOverrideMap(db5) {
+  const overrides = await db5.select().from(clienteOverrides);
+  const map = /* @__PURE__ */ new Map();
+  for (const ov of overrides) map.set(ov.empresa, ov.status);
+  return map;
+}
+function classificarMes(mes, ano, osDoAno, todasComprasValidas, overrideMap, mesesInatividade) {
+  const ultimaCompraPorCliente = reindexarPorChaveNormalizada(ultimaCompraAntesDe(todasComprasValidas, mes, ano));
+  const osMes = osDoAno.filter((os) => os.mes === mes);
+  const resultado = [];
+  for (const os of osMes) {
+    if (!isOsNormalDb(os)) continue;
+    const valorOs = num(os.valorOs ?? os.valorTotal);
+    const contribuicaoReais = numOuNull(os.contribuicaoReais);
+    const clienteKey = normalizeEmpresaKey(os.empresa ?? "");
+    if (!clienteKey) {
+      resultado.push({
+        osNumero: os.osNumero,
+        empresaOriginal: os.empresa ?? "",
+        clienteKey: "",
+        mes,
+        ano,
+        valorOs,
+        contribuicaoReais,
+        vendedor: os.vendedor,
+        cidade: os.cidade,
+        estado: os.estado,
+        dataAprovacao: os.dataAprovacao,
+        categoria: "naoClassificado",
+        jaComprouAntes: false,
+        gapMesesUltimaCompra: null
+      });
+      continue;
+    }
+    const ultima = ultimaCompraPorCliente.get(clienteKey);
+    const jaComprouAntes = Boolean(ultima);
+    const gapMesesUltimaCompra = ultima ? (ano - ultima.ano) * 12 + (mes - ultima.mes) : null;
+    const overrideStatus = overrideMap.get(clienteKey);
+    const isNovoOuReativado = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultima, mes, ano, mesesInatividade);
+    const categoria = isNovoOuReativado ? jaComprouAntes ? "reativado" : "novo" : "recorrenteAtivo";
+    resultado.push({
+      osNumero: os.osNumero,
+      empresaOriginal: os.empresa ?? "",
+      clienteKey,
+      mes,
+      ano,
+      valorOs,
+      contribuicaoReais,
+      vendedor: os.vendedor,
+      cidade: os.cidade,
+      estado: os.estado,
+      dataAprovacao: os.dataAprovacao,
+      categoria,
+      jaComprouAntes,
+      gapMesesUltimaCompra
+    });
+  }
+  return resultado;
+}
+async function classificarAno(db5, ano, mesesInatividade) {
+  const now = /* @__PURE__ */ new Date();
+  const mesLimite = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
+  const meses = Array.from({ length: mesLimite }, (_, i) => i + 1);
+  const [todasComprasValidas, osDoAno, overrideMap] = await Promise.all([
+    buscarTodasComprasValidas(db5),
+    buscarOsDoAno(db5, ano),
+    buscarOverrideMap(db5)
+  ]);
+  const resultado = [];
+  for (const mes of meses) {
+    resultado.push(...classificarMes(mes, ano, osDoAno, todasComprasValidas, overrideMap, mesesInatividade));
+  }
+  return resultado;
+}
+function agregarMes(mes, ano, classificadas, percentualMargemFallback) {
+  const doMes = classificadas.filter((c) => c.mes === mes && c.ano === ano);
+  const categorias = ["novo", "recorrenteAtivo", "reativado", "naoClassificado"];
+  const porCategoria = {};
+  for (const cat of categorias) {
+    const doGrupo = doMes.filter((c) => c.categoria === cat);
+    const agregado = agregarLinhas(doGrupo, percentualMargemFallback);
+    porCategoria[cat] = cat === "naoClassificado" ? { ...agregado, qtdClientesUnicos: doGrupo.length } : agregado;
+  }
+  return {
+    mes,
+    ano,
+    porCategoria,
+    faturamentoTotalValido: Math.round(doMes.reduce((s, c) => s + c.valorOs, 0) * 100) / 100
+  };
+}
+function calcularReativacaoAnual(classificadas) {
+  const porClienteMes = /* @__PURE__ */ new Set();
+  const clientesUnicos = /* @__PURE__ */ new Set();
+  for (const c of classificadas) {
+    if (c.categoria !== "reativado" || !c.clienteKey) continue;
+    porClienteMes.add(`${c.clienteKey}|${c.mes}`);
+    clientesUnicos.add(c.clienteKey);
+  }
+  return { clientesReativadosUnicosAno: clientesUnicos.size, eventosReativacaoAno: porClienteMes.size };
+}
+
+// shared/resultado-geral.ts
+function calcularPontoEquilibrio(custosFixos2, investimentoMarketing, margemContribuicaoPct, faturamentoLiquido, ticketMedio) {
+  if (custosFixos2 == null || margemContribuicaoPct == null || margemContribuicaoPct <= 0) {
+    return { pontoEquilibrio: null, margemSegurancaPct: null, distanciaAoEquilibrio: null, pedidosParaEquilibrio: null };
+  }
+  const custoTotal = custosFixos2 + (investimentoMarketing ?? 0);
+  const pontoEquilibrio = round2(custoTotal / margemContribuicaoPct);
+  const distanciaAoEquilibrio = faturamentoLiquido == null ? null : round2(faturamentoLiquido - pontoEquilibrio);
+  const margemSegurancaPct = faturamentoLiquido == null || faturamentoLiquido === 0 ? null : pctSobre(distanciaAoEquilibrio, faturamentoLiquido);
+  const pedidosParaEquilibrio = ticketMedio == null || ticketMedio <= 0 ? null : Math.ceil(pontoEquilibrio / ticketMedio);
+  return { pontoEquilibrio, margemSegurancaPct, distanciaAoEquilibrio, pedidosParaEquilibrio };
+}
+function calcularDesvioMargem(margemMetaPct, margemRealPct, faturamentoLiquido) {
+  if (margemRealPct == null) {
+    return { margemMetaPct, margemRealPct: null, desvioPontosPct: null, impactoFinanceiro: null };
+  }
+  const desvioPontosPct = round2((margemRealPct - margemMetaPct) * 100);
+  const impactoFinanceiro = faturamentoLiquido == null ? null : round2(faturamentoLiquido * (margemRealPct - margemMetaPct));
+  return { margemMetaPct, margemRealPct, desvioPontosPct, impactoFinanceiro };
+}
+function montarPonteResultado(insumo) {
+  const custosVariaveis = insumo.custosVariaveis;
+  const margemContribuicao = insumo.faturamentoLiquido != null && custosVariaveis != null ? round2(insumo.faturamentoLiquido - custosVariaveis) : null;
+  const margemContribuicaoPct = margemContribuicao == null ? null : safeDiv(margemContribuicao, insumo.faturamentoLiquido);
+  const contribuicaoAposMarketing = margemContribuicao == null ? null : round2(margemContribuicao - (insumo.investimentoMarketing ?? 0));
+  const resultadoOperacional = contribuicaoAposMarketing == null || insumo.custosFixos == null ? null : round2(contribuicaoAposMarketing - insumo.custosFixos);
+  const resultadoNaoOperacional = (insumo.receitasNaoOperacionais ?? insumo.despesasNaoOperacionais) == null ? null : round2((insumo.receitasNaoOperacionais ?? 0) - (insumo.despesasNaoOperacionais ?? 0));
+  const resultadoFinal = resultadoOperacional == null ? null : round2(resultadoOperacional - (insumo.despesasFinanceiras ?? 0) + (resultadoNaoOperacional ?? 0));
+  return {
+    faturamentoBruto: insumo.faturamentoBruto,
+    cancelamentosInformativo: insumo.cancelamentosInformativo,
+    faturamentoLiquido: insumo.faturamentoLiquido,
+    custosVariaveis,
+    margemContribuicao,
+    margemContribuicaoPct,
+    investimentoMarketing: insumo.investimentoMarketing,
+    contribuicaoAposMarketing,
+    custosFixos: insumo.custosFixos,
+    resultadoOperacional,
+    despesasFinanceiras: insumo.despesasFinanceiras,
+    resultadoNaoOperacional,
+    resultadoFinal
+  };
+}
+function custoFixoMedioPorPedido(custosFixos2, qtdPedidos) {
+  const r = safeDiv(custosFixos2, qtdPedidos);
+  return r == null ? null : round2(r);
+}
+function resultadoMedioPorPedido(resultado, qtdPedidos) {
+  const r = safeDiv(resultado, qtdPedidos);
+  return r == null ? null : round2(r);
+}
+function calcularIndicadoresPorFuncionario(faturamentoLiquido, margemContribuicao, resultado, numColaboradores) {
+  if (!numColaboradores || numColaboradores <= 0) {
+    return { faturamentoPorFuncionario: null, margemPorFuncionario: null, resultadoPorFuncionario: null };
+  }
+  return {
+    faturamentoPorFuncionario: faturamentoLiquido == null ? null : round2(faturamentoLiquido / numColaboradores),
+    margemPorFuncionario: margemContribuicao == null ? null : round2(margemContribuicao / numColaboradores),
+    resultadoPorFuncionario: resultado == null ? null : round2(resultado / numColaboradores)
+  };
+}
+function ratearCustoFixo(custosFixosTotais, direcionador, dimensoes) {
+  const resultado = {};
+  if (direcionador === "rateio_erp") {
+    for (const d of dimensoes) resultado[d.chave] = d.valorJaRateado != null ? round2(d.valorJaRateado) : null;
+    return resultado;
+  }
+  const somaDirecionador = dimensoes.reduce((s, d) => s + d.valorDirecionador, 0);
+  if (somaDirecionador <= 0) {
+    for (const d of dimensoes) resultado[d.chave] = null;
+    return resultado;
+  }
+  for (const d of dimensoes) {
+    resultado[d.chave] = round2(custosFixosTotais * (d.valorDirecionador / somaDirecionador));
+  }
+  return resultado;
+}
+
+// server/routers/marketingFinanceiro.ts
+var CONFIG_DEFAULTS = {
+  mesesInatividadeReativacao: 6,
+  percentualMargemFallback: 51,
+  cacMaximo: null,
+  custoReativacaoMaximo: null,
+  roiMinimoPct: null,
+  ticketMedioMinimo: null,
+  metaClientesNovosMes: null,
+  metaClientesReativadosMes: null,
+  aumentoMaximoCacMensalPct: null,
+  janelaAtribuicaoDias: 0,
+  direcionadorRateio: "faturamento",
+  custosFinanceirosIncluemMarketing: false
+};
+async function buscarConfig(db5) {
+  if (!db5) return CONFIG_DEFAULTS;
+  const rows = await db5.select().from(marketingConfig).limit(1);
+  if (rows.length === 0) return CONFIG_DEFAULTS;
+  const r = rows[0];
+  return {
+    mesesInatividadeReativacao: r.mesesInatividadeReativacao,
+    percentualMargemFallback: Number(r.percentualMargemFallback),
+    cacMaximo: r.cacMaximo != null ? Number(r.cacMaximo) : null,
+    custoReativacaoMaximo: r.custoReativacaoMaximo != null ? Number(r.custoReativacaoMaximo) : null,
+    roiMinimoPct: r.roiMinimoPct != null ? Number(r.roiMinimoPct) : null,
+    ticketMedioMinimo: r.ticketMedioMinimo != null ? Number(r.ticketMedioMinimo) : null,
+    metaClientesNovosMes: r.metaClientesNovosMes,
+    metaClientesReativadosMes: r.metaClientesReativadosMes,
+    aumentoMaximoCacMensalPct: r.aumentoMaximoCacMensalPct != null ? Number(r.aumentoMaximoCacMensalPct) : null,
+    janelaAtribuicaoDias: r.janelaAtribuicaoDias,
+    direcionadorRateio: r.direcionadorRateio,
+    custosFinanceirosIncluemMarketing: r.custosFinanceirosIncluemMarketing
+  };
+}
+var configInputSchema = z7.object({
+  mesesInatividadeReativacao: z7.number().min(1).max(24),
+  percentualMargemFallback: z7.number().min(0).max(100),
+  cacMaximo: z7.number().min(0).nullable(),
+  custoReativacaoMaximo: z7.number().min(0).nullable(),
+  roiMinimoPct: z7.number().nullable(),
+  ticketMedioMinimo: z7.number().min(0).nullable(),
+  metaClientesNovosMes: z7.number().int().min(0).nullable(),
+  metaClientesReativadosMes: z7.number().int().min(0).nullable(),
+  aumentoMaximoCacMensalPct: z7.number().nullable(),
+  janelaAtribuicaoDias: z7.number().int().min(0),
+  direcionadorRateio: z7.enum(["pedidos", "faturamento", "custo_direto", "rateio_erp", "personalizado"]),
+  custosFinanceirosIncluemMarketing: z7.boolean()
+});
+function configParaLinhaBanco(input) {
+  return {
+    mesesInatividadeReativacao: input.mesesInatividadeReativacao,
+    percentualMargemFallback: String(input.percentualMargemFallback),
+    cacMaximo: input.cacMaximo != null ? String(input.cacMaximo) : null,
+    custoReativacaoMaximo: input.custoReativacaoMaximo != null ? String(input.custoReativacaoMaximo) : null,
+    roiMinimoPct: input.roiMinimoPct != null ? String(input.roiMinimoPct) : null,
+    ticketMedioMinimo: input.ticketMedioMinimo != null ? String(input.ticketMedioMinimo) : null,
+    metaClientesNovosMes: input.metaClientesNovosMes,
+    metaClientesReativadosMes: input.metaClientesReativadosMes,
+    aumentoMaximoCacMensalPct: input.aumentoMaximoCacMensalPct != null ? String(input.aumentoMaximoCacMensalPct) : null,
+    janelaAtribuicaoDias: input.janelaAtribuicaoDias,
+    direcionadorRateio: input.direcionadorRateio,
+    custosFinanceirosIncluemMarketing: input.custosFinanceirosIncluemMarketing
+  };
+}
+var toNum2 = (v) => v == null ? null : Number(v);
+function isCanceladaNormal(os) {
+  if (os.tipoOs == null) return false;
+  const tipo = (os.tipoOs ?? "").toLowerCase();
+  if (tipo.startsWith("retrabalho") || tipo === "amostra" || tipo === "cortesia") return false;
+  return (os.status ?? "").toLowerCase() === "cancelada";
+}
+var marketingFinanceiroRouter = router({
+  // ─── Configuração (metas, semáforos, parâmetros) ───────────────────────────
+  getConfig: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    return buscarConfig(db5);
+  }),
+  saveConfig: protectedProcedure.input(configInputSchema).mutation(async ({ input, ctx }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB unavailable");
+    const usuario = { usuarioId: ctx.user?.id ?? null, usuarioNome: ctx.user?.name ?? null, usuarioRole: ctx.user?.role ?? null };
+    const data = configParaLinhaBanco(input);
+    const existing = await db5.select().from(marketingConfig).limit(1);
+    if (existing.length > 0) {
+      await db5.update(marketingConfig).set(data).where(eq10(marketingConfig.id, existing[0].id));
+      insertAuditLogMarketingConfig({ acao: "EDICAO", ...usuario, valoresAnteriores: existing[0], valoresNovos: { ...existing[0], ...data } }).catch(() => {
+      });
+    } else {
+      const [result] = await db5.insert(marketingConfig).values(data).returning({ id: marketingConfig.id });
+      insertAuditLogMarketingConfig({ acao: "CRIACAO", ...usuario, valoresAnteriores: null, valoresNovos: { id: result.id, ...data } }).catch(() => {
+      });
+    }
+    return buscarConfig(db5);
+  }),
+  getAuditoriaConfig: protectedProcedure.query(async () => {
+    const { listAuditLogsMarketingConfig: listAuditLogsMarketingConfig2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    return listAuditLogsMarketingConfig2();
+  }),
+  // ─── Relatório anual (Aba Marketing, Clientes e Receita) ───────────────────
+  getRelatorioAno: publicProcedure.input(z7.object({
+    ano: z7.number().min(2020),
+    // Filtros gerenciais opcionais — o investimento em marketing (mensal,
+    // não quebrado por vendedor/cidade) não muda com esses filtros, só o
+    // faturamento/margem/clientes resultantes. Ver tooltip no client.
+    vendedor: z7.string().nullable().optional(),
+    cidade: z7.string().nullable().optional()
+  })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    const config = await buscarConfig(db5);
+    if (!db5) {
+      return { meses: [], reativacaoAnual: { clientesReativadosUnicosAno: 0, eventosReativacaoAno: 0 }, config, origem: "indisponivel" };
+    }
+    const [classificadasBrutas, custoMarketingRows] = await Promise.all([
+      classificarAno(db5, input.ano, config.mesesInatividadeReativacao),
+      db5.select().from(custoMarketing).where(eq10(custoMarketing.ano, input.ano))
+    ]);
+    const custoMktMap = new Map(custoMarketingRows.map((r) => [r.mes, r]));
+    const classificadas = classificadasBrutas.filter(
+      (c) => (input.vendedor == null || c.vendedor === input.vendedor) && (input.cidade == null || c.cidade === input.cidade)
+    );
+    const now = /* @__PURE__ */ new Date();
+    const mesLimite = input.ano === now.getFullYear() ? now.getMonth() + 1 : 12;
+    const meses = [];
+    for (let mes = 1; mes <= mesLimite; mes++) {
+      const resumo = agregarMes(mes, input.ano, classificadas, config.percentualMargemFallback);
+      const mk = custoMktMap.get(mes);
+      const investimentoAquisicao = toNum2(mk?.investimentoAquisicao);
+      const investimentoReativacao = toNum2(mk?.investimentoReativacao);
+      const mesParcial = input.ano === now.getFullYear() && mes === now.getMonth() + 1;
+      const resultadoNovo = calcularResultadoGrupo(investimentoAquisicao, resumo.porCategoria.novo.margem.margemTotal, resumo.porCategoria.novo.faturamento);
+      const resultadoReativado = calcularResultadoGrupo(investimentoReativacao, resumo.porCategoria.reativado.margem.margemTotal, resumo.porCategoria.reativado.faturamento);
+      const consolidado = calcularResultadoConsolidado([
+        { investimento: investimentoAquisicao, margemContribuicao: resumo.porCategoria.novo.margem.margemTotal },
+        { investimento: investimentoReativacao, margemContribuicao: resumo.porCategoria.reativado.margem.margemTotal }
+      ]);
+      meses.push({
+        mes,
+        ano: input.ano,
+        mesParcial,
+        investimentoAquisicao,
+        investimentoReativacao,
+        investimentoTotal: investimentoAquisicao == null && investimentoReativacao == null ? null : (investimentoAquisicao ?? 0) + (investimentoReativacao ?? 0),
+        novo: { ...resumo.porCategoria.novo, ...resultadoNovo, cacPonderado: cacPonderado(investimentoAquisicao, resumo.porCategoria.novo.qtdClientesUnicos) },
+        recorrenteAtivo: resumo.porCategoria.recorrenteAtivo,
+        reativado: { ...resumo.porCategoria.reativado, ...resultadoReativado, custoReativacaoPonderado: custoReativacaoPonderado(investimentoReativacao, resumo.porCategoria.reativado.qtdClientesUnicos) },
+        naoClassificado: resumo.porCategoria.naoClassificado,
+        faturamentoTotalValido: resumo.faturamentoTotalValido,
+        consolidado
+      });
+    }
+    const reativacaoAnual = calcularReativacaoAnual(classificadas);
+    return { meses, reativacaoAnual, config, origem: "local" };
+  }),
+  // ─── Opções de filtro (vendedor/cidade disponíveis no ano) ─────────────────
+  getFiltrosDisponiveis: publicProcedure.input(z7.object({ ano: z7.number().min(2020) })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return { vendedores: [], cidades: [] };
+    const rows = await db5.select({ vendedor: historicoOs.vendedor, cidade: historicoOs.cidade }).from(historicoOs).where(eq10(historicoOs.ano, input.ano));
+    const vendedores = /* @__PURE__ */ new Set();
+    const cidades = /* @__PURE__ */ new Set();
+    for (const r of rows) {
+      if (r.vendedor) vendedores.add(r.vendedor);
+      if (r.cidade) cidades.add(r.cidade);
+    }
+    return { vendedores: [...vendedores].sort(), cidades: [...cidades].sort() };
+  }),
+  // ─── Drill-down (detalhamento de pedidos) ──────────────────────────────────
+  getDetalhamentoPedidos: publicProcedure.input(z7.object({
+    ano: z7.number().min(2020),
+    mes: z7.number().min(1).max(12).nullable().optional(),
+    categoria: z7.enum(["novo", "recorrenteAtivo", "reativado", "naoClassificado"]).nullable().optional(),
+    vendedor: z7.string().nullable().optional(),
+    cidade: z7.string().nullable().optional(),
+    estado: z7.string().nullable().optional()
+  })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const config = await buscarConfig(db5);
+    const classificadas = await classificarAno(db5, input.ano, config.mesesInatividadeReativacao);
+    return classificadas.filter(
+      (c) => (input.mes == null || c.mes === input.mes) && (input.categoria == null || c.categoria === input.categoria) && (input.vendedor == null || c.vendedor === input.vendedor) && (input.cidade == null || c.cidade === input.cidade) && (input.estado == null || c.estado === input.estado)
+    );
+  }),
+  // ─── Mediana / outliers do período ─────────────────────────────────────────
+  getMedianaOutliers: publicProcedure.input(z7.object({ ano: z7.number().min(2020), mes: z7.number().min(1).max(12).nullable().optional(), categoria: z7.enum(["novo", "reativado"]).nullable().optional() })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return null;
+    const config = await buscarConfig(db5);
+    const classificadas = await classificarAno(db5, input.ano, config.mesesInatividadeReativacao);
+    const filtradas = classificadas.filter(
+      (c) => (input.mes == null || c.mes === input.mes) && (input.categoria == null ? c.categoria === "novo" || c.categoria === "reativado" : c.categoria === input.categoria)
+    );
+    const valores = filtradas.map((c) => c.valorOs);
+    return {
+      qtdPedidos: valores.length,
+      ticketMedio: valores.length ? Math.round(valores.reduce((s, v) => s + v, 0) / valores.length * 100) / 100 : null,
+      ticketMediano: mediana2(valores),
+      maiorPedido: valores.length ? Math.max(...valores) : null,
+      participacaoTop5: participacaoTopN(valores, 5)
+    };
+  }),
+  // ─── Resultado Geral e Ponto de Equilíbrio (Parte 2) ───────────────────────
+  getResultadoGeralAno: publicProcedure.input(z7.object({ ano: z7.number().min(2020) })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    const config = await buscarConfig(db5);
+    if (!db5) return { meses: [], config, origem: "indisponivel" };
+    const [finRows, dreRows, mktRows, osAno] = await Promise.all([
+      db5.select().from(financeiroMensal).where(eq10(financeiroMensal.ano, input.ano)),
+      db5.select().from(dreMensal).where(eq10(dreMensal.ano, input.ano)),
+      db5.select().from(custoMarketing).where(eq10(custoMarketing.ano, input.ano)),
+      db5.select({
+        mes: historicoOs.mes,
+        ano: historicoOs.ano,
+        tipoOs: historicoOs.tipoOs,
+        status: historicoOs.status,
+        valorOs: historicoOs.valorOs,
+        valorTotal: historicoOs.valorTotal,
+        empresa: historicoOs.empresa
+      }).from(historicoOs).where(eq10(historicoOs.ano, input.ano))
+    ]);
+    const finMap = new Map(finRows.map((r) => [r.mes, r]));
+    const dreMap = new Map(dreRows.map((r) => [r.mes, r]));
+    const mktMap = new Map(mktRows.map((r) => [r.mes, r]));
+    const porMes = /* @__PURE__ */ new Map();
+    for (const os of osAno) {
+      const acc = porMes.get(os.mes) ?? { qtdPedidos: 0, faturamento: 0, cancelamentos: 0, clientes: /* @__PURE__ */ new Set(), valores: [] };
+      if (isOsNormalDb(os)) {
+        const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+        acc.qtdPedidos++;
+        acc.faturamento += valor;
+        acc.valores.push(valor);
+        const chave = normalizeEmpresaKey(os.empresa ?? "");
+        if (chave) acc.clientes.add(chave);
+      } else if (isCanceladaNormal(os)) {
+        acc.cancelamentos += parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+      }
+      porMes.set(os.mes, acc);
+    }
+    const now = /* @__PURE__ */ new Date();
+    const mesLimite = input.ano === now.getFullYear() ? now.getMonth() + 1 : 12;
+    const meses = [];
+    for (let mes = 1; mes <= mesLimite; mes++) {
+      const fin = finMap.get(mes);
+      const dre = dreMap.get(mes);
+      const mkt = mktMap.get(mes);
+      const opsMes = porMes.get(mes) ?? { qtdPedidos: 0, faturamento: 0, cancelamentos: 0, clientes: /* @__PURE__ */ new Set(), valores: [] };
+      const mesParcial = input.ano === now.getFullYear() && mes === now.getMonth() + 1;
+      const faturamentoLiquido = toNum2(fin?.faturamentoOficial) ?? (dre?.receitaBrutaOperacional != null ? Number(dre.receitaBrutaOperacional) : null);
+      const custosVariaveis = toNum2(fin?.despesasVariaveis) ?? (dre?.despesaVariavel != null ? Number(dre.despesaVariavel) : null);
+      const custosFixos2 = toNum2(fin?.despesasFixas);
+      const investimentoMarketingBruto = (toNum2(mkt?.investimentoAquisicao) ?? 0) + (toNum2(mkt?.investimentoReativacao) ?? 0);
+      const investimentoMarketing = config.custosFinanceirosIncluemMarketing ? 0 : investimentoMarketingBruto;
+      const ponte = montarPonteResultado({
+        faturamentoBruto: faturamentoLiquido != null ? faturamentoLiquido + opsMes.cancelamentos : null,
+        cancelamentosInformativo: opsMes.cancelamentos || null,
+        faturamentoLiquido,
+        custosVariaveis,
+        investimentoMarketing,
+        custosFixos: custosFixos2,
+        // financeiro_mensal não tem despesasFinanceiras própria hoje — só dre_mensal
+        // tem a coluna, e ela nunca é preenchida pelo backfill (não vem do ERP de
+        // vendas, só de folha/banco) — ver Parte 2 "O que fica fora por falta de dado".
+        despesasFinanceiras: dre?.despesasFinanceiras != null ? Number(dre.despesasFinanceiras) : null,
+        despesasNaoOperacionais: null,
+        receitasNaoOperacionais: null
+      });
+      const pontoEquilibrio = calcularPontoEquilibrio(
+        custosFixos2,
+        investimentoMarketing,
+        ponte.margemContribuicaoPct,
+        faturamentoLiquido,
+        opsMes.qtdPedidos > 0 ? opsMes.faturamento / opsMes.qtdPedidos : null
+      );
+      const margemRealPct = ponte.margemContribuicaoPct;
+      const desvioMargem = calcularDesvioMargem(config.percentualMargemFallback / 100, margemRealPct, faturamentoLiquido);
+      const porFuncionario = calcularIndicadoresPorFuncionario(faturamentoLiquido, ponte.margemContribuicao, ponte.resultadoOperacional, fin?.numColaboradores);
+      meses.push({
+        mes,
+        ano: input.ano,
+        mesParcial,
+        qtdPedidos: opsMes.qtdPedidos,
+        qtdClientesUnicos: opsMes.clientes.size,
+        ticketMedio: opsMes.qtdPedidos > 0 ? Math.round(opsMes.faturamento / opsMes.qtdPedidos * 100) / 100 : null,
+        ticketMediano: mediana2(opsMes.valores),
+        maiorPedido: opsMes.valores.length ? Math.max(...opsMes.valores) : null,
+        participacaoTop5: participacaoTopN(opsMes.valores, 5),
+        ponte,
+        investimentoMarketingBruto,
+        custosFinanceirosIncluemMarketing: config.custosFinanceirosIncluemMarketing,
+        pontoEquilibrio,
+        desvioMargem,
+        porFuncionario,
+        custoFixoMedioPorPedido: custoFixoMedioPorPedido(custosFixos2, opsMes.qtdPedidos),
+        resultadoMedioPorPedido: resultadoMedioPorPedido(ponte.resultadoOperacional, opsMes.qtdPedidos),
+        origemDados: {
+          faturamentoLiquido: fin?.faturamentoOficial != null ? "real" : dre?.receitaBrutaOperacional != null ? "rateado" : "sem-dado",
+          custosVariaveis: fin?.despesasVariaveis != null ? "real" : dre?.despesaVariavel != null ? "rateado" : "sem-dado",
+          custosFixos: fin?.despesasFixas != null ? "real" : "sem-dado"
+        }
+      });
+    }
+    return { meses, config, origem: "local" };
+  }),
+  // ─── Resultado por vendedor (reaproveita calcularRadarMargens) ─────────────
+  getResultadoPorVendedor: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const { vendedores } = await calcularRadarMargens(db5);
+    return vendedores;
+  }),
+  // ─── Rateio de custo fixo por dimensão (gerencial) ─────────────────────────
+  getRateioCustoFixoPorVendedor: publicProcedure.input(z7.object({ ano: z7.number().min(2020), mes: z7.number().min(1).max(12) })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return {};
+    const config = await buscarConfig(db5);
+    const [finRow] = await db5.select().from(financeiroMensal).where(and8(eq10(financeiroMensal.ano, input.ano), eq10(financeiroMensal.mes, input.mes))).limit(1);
+    const custosFixosTotais = toNum2(finRow?.despesasFixas);
+    if (custosFixosTotais == null) return {};
+    const osMes = await db5.select({
+      vendedor: historicoOs.vendedor,
+      tipoOs: historicoOs.tipoOs,
+      status: historicoOs.status,
+      valorOs: historicoOs.valorOs,
+      valorTotal: historicoOs.valorTotal,
+      custoFixo: historicoOs.custoFixo
+    }).from(historicoOs).where(and8(eq10(historicoOs.ano, input.ano), eq10(historicoOs.mes, input.mes)));
+    const porVendedor = /* @__PURE__ */ new Map();
+    for (const os of osMes) {
+      if (!isOsNormalDb(os)) continue;
+      const vendedor = os.vendedor || "Sem vendedor";
+      const acc = porVendedor.get(vendedor) ?? { qtdPedidos: 0, faturamento: 0, custoDireto: 0, rateadoErp: 0 };
+      acc.qtdPedidos++;
+      acc.faturamento += parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
+      acc.rateadoErp += parseFloat(String(os.custoFixo ?? "0")) || 0;
+      porVendedor.set(vendedor, acc);
+    }
+    const dimensoes = [...porVendedor.entries()].map(([chave, v]) => ({
+      chave,
+      valorDirecionador: config.direcionadorRateio === "pedidos" ? v.qtdPedidos : config.direcionadorRateio === "custo_direto" ? v.custoDireto : v.faturamento,
+      valorJaRateado: v.rateadoErp
+    }));
+    return ratearCustoFixo(custosFixosTotais, config.direcionadorRateio, dimensoes);
+  }),
+  // ─── Conciliação (novo + recorrente ativo + reativado + não-classificado = faturamento oficial) ──
+  getConciliacaoAno: publicProcedure.input(z7.object({ ano: z7.number().min(2020) })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) return [];
+    const config = await buscarConfig(db5);
+    const [classificadas, finRows] = await Promise.all([
+      classificarAno(db5, input.ano, config.mesesInatividadeReativacao),
+      db5.select().from(financeiroMensal).where(eq10(financeiroMensal.ano, input.ano))
+    ]);
+    const finMap = new Map(finRows.map((r) => [r.mes, r]));
+    const now = /* @__PURE__ */ new Date();
+    const mesLimite = input.ano === now.getFullYear() ? now.getMonth() + 1 : 12;
+    const resultado = [];
+    for (let mes = 1; mes <= mesLimite; mes++) {
+      const resumo = agregarMes(mes, input.ano, classificadas, config.percentualMargemFallback);
+      const faturamentoOficial = toNum2(finMap.get(mes)?.faturamentoOficial);
+      if (faturamentoOficial == null) {
+        resultado.push({ mes, ano: input.ano, disponivel: false });
+        continue;
+      }
+      const valoresPorCategoria = [
+        resumo.porCategoria.novo.faturamento,
+        resumo.porCategoria.recorrenteAtivo.faturamento,
+        resumo.porCategoria.reativado.faturamento,
+        resumo.porCategoria.naoClassificado.faturamento
+      ];
+      resultado.push({ mes, ano: input.ano, disponivel: true, ...conciliar(faturamentoOficial, valoresPorCategoria) });
+    }
+    return resultado;
   })
 });
 
 // server/routers/observacoesFinanceiras.ts
-import { z as z5 } from "zod";
+init_trpc();
 init_db();
 init_schema();
 init_llm();
-import { eq as eq7, and as and6, gte as gte3, lt as lt2 } from "drizzle-orm";
+import { z as z8 } from "zod";
+import { eq as eq11, and as and9, gte as gte4, lt as lt2 } from "drizzle-orm";
 function mesRange(mes, ano) {
   const inicio = new Date(ano, mes - 1, 1);
   const fim = new Date(ano, mes, 1);
   return { inicio, fim };
 }
-function fmtR(v) {
+function fmtR2(v) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 var observacoesFinanceirasRouter = router({
   // Carregar observações de um mês
-  get: protectedProcedure.input(z5.object({ mes: z5.number(), ano: z5.number() })).query(async ({ input }) => {
+  get: protectedProcedure.input(z8.object({ mes: z8.number(), ano: z8.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return null;
-    const rows = await db5.select().from(observacoesFinanceirasMensais).where(and6(
-      eq7(observacoesFinanceirasMensais.mes, input.mes),
-      eq7(observacoesFinanceirasMensais.ano, input.ano)
+    const rows = await db5.select().from(observacoesFinanceirasMensais).where(and9(
+      eq11(observacoesFinanceirasMensais.mes, input.mes),
+      eq11(observacoesFinanceirasMensais.ano, input.ano)
     )).limit(1);
     return rows[0] ?? null;
   }),
   // Salvar observações manuais
-  salvar: protectedProcedure.input(z5.object({
-    mes: z5.number(),
-    ano: z5.number(),
-    observacoesManuais: z5.string().optional(),
-    contextosEspecificos: z5.string().optional()
+  salvar: protectedProcedure.input(z8.object({
+    mes: z8.number(),
+    ano: z8.number(),
+    observacoesManuais: z8.string().optional(),
+    contextosEspecificos: z8.string().optional()
     // JSON string
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
-    const existing = await db5.select().from(observacoesFinanceirasMensais).where(and6(
-      eq7(observacoesFinanceirasMensais.mes, input.mes),
-      eq7(observacoesFinanceirasMensais.ano, input.ano)
+    const existing = await db5.select().from(observacoesFinanceirasMensais).where(and9(
+      eq11(observacoesFinanceirasMensais.mes, input.mes),
+      eq11(observacoesFinanceirasMensais.ano, input.ano)
     )).limit(1);
     if (existing.length > 0) {
       await db5.update(observacoesFinanceirasMensais).set({
         observacoesManuais: input.observacoesManuais ?? null,
         contextosEspecificos: input.contextosEspecificos ?? null
-      }).where(eq7(observacoesFinanceirasMensais.id, existing[0].id));
+      }).where(eq11(observacoesFinanceirasMensais.id, existing[0].id));
     } else {
       await db5.insert(observacoesFinanceirasMensais).values({
         mes: input.mes,
@@ -6410,11 +12282,11 @@ var observacoesFinanceirasRouter = router({
     return { ok: true };
   }),
   // Buscar dados complementares do mês (custos fixos, transportadoras, embalagem)
-  getDadosComplementares: protectedProcedure.input(z5.object({ mes: z5.number(), ano: z5.number() })).query(async ({ input }) => {
+  getDadosComplementares: protectedProcedure.input(z8.object({ mes: z8.number(), ano: z8.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return null;
     const { inicio, fim } = mesRange(input.mes, input.ano);
-    const cfAtivos = await db5.select().from(custosFixos).where(eq7(custosFixos.ativo, true));
+    const cfAtivos = await db5.select().from(custosFixos).where(eq11(custosFixos.ativo, true));
     const totalCustosFixosPrevistos = cfAtivos.reduce((sum, cf) => sum + Number(cf.valor || 0), 0);
     const custosFixosPorCategoria = cfAtivos.reduce((acc, cf) => {
       const cat = cf.grupoCategoria || "Outros";
@@ -6422,13 +12294,13 @@ var observacoesFinanceirasRouter = router({
       acc[cat] += Number(cf.valor || 0);
       return acc;
     }, {});
-    const dreRows = await db5.select().from(dreMensal).where(and6(eq7(dreMensal.ano, input.ano), eq7(dreMensal.mes, input.mes))).limit(1);
+    const dreRows = await db5.select().from(dreMensal).where(and9(eq11(dreMensal.ano, input.ano), eq11(dreMensal.mes, input.mes))).limit(1);
     const dre = dreRows[0] ?? null;
     const custosFixosReais = dre ? Number(dre.despesasFixas || 0) : 0;
-    const finRows = await db5.select().from(financeiroMensal).where(and6(eq7(financeiroMensal.mes, input.mes), eq7(financeiroMensal.ano, input.ano))).limit(1);
+    const finRows = await db5.select().from(financeiroMensal).where(and9(eq11(financeiroMensal.mes, input.mes), eq11(financeiroMensal.ano, input.ano))).limit(1);
     const fin = finRows[0] ?? null;
-    const cteRows = await db5.select().from(cteImportacoes).where(and6(
-      gte3(cteImportacoes.dataEmissao, inicio),
+    const cteRows = await db5.select().from(cteImportacoes).where(and9(
+      gte4(cteImportacoes.dataEmissao, inicio),
       lt2(cteImportacoes.dataEmissao, fim)
     ));
     const totalTransportadoras = cteRows.reduce((sum, c) => sum + Number(c.valor || 0), 0);
@@ -6439,8 +12311,8 @@ var observacoesFinanceirasRouter = router({
       acc[nome].qtd += 1;
       return acc;
     }, {});
-    const pedidosFinalizados = await db5.select().from(empacotamentoPedidos).where(and6(
-      gte3(empacotamentoPedidos.finalizadoEm, inicio),
+    const pedidosFinalizados = await db5.select().from(empacotamentoPedidos).where(and9(
+      gte4(empacotamentoPedidos.finalizadoEm, inicio),
       lt2(empacotamentoPedidos.finalizadoEm, fim)
     ));
     const consumos = await db5.select().from(empacotamentoConsumoCaixa);
@@ -6520,27 +12392,27 @@ var observacoesFinanceirasRouter = router({
     };
   }),
   // Gerar análise por IA
-  gerarAnalise: protectedProcedure.input(z5.object({ mes: z5.number(), ano: z5.number() })).mutation(async ({ input }) => {
+  gerarAnalise: protectedProcedure.input(z8.object({ mes: z8.number(), ano: z8.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
-    const MESES_NOMES2 = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-    const obsRows = await db5.select().from(observacoesFinanceirasMensais).where(and6(
-      eq7(observacoesFinanceirasMensais.mes, input.mes),
-      eq7(observacoesFinanceirasMensais.ano, input.ano)
+    const MESES_NOMES3 = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const obsRows = await db5.select().from(observacoesFinanceirasMensais).where(and9(
+      eq11(observacoesFinanceirasMensais.mes, input.mes),
+      eq11(observacoesFinanceirasMensais.ano, input.ano)
     )).limit(1);
     const obs = obsRows[0];
     const observacoesManuais = obs?.observacoesManuais || "";
     const contextosEspecificos = obs?.contextosEspecificos || "[]";
     const { inicio, fim } = mesRange(input.mes, input.ano);
-    const dreRows = await db5.select().from(dreMensal).where(and6(eq7(dreMensal.ano, input.ano), eq7(dreMensal.mes, input.mes))).limit(1);
+    const dreRows = await db5.select().from(dreMensal).where(and9(eq11(dreMensal.ano, input.ano), eq11(dreMensal.mes, input.mes))).limit(1);
     const dre = dreRows[0];
-    const finRows = await db5.select().from(financeiroMensal).where(and6(eq7(financeiroMensal.mes, input.mes), eq7(financeiroMensal.ano, input.ano))).limit(1);
+    const finRows = await db5.select().from(financeiroMensal).where(and9(eq11(financeiroMensal.mes, input.mes), eq11(financeiroMensal.ano, input.ano))).limit(1);
     const fin = finRows[0];
-    const cfAtivos = await db5.select().from(custosFixos).where(eq7(custosFixos.ativo, true));
+    const cfAtivos = await db5.select().from(custosFixos).where(eq11(custosFixos.ativo, true));
     const totalCFPrevistos = cfAtivos.reduce((s, c) => s + Number(c.valor || 0), 0);
-    const cteRows = await db5.select().from(cteImportacoes).where(and6(gte3(cteImportacoes.dataEmissao, inicio), lt2(cteImportacoes.dataEmissao, fim)));
+    const cteRows = await db5.select().from(cteImportacoes).where(and9(gte4(cteImportacoes.dataEmissao, inicio), lt2(cteImportacoes.dataEmissao, fim)));
     const totalTransp = cteRows.reduce((s, c) => s + Number(c.valor || 0), 0);
-    const pedidos = await db5.select().from(empacotamentoPedidos).where(and6(gte3(empacotamentoPedidos.finalizadoEm, inicio), lt2(empacotamentoPedidos.finalizadoEm, fim)));
+    const pedidos = await db5.select().from(empacotamentoPedidos).where(and9(gte4(empacotamentoPedidos.finalizadoEm, inicio), lt2(empacotamentoPedidos.finalizadoEm, fim)));
     const consumos = await db5.select().from(empacotamentoConsumoCaixa);
     const insumosAll = await db5.select().from(empacotamentoInsumos);
     const insumosMap = new Map(insumosAll.map((i) => [i.id, i]));
@@ -6562,46 +12434,46 @@ var observacoesFinanceirasRouter = router({
     }
     const prompt = `Voc\xEA \xE9 um analista financeiro s\xEAnior da empresa Letreiros Express, uma ind\xFAstria de comunica\xE7\xE3o visual (letreiros, placas, pain\xE9is de LED).
 
-Analise detalhadamente o m\xEAs de ${MESES_NOMES2[input.mes]}/${input.ano} com base nos dados abaixo e nas observa\xE7\xF5es do gestor.
+Analise detalhadamente o m\xEAs de ${MESES_NOMES3[input.mes]}/${input.ano} com base nos dados abaixo e nas observa\xE7\xF5es do gestor.
 
 ## DADOS FINANCEIROS DO M\xCAS
 
 ### DRE (Demonstrativo de Resultado)
-${dre ? `- Receita Operacional Bruta: ${fmtR(Number(dre.receitaOperacionalBruta || 0))}
-- Total de Entradas: ${fmtR(Number(dre.totalEntradas || 0))}
-- Impostos sobre Vendas: ${fmtR(Number(dre.impostosVendas || 0))}
-- Mat\xE9ria-Prima: ${fmtR(Number(dre.materiaPrima || 0))}
-- Despesas com Pessoal: ${fmtR(Number(dre.despesasPessoal || 0))}
-- Despesas Fixas: ${fmtR(Number(dre.despesasFixas || 0))}
-- Despesas Financeiras: ${fmtR(Number(dre.despesasFinanceiras || 0))}
-- Total de Sa\xEDdas: ${fmtR(Number(dre.totalSaidas || 0))}
-- Lucro Bruto: ${fmtR(Number(dre.lucroBruto || 0))}
-- Lucro Operacional: ${fmtR(Number(dre.lucroOperacional || 0))}
-- Lucro L\xEDquido: ${fmtR(Number(dre.lucroLiquido || 0))}` : "Dados da DRE n\xE3o dispon\xEDveis para este m\xEAs."}
+${dre ? `- Receita Operacional Bruta: ${fmtR2(Number(dre.receitaOperacionalBruta || 0))}
+- Total de Entradas: ${fmtR2(Number(dre.totalEntradas || 0))}
+- Impostos sobre Vendas: ${fmtR2(Number(dre.impostosVendas || 0))}
+- Mat\xE9ria-Prima: ${fmtR2(Number(dre.materiaPrima || 0))}
+- Despesas com Pessoal: ${fmtR2(Number(dre.despesasPessoal || 0))}
+- Despesas Fixas: ${fmtR2(Number(dre.despesasFixas || 0))}
+- Despesas Financeiras: ${fmtR2(Number(dre.despesasFinanceiras || 0))}
+- Total de Sa\xEDdas: ${fmtR2(Number(dre.totalSaidas || 0))}
+- Lucro Bruto: ${fmtR2(Number(dre.lucroBruto || 0))}
+- Lucro Operacional: ${fmtR2(Number(dre.lucroOperacional || 0))}
+- Lucro L\xEDquido: ${fmtR2(Number(dre.lucroLiquido || 0))}` : "Dados da DRE n\xE3o dispon\xEDveis para este m\xEAs."}
 
 ### Financeiro Mensal
-${fin ? `- Faturamento Oficial: ${fmtR(Number(fin.faturamentoOficial || 0))}
-- Despesas Fixas (lan\xE7adas): ${fmtR(Number(fin.despesasFixas || 0))}
-- Despesas Vari\xE1veis: ${fmtR(Number(fin.despesasVariaveis || 0))}
-- Lucro L\xEDquido: ${fmtR(Number(fin.lucroLiquido || 0))}
-- Resultado Efetivo: ${fmtR(Number(fin.resultadoEfetivo || 0))}
-- Saldo do M\xEAs (caixa): ${fmtR(Number(fin.saldoMes || 0))}
-- DAS (Simples Nacional): ${fmtR(Number(fin.impostoDas || 0))}
-- ICMS DIFAL: ${fmtR(Number(fin.impostoIcmsDifal || 0))}
-- Frete de Retrabalho: ${fmtR(Number(fin.freteRetrabalho || 0))}` : "Dados financeiros n\xE3o dispon\xEDveis para este m\xEAs."}
+${fin ? `- Faturamento Oficial: ${fmtR2(Number(fin.faturamentoOficial || 0))}
+- Despesas Fixas (lan\xE7adas): ${fmtR2(Number(fin.despesasFixas || 0))}
+- Despesas Vari\xE1veis: ${fmtR2(Number(fin.despesasVariaveis || 0))}
+- Lucro L\xEDquido: ${fmtR2(Number(fin.lucroLiquido || 0))}
+- Resultado Efetivo: ${fmtR2(Number(fin.resultadoEfetivo || 0))}
+- Saldo do M\xEAs (caixa): ${fmtR2(Number(fin.saldoMes || 0))}
+- DAS (Simples Nacional): ${fmtR2(Number(fin.impostoDas || 0))}
+- ICMS DIFAL: ${fmtR2(Number(fin.impostoIcmsDifal || 0))}
+- Frete de Retrabalho: ${fmtR2(Number(fin.freteRetrabalho || 0))}` : "Dados financeiros n\xE3o dispon\xEDveis para este m\xEAs."}
 
 ### Custos Fixos: Previsto vs Real
-- Total Previsto (cadastro ativo): ${fmtR(totalCFPrevistos)}
-- Total Real (DRE): ${fmtR(Number(dre?.despesasFixas || 0))}
-- Varia\xE7\xE3o: ${fmtR(Number(dre?.despesasFixas || 0) - totalCFPrevistos)} (${Number(dre?.despesasFixas || 0) > totalCFPrevistos ? "ACIMA do previsto" : "abaixo do previsto"})
+- Total Previsto (cadastro ativo): ${fmtR2(totalCFPrevistos)}
+- Total Real (DRE): ${fmtR2(Number(dre?.despesasFixas || 0))}
+- Varia\xE7\xE3o: ${fmtR2(Number(dre?.despesasFixas || 0) - totalCFPrevistos)} (${Number(dre?.despesasFixas || 0) > totalCFPrevistos ? "ACIMA do previsto" : "abaixo do previsto"})
 
 ### Gastos com Transportadoras
-- Total gasto: ${fmtR(totalTransp)}
+- Total gasto: ${fmtR2(totalTransp)}
 - Quantidade de CTe emitidos: ${cteRows.length}
 ${cteRows.length > 0 ? `- Observa\xE7\xE3o: Os fretes s\xE3o CIF (pagos pela empresa), mas o valor do frete \xE9 cobrado do cliente \xE0 vista. Quando o faturamento do m\xEAs anterior \xE9 alto, os fretes do m\xEAs seguinte tamb\xE9m ser\xE3o maiores.` : ""}
 
 ### Custo de Embalagem (Mat\xE9rias-Primas)
-- Total estimado: ${fmtR(custoEmb)}
+- Total estimado: ${fmtR2(custoEmb)}
 - Pedidos embalados no m\xEAs: ${pedidos.length}
 
 ## OBSERVA\xC7\xD5ES DO GESTOR
@@ -6642,7 +12514,7 @@ Use linguagem profissional mas acess\xEDvel. Formate com Markdown (negrito, list
     const rawContent = response.choices?.[0]?.message?.content;
     const analise = typeof rawContent === "string" ? rawContent : "N\xE3o foi poss\xEDvel gerar a an\xE1lise.";
     if (obs) {
-      await db5.update(observacoesFinanceirasMensais).set({ analiseIa: analise }).where(eq7(observacoesFinanceirasMensais.id, obs.id));
+      await db5.update(observacoesFinanceirasMensais).set({ analiseIa: analise }).where(eq11(observacoesFinanceirasMensais.id, obs.id));
     } else {
       await db5.insert(observacoesFinanceirasMensais).values({
         mes: input.mes,
@@ -6655,10 +12527,11 @@ Use linguagem profissional mas acess\xEDvel. Formate com Markdown (negrito, list
 });
 
 // server/routers/bibliotecaArquivos.ts
+init_trpc();
 init_db();
 init_schema();
-import { z as z6 } from "zod";
-import { eq as eq8, desc as desc6, sql as sql5 } from "drizzle-orm";
+import { z as z9 } from "zod";
+import { eq as eq12, desc as desc7, sql as sql6 } from "drizzle-orm";
 var MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 var MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 var MIME_XLS = "application/vnd.ms-excel";
@@ -6674,12 +12547,12 @@ async function extrairTextoDocx(buffer) {
   return value?.trim() || null;
 }
 async function extrairTextoXlsx(buffer) {
-  const XLSX = await import("xlsx");
-  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const XLSX2 = await import("xlsx");
+  const workbook = XLSX2.read(buffer, { type: "buffer" });
   const partes = workbook.SheetNames.map((nomeAba) => {
     const sheet = workbook.Sheets[nomeAba];
     return `# ${nomeAba}
-${XLSX.utils.sheet_to_csv(sheet)}`;
+${XLSX2.utils.sheet_to_csv(sheet)}`;
   });
   const texto = partes.join("\n\n").trim();
   return texto || null;
@@ -6737,13 +12610,13 @@ Este arquivo foi adicionado \xE0 biblioteca de conhecimento da empresa Letreiros
   }
 }
 var bibliotecaArquivosRouter = router({
-  list: publicProcedure.input(z6.object({
-    categoria: z6.string().optional(),
-    busca: z6.string().optional()
+  list: publicProcedure.input(z9.object({
+    categoria: z9.string().optional(),
+    busca: z9.string().optional()
   }).optional()).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
-    const rows = await db5.select().from(bibliotecaArquivos).orderBy(desc6(bibliotecaArquivos.createdAt));
+    const rows = await db5.select().from(bibliotecaArquivos).orderBy(desc7(bibliotecaArquivos.createdAt));
     return rows.filter((r) => {
       if (input?.categoria && input.categoria !== "Todos" && r.categoria !== input.categoria) return false;
       if (input?.busca) {
@@ -6760,18 +12633,18 @@ var bibliotecaArquivosRouter = router({
     const rows = await db5.select({ categoria: bibliotecaArquivos.categoria }).from(bibliotecaArquivos).groupBy(bibliotecaArquivos.categoria).orderBy(bibliotecaArquivos.categoria);
     return rows.map((r) => r.categoria);
   }),
-  upload: protectedProcedure.input(z6.object({
-    nome: z6.string().min(1),
-    descricao: z6.string().optional(),
-    categoria: z6.string().min(1),
-    subcategoria: z6.string().optional(),
-    tags: z6.string().optional(),
-    fileName: z6.string().min(1),
-    url: z6.string().url(),
-    key: z6.string().min(1),
-    mimeType: z6.string().min(1),
-    fileSize: z6.number().int().nonnegative(),
-    uploadedBy: z6.string().optional()
+  upload: protectedProcedure.input(z9.object({
+    nome: z9.string().min(1),
+    descricao: z9.string().optional(),
+    categoria: z9.string().min(1),
+    subcategoria: z9.string().optional(),
+    tags: z9.string().optional(),
+    fileName: z9.string().min(1),
+    url: z9.string().url(),
+    key: z9.string().min(1),
+    mimeType: z9.string().min(1),
+    fileSize: z9.number().int().nonnegative(),
+    uploadedBy: z9.string().optional()
   })).mutation(async ({ input }) => {
     const fileResp = await fetch(input.url);
     const fileBase64 = Buffer.from(await fileResp.arrayBuffer()).toString("base64");
@@ -6802,10 +12675,10 @@ var bibliotecaArquivosRouter = router({
     return { success: true, id: result.id, conteudoExtraido: !!conteudoExtraido };
   }),
   // Re-extrair texto de um arquivo já existente (para arquivos enviados antes desta feature)
-  reextrairTexto: protectedProcedure.input(z6.object({ id: z6.number().int() })).mutation(async ({ input }) => {
+  reextrairTexto: protectedProcedure.input(z9.object({ id: z9.number().int() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    const [arquivo] = await db5.select().from(bibliotecaArquivos).where(eq8(bibliotecaArquivos.id, input.id));
+    const [arquivo] = await db5.select().from(bibliotecaArquivos).where(eq12(bibliotecaArquivos.id, input.id));
     if (!arquivo) throw new Error("Arquivo n\xE3o encontrado");
     const fileResp = await fetch(arquivo.fileUrl);
     if (!fileResp.ok) {
@@ -6819,33 +12692,33 @@ var bibliotecaArquivosRouter = router({
       arquivo.nome,
       arquivo.descricao ?? void 0
     );
-    await db5.update(bibliotecaArquivos).set({ conteudoExtraido }).where(eq8(bibliotecaArquivos.id, input.id));
+    await db5.update(bibliotecaArquivos).set({ conteudoExtraido }).where(eq12(bibliotecaArquivos.id, input.id));
     return { success: true, conteudoExtraido: !!conteudoExtraido };
   }),
-  update: protectedProcedure.input(z6.object({
-    id: z6.number().int(),
-    nome: z6.string().min(1).optional(),
-    descricao: z6.string().optional(),
-    categoria: z6.string().optional(),
-    subcategoria: z6.string().optional(),
-    tags: z6.string().optional()
+  update: protectedProcedure.input(z9.object({
+    id: z9.number().int(),
+    nome: z9.string().min(1).optional(),
+    descricao: z9.string().optional(),
+    categoria: z9.string().optional(),
+    subcategoria: z9.string().optional(),
+    tags: z9.string().optional()
   })).mutation(async ({ input }) => {
     const { id, ...data } = input;
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    await db5.update(bibliotecaArquivos).set(data).where(eq8(bibliotecaArquivos.id, id));
+    await db5.update(bibliotecaArquivos).set(data).where(eq12(bibliotecaArquivos.id, id));
     return { success: true };
   }),
-  delete: protectedProcedure.input(z6.object({ id: z6.number().int() })).mutation(async ({ input }) => {
+  delete: protectedProcedure.input(z9.object({ id: z9.number().int() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    await db5.delete(bibliotecaArquivos).where(eq8(bibliotecaArquivos.id, input.id));
+    await db5.delete(bibliotecaArquivos).where(eq12(bibliotecaArquivos.id, input.id));
     return { success: true };
   }),
-  incrementView: publicProcedure.input(z6.object({ id: z6.number().int() })).mutation(async ({ input }) => {
+  incrementView: publicProcedure.input(z9.object({ id: z9.number().int() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return { success: false };
-    await db5.update(bibliotecaArquivos).set({ visualizacoes: sql5`${bibliotecaArquivos.visualizacoes} + 1` }).where(eq8(bibliotecaArquivos.id, input.id));
+    await db5.update(bibliotecaArquivos).set({ visualizacoes: sql6`${bibliotecaArquivos.visualizacoes} + 1` }).where(eq12(bibliotecaArquivos.id, input.id));
     return { success: true };
   }),
   stats: publicProcedure.query(async () => {
@@ -6864,11 +12737,12 @@ var bibliotecaArquivosRouter = router({
 });
 
 // server/routers/performance.ts
-import { z as z7 } from "zod";
+init_trpc();
 init_db_connection();
 init_schema();
+import { z as z10 } from "zod";
 import { drizzle as drizzle5 } from "drizzle-orm/neon-serverless";
-import { eq as eq9, and as and7, asc as asc2, sql as sql6 } from "drizzle-orm";
+import { eq as eq13, and as and10, asc as asc2, sql as sql7 } from "drizzle-orm";
 var _db4 = null;
 function getDb4() {
   if (!_db4) _db4 = drizzle5(getPool());
@@ -6886,20 +12760,20 @@ var performanceRouter = router({
     return await db3.select().from(performanceMensal).orderBy(asc2(performanceMensal.ano), asc2(performanceMensal.mes));
   }),
   // Buscar um mês específico (inclui retrabalhos automáticos do mês)
-  getByMesAno: publicProcedure.input(z7.object({ mes: z7.number().min(1).max(12), ano: z7.number().min(2020) })).query(async ({ input }) => {
+  getByMesAno: publicProcedure.input(z10.object({ mes: z10.number().min(1).max(12), ano: z10.number().min(2020) })).query(async ({ input }) => {
     const rows = await db3.select().from(performanceMensal).where(
-      and7(
-        eq9(performanceMensal.mes, input.mes),
-        eq9(performanceMensal.ano, input.ano)
+      and10(
+        eq13(performanceMensal.mes, input.mes),
+        eq13(performanceMensal.ano, input.ano)
       )
     );
     const row = rows[0] ?? null;
-    const retrabCountRows = await getDb4().select({ total: sql6`COUNT(*)` }).from(retrabalhos).where(
-      sql6`EXTRACT(MONTH FROM ${retrabalhos.data}) = ${input.mes} AND EXTRACT(YEAR FROM ${retrabalhos.data}) = ${input.ano}`
+    const retrabCountRows = await getDb4().select({ total: sql7`COUNT(*)` }).from(retrabalhos).where(
+      sql7`EXTRACT(MONTH FROM ${retrabalhos.data}) = ${input.mes} AND EXTRACT(YEAR FROM ${retrabalhos.data}) = ${input.ano}`
     );
     const retrabCount = [{ total: Number(retrabCountRows[0]?.total ?? 0) }];
-    const fatRows = await db3.select().from(faturamento).where(eq9(faturamento.ano, input.ano));
-    const MESES_NOMES2 = [
+    const fatRows = await db3.select().from(faturamento).where(eq13(faturamento.ano, input.ano));
+    const MESES_NOMES3 = [
       "Janeiro",
       "Fevereiro",
       "Mar\xE7o",
@@ -6913,7 +12787,7 @@ var performanceRouter = router({
       "Novembro",
       "Dezembro"
     ];
-    const nomeMes = MESES_NOMES2[input.mes - 1];
+    const nomeMes = MESES_NOMES3[input.mes - 1];
     const fatMes = fatRows.find(
       (f2) => f2.mes.toUpperCase() === nomeMes.toUpperCase() || f2.mes === String(input.mes)
     );
@@ -6927,61 +12801,61 @@ var performanceRouter = router({
   }),
   // Inserir ou atualizar (upsert) dados de um mês
   upsert: publicProcedure.input(
-    z7.object({
-      mes: z7.number().min(1).max(12),
-      ano: z7.number().min(2020),
-      osGeradas: z7.number().nullish(),
-      osExpedicao: z7.number().nullish(),
-      percExpedicao: z7.number().nullish(),
-      metaOsDia: z7.number().nullish(),
-      capacidadeOsDiaMin: z7.number().nullish(),
-      capacidadeOsDiaMax: z7.number().nullish(),
-      deficitFinalizacao: z7.number().nullish(),
-      metaEmbalagemDia: z7.number().nullish(),
-      producaoEmbalagemDia: z7.number().nullish(),
-      metaAcabamentoDia: z7.number().nullish(),
-      capacidadeAcabamentoDia: z7.number().nullish(),
-      capacidadeNominalSolda: z7.number().nullish(),
-      producaoInternaSolda: z7.number().nullish(),
-      demandaTotalSolda: z7.number().nullish(),
-      osTerceirizadas: z7.number().nullish(),
-      metrosTerceirizados: z7.number().nullish(),
-      metaOsGeradas: z7.number().nullish(),
-      metaOsExpedicao: z7.number().nullish(),
-      metaProducaoSolda: z7.number().nullish(),
-      metaPercTerceirizacao: z7.number().nullish(),
-      observacoes: z7.string().nullish(),
-      destaques: z7.string().nullish(),
-      gargalos: z7.string().nullish(),
+    z10.object({
+      mes: z10.number().min(1).max(12),
+      ano: z10.number().min(2020),
+      osGeradas: z10.number().nullish(),
+      osExpedicao: z10.number().nullish(),
+      percExpedicao: z10.number().nullish(),
+      metaOsDia: z10.number().nullish(),
+      capacidadeOsDiaMin: z10.number().nullish(),
+      capacidadeOsDiaMax: z10.number().nullish(),
+      deficitFinalizacao: z10.number().nullish(),
+      metaEmbalagemDia: z10.number().nullish(),
+      producaoEmbalagemDia: z10.number().nullish(),
+      metaAcabamentoDia: z10.number().nullish(),
+      capacidadeAcabamentoDia: z10.number().nullish(),
+      capacidadeNominalSolda: z10.number().nullish(),
+      producaoInternaSolda: z10.number().nullish(),
+      demandaTotalSolda: z10.number().nullish(),
+      osTerceirizadas: z10.number().nullish(),
+      metrosTerceirizados: z10.number().nullish(),
+      metaOsGeradas: z10.number().nullish(),
+      metaOsExpedicao: z10.number().nullish(),
+      metaProducaoSolda: z10.number().nullish(),
+      metaPercTerceirizacao: z10.number().nullish(),
+      observacoes: z10.string().nullish(),
+      destaques: z10.string().nullish(),
+      gargalos: z10.string().nullish(),
       // Custo de solda
-      numSoldadores: z7.number().nullish(),
-      soldadorSalarioBase: z7.number().nullish(),
-      soldadorHorasExtras: z7.number().nullish(),
-      soldadorValorHoraExtra: z7.number().nullish(),
-      soldadorOutrosCustos: z7.number().nullish(),
-      custoProdutividadeSolda: z7.number().nullish(),
-      gestorSalarioBase: z7.number().nullish(),
-      gestorHorasExtras: z7.number().nullish(),
-      gestorValorHoraExtra: z7.number().nullish(),
-      gestorOutrosCustos: z7.number().nullish(),
-      custoMetroTerceirizado: z7.number().nullish(),
-      precoVendaMetro: z7.number().nullish(),
+      numSoldadores: z10.number().nullish(),
+      soldadorSalarioBase: z10.number().nullish(),
+      soldadorHorasExtras: z10.number().nullish(),
+      soldadorValorHoraExtra: z10.number().nullish(),
+      soldadorOutrosCustos: z10.number().nullish(),
+      custoProdutividadeSolda: z10.number().nullish(),
+      gestorSalarioBase: z10.number().nullish(),
+      gestorHorasExtras: z10.number().nullish(),
+      gestorValorHoraExtra: z10.number().nullish(),
+      gestorOutrosCustos: z10.number().nullish(),
+      custoMetroTerceirizado: z10.number().nullish(),
+      precoVendaMetro: z10.number().nullish(),
       // ─── Novos campos de performance ─────────────────────────────────────
-      faturamentoRealizado: z7.number().nullish(),
-      metaFaturamento: z7.number().nullish(),
-      projetosEntregues: z7.number().nullish(),
-      projetosNoPrazo: z7.number().nullish(),
-      projetosForaPrazo: z7.number().nullish(),
-      metaEntregaNoPrazoPct: z7.number().nullish(),
-      metaRetrabalhoPct: z7.number().nullish(),
-      totalPedidos: z7.number().nullish()
+      faturamentoRealizado: z10.number().nullish(),
+      metaFaturamento: z10.number().nullish(),
+      projetosEntregues: z10.number().nullish(),
+      projetosNoPrazo: z10.number().nullish(),
+      projetosForaPrazo: z10.number().nullish(),
+      metaEntregaNoPrazoPct: z10.number().nullish(),
+      metaRetrabalhoPct: z10.number().nullish(),
+      totalPedidos: z10.number().nullish()
     })
   ).mutation(async ({ input }) => {
     const { mes, ano, ...fields } = input;
     const existing = await db3.select().from(performanceMensal).where(
-      and7(
-        eq9(performanceMensal.mes, mes),
-        eq9(performanceMensal.ano, ano)
+      and10(
+        eq13(performanceMensal.mes, mes),
+        eq13(performanceMensal.ano, ano)
       )
     );
     const toStr = (v) => v != null ? String(v) : void 0;
@@ -7032,7 +12906,7 @@ var performanceRouter = router({
       totalPedidos: fields.totalPedidos ?? void 0
     };
     if (existing.length > 0) {
-      await db3.update(performanceMensal).set(data).where(eq9(performanceMensal.id, existing[0].id));
+      await db3.update(performanceMensal).set(data).where(eq13(performanceMensal.id, existing[0].id));
       return { action: "updated", id: existing[0].id };
     } else {
       const [result] = await db3.insert(performanceMensal).values({ mes, ano, ...data }).returning({ id: performanceMensal.id });
@@ -7040,19 +12914,20 @@ var performanceRouter = router({
     }
   }),
   // Excluir um registro
-  delete: publicProcedure.input(z7.object({ id: z7.number() })).mutation(async ({ input }) => {
-    await db3.delete(performanceMensal).where(eq9(performanceMensal.id, input.id));
+  delete: publicProcedure.input(z10.object({ id: z10.number() })).mutation(async ({ input }) => {
+    await db3.delete(performanceMensal).where(eq13(performanceMensal.id, input.id));
     return { success: true };
   })
 });
 
 // server/routers/performanceAbc.ts
-import { z as z8 } from "zod";
+init_trpc();
 init_db();
 init_schema();
 init_env();
 init_mubisys_client();
-import { and as and8, eq as eq10 } from "drizzle-orm";
+import { z as z11 } from "zod";
+import { and as and11, eq as eq14 } from "drizzle-orm";
 async function fetchAllOsForMonth(ano, mes) {
   const datainicial = `${ano}-${String(mes).padStart(2, "0")}-01`;
   const lastDay = new Date(ano, mes, 0).getDate();
@@ -7066,11 +12941,11 @@ function buildAbcClientes(osArray) {
   for (const os of osArray) {
     if (os.tipo === "Retrabalho") continue;
     totalOs++;
-    const client = os.cliente ?? "Desconhecido";
+    const client2 = os.cliente ?? "Desconhecido";
     const valor = parseFloat(String(os.valor_total ?? 0));
-    if (!clientMap[client]) clientMap[client] = { total: 0, count: 0 };
-    clientMap[client].total += valor;
-    clientMap[client].count++;
+    if (!clientMap[client2]) clientMap[client2] = { total: 0, count: 0 };
+    clientMap[client2].total += valor;
+    clientMap[client2].count++;
   }
   const sorted = Object.entries(clientMap).map(([nome, d]) => ({ nome, total: d.total, count: d.count })).sort((a, b) => b.total - a.total);
   const faturamento2 = sorted.reduce((s, r) => s + r.total, 0);
@@ -7129,12 +13004,12 @@ function buildAbcProdutos(osArray) {
 }
 var performanceAbcRouter = router({
   // Retorna mapa de clientes com retrabalho e/ou atraso no mês
-  getClienteTags: protectedProcedure.input(z8.object({ mes: z8.number().min(1).max(12), ano: z8.number().min(2020).max(2030) })).query(async ({ input }) => {
+  getClienteTags: protectedProcedure.input(z11.object({ mes: z11.number().min(1).max(12), ano: z11.number().min(2020).max(2030) })).query(async ({ input }) => {
     const { mes, ano } = input;
     const dbClient = await getDb3();
     if (!dbClient) return { retrabalhos: {}, atrasos: {} };
     const { cotacoesFrete: cotacoesFrete2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-    const { sql: sqlFn, gte: gte6, lte: lte5 } = await import("drizzle-orm");
+    const { sql: sqlFn, gte: gte7, lte: lte5 } = await import("drizzle-orm");
     const startDate = new Date(ano, mes - 1, 1);
     const endDate = new Date(ano, mes, 0, 23, 59, 59);
     const cotacoes = await dbClient.select({
@@ -7166,11 +13041,11 @@ var performanceAbcRouter = router({
   }),
   // Get ABC curve for a given month/year (from cache or fresh fetch)
   getAbc: protectedProcedure.input(
-    z8.object({
-      mes: z8.number().min(1).max(12),
-      ano: z8.number().min(2020).max(2030),
-      tipo: z8.enum(["clientes", "produtos"]),
-      forceRefresh: z8.boolean().optional().default(false)
+    z11.object({
+      mes: z11.number().min(1).max(12),
+      ano: z11.number().min(2020).max(2030),
+      tipo: z11.enum(["clientes", "produtos"]),
+      forceRefresh: z11.boolean().optional().default(false)
     })
   ).query(async ({ input }) => {
     const { mes, ano, tipo, forceRefresh } = input;
@@ -7178,10 +13053,10 @@ var performanceAbcRouter = router({
     if (!dbClient) return { items: [], totalOs: 0, faturamento: 0, fromCache: false, updatedAt: /* @__PURE__ */ new Date() };
     if (!forceRefresh) {
       const cached = await dbClient.select().from(abcCache).where(
-        and8(
-          eq10(abcCache.mes, mes),
-          eq10(abcCache.ano, ano),
-          eq10(abcCache.tipo, tipo)
+        and11(
+          eq14(abcCache.mes, mes),
+          eq14(abcCache.ano, ano),
+          eq14(abcCache.tipo, tipo)
         )
       ).limit(1);
       if (cached.length > 0) {
@@ -7203,10 +13078,10 @@ var performanceAbcRouter = router({
     const osArray = await fetchAllOsForMonth(ano, mes);
     const result = tipo === "clientes" ? buildAbcClientes(osArray) : buildAbcProdutos(osArray);
     const existing = await dbClient.select().from(abcCache).where(
-      and8(
-        eq10(abcCache.mes, mes),
-        eq10(abcCache.ano, ano),
-        eq10(abcCache.tipo, tipo)
+      and11(
+        eq14(abcCache.mes, mes),
+        eq14(abcCache.ano, ano),
+        eq14(abcCache.tipo, tipo)
       )
     ).limit(1);
     if (existing.length > 0) {
@@ -7214,7 +13089,7 @@ var performanceAbcRouter = router({
         dados: JSON.stringify(result.items),
         totalOs: result.totalOs,
         faturamentoTotal: String(result.faturamento.toFixed(2))
-      }).where(eq10(abcCache.id, existing[0].id));
+      }).where(eq14(abcCache.id, existing[0].id));
     } else {
       await dbClient.insert(abcCache).values({
         mes,
@@ -7234,16 +13109,16 @@ var performanceAbcRouter = router({
     };
   }),
   // Retorna evolução mensal dos principais produtos (para gráfico de área empilhada)
-  getEvolucaoProdutos: protectedProcedure.input(z8.object({
-    meses: z8.array(z8.object({ mes: z8.number().min(1).max(12), ano: z8.number().min(2020).max(2030) })),
-    topN: z8.number().min(3).max(15).optional().default(8)
+  getEvolucaoProdutos: protectedProcedure.input(z11.object({
+    meses: z11.array(z11.object({ mes: z11.number().min(1).max(12), ano: z11.number().min(2020).max(2030) })),
+    topN: z11.number().min(3).max(15).optional().default(8)
   })).query(async ({ input }) => {
     const { meses, topN } = input;
     const dbClient = await getDb3();
     if (!dbClient) return { chartData: [], tabela: [], topProdutos: [], mesesLabels: [] };
     const caches = await Promise.all(
       meses.map(async ({ mes, ano }) => {
-        const rows = await dbClient.select().from(abcCache).where(and8(eq10(abcCache.mes, mes), eq10(abcCache.ano, ano), eq10(abcCache.tipo, "produtos"))).limit(1);
+        const rows = await dbClient.select().from(abcCache).where(and11(eq14(abcCache.mes, mes), eq14(abcCache.ano, ano), eq14(abcCache.tipo, "produtos"))).limit(1);
         if (rows.length === 0) return { mes, ano, items: [] };
         return { mes, ano, items: JSON.parse(rows[0].dados) };
       })
@@ -7255,10 +13130,10 @@ var performanceAbcRouter = router({
       }
     }
     const topProdutos = Object.entries(prodTotals).sort((a, b) => b[1] - a[1]).slice(0, topN).map(([nome]) => nome);
-    const MESES_NOMES2 = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const mesesLabels = meses.map(({ mes, ano }) => `${MESES_NOMES2[mes - 1]} ${ano}`);
+    const MESES_NOMES3 = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const mesesLabels = meses.map(({ mes, ano }) => `${MESES_NOMES3[mes - 1]} ${ano}`);
     const chartData = caches.map(({ mes, ano, items }) => {
-      const label = `${MESES_NOMES2[mes - 1]} ${ano}`;
+      const label = `${MESES_NOMES3[mes - 1]} ${ano}`;
       const faturamentoTotal = items.reduce((s, i) => s + i.total, 0);
       const row = { mes: label };
       for (const prod of topProdutos) {
@@ -7270,7 +13145,7 @@ var performanceAbcRouter = router({
     const tabela = topProdutos.map((prod) => {
       const row = { produto: prod };
       for (const c of caches) {
-        const label = `${MESES_NOMES2[c.mes - 1]} ${c.ano}`;
+        const label = `${MESES_NOMES3[c.mes - 1]} ${c.ano}`;
         const faturamentoTotal = c.items.reduce((s, i) => s + i.total, 0);
         const item = c.items.find((i) => i.nome === prod);
         row[label] = item && faturamentoTotal > 0 ? parseFloat((item.total / faturamentoTotal * 100).toFixed(1)) : 0;
@@ -7281,7 +13156,7 @@ var performanceAbcRouter = router({
     return { chartData, tabela, topProdutos, mesesLabels };
   }),
   // Busca lista de produtos do ERP via CADASTRO/PRODUTOS
-  getProdutosERP: protectedProcedure.input(z8.object({ busca: z8.string().optional().default("") })).query(async ({ input }) => {
+  getProdutosERP: protectedProcedure.input(z11.object({ busca: z11.string().optional().default("") })).query(async ({ input }) => {
     const publicKey = ENV.MUBISYS_PUBLIC_KEY;
     const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
     if (!publicKey || !accessToken) return { produtos: [] };
@@ -7298,25 +13173,26 @@ var performanceAbcRouter = router({
 });
 
 // server/routers/auditoria.ts
-import { z as z9 } from "zod";
+init_trpc();
 init_db();
+import { z as z12 } from "zod";
 var auditoriaRouter = router({
   /**
    * Lista logs de auditoria com filtros opcionais e paginação.
    * Disponível apenas para usuários autenticados.
    */
   list: protectedProcedure.input(
-    z9.object({
-      acao: z9.enum(["CRIACAO", "EDICAO", "EXCLUSAO"]).optional(),
-      usuarioId: z9.string().optional(),
-      retrabalhoId: z9.number().int().positive().optional(),
-      osRetrabalhada: z9.string().max(32).optional(),
-      dataInicio: z9.string().optional(),
+    z12.object({
+      acao: z12.enum(["CRIACAO", "EDICAO", "EXCLUSAO"]).optional(),
+      usuarioId: z12.string().optional(),
+      retrabalhoId: z12.number().int().positive().optional(),
+      osRetrabalhada: z12.string().max(32).optional(),
+      dataInicio: z12.string().optional(),
       // ISO date string "YYYY-MM-DD"
-      dataFim: z9.string().optional(),
+      dataFim: z12.string().optional(),
       // ISO date string "YYYY-MM-DD"
-      page: z9.number().int().min(1).default(1),
-      pageSize: z9.number().int().min(1).max(100).default(50)
+      page: z12.number().int().min(1).default(1),
+      pageSize: z12.number().int().min(1).max(100).default(50)
     })
   ).query(async ({ input }) => {
     const dataInicio = input.dataInicio ? new Date(input.dataInicio) : void 0;
@@ -7351,24 +13227,25 @@ var auditoriaRouter = router({
 });
 
 // server/routers/cargos.ts
-import { z as z10 } from "zod";
+init_trpc();
 init_db();
-var cargoSchema = z10.object({
-  titulo: z10.string().min(1).max(128),
-  missao: z10.string().optional().nullable(),
-  responsabilidades: z10.string().optional().nullable(),
-  kpis: z10.string().optional().nullable(),
-  ferramentas: z10.string().optional().nullable(),
-  integracao: z10.string().optional().nullable(),
-  riscos: z10.string().optional().nullable(),
-  requisitos: z10.string().optional().nullable(),
-  condicoes: z10.string().optional().nullable()
+import { z as z13 } from "zod";
+var cargoSchema = z13.object({
+  titulo: z13.string().min(1).max(128),
+  missao: z13.string().optional().nullable(),
+  responsabilidades: z13.string().optional().nullable(),
+  kpis: z13.string().optional().nullable(),
+  ferramentas: z13.string().optional().nullable(),
+  integracao: z13.string().optional().nullable(),
+  riscos: z13.string().optional().nullable(),
+  requisitos: z13.string().optional().nullable(),
+  condicoes: z13.string().optional().nullable()
 });
 var cargosRouter = router({
   list: protectedProcedure.query(async () => {
     return listCargos();
   }),
-  getById: protectedProcedure.input(z10.object({ id: z10.number() })).query(async ({ input }) => {
+  getById: protectedProcedure.input(z13.object({ id: z13.number() })).query(async ({ input }) => {
     return getCargoById(input.id);
   }),
   create: protectedProcedure.input(cargoSchema).mutation(async ({ input, ctx }) => {
@@ -7379,7 +13256,7 @@ var cargosRouter = router({
     });
     return { id };
   }),
-  update: protectedProcedure.input(z10.object({ id: z10.number() }).merge(cargoSchema.partial())).mutation(async ({ input, ctx }) => {
+  update: protectedProcedure.input(z13.object({ id: z13.number() }).merge(cargoSchema.partial())).mutation(async ({ input, ctx }) => {
     const { id, ...data } = input;
     await updateCargo(id, {
       ...data,
@@ -7387,7 +13264,7 @@ var cargosRouter = router({
     });
     return { ok: true };
   }),
-  delete: protectedProcedure.input(z10.object({ id: z10.number() })).mutation(async ({ input }) => {
+  delete: protectedProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
     await deleteCargo(input.id);
     return { ok: true };
   }),
@@ -7397,28 +13274,29 @@ var cargosRouter = router({
    * Mantida para não quebrar o contrato do client e para o caso de passar a
    * registrar o upload no banco.
    */
-  uploadImage: protectedProcedure.input(z10.object({
-    url: z10.string().url(),
-    key: z10.string().min(1),
-    fileName: z10.string(),
-    mimeType: z10.string()
+  uploadImage: protectedProcedure.input(z13.object({
+    url: z13.string().url(),
+    key: z13.string().min(1),
+    fileName: z13.string(),
+    mimeType: z13.string()
   })).mutation(async ({ input }) => {
     return { url: input.url, key: input.key, success: true };
   })
 });
 
 // server/routers/curriculos.ts
-import { z as z11 } from "zod";
+init_trpc();
 init_llm();
 init_db();
+import { z as z14 } from "zod";
 var curriculosRouter = router({
   // Upload currículo e iniciar análise
-  uploadAndAnalyze: protectedProcedure.input(z11.object({
-    cargoId: z11.number(),
-    fileName: z11.string(),
-    url: z11.string().url(),
-    key: z11.string().min(1),
-    fileType: z11.string()
+  uploadAndAnalyze: protectedProcedure.input(z14.object({
+    cargoId: z14.number(),
+    fileName: z14.string(),
+    url: z14.string().url(),
+    key: z14.string().min(1),
+    fileType: z14.string()
     // application/pdf, text/plain, etc
   })).mutation(async ({ input, ctx }) => {
     try {
@@ -7493,36 +13371,37 @@ var curriculosRouter = router({
     }
   }),
   // Listar análises de um cargo
-  listByCargo: protectedProcedure.input(z11.object({ cargoId: z11.number() })).query(async ({ input }) => {
+  listByCargo: protectedProcedure.input(z14.object({ cargoId: z14.number() })).query(async ({ input }) => {
     return getAnaliseCurriculosByCargo(input.cargoId);
   }),
   // Deletar análise
-  delete: protectedProcedure.input(z11.object({ id: z11.number() })).mutation(async ({ input }) => {
+  delete: protectedProcedure.input(z14.object({ id: z14.number() })).mutation(async ({ input }) => {
     return { ok: true };
   })
 });
 
 // server/routers/desempenhoColabMensal.ts
-import { z as z12 } from "zod";
+init_trpc();
 init_db();
 init_schema();
-import { and as and9, eq as eq11, asc as asc3 } from "drizzle-orm";
+import { z as z15 } from "zod";
+import { and as and12, eq as eq15, asc as asc3 } from "drizzle-orm";
 var desempenhoColabMensalRouter = router({
   // Listar todos os registros de um ano (opcionalmente filtrar por categoria)
-  list: publicProcedure.input(z12.object({
-    ano: z12.number(),
-    categoria: z12.string().optional()
+  list: publicProcedure.input(z15.object({
+    ano: z15.number(),
+    categoria: z15.string().optional()
   })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
-    const conditions = [eq11(desempenhoColaboradorMensal.ano, input.ano)];
+    const conditions = [eq15(desempenhoColaboradorMensal.ano, input.ano)];
     if (input.categoria) {
-      conditions.push(eq11(desempenhoColaboradorMensal.categoria, input.categoria));
+      conditions.push(eq15(desempenhoColaboradorMensal.categoria, input.categoria));
     }
-    return db5.select().from(desempenhoColaboradorMensal).where(and9(...conditions)).orderBy(asc3(desempenhoColaboradorMensal.nome), asc3(desempenhoColaboradorMensal.mes));
+    return db5.select().from(desempenhoColaboradorMensal).where(and12(...conditions)).orderBy(asc3(desempenhoColaboradorMensal.nome), asc3(desempenhoColaboradorMensal.mes));
   }),
   // Listar colaboradores distintos cadastrados (nome + categoria)
-  listColaboradores: publicProcedure.input(z12.object({ ano: z12.number().optional() })).query(async ({ input }) => {
+  listColaboradores: publicProcedure.input(z15.object({ ano: z15.number().optional() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
     const rows = await db5.select({
@@ -7541,23 +13420,23 @@ var desempenhoColabMensalRouter = router({
     return result.sort((a, b) => a.nome.localeCompare(b.nome));
   }),
   // Upsert (criar ou atualizar) registro mensal de um colaborador
-  upsert: publicProcedure.input(z12.object({
-    nome: z12.string().min(1),
-    categoria: z12.enum(["soldador", "vendedor", "operador_maquinas"]),
-    mes: z12.number().min(1).max(12),
-    ano: z12.number(),
-    numFaltas: z12.number().nullable().optional(),
+  upsert: publicProcedure.input(z15.object({
+    nome: z15.string().min(1),
+    categoria: z15.enum(["soldador", "vendedor", "operador_maquinas"]),
+    mes: z15.number().min(1).max(12),
+    ano: z15.number(),
+    numFaltas: z15.number().nullable().optional(),
     // Soldador
-    metrosSoldados: z12.number().nullable().optional(),
-    numRetrabalhos: z12.number().nullable().optional(),
+    metrosSoldados: z15.number().nullable().optional(),
+    numRetrabalhos: z15.number().nullable().optional(),
     // Vendedor
-    numPropostas: z12.number().nullable().optional(),
-    numVendas: z12.number().nullable().optional(),
-    faturamentoVendedor: z12.number().nullable().optional(),
-    ticketMedioVendedor: z12.number().nullable().optional(),
+    numPropostas: z15.number().nullable().optional(),
+    numVendas: z15.number().nullable().optional(),
+    faturamentoVendedor: z15.number().nullable().optional(),
+    ticketMedioVendedor: z15.number().nullable().optional(),
     // Operador de Máquinas
-    numTrabalhos: z12.number().nullable().optional(),
-    notas: z12.string().nullable().optional()
+    numTrabalhos: z15.number().nullable().optional(),
+    notas: z15.string().nullable().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
@@ -7565,11 +13444,11 @@ var desempenhoColabMensalRouter = router({
     if (input.categoria === "vendedor" && input.faturamentoVendedor && input.numVendas && input.numVendas > 0) {
       if (ticketMedio == null) ticketMedio = input.faturamentoVendedor / input.numVendas;
     }
-    const existing = await db5.select({ id: desempenhoColaboradorMensal.id }).from(desempenhoColaboradorMensal).where(and9(
-      eq11(desempenhoColaboradorMensal.nome, input.nome),
-      eq11(desempenhoColaboradorMensal.categoria, input.categoria),
-      eq11(desempenhoColaboradorMensal.mes, input.mes),
-      eq11(desempenhoColaboradorMensal.ano, input.ano)
+    const existing = await db5.select({ id: desempenhoColaboradorMensal.id }).from(desempenhoColaboradorMensal).where(and12(
+      eq15(desempenhoColaboradorMensal.nome, input.nome),
+      eq15(desempenhoColaboradorMensal.categoria, input.categoria),
+      eq15(desempenhoColaboradorMensal.mes, input.mes),
+      eq15(desempenhoColaboradorMensal.ano, input.ano)
     ));
     const payload = {
       nome: input.nome,
@@ -7587,7 +13466,7 @@ var desempenhoColabMensalRouter = router({
       notas: input.notas ?? null
     };
     if (existing.length > 0) {
-      await db5.update(desempenhoColaboradorMensal).set(payload).where(eq11(desempenhoColaboradorMensal.id, existing[0].id));
+      await db5.update(desempenhoColaboradorMensal).set(payload).where(eq15(desempenhoColaboradorMensal.id, existing[0].id));
       return { id: existing[0].id, action: "updated" };
     } else {
       const [result] = await db5.insert(desempenhoColaboradorMensal).values(payload).returning({ id: desempenhoColaboradorMensal.id });
@@ -7595,25 +13474,26 @@ var desempenhoColabMensalRouter = router({
     }
   }),
   // Deletar colaborador (todos os registros de um nome+categoria)
-  deleteColaborador: publicProcedure.input(z12.object({ nome: z12.string(), categoria: z12.string() })).mutation(async ({ input }) => {
+  deleteColaborador: publicProcedure.input(z15.object({ nome: z15.string(), categoria: z15.string() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    await db5.delete(desempenhoColaboradorMensal).where(and9(
-      eq11(desempenhoColaboradorMensal.nome, input.nome),
-      eq11(desempenhoColaboradorMensal.categoria, input.categoria)
+    await db5.delete(desempenhoColaboradorMensal).where(and12(
+      eq15(desempenhoColaboradorMensal.nome, input.nome),
+      eq15(desempenhoColaboradorMensal.categoria, input.categoria)
     ));
     return { ok: true };
   })
 });
 
 // server/routers/empacotamento.ts
-import { z as z13 } from "zod";
+init_trpc();
 init_schema();
 init_mubisys_client();
 init_db_connection();
 init_schema();
+import { z as z16 } from "zod";
 import { drizzle as drizzle6 } from "drizzle-orm/neon-serverless";
-import { eq as eq12, and as and10, desc as desc7, asc as asc4, gte as gte4, lte as lte3, sql as sql7 } from "drizzle-orm";
+import { eq as eq16, and as and13, desc as desc8, asc as asc4, gte as gte5, lte as lte3, sql as sql8 } from "drizzle-orm";
 async function buscarOsMubisys(numeroOs) {
   const os = await buscarOSPorNumero(numeroOs);
   if (!os) return null;
@@ -7676,13 +13556,13 @@ var db4 = {
 async function calcularTempoEstimadoMin(pedido) {
   if (!pedido) return 0;
   if (pedido.modeloId) {
-    const modelos = await getDb5().select().from(empacotamentoModelos).where(eq12(empacotamentoModelos.id, pedido.modeloId)).limit(1);
+    const modelos = await getDb5().select().from(empacotamentoModelos).where(eq16(empacotamentoModelos.id, pedido.modeloId)).limit(1);
     const modelo = modelos[0];
     const tempoPorM2 = parseFloat(String(modelo?.tempoPorM2Min ?? "0"));
     const area = parseFloat(String(pedido.metrosQuadrados ?? "0"));
     if (tempoPorM2 > 0 && area > 0) return tempoPorM2 * area;
   } else if (pedido.modeloCaixaId) {
-    const mcs = await getDb5().select().from(empacotamentoModelosCaixa).where(eq12(empacotamentoModelosCaixa.id, pedido.modeloCaixaId)).limit(1);
+    const mcs = await getDb5().select().from(empacotamentoModelosCaixa).where(eq16(empacotamentoModelosCaixa.id, pedido.modeloCaixaId)).limit(1);
     const mc = mcs[0];
     if (mc) {
       const tipoCaixa = mc.tipoCaixa;
@@ -7700,19 +13580,19 @@ async function calcularTempoEstimadoMin(pedido) {
   return 0;
 }
 async function calcularRanking(inicioTs, fimTs) {
-  const sessoes = await getDb5().select().from(empacotamentoSessoes).where(and10(
-    eq12(empacotamentoSessoes.status, "finalizado"),
-    sql7`${empacotamentoSessoes.registradoEm} IS NOT NULL`,
-    sql7`${empacotamentoSessoes.registradoEm} >= ${inicioTs}`,
-    sql7`${empacotamentoSessoes.registradoEm} <= ${fimTs}`
+  const sessoes = await getDb5().select().from(empacotamentoSessoes).where(and13(
+    eq16(empacotamentoSessoes.status, "finalizado"),
+    sql8`${empacotamentoSessoes.registradoEm} IS NOT NULL`,
+    sql8`${empacotamentoSessoes.registradoEm} >= ${inicioTs}`,
+    sql8`${empacotamentoSessoes.registradoEm} <= ${fimTs}`
   ));
-  const config = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq12(empacotamentoConfigProdutividade.ativo, 1));
+  const config = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq16(empacotamentoConfigProdutividade.ativo, 1));
   const cfg = config[0] ?? { valorPorMinuto: "0.15" };
   const valorMin = parseFloat(String(cfg.valorPorMinuto));
   const pedidoIds = Array.from(new Set(sessoes.map((s) => s.pedidoId)));
   let pedidos = [];
   if (pedidoIds.length > 0) {
-    pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql7`${empacotamentoPedidos.id} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+    pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql8`${empacotamentoPedidos.id} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
   }
   const porOperador = {};
   for (const sessao of sessoes) {
@@ -7753,13 +13633,13 @@ var empacotamentoRouter = router({
       return await db4.select().from(empacotamentoModelos).orderBy(asc4(empacotamentoModelos.nome));
     }),
     listAtivos: publicProcedure.query(async () => {
-      return await db4.select().from(empacotamentoModelos).where(eq12(empacotamentoModelos.ativo, 1)).orderBy(asc4(empacotamentoModelos.nome));
+      return await db4.select().from(empacotamentoModelos).where(eq16(empacotamentoModelos.ativo, 1)).orderBy(asc4(empacotamentoModelos.nome));
     }),
-    create: publicProcedure.input(z13.object({
-      nome: z13.string().min(1).max(128),
-      descricao: z13.string().optional(),
-      tempoPorM2Min: z13.number().min(0).optional(),
-      valorProdutividadePorMinLetreiro: z13.number().min(0).optional()
+    create: publicProcedure.input(z16.object({
+      nome: z16.string().min(1).max(128),
+      descricao: z16.string().optional(),
+      tempoPorM2Min: z16.number().min(0).optional(),
+      valorProdutividadePorMinLetreiro: z16.number().min(0).optional()
     })).mutation(async ({ input }) => {
       await db4.insert(empacotamentoModelos).values({
         nome: input.nome,
@@ -7770,26 +13650,26 @@ var empacotamentoRouter = router({
       });
       return { success: true };
     }),
-    update: publicProcedure.input(z13.object({
-      id: z13.number(),
-      nome: z13.string().min(1).max(128),
-      descricao: z13.string().optional(),
-      ativo: z13.number().optional(),
-      modeloCaixaIdPadrao: z13.number().nullable().optional(),
-      tempoPorM2Min: z13.number().min(0).nullable().optional(),
-      valorProdutividadePorMinLetreiro: z13.number().min(0).nullable().optional()
+    update: publicProcedure.input(z16.object({
+      id: z16.number(),
+      nome: z16.string().min(1).max(128),
+      descricao: z16.string().optional(),
+      ativo: z16.number().optional(),
+      modeloCaixaIdPadrao: z16.number().nullable().optional(),
+      tempoPorM2Min: z16.number().min(0).nullable().optional(),
+      valorProdutividadePorMinLetreiro: z16.number().min(0).nullable().optional()
     })).mutation(async ({ input }) => {
       const upd = { nome: input.nome, descricao: input.descricao ?? null, ativo: input.ativo ?? 1 };
       if (input.modeloCaixaIdPadrao !== void 0) upd.modeloCaixaIdPadrao = input.modeloCaixaIdPadrao;
       if (input.tempoPorM2Min !== void 0) upd.tempoPorM2Min = input.tempoPorM2Min != null ? String(input.tempoPorM2Min) : null;
       if (input.valorProdutividadePorMinLetreiro !== void 0) upd.valorProdutividadePorMinLetreiro = input.valorProdutividadePorMinLetreiro != null ? String(input.valorProdutividadePorMinLetreiro) : null;
-      await db4.update(empacotamentoModelos).set(upd).where(eq12(empacotamentoModelos.id, input.id));
+      await db4.update(empacotamentoModelos).set(upd).where(eq16(empacotamentoModelos.id, input.id));
       return { success: true };
     }),
     // Atualiza tempo e produtividade de TODOS os letreiros de uma vez (painel centralizado)
-    updateGlobalProdutividade: publicProcedure.input(z13.object({
-      tempoPorM2Min: z13.number().min(0).nullable(),
-      valorProdutividadePorMinLetreiro: z13.number().min(0).nullable()
+    updateGlobalProdutividade: publicProcedure.input(z16.object({
+      tempoPorM2Min: z16.number().min(0).nullable(),
+      valorProdutividadePorMinLetreiro: z16.number().min(0).nullable()
     })).mutation(async ({ input }) => {
       const upd = {};
       if (input.tempoPorM2Min !== null) upd.tempoPorM2Min = String(input.tempoPorM2Min);
@@ -7799,8 +13679,8 @@ var empacotamentoRouter = router({
       }
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await db4.delete(empacotamentoModelos).where(eq12(empacotamentoModelos.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await db4.delete(empacotamentoModelos).where(eq16(empacotamentoModelos.id, input.id));
       return { success: true };
     })
   }),
@@ -7810,20 +13690,20 @@ var empacotamentoRouter = router({
       return await db4.select().from(empacotamentoModelosCaixa).orderBy(asc4(empacotamentoModelosCaixa.nome));
     }),
     listAtivos: publicProcedure.query(async () => {
-      return await db4.select().from(empacotamentoModelosCaixa).where(eq12(empacotamentoModelosCaixa.ativo, 1)).orderBy(asc4(empacotamentoModelosCaixa.nome));
+      return await db4.select().from(empacotamentoModelosCaixa).where(eq16(empacotamentoModelosCaixa.ativo, 1)).orderBy(asc4(empacotamentoModelosCaixa.nome));
     }),
-    create: publicProcedure.input(z13.object({
-      nome: z13.string().min(1).max(128),
-      descricao: z13.string().optional(),
-      larguraCm: z13.number().optional(),
-      alturaCm: z13.number().optional(),
-      profundidadeCm: z13.number().optional(),
-      tipoCaixa: z13.enum(["padronizada", "personalizada"]).default("padronizada"),
-      custoAquisicao: z13.number().min(0).default(0),
-      tempoPorM2Min: z13.number().min(0).optional(),
-      tempoPorM3Min: z13.number().min(0).optional(),
-      tempoPorMetroArestaMin: z13.number().min(0).optional(),
-      valorProdutividadePorCm2: z13.number().min(0).optional()
+    create: publicProcedure.input(z16.object({
+      nome: z16.string().min(1).max(128),
+      descricao: z16.string().optional(),
+      larguraCm: z16.number().optional(),
+      alturaCm: z16.number().optional(),
+      profundidadeCm: z16.number().optional(),
+      tipoCaixa: z16.enum(["padronizada", "personalizada"]).default("padronizada"),
+      custoAquisicao: z16.number().min(0).default(0),
+      tempoPorM2Min: z16.number().min(0).optional(),
+      tempoPorM3Min: z16.number().min(0).optional(),
+      tempoPorMetroArestaMin: z16.number().min(0).optional(),
+      valorProdutividadePorCm2: z16.number().min(0).optional()
     })).mutation(async ({ input }) => {
       await db4.insert(empacotamentoModelosCaixa).values({
         nome: input.nome,
@@ -7842,20 +13722,20 @@ var empacotamentoRouter = router({
       });
       return { success: true };
     }),
-    update: publicProcedure.input(z13.object({
-      id: z13.number(),
-      nome: z13.string().min(1).max(128),
-      descricao: z13.string().optional(),
-      larguraCm: z13.number().optional(),
-      alturaCm: z13.number().optional(),
-      profundidadeCm: z13.number().optional(),
-      tipoCaixa: z13.enum(["padronizada", "personalizada"]).optional(),
-      custoAquisicao: z13.number().min(0).optional(),
-      tempoPorM2Min: z13.number().min(0).optional(),
-      tempoPorM3Min: z13.number().min(0).nullable().optional(),
-      tempoPorMetroArestaMin: z13.number().min(0).nullable().optional(),
-      valorProdutividadePorCm2: z13.number().min(0).nullable().optional(),
-      ativo: z13.number().optional()
+    update: publicProcedure.input(z16.object({
+      id: z16.number(),
+      nome: z16.string().min(1).max(128),
+      descricao: z16.string().optional(),
+      larguraCm: z16.number().optional(),
+      alturaCm: z16.number().optional(),
+      profundidadeCm: z16.number().optional(),
+      tipoCaixa: z16.enum(["padronizada", "personalizada"]).optional(),
+      custoAquisicao: z16.number().min(0).optional(),
+      tempoPorM2Min: z16.number().min(0).optional(),
+      tempoPorM3Min: z16.number().min(0).nullable().optional(),
+      tempoPorMetroArestaMin: z16.number().min(0).nullable().optional(),
+      valorProdutividadePorCm2: z16.number().min(0).nullable().optional(),
+      ativo: z16.number().optional()
     })).mutation(async ({ input }) => {
       const setData = {
         nome: input.nome,
@@ -7874,14 +13754,14 @@ var empacotamentoRouter = router({
       if (input.tempoPorM3Min !== void 0) setData.tempoPorM3Min = input.tempoPorM3Min != null ? String(input.tempoPorM3Min) : null;
       if (input.tempoPorMetroArestaMin !== void 0) setData.tempoPorMetroArestaMin = input.tempoPorMetroArestaMin != null ? String(input.tempoPorMetroArestaMin) : null;
       if (input.valorProdutividadePorCm2 !== void 0) setData.valorProdutividadePorCm2 = input.valorProdutividadePorCm2 != null ? String(input.valorProdutividadePorCm2) : null;
-      await db4.update(empacotamentoModelosCaixa).set(setData).where(eq12(empacotamentoModelosCaixa.id, input.id));
+      await db4.update(empacotamentoModelosCaixa).set(setData).where(eq16(empacotamentoModelosCaixa.id, input.id));
       return { success: true };
     }),
     // Atualiza tempo e produtividade de TODAS as caixas de uma vez (painel centralizado)
-    updateGlobalProdutividade: publicProcedure.input(z13.object({
-      tempoPorM2Min: z13.number().min(0).nullable(),
-      tempoPorMetroArestaMin: z13.number().min(0).nullable(),
-      valorProdutividadePorCm2: z13.number().min(0).nullable()
+    updateGlobalProdutividade: publicProcedure.input(z16.object({
+      tempoPorM2Min: z16.number().min(0).nullable(),
+      tempoPorMetroArestaMin: z16.number().min(0).nullable(),
+      valorProdutividadePorCm2: z16.number().min(0).nullable()
     })).mutation(async ({ input }) => {
       const upd = {};
       if (input.tempoPorM2Min !== null) upd.tempoPorM2Min = String(input.tempoPorM2Min);
@@ -7892,21 +13772,21 @@ var empacotamentoRouter = router({
       }
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await db4.delete(empacotamentoModelosCaixa).where(eq12(empacotamentoModelosCaixa.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await db4.delete(empacotamentoModelosCaixa).where(eq16(empacotamentoModelosCaixa.id, input.id));
       return { success: true };
     })
   }),
   // ─── CHECKLIST POR MODELO DE CAIXA ─────────────────────────────────────────
   checklist: router({
-    listPorCaixa: publicProcedure.input(z13.object({ modeloCaixaId: z13.number() })).query(async ({ input }) => {
-      return await db4.select().from(empacotamentoChecklistItens).where(eq12(empacotamentoChecklistItens.modeloCaixaId, input.modeloCaixaId)).orderBy(asc4(empacotamentoChecklistItens.ordem));
+    listPorCaixa: publicProcedure.input(z16.object({ modeloCaixaId: z16.number() })).query(async ({ input }) => {
+      return await db4.select().from(empacotamentoChecklistItens).where(eq16(empacotamentoChecklistItens.modeloCaixaId, input.modeloCaixaId)).orderBy(asc4(empacotamentoChecklistItens.ordem));
     }),
-    addItem: publicProcedure.input(z13.object({
-      modeloCaixaId: z13.number(),
-      descricao: z13.string().min(1).max(256),
-      obrigatorio: z13.number().default(1),
-      ordem: z13.number().default(0)
+    addItem: publicProcedure.input(z16.object({
+      modeloCaixaId: z16.number(),
+      descricao: z16.string().min(1).max(256),
+      obrigatorio: z16.number().default(1),
+      ordem: z16.number().default(0)
     })).mutation(async ({ input }) => {
       await db4.insert(empacotamentoChecklistItens).values({
         modeloCaixaId: input.modeloCaixaId,
@@ -7916,38 +13796,38 @@ var empacotamentoRouter = router({
       });
       return { success: true };
     }),
-    updateItem: publicProcedure.input(z13.object({
-      id: z13.number(),
-      descricao: z13.string().min(1).max(256),
-      obrigatorio: z13.number().optional(),
-      ordem: z13.number().optional()
+    updateItem: publicProcedure.input(z16.object({
+      id: z16.number(),
+      descricao: z16.string().min(1).max(256),
+      obrigatorio: z16.number().optional(),
+      ordem: z16.number().optional()
     })).mutation(async ({ input }) => {
       await db4.update(empacotamentoChecklistItens).set({
         descricao: input.descricao,
         obrigatorio: input.obrigatorio ?? 1,
         ordem: input.ordem ?? 0
-      }).where(eq12(empacotamentoChecklistItens.id, input.id));
+      }).where(eq16(empacotamentoChecklistItens.id, input.id));
       return { success: true };
     }),
-    deleteItem: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await db4.delete(empacotamentoChecklistItens).where(eq12(empacotamentoChecklistItens.id, input.id));
+    deleteItem: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await db4.delete(empacotamentoChecklistItens).where(eq16(empacotamentoChecklistItens.id, input.id));
       return { success: true };
     }),
     // Checklist preenchido por pedido
-    getPorPedido: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
-      return await db4.select().from(empacotamentoPedidoChecklist).where(eq12(empacotamentoPedidoChecklist.pedidoId, input.pedidoId));
+    getPorPedido: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
+      return await db4.select().from(empacotamentoPedidoChecklist).where(eq16(empacotamentoPedidoChecklist.pedidoId, input.pedidoId));
     }),
-    marcarItem: publicProcedure.input(z13.object({
-      pedidoId: z13.number(),
-      itemId: z13.number(),
-      marcado: z13.number(),
+    marcarItem: publicProcedure.input(z16.object({
+      pedidoId: z16.number(),
+      itemId: z16.number(),
+      marcado: z16.number(),
       // 0 ou 1
-      marcadoPor: z13.string().optional()
+      marcadoPor: z16.string().optional()
     })).mutation(async ({ input }) => {
       const existing = await getDb5().select().from(empacotamentoPedidoChecklist).where(
-        and10(
-          eq12(empacotamentoPedidoChecklist.pedidoId, input.pedidoId),
-          eq12(empacotamentoPedidoChecklist.itemId, input.itemId)
+        and13(
+          eq16(empacotamentoPedidoChecklist.pedidoId, input.pedidoId),
+          eq16(empacotamentoPedidoChecklist.itemId, input.itemId)
         )
       );
       if (existing.length > 0) {
@@ -7956,9 +13836,9 @@ var empacotamentoRouter = router({
           marcadoPor: input.marcadoPor ?? null,
           marcadoEm: input.marcado ? /* @__PURE__ */ new Date() : null
         }).where(
-          and10(
-            eq12(empacotamentoPedidoChecklist.pedidoId, input.pedidoId),
-            eq12(empacotamentoPedidoChecklist.itemId, input.itemId)
+          and13(
+            eq16(empacotamentoPedidoChecklist.pedidoId, input.pedidoId),
+            eq16(empacotamentoPedidoChecklist.itemId, input.itemId)
           )
         );
       } else {
@@ -7975,14 +13855,14 @@ var empacotamentoRouter = router({
   }),
   // ─── CHECKLIST POR MODELO DE LETREIRO ────────────────────────────────────
   checklistLetreiro: router({
-    listPorModelo: publicProcedure.input(z13.object({ modeloId: z13.number() })).query(async ({ input }) => {
-      return await db4.select().from(empacotamentoChecklistLetreitoItens).where(eq12(empacotamentoChecklistLetreitoItens.modeloLetreitoId, input.modeloId)).orderBy(asc4(empacotamentoChecklistLetreitoItens.ordem));
+    listPorModelo: publicProcedure.input(z16.object({ modeloId: z16.number() })).query(async ({ input }) => {
+      return await db4.select().from(empacotamentoChecklistLetreitoItens).where(eq16(empacotamentoChecklistLetreitoItens.modeloLetreitoId, input.modeloId)).orderBy(asc4(empacotamentoChecklistLetreitoItens.ordem));
     }),
-    addItem: publicProcedure.input(z13.object({
-      modeloId: z13.number(),
-      descricao: z13.string().min(1).max(512),
-      obrigatorio: z13.number().default(1),
-      ordem: z13.number().default(0)
+    addItem: publicProcedure.input(z16.object({
+      modeloId: z16.number(),
+      descricao: z16.string().min(1).max(512),
+      obrigatorio: z16.number().default(1),
+      ordem: z16.number().default(0)
     })).mutation(async ({ input }) => {
       await db4.insert(empacotamentoChecklistLetreitoItens).values({
         modeloLetreitoId: input.modeloId,
@@ -7992,36 +13872,36 @@ var empacotamentoRouter = router({
       });
       return { success: true };
     }),
-    updateItem: publicProcedure.input(z13.object({
-      id: z13.number(),
-      descricao: z13.string().min(1).max(512),
-      obrigatorio: z13.number().optional(),
-      ordem: z13.number().optional()
+    updateItem: publicProcedure.input(z16.object({
+      id: z16.number(),
+      descricao: z16.string().min(1).max(512),
+      obrigatorio: z16.number().optional(),
+      ordem: z16.number().optional()
     })).mutation(async ({ input }) => {
-      await db4.update(empacotamentoChecklistLetreitoItens).set({ descricao: input.descricao, obrigatorio: input.obrigatorio ?? 1, ordem: input.ordem ?? 0 }).where(eq12(empacotamentoChecklistLetreitoItens.id, input.id));
+      await db4.update(empacotamentoChecklistLetreitoItens).set({ descricao: input.descricao, obrigatorio: input.obrigatorio ?? 1, ordem: input.ordem ?? 0 }).where(eq16(empacotamentoChecklistLetreitoItens.id, input.id));
       return { success: true };
     }),
-    deleteItem: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await db4.delete(empacotamentoChecklistLetreitoItens).where(eq12(empacotamentoChecklistLetreitoItens.id, input.id));
+    deleteItem: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await db4.delete(empacotamentoChecklistLetreitoItens).where(eq16(empacotamentoChecklistLetreitoItens.id, input.id));
       return { success: true };
     }),
-    getPorPedido: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
-      return await db4.select().from(empacotamentoPedidoChecklistLetreiro).where(eq12(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId));
+    getPorPedido: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
+      return await db4.select().from(empacotamentoPedidoChecklistLetreiro).where(eq16(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId));
     }),
-    marcarItem: publicProcedure.input(z13.object({
-      pedidoId: z13.number(),
-      itemId: z13.number(),
-      marcado: z13.number(),
-      marcadoPor: z13.string().optional()
+    marcarItem: publicProcedure.input(z16.object({
+      pedidoId: z16.number(),
+      itemId: z16.number(),
+      marcado: z16.number(),
+      marcadoPor: z16.string().optional()
     })).mutation(async ({ input }) => {
-      const existing = await getDb5().select().from(empacotamentoPedidoChecklistLetreiro).where(and10(
-        eq12(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId),
-        eq12(empacotamentoPedidoChecklistLetreiro.itemId, input.itemId)
+      const existing = await getDb5().select().from(empacotamentoPedidoChecklistLetreiro).where(and13(
+        eq16(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId),
+        eq16(empacotamentoPedidoChecklistLetreiro.itemId, input.itemId)
       ));
       if (existing.length > 0) {
-        await db4.update(empacotamentoPedidoChecklistLetreiro).set({ marcado: input.marcado, marcadoPor: input.marcadoPor ?? null, marcadoEm: input.marcado ? /* @__PURE__ */ new Date() : null }).where(and10(
-          eq12(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId),
-          eq12(empacotamentoPedidoChecklistLetreiro.itemId, input.itemId)
+        await db4.update(empacotamentoPedidoChecklistLetreiro).set({ marcado: input.marcado, marcadoPor: input.marcadoPor ?? null, marcadoEm: input.marcado ? /* @__PURE__ */ new Date() : null }).where(and13(
+          eq16(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId),
+          eq16(empacotamentoPedidoChecklistLetreiro.itemId, input.itemId)
         ));
       } else {
         await db4.insert(empacotamentoPedidoChecklistLetreiro).values({
@@ -8040,25 +13920,25 @@ var empacotamentoRouter = router({
     list: publicProcedure.query(async () => {
       return await db4.select().from(empacotamentoTabelaPrecos).orderBy(asc4(empacotamentoTabelaPrecos.modeloId), asc4(empacotamentoTabelaPrecos.tipoCaixa));
     }),
-    listByModelo: publicProcedure.input(z13.object({ modeloId: z13.number() })).query(async ({ input }) => {
-      return await db4.select().from(empacotamentoTabelaPrecos).where(eq12(empacotamentoTabelaPrecos.modeloId, input.modeloId)).orderBy(asc4(empacotamentoTabelaPrecos.tipoCaixa));
+    listByModelo: publicProcedure.input(z16.object({ modeloId: z16.number() })).query(async ({ input }) => {
+      return await db4.select().from(empacotamentoTabelaPrecos).where(eq16(empacotamentoTabelaPrecos.modeloId, input.modeloId)).orderBy(asc4(empacotamentoTabelaPrecos.tipoCaixa));
     }),
-    upsert: publicProcedure.input(z13.object({
-      modeloId: z13.number(),
-      tipoCaixa: z13.string().min(1).max(64),
-      valorComissao: z13.number().min(0)
+    upsert: publicProcedure.input(z16.object({
+      modeloId: z16.number(),
+      tipoCaixa: z16.string().min(1).max(64),
+      valorComissao: z16.number().min(0)
     })).mutation(async ({ input }) => {
       const existing = await getDb5().select().from(empacotamentoTabelaPrecos).where(
-        and10(
-          eq12(empacotamentoTabelaPrecos.modeloId, input.modeloId),
-          eq12(empacotamentoTabelaPrecos.tipoCaixa, input.tipoCaixa)
+        and13(
+          eq16(empacotamentoTabelaPrecos.modeloId, input.modeloId),
+          eq16(empacotamentoTabelaPrecos.tipoCaixa, input.tipoCaixa)
         )
       );
       if (existing.length > 0) {
         await db4.update(empacotamentoTabelaPrecos).set({ valorComissao: String(input.valorComissao) }).where(
-          and10(
-            eq12(empacotamentoTabelaPrecos.modeloId, input.modeloId),
-            eq12(empacotamentoTabelaPrecos.tipoCaixa, input.tipoCaixa)
+          and13(
+            eq16(empacotamentoTabelaPrecos.modeloId, input.modeloId),
+            eq16(empacotamentoTabelaPrecos.tipoCaixa, input.tipoCaixa)
           )
         );
       } else {
@@ -8070,27 +13950,27 @@ var empacotamentoRouter = router({
       }
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await db4.delete(empacotamentoTabelaPrecos).where(eq12(empacotamentoTabelaPrecos.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await db4.delete(empacotamentoTabelaPrecos).where(eq16(empacotamentoTabelaPrecos.id, input.id));
       return { success: true };
     })
   }),
   // ─── PEDIDOS ────────────────────────────────────────────────────────────────
   pedidos: router({
-    list: publicProcedure.input(z13.object({
-      kanbanStatus: z13.enum(["aguardando", "embalando", "patio", "abandonado", "todos"]).optional()
+    list: publicProcedure.input(z16.object({
+      kanbanStatus: z16.enum(["aguardando", "embalando", "patio", "abandonado", "todos"]).optional()
     }).optional()).query(async ({ input }) => {
       if (input?.kanbanStatus && input.kanbanStatus !== "todos") {
-        return await getDb5().select().from(empacotamentoPedidos).where(eq12(empacotamentoPedidos.kanbanStatus, input.kanbanStatus)).orderBy(asc4(empacotamentoPedidos.prazoEntrega), desc7(empacotamentoPedidos.createdAt));
+        return await getDb5().select().from(empacotamentoPedidos).where(eq16(empacotamentoPedidos.kanbanStatus, input.kanbanStatus)).orderBy(asc4(empacotamentoPedidos.prazoEntrega), desc8(empacotamentoPedidos.createdAt));
       }
-      return await getDb5().select().from(empacotamentoPedidos).orderBy(asc4(empacotamentoPedidos.prazoEntrega), desc7(empacotamentoPedidos.createdAt));
+      return await getDb5().select().from(empacotamentoPedidos).orderBy(asc4(empacotamentoPedidos.prazoEntrega), desc8(empacotamentoPedidos.createdAt));
     }),
-    getById: publicProcedure.input(z13.object({ id: z13.number() })).query(async ({ input }) => {
-      const rows = await getDb5().select().from(empacotamentoPedidos).where(eq12(empacotamentoPedidos.id, input.id));
+    getById: publicProcedure.input(z16.object({ id: z16.number() })).query(async ({ input }) => {
+      const rows = await getDb5().select().from(empacotamentoPedidos).where(eq16(empacotamentoPedidos.id, input.id));
       return rows[0] ?? null;
     }),
     // ─── Lista pedidos de um vendedor específico (para alertas de status) ──────
-    listPorVendedor: publicProcedure.input(z13.object({ vendedorNome: z13.string() })).query(async ({ input }) => {
+    listPorVendedor: publicProcedure.input(z16.object({ vendedorNome: z16.string() })).query(async ({ input }) => {
       const nome = input.vendedorNome.toLowerCase().trim();
       const todos = await getDb5().select({
         id: empacotamentoPedidos.id,
@@ -8099,40 +13979,40 @@ var empacotamentoRouter = router({
         kanbanStatus: empacotamentoPedidos.kanbanStatus,
         createdByNome: empacotamentoPedidos.createdByNome,
         updatedAt: empacotamentoPedidos.updatedAt
-      }).from(empacotamentoPedidos).orderBy(desc7(empacotamentoPedidos.updatedAt));
+      }).from(empacotamentoPedidos).orderBy(desc8(empacotamentoPedidos.updatedAt));
       return todos.filter((p) => (p.createdByNome ?? "").toLowerCase().trim() === nome);
     }),
     // ─── INTEGRAÇÃO MUBISYS: Buscar dados da OS pelo número ───────────────────────────
-    buscarOs: publicProcedure.input(z13.object({ numeroOs: z13.string().min(1) })).query(async ({ input }) => {
+    buscarOs: publicProcedure.input(z16.object({ numeroOs: z16.string().min(1) })).query(async ({ input }) => {
       const dados = await buscarOsMubisys(input.numeroOs);
       return dados;
     }),
-    create: publicProcedure.input(z13.object({
-      numeroPedido: z13.string().min(1).max(64),
-      cliente: z13.string().min(1).max(256),
-      modeloId: z13.number().optional(),
-      modeloNome: z13.string().optional(),
-      modeloCaixaId: z13.number().optional(),
-      modeloCaixaNome: z13.string().optional(),
-      tipoCaixa: z13.string().max(64).default(""),
-      arquivoUrl: z13.string().optional(),
-      arquivoKey: z13.string().optional(),
-      arquivoTipo: z13.string().optional(),
-      prazoEntrega: z13.string().optional(),
+    create: publicProcedure.input(z16.object({
+      numeroPedido: z16.string().min(1).max(64),
+      cliente: z16.string().min(1).max(256),
+      modeloId: z16.number().optional(),
+      modeloNome: z16.string().optional(),
+      modeloCaixaId: z16.number().optional(),
+      modeloCaixaNome: z16.string().optional(),
+      tipoCaixa: z16.string().max(64).default(""),
+      arquivoUrl: z16.string().optional(),
+      arquivoKey: z16.string().optional(),
+      arquivoTipo: z16.string().optional(),
+      prazoEntrega: z16.string().optional(),
       // ISO datetime
-      horarioMaximo: z13.string().optional(),
+      horarioMaximo: z16.string().optional(),
       // "HH:MM"
-      observacoes: z13.string().optional(),
-      createdBy: z13.number().optional(),
-      createdByNome: z13.string().optional(),
-      larguraCm: z13.number().optional(),
-      alturaCm: z13.number().optional(),
-      profundidadeCm: z13.number().optional(),
-      pesoKg: z13.number().min(0).optional(),
-      metrosQuadrados: z13.number().min(0).optional(),
-      cnpjCliente: z13.string().optional(),
-      cepCliente: z13.string().optional(),
-      enderecoCliente: z13.string().optional()
+      observacoes: z16.string().optional(),
+      createdBy: z16.number().optional(),
+      createdByNome: z16.string().optional(),
+      larguraCm: z16.number().optional(),
+      alturaCm: z16.number().optional(),
+      profundidadeCm: z16.number().optional(),
+      pesoKg: z16.number().min(0).optional(),
+      metrosQuadrados: z16.number().min(0).optional(),
+      cnpjCliente: z16.string().optional(),
+      cepCliente: z16.string().optional(),
+      enderecoCliente: z16.string().optional()
     })).mutation(async ({ input }) => {
       const [result] = await db4.insert(empacotamentoPedidos).values({
         numeroPedido: input.numeroPedido,
@@ -8162,32 +14042,32 @@ var empacotamentoRouter = router({
       }).returning({ id: empacotamentoPedidos.id });
       return { success: true, id: result.id };
     }),
-    update: publicProcedure.input(z13.object({
-      id: z13.number(),
-      numeroPedido: z13.string().optional(),
-      cliente: z13.string().optional(),
-      modeloId: z13.number().optional(),
-      modeloNome: z13.string().optional(),
-      modeloCaixaId: z13.number().optional(),
-      modeloCaixaNome: z13.string().optional(),
-      tipoCaixa: z13.string().optional(),
-      prazoEntrega: z13.string().optional(),
-      horarioMaximo: z13.string().optional(),
-      observacoes: z13.string().optional()
+    update: publicProcedure.input(z16.object({
+      id: z16.number(),
+      numeroPedido: z16.string().optional(),
+      cliente: z16.string().optional(),
+      modeloId: z16.number().optional(),
+      modeloNome: z16.string().optional(),
+      modeloCaixaId: z16.number().optional(),
+      modeloCaixaNome: z16.string().optional(),
+      tipoCaixa: z16.string().optional(),
+      prazoEntrega: z16.string().optional(),
+      horarioMaximo: z16.string().optional(),
+      observacoes: z16.string().optional()
     })).mutation(async ({ input }) => {
       const { id, prazoEntrega, ...rest } = input;
       await db4.update(empacotamentoPedidos).set({
         ...rest,
         prazoEntrega: prazoEntrega ? new Date(prazoEntrega) : void 0
-      }).where(eq12(empacotamentoPedidos.id, id));
+      }).where(eq16(empacotamentoPedidos.id, id));
       return { success: true };
     }),
-    atualizarDimensoes: publicProcedure.input(z13.object({
-      id: z13.number(),
-      larguraCm: z13.number().min(0).nullable().optional(),
-      alturaCm: z13.number().min(0).nullable().optional(),
-      profundidadeCm: z13.number().min(0).nullable().optional(),
-      pesoKg: z13.number().min(0).nullable().optional()
+    atualizarDimensoes: publicProcedure.input(z16.object({
+      id: z16.number(),
+      larguraCm: z16.number().min(0).nullable().optional(),
+      alturaCm: z16.number().min(0).nullable().optional(),
+      profundidadeCm: z16.number().min(0).nullable().optional(),
+      pesoKg: z16.number().min(0).nullable().optional()
     })).mutation(async ({ input }) => {
       const { id, ...dims } = input;
       const setData = {};
@@ -8195,23 +14075,23 @@ var empacotamentoRouter = router({
       if (dims.alturaCm !== void 0) setData.alturaCm = dims.alturaCm != null ? String(dims.alturaCm) : null;
       if (dims.profundidadeCm !== void 0) setData.profundidadeCm = dims.profundidadeCm != null ? String(dims.profundidadeCm) : null;
       if (dims.pesoKg !== void 0) setData.pesoKg = dims.pesoKg != null ? String(dims.pesoKg) : null;
-      await getDb5().update(empacotamentoPedidos).set(setData).where(eq12(empacotamentoPedidos.id, id));
+      await getDb5().update(empacotamentoPedidos).set(setData).where(eq16(empacotamentoPedidos.id, id));
       return { success: true };
     }),
-    moverKanban: publicProcedure.input(z13.object({
-      id: z13.number(),
-      kanbanStatus: z13.enum(["aguardando", "embalando", "patio", "abandonado"])
+    moverKanban: publicProcedure.input(z16.object({
+      id: z16.number(),
+      kanbanStatus: z16.enum(["aguardando", "embalando", "patio", "abandonado"])
     })).mutation(async ({ input }) => {
       const updates = { kanbanStatus: input.kanbanStatus };
       const { cotacoesFrete: cotacoesFrete2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       if (input.kanbanStatus === "patio") {
         updates.finalizadoEm = /* @__PURE__ */ new Date();
-        const pedidos = await getDb5().select().from(empacotamentoPedidos).where(eq12(empacotamentoPedidos.id, input.id));
+        const pedidos = await getDb5().select().from(empacotamentoPedidos).where(eq16(empacotamentoPedidos.id, input.id));
         const pedido = pedidos[0];
         if (pedido) {
-          const existing = await getDb5().select({ id: cotacoesFrete2.id }).from(cotacoesFrete2).where(eq12(cotacoesFrete2.empacotamentoPedidoId, input.id)).limit(1);
+          const existing = await getDb5().select({ id: cotacoesFrete2.id }).from(cotacoesFrete2).where(eq16(cotacoesFrete2.empacotamentoPedidoId, input.id)).limit(1);
           if (existing.length === 0) {
-            const fotos = await getDb5().select().from(empacotamentoPedidoFotos).where(eq12(empacotamentoPedidoFotos.pedidoId, input.id)).orderBy(desc7(empacotamentoPedidoFotos.id)).limit(1);
+            const fotos = await getDb5().select().from(empacotamentoPedidoFotos).where(eq16(empacotamentoPedidoFotos.pedidoId, input.id)).orderBy(desc8(empacotamentoPedidoFotos.id)).limit(1);
             const fotoUrl = fotos[0]?.url ?? pedido.arquivoUrl ?? null;
             let municipioAuto = "(a preencher)";
             let estadoAuto = "SP";
@@ -8246,40 +14126,40 @@ var empacotamentoRouter = router({
             });
           } else {
             await getDb5().update(cotacoesFrete2).set({ status: "aberta" }).where(
-              eq12(cotacoesFrete2.empacotamentoPedidoId, input.id)
+              eq16(cotacoesFrete2.empacotamentoPedidoId, input.id)
             );
           }
         }
       }
       if (input.kanbanStatus === "embalando" || input.kanbanStatus === "aguardando") {
         await getDb5().update(cotacoesFrete2).set({ status: "cancelada" }).where(
-          eq12(cotacoesFrete2.empacotamentoPedidoId, input.id)
+          eq16(cotacoesFrete2.empacotamentoPedidoId, input.id)
         );
       }
-      await getDb5().update(empacotamentoPedidos).set(updates).where(eq12(empacotamentoPedidos.id, input.id));
+      await getDb5().update(empacotamentoPedidos).set(updates).where(eq16(empacotamentoPedidos.id, input.id));
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await db4.delete(empacotamentoPedidos).where(eq12(empacotamentoPedidos.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await db4.delete(empacotamentoPedidos).where(eq16(empacotamentoPedidos.id, input.id));
       return { success: true };
     }),
-    uploadArquivo: publicProcedure.input(z13.object({
-      pedidoId: z13.number(),
-      url: z13.string().url(),
-      key: z13.string().min(1),
-      mimeType: z13.string(),
-      fileName: z13.string()
+    uploadArquivo: publicProcedure.input(z16.object({
+      pedidoId: z16.number(),
+      url: z16.string().url(),
+      key: z16.string().min(1),
+      mimeType: z16.string(),
+      fileName: z16.string()
     })).mutation(async ({ input }) => {
       const tipo = input.mimeType.includes("pdf") ? "pdf" : "image";
-      await db4.update(empacotamentoPedidos).set({ arquivoUrl: input.url, arquivoKey: input.key, arquivoTipo: tipo }).where(eq12(empacotamentoPedidos.id, input.pedidoId));
+      await db4.update(empacotamentoPedidos).set({ arquivoUrl: input.url, arquivoKey: input.key, arquivoTipo: tipo }).where(eq16(empacotamentoPedidos.id, input.pedidoId));
       return { url: input.url, key: input.key };
     }),
-    uploadFoto: publicProcedure.input(z13.object({
-      pedidoId: z13.number(),
-      url: z13.string().url(),
-      key: z13.string().min(1),
-      mimeType: z13.string(),
-      usuarioNome: z13.string().optional()
+    uploadFoto: publicProcedure.input(z16.object({
+      pedidoId: z16.number(),
+      url: z16.string().url(),
+      key: z16.string().min(1),
+      mimeType: z16.string(),
+      usuarioNome: z16.string().optional()
     })).mutation(async ({ input }) => {
       await db4.insert(empacotamentoPedidoFotos).values({
         pedidoId: input.pedidoId,
@@ -8289,59 +14169,59 @@ var empacotamentoRouter = router({
       });
       return { url: input.url, key: input.key };
     }),
-    listFotos: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
-      return await getDb5().select().from(empacotamentoPedidoFotos).where(eq12(empacotamentoPedidoFotos.pedidoId, input.pedidoId)).orderBy(desc7(empacotamentoPedidoFotos.createdAt));
+    listFotos: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
+      return await getDb5().select().from(empacotamentoPedidoFotos).where(eq16(empacotamentoPedidoFotos.pedidoId, input.pedidoId)).orderBy(desc8(empacotamentoPedidoFotos.createdAt));
     }),
-    atualizarFotoAnotada: publicProcedure.input(z13.object({
-      fotoId: z13.number(),
-      url: z13.string().url(),
-      key: z13.string().min(1)
+    atualizarFotoAnotada: publicProcedure.input(z16.object({
+      fotoId: z16.number(),
+      url: z16.string().url(),
+      key: z16.string().min(1)
     })).mutation(async ({ input }) => {
-      await getDb5().update(empacotamentoPedidoFotos).set({ url: input.url, storageKey: input.key }).where(eq12(empacotamentoPedidoFotos.id, input.fotoId));
+      await getDb5().update(empacotamentoPedidoFotos).set({ url: input.url, storageKey: input.key }).where(eq16(empacotamentoPedidoFotos.id, input.fotoId));
       return { url: input.url };
     }),
     // Salva o arquivo do supervisor (imagem) com anotações canvas
-    atualizarArquivoPedidoAnotado: publicProcedure.input(z13.object({
-      pedidoId: z13.number(),
-      url: z13.string().url(),
-      key: z13.string().min(1)
+    atualizarArquivoPedidoAnotado: publicProcedure.input(z16.object({
+      pedidoId: z16.number(),
+      url: z16.string().url(),
+      key: z16.string().min(1)
     })).mutation(async ({ input }) => {
-      await getDb5().update(empacotamentoPedidos).set({ arquivoUrl: input.url, arquivoKey: input.key, arquivoTipo: "image" }).where(eq12(empacotamentoPedidos.id, input.pedidoId));
+      await getDb5().update(empacotamentoPedidos).set({ arquivoUrl: input.url, arquivoKey: input.key, arquivoTipo: "image" }).where(eq16(empacotamentoPedidos.id, input.pedidoId));
       return { url: input.url };
     }),
     // Verifica se um pedido pode ir para o pátio (checklist + operador)
-    checkPendencias: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
-      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(eq12(empacotamentoPedidos.id, input.pedidoId));
+    checkPendencias: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
+      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(eq16(empacotamentoPedidos.id, input.pedidoId));
       const pedido = pedidos[0];
       if (!pedido) return { podeIrPatio: false, semOperador: true, checklistPendentes: 0, motivos: ["Pedido n\xE3o encontrado"] };
       const motivos = [];
-      const operadores = await getDb5().select().from(empacotamentoPedidoUsuarios).where(eq12(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId));
+      const operadores = await getDb5().select().from(empacotamentoPedidoUsuarios).where(eq16(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId));
       const temOperador = operadores.length > 0;
       if (!temOperador) motivos.push("Nenhum colaborador vinculado ao pedido");
       let checklistPendentes = 0;
       if (pedido.modeloCaixaId) {
-        const itens = await getDb5().select().from(empacotamentoChecklistItens).where(and10(eq12(empacotamentoChecklistItens.modeloCaixaId, pedido.modeloCaixaId), eq12(empacotamentoChecklistItens.obrigatorio, 1)));
-        const marcados = await getDb5().select().from(empacotamentoPedidoChecklist).where(and10(eq12(empacotamentoPedidoChecklist.pedidoId, input.pedidoId), eq12(empacotamentoPedidoChecklist.marcado, 1)));
+        const itens = await getDb5().select().from(empacotamentoChecklistItens).where(and13(eq16(empacotamentoChecklistItens.modeloCaixaId, pedido.modeloCaixaId), eq16(empacotamentoChecklistItens.obrigatorio, 1)));
+        const marcados = await getDb5().select().from(empacotamentoPedidoChecklist).where(and13(eq16(empacotamentoPedidoChecklist.pedidoId, input.pedidoId), eq16(empacotamentoPedidoChecklist.marcado, 1)));
         const marcadosIds = new Set(marcados.map((m) => m.itemId));
         checklistPendentes += itens.filter((i) => !marcadosIds.has(i.id)).length;
       }
       if (pedido.modeloId) {
-        const itensLetreiro = await getDb5().select().from(empacotamentoChecklistLetreitoItens).where(and10(eq12(empacotamentoChecklistLetreitoItens.modeloLetreitoId, pedido.modeloId), eq12(empacotamentoChecklistLetreitoItens.obrigatorio, 1)));
-        const marcadosLetreiro = await getDb5().select().from(empacotamentoPedidoChecklistLetreiro).where(and10(eq12(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId), eq12(empacotamentoPedidoChecklistLetreiro.marcado, 1)));
+        const itensLetreiro = await getDb5().select().from(empacotamentoChecklistLetreitoItens).where(and13(eq16(empacotamentoChecklistLetreitoItens.modeloLetreitoId, pedido.modeloId), eq16(empacotamentoChecklistLetreitoItens.obrigatorio, 1)));
+        const marcadosLetreiro = await getDb5().select().from(empacotamentoPedidoChecklistLetreiro).where(and13(eq16(empacotamentoPedidoChecklistLetreiro.pedidoId, input.pedidoId), eq16(empacotamentoPedidoChecklistLetreiro.marcado, 1)));
         const marcadosIdsLetreiro = new Set(marcadosLetreiro.map((m) => m.itemId));
         checklistPendentes += itensLetreiro.filter((i) => !marcadosIdsLetreiro.has(i.id)).length;
       }
       if (checklistPendentes > 0) motivos.push(`${checklistPendentes} item(ns) obrigat\xF3rio(s) do checklist pendente(s)`);
-      const fotos = await getDb5().select({ id: empacotamentoPedidoFotos.id }).from(empacotamentoPedidoFotos).where(eq12(empacotamentoPedidoFotos.pedidoId, input.pedidoId)).limit(1);
+      const fotos = await getDb5().select({ id: empacotamentoPedidoFotos.id }).from(empacotamentoPedidoFotos).where(eq16(empacotamentoPedidoFotos.pedidoId, input.pedidoId)).limit(1);
       const temFoto = fotos.length > 0;
       if (!temFoto) motivos.push("Fotografia do pedido embalado \xE9 obrigat\xF3ria");
       const temPeso = pedido.pesoKg != null && parseFloat(String(pedido.pesoKg)) > 0;
       if (!temPeso) motivos.push("Peso (kg) \xE9 obrigat\xF3rio");
       const temMedidas = pedido.alturaCm != null && pedido.larguraCm != null && pedido.profundidadeCm != null && parseFloat(String(pedido.alturaCm)) > 0 && parseFloat(String(pedido.larguraCm)) > 0 && parseFloat(String(pedido.profundidadeCm)) > 0;
       if (!temMedidas) motivos.push("Medidas da caixa (A \xD7 L \xD7 P) s\xE3o obrigat\xF3rias");
-      const sessoesAbertas = await getDb5().select().from(empacotamentoSessoes).where(and10(
-        eq12(empacotamentoSessoes.pedidoId, input.pedidoId),
-        sql7`${empacotamentoSessoes.status} IN ('ativo', 'pausado')`
+      const sessoesAbertas = await getDb5().select().from(empacotamentoSessoes).where(and13(
+        eq16(empacotamentoSessoes.pedidoId, input.pedidoId),
+        sql8`${empacotamentoSessoes.status} IN ('ativo', 'pausado')`
       ));
       const temOperadorSemRegistro = sessoesAbertas.length > 0;
       if (temOperadorSemRegistro) motivos.push(`${sessoesAbertas.length} operador(es) com cron\xF4metro ativo sem registrar o tempo. Clique em 'Registrar' antes de mover para o P\xE1tio.`);
@@ -8351,19 +14231,19 @@ var empacotamentoRouter = router({
   }),
   // ─── USUÁRIOS POR PEDIDO (cronômetro + atribuição) ──────────────────────────
   pedidoUsuarios: router({
-    listPorPedido: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
-      return await getDb5().select().from(empacotamentoPedidoUsuarios).where(eq12(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId)).orderBy(asc4(empacotamentoPedidoUsuarios.createdAt));
+    listPorPedido: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
+      return await getDb5().select().from(empacotamentoPedidoUsuarios).where(eq16(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId)).orderBy(asc4(empacotamentoPedidoUsuarios.createdAt));
     }),
-    entrar: publicProcedure.input(z13.object({
-      pedidoId: z13.number(),
-      usuarioId: z13.string().optional(),
-      usuarioNome: z13.string().min(1)
+    entrar: publicProcedure.input(z16.object({
+      pedidoId: z16.number(),
+      usuarioId: z16.string().optional(),
+      usuarioNome: z16.string().min(1)
     })).mutation(async ({ input }) => {
       const existing = await getDb5().select().from(empacotamentoPedidoUsuarios).where(
-        and10(
-          eq12(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId),
-          eq12(empacotamentoPedidoUsuarios.usuarioNome, input.usuarioNome),
-          eq12(empacotamentoPedidoUsuarios.ativo, 1)
+        and13(
+          eq16(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId),
+          eq16(empacotamentoPedidoUsuarios.usuarioNome, input.usuarioNome),
+          eq16(empacotamentoPedidoUsuarios.ativo, 1)
         )
       );
       if (existing.length > 0) return { success: true, id: existing[0].id };
@@ -8374,48 +14254,48 @@ var empacotamentoRouter = router({
         iniciadoEm: /* @__PURE__ */ new Date(),
         ativo: 1
       }).returning({ id: empacotamentoPedidoUsuarios.id });
-      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(eq12(empacotamentoPedidos.id, input.pedidoId));
+      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(eq16(empacotamentoPedidos.id, input.pedidoId));
       if (pedidos[0]?.kanbanStatus === "aguardando") {
-        await getDb5().update(empacotamentoPedidos).set({ kanbanStatus: "embalando" }).where(eq12(empacotamentoPedidos.id, input.pedidoId));
+        await getDb5().update(empacotamentoPedidos).set({ kanbanStatus: "embalando" }).where(eq16(empacotamentoPedidos.id, input.pedidoId));
       }
       return { success: true, id: result.id };
     }),
-    sair: publicProcedure.input(z13.object({
-      id: z13.number(),
-      tempoSegundos: z13.number().int().min(0)
+    sair: publicProcedure.input(z16.object({
+      id: z16.number(),
+      tempoSegundos: z16.number().int().min(0)
     })).mutation(async ({ input }) => {
       await db4.update(empacotamentoPedidoUsuarios).set({
         finalizadoEm: /* @__PURE__ */ new Date(),
         tempoSegundos: input.tempoSegundos,
         ativo: 0
-      }).where(eq12(empacotamentoPedidoUsuarios.id, input.id));
+      }).where(eq16(empacotamentoPedidoUsuarios.id, input.id));
       return { success: true };
     }),
-    atualizarTempo: publicProcedure.input(z13.object({
-      id: z13.number(),
-      tempoSegundos: z13.number().int().min(0)
+    atualizarTempo: publicProcedure.input(z16.object({
+      id: z16.number(),
+      tempoSegundos: z16.number().int().min(0)
     })).mutation(async ({ input }) => {
-      await db4.update(empacotamentoPedidoUsuarios).set({ tempoSegundos: input.tempoSegundos }).where(eq12(empacotamentoPedidoUsuarios.id, input.id));
+      await db4.update(empacotamentoPedidoUsuarios).set({ tempoSegundos: input.tempoSegundos }).where(eq16(empacotamentoPedidoUsuarios.id, input.id));
       return { success: true };
     }),
     // Retorna o registro ativo do operador (por usuarioId ou nome) e o pedido correspondente
-    pedidoAtivoDoOperador: publicProcedure.input(z13.object({
-      usuarioId: z13.string().optional(),
-      usuarioNome: z13.string().optional()
+    pedidoAtivoDoOperador: publicProcedure.input(z16.object({
+      usuarioId: z16.string().optional(),
+      usuarioNome: z16.string().optional()
     })).query(async ({ input }) => {
       if (!input.usuarioId && !input.usuarioNome) return null;
-      const conditions = [eq12(empacotamentoPedidoUsuarios.ativo, 1)];
+      const conditions = [eq16(empacotamentoPedidoUsuarios.ativo, 1)];
       if (input.usuarioId) {
-        conditions.push(eq12(empacotamentoPedidoUsuarios.usuarioId, input.usuarioId));
+        conditions.push(eq16(empacotamentoPedidoUsuarios.usuarioId, input.usuarioId));
       } else if (input.usuarioNome) {
-        conditions.push(eq12(empacotamentoPedidoUsuarios.usuarioNome, input.usuarioNome));
+        conditions.push(eq16(empacotamentoPedidoUsuarios.usuarioNome, input.usuarioNome));
       }
-      const registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(and10(...conditions)).orderBy(desc7(empacotamentoPedidoUsuarios.createdAt)).limit(1);
+      const registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(and13(...conditions)).orderBy(desc8(empacotamentoPedidoUsuarios.createdAt)).limit(1);
       if (!registros.length) return null;
       const reg = registros[0];
-      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(and10(
-        eq12(empacotamentoPedidos.id, reg.pedidoId),
-        eq12(empacotamentoPedidos.kanbanStatus, "embalando")
+      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(and13(
+        eq16(empacotamentoPedidos.id, reg.pedidoId),
+        eq16(empacotamentoPedidos.kanbanStatus, "embalando")
       )).limit(1);
       if (!pedidos.length) return null;
       return { pedido: pedidos[0], registro: reg };
@@ -8423,24 +14303,24 @@ var empacotamentoRouter = router({
   }),
   // ─── RELATÓRIO DE FECHAMENTO ─────────────────────────────────────────────────
   relatorio: router({
-    fechamento: publicProcedure.input(z13.object({
-      dataInicio: z13.string(),
-      dataFim: z13.string()
+    fechamento: publicProcedure.input(z16.object({
+      dataInicio: z16.string(),
+      dataFim: z16.string()
     })).query(async ({ input }) => {
       const inicio = new Date(input.dataInicio);
       const fim = new Date(input.dataFim);
       fim.setHours(23, 59, 59, 999);
       const pedidos = await getDb5().select().from(empacotamentoPedidos).where(
-        and10(
-          eq12(empacotamentoPedidos.kanbanStatus, "patio"),
-          gte4(empacotamentoPedidos.finalizadoEm, inicio),
+        and13(
+          eq16(empacotamentoPedidos.kanbanStatus, "patio"),
+          gte5(empacotamentoPedidos.finalizadoEm, inicio),
           lte3(empacotamentoPedidos.finalizadoEm, fim)
         )
       ).orderBy(asc4(empacotamentoPedidos.finalizadoEm));
       const pedidoIds = pedidos.map((p) => p.id);
       let usuariosTrabalho = [];
       if (pedidoIds.length > 0) {
-        usuariosTrabalho = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql7`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        usuariosTrabalho = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql8`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
       }
       const porOperador = {};
       for (const u of usuariosTrabalho) {
@@ -8477,30 +14357,30 @@ var empacotamentoRouter = router({
       const amanha = new Date(hoje);
       amanha.setDate(amanha.getDate() + 1);
       const pedidosHoje = await getDb5().select().from(empacotamentoPedidos).where(
-        and10(
-          eq12(empacotamentoPedidos.kanbanStatus, "patio"),
-          gte4(empacotamentoPedidos.finalizadoEm, hoje),
+        and13(
+          eq16(empacotamentoPedidos.kanbanStatus, "patio"),
+          gte5(empacotamentoPedidos.finalizadoEm, hoje),
           lte3(empacotamentoPedidos.finalizadoEm, amanha)
         )
       );
       const totalHoje = pedidosHoje.reduce((acc, p) => acc + parseFloat(p.valorComissao ?? "0"), 0);
-      const aguardando = await getDb5().select({ count: sql7`COUNT(*)` }).from(empacotamentoPedidos).where(eq12(empacotamentoPedidos.kanbanStatus, "aguardando"));
+      const aguardando = await getDb5().select({ count: sql8`COUNT(*)` }).from(empacotamentoPedidos).where(eq16(empacotamentoPedidos.kanbanStatus, "aguardando"));
       return {
         finalizadosHoje: pedidosHoje.length,
         totalComissaoHoje: totalHoje,
         pendentes: Number(aguardando[0]?.count ?? 0)
       };
     }),
-    produtividadePorUsuario: publicProcedure.input(z13.object({
-      dataInicio: z13.string(),
-      dataFim: z13.string()
+    produtividadePorUsuario: publicProcedure.input(z16.object({
+      dataInicio: z16.string(),
+      dataFim: z16.string()
     })).query(async ({ input }) => {
       const inicio = new Date(input.dataInicio);
       const fim = new Date(input.dataFim);
       fim.setHours(23, 59, 59, 999);
       const registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(
-        and10(
-          gte4(empacotamentoPedidoUsuarios.createdAt, inicio),
+        and13(
+          gte5(empacotamentoPedidoUsuarios.createdAt, inicio),
           lte3(empacotamentoPedidoUsuarios.createdAt, fim)
         )
       );
@@ -8519,26 +14399,26 @@ var empacotamentoRouter = router({
       return Object.values(porUsuario).sort((a, b) => b.totalPedidos - a.totalPedidos);
     }),
     // Relatório completo de expedidos com fotos e operadores
-    expedidosCompleto: publicProcedure.input(z13.object({
-      dataInicio: z13.string().optional(),
-      dataFim: z13.string().optional()
+    expedidosCompleto: publicProcedure.input(z16.object({
+      dataInicio: z16.string().optional(),
+      dataFim: z16.string().optional()
     })).query(async ({ input }) => {
       const inicio = input.dataInicio ? new Date(input.dataInicio) : /* @__PURE__ */ new Date(0);
       const fim = input.dataFim ? new Date(input.dataFim) : /* @__PURE__ */ new Date();
       fim.setHours(23, 59, 59, 999);
       const pedidos = await getDb5().select().from(empacotamentoPedidos).where(
-        and10(
-          eq12(empacotamentoPedidos.kanbanStatus, "patio"),
-          gte4(empacotamentoPedidos.finalizadoEm, inicio),
+        and13(
+          eq16(empacotamentoPedidos.kanbanStatus, "patio"),
+          gte5(empacotamentoPedidos.finalizadoEm, inicio),
           lte3(empacotamentoPedidos.finalizadoEm, fim)
         )
-      ).orderBy(desc7(empacotamentoPedidos.finalizadoEm));
+      ).orderBy(desc8(empacotamentoPedidos.finalizadoEm));
       const pedidoIds = pedidos.map((p) => p.id);
       let fotos = [];
       let usuarios = [];
       if (pedidoIds.length > 0) {
-        fotos = await getDb5().select().from(empacotamentoPedidoFotos).where(sql7`${empacotamentoPedidoFotos.pedidoId} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
-        usuarios = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql7`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        fotos = await getDb5().select().from(empacotamentoPedidoFotos).where(sql8`${empacotamentoPedidoFotos.pedidoId} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
+        usuarios = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql8`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
       }
       return pedidos.map((p) => ({
         ...p,
@@ -8553,11 +14433,11 @@ var empacotamentoRouter = router({
     list: publicProcedure.query(async () => {
       return await getDb5().select().from(empacotamentoInsumos).orderBy(asc4(empacotamentoInsumos.categoria), asc4(empacotamentoInsumos.nome));
     }),
-    create: publicProcedure.input(z13.object({
-      nome: z13.string().min(1).max(128),
-      unidadeMedida: z13.enum(["m\xB2", "metro", "kg", "unidades"]),
-      custoUnitario: z13.number().min(0),
-      categoria: z13.string().optional()
+    create: publicProcedure.input(z16.object({
+      nome: z16.string().min(1).max(128),
+      unidadeMedida: z16.enum(["m\xB2", "metro", "kg", "unidades"]),
+      custoUnitario: z16.number().min(0),
+      categoria: z16.string().optional()
     })).mutation(async ({ input }) => {
       const [result] = await getDb5().insert(empacotamentoInsumos).values({
         nome: input.nome,
@@ -8568,13 +14448,13 @@ var empacotamentoRouter = router({
       }).returning({ id: empacotamentoInsumos.id });
       return { success: true, id: result.id };
     }),
-    update: publicProcedure.input(z13.object({
-      id: z13.number(),
-      nome: z13.string().min(1).max(128).optional(),
-      unidadeMedida: z13.enum(["m\xB2", "metro", "kg", "unidades"]).optional(),
-      custoUnitario: z13.number().min(0).optional(),
-      categoria: z13.string().optional(),
-      ativo: z13.number().optional()
+    update: publicProcedure.input(z16.object({
+      id: z16.number(),
+      nome: z16.string().min(1).max(128).optional(),
+      unidadeMedida: z16.enum(["m\xB2", "metro", "kg", "unidades"]).optional(),
+      custoUnitario: z16.number().min(0).optional(),
+      categoria: z16.string().optional(),
+      ativo: z16.number().optional()
     })).mutation(async ({ input }) => {
       const { id, ...rest } = input;
       const upd = {};
@@ -8586,34 +14466,34 @@ var empacotamentoRouter = router({
       }
       if (rest.categoria !== void 0) upd.categoria = rest.categoria;
       if (rest.ativo !== void 0) upd.ativo = rest.ativo;
-      await getDb5().update(empacotamentoInsumos).set(upd).where(eq12(empacotamentoInsumos.id, id));
+      await getDb5().update(empacotamentoInsumos).set(upd).where(eq16(empacotamentoInsumos.id, id));
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await getDb5().delete(empacotamentoInsumos).where(eq12(empacotamentoInsumos.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await getDb5().delete(empacotamentoInsumos).where(eq16(empacotamentoInsumos.id, input.id));
       return { success: true };
     })
   }),
   // ─── CONSUMO DE INSUMOS POR CAIXA ───────────────────────────────────────────────────
   consumoCaixa: router({
-    listPorCaixa: publicProcedure.input(z13.object({ modeloCaixaId: z13.number() })).query(async ({ input }) => {
-      const rows = await getDb5().select().from(empacotamentoConsumoCaixa).where(eq12(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId));
+    listPorCaixa: publicProcedure.input(z16.object({ modeloCaixaId: z16.number() })).query(async ({ input }) => {
+      const rows = await getDb5().select().from(empacotamentoConsumoCaixa).where(eq16(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId));
       const insumos = await getDb5().select().from(empacotamentoInsumos);
       return rows.map((r) => ({
         ...r,
         insumo: insumos.find((i) => i.id === r.insumoId)
       }));
     }),
-    upsert: publicProcedure.input(z13.object({
-      modeloCaixaId: z13.number(),
-      insumoId: z13.number(),
-      quantidadePorCaixa: z13.number().min(0),
-      formulaConsumo: z13.string().optional().default("fixo"),
-      fator: z13.number().optional().default(1)
+    upsert: publicProcedure.input(z16.object({
+      modeloCaixaId: z16.number(),
+      insumoId: z16.number(),
+      quantidadePorCaixa: z16.number().min(0),
+      formulaConsumo: z16.string().optional().default("fixo"),
+      fator: z16.number().optional().default(1)
     })).mutation(async ({ input }) => {
-      const existing = await getDb5().select().from(empacotamentoConsumoCaixa).where(and10(
-        eq12(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId),
-        eq12(empacotamentoConsumoCaixa.insumoId, input.insumoId)
+      const existing = await getDb5().select().from(empacotamentoConsumoCaixa).where(and13(
+        eq16(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId),
+        eq16(empacotamentoConsumoCaixa.insumoId, input.insumoId)
       ));
       const setData = {
         quantidadePorCaixa: String(input.quantidadePorCaixa),
@@ -8621,7 +14501,7 @@ var empacotamentoRouter = router({
         fator: String(input.fator)
       };
       if (existing.length > 0) {
-        await getDb5().update(empacotamentoConsumoCaixa).set(setData).where(eq12(empacotamentoConsumoCaixa.id, existing[0].id));
+        await getDb5().update(empacotamentoConsumoCaixa).set(setData).where(eq16(empacotamentoConsumoCaixa.id, existing[0].id));
       } else {
         await getDb5().insert(empacotamentoConsumoCaixa).values({
           modeloCaixaId: input.modeloCaixaId,
@@ -8631,8 +14511,8 @@ var empacotamentoRouter = router({
       }
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await getDb5().delete(empacotamentoConsumoCaixa).where(eq12(empacotamentoConsumoCaixa.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await getDb5().delete(empacotamentoConsumoCaixa).where(eq16(empacotamentoConsumoCaixa.id, input.id));
       return { success: true };
     })
   }),
@@ -8641,11 +14521,11 @@ var empacotamentoRouter = router({
     list: publicProcedure.query(async () => {
       return await getDb5().select().from(empacotamentoCustoFuncionario).orderBy(asc4(empacotamentoCustoFuncionario.nome));
     }),
-    upsert: publicProcedure.input(z13.object({
-      id: z13.number().optional(),
-      nome: z13.string().min(1).max(128),
-      salarioMensal: z13.number().min(0),
-      horasMes: z13.number().min(1)
+    upsert: publicProcedure.input(z16.object({
+      id: z16.number().optional(),
+      nome: z16.string().min(1).max(128),
+      salarioMensal: z16.number().min(0),
+      horasMes: z16.number().min(1)
     })).mutation(async ({ input }) => {
       const custoHora = input.salarioMensal / input.horasMes;
       if (input.id) {
@@ -8654,7 +14534,7 @@ var empacotamentoRouter = router({
           salarioMensal: String(input.salarioMensal),
           horasMes: String(input.horasMes),
           custoHora: String(custoHora.toFixed(4))
-        }).where(eq12(empacotamentoCustoFuncionario.id, input.id));
+        }).where(eq16(empacotamentoCustoFuncionario.id, input.id));
       } else {
         await getDb5().insert(empacotamentoCustoFuncionario).values({
           nome: input.nome,
@@ -8665,8 +14545,8 @@ var empacotamentoRouter = router({
       }
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await getDb5().delete(empacotamentoCustoFuncionario).where(eq12(empacotamentoCustoFuncionario.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await getDb5().delete(empacotamentoCustoFuncionario).where(eq16(empacotamentoCustoFuncionario.id, input.id));
       return { success: true };
     })
   }),
@@ -8677,15 +14557,15 @@ var empacotamentoRouter = router({
   //   Perímetro (m) = 4*(L+A+P)/2 / 100               → fita de arquear, cantoneiras
   //   Fixo = quantidade fixa por caixa
   precificacao: router({
-    calcular: publicProcedure.input(z13.object({
-      modeloCaixaId: z13.number(),
-      larguraCm: z13.number().min(0.1).optional(),
-      alturaCm: z13.number().min(0.1).optional(),
-      profundidadeCm: z13.number().min(0.1).optional(),
-      tempoExecucaoMin: z13.number().min(0).optional(),
-      margemPercent: z13.number().min(0).optional()
+    calcular: publicProcedure.input(z16.object({
+      modeloCaixaId: z16.number(),
+      larguraCm: z16.number().min(0.1).optional(),
+      alturaCm: z16.number().min(0.1).optional(),
+      profundidadeCm: z16.number().min(0.1).optional(),
+      tempoExecucaoMin: z16.number().min(0).optional(),
+      margemPercent: z16.number().min(0).optional()
     })).query(async ({ input }) => {
-      const caixas = await getDb5().select().from(empacotamentoModelosCaixa).where(eq12(empacotamentoModelosCaixa.id, input.modeloCaixaId));
+      const caixas = await getDb5().select().from(empacotamentoModelosCaixa).where(eq16(empacotamentoModelosCaixa.id, input.modeloCaixaId));
       if (!caixas.length) throw new Error("Modelo de caixa n\xE3o encontrado");
       const caixa = caixas[0];
       const L = input.larguraCm ?? parseFloat(String(caixa.larguraCm ?? 0));
@@ -8694,7 +14574,7 @@ var empacotamentoRouter = router({
       const areaExternaM2 = L > 0 && A > 0 && P > 0 ? 2 * (L * A + L * P + A * P) / 1e4 : 0;
       const volumeInternoM3 = L > 0 && A > 0 && P > 0 ? L * A * P / 1e6 : 0;
       const perimetroM = L > 0 && A > 0 && P > 0 ? 4 * (L + A + P) / 2 / 100 : 0;
-      const consumos = await getDb5().select().from(empacotamentoConsumoCaixa).where(eq12(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId));
+      const consumos = await getDb5().select().from(empacotamentoConsumoCaixa).where(eq16(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId));
       const insumos = await getDb5().select().from(empacotamentoInsumos);
       let custoInsumos = 0;
       const detalhesInsumos = [];
@@ -8723,7 +14603,7 @@ var empacotamentoRouter = router({
           custoTotal: parseFloat(total.toFixed(4))
         });
       }
-      const funcionarios = await getDb5().select().from(empacotamentoCustoFuncionario).where(eq12(empacotamentoCustoFuncionario.ativo, 1));
+      const funcionarios = await getDb5().select().from(empacotamentoCustoFuncionario).where(eq16(empacotamentoCustoFuncionario.ativo, 1));
       const custoHora = funcionarios.length > 0 ? parseFloat(String(funcionarios[0].custoHora ?? 0)) : 0;
       const tempoMin = input.tempoExecucaoMin ?? 0;
       const custoMaoDeObra = tempoMin / 60 * custoHora;
@@ -8755,36 +14635,36 @@ var empacotamentoRouter = router({
       return await getDb5().select({ id: user.id, name: user.name, role: user.role }).from(user).orderBy(asc4(user.name));
     }),
     listEmpacotadores: publicProcedure.query(async () => {
-      const rows = await getDb5().select({ id: user.id, name: user.name, role: user.role }).from(user).where(eq12(user.role, "empacotamento")).orderBy(asc4(user.name));
+      const rows = await getDb5().select({ id: user.id, name: user.name, role: user.role }).from(user).where(eq16(user.role, "empacotamento")).orderBy(asc4(user.name));
       return rows;
     })
   }),
   // ─── PAUSAS DO CRONÔMETRO ─────────────────────────────────────────────────────
   cronometroPausas: router({
-    listPorPedidoUsuario: publicProcedure.input(z13.object({ pedidoUsuarioId: z13.number() })).query(async ({ input }) => {
-      return await getDb5().select().from(empacotamentoCronometroPausas).where(eq12(empacotamentoCronometroPausas.pedidoUsuarioId, input.pedidoUsuarioId)).orderBy(asc4(empacotamentoCronometroPausas.pausadoEm));
+    listPorPedidoUsuario: publicProcedure.input(z16.object({ pedidoUsuarioId: z16.number() })).query(async ({ input }) => {
+      return await getDb5().select().from(empacotamentoCronometroPausas).where(eq16(empacotamentoCronometroPausas.pedidoUsuarioId, input.pedidoUsuarioId)).orderBy(asc4(empacotamentoCronometroPausas.pausadoEm));
     }),
     // Retorna true se há alguma pausa aberta para qualquer operador do pedido
-    temPausaAbertaPorPedido: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
+    temPausaAbertaPorPedido: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
       const rows = await getDb5().select({ id: empacotamentoCronometroPausas.id }).from(empacotamentoCronometroPausas).innerJoin(
         empacotamentoPedidoUsuarios,
-        eq12(empacotamentoCronometroPausas.pedidoUsuarioId, empacotamentoPedidoUsuarios.id)
+        eq16(empacotamentoCronometroPausas.pedidoUsuarioId, empacotamentoPedidoUsuarios.id)
       ).where(
-        and10(
-          eq12(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId),
-          sql7`${empacotamentoCronometroPausas.retomadoEm} IS NULL`
+        and13(
+          eq16(empacotamentoPedidoUsuarios.pedidoId, input.pedidoId),
+          sql8`${empacotamentoCronometroPausas.retomadoEm} IS NULL`
         )
       ).limit(1);
       return { pausado: rows.length > 0 };
     }),
-    pausar: publicProcedure.input(z13.object({ pedidoUsuarioId: z13.number(), tempoSegundosAtual: z13.number().int().min(0).optional() })).mutation(async ({ input }) => {
-      const abertas = await getDb5().select().from(empacotamentoCronometroPausas).where(and10(
-        eq12(empacotamentoCronometroPausas.pedidoUsuarioId, input.pedidoUsuarioId),
-        sql7`${empacotamentoCronometroPausas.retomadoEm} IS NULL`
+    pausar: publicProcedure.input(z16.object({ pedidoUsuarioId: z16.number(), tempoSegundosAtual: z16.number().int().min(0).optional() })).mutation(async ({ input }) => {
+      const abertas = await getDb5().select().from(empacotamentoCronometroPausas).where(and13(
+        eq16(empacotamentoCronometroPausas.pedidoUsuarioId, input.pedidoUsuarioId),
+        sql8`${empacotamentoCronometroPausas.retomadoEm} IS NULL`
       ));
       if (abertas.length > 0) return { success: true, id: abertas[0].id };
       if (input.tempoSegundosAtual !== void 0) {
-        await getDb5().update(empacotamentoPedidoUsuarios).set({ tempoSegundos: input.tempoSegundosAtual }).where(eq12(empacotamentoPedidoUsuarios.id, input.pedidoUsuarioId));
+        await getDb5().update(empacotamentoPedidoUsuarios).set({ tempoSegundos: input.tempoSegundosAtual }).where(eq16(empacotamentoPedidoUsuarios.id, input.pedidoUsuarioId));
       }
       const [result] = await getDb5().insert(empacotamentoCronometroPausas).values({
         pedidoUsuarioId: input.pedidoUsuarioId,
@@ -8792,21 +14672,21 @@ var empacotamentoRouter = router({
       }).returning({ id: empacotamentoCronometroPausas.id });
       return { success: true, id: result.id };
     }),
-    retomar: publicProcedure.input(z13.object({ pedidoUsuarioId: z13.number() })).mutation(async ({ input }) => {
+    retomar: publicProcedure.input(z16.object({ pedidoUsuarioId: z16.number() })).mutation(async ({ input }) => {
       await getDb5().execute(
-        sql7`UPDATE empacotamento_cronometro_pausas SET retomadoEm = NOW() WHERE pedidoUsuarioId = ${input.pedidoUsuarioId} AND retomadoEm IS NULL`
+        sql8`UPDATE empacotamento_cronometro_pausas SET retomadoEm = NOW() WHERE pedidoUsuarioId = ${input.pedidoUsuarioId} AND retomadoEm IS NULL`
       );
-      await getDb5().update(empacotamentoPedidoUsuarios).set({ iniciadoEm: /* @__PURE__ */ new Date() }).where(eq12(empacotamentoPedidoUsuarios.id, input.pedidoUsuarioId));
+      await getDb5().update(empacotamentoPedidoUsuarios).set({ iniciadoEm: /* @__PURE__ */ new Date() }).where(eq16(empacotamentoPedidoUsuarios.id, input.pedidoUsuarioId));
       return { success: true };
     }),
     // Pausa automática: pausa todos os operadores ativos de um pedido (ou todos os pedidos)
-    pausarTodosAtivos: publicProcedure.input(z13.object({ motivo: z13.string().optional() })).mutation(async ({ input }) => {
-      const ativos = await getDb5().select().from(empacotamentoPedidoUsuarios).where(eq12(empacotamentoPedidoUsuarios.ativo, 1));
+    pausarTodosAtivos: publicProcedure.input(z16.object({ motivo: z16.string().optional() })).mutation(async ({ input }) => {
+      const ativos = await getDb5().select().from(empacotamentoPedidoUsuarios).where(eq16(empacotamentoPedidoUsuarios.ativo, 1));
       let pausados = 0;
       for (const op of ativos) {
-        const abertas = await getDb5().select().from(empacotamentoCronometroPausas).where(and10(
-          eq12(empacotamentoCronometroPausas.pedidoUsuarioId, op.id),
-          sql7`${empacotamentoCronometroPausas.retomadoEm} IS NULL`
+        const abertas = await getDb5().select().from(empacotamentoCronometroPausas).where(and13(
+          eq16(empacotamentoCronometroPausas.pedidoUsuarioId, op.id),
+          sql8`${empacotamentoCronometroPausas.retomadoEm} IS NULL`
         ));
         if (abertas.length === 0) {
           await getDb5().insert(empacotamentoCronometroPausas).values({
@@ -8818,8 +14698,8 @@ var empacotamentoRouter = router({
       }
       return { success: true, pausados, motivo: input.motivo ?? "automatico" };
     }),
-    tempoTotalPausadoSegundos: publicProcedure.input(z13.object({ pedidoUsuarioId: z13.number() })).query(async ({ input }) => {
-      const pausas = await getDb5().select().from(empacotamentoCronometroPausas).where(eq12(empacotamentoCronometroPausas.pedidoUsuarioId, input.pedidoUsuarioId));
+    tempoTotalPausadoSegundos: publicProcedure.input(z16.object({ pedidoUsuarioId: z16.number() })).query(async ({ input }) => {
+      const pausas = await getDb5().select().from(empacotamentoCronometroPausas).where(eq16(empacotamentoCronometroPausas.pedidoUsuarioId, input.pedidoUsuarioId));
       let total = 0;
       const agora = Date.now();
       for (const p of pausas) {
@@ -8833,7 +14713,7 @@ var empacotamentoRouter = router({
   // ─── CONFIGURAÇÃO DE PRODUTIVIDADE ────────────────────────────────────────────
   configProdutividade: router({
     get: publicProcedure.query(async () => {
-      const rows = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq12(empacotamentoConfigProdutividade.ativo, 1)).orderBy(desc7(empacotamentoConfigProdutividade.updatedAt));
+      const rows = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq16(empacotamentoConfigProdutividade.ativo, 1)).orderBy(desc8(empacotamentoConfigProdutividade.updatedAt));
       if (rows.length > 0) return rows[0];
       return {
         id: 0,
@@ -8846,20 +14726,20 @@ var empacotamentoRouter = router({
         updatedAt: /* @__PURE__ */ new Date()
       };
     }),
-    upsert: publicProcedure.input(z13.object({
-      valorPorMinuto: z13.number().min(0),
-      bonusPorcentagem: z13.number().min(0).max(100),
-      penalidadePorcentagem: z13.number().min(0).max(100),
-      descricao: z13.string().optional()
+    upsert: publicProcedure.input(z16.object({
+      valorPorMinuto: z16.number().min(0),
+      bonusPorcentagem: z16.number().min(0).max(100),
+      penalidadePorcentagem: z16.number().min(0).max(100),
+      descricao: z16.string().optional()
     })).mutation(async ({ input }) => {
-      const existing = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq12(empacotamentoConfigProdutividade.ativo, 1));
+      const existing = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq16(empacotamentoConfigProdutividade.ativo, 1));
       if (existing.length > 0) {
         await getDb5().update(empacotamentoConfigProdutividade).set({
           valorPorMinuto: String(input.valorPorMinuto),
           bonusPorcentagem: String(input.bonusPorcentagem),
           penalidadePorcentagem: String(input.penalidadePorcentagem),
           descricao: input.descricao ?? null
-        }).where(eq12(empacotamentoConfigProdutividade.id, existing[0].id));
+        }).where(eq16(empacotamentoConfigProdutividade.id, existing[0].id));
       } else {
         await getDb5().insert(empacotamentoConfigProdutividade).values({
           valorPorMinuto: String(input.valorPorMinuto),
@@ -8874,15 +14754,15 @@ var empacotamentoRouter = router({
   }),
   // ─── CÁLCULO DE TEMPO ESTIMADO DO PEDIDO ─────────────────────────────────────
   tempoEstimado: router({
-    calcular: publicProcedure.input(z13.object({
-      modeloId: z13.number().optional(),
-      modeloCaixaId: z13.number().optional(),
-      metrosQuadrados: z13.number().min(0).optional()
+    calcular: publicProcedure.input(z16.object({
+      modeloId: z16.number().optional(),
+      modeloCaixaId: z16.number().optional(),
+      metrosQuadrados: z16.number().min(0).optional()
     })).query(async ({ input }) => {
       let tempoCaixaMin = 0;
       let tempoLetreiMin = 0;
       if (input.modeloCaixaId) {
-        const caixas = await getDb5().select().from(empacotamentoModelosCaixa).where(eq12(empacotamentoModelosCaixa.id, input.modeloCaixaId));
+        const caixas = await getDb5().select().from(empacotamentoModelosCaixa).where(eq16(empacotamentoModelosCaixa.id, input.modeloCaixaId));
         if (caixas.length > 0) {
           const caixa = caixas[0];
           const L = parseFloat(String(caixa.larguraCm ?? 0));
@@ -8900,7 +14780,7 @@ var empacotamentoRouter = router({
         }
       }
       if (input.modeloId && (input.metrosQuadrados ?? 0) > 0) {
-        const modelos = await getDb5().select().from(empacotamentoModelos).where(eq12(empacotamentoModelos.id, input.modeloId));
+        const modelos = await getDb5().select().from(empacotamentoModelos).where(eq16(empacotamentoModelos.id, input.modeloId));
         if (modelos.length > 0) {
           const tempoPorM2 = parseFloat(String(modelos[0].tempoPorM2Min ?? 0));
           tempoLetreiMin = tempoPorM2 > 0 ? tempoPorM2 * (input.metrosQuadrados ?? 0) : 0;
@@ -8917,31 +14797,31 @@ var empacotamentoRouter = router({
   }),
   // ─── RELATÓRIO DE PRODUTIVIDADE DETALHADO ────────────────────────────────────
   relatorioProdutividade: router({
-    porColaborador: publicProcedure.input(z13.object({
-      dataInicio: z13.string(),
-      dataFim: z13.string()
+    porColaborador: publicProcedure.input(z16.object({
+      dataInicio: z16.string(),
+      dataFim: z16.string()
     })).query(async ({ input }) => {
       const inicio = new Date(input.dataInicio);
       const fim = new Date(input.dataFim);
       fim.setHours(23, 59, 59, 999);
-      const config = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq12(empacotamentoConfigProdutividade.ativo, 1));
+      const config = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq16(empacotamentoConfigProdutividade.ativo, 1));
       const cfg = config[0] ?? { valorPorMinuto: "0.15", bonusPorcentagem: "20", penalidadePorcentagem: "30" };
       const valorMin = parseFloat(String(cfg.valorPorMinuto));
       const bonusPct = parseFloat(String(cfg.bonusPorcentagem));
       const penalidadePct = parseFloat(String(cfg.penalidadePorcentagem));
-      const registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(and10(
-        gte4(empacotamentoPedidoUsuarios.createdAt, inicio),
+      const registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(and13(
+        gte5(empacotamentoPedidoUsuarios.createdAt, inicio),
         lte3(empacotamentoPedidoUsuarios.createdAt, fim)
       ));
       const pedidoIds = Array.from(new Set(registros.map((r) => r.pedidoId)));
       let pedidos = [];
       if (pedidoIds.length > 0) {
-        pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql7`${empacotamentoPedidos.id} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql8`${empacotamentoPedidos.id} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
       }
       const usuarioIds = registros.map((r) => r.id);
       let pausas = [];
       if (usuarioIds.length > 0) {
-        pausas = await getDb5().select().from(empacotamentoCronometroPausas).where(sql7`${empacotamentoCronometroPausas.pedidoUsuarioId} IN (${sql7.join(usuarioIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        pausas = await getDb5().select().from(empacotamentoCronometroPausas).where(sql8`${empacotamentoCronometroPausas.pedidoUsuarioId} IN (${sql8.join(usuarioIds.map((id) => sql8`${id}`), sql8`, `)})`);
       }
       const porColaborador = {};
       for (const r of registros) {
@@ -8994,30 +14874,30 @@ var empacotamentoRouter = router({
   }),
   // ─── RELATÓRIO DETALHADO: TEMPO PREVISTO vs REAL POR PEDIDO ────────────────
   relatorioDetalhado: router({
-    porPeriodo: publicProcedure.input(z13.object({
-      dataInicio: z13.string(),
-      dataFim: z13.string()
+    porPeriodo: publicProcedure.input(z16.object({
+      dataInicio: z16.string(),
+      dataFim: z16.string()
     })).query(async ({ input }) => {
       const inicio = new Date(input.dataInicio);
       const fim = new Date(input.dataFim);
       fim.setHours(23, 59, 59, 999);
-      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(and10(
-        gte4(empacotamentoPedidos.finalizadoEm, inicio),
+      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(and13(
+        gte5(empacotamentoPedidos.finalizadoEm, inicio),
         lte3(empacotamentoPedidos.finalizadoEm, fim)
-      )).orderBy(desc7(empacotamentoPedidos.finalizadoEm));
+      )).orderBy(desc8(empacotamentoPedidos.finalizadoEm));
       const modelos = await getDb5().select().from(empacotamentoModelos);
       const modelosCaixa = await getDb5().select().from(empacotamentoModelosCaixa);
       const pedidoIds = pedidos.map((p) => p.id);
       let registros = [];
       let pausas = [];
       if (pedidoIds.length > 0) {
-        registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql7`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql8`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
         const usuarioIds = registros.map((r) => r.id);
         if (usuarioIds.length > 0) {
-          pausas = await getDb5().select().from(empacotamentoCronometroPausas).where(sql7`${empacotamentoCronometroPausas.pedidoUsuarioId} IN (${sql7.join(usuarioIds.map((id) => sql7`${id}`), sql7`, `)})`);
+          pausas = await getDb5().select().from(empacotamentoCronometroPausas).where(sql8`${empacotamentoCronometroPausas.pedidoUsuarioId} IN (${sql8.join(usuarioIds.map((id) => sql8`${id}`), sql8`, `)})`);
         }
       }
-      const configs = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq12(empacotamentoConfigProdutividade.ativo, 1));
+      const configs = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq16(empacotamentoConfigProdutividade.ativo, 1));
       const cfg = configs[0] ?? { valorPorMinuto: "0.15", bonusPorcentagem: "20", penalidadePorcentagem: "30" };
       const valorMin = parseFloat(String(cfg.valorPorMinuto));
       const resultado = pedidos.map((pedido) => {
@@ -9107,21 +14987,21 @@ var empacotamentoRouter = router({
   }),
   // ─── EVOLUÇÃO DIÁRIA DE PRODUTIVIDADE ─────────────────────────────────────────
   evolucaoDiaria: router({
-    porPeriodo: publicProcedure.input(z13.object({
-      dataInicio: z13.string(),
-      dataFim: z13.string(),
-      tipoProduto: z13.enum(["todos", "letreiro", "caixa"]).default("todos")
+    porPeriodo: publicProcedure.input(z16.object({
+      dataInicio: z16.string(),
+      dataFim: z16.string(),
+      tipoProduto: z16.enum(["todos", "letreiro", "caixa"]).default("todos")
     })).query(async ({ input }) => {
       const inicio = new Date(input.dataInicio);
       const fim = new Date(input.dataFim);
       fim.setHours(23, 59, 59, 999);
-      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(and10(gte4(empacotamentoPedidos.finalizadoEm, inicio), lte3(empacotamentoPedidos.finalizadoEm, fim)));
+      const pedidos = await getDb5().select().from(empacotamentoPedidos).where(and13(gte5(empacotamentoPedidos.finalizadoEm, inicio), lte3(empacotamentoPedidos.finalizadoEm, fim)));
       const modelos = await getDb5().select().from(empacotamentoModelos);
       const modelosCaixa = await getDb5().select().from(empacotamentoModelosCaixa);
       const pedidoIds = pedidos.map((p) => p.id);
       let registros = [];
       if (pedidoIds.length > 0) {
-        registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql7`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        registros = await getDb5().select().from(empacotamentoPedidoUsuarios).where(sql8`${empacotamentoPedidoUsuarios.pedidoId} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
       }
       const porDia = {};
       for (const pedido of pedidos) {
@@ -9170,7 +15050,7 @@ var empacotamentoRouter = router({
   }),
   // ─── RANKING DE PRODUTIVIDADE ─────────────────────────────────────────────────
   rankingProdutividade: router({
-    semanal: publicProcedure.input(z13.object({ semanas: z13.number().default(1) })).query(async ({ input }) => {
+    semanal: publicProcedure.input(z16.object({ semanas: z16.number().default(1) })).query(async ({ input }) => {
       const fimMs = /* @__PURE__ */ new Date();
       fimMs.setHours(23, 59, 59, 999);
       const inicioMs = /* @__PURE__ */ new Date();
@@ -9178,7 +15058,7 @@ var empacotamentoRouter = router({
       inicioMs.setHours(0, 0, 0, 0);
       return calcularRanking(Math.floor(inicioMs.getTime() / 1e3), Math.floor(fimMs.getTime() / 1e3));
     }),
-    mensal: publicProcedure.input(z13.object({ meses: z13.number().default(1) })).query(async ({ input }) => {
+    mensal: publicProcedure.input(z16.object({ meses: z16.number().default(1) })).query(async ({ input }) => {
       const fimMs = /* @__PURE__ */ new Date();
       fimMs.setHours(23, 59, 59, 999);
       const inicioMs = /* @__PURE__ */ new Date();
@@ -9189,31 +15069,31 @@ var empacotamentoRouter = router({
   }),
   // ─── INSUMOS POR MODELO DE CAIXA (consumo configurado por modelo) ───────────
   insumosCaixa: router({
-    listPorModelo: publicProcedure.input(z13.object({ modeloCaixaId: z13.number() })).query(async ({ input }) => {
-      const rows = await getDb5().select().from(empacotamentoConsumoCaixa).where(eq12(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId)).orderBy(asc4(empacotamentoConsumoCaixa.id));
+    listPorModelo: publicProcedure.input(z16.object({ modeloCaixaId: z16.number() })).query(async ({ input }) => {
+      const rows = await getDb5().select().from(empacotamentoConsumoCaixa).where(eq16(empacotamentoConsumoCaixa.modeloCaixaId, input.modeloCaixaId)).orderBy(asc4(empacotamentoConsumoCaixa.id));
       const insumos = await getDb5().select().from(empacotamentoInsumos);
       return rows.map((r) => ({ ...r, insumo: insumos.find((i) => i.id === r.insumoId) ?? null }));
     })
   }),
   // ─── INSUMOS POR MODELO DE LETREIRO ─────────────────────────────────────────
   insumosLetreiro: router({
-    listPorModelo: publicProcedure.input(z13.object({ modeloLetreiId: z13.number() })).query(async ({ input }) => {
-      const rows = await getDb5().select().from(empacotamentoInsumosLetreiro).where(eq12(empacotamentoInsumosLetreiro.modeloLetreiId, input.modeloLetreiId)).orderBy(asc4(empacotamentoInsumosLetreiro.id));
+    listPorModelo: publicProcedure.input(z16.object({ modeloLetreiId: z16.number() })).query(async ({ input }) => {
+      const rows = await getDb5().select().from(empacotamentoInsumosLetreiro).where(eq16(empacotamentoInsumosLetreiro.modeloLetreiId, input.modeloLetreiId)).orderBy(asc4(empacotamentoInsumosLetreiro.id));
       const insumos = await getDb5().select().from(empacotamentoInsumos);
       return rows.map((r) => ({ ...r, insumo: insumos.find((i) => i.id === r.insumoId) ?? null }));
     }),
-    upsert: publicProcedure.input(z13.object({
-      modeloLetreiId: z13.number(),
-      insumoId: z13.number(),
-      fatorM2: z13.number().min(0).default(1),
-      observacao: z13.string().optional()
+    upsert: publicProcedure.input(z16.object({
+      modeloLetreiId: z16.number(),
+      insumoId: z16.number(),
+      fatorM2: z16.number().min(0).default(1),
+      observacao: z16.string().optional()
     })).mutation(async ({ input }) => {
-      const existing = await getDb5().select().from(empacotamentoInsumosLetreiro).where(and10(
-        eq12(empacotamentoInsumosLetreiro.modeloLetreiId, input.modeloLetreiId),
-        eq12(empacotamentoInsumosLetreiro.insumoId, input.insumoId)
+      const existing = await getDb5().select().from(empacotamentoInsumosLetreiro).where(and13(
+        eq16(empacotamentoInsumosLetreiro.modeloLetreiId, input.modeloLetreiId),
+        eq16(empacotamentoInsumosLetreiro.insumoId, input.insumoId)
       ));
       if (existing.length > 0) {
-        await getDb5().update(empacotamentoInsumosLetreiro).set({ fatorM2: String(input.fatorM2), observacao: input.observacao ?? null }).where(eq12(empacotamentoInsumosLetreiro.id, existing[0].id));
+        await getDb5().update(empacotamentoInsumosLetreiro).set({ fatorM2: String(input.fatorM2), observacao: input.observacao ?? null }).where(eq16(empacotamentoInsumosLetreiro.id, existing[0].id));
       } else {
         await getDb5().insert(empacotamentoInsumosLetreiro).values({
           modeloLetreiId: input.modeloLetreiId,
@@ -9226,8 +15106,8 @@ var empacotamentoRouter = router({
       }
       return { success: true };
     }),
-    delete: publicProcedure.input(z13.object({ id: z13.number() })).mutation(async ({ input }) => {
-      await getDb5().delete(empacotamentoInsumosLetreiro).where(eq12(empacotamentoInsumosLetreiro.id, input.id));
+    delete: publicProcedure.input(z16.object({ id: z16.number() })).mutation(async ({ input }) => {
+      await getDb5().delete(empacotamentoInsumosLetreiro).where(eq16(empacotamentoInsumosLetreiro.id, input.id));
       return { success: true };
     })
   }),
@@ -9236,15 +15116,15 @@ var empacotamentoRouter = router({
   // Timezone operacional: America/Campo_Grande
   sessoes: router({
     // Retorna a sessão ativa (ativo/pausado) de um operador em um pedido
-    getAtiva: publicProcedure.input(z13.object({ pedidoId: z13.number(), operadorId: z13.string() })).query(async ({ input }) => {
-      const rows = await getDb5().select().from(empacotamentoSessoes).where(and10(
-        eq12(empacotamentoSessoes.pedidoId, input.pedidoId),
-        eq12(empacotamentoSessoes.operadorId, input.operadorId),
-        sql7`${empacotamentoSessoes.status} IN ('ativo', 'pausado', 'finalizado')`
-      )).orderBy(desc7(empacotamentoSessoes.id)).limit(1);
+    getAtiva: publicProcedure.input(z16.object({ pedidoId: z16.number(), operadorId: z16.string() })).query(async ({ input }) => {
+      const rows = await getDb5().select().from(empacotamentoSessoes).where(and13(
+        eq16(empacotamentoSessoes.pedidoId, input.pedidoId),
+        eq16(empacotamentoSessoes.operadorId, input.operadorId),
+        sql8`${empacotamentoSessoes.status} IN ('ativo', 'pausado', 'finalizado')`
+      )).orderBy(desc8(empacotamentoSessoes.id)).limit(1);
       if (rows.length === 0) return null;
       const sessao = rows[0];
-      const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq12(empacotamentoSessoesPausas.sessaoId, sessao.id)).orderBy(asc4(empacotamentoSessoesPausas.id));
+      const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq16(empacotamentoSessoesPausas.sessaoId, sessao.id)).orderBy(asc4(empacotamentoSessoesPausas.id));
       const agoraSeg = Math.floor(Date.now() / 1e3);
       let tempoAtualSegundos = sessao.totalSegundos;
       if (sessao.status === "ativo") {
@@ -9261,8 +15141,8 @@ var empacotamentoRouter = router({
       };
     }),
     // Retorna resumo de todas as sessões de um pedido (para o card do kanban)
-    resumoPorPedido: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
-      const sessoes = await getDb5().select().from(empacotamentoSessoes).where(eq12(empacotamentoSessoes.pedidoId, input.pedidoId)).orderBy(desc7(empacotamentoSessoes.id));
+    resumoPorPedido: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
+      const sessoes = await getDb5().select().from(empacotamentoSessoes).where(eq16(empacotamentoSessoes.pedidoId, input.pedidoId)).orderBy(desc8(empacotamentoSessoes.id));
       const agoraSeg = Math.floor(Date.now() / 1e3);
       let totalSegundos = 0;
       let temRegistroValido = false;
@@ -9271,7 +15151,7 @@ var empacotamentoRouter = router({
       for (const s of sessoes) {
         if (s.status === "ativo") {
           temSessaoAtiva = true;
-          const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq12(empacotamentoSessoesPausas.sessaoId, s.id));
+          const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq16(empacotamentoSessoesPausas.sessaoId, s.id));
           const totalPausado = pausas.reduce((acc, p) => {
             if (p.retomadoEm) return acc + (p.retomadoEm - p.pausadoEm);
             return acc;
@@ -9295,11 +15175,11 @@ var empacotamentoRouter = router({
       };
     }),
     // Inicia uma nova sessão operacional
-    iniciar: publicProcedure.input(z13.object({ pedidoId: z13.number(), operadorId: z13.string(), operadorNome: z13.string() })).mutation(async ({ input }) => {
-      const existente = await getDb5().select().from(empacotamentoSessoes).where(and10(
-        eq12(empacotamentoSessoes.pedidoId, input.pedidoId),
-        eq12(empacotamentoSessoes.operadorId, input.operadorId),
-        sql7`${empacotamentoSessoes.status} IN ('ativo', 'pausado', 'finalizado')`
+    iniciar: publicProcedure.input(z16.object({ pedidoId: z16.number(), operadorId: z16.string(), operadorNome: z16.string() })).mutation(async ({ input }) => {
+      const existente = await getDb5().select().from(empacotamentoSessoes).where(and13(
+        eq16(empacotamentoSessoes.pedidoId, input.pedidoId),
+        eq16(empacotamentoSessoes.operadorId, input.operadorId),
+        sql8`${empacotamentoSessoes.status} IN ('ativo', 'pausado', 'finalizado')`
       )).limit(1);
       if (existente.length > 0) {
         if (existente[0].status === "pausado") {
@@ -9319,12 +15199,12 @@ var empacotamentoRouter = router({
       return { success: true, sessaoId: result.id, action: "started" };
     }),
     // Pausa a sessão ativa
-    pausar: publicProcedure.input(z13.object({ sessaoId: z13.number() })).mutation(async ({ input }) => {
-      const rows = await getDb5().select().from(empacotamentoSessoes).where(and10(eq12(empacotamentoSessoes.id, input.sessaoId), eq12(empacotamentoSessoes.status, "ativo"))).limit(1);
+    pausar: publicProcedure.input(z16.object({ sessaoId: z16.number() })).mutation(async ({ input }) => {
+      const rows = await getDb5().select().from(empacotamentoSessoes).where(and13(eq16(empacotamentoSessoes.id, input.sessaoId), eq16(empacotamentoSessoes.status, "ativo"))).limit(1);
       if (rows.length === 0) return { success: false, error: "sessao_nao_ativa" };
       const sessao = rows[0];
       const agoraUtcSeg = Math.floor(Date.now() / 1e3);
-      const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq12(empacotamentoSessoesPausas.sessaoId, sessao.id));
+      const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq16(empacotamentoSessoesPausas.sessaoId, sessao.id));
       const totalPausado = pausas.reduce((acc, p) => {
         if (p.retomadoEm) return acc + (p.retomadoEm - p.pausadoEm);
         return acc;
@@ -9337,22 +15217,22 @@ var empacotamentoRouter = router({
       await getDb5().update(empacotamentoSessoes).set({
         status: "pausado",
         totalSegundos: tempoAcumulado
-      }).where(eq12(empacotamentoSessoes.id, sessao.id));
+      }).where(eq16(empacotamentoSessoes.id, sessao.id));
       return { success: true, tempoAcumuladoSegundos: tempoAcumulado };
     }),
     // Retoma uma sessão pausada
-    retomar: publicProcedure.input(z13.object({ sessaoId: z13.number() })).mutation(async ({ input }) => {
+    retomar: publicProcedure.input(z16.object({ sessaoId: z16.number() })).mutation(async ({ input }) => {
       return await retomarSessao(input.sessaoId);
     }),
     // Registra formalmente o tempo (não encerra a sessão)
-    registrar: publicProcedure.input(z13.object({ sessaoId: z13.number() })).mutation(async ({ input }) => {
-      const rows = await getDb5().select().from(empacotamentoSessoes).where(eq12(empacotamentoSessoes.id, input.sessaoId)).limit(1);
+    registrar: publicProcedure.input(z16.object({ sessaoId: z16.number() })).mutation(async ({ input }) => {
+      const rows = await getDb5().select().from(empacotamentoSessoes).where(eq16(empacotamentoSessoes.id, input.sessaoId)).limit(1);
       if (rows.length === 0) return { success: false, error: "sessao_nao_encontrada" };
       const sessao = rows[0];
       const agoraUtcSeg = Math.floor(Date.now() / 1e3);
       let tempoAtual = sessao.totalSegundos;
       if (sessao.status === "ativo") {
-        const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq12(empacotamentoSessoesPausas.sessaoId, sessao.id));
+        const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq16(empacotamentoSessoesPausas.sessaoId, sessao.id));
         const totalPausado = pausas.reduce((acc, p) => {
           if (p.retomadoEm) return acc + (p.retomadoEm - p.pausadoEm);
           return acc;
@@ -9371,16 +15251,16 @@ var empacotamentoRouter = router({
         totalSegundos: tempoAtual,
         status: "finalizado",
         finalizadoEm: agoraUtcSeg
-      }).where(eq12(empacotamentoSessoes.id, sessao.id));
+      }).where(eq16(empacotamentoSessoes.id, sessao.id));
       return { success: true, tempoRegistradoSegundos: tempoAtual };
     }),
     // Pausa automática: pausa todas as sessões ativas (chamada pelo scheduler)
-    pausarTodosAtivos: publicProcedure.input(z13.object({ motivo: z13.string().optional() })).mutation(async ({ input: _input }) => {
-      const ativas = await getDb5().select().from(empacotamentoSessoes).where(eq12(empacotamentoSessoes.status, "ativo"));
+    pausarTodosAtivos: publicProcedure.input(z16.object({ motivo: z16.string().optional() })).mutation(async ({ input: _input }) => {
+      const ativas = await getDb5().select().from(empacotamentoSessoes).where(eq16(empacotamentoSessoes.status, "ativo"));
       let pausados = 0;
       for (const sessao of ativas) {
         const agoraUtcSeg = Math.floor(Date.now() / 1e3);
-        const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq12(empacotamentoSessoesPausas.sessaoId, sessao.id));
+        const pausas = await getDb5().select().from(empacotamentoSessoesPausas).where(eq16(empacotamentoSessoesPausas.sessaoId, sessao.id));
         const totalPausado = pausas.reduce((acc, p) => {
           if (p.retomadoEm) return acc + (p.retomadoEm - p.pausadoEm);
           return acc;
@@ -9393,33 +15273,33 @@ var empacotamentoRouter = router({
         await getDb5().update(empacotamentoSessoes).set({
           status: "pausado",
           totalSegundos: tempoAcumulado
-        }).where(eq12(empacotamentoSessoes.id, sessao.id));
+        }).where(eq16(empacotamentoSessoes.id, sessao.id));
         pausados++;
       }
       return { success: true, pausados };
     }),
     // Apaga sessões com tempo zero (registros falsos no ranking)
     deletarSessoesZero: publicProcedure.mutation(async () => {
-      const result = await getDb5().delete(empacotamentoSessoes).where(and10(
-        eq12(empacotamentoSessoes.status, "finalizado"),
-        sql7`(${empacotamentoSessoes.tempoRegistradoSegundos} IS NULL OR ${empacotamentoSessoes.tempoRegistradoSegundos} = 0)`,
-        sql7`(${empacotamentoSessoes.totalSegundos} IS NULL OR ${empacotamentoSessoes.totalSegundos} = 0)`
+      const result = await getDb5().delete(empacotamentoSessoes).where(and13(
+        eq16(empacotamentoSessoes.status, "finalizado"),
+        sql8`(${empacotamentoSessoes.tempoRegistradoSegundos} IS NULL OR ${empacotamentoSessoes.tempoRegistradoSegundos} = 0)`,
+        sql8`(${empacotamentoSessoes.totalSegundos} IS NULL OR ${empacotamentoSessoes.totalSegundos} = 0)`
       ));
       return { deletados: result.rowsAffected ?? 0 };
     }),
     // Verifica se o pedido tem pelo menos um registro válido (para liberar mover para pátio)
-    temRegistroValido: publicProcedure.input(z13.object({ pedidoId: z13.number() })).query(async ({ input }) => {
-      const rows = await getDb5().select({ id: empacotamentoSessoes.id }).from(empacotamentoSessoes).where(and10(
-        eq12(empacotamentoSessoes.pedidoId, input.pedidoId),
-        sql7`${empacotamentoSessoes.registradoEm} IS NOT NULL`
+    temRegistroValido: publicProcedure.input(z16.object({ pedidoId: z16.number() })).query(async ({ input }) => {
+      const rows = await getDb5().select({ id: empacotamentoSessoes.id }).from(empacotamentoSessoes).where(and13(
+        eq16(empacotamentoSessoes.pedidoId, input.pedidoId),
+        sql8`${empacotamentoSessoes.registradoEm} IS NOT NULL`
       )).limit(1);
       return { temRegistro: rows.length > 0 };
     })
   }),
   // ─── PAINEL DE REGISTROS DE TEMPO POR PEDIDO ─────────────────────────────────
   registrosTempo: router({
-    list: publicProcedure.input(z13.object({
-      periodo: z13.enum(["semana", "mes", "tudo"]).default("semana")
+    list: publicProcedure.input(z16.object({
+      periodo: z16.enum(["semana", "mes", "tudo"]).default("semana")
     })).query(async ({ input }) => {
       const agora = Math.floor(Date.now() / 1e3);
       let inicioTs = 0;
@@ -9434,19 +15314,19 @@ var empacotamentoRouter = router({
         d.setHours(0, 0, 0, 0);
         inicioTs = Math.floor(d.getTime() / 1e3);
       }
-      const where = input.periodo === "tudo" ? and10(eq12(empacotamentoSessoes.status, "finalizado"), sql7`${empacotamentoSessoes.registradoEm} IS NOT NULL`) : and10(
-        eq12(empacotamentoSessoes.status, "finalizado"),
-        sql7`${empacotamentoSessoes.registradoEm} IS NOT NULL`,
-        sql7`${empacotamentoSessoes.registradoEm} >= ${inicioTs}`,
-        sql7`${empacotamentoSessoes.registradoEm} <= ${agora}`
+      const where = input.periodo === "tudo" ? and13(eq16(empacotamentoSessoes.status, "finalizado"), sql8`${empacotamentoSessoes.registradoEm} IS NOT NULL`) : and13(
+        eq16(empacotamentoSessoes.status, "finalizado"),
+        sql8`${empacotamentoSessoes.registradoEm} IS NOT NULL`,
+        sql8`${empacotamentoSessoes.registradoEm} >= ${inicioTs}`,
+        sql8`${empacotamentoSessoes.registradoEm} <= ${agora}`
       );
-      const sessoes = await getDb5().select().from(empacotamentoSessoes).where(where).orderBy(sql7`${empacotamentoSessoes.registradoEm} DESC`);
+      const sessoes = await getDb5().select().from(empacotamentoSessoes).where(where).orderBy(sql8`${empacotamentoSessoes.registradoEm} DESC`);
       const pedidoIds = Array.from(new Set(sessoes.map((s) => s.pedidoId)));
       let pedidos = [];
       if (pedidoIds.length > 0) {
-        pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql7`${empacotamentoPedidos.id} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql8`${empacotamentoPedidos.id} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
       }
-      const config = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq12(empacotamentoConfigProdutividade.ativo, 1));
+      const config = await getDb5().select().from(empacotamentoConfigProdutividade).where(eq16(empacotamentoConfigProdutividade.ativo, 1));
       const cfg = config[0] ?? { valorPorMinuto: "0.15" };
       const valorMin = parseFloat(String(cfg.valorPorMinuto));
       const porPedido = {};
@@ -9480,8 +15360,8 @@ var empacotamentoRouter = router({
   }),
   // ─── PAINEL PREVISTO VS REALIZADO ─────────────────────────────────────────────
   previstoVsRealizado: router({
-    list: publicProcedure.input(z13.object({
-      periodo: z13.enum(["semana", "mes", "tudo"]).default("semana")
+    list: publicProcedure.input(z16.object({
+      periodo: z16.enum(["semana", "mes", "tudo"]).default("semana")
     })).query(async ({ input }) => {
       const agora = Math.floor(Date.now() / 1e3);
       let inicioTs = 0;
@@ -9496,17 +15376,17 @@ var empacotamentoRouter = router({
         d.setHours(0, 0, 0, 0);
         inicioTs = Math.floor(d.getTime() / 1e3);
       }
-      const where = input.periodo === "tudo" ? and10(eq12(empacotamentoSessoes.status, "finalizado"), sql7`${empacotamentoSessoes.registradoEm} IS NOT NULL`) : and10(
-        eq12(empacotamentoSessoes.status, "finalizado"),
-        sql7`${empacotamentoSessoes.registradoEm} IS NOT NULL`,
-        sql7`${empacotamentoSessoes.registradoEm} >= ${inicioTs}`,
-        sql7`${empacotamentoSessoes.registradoEm} <= ${agora}`
+      const where = input.periodo === "tudo" ? and13(eq16(empacotamentoSessoes.status, "finalizado"), sql8`${empacotamentoSessoes.registradoEm} IS NOT NULL`) : and13(
+        eq16(empacotamentoSessoes.status, "finalizado"),
+        sql8`${empacotamentoSessoes.registradoEm} IS NOT NULL`,
+        sql8`${empacotamentoSessoes.registradoEm} >= ${inicioTs}`,
+        sql8`${empacotamentoSessoes.registradoEm} <= ${agora}`
       );
       const sessoes = await getDb5().select().from(empacotamentoSessoes).where(where);
       const pedidoIds = Array.from(new Set(sessoes.map((s) => s.pedidoId)));
       let pedidos = [];
       if (pedidoIds.length > 0) {
-        pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql7`${empacotamentoPedidos.id} IN (${sql7.join(pedidoIds.map((id) => sql7`${id}`), sql7`, `)})`);
+        pedidos = await getDb5().select().from(empacotamentoPedidos).where(sql8`${empacotamentoPedidos.id} IN (${sql8.join(pedidoIds.map((id) => sql8`${id}`), sql8`, `)})`);
       }
       const porPedido = {};
       for (const s of sessoes) {
@@ -9532,24 +15412,25 @@ var empacotamentoRouter = router({
   })
 });
 async function retomarSessao(sessaoId) {
-  const rows = await getDb5().select().from(empacotamentoSessoes).where(and10(eq12(empacotamentoSessoes.id, sessaoId), eq12(empacotamentoSessoes.status, "pausado"))).limit(1);
+  const rows = await getDb5().select().from(empacotamentoSessoes).where(and13(eq16(empacotamentoSessoes.id, sessaoId), eq16(empacotamentoSessoes.status, "pausado"))).limit(1);
   if (rows.length === 0) return { success: false, error: "sessao_nao_pausada" };
   const sessao = rows[0];
   const agoraUtcSeg = Math.floor(Date.now() / 1e3);
   await getDb5().execute(
-    sql7`UPDATE empacotamento_sessoes_pausas SET retomadoEm = ${agoraUtcSeg} WHERE sessaoId = ${sessao.id} AND retomadoEm IS NULL`
+    sql8`UPDATE empacotamento_sessoes_pausas SET retomadoEm = ${agoraUtcSeg} WHERE sessaoId = ${sessao.id} AND retomadoEm IS NULL`
   );
   await getDb5().update(empacotamentoSessoes).set({
     status: "ativo"
-  }).where(eq12(empacotamentoSessoes.id, sessao.id));
+  }).where(eq16(empacotamentoSessoes.id, sessao.id));
   return { success: true, sessaoId, action: "resumed" };
 }
 
 // server/routers/metaProdutos.ts
-import { z as z14 } from "zod";
+init_trpc();
 init_db();
 init_schema();
-import { eq as eq13, asc as asc5 } from "drizzle-orm";
+import { z as z17 } from "zod";
+import { eq as eq17, asc as asc5 } from "drizzle-orm";
 var metaProdutosRouter = router({
   // Listar todos os produtos monitorados
   list: protectedProcedure.query(async () => {
@@ -9558,13 +15439,13 @@ var metaProdutosRouter = router({
     return db5.select().from(metaProdutos).orderBy(asc5(metaProdutos.nomeProduto));
   }),
   // Criar ou atualizar um produto monitorado
-  upsert: protectedProcedure.input(z14.object({
-    id: z14.number().optional(),
-    nomeProduto: z14.string().min(1),
-    codigoProduto: z14.string().optional(),
-    metaParticipacaoPct: z14.number().min(0).max(100),
-    observacao: z14.string().optional(),
-    ativo: z14.boolean().optional().default(true)
+  upsert: protectedProcedure.input(z17.object({
+    id: z17.number().optional(),
+    nomeProduto: z17.string().min(1),
+    codigoProduto: z17.string().optional(),
+    metaParticipacaoPct: z17.number().min(0).max(100),
+    observacao: z17.string().optional(),
+    ativo: z17.boolean().optional().default(true)
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
@@ -9576,7 +15457,7 @@ var metaProdutosRouter = router({
         metaParticipacaoPct: String(data.metaParticipacaoPct),
         observacao: data.observacao ?? null,
         ativo: data.ativo
-      }).where(eq13(metaProdutos.id, id));
+      }).where(eq17(metaProdutos.id, id));
       return { success: true, id };
     } else {
       const [result] = await db5.insert(metaProdutos).values({
@@ -9590,1879 +15471,35 @@ var metaProdutosRouter = router({
     }
   }),
   // Remover um produto monitorado
-  delete: protectedProcedure.input(z14.object({ id: z14.number() })).mutation(async ({ input }) => {
+  delete: protectedProcedure.input(z17.object({ id: z17.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB unavailable");
-    await db5.delete(metaProdutos).where(eq13(metaProdutos.id, input.id));
+    await db5.delete(metaProdutos).where(eq17(metaProdutos.id, input.id));
     return { success: true };
   })
 });
 
-// server/routers/performanceComercial.ts
-init_env();
-init_mubisys_client();
-init_db();
-init_schema();
-import { z as z15 } from "zod";
-import { eq as eq14, and as and11, sql as sql8 } from "drizzle-orm";
-var apiCache = /* @__PURE__ */ new Map();
-var CACHE_TTL_ATUAL_MS = 60 * 60 * 1e3;
-var CACHE_TTL_HISTORICO_MS = 6 * 60 * 60 * 1e3;
-var CACHE_TTL_HISTORICO_PERSISTENTE_MS = 30 * 24 * 60 * 60 * 1e3;
-async function getDbCache(cacheKey) {
-  try {
-    const db5 = await getDb3();
-    if (!db5) return null;
-    const rows = await db5.select().from(mubisysApiCache).where(eq14(mubisysApiCache.cacheKey, cacheKey)).limit(1);
-    if (rows.length === 0) return null;
-    const row = rows[0];
-    if (/* @__PURE__ */ new Date() > new Date(row.expiresAt)) {
-      await db5.delete(mubisysApiCache).where(eq14(mubisysApiCache.cacheKey, cacheKey));
-      return null;
-    }
-    const allOs = row.osData ? JSON.parse(row.osData) : [];
-    const allOrc = row.orcData ? JSON.parse(row.orcData) : [];
-    return { allOs, allOrc };
-  } catch {
-    return null;
-  }
-}
-async function setDbCache(cacheKey, mes, ano, allOs, allOrc) {
-  try {
-    const db5 = await getDb3();
-    if (!db5) return;
-    const now = /* @__PURE__ */ new Date();
-    const ttlMs = isMesAtual(mes, ano) ? CACHE_TTL_ATUAL_MS : CACHE_TTL_HISTORICO_PERSISTENTE_MS;
-    const expiresAt = new Date(now.getTime() + ttlMs);
-    const existing = await db5.select({ id: mubisysApiCache.id }).from(mubisysApiCache).where(eq14(mubisysApiCache.cacheKey, cacheKey)).limit(1);
-    if (existing.length > 0) {
-      await db5.update(mubisysApiCache).set({ osData: JSON.stringify(allOs), orcData: JSON.stringify(allOrc), fetchedAt: now, expiresAt }).where(eq14(mubisysApiCache.cacheKey, cacheKey));
-    } else {
-      await db5.insert(mubisysApiCache).values({ cacheKey, mes, ano, osData: JSON.stringify(allOs), orcData: JSON.stringify(allOrc), fetchedAt: now, expiresAt });
-    }
-  } catch {
-  }
-}
-async function deleteDbCache(cacheKey) {
-  try {
-    const db5 = await getDb3();
-    if (!db5) return;
-    await db5.delete(mubisysApiCache).where(eq14(mubisysApiCache.cacheKey, cacheKey));
-  } catch {
-  }
-}
-function normalizeEmpresaKey(s) {
-  return (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
-}
-function isMesAtual(mes, ano) {
-  const now = /* @__PURE__ */ new Date();
-  return mes === now.getMonth() + 1 && ano === now.getFullYear();
-}
-function getCached(key) {
-  const entry = apiCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > CACHE_TTL_HISTORICO_MS) {
-    apiCache.delete(key);
-    return null;
-  }
-  return entry.data;
-}
-function setCacheWithTTL(key, data, mes, ano) {
-  apiCache.set(key, { data, ts: Date.now() });
-  if (isMesAtual(mes, ano)) {
-    setTimeout(() => apiCache.delete(key), CACHE_TTL_ATUAL_MS);
-  }
-}
-function deleteCache(key) {
-  apiCache.delete(key);
-}
-function isOsNormalDb(os) {
-  if (os.tipoOs === null || os.tipoOs === void 0) return false;
-  const tipo = (os.tipoOs ?? "").toLowerCase();
-  const status = (os.status ?? "").toLowerCase();
-  if (tipo.startsWith("retrabalho")) return false;
-  if (tipo === "amostra") return false;
-  if (tipo === "cortesia") return false;
-  if (status === "cancelada") return false;
-  return true;
-}
-var MESES_INATIVIDADE_PARA_NOVO = 6;
-async function buscarTodasComprasValidas(db5) {
-  const rows = await db5.select({
-    empresa: historicoOs.empresa,
-    mes: historicoOs.mes,
-    ano: historicoOs.ano,
-    tipoOs: historicoOs.tipoOs,
-    status: historicoOs.status
-  }).from(historicoOs);
-  const compras = [];
-  for (const r of rows) {
-    if (!isOsNormalDb(r)) continue;
-    const empresa = (r.empresa ?? "").toLowerCase().trim();
-    if (!empresa) continue;
-    compras.push({ empresa, mes: r.mes, ano: r.ano });
-  }
-  return compras;
-}
-function ultimaCompraAntesDe(compras, mes, ano) {
-  const map = /* @__PURE__ */ new Map();
-  for (const c of compras) {
-    if (c.ano > ano || c.ano === ano && c.mes >= mes) continue;
-    const atual = map.get(c.empresa);
-    if (!atual || c.ano > atual.ano || c.ano === atual.ano && c.mes > atual.mes) {
-      map.set(c.empresa, { mes: c.mes, ano: c.ano });
-    }
-  }
-  return map;
-}
-function isClienteNovoPorRecencia(ultima, mes, ano) {
-  if (!ultima) return true;
-  const gapMeses = (ano - ultima.ano) * 12 + (mes - ultima.mes);
-  return gapMeses >= MESES_INATIVIDADE_PARA_NOVO;
-}
-async function getMesFromDb(mes, ano) {
-  const db5 = await getDb3();
-  if (!db5) return null;
-  const osRows = await db5.select().from(historicoOs).where(and11(eq14(historicoOs.mes, mes), eq14(historicoOs.ano, ano)));
-  const orcRows = await db5.select().from(historicoOrcamentos).where(and11(eq14(historicoOrcamentos.mes, mes), eq14(historicoOrcamentos.ano, ano)));
-  const osNormais = osRows.filter((os) => {
-    if (os.tipoOs === null || os.tipoOs === void 0) return false;
-    const tipo = os.tipoOs;
-    const status = (os.status ?? "").toLowerCase();
-    if (tipo.toLowerCase().startsWith("retrabalho")) return false;
-    if (tipo.toLowerCase() === "amostra") return false;
-    if (tipo.toLowerCase() === "cortesia") return false;
-    if (status === "cancelada") return false;
-    return true;
-  });
-  const osPorVendedor = {};
-  let totalValorOs = 0;
-  let totalCustoOs = 0;
-  let totalResultadoOs = 0;
-  for (const os of osNormais) {
-    const vendedor = os.vendedor || "Sem Vendedor";
-    const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
-    const custo = parseFloat(String(os.custosTotal ?? "0")) || 0;
-    const resultado = parseFloat(String(os.resultadoReais ?? "0")) || 0;
-    totalValorOs += valor;
-    totalCustoOs += custo;
-    totalResultadoOs += resultado;
-    if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
-    osPorVendedor[vendedor].total++;
-    osPorVendedor[vendedor].valor += valor;
-    osPorVendedor[vendedor].custo += custo;
-    osPorVendedor[vendedor].resultado += resultado;
-  }
-  const orcPorVendedor = {};
-  let totalValorOrc = 0;
-  for (const orc of orcRows) {
-    const vendedor = orc.vendedor || "Sem Vendedor";
-    const valor = parseFloat(String(orc.total ?? "0")) || 0;
-    totalValorOrc += valor;
-    if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
-    orcPorVendedor[vendedor].total++;
-    orcPorVendedor[vendedor].valor += valor;
-  }
-  return {
-    osNormais: {
-      total: osNormais.length,
-      valorTotal: totalValorOs,
-      custo: totalCustoOs,
-      resultado: totalResultadoOs,
-      porVendedor: osPorVendedor
-    },
-    orcamentos: {
-      total: orcRows.length,
-      valorTotal: totalValorOrc,
-      porVendedor: orcPorVendedor
-    }
-  };
-}
-var pendingApiCalls = /* @__PURE__ */ new Map();
-async function getMesFromApi(mes, ano) {
-  const cacheKey = `mes_${mes}_${ano}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
-  const existing = pendingApiCalls.get(cacheKey);
-  if (existing) return existing;
-  const promise = _getMesFromApiImpl(mes, ano).then((result) => {
-    setCacheWithTTL(cacheKey, result, mes, ano);
-    pendingApiCalls.delete(cacheKey);
-    return result;
-  }).catch((err) => {
-    pendingApiCalls.delete(cacheKey);
-    throw err;
-  });
-  pendingApiCalls.set(cacheKey, promise);
-  return promise;
-}
-async function _getMesFromApiImpl(mes, ano) {
-  const pad = (n) => String(n).padStart(2, "0");
-  const lastDay = new Date(ano, mes, 0).getDate();
-  const datainicial = `${ano}-${pad(mes)}-01`;
-  const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-  const rawCacheKey = `raw_${mes}_${ano}`;
-  const osCacheKey = `os_raw_${mes}_${ano}`;
-  const orcCacheKey = `orc_raw_${mes}_${ano}`;
-  const cachedOs = getCached(osCacheKey);
-  const cachedOrc = getCached(orcCacheKey);
-  let allOs;
-  let allOrc;
-  if (cachedOs && cachedOrc) {
-    allOs = cachedOs;
-    allOrc = cachedOrc;
-  } else {
-    const dbCached = await getDbCache(rawCacheKey);
-    if (dbCached) {
-      allOs = dbCached.allOs;
-      allOrc = dbCached.allOrc;
-      setCacheWithTTL(osCacheKey, allOs, mes, ano);
-      setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
-    } else {
-      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
-      const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal });
-      allOs = osResult.itens;
-      allOrc = orcResult.itens;
-      setCacheWithTTL(osCacheKey, allOs, mes, ano);
-      setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
-      if (osResult.completo && orcResult.completo) {
-        setDbCache(rawCacheKey, mes, ano, allOs, allOrc).catch(() => {
-        });
-        console.log(`[MubiSys] Cache persistente salvo para ${mes}/${ano}: ${allOs.length} OS, ${allOrc.length} or\xE7amentos`);
-      } else {
-        console.warn(`[MubiSys] Busca incompleta para ${mes}/${ano} \u2014 cache persistente N\xC3O salvo (OS: ${osResult.completo}, Orc: ${orcResult.completo})`);
-      }
-    }
-  }
-  const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
-  const osNormais = allOs.filter(
-    (os) => !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) && (os.status || "").toLowerCase() !== "cancelada"
-  );
-  const osPorVendedor = {};
-  let totalValorOs = 0;
-  let totalCustoOs = 0;
-  let totalResultadoOs = 0;
-  for (const os of osNormais) {
-    const vendedor = os.vendedor || "Sem Vendedor";
-    const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
-    const custo = parseFloat(String(os.valor_custo ?? "0")) || 0;
-    const resultado = parseFloat(String(os.valor_margem ?? "0")) || 0;
-    totalValorOs += valor;
-    totalCustoOs += custo;
-    totalResultadoOs += resultado;
-    if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
-    osPorVendedor[vendedor].total++;
-    osPorVendedor[vendedor].valor += valor;
-    osPorVendedor[vendedor].custo += custo;
-    osPorVendedor[vendedor].resultado += resultado;
-  }
-  const STATUS_EXCLUIDOS_ORC = ["cancelada", "cancelado", "exclu\xEDda", "exclu\xEDdo", "excluida", "excluido"];
-  const orcVersaoAtual = allOrc.filter(
-    (orc) => !STATUS_EXCLUIDOS_ORC.includes((orc.status ?? "").toLowerCase())
-  );
-  const orcPorVendedor = {};
-  let totalValorOrc = 0;
-  for (const orc of orcVersaoAtual) {
-    const vendedor = orc.vendedor || "Sem Vendedor";
-    const vt = parseFloat(String(orc.valor_total ?? "0")) || 0;
-    const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
-    const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
-    const valor = vt > 0 ? vt : vc + vm;
-    totalValorOrc += valor;
-    if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
-    orcPorVendedor[vendedor].total++;
-    orcPorVendedor[vendedor].valor += valor;
-  }
-  return {
-    osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor },
-    orcamentos: { total: orcVersaoAtual.length, valorTotal: totalValorOrc, porVendedor: orcPorVendedor }
-  };
-}
-function calcMetrics(osNormais, orcamentos, mes, ano) {
-  const MESES_NOMES2 = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  const taxaConversao = orcamentos.total > 0 ? parseFloat((osNormais.total / orcamentos.total * 100).toFixed(1)) : 0;
-  const taxaFaturamento = orcamentos.valorTotal > 0 ? parseFloat((osNormais.valorTotal / orcamentos.valorTotal * 100).toFixed(1)) : 0;
-  const ticketMedio = osNormais.total > 0 ? parseFloat((osNormais.valorTotal / osNormais.total).toFixed(2)) : 0;
-  const margemPct = osNormais.valorTotal > 0 ? parseFloat((osNormais.resultado / osNormais.valorTotal * 100).toFixed(1)) : 0;
-  const todosVendedores = /* @__PURE__ */ new Set([
-    ...Object.keys(osNormais.porVendedor),
-    ...Object.keys(orcamentos.porVendedor)
-  ]);
-  const porVendedor = Array.from(todosVendedores).map((vendedor) => {
-    const os = osNormais.porVendedor[vendedor] ?? { total: 0, valor: 0, custo: 0, resultado: 0 };
-    const orc = orcamentos.porVendedor[vendedor] ?? { total: 0, valor: 0 };
-    const conv = orc.total > 0 ? parseFloat((os.total / orc.total * 100).toFixed(1)) : 0;
-    const taxaFat = orc.valor > 0 ? parseFloat((os.valor / orc.valor * 100).toFixed(1)) : 0;
-    const ticket = os.total > 0 ? parseFloat((os.valor / os.total).toFixed(2)) : 0;
-    const margem = os.valor > 0 ? parseFloat((os.resultado / os.valor * 100).toFixed(1)) : 0;
-    return {
-      vendedor,
-      cotacoes: orc.total,
-      valorOrcado: parseFloat(orc.valor.toFixed(2)),
-      osGeradas: os.total,
-      faturamento: parseFloat(os.valor.toFixed(2)),
-      custo: parseFloat(os.custo.toFixed(2)),
-      resultado: parseFloat(os.resultado.toFixed(2)),
-      taxaConversao: conv,
-      taxaFaturamento: taxaFat,
-      ticketMedio: ticket,
-      margemPct: margem
-    };
-  }).sort((a, b) => b.cotacoes - a.cotacoes);
-  return {
-    label: `${MESES_NOMES2[mes - 1]}/${String(ano).slice(2)}`,
-    mes,
-    ano,
-    cotacoes: orcamentos.total,
-    osGeradas: osNormais.total,
-    valorOrcado: parseFloat(orcamentos.valorTotal.toFixed(2)),
-    faturamento: parseFloat(osNormais.valorTotal.toFixed(2)),
-    custo: parseFloat(osNormais.custo.toFixed(2)),
-    resultado: parseFloat(osNormais.resultado.toFixed(2)),
-    taxaConversao,
-    taxaFaturamento,
-    ticketMedio,
-    margemPct,
-    porVendedor
-  };
-}
-async function getClientesNovosMes(mes, ano) {
-  const db5 = await getDb3();
-  const EMPTY = { total: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
-  if (!db5) return EMPTY;
-  const snapCongelado = await db5.select().from(performanceAuditada).where(and11(eq14(performanceAuditada.mes, mes), eq14(performanceAuditada.ano, ano), eq14(performanceAuditada.congelado, true))).limit(1);
-  if (snapCongelado.length > 0 && snapCongelado[0].listaClientesNovos) {
-    const s = snapCongelado[0];
-    let listaSnap = [];
-    try {
-      listaSnap = JSON.parse(s.listaClientesNovos ?? "[]");
-    } catch {
-      listaSnap = [];
-    }
-    const porVendedorNovosSnap = {};
-    for (const item of listaSnap) {
-      const vendedor = item.vendedor || "Sem Vendedor";
-      const valor = parseFloat(String(item.valorOs ?? "0")) || 0;
-      if (!porVendedorNovosSnap[vendedor]) {
-        porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
-      }
-      porVendedorNovosSnap[vendedor].clientesNovos++;
-      porVendedorNovosSnap[vendedor].osNovos++;
-      porVendedorNovosSnap[vendedor].faturamentoNovos = parseFloat((porVendedorNovosSnap[vendedor].faturamentoNovos + valor).toFixed(2));
-    }
-    const orcMesSnap = await db5.select().from(historicoOrcamentos).where(and11(eq14(historicoOrcamentos.mes, mes), eq14(historicoOrcamentos.ano, ano)));
-    const comprasSnap = await buscarTodasComprasValidas(db5);
-    const ultimaCompraSnap = ultimaCompraAntesDe(comprasSnap, mes, ano);
-    for (const orc of orcMesSnap) {
-      const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
-      if (!clienteKey || !isClienteNovoPorRecencia(ultimaCompraSnap.get(clienteKey), mes, ano)) continue;
-      const vendedor = orc.vendedor || "Sem Vendedor";
-      if (!porVendedorNovosSnap[vendedor]) {
-        porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
-      }
-      porVendedorNovosSnap[vendedor].cotacoesNovos++;
-      porVendedorNovosSnap[vendedor].valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
-    }
-    for (const v of Object.keys(porVendedorNovosSnap)) {
-      const entry = porVendedorNovosSnap[v];
-      entry.taxaConvNovos = entry.cotacoesNovos > 0 ? parseFloat((entry.osNovos / entry.cotacoesNovos * 100).toFixed(1)) : 0;
-      entry.taxaFatNovos = entry.valorOrcadoNovos > 0 ? parseFloat((entry.faturamentoNovos / entry.valorOrcadoNovos * 100).toFixed(1)) : 0;
-      entry.valorOrcadoNovos = parseFloat(entry.valorOrcadoNovos.toFixed(2));
-    }
-    const cotacoesNovosSnap = (s.cotacoesNovos ?? 0) > 0 ? s.cotacoesNovos ?? 0 : Object.values(porVendedorNovosSnap).reduce((acc, v) => acc + v.cotacoesNovos, 0);
-    const taxaConvNovosSnap = parseFloat(String(s.taxaConvNovos ?? 0)) > 0 ? parseFloat(String(s.taxaConvNovos ?? 0)) : cotacoesNovosSnap > 0 ? parseFloat(((s.clientesNovos ?? 0) / cotacoesNovosSnap * 100).toFixed(1)) : 0;
-    return {
-      total: s.clientesNovos ?? 0,
-      cotacoesNovos: cotacoesNovosSnap,
-      osNovos: s.clientesNovos ?? 0,
-      faturamentoNovos: parseFloat(String(s.faturamentoNovos ?? 0)),
-      ticketMedioNovos: s.clientesNovos ? parseFloat(String(s.faturamentoNovos ?? 0)) / s.clientesNovos : 0,
-      valorOrcadoNovos: 0,
-      taxaConversaoNovos: taxaConvNovosSnap,
-      taxaFaturamentoNovos: 0,
-      porVendedor: {},
-      porVendedorNovos: porVendedorNovosSnap,
-      lista: listaSnap
-    };
-  }
-  const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-  const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-  if (!publicKey || !accessToken) return EMPTY;
-  const overrides = await db5.select().from(clienteOverrides);
-  const overrideMap = /* @__PURE__ */ new Map();
-  for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
-  const todasComprasValidas = await buscarTodasComprasValidas(db5);
-  const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
-  const pad = (n) => String(n).padStart(2, "0");
-  const lastDay = new Date(ano, mes, 0).getDate();
-  const di = `${ano}-${pad(mes)}-01`;
-  const df = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-  let allOsApi = [];
-  let allOrcApiPrefetched = null;
-  try {
-    const mesData = await getMesFromApi(mes, ano);
-    const rawCacheKeyNovos = `raw_${mes}_${ano}`;
-    const osCacheKey = `os_raw_${mes}_${ano}`;
-    const orcCacheKey = `orc_raw_${mes}_${ano}`;
-    const cachedOs = getCached(osCacheKey);
-    const cachedOrc = getCached(orcCacheKey);
-    if (cachedOs && cachedOrc) {
-      allOsApi = cachedOs;
-      allOrcApiPrefetched = cachedOrc;
-    } else {
-      const dbCachedNovos = await getDbCache(rawCacheKeyNovos);
-      if (dbCachedNovos) {
-        allOsApi = dbCachedNovos.allOs;
-        allOrcApiPrefetched = dbCachedNovos.allOrc;
-        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
-        setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
-      } else {
-        const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
-        allOsApi = osResult.itens;
-        const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
-        const orcList = orcResult.itens;
-        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
-        setCacheWithTTL(orcCacheKey, orcList, mes, ano);
-        setDbCache(rawCacheKeyNovos, mes, ano, allOsApi, orcList).catch(() => {
-        });
-        allOrcApiPrefetched = orcList;
-      }
-    }
-  } catch {
-    const osMesDb = await db5.select().from(historicoOs).where(and11(eq14(historicoOs.mes, mes), eq14(historicoOs.ano, ano)));
-    allOsApi = osMesDb.map((os) => ({
-      cliente: os.empresa,
-      vendedor: os.vendedor,
-      numero: os.osNumero,
-      valor_total: os.valorOs ?? os.valorTotal,
-      tipo: os.tipoOs ?? "",
-      status: os.status ?? ""
-    }));
-  }
-  const osNormaisApi = allOsApi.filter(
-    (os) => (os.tipo || "").toLowerCase() !== "retrabalho" && (os.tipo || "").toLowerCase() !== "amostra" && (os.tipo || "").toLowerCase() !== "cortesia" && (os.status || "").toLowerCase() !== "cancelada"
-  );
-  const porVendedor = {};
-  const porVendedorNovosOs = {};
-  let total = 0;
-  let osNovosCount = 0;
-  let faturamentoNovos = 0;
-  const clientesVistos = /* @__PURE__ */ new Set();
-  const listaRaw = [];
-  for (const os of osNormaisApi) {
-    const clienteRaw = os.cliente;
-    const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null ? String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "") : String(clienteRaw ?? "");
-    const clienteKey = nomeCliente.toLowerCase().trim();
-    if (!clienteKey) continue;
-    const overrideStatus = overrideMap.get(normalizeEmpresaKey(nomeCliente));
-    const isNovoByHistory = isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
-    const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isNovoByHistory;
-    if (isNovo) {
-      const vendedor = String(os.vendedor ?? "Sem Vendedor");
-      const vendedorKey = vendedor.toLowerCase().trim();
-      const valorOs = parseFloat(String(os.valor_total ?? "0")) || 0;
-      faturamentoNovos += valorOs;
-      osNovosCount++;
-      if (!porVendedorNovosOs[vendedorKey]) porVendedorNovosOs[vendedorKey] = { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: vendedor };
-      porVendedorNovosOs[vendedorKey].osNovos++;
-      porVendedorNovosOs[vendedorKey].faturamentoNovos += valorOs;
-      if (!clientesVistos.has(clienteKey)) {
-        clientesVistos.add(clienteKey);
-        total++;
-        porVendedor[vendedor] = (porVendedor[vendedor] ?? 0) + 1;
-        porVendedorNovosOs[vendedorKey].clientesNovos++;
-        const contatosOs = Array.isArray(os.cliente_contato) ? os.cliente_contato : os.cliente_contato ? [os.cliente_contato] : [];
-        const enderecosOs = Array.isArray(os.cliente_endereco) ? os.cliente_endereco : os.cliente_endereco ? [os.cliente_endereco] : [];
-        const primeiroContato = contatosOs[0];
-        const primeiroEndereco = enderecosOs[0];
-        const telefoneOs = primeiroContato?.celular || primeiroContato?.telefone || primeiroContato?.fone || "";
-        const contatoOs = primeiroContato?.nome_contato || primeiroContato?.nome || "";
-        const cidadeOs = primeiroEndereco?.cidade || "";
-        const estadoOs = primeiroEndereco?.estado || primeiroEndereco?.uf || "";
-        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.numero ?? ""), valorOs: String(os.valor_total ?? ""), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs });
-      }
-    }
-  }
-  function formatWhatsApp(tel) {
-    if (!tel) return "";
-    const digits = tel.replace(/\D/g, "");
-    if (!digits) return "";
-    const num = digits.startsWith("55") ? digits : `55${digits}`;
-    return `https://wa.me/${num}`;
-  }
-  const lista = [];
-  for (const item of listaRaw) {
-    lista.push({
-      ...item,
-      whatsappLink: formatWhatsApp(item.telefone)
-    });
-  }
-  let cotacoesNovos = 0;
-  let valorOrcadoNovos = 0;
-  const porVendedorNovosOrc = {};
-  {
-    let allOrcApi = [];
-    if (allOrcApiPrefetched !== null) {
-      const STATUS_EXCL_ORC = ["cancelada", "cancelado", "exclu\xEDda", "exclu\xEDdo", "excluida", "excluido"];
-      allOrcApi = allOrcApiPrefetched.filter(
-        (orc) => !STATUS_EXCL_ORC.includes((orc.status ?? "").toLowerCase())
-      );
-    } else {
-      const orcMes = await db5.select().from(historicoOrcamentos).where(and11(eq14(historicoOrcamentos.mes, mes), eq14(historicoOrcamentos.ano, ano)));
-      allOrcApi = orcMes.map((orc) => ({
-        cliente: orc.empresa,
-        vendedor: orc.vendedor,
-        valor_total: orc.total
-      }));
-    }
-    for (const orc of allOrcApi) {
-      const clienteRaw = orc.cliente;
-      const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null ? String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "") : String(clienteRaw ?? "");
-      const clienteKey = nomeCliente.toLowerCase().trim();
-      const orcOverride = overrideMap.get(normalizeEmpresaKey(nomeCliente));
-      const isNovoOrc = orcOverride === "recorrente" ? false : orcOverride === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
-      if (clienteKey && isNovoOrc) {
-        cotacoesNovos++;
-        const valor = parseFloat(String(orc.valor_total ?? orc.valor ?? orc.total ?? orc.valorTotal ?? "0")) || 0;
-        valorOrcadoNovos += valor;
-        const vendedorOrcRaw = String(orc.vendedor ?? orc.usuario ?? "Sem Vendedor");
-        const vendedorOrcKey = vendedorOrcRaw.toLowerCase().trim();
-        if (!porVendedorNovosOrc[vendedorOrcKey]) porVendedorNovosOrc[vendedorOrcKey] = { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: vendedorOrcRaw };
-        porVendedorNovosOrc[vendedorOrcKey].cotacoesNovos++;
-        porVendedorNovosOrc[vendedorOrcKey].valorOrcadoNovos += valor;
-      }
-    }
-  }
-  const osNovos = osNovosCount;
-  const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat((osNovos / cotacoesNovos * 100).toFixed(1)) : 0;
-  const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat((faturamentoNovos / valorOrcadoNovos * 100).toFixed(1)) : 0;
-  const todosVendedoresNovos = Array.from(/* @__PURE__ */ new Set([
-    ...Object.keys(porVendedorNovosOs),
-    ...Object.keys(porVendedorNovosOrc)
-  ]));
-  const porVendedorNovos = {};
-  for (const v of todosVendedoresNovos) {
-    const os = porVendedorNovosOs[v] ?? { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: v };
-    const orc = porVendedorNovosOrc[v] ?? { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: v };
-    const nomeDisplay = orc.nomeOriginal !== v ? orc.nomeOriginal : os.nomeOriginal;
-    const taxaConvNovos = orc.cotacoesNovos > 0 ? parseFloat((os.osNovos / orc.cotacoesNovos * 100).toFixed(1)) : 0;
-    const taxaFatNovos = orc.valorOrcadoNovos > 0 ? parseFloat((os.faturamentoNovos / orc.valorOrcadoNovos * 100).toFixed(1)) : 0;
-    porVendedorNovos[nomeDisplay] = {
-      clientesNovos: os.clientesNovos,
-      osNovos: os.osNovos,
-      faturamentoNovos: parseFloat(os.faturamentoNovos.toFixed(2)),
-      cotacoesNovos: orc.cotacoesNovos,
-      valorOrcadoNovos: parseFloat(orc.valorOrcadoNovos.toFixed(2)),
-      taxaConvNovos,
-      taxaFatNovos
-    };
-  }
-  const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
-  if (snapCongelado.length > 0 && !snapCongelado[0].listaClientesNovos && lista.length > 0) {
-    db5.update(performanceAuditada).set({ listaClientesNovos: JSON.stringify(lista) }).where(and11(eq14(performanceAuditada.mes, mes), eq14(performanceAuditada.ano, ano))).execute().catch(() => {
-    });
-  }
-  return {
-    total,
-    cotacoesNovos,
-    osNovos,
-    faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
-    ticketMedioNovos,
-    valorOrcadoNovos: parseFloat(valorOrcadoNovos.toFixed(2)),
-    taxaConversaoNovos,
-    taxaFaturamentoNovos,
-    porVendedor,
-    porVendedorNovos,
-    lista
-  };
-}
-var performanceComercialRouter = router({
-  // Dados de um mês específico
-  getMes: publicProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020), forceRefresh: z15.boolean().optional().default(false) })).query(async ({ input }) => {
-    const { mes, ano, forceRefresh } = input;
-    if (!forceRefresh) {
-      const dbSnap = await getDb3();
-      if (dbSnap) {
-        const snap = await dbSnap.select().from(performanceAuditada).where(and11(eq14(performanceAuditada.mes, mes), eq14(performanceAuditada.ano, ano), eq14(performanceAuditada.congelado, true))).limit(1);
-        if (snap.length > 0) {
-          const s = snap[0];
-          return {
-            cotacoes: s.cotacoes,
-            osGeradas: s.osNormais,
-            taxaConversao: parseFloat(String(s.taxaConversao)),
-            taxaFaturamento: s.valorOrcado && parseFloat(String(s.valorOrcado)) > 0 ? parseFloat((parseFloat(String(s.faturamento)) / parseFloat(String(s.valorOrcado)) * 100).toFixed(2)) : 0,
-            ticketMedio: s.osNormais > 0 ? parseFloat((parseFloat(String(s.faturamento)) / s.osNormais).toFixed(2)) : 0,
-            margemPct: 0,
-            custo: 0,
-            resultado: 0,
-            label: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][s.mes - 1]}/${String(s.ano).slice(2)}`,
-            mes: s.mes,
-            ano: s.ano,
-            faturamento: parseFloat(String(s.faturamento)),
-            valorOrcado: parseFloat(String(s.valorOrcado)),
-            clientesNovos: s.clientesNovos,
-            taxaConvNovos: parseFloat(String(s.taxaConvNovos)),
-            faturamentoNovos: parseFloat(String(s.faturamentoNovos)),
-            totalPedidosBanco: null,
-            _fonte: "congelado",
-            _statusValidacao: s.statusValidacao,
-            _dataAuditoria: s.dataAuditoria,
-            _dataCongelamento: s.dataCongelamento,
-            _auditadoPor: s.auditadoPor,
-            // Campos extras para compatibilidade com o restante da UI
-            porVendedor: {},
-            top3Vendedores: [],
-            metaAtingida: false,
-            metaCotacoes: 0,
-            metaOs: 0,
-            metaFaturamento: 0,
-            metaTaxaConversao: 0
-          };
-        }
-      }
-    }
-    if (forceRefresh) {
-      const osCacheKey = `os_raw_${mes}_${ano}`;
-      const orcCacheKey = `orc_raw_${mes}_${ano}`;
-      const mesCacheKey = `mes_${mes}_${ano}`;
-      const rawCacheKey = `raw_${mes}_${ano}`;
-      deleteCache(osCacheKey);
-      deleteCache(orcCacheKey);
-      deleteCache(mesCacheKey);
-      deleteDbCache(rawCacheKey).catch(() => {
-      });
-    }
-    let raw = null;
-    const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-    const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-    if (publicKey && accessToken) {
-      try {
-        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 55e3));
-        raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
-      } catch {
-        raw = null;
-      }
-    }
-    const viaApi = raw !== null;
-    if (!raw) {
-      raw = await getMesFromDb(mes, ano);
-    }
-    if (!raw) return null;
-    const metrics = calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
-    const db22 = await getDb3();
-    let totalPedidosBanco = null;
-    if (db22) {
-      const MESES_NOMES_UPPER = ["JANEIRO", "FEVEREIRO", "MAR\xC7O", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
-      const mesNome = MESES_NOMES_UPPER[mes - 1];
-      const fatRow = await db22.select({ totalPedidos: faturamento.totalPedidos }).from(faturamento).where(and11(sql8`UPPER(${faturamento.mes}) = ${mesNome}`, eq14(faturamento.ano, ano))).limit(1);
-      if (fatRow.length > 0 && fatRow[0].totalPedidos > 0) totalPedidosBanco = fatRow[0].totalPedidos;
-    }
-    return { ...metrics, totalPedidosBanco, _origemDados: viaApi ? "api" : "local" };
-  }),
-  // Múltiplos meses para comparativo e gráfico de evolução
-  getMultiMes: publicProcedure.input(z15.object({
-    meses: z15.array(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) }))
-  })).query(async ({ input }) => {
-    const now = /* @__PURE__ */ new Date();
-    const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-    const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-    const db5 = await getDb3();
-    const anoSet = Array.from(new Set(input.meses.map((m) => m.ano)));
-    const dbDataByAno = /* @__PURE__ */ new Map();
-    for (const ano of anoSet) {
-      const osRows = db5 ? await db5.select().from(historicoOs).where(eq14(historicoOs.ano, ano)) : [];
-      const orcRows = db5 ? await db5.select().from(historicoOrcamentos).where(eq14(historicoOrcamentos.ano, ano)) : [];
-      dbDataByAno.set(ano, { os: osRows, orc: orcRows });
-    }
-    const novosMap = /* @__PURE__ */ new Map();
-    if (db5) {
-      const overrides = await db5.select().from(clienteOverrides);
-      const overrideMap = /* @__PURE__ */ new Map();
-      for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
-      const todasComprasValidas = await buscarTodasComprasValidas(db5);
-      for (const ano of anoSet) {
-        const todasOsAno = dbDataByAno.get(ano)?.os ?? [];
-        const todasOrcAno = dbDataByAno.get(ano)?.orc ?? [];
-        const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
-        for (let mes = 1; mes <= mesAtual; mes++) {
-          const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
-          const osMes = todasOsAno.filter((o) => o.mes === mes);
-          const orcMes = todasOrcAno.filter((o) => o.mes === mes);
-          let osNovos = 0, faturamentoNovos = 0;
-          for (const os of osMes) {
-            if (!isOsNormalDb(os)) continue;
-            const clienteKey = (os.empresa ?? "").toLowerCase().trim();
-            if (!clienteKey) continue;
-            const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
-            const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
-            if (isNovo) {
-              const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
-              osNovos++;
-              faturamentoNovos += valor;
-            }
-          }
-          let cotacoesNovos = 0;
-          let valorOrcadoNovos = 0;
-          for (const orc of orcMes) {
-            const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
-            if (!clienteKey) continue;
-            const overrideStatus = overrideMap.get(normalizeEmpresaKey(orc.empresa ?? ""));
-            const isNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
-            if (isNovo) {
-              cotacoesNovos++;
-              valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
-            }
-          }
-          const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
-          const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat((osNovos / cotacoesNovos * 100).toFixed(1)) : 0;
-          const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat((faturamentoNovos / valorOrcadoNovos * 100).toFixed(1)) : 0;
-          novosMap.set(`${mes}_${ano}`, { osNovos, faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)), ticketMedioNovos, cotacoesNovos, taxaConversaoNovos, taxaFaturamentoNovos });
-        }
-      }
-    }
-    const mesesSolicitados = input.meses;
-    const snapsCongelados = db5 ? await db5.select().from(performanceAuditada).where(and11(
-      eq14(performanceAuditada.congelado, true),
-      sql8`(${performanceAuditada.mes}, ${performanceAuditada.ano}) IN (${sql8.join(
-        mesesSolicitados.map((m) => sql8`(${m.mes}, ${m.ano})`),
-        sql8`, `
-      )})`
-    )) : [];
-    const snapMap = /* @__PURE__ */ new Map();
-    for (const s of snapsCongelados) snapMap.set(`${s.mes}_${s.ano}`, s);
-    const results = await Promise.all(
-      input.meses.map(async ({ mes, ano }) => {
-        const snap = snapMap.get(`${mes}_${ano}`);
-        if (snap) {
-          const novos2 = novosMap.get(`${mes}_${ano}`);
-          const cotacoesNovosSnap = (snap.cotacoesNovos ?? 0) > 0 ? snap.cotacoesNovos ?? 0 : novos2?.cotacoesNovos ?? 0;
-          const osNovosSnap = novos2?.osNovos ?? snap.clientesNovos ?? 0;
-          const taxaConvNovosSnap = parseFloat(String(snap.taxaConvNovos ?? 0)) > 0 ? parseFloat(String(snap.taxaConvNovos ?? 0)) : cotacoesNovosSnap > 0 ? parseFloat((osNovosSnap / cotacoesNovosSnap * 100).toFixed(1)) : 0;
-          return {
-            mes,
-            ano,
-            label: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][mes - 1]}/${String(ano).slice(2)}`,
-            cotacoes: snap.cotacoes ?? 0,
-            osGeradas: snap.osNormais ?? 0,
-            taxaConversao: parseFloat(String(snap.taxaConversao ?? 0)),
-            taxaFaturamento: snap.valorOrcado && parseFloat(String(snap.valorOrcado)) > 0 ? parseFloat((parseFloat(String(snap.faturamento ?? 0)) / parseFloat(String(snap.valorOrcado)) * 100).toFixed(2)) : 0,
-            faturamento: parseFloat(String(snap.faturamento ?? 0)),
-            valorOrcado: parseFloat(String(snap.valorOrcado ?? 0)),
-            ticketMedio: snap.osNormais ? parseFloat(String(snap.faturamento ?? 0)) / snap.osNormais : 0,
-            margemPct: 0,
-            custo: 0,
-            resultado: 0,
-            clientesNovos: snap.clientesNovos ?? 0,
-            // Expor como taxaConversaoNovos (nome usado pelo frontend) E taxaConvNovos (compat)
-            taxaConvNovos: taxaConvNovosSnap,
-            taxaConversaoNovos: taxaConvNovosSnap,
-            faturamentoNovos: parseFloat(String(snap.faturamentoNovos ?? 0)),
-            osNovos: osNovosSnap,
-            ticketMedioNovos: novos2?.ticketMedioNovos ?? 0,
-            cotacoesNovos: cotacoesNovosSnap,
-            taxaFaturamentoNovos: novos2?.taxaFaturamentoNovos ?? 0,
-            porVendedor: []
-            // array vazio para compatibilidade com EvolucaoVendedor
-          };
-        }
-        let raw = null;
-        if (publicKey && accessToken) {
-          try {
-            const timeoutPromise = new Promise(
-              (_, reject) => setTimeout(() => reject(new Error("timeout")), 4e4)
-            );
-            raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
-          } catch {
-            raw = null;
-          }
-        }
-        const isMesAtualMulti = mes === now.getMonth() + 1 && ano === now.getFullYear();
-        if (!raw) {
-          const anoData = dbDataByAno.get(ano);
-          if (!anoData && !isMesAtualMulti) return null;
-          const osRows = (anoData?.os ?? []).filter((o) => o.mes === mes);
-          const orcRows = (anoData?.orc ?? []).filter((o) => o.mes === mes);
-          if (osRows.length === 0 && orcRows.length === 0 && !isMesAtualMulti) return null;
-          const osNormais = osRows.filter((os) => {
-            if (os.tipoOs === null || os.tipoOs === void 0) return false;
-            const tipo = os.tipoOs;
-            const status = (os.status ?? "").toLowerCase();
-            if (tipo.toLowerCase().startsWith("retrabalho")) return false;
-            if (tipo.toLowerCase() === "amostra" || tipo.toLowerCase() === "cortesia") return false;
-            if (status === "cancelada") return false;
-            return true;
-          });
-          const osPorVendedor = {};
-          let totalValorOs = 0, totalCustoOs = 0, totalResultadoOs = 0;
-          for (const os of osNormais) {
-            const vendedor = os.vendedor || "Sem Vendedor";
-            const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
-            const custo = parseFloat(String(os.custosTotal ?? "0")) || 0;
-            const resultado = parseFloat(String(os.resultadoReais ?? "0")) || 0;
-            totalValorOs += valor;
-            totalCustoOs += custo;
-            totalResultadoOs += resultado;
-            if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
-            osPorVendedor[vendedor].total++;
-            osPorVendedor[vendedor].valor += valor;
-            osPorVendedor[vendedor].custo += custo;
-            osPorVendedor[vendedor].resultado += resultado;
-          }
-          const orcPorVendedor = {};
-          let totalValorOrc = 0;
-          for (const orc of orcRows) {
-            const vendedor = orc.vendedor || "Sem Vendedor";
-            const valor = parseFloat(String(orc.total ?? "0")) || 0;
-            totalValorOrc += valor;
-            if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
-            orcPorVendedor[vendedor].total++;
-            orcPorVendedor[vendedor].valor += valor;
-          }
-          raw = {
-            osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor },
-            orcamentos: { total: orcRows.length, valorTotal: totalValorOrc, porVendedor: orcPorVendedor }
-          };
-        }
-        if (!raw && isMesAtualMulti) {
-          raw = {
-            osNormais: { total: 0, valorTotal: 0, custo: 0, resultado: 0, porVendedor: {} },
-            orcamentos: { total: 0, valorTotal: 0, porVendedor: {} }
-          };
-        }
-        if (!raw) return null;
-        const novos = novosMap.get(`${mes}_${ano}`) ?? { osNovos: 0, faturamentoNovos: 0, ticketMedioNovos: 0, cotacoesNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0 };
-        return { ...calcMetrics(raw.osNormais, raw.orcamentos, mes, ano), ...novos };
-      })
-    );
-    return results.filter(Boolean);
-  }),
-  // ─── Metas por vendedor ────────────────────────────────────────────────────
-  getMetas: publicProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return [];
-    return db5.select().from(metasComerciais).where(and11(eq14(metasComerciais.mes, input.mes), eq14(metasComerciais.ano, input.ano)));
-  }),
-  upsertMeta: protectedProcedure.input(z15.object({
-    vendedor: z15.string().min(1),
-    mes: z15.number().min(1).max(12),
-    ano: z15.number().min(2020),
-    metaCotacoes: z15.number().nullable().optional(),
-    metaVendas: z15.number().nullable().optional(),
-    metaFaturamento: z15.number().nullable().optional(),
-    metaConversao: z15.number().nullable().optional(),
-    metaTicketMedio: z15.number().nullable().optional(),
-    // Novos campos
-    metaOsGeradas: z15.number().nullable().optional(),
-    metaClientesNovos: z15.number().nullable().optional(),
-    metaOsNovos: z15.number().nullable().optional(),
-    metaCotacoesNovos: z15.number().nullable().optional(),
-    metaFaturamentoNovos: z15.number().nullable().optional(),
-    metaTaxaFaturamento: z15.number().nullable().optional(),
-    metaTaxaFaturamentoNovos: z15.number().nullable().optional(),
-    metaConversaoNovos: z15.number().nullable().optional(),
-    metaTicketMedioNovos: z15.number().nullable().optional(),
-    metaValorOrcado: z15.number().nullable().optional()
-  })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
-    const toStr = (v) => v != null ? String(v) : null;
-    const setData = {
-      metaCotacoes: input.metaCotacoes ?? null,
-      metaVendas: input.metaVendas ?? null,
-      metaFaturamento: toStr(input.metaFaturamento),
-      metaConversao: toStr(input.metaConversao),
-      metaTicketMedio: toStr(input.metaTicketMedio),
-      metaOsGeradas: input.metaOsGeradas ?? null,
-      metaClientesNovos: input.metaClientesNovos ?? null,
-      metaOsNovos: input.metaOsNovos ?? null,
-      metaCotacoesNovos: input.metaCotacoesNovos ?? null,
-      metaFaturamentoNovos: toStr(input.metaFaturamentoNovos),
-      metaTaxaFaturamento: toStr(input.metaTaxaFaturamento),
-      metaTaxaFaturamentoNovos: toStr(input.metaTaxaFaturamentoNovos),
-      metaConversaoNovos: toStr(input.metaConversaoNovos),
-      metaTicketMedioNovos: toStr(input.metaTicketMedioNovos),
-      metaValorOrcado: toStr(input.metaValorOrcado),
-      updatedAt: /* @__PURE__ */ new Date()
-    };
-    const existing = await db5.select().from(metasComerciais).where(and11(
-      eq14(metasComerciais.vendedor, input.vendedor),
-      eq14(metasComerciais.mes, input.mes),
-      eq14(metasComerciais.ano, input.ano)
-    ));
-    if (existing.length > 0) {
-      await db5.update(metasComerciais).set(setData).where(and11(
-        eq14(metasComerciais.vendedor, input.vendedor),
-        eq14(metasComerciais.mes, input.mes),
-        eq14(metasComerciais.ano, input.ano)
-      ));
-    } else {
-      await db5.insert(metasComerciais).values({
-        vendedor: input.vendedor,
-        mes: input.mes,
-        ano: input.ano,
-        ...setData
-      });
-    }
-    return { ok: true };
-  }),
-  deleteMeta: protectedProcedure.input(z15.object({ id: z15.number() })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
-    await db5.delete(metasComerciais).where(eq14(metasComerciais.id, input.id));
-    return { ok: true };
-  }),
-  // Todos os meses de um ano para comparativo anual
-  getAno: publicProcedure.input(z15.object({ ano: z15.number().min(2020) })).query(async ({ input }) => {
-    const { ano } = input;
-    const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-    const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-    const db5 = await getDb3();
-    const todasOsAno = db5 ? await db5.select().from(historicoOs).where(eq14(historicoOs.ano, ano)) : [];
-    const todosOrcAno = db5 ? await db5.select().from(historicoOrcamentos).where(eq14(historicoOrcamentos.ano, ano)) : [];
-    const snapsCongeladosAno = db5 ? await db5.select().from(performanceAuditada).where(and11(eq14(performanceAuditada.ano, ano), eq14(performanceAuditada.congelado, true))) : [];
-    const snapMapAno = /* @__PURE__ */ new Map();
-    for (const s of snapsCongeladosAno) snapMapAno.set(s.mes, s);
-    const MESES_NOMES_ANO = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const meses = Array.from({ length: 12 }, (_, i) => i + 1);
-    const CONCURRENCY = 2;
-    const results = new Array(meses.length).fill(null);
-    for (let i = 0; i < meses.length; i += CONCURRENCY) {
-      const batch = meses.slice(i, i + CONCURRENCY);
-      const batchResults = await Promise.all(batch.map(async (mes) => {
-        const snap = snapMapAno.get(mes);
-        if (snap) {
-          const valorOrcadoSnap = parseFloat(String(snap.valorOrcado ?? 0));
-          const faturamentoSnap = parseFloat(String(snap.faturamento ?? 0));
-          const osGeradasSnap = snap.osNormais ?? 0;
-          return {
-            label: `${MESES_NOMES_ANO[mes - 1]}/${String(ano).slice(2)}`,
-            mes,
-            ano,
-            cotacoes: snap.cotacoes ?? 0,
-            osGeradas: osGeradasSnap,
-            valorOrcado: valorOrcadoSnap,
-            faturamento: faturamentoSnap,
-            custo: 0,
-            resultado: 0,
-            taxaConversao: parseFloat(String(snap.taxaConversao ?? 0)),
-            taxaFaturamento: valorOrcadoSnap > 0 ? parseFloat((faturamentoSnap / valorOrcadoSnap * 100).toFixed(2)) : 0,
-            ticketMedio: osGeradasSnap > 0 ? parseFloat((faturamentoSnap / osGeradasSnap).toFixed(2)) : 0,
-            margemPct: 0,
-            porVendedor: []
-          };
-        }
-        let raw = null;
-        if (publicKey && accessToken) {
-          try {
-            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 55e3));
-            raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
-          } catch {
-            raw = null;
-          }
-        }
-        if (!raw) {
-          const osRows = todasOsAno.filter((o) => o.mes === mes);
-          const orcRows = todosOrcAno.filter((o) => o.mes === mes);
-          if (osRows.length === 0 && orcRows.length === 0) return null;
-          const osNormais = osRows.filter((os) => {
-            if (os.tipoOs === null || os.tipoOs === void 0) return false;
-            const tipo = os.tipoOs;
-            const status = (os.status ?? "").toLowerCase();
-            if (tipo.toLowerCase().startsWith("retrabalho")) return false;
-            if (tipo.toLowerCase() === "amostra") return false;
-            if (tipo.toLowerCase() === "cortesia") return false;
-            if (status === "cancelada") return false;
-            return true;
-          });
-          const osPorVendedor = {};
-          let totalValorOs = 0, totalCustoOs = 0, totalResultadoOs = 0;
-          for (const os of osNormais) {
-            const vendedor = os.vendedor || "Sem Vendedor";
-            const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
-            const custo = parseFloat(String(os.custosTotal ?? "0")) || 0;
-            const resultado = parseFloat(String(os.resultadoReais ?? "0")) || 0;
-            totalValorOs += valor;
-            totalCustoOs += custo;
-            totalResultadoOs += resultado;
-            if (!osPorVendedor[vendedor]) osPorVendedor[vendedor] = { total: 0, valor: 0, custo: 0, resultado: 0 };
-            osPorVendedor[vendedor].total++;
-            osPorVendedor[vendedor].valor += valor;
-            osPorVendedor[vendedor].custo += custo;
-            osPorVendedor[vendedor].resultado += resultado;
-          }
-          const orcPorVendedor = {};
-          let totalValorOrc = 0;
-          for (const orc of orcRows) {
-            const vendedor = orc.vendedor || "Sem Vendedor";
-            const valor = parseFloat(String(orc.total ?? "0")) || 0;
-            totalValorOrc += valor;
-            if (!orcPorVendedor[vendedor]) orcPorVendedor[vendedor] = { total: 0, valor: 0 };
-            orcPorVendedor[vendedor].total++;
-            orcPorVendedor[vendedor].valor += valor;
-          }
-          raw = {
-            osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor },
-            orcamentos: { total: orcRows.length, valorTotal: totalValorOrc, porVendedor: orcPorVendedor }
-          };
-        }
-        if (!raw) return null;
-        return calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
-      }));
-      batch.forEach((mes, j) => {
-        results[mes - 1] = batchResults[j];
-      });
-    }
-    return results;
-  }),
-  // Clientes novos do mês (primeira compra)
-  getClientesNovos: protectedProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).query(async ({ input }) => {
-    return getClientesNovosMes(input.mes, input.ano);
-  }),
-  // Clientes novos de todos os meses do ano (para gráfico anual) — versão otimizada
-  getClientesNovosAno: publicProcedure.input(z15.object({ ano: z15.number().min(2020) })).query(async ({ input }) => {
-    const { ano } = input;
-    const now = /* @__PURE__ */ new Date();
-    const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
-    const meses = Array.from({ length: mesAtual }, (_, i) => i + 1);
-    const CONCURRENCY = 2;
-    const results = [];
-    for (let i = 0; i < meses.length; i += CONCURRENCY) {
-      const batch = meses.slice(i, i + CONCURRENCY);
-      const batchResults = await Promise.allSettled(
-        batch.map(async (mes) => {
-          const dados = await getClientesNovosMes(mes, ano);
-          return {
-            mes,
-            ticketMedioNovos: dados.ticketMedioNovos,
-            osNovos: dados.osNovos,
-            faturamentoNovos: dados.faturamentoNovos,
-            clientesNovosUnicos: dados.total
-          };
-        })
-      );
-      for (let j = 0; j < batchResults.length; j++) {
-        const r = batchResults[j];
-        const mes = batch[j];
-        if (r.status === "fulfilled") {
-          results.push(r.value);
-        } else {
-          results.push({ mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, clientesNovosUnicos: 0 });
-        }
-      }
-    }
-    results.sort((a, b) => a.mes - b.mes);
-    return results;
-  }),
-  // Evolucao diaria do mes vigente por vendedor
-  getEvolucaoDiariaMes: publicProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).query(async ({ input }) => {
-    const { mes, ano } = input;
-    const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-    const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-    if (!publicKey || !accessToken) return { dias: [], vendedores: [] };
-    const osCacheKey = `os_raw_${mes}_${ano}`;
-    const orcCacheKey = `orc_raw_${mes}_${ano}`;
-    let allOs = getCached(osCacheKey);
-    let allOrc = getCached(orcCacheKey);
-    if (!allOs || !allOrc) {
-      const pad2 = (n) => String(n).padStart(2, "0");
-      const lastDay2 = new Date(ano, mes, 0).getDate();
-      const datainicial = `${ano}-${pad2(mes)}-01`;
-      const datafinal = `${ano}-${pad2(mes)}-${pad2(lastDay2)}`;
-      const [osResult, orcResult] = await Promise.all([
-        listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
-        listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal })
-      ]);
-      allOs = osResult.itens;
-      allOrc = orcResult.itens;
-      setCacheWithTTL(osCacheKey, allOs, mes, ano);
-      setCacheWithTTL(orcCacheKey, allOrc, mes, ano);
-    }
-    const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
-    const osNormais = allOs.filter(
-      (os) => !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) && (os.status || "").toLowerCase() !== "cancelada"
-    );
-    const STATUS_EXCLUIDOS_ORC_DIARIO = ["cancelada", "cancelado", "exclu\xEDda", "exclu\xEDdo", "excluida", "excluido"];
-    const orcVersaoAtual = allOrc.filter(
-      (orc) => !STATUS_EXCLUIDOS_ORC_DIARIO.includes((orc.status ?? "").toLowerCase())
-    );
-    const osPorDia = {};
-    for (const os of osNormais) {
-      const dataAprov = (os.data_aprovacao || os.data_cadastro || "").substring(0, 10);
-      if (!dataAprov) continue;
-      const vendedor = os.vendedor || "Sem Vendedor";
-      const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
-      if (!osPorDia[dataAprov]) osPorDia[dataAprov] = {};
-      if (!osPorDia[dataAprov][vendedor]) osPorDia[dataAprov][vendedor] = { os: 0, faturamento: 0 };
-      osPorDia[dataAprov][vendedor].os++;
-      osPorDia[dataAprov][vendedor].faturamento += valor;
-    }
-    const orcPorDia = {};
-    for (const orc of orcVersaoAtual) {
-      const dataCad = (orc.data_cadastro || "").substring(0, 10);
-      if (!dataCad) continue;
-      const vendedor = orc.vendedor || "Sem Vendedor";
-      const vt = parseFloat(String(orc.valor_total ?? "0")) || 0;
-      const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
-      const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
-      const valor = vt > 0 ? vt : vc + vm;
-      if (!orcPorDia[dataCad]) orcPorDia[dataCad] = {};
-      if (!orcPorDia[dataCad][vendedor]) orcPorDia[dataCad][vendedor] = { cotacoes: 0, valorOrcado: 0 };
-      orcPorDia[dataCad][vendedor].cotacoes++;
-      orcPorDia[dataCad][vendedor].valorOrcado += valor;
-    }
-    const pad = (n) => String(n).padStart(2, "0");
-    const lastDay = new Date(ano, mes, 0).getDate();
-    const today = /* @__PURE__ */ new Date();
-    const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-    const acumOs = {};
-    const acumFat = {};
-    const acumCot = {};
-    const acumOrc = {};
-    const dias = [];
-    for (let d = 1; d <= lastDay; d++) {
-      const dStr = `${ano}-${pad(mes)}-${pad(d)}`;
-      if (dStr > todayStr) break;
-      const label = `${pad(d)}/${pad(mes)}`;
-      const osHoje = osPorDia[dStr] ?? {};
-      const orcHoje = orcPorDia[dStr] ?? {};
-      const todosVend = /* @__PURE__ */ new Set([...Object.keys(osHoje), ...Object.keys(orcHoje)]);
-      for (const v of todosVend) {
-        acumOs[v] = (acumOs[v] ?? 0) + (osHoje[v]?.os ?? 0);
-        acumFat[v] = (acumFat[v] ?? 0) + (osHoje[v]?.faturamento ?? 0);
-        acumCot[v] = (acumCot[v] ?? 0) + (orcHoje[v]?.cotacoes ?? 0);
-        acumOrc[v] = (acumOrc[v] ?? 0) + (orcHoje[v]?.valorOrcado ?? 0);
-      }
-      const ponto = { dia: d, label, data: dStr };
-      for (const v of todosVend) {
-        ponto[`${v}__os`] = osHoje[v]?.os ?? 0;
-        ponto[`${v}__fat`] = parseFloat((osHoje[v]?.faturamento ?? 0).toFixed(2));
-        ponto[`${v}__cot`] = orcHoje[v]?.cotacoes ?? 0;
-        ponto[`${v}__orc`] = parseFloat((orcHoje[v]?.valorOrcado ?? 0).toFixed(2));
-      }
-      for (const v of Object.keys(acumOs)) {
-        ponto[`${v}__os_ac`] = acumOs[v];
-        ponto[`${v}__fat_ac`] = parseFloat(acumFat[v].toFixed(2));
-      }
-      for (const v of Object.keys(acumCot)) {
-        ponto[`${v}__cot_ac`] = acumCot[v];
-        ponto[`${v}__orc_ac`] = parseFloat(acumOrc[v].toFixed(2));
-      }
-      dias.push(ponto);
-    }
-    const vendedores = Array.from(/* @__PURE__ */ new Set([
-      ...Object.keys(acumOs),
-      ...Object.keys(acumCot)
-    ])).filter((v) => v !== "Sem Vendedor").sort();
-    return { dias, vendedores };
-  }),
-  // ─── Overrides manuais de status de cliente ────────────────────────────────
-  listClienteOverrides: publicProcedure.query(async () => {
-    const db5 = await getDb3();
-    if (!db5) return [];
-    return db5.select().from(clienteOverrides).orderBy(clienteOverrides.empresaOriginal);
-  }),
-  upsertClienteOverride: protectedProcedure.input(z15.object({
-    empresaOriginal: z15.string().min(1),
-    status: z15.enum(["recorrente", "novo"]),
-    motivo: z15.string().optional()
-  })).mutation(async ({ input, ctx }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
-    const empresaNorm = input.empresaOriginal.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
-    await db5.insert(clienteOverrides).values({
-      empresa: empresaNorm,
-      empresaOriginal: input.empresaOriginal,
-      status: input.status,
-      motivo: input.motivo ?? null,
-      criadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido"
-    }).onConflictDoUpdate({
-      target: clienteOverrides.empresa,
-      set: {
-        status: input.status,
-        motivo: input.motivo ?? null,
-        criadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido"
-      }
-    });
-    return { ok: true };
-  }),
-  deleteClienteOverride: protectedProcedure.input(z15.object({ id: z15.number() })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
-    await db5.delete(clienteOverrides).where(eq14(clienteOverrides.id, input.id));
-    return { ok: true };
-  }),
-  // ─── Inteligência de Clientes ─────────────────────────────────────────────
-  getInteligenteClientes: publicProcedure.input(z15.object({
-    dataInicial: z15.string().regex(/^\d{4}-\d{2}$/).default(`${(/* @__PURE__ */ new Date()).getFullYear()}-01`),
-    dataFinal: z15.string().regex(/^\d{4}-\d{2}$/).default(`${(/* @__PURE__ */ new Date()).getFullYear()}-${String((/* @__PURE__ */ new Date()).getMonth() + 1).padStart(2, "0")}`),
-    forcarAtualizacao: z15.boolean().optional().default(false)
-  })).query(async ({ input }) => {
-    const { dataInicial, dataFinal, forcarAtualizacao } = input;
-    const [anoIni, mesIni] = dataInicial.split("-").map(Number);
-    const [anoFim, mesFim] = dataFinal.split("-").map(Number);
-    const di = `${dataInicial}-01`;
-    const lastDayFim = new Date(anoFim, mesFim, 0).getDate();
-    const df = `${dataFinal}-${String(lastDayFim).padStart(2, "0")}`;
-    const ano = anoIni;
-    const periodoKey = `${dataInicial}_${dataFinal}`;
-    const publicKey = ENV.MUBISYS_PUBLIC_KEY;
-    const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
-    const EMPTY = {
-      clientesUnicosAno: 0,
-      taxaRecompra: 0,
-      clientesNovosAno: 0,
-      pctClientesNovos: 0,
-      clientesNovosQueRecompraram: 0,
-      taxaRecompraNovosPct: 0,
-      mediaComprasPorCliente: 0,
-      pctClientesSemCompra6Meses: 0,
-      clientesSemCompra6Meses: 0,
-      tempoMedioPropostaFechamento: null,
-      tempoMedianaPropostaFechamento: null,
-      tempoP25: null,
-      tempoP75: null,
-      pctCicloAte3Dias: 0,
-      pctCiclo4a7Dias: 0,
-      pctCicloMais7Dias: 0,
-      frequenciaCompraDias: null,
-      mrrAproximado: 0,
-      arrAproximado: 0,
-      clientesRecorrentesMRR: 0,
-      pctFaturamentoRecorrente: 0,
-      clientesNovosPuro: 0,
-      clientesNovosPuroComRecompra: 0,
-      taxaRecompraNovosPuroPct: 0,
-      clientesReativados: 0,
-      clientesReativadosComRecompra: 0,
-      taxaRecompraReativadosPct: 0,
-      pctReceitaTop20: 0,
-      ticketMedioPorCliente: 0,
-      topClientesPorFaturamento: [],
-      porVendedor: [],
-      distribuicaoTempo: []
-    };
-    if (!publicKey || !accessToken) return EMPTY;
-    const db5 = await getDb3();
-    if (db5) {
-      const rows = await db5.select().from(inteligenciaClientesCache).where(eq14(inteligenciaClientesCache.periodoKey, periodoKey)).limit(1);
-      if (rows.length > 0) {
-        const row = rows[0];
-        if (row.congelado || !forcarAtualizacao) {
-          const cached = JSON.parse(row.dadosJson);
-          cached._calculadoEm = row.calculadoEm;
-          cached._fonte = row.congelado ? "congelado" : "cache";
-          cached._congelado = row.congelado;
-          cached._congeladoEm = row.congeladoEm;
-          return cached;
-        }
-      }
-    }
-    const cacheKey = `inteligente_clientes_${periodoKey}`;
-    const memCached = getCached(cacheKey);
-    if (memCached) return memCached;
-    let allOsAno = [];
-    let allOrcAno = [];
-    try {
-      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df });
-      allOsAno = osResult.itens;
-      const orcResult = await listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df });
-      allOrcAno = orcResult.itens;
-    } catch (e) {
-      return { ...EMPTY, _erro: e?.message || "N\xE3o foi poss\xEDvel buscar os dados do ERP. Tente um per\xEDodo menor." };
-    }
-    const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
-    const osNormais = allOsAno.filter(
-      (os) => !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) && (os.status || "").toLowerCase() !== "cancelada"
-    );
-    const normNome = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
-    const clientesUnicosSet = /* @__PURE__ */ new Set();
-    const clientesPorVendedor = {};
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      const vendedor = os.vendedor || "Sem Vendedor";
-      if (!cliente) continue;
-      clientesUnicosSet.add(cliente);
-      if (!clientesPorVendedor[vendedor]) clientesPorVendedor[vendedor] = /* @__PURE__ */ new Set();
-      clientesPorVendedor[vendedor].add(cliente);
-    }
-    const dbForHistory = await getDb3();
-    const clientesAnteriores = dbForHistory ? await dbForHistory.select({ empresa: historicoOs.empresa }).from(historicoOs).where(sql8`${historicoOs.ano} < ${ano}`) : [];
-    const setAnteriores = new Set(clientesAnteriores.map((r) => normNome(r.empresa ?? "")));
-    const clientesNovosSet = /* @__PURE__ */ new Set();
-    const clientesNovosSetPorVendedor = {};
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      const vendedor = os.vendedor || "Sem Vendedor";
-      if (!cliente || setAnteriores.has(cliente)) continue;
-      clientesNovosSet.add(cliente);
-      if (!clientesNovosSetPorVendedor[vendedor]) clientesNovosSetPorVendedor[vendedor] = /* @__PURE__ */ new Set();
-      clientesNovosSetPorVendedor[vendedor].add(cliente);
-    }
-    const comprasPorCliente = {};
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      if (!cliente) continue;
-      const mesStr = (os.data_aprovacao || os.data_cadastro || "").substring(0, 7);
-      if (!comprasPorCliente[cliente]) comprasPorCliente[cliente] = /* @__PURE__ */ new Set();
-      if (mesStr) comprasPorCliente[cliente].add(mesStr);
-    }
-    let clientesComRecompra = 0;
-    for (const [, meses] of Object.entries(comprasPorCliente)) {
-      if (meses.size >= 2) clientesComRecompra++;
-    }
-    const taxaRecompra = clientesUnicosSet.size > 0 ? parseFloat((clientesComRecompra / clientesUnicosSet.size * 100).toFixed(1)) : 0;
-    const primeiraCompraNoPeriodo = {};
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      if (!cliente) continue;
-      const dataStr = os.data_aprovacao || os.data_cadastro;
-      if (!dataStr) continue;
-      const dt = new Date(dataStr);
-      if (isNaN(dt.getTime())) continue;
-      const mesOs = dt.getMonth() + 1;
-      const anoOs = dt.getFullYear();
-      const atual = primeiraCompraNoPeriodo[cliente];
-      if (!atual || anoOs < atual.ano || anoOs === atual.ano && mesOs < atual.mes) {
-        primeiraCompraNoPeriodo[cliente] = { mes: mesOs, ano: anoOs };
-      }
-    }
-    const gruposPorMesAno = /* @__PURE__ */ new Map();
-    for (const [cliente, ref] of Object.entries(primeiraCompraNoPeriodo)) {
-      const key = `${ref.mes}-${ref.ano}`;
-      if (!gruposPorMesAno.has(key)) gruposPorMesAno.set(key, []);
-      gruposPorMesAno.get(key).push(cliente);
-    }
-    const comprasHistoricoCompleto = dbForHistory ? (await buscarTodasComprasValidas(dbForHistory)).map((c) => ({ ...c, empresa: normNome(c.empresa) })) : [];
-    const clientesNovosPuroSet = /* @__PURE__ */ new Set();
-    const clientesReativadosSet = /* @__PURE__ */ new Set();
-    for (const [key, clientesGrupo] of gruposPorMesAno) {
-      const [mesStr, anoStr] = key.split("-");
-      const mesRef = Number(mesStr);
-      const anoRef = Number(anoStr);
-      const ultimaMap = ultimaCompraAntesDe(comprasHistoricoCompleto, mesRef, anoRef);
-      for (const cliente of clientesGrupo) {
-        const ultima = ultimaMap.get(cliente);
-        if (!isClienteNovoPorRecencia(ultima, mesRef, anoRef)) continue;
-        if (!ultima) clientesNovosPuroSet.add(cliente);
-        else clientesReativadosSet.add(cliente);
-      }
-    }
-    let clientesNovosPuroComRecompra = 0;
-    for (const cliente of clientesNovosPuroSet) {
-      if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesNovosPuroComRecompra++;
-    }
-    let clientesReativadosComRecompra = 0;
-    for (const cliente of clientesReativadosSet) {
-      if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesReativadosComRecompra++;
-    }
-    const taxaRecompraNovosPuroPct = clientesNovosPuroSet.size > 0 ? parseFloat((clientesNovosPuroComRecompra / clientesNovosPuroSet.size * 100).toFixed(1)) : 0;
-    const taxaRecompraReativadosPct = clientesReativadosSet.size > 0 ? parseFloat((clientesReativadosComRecompra / clientesReativadosSet.size * 100).toFixed(1)) : 0;
-    let clientesNovosQueRecompraram = 0;
-    const clientesNovosQueRecompraramPorVendedor = {};
-    for (const cliente of clientesNovosSet) {
-      if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) clientesNovosQueRecompraram++;
-    }
-    for (const [vendedor, setNovos] of Object.entries(clientesNovosSetPorVendedor)) {
-      let count3 = 0;
-      for (const cliente of setNovos) {
-        if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) count3++;
-      }
-      clientesNovosQueRecompraramPorVendedor[vendedor] = count3;
-    }
-    const osPorCliente = {};
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      if (!cliente) continue;
-      osPorCliente[cliente] = (osPorCliente[cliente] ?? 0) + 1;
-    }
-    const totalOsNormais = Object.values(osPorCliente).reduce((a, b) => a + b, 0);
-    const mediaComprasPorCliente = clientesUnicosSet.size > 0 ? parseFloat((totalOsNormais / clientesUnicosSet.size).toFixed(1)) : 0;
-    const hoje = /* @__PURE__ */ new Date();
-    const seisAtras = new Date(hoje);
-    seisAtras.setMonth(seisAtras.getMonth() - 6);
-    const ultimaCompraCliente = {};
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      if (!cliente) continue;
-      const dataStr = os.data_aprovacao || os.data_cadastro;
-      if (!dataStr) continue;
-      const dt = new Date(dataStr);
-      if (isNaN(dt.getTime())) continue;
-      if (!ultimaCompraCliente[cliente] || dt > ultimaCompraCliente[cliente]) {
-        ultimaCompraCliente[cliente] = dt;
-      }
-    }
-    let clientesSemCompra6Meses = 0;
-    const clientesSemCompra6MesesPorVendedor = {};
-    for (const cliente of clientesUnicosSet) {
-      const ultima = ultimaCompraCliente[cliente];
-      if (!ultima || ultima < seisAtras) clientesSemCompra6Meses++;
-    }
-    for (const [vendedor, setClientes] of Object.entries(clientesPorVendedor)) {
-      let count3 = 0;
-      for (const cliente of setClientes) {
-        const ultima = ultimaCompraCliente[cliente];
-        if (!ultima || ultima < seisAtras) count3++;
-      }
-      clientesSemCompra6MesesPorVendedor[vendedor] = count3;
-    }
-    const pctClientesSemCompra6Meses = clientesUnicosSet.size > 0 ? parseFloat((clientesSemCompra6Meses / clientesUnicosSet.size * 100).toFixed(1)) : 0;
-    const pctClientesNovos = clientesUnicosSet.size > 0 ? parseFloat((clientesNovosSet.size / clientesUnicosSet.size * 100).toFixed(1)) : 0;
-    const taxaRecompraNovosPct = clientesNovosSet.size > 0 ? parseFloat((clientesNovosQueRecompraram / clientesNovosSet.size * 100).toFixed(1)) : 0;
-    const orcPorNumero = {};
-    const orcVersaoAtualIC = allOrcAno;
-    for (const orc of orcVersaoAtualIC) {
-      const num = String(orc.numero || orc.id || "");
-      if (num) orcPorNumero[num] = orc;
-    }
-    const tempos = [];
-    const temposPorVendedor = {};
-    for (const os of osNormais) {
-      const dataAprov = os.data_aprovacao || os.data_cadastro;
-      const orcNum = String(os.orcamento_numero || os.orcamento || os.numero_orcamento || "");
-      if (!dataAprov || !orcNum) continue;
-      const orc = orcPorNumero[orcNum];
-      if (!orc) continue;
-      const dataCad = orc.data_cadastro;
-      if (!dataCad) continue;
-      const dtAprov = new Date(dataAprov);
-      const dtCad = new Date(dataCad);
-      const diffDias = (dtAprov.getTime() - dtCad.getTime()) / (1e3 * 60 * 60 * 24);
-      if (diffDias < 0 || diffDias > 365) continue;
-      tempos.push(diffDias);
-      const vendedor = os.vendedor || "Sem Vendedor";
-      if (!temposPorVendedor[vendedor]) temposPorVendedor[vendedor] = [];
-      temposPorVendedor[vendedor].push(diffDias);
-    }
-    const calcStats = (arr) => {
-      if (arr.length === 0) return { media: null, mediana: null, p25: null, p75: null };
-      const sorted = [...arr].sort((a, b) => a - b);
-      const media = parseFloat((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1));
-      const mid = Math.floor(sorted.length / 2);
-      const mediana = parseFloat((sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]).toFixed(1));
-      const p25 = parseFloat(sorted[Math.floor(sorted.length * 0.25)].toFixed(1));
-      const p75 = parseFloat(sorted[Math.floor(sorted.length * 0.75)].toFixed(1));
-      return { media, mediana, p25, p75 };
-    };
-    const stats = calcStats(tempos);
-    const faixas = [
-      { label: "Mesmo dia", min: 0, max: 0 },
-      { label: "1-3 dias", min: 1, max: 3 },
-      { label: "4-7 dias", min: 4, max: 7 },
-      { label: "8-15 dias", min: 8, max: 15 },
-      { label: "16-30 dias", min: 16, max: 30 },
-      { label: ">30 dias", min: 31, max: 999 }
-    ];
-    const distribuicaoTempo = faixas.map((f2) => ({
-      faixa: f2.label,
-      quantidade: tempos.filter((t2) => t2 >= f2.min && t2 <= f2.max).length
-    }));
-    const pctCicloAte3Dias = tempos.length > 0 ? parseFloat((tempos.filter((t2) => t2 <= 3).length / tempos.length * 100).toFixed(1)) : 0;
-    const pctCiclo4a7Dias = tempos.length > 0 ? parseFloat((tempos.filter((t2) => t2 >= 4 && t2 <= 7).length / tempos.length * 100).toFixed(1)) : 0;
-    const pctCicloMais7Dias = tempos.length > 0 ? parseFloat((tempos.filter((t2) => t2 > 7).length / tempos.length * 100).toFixed(1)) : 0;
-    const datasPorCliente = {};
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      if (!cliente) continue;
-      const dataStr = os.data_aprovacao || os.data_cadastro;
-      if (!dataStr) continue;
-      const dt = new Date(dataStr);
-      if (isNaN(dt.getTime())) continue;
-      if (!datasPorCliente[cliente]) datasPorCliente[cliente] = [];
-      datasPorCliente[cliente].push(dt);
-    }
-    const intervalosMediosPorCliente = [];
-    for (const datas of Object.values(datasPorCliente)) {
-      if (datas.length < 2) continue;
-      const sorted = [...datas].sort((a, b) => a.getTime() - b.getTime());
-      const diffs = [];
-      for (let i = 1; i < sorted.length; i++) {
-        diffs.push((sorted[i].getTime() - sorted[i - 1].getTime()) / (1e3 * 60 * 60 * 24));
-      }
-      intervalosMediosPorCliente.push(diffs.reduce((a, b) => a + b, 0) / diffs.length);
-    }
-    const frequenciaCompraDias = intervalosMediosPorCliente.length > 0 ? parseFloat((intervalosMediosPorCliente.reduce((a, b) => a + b, 0) / intervalosMediosPorCliente.length).toFixed(1)) : null;
-    const totalMesesPeriodo = (anoFim - anoIni) * 12 + (mesFim - mesIni) + 1;
-    const thresholdRecorrenteMRR = Math.max(2, Math.ceil(totalMesesPeriodo * 0.5));
-    const clientesRecorrentesMRRSet = /* @__PURE__ */ new Set();
-    for (const [cliente, meses] of Object.entries(comprasPorCliente)) {
-      if (meses.size >= thresholdRecorrenteMRR) clientesRecorrentesMRRSet.add(cliente);
-    }
-    const faturamentoPorClienteIC = {};
-    const nomeOriginalPorClienteIC = {};
-    let faturamentoTotalPeriodoIC = 0;
-    for (const os of osNormais) {
-      const cliente = normNome(os.cliente || os.empresa || "");
-      if (!cliente) continue;
-      const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
-      faturamentoPorClienteIC[cliente] = (faturamentoPorClienteIC[cliente] ?? 0) + valor;
-      faturamentoTotalPeriodoIC += valor;
-      if (!nomeOriginalPorClienteIC[cliente]) nomeOriginalPorClienteIC[cliente] = String(os.cliente || os.empresa || "");
-    }
-    let faturamentoRecorrenteIC = 0;
-    for (const cliente of clientesRecorrentesMRRSet) {
-      faturamentoRecorrenteIC += faturamentoPorClienteIC[cliente] ?? 0;
-    }
-    const mrrAproximado = totalMesesPeriodo > 0 ? parseFloat((faturamentoRecorrenteIC / totalMesesPeriodo).toFixed(2)) : 0;
-    const arrAproximado = parseFloat((mrrAproximado * 12).toFixed(2));
-    const pctFaturamentoRecorrente = faturamentoTotalPeriodoIC > 0 ? parseFloat((faturamentoRecorrenteIC / faturamentoTotalPeriodoIC * 100).toFixed(1)) : 0;
-    const clientesOrdenadosPorFaturamento = Object.entries(faturamentoPorClienteIC).sort((a, b) => b[1] - a[1]);
-    const top20PctCount = Math.max(1, Math.ceil(clientesOrdenadosPorFaturamento.length * 0.2));
-    const faturamentoTop20Pct = clientesOrdenadosPorFaturamento.slice(0, top20PctCount).reduce((acc, [, v]) => acc + v, 0);
-    const pctReceitaTop20 = faturamentoTotalPeriodoIC > 0 ? parseFloat((faturamentoTop20Pct / faturamentoTotalPeriodoIC * 100).toFixed(1)) : 0;
-    const ticketMedioPorCliente = clientesUnicosSet.size > 0 ? parseFloat((faturamentoTotalPeriodoIC / clientesUnicosSet.size).toFixed(2)) : 0;
-    const topClientesPorFaturamento = clientesOrdenadosPorFaturamento.slice(0, 10).map(([clienteKey, faturamento2]) => {
-      const qtdOs = osPorCliente[clienteKey] ?? 0;
-      return {
-        cliente: nomeOriginalPorClienteIC[clienteKey] ?? clienteKey,
-        faturamento: parseFloat(faturamento2.toFixed(2)),
-        qtdOs,
-        ticketMedio: qtdOs > 0 ? parseFloat((faturamento2 / qtdOs).toFixed(2)) : 0
-      };
-    });
-    const todosVendedoresIC = /* @__PURE__ */ new Set([
-      ...Object.keys(clientesPorVendedor),
-      ...Object.keys(clientesNovosSetPorVendedor)
-    ]);
-    const porVendedor = Array.from(todosVendedoresIC).filter((v) => v !== "Sem Vendedor").map((v) => {
-      const unicos = clientesPorVendedor[v]?.size ?? 0;
-      const novos = clientesNovosSetPorVendedor[v]?.size ?? 0;
-      const novosRecompra = clientesNovosQueRecompraramPorVendedor[v] ?? 0;
-      const temposV = temposPorVendedor[v] ?? [];
-      const statsV = calcStats(temposV);
-      let recompraV = 0;
-      if (clientesPorVendedor[v]) {
-        for (const cliente of clientesPorVendedor[v]) {
-          if ((comprasPorCliente[cliente]?.size ?? 0) >= 2) recompraV++;
-        }
-      }
-      const taxaRecompraV = unicos > 0 ? parseFloat((recompraV / unicos * 100).toFixed(1)) : 0;
-      const taxaRecompraNovosPctV = novos > 0 ? parseFloat((novosRecompra / novos * 100).toFixed(1)) : 0;
-      const pctNovosV = unicos > 0 ? parseFloat((novos / unicos * 100).toFixed(1)) : 0;
-      let totalOsV = 0;
-      if (clientesPorVendedor[v]) {
-        for (const cliente of clientesPorVendedor[v]) {
-          totalOsV += osPorCliente[cliente] ?? 0;
-        }
-      }
-      const mediaComprasV = unicos > 0 ? parseFloat((totalOsV / unicos).toFixed(1)) : 0;
-      return {
-        vendedor: v,
-        clientesUnicos: unicos,
-        clientesNovos: novos,
-        pctClientesNovos: pctNovosV,
-        clientesNovosQueRecompraram: novosRecompra,
-        taxaRecompra: taxaRecompraV,
-        taxaRecompraNovosPct: taxaRecompraNovosPctV,
-        mediaComprasPorCliente: mediaComprasV,
-        tempoMedioFechamento: statsV.media
-      };
-    }).sort((a, b) => b.clientesUnicos - a.clientesUnicos);
-    const result = {
-      clientesUnicosAno: clientesUnicosSet.size,
-      taxaRecompra,
-      clientesNovosAno: clientesNovosSet.size,
-      pctClientesNovos,
-      clientesNovosQueRecompraram,
-      taxaRecompraNovosPct,
-      mediaComprasPorCliente,
-      pctClientesSemCompra6Meses,
-      clientesSemCompra6Meses,
-      tempoMedioPropostaFechamento: stats.media,
-      tempoMedianaPropostaFechamento: stats.mediana,
-      tempoP25: stats.p25,
-      tempoP75: stats.p75,
-      pctCicloAte3Dias,
-      pctCiclo4a7Dias,
-      pctCicloMais7Dias,
-      frequenciaCompraDias,
-      mrrAproximado,
-      arrAproximado,
-      clientesRecorrentesMRR: clientesRecorrentesMRRSet.size,
-      pctFaturamentoRecorrente,
-      clientesNovosPuro: clientesNovosPuroSet.size,
-      clientesNovosPuroComRecompra,
-      taxaRecompraNovosPuroPct,
-      clientesReativados: clientesReativadosSet.size,
-      clientesReativadosComRecompra,
-      taxaRecompraReativadosPct,
-      pctReceitaTop20,
-      ticketMedioPorCliente,
-      topClientesPorFaturamento,
-      porVendedor,
-      distribuicaoTempo
-    };
-    setCacheWithTTL(cacheKey, result, (/* @__PURE__ */ new Date()).getMonth() + 1, ano);
-    if (db5) {
-      try {
-        const existing = await db5.select({ id: inteligenciaClientesCache.id }).from(inteligenciaClientesCache).where(eq14(inteligenciaClientesCache.periodoKey, periodoKey)).limit(1);
-        if (existing.length > 0) {
-          await db5.update(inteligenciaClientesCache).set({ dadosJson: JSON.stringify(result), calculadoEm: /* @__PURE__ */ new Date() }).where(eq14(inteligenciaClientesCache.periodoKey, periodoKey));
-        } else {
-          await db5.insert(inteligenciaClientesCache).values({ periodoKey, dadosJson: JSON.stringify(result), calculadoEm: /* @__PURE__ */ new Date() });
-        }
-      } catch (e) {
-        console.error("[IC cache] Erro ao salvar cache:", e);
-      }
-    }
-    const resultWithTs = { ...result, _calculadoEm: /* @__PURE__ */ new Date() };
-    return resultWithTs;
-  }),
-  // ─── SISTEMA DE AUDITORIA E CONGELAMENTO DE DADOS ────────────────────────────
-  /** Busca os dados auditados de um mês (congelado ou pendente) */
-  getAuditoria: publicProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return null;
-    const rows = await db5.select().from(performanceAuditada).where(and11(eq14(performanceAuditada.mes, input.mes), eq14(performanceAuditada.ano, input.ano))).limit(1);
-    return rows.length > 0 ? rows[0] : null;
-  }),
-  /** Salva um snapshot dos dados atuais do ERP como auditoria pendente */
-  salvarAuditoria: protectedProcedure.input(z15.object({
-    mes: z15.number().min(1).max(12),
-    ano: z15.number().min(2020),
-    cotacoes: z15.number(),
-    osNormais: z15.number(),
-    taxaConversao: z15.number(),
-    faturamento: z15.number(),
-    valorOrcado: z15.number(),
-    clientesNovos: z15.number(),
-    cotacoesNovos: z15.number().default(0),
-    taxaConvNovos: z15.number(),
-    faturamentoNovos: z15.number(),
-    statusValidacao: z15.enum(["pendente", "validado", "corrigido_excel"]).default("validado"),
-    fonteExcel: z15.string().optional(),
-    observacoes: z15.string().optional()
-  })).mutation(async ({ input, ctx }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB indispon\xEDvel");
-    const existing = await db5.select({ id: performanceAuditada.id }).from(performanceAuditada).where(and11(eq14(performanceAuditada.mes, input.mes), eq14(performanceAuditada.ano, input.ano))).limit(1);
-    const values = {
-      mes: input.mes,
-      ano: input.ano,
-      cotacoes: input.cotacoes,
-      osNormais: input.osNormais,
-      taxaConversao: String(input.taxaConversao),
-      faturamento: String(input.faturamento),
-      valorOrcado: String(input.valorOrcado),
-      clientesNovos: input.clientesNovos,
-      cotacoesNovos: input.cotacoesNovos ?? 0,
-      taxaConvNovos: String(input.taxaConvNovos),
-      faturamentoNovos: String(input.faturamentoNovos),
-      statusValidacao: input.statusValidacao,
-      fonteExcel: input.fonteExcel,
-      observacoes: input.observacoes,
-      auditadoPor: ctx.user?.name ?? "sistema",
-      dataAuditoria: /* @__PURE__ */ new Date(),
-      congelado: false
-    };
-    if (existing.length > 0) {
-      await db5.update(performanceAuditada).set(values).where(eq14(performanceAuditada.id, existing[0].id));
-    } else {
-      await db5.insert(performanceAuditada).values(values);
-    }
-    return { ok: true };
-  }),
-  /** Congela os dados auditados de um mês — impede sobrescrita automática */
-  congelarAuditoria: protectedProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB indispon\xEDvel");
-    await db5.update(performanceAuditada).set({ congelado: true, dataCongelamento: /* @__PURE__ */ new Date() }).where(and11(eq14(performanceAuditada.mes, input.mes), eq14(performanceAuditada.ano, input.ano)));
-    deleteCache(`mes_${input.mes}_${input.ano}`);
-    deleteCache(`os_raw_${input.mes}_${input.ano}`);
-    deleteCache(`orc_raw_${input.mes}_${input.ano}`);
-    return { ok: true };
-  }),
-  /** Descongela (recalibragem) — permite que o sistema busque dados frescos da API */
-  descongelarAuditoria: protectedProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB indispon\xEDvel");
-    await db5.update(performanceAuditada).set({ congelado: false, dataCongelamento: null }).where(and11(eq14(performanceAuditada.mes, input.mes), eq14(performanceAuditada.ano, input.ano)));
-    deleteCache(`mes_${input.mes}_${input.ano}`);
-    deleteCache(`os_raw_${input.mes}_${input.ano}`);
-    deleteCache(`orc_raw_${input.mes}_${input.ano}`);
-    return { ok: true };
-  }),
-  /** Diagnóstico: retorna dados brutos da API MubiSys para auditoria cruzada com Excel */
-  diagnosticoApi: protectedProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).query(async ({ input }) => {
-    const { mes, ano } = input;
-    const pad = (n) => String(n).padStart(2, "0");
-    const lastDay = new Date(ano, mes, 0).getDate();
-    const datainicial = `${ano}-${pad(mes)}-01`;
-    const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-    const [osResult, orcResult] = await Promise.all([
-      listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal }),
-      listarOrcamentosMubiSys({ status: "TODOS", datainicial, datafinal })
-    ]);
-    const allOs = osResult.itens;
-    const allOrc = orcResult.itens;
-    const osCampos = allOs.length > 0 ? Object.keys(allOs[0]) : [];
-    const orcCampos = allOrc.length > 0 ? Object.keys(allOrc[0]) : [];
-    const osPorStatus = {};
-    for (const o of allOs) {
-      const s = String(o.status ?? o.situacao ?? "N/A");
-      osPorStatus[s] = (osPorStatus[s] ?? 0) + 1;
-    }
-    const osPorTipo = {};
-    for (const o of allOs) {
-      const t2 = String(o.tipo ?? o.tipo_os ?? "N/A");
-      osPorTipo[t2] = (osPorTipo[t2] ?? 0) + 1;
-    }
-    const campoValorOs = osCampos.find((c) => ["valor_total", "total", "valor", "vl_total"].includes(c));
-    const valorTotalOs = allOs.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOs ?? ""] ?? 0)) || 0), 0);
-    const campoValorOrc = orcCampos.find((c) => ["valor_total", "total", "valor", "vl_total"].includes(c));
-    const valorTotalOrc = allOrc.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOrc ?? ""] ?? 0)) || 0), 0);
-    const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
-    const osNormais = allOs.filter(
-      (o) => !TIPOS_EXCLUIDOS.includes((o.tipo || "").toLowerCase()) && (o.status || "").toLowerCase() !== "cancelada"
-    );
-    const valorFaturamento = osNormais.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOs ?? ""] ?? 0)) || 0), 0);
-    const osPorVendedor = {};
-    for (const o of osNormais) {
-      const v = String(o.vendedor ?? o.nome_vendedor ?? "Sem Vendedor");
-      osPorVendedor[v] = (osPorVendedor[v] ?? 0) + 1;
-    }
-    return {
-      periodo: { datainicial, datafinal },
-      os: {
-        totalBruto: allOs.length,
-        totalNormais: osNormais.length,
-        porStatus: osPorStatus,
-        porTipo: osPorTipo,
-        porVendedor: osPorVendedor,
-        campos: osCampos,
-        campoValor: campoValorOs,
-        valorTotal: valorTotalOs,
-        faturamento: valorFaturamento,
-        exemplos: allOs.slice(0, 3)
-      },
-      orcamentos: {
-        total: allOrc.length,
-        campos: orcCampos,
-        campoValor: campoValorOrc,
-        valorTotal: valorTotalOrc,
-        exemplos: allOrc.slice(0, 3)
-      },
-      taxaConversao: allOrc.length > 0 ? osNormais.length / allOrc.length * 100 : 0
-    };
-  }),
-  // Auditoria de múltiplos meses — usa mesma lógica validada do getMes
-  auditarMeses: protectedProcedure.input(z15.object({
-    meses: z15.array(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) }))
-  })).query(async ({ input }) => {
-    const resultados = [];
-    for (const { mes, ano } of input.meses) {
-      try {
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(new Error("timeout_50s")), 5e4)
-        );
-        const raw = await Promise.race([
-          getMesFromApi(mes, ano),
-          timeoutPromise
-        ]);
-        if (!raw) {
-          resultados.push({ mes, ano, erro: "sem_dados" });
-          continue;
-        }
-        const metrics = calcMetrics(raw.osNormais, raw.orcamentos, mes, ano);
-        resultados.push({
-          mes,
-          ano,
-          osGeradas: metrics.osGeradas,
-          cotacoes: metrics.cotacoes,
-          faturamento: metrics.faturamento,
-          valorOrcado: metrics.valorOrcado,
-          taxaConversao: metrics.taxaConversao,
-          taxaFaturamento: metrics.taxaFaturamento,
-          ticketMedio: metrics.ticketMedio
-        });
-      } catch (e) {
-        resultados.push({ mes, ano, erro: e?.message ?? "erro_desconhecido" });
-      }
-    }
-    return resultados;
-  }),
-  // ─── CONGELAMENTO DA INTELIGÊNCIA DE CLIENTES ────────────────────────────────
-  /** Congela o cache de inteligência de clientes para um período específico */
-  congelarInteligencia: protectedProcedure.input(z15.object({
-    periodoKey: z15.string().regex(/^\d{4}-\d{2}_\d{4}-\d{2}$/)
-  })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB indispon\xEDvel");
-    const rows = await db5.select().from(inteligenciaClientesCache).where(eq14(inteligenciaClientesCache.periodoKey, input.periodoKey)).limit(1);
-    if (rows.length === 0) throw new Error('Nenhum dado calculado para este per\xEDodo. Clique em "Atualizar Dados" primeiro.');
-    await db5.update(inteligenciaClientesCache).set({ congelado: true, congeladoEm: /* @__PURE__ */ new Date() }).where(eq14(inteligenciaClientesCache.periodoKey, input.periodoKey));
-    return { ok: true };
-  }),
-  /** Descongela o cache de inteligência de clientes para um período específico */
-  descongelarInteligencia: protectedProcedure.input(z15.object({
-    periodoKey: z15.string().regex(/^\d{4}-\d{2}_\d{4}-\d{2}$/)
-  })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB indispon\xEDvel");
-    await db5.update(inteligenciaClientesCache).set({ congelado: false, congeladoEm: null }).where(eq14(inteligenciaClientesCache.periodoKey, input.periodoKey));
-    return { ok: true };
-  }),
-  /** Retorna o mapa de clientes contatados para um mês/ano */
-  getContatados: publicProcedure.input(z15.object({ mes: z15.number().min(1).max(12), ano: z15.number().min(2020) })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return {};
-    const rows = await db5.select().from(clienteNovosContato).where(and11(eq14(clienteNovosContato.mes, input.mes), eq14(clienteNovosContato.ano, input.ano)));
-    const mapa = {};
-    for (const r of rows) {
-      mapa[r.empresa.toLowerCase().trim()] = { contatado: r.contatado, dataContato: r.dataContato };
-    }
-    return mapa;
-  }),
-  /** Marca ou desmarca um cliente como contatado */
-  setContatado: protectedProcedure.input(z15.object({
-    empresa: z15.string().min(1),
-    mes: z15.number().min(1).max(12),
-    ano: z15.number().min(2020),
-    contatado: z15.boolean()
-  })).mutation(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) throw new Error("DB indispon\xEDvel");
-    const key = input.empresa.toLowerCase().trim();
-    const existing = await db5.select().from(clienteNovosContato).where(and11(
-      eq14(clienteNovosContato.empresa, key),
-      eq14(clienteNovosContato.mes, input.mes),
-      eq14(clienteNovosContato.ano, input.ano)
-    )).limit(1);
-    if (existing.length > 0) {
-      await db5.update(clienteNovosContato).set({ contatado: input.contatado, dataContato: input.contatado ? /* @__PURE__ */ new Date() : null }).where(and11(
-        eq14(clienteNovosContato.empresa, key),
-        eq14(clienteNovosContato.mes, input.mes),
-        eq14(clienteNovosContato.ano, input.ano)
-      ));
-    } else {
-      await db5.insert(clienteNovosContato).values({
-        empresa: key,
-        mes: input.mes,
-        ano: input.ano,
-        contatado: input.contatado,
-        dataContato: input.contatado ? /* @__PURE__ */ new Date() : null
-      });
-    }
-    return { ok: true };
-  })
-});
+// server/routers.ts
+init_performanceComercial();
 
 // server/routers/insightsComerciais.ts
-import { z as z16 } from "zod";
+init_trpc();
 init_db();
 init_schema();
 init_llm();
-import { eq as eq15, and as and12 } from "drizzle-orm";
-var MESES_NOMES = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-function fmtR2(v) {
+init_performanceComercial();
+import { z as z18 } from "zod";
+import { eq as eq18, and as and14 } from "drizzle-orm";
+var MESES_NOMES2 = ["", "Janeiro", "Fevereiro", "Mar\xE7o", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+function fmtR3(v) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 function mesAnterior(mes, ano) {
   return mes === 1 ? { mes: 12, ano: ano - 1 } : { mes: mes - 1, ano };
 }
 async function coletarDados(db5, mes, ano) {
-  const osRows = await db5.select().from(historicoOs).where(and12(eq15(historicoOs.mes, mes), eq15(historicoOs.ano, ano)));
-  const orcRows = await db5.select().from(historicoOrcamentos).where(and12(eq15(historicoOrcamentos.mes, mes), eq15(historicoOrcamentos.ano, ano)));
+  const osRows = await db5.select().from(historicoOs).where(and14(eq18(historicoOs.mes, mes), eq18(historicoOs.ano, ano)));
+  const orcRows = await db5.select().from(historicoOrcamentos).where(and14(eq18(historicoOrcamentos.mes, mes), eq18(historicoOrcamentos.ano, ano)));
   const osNormais = osRows.filter(isOsNormalDb);
   let faturamento2 = 0, custo = 0, resultado = 0;
   const porVendedor = {};
@@ -11499,9 +15536,9 @@ async function coletarDados(db5, mes, ano) {
   }
   const topClientes = Object.entries(faturamentoPorCliente).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([cliente, valor]) => ({ cliente, valor }));
   const topVendedores = Object.entries(porVendedor).sort((a, b) => b[1].faturamento - a[1].faturamento).map(([vendedor, v]) => ({ vendedor, ...v }));
-  const dreRows = await db5.select().from(dreMensal).where(and12(eq15(dreMensal.ano, ano), eq15(dreMensal.mes, mes))).limit(1);
+  const dreRows = await db5.select().from(dreMensal).where(and14(eq18(dreMensal.ano, ano), eq18(dreMensal.mes, mes))).limit(1);
   const dre = dreRows[0] ?? null;
-  const finRows = await db5.select().from(financeiroMensal).where(and12(eq15(financeiroMensal.mes, mes), eq15(financeiroMensal.ano, ano))).limit(1);
+  const finRows = await db5.select().from(financeiroMensal).where(and14(eq18(financeiroMensal.mes, mes), eq18(financeiroMensal.ano, ano))).limit(1);
   const fin = finRows[0] ?? null;
   return {
     comercial: {
@@ -11531,38 +15568,38 @@ function montarPrompt(mes, ano, atual, anterior, perguntaExtra) {
   const { mes: mesAnt, ano: anoAnt } = mesAnterior(mes, ano);
   return `Voc\xEA \xE9 um consultor comercial e financeiro s\xEAnior da Radrasis (Letreiros Express), uma ind\xFAstria de comunica\xE7\xE3o visual (letreiros, placas, pain\xE9is de LED) no Brasil.
 
-Analise os dados reais de ${MESES_NOMES[mes]}/${ano}, comparados ao m\xEAs anterior, e gere um diagn\xF3stico pr\xE1tico focado em DUAS perguntas: como vender mais, e como lucrar mais.
+Analise os dados reais de ${MESES_NOMES2[mes]}/${ano}, comparados ao m\xEAs anterior, e gere um diagn\xF3stico pr\xE1tico focado em DUAS perguntas: como vender mais, e como lucrar mais.
 
-## DESEMPENHO COMERCIAL \u2014 ${MESES_NOMES[mes]}/${ano}
+## DESEMPENHO COMERCIAL \u2014 ${MESES_NOMES2[mes]}/${ano}
 - OS aprovadas (vendas): ${c.totalOs}
-- Faturamento: ${fmtR2(c.faturamento)}${varFat !== null ? ` (${varFat >= 0 ? "+" : ""}${varFat.toFixed(1)}% vs. ${MESES_NOMES[mesAnt]}/${anoAnt})` : ""}
-- Custo total: ${fmtR2(c.custo)}
-- Resultado (lucro operacional das OS): ${fmtR2(c.resultado)} (margem de ${c.margemPct.toFixed(1)}%)
-- Ticket m\xE9dio: ${fmtR2(c.ticketMedio)}
-- Or\xE7amentos emitidos: ${c.totalOrcamentos}, somando ${fmtR2(c.valorOrcado)}
+- Faturamento: ${fmtR3(c.faturamento)}${varFat !== null ? ` (${varFat >= 0 ? "+" : ""}${varFat.toFixed(1)}% vs. ${MESES_NOMES2[mesAnt]}/${anoAnt})` : ""}
+- Custo total: ${fmtR3(c.custo)}
+- Resultado (lucro operacional das OS): ${fmtR3(c.resultado)} (margem de ${c.margemPct.toFixed(1)}%)
+- Ticket m\xE9dio: ${fmtR3(c.ticketMedio)}
+- Or\xE7amentos emitidos: ${c.totalOrcamentos}, somando ${fmtR3(c.valorOrcado)}
 - Taxa de convers\xE3o (or\xE7amento \u2192 venda): ${c.taxaConversao.toFixed(1)}%
 - Taxa de faturamento (venda / or\xE7ado): ${c.taxaFaturamento.toFixed(1)}%
 - Clientes \xFAnicos atendidos: ${c.clientesUnicos} (${c.clientesNovos} novos ou reativados ap\xF3s 6+ meses de inatividade)
 
 ### Top 5 Clientes por Faturamento
-${c.topClientes.length > 0 ? c.topClientes.map((t2, i) => `${i + 1}. ${t2.cliente} \u2014 ${fmtR2(t2.valor)}`).join("\n") : "(sem dados)"}
+${c.topClientes.length > 0 ? c.topClientes.map((t2, i) => `${i + 1}. ${t2.cliente} \u2014 ${fmtR3(t2.valor)}`).join("\n") : "(sem dados)"}
 
 ### Faturamento por Vendedor
-${c.topVendedores.length > 0 ? c.topVendedores.map((v) => `- ${v.vendedor}: ${v.total} OS, ${fmtR2(v.faturamento)}`).join("\n") : "(sem dados)"}
+${c.topVendedores.length > 0 ? c.topVendedores.map((v) => `- ${v.vendedor}: ${v.total} OS, ${fmtR3(v.faturamento)}`).join("\n") : "(sem dados)"}
 
-## M\xCAS ANTERIOR (${MESES_NOMES[mesAnt]}/${anoAnt}) \u2014 PARA COMPARA\xC7\xC3O
-- Faturamento: ${fmtR2(cAnt.faturamento)}
-- Resultado: ${fmtR2(cAnt.resultado)} (margem de ${cAnt.margemPct.toFixed(1)}%)
+## M\xCAS ANTERIOR (${MESES_NOMES2[mesAnt]}/${anoAnt}) \u2014 PARA COMPARA\xC7\xC3O
+- Faturamento: ${fmtR3(cAnt.faturamento)}
+- Resultado: ${fmtR3(cAnt.resultado)} (margem de ${cAnt.margemPct.toFixed(1)}%)
 - Taxa de convers\xE3o: ${cAnt.taxaConversao.toFixed(1)}%
 - Clientes \xFAnicos: ${cAnt.clientesUnicos} (${cAnt.clientesNovos} novos/reativados)
 
 ## DADOS FINANCEIROS DO M\xCAS
-${atual.dre ? `- Receita Operacional Bruta (DRE): ${fmtR2(Number(atual.dre.receitaOperacionalBruta || 0))}
-- Despesas Fixas: ${fmtR2(Number(atual.dre.despesasFixas || 0))}
-- Despesas com Pessoal: ${fmtR2(Number(atual.dre.despesasPessoal || 0))}
-- Lucro L\xEDquido (DRE): ${fmtR2(Number(atual.dre.lucroLiquido || 0))}` : "- DRE n\xE3o dispon\xEDvel para este m\xEAs."}
-${atual.fin ? `- Resultado Efetivo: ${fmtR2(Number(atual.fin.resultadoEfetivo || 0))}
-- Saldo do M\xEAs (caixa): ${fmtR2(Number(atual.fin.saldoMes || 0))}` : "- Financeiro mensal n\xE3o dispon\xEDvel para este m\xEAs."}
+${atual.dre ? `- Receita Operacional Bruta (DRE): ${fmtR3(Number(atual.dre.receitaOperacionalBruta || 0))}
+- Despesas Fixas: ${fmtR3(Number(atual.dre.despesasFixas || 0))}
+- Despesas com Pessoal: ${fmtR3(Number(atual.dre.despesasPessoal || 0))}
+- Lucro L\xEDquido (DRE): ${fmtR3(Number(atual.dre.lucroLiquido || 0))}` : "- DRE n\xE3o dispon\xEDvel para este m\xEAs."}
+${atual.fin ? `- Resultado Efetivo: ${fmtR3(Number(atual.fin.resultadoEfetivo || 0))}
+- Saldo do M\xEAs (caixa): ${fmtR3(Number(atual.fin.saldoMes || 0))}` : "- Financeiro mensal n\xE3o dispon\xEDvel para este m\xEAs."}
 
 ## INSTRU\xC7\xD5ES
 
@@ -11582,7 +15619,7 @@ Use linguagem profissional mas direta. Formate com Markdown (negrito, listas).`;
 }
 var insightsComerciaisRouter = router({
   // Diagnóstico completo do mês: vendas + lucro
-  gerarDiagnostico: protectedProcedure.input(z16.object({ mes: z16.number().min(1).max(12), ano: z16.number().min(2020) })).mutation(async ({ input }) => {
+  gerarDiagnostico: protectedProcedure.input(z18.object({ mes: z18.number().min(1).max(12), ano: z18.number().min(2020) })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
     const { mes: mesAnt, ano: anoAnt } = mesAnterior(input.mes, input.ano);
@@ -11602,7 +15639,7 @@ var insightsComerciaisRouter = router({
     return { analise, resumo: atual.comercial };
   }),
   // Pergunta livre com o mesmo contexto de dados do mês
-  perguntar: protectedProcedure.input(z16.object({ mes: z16.number().min(1).max(12), ano: z16.number().min(2020), pergunta: z16.string().min(3) })).mutation(async ({ input }) => {
+  perguntar: protectedProcedure.input(z18.object({ mes: z18.number().min(1).max(12), ano: z18.number().min(2020), pergunta: z18.string().min(3) })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB n\xE3o dispon\xEDvel");
     const { mes: mesAnt, ano: anoAnt } = mesAnterior(input.mes, input.ano);
@@ -11623,322 +15660,29 @@ var insightsComerciaisRouter = router({
   })
 });
 
-// server/routers/analiseGeografica.ts
-init_env();
-init_db();
-init_mubisys_client();
-init_schema();
-import { z as z17 } from "zod";
-import { eq as eq16, and as and13, ne } from "drizzle-orm";
-function osValidaCondition() {
-  return ne(historicoOs.status, "Cancelada");
-}
-function osValidaMubisys(os) {
-  return String(os.status ?? "").toLowerCase() !== "cancelada";
-}
-function tituloCidade(s) {
-  return s.toLowerCase().split(" ").map((w) => w.length <= 2 ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
-}
-var UFS_VALIDAS = /* @__PURE__ */ new Set([
-  "AC",
-  "AL",
-  "AP",
-  "AM",
-  "BA",
-  "CE",
-  "DF",
-  "ES",
-  "GO",
-  "MA",
-  "MT",
-  "MS",
-  "MG",
-  "PA",
-  "PB",
-  "PR",
-  "PE",
-  "PI",
-  "RJ",
-  "RN",
-  "RS",
-  "RO",
-  "RR",
-  "SC",
-  "SP",
-  "SE",
-  "TO"
-]);
-function normalizarUf(uf) {
-  if (!uf) return null;
-  const s = String(uf).trim().toUpperCase();
-  return UFS_VALIDAS.has(s) ? s : null;
-}
-function extrairClienteOs(os) {
-  const raw = os.cliente;
-  if (typeof raw === "object" && raw !== null) {
-    return String(raw?.nome ?? raw?.razao_social ?? "").trim();
-  }
-  return String(raw ?? "").trim();
-}
-function extrairEnderecoOs(os) {
-  const enderecos = Array.isArray(os.cliente_endereco) ? os.cliente_endereco : os.cliente_endereco ? [os.cliente_endereco] : [];
-  const primeiro = enderecos[0];
-  const cidade = primeiro?.cidade ? String(primeiro.cidade).trim() : null;
-  const estado = primeiro?.estado || primeiro?.uf ? String(primeiro.estado || primeiro.uf).trim() : null;
-  return { cidade, estado };
-}
-function normalizarOsMubisys(os) {
-  const endereco = extrairEnderecoOs(os);
-  return {
-    estado: endereco.estado,
-    cidade: endereco.cidade,
-    empresa: extrairClienteOs(os),
-    valorTotal: parseFloat(String(os.valor_total ?? "0")) || 0
-  };
-}
-function isMesAtual2(mes, ano) {
-  const now = /* @__PURE__ */ new Date();
-  return mes === now.getMonth() + 1 && ano === now.getFullYear();
-}
-async function lerCacheOsBrutas(db5, cacheKey) {
-  const rows = await db5.select().from(mubisysApiCache).where(eq16(mubisysApiCache.cacheKey, cacheKey)).limit(1);
-  if (rows.length === 0) return null;
-  const row = rows[0];
-  if (/* @__PURE__ */ new Date() > new Date(row.expiresAt) || !row.osData) return null;
-  try {
-    return JSON.parse(row.osData);
-  } catch {
-    return null;
-  }
-}
-var TTL_MES_ATUAL_MS = 60 * 60 * 1e3;
-var TTL_MES_FECHADO_MS = 30 * 24 * 60 * 60 * 1e3;
-async function buscarOsBrutasDoMes(db5, mes, ano) {
-  const compartilhado = await lerCacheOsBrutas(db5, `raw_${mes}_${ano}`);
-  if (compartilhado) return { itens: compartilhado, completo: true, viaApi: false };
-  const cacheKeyProprio = `geo_raw_${mes}_${ano}`;
-  const proprio = await lerCacheOsBrutas(db5, cacheKeyProprio);
-  if (proprio) return { itens: proprio, completo: true, viaApi: false };
-  const pad = (n) => String(n).padStart(2, "0");
-  const lastDay = new Date(ano, mes, 0).getDate();
-  const datainicial = `${ano}-${pad(mes)}-01`;
-  const datafinal = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-  const resultado = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal });
-  if (resultado.completo) {
-    const now = /* @__PURE__ */ new Date();
-    const ttlMs = isMesAtual2(mes, ano) ? TTL_MES_ATUAL_MS : TTL_MES_FECHADO_MS;
-    const expiresAt = new Date(now.getTime() + ttlMs);
-    const existing = await db5.select({ id: mubisysApiCache.id }).from(mubisysApiCache).where(eq16(mubisysApiCache.cacheKey, cacheKeyProprio)).limit(1);
-    const payload = { osData: JSON.stringify(resultado.itens), fetchedAt: now, expiresAt };
-    if (existing.length > 0) {
-      await db5.update(mubisysApiCache).set(payload).where(eq16(mubisysApiCache.cacheKey, cacheKeyProprio));
-    } else {
-      await db5.insert(mubisysApiCache).values({ cacheKey: cacheKeyProprio, mes, ano, ...payload });
-    }
-  }
-  return { ...resultado, viaApi: true };
-}
-async function linhasDoMesLocal(db5, mes, ano) {
-  const rows = await db5.select({
-    estado: historicoOs.estado,
-    cidade: historicoOs.cidade,
-    empresa: historicoOs.empresa,
-    valorTotal: historicoOs.valorTotal
-  }).from(historicoOs).where(and13(eq16(historicoOs.mes, mes), eq16(historicoOs.ano, ano), osValidaCondition()));
-  return rows.map((r) => ({ estado: r.estado, cidade: r.cidade, empresa: r.empresa ?? "", valorTotal: Number(r.valorTotal ?? 0) }));
-}
-async function linhasDoMes(db5, mes, ano) {
-  if (ENV.MUBISYS_PUBLIC_KEY && ENV.MUBISYS_ACCESS_TOKEN) {
-    try {
-      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 55e3));
-      const resultado = await Promise.race([buscarOsBrutasDoMes(db5, mes, ano), timeoutPromise]);
-      if (resultado) {
-        return { linhas: resultado.itens.filter(osValidaMubisys).map(normalizarOsMubisys), viaApi: true };
-      }
-    } catch {
-    }
-  }
-  return { linhas: await linhasDoMesLocal(db5, mes, ano), viaApi: false };
-}
-async function linhasDoAno(db5, ano) {
-  const meses = Array.from({ length: 12 }, (_, i) => i + 1);
-  const CONCURRENCY = 2;
-  let todas = [];
-  const mesesFallback = [];
-  for (let i = 0; i < meses.length; i += CONCURRENCY) {
-    const batch = meses.slice(i, i + CONCURRENCY);
-    const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db5, mes, ano)));
-    batch.forEach((mes, idx) => {
-      todas = todas.concat(resultados[idx].linhas);
-      if (!resultados[idx].viaApi) mesesFallback.push(mes);
-    });
-  }
-  return { linhas: todas, mesesFallback };
-}
-function agregarPorEstado(linhas) {
-  const porEstado = /* @__PURE__ */ new Map();
-  let totalOs = 0;
-  let totalFaturamento = 0;
-  let semEstado = 0;
-  let semEstadoFaturamento = 0;
-  for (const r of linhas) {
-    const valor = r.valorTotal;
-    totalOs++;
-    totalFaturamento += valor;
-    const estado = normalizarUf(r.estado);
-    if (!estado) {
-      semEstado++;
-      semEstadoFaturamento += valor;
-      continue;
-    }
-    if (!porEstado.has(estado)) {
-      porEstado.set(estado, { qtdOs: 0, faturamento: 0, clientes: /* @__PURE__ */ new Set(), cidades: /* @__PURE__ */ new Map() });
-    }
-    const e = porEstado.get(estado);
-    e.qtdOs++;
-    e.faturamento += valor;
-    e.clientes.add((r.empresa ?? "").trim().toUpperCase());
-    const cidadeNome = r.cidade ? tituloCidade(r.cidade.trim()) : "\u2014";
-    if (!e.cidades.has(cidadeNome)) e.cidades.set(cidadeNome, { qtdOs: 0, faturamento: 0 });
-    const c = e.cidades.get(cidadeNome);
-    c.qtdOs++;
-    c.faturamento += valor;
-  }
-  const estados = Array.from(porEstado.entries()).map(([estado, d]) => ({
-    estado,
-    qtdOs: d.qtdOs,
-    pctOs: totalOs > 0 ? d.qtdOs / totalOs * 100 : 0,
-    faturamento: d.faturamento,
-    pctFaturamento: totalFaturamento > 0 ? d.faturamento / totalFaturamento * 100 : 0,
-    qtdClientes: d.clientes.size,
-    ticketMedio: d.qtdOs > 0 ? d.faturamento / d.qtdOs : 0,
-    topCidades: Array.from(d.cidades.entries()).map(([cidade, cd]) => ({ cidade, qtdOs: cd.qtdOs, faturamento: cd.faturamento })).sort((a, b) => b.faturamento - a.faturamento).slice(0, 5)
-  })).sort((a, b) => b.faturamento - a.faturamento);
-  return { estados, totalOs, totalFaturamento, semEstado, semEstadoFaturamento };
-}
-var analiseGeograficaRouter = router({
-  getAnosDisponiveis: publicProcedure.query(async () => {
-    const anoAtual = (/* @__PURE__ */ new Date()).getFullYear();
-    const db5 = await getDb3();
-    if (!db5) return [anoAtual, anoAtual - 1, anoAtual - 2];
-    const rows = await db5.selectDistinct({ ano: historicoOs.ano }).from(historicoOs);
-    const anos = new Set(rows.map((r) => r.ano));
-    anos.add(anoAtual);
-    anos.add(anoAtual - 1);
-    return Array.from(anos).sort((a, b) => b - a);
-  }),
-  getPorEstado: publicProcedure.input(z17.object({
-    ano: z17.number(),
-    // null/undefined = ano inteiro
-    mes: z17.number().min(1).max(12).nullable().optional()
-  })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return { estados: [], totalOs: 0, totalFaturamento: 0, semEstado: 0, semEstadoFaturamento: 0, mesesFallback: [] };
-    let linhas;
-    let mesesFallback;
-    if (input.mes) {
-      const resultado = await linhasDoMes(db5, input.mes, input.ano);
-      linhas = resultado.linhas;
-      mesesFallback = resultado.viaApi ? [] : [input.mes];
-    } else {
-      const resultado = await linhasDoAno(db5, input.ano);
-      linhas = resultado.linhas;
-      mesesFallback = resultado.mesesFallback;
-    }
-    return { ...agregarPorEstado(linhas), mesesFallback };
-  }),
-  getEvolucaoMensal: publicProcedure.input(z17.object({ ano: z17.number() })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return { meses: [], topEstados: [] };
-    const meses = Array.from({ length: 12 }, (_, i) => i + 1);
-    const CONCURRENCY = 2;
-    const porMesLinhas = new Array(12);
-    for (let i = 0; i < meses.length; i += CONCURRENCY) {
-      const batch = meses.slice(i, i + CONCURRENCY);
-      const resultados = await Promise.all(batch.map((mes) => linhasDoMes(db5, mes, input.ano)));
-      batch.forEach((mes, idx) => {
-        porMesLinhas[mes - 1] = resultados[idx].linhas;
-      });
-    }
-    const totalPorEstado = /* @__PURE__ */ new Map();
-    for (const linhas of porMesLinhas) {
-      for (const r of linhas) {
-        const estado = normalizarUf(r.estado);
-        if (!estado) continue;
-        totalPorEstado.set(estado, (totalPorEstado.get(estado) ?? 0) + r.valorTotal);
-      }
-    }
-    const topEstados = Array.from(totalPorEstado.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([uf]) => uf);
-    const topSet = new Set(topEstados);
-    const mesesResult = meses.map((mes) => {
-      const valores = { outros: 0 };
-      for (const r of porMesLinhas[mes - 1]) {
-        const estado = normalizarUf(r.estado);
-        const key = estado && topSet.has(estado) ? estado : "outros";
-        valores[key] = (valores[key] ?? 0) + r.valorTotal;
-      }
-      return { mes, ...valores };
-    });
-    return { meses: mesesResult, topEstados };
-  }),
-  /** Lista de clientes por Estado, no período selecionado — usada para
-   * exportação em Excel na Análise Geográfica. Se `estado` for informado,
-   * retorna só os clientes daquele Estado (ex.: MS, SP, PR). */
-  getListaClientes: publicProcedure.input(z17.object({
-    ano: z17.number(),
-    mes: z17.number().min(1).max(12).nullable().optional(),
-    estado: z17.string().length(2).nullable().optional()
-  })).query(async ({ input }) => {
-    const db5 = await getDb3();
-    if (!db5) return [];
-    const linhas = input.mes ? (await linhasDoMes(db5, input.mes, input.ano)).linhas : (await linhasDoAno(db5, input.ano)).linhas;
-    const porCliente = /* @__PURE__ */ new Map();
-    for (const r of linhas) {
-      const estado = normalizarUf(r.estado);
-      if (!estado) continue;
-      if (input.estado && estado !== input.estado) continue;
-      const empresaNorm = (r.empresa ?? "").trim().toUpperCase();
-      if (!empresaNorm) continue;
-      const key = `${estado}__${empresaNorm}`;
-      if (!porCliente.has(key)) {
-        porCliente.set(key, {
-          estado,
-          empresa: (r.empresa ?? "").trim(),
-          cidade: r.cidade ? tituloCidade(r.cidade.trim()) : "\u2014",
-          qtdOs: 0,
-          faturamento: 0
-        });
-      }
-      const c = porCliente.get(key);
-      c.qtdOs++;
-      c.faturamento += r.valorTotal;
-    }
-    return Array.from(porCliente.values()).sort((a, b) => {
-      if (a.estado !== b.estado) return a.estado.localeCompare(b.estado);
-      return b.faturamento - a.faturamento;
-    });
-  })
-});
+// server/routers.ts
+init_analiseGeografica();
 
 // server/routers/metricas.ts
+init_trpc();
 init_db();
 init_schema();
-import { z as z18 } from "zod";
-import { and as and14, desc as desc8, eq as eq17, gte as gte5, lte as lte4 } from "drizzle-orm";
+import { z as z19 } from "zod";
+import { and as and15, desc as desc9, eq as eq19, gte as gte6, lte as lte4 } from "drizzle-orm";
 var metricasRouter = router({
-  list: publicProcedure.input(z18.object({
-    nome: z18.string().optional(),
-    dataInicio: z18.string().optional(),
+  list: publicProcedure.input(z19.object({
+    nome: z19.string().optional(),
+    dataInicio: z19.string().optional(),
     // AAAA-MM-DD
-    dataFim: z18.string().optional()
+    dataFim: z19.string().optional()
   }).optional()).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
     const conditions = [];
-    if (input?.nome) conditions.push(eq17(metricas.nome, input.nome));
-    if (input?.dataInicio) conditions.push(gte5(metricas.dataApuracao, input.dataInicio));
+    if (input?.nome) conditions.push(eq19(metricas.nome, input.nome));
+    if (input?.dataInicio) conditions.push(gte6(metricas.dataApuracao, input.dataInicio));
     if (input?.dataFim) conditions.push(lte4(metricas.dataApuracao, input.dataFim));
-    return db5.select().from(metricas).where(conditions.length ? and14(...conditions) : void 0).orderBy(desc8(metricas.dataApuracao), desc8(metricas.id));
+    return db5.select().from(metricas).where(conditions.length ? and15(...conditions) : void 0).orderBy(desc9(metricas.dataApuracao), desc9(metricas.id));
   }),
   nomesDistintos: publicProcedure.query(async () => {
     const db5 = await getDb3();
@@ -11946,13 +15690,13 @@ var metricasRouter = router({
     const rows = await db5.selectDistinct({ nome: metricas.nome }).from(metricas);
     return rows.map((r) => r.nome).sort((a, b) => a.localeCompare(b));
   }),
-  create: protectedProcedure.input(z18.object({
-    nome: z18.string().min(1, "Informe o nome do indicador"),
-    valor: z18.number(),
-    unidade: z18.string().max(16).default("%"),
-    dataApuracao: z18.string(),
+  create: protectedProcedure.input(z19.object({
+    nome: z19.string().min(1, "Informe o nome do indicador"),
+    valor: z19.number(),
+    unidade: z19.string().max(16).default("%"),
+    dataApuracao: z19.string(),
     // AAAA-MM-DD
-    observacao: z18.string().optional().nullable()
+    observacao: z19.string().optional().nullable()
   })).mutation(async ({ input, ctx }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("Banco de dados indispon\xEDvel");
@@ -11966,13 +15710,13 @@ var metricasRouter = router({
     }).returning();
     return row;
   }),
-  update: protectedProcedure.input(z18.object({
-    id: z18.number(),
-    nome: z18.string().min(1).optional(),
-    valor: z18.number().optional(),
-    unidade: z18.string().max(16).optional(),
-    dataApuracao: z18.string().optional(),
-    observacao: z18.string().optional().nullable()
+  update: protectedProcedure.input(z19.object({
+    id: z19.number(),
+    nome: z19.string().min(1).optional(),
+    valor: z19.number().optional(),
+    unidade: z19.string().max(16).optional(),
+    dataApuracao: z19.string().optional(),
+    observacao: z19.string().optional().nullable()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("Banco de dados indispon\xEDvel");
@@ -11981,25 +15725,35 @@ var metricasRouter = router({
       ...rest,
       ...valor !== void 0 ? { valor: String(valor) } : {},
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq17(metricas.id, id)).returning();
+    }).where(eq19(metricas.id, id)).returning();
     return row;
   }),
-  delete: protectedProcedure.input(z18.object({ id: z18.number() })).mutation(async ({ input }) => {
+  delete: protectedProcedure.input(z19.object({ id: z19.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("Banco de dados indispon\xEDvel");
-    await db5.delete(metricas).where(eq17(metricas.id, input.id));
+    await db5.delete(metricas).where(eq19(metricas.id, input.id));
     return { success: true };
   })
 });
 
 // server/routers/crm.ts
-import { z as z19 } from "zod";
-import { TRPCError as TRPCError3 } from "@trpc/server";
+init_trpc();
 init_llm();
 init_db();
 init_schema();
+init_crm_abertos_cache();
+init_probabilidadeCompra();
+init_regioesBrasil();
+init_dias_uteis();
 init_mubisys_client();
-import { eq as eq18, and as and15, desc as desc9, sql as sql9 } from "drizzle-orm";
+import { z as z20 } from "zod";
+import { TRPCError as TRPCError4 } from "@trpc/server";
+import { eq as eq21, and as and16, desc as desc10, sql as sql9 } from "drizzle-orm";
+var FAIXA_DEFAULTS = {
+  1: { faixa: 1, label: "Faixa 1 (1-2 du)", diasInicio: 1, diasFim: 2 },
+  2: { faixa: 2, label: "Faixa 2 (3-5 du)", diasInicio: 3, diasFim: 5 },
+  3: { faixa: 3, label: "Faixa 3 (6-10 du)", diasInicio: 6, diasFim: 10 }
+};
 function calcTurno(date2) {
   const h = date2.getHours();
   const hBrasilia = (h - 3 + 24) % 24;
@@ -12029,10 +15783,17 @@ function parseDate(str) {
   const d = new Date(str);
   return isNaN(d.getTime()) ? null : d;
 }
-function diasDesde(str) {
-  const d = parseDate(str);
-  if (!d) return null;
-  return Math.floor((Date.now() - d.getTime()) / (1e3 * 60 * 60 * 24));
+async function buscarOrcamentosPeriodo(di, df) {
+  if (di >= inicioJanelaFechadosCache()) {
+    const cacheHit = await getCrmAbertosCache(CACHE_KEY_FECHADOS);
+    const todos = cacheHit ? cacheHit.itens : await refreshCrmFechadosCache();
+    return todos.filter((o) => {
+      const dia = (o.data_cadastro || "").slice(0, 10);
+      return dia && dia >= di && dia <= df;
+    });
+  }
+  const { itens } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df, perPage: 50 });
+  return itens;
 }
 function janelaSugerida(diasCriado) {
   if (diasCriado <= 3) return "urgente";
@@ -12050,35 +15811,37 @@ var MOTIVACIONAL_PROMPTS = [
 ];
 var crmRouter = router({
   // Buscar propostas abertas do vendedor logado (ou de um vendedor específico para diretor)
-  getPropostas: protectedProcedure.input(z19.object({
-    vendedor: z19.string().optional(),
+  getPropostas: protectedProcedure.input(z20.object({
+    vendedor: z20.string().optional(),
     // se omitido, usa o nome do usuário logado
-    mes: z19.number().min(1).max(12).optional(),
-    ano: z19.number().optional(),
-    dataInicio: z19.string().optional(),
+    mes: z20.number().min(1).max(12).optional(),
+    ano: z20.number().optional(),
+    dataInicio: z20.string().optional(),
     // YYYY-MM-DD — filtro manual de datas
-    dataFim: z19.string().optional(),
-    preset: z19.enum(["hoje", "7dias", "15dias", "mes", "personalizado"]).optional()
+    dataFim: z20.string().optional(),
+    preset: z20.enum(["hoje", "7dias", "15dias", "mes", "personalizado"]).optional(),
+    buscarAntigas: z20.boolean().optional()
+    // true = janela de 30 dias em vez de 15 (caso raro de proposta antiga ainda aberta)
   })).query(async ({ ctx, input }) => {
     const now = /* @__PURE__ */ new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const fmtDate2 = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
     let di;
     let df;
     const preset = input.preset ?? "mes";
     if (preset === "hoje") {
-      di = fmtDate(now);
-      df = fmtDate(now);
+      di = fmtDate2(now);
+      df = fmtDate2(now);
     } else if (preset === "7dias") {
       const d7 = new Date(now);
       d7.setDate(now.getDate() - 7);
-      di = fmtDate(d7);
-      df = fmtDate(now);
+      di = fmtDate2(d7);
+      df = fmtDate2(now);
     } else if (preset === "15dias") {
       const d15 = new Date(now);
       d15.setDate(now.getDate() - 15);
-      di = fmtDate(d15);
-      df = fmtDate(now);
+      di = fmtDate2(d15);
+      df = fmtDate2(now);
     } else if (preset === "personalizado" && input.dataInicio && input.dataFim) {
       di = input.dataInicio;
       df = input.dataFim;
@@ -12086,17 +15849,19 @@ var crmRouter = router({
       const mes = input.mes ?? now.getMonth() + 1;
       const ano = input.ano ?? now.getFullYear();
       const lastDay = new Date(ano, mes, 0).getDate();
-      di = input.dataInicio ?? `${ano}-${pad(mes)}-01`;
-      df = input.dataFim ?? `${ano}-${pad(mes)}-${pad(lastDay)}`;
+      di = input.dataInicio ?? `${ano}-${pad2(mes)}-01`;
+      df = input.dataFim ?? `${ano}-${pad2(mes)}-${pad2(lastDay)}`;
     }
-    const diAberto = fmtDate(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
-    const dfAberto = fmtDate(now);
-    const { itens: todosAbertos } = await listarOrcamentosMubiSys({ datainicial: diAberto, datafinal: dfAberto });
+    const janelaDias = input.buscarAntigas ? JANELA_ABERTOS_DIAS_MAX : JANELA_ABERTOS_DIAS_PADRAO;
+    const cacheKey = input.buscarAntigas ? CACHE_KEY_ABERTOS_ESTENDIDO : CACHE_KEY_ABERTOS_PADRAO;
+    const cacheHit = await getCrmAbertosCache(cacheKey);
+    const todosAbertos = cacheHit ? cacheHit.itens : await refreshCrmAbertosCache(cacheKey, janelaDias);
+    const abertosAtualizadoEm = (cacheHit?.fetchedAt ?? /* @__PURE__ */ new Date()).toISOString();
+    const todosPeriodo = await buscarOrcamentosPeriodo(di, df);
     const abertos = todosAbertos.filter((o) => {
       const s = (o.status || "").toLowerCase();
       return s === "em aberto" || s === "em andamento" || s === "pendente";
     });
-    const { itens: todosPeriodo } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df });
     const fechados = todosPeriodo.filter((o) => {
       const s = (o.status || "").toLowerCase();
       return s === "aprovado" || s === "faturado" || s === "concluido" || s === "conclu\xEDdo";
@@ -12107,7 +15872,7 @@ var crmRouter = router({
     const propostasFechadas = filtrar(fechados);
     const idsAbertos = propostasAbertas.map((o) => String(o.id));
     const db5 = await getDb3();
-    const contatosDb = idsAbertos.length > 0 ? await db5.select().from(crmContatos).orderBy(desc9(crmContatos.contatadoEm)) : [];
+    const contatosDb = idsAbertos.length > 0 ? await db5.select().from(crmContatos).orderBy(desc10(crmContatos.contatadoEm)) : [];
     const contatosPorOrc = {};
     for (const c of contatosDb) {
       if (!contatosPorOrc[c.orcamentoId]) contatosPorOrc[c.orcamentoId] = [];
@@ -12116,7 +15881,8 @@ var crmRouter = router({
     const propostas = propostasAbertas.map((o) => {
       const orcId = String(o.id);
       const contatos = contatosPorOrc[orcId] ?? [];
-      const diasCriado = diasDesde(o.data_cadastro) ?? 0;
+      const dataCriacaoDate = parseDate(o.data_cadastro);
+      const diasCriado = dataCriacaoDate ? diasUteisEntre(dataCriacaoDate, /* @__PURE__ */ new Date()) : 0;
       const primeiroContato = contatos.find((c) => c.numeroContato === 1);
       const segundoContato = contatos.find((c) => c.numeroContato === 2);
       const diasAteContato1 = primeiroContato ? Math.floor((new Date(primeiroContato.contatadoEm).getTime() - new Date(o.data_cadastro).getTime()) / (1e3 * 60 * 60 * 24)) : null;
@@ -12152,7 +15918,7 @@ var crmRouter = router({
     const qtdFechadas = propostasFechadas.length;
     const ontem = /* @__PURE__ */ new Date();
     ontem.setDate(ontem.getDate() - 1);
-    const ontemStr = `${ontem.getFullYear()}-${pad(ontem.getMonth() + 1)}-${pad(ontem.getDate())}`;
+    const ontemStr = `${ontem.getFullYear()}-${pad2(ontem.getMonth() + 1)}-${pad2(ontem.getDate())}`;
     const propostasOntem = propostasAbertas.filter(
       (o) => (o.data_cadastro ?? "").startsWith(ontemStr)
     ).length + propostasFechadas.filter(
@@ -12166,10 +15932,10 @@ var crmRouter = router({
       if (tel) telefonesMap[String(o.id)] = tel.celular || tel.telefone;
     }
     const hoje = /* @__PURE__ */ new Date();
-    const hojeStr = `${hoje.getFullYear()}-${pad(hoje.getMonth() + 1)}-${pad(hoje.getDate())}`;
+    const hojeStr = `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}-${pad2(hoje.getDate())}`;
     const contatosHoje = contatosDb.filter((c) => {
       const d = new Date(c.contatadoEm);
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` === hojeStr;
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` === hojeStr;
     }).length;
     const perdidasDb = await db5.select({ orcamentoId: crmContatos.orcamentoId }).from(crmContatos).where(
       vendedorFiltro ? sql9`${crmContatos.vendedor} = ${vendedorFiltro} AND ${crmContatos.canal} = 'perdida'` : sql9`${crmContatos.canal} = 'perdida'`
@@ -12190,20 +15956,37 @@ var crmRouter = router({
       }
     } catch {
     }
+    let mapaConversao = null;
+    let taxaNovosDoMes = null;
+    let mapaFaixaTicket;
+    let mapaRegiao;
+    try {
+      mapaConversao = await construirMapaConversaoClientes(db5);
+      taxaNovosDoMes = await calcularTaxaConversaoNovosRecente(db5);
+      mapaFaixaTicket = await construirMapaFaixaTicket(db5);
+      mapaRegiao = await construirMapaConversaoPorRegiao(db5);
+    } catch {
+      mapaConversao = null;
+    }
     const propostasComTelefone = propostasFiltradas.map((p) => {
       const telefone = telefonesMap[p.id] ?? null;
       const orc = propostasAbertas.find((o) => String(o.id) === p.id);
       const clienteRaw = orc?.cliente;
       const empresaRaw = orc?.empresa;
-      const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null ? clienteRaw?.nome ?? clienteRaw?.razao_social ?? String(clienteRaw) : String(clienteRaw ?? empresaRaw ?? "");
-      const clienteKey = (nomeCliente || "").toLowerCase().trim();
+      const nomeCliente2 = typeof clienteRaw === "object" && clienteRaw !== null ? clienteRaw?.nome ?? clienteRaw?.razao_social ?? String(clienteRaw) : String(clienteRaw ?? empresaRaw ?? "");
+      const clienteKey = (nomeCliente2 || "").toLowerCase().trim();
       const overrideStatus = overrideMap.get(clienteKey);
       const isNovoByHistory = clientesComCompra.size > 0 && !clientesComCompra.has(clienteKey);
       const clienteNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isNovoByHistory;
-      return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo };
+      const estadoCliente = Array.isArray(orc?.cliente_endereco) ? normalizarUf(orc.cliente_endereco[0]?.estado) : null;
+      const regiaoCliente = estadoCliente ? UF_PARA_REGIAO[estadoCliente] ?? null : null;
+      const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao ? calcularProbabilidade({ clienteNovo, nomeCliente: nomeCliente2, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes, mapaFaixaTicket, mapaRegiao, regiaoCliente }) : { probabilidade: null, explicacao: [] };
+      const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey2(nomeCliente2))?.qtdCompras ?? 0;
+      return { ...p, telefone, nomeCliente: nomeCliente2, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, estadoCliente, regiaoCliente };
     });
     return {
       propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
+      abertosAtualizadoEm,
       stats: {
         totalAberto: propostasComTelefone.length,
         totalFechado: qtdFechadas,
@@ -12222,26 +16005,26 @@ var crmRouter = router({
     };
   }),
   // Desfazer contato registrado
-  desfazarContato: protectedProcedure.input(z19.object({
-    orcamentoId: z19.string(),
-    data: z19.string()
+  desfazarContato: protectedProcedure.input(z20.object({
+    orcamentoId: z20.string(),
+    data: z20.string()
     // ISO string da data do contato a remover
   })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
-    const todos = await db5.select().from(crmContatos).where(eq18(crmContatos.orcamentoId, input.orcamentoId)).orderBy(desc9(crmContatos.contatadoEm));
+    const todos = await db5.select().from(crmContatos).where(eq21(crmContatos.orcamentoId, input.orcamentoId)).orderBy(desc10(crmContatos.contatadoEm));
     const dataAlvo = new Date(input.data);
     const alvo = todos.find((c) => {
       const d = new Date(c.contatadoEm);
       return d.getFullYear() === dataAlvo.getFullYear() && d.getMonth() === dataAlvo.getMonth() && d.getDate() === dataAlvo.getDate();
     });
-    if (!alvo) throw new TRPCError3({ code: "NOT_FOUND", message: "Contato n\xE3o encontrado para essa data." });
-    await db5.delete(crmContatos).where(eq18(crmContatos.id, alvo.id));
+    if (!alvo) throw new TRPCError4({ code: "NOT_FOUND", message: "Contato n\xE3o encontrado para essa data." });
+    await db5.delete(crmContatos).where(eq21(crmContatos.id, alvo.id));
     const vendedor = ctx.user?.name ?? "desconhecido";
     await logAtividade(ctx, { vendedor, acao: "desfazarContato", orcamentoId: input.orcamentoId, detalhe: `contato de ${input.data} removido` });
     return { ok: true };
   }),
   // Marcar proposta como ganha
-  marcarGanha: protectedProcedure.input(z19.object({ orcamentoId: z19.string(), vendedor: z19.string(), empresa: z19.string() })).mutation(async ({ ctx, input }) => {
+  marcarGanha: protectedProcedure.input(z20.object({ orcamentoId: z20.string(), vendedor: z20.string(), empresa: z20.string() })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
     const existing = await db5.select().from(crmContatos).where(sql9`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'garantiu_fechamento'`).limit(1);
     if (existing.length === 0) {
@@ -12258,7 +16041,7 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Marcar proposta como perdida
-  marcarPerdida: protectedProcedure.input(z19.object({ orcamentoId: z19.string(), vendedor: z19.string(), empresa: z19.string() })).mutation(async ({ ctx, input }) => {
+  marcarPerdida: protectedProcedure.input(z20.object({ orcamentoId: z20.string(), vendedor: z20.string(), empresa: z20.string() })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
     const existing = await db5.select().from(crmContatos).where(sql9`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'perdida'`).limit(1);
     if (existing.length === 0) {
@@ -12275,10 +16058,10 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Mensagem motivacional via Gemini
-  getMensagemMotivacional: protectedProcedure.input(z19.object({
-    propostasOntem: z19.number(),
-    pendentesFollowup: z19.number(),
-    nomeVendedor: z19.string()
+  getMensagemMotivacional: protectedProcedure.input(z20.object({
+    propostasOntem: z20.number(),
+    pendentesFollowup: z20.number(),
+    nomeVendedor: z20.string()
   })).query(async ({ input }) => {
     const promptTemplate = MOTIVACIONAL_PROMPTS[Math.floor(Math.random() * MOTIVACIONAL_PROMPTS.length)];
     const prompt = promptTemplate.replace("{propostas}", String(input.propostasOntem)).replace("{pendentes}", String(input.pendentesFollowup));
@@ -12296,23 +16079,23 @@ var crmRouter = router({
     }
   }),
   // Registrar contato
-  registrarContato: protectedProcedure.input(z19.object({
-    orcamentoId: z19.string(),
-    empresa: z19.string(),
-    vendedor: z19.string(),
-    canal: z19.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento"]),
-    observacao: z19.string().nullable().optional(),
-    dataContato: z19.string().optional()
+  registrarContato: protectedProcedure.input(z20.object({
+    orcamentoId: z20.string(),
+    empresa: z20.string(),
+    vendedor: z20.string(),
+    canal: z20.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento"]),
+    observacao: z20.string().nullable().optional(),
+    dataContato: z20.string().optional()
     // ISO string da data clicada
   })).mutation(async ({ ctx, input }) => {
     const db5 = await getDb3();
-    const existentes = await db5.select().from(crmContatos).where(and15(
-      eq18(crmContatos.orcamentoId, input.orcamentoId),
+    const existentes = await db5.select().from(crmContatos).where(and16(
+      eq21(crmContatos.orcamentoId, input.orcamentoId),
       sql9`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
     ));
     const numeroContato = existentes.length + 1;
     if (numeroContato > 2) {
-      throw new TRPCError3({ code: "CONFLICT", message: "M\xE1ximo de 2 contatos j\xE1 registrados para esta proposta." });
+      throw new TRPCError4({ code: "CONFLICT", message: "M\xE1ximo de 2 contatos j\xE1 registrados para esta proposta." });
     }
     const contatadoEm = input.dataContato ? new Date(input.dataContato) : /* @__PURE__ */ new Date();
     await db5.insert(crmContatos).values({
@@ -12334,30 +16117,30 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Buscar/salvar meta do vendedor
-  getMeta: protectedProcedure.input(z19.object({ vendedor: z19.string(), mes: z19.number(), ano: z19.number() })).query(async ({ input }) => {
+  getMeta: protectedProcedure.input(z20.object({ vendedor: z20.string(), mes: z20.number(), ano: z20.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
-    const rows = await db5.select().from(crmMetas).where(and15(
-      eq18(crmMetas.vendedor, input.vendedor),
-      eq18(crmMetas.mes, input.mes),
-      eq18(crmMetas.ano, input.ano)
+    const rows = await db5.select().from(crmMetas).where(and16(
+      eq21(crmMetas.vendedor, input.vendedor),
+      eq21(crmMetas.mes, input.mes),
+      eq21(crmMetas.ano, input.ano)
     ));
     return rows[0] ?? null;
   }),
-  saveMeta: protectedProcedure.input(z19.object({
-    vendedor: z19.string(),
-    mes: z19.number(),
-    ano: z19.number(),
-    metaValor: z19.number(),
-    metaQtdOs: z19.number()
+  saveMeta: protectedProcedure.input(z20.object({
+    vendedor: z20.string(),
+    mes: z20.number(),
+    ano: z20.number(),
+    metaValor: z20.number(),
+    metaQtdOs: z20.number()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmMetas).where(and15(
-      eq18(crmMetas.vendedor, input.vendedor),
-      eq18(crmMetas.mes, input.mes),
-      eq18(crmMetas.ano, input.ano)
+    const existing = await db5.select().from(crmMetas).where(and16(
+      eq21(crmMetas.vendedor, input.vendedor),
+      eq21(crmMetas.mes, input.mes),
+      eq21(crmMetas.ano, input.ano)
     ));
     if (existing.length > 0) {
-      await db5.update(crmMetas).set({ metaValor: String(input.metaValor), metaQtdOs: input.metaQtdOs }).where(eq18(crmMetas.id, existing[0].id));
+      await db5.update(crmMetas).set({ metaValor: String(input.metaValor), metaQtdOs: input.metaQtdOs }).where(eq21(crmMetas.id, existing[0].id));
     } else {
       await db5.insert(crmMetas).values({
         vendedor: input.vendedor,
@@ -12374,18 +16157,17 @@ var crmRouter = router({
     const now = /* @__PURE__ */ new Date();
     const mes = now.getMonth() + 1;
     const ano = now.getFullYear();
-    const pad = (n) => String(n).padStart(2, "0");
+    const pad2 = (n) => String(n).padStart(2, "0");
     const lastDay = new Date(ano, mes, 0).getDate();
-    const di = `${ano}-${pad(mes)}-01`;
-    const df = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-    const diAberto = `${ano - 1}-${pad(mes)}-${pad(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getDate())}`;
-    const dfAberto = df;
-    const { itens: todosAbertos } = await listarOrcamentosMubiSys({ datainicial: diAberto, datafinal: dfAberto });
+    const di = `${ano}-${pad2(mes)}-01`;
+    const df = `${ano}-${pad2(mes)}-${pad2(lastDay)}`;
+    const cacheHit = await getCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO);
+    const todosAbertos = cacheHit ? cacheHit.itens : await refreshCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO, JANELA_ABERTOS_DIAS_PADRAO);
+    const todosPeriodo = await buscarOrcamentosPeriodo(di, df);
     const abertos = todosAbertos.filter((o) => {
       const s = (o.status || "").toLowerCase();
       return s === "em aberto" || s === "em andamento" || s === "pendente";
     });
-    const { itens: todosPeriodo } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df });
     const fechados = todosPeriodo.filter((o) => {
       const s = (o.status || "").toLowerCase();
       return s === "aprovado" || s === "faturado" || s === "concluido" || s === "conclu\xEDdo";
@@ -12404,7 +16186,7 @@ var crmRouter = router({
       vendedores[v].valorFechado += parseFloat(o.valor_total ?? "0");
     }
     const db5 = await getDb3();
-    const metas = await db5.select().from(crmMetas).where(and15(eq18(crmMetas.mes, mes), eq18(crmMetas.ano, ano)));
+    const metas = await db5.select().from(crmMetas).where(and16(eq21(crmMetas.mes, mes), eq21(crmMetas.ano, ano)));
     const metaMap = {};
     for (const m of metas) metaMap[m.vendedor] = m;
     return Object.entries(vendedores).map(([nome, dados]) => ({
@@ -12415,30 +16197,30 @@ var crmRouter = router({
     })).sort((a, b) => b.valorFechado - a.valorFechado);
   }),
   // Contatos já registrados de uma proposta
-  getContatos: protectedProcedure.input(z19.object({ orcamentoId: z19.string() })).query(async ({ input }) => {
+  getContatos: protectedProcedure.input(z20.object({ orcamentoId: z20.string() })).query(async ({ input }) => {
     const db5 = await getDb3();
-    return db5.select().from(crmContatos).where(eq18(crmContatos.orcamentoId, input.orcamentoId)).orderBy(crmContatos.numeroContato);
+    return db5.select().from(crmContatos).where(eq21(crmContatos.orcamentoId, input.orcamentoId)).orderBy(crmContatos.numeroContato);
   }),
   // Buscar metas do mês com usuário vinculado
-  getMetas: protectedProcedure.input(z19.object({ mes: z19.number().optional(), ano: z19.number().optional() })).query(async ({ input }) => {
+  getMetas: protectedProcedure.input(z20.object({ mes: z20.number().optional(), ano: z20.number().optional() })).query(async ({ input }) => {
     const db5 = await getDb3();
     const now = /* @__PURE__ */ new Date();
     const mes = input.mes ?? now.getMonth() + 1;
     const ano = input.ano ?? now.getFullYear();
-    return db5.select().from(crmMetas).where(and15(eq18(crmMetas.mes, mes), eq18(crmMetas.ano, ano))).orderBy(crmMetas.vendedor);
+    return db5.select().from(crmMetas).where(and16(eq21(crmMetas.mes, mes), eq21(crmMetas.ano, ano))).orderBy(crmMetas.vendedor);
   }),
   // Salvar meta (cria ou atualiza)
-  salvarMeta: protectedProcedure.input(z19.object({
-    vendedor: z19.string(),
-    mes: z19.number(),
-    ano: z19.number(),
-    metaValor: z19.number().optional(),
-    metaQtdOs: z19.number().optional()
+  salvarMeta: protectedProcedure.input(z20.object({
+    vendedor: z20.string(),
+    mes: z20.number(),
+    ano: z20.number(),
+    metaValor: z20.number().optional(),
+    metaQtdOs: z20.number().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmMetas).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano))).limit(1);
+    const existing = await db5.select().from(crmMetas).where(and16(eq21(crmMetas.vendedor, input.vendedor), eq21(crmMetas.mes, input.mes), eq21(crmMetas.ano, input.ano))).limit(1);
     if (existing.length > 0) {
-      await db5.update(crmMetas).set({ metaValor: String(input.metaValor ?? 0), metaQtdOs: input.metaQtdOs ?? 0 }).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano)));
+      await db5.update(crmMetas).set({ metaValor: String(input.metaValor ?? 0), metaQtdOs: input.metaQtdOs ?? 0 }).where(and16(eq21(crmMetas.vendedor, input.vendedor), eq21(crmMetas.mes, input.mes), eq21(crmMetas.ano, input.ano)));
     } else {
       await db5.insert(crmMetas).values({
         vendedor: input.vendedor,
@@ -12451,17 +16233,17 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Vincular usuário do sistema a um vendedor
-  vincularUsuarioMeta: protectedProcedure.input(z19.object({
-    vendedor: z19.string(),
-    mes: z19.number(),
-    ano: z19.number(),
-    usuarioId: z19.string().nullable(),
-    usuarioNome: z19.string().nullable()
+  vincularUsuarioMeta: protectedProcedure.input(z20.object({
+    vendedor: z20.string(),
+    mes: z20.number(),
+    ano: z20.number(),
+    usuarioId: z20.string().nullable(),
+    usuarioNome: z20.string().nullable()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmMetas).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano))).limit(1);
+    const existing = await db5.select().from(crmMetas).where(and16(eq21(crmMetas.vendedor, input.vendedor), eq21(crmMetas.mes, input.mes), eq21(crmMetas.ano, input.ano))).limit(1);
     if (existing.length > 0) {
-      await db5.update(crmMetas).set({ usuarioVinculadoId: input.usuarioId, usuarioVinculadoNome: input.usuarioNome }).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano)));
+      await db5.update(crmMetas).set({ usuarioVinculadoId: input.usuarioId, usuarioVinculadoNome: input.usuarioNome }).where(and16(eq21(crmMetas.vendedor, input.vendedor), eq21(crmMetas.mes, input.mes), eq21(crmMetas.ano, input.ano)));
     } else {
       await db5.insert(crmMetas).values({
         vendedor: input.vendedor,
@@ -12476,34 +16258,34 @@ var crmRouter = router({
     return { ok: true };
   }),
   // Excluir vendedor das metas (remove todos os registros de metas do vendedor)
-  excluirVendedorMeta: protectedProcedure.input(z19.object({ vendedor: z19.string(), mes: z19.number(), ano: z19.number() })).mutation(async ({ input }) => {
+  excluirVendedorMeta: protectedProcedure.input(z20.object({ vendedor: z20.string(), mes: z20.number(), ano: z20.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    await db5.delete(crmMetas).where(and15(eq18(crmMetas.vendedor, input.vendedor), eq18(crmMetas.mes, input.mes), eq18(crmMetas.ano, input.ano)));
+    await db5.delete(crmMetas).where(and16(eq21(crmMetas.vendedor, input.vendedor), eq21(crmMetas.mes, input.mes), eq21(crmMetas.ano, input.ano)));
     return { ok: true };
   }),
   // ─── Scripts de vendas por faixa ─────────────────────────────────────────────
-  listScripts: protectedProcedure.input(z19.object({ faixa: z19.number().min(1).max(20) })).query(async ({ input }) => {
+  listScripts: protectedProcedure.input(z20.object({ faixa: z20.number().min(1).max(20) })).query(async ({ input }) => {
     const db5 = await getDb3();
-    return db5.select().from(crmScripts).where(and15(eq18(crmScripts.faixa, input.faixa), eq18(crmScripts.ativo, true))).orderBy(crmScripts.ordem);
+    return db5.select().from(crmScripts).where(and16(eq21(crmScripts.faixa, input.faixa), eq21(crmScripts.ativo, true))).orderBy(crmScripts.ordem);
   }),
-  updateScript: protectedProcedure.input(z19.object({
-    id: z19.number(),
-    titulo: z19.string().max(128).optional(),
-    conteudo: z19.string().min(1),
-    conteudo_voz: z19.string().optional()
+  updateScript: protectedProcedure.input(z20.object({
+    id: z20.number(),
+    titulo: z20.string().max(128).optional(),
+    conteudo: z20.string().min(1),
+    conteudo_voz: z20.string().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    await db5.update(crmScripts).set({ titulo: input.titulo, conteudo: input.conteudo, conteudo_voz: input.conteudo_voz ?? null }).where(eq18(crmScripts.id, input.id));
+    await db5.update(crmScripts).set({ titulo: input.titulo, conteudo: input.conteudo, conteudo_voz: input.conteudo_voz ?? null }).where(eq21(crmScripts.id, input.id));
     return { ok: true };
   }),
-  addScript: protectedProcedure.input(z19.object({
-    faixa: z19.number().min(1).max(20),
-    titulo: z19.string().max(128).optional(),
-    conteudo: z19.string().min(1),
-    conteudo_voz: z19.string().optional()
+  addScript: protectedProcedure.input(z20.object({
+    faixa: z20.number().min(1).max(20),
+    titulo: z20.string().max(128).optional(),
+    conteudo: z20.string().min(1),
+    conteudo_voz: z20.string().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    const existing = await db5.select({ ordem: crmScripts.ordem }).from(crmScripts).where(eq18(crmScripts.faixa, input.faixa)).orderBy(desc9(crmScripts.ordem)).limit(1);
+    const existing = await db5.select({ ordem: crmScripts.ordem }).from(crmScripts).where(eq21(crmScripts.faixa, input.faixa)).orderBy(desc10(crmScripts.ordem)).limit(1);
     const nextOrdem = (existing[0]?.ordem ?? 0) + 1;
     const [inserted] = await db5.insert(crmScripts).values({
       faixa: input.faixa,
@@ -12514,47 +16296,80 @@ var crmRouter = router({
     }).returning({ id: crmScripts.id });
     return { ok: true, id: inserted.id };
   }),
-  deleteScript: protectedProcedure.input(z19.object({ id: z19.number() })).mutation(async ({ input }) => {
+  deleteScript: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
-    await db5.update(crmScripts).set({ ativo: false }).where(eq18(crmScripts.id, input.id));
+    await db5.update(crmScripts).set({ ativo: false }).where(eq21(crmScripts.id, input.id));
     return { ok: true };
   }),
-  incrementCopiaCount: protectedProcedure.input(z19.object({ id: z19.number() })).mutation(async ({ input }) => {
+  incrementCopiaCount: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     await db5.execute(sql9`UPDATE crm_scripts SET copia_count = copia_count + 1 WHERE id = ${input.id}`);
     return { ok: true };
   }),
-  reorderScripts: protectedProcedure.input(z19.object({
-    faixa: z19.number().min(1).max(20),
-    orderedIds: z19.array(z19.number())
+  reorderScripts: protectedProcedure.input(z20.object({
+    faixa: z20.number().min(1).max(20),
+    orderedIds: z20.array(z20.number())
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     await Promise.all(
       input.orderedIds.map(
-        (id, index2) => db5.update(crmScripts).set({ ordem: index2 }).where(eq18(crmScripts.id, id))
+        (id, index2) => db5.update(crmScripts).set({ ordem: index2 }).where(eq21(crmScripts.id, id))
       )
     );
     return { ok: true };
   }),
-  // ─── Etiquetas das Faixas ────────────────────────────────────────────────────
+  // ─── Faixas de follow-up (dias úteis + etiqueta) ─────────────────────────────
+  // Fonte única de verdade para os cortes de dias das 3 faixas de follow-up,
+  // consumida por CRM.tsx (colunas/filtro/agenda), ScriptsFaixaPopover.tsx,
+  // CRMConfig.tsx e InteligenteClientes.tsx (SecaoTempoFollowUp). Defaults
+  // calibrados em setembro/2026 pela distribuição real de dias úteis até o
+  // fechamento (calcularTempoOrcamentoPedido): cum. 0-2du≈67%, 0-5du≈79%,
+  // 0-10du≈89% dos orçamentos ganhos observados.
   getFaixaEtiquetas: protectedProcedure.query(async () => {
     const db5 = await getDb3();
     const rows = await db5.select().from(crmFaixaEtiquetas).orderBy(crmFaixaEtiquetas.faixa);
-    const defaults = { 1: "Faixa 1 (1-3 du)", 2: "Faixa 2 (4-7 du)", 3: "Faixa 3 (8-15 du)" };
-    const result = { ...defaults };
-    for (const row of rows) result[row.faixa] = row.label;
+    const result = { ...FAIXA_DEFAULTS };
+    for (const row of rows) {
+      if (row.faixa === 1 || row.faixa === 2 || row.faixa === 3) {
+        result[row.faixa] = { faixa: row.faixa, label: row.label, diasInicio: row.diasInicio, diasFim: row.diasFim };
+      }
+    }
     return result;
   }),
-  saveFaixaEtiqueta: protectedProcedure.input(z19.object({
-    faixa: z19.number().min(1).max(3),
-    label: z19.string().min(1).max(128)
+  saveFaixas: protectedProcedure.input(z20.object({
+    faixas: z20.array(z20.object({
+      faixa: z20.number().int().min(1).max(3),
+      label: z20.string().min(1).max(128),
+      diasInicio: z20.number().int().min(1),
+      diasFim: z20.number().int().min(1)
+    })).length(3)
   })).mutation(async ({ input }) => {
+    const ordenadas = [...input.faixas].sort((a, b) => a.faixa - b.faixa);
+    const faixasVistas = new Set(ordenadas.map((f2) => f2.faixa));
+    if (faixasVistas.size !== 3 || ![1, 2, 3].every((f2) => faixasVistas.has(f2))) {
+      throw new TRPCError4({ code: "BAD_REQUEST", message: "\xC9 necess\xE1rio enviar exatamente as faixas 1, 2 e 3." });
+    }
+    for (const f2 of ordenadas) {
+      if (f2.diasFim < f2.diasInicio) {
+        throw new TRPCError4({ code: "BAD_REQUEST", message: `Faixa ${f2.faixa}: o dia final n\xE3o pode ser menor que o dia inicial.` });
+      }
+    }
+    for (let i = 1; i < ordenadas.length; i++) {
+      if (ordenadas[i].diasInicio <= ordenadas[i - 1].diasFim) {
+        throw new TRPCError4({
+          code: "BAD_REQUEST",
+          message: `Faixa ${ordenadas[i].faixa} (dia ${ordenadas[i].diasInicio}) n\xE3o pode come\xE7ar antes ou no mesmo dia em que termina a Faixa ${ordenadas[i - 1].faixa} (dia ${ordenadas[i - 1].diasFim}).`
+        });
+      }
+    }
     const db5 = await getDb3();
-    const existing = await db5.select().from(crmFaixaEtiquetas).where(eq18(crmFaixaEtiquetas.faixa, input.faixa));
-    if (existing.length > 0) {
-      await db5.update(crmFaixaEtiquetas).set({ label: input.label }).where(eq18(crmFaixaEtiquetas.faixa, input.faixa));
-    } else {
-      await db5.insert(crmFaixaEtiquetas).values({ faixa: input.faixa, label: input.label });
+    for (const f2 of ordenadas) {
+      const existing = await db5.select().from(crmFaixaEtiquetas).where(eq21(crmFaixaEtiquetas.faixa, f2.faixa));
+      if (existing.length > 0) {
+        await db5.update(crmFaixaEtiquetas).set({ label: f2.label, diasInicio: f2.diasInicio, diasFim: f2.diasFim }).where(eq21(crmFaixaEtiquetas.faixa, f2.faixa));
+      } else {
+        await db5.insert(crmFaixaEtiquetas).values({ faixa: f2.faixa, label: f2.label, diasInicio: f2.diasInicio, diasFim: f2.diasFim });
+      }
     }
     return { ok: true };
   }),
@@ -12564,22 +16379,22 @@ var crmRouter = router({
    * Inclui os 7 blocos: rotina, volume por faixa, descartes, limbo, velocidade suspeita,
    * ranking e diagnóstico.
    */
-  getAuditoria: protectedProcedure.input(z19.object({
-    dataInicio: z19.string(),
+  getAuditoria: protectedProcedure.input(z20.object({
+    dataInicio: z20.string(),
     // ISO date "YYYY-MM-DD"
-    dataFim: z19.string(),
+    dataFim: z20.string(),
     // ISO date "YYYY-MM-DD"
-    vendedor: z19.string().optional()
+    vendedor: z20.string().optional()
     // undefined = todos
   })).query(async ({ input }) => {
     const db5 = await getDb3();
     const inicio = /* @__PURE__ */ new Date(input.dataInicio + "T03:00:00.000Z");
     const fim = /* @__PURE__ */ new Date(input.dataFim + "T26:59:59.999Z");
-    const logsWhere = input.vendedor ? and15(
+    const logsWhere = input.vendedor ? and16(
       sql9`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
       sql9`${crmAtividadeLog.realizadaEm} <= ${fim}`,
-      eq18(crmAtividadeLog.vendedor, input.vendedor)
-    ) : and15(
+      eq21(crmAtividadeLog.vendedor, input.vendedor)
+    ) : and16(
       sql9`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
       sql9`${crmAtividadeLog.realizadaEm} <= ${fim}`
     );
@@ -12622,7 +16437,7 @@ var crmRouter = router({
       const aderencia = totalDias > 0 ? Math.round((manhasOk + tardesOk) / (totalDias * 2) * 100) : 0;
       return { vendedor: v, manhasOk, tardesOk, totalDias, aderencia, dias: diasDetalhes };
     });
-    const contatosNoPeriodo = await db5.select().from(crmContatos).where(and15(
+    const contatosNoPeriodo = await db5.select().from(crmContatos).where(and16(
       sql9`${crmContatos.contatadoEm} >= ${inicio}`,
       sql9`${crmContatos.contatadoEm} <= ${fim}`,
       sql9`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
@@ -12767,16 +16582,16 @@ var crmRouter = router({
    * Retorna o log bruto de atividade de um vendedor em um dia específico.
    * Usado para drill-down no calendário.
    */
-  getLogDia: protectedProcedure.input(z19.object({
-    vendedor: z19.string(),
-    data: z19.string()
+  getLogDia: protectedProcedure.input(z20.object({
+    vendedor: z20.string(),
+    data: z20.string()
     // "YYYY-MM-DD"
   })).query(async ({ input }) => {
     const db5 = await getDb3();
     const inicio = /* @__PURE__ */ new Date(input.data + "T03:00:00.000Z");
     const fim = /* @__PURE__ */ new Date(input.data + "T26:59:59.999Z");
-    const logs = await db5.select().from(crmAtividadeLog).where(and15(
-      eq18(crmAtividadeLog.vendedor, input.vendedor),
+    const logs = await db5.select().from(crmAtividadeLog).where(and16(
+      eq21(crmAtividadeLog.vendedor, input.vendedor),
       sql9`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
       sql9`${crmAtividadeLog.realizadaEm} <= ${fim}`
     )).orderBy(crmAtividadeLog.realizadaEm);
@@ -12793,11 +16608,868 @@ var crmRouter = router({
   })
 });
 
-// server/routers/custoLed.ts
-import { z as z20 } from "zod";
+// server/routers/leadsCnpj.ts
+init_trpc();
 init_db();
 init_schema();
-import { eq as eq19, and as and16 } from "drizzle-orm";
+init_opencnpj_client();
+import { z as z21 } from "zod";
+import { eq as eq22, desc as desc11, and as and17 } from "drizzle-orm";
+
+// server/services/qualificacaoLeadCnpj.ts
+var CNAES_ALVO = [
+  { codigo: "3299-0/03", descricao: "Fabrica\xE7\xE3o de letras, letreiros e placas de qualquer material, exceto luminosos", confianca: "alta" },
+  { codigo: "3299-0/04", descricao: "Fabrica\xE7\xE3o de pain\xE9is e letreiros luminosos", confianca: "alta" },
+  { codigo: "4329-1/01", descricao: "Instala\xE7\xE3o de pain\xE9is publicit\xE1rios", confianca: "alta" },
+  { codigo: "1813-0/01", descricao: "Impress\xE3o de material para uso publicit\xE1rio", confianca: "media" },
+  { codigo: "1813-0/99", descricao: "Impress\xE3o de material para outros usos", confianca: "media" },
+  { codigo: "7410-2/02", descricao: "Design publicit\xE1rio e gr\xE1fico", confianca: "media" },
+  { codigo: "7311-4/00", descricao: "Ag\xEAncias de publicidade", confianca: "media" },
+  { codigo: "7319-0/99", descricao: "Outras atividades de publicidade n\xE3o especificadas anteriormente", confianca: "media" }
+];
+function normalizarCodigoCnae(codigo) {
+  return codigo.replace(/\D/g, "");
+}
+var CNAES_ALVO_NORMALIZADOS = CNAES_ALVO.map((c) => ({ ...c, codigoNorm: normalizarCodigoCnae(c.codigo) }));
+function pontosPorte(porte) {
+  const p = porte.trim().toLowerCase();
+  if (p.includes("demais") || p.includes("grande")) return 100;
+  if (p.includes("epp") || p.includes("pequeno porte")) return 80;
+  if (p.includes("me") || p.includes("microempresa")) return 40;
+  return 40;
+}
+function parseCapitalSocial(valor) {
+  const limpo = valor.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(limpo);
+  return isNaN(n) ? 0 : n;
+}
+function pontosCapitalSocial(valor) {
+  if (valor >= 5e5) return 100;
+  if (valor >= 1e5) return 70;
+  if (valor >= 2e4) return 40;
+  return 15;
+}
+function idadeAnos(dataInicioAtividade, hoje) {
+  const d = new Date(dataInicioAtividade);
+  if (isNaN(d.getTime())) return 0;
+  return (hoje.getTime() - d.getTime()) / (365.25 * 864e5);
+}
+function pontosIdade(anos) {
+  if (anos >= 3) return 100;
+  if (anos >= 1) return 60;
+  return 30;
+}
+function letraDaPontuacao(pontos) {
+  if (pontos >= 75) return "A";
+  if (pontos >= 55) return "B";
+  if (pontos >= 35) return "C";
+  return "D";
+}
+function rebaixarLetra(letra) {
+  if (letra === "A") return "B";
+  if (letra === "B") return "C";
+  if (letra === "C") return "D";
+  return "D";
+}
+function qualificarLeadCnpj(dados, hoje = /* @__PURE__ */ new Date()) {
+  if ((dados.situacao_cadastral ?? "").trim().toLowerCase() !== "ativa") {
+    return {
+      aprovado: false,
+      motivoRejeicao: `Situa\xE7\xE3o cadastral "${dados.situacao_cadastral}" \u2014 s\xF3 empresas "Ativa" s\xE3o qualificadas.`,
+      cnaesRelevantes: [],
+      melhorConfianca: null,
+      score: null,
+      fatoresScore: null
+    };
+  }
+  const todosCnaes = dados.cnaes ?? [];
+  const cnaesRelevantes = [];
+  for (const cnae of todosCnaes) {
+    const codigoNorm = normalizarCodigoCnae(cnae.codigo);
+    const alvo = CNAES_ALVO_NORMALIZADOS.find((a) => a.codigoNorm === codigoNorm);
+    if (alvo) {
+      cnaesRelevantes.push({ codigo: cnae.codigo, descricao: alvo.descricao, confianca: alvo.confianca, isPrincipal: cnae.is_principal });
+    }
+  }
+  if (cnaesRelevantes.length === 0) {
+    return {
+      aprovado: false,
+      motivoRejeicao: "Nenhum CNAE (principal ou secund\xE1rio) corresponde \xE0 lista-alvo de gr\xE1ficas/comunica\xE7\xE3o visual/sinaliza\xE7\xE3o.",
+      cnaesRelevantes: [],
+      melhorConfianca: null,
+      score: null,
+      fatoresScore: null
+    };
+  }
+  const melhorConfianca = cnaesRelevantes.some((c) => c.confianca === "alta") ? "alta" : "media";
+  const pPorte = pontosPorte(dados.porte_empresa);
+  const capitalNum = parseCapitalSocial(dados.capital_social);
+  const pCapital = pontosCapitalSocial(capitalNum);
+  const anos = idadeAnos(dados.data_inicio_atividade, hoje);
+  const pIdade = pontosIdade(anos);
+  const pontuacaoBruta = pPorte * 0.4 + pCapital * 0.35 + pIdade * 0.25;
+  let letra = letraDaPontuacao(pontuacaoBruta);
+  const ajusteConfiancaMedia = melhorConfianca === "media";
+  if (ajusteConfiancaMedia) letra = rebaixarLetra(letra);
+  return {
+    aprovado: true,
+    motivoRejeicao: null,
+    cnaesRelevantes,
+    melhorConfianca,
+    score: letra,
+    fatoresScore: {
+      porte: { valor: dados.porte_empresa, pontos: pPorte, peso: 0.4 },
+      capitalSocial: { valorNumerico: capitalNum, pontos: pCapital, peso: 0.35 },
+      idadeAnos: { valor: Number(anos.toFixed(1)), pontos: pIdade, peso: 0.25 },
+      pontuacaoBruta: Number(pontuacaoBruta.toFixed(1)),
+      ajusteConfiancaMedia
+    }
+  };
+}
+var VERSAO_PROMPT_LEAD_CNPJ = "v1";
+var PROMPT_LEAD_CNPJ_V1 = `Voc\xEA \xE9 um analista de qualifica\xE7\xE3o de leads B2B para uma f\xE1brica de letras met\xE1licas, letras-caixa, letreiros luminosos e fachadas comerciais que vende exclusivamente por terceiriza\xE7\xE3o \u2014 para gr\xE1ficas, ag\xEAncias de comunica\xE7\xE3o visual, bir\xF4s de impress\xE3o e empresas de sinaliza\xE7\xE3o, nunca para o cliente final.
+
+Voc\xEA recebe: os dados cadastrais de uma empresa j\xE1 aprovada pela regra de filtro (situa\xE7\xE3o ativa, CNAE compat\xEDvel) e o score determin\xEDstico (A/B/C/D) j\xE1 calculado pelo sistema, com os fatores que o compuseram. N\xE3o recalcule o score nem invente dados que n\xE3o estejam no JSON fornecido.
+
+Produza tr\xEAs se\xE7\xF5es, curtas e diretas:
+
+1. "Potencial do lead": com base em porte, capital social, idade da empresa e o(s) CNAE(s) que bateram na lista-alvo, estime se a empresa provavelmente compra letreiro em volume alto, m\xE9dio ou baixo \u2014 e diga explicitamente que \xE9 uma estimativa por porte cadastral, n\xE3o um dado de compra real (o sistema n\xE3o tem acesso ao volume de compras dessa empresa).
+
+2. "Argumento de venda B2B": aponte a dor de terceiriza\xE7\xE3o mais prov\xE1vel para o perfil dessa empresa (ex.: uma empresa de instala\xE7\xE3o de pain\xE9is sem CNAE de fabrica\xE7\xE3o provavelmente terceiriza 100% da produ\xE7\xE3o; uma ag\xEAncia de design provavelmente n\xE3o tem estrutura fabril nenhuma; uma gr\xE1fica com CNAE de impress\xE3o publicit\xE1ria pode estar tentando expandir para letreiro sem ter maquin\xE1rio). Formule como uma pergunta ou abertura de conversa, nunca como afirma\xE7\xE3o de fato sobre a empresa espec\xEDfica.
+
+3. "Quem abordar": olhando o QSA, identifique o(s) s\xF3cio(s) com qualifica\xE7\xE3o mais prov\xE1vel de decidir sobre fornecedores (ex.: "Administrador", "S\xF3cio-Administrador", "Diretor") \u2014 se houver mais de um nome plaus\xEDvel, liste todos sem apontar um \xFAnico "respons\xE1vel" fabricado. Se o QSA n\xE3o tiver ningu\xE9m com qualifica\xE7\xE3o decis\xF3ria clara, diga isso e sugira abordar pelo contato institucional da empresa.
+
+Nunca prometa condi\xE7\xF5es comerciais, nunca afirme que a empresa "com certeza" compra ou vai comprar, e nunca trate o score de ader\xEAncia como uma garantia. Separe sempre fato cadastral (o que est\xE1 no JSON) de hip\xF3tese comercial (o que voc\xEA est\xE1 inferindo). Responda em portugu\xEAs do Brasil.`;
+function montarMensagemLeadCnpj(dados, resultado) {
+  const cadastro = {
+    razao_social: dados.razao_social,
+    nome_fantasia: dados.nome_fantasia,
+    municipio: dados.municipio,
+    uf: dados.uf,
+    porte_empresa: dados.porte_empresa,
+    capital_social: dados.capital_social,
+    data_inicio_atividade: dados.data_inicio_atividade,
+    natureza_juridica: dados.natureza_juridica,
+    QSA: (dados.QSA ?? []).map((s) => ({ nome: s.nome_socio, qualificacao: s.qualificacao_socio, desde: s.data_entrada_sociedade }))
+  };
+  return JSON.stringify({
+    dadosCadastrais: cadastro,
+    cnaesQueBateramNaListaAlvo: resultado.cnaesRelevantes,
+    scoreCalculado: resultado.score,
+    fatoresDoScore: resultado.fatoresScore
+  }, null, 2);
+}
+
+// server/routers/leadsCnpj.ts
+init_llm();
+var leadsCnpjRouter = router({
+  // ─── Qualificação de Leads por CNPJ ──────────────────────────────────────
+  // Ver docs/inteligencia-mercado-leads-cnpj.md. Fonte: OpenCNPJ (gratuita,
+  // sem chave). Score é heurística determinística — não é probabilidade de compra.
+  consultar: protectedProcedure.input(z21.object({ cnpj: z21.string().min(11) })).mutation(async ({ ctx, input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const cnpjLimpo = normalizarCnpj(input.cnpj);
+    let dados;
+    try {
+      dados = await consultarCnpj(cnpjLimpo);
+    } catch (e) {
+      if (e instanceof CnpjNaoEncontradoError) throw new Error(e.message);
+      throw e;
+    }
+    const resultado = qualificarLeadCnpj(dados);
+    const agora = /* @__PURE__ */ new Date();
+    let resumoIa = null;
+    if (resultado.aprovado) {
+      try {
+        const resp = await invokeLLM({
+          messages: [
+            { role: "system", content: PROMPT_LEAD_CNPJ_V1 },
+            { role: "user", content: montarMensagemLeadCnpj(dados, resultado) }
+          ]
+        });
+        const conteudo = resp.choices?.[0]?.message?.content;
+        resumoIa = typeof conteudo === "string" ? conteudo : null;
+      } catch {
+        resumoIa = null;
+      }
+    }
+    const valores = {
+      cnpj: cnpjLimpo,
+      razaoSocial: dados.razao_social,
+      nomeFantasia: dados.nome_fantasia || null,
+      uf: dados.uf || null,
+      municipio: dados.municipio || null,
+      cnaePrincipal: dados.cnae_principal || null,
+      situacaoCadastral: dados.situacao_cadastral || null,
+      porte: dados.porte_empresa || null,
+      capitalSocial: dados.capital_social ? dados.capital_social.replace(/\./g, "").replace(",", ".") : null,
+      dataInicioAtividade: dados.data_inicio_atividade || null,
+      aprovado: resultado.aprovado,
+      score: resultado.score,
+      motivoRejeicao: resultado.motivoRejeicao,
+      cnaesRelevantesJson: JSON.stringify(resultado.cnaesRelevantes),
+      fatoresScoreJson: resultado.fatoresScore ? JSON.stringify(resultado.fatoresScore) : null,
+      qsaJson: JSON.stringify(dados.QSA ?? []),
+      dadosJson: JSON.stringify(dados),
+      resumoIa,
+      versaoPromptIa: resumoIa ? VERSAO_PROMPT_LEAD_CNPJ : null,
+      consultadoPor: ctx.user?.name ?? ctx.user?.id ?? "desconhecido",
+      consultadoEm: agora,
+      updatedAt: agora
+    };
+    const existente = await db5.select({ id: leadsCnpjQualificados.id }).from(leadsCnpjQualificados).where(eq22(leadsCnpjQualificados.cnpj, cnpjLimpo)).limit(1);
+    if (existente.length > 0) {
+      await db5.update(leadsCnpjQualificados).set(valores).where(eq22(leadsCnpjQualificados.cnpj, cnpjLimpo));
+    } else {
+      await db5.insert(leadsCnpjQualificados).values(valores);
+    }
+    return { dados, resultado, resumoIa };
+  }),
+  listar: protectedProcedure.input(z21.object({
+    score: z21.enum(["A", "B", "C", "D"]).optional(),
+    uf: z21.string().length(2).optional()
+  })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const filtros = [];
+    if (input.score) filtros.push(eq22(leadsCnpjQualificados.score, input.score));
+    if (input.uf) filtros.push(eq22(leadsCnpjQualificados.uf, input.uf));
+    const rows = await db5.select().from(leadsCnpjQualificados).where(filtros.length > 0 ? and17(...filtros) : void 0).orderBy(desc11(leadsCnpjQualificados.consultadoEm));
+    return rows.map((r) => ({
+      ...r,
+      cnaesRelevantes: r.cnaesRelevantesJson ? JSON.parse(r.cnaesRelevantesJson) : [],
+      fatoresScore: r.fatoresScoreJson ? JSON.parse(r.fatoresScoreJson) : null,
+      qsa: r.qsaJson ? JSON.parse(r.qsaJson) : []
+    }));
+  })
+});
+
+// server/routers/perfilClientesCnpj.ts
+init_trpc();
+init_db();
+init_schema();
+init_opencnpj_client();
+init_mubisys_client();
+init_performanceComercial();
+import { z as z22 } from "zod";
+import { eq as eq23 } from "drizzle-orm";
+
+// server/services/perfilClienteCnpj.ts
+function contarDistribuicao(valores, topN) {
+  const total = valores.filter((v) => v !== null).length;
+  const contagem = /* @__PURE__ */ new Map();
+  for (const v of valores) {
+    if (v === null) continue;
+    contagem.set(v, (contagem.get(v) ?? 0) + 1);
+  }
+  let entradas = [...contagem.entries()].map(([chave, quantidade]) => ({ chave, quantidade, pct: total > 0 ? quantidade / total * 100 : 0 }));
+  entradas.sort((a, b) => b.quantidade - a.quantidade);
+  if (topN) entradas = entradas.slice(0, topN);
+  return entradas;
+}
+function calcularPerfilAgregado(perfis, totalClientesBase) {
+  const totalMapeados = perfis.length;
+  const comIdade = perfis.filter((p) => p.idadeAnos !== null);
+  const maior3Anos = comIdade.filter((p) => Number(p.idadeAnos) >= 3).length;
+  const comSocios = perfis.filter((p) => p.qtdSocios !== null);
+  const doisOuMaisSocios = comSocios.filter((p) => (p.qtdSocios ?? 0) >= 2).length;
+  const faixasIdade = [
+    { chave: "menos de 1 ano", min: 0, max: 1 },
+    { chave: "1 a 3 anos", min: 1, max: 3 },
+    { chave: "3 a 10 anos", min: 3, max: 10 },
+    { chave: "10+ anos", min: 10, max: Infinity }
+  ];
+  const distribuicaoIdade = faixasIdade.map((f2) => {
+    const qtd = comIdade.filter((p) => {
+      const a = Number(p.idadeAnos);
+      return a >= f2.min && a < f2.max;
+    }).length;
+    return { chave: f2.chave, quantidade: qtd, pct: comIdade.length > 0 ? qtd / comIdade.length * 100 : 0 };
+  });
+  return {
+    totalClientesBase,
+    totalMapeados,
+    coberturaPct: totalClientesBase > 0 ? totalMapeados / totalClientesBase * 100 : 0,
+    pctIdadeMaior3Anos: comIdade.length > 0 ? maior3Anos / comIdade.length * 100 : null,
+    pctDoisOuMaisSocios: comSocios.length > 0 ? doisOuMaisSocios / comSocios.length * 100 : null,
+    distribuicaoPorte: contarDistribuicao(perfis.map((p) => p.porte)),
+    distribuicaoNaturezaJuridica: contarDistribuicao(perfis.map((p) => p.naturezaJuridica), 8),
+    distribuicaoUf: contarDistribuicao(perfis.map((p) => p.uf), 8),
+    distribuicaoIdade
+  };
+}
+
+// server/routers/perfilClientesCnpj.ts
+function parseDataOsFlexivel(s) {
+  if (!s) return null;
+  const texto = s.trim();
+  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  return null;
+}
+function classificarDocumento(doc) {
+  const limpo = doc.replace(/\D/g, "");
+  if (limpo.length === 14) return { tipo: "cnpj", limpo };
+  if (limpo.length === 11) return { tipo: "cpf", limpo };
+  return { tipo: "invalido", limpo };
+}
+function extrairCamposPerfil(dados) {
+  const idadeAnos2 = (() => {
+    const d = new Date(dados.data_inicio_atividade);
+    if (isNaN(d.getTime())) return null;
+    return Number(((Date.now() - d.getTime()) / (365.25 * 864e5)).toFixed(1));
+  })();
+  return {
+    razaoSocial: dados.razao_social,
+    situacaoCadastral: dados.situacao_cadastral || null,
+    dataInicioAtividade: dados.data_inicio_atividade || null,
+    idadeAnos: idadeAnos2 !== null ? String(idadeAnos2) : null,
+    porte: dados.porte_empresa || null,
+    naturezaJuridica: dados.natureza_juridica || null,
+    qtdSocios: Array.isArray(dados.QSA) ? dados.QSA.length : null,
+    capitalSocial: dados.capital_social ? dados.capital_social.replace(/\./g, "").replace(",", ".") : null,
+    uf: dados.uf || null,
+    municipio: dados.municipio || null,
+    cnaePrincipal: dados.cnae_principal || null,
+    dadosJson: JSON.stringify(dados)
+  };
+}
+var perfilClientesCnpjRouter = router({
+  // ─── Perfil de Clientes por CNPJ (Inteligência de Clientes) ──────────────
+  // Enriquecimento manual/semi-automático — ver server/services/perfilClienteCnpj.ts
+  // e a nota de limitação na definição de clientesPerfilCnpj (drizzle/schema.ts).
+  getPerfilAgregado: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const [perfis, osRows] = await Promise.all([
+      db5.select().from(clientesPerfilCnpj),
+      db5.select({ empresa: historicoOs.empresa, tipoOs: historicoOs.tipoOs, status: historicoOs.status }).from(historicoOs)
+    ]);
+    const clientesDistintos = /* @__PURE__ */ new Set();
+    for (const r of osRows) {
+      if (!isOsNormalDb(r)) continue;
+      const nome = (r.empresa ?? "").trim();
+      if (nome) clientesDistintos.add(normalizeEmpresaKey(nome));
+    }
+    return calcularPerfilAgregado(perfis, clientesDistintos.size);
+  }),
+  listarPerfis: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    return db5.select().from(clientesPerfilCnpj).orderBy(clientesPerfilCnpj.empresaExibicao);
+  }),
+  /** Clientes da base (historico_os) ainda sem perfil de CNPJ vinculado —
+   * ordenados por valor histórico comprado (prioriza enriquecer quem mais
+   * compra). Filtro opcional por data: só considera quem comprou dentro da
+   * janela informada (aplicado à data de aprovação da OS). */
+  listarClientesSemCnpj: publicProcedure.input(z22.object({
+    limite: z22.number().min(1).max(500).default(100),
+    dataInicial: z22.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    dataFinal: z22.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const [osRows, mapeados] = await Promise.all([
+      db5.select({
+        empresa: historicoOs.empresa,
+        tipoOs: historicoOs.tipoOs,
+        status: historicoOs.status,
+        valorTotal: historicoOs.valorTotal,
+        valorOs: historicoOs.valorOs,
+        osNumero: historicoOs.osNumero,
+        dataAprovacao: historicoOs.dataAprovacao
+      }).from(historicoOs),
+      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj)
+    ]);
+    const jaMapeados = new Set(mapeados.map((m) => m.empresaKey));
+    const dataIni = input.dataInicial ? new Date(input.dataInicial) : null;
+    const dataFim = input.dataFinal ? /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`) : null;
+    const porCliente = /* @__PURE__ */ new Map();
+    for (const r of osRows) {
+      if (!isOsNormalDb(r)) continue;
+      const nome = (r.empresa ?? "").trim();
+      if (!nome) continue;
+      const dataOs = parseDataOsFlexivel(r.dataAprovacao);
+      if (dataIni && (!dataOs || dataOs < dataIni)) continue;
+      if (dataFim && (!dataOs || dataOs > dataFim)) continue;
+      const key = normalizeEmpresaKey(nome);
+      if (jaMapeados.has(key)) continue;
+      const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
+      const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
+      atual.valor += valor;
+      if (r.osNumero && dataOs && (!atual.dataMaisRecente || dataOs > atual.dataMaisRecente)) {
+        atual.osMaisRecente = r.osNumero;
+        atual.dataMaisRecente = dataOs;
+      }
+      porCliente.set(key, atual);
+    }
+    return [...porCliente.entries()].map(([empresaKey, v]) => ({ empresaKey, empresa: v.empresa, valorHistorico: v.valor, osReferencia: v.osMaisRecente })).sort((a, b) => b.valorHistorico - a.valorHistorico).slice(0, input.limite);
+  }),
+  /** Vincula um CNPJ a um cliente manualmente — consulta a OpenCNPJ e grava o perfil. */
+  vincularCnpj: protectedProcedure.input(z22.object({ empresaKey: z22.string().min(1), empresaExibicao: z22.string().min(1), cnpj: z22.string().min(11) })).mutation(async ({ ctx, input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const cnpjLimpo = normalizarCnpj(input.cnpj);
+    let dados;
+    try {
+      dados = await consultarCnpj(cnpjLimpo);
+    } catch (e) {
+      if (e instanceof CnpjNaoEncontradoError) throw new Error(e.message);
+      throw e;
+    }
+    const campos = extrairCamposPerfil(dados);
+    const agora = /* @__PURE__ */ new Date();
+    const valores = {
+      empresaKey: input.empresaKey,
+      empresaExibicao: input.empresaExibicao,
+      cnpj: cnpjLimpo,
+      ...campos,
+      origem: "manual",
+      vinculadoPor: ctx.user?.name ?? ctx.user?.id ?? "desconhecido",
+      vinculadoEm: agora,
+      updatedAt: agora
+    };
+    const existente = await db5.select({ id: clientesPerfilCnpj.id }).from(clientesPerfilCnpj).where(eq23(clientesPerfilCnpj.empresaKey, input.empresaKey)).limit(1);
+    if (existente.length > 0) {
+      await db5.update(clientesPerfilCnpj).set(valores).where(eq23(clientesPerfilCnpj.empresaKey, input.empresaKey));
+    } else {
+      await db5.insert(clientesPerfilCnpj).values(valores);
+    }
+    return { ok: true, dados };
+  }),
+  /** Backfill automático a partir de erp_os_cache (cache de outra funcionalidade,
+   * cotação de frete, que por acaso guarda CNPJ) — cobre uma fração pequena da
+   * carteira (só quem já teve cotação de frete gerada), mas é dado real já
+   * disponível, sem custo. Roda sequencialmente com tolerância a falha por item. */
+  sincronizarDeErpCache: protectedProcedure.mutation(async () => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const [cacheRows, mapeados] = await Promise.all([
+      db5.select({ razaoSocial: erpOsCache.razaoSocial, cnpj: erpOsCache.cnpj }).from(erpOsCache),
+      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj)
+    ]);
+    const jaMapeados = new Set(mapeados.map((m) => m.empresaKey));
+    const candidatos = /* @__PURE__ */ new Map();
+    for (const r of cacheRows) {
+      if (!r.razaoSocial || !r.cnpj) continue;
+      const key = normalizeEmpresaKey(r.razaoSocial);
+      if (jaMapeados.has(key) || candidatos.has(key)) continue;
+      candidatos.set(key, { empresa: r.razaoSocial, cnpj: r.cnpj });
+    }
+    let sucesso = 0, falha = 0;
+    const agora = /* @__PURE__ */ new Date();
+    for (const [empresaKey, c] of candidatos) {
+      try {
+        const cnpjLimpo = normalizarCnpj(c.cnpj);
+        const dados = await consultarCnpj(cnpjLimpo);
+        const campos = extrairCamposPerfil(dados);
+        await db5.insert(clientesPerfilCnpj).values({
+          empresaKey,
+          empresaExibicao: c.empresa,
+          cnpj: cnpjLimpo,
+          ...campos,
+          origem: "erp_os_cache",
+          vinculadoEm: agora,
+          updatedAt: agora
+        });
+        sucesso++;
+      } catch {
+        falha++;
+      }
+    }
+    return { tentativas: candidatos.size, sucesso, falha };
+  }),
+  /** Preenche CNPJ automaticamente consultando a API AO VIVO do MubiSys: cada
+   * OS já traz `cliente_cnpj_cpf` (confirmado em docs/integracao-mubisys.md).
+   * Para cada cliente candidato, busca uma OS de referência dele e lê o
+   * documento direto do ERP — sem precisar digitar nada manualmente. Clientes
+   * pessoa física (CPF, 11 dígitos) são pulados: OpenCNPJ só cobre CNPJ.
+   * Processa em lote pequeno (a API do MubiSys é lenta/instável, ver
+   * docs/integracao-mubisys.md) — clique de novo para continuar o restante. */
+  enriquecerViaMubisys: protectedProcedure.input(z22.object({
+    limite: z22.number().min(1).max(30).default(15),
+    dataInicial: z22.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    dataFinal: z22.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  })).mutation(async ({ input, ctx }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const [osRows, mapeados] = await Promise.all([
+      db5.select({
+        empresa: historicoOs.empresa,
+        tipoOs: historicoOs.tipoOs,
+        status: historicoOs.status,
+        valorTotal: historicoOs.valorTotal,
+        valorOs: historicoOs.valorOs,
+        osNumero: historicoOs.osNumero,
+        dataAprovacao: historicoOs.dataAprovacao
+      }).from(historicoOs),
+      db5.select({ empresaKey: clientesPerfilCnpj.empresaKey }).from(clientesPerfilCnpj)
+    ]);
+    const jaMapeados = new Set(mapeados.map((m) => m.empresaKey));
+    const dataIni = input.dataInicial ? new Date(input.dataInicial) : null;
+    const dataFim = input.dataFinal ? /* @__PURE__ */ new Date(`${input.dataFinal}T23:59:59`) : null;
+    const porCliente = /* @__PURE__ */ new Map();
+    for (const r of osRows) {
+      if (!isOsNormalDb(r)) continue;
+      const nome = (r.empresa ?? "").trim();
+      if (!nome) continue;
+      const dataOs = parseDataOsFlexivel(r.dataAprovacao);
+      if (dataIni && (!dataOs || dataOs < dataIni)) continue;
+      if (dataFim && (!dataOs || dataOs > dataFim)) continue;
+      const key = normalizeEmpresaKey(nome);
+      if (jaMapeados.has(key)) continue;
+      const valor = parseFloat(String(r.valorOs ?? r.valorTotal ?? "0")) || 0;
+      const atual = porCliente.get(key) ?? { empresa: nome, valor: 0, osMaisRecente: null, dataMaisRecente: null };
+      atual.valor += valor;
+      if (r.osNumero && dataOs && (!atual.dataMaisRecente || dataOs > atual.dataMaisRecente)) {
+        atual.osMaisRecente = r.osNumero;
+        atual.dataMaisRecente = dataOs;
+      }
+      porCliente.set(key, atual);
+    }
+    const candidatos = [...porCliente.entries()].map(([empresaKey, v]) => ({ empresaKey, empresa: v.empresa, osReferencia: v.osMaisRecente })).filter((c) => !!c.osReferencia).sort((a, b) => porCliente.get(b.empresaKey).valor - porCliente.get(a.empresaKey).valor).slice(0, input.limite);
+    let sucessoCnpj = 0, pessoaFisica = 0, semDocumento = 0, falhaErp = 0, falhaOpenCnpj = 0;
+    const agora = /* @__PURE__ */ new Date();
+    for (const c of candidatos) {
+      let osErp;
+      try {
+        osErp = await buscarOSPorNumero(c.osReferencia);
+      } catch {
+        falhaErp++;
+        continue;
+      }
+      const doc = osErp?.cliente_cnpj_cpf;
+      if (!doc) {
+        semDocumento++;
+        continue;
+      }
+      const { tipo, limpo } = classificarDocumento(doc);
+      if (tipo === "cpf") {
+        pessoaFisica++;
+        continue;
+      }
+      if (tipo === "invalido") {
+        semDocumento++;
+        continue;
+      }
+      try {
+        const dados = await consultarCnpj(limpo);
+        const campos = extrairCamposPerfil(dados);
+        await db5.insert(clientesPerfilCnpj).values({
+          empresaKey: c.empresaKey,
+          empresaExibicao: c.empresa,
+          cnpj: limpo,
+          ...campos,
+          origem: "mubisys",
+          vinculadoPor: ctx.user?.name ?? ctx.user?.id ?? "sistema",
+          vinculadoEm: agora,
+          updatedAt: agora
+        });
+        sucessoCnpj++;
+      } catch {
+        falhaOpenCnpj++;
+      }
+    }
+    return {
+      totalCandidatos: candidatos.length,
+      sucessoCnpj,
+      pessoaFisica,
+      semDocumento,
+      falhaErp,
+      falhaOpenCnpj,
+      restantes: Math.max(0, [...porCliente.keys()].length - candidatos.length)
+    };
+  })
+});
+
+// server/routers/planosAcaoComercial.ts
+init_trpc();
+init_db();
+init_schema();
+import { z as z23 } from "zod";
+import { eq as eq24, desc as desc12 } from "drizzle-orm";
+var planosAcaoComercialRouter = router({
+  listar: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    return db5.select().from(planosAcaoComercial).orderBy(desc12(planosAcaoComercial.createdAt));
+  }),
+  criar: protectedProcedure.input(z23.object({
+    titulo: z23.string().min(1),
+    descricao: z23.string().optional(),
+    responsavel: z23.string().optional(),
+    prazo: z23.string().optional(),
+    // YYYY-MM-DD
+    prioridade: z23.enum(["baixa", "media", "alta", "critica"]).default("media")
+  })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const [row] = await db5.insert(planosAcaoComercial).values(input).returning();
+    return row;
+  }),
+  atualizar: protectedProcedure.input(z23.object({
+    id: z23.number(),
+    status: z23.enum(["pendente", "em_andamento", "concluido", "cancelado"]).optional(),
+    prioridade: z23.enum(["baixa", "media", "alta", "critica"]).optional(),
+    responsavel: z23.string().nullable().optional(),
+    prazo: z23.string().nullable().optional(),
+    observacoes: z23.string().nullable().optional()
+  })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const { id, ...campos } = input;
+    await db5.update(planosAcaoComercial).set({ ...campos, updatedAt: /* @__PURE__ */ new Date() }).where(eq24(planosAcaoComercial.id, id));
+    return { ok: true };
+  }),
+  excluir: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    await db5.delete(planosAcaoComercial).where(eq24(planosAcaoComercial.id, input.id));
+    return { ok: true };
+  })
+});
+
+// server/routers/radarMercado.ts
+init_trpc();
+init_db();
+init_schema();
+import { z as z24 } from "zod";
+import crypto from "crypto";
+import { eq as eq25, and as and18, desc as desc13 } from "drizzle-orm";
+
+// server/integrations/serpapi-client.ts
+init_env();
+function buscaConfigurada() {
+  return !!ENV.serpapiKey;
+}
+async function buscarNaWeb(query, num2 = 10) {
+  if (!buscaConfigurada()) {
+    throw new Error("Radar de Mercado sem busca configurada \u2014 defina SERPAPI_KEY (ver .env.example).");
+  }
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("api_key", ENV.serpapiKey);
+  url.searchParams.set("engine", "google");
+  url.searchParams.set("q", query);
+  url.searchParams.set("num", String(Math.min(num2, 10)));
+  url.searchParams.set("gl", "br");
+  url.searchParams.set("hl", "pt");
+  let resp;
+  try {
+    resp = await fetch(url.toString());
+  } catch (e) {
+    throw new Error(`Falha de rede ao consultar o SerpAPI: ${e?.message ?? "erro desconhecido"}`);
+  }
+  if (!resp.ok) {
+    const corpo = await resp.text().catch(() => "");
+    throw new Error(`SerpAPI retornou status ${resp.status}: ${corpo.slice(0, 300)}`);
+  }
+  const json = await resp.json();
+  if (json.error) throw new Error(`SerpAPI: ${json.error}`);
+  const items = Array.isArray(json.organic_results) ? json.organic_results : [];
+  return items.map((i) => ({
+    title: i.title ?? "",
+    link: i.link ?? "",
+    snippet: i.snippet ?? "",
+    displayLink: i.displayed_link ?? (i.link ? new URL(i.link).hostname : "")
+  }));
+}
+
+// server/routers/radarMercado.ts
+init_llm();
+var UFS_PADRAO = ["MS", "MT", "GO", "DF", "MG", "SP", "RJ", "ES", "PR", "SC", "RS"];
+var SEGMENTOS_PADRAO = ["Gr\xE1ficas", "Comunica\xE7\xE3o visual", "Sinaliza\xE7\xE3o"];
+var TERMOS_BUSCA_PADRAO = [
+  "gr\xE1fica nova inaugura\xE7\xE3o",
+  "empresa de comunica\xE7\xE3o visual inaugura\xE7\xE3o",
+  "gr\xE1fica r\xE1pida abre loja",
+  "edital licita\xE7\xE3o sinaliza\xE7\xE3o comunica\xE7\xE3o visual"
+];
+async function carregarConfig(db5) {
+  const rows = await db5.select().from(radarMercadoConfig).where(eq25(radarMercadoConfig.id, 1)).limit(1);
+  if (rows.length === 0) {
+    const [row] = await db5.insert(radarMercadoConfig).values({
+      id: 1,
+      regioesJson: JSON.stringify(UFS_PADRAO),
+      segmentosAlvoJson: JSON.stringify(SEGMENTOS_PADRAO),
+      termosBuscaJson: JSON.stringify(TERMOS_BUSCA_PADRAO)
+    }).returning();
+    return row;
+  }
+  return rows[0];
+}
+function parseConfig(row) {
+  return {
+    regioes: JSON.parse(row.regioesJson),
+    segmentosAlvo: JSON.parse(row.segmentosAlvoJson),
+    concorrentesConhecidos: JSON.parse(row.concorrentesConhecidosJson),
+    termosBusca: JSON.parse(row.termosBuscaJson),
+    exclusoes: JSON.parse(row.exclusoesJson),
+    updatedAt: row.updatedAt
+  };
+}
+function hashUrl(url) {
+  return crypto.createHash("sha256").update(url).digest("hex");
+}
+var MAX_ITENS_POR_EXECUCAO = 20;
+var radarMercadoRouter = router({
+  buscaConfigurada: publicProcedure.query(() => ({ configurada: buscaConfigurada() })),
+  getConfig: publicProcedure.query(async () => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    return parseConfig(await carregarConfig(db5));
+  }),
+  atualizarConfig: protectedProcedure.input(z24.object({
+    regioes: z24.array(z24.string()).optional(),
+    segmentosAlvo: z24.array(z24.string()).optional(),
+    concorrentesConhecidos: z24.array(z24.string()).optional(),
+    termosBusca: z24.array(z24.string()).optional(),
+    exclusoes: z24.array(z24.string()).optional()
+  })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    await carregarConfig(db5);
+    const set = { updatedAt: /* @__PURE__ */ new Date() };
+    if (input.regioes) set.regioesJson = JSON.stringify(input.regioes);
+    if (input.segmentosAlvo) set.segmentosAlvoJson = JSON.stringify(input.segmentosAlvo);
+    if (input.concorrentesConhecidos) set.concorrentesConhecidosJson = JSON.stringify(input.concorrentesConhecidos);
+    if (input.termosBusca) set.termosBuscaJson = JSON.stringify(input.termosBusca);
+    if (input.exclusoes) set.exclusoesJson = JSON.stringify(input.exclusoes);
+    await db5.update(radarMercadoConfig).set(set).where(eq25(radarMercadoConfig.id, 1));
+    return { ok: true };
+  }),
+  listarSinais: publicProcedure.input(z24.object({
+    status: z24.enum(["novo", "qualificando", "oportunidade", "associado_cliente", "descartado", "expirado"]).optional(),
+    uf: z24.string().length(2).optional()
+  })).query(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const filtros = [];
+    if (input.status) filtros.push(eq25(sinaisMercado.status, input.status));
+    if (input.uf) filtros.push(eq25(sinaisMercado.uf, input.uf));
+    return db5.select().from(sinaisMercado).where(filtros.length > 0 ? and18(...filtros) : void 0).orderBy(desc13(sinaisMercado.dataColeta));
+  }),
+  atualizarSinal: protectedProcedure.input(z24.object({
+    id: z24.number(),
+    status: z24.enum(["novo", "qualificando", "oportunidade", "associado_cliente", "descartado", "expirado"]).optional(),
+    proximoPasso: z24.string().nullable().optional(),
+    jaClienteEmpresaKey: z24.string().nullable().optional()
+  })).mutation(async ({ input }) => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    const { id, ...campos } = input;
+    await db5.update(sinaisMercado).set({ ...campos, updatedAt: /* @__PURE__ */ new Date() }).where(eq25(sinaisMercado.id, id));
+    return { ok: true };
+  }),
+  /** Roda a busca configurada, extrai sinais estruturados via IA e grava os
+   * novos (deduplicados por URL). Nunca inventa dado — descarta resultado que
+   * a IA classificar como não relacionado ao nosso catálogo/segmento. */
+  buscarSinais: protectedProcedure.mutation(async () => {
+    const db5 = await getDb3();
+    if (!db5) throw new Error("DB indispon\xEDvel");
+    if (!buscaConfigurada()) {
+      throw new Error("Radar sem busca configurada \u2014 falta SERPAPI_KEY no servidor (ver .env.example).");
+    }
+    const config = parseConfig(await carregarConfig(db5));
+    const existentes = new Set((await db5.select({ urlHash: sinaisMercado.urlHash }).from(sinaisMercado)).map((r) => r.urlHash));
+    let resultadosBrutos = 0, novosResultados = 0, salvos = 0, ignorados = 0;
+    const erros = [];
+    for (const termo of config.termosBusca) {
+      if (novosResultados >= MAX_ITENS_POR_EXECUCAO) break;
+      let itens;
+      try {
+        itens = await buscarNaWeb(termo, 10);
+      } catch (e) {
+        erros.push(`${termo}: ${e?.message ?? "erro na busca"}`);
+        continue;
+      }
+      resultadosBrutos += itens.length;
+      for (const item of itens) {
+        if (novosResultados >= MAX_ITENS_POR_EXECUCAO) break;
+        const hash = hashUrl(item.link);
+        if (existentes.has(hash)) continue;
+        existentes.add(hash);
+        novosResultados++;
+        const dominioExcluido = config.exclusoes.some((ex) => item.displayLink.includes(ex) || item.link.includes(ex));
+        if (dominioExcluido) {
+          ignorados++;
+          continue;
+        }
+        try {
+          const resp = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: `Voc\xEA extrai sinais comerciais de resultados de busca para uma f\xE1brica de letras/letreiros/fachadas que vende por terceiriza\xE7\xE3o para gr\xE1ficas e empresas de comunica\xE7\xE3o visual, nas regi\xF5es Centro-Oeste, Sudeste e Sul do Brasil. Analise o t\xEDtulo e trecho fornecidos. Marque relevante=false se n\xE3o tiver rela\xE7\xE3o plaus\xEDvel com esse contexto (ex: not\xEDcia gen\xE9rica sem rela\xE7\xE3o, empresa de outro ramo, fora das regi\xF5es-alvo quando identific\xE1vel). Nunca invente dados que n\xE3o estejam no texto \u2014 campos desconhecidos ficam null. nivelConfianca="confirmado" s\xF3 se o trecho afirma o fato diretamente (n\xE3o infer\xEAncia sua); sen\xE3o "inferencia".`
+              },
+              { role: "user", content: `T\xEDtulo: ${item.title}
+Trecho: ${item.snippet}
+URL: ${item.link}
+Site: ${item.displayLink}
+Termo de busca que trouxe este resultado: ${termo}` }
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "sinal_mercado",
+                strict: true,
+                schema: {
+                  type: "object",
+                  properties: {
+                    relevante: { type: "boolean" },
+                    empresa: { type: ["string", "null"] },
+                    uf: { type: ["string", "null"] },
+                    municipio: { type: ["string", "null"] },
+                    tipoEvento: { type: ["string", "null"], enum: ["inauguracao", "reforma", "expansao", "edital", "concorrente", "outro", null] },
+                    relacaoProdutos: { type: ["string", "null"] },
+                    nivelConfianca: { type: "string", enum: ["confirmado", "inferencia"] }
+                  },
+                  required: ["relevante", "empresa", "uf", "municipio", "tipoEvento", "relacaoProdutos", "nivelConfianca"],
+                  additionalProperties: false
+                }
+              }
+            }
+          });
+          const conteudo = resp.choices?.[0]?.message?.content;
+          const extraido = JSON.parse(typeof conteudo === "string" ? conteudo : "{}");
+          if (!extraido.relevante) {
+            ignorados++;
+            continue;
+          }
+          await db5.insert(sinaisMercado).values({
+            empresa: extraido.empresa ?? item.title,
+            localizacaoTexto: [extraido.municipio, extraido.uf].filter(Boolean).join("/") || null,
+            uf: extraido.uf ?? null,
+            municipio: extraido.municipio ?? null,
+            tipoEvento: extraido.tipoEvento ?? "outro",
+            evidenciaTrecho: item.snippet,
+            url: item.link,
+            urlHash: hash,
+            publicador: item.displayLink,
+            nivelConfianca: extraido.nivelConfianca === "confirmado" ? "confirmado" : "inferencia",
+            relacaoProdutos: extraido.relacaoProdutos ?? null,
+            termoBuscaOrigem: termo,
+            status: "novo"
+          });
+          salvos++;
+        } catch (e) {
+          erros.push(`${item.link}: ${e?.message ?? "falha ao processar"}`);
+          ignorados++;
+        }
+      }
+    }
+    return { resultadosBrutos, novosResultados, salvos, ignorados, erros };
+  })
+});
+
+// server/routers/custoLed.ts
+init_trpc();
+init_db();
+init_schema();
+import { z as z25 } from "zod";
+import { eq as eq26, and as and19 } from "drizzle-orm";
 var custoLedRouter = router({
   // Listar todos os tipos de LED ativos
   listTipos: publicProcedure.query(async () => {
@@ -12806,13 +17478,13 @@ var custoLedRouter = router({
     return db5.select().from(ledTipos).orderBy(ledTipos.nome);
   }),
   // Criar ou atualizar tipo de LED
-  upsertTipo: protectedProcedure.input(z20.object({
-    id: z20.number().optional(),
-    nome: z20.string().min(1),
-    descricao: z20.string().optional(),
-    custoUnitario: z20.number().min(0),
-    unidade: z20.string().default("un"),
-    ativo: z20.enum(["sim", "nao"]).default("sim")
+  upsertTipo: protectedProcedure.input(z25.object({
+    id: z25.number().optional(),
+    nome: z25.string().min(1),
+    descricao: z25.string().optional(),
+    custoUnitario: z25.number().min(0),
+    unidade: z25.string().default("un"),
+    ativo: z25.enum(["sim", "nao"]).default("sim")
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
@@ -12825,7 +17497,7 @@ var custoLedRouter = router({
       ativo: data.ativo
     };
     if (id) {
-      await db5.update(ledTipos).set(payload).where(eq19(ledTipos.id, id));
+      await db5.update(ledTipos).set(payload).where(eq26(ledTipos.id, id));
       return { ok: true, id };
     } else {
       const [res] = await db5.insert(ledTipos).values(payload).returning({ id: ledTipos.id });
@@ -12833,34 +17505,34 @@ var custoLedRouter = router({
     }
   }),
   // Excluir tipo de LED
-  deleteTipo: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input }) => {
+  deleteTipo: protectedProcedure.input(z25.object({ id: z25.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
-    await db5.delete(ledTipos).where(eq19(ledTipos.id, input.id));
+    await db5.delete(ledTipos).where(eq26(ledTipos.id, input.id));
     return { ok: true };
   }),
   // ─── Lançamentos de custo de LED por OS ──────────────────────────────────────
   // Listar lançamentos de um mês/ano
-  listLancamentos: publicProcedure.input(z20.object({ mes: z20.number(), ano: z20.number() })).query(async ({ input }) => {
+  listLancamentos: publicProcedure.input(z25.object({ mes: z25.number(), ano: z25.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return [];
-    const rows = await db5.select().from(custoLedLancamentos).where(and16(
-      eq19(custoLedLancamentos.mes, input.mes),
-      eq19(custoLedLancamentos.ano, input.ano)
+    const rows = await db5.select().from(custoLedLancamentos).where(and19(
+      eq26(custoLedLancamentos.mes, input.mes),
+      eq26(custoLedLancamentos.ano, input.ano)
     )).orderBy(custoLedLancamentos.os, custoLedLancamentos.createdAt);
     return rows;
   }),
   // Criar ou atualizar lançamento
-  upsertLancamento: protectedProcedure.input(z20.object({
-    id: z20.number().optional(),
-    os: z20.string().min(1),
-    ledTipoId: z20.number(),
-    ledTipoEfetivoId: z20.number().nullable().optional(),
-    qtdPrevista: z20.number().min(0),
-    qtdEfetiva: z20.number().min(0).nullable().optional(),
-    mes: z20.number().min(1).max(12),
-    ano: z20.number(),
-    observacao: z20.string().optional()
+  upsertLancamento: protectedProcedure.input(z25.object({
+    id: z25.number().optional(),
+    os: z25.string().min(1),
+    ledTipoId: z25.number(),
+    ledTipoEfetivoId: z25.number().nullable().optional(),
+    qtdPrevista: z25.number().min(0),
+    qtdEfetiva: z25.number().min(0).nullable().optional(),
+    mes: z25.number().min(1).max(12),
+    ano: z25.number(),
+    observacao: z25.string().optional()
   })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
@@ -12876,7 +17548,7 @@ var custoLedRouter = router({
       observacao: data.observacao ?? null
     };
     if (id) {
-      await db5.update(custoLedLancamentos).set(payload).where(eq19(custoLedLancamentos.id, id));
+      await db5.update(custoLedLancamentos).set(payload).where(eq26(custoLedLancamentos.id, id));
       return { ok: true, id };
     } else {
       const [res] = await db5.insert(custoLedLancamentos).values(payload).returning({ id: custoLedLancamentos.id });
@@ -12884,20 +17556,20 @@ var custoLedRouter = router({
     }
   }),
   // Excluir lançamento
-  deleteLancamento: protectedProcedure.input(z20.object({ id: z20.number() })).mutation(async ({ input }) => {
+  deleteLancamento: protectedProcedure.input(z25.object({ id: z25.number() })).mutation(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) throw new Error("DB indispon\xEDvel");
-    await db5.delete(custoLedLancamentos).where(eq19(custoLedLancamentos.id, input.id));
+    await db5.delete(custoLedLancamentos).where(eq26(custoLedLancamentos.id, input.id));
     return { ok: true };
   }),
   // Resumo mensal: total previsto, efetivo, diferença (por tipo de LED)
-  getResumoMensal: publicProcedure.input(z20.object({ mes: z20.number(), ano: z20.number() })).query(async ({ input }) => {
+  getResumoMensal: publicProcedure.input(z25.object({ mes: z25.number(), ano: z25.number() })).query(async ({ input }) => {
     const db5 = await getDb3();
     if (!db5) return { lancamentos: [], tipos: [], totalPrevisto: 0, totalEfetivo: 0, diferenca: 0 };
     const [lancamentos, tipos] = await Promise.all([
-      db5.select().from(custoLedLancamentos).where(and16(
-        eq19(custoLedLancamentos.mes, input.mes),
-        eq19(custoLedLancamentos.ano, input.ano)
+      db5.select().from(custoLedLancamentos).where(and19(
+        eq26(custoLedLancamentos.mes, input.mes),
+        eq26(custoLedLancamentos.ano, input.ano)
       )),
       db5.select().from(ledTipos)
     ]);
@@ -12936,8 +17608,9 @@ var custoLedRouter = router({
 });
 
 // server/routers/admin.ts
+init_trpc();
 init_mubisys_client();
-import { z as z21 } from "zod";
+import { z as z26 } from "zod";
 function calcularProximaExecucao() {
   const agora = /* @__PURE__ */ new Date();
   const proxima = new Date(agora);
@@ -13009,9 +17682,9 @@ var adminRouter = router({
   // ✅ Forçar sincronização manual — mesma janela padrão (8/0) do lote 1 do
   // agendamento. Para os 30 dias completos, rodar os quatro lotes manualmente.
   forcarSincronizacaoManual: adminProcedure.input(
-    z21.object({
-      dias: z21.number().min(1).max(31).optional(),
-      offset: z21.number().min(0).max(365).optional()
+    z26.object({
+      dias: z26.number().min(1).max(31).optional(),
+      offset: z26.number().min(0).max(365).optional()
     }).optional()
   ).mutation(async ({ input }) => {
     try {
@@ -13030,7 +17703,7 @@ var adminRouter = router({
     }
   }),
   // ✅ Obter histórico de sincronizações
-  obterHistoricoSincronizacoes: adminProcedure.input(z21.object({ limite: z21.number().default(10) })).query(async ({ input }) => {
+  obterHistoricoSincronizacoes: adminProcedure.input(z26.object({ limite: z26.number().default(10) })).query(async ({ input }) => {
     try {
       const { selectQuery: selectQuery2 } = await Promise.resolve().then(() => (init_db_connection(), db_connection_exports));
       const limite = Math.max(1, Math.min(Number(input.limite) || 10, 100));
@@ -13083,23 +17756,23 @@ var adminRouter = router({
 });
 
 // server/_core/systemRouter.ts
-import { z as z22 } from "zod";
+import { z as z27 } from "zod";
 
 // server/_core/notification.ts
-import { TRPCError as TRPCError4 } from "@trpc/server";
+import { TRPCError as TRPCError5 } from "@trpc/server";
 var TITLE_MAX_LENGTH = 256;
 var CONTENT_MAX_LENGTH = 2e4;
 var trimValue = (value) => value.trim();
 var isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
 var validatePayload = (input) => {
   if (!isNonEmptyString(input.title)) {
-    throw new TRPCError4({
+    throw new TRPCError5({
       code: "BAD_REQUEST",
       message: "Notification title is required."
     });
   }
   if (!isNonEmptyString(input.content)) {
-    throw new TRPCError4({
+    throw new TRPCError5({
       code: "BAD_REQUEST",
       message: "Notification content is required."
     });
@@ -13107,13 +17780,13 @@ var validatePayload = (input) => {
   const title = trimValue(input.title);
   const content = trimValue(input.content);
   if (title.length > TITLE_MAX_LENGTH) {
-    throw new TRPCError4({
+    throw new TRPCError5({
       code: "BAD_REQUEST",
       message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
     });
   }
   if (content.length > CONTENT_MAX_LENGTH) {
-    throw new TRPCError4({
+    throw new TRPCError5({
       code: "BAD_REQUEST",
       message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
     });
@@ -13132,18 +17805,19 @@ async function notifyOwner(payload) {
 }
 
 // server/_core/systemRouter.ts
+init_trpc();
 var systemRouter = router({
   health: publicProcedure.input(
-    z22.object({
-      timestamp: z22.number().min(0, "timestamp cannot be negative")
+    z27.object({
+      timestamp: z27.number().min(0, "timestamp cannot be negative")
     })
   ).query(() => ({
     ok: true
   })),
   notifyOwner: adminProcedure.input(
-    z22.object({
-      title: z22.string().min(1, "title is required"),
-      content: z22.string().min(1, "content is required")
+    z27.object({
+      title: z27.string().min(1, "title is required"),
+      content: z27.string().min(1, "content is required")
     })
   ).mutation(async ({ input }) => {
     const delivered = await notifyOwner(input);
@@ -13154,6 +17828,7 @@ var systemRouter = router({
 });
 
 // server/routers.ts
+init_trpc();
 init_auth();
 init_llm();
 init_schema();
@@ -13161,8 +17836,8 @@ init_db();
 init_db();
 init_db();
 import { fromNodeHeaders } from "better-auth/node";
-import { TRPCError as TRPCError5 } from "@trpc/server";
-import { asc as asc6, eq as eq20, isNull as isNull2, or as or2, count as sqlCount } from "drizzle-orm";
+import { TRPCError as TRPCError6 } from "@trpc/server";
+import { asc as asc6, eq as eq27, isNull as isNull2, or as or2, count as sqlCount } from "drizzle-orm";
 async function countUsers() {
   const db5 = await getDb3();
   if (!db5) return 0;
@@ -13171,23 +17846,23 @@ async function countUsers() {
 }
 function assertAdminOrMaster(ctx) {
   if (!ctx.user || ctx.user.role !== "admin" && ctx.user.role !== "master") {
-    throw new TRPCError5({ code: "FORBIDDEN", message: "Apenas Admin ou Master podem gerenciar usu\xE1rios." });
+    throw new TRPCError6({ code: "FORBIDDEN", message: "Apenas Admin ou Master podem gerenciar usu\xE1rios." });
   }
 }
 function slugifyName(name) {
   const slug = name.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
   return slug || "usuario";
 }
-var filterSchema = z23.object({
-  mes: z23.string().optional(),
-  setor: z23.string().optional(),
-  tipo: z23.string().optional(),
-  responsavel: z23.string().optional(),
-  classe: z23.string().optional(),
-  dataInicio: z23.date().optional(),
-  dataFim: z23.date().optional(),
-  search: z23.string().optional(),
-  tipoRegistro: z23.enum(["retrabalho", "cnq"]).optional()
+var filterSchema = z28.object({
+  mes: z28.string().optional(),
+  setor: z28.string().optional(),
+  tipo: z28.string().optional(),
+  responsavel: z28.string().optional(),
+  classe: z28.string().optional(),
+  dataInicio: z28.date().optional(),
+  dataFim: z28.date().optional(),
+  search: z28.string().optional(),
+  tipoRegistro: z28.enum(["retrabalho", "cnq"]).optional()
 });
 var appRouter = router({
   system: systemRouter,
@@ -13196,89 +17871,89 @@ var appRouter = router({
   // ─── Error Library ──────────────────────────────────────────────────────
   errorLibrary: router({
     list: publicProcedure.query(() => getErrorLibrary()),
-    byCode: publicProcedure.input(z23.object({ code: z23.string() })).query(({ input }) => getErrorByCode(input.code)),
-    updateCorrection: protectedProcedure.input(z23.object({ code: z23.string(), correction: z23.string().min(1) })).mutation(({ input }) => updateErrorCorrection(input.code, input.correction)),
-    create: protectedProcedure.input(z23.object({
-      code: z23.string().min(1),
-      category: z23.string().min(1),
-      description: z23.string().min(1),
-      correction: z23.string().min(1),
-      tipoRegistro: z23.enum(["retrabalho", "cnq"]).default("retrabalho")
+    byCode: publicProcedure.input(z28.object({ code: z28.string() })).query(({ input }) => getErrorByCode(input.code)),
+    updateCorrection: protectedProcedure.input(z28.object({ code: z28.string(), correction: z28.string().min(1) })).mutation(({ input }) => updateErrorCorrection(input.code, input.correction)),
+    create: protectedProcedure.input(z28.object({
+      code: z28.string().min(1),
+      category: z28.string().min(1),
+      description: z28.string().min(1),
+      correction: z28.string().min(1),
+      tipoRegistro: z28.enum(["retrabalho", "cnq"]).default("retrabalho")
     })).mutation(({ input }) => createErrorLibraryItem(input)),
-    updateItem: protectedProcedure.input(z23.object({
-      code: z23.string(),
-      description: z23.string().min(1).optional(),
-      correction: z23.string().min(1).optional()
+    updateItem: protectedProcedure.input(z28.object({
+      code: z28.string(),
+      description: z28.string().min(1).optional(),
+      correction: z28.string().min(1).optional()
     })).mutation(({ input }) => updateErrorItem(input.code, { description: input.description, correction: input.correction })),
-    uploadImage: protectedProcedure.input(z23.object({
-      code: z23.string(),
-      fileName: z23.string(),
-      url: z23.string().url(),
-      key: z23.string().min(1),
-      mimeType: z23.string().default("image/jpeg")
+    uploadImage: protectedProcedure.input(z28.object({
+      code: z28.string(),
+      fileName: z28.string(),
+      url: z28.string().url(),
+      key: z28.string().min(1),
+      mimeType: z28.string().default("image/jpeg")
     })).mutation(async ({ input }) => {
       await updateErrorItem(input.code, { imageUrl: input.url, imageKey: input.key });
       return { url: input.url, key: input.key };
     }),
-    removeImage: protectedProcedure.input(z23.object({ code: z23.string() })).mutation(async ({ input }) => {
+    removeImage: protectedProcedure.input(z28.object({ code: z28.string() })).mutation(async ({ input }) => {
       await updateErrorItem(input.code, { imageUrl: null, imageKey: null });
       return { success: true };
     }),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteErrorLibraryItem(input.id))
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => deleteErrorLibraryItem(input.id))
   }),
   faturamento: router({
     list: publicProcedure.query(() => getFaturamento()),
-    upsert: publicProcedure.input(z23.object({ mes: z23.string(), ano: z23.number(), valorFaturado: z23.number(), totalPedidos: z23.number() })).mutation(({ input }) => upsertFaturamento(input.mes, input.ano, input.valorFaturado, input.totalPedidos))
+    upsert: publicProcedure.input(z28.object({ mes: z28.string(), ano: z28.number(), valorFaturado: z28.number(), totalPedidos: z28.number() })).mutation(({ input }) => upsertFaturamento(input.mes, input.ano, input.valorFaturado, input.totalPedidos))
   }),
   financeiros: router({
     list: publicProcedure.query(() => getFinanceiros()),
-    byMesAno: publicProcedure.input(z23.object({ mes: z23.number(), ano: z23.number() })).query(({ input }) => getFinanceiroByMesAno(input.mes, input.ano)),
-    upsert: protectedProcedure.input(z23.object({
-      mes: z23.number(),
-      ano: z23.number(),
-      receitaBruta: z23.number().optional(),
-      receitaOperacional: z23.number().optional(),
-      receitaFinanceira: z23.number().optional(),
-      despesasTotal: z23.number().optional(),
-      despesasFixas: z23.number().optional(),
-      despesasVariaveis: z23.number().optional(),
-      despesasPessoal: z23.number().optional(),
-      despesasFinanceiras: z23.number().optional(),
-      despesasImpostos: z23.number().optional(),
-      lucroGruto: z23.number().optional(),
-      lucroOperacional: z23.number().optional(),
-      lucroLiquido: z23.number().optional(),
-      entradas: z23.number().optional(),
-      saidas: z23.number().optional(),
-      saldoMes: z23.number().optional(),
-      observacoes: z23.string().optional()
+    byMesAno: publicProcedure.input(z28.object({ mes: z28.number(), ano: z28.number() })).query(({ input }) => getFinanceiroByMesAno(input.mes, input.ano)),
+    upsert: protectedProcedure.input(z28.object({
+      mes: z28.number(),
+      ano: z28.number(),
+      receitaBruta: z28.number().optional(),
+      receitaOperacional: z28.number().optional(),
+      receitaFinanceira: z28.number().optional(),
+      despesasTotal: z28.number().optional(),
+      despesasFixas: z28.number().optional(),
+      despesasVariaveis: z28.number().optional(),
+      despesasPessoal: z28.number().optional(),
+      despesasFinanceiras: z28.number().optional(),
+      despesasImpostos: z28.number().optional(),
+      lucroGruto: z28.number().optional(),
+      lucroOperacional: z28.number().optional(),
+      lucroLiquido: z28.number().optional(),
+      entradas: z28.number().optional(),
+      saidas: z28.number().optional(),
+      saldoMes: z28.number().optional(),
+      observacoes: z28.string().optional()
     })).mutation(({ input }) => upsertFinanceiro(input))
   }),
   // ─── Retrabalhos ────────────────────────────────────────────────────────
   retrabalhos: router({
-    list: publicProcedure.input(z23.object({ filter: filterSchema.optional(), page: z23.number().default(1), pageSize: z23.number().default(50) })).query(({ input }) => listRetrabalhos(input.filter ?? {}, input.page, input.pageSize)),
+    list: publicProcedure.input(z28.object({ filter: filterSchema.optional(), page: z28.number().default(1), pageSize: z28.number().default(50) })).query(({ input }) => listRetrabalhos(input.filter ?? {}, input.page, input.pageSize)),
     all: publicProcedure.input(filterSchema.optional()).query(({ input }) => getRetrabalhosAll(input ?? {})),
-    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getRetrabalhosById(input.id)),
-    create: protectedProcedure.input(z23.object({
-      titulo: z23.string().optional().nullable(),
-      osRetrabalhada: z23.string().optional().nullable(),
+    byId: publicProcedure.input(z28.object({ id: z28.number() })).query(({ input }) => getRetrabalhosById(input.id)),
+    create: protectedProcedure.input(z28.object({
+      titulo: z28.string().optional().nullable(),
+      osRetrabalhada: z28.string().optional().nullable(),
       // Opcional para CNQ
-      osOriginal: z23.string().optional().nullable(),
+      osOriginal: z28.string().optional().nullable(),
       // Opcional para CNQ
-      data: z23.date(),
-      setor: z23.string(),
-      tipo: z23.enum(["INTERNO", "EXTERNO"]),
-      custo: z23.string().default("0"),
-      frete: z23.string().default("0"),
-      total: z23.string().default("0"),
-      codigoErro: z23.string().optional().nullable(),
-      responsavel: z23.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
-      tipoResponsavel: z23.enum(["operador", "gestor"]).default("operador"),
-      descricao: z23.string().optional().nullable(),
-      classe: z23.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
-      horasImpacto: z23.union([z23.number(), z23.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
-      mes: z23.string().optional().nullable(),
-      tipoRegistro: z23.enum(["retrabalho", "cnq"]).default("retrabalho")
+      data: z28.date(),
+      setor: z28.string(),
+      tipo: z28.enum(["INTERNO", "EXTERNO"]),
+      custo: z28.string().default("0"),
+      frete: z28.string().default("0"),
+      total: z28.string().default("0"),
+      codigoErro: z28.string().optional().nullable(),
+      responsavel: z28.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
+      tipoResponsavel: z28.enum(["operador", "gestor"]).default("operador"),
+      descricao: z28.string().optional().nullable(),
+      classe: z28.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
+      horasImpacto: z28.union([z28.number(), z28.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
+      mes: z28.string().optional().nullable(),
+      tipoRegistro: z28.enum(["retrabalho", "cnq"]).default("retrabalho")
     })).mutation(async ({ input, ctx }) => {
       const result = await createRetrabalho(input);
       const newId = result?.id ?? null;
@@ -13295,26 +17970,26 @@ var appRouter = router({
       });
       return result;
     }),
-    createBatch: protectedProcedure.input(z23.object({
-      titulo: z23.string().optional().nullable(),
-      osRetrabalhada: z23.string().optional().nullable(),
+    createBatch: protectedProcedure.input(z28.object({
+      titulo: z28.string().optional().nullable(),
+      osRetrabalhada: z28.string().optional().nullable(),
       // Opcional para CNQ
-      osOriginal: z23.string().optional().nullable(),
+      osOriginal: z28.string().optional().nullable(),
       // Opcional para CNQ
-      data: z23.date(),
-      setor: z23.string(),
-      tipo: z23.enum(["INTERNO", "EXTERNO"]),
-      custo: z23.string().default("0"),
-      frete: z23.string().default("0"),
-      total: z23.string().default("0"),
-      responsavel: z23.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
-      tipoResponsavel: z23.enum(["operador", "gestor"]).default("operador"),
-      descricao: z23.string().optional().nullable(),
-      classe: z23.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
-      horasImpacto: z23.union([z23.number(), z23.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
-      mes: z23.string().optional().nullable(),
-      tipoRegistro: z23.enum(["retrabalho", "cnq"]).default("retrabalho"),
-      errorIds: z23.array(z23.number()).min(1, "Selecione pelo menos um erro")
+      data: z28.date(),
+      setor: z28.string(),
+      tipo: z28.enum(["INTERNO", "EXTERNO"]),
+      custo: z28.string().default("0"),
+      frete: z28.string().default("0"),
+      total: z28.string().default("0"),
+      responsavel: z28.string().min(1, "Respons\xE1vel \xE9 obrigat\xF3rio"),
+      tipoResponsavel: z28.enum(["operador", "gestor"]).default("operador"),
+      descricao: z28.string().optional().nullable(),
+      classe: z28.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]),
+      horasImpacto: z28.union([z28.number(), z28.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
+      mes: z28.string().optional().nullable(),
+      tipoRegistro: z28.enum(["retrabalho", "cnq"]).default("retrabalho"),
+      errorIds: z28.array(z28.number()).min(1, "Selecione pelo menos um erro")
     })).mutation(async ({ input, ctx }) => {
       const { errorIds, ...baseData } = input;
       const results = await createBatchRetrabalhos(baseData, errorIds);
@@ -13334,26 +18009,26 @@ var appRouter = router({
       });
       return { success: true, count: results.length, results };
     }),
-    update: protectedProcedure.input(z23.object({
-      id: z23.number(),
-      data: z23.object({
-        titulo: z23.string().optional().nullable(),
-        osRetrabalhada: z23.string().optional(),
-        osOriginal: z23.string().optional(),
-        data: z23.date().optional(),
-        setor: z23.string().optional(),
-        tipo: z23.enum(["INTERNO", "EXTERNO"]).optional(),
-        custo: z23.string().optional(),
-        frete: z23.string().optional(),
-        total: z23.string().optional(),
-        codigoErro: z23.string().optional().nullable(),
-        responsavel: z23.string().optional().nullable(),
-        tipoResponsavel: z23.enum(["operador", "gestor"]).optional(),
-        descricao: z23.string().optional().nullable(),
-        classe: z23.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]).optional(),
-        horasImpacto: z23.union([z23.number(), z23.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
-        mes: z23.string().optional().nullable(),
-        tipoRegistro: z23.enum(["retrabalho", "cnq"]).optional()
+    update: protectedProcedure.input(z28.object({
+      id: z28.number(),
+      data: z28.object({
+        titulo: z28.string().optional().nullable(),
+        osRetrabalhada: z28.string().optional(),
+        osOriginal: z28.string().optional(),
+        data: z28.date().optional(),
+        setor: z28.string().optional(),
+        tipo: z28.enum(["INTERNO", "EXTERNO"]).optional(),
+        custo: z28.string().optional(),
+        frete: z28.string().optional(),
+        total: z28.string().optional(),
+        codigoErro: z28.string().optional().nullable(),
+        responsavel: z28.string().optional().nullable(),
+        tipoResponsavel: z28.enum(["operador", "gestor"]).optional(),
+        descricao: z28.string().optional().nullable(),
+        classe: z28.enum(["EVIT\xC1VEL", "INEVIT\xC1VEL"]).optional(),
+        horasImpacto: z28.union([z28.number(), z28.string()]).optional().nullable().transform((v) => v != null ? String(v) : null),
+        mes: z28.string().optional().nullable(),
+        tipoRegistro: z28.enum(["retrabalho", "cnq"]).optional()
       })
     })).mutation(async ({ input, ctx }) => {
       const before = await getRetrabalhosById(input.id);
@@ -13371,7 +18046,7 @@ var appRouter = router({
       });
       return result;
     }),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(async ({ input, ctx }) => {
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(async ({ input, ctx }) => {
       const before = await getRetrabalhosById(input.id);
       const result = await deleteRetrabalho(input.id);
       insertAuditLog({
@@ -13486,12 +18161,12 @@ Seja direto, t\xE9cnico e pr\xE1tico. Use dados espec\xEDficos dos n\xFAmeros fo
   }),
   // ─── OPERAÇÕES: Base de Conhecimento ────────────────────────────────────
   knowledge: router({
-    list: publicProcedure.input(z23.object({ search: z23.string().optional(), category: z23.string().optional() }).optional()).query(({ input }) => listKnowledge(input?.search, input?.category)),
-    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getKnowledgeById(input.id)),
-    create: protectedProcedure.input(z23.object({ title: z23.string(), content: z23.string(), category: z23.string(), subcategory: z23.string().optional().nullable(), keywords: z23.string().optional().nullable() })).mutation(({ input }) => createKnowledge(input)),
-    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ title: z23.string().optional(), content: z23.string().optional(), category: z23.string().optional(), subcategory: z23.string().optional().nullable(), keywords: z23.string().optional().nullable() }) })).mutation(({ input }) => updateKnowledge(input.id, input.data)),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteKnowledge(input.id)),
-    askAI: protectedProcedure.input(z23.object({ question: z23.string() })).mutation(async ({ input, ctx }) => {
+    list: publicProcedure.input(z28.object({ search: z28.string().optional(), category: z28.string().optional() }).optional()).query(({ input }) => listKnowledge(input?.search, input?.category)),
+    byId: publicProcedure.input(z28.object({ id: z28.number() })).query(({ input }) => getKnowledgeById(input.id)),
+    create: protectedProcedure.input(z28.object({ title: z28.string(), content: z28.string(), category: z28.string(), subcategory: z28.string().optional().nullable(), keywords: z28.string().optional().nullable() })).mutation(({ input }) => createKnowledge(input)),
+    update: protectedProcedure.input(z28.object({ id: z28.number(), data: z28.object({ title: z28.string().optional(), content: z28.string().optional(), category: z28.string().optional(), subcategory: z28.string().optional().nullable(), keywords: z28.string().optional().nullable() }) })).mutation(({ input }) => updateKnowledge(input.id, input.data)),
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => deleteKnowledge(input.id)),
+    askAI: protectedProcedure.input(z28.object({ question: z28.string() })).mutation(async ({ input, ctx }) => {
       const [allKnowledge, allErrors, allPops, allArquivos] = await Promise.all([
         listKnowledge(input.question),
         getErrorLibrary(),
@@ -13573,25 +18248,25 @@ ${contextText}
   }),
   // ─── SUGESTÕES DE INCORPORAÇÃO NA BASE DE CONHECIMENTO ──────────────────
   knowledgeSuggestions: router({
-    list: protectedProcedure.input(z23.object({ status: z23.string().optional() }).optional()).query(({ input }) => listKnowledgeSuggestions(input?.status)),
-    create: protectedProcedure.input(z23.object({
-      pergunta: z23.string(),
-      conteudoSugerido: z23.string(),
-      fonte: z23.enum(["gemini", "manual"]).default("manual"),
-      tituloSugerido: z23.string().optional(),
-      categoriaSugerida: z23.string().optional()
+    list: protectedProcedure.input(z28.object({ status: z28.string().optional() }).optional()).query(({ input }) => listKnowledgeSuggestions(input?.status)),
+    create: protectedProcedure.input(z28.object({
+      pergunta: z28.string(),
+      conteudoSugerido: z28.string(),
+      fonte: z28.enum(["gemini", "manual"]).default("manual"),
+      tituloSugerido: z28.string().optional(),
+      categoriaSugerida: z28.string().optional()
     })).mutation(({ input, ctx }) => createKnowledgeSuggestion({
       ...input,
       autorId: ctx.user?.id ?? void 0,
       autorNome: ctx.user?.name ?? "Usu\xE1rio"
     })),
     // Master aprova: cria artigo na base de conhecimento
-    approve: protectedProcedure.use(requireRole("admin", "master")).input(z23.object({
-      id: z23.number(),
-      titulo: z23.string(),
-      categoria: z23.string(),
-      conteudo: z23.string(),
-      observacao: z23.string().optional()
+    approve: protectedProcedure.use(requireRole("admin", "master")).input(z28.object({
+      id: z28.number(),
+      titulo: z28.string(),
+      categoria: z28.string(),
+      conteudo: z28.string(),
+      observacao: z28.string().optional()
     })).mutation(async ({ input }) => {
       await createKnowledge({ title: input.titulo, content: input.conteudo, category: input.categoria });
       await updateKnowledgeSuggestion(input.id, {
@@ -13602,73 +18277,73 @@ ${contextText}
       });
       return { success: true };
     }),
-    reject: protectedProcedure.use(requireRole("admin", "master")).input(z23.object({ id: z23.number(), observacao: z23.string().optional() })).mutation(async ({ input }) => {
+    reject: protectedProcedure.use(requireRole("admin", "master")).input(z28.object({ id: z28.number(), observacao: z28.string().optional() })).mutation(async ({ input }) => {
       await updateKnowledgeSuggestion(input.id, { status: "rejeitado", observacaoMaster: input.observacao });
       return { success: true };
     }),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteKnowledgeSuggestion(input.id))
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => deleteKnowledgeSuggestion(input.id))
   }),
   // ─── OPERAÇÕES: Fornecedores ─────────────────────────────────────────────
   suppliers: router({
-    list: publicProcedure.input(z23.object({ search: z23.string().optional(), category: z23.string().optional() }).optional()).query(({ input }) => listSuppliers(input?.search, input?.category)),
-    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getSupplierById(input.id)),
-    create: protectedProcedure.input(z23.object({ name: z23.string(), company: z23.string().optional().nullable(), category: z23.string(), supplies: z23.string().optional().nullable(), contact: z23.string().optional().nullable(), phone: z23.string().optional().nullable(), email: z23.string().optional().nullable(), paymentTerms: z23.string().optional().nullable(), notes: z23.string().optional().nullable() })).mutation(({ input, ctx }) => createSupplier({ ...input, createdByNome: ctx.user.name ?? ctx.user.email ?? "sistema", updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
-    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ name: z23.string().optional(), company: z23.string().optional().nullable(), category: z23.string().optional(), supplies: z23.string().optional().nullable(), contact: z23.string().optional().nullable(), phone: z23.string().optional().nullable(), email: z23.string().optional().nullable(), paymentTerms: z23.string().optional().nullable(), notes: z23.string().optional().nullable(), active: z23.enum(["sim", "nao"]).optional() }) })).mutation(({ input, ctx }) => updateSupplier(input.id, { ...input.data, updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteSupplier(input.id))
+    list: publicProcedure.input(z28.object({ search: z28.string().optional(), category: z28.string().optional() }).optional()).query(({ input }) => listSuppliers(input?.search, input?.category)),
+    byId: publicProcedure.input(z28.object({ id: z28.number() })).query(({ input }) => getSupplierById(input.id)),
+    create: protectedProcedure.input(z28.object({ name: z28.string(), company: z28.string().optional().nullable(), category: z28.string(), supplies: z28.string().optional().nullable(), contact: z28.string().optional().nullable(), phone: z28.string().optional().nullable(), email: z28.string().optional().nullable(), paymentTerms: z28.string().optional().nullable(), notes: z28.string().optional().nullable() })).mutation(({ input, ctx }) => createSupplier({ ...input, createdByNome: ctx.user.name ?? ctx.user.email ?? "sistema", updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
+    update: protectedProcedure.input(z28.object({ id: z28.number(), data: z28.object({ name: z28.string().optional(), company: z28.string().optional().nullable(), category: z28.string().optional(), supplies: z28.string().optional().nullable(), contact: z28.string().optional().nullable(), phone: z28.string().optional().nullable(), email: z28.string().optional().nullable(), paymentTerms: z28.string().optional().nullable(), notes: z28.string().optional().nullable(), active: z28.enum(["sim", "nao"]).optional() }) })).mutation(({ input, ctx }) => updateSupplier(input.id, { ...input.data, updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" })),
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => deleteSupplier(input.id))
   }),
   // ─── OPERAÇÕES: Rotinas ──────────────────────────────────────────────────────────────────
   routines: router({
     list: publicProcedure.query(() => listRoutines()),
     pending: publicProcedure.query(() => listPendingRoutines()),
-    create: protectedProcedure.input(z23.object({
-      title: z23.string(),
-      description: z23.string().optional().nullable(),
-      frequency: z23.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]),
-      assignedTo: z23.string().optional().nullable(),
-      startDate: z23.string().optional().nullable(),
-      calendarDates: z23.string().optional().nullable()
+    create: protectedProcedure.input(z28.object({
+      title: z28.string(),
+      description: z28.string().optional().nullable(),
+      frequency: z28.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]),
+      assignedTo: z28.string().optional().nullable(),
+      startDate: z28.string().optional().nullable(),
+      calendarDates: z28.string().optional().nullable()
     })).mutation(({ input }) => createRoutine(input)),
-    update: protectedProcedure.input(z23.object({
-      id: z23.number(),
-      data: z23.object({
-        title: z23.string().optional(),
-        description: z23.string().optional().nullable(),
-        frequency: z23.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]).optional(),
-        assignedTo: z23.string().optional().nullable(),
-        status: z23.enum(["pendente", "em_dia", "atrasada"]).optional(),
-        lastDone: z23.date().optional().nullable(),
-        startDate: z23.string().optional().nullable(),
-        calendarDates: z23.string().optional().nullable(),
-        nextDue: z23.date().optional().nullable()
+    update: protectedProcedure.input(z28.object({
+      id: z28.number(),
+      data: z28.object({
+        title: z28.string().optional(),
+        description: z28.string().optional().nullable(),
+        frequency: z28.enum(["diaria", "semanal", "quinzenal", "mensal", "esporadico"]).optional(),
+        assignedTo: z28.string().optional().nullable(),
+        status: z28.enum(["pendente", "em_dia", "atrasada"]).optional(),
+        lastDone: z28.date().optional().nullable(),
+        startDate: z28.string().optional().nullable(),
+        calendarDates: z28.string().optional().nullable(),
+        nextDue: z28.date().optional().nullable()
       })
     })).mutation(({ input }) => updateRoutine(input.id, input.data)),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteRoutine(input.id)),
-    markDone: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => markRoutineDone(input.id))
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => deleteRoutine(input.id)),
+    markDone: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => markRoutineDone(input.id))
   }),
   // ─── OPERAÇÕES: Regulamentos ─────────────────────────────────────────────────────
   regulations: router({
-    list: publicProcedure.input(z23.object({ type: z23.string().optional() }).optional()).query(({ input }) => listRegulations(input?.type)),
-    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getRegulationById(input.id)),
-    create: protectedProcedure.input(z23.object({ title: z23.string(), type: z23.enum(["regulamento", "memorando", "politica", "procedimento"]), content: z23.string(), version: z23.string().optional().nullable() })).mutation(({ input }) => createRegulation(input)),
-    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ title: z23.string().optional(), type: z23.enum(["regulamento", "memorando", "politica", "procedimento"]).optional(), content: z23.string().optional(), version: z23.string().optional().nullable(), active: z23.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updateRegulation(input.id, input.data)),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deleteRegulation(input.id))
+    list: publicProcedure.input(z28.object({ type: z28.string().optional() }).optional()).query(({ input }) => listRegulations(input?.type)),
+    byId: publicProcedure.input(z28.object({ id: z28.number() })).query(({ input }) => getRegulationById(input.id)),
+    create: protectedProcedure.input(z28.object({ title: z28.string(), type: z28.enum(["regulamento", "memorando", "politica", "procedimento"]), content: z28.string(), version: z28.string().optional().nullable() })).mutation(({ input }) => createRegulation(input)),
+    update: protectedProcedure.input(z28.object({ id: z28.number(), data: z28.object({ title: z28.string().optional(), type: z28.enum(["regulamento", "memorando", "politica", "procedimento"]).optional(), content: z28.string().optional(), version: z28.string().optional().nullable(), active: z28.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updateRegulation(input.id, input.data)),
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => deleteRegulation(input.id))
   }),
   // ─── OPERAÇÕES: POPs ─────────────────────────────────────────────────────
   pops: router({
-    list: publicProcedure.input(z23.object({ sector: z23.string().optional() }).optional()).query(({ input }) => listPops(input?.sector)),
-    byId: publicProcedure.input(z23.object({ id: z23.number() })).query(({ input }) => getPopById(input.id)),
-    create: protectedProcedure.input(z23.object({ code: z23.string(), title: z23.string(), sector: z23.string(), objective: z23.string().optional().nullable(), steps: z23.string(), responsible: z23.string().optional().nullable(), version: z23.string().optional().nullable() })).mutation(({ input }) => createPop(input)),
-    update: protectedProcedure.input(z23.object({ id: z23.number(), data: z23.object({ code: z23.string().optional(), title: z23.string().optional(), sector: z23.string().optional(), objective: z23.string().optional().nullable(), steps: z23.string().optional(), responsible: z23.string().optional().nullable(), version: z23.string().optional().nullable(), active: z23.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updatePop(input.id, input.data)),
-    delete: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(({ input }) => deletePop(input.id)),
+    list: publicProcedure.input(z28.object({ sector: z28.string().optional() }).optional()).query(({ input }) => listPops(input?.sector)),
+    byId: publicProcedure.input(z28.object({ id: z28.number() })).query(({ input }) => getPopById(input.id)),
+    create: protectedProcedure.input(z28.object({ code: z28.string(), title: z28.string(), sector: z28.string(), objective: z28.string().optional().nullable(), steps: z28.string(), responsible: z28.string().optional().nullable(), version: z28.string().optional().nullable() })).mutation(({ input }) => createPop(input)),
+    update: protectedProcedure.input(z28.object({ id: z28.number(), data: z28.object({ code: z28.string().optional(), title: z28.string().optional(), sector: z28.string().optional(), objective: z28.string().optional().nullable(), steps: z28.string().optional(), responsible: z28.string().optional().nullable(), version: z28.string().optional().nullable(), active: z28.enum(["sim", "nao"]).optional() }) })).mutation(({ input }) => updatePop(input.id, input.data)),
+    delete: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(({ input }) => deletePop(input.id)),
     // Gera um POP automaticamente via IA a partir de um erro da biblioteca
-    generateFromError: protectedProcedure.input(z23.object({
-      errorCode: z23.string(),
-      errorDescription: z23.string(),
-      errorCategory: z23.string(),
-      correction: z23.string(),
+    generateFromError: protectedProcedure.input(z28.object({
+      errorCode: z28.string(),
+      errorDescription: z28.string(),
+      errorCategory: z28.string(),
+      correction: z28.string(),
       // histórico de ocorrências para enriquecer o contexto
-      occurrenceCount: z23.number().optional(),
-      totalCost: z23.number().optional()
+      occurrenceCount: z28.number().optional(),
+      totalCost: z28.number().optional()
     })).mutation(async ({ input }) => {
       const prompt = `Voc\xEA \xE9 um especialista em qualidade e processos industriais de uma f\xE1brica de letreiros chamada Letreiros Express.
 
@@ -13776,12 +18451,12 @@ O POP deve ser pr\xE1tico, direto e aplic\xE1vel no ch\xE3o de f\xE1brica. Use l
       }
     }),
     // Incorpora o conhecimento de um erro a um POP existente via IA
-    incorporateError: protectedProcedure.input(z23.object({
-      popId: z23.number(),
-      errorCode: z23.string(),
-      errorDescription: z23.string(),
-      errorCategory: z23.string(),
-      correction: z23.string()
+    incorporateError: protectedProcedure.input(z28.object({
+      popId: z28.number(),
+      errorCode: z28.string(),
+      errorDescription: z28.string(),
+      errorCategory: z28.string(),
+      correction: z28.string()
     })).mutation(async ({ input }) => {
       const pop = await getPopById(input.popId);
       if (!pop) throw new Error("POP n\xE3o encontrado");
@@ -13876,13 +18551,13 @@ Use linguagem simples e imperativa ("Verifique...", "Aplique...", "Confirme...")
       return { popId: input.popId, popCode: pop.code, title: pop.title, newVersion, stepsText, parsed };
     }),
     // Gera um POP unificado por categoria abrangendo todos os erros da categoria
-    generateFromCategory: protectedProcedure.input(z23.object({
-      category: z23.string(),
-      errors: z23.array(z23.object({
-        code: z23.string(),
-        description: z23.string(),
-        correction: z23.string(),
-        imageUrl: z23.string().optional().nullable()
+    generateFromCategory: protectedProcedure.input(z28.object({
+      category: z28.string(),
+      errors: z28.array(z28.object({
+        code: z28.string(),
+        description: z28.string(),
+        correction: z28.string(),
+        imageUrl: z28.string().optional().nullable()
       }))
     })).mutation(async ({ input }) => {
       const errorsText = input.errors.map(
@@ -13988,28 +18663,28 @@ O POP deve:
       }
     }),
     // Edição manual de texto do POP
-    updateContent: publicProcedure.input(z23.object({
-      id: z23.number(),
-      title: z23.string().optional(),
-      objective: z23.string().optional().nullable(),
-      steps: z23.string().optional(),
-      responsible: z23.string().optional().nullable(),
-      version: z23.string().optional().nullable(),
-      sector: z23.string().optional()
+    updateContent: publicProcedure.input(z28.object({
+      id: z28.number(),
+      title: z28.string().optional(),
+      objective: z28.string().optional().nullable(),
+      steps: z28.string().optional(),
+      responsible: z28.string().optional().nullable(),
+      version: z28.string().optional().nullable(),
+      sector: z28.string().optional()
     })).mutation(({ input }) => {
       const { id, ...data } = input;
       return updatePop(id, data);
     }),
     // Upload de imagem em anexo ao POP
-    uploadImage: publicProcedure.input(z23.object({
-      popId: z23.number(),
-      fileName: z23.string(),
-      url: z23.string().url(),
-      key: z23.string().min(1),
-      mimeType: z23.string().default("image/jpeg")
+    uploadImage: publicProcedure.input(z28.object({
+      popId: z28.number(),
+      fileName: z28.string(),
+      url: z28.string().url(),
+      key: z28.string().min(1),
+      mimeType: z28.string().default("image/jpeg")
     })).mutation(async ({ input }) => {
       const pop = await getPopById(input.popId);
-      if (!pop) throw new TRPCError5({ code: "NOT_FOUND", message: "POP n\xE3o encontrado" });
+      if (!pop) throw new TRPCError6({ code: "NOT_FOUND", message: "POP n\xE3o encontrado" });
       let attachments = [];
       try {
         attachments = pop.attachments ? JSON.parse(pop.attachments) : [];
@@ -14021,9 +18696,9 @@ O POP deve:
       return { url: input.url, attachments };
     }),
     // Remove imagem de anexo do POP
-    removeImage: publicProcedure.input(z23.object({ popId: z23.number(), url: z23.string() })).mutation(async ({ input }) => {
+    removeImage: publicProcedure.input(z28.object({ popId: z28.number(), url: z28.string() })).mutation(async ({ input }) => {
       const pop = await getPopById(input.popId);
-      if (!pop) throw new TRPCError5({ code: "NOT_FOUND", message: "POP n\xE3o encontrado" });
+      if (!pop) throw new TRPCError6({ code: "NOT_FOUND", message: "POP n\xE3o encontrado" });
       let attachments = [];
       try {
         attachments = pop.attachments ? JSON.parse(pop.attachments) : [];
@@ -14035,11 +18710,11 @@ O POP deve:
       return { attachments };
     }),
     // Registrar acesso (visualização) a um POP
-    registrarAcesso: protectedProcedure.input(z23.object({
-      popId: z23.number(),
-      popCode: z23.string(),
-      popTitle: z23.string(),
-      tipo: z23.enum(["visualizacao", "download"]).default("visualizacao")
+    registrarAcesso: protectedProcedure.input(z28.object({
+      popId: z28.number(),
+      popCode: z28.string(),
+      popTitle: z28.string(),
+      tipo: z28.enum(["visualizacao", "download"]).default("visualizacao")
     })).mutation(async ({ input, ctx }) => {
       const { getDb: getDb6 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db5 = await getDb6();
@@ -14056,12 +18731,12 @@ O POP deve:
       return { success: true };
     }),
     // Relatório de acessos/downloads de POPs
-    relatorioAcessos: protectedProcedure.input(z23.object({
-      popId: z23.number().optional(),
-      tipo: z23.enum(["visualizacao", "download", "todos"]).default("todos"),
-      dataInicio: z23.string().optional(),
+    relatorioAcessos: protectedProcedure.input(z28.object({
+      popId: z28.number().optional(),
+      tipo: z28.enum(["visualizacao", "download", "todos"]).default("todos"),
+      dataInicio: z28.string().optional(),
       // ISO date string
-      dataFim: z23.string().optional()
+      dataFim: z28.string().optional()
     }).optional()).query(async ({ input }) => {
       const { getDb: getDb6 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db5 = await getDb6();
@@ -14105,7 +18780,7 @@ O POP deve:
     activeList: publicProcedure.query(async () => {
       const db5 = await getDb3();
       if (!db5) return [];
-      const rows = await db5.select({ id: user.id, name: user.name, role: user.role }).from(user).where(or2(isNull2(user.banned), eq20(user.banned, false))).orderBy(asc6(user.name));
+      const rows = await db5.select({ id: user.id, name: user.name, role: user.role }).from(user).where(or2(isNull2(user.banned), eq27(user.banned, false))).orderBy(asc6(user.name));
       return rows;
     }),
     list: publicProcedure.query(async ({ ctx }) => {
@@ -14123,17 +18798,17 @@ O POP deve:
       }).from(user).orderBy(asc6(user.name));
       return rows.map((u) => ({ ...u, active: u.banned ? "nao" : "sim" }));
     }),
-    create: publicProcedure.input(z23.object({
-      name: z23.string().min(2),
-      email: z23.string().email().optional(),
-      password: z23.string().min(6),
-      role: z23.enum(APP_ROLES)
+    create: publicProcedure.input(z28.object({
+      name: z28.string().min(2),
+      email: z28.string().email().optional(),
+      password: z28.string().min(6),
+      role: z28.enum(APP_ROLES)
     })).mutation(async ({ input, ctx }) => {
       const total = await countUsers();
       if (total > 0) assertAdminOrMaster(ctx);
       const needsEmail = input.role !== "producao" && input.role !== "empacotamento";
       if (needsEmail && !input.email) {
-        throw new TRPCError5({ code: "BAD_REQUEST", message: "E-mail obrigat\xF3rio para esta fun\xE7\xE3o" });
+        throw new TRPCError6({ code: "BAD_REQUEST", message: "E-mail obrigat\xF3rio para esta fun\xE7\xE3o" });
       }
       const name = input.name.trim();
       const email = input.email ? input.email.toLowerCase() : `${slugifyName(name)}@local.internal`;
@@ -14149,12 +18824,12 @@ O POP deve:
       });
       return { id: user2.id, name: user2.name, email: user2.email, role: input.role };
     }),
-    update: publicProcedure.input(z23.object({
-      id: z23.string(),
-      name: z23.string().min(2).optional(),
-      role: z23.enum(APP_ROLES).optional(),
-      password: z23.string().min(6).optional(),
-      active: z23.enum(["sim", "nao"]).optional()
+    update: publicProcedure.input(z28.object({
+      id: z28.string(),
+      name: z28.string().min(2).optional(),
+      role: z28.enum(APP_ROLES).optional(),
+      password: z28.string().min(6).optional(),
+      active: z28.enum(["sim", "nao"]).optional()
     })).mutation(async ({ input, ctx }) => {
       const total = await countUsers();
       if (total > 0) assertAdminOrMaster(ctx);
@@ -14173,7 +18848,7 @@ O POP deve:
       }
       return { ok: true };
     }),
-    delete: publicProcedure.input(z23.object({ id: z23.string() })).mutation(async ({ input, ctx }) => {
+    delete: publicProcedure.input(z28.object({ id: z28.string() })).mutation(async ({ input, ctx }) => {
       const total = await countUsers();
       if (total > 0) assertAdminOrMaster(ctx);
       await auth.api.removeUser({
@@ -14200,10 +18875,10 @@ O POP deve:
       }
       return matrix;
     }),
-    set: protectedProcedure.use(requireRole("admin", "master")).input(z23.object({
-      role: z23.enum(APP_ROLES),
-      pageKey: z23.string(),
-      canAccess: z23.boolean()
+    set: protectedProcedure.use(requireRole("admin", "master")).input(z28.object({
+      role: z28.enum(APP_ROLES),
+      pageKey: z28.string(),
+      canAccess: z28.boolean()
     })).mutation(async ({ input }) => {
       return setRolePermission(input.role, input.pageKey, input.canAccess ? "sim" : "nao");
     }),
@@ -14214,53 +18889,53 @@ O POP deve:
   }),
   // ─── COMENTÁRIOS DA BASE DE CONHECIMENTO ──────────────────────────────────────────────────────
   knowledgeComments: router({
-    list: publicProcedure.input(z23.object({ knowledgeId: z23.number() })).query(async ({ input }) => {
+    list: publicProcedure.input(z28.object({ knowledgeId: z28.number() })).query(async ({ input }) => {
       return listKnowledgeComments(input.knowledgeId);
     }),
-    create: publicProcedure.input(z23.object({
-      knowledgeId: z23.number(),
-      author: z23.string().min(1).max(128).default("Equipe"),
-      content: z23.string().min(1)
+    create: publicProcedure.input(z28.object({
+      knowledgeId: z28.number(),
+      author: z28.string().min(1).max(128).default("Equipe"),
+      content: z28.string().min(1)
     })).mutation(async ({ input }) => {
       await createKnowledgeComment(input);
       return { ok: true };
     }),
-    delete: publicProcedure.input(z23.object({ id: z23.number() })).mutation(async ({ input }) => {
+    delete: publicProcedure.input(z28.object({ id: z28.number() })).mutation(async ({ input }) => {
       await deleteKnowledgeComment(input.id);
       return { ok: true };
     })
   }),
   price: router({
-    list: protectedProcedure.input(z23.object({ page: z23.number().optional() })).query(async ({ input }) => {
+    list: protectedProcedure.input(z28.object({ page: z28.number().optional() })).query(async ({ input }) => {
       return listPriceTableSections(input.page);
     }),
     getMeta: protectedProcedure.query(async () => {
       return getPriceTableMeta();
     }),
-    update: protectedProcedure.input(z23.object({
-      id: z23.number(),
-      sectionTitle: z23.string().optional(),
-      contentJson: z23.string().optional(),
-      notes: z23.string().nullable().optional()
+    update: protectedProcedure.input(z28.object({
+      id: z28.number(),
+      sectionTitle: z28.string().optional(),
+      contentJson: z28.string().optional(),
+      notes: z28.string().nullable().optional()
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       await updatePriceTableSection(id, data, ctx.user.name ?? ctx.user.email ?? "usu\xE1rio");
       return { ok: true };
     }),
-    addSection: protectedProcedure.input(z23.object({
-      page: z23.number(),
-      sectionTitle: z23.string(),
-      contentJson: z23.string(),
-      notes: z23.string().nullable().optional()
+    addSection: protectedProcedure.input(z28.object({
+      page: z28.number(),
+      sectionTitle: z28.string(),
+      contentJson: z28.string(),
+      notes: z28.string().nullable().optional()
     })).mutation(async ({ input, ctx }) => {
       const id = await addPriceTableSection(input, ctx.user.name ?? ctx.user.email ?? "usu\xE1rio");
       return { ok: true, id };
     }),
-    deleteSection: protectedProcedure.input(z23.object({ id: z23.number() })).mutation(async ({ input, ctx }) => {
+    deleteSection: protectedProcedure.input(z28.object({ id: z28.number() })).mutation(async ({ input, ctx }) => {
       await deletePriceTableSection(input.id, ctx.user.name ?? ctx.user.email ?? "usu\xE1rio");
       return { ok: true };
     }),
-    getHistory: protectedProcedure.input(z23.object({ limit: z23.number().optional() })).query(async ({ input }) => {
+    getHistory: protectedProcedure.input(z28.object({ limit: z28.number().optional() })).query(async ({ input }) => {
       return listPriceTableHistory(input.limit ?? 100);
     })
   }),
@@ -14272,6 +18947,10 @@ O POP deve:
   analiseGeografica: analiseGeograficaRouter,
   metricas: metricasRouter,
   crm: crmRouter,
+  leadsCnpj: leadsCnpjRouter,
+  perfilClientesCnpj: perfilClientesCnpjRouter,
+  planosAcaoComercial: planosAcaoComercialRouter,
+  radarMercado: radarMercadoRouter,
   custoLed: custoLedRouter,
   auditoria: auditoriaRouter,
   cargos: cargosRouter,
@@ -14288,6 +18967,7 @@ O POP deve:
   metasOperacionais: metasRouter,
   metaProdutos: metaProdutosRouter,
   financeiro: financeiroRouter,
+  marketingFinanceiro: marketingFinanceiroRouter,
   observacoesFinanceiras: observacoesFinanceirasRouter,
   desempenhoColabMensal: desempenhoColabMensalRouter,
   // LOGISTICA ────────────────────────────────────────────────────────────────────
@@ -14295,11 +18975,11 @@ O POP deve:
   cotacoesFrete: cotacoesFreteRouter,
   cte: cteRouter,
   logistica: router({
-    buscarDadosOS: publicProcedure.input(z23.object({ osNumero: z23.string() })).mutation(async ({ input }) => {
+    buscarDadosOS: publicProcedure.input(z28.object({ osNumero: z28.string() })).mutation(async ({ input }) => {
       const { buscarDadosOSParaFrete: buscarDadosOSParaFrete2 } = await Promise.resolve().then(() => (init_mubisys_frete(), mubisys_frete_exports));
       return buscarDadosOSParaFrete2(input.osNumero);
     }),
-    analisarAssertividade: publicProcedure.input(z23.object({ tipo: z23.string(), pergunta: z23.string().optional() })).mutation(async ({ input }) => {
+    analisarAssertividade: publicProcedure.input(z28.object({ tipo: z28.string(), pergunta: z28.string().optional() })).mutation(async ({ input }) => {
       const { getDb: getDb6 } = await Promise.resolve().then(() => (init_db(), db_exports));
       const db22 = await getDb6();
       const { cotacoesFrete: cotacoesFrete2, cotacaoOpcoes: cotacaoOpcoes2, transportadoras: transpTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -14442,6 +19122,14 @@ async function createApp() {
   const { handleSincronizarOS: handleSincronizarOS2, handleStatusSincronizacao: handleStatusSincronizacao2 } = await Promise.resolve().then(() => (init_scheduled_sync_os_handler(), scheduled_sync_os_handler_exports));
   app.post("/api/scheduled/sincronizarOS", handleSincronizarOS2);
   app.get("/api/scheduled/sincronizarOS/status", handleStatusSincronizacao2);
+  const { handleSincronizarHistorico: handleSincronizarHistorico2 } = await Promise.resolve().then(() => (init_scheduled_sync_historico_handler(), scheduled_sync_historico_handler_exports));
+  app.post("/api/scheduled/sincronizarHistorico", handleSincronizarHistorico2);
+  const { handleSincronizarCrmAbertos: handleSincronizarCrmAbertos2 } = await Promise.resolve().then(() => (init_scheduled_sync_crm_abertos_handler(), scheduled_sync_crm_abertos_handler_exports));
+  app.post("/api/scheduled/sincronizarCrmAbertos", handleSincronizarCrmAbertos2);
+  const { handleSincronizarCrmFechados: handleSincronizarCrmFechados2 } = await Promise.resolve().then(() => (init_scheduled_sync_crm_fechados_handler(), scheduled_sync_crm_fechados_handler_exports));
+  app.post("/api/scheduled/sincronizarCrmFechados", handleSincronizarCrmFechados2);
+  const { handleSincronizarPerfilCnpj: handleSincronizarPerfilCnpj2 } = await Promise.resolve().then(() => (init_scheduled_sync_perfil_cnpj_handler(), scheduled_sync_perfil_cnpj_handler_exports));
+  app.post("/api/scheduled/sincronizarPerfilCnpj", handleSincronizarPerfilCnpj2);
   return app;
 }
 

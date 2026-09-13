@@ -1,6 +1,6 @@
 # CRON: sincronização de OS via Upstash QStash
 
-Existem **três** jobs agendados pelo **Upstash QStash** (não pelo Vercel
+Existem **cinco** jobs agendados pelo **Upstash QStash** (não pelo Vercel
 Cron); nenhum agendador vive dentro do repositório:
 
 | Job | Alimenta | Propósito |
@@ -9,10 +9,11 @@ Cron); nenhum agendador vive dentro do repositório:
 | `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
 | `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave `crm_abertos_15d`) | orçamentos "em aberto" (15 dias) que o CRM de Propostas mostra — ver seção "Sincronização de abertos do CRM" mais abaixo |
 | `POST /api/scheduled/sincronizarCrmFechados` | `mubisys_api_cache` (chave `crm_fechados_45d`) | orçamentos "fechados" (45 dias) usados nas estatísticas do período selecionado no CRM — mesma seção |
+| `POST /api/scheduled/sincronizarPerfilCnpj` | `clientes_perfil_cnpj` | enriquece automaticamente o CNPJ de clientes novos que aparecem em `historico_os` (porte, idade, sócios) — ver seção "Sincronização do Perfil de Clientes por CNPJ" mais abaixo |
 
-Este documento cobre o primeiro em detalhe; os outros dois estão descritos nas
-seções "Sincronização de histórico" e "Sincronização de abertos do CRM" mais
-abaixo.
+Este documento cobre o primeiro em detalhe; os outros estão descritos nas
+seções "Sincronização de histórico", "Sincronização de abertos do CRM" e
+"Sincronização do Perfil de Clientes por CNPJ" mais abaixo.
 
 ## Agendamento planejado: 4 lotes escalonados
 
@@ -215,3 +216,43 @@ Mesmo aviso do job de abertos sobre instabilidade da API MubiSys se aplica
 aqui: rodar como job SEPARADO (não somado ao de abertos na mesma invocação)
 é intencional — as duas buscas já podem sozinhas se aproximar do
 `maxDuration` de 60s quando a API está lenta.
+
+## Sincronização do Perfil de Clientes por CNPJ (`clientes_perfil_cnpj`)
+
+Criado em 13/09/2026 a pedido do usuário: até então, a tabela
+`clientes_perfil_cnpj` (usada pela sub-aba Inteligência de Clientes → Perfil
+CNPJ, ver `server/routers/perfilClientesCnpj.ts`) só crescia quando alguém
+clicava manualmente em "Preencher automaticamente via MubiSys" — clientes
+novos que passavam a comprar não entravam sozinhos. Este job fecha esse loop:
+todo cliente novo que aparece em `historico_os` e ainda não tem CNPJ vinculado
+é enriquecido automaticamente, na próxima execução do cron.
+
+- **Endpoint:** `POST /api/scheduled/sincronizarPerfilCnpj`
+- **Autenticação:** nenhuma — ver "Sem autenticação por segredo" acima.
+- **Sem parâmetros.**
+- **Lógica:** idêntica à do botão manual (`enriquecerViaMubisys`) e ao script
+  de backfill completo (`server/scripts/backfill-cnpj-todos-clientes.ts`) —
+  ver `server/sync/scheduled-sync-perfil-cnpj.ts`. Para cada cliente sem CNPJ
+  vinculado, busca uma OS de referência dele no MubiSys (que traz
+  `cliente_cnpj_cpf`), classifica CPF x CNPJ, e para CNPJ consulta a OpenCNPJ
+  e grava o perfil.
+- **Orçamento por execução:** no máximo 40 candidatos OU 45s de execução
+  (o que vier primeiro) — o restante fica para a próxima execução, mesmo
+  princípio de "restantes" já usado na tela manual. Como poucos clientes
+  novos aparecem por dia, isso é folgado na prática; o teto existe só para
+  nunca se aproximar do `maxDuration` de 60s da Vercel mesmo num dia atípico.
+- **Idempotente:** nunca reprocessa quem já está em `clientes_perfil_cnpj`.
+
+```
+POST https://SEU-DOMINIO.com/api/scheduled/sincronizarPerfilCnpj
+Cron (UTC): 0 8 * * *     (1x por dia, depois do sincronizarHistorico)
+Retries:    2
+```
+
+**Nota (13/09/2026):** o Score de Probabilidade de Compra
+(`server/services/probabilidadeCompra.ts`) hoje **não** usa este perfil de
+CNPJ como fator — o próprio arquivo documenta isso como "fora de escopo"
+deliberado. Fazer o perfil de CNPJ "participar da análise de preditividade"
+(porte, idade da empresa, sócios como fator do score) é uma mudança de
+metodologia do score já calibrado e usado tanto no CRM quanto na Performance
+Comercial — decisão pendente do usuário, não implementada neste job.

@@ -5,7 +5,7 @@ import {
   AlertTriangle, Percent, CalendarDays, DollarSign, Repeat, Trophy, Info,
   CheckCircle2, XCircle, Clock3, ChevronRight, HelpCircle, Filter, Layers,
   Download, Sparkles, Send, UserCheck, SlidersHorizontal, MessageSquareText,
-  Eye, ShieldCheck,
+  Eye, ShieldCheck, Printer,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -21,6 +21,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as ChartTooltip, ResponsiveContainer, Cell, ReferenceArea,
+  PieChart, Pie, Legend,
 } from "recharts";
 import KpiCard from "@/components/KpiCard";
 import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
@@ -45,14 +46,39 @@ function formatarPeriodo(ini: string, fim: string) {
   return `${MESES[mIni - 1]}/${aIni} a ${MESES[mFim - 1]}/${aFim}`;
 }
 
-const CLASSIFICACAO_INFO: Record<string, { label: string; cor: string; icone: string }> = {
-  primeira_compra: { label: "Primeira compra", cor: "bg-blue-50 text-blue-700 border-blue-200", icone: "🆕" },
-  recompra_observada: { label: "Recompra observada", cor: "bg-slate-100 text-slate-700 border-slate-200", icone: "🔁" },
-  em_crescimento: { label: "Em crescimento", cor: "bg-green-50 text-green-700 border-green-200", icone: "📈" },
-  reducao_volume: { label: "Redução de volume", cor: "bg-red-50 text-red-700 border-red-200", icone: "📉" },
-  intervalo_acima_habitual: { label: "Atraso na recompra", cor: "bg-amber-50 text-amber-700 border-amber-200", icone: "⏰" },
-  historico_insuficiente: { label: "Histórico insuficiente", cor: "bg-slate-50 text-slate-500 border-slate-200", icone: "❔" },
+const CLASSIFICACAO_INFO: Record<string, { label: string; cor: string; icone: string; corHex: string; descricao: string }> = {
+  primeira_compra: {
+    label: "Primeira compra", cor: "bg-blue-50 text-blue-700 border-blue-200", icone: "🆕", corHex: "#3b82f6",
+    descricao: "Cliente com apenas 1 compra válida em todo o histórico local. Ainda não há uma segunda compra para saber se ele vai voltar.",
+  },
+  recompra_observada: {
+    label: "Recompra observada", cor: "bg-slate-100 text-slate-700 border-slate-200", icone: "🔁", corHex: "#64748b",
+    descricao: "Cliente com 2 ou mais compras, sem sinal de atraso relevante nem variação forte de volume — está comprando dentro do padrão de sempre dele.",
+  },
+  em_crescimento: {
+    label: "Em crescimento", cor: "bg-green-50 text-green-700 border-green-200", icone: "📈", corHex: "#22c55e",
+    descricao: "O valor comprado na janela atual está 20% ou mais acima da janela anterior de mesmo tamanho — sinal de aumento de consumo.",
+  },
+  reducao_volume: {
+    label: "Redução de volume", cor: "bg-red-50 text-red-700 border-red-200", icone: "📉", corHex: "#ef4444",
+    descricao: "O valor comprado na janela atual caiu 20% ou mais em relação à janela anterior de mesmo tamanho — sinal de queda de consumo.",
+  },
+  intervalo_acima_habitual: {
+    label: "Atraso na recompra", cor: "bg-amber-50 text-amber-700 border-amber-200", icone: "⏰", corHex: "#f59e0b",
+    descricao: "Já se passou 1,5x ou mais o intervalo mediano de compra desse cliente sem uma nova compra registrada — pode ser atraso, não é necessariamente perda do cliente.",
+  },
+  historico_insuficiente: {
+    label: "Histórico insuficiente", cor: "bg-slate-50 text-slate-500 border-slate-200", icone: "❔", corHex: "#94a3b8",
+    descricao: "Menos de 3 compras válidas em todo o histórico — amostra pequena demais para calcular mediana de intervalo ou tendência com confiança.",
+  },
 };
+
+/** Ordem fixa de exibição no dashboard e na legenda — do sinal mais positivo
+ * ao mais crítico, com "sem dado suficiente" por último. */
+const ORDEM_CLASSIFICACOES = [
+  "em_crescimento", "recompra_observada", "primeira_compra",
+  "intervalo_acima_habitual", "reducao_volume", "historico_insuficiente",
+] as const;
 
 // Score de Probabilidade de Compra (Fase 1) — mesma fórmula/cores do CRM de
 // Propostas (client/src/pages/comercial/CRM.tsx), sem ajuste por proposta
@@ -534,6 +560,19 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
     return lista;
   }, [data, diasMin, diasMax, ordenarPorTicket, filtroVendedor]);
 
+  const distribuicaoClassificacao = useMemo(() => {
+    const contagem: Record<string, number> = {};
+    for (const chave of ORDEM_CLASSIFICACOES) contagem[chave] = 0;
+    for (const c of filtrados) contagem[c.classificacao] = (contagem[c.classificacao] ?? 0) + 1;
+    const total = filtrados.length;
+    return ORDEM_CLASSIFICACOES.map(chave => ({
+      chave,
+      label: CLASSIFICACAO_INFO[chave].label,
+      quantidade: contagem[chave],
+      pct: total > 0 ? (contagem[chave] / total) * 100 : 0,
+    }));
+  }, [filtrados]);
+
   if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-64 animate-pulse" />;
   if (!data || data.length === 0) {
     return (
@@ -544,8 +583,17 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
   }
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
+    <div className="space-y-3" id="painel-clientes-print">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #painel-clientes-print, #painel-clientes-print * { visibility: visible; }
+          #painel-clientes-print { position: absolute; left: 0; top: 0; width: 100%; padding: 12px; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      <div className="no-print bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
         <span className="flex items-center gap-1 text-[11px] font-bold text-slate-500"><SlidersHorizontal className="w-3.5 h-3.5" /> Faixa de dias sem compra:</span>
         <input type="number" min={0} placeholder="mín" value={diasMin} onChange={e => setDiasMin(e.target.value)} className="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1.5" />
         <span className="text-xs text-slate-400">até</span>
@@ -568,6 +616,64 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
           <input type="checkbox" checked={ordenarPorTicket} onChange={e => setOrdenarPorTicket(e.target.checked)} />
           Priorizar por faturamento médio (ticket histórico)
         </label>
+        <div className="flex-1" />
+        <button
+          onClick={() => window.print()}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold rounded-lg"
+        >
+          <Printer className="w-3.5 h-3.5" /> Imprimir PDF
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-700">Visão geral por classificação</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {filtroVendedor ? `Carteira de ${filtroVendedor}` : "Toda a carteira"} — {fmtNum(filtrados.length)} cliente{filtrados.length === 1 ? "" : "s"} no período selecionado{(diasMin !== "" || diasMax !== "") ? ", já considerando a faixa de dias sem compra" : ""}.
+            </p>
+          </div>
+        </div>
+
+        {filtrados.length === 0 ? (
+          <p className="text-xs text-slate-400 py-6 text-center">Sem clientes para montar o gráfico com os filtros atuais.</p>
+        ) : (
+          <div className="grid md:grid-cols-[minmax(0,260px)_1fr] gap-6 items-center">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={distribuicaoClassificacao.filter(d => d.quantidade > 0)}
+                    dataKey="quantidade"
+                    nameKey="label"
+                    innerRadius={45}
+                    outerRadius={80}
+                    paddingAngle={2}
+                  >
+                    {distribuicaoClassificacao.filter(d => d.quantidade > 0).map(d => (
+                      <Cell key={d.chave} fill={CLASSIFICACAO_INFO[d.chave].corHex} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip formatter={(value: number, _name, item: any) => [`${value} (${fmtPct(item.payload.pct)})`, item.payload.label]} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="space-y-2">
+              {distribuicaoClassificacao.map(d => (
+                <div key={d.chave} className="flex items-start gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: CLASSIFICACAO_INFO[d.chave].corHex }} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-700">
+                      {CLASSIFICACAO_INFO[d.chave].icone} {d.label} — {fmtNum(d.quantidade)} <span className="font-normal text-slate-400">({fmtPct(d.pct)})</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">{CLASSIFICACAO_INFO[d.chave].descricao}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -592,7 +698,7 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
                 <TableHead className="text-right">Dias desde última compra</TableHead>
                 <TableHead className="text-right">Razão de atraso</TableHead>
                 <TableHead>Último contato</TableHead>
-                <TableHead />
+                <TableHead className="no-print" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -630,7 +736,7 @@ function VistaClientes({ dataInicial, dataFinal }: { dataInicial: string; dataFi
                         <span className="text-slate-300">Sem registro</span>
                       )}
                     </TableCell>
-                    <TableCell onClick={e => e.stopPropagation()}>
+                    <TableCell className="no-print" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setContatandoCliente({ empresaKey: c.empresaKey, empresaExibicao: c.empresaExibicao })}
