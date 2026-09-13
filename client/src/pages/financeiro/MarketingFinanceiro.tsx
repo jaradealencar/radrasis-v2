@@ -29,7 +29,7 @@ import {
 } from "recharts";
 import {
   TrendingUp, Edit3, Check, X, DollarSign, Users, Target, Percent, Filter, Upload, RefreshCw,
-  Loader2, AlertTriangle,
+  Loader2, AlertTriangle, Lightbulb, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import KpiCard from "@/components/KpiCard";
 import ImportarCustoMarketing from "./ImportarCustoMarketing";
@@ -281,6 +281,123 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
   );
 
   const labelFiltro = mesFiltro != null ? MESES[mesFiltro - 1] : `Ano ${anoSel}`;
+
+  // ─── Insights automáticos ─── sempre olham o ano inteiro (mesesComDados),
+  // independente do filtro de mês selecionado — leitura macro do período.
+  type Insight = { tipo: "positivo" | "atencao" | "alerta" | "dica"; texto: string };
+  const insights = useMemo<Insight[]>(() => {
+    const lista: Insight[] = [];
+    const comRoi = mesesComDados.filter(d => d.roiPct != null && d.investimentoAquisicao != null);
+
+    // Meses do ano corrente (até o mês vigente) sem investimento preenchido
+    const hoje = new Date();
+    const mesesRelevantes = anoSel < hoje.getFullYear() ? 12
+      : anoSel === hoje.getFullYear() ? hoje.getMonth() + 1
+      : 0;
+    const mesesFaltando = dadosMeses.filter(d => d.mes <= mesesRelevantes && d.investimento == null);
+    if (mesesFaltando.length > 0) {
+      lista.push({
+        tipo: "dica",
+        texto: `Faltam preencher os investimentos de ${mesesFaltando.map(d => d.nome).join(", ")} — sem isso, CAC e ROI desses meses não entram nas contas.`,
+      });
+    }
+
+    if (comRoi.length > 0) {
+      // Melhor e pior mês por ROI %
+      const melhor = comRoi.reduce((a, b) => (b.roiPct! > a.roiPct! ? b : a));
+      lista.push({
+        tipo: "positivo",
+        texto: `${melhor.nome} foi o mês com melhor retorno: ROI de ${melhor.roiPct!.toFixed(0)}% (${fmtBRL(melhor.roiReais!)}) sobre o investimento em aquisição.`,
+      });
+
+      const pior = comRoi.reduce((a, b) => (b.roiPct! < a.roiPct! ? b : a));
+      if (pior.mes !== melhor.mes) {
+        lista.push({
+          tipo: pior.roiPct! < 0 ? "alerta" : "atencao",
+          texto: pior.roiPct! < 0
+            ? `${pior.nome} fechou no prejuízo: ROI de ${pior.roiPct!.toFixed(0)}% — o retorno real não cobriu o investimento em aquisição.`
+            : `${pior.nome} foi o mês com retorno mais fraco do período: ROI de ${pior.roiPct!.toFixed(0)}%.`,
+        });
+      }
+
+      // Mês com maior investimento não necessariamente foi o mais eficiente
+      const maiorInvest = comRoi.reduce((a, b) => ((b.investimentoAquisicao ?? 0) > (a.investimentoAquisicao ?? 0) ? b : a));
+      if (maiorInvest.mes !== melhor.mes && maiorInvest.roiPct != null && maiorInvest.roiPct < melhor.roiPct! * 0.5) {
+        lista.push({
+          tipo: "atencao",
+          texto: `${maiorInvest.nome} teve o maior investimento em aquisição do período (${fmtBRL(maiorInvest.investimentoAquisicao!)}), mas ROI bem abaixo do melhor mês (${maiorInvest.roiPct!.toFixed(0)}% vs ${melhor.roiPct!.toFixed(0)}%) — sinal de que gastar mais não está escalando na mesma proporção.`,
+        });
+      }
+    }
+
+    // CAC de Aquisição vs Custo de Reativação (médias do ano inteiro)
+    const comCac = mesesComDados.filter(d => d.cac != null);
+    const comCustoReativ = mesesComDados.filter(d => d.custoReativacao != null);
+    if (comCac.length > 0 && comCustoReativ.length > 0) {
+      const cacMedioAno = comCac.reduce((s, d) => s + d.cac!, 0) / comCac.length;
+      const custoReativMedioAno = comCustoReativ.reduce((s, d) => s + d.custoReativacao!, 0) / comCustoReativ.length;
+      if (custoReativMedioAno > 0) {
+        const diffPct = ((cacMedioAno - custoReativMedioAno) / custoReativMedioAno) * 100;
+        if (diffPct > 20) {
+          lista.push({
+            tipo: "dica",
+            texto: `Reativar um cliente dormente custa em média ${fmtBRL(custoReativMedioAno)}, contra ${fmtBRL(cacMedioAno)} para adquirir um cliente novo (${diffPct.toFixed(0)}% mais caro). Pode valer a pena deslocar parte do orçamento de Aquisição para Reativação.`,
+          });
+        } else if (diffPct < -20) {
+          lista.push({
+            tipo: "dica",
+            texto: `Adquirir um cliente novo (${fmtBRL(cacMedioAno)}) está saindo mais barato que reativar um dormente (${fmtBRL(custoReativMedioAno)}) — a campanha de reativação pode estar perdendo eficiência.`,
+          });
+        }
+      }
+    }
+
+    // Tendência do CAC: primeira metade do período vs segunda metade
+    if (comCac.length >= 4) {
+      const meio = Math.floor(comCac.length / 2);
+      const mediaPrimeira = comCac.slice(0, meio).reduce((s, d) => s + d.cac!, 0) / meio;
+      const segundaMetade = comCac.slice(meio);
+      const mediaSegunda = segundaMetade.reduce((s, d) => s + d.cac!, 0) / segundaMetade.length;
+      const variacao = ((mediaSegunda - mediaPrimeira) / mediaPrimeira) * 100;
+      if (Math.abs(variacao) > 15) {
+        lista.push({
+          tipo: variacao > 0 ? "atencao" : "positivo",
+          texto: `O CAC de Aquisição ${variacao > 0 ? "subiu" : "caiu"} ${Math.abs(variacao).toFixed(0)}% entre a primeira e a segunda metade do período (${fmtBRL(mediaPrimeira)} → ${fmtBRL(mediaSegunda)})${variacao > 0 ? " — vale revisar os canais/campanhas de aquisição em uso" : ""}.`,
+        });
+      }
+    }
+
+    // Proporção de clientes reativados no total de "clientes ativados" (novos + reativados)
+    const totalNovosAno = mesesComDados.reduce((s, d) => s + (d.clientesNovosQtd ?? 0), 0);
+    const totalReativadosAno = mesesComDados.reduce((s, d) => s + (d.clientesReativadosQtd ?? 0), 0);
+    const totalGrupoAno = totalNovosAno + totalReativadosAno;
+    if (totalGrupoAno > 0) {
+      const pctReativados = (totalReativadosAno / totalGrupoAno) * 100;
+      if (pctReativados > 30) {
+        lista.push({
+          tipo: "dica",
+          texto: `${pctReativados.toFixed(0)}% dos clientes ativados no período vieram de reativação, não de aquisição pura — bom para o custo médio, mas fique de olho no tamanho da base de clientes dormentes: ela não é infinita e tende a se esgotar se a reativação continuar nesse ritmo.`,
+        });
+      }
+    }
+
+    // ROI total do ano (mesma fórmula do KPI, mas sempre sobre o ano inteiro)
+    const totalInvestAquisAno = mesesComDados.reduce((s, d) => s + (d.investimentoAquisicao ?? 0), 0);
+    const totalFaturNovosAno = mesesComDados.reduce((s, d) => s + (d.faturamentoNovos ?? 0), 0);
+    if (totalInvestAquisAno > 0) {
+      const roiAnoPct = ((totalFaturNovosAno * MARGEM_MARKETING - totalInvestAquisAno) / totalInvestAquisAno) * 100;
+      lista.push({
+        tipo: roiAnoPct >= 100 ? "positivo" : roiAnoPct >= 0 ? "atencao" : "alerta",
+        texto: roiAnoPct >= 100
+          ? `No acumulado do ano, cada R$ 1 investido em aquisição voltou R$ ${(1 + roiAnoPct / 100).toFixed(2)} em retorno real — o investimento está se pagando com folga.`
+          : roiAnoPct >= 0
+          ? `O ROI acumulado do ano é positivo (${roiAnoPct.toFixed(0)}%), mas apertado — pequenas quedas de conversão podem levar o período a prejuízo.`
+          : `O ROI acumulado do ano está negativo (${roiAnoPct.toFixed(0)}%) — o investimento em aquisição não está se pagando com o retorno real gerado até aqui.`,
+      });
+    }
+
+    return lista;
+  }, [mesesComDados, dadosMeses, anoSel]);
 
   // Primeira carga do custo de marketing (fonte principal da aba) ainda em andamento
   if (loadingMarketing) {
@@ -582,6 +699,37 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             </Card>
           )}
         </div>
+      )}
+
+      {/* ─── Insights automáticos ──────────────────────────────────────────────── */}
+      {insights.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Lightbulb size={18} className="text-amber-500" />
+              Insights e Recomendações — Ano {anoSel}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Leitura automática dos números acima (sempre sobre o ano inteiro, independente do filtro de mês).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {insights.map((ins, i) => {
+              const estilo = {
+                positivo: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-800", Icon: CheckCircle2, iconColor: "text-emerald-600" },
+                atencao: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-800", Icon: AlertTriangle, iconColor: "text-amber-600" },
+                alerta: { bg: "bg-red-50", border: "border-red-200", text: "text-red-800", Icon: AlertCircle, iconColor: "text-red-600" },
+                dica: { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-800", Icon: Lightbulb, iconColor: "text-blue-600" },
+              }[ins.tipo];
+              return (
+                <div key={i} className={`flex items-start gap-2 ${estilo.bg} border ${estilo.border} rounded-lg p-3 text-sm ${estilo.text}`}>
+                  <estilo.Icon size={16} className={`mt-0.5 shrink-0 ${estilo.iconColor}`} />
+                  <span>{ins.texto}</span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       )}
 
       {/* ─── Tabela mensal ─────────────────────────────────────────────────────── */}
