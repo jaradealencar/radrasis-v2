@@ -12,8 +12,8 @@ import {
 } from "../sync/crm-abertos-cache";
 import type { TrpcContext } from "../_core/context";
 import {
-  construirMapaConversaoClientes, calcularTaxaConversaoNovosRecente, calcularProbabilidade, normalizeEmpresaKey,
-  construirMapaFaixaTicket, construirMapaConversaoPorRegiao,
+  construirMapaConversaoClientes, normalizeEmpresaKey,
+  construirModeloBayesiano, calcularProbabilidadeBayesiana,
 } from "../services/probabilidadeCompra";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 import { diasUteisEntre } from "../../shared/dias-uteis";
@@ -333,20 +333,23 @@ export const crmRouter = router({
       } catch {
         // Se falhar, clientesComCompra fica vazio — nenhuma estrela será exibida (evita falso positivo)
       }
-      // Score de Probabilidade de Compra (Fase 1) — consulta local ao Postgres
-      // (historico_orcamentos), sem depender do MubiSys. Se falhar, todas as
-      // propostas ficam sem probabilidade em vez de quebrar a listagem inteira.
+      // Score de Probabilidade de Compra — modelo bayesiano (Beta-Binomial por
+      // segmento + combinação em log-odds), validado em 13/09/2026 contra
+      // 5.587 orçamentos decididos (ver
+      // server/scripts/validar-modelo-bayesiano-probabilidade.ts e o
+      // comentário em server/services/probabilidadeCompra.ts). Consulta local
+      // ao Postgres (historico_orcamentos + historico_os), sem depender do
+      // MubiSys. Se falhar, todas as propostas ficam sem probabilidade em vez
+      // de quebrar a listagem inteira. mapaConversao continua sendo usado só
+      // para qtdComprasCliente (não para o score).
       let mapaConversao: Awaited<ReturnType<typeof construirMapaConversaoClientes>> | null = null;
-      let taxaNovosDoMes: number | null = null;
-      let mapaFaixaTicket: Awaited<ReturnType<typeof construirMapaFaixaTicket>> | undefined;
-      let mapaRegiao: Awaited<ReturnType<typeof construirMapaConversaoPorRegiao>> | undefined;
+      let modeloBayesiano: Awaited<ReturnType<typeof construirModeloBayesiano>> | null = null;
       try {
         mapaConversao = await construirMapaConversaoClientes(db);
-        taxaNovosDoMes = await calcularTaxaConversaoNovosRecente(db);
-        mapaFaixaTicket = await construirMapaFaixaTicket(db);
-        mapaRegiao = await construirMapaConversaoPorRegiao(db);
+        modeloBayesiano = await construirModeloBayesiano(db);
       } catch {
         mapaConversao = null;
+        modeloBayesiano = null;
       }
       // Enriquecer com telefone e clienteNovo
       const propostasComTelefone = propostasFiltradas.map(p => {
@@ -373,8 +376,8 @@ export const crmRouter = router({
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao
-          ? calcularProbabilidade({ clienteNovo, nomeCliente, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes, mapaFaixaTicket, mapaRegiao, regiaoCliente })
+        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloBayesiano
+          ? calcularProbabilidadeBayesiana({ clienteNovo, nomeCliente, valorProposta: p.valor, modelo: modeloBayesiano, regiaoCliente })
           : { probabilidade: null as number | null, explicacao: [] as string[] };
         const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente))?.qtdCompras ?? 0;
         return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, estadoCliente, regiaoCliente };

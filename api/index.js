@@ -5557,118 +5557,6 @@ async function construirMapaConversaoClientes(db5) {
   const taxaGeral = totalGeral > 0 ? fechadosGeral / totalGeral * 100 : 0;
   return { porCliente: resultado, taxaGeral };
 }
-async function construirMapaFaixaTicket(db5) {
-  const linhas = await db5.select({
-    status: historicoOrcamentos.status,
-    total: historicoOrcamentos.total,
-    dataCadastro: historicoOrcamentos.dataCadastro,
-    validade: historicoOrcamentos.validade
-  }).from(historicoOrcamentos);
-  const faixas = calcularConversaoPorFaixaTicket(
-    linhas,
-    /* @__PURE__ */ new Date()
-  );
-  return new Map(faixas.map((f2) => [f2.faixa, f2]));
-}
-async function calcularTaxaConversaoNovosRecente(db5) {
-  const now = /* @__PURE__ */ new Date();
-  const janelas = [];
-  for (let i = 0; i < MESES_JANELA_NOVOS; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    janelas.push({ mes: d.getMonth() + 1, ano: d.getFullYear() });
-  }
-  const janelasSet = new Set(janelas.map((j) => `${j.ano}-${j.mes}`));
-  const osRows = await db5.select({
-    empresa: historicoOs.empresa,
-    dataAprovacao: historicoOs.dataAprovacao
-  }).from(historicoOs);
-  const primeiraCompraPorCliente = /* @__PURE__ */ new Map();
-  for (const r of osRows) {
-    const key = normalizeEmpresaKey2(r.empresa ?? "");
-    const data = parseDataFlexivel(r.dataAprovacao);
-    if (!key || !data) continue;
-    const atual = primeiraCompraPorCliente.get(key);
-    if (!atual || data < atual) primeiraCompraPorCliente.set(key, data);
-  }
-  const linhas = await db5.select({
-    empresa: historicoOrcamentos.empresa,
-    status: historicoOrcamentos.status,
-    dataCadastro: historicoOrcamentos.dataCadastro,
-    validade: historicoOrcamentos.validade,
-    mes: historicoOrcamentos.mes,
-    ano: historicoOrcamentos.ano
-  }).from(historicoOrcamentos);
-  const agora = /* @__PURE__ */ new Date();
-  let ganhos = 0;
-  let perdidos = 0;
-  for (const r of linhas) {
-    if (!janelasSet.has(`${r.ano}-${r.mes}`)) continue;
-    const empresaKey = normalizeEmpresaKey2(r.empresa ?? "");
-    if (!empresaKey) continue;
-    const dataOrcamento = parseDataFlexivel(r.dataCadastro);
-    const primeiraCompra = primeiraCompraPorCliente.get(empresaKey);
-    const eraNovoNaData = !primeiraCompra || !dataOrcamento || primeiraCompra >= dataOrcamento;
-    if (!eraNovoNaData) continue;
-    const statusKey = (r.status ?? "").trim().toLowerCase();
-    if (STATUS_GANHO.has(statusKey)) ganhos++;
-    else if (foiPerdido(r.status, r.dataCadastro, r.validade, agora)) perdidos++;
-  }
-  const total = ganhos + perdidos;
-  if (total === 0) return null;
-  return ganhos / total * 100;
-}
-async function construirMapaConversaoPorRegiao(db5) {
-  const osRows = await db5.select({
-    empresa: historicoOs.empresa,
-    estado: historicoOs.estado,
-    dataAprovacao: historicoOs.dataAprovacao
-  }).from(historicoOs);
-  const estadoMaisRecentePorCliente = /* @__PURE__ */ new Map();
-  for (const r of osRows) {
-    const key = normalizeEmpresaKey2(r.empresa ?? "");
-    const uf = normalizarUf(r.estado);
-    if (!key || !uf) continue;
-    const data = parseDataFlexivel(r.dataAprovacao) ?? /* @__PURE__ */ new Date(0);
-    const atual = estadoMaisRecentePorCliente.get(key);
-    if (!atual || data > atual.data) estadoMaisRecentePorCliente.set(key, { estado: uf, data });
-  }
-  const linhas = await db5.select({
-    empresa: historicoOrcamentos.empresa,
-    status: historicoOrcamentos.status,
-    dataCadastro: historicoOrcamentos.dataCadastro,
-    validade: historicoOrcamentos.validade
-  }).from(historicoOrcamentos);
-  const agora = /* @__PURE__ */ new Date();
-  const porRegiao = /* @__PURE__ */ new Map();
-  for (const r of linhas) {
-    const empresaKey = normalizeEmpresaKey2(r.empresa ?? "");
-    const uf = estadoMaisRecentePorCliente.get(empresaKey)?.estado;
-    const regiao = uf ? UF_PARA_REGIAO[uf] : void 0;
-    if (!regiao) continue;
-    const statusKey = (r.status ?? "").trim().toLowerCase();
-    const ganho = STATUS_GANHO.has(statusKey);
-    const perdido = !ganho && foiPerdido(r.status, r.dataCadastro, r.validade, agora);
-    if (!ganho && !perdido) continue;
-    let acc = porRegiao.get(regiao);
-    if (!acc) {
-      acc = { ganhos: 0, perdidos: 0 };
-      porRegiao.set(regiao, acc);
-    }
-    if (ganho) acc.ganhos++;
-    else acc.perdidos++;
-  }
-  const resultado = /* @__PURE__ */ new Map();
-  for (const [regiao, acc] of porRegiao.entries()) {
-    const total = acc.ganhos + acc.perdidos;
-    resultado.set(regiao, {
-      regiao,
-      ganhos: acc.ganhos,
-      perdidos: acc.perdidos,
-      taxaConversaoPct: total > 0 ? acc.ganhos / total * 100 : null
-    });
-  }
-  return resultado;
-}
 function calcularProbabilidade(opts) {
   const empresaKey = normalizeEmpresaKey2(opts.nomeCliente);
   const conversao = empresaKey ? opts.mapa.porCliente.get(empresaKey) : void 0;
@@ -5730,7 +5618,131 @@ function calcularProbabilidade(opts) {
   probabilidade = Math.min(PROB_MAX, Math.max(PROB_MIN, Math.round(probabilidade)));
   return { probabilidade, explicacao };
 }
-var DIAS_PRESUMIDO_PERDIDO, MIN_AMOSTRA_TAXA_INDIVIDUAL, MIN_AMOSTRA_FAIXA_TICKET, AJUSTE_FAIXA_TICKET_MAX_PP, MESES_JANELA_NOVOS, PROB_MIN, PROB_MAX, MIN_AMOSTRA_REGIAO, AJUSTE_REGIAO_MAX_PP;
+function logitP(p) {
+  const c = Math.min(0.999, Math.max(1e-3, p));
+  return Math.log(c / (1 - c));
+}
+function sigmoidP(x) {
+  return 1 / (1 + Math.exp(-x));
+}
+function betaPosteriorMean(ganhos, perdidos, alpha0, beta0) {
+  return (alpha0 + ganhos) / (alpha0 + beta0 + ganhos + perdidos);
+}
+async function construirModeloBayesiano(db5) {
+  const orcRows = await db5.select({
+    empresa: historicoOrcamentos.empresa,
+    status: historicoOrcamentos.status,
+    total: historicoOrcamentos.total,
+    dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade
+  }).from(historicoOrcamentos);
+  const osRows = await db5.select({
+    empresa: historicoOs.empresa,
+    dataAprovacao: historicoOs.dataAprovacao,
+    estado: historicoOs.estado
+  }).from(historicoOs);
+  const primeiraCompraPorCliente = /* @__PURE__ */ new Map();
+  const estadoMaisRecentePorCliente = /* @__PURE__ */ new Map();
+  for (const r of osRows) {
+    const key = normalizeEmpresaKey2(r.empresa ?? "");
+    if (!key) continue;
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (data) {
+      const atual = primeiraCompraPorCliente.get(key);
+      if (!atual || data < atual) primeiraCompraPorCliente.set(key, data);
+    }
+    const uf = normalizarUf(r.estado);
+    if (uf && data) {
+      const atualEstado = estadoMaisRecentePorCliente.get(key);
+      if (!atualEstado || data > atualEstado.data) estadoMaisRecentePorCliente.set(key, { estado: uf, data });
+    }
+  }
+  const agora = /* @__PURE__ */ new Date();
+  const porCliente = /* @__PURE__ */ new Map();
+  const novos = { ganhos: 0, perdidos: 0 };
+  const porFaixa = /* @__PURE__ */ new Map();
+  const porRegiao = /* @__PURE__ */ new Map();
+  let ganhosGeral = 0, decididos = 0;
+  for (const r of orcRows) {
+    const empresaKey = normalizeEmpresaKey2(r.empresa ?? "");
+    if (!empresaKey) continue;
+    const data = parseDataFlexivel(r.dataCadastro);
+    if (!data) continue;
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    const ganho = STATUS_GANHO.has(statusKey);
+    const perdido = !ganho && foiPerdido(r.status, r.dataCadastro, r.validade, agora);
+    if (!ganho && !perdido) continue;
+    decididos++;
+    if (ganho) ganhosGeral++;
+    const cAcc = porCliente.get(empresaKey) ?? { ganhos: 0, perdidos: 0 };
+    if (ganho) cAcc.ganhos++;
+    else cAcc.perdidos++;
+    porCliente.set(empresaKey, cAcc);
+    const primeira = primeiraCompraPorCliente.get(empresaKey);
+    if (!primeira || primeira >= data) {
+      if (ganho) novos.ganhos++;
+      else novos.perdidos++;
+    }
+    const valor = parseFloat(String(r.total ?? "0")) || 0;
+    const faixa = faixaTicketDoValor(valor);
+    const fAcc = porFaixa.get(faixa) ?? { ganhos: 0, perdidos: 0 };
+    if (ganho) fAcc.ganhos++;
+    else fAcc.perdidos++;
+    porFaixa.set(faixa, fAcc);
+    const uf = estadoMaisRecentePorCliente.get(empresaKey);
+    const regiao = uf ? UF_PARA_REGIAO[uf.estado] : void 0;
+    if (regiao) {
+      const rAcc = porRegiao.get(regiao) ?? { ganhos: 0, perdidos: 0 };
+      if (ganho) rAcc.ganhos++;
+      else rAcc.perdidos++;
+      porRegiao.set(regiao, rAcc);
+    }
+  }
+  return {
+    taxaGeral: decididos > 0 ? ganhosGeral / decididos : 0.2,
+    porCliente,
+    novos,
+    porFaixa,
+    porRegiao,
+    nTreino: decididos
+  };
+}
+function calcularProbabilidadeBayesiana(opts) {
+  const { modelo } = opts;
+  const alpha0 = K_PRIOR_BAYES * modelo.taxaGeral;
+  const beta0 = K_PRIOR_BAYES * (1 - modelo.taxaGeral);
+  const logitGeral = logitP(modelo.taxaGeral);
+  let logitFinal = logitGeral;
+  const explicacao = [`Base: taxa geral da carteira ${(modelo.taxaGeral * 100).toFixed(0)}% (${modelo.nTreino} or\xE7amentos decididos)`];
+  const empresaKey = normalizeEmpresaKey2(opts.nomeCliente);
+  if (opts.clienteNovo) {
+    const p = betaPosteriorMean(modelo.novos.ganhos, modelo.novos.perdidos, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(`Cliente novo: segmento converte ${(p * 100).toFixed(0)}% (${modelo.novos.ganhos}/${modelo.novos.ganhos + modelo.novos.perdidos} decididos, ajustado bayesianamente)`);
+  } else {
+    const c = modelo.porCliente.get(empresaKey);
+    const n = (c?.ganhos ?? 0) + (c?.perdidos ?? 0);
+    const p = betaPosteriorMean(c?.ganhos ?? 0, c?.perdidos ?? 0, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(n > 0 ? `Hist\xF3rico do cliente: ${c.ganhos}/${n} decididos, ajustado bayesianamente para ${(p * 100).toFixed(0)}%` : `Sem or\xE7amento decidido deste cliente ainda \u2014 usa a taxa geral`);
+  }
+  if (opts.valorProposta > 0) {
+    const faixa = faixaTicketDoValor(opts.valorProposta);
+    const f2 = modelo.porFaixa.get(faixa);
+    const p = betaPosteriorMean(f2?.ganhos ?? 0, f2?.perdidos ?? 0, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(`Faixa de t\xEDquete "${faixa}": converte ${(p * 100).toFixed(0)}% (ajustado bayesianamente)`);
+  }
+  if (opts.regiaoCliente) {
+    const r = modelo.porRegiao.get(opts.regiaoCliente);
+    const p = betaPosteriorMean(r?.ganhos ?? 0, r?.perdidos ?? 0, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(`Regi\xE3o ${opts.regiaoCliente}: converte ${(p * 100).toFixed(0)}% (ajustado bayesianamente)`);
+  }
+  const probabilidade = Math.min(PROB_MAX, Math.max(PROB_MIN, Math.round(sigmoidP(logitFinal) * 100)));
+  return { probabilidade, explicacao };
+}
+var DIAS_PRESUMIDO_PERDIDO, MIN_AMOSTRA_TAXA_INDIVIDUAL, MIN_AMOSTRA_FAIXA_TICKET, AJUSTE_FAIXA_TICKET_MAX_PP, MESES_JANELA_NOVOS, PROB_MIN, PROB_MAX, MIN_AMOSTRA_REGIAO, AJUSTE_REGIAO_MAX_PP, K_PRIOR_BAYES;
 var init_probabilidadeCompra = __esm({
   "server/services/probabilidadeCompra.ts"() {
     "use strict";
@@ -5746,6 +5758,7 @@ var init_probabilidadeCompra = __esm({
     PROB_MAX = 95;
     MIN_AMOSTRA_REGIAO = 5;
     AJUSTE_REGIAO_MAX_PP = 15;
+    K_PRIOR_BAYES = 8;
   }
 });
 
@@ -15957,16 +15970,13 @@ var crmRouter = router({
     } catch {
     }
     let mapaConversao = null;
-    let taxaNovosDoMes = null;
-    let mapaFaixaTicket;
-    let mapaRegiao;
+    let modeloBayesiano = null;
     try {
       mapaConversao = await construirMapaConversaoClientes(db5);
-      taxaNovosDoMes = await calcularTaxaConversaoNovosRecente(db5);
-      mapaFaixaTicket = await construirMapaFaixaTicket(db5);
-      mapaRegiao = await construirMapaConversaoPorRegiao(db5);
+      modeloBayesiano = await construirModeloBayesiano(db5);
     } catch {
       mapaConversao = null;
+      modeloBayesiano = null;
     }
     const propostasComTelefone = propostasFiltradas.map((p) => {
       const telefone = telefonesMap[p.id] ?? null;
@@ -15980,7 +15990,7 @@ var crmRouter = router({
       const clienteNovo = overrideStatus === "recorrente" ? false : overrideStatus === "novo" ? true : isNovoByHistory;
       const estadoCliente = Array.isArray(orc?.cliente_endereco) ? normalizarUf(orc.cliente_endereco[0]?.estado) : null;
       const regiaoCliente = estadoCliente ? UF_PARA_REGIAO[estadoCliente] ?? null : null;
-      const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = mapaConversao ? calcularProbabilidade({ clienteNovo, nomeCliente: nomeCliente2, valorProposta: p.valor, mapa: mapaConversao, taxaNovosDoMes, mapaFaixaTicket, mapaRegiao, regiaoCliente }) : { probabilidade: null, explicacao: [] };
+      const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloBayesiano ? calcularProbabilidadeBayesiana({ clienteNovo, nomeCliente: nomeCliente2, valorProposta: p.valor, modelo: modeloBayesiano, regiaoCliente }) : { probabilidade: null, explicacao: [] };
       const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey2(nomeCliente2))?.qtdCompras ?? 0;
       return { ...p, telefone, nomeCliente: nomeCliente2, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, estadoCliente, regiaoCliente };
     });

@@ -26,7 +26,7 @@
  */
 
 import { historicoOrcamentos, historicoOs } from "../../drizzle/schema";
-import { STATUS_GANHO, STATUS_PERDIDO, parseDataFlexivel, calcularConversaoPorFaixaTicket, faixaTicketDoValor, type FaixaTicketConversao } from "./inteligenciaClientes";
+import { STATUS_GANHO, STATUS_PERDIDO, STATUS_ABERTO, parseDataFlexivel, calcularConversaoPorFaixaTicket, faixaTicketDoValor, type FaixaTicketConversao } from "./inteligenciaClientes";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 
 /**
@@ -476,5 +476,201 @@ export function calcularProbabilidade(opts: {
   }
 
   probabilidade = Math.min(PROB_MAX, Math.max(PROB_MIN, Math.round(probabilidade)));
+  return { probabilidade, explicacao };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── Modelo bayesiano (Beta-Binomial por segmento + combinação em log-odds) ──
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Pedido do usuário (13/09/2026): validar a metodologia preditiva com
+// inferência bayesiana real contra as propostas dos últimos meses antes de
+// confiar no número. Validação em
+// server/scripts/validar-modelo-bayesiano-probabilidade.ts, walk-forward
+// (treino estritamente anterior ao teste, sem vazamento), duas janelas de
+// holdout (60 e 90 dias) sobre 5.587 orçamentos decididos: este modelo supera
+// a heurística `calcularProbabilidade` acima e o baseline de taxa constante em
+// log-loss, Brier e AUC nas duas janelas — ver o script para os números.
+//
+// Diferença central para a heurística: em vez de um corte rígido de amostra
+// mínima (abaixo do qual cai pra taxa geral), cada segmento (cliente
+// individual, clientes novos, faixa de tíquete, região) usa uma média a
+// posteriori de Beta(alpha0+ganhos, beta0+perdidos) — o prior (alpha0, beta0)
+// é centrado na taxa geral da carteira com pseudo-contagem K_PRIOR_BAYES,
+// então um segmento com pouquíssima amostra fica puxado pra taxa geral de
+// forma suave, e um segmento com muita amostra converge pra taxa observada
+// dele. Os fatores são combinados somando o log-odds de cada um relativo ao
+// log-odds da taxa geral (regra de Naive Bayes — assume os fatores
+// condicionalmente independentes dado o resultado, mesma simplificação usada
+// em qualquer Naive Bayes).
+//
+// Só ganhos/perdidos DECIDIDOS entram nas contagens — mesma regra já validada
+// em calcularConversaoPorFaixaTicket (inteligenciaClientes.ts): "em aberto"
+// com validade vencida conta como perdido, "em aberto" ainda dentro do prazo
+// fica fora (ainda não decidido). Isso corrige uma inconsistência da
+// heurística acima, cujo `ConversaoCliente.totalOrcamentos` (construído em
+// construirMapaConversaoClientes) conta TODO orçamento do cliente, decidido ou
+// não, subestimando a taxa individual de quem tem orçamentos recentes ainda
+// em aberto.
+//
+// Em uso só no CRM (server/routers/crm.ts) por decisão do usuário — a
+// Performance Comercial continua com calcularProbabilidade (heurística)
+// enquanto não houver decisão de estender.
+
+/** Pseudo-contagem do prior Beta — quanto maior, mais um segmento com pouca
+ * amostra fica puxado pra taxa geral da carteira antes de confiar na taxa
+ * observada dele. Validado com K=8 nas duas janelas de teste. */
+const K_PRIOR_BAYES = 8;
+
+function logitP(p: number): number {
+  const c = Math.min(0.999, Math.max(0.001, p));
+  return Math.log(c / (1 - c));
+}
+function sigmoidP(x: number): number {
+  return 1 / (1 + Math.exp(-x));
+}
+function betaPosteriorMean(ganhos: number, perdidos: number, alpha0: number, beta0: number): number {
+  return (alpha0 + ganhos) / (alpha0 + beta0 + ganhos + perdidos);
+}
+
+interface ContagemGanhoPerdido { ganhos: number; perdidos: number }
+
+export interface ModeloBayesiano {
+  taxaGeral: number; // 0-1, só orçamentos decididos
+  porCliente: Map<string, ContagemGanhoPerdido>;
+  novos: ContagemGanhoPerdido;
+  porFaixa: Map<string, ContagemGanhoPerdido>;
+  porRegiao: Map<string, ContagemGanhoPerdido>;
+  nTreino: number;
+}
+
+/** Lê historico_orcamentos + historico_os inteiros e monta as contagens de
+ * ganhos/perdidos DECIDIDOS por segmento — chamar uma vez por request (igual
+ * às demais construirMapa*), reaproveitar para cada proposta da lista. */
+export async function construirModeloBayesiano(db: any): Promise<ModeloBayesiano> {
+  const orcRows = await db.select({
+    empresa: historicoOrcamentos.empresa, status: historicoOrcamentos.status,
+    total: historicoOrcamentos.total, dataCadastro: historicoOrcamentos.dataCadastro,
+    validade: historicoOrcamentos.validade,
+  }).from(historicoOrcamentos);
+  const osRows = await db.select({
+    empresa: historicoOs.empresa, dataAprovacao: historicoOs.dataAprovacao, estado: historicoOs.estado,
+  }).from(historicoOs);
+
+  const primeiraCompraPorCliente = new Map<string, Date>();
+  const estadoMaisRecentePorCliente = new Map<string, { estado: string; data: Date }>();
+  for (const r of osRows as Array<{ empresa: string | null; dataAprovacao: string | null; estado: string | null }>) {
+    const key = normalizeEmpresaKey(r.empresa ?? "");
+    if (!key) continue;
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (data) {
+      const atual = primeiraCompraPorCliente.get(key);
+      if (!atual || data < atual) primeiraCompraPorCliente.set(key, data);
+    }
+    const uf = normalizarUf(r.estado);
+    if (uf && data) {
+      const atualEstado = estadoMaisRecentePorCliente.get(key);
+      if (!atualEstado || data > atualEstado.data) estadoMaisRecentePorCliente.set(key, { estado: uf, data });
+    }
+  }
+
+  const agora = new Date();
+  const porCliente = new Map<string, ContagemGanhoPerdido>();
+  const novos: ContagemGanhoPerdido = { ganhos: 0, perdidos: 0 };
+  const porFaixa = new Map<string, ContagemGanhoPerdido>();
+  const porRegiao = new Map<string, ContagemGanhoPerdido>();
+  let ganhosGeral = 0, decididos = 0;
+
+  for (const r of orcRows as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null; validade: string | null }>) {
+    const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
+    if (!empresaKey) continue;
+    const data = parseDataFlexivel(r.dataCadastro);
+    if (!data) continue;
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    const ganho = STATUS_GANHO.has(statusKey);
+    const perdido = !ganho && foiPerdido(r.status, r.dataCadastro, r.validade, agora);
+    if (!ganho && !perdido) continue;
+
+    decididos++;
+    if (ganho) ganhosGeral++;
+
+    const cAcc = porCliente.get(empresaKey) ?? { ganhos: 0, perdidos: 0 };
+    if (ganho) cAcc.ganhos++; else cAcc.perdidos++;
+    porCliente.set(empresaKey, cAcc);
+
+    const primeira = primeiraCompraPorCliente.get(empresaKey);
+    if (!primeira || primeira >= data) {
+      if (ganho) novos.ganhos++; else novos.perdidos++;
+    }
+
+    const valor = parseFloat(String(r.total ?? "0")) || 0;
+    const faixa = faixaTicketDoValor(valor);
+    const fAcc = porFaixa.get(faixa) ?? { ganhos: 0, perdidos: 0 };
+    if (ganho) fAcc.ganhos++; else fAcc.perdidos++;
+    porFaixa.set(faixa, fAcc);
+
+    const uf = estadoMaisRecentePorCliente.get(empresaKey);
+    const regiao = uf ? UF_PARA_REGIAO[uf.estado] : undefined;
+    if (regiao) {
+      const rAcc = porRegiao.get(regiao) ?? { ganhos: 0, perdidos: 0 };
+      if (ganho) rAcc.ganhos++; else rAcc.perdidos++;
+      porRegiao.set(regiao, rAcc);
+    }
+  }
+
+  return {
+    taxaGeral: decididos > 0 ? ganhosGeral / decididos : 0.2,
+    porCliente, novos, porFaixa, porRegiao, nTreino: decididos,
+  };
+}
+
+/** Equivalente bayesiano de calcularProbabilidade — mesma forma de retorno
+ * (ResultadoProbabilidade), pra ser um substituto direto nos call sites que
+ * optarem por ele (hoje só server/routers/crm.ts). */
+export function calcularProbabilidadeBayesiana(opts: {
+  clienteNovo: boolean;
+  nomeCliente: string;
+  valorProposta: number;
+  modelo: ModeloBayesiano;
+  regiaoCliente?: string | null;
+}): ResultadoProbabilidade {
+  const { modelo } = opts;
+  const alpha0 = K_PRIOR_BAYES * modelo.taxaGeral;
+  const beta0 = K_PRIOR_BAYES * (1 - modelo.taxaGeral);
+  const logitGeral = logitP(modelo.taxaGeral);
+  let logitFinal = logitGeral;
+  const explicacao: string[] = [`Base: taxa geral da carteira ${(modelo.taxaGeral * 100).toFixed(0)}% (${modelo.nTreino} orçamentos decididos)`];
+
+  const empresaKey = normalizeEmpresaKey(opts.nomeCliente);
+  if (opts.clienteNovo) {
+    const p = betaPosteriorMean(modelo.novos.ganhos, modelo.novos.perdidos, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(`Cliente novo: segmento converte ${(p * 100).toFixed(0)}% (${modelo.novos.ganhos}/${modelo.novos.ganhos + modelo.novos.perdidos} decididos, ajustado bayesianamente)`);
+  } else {
+    const c = modelo.porCliente.get(empresaKey);
+    const n = (c?.ganhos ?? 0) + (c?.perdidos ?? 0);
+    const p = betaPosteriorMean(c?.ganhos ?? 0, c?.perdidos ?? 0, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(n > 0
+      ? `Histórico do cliente: ${c!.ganhos}/${n} decididos, ajustado bayesianamente para ${(p * 100).toFixed(0)}%`
+      : `Sem orçamento decidido deste cliente ainda — usa a taxa geral`);
+  }
+
+  if (opts.valorProposta > 0) {
+    const faixa = faixaTicketDoValor(opts.valorProposta);
+    const f = modelo.porFaixa.get(faixa);
+    const p = betaPosteriorMean(f?.ganhos ?? 0, f?.perdidos ?? 0, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(`Faixa de tíquete "${faixa}": converte ${(p * 100).toFixed(0)}% (ajustado bayesianamente)`);
+  }
+
+  if (opts.regiaoCliente) {
+    const r = modelo.porRegiao.get(opts.regiaoCliente);
+    const p = betaPosteriorMean(r?.ganhos ?? 0, r?.perdidos ?? 0, alpha0, beta0);
+    logitFinal += logitP(p) - logitGeral;
+    explicacao.push(`Região ${opts.regiaoCliente}: converte ${(p * 100).toFixed(0)}% (ajustado bayesianamente)`);
+  }
+
+  const probabilidade = Math.min(PROB_MAX, Math.max(PROB_MIN, Math.round(sigmoidP(logitFinal) * 100)));
   return { probabilidade, explicacao };
 }
