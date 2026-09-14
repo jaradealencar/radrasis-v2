@@ -72,17 +72,66 @@ type Proposta = {
   probabilidadeCompra: number | null;
   probabilidadeExplicacao: string[];
   qtdComprasCliente: number;
+  /** Dias desde a última compra registrada no histórico local — null quando
+   * o cliente é novo (sem nenhuma compra anterior) ou não há data disponível. */
+  diasSemComprar: number | null;
   estadoCliente: string | null;
 };
 
 // Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
 const LIMIAR_PARCELAMENTO = 3;
 
+// Aproximação em dias dos "6 meses de inatividade" da Lógica do Cliente Novo e
+// Reativado (ver server/routers/performanceComercial.ts, MESES_INATIVIDADE_PARA_NOVO)
+// — usado só para destacar visualmente o badge de dias sem comprar, não afeta
+// nenhum cálculo de negócio.
+const MESES_REATIVACAO_DIAS = 180;
+
 // ─── Score de Probabilidade de Compra (Fase 1) ────────────────────────────────
 function probabilidadeCor(p: number) {
   if (p >= 50) return { text: "text-green-700", bg: "bg-green-100 border-green-200" };
   if (p >= 25) return { text: "text-amber-700", bg: "bg-amber-100 border-amber-200" };
   return { text: "text-red-700", bg: "bg-red-100 border-red-200" };
+}
+
+// Ícone por tipo de sinal da explicação bayesiana (ver server/services/probabilidadeCompra.ts,
+// calcularProbabilidadeBayesiana) — identificado pelo rótulo antes dos ":" de cada linha.
+function iconeExplicacao(label: string): string {
+  const key = label.toLowerCase().trim();
+  if (key.startsWith("base")) return "📊";
+  if (key.startsWith("cliente novo")) return "🆕";
+  if (key.startsWith("histórico do cliente")) return "👤";
+  if (key.startsWith("faixa de tíquete")) return "💰";
+  if (key.startsWith("região")) return "📍";
+  if (key.startsWith("ajuste")) return "⚙️";
+  return "•";
+}
+
+// Realça percentuais/pontos-percentuais ("27%", "+4pp") em negrito dentro do texto.
+function destacarNumeros(texto: string) {
+  return texto.split(/(\d+(?:[.,]\d+)?\s?(?:%|pp))/g).map((parte, i) =>
+    /^\d+(?:[.,]\d+)?\s?(?:%|pp)$/.test(parte)
+      ? <span key={i} className="font-semibold text-white">{parte}</span>
+      : <span key={i}>{parte}</span>
+  );
+}
+
+// Cada linha vem como "Rótulo: descrição" (ver calcularProbabilidadeBayesiana) — aqui
+// separamos rótulo (negrito) da descrição (cinza) e destacamos os números, em vez de
+// mostrar o texto corrido puro.
+function ExplicacaoLinha({ linha }: { linha: string }) {
+  const m = linha.match(/^([^:]+):\s*(.*)$/);
+  if (!m) return <p className="text-gray-300 leading-4">{linha}</p>;
+  const [, label, resto] = m;
+  return (
+    <div className="flex items-start gap-1.5">
+      <span className="text-[11px] leading-4 flex-shrink-0">{iconeExplicacao(label)}</span>
+      <p className="leading-4">
+        <span className="font-semibold text-white">{label}:</span>{" "}
+        <span className="text-gray-300">{destacarNumeros(resto)}</span>
+      </p>
+    </div>
+  );
 }
 
 function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: string[] }) {
@@ -96,9 +145,10 @@ function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: s
             <TrendingUp className="w-2.5 h-2.5" /> {p}%
           </span>
         </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs max-w-[260px]">
-          <div className="space-y-0.5">
-            {explicacao.map((linha, i) => <p key={i}>{linha}</p>)}
+        <TooltipContent side="top" className="text-xs max-w-[280px] py-2">
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Como chegamos a {p}%</p>
+          <div className="space-y-1.5">
+            {explicacao.map((linha, i) => <ExplicacaoLinha key={i} linha={linha} />)}
           </div>
         </TooltipContent>
       </Tooltip>
@@ -374,6 +424,26 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                           : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
                         <br />
                         <span className="text-gray-400">Histórico local (2024 em diante); nov-dez/2025 não sincronizados, pode faltar alguma compra desse período.</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {p.diasSemComprar != null && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] cursor-default ${
+                          p.diasSemComprar > MESES_REATIVACAO_DIAS
+                            ? "font-bold bg-red-100 text-red-700 border-red-200"
+                            : "text-gray-500 bg-gray-50 border-gray-200"
+                        }`}>
+                          há {p.diasSemComprar}d sem comprar
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs max-w-[220px]">
+                        {p.diasSemComprar > MESES_REATIVACAO_DIAS
+                          ? `Mais de ${MESES_REATIVACAO_DIAS} dias sem comprar — se fechar, conta como cliente reativado.`
+                          : "Dias desde a última compra registrada no histórico local."}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -906,19 +976,20 @@ export default function CRM() {
         {[
           { value: "todos", label: "Todos", emoji: "📋", cls: "bg-gray-100 text-gray-700 border-gray-200", scriptFaixa: null },
           { value: "sem_contato", label: "Sem contato", emoji: "⬜", cls: "bg-gray-50 text-gray-600 border-gray-200", scriptFaixa: null },
+          { value: "_pos_orcamento", label: "Pós-orçamento", emoji: "📨", cls: "bg-blue-100 text-blue-700 border-blue-200", scriptFaixa: 0 },
           { value: "nao_retornou", label: "Não retornou", emoji: "🔴", cls: "bg-red-100 text-red-700 border-red-200", scriptFaixa: 11 },
           { value: "esperando_cliente", label: "Esperando cliente", emoji: "🟡", cls: "bg-amber-100 text-amber-700 border-amber-200", scriptFaixa: 12 },
           { value: "garantiu_fechamento", label: "Garantiu fechamento", emoji: "🟢", cls: "bg-green-100 text-green-700 border-green-200", scriptFaixa: 13 },
           { value: "_objecoes", label: "Objeções Preço", emoji: "💰", cls: "bg-violet-100 text-violet-800 border-violet-300", scriptFaixa: 20 },
         ].map(o => (
           <div key={o.value} className="flex flex-col items-center gap-1">
-            <button onClick={() => { if (o.value !== "_objecoes") setFiltroResposta(o.value); }}
+            <button onClick={() => { if (o.value !== "_objecoes" && o.value !== "_pos_orcamento") setFiltroResposta(o.value); }}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all ${o.cls} ${filtroResposta === o.value ? "ring-2 ring-offset-1 ring-gray-400 opacity-100" : "opacity-60 hover:opacity-100"}`}>
               {o.emoji} {o.label}
             </button>
             {o.scriptFaixa !== null && (
               <ScriptsFaixaPopover
-                faixa={o.scriptFaixa as 1 | 2 | 3 | 11 | 12 | 13 | 20}
+                faixa={o.scriptFaixa as 0 | 1 | 2 | 3 | 11 | 12 | 13 | 20}
                 label={o.label}
                 bgCls={o.cls}
                 nomeCliente="{nome_cliente}"

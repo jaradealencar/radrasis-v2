@@ -127,6 +127,7 @@ const navSections: NavSection[] = [
       { label: "Planos de Ação Comercial", href: "/comercial/planos-acao", icon: <Lightbulb size={15} />, pageKey: "comercial-planos-acao" },
       { label: "Diagnóstico de Dados", href: "/comercial/diagnostico-api", icon: <FlaskConical size={15} />, pageKey: "comercial-performance" },
       { label: "Auditoria do CRM", href: "/comercial/crm-auditoria", icon: <Activity size={15} />, pageKey: "crm-auditoria" },
+      { label: "Monitoramento de Uso do CRM", href: "/comercial/crm-monitoramento", icon: <Activity size={15} />, pageKey: "crm-monitoramento" },
       { label: "Insights de IA", href: "/comercial/insights-ia", icon: <Brain size={15} />, pageKey: "comercial-insights-ia" },
     ],
   },

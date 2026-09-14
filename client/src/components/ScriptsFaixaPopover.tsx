@@ -39,7 +39,7 @@ interface ScriptRow {
 }
 
 interface Props {
-  faixa: 1 | 2 | 3 | 11 | 12 | 13 | 20;
+  faixa: 0 | 1 | 2 | 3 | 11 | 12 | 13 | 20;
   label: string;
   bgCls: string;
   children: React.ReactNode;
@@ -71,6 +71,13 @@ function substituirVariaveis(
 
 // ─── Cores por faixa ──────────────────────────────────────────────────────────
 const FAIXA_COLORS: Record<number, { header: string; badge: string; addBtn: string; grip: string }> = {
+  // Pós-orçamento (enviado logo após a cotação, antes do início do ciclo de follow-up 1/2/3)
+  0: {
+    header:  "bg-blue-50 border-blue-300 text-blue-800",
+    badge:   "bg-blue-100 text-blue-800 border-blue-300",
+    addBtn:  "border-blue-400 text-blue-700 hover:bg-blue-50",
+    grip:    "text-blue-400 hover:text-blue-600",
+  },
   1: {
     header:  "bg-yellow-50 border-yellow-300 text-yellow-800",
     badge:   "bg-yellow-100 text-yellow-800 border-yellow-300",
@@ -565,6 +572,7 @@ export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente
   // dos dias configurados. Faixas 11/12/13 são categorias de resposta do
   // canal, sem config própria, mantidas fixas.
   const FAIXA_LABELS_FIXOS: Record<number, string> = {
+    0: "Scripts — Pós-orçamento",
     11: "Scripts — Não retornou",
     12: "Scripts — Esperando cliente",
     13: "Scripts — Garantiu fechamento",

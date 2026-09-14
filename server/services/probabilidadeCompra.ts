@@ -99,6 +99,11 @@ export interface ConversaoCliente {
    * Usado por ex. para elegibilidade de parcelamento (clientes com mais de
    * N compras). */
   qtdCompras: number;
+  /** Data da compra mais recente (historico_os.dataAprovacao ou
+   * historico_orcamentos.dataCadastro para orçamentos ganhos) — null quando
+   * o cliente não tem nenhuma compra registrada localmente. Usada para
+   * mostrar "há N dias sem comprar" no CRM. */
+  ultimaCompra: Date | null;
 }
 
 export interface MapaConversaoClientes {
@@ -119,13 +124,14 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     empresa: historicoOrcamentos.empresa,
     status: historicoOrcamentos.status,
     total: historicoOrcamentos.total,
+    dataCadastro: historicoOrcamentos.dataCadastro,
   }).from(historicoOrcamentos);
 
-  const porCliente = new Map<string, { total: number; fechados: number; somaValor: number; qtdComValor: number }>();
+  const porCliente = new Map<string, { total: number; fechados: number; somaValor: number; qtdComValor: number; ultimaCompra: Date | null }>();
   let totalGeral = 0;
   let fechadosGeral = 0;
 
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null }>) {
+  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null }>) {
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     if (!empresaKey) continue;
     const fechou = STATUS_GANHO.has((r.status ?? "").trim().toLowerCase());
@@ -133,11 +139,18 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
 
     let acc = porCliente.get(empresaKey);
     if (!acc) {
-      acc = { total: 0, fechados: 0, somaValor: 0, qtdComValor: 0 };
+      acc = { total: 0, fechados: 0, somaValor: 0, qtdComValor: 0, ultimaCompra: null };
       porCliente.set(empresaKey, acc);
     }
     acc.total++;
-    if (fechou) acc.fechados++;
+    if (fechou) {
+      acc.fechados++;
+      // Sem data de fechamento própria em historico_orcamentos — usa a data
+      // do orçamento como proxy da compra (mesma fonte já usada para contar
+      // esse orçamento como "compra" em qtdCompras).
+      const data = parseDataFlexivel(r.dataCadastro);
+      if (data && (!acc.ultimaCompra || data > acc.ultimaCompra)) acc.ultimaCompra = data;
+    }
     if (!isNaN(valor)) { acc.somaValor += valor; acc.qtdComValor++; }
 
     totalGeral++;
@@ -153,29 +166,40 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
   // 3 tentativas de rodar POST /api/scheduled/sincronizarHistorico?mes=11&ano=2025
   // deram timeout (60s) em produção. Compras feitas SÓ nesses 2 meses (e nunca
   // antes nem depois) não entram na contagem — caso raro, mas real.
-  const osRows = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
+  const osRows = await db.select({ empresa: historicoOs.empresa, dataAprovacao: historicoOs.dataAprovacao }).from(historicoOs);
   const qtdComprasPorCliente = new Map<string, number>();
-  for (const r of osRows as Array<{ empresa: string | null }>) {
+  const ultimaCompraOsPorCliente = new Map<string, Date>();
+  for (const r of osRows as Array<{ empresa: string | null; dataAprovacao: string | null }>) {
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     if (!empresaKey) continue;
     qtdComprasPorCliente.set(empresaKey, (qtdComprasPorCliente.get(empresaKey) ?? 0) + 1);
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (data) {
+      const atual = ultimaCompraOsPorCliente.get(empresaKey);
+      if (!atual || data > atual) ultimaCompraOsPorCliente.set(empresaKey, data);
+    }
   }
 
   const resultado = new Map<string, ConversaoCliente>();
   for (const [empresaKey, acc] of porCliente.entries()) {
+    const ultimaOs = ultimaCompraOsPorCliente.get(empresaKey) ?? null;
+    const ultimaCompra = !acc.ultimaCompra ? ultimaOs
+      : !ultimaOs ? acc.ultimaCompra
+      : acc.ultimaCompra > ultimaOs ? acc.ultimaCompra : ultimaOs;
     resultado.set(empresaKey, {
       totalOrcamentos: acc.total,
       orcamentosFechados: acc.fechados,
       taxaIndividual: acc.total >= MIN_AMOSTRA_TAXA_INDIVIDUAL ? (acc.fechados / acc.total) * 100 : null,
       ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
       qtdCompras: (qtdComprasPorCliente.get(empresaKey) ?? 0) + acc.fechados,
+      ultimaCompra,
     });
   }
   // Clientes com OS mas sem nenhum orçamento correspondente em historico_orcamentos
   // (bases diferentes, cobertura não é 100% igual) — ainda entram no mapa só com qtdCompras.
   for (const [empresaKey, qtd] of qtdComprasPorCliente.entries()) {
     if (!resultado.has(empresaKey)) {
-      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd });
+      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd, ultimaCompra: ultimaCompraOsPorCliente.get(empresaKey) ?? null });
     }
   }
 

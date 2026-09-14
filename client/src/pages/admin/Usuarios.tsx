@@ -67,6 +67,7 @@ const PAGE_GROUPS = [
     pages: [
       { key: "tabela-preco", label: "Tabela de Preços" },
       { key: "crm-auditoria", label: "Auditoria do CRM" },
+      { key: "crm-monitoramento", label: "Monitoramento de Uso do CRM" },
     ],
   },
   {
@@ -95,7 +96,7 @@ const PAGE_GROUPS = [
 // Permissões padrão por role
 const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   master: PAGE_GROUPS.flatMap(g => g.pages.map(p => p.key)),
-  admin: ["painel","retrabalhos","inserir","biblioteca","reincidencia","relatorio","insights","auditoria","conhecimento","fornecedores","rotinas","regulamentos","pops","pops-relatorio","cargos-funcoes","operacoes-performance","operacoes-custo-solda","tabela-preco","crm-auditoria","logistica-dashboard","logistica-solicitacoes","logistica-transportadoras","logistica-consulta","logistica-importar-cte","logistica-assertividade","logistica-empacotamento","admin","admin-usuarios"],
+  admin: ["painel","retrabalhos","inserir","biblioteca","reincidencia","relatorio","insights","auditoria","conhecimento","fornecedores","rotinas","regulamentos","pops","pops-relatorio","cargos-funcoes","operacoes-performance","operacoes-custo-solda","tabela-preco","crm-auditoria","crm-monitoramento","logistica-dashboard","logistica-solicitacoes","logistica-transportadoras","logistica-consulta","logistica-importar-cte","logistica-assertividade","logistica-empacotamento","admin","admin-usuarios"],
   vendas: ["painel","conhecimento","tabela-preco","logistica-minhas-cotacoes"],
   logistica: ["painel","logistica-dashboard","logistica-solicitacoes","logistica-transportadoras","logistica-consulta","logistica-importar-cte","logistica-assertividade","logistica-empacotamento"],
   producao: ["painel","retrabalhos","inserir","biblioteca","reincidencia","rotinas","regulamentos","pops","cargos-funcoes","operacoes-performance","operacoes-custo-solda"],

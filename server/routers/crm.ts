@@ -97,7 +97,7 @@ function parseDate(str: string | null | undefined): Date | null {
  * antigo — raro), busca ao vivo só para esse caso, aceitando o risco de demora
  * que já existia antes desta correção.
  */
-async function buscarOrcamentosPeriodo(di: string, df: string): Promise<any[]> {
+export async function buscarOrcamentosPeriodo(di: string, df: string): Promise<any[]> {
   if (di >= inicioJanelaFechadosCache()) {
     const cacheHit = await getCrmAbertosCache(CACHE_KEY_FECHADOS);
     const todos = cacheHit ? cacheHit.itens : await refreshCrmFechadosCache();
@@ -379,8 +379,14 @@ export const crmRouter = router({
         const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloBayesiano
           ? calcularProbabilidadeBayesiana({ clienteNovo, nomeCliente, valorProposta: p.valor, modelo: modeloBayesiano, regiaoCliente })
           : { probabilidade: null as number | null, explicacao: [] as string[] };
-        const qtdComprasCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente))?.qtdCompras ?? 0;
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, estadoCliente, regiaoCliente };
+        const conversaoCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente));
+        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
+        // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
+        // cliente novo não tem essa métrica (ver clienteNovo acima).
+        const diasSemComprar = conversaoCliente?.ultimaCompra
+          ? Math.floor((Date.now() - conversaoCliente.ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, diasSemComprar, estadoCliente, regiaoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
@@ -737,8 +743,12 @@ export const crmRouter = router({
     }),
 
   // ─── Scripts de vendas por faixa ─────────────────────────────────────────────
+  // Faixa 0 = "Pós-orçamento" (enviado logo após o orçamento, antes do início
+  // do ciclo de follow-up das faixas 1/2/3). Demais faixas ver FAIXA_DEFAULTS
+  // (1/2/3), FAIXA_LABELS_FIXOS em ScriptsFaixaPopover.tsx (11/12/13) e o
+  // filtro "Objeções Preço" em CRM.tsx (20).
   listScripts: protectedProcedure
-    .input(z.object({ faixa: z.number().min(1).max(20) }))
+    .input(z.object({ faixa: z.number().min(0).max(20) }))
     .query(async ({ input }) => {
       const db = (await getDb())!;
       return db.select().from(crmScripts)
@@ -763,7 +773,7 @@ export const crmRouter = router({
 
   addScript: protectedProcedure
     .input(z.object({
-      faixa: z.number().min(1).max(20),
+      faixa: z.number().min(0).max(20),
       titulo: z.string().max(128).optional(),
       conteudo: z.string().min(1),
       conteudo_voz: z.string().optional(),
@@ -807,7 +817,7 @@ export const crmRouter = router({
 
   reorderScripts: protectedProcedure
     .input(z.object({
-      faixa: z.number().min(1).max(20),
+      faixa: z.number().min(0).max(20),
       orderedIds: z.array(z.number()),
     }))
     .mutation(async ({ input }) => {
@@ -882,6 +892,20 @@ export const crmRouter = router({
         }
       }
       return { ok: true };
+    }),
+
+  // ─── Monitoramento de uso do CRM (tela manual) ──────────────────────────────
+  // Mesmo serviço usado pelos crons de e-mail diário/semanal (ver
+  // server/services/relatorioComercialCrm.ts e server/sync/scheduled-relatorio-crm-*).
+  getRelatorioMonitoramento: protectedProcedure
+    .input(z.object({
+      dataInicio: z.string(), // "YYYY-MM-DD"
+      dataFim: z.string(),    // "YYYY-MM-DD"
+      tipo: z.enum(["dia", "semana"]),
+    }))
+    .query(async ({ input }) => {
+      const { gerarRelatorioComercialCrm } = await import("../services/relatorioComercialCrm");
+      return gerarRelatorioComercialCrm(input.dataInicio, input.dataFim, input.tipo);
     }),
 
   // ─── AUDITORIA DO CRM ────────────────────────────────────────────────────────

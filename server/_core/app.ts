@@ -157,5 +157,11 @@ export async function createApp(): Promise<Express> {
   const { handleSincronizarPerfilCnpj } = await import("../sync/scheduled-sync-perfil-cnpj-handler");
   app.post("/api/scheduled/sincronizarPerfilCnpj", handleSincronizarPerfilCnpj);
 
+  const { handleRelatorioCrmDiario } = await import("../sync/scheduled-relatorio-crm-diario-handler");
+  app.post("/api/scheduled/relatorioCrmDiario", handleRelatorioCrmDiario);
+
+  const { handleRelatorioCrmSemanal } = await import("../sync/scheduled-relatorio-crm-semanal-handler");
+  app.post("/api/scheduled/relatorioCrmSemanal", handleRelatorioCrmSemanal);
+
   return app;
 }
