@@ -924,9 +924,13 @@ export const crmRouter = router({
     .query(async ({ input }) => {
       const db = (await getDb())!;
 
-      // Converter para UTC considerando Brasília (UTC-3): 00:00 Brasília = 03:00 UTC
+      // Converter para UTC considerando Brasília (UTC-3): 00:00 Brasília = 03:00 UTC.
+      // NUNCA usar a string "T26:59:59.999Z" pra representar 23:59 Brasília — V8 trata
+      // hora > 23 num literal ISO com "Z" como Invalid Date (bug real encontrado e
+      // corrigido em 14/09/2026, quebrava esta query com "invalid input syntax for
+      // type timestamp"). Em vez disso, soma 24h-1ms ao início do dia seguinte.
       const inicio = new Date(input.dataInicio + "T03:00:00.000Z");
-      const fim = new Date(input.dataFim + "T26:59:59.999Z"); // 23:59 Brasília = 02:59 UTC do dia seguinte
+      const fim = new Date(new Date(input.dataFim + "T03:00:00.000Z").getTime() + 24 * 60 * 60 * 1000 - 1);
 
       // Buscar todos os logs no período (com filtro opcional de vendedor)
       const logsWhere = input.vendedor
@@ -1194,7 +1198,8 @@ export const crmRouter = router({
     .query(async ({ input }) => {
       const db = (await getDb())!;
       const inicio = new Date(input.data + "T03:00:00.000Z"); // 00:00 Brasília = 03:00 UTC
-      const fim = new Date(input.data + "T26:59:59.999Z");    // 23:59 Brasília = 02:59 UTC+1d
+      // Ver comentário em getAuditoria acima sobre por que não usar "T26:59:59.999Z" direto.
+      const fim = new Date(new Date(input.data + "T03:00:00.000Z").getTime() + 24 * 60 * 60 * 1000 - 1);
       const logs = await db.select().from(crmAtividadeLog)
         .where(and(
           eq(crmAtividadeLog.vendedor, input.vendedor),

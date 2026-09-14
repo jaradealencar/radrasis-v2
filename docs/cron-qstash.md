@@ -1,6 +1,6 @@
 # CRON: sincronização de OS via Upstash QStash
 
-Existem **cinco** jobs agendados pelo **Upstash QStash** (não pelo Vercel
+Existem **sete** jobs agendados pelo **Upstash QStash** (não pelo Vercel
 Cron); nenhum agendador vive dentro do repositório:
 
 | Job | Alimenta | Propósito |
@@ -10,10 +10,13 @@ Cron); nenhum agendador vive dentro do repositório:
 | `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave `crm_abertos_15d`) | orçamentos "em aberto" (15 dias) que o CRM de Propostas mostra — ver seção "Sincronização de abertos do CRM" mais abaixo |
 | `POST /api/scheduled/sincronizarCrmFechados` | `mubisys_api_cache` (chave `crm_fechados_45d`) | orçamentos "fechados" (45 dias) usados nas estatísticas do período selecionado no CRM — mesma seção |
 | `POST /api/scheduled/sincronizarPerfilCnpj` | `clientes_perfil_cnpj` | enriquece automaticamente o CNPJ de clientes novos que aparecem em `historico_os` (porte, idade, sócios) — ver seção "Sincronização do Perfil de Clientes por CNPJ" mais abaixo |
+| `POST /api/scheduled/relatorioCrmDiario` | e-mail (Resend) | resumo comercial + uso do CRM do dia anterior — ver seção "Relatórios de monitoramento do CRM" mais abaixo |
+| `POST /api/scheduled/relatorioCrmSemanal` | e-mail (Resend) | mesmo resumo, da última semana completa (segunda a domingo) — mesma seção |
 
 Este documento cobre o primeiro em detalhe; os outros estão descritos nas
-seções "Sincronização de histórico", "Sincronização de abertos do CRM" e
-"Sincronização do Perfil de Clientes por CNPJ" mais abaixo.
+seções "Sincronização de histórico", "Sincronização de abertos do CRM",
+"Sincronização do Perfil de Clientes por CNPJ" e "Relatórios de monitoramento
+do CRM" mais abaixo.
 
 ## Agendamento planejado: 4 lotes escalonados
 
@@ -246,6 +249,42 @@ todo cliente novo que aparece em `historico_os` e ainda não tem CNPJ vinculado
 ```
 POST https://SEU-DOMINIO.com/api/scheduled/sincronizarPerfilCnpj
 Cron (UTC): 0 8 * * *     (1x por dia, depois do sincronizarHistorico)
+Retries:    2
+```
+
+## Relatórios de monitoramento do CRM (e-mail via Resend)
+
+Criado em 14/09/2026 a pedido do usuário: acompanhar diariamente/semanalmente
+se os vendedores estão de fato usando o CRM (cliques nos quadradinhos das
+faixas de follow-up, propostas marcadas ganha/perdida) e como o período foi
+comercialmente (MubiSys) comparado ao resto do mês. A mesma lógica também
+alimenta a tela manual `/comercial/crm-monitoramento`
+(`crm.getRelatorioMonitoramento`) — ver `server/services/relatorioComercialCrm.ts`
+e `server/services/emailRelatorioCrm.ts`.
+
+- **Endpoints:** `POST /api/scheduled/relatorioCrmDiario` e
+  `POST /api/scheduled/relatorioCrmSemanal`.
+- **Autenticação:** nenhuma — mesmo padrão dos demais jobs (ver "Sem
+  autenticação por segredo" acima). Ambos só leem dados e mandam e-mail;
+  chamada indevida não corrompe nada, no pior caso manda um e-mail a mais.
+- **Sem parâmetros.** O diário sempre cobre o dia anterior à execução; o
+  semanal sempre cobre a última semana completa (segunda a domingo) anterior
+  à execução — não depende do cron rodar exatamente numa segunda-feira (ver
+  `calcularUltimaSemanaCompleta` em `scheduled-relatorio-crm-semanal.ts`).
+- **Requer `RESEND_API_KEY`** no ambiente (painel resend.com → API Keys).
+  Sem ela, o handler falha com erro claro em vez de silenciar. Destinatário
+  configurável via `RELATORIO_CRM_EMAIL_DESTINO` (default:
+  `jaradealencar@gmail.com`, ver `.env.example`).
+- **Remetente:** `onboarding@resend.dev` (domínio de teste do Resend) até a
+  Radra verificar um domínio próprio — ver `server/services/emailRelatorioCrm.ts`.
+
+```
+POST https://SEU-DOMINIO.com/api/scheduled/relatorioCrmDiario
+Cron (UTC): 0 11 * * *     (8h Brasília, roda depois dos syncs da manhã)
+Retries:    2
+
+POST https://SEU-DOMINIO.com/api/scheduled/relatorioCrmSemanal
+Cron (UTC): 0 11 * * 1     (8h Brasília, toda segunda-feira)
 Retries:    2
 ```
 

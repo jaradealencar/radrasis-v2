@@ -201,8 +201,13 @@ export async function gerarRelatorioComercialCrm(
   const comparativoPropostasEnviadas = compararComBaldes(enviadasPeriodo.length, baldesEnviadas);
 
   // ── Parte "uso do CRM" (log de atividade local) ─────────────────────────────
+  // 00:00 Brasília = 03:00 UTC; 23:59:59.999 Brasília = 02:59:59.999 UTC do dia
+  // seguinte. NUNCA usar a string "T26:59:59.999Z" pra representar isso — V8
+  // trata hora > 23 num literal ISO com "Z" como Invalid Date (testado
+  // 14/09/2026; esse padrão aparece em getAuditoria/getLogDia em crm.ts e
+  // também está quebrado lá, fora do escopo desta mudança).
   const inicioDt = new Date(dataInicio + "T03:00:00.000Z");
-  const fimDt = new Date(dataFim + "T26:59:59.999Z");
+  const fimDt = new Date(new Date(dataFim + "T03:00:00.000Z").getTime() + 24 * 60 * 60 * 1000 - 1);
 
   return await montarRelatorioUsoCrm({
     db, inicioDt, fimDt, dataInicio, dataFim, tipo,
