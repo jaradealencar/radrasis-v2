@@ -11,14 +11,19 @@
  *    nos quadradinhos das faixas = "registrarContato", propostas marcadas
  *    ganha/perdida) e quem ficou com atividade zero.
  */
-import { sql } from "drizzle-orm";
+import { sql, and, eq, inArray, gte, lte, desc } from "drizzle-orm";
 import { getDb } from "../db/db";
-import { crmAtividadeLog, historicoOs, clienteOverrides } from "../../drizzle/schema";
+import { crmAtividadeLog, historicoOs, clienteOverrides, inteligenciaAcoesClientes } from "../../drizzle/schema";
 import { buscarOrcamentosPeriodo } from "../routers/crm";
 import {
   getCrmAbertosCache, refreshCrmAbertosCache, refreshCrmFechadosCache,
   CACHE_KEY_ABERTOS_PADRAO, CACHE_KEY_FECHADOS, JANELA_ABERTOS_DIAS_PADRAO,
 } from "../sync/crm-abertos-cache";
+
+// Mesmos tipos de "cliente parado" que a aba Sugestões de Contato do CRM usa
+// (ver server/routers/crm.ts, getSugestoesContato) — uma única fila, duas
+// visualizações (tela + e-mail).
+const TIPOS_REENGAJAMENTO: Array<"atraso_recompra" | "primeira_sem_segunda"> = ["atraso_recompra", "primeira_sem_segunda"];
 
 const STATUS_FECHADO = new Set(["aprovado", "faturado", "concluido", "concluído"]);
 
@@ -126,6 +131,12 @@ export interface RelatorioComercialCrm {
       semAtividade: boolean;
     }>;
     vendedoresSemAtividade: string[];
+  };
+  sugestoesContato: {
+    pendentesTotal: number;
+    contatadasPeriodo: number;
+    porVendedor: Array<{ vendedor: string; pendentes: number; contatadasPeriodo: number }>;
+    topPendentes: Array<{ empresa: string; vendedor: string | null; score: number; motivo: string }>;
   };
 }
 
@@ -276,6 +287,8 @@ async function montarRelatorioUsoCrm(opts: {
     };
   }).sort((a, b) => (a.contatosRegistrados + a.ganhas + a.perdidas) - (b.contatosRegistrados + b.ganhas + b.perdidas));
 
+  const sugestoesContato = await calcularSugestoesContatoPeriodo(db, inicioDt, fimDt);
+
   return {
     periodo: { dataInicio, dataFim, tipo },
     comercial,
@@ -283,5 +296,50 @@ async function montarRelatorioUsoCrm(opts: {
       vendedores,
       vendedoresSemAtividade: vendedores.filter(v => v.semAtividade).map(v => v.vendedor),
     },
+    sugestoesContato,
+  };
+}
+
+/** Sugestões de Contato (reengajamento de carteira) para o relatório —
+ * mesma fila que a aba do CRM usa (ver server/routers/crm.ts,
+ * getSugestoesContato). Só LÊ a tabela — não chama sincronizarFilaAcoesClientes
+ * aqui porque essa função demora ~2 minutos contra o banco de produção
+ * (medido 14/09/2026) e gerarRelatorioComercialCrm também alimenta a tela
+ * manual "Monitoramento de Uso do CRM" (troca de dia/semana não pode ficar
+ * travada esperando isso). Quem precisa da fila fresca antes de calcular o
+ * relatório é o cron (ver server/sync/scheduled-relatorio-crm-diario.ts e
+ * ...-semanal.ts, que chamam sincronizarFilaAcoesClientes antes de gerar o
+ * relatório — ali sim é aceitável demorar, roda em background 1x/dia). */
+async function calcularSugestoesContatoPeriodo(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  inicioDt: Date,
+  fimDt: Date,
+): Promise<RelatorioComercialCrm["sugestoesContato"]> {
+  const pendentes = await db.select().from(inteligenciaAcoesClientes).where(and(
+    inArray(inteligenciaAcoesClientes.tipo, TIPOS_REENGAJAMENTO),
+    eq(inteligenciaAcoesClientes.status, "pendente"),
+  )).orderBy(desc(inteligenciaAcoesClientes.prioridade));
+
+  const contatadas = await db.select().from(inteligenciaAcoesClientes).where(and(
+    inArray(inteligenciaAcoesClientes.tipo, TIPOS_REENGAJAMENTO),
+    eq(inteligenciaAcoesClientes.status, "concluida"),
+    gte(inteligenciaAcoesClientes.resolvidoEm, inicioDt),
+    lte(inteligenciaAcoesClientes.resolvidoEm, fimDt),
+  ));
+
+  const vendedoresSet = new Set<string>();
+  for (const a of pendentes) if (a.vendedor) vendedoresSet.add(a.vendedor);
+  for (const a of contatadas) if (a.vendedor) vendedoresSet.add(a.vendedor);
+  const porVendedor = Array.from(vendedoresSet).sort().map(v => ({
+    vendedor: v,
+    pendentes: pendentes.filter(a => a.vendedor === v).length,
+    contatadasPeriodo: contatadas.filter(a => a.vendedor === v).length,
+  }));
+
+  return {
+    pendentesTotal: pendentes.length,
+    contatadasPeriodo: contatadas.length,
+    porVendedor,
+    topPendentes: pendentes.slice(0, 5).map(a => ({ empresa: a.empresa, vendedor: a.vendedor, score: a.prioridade, motivo: a.motivo })),
   };
 }

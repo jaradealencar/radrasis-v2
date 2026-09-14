@@ -603,6 +603,70 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   );
 }
 
+// ─── SugestaoContatoCard ───────────────────────────────────────────────────────
+// Um card por cliente sugerido (fila de Inteligência de Clientes, tipos
+// "atraso_recompra"/"primeira_sem_segunda" — ver crm.getSugestoesContato no
+// servidor). O único registro esperado do vendedor é este botão: confirma
+// que ligou, a data fica gravada automaticamente (resolvidoEm no servidor).
+type SugestaoContato = {
+  id: number;
+  tipo: string;
+  empresa: string;
+  vendedor: string | null;
+  motivo: string;
+  score: number;
+  evidencia: Record<string, unknown>;
+};
+
+function SugestaoContatoCard({ s, vendedor, showVendedor, onRefresh }: {
+  s: SugestaoContato; vendedor: string; showVendedor: boolean; onRefresh: () => void;
+}) {
+  const registrarContatoSugestao = trpc.crm.registrarContatoSugestao.useMutation({
+    onSuccess: () => { toast.success("Contato registrado!"); onRefresh(); },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const cor = probabilidadeCor(s.score);
+  const diasSemComprar = typeof s.evidencia.diasDesdeUltima === "number" ? s.evidencia.diasDesdeUltima : null;
+  const tipoLabel = s.tipo === "primeira_sem_segunda" ? "1ª compra sem repetição" : "Atraso na recompra";
+
+  return (
+    <div className="flex items-start gap-3 bg-white border rounded-xl p-4 shadow-sm">
+      <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+        style={{ backgroundColor: `hsl(${(s.empresa.charCodeAt(0) * 47) % 360}, 60%, 45%)` }}>
+        {s.empresa.slice(0, 2).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-semibold text-sm" title={s.empresa}>{s.empresa}</span>
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-bold ${cor.bg} ${cor.text}`}>
+            Score {s.score}
+          </span>
+          <span className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-1.5 py-0.5">
+            {tipoLabel}
+          </span>
+          {diasSemComprar != null && (
+            <span className="text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-1.5 py-0.5">
+              há {diasSemComprar}d sem comprar
+            </span>
+          )}
+          {showVendedor && s.vendedor && (
+            <span className="text-[10px] font-medium text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-1.5 py-0.5">
+              {s.vendedor}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">{s.motivo}</p>
+      </div>
+      <Button size="sm" variant="outline" className="flex-shrink-0 gap-1.5"
+        disabled={registrarContatoSugestao.isPending}
+        onClick={() => registrarContatoSugestao.mutate({ id: s.id, vendedor: vendedor || s.vendedor || "" })}>
+        {registrarContatoSugestao.isPending ? <Spinner /> : <CheckSquare className="w-3.5 h-3.5" />} Contato feito
+      </Button>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function CRM() {
   const { user } = useAuth();
@@ -661,6 +725,10 @@ export default function CRM() {
   );
 
   const { data: vendedoresData } = trpc.crm.getVendedores.useQuery(undefined, { refetchOnWindowFocus: false, retry: 1 });
+  const { data: sugestoesData, isLoading: sugestoesLoading, refetch: refetchSugestoes } = trpc.crm.getSugestoesContato.useQuery(
+    { vendedor: vendedor || undefined },
+    { refetchOnWindowFocus: false, retry: 1 }
+  );
   const { data: faixasData } = trpc.crm.getFaixaEtiquetas.useQuery();
   const faixasConfig: Record<1 | 2 | 3, FaixaConfig> = faixasData ?? FAIXA_DEFAULTS_CLIENTE;
   const faixasOrdenadas = useMemo(() => [faixasConfig[1], faixasConfig[2], faixasConfig[3]], [faixasConfig]);
@@ -814,7 +882,7 @@ export default function CRM() {
 
       {/* Sub-abas do CRM */}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-4">
+        <TabsList className="grid w-full grid-cols-5 mb-4">
           <TabsTrigger value="propostas" className="gap-1.5">
             Propostas
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{propostasAtivas.length}</Badge>
@@ -822,6 +890,13 @@ export default function CRM() {
           <TabsTrigger value="agenda" className="gap-1.5">
             Agenda de Hoje
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700">{agendaDiaria.faixa1.length + agendaDiaria.faixa2.length + agendaDiaria.faixa3.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="sugestoes" className="gap-1.5">
+            <Target className="w-3.5 h-3.5" />
+            Sugestões de Contato
+            {sugestoesData && sugestoesData.sugestoes.length > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-100 text-indigo-700">{sugestoesData.sugestoes.length}</Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="historico" className="gap-1.5">
             Histórico
@@ -1194,6 +1269,42 @@ export default function CRM() {
         </div>
       )}
           </div>
+        </TabsContent>
+
+        {/* ABA: Sugestões de Contato */}
+        <TabsContent value="sugestoes" className="space-y-4 mt-0">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="w-4 h-4 text-indigo-600" />
+              <h3 className="text-sm font-bold text-indigo-800">Sugestões de Contato — Reengajamento da Carteira</h3>
+            </div>
+            <p className="text-xs text-indigo-700">
+              Clientes que pararam de comprar, ordenados pelo score interno de potencial de recompra. Ligue e confirme o contato — a lista se renova mensalmente.
+            </p>
+            <div className="flex items-center gap-2 mt-2 text-xs text-indigo-700">
+              <span className="font-semibold">{sugestoesData?.sugestoes.length ?? 0} pendente{(sugestoesData?.sugestoes.length ?? 0) !== 1 ? "s" : ""}</span>
+              <span>·</span>
+              <span>{sugestoesData?.contatadasEsteMes ?? 0} contatado{(sugestoesData?.contatadasEsteMes ?? 0) !== 1 ? "s" : ""} este mês</span>
+            </div>
+          </div>
+
+          {sugestoesLoading ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : (sugestoesData?.sugestoes.length ?? 0) === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Target className="text-indigo-400" /></EmptyMedia>
+                <EmptyTitle>Nenhuma sugestão pendente</EmptyTitle>
+                <EmptyDescription>Todos os clientes com atraso na recompra já foram contatados neste ciclo.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div className="space-y-2">
+              {sugestoesData!.sugestoes.map(s => (
+                <SugestaoContatoCard key={s.id} s={s} vendedor={vendedor} showVendedor={!vendedor} onRefresh={refetchSugestoes} />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* ABA: Histórico */}

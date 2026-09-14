@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
-import { crmMetas, crmContatos, historicoOs, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog } from "../../drizzle/schema";
+import { crmMetas, crmContatos, historicoOs, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
 import {
   CACHE_KEY_ABERTOS_PADRAO, CACHE_KEY_ABERTOS_ESTENDIDO,
   JANELA_ABERTOS_DIAS_PADRAO, JANELA_ABERTOS_DIAS_MAX,
@@ -62,7 +62,7 @@ async function logAtividade(ctx: TrpcContext, opts: {
     // silently ignore — não deixar falha de log quebrar a ação principal
   }
 }
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, gte } from "drizzle-orm";
 import { listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 // ─── Helpers Mubisys ──────────────────────────────────────────────────────────
 
@@ -906,6 +906,85 @@ export const crmRouter = router({
     .query(async ({ input }) => {
       const { gerarRelatorioComercialCrm } = await import("../services/relatorioComercialCrm");
       return gerarRelatorioComercialCrm(input.dataInicio, input.dataFim, input.tipo);
+    }),
+
+  // ─── Sugestão de Contato (reengajamento mensal da carteira) ─────────────────
+  // Reusa a fila de Inteligência de Clientes (inteligencia_acoes_clientes) já
+  // existente — "atraso_recompra" (cliente recorrente que passou muito do seu
+  // próprio intervalo de compra) e "primeira_sem_segunda" (comprou uma vez e
+  // sumiu) são exatamente "clientes que pararam de comprar". A `prioridade`
+  // já calculada (server/services/inteligenciaClientes.ts, calcularCandidatosAcao)
+  // pondera urgência do atraso + relevância econômica — é o "score interno"
+  // usado aqui pra ordenar quem o vendedor deve chamar primeiro. Ver também
+  // [[logica-cliente-novo-reativado]].
+  //
+  // Cadência mensal: sincronizarFilaAcoesClientes tem cooldown de
+  // DIAS_COOLDOWN_ACAO_RESOLVIDA (30 dias) antes de reabrir uma ação marcada
+  // como contatada — na prática, um cliente já contatado não volta a aparecer
+  // na lista por ~1 mês, mesmo continuando "parado".
+  //
+  // Importante: NÃO chama sincronizarFilaAcoesClientes aqui — medido em
+  // 14/09/2026 contra o banco de produção, ela demora ~2 minutos (um
+  // round-trip por cliente candidato, centenas deles). Rodar isso a cada
+  // abertura da aba deixaria o CRM inutilizável. A fila é mantida atualizada
+  // pelo cron diário do relatório (server/services/relatorioComercialCrm.ts)
+  // e por quem acessa a Inteligência de Clientes — aqui só lemos o que já
+  // está sincronizado.
+  getSugestoesContato: protectedProcedure
+    .input(z.object({ vendedor: z.string().optional() }))
+    .query(async ({ input }) => {
+      const db = (await getDb())!;
+
+      const tiposReengajamento: Array<"atraso_recompra" | "primeira_sem_segunda"> = ["atraso_recompra", "primeira_sem_segunda"];
+      const filtrosPendentes = [
+        inArray(inteligenciaAcoesClientes.tipo, tiposReengajamento),
+        eq(inteligenciaAcoesClientes.status, "pendente"),
+      ];
+      if (input.vendedor) filtrosPendentes.push(eq(inteligenciaAcoesClientes.vendedor, input.vendedor));
+      const pendentesRows = await db.select().from(inteligenciaAcoesClientes)
+        .where(and(...filtrosPendentes))
+        .orderBy(desc(inteligenciaAcoesClientes.prioridade));
+
+      const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
+      const filtrosContatadas = [
+        inArray(inteligenciaAcoesClientes.tipo, tiposReengajamento),
+        eq(inteligenciaAcoesClientes.status, "concluida"),
+        gte(inteligenciaAcoesClientes.resolvidoEm, inicioMes),
+      ];
+      if (input.vendedor) filtrosContatadas.push(eq(inteligenciaAcoesClientes.vendedor, input.vendedor));
+      const contatadasEsteMes = await db.select().from(inteligenciaAcoesClientes)
+        .where(and(...filtrosContatadas));
+
+      return {
+        sugestoes: pendentesRows.map(a => ({
+          id: a.id,
+          tipo: a.tipo,
+          empresa: a.empresa,
+          vendedor: a.vendedor,
+          motivo: a.motivo,
+          score: a.prioridade,
+          evidencia: JSON.parse(a.evidenciaJson) as Record<string, unknown>,
+        })),
+        contatadasEsteMes: contatadasEsteMes.length,
+      };
+    }),
+
+  /** Registra com um clique que o vendedor contatou o cliente sugerido — data
+   * gravada automaticamente (resolvidoEm). Mesma mutation de fundo que a fila
+   * de Inteligência de Clientes usa (atualizarAcaoCliente), só que fixando
+   * status/resultado em vez de expor o formulário completo. */
+  registrarContatoSugestao: protectedProcedure
+    .input(z.object({ id: z.number(), vendedor: z.string() }))
+    .mutation(async ({ input }) => {
+      const db = (await getDb())!;
+      await db.update(inteligenciaAcoesClientes).set({
+        status: "concluida",
+        resultado: "contato_realizado",
+        responsavel: input.vendedor,
+        resolvidoEm: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(inteligenciaAcoesClientes.id, input.id));
+      return { ok: true };
     }),
 
   // ─── AUDITORIA DO CRM ────────────────────────────────────────────────────────

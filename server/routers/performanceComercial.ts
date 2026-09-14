@@ -1076,7 +1076,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
 // ─── Fila de ações de Inteligência de Clientes — sincronização idempotente ───
 // Compartilhada por getFilaAcoesClientes e gerarFilaAcoesPdf, para não gerar
 // a fila duas vezes (uma para exibir, outra para o PDF) com regras divergentes.
-async function sincronizarFilaAcoesClientes(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
+// Exportada: server/routers/crm.ts (aba "Sugestões de Contato") e
+// server/services/relatorioComercialCrm.ts (relatório por e-mail) reusam a
+// MESMA fila — em vez de recalcular "cliente parado" com outra regra, a aba
+// de sugestão do CRM é só outra visualização (filtrada por tipo/vendedor) da
+// fila já existente de Inteligência de Clientes.
+export async function sincronizarFilaAcoesClientes(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
   const rows = await db.select().from(historicoOs);
   const base = construirBaseClientes(rows as any);
   const dataRef = new Date();

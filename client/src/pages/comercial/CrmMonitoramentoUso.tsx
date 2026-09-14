@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import {
   ChevronLeft, ChevronRight, Send, CheckCircle2, DollarSign,
-  UserPlus, TrendingUp, AlertTriangle, Mail,
+  UserPlus, TrendingUp, AlertTriangle, Mail, Target,
 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 
@@ -238,6 +238,64 @@ export default function CrmMonitoramentoUso() {
               <p className="text-xs text-muted-foreground">
                 "Contatos registrados" = cliques nos quadradinhos das faixas de follow-up (Faixa 1/2/3).
               </p>
+            </CardContent>
+          </Card>
+
+          {/* ── Sugestões de Contato ──────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Target className="w-4 h-4" /> Sugestões de Contato — reengajamento da carteira
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                  <div className="text-xl font-bold text-indigo-700">{data.sugestoesContato.pendentesTotal}</div>
+                  <div className="text-xs text-indigo-600">Clientes parados pendentes de contato</div>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  <div className="text-xl font-bold text-green-700">{data.sugestoesContato.contatadasPeriodo}</div>
+                  <div className="text-xs text-green-600">Contatados neste {unidade}</div>
+                </div>
+              </div>
+
+              {data.sugestoesContato.porVendedor.length > 0 && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendedor</TableHead>
+                      <TableHead className="text-center">Pendentes</TableHead>
+                      <TableHead className="text-center">Contatados no {unidade}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.sugestoesContato.porVendedor.map(v => (
+                      <TableRow key={v.vendedor}>
+                        <TableCell className="font-medium">{v.vendedor}</TableCell>
+                        <TableCell className="text-center">{v.pendentes}</TableCell>
+                        <TableCell className="text-center">{v.contatadasPeriodo}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              {data.sugestoesContato.topPendentes.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Maior potencial parado, priorize:</p>
+                  {data.sugestoesContato.topPendentes.map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm bg-gray-50 border rounded-lg px-3 py-2">
+                      <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 flex-shrink-0">Score {s.score}</Badge>
+                      <div className="min-w-0">
+                        <span className="font-medium">{s.empresa}</span>
+                        {s.vendedor && <span className="text-xs text-muted-foreground"> · {s.vendedor}</span>}
+                        <p className="text-xs text-muted-foreground">{s.motivo}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </>

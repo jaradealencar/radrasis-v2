@@ -1,5 +1,7 @@
 import { gerarRelatorioComercialCrm } from "../services/relatorioComercialCrm";
 import { enviarRelatorioComercialCrm } from "../services/emailRelatorioCrm";
+import { sincronizarFilaAcoesClientes } from "../routers/performanceComercial";
+import { getDb } from "../db/db";
 
 function fmtDateISO(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -23,6 +25,12 @@ export async function relatorioCrmDiario() {
     return { ok: true, periodo: fmtDateISO(ontem), pulado: "fim de semana, sem expediente" };
   }
   const dataStr = fmtDateISO(ontem);
+
+  // Atualiza a fila de Sugestões de Contato antes de calcular o relatório —
+  // demora ~2 minutos contra o banco de produção, mas aqui roda em segundo
+  // plano (cron), sem ninguém esperando (ver nota em relatorioComercialCrm.ts).
+  const db = await getDb();
+  if (db) await sincronizarFilaAcoesClientes(db);
 
   const relatorio = await gerarRelatorioComercialCrm(dataStr, dataStr, "dia");
   await enviarRelatorioComercialCrm(relatorio, "diario");

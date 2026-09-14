@@ -32,8 +32,12 @@ function fmtDataBr(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function montarHtml(relatorio: RelatorioComercialCrm, tipo: "diario" | "semanal"): string {
-  const { periodo, comercial, usoCrm } = relatorio;
+  const { periodo, comercial, usoCrm, sugestoesContato } = relatorio;
   const rotuloPeriodo = periodo.dataInicio === periodo.dataFim
     ? fmtDataBr(periodo.dataInicio)
     : `${fmtDataBr(periodo.dataInicio)} a ${fmtDataBr(periodo.dataFim)}`;
@@ -104,8 +108,39 @@ function montarHtml(relatorio: RelatorioComercialCrm, tipo: "diario" | "semanal"
       <tbody>${linhasVendedores}</tbody>
     </table>
 
+    <h3 style="margin:24px 0 8px;font-size:15px">Sugestões de Contato — reengajamento da carteira</h3>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+      <tr>
+        <td style="padding:8px;background:#eef2ff;border-radius:6px 0 0 6px">🎯 <b>${sugestoesContato.pendentesTotal}</b> clientes parados pendentes de contato</td>
+        <td style="padding:8px;background:#eef2ff;border-radius:0 6px 6px 0">☎️ <b>${sugestoesContato.contatadasPeriodo}</b> contatados neste ${unidade}</td>
+      </tr>
+    </table>
+    ${sugestoesContato.porVendedor.length > 0 ? `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+      <thead>
+        <tr style="border-bottom:2px solid #d1d5db;text-align:center">
+          <th style="text-align:left;padding:6px 8px">Vendedor</th>
+          <th style="padding:6px 8px">Pendentes</th>
+          <th style="padding:6px 8px">Contatados<br/>no ${unidade}</th>
+        </tr>
+      </thead>
+      <tbody>${sugestoesContato.porVendedor.map(v => `
+        <tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:6px 8px">${escapeHtml(v.vendedor)}</td>
+          <td style="padding:6px 8px;text-align:center">${v.pendentes}</td>
+          <td style="padding:6px 8px;text-align:center">${v.contatadasPeriodo}</td>
+        </tr>`).join("")}</tbody>
+    </table>` : ""}
+    ${sugestoesContato.topPendentes.length > 0 ? `
+    <p style="font-size:13px;font-weight:600;margin:8px 0 4px">Maior potencial parado, priorize:</p>
+    <ul style="font-size:13px;margin:0 0 16px;padding-left:20px">
+      ${sugestoesContato.topPendentes.map(s => `<li style="margin-bottom:4px">
+        <b>${escapeHtml(s.empresa)}</b> (score ${s.score}${s.vendedor ? `, ${escapeHtml(s.vendedor)}` : ""}) — ${escapeHtml(s.motivo)}
+      </li>`).join("")}
+    </ul>` : ""}
+
     <p style="color:#9ca3af;font-size:11px;margin-top:24px">
-      "Contatos registrados" = cliques nos quadradinhos das faixas de follow-up. Gerado automaticamente pelo RadraSIS.
+      "Contatos registrados" = cliques nos quadradinhos das faixas de follow-up. "Score" da sugestão de contato pondera atraso na recompra e relevância econômica do cliente. Gerado automaticamente pelo RadraSIS.
     </p>
   </div>`;
 }

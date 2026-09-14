@@ -1,5 +1,7 @@
 import { gerarRelatorioComercialCrm } from "../services/relatorioComercialCrm";
 import { enviarRelatorioComercialCrm } from "../services/emailRelatorioCrm";
+import { sincronizarFilaAcoesClientes } from "../routers/performanceComercial";
+import { getDb } from "../db/db";
 
 function fmtDateISO(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -26,6 +28,11 @@ export async function relatorioCrmSemanal() {
   const { inicio, fim } = calcularUltimaSemanaCompleta(new Date());
   const dataInicio = fmtDateISO(inicio);
   const dataFim = fmtDateISO(fim);
+
+  // Ver nota equivalente em scheduled-relatorio-crm-diario.ts — sincroniza a
+  // fila de Sugestões de Contato (~2min) antes de calcular o relatório.
+  const db = await getDb();
+  if (db) await sincronizarFilaAcoesClientes(db);
 
   const relatorio = await gerarRelatorioComercialCrm(dataInicio, dataFim, "semana");
   await enviarRelatorioComercialCrm(relatorio, "semanal");
