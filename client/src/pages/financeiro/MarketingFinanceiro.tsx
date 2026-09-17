@@ -74,7 +74,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 <TabsTrigger value="geral" className="gap-1.5"><LayoutGrid size={14} /> Visão Geral</TabsTrigger>
                 <TabsTrigger value="aquisicao" className="gap-1.5"><Target size={14} /> Aquisição</TabsTrigger>
                 <TabsTrigger value="reativacao" className="gap-1.5"><RefreshCw size={14} /> Reativação</TabsTrigger>
-                <TabsTrigger value="mensal" className="gap-1.5"><Table2 size={14} /> Análise Mensal</TabsTrigger>
+                <TabsTrigger value="mensal" className="gap-1.5"><Table2 size={14} /> ROI Marketing</TabsTrigger>
                 <TabsTrigger value="fornecedor" className="gap-1.5"><ListTree size={14} /> Detalhamento por Fornecedor</TabsTrigger>
                 <TabsTrigger value="config" className="gap-1.5"><Settings2 size={14} /> Configurações</TabsTrigger>
               </TabsList>
