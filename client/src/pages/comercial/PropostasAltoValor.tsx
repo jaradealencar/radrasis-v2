@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -21,10 +22,25 @@ function fmtDataHora(d: string | Date | null | undefined): string {
   return dt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+// dataCadastro vem do historico_orcamentos com datas em formato misto (dd/mm/aaaa
+// na maioria, algumas em ISO) — ver memória "Histórico: datas em formato misto".
+function extrairDiaDoMes(dataStr: string | null | undefined): number | null {
+  if (!dataStr) return null;
+  const texto = String(dataStr).trim();
+  const br = texto.match(/^(\d{2})\/\d{2}\/\d{4}/);
+  if (br) return parseInt(br[1], 10);
+  const iso = texto.match(/^\d{4}-\d{2}-(\d{2})/);
+  if (iso) return parseInt(iso[1], 10);
+  const dt = new Date(texto);
+  return isNaN(dt.getTime()) ? null : dt.getDate();
+}
+
 export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: number }) {
   const [listaAberta, setListaAberta] = useState(false);
   const [propostaFollowup, setPropostaFollowup] = useState<{ orcNumero: string; empresa: string } | null>(null);
   const [motivo, setMotivo] = useState("");
+  const [diaDe, setDiaDe] = useState("");
+  const [diaAte, setDiaAte] = useState("");
 
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.performanceComercial.getPropostasAltoValor.useQuery(
@@ -41,6 +57,19 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   });
 
   const propostas = data?.propostas ?? [];
+
+  const propostasFiltradas = useMemo(() => {
+    const de = diaDe ? parseInt(diaDe, 10) : null;
+    const ate = diaAte ? parseInt(diaAte, 10) : null;
+    if (de == null && ate == null) return propostas;
+    return propostas.filter(p => {
+      const dia = extrairDiaDoMes(p.dataCadastro);
+      if (dia == null) return true;
+      if (de != null && dia < de) return false;
+      if (ate != null && dia > ate) return false;
+      return true;
+    });
+  }, [propostas, diaDe, diaAte]);
 
   function confirmarFollowup() {
     if (!propostaFollowup || motivo.trim().length < 3) return;
@@ -79,10 +108,38 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
             <DialogTitle>Propostas acima de {fmtBrl(VALOR_MINIMO_PADRAO)} — em aberto</DialogTitle>
           </DialogHeader>
 
+          {!isLoading && propostas.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
+              <span className="font-medium">Filtrar por dia do mês:</span>
+              <Input
+                type="number" min={1} max={31} placeholder="De"
+                value={diaDe} onChange={e => setDiaDe(e.target.value)}
+                className="w-16 h-7 text-xs"
+              />
+              <span>até</span>
+              <Input
+                type="number" min={1} max={31} placeholder="Até"
+                value={diaAte} onChange={e => setDiaAte(e.target.value)}
+                className="w-16 h-7 text-xs"
+              />
+              {(diaDe || diaAte) && (
+                <Button
+                  size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                  onClick={() => { setDiaDe(""); setDiaAte(""); }}
+                >
+                  Limpar
+                </Button>
+              )}
+              <span className="ml-auto">{propostasFiltradas.length} de {propostas.length} proposta{propostas.length > 1 ? "s" : ""}</span>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="py-8 text-center text-sm text-slate-400">Carregando propostas...</div>
           ) : propostas.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">Nenhuma proposta em aberto acima do valor de corte neste mês.</div>
+          ) : propostasFiltradas.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">Nenhuma proposta cadastrada nesse intervalo de dias.</div>
           ) : (
             <Table>
               <TableHeader>
@@ -96,7 +153,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {propostas.map(p => (
+                {propostasFiltradas.map(p => (
                   <TableRow key={p.orcNumero}>
                     <TableCell className="font-medium">
                       {p.empresa}
