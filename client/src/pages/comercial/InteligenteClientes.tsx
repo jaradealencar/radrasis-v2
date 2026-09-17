@@ -46,7 +46,7 @@ function formatarPeriodo(ini: string, fim: string) {
   return `${MESES[mIni - 1]}/${aIni} a ${MESES[mFim - 1]}/${aFim}`;
 }
 
-const CLASSIFICACAO_INFO: Record<string, { label: string; cor: string; icone: string; corHex: string; descricao: string }> = {
+export const CLASSIFICACAO_INFO: Record<string, { label: string; cor: string; icone: string; corHex: string; descricao: string }> = {
   primeira_compra: {
     label: "Primeira compra", cor: "bg-blue-50 text-blue-700 border-blue-200", icone: "🆕", corHex: "#3b82f6",
     descricao: "Cliente com apenas 1 compra válida em todo o histórico local. Ainda não há uma segunda compra para saber se ele vai voltar.",

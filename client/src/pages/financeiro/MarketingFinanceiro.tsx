@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   LayoutGrid, Target, RefreshCw, Table2, ListTree, Settings2,
-  Upload, Loader2, AlertTriangle, TrendingUp, Gauge,
+  Upload, Loader2, AlertTriangle, TrendingUp, Gauge, Lightbulb,
 } from "lucide-react";
 import FiltrosMarketing, { type FiltrosMarketingState } from "./FiltrosMarketing";
 import MarketingVisaoGeral from "./MarketingVisaoGeral";
@@ -16,6 +16,7 @@ import MarketingDrillDownDialog from "./MarketingDrillDownDialog";
 import DetalhamentoMarketing from "./DetalhamentoMarketing";
 import ImportarCustoMarketing from "./ImportarCustoMarketing";
 import ResultadoGeral from "./ResultadoGeral";
+import InsightsCarteira from "./InsightsCarteira";
 
 interface Props {
   anoSel: number;
@@ -72,6 +73,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
               <TabsList>
                 <TabsTrigger value="geral" className="gap-1.5"><LayoutGrid size={14} /> Visão Geral</TabsTrigger>
+                <TabsTrigger value="insights" className="gap-1.5"><Lightbulb size={14} /> Insights e Alertas</TabsTrigger>
                 <TabsTrigger value="aquisicao" className="gap-1.5"><Target size={14} /> Aquisição</TabsTrigger>
                 <TabsTrigger value="reativacao" className="gap-1.5"><RefreshCw size={14} /> Reativação</TabsTrigger>
                 <TabsTrigger value="mensal" className="gap-1.5"><Table2 size={14} /> ROI Marketing</TabsTrigger>
@@ -94,6 +96,10 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 ano={anoSel} relatorio={relatorio} config={config} mesFiltro={filtros.mesFiltro}
                 onDrillDown={args => setDrillDown(args)}
               />
+            </TabsContent>
+
+            <TabsContent value="insights" className="space-y-4">
+              <InsightsCarteira ano={anoSel} relatorio={relatorio} />
             </TabsContent>
 
             <TabsContent value="aquisicao" className="space-y-4">
