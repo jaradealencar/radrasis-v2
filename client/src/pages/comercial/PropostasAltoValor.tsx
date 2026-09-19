@@ -133,31 +133,39 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
       .catch(() => {});
   }, [listaAberta]);
 
+  // Resultado da última cópia da imagem, mostrado na própria linha clicada (o aviso em toast
+  // fica escondido atrás da aba do WhatsApp, que abre por cima; a marca na linha fica lá
+  // esperando quando o usuário volta para o sistema).
+  const [copiaImagem, setCopiaImagem] = useState<{ orcNumero: string; ok: boolean; motivo?: string } | null>(null);
+
   // Clique no botão verde: copia a imagem e abre a conversa (com a mensagem padrão no texto).
-  // Se a cópia falhar, abre do mesmo jeito só com o texto e avisa.
-  async function abrirWhatsAppComImagem(e: React.MouseEvent<HTMLAnchorElement>, link: string) {
+  // Se a cópia falhar, abre do mesmo jeito só com o texto e avisa (com o motivo).
+  async function abrirWhatsAppComImagem(e: React.MouseEvent<HTMLAnchorElement>, link: string, orcNumero: string) {
     e.preventDefault();
     let imagemCopiada = false;
+    let motivoFalha = "";
     try {
       if (!imagemWhatsApp.current) {
         const resp = await fetch(IMAGEM_WHATSAPP_URL);
-        if (resp.ok) imagemWhatsApp.current = new Blob([await resp.blob()], { type: "image/png" });
+        if (!resp.ok) throw new Error(`imagem não carregada (HTTP ${resp.status})`);
+        imagemWhatsApp.current = new Blob([await resp.blob()], { type: "image/png" });
       }
-      if (imagemWhatsApp.current) {
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": imagemWhatsApp.current })]);
-        imagemCopiada = true;
-      }
-    } catch {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": imagemWhatsApp.current })]);
+      imagemCopiada = true;
+    } catch (erro) {
       // sem permissão de área de transferência, navegador sem suporte etc. — segue só com o texto
+      motivoFalha = erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro);
+      console.error("[WhatsApp] não consegui copiar a imagem:", erro);
     }
+    setCopiaImagem({ orcNumero, ok: imagemCopiada, motivo: motivoFalha || undefined });
     const aba = window.open(link, "_blank");
     if (!aba) {
       toast.error("O navegador bloqueou a abertura do WhatsApp. Permita pop-ups para este site e clique de novo.");
       return;
     }
     aba.opener = null;
-    if (imagemCopiada) toast.success("Imagem copiada! Na conversa do WhatsApp, aperte Ctrl+V para anexar.");
-    else toast.warning("Abri a conversa só com o texto: não consegui copiar a imagem.");
+    if (imagemCopiada) toast.success("Imagem copiada! Na conversa do WhatsApp, aperte Ctrl+V para anexar.", { duration: 10000 });
+    else toast.warning(`Abri a conversa só com o texto: não consegui copiar a imagem (${motivoFalha}).`, { duration: 15000 });
   }
 
   const propostas = data?.propostas ?? [];
@@ -331,9 +339,10 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                     <TableCell className="text-sm text-slate-500 whitespace-normal">{p.dataCadastro}</TableCell>
                     <TableCell className="text-center">
                       {p.whatsappLink ? (
+                        <>
                         <a
                           href={linkWhatsAppComMensagem(p.whatsappLink, p.contato)}
-                          onClick={e => abrirWhatsAppComImagem(e, linkWhatsAppComMensagem(p.whatsappLink!, p.contato))}
+                          onClick={e => abrirWhatsAppComImagem(e, linkWhatsAppComMensagem(p.whatsappLink!, p.contato), p.orcNumero)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full transition-colors whitespace-nowrap"
@@ -342,6 +351,14 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                           <MessageCircle className="w-3 h-3" />
                           {fmtTelefone(p.telefone)}
                         </a>
+                        {/* Marca fixa do resultado da cópia da imagem (curta, para não alargar a coluna;
+                            o motivo completo fica no tooltip) */}
+                        {copiaImagem && copiaImagem.orcNumero === p.orcNumero && (
+                          copiaImagem.ok
+                            ? <div className="text-[10px] font-medium text-green-600 mt-0.5">✓ imagem copiada</div>
+                            : <div className="text-[10px] font-medium text-amber-600 mt-0.5" title={copiaImagem.motivo}>✗ imagem não copiada</div>
+                        )}
+                        </>
                       ) : (
                         <span className="text-slate-300 text-xs inline-flex items-center gap-1 whitespace-nowrap">
                           <Phone className="w-3 h-3" /> sem tel.
