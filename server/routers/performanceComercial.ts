@@ -670,6 +670,15 @@ export function calcularNovosDoMesLocal(
   };
 }
 
+/** Item da lista "Clientes Novos" do mês. `reativado` separa quem já tinha comprado antes
+ * (e voltou após 6+ meses sem pedir) de quem nunca comprou — mesma regra dos contadores
+ * totalPuros/totalReativados, então as duas visões sempre batem. */
+type ClienteNovoListaItem = {
+  empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null;
+  telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string;
+  reativado: boolean;
+};
+
 async function getClientesNovosMes(mes: number, ano: number): Promise<{
   total: number;
   totalReativados: number;
@@ -688,10 +697,10 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   taxaFaturamentoNovos: number;
   porVendedor: Record<string, number>;
   porVendedorNovos: Record<string, VendedorNovosStats>;
-  lista: Array<{ empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null; telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string }>;
+  lista: ClienteNovoListaItem[];
 }> {
   const db = await getDb();
-  const EMPTY = { total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
+  const EMPTY ={ total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
   if (!db) return EMPTY;
 
   // ─── SNAPSHOT CONGELADO: verificar se já tem lista salva ───
@@ -703,7 +712,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   if (snapCongelado.length > 0 && snapCongelado[0].listaClientesNovos) {
     // Lista já foi salva no snapshot — retornar imediatamente sem chamar API
     const s = snapCongelado[0];
-    let listaSnap: Array<{ empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null; telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string }> = [];
+    let listaSnap: ClienteNovoListaItem[] = [];
     try { listaSnap = JSON.parse(s.listaClientesNovos ?? '[]'); } catch { listaSnap = []; }
 
     // Reconstruir porVendedorNovos a partir da lista salva (OS de clientes novos por vendedor)
@@ -728,6 +737,11 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     // Reativados = clientes novos (lista salva) que já tinham comprado antes (ultima existe),
     // mas ficaram 6+ meses sem pedir. "Novo puro" = nunca comprou (ultima ausente).
     const ultimaCompraSnapNorm = reindexarPorChaveNormalizada(ultimaCompraSnap);
+    // Listas salvas antes desta separação não têm o campo `reativado` — sempre recalcula
+    // na leitura (mesma chave usada nos contadores abaixo) em vez de confiar no JSON salvo.
+    for (const item of listaSnap) {
+      item.reativado = Boolean(ultimaCompraSnapNorm.get(normalizeEmpresaKey(item.empresa)));
+    }
     const clientesUnicosSnap = new Set(listaSnap.map(item => normalizeEmpresaKey(item.empresa)));
     let totalReativadosSnap = 0;
     for (const chave of clientesUnicosSnap) {
@@ -887,7 +901,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   // listaRaw agora inclui contato e cidade extraídos diretamente da OS
   // Os campos cliente_contato e cliente_endereco já vêm na resposta da OS com dados do CLIENTE
   // Isso elimina a necessidade de busca por nome (que retornava dados da Radra)
-  const listaRaw: Array<{ empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null; telefone: string; contato: string; cidade: string; estado: string }> = [];
+  const listaRaw: Array<Omit<ClienteNovoListaItem, "whatsappLink">> = [];
 
   for (const os of osNormaisApi) {
     // Extrair nome do cliente da API (campo 'cliente' pode ser objeto ou string)
@@ -937,7 +951,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         const contatoOs = primeiroContato?.nome_contato || primeiroContato?.nome || "";
         const cidadeOs = primeiroEndereco?.cidade || "";
         const estadoOs = primeiroEndereco?.estado || primeiroEndereco?.uf || "";
-        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.numero ?? ""), valorOs: String(os.valor_total ?? ""), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs });
+        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.numero ?? ""), valorOs: String(os.valor_total ?? ""), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs, reativado: jaComprouAntes });
       }
     }
   }
@@ -953,7 +967,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
 
   // Montar lista final — contato e cidade já vêm da OS (campos cliente_contato e cliente_endereco)
   // Não é mais necessário buscar por nome na API (que retornava dados da Radra)
-  const lista: Array<{ empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null; telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string }> = [];
+  const lista: ClienteNovoListaItem[] = [];
   for (const item of listaRaw) {
     lista.push({
       ...item,

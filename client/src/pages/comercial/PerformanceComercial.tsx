@@ -211,6 +211,145 @@ function ProgressBar({
   );
 }
 
+// ─── Tabela de clientes novos/reativados com WhatsApp e controle de contato ─────
+
+function TabelaClientesContato({ itens, contatadosMap, onToggleContatado, salvando }: {
+  itens: any[];
+  contatadosMap: Record<string, { contatado?: boolean }> | undefined;
+  onToggleContatado: (empresa: string, contatado: boolean) => void;
+  salvando: boolean;
+}) {
+  return (
+    <Table className="text-xs">
+      <TableHeader>
+        <TableRow>
+          <TableHead>Empresa</TableHead>
+          <TableHead>Contato</TableHead>
+          <TableHead>Cidade</TableHead>
+          <TableHead>UF</TableHead>
+          <TableHead>Vendedor</TableHead>
+          <TableHead>OS</TableHead>
+          <TableHead className="text-right">Valor OS</TableHead>
+          <TableHead className="text-center">WhatsApp</TableHead>
+          <TableHead className="text-center" title="Marque quando entrar em contato com o cliente">Contatado</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {itens.map((c: any, i: number) => {
+          const empresaKey = (c.empresa ?? "").toLowerCase().trim();
+          const jaContatado = contatadosMap?.[empresaKey]?.contatado ?? false;
+          return (
+            <TableRow key={i} className={jaContatado ? 'bg-green-50 hover:bg-green-100' : ''}>
+              <TableCell className="font-medium text-slate-800">{c.empresa}</TableCell>
+              <TableCell className="text-slate-600">{c.contato || <span className="text-slate-300">—</span>}</TableCell>
+              <TableCell className="text-slate-600">{c.cidade || <span className="text-slate-300">—</span>}</TableCell>
+              <TableCell className="text-slate-600 font-medium">{c.estado || <span className="text-slate-300">—</span>}</TableCell>
+              <TableCell className="text-slate-600">{c.vendedor}</TableCell>
+              <TableCell className="font-mono text-blue-700">{c.osNumero ?? "—"}</TableCell>
+              <TableCell className="text-right font-mono text-green-700">
+                {c.valorOs ? `R$ ${Number(c.valorOs).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
+              </TableCell>
+              <TableCell className="text-center">
+                {c.whatsappLink ? (
+                  <a
+                    href={c.whatsappLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full transition-colors"
+                    title={c.telefone}
+                  >
+                    <MessageCircle className="w-3 h-3" />
+                    {c.telefone.replace(/\D/g, "").slice(-9).replace(/(\d{5})(\d{4})/, "$1-$2")}
+                  </a>
+                ) : (
+                  <span className="text-slate-300 flex items-center justify-center gap-1">
+                    <Phone className="w-3 h-3" /> sem tel.
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="text-center">
+                <button
+                  onClick={() => onToggleContatado(c.empresa, !jaContatado)}
+                  disabled={salvando}
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                    jaContatado
+                      ? 'bg-green-500 border-green-500 text-white'
+                      : 'border-slate-300 hover:border-green-400 bg-white'
+                  }`}
+                  title={jaContatado ? 'Marcar como não contatado' : 'Marcar como contatado'}
+                >
+                  {jaContatado && <Check className="w-3 h-3" />}
+                </button>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
+
+// Card recolhível de uma lista de clientes (usado para Novos e Reativados, separados)
+function CardClientesContato({ titulo, badge, icon: Icon, corIcone, corBadge, descricao, vazio, itens, loading, aberto, onToggleAberto, contatadosMap, onToggleContatado, salvando }: {
+  titulo: string;
+  badge?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  corIcone: string;
+  corBadge: string;
+  descricao: string;
+  vazio: string;
+  itens: any[];
+  loading: boolean;
+  aberto: boolean;
+  onToggleAberto: () => void;
+  contatadosMap: Record<string, { contatado?: boolean }> | undefined;
+  onToggleContatado: (empresa: string, contatado: boolean) => void;
+  salvando: boolean;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between p-5 hover:bg-slate-50 transition-colors"
+        onClick={onToggleAberto}
+      >
+        <div className="flex items-center gap-2">
+          <Icon className={`w-4 h-4 ${corIcone}`} />
+          <span className="text-sm font-semibold text-slate-700">
+            {titulo}
+            {badge && (
+              <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${corBadge}`}>{badge}</span>
+            )}
+          </span>
+        </div>
+        {aberto ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+      </button>
+      {aberto && (
+        <div className="border-t border-slate-100 p-5">
+          {loading ? (
+            <div className="text-sm text-slate-400 py-4 text-center animate-pulse">Buscando clientes e telefones no ERP...</div>
+          ) : itens.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>{vazio}</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-400 mb-3">{descricao}</p>
+              <TabelaClientesContato
+                itens={itens}
+                contatadosMap={contatadosMap}
+                onToggleContatado={onToggleContatado}
+                salvando={salvando}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 // ─── Tipos auxiliares ────────────────────────────────────────────────────────
@@ -222,6 +361,7 @@ export default function PerformanceComercial() {
   const [abaAtiva, setAbaAtiva] = useState<"visao-geral" | "mes-vigente" | "evolucao" | "inteligente">("visao-geral");
   const [showComparativo, setShowComparativo] = useState(true);
   const [showClientesNovos, setShowClientesNovos] = useState(true);
+  const [showClientesReativados, setShowClientesReativados] = useState(true);
   const [editingMetas, setEditingMetas] = useState(false);
   const [showOverrides, setShowOverrides] = useState(false);
   const [showEvolucaoVendedor, setShowEvolucaoVendedor] = useState(false);
@@ -260,18 +400,6 @@ export default function PerformanceComercial() {
   const mesesEvolucao = useMemo(() => {
     const result = [];
     for (let i = 5; i >= 0; i--) {
-      let m = mesSelecionado - i;
-      let a = anoSelecionado;
-      if (m <= 0) { m += 12; a -= 1; }
-      result.push({ mes: m, ano: a });
-    }
-    return result;
-  }, [mesSelecionado, anoSelecionado]);
-
-  // Meses para comparativo (mês selecionado vs 3 anteriores)
-  const mesesComparativo = useMemo(() => {
-    const result = [];
-    for (let i = 3; i >= 0; i--) {
       let m = mesSelecionado - i;
       let a = anoSelecionado;
       if (m <= 0) { m += 12; a -= 1; }
@@ -324,12 +452,6 @@ export default function PerformanceComercial() {
   const { data: evolucao, isLoading: loadingEvolucao, refetch: refetchEvolucao } =
     trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao }, RETRY_1);
 
-  const { data: comparativo, isLoading: loadingComparativo } =
-    trpc.performanceComercial.getMultiMes.useQuery(
-      { meses: mesesComparativo },
-      { enabled: showComparativo, ...RETRY_1 }
-    );
-
   const { data: metas, refetch: refetchMetas } =
     trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
   const { data: dadosAno, isLoading: loadingAno, isError: errorAno } =
@@ -381,8 +503,12 @@ export default function PerformanceComercial() {
     },
   });
 
-  // Comparativo anual: todos os meses do ano com dados
-  const comparativoAnual = (dadosAno ?? []).filter((r: any) => r != null);
+  // Comparativo anual: todos os meses do ano com dados (de janeiro até o mês corrente
+  // quando o ano selecionado é o atual — getAno devolve 12 meses, mas os futuros não
+  // têm dado e apareceriam como linhas zeradas).
+  const comparativoAnual = (dadosAno ?? []).filter((r: any) =>
+    r != null && (anoSelecionado < ANO_ATUAL || (anoSelecionado === ANO_ATUAL && r.mes <= MES_ATUAL))
+  );
 
   const upsertMeta = trpc.performanceComercial.upsertMeta.useMutation({
     onSuccess: () => {
@@ -1368,9 +1494,15 @@ export default function PerformanceComercial() {
           </button>
           {showComparativo && (
             <div className="px-5 pb-5">
-              {loadingComparativo ? (
+              {loadingAno ? (
                 <div className="h-32 flex items-center justify-center text-slate-400 text-sm animate-pulse">
                   Carregando comparativo...
+                </div>
+              ) : comparativoAnual.length === 0 ? (
+                <div className="h-32 flex items-center justify-center text-slate-400 text-sm">
+                  {errorAno
+                    ? "⚠️ API MubiSys indisponível — não foi possível carregar os dados"
+                    : "Sem dados para o período"}
                 </div>
               ) : (
                 <>
@@ -1389,7 +1521,7 @@ export default function PerformanceComercial() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(comparativo ?? []).filter((r): r is NonNullable<typeof r> => r != null).map((r, i) => {
+                        {comparativoAnual.map((r: any, i: number) => {
                           const isAtual = r.mes === mesSelecionado && r.ano === anoSelecionado;
                           return (
                             <TableRow key={i} className={isAtual ? "bg-blue-50 font-semibold" : ""}>
@@ -1425,7 +1557,7 @@ export default function PerformanceComercial() {
                     </Table>
                   </div>
                   <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={comparativo ?? []} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <BarChart data={comparativoAnual} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                       <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} />
@@ -1519,111 +1651,39 @@ export default function PerformanceComercial() {
             </div>
           </div>
         )}
-        {/* Clientes Novos do mês com WhatsApp */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <button
-            className="w-full flex items-center justify-between p-5 hover:bg-slate-50 transition-colors"
-            onClick={() => setShowClientesNovos(v => !v)}
-          >
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-teal-600" />
-              <span className="text-sm font-semibold text-slate-700">
-                Clientes Novos — {MESES_NOMES[mesSelecionado - 1]} {anoSelecionado}
-                {clientesNovos && (
-                  <span className="ml-2 bg-teal-100 text-teal-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                    {clientesNovos.total} novos
-                  </span>
-                )}
-              </span>
-            </div>
-            {showClientesNovos ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-          </button>
-          {showClientesNovos && (
-            <div className="border-t border-slate-100 p-5">
-              {loadingClientesNovos ? (
-                <div className="text-sm text-slate-400 py-4 text-center animate-pulse">Buscando clientes e telefones no ERP...</div>
-              ) : !clientesNovos || clientesNovos.total === 0 ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyTitle>Nenhum cliente novo identificado neste mês.</EmptyTitle>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-xs text-slate-400 mb-3">
-                    Empresas que aparecem pela primeira vez no histórico de OS — clique no ícone para abrir conversa no WhatsApp.
-                  </p>
-                  <Table className="text-xs">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Empresa</TableHead>
-                          <TableHead>Contato</TableHead>
-                          <TableHead>Cidade</TableHead>
-                          <TableHead>UF</TableHead>
-                          <TableHead>Vendedor</TableHead>
-                          <TableHead>OS</TableHead>
-                          <TableHead className="text-right">Valor OS</TableHead>
-                          <TableHead className="text-center">WhatsApp</TableHead>
-                          <TableHead className="text-center" title="Marque quando entrar em contato com o cliente">Contatado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(clientesNovos.lista ?? []).map((c: any, i: number) => {
-                          const empresaKey = (c.empresa ?? "").toLowerCase().trim();
-                          const jaContatado = contatadosMap?.[empresaKey]?.contatado ?? false;
-                          return (
-                          <TableRow key={i} className={jaContatado ? 'bg-green-50 hover:bg-green-100' : ''}>
-                            <TableCell className="font-medium text-slate-800">{c.empresa}</TableCell>
-                            <TableCell className="text-slate-600">{c.contato || <span className="text-slate-300">—</span>}</TableCell>
-                            <TableCell className="text-slate-600">{c.cidade || <span className="text-slate-300">—</span>}</TableCell>
-                            <TableCell className="text-slate-600 font-medium">{c.estado || <span className="text-slate-300">—</span>}</TableCell>
-                            <TableCell className="text-slate-600">{c.vendedor}</TableCell>
-                            <TableCell className="font-mono text-blue-700">{c.osNumero ?? "—"}</TableCell>
-                            <TableCell className="text-right font-mono text-green-700">
-                              {c.valorOs ? `R$ ${Number(c.valorOs).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {c.whatsappLink ? (
-                                <a
-                                  href={c.whatsappLink}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full transition-colors"
-                                  title={c.telefone}
-                                >
-                                  <MessageCircle className="w-3 h-3" />
-                                  {c.telefone.replace(/\D/g, "").slice(-9).replace(/(\d{5})(\d{4})/, "$1-$2")}
-                                </a>
-                              ) : (
-                                <span className="text-slate-300 flex items-center justify-center gap-1">
-                                  <Phone className="w-3 h-3" /> sem tel.
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <button
-                                onClick={() => setContatadoMut.mutate({ empresa: c.empresa, mes: mesSelecionado, ano: anoSelecionado, contatado: !jaContatado })}
-                                disabled={setContatadoMut.isPending}
-                                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                                  jaContatado
-                                    ? 'bg-green-500 border-green-500 text-white'
-                                    : 'border-slate-300 hover:border-green-400 bg-white'
-                                }`}
-                                title={jaContatado ? 'Marcar como não contatado' : 'Marcar como contatado'}
-                              >
-                                {jaContatado && <Check className="w-3 h-3" />}
-                              </button>
-                            </TableCell>
-                          </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Clientes Novos e Reativados do mês com WhatsApp — listas separadas (mesma regra dos KPIs acima) */}
+        <CardClientesContato
+          titulo={`Clientes Novos — ${MESES_NOMES[mesSelecionado - 1]} ${anoSelecionado}`}
+          badge={clientesNovos ? `${clientesNovos.totalPuros} novos` : undefined}
+          icon={Users}
+          corIcone="text-teal-600"
+          corBadge="bg-teal-100 text-teal-700"
+          descricao="Empresas que nunca compraram antes (primeira vez no histórico de OS) — clique no ícone para abrir conversa no WhatsApp."
+          vazio="Nenhum cliente novo identificado neste mês."
+          itens={(clientesNovos?.lista ?? []).filter((c: any) => !c.reativado)}
+          loading={loadingClientesNovos}
+          aberto={showClientesNovos}
+          onToggleAberto={() => setShowClientesNovos(v => !v)}
+          contatadosMap={contatadosMap}
+          onToggleContatado={(empresa, contatado) => setContatadoMut.mutate({ empresa, mes: mesSelecionado, ano: anoSelecionado, contatado })}
+          salvando={setContatadoMut.isPending}
+        />
+        <CardClientesContato
+          titulo={`Clientes Reativados — ${MESES_NOMES[mesSelecionado - 1]} ${anoSelecionado}`}
+          badge={clientesNovos ? `${clientesNovos.totalReativados} reativados` : undefined}
+          icon={RefreshCw}
+          corIcone="text-orange-600"
+          corBadge="bg-orange-100 text-orange-700"
+          descricao="Empresas que já compraram antes e voltaram a pedir após 6+ meses sem comprar — clique no ícone para abrir conversa no WhatsApp."
+          vazio="Nenhum cliente reativado identificado neste mês."
+          itens={(clientesNovos?.lista ?? []).filter((c: any) => c.reativado)}
+          loading={loadingClientesNovos}
+          aberto={showClientesReativados}
+          onToggleAberto={() => setShowClientesReativados(v => !v)}
+          contatadosMap={contatadosMap}
+          onToggleContatado={(empresa, contatado) => setContatadoMut.mutate({ empresa, mes: mesSelecionado, ano: anoSelecionado, contatado })}
+          salvando={setContatadoMut.isPending}
+        />
         {/* Desempenho por Vendedor com Metas */}
         {vendedoresData.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
