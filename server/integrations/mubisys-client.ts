@@ -357,6 +357,23 @@ export async function listarOrcamentosMubiSys(opts: {
   };
 }
 
+/**
+ * Busca um orçamento pelo número visível (`sequencial_orcamento`, ex.: 28775) — ~1 s por
+ * chamada, medido em 19/09/2026. Devolve o orçamento completo, com `id` interno (para o
+ * link do MubiSys) e `cliente_contato` (telefone). Devolve null se não existir (404).
+ *
+ * ⚠️ Use SEMPRE o caminho `/numero/`: `GET /orcamento/28775` interpreta o valor como id
+ * INTERNO e devolve OUTRO orçamento (o de id 28775, que tem sequencial 24827). Por isso
+ * o chamador deve conferir que `sequencial_orcamento` volta igual ao número pedido.
+ */
+export async function buscarOrcamentoPorNumero(numero: string): Promise<MubiSysOrcamento | null> {
+  return mubisysGetOrNull<MubiSysOrcamento>(
+    `orcamento/numero/${encodeURIComponent(numero)}`,
+    undefined,
+    { timeoutMs: TIMEOUT_PONTUAL_MS },
+  );
+}
+
 // ─── Clientes ────────────────────────────────────────────────────────────────
 
 /** GET /cliente/{id} — responde 200 (não 201). Use SEMPRE o `cliente_id` da

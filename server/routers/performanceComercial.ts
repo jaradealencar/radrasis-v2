@@ -1,7 +1,7 @@
 import { router, publicProcedure, protectedProcedure, requireRole } from "../_core/trpc";
 import { z } from "zod";
 import { ENV } from "../_core/env";
-import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys } from "../integrations/mubisys-client";
+import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
 import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesAcessos, inteligenciaClientesContatos } from "../../drizzle/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
@@ -63,12 +63,12 @@ async function getDbCache(cacheKey: string, opts?: { ignorarExpiracao?: boolean 
   }
 }
 
-async function setDbCache(cacheKey: string, mes: number, ano: number, allOs: any[], allOrc: any[]): Promise<void> {
+async function setDbCache(cacheKey: string, mes: number, ano: number, allOs: any[], allOrc: any[], ttlMsFixo?: number): Promise<void> {
   try {
     const db = await getDb();
     if (!db) return;
     const now = new Date();
-    const ttlMs = isMesFechado(mes, ano) ? CACHE_TTL_HISTORICO_PERSISTENTE_MS : CACHE_TTL_ATUAL_MS;
+    const ttlMs = ttlMsFixo ?? (isMesFechado(mes, ano) ? CACHE_TTL_HISTORICO_PERSISTENTE_MS : CACHE_TTL_ATUAL_MS);
     const expiresAt = new Date(now.getTime() + ttlMs);
     // Upsert: atualizar se já existe, inserir se não
     const existing = await db.select({ id: mubisysApiCache.id }).from(mubisysApiCache)
@@ -798,6 +798,58 @@ async function obterContatosDoMes(mes: number, ano: number): Promise<Record<stri
   } catch {
     return null;
   }
+}
+
+// ─── Contatos (telefone + id do MubiSys) dos orçamentos das propostas ─────────
+
+export type ContatoOrcamento = { telefone: string; contato: string; mubisysId: number | null };
+
+const CONCURRENCIA_BUSCA_ORCAMENTO = 8;
+// Com 8 chamadas paralelas a API rende ~2 orçamentos/s (cada uma sobe de ~1s para ~4s). Passado
+// o limite, o que faltou fica para a próxima abertura — por isso o chamador manda os mais
+// valiosos primeiro. Cabe folga no maxDuration:60s da Vercel.
+const LIMITE_BUSCA_ORCAMENTOS_MS = 25000;
+const TTL_CONTATOS_ORCAMENTO_MS = 365 * 24 * 60 * 60 * 1000; // telefone e id do orçamento não mudam
+
+/** Telefone/contato e id interno (link do MubiSys) dos orçamentos pedidos, SEM depender do
+ * cache agregado do mês (raw_*), que expira em 1h no mês vigente e some com frequência —
+ * e aí o relatório de propostas ficava sem botão de WhatsApp e sem link. Aqui cada orçamento
+ * é buscado individualmente pelo número (~1s, ver buscarOrcamentoPorNumero; listar o mês em
+ * janelas leva >90s) e o resultado fica guardado no banco: cada orçamento é consultado
+ * uma única vez. Falha de um orçamento só o deixa de fora — é tentado de novo na próxima vez. */
+export async function obterContatosOrcamentos(
+  mes: number,
+  ano: number,
+  numeros: string[],
+): Promise<Record<string, ContatoOrcamento>> {
+  const chaveCache = `orc_contatos_${mes}_${ano}`;
+  const salvo: Record<string, ContatoOrcamento> = (await getDbCache(chaveCache, { ignorarExpiracao: true }))?.allOs?.[0] ?? {};
+
+  const faltam = numeros.filter(n => n && !salvo[n]);
+  if (faltam.length === 0) return salvo;
+
+  const inicio = Date.now();
+  let proximo = 0;
+  let novos = 0;
+  async function trabalhador() {
+    while (proximo < faltam.length && Date.now() - inicio < LIMITE_BUSCA_ORCAMENTOS_MS) {
+      const numero = faltam[proximo++];
+      try {
+        const orc = await buscarOrcamentoPorNumero(numero);
+        // Confere o sequencial devolvido: um número errado no caminho devolveria outro orçamento
+        if (!orc || String(orc.sequencial_orcamento) !== numero) continue;
+        const { telefone, contato } = extrairContatoDaOs(orc);
+        salvo[numero] = { telefone, contato, mubisysId: typeof orc.id === "number" ? orc.id : null };
+        novos++;
+      } catch {
+        // API instável: fica sem dado agora e tenta de novo na próxima abertura
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCIA_BUSCA_ORCAMENTO }, trabalhador));
+
+  if (novos > 0) await setDbCache(chaveCache, mes, ano, [salvo], [], TTL_CONTATOS_ORCAMENTO_MS);
+  return salvo;
 }
 
 /** Item da lista "Clientes Novos" do mês. `reativado` separa quem já tinha comprado antes
@@ -2900,6 +2952,23 @@ export const performanceComercialRouter = router({
           const telefone = comTelefone?.celular || comTelefone?.telefone || comTelefone?.fone || "";
           const contato = comTelefone?.nome_contato || comTelefone?.nome || "";
           if (telefone) telefonePorOrcNumero.set(numero, { telefone, contato });
+        }
+      }
+
+      // Propostas que o cache agregado do mês não cobriu (cache vazio/expirado, ou proposta
+      // criada depois dele): busca cada uma pelo número e guarda no banco — ver
+      // obterContatosOrcamentos. Sem isso, o cache frio deixava a lista sem WhatsApp e sem link.
+      const semDados = [...candidatas]
+        .sort((a, b) => (parseFloat(String(b.total ?? "0")) || 0) - (parseFloat(String(a.total ?? "0")) || 0))
+        .map(o => o.orcNumero ?? "")
+        .filter(n => n && !mubisysIdPorOrcNumero.has(n));
+      if (semDados.length > 0) {
+        const extras = await obterContatosOrcamentos(mes, ano, semDados);
+        for (const n of semDados) {
+          const c = extras[n];
+          if (!c) continue;
+          if (c.mubisysId) mubisysIdPorOrcNumero.set(n, c.mubisysId);
+          if (c.telefone) telefonePorOrcNumero.set(n, { telefone: c.telefone, contato: c.contato });
         }
       }
 

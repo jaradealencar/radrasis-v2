@@ -21,6 +21,25 @@ const VALOR_MINIMO_PADRAO = 7800;
 const ESTRELA_NOVO = "fill-yellow-400 text-yellow-500";
 const ESTRELA_REATIVADO = "fill-red-500 text-red-600";
 
+// ── Mensagem padrão do botão de WhatsApp ─────────────────────────────────────
+// Abre a conversa já com este texto digitado (o WhatsApp só preenche a caixa — quem clica
+// revisa e envia). Para mudar o texto, é só editar a função abaixo.
+function mensagemWhatsAppProposta(nomeContato: string): string {
+  return `Oi${nomeContato ? ` ${nomeContato}` : ""}, Daniel aqui, diretor da Letreiros Express. `
+    + `Estou analisando uns orçamentos e resolvi te mandar uma mensagem.`;
+}
+
+// "JOSE" → "Jose"; "Jorge / Alexandre" → "Jorge"; "Tadeu Mota" → "Tadeu" (só o primeiro nome do primeiro contato)
+function primeiroNome(contato: string | null | undefined): string {
+  const primeiro = (contato ?? "").split(/[\/,;&]/)[0].trim().split(/\s+/)[0] ?? "";
+  return primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : "";
+}
+
+// whatsappLink vem como https://wa.me/<número>; o texto entra em ?text= já codificado
+function linkWhatsAppComMensagem(link: string, nomeContato: string | null | undefined): string {
+  return `${link}?text=${encodeURIComponent(mensagemWhatsAppProposta(primeiroNome(nomeContato)))}`;
+}
+
 // "5567998513463" → "(67) 99851-3463". Se o formato não for reconhecido, devolve como veio.
 function fmtTelefone(tel: string | null | undefined): string {
   if (!tel) return "";
@@ -267,11 +286,11 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                     <TableCell className="text-center">
                       {p.whatsappLink ? (
                         <a
-                          href={p.whatsappLink}
+                          href={linkWhatsAppComMensagem(p.whatsappLink, p.contato)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full transition-colors whitespace-nowrap"
-                          title={`Abrir conversa${p.contato ? ` com ${p.contato}` : ""} no WhatsApp`}
+                          title={`Abrir conversa${p.contato ? ` com ${p.contato}` : ""} no WhatsApp, com a mensagem padrão já digitada`}
                         >
                           <MessageCircle className="w-3 h-3" />
                           {fmtTelefone(p.telefone)}
