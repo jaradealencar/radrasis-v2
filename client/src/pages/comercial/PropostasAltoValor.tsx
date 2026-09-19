@@ -10,8 +10,9 @@ import {
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { AlertTriangle, MessageCircle, CheckCircle2, Clock, Phone } from "lucide-react";
+import { AlertTriangle, MessageCircle, CheckCircle2, Check, Clock, Phone } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
+import { useAuth } from "@/hooks/useAuth";
 
 const VALOR_MINIMO_PADRAO = 8000;
 
@@ -52,20 +53,45 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   const [diaAte, setDiaAte] = useState("");
 
   const utils = trpc.useUtils();
+  const { user } = useAuth();
+  const queryInput = { mes, ano, valorMinimo: VALOR_MINIMO_PADRAO };
   const { data, isLoading, refetch } = trpc.performanceComercial.getPropostasAltoValor.useQuery(
-    { mes, ano, valorMinimo: VALOR_MINIMO_PADRAO },
+    queryInput,
     { enabled: listaAberta || true, staleTime: 5 * 60 * 1000 }
   );
 
+  // Caixinha "Contatado": atualização otimista (a consulta de propostas é pesada demais para
+  // refazer a cada clique) e volta ao estado anterior se o servidor recusar.
+  const marcarContatada = trpc.performanceComercial.setPropostaContatada.useMutation({
+    onMutate: async (vars) => {
+      await utils.performanceComercial.getPropostasAltoValor.cancel(queryInput);
+      const anterior = utils.performanceComercial.getPropostasAltoValor.getData(queryInput);
+      utils.performanceComercial.getPropostasAltoValor.setData(queryInput, old => old && ({
+        ...old,
+        propostas: old.propostas.map(p => p.orcNumero !== vars.orcNumero ? p : {
+          ...p,
+          contatado: vars.contatado,
+          contatadoPor: vars.contatado ? (user?.name ?? null) : null,
+          contatadoEm: vars.contatado ? new Date() : null,
+        }),
+      }));
+      return { anterior };
+    },
+    onError: (_erro, _vars, contexto) => {
+      if (contexto?.anterior) utils.performanceComercial.getPropostasAltoValor.setData(queryInput, contexto.anterior);
+    },
+  });
+
   const registrarFollowup = trpc.performanceComercial.registrarFollowupProposta.useMutation({
     onSuccess: () => {
-      utils.performanceComercial.getPropostasAltoValor.invalidate({ mes, ano, valorMinimo: VALOR_MINIMO_PADRAO });
+      utils.performanceComercial.getPropostasAltoValor.invalidate(queryInput);
       setPropostaFollowup(null);
       setMotivo("");
     },
   });
 
   const propostas = data?.propostas ?? [];
+  const totalContatadas = propostas.filter(p => p.contatado).length;
 
   const propostasFiltradas = useMemo(() => {
     const de = diaDe ? parseInt(diaDe, 10) : null;
@@ -80,11 +106,11 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
     });
   }, [propostas, diaDe, diaAte]);
 
-  // O telefone só vem do cache de orçamentos do MubiSys, que pode ainda estar esquentando
-  // quando a consulta roda ao montar a página. Se faltou telefone, reconsulta ao abrir.
+  // Telefone e link do MubiSys só vêm do cache de orçamentos do MubiSys, que pode ainda estar
+  // esquentando quando a consulta roda ao montar a página. Se faltou algum, reconsulta ao abrir.
   function abrirRelatorio() {
     setListaAberta(true);
-    if (propostas.some(p => !p.whatsappLink)) refetch();
+    if (propostas.some(p => !p.whatsappLink || !p.mubisysLink)) refetch();
   }
 
   function confirmarFollowup() {
@@ -119,8 +145,9 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
       </div>
 
       <Dialog open={listaAberta} onOpenChange={setListaAberta}>
-        {/* sm:max-w-6xl é necessário: o DialogContent base fixa sm:max-w-lg, que um max-w-* sem breakpoint não sobrescreve */}
-        <DialogContent className="sm:max-w-6xl max-h-[85vh] overflow-y-auto">
+        {/* O prefixo sm: é necessário: o DialogContent base fixa sm:max-w-lg, que um max-w-* sem breakpoint não sobrescreve.
+            Largura = 96% da tela (até 1400px): com o antigo max-w-6xl (1152px) a tabela de 8 colunas não cabia. */}
+        <DialogContent className="sm:max-w-[min(96vw,1400px)] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Propostas acima de {fmtBrl(VALOR_MINIMO_PADRAO)} — em aberto</DialogTitle>
           </DialogHeader>
@@ -147,7 +174,10 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                   Limpar
                 </Button>
               )}
-              <span className="ml-auto">{propostasFiltradas.length} de {propostas.length} proposta{propostas.length > 1 ? "s" : ""}</span>
+              <span className="ml-auto">
+                {propostasFiltradas.length} de {propostas.length} proposta{propostas.length > 1 ? "s" : ""}
+                {totalContatadas > 0 && <> · <span className="text-green-600 font-medium">{totalContatadas} contatada{totalContatadas > 1 ? "s" : ""}</span></>}
+              </span>
             </div>
           )}
 
@@ -167,21 +197,39 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead className="text-center">WhatsApp</TableHead>
+                  <TableHead className="text-center" title="Marque quando já tiver conversado com o cliente sobre esta proposta">Contatado</TableHead>
                   <TableHead>Follow-up</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {propostasFiltradas.map(p => (
-                  <TableRow key={p.orcNumero}>
-                    <TableCell className="font-mono text-blue-700">{p.orcNumero || "—"}</TableCell>
-                    <TableCell className="font-medium">
+                  <TableRow key={p.orcNumero} className={p.contatado ? "bg-green-50 hover:bg-green-100" : ""}>
+                    <TableCell className="font-mono">
+                      {p.mubisysLink ? (
+                        <a
+                          href={p.mubisysLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-700 hover:text-blue-900 underline underline-offset-2"
+                          title="Abrir este orçamento no MubiSys"
+                        >
+                          {p.orcNumero}
+                        </a>
+                      ) : (
+                        <span className="text-blue-700" title="Link indisponível: os dados do MubiSys deste mês ainda não foram carregados">
+                          {p.orcNumero || "—"}
+                        </span>
+                      )}
+                    </TableCell>
+                    {/* Empresa, Vendedor e Data quebram linha: sem isso a tabela passa da largura do
+                        modal e as colunas da direita (Contatado, Follow-up) somem atrás da rolagem horizontal */}
+                    <TableCell className="font-medium whitespace-normal">
                       {p.empresa}
                       {p.contato && <div className="text-xs text-slate-400">{p.contato}</div>}
                     </TableCell>
-                    <TableCell className="text-sm text-slate-600">{p.vendedor}</TableCell>
+                    <TableCell className="text-sm text-slate-600 whitespace-normal">{p.vendedor}</TableCell>
                     <TableCell className="text-right font-mono font-medium text-green-700 whitespace-nowrap">{fmtBrl(p.valor)}</TableCell>
-                    <TableCell className="text-sm text-slate-500 whitespace-nowrap">{p.dataCadastro}</TableCell>
+                    <TableCell className="text-sm text-slate-500 whitespace-normal">{p.dataCadastro}</TableCell>
                     <TableCell className="text-center">
                       {p.whatsappLink ? (
                         <a
@@ -200,36 +248,57 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                         </span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      {p.qtdFollowups === 0 ? (
-                        <Badge variant="outline" className="text-amber-600 border-amber-300">Sem contato</Badge>
-                      ) : (
-                        <div className="space-y-1">
-                          <Badge variant="outline" className="text-emerald-600 border-emerald-300">
-                            {p.qtdFollowups} contato{p.qtdFollowups > 1 ? "s" : ""}
-                          </Badge>
-                          <div className="text-xs text-slate-400 flex flex-col gap-0.5">
-                            {p.followups.slice(0, 3).map((f: (typeof p.followups)[number]) => (
-                              <div key={f.id} className="flex items-start gap-1" title={f.motivo}>
-                                <Clock className="w-3 h-3 mt-0.5 shrink-0" />
-                                <span className="truncate max-w-[220px]">
-                                  <strong>{f.usuarioNome}</strong> ({fmtDataHora(f.contatadoEm)}): {f.motivo}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1 whitespace-nowrap"
-                        onClick={() => setPropostaFollowup({ orcNumero: p.orcNumero, empresa: p.empresa })}
+                    <TableCell className="text-center">
+                      <button
+                        onClick={() => marcarContatada.mutate({
+                          orcNumero: p.orcNumero, empresa: p.empresa, mes, ano, contatado: !p.contatado,
+                        })}
+                        disabled={marcarContatada.isPending || !p.orcNumero}
+                        aria-pressed={p.contatado}
+                        className={`w-5 h-5 rounded border-2 inline-flex items-center justify-center transition-colors cursor-pointer ${
+                          p.contatado
+                            ? "bg-green-500 border-green-500 text-white"
+                            : "border-slate-300 hover:border-green-400 bg-white"
+                        }`}
+                        title={p.contatado
+                          ? `Contatado${p.contatadoPor ? ` por ${p.contatadoPor}` : ""}${p.contatadoEm ? ` em ${fmtDataHora(p.contatadoEm)}` : ""} — clique para desmarcar`
+                          : "Marcar como contatado"}
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Contato realizado
-                      </Button>
+                        {p.contatado && <Check className="w-3 h-3" />}
+                      </button>
+                    </TableCell>
+                    {/* O botão de registrar follow-up fica dentro desta coluna (antes era uma coluna
+                        "Ações" à parte): com ela, a tabela passava ~50px do modal em telas de ~1240px */}
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1.5">
+                        {p.qtdFollowups === 0 ? (
+                          <Badge variant="outline" className="text-amber-600 border-amber-300">Sem contato</Badge>
+                        ) : (
+                          <div className="space-y-1">
+                            <Badge variant="outline" className="text-emerald-600 border-emerald-300">
+                              {p.qtdFollowups} contato{p.qtdFollowups > 1 ? "s" : ""}
+                            </Badge>
+                            <div className="text-xs text-slate-400 flex flex-col gap-0.5">
+                              {p.followups.slice(0, 3).map((f: (typeof p.followups)[number]) => (
+                                <div key={f.id} className="flex items-start gap-1" title={f.motivo}>
+                                  <Clock className="w-3 h-3 mt-0.5 shrink-0" />
+                                  <span className="truncate max-w-[220px]">
+                                    <strong>{f.usuarioNome}</strong> ({fmtDataHora(f.contatadoEm)}): {f.motivo}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 whitespace-nowrap"
+                          onClick={() => setPropostaFollowup({ orcNumero: p.orcNumero, empresa: p.empresa })}
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Contato realizado
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

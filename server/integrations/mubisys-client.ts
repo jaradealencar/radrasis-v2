@@ -9,6 +9,13 @@ import { ENV } from "../_core/env";
 
 const BASE_URL = "https://api.mubisys.com/api";
 
+/** Tela do orçamento no sistema web do MubiSys (o que o usuário abre no navegador, não a API).
+ * `id` é o id INTERNO do orçamento na API (ex.: 34709), não o `sequencial_orcamento` exibido
+ * (ex.: 28775) — validado em 19/09/2026 com o orçamento 28775 → item=34709. */
+export function urlOrcamentoMubiSys(id: number): string {
+  return `https://mubisys.com/index.php?modulo=NovosOrcamentos&item=${id}`;
+}
+
 // ─── Tipos da API MubiSys ────────────────────────────────────────────────────
 
 export interface MubiSysOS {

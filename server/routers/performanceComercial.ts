@@ -1,9 +1,9 @@
 import { router, publicProcedure, protectedProcedure, requireRole } from "../_core/trpc";
 import { z } from "zod";
 import { ENV } from "../_core/env";
-import { listarOSMubiSys, listarOrcamentosMubiSys } from "../integrations/mubisys-client";
+import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, inteligenciaClientesAcessos, inteligenciaClientesContatos } from "../../drizzle/schema";
+import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesAcessos, inteligenciaClientesContatos } from "../../drizzle/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 
 // Endpoints de monitoramento de equipe (acessos ao painel) — só quem pode agir
@@ -2854,7 +2854,7 @@ export const performanceComercialRouter = router({
       // já buscado para este mês (getMesFromApi popula orc_raw_{mes}_{ano} / raw_{mes}_{ano}).
       // Não dispara uma nova busca na API só por causa do telefone — historico_orcamentos
       // não guarda telefone e a tabela `clientes` está vazia (ver comentário no schema),
-      // então sem esse cache quente a proposta aparece sem botão de WhatsApp.
+      // então sem esse cache quente a proposta aparece sem botão de WhatsApp nem link do MubiSys.
       const orcCacheKey = `orc_raw_${mes}_${ano}`;
       let allOrcApi: any[] | null = getCached(orcCacheKey);
       if (!allOrcApi) {
@@ -2864,10 +2864,15 @@ export const performanceComercialRouter = router({
         allOrcApi = dbCached?.allOrc ?? null;
       }
       const telefonePorOrcNumero = new Map<string, { telefone: string; contato: string }>();
+      // id interno do MubiSys, usado no link que abre o orçamento (ver urlOrcamentoMubiSys)
+      const mubisysIdPorOrcNumero = new Map<string, number>();
       if (allOrcApi) {
         for (const o of allOrcApi) {
           const numero = String(o.sequencial_orcamento ?? o.id ?? "");
           if (!numero) continue;
+          // Sequencial repetido (versões do orçamento; só visto em caches de 2025): fica o
+          // maior id, que é a versão mais recente.
+          if (typeof o.id === "number" && o.id > (mubisysIdPorOrcNumero.get(numero) ?? 0)) mubisysIdPorOrcNumero.set(numero, o.id);
           const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : (o.cliente_contato ? [o.cliente_contato] : []);
           // Primeiro contato que tenha telefone (o primeiro da lista pode vir sem número)
           const comTelefone = contatosOrc.find(c => c?.celular || c?.telefone || c?.fone);
@@ -2875,13 +2880,6 @@ export const performanceComercialRouter = router({
           const contato = comTelefone?.nome_contato || comTelefone?.nome || "";
           if (telefone) telefonePorOrcNumero.set(numero, { telefone, contato });
         }
-      }
-
-      function formatWhatsApp(tel: string): string {
-        const digits = tel.replace(/\D/g, "");
-        if (!digits) return "";
-        const num = digits.startsWith("55") ? digits : `55${digits}`;
-        return `https://wa.me/${num}`;
       }
 
       const followupsDb = await db.select().from(performancePropostasFollowup)
@@ -2893,12 +2891,20 @@ export const performanceComercialRouter = router({
         followupsPorOrc.get(f.orcNumero)!.push(f);
       }
 
+      // Caixinha "Contatado" (marca rápida, separada do log de follow-ups)
+      const contatadosDb = await db.select().from(performancePropostasContatado)
+        .where(and(eq(performancePropostasContatado.mes, mes), eq(performancePropostasContatado.ano, ano)));
+      const contatadoPorOrc = new Map(contatadosDb.map(c => [c.orcNumero, c]));
+
       const propostas = candidatas.map(orc => {
         const numero = orc.orcNumero ?? "";
         const tel = telefonePorOrcNumero.get(numero);
+        const mubisysId = mubisysIdPorOrcNumero.get(numero);
         const followups = followupsPorOrc.get(numero) ?? [];
+        const marca = contatadoPorOrc.get(numero);
         return {
           orcNumero: numero,
+          mubisysLink: mubisysId ? urlOrcamentoMubiSys(mubisysId) : null,
           empresa: orc.empresa ?? "",
           vendedor: orc.vendedor ?? "",
           valor: parseFloat(String(orc.total ?? "0")) || 0,
@@ -2906,7 +2912,10 @@ export const performanceComercialRouter = router({
           status: orc.status ?? null,
           telefone: tel?.telefone ?? null,
           contato: tel?.contato ?? null,
-          whatsappLink: tel?.telefone ? formatWhatsApp(tel.telefone) : null,
+          whatsappLink: tel?.telefone ? formatarLinkWhatsApp(tel.telefone) || null : null,
+          contatado: marca?.contatado ?? false,
+          contatadoPor: marca?.contatado ? marca.usuarioNome : null,
+          contatadoEm: marca?.contatado ? marca.contatadoEm : null,
           followups: followups.map(f => ({
             id: f.id,
             usuarioNome: f.usuarioNome,
@@ -2918,6 +2927,32 @@ export const performanceComercialRouter = router({
       }).sort((a, b) => b.valor - a.valor);
 
       return { propostas };
+    }),
+
+  /** Marca ou desmarca uma proposta de alto valor como "contatada" (caixinha rápida, sem motivo). */
+  setPropostaContatada: protectedProcedure
+    .input(z.object({
+      orcNumero: z.string().min(1),
+      empresa: z.string().min(1),
+      mes: z.number().min(1).max(12),
+      ano: z.number().min(2020),
+      contatado: z.boolean(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const agora = new Date();
+      const dados = {
+        contatado: input.contatado,
+        usuarioId: input.contatado ? (ctx.user?.id ?? null) : null,
+        usuarioNome: input.contatado ? (ctx.user?.name ?? "Desconhecido") : null,
+        contatadoEm: input.contatado ? agora : null,
+        updatedAt: agora,
+      };
+      await db.insert(performancePropostasContatado)
+        .values({ orcNumero: input.orcNumero, empresa: input.empresa, mes: input.mes, ano: input.ano, ...dados })
+        .onConflictDoUpdate({ target: performancePropostasContatado.orcNumero, set: dados });
+      return { ok: true };
     }),
 
   /** Registra um contato/follow-up feito em uma proposta de alto valor. */

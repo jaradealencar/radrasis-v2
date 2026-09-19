@@ -232,6 +232,13 @@
       "when": 1789342412137,
       "tag": "0032_handy_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789826792044,
+      "tag": "0033_propostas_contatado",
+      "breakpoints": true
     }
   ]
 }

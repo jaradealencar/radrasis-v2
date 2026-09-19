@@ -1871,6 +1871,28 @@ export const performancePropostasFollowup = pgTable("performance_propostas_follo
 export type PerformancePropostaFollowup = typeof performancePropostasFollowup.$inferSelect;
 export type InsertPerformancePropostaFollowup = typeof performancePropostasFollowup.$inferInsert;
 
+// Caixinha "Contatado" das propostas de alto valor: marca rápida (sem motivo) de quais
+// propostas já foram conversadas. Uma linha por orçamento — o número do orçamento no
+// MubiSys é único, então orcNumero é a chave. Complementa o log de follow-ups acima
+// (que registra cada tentativa com motivo), não o substitui.
+export const performancePropostasContatado = pgTable("performance_propostas_contatado", {
+  id: serial("id").primaryKey(),
+  orcNumero: varchar("orcNumero", { length: 32 }).notNull().unique(),
+  empresa: varchar("empresa", { length: 256 }).notNull(),
+  mes: integer("mes").notNull(),
+  ano: integer("ano").notNull(),
+  contatado: boolean("contatado").notNull().default(false),
+  usuarioId: text("usuarioId"),
+  usuarioNome: varchar("usuarioNome", { length: 128 }),
+  contatadoEm: timestamp("contatadoEm"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (t) => ({
+  mesAnoIdx: index("performance_propostas_contatado_mes_ano_idx").on(t.mes, t.ano),
+}));
+export type PerformancePropostaContatado = typeof performancePropostasContatado.$inferSelect;
+export type InsertPerformancePropostaContatado = typeof performancePropostasContatado.$inferInsert;
+
 // Cache persistente de dados brutos da API MubiSys
 export const mubisysApiCache = pgTable("mubisys_api_cache", {
   id: serial("id").primaryKey(),
