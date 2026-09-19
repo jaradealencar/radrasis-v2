@@ -11,9 +11,10 @@ import {
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { AlertTriangle, MessageCircle, CheckCircle2, Check, Clock, Phone, Star } from "lucide-react";
+import { AlertTriangle, MessageCircle, CheckCircle2, Check, Clock, Phone, Star, Paperclip, Eye, ImagePlus, RotateCcw } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 import { useAuth } from "@/hooks/useAuth";
+import { blobParaBase64, converterParaPng, dataUrlParaBlob, formatarTamanho } from "@/lib/imagemPng";
 
 const VALOR_MINIMO_PADRAO = 7800;
 
@@ -30,11 +31,19 @@ function mensagemWhatsAppProposta(nomeContato: string): string {
     + `Estou analisando uns orçamentos e resolvi te mandar uma mensagem.`;
 }
 
-// Imagem que acompanha a mensagem (arquivo em client/public/whatsapp). O WhatsApp não aceita
-// anexo por link, então o clique COPIA a imagem para a área de transferência e o usuário só
-// aperta Ctrl+V na conversa. Precisa ser PNG: é o único formato de imagem que o navegador
-// deixa colocar na área de transferência.
+// Imagem que acompanha a mensagem. O WhatsApp não aceita anexo por link, então o clique COPIA a
+// imagem para a área de transferência e o usuário só aperta Ctrl+V na conversa. Precisa ser PNG:
+// é o único formato de imagem que o navegador deixa colocar na área de transferência.
+// Esta é a imagem PADRÃO (arquivo em client/public/whatsapp); quem usa o painel pode trocá-la
+// ali mesmo ("Trocar imagem"), e a escolhida fica guardada no banco (router whatsappImagem).
 const IMAGEM_WHATSAPP_URL = "/whatsapp/3-motivos-letreiros-express.png";
+const NOME_IMAGEM_PADRAO = "3-motivos-letreiros-express.png";
+
+async function baixarImagemPadrao(): Promise<Blob> {
+  const resp = await fetch(IMAGEM_WHATSAPP_URL);
+  if (!resp.ok) throw new Error(`imagem não carregada (HTTP ${resp.status})`);
+  return new Blob([await resp.blob()], { type: "image/png" });
+}
 
 // "JOSE" → "Jose"; "Jorge / Alexandre" → "Jorge"; "Tadeu Mota" → "Tadeu" (só o primeiro nome do primeiro contato)
 function primeiroNome(contato: string | null | undefined): string {
@@ -121,17 +130,62 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
     },
   });
 
-  // A imagem é baixada quando o relatório abre: o navegador só deixa copiar para a área de
-  // transferência e abrir a aba do WhatsApp durante alguns segundos após o clique, então no
-  // clique ela já precisa estar pronta (baixar ali atrasaria e poderia bloquear a aba).
+  // ── Imagem anexada ao WhatsApp ──────────────────────────────────────────────
+  // Qual imagem está valendo: a personalizada (banco) ou a padrão empacotada.
+  const imagemQuery = trpc.whatsappImagem.get.useQuery(undefined, { enabled: listaAberta, staleTime: 60 * 60 * 1000 });
+  const imagemInfo = imagemQuery.data;
+  const imagemPersonalizada = imagemInfo?.personalizada ? imagemInfo : null;
+  const urlImagem = imagemPersonalizada ? imagemPersonalizada.dataUrl : (imagemInfo ? IMAGEM_WHATSAPP_URL : null);
+  // Muda quando a imagem é trocada, para refazer o Blob abaixo
+  const versaoImagem = imagemInfo ? (imagemPersonalizada ? String(imagemPersonalizada.atualizadoEm) : "padrao") : null;
+
+  // A imagem vira Blob quando o relatório abre (ou quando ela é trocada): o navegador só deixa
+  // copiar para a área de transferência e abrir a aba do WhatsApp durante alguns segundos após
+  // o clique, então no clique ela já precisa estar pronta (preparar ali atrasaria e poderia
+  // bloquear a aba).
   const imagemWhatsApp = useRef<Blob | null>(null);
   useEffect(() => {
-    if (!listaAberta || imagemWhatsApp.current) return;
-    fetch(IMAGEM_WHATSAPP_URL)
-      .then(r => (r.ok ? r.blob() : null))
-      .then(b => { if (b) imagemWhatsApp.current = new Blob([b], { type: "image/png" }); })
-      .catch(() => {});
-  }, [listaAberta]);
+    if (!listaAberta || !imagemInfo) return;
+    let cancelado = false;
+    imagemWhatsApp.current = null;
+    const origem = imagemPersonalizada ? Promise.resolve(dataUrlParaBlob(imagemPersonalizada.dataUrl)) : baixarImagemPadrao();
+    origem.then(b => { if (!cancelado) imagemWhatsApp.current = b; }).catch(() => {});
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listaAberta, versaoImagem]);
+
+  const [previewImagemAberto, setPreviewImagemAberto] = useState(false);
+  const [processandoImagem, setProcessandoImagem] = useState(false);
+  const inputImagemRef = useRef<HTMLInputElement>(null);
+  const trocarImagem = trpc.whatsappImagem.set.useMutation({
+    onSuccess: () => utils.whatsappImagem.get.invalidate(),
+  });
+  const restaurarImagem = trpc.whatsappImagem.restaurarPadrao.useMutation({
+    onSuccess: () => {
+      utils.whatsappImagem.get.invalidate();
+      toast.success("Voltou para a imagem padrão.");
+    },
+    onError: erro => toast.error(erro.message),
+  });
+
+  // Arquivo escolhido em "Trocar imagem": vira PNG reduzido no navegador e é enviado ao servidor
+  async function escolherImagem(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = ""; // permite escolher o mesmo arquivo de novo depois
+    if (!arquivo) return;
+    setProcessandoImagem(true);
+    try {
+      const png = await converterParaPng(arquivo);
+      const base64 = await blobParaBase64(png.blob);
+      const nomeArquivo = `${arquivo.name.replace(/\.[^.]+$/, "") || "imagem"}.png`;
+      await trocarImagem.mutateAsync({ nomeArquivo, base64 });
+      toast.success(`Imagem trocada (${png.largura}×${png.altura}, ${formatarTamanho(png.blob.size)}). Já vale para os próximos cliques no WhatsApp.`);
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não consegui trocar a imagem.");
+    } finally {
+      setProcessandoImagem(false);
+    }
+  }
 
   // Resultado da última cópia da imagem, mostrado na própria linha clicada (o aviso em toast
   // fica escondido atrás da aba do WhatsApp, que abre por cima; a marca na linha fica lá
@@ -146,9 +200,9 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
     let motivoFalha = "";
     try {
       if (!imagemWhatsApp.current) {
-        const resp = await fetch(IMAGEM_WHATSAPP_URL);
-        if (!resp.ok) throw new Error(`imagem não carregada (HTTP ${resp.status})`);
-        imagemWhatsApp.current = new Blob([await resp.blob()], { type: "image/png" });
+        // ainda não estava pronta (clique muito cedo): descobre qual imagem vale e prepara agora
+        const info = imagemQuery.data ?? await utils.whatsappImagem.get.fetch();
+        imagemWhatsApp.current = info.personalizada ? dataUrlParaBlob(info.dataUrl) : await baixarImagemPadrao();
       }
       await navigator.clipboard.write([new ClipboardItem({ "image/png": imagemWhatsApp.current })]);
       imagemCopiada = true;
@@ -231,6 +285,65 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
           <DialogHeader>
             <DialogTitle>Propostas acima de {fmtBrl(VALOR_MINIMO_PADRAO)} — em aberto</DialogTitle>
           </DialogHeader>
+
+          {/* Imagem que vai junto da mensagem do WhatsApp: ver, pré-visualizar e trocar */}
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setPreviewImagemAberto(true)}
+              className="shrink-0 overflow-hidden rounded border border-slate-200 bg-white hover:ring-2 hover:ring-green-400 transition"
+              title="Clique para pré-visualizar a imagem"
+            >
+              {urlImagem
+                ? <img src={urlImagem} alt="Imagem anexada ao WhatsApp" className="h-14 w-auto object-contain" />
+                : <div className="h-14 w-10 animate-pulse bg-slate-200" />}
+            </button>
+            <div className="min-w-0 text-xs text-slate-500">
+              <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                <Paperclip className="w-3.5 h-3.5 text-green-600" />
+                Imagem anexada ao WhatsApp
+                <Badge variant="outline" className="py-0 text-[10px]">{imagemPersonalizada ? "personalizada" : "padrão"}</Badge>
+              </div>
+              <div className="truncate">
+                {imagemPersonalizada
+                  ? <>
+                      {imagemPersonalizada.nomeArquivo} · {imagemPersonalizada.largura}×{imagemPersonalizada.altura} · {formatarTamanho(imagemPersonalizada.tamanhoBytes)}
+                      {imagemPersonalizada.atualizadoPor && <> · trocada por {imagemPersonalizada.atualizadoPor} em {fmtDataHora(imagemPersonalizada.atualizadoEm)}</>}
+                    </>
+                  : NOME_IMAGEM_PADRAO}
+              </div>
+              <div className="truncate">Ao clicar no botão verde ela é copiada: é só apertar Ctrl+V na conversa.</div>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <Button size="sm" variant="outline" className="gap-1" onClick={() => setPreviewImagemAberto(true)} disabled={!urlImagem}>
+                <Eye className="w-3.5 h-3.5" /> Pré-visualizar
+              </Button>
+              <Button
+                size="sm" variant="outline" className="gap-1"
+                onClick={() => inputImagemRef.current?.click()}
+                disabled={processandoImagem}
+              >
+                <ImagePlus className="w-3.5 h-3.5" /> {processandoImagem ? "Enviando..." : "Trocar imagem"}
+              </Button>
+              {imagemPersonalizada && (
+                <Button
+                  size="sm" variant="ghost" className="gap-1 text-slate-500"
+                  onClick={() => restaurarImagem.mutate()}
+                  disabled={restaurarImagem.isPending || processandoImagem}
+                  title="Voltar para a imagem padrão do sistema"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Padrão
+                </Button>
+              )}
+              <input
+                ref={inputImagemRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={escolherImagem}
+              />
+            </div>
+          </div>
 
           {!isLoading && propostas.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
@@ -422,6 +535,22 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
               </TableBody>
             </Table>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewImagemAberto} onOpenChange={setPreviewImagemAberto}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Imagem anexada ao WhatsApp</DialogTitle>
+          </DialogHeader>
+          {urlImagem && (
+            <img src={urlImagem} alt="Imagem anexada ao WhatsApp" className="mx-auto max-h-[70vh] w-auto rounded border border-slate-200" />
+          )}
+          <DialogFooter>
+            <Button variant="outline" className="gap-1" onClick={() => inputImagemRef.current?.click()} disabled={processandoImagem}>
+              <ImagePlus className="w-4 h-4" /> Trocar imagem
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

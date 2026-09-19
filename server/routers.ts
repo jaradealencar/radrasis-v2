@@ -15,6 +15,7 @@ import { desempenhoColabMensalRouter } from "./routers/desempenhoColabMensal";
 import { empacotamentoRouter } from "./routers/empacotamento";
 import { metaProdutosRouter } from "./routers/metaProdutos";
 import { performanceComercialRouter } from "./routers/performanceComercial";
+import { whatsappImagemRouter } from "./routers/whatsappImagem";
 import { insightsComerciaisRouter } from "./routers/insightsComerciais";
 import { analiseGeograficaRouter } from "./routers/analiseGeografica";
 import { metricasRouter } from "./routers/metricas";
@@ -1394,6 +1395,7 @@ O POP deve:
   performance: performanceRouter,
   performanceAbc: performanceAbcRouter,
   performanceComercial: performanceComercialRouter,
+  whatsappImagem: whatsappImagemRouter,
   insightsComerciais: insightsComerciaisRouter,
   analiseGeografica: analiseGeograficaRouter,
   metricas: metricasRouter,

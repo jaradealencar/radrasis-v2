@@ -1890,6 +1890,27 @@ export const performancePropostasContatado = pgTable("performance_propostas_cont
 }, (t) => ({
   mesAnoIdx: index("performance_propostas_contatado_mes_ano_idx").on(t.mes, t.ano),
 }));
+// Imagem que acompanha a mensagem padrão do botão de WhatsApp (ex.: relatório de propostas de
+// alto valor): o usuário escolhe/troca pelo próprio painel. Uma linha por `chave`; sem linha, o
+// front usa a imagem padrão empacotada em client/public/whatsapp. Guardada no banco (PNG em
+// base64, já reduzida no navegador para caber em ~3 MB) para servir sem CDN externo — o
+// navegador precisa do arquivo como Blob para copiá-lo para a área de transferência.
+export const whatsappImagem = pgTable("whatsapp_imagem", {
+  id: serial("id").primaryKey(),
+  chave: varchar("chave", { length: 64 }).notNull().unique(),
+  nomeArquivo: varchar("nomeArquivo", { length: 256 }).notNull(),
+  base64: text("base64").notNull(), // PNG em base64, sem o prefixo "data:image/png;base64,"
+  tamanhoBytes: integer("tamanhoBytes").notNull(),
+  largura: integer("largura").notNull(),
+  altura: integer("altura").notNull(),
+  usuarioId: text("usuarioId"),
+  usuarioNome: varchar("usuarioNome", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type WhatsappImagem = typeof whatsappImagem.$inferSelect;
+export type InsertWhatsappImagem = typeof whatsappImagem.$inferInsert;
+
 export type PerformancePropostaContatado = typeof performancePropostasContatado.$inferSelect;
 export type InsertPerformancePropostaContatado = typeof performancePropostasContatado.$inferInsert;
 
