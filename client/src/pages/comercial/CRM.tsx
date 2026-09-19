@@ -31,6 +31,7 @@ import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
 import { WhatsAppScriptsPopover } from "@/components/WhatsAppScriptsPopover";
 import { BibliotecaMidias } from "@/components/BibliotecaMidias";
 import { faixaSugerida } from "@/lib/faixasCrm";
+import { primeiroNome } from "@/lib/mensagensCrm";
 import type { FaixaConfig } from "@/components/FaixaDiasConfigForm";
 import { gerarDatasUteis } from "@shared/dias-uteis";
 import {
@@ -247,20 +248,25 @@ function buildWaLink(tel: string | null | undefined) {
   return `https://wa.me/${num}`;
 }
 
+// Nome que entra nas mensagens ({nome_cliente} / [Nome]): só o PRIMEIRO nome do contato da proposta
+// ("Tadeu Mota" → "Tadeu"). Sem contato cadastrado, cai no nome da empresa para não sair em branco.
+function nomeParaMensagem(p: Proposta): string {
+  return primeiroNome(p.nomeContato) || p.nomeCliente;
+}
+
 // Botão de WhatsApp das listas "hoje" por faixa: abre o seletor de mensagens da faixa da lista
 function WhatsAppAgendaBotao({ p, faixa, faixasConfig }: {
   p: Proposta; faixa: 1 | 2 | 3; faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
 }) {
   const link = buildWaLink(p.telefone);
   if (!link) return null;
-  const nome = p.nomeContato || p.nomeCliente;
   return (
     <WhatsAppScriptsPopover
       link={link}
       faixaSugerida={faixa}
       rotulosFaixa={{ 1: faixasConfig[1].label, 2: faixasConfig[2].label, 3: faixasConfig[3].label }}
-      titulo={nome}
-      nomeCliente={nome}
+      titulo={p.nomeContato || p.nomeCliente}
+      nomeCliente={nomeParaMensagem(p)}
       produto={`OS #${p.sequencial || p.id}`}
       valor={fmt(p.valor)}
       vendedor={p.vendedor}
@@ -494,7 +500,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               faixaSugerida={grupoSugerido}
               rotulosFaixa={{ 1: faixasConfig[1].label, 2: faixasConfig[2].label, 3: faixasConfig[3].label }}
               titulo={p.nomeContato || p.nomeCliente}
-              nomeCliente={p.nomeContato || p.nomeCliente}
+              nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
@@ -520,7 +526,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           <div className="flex gap-1.5 flex-wrap">
             <ScriptsFaixaPopover
               faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
-              nomeCliente={p.nomeContato || p.nomeCliente}
+              nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
@@ -530,7 +536,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
               faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
-              nomeCliente={p.nomeContato || p.nomeCliente}
+              nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
@@ -540,7 +546,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
               faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
-              nomeCliente={p.nomeContato || p.nomeCliente}
+              nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}

@@ -100,6 +100,17 @@ export function dataUrlParaBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: "image/png" });
 }
 
+/** Texto de erro legível para falhas de envio. Quando o servidor (ou a Vercel) responde uma página
+ * HTML em vez de JSON — ex.: corpo grande demais —, o navegador só reclama de
+ * "Unexpected token '<', "<!DOCTYPE"... is not valid JSON", que não diz nada ao usuário. */
+export function mensagemDeErroEnvio(erro: unknown, padrao = "Não consegui enviar a imagem."): string {
+  const texto = erro instanceof Error ? erro.message : "";
+  if (/<!doctype|unexpected token '<'|is not valid json/i.test(texto)) {
+    return "O servidor recusou o envio (imagem pesada demais ou instabilidade). Tente uma imagem menor ou tente de novo em instantes.";
+  }
+  return texto || padrao;
+}
+
 /** "1,6 MB" / "820 KB" */
 export function formatarTamanho(bytes: number): string {
   if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1).replace(".", ",")} MB`;

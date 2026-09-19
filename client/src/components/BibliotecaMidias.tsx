@@ -13,7 +13,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  blobParaBase64, converterParaPng, dataUrlParaBlob, formatarTamanho, gerarMiniatura, tituloDoArquivo,
+  blobParaBase64, converterParaPng, dataUrlParaBlob, formatarTamanho, gerarMiniatura, mensagemDeErroEnvio, tituloDoArquivo,
 } from "@/lib/imagemPng";
 
 const CHAVE_ABERTA = "crm_biblioteca_midias_aberta";
@@ -126,7 +126,7 @@ export function BibliotecaMidias() {
         });
         enviadas++;
       } catch (erro) {
-        falhas.push(`${arquivo.name}: ${erro instanceof Error ? erro.message : "erro desconhecido"}`);
+        falhas.push(`${arquivo.name}: ${mensagemDeErroEnvio(erro, "erro desconhecido")}`);
       }
       setEnviando(n => n - 1);
     }

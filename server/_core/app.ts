@@ -99,6 +99,16 @@ export async function createApp(): Promise<Express> {
   //   req.body (ver ./auth-web-handler).
   //
   // Não "simplifique" isto para um caminho só sem testar OS DOIS ambientes.
+  //
+  // Exceção só para o tRPC: as imagens da biblioteca de mídias e do WhatsApp vão em base64 dentro
+  // da mutation (o navegador reduz o PNG para ≤ ~2,4 MB ⇒ ≈ 3,3 MB de JSON), e com 2mb o
+  // body-parser respondia uma página HTML de erro 413 — o navegador mostrava "Unexpected token
+  // '<', "<!DOCTYPE"... is not valid JSON". 4mb fica abaixo do teto de 4,5mb da Vercel (sem
+  // override). Este parser vem ANTES do global dos blocos abaixo: o body-parser ignora a requisição
+  // cujo corpo já foi lido, então o limite de 2mb continua valendo para todo o resto. Testes em
+  // server/__tests__/trpc-body-limit.test.ts.
+  app.use("/api/trpc", express.json({ limit: "4mb" }));
+
   if (IS_SERVERLESS) {
     // 2mb é folga larga para payload de mutation tRPC (JSON de formulário).
     // Arquivos NÃO passam mais por aqui — sobem direto para o UploadThing

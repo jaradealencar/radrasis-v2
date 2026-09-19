@@ -14,7 +14,8 @@ import {
 import { AlertTriangle, MessageCircle, CheckCircle2, Check, Clock, Phone, Star, Paperclip, Eye, ImagePlus, RotateCcw } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 import { useAuth } from "@/hooks/useAuth";
-import { blobParaBase64, converterParaPng, dataUrlParaBlob, formatarTamanho } from "@/lib/imagemPng";
+import { blobParaBase64, converterParaPng, dataUrlParaBlob, formatarTamanho, mensagemDeErroEnvio } from "@/lib/imagemPng";
+import { primeiroNome } from "@/lib/mensagensCrm";
 
 const VALOR_MINIMO_PADRAO = 7800;
 
@@ -43,12 +44,6 @@ async function baixarImagemPadrao(): Promise<Blob> {
   const resp = await fetch(IMAGEM_WHATSAPP_URL);
   if (!resp.ok) throw new Error(`imagem não carregada (HTTP ${resp.status})`);
   return new Blob([await resp.blob()], { type: "image/png" });
-}
-
-// "JOSE" → "Jose"; "Jorge / Alexandre" → "Jorge"; "Tadeu Mota" → "Tadeu" (só o primeiro nome do primeiro contato)
-function primeiroNome(contato: string | null | undefined): string {
-  const primeiro = (contato ?? "").split(/[\/,;&]/)[0].trim().split(/\s+/)[0] ?? "";
-  return primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : "";
 }
 
 // whatsappLink vem como https://wa.me/<número>; o texto entra em ?text= já codificado
@@ -181,7 +176,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
       await trocarImagem.mutateAsync({ nomeArquivo, base64 });
       toast.success(`Imagem trocada (${png.largura}×${png.altura}, ${formatarTamanho(png.blob.size)}). Já vale para os próximos cliques no WhatsApp.`);
     } catch (erro) {
-      toast.error(erro instanceof Error ? erro.message : "Não consegui trocar a imagem.");
+      toast.error(mensagemDeErroEnvio(erro, "Não consegui trocar a imagem."));
     } finally {
       setProcessandoImagem(false);
     }

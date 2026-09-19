@@ -2,8 +2,8 @@ import { useState, type ReactNode } from "react";
 import { Loader2, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { substituirVariaveis } from "@/components/ScriptsFaixaPopover";
 import { linkWhatsAppComTexto } from "@/lib/faixasCrm";
+import { substituirVariaveis } from "@/lib/mensagensCrm";
 
 /** Mesmos grupos de mensagens do painel de scripts do CRM (crm.listScripts): 0 = pós-orçamento,
  * 1/2/3 = faixas de follow-up, 11/12/13 = situação da resposta, 20 = objeções de preço. */

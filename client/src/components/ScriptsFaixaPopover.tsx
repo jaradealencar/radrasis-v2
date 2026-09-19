@@ -11,6 +11,7 @@ import {
   GripVertical, Info, Mic, ChevronDown, MessageCircle,
 } from "lucide-react";
 import { linkWhatsAppComTexto } from "@/lib/faixasCrm";
+import { substituirVariaveis } from "@/lib/mensagensCrm";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DndContext,
@@ -62,16 +63,8 @@ const VARIAVEIS = [
   { token: "{vendedor}",     label: "Nome do vendedor" },
 ];
 
-export function substituirVariaveis(
-  texto: string,
-  vars: { nomeCliente?: string; produto?: string; valor?: string; vendedor?: string }
-): string {
-  return texto
-    .replace(/\{nome_cliente\}/gi, vars.nomeCliente || "{nome_cliente}")
-    .replace(/\{produto\}/gi,      vars.produto      || "{produto}")
-    .replace(/\{valor\}/gi,        vars.valor        || "{valor}")
-    .replace(/\{vendedor\}/gi,     vars.vendedor     || "{vendedor}");
-}
+// A substituição (aceita {nome_cliente} e também [Nome], [Vendedor]…) vive em lib/mensagensCrm.ts
+export { substituirVariaveis };
 
 // ─── Cores por faixa ──────────────────────────────────────────────────────────
 const FAIXA_COLORS: Record<number, { header: string; badge: string; addBtn: string; grip: string }> = {
