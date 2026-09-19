@@ -246,6 +246,25 @@ export function reindexarPorChaveNormalizada(mapa: Map<string, { mes: number; an
   return normalizado;
 }
 
+/** Classifica um cliente pela "Lógica do Cliente Novo e Reativado" para o relatório de
+ * propostas de alto valor: "novo" = nenhuma compra registrada antes do mês; "reativado" =
+ * já comprou, mas a última compra foi há 6+ meses. Segue exatamente as regras de
+ * getClientesNovosMes (incluindo os overrides manuais "recorrente"/"novo"), para o mesmo
+ * cliente aparecer com a mesma etiqueta nos dois relatórios. `mesesSemComprar` é contado
+ * até o mês de referência, não até hoje. */
+export function classificarClientePorRecencia(
+  ultima: { mes: number; ano: number } | undefined,
+  override: "recorrente" | "novo" | undefined,
+  mes: number,
+  ano: number,
+): { status: "novo" | "reativado" | null; mesesSemComprar: number | null } {
+  if (override === "recorrente") return { status: null, mesesSemComprar: null };
+  const ehNovoOuReativado = override === "novo" ? true : isClienteNovoPorRecencia(ultima, mes, ano);
+  if (!ehNovoOuReativado) return { status: null, mesesSemComprar: null };
+  if (!ultima) return { status: "novo", mesesSemComprar: null };
+  return { status: "reativado", mesesSemComprar: (ano - ultima.ano) * 12 + (mes - ultima.mes) };
+}
+
 async function getMesFromDb(mes: number, ano: number) {
   const db = await getDb();
   if (!db) return null;
@@ -2821,16 +2840,18 @@ export const performanceComercialRouter = router({
       return { ok: true };
     }),
 
-  // ─── Propostas de alto valor (padrão: acima de R$ 8.000) ───────────────────
+  // ─── Propostas de alto valor (padrão: acima de R$ 7.800) ───────────────────
   // Lista as propostas do mês/ano em aberto (exclui canceladas/excluídas e as
   // já convertidas em venda/faturamento — essas não precisam mais de follow-up)
   // acima do valor de corte, com telefone/WhatsApp quando disponível e o
-  // histórico de contatos já registrados por quem fez o follow-up.
+  // histórico de contatos já registrados por quem fez o follow-up. Cada proposta
+  // também diz se o cliente é novo (sem compra registrada) ou reativado (6+ meses
+  // sem comprar) — ver classificarClientePorRecencia.
   getPropostasAltoValor: publicProcedure
     .input(z.object({
       mes: z.number().min(1).max(12),
       ano: z.number().min(2020),
-      valorMinimo: z.number().min(0).default(8000),
+      valorMinimo: z.number().min(0).default(7800),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -2896,12 +2917,26 @@ export const performanceComercialRouter = router({
         .where(and(eq(performancePropostasContatado.mes, mes), eq(performancePropostasContatado.ano, ano)));
       const contatadoPorOrc = new Map(contatadosDb.map(c => [c.orcNumero, c]));
 
+      // Estrela de cliente novo/reativado: última compra de cada cliente ANTES do mês do
+      // relatório (histórico real em historico_os), com chave normalizada nos dois lados.
+      const comprasValidas = await buscarTodasComprasValidas(db);
+      const ultimaCompraPorCliente = reindexarPorChaveNormalizada(ultimaCompraAntesDe(comprasValidas, mes, ano));
+      const overridesClientes = await db.select().from(clienteOverrides);
+      const overrideMapClientes = new Map<string, "recorrente" | "novo">();
+      for (const ov of overridesClientes) overrideMapClientes.set(ov.empresa, ov.status);
+
       const propostas = candidatas.map(orc => {
         const numero = orc.orcNumero ?? "";
         const tel = telefonePorOrcNumero.get(numero);
         const mubisysId = mubisysIdPorOrcNumero.get(numero);
         const followups = followupsPorOrc.get(numero) ?? [];
         const marca = contatadoPorOrc.get(numero);
+        const chaveCliente = normalizeEmpresaKey(orc.empresa ?? "");
+        const ultimaCompra = chaveCliente ? ultimaCompraPorCliente.get(chaveCliente) : undefined;
+        // Sem nome de cliente não há como saber o histórico — sem estrela, em vez de "novo" por engano
+        const classe = chaveCliente
+          ? classificarClientePorRecencia(ultimaCompra, overrideMapClientes.get(chaveCliente), mes, ano)
+          : { status: null, mesesSemComprar: null };
         return {
           orcNumero: numero,
           mubisysLink: mubisysId ? urlOrcamentoMubiSys(mubisysId) : null,
@@ -2913,6 +2948,11 @@ export const performanceComercialRouter = router({
           telefone: tel?.telefone ?? null,
           contato: tel?.contato ?? null,
           whatsappLink: tel?.telefone ? formatarLinkWhatsApp(tel.telefone) || null : null,
+          clienteStatus: classe.status,
+          mesesSemComprar: classe.mesesSemComprar,
+          ultimaCompra: classe.status === "reativado" && ultimaCompra
+            ? `${String(ultimaCompra.mes).padStart(2, "0")}/${ultimaCompra.ano}`
+            : null,
           contatado: marca?.contatado ?? false,
           contatadoPor: marca?.contatado ? marca.usuarioNome : null,
           contatadoEm: marca?.contatado ? marca.contatadoEm : null,

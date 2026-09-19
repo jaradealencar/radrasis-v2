@@ -10,11 +10,16 @@ import {
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { AlertTriangle, MessageCircle, CheckCircle2, Check, Clock, Phone } from "lucide-react";
+import { AlertTriangle, MessageCircle, CheckCircle2, Check, Clock, Phone, Star } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 import { useAuth } from "@/hooks/useAuth";
 
-const VALOR_MINIMO_PADRAO = 8000;
+const VALOR_MINIMO_PADRAO = 7800;
+
+// Estrela ao lado da empresa: amarela = cliente novo (nenhuma compra registrada), vermelha =
+// reativado (6+ meses sem comprar). Mesma regra dos relatórios de Clientes Novos/Reativados.
+const ESTRELA_NOVO = "fill-yellow-400 text-yellow-500";
+const ESTRELA_REATIVADO = "fill-red-500 text-red-600";
 
 // "5567998513463" → "(67) 99851-3463". Se o formato não for reconhecido, devolve como veio.
 function fmtTelefone(tel: string | null | undefined): string {
@@ -92,6 +97,8 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
 
   const propostas = data?.propostas ?? [];
   const totalContatadas = propostas.filter(p => p.contatado).length;
+  const totalNovos = propostas.filter(p => p.clienteStatus === "novo").length;
+  const totalReativados = propostas.filter(p => p.clienteStatus === "reativado").length;
 
   const propostasFiltradas = useMemo(() => {
     const de = diaDe ? parseInt(diaDe, 10) : null;
@@ -181,6 +188,19 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
             </div>
           )}
 
+          {!isLoading && propostas.length > 0 && (
+            <div className="flex items-center gap-x-4 gap-y-1 text-xs text-slate-500 flex-wrap">
+              <span className="inline-flex items-center gap-1">
+                <Star className={`w-3.5 h-3.5 ${ESTRELA_NOVO}`} />
+                Cliente novo — nenhuma compra registrada <strong className="text-slate-600">({totalNovos})</strong>
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Star className={`w-3.5 h-3.5 ${ESTRELA_REATIVADO}`} />
+                Reativado — 6+ meses sem comprar <strong className="text-slate-600">({totalReativados})</strong>
+              </span>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="py-8 text-center text-sm text-slate-400">Carregando propostas...</div>
           ) : propostas.length === 0 ? (
@@ -224,8 +244,22 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                     {/* Empresa, Vendedor e Data quebram linha: sem isso a tabela passa da largura do
                         modal e as colunas da direita (Contatado, Follow-up) somem atrás da rolagem horizontal */}
                     <TableCell className="font-medium whitespace-normal">
-                      {p.empresa}
-                      {p.contato && <div className="text-xs text-slate-400">{p.contato}</div>}
+                      <div className="flex items-start gap-1.5">
+                        {p.clienteStatus && (
+                          <span
+                            className="shrink-0 mt-0.5"
+                            title={p.clienteStatus === "novo"
+                              ? "Cliente novo — nenhuma compra registrada no sistema antes deste mês"
+                              : `Cliente reativado — sem comprar há ${p.mesesSemComprar} meses${p.ultimaCompra ? ` (última compra em ${p.ultimaCompra})` : ""}`}
+                          >
+                            <Star className={`w-4 h-4 ${p.clienteStatus === "novo" ? ESTRELA_NOVO : ESTRELA_REATIVADO}`} />
+                          </span>
+                        )}
+                        <div>
+                          {p.empresa}
+                          {p.contato && <div className="text-xs text-slate-400">{p.contato}</div>}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-slate-600 whitespace-normal">{p.vendedor}</TableCell>
                     <TableCell className="text-right font-mono font-medium text-green-700 whitespace-nowrap">{fmtBrl(p.valor)}</TableCell>

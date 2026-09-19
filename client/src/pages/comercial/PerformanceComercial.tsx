@@ -985,7 +985,7 @@ export default function PerformanceComercial() {
           </div>
         ) : null}
 
-        {/* Propostas de alto valor (acima de R$ 8.000) precisando de follow-up */}
+        {/* Propostas de alto valor (acima de R$ 7.800) precisando de follow-up */}
         <PropostasAltoValor mes={mesSelecionado} ano={anoSelecionado} />
 
         {/* Gráfico de Evolução do Ticket Médio — ano inteiro */}
