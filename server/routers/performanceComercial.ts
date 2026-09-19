@@ -670,6 +670,117 @@ export function calcularNovosDoMesLocal(
   };
 }
 
+// ─── Contatos (telefone/WhatsApp, cidade) dos clientes novos ─────────────────
+
+const JANELA_DIAS_BUSCA_OS = 7;
+
+/** Busca as OS do mês em janelas curtas e paralelas. A busca agregada do mês inteiro
+ * (getMesFromApi: OS + orçamentos) estoura o timeout com frequência — o mês vigente nunca
+ * fica com cache quente por mais de 1h — e aí o fallback do banco local não tem telefone.
+ * Só as OS, em janelas de 7 dias, voltam completas em ~3s (medido em 19/09/2026: set/2026 =
+ * 119 OS e ago/2026 = 168 OS, idêntico ao cache, quase todas com cliente_contato.celular).
+ * Lança erro se qualquer janela vier incompleta: um mês parcial faria clientes antigos
+ * parecerem "novos". */
+async function buscarOsDoMesEmJanelas(mes: number, ano: number): Promise<any[]> {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  const janelas: Array<[string, string]> = [];
+  for (let dia = 1; dia <= ultimoDia; dia += JANELA_DIAS_BUSCA_OS) {
+    const fim = Math.min(dia + JANELA_DIAS_BUSCA_OS - 1, ultimoDia);
+    janelas.push([`${ano}-${pad(mes)}-${pad(dia)}`, `${ano}-${pad(mes)}-${pad(fim)}`]);
+  }
+  const resultados = await Promise.all(janelas.map(([datainicial, datafinal]) =>
+    listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial, datafinal })
+  ));
+  if (resultados.some(r => !r.completo)) throw new Error("os_janelas_incompletas");
+  const porId = new Map<string, any>();
+  for (const os of resultados.flatMap(r => r.itens)) porId.set(String(os.id), os);
+  return Array.from(porId.values());
+}
+
+type ContatoCliente = { telefone: string; contato: string; cidade: string; estado: string };
+
+/** Extrai telefone, nome do contato, cidade e UF da OS (campos cliente_contato e
+ * cliente_endereco, que já vêm com os dados do CLIENTE — nunca buscar por nome, isso
+ * retornava dados da Radra, a empresa emissora). Prefere o primeiro contato ATIVO que
+ * tenha celular/telefone: o primeiro da lista nem sempre é quem tem número cadastrado. */
+export function extrairContatoDaOs(os: any): ContatoCliente {
+  const contatos: any[] = Array.isArray(os?.cliente_contato) ? os.cliente_contato : (os?.cliente_contato ? [os.cliente_contato] : []);
+  const enderecos: any[] = Array.isArray(os?.cliente_endereco) ? os.cliente_endereco : (os?.cliente_endereco ? [os.cliente_endereco] : []);
+  const numeroDe = (c: any): string => c?.celular || c?.telefone || c?.fone || "";
+  const ativo = (c: any) => String(c?.status ?? "").toLowerCase() !== "inativo";
+  const escolhido = contatos.find(c => numeroDe(c) && ativo(c)) ?? contatos.find(c => numeroDe(c)) ?? contatos[0];
+  const endereco = enderecos[0];
+  return {
+    telefone: numeroDe(escolhido),
+    contato: escolhido?.nome_contato || escolhido?.nome || "",
+    cidade: endereco?.cidade || "",
+    estado: endereco?.estado || endereco?.uf || "",
+  };
+}
+
+/** Link wa.me a partir do telefone do ERP. Sem DDI o número tem 10–11 dígitos (DDD + número);
+ * com DDI 55 tem 12–13 — só o comprimento distingue o DDI do DDD 55 (RS), que começa igual. */
+export function formatarLinkWhatsApp(tel: string): string {
+  const digitos = (tel ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!digitos) return "";
+  const numero = digitos.length >= 12 && digitos.startsWith("55") ? digitos : `55${digitos}`;
+  return `https://wa.me/${numero}`;
+}
+
+/** Contatos por cliente (chave normalizeEmpresaKey), prefere a OS que tenha telefone. */
+export function indexarContatosPorCliente(osLista: any[]): Record<string, ContatoCliente> {
+  const indice: Record<string, ContatoCliente> = {};
+  for (const os of osLista) {
+    const clienteRaw = os?.cliente;
+    const nome = typeof clienteRaw === "object" && clienteRaw !== null
+      ? String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "")
+      : String(clienteRaw ?? "");
+    const chave = normalizeEmpresaKey(nome);
+    if (!chave) continue;
+    const novo = extrairContatoDaOs(os);
+    const atual = indice[chave];
+    if (!atual) {
+      indice[chave] = novo;
+      continue;
+    }
+    // Troca pelo telefone desta OS (com o nome do contato dono dele) só se ainda não havia
+    // nenhum; cidade/UF de uma OS anterior nunca se perdem.
+    if (!atual.telefone && novo.telefone) {
+      atual.telefone = novo.telefone;
+      atual.contato = novo.contato || atual.contato;
+    }
+    atual.contato ||= novo.contato;
+    atual.cidade ||= novo.cidade;
+    atual.estado ||= novo.estado;
+  }
+  return indice;
+}
+
+/** Contatos dos clientes do mês, para completar listas salvas sem telefone (meses congelados
+ * cuja lista foi gravada quando a API estava fora). Cache em memória e no banco (mês fechado
+ * 30 dias, mês vigente 1h) — a busca é uma vez por mês, não por consulta. Null se a API falhar. */
+async function obterContatosDoMes(mes: number, ano: number): Promise<Record<string, ContatoCliente> | null> {
+  const chaveCache = `contatos_${mes}_${ano}`;
+  const emMemoria = getCached(chaveCache);
+  if (emMemoria) return emMemoria;
+  const noBanco = await getDbCache(chaveCache);
+  if (noBanco?.allOs?.[0]) {
+    setCacheWithTTL(chaveCache, noBanco.allOs[0], mes, ano);
+    return noBanco.allOs[0];
+  }
+  try {
+    const osLista = await withTimeout(buscarOsDoMesEmJanelas(mes, ano), 15000, "timeout_contatos_mes");
+    const indice = indexarContatosPorCliente(osLista);
+    setCacheWithTTL(chaveCache, indice, mes, ano);
+    // O cache do banco guarda o índice como único elemento de allOs (formato compartilhado com o raw_*)
+    await setDbCache(chaveCache, mes, ano, [indice], []);
+    return indice;
+  } catch {
+    return null;
+  }
+}
+
 /** Item da lista "Clientes Novos" do mês. `reativado` separa quem já tinha comprado antes
  * (e voltou após 6+ meses sem pedir) de quem nunca comprou — mesma regra dos contadores
  * totalPuros/totalReativados, então as duas visões sempre batem. */
@@ -742,6 +853,25 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     for (const item of listaSnap) {
       item.reativado = Boolean(ultimaCompraSnapNorm.get(normalizeEmpresaKey(item.empresa)));
     }
+    // Listas gravadas quando a API estava fora ficaram sem telefone/cidade — completa só esses
+    // campos de contato (nenhum valor auditado muda) a partir das OS do mês, com cache.
+    if (listaSnap.some(item => !item.telefone)) {
+      const contatosMes = await obterContatosDoMes(mes, ano);
+      if (contatosMes) {
+        for (const item of listaSnap) {
+          if (item.telefone) continue;
+          const c = contatosMes[normalizeEmpresaKey(item.empresa)];
+          if (!c) continue;
+          item.telefone = c.telefone;
+          item.contato ||= c.contato;
+          item.cidade ||= c.cidade;
+          item.estado ||= c.estado;
+        }
+      }
+    }
+    // Recalcula o link sempre: listas antigas guardam links gerados pela regra anterior
+    // (que tratava DDD 55 como código do país).
+    for (const item of listaSnap) item.whatsappLink = formatarLinkWhatsApp(item.telefone);
     const clientesUnicosSnap = new Set(listaSnap.map(item => normalizeEmpresaKey(item.empresa)));
     let totalReativadosSnap = 0;
     for (const chave of clientesUnicosSnap) {
@@ -869,17 +999,31 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       }
     }
   } catch {
-    // Fallback: usar banco local se API falhar
-    const osMesDb = await db.select().from(historicoOs)
-      .where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano)));
-    allOsApi = osMesDb.map(os => ({
-      cliente: os.empresa,
-      vendedor: os.vendedor,
-      numero: os.osNumero,
-      valor_total: os.valorOs ?? os.valorTotal,
-      tipo: os.tipoOs ?? "",
-      status: os.status ?? "",
-    }));
+    // Fallback 1: OS do mês em janelas curtas (~3s, com telefone/cidade). A busca agregada
+    // acima costuma falhar por causa dos orçamentos, não das OS. Limite de 10s para caber
+    // no maxDuration:60s depois dos 45s da tentativa anterior.
+    let osEmJanelas: any[] | null = null;
+    try {
+      osEmJanelas = await withTimeout(buscarOsDoMesEmJanelas(mes, ano), 10000, "timeout_os_janelas");
+    } catch {
+      osEmJanelas = null;
+    }
+    if (osEmJanelas) {
+      allOsApi = osEmJanelas;
+    } else {
+      // Fallback 2: banco local (sem telefone — só cidade/UF quando importados)
+      const osMesDb = await db.select().from(historicoOs)
+        .where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano)));
+      allOsApi = osMesDb.map(os => ({
+        cliente: os.empresa,
+        vendedor: os.vendedor,
+        sequencial_ordem: os.osNumero,
+        valor_total: os.valorOs ?? os.valorTotal,
+        tipo: os.tipoOs ?? "",
+        status: os.status ?? "",
+        cliente_endereco: [{ cidade: os.cidade ?? "", estado: os.estado ?? "" }],
+      }));
+    }
   }
 
   // Filtrar OS Normais (excluir Retrabalho, Amostra, Cortesia e Canceladas)
@@ -941,28 +1085,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         if (jaComprouAntes) totalReativados++;
         porVendedor[vendedor] = (porVendedor[vendedor] ?? 0) + 1;
         porVendedorNovosOs[vendedorKey].clientesNovos++;
-        // Extrair contato e cidade DIRETAMENTE da OS (campos cliente_contato e cliente_endereco)
-        // NUNCA buscar por nome — isso retornava dados da Radra (empresa emissora)
-        const contatosOs: any[] = Array.isArray(os.cliente_contato) ? os.cliente_contato : (os.cliente_contato ? [os.cliente_contato] : []);
-        const enderecosOs: any[] = Array.isArray(os.cliente_endereco) ? os.cliente_endereco : (os.cliente_endereco ? [os.cliente_endereco] : []);
-        const primeiroContato = contatosOs[0];
-        const primeiroEndereco = enderecosOs[0];
-        const telefoneOs = primeiroContato?.celular || primeiroContato?.telefone || primeiroContato?.fone || "";
-        const contatoOs = primeiroContato?.nome_contato || primeiroContato?.nome || "";
-        const cidadeOs = primeiroEndereco?.cidade || "";
-        const estadoOs = primeiroEndereco?.estado || primeiroEndereco?.uf || "";
-        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.numero ?? ""), valorOs: String(os.valor_total ?? ""), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs, reativado: jaComprouAntes });
+        // Contato e cidade DIRETAMENTE da OS (ver extrairContatoDaOs). O número da OS na API
+        // é `sequencial_ordem` — a API não devolve `numero`.
+        const { telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs } = extrairContatoDaOs(os);
+        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.sequencial_ordem ?? os.numero ?? ""), valorOs: String(os.valor_total ?? ""), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs, reativado: jaComprouAntes });
       }
     }
-  }
-
-  function formatWhatsApp(tel: string): string {
-    if (!tel) return "";
-    const digits = tel.replace(/\D/g, "");
-    if (!digits) return "";
-    // Se já tem código do país (55), usar direto; senão adicionar
-    const num = digits.startsWith("55") ? digits : `55${digits}`;
-    return `https://wa.me/${num}`;
   }
 
   // Montar lista final — contato e cidade já vêm da OS (campos cliente_contato e cliente_endereco)
@@ -971,7 +1099,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   for (const item of listaRaw) {
     lista.push({
       ...item,
-      whatsappLink: formatWhatsApp(item.telefone),
+      whatsappLink: formatarLinkWhatsApp(item.telefone),
     });
   }
 
@@ -2730,7 +2858,9 @@ export const performanceComercialRouter = router({
       const orcCacheKey = `orc_raw_${mes}_${ano}`;
       let allOrcApi: any[] | null = getCached(orcCacheKey);
       if (!allOrcApi) {
-        const dbCached = await getDbCache(`raw_${mes}_${ano}`);
+        // ignorarExpiracao: telefone de cliente não muda — um cache expirado serve
+        // (e evita apagar a linha, como getDbCache faz ao encontrar uma expirada).
+        const dbCached = await getDbCache(`raw_${mes}_${ano}`, { ignorarExpiracao: true });
         allOrcApi = dbCached?.allOrc ?? null;
       }
       const telefonePorOrcNumero = new Map<string, { telefone: string; contato: string }>();
@@ -2739,9 +2869,10 @@ export const performanceComercialRouter = router({
           const numero = String(o.sequencial_orcamento ?? o.id ?? "");
           if (!numero) continue;
           const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : (o.cliente_contato ? [o.cliente_contato] : []);
-          const primeiro = contatosOrc[0];
-          const telefone = primeiro?.celular || primeiro?.telefone || primeiro?.fone || "";
-          const contato = primeiro?.nome_contato || primeiro?.nome || "";
+          // Primeiro contato que tenha telefone (o primeiro da lista pode vir sem número)
+          const comTelefone = contatosOrc.find(c => c?.celular || c?.telefone || c?.fone);
+          const telefone = comTelefone?.celular || comTelefone?.telefone || comTelefone?.fone || "";
+          const contato = comTelefone?.nome_contato || comTelefone?.nome || "";
           if (telefone) telefonePorOrcNumero.set(numero, { telefone, contato });
         }
       }

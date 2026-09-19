@@ -10,10 +10,19 @@ import {
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { AlertTriangle, MessageCircle, CheckCircle2, Clock } from "lucide-react";
+import { AlertTriangle, MessageCircle, CheckCircle2, Clock, Phone } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 
 const VALOR_MINIMO_PADRAO = 8000;
+
+// "5567998513463" → "(67) 99851-3463". Se o formato não for reconhecido, devolve como veio.
+function fmtTelefone(tel: string | null | undefined): string {
+  if (!tel) return "";
+  const digitos = tel.replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+  if (digitos.length === 11) return digitos.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+  if (digitos.length === 10) return digitos.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+  return tel;
+}
 
 function fmtDataHora(d: string | Date | null | undefined): string {
   if (!d) return "";
@@ -43,7 +52,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   const [diaAte, setDiaAte] = useState("");
 
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.performanceComercial.getPropostasAltoValor.useQuery(
+  const { data, isLoading, refetch } = trpc.performanceComercial.getPropostasAltoValor.useQuery(
     { mes, ano, valorMinimo: VALOR_MINIMO_PADRAO },
     { enabled: listaAberta || true, staleTime: 5 * 60 * 1000 }
   );
@@ -71,6 +80,13 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
     });
   }, [propostas, diaDe, diaAte]);
 
+  // O telefone só vem do cache de orçamentos do MubiSys, que pode ainda estar esquentando
+  // quando a consulta roda ao montar a página. Se faltou telefone, reconsulta ao abrir.
+  function abrirRelatorio() {
+    setListaAberta(true);
+    if (propostas.some(p => !p.whatsappLink)) refetch();
+  }
+
   function confirmarFollowup() {
     if (!propostaFollowup || motivo.trim().length < 3) return;
     registrarFollowup.mutate({
@@ -94,7 +110,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
             <p className="text-xs text-slate-400">Propostas em aberto do mês que merecem follow-up prioritário</p>
           </div>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setListaAberta(true)}>
+        <Button size="sm" variant="outline" onClick={abrirRelatorio}>
           Ver relatório
           {!isLoading && propostas.length > 0 && (
             <Badge variant="secondary" className="ml-2">{propostas.length}</Badge>
@@ -103,7 +119,8 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
       </div>
 
       <Dialog open={listaAberta} onOpenChange={setListaAberta}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+        {/* sm:max-w-6xl é necessário: o DialogContent base fixa sm:max-w-lg, que um max-w-* sem breakpoint não sobrescreve */}
+        <DialogContent className="sm:max-w-6xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Propostas acima de {fmtBrl(VALOR_MINIMO_PADRAO)} — em aberto</DialogTitle>
           </DialogHeader>
@@ -144,10 +161,12 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead title="Número do orçamento no MubiSys">Nº Orçamento</TableHead>
                   <TableHead>Empresa</TableHead>
                   <TableHead>Vendedor</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>Data</TableHead>
+                  <TableHead className="text-center">WhatsApp</TableHead>
                   <TableHead>Follow-up</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -155,13 +174,32 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
               <TableBody>
                 {propostasFiltradas.map(p => (
                   <TableRow key={p.orcNumero}>
+                    <TableCell className="font-mono text-blue-700">{p.orcNumero || "—"}</TableCell>
                     <TableCell className="font-medium">
                       {p.empresa}
                       {p.contato && <div className="text-xs text-slate-400">{p.contato}</div>}
                     </TableCell>
                     <TableCell className="text-sm text-slate-600">{p.vendedor}</TableCell>
-                    <TableCell className="text-right font-medium">{fmtBrl(p.valor)}</TableCell>
-                    <TableCell className="text-sm text-slate-500">{p.dataCadastro}</TableCell>
+                    <TableCell className="text-right font-mono font-medium text-green-700 whitespace-nowrap">{fmtBrl(p.valor)}</TableCell>
+                    <TableCell className="text-sm text-slate-500 whitespace-nowrap">{p.dataCadastro}</TableCell>
+                    <TableCell className="text-center">
+                      {p.whatsappLink ? (
+                        <a
+                          href={p.whatsappLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full transition-colors whitespace-nowrap"
+                          title={`Abrir conversa${p.contato ? ` com ${p.contato}` : ""} no WhatsApp`}
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          {fmtTelefone(p.telefone)}
+                        </a>
+                      ) : (
+                        <span className="text-slate-300 text-xs inline-flex items-center gap-1 whitespace-nowrap">
+                          <Phone className="w-3 h-3" /> sem tel.
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {p.qtdFollowups === 0 ? (
                         <Badge variant="outline" className="text-amber-600 border-amber-300">Sem contato</Badge>
@@ -184,23 +222,14 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {p.whatsappLink && (
-                          <a href={p.whatsappLink} target="_blank" rel="noopener noreferrer" title="WhatsApp">
-                            <Button size="icon" variant="ghost" className="text-green-600 hover:text-green-700">
-                              <MessageCircle className="w-4 h-4" />
-                            </Button>
-                          </a>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1"
-                          onClick={() => setPropostaFollowup({ orcNumero: p.orcNumero, empresa: p.empresa })}
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Contato realizado
-                        </Button>
-                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 whitespace-nowrap"
+                        onClick={() => setPropostaFollowup({ orcNumero: p.orcNumero, empresa: p.empresa })}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Contato realizado
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
