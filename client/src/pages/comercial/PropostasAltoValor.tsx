@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,12 @@ function mensagemWhatsAppProposta(nomeContato: string): string {
   return `Oi${nomeContato ? ` ${nomeContato}` : ""}, Daniel aqui, diretor da Letreiros Express. `
     + `Estou analisando uns orçamentos e resolvi te mandar uma mensagem.`;
 }
+
+// Imagem que acompanha a mensagem (arquivo em client/public/whatsapp). O WhatsApp não aceita
+// anexo por link, então o clique COPIA a imagem para a área de transferência e o usuário só
+// aperta Ctrl+V na conversa. Precisa ser PNG: é o único formato de imagem que o navegador
+// deixa colocar na área de transferência.
+const IMAGEM_WHATSAPP_URL = "/whatsapp/3-motivos-letreiros-express.png";
 
 // "JOSE" → "Jose"; "Jorge / Alexandre" → "Jorge"; "Tadeu Mota" → "Tadeu" (só o primeiro nome do primeiro contato)
 function primeiroNome(contato: string | null | undefined): string {
@@ -113,6 +120,45 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
       setMotivo("");
     },
   });
+
+  // A imagem é baixada quando o relatório abre: o navegador só deixa copiar para a área de
+  // transferência e abrir a aba do WhatsApp durante alguns segundos após o clique, então no
+  // clique ela já precisa estar pronta (baixar ali atrasaria e poderia bloquear a aba).
+  const imagemWhatsApp = useRef<Blob | null>(null);
+  useEffect(() => {
+    if (!listaAberta || imagemWhatsApp.current) return;
+    fetch(IMAGEM_WHATSAPP_URL)
+      .then(r => (r.ok ? r.blob() : null))
+      .then(b => { if (b) imagemWhatsApp.current = new Blob([b], { type: "image/png" }); })
+      .catch(() => {});
+  }, [listaAberta]);
+
+  // Clique no botão verde: copia a imagem e abre a conversa (com a mensagem padrão no texto).
+  // Se a cópia falhar, abre do mesmo jeito só com o texto e avisa.
+  async function abrirWhatsAppComImagem(e: React.MouseEvent<HTMLAnchorElement>, link: string) {
+    e.preventDefault();
+    let imagemCopiada = false;
+    try {
+      if (!imagemWhatsApp.current) {
+        const resp = await fetch(IMAGEM_WHATSAPP_URL);
+        if (resp.ok) imagemWhatsApp.current = new Blob([await resp.blob()], { type: "image/png" });
+      }
+      if (imagemWhatsApp.current) {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": imagemWhatsApp.current })]);
+        imagemCopiada = true;
+      }
+    } catch {
+      // sem permissão de área de transferência, navegador sem suporte etc. — segue só com o texto
+    }
+    const aba = window.open(link, "_blank");
+    if (!aba) {
+      toast.error("O navegador bloqueou a abertura do WhatsApp. Permita pop-ups para este site e clique de novo.");
+      return;
+    }
+    aba.opener = null;
+    if (imagemCopiada) toast.success("Imagem copiada! Na conversa do WhatsApp, aperte Ctrl+V para anexar.");
+    else toast.warning("Abri a conversa só com o texto: não consegui copiar a imagem.");
+  }
 
   const propostas = data?.propostas ?? [];
   const totalContatadas = propostas.filter(p => p.contatado).length;
@@ -287,10 +333,11 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                       {p.whatsappLink ? (
                         <a
                           href={linkWhatsAppComMensagem(p.whatsappLink, p.contato)}
+                          onClick={e => abrirWhatsAppComImagem(e, linkWhatsAppComMensagem(p.whatsappLink!, p.contato))}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full transition-colors whitespace-nowrap"
-                          title={`Abrir conversa${p.contato ? ` com ${p.contato}` : ""} no WhatsApp, com a mensagem padrão já digitada`}
+                          title={`Abrir conversa${p.contato ? ` com ${p.contato}` : ""} no WhatsApp, com a mensagem padrão digitada e a imagem copiada (cole com Ctrl+V)`}
                         >
                           <MessageCircle className="w-3 h-3" />
                           {fmtTelefone(p.telefone)}
