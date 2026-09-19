@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Copy, Check, Pencil, Trash2, Plus, X, Save, MessageSquareText, Loader2,
-  GripVertical, Info, Mic, ChevronDown,
+  GripVertical, Info, Mic, ChevronDown, MessageCircle,
 } from "lucide-react";
+import { linkWhatsAppComTexto } from "@/lib/faixasCrm";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DndContext,
@@ -48,6 +49,9 @@ interface Props {
   produto?: string;
   valor?: string;
   vendedor?: string;
+  /** Link https://wa.me/<número> do contato da proposta. Quando existe, cada mensagem ganha o
+   * botão "WhatsApp": abre a conversa já com o texto (variáveis preenchidas) digitado. */
+  whatsappLink?: string | null;
 }
 
 // ─── Variáveis dinâmicas disponíveis ─────────────────────────────────────────
@@ -58,7 +62,7 @@ const VARIAVEIS = [
   { token: "{vendedor}",     label: "Nome do vendedor" },
 ];
 
-function substituirVariaveis(
+export function substituirVariaveis(
   texto: string,
   vars: { nomeCliente?: string; produto?: string; valor?: string; vendedor?: string }
 ): string {
@@ -130,11 +134,13 @@ function ScriptCard({
   faixa,
   onRefresh,
   vars,
+  whatsappLink,
 }: {
   script: ScriptRow;
   faixa: number;
   onRefresh: () => void;
   vars: { nomeCliente?: string; produto?: string; valor?: string; vendedor?: string };
+  whatsappLink?: string | null;
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedVoz, setCopiedVoz] = useState(false);
@@ -173,6 +179,15 @@ function ScriptCard({
     setCopied(true);
     incrementCopia.mutate({ id: script.id });
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Abre a conversa do WhatsApp já com a mensagem digitada (sem copiar e colar). Conta como uso do
+  // script, igual a "Copiar mensagem".
+  const handleWhatsApp = () => {
+    if (!whatsappLink) return;
+    const texto = substituirVariaveis(script.conteudo, vars);
+    window.open(linkWhatsAppComTexto(whatsappLink, texto), "_blank", "noopener,noreferrer");
+    incrementCopia.mutate({ id: script.id });
   };
 
   const handleSave = () => {
@@ -324,17 +339,29 @@ function ScriptCard({
       {/* Botão copiar grande */}
       {!editing && (
         <div className="px-3 pb-2 space-y-2">
-          <button
-            onClick={handleCopy}
-            className={`w-full flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded border transition-all ${
-              copied
-                ? "bg-green-50 border-green-300 text-green-700"
-                : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
-            }`}
-          >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied ? "Copiado!" : "Copiar mensagem"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCopy}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded border transition-all ${
+                copied
+                  ? "bg-green-50 border-green-300 text-green-700"
+                  : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+              }`}
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? "Copiado!" : "Copiar mensagem"}
+            </button>
+            {whatsappLink && (
+              <button
+                onClick={handleWhatsApp}
+                title="Abrir a conversa no WhatsApp já com esta mensagem digitada"
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-1.5 rounded border border-green-300 bg-green-500 text-white hover:bg-green-600 transition-colors"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                Enviar no WhatsApp
+              </button>
+            )}
+          </div>
 
           {/* Subcélula de voz */}
           <Collapsible open={vozOpen} onOpenChange={setVozOpen}>
@@ -516,7 +543,7 @@ function AddScriptForm({ faixa, onAdded }: { faixa: number; onAdded: () => void 
 }
 
 // ─── Popover principal ────────────────────────────────────────────────────────
-export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente, produto, valor, vendedor }: Props) {
+export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente, produto, valor, vendedor, whatsappLink }: Props) {
   const [open, setOpen] = useState(false);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
   const colors = FAIXA_COLORS[faixa];
@@ -645,7 +672,7 @@ export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente
               <SortableContext items={orderedScripts.map((s) => s.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-3">
                   {orderedScripts.map((s) => (
-                    <ScriptCard key={s.id} script={s} faixa={faixa} onRefresh={refetch} vars={vars} />
+                    <ScriptCard key={s.id} script={s} faixa={faixa} onRefresh={refetch} vars={vars} whatsappLink={whatsappLink} />
                   ))}
                 </div>
               </SortableContext>

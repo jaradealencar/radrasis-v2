@@ -28,6 +28,8 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
 } from "@/components/ui/tooltip";
 import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
+import { WhatsAppScriptsPopover } from "@/components/WhatsAppScriptsPopover";
+import { faixaSugerida } from "@/lib/faixasCrm";
 import type { FaixaConfig } from "@/components/FaixaDiasConfigForm";
 import { gerarDatasUteis } from "@shared/dias-uteis";
 import {
@@ -238,8 +240,35 @@ function buildWaLink(tel: string | null | undefined) {
   if (!tel) return null;
   const digits = tel.replace(/\D/g, "");
   if (digits.length < 8) return null;
-  const num = digits.startsWith("55") ? digits : `55${digits}`;
+  // Com DDI 55 o número tem 12–13 dígitos; sem DDI, 10–11. Só o comprimento distingue o DDI do
+  // DDD 55 (RS), que começa igual — "55 99999-0000" precisa virar 5555999990000.
+  const num = digits.length >= 12 && digits.startsWith("55") ? digits : `55${digits}`;
   return `https://wa.me/${num}`;
+}
+
+// Botão de WhatsApp das listas "hoje" por faixa: abre o seletor de mensagens da faixa da lista
+function WhatsAppAgendaBotao({ p, faixa, faixasConfig }: {
+  p: Proposta; faixa: 1 | 2 | 3; faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
+}) {
+  const link = buildWaLink(p.telefone);
+  if (!link) return null;
+  const nome = p.nomeContato || p.nomeCliente;
+  return (
+    <WhatsAppScriptsPopover
+      link={link}
+      faixaSugerida={faixa}
+      rotulosFaixa={{ 1: faixasConfig[1].label, 2: faixasConfig[2].label, 3: faixasConfig[3].label }}
+      titulo={nome}
+      nomeCliente={nome}
+      produto={`OS #${p.sequencial || p.id}`}
+      valor={fmt(p.valor)}
+      vendedor={p.vendedor}
+    >
+      <button type="button" className="text-green-600 hover:text-green-700 flex-shrink-0" title="Escolher a mensagem e abrir o WhatsApp">
+        <MessageCircle className="w-3.5 h-3.5" />
+      </button>
+    </WhatsAppScriptsPopover>
+  );
 }
 
 function getCanalInfo(canal: string) {
@@ -289,6 +318,8 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
 
   const dates = getDates(p.dataCriacao, faixasConfig[3].diasFim);
   const waLink = buildWaLink(p.telefone);
+  // Grupo de mensagens que o botão de WhatsApp abre selecionado: a faixa em que a proposta está hoje
+  const grupoSugerido = faixaSugerida(dates, [faixasConfig[1], faixasConfig[2], faixasConfig[3]]);
 
   // Mapear contatos por chave de data
   const contatoMap: Record<string, { canal: string }> = {};
@@ -457,10 +488,22 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         <TableCell className="min-w-[140px] whitespace-normal">
           <div className="text-sm font-medium">{p.nomeContato || "—"}</div>
           {waLink && (
-            <a href={waLink} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-semibold bg-green-50 px-2 py-0.5 rounded-full border border-green-200 mt-1">
-              <MessageCircle className="w-3 h-3" /> WhatsApp
-            </a>
+            <WhatsAppScriptsPopover
+              link={waLink}
+              faixaSugerida={grupoSugerido}
+              rotulosFaixa={{ 1: faixasConfig[1].label, 2: faixasConfig[2].label, 3: faixasConfig[3].label }}
+              titulo={p.nomeContato || p.nomeCliente}
+              nomeCliente={p.nomeContato || p.nomeCliente}
+              produto={`OS #${p.sequencial || p.id}`}
+              valor={fmt(p.valor)}
+              vendedor={p.vendedor}
+            >
+              <button type="button"
+                title="Escolher a mensagem e abrir a conversa no WhatsApp"
+                className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-semibold bg-green-50 px-2 py-0.5 rounded-full border border-green-200 mt-1">
+                <MessageCircle className="w-3 h-3" /> WhatsApp
+              </button>
+            </WhatsAppScriptsPopover>
           )}
         </TableCell>
 
@@ -480,6 +523,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
+              whatsappLink={waLink}
             >
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[1]))}
             </ScriptsFaixaPopover>
@@ -489,6 +533,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
+              whatsappLink={waLink}
             >
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[2]))}
             </ScriptsFaixaPopover>
@@ -498,6 +543,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
               vendedor={p.vendedor}
+              whatsappLink={waLink}
             >
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[3]))}
             </ScriptsFaixaPopover>
@@ -1196,12 +1242,7 @@ export default function CRM() {
                       <span className="text-xs font-bold text-yellow-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
                       {p.clienteNovo && <Star className="w-3 h-3 text-yellow-500 fill-yellow-400 flex-shrink-0" aria-label="Cliente novo" />}
-                      {p.telefone && (
-                        <a href={buildWaLink(p.telefone) ?? "#"} target="_blank" rel="noopener noreferrer"
-                          className="text-green-600 hover:text-green-700 flex-shrink-0" title="WhatsApp">
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </a>
-                      )}
+                      <WhatsAppAgendaBotao p={p} faixa={1} faixasConfig={faixasConfig} />
                     </div>
                   ))}
                 </div>
@@ -1225,12 +1266,7 @@ export default function CRM() {
                       <span className="text-xs font-bold text-pink-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
                       {p.clienteNovo && <Star className="w-3 h-3 text-yellow-500 fill-yellow-400 flex-shrink-0" aria-label="Cliente novo" />}
-                      {p.telefone && (
-                        <a href={buildWaLink(p.telefone) ?? "#"} target="_blank" rel="noopener noreferrer"
-                          className="text-green-600 hover:text-green-700 flex-shrink-0" title="WhatsApp">
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </a>
-                      )}
+                      <WhatsAppAgendaBotao p={p} faixa={2} faixasConfig={faixasConfig} />
                     </div>
                   ))}
                 </div>
@@ -1254,12 +1290,7 @@ export default function CRM() {
                       <span className="text-xs font-bold text-orange-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
                       {p.clienteNovo && <Star className="w-3 h-3 text-yellow-500 fill-yellow-400 flex-shrink-0" aria-label="Cliente novo" />}
-                      {p.telefone && (
-                        <a href={buildWaLink(p.telefone) ?? "#"} target="_blank" rel="noopener noreferrer"
-                          className="text-green-600 hover:text-green-700 flex-shrink-0" title="WhatsApp">
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </a>
-                      )}
+                      <WhatsAppAgendaBotao p={p} faixa={3} faixasConfig={faixasConfig} />
                     </div>
                   ))}
                 </div>
