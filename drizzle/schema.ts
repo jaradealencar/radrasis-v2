@@ -1911,6 +1911,31 @@ export const whatsappImagem = pgTable("whatsapp_imagem", {
 export type WhatsappImagem = typeof whatsappImagem.$inferSelect;
 export type InsertWhatsappImagem = typeof whatsappImagem.$inferInsert;
 
+// Biblioteca de mídias do CRM: o "arsenal" de imagens que a equipe copia e cola nas conversas
+// de WhatsApp. Cada linha guarda a imagem inteira (PNG em base64, já reduzida no navegador) e uma
+// miniatura pequena separada, para a listagem não precisar carregar as imagens inteiras — a
+// imagem completa só é buscada na hora de copiar ou ampliar.
+export const midiasBiblioteca = pgTable("midias_biblioteca", {
+  id: serial("id").primaryKey(),
+  titulo: varchar("titulo", { length: 160 }).notNull(),
+  categoria: varchar("categoria", { length: 64 }),
+  nomeArquivo: varchar("nomeArquivo", { length: 256 }).notNull(),
+  base64: text("base64").notNull(), // PNG em base64, sem o prefixo "data:image/png;base64,"
+  miniatura: text("miniatura").notNull(), // data URL completo (JPEG/PNG) de até ~240px
+  tamanhoBytes: integer("tamanhoBytes").notNull(),
+  largura: integer("largura").notNull(),
+  altura: integer("altura").notNull(),
+  usos: integer("usos").notNull().default(0), // quantas vezes foi copiada
+  usuarioId: text("usuarioId"),
+  usuarioNome: varchar("usuarioNome", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (t) => ({
+  categoriaIdx: index("midias_biblioteca_categoria_idx").on(t.categoria),
+}));
+export type MidiaBiblioteca = typeof midiasBiblioteca.$inferSelect;
+export type InsertMidiaBiblioteca = typeof midiasBiblioteca.$inferInsert;
+
 export type PerformancePropostaContatado = typeof performancePropostasContatado.$inferSelect;
 export type InsertPerformancePropostaContatado = typeof performancePropostasContatado.$inferInsert;
 

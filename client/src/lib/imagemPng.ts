@@ -56,6 +56,30 @@ export async function converterParaPng(arquivo: File): Promise<ImagemPng> {
   }
 }
 
+/** Miniatura em data URL (JPEG, fundo branco) com o maior lado em `ladoMax` px — usada na
+ * listagem da biblioteca para não carregar as imagens inteiras. Fica em ~10–30 KB. */
+export async function gerarMiniatura(imagem: Blob, ladoMax = 240): Promise<string> {
+  const bitmap = await createImageBitmap(imagem);
+  const escala = Math.min(1, ladoMax / Math.max(bitmap.width, bitmap.height));
+  const largura = Math.max(1, Math.round(bitmap.width * escala));
+  const altura = Math.max(1, Math.round(bitmap.height * escala));
+  const canvas = document.createElement("canvas");
+  canvas.width = largura;
+  canvas.height = altura;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Não consegui gerar a miniatura neste navegador.");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, largura, altura);
+  ctx.drawImage(bitmap, 0, 0, largura, altura);
+  return canvas.toDataURL("image/jpeg", 0.8);
+}
+
+/** Nome do arquivo → título legível: "3-motivos_letreiros.png" → "3 motivos letreiros". */
+export function tituloDoArquivo(nomeArquivo: string): string {
+  const base = nomeArquivo.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  return (base || "Imagem").slice(0, 160);
+}
+
 /** Blob → base64 puro (sem o prefixo "data:...;base64,"). */
 export function blobParaBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

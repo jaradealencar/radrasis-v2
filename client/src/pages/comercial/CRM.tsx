@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
 import { WhatsAppScriptsPopover } from "@/components/WhatsAppScriptsPopover";
+import { BibliotecaMidias } from "@/components/BibliotecaMidias";
 import { faixaSugerida } from "@/lib/faixasCrm";
 import type { FaixaConfig } from "@/components/FaixaDiasConfigForm";
 import { gerarDatasUteis } from "@shared/dias-uteis";
@@ -898,6 +899,9 @@ export default function CRM() {
           <RefreshCw className="w-4 h-4" /> Atualizar
         </Button>
       </div>
+
+      {/* Biblioteca de mídias: arsenal de imagens para copiar e colar nas conversas */}
+      <BibliotecaMidias />
 
       {/* Alerta de atraso */}
       {propostasAtrasadas.length > 0 && (
