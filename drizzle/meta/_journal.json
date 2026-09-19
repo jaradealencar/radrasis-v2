@@ -253,6 +253,13 @@
       "when": 1789838303713,
       "tag": "0035_midias_biblioteca",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789840469880,
+      "tag": "0036_midias_galerias",
+      "breakpoints": true
     }
   ]
 }

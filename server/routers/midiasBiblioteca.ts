@@ -1,19 +1,21 @@
 import { z } from "zod";
-import { desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { router, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
-import { midiasBiblioteca } from "../../drizzle/schema";
+import { midiasBiblioteca, midiasGalerias } from "../../drizzle/schema";
 import { validarPngBase64 } from "./whatsappImagem";
 
 /**
  * Biblioteca de mídias do CRM: o "arsenal" de imagens que a equipe copia (para a área de
- * transferência) e cola nas conversas de WhatsApp. A listagem devolve só metadados e a miniatura;
- * a imagem inteira (PNG em base64) só é buscada na hora de copiar ou ampliar (`getImagem`).
+ * transferência) e cola nas conversas de WhatsApp, organizado em galerias. A listagem devolve só
+ * metadados e a miniatura; a imagem inteira (PNG em base64) só é buscada na hora de copiar ou
+ * ampliar (`getImagem`).
  */
 
 /** Teto de itens e de bytes guardados no banco (imagens ficam em base64 numa coluna de texto). */
 export const MAX_ITENS_BIBLIOTECA = 150;
 export const MAX_BYTES_BIBLIOTECA = 250_000_000;
+export const MAX_GALERIAS = 30;
 /** A miniatura tem ~240px; este teto (≈110 KB) barra qualquer coisa fora do previsto. */
 export const LIMITE_MINIATURA_CHARS = 150_000;
 
@@ -33,18 +35,25 @@ export function validarMiniatura(dataUrl: string): ResultadoValidacaoMiniatura {
   return { ok: true };
 }
 
+/** "Promoções" e "promocoes " contam como o mesmo nome de galeria. */
+export function chaveNomeGaleria(nome: string): string {
+  return nome.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+}
+
 const titulo = z.string().trim().min(1, "Dê um título à imagem.").max(160);
-const categoria = z.string().trim().max(64).optional().nullable().transform(v => (v ? v : null));
+const nomeGaleria = z.string().trim().min(1, "Dê um nome à galeria.").max(60, "Nome de galeria muito longo (máximo 60 letras).");
+const galeriaIdOpcional = z.number().int().nullable().optional();
 
 export const midiasBibliotecaRouter = router({
-  /** Metadados + miniatura de todas as imagens (sem o arquivo inteiro), mais recentes primeiro. */
+  /** Metadados + miniatura de todas as imagens (sem o arquivo inteiro) e as galerias. */
   list: protectedProcedure.query(async () => {
     const db = await getDb();
-    if (!db) return { itens: [], totalBytes: 0, limiteItens: MAX_ITENS_BIBLIOTECA, limiteBytes: MAX_BYTES_BIBLIOTECA };
+    const vazio = { itens: [], galerias: [], totalBytes: 0, limiteItens: MAX_ITENS_BIBLIOTECA, limiteBytes: MAX_BYTES_BIBLIOTECA, limiteGalerias: MAX_GALERIAS };
+    if (!db) return vazio;
     const itens = await db.select({
       id: midiasBiblioteca.id,
       titulo: midiasBiblioteca.titulo,
-      categoria: midiasBiblioteca.categoria,
+      galeriaId: midiasBiblioteca.galeriaId,
       nomeArquivo: midiasBiblioteca.nomeArquivo,
       miniatura: midiasBiblioteca.miniatura,
       tamanhoBytes: midiasBiblioteca.tamanhoBytes,
@@ -54,8 +63,10 @@ export const midiasBibliotecaRouter = router({
       criadoPor: midiasBiblioteca.usuarioNome,
       criadoEm: midiasBiblioteca.createdAt,
     }).from(midiasBiblioteca).orderBy(desc(midiasBiblioteca.createdAt));
+    const galerias = await db.select({ id: midiasGalerias.id, nome: midiasGalerias.nome })
+      .from(midiasGalerias).orderBy(asc(midiasGalerias.ordem), asc(midiasGalerias.nome));
     const totalBytes = itens.reduce((soma, i) => soma + i.tamanhoBytes, 0);
-    return { itens, totalBytes, limiteItens: MAX_ITENS_BIBLIOTECA, limiteBytes: MAX_BYTES_BIBLIOTECA };
+    return { ...vazio, itens, galerias, totalBytes };
   }),
 
   /** Imagem inteira (PNG) para copiar ou ampliar. */
@@ -70,11 +81,11 @@ export const midiasBibliotecaRouter = router({
       return { dataUrl: `data:image/png;base64,${linha.base64}`, titulo: linha.titulo };
     }),
 
-  /** Adiciona uma imagem (o navegador manda o PNG já reduzido e a miniatura). */
+  /** Adiciona uma imagem (o navegador manda o PNG já reduzido e a miniatura) a uma galeria. */
   add: protectedProcedure
     .input(z.object({
       titulo,
-      categoria,
+      galeriaId: galeriaIdOpcional,
       nomeArquivo: z.string().trim().min(1).max(200),
       base64: z.string().min(100),
       miniatura: z.string().min(50),
@@ -97,10 +108,15 @@ export const midiasBibliotecaRouter = router({
       if ((uso?.total ?? 0) + png.tamanhoBytes > MAX_BYTES_BIBLIOTECA) {
         throw new Error("A biblioteca está cheia (limite de espaço). Exclua imagens que não usa mais.");
       }
+      if (input.galeriaId != null) {
+        const [g] = await db.select({ id: midiasGalerias.id }).from(midiasGalerias)
+          .where(eq(midiasGalerias.id, input.galeriaId)).limit(1);
+        if (!g) throw new Error("Essa galeria não existe mais. Atualize a página e escolha outra.");
+      }
 
       const [criada] = await db.insert(midiasBiblioteca).values({
         titulo: input.titulo,
-        categoria: input.categoria,
+        galeriaId: input.galeriaId ?? null,
         nomeArquivo: input.nomeArquivo,
         base64: input.base64,
         miniatura: input.miniatura,
@@ -113,14 +129,18 @@ export const midiasBibliotecaRouter = router({
       return { ok: true, id: criada.id };
     }),
 
-  /** Renomeia / troca a categoria. */
+  /** Renomeia e/ou move para outra galeria (`galeriaId: null` = sem galeria; omitido = não muda). */
   update: protectedProcedure
-    .input(z.object({ id: z.number().int(), titulo, categoria }))
+    .input(z.object({ id: z.number().int(), titulo, galeriaId: galeriaIdOpcional }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
       await db.update(midiasBiblioteca)
-        .set({ titulo: input.titulo, categoria: input.categoria, updatedAt: new Date() })
+        .set({
+          titulo: input.titulo,
+          ...(input.galeriaId !== undefined ? { galeriaId: input.galeriaId } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(midiasBiblioteca.id, input.id));
       return { ok: true };
     }),
@@ -143,6 +163,48 @@ export const midiasBibliotecaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
       await db.delete(midiasBiblioteca).where(eq(midiasBiblioteca.id, input.id));
+      return { ok: true };
+    }),
+
+  // ─── Galerias ──────────────────────────────────────────────────────────────
+
+  criarGaleria: protectedProcedure
+    .input(z.object({ nome: nomeGaleria }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const existentes = await db.select({ id: midiasGalerias.id, nome: midiasGalerias.nome }).from(midiasGalerias);
+      if (existentes.length >= MAX_GALERIAS) throw new Error(`Limite de ${MAX_GALERIAS} galerias atingido.`);
+      if (existentes.some(g => chaveNomeGaleria(g.nome) === chaveNomeGaleria(input.nome))) {
+        throw new Error(`Já existe uma galeria chamada "${input.nome}".`);
+      }
+      const [criada] = await db.insert(midiasGalerias)
+        .values({ nome: input.nome, ordem: existentes.length })
+        .returning({ id: midiasGalerias.id });
+      return { ok: true, id: criada.id };
+    }),
+
+  renomearGaleria: protectedProcedure
+    .input(z.object({ id: z.number().int(), nome: nomeGaleria }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const existentes = await db.select({ id: midiasGalerias.id, nome: midiasGalerias.nome }).from(midiasGalerias);
+      if (existentes.some(g => g.id !== input.id && chaveNomeGaleria(g.nome) === chaveNomeGaleria(input.nome))) {
+        throw new Error(`Já existe uma galeria chamada "${input.nome}".`);
+      }
+      await db.update(midiasGalerias).set({ nome: input.nome }).where(eq(midiasGalerias.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Apaga a galeria; as imagens NÃO são apagadas — voltam para "Sem galeria". */
+  excluirGaleria: protectedProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      await db.update(midiasBiblioteca).set({ galeriaId: null }).where(eq(midiasBiblioteca.galeriaId, input.id));
+      await db.delete(midiasGalerias).where(eq(midiasGalerias.id, input.id));
       return { ok: true };
     }),
 });

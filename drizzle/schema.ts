@@ -1915,9 +1915,22 @@ export type InsertWhatsappImagem = typeof whatsappImagem.$inferInsert;
 // de WhatsApp. Cada linha guarda a imagem inteira (PNG em base64, já reduzida no navegador) e uma
 // miniatura pequena separada, para a listagem não precisar carregar as imagens inteiras — a
 // imagem completa só é buscada na hora de copiar ou ampliar.
+// Galerias (álbuns) da biblioteca de mídias: agrupam as imagens (ex.: Institucional, Produtos,
+// Promoções). Apagar uma galeria NÃO apaga as imagens — elas voltam para "Sem galeria".
+export const midiasGalerias = pgTable("midias_galerias", {
+  id: serial("id").primaryKey(),
+  nome: varchar("nome", { length: 60 }).notNull().unique(),
+  ordem: integer("ordem").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type MidiaGaleria = typeof midiasGalerias.$inferSelect;
+
 export const midiasBiblioteca = pgTable("midias_biblioteca", {
   id: serial("id").primaryKey(),
   titulo: varchar("titulo", { length: 160 }).notNull(),
+  galeriaId: integer("galeriaId").references(() => midiasGalerias.id, { onDelete: "set null" }),
+  // LEGADO: antes das galerias a organização era esta categoria em texto livre. A migration 0036
+  // converteu cada categoria em uma galeria; a coluna fica sem uso (não foi apagada de propósito).
   categoria: varchar("categoria", { length: 64 }),
   nomeArquivo: varchar("nomeArquivo", { length: 256 }).notNull(),
   base64: text("base64").notNull(), // PNG em base64, sem o prefixo "data:image/png;base64,"
@@ -1932,6 +1945,7 @@ export const midiasBiblioteca = pgTable("midias_biblioteca", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (t) => ({
   categoriaIdx: index("midias_biblioteca_categoria_idx").on(t.categoria),
+  galeriaIdx: index("midias_biblioteca_galeria_idx").on(t.galeriaId),
 }));
 export type MidiaBiblioteca = typeof midiasBiblioteca.$inferSelect;
 export type InsertMidiaBiblioteca = typeof midiasBiblioteca.$inferInsert;
