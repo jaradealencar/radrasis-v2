@@ -1,0 +1,467 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found]){display:none!important}</style></head><body>
+<title>Padronização de Caixas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#F1EEE6; --surface:#FFFFFF; --surface-line:#E7E1D2;
+    --text:#211E17; --text-muted:#6E6857;
+    --accent:#D9782D; --accent-ink:#8A4713;
+    --line:#DDD6C6; --danger:#B8492F; --danger-ink:#7A2F1D;
+    --gap-seg:#C7BFA9; --gap-ink:#4C4636;
+    --good:#5B7A4A; --good-bg:#E6EBDF; --good-ink:#3E5530;
+    --warn:#B8492F; --warn-bg:#F3E2DB; --warn-ink:#7A2F1D;
+    --watch-bg:#F1E6C8; --watch-ink:#6B551F;
+
+    --k1:#F0E3C6; --k1-ink:#6B5A34;
+    --k2:#E4D0A4; --k2-ink:#5E4B27;
+    --k3:#D6BB82; --k3-ink:#4E3D1D;
+    --k4:#C6A468; --k4-ink:#3E3014;
+    --k5:#AC8850; --k5-ink:#FBF3E2;
+    --k6:#8F6E3E; --k6-ink:#FAF1DE;
+    --k7:#725530; --k7-ink:#F7ECD8;
+
+    --g1:#E4E1D6; --g1-ink:#57534A;
+    --g2:#D2CDBC; --g2-ink:#4B473C;
+    --g3:#BFB8A2; --g3-ink:#3E3A2E;
+    --g4:#AAA189; --g4-ink:#332F24;
+    --g5:#948A6F; --g5-ink:#FBF9F2;
+    --g6:#7C7259; --g6-ink:#F5F2E9;
+    --g7:#645B44; --g7-ink:#F0ECE0;
+
+    --box-top:#DEC79A; --box-front:#C8A876; --box-side:#9C7A46; --box-edge:#7C6038;
+    --gray-top:#D6D0BE; --gray-front:#B7AF97; --gray-side:#938A6E; --gray-edge:#635B44;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#171410; --surface:#211D16; --surface-line:#3A3324;
+      --text:#EFE8D8; --text-muted:#A79C86;
+      --accent:#F0993D; --accent-ink:#FFE2BC;
+      --line:#3A3324; --danger:#E08063; --danger-ink:#FFD9CB;
+      --gap-seg:#453E2C; --gap-ink:#C9C0AA;
+      --good:#8CAF7A; --good-bg:#2A3323; --good-ink:#B9D6A8;
+      --warn:#E08063; --warn-bg:#3A2721; --warn-ink:#F4C3B2;
+      --watch-bg:#3A3120; --watch-ink:#E4CE8E;
+
+      --k1:#3A2E1A; --k1-ink:#C9B78C;
+      --k2:#4A3B22; --k2-ink:#D3C295;
+      --k3:#5C4A29; --k3-ink:#DECD9E;
+      --k4:#725D34; --k4-ink:#EAD9AC;
+      --k5:#8F7748; --k5-ink:#F5E9C6;
+      --k6:#B0965E; --k6-ink:#2A2010;
+      --k7:#D3B87E; --k7-ink:#241C0C;
+
+      --g1:#302B20; --g1-ink:#B5AD97;
+      --g2:#3B3527; --g2-ink:#C2BAA2;
+      --g3:#463F2E; --g3-ink:#CFC6AC;
+      --g4:#544B36; --g4-ink:#DCD2B7;
+      --g5:#65593D; --g5-ink:#EDE4CC;
+      --g6:#7A6B47; --g6-ink:#F6EEDA;
+      --g7:#8C7C55; --g7-ink:#2A2314;
+
+      --box-top:#B08B54; --box-front:#946E3A; --box-side:#6B5230; --box-edge:#2C2211;
+      --gray-top:#5B5540; --gray-front:#48432F; --gray-side:#38341F; --gray-edge:#1E1B10;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#171410; --surface:#211D16; --surface-line:#3A3324;
+    --text:#EFE8D8; --text-muted:#A79C86;
+    --accent:#F0993D; --accent-ink:#FFE2BC;
+    --line:#3A3324; --danger:#E08063; --danger-ink:#FFD9CB;
+    --gap-seg:#453E2C; --gap-ink:#C9C0AA;
+    --good:#8CAF7A; --good-bg:#2A3323; --good-ink:#B9D6A8;
+    --warn:#E08063; --warn-bg:#3A2721; --warn-ink:#F4C3B2;
+    --watch-bg:#3A3120; --watch-ink:#E4CE8E;
+
+    --k1:#3A2E1A; --k1-ink:#C9B78C;
+    --k2:#4A3B22; --k2-ink:#D3C295;
+    --k3:#5C4A29; --k3-ink:#DECD9E;
+    --k4:#725D34; --k4-ink:#EAD9AC;
+    --k5:#8F7748; --k5-ink:#F5E9C6;
+    --k6:#B0965E; --k6-ink:#2A2010;
+    --k7:#D3B87E; --k7-ink:#241C0C;
+
+    --g1:#302B20; --g1-ink:#B5AD97;
+    --g2:#3B3527; --g2-ink:#C2BAA2;
+    --g3:#463F2E; --g3-ink:#CFC6AC;
+    --g4:#544B36; --g4-ink:#DCD2B7;
+    --g5:#65593D; --g5-ink:#EDE4CC;
+    --g6:#7A6B47; --g6-ink:#F6EEDA;
+    --g7:#8C7C55; --g7-ink:#2A2314;
+
+    --box-top:#B08B54; --box-front:#946E3A; --box-side:#6B5230; --box-edge:#2C2211;
+    --gray-top:#5B5540; --gray-front:#48432F; --gray-side:#38341F; --gray-edge:#1E1B10;
+  }
+
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:15px; line-height:1.55; }
+  .wrap{ max-width:1080px; margin:0 auto; padding:48px 28px 64px; }
+  h1,h2,h3{ font-family:'Barlow Condensed', system-ui, sans-serif; text-wrap:balance; margin:0; }
+  .eyebrow{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); font-weight:600; }
+
+  header{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-end; gap:24px; padding-bottom:28px; border-bottom:2px solid var(--text); margin-bottom:32px; }
+  header h1{ font-size:42px; font-weight:800; letter-spacing:-.01em; line-height:1.02; }
+  header .sub{ color:var(--text-muted); font-size:15px; max-width:60ch; margin-top:8px; }
+  .manifest{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-muted); text-align:right; line-height:1.7; white-space:nowrap; }
+  .manifest b{ color:var(--text); font-weight:600; }
+
+  .kpis{ display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-bottom:40px; }
+  .kpi{ background:var(--surface); padding:16px 13px; }
+  .kpi .v{ font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; font-size:22px; font-weight:600; color:var(--accent-ink); transition:color .15s; }
+  .kpi .l{ font-size:11.5px; color:var(--text-muted); margin-top:4px; }
+
+  .sec-head{ display:flex; align-items:baseline; gap:12px; margin:0 0 16px; flex-wrap:wrap; }
+  .sec-head h2{ font-size:24px; font-weight:700; }
+  .sec-head .n{ font-family:'IBM Plex Mono',monospace; color:var(--text-muted); font-size:13px; }
+
+  .coverage{ margin-bottom:8px; }
+  .bar{ display:flex; width:100%; height:38px; border-radius:3px; overflow:hidden; border:1px solid var(--surface-line); }
+  .bar .seg{ display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; transition:width .25s ease; }
+  .bar-legend{ display:flex; flex-wrap:wrap; gap:12px 18px; margin-top:12px; font-size:12px; color:var(--text-muted); }
+  .bar-legend .item{ display:flex; align-items:center; gap:6px; }
+  .bar-legend .sw{ width:10px; height:10px; border-radius:2px; flex:none; }
+  .bar-legend .grp{ font-weight:600; color:var(--text); margin-left:6px; }
+
+  .boxes{ display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin:20px 0 12px; }
+  .box-card{ background:var(--surface); padding:16px 10px 16px; display:flex; flex-direction:column; align-items:center; text-align:center; position:relative; }
+  .box-card .tag{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--text-muted); letter-spacing:.06em; }
+  .box-card svg{ display:block; margin:6px 0 8px; }
+  .box-card .dims{ font-family:'IBM Plex Mono',monospace; font-size:14.5px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .box-card .dims small{ font-size:10.5px; color:var(--text-muted); font-weight:400; }
+  .box-card .pct{ font-family:'IBM Plex Mono',monospace; font-size:21px; font-weight:600; color:var(--text); margin-top:8px; font-variant-numeric:tabular-nums; }
+  .box-card .pct-l{ font-size:10.5px; color:var(--text-muted); margin-top:-2px; }
+  .box-card .fill{ width:100%; margin-top:10px; }
+  .box-card .fill .row{ display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-bottom:3px; }
+  .box-card .fill .track{ height:5px; border-radius:3px; background:var(--surface-line); overflow:hidden; }
+  .box-card .fill .fillbar{ height:100%; background:var(--text-muted); border-radius:3px; }
+  .box-card.new .fill .fillbar{ background:var(--accent); }
+  .box-card .weights{ margin-top:10px; padding-top:8px; border-top:1px solid var(--surface-line); width:100%; font-size:11px; color:var(--text-muted); }
+  .box-card .weights .row{ display:flex; justify-content:space-between; gap:6px; }
+  .box-card .weights .num{ color:var(--text); font-weight:500; font-family:'IBM Plex Mono',monospace; }
+  .box-card .stock{ margin-top:8px; padding:7px 8px; width:100%; background:var(--bg); border:1px solid var(--surface-line); border-radius:4px; }
+  .box-card .stock .row{ display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); }
+  .box-card .stock .row b{ color:var(--accent-ink); font-family:'IBM Plex Mono',monospace; font-size:13px; }
+  .box-card .stock .sub{ font-size:9.5px; color:var(--text-muted); margin-top:1px; }
+  .status{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:600; letter-spacing:.04em; padding:3px 7px; border-radius:3px; margin-top:8px; }
+  .status.keep{ background:var(--good-bg); color:var(--good-ink); }
+  .status.watch{ background:var(--watch-bg); color:var(--watch-ink); }
+  .status.drop{ background:var(--warn-bg); color:var(--warn-ink); }
+  .box-card.zero{ background:repeating-linear-gradient(135deg, var(--surface), var(--surface) 8px, var(--bg) 8px, var(--bg) 16px); }
+  .box-card.highlight{ box-shadow:inset 0 0 0 2px var(--accent); }
+
+  .callouts{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:20px 0 40px; }
+  .callouts.callouts-3{ grid-template-columns:1fr 1fr 1fr; }
+  .callout{ display:flex; gap:14px; align-items:flex-start; padding:16px 18px; background:var(--surface); border:1px solid var(--surface-line); border-left:4px solid var(--danger); }
+  .callout.muted{ border-left-color:var(--gap-seg); }
+  .callout .v{ font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:var(--danger-ink); flex:none; font-variant-numeric:tabular-nums; }
+  .callout.muted .v{ color:var(--gap-ink); }
+  .callout p{ margin:0; color:var(--text-muted); font-size:13px; }
+  .callout p b{ color:var(--text); font-weight:600; }
+
+  /* ---- toggle ---- */
+  .toggle-row{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+  .toggle{ display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:var(--surface); }
+  .toggle button{ font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; border:none; background:transparent; color:var(--text-muted); padding:9px 18px; cursor:pointer; transition:background .15s, color .15s; }
+  .toggle button.active{ background:var(--accent); color:#fff; }
+  .toggle button:not(.active):hover{ background:var(--bg); color:var(--text); }
+  .toggle-note{ font-size:12.5px; color:var(--text-muted); }
+  .toggle-note b{ color:var(--accent-ink); font-family:'IBM Plex Mono',monospace; }
+
+  .notes{ border-top:2px solid var(--text); padding-top:20px; }
+  .notes h3{ font-size:20px; font-weight:700; margin-bottom:12px; }
+  .notes ol,.notes ul{ margin:0; padding-left:20px; color:var(--text-muted); font-size:13.5px; }
+  .notes li{ margin-bottom:8px; }
+  .notes li b{ color:var(--text); font-weight:600; }
+  .notes code{ font-family:'IBM Plex Mono',monospace; background:var(--bg); border:1px solid var(--surface-line); padding:1px 5px; border-radius:3px; font-size:12.5px; }
+  .alt-table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
+  .alt-table th,.alt-table td{ text-align:left; padding:7px 10px; border-bottom:1px solid var(--surface-line); }
+  .alt-table th{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); font-weight:600; }
+  .alt-table td.num{ font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; }
+
+  @media (max-width:900px){
+    .kpis{ grid-template-columns:repeat(2,1fr); }
+    .boxes{ grid-template-columns:repeat(3,1fr); }
+    .callouts, .callouts.callouts-3{ grid-template-columns:1fr; }
+    .manifest{ text-align:left; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="eyebrow">Letreiros Express — Expedição · Revisão 5</div>
+      <h1>Padronização<br>de Caixas</h1>
+      <div class="sub">Com a 60×40×22 que você já tinha e ainda não tinha entrado na conta: o catálogo mantido sobe de 14,9% pra 17,9% de cobertura sozinho, e os três grupos de caixas novas foram recalculados sobre o que sobrou.</div>
+    </div>
+    <div class="manifest">
+      REF. <b>PADR-CX-05</b><br>
+      DATA <b>03/09/2026</b><br>
+      OS ANALISADAS <b>498</b><br>
+      CATÁLOGO ATUAL <b>7 tamanhos (5 mantidos)</b>
+    </div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">17,9%</div><div class="l">já coberto pelo catálogo mantido (5 caixas)</div></div>
+    <div class="kpi"><div class="v">1 de 7</div><div class="l">caixa do catálogo sem nenhum uso</div></div>
+    <div class="kpi" id="kpiCobertura"><div class="v">—</div><div class="l">cobertura total: atual + novas</div></div>
+    <div class="kpi" id="kpiFill"><div class="v">—</div><div class="l">aproveitamento médio das caixas novas</div></div>
+    <div class="kpi" id="kpiFora"><div class="v">—</div><div class="l">seguem sob medida mesmo assim</div></div>
+    <div class="kpi" id="kpiVol"><div class="v">—</div><div class="l">volume médio das caixas novas</div></div>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <h2>Catálogo que você já tem</h2>
+      <span class="n">7 tamanhos (5 mantidos cobrem 17,9% da produção)</span>
+    </div>
+    <div class="boxes" id="existRow"></div>
+  </section>
+
+  <div class="callouts callouts-3">
+    <div class="callout">
+      <div class="v">19 OS</div>
+      <p><b>a 60×40×22 entrou na conta agora</b> — sozinha cobre 3,8% da produção com 66% de aproveitamento, a segunda melhor do catálogo. Ela empurra o catálogo mantido de 14,9% pra 17,9% de cobertura.</p>
+    </div>
+    <div class="callout">
+      <div class="v">0 OS</div>
+      <p><b>a 72×26×31 não é usada por nenhuma OS.</b> Tudo que caberia nela já cabe numa caixa existente menor primeiro — ela nunca chega a ser escolhida. Segue como descontinuada.</p>
+    </div>
+    <div class="callout muted">
+      <div class="v">4 OS</div>
+      <p><b>a 50×35×30 também sai de produção</b>, por decisão do usuário — menor volume de uso do catálogo (0,8%). Essas 4 OS caem pra próxima caixa disponível com aproveitamento bem menor, mas o volume é baixo o suficiente pra compensar simplificar o estoque.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <h2>Quantas caixas novas vale a pena fabricar?</h2>
+      <span class="n">mesmo ponto de partida (o que sobra do catálogo mantido) — três jeitos de fechar a conta</span>
+    </div>
+    <div class="toggle-row">
+      <div class="toggle" id="toggle">
+        <button data-g="A" class="active">5 novas · 89,8%</button>
+        <button data-g="B">7 novas · 91,2%</button>
+        <button data-g="C">5 novas enxutas · 69,7%</button>
+      </div>
+      <div class="toggle-note" id="toggleNote"></div>
+    </div>
+    <div class="coverage">
+      <div class="bar" id="covBar"></div>
+      <div class="bar-legend" id="covLegend"></div>
+    </div>
+    <div class="boxes" id="newRow" style="grid-template-columns:repeat(5,1fr)"></div>
+  </section>
+
+  <div class="callouts">
+    <div class="callout">
+      <div class="v">39 OS</div>
+      <p><b>7,8% tem alguma medida acima de 150cm</b> — grande demais pra qualquer caixa fabricável, segue cortada sob medida (não muda com a escolha acima).</p>
+    </div>
+    <div class="callout muted" id="leftoverCallout">
+      <div class="v">—</div>
+      <p id="leftoverText"></p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h3>Como ler essa comparação</h3>
+    <ol>
+      <li><b>As três opções partem do mesmo ponto:</b> primeiro eu testo se a OS já cabe no catálogo mantido — as 5 caixas que ficam depois de descontinuar a 50×35×30 e a 72×26×31 (17,9%, já incluindo a 60×40×22 que você lembrou depois); só o que sobra (370 OS) é reagrupado em tamanhos novos — o que muda entre os grupos é só quanto desse restante cada um tenta cobrir.</li>
+      <li><b>5 → 7 caixas:</b> a cobertura sobe pouco (89,8% → 91,2%), mas o <b>aproveitamento</b> sobe de verdade, de 42% pra 47% — a 7 inclui a <code>130×95×25</code>, bem mais rasa que as outras (só 25cm de altura pra um piso de 130×95), que rouba itens que iam pra caixas mais altas e largas, encaixando mais justo.</li>
+      <li><b>5 caixas enxutas (a que você pediu agora):</b> em vez de tentar cobrir quase tudo que sobra, essas 5 caixas deixam de fora todo item que exigiria estourar muito o tamanho — cobrindo só 69,7% do total, mas com <b>caixas bem menores</b>: volume médio de 224L contra 532L do primeiro grupo (menos da metade), e nenhuma delas passa de 125cm em qualquer medida. Menos "ar" em cada caixa despachada = menos peso cúbico cobrado no frete, pra quem entra nesse padrão. Em compensação, 22,5% da produção (112 OS) que antes cabia num tamanho padrão volta a ficar sem — some à conta do que já segue sob medida (>150cm), passando de ~10% pra ~30% de OS fora do padrão.</li>
+      <li><b>Testei também 8 caixas novas</b> (variação do grupo de 7) e não virou opção aqui: a cobertura cai um pouco porque fragmenta a ponta grande em tamanhos quase iguais com pouquíssimo uso cada — mais um molde sem ganho real.</li>
+      <li><b>Como escolher:</b> se o custo que mais pesa é frete/cubagem, o grupo enxuto vale a pena mesmo cobrindo menos. Se é o número de moldes/ferramentas, o de 5 "normal" já cobre quase tudo. Se é o aproveitamento por caixa despachada, o de 7 é o melhor equilíbrio.</li>
+    </ol>
+  </div>
+
+</div>
+
+<script>
+  function buildBoxSVG(L, W, H, tones) {
+    var PX = 0.42, OXR = 0.52, OYR = 0.30;
+    var w = W * PX, h = H * PX, d = L * PX;
+    var ox = d * OXR, oy = d * OYR;
+    var originX = 4, baseY = 60;
+    var A = [originX, baseY], B = [originX + w, baseY], C = [originX + w, baseY - h], D = [originX, baseY - h];
+    var E = [originX + ox, baseY - h - oy], F = [originX + w + ox, baseY - h - oy], G = [originX + w + ox, baseY - oy];
+    function pts(arr){ return arr.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' '); }
+    return '<svg width="94" height="72" viewBox="0 4 116 62" xmlns="http://www.w3.org/2000/svg">' +
+      '<polygon points="'+pts([D,C,F,E])+'" fill="'+tones.top+'" stroke="'+tones.edge+'" stroke-width="0.6"/>' +
+      '<polygon points="'+pts([B,C,F,G])+'" fill="'+tones.side+'" stroke="'+tones.edge+'" stroke-width="0.6"/>' +
+      '<polygon points="'+pts([A,B,C,D])+'" fill="'+tones.front+'" stroke="'+tones.edge+'" stroke-width="0.6"/>' +
+      '</svg>';
+  }
+  var grayTones = { top:'var(--gray-top)', side:'var(--gray-side)', front:'var(--gray-front)', edge:'var(--gray-edge)' };
+  var krafTones = { top:'var(--box-top)', side:'var(--box-side)', front:'var(--box-front)', edge:'var(--box-edge)' };
+  function fmt(n){ return String(n).replace('.', ','); }
+
+  // ---- catálogo atual: manter / monitorar / descontinuar ----
+  var existing = [
+    { dims:[25,20,10], pctTotal:1.8, count:9,  fill:88, pesoMediano:0.50, pesoMax:1.00, k:'g1', status:'keep',  statusLabel:'MANTER' },
+    { dims:[32,22,22], pctTotal:4.2, count:21, fill:68, pesoMediano:1.00, pesoMax:2.30, k:'g2', status:'keep',  statusLabel:'MANTER' },
+    { dims:[47,30,27], pctTotal:3.6, count:18, fill:47, pesoMediano:1.95, pesoMax:6.10, k:'g3', status:'keep',  statusLabel:'MANTER' },
+    { dims:[70,35,20], pctTotal:4.4, count:22, fill:41, pesoMediano:2.70, pesoMax:5.00, k:'g4', status:'keep',  statusLabel:'MANTER' },
+    { dims:[50,35,30], pctTotal:0.8, count:4,  fill:64, pesoMediano:6.5, pesoMax:8.9,  k:'g5', status:'drop', statusLabel:'DESCONTINUAR' },
+    { dims:[60,40,22], pctTotal:3.8, count:19, fill:66, pesoMediano:4.80, pesoMax:6.80, k:'g7', status:'keep',  statusLabel:'MANTER · NOVA INFO', highlight:true },
+    { dims:[72,26,31], pctTotal:0.0, count:0,  fill:0,  pesoMediano:null, pesoMax:null, k:'g6', status:'drop', statusLabel:'DESCONTINUAR', zero:true }
+  ];
+
+  var existRow = document.getElementById('existRow');
+  existing.forEach(function(b){
+    var el = document.createElement('div');
+    el.className = 'box-card' + (b.zero ? ' zero' : '') + (b.highlight ? ' highlight' : '');
+    el.innerHTML =
+      '<div class="tag">JÁ EXISTE</div>' +
+      buildBoxSVG(b.dims[0], b.dims[1], b.dims[2], grayTones) +
+      '<div class="dims">'+b.dims.join('×')+' <small>cm</small></div>' +
+      '<div class="pct">'+fmt(b.pctTotal.toFixed(1))+'%</div>' +
+      '<div class="pct-l">'+b.count+' OS</div>' +
+      '<div class="fill"><div class="row"><span>aproveitamento</span><span>'+b.fill+'%</span></div>' +
+        '<div class="track"><div class="fillbar" style="width:'+b.fill+'%"></div></div></div>' +
+      (b.status !== 'drop' ?
+        '<div class="stock"><div class="row"><span>estoque 3 meses</span><b>'+b.count+'</b></div><div class="sub">~'+(b.count/3).toFixed(1).replace('.',',')+' caixas/mês</div></div>'
+        : '<div class="stock"><div class="row"><span>estoque 3 meses</span><b>0</b></div><div class="sub">descontinuada</div></div>') +
+      '<span class="status '+b.status+'">'+b.statusLabel+'</span>';
+    existRow.appendChild(el);
+  });
+
+  // ---- grupos A (5) e B (7) ----
+  var groups = {
+    A: {
+      label: '5 novas', total: 10,
+      coverage: 89.8, fill: 42, avgVolume: 532,
+      boxes: [
+        { dims:[80,65,40],   pctTotal:22.7, count:113, fill:37, pesoMediano:7.60,  pesoMax:21.70, k:'k1' },
+        { dims:[110,80,25],  pctTotal:11.6, count:58,  fill:44, pesoMediano:10.60, pesoMax:19.40, k:'k2' },
+        { dims:[110,90,50],  pctTotal:15.7, count:78,  fill:48, pesoMediano:19.70, pesoMax:62.20, k:'k3' },
+        { dims:[145,130,30], pctTotal:10.8, count:54,  fill:35, pesoMediano:17.65, pesoMax:51.10, k:'k4' },
+        { dims:[150,130,60], pctTotal:11.0, count:55,  fill:45, pesoMediano:43.30, pesoMax:95.00, k:'k5' }
+      ],
+      leftover:12, leftoverPct:2.4
+    },
+    B: {
+      label: '7 novas', total: 12,
+      coverage: 91.2, fill: 47, avgVolume: 520,
+      boxes: [
+        { dims:[70,60,40],   pctTotal:17.1, count:85, fill:42, pesoMediano:6.50,  pesoMax:21.70, k:'k1' },
+        { dims:[100,70,25],  pctTotal:10.8, count:54, fill:51, pesoMediano:10.00, pesoMax:20.90, k:'k2', flat:true },
+        { dims:[130,95,25],  pctTotal:8.6,  count:43, fill:36, pesoMediano:12.45, pesoMax:29.70, k:'k3', flat:true },
+        { dims:[105,85,50],  pctTotal:14.9, count:74, fill:50, pesoMediano:18.95, pesoMax:42.60, k:'k4' },
+        { dims:[150,135,30], pctTotal:9.0,  count:45, fill:40, pesoMediano:25.90, pesoMax:51.10, k:'k5', flat:true },
+        { dims:[140,110,40], pctTotal:5.0,  count:25, fill:67, pesoMediano:36.75, pesoMax:59.50, k:'k6' },
+        { dims:[150,135,65], pctTotal:7.8,  count:39, fill:46, pesoMediano:52.50, pesoMax:95.00, k:'k7' }
+      ],
+      leftover:5, leftoverPct:1.0
+    },
+    C: {
+      label: '5 novas enxutas', total: 10,
+      coverage: 69.7, fill: 44, avgVolume: 224,
+      boxes: [
+        { dims:[80,55,15],   pctTotal:3.2,  count:16, fill:51, pesoMediano:3.90,  pesoMax:6.50,  k:'k1', flat:true },
+        { dims:[60,45,30],   pctTotal:3.2,  count:16, fill:61, pesoMediano:6.50,  pesoMax:9.00,  k:'k2' },
+        { dims:[120,100,15], pctTotal:7.6,  count:38, fill:36, pesoMediano:6.30,  pesoMax:16.80, k:'k3', flat:true },
+        { dims:[90,75,40],   pctTotal:21.3, count:106, fill:41, pesoMediano:10.50, pesoMax:25.10, k:'k4' },
+        { dims:[125,105,40], pctTotal:16.5, count:82,  fill:43, pesoMediano:19.40, pesoMax:44.90, k:'k5' }
+      ],
+      leftover:112, leftoverPct:22.5
+    }
+  };
+  var outScopePct = 7.8;
+
+  function render(g) {
+    var G = groups[g];
+    document.querySelectorAll('.toggle button').forEach(function(btn){
+      btn.classList.toggle('active', btn.dataset.g === g);
+    });
+    document.getElementById('kpiCobertura').querySelector('.v').textContent = fmt(G.coverage.toFixed(1)) + '%';
+    document.getElementById('kpiFill').querySelector('.v').textContent = G.fill + '%';
+    document.getElementById('kpiFora').querySelector('.v').textContent = fmt((outScopePct + G.leftoverPct).toFixed(1)) + '%';
+    document.getElementById('kpiVol').querySelector('.v').textContent = G.avgVolume + 'L';
+    var notes = {
+      A: '10 tamanhos no total (5 mantidos + 5) · aproveitamento médio <b>42%</b> · volume médio da caixa <b>532L</b>',
+      B: '12 tamanhos no total (5 mantidos + 7) · aproveitamento médio <b>47%</b> · inclui a 130×95×25, mais rasa e estreita',
+      C: '10 tamanhos no total (5 mantidos + 5, porém menores) · caixas com <b>menos da metade do volume médio</b> do grupo de 5 (224L vs 532L) — troca cobertura por caixa bem mais compacta'
+    };
+    document.getElementById('toggleNote').innerHTML = notes[g];
+
+    // barra
+    var bar = document.getElementById('covBar');
+    bar.innerHTML = '';
+    existing.forEach(function(b){
+      var seg = document.createElement('div');
+      seg.className = 'seg';
+      seg.style.width = Math.max(b.pctTotal, 0.15) + '%';
+      seg.style.background = 'var(--' + b.k + ')';
+      seg.style.color = 'var(--' + b.k + '-ink)';
+      if (b.pctTotal >= 5) seg.textContent = fmt(b.pctTotal.toFixed(1)) + '%';
+      bar.appendChild(seg);
+    });
+    G.boxes.forEach(function(b){
+      var seg = document.createElement('div');
+      seg.className = 'seg';
+      seg.style.width = Math.max(b.pctTotal, 0.15) + '%';
+      seg.style.background = 'var(--' + b.k + ')';
+      seg.style.color = 'var(--' + b.k + '-ink)';
+      if (b.pctTotal >= 5) seg.textContent = fmt(b.pctTotal.toFixed(1)) + '%';
+      bar.appendChild(seg);
+    });
+    [['gap-seg','gap-ink',G.leftoverPct],['danger', null, outScopePct]].forEach(function(t){
+      var seg = document.createElement('div');
+      seg.className = 'seg';
+      seg.style.width = t[2] + '%';
+      seg.style.background = 'var(--' + t[0] + ')';
+      seg.style.color = t[1] ? 'var(--' + t[1] + ')' : '#fff';
+      if (t[2] >= 5) seg.textContent = fmt(t[2].toFixed(1)) + '%';
+      bar.appendChild(seg);
+    });
+
+    // legenda
+    var legend = document.getElementById('covLegend');
+    legend.innerHTML = '<span class="grp">Já tem:</span>';
+    existing.forEach(function(b){
+      legend.innerHTML += '<span class="item"><span class="sw" style="background:var(--'+b.k+')"></span>'+b.dims.join('×')+' · '+fmt(b.pctTotal.toFixed(1))+'%</span>';
+    });
+    legend.innerHTML += '<span class="grp">Novas ('+G.label+'):</span>';
+    G.boxes.forEach(function(b){
+      legend.innerHTML += '<span class="item"><span class="sw" style="background:var(--'+b.k+')"></span>'+b.dims.join('×')+(b.flat?' ⟵ estreita':'')+' · '+fmt(b.pctTotal.toFixed(1))+'%</span>';
+    });
+    legend.innerHTML += '<span class="item"><span class="sw" style="background:var(--gap-seg)"></span>Sem padrão · '+fmt(G.leftoverPct.toFixed(1))+'%</span>';
+    legend.innerHTML += '<span class="item"><span class="sw" style="background:var(--danger)"></span>Sob medida (&gt;150cm) · 7,8%</span>';
+
+    // cartões
+    var row = document.getElementById('newRow');
+    row.style.gridTemplateColumns = 'repeat(' + Math.min(G.boxes.length, 5) + ',1fr)';
+    row.innerHTML = '';
+    G.boxes.forEach(function(b, i){
+      var el = document.createElement('div');
+      el.className = 'box-card new';
+      el.innerHTML =
+        '<div class="tag">NOVA · CAIXA '+(i+1)+(b.flat?' · ESTREITA':'')+'</div>' +
+        buildBoxSVG(b.dims[0], b.dims[1], b.dims[2], krafTones) +
+        '<div class="dims">'+b.dims.join('×')+' <small>cm</small></div>' +
+        '<div class="pct" style="color:var(--accent-ink)">'+fmt(b.pctTotal.toFixed(1))+'%</div>' +
+        '<div class="pct-l">'+b.count+' OS da produção</div>' +
+        '<div class="fill"><div class="row"><span>aproveitamento</span><span>'+b.fill+'%</span></div>' +
+          '<div class="track"><div class="fillbar" style="width:'+b.fill+'%"></div></div></div>' +
+        '<div class="weights">' +
+          '<div class="row"><span>peso mediano</span><span class="num">'+fmt(b.pesoMediano)+'kg</span></div>' +
+          '<div class="row"><span>peso até</span><span class="num">'+fmt(b.pesoMax)+'kg</span></div>' +
+        '</div>' +
+        '<div class="stock"><div class="row"><span>estoque 3 meses</span><b>'+b.count+'</b></div><div class="sub">~'+(b.count/3).toFixed(1).replace('.',',')+' caixas/mês</div></div>';
+      row.appendChild(el);
+    });
+
+    // callout leftover
+    document.getElementById('leftoverCallout').querySelector('.v').textContent = G.leftover + ' OS';
+    document.getElementById('leftoverText').innerHTML = '<b>'+fmt(G.leftoverPct.toFixed(1))+'% não coube nem no catálogo atual nem nas '+G.boxes.length+' novas</b> — formatos fora da curva mesmo ≤150cm. Seguem sob medida ou na caixa maior seguinte, com mais desperdício.';
+  }
+
+  document.getElementById('toggle').addEventListener('click', function(e){
+    var btn = e.target.closest('button');
+    if (btn) render(btn.dataset.g);
+  });
+  render('A');
+</script>
+
+</body></html>
