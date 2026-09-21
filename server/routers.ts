@@ -16,6 +16,7 @@ import { empacotamentoRouter } from "./routers/empacotamento";
 import { metaProdutosRouter } from "./routers/metaProdutos";
 import { performanceComercialRouter } from "./routers/performanceComercial";
 import { whatsappImagemRouter } from "./routers/whatsappImagem";
+import { guiaFornecedoresRouter } from "./routers/guiaFornecedores";
 import { midiasBibliotecaRouter } from "./routers/midiasBiblioteca";
 import { insightsComerciaisRouter } from "./routers/insightsComerciais";
 import { analiseGeograficaRouter } from "./routers/analiseGeografica";
@@ -1397,6 +1398,7 @@ O POP deve:
   performanceAbc: performanceAbcRouter,
   performanceComercial: performanceComercialRouter,
   whatsappImagem: whatsappImagemRouter,
+  guiaFornecedores: guiaFornecedoresRouter,
   midiasBiblioteca: midiasBibliotecaRouter,
   insightsComerciais: insightsComerciaisRouter,
   analiseGeografica: analiseGeograficaRouter,

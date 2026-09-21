@@ -150,6 +150,11 @@ export async function createApp(): Promise<Express> {
     })
   );
 
+  // ─── Guia de Fornecedores: rotas públicas (CORS aberto) para o site espelho ─
+  // em domínio separado do radrasis, sem login. Ver server/routes/publico-guia-fornecedores.ts.
+  const { registrarRotasPublicoGuiaFornecedores } = await import("../routes/publico-guia-fornecedores");
+  registrarRotasPublicoGuiaFornecedores(app);
+
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
   const { handleSincronizarOS, handleStatusSincronizacao } = await import("../sync/scheduled-sync-os-handler");
   app.post("/api/scheduled/sincronizarOS", handleSincronizarOS);

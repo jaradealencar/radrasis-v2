@@ -52,11 +52,24 @@ function primeiroEndereco(os: MubiSysOS): { cidade: string; estado: string } {
   return { cidade: e?.cidade ?? '', estado: e?.estado ?? '' };
 }
 
+/** Celular do cliente na OS — mesmo campo e mesma preferência (primeiro contato ATIVO com
+ * número; senão o primeiro com número) de `extrairContatoDaOs` em
+ * ../routers/performanceComercial.ts. Duplicado aqui (em vez de importado) de propósito: este
+ * módulo de sync não deve depender de um arquivo de router. Se um dia divergirem, é bug —
+ * mantenha os dois em sincronia. */
+function primeiroTelefone(os: MubiSysOS): string {
+  const contatos: any[] = Array.isArray((os as any).cliente_contato) ? (os as any).cliente_contato : [];
+  const numeroDe = (c: any) => c?.celular || c?.telefone || c?.fone || '';
+  const ativo = (c: any) => String(c?.status ?? '').toLowerCase() !== 'inativo';
+  const escolhido = contatos.find(c => numeroDe(c) && ativo(c)) ?? contatos.find(c => numeroDe(c));
+  return numeroDe(escolhido);
+}
+
 const HISTORICO_OS_COLS = [
   'osNumero', 'tipoOs', 'empresa', 'trabalho', 'logistica', 'dataAprovacao', 'dataEntrega', 'dataFaturamento',
   'status', 'vendedor', 'valorTotal', 'descontos', 'valorOs', 'materiaPrima', 'custoFixo', 'maoDeObra',
   'tarifasFinanceiras', 'comissoesInternas', 'comissoesExternas', 'terceirizados', 'tributos', 'custosTotal',
-  'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'mes', 'ano',
+  'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'telefone', 'mes', 'ano',
 ];
 
 const HISTORICO_ORC_COLS = [
@@ -71,6 +84,7 @@ function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, un
   const valorMargem = Number((os as any).valor_margem) || 0;
   const resultadoPct = valorTotal > 0 ? (valorMargem / valorTotal) * 100 : 0;
   const { cidade, estado } = primeiroEndereco(os);
+  const telefone = primeiroTelefone(os);
 
   return {
     osNumero: String(os.sequencial_ordem || os.numero_pedido_compra || os.id || ''),
@@ -101,6 +115,7 @@ function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, un
     contribuicaoPct: resultadoPct.toFixed(2),
     cidade,
     estado: estado ? String(estado).slice(0, 2) : null,
+    telefone: telefone || null,
     mes,
     ano,
   };

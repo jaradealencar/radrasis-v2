@@ -1253,6 +1253,11 @@ export const historicoOs = pgTable("historico_os", {
   // — usados pela Análise Geográfica em comercial/geografia.
   cidade: varchar("cidade", { length: 128 }),
   estado: varchar("estado", { length: 2 }),
+  // Celular do primeiro contato ativo do cliente (os.cliente_contato[0] da API MubiSys, mesmo
+  // campo de onde vem cidade/estado acima) — adicionado em 2026-09-21 para o Guia de
+  // Fornecedores (server/routers/guiaFornecedores.ts). Populado por scheduled-sync-historico.ts
+  // dali pra frente; OS mais antigas ficam NULL até o backfill (server/scripts/backfill-telefone-historico.ts).
+  telefone: varchar("telefone", { length: 32 }),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1910,6 +1915,71 @@ export const whatsappImagem = pgTable("whatsapp_imagem", {
 });
 export type WhatsappImagem = typeof whatsappImagem.$inferSelect;
 export type InsertWhatsappImagem = typeof whatsappImagem.$inferInsert;
+
+// Guia de Fornecedores (client/src/pages/GuiaFornecedores.tsx) — página PÚBLICA (sem login,
+// ver exceção em client/src/App.tsx/AuthGate) que indica a consumidor final os clientes da
+// Letreiros Express que compraram 2+ vezes nos últimos 12 meses e continuam ativos (última
+// compra há no máximo 4 meses). A lista em si é sempre calculada ao vivo a partir de
+// historico_os — esta tabela só conta os cliques no botão de WhatsApp, por fornecedor.
+export const guiaFornecedoresCliques = pgTable("guia_fornecedores_cliques", {
+  id: serial("id").primaryKey(),
+  // Chave normalizada (normalizeEmpresaKey) do nome como aparece em historico_os.empresa —
+  // não há id de cliente estável nessa tabela para referenciar.
+  empresaChave: varchar("empresaChave", { length: 256 }).notNull().unique(),
+  empresaNome: varchar("empresaNome", { length: 256 }).notNull(),
+  cliques: integer("cliques").notNull().default(0),
+  ultimoCliqueEm: timestamp("ultimoCliqueEm"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type GuiaFornecedoresClique = typeof guiaFornecedoresCliques.$inferSelect;
+export type InsertGuiaFornecedoresClique = typeof guiaFornecedoresCliques.$inferInsert;
+
+// Uma linha por carregamento da página pública do Guia de Fornecedores — visitanteId é um
+// UUID gerado pelo navegador (localStorage, sem login/IP), só para diferenciar "quantas vezes
+// a página abriu" (COUNT) de "quantas pessoas diferentes abriram" (COUNT DISTINCT visitanteId).
+export const guiaFornecedoresVisitas = pgTable("guia_fornecedores_visitas", {
+  id: serial("id").primaryKey(),
+  visitanteId: varchar("visitanteId", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  visitanteIdx: index("guia_fornecedores_visitas_visitante_idx").on(t.visitanteId),
+  dataIdx: index("guia_fornecedores_visitas_data_idx").on(t.createdAt),
+}));
+export type GuiaFornecedoresVisita = typeof guiaFornecedoresVisitas.$inferSelect;
+
+// Ajuste manual do Daniel sobre a lista calculada automaticamente (2+ compras válidas nos
+// últimos 12 meses, sem sumir há 4+): "excluir" tira um fornecedor que qualificaria; "incluir"
+// força um fornecedor que não qualificaria a aparecer (telefone/cidade/estado manuais, já que
+// pode não ter OS recente pra tirar isso do historico_os). Mesmo espírito de `clienteOverrides`
+// em performanceComercial.ts, mas tabela própria — motivo de negócio diferente.
+export const guiaFornecedoresOverrideAcaoEnum = pgEnum("guia_fornecedores_override_acao", ["incluir", "excluir"]);
+export const guiaFornecedoresOverrides = pgTable("guia_fornecedores_overrides", {
+  id: serial("id").primaryKey(),
+  empresaChave: varchar("empresaChave", { length: 256 }).notNull().unique(),
+  empresaNome: varchar("empresaNome", { length: 256 }).notNull(),
+  acao: guiaFornecedoresOverrideAcaoEnum("acao").notNull(),
+  telefone: varchar("telefone", { length: 32 }),
+  cidade: varchar("cidade", { length: 128 }),
+  estado: varchar("estado", { length: 2 }),
+  usuarioId: text("usuarioId"),
+  usuarioNome: varchar("usuarioNome", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type GuiaFornecedoresOverride = typeof guiaFornecedoresOverrides.$inferSelect;
+export type InsertGuiaFornecedoresOverride = typeof guiaFornecedoresOverrides.$inferInsert;
+
+// Configuração do Guia de Fornecedores — linha única (id sempre 1). Por ora só a mensagem do
+// WhatsApp, editável pela aba interna sem precisar de deploy; dá pra crescer com mais campos
+// (ex.: nome/telefone de contato do próprio Daniel) sem migration nova, já que é 1 linha.
+export const guiaFornecedoresConfig = pgTable("guia_fornecedores_config", {
+  id: integer("id").primaryKey().default(1),
+  mensagemWhatsapp: text("mensagemWhatsapp").notNull(),
+  usuarioNome: varchar("usuarioNome", { length: 128 }),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type GuiaFornecedoresConfig = typeof guiaFornecedoresConfig.$inferSelect;
 
 // Biblioteca de mídias do CRM: o "arsenal" de imagens que a equipe copia e cola nas conversas
 // de WhatsApp. Cada linha guarda a imagem inteira (PNG em base64, já reduzida no navegador) e uma

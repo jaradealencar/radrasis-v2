@@ -46,6 +46,7 @@ import {
   Search,
   FlaskConical,
   Activity,
+  Store,
 } from "lucide-react";
 import { ReactNode, useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
@@ -122,6 +123,7 @@ const navSections: NavSection[] = [
       { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },
       { label: "Metas Comerciais", href: "/comercial/metas", icon: <Target size={15} />, pageKey: "comercial-metas" },
       { label: "CRM de Propostas", href: "/comercial/crm", icon: <Handshake size={15} />, pageKey: "comercial-crm" },
+      { label: "Guia de Fornecedores", href: "/comercial/guia-fornecedores", icon: <Store size={15} />, pageKey: "comercial-guia-fornecedores" },
       { label: "Qualificação de Leads (CNPJ)", href: "/comercial/leads-cnpj", icon: <Building2 size={15} />, pageKey: "comercial-leads-cnpj" },
       { label: "Radar de Mercado", href: "/comercial/radar-mercado", icon: <Radar size={15} />, pageKey: "comercial-radar-mercado" },
       { label: "Planos de Ação Comercial", href: "/comercial/planos-acao", icon: <Lightbulb size={15} />, pageKey: "comercial-planos-acao" },
