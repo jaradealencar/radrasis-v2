@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
@@ -6,6 +7,7 @@ import {
   historicoOs, guiaFornecedoresCliques, guiaFornecedoresVisitas, guiaFornecedoresOverrides, guiaFornecedoresConfig,
 } from "../../drizzle/schema";
 import { isOsNormalDb, normalizeEmpresaKey, isClienteNovoPorRecencia, formatarLinkWhatsApp } from "./performanceComercial";
+import { planoBackfillTelefone, completarTelefonesJanela, janelaValida } from "../sync/telefone-historico";
 
 /**
  * Guia de Fornecedores — página pública (sem login) que indica a consumidor final os clientes
@@ -100,7 +102,13 @@ export function calcularFornecedoresAtivos(
   // Início da janela rolante de 12 meses (inclui o mês corrente parcial)
   const inicioJanela = anoAtual * 12 + mesAtual - (MESES_JANELA_CONTAGEM - 1);
 
-  type Grupo = { nomes: Map<string, number>; qtdJanela: number; ultima: { mes: number; ano: number; cidade: string; estado: string; telefone: string | null } | null };
+  type Grupo = {
+    nomes: Map<string, number>; qtdJanela: number;
+    ultima: { mes: number; ano: number; cidade: string; estado: string } | null;
+    // Telefone da O.S. mais recente que tem um número utilizável — nem toda O.S. traz contato,
+    // então não dá para depender só da última.
+    telefoneRecente: { chaveMes: number; tel: string } | null;
+  };
   const porCliente = new Map<string, Grupo>();
 
   for (const l of linhas) {
@@ -110,15 +118,17 @@ export function calcularFornecedoresAtivos(
     const chave = normalizeEmpresaKey(nome);
     if (CONTAS_NAO_SAO_FORNECEDORES.has(chave)) continue;
 
-    if (!porCliente.has(chave)) porCliente.set(chave, { nomes: new Map(), qtdJanela: 0, ultima: null });
+    if (!porCliente.has(chave)) porCliente.set(chave, { nomes: new Map(), qtdJanela: 0, ultima: null, telefoneRecente: null });
     const g = porCliente.get(chave)!;
     g.nomes.set(nome, (g.nomes.get(nome) ?? 0) + 1);
 
     const chaveMes = l.ano * 12 + l.mes;
     if (chaveMes >= inicioJanela) g.qtdJanela++;
     if (!g.ultima || chaveMes > g.ultima.ano * 12 + g.ultima.mes) {
-      g.ultima = { mes: l.mes, ano: l.ano, cidade: l.cidade ?? "", estado: (l.estado ?? "").toUpperCase(), telefone: l.telefone };
+      g.ultima = { mes: l.mes, ano: l.ano, cidade: l.cidade ?? "", estado: (l.estado ?? "").toUpperCase() };
     }
+    const tel = telefoneValido(l.telefone);
+    if (tel && (!g.telefoneRecente || chaveMes > g.telefoneRecente.chaveMes)) g.telefoneRecente = { chaveMes, tel };
   }
 
   const porOverride = new Map(overrides.map(o => [o.empresaChave, o]));
@@ -138,7 +148,7 @@ export function calcularFornecedoresAtivos(
       nome: nomeDisplay,
       cidade: override?.cidade || g.ultima?.cidade || "",
       estado: (override?.estado || g.ultima?.estado || "").toUpperCase(),
-      telefone: telefoneValido(override?.telefone || g.ultima?.telefone),
+      telefone: telefoneValido(override?.telefone) ?? g.telefoneRecente?.tel ?? null,
       origem: qualifica ? "automatico" : "manual",
     });
   }
@@ -329,6 +339,19 @@ export const guiaFornecedoresRouter = router({
         .values({ id: 1, ...dados })
         .onConflictDoUpdate({ target: guiaFornecedoresConfig.id, set: dados });
       return { ok: true };
+    }),
+
+  /** Situação do telefone em historico_os, mês a mês (13 meses), com as janelas de 7 dias que
+   * o botão "Completar telefones" percorre. */
+  planoTelefones: protectedProcedure.query(() => planoBackfillTelefone()),
+
+  /** Busca no MubiSys os telefones de UMA janela de até 7 dias e grava onde ainda está vazio.
+   * O navegador chama uma janela por vez (cada uma leva alguns segundos). */
+  completarTelefonesJanela: protectedProcedure
+    .input(z.object({ di: z.string(), df: z.string() }))
+    .mutation(async ({ input }) => {
+      if (!janelaValida(input)) throw new TRPCError({ code: "BAD_REQUEST", message: "Janela de datas inválida." });
+      return completarTelefonesJanela(input);
     }),
 
   listarOverrides: protectedProcedure.query(async () => {

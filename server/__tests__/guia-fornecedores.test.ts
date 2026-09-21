@@ -105,6 +105,26 @@ describe("calcularFornecedoresAtivos", () => {
     expect(r[0].telefone).toBeNull();
   });
 
+  it("usa o telefone da O.S. mais recente que tiver número quando a última O.S. veio sem contato", () => {
+    const linhas = [
+      os({ empresa: "Sem Contato Na Ultima", mes: 6, ano: 2026, telefone: "5567911112222" }),
+      os({ empresa: "Sem Contato Na Ultima", mes: 7, ano: 2026, telefone: "5567933334444" }),
+      os({ empresa: "Sem Contato Na Ultima", mes: 8, ano: 2026, telefone: null }),
+    ];
+    const r = calcularFornecedoresAtivos(linhas, [], HOJE);
+    expect(r[0].telefone).toBe("5567933334444");
+  });
+
+  it("telefone digitado à mão no ajuste vale mais que o do histórico", () => {
+    const linhas = [
+      os({ empresa: "Corrigida", mes: 7, ano: 2026, telefone: "5567911112222" }),
+      os({ empresa: "Corrigida", mes: 8, ano: 2026, telefone: "5567911112222" }),
+    ];
+    const overrides = [{ empresaChave: "corrigida", empresaNome: "Corrigida", acao: "incluir" as const, telefone: "(67) 98888-7777", cidade: null, estado: null }];
+    const r = calcularFornecedoresAtivos(linhas, overrides, HOJE);
+    expect(r[0].telefone).toBe("67988887777");
+  });
+
   it('exclui "Mubis" e outras contas administrativas mesmo com 2+ compras', () => {
     for (const nome of ["Mubis", "Cliente Diversos", "Cliente Teste Contratos"]) {
       const linhas = [os({ empresa: nome, mes: 7, ano: 2026 }), os({ empresa: nome, mes: 8, ano: 2026 })];

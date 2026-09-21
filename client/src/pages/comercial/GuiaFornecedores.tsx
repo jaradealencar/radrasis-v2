@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
-  Store, Eye, Users, MousePointerClick, MessageCircle, Plus, Trash2, ExternalLink, Loader2,
+  Store, Eye, Users, MousePointerClick, MessageCircle, Plus, Trash2, ExternalLink, Loader2, Phone, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,13 @@ import {
 // Site espelho (projeto Vercel separado, "guia-letreiros-express"). Se ganhar domínio próprio,
 // trocar aqui.
 const URL_SITE_PUBLICO = "https://guia-letreiros-express.vercel.app";
+
+const diasEntre = (a: string, b: string) => Math.round((new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86_400_000);
+function somaDias(iso: string, n: number): string {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; sub?: string }) {
   return (
@@ -53,6 +60,63 @@ export default function GuiaFornecedores() {
     onSuccess: () => { utils.guiaFornecedores.getConfig.invalidate(); utils.guiaFornecedores.listarPublico.invalidate(); toast.success("Mensagem salva."); },
     onError: e => toast.error(e.message),
   });
+
+  // Telefones: o histórico antigo não tem telefone gravado; o botão percorre o MubiSys em janelas
+  // de 7 dias (uma chamada por vez, cada uma leva alguns segundos) e preenche o que faltar.
+  const { data: plano } = trpc.guiaFornecedores.planoTelefones.useQuery();
+  const completarJanela = trpc.guiaFornecedores.completarTelefonesJanela.useMutation();
+  const [rodando, setRodando] = useState(false);
+  const [progresso, setProgresso] = useState<{ feitas: number; total: number; rotulo: string; atualizadas: number; falhas: number } | null>(null);
+  const pararRef = useRef(false);
+  const semWhatsapp = (guia?.estados ?? []).flatMap(e => e.cidades.flatMap(c => c.fornecedores.filter(f => !f.whatsapp).map(f => ({ nome: f.nome, cidade: c.cidade, uf: e.uf }))));
+  const pendentesTotal = (plano ?? []).filter(m => m.precisa).reduce((s, m) => s + m.pendentes, 0);
+
+  // Se a API do MubiSys engasgar numa janela de 7 dias, tenta de novo em metades (menos carga
+  // por chamada) até chegar a 1 dia.
+  async function tentarJanela(di: string, df: string): Promise<{ ok: boolean; atualizadas: number }> {
+    if (pararRef.current) return { ok: true, atualizadas: 0 };
+    try {
+      return { ok: true, atualizadas: (await completarJanela.mutateAsync({ di, df })).atualizadas };
+    } catch {
+      const span = diasEntre(di, df);
+      if (span < 1) return { ok: false, atualizadas: 0 };
+      const meio = somaDias(di, Math.floor(span / 2));
+      const a = await tentarJanela(di, meio);
+      const b = await tentarJanela(somaDias(meio, 1), df);
+      return { ok: a.ok && b.ok, atualizadas: a.atualizadas + b.atualizadas };
+    }
+  }
+
+  async function completarTelefones() {
+    const janelas = (plano ?? []).filter(m => m.precisa)
+      .flatMap(m => m.janelas.map(j => ({ ...j, rotulo: `${String(m.mes).padStart(2, "0")}/${m.ano}` })));
+    if (janelas.length === 0) { toast.info("O histórico já está completo — o que sobrou a MubiSys não tem."); return; }
+
+    pararRef.current = false;
+    setRodando(true);
+    let proxima = 0, feitas = 0, atualizadas = 0, falhas = 0, falhasSeguidas = 0;
+    // 2 janelas por vez: dobra o ritmo sem sobrecarregar a API (rajadas de 5 causaram timeouts).
+    const trabalhador = async () => {
+      while (!pararRef.current && falhasSeguidas < 3) {
+        const j = janelas[proxima++];
+        if (!j) return;
+        setProgresso({ feitas, total: janelas.length, rotulo: j.rotulo, atualizadas, falhas });
+        const r = await tentarJanela(j.di, j.df);
+        atualizadas += r.atualizadas;
+        feitas++;
+        if (r.ok) falhasSeguidas = 0; else { falhas++; falhasSeguidas++; }
+        setProgresso({ feitas, total: janelas.length, rotulo: j.rotulo, atualizadas, falhas });
+      }
+    };
+    await Promise.all([trabalhador(), trabalhador()]);
+    setProgresso({ feitas, total: janelas.length, rotulo: "", atualizadas, falhas });
+    setRodando(false);
+    utils.guiaFornecedores.planoTelefones.invalidate();
+    utils.guiaFornecedores.listarPublico.invalidate();
+    if (falhasSeguidas >= 3) toast.error(`O MubiSys parou de responder (${atualizadas} telefone(s) preenchido(s) até aqui). Tente de novo em alguns minutos — retoma de onde parou.`);
+    else if (falhas > 0) toast.warning(`${atualizadas} telefone(s) preenchido(s); ${falhas} trecho(s) sem resposta do MubiSys — clique de novo para retomar.`);
+    else toast.success(`${atualizadas} telefone(s) preenchido(s).`);
+  }
 
   const [novoOverride, setNovoOverride] = useState<{ empresa: string; acao: "incluir" | "excluir"; telefone: string; cidade: string; estado: string } | null>(null);
   const salvarOverride = trpc.guiaFornecedores.salvarOverride.useMutation({
@@ -98,6 +162,58 @@ export default function GuiaFornecedores() {
         Regra automática: entra quem teve 2+ O.S. válidas nos últimos 12 meses (rolante) e comprou há no máximo 4 meses;
         sai sozinho assim que passar dos 4 meses sem comprar. Os ajustes abaixo funcionam por cima dessa regra.
       </p>
+
+      {/* Telefones do WhatsApp */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Phone className="h-4 w-4 text-green-600" />
+            <h2 className="text-sm font-semibold text-slate-700">Telefones do WhatsApp</h2>
+          </div>
+          {rodando ? (
+            <Button size="sm" variant="outline" onClick={() => { pararRef.current = true; }}>Parar</Button>
+          ) : (
+            <Button size="sm" className="gap-1.5" disabled={!plano} onClick={completarTelefones}>
+              <RefreshCw className="h-3.5 w-3.5" /> Completar telefones do histórico
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-slate-500">
+          {carregandoGuia ? "Carregando…" : semWhatsapp.length === 0
+            ? "Todos os fornecedores do guia têm botão de WhatsApp."
+            : `${semWhatsapp.length} de ${guia?.totalFornecedores ?? 0} fornecedores estão sem botão de WhatsApp.`}
+          {plano && (pendentesTotal > 0
+            ? ` ${pendentesTotal} O.S. dos últimos 13 meses ainda sem telefone gravado.`
+            : " Histórico de telefones completo (as poucas O.S. sem número não têm contato na MubiSys).")}
+        </p>
+
+        {progresso && (
+          <div className="mt-3 space-y-1">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full bg-green-500 transition-all" style={{ width: `${Math.round((progresso.feitas / Math.max(progresso.total, 1)) * 100)}%` }} />
+            </div>
+            <p className="text-xs text-slate-500">
+              {rodando ? `Buscando ${progresso.rotulo}… ` : "Concluído. "}
+              {progresso.feitas} de {progresso.total} trechos · {progresso.atualizadas} telefone(s) preenchido(s)
+              {progresso.falhas > 0 && ` · ${progresso.falhas} sem resposta`}
+            </p>
+          </div>
+        )}
+
+        {semWhatsapp.length > 0 && (
+          <div className="mt-3 max-h-56 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-100">
+            {semWhatsapp.map(f => (
+              <div key={`${f.uf}-${f.cidade}-${f.nome}`} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
+                <span className="truncate"><span className="font-medium text-slate-700">{f.nome}</span> <span className="text-slate-400">· {f.cidade}/{f.uf}</span></span>
+                <Button size="sm" variant="ghost" className="h-7 shrink-0 text-blue-700 hover:bg-blue-50"
+                  onClick={() => setNovoOverride({ empresa: f.nome, acao: "incluir", telefone: "", cidade: f.cidade, estado: f.uf })}>
+                  Cadastrar telefone
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Mensagem padrão do WhatsApp */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
