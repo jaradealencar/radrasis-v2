@@ -23,9 +23,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// Preencher com o domínio do site espelho assim que ele for publicado (ver conversa de
-// 21/09/2026) — por ora aponta para o próprio radrasis, só como placeholder.
-const URL_SITE_PUBLICO = "";
+// Site espelho (projeto Vercel separado, "guia-letreiros-express"). Se ganhar domínio próprio,
+// trocar aqui.
+const URL_SITE_PUBLICO = "https://guia-letreiros-express.vercel.app";
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; sub?: string }) {
   return (
