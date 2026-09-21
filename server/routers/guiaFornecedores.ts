@@ -34,7 +34,7 @@ const MESES_LIMITE_INATIVIDADE = 4;
  * WhatsApp (renderiza em negrito no app), não é markdown a converter aqui. Editável pela aba
  * interna (guiaFornecedoresConfig); isto é só o valor inicial da linha única da tabela. */
 export const MENSAGEM_WHATSAPP_PADRAO =
-  "Oi, peguei o contato de vocês da lista de indicações da *Letreiros Express*, preciso de um orçamento.";
+  "Olá, vim pela lista de indicações da *Letreiros Express*. Preciso de um orçamento de letreiro.";
 
 // Contas administrativas/teste do MubiSys, não são clientes de verdade — mesma descoberta de
 // 19-21/09/2026 (e-mail "@@@", CNPJ "aa", contato = nome da própria conta).

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
@@ -118,6 +118,16 @@ export default function GuiaFornecedores() {
     else toast.success(`${atualizadas} telefone(s) preenchido(s).`);
   }
 
+  // Ao abrir a aba, se há fornecedor sem WhatsApp e o histórico ainda tem O.S. sem telefone,
+  // começa sozinho (uma vez por visita à tela; "Parar" interrompe, o botão retoma).
+  const iniciouAutomatico = useRef(false);
+  useEffect(() => {
+    if (iniciouAutomatico.current || rodando || !plano || carregandoGuia) return;
+    if (semWhatsapp.length === 0 || !plano.some(m => m.precisa)) return;
+    iniciouAutomatico.current = true;
+    void completarTelefones();
+  }, [plano, carregandoGuia, semWhatsapp.length]);
+
   const [novoOverride, setNovoOverride] = useState<{ empresa: string; acao: "incluir" | "excluir"; telefone: string; cidade: string; estado: string } | null>(null);
   const salvarOverride = trpc.guiaFornecedores.salvarOverride.useMutation({
     onSuccess: () => { utils.guiaFornecedores.listarOverrides.invalidate(); utils.guiaFornecedores.listarPublico.invalidate(); setNovoOverride(null); toast.success("Ajuste salvo."); },
@@ -183,7 +193,7 @@ export default function GuiaFornecedores() {
             ? "Todos os fornecedores do guia têm botão de WhatsApp."
             : `${semWhatsapp.length} de ${guia?.totalFornecedores ?? 0} fornecedores estão sem botão de WhatsApp.`}
           {plano && (pendentesTotal > 0
-            ? ` ${pendentesTotal} O.S. dos últimos 13 meses ainda sem telefone gravado.`
+            ? ` ${pendentesTotal} O.S. dos últimos 13 meses ainda sem telefone gravado — a busca começa sozinha ao abrir esta tela (pode levar alguns minutos).`
             : " Histórico de telefones completo (as poucas O.S. sem número não têm contato na MubiSys).")}
         </p>
 
