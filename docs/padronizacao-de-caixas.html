@@ -177,11 +177,36 @@
   .alt-table th{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); font-weight:600; }
   .alt-table td.num{ font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; }
 
+  /* ---- revisão 6: toggle com 6 cenários, comparativo e cartões de custo ---- */
+  .toggle{ flex-wrap:wrap; max-width:100%; }
+  .toggle button.new::before{ content:''; display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); margin-right:7px; vertical-align:1px; }
+  .toggle button.active.new::before{ background:#fff; }
+  .sec-head .n .dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); margin-right:5px; vertical-align:1px; }
+  .kpi .l .w{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text); }
+  .callout.ok{ border-left-color:var(--good); }
+  .callout.ok .v{ color:var(--good-ink); }
+  .compare{ margin-bottom:40px; }
+  .table-scroll{ overflow-x:auto; border:1px solid var(--line); background:var(--surface); }
+  .table-scroll .alt-table{ margin:0; min-width:660px; }
+  .alt-table td.lbl{ color:var(--text-muted); font-size:12.5px; }
+  .alt-table td.lbl small{ display:block; font-size:11px; }
+  .alt-table td .d{ display:block; font-family:'IBM Plex Mono',monospace; font-size:11px; }
+  .alt-table td .d.up{ color:var(--good-ink); }
+  .alt-table td .d.down{ color:var(--warn-ink); }
+  .alt-table td.dimlist div{ font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap; }
+  .alt-table .sel{ background:var(--bg); }
+  #newRow{ grid-template-columns:repeat(5,1fr); }
+
   @media (max-width:900px){
     .kpis{ grid-template-columns:repeat(2,1fr); }
-    .boxes{ grid-template-columns:repeat(3,1fr); }
+    .boxes, #newRow{ grid-template-columns:repeat(3,1fr); }
     .callouts, .callouts.callouts-3{ grid-template-columns:1fr; }
     .manifest{ text-align:left; }
+  }
+  @media (max-width:560px){
+    .wrap{ padding-inline:16px; }
+    .boxes, #newRow{ grid-template-columns:repeat(2,1fr); }
+    header h1{ font-size:34px; }
   }
 </style>
 
@@ -189,13 +214,13 @@
 
   <header>
     <div>
-      <div class="eyebrow">Letreiros Express — Expedição · Revisão 5</div>
+      <div class="eyebrow">Letreiros Express — Expedição · Revisão 6</div>
       <h1>Padronização<br>de Caixas</h1>
-      <div class="sub">Com a 60×40×22 que você já tinha e ainda não tinha entrado na conta: o catálogo mantido sobe de 14,9% pra 17,9% de cobertura sozinho, e os três grupos de caixas novas foram recalculados sobre o que sobrou.</div>
+      <div class="sub">Três cenários novos sobre a base das 5 caixas enxutas: o <b>D</b> aplica as suas duas alterações de tamanho e mostra o que elas custam; o <b>E</b> e o <b>F</b> sugerem outros tamanhos que mantêm a ideia do C, com perto de 70% das OS padronizadas e caixas enxutas.</div>
     </div>
     <div class="manifest">
-      REF. <b>PADR-CX-05</b><br>
-      DATA <b>03/09/2026</b><br>
+      REF. <b>PADR-CX-06</b><br>
+      DATA <b>21/09/2026</b><br>
       OS ANALISADAS <b>498</b><br>
       CATÁLOGO ATUAL <b>7 tamanhos (5 mantidos)</b>
     </div>
@@ -207,7 +232,7 @@
     <div class="kpi" id="kpiCobertura"><div class="v">—</div><div class="l">cobertura total: atual + novas</div></div>
     <div class="kpi" id="kpiFill"><div class="v">—</div><div class="l">aproveitamento médio das caixas novas</div></div>
     <div class="kpi" id="kpiFora"><div class="v">—</div><div class="l">seguem sob medida mesmo assim</div></div>
-    <div class="kpi" id="kpiVol"><div class="v">—</div><div class="l">volume médio das caixas novas</div></div>
+    <div class="kpi" id="kpiVol"><div class="v">—</div><div class="l">volume médio das caixas novas<br><span class="w" id="kpiVolW"></span></div></div>
   </div>
 
   <section>
@@ -236,13 +261,16 @@
   <section>
     <div class="sec-head">
       <h2>Quantas caixas novas vale a pena fabricar?</h2>
-      <span class="n">mesmo ponto de partida (o que sobra do catálogo mantido) — três jeitos de fechar a conta</span>
+      <span class="n">mesmo ponto de partida (o que sobra do catálogo mantido) — seis jeitos de fechar a conta · <span class="dot"></span>novo nesta revisão</span>
     </div>
     <div class="toggle-row">
       <div class="toggle" id="toggle">
-        <button data-g="A" class="active">5 novas · 89,8%</button>
-        <button data-g="B">7 novas · 91,2%</button>
-        <button data-g="C">5 novas enxutas · 69,7%</button>
+        <button data-g="A">A · 5 novas · 89,8%</button>
+        <button data-g="B">B · 7 novas · 91,2%</button>
+        <button data-g="C">C · 5 enxutas · 69,7%</button>
+        <button data-g="D" class="new active">D · sua versão · 58,2%</button>
+        <button data-g="E" class="new">E · sugestão livre · 71,7%</button>
+        <button data-g="F" class="new">F · sugestão ajustada · 67,5%</button>
       </div>
       <div class="toggle-note" id="toggleNote"></div>
     </div>
@@ -250,7 +278,7 @@
       <div class="bar" id="covBar"></div>
       <div class="bar-legend" id="covLegend"></div>
     </div>
-    <div class="boxes" id="newRow" style="grid-template-columns:repeat(5,1fr)"></div>
+    <div class="boxes" id="newRow"></div>
   </section>
 
   <div class="callouts">
@@ -264,14 +292,41 @@
     </div>
   </div>
 
+  <section class="compare">
+    <div class="sec-head">
+      <h2>C × D × E × F: o que cada ajuste custa ou rende</h2>
+      <span class="n">as mesmas 498 OS e o mesmo catálogo mantido — a coluna do cenário selecionado fica destacada</span>
+    </div>
+    <div class="table-scroll"><table class="alt-table" id="cmpTable"></table></div>
+    <div class="callouts callouts-3">
+      <div class="callout">
+        <div class="v">−51 OS</div>
+        <p><b>caixa 5: 125×105×40 → 125×75×40.</b> Economiza 150 L por caixa, mas 51 OS com a 2ª medida entre 76 e 105 cm (mediana 90 cm) deixam de caber — e são as mais pesadas do grupo (mediana 24,6 kg, até 44,9 kg). É quase todo o estrago do D.</p>
+      </div>
+      <div class="callout ok">
+        <div class="v">−6 OS</div>
+        <p><b>caixa 3: 120×100×15 → 120×80×15.</b> Economiza 36 L e só perde 6 OS (2ª medida entre 89 e 97 cm). Ajuste barato: a alteração da caixa 5 custa mais de oito vezes isso.</p>
+      </div>
+      <div class="callout muted">
+        <div class="v">66,5%</div>
+        <p><b>meio-termo na caixa 5:</b> com <code>125×95×40</code> (em vez de 75 ou 105) o D volta de 58,2% pra 66,5% de cobertura, com 207 L de média. Com <code>125×105×40</code> volta aos 69,7% do C.</p>
+      </div>
+    </div>
+  </section>
+
   <div class="notes">
     <h3>Como ler essa comparação</h3>
     <ol>
-      <li><b>As três opções partem do mesmo ponto:</b> primeiro eu testo se a OS já cabe no catálogo mantido — as 5 caixas que ficam depois de descontinuar a 50×35×30 e a 72×26×31 (17,9%, já incluindo a 60×40×22 que você lembrou depois); só o que sobra (370 OS) é reagrupado em tamanhos novos — o que muda entre os grupos é só quanto desse restante cada um tenta cobrir.</li>
-      <li><b>5 → 7 caixas:</b> a cobertura sobe pouco (89,8% → 91,2%), mas o <b>aproveitamento</b> sobe de verdade, de 42% pra 47% — a 7 inclui a <code>130×95×25</code>, bem mais rasa que as outras (só 25cm de altura pra um piso de 130×95), que rouba itens que iam pra caixas mais altas e largas, encaixando mais justo.</li>
+      <li><b>As seis opções partem do mesmo ponto:</b> primeiro eu testo se a OS já cabe no catálogo mantido — as 5 caixas que ficam depois de descontinuar a 50×35×30 e a 72×26×31 (17,9%, já incluindo a 60×40×22 que você lembrou depois); só o que sobra (370 OS) é reagrupado em tamanhos novos — o que muda entre os grupos é só quanto desse restante cada um tenta cobrir.</li>
+      <li><b>5 → 7 caixas:</b> a cobertura sobe pouco (89,8% → 91,2%), mas o <b>aproveitamento</b> sobe de verdade, de 42% pra 46% — a 7 inclui a <code>130×95×25</code>, bem mais rasa que as outras (só 25cm de altura pra um piso de 130×95), que rouba itens que iam pra caixas mais altas e largas, encaixando mais justo.</li>
       <li><b>5 caixas enxutas (a que você pediu agora):</b> em vez de tentar cobrir quase tudo que sobra, essas 5 caixas deixam de fora todo item que exigiria estourar muito o tamanho — cobrindo só 69,7% do total, mas com <b>caixas bem menores</b>: volume médio de 224L contra 532L do primeiro grupo (menos da metade), e nenhuma delas passa de 125cm em qualquer medida. Menos "ar" em cada caixa despachada = menos peso cúbico cobrado no frete, pra quem entra nesse padrão. Em compensação, 22,5% da produção (112 OS) que antes cabia num tamanho padrão volta a ficar sem — some à conta do que já segue sob medida (>150cm), passando de ~10% pra ~30% de OS fora do padrão.</li>
       <li><b>Testei também 8 caixas novas</b> (variação do grupo de 7) e não virou opção aqui: a cobertura cai um pouco porque fragmenta a ponta grande em tamanhos quase iguais com pouquíssimo uso cada — mais um molde sem ganho real.</li>
       <li><b>Como escolher:</b> se o custo que mais pesa é frete/cubagem, o grupo enxuto vale a pena mesmo cobrindo menos. Se é o número de moldes/ferramentas, o de 5 "normal" já cobre quase tudo. Se é o aproveitamento por caixa despachada, o de 7 é o melhor equilíbrio.</li>
+      <li><b>D é a sua versão do C</b> (caixas 3 e 5 alteradas): a média de volume cai de 224 L pra 187 L, mas a cobertura cai de 69,7% pra 58,2%. Você troca 57 OS padronizadas por caixas cerca de 17% menores em média — e essas 57 voltam a ser sob medida.</li>
+      <li><b>E e F são sugestões, não a mesma coisa que o C:</b> rodei uma busca automática sobre combinações de 5 caixas em múltiplos de 5 cm (busca heurística: acha combinações muito boas, mas não prova que existe uma melhor) e fiquei com as que cobrem mais OS respeitando as regras que fazem o C ser "enxuto": nenhuma medida acima de 125 cm, soma dos volumes das 5 caixas de até 1.122 L (média de 224 L), nenhuma caixa maior que a maior do C (525 L), volume médio por OS despachada de no máximo 313 L (o do C) e pelo menos 12 OS em cada caixa, pra não pagar um molde à toa. <b>E</b> é a busca livre; <b>F</b> mantém as suas <code>120×80×15</code> e <code>125×75×40</code> e troca só as outras três.</li>
+      <li><b>Por que controlo o "volume por OS despachada", e não só a média de 224 L:</b> sem essa trava, a busca "trapaceia" — cria uma caixa gigante de 125×125×45 (703 L) que pega quase tudo e quatro caixas minúsculas pra puxar a média pra baixo. Cobre 76%, mas com 30% de aproveitamento: a média de 224 L fica bonita e o frete piora. A média por OS mostra o que realmente vai na caixa.</li>
+      <li><b>Cuidado com o ajuste em cima da mesma base:</b> as caixas E e F foram calculadas sobre essas mesmas 498 OS, então a cobertura real dos próximos meses tende a ser um pouco menor que a mostrada. Vale conferir com os 60–90 dias seguintes antes de encomendar o molde.</li>
+      <li><b>Correção de números:</b> recalculei o aproveitamento médio das caixas novas dos cenários B e C com a mesma conta usada nos demais (média por OS): B de 47% pra 46% e C de 44% pra 43%. O 44% do C vinha de uma rodada anterior à entrada da 60×40×22 no catálogo.</li>
     </ol>
   </div>
 
@@ -330,7 +385,7 @@
   var groups = {
     A: {
       label: '5 novas', total: 10,
-      coverage: 89.8, fill: 42, avgVolume: 532,
+      coverage: 89.8, covOS: 447, fill: 42, avgVolume: 532, wVolume: 474, maxBox: 1170,
       boxes: [
         { dims:[80,65,40],   pctTotal:22.7, count:113, fill:37, pesoMediano:7.60,  pesoMax:21.70, k:'k1' },
         { dims:[110,80,25],  pctTotal:11.6, count:58,  fill:44, pesoMediano:10.60, pesoMax:19.40, k:'k2' },
@@ -342,7 +397,7 @@
     },
     B: {
       label: '7 novas', total: 12,
-      coverage: 91.2, fill: 47, avgVolume: 520,
+      coverage: 91.2, covOS: 454, fill: 46, avgVolume: 520, wVolume: 450, maxBox: 1316,
       boxes: [
         { dims:[70,60,40],   pctTotal:17.1, count:85, fill:42, pesoMediano:6.50,  pesoMax:21.70, k:'k1' },
         { dims:[100,70,25],  pctTotal:10.8, count:54, fill:51, pesoMediano:10.00, pesoMax:20.90, k:'k2', flat:true },
@@ -356,7 +411,7 @@
     },
     C: {
       label: '5 novas enxutas', total: 10,
-      coverage: 69.7, fill: 44, avgVolume: 224,
+      coverage: 69.7, covOS: 347, fill: 43, avgVolume: 224, wVolume: 313, maxBox: 525,
       boxes: [
         { dims:[80,55,15],   pctTotal:3.2,  count:16, fill:51, pesoMediano:3.90,  pesoMax:6.50,  k:'k1', flat:true },
         { dims:[60,45,30],   pctTotal:3.2,  count:16, fill:61, pesoMediano:6.50,  pesoMax:9.00,  k:'k2' },
@@ -365,6 +420,45 @@
         { dims:[125,105,40], pctTotal:16.5, count:82,  fill:43, pesoMediano:19.40, pesoMax:44.90, k:'k5' }
       ],
       leftover:112, leftoverPct:22.5
+    },
+    // D: o C com as caixas 3 e 5 alteradas por você
+    D: {
+      label: 'D · sua versão', total: 10,
+      coverage: 58.2, covOS: 290, fill: 43, avgVolume: 187, wVolume: 235, maxBox: 375,
+      boxes: [
+        { dims:[80,55,15],  pctTotal:3.2,  count:16,  fill:51, pesoMediano:3.90,  pesoMax:6.50,  k:'k1', flat:true, badge:['keep','IGUAL AO C'] },
+        { dims:[60,45,30],  pctTotal:3.2,  count:16,  fill:61, pesoMediano:6.50,  pesoMax:9.00,  k:'k2', badge:['keep','IGUAL AO C'] },
+        { dims:[120,80,15], pctTotal:6.4,  count:32,  fill:38, pesoMediano:5.65,  pesoMax:16.80, k:'k3', flat:true, badge:['watch','ALTERADA · ERA 120×100×15'] },
+        { dims:[90,75,40],  pctTotal:21.3, count:106, fill:41, pesoMediano:10.50, pesoMax:25.10, k:'k4', badge:['keep','IGUAL AO C'] },
+        { dims:[125,75,40], pctTotal:6.2,  count:31,  fill:43, pesoMediano:12.10, pesoMax:29.70, k:'k5', badge:['watch','ALTERADA · ERA 125×105×40'] }
+      ],
+      leftover:169, leftoverPct:33.9
+    },
+    // E: busca livre, mesmas regras de "enxuta" do C
+    E: {
+      label: 'E · sugestão livre', total: 10,
+      coverage: 71.7, covOS: 357, fill: 45, avgVolume: 222, wVolume: 308, maxBox: 518,
+      boxes: [
+        { dims:[70,55,15],   pctTotal:3.0,  count:15,  fill:60, pesoMediano:3.90,  pesoMax:6.50,  k:'k1', flat:true, badge:['keep','SUGERIDA'] },
+        { dims:[60,50,35],   pctTotal:6.8,  count:34,  fill:54, pesoMediano:6.40,  pesoMax:9.00,  k:'k2', badge:['keep','SUGERIDA'] },
+        { dims:[125,115,15], pctTotal:9.8,  count:49,  fill:37, pesoMediano:6.70,  pesoMax:30.00, k:'k3', flat:true, badge:['keep','SUGERIDA'] },
+        { dims:[95,65,35],   pctTotal:13.7, count:68,  fill:48, pesoMediano:10.80, pesoMax:21.70, k:'k4', badge:['keep','SUGERIDA'] },
+        { dims:[115,100,45], pctTotal:20.5, count:102, fill:41, pesoMediano:18.50, pesoMax:62.20, k:'k5', badge:['keep','SUGERIDA'] }
+      ],
+      leftover:102, leftoverPct:20.5
+    },
+    // F: mantém as caixas 3 e 5 do D e troca as outras três
+    F: {
+      label: 'F · sugestão ajustada', total: 10,
+      coverage: 67.5, covOS: 336, fill: 42, avgVolume: 224, wVolume: 308, maxBox: 446,
+      boxes: [
+        { dims:[70,55,15],  pctTotal:3.0,  count:15,  fill:60, pesoMediano:3.90,  pesoMax:6.50,  k:'k1', flat:true, badge:['keep','SUGERIDA'] },
+        { dims:[55,50,35],  pctTotal:5.4,  count:27,  fill:58, pesoMediano:6.30,  pesoMax:9.00,  k:'k2', badge:['keep','SUGERIDA'] },
+        { dims:[120,80,15], pctTotal:6.6,  count:33,  fill:38, pesoMediano:5.50,  pesoMax:16.80, k:'k3', flat:true, badge:['watch','SUA · MANTIDA'] },
+        { dims:[125,75,40], pctTotal:25.3, count:126, fill:34, pesoMediano:11.40, pesoMax:29.70, k:'k4', badge:['watch','SUA · MANTIDA'] },
+        { dims:[110,90,45], pctTotal:9.2,  count:46,  fill:54, pesoMediano:21.10, pesoMax:62.20, k:'k5', badge:['keep','SUGERIDA'] }
+      ],
+      leftover:123, leftoverPct:24.7
     }
   };
   var outScopePct = 7.8;
@@ -378,10 +472,17 @@
     document.getElementById('kpiFill').querySelector('.v').textContent = G.fill + '%';
     document.getElementById('kpiFora').querySelector('.v').textContent = fmt((outScopePct + G.leftoverPct).toFixed(1)) + '%';
     document.getElementById('kpiVol').querySelector('.v').textContent = G.avgVolume + 'L';
+    document.getElementById('kpiVolW').textContent = G.wVolume + 'L por OS despachada';
+    document.querySelectorAll('#cmpTable [data-g]').forEach(function(c){
+      c.classList.toggle('sel', c.dataset.g === g);
+    });
     var notes = {
       A: '10 tamanhos no total (5 mantidos + 5) · aproveitamento médio <b>42%</b> · volume médio da caixa <b>532L</b>',
-      B: '12 tamanhos no total (5 mantidos + 7) · aproveitamento médio <b>47%</b> · inclui a 130×95×25, mais rasa e estreita',
-      C: '10 tamanhos no total (5 mantidos + 5, porém menores) · caixas com <b>menos da metade do volume médio</b> do grupo de 5 (224L vs 532L) — troca cobertura por caixa bem mais compacta'
+      B: '12 tamanhos no total (5 mantidos + 7) · aproveitamento médio <b>46%</b> · inclui a 130×95×25, mais rasa e estreita',
+      C: '10 tamanhos no total (5 mantidos + 5, porém menores) · caixas com <b>menos da metade do volume médio</b> do grupo de 5 (224L vs 532L) — troca cobertura por caixa bem mais compacta',
+      D: 'o C com as suas caixas 3 e 5 alteradas · volume médio cai pra <b>187L</b>, mas a cobertura cai <b>11,4 pontos</b> (347 → 290 OS) · quase tudo por causa da caixa 5',
+      E: 'sugestão livre com as mesmas regras do C · cobre <b>10 OS a mais</b> que o C (357 vs 347), com <b>222L</b> de média e aproveitamento maior (45% vs 43%) · nenhuma caixa acima de 518L',
+      F: 'mantém as suas <b>120×80×15</b> e <b>125×75×40</b> e troca as outras três · cobre <b>11 OS a menos</b> que o C (336 vs 347), mas <b>46 OS a mais</b> que o D — inclui uma <b>110×90×45</b> pra pegar as peças mais largas e pesadas'
     };
     document.getElementById('toggleNote').innerHTML = notes[g];
 
@@ -431,7 +532,6 @@
 
     // cartões
     var row = document.getElementById('newRow');
-    row.style.gridTemplateColumns = 'repeat(' + Math.min(G.boxes.length, 5) + ',1fr)';
     row.innerHTML = '';
     G.boxes.forEach(function(b, i){
       var el = document.createElement('div');
@@ -448,7 +548,8 @@
           '<div class="row"><span>peso mediano</span><span class="num">'+fmt(b.pesoMediano)+'kg</span></div>' +
           '<div class="row"><span>peso até</span><span class="num">'+fmt(b.pesoMax)+'kg</span></div>' +
         '</div>' +
-        '<div class="stock"><div class="row"><span>estoque 3 meses</span><b>'+b.count+'</b></div><div class="sub">~'+(b.count/3).toFixed(1).replace('.',',')+' caixas/mês</div></div>';
+        '<div class="stock"><div class="row"><span>estoque 3 meses</span><b>'+b.count+'</b></div><div class="sub">~'+(b.count/3).toFixed(1).replace('.',',')+' caixas/mês</div></div>' +
+        (b.badge ? '<span class="status '+b.badge[0]+'">'+b.badge[1]+'</span>' : '');
       row.appendChild(el);
     });
 
@@ -457,11 +558,46 @@
     document.getElementById('leftoverText').innerHTML = '<b>'+fmt(G.leftoverPct.toFixed(1))+'% não coube nem no catálogo atual nem nas '+G.boxes.length+' novas</b> — formatos fora da curva mesmo ≤150cm. Seguem sob medida ou na caixa maior seguinte, com mais desperdício.';
   }
 
+  // ---- comparativo C × D × E × F ----
+  function sgn(n, dec, unit){ var s = (n > 0 ? '+' : n < 0 ? '−' : '±') + fmt(Math.abs(n).toFixed(dec)) + unit; return s; }
+  (function buildCompare(){
+    var cols = [['C','C · referência'],['D','D · suas alterações'],['E','E · sugestão livre'],['F','F · sugestão ajustada']];
+    var base = groups.C;
+    var TOTAL_OS = 498;
+    function delta(v, ref, dec, unit, goodWhenUp){
+      var d = +(v - ref).toFixed(dec);
+      if (d === 0) return '';
+      var good = goodWhenUp ? d > 0 : d < 0;
+      return '<span class="d ' + (good ? 'up' : 'down') + '">' + sgn(d, dec, unit) + ' vs C</span>';
+    }
+    // a diferença de cobertura sai da contagem de OS, não dos percentuais já arredondados
+    function deltaOS(G, invert){
+      var d = (G.covOS - base.covOS) / TOTAL_OS * 100;
+      return delta(invert ? -d : d, 0, 1, ' pts', !invert);
+    }
+    var rows = [
+      ['Caixas novas', function(G){ return '<td class="dimlist">' + G.boxes.map(function(b){ return '<div>'+b.dims.join('×')+'</div>'; }).join('') + '</td>'; }],
+      ['Cobertura total<small>catálogo mantido + novas</small>', function(G, k){ return '<td class="num">'+fmt(G.coverage.toFixed(1))+'% · '+G.covOS+' OS'+(k==='C'?'':deltaOS(G, false))+'</td>'; }],
+      ['Fora do padrão<small>sem padrão + acima de 150 cm</small>', function(G, k){ var v = outScopePct + G.leftoverPct; return '<td class="num">'+fmt(v.toFixed(1))+'%'+(k==='C'?'':deltaOS(G, true))+'</td>'; }],
+      ['Volume médio da caixa nova<small>média simples dos 5 tamanhos</small>', function(G, k){ return '<td class="num">'+G.avgVolume+' L'+(k==='C'?'':delta(G.avgVolume, base.avgVolume, 0, ' L', false))+'</td>'; }],
+      ['Volume médio por OS despachada<small>pesa cada caixa pelo uso real</small>', function(G, k){ return '<td class="num">'+G.wVolume+' L'+(k==='C'?'':delta(G.wVolume, base.wVolume, 0, ' L', false))+'</td>'; }],
+      ['Maior caixa', function(G){ return '<td class="num">'+G.maxBox+' L</td>'; }],
+      ['Aproveitamento médio<small>caixas novas, média por OS</small>', function(G, k){ return '<td class="num">'+G.fill+'%'+(k==='C'?'':delta(G.fill, base.fill, 0, ' pts', true))+'</td>'; }]
+    ];
+    var html = '<thead><tr><th></th>' + cols.map(function(c){ return '<th data-g="'+c[0]+'">'+c[1]+'</th>'; }).join('') + '</tr></thead><tbody>';
+    rows.forEach(function(r){
+      html += '<tr><td class="lbl">' + r[0] + '</td>' + cols.map(function(c){
+        return r[1](groups[c[0]], c[0]).replace('<td', '<td data-g="'+c[0]+'"');
+      }).join('') + '</tr>';
+    });
+    document.getElementById('cmpTable').innerHTML = html + '</tbody>';
+  })();
+
   document.getElementById('toggle').addEventListener('click', function(e){
     var btn = e.target.closest('button');
     if (btn) render(btn.dataset.g);
   });
-  render('A');
+  render('D');
 </script>
 
 </body></html>
