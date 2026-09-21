@@ -138,6 +138,20 @@ export async function refreshCrmAbertosCache(cacheKey: string, janelaDias: numbe
   return itens;
 }
 
+/**
+ * Mantém só os orçamentos cadastrados dentro de [di, df] (inclusive, YYYY-MM-DD).
+ * `data_cadastro` vem do MubiSys sem timezone ("2026-09-17 08:38:30") — compara só o
+ * dia, igual ao filtro "Data inicial/final" da tela de Orçamentos do próprio ERP.
+ */
+export function filtrarPorDiaDeCadastro<T extends { data_cadastro?: string | null }>(
+  itens: T[], di: string, df: string,
+): T[] {
+  return itens.filter((o) => {
+    const dia = (o.data_cadastro || "").slice(0, 10);
+    return !!dia && dia >= di && dia <= df;
+  });
+}
+
 /** Data (YYYY-MM-DD) a partir da qual o cache de "fechados" tem cobertura garantida. */
 export function inicioJanelaFechadosCache(): string {
   return fmtDate(new Date(Date.now() - JANELA_FECHADOS_DIAS * 24 * 60 * 60 * 1000));

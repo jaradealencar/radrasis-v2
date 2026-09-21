@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { filtrarPorDiaDeCadastro } from "../sync/crm-abertos-cache";
 
 // Mock do módulo de banco de dados
 vi.mock("../db/db", () => ({
@@ -147,6 +148,35 @@ describe("CRM — Lógica de negócio", () => {
       expect(stats.semContato).toBe(0);
       expect(stats.com1Contato).toBe(0);
       expect(stats.com2Contatos).toBe(0);
+    });
+  });
+
+  describe("Filtro do período De/Até por data de cadastro", () => {
+    const orcs = [
+      { id: 1, data_cadastro: "2026-09-16 23:59:59" },
+      { id: 2, data_cadastro: "2026-09-17 00:00:01" },
+      { id: 3, data_cadastro: "2026-09-18 23:59:59" },
+      { id: 4, data_cadastro: "2026-09-19 00:00:00" },
+      { id: 5, data_cadastro: null },
+      { id: 6 },
+    ];
+
+    it("mantém só os cadastrados de 17 a 18, incluindo as duas pontas do intervalo", () => {
+      const ids = filtrarPorDiaDeCadastro(orcs, "2026-09-17", "2026-09-18").map(o => o.id);
+      expect(ids).toEqual([2, 3]);
+    });
+
+    it("um único dia (Hoje) pega só as propostas daquele dia, qualquer que seja a hora", () => {
+      const ids = filtrarPorDiaDeCadastro(orcs, "2026-09-18", "2026-09-18").map(o => o.id);
+      expect(ids).toEqual([3]);
+    });
+
+    it("descarta orçamento sem data de cadastro", () => {
+      expect(filtrarPorDiaDeCadastro(orcs, "2000-01-01", "2100-01-01").map(o => o.id)).toEqual([1, 2, 3, 4]);
+    });
+
+    it("retorna vazio para lista vazia", () => {
+      expect(filtrarPorDiaDeCadastro([], "2026-09-17", "2026-09-18")).toEqual([]);
     });
   });
 });

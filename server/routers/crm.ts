@@ -9,6 +9,7 @@ import {
   JANELA_ABERTOS_DIAS_PADRAO, JANELA_ABERTOS_DIAS_MAX,
   getCrmAbertosCache, refreshCrmAbertosCache,
   CACHE_KEY_FECHADOS, refreshCrmFechadosCache, inicioJanelaFechadosCache,
+  filtrarPorDiaDeCadastro,
 } from "../sync/crm-abertos-cache";
 import type { TrpcContext } from "../_core/context";
 import {
@@ -101,10 +102,7 @@ export async function buscarOrcamentosPeriodo(di: string, df: string): Promise<a
   if (di >= inicioJanelaFechadosCache()) {
     const cacheHit = await getCrmAbertosCache(CACHE_KEY_FECHADOS);
     const todos = cacheHit ? cacheHit.itens : await refreshCrmFechadosCache();
-    return todos.filter((o: any) => {
-      const dia = (o.data_cadastro || "").slice(0, 10);
-      return dia && dia >= di && dia <= df;
-    });
+    return filtrarPorDiaDeCadastro(todos, di, df);
   }
   const { itens } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df, perPage: 50 });
   return itens;
@@ -194,7 +192,10 @@ export const crmRouter = router({
       const todosAbertos = cacheHit ? cacheHit.itens : await refreshCrmAbertosCache(cacheKey, janelaDias);
       const abertosAtualizadoEm = (cacheHit?.fetchedAt ?? new Date()).toISOString();
       const todosPeriodo = await buscarOrcamentosPeriodo(di, df);
-      const abertos = todosAbertos.filter((o: any) => {
+      // O cache de abertos é a janela rolante inteira (21/30 dias); o período De/Até da tela
+      // precisa recortar por data de cadastro, senão "17/09 a 18/09" mostrava todas as
+      // abertas dos últimos 21 dias (159) em vez das geradas nesses dois dias (37).
+      const abertos = filtrarPorDiaDeCadastro(todosAbertos, di, df).filter((o: any) => {
         const s = (o.status || "").toLowerCase();
         return s === "em aberto" || s === "em andamento" || s === "pendente";
       });
