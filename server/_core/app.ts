@@ -181,5 +181,9 @@ export async function createApp(): Promise<Express> {
   const { handleRelatorioCrmSemanal } = await import("../sync/scheduled-relatorio-crm-semanal-handler");
   app.post("/api/scheduled/relatorioCrmSemanal", handleRelatorioCrmSemanal);
 
+  // Ação administrativa pontual (não é um cron recorrente) — ver limpeza-crm-antigas.ts.
+  const { handleLimparCrmAntigas } = await import("../sync/limpeza-crm-antigas-handler");
+  app.post("/api/scheduled/limparCrmPropostasAntigas", handleLimparCrmAntigas);
+
   return app;
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   filtrarPorDiaDeCadastro, intervaloDaFatia, mesclarFatia, ordemDasFatias, numFatias,
 } from "../sync/crm-abertos-cache";
+import { classificarCandidatasExclusao } from "../sync/limpeza-crm-antigas";
 
 // Mock do módulo de banco de dados
 vi.mock("../db/db", () => ({
@@ -206,6 +207,40 @@ describe("CRM — Lógica de negócio", () => {
       const novos = [{ id: "novo", data_cadastro: "2026-09-16 09:00:00" }];
       const ids = mesclarFatia(existentes, novos, "2026-09-14", "2026-09-21", "2026-08-31").map(o => o.id);
       expect(ids).toEqual(["meio", "novo"]);
+    });
+  });
+
+  describe("Limpeza inicial do CRM — candidatas a exclusão (até uma data)", () => {
+    const itens = [
+      { id: 1, vendedor: "Letícia Carozzo", cliente: { nome: "Midia Graf" }, data_cadastro: "2026-09-17 10:00:00", status: "Em aberto", valor_total: "1000" },
+      { id: 2, vendedor: "Letícia Carozzo", cliente: { nome: "Expresspro" }, data_cadastro: "2026-09-18 10:00:00", status: "Em aberto", valor_total: "2000" },
+      { id: 3, vendedor: "Ana", cliente: { nome: "Foo" }, data_cadastro: "2026-09-10 10:00:00", status: "Em andamento", valor_total: "500" },
+      { id: 4, vendedor: "Ana", cliente: { nome: "Bar" }, data_cadastro: "2026-09-10 10:00:00", status: "Aprovado", valor_total: "300" },
+      { id: 5, vendedor: "Ana", cliente: { nome: "Baz" }, data_cadastro: "2026-09-10 10:00:00", status: "Pendente", valor_total: "700" },
+    ];
+
+    it("mantém só status aberto/andamento/pendente cadastrados até a data de corte", () => {
+      const r = classificarCandidatasExclusao(itens, "2026-09-17");
+      expect(r.map(c => c.orcamentoId)).toEqual(["1", "3", "5"]);
+    });
+
+    it("exclui tudo cadastrado depois da data de corte, mesmo status aberto", () => {
+      const r = classificarCandidatasExclusao(itens, "2026-09-17");
+      expect(r.some(c => c.orcamentoId === "2")).toBe(false);
+    });
+
+    it("exclui aprovado/faturado/etc. independente da data (não é mais 'aberto')", () => {
+      const r = classificarCandidatasExclusao(itens, "2026-09-30");
+      expect(r.some(c => c.orcamentoId === "4")).toBe(false);
+    });
+
+    it("extrai vendedor, empresa (do cliente.nome) e valor numérico", () => {
+      const r = classificarCandidatasExclusao(itens, "2026-09-17");
+      expect(r[0]).toEqual({ orcamentoId: "1", vendedor: "Letícia Carozzo", empresa: "Midia Graf", dataCadastro: "2026-09-17", valor: 1000 });
+    });
+
+    it("retorna vazio para lista vazia", () => {
+      expect(classificarCandidatasExclusao([], "2026-09-17")).toEqual([]);
     });
   });
 

@@ -290,8 +290,11 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
 }) {
   const [modalStatus, setModalStatus] = useState(false);
-  // modalContato: null = fechado; { date, desfazer } = aberto
-  const [modalContato, setModalContato] = useState<{ date: Date; desfazer: boolean } | null>(null);
+  // modalContato: null = fechado; { date } = aberto (registro novo OU edição de um já existente
+  // — depende se `contatoMap` já tem essa data, ver `editando` abaixo)
+  const [modalContato, setModalContato] = useState<{ date: Date } | null>(null);
+  // true = mostra a confirmação "Remover contato?" em vez do formulário de resposta
+  const [pedindoRemocao, setPedindoRemocao] = useState(false);
   const [respostaSelecionada, setRespostaSelecionada] = useState<RespostaCanal | null>(null);
   const [obs, setObs] = useState("");
 
@@ -306,10 +309,24 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
+  // Troca a resposta de um contato já registrado (ex.: estava "aguardando_resposta" e o
+  // cliente respondeu) sem apagar e recriar — mesmo registro, não consome uma nova vaga.
+  const alterarContato = trpc.crm.alterarContato.useMutation({
+    onSuccess: () => {
+      toast.success("Contato atualizado!");
+      setModalContato(null);
+      setRespostaSelecionada(null);
+      setObs("");
+      onRefresh();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
   const desfazarContato = trpc.crm.desfazarContato.useMutation({
     onSuccess: () => {
       toast.success("Contato removido.");
       setModalContato(null);
+      setPedindoRemocao(false);
       onRefresh();
     },
     onError: (e: { message: string }) => toast.error(e.message),
@@ -331,15 +348,18 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   const grupoSugerido = faixaSugerida(dates, [faixasConfig[1], faixasConfig[2], faixasConfig[3]]);
 
   // Mapear contatos por chave de data
-  const contatoMap: Record<string, { canal: string }> = {};
+  const contatoMap: Record<string, { canal: string; obs: string | null }> = {};
   if (p.contato1?.data) {
     const d = new Date(p.contato1.data);
-    contatoMap[toDateKey(d)] = { canal: p.contato1.canal };
+    contatoMap[toDateKey(d)] = { canal: p.contato1.canal, obs: p.contato1.obs };
   }
   if (p.contato2?.data) {
     const d = new Date(p.contato2.data);
-    contatoMap[toDateKey(d)] = { canal: p.contato2.canal };
+    contatoMap[toDateKey(d)] = { canal: p.contato2.canal, obs: p.contato2.obs };
   }
+
+  // Editando = a data clicada já tem um contato registrado (troca a resposta em vez de criar um novo)
+  const editando = !!(modalContato && contatoMap[toDateKey(modalContato.date)]);
 
   const hoje = new Date();
   const hojeKey = toDateKey(hoje);
@@ -351,14 +371,23 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
 
   const confirmContato = () => {
     if (!modalContato || !respostaSelecionada) return;
-    registrarContato.mutate({
-      orcamentoId: p.id,
-      vendedor: vendedor || p.vendedor,
-      empresa: p.nomeCliente,
-      canal: respostaSelecionada,
-      observacao: obs || null,
-      dataContato: modalContato.date.toISOString(),
-    });
+    if (editando) {
+      alterarContato.mutate({
+        orcamentoId: p.id,
+        data: modalContato.date.toISOString(),
+        canal: respostaSelecionada,
+        observacao: obs || null,
+      });
+    } else {
+      registrarContato.mutate({
+        orcamentoId: p.id,
+        vendedor: vendedor || p.vendedor,
+        empresa: p.nomeCliente,
+        canal: respostaSelecionada,
+        observacao: obs || null,
+        dataContato: modalContato.date.toISOString(),
+      });
+    }
   };
 
   const confirmDesfazer = () => {
@@ -381,8 +410,14 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           if (contato && canalInfo) {
             return (
               <button key={i}
-                onClick={(e) => { e.stopPropagation(); setModalContato({ date: dt, desfazer: true }); }}
-                title={`${canalInfo.label} — clique para desfazer`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setModalContato({ date: dt });
+                  setPedindoRemocao(false);
+                  setRespostaSelecionada(contato.canal as RespostaCanal);
+                  setObs(contato.obs ?? "");
+                }}
+                title={`${canalInfo.label} — clique para alterar`}
                 className="w-6 h-6 rounded flex items-center justify-center text-sm hover:opacity-70 transition-opacity cursor-pointer bg-white border border-gray-200 shadow-sm"
               >{canalInfo.emoji}</button>
             );
@@ -390,7 +425,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           const isFuture = key > hojeKey;
           return (
             <button key={i}
-              onClick={(e) => { e.stopPropagation(); setModalContato({ date: dt, desfazer: false }); setRespostaSelecionada(null); setObs(""); }}
+              onClick={(e) => { e.stopPropagation(); setModalContato({ date: dt }); setPedindoRemocao(false); setRespostaSelecionada(null); setObs(""); }}
               title={`Registrar contato em ${fmtShort(dt)}`}
               className={`w-6 h-6 rounded border-2 bg-white active:scale-95 transition-all cursor-pointer flex items-center justify-center ${
                 isFuture ? "border-blue-200 hover:border-blue-400 hover:bg-blue-50 text-blue-400" : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
@@ -580,14 +615,16 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         </TableCell>
       </TableRow>
 
-      {/* Modal: registrar contato */}
-      <Dialog open={!!modalContato && !modalContato?.desfazer} onOpenChange={() => setModalContato(null)}>
+      {/* Modal: registrar/editar contato */}
+      <Dialog open={!!modalContato && !pedindoRemocao} onOpenChange={() => { setModalContato(null); setPedindoRemocao(false); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Registrar Contato — {modalContato ? fmtShort(modalContato.date) : ""}</DialogTitle>
+            <DialogTitle>{editando ? "Editar Contato" : "Registrar Contato"} — {modalContato ? fmtShort(modalContato.date) : ""}</DialogTitle>
           </DialogHeader>
           <p className="text-sm font-semibold">{p.nomeCliente}</p>
-          <p className="text-xs text-muted-foreground mb-3">Qual foi a resposta do cliente?</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            {editando ? "Já respondeu? Atualize a resposta abaixo." : "Qual foi a resposta do cliente?"}
+          </p>
           <div className="space-y-2">
             {OPCOES_RESPOSTA.map(opcao => {
               const selected = respostaSelecionada === opcao.value;
@@ -607,26 +644,34 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
             <Label className="text-xs mb-1 block text-muted-foreground">Observação (opcional)</Label>
             <Textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Ex: Cliente pediu prazo até sexta..." className="text-sm h-20 resize-none" />
           </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" size="sm" onClick={() => setModalContato(null)}>Cancelar</Button>
-            <Button size="sm" onClick={confirmContato} disabled={!respostaSelecionada || registrarContato.isPending} className="gap-1">
-              {registrarContato.isPending && <Spinner className="size-3.5" />} Confirmar
-            </Button>
+          <DialogFooter className="mt-4 sm:justify-between">
+            {editando ? (
+              <Button variant="ghost" size="sm" onClick={() => setPedindoRemocao(true)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                Remover contato
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setModalContato(null)}>Cancelar</Button>
+              <Button size="sm" onClick={confirmContato} disabled={!respostaSelecionada || registrarContato.isPending || alterarContato.isPending} className="gap-1">
+                {(registrarContato.isPending || alterarContato.isPending) && <Spinner className="size-3.5" />} {editando ? "Salvar alteração" : "Confirmar"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal: desfazer contato */}
-      <Dialog open={!!modalContato?.desfazer} onOpenChange={() => setModalContato(null)}>
+      {/* Modal: confirmar remoção de um contato já registrado */}
+      <Dialog open={!!modalContato && pedindoRemocao} onOpenChange={() => setPedindoRemocao(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Desfazer contato?</DialogTitle>
+            <DialogTitle>Remover contato?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Isso removerá o registro de contato de {modalContato ? fmtShort(modalContato.date) : ""}. Tem certeza?
+            Isso apaga o registro de contato de {modalContato ? fmtShort(modalContato.date) : ""} (em vez de remover, você pode
+            escolher "Salvar alteração" e trocar a resposta). Tem certeza?
           </p>
           <DialogFooter className="mt-4">
-            <Button variant="outline" size="sm" onClick={() => setModalContato(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setPedindoRemocao(false)}>Voltar</Button>
             <Button variant="destructive" size="sm" onClick={confirmDesfazer} disabled={desfazarContato.isPending} className="gap-1">
               {desfazarContato.isPending && <Spinner className="size-3.5" />} Remover contato
             </Button>

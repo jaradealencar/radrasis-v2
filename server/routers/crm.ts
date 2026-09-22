@@ -433,6 +433,36 @@ export const crmRouter = router({
       await logAtividade(ctx, { vendedor, acao: "desfazarContato", orcamentoId: input.orcamentoId, detalhe: `contato de ${input.data} removido` });
       return { ok: true };
     }),
+  // Alterar a resposta de um contato já registrado (ex.: estava "aguardando_resposta"
+  // e o cliente respondeu). Atualiza o mesmo registro em vez de apagar e recriar —
+  // não consome uma nova vaga de contato (máximo 2 por proposta em registrarContato).
+  alterarContato: protectedProcedure
+    .input(z.object({
+      orcamentoId: z.string(),
+      data: z.string(), // ISO string da data do contato a alterar (mesmo lookup de desfazarContato)
+      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
+      observacao: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = (await getDb())!;
+      const todos = await db.select().from(crmContatos)
+        .where(eq(crmContatos.orcamentoId, input.orcamentoId))
+        .orderBy(desc(crmContatos.contatadoEm));
+      const dataAlvo = new Date(input.data);
+      const alvo = todos.find(c => {
+        const d = new Date(c.contatadoEm);
+        return d.getFullYear() === dataAlvo.getFullYear() &&
+          d.getMonth() === dataAlvo.getMonth() &&
+          d.getDate() === dataAlvo.getDate();
+      });
+      if (!alvo) throw new TRPCError({ code: "NOT_FOUND", message: "Contato não encontrado para essa data." });
+      await db.update(crmContatos)
+        .set({ canal: input.canal as any, observacao: input.observacao ?? null })
+        .where(eq(crmContatos.id, alvo.id));
+      const vendedor = ctx.user?.name ?? "desconhecido";
+      await logAtividade(ctx, { vendedor, acao: "alterarContato", orcamentoId: input.orcamentoId, detalhe: `canal alterado para ${input.canal} (contato de ${input.data})` });
+      return { ok: true };
+    }),
   // Marcar proposta como ganha
   marcarGanha: protectedProcedure
     .input(z.object({ orcamentoId: z.string(), vendedor: z.string(), empresa: z.string() }))
