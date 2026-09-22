@@ -169,18 +169,20 @@ completo.
 
 - **Endpoint:** `POST /api/scheduled/sincronizarCrmAbertos`
 - **Autenticação:** nenhuma — ver "Sem autenticação por segredo" acima.
-- **Uma fatia por execução.** A janela padrão (21 dias, `status=ABERTO`) é dividida em 3
-  fatias contíguas; cada chamada busca só uma e mescla no cache. Medido em 21/09/2026: a
-  janela inteira numa chamada só estoura o `maxDuration` de 60s ("Task timed out after 60
-  seconds"), o cache deixava de ser regravado e o CRM passava a mostrar dados parados.
-  - Sem parâmetro, a fatia da vez sai do relógio (rodízio `0,1,0,2` a cada 10 min: a mais
-    recente atualiza a cada ~20 min, as mais antigas a cada ~40 min). **Um único schedule
-    a cada 10 min continua sendo suficiente.**
-  - `?fatia=0|1|2` força uma fatia (0 = mais recente). Para repopular o cache na mão
-    (ex.: cron parado por dias), chame as três: `.../sincronizarCrmAbertos?fatia=0`, `?fatia=1`, `?fatia=2`.
+- **Fatias de 2 dias.** A janela padrão (21 dias, `status=ABERTO`) é dividida em 11 fatias
+  contíguas (0 = hoje e ontem, 10 = a mais antiga). Medido em 21/09/2026: a janela inteira
+  numa chamada só estoura o `maxDuration` de 60s ("Task timed out after 60 seconds"), e
+  até fatias de 8 dias estouraram (a API chegou a ~13s por página de 50). Sem a
+  regravação, o cache ficava parado e o CRM passava a mostrar dados velhos.
+  - Cada execução atualiza a fatia 0 primeiro e segue pelas mais antigas (rodízio pelo
+    relógio a cada 10 min) **enquanto a previsão de tempo couber nos 60s**. O cache é
+    gravado a cada fatia, então um 504 ou erro no meio não perde o que já foi feito.
+    **Um único schedule a cada 10 min continua sendo suficiente.**
+  - `?fatia=N` (0 a 10) atualiza só aquela fatia. Para repopular o cache na mão (ex.: cron
+    parado por dias), chame as 11 em sequência — nunca em paralelo.
 - **Upsert idempotente:** troca só o trecho da janela buscado na linha de `mubisys_api_cache`
   (chave `crm_abertos_15d`) — chamadas repetidas ou fora de hora não corrompem nada. Se a
-  busca falhar ou vier incompleta, o cache anterior fica intocado.
+  busca de uma fatia falhar ou vier incompleta, o cache dela fica como estava.
 
 ```
 POST https://SEU-DOMINIO.com/api/scheduled/sincronizarCrmAbertos

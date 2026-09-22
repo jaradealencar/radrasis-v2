@@ -143,33 +143,44 @@ export async function refreshCrmAbertosCache(cacheKey: string, janelaDias: numbe
 // ~4s por página de 50) estoura o maxDuration de 60s da Vercel ("Task timed out
 // after 60 seconds"). Como a leitura nunca expira o cache por idade, o CRM ficou
 // servindo dados parados — e, ao filtrar por data de criação, propostas recentes
-// simplesmente não existiam ("0 propostas"). Por isso o job agendado atualiza UMA
-// fatia da janela por execução (cada uma cabe com folga em 60s) e mescla no cache.
-export const NUM_FATIAS_ABERTOS = 3;
+// simplesmente não existiam ("0 propostas"). Por isso o job agendado busca a janela
+// em fatias pequenas, grava o cache a cada fatia e só segue para a próxima se couber
+// no tempo. Fatias de 8 dias ainda estouraram os 60s no mesmo dia (a API chegou a
+// ~13s por página de 50), daí 2 dias por fatia.
+export const DIAS_POR_FATIA = 2;
 const CRON_INTERVALO_MS = 10 * 60 * 1000;
-// A fatia 0 (dias mais recentes) é onde entram propostas novas o tempo todo, então roda
-// a cada 2ª execução (~20 min); as mais antigas só mudam de status e esperam ~40 min.
-const CICLO_FATIAS = [0, 1, 0, 2];
 const DIA_MS = 24 * 60 * 60 * 1000;
 
-/** Qual fatia atualizar agora, sem estado: gira pelo relógio, então uma execução perdida só adia aquela fatia. */
-export function fatiaDaVez(agora: Date = new Date()): number {
-  return CICLO_FATIAS[Math.floor(agora.getTime() / CRON_INTERVALO_MS) % CICLO_FATIAS.length];
+/** Quantas fatias de DIAS_POR_FATIA dias cobrem hoje + `janelaDias` dias para trás. */
+export function numFatias(janelaDias: number): number {
+  return Math.ceil((janelaDias + 1) / DIAS_POR_FATIA);
+}
+
+/**
+ * Ordem em que o job tenta as fatias nesta execução, sem estado: a mais recente (0) vai
+ * sempre primeiro — é onde entram propostas novas o tempo todo — e as mais antigas seguem
+ * em rodízio pelo relógio. Uma execução perdida só adia as fatias que ela pegaria.
+ */
+export function ordemDasFatias(janelaDias: number, agora: Date = new Date()): number[] {
+  const antigas = numFatias(janelaDias) - 1;
+  if (antigas <= 0) return [0];
+  const cursor = Math.floor(agora.getTime() / CRON_INTERVALO_MS) % antigas;
+  return [0, ...Array.from({ length: antigas }, (_, k) => 1 + ((cursor + k) % antigas))];
 }
 
 /**
  * Intervalo [di, df] (YYYY-MM-DD) de uma fatia. Cobre hoje + `janelaDias` dias para trás
- * (a mesma cobertura da busca única), dividido em NUM_FATIAS_ABERTOS blocos contíguos:
+ * (a mesma cobertura da busca única), em blocos contíguos de DIAS_POR_FATIA dias:
  * fatia 0 = mais recente, última fatia = mais antiga.
  */
 export function intervaloDaFatia(janelaDias: number, fatia: number, agora: Date = new Date()): { di: string; df: string } {
-  if (!Number.isInteger(fatia) || fatia < 0 || fatia >= NUM_FATIAS_ABERTOS) {
-    throw new Error(`Fatia inválida: ${fatia} (use 0 a ${NUM_FATIAS_ABERTOS - 1})`);
+  const total = numFatias(janelaDias);
+  if (!Number.isInteger(fatia) || fatia < 0 || fatia >= total) {
+    throw new Error(`Fatia inválida: ${fatia} (use 0 a ${total - 1})`);
   }
   const dias = janelaDias + 1;
-  const tamanho = Math.ceil(dias / NUM_FATIAS_ABERTOS);
-  const recuoRecente = fatia * tamanho;
-  const recuoAntigo = Math.min(dias, (fatia + 1) * tamanho) - 1;
+  const recuoRecente = fatia * DIAS_POR_FATIA;
+  const recuoAntigo = Math.min(dias, (fatia + 1) * DIAS_POR_FATIA) - 1;
   return {
     di: fmtDate(new Date(agora.getTime() - recuoAntigo * DIA_MS)),
     df: fmtDate(new Date(agora.getTime() - recuoRecente * DIA_MS)),
@@ -205,7 +216,7 @@ export async function refreshCrmAbertosFatia(
   // Lê o cache só depois da busca (que é a parte lenta) para encolher a janela de corrida
   // com outra execução do job.
   const existente = await getCrmAbertosCache(cacheKey);
-  const inicioJanela = intervaloDaFatia(janelaDias, NUM_FATIAS_ABERTOS - 1).di;
+  const inicioJanela = intervaloDaFatia(janelaDias, numFatias(janelaDias) - 1).di;
   const mesclado = mesclarFatia(existente?.itens ?? [], itens, di, df, inicioJanela);
   await setCrmAbertosCache(cacheKey, mesclado);
   return { di, df, naFatia: itens.length, totalEmCache: mesclado.length };

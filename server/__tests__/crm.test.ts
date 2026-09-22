@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  filtrarPorDiaDeCadastro, intervaloDaFatia, mesclarFatia, fatiaDaVez, NUM_FATIAS_ABERTOS,
+  filtrarPorDiaDeCadastro, intervaloDaFatia, mesclarFatia, ordemDasFatias, numFatias,
 } from "../sync/crm-abertos-cache";
 
 // Mock do módulo de banco de dados
@@ -156,29 +156,44 @@ describe("CRM — Lógica de negócio", () => {
   describe("Atualização do cache de abertos por fatias", () => {
     const agora = new Date("2026-09-21T12:00:00Z");
 
-    it("divide a janela de 21 dias em 3 fatias contíguas, sem buraco nem sobreposição", () => {
-      expect(intervaloDaFatia(21, 0, agora)).toEqual({ di: "2026-09-14", df: "2026-09-21" });
-      expect(intervaloDaFatia(21, 1, agora)).toEqual({ di: "2026-09-06", df: "2026-09-13" });
-      expect(intervaloDaFatia(21, 2, agora)).toEqual({ di: "2026-08-31", df: "2026-09-05" });
+    it("divide a janela de 21 dias em 11 fatias de 2 dias (a última só com 1)", () => {
+      expect(numFatias(21)).toBe(11);
+      expect(intervaloDaFatia(21, 0, agora)).toEqual({ di: "2026-09-20", df: "2026-09-21" });
+      expect(intervaloDaFatia(21, 1, agora)).toEqual({ di: "2026-09-18", df: "2026-09-19" });
+      expect(intervaloDaFatia(21, 10, agora)).toEqual({ di: "2026-08-31", df: "2026-09-01" });
     });
 
-    it("a soma das fatias cobre a mesma janela da busca única (hoje e 21 dias atrás)", () => {
-      const f0 = intervaloDaFatia(21, 0, agora);
-      const f2 = intervaloDaFatia(21, NUM_FATIAS_ABERTOS - 1, agora);
-      expect(f0.df).toBe("2026-09-21");
-      expect(f2.di).toBe("2026-08-31");
+    it("as fatias são contíguas e cobrem hoje até 21 dias atrás, sem buraco nem sobreposição", () => {
+      const fatias = Array.from({ length: numFatias(21) }, (_, k) => intervaloDaFatia(21, k, agora));
+      expect(fatias[0].df).toBe("2026-09-21");
+      expect(fatias[fatias.length - 1].di).toBe("2026-08-31");
+      for (let k = 1; k < fatias.length; k++) {
+        const diaAntesDaAnterior = new Date(new Date(`${fatias[k - 1].di}T12:00:00Z`).getTime() - 24 * 60 * 60 * 1000)
+          .toISOString().slice(0, 10);
+        expect(fatias[k].df).toBe(diaAntesDaAnterior);
+      }
     });
 
     it("rejeita fatia fora do intervalo", () => {
-      expect(() => intervaloDaFatia(21, 3, agora)).toThrow();
+      expect(() => intervaloDaFatia(21, 11, agora)).toThrow();
       expect(() => intervaloDaFatia(21, -1, agora)).toThrow();
       expect(() => intervaloDaFatia(21, 1.5, agora)).toThrow();
     });
 
-    it("gira pelas fatias a cada 10 min, com a mais recente (0) duas vezes por volta", () => {
+    it("a ordem das fatias começa sempre pela mais recente e inclui cada fatia uma única vez", () => {
       const dezMin = 10 * 60 * 1000;
-      const volta = [0, 1, 2, 3, 4, 5, 6, 7].map(k => fatiaDaVez(new Date(k * dezMin)));
-      expect(volta).toEqual([0, 1, 0, 2, 0, 1, 0, 2]);
+      for (let k = 0; k < 25; k++) {
+        const ordem = ordemDasFatias(21, new Date(k * dezMin));
+        expect(ordem[0]).toBe(0);
+        expect([...ordem].sort((a, b) => a - b)).toEqual(Array.from({ length: numFatias(21) }, (_, i) => i));
+      }
+    });
+
+    it("as fatias antigas giram pelo relógio a cada 10 min", () => {
+      const dezMin = 10 * 60 * 1000;
+      expect(ordemDasFatias(21, new Date(0 * dezMin)).slice(0, 3)).toEqual([0, 1, 2]);
+      expect(ordemDasFatias(21, new Date(1 * dezMin)).slice(0, 3)).toEqual([0, 2, 3]);
+      expect(ordemDasFatias(21, new Date(10 * dezMin)).slice(0, 3)).toEqual([0, 1, 2]); // 10 antigas → volta ao início
     });
 
     it("mesclarFatia troca só o trecho da fatia e descarta o que saiu da janela", () => {
