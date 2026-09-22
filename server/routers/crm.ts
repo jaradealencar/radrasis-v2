@@ -63,9 +63,25 @@ async function logAtividade(ctx: TrpcContext, opts: {
     // silently ignore — não deixar falha de log quebrar a ação principal
   }
 }
+
 import { eq, and, desc, sql, inArray, gte } from "drizzle-orm";
 import { listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 // ─── Helpers Mubisys ──────────────────────────────────────────────────────────
+
+// Próxima vaga de contato (1 ou 2) livre para a proposta — mesma regra do
+// registrarContato. Usada por marcarGanha/marcarPerdida para que o registro
+// caia em contato1/contato2 (getPropostas) em vez de ficar só com
+// numeroContato fixo, invisível na grade de datas e no filtro por resposta.
+// Sem vaga livre (já esgotou as 2 tentativas regulares), mantém o valor "fora
+// da faixa" de antes — nesse caso a proposta já foi para o Histórico mesmo.
+async function numeroContatoParaStatusFinal(db: Awaited<ReturnType<typeof getDb>>, orcamentoId: string): Promise<number> {
+  const regulares = await db!.select().from(crmContatos)
+    .where(and(
+      eq(crmContatos.orcamentoId, orcamentoId),
+      sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`,
+    ));
+  return regulares.length < 2 ? regulares.length + 1 : 99;
+}
 
 // Normaliza nome de empresa: minúsculas, sem acentos, sem pontuação extra
 function normalizeEmpresa(nome: string): string {
@@ -240,6 +256,11 @@ export const crmRouter = router({
         const diasCriado = dataCriacaoDate ? diasUteisEntre(dataCriacaoDate, new Date()) : 0;
         const primeiroContato = contatos.find(c => c.numeroContato === 1);
         const segundoContato = contatos.find(c => c.numeroContato === 2);
+        // 'perdida'/'garantiu_fechamento' são status finais (não tentativas de contato — ver
+        // registrarContato, que já os exclui do limite de 2) e não devem, sozinhos, mandar a
+        // proposta para o Histórico: senão ela some da aba Ativas (e do filtro por resposta,
+        // que só existe lá) assim que "Garantiu fechamento" é registrado como 2º contato.
+        const contatosRegulares = contatos.filter(c => c.canal !== "perdida" && c.canal !== "garantiu_fechamento");
         const diasAteContato1 = primeiroContato
           ? Math.floor((new Date(primeiroContato.contatadoEm).getTime() - new Date(o.data_cadastro).getTime()) / (1000 * 60 * 60 * 24))
           : null;
@@ -270,7 +291,7 @@ export const crmRouter = router({
           } : null,
           qtdContatos: contatos.length,
           contato1NoPrazo: diasAteContato1 !== null ? diasAteContato1 <= 3 : null,
-          meta2Contatos: contatos.length >= 2,
+          meta2Contatos: contatosRegulares.length >= 2,
         };
       });
 
@@ -473,11 +494,12 @@ export const crmRouter = router({
         .where(sql`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'garantiu_fechamento'`)
         .limit(1);
       if (existing.length === 0) {
+        const numeroContato = await numeroContatoParaStatusFinal(db, input.orcamentoId);
         await db.insert(crmContatos).values({
           orcamentoId: input.orcamentoId,
           vendedor: input.vendedor,
           empresa: input.empresa,
-          numeroContato: 99,
+          numeroContato,
           canal: "garantiu_fechamento" as any,
           observacao: "Proposta marcada como ganha",
         } as any);
@@ -496,11 +518,12 @@ export const crmRouter = router({
         .where(sql`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'perdida'`)
         .limit(1);
       if (existing.length === 0) {
+        const numeroContato = await numeroContatoParaStatusFinal(db, input.orcamentoId);
         await db.insert(crmContatos).values({
           orcamentoId: input.orcamentoId,
           vendedor: input.vendedor,
           empresa: input.empresa,
-          numeroContato: 99,
+          numeroContato,
           canal: "perdida" as "whatsapp",
           observacao: "Proposta marcada como perdida",
         } as any);

@@ -154,6 +154,51 @@ describe("CRM — Lógica de negócio", () => {
     });
   });
 
+  // 'garantiu_fechamento'/'perdida' são status finais, não tentativas de contato — não podem
+  // contar para a meta de 2 que manda a proposta para o Histórico (aba sem filtro por resposta),
+  // senão "Garantiu fechamento" registrado como 2º contato some do filtro (ver getPropostas).
+  describe("meta2Contatos ignora status finais (garantiu_fechamento/perdida)", () => {
+    function calcularMeta2Contatos(contatos: Array<{ canal: string }>) {
+      const regulares = contatos.filter(c => c.canal !== "perdida" && c.canal !== "garantiu_fechamento");
+      return regulares.length >= 2;
+    }
+
+    it("1 contato regular + garantiu_fechamento não atinge a meta (proposta continua em Ativas)", () => {
+      const contatos = [{ canal: "aguardando_resposta" }, { canal: "garantiu_fechamento" }];
+      expect(calcularMeta2Contatos(contatos)).toBe(false);
+    });
+
+    it("2 contatos regulares sem status final atinge a meta (vai para o Histórico)", () => {
+      const contatos = [{ canal: "nao_retornou" }, { canal: "esperando_cliente" }];
+      expect(calcularMeta2Contatos(contatos)).toBe(true);
+    });
+
+    it("só um garantiu_fechamento, sem tentativa anterior, não atinge a meta", () => {
+      expect(calcularMeta2Contatos([{ canal: "garantiu_fechamento" }])).toBe(false);
+    });
+  });
+
+  // marcarGanha/marcarPerdida usavam numeroContato fixo (99), que getPropostas nunca mapeia
+  // para contato1/contato2 — o registro ficava invisível na grade de datas e no filtro por
+  // resposta. Reaproveitar a vaga livre (1 ou 2) resolve os dois de uma vez.
+  describe("numeroContato de marcarGanha/marcarPerdida reaproveita a vaga livre", () => {
+    function numeroContatoParaStatusFinal(regularesExistentes: number) {
+      return regularesExistentes < 2 ? regularesExistentes + 1 : 99;
+    }
+
+    it("sem tentativa anterior, ocupa a vaga 1 (contato1.canal aparece no filtro)", () => {
+      expect(numeroContatoParaStatusFinal(0)).toBe(1);
+    });
+
+    it("com 1 tentativa anterior, ocupa a vaga 2", () => {
+      expect(numeroContatoParaStatusFinal(1)).toBe(2);
+    });
+
+    it("com as 2 vagas já usadas, cai no numeroContato 99 (a proposta já foi para o Histórico)", () => {
+      expect(numeroContatoParaStatusFinal(2)).toBe(99);
+    });
+  });
+
   describe("Atualização do cache de abertos por fatias", () => {
     const agora = new Date("2026-09-21T12:00:00Z");
 
