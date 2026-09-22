@@ -22,9 +22,9 @@ const OLD_LAST_COLUMN = "R$4.8k+";
 const NEW_LAST_COLUMN = "R$4.8k~8.000";
 const NEW_FINAL_COLUMN = "R$8k+";
 
-// id=16 (page 2, Clientes Brasil) está 1pp abaixo do valor confirmado pelo usuário
-// (print de tela) na última coluna — corrige antes de estender a faixa.
-const LAST_COLUMN_OVERRIDE_DELTA: Record<number, number> = { 16: 1 };
+// Valores atuais já foram confirmados pelo usuário (print de tela em 22/09/2026),
+// sem necessidade de correção antes de estender a faixa.
+const LAST_COLUMN_OVERRIDE_DELTA: Record<number, number> = {};
 
 type Row = { label?: string; values?: string[] };
 type Content = { type?: string; columns?: string[]; rows?: Row[] };
