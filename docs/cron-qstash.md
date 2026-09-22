@@ -7,6 +7,7 @@ Cron); nenhum agendador vive dentro do repositório:
 |---|---|---|
 | `POST /api/scheduled/sincronizarOS` | `erp_os_cache` | janela rolante curta (~32 dias), dados "quentes" pra funcionalidades que só precisam do recente |
 | `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
+| `POST /api/scheduled/completarTelefones?di=&df=` | `historico_os.telefone` | uso manual/pontual: preenche o telefone (só onde está NULL) das O.S. aprovadas numa janela de até 7 dias, dentro dos últimos 13 meses. Completa o histórico antigo para o Guia de Fornecedores; o cron diário só cobre mês corrente + anterior |
 | `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave `crm_abertos_15d`) | orçamentos "em aberto" (15 dias) que o CRM de Propostas mostra — ver seção "Sincronização de abertos do CRM" mais abaixo |
 | `POST /api/scheduled/sincronizarCrmFechados` | `mubisys_api_cache` (chave `crm_fechados_45d`) | orçamentos "fechados" (45 dias) usados nas estatísticas do período selecionado no CRM — mesma seção |
 | `POST /api/scheduled/sincronizarPerfilCnpj` | `clientes_perfil_cnpj` | enriquece automaticamente o CNPJ de clientes novos que aparecem em `historico_os` (porte, idade, sócios) — ver seção "Sincronização do Perfil de Clientes por CNPJ" mais abaixo |
