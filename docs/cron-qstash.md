@@ -169,9 +169,18 @@ completo.
 
 - **Endpoint:** `POST /api/scheduled/sincronizarCrmAbertos`
 - **Autenticação:** nenhuma — ver "Sem autenticação por segredo" acima.
-- **Sem parâmetros.** Sempre sincroniza a janela padrão (15 dias, `status=ABERTO`).
-- **Upsert idempotente:** sobrescreve a mesma linha de `mubisys_api_cache` (chave
-  `crm_abertos_15d`) a cada execução — chamadas repetidas ou fora de hora não corrompem nada.
+- **Uma fatia por execução.** A janela padrão (21 dias, `status=ABERTO`) é dividida em 3
+  fatias contíguas; cada chamada busca só uma e mescla no cache. Medido em 21/09/2026: a
+  janela inteira numa chamada só estoura o `maxDuration` de 60s ("Task timed out after 60
+  seconds"), o cache deixava de ser regravado e o CRM passava a mostrar dados parados.
+  - Sem parâmetro, a fatia da vez sai do relógio (rodízio `0,1,0,2` a cada 10 min: a mais
+    recente atualiza a cada ~20 min, as mais antigas a cada ~40 min). **Um único schedule
+    a cada 10 min continua sendo suficiente.**
+  - `?fatia=0|1|2` força uma fatia (0 = mais recente). Para repopular o cache na mão
+    (ex.: cron parado por dias), chame as três: `.../sincronizarCrmAbertos?fatia=0`, `?fatia=1`, `?fatia=2`.
+- **Upsert idempotente:** troca só o trecho da janela buscado na linha de `mubisys_api_cache`
+  (chave `crm_abertos_15d`) — chamadas repetidas ou fora de hora não corrompem nada. Se a
+  busca falhar ou vier incompleta, o cache anterior fica intocado.
 
 ```
 POST https://SEU-DOMINIO.com/api/scheduled/sincronizarCrmAbertos

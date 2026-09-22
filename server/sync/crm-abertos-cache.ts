@@ -138,6 +138,79 @@ export async function refreshCrmAbertosCache(cacheKey: string, janelaDias: numbe
   return itens;
 }
 
+// ─── Atualização por fatias ───────────────────────────────────────────────────
+// Medido em 21/09/2026: a busca única da janela de 21 dias (todos os vendedores,
+// ~4s por página de 50) estoura o maxDuration de 60s da Vercel ("Task timed out
+// after 60 seconds"). Como a leitura nunca expira o cache por idade, o CRM ficou
+// servindo dados parados — e, ao filtrar por data de criação, propostas recentes
+// simplesmente não existiam ("0 propostas"). Por isso o job agendado atualiza UMA
+// fatia da janela por execução (cada uma cabe com folga em 60s) e mescla no cache.
+export const NUM_FATIAS_ABERTOS = 3;
+const CRON_INTERVALO_MS = 10 * 60 * 1000;
+// A fatia 0 (dias mais recentes) é onde entram propostas novas o tempo todo, então roda
+// a cada 2ª execução (~20 min); as mais antigas só mudam de status e esperam ~40 min.
+const CICLO_FATIAS = [0, 1, 0, 2];
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+/** Qual fatia atualizar agora, sem estado: gira pelo relógio, então uma execução perdida só adia aquela fatia. */
+export function fatiaDaVez(agora: Date = new Date()): number {
+  return CICLO_FATIAS[Math.floor(agora.getTime() / CRON_INTERVALO_MS) % CICLO_FATIAS.length];
+}
+
+/**
+ * Intervalo [di, df] (YYYY-MM-DD) de uma fatia. Cobre hoje + `janelaDias` dias para trás
+ * (a mesma cobertura da busca única), dividido em NUM_FATIAS_ABERTOS blocos contíguos:
+ * fatia 0 = mais recente, última fatia = mais antiga.
+ */
+export function intervaloDaFatia(janelaDias: number, fatia: number, agora: Date = new Date()): { di: string; df: string } {
+  if (!Number.isInteger(fatia) || fatia < 0 || fatia >= NUM_FATIAS_ABERTOS) {
+    throw new Error(`Fatia inválida: ${fatia} (use 0 a ${NUM_FATIAS_ABERTOS - 1})`);
+  }
+  const dias = janelaDias + 1;
+  const tamanho = Math.ceil(dias / NUM_FATIAS_ABERTOS);
+  const recuoRecente = fatia * tamanho;
+  const recuoAntigo = Math.min(dias, (fatia + 1) * tamanho) - 1;
+  return {
+    di: fmtDate(new Date(agora.getTime() - recuoAntigo * DIA_MS)),
+    df: fmtDate(new Date(agora.getTime() - recuoRecente * DIA_MS)),
+  };
+}
+
+/**
+ * Troca no cache só o trecho [di, df] pelos itens novos, mantendo o resto da janela e
+ * descartando o que já saiu dela (`inicioJanela`) ou não tem data de cadastro.
+ */
+export function mesclarFatia<T extends { data_cadastro?: string | null }>(
+  existentes: T[], novos: T[], di: string, df: string, inicioJanela: string,
+): T[] {
+  const preservados = existentes.filter((o) => {
+    const dia = (o.data_cadastro || "").slice(0, 10);
+    return !!dia && dia >= inicioJanela && (dia < di || dia > df);
+  });
+  return [...preservados, ...novos];
+}
+
+/**
+ * Busca ao vivo só a fatia pedida (status=ABERTO, perPage=50) e mescla no cache existente.
+ * Se a busca falhar ou vier incompleta, o cache anterior fica intocado.
+ */
+export async function refreshCrmAbertosFatia(
+  cacheKey: string, janelaDias: number, fatia: number,
+): Promise<{ di: string; df: string; naFatia: number; totalEmCache: number }> {
+  const { di, df } = intervaloDaFatia(janelaDias, fatia);
+  const { itens, completo } = await listarOrcamentosMubiSys({
+    status: "ABERTO", datainicial: di, datafinal: df, perPage: 50,
+  });
+  if (!completo) throw new Error(`Fatia ${fatia} (${di} a ${df}) veio incompleta do MubiSys — cache mantido`);
+  // Lê o cache só depois da busca (que é a parte lenta) para encolher a janela de corrida
+  // com outra execução do job.
+  const existente = await getCrmAbertosCache(cacheKey);
+  const inicioJanela = intervaloDaFatia(janelaDias, NUM_FATIAS_ABERTOS - 1).di;
+  const mesclado = mesclarFatia(existente?.itens ?? [], itens, di, df, inicioJanela);
+  await setCrmAbertosCache(cacheKey, mesclado);
+  return { di, df, naFatia: itens.length, totalEmCache: mesclado.length };
+}
+
 /**
  * Mantém só os orçamentos cadastrados dentro de [di, df] (inclusive, YYYY-MM-DD).
  * `data_cadastro` vem do MubiSys sem timezone ("2026-09-17 08:38:30") — compara só o

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { filtrarPorDiaDeCadastro } from "../sync/crm-abertos-cache";
+import {
+  filtrarPorDiaDeCadastro, intervaloDaFatia, mesclarFatia, fatiaDaVez, NUM_FATIAS_ABERTOS,
+} from "../sync/crm-abertos-cache";
 
 // Mock do módulo de banco de dados
 vi.mock("../db/db", () => ({
@@ -148,6 +150,47 @@ describe("CRM — Lógica de negócio", () => {
       expect(stats.semContato).toBe(0);
       expect(stats.com1Contato).toBe(0);
       expect(stats.com2Contatos).toBe(0);
+    });
+  });
+
+  describe("Atualização do cache de abertos por fatias", () => {
+    const agora = new Date("2026-09-21T12:00:00Z");
+
+    it("divide a janela de 21 dias em 3 fatias contíguas, sem buraco nem sobreposição", () => {
+      expect(intervaloDaFatia(21, 0, agora)).toEqual({ di: "2026-09-14", df: "2026-09-21" });
+      expect(intervaloDaFatia(21, 1, agora)).toEqual({ di: "2026-09-06", df: "2026-09-13" });
+      expect(intervaloDaFatia(21, 2, agora)).toEqual({ di: "2026-08-31", df: "2026-09-05" });
+    });
+
+    it("a soma das fatias cobre a mesma janela da busca única (hoje e 21 dias atrás)", () => {
+      const f0 = intervaloDaFatia(21, 0, agora);
+      const f2 = intervaloDaFatia(21, NUM_FATIAS_ABERTOS - 1, agora);
+      expect(f0.df).toBe("2026-09-21");
+      expect(f2.di).toBe("2026-08-31");
+    });
+
+    it("rejeita fatia fora do intervalo", () => {
+      expect(() => intervaloDaFatia(21, 3, agora)).toThrow();
+      expect(() => intervaloDaFatia(21, -1, agora)).toThrow();
+      expect(() => intervaloDaFatia(21, 1.5, agora)).toThrow();
+    });
+
+    it("gira pelas fatias a cada 10 min, com a mais recente (0) duas vezes por volta", () => {
+      const dezMin = 10 * 60 * 1000;
+      const volta = [0, 1, 2, 3, 4, 5, 6, 7].map(k => fatiaDaVez(new Date(k * dezMin)));
+      expect(volta).toEqual([0, 1, 0, 2, 0, 1, 0, 2]);
+    });
+
+    it("mesclarFatia troca só o trecho da fatia e descarta o que saiu da janela", () => {
+      const existentes = [
+        { id: "velho", data_cadastro: "2026-08-30 10:00:00" },   // antes da janela → sai
+        { id: "meio", data_cadastro: "2026-09-03 10:00:00" },    // fora da fatia → fica
+        { id: "trocado", data_cadastro: "2026-09-15 10:00:00" }, // dentro da fatia → substituído
+        { id: "sem-data", data_cadastro: null },                 // sem data → sai
+      ];
+      const novos = [{ id: "novo", data_cadastro: "2026-09-16 09:00:00" }];
+      const ids = mesclarFatia(existentes, novos, "2026-09-14", "2026-09-21", "2026-08-31").map(o => o.id);
+      expect(ids).toEqual(["meio", "novo"]);
     });
   });
 
