@@ -52,6 +52,8 @@ const OPCOES_RESPOSTA = [
   { value: "nao_retornou" as const, label: "Não retornou", icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 border-red-200 hover:bg-red-100", badgeBg: "bg-red-100 text-red-700 border-red-200", emoji: "🔴" },
   { value: "esperando_cliente" as const, label: "Esperando cliente", icon: Clock, color: "text-amber-600", bg: "bg-amber-50 border-amber-200 hover:bg-amber-100", badgeBg: "bg-amber-100 text-amber-700 border-amber-200", emoji: "🟡" },
   { value: "garantiu_fechamento" as const, label: "Garantiu fechamento", icon: ThumbsUp, color: "text-green-600", bg: "bg-green-50 border-green-200 hover:bg-green-100", badgeBg: "bg-green-100 text-green-700 border-green-200", emoji: "🟢" },
+  // O vendedor já fez o contato, mas o cliente ainda não deu devolutiva.
+  { value: "aguardando_resposta" as const, label: "Vendedor aguardando resposta", icon: MessageCircle, color: "text-blue-600", bg: "bg-blue-50 border-blue-200 hover:bg-blue-100", badgeBg: "bg-blue-100 text-blue-700 border-blue-200", emoji: "🔵" },
 ] as const;
 
 type RespostaCanal = typeof OPCOES_RESPOSTA[number]["value"];
@@ -1111,6 +1113,7 @@ export default function CRM() {
           { value: "nao_retornou", label: "Não retornou", emoji: "🔴", cls: "bg-red-100 text-red-700 border-red-200", scriptFaixa: 11 },
           { value: "esperando_cliente", label: "Esperando cliente", emoji: "🟡", cls: "bg-amber-100 text-amber-700 border-amber-200", scriptFaixa: 12 },
           { value: "garantiu_fechamento", label: "Garantiu fechamento", emoji: "🟢", cls: "bg-green-100 text-green-700 border-green-200", scriptFaixa: 13 },
+          { value: "aguardando_resposta", label: "Aguardando resposta", emoji: "🔵", cls: "bg-sky-100 text-sky-700 border-sky-200", scriptFaixa: null },
           { value: "_objecoes", label: "Objeções Preço", emoji: "💰", cls: "bg-violet-100 text-violet-800 border-violet-300", scriptFaixa: 20 },
         ].map(o => (
           <div key={o.value} className="flex flex-col items-center gap-1">

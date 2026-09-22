@@ -512,7 +512,7 @@ export const crmRouter = router({
       orcamentoId: z.string(),
       empresa: z.string(),
       vendedor: z.string(),
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento"]),
+      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
       observacao: z.string().nullable().optional(),
       dataContato: z.string().optional(), // ISO string da data clicada
     }))

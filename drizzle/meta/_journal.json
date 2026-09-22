@@ -281,6 +281,13 @@
       "when": 1790003784556,
       "tag": "0039_guia_fornecedores_config",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790037868235,
+      "tag": "0040_aguardando_resposta",
+      "breakpoints": true
     }
   ]
 }
