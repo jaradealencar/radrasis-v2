@@ -413,8 +413,13 @@ export default function PerformanceComercial() {
   // da API MubiSys continua frio, então cada nova tentativa reproduz o mesmo custo.
   const RETRY_1 = { refetchOnWindowFocus: false, retry: 1 };
 
+  // forceRefresh: true limpa o cache do servidor (até 60min para o mês vigente,
+  // ver CACHE_TTL_ATUAL_MS em performanceComercial.ts) e busca dados frescos na
+  // API MubiSys. Sem isso, o botão "Atualizar" só reconsulta o mesmo cache —
+  // O.S. aprovadas na última hora não aparecem até o TTL expirar sozinho.
+  const [forceRefreshMes, setForceRefreshMes] = useState(false);
   const { data: mesDados, isLoading: loadingMes, refetch: refetchMes } =
-    trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
+    trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado, forceRefresh: forceRefreshMes }, RETRY_1);
 
   // Query de auditoria para o mês selecionado
   const { data: auditoriaData, refetch: refetchAuditoria } =
@@ -727,10 +732,18 @@ export default function PerformanceComercial() {
               )}
               <Button
                 variant="outline" size="sm"
-                onClick={() => { refetchMes(); refetchEvolucao(); refetchMetas(); }}
+                onClick={() => {
+                  setForceRefreshMes(true);
+                  setTimeout(() => {
+                    refetchMes();
+                    refetchEvolucao();
+                    refetchMetas();
+                    setForceRefreshMes(false);
+                  }, 100);
+                }}
                 disabled={isLoading || fonteStatus === 'congelado'}
                 className="gap-1.5 h-9 flex-1 sm:flex-none text-xs sm:text-sm"
-                title={fonteStatus === 'congelado' ? 'Dados congelados — use Recalibrar para atualizar' : ''}
+                title={fonteStatus === 'congelado' ? 'Dados congelados — use Recalibrar para atualizar' : 'Limpa o cache e busca dados atualizados na API MubiSys'}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
                 Atualizar
