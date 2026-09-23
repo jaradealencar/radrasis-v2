@@ -31,6 +31,7 @@ import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
 import { WhatsAppScriptsPopover } from "@/components/WhatsAppScriptsPopover";
 import { BibliotecaMidias } from "@/components/BibliotecaMidias";
 import { faixaSugerida } from "@/lib/faixasCrm";
+import { urlOrcamentoMubiSys } from "@/lib/mubisys";
 import { primeiroNome } from "@/lib/mensagensCrm";
 import type { FaixaConfig } from "@/components/FaixaDiasConfigForm";
 import { gerarDatasUteis } from "@shared/dias-uteis";
@@ -289,7 +290,6 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   p: Proposta; vendedor: string; onRefresh: () => void; showVendedor: boolean;
   faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
 }) {
-  const [modalStatus, setModalStatus] = useState(false);
   // modalContato: null = fechado; { date } = aberto (registro novo OU edição de um já existente
   // — depende se `contatoMap` já tem essa data, ver `editando` abaixo)
   const [modalContato, setModalContato] = useState<{ date: Date } | null>(null);
@@ -333,12 +333,12 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   });
 
   const marcarPerdida = trpc.crm.marcarPerdida.useMutation({
-    onSuccess: () => { toast.success("Proposta marcada como perdida."); setModalStatus(false); onRefresh(); },
+    onSuccess: () => { toast.success("Proposta marcada como perdida."); onRefresh(); },
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
   const marcarGanha = trpc.crm.marcarGanha.useMutation({
-    onSuccess: () => { toast.success("Proposta marcada como ganha! 🎉"); setModalStatus(false); onRefresh(); },
+    onSuccess: () => { toast.success("Proposta marcada como ganha! 🎉"); onRefresh(); },
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
@@ -442,9 +442,11 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
       <TableRow className={`transition-colors ${rowBg}`}>
         {/* Nº OS */}
         <TableCell>
-          <button onClick={() => setModalStatus(true)} className="text-blue-600 hover:text-blue-800 font-bold text-sm underline underline-offset-2">
+          <a href={urlOrcamentoMubiSys(p.id)} target="_blank" rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 font-bold text-sm underline underline-offset-2"
+            title="Abrir este orçamento no MubiSys">
             #{p.sequencial || p.id}
-          </button>
+          </a>
           <div className="text-xs text-muted-foreground mt-0.5">{fmtDate(p.dataCriacao)}</div>
         </TableCell>
 
@@ -676,27 +678,6 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               {desfazarContato.isPending && <Spinner className="size-3.5" />} Remover contato
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal: ganho/perdido */}
-      <Dialog open={modalStatus} onOpenChange={setModalStatus}>
-        <DialogContent className="max-w-xs">
-          <DialogHeader><DialogTitle>Proposta #{p.sequencial || p.id}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">{p.nomeCliente}</p>
-          <p className="text-sm font-semibold">{fmt(p.valor)}</p>
-          <div className="flex gap-3 mt-4">
-            <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2"
-              onClick={() => marcarGanha.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
-              disabled={marcarGanha.isPending}>
-              {marcarGanha.isPending ? <Spinner /> : <Trophy className="w-4 h-4" />} Ganha
-            </Button>
-            <Button variant="outline" className="flex-1 border-red-300 text-red-600 hover:bg-red-50 gap-2"
-              onClick={() => marcarPerdida.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
-              disabled={marcarPerdida.isPending}>
-              {marcarPerdida.isPending ? <Spinner /> : <XCircle className="w-4 h-4" />} Perdida
-            </Button>
-          </div>
         </DialogContent>
       </Dialog>
     </>
