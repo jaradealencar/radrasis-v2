@@ -440,8 +440,13 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Faturamento no período</p>
                     <p className="text-lg font-bold text-slate-800">{fmtBrl(grupo.faturamentoNoPeriodo)}</p>
                   </div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Quantidade de compras desde então</p>
-                  <div className="space-y-1">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Quantidade de compras desde então</p>
+                    <p className="w-24 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest" title="Soma do valor gasto nas compras subsequentes à qualificação (recompras) — não conta a compra de entrada">
+                      Gasto em recompras
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
                     {grupo.distribuicaoQtdCompras.map(f => (
                       <div key={f.faixa} className="flex items-center gap-2 text-xs">
                         <span className="w-14 text-slate-500 font-mono">{f.faixa}x</span>
@@ -449,6 +454,9 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
                           <div className="h-full bg-blue-400 rounded-full" style={{ width: `${f.pct}%` }} />
                         </div>
                         <span className="w-20 text-right text-slate-600">{f.quantidade} ({fmtPct(f.pct)})</span>
+                        <span className="w-24 text-right text-slate-500 font-mono">
+                          {f.faixa === "1" ? "—" : fmtBrl(f.valorRecompras)}
+                        </span>
                       </div>
                     ))}
                   </div>

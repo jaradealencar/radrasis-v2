@@ -582,12 +582,18 @@ export interface DetalheClienteRecompra {
   diasAteRecompra: number | null;
   qtdComprasDesdeQualificacao: number; // inclui a própria compra de entrada — 1 = nunca recomprou
   valorNoPeriodo: number; // soma do valor de todos os pedidos válidos desse cliente dentro do período selecionado
+  /** Soma do valor SÓ das compras seguintes à qualificação (a recompra em si,
+   * excluindo a compra de entrada) — 0 quando qtdComprasDesdeQualificacao === 1. */
+  valorRecompras: number;
 }
 
 export interface FaixaQtdCompras {
   faixa: "1" | "2" | "3" | "4+";
   quantidade: number;
   pct: number;
+  /** Soma de valorRecompras de todos os clientes desta faixa — quanto os
+   * clientes desta faixa gastaram nas compras subsequentes à qualificação. */
+  valorRecompras: number;
 }
 
 export interface GrupoRecompra {
@@ -648,6 +654,7 @@ export function calcularRecompraNovosReativados(
       diasAteRecompra: recompra ? diasEntre(comprasDepois[0].data, primeiraNoPeriodo.data) : null,
       qtdComprasDesdeQualificacao: 1 + comprasDepois.length,
       valorNoPeriodo: comprasNoPeriodo.reduce((s, c) => s + c.valor, 0),
+      valorRecompras: comprasDepois.reduce((s, c) => s + c.valor, 0),
     };
     (categoria === "novo" ? novos : reativados).push(detalhe);
   }
@@ -655,15 +662,18 @@ export function calcularRecompraNovosReativados(
   const distribuir = (lista: DetalheClienteRecompra[]): FaixaQtdCompras[] => {
     const total = lista.length;
     const contagem = { "1": 0, "2": 0, "3": 0, "4+": 0 };
+    const valores = { "1": 0, "2": 0, "3": 0, "4+": 0 };
     for (const d of lista) {
       const qtd = d.qtdComprasDesdeQualificacao;
       const chave = qtd >= 4 ? "4+" : (String(qtd) as "1" | "2" | "3");
       contagem[chave]++;
+      valores[chave] += d.valorRecompras;
     }
     return (["1", "2", "3", "4+"] as const).map(faixa => ({
       faixa,
       quantidade: contagem[faixa],
       pct: total > 0 ? (contagem[faixa] / total) * 100 : 0,
+      valorRecompras: parseFloat(valores[faixa].toFixed(2)),
     }));
   };
 
