@@ -2701,10 +2701,16 @@ export const performanceComercialRouter = router({
       await db.update(performanceAuditada)
         .set({ congelado: false, dataCongelamento: null })
         .where(and(eq(performanceAuditada.mes, input.mes), eq(performanceAuditada.ano, input.ano)));
-      // Limpar cache para forçar nova busca da API
+      // Limpar cache em memória para forçar nova busca da API. Também precisa
+      // limpar o cache PERSISTENTE (mubisys_api_cache) — ele sobrevive a
+      // restart/troca de instância serverless na Vercel e, sem isso, o próximo
+      // getMes (mesmo já descongelado) reaproveitaria os mesmos dados antigos
+      // via getDbCache em vez de ir à API MubiSys, deixando o "Recalibrar" sem
+      // efeito real fora da instância que processou este clique.
       deleteCache(`mes_${input.mes}_${input.ano}`);
       deleteCache(`os_raw_${input.mes}_${input.ano}`);
       deleteCache(`orc_raw_${input.mes}_${input.ano}`);
+      await deleteDbCache(`raw_${input.mes}_${input.ano}`);
       return { ok: true };
     }),
 
