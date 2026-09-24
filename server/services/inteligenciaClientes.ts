@@ -582,32 +582,40 @@ export interface DetalheClienteRecompra {
   diasAteRecompra: number | null;
   qtdComprasDesdeQualificacao: number; // inclui a própria compra de entrada — 1 = nunca recomprou
   valorNoPeriodo: number; // soma do valor de todos os pedidos válidos desse cliente dentro do período selecionado
-  /** Valor SÓ das compras seguintes à qualificação (a recompra em si,
-   * excluindo a compra de entrada) — 0 quando qtdComprasDesdeQualificacao === 1. */
+  /** Valor da compra de entrada (a 1ª — a que tornou o cliente novo/reativado). */
+  valorEntrada: number;
+  /** Valor de CADA compra seguinte à entrada, em ordem cronológica: índice 0 =
+   * valor da 2ª compra, índice 1 = valor da 3ª compra, índice 2 = valor da 4ª
+   * compra, etc. Array vazio quando o cliente nunca recomprou. Nunca somar
+   * este array num único número por cliente para exibir "por faixa" — isso
+   * mistura compras de posições diferentes (2ª com 3ª com 4ª) e produz
+   * somas incomparáveis entre faixas. Use calcularFaturamentoPorPosicao. */
+  valoresComprasSeguintes: number[];
+  /** Soma de valoresComprasSeguintes — SÓ para exibir "quanto este cliente
+   * gastou em recompras" isoladamente (ex.: numa lista de clientes), nunca
+   * para agregar por faixa (ver nota acima). */
   valorRecompras: number;
-  /** Valor total gasto por este cliente desde a qualificação até hoje,
-   * incluindo a compra de entrada (= valor da compra de entrada + valorRecompras). */
-  valorTotalDesdeQualificacao: number;
 }
 
 export interface FaixaQtdCompras {
   faixa: "1" | "2" | "3" | "4+";
   quantidade: number;
   pct: number;
-  /** Soma de valorRecompras (SEM a compra de entrada) de todos os clientes
-   * desta faixa — é o "retorno em recompras": quanto esses clientes gastaram
-   * de volta, depois de já terem sido conquistados. 0 na faixa "1" (nunca
-   * recompraram). */
-  valorRecompras: number;
-  /** valorRecompras dividido por quantidade — gasto médio em recompras por
-   * cliente desta faixa (0 na faixa "1"). */
-  valorMedioRecomprasPorCliente: number;
-  /** Soma de valorTotalDesdeQualificacao (COM a compra de entrada) de todos
-   * os clientes desta faixa — quanto o grupo gastou no total (entrada +
-   * recompras) desde que qualificou como novo/reativado até hoje. */
-  valorTotal: number;
-  /** valorTotal dividido por quantidade — gasto médio total por cliente desta faixa. */
-  valorMedioPorCliente: number;
+}
+
+/** Faturamento agrupado pela POSIÇÃO da compra na sequência de cada cliente
+ * (1ª = a compra de entrada, 2ª, 3ª, 4ª-em-diante) — cada pedido conta em
+ * exatamente uma posição, nunca em mais de uma. Por isso dá pra comparar as
+ * 4 linhas entre si e a soma das 4 bate exatamente com o faturamento total
+ * do grupo (entrada + todas as recompras). Different de FaixaQtdCompras, que
+ * agrupa CLIENTES pelo total de compras que fizeram (sem valor em R$). */
+export interface FaturamentoPorPosicaoCompra {
+  posicao: "1" | "2" | "3" | "4+";
+  /** Quantidade de PEDIDOS (não de clientes) nesta posição — um cliente com
+   * 5 compras contribui 1 pedido em "1", 1 em "2", 1 em "3" e 2 em "4+". */
+  qtdPedidos: number;
+  /** Soma do valor SÓ dos pedidos desta posição. */
+  faturamento: number;
 }
 
 export interface GrupoRecompra {
@@ -616,8 +624,14 @@ export interface GrupoRecompra {
   taxaPct: number | null;
   /** Distribuição de quantas compras cada cliente do grupo fez desde a
    * qualificação (contando a compra de entrada) até a data de referência —
-   * responde "quantos compraram só 1 vez, quantos 2, 3, 4 ou mais". */
+   * responde "quantos compraram só 1 vez, quantos 2, 3, 4 ou mais". Só
+   * contagem de clientes, sem valor em R$ — ver faturamentoPorPosicaoCompra
+   * para a quebra de faturamento. */
   distribuicaoQtdCompras: FaixaQtdCompras[];
+  /** Faturamento por posição da compra (1ª/2ª/3ª/4ª-em-diante) — as 4 linhas
+   * são mutuamente exclusivas e somam exatamente o faturamento total do
+   * grupo desde a qualificação até hoje. */
+  faturamentoPorPosicaoCompra: FaturamentoPorPosicaoCompra[];
   /** Soma do valor de todos os pedidos válidos desses clientes DENTRO do
    * período selecionado (não conta compras feitas depois do período, mesmo
    * que contem para a taxa de recompra). */
@@ -660,7 +674,7 @@ export function calcularRecompraNovosReativados(
 
     const comprasDepois = cliente.compras.filter(c => c.data > primeiraNoPeriodo.data && c.data <= dataRef);
     const recompra = comprasDepois.length > 0;
-    const valorRecompras = comprasDepois.reduce((s, c) => s + c.valor, 0);
+    const valoresComprasSeguintes = comprasDepois.map(c => c.valor);
     const detalhe: DetalheClienteRecompra = {
       empresa: cliente.empresaExibicao,
       dataQualificacao: primeiraNoPeriodo.data.toISOString(),
@@ -669,8 +683,9 @@ export function calcularRecompraNovosReativados(
       diasAteRecompra: recompra ? diasEntre(comprasDepois[0].data, primeiraNoPeriodo.data) : null,
       qtdComprasDesdeQualificacao: 1 + comprasDepois.length,
       valorNoPeriodo: comprasNoPeriodo.reduce((s, c) => s + c.valor, 0),
-      valorRecompras,
-      valorTotalDesdeQualificacao: primeiraNoPeriodo.valor + valorRecompras,
+      valorEntrada: primeiraNoPeriodo.valor,
+      valoresComprasSeguintes,
+      valorRecompras: valoresComprasSeguintes.reduce((s, v) => s + v, 0),
     };
     (categoria === "novo" ? novos : reativados).push(detalhe);
   }
@@ -678,23 +693,42 @@ export function calcularRecompraNovosReativados(
   const distribuir = (lista: DetalheClienteRecompra[]): FaixaQtdCompras[] => {
     const total = lista.length;
     const contagem = { "1": 0, "2": 0, "3": 0, "4+": 0 };
-    const valoresRecompras = { "1": 0, "2": 0, "3": 0, "4+": 0 };
-    const valoresTotais = { "1": 0, "2": 0, "3": 0, "4+": 0 };
     for (const d of lista) {
       const qtd = d.qtdComprasDesdeQualificacao;
       const chave = qtd >= 4 ? "4+" : (String(qtd) as "1" | "2" | "3");
       contagem[chave]++;
-      valoresRecompras[chave] += d.valorRecompras;
-      valoresTotais[chave] += d.valorTotalDesdeQualificacao;
     }
     return (["1", "2", "3", "4+"] as const).map(faixa => ({
       faixa,
       quantidade: contagem[faixa],
       pct: total > 0 ? (contagem[faixa] / total) * 100 : 0,
-      valorRecompras: parseFloat(valoresRecompras[faixa].toFixed(2)),
-      valorMedioRecomprasPorCliente: contagem[faixa] > 0 ? parseFloat((valoresRecompras[faixa] / contagem[faixa]).toFixed(2)) : 0,
-      valorTotal: parseFloat(valoresTotais[faixa].toFixed(2)),
-      valorMedioPorCliente: contagem[faixa] > 0 ? parseFloat((valoresTotais[faixa] / contagem[faixa]).toFixed(2)) : 0,
+    }));
+  };
+
+  /** Faturamento por POSIÇÃO da compra — cada pedido conta em exatamente uma
+   * posição (1ª = entrada, 2ª, 3ª, 4ª-em-diante), nunca somado com outra
+   * posição do mesmo cliente. Ver nota em FaturamentoPorPosicaoCompra. */
+  const calcularFaturamentoPorPosicao = (lista: DetalheClienteRecompra[]): FaturamentoPorPosicaoCompra[] => {
+    const acc = {
+      "1": { qtdPedidos: 0, faturamento: 0 },
+      "2": { qtdPedidos: 0, faturamento: 0 },
+      "3": { qtdPedidos: 0, faturamento: 0 },
+      "4+": { qtdPedidos: 0, faturamento: 0 },
+    };
+    for (const d of lista) {
+      acc["1"].qtdPedidos++;
+      acc["1"].faturamento += d.valorEntrada;
+      d.valoresComprasSeguintes.forEach((valor, i) => {
+        const posicaoCompra = i + 2; // i=0 → 2ª compra, i=1 → 3ª compra, i=2 → 4ª compra, ...
+        const chave = posicaoCompra >= 4 ? "4+" : (String(posicaoCompra) as "2" | "3");
+        acc[chave].qtdPedidos++;
+        acc[chave].faturamento += valor;
+      });
+    }
+    return (["1", "2", "3", "4+"] as const).map(posicao => ({
+      posicao,
+      qtdPedidos: acc[posicao].qtdPedidos,
+      faturamento: parseFloat(acc[posicao].faturamento.toFixed(2)),
     }));
   };
 
@@ -705,6 +739,7 @@ export function calcularRecompraNovosReativados(
       comRecompra,
       taxaPct: lista.length > 0 ? (comRecompra / lista.length) * 100 : null,
       distribuicaoQtdCompras: distribuir(lista),
+      faturamentoPorPosicaoCompra: calcularFaturamentoPorPosicao(lista),
       faturamentoNoPeriodo: lista.reduce((s, d) => s + d.valorNoPeriodo, 0),
       detalhes: lista.sort((a, b) => (a.recompra === b.recompra ? 0 : a.recompra ? 1 : -1)),
     };
