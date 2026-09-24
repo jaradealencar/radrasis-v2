@@ -582,16 +582,29 @@ export interface DetalheClienteRecompra {
   diasAteRecompra: number | null;
   qtdComprasDesdeQualificacao: number; // inclui a própria compra de entrada — 1 = nunca recomprou
   valorNoPeriodo: number; // soma do valor de todos os pedidos válidos desse cliente dentro do período selecionado
-  /** Valor da compra de entrada (a 1ª — a que tornou o cliente novo/reativado). */
+  /** Valor de TODOS os pedidos do cliente dentro do MÊS DE ENTRADA (o mês da
+   * compra que o tornou novo/reativado) — pode ser mais de 1 pedido. Usa
+   * granularidade de MÊS (não de pedido individual) de propósito: é a mesma
+   * regra de ultimaCompraAntesDe/isClienteNovoPorRecencia usada em
+   * getClientesNovosMes (Performance Comercial) e classificarMes (Marketing/
+   * Aquisição) — ambos também tratam qualquer pedido dentro do mês de entrada
+   * como parte da "1ª compra". Se aqui isolássemos só o pedido individual mais
+   * antigo, o faturamento "1ª compra" ficaria menor que o "Fat. Novos" do
+   * relatório de Aquisição sempre que um cliente comprasse 2x no mês em que
+   * foi conquistado — uma contradição de faturamento entre as duas telas. */
   valorEntrada: number;
-  /** Valor de CADA compra seguinte à entrada, em ordem cronológica: índice 0 =
-   * valor da 2ª compra, índice 1 = valor da 3ª compra, índice 2 = valor da 4ª
-   * compra, etc. Array vazio quando o cliente nunca recomprou. Nunca somar
-   * este array num único número por cliente para exibir "por faixa" — isso
-   * mistura compras de posições diferentes (2ª com 3ª com 4ª) e produz
-   * somas incomparáveis entre faixas. Use calcularFaturamentoPorPosicao. */
-  valoresComprasSeguintes: number[];
-  /** Soma de valoresComprasSeguintes — SÓ para exibir "quanto este cliente
+  /** Quantidade de pedidos dentro do mês de entrada (>= 1). */
+  qtdPedidosEntrada: number;
+  /** Um item por MÊS DE CALENDÁRIO seguinte ao mês de entrada em que o
+   * cliente comprou pelo menos uma vez, em ordem cronológica: índice 0 = 2º
+   * mês com compra, índice 1 = 3º mês com compra, etc. — cada item já é a
+   * soma de todos os pedidos daquele mês (mesma granularidade do mês de
+   * entrada acima). Array vazio quando o cliente nunca comprou de novo depois
+   * do mês de entrada. Use calcularFaturamentoPorPosicao para agregar por
+   * faixa — nunca some os itens deste array num único número "por faixa" à
+   * mão, pois faixas diferentes têm índices de tamanhos diferentes.*/
+  mesesSeguintes: Array<{ valor: number; qtdPedidos: number }>;
+  /** Soma de mesesSeguintes[].valor — SÓ para exibir "quanto este cliente
    * gastou em recompras" isoladamente (ex.: numa lista de clientes), nunca
    * para agregar por faixa (ver nota acima). */
   valorRecompras: number;
@@ -603,16 +616,20 @@ export interface FaixaQtdCompras {
   pct: number;
 }
 
-/** Faturamento agrupado pela POSIÇÃO da compra na sequência de cada cliente
- * (1ª = a compra de entrada, 2ª, 3ª, 4ª-em-diante) — cada pedido conta em
- * exatamente uma posição, nunca em mais de uma. Por isso dá pra comparar as
- * 4 linhas entre si e a soma das 4 bate exatamente com o faturamento total
- * do grupo (entrada + todas as recompras). Different de FaixaQtdCompras, que
- * agrupa CLIENTES pelo total de compras que fizeram (sem valor em R$). */
+/** Faturamento agrupado pela POSIÇÃO do MÊS de compra na sequência de cada
+ * cliente (1ª posição = mês de entrada, 2ª = próximo mês em que comprou de
+ * novo, 3ª, 4ª-em-diante) — cada pedido conta em exatamente uma posição,
+ * nunca em mais de uma, e a soma das 4 linhas bate exatamente com o
+ * faturamento total do grupo (entrada + todas as recompras). Granularidade
+ * de MÊS, não de pedido individual — ver nota em DetalheClienteRecompra.valorEntrada
+ * sobre por que isso é necessário para não contradizer o relatório de
+ * Aquisição/Marketing. Diferente de FaixaQtdCompras, que agrupa CLIENTES pelo
+ * total de PEDIDOS individuais que fizeram (sem valor em R$). */
 export interface FaturamentoPorPosicaoCompra {
   posicao: "1" | "2" | "3" | "4+";
-  /** Quantidade de PEDIDOS (não de clientes) nesta posição — um cliente com
-   * 5 compras contribui 1 pedido em "1", 1 em "2", 1 em "3" e 2 em "4+". */
+  /** Quantidade de PEDIDOS (não de clientes nem de meses) nesta posição —
+   * um cliente que comprou 2x no mês de entrada e 1x num mês seguinte
+   * contribui 2 pedidos em "1" e 1 pedido em "2". */
   qtdPedidos: number;
   /** Soma do valor SÓ dos pedidos desta posição. */
   faturamento: number;
@@ -672,9 +689,31 @@ export function calcularRecompraNovosReativados(
     }
     if (!categoria) continue; // recompra normal — não é nem novo nem reativado, fora desta métrica
 
+    // comprasDepois (pedido individual) segue servindo pra "recompra"/dataRecompra/
+    // diasAteRecompra/qtdComprasDesdeQualificacao — esses são sobre COMPORTAMENTO
+    // (quando, quantos pedidos) e fazem mais sentido em granularidade de pedido.
     const comprasDepois = cliente.compras.filter(c => c.data > primeiraNoPeriodo.data && c.data <= dataRef);
     const recompra = comprasDepois.length > 0;
-    const valoresComprasSeguintes = comprasDepois.map(c => c.valor);
+
+    // valorEntrada/mesesSeguintes (FATURAMENTO) usam granularidade de MÊS — ver nota
+    // em DetalheClienteRecompra.valorEntrada. Agrupar cliente.compras (a partir do mês
+    // de entrada, inclusive, até dataRef) por mês de calendário:
+    const mesEntradaChave = primeiraNoPeriodo.data.getFullYear() * 12 + primeiraNoPeriodo.data.getMonth();
+    const comprasDesdeMesEntrada = cliente.compras.filter(c => {
+      const chave = c.data.getFullYear() * 12 + c.data.getMonth();
+      return chave >= mesEntradaChave && c.data <= dataRef;
+    });
+    const porMes = new Map<number, { data: Date; valor: number; qtdPedidos: number }>();
+    for (const c of comprasDesdeMesEntrada) {
+      const chave = c.data.getFullYear() * 12 + c.data.getMonth();
+      const atual = porMes.get(chave);
+      if (atual) { atual.valor += c.valor; atual.qtdPedidos++; }
+      else porMes.set(chave, { data: c.data, valor: c.valor, qtdPedidos: 1 });
+    }
+    const mesesOrdenados = Array.from(porMes.values()).sort((a, b) => a.data.getTime() - b.data.getTime());
+    const [mesEntrada, ...mesesSeguintesArr] = mesesOrdenados; // mesEntrada sempre existe (contém primeiraNoPeriodo)
+    const mesesSeguintes = mesesSeguintesArr.map(m => ({ valor: parseFloat(m.valor.toFixed(2)), qtdPedidos: m.qtdPedidos }));
+
     const detalhe: DetalheClienteRecompra = {
       empresa: cliente.empresaExibicao,
       dataQualificacao: primeiraNoPeriodo.data.toISOString(),
@@ -683,9 +722,10 @@ export function calcularRecompraNovosReativados(
       diasAteRecompra: recompra ? diasEntre(comprasDepois[0].data, primeiraNoPeriodo.data) : null,
       qtdComprasDesdeQualificacao: 1 + comprasDepois.length,
       valorNoPeriodo: comprasNoPeriodo.reduce((s, c) => s + c.valor, 0),
-      valorEntrada: primeiraNoPeriodo.valor,
-      valoresComprasSeguintes,
-      valorRecompras: valoresComprasSeguintes.reduce((s, v) => s + v, 0),
+      valorEntrada: parseFloat(mesEntrada.valor.toFixed(2)),
+      qtdPedidosEntrada: mesEntrada.qtdPedidos,
+      mesesSeguintes,
+      valorRecompras: parseFloat(mesesSeguintes.reduce((s, m) => s + m.valor, 0).toFixed(2)),
     };
     (categoria === "novo" ? novos : reativados).push(detalhe);
   }
@@ -705,9 +745,9 @@ export function calcularRecompraNovosReativados(
     }));
   };
 
-  /** Faturamento por POSIÇÃO da compra — cada pedido conta em exatamente uma
-   * posição (1ª = entrada, 2ª, 3ª, 4ª-em-diante), nunca somado com outra
-   * posição do mesmo cliente. Ver nota em FaturamentoPorPosicaoCompra. */
+  /** Faturamento por POSIÇÃO DO MÊS de compra — cada pedido conta em exatamente
+   * uma posição (1ª = mês de entrada, 2ª, 3ª, 4ª-em-diante), nunca somado com
+   * outra posição do mesmo cliente. Ver nota em FaturamentoPorPosicaoCompra. */
   const calcularFaturamentoPorPosicao = (lista: DetalheClienteRecompra[]): FaturamentoPorPosicaoCompra[] => {
     const acc = {
       "1": { qtdPedidos: 0, faturamento: 0 },
@@ -716,13 +756,13 @@ export function calcularRecompraNovosReativados(
       "4+": { qtdPedidos: 0, faturamento: 0 },
     };
     for (const d of lista) {
-      acc["1"].qtdPedidos++;
+      acc["1"].qtdPedidos += d.qtdPedidosEntrada;
       acc["1"].faturamento += d.valorEntrada;
-      d.valoresComprasSeguintes.forEach((valor, i) => {
-        const posicaoCompra = i + 2; // i=0 → 2ª compra, i=1 → 3ª compra, i=2 → 4ª compra, ...
-        const chave = posicaoCompra >= 4 ? "4+" : (String(posicaoCompra) as "2" | "3");
-        acc[chave].qtdPedidos++;
-        acc[chave].faturamento += valor;
+      d.mesesSeguintes.forEach((mes, i) => {
+        const posicaoMes = i + 2; // i=0 → 2º mês com compra, i=1 → 3º mês, i=2 → 4º mês, ...
+        const chave = posicaoMes >= 4 ? "4+" : (String(posicaoMes) as "2" | "3");
+        acc[chave].qtdPedidos += mes.qtdPedidos;
+        acc[chave].faturamento += mes.valor;
       });
     }
     return (["1", "2", "3", "4+"] as const).map(posicao => ({

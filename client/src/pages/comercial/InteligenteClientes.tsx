@@ -428,7 +428,7 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
           const rotuloEntrada = g.chave === "novos" ? "que tornou o cliente NOVO (nunca tinha comprado antes)" : "que REATIVOU o cliente (6+ meses sem comprar)";
           const totalFaturamentoPosicoes = grupo.faturamentoPorPosicaoCompra.reduce((s, p) => s + p.faturamento, 0);
           const totalPedidosPosicoes = grupo.faturamentoPorPosicaoCompra.reduce((s, p) => s + p.qtdPedidos, 0);
-          const labelPosicao: Record<string, string> = { "1": "1ª compra (entrada)", "2": "2ª compra", "3": "3ª compra", "4+": "4ª compra em diante" };
+          const labelPosicao: Record<string, string> = { "1": "1º mês (mês de entrada)", "2": "2º mês com compra", "3": "3º mês com compra", "4+": "4º mês com compra em diante" };
           return (
             <div key={g.chave} className="p-4">
               <p className="text-xs font-bold text-slate-600 mb-2">{g.icone} {g.label} ({grupo.total} clientes qualificados no período)</p>
@@ -461,19 +461,20 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
                     ))}
                   </div>
 
-                  {/* Tabela 2: faturamento por posição da compra — nunca soma 2 posições na mesma linha */}
+                  {/* Tabela 2: faturamento por posição do MÊS de compra — nunca soma 2 posições na mesma linha */}
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                    Faturamento por posição da compra (não é somatório entre linhas)
+                    Faturamento por posição do mês de compra (não é somatório entre linhas)
                   </p>
                   <p className="text-[10px] text-slate-400 mb-2 leading-snug">
-                    Cada pedido entra em UMA única linha, pela posição dele na sequência do cliente (a {rotuloEntrada} é sempre a "1ª compra").
-                    "2ª compra" = só o valor dos pedidos que foram a segunda compra de cada cliente. "3ª compra" = só o valor dos pedidos que foram a terceira. "4ª compra em diante" = valor dos pedidos da 4ª compra, 5ª, 6ª... de cada cliente, somados entre si (mas nunca com a 1ª/2ª/3ª).
+                    Cada pedido entra em UMA única linha, pelo mês em que caiu na sequência do cliente (o mês da {rotuloEntrada} é sempre o "1º mês", mesmo que o cliente tenha comprado mais de uma vez nesse mês).
+                    "2º mês com compra" = só o valor dos pedidos feitos no primeiro mês SEGUINTE ao de entrada em que o cliente comprou de novo. "3º mês" = valor dos pedidos do segundo mês seguinte com compra. "4º mês em diante" = valor dos pedidos do terceiro mês seguinte com compra e de todos os posteriores, somados entre si (mas nunca com o 1º/2º/3º).
+                    Usa granularidade de MÊS (não de pedido individual) de propósito, para bater com o "Fat. Novos" do relatório de Aquisição — que também soma tudo o que o cliente comprou no mês em que foi conquistado como uma coisa só.
                     A soma das 4 linhas bate exatamente com o faturamento total do grupo desde a entrada até hoje.
                   </p>
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200">
-                        <th className="text-left font-bold text-slate-500 uppercase text-[9px] py-1 pr-1">Posição da compra</th>
+                        <th className="text-left font-bold text-slate-500 uppercase text-[9px] py-1 pr-1">Posição do mês</th>
                         <th className="text-right font-bold text-slate-500 uppercase text-[9px] py-1 px-1">Qtd. pedidos</th>
                         <th className="text-right font-bold text-slate-800 uppercase text-[9px] py-1 pl-1">Faturamento SÓ desta posição</th>
                       </tr>
