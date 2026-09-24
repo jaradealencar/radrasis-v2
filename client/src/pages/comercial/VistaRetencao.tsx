@@ -65,6 +65,7 @@ export default function VistaRetencao() {
   const [apenasVencidos, setApenasVencidos] = useState(true);
   const [contatos, setContatos] = useState<Record<string, ContatoInfo | "carregando">>({});
   const [carregandoGrupo, setCarregandoGrupo] = useState<string | null>(null);
+  const [exportandoGrupo, setExportandoGrupo] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
   const { data: resumo } = trpc.retencaoClientesNovos.getResumoConversao.useQuery();
@@ -85,49 +86,75 @@ export default function VistaRetencao() {
 
   const estagioLabel: Record<string, string> = Object.fromEntries((estagios ?? []).map(e => [e.id, e.label]));
 
+  /** Busca (e cacheia em `contatos`) o contato de quem ainda não tem — usado tanto pelo
+   * botão "Carregar contatos" quanto pela exportação de CSV, que não pode depender de o
+   * usuário ter clicado em carregar antes. */
+  async function garantirContatosDoGrupo(grupo: GrupoCampanha): Promise<Record<string, ContatoInfo>> {
+    const faltando = grupo.clientes.filter(c => !contatos[c.empresaKey] && c.osNumero);
+    const resultado: Record<string, ContatoInfo> = {};
+    for (const c of grupo.clientes) {
+      const jaCarregado = contatos[c.empresaKey];
+      if (jaCarregado && jaCarregado !== "carregando") resultado[c.empresaKey] = jaCarregado;
+    }
+    if (faltando.length > 0) {
+      setContatos(prev => {
+        const novo = { ...prev };
+        for (const c of faltando) novo[c.empresaKey] = "carregando";
+        return novo;
+      });
+      await Promise.all(faltando.map(async (c) => {
+        try {
+          const info = await utils.retencaoClientesNovos.getContatoCliente.fetch({ empresaKey: c.empresaKey, osNumero: c.osNumero! });
+          resultado[c.empresaKey] = info;
+          setContatos(prev => ({ ...prev, [c.empresaKey]: info }));
+        } catch {
+          const vazio = { contato: "", telefone: "", whatsappLink: "" };
+          resultado[c.empresaKey] = vazio;
+          setContatos(prev => ({ ...prev, [c.empresaKey]: vazio }));
+        }
+      }));
+    }
+    return resultado;
+  }
+
   async function carregarContatosDoGrupo(grupo: GrupoCampanha) {
     setCarregandoGrupo(grupo.chave);
-    setContatos(prev => {
-      const novo = { ...prev };
-      for (const c of grupo.clientes) novo[c.empresaKey] = "carregando";
-      return novo;
-    });
-    await Promise.all(grupo.clientes.map(async (c) => {
-      if (!c.osNumero) return;
-      try {
-        const info = await utils.retencaoClientesNovos.getContatoCliente.fetch({ empresaKey: c.empresaKey, osNumero: c.osNumero });
-        setContatos(prev => ({ ...prev, [c.empresaKey]: info }));
-      } catch {
-        setContatos(prev => ({ ...prev, [c.empresaKey]: { contato: "", telefone: "", whatsappLink: "" } }));
-      }
-    }));
+    await garantirContatosDoGrupo(grupo);
     setCarregandoGrupo(null);
   }
 
-  function exportarCsv(grupo: GrupoCampanha) {
-    const header = [
-      "primeiro_nome", "nome_completo", "whatsapp", "empresa", "data_primeira_compra",
-      "data_disparo_agendado", "dias_uteis_decorridos", "estagio_jornada",
-      "caracteristicas_cliente", "valor_primeira_compra",
-    ];
-    const linhas = grupo.clientes.map(c => {
-      const info = contatos[c.empresaKey];
-      const nomeContato = (info && info !== "carregando") ? capitalizarNomeProprio(info.contato) : "";
-      return [
-        primeiroNomeMensagem(nomeContato) || capitalizarNomeProprio(c.empresa),
-        nomeContato || capitalizarNomeProprio(c.empresa),
-        (info && info !== "carregando") ? info.whatsappLink.replace("https://wa.me/", "") : "",
-        c.empresa,
-        c.dataPrimeiraCompra,
-        c.dataAgendada,
-        String(c.diasUteisDecorridos),
-        estagioLabel[c.estagio] ?? c.estagio,
-        `Ticket 1ª compra: ${fmtBrl(Number(c.valorPrimeiraCompra ?? 0))}`,
-        c.valorPrimeiraCompra ?? "0",
+  async function exportarCsv(grupo: GrupoCampanha) {
+    setExportandoGrupo(grupo.chave);
+    try {
+      const contatosDoGrupo = await garantirContatosDoGrupo(grupo);
+      const header = [
+        "primeiro_nome", "nome_completo", "whatsapp", "empresa", "data_primeira_compra",
+        "data_disparo_agendado", "dias_uteis_decorridos", "estagio_jornada",
+        "caracteristicas_cliente", "valor_primeira_compra",
       ];
-    });
-    const nomeCampanha = grupo.numero ? `campanha-${grupo.numero}-${grupo.estagio}` : `${grupo.estagio}-${status}`;
-    baixarCsv(`retencao-${nomeCampanha}.csv`, [header, ...linhas]);
+      const linhas = grupo.clientes.map(c => {
+        const info = contatosDoGrupo[c.empresaKey];
+        const nomeContato = info?.contato ? capitalizarNomeProprio(info.contato) : "";
+        return [
+          primeiroNomeMensagem(nomeContato) || capitalizarNomeProprio(c.empresa),
+          nomeContato || capitalizarNomeProprio(c.empresa),
+          info?.whatsappLink ? info.whatsappLink.replace("https://wa.me/", "") : "",
+          c.empresa,
+          c.dataPrimeiraCompra,
+          c.dataAgendada,
+          String(c.diasUteisDecorridos),
+          estagioLabel[c.estagio] ?? c.estagio,
+          `Ticket 1ª compra: ${fmtBrl(Number(c.valorPrimeiraCompra ?? 0))}`,
+          c.valorPrimeiraCompra ?? "0",
+        ];
+      });
+      const semWhatsapp = linhas.filter(l => !l[2]).length;
+      if (semWhatsapp > 0) toast.warning(`${semWhatsapp} cliente(s) sem WhatsApp encontrado na planilha — OS sem contato cadastrado no ERP.`);
+      const nomeCampanha = grupo.numero ? `campanha-${grupo.numero}-${grupo.estagio}` : `${grupo.estagio}-${status}`;
+      baixarCsv(`retencao-${nomeCampanha}.csv`, [header, ...linhas]);
+    } finally {
+      setExportandoGrupo(null);
+    }
   }
 
   const totalClientes = data?.totalClientes ?? 0;
@@ -224,9 +251,12 @@ export default function VistaRetencao() {
                 </button>
                 <button
                   onClick={() => exportarCsv(grupo)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600 hover:border-emerald-400 hover:text-emerald-600"
+                  disabled={exportandoGrupo === grupo.chave}
+                  title="Busca automaticamente o WhatsApp e o nome de quem ainda não tem contato carregado"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600 hover:border-emerald-400 hover:text-emerald-600 disabled:opacity-50"
                 >
-                  <Download className="w-3.5 h-3.5" /> Exportar CSV
+                  {exportandoGrupo === grupo.chave ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  {exportandoGrupo === grupo.chave ? "Buscando contatos..." : "Exportar CSV"}
                 </button>
                 {status === "pendente" && (
                   <button

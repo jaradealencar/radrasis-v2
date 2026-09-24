@@ -40,10 +40,17 @@ function formatarDataISO(d: Date): string {
 }
 
 /** Sincroniza (idempotente) os marcos calculados com `retencao_disparos`: cria
- * os que ainda não existem, atualiza os dados descritivos dos existentes (sem
- * mexer em status/disparo já registrados pelo vendedor), e descarta pendências
- * de quem já recomprou (2+ compras válidas) — mesmo padrão de
- * sincronizarFilaAcoesClientes em performanceComercial.ts. */
+ * os que ainda não existem e atualiza os dados descritivos dos existentes (sem
+ * mexer em status/disparo já registrados), e descarta pendências de quem já
+ * recomprou (2+ compras válidas).
+ *
+ * Upsert em lote (1 round-trip), não fila de SELECT+INSERT/UPDATE por
+ * pendência — a 1ª versão fazia até 2 idas ao banco por (cliente, estágio) em
+ * série (ex.: 446 clientes × 4 estágios ≈ 1780 pendências ⇒ ~3500 round-trips
+ * sequenciais), lento o bastante pra estourar o tempo de função serverless em
+ * produção (bug relatado 24/09/2026: campanha disparada não aparecia na aba
+ * "Campanhas disparadas" — a troca de aba disparava outro `getGrupos`, que
+ * chamava esta sincronização de novo e travava/expirava antes de responder). */
 async function sincronizarRetencaoDisparos(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
   // Limpa pendências órfãs do desenho anterior (7 marcos/1 ano) — seguro, são
   // só linhas de agendamento, nunca disparadas de fato para esses estágios.
@@ -55,24 +62,9 @@ async function sincronizarRetencaoDisparos(db: NonNullable<Awaited<ReturnType<ty
   const hoje = new Date();
   const pendencias = listarPendenciasRetencao(base, hoje);
 
-  for (const p of pendencias) {
-    const existentes = await db.select().from(retencaoDisparos)
-      .where(and(eq(retencaoDisparos.empresaKey, p.empresaKey), eq(retencaoDisparos.estagio, p.estagio)))
-      .limit(1);
-    if (existentes[0]) {
-      await db.update(retencaoDisparos)
-        .set({
-          empresa: p.empresa,
-          osNumero: p.osNumero,
-          vendedor: p.vendedor,
-          valorPrimeiraCompra: String(p.valorPrimeiraCompra),
-          dataPrimeiraCompra: formatarDataISO(p.dataPrimeiraCompra),
-          dataAgendada: formatarDataISO(p.dataAgendada),
-          updatedAt: hoje,
-        })
-        .where(eq(retencaoDisparos.id, existentes[0].id));
-    } else {
-      await db.insert(retencaoDisparos).values({
+  if (pendencias.length > 0) {
+    await db.insert(retencaoDisparos)
+      .values(pendencias.map(p => ({
         empresaKey: p.empresaKey,
         empresa: p.empresa,
         osNumero: p.osNumero,
@@ -81,8 +73,19 @@ async function sincronizarRetencaoDisparos(db: NonNullable<Awaited<ReturnType<ty
         dataPrimeiraCompra: formatarDataISO(p.dataPrimeiraCompra),
         estagio: p.estagio,
         dataAgendada: formatarDataISO(p.dataAgendada),
+      })))
+      .onConflictDoUpdate({
+        target: [retencaoDisparos.empresaKey, retencaoDisparos.estagio],
+        set: {
+          empresa: sql`excluded.empresa`,
+          osNumero: sql`excluded.os_numero`,
+          vendedor: sql`excluded.vendedor`,
+          valorPrimeiraCompra: sql`excluded.valor_primeira_compra`,
+          dataPrimeiraCompra: sql`excluded.data_primeira_compra`,
+          dataAgendada: sql`excluded.data_agendada`,
+          updatedAt: hoje,
+        },
       });
-    }
   }
 
   const empresasComRecompra = [...base.values()].filter(c => c.compras.length >= 2).map(c => c.empresaKey);
@@ -112,7 +115,11 @@ export const retencaoClientesNovosRouter = router({
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      await sincronizarRetencaoDisparos(db);
+      // Só a aba "pendente" precisa recalcular a partir de historico_os — "disparado" e
+      // "descartado" são histórico já persistido, recalcular de novo é caro e desnecessário
+      // (era a causa provável do bug de campanha "sumida": trocar de aba refazia toda a
+      // sincronização e podia estourar o tempo da função serverless).
+      if (input.status === "pendente") await sincronizarRetencaoDisparos(db);
 
       const filtros = [eq(retencaoDisparos.status, input.status)];
       if (input.estagio) filtros.push(eq(retencaoDisparos.estagio, input.estagio));
