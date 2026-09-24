@@ -1,5 +1,6 @@
 /**
- * Retenção de Clientes Novos — jornada de 1 ano (endpoints tRPC).
+ * Retenção de Clientes Novos — 4 mensagens em 6 meses, organizadas em
+ * campanhas (endpoints tRPC).
  *
  * Ver server/services/retencaoClientesNovos.ts para o cálculo puro e
  * docs/inteligencia-clientes.md para o resto do módulo de Inteligência de
@@ -10,20 +11,29 @@
  * em historico_os (só a empresa) — por isso são buscados ao vivo na API
  * MubiSys, sob demanda (só para os clientes do grupo aberto na tela, nunca em
  * massa) via `buscarOSPorNumero`, e cacheados em `retencao_contato_cache`.
+ *
+ * Campanha (24/09/2026, pedido do usuário): agrupar por data exata gerava
+ * grupos de 1 cliente cada, inútil para planejar o disparo. Uma "campanha" é
+ * todo o lote pendente de um mesmo estágio, disparado de uma vez; o sistema
+ * numera automaticamente (Campanha 1, 2, 3... por estágio) e guarda o
+ * histórico em `retencao_campanhas`.
  */
 
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db/db";
-import { historicoOs, retencaoDisparos, retencaoContatoCache, retencaoScripts } from "../../drizzle/schema";
+import { historicoOs, retencaoDisparos, retencaoContatoCache, retencaoScripts, retencaoCampanhas } from "../../drizzle/schema";
 import { eq, and, desc, inArray, lte, sql } from "drizzle-orm";
 import { construirBaseClientes, calcularRecompraNovosReativados } from "../services/inteligenciaClientes";
-import { listarPendenciasRetencao, ESTAGIOS_JORNADA } from "../services/retencaoClientesNovos";
+import { listarPendenciasRetencao, ESTAGIOS_JORNADA, type EstagioJornada } from "../services/retencaoClientesNovos";
 import { diasUteisComFeriadosEntre } from "../../shared/feriados-nacionais";
 import { extrairContatoDaOs, formatarLinkWhatsApp } from "./performanceComercial";
 import { buscarOSPorNumero } from "../integrations/mubisys-client";
 
-const estagioSchema = z.enum(["d16u", "d30", "d60", "d90", "d180", "d270", "d365"]);
+const estagioSchema = z.enum(["d16u", "d30", "d90", "d180"]);
+/** Estágios do desenho anterior (7 marcos/1 ano) — só usados para limpar
+ * pendências órfãs no banco, nunca mais gerados. */
+const ESTAGIOS_DESCONTINUADOS = ["d60", "d270", "d365"] as const;
 
 function formatarDataISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -35,6 +45,11 @@ function formatarDataISO(d: Date): string {
  * de quem já recomprou (2+ compras válidas) — mesmo padrão de
  * sincronizarFilaAcoesClientes em performanceComercial.ts. */
 async function sincronizarRetencaoDisparos(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<void> {
+  // Limpa pendências órfãs do desenho anterior (7 marcos/1 ano) — seguro, são
+  // só linhas de agendamento, nunca disparadas de fato para esses estágios.
+  await db.delete(retencaoDisparos)
+    .where(and(inArray(retencaoDisparos.estagio, [...ESTAGIOS_DESCONTINUADOS]), eq(retencaoDisparos.status, "pendente")));
+
   const rows = await db.select().from(historicoOs);
   const base = construirBaseClientes(rows as any);
   const hoje = new Date();
@@ -80,7 +95,14 @@ async function sincronizarRetencaoDisparos(db: NonNullable<Awaited<ReturnType<ty
 
 export const retencaoClientesNovosRouter = router({
 
-  /** Marcos vencidos (ou todos, se apenasVencidos=false), agrupados por data agendada. */
+  /**
+   * Clientes agrupados por campanha (não mais por data exata — um marco só
+   * vira campanha quando disparado em massa via `dispararCampanha`):
+   * - status "pendente": um grupo por estágio, com o número da PRÓXIMA
+   *   campanha daquele estágio (ainda não disparada).
+   * - status "disparado": um grupo por campanha já disparada (histórico).
+   * - status "descartado": um grupo por estágio, sem número de campanha.
+   */
   getGrupos: protectedProcedure
     .input(z.object({
       estagio: estagioSchema.optional(),
@@ -94,7 +116,9 @@ export const retencaoClientesNovosRouter = router({
 
       const filtros = [eq(retencaoDisparos.status, input.status)];
       if (input.estagio) filtros.push(eq(retencaoDisparos.estagio, input.estagio));
-      if (input.apenasVencidos) filtros.push(lte(retencaoDisparos.dataAgendada, formatarDataISO(new Date())));
+      if (input.status === "pendente" && input.apenasVencidos) {
+        filtros.push(lte(retencaoDisparos.dataAgendada, formatarDataISO(new Date())));
+      }
 
       const linhasBrutas = await db.select().from(retencaoDisparos)
         .where(and(...filtros))
@@ -105,18 +129,91 @@ export const retencaoClientesNovosRouter = router({
         ...l,
         diasUteisDecorridos: diasUteisComFeriadosEntre(new Date(`${l.dataPrimeiraCompra}T00:00:00`), hoje),
       }));
+      const totalClientes = linhas.length;
 
-      const grupos = new Map<string, typeof linhas>();
-      for (const l of linhas) {
-        if (!grupos.has(l.dataAgendada)) grupos.set(l.dataAgendada, []);
-        grupos.get(l.dataAgendada)!.push(l);
+      if (input.status !== "disparado") {
+        const porEstagio = new Map<EstagioJornada, typeof linhas>();
+        for (const l of linhas) {
+          const est = l.estagio as EstagioJornada;
+          if (!porEstagio.has(est)) porEstagio.set(est, []);
+          porEstagio.get(est)!.push(l);
+        }
+        const grupos = await Promise.all(Array.from(porEstagio.entries()).map(async ([est, clientes]) => {
+          let numero: number | null = null;
+          if (input.status === "pendente") {
+            const [maxRow] = await db.select({ maxNumero: sql<number>`COALESCE(MAX(${retencaoCampanhas.numero}), 0)` })
+              .from(retencaoCampanhas).where(eq(retencaoCampanhas.estagio, est));
+            numero = (maxRow?.maxNumero ?? 0) + 1;
+          }
+          return { chave: est, estagio: est, numero, disparadaEm: null as string | null, disparadoPor: null as string | null, clientes };
+        }));
+        grupos.sort((a, b) => ESTAGIOS_JORNADA.findIndex(e => e.id === a.estagio) - ESTAGIOS_JORNADA.findIndex(e => e.id === b.estagio));
+        return { totalClientes, grupos };
       }
-      return Array.from(grupos.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([dataAgendada, clientes]) => ({ dataAgendada, clientes }));
+
+      // status "disparado": agrupa por campanha já registrada (disparo em massa ou avulso).
+      const porCampanha = new Map<number, typeof linhas>();
+      for (const l of linhas) {
+        const key = l.campanhaId ?? 0;
+        if (!porCampanha.has(key)) porCampanha.set(key, []);
+        porCampanha.get(key)!.push(l);
+      }
+      const campanhaIds = Array.from(porCampanha.keys()).filter(id => id !== 0);
+      const campanhas = campanhaIds.length > 0
+        ? await db.select().from(retencaoCampanhas).where(inArray(retencaoCampanhas.id, campanhaIds))
+        : [];
+      const campanhaPorId = new Map(campanhas.map(c => [c.id, c]));
+
+      const grupos = Array.from(porCampanha.entries()).map(([campanhaId, clientes]) => {
+        const campanha = campanhaPorId.get(campanhaId);
+        return {
+          chave: String(campanhaId),
+          estagio: clientes[0].estagio as EstagioJornada,
+          numero: campanha?.numero ?? null,
+          disparadaEm: campanha ? campanha.disparadaEm.toISOString() : (clientes[0].disparadoEm?.toISOString() ?? null),
+          disparadoPor: campanha?.disparadoPor ?? clientes[0].disparadoPor ?? null,
+          clientes,
+        };
+      }).sort((a, b) => (b.disparadaEm ?? "").localeCompare(a.disparadaEm ?? ""));
+
+      return { totalClientes, grupos };
     }),
 
-  /** Config dos 7 estágios (label/descrição) — para montar filtros e legendas na tela. */
+  /** Dispara em massa todos os pendentes vencidos de um estágio — vira 1 campanha numerada. */
+  dispararCampanha: protectedProcedure
+    .input(z.object({ estagio: estagioSchema }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const hoje = new Date();
+      const pendentes = await db.select().from(retencaoDisparos)
+        .where(and(
+          eq(retencaoDisparos.status, "pendente"),
+          eq(retencaoDisparos.estagio, input.estagio),
+          lte(retencaoDisparos.dataAgendada, formatarDataISO(hoje)),
+        ));
+      if (pendentes.length === 0) return { ok: false as const, motivo: "sem_pendentes" as const };
+
+      const [maxRow] = await db.select({ maxNumero: sql<number>`COALESCE(MAX(${retencaoCampanhas.numero}), 0)` })
+        .from(retencaoCampanhas).where(eq(retencaoCampanhas.estagio, input.estagio));
+      const numero = (maxRow?.maxNumero ?? 0) + 1;
+      const disparadoPor = ctx.user.name ?? ctx.user.email ?? "desconhecido";
+
+      const [campanha] = await db.insert(retencaoCampanhas).values({
+        estagio: input.estagio,
+        numero,
+        quantidadeClientes: pendentes.length,
+        disparadoPor,
+      }).returning({ id: retencaoCampanhas.id });
+
+      await db.update(retencaoDisparos)
+        .set({ status: "disparado", campanhaId: campanha.id, disparadoEm: hoje, disparadoPor, updatedAt: hoje })
+        .where(inArray(retencaoDisparos.id, pendentes.map(p => p.id)));
+
+      return { ok: true as const, campanhaId: campanha.id, numero, quantidadeClientes: pendentes.length };
+    }),
+
+  /** Config dos 4 estágios (label/descrição) — para montar filtros e legendas na tela. */
   getEstagios: publicProcedure.query(() => ESTAGIOS_JORNADA),
 
   /** Nome do contato-pessoa + telefone + link wa.me, buscado ao vivo por OS (cache de 30 dias). */

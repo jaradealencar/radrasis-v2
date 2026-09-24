@@ -60,14 +60,14 @@ describe("identificarClientesElegiveis", () => {
 });
 
 describe("listarPendenciasRetencao", () => {
-  it("gera um marco para cada um dos 7 estágios da jornada", () => {
+  it("gera um marco para cada um dos 4 estágios da jornada (16du, 30, 90, 180 dias)", () => {
     const hoje = new Date(2026, 8, 23);
     const base = baseCom([
       { empresaKey: "cliente a", empresaExibicao: "Cliente A", compras: [compra({ data: new Date(2026, 8, 1) })] },
     ]);
     const pendencias = listarPendenciasRetencao(base, hoje);
     expect(pendencias).toHaveLength(ESTAGIOS_JORNADA.length);
-    expect(pendencias.map(p => p.estagio).sort()).toEqual(["d16u", "d180", "d270", "d30", "d365", "d60", "d90"].sort());
+    expect(pendencias.map(p => p.estagio).sort()).toEqual(["d16u", "d180", "d30", "d90"].sort());
   });
 
   it("marco d30 cai 30 dias corridos após a 1ª compra", () => {

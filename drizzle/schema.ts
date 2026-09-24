@@ -59,7 +59,10 @@ export const inteligenciaAcaoResultadoEnum = pgEnum("inteligencia_acao_resultado
 export const scoreLeadCnpjEnum = pgEnum("score_lead_cnpj", ["A", "B", "C", "D"]);
 export const nivelConfiancaSinalEnum = pgEnum("nivel_confianca_sinal", ["confirmado", "inferencia"]);
 export const statusSinalMercadoEnum = pgEnum("status_sinal_mercado", ["novo", "qualificando", "oportunidade", "associado_cliente", "descartado", "expirado"]);
-// Jornada de retenção de clientes novos (16 dias úteis até 1 ano) — ver server/services/retencaoClientesNovos.ts
+// Jornada de retenção de clientes novos — ver server/services/retencaoClientesNovos.ts.
+// Enum mantém d60/d270/d365 (valores antigos, de quando a jornada era de 7 marcos/1 ano —
+// Postgres não permite encolher um enum sem recriar o tipo) mas a aplicação só gera/aceita
+// mais 4 deles (d16u/d30/d90/d180 — 4 mensagens em 6 meses, decisão do usuário em 24/09/2026).
 export const retencaoJornadaEstagioEnum = pgEnum("retencao_jornada_estagio", ["d16u", "d30", "d60", "d90", "d180", "d270", "d365"]);
 export const retencaoDisparoStatusEnum = pgEnum("retencao_disparo_status", ["pendente", "disparado", "descartado"]);
 
@@ -1637,10 +1640,10 @@ export const inteligenciaClientesContatos = pgTable("inteligencia_clientes_conta
 export type InteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferSelect;
 export type InsertInteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferInsert;
 
-// ─── Retenção de Clientes Novos — jornada de 1 ano ───────────────────────────
+// ─── Retenção de Clientes Novos — 4 mensagens em 6 meses ─────────────────────
 // Ver server/services/retencaoClientesNovos.ts. Clientes com só 1 compra
-// válida em todo o histórico (historico_os) entram numa régua de 7 marcos
-// (16 dias úteis até 365 dias corridos desde a 1ª compra). Uma linha por
+// válida em todo o histórico (historico_os) entram numa régua de 4 marcos
+// (16 dias úteis, 30, 90 e 180 dias corridos desde a 1ª compra). Uma linha por
 // (cliente, estágio) — idempotente, sincronizada a cada carregamento da tela,
 // igual ao padrão já usado em inteligencia_acoes_clientes.
 export const retencaoDisparos = pgTable("retencao_disparos", {
@@ -1654,6 +1657,9 @@ export const retencaoDisparos = pgTable("retencao_disparos", {
   estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
   dataAgendada: date("data_agendada").notNull(),
   status: retencaoDisparoStatusEnum("status").notNull().default("pendente"),
+  // Campanha (lote de disparo em massa) à qual este marco foi atribuído quando
+  // disparado — null enquanto pendente/descartado. Ver retencao_campanhas.
+  campanhaId: integer("campanha_id"),
   disparadoEm: timestamp("disparado_em"),
   disparadoPor: varchar("disparado_por", { length: 128 }),
   observacao: text("observacao"),
@@ -1663,9 +1669,28 @@ export const retencaoDisparos = pgTable("retencao_disparos", {
   empresaEstagioUnique: uniqueIndex("retencao_disparos_empresa_estagio_unique").on(t.empresaKey, t.estagio),
   dataAgendadaIdx: index("retencao_disparos_data_agendada_idx").on(t.dataAgendada),
   statusIdx: index("retencao_disparos_status_idx").on(t.status),
+  campanhaIdx: index("retencao_disparos_campanha_idx").on(t.campanhaId),
 }));
 export type RetencaoDisparo = typeof retencaoDisparos.$inferSelect;
 export type InsertRetencaoDisparo = typeof retencaoDisparos.$inferInsert;
+
+// Uma campanha = um disparo em massa de todos os clientes pendentes de um
+// mesmo estágio, feito de uma vez (pedido do usuário 24/09/2026: "quem vai me
+// sugerir os contatos da campanha 1, 2, 3... é você" — o sistema numera
+// automaticamente por estágio e registra o histórico de quando cada lote foi
+// enviado, sem precisar que o usuário monte a lista manualmente).
+export const retencaoCampanhas = pgTable("retencao_campanhas", {
+  id: serial("id").primaryKey(),
+  estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
+  numero: integer("numero").notNull(), // sequencial por estágio (1, 2, 3... dentro do mesmo estágio)
+  quantidadeClientes: integer("quantidade_clientes").notNull(),
+  disparadaEm: timestamp("disparada_em").defaultNow().notNull(),
+  disparadoPor: varchar("disparado_por", { length: 128 }),
+}, (t) => ({
+  estagioNumeroUnique: uniqueIndex("retencao_campanhas_estagio_numero_unique").on(t.estagio, t.numero),
+}));
+export type RetencaoCampanha = typeof retencaoCampanhas.$inferSelect;
+export type InsertRetencaoCampanha = typeof retencaoCampanhas.$inferInsert;
 
 // Cache do contato-pessoa (nome + celular) buscado ao vivo na API MubiSys por
 // OS — historico_os não guarda nome de contato, só telefone (e só a partir de

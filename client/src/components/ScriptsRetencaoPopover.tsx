@@ -26,7 +26,7 @@ import { CSS } from "@dnd-kit/utilities";
  * ano) e os endpoints do router `retencaoClientesNovos`.
  */
 
-type EstagioJornada = "d16u" | "d30" | "d60" | "d90" | "d180" | "d270" | "d365";
+type EstagioJornada = "d16u" | "d30" | "d90" | "d180";
 
 interface ScriptRow {
   id: number;
