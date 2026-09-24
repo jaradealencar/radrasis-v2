@@ -422,9 +422,10 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
           Recompra é medida até hoje, não só dentro do período.
         </p>
       </div>
-      <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+      <div className="divide-y divide-slate-100">
         {grupos.map(g => {
           const grupo = data[g.chave];
+          const rotuloEntrada = g.chave === "novos" ? "que o tornou NOVO (nunca tinha comprado)" : "que REATIVOU o cliente (6+ meses sem comprar)";
           return (
             <div key={g.chave} className="p-4">
               <p className="text-xs font-bold text-slate-600 mb-2">{g.icone} {g.label} ({grupo.total})</p>
@@ -434,31 +435,61 @@ function SecaoRecompraNovosReativados({ dataInicial, dataFinal }: { dataInicial:
                 <>
                   <div className="flex items-baseline gap-2 mb-2">
                     <span className="text-2xl font-bold text-slate-800">{grupo.taxaPct !== null ? fmtPct(grupo.taxaPct) : "—"}</span>
-                    <span className="text-xs text-slate-400">recompraram ({grupo.comRecompra} de {grupo.total})</span>
+                    <span className="text-xs text-slate-400">dos {grupo.total} clientes desta categoria voltaram a comprar depois ({grupo.comRecompra} de {grupo.total} recompraram)</span>
                   </div>
                   <div className="bg-slate-50 rounded-lg px-3 py-2 mb-3">
-                    <p className="text-[10px] text-slate-400 uppercase font-bold">Faturamento no período</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold">Faturamento no período (compra de entrada de todos os {grupo.total} clientes)</p>
                     <p className="text-lg font-bold text-slate-800">{fmtBrl(grupo.faturamentoNoPeriodo)}</p>
                   </div>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Quantidade de compras desde então</p>
-                    <p className="w-24 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest" title="Soma do valor gasto nas compras subsequentes à qualificação (recompras) — não conta a compra de entrada">
-                      Gasto em recompras
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    {grupo.distribuicaoQtdCompras.map(f => (
-                      <div key={f.faixa} className="flex items-center gap-2 text-xs">
-                        <span className="w-14 text-slate-500 font-mono">{f.faixa}x</span>
-                        <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${f.pct}%` }} />
-                        </div>
-                        <span className="w-20 text-right text-slate-600">{f.quantidade} ({fmtPct(f.pct)})</span>
-                        <span className="w-24 text-right text-slate-500 font-mono">
-                          {f.faixa === "1" ? "—" : fmtBrl(f.valorRecompras)}
-                        </span>
-                      </div>
-                    ))}
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                    Tabela: distribuição por quantidade total de compras desde a entrada até hoje
+                  </p>
+                  <p className="text-[10px] text-slate-400 mb-2 leading-snug">
+                    Cada linha agrupa clientes pelo total de compras que fizeram desde a compra de entrada (a {rotuloEntrada}) até hoje, contando essa compra de entrada.
+                    Coluna "Gasto SÓ em recompras" = soma do valor de todas as compras feitas DEPOIS da entrada (exclui a compra de entrada) — é o retorno em vendas repetidas.
+                    Coluna "Gasto TOTAL (c/ entrada)" = Gasto só em recompras + valor da própria compra de entrada.
+                    As médias dividem essas somas pela quantidade de clientes da linha. Faixa "1x" = cliente comprou só a compra de entrada, nunca recomprou — por isso "Gasto só em recompras" é R$ 0,00.
+                  </p>
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left font-bold text-slate-500 uppercase text-[9px] py-1 pr-1">Faixa (total de compras)</th>
+                        <th className="text-right font-bold text-slate-500 uppercase text-[9px] py-1 px-1">Qtd. clientes</th>
+                        <th className="text-right font-bold text-slate-500 uppercase text-[9px] py-1 px-1">% do grupo</th>
+                        <th className="text-right font-bold text-teal-700 uppercase text-[9px] py-1 px-1">Gasto SÓ em recompras (sem entrada)</th>
+                        <th className="text-right font-bold text-teal-700 uppercase text-[9px] py-1 px-1">Média recompra/cliente</th>
+                        <th className="text-right font-bold text-slate-500 uppercase text-[9px] py-1 px-1">Gasto TOTAL (c/ entrada)</th>
+                        <th className="text-right font-bold text-slate-500 uppercase text-[9px] py-1 pl-1">Média total/cliente</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grupo.distribuicaoQtdCompras.map(f => (
+                        <tr key={f.faixa} className="border-b border-slate-50 last:border-0">
+                          <td className="py-1.5 pr-1 font-mono text-slate-700 font-bold whitespace-nowrap">{f.faixa}x compra{f.faixa === "1" ? "" : "s"} no total</td>
+                          <td className="py-1.5 px-1 text-right text-slate-700 whitespace-nowrap">{f.quantidade} clientes</td>
+                          <td className="py-1.5 px-1 text-right text-slate-500">{fmtPct(f.pct)}</td>
+                          <td className="py-1.5 px-1 text-right text-teal-700 font-mono font-bold whitespace-nowrap">{fmtBrl(f.valorRecompras)}</td>
+                          <td className="py-1.5 px-1 text-right text-teal-600 font-mono whitespace-nowrap">{fmtBrl(f.valorMedioRecomprasPorCliente)}</td>
+                          <td className="py-1.5 px-1 text-right text-slate-800 font-mono whitespace-nowrap">{fmtBrl(f.valorTotal)}</td>
+                          <td className="py-1.5 pl-1 text-right text-slate-600 font-mono whitespace-nowrap">{fmtBrl(f.valorMedioPorCliente)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-slate-300 font-bold">
+                        <td className="py-1.5 pr-1 text-slate-700">Total do grupo</td>
+                        <td className="py-1.5 px-1 text-right text-slate-700 whitespace-nowrap">{grupo.total} clientes</td>
+                        <td className="py-1.5 px-1 text-right text-slate-500">100%</td>
+                        <td className="py-1.5 px-1 text-right text-teal-700 font-mono whitespace-nowrap">
+                          {fmtBrl(grupo.distribuicaoQtdCompras.reduce((s, f) => s + f.valorRecompras, 0))}
+                        </td>
+                        <td className="py-1.5 px-1"></td>
+                        <td className="py-1.5 px-1 text-right text-slate-800 font-mono whitespace-nowrap">
+                          {fmtBrl(grupo.distribuicaoQtdCompras.reduce((s, f) => s + f.valorTotal, 0))}
+                        </td>
+                        <td className="py-1.5 pl-1"></td>
+                      </tr>
+                    </tbody>
+                  </table>
                   </div>
                 </>
               )}

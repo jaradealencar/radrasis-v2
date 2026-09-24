@@ -582,18 +582,32 @@ export interface DetalheClienteRecompra {
   diasAteRecompra: number | null;
   qtdComprasDesdeQualificacao: number; // inclui a própria compra de entrada — 1 = nunca recomprou
   valorNoPeriodo: number; // soma do valor de todos os pedidos válidos desse cliente dentro do período selecionado
-  /** Soma do valor SÓ das compras seguintes à qualificação (a recompra em si,
+  /** Valor SÓ das compras seguintes à qualificação (a recompra em si,
    * excluindo a compra de entrada) — 0 quando qtdComprasDesdeQualificacao === 1. */
   valorRecompras: number;
+  /** Valor total gasto por este cliente desde a qualificação até hoje,
+   * incluindo a compra de entrada (= valor da compra de entrada + valorRecompras). */
+  valorTotalDesdeQualificacao: number;
 }
 
 export interface FaixaQtdCompras {
   faixa: "1" | "2" | "3" | "4+";
   quantidade: number;
   pct: number;
-  /** Soma de valorRecompras de todos os clientes desta faixa — quanto os
-   * clientes desta faixa gastaram nas compras subsequentes à qualificação. */
+  /** Soma de valorRecompras (SEM a compra de entrada) de todos os clientes
+   * desta faixa — é o "retorno em recompras": quanto esses clientes gastaram
+   * de volta, depois de já terem sido conquistados. 0 na faixa "1" (nunca
+   * recompraram). */
   valorRecompras: number;
+  /** valorRecompras dividido por quantidade — gasto médio em recompras por
+   * cliente desta faixa (0 na faixa "1"). */
+  valorMedioRecomprasPorCliente: number;
+  /** Soma de valorTotalDesdeQualificacao (COM a compra de entrada) de todos
+   * os clientes desta faixa — quanto o grupo gastou no total (entrada +
+   * recompras) desde que qualificou como novo/reativado até hoje. */
+  valorTotal: number;
+  /** valorTotal dividido por quantidade — gasto médio total por cliente desta faixa. */
+  valorMedioPorCliente: number;
 }
 
 export interface GrupoRecompra {
@@ -646,6 +660,7 @@ export function calcularRecompraNovosReativados(
 
     const comprasDepois = cliente.compras.filter(c => c.data > primeiraNoPeriodo.data && c.data <= dataRef);
     const recompra = comprasDepois.length > 0;
+    const valorRecompras = comprasDepois.reduce((s, c) => s + c.valor, 0);
     const detalhe: DetalheClienteRecompra = {
       empresa: cliente.empresaExibicao,
       dataQualificacao: primeiraNoPeriodo.data.toISOString(),
@@ -654,7 +669,8 @@ export function calcularRecompraNovosReativados(
       diasAteRecompra: recompra ? diasEntre(comprasDepois[0].data, primeiraNoPeriodo.data) : null,
       qtdComprasDesdeQualificacao: 1 + comprasDepois.length,
       valorNoPeriodo: comprasNoPeriodo.reduce((s, c) => s + c.valor, 0),
-      valorRecompras: comprasDepois.reduce((s, c) => s + c.valor, 0),
+      valorRecompras,
+      valorTotalDesdeQualificacao: primeiraNoPeriodo.valor + valorRecompras,
     };
     (categoria === "novo" ? novos : reativados).push(detalhe);
   }
@@ -662,18 +678,23 @@ export function calcularRecompraNovosReativados(
   const distribuir = (lista: DetalheClienteRecompra[]): FaixaQtdCompras[] => {
     const total = lista.length;
     const contagem = { "1": 0, "2": 0, "3": 0, "4+": 0 };
-    const valores = { "1": 0, "2": 0, "3": 0, "4+": 0 };
+    const valoresRecompras = { "1": 0, "2": 0, "3": 0, "4+": 0 };
+    const valoresTotais = { "1": 0, "2": 0, "3": 0, "4+": 0 };
     for (const d of lista) {
       const qtd = d.qtdComprasDesdeQualificacao;
       const chave = qtd >= 4 ? "4+" : (String(qtd) as "1" | "2" | "3");
       contagem[chave]++;
-      valores[chave] += d.valorRecompras;
+      valoresRecompras[chave] += d.valorRecompras;
+      valoresTotais[chave] += d.valorTotalDesdeQualificacao;
     }
     return (["1", "2", "3", "4+"] as const).map(faixa => ({
       faixa,
       quantidade: contagem[faixa],
       pct: total > 0 ? (contagem[faixa] / total) * 100 : 0,
-      valorRecompras: parseFloat(valores[faixa].toFixed(2)),
+      valorRecompras: parseFloat(valoresRecompras[faixa].toFixed(2)),
+      valorMedioRecomprasPorCliente: contagem[faixa] > 0 ? parseFloat((valoresRecompras[faixa] / contagem[faixa]).toFixed(2)) : 0,
+      valorTotal: parseFloat(valoresTotais[faixa].toFixed(2)),
+      valorMedioPorCliente: contagem[faixa] > 0 ? parseFloat((valoresTotais[faixa] / contagem[faixa]).toFixed(2)) : 0,
     }));
   };
 
