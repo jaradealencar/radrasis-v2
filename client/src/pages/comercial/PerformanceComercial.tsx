@@ -1598,16 +1598,24 @@ export default function PerformanceComercial() {
               {vendedoresData.slice(0, 3).map((v: any, i: number) => {
                 const medalColors = ["#f59e0b", "#94a3b8", "#cd7f32"];
                 const medalLabels = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
-                // Dados de clientes novos para este vendedor — mesma normalização de
-                // busca (exata ou case-insensitive) usada em vendedoresData acima
-                const novosMapTop3 = (clientesNovos as any)?.porVendedorNovos ?? {};
-                const keyNormTop3 = String(v.vendedorFull).trim().toLowerCase();
-                const novos = (novosMapTop3[v.vendedorFull] ?? novosMapTop3[keyNormTop3] ??
-                  Object.entries(novosMapTop3).find(([k]) => k.toLowerCase() === keyNormTop3)?.[1]) as {
+                // Dados de clientes novos/reativados para este vendedor — mesma normalização
+                // de busca (exata ou case-insensitive) usada em vendedoresData acima.
+                // IMPORTANTE: porVendedorNovos (puros, nunca compraram) e porVendedorReativados
+                // (já compraram antes, 6+ meses inativos) vêm separados do servidor — nunca
+                // misturar as duas famílias de cliente na mesma métrica desta análise individual.
+                type StatsVendedorNovos = {
                   clientesNovos: number; osNovos: number; faturamentoNovos: number;
                   cotacoesNovos: number; valorOrcadoNovos: number;
                   taxaConvNovos: number; taxaFatNovos: number;
-                } | undefined;
+                };
+                const keyNormTop3 = String(v.vendedorFull).trim().toLowerCase();
+                const buscarStatsVendedor = (mapa: Record<string, any>): StatsVendedorNovos | undefined =>
+                  mapa[v.vendedorFull] ?? mapa[keyNormTop3] ??
+                  Object.entries(mapa).find(([k]) => k.toLowerCase() === keyNormTop3)?.[1];
+                const novosMapTop3 = (clientesNovos as any)?.porVendedorNovos ?? {};
+                const reativadosMapTop3 = (clientesNovos as any)?.porVendedorReativados ?? {};
+                const novos = buscarStatsVendedor(novosMapTop3);
+                const reativados = buscarStatsVendedor(reativadosMapTop3);
                 return (
                   <div key={v.vendedorFull} className="rounded-lg border-2 p-4 space-y-3" style={{ borderColor: medalColors[i] + "40", background: medalColors[i] + "08" }}>
                     <div className="flex items-center gap-2">
@@ -1654,6 +1662,28 @@ export default function PerformanceComercial() {
                             </div>
                             <p className="text-xs text-slate-500 mt-1">Fat. Novos</p>
                             <p className="font-bold text-teal-700 text-sm">R$ {novos.faturamentoNovos.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                          </div>
+                        </>
+                      )}
+                      {/* Taxas de clientes reativados — família separada, nunca somada aos novos acima */}
+                      {reativados && (
+                        <>
+                          <div className="pt-1 border-t border-slate-100">
+                            <p className="text-xs font-semibold text-orange-600 mb-1.5">Clientes Reativados 🔁 ({reativados.clientesNovos} clientes · {reativados.cotacoesNovos} cot. · {reativados.osNovos} OS)</p>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-slate-500">Conv. Pedido (Reativados)</span>
+                              <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${reativados.taxaConvNovos >= 30 ? "bg-green-100 text-green-700" : reativados.taxaConvNovos >= 15 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
+                                {reativados.taxaConvNovos}%
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-slate-500">Conv. Fat. (Reativados)</span>
+                              <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${reativados.taxaFatNovos >= 30 ? "bg-green-100 text-green-700" : reativados.taxaFatNovos >= 15 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
+                                {reativados.taxaFatNovos}%
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1">Fat. Reativados</p>
+                            <p className="font-bold text-orange-700 text-sm">R$ {reativados.faturamentoNovos.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                           </div>
                         </>
                       )}

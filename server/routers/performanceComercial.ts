@@ -878,11 +878,16 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   taxaConversaoNovos: number;
   taxaFaturamentoNovos: number;
   porVendedor: Record<string, number>;
+  /** Só clientes puros (nunca compraram antes). Nunca combinar com porVendedorReativados
+   * na mesma métrica — é a mesma separação usada nos KPIs de topo (totalPuros/totalReativados). */
   porVendedorNovos: Record<string, VendedorNovosStats>;
+  /** Clientes que já compraram antes mas ficaram 6+ meses sem pedir. Mesmo formato de
+   * porVendedorNovos, mas é uma família de cliente separada — ver [[performance-comercial-novos-vs-reativados]]. */
+  porVendedorReativados: Record<string, VendedorNovosStats>;
   lista: ClienteNovoListaItem[];
 }> {
   const db = await getDb();
-  const EMPTY ={ total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, lista: [] };
+  const EMPTY ={ total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, porVendedorReativados: {}, lista: [] };
   if (!db) return EMPTY;
 
   // ─── SNAPSHOT CONGELADO: verificar se já tem lista salva ───
@@ -897,20 +902,9 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     let listaSnap: ClienteNovoListaItem[] = [];
     try { listaSnap = JSON.parse(s.listaClientesNovos ?? '[]'); } catch { listaSnap = []; }
 
-    // Reconstruir porVendedorNovos a partir da lista salva (OS de clientes novos por vendedor)
-    // Isso garante que o Dashboard Clientes Novos por Vendedor apareça em todos os meses congelados
-    const porVendedorNovosSnap: Record<string, { clientesNovos: number; osNovos: number; faturamentoNovos: number; cotacoesNovos: number; valorOrcadoNovos: number; taxaConvNovos: number; taxaFatNovos: number }> = {};
-    for (const item of listaSnap) {
-      const vendedor = item.vendedor || "Sem Vendedor";
-      const valor = parseFloat(String(item.valorOs ?? "0")) || 0;
-      if (!porVendedorNovosSnap[vendedor]) {
-        porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
-      }
-      porVendedorNovosSnap[vendedor].clientesNovos++;
-      porVendedorNovosSnap[vendedor].osNovos++;
-      porVendedorNovosSnap[vendedor].faturamentoNovos = parseFloat((porVendedorNovosSnap[vendedor].faturamentoNovos + valor).toFixed(2));
-    }
-    // Buscar cotações por vendedor do banco local para calcular taxaConvNovos
+    // Buscar cotações por vendedor e histórico de compras ANTES de agrupar por vendedor —
+    // precisamos saber puro/reativado já na primeira passada, senão a separação abaixo
+    // não tem como acontecer (nunca misturar as duas famílias na mesma métrica de vendedor).
     const orcMesSnap = await db.select().from(historicoOrcamentos)
       .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)));
     // Clientes anteriores para identificar novos (nunca compraram ou inativos há 6+ meses)
@@ -919,8 +913,26 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     // Reativados = clientes novos (lista salva) que já tinham comprado antes (ultima existe),
     // mas ficaram 6+ meses sem pedir. "Novo puro" = nunca comprou (ultima ausente).
     const ultimaCompraSnapNorm = reindexarPorChaveNormalizada(ultimaCompraSnap);
+
+    // Reconstruir porVendedorNovos (puros) e porVendedorReativados a partir da lista salva
+    // (OS de clientes novos por vendedor), já separados por família de cliente.
+    // Isso garante que o Dashboard Clientes Novos por Vendedor apareça em todos os meses congelados
+    const porVendedorNovosSnap: Record<string, { clientesNovos: number; osNovos: number; faturamentoNovos: number; cotacoesNovos: number; valorOrcadoNovos: number; taxaConvNovos: number; taxaFatNovos: number }> = {};
+    const porVendedorReativadosSnap: Record<string, { clientesNovos: number; osNovos: number; faturamentoNovos: number; cotacoesNovos: number; valorOrcadoNovos: number; taxaConvNovos: number; taxaFatNovos: number }> = {};
+    for (const item of listaSnap) {
+      const vendedor = item.vendedor || "Sem Vendedor";
+      const valor = parseFloat(String(item.valorOs ?? "0")) || 0;
+      const jaComprouAntesItem = Boolean(ultimaCompraSnapNorm.get(normalizeEmpresaKey(item.empresa)));
+      const bucketSnap = jaComprouAntesItem ? porVendedorReativadosSnap : porVendedorNovosSnap;
+      if (!bucketSnap[vendedor]) {
+        bucketSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
+      }
+      bucketSnap[vendedor].clientesNovos++;
+      bucketSnap[vendedor].osNovos++;
+      bucketSnap[vendedor].faturamentoNovos = parseFloat((bucketSnap[vendedor].faturamentoNovos + valor).toFixed(2));
+    }
     // Listas salvas antes desta separação não têm o campo `reativado` — sempre recalcula
-    // na leitura (mesma chave usada nos contadores abaixo) em vez de confiar no JSON salvo.
+    // na leitura (mesma chave usada nos contadores acima) em vez de confiar no JSON salvo.
     for (const item of listaSnap) {
       item.reativado = Boolean(ultimaCompraSnapNorm.get(normalizeEmpresaKey(item.empresa)));
     }
@@ -959,22 +971,27 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
       if (!clienteKey || !isClienteNovoPorRecencia(ultimaCompraSnap.get(clienteKey), mes, ano)) continue;
       const vendedor = orc.vendedor || "Sem Vendedor";
-      if (!porVendedorNovosSnap[vendedor]) {
-        porVendedorNovosSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
+      const jaComprouAntesOrcSnap = Boolean(ultimaCompraSnap.get(clienteKey));
+      const bucketOrcSnap = jaComprouAntesOrcSnap ? porVendedorReativadosSnap : porVendedorNovosSnap;
+      if (!bucketOrcSnap[vendedor]) {
+        bucketOrcSnap[vendedor] = { clientesNovos: 0, osNovos: 0, faturamentoNovos: 0, cotacoesNovos: 0, valorOrcadoNovos: 0, taxaConvNovos: 0, taxaFatNovos: 0 };
       }
-      porVendedorNovosSnap[vendedor].cotacoesNovos++;
-      porVendedorNovosSnap[vendedor].valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
+      bucketOrcSnap[vendedor].cotacoesNovos++;
+      bucketOrcSnap[vendedor].valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
     }
-    // Calcular taxas por vendedor
-    for (const v of Object.keys(porVendedorNovosSnap)) {
-      const entry = porVendedorNovosSnap[v];
-      entry.taxaConvNovos = entry.cotacoesNovos > 0 ? parseFloat(((entry.osNovos / entry.cotacoesNovos) * 100).toFixed(1)) : 0;
-      entry.taxaFatNovos = entry.valorOrcadoNovos > 0 ? parseFloat(((entry.faturamentoNovos / entry.valorOrcadoNovos) * 100).toFixed(1)) : 0;
-      entry.valorOrcadoNovos = parseFloat(entry.valorOrcadoNovos.toFixed(2));
+    // Calcular taxas por vendedor (puros e reativados separadamente)
+    for (const mapaSnap of [porVendedorNovosSnap, porVendedorReativadosSnap]) {
+      for (const v of Object.keys(mapaSnap)) {
+        const entry = mapaSnap[v];
+        entry.taxaConvNovos = entry.cotacoesNovos > 0 ? parseFloat(((entry.osNovos / entry.cotacoesNovos) * 100).toFixed(1)) : 0;
+        entry.taxaFatNovos = entry.valorOrcadoNovos > 0 ? parseFloat(((entry.faturamentoNovos / entry.valorOrcadoNovos) * 100).toFixed(1)) : 0;
+        entry.valorOrcadoNovos = parseFloat(entry.valorOrcadoNovos.toFixed(2));
+      }
     }
 
     const cotacoesNovosSnap = (s.cotacoesNovos ?? 0) > 0 ? (s.cotacoesNovos ?? 0)
-      : Object.values(porVendedorNovosSnap).reduce((acc, v) => acc + v.cotacoesNovos, 0);
+      : Object.values(porVendedorNovosSnap).reduce((acc, v) => acc + v.cotacoesNovos, 0)
+        + Object.values(porVendedorReativadosSnap).reduce((acc, v) => acc + v.cotacoesNovos, 0);
     const taxaConvNovosSnap = parseFloat(String(s.taxaConvNovos ?? 0)) > 0
       ? parseFloat(String(s.taxaConvNovos ?? 0))
       : (cotacoesNovosSnap > 0 ? parseFloat((((s.clientesNovos ?? 0) / cotacoesNovosSnap) * 100).toFixed(1)) : 0);
@@ -994,6 +1011,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       taxaFaturamentoNovos: 0,
       porVendedor: {},
       porVendedorNovos: porVendedorNovosSnap,
+      porVendedorReativados: porVendedorReativadosSnap,
       lista: listaSnap,
     };
   }
@@ -1106,7 +1124,11 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   );
 
   const porVendedor: Record<string, number> = {};
+  // Separados desde a origem: "Novos" = nunca compraram antes (puros); "Reativados" = já
+  // compraram antes mas ficaram 6+ meses sem pedir. Nunca combinar as duas famílias numa
+  // mesma métrica de vendedor — mesma regra dos KPIs de topo (totalPuros/totalReativados).
   const porVendedorNovosOs: Record<string, { osNovos: number; faturamentoNovos: number; clientesNovos: number; nomeOriginal: string }> = {};
+  const porVendedorReativadosOs: Record<string, { osNovos: number; faturamentoNovos: number; clientesNovos: number; nomeOriginal: string }> = {};
   let total = 0;
   let totalReativados = 0;
   let osNovosCount = 0;
@@ -1145,9 +1167,11 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
       // Subconjunto de faturamentoNovos — ver nota em calcularNovosDoMesLocal.
       if (jaComprouAntes) faturamentoReativados += valorOs;
       osNovosCount++;
-      if (!porVendedorNovosOs[vendedorKey]) porVendedorNovosOs[vendedorKey] = { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: vendedor };
-      porVendedorNovosOs[vendedorKey].osNovos++;
-      porVendedorNovosOs[vendedorKey].faturamentoNovos += valorOs;
+      // Bucket por vendedor: puros e reativados nunca no mesmo contador (ver nota acima).
+      const bucketOs = jaComprouAntes ? porVendedorReativadosOs : porVendedorNovosOs;
+      if (!bucketOs[vendedorKey]) bucketOs[vendedorKey] = { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: vendedor };
+      bucketOs[vendedorKey].osNovos++;
+      bucketOs[vendedorKey].faturamentoNovos += valorOs;
       if (!clientesVistos.has(clienteKey)) {
         clientesVistos.add(clienteKey);
         total++;
@@ -1155,7 +1179,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         // "Novo puro" = nunca comprou (sem registro de última compra).
         if (jaComprouAntes) totalReativados++;
         porVendedor[vendedor] = (porVendedor[vendedor] ?? 0) + 1;
-        porVendedorNovosOs[vendedorKey].clientesNovos++;
+        bucketOs[vendedorKey].clientesNovos++;
         // Contato e cidade DIRETAMENTE da OS (ver extrairContatoDaOs). O número da OS na API
         // é `sequencial_ordem` — a API não devolve `numero`.
         const { telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs } = extrairContatoDaOs(os);
@@ -1178,6 +1202,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   let cotacoesNovos = 0;
   let valorOrcadoNovos = 0;
   const porVendedorNovosOrc: Record<string, { cotacoesNovos: number; valorOrcadoNovos: number; nomeOriginal: string }> = {};
+  const porVendedorReativadosOrc: Record<string, { cotacoesNovos: number; valorOrcadoNovos: number; nomeOriginal: string }> = {};
 
   {
     // Usar orçamentos já buscados (cache) ou banco local como fallback
@@ -1215,9 +1240,12 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
         valorOrcadoNovos += valor;
         const vendedorOrcRaw = String(orc.vendedor ?? orc.usuario ?? "Sem Vendedor");
         const vendedorOrcKey = vendedorOrcRaw.toLowerCase().trim();
-        if (!porVendedorNovosOrc[vendedorOrcKey]) porVendedorNovosOrc[vendedorOrcKey] = { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: vendedorOrcRaw };
-        porVendedorNovosOrc[vendedorOrcKey].cotacoesNovos++;
-        porVendedorNovosOrc[vendedorOrcKey].valorOrcadoNovos += valor;
+        // Mesma separação puros/reativados da lista de OS acima.
+        const jaComprouAntesOrc = Boolean(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente)));
+        const bucketOrc = jaComprouAntesOrc ? porVendedorReativadosOrc : porVendedorNovosOrc;
+        if (!bucketOrc[vendedorOrcKey]) bucketOrc[vendedorOrcKey] = { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: vendedorOrcRaw };
+        bucketOrc[vendedorOrcKey].cotacoesNovos++;
+        bucketOrc[vendedorOrcKey].valorOrcadoNovos += valor;
       }
     }
   }
@@ -1229,32 +1257,38 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
   const taxaFaturamentoNovos = valorOrcadoNovos > 0
     ? parseFloat(((faturamentoNovos / valorOrcadoNovos) * 100).toFixed(1))
     : 0;
-  // Montar porVendedorNovos combinando OS + cotações por vendedor
+  // Montar porVendedorNovos (puros) e porVendedorReativados combinando OS + cotações por
+  // vendedor, sempre a partir dos buckets já separados acima — nunca somar os dois.
   // Chaves são lowercase; usar nomeOriginal para preservar capitalização original
-  const todosVendedoresNovos = Array.from(new Set([
-    ...Object.keys(porVendedorNovosOs),
-    ...Object.keys(porVendedorNovosOrc),
-  ]));
-  const porVendedorNovos: Record<string, VendedorNovosStats> = {};
-  for (const v of todosVendedoresNovos) {
-    const os = porVendedorNovosOs[v] ?? { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: v };
-    const orc = porVendedorNovosOrc[v] ?? { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: v };
-    // Usar o nome original com melhor capitalização (preferir o da API de orçamentos)
-    const nomeDisplay = orc.nomeOriginal !== v ? orc.nomeOriginal : os.nomeOriginal;
-    const taxaConvNovos = orc.cotacoesNovos > 0
-      ? parseFloat(((os.osNovos / orc.cotacoesNovos) * 100).toFixed(1)) : 0;
-    const taxaFatNovos = orc.valorOrcadoNovos > 0
-      ? parseFloat(((os.faturamentoNovos / orc.valorOrcadoNovos) * 100).toFixed(1)) : 0;
-    porVendedorNovos[nomeDisplay] = {
-      clientesNovos: os.clientesNovos,
-      osNovos: os.osNovos,
-      faturamentoNovos: parseFloat(os.faturamentoNovos.toFixed(2)),
-      cotacoesNovos: orc.cotacoesNovos,
-      valorOrcadoNovos: parseFloat(orc.valorOrcadoNovos.toFixed(2)),
-      taxaConvNovos,
-      taxaFatNovos,
-    };
-  }
+  const montarPorVendedorNovos = (
+    osMap: Record<string, { osNovos: number; faturamentoNovos: number; clientesNovos: number; nomeOriginal: string }>,
+    orcMap: Record<string, { cotacoesNovos: number; valorOrcadoNovos: number; nomeOriginal: string }>,
+  ): Record<string, VendedorNovosStats> => {
+    const todosVendedores = Array.from(new Set([...Object.keys(osMap), ...Object.keys(orcMap)]));
+    const resultado: Record<string, VendedorNovosStats> = {};
+    for (const v of todosVendedores) {
+      const os = osMap[v] ?? { osNovos: 0, faturamentoNovos: 0, clientesNovos: 0, nomeOriginal: v };
+      const orc = orcMap[v] ?? { cotacoesNovos: 0, valorOrcadoNovos: 0, nomeOriginal: v };
+      // Usar o nome original com melhor capitalização (preferir o da API de orçamentos)
+      const nomeDisplay = orc.nomeOriginal !== v ? orc.nomeOriginal : os.nomeOriginal;
+      const taxaConvNovos = orc.cotacoesNovos > 0
+        ? parseFloat(((os.osNovos / orc.cotacoesNovos) * 100).toFixed(1)) : 0;
+      const taxaFatNovos = orc.valorOrcadoNovos > 0
+        ? parseFloat(((os.faturamentoNovos / orc.valorOrcadoNovos) * 100).toFixed(1)) : 0;
+      resultado[nomeDisplay] = {
+        clientesNovos: os.clientesNovos,
+        osNovos: os.osNovos,
+        faturamentoNovos: parseFloat(os.faturamentoNovos.toFixed(2)),
+        cotacoesNovos: orc.cotacoesNovos,
+        valorOrcadoNovos: parseFloat(orc.valorOrcadoNovos.toFixed(2)),
+        taxaConvNovos,
+        taxaFatNovos,
+      };
+    }
+    return resultado;
+  };
+  const porVendedorNovos = montarPorVendedorNovos(porVendedorNovosOs, porVendedorNovosOrc);
+  const porVendedorReativados = montarPorVendedorNovos(porVendedorReativadosOs, porVendedorReativadosOrc);
 
   const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
 
@@ -1282,6 +1316,7 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
     taxaFaturamentoNovos,
     porVendedor,
     porVendedorNovos,
+    porVendedorReativados,
     lista,
   };
 }
