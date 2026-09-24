@@ -861,7 +861,7 @@ type ClienteNovoListaItem = {
   reativado: boolean;
 };
 
-async function getClientesNovosMes(mes: number, ano: number): Promise<{
+async function getClientesNovosMes(mes: number, ano: number, forceRefresh = false): Promise<{
   total: number;
   totalReativados: number;
   /** Clientes genuinamente novos (nunca compraram antes), sem os reativados — ver nota em calcularNovosDoMesLocal. */
@@ -1046,6 +1046,19 @@ async function getClientesNovosMes(mes: number, ano: number): Promise<{
 
   let allOsApi: any[] = [];
   let allOrcApiPrefetched: any[] | null = null; // será preenchido se vier do cache
+
+  // forceRefresh: limpar o MESMO cache compartilhado que getMes usa (chaves
+  // mes_/os_raw_/orc_raw_/raw_${mes}_${ano}). Sem isso, "Clientes Novos/Reativados"
+  // podia refletir um instante diferente do dia do que "Vendas Realizadas/Faturamento"
+  // (getMes) mesmo os dois vindo do mesmo clique em "Atualizar" — cada card parecia
+  // consistente sozinho, mas a soma por vendedor não batia com o agregado porque um
+  // card tinha OS aprovadas depois do outro. Ver conversa de 2026-09-23.
+  if (forceRefresh) {
+    deleteCache(`os_raw_${mes}_${ano}`);
+    deleteCache(`orc_raw_${mes}_${ano}`);
+    deleteCache(`mes_${mes}_${ano}`);
+    await deleteDbCache(`raw_${mes}_${ano}`);
+  }
 
   try {
     // Usar getMesFromApi que já tem cache e deduplicação (também popula os_raw/orc_raw
@@ -1964,9 +1977,9 @@ export const performanceComercialRouter = router({
 
   // Clientes novos do mês (primeira compra)
   getClientesNovos: protectedProcedure
-    .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
+    .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020), forceRefresh: z.boolean().optional().default(false) }))
     .query(async ({ input }) => {
-      return getClientesNovosMes(input.mes, input.ano);
+      return getClientesNovosMes(input.mes, input.ano, input.forceRefresh);
     }),
 
   // Clientes novos de todos os meses do ano (para gráfico anual) — lê do histórico local

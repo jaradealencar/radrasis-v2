@@ -440,6 +440,7 @@ export default function PerformanceComercial() {
     onSuccess: () => {
       refetchAuditoria();
       utils.performanceComercial.getMes.invalidate({ mes: mesSelecionado, ano: anoSelecionado });
+      utils.performanceComercial.getClientesNovos.invalidate({ mes: mesSelecionado, ano: anoSelecionado });
     },
   });
 
@@ -461,8 +462,12 @@ export default function PerformanceComercial() {
     trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
   const { data: dadosAno, isLoading: loadingAno, isError: errorAno } =
     trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, RETRY_1);
-  const { data: clientesNovos, isLoading: loadingClientesNovos } =
-    trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
+  // Mesmo forceRefreshMes do getMes acima: os dois compartilham o cache de OS/orçamentos
+  // brutos no servidor (chaves mes_/os_raw_/orc_raw_/raw_${mes}_${ano}), então precisam
+  // ser recalibrados juntos — senão "Vendas Realizadas" e "Clientes Novos/Reativados"
+  // podem refletir instantes diferentes do dia mesmo no mesmo clique de "Atualizar".
+  const { data: clientesNovos, isLoading: loadingClientesNovos, refetch: refetchClientesNovos } =
+    trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado, forceRefresh: forceRefreshMes }, RETRY_1);
 
   // Controle de contato com clientes novos
   const { data: contatadosMap, refetch: refetchContatados } =
@@ -736,6 +741,7 @@ export default function PerformanceComercial() {
                   setForceRefreshMes(true);
                   setTimeout(() => {
                     refetchMes();
+                    refetchClientesNovos();
                     refetchEvolucao();
                     refetchMetas();
                     setForceRefreshMes(false);
