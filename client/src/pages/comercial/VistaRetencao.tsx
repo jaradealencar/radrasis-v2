@@ -127,29 +127,21 @@ export default function VistaRetencao() {
     setExportandoGrupo(grupo.chave);
     try {
       const contatosDoGrupo = await garantirContatosDoGrupo(grupo);
-      const header = [
-        "primeiro_nome", "nome_completo", "whatsapp", "empresa", "data_primeira_compra",
-        "data_disparo_agendado", "dias_uteis_decorridos", "estagio_jornada",
-        "caracteristicas_cliente", "valor_primeira_compra",
-      ];
+      // Só nome (primeiro nome, do cadastro do MubiSys) e telefone — pedido explícito do
+      // usuário (24/09/2026): nada de empresa/datas/estágio na planilha de disparo. Sem
+      // fallback para o nome da empresa quando o contato não foi encontrado: melhor deixar
+      // em branco do que mostrar um "nome" que na verdade é razão social/CNPJ.
+      const header = ["primeiro_nome", "telefone"];
       const linhas = grupo.clientes.map(c => {
         const info = contatosDoGrupo[c.empresaKey];
         const nomeContato = info?.contato ? capitalizarNomeProprio(info.contato) : "";
         return [
-          primeiroNomeMensagem(nomeContato) || capitalizarNomeProprio(c.empresa),
-          nomeContato || capitalizarNomeProprio(c.empresa),
+          primeiroNomeMensagem(nomeContato),
           info?.whatsappLink ? info.whatsappLink.replace("https://wa.me/", "") : "",
-          c.empresa,
-          c.dataPrimeiraCompra,
-          c.dataAgendada,
-          String(c.diasUteisDecorridos),
-          estagioLabel[c.estagio] ?? c.estagio,
-          `Ticket 1ª compra: ${fmtBrl(Number(c.valorPrimeiraCompra ?? 0))}`,
-          c.valorPrimeiraCompra ?? "0",
         ];
       });
-      const semWhatsapp = linhas.filter(l => !l[2]).length;
-      if (semWhatsapp > 0) toast.warning(`${semWhatsapp} cliente(s) sem WhatsApp encontrado na planilha — OS sem contato cadastrado no ERP.`);
+      const semContato = linhas.filter(l => !l[0] || !l[1]).length;
+      if (semContato > 0) toast.warning(`${semContato} cliente(s) sem nome/telefone encontrado — OS sem contato cadastrado no MubiSys.`);
       const nomeCampanha = grupo.numero ? `campanha-${grupo.numero}-${grupo.estagio}` : `${grupo.estagio}-${status}`;
       baixarCsv(`retencao-${nomeCampanha}.csv`, [header, ...linhas]);
     } finally {
