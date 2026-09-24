@@ -288,6 +288,13 @@
       "when": 1790037868235,
       "tag": "0040_aguardando_resposta",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790217388344,
+      "tag": "0041_great_dazzler",
+      "breakpoints": true
     }
   ]
 }

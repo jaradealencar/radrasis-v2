@@ -59,6 +59,9 @@ export const inteligenciaAcaoResultadoEnum = pgEnum("inteligencia_acao_resultado
 export const scoreLeadCnpjEnum = pgEnum("score_lead_cnpj", ["A", "B", "C", "D"]);
 export const nivelConfiancaSinalEnum = pgEnum("nivel_confianca_sinal", ["confirmado", "inferencia"]);
 export const statusSinalMercadoEnum = pgEnum("status_sinal_mercado", ["novo", "qualificando", "oportunidade", "associado_cliente", "descartado", "expirado"]);
+// Jornada de retenção de clientes novos (16 dias úteis até 1 ano) — ver server/services/retencaoClientesNovos.ts
+export const retencaoJornadaEstagioEnum = pgEnum("retencao_jornada_estagio", ["d16u", "d30", "d60", "d90", "d180", "d270", "d365"]);
+export const retencaoDisparoStatusEnum = pgEnum("retencao_disparo_status", ["pendente", "disparado", "descartado"]);
 
 // Biblioteca de classificação de erros
 export const errorLibrary = pgTable("error_library", {
@@ -1633,6 +1636,68 @@ export const inteligenciaClientesContatos = pgTable("inteligencia_clientes_conta
 }));
 export type InteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferSelect;
 export type InsertInteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferInsert;
+
+// ─── Retenção de Clientes Novos — jornada de 1 ano ───────────────────────────
+// Ver server/services/retencaoClientesNovos.ts. Clientes com só 1 compra
+// válida em todo o histórico (historico_os) entram numa régua de 7 marcos
+// (16 dias úteis até 365 dias corridos desde a 1ª compra). Uma linha por
+// (cliente, estágio) — idempotente, sincronizada a cada carregamento da tela,
+// igual ao padrão já usado em inteligencia_acoes_clientes.
+export const retencaoDisparos = pgTable("retencao_disparos", {
+  id: serial("id").primaryKey(),
+  empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
+  empresa: varchar("empresa", { length: 256 }).notNull(),
+  osNumero: varchar("os_numero", { length: 32 }), // da 1ª compra — usado para buscar contato ao vivo
+  vendedor: varchar("vendedor", { length: 128 }),
+  valorPrimeiraCompra: decimal("valor_primeira_compra", { precision: 14, scale: 2 }),
+  dataPrimeiraCompra: date("data_primeira_compra").notNull(),
+  estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
+  dataAgendada: date("data_agendada").notNull(),
+  status: retencaoDisparoStatusEnum("status").notNull().default("pendente"),
+  disparadoEm: timestamp("disparado_em"),
+  disparadoPor: varchar("disparado_por", { length: 128 }),
+  observacao: text("observacao"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (t) => ({
+  empresaEstagioUnique: uniqueIndex("retencao_disparos_empresa_estagio_unique").on(t.empresaKey, t.estagio),
+  dataAgendadaIdx: index("retencao_disparos_data_agendada_idx").on(t.dataAgendada),
+  statusIdx: index("retencao_disparos_status_idx").on(t.status),
+}));
+export type RetencaoDisparo = typeof retencaoDisparos.$inferSelect;
+export type InsertRetencaoDisparo = typeof retencaoDisparos.$inferInsert;
+
+// Cache do contato-pessoa (nome + celular) buscado ao vivo na API MubiSys por
+// OS — historico_os não guarda nome de contato, só telefone (e só a partir de
+// 21/09/2026). Evita rebuscar na API a cada carregamento da tela.
+export const retencaoContatoCache = pgTable("retencao_contato_cache", {
+  id: serial("id").primaryKey(),
+  empresaKey: varchar("empresa_key", { length: 256 }).notNull().unique(),
+  osNumero: varchar("os_numero", { length: 32 }),
+  contato: varchar("contato", { length: 128 }),
+  telefone: varchar("telefone", { length: 32 }),
+  whatsappLink: varchar("whatsapp_link", { length: 64 }),
+  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+});
+export type RetencaoContatoCache = typeof retencaoContatoCache.$inferSelect;
+export type InsertRetencaoContatoCache = typeof retencaoContatoCache.$inferInsert;
+
+// Scripts de mensagem sugeridos por estágio da jornada — mesmo padrão de
+// crm_scripts (faixas do funil do CRM), trocando "faixa" por "estagio".
+export const retencaoScripts = pgTable("retencao_scripts", {
+  id: serial("id").primaryKey(),
+  estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
+  ordem: integer("ordem").notNull().default(0),
+  titulo: varchar("titulo", { length: 128 }),
+  conteudo: text("conteudo").notNull(),
+  conteudoVoz: text("conteudo_voz"),
+  ativo: boolean("ativo").notNull().default(true),
+  copiaCount: integer("copia_count").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type RetencaoScript = typeof retencaoScripts.$inferSelect;
+export type InsertRetencaoScript = typeof retencaoScripts.$inferInsert;
 
 // ─── Qualificação de leads B2B por CNPJ ──────────────────────────────────────
 // Ver docs/inteligencia-mercado-leads-cnpj.md — fonte de dados OpenCNPJ,

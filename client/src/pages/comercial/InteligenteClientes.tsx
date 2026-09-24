@@ -28,6 +28,7 @@ import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
 import MarketingFinanceiro from "@/pages/financeiro/MarketingFinanceiro";
+import VistaRetencao from "@/pages/comercial/VistaRetencao";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1662,13 +1663,14 @@ function periodoInicialDoAno(ano: number): string {
   return ano === atual.getFullYear() ? `${ano}-${pad(atual.getMonth() + 1)}` : `${ano}-12`;
 }
 
-type Vista = "visao-geral" | "crescimento" | "clientes" | "fila" | "funil" | "previsoes" | "assistente" | "perfil-cnpj" | "equipe";
+type Vista = "visao-geral" | "crescimento" | "clientes" | "fila" | "retencao" | "funil" | "previsoes" | "assistente" | "perfil-cnpj" | "equipe";
 
 const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "visao-geral", label: "Visão Geral", icon: "📊" },
   { id: "crescimento", label: "Crescimento e Resultado", icon: "📈" },
   { id: "clientes", label: "Clientes", icon: "👥" },
   { id: "fila", label: "Fila de Ações", icon: "✅" },
+  { id: "retencao", label: "Retenção", icon: "🔁" },
   { id: "funil", label: "Funil", icon: "🔻" },
   { id: "previsoes", label: "Previsões", icon: "🔮" },
   { id: "assistente", label: "Assistente", icon: "✨" },
@@ -1746,6 +1748,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       {vista === "crescimento" && isAdmin && <MarketingFinanceiro anoSel={anoSelecionado} />}
       {vista === "clientes" && <VistaClientes dataInicial={dataInicial} dataFinal={dataFinal} />}
       {vista === "fila" && <VistaFilaAcoes />}
+      {vista === "retencao" && <VistaRetencao />}
       {vista === "funil" && <VistaFunil />}
       {vista === "previsoes" && <VistaPrevisoes />}
       {vista === "assistente" && <VistaAssistente dataInicial={dataInicial} dataFinal={dataFinal} />}
