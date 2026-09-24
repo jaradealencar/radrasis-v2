@@ -4,6 +4,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { crmMetas, crmContatos, historicoOs, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
+import type { CrmContato } from "../../drizzle/schema";
 import {
   CACHE_KEY_ABERTOS_PADRAO, CACHE_KEY_ABERTOS_ESTENDIDO,
   JANELA_ABERTOS_DIAS_PADRAO, JANELA_ABERTOS_DIAS_MAX,
@@ -139,6 +140,56 @@ function janelaSugerida(diasCriado: number): string {
   return "perdido";                            // >30 dias
 }
 
+// Enriquece um orçamento "aberto" (formato bruto do MubiSys/cache) com os dados de
+// follow-up derivados dos contatos já registrados no banco para ele. Extraída de dentro
+// de getPropostas (era um .map() inline) para poder testar isoladamente contato1/contato2/
+// meta2Contatos/qtdContatos sem precisar simular cache do MubiSys, MubiSys ao vivo ou banco —
+// ver server/__tests__/crm.test.ts, "getPropostas — enriquecerPropostaComContatos".
+export function enriquecerPropostaComContatos(o: any, contatos: CrmContato[]) {
+  const orcId = String(o.id);
+  const dataCriacaoDate = parseDate(o.data_cadastro);
+  const diasCriado = dataCriacaoDate ? diasUteisEntre(dataCriacaoDate, new Date()) : 0;
+  const primeiroContato = contatos.find(c => c.numeroContato === 1);
+  const segundoContato = contatos.find(c => c.numeroContato === 2);
+  // 'perdida'/'garantiu_fechamento' são status finais (não tentativas de contato — ver
+  // registrarContato, que já os exclui do limite de 2) e não devem, sozinhos, mandar a
+  // proposta para o Histórico: senão ela some da aba Ativas (e do filtro por resposta,
+  // que só existe lá) assim que "Garantiu fechamento" é registrado como 2º contato.
+  const contatosRegulares = contatos.filter(c => c.canal !== "perdida" && c.canal !== "garantiu_fechamento");
+  const diasAteContato1 = primeiroContato
+    ? Math.floor((new Date(primeiroContato.contatadoEm).getTime() - new Date(o.data_cadastro).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  // Extrair nome do contato do orçamento
+  const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : [];
+  const primeiroContatoOrc = contatosOrc[0];
+  const nomeContato = primeiroContatoOrc?.nome_contato ?? primeiroContatoOrc?.nome ?? "";
+  return {
+    id: orcId,
+    sequencial: o.sequencial_orcamento,
+    nomeContato,
+    empresa: o.empresa,
+    vendedor: o.vendedor,
+    valor: parseFloat(o.valor_total ?? "0"),
+    dataCriacao: o.data_cadastro,
+    diasAberto: diasCriado,
+    janela: janelaSugerida(diasCriado),
+    contato1: primeiroContato ? {
+      data: primeiroContato.contatadoEm,
+      canal: primeiroContato.canal,
+      obs: primeiroContato.observacao,
+    } : null,
+    contato2: segundoContato ? {
+      data: segundoContato.contatadoEm,
+      canal: segundoContato.canal,
+      obs: segundoContato.observacao,
+    } : null,
+    qtdContatos: contatos.length,
+    contato1NoPrazo: diasAteContato1 !== null ? diasAteContato1 <= 3 : null,
+    meta2Contatos: contatosRegulares.length >= 2,
+  };
+}
+
 // ─── Mensagens motivacionais ──────────────────────────────────────────────────
 const MOTIVACIONAL_PROMPTS = [
   "Gere uma mensagem motivacional curta (máximo 2 frases) para um vendedor de uma empresa de letreiros e comunicação visual. Mencione que ontem ele fez {propostas} propostas e que há {pendentes} propostas esperando follow-up. Use tom animado, direto e encorajador. Foque em transformar o mês em resultado.",
@@ -241,59 +292,16 @@ export const crmRouter = router({
         : [];
 
       // Mapear contatos por orcamentoId
-      type ContatoRow = typeof contatosDb[0];
-      const contatosPorOrc: Record<string, ContatoRow[]> = {};
+      const contatosPorOrc: Record<string, CrmContato[]> = {};
       for (const c of contatosDb) {
         if (!contatosPorOrc[c.orcamentoId]) contatosPorOrc[c.orcamentoId] = [];
         contatosPorOrc[c.orcamentoId].push(c);
       }
 
       // Enriquecer propostas abertas com dados de follow-up
-      const propostas = propostasAbertas.map((o: any) => {
-        const orcId = String(o.id);
-        const contatos = contatosPorOrc[orcId] ?? [];
-        const dataCriacaoDate = parseDate(o.data_cadastro);
-        const diasCriado = dataCriacaoDate ? diasUteisEntre(dataCriacaoDate, new Date()) : 0;
-        const primeiroContato = contatos.find(c => c.numeroContato === 1);
-        const segundoContato = contatos.find(c => c.numeroContato === 2);
-        // 'perdida'/'garantiu_fechamento' são status finais (não tentativas de contato — ver
-        // registrarContato, que já os exclui do limite de 2) e não devem, sozinhos, mandar a
-        // proposta para o Histórico: senão ela some da aba Ativas (e do filtro por resposta,
-        // que só existe lá) assim que "Garantiu fechamento" é registrado como 2º contato.
-        const contatosRegulares = contatos.filter(c => c.canal !== "perdida" && c.canal !== "garantiu_fechamento");
-        const diasAteContato1 = primeiroContato
-          ? Math.floor((new Date(primeiroContato.contatadoEm).getTime() - new Date(o.data_cadastro).getTime()) / (1000 * 60 * 60 * 24))
-          : null;
-
-        // Extrair nome do contato do orçamento
-        const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : [];
-        const primeiroContatoOrc = contatosOrc[0];
-        const nomeContato = primeiroContatoOrc?.nome_contato ?? primeiroContatoOrc?.nome ?? "";
-        return {
-          id: orcId,
-          sequencial: o.sequencial_orcamento,
-          nomeContato,
-          empresa: o.empresa,
-          vendedor: o.vendedor,
-          valor: parseFloat(o.valor_total ?? "0"),
-          dataCriacao: o.data_cadastro,
-          diasAberto: diasCriado,
-          janela: janelaSugerida(diasCriado),
-          contato1: primeiroContato ? {
-            data: primeiroContato.contatadoEm,
-            canal: primeiroContato.canal,
-            obs: primeiroContato.observacao,
-          } : null,
-          contato2: segundoContato ? {
-            data: segundoContato.contatadoEm,
-            canal: segundoContato.canal,
-            obs: segundoContato.observacao,
-          } : null,
-          qtdContatos: contatos.length,
-          contato1NoPrazo: diasAteContato1 !== null ? diasAteContato1 <= 3 : null,
-          meta2Contatos: contatosRegulares.length >= 2,
-        };
-      });
+      const propostas = propostasAbertas.map((o: any) =>
+        enriquecerPropostaComContatos(o, contatosPorOrc[String(o.id)] ?? [])
+      );
 
       // Estatísticas do mês
       const totalFechado = propostasFechadas.reduce((s: number, o: any) => s + parseFloat(o.valor_total ?? "0"), 0);

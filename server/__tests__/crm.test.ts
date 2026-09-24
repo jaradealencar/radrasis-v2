@@ -3,6 +3,8 @@ import {
   filtrarPorDiaDeCadastro, intervaloDaFatia, mesclarFatia, ordemDasFatias, numFatias,
 } from "../sync/crm-abertos-cache";
 import { classificarCandidatasExclusao } from "../sync/limpeza-crm-antigas";
+import { enriquecerPropostaComContatos } from "../routers/crm";
+import type { CrmContato } from "../../drizzle/schema";
 
 // Mock do módulo de banco de dados
 vi.mock("../db/db", () => ({
@@ -154,27 +156,130 @@ describe("CRM — Lógica de negócio", () => {
     });
   });
 
-  // 'garantiu_fechamento'/'perdida' são status finais, não tentativas de contato — não podem
-  // contar para a meta de 2 que manda a proposta para o Histórico (aba sem filtro por resposta),
-  // senão "Garantiu fechamento" registrado como 2º contato some do filtro (ver getPropostas).
-  describe("meta2Contatos ignora status finais (garantiu_fechamento/perdida)", () => {
-    function calcularMeta2Contatos(contatos: Array<{ canal: string }>) {
-      const regulares = contatos.filter(c => c.canal !== "perdida" && c.canal !== "garantiu_fechamento");
-      return regulares.length >= 2;
+  // Testes de integração reais sobre enriquecerPropostaComContatos (extraída de dentro de
+  // getPropostas — server/routers/crm.ts) e sobre o MESMO filtro usado pela tela
+  // (client/src/pages/comercial/CRM.tsx, propostasAtivas). Diferente dos blocos acima, aqui
+  // não se replica a fórmula: importa-se a função de produção e roda-se o filtro do jeito que
+  // o componente roda, para não deixar passar um bug de integração entre as duas pontas.
+  describe("getPropostas — contato1/contato2/meta2Contatos e o filtro por resposta", () => {
+    let seq = 0;
+    function contato(overrides: Partial<CrmContato>): CrmContato {
+      seq += 1;
+      return {
+        id: seq,
+        orcamentoId: "ORC1",
+        vendedor: "Vendedor Teste",
+        empresa: "Cliente Teste",
+        numeroContato: 1,
+        canal: "whatsapp",
+        observacao: null,
+        contatadoEm: new Date("2026-09-21T12:00:00Z"),
+        createdAt: new Date("2026-09-21T12:00:00Z"),
+        ...overrides,
+      } as CrmContato;
+    }
+    function orcamento(overrides: Partial<Record<string, unknown>> = {}) {
+      return {
+        id: "ORC1",
+        sequencial_orcamento: "1001",
+        data_cadastro: "2026-09-15",
+        cliente_contato: [{ nome_contato: "Fulano" }],
+        empresa: "Cliente Teste",
+        vendedor: "Vendedor Teste",
+        valor_total: "5000",
+        ...overrides,
+      };
+    }
+    // Mesma comparação usada pelo filtro "por tipo de resposta" da tela (CRM.tsx, propostasAtivas)
+    function passaNoFiltroDeResposta(p: ReturnType<typeof enriquecerPropostaComContatos>, filtroResposta: string) {
+      if (filtroResposta === "sem_contato") return p.qtdContatos === 0;
+      return p.contato1?.canal === filtroResposta || p.contato2?.canal === filtroResposta;
+    }
+    // Mesma regra que separa Ativas (com filtro) de Histórico (sem filtro) na tela
+    function estaNaAbaAtivas(p: ReturnType<typeof enriquecerPropostaComContatos>) {
+      return !p.meta2Contatos;
     }
 
-    it("1 contato regular + garantiu_fechamento não atinge a meta (proposta continua em Ativas)", () => {
-      const contatos = [{ canal: "aguardando_resposta" }, { canal: "garantiu_fechamento" }];
-      expect(calcularMeta2Contatos(contatos)).toBe(false);
+    it("garantiu_fechamento como único contato (1º, via modal): aparece no filtro e fica em Ativas", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "garantiu_fechamento" }),
+      ]);
+      expect(estaNaAbaAtivas(p)).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "garantiu_fechamento")).toBe(true);
     });
 
-    it("2 contatos regulares sem status final atinge a meta (vai para o Histórico)", () => {
-      const contatos = [{ canal: "nao_retornou" }, { canal: "esperando_cliente" }];
-      expect(calcularMeta2Contatos(contatos)).toBe(true);
+    it("aguardando_resposta (1º) + garantiu_fechamento (2º, via modal): aparece no filtro e fica em Ativas", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "aguardando_resposta" }),
+        contato({ numeroContato: 2, canal: "garantiu_fechamento" }),
+      ]);
+      expect(estaNaAbaAtivas(p)).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "garantiu_fechamento")).toBe(true);
+      // e o filtro "Aguardando resposta" não deve mais achar essa proposta — o 1º contato
+      // foi substituído nessa vaga? não: aqui são 2 contatos distintos, cada um na sua vaga.
+      expect(passaNoFiltroDeResposta(p, "aguardando_resposta")).toBe(true);
     });
 
-    it("só um garantiu_fechamento, sem tentativa anterior, não atinge a meta", () => {
-      expect(calcularMeta2Contatos([{ canal: "garantiu_fechamento" }])).toBe(false);
+    it("aguardando_resposta editado (alterarContato) para garantiu_fechamento: mesma vaga, aparece no filtro", () => {
+      // alterarContato só troca o canal do MESMO registro (numeroContato 1), não cria um 2º
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "garantiu_fechamento" }), // já veio com o canal trocado
+      ]);
+      expect(estaNaAbaAtivas(p)).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "garantiu_fechamento")).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "aguardando_resposta")).toBe(false);
+    });
+
+    it("marcarGanha sem tentativa anterior (numeroContato calculado = 1): aparece no filtro", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "garantiu_fechamento", observacao: "Proposta marcada como ganha" }),
+      ]);
+      expect(estaNaAbaAtivas(p)).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "garantiu_fechamento")).toBe(true);
+    });
+
+    it("marcarGanha com 1 tentativa anterior (numeroContato calculado = 2): aparece no filtro", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "nao_retornou" }),
+        contato({ numeroContato: 2, canal: "garantiu_fechamento", observacao: "Proposta marcada como ganha" }),
+      ]);
+      expect(estaNaAbaAtivas(p)).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "garantiu_fechamento")).toBe(true);
+    });
+
+    it("marcarGanha com as 2 vagas já ocupadas (numeroContato 99, fallback): NÃO aparece no filtro — mas já estava no Histórico antes disso", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "nao_retornou" }),
+        contato({ numeroContato: 2, canal: "esperando_cliente" }),
+        contato({ numeroContato: 99, canal: "garantiu_fechamento", observacao: "Proposta marcada como ganha" }),
+      ]);
+      // já tinha 2 contatos regulares antes do marcarGanha — o filtro por resposta nem se
+      // aplica aqui, porque a proposta já está na aba Histórico (sem filtro nenhum)
+      expect(estaNaAbaAtivas(p)).toBe(false);
+    });
+
+    it("2 contatos regulares sem status final: some do filtro na aba Ativas porque migrou para o Histórico (comportamento esperado)", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "nao_retornou" }),
+        contato({ numeroContato: 2, canal: "esperando_cliente" }),
+      ]);
+      expect(estaNaAbaAtivas(p)).toBe(false);
+      expect(p.meta2Contatos).toBe(true);
+    });
+
+    it("perdida como único contato (via botão X, sem tentativa anterior): aparece no filtro 'Perdida' — mesma regra do garantiu_fechamento", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), [
+        contato({ numeroContato: 1, canal: "perdida", observacao: "Proposta marcada como perdida" }),
+      ]);
+      expect(estaNaAbaAtivas(p)).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "perdida")).toBe(true);
+    });
+
+    it("sem nenhum contato: filtro 'sem_contato' encontra, os demais não", () => {
+      const p = enriquecerPropostaComContatos(orcamento(), []);
+      expect(estaNaAbaAtivas(p)).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "sem_contato")).toBe(true);
+      expect(passaNoFiltroDeResposta(p, "garantiu_fechamento")).toBe(false);
     });
   });
 
