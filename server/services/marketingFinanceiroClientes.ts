@@ -31,8 +31,9 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/db";
 import { historicoOs, clienteOverrides } from "../../drizzle/schema";
 import {
-  isOsNormalDb, normalizeEmpresaKey, buscarTodasComprasValidas, ultimaCompraAntesDe,
-  reindexarPorChaveNormalizada, isClienteNovoPorRecencia, type CompraMinima,
+  isOsNormalDb, isOsNormalApi, normalizeEmpresaKey, nomeClienteDaOsApi, valorLiquidoOs,
+  buscarTodasComprasValidas, ultimaCompraAntesDe, reindexarPorChaveNormalizada,
+  isClienteNovoPorRecencia, buscarOsEOrcamentosAoVivoDoMes, type CompraMinima,
 } from "../routers/performanceComercial";
 import { agregarLinhas, type MargemAgregada } from "../../shared/marketing-financeiro";
 
@@ -162,10 +163,78 @@ export function classificarMes(
   return resultado;
 }
 
-/** Classifica o ano inteiro (meses 1..mesAtual se ano corrente, senão 1..12). */
+/** Classifica O.S. do mês vigente usando dados AO VIVO da API MubiSys (mesmo cache
+ * compartilhado e mesma cadeia de fallback do Performance Comercial — ver
+ * buscarOsEOrcamentosAoVivoDoMes), em vez de historico_os. `historico_os` só é
+ * atualizado pelo import mensal combinado com o usuário (ver
+ * [[performance-comercial-historico-vazio]]), então o mês em andamento sempre ficava
+ * "atrasado" nesta tela em relação ao Performance Comercial (que já calcula o mês
+ * corrente ao vivo) — os dois mostravam contagens de "clientes novos" e
+ * "faturamento novos" diferentes para o mesmo mês (ver conversa 2026-09-25).
+ * Estruturalmente idêntica a classificarMes, só trocando a fonte de O.S. brutas e os
+ * nomes/formato de campo (API usa `cliente`/`sequencial_ordem`/`tipo`, não
+ * `empresa`/`osNumero`/`tipoOs`). `contribuicaoReais` sempre null aqui — a API pública
+ * não expõe custo/margem, então cai no fallback percentual de agregarMargem, igual a
+ * qualquer O.S. sem contribuicaoReais no banco local. */
+export async function classificarMesAoVivo(
+  mes: number,
+  ano: number,
+  todasComprasValidas: CompraMinima[],
+  overrideMap: Map<string, "recorrente" | "novo">,
+  mesesInatividade: number,
+): Promise<OsClassificadaMarketing[]> {
+  const ultimaCompraPorCliente = reindexarPorChaveNormalizada(ultimaCompraAntesDe(todasComprasValidas, mes, ano));
+  const { allOs } = await buscarOsEOrcamentosAoVivoDoMes(mes, ano, false);
+  const osNormais = allOs.filter(isOsNormalApi);
+  const resultado: OsClassificadaMarketing[] = [];
+
+  for (const os of osNormais) {
+    const nomeCliente = nomeClienteDaOsApi(os);
+    const clienteKey = normalizeEmpresaKey(nomeCliente);
+    const valorOs = valorLiquidoOs(os);
+    const osNumero = String(os.sequencial_ordem ?? os.numero ?? "") || null;
+    const dataAprovacao = (os.data_aprovacao || os.data_cadastro || null) as string | null;
+    const endereco = Array.isArray(os.cliente_endereco) ? os.cliente_endereco[0] : null;
+    const vendedor = os.vendedor != null ? String(os.vendedor) : null;
+
+    if (!clienteKey) {
+      resultado.push({
+        osNumero, empresaOriginal: nomeCliente, clienteKey: "", mes, ano, valorOs,
+        contribuicaoReais: null, vendedor, cidade: endereco?.cidade ?? null, estado: endereco?.estado ?? null,
+        dataAprovacao, categoria: "naoClassificado", jaComprouAntes: false, gapMesesUltimaCompra: null,
+      });
+      continue;
+    }
+
+    const ultima = ultimaCompraPorCliente.get(clienteKey);
+    const jaComprouAntes = Boolean(ultima);
+    const gapMesesUltimaCompra = ultima ? (ano - ultima.ano) * 12 + (mes - ultima.mes) : null;
+    const overrideStatus = overrideMap.get(clienteKey);
+    const isNovoOuReativado = overrideStatus === "recorrente" ? false
+      : overrideStatus === "novo" ? true
+      : isClienteNovoPorRecencia(ultima, mes, ano, mesesInatividade);
+
+    const categoria: CategoriaCliente = isNovoOuReativado
+      ? (jaComprouAntes ? "reativado" : "novo")
+      : "recorrenteAtivo";
+
+    resultado.push({
+      osNumero, empresaOriginal: nomeCliente, clienteKey, mes, ano, valorOs,
+      contribuicaoReais: null, vendedor, cidade: endereco?.cidade ?? null, estado: endereco?.estado ?? null,
+      dataAprovacao, categoria, jaComprouAntes, gapMesesUltimaCompra,
+    });
+  }
+  return resultado;
+}
+
+/** Classifica o ano inteiro (meses 1..mesAtual se ano corrente, senão 1..12). O mês
+ * vigente do ano corrente usa dados ao vivo (classificarMesAoVivo); os demais vêm de
+ * historico_os (classificarMes) — fonte oficial após import/auditoria de fechamento. */
 export async function classificarAno(db: Db, ano: number, mesesInatividade: number): Promise<OsClassificadaMarketing[]> {
   const now = new Date();
-  const mesLimite = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
+  const anoAtual = now.getFullYear();
+  const mesAtualNum = now.getMonth() + 1;
+  const mesLimite = ano === anoAtual ? mesAtualNum : 12;
   const meses = Array.from({ length: mesLimite }, (_, i) => i + 1);
 
   const [todasComprasValidas, osDoAno, overrideMap] = await Promise.all([
@@ -176,6 +245,16 @@ export async function classificarAno(db: Db, ano: number, mesesInatividade: numb
 
   const resultado: OsClassificadaMarketing[] = [];
   for (const mes of meses) {
+    const ehMesVigente = ano === anoAtual && mes === mesAtualNum;
+    if (ehMesVigente) {
+      try {
+        resultado.push(...await classificarMesAoVivo(mes, ano, todasComprasValidas, overrideMap, mesesInatividade));
+        continue;
+      } catch {
+        // API MubiSys indisponível — cai para historico_os abaixo (mesmo
+        // comportamento de antes desta mudança, melhor que travar a tela toda).
+      }
+    }
     resultado.push(...classificarMes(mes, ano, osDoAno, todasComprasValidas, overrideMap, mesesInatividade));
   }
   return resultado;

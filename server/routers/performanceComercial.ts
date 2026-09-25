@@ -945,6 +945,109 @@ type ClienteNovoListaItem = {
   reativado: boolean;
 };
 
+/** Busca OS e orçamentos brutos (formato cru da API MubiSys) de um mês, com o
+ * mesmo cache compartilhado (memória + banco persistente, chaves
+ * mes_/os_raw_/orc_raw_/raw_${mes}_${ano}) e a mesma cadeia de fallback que
+ * getClientesNovosMes sempre usou: API ao vivo → OS em janelas curtas → banco
+ * local (historico_os, sem orçamentos). Extraída daqui para ser reutilizável
+ * por qualquer chamador que precise dos mesmos dados "ao vivo" do mês corrente
+ * — ver server/services/marketingFinanceiroClientes.ts, que a usa para o mês
+ * vigente e evitar divergir do Performance Comercial (ver conversa 2026-09-25).
+ * `allOrc` retorna null quando só o fallback de OS (banco local) foi usado —
+ * o chamador decide seu próprio fallback de orçamentos nesse caso. */
+export async function buscarOsEOrcamentosAoVivoDoMes(mes: number, ano: number, forceRefresh = false): Promise<{ allOs: any[]; allOrc: any[] | null }> {
+  const db = await getDb();
+
+  // FONTE DE VERDADE: usar API Mubisys para buscar OS do mês (dados em tempo real, completos)
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const lastDay = new Date(ano, mes, 0).getDate();
+  const di = `${ano}-${pad(mes)}-01`;
+  const df = `${ano}-${pad(mes)}-${pad(lastDay)}`;
+
+  let allOsApi: any[] = [];
+  let allOrcApiPrefetched: any[] | null = null; // será preenchido se vier do cache
+
+  // forceRefresh: limpar o cache compartilhado com getMes. Sem isso, um card podia
+  // refletir um instante diferente do dia do que outro mesmo lado a lado na mesma tela,
+  // mesmo após o clique em Atualizar. Ver conversa de 2026-09-23.
+  if (forceRefresh) {
+    deleteCache(`os_raw_${mes}_${ano}`);
+    deleteCache(`orc_raw_${mes}_${ano}`);
+    deleteCache(`mes_${mes}_${ano}`);
+    await deleteDbCache(`raw_${mes}_${ano}`);
+  }
+
+  try {
+    // Usar getMesFromApi que já tem cache e deduplicação (também popula os_raw/orc_raw
+    // como efeito colateral). Timeout de 45s: este procedure roda no mesmo lote HTTP
+    // batched de getMes, então precisa desistir bem antes do maxDuration:60s.
+    await withTimeout(getMesFromApi(mes, ano), 45000, "timeout_clientes_novos");
+    // Reconstruir lista de OS a partir dos dados agregados não é possível
+    // Precisamos buscar OS individuais para identificar clientes
+    // Usar cache de OS brutas separado (memória + banco persistente)
+    const rawCacheKeyNovos = `raw_${mes}_${ano}`;
+    const osCacheKey = `os_raw_${mes}_${ano}`;
+    const orcCacheKey = `orc_raw_${mes}_${ano}`;
+    const cachedOs = getCached(osCacheKey);
+    const cachedOrc = getCached(orcCacheKey);
+
+    if (cachedOs && cachedOrc) {
+      // Cache em memória disponível
+      allOsApi = cachedOs;
+      allOrcApiPrefetched = cachedOrc;
+    } else {
+      // Tentar cache persistente no banco
+      const dbCachedNovos = await getDbCache(rawCacheKeyNovos);
+      if (dbCachedNovos) {
+        allOsApi = dbCachedNovos.allOs;
+        allOrcApiPrefetched = dbCachedNovos.allOrc;
+        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
+        setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
+      } else {
+        // Buscar da API MubiSys — em paralelo, cada chamada já tem seu próprio timeout (TIMEOUT_LISTA_MS)
+        const [osResult, orcResult] = await Promise.all([
+          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
+          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
+        ]);
+        allOsApi = osResult.itens;
+        const orcList = orcResult.itens;
+        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
+        setCacheWithTTL(orcCacheKey, orcList, mes, ano);
+        setDbCache(rawCacheKeyNovos, mes, ano, allOsApi, orcList).catch(() => {});
+        allOrcApiPrefetched = orcList;
+      }
+    }
+  } catch {
+    // Fallback 1: OS do mês em janelas curtas (~3s, com telefone/cidade). A busca agregada
+    // acima costuma falhar por causa dos orçamentos, não das OS. Limite de 10s para caber
+    // no maxDuration:60s depois dos 45s da tentativa anterior.
+    let osEmJanelas: any[] | null = null;
+    try {
+      osEmJanelas = await withTimeout(buscarOsDoMesEmJanelas(mes, ano), 10000, "timeout_os_janelas");
+    } catch {
+      osEmJanelas = null;
+    }
+    if (osEmJanelas) {
+      allOsApi = osEmJanelas;
+    } else if (db) {
+      // Fallback 2: banco local (sem telefone — só cidade/UF quando importados)
+      const osMesDb = await db.select().from(historicoOs)
+        .where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano)));
+      allOsApi = osMesDb.map(os => ({
+        cliente: os.empresa,
+        vendedor: os.vendedor,
+        sequencial_ordem: os.osNumero,
+        valor_total: os.valorOs ?? os.valorTotal,
+        tipo: os.tipoOs ?? "",
+        status: os.status ?? "",
+        cliente_endereco: [{ cidade: os.cidade ?? "", estado: os.estado ?? "" }],
+      }));
+    }
+  }
+
+  return { allOs: allOsApi, allOrc: allOrcApiPrefetched };
+}
+
 async function getClientesNovosMes(mes: number, ano: number, forceRefresh = false): Promise<{
   total: number;
   totalReativados: number;
@@ -1122,95 +1225,7 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
   // corretamente com o histórico importado, senão quase todo cliente aparenta ser "novo".
   const ultimaCompraPorClienteNorm = reindexarPorChaveNormalizada(ultimaCompraPorCliente);
 
-  // FONTE DE VERDADE: usar API Mubisys para buscar OS do mês (dados em tempo real, completos)
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const lastDay = new Date(ano, mes, 0).getDate();
-  const di = `${ano}-${pad(mes)}-01`;
-  const df = `${ano}-${pad(mes)}-${pad(lastDay)}`;
-
-  let allOsApi: any[] = [];
-  let allOrcApiPrefetched: any[] | null = null; // será preenchido se vier do cache
-
-  // forceRefresh: limpar o MESMO cache compartilhado que getMes usa (chaves
-  // mes_/os_raw_/orc_raw_/raw_${mes}_${ano}). Sem isso, "Clientes Novos/Reativados"
-  // podia refletir um instante diferente do dia do que "Vendas Realizadas/Faturamento"
-  // (getMes) mesmo os dois vindo do mesmo clique em "Atualizar" — cada card parecia
-  // consistente sozinho, mas a soma por vendedor não batia com o agregado porque um
-  // card tinha OS aprovadas depois do outro. Ver conversa de 2026-09-23.
-  if (forceRefresh) {
-    deleteCache(`os_raw_${mes}_${ano}`);
-    deleteCache(`orc_raw_${mes}_${ano}`);
-    deleteCache(`mes_${mes}_${ano}`);
-    await deleteDbCache(`raw_${mes}_${ano}`);
-  }
-
-  try {
-    // Usar getMesFromApi que já tem cache e deduplicação (também popula os_raw/orc_raw
-    // como efeito colateral). Timeout de 45s: este procedure roda no mesmo lote HTTP
-    // batched de getMes, então precisa desistir bem antes do maxDuration:60s.
-    await withTimeout(getMesFromApi(mes, ano), 45000, "timeout_clientes_novos");
-    // Reconstruir lista de OS a partir dos dados agregados não é possível
-    // Precisamos buscar OS individuais para identificar clientes
-    // Usar cache de OS brutas separado (memória + banco persistente)
-    const rawCacheKeyNovos = `raw_${mes}_${ano}`;
-    const osCacheKey = `os_raw_${mes}_${ano}`;
-    const orcCacheKey = `orc_raw_${mes}_${ano}`;
-    const cachedOs = getCached(osCacheKey);
-    const cachedOrc = getCached(orcCacheKey);
-
-    if (cachedOs && cachedOrc) {
-      // Cache em memória disponível
-      allOsApi = cachedOs;
-      allOrcApiPrefetched = cachedOrc;
-    } else {
-      // Tentar cache persistente no banco
-      const dbCachedNovos = await getDbCache(rawCacheKeyNovos);
-      if (dbCachedNovos) {
-        allOsApi = dbCachedNovos.allOs;
-        allOrcApiPrefetched = dbCachedNovos.allOrc;
-        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
-        setCacheWithTTL(orcCacheKey, allOrcApiPrefetched, mes, ano);
-      } else {
-        // Buscar da API MubiSys — em paralelo, cada chamada já tem seu próprio timeout (TIMEOUT_LISTA_MS)
-        const [osResult, orcResult] = await Promise.all([
-          listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: di, datafinal: df }),
-          listarOrcamentosMubiSys({ status: "TODOS", datainicial: di, datafinal: df }),
-        ]);
-        allOsApi = osResult.itens;
-        const orcList = orcResult.itens;
-        setCacheWithTTL(osCacheKey, allOsApi, mes, ano);
-        setCacheWithTTL(orcCacheKey, orcList, mes, ano);
-        setDbCache(rawCacheKeyNovos, mes, ano, allOsApi, orcList).catch(() => {});
-        allOrcApiPrefetched = orcList;
-      }
-    }
-  } catch {
-    // Fallback 1: OS do mês em janelas curtas (~3s, com telefone/cidade). A busca agregada
-    // acima costuma falhar por causa dos orçamentos, não das OS. Limite de 10s para caber
-    // no maxDuration:60s depois dos 45s da tentativa anterior.
-    let osEmJanelas: any[] | null = null;
-    try {
-      osEmJanelas = await withTimeout(buscarOsDoMesEmJanelas(mes, ano), 10000, "timeout_os_janelas");
-    } catch {
-      osEmJanelas = null;
-    }
-    if (osEmJanelas) {
-      allOsApi = osEmJanelas;
-    } else {
-      // Fallback 2: banco local (sem telefone — só cidade/UF quando importados)
-      const osMesDb = await db.select().from(historicoOs)
-        .where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano)));
-      allOsApi = osMesDb.map(os => ({
-        cliente: os.empresa,
-        vendedor: os.vendedor,
-        sequencial_ordem: os.osNumero,
-        valor_total: os.valorOs ?? os.valorTotal,
-        tipo: os.tipoOs ?? "",
-        status: os.status ?? "",
-        cliente_endereco: [{ cidade: os.cidade ?? "", estado: os.estado ?? "" }],
-      }));
-    }
-  }
+  const { allOs: allOsApi, allOrc: allOrcApiPrefetched } = await buscarOsEOrcamentosAoVivoDoMes(mes, ano, forceRefresh);
 
   // Filtrar OS Normais (mesma regra de isOsNormalDb, aplicada ao campo `tipo` da API)
   const osNormaisApi = allOsApi.filter(isOsNormalApi);
