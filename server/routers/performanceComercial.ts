@@ -3,8 +3,8 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesAcessos, inteligenciaClientesContatos } from "../../drizzle/schema";
-import { eq, and, desc, gte, sql } from "drizzle-orm";
+import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesAcessos, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
+import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 
 // Endpoints de monitoramento de equipe (acessos ao painel) — só quem pode agir
 // como gestor sobre a equipe comercial deve ver isso, mesmo padrão de
@@ -135,6 +135,16 @@ export function valorLiquidoOs(os: any): number {
 function isMesAtual(mes: number, ano: number): boolean {
   const now = new Date();
   return mes === now.getMonth() + 1 && ano === now.getFullYear();
+}
+
+// "Hoje" em horário de Brasília, não no fuso do processo (Vercel roda em UTC —
+// ver mesma nota em calcTurno de server/routers/crm.ts). Entre 21h e 23h59
+// Brasília já é o dia seguinte em UTC; sem esse ajuste, o resumo diário
+// pegaria a data errada justo nesse intervalo.
+function dataHojeBrasilia(): string {
+  const brasilia = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${brasilia.getUTCFullYear()}-${pad(brasilia.getUTCMonth() + 1)}-${pad(brasilia.getUTCDate())}`;
 }
 
 /** Mês estritamente anterior ao atual — só esses têm dado definitivo (não muda
@@ -1613,6 +1623,97 @@ export const performanceComercialRouter = router({
       // não foi importado. Front usa isso pra não mostrar R$ 0 como se fosse
       // faturamento real quando na verdade é "não conseguimos consultar".
       return { ...metrics, totalPedidosBanco, _origemDados: viaApi ? 'api' as const : 'local' as const };
+    }),
+
+  // ─── Resumo diário por vendedor, dividido em manhã/tarde ────────────────────
+  // Alimenta o painel "Hoje" no topo do Performance Comercial: propostas feitas,
+  // vendas realizadas e interações no CRM, separadas por turno, para dar visão
+  // de produtividade AM x PM pedida pelo gestor (analogia ao BLOCO A de rotina
+  // manhã/tarde já existente em crm.ts, getAuditoria).
+  //
+  // Busca ao vivo (não usa o cache mensal de 60min de getMes) porque é sempre
+  // uma janela de só 1 dia — medido em 25/09/2026: ~5-20s por chamada, bem
+  // dentro do timeout de 45s da API. Isso evita herdar a mesma defasagem de
+  // cache que causou o relato de "Vendas Realizadas" divergente no mês (ver
+  // investigação 143×151 do mesmo dia): aqui o dado é sempre buscado na hora.
+  getResumoDiario: publicProcedure
+    .input(z.object({ data: z.string().optional() })) // "YYYY-MM-DD", default hoje (Brasília)
+    .query(async ({ input }) => {
+      const dataStr = input.data ?? dataHojeBrasilia();
+
+      // Sequencial, nunca em paralelo — mesma regra documentada em toda
+      // integração MubiSys do projeto (paralelizar piora ou quebra as duas).
+      const orcResult = await listarOrcamentosMubiSys({ datainicial: dataStr, datafinal: dataStr, perPage: 50 });
+      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: dataStr, datafinal: dataStr });
+      const osNormais = osResult.itens.filter(isOsNormalApi);
+
+      // Logs de atividade do CRM do dia (registrarContato, alterarContato etc.),
+      // já gravados com turno pré-calculado em horário de Brasília (ver calcTurno
+      // em server/routers/crm.ts) — só precisamos recortar o dia certo aqui.
+      const db = await getDb();
+      const inicioUtc = new Date(dataStr + "T03:00:00.000Z"); // 00:00 Brasília
+      const fimUtc = new Date(inicioUtc.getTime() + 24 * 60 * 60 * 1000 - 1); // 23:59:59.999 Brasília
+      const logs = db
+        ? await db.select().from(crmAtividadeLog)
+            .where(and(gte(crmAtividadeLog.realizadaEm, inicioUtc), lte(crmAtividadeLog.realizadaEm, fimUtc)))
+        : [];
+
+      type Turno = { propostas: number; valorPropostas: number; vendas: number; valorVendas: number; interacoes: number; primeiraAcao: string | null; ultimaAcao: string | null };
+      const novoTurno = (): Turno => ({ propostas: 0, valorPropostas: 0, vendas: 0, valorVendas: 0, interacoes: 0, primeiraAcao: null, ultimaAcao: null });
+      const porVendedor: Record<string, { manha: Turno; tarde: Turno }> = {};
+      const ensure = (v: string) => (porVendedor[v] ??= { manha: novoTurno(), tarde: novoTurno() });
+
+      // As datas da API MubiSys ("YYYY-MM-DD HH:mm:ss") já vêm em horário de
+      // Brasília (é o ERP local da empresa) — extrair a hora direto da string,
+      // nunca via `new Date(str).getHours()`, que dependeria de o runtime estar
+      // no fuso certo para dar o resultado certo (ver nota de calcTurno em crm.ts
+      // sobre o servidor rodar em UTC na Vercel).
+      const turnoDaHoraStr = (str: string | null | undefined): "manha" | "tarde" | "noite" => {
+        const h = parseInt((str ?? "").slice(11, 13), 10);
+        if (h >= 6 && h < 12) return "manha";
+        if (h >= 12 && h < 18) return "tarde";
+        return "noite";
+      };
+
+      for (const orc of orcResult.itens as any[]) {
+        const turno = turnoDaHoraStr(orc.data_cadastro);
+        if (turno === "noite") continue;
+        const vendedor = orc.vendedor || "Sem Vendedor";
+        const g = ensure(vendedor)[turno];
+        g.propostas++;
+        const vt = parseFloat(String(orc.valor_total ?? "0")) || 0;
+        const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
+        const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
+        g.valorPropostas += vt > 0 ? vt : (vc + vm);
+      }
+
+      for (const os of osNormais as any[]) {
+        const turno = turnoDaHoraStr(os.data_aprovacao);
+        if (turno === "noite") continue;
+        const vendedor = os.vendedor || "Sem Vendedor";
+        const g = ensure(vendedor)[turno];
+        g.vendas++;
+        g.valorVendas += valorLiquidoOs(os);
+      }
+
+      for (const log of logs) {
+        const turno = log.turno as "manha" | "tarde" | "noite" | null;
+        if (turno !== "manha" && turno !== "tarde") continue;
+        const vendedor = log.vendedor || "Sem Vendedor";
+        const g = ensure(vendedor)[turno];
+        g.interacoes++;
+        const brasilia = new Date(new Date(log.realizadaEm).getTime() - 3 * 60 * 60 * 1000);
+        const hhmm = `${String(brasilia.getUTCHours()).padStart(2, "0")}:${String(brasilia.getUTCMinutes()).padStart(2, "0")}`;
+        if (!g.primeiraAcao || hhmm < g.primeiraAcao) g.primeiraAcao = hhmm;
+        if (!g.ultimaAcao || hhmm > g.ultimaAcao) g.ultimaAcao = hhmm;
+      }
+
+      return {
+        data: dataStr,
+        vendedores: Object.entries(porVendedor)
+          .map(([vendedor, turnos]) => ({ vendedor, ...turnos }))
+          .sort((a, b) => a.vendedor.localeCompare(b.vendedor)),
+      };
     }),
 
   // Múltiplos meses para comparativo e gráfico de evolução
