@@ -13,7 +13,7 @@ import {
 import {
   TrendingUp, ShoppingCart, CheckCircle2, Percent, DollarSign,
   RefreshCw, Users, Target, Edit2, Check, X, ChevronDown, ChevronUp,
-  MessageCircle, Phone, Star, UserPlus,
+  MessageCircle, Phone, Star, UserPlus, Repeat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -886,6 +886,22 @@ export default function PerformanceComercial() {
               metaReal={mesDados.faturamento ?? 0}
               metaTarget={metaGeral?.metaFaturamento ? Number(metaGeral.metaFaturamento) : undefined}
               isCurrency
+            />
+            <KpiCardComMeta
+              label="Clientes Únicos"
+              value={String((mesDados as any).clientesUnicos ?? 0)}
+              sub="Clientes distintos que compraram no mês"
+              icon={Users}
+              color="#0d9488"
+              metaReal={(mesDados as any).clientesUnicos ?? 0}
+            />
+            <KpiCardComMeta
+              label="Clientes c/ Recompra no Mês"
+              value={String((mesDados as any).clientesComRecompra ?? 0)}
+              sub="2+ pedidos dentro do mesmo mês"
+              icon={Repeat}
+              color="#a16207"
+              metaReal={(mesDados as any).clientesComRecompra ?? 0}
             />
             <KpiCardComMeta
               label="Clientes Novos"

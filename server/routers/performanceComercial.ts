@@ -157,6 +157,30 @@ export function isOsNormalDb(os: { tipoOs?: string | null; status?: string | nul
   return true;
 }
 
+/** Clientes únicos e clientes com recompra (2+ OS) dentro do mesmo mês, a partir de
+ * historico_os. Usada tanto pelo fallback local (getMesFromDb) quanto para completar o
+ * snapshot congelado (performanceAuditada), que não guarda essa granularidade por cliente. */
+export async function contarClientesUnicosDoMes(mes: number, ano: number): Promise<{ clientesUnicos: number; clientesComRecompra: number }> {
+  const db = await getDb();
+  if (!db) return { clientesUnicos: 0, clientesComRecompra: 0 };
+  const osRows = await db.select({
+    empresa: historicoOs.empresa,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status,
+  }).from(historicoOs).where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano)));
+  const osPorCliente: Record<string, number> = {};
+  for (const os of osRows) {
+    if (!isOsNormalDb(os)) continue;
+    const chave = normalizeEmpresaKey(os.empresa ?? "");
+    if (!chave) continue;
+    osPorCliente[chave] = (osPorCliente[chave] ?? 0) + 1;
+  }
+  return {
+    clientesUnicos: Object.keys(osPorCliente).length,
+    clientesComRecompra: Object.values(osPorCliente).filter(n => n >= 2).length,
+  };
+}
+
 // ─── Lógica do Cliente Novo e Reativado ──────────────────────────────────────
 // Nome de referência do projeto para esta regra de negócio — usar este termo em
 // conversas/PRs/commits futuros que mexerem nela, em vez de reexplicar do zero.
@@ -298,6 +322,7 @@ async function getMesFromDb(mes: number, ano: number) {
   let totalValorOs = 0;
   let totalCustoOs = 0;
   let totalResultadoOs = 0;
+  const osPorClienteDb: Record<string, number> = {};
 
   for (const os of osNormais) {
     const vendedor = os.vendedor || "Sem Vendedor";
@@ -312,7 +337,11 @@ async function getMesFromDb(mes: number, ano: number) {
     osPorVendedor[vendedor].valor += valor;
     osPorVendedor[vendedor].custo += custo;
     osPorVendedor[vendedor].resultado += resultado;
+    const clienteKeyDb = normalizeEmpresaKey(os.empresa ?? "");
+    if (clienteKeyDb) osPorClienteDb[clienteKeyDb] = (osPorClienteDb[clienteKeyDb] ?? 0) + 1;
   }
+  const clientesUnicos = Object.keys(osPorClienteDb).length;
+  const clientesComRecompra = Object.values(osPorClienteDb).filter(n => n >= 2).length;
 
   // Agrupar Orçamentos por vendedor
   const orcPorVendedor: Record<string, { total: number; valor: number }> = {};
@@ -334,6 +363,8 @@ async function getMesFromDb(mes: number, ano: number) {
       custo: totalCustoOs,
       resultado: totalResultadoOs,
       porVendedor: osPorVendedor,
+      clientesUnicos,
+      clientesComRecompra,
     },
     orcamentos: {
       total: orcRows.length,
@@ -483,6 +514,7 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
   let totalValorOs = 0;
   let totalCustoOs = 0;
   let totalResultadoOs = 0;
+  const osPorClienteApi: Record<string, number> = {};
 
   for (const os of osNormais) {
     const vendedor = os.vendedor || "Sem Vendedor";
@@ -497,7 +529,11 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
     osPorVendedor[vendedor].valor += valor;
     osPorVendedor[vendedor].custo += custo;
     osPorVendedor[vendedor].resultado += resultado;
+    const clienteKeyApi = normalizeEmpresaKey(os.empresa ?? "");
+    if (clienteKeyApi) osPorClienteApi[clienteKeyApi] = (osPorClienteApi[clienteKeyApi] ?? 0) + 1;
   }
+  const clientesUnicos = Object.keys(osPorClienteApi).length;
+  const clientesComRecompra = Object.values(osPorClienteApi).filter(n => n >= 2).length;
 
   // Cotações: excluir orçamentos com status Cancelada ou Excluída.
   // REGRA DE NEGÓCIO: cotações canceladas/excluídas NÃO entram no cálculo de taxa de conversão,
@@ -528,7 +564,7 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
   }
 
   return {
-    osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor },
+    osNormais: { total: osNormais.length, valorTotal: totalValorOs, custo: totalCustoOs, resultado: totalResultadoOs, porVendedor: osPorVendedor, clientesUnicos, clientesComRecompra },
     orcamentos: { total: orcVersaoAtual.length, valorTotal: totalValorOrc, porVendedor: orcPorVendedor },
   };
 }
@@ -596,6 +632,8 @@ function calcMetrics(osNormais: any, orcamentos: any, mes: number, ano: number) 
     taxaFaturamento,
     ticketMedio,
     margemPct,
+    clientesUnicos: osNormais.clientesUnicos ?? 0,
+    clientesComRecompra: osNormais.clientesComRecompra ?? 0,
     porVendedor,
   };
 }
@@ -1416,6 +1454,9 @@ export const performanceComercialRouter = router({
             .limit(1);
           if (snap.length > 0) {
             const s = snap[0];
+            // Congelado não guarda clientesUnicos/clientesComRecompra por cliente —
+            // completar a partir de historico_os (mesma fonte usada para congelar).
+            const { clientesUnicos, clientesComRecompra } = await contarClientesUnicosDoMes(mes, ano);
             // Retornar dados congelados diretamente — sem chamar API ou banco histórico
             return {
               cotacoes: s.cotacoes,
@@ -1430,6 +1471,8 @@ export const performanceComercialRouter = router({
               margemPct: 0,
               custo: 0,
               resultado: 0,
+              clientesUnicos,
+              clientesComRecompra,
               label: `${['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][s.mes - 1]}/${String(s.ano).slice(2)}`,
               mes: s.mes,
               ano: s.ano,
