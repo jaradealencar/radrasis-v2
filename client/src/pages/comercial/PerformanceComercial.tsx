@@ -436,6 +436,7 @@ export default function PerformanceComercial() {
     onSuccess: () => {
       refetchAuditoria();
       utils.performanceComercial.getMes.invalidate({ mes: mesSelecionado, ano: anoSelecionado });
+      utils.performanceComercial.getMultiMes.invalidate();
       setAuditandoStep('idle');
       setShowAuditoriaModal(false);
     },
@@ -445,6 +446,7 @@ export default function PerformanceComercial() {
       refetchAuditoria();
       utils.performanceComercial.getMes.invalidate({ mes: mesSelecionado, ano: anoSelecionado });
       utils.performanceComercial.getClientesNovos.invalidate({ mes: mesSelecionado, ano: anoSelecionado });
+      utils.performanceComercial.getMultiMes.invalidate();
     },
   });
 
@@ -460,7 +462,7 @@ export default function PerformanceComercial() {
   const dadosDeFallbackLocal = fonteStatus === 'tempo-real' && (mesDados as any)?._origemDados === 'local';
 
   const { data: evolucao, isLoading: loadingEvolucao, refetch: refetchEvolucao } =
-    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao }, RETRY_1);
+    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao, forceRefresh: forceRefreshMes }, RETRY_1);
 
   const { data: metas, refetch: refetchMetas } =
     trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
@@ -484,9 +486,9 @@ export default function PerformanceComercial() {
     trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSelecionado }, RETRY_1);
 
   // Query de comparação multi-mês (Power BI)
-  const { data: comparaMesesDados, isLoading: loadingComparaMeses } =
+  const { data: comparaMesesDados, isLoading: loadingComparaMeses, refetch: refetchComparaMeses } =
     trpc.performanceComercial.getMultiMes.useQuery(
-      { meses: comparaMesesSelecionados },
+      { meses: comparaMesesSelecionados, forceRefresh: forceRefreshMes },
       { enabled: showComparaMeses && comparaMesesSelecionados.length > 0, ...RETRY_1 }
     );
 
@@ -748,6 +750,7 @@ export default function PerformanceComercial() {
                     refetchClientesNovos();
                     refetchEvolucao();
                     refetchMetas();
+                    if (showComparaMeses) refetchComparaMeses();
                     setForceRefreshMes(false);
                   }, 100);
                 }}
@@ -990,7 +993,7 @@ export default function PerformanceComercial() {
             <KpiCardComMeta
               label="Faturamento (Novos)"
               value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoNovosPuros ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              sub="Só clientes que nunca compraram antes"
+              sub={`Só clientes que nunca compraram antes${(mesDados.faturamento ?? 0) > 0 ? ` · ${((((clientesNovos as any)?.faturamentoNovosPuros ?? 0) / mesDados.faturamento) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% do faturamento total` : ""}`}
               icon={DollarSign}
               color="#f59e0b"
               metaReal={(clientesNovos as any)?.faturamentoNovosPuros ?? 0}
@@ -1000,7 +1003,7 @@ export default function PerformanceComercial() {
             <KpiCardComMeta
               label="Faturamento (Reativados)"
               value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoReativados ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              sub="Faturamento de clientes reativados"
+              sub={`Faturamento de clientes reativados${(mesDados.faturamento ?? 0) > 0 ? ` · ${((((clientesNovos as any)?.faturamentoReativados ?? 0) / mesDados.faturamento) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% do faturamento total` : ""}`}
               icon={DollarSign}
               color="#fb923c"
               metaReal={(clientesNovos as any)?.faturamentoReativados ?? 0}

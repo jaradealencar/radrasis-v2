@@ -184,6 +184,21 @@ export function isOsNormalDb(os: { tipoOs?: string | null; status?: string | nul
   return true;
 }
 
+/** Mesma regra de isOsNormalDb, mas para OS vindas ao vivo da API MubiSys (campo
+ * `tipo`, não `tipoOs`). Usa startsWith("retrabalho") como o banco local — o tipo
+ * retornado pela API tem variações que começam com "Retrabalho" e não batem com
+ * igualdade exata, o que antes deixava essas OS vazarem como venda normal só no
+ * caminho ao vivo (mês corrente), inflando Vendas Realizadas e Faturamento. */
+export function isOsNormalApi(os: { tipo?: string | null; status?: string | null }): boolean {
+  const tipo = (os.tipo ?? "").toLowerCase();
+  const status = (os.status ?? "").toLowerCase();
+  if (tipo.startsWith("retrabalho")) return false;
+  if (tipo === "amostra") return false;
+  if (tipo === "cortesia") return false;
+  if (status === "cancelada") return false;
+  return true;
+}
+
 /** Clientes únicos e clientes com recompra (2+ OS) dentro do mesmo mês, a partir de
  * historico_os. Usada tanto pelo fallback local (getMesFromDb) quanto para completar o
  * snapshot congelado (performanceAuditada), que não guarda essa granularidade por cliente. */
@@ -528,14 +543,8 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
     }
   }
 
-  // Filtrar OS Normais:
-  // - Excluir tipo Retrabalho, Amostra, Cortesia
-  // - Excluir status Cancelada
-  const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
-  const osNormais = allOs.filter(os =>
-    !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) &&
-    (os.status || "").toLowerCase() !== "cancelada"
-  );
+  // Filtrar OS Normais (mesma regra de isOsNormalDb, aplicada ao campo `tipo` da API)
+  const osNormais = allOs.filter(isOsNormalApi);
 
   const osPorVendedor: Record<string, { total: number; valor: number; custo: number; resultado: number }> = {};
   let totalValorOs = 0;
@@ -1193,13 +1202,8 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
     }
   }
 
-  // Filtrar OS Normais (excluir Retrabalho, Amostra, Cortesia e Canceladas)
-  const osNormaisApi = allOsApi.filter(os =>
-    (os.tipo || "").toLowerCase() !== "retrabalho" &&
-    (os.tipo || "").toLowerCase() !== "amostra" &&
-    (os.tipo || "").toLowerCase() !== "cortesia" &&
-    (os.status || "").toLowerCase() !== "cancelada"
-  );
+  // Filtrar OS Normais (mesma regra de isOsNormalDb, aplicada ao campo `tipo` da API)
+  const osNormaisApi = allOsApi.filter(isOsNormalApi);
 
   const porVendedor: Record<string, number> = {};
   // Separados desde a origem: "Novos" = nunca compraram antes (puros); "Reativados" = já
@@ -1614,10 +1618,23 @@ export const performanceComercialRouter = router({
   // Múltiplos meses para comparativo e gráfico de evolução
   getMultiMes: publicProcedure
     .input(z.object({
-      meses: z.array(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
+      meses: z.array(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) })),
+      forceRefresh: z.boolean().optional().default(false),
     }))
     .query(async ({ input }) => {
       const now = new Date();
+
+      // Se forceRefresh, limpar cache do servidor de cada mês pedido (mesma lógica de getMes)
+      // antes de buscar — senão a tabela comparativa fica presa ao cache de até 60min do
+      // mês vigente mesmo depois do usuário clicar em "Atualizar".
+      if (input.forceRefresh) {
+        for (const { mes, ano } of input.meses) {
+          deleteCache(`os_raw_${mes}_${ano}`);
+          deleteCache(`orc_raw_${mes}_${ano}`);
+          deleteCache(`mes_${mes}_${ano}`);
+          deleteDbCache(`raw_${mes}_${ano}`).catch(() => {});
+        }
+      }
       const publicKey = ENV.MUBISYS_PUBLIC_KEY;
       const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const db = await getDb();
@@ -2191,11 +2208,7 @@ export const performanceComercialRouter = router({
         }
       }
 
-      const TIPOS_EXCLUIDOS = ["retrabalho", "amostra", "cortesia"];
-      const osNormais = (allOs as any[]).filter((os: any) =>
-        !TIPOS_EXCLUIDOS.includes((os.tipo || "").toLowerCase()) &&
-        (os.status || "").toLowerCase() !== "cancelada"
-      );
+      const osNormais = (allOs as any[]).filter(isOsNormalApi);
       // NÃO filtrar por versao === versao_atual: a API já retorna apenas a versão atual por padrão
       // Filtrar causaria descarte de orçamentos sem os campos versao/versao_atual preenchidos (null/undefined)
       // REGRA: excluir cotações canceladas/excluídas (não entram na taxa de conversão)
@@ -2911,11 +2924,7 @@ export const performanceComercialRouter = router({
       const valorTotalOrc = allOrc.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOrc ?? ''] ?? 0)) || 0), 0);
 
       // Faturamento: OS com status que indica entregue/faturado
-      const TIPOS_EXCLUIDOS = ['retrabalho', 'amostra', 'cortesia'];
-      const osNormais = allOs.filter(o =>
-        !TIPOS_EXCLUIDOS.includes((o.tipo || '').toLowerCase()) &&
-        (o.status || '').toLowerCase() !== 'cancelada'
-      );
+      const osNormais = allOs.filter(isOsNormalApi);
       const valorFaturamento = osNormais.reduce((acc, o) => acc + (parseFloat(String(o[campoValorOs ?? ''] ?? 0)) || 0), 0);
 
       // Vendedores nas OS
