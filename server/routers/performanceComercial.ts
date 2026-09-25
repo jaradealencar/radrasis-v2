@@ -105,6 +105,33 @@ export function normalizeEmpresaKey(s: string): string {
     .trim();
 }
 
+/** Valor líquido de uma OS vinda AO VIVO da API MubiSys: valor_total menos valor_desconto.
+ * O relatório de Vendas do MubiSys (e a coluna "Valor O.S." de lá) já reporta o valor
+ * pós-desconto — usar só valor_total infla o faturamento pelo total de descontos do mês
+ * (confirmado em 24/09/2026 comparando com Resultado_*.xlsx: diferença batia exatamente
+ * com a linha "Descontos" da totalização). historico_os já guarda esse valor líquido na
+ * coluna valorOs (ver scheduled-sync-historico.ts); esta função é o equivalente para os
+ * registros crus da API, usados nos caminhos "ao vivo" deste arquivo. */
+/** Nome do cliente de uma OS crua vinda AO VIVO da API MubiSys. O campo `empresa` do
+ * objeto retornado pela API é a empresa EMISSORA (Radra), não o cliente — usá-lo aqui
+ * conta tudo como "um único cliente" (a própria Radra) e explica clientesUnicos/
+ * clientesComRecompra saindo errados em qualquer mês buscado ao vivo (confirmado
+ * 24/09/2026: só setembro, que tinha vindo do fallback local por API lenta, batia).
+ * O campo certo é `cliente` (string ou objeto {nome|razao_social}) — mesma extração
+ * já usada em getClientesNovosMes para este mesmo formato de registro. */
+export function nomeClienteDaOsApi(os: any): string {
+  const clienteRaw = os?.cliente;
+  return typeof clienteRaw === "object" && clienteRaw !== null
+    ? String(clienteRaw?.nome ?? clienteRaw?.razao_social ?? "")
+    : String(clienteRaw ?? "");
+}
+
+export function valorLiquidoOs(os: any): number {
+  const total = parseFloat(String(os?.valor_total ?? "0")) || 0;
+  const desconto = parseFloat(String(os?.valor_desconto ?? "0")) || 0;
+  return total - desconto;
+}
+
 function isMesAtual(mes: number, ano: number): boolean {
   const now = new Date();
   return mes === now.getMonth() + 1 && ano === now.getFullYear();
@@ -518,7 +545,7 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
 
   for (const os of osNormais) {
     const vendedor = os.vendedor || "Sem Vendedor";
-    const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
+    const valor = valorLiquidoOs(os);
     const custo = parseFloat(String(os.valor_custo ?? "0")) || 0;
     const resultado = parseFloat(String(os.valor_margem ?? "0")) || 0;
     totalValorOs += valor;
@@ -529,7 +556,7 @@ async function _getMesFromApiImpl(mes: number, ano: number) {
     osPorVendedor[vendedor].valor += valor;
     osPorVendedor[vendedor].custo += custo;
     osPorVendedor[vendedor].resultado += resultado;
-    const clienteKeyApi = normalizeEmpresaKey(os.empresa ?? "");
+    const clienteKeyApi = normalizeEmpresaKey(nomeClienteDaOsApi(os));
     if (clienteKeyApi) osPorClienteApi[clienteKeyApi] = (osPorClienteApi[clienteKeyApi] ?? 0) + 1;
   }
   const clientesUnicos = Object.keys(osPorClienteApi).length;
@@ -1212,7 +1239,7 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
     if (isNovo) {
       const vendedor = String(os.vendedor ?? "Sem Vendedor");
       const vendedorKey = vendedor.toLowerCase().trim();
-      const valorOs = parseFloat(String(os.valor_total ?? "0")) || 0;
+      const valorOs = valorLiquidoOs(os);
       const jaComprouAntes = Boolean(ultimaCompraPorClienteNorm.get(normalizeEmpresaKey(nomeCliente)));
       faturamentoNovos += valorOs;
       // Subconjunto de faturamentoNovos — ver nota em calcularNovosDoMesLocal.
@@ -1234,7 +1261,7 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
         // Contato e cidade DIRETAMENTE da OS (ver extrairContatoDaOs). O número da OS na API
         // é `sequencial_ordem` — a API não devolve `numero`.
         const { telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs } = extrairContatoDaOs(os);
-        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.sequencial_ordem ?? os.numero ?? ""), valorOs: String(os.valor_total ?? ""), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs, reativado: jaComprouAntes });
+        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.sequencial_ordem ?? os.numero ?? ""), valorOs: String(valorOs), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs, reativado: jaComprouAntes });
       }
     }
   }
@@ -2149,7 +2176,7 @@ export const performanceComercialRouter = router({
         const dataAprov = (os.data_aprovacao || os.data_cadastro || "").substring(0, 10);
         if (!dataAprov) continue;
         const vendedor = os.vendedor || "Sem Vendedor";
-        const valor = parseFloat(String(os.valor_total ?? "0")) || 0;
+        const valor = valorLiquidoOs(os);
         if (!osPorDia[dataAprov]) osPorDia[dataAprov] = {};
         if (!osPorDia[dataAprov][vendedor]) osPorDia[dataAprov][vendedor] = { os: 0, faturamento: 0 };
         osPorDia[dataAprov][vendedor].os++;
