@@ -816,7 +816,13 @@ export default function CRM() {
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
   const stats = data?.stats;
-  const abertosAtualizadoEm = fmtTempoRelativo((data as any)?.abertosAtualizadoEm);
+  const abertosAtualizadoEmIso = (data as any)?.abertosAtualizadoEm as string | undefined;
+  const abertosAtualizadoEm = fmtTempoRelativo(abertosAtualizadoEmIso);
+  // Cron de sincronização roda a cada 10 min (ver docs/cron-qstash.md) — 60 min de
+  // folga cobre algumas falhas seguidas sem alarme falso, mas ainda pega o caso real
+  // de cron travado por horas/dias (já aconteceu: 3 dias parado sem ninguém notar).
+  const abertosCacheDesatualizado = !!abertosAtualizadoEmIso &&
+    (Date.now() - new Date(abertosAtualizadoEmIso).getTime()) > 60 * 60 * 1000;
 
   // Filtros
   const propostasAtivas = useMemo(() => {
@@ -936,6 +942,23 @@ export default function CRM() {
 
       {/* Biblioteca de mídias: arsenal de imagens para copiar e colar nas conversas */}
       <BibliotecaMidias />
+
+      {/* Alerta de cache desatualizado — a lista de abertos não é ao vivo (ver nota
+          acima de abertosAtualizadoEmIso); se o cron parar, isso é o único sinal visível
+          de que propostas recentes podem estar faltando na tela. */}
+      {abertosCacheDesatualizado && !buscarAntigas && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-300 rounded-xl p-4 shadow-sm">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-red-700">
+              Lista de propostas desatualizada — atualizada {abertosAtualizadoEm}.
+            </p>
+            <p className="text-xs text-red-600 mt-0.5">
+              A sincronização automática com o MubiSys pode estar parada. Propostas criadas recentemente podem não aparecer ainda. Avise o time técnico se isso persistir.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Alerta de atraso */}
       {propostasAtrasadas.length > 0 && (
