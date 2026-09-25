@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import {
   Filter, MessageCircle, XCircle, Download, Loader2,
   Users2, Target, RefreshCw, MessageSquareText, Rocket, Megaphone,
+  ChevronDown, ChevronRight, Inbox,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
@@ -66,6 +67,10 @@ export default function VistaRetencao() {
   const [contatos, setContatos] = useState<Record<string, ContatoInfo | "carregando">>({});
   const [carregandoGrupo, setCarregandoGrupo] = useState<string | null>(null);
   const [exportandoGrupo, setExportandoGrupo] = useState<string | null>(null);
+  // Painel de "Campanhas disparadas": cada campanha é um cartão que começa fechado
+  // (só número/data/quantidade) — clica pra abrir e ver os contatos de dentro dela.
+  // Pendentes/Descartados continuam sempre abertos (é onde o vendedor age agora).
+  const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
 
   const utils = trpc.useUtils();
   const { data: resumo } = trpc.retencaoClientesNovos.getResumoConversao.useQuery();
@@ -218,10 +223,28 @@ export default function VistaRetencao() {
       )}
 
       <div className="space-y-4">
-        {grupos.map(grupo => (
+        {grupos.map(grupo => {
+          const isPainelCampanhas = status === "disparado";
+          const isVazio = isPainelCampanhas && grupo.numero === null && grupo.clientes.length === 0;
+          const expandido = !isPainelCampanhas || !!expandidos[grupo.chave];
+
+          if (isVazio) {
+            return (
+              <div key={grupo.chave} className="bg-slate-50 rounded-xl border border-dashed border-slate-300 px-4 py-3 flex items-center gap-2">
+                <Inbox className="w-4 h-4 text-slate-300" />
+                <span className="text-sm font-medium text-slate-400">{estagioLabel[grupo.estagio] ?? grupo.estagio} — nenhuma campanha disparada ainda</span>
+              </div>
+            );
+          }
+
+          return (
           <div key={grupo.chave} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200">
+            <div
+              className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200 ${isPainelCampanhas ? "cursor-pointer" : ""}`}
+              onClick={isPainelCampanhas ? () => setExpandidos(prev => ({ ...prev, [grupo.chave]: !prev[grupo.chave] })) : undefined}
+            >
               <div className="flex items-center gap-2 flex-wrap">
+                {isPainelCampanhas && (expandido ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />)}
                 <Megaphone className="w-4 h-4 text-emerald-600" />
                 <span className="text-sm font-bold text-slate-700">
                   {grupo.numero ? `Campanha ${grupo.numero}` : "Disparo avulso"} — {estagioLabel[grupo.estagio] ?? grupo.estagio}
@@ -232,7 +255,7 @@ export default function VistaRetencao() {
                   <span className="text-[11px] text-slate-400">disparada em {fmtDateTime(grupo.disparadaEm)}{grupo.disparadoPor ? ` por ${grupo.disparadoPor}` : ""}</span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => carregarContatosDoGrupo(grupo)}
                   disabled={carregandoGrupo === grupo.chave}
@@ -263,7 +286,7 @@ export default function VistaRetencao() {
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            {expandido && <div className="divide-y divide-slate-100">
               {grupo.clientes.map(c => {
                 const info = contatos[c.empresaKey];
                 const nomeContato = info && info !== "carregando" ? capitalizarNomeProprio(info.contato) : null;
@@ -313,9 +336,10 @@ export default function VistaRetencao() {
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

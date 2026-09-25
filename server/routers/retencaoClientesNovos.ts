@@ -181,7 +181,26 @@ export const retencaoClientesNovosRouter = router({
           disparadoPor: campanha?.disparadoPor ?? clientes[0].disparadoPor ?? null,
           clientes,
         };
-      }).sort((a, b) => (b.disparadaEm ?? "").localeCompare(a.disparadaEm ?? ""));
+      });
+
+      // Dashboard: sem filtro de estágio, mostra os 4 estágios sempre (com um
+      // "cartão vazio" pros que ainda não tiveram nenhuma campanha disparada) —
+      // pedido do usuário (24/09/2026): "quero ver a célula da campanha 1, da
+      // 2, da 3... os que estão vazios ficam vazios", não só a lista solta de
+      // quem já foi disparado.
+      if (!input.estagio) {
+        for (const cfg of ESTAGIOS_JORNADA) {
+          if (!grupos.some(g => g.estagio === cfg.id)) {
+            grupos.push({ chave: `vazio-${cfg.id}`, estagio: cfg.id, numero: null, disparadaEm: null, disparadoPor: null, clientes: [] });
+          }
+        }
+      }
+
+      grupos.sort((a, b) => {
+        const ordemEstagio = ESTAGIOS_JORNADA.findIndex(e => e.id === a.estagio) - ESTAGIOS_JORNADA.findIndex(e => e.id === b.estagio);
+        if (ordemEstagio !== 0) return ordemEstagio;
+        return (b.disparadaEm ?? "").localeCompare(a.disparadaEm ?? "");
+      });
 
       return { totalClientes, grupos };
     }),
