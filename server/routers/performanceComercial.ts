@@ -2989,6 +2989,57 @@ export const performanceComercialRouter = router({
       return { ok: true };
     }),
 
+  /** Resumo leve de "silêncio" das propostas de alto valor do mês: quantas
+   * seguem em aberto (não convertidas/canceladas) sem NENHUM contato registrado
+   * (nem a caixinha "Contatado" nem um follow-up com motivo). Mesmo universo de
+   * getPropostasAltoValor, mas sem telefone/WhatsApp/histórico — usado só para
+   * o card de visão geral, então evita o custo de obterContatosOrcamentos. */
+  getResumoSilencioPropostas: publicProcedure
+    .input(z.object({
+      mes: z.number().min(1).max(12),
+      ano: z.number().min(2020),
+      valorMinimo: z.number().min(0).default(7800),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { totalAltoValor: 0, semContato: 0, taxaSilencio: 0 };
+      const { mes, ano, valorMinimo } = input;
+
+      const orcRows = await db.select().from(historicoOrcamentos)
+        .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)));
+
+      const STATUS_FINALIZADOS = ["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido", "aprovado", "faturado", "concluido", "concluído"];
+      const candidatas = orcRows.filter(orc => {
+        const valor = parseFloat(String(orc.total ?? "0")) || 0;
+        if (valor < valorMinimo) return false;
+        const status = (orc.status ?? "").toLowerCase();
+        return !STATUS_FINALIZADOS.includes(status);
+      });
+      if (candidatas.length === 0) return { totalAltoValor: 0, semContato: 0, taxaSilencio: 0 };
+
+      const [contatadosDb, followupsDb] = await Promise.all([
+        db.select({ orcNumero: performancePropostasContatado.orcNumero, contatado: performancePropostasContatado.contatado })
+          .from(performancePropostasContatado)
+          .where(and(eq(performancePropostasContatado.mes, mes), eq(performancePropostasContatado.ano, ano))),
+        db.select({ orcNumero: performancePropostasFollowup.orcNumero })
+          .from(performancePropostasFollowup)
+          .where(and(eq(performancePropostasFollowup.mes, mes), eq(performancePropostasFollowup.ano, ano))),
+      ]);
+      const contatadoSet = new Set(contatadosDb.filter(c => c.contatado).map(c => c.orcNumero));
+      const followupSet = new Set(followupsDb.map(f => f.orcNumero));
+
+      const semContato = candidatas.filter(orc => {
+        const numero = orc.orcNumero ?? "";
+        return !contatadoSet.has(numero) && !followupSet.has(numero);
+      }).length;
+
+      return {
+        totalAltoValor: candidatas.length,
+        semContato,
+        taxaSilencio: parseFloat(((semContato / candidatas.length) * 100).toFixed(1)),
+      };
+    }),
+
   // ─── Propostas de alto valor (padrão: acima de R$ 7.800) ───────────────────
   // Lista as propostas do mês/ano em aberto (exclui canceladas/excluídas e as
   // já convertidas em venda/faturamento — essas não precisam mais de follow-up)

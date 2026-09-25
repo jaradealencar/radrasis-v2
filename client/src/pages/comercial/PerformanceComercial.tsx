@@ -421,6 +421,10 @@ export default function PerformanceComercial() {
   const { data: mesDados, isLoading: loadingMes, refetch: refetchMes } =
     trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado, forceRefresh: forceRefreshMes }, RETRY_1);
 
+  // Resumo de propostas de alto valor sem NENHUM contato registrado no mês
+  const { data: resumoSilencio, isLoading: loadingSilencio } =
+    trpc.performanceComercial.getResumoSilencioPropostas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
+
   // Query de auditoria para o mês selecionado
   const { data: auditoriaData, refetch: refetchAuditoria } =
     trpc.performanceComercial.getAuditoria.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
@@ -902,6 +906,51 @@ export default function PerformanceComercial() {
               icon={Repeat}
               color="#a16207"
               metaReal={(mesDados as any).clientesComRecompra ?? 0}
+            />
+            <KpiCardComMeta
+              label="Taxa de Recompra no Mês"
+              value={`${(((mesDados as any).clientesUnicos ?? 0) > 0
+                ? (((mesDados as any).clientesComRecompra ?? 0) / (mesDados as any).clientesUnicos) * 100
+                : 0
+              ).toFixed(1)}%`}
+              sub="Clientes c/ recompra / clientes únicos"
+              icon={Percent}
+              color="#ca8a04"
+              metaReal={(((mesDados as any).clientesUnicos ?? 0) > 0
+                ? (((mesDados as any).clientesComRecompra ?? 0) / (mesDados as any).clientesUnicos) * 100
+                : 0)}
+              isPct
+            />
+            <KpiCardComMeta
+              label="Ticket Médio por Cliente"
+              value={`R$ ${(((mesDados as any).clientesUnicos ?? 0) > 0
+                ? (mesDados.faturamento ?? 0) / (mesDados as any).clientesUnicos
+                : 0
+              ).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              sub="Faturamento / clientes únicos"
+              icon={TrendingUp}
+              color="#0891b2"
+              metaReal={(((mesDados as any).clientesUnicos ?? 0) > 0
+                ? (mesDados.faturamento ?? 0) / (mesDados as any).clientesUnicos
+                : 0)}
+              isCurrency
+            />
+            <KpiCardComMeta
+              label="Cotações Alto Valor s/ Contato"
+              value={loadingSilencio ? "..." : String(resumoSilencio?.semContato ?? 0)}
+              sub={`De ${resumoSilencio?.totalAltoValor ?? 0} propostas ≥ R$ 7.800 em aberto`}
+              icon={Phone}
+              color={!resumoSilencio ? "#94a3b8" : Number(resumoSilencio.taxaSilencio) <= 20 ? "#22c55e" : Number(resumoSilencio.taxaSilencio) <= 50 ? "#f59e0b" : "#ef4444"}
+              metaReal={resumoSilencio?.semContato ?? 0}
+            />
+            <KpiCardComMeta
+              label="Taxa de Silêncio"
+              value={loadingSilencio ? "..." : `${resumoSilencio?.taxaSilencio ?? 0}%`}
+              sub="Propostas de alto valor sem nenhum follow-up"
+              icon={Percent}
+              color={!resumoSilencio ? "#94a3b8" : Number(resumoSilencio.taxaSilencio) <= 20 ? "#22c55e" : Number(resumoSilencio.taxaSilencio) <= 50 ? "#f59e0b" : "#ef4444"}
+              metaReal={Number(resumoSilencio?.taxaSilencio ?? 0)}
+              isPct
             />
             <KpiCardComMeta
               label="Clientes Novos"
