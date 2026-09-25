@@ -1633,8 +1633,15 @@ export const performanceComercialRouter = router({
       }
 
       // Pré-calcular dados de clientes novos por mês (banco local, rápido)
-      // Mapa: "mes_ano" -> { osNovos, faturamentoNovos, ticketMedioNovos, cotacoesNovos, taxaConversaoNovos, taxaFaturamentoNovos }
-      const novosMap = new Map<string, { osNovos: number; faturamentoNovos: number; ticketMedioNovos: number; cotacoesNovos: number; taxaConversaoNovos: number; taxaFaturamentoNovos: number }>();
+      // Mapa: "mes_ano" -> métricas de novos/reativados (calcularNovosDoMesLocal, mesma
+      // função usada por getClientesNovosAno) + cotações de novos + clientes únicos/recompra
+      // do mês inteiro (qualquer cliente, não só novos).
+      const novosMap = new Map<string, {
+        osNovos: number; faturamentoNovos: number; faturamentoReativados: number; faturamentoNovosPuros: number;
+        clientesNovosUnicos: number; clientesReativados: number; clientesNovosPuros: number;
+        ticketMedioNovos: number; cotacoesNovos: number; taxaConversaoNovos: number; taxaFaturamentoNovos: number;
+        clientesUnicos: number; clientesComRecompra: number;
+      }>();
       if (db) {
         const overrides = await db.select().from(clienteOverrides);
         const overrideMap = new Map<string, "recorrente" | "novo">();
@@ -1652,23 +1659,22 @@ export const performanceComercialRouter = router({
           const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
           for (let mes = 1; mes <= mesAtual; mes++) {
             const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
-            const osMes = todasOsAno.filter(o => o.mes === mes);
             const orcMes = todasOrcAno.filter(o => o.mes === mes);
-            let osNovos = 0, faturamentoNovos = 0;
-            for (const os of osMes) {
-              if (!isOsNormalDb(os)) continue; // excluir retrabalhos, amostras, cortesias, canceladas
-              const clienteKey = (os.empresa ?? "").toLowerCase().trim();
-              if (!clienteKey) continue;
-              const overrideStatus = overrideMap.get(normalizeEmpresaKey(os.empresa ?? ""));
-              const isNovo = overrideStatus === "recorrente" ? false
-                : overrideStatus === "novo" ? true
-                : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
-              if (isNovo) {
-                const valor = parseFloat(String(os.valorOs ?? os.valorTotal ?? "0")) || 0;
-                osNovos++;
-                faturamentoNovos += valor;
-              }
+
+            const novosDoMes = calcularNovosDoMesLocal(mes, ano, todasOsAno, todasComprasValidas, overrideMap);
+
+            // Clientes únicos e com recompra do mês inteiro (qualquer cliente, não só novos) —
+            // mesmo critério de contarClientesUnicosDoMes, sem repetir a query ao banco.
+            const osPorClienteMes: Record<string, number> = {};
+            for (const os of todasOsAno.filter(o => o.mes === mes)) {
+              if (!isOsNormalDb(os)) continue;
+              const chave = normalizeEmpresaKey(os.empresa ?? "");
+              if (!chave) continue;
+              osPorClienteMes[chave] = (osPorClienteMes[chave] ?? 0) + 1;
             }
+            const clientesUnicos = Object.keys(osPorClienteMes).length;
+            const clientesComRecompra = Object.values(osPorClienteMes).filter(n => n >= 2).length;
+
             // Cotações de novos: orçamentos de clientes que não estavam no histórico
             let cotacoesNovos = 0;
             let valorOrcadoNovos = 0;
@@ -1684,10 +1690,20 @@ export const performanceComercialRouter = router({
                 valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
               }
             }
-            const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
-            const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat(((osNovos / cotacoesNovos) * 100).toFixed(1)) : 0;
-            const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat(((faturamentoNovos / valorOrcadoNovos) * 100).toFixed(1)) : 0;
-            novosMap.set(`${mes}_${ano}`, { osNovos, faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)), ticketMedioNovos, cotacoesNovos, taxaConversaoNovos, taxaFaturamentoNovos });
+            const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat(((novosDoMes.osNovos / cotacoesNovos) * 100).toFixed(1)) : 0;
+            const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat(((novosDoMes.faturamentoNovos / valorOrcadoNovos) * 100).toFixed(1)) : 0;
+            novosMap.set(`${mes}_${ano}`, {
+              osNovos: novosDoMes.osNovos,
+              faturamentoNovos: novosDoMes.faturamentoNovos,
+              faturamentoReativados: novosDoMes.faturamentoReativados,
+              faturamentoNovosPuros: novosDoMes.faturamentoNovosPuros,
+              clientesNovosUnicos: novosDoMes.clientesNovosUnicos,
+              clientesReativados: novosDoMes.clientesReativados,
+              clientesNovosPuros: novosDoMes.clientesNovosPuros,
+              ticketMedioNovos: novosDoMes.ticketMedioNovos,
+              cotacoesNovos, taxaConversaoNovos, taxaFaturamentoNovos,
+              clientesUnicos, clientesComRecompra,
+            });
           }
         }
       }
@@ -1730,15 +1746,20 @@ export const performanceComercialRouter = router({
               valorOrcado: parseFloat(String(snap.valorOrcado ?? 0)),
               ticketMedio: snap.osNormais ? parseFloat(String(snap.faturamento ?? 0)) / snap.osNormais : 0,
               margemPct: 0, custo: 0, resultado: 0,
-              clientesNovos: snap.clientesNovos ?? 0,
+              clientesNovos: novos?.clientesNovosUnicos ?? snap.clientesNovos ?? 0,
+              clientesReativados: novos?.clientesReativados ?? 0,
               // Expor como taxaConversaoNovos (nome usado pelo frontend) E taxaConvNovos (compat)
               taxaConvNovos: taxaConvNovosSnap,
               taxaConversaoNovos: taxaConvNovosSnap,
               faturamentoNovos: parseFloat(String(snap.faturamentoNovos ?? 0)),
+              faturamentoReativados: novos?.faturamentoReativados ?? 0,
+              faturamentoNovosPuros: novos?.faturamentoNovosPuros ?? 0,
               osNovos: osNovosSnap,
               ticketMedioNovos: novos?.ticketMedioNovos ?? 0,
               cotacoesNovos: cotacoesNovosSnap,
               taxaFaturamentoNovos: novos?.taxaFaturamentoNovos ?? 0,
+              clientesUnicos: novos?.clientesUnicos ?? 0,
+              clientesComRecompra: novos?.clientesComRecompra ?? 0,
               porVendedor: [], // array vazio para compatibilidade com EvolucaoVendedor
             };
           }
@@ -1813,8 +1834,21 @@ export const performanceComercialRouter = router({
           if (!raw) return null;
 
           // Enriquecer com dados de clientes novos do banco local
-          const novos = novosMap.get(`${mes}_${ano}`) ?? { osNovos: 0, faturamentoNovos: 0, ticketMedioNovos: 0, cotacoesNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0 };
-          return { ...calcMetrics(raw.osNormais, raw.orcamentos, mes, ano), ...novos };
+          const novos = novosMap.get(`${mes}_${ano}`) ?? {
+            osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0,
+            clientesNovosUnicos: 0, clientesReativados: 0, clientesNovosPuros: 0,
+            ticketMedioNovos: 0, cotacoesNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0,
+            clientesUnicos: 0, clientesComRecompra: 0,
+          };
+          return {
+            ...calcMetrics(raw.osNormais, raw.orcamentos, mes, ano),
+            ...novos,
+            // clientesUnicos/clientesComRecompra do mês inteiro vêm sempre do banco local
+            // (novos), nunca do cálculo ao vivo em calcMetrics — mesma fonte usada pelas
+            // demais métricas de "novos" nesta função, evita o mês ficar inconsistente
+            // dependendo de qual branch (API/local) respondeu primeiro.
+            clientesNovos: novos.clientesNovosUnicos,
+          };
         })
       );
 

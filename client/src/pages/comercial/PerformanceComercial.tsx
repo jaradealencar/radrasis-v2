@@ -1278,8 +1278,14 @@ export default function PerformanceComercial() {
                         { key: "taxaFaturamento", label: "Taxa Fat.", fmt: (v) => `${parseFloat(v.toFixed(1))}%`, color: "#ef4444", metaKey: "metaTaxaFaturamento" },
                         { key: "valorOrcado", label: "Valor Orçado", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#64748b", metaKey: "metaValorOrcado" },
                         { key: "ticketMedio", label: "Ticket Médio", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#6366f1", metaKey: "metaTicketMedio" },
+                        { key: "clientesUnicos", label: "Clientes Únicos", fmt: (v) => String(Math.round(v)), color: "#0d9488" },
+                        { key: "clientesComRecompra", label: "Clientes c/ Recompra", fmt: (v) => String(Math.round(v)), color: "#a16207" },
+                        // Novos e Reativados nunca são somados na mesma métrica — mesma regra da Visão Geral.
+                        { key: "clientesNovos", label: "Clientes Novos", fmt: (v) => String(Math.round(v)), color: "#0ea5e9", metaKey: "metaClientesNovos", isNovos: true },
+                        { key: "clientesReativados", label: "Clientes Reativados", fmt: (v) => String(Math.round(v)), color: "#f97316", isNovos: true },
                         { key: "osNovos", label: "OS (Novos)", fmt: (v) => String(Math.round(v)), color: "#0d9488", metaKey: "metaOsNovos", isNovos: true },
-                        { key: "faturamentoNovos", label: "Fat. (Novos)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#0891b2", metaKey: "metaFaturamentoNovos", isNovos: true },
+                        { key: "faturamentoNovosPuros", label: "Fat. (Novos)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#0891b2", metaKey: "metaFaturamentoNovos", isNovos: true },
+                        { key: "faturamentoReativados", label: "Fat. (Reativados)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#fb923c", isNovos: true },
                         { key: "ticketMedioNovos", label: "Ticket (Novos)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#7c3aed", metaKey: "metaTicketMedioNovos", isNovos: true },
                         { key: "cotacoesNovos", label: "Cot. (Novos)", fmt: (v) => String(Math.round(v)), color: "#f97316", metaKey: "metaCotacoesNovos", isNovos: true },
                         { key: "taxaConversaoNovos", label: "Conv. Novos", fmt: (v) => `${parseFloat(v.toFixed(1))}%`, color: "#84cc16", metaKey: "metaConversaoNovos", isNovos: true },
@@ -1447,8 +1453,13 @@ export default function PerformanceComercial() {
                             <TableHead className="text-right">Faturamento</TableHead>
                             <TableHead className="text-right">Taxa Fat.</TableHead>
                             <TableHead className="text-right">Ticket Médio</TableHead>
+                            <TableHead className="text-right text-cyan-700">Clientes Únicos</TableHead>
+                            <TableHead className="text-right text-amber-700">Clientes c/ Recompra</TableHead>
+                            <TableHead className="text-right text-sky-600">Clientes Novos</TableHead>
+                            <TableHead className="text-right text-orange-600">Clientes Reativados</TableHead>
                             <TableHead className="text-right text-teal-600">OS Novos</TableHead>
                             <TableHead className="text-right text-teal-600">Fat. Novos</TableHead>
+                            <TableHead className="text-right text-orange-600">Fat. Reativados</TableHead>
                             <TableHead className="text-right text-teal-600">Ticket Novos</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -1503,9 +1514,16 @@ export default function PerformanceComercial() {
                                 <TableCell className="text-right font-mono text-slate-600">
                                   R$ {Number(r.ticketMedio).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
+                                <TableCell className="text-right font-mono text-cyan-700">{r.clientesUnicos ?? 0}</TableCell>
+                                <TableCell className="text-right font-mono text-amber-700">{r.clientesComRecompra ?? 0}</TableCell>
+                                <TableCell className="text-right font-mono text-sky-600">{r.clientesNovos ?? 0}</TableCell>
+                                <TableCell className="text-right font-mono text-orange-600">{r.clientesReativados ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-teal-700">{r.osNovos ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-teal-700">
-                                  R$ {Number(r.faturamentoNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  R$ {Number(r.faturamentoNovosPuros ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-orange-600">
+                                  R$ {Number(r.faturamentoReativados ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-teal-700">
                                   R$ {Number(r.ticketMedioNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -1541,9 +1559,16 @@ export default function PerformanceComercial() {
                                 <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("ticketMedio").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesUnicos").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesComRecompra").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesNovos").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesReativados").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("osNovos").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">
-                                  R$ {avg("faturamentoNovos").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  R$ {avg("faturamentoNovosPuros").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">
+                                  R$ {avg("faturamentoReativados").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("ticketMedioNovos").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
