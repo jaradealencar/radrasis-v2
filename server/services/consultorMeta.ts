@@ -15,6 +15,7 @@ import {
   rankingParaMeta, caminhosParaMeta, sensibilidadesDoPainel,
   type Cenario, type Fixos, type IdAlavanca, type SegmentoId,
 } from "../../shared/meta-faturamento";
+import { linhaDoTempo, primeiroMesNaMeta, mesApos, prazoValido, PRAZO_PADRAO_MESES } from "../../shared/planejador-meta";
 import type { InvokeResult } from "../_core/llm";
 import type { PainelMeta } from "./painelMeta";
 import type {
@@ -55,6 +56,8 @@ export interface EntradaConsultor {
   fixos: Record<string, number>;
   modoAuto: boolean;
   pesoConversao: number;
+  /** Prazo do Planejador (meses para chegar nos números do cenário); padrão 6. */
+  prazoMeses?: number;
 }
 
 export const PROMPT_CONSULTOR_META_V1 = `Você é o "Consultor da Meta": um consultor sênior de crescimento comercial da Radra, uma indústria de comunicação visual que fabrica letras caixa e letreiros comerciais e vende 100% para parceiros — gráficas e empresas de comunicação visual que revendem e instalam para o cliente final (canal indireto). Nos dados, "cliente" significa gráfica parceira.
@@ -265,6 +268,22 @@ export function montarContextoConsultorEmPartes(p: PainelCompleto, e: EntradaCon
     : `- Indicadores travados pelo gestor: ${travados.map(([id, v]) => { const [seg, campo] = id.split("."); return `${ROTULO_SEGMENTO[seg as SegmentoId]} — ${ROTULO_CAMPO[campo as keyof typeof ROTULO_CAMPO]} = ${num(v as number, 2)}`; }).join("; ")}.`);
   V.push(`- Resultado: ${brl(totaisSim.faturamento)}/mês, ${num(totaisSim.vendas, 0)} pedidos, ticket ${brl(totaisSim.ticketMedio)}${resultado ? `; os indicadores livres foram multiplicados por ${num(resultado.fator, 3)} (${resultado.atingivel ? "meta fecha" : "a meta NÃO fecha com esses travamentos"})` : ""}.`);
   V.push(...linhasCenario(cenarioSim));
+
+  // Planejador (aba 3): em que mês esse cenário chega na meta.
+  const prazo = prazoValido(e.prazoMeses ?? PRAZO_PADRAO_MESES);
+  const pontos = linhaDoTempo(base, cenarioSim, prazo);
+  const mesMeta = primeiroMesNaMeta(pontos, e.meta);
+  const rotuloMes = (k: number) => mesApos(hoje.toISOString(), k).rotulo;
+  V.push("");
+  V.push("## Planejador (aba 3): quando o cenário chega na meta");
+  V.push(`- Prazo escolhido pelo gestor: ${prazo} meses para chegar nos números do cenário (cada indicador sobe em linha reta, um pouco por mês, e depois fica estável). O mês corrente (${rotuloMes(0)}) vale os números de hoje (média de 12 meses).`);
+  V.push(`- Faturamento previsto mês a mês: ${pontos.filter(p => p.mes <= Math.min(pontos.length - 1, prazo + 1)).map(p => `${rotuloMes(p.mes)} ${brl(p.totais.faturamento)}`).join("; ")}.`);
+  V.push(mesMeta === null
+    ? `- Nesse cenário o faturamento NÃO chega a ${brl(e.meta)} nos ${pontos.length - 1} meses projetados (fica em ${brl(totaisSim.faturamento)}/mês).`
+    : mesMeta === 0
+      ? `- O faturamento de hoje já está na meta de ${brl(e.meta)}.`
+      : `- Chega a ${brl(e.meta)}/mês em ${rotuloMes(mesMeta)} (${mesMeta} ${mesMeta === 1 ? "mês" : "meses"} a partir de agora).`);
+  V.push("- Limites da conta: o prazo é uma escolha do gestor, não uma previsão; não entra o efeito de as gráficas novas continuarem comprando nos meses seguintes; um mês isolado oscila para cima e para baixo da linha (ver faixa provável no contexto).");
 
   return { estavel: L.join("\n"), variavel: V.join("\n") };
 }

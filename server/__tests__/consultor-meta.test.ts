@@ -140,6 +140,26 @@ describe("montarContextoConsultorEmPartes (economia: cache do prompt)", () => {
     expect(variavel).not.toContain("## CÁLCULOS DO SISTEMA");
   });
 
+  it("a linha do tempo do Planejador vai na parte variável e responde 'quando chega na meta'", () => {
+    const { estavel, variavel } = montarContextoConsultorEmPartes(painel, { ...ENTRADA, prazoMeses: 6 }, HOJE);
+    expect(estavel).not.toContain("Planejador");
+    expect(variavel).toContain("## Planejador (aba 3): quando o cenário chega na meta");
+    expect(variavel).toContain("Prazo escolhido pelo gestor: 6 meses");
+    expect(variavel).toContain("set/2026 R$"); // o mês corrente aparece com os números de hoje
+    // no modo automático a conta fecha exatamente no prazo escolhido: 6 meses depois de set/2026
+    expect(variavel).toContain("Chega a R$ 430.000/mês em mar/2027 (6 meses a partir de agora)");
+  });
+
+  it("no modo livre sem mexer em nada o cenário é o de hoje e o consultor é avisado de que não chega", () => {
+    const { variavel } = montarContextoConsultorEmPartes(painel, { ...ENTRADA, modoAuto: false, prazoMeses: 3 }, HOJE);
+    expect(variavel).toContain("Prazo escolhido pelo gestor: 3 meses");
+    expect(variavel).toMatch(/NÃO chega a R\$ 430\.000/);
+  });
+
+  it("sem prazo informado usa o padrão de 6 meses", () => {
+    expect(montarContextoConsultorEmPartes(painel, ENTRADA, HOJE).variavel).toContain("Prazo escolhido pelo gestor: 6 meses");
+  });
+
   it("montarContextoConsultor devolve as duas partes juntas", () => {
     const { estavel, variavel } = montarContextoConsultorEmPartes(painel, mexido, HOJE);
     expect(montarContextoConsultor(painel, mexido, HOJE)).toBe(`${estavel}\n\n${variavel}`);

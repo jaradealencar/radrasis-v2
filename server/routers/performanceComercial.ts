@@ -2940,6 +2940,7 @@ export const performanceComercialRouter = router({
       fixos: z.record(z.string(), z.number()).default({}),
       modoAuto: z.boolean().default(true),
       pesoConversao: z.number().min(0).max(1).default(0.5),
+      prazoMeses: z.number().int().min(1).max(24).default(6),
     }))
     .mutation(async ({ input, ctx }) => {
       const uso = limitadorConsultorMeta.permitir(String(ctx.user.id));
@@ -2953,7 +2954,7 @@ export const performanceComercialRouter = router({
       }
 
       const contexto = montarContextoConsultorEmPartes(painel, {
-        meta: input.meta, meta2: input.meta2, fixos: input.fixos, modoAuto: input.modoAuto, pesoConversao: input.pesoConversao,
+        meta: input.meta, meta2: input.meta2, fixos: input.fixos, modoAuto: input.modoAuto, pesoConversao: input.pesoConversao, prazoMeses: input.prazoMeses,
       }, hoje);
       const conversa = prepararConversa(input.historico, input.pergunta);
 

@@ -5,9 +5,11 @@ import {
   SEGMENTOS, CAMPOS_ALAVANCA, idAlavanca, totaisCenario, dividirFunil,
   type SegmentoId, type CampoAlavanca, type Fixos, type IdAlavanca, type ResultadoMeta, type Alavanca,
 } from "@shared/meta-faturamento";
+import { linhaDoTempo, primeiroMesNaMeta, prazoValido, mesApos } from "@shared/planejador-meta";
 import type { PainelMetaDados } from "./tipos";
 import { CampoNumero, Ficha, Variacao, brlCurto, fmtBrl, fmtNum, fmtPct } from "./comuns";
 import { lucroEstimado } from "./calculos";
+import Planejador from "./Planejador";
 
 const TEXTO_SEGMENTO: Record<SegmentoId, { titulo: string; descricao: string }> = {
   novos: { titulo: "Gráficas novas", descricao: "Compraram pela 1ª vez no mês." },
@@ -82,7 +84,7 @@ export const OPCOES_FUNIL: Array<{ peso: number; rotulo: string; dica: string }>
 ];
 
 export default function Simulador({
-  data, meta, fixos, setFixos, modoAuto, setModoAuto, pesoConversao, setPesoConversao, resultado, margemPct, setMargemPct,
+  data, meta, fixos, setFixos, modoAuto, setModoAuto, pesoConversao, setPesoConversao, resultado, margemPct, setMargemPct, prazo, setPrazo,
 }: {
   data: PainelMetaDados;
   meta: number;
@@ -95,6 +97,9 @@ export default function Simulador({
   resultado: ResultadoMeta;
   margemPct: number;
   setMargemPct: (v: number) => void;
+  /** Meses até chegar nos números do cenário (linha do tempo do planejador). */
+  prazo: number;
+  setPrazo: (v: number) => void;
 }) {
   const base = data.media12m;
   const recente = data.ultimos3m;
@@ -104,6 +109,12 @@ export default function Simulador({
   const totaisBase = totaisCenario(base.cenario);
   const numFixos = Object.keys(fixos).length;
   const fechou = totais.faturamento >= meta * 0.9995;
+
+  // Linha do tempo: em que mês o faturamento chega na meta (recalculada a cada mexida nos indicadores).
+  const prazoOk = prazoValido(prazo);
+  const pontos = linhaDoTempo(base.cenario, cenario, prazoOk);
+  const mesMeta = primeiroMesNaMeta(pontos, meta);
+  const jaNaMeta = real12 >= meta * 0.9995;
 
   const definir = (id: IdAlavanca, v: number) => setFixos(f => ({ ...f, [id]: v }));
   const alternarTrava = (id: IdAlavanca, valorAtual: number) =>
@@ -139,12 +150,22 @@ export default function Simulador({
         <p className="font-semibold">{plano}</p>
       </div>
 
-      <div className="sticky top-0 z-20 bg-white rounded-xl border border-slate-200 shadow-md p-3 grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="sticky top-0 z-20 bg-white rounded-xl border border-slate-200 shadow-md p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Ficha
           rotulo="Faturamento por mês"
           valor={fmtBrl(totais.faturamento)}
           destaque={fechou ? "ok" : "falta"}
           sub={fechou ? <>fecha a meta ✓ · hoje {brlCurto(real12)}</> : <>faltam {brlCurto(meta - totais.faturamento)} · hoje {brlCurto(real12)}</>}
+        />
+        <Ficha
+          rotulo={`Quando chego em ${brlCurto(meta)}`}
+          valor={jaNaMeta ? "Já está" : mesMeta !== null ? mesApos(data.dataReferencia, mesMeta).rotulo : "Não chega"}
+          destaque={jaNaMeta || mesMeta !== null ? "ok" : "falta"}
+          sub={jaNaMeta
+            ? "média de 12 meses acima da meta"
+            : mesMeta !== null
+              ? <>daqui a {mesMeta} {mesMeta === 1 ? "mês" : "meses"} · prazo de {prazoOk}</>
+              : <>nem em {pontos.length - 1} meses · prazo de {prazoOk}</>}
         />
         <Ficha rotulo="Pedidos por mês" valor={fmtNum(totais.vendas, 0)} sub={<>hoje {fmtNum(totaisBase.vendas, 0)} · <Variacao valor={totais.vendas} referencia={totaisBase.vendas} /></>} />
         <Ficha rotulo="Ticket médio por pedido" valor={fmtBrl(totais.ticketMedio)} sub={<>hoje {fmtBrl(totaisBase.ticketMedio)} · <Variacao valor={totais.ticketMedio} referencia={totaisBase.ticketMedio} /></>} />
@@ -198,6 +219,18 @@ export default function Simulador({
           {modoAuto ? "Voltar ao caminho equilibrado" : "Voltar aos números de hoje"}
         </button>
       </div>
+
+      <Planejador
+        data={data}
+        meta={meta}
+        resultado={resultado}
+        modoAuto={modoAuto}
+        pesoConversao={pesoConversao}
+        prazo={prazoOk}
+        setPrazo={setPrazo}
+        pontos={pontos}
+        mesMeta={mesMeta}
+      />
 
       <div className="space-y-4">
         {SEGMENTOS.map(seg => {
