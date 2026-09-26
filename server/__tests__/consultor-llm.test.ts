@@ -1,9 +1,15 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import {
   conversarComFallback, motivoAmigavel, provedoresDisponiveis, chamadasReais, ErroIA,
   type ChamadaIA, type PedidoIA, type Provedor, type RespostaIA,
 } from "../services/consultorLlm";
 import { ENV } from "../_core/env";
+
+// O SDK da Anthropic é trocado por um falso: os testes conferem o que seria enviado, sem gastar nada.
+const { criarMensagem } = vi.hoisted(() => ({ criarMensagem: vi.fn() }));
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: class { messages = { create: criarMensagem }; },
+}));
 
 const PEDIDO: PedidoIA = { system: "SISTEMA + CONTEXTO", historico: [{ role: "user", texto: "oi" }, { role: "assistant", texto: "olá" }], pergunta: "e agora?" };
 
@@ -51,6 +57,12 @@ describe("motivoAmigavel", () => {
     expect(motivoAmigavel("anthropic", new Error("403 permission denied"))).toBe("Claude: chave inválida ou sem permissão");
     expect(motivoAmigavel("anthropic", new Error("algo estranho"))).toBe("Claude: erro na chamada");
   });
+
+  it("explica resposta vazia, lentidão e sobrecarga em vez de 'erro na chamada'", () => {
+    expect(motivoAmigavel("anthropic", new Error("Claude não retornou texto (stop_reason=max_tokens)"))).toBe("Claude: resposta vazia");
+    expect(motivoAmigavel("anthropic", new Error("Request timed out."))).toBe("Claude: demorou demais");
+    expect(motivoAmigavel("anthropic", new Error('529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'))).toBe("Claude: serviço sobrecarregado");
+  });
 });
 
 describe("provedoresDisponiveis", () => {
@@ -71,6 +83,39 @@ describe("provedoresDisponiveis", () => {
     expect(provedoresDisponiveis()).toEqual(["openai"]);
     ENV.openaiApiKey = "";
     expect(provedoresDisponiveis()).toEqual([]);
+  });
+});
+
+describe("chamada ao Claude", () => {
+  const original = { a: ENV.anthropicApiKey, m: ENV.consultorModeloAnthropic };
+  beforeEach(() => { ENV.anthropicApiKey = "chave-de-teste"; ENV.consultorModeloAnthropic = "claude-teste"; criarMensagem.mockReset(); });
+  afterEach(() => { ENV.anthropicApiKey = original.a; ENV.consultorModeloAnthropic = original.m; });
+
+  it("desliga o raciocínio prévio, guarda o contexto em cache e manda o histórico antes da pergunta", async () => {
+    criarMensagem.mockResolvedValue({ content: [{ type: "text", text: "  resposta pronta  " }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 7 } });
+
+    const r = await chamadasReais.anthropic(PEDIDO);
+    expect(r).toMatchObject({ texto: "resposta pronta", provedor: "anthropic", modelo: "claude-teste" });
+
+    const envio = criarMensagem.mock.calls[0][0];
+    expect(envio.model).toBe("claude-teste");
+    expect(envio.thinking).toEqual({ type: "disabled" });
+    expect(envio.system).toEqual([{ type: "text", text: "SISTEMA + CONTEXTO", cache_control: { type: "ephemeral" } }]);
+    expect(envio.messages.map((m: { role: string }) => m.role)).toEqual(["user", "assistant", "user"]);
+    expect(envio.messages[2].content).toBe("e agora?");
+  });
+
+  it("junta todos os blocos de texto e ignora os que não são texto", async () => {
+    criarMensagem.mockResolvedValue({
+      content: [{ type: "thinking", thinking: "..." }, { type: "text", text: "parte 1" }, { type: "text", text: "parte 2" }],
+      stop_reason: "end_turn", usage: {},
+    });
+    expect((await chamadasReais.anthropic(PEDIDO)).texto).toBe("parte 1\nparte 2");
+  });
+
+  it("falha dizendo o motivo quando não vem texto (visto em produção: o teto de tokens acabou no raciocínio)", async () => {
+    criarMensagem.mockResolvedValue({ content: [{ type: "thinking", thinking: "..." }], stop_reason: "max_tokens", usage: {} });
+    await expect(chamadasReais.anthropic(PEDIDO)).rejects.toThrow(/não retornou texto \(stop_reason=max_tokens\)/);
   });
 });
 

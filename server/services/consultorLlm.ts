@@ -52,9 +52,12 @@ export function provedoresDisponiveis(): Provedor[] {
 export function motivoAmigavel(provedor: Provedor, erro: unknown): string {
   const texto = String((erro as Error)?.message ?? erro);
   const nome = NOME_PROVEDOR[provedor];
+  if (/não retornou texto/i.test(texto)) return `${nome}: resposta vazia`;
   if (/insufficient_quota|credit|billing|balance/i.test(texto)) return `${nome}: sem créditos`;
   if (/429|quota|rate.?limit|RESOURCE_EXHAUSTED/i.test(texto)) return `${nome}: limite de uso atingido`;
   if (/401|403|api.?key|permission|unauthorized|API_KEY_INVALID/i.test(texto)) return `${nome}: chave inválida ou sem permissão`;
+  if (/overloaded|\b(500|502|503|529)\b/i.test(texto)) return `${nome}: serviço sobrecarregado`;
+  if (/time.?d? ?out|timeout|ETIMEDOUT/i.test(texto)) return `${nome}: demorou demais`;
   if (/404|not.?found|model/i.test(texto)) return `${nome}: modelo indisponível`;
   return `${nome}: erro na chamada`;
 }
@@ -111,16 +114,24 @@ async function chamarClaude(p: PedidoIA): Promise<RespostaIA> {
   const r = await client.messages.create({
     model: modelo,
     max_tokens: MAX_TOKENS_RESPOSTA,
+    // Sem "raciocínio" prévio: o contexto já traz os cálculos prontos e, com o raciocínio ligado, o modelo
+    // chegou a gastar TODO o teto de tokens pensando e devolver resposta vazia (visto em produção em
+    // 26/09/2026 numa pergunta analítica). Desligado, a resposta é mais rápida e o tempo é previsível
+    // (a função da Vercel tem limite de 60 s).
+    thinking: { type: "disabled" },
     system: [{ type: "text", text: p.system, cache_control: { type: "ephemeral" } }],
     messages: [
       ...p.historico.map((m): Anthropic.MessageParam => ({ role: m.role, content: m.texto })),
       { role: "user", content: p.pergunta },
     ],
   });
-  const bloco = r.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  const texto = bloco?.text.trim() ?? "";
-  if (!texto) throw new Error("Claude não retornou texto");
-  return { texto, provedor: "anthropic", modelo, uso: r.usage };
+  const texto = r.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map(b => b.text)
+    .join("\n")
+    .trim();
+  if (!texto) throw new Error(`Claude não retornou texto (stop_reason=${r.stop_reason})`);
+  return { texto, provedor: "anthropic", modelo, uso: { ...r.usage, stop_reason: r.stop_reason } };
 }
 
 async function chamarOpenAI(p: PedidoIA): Promise<RespostaIA> {
