@@ -2,7 +2,6 @@ import { trpc } from "@/lib/trpc";
 import type { MetaComercial } from "../../../../drizzle/schema";
 import EvolucaoVendedor from "./EvolucaoVendedor";
 import EvolucaoDiariaVendedor from "./EvolucaoDiariaVendedor";
-import ResumoDiarioVendedores from "./ResumoDiarioVendedores";
 import InteligenteClientes from "./InteligenteClientes";
 import PropostasAltoValor from "./PropostasAltoValor";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -788,9 +787,6 @@ export default function PerformanceComercial() {
             </div>
           </div>
         </div>
-
-        {/* ─── Resumo diário por vendedor (manhã/tarde) ───────────────────────── */}
-        <ResumoDiarioVendedores />
 
         {/* ─── Subabas ─────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
