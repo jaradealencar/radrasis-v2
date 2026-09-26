@@ -258,7 +258,7 @@ export default function GuiaFornecedores() {
           <StatCard icon={MousePointerClick} label="Cliques no WhatsApp" value={carregandoStatsPeriodo ? "…" : String(statsPeriodo?.cliquesTotais ?? 0)} />
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
-          Cliques por período só existem a partir de 26/09/2026 — datas anteriores vêm zeradas aqui (o total "desde o início" no card lá em cima continua certo).
+          Os cliques anteriores a 26/09/2026 não tinham data registrada: o total do período está certo, mas a divisão por dia deles é aproximada.
         </p>
 
         <div className="mt-4">

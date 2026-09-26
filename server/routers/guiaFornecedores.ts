@@ -385,9 +385,8 @@ export const guiaFornecedoresRouter = router({
 
   /** Estatísticas filtradas por período (o front-end manda o intervalo já calculado, seja um dia
    * ou um mês inteiro): visitas, cliques totais e rankings por fornecedor e por estado. Os
-   * cliques só existem a partir de 26/09/2026 (criação de guia_fornecedores_clique_eventos) —
-   * período anterior a essa data vem zerado mesmo que o contador acumulado da aba principal
-   * mostre total maior. */
+   * cliques anteriores a 26/09/2026 (migration 0044) não têm data real — foram espalhados entre o
+   * primeiro e o último clique de cada fornecedor, então a divisão por dia deles é aproximada. */
   getEstatisticasPeriodo: protectedProcedure
     .input(z.object({
       inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -400,7 +399,7 @@ export const guiaFornecedoresRouter = router({
       const de = new Date(`${input.inicio}T00:00:00`);
       const ate = new Date(`${input.fim}T23:59:59.999`);
 
-      const [[{ total, unicos }], eventos, guiaAtual] = await Promise.all([
+      const [[{ total, unicos }], eventos, fornecedores] = await Promise.all([
         db.select({
           total: sql<number>`count(*)::int`,
           unicos: sql<number>`count(distinct ${guiaFornecedoresVisitas.visitanteId})::int`,
@@ -408,9 +407,11 @@ export const guiaFornecedoresRouter = router({
           .where(and(gte(guiaFornecedoresVisitas.createdAt, de), lte(guiaFornecedoresVisitas.createdAt, ate))),
         db.select().from(guiaFornecedoresCliqueEventos)
           .where(and(gte(guiaFornecedoresCliqueEventos.createdAt, de), lte(guiaFornecedoresCliqueEventos.createdAt, ate))),
-        montarGuia(),
+        carregarFornecedoresCalculados(db),
       ]);
-      const chavesNoGuia = new Set(guiaAtual.estados.flatMap(e => e.cidades.flatMap(c => c.fornecedores.map(f => normalizeEmpresaKey(f.nome)))));
+      // Mesma condição do guia público: só aparece quem tem estado.
+      const chavesNoGuia = new Set(fornecedores.filter(f => f.estado).map(f => f.chave));
+      const estadoPorChave = new Map(fornecedores.map(f => [f.chave, f.estado]));
 
       const porFornecedorMap = new Map<string, { empresaNome: string; cliques: number; ultimoCliqueEm: Date | null }>();
       const porEstadoMap = new Map<string, number>();
@@ -419,7 +420,9 @@ export const guiaFornecedoresRouter = router({
         atual.cliques++;
         if (!atual.ultimoCliqueEm || ev.createdAt > atual.ultimoCliqueEm) atual.ultimoCliqueEm = ev.createdAt;
         porFornecedorMap.set(ev.empresaChave, atual);
-        if (ev.estado) porEstadoMap.set(ev.estado, (porEstadoMap.get(ev.estado) ?? 0) + 1);
+        // Eventos vindos do backfill dos cliques antigos não têm estado gravado.
+        const uf = ev.estado || estadoPorChave.get(ev.empresaChave);
+        if (uf) porEstadoMap.set(uf, (porEstadoMap.get(uf) ?? 0) + 1);
       }
 
       const porFornecedor = [...porFornecedorMap.entries()]
