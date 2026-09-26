@@ -247,11 +247,13 @@ Assistente de Inteligência de Clientes: **a IA não calcula, só interpreta**.
   (escrita em cache) + ~1 mil de resposta; as seguintes leem o cache. Ordem de
   grandeza: centavos de real por pergunta. Latência ~10–15 s.
 - **Estado em 26/09/2026:** a Vercel de produção só tinha `OPENAI_API_KEY` (a
-  conta estava sem créditos — erro `credit_balance_exhausted`) e **não tinha
-  `ANTHROPIC_API_KEY`**; o consultor só responde em produção depois de
-  configurar um provedor (ver `npx vercel env ls production`). O Assistente da
-  aba anterior e o chat do Painel Financeiro também usam Claude direto e
-  ficam sem resposta enquanto não houver essa chave.
+  conta estava sem créditos — erro `credit_balance_exhausted`). Ainda em
+  26/09/2026 o dono adicionou `ANTHROPIC_API_KEY` (Production, tipo Secret) pelo
+  painel da Vercel; variável nova só vale em deploy novo. Com ela o consultor
+  responde via Claude, e o Assistente da aba anterior e o chat do Painel
+  Financeiro (que usam Claude direto, modelo `claude-opus-5`, mais caro por
+  pergunta) voltam a funcionar. A chave do OpenAI continua sem saldo. Conferir
+  com `npx --yes vercel@59.23.2 env ls production` (só nomes; valores ocultos).
 
 ## Validações realizadas
 
