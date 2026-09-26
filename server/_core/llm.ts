@@ -60,6 +60,10 @@ export type InvokeParams = {
   tool_choice?: ToolChoice;
   maxTokens?: number;
   max_tokens?: number;
+  /** Modelos de raciocínio (gpt-5*): quanto "pensar" antes de responder — mais baixo = mais rápido e barato. */
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  /** Teto de tokens da resposta (nos modelos de raciocínio inclui os tokens de raciocínio). */
+  maxCompletionTokens?: number;
   outputSchema?: OutputSchema;
   output_schema?: OutputSchema;
   responseFormat?: ResponseFormat;
@@ -340,6 +344,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   if (tools && tools.length > 0) {
     payload.tools = tools;
   }
+  if (params.reasoningEffort) payload.reasoning_effort = params.reasoningEffort;
+  if (params.maxCompletionTokens) payload.max_completion_tokens = params.maxCompletionTokens;
 
   const normalizedToolChoice = normalizeToolChoice(
     toolChoice || tool_choice,

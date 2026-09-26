@@ -1,6 +1,6 @@
 import {
-  SEGMENTOS, totaisCenario, resolverMeta, dividirFunil,
-  type Cenario, type TotaisCenario,
+  SEGMENTOS, totaisCenario, resolverMeta, dividirFunil, sensibilidadesDoPainel,
+  type Cenario, type TotaisCenario, type Sensibilidade,
 } from "@shared/meta-faturamento";
 import type { PainelMetaDados } from "./tipos";
 
@@ -84,27 +84,9 @@ export function montarComparativo(
   ];
 }
 
-export interface Sensibilidade { id: string; rotulo: string; efeito: number; prazo: string; tipo: "faturamento" | "contribuicao" }
+export type { Sensibilidade };
 
-/** Quanto cada movimento pequeno vale por mês — para decidir onde colocar energia. */
+/** Quanto cada movimento pequeno vale por mês (cálculo no módulo compartilhado, igual ao usado pelo consultor de IA). */
 export function calcularSensibilidades(data: PainelMetaDados): Sensibilidade[] {
-  const fat = data.media12m.faturamento;
-  const base = data.media12m.cenario;
-  const totais = totaisCenario(base);
-  const lista: Sensibilidade[] = [];
-  const conv = data.funil.conversaoPct;
-  if (conv && conv > 0) lista.push({ id: "conversao", rotulo: "+1 ponto percentual de conversão de orçamentos", efeito: fat / conv, prazo: "1 a 2 meses", tipo: "faturamento" });
-  lista.push({ id: "leads10", rotulo: "+10% de orçamentos recebidos (mesma conversão)", efeito: fat * 0.1, prazo: "1 a 2 meses", tipo: "faturamento" });
-  lista.push({ id: "ticket5", rotulo: "+5% de ticket médio por pedido", efeito: fat * 0.05, prazo: "imediato, pedido a pedido", tipo: "faturamento" });
-  if (data.coorte.ltv12m) {
-    lista.push({ id: "novo1", rotulo: "+1 gráfica nova por mês", efeito: data.coorte.ltv12m, prazo: "efeito pleno em ~12 meses", tipo: "faturamento" });
-  } else {
-    const entrada = base.novos.pedidosPorCliente * base.novos.ticket;
-    if (entrada > 0) lista.push({ id: "novo1", rotulo: "+1 gráfica nova por mês (só a 1ª compra)", efeito: entrada, prazo: "imediato", tipo: "faturamento" });
-  }
-  const reativado = base.reativados.pedidosPorCliente * base.reativados.ticket;
-  if (reativado > 0) lista.push({ id: "reativado1", rotulo: "+1 parceiro reativado por mês (só a compra de volta)", efeito: reativado, prazo: "imediato", tipo: "faturamento" });
-  lista.push({ id: "recompra10", rotulo: "+10% de recompra das gráficas conquistadas", efeito: totais.porSegmento.recompraConquistados.faturamento * 0.1, prazo: "2 a 4 meses", tipo: "faturamento" });
-  lista.push({ id: "margem1", rotulo: "+1 ponto percentual de margem de contribuição", efeito: fat * 0.01, prazo: "imediato", tipo: "contribuicao" });
-  return lista.sort((a, b) => b.efeito - a.efeito);
+  return sensibilidadesDoPainel(data);
 }

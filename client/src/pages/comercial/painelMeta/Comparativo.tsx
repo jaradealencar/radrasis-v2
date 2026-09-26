@@ -1,4 +1,4 @@
-import { compararCaminhos, rankearAlavancas, totaisCenario, type AlavancaRanking } from "@shared/meta-faturamento";
+import { caminhosParaMeta, rankingParaMeta, type AlavancaRanking } from "@shared/meta-faturamento";
 import type { PainelMetaDados } from "./tipos";
 import { CampoNumero, Cartao, Selo, brlCurto, fmtNum } from "./comuns";
 import { montarComparativo, calcularSensibilidades, type LinhaComparativa } from "./calculos";
@@ -79,18 +79,7 @@ function fraseEsforco(meta: number, ranking: AlavancaRanking[]): string {
 
 function TextoCaminhos({ data, meta }: { data: PainelMetaDados; meta: number }) {
   const base = data.media12m;
-  const conversoes = data.funil.mensal.map(m => m.conversaoPct).filter((v): v is number => v !== null);
-  const novosSerie = data.historico.map(h => h.clientes.novos);
-  const r = compararCaminhos({
-    faturamentoAtual: base.faturamento,
-    meta,
-    conversaoPct: data.funil.conversaoPct,
-    conversaoMaximaPct: conversoes.length > 0 ? Math.max(...conversoes) : null,
-    novosAtual: base.cenario.novos.clientes,
-    novosMaximoMensal: Math.max(...novosSerie),
-    ltv12m: data.coorte.ltv12m,
-    receitaEntradaPorNovo: base.cenario.novos.pedidosPorCliente * base.cenario.novos.ticket,
-  });
+  const r = caminhosParaMeta(data, meta);
   if (r.gap <= 0) return <p className="text-xs text-slate-500">Você já está acima de {brlCurto(meta)} em média.</p>;
 
   const cac = data.marketing?.cacPorNovo ?? null;
@@ -144,22 +133,8 @@ export default function Comparativo({ data, meta1, meta2, setMeta1, setMeta2, pe
 }) {
   const linhas = montarComparativo(data, meta1, meta2, pesoConversao, margemPct);
   const grupos = Array.from(new Set(linhas.map(l => l.grupo)));
-  const base = data.media12m;
-  const totaisBase = totaisCenario(base.cenario);
-  const conversoes = data.funil.mensal.map(m => m.conversaoPct).filter((v): v is number => v !== null);
-
-  const entradaRanking = (meta: number) => rankearAlavancas({
-    faturamentoAtual: totaisBase.faturamento,
-    meta,
-    base: base.cenario,
-    leads: { atual: data.funil.leadsPorMes, serie: data.funil.mensal.map(m => m.leads) },
-    conversao: { atual: data.funil.conversaoPct, serie: conversoes },
-    ticket: { serie: data.historico.map(h => h.ticketMedio) },
-    novos: { serie: data.historico.map(h => h.clientes.novos) },
-    reativados: { serie: data.historico.map(h => h.clientes.reativados) },
-  });
-  const rank1 = entradaRanking(meta1);
-  const rank2 = entradaRanking(meta2);
+  const rank1 = rankingParaMeta(data, meta1);
+  const rank2 = rankingParaMeta(data, meta2);
   const sensibilidades = calcularSensibilidades(data);
 
   return (

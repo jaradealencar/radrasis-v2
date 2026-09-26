@@ -1,4 +1,5 @@
 import { router, publicProcedure, protectedProcedure, requireRole } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
@@ -19,6 +20,12 @@ import {
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
 import { calcularPainelMeta } from "../services/painelMeta";
+import {
+  PROMPT_CONSULTOR_META_V1, VERSAO_PROMPT_CONSULTOR_META,
+  montarContextoConsultor, prepararConversa, criarLimitador,
+  type PainelCompleto,
+} from "../services/consultorMeta";
+import { conversarComIA, ErroIA, NOME_PROVEDOR } from "../services/consultorLlm";
 import {
   calcularEconomia, calcularMarketing, calcularVendedores, calcularPipeline,
   calcularDistribuicoes, resumirFila, gerarRecomendacoes, resumirSinaisMercado,
@@ -1496,6 +1503,66 @@ export async function sincronizarFilaAcoesClientes(db: NonNullable<Awaited<Retur
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
+type BancoDados = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+/** Painel da Meta completo (indicadores, diagnóstico e recomendações) — usado pela tela e pelo consultor de IA. */
+async function carregarPainelMeta(db: BancoDados, hoje: Date): Promise<PainelCompleto> {
+  const mesAtual = hoje.getMonth() + 1;
+  const anoAtual = hoje.getFullYear();
+  const [osRows, orcRows, financeiroRows, marketingRows, metasRows, crmMetasRows, sinaisRows] = await Promise.all([
+    db.select().from(historicoOs),
+    db.select().from(historicoOrcamentos),
+    db.select().from(financeiroMensal),
+    db.select().from(custoMarketing),
+    db.select().from(metasComerciais).where(and(eq(metasComerciais.ano, anoAtual), eq(metasComerciais.mes, mesAtual))),
+    db.select().from(crmMetas).where(and(eq(crmMetas.ano, anoAtual), eq(crmMetas.mes, mesAtual))),
+    db.select({ uf: sinaisMercado.uf, tipoEvento: sinaisMercado.tipoEvento, status: sinaisMercado.status, dataColeta: sinaisMercado.dataColeta })
+      .from(sinaisMercado).where(gte(sinaisMercado.dataColeta, new Date(hoje.getTime() - 90 * 86400000))),
+  ]);
+
+  const base = construirBaseClientes(osRows as any);
+  const painel = calcularPainelMeta(base, hoje, MESES_INATIVIDADE_PARA_NOVO);
+  const funil = calcularFunilMensal(orcRows as any, hoje);
+  const faixasConversao = calcularConversaoPorFaixaTicket(orcRows as any, hoje);
+  const atual = anoAtual * 12 + hoje.getMonth();
+
+  const economia = calcularEconomia(financeiroRows as any, atual);
+  const marketing = calcularMarketing(marketingRows as any, painel.historico);
+  const vendedores = calcularVendedores(orcRows as any, base, hoje, painel.media12m.ticketMedio);
+  const pipeline = calcularPipeline(orcRows as any, faixasConversao, hoje);
+  const distribuicoes = calcularDistribuicoes(base, hoje);
+  const fila = resumirFila(calcularCandidatosAcao(base, hoje), base, hoje);
+  const recomendacoes = gerarRecomendacoes({ painel, funil, vendedores, pipeline, distribuicoes, fila, marketing });
+
+  // Meta já cadastrada no sistema para o mês corrente (soma dos vendedores).
+  const soma = (valores: Array<string | number | null>) => valores.reduce<number>((s, v) => s + (v === null ? 0 : Number(v)), 0);
+  const media = (valores: Array<string | number | null>) => {
+    const validos = valores.filter((v): v is string | number => v !== null && Number(v) > 0).map(Number);
+    return validos.length > 0 ? validos.reduce((a, b) => a + b, 0) / validos.length : null;
+  };
+  const metaFat = soma(metasRows.map(m => m.metaFaturamento));
+  const metaCrm = soma(crmMetasRows.map(m => m.metaValor));
+  const metaSistema = metaFat > 0
+    ? {
+        fonte: "metas_comerciais" as const, mes: mesAtual, ano: anoAtual, faturamento: metaFat,
+        cotacoes: soma(metasRows.map(m => m.metaCotacoes)) || null,
+        vendas: soma(metasRows.map(m => m.metaVendas)) || null,
+        conversaoPct: media(metasRows.map(m => m.metaConversao)),
+        ticketMedio: media(metasRows.map(m => m.metaTicketMedio)),
+        clientesNovos: soma(metasRows.map(m => m.metaClientesNovos)) || null,
+      }
+    : metaCrm > 0
+      ? { fonte: "crm_metas" as const, mes: mesAtual, ano: anoAtual, faturamento: metaCrm, cotacoes: null, vendas: null, conversaoPct: null, ticketMedio: null, clientesNovos: null }
+      : null;
+
+  const sinais = resumirSinaisMercado(sinaisRows as any, hoje);
+
+  return { ...painel, funil, economia, marketing, vendedores, pipeline, distribuicoes, fila, recomendacoes, metaSistema, sinais };
+}
+
+/** Consultor de IA: 40 perguntas por hora por usuário (controle de custo; por instância do servidor). */
+const limitadorConsultorMeta = criarLimitador(40, 60 * 60 * 1000);
+
 export const performanceComercialRouter = router({
 
   // Dados de um mês específico
@@ -2854,58 +2921,56 @@ export const performanceComercialRouter = router({
     .query(async () => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
+      return carregarPainelMeta(db, new Date());
+    }),
+
+  /** Consultor de IA do Painel da Meta: chat restrito ao tema. A IA recebe todos
+   * os números já calculados pelo sistema (nunca soma dados brutos) e o cenário
+   * que o usuário montou no simulador; o histórico da conversa vem do navegador
+   * (limitado em tamanho). Exige login: cada pergunta consome a chave de IA. */
+  perguntarConsultorMeta: protectedProcedure
+    .input(z.object({
+      pergunta: z.string().trim().min(2).max(1500),
+      historico: z.array(z.object({ role: z.enum(["user", "assistant"]), texto: z.string().max(8000) })).max(30).default([]),
+      meta: z.number().min(1).max(50_000_000).default(430_000),
+      meta2: z.number().min(1).max(50_000_000).default(500_000),
+      fixos: z.record(z.string(), z.number()).default({}),
+      modoAuto: z.boolean().default(true),
+      pesoConversao: z.number().min(0).max(1).default(0.5),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const uso = limitadorConsultorMeta.permitir(String(ctx.user.id));
+      if (!uso.ok) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `Limite de perguntas por hora atingido. Tente de novo em ${Math.max(1, Math.ceil(uso.reiniciaEmSegundos / 60))} min.` });
+      }
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
       const hoje = new Date();
-      const mesAtual = hoje.getMonth() + 1;
-      const anoAtual = hoje.getFullYear();
-      const [osRows, orcRows, financeiroRows, marketingRows, metasRows, crmMetasRows, sinaisRows] = await Promise.all([
-        db.select().from(historicoOs),
-        db.select().from(historicoOrcamentos),
-        db.select().from(financeiroMensal),
-        db.select().from(custoMarketing),
-        db.select().from(metasComerciais).where(and(eq(metasComerciais.ano, anoAtual), eq(metasComerciais.mes, mesAtual))),
-        db.select().from(crmMetas).where(and(eq(crmMetas.ano, anoAtual), eq(crmMetas.mes, mesAtual))),
-        db.select({ uf: sinaisMercado.uf, tipoEvento: sinaisMercado.tipoEvento, status: sinaisMercado.status, dataColeta: sinaisMercado.dataColeta })
-          .from(sinaisMercado).where(gte(sinaisMercado.dataColeta, new Date(hoje.getTime() - 90 * 86400000))),
-      ]);
+      const painel = await carregarPainelMeta(db, hoje);
+      if (!painel.dadosSuficientes) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Ainda não há 12 meses fechados de histórico para o consultor analisar." });
+      }
 
-      const base = construirBaseClientes(osRows as any);
-      const painel = calcularPainelMeta(base, hoje, MESES_INATIVIDADE_PARA_NOVO);
-      const funil = calcularFunilMensal(orcRows as any, hoje);
-      const faixasConversao = calcularConversaoPorFaixaTicket(orcRows as any, hoje);
-      const atual = anoAtual * 12 + hoje.getMonth();
+      const contexto = montarContextoConsultor(painel, {
+        meta: input.meta, meta2: input.meta2, fixos: input.fixos, modoAuto: input.modoAuto, pesoConversao: input.pesoConversao,
+      }, hoje);
+      const conversa = prepararConversa(input.historico, input.pergunta);
 
-      const economia = calcularEconomia(financeiroRows as any, atual);
-      const marketing = calcularMarketing(marketingRows as any, painel.historico);
-      const vendedores = calcularVendedores(orcRows as any, base, hoje, painel.media12m.ticketMedio);
-      const pipeline = calcularPipeline(orcRows as any, faixasConversao, hoje);
-      const distribuicoes = calcularDistribuicoes(base, hoje);
-      const fila = resumirFila(calcularCandidatosAcao(base, hoje), base, hoje);
-      const recomendacoes = gerarRecomendacoes({ painel, funil, vendedores, pipeline, distribuicoes, fila, marketing });
-
-      // Meta já cadastrada no sistema para o mês corrente (soma dos vendedores).
-      const soma = (valores: Array<string | number | null>) => valores.reduce<number>((s, v) => s + (v === null ? 0 : Number(v)), 0);
-      const media = (valores: Array<string | number | null>) => {
-        const validos = valores.filter((v): v is string | number => v !== null && Number(v) > 0).map(Number);
-        return validos.length > 0 ? validos.reduce((a, b) => a + b, 0) / validos.length : null;
-      };
-      const metaFat = soma(metasRows.map(m => m.metaFaturamento));
-      const metaCrm = soma(crmMetasRows.map(m => m.metaValor));
-      const metaSistema = metaFat > 0
-        ? {
-            fonte: "metas_comerciais" as const, mes: mesAtual, ano: anoAtual, faturamento: metaFat,
-            cotacoes: soma(metasRows.map(m => m.metaCotacoes)) || null,
-            vendas: soma(metasRows.map(m => m.metaVendas)) || null,
-            conversaoPct: media(metasRows.map(m => m.metaConversao)),
-            ticketMedio: media(metasRows.map(m => m.metaTicketMedio)),
-            clientesNovos: soma(metasRows.map(m => m.metaClientesNovos)) || null,
-          }
-        : metaCrm > 0
-          ? { fonte: "crm_metas" as const, mes: mesAtual, ano: anoAtual, faturamento: metaCrm, cotacoes: null, vendas: null, conversaoPct: null, ticketMedio: null, clientesNovos: null }
-          : null;
-
-      const sinais = resumirSinaisMercado(sinaisRows as any, hoje);
-
-      return { ...painel, funil, economia, marketing, vendedores, pipeline, distribuicoes, fila, recomendacoes, metaSistema, sinais };
+      const inicio = Date.now();
+      let resposta;
+      try {
+        resposta = await conversarComIA(
+          { system: `${PROMPT_CONSULTOR_META_V1}\n\n${contexto}`, historico: conversa.historico, pergunta: conversa.pergunta },
+          (provedor, erro) => console.error(`[consultor-meta] ${provedor} falhou:`, erro),
+        );
+      } catch (erro) {
+        if (erro instanceof ErroIA) {
+          throw new TRPCError({ code: erro.codigo === "SEM_PROVEDOR" ? "PRECONDITION_FAILED" : "BAD_GATEWAY", message: erro.message });
+        }
+        throw erro;
+      }
+      console.log(`[consultor-meta] usuario=${ctx.user.id} provedor=${resposta.provedor} modelo=${resposta.modelo} uso=${JSON.stringify(resposta.uso ?? {})} ms=${Date.now() - inicio}`);
+      return { resposta: resposta.texto, versaoPrompt: VERSAO_PROMPT_CONSULTOR_META, provedor: NOME_PROVEDOR[resposta.provedor], modelo: resposta.modelo };
     }),
 
   getRecompraNovosReativados: publicProcedure

@@ -284,3 +284,78 @@ export function compararCaminhos(e: EntradaCaminhos): ResultadoCaminhos {
     },
   };
 }
+
+// ─── Atalhos sobre os dados do painel (a tela e o consultor de IA usam o mesmo código) ───
+
+/** Parte dos dados do painel que as análises abaixo consomem (o retorno completo de getPainelMeta satisfaz este formato). */
+export interface DadosPainelBasico {
+  media12m: { faturamento: number; cenario: Cenario };
+  funil: { leadsPorMes: number | null; conversaoPct: number | null; mensal: Array<{ leads: number; conversaoPct: number | null }> };
+  historico: Array<{ ticketMedio: number; clientes: { novos: number; reativados: number } }>;
+  coorte: { ltv12m: number | null };
+}
+
+const maximo = (valores: number[]): number | null => (valores.length > 0 ? Math.max(...valores) : null);
+
+/** Ranking "onde o esforço é menor" para uma meta, com as séries históricas do próprio painel. */
+export function rankingParaMeta(d: DadosPainelBasico, meta: number): AlavancaRanking[] {
+  const base = d.media12m.cenario;
+  const conversoes = d.funil.mensal.map(m => m.conversaoPct).filter((v): v is number => v !== null);
+  return rankearAlavancas({
+    faturamentoAtual: totaisCenario(base).faturamento,
+    meta,
+    base,
+    leads: { atual: d.funil.leadsPorMes, serie: d.funil.mensal.map(m => m.leads) },
+    conversao: { atual: d.funil.conversaoPct, serie: conversoes },
+    ticket: { serie: d.historico.map(h => h.ticketMedio) },
+    novos: { serie: d.historico.map(h => h.clientes.novos) },
+    reativados: { serie: d.historico.map(h => h.clientes.reativados) },
+  });
+}
+
+/** Conversão da base × parceiros novos para uma meta. */
+export function caminhosParaMeta(d: DadosPainelBasico, meta: number): ResultadoCaminhos {
+  const base = d.media12m;
+  const conversoes = d.funil.mensal.map(m => m.conversaoPct).filter((v): v is number => v !== null);
+  return compararCaminhos({
+    faturamentoAtual: base.faturamento,
+    meta,
+    conversaoPct: d.funil.conversaoPct,
+    conversaoMaximaPct: maximo(conversoes),
+    novosAtual: base.cenario.novos.clientes,
+    novosMaximoMensal: maximo(d.historico.map(h => h.clientes.novos)) ?? 0,
+    ltv12m: d.coorte.ltv12m,
+    receitaEntradaPorNovo: base.cenario.novos.pedidosPorCliente * base.cenario.novos.ticket,
+  });
+}
+
+export interface Sensibilidade {
+  id: string;
+  rotulo: string;
+  efeito: number;
+  prazo: string;
+  tipo: "faturamento" | "contribuicao";
+}
+
+/** Quanto cada movimento pequeno vale por mês — para decidir onde colocar energia. */
+export function sensibilidadesDoPainel(d: DadosPainelBasico): Sensibilidade[] {
+  const fat = d.media12m.faturamento;
+  const base = d.media12m.cenario;
+  const totais = totaisCenario(base);
+  const lista: Sensibilidade[] = [];
+  const conv = d.funil.conversaoPct;
+  if (conv && conv > 0) lista.push({ id: "conversao", rotulo: "+1 ponto percentual de conversão de orçamentos", efeito: fat / conv, prazo: "1 a 2 meses", tipo: "faturamento" });
+  lista.push({ id: "leads10", rotulo: "+10% de orçamentos recebidos (mesma conversão)", efeito: fat * 0.1, prazo: "1 a 2 meses", tipo: "faturamento" });
+  lista.push({ id: "ticket5", rotulo: "+5% de ticket médio por pedido", efeito: fat * 0.05, prazo: "imediato, pedido a pedido", tipo: "faturamento" });
+  if (d.coorte.ltv12m) {
+    lista.push({ id: "novo1", rotulo: "+1 gráfica nova por mês", efeito: d.coorte.ltv12m, prazo: "efeito pleno em ~12 meses", tipo: "faturamento" });
+  } else {
+    const entrada = base.novos.pedidosPorCliente * base.novos.ticket;
+    if (entrada > 0) lista.push({ id: "novo1", rotulo: "+1 gráfica nova por mês (só a 1ª compra)", efeito: entrada, prazo: "imediato", tipo: "faturamento" });
+  }
+  const reativado = base.reativados.pedidosPorCliente * base.reativados.ticket;
+  if (reativado > 0) lista.push({ id: "reativado1", rotulo: "+1 parceiro reativado por mês (só a compra de volta)", efeito: reativado, prazo: "imediato", tipo: "faturamento" });
+  lista.push({ id: "recompra10", rotulo: "+10% de recompra das gráficas conquistadas", efeito: totais.porSegmento.recompraConquistados.faturamento * 0.1, prazo: "2 a 4 meses", tipo: "faturamento" });
+  lista.push({ id: "margem1", rotulo: "+1 ponto percentual de margem de contribuição", efeito: fat * 0.01, prazo: "imediato", tipo: "contribuicao" });
+  return lista.sort((a, b) => b.efeito - a.efeito);
+}

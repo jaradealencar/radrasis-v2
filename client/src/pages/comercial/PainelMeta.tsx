@@ -1,16 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Target } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { resolverMeta, aplicarFator, totaisCenario, type Fixos, type ResultadoMeta } from "@shared/meta-faturamento";
 import { CampoNumero, brlCurto, fmtNum } from "./painelMeta/comuns";
-import { META_PADRAO_1, META_PADRAO_2, type VistaDestino } from "./painelMeta/tipos";
+import { META_PADRAO_1, META_PADRAO_2, carregarConversa, salvarConversa, type MensagemConsultor, type VistaDestino } from "./painelMeta/tipos";
 import Diagnostico from "./painelMeta/Diagnostico";
 import PlanoDeAcao from "./painelMeta/PlanoDeAcao";
 import Simulador from "./painelMeta/Simulador";
 import Comparativo from "./painelMeta/Comparativo";
 import Projecao from "./painelMeta/Projecao";
+import Consultor from "./painelMeta/Consultor";
 
-type Aba = "diagnostico" | "plano" | "simulador" | "metas" | "projecao";
+type Aba = "diagnostico" | "plano" | "simulador" | "metas" | "projecao" | "consultor";
 
 const ABAS: Array<{ id: Aba; rotulo: string; dica: string }> = [
   { id: "diagnostico", rotulo: "1. Onde estou", dica: "Diagnóstico do faturamento, do lucro e da métrica que mais importa" },
@@ -18,6 +19,7 @@ const ABAS: Array<{ id: Aba; rotulo: string; dica: string }> = [
   { id: "simulador", rotulo: "3. Simulador", dica: "Mude um indicador e veja os outros se ajustarem para bater a meta" },
   { id: "metas", rotulo: "4. Metas comparadas", dica: "Hoje × R$ 430 mil × R$ 500 mil, indicador por indicador" },
   { id: "projecao", rotulo: "5. Próximos 12 meses", dica: "Projeção com faixa de erro e a vida de uma gráfica nova" },
+  { id: "consultor", rotulo: "6. Consultor (IA)", dica: "Converse com um consultor que analisa todos estes números" },
 ];
 
 const TODOS_DESTINOS: VistaDestino[] = ["clientes", "fila", "retencao", "funil", "crescimento"];
@@ -32,6 +34,16 @@ export default function PainelMeta({ onIrPara, destinosDisponiveis = TODOS_DESTI
   const [pesoConversao, setPesoConversao] = useState(0.5);
   const [sazonal, setSazonal] = useState(false);
   const [margemEditada, setMargemEditada] = useState<number | null>(null);
+  const [mensagens, setMensagens] = useState<MensagemConsultor[]>(carregarConversa);
+  const [erroConsultor, setErroConsultor] = useState<string | null>(null);
+  useEffect(() => { salvarConversa(mensagens); }, [mensagens]);
+  const perguntarConsultor = trpc.performanceComercial.perguntarConsultorMeta.useMutation({
+    onSuccess: res => {
+      setErroConsultor(null);
+      setMensagens(m => [...m, { role: "assistant", texto: res.resposta, provedor: res.provedor, modelo: res.modelo }]);
+    },
+    onError: erro => setErroConsultor(erro.message || "Não consegui falar com o consultor agora."),
+  });
 
   const metaValida = Math.max(1, meta);
   const meta2Valida = Math.max(1, meta2);
@@ -63,6 +75,17 @@ export default function PainelMeta({ onIrPara, destinosDisponiveis = TODOS_DESTI
   const mesesAcima = data.historico.filter(h => h.faturamento >= metaValida).length;
   const margemPct = margemEditada ?? data.margem.media12mPct ?? 0;
   const irPara = onIrPara ?? (() => undefined);
+
+  const enviarAoConsultor = (texto: string) => {
+    const pergunta = texto.trim();
+    if (!pergunta || perguntarConsultor.isPending) return;
+    const historico = mensagens.slice(-10).map(({ role, texto: t }) => ({ role, texto: t }));
+    const fixosNumericos: Record<string, number> = {};
+    for (const [id, v] of Object.entries(fixos)) if (typeof v === "number") fixosNumericos[id] = v;
+    setErroConsultor(null);
+    setMensagens(m => [...m, { role: "user", texto: pergunta }]);
+    perguntarConsultor.mutate({ pergunta, historico, meta: metaValida, meta2: meta2Valida, fixos: fixosNumericos, modoAuto, pesoConversao });
+  };
 
   return (
     <div className="space-y-4">
@@ -149,6 +172,15 @@ export default function PainelMeta({ onIrPara, destinosDisponiveis = TODOS_DESTI
         />
       )}
       {aba === "projecao" && <Projecao data={data} meta={metaValida} resultado={resultado} sazonal={sazonal} setSazonal={setSazonal} margemPct={margemPct} />}
+      {aba === "consultor" && (
+        <Consultor
+          mensagens={mensagens}
+          pendente={perguntarConsultor.isPending}
+          erro={erroConsultor}
+          onEnviar={enviarAoConsultor}
+          onLimpar={() => { setMensagens([]); setErroConsultor(null); }}
+        />
+      )}
     </div>
   );
 }
