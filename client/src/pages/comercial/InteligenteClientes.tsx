@@ -24,13 +24,12 @@ import {
   PieChart, Pie, Legend,
 } from "recharts";
 import KpiCard from "@/components/KpiCard";
-import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
 import MarketingFinanceiro from "@/pages/financeiro/MarketingFinanceiro";
 import VistaRetencao from "@/pages/comercial/VistaRetencao";
+import PainelMeta from "@/pages/comercial/PainelMeta";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1251,346 +1250,76 @@ function VistaFunil() {
 
 // ─── Vista: Previsões ────────────────────────────────────────────────────────
 
-function VistaPrevisoes() {
-  const { data, isLoading } = trpc.performanceComercial.getPrevisaoComercial.useQuery();
-  if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-64 animate-pulse" />;
-  if (!data) return null;
+function VistaPrevisoes({ onIrPara, destinosDisponiveis }: { onIrPara: (v: Vista) => void; destinosDisponiveis: Vista[] }) {
+  const { data } = trpc.performanceComercial.getPrevisaoComercial.useQuery();
 
   return (
     <div className="space-y-5">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1">
-        {data.premissas.map((p, i) => <p key={i} className="text-xs text-blue-700">• {p}</p>)}
-      </div>
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100"><h3 className="text-sm font-bold text-slate-700">Carteira confirmada × oportunidades abertas (estimativa)</h3></div>
-        <Table className="text-xs">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Faixa (dias)</TableHead>
-              <TableHead className="text-right">Carteira confirmada</TableHead>
-              <TableHead className="text-right">Oportunidades abertas (estimativa)</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.faixas.map(f => (
-              <TableRow key={f.faixa}>
-                <TableCell className="font-semibold">{f.faixa}</TableCell>
-                <TableCell className="text-right">{fmtBrl(f.carteiraConfirmada)}</TableCell>
-                <TableCell className="text-right text-slate-500">{fmtBrl(f.oportunidadesAbertasEstimativa)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TableCell className="font-semibold">Sem prazo definido</TableCell>
-              <TableCell className="text-right">{fmtBrl(data.carteiraConfirmadaSemPrazo)}</TableCell>
-              <TableCell />
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </div>
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <h3 className="text-sm font-bold text-slate-700">Referência de sazonalidade (não é parcela somável)</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Média do faturamento no mesmo mês em anos anteriores — comparação, não estimativa a somar.</p>
-        </div>
-        <Table className="text-xs">
-          <TableHeader><TableRow><TableHead>Mês</TableHead><TableHead className="text-right">Média histórica</TableHead><TableHead>Anos considerados</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {data.estimativaSazonalidade.map(e => (
-              <TableRow key={e.mesAlvo}>
-                <TableCell>{e.mesAlvo}</TableCell>
-                <TableCell className="text-right">{e.mediaHistorica !== null ? fmtBrl(e.mediaHistorica) : "sem histórico"}</TableCell>
-                <TableCell className="text-slate-400">{e.anosConsiderados.join(", ") || "—"}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <VistaProjecao6Meses />
-      <VistaSimuladorMetas />
-    </div>
-  );
-}
+      <PainelMeta onIrPara={onIrPara} destinosDisponiveis={destinosDisponiveis.filter((v): v is "clientes" | "fila" | "retencao" | "funil" | "crescimento" => v === "clientes" || v === "fila" || v === "retencao" || v === "funil" || v === "crescimento")} />
 
-// ─── Vista: Projeção de faturamento (6 meses) ────────────────────────────────
-
-function VistaProjecao6Meses() {
-  const { data, isLoading } = trpc.performanceComercial.getProjecaoFaturamento6Meses.useQuery();
-  if (isLoading) return <div className="bg-white rounded-xl border border-slate-200 h-64 animate-pulse" />;
-  if (!data) return null;
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-slate-100">
-        <h3 className="text-sm font-bold text-slate-700">Projeção de faturamento — próximos 6 meses</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Sazonalidade do mês + efeito do ritmo atual de aquisição de clientes (novos/reativados) e da recompra esperada deles.</p>
-      </div>
-      <div className="p-4 border-b border-slate-100 bg-slate-50 space-y-1">
-        {data.premissas.map((p, i) => <p key={i} className="text-xs text-slate-500">• {p}</p>)}
-      </div>
-      <Table className="text-xs">
-        <TableHeader>
-          <TableRow>
-            <TableHead>Mês</TableHead>
-            <TableHead className="text-right">Base sazonal</TableHead>
-            <TableHead className="text-right">Efeito do ritmo de aquisição</TableHead>
-            <TableHead className="text-right">Projeção total</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.meses.map(m => (
-            <TableRow key={m.mes}>
-              <TableCell className="font-semibold">{m.mes}</TableCell>
-              <TableCell className="text-right">{m.baseSazonal !== null ? fmtBrl(m.baseSazonal) : "sem histórico"}</TableCell>
-              <TableCell className={`text-right ${m.incrementoRitmoAquisicao >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                {m.incrementoRitmoAquisicao >= 0 ? "+" : ""}{fmtBrl(m.incrementoRitmoAquisicao)}
-              </TableCell>
-              <TableCell className="text-right font-bold">{m.projecaoTotal !== null ? fmtBrl(m.projecaoTotal) : "—"}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-// ─── Vista: Simulador de Metas ("e se") ──────────────────────────────────────
-// Pedido do usuário (26/09/2026): editar KPIs (ticket, novos/mês, reativados/mês,
-// taxa de recompra, pedidos recorrentes) e ver na hora o faturamento mensal "em
-// regime" resultante, comparado a uma meta (padrão R$430 mil). Recalcula 100% no
-// cliente (sem round-trip) — a fórmula replica calcularFaturamentoEmRegime do
-// backend (server/services/inteligenciaClientes.ts); qualquer mudança na fórmula
-// de lá precisa ser espelhada aqui.
-
-const META_PADRAO = 430_000;
-
-function calcularFaturamentoEmRegimeClient(k: {
-  pedidosRecorrentesPorMes: number;
-  ticketMedioRecorrente: number;
-  novosPorMes: number;
-  reativadosPorMes: number;
-  ticketMedioEntrada: number;
-  taxaRecompraPct: number;
-  ticketMedioRecompra: number;
-}): number {
-  const recorrente = k.pedidosRecorrentesPorMes * k.ticketMedioRecorrente;
-  const entrada = (k.novosPorMes + k.reativadosPorMes) * k.ticketMedioEntrada;
-  const recompra = (k.novosPorMes + k.reativadosPorMes) * (k.taxaRecompraPct / 100) * k.ticketMedioRecompra;
-  return recorrente + entrada + recompra;
-}
-
-interface CenarioKpis {
-  pedidosRecorrentesPorMes: number;
-  ticketMedioRecorrente: number;
-  novosPorMes: number;
-  reativadosPorMes: number;
-  ticketMedioEntrada: number;
-  taxaRecompraPct: number;
-  ticketMedioRecompra: number;
-}
-
-function LinhaSimulador({ label, valor, onChange, min, max, step, formatar, sufixo }: {
-  label: string;
-  valor: number;
-  onChange: (v: number) => void;
-  min: number;
-  max: number;
-  step: number;
-  formatar: (v: number) => string;
-  sufixo?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-slate-600">{label}</span>
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            value={Number(valor.toFixed(2))}
-            step={step}
-            onChange={e => onChange(Number(e.target.value) || 0)}
-            className="h-7 w-28 text-right text-xs"
-          />
-          {sufixo && <span className="text-xs text-slate-400">{sufixo}</span>}
-        </div>
-      </div>
-      <Slider
-        value={[Math.min(Math.max(valor, min), max)]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={([v]) => onChange(v)}
-      />
-      <p className="text-[11px] text-slate-400">{formatar(valor)}</p>
-    </div>
-  );
-}
-
-function VistaSimuladorMetas() {
-  const { data } = trpc.performanceComercial.getProjecaoFaturamento6Meses.useQuery();
-  const [meta, setMeta] = useState(META_PADRAO);
-  const [kpis, setKpis] = useState<CenarioKpis | null>(null);
-  const baselineCarregado = useRef(false);
-
-  useEffect(() => {
-    if (data && !baselineCarregado.current) {
-      baselineCarregado.current = true;
-      setKpis({
-        pedidosRecorrentesPorMes: data.baseline.pedidosRecorrentesPorMes,
-        ticketMedioRecorrente: data.baseline.ticketMedioRecorrente ?? 0,
-        novosPorMes: data.baseline.novosPorMes,
-        reativadosPorMes: data.baseline.reativadosPorMes,
-        ticketMedioEntrada: data.baseline.ticketMedioEntrada ?? 0,
-        taxaRecompraPct: data.baseline.taxaRecompraPct ?? 0,
-        ticketMedioRecompra: data.baseline.ticketMedioRecompra ?? 0,
-      });
-    }
-  }, [data]);
-
-  const baseline = data?.baseline ?? null;
-
-  const restaurarCenarioBase = () => {
-    if (!baseline) return;
-    setKpis({
-      pedidosRecorrentesPorMes: baseline.pedidosRecorrentesPorMes,
-      ticketMedioRecorrente: baseline.ticketMedioRecorrente ?? 0,
-      novosPorMes: baseline.novosPorMes,
-      reativadosPorMes: baseline.reativadosPorMes,
-      ticketMedioEntrada: baseline.ticketMedioEntrada ?? 0,
-      taxaRecompraPct: baseline.taxaRecompraPct ?? 0,
-      ticketMedioRecompra: baseline.ticketMedioRecompra ?? 0,
-    });
-  };
-
-  if (!data || !kpis || !baseline) {
-    return <div className="bg-white rounded-xl border border-slate-200 h-64 animate-pulse" />;
-  }
-
-  const faturamentoBase = calcularFaturamentoEmRegimeClient({
-    pedidosRecorrentesPorMes: baseline.pedidosRecorrentesPorMes,
-    ticketMedioRecorrente: baseline.ticketMedioRecorrente ?? 0,
-    novosPorMes: baseline.novosPorMes,
-    reativadosPorMes: baseline.reativadosPorMes,
-    ticketMedioEntrada: baseline.ticketMedioEntrada ?? 0,
-    taxaRecompraPct: baseline.taxaRecompraPct ?? 0,
-    ticketMedioRecompra: baseline.ticketMedioRecompra ?? 0,
-  });
-  const faturamentoSimulado = calcularFaturamentoEmRegimeClient(kpis);
-  const gap = meta - faturamentoSimulado;
-  const orcamentosNecessarios = baseline.taxaConversaoFunilPct && baseline.taxaConversaoFunilPct > 0
-    ? (kpis.novosPorMes + kpis.reativadosPorMes) / (baseline.taxaConversaoFunilPct / 100)
-    : null;
-
-  const set = <K extends keyof CenarioKpis>(campo: K) => (v: number) => setKpis(k => k ? { ...k, [campo]: v } : k);
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="text-sm font-bold text-slate-700">Simulador de metas — "e se"</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Ajuste os KPIs abaixo e veja o faturamento mensal em regime resultante, comparado à meta.</p>
-        </div>
-        <button
-          onClick={restaurarCenarioBase}
-          className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-md px-2.5 py-1"
-        >
-          Restaurar cenário atual (medido)
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border-b border-slate-100 bg-slate-50">
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">Cenário atual (medido)</p>
-          <p className="text-lg font-bold text-slate-700">{fmtBrl(faturamentoBase)}<span className="text-xs font-normal text-slate-400">/mês</span></p>
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">Cenário simulado</p>
-          <p className="text-lg font-bold text-blue-700">{fmtBrl(faturamentoSimulado)}<span className="text-xs font-normal text-slate-400">/mês</span></p>
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">Meta mensal</p>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              value={meta}
-              step={5000}
-              onChange={e => setMeta(Number(e.target.value) || 0)}
-              className="h-8 w-32 text-sm font-bold"
-            />
-            <span className={`text-xs font-semibold ${gap <= 0 ? "text-emerald-600" : "text-red-600"}`}>
-              {gap <= 0 ? `+${fmtBrl(-gap)} acima da meta` : `faltam ${fmtBrl(gap)}`}
-            </span>
+      <details className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <summary className="cursor-pointer p-4 text-sm font-bold text-slate-700">
+          Detalhes técnicos: pedidos já confirmados (30/60/90 dias) e sazonalidade
+        </summary>
+        {data ? (
+          <div className="p-4 pt-0 space-y-5">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1">
+              {data.premissas.map((p, i) => <p key={i} className="text-xs text-blue-700">• {p}</p>)}
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-700">Carteira confirmada × oportunidades abertas (estimativa)</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Só as faixas até 30 dias costumam ter valores: os prazos de entrega e a validade dos orçamentos raramente passam disso.</p>
+              </div>
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Faixa (dias)</TableHead>
+                    <TableHead className="text-right">Carteira confirmada</TableHead>
+                    <TableHead className="text-right">Oportunidades abertas (estimativa)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.faixas.map(f => (
+                    <TableRow key={f.faixa}>
+                      <TableCell className="font-semibold">{f.faixa}</TableCell>
+                      <TableCell className="text-right">{fmtBrl(f.carteiraConfirmada)}</TableCell>
+                      <TableCell className="text-right text-slate-500">{fmtBrl(f.oportunidadesAbertasEstimativa)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="font-semibold">Sem prazo definido</TableCell>
+                    <TableCell className="text-right">{fmtBrl(data.carteiraConfirmadaSemPrazo)}</TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-700">Referência de sazonalidade (não é parcela somável)</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Média do faturamento no mesmo mês em anos anteriores — comparação, não estimativa a somar.</p>
+              </div>
+              <Table className="text-xs">
+                <TableHeader><TableRow><TableHead>Mês</TableHead><TableHead className="text-right">Média histórica</TableHead><TableHead>Anos considerados</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {data.estimativaSazonalidade.map(e => (
+                    <TableRow key={e.mesAlvo}>
+                      <TableCell>{e.mesAlvo}</TableCell>
+                      <TableCell className="text-right">{e.mediaHistorica !== null ? fmtBrl(e.mediaHistorica) : "sem histórico"}</TableCell>
+                      <TableCell className="text-slate-400">{e.anosConsiderados.join(", ") || "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 p-4">
-        <LinhaSimulador
-          label="Clientes novos / mês"
-          valor={kpis.novosPorMes}
-          onChange={set("novosPorMes")}
-          min={0} max={Math.max(50, baseline.novosPorMes * 3)} step={1}
-          formatar={v => `atual medido: ${fmtNum(baseline.novosPorMes, 1)}/mês`}
-        />
-        <LinhaSimulador
-          label="Clientes reativados / mês"
-          valor={kpis.reativadosPorMes}
-          onChange={set("reativadosPorMes")}
-          min={0} max={Math.max(50, baseline.reativadosPorMes * 3)} step={1}
-          formatar={v => `atual medido: ${fmtNum(baseline.reativadosPorMes, 1)}/mês`}
-        />
-        <LinhaSimulador
-          label="Ticket médio de entrada (novo/reativado)"
-          valor={kpis.ticketMedioEntrada}
-          onChange={set("ticketMedioEntrada")}
-          min={0} max={Math.max(3000, (baseline.ticketMedioEntrada ?? 0) * 3)} step={50}
-          formatar={v => `atual medido: ${baseline.ticketMedioEntrada !== null ? fmtBrl(baseline.ticketMedioEntrada) : "sem dados"}`}
-        />
-        <LinhaSimulador
-          label="Taxa de recompra dos novos/reativados"
-          valor={kpis.taxaRecompraPct}
-          onChange={set("taxaRecompraPct")}
-          min={0} max={100} step={1}
-          formatar={v => `atual medido: ${baseline.taxaRecompraPct !== null ? fmtPct(baseline.taxaRecompraPct) : "sem dados"}`}
-          sufixo="%"
-        />
-        <LinhaSimulador
-          label="Ticket médio de recompra"
-          valor={kpis.ticketMedioRecompra}
-          onChange={set("ticketMedioRecompra")}
-          min={0} max={Math.max(3000, (baseline.ticketMedioRecompra ?? 0) * 3)} step={50}
-          formatar={v => `atual medido: ${baseline.ticketMedioRecompra !== null ? fmtBrl(baseline.ticketMedioRecompra) : "sem dados"}`}
-        />
-        <LinhaSimulador
-          label="Pedidos recorrentes / mês (carteira já ativa)"
-          valor={kpis.pedidosRecorrentesPorMes}
-          onChange={set("pedidosRecorrentesPorMes")}
-          min={0} max={Math.max(200, baseline.pedidosRecorrentesPorMes * 3)} step={1}
-          formatar={v => `atual medido: ${fmtNum(baseline.pedidosRecorrentesPorMes, 1)}/mês`}
-        />
-        <LinhaSimulador
-          label="Ticket médio da carteira recorrente"
-          valor={kpis.ticketMedioRecorrente}
-          onChange={set("ticketMedioRecorrente")}
-          min={0} max={Math.max(3000, (baseline.ticketMedioRecorrente ?? 0) * 3)} step={50}
-          formatar={v => `atual medido: ${baseline.ticketMedioRecorrente !== null ? fmtBrl(baseline.ticketMedioRecorrente) : "sem dados"}`}
-        />
-      </div>
-
-      <div className="p-4 border-t border-slate-100 bg-slate-50 space-y-1">
-        <p className="text-xs text-slate-500">
-          • Faturamento em regime = (pedidos recorrentes × ticket recorrente) + (novos+reativados × ticket de entrada) + (novos+reativados × taxa de recompra × ticket de recompra).
-        </p>
-        <p className="text-xs text-slate-500">
-          • Não faz cascata mês a mês: assume que os KPIs ajustados se mantêm estáveis todo mês — o efeito pleno da recompra, na prática, só aparece depois de alguns meses.
-        </p>
-        {orcamentosNecessarios !== null && (
-          <p className="text-xs text-slate-500">
-            • Para gerar {fmtNum(kpis.novosPorMes + kpis.reativadosPorMes, 1)} novos+reativados/mês com a taxa de conversão atual do funil ({fmtPct(baseline.taxaConversaoFunilPct!)}), são necessários ~{fmtNum(orcamentosNecessarios, 0)} orçamentos/mês.
-          </p>
+        ) : (
+          <div className="p-4 pt-0 text-xs text-slate-400">Carregando…</div>
         )}
-      </div>
+      </details>
     </div>
   );
 }
@@ -2036,7 +1765,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       {vista === "fila" && <VistaFilaAcoes />}
       {vista === "retencao" && <VistaRetencao />}
       {vista === "funil" && <VistaFunil />}
-      {vista === "previsoes" && <VistaPrevisoes />}
+      {vista === "previsoes" && <VistaPrevisoes onIrPara={setVista} destinosDisponiveis={isAdmin ? ["clientes", "fila", "retencao", "funil", "crescimento"] : ["clientes", "fila", "retencao", "funil"]} />}
       {vista === "assistente" && <VistaAssistente dataInicial={dataInicial} dataFinal={dataFinal} />}
       {vista === "perfil-cnpj" && <VistaPerfilCnpj />}
       {vista === "equipe" && isAdmin && <VistaEquipe />}

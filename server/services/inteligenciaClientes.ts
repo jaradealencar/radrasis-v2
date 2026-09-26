@@ -1121,6 +1121,84 @@ export function calcularConversaoPorFaixaTicket(
   });
 }
 
+// ─── Funil mensal (leads e conversão) ──────────────────────────────────────────
+// "Lead" aqui = orçamento emitido no mês (única entrada de funil que o ERP
+// exporta). Conversão = ganhos / (ganhos + perdidos), com a mesma regra de
+// calcularConversaoPorFaixaTicket: "Em aberto" com validade vencida conta como
+// perdido. Só meses FECHADOS entram (o mês corrente ainda tem decisões em curso).
+
+export interface FunilMes {
+  mes: string; // "08/2026"
+  chave: number; // ano*12 + (mes-1)
+  leads: number;
+  ganhos: number;
+  perdidos: number;
+  /** null quando o mês não tem nenhuma decisão (ganho ou perdido). */
+  conversaoPct: number | null;
+}
+
+export interface FunilMensal {
+  mensal: FunilMes[]; // cronológico, só meses fechados (até `maxMeses`)
+  /** Conversão agregada dos meses considerados. */
+  conversaoPct: number | null;
+  /** Média mensal de orçamentos emitidos nos meses considerados. */
+  leadsPorMes: number | null;
+}
+
+export function calcularFunilMensal(
+  rows: Array<{ ano: number; mes: number; status: string | null; dataCadastro: string | null; validade: string | null }>,
+  hoje: Date,
+  maxMeses = 12,
+): FunilMensal {
+  const atual = hoje.getFullYear() * 12 + hoje.getMonth();
+  const porMes = new Map<number, { leads: number; ganhos: number; perdidos: number }>();
+
+  for (const r of rows) {
+    const chave = r.ano * 12 + (r.mes - 1);
+    if (chave >= atual) continue;
+    const acc = porMes.get(chave) ?? { leads: 0, ganhos: 0, perdidos: 0 };
+    acc.leads++;
+    const statusKey = (r.status ?? "").trim().toLowerCase();
+    if (STATUS_GANHO.has(statusKey)) {
+      acc.ganhos++;
+    } else if (STATUS_PERDIDO.has(statusKey)) {
+      acc.perdidos++;
+    } else if (statusKey === STATUS_ABERTO) {
+      const dataCadastro = parseDataFlexivel(r.dataCadastro);
+      const validadeDias = toNum(r.validade);
+      if (dataCadastro && validadeDias > 0) {
+        const dataVencimento = new Date(dataCadastro);
+        dataVencimento.setDate(dataVencimento.getDate() + validadeDias);
+        if (dataVencimento < hoje) acc.perdidos++;
+      }
+    }
+    porMes.set(chave, acc);
+  }
+
+  const mensal: FunilMes[] = [...porMes.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .slice(-maxMeses)
+    .map(([chave, v]) => {
+      const decididos = v.ganhos + v.perdidos;
+      return {
+        mes: `${String((chave % 12) + 1).padStart(2, "0")}/${Math.floor(chave / 12)}`,
+        chave,
+        leads: v.leads,
+        ganhos: v.ganhos,
+        perdidos: v.perdidos,
+        conversaoPct: decididos > 0 ? (v.ganhos / decididos) * 100 : null,
+      };
+    });
+
+  const ganhos = mensal.reduce((s, m) => s + m.ganhos, 0);
+  const decididos = mensal.reduce((s, m) => s + m.ganhos + m.perdidos, 0);
+  return {
+    mensal,
+    conversaoPct: decididos > 0 ? (ganhos / decididos) * 100 : null,
+    leadsPorMes: mensal.length > 0 ? mensal.reduce((s, m) => s + m.leads, 0) / mensal.length : null,
+  };
+}
+
 // ─── Previsões 30/60/90 dias ──────────────────────────────────────────────────
 
 export interface FaixaPrevisao {
@@ -1227,222 +1305,6 @@ export function calcularPrevisaoComercial(
     carteiraConfirmadaSemPrazo: carteiraSemPrazo,
     faixas,
     estimativaSazonalidade,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ─── Projeção de faturamento (6 meses) e simulador de metas ──────────────────
-// ═══════════════════════════════════════════════════════════════════════════
-// Pedido do usuário (26/09/2026): a aba Previsões só olhava 30/60/90 dias de
-// carteira já confirmada. Faltava (1) estender a referência de sazonalidade
-// de 3 para 6 meses, (2) projetar faturamento considerando o RITMO ATUAL de
-// aquisição de clientes novos/reativados (não só a média histórica) e a taxa
-// de recompra desses clientes, e (3) um simulador interativo — o usuário edita
-// KPIs (ticket médio, novos/mês, reativados/mês, taxa de recompra, taxa de
-// conversão) e vê o faturamento mensal resultante, para calibrar contra uma
-// meta (ex.: R$430 mil/mês).
-//
-// Reaproveita calcularRecompraNovosReativados (mesma regra de negócio
-// "cliente novo/reativado" usada no resto do módulo) para medir o ritmo e a
-// taxa de recompra — nunca reimplementa a classificação.
-
-export interface BaselineComercialKPIs {
-  /** Média mensal (últimos 3 meses fechados) de pedidos de clientes que NÃO
-   * entraram como novos/reativados nesse mês — a "base estável" da carteira. */
-  pedidosRecorrentesPorMes: number;
-  ticketMedioRecorrente: number | null;
-  /** Média mensal (últimos 3 meses fechados) de clientes novos. */
-  novosPorMes: number;
-  /** Média mensal (últimos 3 meses fechados) de clientes reativados. */
-  reativadosPorMes: number;
-  /** Ticket médio de entrada (novos + reativados combinados, últimos 3 meses
-   * fechados) — valor médio faturado no mês em que o cliente foi conquistado. */
-  ticketMedioEntrada: number | null;
-  /** % dos novos/reativados (últimos 12 meses fechados) que fez pelo menos
-   * mais uma compra depois — mesma métrica da aba Clientes (Recompra). */
-  taxaRecompraPct: number | null;
-  ticketMedioRecompra: number | null;
-  /** Taxa de conversão do funil de orçamentos (Ganho / (Ganho+Perdido)) —
-   * informativa: usada para estimar quantos orçamentos são necessários para
-   * gerar os novos/reativados desejados num cenário. */
-  taxaConversaoFunilPct: number | null;
-}
-
-function inicioFimMes(chave: number): { inicio: Date; fim: Date } {
-  const ano = Math.floor(chave / 12);
-  const mes = ((chave % 12) + 12) % 12;
-  return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes + 1, 0, 23, 59, 59) };
-}
-
-/** Mede o ritmo comercial ATUAL (últimos 3 meses fechados, excluindo o mês
- * corrente, ainda incompleto) e a taxa de recompra observada (últimos 12
- * meses fechados) — os valores de partida ("cenário base") do simulador de
- * metas e da projeção de 6 meses. */
-export function calcularBaselineComercial(
-  base: Map<string, ClienteBase>,
-  funil: FunilOrcamentos,
-  hoje: Date,
-): BaselineComercialKPIs {
-  const mesAtualChave = hoje.getFullYear() * 12 + hoje.getMonth();
-
-  // Totais por mês (todos os pedidos válidos, de todos os clientes) — usado só
-  // para isolar a fatia "recorrente" (total do mês menos a fatia de entrada).
-  const totaisPorMes = new Map<number, { pedidos: number; faturamento: number }>();
-  for (const cliente of base.values()) {
-    for (const c of cliente.compras) {
-      const chave = c.data.getFullYear() * 12 + c.data.getMonth();
-      const atual = totaisPorMes.get(chave) ?? { pedidos: 0, faturamento: 0 };
-      atual.pedidos++; atual.faturamento += c.valor;
-      totaisPorMes.set(chave, atual);
-    }
-  }
-
-  let somaPedidosRecorrentes = 0, somaFaturamentoRecorrente = 0;
-  let somaNovos = 0, somaReativados = 0, somaFaturamentoEntrada = 0;
-  for (let i = 1; i <= 3; i++) {
-    const chave = mesAtualChave - i;
-    const { inicio, fim } = inicioFimMes(chave);
-    const rec = calcularRecompraNovosReativados(base, inicio, fim, hoje);
-    const totalMes = totaisPorMes.get(chave) ?? { pedidos: 0, faturamento: 0 };
-    const entradaPedidos = rec.novos.detalhes.reduce((s, d) => s + d.qtdPedidosEntrada, 0)
-      + rec.reativados.detalhes.reduce((s, d) => s + d.qtdPedidosEntrada, 0);
-    const entradaFaturamento = rec.novos.faturamentoNoPeriodo + rec.reativados.faturamentoNoPeriodo;
-    somaPedidosRecorrentes += Math.max(0, totalMes.pedidos - entradaPedidos);
-    somaFaturamentoRecorrente += Math.max(0, totalMes.faturamento - entradaFaturamento);
-    somaNovos += rec.novos.total;
-    somaReativados += rec.reativados.total;
-    somaFaturamentoEntrada += entradaFaturamento;
-  }
-  const pedidosRecorrentesPorMes = somaPedidosRecorrentes / 3;
-  const ticketMedioRecorrente = somaPedidosRecorrentes > 0 ? somaFaturamentoRecorrente / somaPedidosRecorrentes : null;
-  const novosPorMes = somaNovos / 3;
-  const reativadosPorMes = somaReativados / 3;
-  const ticketMedioEntrada = (somaNovos + somaReativados) > 0 ? somaFaturamentoEntrada / (somaNovos + somaReativados) : null;
-
-  // Taxa de recompra e ticket médio de recompra: janela de 12 meses fechados
-  // (recompra leva tempo para se observar — ver nota em GrupoRecompra.taxaPct).
-  const inicio12 = inicioFimMes(mesAtualChave - 12).inicio;
-  const fim12 = inicioFimMes(mesAtualChave - 1).fim;
-  const rec12 = calcularRecompraNovosReativados(base, inicio12, fim12, hoje);
-  const totalGrupo12 = rec12.novos.total + rec12.reativados.total;
-  const comRecompra12 = rec12.novos.comRecompra + rec12.reativados.comRecompra;
-  const taxaRecompraPct = totalGrupo12 > 0 ? (comRecompra12 / totalGrupo12) * 100 : null;
-  const valorRecompras12 = [...rec12.novos.detalhes, ...rec12.reativados.detalhes]
-    .filter(d => d.recompra).reduce((s, d) => s + d.valorRecompras, 0);
-  const ticketMedioRecompra = comRecompra12 > 0 ? valorRecompras12 / comRecompra12 : null;
-
-  return {
-    pedidosRecorrentesPorMes,
-    ticketMedioRecorrente,
-    novosPorMes,
-    reativadosPorMes,
-    ticketMedioEntrada,
-    taxaRecompraPct,
-    ticketMedioRecompra,
-    taxaConversaoFunilPct: funil.taxaConversao.taxaPct,
-  };
-}
-
-/** Faturamento mensal "em regime" implícito por um conjunto de KPIs — a mesma
- * fórmula usada tanto para o cenário-base (medido) quanto para os cenários
- * hipotéticos do simulador (KPIs editados pelo usuário no front-end: replique
- * esta fórmula lá para recalcular sem round-trip a cada ajuste de slider).
- * Não faz cascata mês a mês — assume ritmo estável (o efeito pleno da
- * recompra na prática só aparece depois de alguns meses). */
-export function calcularFaturamentoEmRegime(k: BaselineComercialKPIs): number {
-  const recorrente = k.pedidosRecorrentesPorMes * (k.ticketMedioRecorrente ?? 0);
-  const entrada = (k.novosPorMes + k.reativadosPorMes) * (k.ticketMedioEntrada ?? 0);
-  const recompra = (k.novosPorMes + k.reativadosPorMes) * ((k.taxaRecompraPct ?? 0) / 100) * (k.ticketMedioRecompra ?? 0);
-  return recorrente + entrada + recompra;
-}
-
-export interface ProjecaoFaturamentoMes {
-  mes: string; // "10/2026"
-  baseSazonal: number | null;
-  anosConsiderados: number[];
-  incrementoRitmoAquisicao: number;
-  projecaoTotal: number | null; // null quando não há histórico sazonal do mês
-}
-
-export interface ProjecaoFaturamento {
-  dataReferencia: string;
-  premissas: string[];
-  baseline: BaselineComercialKPIs;
-  /** Média mensal de novos+reativados nos últimos 12 meses fechados —
-   * referência para medir se o ritmo atual está acelerando ou desacelerando. */
-  ritmoHistoricoMensal: number;
-  meses: ProjecaoFaturamentoMes[];
-}
-
-/** Projeção de faturamento para os próximos 6 meses (mês corrente incluso,
- * como na tabela de sazonalidade): sazonalidade histórica do mês + o
- * incremento (positivo ou negativo) implícito na diferença entre o ritmo
- * ATUAL de aquisição de novos/reativados e a média histórica de 12 meses —
- * "se eu manter este ritmo", como pedido. */
-export function calcularProjecaoFaturamento6Meses(
-  base: Map<string, ClienteBase>,
-  funil: FunilOrcamentos,
-  hoje: Date,
-): ProjecaoFaturamento {
-  const baseline = calcularBaselineComercial(base, funil, hoje);
-  const mesAtualChave = hoje.getFullYear() * 12 + hoje.getMonth();
-
-  const rec12 = calcularRecompraNovosReativados(
-    base,
-    inicioFimMes(mesAtualChave - 12).inicio,
-    inicioFimMes(mesAtualChave - 1).fim,
-    hoje,
-  );
-  const ritmoHistoricoMensal = (rec12.novos.total + rec12.reativados.total) / 12;
-
-  const ritmoAtualMensal = baseline.novosPorMes + baseline.reativadosPorMes;
-  const deltaRitmo = ritmoAtualMensal - ritmoHistoricoMensal;
-  const incrementoPorMes = deltaRitmo * (baseline.ticketMedioEntrada ?? 0)
-    + deltaRitmo * ((baseline.taxaRecompraPct ?? 0) / 100) * (baseline.ticketMedioRecompra ?? 0);
-
-  // Sazonalidade base: média do faturamento total do mesmo mês-calendário em
-  // até 3 anos anteriores — mesmo cálculo/tabela de "Referência de
-  // sazonalidade" já existente, aqui estendido de 3 para 6 meses à frente.
-  const porMesAno = new Map<string, number>();
-  for (const cliente of base.values()) {
-    for (const c of cliente.compras) {
-      const chave = `${c.data.getFullYear()}-${c.data.getMonth() + 1}`;
-      porMesAno.set(chave, (porMesAno.get(chave) ?? 0) + c.valor);
-    }
-  }
-
-  const meses: ProjecaoFaturamentoMes[] = [];
-  for (let offset = 0; offset < 6; offset++) {
-    const dataAlvo = new Date(hoje.getFullYear(), hoje.getMonth() + offset, 1);
-    const mesAlvo = dataAlvo.getMonth() + 1;
-    const anosConsiderados: number[] = [];
-    let soma = 0;
-    for (let anoOffset = 1; anoOffset <= 3; anoOffset++) {
-      const ano = dataAlvo.getFullYear() - anoOffset;
-      const valor = porMesAno.get(`${ano}-${mesAlvo}`);
-      if (valor !== undefined) { anosConsiderados.push(ano); soma += valor; }
-    }
-    const baseSazonal = anosConsiderados.length > 0 ? soma / anosConsiderados.length : null;
-    meses.push({
-      mes: `${String(mesAlvo).padStart(2, "0")}/${dataAlvo.getFullYear()}`,
-      baseSazonal,
-      anosConsiderados,
-      incrementoRitmoAquisicao: incrementoPorMes,
-      projecaoTotal: baseSazonal !== null ? baseSazonal + incrementoPorMes : null,
-    });
-  }
-
-  return {
-    dataReferencia: hoje.toISOString(),
-    premissas: [
-      "Base sazonal usa a média do faturamento total do mesmo mês em até 3 anos anteriores (mesma referência da tabela de sazonalidade).",
-      `Ritmo atual de aquisição (últimos 3 meses fechados): ${ritmoAtualMensal.toFixed(1)} clientes novos+reativados/mês, vs. média histórica de ${ritmoHistoricoMensal.toFixed(1)}/mês (últimos 12 meses).`,
-      `A diferença entre o ritmo atual e o histórico é projetada para os 6 meses seguintes (receita de entrada + recompra esperada, taxa de recompra medida: ${baseline.taxaRecompraPct !== null ? baseline.taxaRecompraPct.toFixed(1) + "%" : "sem dados"}).`,
-      "É uma projeção de tendência recente, não uma garantia — assume que o ritmo dos últimos 3 meses se mantém estável nos próximos 6.",
-    ],
-    baseline,
-    ritmoHistoricoMensal,
-    meses,
   };
 }
 

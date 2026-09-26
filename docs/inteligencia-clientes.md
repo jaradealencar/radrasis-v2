@@ -151,6 +151,71 @@ Três camadas, deliberadamente não somadas:
 3. **Referência de sazonalidade**: média do valor faturado no mesmo mês nos
    até 3 anos anteriores — comparação, não parcela a somar.
 
+As faixas 31-60 e 61-90 ficam quase sempre zeradas **por construção, não por
+bug**: a validade dos orçamentos é de 7 a 30 dias (então a data de decisão
+nunca passa de ~30 dias), e as OS aprovadas/em produção têm `dataEntrega`
+sempre a poucos dias (fabricação de letreiros é rápida).
+
+## Painel da Meta (aba Previsões) — consultivo
+
+Reescrito em 26/09/2026 a pedido do usuário: a versão anterior (projeção de 6
+meses com "ajuste de ritmo" + simulador de 7 alavancas) foi **descartada**
+depois de um backtest e de uma auditoria da fórmula. Motivos:
+
+- **Backtest** (prever cada mês só com dados anteriores, 20 meses): sazonalidade
+  sozinha errou 22%, sazonalidade × tendência 24%, sazonalidade + ajuste de ritmo
+  de aquisição 26%, **média dos 12 meses anteriores 17%** — o melhor. O
+  faturamento oscila de R$ 200 mil a R$ 450 mil por mês; métodos "sofisticados"
+  só adicionavam ruído. Hoje a referência é a média dos 12 meses fechados e a
+  faixa de erro é medida (bootstrap dos erros do backtest), não presumida.
+- A fórmula antiga somava a **recompra** por cima de "pedidos recorrentes" que
+  já a continham (dupla contagem: cenário "atual" R$ 459 mil contra R$ 349 mil
+  reais).
+
+**Fórmula (`shared/meta-faturamento.ts`, usada por servidor e tela):**
+faturamento = soma de 4 grupos de gráficas (novas, reativadas, recompra das
+conquistadas dos últimos 12 meses, carteira) e cada grupo = gráficas/mês ×
+pedidos por gráfica × ticket por pedido. Cada pedido cai em exatamente um
+grupo (classificação **por mês**, mesma regra de `granularidade mensal`), então
+a soma dos grupos bate com o faturamento real. `resolverMeta` multiplica todos
+os indicadores **livres** pelo mesmo fator (bisseção) até fechar a meta,
+respeitando os que o usuário **travou** (cadeado).
+
+**Servidor:**
+
+- `server/services/painelMeta.ts`: indicadores por grupo (12 meses e 3 meses),
+  ano anterior, margem (o mês fechado mais recente fica de fora: custos das OS
+  recentes ainda em lançamento derrubam a margem para ~29% quando o normal é
+  ~55%), retenção anual, coorte/LTV de 12 meses de uma gráfica nova, bandas
+  P10–P90, correlações (R²) de cada indicador com o faturamento, sazonalidade.
+- `server/services/consultoriaMeta.ts`: economia (regressão lucro × faturamento
+  do Financeiro → ponto de equilíbrio), CAC (marketing ÷ novos), conversão por
+  vendedor (benchmark = melhor com ≥100 decisões; ganho = metade da diferença),
+  pipeline de orçamentos válidos, distribuições (faixas de ticket, estados,
+  concentração), resumo da fila de recompra, sinais do Radar de Mercado e as
+  **recomendações** — cada uma com o número que a sustenta e a premissa usada;
+  ordenadas por ganho ÷ esforço (ganhos "de uma vez" diluídos em 6 meses).
+- `calcularFunilMensal` (em `inteligenciaClientes.ts`): "lead" = orçamento
+  emitido; conversão = ganhos ÷ (ganhos + perdidos), com "Em aberto" vencido
+  contando como perdido (senão a conversão vira ~99%).
+- Endpoint: `performanceComercial.getPainelMeta`. Meta cadastrada
+  (`metas_comerciais`, senão `crm_metas`) aparece como atalho "usar a meta do
+  sistema".
+
+**Tela (`client/src/pages/comercial/PainelMeta.tsx` + `painelMeta/`)**, 5 abas:
+Onde estou, O que fazer, Simulador, Metas comparadas (hoje × R$ 430 mil ×
+R$ 500 mil, com "onde o esforço é menor" medido pelo próprio histórico e a
+comparação conversão × gráficas novas), Próximos 12 meses (faixas
+pessimista/otimista, coorte e LTV). O ajuste de leads × conversão usa uma
+divisão do aumento de vendas (só orçamentos / metade e metade / só conversão).
+
+**Limitações declaradas:** os indicadores são tratados como alavancas
+independentes (na vida real mais gráficas novas hoje geram mais recompra
+depois); a faixa dos 12 meses sorteia erros como independentes (choques
+reais se repetem em sequência); a regressão de lucro usa poucos meses (R²
+~57% com 8 meses); o CAC considera só marketing lançado, sem equipe/comissão;
+o mês corrente ainda não entra (só meses fechados).
+
 ## Validações realizadas
 
 Nesta sessão, os números do serviço foram conferidos por script (`tsx`)

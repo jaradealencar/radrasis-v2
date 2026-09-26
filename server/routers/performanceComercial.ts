@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesAcessos, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
+import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesAcessos, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 
 // Endpoints de monitoramento de equipe (acessos ao painel) — só quem pode agir
@@ -13,11 +13,16 @@ const gestorProcedure = protectedProcedure.use(requireRole("admin", "master", "g
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
-  calcularConversaoPorFaixaTicket, calcularProjecaoFaturamento6Meses,
+  calcularConversaoPorFaixaTicket, calcularFunilMensal,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
+import { calcularPainelMeta } from "../services/painelMeta";
+import {
+  calcularEconomia, calcularMarketing, calcularVendedores, calcularPipeline,
+  calcularDistribuicoes, resumirFila, gerarRecomendacoes, resumirSinaisMercado,
+} from "../services/consultoriaMeta";
 import { construirMapaConversaoClientes, calcularProbabilidade } from "../services/probabilidadeCompra";
 import { perguntarSobreClientes } from "../integrations/anthropic-client";
 
@@ -2840,20 +2845,67 @@ export const performanceComercialRouter = router({
       return calcularPrevisaoComercial(osRows as any, orcRows as any, funil, new Date());
     }),
 
-  /** Projeção de faturamento 6 meses + KPIs de partida ("cenário base") do
-   * simulador de metas — mesma base local usada no resto de Inteligência de
-   * Clientes (ver calcularProjecaoFaturamento6Meses). */
-  getProjecaoFaturamento6Meses: publicProcedure
+  /** Painel da Meta: indicadores reais que formam o faturamento (média de 12
+   * meses e últimos 3), funil de orçamentos, economia (lucro × faturamento),
+   * vendedores, pipeline, distribuições e recomendações priorizadas. A fórmula
+   * e a simulação ficam em shared/meta-faturamento.ts; o diagnóstico em
+   * services/consultoriaMeta.ts. Todo dado vem do banco do Radrasis. */
+  getPainelMeta: publicProcedure
     .query(async () => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      const [osRows, orcRows] = await Promise.all([
+      const hoje = new Date();
+      const mesAtual = hoje.getMonth() + 1;
+      const anoAtual = hoje.getFullYear();
+      const [osRows, orcRows, financeiroRows, marketingRows, metasRows, crmMetasRows, sinaisRows] = await Promise.all([
         db.select().from(historicoOs),
         db.select().from(historicoOrcamentos),
+        db.select().from(financeiroMensal),
+        db.select().from(custoMarketing),
+        db.select().from(metasComerciais).where(and(eq(metasComerciais.ano, anoAtual), eq(metasComerciais.mes, mesAtual))),
+        db.select().from(crmMetas).where(and(eq(crmMetas.ano, anoAtual), eq(crmMetas.mes, mesAtual))),
+        db.select({ uf: sinaisMercado.uf, tipoEvento: sinaisMercado.tipoEvento, status: sinaisMercado.status, dataColeta: sinaisMercado.dataColeta })
+          .from(sinaisMercado).where(gte(sinaisMercado.dataColeta, new Date(hoje.getTime() - 90 * 86400000))),
       ]);
+
       const base = construirBaseClientes(osRows as any);
-      const funil = calcularFunilOrcamentos(orcRows as any, new Date());
-      return calcularProjecaoFaturamento6Meses(base, funil, new Date());
+      const painel = calcularPainelMeta(base, hoje, MESES_INATIVIDADE_PARA_NOVO);
+      const funil = calcularFunilMensal(orcRows as any, hoje);
+      const faixasConversao = calcularConversaoPorFaixaTicket(orcRows as any, hoje);
+      const atual = anoAtual * 12 + hoje.getMonth();
+
+      const economia = calcularEconomia(financeiroRows as any, atual);
+      const marketing = calcularMarketing(marketingRows as any, painel.historico);
+      const vendedores = calcularVendedores(orcRows as any, base, hoje, painel.media12m.ticketMedio);
+      const pipeline = calcularPipeline(orcRows as any, faixasConversao, hoje);
+      const distribuicoes = calcularDistribuicoes(base, hoje);
+      const fila = resumirFila(calcularCandidatosAcao(base, hoje), base, hoje);
+      const recomendacoes = gerarRecomendacoes({ painel, funil, vendedores, pipeline, distribuicoes, fila, marketing });
+
+      // Meta já cadastrada no sistema para o mês corrente (soma dos vendedores).
+      const soma = (valores: Array<string | number | null>) => valores.reduce<number>((s, v) => s + (v === null ? 0 : Number(v)), 0);
+      const media = (valores: Array<string | number | null>) => {
+        const validos = valores.filter((v): v is string | number => v !== null && Number(v) > 0).map(Number);
+        return validos.length > 0 ? validos.reduce((a, b) => a + b, 0) / validos.length : null;
+      };
+      const metaFat = soma(metasRows.map(m => m.metaFaturamento));
+      const metaCrm = soma(crmMetasRows.map(m => m.metaValor));
+      const metaSistema = metaFat > 0
+        ? {
+            fonte: "metas_comerciais" as const, mes: mesAtual, ano: anoAtual, faturamento: metaFat,
+            cotacoes: soma(metasRows.map(m => m.metaCotacoes)) || null,
+            vendas: soma(metasRows.map(m => m.metaVendas)) || null,
+            conversaoPct: media(metasRows.map(m => m.metaConversao)),
+            ticketMedio: media(metasRows.map(m => m.metaTicketMedio)),
+            clientesNovos: soma(metasRows.map(m => m.metaClientesNovos)) || null,
+          }
+        : metaCrm > 0
+          ? { fonte: "crm_metas" as const, mes: mesAtual, ano: anoAtual, faturamento: metaCrm, cotacoes: null, vendas: null, conversaoPct: null, ticketMedio: null, clientesNovos: null }
+          : null;
+
+      const sinais = resumirSinaisMercado(sinaisRows as any, hoje);
+
+      return { ...painel, funil, economia, marketing, vendedores, pipeline, distribuicoes, fila, recomendacoes, metaSistema, sinais };
     }),
 
   getRecompraNovosReativados: publicProcedure
