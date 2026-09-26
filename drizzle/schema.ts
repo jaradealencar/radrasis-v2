@@ -2025,6 +2025,23 @@ export const guiaFornecedoresCliques = pgTable("guia_fornecedores_cliques", {
 export type GuiaFornecedoresClique = typeof guiaFornecedoresCliques.$inferSelect;
 export type InsertGuiaFornecedoresClique = typeof guiaFornecedoresCliques.$inferInsert;
 
+// Um evento por clique (granular, com a cidade/estado do fornecedor no momento) — permite
+// filtrar por período (dia/mês) e montar o ranking de indicações por estado. Criada em
+// 26/09/2026; guiaFornecedoresCliques continua sendo o acumulado desde o início (mais barato de
+// ler na tela principal) e não é substituída — cliques anteriores a esta tabela não têm evento.
+export const guiaFornecedoresCliqueEventos = pgTable("guia_fornecedores_clique_eventos", {
+  id: serial("id").primaryKey(),
+  empresaChave: varchar("empresaChave", { length: 256 }).notNull(),
+  empresaNome: varchar("empresaNome", { length: 256 }).notNull(),
+  cidade: varchar("cidade", { length: 128 }),
+  estado: varchar("estado", { length: 2 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  empresaIdx: index("guia_fornecedores_clique_eventos_empresa_idx").on(t.empresaChave),
+  dataIdx: index("guia_fornecedores_clique_eventos_data_idx").on(t.createdAt),
+}));
+export type GuiaFornecedoresCliqueEvento = typeof guiaFornecedoresCliqueEventos.$inferSelect;
+
 // Uma linha por carregamento da página pública do Guia de Fornecedores — visitanteId é um
 // UUID gerado pelo navegador (localStorage, sem login/IP), só para diferenciar "quantas vezes
 // a página abriu" (COUNT) de "quantas pessoas diferentes abriram" (COUNT DISTINCT visitanteId).
@@ -2066,6 +2083,10 @@ export type InsertGuiaFornecedoresOverride = typeof guiaFornecedoresOverrides.$i
 export const guiaFornecedoresConfig = pgTable("guia_fornecedores_config", {
   id: integer("id").primaryKey().default(1),
   mensagemWhatsapp: text("mensagemWhatsapp").notNull(),
+  // Template do relatório mensal que o Daniel copia/manda para cada fornecedor avisando quantas
+  // indicações recebeu no mês — placeholders {{quantidade}} e {{mes}} substituídos na tela.
+  // Nullable: linha antiga não tem esse campo até ele salvar pela primeira vez (cai no padrão).
+  mensagemRelatorioMensal: text("mensagemRelatorioMensal"),
   usuarioNome: varchar("usuarioNome", { length: 128 }),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

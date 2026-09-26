@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import {
-  historicoOs, guiaFornecedoresCliques, guiaFornecedoresVisitas, guiaFornecedoresOverrides, guiaFornecedoresConfig,
+  historicoOs, guiaFornecedoresCliques, guiaFornecedoresCliqueEventos, guiaFornecedoresVisitas,
+  guiaFornecedoresOverrides, guiaFornecedoresConfig,
 } from "../../drizzle/schema";
 import { isOsNormalDb, normalizeEmpresaKey, isClienteNovoPorRecencia, formatarLinkWhatsApp } from "./performanceComercial";
 import { planoBackfillTelefone, completarTelefonesJanela, janelaValida } from "../sync/telefone-historico";
@@ -35,6 +36,13 @@ const MESES_LIMITE_INATIVIDADE = 4;
  * interna (guiaFornecedoresConfig); isto é só o valor inicial da linha única da tabela. */
 export const MENSAGEM_WHATSAPP_PADRAO =
   "Olá, vim pela lista de indicações da *Letreiros Express*. Preciso de um orçamento de letreiro.";
+
+/** Template do relatório mensal — o Daniel copia/manda para cada fornecedor avisando quantas
+ * indicações recebeu no mês. `{{quantidade}}` e `{{mes}}` são substituídos na tela (client). */
+export const MENSAGEM_RELATORIO_MENSAL_PADRAO =
+  "Olá! Aqui é a equipe da *Letreiros Express*. 🙌\n\n" +
+  "Em {{mes}}, enviamos *{{quantidade}}* indicação(ões) de cliente para você através do nosso Guia de Fornecedores.\n\n" +
+  "Seguimos firmes nessa parceria para elevar a qualidade do atendimento e trazer mais clientes até você. Qualquer coisa, estamos à disposição!";
 
 // Contas administrativas/teste do MubiSys, não são clientes de verdade — mesma descoberta de
 // 19-21/09/2026 (e-mail "@@@", CNPJ "aa", contato = nome da própria conta).
@@ -242,21 +250,29 @@ async function obterMensagemWhatsapp(db: NonNullable<Awaited<ReturnType<typeof g
   return linha?.mensagemWhatsapp || MENSAGEM_WHATSAPP_PADRAO;
 }
 
+/** Lê historico_os + overrides e calcula os fornecedores (regra completa, ver
+ * `calcularFornecedoresAtivos`) — usado por `montarGuia` e por qualquer lugar que precise da
+ * cidade/estado/telefone atual de um fornecedor específico (ex.: gravar o clique, relatório mensal). */
+async function carregarFornecedoresCalculados(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<FornecedorCalculado[]> {
+  const [linhas, overridesRows] = await Promise.all([
+    db.select({
+      empresa: historicoOs.empresa, cidade: historicoOs.cidade, estado: historicoOs.estado,
+      telefone: historicoOs.telefone, tipoOs: historicoOs.tipoOs, status: historicoOs.status,
+      mes: historicoOs.mes, ano: historicoOs.ano,
+    }).from(historicoOs),
+    db.select().from(guiaFornecedoresOverrides),
+  ]);
+  return calcularFornecedoresAtivos(linhas, overridesRows);
+}
+
 async function montarGuia(): Promise<GuiaFornecedoresResultado> {
   const db = await getDb();
   if (!db) return { geradoEm: new Date().toISOString(), totalFornecedores: 0, estados: [] };
 
-  const linhas = await db.select({
-    empresa: historicoOs.empresa, cidade: historicoOs.cidade, estado: historicoOs.estado,
-    telefone: historicoOs.telefone, tipoOs: historicoOs.tipoOs, status: historicoOs.status,
-    mes: historicoOs.mes, ano: historicoOs.ano,
-  }).from(historicoOs);
-
-  const [overridesRows, mensagemWhatsapp] = await Promise.all([
-    db.select().from(guiaFornecedoresOverrides),
+  const [fornecedores, mensagemWhatsapp] = await Promise.all([
+    carregarFornecedoresCalculados(db),
     obterMensagemWhatsapp(db),
   ]);
-  const fornecedores = calcularFornecedoresAtivos(linhas, overridesRows);
   return agruparPorEstadoCidade(fornecedores, mensagemWhatsapp);
 }
 
@@ -276,7 +292,9 @@ export const guiaFornecedoresRouter = router({
       return { ok: true };
     }),
 
-  /** Conta 1 clique no botão de WhatsApp de um fornecedor (upsert por nome normalizado). */
+  /** Conta 1 clique no botão de WhatsApp de um fornecedor (upsert por nome normalizado) e grava
+   * um evento individual (com a cidade/estado atuais do fornecedor) para dar para filtrar por
+   * período e montar o ranking por estado depois. */
   registrarClique: publicProcedure
     .input(z.object({ empresa: z.string().trim().min(1) }))
     .mutation(async ({ input }) => {
@@ -284,12 +302,21 @@ export const guiaFornecedoresRouter = router({
       if (!db) return { ok: false };
       const chave = normalizeEmpresaKey(input.empresa);
       const agora = new Date();
-      await db.insert(guiaFornecedoresCliques)
-        .values({ empresaChave: chave, empresaNome: input.empresa, cliques: 1, ultimoCliqueEm: agora })
-        .onConflictDoUpdate({
-          target: guiaFornecedoresCliques.empresaChave,
-          set: { cliques: sql`${guiaFornecedoresCliques.cliques} + 1`, ultimoCliqueEm: agora, empresaNome: input.empresa, updatedAt: agora },
-        });
+      const fornecedores = await carregarFornecedoresCalculados(db);
+      const achado = fornecedores.find(f => f.chave === chave);
+      await Promise.all([
+        db.insert(guiaFornecedoresCliques)
+          .values({ empresaChave: chave, empresaNome: input.empresa, cliques: 1, ultimoCliqueEm: agora })
+          .onConflictDoUpdate({
+            target: guiaFornecedoresCliques.empresaChave,
+            set: { cliques: sql`${guiaFornecedoresCliques.cliques} + 1`, ultimoCliqueEm: agora, empresaNome: input.empresa, updatedAt: agora },
+          }),
+        db.insert(guiaFornecedoresCliqueEventos).values({
+          empresaChave: chave, empresaNome: input.empresa,
+          cidade: achado?.cidade || null, estado: achado?.estado || null,
+          createdAt: agora,
+        }),
+      ]);
       return { ok: true };
     }),
 
@@ -321,24 +348,129 @@ export const guiaFornecedoresRouter = router({
     };
   }),
 
-  /** Config atual (mensagem do WhatsApp). Sempre devolve algo, mesmo sem linha salva ainda. */
+  /** Config atual (mensagem do WhatsApp + template do relatório mensal). Sempre devolve algo,
+   * mesmo sem linha salva ainda. */
   getConfig: protectedProcedure.query(async () => {
     const db = await getDb();
-    if (!db) return { mensagemWhatsapp: MENSAGEM_WHATSAPP_PADRAO, usuarioNome: null, updatedAt: null };
+    if (!db) return { mensagemWhatsapp: MENSAGEM_WHATSAPP_PADRAO, mensagemRelatorioMensal: MENSAGEM_RELATORIO_MENSAL_PADRAO, usuarioNome: null, updatedAt: null };
     const [linha] = await db.select().from(guiaFornecedoresConfig).where(eq(guiaFornecedoresConfig.id, 1)).limit(1);
-    return linha ?? { mensagemWhatsapp: MENSAGEM_WHATSAPP_PADRAO, usuarioNome: null, updatedAt: null };
+    return {
+      mensagemWhatsapp: linha?.mensagemWhatsapp || MENSAGEM_WHATSAPP_PADRAO,
+      mensagemRelatorioMensal: linha?.mensagemRelatorioMensal || MENSAGEM_RELATORIO_MENSAL_PADRAO,
+      usuarioNome: linha?.usuarioNome ?? null,
+      updatedAt: linha?.updatedAt ?? null,
+    };
   }),
 
+  /** Salva um ou os dois textos — manda só o que mudou; o outro mantém o valor já salvo. */
   salvarConfig: protectedProcedure
-    .input(z.object({ mensagemWhatsapp: z.string().trim().min(1).max(1000) }))
+    .input(z.object({
+      mensagemWhatsapp: z.string().trim().min(1).max(1000).optional(),
+      mensagemRelatorioMensal: z.string().trim().min(1).max(2000).optional(),
+    }).refine(v => v.mensagemWhatsapp || v.mensagemRelatorioMensal, { message: "Nada para salvar." }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
-      const dados = { mensagemWhatsapp: input.mensagemWhatsapp, usuarioNome: ctx.user?.name ?? "Desconhecido", updatedAt: new Date() };
+      const [atual] = await db.select().from(guiaFornecedoresConfig).where(eq(guiaFornecedoresConfig.id, 1)).limit(1);
+      const dados = {
+        mensagemWhatsapp: input.mensagemWhatsapp ?? atual?.mensagemWhatsapp ?? MENSAGEM_WHATSAPP_PADRAO,
+        mensagemRelatorioMensal: input.mensagemRelatorioMensal ?? atual?.mensagemRelatorioMensal ?? MENSAGEM_RELATORIO_MENSAL_PADRAO,
+        usuarioNome: ctx.user?.name ?? "Desconhecido", updatedAt: new Date(),
+      };
       await db.insert(guiaFornecedoresConfig)
         .values({ id: 1, ...dados })
         .onConflictDoUpdate({ target: guiaFornecedoresConfig.id, set: dados });
       return { ok: true };
+    }),
+
+  /** Estatísticas filtradas por período (o front-end manda o intervalo já calculado, seja um dia
+   * ou um mês inteiro): visitas, cliques totais e rankings por fornecedor e por estado. Os
+   * cliques só existem a partir de 26/09/2026 (criação de guia_fornecedores_clique_eventos) —
+   * período anterior a essa data vem zerado mesmo que o contador acumulado da aba principal
+   * mostre total maior. */
+  getEstatisticasPeriodo: protectedProcedure
+    .input(z.object({
+      inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { visitasTotais: 0, visitantesUnicos: 0, cliquesTotais: 0, porFornecedor: [] as Array<{ empresaNome: string; cliques: number; ultimoCliqueEm: Date | null; ativoNoGuia: boolean }>, porEstado: [] as Array<{ uf: string; nome: string; cliques: number }> };
+
+      const de = new Date(`${input.inicio}T00:00:00`);
+      const ate = new Date(`${input.fim}T23:59:59.999`);
+
+      const [[{ total, unicos }], eventos, guiaAtual] = await Promise.all([
+        db.select({
+          total: sql<number>`count(*)::int`,
+          unicos: sql<number>`count(distinct ${guiaFornecedoresVisitas.visitanteId})::int`,
+        }).from(guiaFornecedoresVisitas)
+          .where(and(gte(guiaFornecedoresVisitas.createdAt, de), lte(guiaFornecedoresVisitas.createdAt, ate))),
+        db.select().from(guiaFornecedoresCliqueEventos)
+          .where(and(gte(guiaFornecedoresCliqueEventos.createdAt, de), lte(guiaFornecedoresCliqueEventos.createdAt, ate))),
+        montarGuia(),
+      ]);
+      const chavesNoGuia = new Set(guiaAtual.estados.flatMap(e => e.cidades.flatMap(c => c.fornecedores.map(f => normalizeEmpresaKey(f.nome)))));
+
+      const porFornecedorMap = new Map<string, { empresaNome: string; cliques: number; ultimoCliqueEm: Date | null }>();
+      const porEstadoMap = new Map<string, number>();
+      for (const ev of eventos) {
+        const atual = porFornecedorMap.get(ev.empresaChave) ?? { empresaNome: ev.empresaNome, cliques: 0, ultimoCliqueEm: null as Date | null };
+        atual.cliques++;
+        if (!atual.ultimoCliqueEm || ev.createdAt > atual.ultimoCliqueEm) atual.ultimoCliqueEm = ev.createdAt;
+        porFornecedorMap.set(ev.empresaChave, atual);
+        if (ev.estado) porEstadoMap.set(ev.estado, (porEstadoMap.get(ev.estado) ?? 0) + 1);
+      }
+
+      const porFornecedor = [...porFornecedorMap.entries()]
+        .map(([chave, v]) => ({ ...v, ativoNoGuia: chavesNoGuia.has(chave) }))
+        .sort((a, b) => b.cliques - a.cliques);
+      const porEstado = [...porEstadoMap.entries()]
+        .map(([uf, cliques]) => ({ uf, nome: ESTADOS_NOME[uf] ?? uf, cliques }))
+        .sort((a, b) => b.cliques - a.cliques);
+
+      return { visitasTotais: total, visitantesUnicos: unicos, cliquesTotais: eventos.length, porFornecedor, porEstado };
+    }),
+
+  /** Relatório mensal para copiar/mandar a cada fornecedor: quantas indicações (cliques) ele
+   * recebeu no mês escolhido, com telefone/link de WhatsApp para mandar direto. */
+  getRelatorioMensal: protectedProcedure
+    .input(z.object({ mes: z.number().int().min(1).max(12), ano: z.number().int().min(2020).max(2100) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { itens: [] as Array<{ empresaNome: string; cidade: string; estado: string; telefone: string | null; whatsappBase: string | null; quantidade: number }> };
+
+      const inicio = new Date(input.ano, input.mes - 1, 1, 0, 0, 0);
+      const fim = new Date(input.ano, input.mes, 0, 23, 59, 59, 999);
+
+      const [eventos, fornecedores] = await Promise.all([
+        db.select().from(guiaFornecedoresCliqueEventos)
+          .where(and(gte(guiaFornecedoresCliqueEventos.createdAt, inicio), lte(guiaFornecedoresCliqueEventos.createdAt, fim))),
+        carregarFornecedoresCalculados(db),
+      ]);
+
+      const infoPorChave = new Map(fornecedores.map(f => [f.chave, f]));
+      const qtdPorChave = new Map<string, { empresaNome: string; quantidade: number; cidade: string; estado: string }>();
+      for (const ev of eventos) {
+        const atual = qtdPorChave.get(ev.empresaChave) ?? { empresaNome: ev.empresaNome, quantidade: 0, cidade: ev.cidade || "", estado: ev.estado || "" };
+        atual.quantidade++;
+        qtdPorChave.set(ev.empresaChave, atual);
+      }
+
+      const itens = [...qtdPorChave.entries()].map(([chave, v]) => {
+        const info = infoPorChave.get(chave);
+        const telefone = info?.telefone ?? null;
+        return {
+          empresaNome: info?.nome ?? v.empresaNome,
+          cidade: info?.cidade || v.cidade,
+          estado: info?.estado || v.estado,
+          telefone,
+          whatsappBase: telefone ? formatarLinkWhatsApp(telefone) : null,
+          quantidade: v.quantidade,
+        };
+      }).sort((a, b) => b.quantidade - a.quantidade || a.empresaNome.localeCompare(b.empresaNome, "pt-BR"));
+
+      return { itens };
     }),
 
   /** Situação do telefone em historico_os, mês a mês (13 meses), com as janelas de 7 dias que

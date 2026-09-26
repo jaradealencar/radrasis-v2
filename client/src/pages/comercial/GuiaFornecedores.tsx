@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
+import {
   Store, Eye, Users, MousePointerClick, MessageCircle, Plus, Trash2, ExternalLink, Loader2, Phone, RefreshCw,
+  CalendarRange, Copy, Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +26,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import ChartTooltip from "@/components/ChartTooltip";
+import { CHART_COLORS } from "@/lib/chartColors";
+import { MESES } from "@/lib/format";
 
 // Site espelho (projeto Vercel separado, "guia-letreiros-express"). Se ganhar domínio próprio,
 // trocar aqui.
@@ -32,6 +39,32 @@ function somaDias(iso: string, n: number): string {
   const d = new Date(`${iso}T12:00:00`);
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isoHoje(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function isoPrimeiroDiaMes(ano: number, mes: number): string {
+  return `${ano}-${String(mes).padStart(2, "0")}-01`;
+}
+function isoUltimoDiaMes(ano: number, mes: number): string {
+  const ultimo = new Date(ano, mes, 0).getDate();
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(ultimo).padStart(2, "0")}`;
+}
+
+/** Substitui os placeholders do template do relatório mensal. */
+function montarMensagemRelatorio(template: string, quantidade: number, mes: number, ano: number): string {
+  return template
+    .replaceAll("{{quantidade}}", String(quantidade))
+    .replaceAll("{{mes}}", `${MESES[mes - 1]} de ${ano}`);
+}
+
+/** Mesma normalização de DDI usada em formatarLinkWhatsApp no servidor — só para exibir/copiar. */
+function numeroComDdi(tel: string): string {
+  const digitos = tel.replace(/\D/g, "");
+  const numero = digitos.length >= 12 && digitos.startsWith("55") ? digitos : `55${digitos}`;
+  return `+${numero}`;
 }
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; sub?: string }) {
@@ -60,6 +93,34 @@ export default function GuiaFornecedores() {
     onSuccess: () => { utils.guiaFornecedores.getConfig.invalidate(); utils.guiaFornecedores.listarPublico.invalidate(); toast.success("Mensagem salva."); },
     onError: e => toast.error(e.message),
   });
+
+  // Estatísticas por período (dia ou mês, o usuário escolhe o intervalo) — padrão: mês corrente.
+  const agora = new Date();
+  const [periodoInicio, setPeriodoInicio] = useState(() => isoPrimeiroDiaMes(agora.getFullYear(), agora.getMonth() + 1));
+  const [periodoFim, setPeriodoFim] = useState(() => isoHoje());
+  const { data: statsPeriodo, isLoading: carregandoStatsPeriodo } = trpc.guiaFornecedores.getEstatisticasPeriodo.useQuery({ inicio: periodoInicio, fim: periodoFim });
+  function aplicarPreset(preset: "hoje" | "7d" | "mes" | "mesPassado") {
+    if (preset === "hoje") { const iso = isoHoje(); setPeriodoInicio(iso); setPeriodoFim(iso); }
+    else if (preset === "7d") { setPeriodoFim(isoHoje()); setPeriodoInicio(somaDias(isoHoje(), -6)); }
+    else if (preset === "mes") { setPeriodoInicio(isoPrimeiroDiaMes(agora.getFullYear(), agora.getMonth() + 1)); setPeriodoFim(isoHoje()); }
+    else {
+      const mesAnterior = agora.getMonth() === 0 ? 12 : agora.getMonth();
+      const anoAnterior = agora.getMonth() === 0 ? agora.getFullYear() - 1 : agora.getFullYear();
+      setPeriodoInicio(isoPrimeiroDiaMes(anoAnterior, mesAnterior));
+      setPeriodoFim(isoUltimoDiaMes(anoAnterior, mesAnterior));
+    }
+  }
+
+  // Relatório mensal para fornecedores (mensagem "esse mês te enviamos X indicações").
+  const [relMes, setRelMes] = useState(agora.getMonth() + 1);
+  const [relAno, setRelAno] = useState(agora.getFullYear());
+  const { data: relatorio, isLoading: carregandoRelatorio } = trpc.guiaFornecedores.getRelatorioMensal.useQuery({ mes: relMes, ano: relAno });
+  const [mensagemRelatorio, setMensagemRelatorio] = useState<string | null>(null);
+  const mensagemRelatorioAtual = mensagemRelatorio ?? config?.mensagemRelatorioMensal ?? "";
+  async function copiarTexto(texto: string, sucesso: string) {
+    try { await navigator.clipboard.writeText(texto); toast.success(sucesso); }
+    catch { toast.error("Não foi possível copiar — copie manualmente."); }
+  }
 
   // Telefones: o histórico antigo não tem telefone gravado; o botão percorre o MubiSys em janelas
   // de 7 dias (uma chamada por vez, cada uma leva alguns segundos) e preenche o que faltar.
@@ -172,6 +233,79 @@ export default function GuiaFornecedores() {
         Regra automática: entra quem teve 2+ O.S. válidas nos últimos 12 meses (rolante) e comprou há no máximo 4 meses;
         sai sozinho assim que passar dos 4 meses sem comprar. Os ajustes abaixo funcionam por cima dessa regra.
       </p>
+
+      {/* Estatísticas por período (dia ou mês) + indicações por estado */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CalendarRange className="h-4 w-4 text-blue-700" />
+            <h2 className="text-sm font-semibold text-slate-700">Estatísticas por período</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => aplicarPreset("hoje")}>Hoje</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => aplicarPreset("7d")}>7 dias</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => aplicarPreset("mes")}>Este mês</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => aplicarPreset("mesPassado")}>Mês passado</Button>
+            <Input type="date" value={periodoInicio} max={periodoFim} onChange={e => setPeriodoInicio(e.target.value)} className="h-7 w-[138px] text-xs" />
+            <span className="text-xs text-slate-400">até</span>
+            <Input type="date" value={periodoFim} min={periodoInicio} onChange={e => setPeriodoFim(e.target.value)} className="h-7 w-[138px] text-xs" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard icon={Eye} label="Visitas" value={carregandoStatsPeriodo ? "…" : String(statsPeriodo?.visitasTotais ?? 0)} />
+          <StatCard icon={Users} label="Visitantes únicos" value={carregandoStatsPeriodo ? "…" : String(statsPeriodo?.visitantesUnicos ?? 0)} />
+          <StatCard icon={MousePointerClick} label="Cliques no WhatsApp" value={carregandoStatsPeriodo ? "…" : String(statsPeriodo?.cliquesTotais ?? 0)} />
+        </div>
+        <p className="mt-2 text-[11px] text-slate-400">
+          Cliques por período só existem a partir de 26/09/2026 — datas anteriores vêm zeradas aqui (o total "desde o início" no card lá em cima continua certo).
+        </p>
+
+        <div className="mt-4">
+          <h3 className="mb-2 text-xs font-semibold text-slate-600">Indicações por estado no período</h3>
+          {!statsPeriodo || statsPeriodo.porEstado.length === 0 ? (
+            <p className="py-4 text-center text-xs text-slate-400">Sem cliques registrados nesse período.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(90, statsPeriodo.porEstado.slice(0, 15).length * 28)}>
+              <BarChart data={statsPeriodo.porEstado.slice(0, 15)} layout="vertical" margin={{ left: 10, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" allowDecimals={false} fontSize={12} />
+                <YAxis type="category" dataKey="uf" width={40} fontSize={12} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="cliques" name="Cliques" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {statsPeriodo && statsPeriodo.porFornecedor.length > 0 && (
+          <div className="mt-4">
+            <h3 className="mb-2 text-xs font-semibold text-slate-600">Cliques por fornecedor no período</h3>
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead className="text-right">Cliques</TableHead>
+                  <TableHead>No guia agora?</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {statsPeriodo.porFornecedor.map((c, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium">{c.empresaNome}</TableCell>
+                    <TableCell className="text-right font-mono">{c.cliques}</TableCell>
+                    <TableCell>
+                      {c.ativoNoGuia
+                        ? <Badge variant="outline" className="border-green-300 text-green-700">Sim</Badge>
+                        : <Badge variant="outline" className="border-slate-300 text-slate-500">Não</Badge>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
 
       {/* Telefones do WhatsApp */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -322,6 +456,102 @@ export default function GuiaFornecedores() {
               ))}
             </TableBody>
           </Table>
+        )}
+      </div>
+
+      {/* Relatório mensal para fornecedores — mensagem "esse mês te enviamos X indicações" */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Megaphone className="h-4 w-4 text-blue-700" />
+            <h2 className="text-sm font-semibold text-slate-700">Relatório mensal para fornecedores</h2>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Select value={String(relMes)} onValueChange={v => setRelMes(Number(v))}>
+              <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>{MESES.map((m, i) => <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
+            </Select>
+            <Select value={String(relAno)} onValueChange={v => setRelAno(Number(v))}>
+              <SelectTrigger className="h-7 w-[90px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[agora.getFullYear(), agora.getFullYear() - 1].map(a => <SelectItem key={a} value={String(a)}>{a}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <p className="mb-2 text-xs text-slate-400">
+          Avise cada fornecedor quantas indicações ele recebeu no mês — copie a mensagem individual ou junte todos os
+          números abaixo para montar sua lista de transmissão no WhatsApp. Use <code>{"{{quantidade}}"}</code> e{" "}
+          <code>{"{{mes}}"}</code> no texto, que a tela substitui sozinha.
+        </p>
+        <Textarea value={mensagemRelatorioAtual} onChange={e => setMensagemRelatorio(e.target.value)} rows={4} className="text-sm" />
+        <div className="mt-2 flex justify-end">
+          <Button
+            size="sm"
+            disabled={!mensagemRelatorio || mensagemRelatorio === config?.mensagemRelatorioMensal || salvarConfig.isPending}
+            onClick={() => mensagemRelatorio && salvarConfig.mutate({ mensagemRelatorioMensal: mensagemRelatorio })}
+          >
+            {salvarConfig.isPending ? "Salvando..." : "Salvar mensagem"}
+          </Button>
+        </div>
+
+        {carregandoRelatorio ? (
+          <div className="flex items-center justify-center py-8 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
+        ) : !relatorio || relatorio.itens.length === 0 ? (
+          <Empty><EmptyHeader><EmptyTitle>Nenhuma indicação registrada em {MESES[relMes - 1]}/{relAno}.</EmptyTitle></EmptyHeader></Empty>
+        ) : (
+          <>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">
+                {relatorio.itens.length} fornecedor(es) receberam indicação em {MESES[relMes - 1]}/{relAno}.
+              </p>
+              <Button
+                size="sm" variant="outline" className="h-7 gap-1.5 text-xs"
+                onClick={() => copiarTexto(
+                  relatorio.itens.filter(i => i.telefone).map(i => `${numeroComDdi(i.telefone!)} — ${i.empresaNome}`).join("\n"),
+                  "Números copiados — cole ao criar a lista de transmissão no WhatsApp.",
+                )}
+              >
+                <Copy className="h-3 w-3" /> Copiar todos os números
+              </Button>
+            </div>
+            <Table className="mt-2 text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Cidade/UF</TableHead>
+                  <TableHead className="text-right">Indicações</TableHead>
+                  <TableHead className="text-right">Mensagem</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {relatorio.itens.map((item, i) => {
+                  const texto = montarMensagemRelatorio(mensagemRelatorioAtual, item.quantidade, relMes, relAno);
+                  return (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{item.empresaNome}</TableCell>
+                      <TableCell className="text-slate-500">{[item.cidade, item.estado].filter(Boolean).join("/") || "—"}</TableCell>
+                      <TableCell className="text-right font-mono">{item.quantidade}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="ghost" className="h-7 gap-1 text-blue-700 hover:bg-blue-50" onClick={() => copiarTexto(texto, "Mensagem copiada.")}>
+                            <Copy className="h-3.5 w-3.5" /> Copiar
+                          </Button>
+                          {item.whatsappBase && (
+                            <a href={`${item.whatsappBase}?text=${encodeURIComponent(texto)}`} target="_blank" rel="noopener noreferrer">
+                              <Button size="sm" variant="ghost" className="h-7 gap-1 text-green-700 hover:bg-green-50">
+                                <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                              </Button>
+                            </a>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </>
         )}
       </div>
 
