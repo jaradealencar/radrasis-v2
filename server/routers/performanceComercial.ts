@@ -13,7 +13,7 @@ const gestorProcedure = protectedProcedure.use(requireRole("admin", "master", "g
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
-  calcularConversaoPorFaixaTicket,
+  calcularConversaoPorFaixaTicket, calcularProjecaoFaturamento6Meses,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
@@ -2838,6 +2838,22 @@ export const performanceComercialRouter = router({
       ]);
       const funil = calcularFunilOrcamentos(orcRows as any, new Date());
       return calcularPrevisaoComercial(osRows as any, orcRows as any, funil, new Date());
+    }),
+
+  /** Projeção de faturamento 6 meses + KPIs de partida ("cenário base") do
+   * simulador de metas — mesma base local usada no resto de Inteligência de
+   * Clientes (ver calcularProjecaoFaturamento6Meses). */
+  getProjecaoFaturamento6Meses: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const [osRows, orcRows] = await Promise.all([
+        db.select().from(historicoOs),
+        db.select().from(historicoOrcamentos),
+      ]);
+      const base = construirBaseClientes(osRows as any);
+      const funil = calcularFunilOrcamentos(orcRows as any, new Date());
+      return calcularProjecaoFaturamento6Meses(base, funil, new Date());
     }),
 
   getRecompraNovosReativados: publicProcedure
