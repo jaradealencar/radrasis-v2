@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ENV } from "../_core/env";
+import { extrairTextoClaude, limitarHistorico } from "../services/iaEconomia";
 
 let client: Anthropic | null = null;
 
@@ -34,41 +35,78 @@ export interface MensagemChat {
   texto: string;
 }
 
+const MAX_TOKENS_ANALISE = 4096;
+
+const ESFORCOS = ["low", "medium", "high", "xhigh", "max"] as const;
+type Esforco = (typeof ESFORCOS)[number];
+
+/**
+ * "Médio" é o padrão: numa medição real com o Assistente de Clientes (mesma pergunta, mesmo contexto, Opus),
+ * o esforço alto gastou 3.987 tokens de saída e 58 s (perto do limite de 60 s da função na Vercel); o médio,
+ * 2.649 tokens e 31 s, com resposta equivalente. Para voltar ao alto: ASSISTENTES_ANTHROPIC_EFFORT=high.
+ */
+const ESFORCO_PADRAO: Esforco = "medium";
+
+function esforcoConfigurado(): Esforco {
+  const valor = ENV.assistentesEsforcoAnthropic as Esforco;
+  return ESFORCOS.includes(valor) ? valor : ESFORCO_PADRAO;
+}
+
+/**
+ * Chamada comum aos dois chats analíticos (financeiro e clientes). O que mais pesa no custo é o modelo, o
+ * esforço de raciocínio (ver ENV.assistentes*) e o tamanho do que vai junto. Pontos de economia daqui:
+ * - o ponto de cache fica no bloco de DADOS (o grande), não no prompt curto: tudo até ali é guardado por
+ *   5 min e as perguntas seguidas pagam uma fração (antes ficava no prompt curto, pequeno demais para
+ *   ser guardado, e os dados eram reenviados pelo preço cheio a cada pergunta);
+ * - a resposta sempre traz o motivo quando vem vazia (o raciocínio conta no teto de tokens);
+ * - o uso de cada chamada vai para o log, para conferir o gasto real.
+ */
+async function chamarClaudeAnalitico(
+  rotulo: string,
+  systemPrompt: string,
+  contextoDados: string,
+  messages: Anthropic.MessageParam[],
+): Promise<string> {
+  const anthropic = getClient();
+  const modelo = ENV.assistentesModeloAnthropic;
+  const esforco = esforcoConfigurado();
+  const inicio = Date.now();
+
+  const response = await anthropic.messages.create({
+    model: modelo,
+    max_tokens: MAX_TOKENS_ANALISE,
+    system: [
+      { type: "text", text: systemPrompt },
+      { type: "text", text: contextoDados, cache_control: { type: "ephemeral" } },
+    ],
+    thinking: { type: "adaptive" },
+    output_config: { effort: esforco },
+    messages,
+  });
+
+  console.log(`[ia:${rotulo}] modelo=${modelo} esforco=${esforco} uso=${JSON.stringify(response.usage)} stop=${response.stop_reason} ms=${Date.now() - inicio}`);
+  return extrairTextoClaude(response);
+}
+
 /**
  * Chama o Claude com o contexto de dados financeiros (montado pelo caller a partir
  * do banco) mais o histórico da conversa e a pergunta atual. O contexto é
  * reconstruído a cada chamada para refletir o estado mais recente do banco.
+ * Só as últimas mensagens da conversa seguem junto (cada uma é reenviada e cobrada a cada pergunta).
  */
 export async function perguntarSobreFinanceiro(
   contextoDados: string,
   historico: MensagemChat[],
   pergunta: string,
 ): Promise<string> {
-  const anthropic = getClient();
-
   const messages: Anthropic.MessageParam[] = [
-    ...historico.map((m): Anthropic.MessageParam => ({
+    ...limitarHistorico(historico).map((m): Anthropic.MessageParam => ({
       role: m.role,
       content: m.texto,
     })),
     { role: "user", content: pergunta },
   ];
-
-  const response = await anthropic.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 4096,
-    system: [
-      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-      { type: "text", text: contextoDados },
-    ],
-    thinking: { type: "adaptive" },
-    output_config: { effort: "high" },
-    messages,
-  });
-
-  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  if (!textBlock) throw new Error("Claude não retornou texto na resposta.");
-  return textBlock.text;
+  return chamarClaudeAnalitico("financeiro", SYSTEM_PROMPT, contextoDados, messages);
 }
 
 /**
@@ -82,21 +120,5 @@ export async function perguntarSobreClientes(
   contextoDados: string,
   pergunta: string,
 ): Promise<string> {
-  const anthropic = getClient();
-
-  const response = await anthropic.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 4096,
-    system: [
-      { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
-      { type: "text", text: contextoDados },
-    ],
-    thinking: { type: "adaptive" },
-    output_config: { effort: "high" },
-    messages: [{ role: "user", content: pergunta }],
-  });
-
-  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  if (!textBlock) throw new Error("Claude não retornou texto na resposta.");
-  return textBlock.text;
+  return chamarClaudeAnalitico("clientes", systemPrompt, contextoDados, [{ role: "user", content: pergunta }]);
 }

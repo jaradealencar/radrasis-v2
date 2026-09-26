@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  montarContextoConsultor, limitarHistorico, prepararConversa, criarLimitador, extrairTextoResposta,
+  montarContextoConsultor, montarContextoConsultorEmPartes, limitarHistorico, prepararConversa, criarLimitador, extrairTextoResposta,
   sanitizarTexto, filtrarFixos, PROMPT_CONSULTOR_META_V1, MAX_MENSAGENS_HISTORICO, MAX_CARACTERES_MENSAGEM,
   type PainelCompleto, type EntradaConsultor,
 } from "../services/consultorMeta";
+import { MAX_CARACTERES_RESPOSTA_ANTIGA } from "../services/iaEconomia";
 import { calcularPainelMeta } from "../services/painelMeta";
 import type { ClienteBase } from "../services/inteligenciaClientes";
 import {
@@ -118,6 +119,33 @@ describe("montarContextoConsultor", () => {
   });
 });
 
+describe("montarContextoConsultorEmPartes (economia: cache do prompt)", () => {
+  const painel = painelSintetico();
+  const mexido: EntradaConsultor = { ...ENTRADA, fixos: { "novos.clientes": 40, "reativados.clientes": 18 }, modoAuto: false };
+
+  it("mexer no simulador muda só a parte variável; a estável (cacheável) fica idêntica", () => {
+    const a = montarContextoConsultorEmPartes(painel, ENTRADA, HOJE);
+    const b = montarContextoConsultorEmPartes(painel, mexido, HOJE);
+    expect(b.estavel).toBe(a.estavel);
+    expect(b.variavel).not.toBe(a.variavel);
+    expect(b.variavel).toContain("Gráficas novas (1ª compra) — gráficas/mês = 40");
+  });
+
+  it("a estável tem os dados e os cálculos das metas; a variável só o cenário do simulador", () => {
+    const { estavel, variavel } = montarContextoConsultorEmPartes(painel, ENTRADA, HOJE);
+    expect(estavel).toContain("## CÁLCULOS DO SISTEMA");
+    expect(estavel).toContain("## Próximos 12 meses");
+    expect(estavel).not.toContain("Simulador");
+    expect(variavel.startsWith("## Cenário que o gestor montou agora no Simulador")).toBe(true);
+    expect(variavel).not.toContain("## CÁLCULOS DO SISTEMA");
+  });
+
+  it("montarContextoConsultor devolve as duas partes juntas", () => {
+    const { estavel, variavel } = montarContextoConsultorEmPartes(painel, mexido, HOJE);
+    expect(montarContextoConsultor(painel, mexido, HOJE)).toBe(`${estavel}\n\n${variavel}`);
+  });
+});
+
 describe("prompt do consultor", () => {
   it("restringe o escopo, proíbe inventar números e trata os dados como dados", () => {
     expect(PROMPT_CONSULTOR_META_V1).toContain("SOMENTE os dados do CONTEXTO");
@@ -153,6 +181,19 @@ describe("entradas do navegador", () => {
     const cortada = limitarHistorico([{ role: "user", texto: "x".repeat(MAX_CARACTERES_MENSAGEM + 500) }, { role: "assistant", texto: "   " }]);
     expect(cortada).toHaveLength(1);
     expect(cortada[0].texto).toHaveLength(MAX_CARACTERES_MENSAGEM);
+  });
+
+  it("economia: respostas antigas entram resumidas e só a última segue inteira (perguntas de seguimento)", () => {
+    const resposta = (t: string) => t.repeat(1000); // 1000 caracteres, bem acima do limite das antigas
+    const r = limitarHistorico([
+      { role: "user", texto: "p1" }, { role: "assistant", texto: resposta("a") },
+      { role: "user", texto: "p2" }, { role: "assistant", texto: resposta("b") },
+    ]);
+    expect(r).toHaveLength(4);
+    expect(r[1].texto).toHaveLength(MAX_CARACTERES_RESPOSTA_ANTIGA + 1); // resumo + reticências
+    expect(r[1].texto.endsWith("…")).toBe(true);
+    expect(r[3].texto).toBe(resposta("b"));
+    expect(r[0].texto).toBe("p1"); // perguntas do usuário nunca são resumidas
   });
 
   it("junta turnos repetidos do mesmo papel e prepara a pergunta atual", () => {

@@ -13,6 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ENV } from "../_core/env";
 import { invokeLLM } from "../_core/llm";
 import { extrairTextoResposta, MODELO_CONSULTOR_META, type MensagemConsultor } from "./consultorMeta";
+import { extrairTextoClaude } from "./iaEconomia";
 
 export type Provedor = "gemini" | "anthropic" | "openai";
 
@@ -21,9 +22,14 @@ export const NOME_PROVEDOR: Record<Provedor, string> = { gemini: "Gemini", anthr
 export interface PedidoIA {
   /** Prompt do consultor + contexto com os números (parte estável, cacheável). */
   system: string;
+  /** Parte que muda de uma pergunta para outra (ex.: o cenário montado no simulador). Vai depois do
+   * ponto de cache, para mexer nela não invalidar a parte estável. */
+  sistemaVariavel?: string;
   historico: MensagemConsultor[];
   pergunta: string;
 }
+
+const sistemaCompleto = (p: PedidoIA) => (p.sistemaVariavel ? `${p.system}\n\n${p.sistemaVariavel}` : p.system);
 
 export interface RespostaIA {
   texto: string;
@@ -85,7 +91,9 @@ export async function conversarComFallback(
 
 // ─── Chamadas reais ──────────────────────────────────────────────────────────
 
-const MAX_TOKENS_RESPOSTA = 2500;
+// As respostas reais ficam em ~750 tokens (o prompt pede até ~220 palavras); o teto só segura respostas descontroladas
+// (a resposta é a parte mais cara por token) e, se for atingido, o usuário é avisado de que o texto foi cortado.
+const MAX_TOKENS_RESPOSTA = 1500;
 
 async function chamarGemini(p: PedidoIA): Promise<RespostaIA> {
   const modelo = ENV.geminiModel;
@@ -93,7 +101,7 @@ async function chamarGemini(p: PedidoIA): Promise<RespostaIA> {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": ENV.geminiApiKey },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: p.system }] },
+      systemInstruction: { parts: [{ text: sistemaCompleto(p) }] },
       contents: [
         ...p.historico.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.texto }] })),
         { role: "user", parts: [{ text: p.pergunta }] },
@@ -119,19 +127,18 @@ async function chamarClaude(p: PedidoIA): Promise<RespostaIA> {
     // 26/09/2026 numa pergunta analítica). Desligado, a resposta é mais rápida e o tempo é previsível
     // (a função da Vercel tem limite de 60 s).
     thinking: { type: "disabled" },
-    system: [{ type: "text", text: p.system, cache_control: { type: "ephemeral" } }],
+    // O ponto de cache vai no fim da parte estável: tudo até ali (prompt + dados do painel, ~10 mil tokens) é
+    // guardado por 5 min e as perguntas seguintes pagam uma fração. A parte variável fica depois, fora do cache.
+    system: [
+      { type: "text", text: p.system, cache_control: { type: "ephemeral" } },
+      ...(p.sistemaVariavel ? [{ type: "text" as const, text: p.sistemaVariavel }] : []),
+    ],
     messages: [
       ...p.historico.map((m): Anthropic.MessageParam => ({ role: m.role, content: m.texto })),
       { role: "user", content: p.pergunta },
     ],
   });
-  const texto = r.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map(b => b.text)
-    .join("\n")
-    .trim();
-  if (!texto) throw new Error(`Claude não retornou texto (stop_reason=${r.stop_reason})`);
-  return { texto, provedor: "anthropic", modelo, uso: { ...r.usage, stop_reason: r.stop_reason } };
+  return { texto: extrairTextoClaude(r), provedor: "anthropic", modelo, uso: { ...r.usage, stop_reason: r.stop_reason } };
 }
 
 async function chamarOpenAI(p: PedidoIA): Promise<RespostaIA> {
@@ -140,7 +147,7 @@ async function chamarOpenAI(p: PedidoIA): Promise<RespostaIA> {
     reasoningEffort: "low",
     maxCompletionTokens: 3500,
     messages: [
-      { role: "system", content: p.system },
+      { role: "system", content: sistemaCompleto(p) },
       ...p.historico.map(m => ({ role: m.role, content: m.texto })),
       { role: "user" as const, content: p.pergunta },
     ],

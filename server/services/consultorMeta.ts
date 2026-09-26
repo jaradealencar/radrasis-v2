@@ -22,11 +22,14 @@ import type {
   Recomendacao, ResumoFila, SinaisMercado,
 } from "./consultoriaMeta";
 import type { FunilMensal } from "./inteligenciaClientes";
+import { limitarHistorico, type MensagemChat } from "./iaEconomia";
+
+// Limites da conversa e freio por usuário são comuns a todos os chats de IA (ver iaEconomia.ts).
+export { limitarHistorico, criarLimitador, MAX_MENSAGENS_HISTORICO, MAX_CARACTERES_MENSAGEM } from "./iaEconomia";
+export type MensagemConsultor = MensagemChat;
 
 export const VERSAO_PROMPT_CONSULTOR_META = "v1";
 export const MODELO_CONSULTOR_META = "gpt-5-mini";
-export const MAX_MENSAGENS_HISTORICO = 10;
-export const MAX_CARACTERES_MENSAGEM = 4000;
 
 /** Resultado completo de getPainelMeta (o que o consultor "enxerga"). */
 export type PainelCompleto = PainelMeta & {
@@ -116,7 +119,20 @@ function linhasCenario(c: Cenario): string[] {
 
 // ─── Contexto ────────────────────────────────────────────────────────────────
 
+/** Contexto inteiro em um texto só (o que a IA "enxerga"). */
 export function montarContextoConsultor(p: PainelCompleto, e: EntradaConsultor, hoje: Date): string {
+  const { estavel, variavel } = montarContextoConsultorEmPartes(p, e, hoje);
+  return `${estavel}\n\n${variavel}`;
+}
+
+/**
+ * O mesmo contexto dividido em duas partes, para economizar: a estável (dados do painel e cálculos das metas)
+ * só muda quando os dados ou as metas mudam, então a API a guarda em cache e as perguntas seguintes pagam
+ * uma fração do preço; a variável (o cenário que o gestor monta no simulador) muda a cada mexida e fica de
+ * fora do cache, para não invalidá-lo (numa medição real, mexer no simulador entre duas perguntas fez a
+ * segunda reenviar as ~10 mil unidades do contexto inteiro pelo preço cheio).
+ */
+export function montarContextoConsultorEmPartes(p: PainelCompleto, e: EntradaConsultor, hoje: Date): { estavel: string; variavel: string } {
   const L: string[] = [];
   const base = p.media12m.cenario;
   const totaisBase = totaisCenario(base);
@@ -231,46 +247,29 @@ export function montarContextoConsultor(p: PainelCompleto, e: EntradaConsultor, 
   for (const s of sensibilidadesDoPainel(p)) L.push(`- ${s.rotulo}: +${brl(s.efeito)}${s.tipo === "contribuicao" ? " de contribuição" : ""} (${s.prazo}).`);
   L.push("");
 
+  L.push("## Próximos 12 meses se o ritmo de hoje for mantido (nominal, sem inflação)");
+  L.push(p.projecao.map(m => `${m.mes}: ${brl(real12)}${m.mediaMesmoMes !== null ? ` (média do mesmo mês em anos anteriores: ${brl(m.mediaMesmoMes)})` : ""}`).join("; ") + ".");
+  L.push("A projeção padrão não usa sazonalidade porque, no teste com os meses passados, ela errou mais do que a média simples.");
+
+  // Parte variável: o que o gestor mexeu no simulador. Fica por último para não invalidar o cache da parte estável.
+  const V: string[] = [];
   const fixos = filtrarFixos(e.fixos);
   const resultado = e.modoAuto ? resolverMeta(base, fixos, e.meta) : null;
   const cenarioSim = resultado ? resultado.cenario : aplicarFator(base, fixos, 1);
   const totaisSim = totaisCenario(cenarioSim);
-  L.push("## Cenário que o gestor montou agora no Simulador (aba 3)");
-  L.push(`- Modo: ${e.modoAuto ? "ajuste automático para bater a meta" : "livre (sem ajuste automático)"}; meta ${brl(e.meta)}.`);
+  V.push("## Cenário que o gestor montou agora no Simulador (aba 3)");
+  V.push(`- Modo: ${e.modoAuto ? "ajuste automático para bater a meta" : "livre (sem ajuste automático)"}; meta ${brl(e.meta)}.`);
   const travados = Object.entries(fixos);
-  L.push(travados.length === 0
+  V.push(travados.length === 0
     ? "- Nenhum indicador travado."
     : `- Indicadores travados pelo gestor: ${travados.map(([id, v]) => { const [seg, campo] = id.split("."); return `${ROTULO_SEGMENTO[seg as SegmentoId]} — ${ROTULO_CAMPO[campo as keyof typeof ROTULO_CAMPO]} = ${num(v as number, 2)}`; }).join("; ")}.`);
-  L.push(`- Resultado: ${brl(totaisSim.faturamento)}/mês, ${num(totaisSim.vendas, 0)} pedidos, ticket ${brl(totaisSim.ticketMedio)}${resultado ? `; os indicadores livres foram multiplicados por ${num(resultado.fator, 3)} (${resultado.atingivel ? "meta fecha" : "a meta NÃO fecha com esses travamentos"})` : ""}.`);
-  L.push(...linhasCenario(cenarioSim));
-  L.push("");
+  V.push(`- Resultado: ${brl(totaisSim.faturamento)}/mês, ${num(totaisSim.vendas, 0)} pedidos, ticket ${brl(totaisSim.ticketMedio)}${resultado ? `; os indicadores livres foram multiplicados por ${num(resultado.fator, 3)} (${resultado.atingivel ? "meta fecha" : "a meta NÃO fecha com esses travamentos"})` : ""}.`);
+  V.push(...linhasCenario(cenarioSim));
 
-  L.push("## Próximos 12 meses se o ritmo de hoje for mantido (nominal, sem inflação)");
-  L.push(p.projecao.map(m => `${m.mes}: ${brl(real12)}${m.mediaMesmoMes !== null ? ` (média do mesmo mês em anos anteriores: ${brl(m.mediaMesmoMes)})` : ""}`).join("; ") + ".");
-  L.push("A projeção padrão não usa sazonalidade porque, no teste com os meses passados, ela errou mais do que a média simples.");
-  return L.join("\n");
+  return { estavel: L.join("\n"), variavel: V.join("\n") };
 }
 
-// ─── Histórico, limite de uso e resposta ─────────────────────────────────────
-
-export interface MensagemConsultor { role: "user" | "assistant"; texto: string }
-
-/** Mantém só as últimas mensagens, limita o tamanho de cada uma e normaliza a sequência de papéis
- * (os provedores exigem começar por "user" e não aceitam bem o mesmo papel duas vezes seguidas). */
-export function limitarHistorico(historico: MensagemConsultor[]): MensagemConsultor[] {
-  const recentes = historico
-    .filter(m => (m.role === "user" || m.role === "assistant") && m.texto.trim().length > 0)
-    .slice(-MAX_MENSAGENS_HISTORICO)
-    .map(m => ({ role: m.role, texto: m.texto.slice(0, MAX_CARACTERES_MENSAGEM) }));
-  const saida: MensagemConsultor[] = [];
-  for (const m of recentes) {
-    if (saida.length === 0 && m.role === "assistant") continue;
-    const ultima = saida[saida.length - 1];
-    if (ultima && ultima.role === m.role) ultima.texto = `${ultima.texto}\n\n${m.texto}`.slice(0, MAX_CARACTERES_MENSAGEM);
-    else saida.push({ ...m });
-  }
-  return saida;
-}
+// ─── Conversa e resposta ─────────────────────────────────────────────────────
 
 /** Histórico normalizado + pergunta atual. Se a conversa terminou numa pergunta sem resposta (ex.: erro
  * de rede), ela é juntada à pergunta nova para não haver dois turnos do usuário seguidos. */
@@ -282,23 +281,6 @@ export function prepararConversa(historicoBruto: MensagemConsultor[], pergunta: 
     return { historico, pergunta: `${ultima.texto}\n\n${pergunta}` };
   }
   return { historico, pergunta };
-}
-
-/** Limite de perguntas por usuário numa janela deslizante (em memória: por instância do servidor). */
-export function criarLimitador(maximo: number, janelaMs: number) {
-  const registros = new Map<string, number[]>();
-  return {
-    permitir(chave: string, agora: number = Date.now()): { ok: boolean; reiniciaEmSegundos: number } {
-      const recentes = (registros.get(chave) ?? []).filter(t => agora - t < janelaMs);
-      if (recentes.length >= maximo) {
-        registros.set(chave, recentes);
-        return { ok: false, reiniciaEmSegundos: Math.ceil((recentes[0] + janelaMs - agora) / 1000) };
-      }
-      recentes.push(agora);
-      registros.set(chave, recentes);
-      return { ok: true, reiniciaEmSegundos: 0 };
-    },
-  };
 }
 
 export function extrairTextoResposta(res: InvokeResult): string {

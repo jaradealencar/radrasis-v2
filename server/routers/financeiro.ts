@@ -1,12 +1,16 @@
 import { z } from "zod";
 import * as XLSX from "xlsx";
-import { router, publicProcedure } from "../_core/trpc";
+import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb, insertAuditLogCustoMarketing, listAuditLogsCustoMarketing } from "../db/db";
 import { financeiroMensal, custoMarketing, custoMarketingItens, custosFixos, dividasParcelamentos, dreMensal, historicoOs } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { perguntarSobreFinanceiro, type MensagemChat } from "../integrations/anthropic-client";
+import { criarLimitador, mensagemLimiteAtingido } from "../services/iaEconomia";
 import { isOsNormalDb } from "./performanceComercial";
 import { TRPCError } from "@trpc/server";
+
+/** Chat de IA do Painel Financeiro: perguntas por hora por usuário (controle de custo; por instância do servidor). */
+const limitadorChatFinanceiro = criarLimitador(30, 60 * 60 * 1000);
 
 const MESES_NOMES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const fmtR = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -968,15 +972,21 @@ export const financeiroRouter = router({
   }),
 
   // ─── Chat de IA (CFO virtual) ──────────────────────────────────────────────
-  perguntarIA: publicProcedure
+  // Cada pergunta consome a chave de IA paga: exige login, limita o tamanho do que entra e o número de
+  // perguntas por hora (era público e sem limite; ver server/services/iaEconomia.ts).
+  perguntarIA: protectedProcedure
     .input(z.object({
-      pergunta: z.string().min(1),
+      pergunta: z.string().trim().min(1).max(1500),
+      // A tela manda a conversa inteira e as respostas do Claude passam de 8 mil caracteres: os limites daqui
+      // só barram abuso; quem enxuga a conversa (últimas 6 mensagens) é o limitarHistorico, no anthropic-client.
       historico: z.array(z.object({
         role: z.enum(["user", "assistant"]),
-        texto: z.string(),
-      })).default([]),
+        texto: z.string().max(30000),
+      })).max(200).default([]),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const uso = limitadorChatFinanceiro.permitir(String(ctx.user.id));
+      if (!uso.ok) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: mensagemLimiteAtingido(uso.reiniciaEmSegundos) });
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
 

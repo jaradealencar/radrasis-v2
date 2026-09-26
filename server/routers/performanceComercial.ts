@@ -22,9 +22,10 @@ import {
 import { calcularPainelMeta } from "../services/painelMeta";
 import {
   PROMPT_CONSULTOR_META_V1, VERSAO_PROMPT_CONSULTOR_META,
-  montarContextoConsultor, prepararConversa, criarLimitador,
+  montarContextoConsultorEmPartes, prepararConversa,
   type PainelCompleto,
 } from "../services/consultorMeta";
+import { criarLimitador, mensagemLimiteAtingido } from "../services/iaEconomia";
 import { conversarComIA, ErroIA, NOME_PROVEDOR } from "../services/consultorLlm";
 import {
   calcularEconomia, calcularMarketing, calcularVendedores, calcularPipeline,
@@ -1560,8 +1561,10 @@ async function carregarPainelMeta(db: BancoDados, hoje: Date): Promise<PainelCom
   return { ...painel, funil, economia, marketing, vendedores, pipeline, distribuicoes, fila, recomendacoes, metaSistema, sinais };
 }
 
-/** Consultor de IA: 40 perguntas por hora por usuário (controle de custo; por instância do servidor). */
+/** Consultor de IA e Assistente de Inteligência de Clientes: perguntas por hora por usuário (controle de
+ * custo; por instância do servidor). Cada chat tem o seu limite para um não consumir a cota do outro. */
 const limitadorConsultorMeta = criarLimitador(40, 60 * 60 * 1000);
+const limitadorAssistenteClientes = criarLimitador(30, 60 * 60 * 1000);
 
 export const performanceComercialRouter = router({
 
@@ -2940,9 +2943,7 @@ export const performanceComercialRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const uso = limitadorConsultorMeta.permitir(String(ctx.user.id));
-      if (!uso.ok) {
-        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `Limite de perguntas por hora atingido. Tente de novo em ${Math.max(1, Math.ceil(uso.reiniciaEmSegundos / 60))} min.` });
-      }
+      if (!uso.ok) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: mensagemLimiteAtingido(uso.reiniciaEmSegundos) });
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
       const hoje = new Date();
@@ -2951,7 +2952,7 @@ export const performanceComercialRouter = router({
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Ainda não há 12 meses fechados de histórico para o consultor analisar." });
       }
 
-      const contexto = montarContextoConsultor(painel, {
+      const contexto = montarContextoConsultorEmPartes(painel, {
         meta: input.meta, meta2: input.meta2, fixos: input.fixos, modoAuto: input.modoAuto, pesoConversao: input.pesoConversao,
       }, hoje);
       const conversa = prepararConversa(input.historico, input.pergunta);
@@ -2960,7 +2961,7 @@ export const performanceComercialRouter = router({
       let resposta;
       try {
         resposta = await conversarComIA(
-          { system: `${PROMPT_CONSULTOR_META_V1}\n\n${contexto}`, historico: conversa.historico, pergunta: conversa.pergunta },
+          { system: `${PROMPT_CONSULTOR_META_V1}\n\n${contexto.estavel}`, sistemaVariavel: contexto.variavel, historico: conversa.historico, pergunta: conversa.pergunta },
           (provedor, erro) => console.error(`[consultor-meta] ${provedor} falhou:`, erro),
         );
       } catch (erro) {
@@ -2992,11 +2993,13 @@ export const performanceComercialRouter = router({
   // dados brutos, nunca recebe a base de clientes inteira.
   perguntarInteligenciaClientes: protectedProcedure
     .input(z.object({
-      pergunta: z.string().min(3),
+      pergunta: z.string().min(3).max(1500),
       dataInicial: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       dataFinal: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const uso = limitadorAssistenteClientes.permitir(String(ctx.user.id));
+      if (!uso.ok) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: mensagemLimiteAtingido(uso.reiniciaEmSegundos) });
       const db = await getDb();
       if (!db) throw new Error("DB indisponível");
       const dataRef = new Date();

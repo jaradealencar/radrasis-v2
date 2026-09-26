@@ -1331,17 +1331,66 @@ Toda recomendação deve dizer para quem é, qual o motivo (citando o número ou
 
 Responda em português do Brasil, com frases claras e diretas. Explique termos técnicos (RFM, coorte, margem de contribuição) só quando isso ajudar a resposta, sem virar aula.`;
 
+export interface LinhaRfmAssistente {
+  empresa: string;
+  recenciaDias: number;
+  frequencia: number;
+  valor: number;
+  notas: string; // "R5 F4 V3"
+}
+
+export interface ResumoRfmAssistente {
+  observacao: string;
+  clientes: number;
+  distribuicaoNotas: { recencia: number[]; frequencia: number[]; valor: number[] };
+  melhoresClientes: LinhaRfmAssistente[];
+  altoValorSumindoTotal: number;
+  altoValorSumindo: LinhaRfmAssistente[];
+}
+
+/** Resumo do RFM para o Assistente. A tabela inteira (uma linha por cliente) chegou a ser ~90% do contexto:
+ * mais de 50 mil tokens cobrados a cada pergunta (medido em 26/09/2026 com 439 clientes). A IA recebe a
+ * distribuição das notas e só os clientes que importam para decidir: os melhores e os de valor alto que
+ * estão sumindo. A tabela completa continua na tela. */
+export function resumirRfmParaAssistente(rfm: RfmCliente[], limite = 25): ResumoRfmAssistente {
+  const linha = (c: RfmCliente): LinhaRfmAssistente => ({
+    empresa: c.empresaExibicao,
+    recenciaDias: c.recenciaDias,
+    frequencia: c.frequencia,
+    valor: c.valorMonetario,
+    notas: `R${c.scoreRecencia} F${c.scoreFrequencia} V${c.scoreValor}`,
+  });
+  const contar = (nota: (c: RfmCliente) => number) => [1, 2, 3, 4, 5].map(n => rfm.filter(c => nota(c) === n).length);
+  const somaNotas = (c: RfmCliente) => c.scoreRecencia + c.scoreFrequencia + c.scoreValor;
+  const sumindo = rfm
+    .filter(c => c.scoreValor >= 4 && c.scoreRecencia <= 2)
+    .sort((a, b) => b.valorMonetario - a.valorMonetario);
+  return {
+    observacao: `Resumo, não a lista completa. Notas de 1 a 5 (5 = melhor; R = recência, F = frequência, V = valor). "distribuicaoNotas" diz quantos clientes há em cada nota (posição 1 = nota 1, ..., posição 5 = nota 5). "melhoresClientes" são os ${limite} de maior soma de notas; "altoValorSumindo" são clientes de valor alto (nota 4 ou 5) com recência baixa (nota 1 ou 2), do maior para o menor valor (total em "altoValorSumindoTotal"). Não conclua nada sobre clientes que não aparecem aqui.`,
+    clientes: rfm.length,
+    distribuicaoNotas: {
+      recencia: contar(c => c.scoreRecencia),
+      frequencia: contar(c => c.scoreFrequencia),
+      valor: contar(c => c.scoreValor),
+    },
+    melhoresClientes: [...rfm].sort((a, b) => somaNotas(b) - somaNotas(a) || b.valorMonetario - a.valorMonetario).slice(0, limite).map(linha),
+    altoValorSumindoTotal: sumindo.length,
+    altoValorSumindo: sumindo.slice(0, limite).map(linha),
+  };
+}
+
 export interface ContextoAssistenteClientes {
   periodo: { dataInicial: string; dataFinal: string };
-  visaoGeral: VisaoGeralClientes;
+  visaoGeral: Omit<VisaoGeralClientes, "rfm">;
+  rfmResumo: ResumoRfmAssistente;
   funil: FunilOrcamentos;
   previsao: PrevisaoComercial;
   filaAcoesPendentesResumo: Array<{ tipo: string; empresa: string; motivo: string; prioridade: number }>;
 }
 
 /** Monta o contexto estruturado enviado ao LLM — só os campos necessários,
- * nunca a base de clientes inteira. Trunca a fila de ações às N mais
- * prioritárias para manter o prompt enxuto. */
+ * nunca a base de clientes inteira (o RFM vai resumido; ver resumirRfmParaAssistente).
+ * Trunca a fila de ações às N mais prioritárias para manter o prompt enxuto. */
 export function montarContextoAssistenteClientes(
   visaoGeral: VisaoGeralClientes,
   funil: FunilOrcamentos,
@@ -1350,11 +1399,16 @@ export function montarContextoAssistenteClientes(
   periodo: { dataInicial: string; dataFinal: string },
   limiteAcoes = 15,
 ): ContextoAssistenteClientes {
+  const { rfm, ...visaoGeralSemRfm } = visaoGeral;
+  // Só o dia, sem a hora: com milissegundos o texto mudava a cada pergunta e o cache do prompt nunca
+  // era aproveitado (medido em 26/09/2026: 2ª pergunta reescrevia 8.722 tokens em vez de lê-los).
+  const soODia = (iso: string) => iso.slice(0, 10);
   return {
     periodo,
-    visaoGeral,
+    visaoGeral: { ...visaoGeralSemRfm, dataReferencia: soODia(visaoGeralSemRfm.dataReferencia) },
+    rfmResumo: resumirRfmParaAssistente(rfm),
     funil,
-    previsao,
+    previsao: { ...previsao, dataReferencia: soODia(previsao.dataReferencia) },
     filaAcoesPendentesResumo: candidatosAcao.slice(0, limiteAcoes).map(c => ({
       tipo: c.tipo, empresa: c.empresa, motivo: c.motivo, prioridade: c.prioridade,
     })),

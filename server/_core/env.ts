@@ -11,6 +11,11 @@ export const ENV = {
   geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
   consultorProvedor: process.env.CONSULTOR_IA_PROVEDOR ?? "",
   consultorModeloAnthropic: process.env.CONSULTOR_ANTHROPIC_MODEL ?? "claude-sonnet-5",
+  // Assistente de Inteligência de Clientes e chat do Painel Financeiro (server/integrations/anthropic-client.ts).
+  // Modelo e "esforço de raciocínio" (low | medium | high | xhigh | max) são o que mais pesa no custo e no
+  // tempo de cada pergunta: dá para ajustar aqui sem mexer no código. Vazio = padrão do código (medium).
+  assistentesModeloAnthropic: process.env.ASSISTENTES_ANTHROPIC_MODEL ?? "claude-opus-5",
+  assistentesEsforcoAnthropic: process.env.ASSISTENTES_ANTHROPIC_EFFORT ?? "",
   MUBISYS_ACCESS_TOKEN: process.env.MUBISYS_ACCESS_TOKEN ?? "",
   MUBISYS_PUBLIC_KEY: process.env.MUBISYS_PUBLIC_KEY ?? "",
   // Radar de Mercado (Inteligência de Clientes) — SerpAPI (serpapi.com). Trocado

@@ -5,11 +5,12 @@ import {
 } from "../services/consultorLlm";
 import { ENV } from "../_core/env";
 
-// O SDK da Anthropic é trocado por um falso: os testes conferem o que seria enviado, sem gastar nada.
-const { criarMensagem } = vi.hoisted(() => ({ criarMensagem: vi.fn() }));
+// O SDK da Anthropic e a chamada à OpenAI são trocados por falsos: os testes conferem o que seria enviado, sem gastar nada.
+const { criarMensagem, invocarOpenAI } = vi.hoisted(() => ({ criarMensagem: vi.fn(), invocarOpenAI: vi.fn() }));
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class { messages = { create: criarMensagem }; },
 }));
+vi.mock("../_core/llm", () => ({ invokeLLM: invocarOpenAI }));
 
 const PEDIDO: PedidoIA = { system: "SISTEMA + CONTEXTO", historico: [{ role: "user", texto: "oi" }, { role: "assistant", texto: "olá" }], pergunta: "e agora?" };
 
@@ -117,6 +118,32 @@ describe("chamada ao Claude", () => {
     criarMensagem.mockResolvedValue({ content: [{ type: "thinking", thinking: "..." }], stop_reason: "max_tokens", usage: {} });
     await expect(chamadasReais.anthropic(PEDIDO)).rejects.toThrow(/não retornou texto \(stop_reason=max_tokens\)/);
   });
+
+  it("economia: a parte variável do contexto vai DEPOIS do ponto de cache, para não invalidá-lo", async () => {
+    criarMensagem.mockResolvedValue({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: {} });
+    await chamadasReais.anthropic({ ...PEDIDO, sistemaVariavel: "CENÁRIO DO SIMULADOR" });
+    expect(criarMensagem.mock.calls[0][0].system).toEqual([
+      { type: "text", text: "SISTEMA + CONTEXTO", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "CENÁRIO DO SIMULADOR" },
+    ]);
+  });
+
+  it("economia: segura o tamanho da resposta e avisa quando ela foi cortada pelo teto", async () => {
+    criarMensagem.mockResolvedValue({ content: [{ type: "text", text: "resposta pela metade" }], stop_reason: "max_tokens", usage: {} });
+    const r = await chamadasReais.anthropic(PEDIDO);
+    expect(criarMensagem.mock.calls[0][0].max_tokens).toBeLessThanOrEqual(2000);
+    expect(r.texto).toContain("resposta pela metade");
+    expect(r.texto).toContain("cortada");
+  });
+});
+
+describe("chamada à OpenAI", () => {
+  it("junta a parte estável e a variável numa instrução só", async () => {
+    invocarOpenAI.mockResolvedValue({ model: "gpt-teste", choices: [{ message: { content: "resposta" } }], usage: {} });
+    const r = await chamadasReais.openai({ ...PEDIDO, sistemaVariavel: "CENÁRIO" });
+    expect(r.texto).toBe("resposta");
+    expect(invocarOpenAI.mock.calls[0][0].messages[0]).toEqual({ role: "system", content: "SISTEMA + CONTEXTO\n\nCENÁRIO" });
+  });
 });
 
 describe("chamada ao Gemini", () => {
@@ -141,6 +168,14 @@ describe("chamada ao Gemini", () => {
     expect(corpo.systemInstruction.parts[0].text).toBe("SISTEMA + CONTEXTO");
     expect(corpo.contents.map((c: { role: string }) => c.role)).toEqual(["user", "model", "user"]);
     expect(corpo.contents[2].parts[0].text).toBe("e agora?");
+  });
+
+  it("junta a parte estável e a variável do contexto numa instrução só", async () => {
+    ENV.geminiApiKey = "k";
+    const fetchFalso = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }) });
+    vi.stubGlobal("fetch", fetchFalso);
+    await chamadasReais.gemini({ ...PEDIDO, sistemaVariavel: "CENÁRIO" });
+    expect(JSON.parse(fetchFalso.mock.calls[0][1].body).systemInstruction.parts[0].text).toBe("SISTEMA + CONTEXTO\n\nCENÁRIO");
   });
 
   it("propaga erro HTTP e resposta vazia para o fallback tratar", async () => {
