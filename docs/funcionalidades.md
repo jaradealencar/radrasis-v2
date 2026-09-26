@@ -281,6 +281,11 @@ usuário à meta, exclusão de vendedor da meta.
 ### Planos de Ação Comercial
 `planos_acao_comercial` — planos derivados dos indicadores comerciais.
 
+### Campanhas WhatsApp
+Aba ao lado de "ROI Marketing" (Inteligência de Clientes › Crescimento e Resultado): cadência dos disparos com
+semáforo de prazo, **quarentena anti-spam por telefone**, pós-venda por data da venda, calendário e webhooks REST
+(`/api/v1/campaigns/:id/log-send`, `/api/v1/contacts/check-quarantine`). Detalhes em `docs/campanhas-whatsapp.md`.
+
 ---
 
 ## 9. Logística

@@ -26,6 +26,7 @@ import { crmRouter } from "./routers/crm";
 import { leadsCnpjRouter } from "./routers/leadsCnpj";
 import { perfilClientesCnpjRouter } from "./routers/perfilClientesCnpj";
 import { planosAcaoComercialRouter } from "./routers/planosAcaoComercial";
+import { campanhasWhatsappRouter } from "./routers/campanhasWhatsapp";
 import { radarMercadoRouter } from "./routers/radarMercado";
 import { custoLedRouter } from "./routers/custoLed";
 import { adminRouter } from "./routers/admin";
@@ -1409,6 +1410,7 @@ O POP deve:
   leadsCnpj: leadsCnpjRouter,
   perfilClientesCnpj: perfilClientesCnpjRouter,
   planosAcaoComercial: planosAcaoComercialRouter,
+  campanhasWhatsapp: campanhasWhatsappRouter,
   radarMercado: radarMercadoRouter,
   custoLed: custoLedRouter,
   auditoria: auditoriaRouter,

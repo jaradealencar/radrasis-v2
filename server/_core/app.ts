@@ -155,6 +155,10 @@ export async function createApp(): Promise<Express> {
   const { registrarRotasPublicoGuiaFornecedores } = await import("../routes/publico-guia-fornecedores");
   registrarRotasPublicoGuiaFornecedores(app);
 
+  // ─── Campanhas WhatsApp: webhooks REST (log-send / check-quarantine), protegidos por CAMPANHAS_API_KEY ───
+  const { registrarRotasCampanhasWhatsappApi } = await import("../routes/campanhas-whatsapp-api");
+  registrarRotasCampanhasWhatsappApi(app);
+
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
   const { handleSincronizarOS, handleStatusSincronizacao } = await import("../sync/scheduled-sync-os-handler");
   app.post("/api/scheduled/sincronizarOS", handleSincronizarOS);

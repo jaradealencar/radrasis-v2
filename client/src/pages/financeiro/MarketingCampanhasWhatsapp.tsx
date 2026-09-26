@@ -1,0 +1,170 @@
+import { useState } from "react";
+import { AlertTriangle, CalendarDays, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Spinner } from "@/components/ui/spinner";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import KpiCard from "@/components/KpiCard";
+import { CATEGORIA_CAMPANHA_LABEL, formatarDataBr } from "@shared/campanhas-whatsapp";
+import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
+import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
+import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
+import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
+import VendasPosVendaDialog from "./campanhasWhatsapp/VendasPosVendaDialog";
+import { StatusCampanhaBadge, type CampanhaLinha } from "./campanhasWhatsapp/comuns";
+
+function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8" onClick={onClick} aria-label={rotulo}>{children}</Button>
+      </TooltipTrigger>
+      <TooltipContent>{rotulo}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * Aba "Campanhas WhatsApp" do Marketing (ao lado de "ROI Marketing"): cadência dos disparos, semáforo de prazo,
+ * quarentena anti-spam por telefone e pós-venda por data da venda. Ver docs/campanhas-whatsapp.md.
+ */
+export default function MarketingCampanhasWhatsapp() {
+  const { data, isLoading, isError, error, refetch } = trpc.campanhasWhatsapp.listar.useQuery();
+
+  // `undefined` = diálogo fechado; `null` no formulário = nova campanha.
+  const [formulario, setFormulario] = useState<CampanhaLinha | null | undefined>(undefined);
+  const [registrar, setRegistrar] = useState<CampanhaLinha | null>(null);
+  const [historico, setHistorico] = useState<CampanhaLinha | null>(null);
+  const [vendas, setVendas] = useState<CampanhaLinha | null>(null);
+
+  if (isLoading) {
+    return <div className="flex justify-center py-20"><Spinner className="size-7 text-muted-foreground" /></div>;
+  }
+  if (isError || !data) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
+        <AlertTriangle size={28} className="text-amber-500" />
+        <p className="text-sm">Não foi possível carregar as campanhas{error ? `: ${error.message}` : "."}</p>
+        <Button size="sm" variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
+      </div>
+    );
+  }
+
+  const { hoje, campanhas, resumo } = data;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <Megaphone size={18} className="text-emerald-600" /> Campanhas e cadência no WhatsApp
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Controle de frequência dos disparos, alerta de prazo e trava anti-spam por telefone.
+          </p>
+        </div>
+        <Button className="gap-1.5" onClick={() => setFormulario(null)}><Plus size={15} /> Nova campanha</Button>
+      </div>
+
+      <Tabs defaultValue="painel">
+        <TabsList>
+          <TabsTrigger value="painel" className="gap-1.5"><LayoutList size={14} /> Painel</TabsTrigger>
+          <TabsTrigger value="calendario" className="gap-1.5"><CalendarDays size={14} /> Calendário</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="painel" className="space-y-4 pt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <KpiCard variant="border" label="Campanhas ativas" value={resumo.ativas} icon={Megaphone} color="#1e6fd9" />
+            <KpiCard
+              variant="border" label="Pendentes para hoje" value={resumo.pendentesHoje} icon={Siren} color="#dc2626"
+              sub="Disparar hoje ou atrasadas"
+            />
+            <KpiCard
+              variant="border" label="Campanhas da semana" value={resumo.daSemana} icon={CalendarClock} color="#d97706"
+              sub="Vencem nos próximos 7 dias"
+            />
+          </div>
+
+          {campanhas.length === 0 ? (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Megaphone /></EmptyMedia>
+                <EmptyTitle>Nenhuma campanha cadastrada</EmptyTitle>
+                <EmptyDescription>Crie a primeira para acompanhar prazos e evitar disparos repetidos para o mesmo contato.</EmptyDescription>
+              </EmptyHeader>
+              <Button className="gap-1.5" onClick={() => setFormulario(null)}><Plus size={15} /> Nova campanha</Button>
+            </Empty>
+          ) : (
+            <div className="rounded-lg border bg-white overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Campanha</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead className="text-right">Frequência</TableHead>
+                    <TableHead>Último envio</TableHead>
+                    <TableHead>Próximo envio</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right sticky right-0 bg-white">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {campanhas.map(c => (
+                    <TableRow key={c.id} className={c.status !== "ativa" ? "opacity-60" : undefined}>
+                      <TableCell className="font-medium">
+                        {c.nome}
+                        <div className="text-[11px] font-normal text-muted-foreground">
+                          {c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
+                          {c.quarentenaDias > 0 && ` · quarentena ${c.quarentenaDias}d`}
+                        </div>
+                      </TableCell>
+                      <TableCell>{CATEGORIA_CAMPANHA_LABEL[c.categoria]}</TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {c.frequenciaDias} dias
+                        {c.tipo === "gatilho_venda" && <div className="text-[11px] text-muted-foreground">após a venda</div>}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{c.ultimoEnvio ? formatarDataBr(c.ultimoEnvio) : "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">{c.proximoEnvio ? formatarDataBr(c.proximoEnvio) : "—"}</TableCell>
+                      <TableCell><StatusCampanhaBadge campanha={c} hoje={hoje} /></TableCell>
+                      <TableCell className="sticky right-0 bg-white shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm" variant="outline" className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            disabled={c.status !== "ativa"} onClick={() => setRegistrar(c)}
+                          >
+                            <Send size={13} /> Registrar disparo
+                          </Button>
+                          {c.tipo === "gatilho_venda" && (
+                            <BotaoIcone rotulo="Ver vendas do pós-venda" onClick={() => setVendas(c)}><ListChecks size={15} /></BotaoIcone>
+                          )}
+                          <BotaoIcone rotulo="Ver histórico" onClick={() => setHistorico(c)}><History size={15} /></BotaoIcone>
+                          <BotaoIcone rotulo="Editar campanha" onClick={() => setFormulario(c)}><Pencil size={15} /></BotaoIcone>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="calendario" className="pt-3">
+          <CalendarioCampanhas />
+        </TabsContent>
+      </Tabs>
+
+      <CampanhaFormDialog
+        open={formulario !== undefined}
+        onOpenChange={v => { if (!v) setFormulario(undefined); }}
+        campanha={formulario ?? null}
+      />
+      <RegistrarDisparoDialog campanha={registrar} hoje={hoje} onClose={() => setRegistrar(null)} />
+      <HistoricoDialog campanha={historico} onClose={() => setHistorico(null)} />
+      <VendasPosVendaDialog campanha={vendas} onClose={() => setVendas(null)} />
+    </div>
+  );
+}

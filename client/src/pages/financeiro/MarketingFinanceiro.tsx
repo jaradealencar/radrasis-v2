@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   LayoutGrid, Target, RefreshCw, Table2, ListTree, Settings2,
-  Upload, Loader2, AlertTriangle, TrendingUp, Gauge, Lightbulb,
+  Upload, Loader2, AlertTriangle, TrendingUp, Gauge, Lightbulb, Megaphone,
 } from "lucide-react";
 import FiltrosMarketing, { type FiltrosMarketingState } from "./FiltrosMarketing";
 import MarketingVisaoGeral from "./MarketingVisaoGeral";
 import MarketingAquisicao from "./MarketingAquisicao";
 import MarketingReativacao from "./MarketingReativacao";
 import MarketingAnaliseMensal from "./MarketingAnaliseMensal";
+import MarketingCampanhasWhatsapp from "./MarketingCampanhasWhatsapp";
 import MarketingConfiguracoes from "./MarketingConfiguracoes";
 import MarketingDrillDownDialog from "./MarketingDrillDownDialog";
 import DetalhamentoMarketing from "./DetalhamentoMarketing";
@@ -41,24 +42,22 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
     .map(m => ({ mes: m.mes, abrev: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][m.mes - 1] })),
     [relatorio]);
 
-  if (isLoading || !config) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-        <Loader2 size={28} className="animate-spin" />
-        <p className="text-sm">Carregando dados de marketing...</p>
-      </div>
-    );
-  }
-
-  if (isError || !relatorio) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-        <AlertTriangle size={28} className="text-amber-500" />
-        <p className="text-sm">Não foi possível carregar os dados. Verifique sua conexão.</p>
-        <Button size="sm" variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
-      </div>
-    );
-  }
+  // Só as abas que leem o relatório de marketing esperam por ele. "Campanhas WhatsApp", "Configurações",
+  // "Detalhamento por Fornecedor" e "Resultado Geral" têm dados próprios e não podem ficar presas a um relatório
+  // lento (busca ao vivo no MubiSys) ou fora do ar.
+  const dados = relatorio && config ? { relatorio, config } : null;
+  const semDados = isLoading || !config ? (
+    <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+      <Loader2 size={28} className="animate-spin" />
+      <p className="text-sm">Carregando dados de marketing...</p>
+    </div>
+  ) : (
+    <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+      <AlertTriangle size={28} className="text-amber-500" />
+      <p className="text-sm">Não foi possível carregar os dados. Verifique sua conexão.</p>
+      <Button size="sm" variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -77,6 +76,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
                 <TabsTrigger value="aquisicao" className="gap-1.5"><Target size={14} /> Aquisição</TabsTrigger>
                 <TabsTrigger value="reativacao" className="gap-1.5"><RefreshCw size={14} /> Reativação</TabsTrigger>
                 <TabsTrigger value="mensal" className="gap-1.5"><Table2 size={14} /> ROI Marketing</TabsTrigger>
+                <TabsTrigger value="campanhas" className="gap-1.5"><Megaphone size={14} /> Campanhas WhatsApp</TabsTrigger>
                 <TabsTrigger value="fornecedor" className="gap-1.5"><ListTree size={14} /> Detalhamento por Fornecedor</TabsTrigger>
                 <TabsTrigger value="config" className="gap-1.5"><Settings2 size={14} /> Configurações</TabsTrigger>
               </TabsList>
@@ -88,32 +88,48 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             <ImportarCustoMarketing open={importOpen} onOpenChange={setImportOpen} anoSel={anoSel} onImported={() => refetch()} />
 
             <TabsContent value="geral" className="space-y-4">
-              <FiltrosMarketing
-                state={filtros} onChange={setFiltros} mesesComDados={mesesComDados}
-                vendedoresDisponiveis={opcoesFiltro?.vendedores ?? []} cidadesDisponiveis={opcoesFiltro?.cidades ?? []}
-              />
-              <MarketingVisaoGeral
-                ano={anoSel} relatorio={relatorio} config={config} mesFiltro={filtros.mesFiltro}
-                onDrillDown={args => setDrillDown(args)}
-              />
+              {dados ? (
+                <>
+                  <FiltrosMarketing
+                    state={filtros} onChange={setFiltros} mesesComDados={mesesComDados}
+                    vendedoresDisponiveis={opcoesFiltro?.vendedores ?? []} cidadesDisponiveis={opcoesFiltro?.cidades ?? []}
+                  />
+                  <MarketingVisaoGeral
+                    ano={anoSel} relatorio={dados.relatorio} config={dados.config} mesFiltro={filtros.mesFiltro}
+                    onDrillDown={args => setDrillDown(args)}
+                  />
+                </>
+              ) : semDados}
             </TabsContent>
 
             <TabsContent value="insights" className="space-y-4">
-              <InsightsCarteira ano={anoSel} relatorio={relatorio} />
+              {dados ? <InsightsCarteira ano={anoSel} relatorio={dados.relatorio} /> : semDados}
             </TabsContent>
 
             <TabsContent value="aquisicao" className="space-y-4">
-              <FiltrosMarketing state={filtros} onChange={setFiltros} mesesComDados={mesesComDados} vendedoresDisponiveis={opcoesFiltro?.vendedores ?? []} cidadesDisponiveis={opcoesFiltro?.cidades ?? []} ocultarClassificacao />
-              <MarketingAquisicao ano={anoSel} relatorio={relatorio} mesFiltro={filtros.mesFiltro} onDrillDown={args => setDrillDown(args)} />
+              {dados ? (
+                <>
+                  <FiltrosMarketing state={filtros} onChange={setFiltros} mesesComDados={mesesComDados} vendedoresDisponiveis={opcoesFiltro?.vendedores ?? []} cidadesDisponiveis={opcoesFiltro?.cidades ?? []} ocultarClassificacao />
+                  <MarketingAquisicao ano={anoSel} relatorio={dados.relatorio} mesFiltro={filtros.mesFiltro} onDrillDown={args => setDrillDown(args)} />
+                </>
+              ) : semDados}
             </TabsContent>
 
             <TabsContent value="reativacao" className="space-y-4">
-              <FiltrosMarketing state={filtros} onChange={setFiltros} mesesComDados={mesesComDados} vendedoresDisponiveis={opcoesFiltro?.vendedores ?? []} cidadesDisponiveis={opcoesFiltro?.cidades ?? []} ocultarClassificacao />
-              <MarketingReativacao ano={anoSel} relatorio={relatorio} mesFiltro={filtros.mesFiltro} onDrillDown={args => setDrillDown(args)} />
+              {dados ? (
+                <>
+                  <FiltrosMarketing state={filtros} onChange={setFiltros} mesesComDados={mesesComDados} vendedoresDisponiveis={opcoesFiltro?.vendedores ?? []} cidadesDisponiveis={opcoesFiltro?.cidades ?? []} ocultarClassificacao />
+                  <MarketingReativacao ano={anoSel} relatorio={dados.relatorio} mesFiltro={filtros.mesFiltro} onDrillDown={args => setDrillDown(args)} />
+                </>
+              ) : semDados}
             </TabsContent>
 
             <TabsContent value="mensal">
-              <MarketingAnaliseMensal ano={anoSel} relatorio={relatorio} refetch={refetch} />
+              {dados ? <MarketingAnaliseMensal ano={anoSel} relatorio={dados.relatorio} refetch={refetch} /> : semDados}
+            </TabsContent>
+
+            <TabsContent value="campanhas">
+              <MarketingCampanhasWhatsapp />
             </TabsContent>
 
             <TabsContent value="fornecedor">

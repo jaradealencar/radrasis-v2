@@ -188,6 +188,8 @@ server/
   services/            lógica de cálculo pura (sem I/O), reutilizada por routers:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
+  routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
+                       espelho) e campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
@@ -239,6 +241,8 @@ nem mocks da camada de dados.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração
   MySQL→Postgres/Better Auth (ver aviso no topo deste arquivo). **O doc mais
   importante pra entender o estado real do banco/auth agora.**
+- `docs/campanhas-whatsapp.md` — módulo Campanhas WhatsApp (aba ao lado de ROI Marketing): regras de
+  cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias
   partes já não valem pra este repo, ver aviso na seção "O que é este

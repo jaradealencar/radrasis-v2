@@ -2499,3 +2499,83 @@ export const metricas = pgTable("metricas", {
 });
 export type Metrica = typeof metricas.$inferSelect;
 export type InsertMetrica = typeof metricas.$inferInsert;
+
+// ─── Campanhas WhatsApp: cadência, quarentena anti-spam e pós-venda ─────────
+// Ver docs/campanhas-whatsapp.md. Datas em colunas `date` (string YYYY-MM-DD):
+// "hoje" é sempre calculado em America/Campo_Grande, nunca em UTC.
+export const campanhaWhatsappCategoriaEnum = pgEnum("campanha_whatsapp_categoria", [
+  "novo_lead", "orcamento_perdido", "reativacao_inativo", "pos_venda", "outbound",
+]);
+// recorrente = lote periódico (próximo envio = último + frequência);
+// gatilho_venda = pós-venda (prazo individual: data de faturamento da venda + frequência).
+export const campanhaWhatsappTipoEnum = pgEnum("campanha_whatsapp_tipo", ["recorrente", "gatilho_venda"]);
+export const campanhaWhatsappStatusEnum = pgEnum("campanha_whatsapp_status", ["ativa", "pausada", "arquivada"]);
+
+export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
+  id: serial("id").primaryKey(),
+  nome: varchar("nome", { length: 160 }).notNull(),
+  categoria: campanhaWhatsappCategoriaEnum("categoria").notNull(),
+  tipo: campanhaWhatsappTipoEnum("tipo").notNull().default("recorrente"),
+  frequenciaDias: integer("frequencia_dias").notNull(),
+  // Descanso mínimo (dias) que um telefone precisa ter desde QUALQUER campanha antes de entrar nesta. 0 = sem trava.
+  quarentenaDias: integer("quarentena_dias").notNull().default(0),
+  status: campanhaWhatsappStatusEnum("status").notNull().default("ativa"),
+  // Só para gatilho_venda: ignora vendas faturadas antes desta data. Nulo = sem limite (toda venda com prazo
+  // vencido e ainda não contatada entra na lista). Existe para o usuário conter a 1ª lista de uma campanha nova.
+  gatilhoAPartirDe: date("gatilho_a_partir_de"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CampanhaWhatsapp = typeof campanhasWhatsapp.$inferSelect;
+export type InsertCampanhaWhatsapp = typeof campanhasWhatsapp.$inferInsert;
+
+// Um registro por disparo feito. `proximaData` = enviadoEm + frequência VIGENTE naquele momento (fato histórico,
+// alimenta o calendário); o "próximo envio" exibido na tela é recalculado com a frequência atual da campanha.
+export const campanhasWhatsappDisparos = pgTable("campanhas_whatsapp_disparos", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  enviadoEm: date("enviado_em").notNull(),
+  proximaData: date("proxima_data"),
+  contatosRecebidos: integer("contatos_recebidos").notNull().default(0),
+  contatosEnviados: integer("contatos_enviados").notNull().default(0),
+  contatosIgnorados: integer("contatos_ignorados").notNull().default(0), // ignorados por quarentena
+  contatosInvalidos: integer("contatos_invalidos").notNull().default(0), // telefone inválido ou repetido na lista
+  arquivoUrl: varchar("arquivo_url", { length: 512 }),
+  arquivoNome: varchar("arquivo_nome", { length: 256 }),
+  origem: varchar("origem", { length: 8 }).notNull().default("app"), // "app" | "api"
+  observacoes: text("observacoes"),
+  registradoPor: varchar("registrado_por", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  campanhaEnviadoIdx: index("campanhas_whatsapp_disparos_campanha_enviado_idx").on(t.campanhaId, t.enviadoEm),
+}));
+export type CampanhaWhatsappDisparo = typeof campanhasWhatsappDisparos.$inferSelect;
+export type InsertCampanhaWhatsappDisparo = typeof campanhasWhatsappDisparos.$inferInsert;
+
+// Trava anti-spam: uma linha por telefone (só dígitos, com DDI 55) com o ÚLTIMO contato recebido de qualquer
+// campanha. Só enxerga envios registrados neste módulo (upload ou API) — Retenção de Clientes Novos e CRM não alimentam.
+export const campanhasWhatsappQuarentena = pgTable("campanhas_whatsapp_quarentena", {
+  id: serial("id").primaryKey(),
+  telefone: varchar("telefone", { length: 20 }).notNull().unique(),
+  ultimaCampanhaId: integer("ultima_campanha_id").references(() => campanhasWhatsapp.id, { onDelete: "set null" }),
+  ultimoContatoEm: date("ultimo_contato_em").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  ultimoContatoIdx: index("campanhas_whatsapp_quarentena_ultimo_contato_idx").on(t.ultimoContatoEm),
+}));
+export type CampanhaWhatsappQuarentena = typeof campanhasWhatsappQuarentena.$inferSelect;
+export type InsertCampanhaWhatsappQuarentena = typeof campanhasWhatsappQuarentena.$inferInsert;
+
+// Vendas (OS) de campanhas gatilho_venda que já foram contatadas — sem isto o pós-venda re-listaria a mesma venda.
+export const campanhasWhatsappGatilhos = pgTable("campanhas_whatsapp_gatilhos", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  disparoId: integer("disparo_id").notNull().references(() => campanhasWhatsappDisparos.id, { onDelete: "cascade" }),
+  osNumero: varchar("os_numero", { length: 32 }).notNull(),
+  telefone: varchar("telefone", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  campanhaOsUnique: uniqueIndex("campanhas_whatsapp_gatilhos_campanha_os_unique").on(t.campanhaId, t.osNumero),
+}));
+export type CampanhaWhatsappGatilho = typeof campanhasWhatsappGatilhos.$inferSelect;
+export type InsertCampanhaWhatsappGatilho = typeof campanhasWhatsappGatilhos.$inferInsert;
