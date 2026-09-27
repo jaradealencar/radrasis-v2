@@ -219,3 +219,62 @@ describe("categorias (editáveis pelo usuário)", () => {
     categoriasCriadas.splice(categoriasCriadas.indexOf(semUso.id), 1); // já excluída — não precisa (nem pode) limpar de novo
   });
 });
+
+describe("modelos de mensagem por campanha", () => {
+  it("adiciona, edita, incrementa cópia e remove (soft delete) — mesmo padrão de crm_scripts/retencao_scripts", async () => {
+    const s1 = await admin().addScript({ campanhaId: recorrenteId, titulo: "Abertura", conteudo: "Oi {nome}, tudo bem?" });
+    const s2 = await admin().addScript({ campanhaId: recorrenteId, conteudo: "Sem título" });
+    expect(s1.ordem).toBeLessThan(s2.ordem);
+    expect(s2.titulo).toBeNull();
+
+    let lista = await admin().listScripts({ campanhaId: recorrenteId });
+    expect(lista.map(s => s.id)).toEqual([s1.id, s2.id]);
+
+    await admin().updateScript({ id: s1.id, titulo: "Abertura editada", conteudo: "Novo texto" });
+    await admin().incrementCopiaScript({ id: s1.id });
+    await admin().incrementCopiaScript({ id: s1.id });
+    lista = await admin().listScripts({ campanhaId: recorrenteId });
+    expect(lista.find(s => s.id === s1.id)).toMatchObject({ titulo: "Abertura editada", conteudo: "Novo texto", copiaCount: 2 });
+
+    await admin().deleteScript({ id: s2.id });
+    lista = await admin().listScripts({ campanhaId: recorrenteId });
+    expect(lista.map(s => s.id)).toEqual([s1.id]); // soft delete: some da listagem (ativo=false), não é apagado
+
+    await admin().deleteScript({ id: s1.id }); // limpeza
+  });
+
+  it("reorderScripts persiste a nova ordem", async () => {
+    const a = await admin().addScript({ campanhaId: gatilhoId, conteudo: "A" });
+    const b = await admin().addScript({ campanhaId: gatilhoId, conteudo: "B" });
+    await admin().reorderScripts({ campanhaId: gatilhoId, orderedIds: [b.id, a.id] });
+    const lista = await admin().listScripts({ campanhaId: gatilhoId });
+    expect(lista.map(s => s.id)).toEqual([b.id, a.id]);
+    await admin().deleteScript({ id: a.id });
+    await admin().deleteScript({ id: b.id });
+  });
+
+  it("addScript numa campanha inexistente é rejeitado (404)", async () => {
+    await expect(admin().addScript({ campanhaId: 999999, conteudo: "x" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("arquivos da campanha (pasta de listas de contatos)", () => {
+  it("adiciona, lista (mais recente primeiro) e remove", async () => {
+    const a1 = await admin().adicionarArquivo({ campanhaId: recorrenteId, nome: "lista-setembro.xlsx", url: "https://exemplo.com/a1.xlsx", tamanhoBytes: 20480 });
+    expect(a1.enviadoPor).toBe("Teste Admin");
+    const a2 = await admin().adicionarArquivo({ campanhaId: recorrenteId, nome: "lista-outubro.csv", url: "https://exemplo.com/a2.csv" });
+    expect(a2.tamanhoBytes).toBe(0); // default quando não informado
+
+    const lista = await admin().listArquivos({ campanhaId: recorrenteId });
+    expect(lista.map(a => a.id)).toEqual([a2.id, a1.id]); // mais recente primeiro
+
+    await admin().removerArquivo({ id: a1.id });
+    expect((await admin().listArquivos({ campanhaId: recorrenteId })).map(a => a.id)).toEqual([a2.id]);
+    await admin().removerArquivo({ id: a2.id });
+  });
+
+  it("adicionarArquivo numa campanha inexistente é rejeitado (404)", async () => {
+    await expect(admin().adicionarArquivo({ campanhaId: 999999, nome: "x.csv", url: "https://exemplo.com/x.csv" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});

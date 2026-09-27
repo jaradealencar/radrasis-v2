@@ -51,7 +51,14 @@ rótulo de campanhas antigas. Excluir de fato só é permitido quando nenhuma ca
 (`listarCategorias` devolve `emUso` para a tela decidir se oferece excluir ou só arquivar). UI em
 `GerenciarCategoriasPopover.tsx`, aberto a partir do formulário de campanha.
 
-## Modelo de dados (migrations `0045`–`0047`)
+**Modelos de mensagem e arquivos são por campanha** (pedido do usuário): a partir da edição de uma campanha já
+salva, dois popovers — "Modelos de mensagem" (scripts para copiar/colar no disparo, mesmo padrão de
+`crm_scripts`/`retencao_scripts`: título+conteúdo, contador de cópias, soft delete) e "Arquivos" (uma "pasta" para
+guardar listas de contatos e outros documentos da campanha, independente de já terem sido usados num disparo —
+upload direto ao UploadThing, rota "documento", mesma do Registrar Disparo). Só existem para campanha com `id`
+(precisam salvar a campanha primeiro).
+
+## Modelo de dados (migrations `0045`–`0048`)
 
 | Tabela | Papel |
 |---|---|
@@ -60,6 +67,8 @@ rótulo de campanhas antigas. Excluir de fato só é permitido quando nenhuma ca
 | `campanhas_whatsapp_disparos` | log de cada disparo (contagens, próxima data, arquivo, observações, origem `app`/`api`) |
 | `campanhas_whatsapp_quarentena` | último contato por telefone (`telefone` único) |
 | `campanhas_whatsapp_gatilhos` | OS de pós-venda já contatadas por campanha (`campanha_id`+`os_numero` único) |
+| `campanhas_whatsapp_scripts` | modelos de mensagem por campanha (`titulo`, `conteudo`, `ordem`, `ativo`, `copia_count`) |
+| `campanhas_whatsapp_arquivos` | arquivos salvos por campanha (`nome`, `url`, `tamanho_bytes`, `enviado_por`) — só o registro; exclusão não apaga o arquivo do UploadThing (mesmo padrão de `biblioteca_arquivos`) |
 
 O registro de um disparo (log + quarentena + vendas contatadas) é **um único statement SQL com CTEs** — atômico no
 Postgres. `db.transaction` não serve aqui: o driver Neon roda em modo HTTP (`server/db/db-connection.ts`).
@@ -130,5 +139,5 @@ contatos por `log-send`, 5.000 telefones por `check-quarantine`.
 ## Testes
 
 `server/__tests__/campanhas-whatsapp.test.ts` (regras puras + autenticação/validação dos webhooks),
-`server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo, modo webhook, gatilho, role) e
-`client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).
+`server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo, modo webhook, gatilho, role,
+categorias, scripts, arquivos) e `client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).

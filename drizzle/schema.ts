@@ -2598,3 +2598,36 @@ export const campanhasWhatsappGatilhos = pgTable("campanhas_whatsapp_gatilhos", 
 }));
 export type CampanhaWhatsappGatilho = typeof campanhasWhatsappGatilhos.$inferSelect;
 export type InsertCampanhaWhatsappGatilho = typeof campanhasWhatsappGatilhos.$inferInsert;
+
+// Modelos de mensagem sugeridos por campanha — mesmo padrão de crm_scripts/retencao_scripts (faixa/estágio
+// trocado por campanha). "Excluir" é soft delete (ativo=false), como nos dois padrões acima.
+export const campanhasWhatsappScripts = pgTable("campanhas_whatsapp_scripts", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  ordem: integer("ordem").notNull().default(0),
+  titulo: varchar("titulo", { length: 128 }),
+  conteudo: text("conteudo").notNull(),
+  ativo: boolean("ativo").notNull().default(true),
+  copiaCount: integer("copia_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CampanhaWhatsappScript = typeof campanhasWhatsappScripts.$inferSelect;
+export type InsertCampanhaWhatsappScript = typeof campanhasWhatsappScripts.$inferInsert;
+
+// "Pasta" de arquivos da campanha (pedido do usuário: um lugar para salvar listas de contatos) — o arquivo em
+// si sobe direto para o UploadThing (client/src/lib/upload.ts, rota "documento", mesma do Registrar Disparo);
+// esta tabela só guarda a referência. Independente de campanhas_whatsapp_disparos.arquivo_url: aqui não precisa
+// ter sido usado num disparo — serve de rascunho/repositório. Excluir remove só o registro, não o arquivo no
+// storage (mesmo padrão de biblioteca_arquivos, sem chamada a UTApi.deleteFiles em nenhum router do projeto).
+export const campanhasWhatsappArquivos = pgTable("campanhas_whatsapp_arquivos", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  url: varchar("url", { length: 1024 }).notNull(),
+  tamanhoBytes: integer("tamanho_bytes").notNull().default(0),
+  enviadoPor: varchar("enviado_por", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type CampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$inferSelect;
+export type InsertCampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$inferInsert;

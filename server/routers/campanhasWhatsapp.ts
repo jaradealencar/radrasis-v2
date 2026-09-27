@@ -13,12 +13,13 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, count, desc, eq, gte, inArray, isNotNull, lte, max } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lte, max, sql } from "drizzle-orm";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import {
-  campanhasWhatsapp, campanhasWhatsappCategorias, campanhasWhatsappDisparos, campanhasWhatsappGatilhos, historicoOs,
+  campanhasWhatsapp, campanhasWhatsappArquivos, campanhasWhatsappCategorias, campanhasWhatsappDisparos,
+  campanhasWhatsappGatilhos, campanhasWhatsappScripts, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
@@ -575,5 +576,110 @@ export const campanhasWhatsappRouter = router({
 
       eventos.sort((a, b) => a.data.localeCompare(b.data) || a.nome.localeCompare(b.nome));
       return { hoje, eventos };
+    }),
+
+  // ─── Modelos de mensagem por campanha (mesmo padrão de crm_scripts/retencao_scripts) ────────────
+
+  listScripts: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      return db.select().from(campanhasWhatsappScripts)
+        .where(and(eq(campanhasWhatsappScripts.campanhaId, input.campanhaId), eq(campanhasWhatsappScripts.ativo, true)))
+        .orderBy(campanhasWhatsappScripts.ordem);
+    }),
+
+  addScript: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int(),
+      titulo: z.string().trim().max(128).optional(),
+      conteudo: z.string().trim().min(1, "Escreva o texto do script"),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await buscarCampanha(db, input.campanhaId); // 404 se a campanha não existe
+      const [{ maxOrdem }] = await db.select({ maxOrdem: max(campanhasWhatsappScripts.ordem) })
+        .from(campanhasWhatsappScripts).where(eq(campanhasWhatsappScripts.campanhaId, input.campanhaId));
+      const [row] = await db.insert(campanhasWhatsappScripts).values({
+        campanhaId: input.campanhaId, titulo: input.titulo || null, conteudo: input.conteudo, ordem: (maxOrdem ?? 0) + 1,
+      }).returning();
+      return row;
+    }),
+
+  updateScript: campanhasProcedure
+    .input(z.object({ id: z.number().int(), titulo: z.string().trim().max(128).optional(), conteudo: z.string().trim().min(1) }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.update(campanhasWhatsappScripts)
+        .set({ titulo: input.titulo || null, conteudo: input.conteudo, updatedAt: new Date() })
+        .where(eq(campanhasWhatsappScripts.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Soft delete (ativo=false) — mesmo padrão de crm_scripts/retencao_scripts. */
+  deleteScript: campanhasProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.update(campanhasWhatsappScripts).set({ ativo: false, updatedAt: new Date() }).where(eq(campanhasWhatsappScripts.id, input.id));
+      return { ok: true };
+    }),
+
+  incrementCopiaScript: campanhasProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.execute(sql`UPDATE campanhas_whatsapp_scripts SET copia_count = copia_count + 1 WHERE id = ${input.id}`);
+      return { ok: true };
+    }),
+
+  reorderScripts: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int(), orderedIds: z.array(z.number().int()) }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await Promise.all(input.orderedIds.map((id, index) =>
+        db.update(campanhasWhatsappScripts).set({ ordem: index }).where(eq(campanhasWhatsappScripts.id, id))
+      ));
+      return { ok: true };
+    }),
+
+  // ─── Arquivos da campanha — "pasta" para listas de contatos e afins ─────────────────────────────
+  // O upload em si vai direto ao UploadThing (client/src/lib/upload.ts, rota "documento"); aqui só se
+  // registra a referência. Diferente de campanhas_whatsapp_disparos.arquivo_url: não precisa ter sido
+  // usado num disparo, é um repositório livre por campanha.
+
+  listArquivos: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      return db.select().from(campanhasWhatsappArquivos)
+        .where(eq(campanhasWhatsappArquivos.campanhaId, input.campanhaId))
+        .orderBy(desc(campanhasWhatsappArquivos.createdAt));
+    }),
+
+  adicionarArquivo: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int(),
+      nome: z.string().trim().min(1).max(256),
+      url: z.string().url().max(1024),
+      tamanhoBytes: z.number().int().min(0).max(64 * 1024 * 1024).default(0),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await obterDb();
+      await buscarCampanha(db, input.campanhaId);
+      const [row] = await db.insert(campanhasWhatsappArquivos).values({
+        campanhaId: input.campanhaId, nome: input.nome, url: input.url, tamanhoBytes: input.tamanhoBytes,
+        enviadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+      }).returning();
+      return row;
+    }),
+
+  /** Remove só o registro — o arquivo em si continua no UploadThing (mesmo padrão de biblioteca_arquivos). */
+  removerArquivo: campanhasProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.delete(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, input.id));
+      return { ok: true };
     }),
 });
