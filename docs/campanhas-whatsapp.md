@@ -9,7 +9,7 @@ servidor exigem os mesmos roles (a lista guarda telefones de clientes). Não há
 
 Código: `client/src/pages/financeiro/MarketingCampanhasWhatsapp.tsx` (+ pasta `campanhasWhatsapp/`),
 `server/routers/campanhasWhatsapp.ts`, `server/services/campanhasWhatsapp.ts` (regra pura),
-`server/services/fontesErpCampanhas.ts` (Fontes de Dados — 4 públicos do ERP local + leitura de arquivo),
+`server/services/fontesErpCampanhas.ts` (Fontes de Dados — 5 públicos do ERP local + leitura de arquivo),
 `shared/campanhas-whatsapp.ts` (datas, telefone, semáforo), `shared/lista-contatos.ts` (parser de CSV/XLSX,
 isomórfico), `server/routes/campanhas-whatsapp-api.ts` (webhooks).
 
@@ -67,14 +67,19 @@ Pedido do usuário: um "cérebro" que resolve a audiência de uma campanha a par
 campanha (multi-seleção com autosave a cada clique — `FontesDadosPopover.tsx`) + "Gerenciar fontes"
 (`GerenciarFontesPopover.tsx`) para criar fontes externas ou arquivar qualquer fonte.
 
-**4 fontes automáticas do ERP** (seed fixo da migration `0049`, calculadas do histórico local — sem chamada à
-API MubiSys, mesmo espírito de `inteligenciaClientes.ts`): *Clientes ativos* (última compra ≤ 180 dias),
-*Primeira compra/onboarding* (só 1 compra até agora, feita há ≤ 60 dias), *Inativos 6+ meses* (última compra ≥
-180 dias), *Orçaram e não compraram* (orçamento nos últimos 90 dias com status que não é venda ganha —
-`historico_orcamentos` não tem telefone; quando a empresa já foi cliente alguma vez, o telefone vem de
-`historico_os`, senão fica em branco). Implementação: `server/services/fontesErpCampanhas.ts`
-(`RESOLVEDORES_ERP`), sem alterar `construirBaseClientes`/`ClienteBase` (não carregam telefone — foi criada uma
-agregação própria, `construirBaseComTelefone`).
+**5 fontes automáticas do ERP** (seed fixo das migrations `0049`/`0050`, calculadas do histórico local — sem
+chamada à API MubiSys, mesmo espírito de `inteligenciaClientes.ts`): *Clientes ativos* (última compra ≤ 180
+dias), *Primeira compra/onboarding* (só 1 compra até agora, feita há ≤ 60 dias), *Inativos 6+ meses* (última
+compra ≥ 180 dias), *Orçaram e não compraram* (status que não é venda ganha, em **todo o histórico** — sem
+limite de janela; decisão do usuário 27/09/2026, cogitou separar por ano do orçamento e descartou: "puxa de
+todo o histórico que é melhor" — `historico_orcamentos` não tem telefone; quando a empresa já foi cliente
+alguma vez, o telefone vem de `historico_os`, senão fica em branco), *Compraram 1 vez e sumiram* (só 1 compra na
+vida inteira **e** ela já esfriou, 180+ dias — diferente de "Inativos", que aceita quem já comprou várias vezes
+antes de parar; pedido do usuário 27/09/2026, não coberto pelas 4 fontes anteriores). Implementação:
+`server/services/fontesErpCampanhas.ts` (`RESOLVEDORES_ERP`), sem alterar `construirBaseClientes`/`ClienteBase`
+(não carregam telefone — foi criada uma agregação própria, `construirBaseComTelefone`). A função
+`resolverOrcaramNaoCompraram` aceita um `janelaDias` opcional (quem quiser restringir num uso futuro), mas a
+fonte seedada não passa esse parâmetro.
 
 **Fonte externa (upload) — fundida com "Arquivos"** (decisão do usuário): não existe uma tabela separada de
 "contatos da fonte". Criar uma fonte externa sobe o arquivo pela mesma rota de sempre
@@ -99,7 +104,22 @@ contato não deveria ser reabordado na campanha antes do próprio intervalo dela
 (bloqueando reenvio) no fluxo de Fontes. Decisão de escopo: o upload manual/webhook continuam exatamente como
 antes, sem essa trava adicional, para não alterar o comportamento já testado desses fluxos.
 
-## Modelo de dados (migrations `0045`–`0049`)
+## Duplicar campanha
+
+Pedido do usuário 27/09/2026 ("copiar uma campanha para não ter que configurar tudo de novo") — útil para criar
+rapidamente campanhas parecidas, ex.: uma campanha de prospecção por estado servindo de base para as demais
+(mesma categoria/cadência/quarentena, só troca o nome e a fonte de cada estado). Botão "Duplicar campanha"
+(ícone de cópia) na tabela do painel → `DuplicarCampanhaDialog.tsx` pede só o nome da cópia →
+`campanhasWhatsapp.duplicarCampanha({ id, novoNome })`.
+
+Copia: categoria, tipo, `frequenciaDias`, `quarentenaDias`, `gatilhoAPartirDe` (se gatilho de venda), fontes de
+dados vinculadas e modelos de mensagem ativos. **Não copia**: arquivos da pasta da campanha (cada cópia deve
+receber sua própria lista), histórico de disparos, nem a cadência já registrada por telefone — a cópia nasce
+zerada (status `ativa`, sem nenhum envio ainda). Não existe hierarquia formal campanha/subcampanha no banco:
+"subcampanhas" (ex.: Prospecção Google Maps por estado) são campanhas comuns, agrupadas só pelo nome/categoria —
+duplicar é o atalho para criá-las rapidamente sem precisar reconfigurar tudo.
+
+## Modelo de dados (migrations `0045`–`0050`)
 
 | Tabela | Papel |
 |---|---|
@@ -187,11 +207,25 @@ contatos por `log-send`, 5.000 telefones por `check-quarantine`.
 - "Orçaram e não compraram" e boa parte de "Inativos" ficam sem telefone quando a venda/empresa é anterior a
   21/09/2026 (mesma limitação já documentada no pós-venda — backfill em `/api/scheduled/completarTelefones`);
   confirmado em teste manual: de 990 inativos resolvidos, 857 vieram sem telefone.
+- Sem hierarquia formal de "subcampanha" no banco (ver seção "Duplicar campanha" acima) — é convenção de nome,
+  não uma coluna de relacionamento.
+
+## Script de seed das campanhas iniciais
+
+`scripts/seed-campanhas-whatsapp-iniciais.mjs` cria (idempotente, por nome) as campanhas pedidas pelo usuário em
+27/09/2026: as 3 automáticas do ERP (Inativos 6+ meses, Orçaram e não compraram, Compraram 1x e sumiram — já
+com a fonte vinculada) e 5 "recipientes" para listas externas (Prospecção Google Maps — MS/PR/RS/SC, Leads
+Instagram sem cotação) que nascem **sem fonte**, aguardando o usuário subir a planilha e vincular pela tela.
+Frequência/quarentena nascem com valores de **rascunho** (sugestões dos tooltips do formulário) — o usuário
+disse que ainda vai passar os números definitivos; edite pela tela quando tiver. Roda contra a `DATABASE_URL`
+do ambiente (`node scripts/seed-campanhas-whatsapp-iniciais.mjs`) — validado contra o banco de teste local e
+revertido em seguida; para existir em produção precisa rodar de novo com a `DATABASE_URL` de produção (o
+agente não tem essa credencial) ou, mais simples, criar cada campanha pela própria tela.
 
 ## Testes
 
 `server/__tests__/campanhas-whatsapp.test.ts` (regras puras, incl. `filtrarPorCadenciaCampanha`, + autenticação/
 validação dos webhooks), `server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo,
-modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de ponta a ponta),
-`server/__tests__/fontes-erp-campanhas.test.ts` (as 4 resoluções ERP, puro) e `client/src/lib/listaContatos.test.ts`
+modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de ponta a ponta, `duplicarCampanha`),
+`server/__tests__/fontes-erp-campanhas.test.ts` (as 5 resoluções ERP, puro) e `client/src/lib/listaContatos.test.ts`
 (leitura de CSV/XLSX).

@@ -95,14 +95,17 @@ export function resolverInativos(base: Map<string, ClienteComTelefone>, hoje: st
 }
 
 /**
- * Orçaram e não compraram: orçamento dentro da janela (padrão 90 dias) com status que não é venda ganha
- * (aberto ou perdido — ambos candidatos a follow-up, mesmo vocabulário de STATUS_GANHO já usado no funil de
- * orçamentos). Telefone vem de historico_os da mesma empresa quando ela já foi cliente alguma vez; senão
- * fica `null` (historico_orcamentos não guarda telefone — só nome da empresa).
- * 1 contato por empresa mesmo com vários orçamentos na janela.
+ * Orçaram e não compraram: orçamento com status que não é venda ganha (aberto ou perdido — ambos candidatos
+ * a follow-up, mesmo vocabulário de STATUS_GANHO já usado no funil de orçamentos). Telefone vem de
+ * historico_os da mesma empresa quando ela já foi cliente alguma vez; senão fica `null` (historico_orcamentos
+ * não guarda telefone — só nome da empresa). 1 contato por empresa mesmo com vários orçamentos.
+ *
+ * `janelaDias` é opcional (padrão: sem limite, todo o histórico) — decisão do usuário 27/09/2026: cogitou
+ * separar por ano do orçamento e descartou ("puxa de todo o histórico que é melhor"). Existe só para quem
+ * quiser restringir a um recorte mais recente num uso futuro; a fonte ERP seedada não passa esse parâmetro.
  */
 export function resolverOrcaramNaoCompraram(
-  orcamentos: HistoricoOrcamento[], base: Map<string, ClienteComTelefone>, hoje: string, janelaDias = 90,
+  orcamentos: HistoricoOrcamento[], base: Map<string, ClienteComTelefone>, hoje: string, janelaDias?: number,
 ): ContatoFonte[] {
   const vistos = new Set<string>();
   const resultado: ContatoFonte[] = [];
@@ -112,7 +115,7 @@ export function resolverOrcaramNaoCompraram(
     const data = parseDataFlexivel(o.dataCadastro);
     if (!data) continue;
     const dataIso = dataLocalParaIso(data);
-    if (diasEntre(dataIso, hoje) > janelaDias) continue;
+    if (janelaDias !== undefined && diasEntre(dataIso, hoje) > janelaDias) continue;
     const empresaBruta = (o.empresa ?? "").trim();
     if (!empresaBruta) continue;
     const key = normalizeEmpresaKey(empresaBruta);
@@ -120,6 +123,21 @@ export function resolverOrcaramNaoCompraram(
     vistos.add(key);
     const cliente = base.get(key);
     resultado.push({ telefone: cliente?.telefone ?? null, nome: cliente?.empresa ?? empresaBruta });
+  }
+  return resultado;
+}
+
+/**
+ * Compraram uma única vez e sumiram: diferente de "Primeira compra" (que pega quem comprou 1x HÁ POUCO
+ * TEMPO, para onboarding), esta pega quem comprou 1x e essa única compra já esfriou (padrão 180 dias / ~6
+ * meses) — nunca recomprou depois. Pedido do usuário 27/09/2026 ("compraram uma só vez e não compraram mais
+ * há uns seis meses"), não coberto pelas 4 fontes anteriores: "Inativos" pega qualquer última compra velha
+ * (mesmo quem já comprou várias vezes antes de parar); esta é o subconjunto mais estrito (só 1 compra na vida).
+ */
+export function resolverCompraramUmaVezESumiram(base: Map<string, ClienteComTelefone>, hoje: string, minDias = 180): ContatoFonte[] {
+  const resultado: ContatoFonte[] = [];
+  for (const c of base.values()) {
+    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) >= minDias) resultado.push({ telefone: c.telefone, nome: c.empresa });
   }
   return resultado;
 }
@@ -132,6 +150,7 @@ export const RESOLVEDORES_ERP: Record<string, (base: Map<string, ClienteComTelef
   primeira_compra: base => resolverPrimeiraCompra(base, hojeCampoGrande()),
   inativos_6m: base => resolverInativos(base, hojeCampoGrande()),
   orcaram_nao_compraram: (base, orcamentos) => resolverOrcaramNaoCompraram(orcamentos, base, hojeCampoGrande()),
+  compraram_uma_vez_sumiram: base => resolverCompraramUmaVezESumiram(base, hojeCampoGrande()),
 };
 
 /** Carrega historico_os + historico_orcamentos uma única vez para resolver quantas fontes ERP forem pedidas

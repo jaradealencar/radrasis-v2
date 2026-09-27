@@ -395,6 +395,48 @@ export const campanhasWhatsappRouter = router({
       return { ok: true };
     }),
 
+  /**
+   * Duplica uma campanha existente (nome, categoria, tipo, cadência/quarentena, fontes vinculadas e modelos
+   * de mensagem) sob um nome novo — pedido do usuário 27/09/2026 para criar rapidamente "subcampanhas"
+   * parecidas (ex.: uma "Prospecção Google Maps — MS" e depois duplicar trocando só o nome e a fonte de cada
+   * estado). NÃO copia: arquivos da pasta da campanha (cada cópia deve receber sua própria lista/arquivo),
+   * histórico de disparos, nem a cadência já registrada por telefone — a cópia nasce "zerada" (status ativa,
+   * sem nenhum envio ainda).
+   */
+  duplicarCampanha: campanhasProcedure
+    .input(z.object({ id: z.number().int(), novoNome: z.string().trim().min(1, "Informe o nome da cópia").max(160) }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const original = await buscarCampanha(db, input.id);
+      const [copia] = await db.insert(campanhasWhatsapp).values({
+        nome: input.novoNome,
+        categoria: original.categoria,
+        descricao: original.descricao,
+        tipo: original.tipo,
+        frequenciaDias: original.frequenciaDias,
+        quarentenaDias: original.quarentenaDias,
+        status: "ativa",
+        gatilhoAPartirDe: original.tipo === "gatilho_venda" ? original.gatilhoAPartirDe : null,
+      }).returning();
+
+      const [fontes, scripts] = await Promise.all([
+        db.select({ fonteId: campanhasWhatsappCampanhaFontes.fonteId }).from(campanhasWhatsappCampanhaFontes)
+          .where(eq(campanhasWhatsappCampanhaFontes.campanhaId, original.id)),
+        db.select().from(campanhasWhatsappScripts)
+          .where(and(eq(campanhasWhatsappScripts.campanhaId, original.id), eq(campanhasWhatsappScripts.ativo, true))),
+      ]);
+      if (fontes.length) {
+        await db.insert(campanhasWhatsappCampanhaFontes)
+          .values(fontes.map(f => ({ campanhaId: copia.id, fonteId: f.fonteId })));
+      }
+      if (scripts.length) {
+        await db.insert(campanhasWhatsappScripts).values(scripts.map(s => ({
+          campanhaId: copia.id, ordem: s.ordem, titulo: s.titulo, conteudo: s.conteudo,
+        })));
+      }
+      return copia;
+    }),
+
   // ─── Categorias (editáveis pelo usuário — ver comentário em drizzle/schema.ts) ────────────────
 
   /** `emUso`: quantas campanhas usam a categoria — a tela só oferece excluir (em vez de arquivar) quando é 0. */

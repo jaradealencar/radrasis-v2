@@ -351,6 +351,13 @@
       "when": 1790530951571,
       "tag": "0049_campanhas_whatsapp_fontes",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790600000000,
+      "tag": "0050_campanhas_whatsapp_fonte_compra_unica",
+      "breakpoints": true
     }
   ]
 }

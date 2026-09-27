@@ -318,10 +318,12 @@ describe("Fontes de Dados (ERP local + arquivo)", () => {
     criadas.push(campanha.id);
   });
 
-  it("listarFontes traz as 4 fontes ERP pré-cadastradas (seed da migration)", async () => {
+  it("listarFontes traz as 5 fontes ERP pré-cadastradas (seed das migrations 0049/0050)", async () => {
     const fontes = await admin().listarFontes();
     const chaves = fontes.filter(f => f.tipo === "erp").map(f => f.chave);
-    expect(chaves).toEqual(expect.arrayContaining(["erp_clientes_ativos", "erp_primeira_compra", "erp_inativos_6m", "erp_orcaram_nao_compraram"]));
+    expect(chaves).toEqual(expect.arrayContaining([
+      "erp_clientes_ativos", "erp_primeira_compra", "erp_inativos_6m", "erp_orcaram_nao_compraram", "erp_compraram_uma_vez_sumiram",
+    ]));
     fonteInativosId = fontes.find(f => f.chave === "erp_inativos_6m")!.id;
     expect(fontes.find(f => f.chave === "erp_inativos_6m")!.ativo).toBe(true);
   });
@@ -387,4 +389,41 @@ describe("Fontes de Dados (ERP local + arquivo)", () => {
 
     await getPool().query("DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1", [contato.telefone]); // limpeza extra
   }, 15_000);
+});
+
+describe("duplicarCampanha", () => {
+  it("copia categoria/tipo/cadência/quarentena/fontes/scripts sob um nome novo, sem levar arquivos nem histórico", async () => {
+    const original = await admin().criar({
+      nome: "TESTE Original Para Duplicar", categoria: "outbound", tipo: "recorrente", frequenciaDias: 45, quarentenaDias: 20,
+    });
+    criadas.push(original.id);
+
+    const fonteInativos = (await admin().listarFontes()).find(f => f.chave === "erp_inativos_6m")!;
+    await admin().vincularFontes({ campanhaId: original.id, fonteIds: [fonteInativos.id] });
+    await admin().addScript({ campanhaId: original.id, titulo: "TESTE script", conteudo: "Olá {{nome}}, tudo bem?" });
+    // Arquivo da pasta da campanha original — não deve aparecer na cópia (cada cópia recebe sua própria lista).
+    const arquivo = await admin().adicionarArquivo({ campanhaId: original.id, nome: "lista-original.xlsx", url: "https://exemplo.local/lista-original.xlsx" });
+    arquivosCriados.push(arquivo.id);
+
+    const copia = await admin().duplicarCampanha({ id: original.id, novoNome: "TESTE Cópia Duplicada" });
+    criadas.push(copia.id);
+
+    expect(copia).toMatchObject({
+      nome: "TESTE Cópia Duplicada", categoria: "outbound", tipo: "recorrente",
+      frequenciaDias: 45, quarentenaDias: 20, status: "ativa",
+    });
+
+    const fontesDaCopia = await admin().listarFontesDaCampanha({ campanhaId: copia.id });
+    expect(fontesDaCopia.map(f => f.id)).toEqual([fonteInativos.id]);
+
+    const scriptsDaCopia = await admin().listScripts({ campanhaId: copia.id });
+    expect(scriptsDaCopia).toHaveLength(1);
+    expect(scriptsDaCopia[0]).toMatchObject({ titulo: "TESTE script", conteudo: "Olá {{nome}}, tudo bem?" });
+
+    const arquivosDaCopia = await admin().listArquivos({ campanhaId: copia.id });
+    expect(arquivosDaCopia).toHaveLength(0);
+
+    const historicoDaCopia = await admin().historico({ campanhaId: copia.id });
+    expect(historicoDaCopia.disparos).toHaveLength(0);
+  });
 });
