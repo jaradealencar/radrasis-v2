@@ -2503,9 +2503,23 @@ export type InsertMetrica = typeof metricas.$inferInsert;
 // ─── Campanhas WhatsApp: cadência, quarentena anti-spam e pós-venda ─────────
 // Ver docs/campanhas-whatsapp.md. Datas em colunas `date` (string YYYY-MM-DD):
 // "hoje" é sempre calculado em America/Campo_Grande, nunca em UTC.
-export const campanhaWhatsappCategoriaEnum = pgEnum("campanha_whatsapp_categoria", [
-  "novo_lead", "orcamento_perdido", "reativacao_inativo", "pos_venda", "outbound",
-]);
+//
+// Categoria NÃO é enum (era nas versões 0045 e anteriores) — o usuário pediu para poder criar/renomear
+// categorias pela própria tela, então virou uma tabela (`campanhasWhatsappCategorias`) com "chave" (slug
+// imutável, é o que fica gravado em `campanhasWhatsapp.categoria`) e "label" (editável). Arquivar em vez de
+// excluir preserva o rótulo de campanhas antigas; exclusão física só é permitida sem nenhuma campanha usando.
+export const campanhasWhatsappCategorias = pgTable("campanhas_whatsapp_categorias", {
+  id: serial("id").primaryKey(),
+  chave: varchar("chave", { length: 64 }).notNull().unique(),
+  label: varchar("label", { length: 80 }).notNull(),
+  ativo: boolean("ativo").notNull().default(true),
+  ordem: integer("ordem").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CampanhaWhatsappCategoria = typeof campanhasWhatsappCategorias.$inferSelect;
+export type InsertCampanhaWhatsappCategoria = typeof campanhasWhatsappCategorias.$inferInsert;
+
 // recorrente = lote periódico (próximo envio = último + frequência);
 // gatilho_venda = pós-venda (prazo individual: data de faturamento da venda + frequência).
 export const campanhaWhatsappTipoEnum = pgEnum("campanha_whatsapp_tipo", ["recorrente", "gatilho_venda"]);
@@ -2514,7 +2528,12 @@ export const campanhaWhatsappStatusEnum = pgEnum("campanha_whatsapp_status", ["a
 export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   id: serial("id").primaryKey(),
   nome: varchar("nome", { length: 160 }).notNull(),
-  categoria: campanhaWhatsappCategoriaEnum("categoria").notNull(),
+  // Chave de campanhasWhatsappCategorias (sem FK de banco — mesma validação em runtime que pageKey/AppRole no
+  // resto do app, ver server/routers/campanhasWhatsapp.ts). Fica como string mesmo se a categoria for arquivada.
+  categoria: varchar("categoria", { length: 64 }).notNull(),
+  // Anotação livre do usuário (objetivo, público-alvo, roteiro combinado...) — só para consulta, não entra em
+  // nenhuma regra de negócio.
+  descricao: text("descricao"),
   tipo: campanhaWhatsappTipoEnum("tipo").notNull().default("recorrente"),
   frequenciaDias: integer("frequencia_dias").notNull(),
   // Descanso mínimo (dias) que um telefone precisa ter desde QUALQUER campanha antes de entrar nesta. 0 = sem trava.

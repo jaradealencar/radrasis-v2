@@ -1,0 +1,1 @@
+ALTER TABLE "campanhas_whatsapp" ADD COLUMN "descricao" text;

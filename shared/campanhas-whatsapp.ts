@@ -9,15 +9,8 @@
 
 export const FUSO_CAMPANHAS = "America/Campo_Grande";
 
-export const CATEGORIAS_CAMPANHA = ["novo_lead", "orcamento_perdido", "reativacao_inativo", "pos_venda", "outbound"] as const;
-export type CategoriaCampanha = (typeof CATEGORIAS_CAMPANHA)[number];
-export const CATEGORIA_CAMPANHA_LABEL: Record<CategoriaCampanha, string> = {
-  novo_lead: "Novo lead",
-  orcamento_perdido: "Orçamento perdido",
-  reativacao_inativo: "Reativação de inativos",
-  pos_venda: "Pós-venda",
-  outbound: "Outbound",
-};
+// Categoria não é mais um conjunto fixo (era enum até a migration 0045): o usuário cria/renomeia/arquiva
+// categorias pela própria tela (server/routers/campanhasWhatsapp.ts, tabela campanhas_whatsapp_categorias).
 
 export const TIPOS_CAMPANHA = ["recorrente", "gatilho_venda"] as const;
 export type TipoCampanha = (typeof TIPOS_CAMPANHA)[number];
@@ -108,6 +101,21 @@ export function normalizarTelefone(bruto: unknown): string | null {
 export function formatarTelefone(normalizado: string): string {
   const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(normalizado);
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : normalizado;
+}
+
+/**
+ * Slug estável a partir do label digitado ("Pós-venda 60 dias" → "pos_venda_60_dias") — vira a `chave` de
+ * `campanhas_whatsapp_categorias` (imutável depois de criada; só o `label` é editável). Nunca vazio: sem
+ * nenhum caractere alfanumérico, cai em "categoria" (o chamador acrescenta sufixo numérico se colidir).
+ */
+export function gerarChaveCategoria(label: string): string {
+  const slug = label
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return (slug || "categoria").slice(0, 64);
 }
 
 /**

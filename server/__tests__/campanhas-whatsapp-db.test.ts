@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { inArray, like } from "drizzle-orm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
-import { campanhasWhatsapp, campanhasWhatsappQuarentena } from "../../drizzle/schema";
+import { campanhasWhatsapp, campanhasWhatsappCategorias, campanhasWhatsappQuarentena } from "../../drizzle/schema";
 import { hojeCampoGrande, somarDias } from "../../shared/campanhas-whatsapp";
 import { campanhasWhatsappRouter, checarQuarentenaNoBanco, registrarDisparoNoBanco } from "../routers/campanhasWhatsapp";
 
@@ -20,6 +20,7 @@ const ctxVendas: any = { user: { id: "t2", name: "Teste Vendas", email: "v@x.com
 const admin = () => campanhasWhatsappRouter.createCaller(ctxAdmin);
 
 const criadas: number[] = [];
+const categoriasCriadas: number[] = [];
 let recorrenteId: number;
 let gatilhoId: number;
 
@@ -44,8 +45,10 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = await getDb();
   if (!db) return;
-  // Campanhas primeiro (o cascade leva disparos e gatilhos); depois a quarentena dos telefones de teste.
+  // Campanhas primeiro (o cascade leva disparos e gatilhos); categorias depois (sem FK entre as duas, mas a
+  // ordem evita deixar categoria "em uso" órfã se algum teste falhar no meio); quarentena por último.
   if (criadas.length) await db.delete(campanhasWhatsapp).where(inArray(campanhasWhatsapp.id, criadas));
+  if (categoriasCriadas.length) await db.delete(campanhasWhatsappCategorias).where(inArray(campanhasWhatsappCategorias.id, categoriasCriadas));
   await db.delete(campanhasWhatsappQuarentena).where(like(campanhasWhatsappQuarentena.telefone, "5567990009%"));
 });
 
@@ -160,5 +163,59 @@ describe("router (tRPC)", () => {
   it("role fora de admin/master/gestor é barrada no servidor", async () => {
     await expect(campanhasWhatsappRouter.createCaller(ctxVendas).listar()).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(campanhasWhatsappRouter.createCaller({ ...ctxVendas, user: null }).listar()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+describe("categorias (editáveis pelo usuário)", () => {
+  it("cria com slug derivado do label; label repetido ganha sufixo numérico no slug", async () => {
+    const a = await admin().criarCategoria({ label: "TESTE Categoria" });
+    const b = await admin().criarCategoria({ label: "TESTE Categoria" });
+    categoriasCriadas.push(a.id, b.id);
+    expect(a.chave).toBe("teste_categoria");
+    expect(b.chave).toBe("teste_categoria_2");
+    expect(a.ativo).toBe(true);
+  });
+
+  it("renomear muda só o label — a chave gravada nas campanhas continua igual", async () => {
+    const c = await admin().criarCategoria({ label: "TESTE Renomear" });
+    categoriasCriadas.push(c.id);
+    await admin().renomearCategoria({ id: c.id, label: "TESTE Renomeada" });
+    const atual = (await admin().listarCategorias()).find(x => x.id === c.id)!;
+    expect(atual.label).toBe("TESTE Renomeada");
+    expect(atual.chave).toBe(c.chave);
+  });
+
+  it("arquivar tira do padrão sem apagar; reativar devolve", async () => {
+    const c = await admin().criarCategoria({ label: "TESTE Arquivar" });
+    categoriasCriadas.push(c.id);
+    await admin().arquivarCategoria({ id: c.id, ativo: false });
+    expect((await admin().listarCategorias()).find(x => x.id === c.id)!.ativo).toBe(false);
+    await admin().arquivarCategoria({ id: c.id, ativo: true });
+    expect((await admin().listarCategorias()).find(x => x.id === c.id)!.ativo).toBe(true);
+  });
+
+  it("criar (ou editar) campanha com categoria que não existe é rejeitado", async () => {
+    const camposBase = { nome: "TESTE categoria invalida", tipo: "recorrente" as const, frequenciaDias: 30, quarentenaDias: 0 };
+    await expect(admin().criar({ ...camposBase, categoria: "chave-inexistente-xyz" })).rejects.toThrow(/[Cc]ategoria/);
+    await expect(admin().atualizar({ id: recorrenteId, categoria: "chave-inexistente-xyz" })).rejects.toThrow(/[Cc]ategoria/);
+  });
+
+  it("listarCategorias reporta quantas campanhas usam cada uma; exclusão só é permitida sem nenhum uso", async () => {
+    const usada = await admin().criarCategoria({ label: "TESTE Em Uso" });
+    const semUso = await admin().criarCategoria({ label: "TESTE Sem Uso" });
+    categoriasCriadas.push(usada.id, semUso.id);
+
+    const camp = await admin().criar({ nome: "TESTE usa categoria", categoria: usada.chave, tipo: "recorrente", frequenciaDias: 10, quarentenaDias: 0 });
+    criadas.push(camp.id);
+
+    const lista = await admin().listarCategorias();
+    expect(lista.find(x => x.id === usada.id)!.emUso).toBe(1);
+    expect(lista.find(x => x.id === semUso.id)!.emUso).toBe(0);
+
+    await expect(admin().excluirCategoria({ id: usada.id })).rejects.toThrow(/arquive/i);
+
+    await admin().excluirCategoria({ id: semUso.id });
+    expect((await admin().listarCategorias()).some(x => x.id === semUso.id)).toBe(false);
+    categoriasCriadas.splice(categoriasCriadas.indexOf(semUso.id), 1); // já excluída — não precisa (nem pode) limpar de novo
   });
 });

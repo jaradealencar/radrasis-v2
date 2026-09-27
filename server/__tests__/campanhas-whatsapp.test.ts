@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, formatarTelefone, hojeCampoGrande,
-  formatarDataBr, normalizarTelefone, somarDias,
+  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, formatarTelefone, gerarChaveCategoria,
+  hojeCampoGrande, formatarDataBr, normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
   expandirPrevistos, higienizarLista, listarVendasPosVenda, montarStatusCampanha, resumirCampanhas, resumirVendas,
@@ -32,6 +32,23 @@ describe("normalizarTelefone", () => {
   it("formatarTelefone só para exibição", () => {
     expect(formatarTelefone("5567999990000")).toBe("(67) 99999-0000");
     expect(formatarTelefone("556733331234")).toBe("(67) 3333-1234");
+  });
+});
+
+describe("gerarChaveCategoria", () => {
+  it("normaliza acentos, espaços e caixa", () => {
+    expect(gerarChaveCategoria("Pós-venda 60 dias")).toBe("pos_venda_60_dias");
+    expect(gerarChaveCategoria("  Reativação de Inativos  ")).toBe("reativacao_de_inativos");
+    expect(gerarChaveCategoria("Follow-up")).toBe("follow_up");
+  });
+
+  it("nunca fica vazia mesmo sem nenhum caractere alfanumérico", () => {
+    expect(gerarChaveCategoria("!!!")).toBe("categoria");
+    expect(gerarChaveCategoria("---")).toBe("categoria");
+  });
+
+  it("trunca em 64 caracteres", () => {
+    expect(gerarChaveCategoria("a".repeat(100)).length).toBe(64);
   });
 });
 

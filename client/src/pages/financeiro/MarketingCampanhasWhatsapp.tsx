@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import KpiCard from "@/components/KpiCard";
-import { CATEGORIA_CAMPANHA_LABEL, formatarDataBr } from "@shared/campanhas-whatsapp";
+import { formatarDataBr } from "@shared/campanhas-whatsapp";
 import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
 import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
 import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
@@ -33,6 +33,10 @@ function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: ()
  */
 export default function MarketingCampanhasWhatsapp() {
   const { data, isLoading, isError, error, refetch } = trpc.campanhasWhatsapp.listar.useQuery();
+  const { data: categorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery();
+  // Fallback pra própria chave: só aconteceria se a categoria tivesse sido excluída fisicamente por fora
+  // (a tela nunca permite excluir uma em uso) — nunca deixa a coluna em branco.
+  const labelCategoria = (chave: string) => categorias?.find(c => c.chave === chave)?.label ?? chave;
 
   // `undefined` = diálogo fechado; `null` no formulário = nova campanha.
   const [formulario, setFormulario] = useState<CampanhaLinha | null | undefined>(undefined);
@@ -114,14 +118,19 @@ export default function MarketingCampanhasWhatsapp() {
                 <TableBody>
                   {campanhas.map(c => (
                     <TableRow key={c.id} className={c.status !== "ativa" ? "opacity-60" : undefined}>
-                      <TableCell className="font-medium">
-                        {c.nome}
+                      <TableCell className="font-medium max-w-xs">
+                        <span title={c.descricao ?? undefined}>{c.nome}</span>
                         <div className="text-[11px] font-normal text-muted-foreground">
                           {c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
                           {c.quarentenaDias > 0 && ` · quarentena ${c.quarentenaDias}d`}
                         </div>
+                        {c.descricao && (
+                          <div className="text-[11px] font-normal text-muted-foreground mt-0.5 line-clamp-2" title={c.descricao}>
+                            {c.descricao}
+                          </div>
+                        )}
                       </TableCell>
-                      <TableCell>{CATEGORIA_CAMPANHA_LABEL[c.categoria]}</TableCell>
+                      <TableCell>{labelCategoria(c.categoria)}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         {c.frequenciaDias} dias
                         {c.tipo === "gatilho_venda" && <div className="text-[11px] text-muted-foreground">após a venda</div>}

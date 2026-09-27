@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  CATEGORIA_CAMPANHA_LABEL, CATEGORIAS_CAMPANHA, STATUS_CAMPANHA, STATUS_CAMPANHA_LABEL, TIPO_CAMPANHA_LABEL, TIPOS_CAMPANHA,
-  type CategoriaCampanha, type StatusCampanha, type TipoCampanha,
+  STATUS_CAMPANHA, STATUS_CAMPANHA_LABEL, TIPO_CAMPANHA_LABEL, TIPOS_CAMPANHA,
+  type StatusCampanha, type TipoCampanha,
 } from "@shared/campanhas-whatsapp";
+import GerenciarCategoriasPopover from "./GerenciarCategoriasPopover";
 import type { CampanhaLinha } from "./comuns";
 
 interface Props {
@@ -28,8 +30,11 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   const utils = trpc.useUtils();
   const editando = !!campanha;
 
+  const { data: categorias, isLoading: carregandoCategorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery(undefined, { enabled: open });
+
   const [nome, setNome] = useState("");
-  const [categoria, setCategoria] = useState<CategoriaCampanha>("reativacao_inativo");
+  const [descricao, setDescricao] = useState("");
+  const [categoria, setCategoria] = useState("");
   const [tipo, setTipo] = useState<TipoCampanha>("recorrente");
   const [frequencia, setFrequencia] = useState("30");
   const [quarentena, setQuarentena] = useState("0");
@@ -39,13 +44,30 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   useEffect(() => {
     if (!open) return;
     setNome(campanha?.nome ?? "");
-    setCategoria(campanha?.categoria ?? "reativacao_inativo");
+    setDescricao(campanha?.descricao ?? "");
+    setCategoria(campanha?.categoria ?? "");
     setTipo(campanha?.tipo ?? "recorrente");
     setFrequencia(String(campanha?.frequenciaDias ?? 30));
     setQuarentena(String(campanha?.quarentenaDias ?? 0));
     setStatus(campanha?.status ?? "ativa");
     setAPartirDe(campanha?.gatilhoAPartirDe ?? "");
   }, [open, campanha]);
+
+  // Nova campanha: assim que a lista de categorias chegar, pré-seleciona a primeira ativa (sem sobrescrever
+  // se o usuário já escolheu — por isso `categoria` está na lista de dependências, não só `categorias`).
+  useEffect(() => {
+    if (!open || categoria || campanha || !categorias) return;
+    const primeira = categorias.find(c => c.ativo)?.chave;
+    if (primeira) setCategoria(primeira);
+  }, [open, categoria, campanha, categorias]);
+
+  // Ativas + a categoria atual da campanha mesmo se foi arquivada depois (senão ela sumiria do Select).
+  const opcoesCategoria = useMemo(() => {
+    if (!categorias) return [];
+    const ativas = categorias.filter(c => c.ativo);
+    const arquivadaEmUso = campanha ? categorias.find(c => c.chave === campanha.categoria && !c.ativo) : undefined;
+    return arquivadaEmUso ? [...ativas, arquivadaEmUso] : ativas;
+  }, [categorias, campanha]);
 
   const aoSalvar = () => {
     utils.campanhasWhatsapp.invalidate();
@@ -59,6 +81,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   const freq = inteiro(frequencia);
   const quar = inteiro(quarentena);
   const erro = !nome.trim() ? "Informe o nome da campanha."
+    : !categoria ? "Selecione a categoria."
     : freq === null || freq < 1 || freq > 730 ? "A frequência deve ser um número de 1 a 730 dias."
     : quar === null || quar > 365 ? "A quarentena deve ser um número de 0 a 365 dias."
     : null;
@@ -66,7 +89,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   const salvar = () => {
     if (erro || freq === null || quar === null) return toast.error(erro ?? "Confira os campos.");
     const base = {
-      nome: nome.trim(), categoria, frequenciaDias: freq, quarentenaDias: quar,
+      nome: nome.trim(), descricao: descricao.trim() || null, categoria, frequenciaDias: freq, quarentenaDias: quar,
       gatilhoAPartirDe: tipo === "gatilho_venda" && aPartirDe ? aPartirDe : null,
     };
     if (campanha) atualizar.mutate({ id: campanha.id, ...base, status });
@@ -87,13 +110,24 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
               placeholder="Ex.: Reativação — orçamentos parados" />
           </div>
 
+          <div className="space-y-1.5">
+            <Label htmlFor="camp-descricao">Descrição (opcional)</Label>
+            <Textarea id="camp-descricao" value={descricao} onChange={e => setDescricao(e.target.value)} maxLength={2000}
+              rows={3} placeholder="Objetivo da campanha, público-alvo, roteiro combinado..." />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Categoria</Label>
-              <Select value={categoria} onValueChange={v => setCategoria(v as CategoriaCampanha)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <div className="flex items-center justify-between">
+                <Label>Categoria</Label>
+                <GerenciarCategoriasPopover />
+              </div>
+              <Select value={categoria} onValueChange={setCategoria} disabled={carregandoCategorias}>
+                <SelectTrigger><SelectValue placeholder={carregandoCategorias ? "Carregando..." : "Selecione"} /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIAS_CAMPANHA.map(c => <SelectItem key={c} value={c}>{CATEGORIA_CAMPANHA_LABEL[c]}</SelectItem>)}
+                  {opcoesCategoria.map(c => (
+                    <SelectItem key={c.chave} value={c.chave}>{c.label}{!c.ativo && " (arquivada)"}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

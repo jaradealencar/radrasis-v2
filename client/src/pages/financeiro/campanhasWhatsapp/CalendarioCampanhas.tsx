@@ -5,7 +5,7 @@ import { MESES } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { CATEGORIA_CAMPANHA_LABEL, formatarDataBr, hojeCampoGrande, somarDias } from "@shared/campanhas-whatsapp";
+import { formatarDataBr, hojeCampoGrande, somarDias } from "@shared/campanhas-whatsapp";
 import { SEMAFORO_ESTILO, type EventoCalendario } from "./comuns";
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -49,6 +49,8 @@ export default function CalendarioCampanhas() {
   const [ancora, setAncora] = useState(hoje);
   const [modo, setModo] = useState<"mes" | "semana">("mes");
   const [diaAberto, setDiaAberto] = useState<string | null>(null);
+  const { data: categorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery();
+  const labelCategoria = (chave: string) => categorias?.find(c => c.chave === chave)?.label ?? chave;
 
   const { inicio, fim } = useMemo(() => {
     if (modo === "semana") {
@@ -160,7 +162,7 @@ export default function CalendarioCampanhas() {
               <li key={`${e.campanhaId}-${e.evento}-${i}`} className="rounded-lg border p-3 space-y-1">
                 <Chip e={e} />
                 <p className="text-sm">{descricaoEvento(e)}</p>
-                <p className="text-[11px] text-muted-foreground">{CATEGORIA_CAMPANHA_LABEL[e.categoria]}</p>
+                <p className="text-[11px] text-muted-foreground">{labelCategoria(e.categoria)}</p>
               </li>
             ))}
           </ul>

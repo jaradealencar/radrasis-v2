@@ -13,17 +13,18 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gte, inArray, isNotNull, lte, max } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lte, max } from "drizzle-orm";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import {
-  campanhasWhatsapp, campanhasWhatsappDisparos, campanhasWhatsappGatilhos, historicoOs,
+  campanhasWhatsapp, campanhasWhatsappCategorias, campanhasWhatsappDisparos, campanhasWhatsappGatilhos, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
-  CATEGORIAS_CAMPANHA, STATUS_CAMPANHA, TIPOS_CAMPANHA,
-  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, hojeCampoGrande, normalizarTelefone, somarDias,
+  STATUS_CAMPANHA, TIPOS_CAMPANHA,
+  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, gerarChaveCategoria, hojeCampoGrande,
+  normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
   expandirPrevistos, higienizarLista, listarVendasPosVenda, montarStatusCampanha, resumirCampanhas, resumirVendas,
@@ -51,9 +52,15 @@ export const contatosSchema = z.array(z.object({
   osNumero: z.string().max(32).nullish(),
 })).min(1, "A lista está vazia").max(MAX_CONTATOS_POR_DISPARO, `Máximo de ${MAX_CONTATOS_POR_DISPARO} contatos por disparo`);
 
+const categoriaLabelSchema = z.string().trim().min(1, "Informe o nome da categoria").max(80);
+
 const campanhaBaseSchema = z.object({
   nome: z.string().trim().min(1, "Informe o nome").max(160),
-  categoria: z.enum(CATEGORIAS_CAMPANHA),
+  // Chave de campanhasWhatsappCategorias — validada contra o banco em `criar`/`atualizar` (ver `validarCategoria`),
+  // não por z.enum: a lista de categorias é editável pelo usuário, não um conjunto fixo em código.
+  categoria: z.string().trim().min(1, "Selecione a categoria").max(64),
+  // Anotação livre (objetivo, público-alvo, roteiro combinado...); não entra em nenhuma regra de negócio.
+  descricao: z.string().trim().max(2000).nullish(),
   tipo: z.enum(TIPOS_CAMPANHA),
   frequenciaDias: z.number().int().min(1).max(730),
   quarentenaDias: z.number().int().min(0).max(365),
@@ -77,6 +84,13 @@ async function buscarCampanha(db: Db, id: number): Promise<CampanhaWhatsapp> {
   const [c] = await db.select().from(campanhasWhatsapp).where(eq(campanhasWhatsapp.id, id)).limit(1);
   if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada" });
   return c;
+}
+
+/** A categoria pode estar arquivada (permitido: uma campanha antiga mantém a categoria) mas precisa existir. */
+async function validarCategoria(db: Db, chave: string): Promise<void> {
+  const [c] = await db.select({ id: campanhasWhatsappCategorias.id }).from(campanhasWhatsappCategorias)
+    .where(eq(campanhasWhatsappCategorias.chave, chave)).limit(1);
+  if (!c) throw new TRPCError({ code: "BAD_REQUEST", message: "Categoria inválida — atualize a página e tente de novo." });
 }
 
 async function ultimosEnvios(db: Db): Promise<Map<number, string>> {
@@ -337,8 +351,10 @@ export const campanhasWhatsappRouter = router({
     .input(campanhaBaseSchema)
     .mutation(async ({ input }) => {
       const db = await obterDb();
+      await validarCategoria(db, input.categoria);
       const [row] = await db.insert(campanhasWhatsapp).values({
         ...input,
+        descricao: input.descricao?.trim() || null,
         gatilhoAPartirDe: input.tipo === "gatilho_venda" ? input.gatilhoAPartirDe ?? null : null,
       }).returning();
       return row;
@@ -351,14 +367,86 @@ export const campanhasWhatsappRouter = router({
       const db = await obterDb();
       const { id, ...campos } = input;
       const atual = await buscarCampanha(db, id);
+      if (campos.categoria !== undefined) await validarCategoria(db, campos.categoria);
       const tipo = campos.tipo ?? atual.tipo;
       await db.update(campanhasWhatsapp).set({
         ...campos,
+        descricao: campos.descricao === undefined ? undefined : (campos.descricao?.trim() || null),
         gatilhoAPartirDe: tipo === "gatilho_venda"
           ? (campos.gatilhoAPartirDe === undefined ? atual.gatilhoAPartirDe : campos.gatilhoAPartirDe)
           : null,
         updatedAt: new Date(),
       }).where(eq(campanhasWhatsapp.id, id));
+      return { ok: true };
+    }),
+
+  // ─── Categorias (editáveis pelo usuário — ver comentário em drizzle/schema.ts) ────────────────
+
+  /** `emUso`: quantas campanhas usam a categoria — a tela só oferece excluir (em vez de arquivar) quando é 0. */
+  listarCategorias: campanhasProcedure.query(async () => {
+    const db = await obterDb();
+    const [categorias, usos] = await Promise.all([
+      db.select().from(campanhasWhatsappCategorias)
+        .orderBy(campanhasWhatsappCategorias.ordem, campanhasWhatsappCategorias.id),
+      db.select({ categoria: campanhasWhatsapp.categoria, total: count() })
+        .from(campanhasWhatsapp).groupBy(campanhasWhatsapp.categoria),
+    ]);
+    const usoPorChave = new Map(usos.map(u => [u.categoria, Number(u.total)]));
+    return categorias.map(c => ({ ...c, emUso: usoPorChave.get(c.chave) ?? 0 }));
+  }),
+
+  criarCategoria: campanhasProcedure
+    .input(z.object({ label: categoriaLabelSchema }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const existentes = await db.select({ chave: campanhasWhatsappCategorias.chave }).from(campanhasWhatsappCategorias);
+      const chaves = new Set(existentes.map(e => e.chave));
+      const base = gerarChaveCategoria(input.label);
+      let chave = base;
+      for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
+      const [{ maxOrdem }] = await db.select({ maxOrdem: max(campanhasWhatsappCategorias.ordem) }).from(campanhasWhatsappCategorias);
+      const [row] = await db.insert(campanhasWhatsappCategorias)
+        .values({ chave, label: input.label, ordem: (maxOrdem ?? 0) + 1 }).returning();
+      return row;
+    }),
+
+  /** Só o label muda — a chave gravada nas campanhas existentes é imutável. */
+  renomearCategoria: campanhasProcedure
+    .input(z.object({ id: z.number().int(), label: categoriaLabelSchema }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.update(campanhasWhatsappCategorias)
+        .set({ label: input.label, updatedAt: new Date() })
+        .where(eq(campanhasWhatsappCategorias.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Arquivar/reativar: sai (ou volta) da lista oferecida ao criar/editar campanha, sem apagar nada. */
+  arquivarCategoria: campanhasProcedure
+    .input(z.object({ id: z.number().int(), ativo: z.boolean() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.update(campanhasWhatsappCategorias)
+        .set({ ativo: input.ativo, updatedAt: new Date() })
+        .where(eq(campanhasWhatsappCategorias.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Só permite excluir de fato quando nenhuma campanha usa a categoria — senão, oriente a arquivar. */
+  excluirCategoria: campanhasProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const [cat] = await db.select().from(campanhasWhatsappCategorias).where(eq(campanhasWhatsappCategorias.id, input.id)).limit(1);
+      if (!cat) throw new TRPCError({ code: "NOT_FOUND", message: "Categoria não encontrada" });
+      const [{ total }] = await db.select({ total: count() }).from(campanhasWhatsapp).where(eq(campanhasWhatsapp.categoria, cat.chave));
+      if (Number(total) > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${total} campanha(s) usam "${cat.label}" — arquive em vez de excluir.`,
+        });
+      }
+      await db.delete(campanhasWhatsappCategorias).where(eq(campanhasWhatsappCategorias.id, input.id));
       return { ok: true };
     }),
 
