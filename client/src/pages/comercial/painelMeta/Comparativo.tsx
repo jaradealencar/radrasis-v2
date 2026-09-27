@@ -1,4 +1,5 @@
-import { caminhosParaMeta, rankingParaMeta, type AlavancaRanking } from "@shared/meta-faturamento";
+import { Lock } from "lucide-react";
+import { caminhosParaMeta, rankingParaMeta, type AlavancaRanking, type Fixos } from "@shared/meta-faturamento";
 import type { PainelMetaDados } from "./tipos";
 import { CampoNumero, Cartao, Selo, brlCurto, fmtNum } from "./comuns";
 import { montarComparativo, calcularSensibilidades, type LinhaComparativa } from "./calculos";
@@ -121,25 +122,35 @@ function TextoCaminhos({ data, meta }: { data: PainelMetaDados; meta: number }) 
   );
 }
 
-export default function Comparativo({ data, meta1, meta2, setMeta1, setMeta2, pesoConversao, setPesoConversao, margemPct }: {
+export default function Comparativo({ data, meta1, meta2, setMeta1, setMeta2, fixos, pesoConversao, setPesoConversao, margemPct }: {
   data: PainelMetaDados;
   meta1: number;
   meta2: number;
   setMeta1: (v: number) => void;
   setMeta2: (v: number) => void;
+  /** O que o gestor travou no Simulador (aba 3) — vale para as duas metas aqui também. */
+  fixos: Fixos;
   pesoConversao: number;
   setPesoConversao: (v: number) => void;
   margemPct: number;
 }) {
-  const linhas = montarComparativo(data, meta1, meta2, pesoConversao, margemPct);
+  const linhas = montarComparativo(data, meta1, meta2, fixos, pesoConversao, margemPct);
   const grupos = Array.from(new Set(linhas.map(l => l.grupo)));
+  const numFixos = Object.keys(fixos).length;
   const rank1 = rankingParaMeta(data, meta1);
   const rank2 = rankingParaMeta(data, meta2);
   const sensibilidades = calcularSensibilidades(data);
 
   return (
     <div className="space-y-4">
-      <Cartao titulo="Hoje × Meta 1 × Meta 2" subtitulo="Para cada meta, o caminho equilibrado: todos os indicadores sobem na mesma proporção. Edite as metas para testar outros valores.">
+      <Cartao
+        titulo="Hoje × Meta 1 × Meta 2"
+        subtitulo={
+          numFixos > 0
+            ? "Para cada meta, os indicadores travados por você no Simulador (🔒) ficam fixos e os demais se ajustam para fechar a conta. Edite as metas para testar outros valores."
+            : "Para cada meta, o caminho equilibrado: todos os indicadores sobem na mesma proporção. Trave um indicador na aba 3 (Simulador) para ver os outros se ajustarem aqui também."
+        }
+      >
         <div className="flex items-center gap-4 flex-wrap mb-3">
           <label className="flex items-center gap-2 text-xs text-slate-600">Meta 1 (R$/mês)<CampoNumero valor={meta1} casas={0} onChange={setMeta1} ariaLabel="Meta 1" className="h-8 w-28 text-right text-sm font-bold" /></label>
           <label className="flex items-center gap-2 text-xs text-slate-600">Meta 2 (R$/mês)<CampoNumero valor={meta2} casas={0} onChange={setMeta2} ariaLabel="Meta 2" className="h-8 w-28 text-right text-sm font-bold" /></label>
@@ -215,10 +226,14 @@ function FragmentoGrupo({ grupo, linhas }: { grupo: string; linhas: LinhaCompara
     <>
       <tr><td colSpan={4} className="pt-3 pb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">{grupo}</td></tr>
       {linhas.map(l => (
-        <tr key={l.id} className="border-t border-slate-100 align-top">
+        <tr key={l.id} className={`border-t border-slate-100 align-top ${l.travado ? "bg-amber-50/60" : ""}`}>
           <td className="py-1.5 pr-2">
-            <span className="text-slate-800">{l.rotulo}</span>
+            <span className="text-slate-800 inline-flex items-center gap-1">
+              {l.rotulo}
+              {l.travado && <Lock className="w-3 h-3 text-amber-600 shrink-0" />}
+            </span>
             {l.nota && <span className="block text-[11px] text-slate-400">{l.nota}</span>}
+            {l.travado && <span className="block text-[11px] text-amber-700">Travado por você no Simulador — igual nas duas metas.</span>}
           </td>
           <td className="py-1.5 px-2 text-right text-slate-500">{formatarValor(l, l.atual)}</td>
           <td className="py-1.5 px-2 text-right"><span className="font-semibold text-slate-800">{formatarValor(l, l.meta1)}</span><br /><Delta l={l} valor={l.meta1} /></td>

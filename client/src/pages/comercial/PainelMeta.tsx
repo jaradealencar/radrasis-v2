@@ -220,6 +220,7 @@ export default function PainelMeta({ onIrPara, destinosDisponiveis = TODOS_DESTI
           meta2={meta2Valida}
           setMeta1={setMeta}
           setMeta2={setMeta2}
+          fixos={fixos}
           pesoConversao={pesoConversao}
           setPesoConversao={setPesoConversao}
           margemPct={margemPct}

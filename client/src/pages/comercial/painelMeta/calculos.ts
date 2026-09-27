@@ -1,6 +1,6 @@
 import {
-  SEGMENTOS, totaisCenario, resolverMeta, dividirFunil, sensibilidadesDoPainel,
-  type Cenario, type TotaisCenario, type Sensibilidade,
+  SEGMENTOS, totaisCenario, resolverMeta, dividirFunil, sensibilidadesDoPainel, idAlavanca,
+  type Cenario, type TotaisCenario, type Sensibilidade, type Fixos,
 } from "@shared/meta-faturamento";
 import type { PainelMetaDados } from "./tipos";
 
@@ -40,19 +40,26 @@ export interface LinhaComparativa {
   meta2: number | null;
   /** Explica de onde vem o número (aparece em texto pequeno). */
   nota?: string;
+  /** true = o gestor travou este indicador no Simulador; o mesmo valor vale para as duas metas, e as OUTRAS
+   * linhas se ajustam mais (ou menos) para compensar — por isso esta linha não segue o mesmo % das demais. */
+  travado?: boolean;
 }
 
 export function montarComparativo(
   data: PainelMetaDados,
   meta1: number,
   meta2: number,
+  /** O que o gestor travou no Simulador (aba 3) — as mesmas travas valem para as duas metas aqui, então
+   * mudar um indicador lá atualiza esta comparação também, em vez de recalcular do zero cada meta. */
+  fixos: Fixos,
   pesoConversao: number,
   margemPct: number,
 ): LinhaComparativa[] {
   const base = data.media12m.cenario;
   const totaisAtual = totaisCenario(base);
-  const r1 = resolverMeta(base, {}, meta1);
-  const r2 = resolverMeta(base, {}, meta2);
+  const r1 = resolverMeta(base, fixos, meta1);
+  const r2 = resolverMeta(base, fixos, meta2);
+  const travado = (segmento: keyof Cenario) => idAlavanca(segmento, "clientes") in fixos;
   const funilAtual = { leadsPorMes: data.funil.leadsPorMes, conversaoPct: data.funil.conversaoPct };
   const f1 = dividirFunil(totaisAtual.vendas, r1.totais.vendas, funilAtual, pesoConversao);
   const f2 = dividirFunil(totaisAtual.vendas, r2.totais.vendas, funilAtual, pesoConversao);
@@ -70,10 +77,10 @@ export function montarComparativo(
     linha({ id: "conversao", grupo: "Funil de orçamentos", rotulo: "Taxa de conversão de orçamentos", unidade: "pct", casas: 1, atual: funilAtual.conversaoPct, meta1: f1.conversaoPct, meta2: f2.conversaoPct, nota: "Orçamentos em aberto e vencidos contam como perdidos." }),
     linha({ id: "vendas", grupo: "Funil de orçamentos", rotulo: "Número total de pedidos por mês", unidade: "numero", atual: totaisAtual.vendas, meta1: r1.totais.vendas, meta2: r2.totais.vendas }),
     linha({ id: "ticket", grupo: "Funil de orçamentos", rotulo: "Ticket médio geral por pedido", unidade: "brl", atual: totaisAtual.ticketMedio, meta1: r1.totais.ticketMedio, meta2: r2.totais.ticketMedio }),
-    linha({ id: "novos", grupo: "Parceiros (gráficas)", rotulo: "Novas gráficas atraídas por mês", unidade: "numero", casas: 1, atual: base.novos.clientes, meta1: r1.cenario.novos.clientes, meta2: r2.cenario.novos.clientes }),
-    linha({ id: "reativados", grupo: "Parceiros (gráficas)", rotulo: "Parceiros reativados por mês", unidade: "numero", casas: 1, atual: base.reativados.clientes, meta1: r1.cenario.reativados.clientes, meta2: r2.cenario.reativados.clientes, nota: "Voltaram depois de 6 meses ou mais sem comprar." }),
-    linha({ id: "recompra", grupo: "Parceiros (gráficas)", rotulo: "Recompra de gráficas conquistadas (por mês)", unidade: "numero", casas: 1, atual: base.recompraConquistados.clientes, meta1: r1.cenario.recompraConquistados.clientes, meta2: r2.cenario.recompraConquistados.clientes, nota: "Novas ou reativadas dos últimos 12 meses que compraram de novo." }),
-    linha({ id: "carteira", grupo: "Parceiros (gráficas)", rotulo: "Gráficas ativas da carteira (por mês)", unidade: "numero", casas: 1, atual: base.carteira.clientes, meta1: r1.cenario.carteira.clientes, meta2: r2.cenario.carteira.clientes }),
+    linha({ id: "novos", grupo: "Parceiros (gráficas)", rotulo: "Novas gráficas atraídas por mês", unidade: "numero", casas: 1, atual: base.novos.clientes, meta1: r1.cenario.novos.clientes, meta2: r2.cenario.novos.clientes, travado: travado("novos") }),
+    linha({ id: "reativados", grupo: "Parceiros (gráficas)", rotulo: "Parceiros reativados por mês", unidade: "numero", casas: 1, atual: base.reativados.clientes, meta1: r1.cenario.reativados.clientes, meta2: r2.cenario.reativados.clientes, nota: "Voltaram depois de 6 meses ou mais sem comprar.", travado: travado("reativados") }),
+    linha({ id: "recompra", grupo: "Parceiros (gráficas)", rotulo: "Recompra de gráficas conquistadas (por mês)", unidade: "numero", casas: 1, atual: base.recompraConquistados.clientes, meta1: r1.cenario.recompraConquistados.clientes, meta2: r2.cenario.recompraConquistados.clientes, nota: "Novas ou reativadas dos últimos 12 meses que compraram de novo.", travado: travado("recompraConquistados") }),
+    linha({ id: "carteira", grupo: "Parceiros (gráficas)", rotulo: "Gráficas ativas da carteira (por mês)", unidade: "numero", casas: 1, atual: base.carteira.clientes, meta1: r1.cenario.carteira.clientes, meta2: r2.cenario.carteira.clientes, travado: travado("carteira") }),
     linha({ id: "retencao", grupo: "Parceiros (gráficas)", rotulo: "Retenção anual da base (implícita)", unidade: "pct", casas: 1, atual: data.retencao.taxaPct, meta1: retencaoImplicita(r1.cenario), meta2: retencaoImplicita(r2.cenario), nota: "Aproximação: acompanha o crescimento das gráficas que já compravam." }),
     linha({ id: "faturamento", grupo: "Resultado", rotulo: "Faturamento por mês", unidade: "brl", atual: totaisAtual.faturamento, meta1: r1.totais.faturamento, meta2: r2.totais.faturamento }),
     linha({ id: "margem", grupo: "Resultado", rotulo: "Margem de contribuição", unidade: "pct", casas: 1, atual: margemPct, meta1: margemPct, meta2: margemPct, nota: "Mantida no nível atual (ajustável no simulador)." }),
