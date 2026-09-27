@@ -1,4 +1,5 @@
 import type { RouterOutputs } from "@/lib/trpc";
+import type { Cenario, TotaisCenario } from "@shared/meta-faturamento";
 
 export type PainelMetaDados = RouterOutputs["performanceComercial"]["getPainelMeta"];
 
@@ -7,6 +8,17 @@ export type DestinoRecomendacao = NonNullable<PainelMetaDados["recomendacoes"][n
 
 /** Abas da Inteligência de Clientes que o painel sabe abrir. */
 export type VistaDestino = "clientes" | "fila" | "retencao" | "funil" | "crescimento";
+
+/** Uma linha da tabela do Planejador — o suficiente para gravar como Meta Geral do mês
+ * (botão "Aplicar como Meta"). `mes` é o k relativo usado por mesApos (0 = mês corrente). */
+export interface LinhaAplicarMeta {
+  mes: number;
+  rotulo: string;
+  totais: TotaisCenario;
+  cenario: Cenario;
+  leads: number | null;
+  conversaoPct: number | null;
+}
 
 export const META_PADRAO_1 = 430_000;
 export const META_PADRAO_2 = 500_000;

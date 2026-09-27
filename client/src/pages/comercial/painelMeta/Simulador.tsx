@@ -6,7 +6,7 @@ import {
   type SegmentoId, type CampoAlavanca, type Fixos, type IdAlavanca, type ResultadoMeta, type Alavanca,
 } from "@shared/meta-faturamento";
 import { linhaDoTempo, primeiroMesNaMeta, prazoValido, mesApos } from "@shared/planejador-meta";
-import type { PainelMetaDados } from "./tipos";
+import type { PainelMetaDados, LinhaAplicarMeta } from "./tipos";
 import { CampoNumero, Ficha, Variacao, brlCurto, fmtBrl, fmtNum, fmtPct } from "./comuns";
 import { lucroEstimado } from "./calculos";
 import Planejador from "./Planejador";
@@ -85,6 +85,7 @@ export const OPCOES_FUNIL: Array<{ peso: number; rotulo: string; dica: string }>
 
 export default function Simulador({
   data, meta, fixos, setFixos, modoAuto, setModoAuto, pesoConversao, setPesoConversao, resultado, margemPct, setMargemPct, prazo, setPrazo,
+  onAplicarComoMeta, aplicandoMeta,
 }: {
   data: PainelMetaDados;
   meta: number;
@@ -100,6 +101,9 @@ export default function Simulador({
   /** Meses até chegar nos números do cenário (linha do tempo do planejador). */
   prazo: number;
   setPrazo: (v: number) => void;
+  /** Repassado ao Planejador — grava a linha escolhida como Meta Geral do mês. */
+  onAplicarComoMeta?: (l: LinhaAplicarMeta) => void;
+  aplicandoMeta?: number | null;
 }) {
   const base = data.media12m;
   const recente = data.ultimos3m;
@@ -230,6 +234,8 @@ export default function Simulador({
         setPrazo={setPrazo}
         pontos={pontos}
         mesMeta={mesMeta}
+        onAplicarComoMeta={onAplicarComoMeta}
+        aplicandoMeta={aplicandoMeta}
       />
 
       <div className="space-y-4">

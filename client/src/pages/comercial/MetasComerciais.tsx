@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import UserSelect from "@/components/UserSelect";
 import { toast } from "sonner";
+import { ehMesCorrente, metaEsperadaAteHoje, filtrarAteData, type TipoIndicadorRitmo } from "@shared/ritmo-meta";
+import RitmoDiarioBar from "./RitmoDiarioBar";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
@@ -108,6 +110,30 @@ export default function MetasComerciais() {
 
   const { data: crmMetas, refetch: refetchCrmMetas } = trpc.crm.getMetas.useQuery({ mes: mesSel, ano: anoSel });
   const _ = refetchCrmMetas;
+
+  // ─── Ritmo diário da meta: só faz sentido no mês em andamento (mês fechado não tem
+  // prognóstico a acompanhar; mês futuro ainda não tem realizado) ───
+  const hoje = useMemo(() => new Date(), []);
+  const mostrarRitmo = ehMesCorrente(mesSel, anoSel, hoje);
+  const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  const { data: evolucaoDiaria } = trpc.performanceComercial.getEvolucaoDiariaMes.useQuery(
+    { mes: mesSel, ano: anoSel },
+    { enabled: mostrarRitmo }
+  );
+  const ultimoDia = evolucaoDiaria?.dias?.[evolucaoDiaria.dias.length - 1];
+
+  /** Ritmo (esperado × realizado até hoje) de um indicador da Meta Geral/vendedor. `null` quando
+   * o indicador está fora do escopo (`tipoRitmo` null), sem meta definida, ou fora do mês corrente. */
+  function ritmoDoIndicador(meta: number | null, tipoRitmo: TipoIndicadorRitmo | null, realizadoAteHoje: number | null) {
+    if (!mostrarRitmo || !meta || !tipoRitmo || realizadoAteHoje === null) return null;
+    const esperadoAteHoje = metaEsperadaAteHoje(meta, tipoRitmo, anoSel, mesSel, hoje);
+    if (esperadoAteHoje === null) return null;
+    return { esperadoAteHoje, realizadoAteHoje };
+  }
+
+  const clientesNovosLista = (clientesNovos as any)?.lista as Array<{ vendedor: string; valorOs: string | null; data?: string | null }> | undefined;
+  const clientesNovosAteHoje = filtrarAteData(clientesNovosLista ?? [], hojeISO);
+  const faturamentoNovosAteHoje = clientesNovosAteHoje.reduce((s, i) => s + (parseFloat(i.valorOs ?? "0") || 0), 0);
 
   const metaGeral = useMemo(() => metas?.find(m => m.vendedor === "GERAL"), [metas]);
   const [geralForm, setGeralForm] = useState(GERAL_FORM_EMPTY);
@@ -215,21 +241,25 @@ export default function MetasComerciais() {
     valorOrcado: mesDados?.valorOrcado ?? 0,
   };
 
+  const taxaConversaoAteHoje = ultimoDia && ultimoDia.totalCotAc > 0 ? (ultimoDia.totalOsAc / ultimoDia.totalCotAc) * 100 : ultimoDia ? 0 : null;
+  const taxaFaturamentoAteHoje = ultimoDia && ultimoDia.totalOrcAc > 0 ? (ultimoDia.totalFatAc / ultimoDia.totalOrcAc) * 100 : ultimoDia ? 0 : null;
+  const ticketMedioAteHoje = ultimoDia && ultimoDia.totalOsAc > 0 ? ultimoDia.totalFatAc / ultimoDia.totalOsAc : ultimoDia ? 0 : null;
+
   const geralKpis = [
-    { icon: <BarChart2 className="w-4 h-4 text-blue-500" />, label: "Cotações Enviadas", real: totalReal.cotacoes, meta: metaGeral?.metaCotacoes ? Number(metaGeral.metaCotacoes) : null, fmt: (v: number) => v.toString() },
-    { icon: <TrendingUp className="w-4 h-4 text-purple-500" />, label: "Vendas Realizadas", real: totalReal.vendas, meta: metaGeral?.metaOsGeradas ? Number(metaGeral.metaOsGeradas) : null, fmt: (v: number) => v.toString() },
-    { icon: <DollarSign className="w-4 h-4 text-green-500" />, label: "Faturamento", real: totalReal.faturamento, meta: metaGeral?.metaFaturamento ? Number(metaGeral.metaFaturamento) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
-    { icon: <Percent className="w-4 h-4 text-amber-500" />, label: "Taxa Conversão", real: totalReal.taxaConversao, meta: metaGeral?.metaConversao ? Number(metaGeral.metaConversao) : null, fmt: (v: number) => `${v}%` },
-    { icon: <Percent className="w-4 h-4 text-orange-500" />, label: "Taxa Faturamento", real: totalReal.taxaFaturamento, meta: metaGeral?.metaTaxaFaturamento ? Number(metaGeral.metaTaxaFaturamento) : null, fmt: (v: number) => `${v}%` },
-    { icon: <Target className="w-4 h-4 text-slate-500" />, label: "Ticket Médio Geral", real: totalReal.ticketMedio, meta: metaGeral?.metaTicketMedio ? Number(metaGeral.metaTicketMedio) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
-    { icon: <Users className="w-4 h-4 text-teal-500" />, label: "Clientes Novos", real: totalReal.clientesNovos, meta: metaGeral?.metaClientesNovos ? Number(metaGeral.metaClientesNovos) : null, fmt: (v: number) => v.toString() },
+    { icon: <BarChart2 className="w-4 h-4 text-blue-500" />, label: "Cotações Enviadas", real: totalReal.cotacoes, meta: metaGeral?.metaCotacoes ? Number(metaGeral.metaCotacoes) : null, fmt: (v: number) => v.toString(), tipoRitmo: "acumulativo" as TipoIndicadorRitmo, realizadoAteHoje: ultimoDia?.totalCotAc ?? null },
+    { icon: <TrendingUp className="w-4 h-4 text-purple-500" />, label: "Vendas Realizadas", real: totalReal.vendas, meta: metaGeral?.metaOsGeradas ? Number(metaGeral.metaOsGeradas) : null, fmt: (v: number) => v.toString(), tipoRitmo: "acumulativo" as TipoIndicadorRitmo, realizadoAteHoje: ultimoDia?.totalOsAc ?? null },
+    { icon: <DollarSign className="w-4 h-4 text-green-500" />, label: "Faturamento", real: totalReal.faturamento, meta: metaGeral?.metaFaturamento ? Number(metaGeral.metaFaturamento) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: "acumulativo" as TipoIndicadorRitmo, realizadoAteHoje: ultimoDia?.totalFatAc ?? null },
+    { icon: <Percent className="w-4 h-4 text-amber-500" />, label: "Taxa Conversão", real: totalReal.taxaConversao, meta: metaGeral?.metaConversao ? Number(metaGeral.metaConversao) : null, fmt: (v: number) => `${v}%`, tipoRitmo: "taxa" as TipoIndicadorRitmo, realizadoAteHoje: taxaConversaoAteHoje },
+    { icon: <Percent className="w-4 h-4 text-orange-500" />, label: "Taxa Faturamento", real: totalReal.taxaFaturamento, meta: metaGeral?.metaTaxaFaturamento ? Number(metaGeral.metaTaxaFaturamento) : null, fmt: (v: number) => `${v}%`, tipoRitmo: "taxa" as TipoIndicadorRitmo, realizadoAteHoje: taxaFaturamentoAteHoje },
+    { icon: <Target className="w-4 h-4 text-slate-500" />, label: "Ticket Médio Geral", real: totalReal.ticketMedio, meta: metaGeral?.metaTicketMedio ? Number(metaGeral.metaTicketMedio) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: "taxa" as TipoIndicadorRitmo, realizadoAteHoje: ticketMedioAteHoje },
+    { icon: <Users className="w-4 h-4 text-teal-500" />, label: "Clientes Novos", real: totalReal.clientesNovos, meta: metaGeral?.metaClientesNovos ? Number(metaGeral.metaClientesNovos) : null, fmt: (v: number) => v.toString(), tipoRitmo: "acumulativo" as TipoIndicadorRitmo, realizadoAteHoje: clientesNovosAteHoje.length },
   ];
 
   const novosKpis = [
-    { icon: <UserPlus className="w-4 h-4 text-teal-500" />, label: "Cotações (Novos)", real: totalReal.cotacoesNovos, meta: metaGeral?.metaCotacoesNovos ? Number(metaGeral.metaCotacoesNovos) : null, fmt: (v: number) => v.toString() },
-    { icon: <Star className="w-4 h-4 text-teal-600" />, label: "Vendas Realizadas (Novos)", real: totalReal.osNovos, meta: metaGeral?.metaOsNovos ? Number(metaGeral.metaOsNovos) : null, fmt: (v: number) => v.toString() },
-    { icon: <DollarSign className="w-4 h-4 text-teal-700" />, label: "Faturamento (Novos)", real: totalReal.faturamentoNovos, meta: metaGeral?.metaFaturamentoNovos ? Number(metaGeral.metaFaturamentoNovos) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
-    { icon: <Target className="w-4 h-4 text-teal-800" />, label: "Ticket Médio (Novos)", real: totalReal.ticketMedioNovos, meta: metaGeral?.metaTicketMedioNovos ? Number(metaGeral.metaTicketMedioNovos) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
+    { icon: <UserPlus className="w-4 h-4 text-teal-500" />, label: "Cotações (Novos)", real: totalReal.cotacoesNovos, meta: metaGeral?.metaCotacoesNovos ? Number(metaGeral.metaCotacoesNovos) : null, fmt: (v: number) => v.toString(), tipoRitmo: null as TipoIndicadorRitmo | null, realizadoAteHoje: null as number | null },
+    { icon: <Star className="w-4 h-4 text-teal-600" />, label: "Vendas Realizadas (Novos)", real: totalReal.osNovos, meta: metaGeral?.metaOsNovos ? Number(metaGeral.metaOsNovos) : null, fmt: (v: number) => v.toString(), tipoRitmo: null as TipoIndicadorRitmo | null, realizadoAteHoje: null as number | null },
+    { icon: <DollarSign className="w-4 h-4 text-teal-700" />, label: "Faturamento (Novos)", real: totalReal.faturamentoNovos, meta: metaGeral?.metaFaturamentoNovos ? Number(metaGeral.metaFaturamentoNovos) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: "acumulativo" as TipoIndicadorRitmo | null, realizadoAteHoje: faturamentoNovosAteHoje as number | null },
+    { icon: <Target className="w-4 h-4 text-teal-800" />, label: "Ticket Médio (Novos)", real: totalReal.ticketMedioNovos, meta: metaGeral?.metaTicketMedioNovos ? Number(metaGeral.metaTicketMedioNovos) : null, fmt: (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: null as TipoIndicadorRitmo | null, realizadoAteHoje: null as number | null },
   ];
 
   return (
@@ -304,7 +334,9 @@ export default function MetasComerciais() {
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {geralKpis.map((item, i) => (
+                  {geralKpis.map((item, i) => {
+                    const ritmo = ritmoDoIndicador(item.meta, item.tipoRitmo, item.realizadoAteHoje);
+                    return (
                     <div key={i} className="bg-slate-50 rounded-lg p-3 space-y-1.5">
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
                         {item.icon} {item.label}
@@ -314,19 +346,23 @@ export default function MetasComerciais() {
                         <>
                           <div className="text-xs text-slate-400">Meta: {item.fmt(item.meta)}</div>
                           <ProgressBar real={item.real} meta={item.meta} />
+                          {ritmo && <RitmoDiarioBar metaMensal={item.meta} esperadoAteHoje={ritmo.esperadoAteHoje} realizadoAteHoje={ritmo.realizadoAteHoje} fmt={item.fmt} />}
                         </>
                       ) : (
                         <div className="text-xs text-slate-400 italic">sem meta definida</div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                     <UserPlus className="w-3.5 h-3.5" /> Novos Clientes
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {novosKpis.map((item, i) => (
+                    {novosKpis.map((item, i) => {
+                      const ritmo = ritmoDoIndicador(item.meta, item.tipoRitmo, item.realizadoAteHoje);
+                      return (
                       <div key={i} className="bg-teal-50/60 rounded-lg p-3 space-y-1.5 border border-teal-100">
                         <div className="flex items-center gap-1.5 text-xs text-teal-600 font-medium">
                           {item.icon} {item.label}
@@ -336,12 +372,21 @@ export default function MetasComerciais() {
                           <>
                             <div className="text-xs text-teal-500">Meta: {item.fmt(item.meta)}</div>
                             <ProgressBar real={item.real} meta={item.meta} />
+                            {ritmo && (
+                              <>
+                                <RitmoDiarioBar metaMensal={item.meta} esperadoAteHoje={ritmo.esperadoAteHoje} realizadoAteHoje={ritmo.realizadoAteHoje} fmt={item.fmt} />
+                                {item.label === "Faturamento (Novos)" && (
+                                  <p className="text-[9px] text-slate-400 italic">aproximado: conta só a 1ª compra do mês de cada cliente novo</p>
+                                )}
+                              </>
+                            )}
                           </>
                         ) : (
                           <div className="text-xs text-slate-400 italic">sem meta definida</div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -379,17 +424,31 @@ export default function MetasComerciais() {
                   Object.entries(novosMap).find(([k]) => k.toLowerCase() === keyNorm)?.[1] as any ?? null;
                 const faturamentoNovosV = novosEntry?.faturamentoNovos ?? 0;
 
+                // Ritmo diário por vendedor: mesmas chaves achatadas de getEvolucaoDiariaMes
+                // (${vendedor}__os_ac etc.), no último ponto (hoje) — null quando não há dado
+                // diário ainda carregado (fora do mês corrente ou query pendente).
+                const osAcV = ultimoDia ? ((ultimoDia[`${v.vendedor}__os_ac`] as number) ?? 0) : null;
+                const fatAcV = ultimoDia ? ((ultimoDia[`${v.vendedor}__fat_ac`] as number) ?? 0) : null;
+                const cotAcV = ultimoDia ? ((ultimoDia[`${v.vendedor}__cot_ac`] as number) ?? 0) : null;
+                const orcAcV = ultimoDia ? ((ultimoDia[`${v.vendedor}__orc_ac`] as number) ?? 0) : null;
+                const convPedidoAcV = cotAcV !== null ? (cotAcV > 0 ? (osAcV! / cotAcV) * 100 : 0) : null;
+                const convFatAcV = orcAcV !== null ? (orcAcV > 0 ? (fatAcV! / orcAcV) * 100 : 0) : null;
+                const ticketMedioAcV = osAcV !== null ? (osAcV > 0 ? (fatAcV! / osAcV) : 0) : null;
+                const clientesNovosDoVendedor = clientesNovosAteHoje.filter(item => String(item.vendedor).trim().toLowerCase() === keyNorm);
+                const clientesNovosVAteHoje = clientesNovosDoVendedor.length;
+                const faturamentoNovosVAteHoje = clientesNovosDoVendedor.reduce((s, i) => s + (parseFloat(i.valorOs ?? "0") || 0), 0);
+
                 // Calcular % de atingimento para cada indicador
                 const indicadores = [
-                  { label: "Cotações", real: v.cotacoes, meta: meta?.metaCotacoes ? Number(meta.metaCotacoes) : null, fmt: (x: number) => x.toString() },
-                  { label: "Vendas Realizadas", real: v.osGeradas, meta: meta?.metaOsGeradas ? Number(meta.metaOsGeradas) : null, fmt: (x: number) => x.toString() },
-                  { label: "Faturamento", real: v.faturamento, meta: meta?.metaFaturamento ? Number(meta.metaFaturamento) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
-                  { label: "Valor Orçado", real: v.valorOrcado, meta: meta?.metaValorOrcado ? Number(meta.metaValorOrcado) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
-                  { label: "Conv. Pedido", real: v.taxaConversao, meta: meta?.metaConversao ? Number(meta.metaConversao) : null, fmt: (x: number) => `${x}%` },
-                  { label: "Conv. Fat.", real: v.taxaFaturamento, meta: meta?.metaTaxaFaturamento ? Number(meta.metaTaxaFaturamento) : null, fmt: (x: number) => `${x}%` },
-                  { label: "Ticket Médio", real: v.ticketMedio, meta: meta?.metaTicketMedio ? Number(meta.metaTicketMedio) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
-                  { label: "Clientes Novos", real: clientesNovosVendedor, meta: meta?.metaClientesNovos ? Number(meta.metaClientesNovos) : null, fmt: (x: number) => x.toString() },
-                  { label: "Fat. Novos", real: faturamentoNovosV, meta: meta?.metaFaturamentoNovos ? Number(meta.metaFaturamentoNovos) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}` },
+                  { label: "Cotações", real: v.cotacoes, meta: meta?.metaCotacoes ? Number(meta.metaCotacoes) : null, fmt: (x: number) => x.toString(), tipoRitmo: "acumulativo" as TipoIndicadorRitmo | null, realizadoAteHoje: cotAcV },
+                  { label: "Vendas Realizadas", real: v.osGeradas, meta: meta?.metaOsGeradas ? Number(meta.metaOsGeradas) : null, fmt: (x: number) => x.toString(), tipoRitmo: "acumulativo" as TipoIndicadorRitmo | null, realizadoAteHoje: osAcV },
+                  { label: "Faturamento", real: v.faturamento, meta: meta?.metaFaturamento ? Number(meta.metaFaturamento) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: "acumulativo" as TipoIndicadorRitmo | null, realizadoAteHoje: fatAcV },
+                  { label: "Valor Orçado", real: v.valorOrcado, meta: meta?.metaValorOrcado ? Number(meta.metaValorOrcado) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: "acumulativo" as TipoIndicadorRitmo | null, realizadoAteHoje: orcAcV },
+                  { label: "Conv. Pedido", real: v.taxaConversao, meta: meta?.metaConversao ? Number(meta.metaConversao) : null, fmt: (x: number) => `${x}%`, tipoRitmo: "taxa" as TipoIndicadorRitmo | null, realizadoAteHoje: convPedidoAcV },
+                  { label: "Conv. Fat.", real: v.taxaFaturamento, meta: meta?.metaTaxaFaturamento ? Number(meta.metaTaxaFaturamento) : null, fmt: (x: number) => `${x}%`, tipoRitmo: "taxa" as TipoIndicadorRitmo | null, realizadoAteHoje: convFatAcV },
+                  { label: "Ticket Médio", real: v.ticketMedio, meta: meta?.metaTicketMedio ? Number(meta.metaTicketMedio) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: "taxa" as TipoIndicadorRitmo | null, realizadoAteHoje: ticketMedioAcV },
+                  { label: "Clientes Novos", real: clientesNovosVendedor, meta: meta?.metaClientesNovos ? Number(meta.metaClientesNovos) : null, fmt: (x: number) => x.toString(), tipoRitmo: "acumulativo" as TipoIndicadorRitmo | null, realizadoAteHoje: clientesNovosVAteHoje as number | null },
+                  { label: "Fat. Novos", real: faturamentoNovosV, meta: meta?.metaFaturamentoNovos ? Number(meta.metaFaturamentoNovos) : null, fmt: (x: number) => `R$ ${x.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`, tipoRitmo: "acumulativo" as TipoIndicadorRitmo | null, realizadoAteHoje: faturamentoNovosVAteHoje as number | null },
                 ];
 
                 // Calcular score geral de metas com meta definida
@@ -471,6 +530,7 @@ export default function MetasComerciais() {
                               {indicadores.map((kpi, i) => {
                                 const p = pct(kpi.real, kpi.meta);
                                 const bg = p === null ? "" : p >= 100 ? "#22c55e" : p >= 70 ? "#f59e0b" : "#ef4444";
+                                const ritmo = ritmoDoIndicador(kpi.meta, kpi.tipoRitmo, kpi.realizadoAteHoje);
                                 return (
                                   <div key={i} className="bg-white rounded-md p-2.5 border border-slate-100 space-y-1">
                                     <div className="text-[11px] text-slate-500 font-medium">{kpi.label}</div>
@@ -484,6 +544,7 @@ export default function MetasComerciais() {
                                           </div>
                                           <span className="text-[10px] font-bold" style={{ color: bg }}>{p}%</span>
                                         </div>
+                                        {ritmo && <RitmoDiarioBar metaMensal={kpi.meta} esperadoAteHoje={ritmo.esperadoAteHoje} realizadoAteHoje={ritmo.realizadoAteHoje} fmt={kpi.fmt} />}
                                       </>
                                     ) : (
                                       <div className="text-[10px] text-slate-400 italic">sem meta</div>

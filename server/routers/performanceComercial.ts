@@ -20,6 +20,7 @@ import {
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
 import { calcularPainelMeta } from "../services/painelMeta";
+import { agregarEvolucaoDiaria } from "../services/evolucaoDiariaComercial";
 import {
   PROMPT_CONSULTOR_META_V1, VERSAO_PROMPT_CONSULTOR_META,
   montarContextoConsultorEmPartes, prepararConversa,
@@ -956,6 +957,10 @@ type ClienteNovoListaItem = {
   empresa: string; vendedor: string; osNumero: string | null; valorOs: string | null;
   telefone: string; whatsappLink: string; contato: string; cidade: string; estado: string;
   reativado: boolean;
+  /** Data de aprovação da OS ("YYYY-MM-DD") — usada para o ritmo diário da meta (Clientes/
+   * Faturamento Novos acumulado até hoje). Ausente em snapshots congelados salvos antes deste
+   * campo existir; o mês corrente nunca está congelado, então isso não afeta a curva diária. */
+  data?: string | null;
 };
 
 /** Busca OS e orçamentos brutos (formato cru da API MubiSys) de um mês, com o
@@ -1303,7 +1308,8 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
         // Contato e cidade DIRETAMENTE da OS (ver extrairContatoDaOs). O número da OS na API
         // é `sequencial_ordem` — a API não devolve `numero`.
         const { telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs } = extrairContatoDaOs(os);
-        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.sequencial_ordem ?? os.numero ?? ""), valorOs: String(valorOs), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs, reativado: jaComprouAntes });
+        const dataOs = String(os.data_aprovacao || os.data_cadastro || "").substring(0, 10) || null;
+        listaRaw.push({ empresa: nomeCliente, vendedor, osNumero: String(os.sequencial_ordem ?? os.numero ?? ""), valorOs: String(valorOs), telefone: telefoneOs, contato: contatoOs, cidade: cidadeOs, estado: estadoOs, reativado: jaComprouAntes, data: dataOs });
       }
     }
   }
@@ -2408,86 +2414,7 @@ export const performanceComercialRouter = router({
         !STATUS_EXCLUIDOS_ORC_DIARIO.includes((orc.status ?? "").toLowerCase())
       );
 
-      // Agrupar OS por dia de aprovação
-      const osPorDia: Record<string, Record<string, { os: number; faturamento: number }>> = {};
-      for (const os of osNormais) {
-        const dataAprov = (os.data_aprovacao || os.data_cadastro || "").substring(0, 10);
-        if (!dataAprov) continue;
-        const vendedor = os.vendedor || "Sem Vendedor";
-        const valor = valorLiquidoOs(os);
-        if (!osPorDia[dataAprov]) osPorDia[dataAprov] = {};
-        if (!osPorDia[dataAprov][vendedor]) osPorDia[dataAprov][vendedor] = { os: 0, faturamento: 0 };
-        osPorDia[dataAprov][vendedor].os++;
-        osPorDia[dataAprov][vendedor].faturamento += valor;
-      }
-
-      // Agrupar cotações por dia de cadastro
-      const orcPorDia: Record<string, Record<string, { cotacoes: number; valorOrcado: number }>> = {};
-      for (const orc of orcVersaoAtual) {
-        const dataCad = (orc.data_cadastro || "").substring(0, 10);
-        if (!dataCad) continue;
-        const vendedor = orc.vendedor || "Sem Vendedor";
-        const vt = parseFloat(String(orc.valor_total ?? "0")) || 0;
-        const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
-        const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
-        const valor = vt > 0 ? vt : (vc + vm);
-        if (!orcPorDia[dataCad]) orcPorDia[dataCad] = {};
-        if (!orcPorDia[dataCad][vendedor]) orcPorDia[dataCad][vendedor] = { cotacoes: 0, valorOrcado: 0 };
-        orcPorDia[dataCad][vendedor].cotacoes++;
-        orcPorDia[dataCad][vendedor].valorOrcado += valor;
-      }
-
-      // Montar array de dias do mês com dados diários e acumulados por vendedor
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const lastDay = new Date(ano, mes, 0).getDate();
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-
-      const acumOs: Record<string, number> = {};
-      const acumFat: Record<string, number> = {};
-      const acumCot: Record<string, number> = {};
-      const acumOrc: Record<string, number> = {};
-      const dias: any[] = [];
-
-      for (let d = 1; d <= lastDay; d++) {
-        const dStr = `${ano}-${pad(mes)}-${pad(d)}`;
-        if (dStr > todayStr) break;
-        const label = `${pad(d)}/${pad(mes)}`;
-        const osHoje = osPorDia[dStr] ?? {};
-        const orcHoje = orcPorDia[dStr] ?? {};
-        const todosVend = new Set([...Object.keys(osHoje), ...Object.keys(orcHoje)]);
-        for (const v of todosVend) {
-          acumOs[v] = (acumOs[v] ?? 0) + (osHoje[v]?.os ?? 0);
-          acumFat[v] = (acumFat[v] ?? 0) + (osHoje[v]?.faturamento ?? 0);
-          acumCot[v] = (acumCot[v] ?? 0) + (orcHoje[v]?.cotacoes ?? 0);
-          acumOrc[v] = (acumOrc[v] ?? 0) + (orcHoje[v]?.valorOrcado ?? 0);
-        }
-        const ponto: Record<string, any> = { dia: d, label, data: dStr };
-        // Diário
-        for (const v of todosVend) {
-          ponto[`${v}__os`] = osHoje[v]?.os ?? 0;
-          ponto[`${v}__fat`] = parseFloat((osHoje[v]?.faturamento ?? 0).toFixed(2));
-          ponto[`${v}__cot`] = orcHoje[v]?.cotacoes ?? 0;
-          ponto[`${v}__orc`] = parseFloat((orcHoje[v]?.valorOrcado ?? 0).toFixed(2));
-        }
-        // Acumulado
-        for (const v of Object.keys(acumOs)) {
-          ponto[`${v}__os_ac`] = acumOs[v];
-          ponto[`${v}__fat_ac`] = parseFloat(acumFat[v].toFixed(2));
-        }
-        for (const v of Object.keys(acumCot)) {
-          ponto[`${v}__cot_ac`] = acumCot[v];
-          ponto[`${v}__orc_ac`] = parseFloat(acumOrc[v].toFixed(2));
-        }
-        dias.push(ponto);
-      }
-
-      const vendedores = Array.from(new Set([
-        ...Object.keys(acumOs),
-        ...Object.keys(acumCot),
-      ])).filter(v => v !== "Sem Vendedor").sort();
-
-      return { dias, vendedores };
+      return agregarEvolucaoDiaria(osNormais, orcVersaoAtual, mes, ano);
     }),
 
   // ─── Overrides manuais de status de cliente ────────────────────────────────

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Target } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { resolverMeta, aplicarFator, totaisCenario, type Fixos, type ResultadoMeta } from "@shared/meta-faturamento";
-import { PRAZO_PADRAO_MESES, prazoValido } from "@shared/planejador-meta";
+import { PRAZO_PADRAO_MESES, prazoValido, mesApos } from "@shared/planejador-meta";
 import { CampoNumero, brlCurto, fmtNum } from "./painelMeta/comuns";
-import { META_PADRAO_1, META_PADRAO_2, carregarConversa, salvarConversa, type MensagemConsultor, type VistaDestino } from "./painelMeta/tipos";
+import { META_PADRAO_1, META_PADRAO_2, carregarConversa, salvarConversa, type MensagemConsultor, type VistaDestino, type LinhaAplicarMeta } from "./painelMeta/tipos";
 import Diagnostico from "./painelMeta/Diagnostico";
 import PlanoDeAcao from "./painelMeta/PlanoDeAcao";
 import Simulador from "./painelMeta/Simulador";
@@ -46,6 +47,53 @@ export default function PainelMeta({ onIrPara, destinosDisponiveis = TODOS_DESTI
     },
     onError: erro => setErroConsultor(erro.message || "Não consegui falar com o consultor agora."),
   });
+
+  // ─── Aplicar como Meta (aba Planejador): grava os números da linha escolhida como a Meta
+  // Geral daquele mês em "Metas Comerciais". upsertMeta NÃO faz merge parcial — grava null em
+  // qualquer campo omitido — então antes de aplicar buscamos a meta já existente e reenviamos
+  // os campos que o Planejador não calcula (Taxa de Faturamento, Valor Orçado, bloco Novos
+  // Clientes), para não apagá-los. ──────────────────────────────────────────────────────────
+  const utils = trpc.useUtils();
+  const [aplicandoMeta, setAplicandoMeta] = useState<number | null>(null);
+  const upsertMetaGeral = trpc.performanceComercial.upsertMeta.useMutation();
+
+  async function aplicarComoMeta(l: LinhaAplicarMeta) {
+    setAplicandoMeta(l.mes);
+    try {
+      const { ano, mes } = mesApos(data!.dataReferencia, l.mes);
+      const existentes = await utils.performanceComercial.getMetas.fetch({ mes, ano });
+      const atual = existentes.find(m => m.vendedor === "GERAL");
+      const toNum = (v: string | number | null | undefined): number | null => (v == null ? null : Number(v));
+
+      await upsertMetaGeral.mutateAsync({
+        vendedor: "GERAL", mes, ano,
+        // Calculados pelo Planejador para esta linha:
+        metaFaturamento: l.totais.faturamento,
+        metaOsGeradas: Math.round(l.totais.vendas),
+        metaTicketMedio: l.totais.ticketMedio,
+        metaCotacoes: l.leads != null ? Math.round(l.leads) : toNum(atual?.metaCotacoes),
+        metaConversao: l.conversaoPct ?? toNum(atual?.metaConversao),
+        metaClientesNovos: Math.round(l.cenario.novos.clientes),
+        // Sem fonte no Planejador — preserva o que já estava cadastrado, para o upsert (que
+        // substitui a linha inteira) não apagar esses campos.
+        metaVendas: toNum(atual?.metaVendas),
+        metaOsNovos: toNum(atual?.metaOsNovos),
+        metaCotacoesNovos: toNum(atual?.metaCotacoesNovos),
+        metaFaturamentoNovos: toNum(atual?.metaFaturamentoNovos),
+        metaTaxaFaturamento: toNum(atual?.metaTaxaFaturamento),
+        metaTaxaFaturamentoNovos: toNum(atual?.metaTaxaFaturamentoNovos),
+        metaConversaoNovos: toNum(atual?.metaConversaoNovos),
+        metaTicketMedioNovos: toNum(atual?.metaTicketMedioNovos),
+        metaValorOrcado: toNum(atual?.metaValorOrcado),
+      });
+      await utils.performanceComercial.getMetas.invalidate({ mes, ano });
+      toast.success(`Meta de ${l.rotulo} aplicada em Metas Comerciais.`);
+    } catch (erro: any) {
+      toast.error(`Não consegui aplicar a meta: ${erro?.message ?? "erro desconhecido"}`);
+    } finally {
+      setAplicandoMeta(null);
+    }
+  }
 
   const metaValida = Math.max(1, meta);
   const meta2Valida = Math.max(1, meta2);
@@ -161,6 +209,8 @@ export default function PainelMeta({ onIrPara, destinosDisponiveis = TODOS_DESTI
           setMargemPct={setMargemEditada}
           prazo={prazo}
           setPrazo={setPrazo}
+          onAplicarComoMeta={aplicarComoMeta}
+          aplicandoMeta={aplicandoMeta}
         />
       )}
       {aba === "metas" && (

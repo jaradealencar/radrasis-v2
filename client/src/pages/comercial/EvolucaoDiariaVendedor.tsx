@@ -52,7 +52,7 @@ export default function EvolucaoDiariaVendedor({ mes, ano }: Props) {
     if (!data?.dias) return [];
     return data.dias.map(dia => {
       const row: Record<string, any> = { label: dia.label };
-      const pv = dia.porVendedor ?? {};
+      const pv = (dia as any).porVendedor ?? {};
       for (const v of vendedoresFiltrados) {
         row[v] = (pv[v] as any)?.[campo] ?? 0;
       }
@@ -261,7 +261,7 @@ export default function EvolucaoDiariaVendedor({ mes, ano }: Props) {
         {vendedores.map((v, i) => {
           const cor = chartColor(i);
           const ativo = vendedoresSelecionados.size === 0 || vendedoresSelecionados.has(v);
-          const pv = (ultimoDia?.porVendedor ?? {})[v] as any;
+          const pv = ((ultimoDia as any)?.porVendedor ?? {})[v] as any;
           const totalOs = pv?.acumOs ?? 0;
           const totalFat = pv?.acumFat ?? 0;
           const totalCot = pv?.acumCot ?? 0;

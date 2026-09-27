@@ -3,12 +3,13 @@ import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid,
   Tooltip as ChartTooltip, ReferenceLine, ReferenceDot, Legend,
 } from "recharts";
-import { CalendarClock, CalendarRange } from "lucide-react";
+import { CalendarClock, CalendarRange, Target } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { totaisCenario, dividirFunil, type ResultadoMeta } from "@shared/meta-faturamento";
 import {
   mesApos, prazoValido, aplicarSazonalidadeNaLinhaDoTempo, PRAZO_MAXIMO_MESES, type PontoDaLinhaDoTempo,
 } from "@shared/planejador-meta";
-import type { PainelMetaDados } from "./tipos";
+import type { PainelMetaDados, LinhaAplicarMeta } from "./tipos";
 import { CampoNumero, Cartao, Selo, brlCurto, fmtBrl, fmtNum, fmtPct, kMil } from "./comuns";
 
 const NOMES_MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -21,7 +22,7 @@ const plural = (n: number, singular: string, pluralTexto: string) => (n === 1 ? 
 const reais = (v: number) => `R$ ${fmtNum(v, 0)}`;
 const PASSO_EIXO = 50_000;
 
-export default function Planejador({ data, meta, resultado, modoAuto, pesoConversao, prazo, setPrazo, pontos, mesMeta }: {
+export default function Planejador({ data, meta, resultado, modoAuto, pesoConversao, prazo, setPrazo, pontos, mesMeta, onAplicarComoMeta, aplicandoMeta }: {
   data: PainelMetaDados;
   meta: number;
   resultado: ResultadoMeta;
@@ -32,6 +33,10 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
   pontos: PontoDaLinhaDoTempo[];
   /** Primeiro mês (0 = este mês) em que o faturamento previsto chega na meta; null se não chega. */
   mesMeta: number | null;
+  /** Grava os números da linha como Meta Geral daquele mês em "Metas Comerciais". */
+  onAplicarComoMeta?: (l: LinhaAplicarMeta) => void;
+  /** k (mes relativo) da linha sendo aplicada agora, para desabilitar só o botão dela. */
+  aplicandoMeta?: number | null;
 }) {
   const prazoOk = prazoValido(prazo);
   const real12 = data.media12m.faturamento;
@@ -240,6 +245,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
               <th className="font-medium pb-1 px-2">Gráficas novas</th>
               <th className="font-medium pb-1 px-2">Reativadas</th>
               <th className="font-medium pb-1 pl-2" title="Média do faturamento do mesmo mês nos anos anteriores (referência, não entra na conta)">Mesmo mês em anos anteriores</th>
+              {onAplicarComoMeta && <th className="font-medium pb-1 pl-2"></th>}
             </tr>
           </thead>
           <tbody>
@@ -265,6 +271,17 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
                   <td className="py-1.5 px-2 text-slate-600">{fmtNum(l.cenario.novos.clientes, 1)}</td>
                   <td className="py-1.5 px-2 text-slate-600">{fmtNum(l.cenario.reativados.clientes, 1)}</td>
                   <td className="py-1.5 pl-2 text-slate-400">{l.ref !== null ? brlCurto(l.ref) : "—"}</td>
+                  {onAplicarComoMeta && (
+                    <td className="py-1.5 pl-2">
+                      <Button
+                        size="sm" variant="outline" className="h-6 px-2 text-[11px]"
+                        disabled={aplicandoMeta === l.k}
+                        onClick={() => onAplicarComoMeta({ mes: l.k, rotulo: l.rotulo, totais: l.totais, cenario: l.cenario, leads: l.leads, conversaoPct: l.conversaoPct })}
+                      >
+                        <Target className="w-3 h-3 mr-1" /> {aplicandoMeta === l.k ? "Aplicando..." : "Aplicar como Meta"}
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
