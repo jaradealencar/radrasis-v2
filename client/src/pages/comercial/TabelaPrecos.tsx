@@ -88,13 +88,39 @@ function highlightClass(h?: string) {
   return "bg-slate-50 text-slate-700";
 }
 
+/**
+ * Renderiza um texto trocando cada "<número>%" por: o número como texto normal
+ * (copiável) + o "%" como conteúdo CSS (::after) — visível e acinzentado, mas
+ * nunca um caractere de verdade. Assim, selecionar/copiar o valor (manualmente
+ * ou pelo CopyButton) nunca traz o sinal de porcentagem junto, só o numeral.
+ */
+function renderPercentDecorated(text: string): React.ReactNode {
+  const re = /(-?\d+(?:,\d+)?)\s*%/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIndex) parts.push(text.slice(lastIndex, m.index));
+    parts.push(
+      <span key={key++} className="whitespace-nowrap">
+        {m[1]}
+        <span className="after:content-['%'] after:text-slate-400" aria-hidden="true" />
+      </span>
+    );
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts.length > 0 ? parts : text;
+}
+
 function ConfigTable({ items }: { items: ConfigItem[] }) {
   return (
     <div className="flex flex-wrap gap-3 mb-2">
       {items.map((item, i) => (
         <div key={i} className={`group px-3 py-2 rounded-lg text-sm ${highlightClass(item.highlight)} flex items-center gap-1`}>
           <span className="font-medium">{item.label}:</span>{" "}
-          <span className="text-base font-bold">{item.value}</span>
+          <span className="text-base font-bold">{renderPercentDecorated(item.value)}</span>
           <CopyButton value={item.value} />
           {item.note && <div className="text-xs mt-0.5 opacity-80 w-full">{item.note}</div>}
         </div>
@@ -124,7 +150,7 @@ function MarginTable({ columns, rows }: { columns: string[]; rows: MarginRow[] }
             )}
             {row.values.map((val, vi) => (
               <TableCell key={vi} className="group text-center border border-slate-200">
-                <span className="font-semibold text-blue-700">{val}</span>
+                <span className="font-semibold text-blue-700">{renderPercentDecorated(val)}</span>
                 {val.trim() !== "" && <CopyButton value={val} />}
               </TableCell>
             ))}
@@ -141,7 +167,7 @@ function ListContent({ items }: { items: string[] }) {
       {items.map((item, i) => (
         <li key={i} className="flex gap-2 text-sm text-slate-700">
           <span className="text-blue-500 mt-0.5">•</span>
-          <span>{item}</span>
+          <span>{renderPercentDecorated(item)}</span>
         </li>
       ))}
     </ul>
