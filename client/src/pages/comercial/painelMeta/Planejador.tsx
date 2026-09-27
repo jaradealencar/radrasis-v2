@@ -1,12 +1,17 @@
+import { useState } from "react";
 import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid,
   Tooltip as ChartTooltip, ReferenceLine, ReferenceDot, Legend,
 } from "recharts";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, CalendarRange } from "lucide-react";
 import { totaisCenario, dividirFunil, type ResultadoMeta } from "@shared/meta-faturamento";
-import { mesApos, prazoValido, PRAZO_MAXIMO_MESES, type PontoDaLinhaDoTempo } from "@shared/planejador-meta";
+import {
+  mesApos, prazoValido, aplicarSazonalidadeNaLinhaDoTempo, PRAZO_MAXIMO_MESES, type PontoDaLinhaDoTempo,
+} from "@shared/planejador-meta";
 import type { PainelMetaDados } from "./tipos";
-import { CampoNumero, Cartao, brlCurto, fmtBrl, fmtNum, fmtPct, kMil } from "./comuns";
+import { CampoNumero, Cartao, Selo, brlCurto, fmtBrl, fmtNum, fmtPct, kMil } from "./comuns";
+
+const NOMES_MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 const PRAZOS_RAPIDOS = [3, 6, 9, 12];
 
@@ -38,15 +43,27 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
   const passoPorMes = (fatFinal - real12) / prazoOk;
   const funilAtual = { leadsPorMes: data.funil.leadsPorMes, conversaoPct: data.funil.conversaoPct };
 
-  const linhas = pontos.map(p => {
+  // Sazonalidade: só novembro e dezembro costumam ter padrão confiável (3 anos seguidos concordando) neste
+  // negócio — ver docs/inteligencia-clientes.md. Por isso é opcional (desligado por padrão) e só modula a
+  // DISTRIBUIÇÃO mês a mês; "quando chego lá" continua respondendo pelo ritmo médio (linha "Com o cenário").
+  const [comSazonalidade, setComSazonalidade] = useState(false);
+  const mesesAjustados = data.sazonalidade.porMes.filter(m => m.confiavel);
+  const pontosSazonais = comSazonalidade
+    ? aplicarSazonalidadeNaLinhaDoTempo(pontos, data.dataReferencia, data.sazonalidade.fatoresNormalizados)
+    : null;
+
+  const linhas = pontos.map((p, i) => {
     const fat = p.totais.faturamento;
     const funil = dividirFunil(totaisBase.vendas, p.totais.vendas, funilAtual, pesoConversao);
     const ref = p.mes >= 1 ? data.projecao[p.mes - 1]?.mediaMesmoMes ?? null : null;
+    const pSaz = pontosSazonais?.[i];
     return {
       k: p.mes,
       rotulo: rotulo(p.mes),
       eixo: p.mes === 0 ? `${curto(rotulo(p.mes))} (hoje)` : curto(rotulo(p.mes)),
       fat,
+      fatSazonal: pSaz ? pSaz.totais.faturamento : undefined,
+      ajustadoNoMes: mesesAjustados.some(m => m.mes === mesApos(data.dataReferencia, p.mes).mes),
       baseline: real12,
       faixa: bandaMes ? [fat * (1 + bandaMes.pessimista), fat * (1 + bandaMes.otimista)] : undefined,
       totais: p.totais,
@@ -59,7 +76,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
   const pontoDaMeta = mesMeta !== null ? linhas[mesMeta] : null;
 
   // Eixo vertical com degraus iguais (o automático do gráfico escolhe degraus irregulares com a faixa azul).
-  const todosOsValores = linhas.flatMap(l => [l.fat, l.baseline, ...(l.faixa ?? [])]).concat(meta);
+  const todosOsValores = linhas.flatMap(l => [l.fat, l.baseline, l.fatSazonal, ...(l.faixa ?? [])].filter((v): v is number => v !== undefined)).concat(meta);
   const eixoMin = Math.max(0, Math.floor(Math.min(...todosOsValores) / PASSO_EIXO) * PASSO_EIXO);
   const eixoMax = Math.ceil(Math.max(...todosOsValores) / PASSO_EIXO) * PASSO_EIXO;
   const marcasDoEixo = Array.from({ length: Math.round((eixoMax - eixoMin) / PASSO_EIXO) + 1 }, (_, i) => eixoMin + i * PASSO_EIXO);
@@ -89,6 +106,8 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
     detalhe = `Faltam ${brlCurto(meta - fatFinal)} por mês. Aumente algum indicador ou ligue o ajuste automático.`;
   }
   const CORES = { verde: "bg-emerald-50 border-emerald-200 text-emerald-900", azul: "bg-blue-50 border-blue-200 text-blue-900", ambar: "bg-amber-50 border-amber-200 text-amber-900" } as const;
+
+  const comparativo = data.comparativoAnoAnterior;
 
   return (
     <Cartao>
@@ -121,6 +140,27 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
         </div>
       </div>
 
+      {comparativo && (
+        <div className="rounded-lg border border-slate-200 px-3 py-2.5 mt-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <CalendarRange className="w-4 h-4 text-slate-400 shrink-0" />
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                {comparativo.mes}, dia 1 a {comparativo.diaCorte} — mesmo corte comparado ao ano passado
+              </p>
+              <p className="text-sm font-semibold text-slate-800">
+                {brlCurto(comparativo.realEsteAnoAteCorte)} este ano
+                <span className="font-normal text-slate-400"> · {brlCurto(comparativo.realAnoPassadoAteCorte)} no ano passado (até o mesmo dia)</span>
+              </p>
+              <p className="text-[11px] text-slate-400">O mesmo mês do ano passado fechou inteiro em {brlCurto(comparativo.realAnoPassadoMesInteiro)}.</p>
+            </div>
+          </div>
+          <p className={`text-xl font-bold whitespace-nowrap ${comparativo.variacaoPct >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+            {comparativo.variacaoPct >= 0 ? "+" : ""}{fmtNum(comparativo.variacaoPct, 1)}%
+          </p>
+        </div>
+      )}
+
       <div className={`rounded-lg border px-3 py-2.5 mt-3 ${CORES[tom]}`}>
         <p className="text-sm font-bold">{titulo}</p>
         <p className="text-xs mt-0.5 opacity-90">{detalhe}</p>
@@ -148,7 +188,22 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap mt-3">
+        <label className="flex items-center gap-2 text-xs text-slate-600">
+          <input type="checkbox" checked={comSazonalidade} onChange={e => setComSazonalidade(e.target.checked)} className="accent-blue-600" />
+          Ajustar cada mês pela sazonalidade
+        </label>
+        {mesesAjustados.length > 0 ? (
+          <p className="text-[11px] text-slate-500">
+            Só {mesesAjustados.map(m => `${NOMES_MES[m.mes - 1]} (${m.fatorAjustado >= 1 ? "+" : ""}${fmtNum((m.fatorAjustado - 1) * 100, 0)}%, ${m.observacoes} anos seguidos concordando)`).join(" e ")}
+            {" "}têm padrão confiável; os outros meses, sem padrão estável, ficam sem ajuste.
+          </p>
+        ) : (
+          <p className="text-[11px] text-slate-500">Ainda não há nenhum mês com padrão sazonal confiável (poucos anos de histórico ou os anos discordam entre si).</p>
+        )}
+      </div>
+
+      <div className="mt-2">
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={linhas} margin={{ top: 16, right: 24, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -159,7 +214,10 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
             <ReferenceLine y={meta} stroke="#dc2626" strokeDasharray="5 4" label={{ value: "Meta", position: "insideTopRight", fill: "#dc2626", fontSize: 11 }} />
             {bandaMes && <Area dataKey="faixa" name="Faixa provável de um mês no cenário" stroke="none" fill="#93c5fd" fillOpacity={0.25} isAnimationActive={false} />}
             <Line dataKey="baseline" name="Se nada mudar" stroke="#94a3b8" strokeDasharray="5 4" strokeWidth={2} dot={false} isAnimationActive={false} />
-            <Line dataKey="fat" name="Com o cenário" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
+            <Line dataKey="fat" name="Com o cenário (ritmo médio)" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
+            {comSazonalidade && (
+              <Line dataKey="fatSazonal" name="Com sazonalidade (mês a mês)" stroke="#c026d3" strokeWidth={2} strokeDasharray="2 2" dot={{ r: 2 }} isAnimationActive={false} />
+            )}
             {pontoDaMeta && (
               <ReferenceDot x={pontoDaMeta.eixo} y={pontoDaMeta.fat} r={7} fill="#059669" stroke="#fff" strokeWidth={2} label={{ value: pontoDaMeta.rotulo, position: "top", fill: "#047857", fontSize: 11, fontWeight: 700 }} />
             )}
@@ -172,7 +230,8 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
           <thead>
             <tr className="text-[11px] text-slate-400 text-right">
               <th className="text-left font-medium pb-1">Mês</th>
-              <th className="font-medium pb-1 px-2">Faturamento</th>
+              <th className="font-medium pb-1 px-2">Faturamento (ritmo médio)</th>
+              {comSazonalidade && <th className="font-medium pb-1 px-2" title="Só muda nos meses com padrão sazonal confiável">Com sazonalidade</th>}
               <th className="font-medium pb-1 px-2">Contra hoje</th>
               <th className="font-medium pb-1 px-2">Pedidos</th>
               <th className="font-medium pb-1 px-2">Ticket médio</th>
@@ -193,6 +252,11 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
                     {cruzou && l.k > 0 && <span className="ml-1 text-emerald-700 font-bold">← chega na meta</span>}
                   </td>
                   <td className="py-1.5 px-2 font-semibold text-blue-700">{brlCurto(l.fat)}</td>
+                  {comSazonalidade && (
+                    <td className={`py-1.5 px-2 font-semibold ${l.ajustadoNoMes ? "text-fuchsia-700" : "text-slate-400"}`}>
+                      {l.fatSazonal !== undefined ? brlCurto(l.fatSazonal) : "—"}
+                    </td>
+                  )}
                   <td className="py-1.5 px-2 text-slate-500">{l.k === 0 ? "—" : `${l.fat >= real12 ? "+" : ""}${fmtNum((l.fat / real12 - 1) * 100, 1)}%`}</td>
                   <td className="py-1.5 px-2 text-slate-600">{fmtNum(l.totais.vendas, 0)}</td>
                   <td className="py-1.5 px-2 text-slate-600">{fmtBrl(l.totais.ticketMedio)}</td>
@@ -213,6 +277,9 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
         o faturamento de cada mês é a mesma conta do simulador (gráficas × pedidos × ticket) com os números daquele mês. O prazo é uma escolha sua: só você sabe o quão rápido consegue acelerar a captação e a recompra
         (o máximo é {PRAZO_MAXIMO_MESES} meses). A faixa azul é a variação natural de um mês para o outro observada nos últimos {data.bandas.amostras} meses — meses isolados vão acima e abaixo da linha.
         Não entra na conta o efeito extra de as gráficas novas continuarem comprando nos meses seguintes (veja as abas 4 e 5), então, nesse ponto, a estimativa tende a ser conservadora.
+        {" "}"Com o cenário" é o RITMO médio (o que decide "quando chego lá"); "Com sazonalidade" redistribui esse mesmo total pelos 12 meses do calendário — novembro puxando pra cima e dezembro pra baixo, por
+        exemplo — sem mudar a média do ano. Testamos aplicar sazonalidade em TODAS as previsões e isso piorou o resultado (22% de erro contra 17% da média simples); por isso ela só ajusta os meses em que os
+        anos concordam entre si, e fica desligada por padrão.
       </p>
     </Cartao>
   );

@@ -71,6 +71,7 @@ Regras sobre números (inegociáveis):
 2. Não refaça cálculos complexos: o sistema já calculou os cenários das metas, os rankings e as sensibilidades (seção "CÁLCULOS DO SISTEMA"). Se precisar de uma conta simples (ex.: dividir por 4,33 semanas), mostre a conta. Para hipóteses novas ("e se eu fizer X?"), use os cenários e sensibilidades do contexto ou oriente a usar a aba 3 (Simulador) ou a aba 4 (Metas comparadas).
 3. Diferencie fato (dado medido) de estimativa (premissa) e rotule as estimativas. Nunca prometa resultado: o faturamento oscila muito de um mês para outro e o histórico é limitado.
 4. Se a pergunta ou a crença do gestor contradisser os dados, diga com gentileza e mostre o dado.
+5. Sazonalidade: só chame um mês do calendário de "historicamente fraco/forte" se ele estiver na lista de meses CONFIÁVEIS do contexto (anos seguidos concordando entre si). Um mês fora dessa lista pode até parecer fraco olhando 1 ou 2 anos, mas os dados mostram que os anos discordam demais — não vire regra. Aplicar sazonalidade a TODOS os meses já foi testado e piorou a previsão (contexto tem os números); por isso o ajuste vale só para os meses confiáveis.
 
 Como responder:
 - Comece pela resposta direta em 1 ou 2 frases. Depois o porquê, com no máximo 3 números-chave em **negrito**.
@@ -94,6 +95,8 @@ const pct = (v: number | null | undefined, casas = 1) => (v === null || v === un
 export function sanitizarTexto(v: string | null | undefined, max = 60): string {
   return (v ?? "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, max);
 }
+
+const NOMES_MES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 const ROTULO_SEGMENTO: Record<SegmentoId, string> = {
   novos: "Gráficas novas (1ª compra)",
@@ -157,6 +160,14 @@ export function montarContextoConsultorEmPartes(p: PainelCompleto, e: EntradaCon
     L.push(`- Se nada mudar, a média dos próximos 12 meses deve ficar entre ${brl(real12 * (1 + p.bandas.media12m.pessimista))} e ${brl(real12 * (1 + p.bandas.media12m.otimista))} (80% de chance); um mês isolado varia de ${pct(p.bandas.mensal.pessimista * 100, 0)} a +${pct(p.bandas.mensal.otimista * 100, 0)} em relação à média.`);
   }
   L.push(`- Confiabilidade: prever mês a mês pela média dos 12 meses anteriores errou em média ${pct(p.backtest.semSazonalidadePct, 0)} por mês nos últimos ${p.backtest.meses} meses${p.backtest.comSazonalidadePct !== null ? `; com ajuste de sazonalidade errou ${pct(p.backtest.comSazonalidadePct, 0)}` : ""}.`);
+  if (p.comparativoAnoAnterior) {
+    const c = p.comparativoAnoAnterior;
+    L.push(`- ${c.mes} até o dia ${c.diaCorte} (mesmo corte de dias nos dois anos, para ser justo com o ano passado): ${brl(c.realEsteAnoAteCorte)} este ano contra ${brl(c.realAnoPassadoAteCorte)} no ano passado (${c.variacaoPct >= 0 ? "+" : ""}${num(c.variacaoPct, 1)}%); o mesmo mês do ano passado fechou inteiro em ${brl(c.realAnoPassadoMesInteiro)}.`);
+  }
+  const sazConfiaveis = p.sazonalidade.porMes.filter(m => m.confiavel);
+  L.push(sazConfiaveis.length > 0
+    ? `- Meses do calendário com padrão sazonal CONFIÁVEL (mesma direção em pelo menos 3 anos seguidos, variação pequena entre eles): ${sazConfiaveis.map(m => `${NOMES_MES_PT[m.mes - 1]} (${m.fatorAjustado >= 1 ? "+" : ""}${num((m.fatorAjustado - 1) * 100, 0)}%, ${m.observacoes} anos)`).join("; ")}. Os demais meses (incluindo os que parecem fracos/fortes à primeira vista) NÃO têm padrão confiável — os anos discordam entre si ou há poucos anos observados; não afirme "mês X é fraco/forte" fora dessa lista.`
+    : "- Nenhum mês do calendário tem padrão sazonal confiável ainda (poucos anos de histórico ou os anos discordam entre si).");
   L.push("");
 
   L.push("## Como o faturamento se forma (média de 12 meses)");

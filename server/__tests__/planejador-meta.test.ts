@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   mesApos, prazoValido, horizonteDaLinhaDoTempo, interpolarCenario, linhaDoTempo, primeiroMesNaMeta,
   PRAZO_PADRAO_MESES, PRAZO_MAXIMO_MESES, HORIZONTE_MINIMO_MESES,
+  confiabilidadeSazonalPorMes, fatoresSazonaisNormalizados, aplicarFatorSazonal, aplicarSazonalidadeNaLinhaDoTempo,
 } from "../../shared/planejador-meta";
 import { resolverMeta, totaisCenario, aplicarFator, type Cenario } from "../../shared/meta-faturamento";
 
@@ -111,5 +112,117 @@ describe("primeiroMesNaMeta", () => {
     expect(primeiroMesNaMeta(linhaDoTempo(BASE, BASE, 6), FAT_BASE * 0.9)).toBe(0);
     const abaixo = aplicarFator(BASE, {}, 1.05);
     expect(primeiroMesNaMeta(linhaDoTempo(BASE, abaixo, 6), META)).toBeNull();
+  });
+});
+
+describe("confiabilidadeSazonalPorMes", () => {
+  it("dezembro real (0,83 / 0,68 / 0,81): 3 anos concordando, ajusta com encolhimento", () => {
+    const dez = confiabilidadeSazonalPorMes({ 12: [0.83, 0.68, 0.81] })[11];
+    expect(dez.mes).toBe(12);
+    expect(dez.observacoes).toBe(3);
+    expect(dez.mediaRazao).toBeCloseTo(0.773, 2);
+    expect(dez.mesmoSinalPct).toBe(1);
+    expect(dez.confiavel).toBe(true);
+    // encolhimento K=2: peso = 3/5 = 0,6 → fator = 1 + 0,6*(0,773-1) ≈ 0,864 (não o valor cru)
+    expect(dez.fatorAjustado).toBeGreaterThan(dez.mediaRazao);
+    expect(dez.fatorAjustado).toBeCloseTo(1 + 0.6 * (dez.mediaRazao - 1), 6);
+  });
+
+  it("novembro real (1,13 / 1,36 / 1,18): mesma lógica, só que pra cima", () => {
+    const nov = confiabilidadeSazonalPorMes({ 11: [1.13, 1.36, 1.18] })[10];
+    expect(nov.mes).toBe(11);
+    expect(nov.confiavel).toBe(true);
+    expect(nov.fatorAjustado).toBeGreaterThan(1);
+    expect(nov.fatorAjustado).toBeLessThan(nov.mediaRazao);
+  });
+
+  it("janeiro real (0,93 / 1,01 / 0,55): 3 anos, mas discordam de lado — NÃO confiável", () => {
+    const jan = confiabilidadeSazonalPorMes({ 1: [0.93, 1.01, 0.55] })[0];
+    expect(jan.mes).toBe(1);
+    expect(jan.observacoes).toBe(3);
+    expect(jan.mesmoSinalPct).toBeLessThan(1);
+    expect(jan.confiavel).toBe(false);
+    expect(jan.fatorAjustado).toBe(1);
+  });
+
+  it("só 2 anos (mínimo é 3), mesmo concordando 100%: não confiável ainda", () => {
+    const mai = confiabilidadeSazonalPorMes({ 5: [1.1, 1.04] })[4];
+    expect(mai.mes).toBe(5);
+    expect(mai.observacoes).toBe(2);
+    expect(mai.mesmoSinalPct).toBe(1);
+    expect(mai.confiavel).toBe(false);
+  });
+
+  it("3 anos concordando mas espalhados demais (CV alto): não confiável", () => {
+    const x = confiabilidadeSazonalPorMes({ 3: [1.05, 1.4, 1.9] })[2]; // concordam (todos > 1) mas CV bem acima de 0,15
+    expect(x.mesmoSinalPct).toBe(1);
+    expect(x.confiavel).toBe(false);
+  });
+
+  it("mês sem observação nenhuma: neutro (fator 1), não confiável", () => {
+    const x = confiabilidadeSazonalPorMes({})[6]; // julho, arbitrário — nenhum mês tem dado
+    expect(x.observacoes).toBe(0);
+    expect(x.confiavel).toBe(false);
+    expect(x.fatorAjustado).toBe(1);
+  });
+
+  it("devolve os 12 meses, na ordem, mesmo só passando alguns", () => {
+    const todos = confiabilidadeSazonalPorMes({ 12: [0.8, 0.8, 0.8] });
+    expect(todos).toHaveLength(12);
+    expect(todos.map(c => c.mes)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+});
+
+describe("fatoresSazonaisNormalizados", () => {
+  it("meses não confiáveis ficam em 1; a média dos 12 sempre fecha em 1 (não muda a meta anual)", () => {
+    const conf = confiabilidadeSazonalPorMes({ 11: [1.13, 1.36, 1.18], 12: [0.83, 0.68, 0.81], 1: [0.93, 1.01, 0.55] });
+    const fatores = fatoresSazonaisNormalizados(conf);
+    expect(fatores).toHaveLength(12);
+    expect(fatores[0]).toBeCloseTo(1, 3); // janeiro (índice 0): não confiável → sem ajuste
+    expect(fatores[10]).toBeGreaterThan(1); // novembro (índice 10)
+    expect(fatores[11]).toBeLessThan(1); // dezembro (índice 11)
+    expect(fatores.reduce((a, b) => a + b, 0) / 12).toBeCloseTo(1, 6);
+  });
+
+  it("sem nenhum mês confiável, os 12 fatores são 1", () => {
+    const fatores = fatoresSazonaisNormalizados(confiabilidadeSazonalPorMes({}));
+    expect(fatores).toEqual(Array(12).fill(1));
+  });
+});
+
+describe("aplicarFatorSazonal", () => {
+  it("mexe só na quantidade de gráficas (pedidos/gráfica e ticket ficam iguais) e escala o faturamento na mesma proporção", () => {
+    const ajustado = aplicarFatorSazonal(BASE, 0.8);
+    for (const s of Object.keys(BASE) as Array<keyof typeof BASE>) {
+      expect(ajustado[s].clientes).toBeCloseTo(BASE[s].clientes * 0.8, 9);
+      expect(ajustado[s].pedidosPorCliente).toBe(BASE[s].pedidosPorCliente);
+      expect(ajustado[s].ticket).toBe(BASE[s].ticket);
+    }
+    expect(totaisCenario(ajustado).faturamento).toBeCloseTo(FAT_BASE * 0.8, 3);
+  });
+});
+
+describe("aplicarSazonalidadeNaLinhaDoTempo", () => {
+  const REF = "2026-09-26T21:11:57.465Z"; // hoje = set/2026 (mes=0); nov=2, dez=3 meses à frente
+  const fatores = Array(12).fill(1);
+  fatores[10] = 1.2; // novembro (índice 10)
+  fatores[11] = 0.8; // dezembro (índice 11)
+
+  it("aplica o fator do mês de calendário de cada ponto (novembro sobe, dezembro desce) e mantém os outros", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 1, 5); // cenário plano — isola o efeito da sazonalidade
+    const ajustados = aplicarSazonalidadeNaLinhaDoTempo(pontos, REF, fatores);
+    expect(mesApos(REF, 2).rotulo).toBe("nov/2026");
+    expect(mesApos(REF, 3).rotulo).toBe("dez/2026");
+    expect(ajustados[2].totais.faturamento).toBeCloseTo(FAT_BASE * 1.2, 3);
+    expect(ajustados[3].totais.faturamento).toBeCloseTo(FAT_BASE * 0.8, 3);
+    expect(ajustados[0].totais.faturamento).toBeCloseTo(FAT_BASE, 3); // set/2026: fator 1
+    expect(ajustados[1].totais.faturamento).toBeCloseTo(FAT_BASE, 3); // out/2026: fator 1
+  });
+
+  it("não muda o número de pontos nem o campo `mes`/`progresso`", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 1, 5);
+    const ajustados = aplicarSazonalidadeNaLinhaDoTempo(pontos, REF, fatores);
+    expect(ajustados.map(p => p.mes)).toEqual(pontos.map(p => p.mes));
+    expect(ajustados.map(p => p.progresso)).toEqual(pontos.map(p => p.progresso));
   });
 });

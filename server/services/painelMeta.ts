@@ -22,6 +22,7 @@ import {
   SEGMENTOS, totaisCenario,
   type Cenario, type SegmentoId,
 } from "../../shared/meta-faturamento";
+import { confiabilidadeSazonalPorMes, fatoresSazonaisNormalizados, type ConfiabilidadeSazonalMes } from "../../shared/planejador-meta";
 
 /** Meses de calendário (após a entrada) durante os quais um cliente
  * conquistado ainda conta como "recompra de conquistados" e não como carteira. */
@@ -102,8 +103,31 @@ export interface PainelMeta {
     periodoBase: string;
     periodoAtual: string;
   };
-  /** 12 índices (jan..dez) com média 1 — formato do mês em relação ao normal. */
-  sazonalidade: { disponivel: boolean; indices: number[] };
+  /** 12 índices (jan..dez) com média 1 — formato do mês em relação ao normal. Usado só como REFERÊNCIA de
+   * comparação (backtest mostrou que aplicar isso à previsão piora o erro médio, não melhora). */
+  sazonalidade: {
+    disponivel: boolean;
+    indices: number[];
+    /** Mês a mês, quantos anos concordam e se o padrão é confiável o bastante para ajustar a META daquele
+     * mês (critério mais rígido que o índice acima: exige pelo menos 3 anos na mesma direção). Ver
+     * `confiabilidadeSazonalPorMes`/`docs/inteligencia-clientes.md`. */
+    porMes: ConfiabilidadeSazonalMes[];
+    /** Os 12 fatores já normalizados (média 1) prontos para `aplicarSazonalidadeNaLinhaDoTempo`. */
+    fatoresNormalizados: number[];
+  };
+  /** Mês em andamento comparado ao MESMO CORTE DE DIAS do mesmo mês um ano antes (ex.: dia 1 a 26 dos dois
+   * anos) — comparação justa mesmo com o mês ainda não ter terminado. null se o mesmo mês do ano passado não
+   * tem nenhum pedido até aquele dia (não dá pra comparar). */
+  comparativoAnoAnterior: {
+    mes: string;
+    diaCorte: number;
+    diasNoMes: number;
+    realEsteAnoAteCorte: number;
+    realAnoPassadoAteCorte: number;
+    /** Total do mesmo mês do ano passado, mês fechado inteiro (para referência, não entra na variação%). */
+    realAnoPassadoMesInteiro: number;
+    variacaoPct: number;
+  } | null;
   /** Próximos 12 meses (a partir do mês seguinte ao corrente). */
   projecao: Array<{
     mes: string;
@@ -398,6 +422,36 @@ function calcularCoorte(
   };
 }
 
+/** Compara o mês em andamento com o MESMO CORTE DE DIAS do mesmo mês um ano antes (dia 1 até `hoje.getDate()`
+ * nos dois anos) — assim um mês pela metade não é comparado com o mês do ano passado inteiro. Usa a mesma
+ * `base` já carregada (nenhuma consulta nova); por isso tem a mesma defasagem de até ~1 dia de
+ * `historico_os` documentada no resto do painel. */
+export function compararMesVigenteAnoAnterior(base: Map<string, ClienteBase>, hoje: Date): PainelMeta["comparativoAnoAnterior"] {
+  const ano = hoje.getFullYear();
+  const mes = hoje.getMonth();
+  const diaCorte = hoje.getDate();
+  let esteAno = 0, anoPassadoAteCorte = 0, anoPassadoMesInteiro = 0;
+  for (const cliente of base.values()) {
+    for (const c of cliente.compras) {
+      if (c.data.getFullYear() === ano && c.data.getMonth() === mes && c.data.getDate() <= diaCorte) esteAno += c.valor;
+      else if (c.data.getFullYear() === ano - 1 && c.data.getMonth() === mes) {
+        anoPassadoMesInteiro += c.valor;
+        if (c.data.getDate() <= diaCorte) anoPassadoAteCorte += c.valor;
+      }
+    }
+  }
+  if (anoPassadoAteCorte <= 0) return null;
+  return {
+    mes: rotuloMes(ano * 12 + mes),
+    diaCorte,
+    diasNoMes: new Date(ano, mes + 1, 0).getDate(),
+    realEsteAnoAteCorte: esteAno,
+    realAnoPassadoAteCorte: anoPassadoAteCorte,
+    realAnoPassadoMesInteiro: anoPassadoMesInteiro,
+    variacaoPct: (esteAno / anoPassadoAteCorte - 1) * 100,
+  };
+}
+
 export function calcularPainelMeta(
   base: Map<string, ClienteBase>,
   hoje: Date,
@@ -443,6 +497,23 @@ export function calcularPainelMeta(
     fatPorMes.set(ch, totalMes(porMes, ch)!.faturamento);
   }
   const indices = indicesSazonais(fatPorMes, atual - 1);
+
+  // Confiabilidade por mês do calendário: só ajusta a META de um mês quando os anos concordam entre si
+  // (ver shared/planejador-meta.ts — critério mais rígido que o índice sazonal acima, que mistura meses
+  // consistentes com meses que só têm ruído).
+  const razoesPorMesDoCalendario: Partial<Record<number, number[]>> = {};
+  for (const ch of fatPorMes.keys()) {
+    let soma = 0, ok = true;
+    for (let k = ch - 6; k <= ch + 5; k++) {
+      const v = fatPorMes.get(k);
+      if (v === undefined) { ok = false; break; }
+      soma += v;
+    }
+    if (!ok) continue;
+    const mesCalendario = (ch % 12) + 1; // 1 = janeiro
+    (razoesPorMesDoCalendario[mesCalendario] ??= []).push(fatPorMes.get(ch)! / (soma / 12));
+  }
+  const confiabilidadeSazonal = confiabilidadeSazonalPorMes(razoesPorMesDoCalendario);
 
   let somaSem = 0, somaCom = 0, nSem = 0, nCom = 0;
   const errosRelativos: number[] = [];
@@ -516,7 +587,13 @@ export function calcularPainelMeta(
     bandas: calcularBandas(errosRelativos),
     correlacoes: { meses: series.fat.length, itens: itensCorrelacao },
     retencao: calcularRetencao(gruposPorCliente, atual),
-    sazonalidade: { disponivel: indices !== null, indices: indices ?? Array(12).fill(1) },
+    sazonalidade: {
+      disponivel: indices !== null,
+      indices: indices ?? Array(12).fill(1),
+      porMes: confiabilidadeSazonal,
+      fatoresNormalizados: fatoresSazonaisNormalizados(confiabilidadeSazonal),
+    },
+    comparativoAnoAnterior: compararMesVigenteAnoAnterior(base, hoje),
     projecao: Array.from({ length: 12 }, (_, i) => {
       const ch = atual + 1 + i;
       const valores: number[] = [];

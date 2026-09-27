@@ -18,6 +18,15 @@
 
 import { SEGMENTOS, CAMPOS_ALAVANCA, totaisCenario, type Cenario, type TotaisCenario } from "./meta-faturamento";
 
+// ─── Meta mensal por sazonalidade (Nov/Dez consistentes; outros meses sem padrão confiável) ──
+//
+// Testado em 26-27/09/2026 com o histórico real (ver docs/inteligencia-clientes.md): aplicar o índice
+// sazonal a TODOS os meses piora a previsão (22% de erro contra 17% da média simples — já descartado no
+// motor de projeção). Mas mês a mês a história é diferente: alguns meses concordam ano após ano (novembro
+// sempre acima da média, dezembro sempre abaixo — 3 de 3 anos, a mesma direção, variação pequena entre os
+// anos); outros oscilam sem padrão (janeiro foi 93%, 101% e 55% da média em 3 anos — não dá pra confiar
+// nisso). Por isso o ajuste só vale para os meses em que os anos concordam.
+
 /** Mesma tolerância que o simulador usa para dizer que "a meta fecha". */
 export const TOLERANCIA_META = 0.9995;
 export const PRAZO_PADRAO_MESES = 6;
@@ -92,4 +101,91 @@ export function linhaDoTempo(base: Cenario, regime: Cenario, prazoMeses: number,
 export function primeiroMesNaMeta(pontos: Array<{ mes: number; totais: { faturamento: number } }>, meta: number): number | null {
   const ponto = pontos.find(p => p.totais.faturamento >= meta * TOLERANCIA_META);
   return ponto ? ponto.mes : null;
+}
+
+/** Mínimo de anos concordando na mesma direção para confiar no padrão de um mês do calendário. */
+export const MINIMO_OBSERVACOES_SAZONAL = 3;
+/** Coeficiente de variação (desvio padrão ÷ média) máximo entre os anos — acima disso, os anos discordam
+ * demais em intensidade mesmo concordando na direção. */
+export const CV_MAXIMO_SAZONAL = 0.15;
+/** Encolhimento (regressão à média) do ajuste: com poucos anos de dado, confia só em parte na média
+ * observada — `peso = n ÷ (n + K)`; K=2 dá 60% de peso com 3 anos, subindo conforme mais anos se acumulam. */
+export const ENCOLHIMENTO_SAZONAL_K = 2;
+
+export interface ConfiabilidadeSazonalMes {
+  /** 1 a 12 (1 = janeiro). */
+  mes: number;
+  /** Quantos anos entraram na conta (razão daquele mês ÷ média móvel de 12 meses ao redor dele). */
+  observacoes: number;
+  /** Razão média entre os anos (1 = igual à média; 0,8 = 20% abaixo). */
+  mediaRazao: number;
+  /** Desvio padrão ÷ média entre os anos; null com menos de 2 observações. */
+  coeficienteVariacao: number | null;
+  /** Fração dos anos do mesmo lado da média (todos acima ou todos abaixo de 1); 1 = concordância total. */
+  mesmoSinalPct: number;
+  /** true = padrão consistente o bastante para ajustar a meta deste mês (ver os limiares acima). */
+  confiavel: boolean;
+  /** Fator a aplicar na meta deste mês (já com o encolhimento); 1 (sem ajuste) se não confiável. */
+  fatorAjustado: number;
+}
+
+/** Para cada um dos 12 meses do calendário, mede se o desvio em relação à média dos 12 meses ao redor se
+ * repete de forma consistente ano a ano — só esses meses recebem ajuste na meta (ver decisão acima).
+ * `razoesPorMes[m]` = lista de razões (uma por ano observado) para o mês `m` (1 a 12). */
+export function confiabilidadeSazonalPorMes(razoesPorMes: Partial<Record<number, number[]>>): ConfiabilidadeSazonalMes[] {
+  const resultado: ConfiabilidadeSazonalMes[] = [];
+  for (let mes = 1; mes <= 12; mes++) {
+    const razoes = (razoesPorMes[mes] ?? []).filter(r => Number.isFinite(r) && r > 0);
+    const n = razoes.length;
+    if (n === 0) {
+      resultado.push({ mes, observacoes: 0, mediaRazao: 1, coeficienteVariacao: null, mesmoSinalPct: 0, confiavel: false, fatorAjustado: 1 });
+      continue;
+    }
+    const media = razoes.reduce((a, b) => a + b, 0) / n;
+    const desvio = n > 1 ? Math.sqrt(razoes.reduce((s, r) => s + (r - media) ** 2, 0) / n) : 0;
+    const coeficienteVariacao = n > 1 ? desvio / media : null;
+    const acima = razoes.filter(r => r > 1).length;
+    const abaixo = razoes.filter(r => r < 1).length;
+    const mesmoSinalPct = Math.max(acima, abaixo) / n;
+    const confiavel = n >= MINIMO_OBSERVACOES_SAZONAL && mesmoSinalPct === 1 && coeficienteVariacao !== null && coeficienteVariacao < CV_MAXIMO_SAZONAL;
+    const peso = n / (n + ENCOLHIMENTO_SAZONAL_K);
+    const fatorAjustado = confiavel ? 1 + peso * (media - 1) : 1;
+    resultado.push({ mes, observacoes: n, mediaRazao: media, coeficienteVariacao, mesmoSinalPct, confiavel, fatorAjustado });
+  }
+  return resultado;
+}
+
+/** Os 12 fatores (índice 0 = janeiro) reescalados para a média dar exatamente 1 — meses "sem ajuste" ficam
+ * em 1 e os meses ajustados absorvem toda a diferença, então a MÉDIA ANUAL da meta não muda: só a forma como
+ * ela se distribui pelos 12 meses. */
+export function fatoresSazonaisNormalizados(confiabilidade: ConfiabilidadeSazonalMes[]): number[] {
+  const porMes = new Map(confiabilidade.map(c => [c.mes, c.fatorAjustado]));
+  const fatores = Array.from({ length: 12 }, (_, i) => porMes.get(i + 1) ?? 1);
+  const media = fatores.reduce((a, b) => a + b, 0) / 12;
+  return media > 0 ? fatores.map(f => f / media) : fatores;
+}
+
+/** Aplica um fator no cenário mexendo só na quantidade de gráficas de cada grupo (pedidos/gráfica e ticket
+ * ficam iguais) — a leitura fica "neste mês, tantas % a mais/menos de gráficas compram", condizente com a
+ * história por trás de novembro/dezembro (mais ou menos gráficas fechando pedido, não o valor de cada uma). */
+export function aplicarFatorSazonal(cenario: Cenario, fator: number): Cenario {
+  const saida = {} as Cenario;
+  for (const s of SEGMENTOS) saida[s] = { ...cenario[s], clientes: cenario[s].clientes * fator };
+  return saida;
+}
+
+/** A mesma linha do tempo, com o faturamento de cada ponto ajustado pelo fator sazonal do mês de calendário
+ * em que ele cai (`fatoresPorMes`: índice 0 = janeiro, já normalizados por `fatoresSazonaisNormalizados`).
+ * Só muda a DISTRIBUIÇÃO mês a mês — a média ao longo de 12 meses seguidos continua a mesma. */
+export function aplicarSazonalidadeNaLinhaDoTempo(
+  pontos: PontoDaLinhaDoTempo[],
+  dataReferenciaISO: string,
+  fatoresPorMes: number[],
+): PontoDaLinhaDoTempo[] {
+  return pontos.map(p => {
+    const mesCalendario = mesApos(dataReferenciaISO, p.mes).mes; // 1-12
+    const fator = fatoresPorMes[mesCalendario - 1] ?? 1;
+    const cenario = aplicarFatorSazonal(p.cenario, fator);
+    return { ...p, cenario, totais: totaisCenario(cenario) };
+  });
 }
