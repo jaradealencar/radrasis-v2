@@ -6,7 +6,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { inArray, like } from "drizzle-orm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
-import { campanhasWhatsapp, campanhasWhatsappCategorias, campanhasWhatsappQuarentena } from "../../drizzle/schema";
+import {
+  campanhasWhatsapp, campanhasWhatsappArquivos, campanhasWhatsappCategorias, campanhasWhatsappFontes,
+  campanhasWhatsappQuarentena, historicoOs,
+} from "../../drizzle/schema";
 import { hojeCampoGrande, somarDias } from "../../shared/campanhas-whatsapp";
 import { campanhasWhatsappRouter, checarQuarentenaNoBanco, registrarDisparoNoBanco } from "../routers/campanhasWhatsapp";
 
@@ -21,6 +24,8 @@ const admin = () => campanhasWhatsappRouter.createCaller(ctxAdmin);
 
 const criadas: number[] = [];
 const categoriasCriadas: number[] = [];
+const fontesCriadas: number[] = [];
+const arquivosCriados: number[] = [];
 let recorrenteId: number;
 let gatilhoId: number;
 
@@ -45,11 +50,14 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = await getDb();
   if (!db) return;
-  // Campanhas primeiro (o cascade leva disparos e gatilhos); categorias depois (sem FK entre as duas, mas a
-  // ordem evita deixar categoria "em uso" órfã se algum teste falhar no meio); quarentena por último.
+  // Campanhas primeiro (o cascade leva disparos, gatilhos, contatos_historico e o vínculo com fontes);
+  // fontes depois (sem FK das campanhas para elas); arquivos soltos e categorias por último; quarentena no fim.
   if (criadas.length) await db.delete(campanhasWhatsapp).where(inArray(campanhasWhatsapp.id, criadas));
+  if (fontesCriadas.length) await db.delete(campanhasWhatsappFontes).where(inArray(campanhasWhatsappFontes.id, fontesCriadas));
+  if (arquivosCriados.length) await db.delete(campanhasWhatsappArquivos).where(inArray(campanhasWhatsappArquivos.id, arquivosCriados));
   if (categoriasCriadas.length) await db.delete(campanhasWhatsappCategorias).where(inArray(campanhasWhatsappCategorias.id, categoriasCriadas));
   await db.delete(campanhasWhatsappQuarentena).where(like(campanhasWhatsappQuarentena.telefone, "5567990009%"));
+  await db.delete(historicoOs).where(like(historicoOs.empresa, "TESTE FONTE ERP%"));
 });
 
 describe("registrarDisparoNoBanco", () => {
@@ -277,4 +285,106 @@ describe("arquivos da campanha (pasta de listas de contatos)", () => {
     await expect(admin().adicionarArquivo({ campanhaId: 999999, nome: "x.csv", url: "https://exemplo.com/x.csv" }))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
   });
+
+  it("adicionarArquivo sem campanhaId cria um arquivo 'solto' (para virar Fonte reutilizável)", async () => {
+    const a = await admin().adicionarArquivo({ nome: "solto.csv", url: "https://exemplo.com/solto.csv" });
+    arquivosCriados.push(a.id);
+    expect(a.campanhaId).toBeNull();
+  });
+});
+
+describe("Fontes de Dados (ERP local + arquivo)", () => {
+  const TEL_INATIVO = "(67) 99988-0001";
+  let fonteInativosId: number;
+  let fonteArquivoId: number;
+  let arquivoSoltoId: number;
+  let campanhaFontesId: number;
+
+  beforeAll(async () => {
+    // Empresa fictícia "inativa" (última compra ~8 meses atrás) para exercitar a fonte ERP erp_inativos_6m
+    // sem depender do estado real (imprevisível) do banco de teste.
+    const db = await getDb();
+    if (!db) throw new Error("DB indisponível");
+    const dataAntiga = somarDias(hoje, -240); // ~8 meses
+    await db.insert(historicoOs).values({
+      osNumero: "TESTE-FONTE-ERP-1", tipoOs: "produto", status: "aprovada", empresa: "TESTE FONTE ERP Inativo",
+      dataAprovacao: dataAntiga.split("-").reverse().join("/"), telefone: TEL_INATIVO, mes: Number(dataAntiga.slice(5, 7)), ano: Number(dataAntiga.slice(0, 4)),
+    });
+
+    const campanha = await admin().criar({
+      nome: "TESTE campanha com fontes", categoria: "reativacao_inativo", tipo: "recorrente", frequenciaDias: 30, quarentenaDias: 0,
+    });
+    campanhaFontesId = campanha.id;
+    criadas.push(campanha.id);
+  });
+
+  it("listarFontes traz as 4 fontes ERP pré-cadastradas (seed da migration)", async () => {
+    const fontes = await admin().listarFontes();
+    const chaves = fontes.filter(f => f.tipo === "erp").map(f => f.chave);
+    expect(chaves).toEqual(expect.arrayContaining(["erp_clientes_ativos", "erp_primeira_compra", "erp_inativos_6m", "erp_orcaram_nao_compraram"]));
+    fonteInativosId = fontes.find(f => f.chave === "erp_inativos_6m")!.id;
+    expect(fontes.find(f => f.chave === "erp_inativos_6m")!.ativo).toBe(true);
+  });
+
+  it("cria fonte tipo arquivo a partir de um arquivo já salvo (solto ou de qualquer campanha)", async () => {
+    const arquivo = await admin().adicionarArquivo({ nome: "prospeccao-google-maps.csv", url: "https://exemplo.com/prospeccao.csv" });
+    arquivoSoltoId = arquivo.id;
+    arquivosCriados.push(arquivo.id);
+    const fonte = await admin().criarFonteArquivo({ label: "TESTE Prospecção Google Maps", arquivoId: arquivo.id });
+    fonteArquivoId = fonte.id;
+    fontesCriadas.push(fonte.id);
+    expect(fonte.chave).toBe("teste_prospeccao_google_maps");
+    expect(fonte.tipo).toBe("arquivo");
+
+    const fontes = await admin().listarFontes();
+    const encontrada = fontes.find(f => f.id === fonte.id)!;
+    expect(encontrada.arquivo?.id).toBe(arquivoSoltoId);
+  });
+
+  it("criarFonteArquivo com arquivo inexistente é rejeitado (404)", async () => {
+    await expect(admin().criarFonteArquivo({ label: "TESTE Fonte Inválida", arquivoId: 999999 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("arquivarFonte tira do padrão sem apagar", async () => {
+    await admin().arquivarFonte({ id: fonteArquivoId, ativo: false });
+    expect((await admin().listarFontes()).find(f => f.id === fonteArquivoId)!.ativo).toBe(false);
+    await admin().arquivarFonte({ id: fonteArquivoId, ativo: true }); // reativa para o teste seguinte
+  });
+
+  it("vincularFontes/listarFontesDaCampanha: multi-seleção ERP + arquivo na mesma campanha", async () => {
+    await admin().vincularFontes({ campanhaId: campanhaFontesId, fonteIds: [fonteInativosId, fonteArquivoId] });
+    const vinculadas = await admin().listarFontesDaCampanha({ campanhaId: campanhaFontesId });
+    expect(vinculadas.map(f => f.id).sort()).toEqual([fonteInativosId, fonteArquivoId].sort());
+
+    // vincularFontes SUBSTITUI o conjunto — chamar de novo só com uma fonte remove a outra.
+    await admin().vincularFontes({ campanhaId: campanhaFontesId, fonteIds: [fonteInativosId] });
+    expect((await admin().listarFontesDaCampanha({ campanhaId: campanhaFontesId })).map(f => f.id)).toEqual([fonteInativosId]);
+  });
+
+  it("gerarListaDaCampanha sem nenhuma fonte vinculada é rejeitado", async () => {
+    const semFontes = await admin().criar({ nome: "TESTE sem fontes", categoria: "outbound", tipo: "recorrente", frequenciaDias: 30, quarentenaDias: 0 });
+    criadas.push(semFontes.id);
+    await expect(admin().gerarListaDaCampanha({ campanhaId: semFontes.id })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("gerarListaDaCampanha resolve a fonte ERP e traz a empresa inativa de teste com telefone normalizado", async () => {
+    const r = await admin().gerarListaDaCampanha({ campanhaId: campanhaFontesId });
+    expect(r.porFonte.some(f => f.total > 0)).toBe(true);
+    const encontrado = r.aprovados.find(c => c.nome === "TESTE FONTE ERP Inativo");
+    expect(encontrado).toMatchObject({ telefone: "5567999880001" });
+  });
+
+  it("cadência da campanha: quem acabou de receber ESTA campanha some de gerarListaDaCampanha (mas não de outras)", async () => {
+    // gerarListaDaCampanha recarrega o historico_os inteiro (ver carregarContextoErp) — chamado 2x aqui.
+    const antes = await admin().gerarListaDaCampanha({ campanhaId: campanhaFontesId });
+    const contato = antes.aprovados.find(c => c.nome === "TESTE FONTE ERP Inativo")!;
+
+    await admin().registrarDisparo({ campanhaId: campanhaFontesId, contatos: [{ telefone: contato.telefone, nome: contato.nome }] });
+
+    const depois = await admin().gerarListaDaCampanha({ campanhaId: campanhaFontesId });
+    expect(depois.aprovados.some(c => c.nome === "TESTE FONTE ERP Inativo")).toBe(false);
+    expect(depois.ignoradosCadenciaCampanha.some(c => c.nome === "TESTE FONTE ERP Inativo")).toBe(true);
+
+    await getPool().query("DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1", [contato.telefone]); // limpeza extra
+  }, 15_000);
 });

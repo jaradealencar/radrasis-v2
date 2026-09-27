@@ -100,6 +100,41 @@ export function higienizarLista(
   return { enviar, ignoradosQuarentena, invalidos };
 }
 
+// ─── Cadência da campanha (Fontes de Dados) ─────────────────────────────────
+// Diferente da quarentena (qualquer campanha), esta é "este telefone já recebeu ESTA campanha há menos de
+// `frequenciaDias`?" — só é aplicada no fluxo de geração de lista a partir de Fontes (gerarListaDaCampanha);
+// o upload manual/webhook não muda (ver server/routers/campanhasWhatsapp.ts). A dedup entre múltiplas fontes
+// combinadas numa campanha não precisa de função própria: `higienizarLista` já desduplica por telefone
+// normalizado dentro da lista recebida, então basta concatenar os contatos resolvidos de cada fonte antes
+// de passar para ela.
+
+export interface ContatoDescartadoCadencia {
+  telefone: string;
+  nome: string;
+  ultimoEnvioNaCampanha: string;
+  disponivelEm: string;
+}
+
+export function filtrarPorCadenciaCampanha(
+  contatos: ContatoLimpo[],
+  historicoCampanha: ReadonlyMap<string, string>,
+  dataEnvio: string,
+  frequenciaDias: number,
+): { aprovados: ContatoLimpo[]; descartadosCadencia: ContatoDescartadoCadencia[] } {
+  if (frequenciaDias <= 0) return { aprovados: contatos, descartadosCadencia: [] };
+  const aprovados: ContatoLimpo[] = [];
+  const descartadosCadencia: ContatoDescartadoCadencia[] = [];
+  for (const c of contatos) {
+    const ultimo = historicoCampanha.get(c.telefone);
+    if (ultimo && Math.abs(diasEntre(ultimo, dataEnvio)) < frequenciaDias) {
+      descartadosCadencia.push({ telefone: c.telefone, nome: c.nome, ultimoEnvioNaCampanha: ultimo, disponivelEm: somarDias(ultimo, frequenciaDias) });
+    } else {
+      aprovados.push(c);
+    }
+  }
+  return { aprovados, descartadosCadencia };
+}
+
 // ─── Pós-venda (gatilho por venda) ──────────────────────────────────────────
 
 export interface LinhaVenda {
@@ -125,8 +160,10 @@ export interface VendaPosVenda {
   diasAtraso: number;
 }
 
-/** Data local de um `Date` (o parser do histórico monta datas com componentes locais) como `YYYY-MM-DD`. */
-function dataLocalParaIso(d: Date): string {
+/** Data local de um `Date` (o parser do histórico monta datas com componentes locais) como `YYYY-MM-DD`.
+ * Exportada para server/services/fontesErpCampanhas.ts (mesma necessidade: converter o retorno de
+ * `parseDataFlexivel` para o formato ISO usado em todo o módulo). */
+export function dataLocalParaIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 

@@ -4,8 +4,9 @@ import {
   hojeCampoGrande, formatarDataBr, normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
-  expandirPrevistos, higienizarLista, listarVendasPosVenda, montarStatusCampanha, resumirCampanhas, resumirVendas,
-  type LinhaVenda,
+  expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
+  resumirCampanhas, resumirVendas,
+  type ContatoLimpo, type LinhaVenda,
 } from "../services/campanhasWhatsapp";
 import { checkQuarantineBodySchema, exigirChaveApi, logSendBodySchema } from "../routes/campanhas-whatsapp-api";
 
@@ -274,6 +275,38 @@ describe("expandirPrevistos", () => {
   it("respeita o início do intervalo e ignora frequência inválida", () => {
     expect(expandirPrevistos("2026-09-30", 15, "2026-09-26", "2026-10-10", "2026-10-31")).toEqual(["2026-10-15", "2026-10-30"]);
     expect(expandirPrevistos("2026-09-30", 0, "2026-09-26", "2026-09-01", "2026-10-31")).toEqual([]);
+  });
+});
+
+describe("filtrarPorCadenciaCampanha (Fontes de Dados — 'Checagem de Cadência da Campanha')", () => {
+  const envio = "2026-09-26";
+  const contato = (telefone: string, nome = "Ana"): ContatoLimpo => ({ telefone, nome, osNumeros: [] });
+
+  it("bloqueia quem recebeu ESTA campanha há menos dias que a frequência; libera quem já completou", () => {
+    const historico = new Map([
+      ["5567990000001", "2026-09-10"], // 16 dias atrás
+      ["5567990000002", "2026-08-27"], // exatamente 30 dias
+    ]);
+    const r = filtrarPorCadenciaCampanha(
+      [contato("5567990000001", "Recente"), contato("5567990000002", "NoLimite"), contato("5567990000003", "NuncaRecebeu")],
+      historico, envio, 30,
+    );
+    expect(r.aprovados.map(c => c.nome)).toEqual(["NoLimite", "NuncaRecebeu"]);
+    expect(r.descartadosCadencia).toEqual([{ telefone: "5567990000001", nome: "Recente", ultimoEnvioNaCampanha: "2026-09-10", disponivelEm: "2026-10-10" }]);
+  });
+
+  it("frequenciaDias <= 0 desliga a checagem (não deveria acontecer na prática, mas não trava tudo)", () => {
+    const historico = new Map([["5567990000001", "2026-09-25"]]);
+    const r = filtrarPorCadenciaCampanha([contato("5567990000001")], historico, envio, 0);
+    expect(r.aprovados).toHaveLength(1);
+    expect(r.descartadosCadencia).toHaveLength(0);
+  });
+
+  it("é independente da quarentena global — só olha o histórico DESTA campanha", () => {
+    // Mesmo telefone pode estar liberado da quarentena global e ainda assim preso pela cadência da campanha, ou vice-versa.
+    const historico = new Map<string, string>(); // nunca recebeu esta campanha
+    const r = filtrarPorCadenciaCampanha([contato("5567990000009")], historico, envio, 60);
+    expect(r.aprovados).toHaveLength(1);
   });
 });
 

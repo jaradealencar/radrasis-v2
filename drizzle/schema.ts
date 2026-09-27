@@ -2620,9 +2620,13 @@ export type InsertCampanhaWhatsappScript = typeof campanhasWhatsappScripts.$infe
 // esta tabela só guarda a referência. Independente de campanhas_whatsapp_disparos.arquivo_url: aqui não precisa
 // ter sido usado num disparo — serve de rascunho/repositório. Excluir remove só o registro, não o arquivo no
 // storage (mesmo padrão de biblioteca_arquivos, sem chamada a UTApi.deleteFiles em nenhum router do projeto).
+//
+// campanhaId é opcional (desde a Fonte de Dados abaixo): um arquivo pode nascer "solto", cadastrado direto
+// na tela de Fontes (sem pertencer a nenhuma campanha específica), para servir de audiência reutilizável por
+// qualquer campanha via campanhas_whatsapp_fontes — não só como anexo de uma campanha específica.
 export const campanhasWhatsappArquivos = pgTable("campanhas_whatsapp_arquivos", {
   id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  campanhaId: integer("campanha_id").references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
   nome: varchar("nome", { length: 256 }).notNull(),
   url: varchar("url", { length: 1024 }).notNull(),
   tamanhoBytes: integer("tamanho_bytes").notNull().default(0),
@@ -2631,3 +2635,61 @@ export const campanhasWhatsappArquivos = pgTable("campanhas_whatsapp_arquivos", 
 });
 export type CampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$inferSelect;
 export type InsertCampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$inferInsert;
+
+// ─── Fontes de Dados (Data Sources): audiências reutilizáveis entre campanhas ───────────────────────
+// Pedido do usuário: unificar públicos automáticos do ERP (histórico local, sem chamada à API) com listas
+// externas (upload). "arquivo" reaproveita campanhas_whatsapp_arquivos (decisão do usuário: fundir os dois
+// conceitos em vez de duplicar dado) — o arquivo pode ter nascido solto ou dentro de qualquer campanha; a
+// fonte só referencia, e os contatos são extraídos do arquivo sob demanda (parse ao gerar a lista, não
+// guardado à parte). Ver server/services/fontesErpCampanhas.ts.
+export const campanhaFonteTipoEnum = pgEnum("campanha_fonte_tipo", ["erp", "arquivo"]);
+
+export const campanhasWhatsappFontes = pgTable("campanhas_whatsapp_fontes", {
+  id: serial("id").primaryKey(),
+  tipo: campanhaFonteTipoEnum("tipo").notNull(),
+  // Slug estável (mesmo padrão de campanhas_whatsapp_categorias.chave). As 4 fontes "erp" são seed fixo
+  // desta migration; fontes "arquivo" ganham chave gerada do label ao serem criadas pelo usuário.
+  chave: varchar("chave", { length: 64 }).notNull().unique(),
+  label: varchar("label", { length: 120 }).notNull(),
+  descricao: text("descricao"),
+  // Só para tipo="erp": qual função de resolução chamar (ver RESOLVEDORES_ERP em fontesErpCampanhas.ts).
+  consultaErp: varchar("consulta_erp", { length: 64 }),
+  // Só para tipo="arquivo": de onde vêm os contatos (parseado sob demanda, não duplicado nesta tabela).
+  arquivoId: integer("arquivo_id").references(() => campanhasWhatsappArquivos.id, { onDelete: "cascade" }),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CampanhaWhatsappFonte = typeof campanhasWhatsappFontes.$inferSelect;
+export type InsertCampanhaWhatsappFonte = typeof campanhasWhatsappFontes.$inferInsert;
+
+// Join N:N — quais fontes uma campanha combina (multi-seleção: ex. "Reativação" = Inativos do ERP + lista
+// fria de Google Maps ao mesmo tempo).
+export const campanhasWhatsappCampanhaFontes = pgTable("campanhas_whatsapp_campanha_fontes", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  fonteId: integer("fonte_id").notNull().references(() => campanhasWhatsappFontes.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({
+  unico: uniqueIndex("campanhas_whatsapp_campanha_fontes_unique").on(t.campanhaId, t.fonteId),
+}));
+export type CampanhaWhatsappCampanhaFonte = typeof campanhasWhatsappCampanhaFontes.$inferSelect;
+export type InsertCampanhaWhatsappCampanhaFonte = typeof campanhasWhatsappCampanhaFontes.$inferInsert;
+
+// Histórico granular por (campanha, telefone) — resolve a "Checagem de Cadência da Campanha" pedida pelo
+// usuário: diferente da quarentena global (campanhas_whatsapp_quarentena, "qualquer campanha"), aqui é
+// "ESTA campanha especificamente". Mesmo padrão de upsert que nunca recua no tempo. Só é CONSULTADO no
+// fluxo novo de geração de lista a partir de Fontes (gerarListaDaCampanha) — não é uma trava adicional no
+// registrarDisparo genérico (upload manual continua exatamente como antes); é gravado sempre, sem custo.
+export const campanhasWhatsappContatosHistorico = pgTable("campanhas_whatsapp_contatos_historico", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  telefone: varchar("telefone", { length: 20 }).notNull(),
+  ultimoEnvioEm: date("ultimo_envio_em").notNull(),
+  disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  unico: uniqueIndex("campanhas_whatsapp_contatos_historico_unique").on(t.campanhaId, t.telefone),
+}));
+export type CampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferSelect;
+export type InsertCampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferInsert;

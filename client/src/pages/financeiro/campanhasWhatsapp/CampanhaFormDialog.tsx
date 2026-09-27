@@ -13,6 +13,7 @@ import {
   type StatusCampanha, type TipoCampanha,
 } from "@shared/campanhas-whatsapp";
 import ArquivosCampanhaPopover from "./ArquivosCampanhaPopover";
+import FontesDadosPopover from "./FontesDadosPopover";
 import GerenciarCategoriasPopover from "./GerenciarCategoriasPopover";
 import ScriptsCampanhaPopover from "./ScriptsCampanhaPopover";
 import { LabelComAjuda, type CampanhaLinha } from "./comuns";
@@ -161,17 +162,19 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
               rows={3} placeholder="Objetivo da campanha, público-alvo, roteiro combinado..." />
           </div>
 
-          {/* Modelos de mensagem e arquivos pertencem a uma campanha já salva (têm campanhaId) — pedido do
-              usuário: espaço para modelos de script e uma "pasta" para guardar as listas de contatos. */}
+          {/* Fontes/modelos de mensagem/arquivos pertencem a uma campanha já salva (têm campanhaId) — pedido do
+              usuário: audiência combinando ERP + externas, modelos de script e uma "pasta" de listas. */}
           {editando ? (
-            <div className="flex items-center gap-4 rounded-lg border bg-slate-50 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-slate-50 px-3 py-2">
+              <FontesDadosPopover campanhaId={campanha.id} />
+              <span className="text-slate-300">·</span>
               <ScriptsCampanhaPopover campanhaId={campanha.id} />
               <span className="text-slate-300">·</span>
               <ArquivosCampanhaPopover campanhaId={campanha.id} />
             </div>
           ) : (
             <p className="text-[11px] text-muted-foreground -mt-1">
-              Crie a campanha para depois adicionar modelos de mensagem e salvar listas de contatos.
+              Crie a campanha para depois vincular fontes de dados, modelos de mensagem e salvar listas de contatos.
             </p>
           )}
 

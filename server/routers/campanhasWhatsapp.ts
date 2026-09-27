@@ -18,8 +18,9 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import {
-  campanhasWhatsapp, campanhasWhatsappArquivos, campanhasWhatsappCategorias, campanhasWhatsappDisparos,
-  campanhasWhatsappGatilhos, campanhasWhatsappScripts, historicoOs,
+  campanhasWhatsapp, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes, campanhasWhatsappCategorias,
+  campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes, campanhasWhatsappGatilhos,
+  campanhasWhatsappScripts, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
@@ -28,9 +29,11 @@ import {
   normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
-  expandirPrevistos, higienizarLista, listarVendasPosVenda, montarStatusCampanha, resumirCampanhas, resumirVendas,
+  expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
+  resumirCampanhas, resumirVendas,
   type ContatoIgnorado, type ContatoInvalido, type VendaPosVenda,
 } from "../services/campanhasWhatsapp";
+import { lerArquivoDeUrl, resolverFonteErp, type ContatoFonte } from "../services/fontesErpCampanhas";
 import { isOsNormalDb } from "./performanceComercial";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
@@ -298,6 +301,17 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
        INSERT INTO campanhas_whatsapp_gatilhos (campanha_id, disparo_id, os_numero, telefone)
        SELECT $1::int, novo.id, v.os, v.tel FROM novo, unnest($14::text[], $15::text[]) AS v(os, tel)
        ON CONFLICT (campanha_id, os_numero) DO NOTHING
+       RETURNING 1
+     ), historico_campanha AS (
+       -- "Checagem de Cadência da Campanha" pedida pelo usuário: histórico granular por (campanha, telefone),
+       -- separado da quarentena global acima ("qualquer campanha"). Gravado sempre (não custa nada); só é
+       -- CONSULTADO (para bloquear reenvio) no fluxo de geração de lista a partir de Fontes — ver
+       -- gerarListaDaCampanha. O upload manual/webhook continua sem essa trava adicional.
+       INSERT INTO campanhas_whatsapp_contatos_historico AS h (campanha_id, telefone, ultimo_envio_em, disparo_id, updated_at)
+       SELECT $1::int, t, $2::date, novo.id, now() FROM novo, unnest($13::text[]) AS t
+       ON CONFLICT (campanha_id, telefone) DO UPDATE
+         SET ultimo_envio_em = EXCLUDED.ultimo_envio_em, disparo_id = EXCLUDED.disparo_id, updated_at = now()
+         WHERE h.ultimo_envio_em <= EXCLUDED.ultimo_envio_em
        RETURNING 1
      )
      SELECT id FROM novo`,
@@ -659,16 +673,18 @@ export const campanhasWhatsappRouter = router({
 
   adicionarArquivo: campanhasProcedure
     .input(z.object({
-      campanhaId: z.number().int(),
+      // Opcional: um arquivo pode nascer "solto" (cadastrado direto na tela de Fontes, sem pertencer a
+      // nenhuma campanha) para servir de audiência reutilizável — ver campanhas_whatsapp_fontes.
+      campanhaId: z.number().int().nullish(),
       nome: z.string().trim().min(1).max(256),
       url: z.string().url().max(1024),
       tamanhoBytes: z.number().int().min(0).max(64 * 1024 * 1024).default(0),
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await obterDb();
-      await buscarCampanha(db, input.campanhaId);
+      if (input.campanhaId != null) await buscarCampanha(db, input.campanhaId);
       const [row] = await db.insert(campanhasWhatsappArquivos).values({
-        campanhaId: input.campanhaId, nome: input.nome, url: input.url, tamanhoBytes: input.tamanhoBytes,
+        campanhaId: input.campanhaId ?? null, nome: input.nome, url: input.url, tamanhoBytes: input.tamanhoBytes,
         enviadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
       }).returning();
       return row;
@@ -681,5 +697,144 @@ export const campanhasWhatsappRouter = router({
       const db = await obterDb();
       await db.delete(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, input.id));
       return { ok: true };
+    }),
+
+  // ─── Fontes de Dados: ERP (histórico local) + arquivo (upload, reaproveita "Arquivos") ─────────
+  // Ver drizzle/schema.ts (comentário em campanhasWhatsappFontes) e docs/campanhas-whatsapp.md.
+
+  /** Todas as fontes (as 4 "erp" são seed fixo da migration 0049; "arquivo" são criadas pelo usuário). */
+  listarFontes: campanhasProcedure.query(async () => {
+    const db = await obterDb();
+    const fontes = await db.select().from(campanhasWhatsappFontes).orderBy(campanhasWhatsappFontes.tipo, campanhasWhatsappFontes.id);
+    const arquivoIds = fontes.map(f => f.arquivoId).filter((id): id is number => id !== null);
+    const arquivos = arquivoIds.length
+      ? await db.select().from(campanhasWhatsappArquivos).where(inArray(campanhasWhatsappArquivos.id, arquivoIds))
+      : [];
+    const arquivoPorId = new Map(arquivos.map(a => [a.id, a]));
+    return fontes.map(f => ({ ...f, arquivo: f.arquivoId ? arquivoPorId.get(f.arquivoId) ?? null : null }));
+  }),
+
+  /** Cria uma fonte tipo "arquivo" apontando para um arquivo já salvo (solto ou de qualquer campanha) —
+   * o client sobe/registra o arquivo primeiro via adicionarArquivo, depois chama isto com o id retornado. */
+  criarFonteArquivo: campanhasProcedure
+    .input(z.object({ label: z.string().trim().min(1).max(120), descricao: z.string().trim().max(500).nullish(), arquivoId: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const [arquivo] = await db.select({ id: campanhasWhatsappArquivos.id }).from(campanhasWhatsappArquivos)
+        .where(eq(campanhasWhatsappArquivos.id, input.arquivoId)).limit(1);
+      if (!arquivo) throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado" });
+      const existentes = await db.select({ chave: campanhasWhatsappFontes.chave }).from(campanhasWhatsappFontes);
+      const chaves = new Set(existentes.map(e => e.chave));
+      const base = gerarChaveCategoria(input.label); // mesmo slugify de categorias — serve igual aqui
+      let chave = base;
+      for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
+      const [row] = await db.insert(campanhasWhatsappFontes).values({
+        tipo: "arquivo", chave, label: input.label, descricao: input.descricao || null, arquivoId: input.arquivoId,
+      }).returning();
+      return row;
+    }),
+
+  /** Arquivar/reativar qualquer fonte (inclusive "erp", se um dia não fizer mais sentido oferecê-la). */
+  arquivarFonte: campanhasProcedure
+    .input(z.object({ id: z.number().int(), ativo: z.boolean() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.update(campanhasWhatsappFontes).set({ ativo: input.ativo, updatedAt: new Date() }).where(eq(campanhasWhatsappFontes.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Substitui o conjunto de fontes vinculadas a uma campanha (multi-seleção: ERP + externas ao mesmo tempo). */
+  vincularFontes: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int(), fonteIds: z.array(z.number().int()).max(50) }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await buscarCampanha(db, input.campanhaId);
+      await db.delete(campanhasWhatsappCampanhaFontes).where(eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId));
+      if (input.fonteIds.length) {
+        await db.insert(campanhasWhatsappCampanhaFontes)
+          .values(input.fonteIds.map(fonteId => ({ campanhaId: input.campanhaId, fonteId })));
+      }
+      return { ok: true };
+    }),
+
+  listarFontesDaCampanha: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      return db.select({ fonte: campanhasWhatsappFontes })
+        .from(campanhasWhatsappCampanhaFontes)
+        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+        .where(eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId))
+        .then(rows => rows.map(r => r.fonte));
+    }),
+
+  /**
+   * Motor de filtragem (pipeline pedido): resolve as fontes vinculadas (ERP ao vivo do histórico local +
+   * arquivo parseado sob demanda) → concatena → higienizarLista (normaliza, desduplica ENTRE fontes, aplica
+   * quarentena global) → filtrarPorCadenciaCampanha (esta campanha especificamente). Só CONSULTA — não grava
+   * nada; o client passa o resultado (`aprovados`) para `registrarDisparo` como faz hoje com "vendas pendentes".
+   */
+  gerarListaDaCampanha: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int(), dataEnvio: dataIsoSchema.optional() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      const dataEnvio = input.dataEnvio ?? hojeCampoGrande();
+
+      const fontes = await db.select({ fonte: campanhasWhatsappFontes })
+        .from(campanhasWhatsappCampanhaFontes)
+        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+        .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId), eq(campanhasWhatsappFontes.ativo, true)));
+      if (fontes.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma fonte vinculada a esta campanha. Vincule ao menos uma em \"Fontes de dados\"." });
+      }
+
+      const porFonte: Array<{ fonte: string; total: number; semTelefone: number }> = [];
+      const brutos: Array<{ telefone: unknown; nome: string }> = [];
+      for (const { fonte } of fontes) {
+        let contatos: ContatoFonte[];
+        if (fonte.tipo === "erp") {
+          if (!fonte.consultaErp) continue;
+          contatos = await resolverFonteErp(fonte.consultaErp);
+        } else {
+          if (!fonte.arquivoId) continue;
+          const [arquivo] = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId)).limit(1);
+          if (!arquivo) continue;
+          const leitura = await lerArquivoDeUrl(arquivo.url, arquivo.nome);
+          if (!leitura.ok) {
+            porFonte.push({ fonte: fonte.label, total: 0, semTelefone: 0 });
+            continue;
+          }
+          contatos = leitura.contatos.map(c => ({ telefone: c.telefone || null, nome: c.nome }));
+        }
+        porFonte.push({ fonte: fonte.label, total: contatos.length, semTelefone: contatos.filter(c => !c.telefone).length });
+        for (const c of contatos) brutos.push({ telefone: c.telefone, nome: c.nome });
+      }
+
+      // Quarentena global (0 dias = sem trava, mesma convenção do resto do módulo).
+      const telefonesNormalizados = [...new Set(brutos.map(c => normalizarTelefone(c.telefone)).filter((t): t is string => !!t))];
+      const quarentenaGlobal = await buscarQuarentena(telefonesNormalizados);
+      const higienizado = higienizarLista(brutos, quarentenaGlobal, dataEnvio, campanha.quarentenaDias);
+
+      // Cadência DESTA campanha — só aqui, não no registrarDisparo genérico (ver comentário na migration/schema).
+      const historicoRows = telefonesNormalizados.length
+        ? await getPool().query(
+            `SELECT telefone, ultimo_envio_em::text AS ultimo FROM campanhas_whatsapp_contatos_historico
+               WHERE campanha_id = $1 AND telefone = ANY($2::text[])`,
+            [campanha.id, telefonesNormalizados],
+          )
+        : { rows: [] as Array<{ telefone: string; ultimo: string }> };
+      const historicoCampanha = new Map(historicoRows.rows.map(r => [r.telefone, r.ultimo]));
+      const { aprovados, descartadosCadencia } = filtrarPorCadenciaCampanha(higienizado.enviar, historicoCampanha, dataEnvio, campanha.frequenciaDias);
+
+      return {
+        dataEnvio,
+        porFonte,
+        totalResolvido: brutos.length,
+        aprovados: aprovados.map(c => ({ telefone: c.telefone, nome: c.nome })),
+        ignoradosQuarentenaGlobal: higienizado.ignoradosQuarentena,
+        ignoradosCadenciaCampanha: descartadosCadencia,
+        invalidosOuDuplicados: higienizado.invalidos,
+      };
     }),
 });

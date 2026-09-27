@@ -9,7 +9,9 @@ servidor exigem os mesmos roles (a lista guarda telefones de clientes). Não há
 
 Código: `client/src/pages/financeiro/MarketingCampanhasWhatsapp.tsx` (+ pasta `campanhasWhatsapp/`),
 `server/routers/campanhasWhatsapp.ts`, `server/services/campanhasWhatsapp.ts` (regra pura),
-`shared/campanhas-whatsapp.ts` (datas, telefone, semáforo), `server/routes/campanhas-whatsapp-api.ts` (webhooks).
+`server/services/fontesErpCampanhas.ts` (Fontes de Dados — 4 públicos do ERP local + leitura de arquivo),
+`shared/campanhas-whatsapp.ts` (datas, telefone, semáforo), `shared/lista-contatos.ts` (parser de CSV/XLSX,
+isomórfico), `server/routes/campanhas-whatsapp-api.ts` (webhooks).
 
 ## Regras de negócio
 
@@ -58,17 +60,59 @@ guardar listas de contatos e outros documentos da campanha, independente de já 
 upload direto ao UploadThing, rota "documento", mesma do Registrar Disparo). Só existem para campanha com `id`
 (precisam salvar a campanha primeiro).
 
-## Modelo de dados (migrations `0045`–`0048`)
+## Fontes de Dados (audiência: ERP + upload externo)
+
+Pedido do usuário: um "cérebro" que resolve a audiência de uma campanha a partir de públicos automáticos do ERP
+**e/ou** listas externas, combinando várias fontes na mesma campanha. Botão "Fontes de dados" no formulário de
+campanha (multi-seleção com autosave a cada clique — `FontesDadosPopover.tsx`) + "Gerenciar fontes"
+(`GerenciarFontesPopover.tsx`) para criar fontes externas ou arquivar qualquer fonte.
+
+**4 fontes automáticas do ERP** (seed fixo da migration `0049`, calculadas do histórico local — sem chamada à
+API MubiSys, mesmo espírito de `inteligenciaClientes.ts`): *Clientes ativos* (última compra ≤ 180 dias),
+*Primeira compra/onboarding* (só 1 compra até agora, feita há ≤ 60 dias), *Inativos 6+ meses* (última compra ≥
+180 dias), *Orçaram e não compraram* (orçamento nos últimos 90 dias com status que não é venda ganha —
+`historico_orcamentos` não tem telefone; quando a empresa já foi cliente alguma vez, o telefone vem de
+`historico_os`, senão fica em branco). Implementação: `server/services/fontesErpCampanhas.ts`
+(`RESOLVEDORES_ERP`), sem alterar `construirBaseClientes`/`ClienteBase` (não carregam telefone — foi criada uma
+agregação própria, `construirBaseComTelefone`).
+
+**Fonte externa (upload) — fundida com "Arquivos"** (decisão do usuário): não existe uma tabela separada de
+"contatos da fonte". Criar uma fonte externa sobe o arquivo pela mesma rota de sempre
+(`campanhas_whatsapp_arquivos`, que pode nascer **solto**, sem `campanha_id` — coluna ficou nullable na migration
+`0049`) e a fonte (`campanhas_whatsapp_fontes`, tipo `arquivo`) só guarda a referência (`arquivo_id`). Os
+contatos são extraídos do arquivo **sob demanda**, a cada geração de lista (`lerArquivoDeUrl`, mesmo parser
+`extrairContatos` do upload manual) — nada é duplicado no banco. Isso também permite reaproveitar como fonte
+qualquer arquivo já salvo em qualquer campanha.
+
+**Pipeline de resolução (`gerarListaDaCampanha`, só leitura — não grava nada):** resolve cada fonte vinculada →
+concatena os contatos brutos de todas → `higienizarLista` (normaliza telefone, desduplica **entre** fontes por
+telefone normalizado, aplica a quarentena global) → `filtrarPorCadenciaCampanha` (nova checagem, só aqui — ver
+abaixo) → devolve `aprovados` + o motivo de cada descarte, por fonte. O client passa `aprovados` para
+`registrarDisparo` exatamente como já fazia com "Usar vendas pendentes" do pós-venda.
+
+**Cadência da campanha (`campanhas_whatsapp_contatos_historico`) — diferente da quarentena.** A quarentena
+(`campanhas_whatsapp_quarentena`) é "recebeu **qualquer** campanha há menos de X dias"; esta nova tabela é
+"recebeu **esta campanha especificamente** há menos de `frequencia_dias`" — pedido explícito do usuário ("Checagem
+de Cadência da Campanha"), útil porque a lista de uma fonte (ex.: "Inativos") muda a cada rodada e um mesmo
+contato não deveria ser reabordado na campanha antes do próprio intervalo dela. Upsert que nunca recua no tempo
+(mesmo padrão da quarentena), gravado **sempre** dentro de `registrarDisparoNoBanco` — mas só **consultado**
+(bloqueando reenvio) no fluxo de Fontes. Decisão de escopo: o upload manual/webhook continuam exatamente como
+antes, sem essa trava adicional, para não alterar o comportamento já testado desses fluxos.
+
+## Modelo de dados (migrations `0045`–`0049`)
 
 | Tabela | Papel |
 |---|---|
 | `campanhas_whatsapp` | campanha: nome, `descricao` (livre, opcional, sem regra de negócio), categoria, tipo, `frequencia_dias`, `quarentena_dias`, status, `gatilho_a_partir_de` |
 | `campanhas_whatsapp_categorias` | categorias editáveis: `chave` (slug imutável), `label`, `ativo`, `ordem` |
 | `campanhas_whatsapp_disparos` | log de cada disparo (contagens, próxima data, arquivo, observações, origem `app`/`api`) |
-| `campanhas_whatsapp_quarentena` | último contato por telefone (`telefone` único) |
+| `campanhas_whatsapp_quarentena` | último contato por telefone, de **qualquer** campanha (`telefone` único) |
+| `campanhas_whatsapp_contatos_historico` | último contato por (campanha, telefone) — cadência **desta** campanha |
 | `campanhas_whatsapp_gatilhos` | OS de pós-venda já contatadas por campanha (`campanha_id`+`os_numero` único) |
 | `campanhas_whatsapp_scripts` | modelos de mensagem por campanha (`titulo`, `conteudo`, `ordem`, `ativo`, `copia_count`) |
-| `campanhas_whatsapp_arquivos` | arquivos salvos por campanha (`nome`, `url`, `tamanho_bytes`, `enviado_por`) — só o registro; exclusão não apaga o arquivo do UploadThing (mesmo padrão de `biblioteca_arquivos`) |
+| `campanhas_whatsapp_arquivos` | arquivos salvos (por campanha **ou soltos**, `campanha_id` nullable): `nome`, `url`, `tamanho_bytes`, `enviado_por` — só o registro; exclusão não apaga o arquivo do UploadThing (mesmo padrão de `biblioteca_arquivos`) |
+| `campanhas_whatsapp_fontes` | fonte de audiência: `tipo` (`erp`/`arquivo`), `chave`, `label`, `consulta_erp` ou `arquivo_id` |
+| `campanhas_whatsapp_campanha_fontes` | join N:N — quais fontes uma campanha combina (`campanha_id`+`fonte_id` único) |
 
 O registro de um disparo (log + quarentena + vendas contatadas) é **um único statement SQL com CTEs** — atômico no
 Postgres. `db.transaction` não serve aqui: o driver Neon roda em modo HTTP (`server/db/db-connection.ts`).
@@ -82,11 +126,13 @@ preserva o histórico.
 ## Fluxo "Registrar disparo" (tela)
 
 Arquivo `.csv` (UTF-8, `;` `,` ou tab) ou `.xlsx`, com colunas **`telefone`** e **`nome_cliente`** (aceita apelidos:
-celular, whatsapp, cliente, nome…). Lido no navegador (`client/src/lib/listaContatos.ts`, até 20.000 linhas). "Processar"
-higieniza, grava e mostra *"X contatos processados, Y contatos ignorados por estarem em período de quarentena de
-comunicação"*, com download da **lista higienizada** (é ela que deve ser enviada), dos ignorados e dos inválidos. O
-arquivo original é anexado no UploadThing (falha no anexo não impede o registro). Em campanha de pós-venda também é
-possível **"Usar vendas pendentes"** no lugar do arquivo.
+celular, whatsapp, cliente, nome…). Lido no navegador (`client/src/lib/listaContatos.ts` → parser puro em
+`shared/lista-contatos.ts`, até 20.000 linhas). "Processar" higieniza, grava e mostra *"X contatos processados, Y
+contatos ignorados por estarem em período de quarentena de comunicação"*, com download da **lista higienizada**
+(é ela que deve ser enviada), dos ignorados e dos inválidos. O arquivo original é anexado no UploadThing (falha
+no anexo não impede o registro). Duas fontes alternativas ao upload manual, cada uma com sua própria checagem
+antes de processar: **"Usar vendas pendentes"** (só pós-venda) e **"Usar fontes de dados"** (quando a campanha
+tem ao menos uma fonte vinculada — ver seção acima).
 
 ## Tooltips de ajuda no formulário de campanha
 
@@ -128,16 +174,24 @@ contatos por `log-send`, 5.000 telefones por `check-quarantine`.
 
 ## Limitações conhecidas
 
-- A quarentena só enxerga envios registrados **neste módulo** (upload, "vendas pendentes" ou API). Os disparos da
-  Retenção de Clientes Novos e os cliques de WhatsApp do CRM **não** a alimentam — eles trabalham por empresa, sem
-  telefone gravado.
+- A quarentena só enxerga envios registrados **neste módulo** (upload, "vendas pendentes", Fontes ou API). Os
+  disparos da Retenção de Clientes Novos e os cliques de WhatsApp do CRM **não** a alimentam — eles trabalham por
+  empresa, sem telefone gravado.
 - Não há histórico por contato (só o último) e nem status de entrega/resposta.
 - As procedures exigem admin/master/gestor no servidor; o restante do acesso é o da tela de Inteligência de Clientes.
 - A aba mora dentro de `MarketingFinanceiro.tsx`, mas **não depende** do relatório de marketing (busca ao vivo no
   MubiSys): só as abas que leem esse relatório esperam por ele.
+- `gerarListaDaCampanha` recarrega **todo** `historico_os`/`historico_orcamentos` a cada chamada (mesmo custo de
+  `construirBaseClientes` em outros módulos) — aceitável no volume atual, mas é o ponto a otimizar primeiro se o
+  histórico crescer muito (ex.: cachear por alguns minutos, como já existe noutros relatórios do Comercial).
+- "Orçaram e não compraram" e boa parte de "Inativos" ficam sem telefone quando a venda/empresa é anterior a
+  21/09/2026 (mesma limitação já documentada no pós-venda — backfill em `/api/scheduled/completarTelefones`);
+  confirmado em teste manual: de 990 inativos resolvidos, 857 vieram sem telefone.
 
 ## Testes
 
-`server/__tests__/campanhas-whatsapp.test.ts` (regras puras + autenticação/validação dos webhooks),
-`server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo, modo webhook, gatilho, role,
-categorias, scripts, arquivos) e `client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).
+`server/__tests__/campanhas-whatsapp.test.ts` (regras puras, incl. `filtrarPorCadenciaCampanha`, + autenticação/
+validação dos webhooks), `server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo,
+modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de ponta a ponta),
+`server/__tests__/fontes-erp-campanhas.test.ts` (as 4 resoluções ERP, puro) e `client/src/lib/listaContatos.test.ts`
+(leitura de CSV/XLSX).

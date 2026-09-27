@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, ListChecks, Send, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, Download, FileSpreadsheet, ListChecks, Send, Upload } from "lucide-react";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { enviarArquivo } from "@/lib/upload";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
@@ -39,7 +39,7 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
   const inputRef = useRef<HTMLInputElement>(null);
   const ehGatilho = campanha?.tipo === "gatilho_venda";
 
-  const [fonte, setFonte] = useState<"arquivo" | "vendas">("arquivo");
+  const [fonte, setFonte] = useState<"arquivo" | "vendas" | "fontes">("arquivo");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [leitura, setLeitura] = useState<LeituraLista | null>(null);
   const [lendo, setLendo] = useState(false);
@@ -59,6 +59,15 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
     { enabled: !!campanha && ehGatilho && fonte === "vendas" },
   );
 
+  // Sempre habilitada (não só quando fonte==="fontes"): decide se o botão "Usar fontes de dados" aparece.
+  const fontesVinculadas = trpc.campanhasWhatsapp.listarFontesDaCampanha.useQuery(
+    { campanhaId: campanha?.id ?? 0 }, { enabled: !!campanha },
+  );
+  const gerarLista = trpc.campanhasWhatsapp.gerarListaDaCampanha.useQuery(
+    { campanhaId: campanha?.id ?? 0, dataEnvio },
+    { enabled: !!campanha && fonte === "fontes", retry: false },
+  );
+
   const registrar = trpc.campanhasWhatsapp.registrarDisparo.useMutation({
     onSuccess: r => {
       setResultado(r);
@@ -69,12 +78,14 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
 
   const contatos: Array<{ telefone: string; nome: string; osNumero?: string }> = fonte === "vendas"
     ? (vendas.data?.contatosDisparo ?? [])
+    : fonte === "fontes" ? (gerarLista.data?.aprovados ?? [])
     : leitura?.ok ? leitura.contatos : [];
   // A lista já vem da venda mais antiga para a mais nova; a primeira serve de alerta contra disparo em massa "do histórico inteiro".
   const vendaMaisAntiga = fonte === "vendas" ? vendas.data?.pendentes[0]?.dataFaturamento ?? null : null;
   const vendaMaisAntigaEhAntiga = !!vendaMaisAntiga && diasEntre(vendaMaisAntiga, hoje) > 180;
   const processando = enviandoArquivo || registrar.isPending;
-  const podeProcessar = !!campanha && contatos.length > 0 && !processando && (fonte === "vendas" ? !vendas.isFetching : !lendo);
+  const podeProcessar = !!campanha && contatos.length > 0 && !processando
+    && (fonte === "vendas" ? !vendas.isFetching : fonte === "fontes" ? !gerarLista.isFetching : !lendo);
 
   async function escolherArquivo(file: File | undefined) {
     if (!file) return;
@@ -190,15 +201,22 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
           </div>
         ) : (
           <div className="space-y-4">
-            {ehGatilho && (
-              <div className="flex gap-2">
+            {(ehGatilho || !!fontesVinculadas.data?.length) && (
+              <div className="flex gap-2 flex-wrap">
                 <Button size="sm" variant={fonte === "arquivo" ? "default" : "outline"} className="gap-1.5" onClick={() => setFonte("arquivo")}>
                   <Upload size={14} /> Enviar arquivo
                 </Button>
-                <Button size="sm" variant={fonte === "vendas" ? "default" : "outline"} className="gap-1.5" onClick={() => setFonte("vendas")}>
-                  <ListChecks size={14} /> Usar vendas pendentes
-                  {campanha?.vendasPendentes != null && ` (${fmtNum(campanha.vendasPendentes)})`}
-                </Button>
+                {ehGatilho && (
+                  <Button size="sm" variant={fonte === "vendas" ? "default" : "outline"} className="gap-1.5" onClick={() => setFonte("vendas")}>
+                    <ListChecks size={14} /> Usar vendas pendentes
+                    {campanha?.vendasPendentes != null && ` (${fmtNum(campanha.vendasPendentes)})`}
+                  </Button>
+                )}
+                {!!fontesVinculadas.data?.length && (
+                  <Button size="sm" variant={fonte === "fontes" ? "default" : "outline"} className="gap-1.5" onClick={() => setFonte("fontes")}>
+                    <Database size={14} /> Usar fontes de dados ({fontesVinculadas.data.length})
+                  </Button>
+                )}
               </div>
             )}
 
@@ -239,6 +257,30 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
                     {leitura.contatos.length > 5 && <p className="text-[11px] text-muted-foreground">Mostrando as 5 primeiras linhas.</p>}
                   </div>
                 )}
+              </div>
+            ) : fonte === "fontes" ? (
+              <div className="rounded-lg border p-3 text-sm space-y-2">
+                {gerarLista.isFetching ? <Spinner /> : gerarLista.isError ? (
+                  <span className="text-red-700">Não consegui gerar a lista: {gerarLista.error.message}</span>
+                ) : gerarLista.data ? (
+                  <>
+                    <p><strong>{fmtNum(gerarLista.data.aprovados.length)}</strong> de {fmtNum(gerarLista.data.totalResolvido)} contatos resolvidos serão incluídos.</p>
+                    <ul className="text-[11px] text-muted-foreground list-disc list-inside">
+                      {gerarLista.data.porFonte.map((f, i) => (
+                        <li key={i}>{f.fonte}: {fmtNum(f.total)} contato(s){f.semTelefone > 0 && `, ${fmtNum(f.semTelefone)} sem telefone`}</li>
+                      ))}
+                    </ul>
+                    {gerarLista.data.ignoradosQuarentenaGlobal.length > 0 && (
+                      <p className="text-amber-700">{fmtNum(gerarLista.data.ignoradosQuarentenaGlobal.length)} em quarentena de outra campanha.</p>
+                    )}
+                    {gerarLista.data.ignoradosCadenciaCampanha.length > 0 && (
+                      <p className="text-amber-700">{fmtNum(gerarLista.data.ignoradosCadenciaCampanha.length)} já receberam esta campanha recentemente (cadência).</p>
+                    )}
+                    {gerarLista.data.invalidosOuDuplicados.length > 0 && (
+                      <p className="text-muted-foreground">{fmtNum(gerarLista.data.invalidosOuDuplicados.length)} sem telefone válido ou duplicados entre as fontes.</p>
+                    )}
+                  </>
+                ) : null}
               </div>
             ) : (
               <div className="rounded-lg border p-3 text-sm space-y-1">
