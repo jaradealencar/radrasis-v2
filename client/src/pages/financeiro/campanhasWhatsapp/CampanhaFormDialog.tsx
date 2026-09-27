@@ -13,7 +13,50 @@ import {
   type StatusCampanha, type TipoCampanha,
 } from "@shared/campanhas-whatsapp";
 import GerenciarCategoriasPopover from "./GerenciarCategoriasPopover";
-import type { CampanhaLinha } from "./comuns";
+import { LabelComAjuda, type CampanhaLinha } from "./comuns";
+
+// Conteúdo das "janelinhas de ajuda" (ícone (i) ao lado do label) — pedido do usuário para orientar o
+// operador no preenchimento e evitar spam/bloqueio no WhatsApp. Cada bloco é só texto explicativo, sem
+// nenhuma regra de negócio: os valores citados ("15 dias", "60-90 dias"...) são sugestão, não são impostos.
+const AJUDA_NOME = (
+  <>
+    <p><strong>O que é:</strong> nome interno para organizar o painel — não é enviado ao cliente.</p>
+    <p><strong>Dica:</strong> inclua o público-alvo ou objetivo (ex.: "Reativação — Inativos +6 meses",
+      "Pós-venda — 30 dias", "Orçamentos parados").</p>
+  </>
+);
+const AJUDA_CATEGORIA = (
+  <>
+    <p><strong>O que é:</strong> classificação da estratégia, usada para organizar e filtrar o painel.</p>
+    <p><strong>Dica:</strong> categorias comuns são reativação de inativos, orçamentos parados, pós-venda,
+      outbound/prospecção e promoção/geral — crie as suas em "Gerenciar categorias".</p>
+  </>
+);
+const AJUDA_TIPO = (
+  <>
+    <p><strong>O que é:</strong> define a lógica do disparo.</p>
+    <p><strong>Recorrente:</strong> lote enviado periodicamente para uma lista (ex.: a cada 60 dias).</p>
+    <p><strong>Gatilho de venda:</strong> disparo individual calculado a partir da data de faturamento de cada
+      venda (ex.: pós-venda 30 dias depois da compra).</p>
+  </>
+);
+const AJUDA_FREQUENCIA = (
+  <>
+    <p><strong>O que é:</strong> intervalo que faz a campanha voltar a ficar vermelha/pendente após um disparo
+      (no gatilho de venda, é quantos dias depois da venda o contato deve acontecer).</p>
+    <p><strong>Valores usuais:</strong> inativos +6 meses: 60 a 90 dias · orçamentos parados: 15 a 30 dias ·
+      pós-venda: 30 dias.</p>
+  </>
+);
+const AJUDA_QUARENTENA = (
+  <>
+    <p><strong>O que é:</strong> período de "blindagem" do telefone — quem recebeu esta campanha fica de fora
+      de <strong>qualquer outra</strong> campanha durante esses dias.</p>
+    <p><strong>Por quê:</strong> protege a reputação do número no WhatsApp e evita mensagens repetidas ao
+      mesmo cliente em pouco tempo.</p>
+    <p><strong>Recomendado:</strong> 15 dias (0 desliga a trava).</p>
+  </>
+);
 
 interface Props {
   open: boolean;
@@ -105,7 +148,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="camp-nome">Nome da campanha</Label>
+            <LabelComAjuda htmlFor="camp-nome" texto="Nome da campanha" ajuda={AJUDA_NOME} />
             <Input id="camp-nome" value={nome} onChange={e => setNome(e.target.value)} maxLength={160}
               placeholder="Ex.: Reativação — orçamentos parados" />
           </div>
@@ -119,7 +162,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label>Categoria</Label>
+                <LabelComAjuda texto="Categoria" ajuda={AJUDA_CATEGORIA} />
                 <GerenciarCategoriasPopover />
               </div>
               <Select value={categoria} onValueChange={setCategoria} disabled={carregandoCategorias}>
@@ -132,7 +175,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Tipo</Label>
+              <LabelComAjuda texto="Tipo" ajuda={AJUDA_TIPO} />
               <Select value={tipo} onValueChange={v => setTipo(v as TipoCampanha)} disabled={editando}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -145,7 +188,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="camp-freq">{tipo === "gatilho_venda" ? "Dias após a venda" : "Cadência (dias entre envios)"}</Label>
+              <LabelComAjuda htmlFor="camp-freq" texto={tipo === "gatilho_venda" ? "Dias após a venda" : "Cadência (dias entre envios)"} ajuda={AJUDA_FREQUENCIA} />
               <Input id="camp-freq" inputMode="numeric" value={frequencia} onChange={e => setFrequencia(e.target.value)} />
               <p className="text-[11px] text-muted-foreground">
                 {tipo === "gatilho_venda"
@@ -154,7 +197,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="camp-quar">Quarentena (dias)</Label>
+              <LabelComAjuda htmlFor="camp-quar" texto="Quarentena (dias)" ajuda={AJUDA_QUARENTENA} />
               <Input id="camp-quar" inputMode="numeric" value={quarentena} onChange={e => setQuarentena(e.target.value)} />
               <p className="text-[11px] text-muted-foreground">
                 Descanso mínimo de um telefone desde qualquer campanha. 0 = sem trava.

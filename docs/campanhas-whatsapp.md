@@ -45,11 +45,18 @@ Venda de contato **ignorado por quarentena continua pendente** e reaparece quand
 telefone (OS antigas: a coluna só existe desde 21/09/2026; backfill em `/api/scheduled/completarTelefones`) aparecem
 marcadas e ficam fora do envio.
 
-## Modelo de dados (migration `0045_campanhas_whatsapp`)
+**Categorias são editáveis pelo usuário** (não é mais um enum fixo — migration `0046`): criar, renomear (só o
+`label`; a `chave`/slug gravada em `campanhas_whatsapp.categoria` é imutável) e arquivar/reativar sem perder o
+rótulo de campanhas antigas. Excluir de fato só é permitido quando nenhuma campanha usa a categoria
+(`listarCategorias` devolve `emUso` para a tela decidir se oferece excluir ou só arquivar). UI em
+`GerenciarCategoriasPopover.tsx`, aberto a partir do formulário de campanha.
+
+## Modelo de dados (migrations `0045`–`0047`)
 
 | Tabela | Papel |
 |---|---|
-| `campanhas_whatsapp` | campanha: nome, categoria, tipo, `frequencia_dias`, `quarentena_dias`, status, `gatilho_a_partir_de` |
+| `campanhas_whatsapp` | campanha: nome, `descricao` (livre, opcional, sem regra de negócio), categoria, tipo, `frequencia_dias`, `quarentena_dias`, status, `gatilho_a_partir_de` |
+| `campanhas_whatsapp_categorias` | categorias editáveis: `chave` (slug imutável), `label`, `ativo`, `ordem` |
 | `campanhas_whatsapp_disparos` | log de cada disparo (contagens, próxima data, arquivo, observações, origem `app`/`api`) |
 | `campanhas_whatsapp_quarentena` | último contato por telefone (`telefone` único) |
 | `campanhas_whatsapp_gatilhos` | OS de pós-venda já contatadas por campanha (`campanha_id`+`os_numero` único) |
@@ -71,6 +78,15 @@ higieniza, grava e mostra *"X contatos processados, Y contatos ignorados por est
 comunicação"*, com download da **lista higienizada** (é ela que deve ser enviada), dos ignorados e dos inválidos. O
 arquivo original é anexado no UploadThing (falha no anexo não impede o registro). Em campanha de pós-venda também é
 possível **"Usar vendas pendentes"** no lugar do arquivo.
+
+## Tooltips de ajuda no formulário de campanha
+
+Nome, Categoria, Tipo, Cadência e Quarentena têm um ícone (i) ao lado do label (`LabelComAjuda` em
+`campanhasWhatsapp/comuns.tsx`) com a explicação do campo e valores sugeridos — pedido do usuário para orientar
+quem cadastra a campanha e reduzir risco de configurar uma cadência/quarentena que gere spam ou bloqueio no
+WhatsApp. Abre no hover/foco (`Tooltip` padrão do repo, mesmo de `KpiCard.tsx`) e também no clique/toque (estado
+controlado), para funcionar em telas sem mouse. É só texto de orientação — os valores citados (ex.: "quarentena
+15 dias") não são impostos por nenhuma validação.
 
 ## Webhooks REST (para disparador/API oficial do WhatsApp)
 

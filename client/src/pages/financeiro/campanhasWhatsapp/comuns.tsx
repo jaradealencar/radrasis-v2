@@ -1,5 +1,9 @@
+import { useState, type ReactNode } from "react";
+import { Info } from "lucide-react";
 import type { RouterOutputs } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { diasEntre, STATUS_CAMPANHA_LABEL, type SemaforoCampanha } from "@shared/campanhas-whatsapp";
 
 export type CampanhaLinha = RouterOutputs["campanhasWhatsapp"]["listar"]["campanhas"][number];
@@ -35,6 +39,34 @@ export function StatusCampanhaBadge({ campanha, hoje }: { campanha: CampanhaLinh
   }
   const estilo = SEMAFORO_ESTILO[campanha.semaforo];
   return <Badge variant="outline" className={estilo.badge}>{estilo.emoji} {textoStatus(campanha, hoje)}</Badge>;
+}
+
+/**
+ * Label de campo do formulário de campanha + ícone (i) com a explicação do campo — abre no hover/foco (padrão do
+ * Radix Tooltip, já usado em KpiCard.tsx) e também no clique/toque, para funcionar em telas sem mouse.
+ */
+export function LabelComAjuda({ htmlFor, texto, ajuda }: { htmlFor?: string; texto: string; ajuda: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Label htmlFor={htmlFor}>{texto}</Label>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => setOpen(v => !v)}
+            className="text-muted-foreground/70 hover:text-muted-foreground focus-visible:text-muted-foreground rounded-full"
+            aria-label={`Ajuda: ${texto}`}
+          >
+            <Info size={13} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[300px] text-xs leading-relaxed space-y-1.5 whitespace-normal">
+          {ajuda}
+        </TooltipContent>
+      </Tooltip>
+    </span>
+  );
 }
 
 export function slugArquivo(nome: string): string {
