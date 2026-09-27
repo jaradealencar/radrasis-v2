@@ -216,6 +216,52 @@ reais se repetem em sequência); a regressão de lucro usa poucos meses (R²
 ~57% com 8 meses); o CAC considera só marketing lançado, sem equipe/comissão;
 o mês corrente ainda não entra (só meses fechados).
 
+### Planejador de meta (dentro da aba 3 — Simulador)
+
+Adicionado em 27/09/2026: o usuário disse que o Simulador mostrava os números
+que precisam valer, mas não **quando** o faturamento chega na meta — queria
+mexer num indicador (ex.: "não consigo 40 gráficas novas, mas consigo 30") e
+ver a data de chegada mudar, com um prazo escolhido por ele ("configurador
+de metas").
+
+**Motor puro e testado** (`shared/planejador-meta.ts`,
+`server/__tests__/planejador-meta.test.ts`): dado o cenário de hoje (média
+de 12 meses) e o cenário do Simulador (o que os indicadores travados/ajuste
+automático resultam), `linhaDoTempo` interpola cada um dos 12 campos (3 por
+grupo × 4 grupos) em linha reta entre os dois, mês a mês, até um **prazo em
+meses escolhido pelo gestor** (padrão 6, atalhos 3/6/9/12, máximo 24) — depois
+disso o cenário fica estável. O faturamento de cada mês é a mesma fórmula do
+Simulador aplicada aos indicadores daquele mês. `primeiroMesNaMeta` acha o
+primeiro mês em que o faturamento cruza a meta.
+
+- **No modo automático** (ajuste liga sozinho os indicadores livres para
+  fechar a meta), a chegada acontece exatamente no prazo escolhido — o
+  planejador vira uma pergunta de "quanto preciso subir por mês" para um
+  prazo dado.
+- **No modo livre** (usuário digita os números à mão), o planejador responde
+  a pergunta inversa: "com esses números, quando eu chego lá" (pode não
+  chegar, chegar antes do prazo, ou só depois).
+- Componente `client/src/pages/comercial/painelMeta/Planejador.tsx`: frase-
+  resposta (quando chega/não chega/já está na meta), 3 fichas (hoje, no
+  prazo, ritmo necessário), gráfico Hoje × Cenário × Meta com a faixa
+  provável de um mês (mesma faixa P10–P90 do backtest, aplicada mês a mês) e
+  tabela com pedidos/ticket/orçamentos/conversão/novas/reativadas de cada
+  mês. O consultor de IA recebe essa linha do tempo (prazo + mês de chegada)
+  como parte **variável** do contexto (depois do ponto de cache — mexer no
+  prazo não invalida o cache do resto do contexto).
+
+**Decisão de método (importante, não reabrir sem novo backtest):** foi
+avaliado (e descartado) um modelo mais "realista" para prever a recompra dos
+conquistados a partir das **entradas reais** (gráficas novas/reativadas dos
+meses anteriores) × a **curva de vida** (coorte, quanto uma entrada rende em
+cada mês de idade). Testado com os dados locais: erro médio de 35,7% ao
+prever os últimos 12 meses, contra 31% do método simples (média da recompra
+dos 12 meses anteriores) — pior, não melhor. Por isso o Planejador não tenta
+prever o efeito colateral de "gráficas novas geram recompra depois": o prazo
+é uma **escolha do usuário**, não uma previsão do sistema, e a tela avisa
+que a estimativa é conservadora nesse ponto (aponta para as abas 4/5, que já
+trazem coorte e LTV).
+
 ### Consultor de IA (aba 6 do Painel da Meta)
 
 Chat restrito ao tema: o dono conversa com um "consultor" que enxerga todos os
