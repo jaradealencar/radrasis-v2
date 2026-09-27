@@ -262,6 +262,64 @@ prever o efeito colateral de "gráficas novas geram recompra depois": o prazo
 que a estimativa é conservadora nesse ponto (aponta para as abas 4/5, que já
 trazem coorte e LTV).
 
+### Comparativo com o ano anterior e meta mensal por sazonalidade (27/09/2026)
+
+O usuário pediu duas coisas no Planejador e pediu explicitamente para ser
+confrontado se a ideia não fosse boa — as duas foram auditadas com dados
+reais antes de virar código.
+
+**1. Comparativo com o mesmo mês do ano passado.** Card no topo do
+Planejador: `compararMesVigenteAnoAnterior` (`server/services/painelMeta.ts`)
+compara o faturamento do mês em andamento **até hoje** com o faturamento do
+mesmo mês um ano antes **até o mesmo dia do mês** — nunca o mês incompleto
+contra o mês fechado inteiro do ano passado, que seria injusto com o mês em
+curso. Usa a `base` (histórico já carregado) que o resto do painel já
+consome — sem consulta nova, mesma defasagem de até ~1 dia de `historico_os`
+documentada acima. Retorna `null` quando não há nenhum pedido no mesmo corte
+do ano passado (mês novo ou sem histórico comparável). Achado real ao testar
+em 27/09/2026: setembro estava **-53,6%** vs. o mesmo corte de set/2025 — a
+IA foi orientada a tratar isso como achado pontual a investigar (funil,
+conversão), não como padrão sazonal (setembro não está na lista de meses
+confiáveis abaixo).
+
+**2. Meta mensal por sazonalidade (opcional, desligada por padrão).** O
+usuário queria uma meta diferente por mês (ex.: mais branda em
+dezembro/janeiro) em vez de uma meta fixa repetida em todos os meses do
+Planejador. Auditoria com os dados reais antes de implementar (script
+descartável, não versionado) mostrou que ele tinha razão só pela metade:
+
+| Mês | Razão ano a ano (real ÷ média móvel de 12) | Concordam? | Confiável? |
+|---|---|---|---|
+| Dezembro | 0,83 / 0,68 / 0,81 (3 anos) | sim, sempre abaixo | **sim** |
+| Novembro | 1,13 / 1,36 / 1,18 (3 anos) | sim, sempre acima | **sim** |
+| Janeiro | 0,93 / 1,01 / 0,55 (3 anos) | não — 2 de 3 direções concordam, a 3ª é bem diferente | não |
+| Demais meses | 2 observações (só 2 anos completos) ou direções discordantes | — | não |
+
+Dezembro É consistentemente fraco; janeiro NÃO tem padrão — em 2026 janeiro
+foi um desastre (55% da média), mas em 2025 foi normal (101%). Tratar
+"dezembro e janeiro" como um pacote único, como o usuário propôs, teria
+sido errado para janeiro. Isso também bate com o backtest já feito (seção
+acima): aplicar sazonalidade em **todos** os meses piora o erro médio (17%
+→ 22%). Por isso o ajuste só vale para os meses em que os anos concordam
+entre si — critério em `confiabilidadeSazonalPorMes`
+(`shared/planejador-meta.ts`): pelo menos 3 anos observados, 100% na mesma
+direção (todos acima ou todos abaixo de 1) e coeficiente de variação < 0,15
+entre eles. O fator vai com **encolhimento** (`peso = n ÷ (n+2)`) — com só 3
+anos, confia em 60% da média observada, não no valor cru — e
+`fatoresSazonaisNormalizados` reescala os 12 fatores para a média fechar em
+1 (a meta ANUAL não muda, só a distribuição pelos meses).
+
+Na tela (`Planejador.tsx`), o toggle "Ajustar cada mês pela sazonalidade"
+(desligado por padrão) soma uma 2ª linha ao gráfico e uma coluna à tabela
+com o faturamento redistribuído; a lista de meses confiáveis (hoje só
+novembro e dezembro) aparece com o percentual e quantos anos concordaram.
+**"Quando chego lá" continua respondendo pelo RITMO médio** (a linha "Com o
+cenário"), não pela versão sazonal — a sazonalidade só reformula a
+distribuição mês a mês, não a resposta de quando a capacidade do negócio
+fica suficiente. O consultor de IA recebe os dois (comparativo + lista de
+meses confiáveis) e foi instruído a nunca chamar um mês de
+"historicamente fraco/forte" fora dessa lista.
+
 ### Consultor de IA (aba 6 do Painel da Meta)
 
 Chat restrito ao tema: o dono conversa com um "consultor" que enxerga todos os
