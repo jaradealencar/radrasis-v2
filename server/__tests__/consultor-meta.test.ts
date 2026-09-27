@@ -91,6 +91,16 @@ describe("montarContextoConsultor", () => {
     expect(ctx).toContain("Financeiro (8 meses");
   });
 
+  it("traz a curva de recompra dos reativados quando há dado, e omite quando não há", () => {
+    const comReativados = { ...painel, coorteReativados: { parceirosAnalisados: 40, periodo: "01/2025 a 06/2026", ltv12m: null, ltvAcumulado: [], meses: Array.from({ length: 12 }, (_, k) => ({ k, elegiveis: 40, ativosPct: k === 0 ? 100 : 20 - k, receitaPorParceiro: null })) } };
+    const ctx = montarContextoConsultor(comReativados, ENTRADA, HOJE);
+    expect(ctx).toContain("Gráfica reativada recompra mais rápido que gráfica nova");
+    expect(ctx).toContain("40 reativações (01/2025 a 06/2026)");
+
+    const semReativados = { ...painel, coorteReativados: { parceirosAnalisados: 0, periodo: "—", ltv12m: null, ltvAcumulado: [], meses: [] } };
+    expect(montarContextoConsultor(semReativados, ENTRADA, HOJE)).not.toContain("Gráfica reativada recompra mais rápido");
+  });
+
   it("traz a confiabilidade sazonal por mês e, quando dá, o comparativo com o mesmo corte do ano passado", () => {
     const ctx = montarContextoConsultor(painel, ENTRADA, HOJE);
     // dados sintéticos não têm sazonalidade real repetida ano a ano → nenhum mês confiável

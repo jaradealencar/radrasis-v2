@@ -189,3 +189,109 @@ export function aplicarSazonalidadeNaLinhaDoTempo(
     return { ...p, cenario, totais: totaisCenario(cenario) };
   });
 }
+
+// ─── Recompra mecânica: novas/reativadas de hoje → recompra daqui a alguns meses ─────────────
+//
+// No Simulador, "Recompra de gráficas conquistadas" é um indicador LIVRE: quando o usuário mexe em
+// "gráficas novas", o solver ajusta a recompra (e os outros indicadores livres) do jeito que for preciso
+// para fechar a meta — sem nenhuma relação com quantas gráficas realmente entraram. Na vida real existe
+// essa relação (quem compra de novo são as PRÓPRIAS gráficas que entraram nos últimos 12 meses), só que
+// ela é lenta: uma gráfica nova ou reativada não passa a ser "recompra de conquistada" no mês seguinte —
+// ela segue a CURVA DE VIDA (quanto % de uma turma volta a comprar em cada mês depois da entrada).
+//
+// Testado com os dados reais (26/09/2026): prever o valor em R$ de cada mês por essa mecânica piorou o
+// erro (35,7% contra 31% da média simples — ver docs/inteligencia-clientes.md), porque a mecânica é
+// barulhenta mês a mês. Mas a MÉDIA de longo prazo bate: com o ritmo de entradas de hoje, a mecânica prevê
+// ~37,9 gráficas/mês de recompra contra as ~38,4 reais — a mecânica erra o mês, não a tendência. Por isso
+// este cálculo entra só no Planejador (que já pensa em meses, não num instante só) e é OPCIONAL: o gestor
+// escolhe se quer ver a versão "independente" (o solver ajusta livre) ou a "mecânica" (a recompra é
+// consequência das entradas, e leva ~12 meses para acompanhar uma mudança de ritmo).
+
+export interface EntradaHistoricaMes {
+  /** Gráficas novas (1ª compra) naquele mês. */
+  novos: number;
+  /** Gráficas reativadas (voltaram depois de 6+ meses) naquele mês. */
+  reativados: number;
+}
+
+/** `ativosPct[k]` = % de uma turma de entrada que compra de novo no k-ésimo mês depois da entrada
+ * (k = 1..11; k = 0 seria a própria entrada e não entra aqui). Vem de `PainelMeta.coorte`/`coorteReativados`. */
+export type CurvaRecompra = Array<{ k: number; ativosPct: number | null }>;
+
+/** Recompra de conquistadas esperada no mês `indice` da linha do tempo (0 = hoje), somando o que cada
+ * turma de entrada dos até 11 meses anteriores costuma comprar de novo naquele mês de vida. Turmas
+ * anteriores a "hoje" (índice negativo) usam `historicoRecente` (o histórico real); turmas dentro do
+ * plano usam o próprio ritmo (rampa) daquele mês, já calculado em `pontos`. */
+function recompraMecanicaDoMes(
+  indice: number,
+  pontos: PontoDaLinhaDoTempo[],
+  historicoRecente: EntradaHistoricaMes[],
+  curvaNovos: CurvaRecompra,
+  curvaReativados: CurvaRecompra,
+): number {
+  const taxa = (curva: CurvaRecompra, k: number): number | null => curva.find(m => m.k === k)?.ativosPct ?? null;
+  const entradasDoMes = (idxMes: number): EntradaHistoricaMes => {
+    if (idxMes >= 0) {
+      const ponto = pontos[idxMes];
+      return ponto ? { novos: ponto.cenario.novos.clientes, reativados: ponto.cenario.reativados.clientes } : { novos: 0, reativados: 0 };
+    }
+    const pos = historicoRecente.length + idxMes; // idxMes=-1 → último elemento do histórico
+    return pos >= 0 && pos < historicoRecente.length ? historicoRecente[pos] : { novos: 0, reativados: 0 };
+  };
+
+  let recompra = 0;
+  for (let k = 1; k <= 11; k++) {
+    const entrada = entradasDoMes(indice - k);
+    const taxaNovo = taxa(curvaNovos, k);
+    const taxaReat = taxa(curvaReativados, k);
+    if (taxaNovo !== null) recompra += entrada.novos * (taxaNovo / 100);
+    if (taxaReat !== null) recompra += entrada.reativados * (taxaReat / 100);
+  }
+  return recompra;
+}
+
+/** A mesma linha do tempo, com "Recompra de gráficas conquistadas" recalculada pela mecânica acima em vez
+ * de deixada livre para o solver. `historicoRecente` são os últimos 11 meses FECHADOS antes de hoje, em
+ * ordem cronológica (do mais antigo pro mais recente) — cabe exatamente em `PainelMeta.historico.slice(1)`
+ * (o histórico tem 12 meses; este cálculo usa 11, de k=1 a k=11). */
+export function aplicarRecompraMecanicaNaLinhaDoTempo(
+  pontos: PontoDaLinhaDoTempo[],
+  historicoRecente: EntradaHistoricaMes[],
+  curvaNovos: CurvaRecompra,
+  curvaReativados: CurvaRecompra,
+): PontoDaLinhaDoTempo[] {
+  return pontos.map((p, indice) => {
+    const clientes = recompraMecanicaDoMes(indice, pontos, historicoRecente, curvaNovos, curvaReativados);
+    const cenario: Cenario = { ...p.cenario, recompraConquistados: { ...p.cenario.recompraConquistados, clientes } };
+    return { ...p, cenario, totais: totaisCenario(cenario) };
+  });
+}
+
+/**
+ * A mesma mecânica, mas CALIBRADA — use esta na tela, não a de cima. Testado com os dados reais
+ * (27/09/2026): a versão crua, aplicada em "hoje" (nada mudou ainda, é só o histórico real), não bate com
+ * o valor real de "Recompra de conquistadas" — errou de +18% a +34% para cima em testes diferentes, porque
+ * a curva de vida tem seu próprio ruído mês a mês (a mesma razão por que ela já tinha sido descartada como
+ * método de PREVISÃO, só a MÉDIA de longo prazo bate). Em vez de mostrar um "hoje" que já nasce errado, a
+ * curva inteira é reescalada por um fator único (`real ÷ bruto` no mês 0) que faz o mês 0 bater exatamente
+ * com o valor real da tela — o FORMATO da mecânica continua valendo (reativados voltam mais rápido que
+ * novos; o efeito de uma mudança de ritmo leva até 11 meses para aparecer inteiro), só o nível é ancorado
+ * no real. Se o mês 0 não tiver nenhuma previsão (bruto = 0), a mecânica não tem o que calibrar e os
+ * pontos voltam inalterados.
+ */
+export function aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(
+  pontos: PontoDaLinhaDoTempo[],
+  historicoRecente: EntradaHistoricaMes[],
+  curvaNovos: CurvaRecompra,
+  curvaReativados: CurvaRecompra,
+): PontoDaLinhaDoTempo[] {
+  const bruto = recompraMecanicaDoMes(0, pontos, historicoRecente, curvaNovos, curvaReativados);
+  const real = pontos[0]?.cenario.recompraConquistados.clientes ?? 0;
+  if (bruto <= 0) return pontos;
+  const fator = real / bruto;
+  return pontos.map((p, indice) => {
+    const clientes = recompraMecanicaDoMes(indice, pontos, historicoRecente, curvaNovos, curvaReativados) * fator;
+    const cenario: Cenario = { ...p.cenario, recompraConquistados: { ...p.cenario.recompraConquistados, clientes } };
+    return { ...p, cenario, totais: totaisCenario(cenario) };
+  });
+}

@@ -81,6 +81,12 @@ export interface PainelMeta {
     ltv12m: number | null;
     ltvAcumulado: Array<number | null>;
   };
+  /** A mesma curva de vida, mas para PARCEIROS REATIVADOS (voltaram depois de 6+ meses parados) — eles
+   * costumam recomprar mais rápido que um parceiro novo. Usada pelo Planejador (aba 3) para o vínculo
+   * mecânico opcional "entradas → recompra futura" (ver docs/inteligencia-clientes.md). Mesmo formato do
+   * `coorte` acima, sem o filtro de início do histórico (a entrada de um reativado é sempre observada
+   * dentro dos próprios dados, então não há o mesmo risco de censura à esquerda). */
+  coorteReativados: PainelMeta["coorte"];
   /** Faixa provável do faturamento mensal, medida pelo erro histórico do método "média dos 12 meses anteriores". */
   bandas: {
     amostras: number;
@@ -160,7 +166,7 @@ function acumuladorVazio(): Record<SegmentoId, AcumMes> {
   };
 }
 
-interface Entrada { chave: number; voltou: boolean }
+interface Entrada { chave: number; voltou: boolean; tipo: "novo" | "reativado"; clienteIdx: number }
 
 interface AcumMargem { faturamento: number; contribuicao: number }
 
@@ -191,6 +197,7 @@ function classificarTodos(base: Map<string, ClienteBase>, mesesInatividadeParaNo
     }
 
     gruposPorCliente.push(grupos.map(g => ({ chave: g.chave, valor: g.valor })));
+    const clienteIdx = gruposPorCliente.length - 1;
 
     let ultimaEntrada = -Infinity;
     for (let i = 0; i < grupos.length; i++) {
@@ -199,14 +206,14 @@ function classificarTodos(base: Map<string, ClienteBase>, mesesInatividadeParaNo
       if (i === 0) {
         segmento = "novos";
         ultimaEntrada = g.chave;
-        entradas.push({ chave: g.chave, voltou: grupos.length > 1 });
+        entradas.push({ chave: g.chave, voltou: grupos.length > 1, tipo: "novo", clienteIdx });
       } else {
         const anterior = grupos[i - 1].ultima;
         const lacuna = (g.primeira.getFullYear() - anterior.getFullYear()) * 12 + (g.primeira.getMonth() - anterior.getMonth());
         if (lacuna >= mesesInatividadeParaNovo) {
           segmento = "reativados";
           ultimaEntrada = g.chave;
-          entradas.push({ chave: g.chave, voltou: i < grupos.length - 1 });
+          entradas.push({ chave: g.chave, voltou: i < grupos.length - 1, tipo: "reativado", clienteIdx });
         } else {
           segmento = g.chave - ultimaEntrada <= MESES_CLIENTE_CONQUISTADO ? "recompraConquistados" : "carteira";
         }
@@ -368,29 +375,27 @@ function pearson(xs: number[], ys: number[]): number | null {
 
 const MESES_VIDA_COORTE = 12;
 
-/** Curva de vida de um parceiro novo. Só entram parceiros cuja 1ª compra caiu pelo menos 12 meses
- * depois do início do histórico (antes disso, "novo" pode ser um parceiro antigo que só apareceu
- * quando o histórico começou). Cada mês de vida usa só os parceiros que já viveram esse tempo. */
-function calcularCoorte(
+/** Curva de vida a partir de uma lista de entradas (novos OU reativados — a mesma conta serve para os
+ * dois): cada mês de vida usa só os parceiros que já viveram esse tempo desde a entrada. `entradas` já vem
+ * filtrada por tipo e pela janela de "início do histórico + 12 meses" (ver calcularCoorte/calcularCoorteReativados). */
+function calcularCurvaCoorte(
+  entradas: Array<{ chave: number; clienteIdx: number }>,
   gruposPorCliente: Array<Array<{ chave: number; valor: number }>>,
-  primeiraChaveDados: number,
   atual: number,
 ): PainelMeta["coorte"] {
-  const inicioCoorte = primeiraChaveDados + 12;
   const elegiveis = Array(MESES_VIDA_COORTE).fill(0) as number[];
   const ativos = Array(MESES_VIDA_COORTE).fill(0) as number[];
   const receita = Array(MESES_VIDA_COORTE).fill(0) as number[];
   let analisados = 0;
   let menorEntrada = Infinity, maiorEntrada = -Infinity;
 
-  for (const grupos of gruposPorCliente) {
-    if (grupos.length === 0) continue;
-    const entrada = grupos[0].chave;
-    if (entrada < inicioCoorte || entrada > atual - 1) continue;
+  for (const e of entradas) {
+    const { chave: entrada, clienteIdx } = e;
+    if (entrada > atual - 1) continue;
     analisados++;
     menorEntrada = Math.min(menorEntrada, entrada);
     maiorEntrada = Math.max(maiorEntrada, entrada);
-    const valorPorMes = new Map(grupos.map(g => [g.chave, g.valor] as const));
+    const valorPorMes = new Map(gruposPorCliente[clienteIdx].map(g => [g.chave, g.valor] as const));
     for (let k = 0; k < MESES_VIDA_COORTE; k++) {
       if (entrada + k > atual - 1) break;
       elegiveis[k]++;
@@ -420,6 +425,24 @@ function calcularCoorte(
     ltv12m: confiavel ? acumulado : null,
     ltvAcumulado,
   };
+}
+
+/** Curva de vida de um parceiro NOVO (1ª compra). Só entram parceiros cuja 1ª compra caiu pelo menos 12
+ * meses depois do início do histórico (antes disso, "novo" pode ser um parceiro antigo que só apareceu
+ * quando o histórico começou). */
+function calcularCoorte(entradas: Entrada[], gruposPorCliente: Array<Array<{ chave: number; valor: number }>>, primeiraChaveDados: number, atual: number): PainelMeta["coorte"] {
+  const inicioCoorte = primeiraChaveDados + 12;
+  const filtradas = entradas.filter(e => e.tipo === "novo" && e.chave >= inicioCoorte);
+  return calcularCurvaCoorte(filtradas, gruposPorCliente, atual);
+}
+
+/** Curva de vida de um parceiro REATIVADO (voltou depois de 6+ meses parado). Diferente da curva de
+ * "novos", não precisa do filtro de início do histórico: a entrada aqui é a LACUNA observada entre duas
+ * compras do próprio cliente, sempre dentro dos dados — não depende de saber o que aconteceu antes do
+ * histórico começar. Usada para o vínculo mecânico "entradas → recompra futura" no Planejador (aba 3):
+ * reativados costumam voltar a comprar bem mais rápido que um cliente novo (ver docs/inteligencia-clientes.md). */
+function calcularCoorteReativados(entradas: Entrada[], gruposPorCliente: Array<Array<{ chave: number; valor: number }>>, atual: number): PainelMeta["coorteReativados"] {
+  return calcularCurvaCoorte(entradas.filter(e => e.tipo === "reativado"), gruposPorCliente, atual);
 }
 
 /** Compara o mês em andamento com o MESMO CORTE DE DIAS do mesmo mês um ano antes (dia 1 até `hoje.getDate()`
@@ -583,7 +606,8 @@ export function calcularPainelMeta(
       anoAnteriorPct: margemJanela(margemPorMes, chavesMargemAnterior),
       periodo: `${rotuloMes(chavesMargem12[0])} a ${rotuloMes(chavesMargem12[11])}`,
     },
-    coorte: calcularCoorte(gruposPorCliente, primeiraChaveDados, atual),
+    coorte: calcularCoorte(entradas, gruposPorCliente, primeiraChaveDados, atual),
+    coorteReativados: calcularCoorteReativados(entradas, gruposPorCliente, atual),
     bandas: calcularBandas(errosRelativos),
     correlacoes: { meses: series.fat.length, itens: itensCorrelacao },
     retencao: calcularRetencao(gruposPorCliente, atual),

@@ -209,12 +209,29 @@ comparação conversão × gráficas novas), Próximos 12 meses (faixas
 pessimista/otimista, coorte e LTV). O ajuste de leads × conversão usa uma
 divisão do aumento de vendas (só orçamentos / metade e metade / só conversão).
 
-**Limitações declaradas:** os indicadores são tratados como alavancas
-independentes (na vida real mais gráficas novas hoje geram mais recompra
-depois); a faixa dos 12 meses sorteia erros como independentes (choques
-reais se repetem em sequência); a regressão de lucro usa poucos meses (R²
-~57% com 8 meses); o CAC considera só marketing lançado, sem equipe/comissão;
-o mês corrente ainda não entra (só meses fechados).
+**Limitações declaradas:** no Simulador e nas Metas comparadas (fotos de um
+só instante, sem "quando"), os indicadores são tratados como alavancas
+independentes — o solver ajusta o que for preciso pra fechar a meta, sem
+relação entre eles (ex.: travar "gráficas novas" não move sozinho a
+"Recompra de conquistadas", mesmo sendo real que mais gráficas novas hoje
+geram mais recompra depois). O Planejador (que já tem uma linha do tempo)
+tem essa relação como toggle opcional — ver "Recompra mecânica" abaixo — mas
+os dois outros continuam independentes de propósito, porque não há um
+"quando" pra aplicar o atraso de ~11 meses. A faixa dos 12 meses sorteia
+erros como independentes (choques reais se repetem em sequência); a
+regressão de lucro usa poucos meses (R² ~57% com 8 meses); o CAC considera
+só marketing lançado, sem equipe/comissão; o mês corrente ainda não entra
+(só meses fechados).
+
+**Metas comparadas respeita as travas do Simulador (27/09/2026):** até essa
+data, a tabela "Hoje × Meta 1 × Meta 2" recalculava do zero (`resolverMeta`
+com `fixos` vazio) mesmo quando o usuário tinha travado um indicador na
+aba 3 — um indicador travado em "30" no Simulador continuava aparecendo
+como se nada estivesse travado aqui. Agora `montarComparativo` recebe os
+mesmos `fixos`: a linha travada mostra o mesmo valor nas duas metas (com
+cadeado 🔒 e nota), e as outras linhas se ajustam mais ou menos pra
+compensar, em vez de todas subirem na mesma proporção fixa. "Hoje"
+continua sendo o histórico real, nunca o valor travado.
 
 ### Planejador de meta (dentro da aba 3 — Simulador)
 
@@ -319,6 +336,66 @@ distribuição mês a mês, não a resposta de quando a capacidade do negócio
 fica suficiente. O consultor de IA recebe os dois (comparativo + lista de
 meses confiáveis) e foi instruído a nunca chamar um mês de
 "historicamente fraco/forte" fora dessa lista.
+
+### Recompra mecânica: gráficas novas/reativadas → recompra futura (27/09/2026)
+
+O usuário travou "gráficas novas = 30" no Simulador e esperava ver isso
+refletir em **todos** os outros indicadores — em especial "Recompra de
+gráficas conquistadas", citando (de memória, meio impreciso) "a taxa de
+retorno de 30%". Antes de implementar, conferi os números reais:
+
+- A taxa real (`p.recompra.taxaPct`) é **47,7%**, e mede algo diferente do
+  que o usuário lembrava: "de cada 100 gráficas que entraram, quantas
+  compraram de novo ALGUMA VEZ em 12 meses" — não uma taxa mensal.
+- A curva de vida por mês (`coorte`/`coorteReativados`, ver abaixo) mostra
+  que **gráficas reativadas voltam bem mais rápido que gráficas novas**:
+  22%/20%/20%/15%... nos primeiros meses contra 15%/12%/9%/8% de uma
+  gráfica nova. Structurally, "Recompra de conquistadas" É uma consequência
+  de quantas gráficas novas/reativadas entraram nos últimos ~12 meses — só
+  que essa relação é **lenta** (leva até 11 meses pra aparecer inteira) e,
+  medida mês a mês, **tem viés**: a primeira versão do cálculo (sem
+  calibrar) previu 53 gráficas/mês de recompra para "hoje", quando o real é
+  38 — um erro de **+34%** só de aplicar a curva de vida crua.
+
+**Como foi implementado (`shared/planejador-meta.ts`):**
+
+- `server/services/painelMeta.ts` agora tem **duas curvas de vida**
+  separadas: `coorte` (gráficas novas, já existia) e `coorteReativados`
+  (novo — mesma conta, generalizada em `calcularCurvaCoorte`, sem o filtro
+  de "início do histórico + 12 meses" que só a coorte de novos precisa,
+  porque a entrada de um reativado — a lacuna de 6+ meses entre duas
+  compras do mesmo cliente — é sempre observada dentro dos próprios dados).
+  `Entrada` ganhou `tipo` ("novo"/"reativado") e `clienteIdx` para permitir
+  a curva por tipo sem duplicar a lógica de `classificarTodos`.
+- `recompraMecanicaDoMes`/`aplicarRecompraMecanicaNaLinhaDoTempo`: para o
+  mês `k` do Planejador, soma o que cada turma de entrada (novos e
+  reativados) dos até 11 meses anteriores costuma comprar de novo naquele
+  mês de vida — turmas antes de "hoje" usam `historico` real (12 meses,
+  já existia; usa os últimos 11), turmas dentro do plano usam o próprio
+  ritmo (rampa) daquele mês, já calculado pela linha do tempo.
+- **`aplicarRecompraMecanicaCalibradaNaLinhaDoTempo` é a versão usada na
+  tela** (não a crua): reescala a curva inteira por um fator único (`real
+  ÷ bruto` no mês 0) para o mês 0 bater exatamente com o valor real de
+  hoje — corrige o viés de +34% mantendo o FORMATO da mecânica (reativados
+  mais rápidos, efeito de ~11 meses de atraso). Testado com os dados reais:
+  a versão calibrada, com 30 gráficas novas/mês sustentadas, sai de 38,4
+  hoje para ~44 depois de ~15 meses — gradual, plausível, nada parecido
+  com o salto para 53+ da versão crua.
+
+Na tela (dentro do Planejador), o toggle **"Recompra segue as gráficas
+novas/reativadas (mecânica)"** (desligado por padrão) troca o valor livre
+de "Recompra de conquistadas" pelo valor mecânico calibrado — soma uma
+linha ao gráfico e uma coluna à tabela (a mesma linha/coluna da
+sazonalidade: se os dois toggles estiverem ligados, os efeitos se somam
+numa linha só, "Com sazonalidade + mecânica de recompra", em vez de
+poluir o gráfico com 4 linhas). **Também não muda "quando chego lá"** — a
+mecânica é informativa (mostra se a recompra "livre" que o solver está
+assumindo é mais otimista ou mais pessimista que a curva real sugere), não
+substitui o ajuste automático da meta. Motivo de ficar desligada por
+padrão: prever o valor de UM mês específico por essa mecânica já tinha
+sido testado e descartado como método de PREVISÃO (35,7% de erro contra
+31% da média simples, ver seção do Planejador acima) — ela serve melhor
+para ver a TENDÊNCIA de vários meses do que para acertar um mês isolado.
 
 ### Consultor de IA (aba 6 do Painel da Meta)
 

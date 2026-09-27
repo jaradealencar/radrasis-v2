@@ -92,3 +92,39 @@ describe("calcularPainelMeta — sazonalidade por mês e comparativo com o ano a
     expect(painel.sazonalidade.fatoresNormalizados).toEqual(Array(12).fill(1));
   });
 });
+
+describe("calcularPainelMeta — coorte de novos x coorte de reativados (curvas separadas)", () => {
+  it("cada curva tem o próprio pico de recompra, no mês de vida certo, sem misturar uma com a outra", () => {
+    const base = new Map<string, ClienteBase>();
+    // Grupo A ("novos"): entram em fev/2025 (bem depois do início do histórico) e só recompram no k=3.
+    for (let i = 0; i < 20; i++) {
+      base.set(`novo${i}`, cliente(`novo${i}`, [[2025, 2, 10, 1000], [2025, 5, 10, 900]])); // fev/2025 → mai/2025 = k=3
+    }
+    // Grupo B ("reativados"): 1ª compra em jan/2024 (define o início do histórico), somem por 7 meses
+    // (lacuna >= 6 → reativado em ago/2024) e recompram de novo só no k=2 do reativado (out/2024).
+    for (let i = 0; i < 20; i++) {
+      base.set(`reat${i}`, cliente(`reat${i}`, [[2024, 1, 10, 1000], [2024, 8, 10, 900], [2024, 10, 10, 800]]));
+    }
+    const painel = calcularPainelMeta(base, HOJE, 6);
+
+    expect(painel.coorte.meses[3].ativosPct).toBe(100); // novos: pico no k=3
+    expect(painel.coorte.meses[2].ativosPct).toBe(0); // não no k=2
+
+    expect(painel.coorteReativados.meses[2].ativosPct).toBe(100); // reativados: pico no k=2
+    expect(painel.coorteReativados.meses[3].ativosPct).toBe(0); // não no k=3
+
+    // O grupo B entrou pela 1ª vez em jan/2024, então também conta pra coorte de NOVOS — mas o padrão
+    // deles como novos (nada no k=3, sumiram) é diferente do padrão deles como reativados.
+    expect(painel.coorte.parceirosAnalisados).toBeGreaterThanOrEqual(20);
+    expect(painel.coorteReativados.parceirosAnalisados).toBe(20);
+  });
+
+  it("sem nenhum reativado no histórico, a curva de reativados fica vazia (sem dividir por zero)", () => {
+    const base = new Map<string, ClienteBase>();
+    for (let i = 0; i < 15; i++) base.set(`c${i}`, cliente(`c${i}`, [[2025, 3, 10, 1000]]));
+    const painel = calcularPainelMeta(base, HOJE, 6);
+    expect(painel.coorteReativados.parceirosAnalisados).toBe(0);
+    expect(painel.coorteReativados.periodo).toBe("—");
+    expect(painel.coorteReativados.meses.every(m => m.ativosPct === null)).toBe(true);
+  });
+});

@@ -3,6 +3,8 @@ import {
   mesApos, prazoValido, horizonteDaLinhaDoTempo, interpolarCenario, linhaDoTempo, primeiroMesNaMeta,
   PRAZO_PADRAO_MESES, PRAZO_MAXIMO_MESES, HORIZONTE_MINIMO_MESES,
   confiabilidadeSazonalPorMes, fatoresSazonaisNormalizados, aplicarFatorSazonal, aplicarSazonalidadeNaLinhaDoTempo,
+  aplicarRecompraMecanicaNaLinhaDoTempo, aplicarRecompraMecanicaCalibradaNaLinhaDoTempo,
+  type CurvaRecompra, type EntradaHistoricaMes,
 } from "../../shared/planejador-meta";
 import { resolverMeta, totaisCenario, aplicarFator, type Cenario } from "../../shared/meta-faturamento";
 
@@ -224,5 +226,88 @@ describe("aplicarSazonalidadeNaLinhaDoTempo", () => {
     const ajustados = aplicarSazonalidadeNaLinhaDoTempo(pontos, REF, fatores);
     expect(ajustados.map(p => p.mes)).toEqual(pontos.map(p => p.mes));
     expect(ajustados.map(p => p.progresso)).toEqual(pontos.map(p => p.progresso));
+  });
+});
+
+describe("aplicarRecompraMecanicaNaLinhaDoTempo", () => {
+  // Curvas simples e artificiais (não as reais) para poder conferir a conta na mão: novos só voltam
+  // (100%) no k=2; reativados só voltam (100%) no k=1. Os outros k ficam sem dado (null) de propósito,
+  // pra testar que "sem taxa" não conta nada (nem quebra a conta).
+  const curvaNovos: CurvaRecompra = [{ k: 2, ativosPct: 100 }];
+  const curvaReativados: CurvaRecompra = [{ k: 1, ativosPct: 100 }];
+  // 11 meses de histórico (índices 0..10 = plano -11..-1); só o mês -1 (índice 10) e o -2 (índice 9) têm
+  // entrada, os demais são 0 — assim dá pra isolar o efeito de cada um.
+  const historico11: EntradaHistoricaMes[] = Array.from({ length: 11 }, () => ({ novos: 0, reativados: 0 }));
+  historico11[10] = { novos: 5, reativados: 7 }; // plano -1
+  historico11[9] = { novos: 11, reativados: 13 }; // plano -2
+
+  it("hoje (mês 0): usa só o histórico (nada do plano ainda) e aplica a taxa do k certo", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 3); // cenário plano — isola o efeito da mecânica
+    const ajustados = aplicarRecompraMecanicaNaLinhaDoTempo(pontos, historico11, curvaNovos, curvaReativados);
+    // mês 0: k=1 → histórico -1 (reativados=7, taxa 100%) = 7; k=2 → histórico -2 (novos=11, taxa 100%) = 11
+    expect(ajustados[0].cenario.recompraConquistados.clientes).toBeCloseTo(7 + 11, 9);
+  });
+
+  it("mistura histórico (meses antes de hoje) com o ritmo do próprio plano (meses depois de hoje)", () => {
+    const regime: Cenario = { ...BASE, novos: { ...BASE.novos, clientes: 100 }, reativados: { ...BASE.reativados, clientes: 200 } };
+    const pontos = linhaDoTempo(BASE, regime, 1, 3); // no mês 1 em diante, novos=100 e reativados=200 (cenário final)
+    const ajustados = aplicarRecompraMecanicaNaLinhaDoTempo(pontos, historico11, curvaNovos, curvaReativados);
+    // mês 1: k=1 → mês 0 (histórico, "hoje" = base, não o regime) → reativados=BASE.reativados.clientes
+    //        k=2 → histórico -1 (novos=5, taxa 100%) = 5
+    expect(ajustados[1].cenario.recompraConquistados.clientes).toBeCloseTo(BASE.reativados.clientes + 5, 6);
+    // mês 3: k=1 → mês 2 (já no regime: reativados=200) = 200; k=2 → mês 1 (já no regime: novos=100) = 100
+    expect(ajustados[3].cenario.recompraConquistados.clientes).toBeCloseTo(200 + 100, 6);
+  });
+
+  it("k sem taxa (null) não contribui em nada — não é tratado como 0% nem quebra", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 1);
+    const semCurvas = aplicarRecompraMecanicaNaLinhaDoTempo(pontos, historico11, [], []);
+    expect(semCurvas.every(p => p.cenario.recompraConquistados.clientes === 0)).toBe(true);
+  });
+
+  it("recalcula o faturamento total do ponto (não só o campo recompraConquistados)", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 0);
+    const ajustados = aplicarRecompraMecanicaNaLinhaDoTempo(pontos, historico11, curvaNovos, curvaReativados);
+    expect(ajustados[0].totais.faturamento).toBeCloseTo(totaisCenario(ajustados[0].cenario).faturamento, 6);
+    expect(ajustados[0].totais.faturamento).not.toBeCloseTo(FAT_BASE, 0); // mudou (a recompra não é mais a da BASE)
+  });
+
+  it("mantém pedidosPorCliente e ticket da recompra intactos — só a contagem de clientes muda", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 0);
+    const ajustados = aplicarRecompraMecanicaNaLinhaDoTempo(pontos, historico11, curvaNovos, curvaReativados);
+    expect(ajustados[0].cenario.recompraConquistados.pedidosPorCliente).toBe(BASE.recompraConquistados.pedidosPorCliente);
+    expect(ajustados[0].cenario.recompraConquistados.ticket).toBe(BASE.recompraConquistados.ticket);
+  });
+});
+
+describe("aplicarRecompraMecanicaCalibradaNaLinhaDoTempo", () => {
+  const curvaNovos: CurvaRecompra = [{ k: 2, ativosPct: 100 }];
+  const curvaReativados: CurvaRecompra = [{ k: 1, ativosPct: 100 }];
+  const historico11: EntradaHistoricaMes[] = Array.from({ length: 11 }, () => ({ novos: 0, reativados: 0 }));
+  historico11[10] = { novos: 5, reativados: 7 };
+  historico11[9] = { novos: 11, reativados: 13 };
+  // bruto do mês 0 (mesma conta do describe anterior): k=1 → reativados do histórico -1 (7) + k=2 → novos do histórico -2 (11) = 18.
+  const BRUTO_MES_0 = 18;
+
+  it("o mês 0 (hoje) sempre bate exatamente com o valor real — é a própria calibração", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 3);
+    const calibrada = aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(pontos, historico11, curvaNovos, curvaReativados);
+    expect(calibrada[0].cenario.recompraConquistados.clientes).toBeCloseTo(BASE.recompraConquistados.clientes, 9);
+  });
+
+  it("os outros meses seguem a MESMA proporção da versão crua, só escalados pelo fator de calibração", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 3);
+    const crua = aplicarRecompraMecanicaNaLinhaDoTempo(pontos, historico11, curvaNovos, curvaReativados);
+    const calibrada = aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(pontos, historico11, curvaNovos, curvaReativados);
+    const fatorEsperado = BASE.recompraConquistados.clientes / BRUTO_MES_0;
+    for (let i = 0; i <= 3; i++) {
+      expect(calibrada[i].cenario.recompraConquistados.clientes).toBeCloseTo(crua[i].cenario.recompraConquistados.clientes * fatorEsperado, 6);
+    }
+  });
+
+  it("sem previsão nenhuma no mês 0 (bruto = 0), devolve os pontos sem mudar nada", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 2);
+    const semDado = aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(pontos, historico11, [], []); // curvas vazias → bruto sempre 0
+    expect(semDado).toBe(pontos); // mesma referência: devolveu sem tocar
   });
 });

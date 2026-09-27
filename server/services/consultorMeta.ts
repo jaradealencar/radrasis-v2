@@ -203,6 +203,9 @@ export function montarContextoConsultorEmPartes(p: PainelCompleto, e: EntradaCon
   if (p.coorte.ltv12m !== null) {
     L.push(`- Uma gráfica nova rende em média ${brl(p.coorte.ltv12m)} nos primeiros 12 meses, sendo ${brl(p.coorte.meses[0]?.receitaPorParceiro ?? 0)} na 1ª compra. Depois da 1ª compra, ${p.coorte.meses.slice(1).map(m => pct(m.ativosPct, 0)).join(", ")} (mês 1 a 11) compram em cada mês. Base: ${p.coorte.parceirosAnalisados} gráficas (${p.coorte.periodo}).`);
   }
+  if (p.coorteReativados.parceirosAnalisados > 0) {
+    L.push(`- Gráfica reativada recompra mais rápido que gráfica nova: depois de voltar, ${p.coorteReativados.meses.slice(1).map(m => pct(m.ativosPct, 0)).join(", ")} (mês 1 a 11) compram em cada mês. Base: ${p.coorteReativados.parceirosAnalisados} reativações (${p.coorteReativados.periodo}).`);
+  }
   if (p.marketing?.cacPorNovo) L.push(`- Marketing de aquisição: ${brl(p.marketing.investimentoMedioMensal)}/mês para ${num(p.marketing.novosMedioMensal, 0)} novas/mês = ${brl(p.marketing.cacPorNovo)} por gráfica nova${p.coorte.ltv12m ? ` (retorno de ~${num(p.coorte.ltv12m / p.marketing.cacPorNovo, 0)}× em 12 meses)` : ""}. Não inclui equipe comercial nem comissões.`);
   L.push("");
 

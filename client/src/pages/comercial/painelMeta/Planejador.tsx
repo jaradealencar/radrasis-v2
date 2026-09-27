@@ -7,7 +7,8 @@ import { CalendarClock, CalendarRange, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { totaisCenario, dividirFunil, type ResultadoMeta } from "@shared/meta-faturamento";
 import {
-  mesApos, prazoValido, aplicarSazonalidadeNaLinhaDoTempo, PRAZO_MAXIMO_MESES, type PontoDaLinhaDoTempo,
+  mesApos, prazoValido, aplicarSazonalidadeNaLinhaDoTempo, aplicarRecompraMecanicaCalibradaNaLinhaDoTempo,
+  PRAZO_MAXIMO_MESES, type PontoDaLinhaDoTempo, type EntradaHistoricaMes, type CurvaRecompra,
 } from "@shared/planejador-meta";
 import type { PainelMetaDados, LinhaAplicarMeta } from "./tipos";
 import { CampoNumero, Cartao, Selo, brlCurto, fmtBrl, fmtNum, fmtPct, kMil } from "./comuns";
@@ -53,22 +54,43 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
   // DISTRIBUIÇÃO mês a mês; "quando chego lá" continua respondendo pelo ritmo médio (linha "Com o cenário").
   const [comSazonalidade, setComSazonalidade] = useState(false);
   const mesesAjustados = data.sazonalidade.porMes.filter(m => m.confiavel);
-  const pontosSazonais = comSazonalidade
-    ? aplicarSazonalidadeNaLinhaDoTempo(pontos, data.dataReferencia, data.sazonalidade.fatoresNormalizados)
-    : null;
+
+  // Recompra mecânica (opcional, desligada por padrão): em vez de deixar "Recompra de gráficas
+  // conquistadas" livre para o solver ajustar do jeito que for preciso, ela vira CONSEQUÊNCIA das gráficas
+  // novas/reativadas dos últimos ~11 meses, pela curva de vida real de cada tipo (reativados costumam
+  // voltar mais rápido que novos). Calibrada para bater com o valor real de hoje — ver
+  // docs/inteligencia-clientes.md sobre o viés que a versão crua tinha (chegava a +34%).
+  const [comMecanica, setComMecanica] = useState(false);
+  const historicoRecente: EntradaHistoricaMes[] = data.historico.slice(1).map(h => ({ novos: h.clientes.novos, reativados: h.clientes.reativados }));
+  const curvaNovos: CurvaRecompra = data.coorte.meses.filter(m => m.k >= 1);
+  const curvaReativados: CurvaRecompra = data.coorteReativados.meses.filter(m => m.k >= 1);
+
+  let pontosAjustados: PontoDaLinhaDoTempo[] | null = null;
+  const rotulosAjuste: string[] = [];
+  if (comMecanica) {
+    pontosAjustados = aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(pontosAjustados ?? pontos, historicoRecente, curvaNovos, curvaReativados);
+    rotulosAjuste.push("mecânica de recompra");
+  }
+  if (comSazonalidade) {
+    pontosAjustados = aplicarSazonalidadeNaLinhaDoTempo(pontosAjustados ?? pontos, data.dataReferencia, data.sazonalidade.fatoresNormalizados);
+    rotulosAjuste.push("sazonalidade");
+  }
+  const nomeLinhaAjustada = rotulosAjuste.length > 0 ? `Com ${rotulosAjuste.join(" + ")}` : "";
 
   const linhas = pontos.map((p, i) => {
     const fat = p.totais.faturamento;
     const funil = dividirFunil(totaisBase.vendas, p.totais.vendas, funilAtual, pesoConversao);
     const ref = p.mes >= 1 ? data.projecao[p.mes - 1]?.mediaMesmoMes ?? null : null;
-    const pSaz = pontosSazonais?.[i];
+    const ajustado = pontosAjustados?.[i];
+    const fatAjustado = ajustado ? ajustado.totais.faturamento : undefined;
     return {
       k: p.mes,
       rotulo: rotulo(p.mes),
       eixo: p.mes === 0 ? `${curto(rotulo(p.mes))} (hoje)` : curto(rotulo(p.mes)),
       fat,
-      fatSazonal: pSaz ? pSaz.totais.faturamento : undefined,
-      ajustadoNoMes: mesesAjustados.some(m => m.mes === mesApos(data.dataReferencia, p.mes).mes),
+      fatAjustado,
+      recompraAjustada: ajustado?.cenario.recompraConquistados.clientes,
+      mudouNoMes: fatAjustado !== undefined && Math.abs(fatAjustado - fat) > 1,
       baseline: real12,
       faixa: bandaMes ? [fat * (1 + bandaMes.pessimista), fat * (1 + bandaMes.otimista)] : undefined,
       totais: p.totais,
@@ -81,7 +103,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
   const pontoDaMeta = mesMeta !== null ? linhas[mesMeta] : null;
 
   // Eixo vertical com degraus iguais (o automático do gráfico escolhe degraus irregulares com a faixa azul).
-  const todosOsValores = linhas.flatMap(l => [l.fat, l.baseline, l.fatSazonal, ...(l.faixa ?? [])].filter((v): v is number => v !== undefined)).concat(meta);
+  const todosOsValores = linhas.flatMap(l => [l.fat, l.baseline, l.fatAjustado, ...(l.faixa ?? [])].filter((v): v is number => v !== undefined)).concat(meta);
   const eixoMin = Math.max(0, Math.floor(Math.min(...todosOsValores) / PASSO_EIXO) * PASSO_EIXO);
   const eixoMax = Math.ceil(Math.max(...todosOsValores) / PASSO_EIXO) * PASSO_EIXO;
   const marcasDoEixo = Array.from({ length: Math.round((eixoMax - eixoMin) / PASSO_EIXO) + 1 }, (_, i) => eixoMin + i * PASSO_EIXO);
@@ -193,19 +215,31 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 flex-wrap mt-3">
-        <label className="flex items-center gap-2 text-xs text-slate-600">
-          <input type="checkbox" checked={comSazonalidade} onChange={e => setComSazonalidade(e.target.checked)} className="accent-blue-600" />
-          Ajustar cada mês pela sazonalidade
-        </label>
-        {mesesAjustados.length > 0 ? (
+      <div className="space-y-2 mt-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={comSazonalidade} onChange={e => setComSazonalidade(e.target.checked)} className="accent-blue-600" />
+            Ajustar cada mês pela sazonalidade
+          </label>
+          {mesesAjustados.length > 0 ? (
+            <p className="text-[11px] text-slate-500">
+              Só {mesesAjustados.map(m => `${NOMES_MES[m.mes - 1]} (${m.fatorAjustado >= 1 ? "+" : ""}${fmtNum((m.fatorAjustado - 1) * 100, 0)}%, ${m.observacoes} anos seguidos concordando)`).join(" e ")}
+              {" "}têm padrão confiável; os outros meses, sem padrão estável, ficam sem ajuste.
+            </p>
+          ) : (
+            <p className="text-[11px] text-slate-500">Ainda não há nenhum mês com padrão sazonal confiável (poucos anos de histórico ou os anos discordam entre si).</p>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={comMecanica} onChange={e => setComMecanica(e.target.checked)} className="accent-blue-600" />
+            Recompra segue as gráficas novas/reativadas (mecânica), não fica livre
+          </label>
           <p className="text-[11px] text-slate-500">
-            Só {mesesAjustados.map(m => `${NOMES_MES[m.mes - 1]} (${m.fatorAjustado >= 1 ? "+" : ""}${fmtNum((m.fatorAjustado - 1) * 100, 0)}%, ${m.observacoes} anos seguidos concordando)`).join(" e ")}
-            {" "}têm padrão confiável; os outros meses, sem padrão estável, ficam sem ajuste.
+            Gráficas reativadas costumam recomprar bem mais rápido que gráficas novas ({fmtNum(curvaReativados[0]?.ativosPct ?? 0, 0)}% no 1º mês depois de voltar, contra {fmtNum(curvaNovos[0]?.ativosPct ?? 0, 0)}% de uma gráfica nova) —
+            {" "}o efeito de mudar o ritmo de entrada leva até 11 meses para aparecer inteiro na recompra.
           </p>
-        ) : (
-          <p className="text-[11px] text-slate-500">Ainda não há nenhum mês com padrão sazonal confiável (poucos anos de histórico ou os anos discordam entre si).</p>
-        )}
+        </div>
       </div>
 
       <div className="mt-2">
@@ -220,8 +254,8 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
             {bandaMes && <Area dataKey="faixa" name="Faixa provável de um mês no cenário" stroke="none" fill="#93c5fd" fillOpacity={0.25} isAnimationActive={false} />}
             <Line dataKey="baseline" name="Se nada mudar" stroke="#94a3b8" strokeDasharray="5 4" strokeWidth={2} dot={false} isAnimationActive={false} />
             <Line dataKey="fat" name="Com o cenário (ritmo médio)" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive={false} />
-            {comSazonalidade && (
-              <Line dataKey="fatSazonal" name="Com sazonalidade (mês a mês)" stroke="#c026d3" strokeWidth={2} strokeDasharray="2 2" dot={{ r: 2 }} isAnimationActive={false} />
+            {pontosAjustados && (
+              <Line dataKey="fatAjustado" name={nomeLinhaAjustada} stroke="#c026d3" strokeWidth={2} strokeDasharray="2 2" dot={{ r: 2 }} isAnimationActive={false} />
             )}
             {pontoDaMeta && (
               <ReferenceDot x={pontoDaMeta.eixo} y={pontoDaMeta.fat} r={7} fill="#059669" stroke="#fff" strokeWidth={2} label={{ value: pontoDaMeta.rotulo, position: "top", fill: "#047857", fontSize: 11, fontWeight: 700 }} />
@@ -236,7 +270,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
             <tr className="text-[11px] text-slate-400 text-right">
               <th className="text-left font-medium pb-1">Mês</th>
               <th className="font-medium pb-1 px-2">Faturamento (ritmo médio)</th>
-              {comSazonalidade && <th className="font-medium pb-1 px-2" title="Só muda nos meses com padrão sazonal confiável">Com sazonalidade</th>}
+              {pontosAjustados && <th className="font-medium pb-1 px-2" title={`Faturamento com ${rotulosAjuste.join(" e ")} aplicado(s)`}>{nomeLinhaAjustada}</th>}
               <th className="font-medium pb-1 px-2">Contra hoje</th>
               <th className="font-medium pb-1 px-2">Pedidos</th>
               <th className="font-medium pb-1 px-2">Ticket médio</th>
@@ -244,6 +278,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
               <th className="font-medium pb-1 px-2">Conversão</th>
               <th className="font-medium pb-1 px-2">Gráficas novas</th>
               <th className="font-medium pb-1 px-2">Reativadas</th>
+              {comMecanica && <th className="font-medium pb-1 px-2" title="Recompra de conquistadas com a mecânica aplicada">Recompra (mecânica)</th>}
               <th className="font-medium pb-1 pl-2" title="Média do faturamento do mesmo mês nos anos anteriores (referência, não entra na conta)">Mesmo mês em anos anteriores</th>
               {onAplicarComoMeta && <th className="font-medium pb-1 pl-2"></th>}
             </tr>
@@ -258,9 +293,9 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
                     {cruzou && l.k > 0 && <span className="ml-1 text-emerald-700 font-bold">← chega na meta</span>}
                   </td>
                   <td className="py-1.5 px-2 font-semibold text-blue-700">{brlCurto(l.fat)}</td>
-                  {comSazonalidade && (
-                    <td className={`py-1.5 px-2 font-semibold ${l.ajustadoNoMes ? "text-fuchsia-700" : "text-slate-400"}`}>
-                      {l.fatSazonal !== undefined ? brlCurto(l.fatSazonal) : "—"}
+                  {pontosAjustados && (
+                    <td className={`py-1.5 px-2 font-semibold ${l.mudouNoMes ? "text-fuchsia-700" : "text-slate-400"}`}>
+                      {l.fatAjustado !== undefined ? brlCurto(l.fatAjustado) : "—"}
                     </td>
                   )}
                   <td className="py-1.5 px-2 text-slate-500">{l.k === 0 ? "—" : `${l.fat >= real12 ? "+" : ""}${fmtNum((l.fat / real12 - 1) * 100, 1)}%`}</td>
@@ -270,6 +305,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
                   <td className="py-1.5 px-2 text-slate-600">{l.conversaoPct !== null ? `${fmtNum(l.conversaoPct, 1)}%` : "—"}</td>
                   <td className="py-1.5 px-2 text-slate-600">{fmtNum(l.cenario.novos.clientes, 1)}</td>
                   <td className="py-1.5 px-2 text-slate-600">{fmtNum(l.cenario.reativados.clientes, 1)}</td>
+                  {comMecanica && <td className="py-1.5 px-2 text-fuchsia-700 font-medium">{l.recompraAjustada !== undefined ? fmtNum(l.recompraAjustada, 1) : "—"}</td>}
                   <td className="py-1.5 pl-2 text-slate-400">{l.ref !== null ? brlCurto(l.ref) : "—"}</td>
                   {onAplicarComoMeta && (
                     <td className="py-1.5 pl-2">
@@ -297,6 +333,9 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
         {" "}"Com o cenário" é o RITMO médio (o que decide "quando chego lá"); "Com sazonalidade" redistribui esse mesmo total pelos 12 meses do calendário — novembro puxando pra cima e dezembro pra baixo, por
         exemplo — sem mudar a média do ano. Testamos aplicar sazonalidade em TODAS as previsões e isso piorou o resultado (22% de erro contra 17% da média simples); por isso ela só ajusta os meses em que os
         anos concordam entre si, e fica desligada por padrão.
+        {" "}"Recompra segue as gráficas novas/reativadas" troca o valor livre de "Recompra de conquistadas" pelo que a curva de vida de cada gráfica nova ou reativada dos últimos ~11 meses sugere — calibrada
+        para bater exatamente com o valor de hoje (a versão sem calibrar chegou a errar 34% para cima num teste). Também desligada por padrão: prever o valor de UM mês específico por essa mecânica já errou
+        mais (35,7%) do que só olhar a média recente (31%) — ela serve melhor para ver a TENDÊNCIA de vários meses do que para acertar um mês isolado.
       </p>
     </Cartao>
   );
