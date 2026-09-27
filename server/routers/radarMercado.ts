@@ -5,7 +5,8 @@ import { getDb } from "../db/db";
 import { radarMercadoConfig, sinaisMercado } from "../../drizzle/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { buscarNaWeb, buscaConfigurada } from "../integrations/serpapi-client";
-import { invokeLLM } from "../_core/llm";
+import { extrairSinalMercado } from "../services/radarMercadoLlm";
+import { provedoresDisponiveis } from "../services/consultorLlm";
 
 // ─── Configuração padrão combinada com o usuário em 2026-09 ──────────────────
 // Regiões Centro-Oeste, Sudeste e Sul (sem representatividade nas demais
@@ -122,6 +123,9 @@ export const radarMercadoRouter = router({
     if (!buscaConfigurada()) {
       throw new Error("Radar sem busca configurada — falta SERPAPI_KEY no servidor (ver .env.example).");
     }
+    if (provedoresDisponiveis().length === 0) {
+      throw new Error("Nenhuma chave de IA configurada no servidor (GEMINI_API_KEY, ANTHROPIC_API_KEY ou OPENAI_API_KEY) — a extração de sinais depende de uma delas.");
+    }
     const config = parseConfig(await carregarConfig(db));
 
     const existentes = new Set((await db.select({ urlHash: sinaisMercado.urlHash }).from(sinaisMercado)).map(r => r.urlHash));
@@ -151,38 +155,7 @@ export const radarMercadoRouter = router({
         if (dominioExcluido) { ignorados++; continue; }
 
         try {
-          const resp = await invokeLLM({
-            messages: [
-              {
-                role: "system",
-                content: `Você extrai sinais comerciais de resultados de busca para uma fábrica de letras/letreiros/fachadas que vende por terceirização para gráficas e empresas de comunicação visual, nas regiões Centro-Oeste, Sudeste e Sul do Brasil. Analise o título e trecho fornecidos. Marque relevante=false se não tiver relação plausível com esse contexto (ex: notícia genérica sem relação, empresa de outro ramo, fora das regiões-alvo quando identificável). Nunca invente dados que não estejam no texto — campos desconhecidos ficam null. nivelConfianca="confirmado" só se o trecho afirma o fato diretamente (não inferência sua); senão "inferencia".`,
-              },
-              { role: "user", content: `Título: ${item.title}\nTrecho: ${item.snippet}\nURL: ${item.link}\nSite: ${item.displayLink}\nTermo de busca que trouxe este resultado: ${termo}` },
-            ],
-            response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "sinal_mercado",
-                strict: true,
-                schema: {
-                  type: "object",
-                  properties: {
-                    relevante: { type: "boolean" },
-                    empresa: { type: ["string", "null"] },
-                    uf: { type: ["string", "null"] },
-                    municipio: { type: ["string", "null"] },
-                    tipoEvento: { type: ["string", "null"], enum: ["inauguracao", "reforma", "expansao", "edital", "concorrente", "outro", null] },
-                    relacaoProdutos: { type: ["string", "null"] },
-                    nivelConfianca: { type: "string", enum: ["confirmado", "inferencia"] },
-                  },
-                  required: ["relevante", "empresa", "uf", "municipio", "tipoEvento", "relacaoProdutos", "nivelConfianca"],
-                  additionalProperties: false,
-                },
-              },
-            },
-          });
-          const conteudo = resp.choices?.[0]?.message?.content;
-          const extraido = JSON.parse(typeof conteudo === "string" ? conteudo : "{}");
+          const extraido = await extrairSinalMercado(item, termo);
           if (!extraido.relevante) { ignorados++; continue; }
 
           await db.insert(sinaisMercado).values({

@@ -32,11 +32,16 @@ exige ("não invente minha cidade ou área de atendimento").
    deduplicando por hash da URL contra
    `sinais_mercado` (nunca reprocessa o mesmo link).
 3. Cada resultado novo passa por uma extração estruturada via IA
-   (`invokeLLM` com `response_format: json_schema`) que decide se é
-   relevante (relacionado ao catálogo/segmento) e extrai empresa, UF/
-   município, tipo de evento e nível de confiança (`confirmado` só quando o
-   trecho afirma o fato diretamente, `inferencia` caso contrário). Resultado
-   marcado como não relevante é descartado, não gravado.
+   (`server/services/radarMercadoLlm.ts`) que decide se é relevante
+   (relacionado ao catálogo/segmento) e extrai empresa, UF/município, tipo
+   de evento e nível de confiança (`confirmado` só quando o trecho afirma o
+   fato diretamente, `inferencia` caso contrário). Resultado marcado como
+   não relevante é descartado, não gravado. Como o Consultor da Meta
+   (`server/services/consultorLlm.ts`), tenta os provedores com chave
+   configurada nesta ordem — Gemini → Claude → OpenAI — e cai para o
+   próximo se um falhar (sem crédito, limite, chave ausente); adicionado em
+   2026-09 depois de a extração parar de vez com a OpenAI sem crédito e sem
+   fallback nenhum.
 4. Sinais salvos entram com status `novo`; o usuário evolui o status pela
    tela (`qualificando` → `oportunidade` → `associado_cliente` ou
    `descartado`/`expirado`).
@@ -46,7 +51,9 @@ exige ("não invente minha cidade ou área de atendimento").
 Sem `SERPAPI_KEY` (ver `.env.example`), a configuração fica pronta e
 editável, mas o botão "Buscar sinais agora" erra com uma mensagem clara em
 vez de simular dados — nunca inventa sinal sem fonte real, conforme exigido
-pelo prompt de origem.
+pelo prompt de origem. Sem nenhuma chave de IA (`GEMINI_API_KEY`,
+`ANTHROPIC_API_KEY` ou `OPENAI_API_KEY`) o mesmo vale para a etapa de
+extração — erra cedo, antes de gastar chamadas de busca.
 
 ## Limitações conhecidas
 
