@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList } from "lucide-react";
+import { AlertTriangle, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -11,6 +11,7 @@ import KpiCard from "@/components/KpiCard";
 import { formatarDataBr } from "@shared/campanhas-whatsapp";
 import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
 import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
+import ContatosCampanhaDialog from "./campanhasWhatsapp/ContatosCampanhaDialog";
 import DuplicarCampanhaDialog from "./campanhasWhatsapp/DuplicarCampanhaDialog";
 import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
 import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
@@ -46,6 +47,7 @@ export default function MarketingCampanhasWhatsapp() {
   const [historico, setHistorico] = useState<CampanhaLinha | null>(null);
   const [vendas, setVendas] = useState<CampanhaLinha | null>(null);
   const [duplicar, setDuplicar] = useState<CampanhaLinha | null>(null);
+  const [verContatos, setVerContatos] = useState<CampanhaLinha | null>(null);
 
   if (isLoading) {
     return <div className="flex justify-center py-20"><Spinner className="size-7 text-muted-foreground" /></div>;
@@ -153,6 +155,7 @@ export default function MarketingCampanhasWhatsapp() {
                           {c.tipo === "gatilho_venda" && (
                             <BotaoIcone rotulo="Ver vendas do pós-venda" onClick={() => setVendas(c)}><ListChecks size={15} /></BotaoIcone>
                           )}
+                          <BotaoIcone rotulo="Ver contatos" onClick={() => setVerContatos(c)}><Users size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Ver histórico" onClick={() => setHistorico(c)}><History size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Editar campanha" onClick={() => setFormulario(c)}><Pencil size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Duplicar campanha" onClick={() => setDuplicar(c)}><Copy size={15} /></BotaoIcone>
@@ -184,6 +187,7 @@ export default function MarketingCampanhasWhatsapp() {
       <HistoricoDialog campanha={historico} onClose={() => setHistorico(null)} />
       <VendasPosVendaDialog campanha={vendas} onClose={() => setVendas(null)} />
       <DuplicarCampanhaDialog campanha={duplicar} onClose={() => setDuplicar(null)} />
+      <ContatosCampanhaDialog campanha={verContatos} onClose={() => setVerContatos(null)} />
     </div>
   );
 }

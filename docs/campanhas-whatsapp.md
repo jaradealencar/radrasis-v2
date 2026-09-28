@@ -174,6 +174,16 @@ campanha com disparos/contatos do período + os agendamentos que caem no períod
 de marcar disparado/não disparado do calendário (`AgendamentoItem`, em `comuns.tsx`, reaproveitado nos dois
 lugares) — e um botão "Agendar" por linha.
 
+## Ver contatos (consulta + download, sem registrar disparo)
+
+Pedido do usuário 28/09/2026: um botão no card/linha da campanha para ver e baixar a audiência resolvida pelas
+fontes de dados, sem precisar passar pelo fluxo de "Registrar disparo" (que já processa/grava o disparo).
+Botão "Ver contatos" (ícone de pessoas) na tabela do painel → `ContatosCampanhaDialog.tsx` → reaproveita a
+mesma query só-leitura `gerarListaDaCampanha` do disparo (nada aqui grava quarentena, cadência nem qualquer
+outro registro). Mostra 3 abas (Prontos para envio / Em quarentena / Inválidos-repetidos), tabela com telefone
++ nome (recorte de 200 linhas na tela, aviso para baixar a lista completa) e um botão "Baixar esta lista
+(.xlsx)" por aba, via `exportRowsToXlsx` (mesma função do disparo).
+
 ## Fluxo "Registrar disparo" (tela)
 
 Arquivo `.csv` (UTF-8, `;` `,` ou tab) ou `.xlsx`, com colunas **`telefone`** e **`nome_cliente`** (aceita apelidos:
