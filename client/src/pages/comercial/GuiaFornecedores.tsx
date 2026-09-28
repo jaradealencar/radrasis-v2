@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
@@ -189,7 +190,7 @@ export default function GuiaFornecedores() {
     void completarTelefones();
   }, [plano, carregandoGuia, semWhatsapp.length]);
 
-  const [novoOverride, setNovoOverride] = useState<{ empresa: string; acao: "incluir" | "excluir"; telefone: string; cidade: string; estado: string } | null>(null);
+  const [novoOverride, setNovoOverride] = useState<{ empresa: string; acao: "incluir" | "excluir"; telefone: string; cidade: string; estado: string; destaqueForcado: boolean } | null>(null);
   const salvarOverride = trpc.guiaFornecedores.salvarOverride.useMutation({
     onSuccess: () => { utils.guiaFornecedores.listarOverrides.invalidate(); utils.guiaFornecedores.listarPublico.invalidate(); setNovoOverride(null); toast.success("Ajuste salvo."); },
     onError: e => toast.error(e.message),
@@ -350,7 +351,7 @@ export default function GuiaFornecedores() {
               <div key={`${f.uf}-${f.cidade}-${f.nome}`} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
                 <span className="truncate"><span className="font-medium text-slate-700">{f.nome}</span> <span className="text-slate-400">· {f.cidade}/{f.uf}</span></span>
                 <Button size="sm" variant="ghost" className="h-7 shrink-0 text-blue-700 hover:bg-blue-50"
-                  onClick={() => setNovoOverride({ empresa: f.nome, acao: "incluir", telefone: "", cidade: f.cidade, estado: f.uf })}>
+                  onClick={() => setNovoOverride({ empresa: f.nome, acao: "incluir", telefone: "", cidade: f.cidade, estado: f.uf, destaqueForcado: false })}>
                   Cadastrar telefone
                 </Button>
               </div>
@@ -384,7 +385,7 @@ export default function GuiaFornecedores() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-700">Ajustes manuais</h2>
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setNovoOverride({ empresa: "", acao: "excluir", telefone: "", cidade: "", estado: "" })}>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setNovoOverride({ empresa: "", acao: "excluir", telefone: "", cidade: "", estado: "", destaqueForcado: false })}>
             <Plus className="h-3.5 w-3.5" /> Novo ajuste
           </Button>
         </div>
@@ -406,9 +407,14 @@ export default function GuiaFornecedores() {
                 <TableRow key={o.id}>
                   <TableCell className="font-medium">{o.empresaNome}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={o.acao === "incluir" ? "border-green-300 text-green-700" : "border-red-300 text-red-700"}>
-                      {o.acao === "incluir" ? "Forçar inclusão" : "Excluir da lista"}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="outline" className={o.acao === "incluir" ? "border-green-300 text-green-700" : "border-red-300 text-red-700"}>
+                        {o.acao === "incluir" ? "Forçar inclusão" : "Excluir da lista"}
+                      </Badge>
+                      {o.destaqueForcado && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-700">🏆 Mais procurada</Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-slate-500">{[o.telefone, o.cidade, o.estado].filter(Boolean).join(" · ") || "—"}</TableCell>
                   <TableCell className="text-slate-500">{o.usuarioNome ?? "—"}</TableCell>
@@ -574,7 +580,7 @@ export default function GuiaFornecedores() {
                   <div key={c.cidade} className="mb-1 flex flex-wrap gap-1 pl-2">
                     <span className="text-[11px] font-medium text-slate-400">{c.cidade}:</span>
                     {c.fornecedores.map(f => (
-                      <span key={f.nome} className="text-[11px] text-slate-600">{f.nome}{f.telefone ? "" : " (sem telefone)"};</span>
+                      <span key={f.nome} className="text-[11px] text-slate-600">{f.destaque ? "🏆 " : ""}{f.nome}{f.telefone ? "" : " (sem telefone)"};</span>
                     ))}
                   </div>
                 ))}
@@ -616,6 +622,19 @@ export default function GuiaFornecedores() {
                   <Input placeholder="Cidade" value={novoOverride.cidade} onChange={e => setNovoOverride({ ...novoOverride, cidade: e.target.value })} />
                 </>
               )}
+              <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                <Checkbox
+                  checked={novoOverride.destaqueForcado}
+                  onCheckedChange={v => setNovoOverride({ ...novoOverride, destaqueForcado: v === true })}
+                  className="mt-0.5"
+                />
+                <span className="text-xs text-amber-900">
+                  🏆 Forçar troféu de "mais procurada" desta empresa na cidade dela, ignorando a
+                  contagem automática de pedidos. Só tem efeito se houver 2+ fornecedores na
+                  mesma cidade e se esta empresa aparecer no guia (qualificada automaticamente ou
+                  com "Forçar inclusão" marcado acima).
+                </span>
+              </label>
             </div>
           )}
           <DialogFooter>
@@ -625,6 +644,7 @@ export default function GuiaFornecedores() {
               onClick={() => novoOverride && salvarOverride.mutate({
                 empresa: novoOverride.empresa, acao: novoOverride.acao,
                 telefone: novoOverride.telefone || undefined, cidade: novoOverride.cidade || undefined, estado: novoOverride.estado || undefined,
+                destaqueForcado: novoOverride.destaqueForcado,
               })}
             >
               {salvarOverride.isPending ? "Salvando..." : "Salvar"}

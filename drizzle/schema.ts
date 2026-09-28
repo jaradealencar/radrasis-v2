@@ -2069,6 +2069,12 @@ export const guiaFornecedoresOverrides = pgTable("guia_fornecedores_overrides", 
   telefone: varchar("telefone", { length: 32 }),
   cidade: varchar("cidade", { length: 128 }),
   estado: varchar("estado", { length: 2 }),
+  // Força o troféu de "mais procurada" para este fornecedor na cidade dele, ignorando a
+  // contagem automática de pedidos — usado quando o Daniel sabe que o cálculo (baseado em
+  // historico_os) não reflete a realidade (ex.: nome do fornecedor gravado com grafias
+  // diferentes em O.S. diferentes, fragmentando a contagem). Só um por cidade faz sentido;
+  // não há checagem de unicidade no banco — é responsabilidade de quem grava.
+  destaqueForcado: boolean("destaqueForcado").notNull().default(false),
   usuarioId: text("usuarioId"),
   usuarioNome: varchar("usuarioNome", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

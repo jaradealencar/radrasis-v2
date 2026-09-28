@@ -100,6 +100,9 @@ interface FornecedorCalculado {
    * fornecedor (`qtdJanela`). Usado só para decidir o troféu de "mais procurada" por cidade
    * (ver `agruparPorEstadoCidade`); nunca exposto cru na lista pública. */
   pedidosJanela: number;
+  /** Override manual: força este fornecedor a vencer o troféu na cidade dele, ignorando a
+   * contagem de pedidos — ver coluna `destaqueForcado` em `guiaFornecedoresOverrides`. */
+  destaqueForcado: boolean;
 }
 
 /** Monta a lista de fornecedores ativos: calcula a partir de historico_os e aplica os
@@ -107,7 +110,7 @@ interface FornecedorCalculado {
  * qualificando). Função pura — sem I/O — para poder testar a regra isoladamente. */
 export function calcularFornecedoresAtivos(
   linhas: Array<{ empresa: string | null; cidade: string | null; estado: string | null; telefone: string | null; tipoOs: string | null; status: string | null; mes: number; ano: number }>,
-  overrides: Array<{ empresaChave: string; empresaNome: string; acao: "incluir" | "excluir"; telefone: string | null; cidade: string | null; estado: string | null }>,
+  overrides: Array<{ empresaChave: string; empresaNome: string; acao: "incluir" | "excluir"; telefone: string | null; cidade: string | null; estado: string | null; destaqueForcado?: boolean }>,
   hoje: Date = new Date(),
 ): FornecedorCalculado[] {
   const mesAtual = hoje.getMonth() + 1, anoAtual = hoje.getFullYear();
@@ -163,6 +166,7 @@ export function calcularFornecedoresAtivos(
       telefone: telefoneValido(override?.telefone) ?? g.telefoneRecente?.tel ?? null,
       origem: qualifica ? "automatico" : "manual",
       pedidosJanela: g.qtdJanela,
+      destaqueForcado: override?.destaqueForcado ?? false,
     });
   }
 
@@ -175,6 +179,7 @@ export function calcularFornecedoresAtivos(
       cidade: o.cidade || "", estado: (o.estado || "").toUpperCase(),
       telefone: telefoneValido(o.telefone), origem: "manual",
       pedidosJanela: 0,
+      destaqueForcado: o.destaqueForcado ?? false,
     });
   }
 
@@ -205,22 +210,34 @@ export interface GuiaFornecedoresResultado {
 }
 
 /** Ordem alfabética por padrão, com um troféu de "mais procurada" quando fizer sentido: só
- * quando há 2+ fornecedores na cidade E existe um líder único (sem empate) com pelo menos 1
- * pedido na janela — nesse caso ele ganha `destaque: true` e vai para o topo, o resto continua
- * em ordem alfabética. Empate no topo (ou só 1 fornecedor na cidade) não marca ninguém: não dá
- * para eleger "a mais procurada" sem dado que desempate, e com um só fornecedor o troféu não
- * diz nada (não tem com quem comparar). */
-function ordenarComDestaque(lista: Array<FornecedorGuia & { pedidosJanela: number }>): FornecedorGuia[] {
+ * quando há 2+ fornecedores na cidade. Prioridade de quem vence:
+ *  1. Override manual (`destaqueForcado`) — usado quando o Daniel sabe que a contagem
+ *     automática não reflete a realidade (ex.: nome do fornecedor gravado com grafias
+ *     diferentes em O.S. diferentes, fragmentando a contagem). Só um por cidade faz sentido;
+ *     em caso de mais de um marcado (erro de cadastro), desempata por nome para não escolher
+ *     ao acaso.
+ *  2. Líder único (sem empate) por pedidos na janela, se ninguém tiver override.
+ * Empate no topo (sem override) ou só 1 fornecedor na cidade não marca ninguém: não dá para
+ * eleger "a mais procurada" sem dado que desempate, e com um só fornecedor o troféu não diz
+ * nada (não tem com quem comparar). */
+function ordenarComDestaque(lista: Array<FornecedorGuia & { pedidosJanela: number; destaqueForcado: boolean }>): FornecedorGuia[] {
   const porNome = [...lista].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  if (porNome.length < 2) return porNome.map(({ pedidosJanela, ...f }) => f);
+  const semInternos = () => porNome.map(({ pedidosJanela, destaqueForcado, ...f }) => f);
+  if (porNome.length < 2) return semInternos();
 
-  const maxPedidos = Math.max(...porNome.map(f => f.pedidosJanela));
-  const lideres = porNome.filter(f => f.pedidosJanela === maxPedidos);
-  if (maxPedidos <= 0 || lideres.length !== 1) return porNome.map(({ pedidosJanela, ...f }) => f);
+  const forcados = porNome.filter(f => f.destaqueForcado);
+  const lider = forcados.length > 0
+    ? forcados[0]
+    : (() => {
+        const maxPedidos = Math.max(...porNome.map(f => f.pedidosJanela));
+        const lideres = porNome.filter(f => f.pedidosJanela === maxPedidos);
+        return maxPedidos > 0 && lideres.length === 1 ? lideres[0] : null;
+      })();
+  if (!lider) return semInternos();
 
-  const lider = lideres[0];
   const resto = porNome.filter(f => f !== lider);
-  return [{ ...lider, destaque: true }, ...resto].map(({ pedidosJanela, ...f }) => f);
+  const { pedidosJanela, destaqueForcado, ...liderPublico } = lider;
+  return [{ ...liderPublico, destaque: true }, ...resto.map(({ pedidosJanela, destaqueForcado, ...f }) => f)];
 }
 
 /** Agrupa por estado > cidade (unificando grafias com/sem acento da mesma cidade) e monta o
@@ -244,7 +261,7 @@ function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWha
     canonico.set(k, [...grafias.entries()].sort((a, b) => qtdAcentos(b[0]) - qtdAcentos(a[0]) || b[1] - a[1])[0][0]);
   }
 
-  const porEstado = new Map<string, Map<string, Array<FornecedorGuia & { pedidosJanela: number }>>>();
+  const porEstado = new Map<string, Map<string, Array<FornecedorGuia & { pedidosJanela: number; destaqueForcado: boolean }>>>();
   for (const f of comLocal) {
     const cidadeTitulo = f.cidade ? titleCase(f.cidade) : "(cidade não informada)";
     const cidadeFinal = canonico.get(`${f.estado}|${chaveSemAcento(cidadeTitulo)}`) ?? cidadeTitulo;
@@ -256,6 +273,7 @@ function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWha
       nome: f.nome, cidade: cidadeFinal, telefone: f.telefone,
       whatsapp: link ? `${link}?text=${encodeURIComponent(mensagemWhatsapp)}` : null,
       pedidosJanela: f.pedidosJanela,
+      destaqueForcado: f.destaqueForcado,
     });
   }
 
@@ -527,7 +545,9 @@ export const guiaFornecedoresRouter = router({
   }),
 
   /** Cria/atualiza um ajuste manual. `acao: "incluir"` aceita telefone/cidade/estado (para um
-   * fornecedor sem O.S. recente o suficiente para ter esses dados em historico_os). */
+   * fornecedor sem O.S. recente o suficiente para ter esses dados em historico_os).
+   * `destaqueForcado` força o troféu de "mais procurada" na cidade dele, ignorando a contagem
+   * automática de pedidos (ver `ordenarComDestaque`). */
   salvarOverride: protectedProcedure
     .input(z.object({
       empresa: z.string().trim().min(1).max(256),
@@ -535,6 +555,7 @@ export const guiaFornecedoresRouter = router({
       telefone: z.string().trim().max(32).optional(),
       cidade: z.string().trim().max(128).optional(),
       estado: z.string().trim().length(2).optional(),
+      destaqueForcado: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
@@ -544,6 +565,7 @@ export const guiaFornecedoresRouter = router({
       const dados = {
         empresaNome: input.empresa, acao: input.acao,
         telefone: input.telefone || null, cidade: input.cidade || null, estado: input.estado?.toUpperCase() || null,
+        destaqueForcado: input.destaqueForcado ?? false,
         usuarioId: ctx.user?.id ?? null, usuarioNome: ctx.user?.name ?? "Desconhecido", updatedAt: agora,
       };
       await db.insert(guiaFornecedoresOverrides)

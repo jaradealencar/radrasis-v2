@@ -1,0 +1,1 @@
+ALTER TABLE "guia_fornecedores_overrides" ADD COLUMN "destaqueForcado" boolean DEFAULT false NOT NULL;
