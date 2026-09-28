@@ -19,6 +19,7 @@
     "db:migrate": "tsx server/scripts/migrate.ts",
     "db:clean": "node server/scripts/clean-db.mjs",
     "db:seed-admin": "tsx server/scripts/seed-admin-user.ts",
+    "letra-caixa:testar-redesenho": "tsx server/scripts/testar-redesenho-letreiro.ts",
     "postinstall": "patch-package"
   },
   "dependencies": {

@@ -322,6 +322,74 @@ const normalizeResponseFormat = ({
   };
 };
 
+const OPENAI_IMAGES_EDIT_URL = "https://api.openai.com/v1/images/edits";
+
+export type ImageEditParams = {
+  imageBuffer: Buffer;
+  /** Nome do arquivo enviado (só para o multipart/form-data; não precisa ser real). */
+  imageFilename: string;
+  imageMimeType: string;
+  prompt: string;
+  size?: "1024x1024" | "1536x1024" | "1024x1536" | "auto";
+  quality?: "low" | "medium" | "high" | "auto";
+  background?: "transparent" | "opaque" | "auto";
+  model?: string;
+};
+
+export type ImageEditResult = {
+  buffer: Buffer;
+  /** gpt-image-1 sempre devolve PNG em base64 (sem opção de URL, diferente do dall-e). */
+  mimeType: string;
+};
+
+/**
+ * Edita uma imagem existente a partir de um prompt textual — endpoint separado do
+ * chat completions (`/v1/images/edits`, multipart/form-data, resposta em base64).
+ *
+ * ⚠️ Não verificado com chamada real: a conta em OPENAI_API_KEY está sem crédito
+ * (erro 429 insufficient_quota, checado em 28/09/2026 direto contra a API). Os
+ * parâmetros abaixo seguem a documentação do gpt-image-1 no momento da escrita —
+ * confirme contra a documentação atual da OpenAI antes de depender disso em
+ * produção, e rode um teste real assim que houver crédito (ver
+ * server/scripts/testar-redesenho-letreiro.ts).
+ */
+export async function generateImageEdit(params: ImageEditParams): Promise<ImageEditResult> {
+  assertApiKey();
+
+  const form = new FormData();
+  form.append("model", params.model ?? "gpt-image-1");
+  form.append("prompt", params.prompt);
+  form.append("size", params.size ?? "1024x1024");
+  if (params.quality) form.append("quality", params.quality);
+  if (params.background) form.append("background", params.background);
+  form.append(
+    "image",
+    new Blob([new Uint8Array(params.imageBuffer)], { type: params.imageMimeType }),
+    params.imageFilename,
+  );
+
+  const response = await fetch(OPENAI_IMAGES_EDIT_URL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ENV.openaiApiKey}` },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `OpenAI image edit failed: ${response.status} ${response.statusText} – ${errorText}`,
+    );
+  }
+
+  const data = (await response.json()) as { data?: Array<{ b64_json?: string }> };
+  const b64 = data.data?.[0]?.b64_json;
+  if (!b64) {
+    throw new Error("OpenAI image edit response missing data[0].b64_json");
+  }
+
+  return { buffer: Buffer.from(b64, "base64"), mimeType: "image/png" };
+}
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
 
