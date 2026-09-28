@@ -374,7 +374,8 @@ describe("Fontes de Dados (ERP local + arquivo)", () => {
     expect(r.porFonte.some(f => f.total > 0)).toBe(true);
     const encontrado = r.aprovados.find(c => c.nome === "TESTE FONTE ERP Inativo");
     expect(encontrado).toMatchObject({ telefone: "5567999880001" });
-  });
+  }, 10_000); // recarrega historico_os inteiro — na suíte completa (muita carga concorrente no Neon via
+  // HTTP), a latência varia o bastante para estourar o default de 5s à toa.
 
   it("cadência da campanha: quem acabou de receber ESTA campanha some de gerarListaDaCampanha (mas não de outras)", async () => {
     // gerarListaDaCampanha recarrega o historico_os inteiro (ver carregarContextoErp) — chamado 2x aqui.
@@ -388,7 +389,8 @@ describe("Fontes de Dados (ERP local + arquivo)", () => {
     expect(depois.ignoradosCadenciaCampanha.some(c => c.nome === "TESTE FONTE ERP Inativo")).toBe(true);
 
     await getPool().query("DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1", [contato.telefone]); // limpeza extra
-  }, 15_000);
+  }, 20_000); // já era o teste mais pesado da suíte (2x gerarListaDaCampanha); rodando a suíte inteira junto
+    // com muitos outros testes de banco, a latência do Neon (HTTP) varia o bastante para estourar 15s à toa.
 });
 
 describe("duplicarCampanha", () => {

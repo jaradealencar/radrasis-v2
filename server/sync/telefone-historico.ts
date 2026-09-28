@@ -17,7 +17,11 @@ import { listarOSMubiSys } from "../integrations/mubisys-client";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const JANELA_DIAS = 7;
-export const MESES_BACKFILL_PADRAO = 13;
+// 24 meses (era 13 até 28/09/2026) — aumentado a pedido do usuário: as fontes ERP de Campanhas
+// WhatsApp ("Inativos 6+ meses", "Compraram 1 vez e sumiram") pegam clientes sem limite superior
+// de "há quanto tempo", diferente do uso original deste backfill (Guia de Fornecedores, que só
+// olha a janela rolante de 12 meses) — 13 meses deixava de fora boa parte dos casos mais antigos.
+export const MESES_BACKFILL_PADRAO = 24;
 
 export interface JanelaBackfill { di: string; df: string }
 export interface MesBackfill {

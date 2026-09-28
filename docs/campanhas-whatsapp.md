@@ -67,19 +67,32 @@ Pedido do usuário: um "cérebro" que resolve a audiência de uma campanha a par
 campanha (multi-seleção com autosave a cada clique — `FontesDadosPopover.tsx`) + "Gerenciar fontes"
 (`GerenciarFontesPopover.tsx`) para criar fontes externas ou arquivar qualquer fonte.
 
-**5 fontes automáticas do ERP** (seed fixo das migrations `0049`/`0050`, calculadas do histórico local — sem
-chamada à API MubiSys, mesmo espírito de `inteligenciaClientes.ts`): *Clientes ativos* (última compra ≤ 180
-dias), *Primeira compra/onboarding* (só 1 compra até agora, feita há ≤ 60 dias), *Inativos 6+ meses* (última
-compra ≥ 180 dias), *Orçaram e não compraram* (status que não é venda ganha, em **todo o histórico** — sem
-limite de janela; decisão do usuário 27/09/2026, cogitou separar por ano do orçamento e descartou: "puxa de
-todo o histórico que é melhor" — `historico_orcamentos` não tem telefone; quando a empresa já foi cliente
-alguma vez, o telefone vem de `historico_os`, senão fica em branco), *Compraram 1 vez e sumiram* (só 1 compra na
-vida inteira **e** ela já esfriou, 180+ dias — diferente de "Inativos", que aceita quem já comprou várias vezes
-antes de parar; pedido do usuário 27/09/2026, não coberto pelas 4 fontes anteriores). Implementação:
-`server/services/fontesErpCampanhas.ts` (`RESOLVEDORES_ERP`), sem alterar `construirBaseClientes`/`ClienteBase`
-(não carregam telefone — foi criada uma agregação própria, `construirBaseComTelefone`). A função
-`resolverOrcaramNaoCompraram` aceita um `janelaDias` opcional (quem quiser restringir num uso futuro), mas a
-fonte seedada não passa esse parâmetro.
+**9 fontes automáticas do ERP** (seed fixo das migrations `0049`/`0050`/`0053`, calculadas do histórico local —
+sem chamada à API MubiSys, mesmo espírito de `inteligenciaClientes.ts`):
+
+| Fonte | Regra |
+|---|---|
+| Clientes ativos | última compra ≤ 180 dias |
+| Primeira compra/onboarding | só 1 compra até agora, feita há ≤ 60 dias |
+| Inativos 6+ meses | última compra entre 180 dias e **24 meses** (teto adicionado 28/09/2026 — ver nota abaixo) |
+| Orçaram e não compraram | status que não é venda ganha, em **todo o histórico** (sem limite de janela — decisão do usuário 27/09/2026) |
+| Compraram 1 vez e sumiram | só 1 compra na vida **e** ela já esfriou (180+ dias) |
+| Compraram apenas 1 vez (todo o histórico) | só 1 compra na vida, **sem** filtro de data (pedido 28/09/2026 — mais abrangente que a anterior) |
+| Novos clientes do mês | primeira compra da vida caiu no **mês corrente** (diferente de "Primeira compra", que usa janela de 60 dias corridos) |
+| Reativados do mês | já compravam antes, mas a compra deste mês veio depois de 6+ meses parados — mesma regra `isClienteNovoPorRecencia` do Performance Comercial (`server/routers/performanceComercial.ts`), reaproveitada em vez de duplicada |
+| Redução de volume (3 meses) | valor comprado caiu 30%+ nos últimos 90 dias vs. os 90 dias anteriores (decisão do usuário 28/09/2026: comparar 3 meses recentes com os 3 anteriores) |
+
+Implementação: `server/services/fontesErpCampanhas.ts` (`RESOLVEDORES_ERP`), sem alterar
+`construirBaseClientes`/`ClienteBase` (não carregam telefone — foi criada uma agregação própria,
+`construirBaseComTelefone`, e uma segunda para "Novos/Reativados do mês" que precisa de todas as compras do
+cliente, não só primeira/última: `construirHistoricoComprasPorCliente`). `resolverOrcaramNaoCompraram` e
+`resolverInativos` aceitam parâmetros opcionais de janela/teto para uso futuro; as fontes seedadas usam os
+valores da tabela acima.
+
+**Teto de 24 meses em "Inativos"** (28/09/2026): antes a fonte pegava qualquer inativo, sem limite superior.
+Alinhado ao alcance do backfill de telefone (`MESES_BACKFILL_PADRAO` em `server/sync/telefone-historico.ts`,
+também aumentado de 13 para 24 meses nesta mesma rodada) — sem o teto, a fonte trazia clientes tão antigos que
+nunca teriam telefone preenchido mesmo depois do backfill rodar. Ver "Limitações conhecidas" abaixo.
 
 **Fonte externa (upload) — fundida com "Arquivos"** (decisão do usuário): não existe uma tabela separada de
 "contatos da fonte". Criar uma fonte externa sobe o arquivo pela mesma rota de sempre
@@ -119,7 +132,7 @@ zerada (status `ativa`, sem nenhum envio ainda). Não existe hierarquia formal c
 "subcampanhas" (ex.: Prospecção Google Maps por estado) são campanhas comuns, agrupadas só pelo nome/categoria —
 duplicar é o atalho para criá-las rapidamente sem precisar reconfigurar tudo.
 
-## Modelo de dados (migrations `0045`–`0051`)
+## Modelo de dados (migrations `0045`–`0053`)
 
 | Tabela | Papel |
 |---|---|
@@ -245,18 +258,28 @@ contatos por `log-send`, 5.000 telefones por `check-quarantine`.
 - `gerarListaDaCampanha` recarrega **todo** `historico_os`/`historico_orcamentos` a cada chamada (mesmo custo de
   `construirBaseClientes` em outros módulos) — aceitável no volume atual, mas é o ponto a otimizar primeiro se o
   histórico crescer muito (ex.: cachear por alguns minutos, como já existe noutros relatórios do Comercial).
-- "Orçaram e não compraram" e boa parte de "Inativos" ficam sem telefone quando a venda/empresa é anterior a
-  21/09/2026 (mesma limitação já documentada no pós-venda — backfill em `/api/scheduled/completarTelefones`);
-  confirmado em teste manual: de 990 inativos resolvidos, 857 vieram sem telefone.
+- Várias fontes ficam sem telefone quando a venda/empresa é anterior a 21/09/2026 (mesma limitação já
+  documentada no pós-venda) — confirmado em teste manual: de 990 inativos resolvidos, 857 vieram sem telefone,
+  mesmo o cadastro do cliente tendo telefone no Mubisys (o problema é a cópia local antiga, não o ERP). Backfill:
+  botão **"Completar telefones do histórico"** na aba Guia de Fornecedores (`GuiaFornecedores.tsx`) — varre o
+  Mubisys em janelas de 7 dias e preenche `historico_os.telefone` onde estiver `NULL`. Alcance aumentado de 13
+  para **24 meses** em 28/09/2026 (`MESES_BACKFILL_PADRAO`, `server/sync/telefone-historico.ts`) para cobrir a
+  mesma janela do teto de "Inativos" — clientes que sumiram há mais de 24 meses continuam sem telefone garantido.
+  O botão só roda com a credencial de produção (precisa ser clicado por quem está logado no app publicado).
 - Sem hierarquia formal de "subcampanha" no banco (ver seção "Duplicar campanha" acima) — é convenção de nome,
   não uma coluna de relacionamento.
+- "Novos clientes do mês" e "Reativados do mês" não têm frequência "todo fim de mês" no schema (só dias fixos)
+  — nasceram como recorrente/30 dias (aproximação); o usuário usa o Planner (calendário) para agendar
+  explicitamente o último dia de cada mês e confirmar disparado/não disparado.
 
 ## Script de seed das campanhas iniciais
 
 `scripts/seed-campanhas-whatsapp-iniciais.mjs` cria (idempotente, por nome) as campanhas pedidas pelo usuário em
-27/09/2026: as 3 automáticas do ERP (Inativos 6+ meses, Orçaram e não compraram, Compraram 1x e sumiram — já
-com a fonte vinculada) e 5 "recipientes" para listas externas (Prospecção Google Maps — MS/PR/RS/SC, Leads
-Instagram sem cotação) que nascem **sem fonte**, aguardando o usuário subir a planilha e vincular pela tela.
+27–28/09/2026, todas com a fonte ERP correspondente já vinculada: Orçaram e não compraram, Compraram 1x e
+sumiram, Compraram apenas 1 vez (todo o histórico), Clientes com Redução de Volume, Novos clientes do mês —
+Agradecimento, Clientes Reativados do mês. Não inclui "Reativação — Inativos 6+ meses": o usuário já criou essa
+manualmente em produção. 5 "recipientes" para listas externas (Prospecção Google Maps — MS/PR/RS/SC, Leads
+Instagram sem cotação) nascem **sem fonte**, aguardando o usuário subir a planilha e vincular pela tela.
 Frequência/quarentena nascem com valores de **rascunho** (sugestões dos tooltips do formulário) — o usuário
 disse que ainda vai passar os números definitivos; edite pela tela quando tiver. Roda contra a `DATABASE_URL`
 do ambiente (`node scripts/seed-campanhas-whatsapp-iniciais.mjs`) — validado contra o banco de teste local e
@@ -268,5 +291,6 @@ agente não tem essa credencial) ou, mais simples, criar cada campanha pela pró
 `server/__tests__/campanhas-whatsapp.test.ts` (regras puras, incl. `filtrarPorCadenciaCampanha`, + autenticação/
 validação dos webhooks), `server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo,
 modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de ponta a ponta, `duplicarCampanha`,
-Planner/agendamentos + `relatorioPeriodo`), `server/__tests__/fontes-erp-campanhas.test.ts` (as 5 resoluções ERP,
-puro) e `client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).
+Planner/agendamentos + `relatorioPeriodo`), `server/__tests__/fontes-erp-campanhas.test.ts` (as 9 resoluções ERP,
+puro, incl. teto de 24 meses em Inativos, Novos/Reativados do mês e Redução de volume) e
+`client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).

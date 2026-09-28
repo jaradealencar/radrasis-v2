@@ -328,7 +328,7 @@ export default function GuiaFornecedores() {
             ? "Todos os fornecedores do guia têm botão de WhatsApp."
             : `${semWhatsapp.length} de ${guia?.totalFornecedores ?? 0} fornecedores estão sem botão de WhatsApp.`}
           {plano && (pendentesTotal > 0
-            ? ` ${pendentesTotal} O.S. dos últimos 13 meses ainda sem telefone gravado — a busca começa sozinha ao abrir esta tela (pode levar alguns minutos).`
+            ? ` ${pendentesTotal} O.S. dos últimos 24 meses ainda sem telefone gravado — a busca começa sozinha ao abrir esta tela (pode levar alguns minutos).`
             : " Histórico de telefones completo (as poucas O.S. sem número não têm contato na MubiSys).")}
         </p>
 

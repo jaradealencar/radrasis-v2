@@ -5,7 +5,7 @@
  * Idempotente — só grava onde telefone ainda é NULL.
  *
  * Uso:
- *   npx tsx server/scripts/backfill-telefone-historico.ts            # últimos 13 meses, grava
+ *   npx tsx server/scripts/backfill-telefone-historico.ts            # últimos 24 meses, grava
  *   npx tsx server/scripts/backfill-telefone-historico.ts --dry-run  # só mostra o que faria
  *   npx tsx server/scripts/backfill-telefone-historico.ts --meses=6  # janela menor
  */
