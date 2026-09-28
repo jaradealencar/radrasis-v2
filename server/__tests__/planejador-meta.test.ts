@@ -4,6 +4,7 @@ import {
   PRAZO_PADRAO_MESES, PRAZO_MAXIMO_MESES, HORIZONTE_MINIMO_MESES,
   confiabilidadeSazonalPorMes, fatoresSazonaisNormalizados, aplicarFatorSazonal, aplicarSazonalidadeNaLinhaDoTempo,
   aplicarRecompraMecanicaNaLinhaDoTempo, aplicarRecompraMecanicaCalibradaNaLinhaDoTempo,
+  aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo,
   type CurvaRecompra, type EntradaHistoricaMes,
 } from "../../shared/planejador-meta";
 import { resolverMeta, totaisCenario, aplicarFator, type Cenario } from "../../shared/meta-faturamento";
@@ -309,5 +310,70 @@ describe("aplicarRecompraMecanicaCalibradaNaLinhaDoTempo", () => {
     const pontos = linhaDoTempo(BASE, BASE, 6, 2);
     const semDado = aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(pontos, historico11, [], []); // curvas vazias → bruto sempre 0
     expect(semDado).toBe(pontos); // mesma referência: devolveu sem tocar
+  });
+});
+
+describe("aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo", () => {
+  const CONTINUIDADE = { taxaMensalPct: 50, amostras: 20, coeficienteVariacao: 0.1 };
+  // Histórico "de regime": todo mês com a MESMA entrada da própria BASE — assim o pool calibrado fica
+  // exatamente estável enquanto nada muda (o teste mais simples de conferir na mão).
+  const ENTRADA_BASE = BASE.novos.clientes + BASE.reativados.clientes;
+  const historicoRegime: EntradaHistoricaMes[] = Array.from({ length: 11 }, () => ({ novos: BASE.novos.clientes, reativados: BASE.reativados.clientes }));
+
+  it("em regime (entradas sempre iguais às de hoje), o pool fica EXATAMENTE parado no valor real — a calibração fecha a conta", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 15); // cenário nunca muda
+    const ajustados = aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontos, historicoRegime, CONTINUIDADE);
+    for (const p of ajustados) expect(p.cenario.carteira.clientes).toBeCloseTo(BASE.carteira.clientes, 9);
+  });
+
+  it("o mês 0 (hoje) é sempre a âncora exata, mesmo com um cenário que já vai mudar depois", () => {
+    const regime: Cenario = { ...BASE, novos: { ...BASE.novos, clientes: BASE.novos.clientes * 2 }, reativados: { ...BASE.reativados, clientes: BASE.reativados.clientes * 2 } };
+    const pontos = linhaDoTempo(BASE, regime, 1, 24);
+    const ajustados = aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontos, historicoRegime, CONTINUIDADE);
+    expect(ajustados[0].cenario.carteira.clientes).toBeCloseTo(BASE.carteira.clientes, 9);
+  });
+
+  it("reage com atraso de 12 meses a uma mudança de ritmo, e converge pra um novo patamar proporcional", () => {
+    const regime: Cenario = { ...BASE, novos: { ...BASE.novos, clientes: BASE.novos.clientes * 2 }, reativados: { ...BASE.reativados, clientes: BASE.reativados.clientes * 2 } };
+    const pontos = linhaDoTempo(BASE, regime, 1, 24); // a partir do mês 1, entradas em dobro (prazo=1)
+    const ajustados = aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontos, historicoRegime, CONTINUIDADE);
+    const sobrev = CONTINUIDADE.taxaMensalPct / 100;
+
+    // meses 1 a 12: o "olhar 12 meses atrás" ainda só enxerga o histórico antigo (ou o mês 0, que é a
+    // própria base) — pool continua parado no valor real.
+    for (let k = 1; k <= 12; k++) expect(ajustados[k].cenario.carteira.clientes).toBeCloseTo(BASE.carteira.clientes, 6);
+
+    // mês 13: a 1ª entrada "em dobro" (a do mês 1) completa 12 meses e entra no pool.
+    const esperadoMes13 = BASE.carteira.clientes * (2 - sobrev); // poolAnterior*sobrev + 2×ganho_normal
+    expect(ajustados[13].cenario.carteira.clientes).toBeCloseTo(esperadoMes13, 6);
+
+    // depois de muitos meses no novo ritmo (em dobro), o pool converge pra ~2× o valor real de hoje.
+    expect(ajustados[24].cenario.carteira.clientes).toBeGreaterThan(BASE.carteira.clientes * 1.99);
+    expect(ajustados[24].cenario.carteira.clientes).toBeLessThanOrEqual(BASE.carteira.clientes * 2 + 1e-6);
+    // e cresce de forma monótona nesse trecho (sem oscilar)
+    for (let k = 13; k < 24; k++) expect(ajustados[k + 1].cenario.carteira.clientes).toBeGreaterThan(ajustados[k].cenario.carteira.clientes);
+  });
+
+  it("sem taxa de continuidade medida (null), devolve os pontos sem mudar nada", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 2);
+    const semTaxa = aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontos, historicoRegime, { taxaMensalPct: null, amostras: 0, coeficienteVariacao: null });
+    expect(semTaxa).toBe(pontos);
+  });
+
+  it("sem entrada de regime pra calibrar (histórico vazio ou zerado), devolve os pontos sem mudar nada", () => {
+    const pontos = linhaDoTempo(BASE, BASE, 6, 2);
+    const semHistorico = aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontos, [], CONTINUIDADE);
+    expect(semHistorico).toBe(pontos);
+    const historicoZerado = Array.from({ length: 11 }, () => ({ novos: 0, reativados: 0 }));
+    expect(aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontos, historicoZerado, CONTINUIDADE)).toBe(pontos);
+  });
+
+  it("mantém pedidosPorCliente e ticket da carteira intactos — só a contagem de clientes muda", () => {
+    const regime: Cenario = { ...BASE, novos: { ...BASE.novos, clientes: BASE.novos.clientes * 2 } };
+    const pontos = linhaDoTempo(BASE, regime, 1, 13);
+    const ajustados = aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontos, historicoRegime, CONTINUIDADE);
+    expect(ajustados[13].cenario.carteira.pedidosPorCliente).toBe(BASE.carteira.pedidosPorCliente);
+    expect(ajustados[13].cenario.carteira.ticket).toBe(BASE.carteira.ticket);
+    expect(ajustados[13].totais.faturamento).toBeCloseTo(totaisCenario(ajustados[13].cenario).faturamento, 6);
   });
 });

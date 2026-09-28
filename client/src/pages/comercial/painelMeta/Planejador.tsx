@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { totaisCenario, dividirFunil, type ResultadoMeta } from "@shared/meta-faturamento";
 import {
   mesApos, prazoValido, aplicarSazonalidadeNaLinhaDoTempo, aplicarRecompraMecanicaCalibradaNaLinhaDoTempo,
+  aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo,
   PRAZO_MAXIMO_MESES, type PontoDaLinhaDoTempo, type EntradaHistoricaMes, type CurvaRecompra,
 } from "@shared/planejador-meta";
 import type { PainelMetaDados, LinhaAplicarMeta } from "./tipos";
@@ -65,11 +66,23 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
   const curvaNovos: CurvaRecompra = data.coorte.meses.filter(m => m.k >= 1);
   const curvaReativados: CurvaRecompra = data.coorteReativados.meses.filter(m => m.k >= 1);
 
+  // Carteira mecânica (opcional, desligada por padrão): "Gráficas ativas da carteira" vira um POOL que
+  // ganha gente (entradas de 12 meses atrás) e perde gente pela taxa de continuidade mensal medida na base
+  // regular (quem já compra com frequência) — ver docs/inteligencia-clientes.md. Diferente da recompra, é
+  // recursiva (cada mês carrega o anterior), então usa a MÉDIA histórica (não o valor exato de cada mês
+  // passado) para os meses antes de hoje, senão o ruído do histórico real se acumularia sem representar
+  // nada de fato futuro.
+  const [comCarteira, setComCarteira] = useState(false);
+
   let pontosAjustados: PontoDaLinhaDoTempo[] | null = null;
   const rotulosAjuste: string[] = [];
   if (comMecanica) {
     pontosAjustados = aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(pontosAjustados ?? pontos, historicoRecente, curvaNovos, curvaReativados);
     rotulosAjuste.push("mecânica de recompra");
+  }
+  if (comCarteira) {
+    pontosAjustados = aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(pontosAjustados ?? pontos, historicoRecente, data.continuidadeCarteira);
+    rotulosAjuste.push("mecânica de carteira");
   }
   if (comSazonalidade) {
     pontosAjustados = aplicarSazonalidadeNaLinhaDoTempo(pontosAjustados ?? pontos, data.dataReferencia, data.sazonalidade.fatoresNormalizados);
@@ -90,6 +103,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
       fat,
       fatAjustado,
       recompraAjustada: ajustado?.cenario.recompraConquistados.clientes,
+      carteiraAjustada: ajustado?.cenario.carteira.clientes,
       mudouNoMes: fatAjustado !== undefined && Math.abs(fatAjustado - fat) > 1,
       baseline: real12,
       faixa: bandaMes ? [fat * (1 + bandaMes.pessimista), fat * (1 + bandaMes.otimista)] : undefined,
@@ -240,6 +254,17 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
             {" "}o efeito de mudar o ritmo de entrada leva até 11 meses para aparecer inteiro na recompra.
           </p>
         </div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={comCarteira} onChange={e => setComCarteira(e.target.checked)} className="accent-blue-600" />
+            Carteira ganha e perde gente pela taxa de continuidade real (mecânica)
+          </label>
+          <p className="text-[11px] text-slate-500">
+            {data.continuidadeCarteira.taxaMensalPct !== null
+              ? <>De quem já compra com regularidade, {fmtNum(data.continuidadeCarteira.taxaMensalPct, 0)}% continua comprando no mês seguinte ({data.continuidadeCarteira.amostras} meses medidos) — o efeito de mudar o ritmo de entrada leva 12 meses para começar a chegar na carteira.</>
+              : "Ainda não há dado suficiente para medir a continuidade da carteira."}
+          </p>
+        </div>
       </div>
 
       <div className="mt-2">
@@ -279,6 +304,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
               <th className="font-medium pb-1 px-2">Gráficas novas</th>
               <th className="font-medium pb-1 px-2">Reativadas</th>
               {comMecanica && <th className="font-medium pb-1 px-2" title="Recompra de conquistadas com a mecânica aplicada">Recompra (mecânica)</th>}
+              {comCarteira && <th className="font-medium pb-1 px-2" title="Carteira ativa com a mecânica aplicada">Carteira (mecânica)</th>}
               <th className="font-medium pb-1 pl-2" title="Média do faturamento do mesmo mês nos anos anteriores (referência, não entra na conta)">Mesmo mês em anos anteriores</th>
               {onAplicarComoMeta && <th className="font-medium pb-1 pl-2"></th>}
             </tr>
@@ -306,6 +332,7 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
                   <td className="py-1.5 px-2 text-slate-600">{fmtNum(l.cenario.novos.clientes, 1)}</td>
                   <td className="py-1.5 px-2 text-slate-600">{fmtNum(l.cenario.reativados.clientes, 1)}</td>
                   {comMecanica && <td className="py-1.5 px-2 text-fuchsia-700 font-medium">{l.recompraAjustada !== undefined ? fmtNum(l.recompraAjustada, 1) : "—"}</td>}
+                  {comCarteira && <td className="py-1.5 px-2 text-fuchsia-700 font-medium">{l.carteiraAjustada !== undefined ? fmtNum(l.carteiraAjustada, 1) : "—"}</td>}
                   <td className="py-1.5 pl-2 text-slate-400">{l.ref !== null ? brlCurto(l.ref) : "—"}</td>
                   {onAplicarComoMeta && (
                     <td className="py-1.5 pl-2">
@@ -336,6 +363,8 @@ export default function Planejador({ data, meta, resultado, modoAuto, pesoConver
         {" "}"Recompra segue as gráficas novas/reativadas" troca o valor livre de "Recompra de conquistadas" pelo que a curva de vida de cada gráfica nova ou reativada dos últimos ~11 meses sugere — calibrada
         para bater exatamente com o valor de hoje (a versão sem calibrar chegou a errar 34% para cima num teste). Também desligada por padrão: prever o valor de UM mês específico por essa mecânica já errou
         mais (35,7%) do que só olhar a média recente (31%) — ela serve melhor para ver a TENDÊNCIA de vários meses do que para acertar um mês isolado.
+        {" "}"Carteira ganha e perde gente" troca "Gráficas ativas da carteira" por um cálculo que soma quem entra (gráficas de 12 meses atrás que "se formam" em carteira) e subtrai quem some, pela taxa de
+        continuidade medida — também ancorada no valor de hoje, e o efeito de mudar o ritmo de entrada só começa a aparecer depois de 12 meses (antes disso a carteira fica igual à de hoje).
       </p>
     </Cartao>
   );

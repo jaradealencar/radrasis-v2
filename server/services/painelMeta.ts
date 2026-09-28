@@ -121,6 +121,12 @@ export interface PainelMeta {
     /** Os 12 fatores já normalizados (média 1) prontos para `aplicarSazonalidadeNaLinhaDoTempo`. */
     fatoresNormalizados: number[];
   };
+  /** Taxa mensal de continuidade da base REGULAR (comprou em pelo menos 3 dos últimos 6 meses): de quem já
+   * está nesse ritmo, quantos % compram de novo no mês seguinte. Medida direto dos dados (não é o
+   * `retencao` acima, que é anual e sobre qualquer cliente — este é mensal e só sobre quem já compra com
+   * alguma regularidade). Usada pela mecânica opcional de "Carteira ativa" no Planejador (aba 3) — ver
+   * docs/inteligencia-clientes.md. */
+  continuidadeCarteira: { taxaMensalPct: number | null; amostras: number; coeficienteVariacao: number | null };
   /** Mês em andamento comparado ao MESMO CORTE DE DIAS do mesmo mês um ano antes (ex.: dia 1 a 26 dos dois
    * anos) — comparação justa mesmo com o mês ainda não ter terminado. null se o mesmo mês do ano passado não
    * tem nenhum pedido até aquele dia (não dá pra comparar). */
@@ -261,6 +267,32 @@ function calcularRetencao(gruposPorCliente: Array<Array<{ chave: number; valor: 
     periodoBase: `${rotuloMes(atual - 24)} a ${rotuloMes(atual - 13)}`,
     periodoAtual: `${rotuloMes(atual - 12)} a ${rotuloMes(atual - 1)}`,
   };
+}
+
+/** `atual - N` a `atual - 2`: quantos meses testar (limitado pelos dados disponíveis). Testa o par de meses
+ * consecutivos T/T+1 para clientes "regulares" (compraram em >=3 dos 6 meses T-5..T). */
+const JANELA_CONTINUIDADE_CARTEIRA = 25;
+const MINIMO_MESES_CONTINUIDADE_ATIVOS = 6; // T precisa ter pelo menos essa quantidade de meses de histórico antes dele
+
+function calcularContinuidadeCarteira(gruposPorCliente: Array<Array<{ chave: number; valor: number }>>, atual: number): PainelMeta["continuidadeCarteira"] {
+  const mesesPorCliente = gruposPorCliente.map(grupos => new Set(grupos.map(g => g.chave)));
+  const taxas: number[] = [];
+  for (let T = atual - JANELA_CONTINUIDADE_CARTEIRA; T <= atual - 2; T++) {
+    let ativosRegulares = 0, tambemAtivos = 0;
+    for (const meses of mesesPorCliente) {
+      if (!meses.has(T)) continue;
+      let qtdNaJanela = 0;
+      for (let k = T - (MINIMO_MESES_CONTINUIDADE_ATIVOS - 1); k <= T; k++) if (meses.has(k)) qtdNaJanela++;
+      if (qtdNaJanela < 3) continue; // "regular": comprou em pelo menos metade dos últimos 6 meses
+      ativosRegulares++;
+      if (meses.has(T + 1)) tambemAtivos++;
+    }
+    if (ativosRegulares > 0) taxas.push((tambemAtivos / ativosRegulares) * 100);
+  }
+  if (taxas.length === 0) return { taxaMensalPct: null, amostras: 0, coeficienteVariacao: null };
+  const media = taxas.reduce((a, b) => a + b, 0) / taxas.length;
+  const desvio = Math.sqrt(taxas.reduce((s, t) => s + (t - media) ** 2, 0) / taxas.length);
+  return { taxaMensalPct: media, amostras: taxas.length, coeficienteVariacao: media > 0 ? desvio / media : null };
 }
 
 function agregar(porMes: PorMes, chaves: number[]): ResumoCenario {
@@ -611,6 +643,7 @@ export function calcularPainelMeta(
     bandas: calcularBandas(errosRelativos),
     correlacoes: { meses: series.fat.length, itens: itensCorrelacao },
     retencao: calcularRetencao(gruposPorCliente, atual),
+    continuidadeCarteira: calcularContinuidadeCarteira(gruposPorCliente, atual),
     sazonalidade: {
       disponivel: indices !== null,
       indices: indices ?? Array(12).fill(1),

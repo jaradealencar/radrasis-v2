@@ -128,3 +128,39 @@ describe("calcularPainelMeta — coorte de novos x coorte de reativados (curvas 
     expect(painel.coorteReativados.meses.every(m => m.ativosPct === null)).toBe(true);
   });
 });
+
+describe("calcularPainelMeta — continuidade mensal da base regular (para a carteira mecânica)", () => {
+  it("clientes 'regulares' que sempre compram todo mês: taxa de continuidade fica em 100%, sem desvio", () => {
+    const base = new Map<string, ClienteBase>();
+    // 30 clientes comprando TODO mês, de jan/2024 até hoje — sempre "regulares" e sempre continuam.
+    for (let i = 0; i < 30; i++) {
+      const compras: Array<[number, number, number, number]> = [];
+      for (let ch = 2024 * 12 + 0; ch <= 2026 * 12 + 8; ch++) compras.push([Math.floor(ch / 12), (ch % 12) + 1, 10, 1000]);
+      base.set(`c${i}`, cliente(`c${i}`, compras));
+    }
+    const painel = calcularPainelMeta(base, HOJE, 6);
+    expect(painel.continuidadeCarteira.taxaMensalPct).toBeCloseTo(100, 6);
+    expect(painel.continuidadeCarteira.coeficienteVariacao).toBeCloseTo(0, 6);
+    expect(painel.continuidadeCarteira.amostras).toBeGreaterThan(0);
+  });
+
+  it("clientes 'regulares' que compram só um mês sim, um mês não: taxa de continuidade fica perto de 0% (nunca no mês seguinte)", () => {
+    const base = new Map<string, ClienteBase>();
+    for (let i = 0; i < 30; i++) {
+      const compras: Array<[number, number, number, number]> = [];
+      // compram em meses alternados (par/ímpar) — "regular" (>=3 de 6), mas nunca 2 meses seguidos.
+      for (let ch = 2024 * 12 + 0; ch <= 2026 * 12 + 8; ch += 2) compras.push([Math.floor(ch / 12), (ch % 12) + 1, 10, 1000]);
+      base.set(`c${i}`, cliente(`c${i}`, compras));
+    }
+    const painel = calcularPainelMeta(base, HOJE, 6);
+    expect(painel.continuidadeCarteira.taxaMensalPct).toBeCloseTo(0, 6);
+  });
+
+  it("sem nenhum cliente regular (todos só compraram 1 vez), não há amostra (null)", () => {
+    const base = new Map<string, ClienteBase>();
+    for (let i = 0; i < 10; i++) base.set(`c${i}`, cliente(`c${i}`, [[2026, 5, 10, 1000]]));
+    const painel = calcularPainelMeta(base, HOJE, 6);
+    expect(painel.continuidadeCarteira.taxaMensalPct).toBeNull();
+    expect(painel.continuidadeCarteira.amostras).toBe(0);
+  });
+});

@@ -101,6 +101,16 @@ describe("montarContextoConsultor", () => {
     expect(montarContextoConsultor(semReativados, ENTRADA, HOJE)).not.toContain("Gráfica reativada recompra mais rápido");
   });
 
+  it("traz a continuidade mensal da base regular quando há dado, e omite quando não há", () => {
+    const comContinuidade = { ...painel, continuidadeCarteira: { taxaMensalPct: 52.7, amostras: 24, coeficienteVariacao: 0.16 } };
+    const ctx = montarContextoConsultor(comContinuidade, ENTRADA, HOJE);
+    expect(ctx).toContain("Continuidade mensal da base regular");
+    expect(ctx).toContain("53%"); // 52,7 arredonda pra 53
+
+    const semContinuidade = { ...painel, continuidadeCarteira: { taxaMensalPct: null, amostras: 0, coeficienteVariacao: null } };
+    expect(montarContextoConsultor(semContinuidade, ENTRADA, HOJE)).not.toContain("Continuidade mensal da base regular");
+  });
+
   it("traz a confiabilidade sazonal por mês e, quando dá, o comparativo com o mesmo corte do ano passado", () => {
     const ctx = montarContextoConsultor(painel, ENTRADA, HOJE);
     // dados sintéticos não têm sazonalidade real repetida ano a ano → nenhum mês confiável

@@ -206,6 +206,9 @@ export function montarContextoConsultorEmPartes(p: PainelCompleto, e: EntradaCon
   if (p.coorteReativados.parceirosAnalisados > 0) {
     L.push(`- Gráfica reativada recompra mais rápido que gráfica nova: depois de voltar, ${p.coorteReativados.meses.slice(1).map(m => pct(m.ativosPct, 0)).join(", ")} (mês 1 a 11) compram em cada mês. Base: ${p.coorteReativados.parceirosAnalisados} reativações (${p.coorteReativados.periodo}).`);
   }
+  if (p.continuidadeCarteira.taxaMensalPct !== null) {
+    L.push(`- Continuidade mensal da base regular (comprou em pelo menos metade dos últimos 6 meses): ${pct(p.continuidadeCarteira.taxaMensalPct, 0)} continua comprando no mês seguinte (${p.continuidadeCarteira.amostras} meses medidos).`);
+  }
   if (p.marketing?.cacPorNovo) L.push(`- Marketing de aquisição: ${brl(p.marketing.investimentoMedioMensal)}/mês para ${num(p.marketing.novosMedioMensal, 0)} novas/mês = ${brl(p.marketing.cacPorNovo)} por gráfica nova${p.coorte.ltv12m ? ` (retorno de ~${num(p.coorte.ltv12m / p.marketing.cacPorNovo, 0)}× em 12 meses)` : ""}. Não inclui equipe comercial nem comissões.`);
   L.push("");
 

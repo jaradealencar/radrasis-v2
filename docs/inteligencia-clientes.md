@@ -397,6 +397,56 @@ sido testado e descartado como método de PREVISÃO (35,7% de erro contra
 31% da média simples, ver seção do Planejador acima) — ela serve melhor
 para ver a TENDÊNCIA de vários meses do que para acertar um mês isolado.
 
+### Carteira mecânica: quem entra e quem para de comprar (27/09/2026)
+
+Depois da recompra, o usuário pediu o mesmo raciocínio para "clientes que
+param de comprar" e para o Simulador inteiro se correlacionar
+automaticamente. Antes de construir, expliquei o trade-off e ele escolheu
+**só a 3ª mecânica (carteira), não o Simulador inteiro correlacionado** —
+já tínhamos evidência (a mesma da recompra e do backtest de sazonalidade)
+de que ligar tudo mecanicamente piora a previsão neste negócio.
+
+**Dado real que viabilizou isso:** entre clientes "regulares" (compraram em
+pelo menos 3 dos últimos 6 meses), **52,7%** continuam comprando no mês
+seguinte, com desvio pequeno entre os meses (CV 0,16, medido em 24 meses) —
+`PainelMeta.continuidadeCarteira`, em `calcularContinuidadeCarteira`
+(`server/services/painelMeta.ts`). É uma taxa DIFERENTE da curva de vida de
+uma turma de entrada (a recompra mecânica acima): "regular" é quem já
+sobreviveu até virar cliente estabelecido — não dá pra usar a mesma curva
+de coorte (novos/reativados) para estimar a saída da carteira, seria
+misturar duas populações diferentes.
+
+**Modelo (`aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo`,
+`shared/planejador-meta.ts`):** diferente da recompra (uma turma só fica
+"elegível" por 11 meses), a carteira é um **pool sem prazo** — precisa de
+estado recursivo (cada mês carrega o anterior):
+
+```
+pool(mês k) = pool(mês k-1) × 52,7% + ganho × entradas(mês k-12)
+```
+
+`ganho` é **calibrado** (mesmo princípio da recompra): supondo que as
+entradas de novos/reativados estivessem no ritmo médio há muito tempo
+(regime permanente), o pool nasceria exatamente igual ao valor real de
+carteira hoje — disso se isola o fator de ganho, sem inventar uma segunda
+curva. Para os meses ANTES de hoje (k-12 negativo), usa-se a **média**
+histórica de entradas, não o valor exato de cada mês — como o pool é
+recursivo, usar o ruído mês a mês do histórico real se acumularia e o
+gráfico ficaria serrilhado sem representar nada de futuro (o que já
+aconteceu já está embutido no próprio valor real de hoje, usado como
+âncora do mês 0).
+
+Testado com os dados reais: com 30 gráficas novas/mês sustentadas, a
+carteira fica **parada exatamente em 32,6** pelos primeiros 12 meses (o
+efeito de mudar o ritmo de entrada não chega antes disso) e só depois
+começa a se mexer — suave, sem saltos.
+
+Na tela, o toggle **"Carteira ganha e perde gente pela taxa de
+continuidade real (mecânica)"** (desligado por padrão) funciona igual ao
+de recompra: soma-se à mesma linha/coluna combinada quando mais de um
+toggle está ligado ("Com mecânica de recompra + mecânica de carteira"), e
+também não muda "quando chego lá".
+
 ### Consultor de IA (aba 6 do Painel da Meta)
 
 Chat restrito ao tema: o dono conversa com um "consultor" que enxerga todos os

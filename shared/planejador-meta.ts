@@ -295,3 +295,66 @@ export function aplicarRecompraMecanicaCalibradaNaLinhaDoTempo(
     return { ...p, cenario, totais: totaisCenario(cenario) };
   });
 }
+
+// ─── Carteira mecânica: a base ativa ganha gente (entradas que completam 12 meses) e perde gente (quem
+// para de comprar) ──────────────────────────────────────────────────────────────────────────────────
+//
+// Diferente da recompra (uma turma de entrada só fica "elegível" por 11 meses, depois vira carteira), a
+// carteira é um POOL sem prazo — um cliente fica ali por anos. Modelar isso exigiria, em tese, uma curva de
+// sobrevida de longuíssimo prazo; em vez disso usamos algo mais simples e MEDIDO diretamente: a taxa de
+// continuidade mensal da base "regular" (comprou em pelo menos metade dos últimos 6 meses) — 52,7% no
+// histórico real, com desvio pequeno entre os meses (`PainelMeta.continuidadeCarteira`).
+//
+// Importante: essa taxa vem de uma população DIFERENTE da curva de vida de uma turma de entrada recém-
+// chegada (quem já é "regular" há tempo tende a continuar mais do que uma turma nova qualquer — é
+// sobrevivência: só quem já ficou é que compõe esse grupo). Por isso o GANHO mensal do pool não usa a
+// curva de vida da recompra — é CALIBRADO (igual à recompra): supondo que as entradas de novos/reativados
+// estivessem no ritmo médio há muito tempo (regime permanente), o pool "nasceria" exatamente no valor real
+// de hoje; disso sai o fator de ganho por entrada, sem misturar as duas populações.
+
+/** Taxa de continuidade mensal da base regular (0 a 1) e os dados de confiança — vem de
+ * `PainelMeta.continuidadeCarteira`; o chamador decide o que fazer se `confiavel` vier falso
+ * (a mecânica ainda funciona, só com menos garantia). */
+export interface ContinuidadeCarteira {
+  taxaMensalPct: number | null;
+  amostras: number;
+  coeficienteVariacao: number | null;
+}
+
+/** A mesma linha do tempo, com "Gráficas ativas da carteira" recalculada como um pool que ganha gente
+ * (proporcional às entradas de 12 meses atrás) e perde gente pela taxa de continuidade medida — ancorada
+ * no valor real de hoje (mês 0), igual à recompra mecânica. Se não houver taxa de continuidade medida ou
+ * entrada de regime para calibrar, devolve os pontos sem mudar nada. */
+export function aplicarCarteiraMecanicaCalibradaNaLinhaDoTempo(
+  pontos: PontoDaLinhaDoTempo[],
+  historicoRecente: EntradaHistoricaMes[],
+  continuidade: ContinuidadeCarteira,
+): PontoDaLinhaDoTempo[] {
+  if (pontos.length === 0 || continuidade.taxaMensalPct === null) return pontos;
+  const poolReal = pontos[0].cenario.carteira.clientes;
+  const entradaMedia = historicoRecente.length > 0
+    ? historicoRecente.reduce((s, h) => s + h.novos + h.reativados, 0) / historicoRecente.length
+    : 0;
+  const sobrevivencia = Math.min(0.999, Math.max(0, continuidade.taxaMensalPct / 100));
+  if (entradaMedia <= 0 || poolReal <= 0) return pontos;
+  // Calibração: em regime (entrada constante = entradaMedia), o pool estacionário é fatorGanho×entradaMedia/(1-sobrevivencia);
+  // igualando isso a poolReal (o valor real de hoje, fruto do regime que já vinha antes) isola o fatorGanho.
+  const fatorGanho = (poolReal * (1 - sobrevivencia)) / entradaMedia;
+
+  // Para os meses ANTES de hoje (idxMes < 0), usa a MÉDIA histórica (o "regime" que já produziu o pool
+  // real de hoje), não o valor exato de cada mês passado: o pool é recursivo (carrega o mês anterior pra
+  // frente), então o ruído mês a mês do histórico real se acumularia e o gráfico ficaria serrilhado sem
+  // representar nada de fato futuro — o que já aconteceu já está embutido no próprio valor real de hoje.
+  const entradasDoMes = (idxMes: number): number => {
+    if (idxMes >= 0) { const pt = pontos[idxMes]; return pt ? pt.cenario.novos.clientes + pt.cenario.reativados.clientes : 0; }
+    return entradaMedia;
+  };
+
+  let poolAnterior = poolReal;
+  return pontos.map((p, indice) => {
+    const clientes = indice === 0 ? poolReal : poolAnterior * sobrevivencia + fatorGanho * entradasDoMes(indice - 12);
+    poolAnterior = clientes;
+    const cenario: Cenario = { ...p.cenario, carteira: { ...p.cenario.carteira, clientes } };
+    return { ...p, cenario, totais: totaisCenario(cenario) };
+  });
+}
