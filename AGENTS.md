@@ -342,23 +342,6 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   <foto>` antes de confiar no resultado (parâmetros como `background`/
   `quality` seguem a documentação do gpt-image-1 no momento da escrita,
   não conferidos ao vivo).
-- **Backfill de ID nas linhas/regras da Tabela de Preços ainda não rodou em
-  produção.** 28/09/2026: cada linha de margem (`rows[].id`) e cada regra
-  (`items[].id`, type "config") de `price_table_sections.contentJson` passou
-  a ganhar um ID numérico estável (nunca reaproveitado), atribuído
-  automaticamente por `normalizarIdsTabelaPrecos`
-  (`server/integrations/priceTableIds.ts`) toda vez que uma seção é salva
-  (`updatePriceTableSection`/`addPriceTableSection` em `server/db/db.ts`) —
-  existe para o precificador automatizado externo do usuário referenciar
-  uma linha/regra sem depender do texto do label (consumido via
-  `GET /api/v1/price-table/export`, chave `PRICE_TABLE_API_KEY`, ver
-  `server/routes/price-table-api.ts`). `scripts/backfill-price-table-ids.mts`
-  populou o banco local de teste (121 itens em 45 de 50 seções); rodar
-  `npx tsx scripts/backfill-price-table-ids.mts --prod --apply` em produção
-  ficou pendente (ação bloqueada pelo classificador de automação — precisa
-  ser rodado manualmente ou com aprovação explícita). Até isso rodar, os
-  dados de produção não têm ID nenhum e o export devolve `id` ausente em
-  toda linha/regra.
 
 ## Patches
 
