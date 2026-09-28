@@ -1,0 +1,268 @@
+/**
+ * Cadastro de Produtos (composição de matéria-prima, kit e vínculo com a
+ * Tabela de Preços). Produto é local (nome/categoria só chega via vínculo
+ * com o catálogo do MubiSys) porque a API pública do MubiSys não expõe
+ * composição — ver AGENTS.md "Pontas soltas conhecidas" e
+ * shared/produto-composicao.ts.
+ */
+import { z } from "zod";
+import { router, protectedProcedure } from "../_core/trpc";
+import { getDb, listPriceTableSections } from "../db/db";
+import { produtos, produtoComposicaoMateriais, produtoKitItens } from "../../drizzle/schema";
+import { eq, asc } from "drizzle-orm";
+import { listarProdutos, listarMateriasPrimas } from "../integrations/mubisys-client";
+import { UNIDADE_CONSUMO_MATERIA_PRIMA } from "../../shared/produto-composicao";
+import type { ConfigItem, MarginRow } from "../../shared/price-table";
+
+const unidadeConsumoSchema = z.enum(UNIDADE_CONSUMO_MATERIA_PRIMA);
+
+/** Procura o id (linha de margem ou regra de config) em todas as seções da
+ *  Tabela de Preços, pra mostrar a que ele corresponde no cadastro do
+ *  produto — sem resolver faixa/coluna automaticamente (decisão do usuário
+ *  28/09/2026, ver drizzle/schema.ts em `produtos.idPrecificacao`). */
+async function buscarPrecificacaoPorId(
+  id: number,
+): Promise<{ secaoTitulo: string; pagina: number; rotulo: string; valores: string[] } | null> {
+  const secoes = await listPriceTableSections();
+  for (const sec of secoes) {
+    let conteudo: { type?: string; rows?: MarginRow[]; items?: ConfigItem[] };
+    try {
+      conteudo = JSON.parse(sec.contentJson);
+    } catch {
+      continue;
+    }
+    const isMargin = conteudo.type === "margin_table" || conteudo.type === "margin_table_multi";
+    if (isMargin) {
+      const linha = (conteudo.rows ?? []).find((r) => r.id === id);
+      if (linha) {
+        return { secaoTitulo: sec.sectionTitle, pagina: sec.page, rotulo: linha.label, valores: linha.values };
+      }
+    }
+    if (conteudo.type === "config") {
+      const item = (conteudo.items ?? []).find((it) => it.id === id);
+      if (item) {
+        return { secaoTitulo: sec.sectionTitle, pagina: sec.page, rotulo: item.label, valores: [item.value] };
+      }
+    }
+  }
+  return null;
+}
+
+export const produtosRouter = router({
+  // ─── Busca no catálogo do MubiSys (pra vincular ao criar produto) ───────
+  buscarMubisys: protectedProcedure
+    .input(z.object({ busca: z.string().optional().default("") }))
+    .query(async ({ input }) => {
+      const termo = input.busca.trim().toLowerCase();
+      const produtosMubisys = await listarProdutos();
+      return produtosMubisys
+        .filter((p) => !termo || p.nome?.toLowerCase().includes(termo))
+        .slice(0, 30)
+        .map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          categoria: p.categoria || "",
+          status: p.status,
+          modelos: (p.modelos ?? []).map((m) => ({ id: m.id, nome: m.nome })),
+        }));
+    }),
+
+  // ─── Busca de matéria-prima no MubiSys (traz o custo ao vivo) ───────────
+  buscarMateriaPrimaMubisys: protectedProcedure
+    .input(z.object({ busca: z.string().optional().default("") }))
+    .query(async ({ input }) => {
+      const termo = input.busca.trim().toLowerCase();
+      const materiais = await listarMateriasPrimas();
+      return materiais
+        .filter((m) => !termo || m.nome?.toLowerCase().includes(termo))
+        .slice(0, 30)
+        .map((m) => ({
+          id: m.id,
+          nome: m.nome,
+          unidadeCusto: m.unidade_custo,
+          unidadeMovimentacao: m.unidade_movimentacao,
+          valorCusto: Number(m.valor_custo ?? 0),
+          status: m.status,
+        }));
+    }),
+
+  // ─── CRUD local de produtos ─────────────────────────────────────────────
+  listar: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return db.select().from(produtos).orderBy(asc(produtos.nome));
+  }),
+
+  obter: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+      const [produto] = await db.select().from(produtos).where(eq(produtos.id, input.id));
+      if (!produto) return null;
+
+      const composicao = await db
+        .select()
+        .from(produtoComposicaoMateriais)
+        .where(eq(produtoComposicaoMateriais.produtoId, input.id))
+        .orderBy(asc(produtoComposicaoMateriais.ordem));
+
+      // Uma chamada só à API cobre o custo ao vivo de todas as linhas da composição.
+      let custoPorId = new Map<number, number>();
+      try {
+        const materiais = await listarMateriasPrimas();
+        custoPorId = new Map(materiais.map((m) => [m.id, Number(m.valor_custo ?? 0)]));
+      } catch {
+        // MubiSys fora do ar: mostra a composição sem custo ao vivo em vez de quebrar a tela.
+      }
+
+      const composicaoComCusto = composicao.map((item) => ({
+        ...item,
+        custoUnitarioAtual: custoPorId.get(item.mubisysMateriaPrimaId) ?? null,
+      }));
+
+      const kit = await db
+        .select({
+          id: produtoKitItens.id,
+          produtoAssociadoId: produtoKitItens.produtoAssociadoId,
+          quantidade: produtoKitItens.quantidade,
+          nomeAssociado: produtos.nome,
+        })
+        .from(produtoKitItens)
+        .innerJoin(produtos, eq(produtoKitItens.produtoAssociadoId, produtos.id))
+        .where(eq(produtoKitItens.produtoId, input.id));
+
+      const custoMateriaPrima = composicaoComCusto.reduce((soma, item) => {
+        const custo = item.custoUnitarioAtual ?? 0;
+        return soma + custo * Number(item.quantidade);
+      }, 0);
+      const custoComFixo = custoMateriaPrima * (1 + Number(produto.percentualCustoFixo) / 100);
+
+      const precificacao =
+        produto.idPrecificacao != null ? await buscarPrecificacaoPorId(produto.idPrecificacao) : null;
+
+      return { produto, composicao: composicaoComCusto, kit, custoMateriaPrima, custoComFixo, precificacao };
+    }),
+
+  upsert: protectedProcedure
+    .input(
+      z.object({
+        id: z.number().optional(),
+        mubisysProdutoId: z.number(),
+        mubisysModeloId: z.number(),
+        nome: z.string().min(1),
+        categoria: z.string().optional(),
+        ativo: z.boolean().optional().default(true),
+        percentualCustoFixo: z.number().min(0).max(1000).optional().default(0),
+        idPrecificacao: z.number().optional(),
+        observacao: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const { id, ...data } = input;
+      const values = {
+        mubisysProdutoId: data.mubisysProdutoId,
+        mubisysModeloId: data.mubisysModeloId,
+        nome: data.nome,
+        categoria: data.categoria || null,
+        ativo: data.ativo,
+        percentualCustoFixo: String(data.percentualCustoFixo),
+        idPrecificacao: data.idPrecificacao ?? null,
+        observacao: data.observacao || null,
+        updatedAt: new Date(),
+      };
+      if (id) {
+        await db.update(produtos).set(values).where(eq(produtos.id, id));
+        return { success: true, id };
+      }
+      const [result] = await db.insert(produtos).values(values).returning({ id: produtos.id });
+      return { success: true, id: result.id };
+    }),
+
+  remover: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      await db.delete(produtos).where(eq(produtos.id, input.id));
+      return { success: true };
+    }),
+
+  // ─── Composição de matéria-prima ────────────────────────────────────────
+  composicaoAdicionar: protectedProcedure
+    .input(
+      z.object({
+        produtoId: z.number(),
+        mubisysMateriaPrimaId: z.number(),
+        materialNome: z.string().min(1),
+        unidadeConsumo: unidadeConsumoSchema,
+        quantidade: z.number(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const existentes = await db
+        .select({ id: produtoComposicaoMateriais.id })
+        .from(produtoComposicaoMateriais)
+        .where(eq(produtoComposicaoMateriais.produtoId, input.produtoId));
+      const [result] = await db
+        .insert(produtoComposicaoMateriais)
+        .values({
+          produtoId: input.produtoId,
+          mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
+          materialNome: input.materialNome,
+          unidadeConsumo: input.unidadeConsumo,
+          quantidade: String(input.quantidade),
+          ordem: existentes.length,
+        })
+        .returning({ id: produtoComposicaoMateriais.id });
+      return { success: true, id: result.id };
+    }),
+
+  composicaoRemover: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      await db.delete(produtoComposicaoMateriais).where(eq(produtoComposicaoMateriais.id, input.id));
+      return { success: true };
+    }),
+
+  // ─── Kit (produtos que acompanham a venda) ──────────────────────────────
+  kitAdicionar: protectedProcedure
+    .input(
+      z.object({
+        produtoId: z.number(),
+        produtoAssociadoId: z.number(),
+        quantidade: z.number().min(0.0001).optional().default(1),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      if (input.produtoId === input.produtoAssociadoId) {
+        throw new Error("Um produto não pode acompanhar a si mesmo no kit.");
+      }
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const [result] = await db
+        .insert(produtoKitItens)
+        .values({
+          produtoId: input.produtoId,
+          produtoAssociadoId: input.produtoAssociadoId,
+          quantidade: String(input.quantidade),
+        })
+        .returning({ id: produtoKitItens.id });
+      return { success: true, id: result.id };
+    }),
+
+  kitRemover: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      await db.delete(produtoKitItens).where(eq(produtoKitItens.id, input.id));
+      return { success: true };
+    }),
+});

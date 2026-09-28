@@ -14,6 +14,7 @@ import { curriculosRouter } from "./routers/curriculos";
 import { desempenhoColabMensalRouter } from "./routers/desempenhoColabMensal";
 import { empacotamentoRouter } from "./routers/empacotamento";
 import { metaProdutosRouter } from "./routers/metaProdutos";
+import { produtosRouter } from "./routers/produtos";
 import { performanceComercialRouter } from "./routers/performanceComercial";
 import { retencaoClientesNovosRouter } from "./routers/retencaoClientesNovos";
 import { whatsappImagemRouter } from "./routers/whatsappImagem";
@@ -1427,6 +1428,7 @@ O POP deve:
   desempenhoColaborador: desempenhoColaboradorRouter,
   metasOperacionais: metasRouter,
   metaProdutos: metaProdutosRouter,
+  produtos: produtosRouter,
   financeiro: financeiroRouter,
   marketingFinanceiro: marketingFinanceiroRouter,
   observacoesFinanceiras: observacoesFinanceirasRouter,

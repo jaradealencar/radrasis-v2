@@ -115,6 +115,42 @@ export interface MubiSysCliente {
   [k: string]: unknown;
 }
 
+/** Modelo (variação) dentro de um produto — é a este id que a composição de
+ *  matéria-prima se refere na tela do MubiSys (não ao id do produto). A API
+ *  pública não expõe a composição em si, só este cadastro básico. */
+export interface MubiSysProdutoModelo {
+  id: number;
+  nome: string;
+  unidade_cobranca: string;
+  status: string;
+  [k: string]: unknown;
+}
+
+export interface MubiSysProduto {
+  id: number;
+  categoria: string;
+  nome: string;
+  status: string;
+  modelos: MubiSysProdutoModelo[];
+  [k: string]: unknown;
+}
+
+/** GET /materia-prima — cada item já traz `valor_custo` (o que a empresa
+ *  paga pela matéria-prima, controlado pelo MubiSys), `unidade_custo` e
+ *  `unidade_movimentacao`. Não há vínculo aqui com quais produtos a usam. */
+export interface MubiSysMateriaPrima {
+  id: number;
+  nome: string;
+  categoria: string;
+  tipo: string;
+  unidade_custo: string;
+  unidade_movimentacao: string;
+  valor_custo: number;
+  data_referencia: string;
+  status: string;
+  [k: string]: unknown;
+}
+
 // ─── Cliente HTTP ────────────────────────────────────────────────────────────
 
 /** Erro de comunicação com o ERP. 404 NÃO produz erro — ver mubisysGetOrNull. */
@@ -387,8 +423,20 @@ export async function buscarClientePorId(clienteId: number): Promise<MubiSysClie
 
 /** GET /produto — o parâmetro `search` da API é ignorado (verificado); filtre
  *  em memória no chamador. */
-export async function listarProdutos(): Promise<any[]> {
-  const { itens } = await listarTudo<any>("produto", {}, { timeoutMs: TIMEOUT_PONTUAL_MS });
+export async function listarProdutos(): Promise<MubiSysProduto[]> {
+  const { itens } = await listarTudo<MubiSysProduto>("produto", {}, { timeoutMs: TIMEOUT_PONTUAL_MS });
+  return itens;
+}
+
+/** GET /materia-prima — mesmo padrão de listarProdutos (sem busca por texto
+ *  na API, filtrar em memória no chamador). ~350 itens medido em 28/09/2026,
+ *  cabe numa página só (per_page alto) sem precisar de listarTudo paginado. */
+export async function listarMateriasPrimas(): Promise<MubiSysMateriaPrima[]> {
+  const { itens } = await listarTudo<MubiSysMateriaPrima>(
+    "materia-prima",
+    {},
+    { timeoutMs: TIMEOUT_PONTUAL_MS, perPage: 1000 },
+  );
   return itens;
 }
 

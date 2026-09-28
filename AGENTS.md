@@ -308,6 +308,25 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   Os protótipos mortos citados em versões anteriores desta nota
   (`server/sync/heartbeat-sync-erp.ts`, `server/routers/logistica-refactor.ts`)
   não existem mais no repo.
+- **A API pública do MubiSys não expõe composição de produto** (testado ao
+  vivo em 28/09/2026 contra `produto/{id}` e `materia-prima/{id}`): o
+  cadastro básico do produto (`produto`/`produto/{id}`, com `modelos[]`) e o
+  custo da matéria-prima (`materia-prima`/`materia-prima/{id}`, campo
+  `valor_custo`) existem, mas o vínculo produto↔matéria-prima com
+  quantidade/unidade de consumo só existe na tela logada do MubiSys, via
+  AJAX interno (`index.php?modulo=matModelos&acao=cadastrados`, autenticado
+  por sessão de usuário, não pelo `Access-Token`). Por isso o módulo
+  **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
+  `server/routers/produtos.ts`, tabelas `produtos`/
+  `produto_composicao_materiais`/`produto_kit_itens`) guarda essa
+  composição localmente, cadastrada à mão — decisão do usuário 28/09/2026,
+  descartando scraping da tela autenticada por ser frágil/não-oficial. O
+  custo de cada matéria-prima na composição é buscado ao vivo em
+  `listarMateriasPrimas()` (`server/integrations/mubisys-client.ts`), não
+  fica congelado no cadastro. O campo `produtos.idPrecificacao` referencia
+  um `id` de linha/regra da Tabela de Preços (ver `shared/price-table.ts`)
+  só por número — não há resolução automática de qual coluna/faixa de valor
+  usar ainda.
 - **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
   o LLM já ser 100% OpenAI desde a Fase 1 do `docs/sprint-saida-forge`:
   `geminiAnswer`/`geminiAnswerIsGeneral` (`server/routers.ts`,

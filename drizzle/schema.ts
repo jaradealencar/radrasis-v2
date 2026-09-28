@@ -65,6 +65,7 @@ export const statusSinalMercadoEnum = pgEnum("status_sinal_mercado", ["novo", "q
 // mais 4 deles (d16u/d30/d90/d180 — 4 mensagens em 6 meses, decisão do usuário em 24/09/2026).
 export const retencaoJornadaEstagioEnum = pgEnum("retencao_jornada_estagio", ["d16u", "d30", "d60", "d90", "d180", "d270", "d365"]);
 export const retencaoDisparoStatusEnum = pgEnum("retencao_disparo_status", ["pendente", "disparado", "descartado"]);
+export const unidadeConsumoMateriaPrimaEnum = pgEnum("unidade_consumo_materia_prima", ["m2", "ml", "perimetro", "unidade"]);
 
 // Biblioteca de classificação de erros
 export const errorLibrary = pgTable("error_library", {
@@ -275,6 +276,69 @@ export const priceTableHistory = pgTable("price_table_history", {
 export type PriceTableHistory = typeof priceTableHistory.$inferSelect;
 export type InsertPriceTableHistory = typeof priceTableHistory.$inferInsert;
 
+// ─── CADASTRO DE PRODUTOS (composição de matéria-prima, kit, precificação) ──
+// A API pública do MubiSys não expõe composição de produto (só o cadastro
+// básico em `produto`/`produto/{id}` e o custo em `materia-prima/{id}`) — ver
+// AGENTS.md "Pontas soltas conhecidas". Por isso o produto é cadastrado aqui
+// (vinculado ao produto/modelo do MubiSys só para nome/categoria) e a
+// composição é digitada manualmente, escolhendo a matéria-prima real do
+// MubiSys (para puxar o custo ao vivo) e a unidade de consumo à mão.
+export const produtos = pgTable("produtos", {
+  id: serial("id").primaryKey(),
+  mubisysProdutoId: integer("mubisysProdutoId").notNull(),
+  mubisysModeloId: integer("mubisysModeloId").notNull(),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  categoria: varchar("categoria", { length: 128 }),
+  ativo: boolean("ativo").default(true).notNull(),
+  // Percentual do custo fixo (overhead) que reflete sobre o custo de
+  // matéria-prima do produto — ex: 30 = custo final de MP é multiplicado
+  // por 1,30. Definido manualmente pelo usuário, não vem do MubiSys.
+  percentualCustoFixo: decimal("percentualCustoFixo", { precision: 6, scale: 2 }).notNull().default("0"),
+  // ID de uma linha (MarginRow.id) ou regra (ConfigItem.id) da Tabela de
+  // Preços (ver shared/price-table.ts e server/integrations/priceTableIds.ts)
+  // — aponta a margem que esse produto deve seguir. Não é FK (o id vive
+  // dentro do contentJson de price_table_sections, não em tabela própria) e
+  // não há resolução automática de faixa/coluna ainda — decisão do usuário
+  // 28/09/2026.
+  idPrecificacao: integer("idPrecificacao"),
+  observacao: text("observacao"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type Produto = typeof produtos.$inferSelect;
+export type InsertProduto = typeof produtos.$inferInsert;
+
+// Composição de matéria-prima de um produto (equivalente à aba "Matéria
+// prima" do cadastro de produto no MubiSys).
+export const produtoComposicaoMateriais = pgTable("produto_composicao_materiais", {
+  id: serial("id").primaryKey(),
+  produtoId: integer("produtoId").notNull().references(() => produtos.id, { onDelete: "cascade" }),
+  mubisysMateriaPrimaId: integer("mubisysMateriaPrimaId").notNull(),
+  materialNome: varchar("materialNome", { length: 256 }).notNull(),
+  unidadeConsumo: unidadeConsumoMateriaPrimaEnum("unidadeConsumo").notNull(),
+  quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("0"),
+  ordem: integer("ordem").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  produtoIdx: index("produto_composicao_materiais_produtoId_idx").on(table.produtoId),
+}));
+export type ProdutoComposicaoMaterial = typeof produtoComposicaoMateriais.$inferSelect;
+export type InsertProdutoComposicaoMaterial = typeof produtoComposicaoMateriais.$inferInsert;
+
+// Kit: outros produtos (já cadastrados aqui) que acompanham a venda deste
+// produto — ex: vende o letreiro, vai junto o gabarito e a fita dupla-face.
+export const produtoKitItens = pgTable("produto_kit_itens", {
+  id: serial("id").primaryKey(),
+  produtoId: integer("produtoId").notNull().references(() => produtos.id, { onDelete: "cascade" }),
+  produtoAssociadoId: integer("produtoAssociadoId").notNull().references(() => produtos.id, { onDelete: "cascade" }),
+  quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("1"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  produtoIdx: index("produto_kit_itens_produtoId_idx").on(table.produtoId),
+}));
+export type ProdutoKitItem = typeof produtoKitItens.$inferSelect;
+export type InsertProdutoKitItem = typeof produtoKitItens.$inferInsert;
 
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 

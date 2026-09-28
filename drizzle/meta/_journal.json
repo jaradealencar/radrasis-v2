@@ -379,6 +379,13 @@
       "when": 1790610002000,
       "tag": "0053_campanhas_whatsapp_fontes_novas",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790634229517,
+      "tag": "0054_late_sandman",
+      "breakpoints": true
     }
   ]
 }

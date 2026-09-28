@@ -35,6 +35,7 @@ import PopRelatorio from "./pages/operacoes/PopRelatorio";
 
 // Comercial
 import TabelaPrecos from "./pages/comercial/TabelaPrecos";
+import Produtos from "./pages/comercial/Produtos";
 import PerformanceComercial from "./pages/comercial/PerformanceComercial";
 import QualificacaoLeadsCnpj from "./pages/comercial/QualificacaoLeadsCnpj";
 import RadarMercado from "./pages/comercial/RadarMercado";
@@ -126,6 +127,7 @@ function Router() {
       <Route path="/gestao-atrasos"><L><GestaoAtrasos /></L></Route>
       {/* Comercial */}
       <Route path="/tabela-precos"><L><TabelaPrecos /></L></Route>
+      <Route path="/comercial/produtos"><L><Produtos /></L></Route>
       <Route path="/comercial/performance"><L><PerformanceComercial /></L></Route>
       <Route path="/comercial/geografia"><L><AnaliseGeografica /></L></Route>
       <Route path="/comercial/metas"><L><MetasComerciais /></L></Route>
