@@ -327,6 +327,30 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   um `id` de linha/regra da Tabela de Preços (ver `shared/price-table.ts`)
   só por número — não há resolução automática de qual coluna/faixa de valor
   usar ainda.
+- **Módulo Proposta (cotação) é diferente de `crm_propostas`.** A tabela
+  `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o "CRM
+  de Propostas" (`client/src/pages/comercial/CRM.tsx`,
+  `server/routers/crm.ts`) na verdade lê orçamentos ao vivo do MubiSys (sem
+  lista de itens, só um `valor` total). O módulo **Propostas** novo
+  (`client/src/pages/comercial/Propostas.tsx`,
+  `server/routers/propostas.ts`, tabelas `propostas`/`proposta_itens`/
+  `configuracoes_comerciais`) é outra coisa: uma cotação montada a partir do
+  catálogo de Produtos, com link público (token em `propostas.token`, sem
+  login) pro cliente ver, ligar/desligar item pra simular o valor (escolha
+  persiste) e baixar PDF — decisão do usuário 28/09/2026. `precoUnitario`
+  em `proposta_itens` é um snapshot manual (não recalcula automaticamente
+  se o produto mudar depois — a margem da Tabela de Preços não é resolvida
+  automaticamente, ver ponta solta do módulo Produtos acima).
+  **Padrão de rota pública**: diferente do site espelho do Guia de
+  Fornecedores (`server/routes/publico-guia-fornecedores.ts`, REST fora do
+  tRPC por ser outro deploy Vercel/outra origem), a Proposta pública é
+  servida pelo mesmo app React — usa `publicProcedure` do tRPC direto
+  (`server/routers/propostas.ts`, sub-router `publico`) e a rota
+  `/proposta/:token` tem um bypass dedicado no `AuthGate`
+  (`client/src/App.tsx`), sem exigir sessão. Reaproveitar esse padrão
+  (`publicProcedure` + bypass no `AuthGate`) para qualquer link público
+  futuro dentro do próprio app — só usar o padrão REST+CORS do Guia de
+  Fornecedores quando for de fato um domínio/deploy diferente.
 - **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
   o LLM já ser 100% OpenAI desde a Fase 1 do `docs/sprint-saida-forge`:
   `geminiAnswer`/`geminiAnswerIsGeneral` (`server/routers.ts`,

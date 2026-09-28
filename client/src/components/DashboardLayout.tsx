@@ -119,6 +119,7 @@ const navSections: NavSection[] = [
     label: "Comercial",
     items: [
       { label: "Produtos", href: "/comercial/produtos", icon: <Package size={15} />, pageKey: "comercial-produtos" },
+      { label: "Propostas", href: "/comercial/propostas", icon: <FileText size={15} />, pageKey: "comercial-propostas" },
       { label: "Tabela de Preços", href: "/tabela-precos", icon: <Tag size={15} />, pageKey: "tabela-preco" },
       { label: "Performance Comercial", href: "/comercial/performance", icon: <TrendingUp size={15} />, pageKey: "comercial-performance" },
       { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },

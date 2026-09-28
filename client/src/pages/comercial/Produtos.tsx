@@ -215,12 +215,16 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
   const [percentualCustoFixo, setPercentualCustoFixo] = useState("");
   const [idPrecificacao, setIdPrecificacao] = useState("");
   const [observacao, setObservacao] = useState("");
+  const [prazoFabricacaoDiasUteis, setPrazoFabricacaoDiasUteis] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
 
   useEffect(() => {
     if (!data) return;
     setPercentualCustoFixo(String(Number(data.produto.percentualCustoFixo)));
     setIdPrecificacao(data.produto.idPrecificacao != null ? String(data.produto.idPrecificacao) : "");
     setObservacao(data.produto.observacao ?? "");
+    setPrazoFabricacaoDiasUteis(data.produto.prazoFabricacaoDiasUteis != null ? String(data.produto.prazoFabricacaoDiasUteis) : "");
+    setInstagramUrl(data.produto.instagramUrl ?? "");
   }, [data?.produto.id]);
 
   const salvar = trpc.produtos.upsert.useMutation({
@@ -253,6 +257,7 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
 
   const handleSalvar = () => {
     const pct = parseFloat(percentualCustoFixo.replace(",", "."));
+    const prazo = parseInt(prazoFabricacaoDiasUteis, 10);
     salvar.mutate({
       id: produto.id,
       mubisysProdutoId: produto.mubisysProdutoId,
@@ -262,6 +267,8 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
       ativo: produto.ativo,
       percentualCustoFixo: isNaN(pct) ? 0 : pct,
       idPrecificacao: idPrecificacao.trim() ? Number(idPrecificacao) : undefined,
+      prazoFabricacaoDiasUteis: isNaN(prazo) ? undefined : prazo,
+      instagramUrl: instagramUrl.trim() || undefined,
       observacao: observacao || undefined,
     });
   };
@@ -305,6 +312,14 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
             {!data.precificacao && idPrecificacao.trim() && (
               <p className="text-xs text-amber-600">ID não encontrado em nenhuma seção da Tabela de Preços.</p>
             )}
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Prazo de fabricação (dias úteis)</Label>
+            <Input value={prazoFabricacaoDiasUteis} onChange={(e) => setPrazoFabricacaoDiasUteis(e.target.value)} placeholder="Ex: 5" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Link do Instagram</Label>
+            <Input value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} placeholder="https://instagram.com/..." />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Observação</Label>

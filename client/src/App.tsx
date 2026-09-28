@@ -36,6 +36,7 @@ import PopRelatorio from "./pages/operacoes/PopRelatorio";
 // Comercial
 import TabelaPrecos from "./pages/comercial/TabelaPrecos";
 import Produtos from "./pages/comercial/Produtos";
+import Propostas from "./pages/comercial/Propostas";
 import PerformanceComercial from "./pages/comercial/PerformanceComercial";
 import QualificacaoLeadsCnpj from "./pages/comercial/QualificacaoLeadsCnpj";
 import RadarMercado from "./pages/comercial/RadarMercado";
@@ -74,6 +75,7 @@ import MetasOperacionais from "./pages/operacoes/MetasOperacionais";
 import AcessoNegado from "./pages/AcessoNegado";
 import Auditoria from "./pages/Auditoria";
 import LocalLogin from "./pages/LocalLogin";
+import PropostaPublica from "./pages/PropostaPublica";
 import CargoseFuncoes from "./pages/operacoes/CargoseFuncoes";
 import ProtectedRoute from "./components/ProtectedRoute";
 import IdleTimeoutWarning from "./components/IdleTimeoutWarning";
@@ -128,6 +130,7 @@ function Router() {
       {/* Comercial */}
       <Route path="/tabela-precos"><L><TabelaPrecos /></L></Route>
       <Route path="/comercial/produtos"><L><Produtos /></L></Route>
+      <Route path="/comercial/propostas"><L><Propostas /></L></Route>
       <Route path="/comercial/performance"><L><PerformanceComercial /></L></Route>
       <Route path="/comercial/geografia"><L><AnaliseGeografica /></L></Route>
       <Route path="/comercial/metas"><L><MetasComerciais /></L></Route>
@@ -211,6 +214,8 @@ function Router() {
       <Route path="/403" component={AcessoNegado} />
       {/* Login local — tela cheia, sem sidebar */}
       <Route path="/login" component={LocalLogin} />
+      {/* Proposta pública — tela cheia, sem sidebar, sem login (link com token) */}
+      <Route path="/proposta/:token" component={PropostaPublica} />
       {/* Legacy */}
       <Route path="/home"><L><Home /></L></Route>
       {/* Não encontrado — tela cheia, sem sidebar */}
@@ -227,13 +232,16 @@ function VendedorAlertasWatcher() {
 }
 
 // Login é obrigatório para toda a aplicação: qualquer rota fora de /login
-// exige sessão ativa, senão redireciona para a tela de login.
+// exige sessão ativa, senão redireciona para a tela de login. Exceção: a
+// proposta pública (/proposta/:token) — o cliente acessa pelo link, sem
+// conta no sistema; o token na URL é a autorização.
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
+  const rotaPublica = location === "/login" || location.startsWith("/proposta/");
 
   if (isLoading) return <DashboardLayoutSkeleton />;
-  if (!user && location !== "/login") return <Redirect to="/login" />;
+  if (!user && !rotaPublica) return <Redirect to="/login" />;
   return <>{children}</>;
 }
 

@@ -301,6 +301,13 @@ export const produtos = pgTable("produtos", {
   // não há resolução automática de faixa/coluna ainda — decisão do usuário
   // 28/09/2026.
   idPrecificacao: integer("idPrecificacao"),
+  // Prazo de fabricação em dias úteis — usado na Proposta pra mostrar o
+  // prazo do item mais lento entre os selecionados (decisão do usuário
+  // 28/09/2026, ver produtoItensProposta).
+  prazoFabricacaoDiasUteis: integer("prazoFabricacaoDiasUteis"),
+  // Link do Instagram do produto (ex: peça pronta, referência visual) —
+  // aparece clicável na Proposta pública.
+  instagramUrl: text("instagramUrl"),
   observacao: text("observacao"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -339,6 +346,69 @@ export const produtoKitItens = pgTable("produto_kit_itens", {
 }));
 export type ProdutoKitItem = typeof produtoKitItens.$inferSelect;
 export type InsertProdutoKitItem = typeof produtoKitItens.$inferInsert;
+
+// ─── PROPOSTA (cotação gerada a partir do catálogo de Produtos) ────────────
+// Diferente de `crm_propostas` (tabela órfã, nunca usada — o CRM de
+// Propostas hoje lê orçamentos ao vivo do MubiSys, sem lista de itens). Esta
+// é uma cotação nova, montada aqui escolhendo produtos já cadastrados
+// (decisão do usuário 28/09/2026), com link público (token) pro cliente ver,
+// ligar/desligar item e simular o valor.
+export const propostaStatusEnum = pgEnum("proposta_status", ["aberta", "aceita", "recusada", "expirada"]);
+
+export const propostas = pgTable("propostas", {
+  id: serial("id").primaryKey(),
+  // Token de acesso público — posse do link é a autorização (mesmo modelo
+  // do site espelho do Guia de Fornecedores, sem senha), gerado com
+  // crypto.randomBytes, nunca reaproveitado.
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  clienteNome: varchar("clienteNome", { length: 256 }).notNull(),
+  clienteContato: varchar("clienteContato", { length: 256 }),
+  vendedorNome: varchar("vendedorNome", { length: 256 }).notNull(),
+  // JSON (string[]) das formas de pagamento habilitadas nesta proposta —
+  // mesmo padrão de `priceTableSections.contentJson`: texto, não jsonb.
+  formasPagamentoJson: text("formasPagamentoJson").notNull().default("[]"),
+  condicaoPagamentoObs: text("condicaoPagamentoObs"),
+  observacoes: text("observacoes"),
+  status: propostaStatusEnum("status").notNull().default("aberta"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type Proposta = typeof propostas.$inferSelect;
+export type InsertProposta = typeof propostas.$inferInsert;
+
+// Item de uma proposta — vincula a um produto do catálogo. `precoUnitario` é
+// um snapshot (não recalcula se o produto mudar depois); `ativo` é o
+// habilitador que o cliente liga/desliga na página pública pra simular o
+// impacto no valor total — decisão do usuário 28/09/2026: a escolha do
+// cliente fica salva, não é só um estado visual descartável.
+export const propostaItens = pgTable("proposta_itens", {
+  id: serial("id").primaryKey(),
+  propostaId: integer("propostaId").notNull().references(() => propostas.id, { onDelete: "cascade" }),
+  produtoId: integer("produtoId").notNull().references(() => produtos.id),
+  produtoNome: varchar("produtoNome", { length: 256 }).notNull(),
+  quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("1"),
+  precoUnitario: decimal("precoUnitario", { precision: 12, scale: 2 }).notNull().default("0"),
+  ativo: boolean("ativo").notNull().default(true),
+  ordem: integer("ordem").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  propostaIdx: index("proposta_itens_propostaId_idx").on(table.propostaId),
+}));
+export type PropostaItem = typeof propostaItens.$inferSelect;
+export type InsertPropostaItem = typeof propostaItens.$inferInsert;
+
+// Configuração global (linha única, id=1) usada por toda Proposta: PDF de
+// condições comerciais (aparece no rodapé da página pública) e tabela de
+// juros de parcelamento no cartão de crédito.
+export const configuracoesComerciais = pgTable("configuracoes_comerciais", {
+  id: serial("id").primaryKey(),
+  condicoesComerciaisUrl: text("condicoesComerciaisUrl"),
+  condicoesComerciaisNome: text("condicoesComerciaisNome"),
+  // JSON de { parcelas: number, jurosPct: number }[], ordenado por parcelas.
+  jurosParcelamentoJson: text("jurosParcelamentoJson").notNull().default("[]"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type ConfiguracaoComercial = typeof configuracoesComerciais.$inferSelect;
 
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 

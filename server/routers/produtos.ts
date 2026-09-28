@@ -155,6 +155,8 @@ export const produtosRouter = router({
         ativo: z.boolean().optional().default(true),
         percentualCustoFixo: z.number().min(0).max(1000).optional().default(0),
         idPrecificacao: z.number().optional(),
+        prazoFabricacaoDiasUteis: z.number().int().min(0).optional(),
+        instagramUrl: z.string().optional(),
         observacao: z.string().optional(),
       }),
     )
@@ -170,6 +172,8 @@ export const produtosRouter = router({
         ativo: data.ativo,
         percentualCustoFixo: String(data.percentualCustoFixo),
         idPrecificacao: data.idPrecificacao ?? null,
+        prazoFabricacaoDiasUteis: data.prazoFabricacaoDiasUteis ?? null,
+        instagramUrl: data.instagramUrl || null,
         observacao: data.observacao || null,
         updatedAt: new Date(),
       };
