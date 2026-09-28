@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularFornecedoresAtivos } from "../routers/guiaFornecedores";
+import { calcularFornecedoresAtivos, calcularFornecedoresFallbackEstadosVazios, ordenarComDestaque } from "../routers/guiaFornecedores";
 
 // "Hoje" fixo para os testes: 21/09/2026 (mesma data desta sprint)
 const HOJE = new Date(2026, 8, 21); // mês 0-indexado no Date nativo
@@ -141,5 +141,71 @@ describe("calcularFornecedoresAtivos", () => {
     const r = calcularFornecedoresAtivos(linhas, [], HOJE);
     expect(r).toHaveLength(1);
     expect(r[0].nome).toBe("GRAFICA SOL");
+  });
+});
+
+describe("ordenarComDestaque", () => {
+  const f = (nome: string, pedidosJanela: number, destaqueForcado = false) =>
+    ({ nome, cidade: "Campo Grande", telefone: null, whatsapp: null, pedidosJanela, destaqueForcado });
+
+  it("com 1 só fornecedor na cidade, não dá troféu", () => {
+    const r = ordenarComDestaque([f("Solo", 5)]);
+    expect(r).toEqual([{ nome: "Solo", cidade: "Campo Grande", telefone: null, whatsapp: null }]);
+  });
+
+  it("ordena a lista inteira por pedidos decrescente, não só o 1º lugar", () => {
+    const r = ordenarComDestaque([f("Poucos", 2), f("Muitos", 10), f("Medio", 5)]);
+    expect(r.map(x => x.nome)).toEqual(["Muitos", "Medio", "Poucos"]);
+    expect(r[0].destaque).toBe(true);
+    expect(r[1].destaque).toBeUndefined();
+  });
+
+  it("empate no topo não dá troféu a ninguém, mas mantém a ordem por pedidos", () => {
+    const r = ordenarComDestaque([f("Empate A", 5), f("Empate B", 5), f("Atras", 1)]);
+    expect(r.every(x => !x.destaque)).toBe(true);
+    expect(r.map(x => x.nome)).toEqual(["Empate A", "Empate B", "Atras"]);
+  });
+
+  it("destaqueForcado vence mesmo tendo menos pedidos que outro fornecedor", () => {
+    const r = ordenarComDestaque([f("Mais Pedidos", 20), f("Forcado", 1, true), f("Terceiro", 5)]);
+    expect(r.map(x => x.nome)).toEqual(["Forcado", "Mais Pedidos", "Terceiro"]);
+    expect(r[0].destaque).toBe(true);
+    expect(r[1].destaque).toBeUndefined();
+  });
+});
+
+describe("calcularFornecedoresFallbackEstadosVazios", () => {
+  it("inclui quem comprou só 1 vez quando o estado não tem ninguém qualificado", () => {
+    const linhas = [os({ empresa: "Compra Unica MS", mes: 8, ano: 2026 })];
+    const primario = calcularFornecedoresAtivos(linhas, [], HOJE); // vazio: só 1 compra
+    expect(primario).toHaveLength(0);
+    const fallback = calcularFornecedoresFallbackEstadosVazios(linhas, [], primario, HOJE);
+    expect(fallback.map(f => f.nome)).toEqual(["Compra Unica MS"]);
+    expect(fallback[0].origem).toBe("fallback_estado");
+  });
+
+  it("não duplica nem preenche fallback quando o estado já tem alguém qualificado", () => {
+    const linhas = [
+      os({ empresa: "Qualificado MS", mes: 7, ano: 2026 }),
+      os({ empresa: "Qualificado MS", mes: 8, ano: 2026 }),
+      os({ empresa: "Compra Unica MS", mes: 8, ano: 2026 }),
+    ];
+    const primario = calcularFornecedoresAtivos(linhas, [], HOJE);
+    expect(primario.map(f => f.nome)).toEqual(["Qualificado MS"]);
+    const fallback = calcularFornecedoresFallbackEstadosVazios(linhas, [], primario, HOJE);
+    expect(fallback).toHaveLength(0);
+  });
+
+  it("respeita override 'excluir' mesmo no fallback", () => {
+    const linhas = [os({ empresa: "Excluido MS", mes: 8, ano: 2026 })];
+    const overrides = [{ empresaChave: "excluido ms", acao: "excluir" as const }];
+    const fallback = calcularFornecedoresFallbackEstadosVazios(linhas, overrides, [], HOJE);
+    expect(fallback).toHaveLength(0);
+  });
+
+  it("não inclui quem não teve nenhuma compra dentro da janela de 12 meses", () => {
+    const linhas = [os({ empresa: "Antiga MS", mes: 8, ano: 2025 })]; // 13 meses atrás — fora
+    const fallback = calcularFornecedoresFallbackEstadosVazios(linhas, [], [], HOJE);
+    expect(fallback).toHaveLength(0);
   });
 });

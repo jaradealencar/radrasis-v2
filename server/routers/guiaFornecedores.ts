@@ -26,6 +26,12 @@ import { planoBackfillTelefone, completarTelefonesJanela, janelaValida } from ".
  *   (rolante, não ano civil — recalculado a cada consulta) E (b) a última O.S. válida foi há
  *   no máximo 4 meses. A condição (b) pesa mais: um fornecedor com 5 compras só que a última
  *   foi há 5 meses SAI do guia mesmo assim.
+ *
+ * FALLBACK PARA ESTADOS VAZIOS (28/09/2026, ver `calcularFornecedoresFallbackEstadosVazios`):
+ *   em estados onde NINGUÉM qualifica pela regra acima, entra quem teve 1+ O.S. válida nos
+ *   últimos 12 meses (sem exigir recência de 4 meses) — só para não deixar o estado sem
+ *   nenhuma indicação. Reavaliado a cada consulta: assim que um fornecedor qualificar pela
+ *   regra normal naquele estado, o fallback some sozinho ali.
  */
 
 const MESES_JANELA_CONTAGEM = 12;
@@ -95,7 +101,7 @@ interface FornecedorCalculado {
   cidade: string;
   estado: string;
   telefone: string | null;
-  origem: "automatico" | "manual";
+  origem: "automatico" | "manual" | "fallback_estado";
   /** Nº de O.S. válidas na janela rolante de 12 meses — mesma contagem usada para qualificar o
    * fornecedor (`qtdJanela`). Usado só para decidir o troféu de "mais procurada" por cidade
    * (ver `agruparPorEstadoCidade`); nunca exposto cru na lista pública. */
@@ -186,6 +192,77 @@ export function calcularFornecedoresAtivos(
   return resultado;
 }
 
+/** Preenche estados onde NENHUM fornecedor qualifica pela regra normal (2+ compras/12m e ativo
+ * há no máximo 4 meses) com clientes que compraram ao menos 1 vez na janela de 12 meses —
+ * decisão do Daniel em 28/09/2026 para o guia não ficar "vazio" em estados onde a cobertura
+ * ainda é fraca, mesmo sabendo que esses fornecedores são uma indicação mais fraca que os
+ * qualificados normalmente. Recalculado a cada consulta (sem cache): se um fornecedor passar a
+ * qualificar pela regra normal nesse estado, o estado deixa de estar "vazio" e a função para de
+ * devolver fallback para ele automaticamente — não precisa de intervenção manual. Função pura,
+ * separada de `calcularFornecedoresAtivos` de propósito: a regra normal (e os testes que a
+ * cobrem) não muda em nada; isto é só um complemento aplicado por cima do resultado dela. */
+export function calcularFornecedoresFallbackEstadosVazios(
+  linhas: Array<{ empresa: string | null; cidade: string | null; estado: string | null; telefone: string | null; tipoOs: string | null; status: string | null; mes: number; ano: number }>,
+  overrides: Array<{ empresaChave: string; acao: "incluir" | "excluir" }>,
+  resultadoPrimario: FornecedorCalculado[],
+  hoje: Date = new Date(),
+): FornecedorCalculado[] {
+  const estadosComFornecedor = new Set(resultadoPrimario.filter(f => f.estado).map(f => f.estado));
+  const jaIncluidos = new Set(resultadoPrimario.map(f => f.chave));
+  const porOverride = new Map(overrides.map(o => [o.empresaChave, o]));
+
+  const mesAtual = hoje.getMonth() + 1, anoAtual = hoje.getFullYear();
+  const inicioJanela = anoAtual * 12 + mesAtual - (MESES_JANELA_CONTAGEM - 1);
+
+  type Grupo = {
+    nomes: Map<string, number>; qtdJanela: number;
+    ultima: { mes: number; ano: number; cidade: string; estado: string } | null;
+    telefoneRecente: { chaveMes: number; tel: string } | null;
+  };
+  const porCliente = new Map<string, Grupo>();
+
+  for (const l of linhas) {
+    if (!isOsNormalDb(l)) continue;
+    const nome = (l.empresa ?? "").trim();
+    if (!nome) continue;
+    const chave = normalizeEmpresaKey(nome);
+    if (CONTAS_NAO_SAO_FORNECEDORES.has(chave)) continue;
+    if (jaIncluidos.has(chave)) continue;
+    if (porOverride.get(chave)?.acao === "excluir") continue;
+
+    if (!porCliente.has(chave)) porCliente.set(chave, { nomes: new Map(), qtdJanela: 0, ultima: null, telefoneRecente: null });
+    const g = porCliente.get(chave)!;
+    g.nomes.set(nome, (g.nomes.get(nome) ?? 0) + 1);
+
+    const chaveMes = l.ano * 12 + l.mes;
+    if (chaveMes >= inicioJanela) g.qtdJanela++;
+    if (!g.ultima || chaveMes > g.ultima.ano * 12 + g.ultima.mes) {
+      g.ultima = { mes: l.mes, ano: l.ano, cidade: l.cidade ?? "", estado: (l.estado ?? "").toUpperCase() };
+    }
+    const tel = telefoneValido(l.telefone);
+    if (tel && (!g.telefoneRecente || chaveMes > g.telefoneRecente.chaveMes)) g.telefoneRecente = { chaveMes, tel };
+  }
+
+  const resultado: FornecedorCalculado[] = [];
+  for (const [chave, g] of porCliente) {
+    if (g.qtdJanela < 1) continue;
+    const estado = (g.ultima?.estado || "").toUpperCase();
+    if (!estado || estadosComFornecedor.has(estado)) continue;
+
+    const nomeDisplay = [...g.nomes.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    resultado.push({
+      chave, nome: nomeDisplay,
+      cidade: g.ultima?.cidade || "", estado,
+      telefone: g.telefoneRecente?.tel ?? null,
+      origem: "fallback_estado",
+      pedidosJanela: g.qtdJanela,
+      destaqueForcado: false,
+    });
+  }
+
+  return resultado;
+}
+
 export interface FornecedorGuia {
   nome: string;
   cidade: string;
@@ -209,35 +286,37 @@ export interface GuiaFornecedoresResultado {
   estados: EstadoGuia[];
 }
 
-/** Ordem alfabética por padrão, com um troféu de "mais procurada" quando fizer sentido: só
- * quando há 2+ fornecedores na cidade. Prioridade de quem vence:
+/** Ordena a lista inteira da cidade por nº de pedidos na janela (decrescente, desempate por
+ * nome) — não é só o 1º lugar que segue esse critério, a lista toda reflete "quem tem mais
+ * pedidos", nunca valor/faturamento. Só quando há 2+ fornecedores na cidade um deles ganha o
+ * troféu de "mais procurada" (posição 1, `destaque: true`); com 1 só fornecedor o troféu não
+ * diz nada (não tem com quem comparar). Prioridade de quem vence o troféu:
  *  1. Override manual (`destaqueForcado`) — usado quando o Daniel sabe que a contagem
  *     automática não reflete a realidade (ex.: nome do fornecedor gravado com grafias
- *     diferentes em O.S. diferentes, fragmentando a contagem). Só um por cidade faz sentido;
- *     em caso de mais de um marcado (erro de cadastro), desempata por nome para não escolher
- *     ao acaso.
- *  2. Líder único (sem empate) por pedidos na janela, se ninguém tiver override.
- * Empate no topo (sem override) ou só 1 fornecedor na cidade não marca ninguém: não dá para
- * eleger "a mais procurada" sem dado que desempate, e com um só fornecedor o troféu não diz
- * nada (não tem com quem comparar). */
-function ordenarComDestaque(lista: Array<FornecedorGuia & { pedidosJanela: number; destaqueForcado: boolean }>): FornecedorGuia[] {
-  const porNome = [...lista].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  const semInternos = () => porNome.map(({ pedidosJanela, destaqueForcado, ...f }) => f);
-  if (porNome.length < 2) return semInternos();
+ *     diferentes em O.S. diferentes, fragmentando a contagem), ou quando ele simplesmente
+ *     decide que aquela empresa deve aparecer em 1º ali. Vale mesmo empatada ou atrás em
+ *     pedidos — é uma decisão editorial, não estatística. Só um por cidade faz sentido; em
+ *     caso de mais de um marcado (erro de cadastro), desempata por nome.
+ *  2. Líder único (sem empate) por pedidos na janela, se ninguém tiver override. Empate no
+ *     topo não marca ninguém (não dá para eleger "a mais procurada" sem dado que desempate),
+ *     mas a lista continua ordenada por pedidos mesmo assim. */
+export function ordenarComDestaque(lista: Array<FornecedorGuia & { pedidosJanela: number; destaqueForcado: boolean }>): FornecedorGuia[] {
+  const porPedidos = [...lista].sort((a, b) => b.pedidosJanela - a.pedidosJanela || a.nome.localeCompare(b.nome, "pt-BR"));
+  const semInternos = (f: (typeof porPedidos)[number]) => { const { pedidosJanela, destaqueForcado, ...pub } = f; return pub; };
+  if (porPedidos.length < 2) return porPedidos.map(semInternos);
 
-  const forcados = porNome.filter(f => f.destaqueForcado);
-  const lider = forcados.length > 0
-    ? forcados[0]
+  const forcados = porPedidos.filter(f => f.destaqueForcado);
+  const vencedor = forcados.length > 0
+    ? [...forcados].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))[0]
     : (() => {
-        const maxPedidos = Math.max(...porNome.map(f => f.pedidosJanela));
-        const lideres = porNome.filter(f => f.pedidosJanela === maxPedidos);
+        const maxPedidos = porPedidos[0].pedidosJanela;
+        const lideres = porPedidos.filter(f => f.pedidosJanela === maxPedidos);
         return maxPedidos > 0 && lideres.length === 1 ? lideres[0] : null;
       })();
-  if (!lider) return semInternos();
+  if (!vencedor) return porPedidos.map(semInternos);
 
-  const resto = porNome.filter(f => f !== lider);
-  const { pedidosJanela, destaqueForcado, ...liderPublico } = lider;
-  return [{ ...liderPublico, destaque: true }, ...resto.map(({ pedidosJanela, destaqueForcado, ...f }) => f)];
+  const resto = porPedidos.filter(f => f !== vencedor);
+  return [{ ...semInternos(vencedor), destaque: true }, ...resto.map(semInternos)];
 }
 
 /** Agrupa por estado > cidade (unificando grafias com/sem acento da mesma cidade) e monta o
@@ -311,7 +390,9 @@ async function carregarFornecedoresCalculados(db: NonNullable<Awaited<ReturnType
     }).from(historicoOs),
     db.select().from(guiaFornecedoresOverrides),
   ]);
-  return calcularFornecedoresAtivos(linhas, overridesRows);
+  const primario = calcularFornecedoresAtivos(linhas, overridesRows);
+  const fallback = calcularFornecedoresFallbackEstadosVazios(linhas, overridesRows, primario);
+  return [...primario, ...fallback];
 }
 
 async function montarGuia(): Promise<GuiaFornecedoresResultado> {
@@ -525,8 +606,8 @@ export const guiaFornecedoresRouter = router({
       return { itens };
     }),
 
-  /** Situação do telefone em historico_os, mês a mês (13 meses), com as janelas de 7 dias que
-   * o botão "Completar telefones" percorre. */
+  /** Situação do telefone em historico_os, mês a mês (24 meses, ver MESES_BACKFILL_PADRAO), com
+   * as janelas de 7 dias que o botão "Completar telefones" percorre. */
   planoTelefones: protectedProcedure.query(() => planoBackfillTelefone()),
 
   /** Busca no MubiSys os telefones de UMA janela de até 7 dias e grava onde ainda está vazio.
