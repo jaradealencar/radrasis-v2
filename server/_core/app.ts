@@ -42,8 +42,8 @@ export async function createApp(): Promise<Express> {
   // X-Content-Type-Options, Referrer-Policy e outros headers de proteção.
   app.use(
     helmet({
-      contentSecurityPolicy: false,      // Vite/React gerencia o CSP em dev
-      crossOriginEmbedderPolicy: false,  // Necessário para recursos externos (mapas, fontes)
+      contentSecurityPolicy: false, // Vite/React gerencia o CSP em dev
+      crossOriginEmbedderPolicy: false, // Necessário para recursos externos (mapas, fontes)
     })
   );
 
@@ -69,8 +69,10 @@ export async function createApp(): Promise<Express> {
       max: 300,
       standardHeaders: true,
       legacyHeaders: false,
-      message: { error: "Muitas requisições. Tente novamente em alguns instantes." },
-      skip: (req) => req.path.startsWith("/__manus__"), // Não limitar ferramentas internas
+      message: {
+        error: "Muitas requisições. Tente novamente em alguns instantes.",
+      },
+      skip: req => req.path.startsWith("/__manus__"), // Não limitar ferramentas internas
     });
     app.use("/api", generalLimiter);
 
@@ -80,7 +82,10 @@ export async function createApp(): Promise<Express> {
       max: 10,
       standardHeaders: true,
       legacyHeaders: false,
-      message: { error: "Muitas tentativas de login. Aguarde 1 minuto e tente novamente." },
+      message: {
+        error:
+          "Muitas tentativas de login. Aguarde 1 minuto e tente novamente.",
+      },
     });
     app.use("/api/auth/sign-in", loginLimiter);
     app.use("/api/auth/sign-up", loginLimiter);
@@ -152,41 +157,61 @@ export async function createApp(): Promise<Express> {
 
   // ─── Guia de Fornecedores: rotas públicas (CORS aberto) para o site espelho ─
   // em domínio separado do radrasis, sem login. Ver server/routes/publico-guia-fornecedores.ts.
-  const { registrarRotasPublicoGuiaFornecedores } = await import("../routes/publico-guia-fornecedores");
+  const { registrarRotasPublicoGuiaFornecedores } =
+    await import("../routes/publico-guia-fornecedores");
   registrarRotasPublicoGuiaFornecedores(app);
 
   // ─── Campanhas WhatsApp: webhooks REST (log-send / check-quarantine), protegidos por CAMPANHAS_API_KEY ───
-  const { registrarRotasCampanhasWhatsappApi } = await import("../routes/campanhas-whatsapp-api");
+  const { registrarRotasCampanhasWhatsappApi } =
+    await import("../routes/campanhas-whatsapp-api");
   registrarRotasCampanhasWhatsappApi(app);
 
+  // ─── Tabela de Preços: export REST (GET /api/v1/price-table/export) para o precificador
+  // automatizado externo, protegido por PRICE_TABLE_API_KEY. Ver server/routes/price-table-api.ts.
+  const { registrarRotasPriceTableApi } =
+    await import("../routes/price-table-api");
+  registrarRotasPriceTableApi(app);
+
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
-  const { handleSincronizarOS, handleStatusSincronizacao } = await import("../sync/scheduled-sync-os-handler");
+  const { handleSincronizarOS, handleStatusSincronizacao } =
+    await import("../sync/scheduled-sync-os-handler");
   app.post("/api/scheduled/sincronizarOS", handleSincronizarOS);
   app.get("/api/scheduled/sincronizarOS/status", handleStatusSincronizacao);
 
-  const { handleSincronizarHistorico } = await import("../sync/scheduled-sync-historico-handler");
+  const { handleSincronizarHistorico } =
+    await import("../sync/scheduled-sync-historico-handler");
   app.post("/api/scheduled/sincronizarHistorico", handleSincronizarHistorico);
 
-  const { handleCompletarTelefones } = await import("../sync/telefone-historico-handler");
+  const { handleCompletarTelefones } =
+    await import("../sync/telefone-historico-handler");
   app.post("/api/scheduled/completarTelefones", handleCompletarTelefones);
 
-  const { handleSincronizarCrmAbertos } = await import("../sync/scheduled-sync-crm-abertos-handler");
+  const { handleSincronizarCrmAbertos } =
+    await import("../sync/scheduled-sync-crm-abertos-handler");
   app.post("/api/scheduled/sincronizarCrmAbertos", handleSincronizarCrmAbertos);
 
-  const { handleSincronizarCrmFechados } = await import("../sync/scheduled-sync-crm-fechados-handler");
-  app.post("/api/scheduled/sincronizarCrmFechados", handleSincronizarCrmFechados);
+  const { handleSincronizarCrmFechados } =
+    await import("../sync/scheduled-sync-crm-fechados-handler");
+  app.post(
+    "/api/scheduled/sincronizarCrmFechados",
+    handleSincronizarCrmFechados
+  );
 
-  const { handleSincronizarPerfilCnpj } = await import("../sync/scheduled-sync-perfil-cnpj-handler");
+  const { handleSincronizarPerfilCnpj } =
+    await import("../sync/scheduled-sync-perfil-cnpj-handler");
   app.post("/api/scheduled/sincronizarPerfilCnpj", handleSincronizarPerfilCnpj);
 
-  const { handleRelatorioCrmDiario } = await import("../sync/scheduled-relatorio-crm-diario-handler");
+  const { handleRelatorioCrmDiario } =
+    await import("../sync/scheduled-relatorio-crm-diario-handler");
   app.post("/api/scheduled/relatorioCrmDiario", handleRelatorioCrmDiario);
 
-  const { handleRelatorioCrmSemanal } = await import("../sync/scheduled-relatorio-crm-semanal-handler");
+  const { handleRelatorioCrmSemanal } =
+    await import("../sync/scheduled-relatorio-crm-semanal-handler");
   app.post("/api/scheduled/relatorioCrmSemanal", handleRelatorioCrmSemanal);
 
   // Ação administrativa pontual (não é um cron recorrente) — ver limpeza-crm-antigas.ts.
-  const { handleLimparCrmAntigas } = await import("../sync/limpeza-crm-antigas-handler");
+  const { handleLimparCrmAntigas } =
+    await import("../sync/limpeza-crm-antigas-handler");
   app.post("/api/scheduled/limparCrmPropostasAntigas", handleLimparCrmAntigas);
 
   return app;

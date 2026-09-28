@@ -1,31 +1,55 @@
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Table, TableHeader, TableBody,
-  TableRow, TableHead, TableCell,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Pencil, Save, X, Info, FileText, Search, Filter, ChevronDown, ChevronUp, Plus, Trash2, Copy, Check, Download, History, Clock } from "lucide-react";
+import {
+  Pencil,
+  Save,
+  X,
+  Info,
+  FileText,
+  Search,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Trash2,
+  Copy,
+  Check,
+  Download,
+  History,
+  Clock,
+} from "lucide-react";
 import { useState, useMemo, useRef, useCallback } from "react";
 import RichTextEditor from "../../components/RichTextEditor";
+import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-interface ConfigItem { label: string; value: string; highlight?: string; note?: string; }
-interface MarginRow { label: string; values: string[]; }
-interface ContentJson {
-  type: "config" | "margin_table" | "margin_table_multi" | "list" | "rich_text";
-  columns?: string[];
-  rows?: MarginRow[];
-  items?: ConfigItem[] | string[];
-  html?: string;
-}
 
 interface Section {
   id: number;
@@ -49,41 +73,48 @@ function extractNumber(val: string): string {
 /** Botão de copiar com feedback visual */
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const numericValue = extractNumber(value);
-    try {
-      await navigator.clipboard.writeText(numericValue);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // fallback para browsers sem clipboard API
-      const ta = document.createElement("textarea");
-      ta.value = numericValue;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
-  }, [value]);
+  const handleCopy = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const numericValue = extractNumber(value);
+      try {
+        await navigator.clipboard.writeText(numericValue);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch {
+        // fallback para browsers sem clipboard API
+        const ta = document.createElement("textarea");
+        ta.value = numericValue;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    },
+    [value]
+  );
   return (
     <button
       onClick={handleCopy}
       title={`Copiar ${extractNumber(value)}`}
       className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-slate-400 hover:text-blue-600 focus:opacity-100 focus:outline-none"
     >
-      {copied
-        ? <Check size={12} className="text-green-500" />
-        : <Copy size={12} />}
+      {copied ? (
+        <Check size={12} className="text-green-500" />
+      ) : (
+        <Copy size={12} />
+      )}
     </button>
   );
 }
 
 function highlightClass(h?: string) {
-  if (h === "red") return "bg-red-100 text-red-800 border border-red-300 font-semibold";
-  if (h === "yellow") return "bg-amber-50 text-amber-800 border border-amber-300 font-semibold";
+  if (h === "red")
+    return "bg-red-100 text-red-800 border border-red-300 font-semibold";
+  if (h === "yellow")
+    return "bg-amber-50 text-amber-800 border border-amber-300 font-semibold";
   if (h === "blue") return "bg-blue-50 text-blue-800 border border-blue-300";
   return "bg-slate-50 text-slate-700";
 }
@@ -105,7 +136,10 @@ function renderPercentDecorated(text: string): React.ReactNode {
     parts.push(
       <span key={key++} className="whitespace-nowrap">
         {m[1]}
-        <span className="after:content-['%'] after:text-slate-400" aria-hidden="true" />
+        <span
+          className="after:content-['%'] after:text-slate-400"
+          aria-hidden="true"
+        />
       </span>
     );
     lastIndex = re.lastIndex;
@@ -114,50 +148,102 @@ function renderPercentDecorated(text: string): React.ReactNode {
   return parts.length > 0 ? parts : text;
 }
 
+/** Badge discreta com o ID estável da linha/regra (ver shared/price-table.ts) —
+ * usado pelo precificador automatizado externo pra referenciar sem depender do label. */
+function IdTag({ id }: { id: number }) {
+  if (!id) return null;
+  return (
+    <span
+      title={`ID #${id} — usado pelo precificador automatizado`}
+      className="text-[10px] font-mono text-slate-400 select-all"
+    >
+      #{id}
+    </span>
+  );
+}
+
 function ConfigTable({ items }: { items: ConfigItem[] }) {
   return (
     <div className="flex flex-wrap gap-3 mb-2">
       {items.map((item, i) => (
-        <div key={i} className={`group px-3 py-2 rounded-lg text-sm ${highlightClass(item.highlight)} flex items-center gap-1`}>
+        <div
+          key={i}
+          className={`group px-3 py-2 rounded-lg text-sm ${highlightClass(item.highlight)} flex items-center gap-1`}
+        >
+          <IdTag id={item.id} />
           <span className="font-medium">{item.label}:</span>{" "}
-          <span className="text-base font-bold">{renderPercentDecorated(item.value)}</span>
+          <span className="text-base font-bold">
+            {renderPercentDecorated(item.value)}
+          </span>
           <CopyButton value={item.value} />
-          {item.note && <div className="text-xs mt-0.5 opacity-80 w-full">{item.note}</div>}
+          {item.note && (
+            <div className="text-xs mt-0.5 opacity-80 w-full">{item.note}</div>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function MarginTable({ columns, rows }: { columns: string[]; rows: MarginRow[] }) {
+function MarginTable({
+  columns,
+  rows,
+}: {
+  columns: string[];
+  rows: MarginRow[];
+}) {
   return (
-    <Table className="border-collapse">
-      <TableHeader>
-        <TableRow className="bg-slate-100">
-          {rows.length > 1 && (
-            <TableHead className="text-center border border-slate-300 min-w-[140px] text-slate-800 font-semibold">{columns[0] ?? ""}</TableHead>
-          )}
-          {(rows.length > 1 ? columns.slice(1) : columns).map((col, i) => (
-            <TableHead key={i} className="text-center border border-slate-300 text-slate-800 font-semibold">{col}</TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, ri) => (
-          <TableRow key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+    <div className="relative">
+      {rows.length === 1 && rows[0] && (
+        <div className="absolute -top-4 right-0">
+          <IdTag id={rows[0].id} />
+        </div>
+      )}
+      <Table className="border-collapse">
+        <TableHeader>
+          <TableRow className="bg-slate-100">
             {rows.length > 1 && (
-              <TableCell className="font-medium text-slate-700 border border-slate-200">{row.label}</TableCell>
+              <TableHead className="text-center border border-slate-300 min-w-[140px] text-slate-800 font-semibold">
+                {columns[0] ?? ""}
+              </TableHead>
             )}
-            {row.values.map((val, vi) => (
-              <TableCell key={vi} className="group text-center border border-slate-200">
-                <span className="font-semibold text-blue-700">{renderPercentDecorated(val)}</span>
-                {val.trim() !== "" && <CopyButton value={val} />}
-              </TableCell>
+            {(rows.length > 1 ? columns.slice(1) : columns).map((col, i) => (
+              <TableHead
+                key={i}
+                className="text-center border border-slate-300 text-slate-800 font-semibold"
+              >
+                {col}
+              </TableHead>
             ))}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, ri) => (
+            <TableRow
+              key={ri}
+              className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}
+            >
+              {rows.length > 1 && (
+                <TableCell className="font-medium text-slate-700 border border-slate-200">
+                  <IdTag id={row.id} /> {row.label}
+                </TableCell>
+              )}
+              {row.values.map((val, vi) => (
+                <TableCell
+                  key={vi}
+                  className="group text-center border border-slate-200"
+                >
+                  <span className="font-semibold text-blue-700">
+                    {renderPercentDecorated(val)}
+                  </span>
+                  {val.trim() !== "" && <CopyButton value={val} />}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -177,24 +263,46 @@ function ListContent({ items }: { items: string[] }) {
 function SectionContent({ contentJson }: { contentJson: string }) {
   try {
     const data: ContentJson = JSON.parse(contentJson);
-    if (data.type === "config") return <ConfigTable items={data.items as ConfigItem[]} />;
+    if (data.type === "config")
+      return <ConfigTable items={data.items as ConfigItem[]} />;
     if (data.type === "margin_table" || data.type === "margin_table_multi") {
-      return <MarginTable columns={data.columns ?? []} rows={data.rows ?? []} />;
+      return (
+        <MarginTable columns={data.columns ?? []} rows={data.rows ?? []} />
+      );
     }
-    if (data.type === "list") return <ListContent items={data.items as string[]} />;
+    if (data.type === "list")
+      return <ListContent items={data.items as string[]} />;
     if (data.type === "rich_text" && data.html) {
-      return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: data.html }} />;
+      return (
+        <div
+          className="prose prose-sm max-w-none"
+          dangerouslySetInnerHTML={{ __html: data.html }}
+        />
+      );
     }
   } catch {}
-  return <pre className="text-xs text-slate-600 whitespace-pre-wrap">{contentJson}</pre>;
+  return (
+    <pre className="text-xs text-slate-600 whitespace-pre-wrap">
+      {contentJson}
+    </pre>
+  );
 }
 
 // ─── Visual Editors ───────────────────────────────────────────────────────────
 
 /** Editor visual para listas simples (type: "list") */
-function ListEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ListEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const parsed = useMemo(() => {
-    try { const d = JSON.parse(value); if (d.type === "list") return d.items as string[]; } catch {}
+    try {
+      const d = JSON.parse(value);
+      if (d.type === "list") return d.items as string[];
+    } catch {}
     return [];
   }, [value]);
 
@@ -210,9 +318,16 @@ function ListEditor({ value, onChange }: { value: string; onChange: (v: string) 
           <input
             className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-400"
             value={item}
-            onChange={e => { const arr = [...parsed]; arr[i] = e.target.value; update(arr); }}
+            onChange={e => {
+              const arr = [...parsed];
+              arr[i] = e.target.value;
+              update(arr);
+            }}
           />
-          <button onClick={() => update(parsed.filter((_, j) => j !== i))} className="text-slate-300 hover:text-red-400 transition-colors">
+          <button
+            onClick={() => update(parsed.filter((_, j) => j !== i))}
+            className="text-slate-300 hover:text-red-400 transition-colors"
+          >
             <Trash2 size={13} />
           </button>
         </div>
@@ -228,11 +343,18 @@ function ListEditor({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 /** Editor visual para tabelas de margem (type: "margin_table") */
-function MarginTableEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function MarginTableEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const parsed = useMemo(() => {
     try {
       const d = JSON.parse(value);
-      if (d.type === "margin_table" || d.type === "margin_table_multi") return d as ContentJson;
+      if (d.type === "margin_table" || d.type === "margin_table_multi")
+        return d as ContentJson;
     } catch {}
     return null;
   }, [value]);
@@ -253,22 +375,32 @@ function MarginTableEditor({ value, onChange }: { value: string; onChange: (v: s
   }
 
   function updateRowLabel(rowIdx: number, val: string) {
-    const newRows = rows.map((r, ri) => ri === rowIdx ? { ...r, label: val } : r);
+    const newRows = rows.map((r, ri) =>
+      ri === rowIdx ? { ...r, label: val } : r
+    );
     onChange(JSON.stringify({ ...parsed, rows: newRows }));
   }
 
   function updateColHeader(colIdx: number, val: string) {
-    const newCols = cols.map((c, ci) => ci === colIdx ? val : c);
+    const newCols = cols.map((c, ci) => (ci === colIdx ? val : c));
     onChange(JSON.stringify({ ...parsed, columns: newCols }));
   }
 
   function addRow() {
-    const newRow: MarginRow = { label: "Nova linha", values: cols.map(() => "") };
+    // id: 0 = sentinela "ainda não atribuído" — o servidor atribui o próximo
+    // ID estável disponível ao salvar (ver server/integrations/priceTableIds.ts).
+    const newRow: MarginRow = {
+      id: 0,
+      label: "Nova linha",
+      values: cols.map(() => ""),
+    };
     onChange(JSON.stringify({ ...parsed, rows: [...rows, newRow] }));
   }
 
   function removeRow(rowIdx: number) {
-    onChange(JSON.stringify({ ...parsed, rows: rows.filter((_, i) => i !== rowIdx) }));
+    onChange(
+      JSON.stringify({ ...parsed, rows: rows.filter((_, i) => i !== rowIdx) })
+    );
   }
 
   return (
@@ -290,7 +422,12 @@ function MarginTableEditor({ value, onChange }: { value: string; onChange: (v: s
                 <input
                   className="w-full text-xs font-semibold text-center bg-transparent outline-none focus:bg-white focus:border-blue-300 rounded px-1"
                   value={col}
-                  onChange={e => updateColHeader(rows.length > 1 ? ci + 1 : ci, e.target.value)}
+                  onChange={e =>
+                    updateColHeader(
+                      rows.length > 1 ? ci + 1 : ci,
+                      e.target.value
+                    )
+                  }
                 />
               </TableHead>
             ))}
@@ -299,14 +436,20 @@ function MarginTableEditor({ value, onChange }: { value: string; onChange: (v: s
         </TableHeader>
         <TableBody>
           {rows.map((row, ri) => (
-            <TableRow key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+            <TableRow
+              key={ri}
+              className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}
+            >
               {rows.length > 1 && (
                 <TableCell className="border border-slate-200">
-                  <input
-                    className="w-full text-xs font-medium text-center text-slate-700 bg-transparent outline-none focus:bg-white focus:border-blue-300 rounded px-1"
-                    value={row.label}
-                    onChange={e => updateRowLabel(ri, e.target.value)}
-                  />
+                  <div className="flex items-center gap-1">
+                    <IdTag id={row.id} />
+                    <input
+                      className="w-full text-xs font-medium text-center text-slate-700 bg-transparent outline-none focus:bg-white focus:border-blue-300 rounded px-1"
+                      value={row.label}
+                      onChange={e => updateRowLabel(ri, e.target.value)}
+                    />
+                  </div>
                 </TableCell>
               )}
               {row.values.map((val, vi) => (
@@ -319,7 +462,10 @@ function MarginTableEditor({ value, onChange }: { value: string; onChange: (v: s
                 </TableCell>
               ))}
               <TableCell className="border border-slate-200 text-center">
-                <button onClick={() => removeRow(ri)} className="text-slate-300 hover:text-red-400 transition-colors">
+                <button
+                  onClick={() => removeRow(ri)}
+                  className="text-slate-300 hover:text-red-400 transition-colors"
+                >
                   <Trash2 size={11} />
                 </button>
               </TableCell>
@@ -338,9 +484,18 @@ function MarginTableEditor({ value, onChange }: { value: string; onChange: (v: s
 }
 
 /** Editor visual para config items (type: "config") */
-function ConfigEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ConfigEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const parsed = useMemo(() => {
-    try { const d = JSON.parse(value); if (d.type === "config") return d.items as ConfigItem[]; } catch {}
+    try {
+      const d = JSON.parse(value);
+      if (d.type === "config") return d.items as ConfigItem[];
+    } catch {}
     return [];
   }, [value]);
 
@@ -352,31 +507,47 @@ function ConfigEditor({ value, onChange }: { value: string; onChange: (v: string
     <div className="space-y-2">
       {parsed.map((item, i) => (
         <div key={i} className="flex gap-2 items-center flex-wrap">
+          <IdTag id={item.id} />
           <input
             className="border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-400 w-40"
             placeholder="Rótulo"
             value={item.label}
-            onChange={e => { const arr = [...parsed]; arr[i] = { ...arr[i], label: e.target.value }; update(arr); }}
+            onChange={e => {
+              const arr = [...parsed];
+              arr[i] = { ...arr[i], label: e.target.value };
+              update(arr);
+            }}
           />
           <input
             className="border border-slate-200 rounded px-2 py-1.5 text-sm font-bold outline-none focus:border-blue-400 w-28"
             placeholder="Valor"
             value={item.value}
-            onChange={e => { const arr = [...parsed]; arr[i] = { ...arr[i], value: e.target.value }; update(arr); }}
+            onChange={e => {
+              const arr = [...parsed];
+              arr[i] = { ...arr[i], value: e.target.value };
+              update(arr);
+            }}
           />
           <input
             className="border border-slate-200 rounded px-2 py-1.5 text-xs outline-none focus:border-blue-400 flex-1 min-w-[120px]"
             placeholder="Observação (opcional)"
             value={item.note ?? ""}
-            onChange={e => { const arr = [...parsed]; arr[i] = { ...arr[i], note: e.target.value || undefined }; update(arr); }}
+            onChange={e => {
+              const arr = [...parsed];
+              arr[i] = { ...arr[i], note: e.target.value || undefined };
+              update(arr);
+            }}
           />
-          <button onClick={() => update(parsed.filter((_, j) => j !== i))} className="text-slate-300 hover:text-red-400 transition-colors">
+          <button
+            onClick={() => update(parsed.filter((_, j) => j !== i))}
+            className="text-slate-300 hover:text-red-400 transition-colors"
+          >
             <Trash2 size={13} />
           </button>
         </div>
       ))}
       <button
-        onClick={() => update([...parsed, { label: "", value: "" }])}
+        onClick={() => update([...parsed, { id: 0, label: "", value: "" }])}
         className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
       >
         <Plus size={12} /> Adicionar item
@@ -386,16 +557,34 @@ function ConfigEditor({ value, onChange }: { value: string; onChange: (v: string
 }
 
 /** Seleciona o editor visual correto baseado no tipo de conteúdo */
-function SmartEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function SmartEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const type = useMemo(() => {
-    try { return JSON.parse(value).type as string; } catch { return "unknown"; }
+    try {
+      return JSON.parse(value).type as string;
+    } catch {
+      return "unknown";
+    }
   }, [value]);
 
   if (type === "list") return <ListEditor value={value} onChange={onChange} />;
-  if (type === "margin_table" || type === "margin_table_multi") return <MarginTableEditor value={value} onChange={onChange} />;
-  if (type === "config") return <ConfigEditor value={value} onChange={onChange} />;
+  if (type === "margin_table" || type === "margin_table_multi")
+    return <MarginTableEditor value={value} onChange={onChange} />;
+  if (type === "config")
+    return <ConfigEditor value={value} onChange={onChange} />;
   if (type === "rich_text") {
-    const html = (() => { try { return JSON.parse(value).html ?? ""; } catch { return ""; } })();
+    const html = (() => {
+      try {
+        return JSON.parse(value).html ?? "";
+      } catch {
+        return "";
+      }
+    })();
     return (
       <RichTextEditor
         value={html}
@@ -405,13 +594,7 @@ function SmartEditor({ value, onChange }: { value: string; onChange: (v: string)
     );
   }
   // Fallback: editor de texto livre
-  return (
-    <RichTextEditor
-      value={value}
-      onChange={onChange}
-      minHeight="120px"
-    />
-  );
+  return <RichTextEditor value={value} onChange={onChange} minHeight="120px" />;
 }
 
 function escapeHtml(s: string): string {
@@ -425,7 +608,13 @@ function escapeHtml(s: string): string {
 
 // ─── EditableSection ─────────────────────────────────────────────────────────
 
-function EditableSection({ section, highlight }: { section: Section; highlight?: string }) {
+function EditableSection({
+  section,
+  highlight,
+}: {
+  section: Section;
+  highlight?: string;
+}) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(section.sectionTitle);
   const [notes, setNotes] = useState(section.notes ?? "");
@@ -442,7 +631,12 @@ function EditableSection({ section, highlight }: { section: Section; highlight?:
   });
 
   function handleSave() {
-    updateMut.mutate({ id: section.id, sectionTitle: title, contentJson, notes: notes || null });
+    updateMut.mutate({
+      id: section.id,
+      sectionTitle: title,
+      contentJson,
+      notes: notes || null,
+    });
   }
 
   function handleCancel() {
@@ -453,35 +647,59 @@ function EditableSection({ section, highlight }: { section: Section; highlight?:
   }
 
   return (
-    <Card className={`mb-4 border shadow-sm transition-all ${highlight ? "border-blue-400 ring-2 ring-blue-100" : "border-slate-200"}`}>
+    <Card
+      className={`mb-4 border shadow-sm transition-all ${highlight ? "border-blue-400 ring-2 ring-blue-100" : "border-slate-200"}`}
+    >
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-start justify-between gap-2">
           {editing ? (
-            <Input value={title} onChange={e => setTitle(e.target.value)} className="font-semibold text-sm h-8" />
+            <Input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="font-semibold text-sm h-8"
+            />
           ) : (
             <CardTitle className="text-sm font-semibold text-slate-800 leading-snug flex items-center gap-2 flex-wrap">
               {(() => {
-                const isBrasil = section.sectionTitle.endsWith("\u2014 Clientes Brasil");
-                const isMs = section.sectionTitle.endsWith("\u2014 Clientes MS");
+                const isBrasil = section.sectionTitle.endsWith(
+                  "\u2014 Clientes Brasil"
+                );
+                const isMs =
+                  section.sectionTitle.endsWith("\u2014 Clientes MS");
                 const baseTitle = section.sectionTitle
                   .replace(" \u2014 Clientes Brasil", "")
                   .replace(" \u2014 Clientes MS", "");
-                const displayTitle = highlight
-                  ? <span dangerouslySetInnerHTML={{ __html: escapeHtml(baseTitle).replace(
-                      new RegExp(`(${escapeHtml(highlight).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
-                      '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>'
-                    ) }} />
-                  : baseTitle;
+                const displayTitle = highlight ? (
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html: escapeHtml(baseTitle).replace(
+                        new RegExp(
+                          `(${escapeHtml(highlight).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+                          "gi"
+                        ),
+                        '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>'
+                      ),
+                    }}
+                  />
+                ) : (
+                  baseTitle
+                );
                 return (
                   <>
                     {displayTitle}
                     {isBrasil && (
-                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 border-green-500 text-green-700 bg-green-50 shrink-0 font-semibold">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-2 py-0.5 h-5 border-green-500 text-green-700 bg-green-50 shrink-0 font-semibold"
+                      >
                         🌎 Geral / Brasil
                       </Badge>
                     )}
                     {isMs && (
-                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 border-blue-600 text-blue-700 bg-blue-50 shrink-0 font-semibold">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-2 py-0.5 h-5 border-blue-600 text-blue-700 bg-blue-50 shrink-0 font-semibold"
+                      >
                         📌 Mato Grosso do Sul
                       </Badge>
                     )}
@@ -493,15 +711,31 @@ function EditableSection({ section, highlight }: { section: Section; highlight?:
           <div className="flex gap-1 shrink-0">
             {editing ? (
               <>
-                <Button size="sm" variant="default" className="h-7 px-2 text-xs" onClick={handleSave} disabled={updateMut.isPending}>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 px-2 text-xs"
+                  onClick={handleSave}
+                  disabled={updateMut.isPending}
+                >
                   <Save className="w-3 h-3 mr-1" /> Salvar
                 </Button>
-                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={handleCancel}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  onClick={handleCancel}
+                >
                   <X className="w-3 h-3" />
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-slate-500 hover:text-blue-600" onClick={() => setEditing(true)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-slate-500 hover:text-blue-600"
+                onClick={() => setEditing(true)}
+              >
                 <Pencil className="w-3 h-3 mr-1" /> Editar
               </Button>
             )}
@@ -512,11 +746,15 @@ function EditableSection({ section, highlight }: { section: Section; highlight?:
         {editing ? (
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-medium text-slate-500 mb-2 block">Conteúdo</label>
+              <label className="text-xs font-medium text-slate-500 mb-2 block">
+                Conteúdo
+              </label>
               <SmartEditor value={contentJson} onChange={setContentJson} />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">Observações</label>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">
+                Observações
+              </label>
               <RichTextEditor
                 value={notes}
                 onChange={setNotes}
@@ -531,7 +769,10 @@ function EditableSection({ section, highlight }: { section: Section; highlight?:
             {section.notes && (
               <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
                 <Info className="w-3 h-3 inline mr-1" />
-                <div className="inline prose prose-xs max-w-none" dangerouslySetInnerHTML={{ __html: section.notes }} />
+                <div
+                  className="inline prose prose-xs max-w-none"
+                  dangerouslySetInnerHTML={{ __html: section.notes }}
+                />
               </div>
             )}
           </>
@@ -551,7 +792,13 @@ const PAGE_LABELS: Record<number, string> = {
   5: "Pág. 5 — Condições Comerciais",
 };
 
-function SearchResults({ sections, query }: { sections: Section[]; query: string }) {
+function SearchResults({
+  sections,
+  query,
+}: {
+  sections: Section[];
+  query: string;
+}) {
   const q = query.toLowerCase();
   const matches = sections.filter(s => {
     if (s.sectionTitle.toLowerCase().includes(q)) return true;
@@ -559,15 +806,21 @@ function SearchResults({ sections, query }: { sections: Section[]; query: string
     try {
       const text = JSON.stringify(JSON.parse(s.contentJson)).toLowerCase();
       return text.includes(q);
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   });
 
   if (matches.length === 0) {
     return (
       <Empty>
         <EmptyHeader>
-          <EmptyMedia variant="icon"><Search /></EmptyMedia>
-          <EmptyTitle>Nenhuma seção encontrada para "<strong>{query}</strong>".</EmptyTitle>
+          <EmptyMedia variant="icon">
+            <Search />
+          </EmptyMedia>
+          <EmptyTitle>
+            Nenhuma seção encontrada para "<strong>{query}</strong>".
+          </EmptyTitle>
         </EmptyHeader>
       </Empty>
     );
@@ -576,12 +829,17 @@ function SearchResults({ sections, query }: { sections: Section[]; query: string
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-500 mb-4">
-        <strong>{matches.length}</strong> seção{matches.length !== 1 ? "ões" : ""} encontrada{matches.length !== 1 ? "s" : ""} para "<strong>{query}</strong>"
+        <strong>{matches.length}</strong> seção
+        {matches.length !== 1 ? "ões" : ""} encontrada
+        {matches.length !== 1 ? "s" : ""} para "<strong>{query}</strong>"
       </p>
       {matches.map(section => (
         <div key={section.id}>
           <div className="flex items-center gap-2 mb-1">
-            <Badge variant="outline" className="text-xs text-blue-600 border-blue-200">
+            <Badge
+              variant="outline"
+              className="text-xs text-blue-600 border-blue-200"
+            >
               {PAGE_LABELS[section.page] ?? `Pág. ${section.page}`}
             </Badge>
           </div>
@@ -595,7 +853,11 @@ function SearchResults({ sections, query }: { sections: Section[]; query: string
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 // ─── Gerador de PDF enxuto ───────────────────────────────────────────────────
-function gerarPdfTabela(sections: Section[], meta: { versao: string; dataModificacao: Date | string } | null, titulo = "Tabela de Preços") {
+function gerarPdfTabela(
+  sections: Section[],
+  meta: { versao: string; dataModificacao: Date | string } | null,
+  titulo = "Tabela de Preços"
+) {
   const dataStr = meta?.dataModificacao
     ? new Date(meta.dataModificacao).toLocaleDateString("pt-BR")
     : new Date().toLocaleDateString("pt-BR");
@@ -625,7 +887,12 @@ function gerarPdfTabela(sections: Section[], meta: { versao: string; dataModific
   };
 
   // Helper para extrair label de identificação do título
-  function getSectionLabel(title: string): { base: string; badge: string; badgeColor: string; badgeBg: string } {
+  function getSectionLabel(title: string): {
+    base: string;
+    badge: string;
+    badgeColor: string;
+    badgeBg: string;
+  } {
     if (title.endsWith("\u2014 Clientes Brasil")) {
       return {
         base: title.replace(" \u2014 Clientes Brasil", ""),
@@ -719,7 +986,9 @@ function gerarPdfTabela(sections: Section[], meta: { versao: string; dataModific
   });
 
   for (const page of [1, 2, 3]) {
-    const pageSections = (byPage[page] ?? []).sort((a, b) => a.sectionOrder - b.sectionOrder);
+    const pageSections = (byPage[page] ?? []).sort(
+      (a, b) => a.sectionOrder - b.sectionOrder
+    );
     if (!pageSections.length) continue;
     const color = pageColors[page] ?? "#1e3a5f";
     html += `<div class="page-section">
@@ -738,32 +1007,44 @@ function gerarPdfTabela(sections: Section[], meta: { versao: string; dataModific
         if (c.type === "margin_table" || c.type === "margin_table_multi") {
           const hasMultiRows = (c.rows ?? []).length > 1;
           html += `<table><thead><tr style="background:${color}">`;
-          if (hasMultiRows) html += `<th style="text-align:left">${(c.columns ?? [])[0] ?? ""}</th>`;
-          (hasMultiRows ? (c.columns ?? []).slice(1) : (c.columns ?? [])).forEach(col => {
+          if (hasMultiRows)
+            html += `<th style="text-align:left">${(c.columns ?? [])[0] ?? ""}</th>`;
+          (hasMultiRows
+            ? (c.columns ?? []).slice(1)
+            : (c.columns ?? [])
+          ).forEach(col => {
             html += `<th>${col}</th>`;
           });
           html += `</tr></thead><tbody>`;
           (c.rows ?? []).forEach((row, ri) => {
-            const rowBg = ri % 2 === 0 ? "" : " style=\"background:#f8fafc\"";
+            const rowBg = ri % 2 === 0 ? "" : ' style="background:#f8fafc"';
             html += `<tr${rowBg}>`;
-            if (hasMultiRows) html += `<td style="text-align:left;font-weight:600;color:#1e3a5f">${row.label}</td>`;
-            row.values.forEach(v => { html += `<td><span class="val">${v}</span></td>`; });
+            if (hasMultiRows)
+              html += `<td style="text-align:left;font-weight:600;color:#1e3a5f">${row.label}</td>`;
+            row.values.forEach(v => {
+              html += `<td><span class="val">${v}</span></td>`;
+            });
             html += `</tr>`;
           });
           html += `</tbody></table>`;
         } else if (c.type === "config") {
           html += `<div class="config-grid">`;
-          (c.items as ConfigItem[] ?? []).forEach(item => {
+          ((c.items as ConfigItem[]) ?? []).forEach(item => {
             html += `<div class="config-item"><span class="config-label">${item.label}</span><span class="config-value">${item.value}</span></div>`;
           });
           html += `</div>`;
         } else if (c.type === "list") {
           html += `<ul class="list-items">`;
-          (c.items as string[] ?? []).forEach(item => { html += `<li>${item}</li>`; });
+          ((c.items as string[]) ?? []).forEach(item => {
+            html += `<li>${item}</li>`;
+          });
           html += `</ul>`;
         }
-      } catch { /* ignorar */ }
-      if (sec.notes) html += `<div class="note-box"><span class="note-icon">⚠️</span><span>${sec.notes}</span></div>`;
+      } catch {
+        /* ignorar */
+      }
+      if (sec.notes)
+        html += `<div class="note-box"><span class="note-icon">⚠️</span><span>${sec.notes}</span></div>`;
       html += `</div>`;
     }
     html += `</div>`;
@@ -784,7 +1065,9 @@ function gerarPdfTabela(sections: Section[], meta: { versao: string; dataModific
 }
 
 export default function TabelaPrecos() {
-  const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente">("principal");
+  const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente">(
+    "principal"
+  );
   const [activeTab, setActiveTab] = useState("1");
   const [activeTabNC, setActiveTabNC] = useState("11");
   const [searchQuery, setSearchQuery] = useState("");
@@ -814,12 +1097,17 @@ export default function TabelaPrecos() {
     },
     onError: () => toast.error("Erro ao remover seção"),
   });
-  const { data: history } = trpc.price.getHistory.useQuery({ limit: 100 }, { enabled: showHistory });
+  const { data: history } = trpc.price.getHistory.useQuery(
+    { limit: 100 },
+    { enabled: showHistory }
+  );
 
   const isSearching = searchQuery.trim().length > 0;
 
   const sectionsForPage = (page: number) =>
-    (allSections ?? []).filter(s => s.page === page).sort((a, b) => a.sectionOrder - b.sectionOrder);
+    (allSections ?? [])
+      .filter(s => s.page === page)
+      .sort((a, b) => a.sectionOrder - b.sectionOrder);
 
   // Filtro combinado: busca por texto + filtro por página
   const filteredSections = useMemo(() => {
@@ -827,7 +1115,9 @@ export default function TabelaPrecos() {
     if (filterPage !== "all") {
       sections = sections.filter(s => s.page === Number(filterPage));
     }
-    return sections.sort((a, b) => a.page !== b.page ? a.page - b.page : a.sectionOrder - b.sectionOrder);
+    return sections.sort((a, b) =>
+      a.page !== b.page ? a.page - b.page : a.sectionOrder - b.sectionOrder
+    );
   }, [allSections, filterPage]);
 
   const allPages = [
@@ -838,7 +1128,9 @@ export default function TabelaPrecos() {
 
   // Seções da Tabela Novo Cliente (pages 11, 12, 13)
   const sectionsNCForPage = (page: number) =>
-    (allSections ?? []).filter(s => s.page === page).sort((a, b) => a.sectionOrder - b.sectionOrder);
+    (allSections ?? [])
+      .filter(s => s.page === page)
+      .sort((a, b) => a.sectionOrder - b.sectionOrder);
 
   const allPagesNC = [
     { key: "11", label: "Pág. 1" },
@@ -881,7 +1173,9 @@ export default function TabelaPrecos() {
           <div className="mb-5">
             <div className="flex items-center gap-3 mb-1 flex-wrap">
               <Plus className="w-6 h-6 text-emerald-600" />
-              <h1 className="text-2xl font-bold text-slate-900">Tabela Novo Cliente</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                Tabela Novo Cliente
+              </h1>
               {meta && (
                 <Badge className="bg-emerald-600 text-white text-xs">
                   v{meta.versao}
@@ -900,10 +1194,14 @@ export default function TabelaPrecos() {
                   size="sm"
                   variant="outline"
                   className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                  onClick={() => gerarPdfTabela(
-                    (allSections ?? []).filter(s => s.page >= 11 && s.page <= 13),
-                    meta ?? null
-                  )}
+                  onClick={() =>
+                    gerarPdfTabela(
+                      (allSections ?? []).filter(
+                        s => s.page >= 11 && s.page <= 13
+                      ),
+                      meta ?? null
+                    )
+                  }
                   disabled={isLoadingNC}
                 >
                   <Download className="w-4 h-4" />
@@ -912,7 +1210,8 @@ export default function TabelaPrecos() {
               </div>
             </div>
             <p className="text-sm text-slate-500">
-              Tabela exclusiva para novos clientes. Clique em <strong>Editar</strong> para atualizar valores.
+              Tabela exclusiva para novos clientes. Clique em{" "}
+              <strong>Editar</strong> para atualizar valores.
             </p>
           </div>
 
@@ -920,7 +1219,11 @@ export default function TabelaPrecos() {
           <Tabs value={activeTabNC} onValueChange={setActiveTabNC}>
             <TabsList className="flex flex-wrap h-auto gap-1 mb-6 bg-slate-100 p-1 rounded-lg">
               {allPagesNC.map(p => (
-                <TabsTrigger key={p.key} value={p.key} className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <TabsTrigger
+                  key={p.key}
+                  value={p.key}
+                  className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                >
                   <Pencil className="w-3 h-3 mr-1 text-emerald-500" />
                   {p.label}
                 </TabsTrigger>
@@ -931,26 +1234,37 @@ export default function TabelaPrecos() {
               <TabsContent key={p.key} value={p.key}>
                 <div className="mb-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
                   <Pencil className="w-3 h-3" />
-                  Clique em <strong>Editar</strong> para atualizar valores. Use <strong>Nova Seção</strong> para adicionar seções.
+                  Clique em <strong>Editar</strong> para atualizar valores. Use{" "}
+                  <strong>Nova Seção</strong> para adicionar seções.
                 </div>
                 {isLoadingNC ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map(i => (
-                      <div key={i} className="h-32 bg-slate-100 rounded-lg animate-pulse" />
+                      <div
+                        key={i}
+                        className="h-32 bg-slate-100 rounded-lg animate-pulse"
+                      />
                     ))}
                   </div>
                 ) : sectionsNCForPage(Number(p.key)).length === 0 ? (
                   <Empty>
                     <EmptyHeader>
-                      <EmptyMedia variant="icon"><Plus /></EmptyMedia>
+                      <EmptyMedia variant="icon">
+                        <Plus />
+                      </EmptyMedia>
                       <EmptyTitle>Nenhuma seção nesta página</EmptyTitle>
-                      <EmptyDescription>Clique em <strong>Nova Seção</strong> para adicionar.</EmptyDescription>
+                      <EmptyDescription>
+                        Clique em <strong>Nova Seção</strong> para adicionar.
+                      </EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent>
                       <Button
                         size="sm"
                         className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => { setNewSectionPage(Number(p.key)); setShowAddModal(true); }}
+                        onClick={() => {
+                          setNewSectionPage(Number(p.key));
+                          setShowAddModal(true);
+                        }}
                       >
                         <Plus className="w-4 h-4 mr-1" /> Nova Seção
                       </Button>
@@ -963,7 +1277,11 @@ export default function TabelaPrecos() {
                         <EditableSection section={section as Section} />
                         <button
                           onClick={() => {
-                            if (confirm(`Remover a seção "${section.sectionTitle}"?`)) {
+                            if (
+                              confirm(
+                                `Remover a seção "${section.sectionTitle}"?`
+                              )
+                            ) {
                               deleteSectionMut.mutate({ id: section.id });
                             }
                           }}
@@ -984,165 +1302,210 @@ export default function TabelaPrecos() {
 
       {/* ─── ABA: TABELA DE PREÇOS (PRINCIPAL) ─── */}
       {tabelaAtiva === "principal" && (
-      <div>
-      {/* Header */}
-      <div className="mb-5">
-        <div className="flex items-center gap-3 mb-1 flex-wrap">
-          <FileText className="w-6 h-6 text-blue-600" />
-          <h1 className="text-2xl font-bold text-slate-900">Tabela Clientes Antigos</h1>
-          {meta && (
-            <Badge className="bg-blue-600 text-white text-xs">
-              v{meta.versao} — {new Date(meta.dataModificacao).toLocaleDateString("pt-BR")}
-            </Badge>
-          )}
-          <div className="ml-auto flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="flex items-center gap-2 border-slate-300 text-slate-600 hover:bg-slate-50"
-              onClick={() => setShowHistory(true)}
-            >
-              <History className="w-4 h-4" />
-              Histórico
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
-              onClick={() => gerarPdfTabela(allSections ?? [], meta ?? null, "Tabela Clientes Antigos")}
-              disabled={isLoading}
-            >
-              <Download className="w-4 h-4" />
-              Baixar PDF
-            </Button>
-          </div>
-        </div>
-        <p className="text-sm text-slate-500">
-          Clique em <strong>Editar</strong> em qualquer seção para atualizar valores, margens ou observações.
-          {meta && (
-            <span className="ml-2 text-slate-400">
-              Última modificação: {new Date(meta.dataModificacao).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
-            </span>
-          )}
-        </p>
-      </div>
-
-      {/* Search + Filter Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 shadow-sm">
-        <div className="flex gap-3 items-center">
-          <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            <Search className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              className="flex-1 text-sm outline-none bg-transparent placeholder-slate-400"
-              placeholder="Buscar por material, espessura, margem, valor..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="text-slate-400 hover:text-slate-600">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5 text-xs"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            Filtros
-            {showFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </Button>
-        </div>
-
-        {/* Expanded filters */}
-        {showFilters && (
-          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-3 items-center">
-            <span className="text-xs font-medium text-slate-500">Filtrar por página:</span>
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { value: "all", label: "Todas" },
-                { value: "1", label: "Frontlight / Galvanizado" },
-                { value: "2", label: "Inox / PVC / Acrílico" },
-                { value: "3", label: "Pintura" },
-              ].map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setFilterPage(opt.value)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    filterPage === opt.value
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {filterPage !== "all" && (
-              <button
-                onClick={() => setFilterPage("all")}
-                className="text-xs text-blue-600 hover:underline ml-1"
-              >
-                Limpar filtro
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Search Results Mode */}
-      {isSearching ? (
         <div>
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-100 rounded-lg animate-pulse" />)}
-            </div>
-          ) : (
-            <SearchResults sections={filteredSections} query={searchQuery.trim()} />
-          )}
-        </div>
-      ) : (
-        /* Normal Tab Mode */
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="flex flex-wrap h-auto gap-1 mb-6 bg-slate-100 p-1 rounded-lg">
-            {allPages.map(p => (
-              <TabsTrigger key={p.key} value={p.key} className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                <Pencil className="w-3 h-3 mr-1 text-blue-500" />
-                {p.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {allPages.map(p => (
-            <TabsContent key={p.key} value={p.key}>
-              <div className="mb-3 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-3 py-2">
-                <Pencil className="w-3 h-3" />
-                Clique em <strong>Editar</strong> em qualquer seção para atualizar valores.
+          {/* Header */}
+          <div className="mb-5">
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
+              <FileText className="w-6 h-6 text-blue-600" />
+              <h1 className="text-2xl font-bold text-slate-900">
+                Tabela Clientes Antigos
+              </h1>
+              {meta && (
+                <Badge className="bg-blue-600 text-white text-xs">
+                  v{meta.versao} —{" "}
+                  {new Date(meta.dataModificacao).toLocaleDateString("pt-BR")}
+                </Badge>
+              )}
+              <div className="ml-auto flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center gap-2 border-slate-300 text-slate-600 hover:bg-slate-50"
+                  onClick={() => setShowHistory(true)}
+                >
+                  <History className="w-4 h-4" />
+                  Histórico
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                  onClick={() =>
+                    gerarPdfTabela(
+                      allSections ?? [],
+                      meta ?? null,
+                      "Tabela Clientes Antigos"
+                    )
+                  }
+                  disabled={isLoading}
+                >
+                  <Download className="w-4 h-4" />
+                  Baixar PDF
+                </Button>
               </div>
+            </div>
+            <p className="text-sm text-slate-500">
+              Clique em <strong>Editar</strong> em qualquer seção para atualizar
+              valores, margens ou observações.
+              {meta && (
+                <span className="ml-2 text-slate-400">
+                  Última modificação:{" "}
+                  {new Date(meta.dataModificacao).toLocaleDateString("pt-BR", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Search + Filter Bar */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 shadow-sm">
+            <div className="flex gap-3 items-center">
+              <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  className="flex-1 text-sm outline-none bg-transparent placeholder-slate-400"
+                  placeholder="Buscar por material, espessura, margem, valor..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                Filtros
+                {showFilters ? (
+                  <ChevronUp className="w-3 h-3" />
+                ) : (
+                  <ChevronDown className="w-3 h-3" />
+                )}
+              </Button>
+            </div>
+
+            {/* Expanded filters */}
+            {showFilters && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-3 items-center">
+                <span className="text-xs font-medium text-slate-500">
+                  Filtrar por página:
+                </span>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { value: "all", label: "Todas" },
+                    { value: "1", label: "Frontlight / Galvanizado" },
+                    { value: "2", label: "Inox / PVC / Acrílico" },
+                    { value: "3", label: "Pintura" },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setFilterPage(opt.value)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        filterPage === opt.value
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {filterPage !== "all" && (
+                  <button
+                    onClick={() => setFilterPage("all")}
+                    className="text-xs text-blue-600 hover:underline ml-1"
+                  >
+                    Limpar filtro
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Search Results Mode */}
+          {isSearching ? (
+            <div>
               {isLoading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
-                    <div key={i} className="h-32 bg-slate-100 rounded-lg animate-pulse" />
+                    <div
+                      key={i}
+                      className="h-32 bg-slate-100 rounded-lg animate-pulse"
+                    />
                   ))}
                 </div>
-              ) : sectionsForPage(Number(p.key)).length === 0 ? (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyTitle>Nenhuma seção encontrada para esta página.</EmptyTitle>
-                  </EmptyHeader>
-                </Empty>
               ) : (
-                sectionsForPage(Number(p.key)).map(section => (
-                  <EditableSection key={section.id} section={section as Section} />
-                ))
+                <SearchResults
+                  sections={filteredSections}
+                  query={searchQuery.trim()}
+                />
               )}
-            </TabsContent>
-          ))}
-        </Tabs>
-      )}
-      </div>
+            </div>
+          ) : (
+            /* Normal Tab Mode */
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="flex flex-wrap h-auto gap-1 mb-6 bg-slate-100 p-1 rounded-lg">
+                {allPages.map(p => (
+                  <TabsTrigger
+                    key={p.key}
+                    value={p.key}
+                    className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  >
+                    <Pencil className="w-3 h-3 mr-1 text-blue-500" />
+                    {p.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              {allPages.map(p => (
+                <TabsContent key={p.key} value={p.key}>
+                  <div className="mb-3 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                    <Pencil className="w-3 h-3" />
+                    Clique em <strong>Editar</strong> em qualquer seção para
+                    atualizar valores.
+                  </div>
+                  {isLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map(i => (
+                        <div
+                          key={i}
+                          className="h-32 bg-slate-100 rounded-lg animate-pulse"
+                        />
+                      ))}
+                    </div>
+                  ) : sectionsForPage(Number(p.key)).length === 0 ? (
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyTitle>
+                          Nenhuma seção encontrada para esta página.
+                        </EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    sectionsForPage(Number(p.key)).map(section => (
+                      <EditableSection
+                        key={section.id}
+                        section={section as Section}
+                      />
+                    ))
+                  )}
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
+        </div>
       )}
 
       {/* Modal de Histórico de Versões */}
@@ -1157,19 +1520,30 @@ export default function TabelaPrecos() {
           {!history || history.length === 0 ? (
             <Empty>
               <EmptyHeader>
-                <EmptyMedia variant="icon"><History /></EmptyMedia>
+                <EmptyMedia variant="icon">
+                  <History />
+                </EmptyMedia>
                 <EmptyTitle>Nenhuma alteração registrada ainda.</EmptyTitle>
-                <EmptyDescription>As próximas edições aparecerão aqui.</EmptyDescription>
+                <EmptyDescription>
+                  As próximas edições aparecerão aqui.
+                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
             <div className="space-y-2">
-              {history.map((h) => (
-                <div key={h.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50 text-sm">
+              {history.map(h => (
+                <div
+                  key={h.id}
+                  className="border border-slate-200 rounded-lg p-3 bg-slate-50 text-sm"
+                >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <Badge className="bg-blue-600 text-white text-xs px-2 py-0.5">v{h.versao}</Badge>
-                      <span className="font-medium text-slate-700">{h.sectionTitle}</span>
+                      <Badge className="bg-blue-600 text-white text-xs px-2 py-0.5">
+                        v{h.versao}
+                      </Badge>
+                      <span className="font-medium text-slate-700">
+                        {h.sectionTitle}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1 text-slate-400 text-xs">
                       <Clock className="w-3 h-3" />
@@ -1177,16 +1551,26 @@ export default function TabelaPrecos() {
                     </div>
                   </div>
                   <div className="text-slate-500 text-xs">
-                    <span className="font-medium text-slate-600">Por:</span> {h.autor ?? "sistema"} &nbsp;|&nbsp;
-                    <span className="font-medium text-slate-600">Campo:</span> {h.campoAlterado}
+                    <span className="font-medium text-slate-600">Por:</span>{" "}
+                    {h.autor ?? "sistema"} &nbsp;|&nbsp;
+                    <span className="font-medium text-slate-600">
+                      Campo:
+                    </span>{" "}
+                    {h.campoAlterado}
                   </div>
                   {h.campoAlterado === "contentJson" ? (
-                    <div className="mt-1 text-xs text-slate-400 italic">Conteúdo da seção atualizado</div>
+                    <div className="mt-1 text-xs text-slate-400 italic">
+                      Conteúdo da seção atualizado
+                    </div>
                   ) : (
                     <div className="mt-1 flex gap-2 text-xs">
-                      <span className="text-red-500 line-through">{h.valorAnterior?.slice(0, 60)}</span>
+                      <span className="text-red-500 line-through">
+                        {h.valorAnterior?.slice(0, 60)}
+                      </span>
                       <span className="text-slate-400">→</span>
-                      <span className="text-green-600">{h.valorNovo?.slice(0, 60)}</span>
+                      <span className="text-green-600">
+                        {h.valorNovo?.slice(0, 60)}
+                      </span>
                     </div>
                   )}
                 </div>
