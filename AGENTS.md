@@ -328,6 +328,18 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   10/min em sign-in e sign-up). Para reativar em produção seria preciso um
   store distribuído (Redis) ou regra de firewall na Vercel — nenhum dos dois
   está implementado.
+- **Redesenho de letra caixa via OpenAI (imagem) não verificado — sem
+  crédito na conta.** `server/services/letraCaixaRedesign.ts` e
+  `generateImageEdit` (`server/_core/llm.ts`) chamam `POST
+  /v1/images/edits` (gpt-image-1) para transformar foto de letreiro/logo
+  em reconstrução visual fiel, usando `docs/prompts/prompt-1-reconstrucao-visual.md`
+  como instrução. `OPENAI_API_KEY` está configurada mas devolveu 429
+  `insufficient_quota` numa chamada real de teste (28/09/2026) — o código
+  compila (`npx tsc --noEmit` limpo) mas nunca rodou contra a API de
+  verdade. Depois de recarregar crédito, rodar `yarn letra-caixa:testar-redesenho
+  <foto>` antes de confiar no resultado (parâmetros como `background`/
+  `quality` seguem a documentação do gpt-image-1 no momento da escrita,
+  não conferidos ao vivo).
 
 ## Patches
 
