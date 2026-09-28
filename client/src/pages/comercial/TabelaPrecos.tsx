@@ -70,8 +70,16 @@ function extractNumber(val: string): string {
   return cleaned || val.trim();
 }
 
-/** Botão de copiar com feedback visual */
-function CopyButton({ value }: { value: string }) {
+/** Botão de copiar com feedback visual. Por padrão só aparece no hover do
+ * grupo pai (`.group`); `forceVisible` mantém sempre visível — usado em
+ * IdBadge, onde o objetivo é copiar o ID sem precisar passar o mouse. */
+function CopyButton({
+  value,
+  forceVisible,
+}: {
+  value: string;
+  forceVisible?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(
     async (e: React.MouseEvent) => {
@@ -99,7 +107,7 @@ function CopyButton({ value }: { value: string }) {
     <button
       onClick={handleCopy}
       title={`Copiar ${extractNumber(value)}`}
-      className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-slate-400 hover:text-blue-600 focus:opacity-100 focus:outline-none"
+      className={`ml-1.5 transition-opacity duration-150 text-slate-400 hover:text-blue-600 focus:opacity-100 focus:outline-none ${forceVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
     >
       {copied ? (
         <Check size={12} className="text-green-500" />
@@ -148,16 +156,28 @@ function renderPercentDecorated(text: string): React.ReactNode {
   return parts.length > 0 ? parts : text;
 }
 
-/** Badge discreta com o ID estável da linha/regra (ver shared/price-table.ts) —
- * usado pelo precificador automatizado externo pra referenciar sem depender do label. */
-function IdTag({ id }: { id: number }) {
-  if (!id) return null;
+/** Badge com o ID estável da linha/regra (ver shared/price-table.ts) — usado
+ * para cadastrar o produto no precificador automatizado externo, cruzando
+ * pelo ID em vez do texto do label. Botão de copiar sempre visível (não só
+ * no hover) porque o uso típico é copiar vários IDs em sequência. */
+function IdBadge({ id }: { id: number }) {
+  if (!id) {
+    return (
+      <span
+        title="ID ainda não atribuído — salve a linha para gerar um"
+        className="text-[11px] font-mono text-slate-300 italic"
+      >
+        novo
+      </span>
+    );
+  }
   return (
     <span
-      title={`ID #${id} — usado pelo precificador automatizado`}
-      className="text-[10px] font-mono text-slate-400 select-all"
+      title={`ID #${id} — use este número para cadastrar o produto no precificador`}
+      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-mono font-semibold text-slate-500"
     >
       #{id}
+      <CopyButton value={String(id)} forceVisible />
     </span>
   );
 }
@@ -170,7 +190,7 @@ function ConfigTable({ items }: { items: ConfigItem[] }) {
           key={i}
           className={`group px-3 py-2 rounded-lg text-sm ${highlightClass(item.highlight)} flex items-center gap-1`}
         >
-          <IdTag id={item.id} />
+          <IdBadge id={item.id} />
           <span className="font-medium">{item.label}:</span>{" "}
           <span className="text-base font-bold">
             {renderPercentDecorated(item.value)}
@@ -193,57 +213,56 @@ function MarginTable({
   rows: MarginRow[];
 }) {
   return (
-    <div className="relative">
-      {rows.length === 1 && rows[0] && (
-        <div className="absolute -top-4 right-0">
-          <IdTag id={rows[0].id} />
-        </div>
-      )}
-      <Table className="border-collapse">
-        <TableHeader>
-          <TableRow className="bg-slate-100">
+    <Table className="border-collapse">
+      <TableHeader>
+        <TableRow className="bg-slate-100">
+          <TableHead className="text-center border border-slate-300 w-20 text-slate-800 font-semibold">
+            ID
+          </TableHead>
+          {rows.length > 1 && (
+            <TableHead className="text-center border border-slate-300 min-w-[140px] text-slate-800 font-semibold">
+              {columns[0] ?? ""}
+            </TableHead>
+          )}
+          {(rows.length > 1 ? columns.slice(1) : columns).map((col, i) => (
+            <TableHead
+              key={i}
+              className="text-center border border-slate-300 text-slate-800 font-semibold"
+            >
+              {col}
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, ri) => (
+          <TableRow
+            key={ri}
+            className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}
+          >
+            <TableCell className="text-center border border-slate-200">
+              <IdBadge id={row.id} />
+            </TableCell>
             {rows.length > 1 && (
-              <TableHead className="text-center border border-slate-300 min-w-[140px] text-slate-800 font-semibold">
-                {columns[0] ?? ""}
-              </TableHead>
+              <TableCell className="font-medium text-slate-700 border border-slate-200">
+                {row.label}
+              </TableCell>
             )}
-            {(rows.length > 1 ? columns.slice(1) : columns).map((col, i) => (
-              <TableHead
-                key={i}
-                className="text-center border border-slate-300 text-slate-800 font-semibold"
+            {row.values.map((val, vi) => (
+              <TableCell
+                key={vi}
+                className="group text-center border border-slate-200"
               >
-                {col}
-              </TableHead>
+                <span className="font-semibold text-blue-700">
+                  {renderPercentDecorated(val)}
+                </span>
+                {val.trim() !== "" && <CopyButton value={val} />}
+              </TableCell>
             ))}
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, ri) => (
-            <TableRow
-              key={ri}
-              className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}
-            >
-              {rows.length > 1 && (
-                <TableCell className="font-medium text-slate-700 border border-slate-200">
-                  <IdTag id={row.id} /> {row.label}
-                </TableCell>
-              )}
-              {row.values.map((val, vi) => (
-                <TableCell
-                  key={vi}
-                  className="group text-center border border-slate-200"
-                >
-                  <span className="font-semibold text-blue-700">
-                    {renderPercentDecorated(val)}
-                  </span>
-                  {val.trim() !== "" && <CopyButton value={val} />}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -408,6 +427,9 @@ function MarginTableEditor({
       <Table className="border-collapse">
         <TableHeader>
           <TableRow className="bg-slate-100">
+            <TableHead className="border border-slate-200 w-20 text-center text-xs font-semibold">
+              ID
+            </TableHead>
             {rows.length > 1 && (
               <TableHead className="border border-slate-200 min-w-[140px]">
                 <input
@@ -440,16 +462,16 @@ function MarginTableEditor({
               key={ri}
               className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}
             >
+              <TableCell className="text-center border border-slate-200">
+                <IdBadge id={row.id} />
+              </TableCell>
               {rows.length > 1 && (
                 <TableCell className="border border-slate-200">
-                  <div className="flex items-center gap-1">
-                    <IdTag id={row.id} />
-                    <input
-                      className="w-full text-xs font-medium text-center text-slate-700 bg-transparent outline-none focus:bg-white focus:border-blue-300 rounded px-1"
-                      value={row.label}
-                      onChange={e => updateRowLabel(ri, e.target.value)}
-                    />
-                  </div>
+                  <input
+                    className="w-full text-xs font-medium text-center text-slate-700 bg-transparent outline-none focus:bg-white focus:border-blue-300 rounded px-1"
+                    value={row.label}
+                    onChange={e => updateRowLabel(ri, e.target.value)}
+                  />
                 </TableCell>
               )}
               {row.values.map((val, vi) => (
@@ -507,7 +529,7 @@ function ConfigEditor({
     <div className="space-y-2">
       {parsed.map((item, i) => (
         <div key={i} className="flex gap-2 items-center flex-wrap">
-          <IdTag id={item.id} />
+          <IdBadge id={item.id} />
           <input
             className="border border-slate-200 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-400 w-40"
             placeholder="Rótulo"
