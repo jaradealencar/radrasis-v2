@@ -119,7 +119,7 @@ zerada (status `ativa`, sem nenhum envio ainda). Não existe hierarquia formal c
 "subcampanhas" (ex.: Prospecção Google Maps por estado) são campanhas comuns, agrupadas só pelo nome/categoria —
 duplicar é o atalho para criá-las rapidamente sem precisar reconfigurar tudo.
 
-## Modelo de dados (migrations `0045`–`0050`)
+## Modelo de dados (migrations `0045`–`0051`)
 
 | Tabela | Papel |
 |---|---|
@@ -133,6 +133,7 @@ duplicar é o atalho para criá-las rapidamente sem precisar reconfigurar tudo.
 | `campanhas_whatsapp_arquivos` | arquivos salvos (por campanha **ou soltos**, `campanha_id` nullable): `nome`, `url`, `tamanho_bytes`, `enviado_por` — só o registro; exclusão não apaga o arquivo do UploadThing (mesmo padrão de `biblioteca_arquivos`) |
 | `campanhas_whatsapp_fontes` | fonte de audiência: `tipo` (`erp`/`arquivo`), `chave`, `label`, `consulta_erp` ou `arquivo_id` |
 | `campanhas_whatsapp_campanha_fontes` | join N:N — quais fontes uma campanha combina (`campanha_id`+`fonte_id` único) |
+| `campanhas_whatsapp_agendamentos` | Planner: plano "disparar esta campanha neste dia" (`data_agendada`, `status` `planejado`/`disparado`/`nao_disparado`, `observacoes`) — independente do log real de disparo |
 
 O registro de um disparo (log + quarentena + vendas contatadas) é **um único statement SQL com CTEs** — atômico no
 Postgres. `db.transaction` não serve aqui: o driver Neon roda em modo HTTP (`server/db/db-connection.ts`).
@@ -142,6 +143,36 @@ minúsculos, como no resto do repo. Mapeamento: `NOVO_LEAD→novo_lead`, `ORCAME
 `REATIVACAO_INATIVO→reativacao_inativo`, `POS_VENDA→pos_venda`, `OUTBOUND→outbound`; `RECURRENT→recorrente`,
 `TRIGGER_BASED→gatilho_venda`; `ACTIVE/PAUSED/ARCHIVED→ativa/pausada/arquivada`. Campanha não é excluída: arquivar
 preserva o histórico.
+
+## Planner (calendário) e relatório por período
+
+Pedido do usuário 27/09/2026: "uma área de relatório das campanhas por período" + "o planner deve incluir
+calendário visual para me ajudar a agendar as campanhas".
+
+**Agendamento (`campanhas_whatsapp_agendamentos`)** é um plano/lembrete — "eu quero disparar esta campanha
+neste dia" — **independente** do log real de disparo (`campanhas_whatsapp_disparos`): não processa nenhuma
+lista de contatos, não passa pela quarentena, não vira um disparo automaticamente. É só uma marcação manual do
+usuário, com 3 status: `planejado` (recém-criado) → `disparado` ou `nao_disparado` (ele mesmo confirma depois,
+com um clique). Procedures: `listarAgendamentos({inicio,fim})`, `criarAgendamento({campanhaId,dataAgendada,
+observacoes?})`, `marcarAgendamento({id,status})`, `removerAgendamento({id})`.
+
+**Calendário (`CalendarioCampanhas.tsx`)** ficou interativo: clicar em **qualquer** dia (antes só os dias com
+eventos previstos/executados eram clicáveis) abre um diálogo com os agendamentos e eventos daquele dia + um
+botão "Agendar campanha para este dia" (`AgendarCampanhaDialog.tsx`, também reaproveitado a partir do relatório
+com a campanha pré-selecionada). Agendamentos aparecem no grid como um chip azul próprio, separado dos chips de
+"previsto"/"executado" que já existiam (esses continuam sendo só a projeção calculada pela cadência — o
+agendamento é uma camada manual por cima, não substitui nem altera esse cálculo).
+
+**Relatório por período (`RelatorioPeriodo.tsx`, procedure `relatorioPeriodo({inicio,fim})`)**: atalhos rápidos
+(Este mês/Mês passado/Últimos 30 dias/Este ano) + intervalo livre. KPIs: *Campanhas ativas*/*inativas* (estado
+**atual**, não histórico do período — rastrear status ao longo do tempo exigiria uma tabela de histórico que
+não existe), *Contatos alcançados* (telefones distintos cujo **último** envio, de qualquer campanha, caiu
+dentro do período — decisão do usuário: acompanha o filtro, não é a base acumulada total; limitação: um
+telefone só aparece no período do envio mais recente dele, já que `campanhas_whatsapp_contatos_historico` só
+guarda 1 linha por campanha+telefone), *Disparos realizados* e *Mensagens enviadas* no período. Tabela por
+campanha com disparos/contatos do período + os agendamentos que caem no período, cada um com os mesmos botões
+de marcar disparado/não disparado do calendário (`AgendamentoItem`, em `comuns.tsx`, reaproveitado nos dois
+lugares) — e um botão "Agendar" por linha.
 
 ## Fluxo "Registrar disparo" (tela)
 
@@ -226,6 +257,6 @@ agente não tem essa credencial) ou, mais simples, criar cada campanha pela pró
 
 `server/__tests__/campanhas-whatsapp.test.ts` (regras puras, incl. `filtrarPorCadenciaCampanha`, + autenticação/
 validação dos webhooks), `server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo,
-modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de ponta a ponta, `duplicarCampanha`),
-`server/__tests__/fontes-erp-campanhas.test.ts` (as 5 resoluções ERP, puro) e `client/src/lib/listaContatos.test.ts`
-(leitura de CSV/XLSX).
+modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de ponta a ponta, `duplicarCampanha`,
+Planner/agendamentos + `relatorioPeriodo`), `server/__tests__/fontes-erp-campanhas.test.ts` (as 5 resoluções ERP,
+puro) e `client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).

@@ -72,6 +72,22 @@ Scripts one-off pra *dado* (backfill pontual, copiar de uma tabela legada)
 são aceitáveis fora desse fluxo — a regra é sobre *estrutura*. Migration
 sempre vai commitada junto com a mudança de `schema.ts` que a gerou.
 
+⚠️ **Se criar uma migration à mão** (ex: só um `INSERT` de seed, sem passar
+por `drizzle-kit generate`) e precisar registrar a entrada em
+`drizzle/meta/_journal.json` manualmente: o `when` (timestamp) **precisa
+ficar em ordem crescente estrita** com as migrations vizinhas — nunca
+invente um valor arbitrário grande "pra garantir". O migrator do
+drizzle-kit aplica uma migration só se seu `when` for maior que o **último**
+`created_at` já gravado na tabela de controle (`drizzle.__drizzle_migrations`,
+comparando 1 valor só, não por hash individual) — um `when` fora de ordem
+faz a **migration seguinte** ser silenciosamente pulada (sem erro, sem
+aviso, `migrate` reporta sucesso do mesmo jeito). Aconteceu de verdade em
+27/09/2026 (migration 0050, manual, ganhou um "when" maior que o da 0051
+gerada depois — a 0051 nunca rodou até isso ser percebido rodando os
+testes). Prefira sempre gerar via `drizzle-kit generate` (mesmo que o SQL
+gerado fique vazio por não haver mudança de schema, o `when` sai correto) e
+só editar o SQL resultante — nunca criar o par migration+entrada do zero.
+
 Migrations antigas do MySQL (pré-migração) foram arquivadas em
 `docs/archive/mysql-migrations/` — não são mais aplicáveis, só referência
 histórica caso precise comparar o design de uma tabela antes/depois.

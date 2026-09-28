@@ -27,6 +27,15 @@ export const STATUS_CAMPANHA_LABEL: Record<StatusCampanha, string> = {
   arquivada: "Arquivada",
 };
 
+// Agendamento (Planner): "planejo disparar esta campanha neste dia" — independente do log real de disparo.
+export const STATUS_AGENDAMENTO = ["planejado", "disparado", "nao_disparado"] as const;
+export type StatusAgendamento = (typeof STATUS_AGENDAMENTO)[number];
+export const STATUS_AGENDAMENTO_LABEL: Record<StatusAgendamento, string> = {
+  planejado: "Planejado",
+  disparado: "Disparado",
+  nao_disparado: "Não disparado",
+};
+
 export type SemaforoCampanha = "vermelho" | "amarelo" | "verde";
 
 /** Amarelo quando faltam até 3 dias para o prazo. */

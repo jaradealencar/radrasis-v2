@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList } from "lucide-react";
+import { AlertTriangle, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -14,6 +14,7 @@ import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
 import DuplicarCampanhaDialog from "./campanhasWhatsapp/DuplicarCampanhaDialog";
 import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
 import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
+import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
 import VendasPosVendaDialog from "./campanhasWhatsapp/VendasPosVendaDialog";
 import { StatusCampanhaBadge, type CampanhaLinha } from "./campanhasWhatsapp/comuns";
 
@@ -79,6 +80,7 @@ export default function MarketingCampanhasWhatsapp() {
         <TabsList>
           <TabsTrigger value="painel" className="gap-1.5"><LayoutList size={14} /> Painel</TabsTrigger>
           <TabsTrigger value="calendario" className="gap-1.5"><CalendarDays size={14} /> Calendário</TabsTrigger>
+          <TabsTrigger value="relatorios" className="gap-1.5"><BarChart3 size={14} /> Relatórios</TabsTrigger>
         </TabsList>
 
         <TabsContent value="painel" className="space-y-4 pt-3">
@@ -166,6 +168,10 @@ export default function MarketingCampanhasWhatsapp() {
 
         <TabsContent value="calendario" className="pt-3">
           <CalendarioCampanhas />
+        </TabsContent>
+
+        <TabsContent value="relatorios" className="pt-3">
+          <RelatorioPeriodo />
         </TabsContent>
       </Tabs>
 

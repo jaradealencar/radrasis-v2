@@ -2693,3 +2693,25 @@ export const campanhasWhatsappContatosHistorico = pgTable("campanhas_whatsapp_co
 }));
 export type CampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferSelect;
 export type InsertCampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferInsert;
+
+// ─── Agendamentos (Planner): "eu planejo disparar esta campanha neste dia" ──────────────────────────────
+// Pedido do usuário 27/09/2026: calendário visual pra AGENDAR (não só ver a previsão calculada pela
+// cadência) + um botão simples pra depois confirmar se aquele disparo agendado realmente aconteceu.
+// Independente de campanhas_whatsapp_disparos: um agendamento é só um plano/lembrete, não substitui o
+// registro formal de disparo (que continua exigindo a lista de contatos) — por isso não tem `disparo_id`
+// nem qualquer outro vínculo automático com o log real; é o usuário quem marca "disparado"/"não disparado".
+export const campanhaWhatsappAgendamentoStatusEnum = pgEnum("campanha_whatsapp_agendamento_status", ["planejado", "disparado", "nao_disparado"]);
+
+export const campanhasWhatsappAgendamentos = pgTable("campanhas_whatsapp_agendamentos", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  dataAgendada: date("data_agendada").notNull(),
+  status: campanhaWhatsappAgendamentoStatusEnum("status").notNull().default("planejado"),
+  observacoes: text("observacoes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  campanhaDataIdx: index("campanhas_whatsapp_agendamentos_campanha_data_idx").on(t.campanhaId, t.dataAgendada),
+}));
+export type CampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferSelect;
+export type InsertCampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferInsert;

@@ -18,13 +18,13 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import {
-  campanhasWhatsapp, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes, campanhasWhatsappCategorias,
-  campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes, campanhasWhatsappGatilhos,
-  campanhasWhatsappScripts, historicoOs,
+  campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
+  campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
+  campanhasWhatsappGatilhos, campanhasWhatsappScripts, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
-  STATUS_CAMPANHA, TIPOS_CAMPANHA,
+  STATUS_AGENDAMENTO, STATUS_CAMPANHA, TIPOS_CAMPANHA,
   calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, gerarChaveCategoria, hojeCampoGrande,
   normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
@@ -877,6 +877,129 @@ export const campanhasWhatsappRouter = router({
         ignoradosQuarentenaGlobal: higienizado.ignoradosQuarentena,
         ignoradosCadenciaCampanha: descartadosCadencia,
         invalidosOuDuplicados: higienizado.invalidos,
+      };
+    }),
+
+  // ─── Planner: agendamentos de campanha no calendário ────────────────────────────────────────────
+  // Um agendamento é só um plano/lembrete ("disparar esta campanha neste dia") — independente do log real
+  // de disparo (campanhas_whatsapp_disparos). Pedido do usuário 27/09/2026: calendário visual para AGENDAR
+  // (não só ver a previsão calculada pela cadência) + um botão simples para depois confirmar se aquele
+  // disparo agendado realmente aconteceu, sem precisar passar pelo fluxo pesado de "Registrar disparo".
+
+  listarAgendamentos: campanhasProcedure
+    .input(z.object({ inicio: dataIsoSchema, fim: dataIsoSchema }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const rows = await db.select({
+        id: campanhasWhatsappAgendamentos.id,
+        campanhaId: campanhasWhatsappAgendamentos.campanhaId,
+        nome: campanhasWhatsapp.nome,
+        categoria: campanhasWhatsapp.categoria,
+        dataAgendada: campanhasWhatsappAgendamentos.dataAgendada,
+        status: campanhasWhatsappAgendamentos.status,
+        observacoes: campanhasWhatsappAgendamentos.observacoes,
+      })
+        .from(campanhasWhatsappAgendamentos)
+        .innerJoin(campanhasWhatsapp, eq(campanhasWhatsapp.id, campanhasWhatsappAgendamentos.campanhaId))
+        .where(and(gte(campanhasWhatsappAgendamentos.dataAgendada, input.inicio), lte(campanhasWhatsappAgendamentos.dataAgendada, input.fim)))
+        .orderBy(campanhasWhatsappAgendamentos.dataAgendada);
+      return rows.map(r => ({ ...r, dataAgendada: iso(r.dataAgendada) }));
+    }),
+
+  criarAgendamento: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int(), dataAgendada: dataIsoSchema, observacoes: z.string().trim().max(500).nullish() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await buscarCampanha(db, input.campanhaId);
+      const [row] = await db.insert(campanhasWhatsappAgendamentos).values({
+        campanhaId: input.campanhaId, dataAgendada: input.dataAgendada, observacoes: input.observacoes || null,
+      }).returning();
+      return row;
+    }),
+
+  /** O botão "disparada"/"não disparada"/"voltar a planejado" do calendário e do relatório. */
+  marcarAgendamento: campanhasProcedure
+    .input(z.object({ id: z.number().int(), status: z.enum(STATUS_AGENDAMENTO) }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.update(campanhasWhatsappAgendamentos)
+        .set({ status: input.status, updatedAt: new Date() })
+        .where(eq(campanhasWhatsappAgendamentos.id, input.id));
+      return { ok: true };
+    }),
+
+  removerAgendamento: campanhasProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.delete(campanhasWhatsappAgendamentos).where(eq(campanhasWhatsappAgendamentos.id, input.id));
+      return { ok: true };
+    }),
+
+  // ─── Relatório por período ───────────────────────────────────────────────────────────────────────
+  // Pedido do usuário 27/09/2026: campanhas ativas/inativas, contatos alcançados e disparos realizados
+  // dentro de um recorte de datas, com o detalhamento por campanha (para agendar/marcar disparo ali mesmo).
+
+  relatorioPeriodo: campanhasProcedure
+    .input(z.object({ inicio: dataIsoSchema, fim: dataIsoSchema }))
+    .query(async ({ input }) => {
+      if (input.fim < input.inicio || diasEntre(input.inicio, input.fim) > 366) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Período inválido (máximo 366 dias)." });
+      }
+      const db = await obterDb();
+      const [campanhas, disparosPeriodo, agendamentosPeriodo, contatosDistintos] = await Promise.all([
+        db.select().from(campanhasWhatsapp),
+        db.select().from(campanhasWhatsappDisparos)
+          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, input.inicio), lte(campanhasWhatsappDisparos.enviadoEm, input.fim))),
+        db.select().from(campanhasWhatsappAgendamentos)
+          .where(and(gte(campanhasWhatsappAgendamentos.dataAgendada, input.inicio), lte(campanhasWhatsappAgendamentos.dataAgendada, input.fim))),
+        getPool().query<{ total: number }>(
+          `SELECT COUNT(DISTINCT telefone)::int AS total FROM campanhas_whatsapp_contatos_historico
+             WHERE ultimo_envio_em BETWEEN $1 AND $2`,
+          [input.inicio, input.fim],
+        ),
+      ]);
+
+      const porCampanhaAgg = new Map<number, { disparos: number; contatosEnviados: number }>();
+      for (const d of disparosPeriodo) {
+        const atual = porCampanhaAgg.get(d.campanhaId) ?? { disparos: 0, contatosEnviados: 0 };
+        atual.disparos++;
+        atual.contatosEnviados += d.contatosEnviados;
+        porCampanhaAgg.set(d.campanhaId, atual);
+      }
+      const agendamentosPorCampanha = new Map<number, typeof agendamentosPeriodo>();
+      for (const a of agendamentosPeriodo) {
+        if (!agendamentosPorCampanha.has(a.campanhaId)) agendamentosPorCampanha.set(a.campanhaId, []);
+        agendamentosPorCampanha.get(a.campanhaId)!.push(a);
+      }
+
+      const porCampanha = campanhas
+        .map(c => ({
+          id: c.id,
+          nome: c.nome,
+          categoria: c.categoria,
+          status: c.status,
+          disparosNoPeriodo: porCampanhaAgg.get(c.id)?.disparos ?? 0,
+          contatosEnviadosNoPeriodo: porCampanhaAgg.get(c.id)?.contatosEnviados ?? 0,
+          agendamentos: (agendamentosPorCampanha.get(c.id) ?? [])
+            .map(a => ({ id: a.id, dataAgendada: iso(a.dataAgendada), status: a.status, observacoes: a.observacoes }))
+            .sort((x, y) => x.dataAgendada.localeCompare(y.dataAgendada)),
+        }))
+        .sort((a, b) => b.disparosNoPeriodo - a.disparosNoPeriodo || b.agendamentos.length - a.agendamentos.length || a.nome.localeCompare(b.nome));
+
+      return {
+        periodo: { inicio: input.inicio, fim: input.fim },
+        kpis: {
+          campanhasAtivas: campanhas.filter(c => c.status === "ativa").length,
+          campanhasInativas: campanhas.filter(c => c.status !== "ativa").length,
+          // "Contatos cadastrados" acompanha o período filtrado (decisão do usuário 27/09/2026) — telefones
+          // distintos cujo ÚLTIMO envio de qualquer campanha caiu dentro do recorte. Ver limitação no doc:
+          // campanhas_whatsapp_contatos_historico só guarda o envio mais recente por (campanha, telefone).
+          contatosCadastradosNoPeriodo: contatosDistintos.rows[0]?.total ?? 0,
+          disparosRealizadosNoPeriodo: disparosPeriodo.length,
+          contatosEnviadosNoPeriodo: disparosPeriodo.reduce((soma, d) => soma + d.contatosEnviados, 0),
+        },
+        porCampanha,
       };
     }),
 });

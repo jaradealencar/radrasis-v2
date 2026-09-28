@@ -427,3 +427,60 @@ describe("duplicarCampanha", () => {
     expect(historicoDaCopia.disparos).toHaveLength(0);
   });
 });
+
+describe("Planner (agendamentos) e relatório por período", () => {
+  let campanhaId: number;
+  let agendamentoId: number;
+
+  beforeAll(async () => {
+    const c = await admin().criar({ nome: "TESTE Relatório Período", categoria: "outbound", tipo: "recorrente", frequenciaDias: 30, quarentenaDias: 0 });
+    campanhaId = c.id;
+    criadas.push(c.id);
+  });
+
+  it("criarAgendamento nasce 'planejado'; listarAgendamentos traz nome/categoria da campanha", async () => {
+    const criado = await admin().criarAgendamento({ campanhaId, dataAgendada: dia(3), observacoes: "TESTE lote 1" });
+    agendamentoId = criado.id;
+    expect(criado).toMatchObject({ campanhaId, dataAgendada: dia(3), status: "planejado", observacoes: "TESTE lote 1" });
+
+    const lista = await admin().listarAgendamentos({ inicio: dia(0), fim: dia(7) });
+    const encontrado = lista.find(a => a.id === agendamentoId);
+    expect(encontrado).toMatchObject({ nome: "TESTE Relatório Período", categoria: "outbound", status: "planejado" });
+  });
+
+  it("marcarAgendamento alterna disparado/não disparado; removerAgendamento apaga", async () => {
+    await admin().marcarAgendamento({ id: agendamentoId, status: "disparado" });
+    let lista = await admin().listarAgendamentos({ inicio: dia(0), fim: dia(7) });
+    expect(lista.find(a => a.id === agendamentoId)?.status).toBe("disparado");
+
+    await admin().marcarAgendamento({ id: agendamentoId, status: "nao_disparado" });
+    lista = await admin().listarAgendamentos({ inicio: dia(0), fim: dia(7) });
+    expect(lista.find(a => a.id === agendamentoId)?.status).toBe("nao_disparado");
+
+    await admin().removerAgendamento({ id: agendamentoId });
+    lista = await admin().listarAgendamentos({ inicio: dia(0), fim: dia(7) });
+    expect(lista.find(a => a.id === agendamentoId)).toBeUndefined();
+  });
+
+  it("relatorioPeriodo agrega disparos, contatos e agendamentos da campanha dentro do recorte de datas", async () => {
+    // Isolado num período bem no passado para não colidir com disparos de outros testes deste arquivo.
+    const inicio = dia(-400);
+    const fim = dia(-395);
+    await disparo(campanhaId, dia(-398), [{ telefone: TEL.E, nome: "Eva" }]);
+    const novoAgendamento = await admin().criarAgendamento({ campanhaId, dataAgendada: dia(-397) });
+
+    const r = await admin().relatorioPeriodo({ inicio, fim });
+    expect(r.kpis.campanhasAtivas).toBeGreaterThanOrEqual(1);
+    expect(r.periodo).toEqual({ inicio, fim });
+
+    const linha = r.porCampanha.find(c => c.id === campanhaId)!;
+    expect(linha).toMatchObject({ nome: "TESTE Relatório Período", disparosNoPeriodo: 1, contatosEnviadosNoPeriodo: 1 });
+    expect(linha.agendamentos).toEqual([{ id: novoAgendamento.id, dataAgendada: dia(-397), status: "planejado", observacoes: null }]);
+
+    await getPool().query("DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1", [norm(TEL.E)]); // limpeza extra
+  });
+
+  it("relatorioPeriodo recusa período invertido", async () => {
+    await expect(admin().relatorioPeriodo({ inicio: dia(5), fim: dia(0) })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+});

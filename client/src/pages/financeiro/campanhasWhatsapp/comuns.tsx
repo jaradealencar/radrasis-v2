@@ -1,13 +1,16 @@
 import { useState, type ReactNode } from "react";
+import { CalendarCheck2, Check, Trash2, X } from "lucide-react";
 import { Info } from "lucide-react";
-import type { RouterOutputs } from "@/lib/trpc";
+import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { diasEntre, STATUS_CAMPANHA_LABEL, type SemaforoCampanha } from "@shared/campanhas-whatsapp";
+import { diasEntre, formatarDataBr, STATUS_CAMPANHA_LABEL, type SemaforoCampanha } from "@shared/campanhas-whatsapp";
 
 export type CampanhaLinha = RouterOutputs["campanhasWhatsapp"]["listar"]["campanhas"][number];
 export type EventoCalendario = RouterOutputs["campanhasWhatsapp"]["calendario"]["eventos"][number];
+export type AgendamentoLinha = RouterOutputs["campanhasWhatsapp"]["listarAgendamentos"][number];
 
 /** Cores do semáforo: badge da tabela, chip do calendário (previsto) e ponto da legenda. */
 export const SEMAFORO_ESTILO: Record<SemaforoCampanha, { emoji: string; badge: string; chip: string; ponto: string }> = {
@@ -66,6 +69,56 @@ export function LabelComAjuda({ htmlFor, texto, ajuda }: { htmlFor?: string; tex
         </TooltipContent>
       </Tooltip>
     </span>
+  );
+}
+
+const STATUS_AGENDAMENTO_ESTILO: Record<AgendamentoLinha["status"], string> = {
+  planejado: "bg-blue-50 text-blue-700 border-blue-200",
+  disparado: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  nao_disparado: "bg-red-100 text-red-700 border-red-200",
+};
+
+/**
+ * Um agendamento do Planner (`campanhas_whatsapp_agendamentos`) com os botões de ação — reaproveitado no
+ * calendário (`CalendarioCampanhas.tsx`) e no relatório por período (`RelatorioPeriodo.tsx`). "Disparada"/"Não
+ * disparada" é só uma marcação manual do usuário (não dispara nada nem lê `campanhas_whatsapp_disparos`).
+ */
+export function AgendamentoItem({ agendamento, mostrarNome = false }: { agendamento: AgendamentoLinha; mostrarNome?: boolean }) {
+  const utils = trpc.useUtils();
+  const invalidar = () => { utils.campanhasWhatsapp.listarAgendamentos.invalidate(); utils.campanhasWhatsapp.relatorioPeriodo.invalidate(); };
+  const marcar = trpc.campanhasWhatsapp.marcarAgendamento.useMutation({ onSuccess: invalidar });
+  const remover = trpc.campanhasWhatsapp.removerAgendamento.useMutation({ onSuccess: invalidar });
+  const ocupado = marcar.isPending || remover.isPending;
+
+  return (
+    <div className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${STATUS_AGENDAMENTO_ESTILO[agendamento.status]}`}>
+      <CalendarCheck2 size={13} className="shrink-0" />
+      <div className="min-w-0 flex-1">
+        {mostrarNome && <div className="font-medium truncate">{agendamento.nome}</div>}
+        <div className="flex items-center gap-1.5">
+          <span>{formatarDataBr(agendamento.dataAgendada)}</span>
+          {agendamento.observacoes && <span className="truncate text-[11px] opacity-80" title={agendamento.observacoes}>· {agendamento.observacoes}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-0.5 shrink-0">
+        {agendamento.status !== "disparado" && (
+          <Button
+            size="icon" variant="ghost" className="size-6 hover:bg-emerald-100" title="Marcar como disparada" disabled={ocupado}
+            onClick={() => marcar.mutate({ id: agendamento.id, status: "disparado" })}
+          ><Check size={13} className="text-emerald-700" /></Button>
+        )}
+        {agendamento.status !== "nao_disparado" && (
+          <Button
+            size="icon" variant="ghost" className="size-6 hover:bg-red-100" title="Marcar como não disparada" disabled={ocupado}
+            onClick={() => marcar.mutate({ id: agendamento.id, status: "nao_disparado" })}
+          ><X size={13} className="text-red-700" /></Button>
+        )}
+        <Button
+          size="icon" variant="ghost" className="size-6 hover:bg-slate-200" title="Remover agendamento" disabled={ocupado}
+          onClick={() => remover.mutate({ id: agendamento.id })}
+        ><Trash2 size={13} className="text-slate-500" /></Button>
+      </div>
+    </div>
   );
 }
 
