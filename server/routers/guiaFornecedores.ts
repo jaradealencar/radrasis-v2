@@ -96,6 +96,10 @@ interface FornecedorCalculado {
   estado: string;
   telefone: string | null;
   origem: "automatico" | "manual";
+  /** Nº de O.S. válidas na janela rolante de 12 meses — mesma contagem usada para qualificar o
+   * fornecedor (`qtdJanela`). Usado só para decidir o troféu de "mais procurada" por cidade
+   * (ver `agruparPorEstadoCidade`); nunca exposto cru na lista pública. */
+  pedidosJanela: number;
 }
 
 /** Monta a lista de fornecedores ativos: calcula a partir de historico_os e aplica os
@@ -158,6 +162,7 @@ export function calcularFornecedoresAtivos(
       estado: (override?.estado || g.ultima?.estado || "").toUpperCase(),
       telefone: telefoneValido(override?.telefone) ?? g.telefoneRecente?.tel ?? null,
       origem: qualifica ? "automatico" : "manual",
+      pedidosJanela: g.qtdJanela,
     });
   }
 
@@ -169,6 +174,7 @@ export function calcularFornecedoresAtivos(
       chave: o.empresaChave, nome: o.empresaNome,
       cidade: o.cidade || "", estado: (o.estado || "").toUpperCase(),
       telefone: telefoneValido(o.telefone), origem: "manual",
+      pedidosJanela: 0,
     });
   }
 
@@ -180,6 +186,11 @@ export interface FornecedorGuia {
   cidade: string;
   telefone: string | null;
   whatsapp: string | null;
+  /** true = fornecedor com mais pedidos na cidade nos últimos 12 meses ("mais procurada"),
+   * exibido em destaque (troféu, topo da lista). Só marcado quando há 2+ fornecedores na
+   * mesma cidade e não há empate no topo — nunca expõe a quantidade em si (ver `pedidosJanela`
+   * em `FornecedorCalculado`). */
+  destaque?: boolean;
 }
 export interface EstadoGuia {
   uf: string;
@@ -191,6 +202,25 @@ export interface GuiaFornecedoresResultado {
   geradoEm: string;
   totalFornecedores: number;
   estados: EstadoGuia[];
+}
+
+/** Ordem alfabética por padrão, com um troféu de "mais procurada" quando fizer sentido: só
+ * quando há 2+ fornecedores na cidade E existe um líder único (sem empate) com pelo menos 1
+ * pedido na janela — nesse caso ele ganha `destaque: true` e vai para o topo, o resto continua
+ * em ordem alfabética. Empate no topo (ou só 1 fornecedor na cidade) não marca ninguém: não dá
+ * para eleger "a mais procurada" sem dado que desempate, e com um só fornecedor o troféu não
+ * diz nada (não tem com quem comparar). */
+function ordenarComDestaque(lista: Array<FornecedorGuia & { pedidosJanela: number }>): FornecedorGuia[] {
+  const porNome = [...lista].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  if (porNome.length < 2) return porNome.map(({ pedidosJanela, ...f }) => f);
+
+  const maxPedidos = Math.max(...porNome.map(f => f.pedidosJanela));
+  const lideres = porNome.filter(f => f.pedidosJanela === maxPedidos);
+  if (maxPedidos <= 0 || lideres.length !== 1) return porNome.map(({ pedidosJanela, ...f }) => f);
+
+  const lider = lideres[0];
+  const resto = porNome.filter(f => f !== lider);
+  return [{ ...lider, destaque: true }, ...resto].map(({ pedidosJanela, ...f }) => f);
 }
 
 /** Agrupa por estado > cidade (unificando grafias com/sem acento da mesma cidade) e monta o
@@ -214,7 +244,7 @@ function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWha
     canonico.set(k, [...grafias.entries()].sort((a, b) => qtdAcentos(b[0]) - qtdAcentos(a[0]) || b[1] - a[1])[0][0]);
   }
 
-  const porEstado = new Map<string, Map<string, FornecedorGuia[]>>();
+  const porEstado = new Map<string, Map<string, Array<FornecedorGuia & { pedidosJanela: number }>>>();
   for (const f of comLocal) {
     const cidadeTitulo = f.cidade ? titleCase(f.cidade) : "(cidade não informada)";
     const cidadeFinal = canonico.get(`${f.estado}|${chaveSemAcento(cidadeTitulo)}`) ?? cidadeTitulo;
@@ -225,6 +255,7 @@ function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWha
     porCidade.get(cidadeFinal)!.push({
       nome: f.nome, cidade: cidadeFinal, telefone: f.telefone,
       whatsapp: link ? `${link}?text=${encodeURIComponent(mensagemWhatsapp)}` : null,
+      pedidosJanela: f.pedidosJanela,
     });
   }
 
@@ -233,7 +264,7 @@ function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWha
     const porCidade = porEstado.get(uf)!;
     const cidades = [...porCidade.keys()].sort((a, b) => a.localeCompare(b, "pt-BR")).map(cidade => ({
       cidade,
-      fornecedores: porCidade.get(cidade)!.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+      fornecedores: ordenarComDestaque(porCidade.get(cidade)!),
     }));
     return { uf, nome: ESTADOS_NOME[uf] ?? uf, total: cidades.reduce((s, c) => s + c.fornecedores.length, 0), cidades };
   });
