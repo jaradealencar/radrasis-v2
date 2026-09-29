@@ -315,17 +315,22 @@ const MESES_TETO_INATIVOS_SEED = 24;
 /** Chave usada em campanhas_whatsapp_fontes.consulta_erp → função de resolução (recebe o contexto já
  * carregado por carregarContextoErp). `comprasPorCliente`/volume por janela são computados sob demanda
  * (lazy, com cache no próprio ctx) — a maioria das fontes não precisa deles, e recalcular sempre em
- * carregarContextoErp deixava TODA fonte mais lenta à toa (regressão medida 28/09/2026: timeout de teste). */
+ * carregarContextoErp deixava TODA fonte mais lenta à toa (regressão medida 28/09/2026: timeout de teste).
+ *
+ * `hoje` é a data de referência recebida de `resolverFonteErp` (por padrão, hoje de verdade) — respeitá-la
+ * em vez de recalcular `hojeCampoGrande()` aqui dentro é o que permite ao usuário escolher outro mês/dia de
+ * referência na tela (ex.: "novos_do_mes"/"reativados_do_mes" com uma data de setembro para ver os novos
+ * clientes DE SETEMBRO, não só do mês corrente). Pedido do usuário 28/09/2026. */
 export const RESOLVEDORES_ERP: Record<string, (ctx: ContextoErp, hoje: string) => ContatoFonte[]> = {
-  clientes_ativos: ctx => resolverClientesAtivos(ctx.base, hojeCampoGrande()),
-  primeira_compra: ctx => resolverPrimeiraCompra(ctx.base, hojeCampoGrande()),
-  inativos_6m: ctx => resolverInativos(ctx.base, hojeCampoGrande(), 180, diasEntre(subtrairMesesIso(hojeCampoGrande(), MESES_TETO_INATIVOS_SEED), hojeCampoGrande())),
-  orcaram_nao_compraram: ctx => resolverOrcaramNaoCompraram(ctx.orcamentos, ctx.base, hojeCampoGrande()),
-  compraram_uma_vez_sumiram: ctx => resolverCompraramUmaVezESumiram(ctx.base, hojeCampoGrande()),
+  clientes_ativos: (ctx, hoje) => resolverClientesAtivos(ctx.base, hoje),
+  primeira_compra: (ctx, hoje) => resolverPrimeiraCompra(ctx.base, hoje),
+  inativos_6m: (ctx, hoje) => resolverInativos(ctx.base, hoje, 180, diasEntre(subtrairMesesIso(hoje, MESES_TETO_INATIVOS_SEED), hoje)),
+  orcaram_nao_compraram: (ctx, hoje) => resolverOrcaramNaoCompraram(ctx.orcamentos, ctx.base, hoje),
+  compraram_uma_vez_sumiram: (ctx, hoje) => resolverCompraramUmaVezESumiram(ctx.base, hoje),
   compraram_uma_vez: ctx => resolverCompraramUmaVez(ctx.base),
-  novos_do_mes: ctx => resolverNovosDoMes(obterComprasPorCliente(ctx), hojeCampoGrande()),
-  reativados_do_mes: ctx => resolverReativadosDoMes(obterComprasPorCliente(ctx), hojeCampoGrande()),
-  reducao_volume: ctx => resolverReducaoDeVolume(obterVolumePorJanela(ctx, hojeCampoGrande())),
+  novos_do_mes: (ctx, hoje) => resolverNovosDoMes(obterComprasPorCliente(ctx), hoje),
+  reativados_do_mes: (ctx, hoje) => resolverReativadosDoMes(obterComprasPorCliente(ctx), hoje),
+  reducao_volume: (ctx, hoje) => resolverReducaoDeVolume(obterVolumePorJanela(ctx, hoje)),
 };
 
 export interface ContextoErp {
@@ -359,11 +364,11 @@ export async function carregarContextoErp(): Promise<ContextoErp> {
   return { base: construirBaseComTelefone(osRows), orcamentos, osRows };
 }
 
-export async function resolverFonteErp(consultaErp: string): Promise<ContatoFonte[]> {
+export async function resolverFonteErp(consultaErp: string, dataReferencia: string = hojeCampoGrande()): Promise<ContatoFonte[]> {
   const resolvedor = RESOLVEDORES_ERP[consultaErp];
   if (!resolvedor) throw new Error(`Consulta ERP desconhecida: "${consultaErp}"`);
   const ctx = await carregarContextoErp();
-  return resolvedor(ctx, hojeCampoGrande());
+  return resolvedor(ctx, dataReferencia);
 }
 
 // ─── Fonte tipo "arquivo": lê o arquivo salvo (campanhas_whatsapp_arquivos) sob demanda ──────────────────

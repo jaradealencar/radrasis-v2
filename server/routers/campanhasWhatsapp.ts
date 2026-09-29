@@ -437,6 +437,23 @@ export const campanhasWhatsappRouter = router({
       return copia;
     }),
 
+  /**
+   * Exclusão definitiva — remove a campanha e tudo que depende dela (disparos, agendamentos, scripts, arquivos
+   * da pasta, vínculo com fontes e histórico de cadência) via `ON DELETE CASCADE` do banco (ver
+   * `drizzle/schema.ts`). A quarentena global por telefone (`campanhas_whatsapp_quarentena`) não é apagada —
+   * só perde a referência a esta campanha (`ON DELETE SET NULL`), pois a trava anti-spam vale entre campanhas.
+   * Diferente de arquivar (`atualizar` com `status: "arquivada"`), que só tira da lista ativa sem apagar nada —
+   * prefira arquivar quando o histórico de disparos importar; isto é para campanha criada por engano/teste.
+   */
+  excluir: campanhasProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await buscarCampanha(db, input.id); // 404 se não existe
+      await db.delete(campanhasWhatsapp).where(eq(campanhasWhatsapp.id, input.id));
+      return { ok: true };
+    }),
+
   // ─── Categorias (editáveis pelo usuário — ver comentário em drizzle/schema.ts) ────────────────
 
   /** `emUso`: quantas campanhas usam a categoria — a tela só oferece excluir (em vez de arquivar) quando é 0. */
@@ -837,7 +854,7 @@ export const campanhasWhatsappRouter = router({
         let contatos: ContatoFonte[];
         if (fonte.tipo === "erp") {
           if (!fonte.consultaErp) continue;
-          contatos = await resolverFonteErp(fonte.consultaErp);
+          contatos = await resolverFonteErp(fonte.consultaErp, dataEnvio);
         } else {
           if (!fonte.arquivoId) continue;
           const [arquivo] = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId)).limit(1);

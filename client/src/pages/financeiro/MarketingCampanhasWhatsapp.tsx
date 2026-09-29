@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -13,6 +13,7 @@ import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
 import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
 import ContatosCampanhaDialog from "./campanhasWhatsapp/ContatosCampanhaDialog";
 import DuplicarCampanhaDialog from "./campanhasWhatsapp/DuplicarCampanhaDialog";
+import ExcluirCampanhaDialog from "./campanhasWhatsapp/ExcluirCampanhaDialog";
 import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
 import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
 import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
@@ -48,6 +49,7 @@ export default function MarketingCampanhasWhatsapp() {
   const [vendas, setVendas] = useState<CampanhaLinha | null>(null);
   const [duplicar, setDuplicar] = useState<CampanhaLinha | null>(null);
   const [verContatos, setVerContatos] = useState<CampanhaLinha | null>(null);
+  const [excluir, setExcluir] = useState<CampanhaLinha | null>(null);
 
   if (isLoading) {
     return <div className="flex justify-center py-20"><Spinner className="size-7 text-muted-foreground" /></div>;
@@ -159,6 +161,7 @@ export default function MarketingCampanhasWhatsapp() {
                           <BotaoIcone rotulo="Ver histórico" onClick={() => setHistorico(c)}><History size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Editar campanha" onClick={() => setFormulario(c)}><Pencil size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Duplicar campanha" onClick={() => setDuplicar(c)}><Copy size={15} /></BotaoIcone>
+                          <BotaoIcone rotulo="Excluir campanha" onClick={() => setExcluir(c)}><Trash2 size={15} className="text-red-600" /></BotaoIcone>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -188,6 +191,7 @@ export default function MarketingCampanhasWhatsapp() {
       <VendasPosVendaDialog campanha={vendas} onClose={() => setVendas(null)} />
       <DuplicarCampanhaDialog campanha={duplicar} onClose={() => setDuplicar(null)} />
       <ContatosCampanhaDialog campanha={verContatos} onClose={() => setVerContatos(null)} />
+      <ExcluirCampanhaDialog campanha={excluir} onClose={() => setExcluir(null)} />
     </div>
   );
 }

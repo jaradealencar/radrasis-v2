@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, Database, Download, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatarTelefone, hojeCampoGrande } from "@shared/campanhas-whatsapp";
@@ -27,9 +29,15 @@ const MAX_LISTA_TELA = 200;
 export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const [aba, setAba] = useState<"aprovados" | "ignorados" | "invalidos">("aprovados");
   const hoje = hojeCampoGrande();
+  // Data de referência para as fontes ERP: "Novos do mês"/"Reativados do mês" calculam o mês a partir dela —
+  // escolher uma data de outro mês (ex.: dentro de setembro) mostra a audiência DAQUELE mês, não só do mês
+  // corrente. Reseta para hoje sempre que o diálogo abre para uma campanha (evita "esquecer" a data escolhida
+  // numa campanha anterior e aplicá-la sem querer a outra). Pedido do usuário 28/09/2026.
+  const [dataReferencia, setDataReferencia] = useState(hoje);
+  useEffect(() => { if (campanha) setDataReferencia(hoje); }, [campanha?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isFetching, isError, error } = trpc.campanhasWhatsapp.gerarListaDaCampanha.useQuery(
-    { campanhaId: campanha?.id ?? 0 }, { enabled: !!campanha, retry: false },
+    { campanhaId: campanha?.id ?? 0, dataEnvio: dataReferencia }, { enabled: !!campanha, retry: false },
   );
 
   const linhas = !data ? []
@@ -39,7 +47,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
 
   const baixar = () => {
     if (!campanha) return;
-    const base = `${slugArquivo(campanha.nome)}-contatos-${hoje}`;
+    const base = `${slugArquivo(campanha.nome)}-contatos-${dataReferencia}`;
     if (aba === "aprovados" && data) {
       exportRowsToXlsx(data.aprovados, [
         { header: "telefone", valor: r => r.telefone, largura: 18 },
@@ -64,8 +72,20 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
       <DialogContent className="sm:max-w-2xl max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Users size={18} className="text-blue-600" /> Contatos da campanha</DialogTitle>
-          <DialogDescription>{campanha?.nome} — audiência resolvida agora pelas fontes de dados vinculadas</DialogDescription>
+          <DialogDescription>{campanha?.nome} — audiência resolvida pelas fontes de dados vinculadas na data de referência abaixo</DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="contatos-data-ref">Data de referência</Label>
+          <Input
+            id="contatos-data-ref" type="date" className="sm:w-48" max={hoje}
+            value={dataReferencia} onChange={e => setDataReferencia(e.target.value || hoje)}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Fontes como "Novos do mês"/"Reativados do mês" calculam o mês a partir desta data — escolha um dia
+            dentro do mês que quer conferir (ex.: setembro) para ver a audiência daquele mês.
+          </p>
+        </div>
 
         {isFetching ? (
           <div className="flex justify-center py-10"><Spinner className="size-6 text-muted-foreground" /></div>
