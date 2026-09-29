@@ -1,16 +1,11 @@
-import { router, publicProcedure, protectedProcedure, requireRole } from "../_core/trpc";
+import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesAcessos, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
+import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
-
-// Endpoints de monitoramento de equipe (acessos ao painel) — só quem pode agir
-// como gestor sobre a equipe comercial deve ver isso, mesmo padrão de
-// isAdmin usado em client/src/pages/comercial/CRM.tsx.
-const gestorProcedure = protectedProcedure.use(requireRole("admin", "master", "gestor"));
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
@@ -2787,51 +2782,19 @@ export const performanceComercialRouter = router({
       return { ok: true };
     }),
 
-  // ─── Inteligência de Clientes — acesso ao painel e confirmação de contato ──
-  // Pedido do gestor (13/09/2026): saber se a equipe está de fato usando a aba
-  // "Clientes" e permitir que cada vendedor confirme contato com um cliente
-  // listado, com observação livre (ver drizzle/schema.ts para o porquê de
-  // tabelas dedicadas em vez de reaproveitar crm_atividade_log/crm_contatos).
-
-  /** Registra um acesso à aba "Clientes" — chamado uma vez por montagem do
-   * componente no front. Silencioso o suficiente para não travar a tela por
-   * causa disso: falhas aqui não devem impedir o uso do painel. */
-  registrarAcessoInteligenciaClientes: protectedProcedure
-    .mutation(async ({ ctx }) => {
-      const db = await getDb();
-      if (!db) return { ok: false };
-      await db.insert(inteligenciaClientesAcessos).values({
-        userId: ctx.user.id,
-        userName: ctx.user.name,
-      });
-      return { ok: true };
-    }),
-
-  /** Para o gestor: quem da equipe acessou a aba nos últimos `dias` dias,
-   * quantas vezes e quando foi a última. */
-  getAcessosInteligenciaClientes: gestorProcedure
-    .input(z.object({ dias: z.number().int().min(1).max(365).default(30) }))
-    .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new Error("DB indisponível");
-      const desde = new Date(Date.now() - input.dias * 86400000);
-      const rows = await db.select().from(inteligenciaClientesAcessos)
-        .where(gte(inteligenciaClientesAcessos.acessadoEm, desde))
-        .orderBy(desc(inteligenciaClientesAcessos.acessadoEm));
-      const porUsuario = new Map<string, { userId: string; userName: string; qtdAcessos: number; ultimoAcesso: Date }>();
-      for (const r of rows) {
-        const atual = porUsuario.get(r.userId);
-        if (!atual) {
-          porUsuario.set(r.userId, { userId: r.userId, userName: r.userName, qtdAcessos: 1, ultimoAcesso: r.acessadoEm });
-        } else {
-          atual.qtdAcessos++;
-        }
-      }
-      return [...porUsuario.values()].sort((a, b) => b.ultimoAcesso.getTime() - a.ultimoAcesso.getTime());
-    }),
-
-  /** Vendedor confirma que entrou em contato com um cliente da lista, com
-   * observação livre opcional — fica visível para o gestor em getContatosClientes. */
+  // ─── Inteligência de Clientes — confirmação de contato ─────────────────────
+  // Pedido do gestor (13/09/2026): permitir que cada vendedor confirme contato
+  // com um cliente listado, com observação livre (ver drizzle/schema.ts para o
+  // porquê de tabela dedicada em vez de reaproveitar crm_atividade_log/crm_contatos).
+  // getContatosClientes é consumido tanto pela aba "Clientes" (sem filtro, dá
+  // o histórico usado ali para marcar quem já foi contatado) quanto pela aba
+  // "Equipe" (com filtro de vendedor, visão consolidada do gestor) — mantido.
+  // A aba "Equipe" em si foi removida a pedido do usuário (28/09/2026); só o
+  // registro/leitura de ACESSO ao painel (registrarAcessoInteligenciaClientes/
+  // getAcessosInteligenciaClientes, exclusivos dessa aba) saíram junto. Tabela
+  // inteligenciaClientesAcessos ficou sem leitor/escritor — não foi dropada
+  // (só decisão de schema justifica isso), dado histórico preservado caso a
+  // visão volte a ser pedida.
   registrarContatoCliente: protectedProcedure
     .input(z.object({
       empresaKey: z.string().min(1),

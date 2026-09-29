@@ -5,7 +5,7 @@ import {
   AlertTriangle, Percent, CalendarDays, DollarSign, Repeat, Trophy, Info,
   CheckCircle2, XCircle, Clock3, ChevronRight, HelpCircle, Filter, Layers,
   Download, Sparkles, Send, UserCheck, SlidersHorizontal, MessageSquareText,
-  Eye, ShieldCheck, Printer,
+  Printer,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -24,7 +24,7 @@ import {
   PieChart, Pie, Legend,
 } from "recharts";
 import KpiCard from "@/components/KpiCard";
-import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtDateTime } from "@/lib/format";
+import { fmtBrl, fmtNum, fmtPct, fmtDate } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
 import MarketingFinanceiro from "@/pages/financeiro/MarketingFinanceiro";
@@ -1555,118 +1555,6 @@ function VistaPerfilCnpj() {
   );
 }
 
-// ─── Vista: Equipe (gestor) ────────────────────────────────────────────────────
-// Pedido do gestor (13/09/2026): visibilidade de quem da equipe está de fato
-// usando este painel, e das confirmações de contato registradas por cliente.
-// Só aparece nas VISTAS para admin/master/gestor (ver componente principal).
-
-const JANELAS_ACESSO = [7, 30, 90] as const;
-
-function VistaEquipe() {
-  const [janelaDias, setJanelaDias] = useState<number>(30);
-  const [filtroVendedorContatos, setFiltroVendedorContatos] = useState("");
-  const { data: acessos, isLoading: loadingAcessos } = trpc.performanceComercial.getAcessosInteligenciaClientes.useQuery({ dias: janelaDias });
-  const { data: contatos, isLoading: loadingContatos } = trpc.performanceComercial.getContatosClientes.useQuery({
-    vendedor: filtroVendedorContatos || undefined,
-    limite: 200,
-  });
-
-  const vendedoresContato = useMemo(() => [...new Set((contatos ?? []).map(c => c.vendedor))].sort(), [contatos]);
-
-  return (
-    <div className="space-y-5">
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Eye className="w-4 h-4 text-slate-400" /> Acessos ao painel</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Quem entrou na aba "Clientes" da Inteligência de Clientes e quando foi a última vez.</p>
-          </div>
-          <div className="flex items-center gap-1">
-            {JANELAS_ACESSO.map(d => (
-              <button
-                key={d}
-                onClick={() => setJanelaDias(d)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
-                  janelaDias === d ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-200 hover:border-blue-400"
-                }`}
-              >
-                {d}d
-              </button>
-            ))}
-          </div>
-        </div>
-        {loadingAcessos ? (
-          <div className="p-6 text-xs text-slate-400">Carregando...</div>
-        ) : !acessos || acessos.length === 0 ? (
-          <div className="p-8"><Empty><EmptyHeader><EmptyMedia variant="icon"><Eye /></EmptyMedia><EmptyTitle>Ninguém acessou este painel nos últimos {janelaDias} dias</EmptyTitle></EmptyHeader></Empty></div>
-        ) : (
-          <Table className="text-xs">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Usuário</TableHead>
-                <TableHead className="text-right">Acessos no período</TableHead>
-                <TableHead>Último acesso</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {acessos.map(a => (
-                <TableRow key={a.userId}>
-                  <TableCell className="font-semibold">{a.userName}</TableCell>
-                  <TableCell className="text-right">{a.qtdAcessos}</TableCell>
-                  <TableCell>{fmtDateTime(a.ultimoAcesso)} <span className="text-slate-400">(há {diasAtras(a.ultimoAcesso)}d)</span></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><MessageSquareText className="w-4 h-4 text-slate-400" /> Confirmações de contato</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Registros feitos pelos vendedores na aba "Clientes" (mais recentes primeiro, até 200).</p>
-          </div>
-          <select
-            value={filtroVendedorContatos}
-            onChange={e => setFiltroVendedorContatos(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700"
-          >
-            <option value="">Todos os vendedores</option>
-            {vendedoresContato.map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </div>
-        {loadingContatos ? (
-          <div className="p-6 text-xs text-slate-400">Carregando...</div>
-        ) : !contatos || contatos.length === 0 ? (
-          <div className="p-8"><Empty><EmptyHeader><EmptyMedia variant="icon"><MessageSquareText /></EmptyMedia><EmptyTitle>Nenhuma confirmação de contato registrada ainda</EmptyTitle></EmptyHeader></Empty></div>
-        ) : (
-          <Table className="text-xs">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Vendedor</TableHead>
-                <TableHead>Quando</TableHead>
-                <TableHead>Observação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contatos.map(c => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-semibold">{c.empresa}</TableCell>
-                  <TableCell>{c.vendedor}</TableCell>
-                  <TableCell className="whitespace-nowrap">{fmtDateTime(c.contatadoEm)}</TableCell>
-                  <TableCell className="text-slate-500 max-w-[320px] truncate" title={c.observacao ?? ""}>{c.observacao ?? "—"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 interface InteligenteClientesProps {
@@ -1678,7 +1566,7 @@ function periodoInicialDoAno(ano: number): string {
   return ano === atual.getFullYear() ? `${ano}-${pad(atual.getMonth() + 1)}` : `${ano}-12`;
 }
 
-type Vista = "visao-geral" | "crescimento" | "clientes" | "fila" | "retencao" | "funil" | "previsoes" | "assistente" | "perfil-cnpj" | "equipe";
+type Vista = "visao-geral" | "crescimento" | "clientes" | "fila" | "retencao" | "funil" | "previsoes" | "assistente" | "perfil-cnpj";
 
 const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "visao-geral", label: "Visão Geral", icon: "📊" },
@@ -1690,7 +1578,6 @@ const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "previsoes", label: "Previsões", icon: "🔮" },
   { id: "assistente", label: "Assistente", icon: "✨" },
   { id: "perfil-cnpj", label: "Perfil (CNPJ)", icon: "🏢" },
-  { id: "equipe", label: "Equipe", icon: "🛡️" },
 ];
 
 export default function InteligenteClientes({ anoSelecionado }: InteligenteClientesProps) {
@@ -1699,22 +1586,11 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
   const [dataInicialMes, setDataInicialMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [dataFinalMes, setDataFinalMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [vista, setVista] = useState<Vista>("visao-geral");
-  // "equipe" e "crescimento" ficam restritas a admin/master/gestor — esta última
-  // mostra CAC, ROI, lucro/prejuízo e ponto de equilíbrio, dado sensível demais
-  // pra ficar exposto a qualquer papel que um dia ganhe acesso a Performance
-  // Comercial (hoje a página inteira já é admin-only, mas isso é reforço).
-  const vistasVisiveis = useMemo(() => VISTAS.filter(v => (v.id !== "equipe" && v.id !== "crescimento") || isAdmin), [isAdmin]);
-
-  // Registra 1 acesso por montagem — dá ao gestor visibilidade de quem de fato
-  // usa este painel (aba "Equipe"). Falha silenciosa: não deve travar a tela.
-  const registrarAcessoMut = trpc.performanceComercial.registrarAcessoInteligenciaClientes.useMutation();
-  const acessoRegistradoRef = useRef(false);
-  useEffect(() => {
-    if (acessoRegistradoRef.current || !user) return;
-    acessoRegistradoRef.current = true;
-    registrarAcessoMut.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  // "crescimento" fica restrita a admin/master/gestor — mostra CAC, ROI,
+  // lucro/prejuízo e ponto de equilíbrio, dado sensível demais pra ficar
+  // exposto a qualquer papel que um dia ganhe acesso a Performance Comercial
+  // (hoje a página inteira já é admin-only, mas isso é reforço).
+  const vistasVisiveis = useMemo(() => VISTAS.filter(v => v.id !== "crescimento" || isAdmin), [isAdmin]);
 
   const anoRef = useRef(anoSelecionado);
   useEffect(() => {
@@ -1768,7 +1644,6 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       {vista === "previsoes" && <VistaPrevisoes onIrPara={setVista} destinosDisponiveis={isAdmin ? ["clientes", "fila", "retencao", "funil", "crescimento"] : ["clientes", "fila", "retencao", "funil"]} />}
       {vista === "assistente" && <VistaAssistente dataInicial={dataInicial} dataFinal={dataFinal} />}
       {vista === "perfil-cnpj" && <VistaPerfilCnpj />}
-      {vista === "equipe" && isAdmin && <VistaEquipe />}
     </div>
   );
 }
