@@ -147,6 +147,44 @@ export default function Simulador({
       : `Com ${numFixos} indicador(es) travado(s) por você, os outros podem até cair cerca de ${fmtNum(-pct, 1)}% e a meta de ${fmtBrl(meta)} ainda fecha.`;
   }
 
+  // "O faturamento por mês" e "quando chego lá" quase sempre ficam pregados na meta/no fim do
+  // prazo — é assim que o modo automático funciona por definição. Quem realmente muda a cada
+  // trava é o esforço pedido dos indicadores que sobraram livres; esse número fica escondido
+  // dentro do texto corrido acima, então também vira uma ficha própria (mais fácil de notar).
+  const pctEsforco = (resultado.fator - 1) * 100;
+  let esforcoValor: string;
+  let esforcoSub: string;
+  let esforcoDestaque: "ok" | "falta" | undefined;
+  if (!modoAuto) {
+    esforcoValor = "modo livre";
+    esforcoSub = "você está controlando os 12 indicadores na mão";
+    esforcoDestaque = undefined;
+  } else if (resultado.livres <= 0) {
+    esforcoValor = "tudo travado";
+    esforcoSub = "destrave algum indicador para o painel calcular";
+    esforcoDestaque = "falta";
+  } else if (!resultado.atingivel) {
+    esforcoValor = "não fecha";
+    esforcoSub = `mesmo no limite, chega só a ${brlCurto(totais.faturamento)}`;
+    esforcoDestaque = "falta";
+  } else if (numFixos === 0) {
+    esforcoValor = `${pctEsforco >= 0 ? "+" : ""}${fmtNum(pctEsforco, 1)}%`;
+    esforcoSub = "caminho equilibrado, nada travado ainda";
+    esforcoDestaque = undefined;
+  } else if (pctEsforco > 0.05) {
+    esforcoValor = `+${fmtNum(pctEsforco, 1)}%`;
+    esforcoSub = `ficou mais difícil: os ${resultado.livres} indicador(es) livre(s) precisam subir isso`;
+    esforcoDestaque = "falta";
+  } else if (pctEsforco < -0.05) {
+    esforcoValor = `${fmtNum(pctEsforco, 1)}%`;
+    esforcoSub = `ficou mais fácil: os ${resultado.livres} indicador(es) livre(s) podem cair isso`;
+    esforcoDestaque = "ok";
+  } else {
+    esforcoValor = "quase igual";
+    esforcoSub = "essa trava bateu perto do que o caminho equilibrado já pedia";
+    esforcoDestaque = "ok";
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
@@ -154,12 +192,18 @@ export default function Simulador({
         <p className="font-semibold">{plano}</p>
       </div>
 
-      <div className="sticky top-0 z-20 bg-white rounded-xl border border-slate-200 shadow-md p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="sticky top-0 z-20 bg-white rounded-xl border border-slate-200 shadow-md p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         <Ficha
           rotulo="Faturamento por mês"
           valor={fmtBrl(totais.faturamento)}
           destaque={fechou ? "ok" : "falta"}
           sub={fechou ? <>fecha a meta ✓ · hoje {brlCurto(real12)}</> : <>faltam {brlCurto(meta - totais.faturamento)} · hoje {brlCurto(real12)}</>}
+        />
+        <Ficha
+          rotulo="Esforço nos indicadores livres"
+          valor={esforcoValor}
+          destaque={esforcoDestaque}
+          sub={esforcoSub}
         />
         <Ficha
           rotulo={`Quando chego em ${brlCurto(meta)}`}

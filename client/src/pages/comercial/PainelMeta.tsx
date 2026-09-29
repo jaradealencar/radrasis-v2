@@ -5,7 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { resolverMeta, aplicarFator, totaisCenario, type Fixos, type ResultadoMeta } from "@shared/meta-faturamento";
 import { PRAZO_PADRAO_MESES, prazoValido, mesApos } from "@shared/planejador-meta";
 import { CampoNumero, brlCurto, fmtNum } from "./painelMeta/comuns";
-import { META_PADRAO_1, META_PADRAO_2, carregarConversa, salvarConversa, type MensagemConsultor, type VistaDestino, type LinhaAplicarMeta } from "./painelMeta/tipos";
+import { META_PADRAO_1, META_PADRAO_2, carregarConversa, salvarConversa, carregarSimulador, salvarSimulador, type MensagemConsultor, type VistaDestino, type LinhaAplicarMeta } from "./painelMeta/tipos";
 import Diagnostico from "./painelMeta/Diagnostico";
 import PlanoDeAcao from "./painelMeta/PlanoDeAcao";
 import Simulador from "./painelMeta/Simulador";
@@ -29,17 +29,23 @@ const TODOS_DESTINOS: VistaDestino[] = ["clientes", "fila", "retencao", "funil",
 export default function PainelMeta({ onIrPara, destinosDisponiveis = TODOS_DESTINOS }: { onIrPara?: (v: VistaDestino) => void; destinosDisponiveis?: VistaDestino[] }) {
   const { data, isLoading, isError } = trpc.performanceComercial.getPainelMeta.useQuery();
   const [aba, setAba] = useState<Aba>("diagnostico");
-  const [meta, setMeta] = useState(META_PADRAO_1);
-  const [meta2, setMeta2] = useState(META_PADRAO_2);
-  const [fixos, setFixos] = useState<Fixos>({});
-  const [modoAuto, setModoAuto] = useState(true);
-  const [pesoConversao, setPesoConversao] = useState(0.5);
-  const [prazo, setPrazo] = useState(PRAZO_PADRAO_MESES);
+  const [simuladorSalvo] = useState(carregarSimulador);
+  const [meta, setMeta] = useState(simuladorSalvo.meta ?? META_PADRAO_1);
+  const [meta2, setMeta2] = useState(simuladorSalvo.meta2 ?? META_PADRAO_2);
+  const [fixos, setFixos] = useState<Fixos>(simuladorSalvo.fixos ?? {});
+  const [modoAuto, setModoAuto] = useState(simuladorSalvo.modoAuto ?? true);
+  const [pesoConversao, setPesoConversao] = useState(simuladorSalvo.pesoConversao ?? 0.5);
+  const [prazo, setPrazo] = useState(simuladorSalvo.prazo ?? PRAZO_PADRAO_MESES);
   const [sazonal, setSazonal] = useState(false);
-  const [margemEditada, setMargemEditada] = useState<number | null>(null);
+  const [margemEditada, setMargemEditada] = useState<number | null>(simuladorSalvo.margemEditada ?? null);
   const [mensagens, setMensagens] = useState<MensagemConsultor[]>(carregarConversa);
   const [erroConsultor, setErroConsultor] = useState<string | null>(null);
   useEffect(() => { salvarConversa(mensagens); }, [mensagens]);
+  // Trava do Simulador (fixos), meta, modo automático etc. — grava a cada mudança pra sobreviver
+  // a sair da página e voltar (useState sozinho só sobrevive à troca de aba dentro do painel).
+  useEffect(() => {
+    salvarSimulador({ fixos, modoAuto, meta, meta2, pesoConversao, margemEditada, prazo });
+  }, [fixos, modoAuto, meta, meta2, pesoConversao, margemEditada, prazo]);
   const perguntarConsultor = trpc.performanceComercial.perguntarConsultorMeta.useMutation({
     onSuccess: res => {
       setErroConsultor(null);
