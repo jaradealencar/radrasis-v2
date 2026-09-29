@@ -109,7 +109,7 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
   const indicador = INDICADORES.find(i => i.key === indicadorKey) ?? INDICADORES[0];
 
   // Vendedores permitidos na aba de Evolução por Vendedor
-  const VENDEDORES_PERMITIDOS = ["Sthefanie Louis", "Letícia Carozzo", "Karize Boaventura"];
+  const VENDEDORES_PERMITIDOS = ["Álvaro Campos Lôbo Júnior", "Letícia Carozzo", "Karize Boaventura"];
 
   // Todos os vendedores únicos (filtrado para os 3 permitidos)
   const todosVendedores = useMemo(() => {

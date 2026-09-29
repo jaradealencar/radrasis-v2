@@ -26,7 +26,7 @@ function fmt(v: number, tipo: "brl" | "num") { return tipo === "brl" ? fmtBrl(v)
 
 const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-const VENDEDORES_PRINCIPAIS = ["STHEFANIE LOUIS", "Letícia Carozzo", "Karize Boaventura"];
+const VENDEDORES_PRINCIPAIS = ["Álvaro Campos Lôbo Júnior", "Letícia Carozzo", "Karize Boaventura"];
 
 interface Props { mes: number; ano: number; }
 
