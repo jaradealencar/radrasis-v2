@@ -1928,13 +1928,9 @@ export const performanceComercialRouter = router({
 
           const mesAtual = ano === now.getFullYear() ? now.getMonth() + 1 : 12;
           for (let mes = 1; mes <= mesAtual; mes++) {
-            const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
-            const orcMes = todasOrcAno.filter(o => o.mes === mes);
-
-            const novosDoMes = calcularNovosDoMesLocal(mes, ano, todasOsAno, todasComprasValidas, overrideMap);
-
             // Clientes únicos e com recompra do mês inteiro (qualquer cliente, não só novos) —
-            // mesmo critério de contarClientesUnicosDoMes, sem repetir a query ao banco.
+            // mesmo critério de contarClientesUnicosDoMes, sem repetir a query ao banco. Sempre
+            // do banco local (não tem equivalente "ao vivo" mais preciso pronto pra reusar aqui).
             const osPorClienteMes: Record<string, number> = {};
             for (const os of todasOsAno.filter(o => o.mes === mes)) {
               if (!isOsNormalDb(os)) continue;
@@ -1944,6 +1940,51 @@ export const performanceComercialRouter = router({
             }
             const clientesUnicos = Object.keys(osPorClienteMes).length;
             const clientesComRecompra = Object.values(osPorClienteMes).filter(n => n >= 2).length;
+
+            // Mês vigente: o banco local (historico_os) só é atualizado por sincronização
+            // periódica, então pode estar defasado em relação ao ERP em tempo real (achado
+            // pelo usuário 28/09/2026: "Clientes Novos" de Set/2026 mostrava 32, ERP tinha 34).
+            // Usar getClientesNovosMes (mesma função "ao vivo" da Visão Geral, com fallback
+            // pro banco local se a API falhar/estourar timeout) só pra este mês — meses
+            // fechados continuam no cálculo local (rápido, sem round-trip de API).
+            const ehMesVigente = ano === now.getFullYear() && mes === now.getMonth() + 1;
+            if (ehMesVigente) {
+              try {
+                const timeoutPromise = new Promise<null>((_, reject) =>
+                  setTimeout(() => reject(new Error("timeout")), 40000)
+                );
+                const aoVivo = await Promise.race([getClientesNovosMes(mes, ano, input.forceRefresh), timeoutPromise]);
+                if (aoVivo) {
+                  novosMap.set(`${mes}_${ano}`, {
+                    osNovos: aoVivo.osNovos,
+                    osNovosPuros: aoVivo.osNovosPuros,
+                    faturamentoNovos: aoVivo.faturamentoNovos,
+                    faturamentoReativados: aoVivo.faturamentoReativados,
+                    faturamentoNovosPuros: aoVivo.faturamentoNovosPuros,
+                    clientesNovosUnicos: aoVivo.total,
+                    clientesReativados: aoVivo.totalReativados,
+                    clientesNovosPuros: aoVivo.totalPuros,
+                    ticketMedioNovos: aoVivo.ticketMedioNovos,
+                    ticketMedioNovosPuros: aoVivo.ticketMedioNovosPuros,
+                    cotacoesNovos: aoVivo.cotacoesNovos,
+                    cotacoesNovosPuros: aoVivo.cotacoesNovosPuros,
+                    taxaConversaoNovos: aoVivo.taxaConversaoNovos,
+                    taxaConversaoNovosPuros: aoVivo.taxaConversaoNovosPuros,
+                    taxaFaturamentoNovos: aoVivo.taxaFaturamentoNovos,
+                    taxaFaturamentoNovosPuros: aoVivo.taxaFaturamentoNovosPuros,
+                    clientesUnicos, clientesComRecompra,
+                  });
+                  continue;
+                }
+              } catch {
+                // API indisponível/timeout: cai no cálculo local abaixo, igual aos demais meses.
+              }
+            }
+
+            const ultimaCompraPorCliente = ultimaCompraAntesDe(todasComprasValidas, mes, ano);
+            const orcMes = todasOrcAno.filter(o => o.mes === mes);
+
+            const novosDoMes = calcularNovosDoMesLocal(mes, ano, todasOsAno, todasComprasValidas, overrideMap);
 
             // Cotações de novos: orçamentos de clientes que não estavam no histórico.
             // Separadas em puras (nunca compraram) e reativados (já compraram antes, 6+
