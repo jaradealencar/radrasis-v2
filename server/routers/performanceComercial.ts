@@ -1960,7 +1960,11 @@ export const performanceComercialRouter = router({
               valorOrcado: parseFloat(String(snap.valorOrcado ?? 0)),
               ticketMedio: snap.osNormais ? parseFloat(String(snap.faturamento ?? 0)) / snap.osNormais : 0,
               margemPct: 0, custo: 0, resultado: 0,
+              // "clientesNovos" fica como soma (novos+reativados) por compatibilidade com
+              // quem já consome esse campo esperando o total; "clientesNovosPuros" é a
+              // família separada (só 1ª compra) — ver [[performance-comercial-novos-vs-reativados]].
               clientesNovos: novos?.clientesNovosUnicos ?? snap.clientesNovos ?? 0,
+              clientesNovosPuros: novos?.clientesNovosPuros ?? 0,
               clientesReativados: novos?.clientesReativados ?? 0,
               // Expor como taxaConversaoNovos (nome usado pelo frontend) E taxaConvNovos (compat)
               taxaConvNovos: taxaConvNovosSnap,

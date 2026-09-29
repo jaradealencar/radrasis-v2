@@ -1284,7 +1284,9 @@ export default function PerformanceComercial() {
                         { key: "clientesUnicos", label: "Clientes Únicos", fmt: (v) => String(Math.round(v)), color: "#0d9488" },
                         { key: "clientesComRecompra", label: "Clientes c/ Recompra", fmt: (v) => String(Math.round(v)), color: "#a16207" },
                         // Novos e Reativados nunca são somados na mesma métrica — mesma regra da Visão Geral.
-                        { key: "clientesNovos", label: "Clientes Novos", fmt: (v) => String(Math.round(v)), color: "#0ea5e9", metaKey: "metaClientesNovos", isNovos: true },
+                        // "clientesNovosPuros" (não "clientesNovos", que é a SOMA novos+reativados) —
+                        // bug reportado pelo usuário 28/09/2026: esta coluna somava as duas famílias.
+                        { key: "clientesNovosPuros", label: "Clientes Novos", fmt: (v) => String(Math.round(v)), color: "#0ea5e9", metaKey: "metaClientesNovos", isNovos: true },
                         { key: "clientesReativados", label: "Clientes Reativados", fmt: (v) => String(Math.round(v)), color: "#f97316", isNovos: true },
                         { key: "osNovos", label: "OS (Novos)", fmt: (v) => String(Math.round(v)), color: "#0d9488", metaKey: "metaOsNovos", isNovos: true },
                         { key: "faturamentoNovosPuros", label: "Fat. (Novos)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#0891b2", metaKey: "metaFaturamentoNovos", isNovos: true },
@@ -1519,7 +1521,7 @@ export default function PerformanceComercial() {
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-cyan-700">{r.clientesUnicos ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-amber-700">{r.clientesComRecompra ?? 0}</TableCell>
-                                <TableCell className="text-right font-mono text-sky-600">{r.clientesNovos ?? 0}</TableCell>
+                                <TableCell className="text-right font-mono text-sky-600">{r.clientesNovosPuros ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-orange-600">{r.clientesReativados ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-teal-700">{r.osNovos ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-teal-700">
@@ -1564,7 +1566,7 @@ export default function PerformanceComercial() {
                                 </TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesUnicos").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesComRecompra").toFixed(0)}</TableCell>
-                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesNovos").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesNovosPuros").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesReativados").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("osNovos").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">
