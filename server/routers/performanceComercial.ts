@@ -729,7 +729,11 @@ export function calcularNovosDoMesLocal(
   osDoAno: Array<{ empresa: string | null; tipoOs: string | null; status: string | null; mes: number; valorOs: string | null; valorTotal: string | null }>,
   todasComprasValidas: CompraMinima[],
   overrideMap: Map<string, "recorrente" | "novo">,
-): { mes: number; ticketMedioNovos: number; osNovos: number; faturamentoNovos: number; faturamentoReativados: number; faturamentoNovosPuros: number; clientesNovosUnicos: number; clientesReativados: number; clientesNovosPuros: number } {
+): {
+  mes: number; ticketMedioNovos: number; ticketMedioNovosPuros: number; osNovos: number; osNovosPuros: number; osReativados: number;
+  faturamentoNovos: number; faturamentoReativados: number; faturamentoNovosPuros: number;
+  clientesNovosUnicos: number; clientesReativados: number; clientesNovosPuros: number;
+} {
   // Reindexado com normalizeEmpresaKey (mesma chave usada pela Inteligência de
   // Clientes em construirBaseClientes) para que a mesma empresa gravada com
   // grafias diferentes em historico_os ao longo do tempo (acentuação/pontuação
@@ -740,6 +744,7 @@ export function calcularNovosDoMesLocal(
   const osMes = osDoAno.filter(os => os.mes === mes);
 
   let osNovos = 0;
+  let osReativados = 0;
   let faturamentoNovos = 0;
   let faturamentoReativados = 0;
   let clientesReativados = 0;
@@ -760,10 +765,10 @@ export function calcularNovosDoMesLocal(
     const jaComprouAntes = Boolean(ultimaCompraPorCliente.get(clienteKey));
     osNovos++;
     faturamentoNovos += valor;
-    // faturamentoReativados é SUBCONJUNTO de faturamentoNovos, não uma parcela
-    // somada: conta as OS dos clientes que já tinham comprado antes e voltaram
-    // após 6+ meses. O faturamento de "novo puro" é a diferença entre os dois.
-    if (jaComprouAntes) faturamentoReativados += valor;
+    // faturamentoReativados/osReativados são SUBCONJUNTO de faturamentoNovos/osNovos, não uma
+    // parcela somada: contam as OS dos clientes que já tinham comprado antes e voltaram após
+    // 6+ meses. O faturamento/OS de "novo puro" é a diferença entre o total e esse subconjunto.
+    if (jaComprouAntes) { faturamentoReativados += valor; osReativados++; }
 
     if (!clientesVistos.has(clienteKey)) {
       clientesVistos.add(clienteKey);
@@ -771,14 +776,23 @@ export function calcularNovosDoMesLocal(
     }
   }
 
+  const osNovosPuros = osNovos - osReativados;
+  const faturamentoNovosPuros = parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2));
+
   return {
     mes,
     ticketMedioNovos: osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0,
+    // Ticket médio só de clientes genuinamente novos, SEM os reativados (ver osNovosPuros).
+    ticketMedioNovosPuros: osNovosPuros > 0 ? parseFloat((faturamentoNovosPuros / osNovosPuros).toFixed(2)) : 0,
     osNovos,
+    // OS de clientes genuinamente novos (nunca compraram antes), SEM os reativados — mesma
+    // separação de família aplicada a clientesNovosPuros/faturamentoNovosPuros abaixo.
+    osNovosPuros,
+    osReativados,
     faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
     faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
     // Faturamento de clientes genuinamente novos, SEM os reativados — ver nota em getClientesNovosMes.
-    faturamentoNovosPuros: parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2)),
+    faturamentoNovosPuros,
     clientesNovosUnicos: clientesVistos.size,
     clientesReativados,
     // Clientes genuinamente novos (nunca compraram antes), SEM os reativados — perfis
@@ -1072,16 +1086,28 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
   /** Clientes genuinamente novos (nunca compraram antes), sem os reativados — ver nota em calcularNovosDoMesLocal. */
   totalPuros: number;
   cotacoesNovos: number;
+  /** Cotações só de clientes genuinamente novos (nunca compraram antes), sem os reativados. */
+  cotacoesNovosPuros: number;
   osNovos: number;
+  /** OS só de clientes genuinamente novos (nunca compraram antes), sem os reativados. */
+  osNovosPuros: number;
   faturamentoNovos: number;
   /** Subconjunto de faturamentoNovos: o que veio de clientes reativados. */
   faturamentoReativados: number;
   /** Faturamento de clientes genuinamente novos, sem os reativados. */
   faturamentoNovosPuros: number;
   ticketMedioNovos: number;
+  /** Ticket médio só de clientes genuinamente novos, sem os reativados. */
+  ticketMedioNovosPuros: number;
   valorOrcadoNovos: number;
+  /** Valor orçado só de clientes genuinamente novos, sem os reativados. */
+  valorOrcadoNovosPuros: number;
   taxaConversaoNovos: number;
+  /** Taxa de conversão só de clientes genuinamente novos, sem os reativados. */
+  taxaConversaoNovosPuros: number;
   taxaFaturamentoNovos: number;
+  /** Taxa de faturamento só de clientes genuinamente novos, sem os reativados. */
+  taxaFaturamentoNovosPuros: number;
   porVendedor: Record<string, number>;
   /** Só clientes puros (nunca compraram antes). Nunca combinar com porVendedorReativados
    * na mesma métrica — é a mesma separação usada nos KPIs de topo (totalPuros/totalReativados). */
@@ -1092,7 +1118,7 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
   lista: ClienteNovoListaItem[];
 }> {
   const db = await getDb();
-  const EMPTY ={ total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, valorOrcadoNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0, porVendedor: {}, porVendedorNovos: {}, porVendedorReativados: {}, lista: [] };
+  const EMPTY ={ total: 0, totalReativados: 0, totalPuros: 0, cotacoesNovos: 0, cotacoesNovosPuros: 0, osNovos: 0, osNovosPuros: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0, ticketMedioNovos: 0, ticketMedioNovosPuros: 0, valorOrcadoNovos: 0, valorOrcadoNovosPuros: 0, taxaConversaoNovos: 0, taxaConversaoNovosPuros: 0, taxaFaturamentoNovos: 0, taxaFaturamentoNovosPuros: 0, porVendedor: {}, porVendedorNovos: {}, porVendedorReativados: {}, lista: [] };
   if (!db) return EMPTY;
 
   // ─── SNAPSHOT CONGELADO: verificar se já tem lista salva ───
@@ -1201,19 +1227,36 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
       ? parseFloat(String(s.taxaConvNovos ?? 0))
       : (cotacoesNovosSnap > 0 ? parseFloat((((s.clientesNovos ?? 0) / cotacoesNovosSnap) * 100).toFixed(1)) : 0);
 
+    // "Puros" (sem reativados) — porVendedorNovosSnap já é só clientes que nunca compraram
+    // antes (bucketSnap escolhido por jaComprouAntesItem acima), então somar seus buckets dá
+    // o total puro sem misturar com porVendedorReativadosSnap.
+    const osNovosPurosSnap = Object.values(porVendedorNovosSnap).reduce((acc, v) => acc + v.osNovos, 0);
+    const cotacoesNovosPurosSnap = Object.values(porVendedorNovosSnap).reduce((acc, v) => acc + v.cotacoesNovos, 0);
+    const valorOrcadoNovosPurosSnap = Object.values(porVendedorNovosSnap).reduce((acc, v) => acc + v.valorOrcadoNovos, 0);
+    const faturamentoNovosPurosSnap = parseFloat((parseFloat(String(s.faturamentoNovos ?? 0)) - faturamentoReativadosSnap).toFixed(2));
+    const taxaConversaoNovosPurosSnap = cotacoesNovosPurosSnap > 0 ? parseFloat(((osNovosPurosSnap / cotacoesNovosPurosSnap) * 100).toFixed(1)) : 0;
+    const taxaFaturamentoNovosPurosSnap = valorOrcadoNovosPurosSnap > 0 ? parseFloat(((faturamentoNovosPurosSnap / valorOrcadoNovosPurosSnap) * 100).toFixed(1)) : 0;
+    const ticketMedioNovosPurosSnap = osNovosPurosSnap > 0 ? parseFloat((faturamentoNovosPurosSnap / osNovosPurosSnap).toFixed(2)) : 0;
+
     return {
       total: s.clientesNovos ?? 0,
       totalReativados: totalReativadosSnap,
       totalPuros: (s.clientesNovos ?? 0) - totalReativadosSnap,
       cotacoesNovos: cotacoesNovosSnap,
+      cotacoesNovosPuros: cotacoesNovosPurosSnap,
       osNovos: s.clientesNovos ?? 0,
+      osNovosPuros: osNovosPurosSnap,
       faturamentoNovos: parseFloat(String(s.faturamentoNovos ?? 0)),
       faturamentoReativados: parseFloat(faturamentoReativadosSnap.toFixed(2)),
-      faturamentoNovosPuros: parseFloat((parseFloat(String(s.faturamentoNovos ?? 0)) - faturamentoReativadosSnap).toFixed(2)),
+      faturamentoNovosPuros: faturamentoNovosPurosSnap,
       ticketMedioNovos: s.clientesNovos ? parseFloat(String(s.faturamentoNovos ?? 0)) / s.clientesNovos : 0,
+      ticketMedioNovosPuros: ticketMedioNovosPurosSnap,
       valorOrcadoNovos: 0,
+      valorOrcadoNovosPuros: parseFloat(valorOrcadoNovosPurosSnap.toFixed(2)),
       taxaConversaoNovos: taxaConvNovosSnap,
+      taxaConversaoNovosPuros: taxaConversaoNovosPurosSnap,
       taxaFaturamentoNovos: 0,
+      taxaFaturamentoNovosPuros: taxaFaturamentoNovosPurosSnap,
       porVendedor: {},
       porVendedorNovos: porVendedorNovosSnap,
       porVendedorReativados: porVendedorReativadosSnap,
@@ -1418,6 +1461,17 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
 
   const ticketMedioNovos = osNovos > 0 ? parseFloat((faturamentoNovos / osNovos).toFixed(2)) : 0;
 
+  // "Puros" (sem reativados) — porVendedorNovosOs/Orc já são só clientes que nunca compraram
+  // antes (bucket escolhido por jaComprouAntes ao montar essas listas), então somar seus
+  // buckets dá o total puro sem misturar com porVendedorReativadosOs/Orc.
+  const osNovosPuros = Object.values(porVendedorNovosOs).reduce((acc, v) => acc + v.osNovos, 0);
+  const cotacoesNovosPuros = Object.values(porVendedorNovosOrc).reduce((acc, v) => acc + v.cotacoesNovos, 0);
+  const valorOrcadoNovosPuros = Object.values(porVendedorNovosOrc).reduce((acc, v) => acc + v.valorOrcadoNovos, 0);
+  const faturamentoNovosPuros = parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2));
+  const taxaConversaoNovosPuros = cotacoesNovosPuros > 0 ? parseFloat(((osNovosPuros / cotacoesNovosPuros) * 100).toFixed(1)) : 0;
+  const taxaFaturamentoNovosPuros = valorOrcadoNovosPuros > 0 ? parseFloat(((faturamentoNovosPuros / valorOrcadoNovosPuros) * 100).toFixed(1)) : 0;
+  const ticketMedioNovosPuros = osNovosPuros > 0 ? parseFloat((faturamentoNovosPuros / osNovosPuros).toFixed(2)) : 0;
+
   // ─── SALVAR LISTA NO SNAPSHOT CONGELADO (se mês está congelado e lista ainda não foi salva) ───
   if (snapCongelado.length > 0 && !snapCongelado[0].listaClientesNovos && lista.length > 0) {
     db.update(performanceAuditada)
@@ -1432,14 +1486,20 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
     totalReativados,
     totalPuros: total - totalReativados,
     cotacoesNovos,
+    cotacoesNovosPuros,
     osNovos,
+    osNovosPuros,
     faturamentoNovos: parseFloat(faturamentoNovos.toFixed(2)),
     faturamentoReativados: parseFloat(faturamentoReativados.toFixed(2)),
-    faturamentoNovosPuros: parseFloat((faturamentoNovos - faturamentoReativados).toFixed(2)),
+    faturamentoNovosPuros,
     ticketMedioNovos,
+    ticketMedioNovosPuros,
     valorOrcadoNovos: parseFloat(valorOrcadoNovos.toFixed(2)),
+    valorOrcadoNovosPuros: parseFloat(valorOrcadoNovosPuros.toFixed(2)),
     taxaConversaoNovos,
+    taxaConversaoNovosPuros,
     taxaFaturamentoNovos,
+    taxaFaturamentoNovosPuros,
     porVendedor,
     porVendedorNovos,
     porVendedorReativados,
@@ -1851,9 +1911,10 @@ export const performanceComercialRouter = router({
       // função usada por getClientesNovosAno) + cotações de novos + clientes únicos/recompra
       // do mês inteiro (qualquer cliente, não só novos).
       const novosMap = new Map<string, {
-        osNovos: number; faturamentoNovos: number; faturamentoReativados: number; faturamentoNovosPuros: number;
+        osNovos: number; osNovosPuros: number; faturamentoNovos: number; faturamentoReativados: number; faturamentoNovosPuros: number;
         clientesNovosUnicos: number; clientesReativados: number; clientesNovosPuros: number;
-        ticketMedioNovos: number; cotacoesNovos: number; taxaConversaoNovos: number; taxaFaturamentoNovos: number;
+        ticketMedioNovos: number; ticketMedioNovosPuros: number; cotacoesNovos: number; cotacoesNovosPuros: number;
+        taxaConversaoNovos: number; taxaConversaoNovosPuros: number; taxaFaturamentoNovos: number; taxaFaturamentoNovosPuros: number;
         clientesUnicos: number; clientesComRecompra: number;
       }>();
       if (db) {
@@ -1889,9 +1950,14 @@ export const performanceComercialRouter = router({
             const clientesUnicos = Object.keys(osPorClienteMes).length;
             const clientesComRecompra = Object.values(osPorClienteMes).filter(n => n >= 2).length;
 
-            // Cotações de novos: orçamentos de clientes que não estavam no histórico
+            // Cotações de novos: orçamentos de clientes que não estavam no histórico.
+            // Separadas em puras (nunca compraram) e reativados (já compraram antes, 6+
+            // meses parado) desde a origem — mesma família de faturamentoNovosPuros/Reativados,
+            // nunca somadas na mesma métrica.
             let cotacoesNovos = 0;
+            let cotacoesNovosPuros = 0;
             let valorOrcadoNovos = 0;
+            let valorOrcadoNovosPuros = 0;
             for (const orc of orcMes) {
               const clienteKey = (orc.empresa ?? "").toLowerCase().trim();
               if (!clienteKey) continue;
@@ -1900,14 +1966,22 @@ export const performanceComercialRouter = router({
                 : overrideStatus === "novo" ? true
                 : isClienteNovoPorRecencia(ultimaCompraPorCliente.get(clienteKey), mes, ano);
               if (isNovo) {
+                const valor = parseFloat(String(orc.total ?? "0")) || 0;
                 cotacoesNovos++;
-                valorOrcadoNovos += parseFloat(String(orc.total ?? "0")) || 0;
+                valorOrcadoNovos += valor;
+                if (!ultimaCompraPorCliente.get(clienteKey)) {
+                  cotacoesNovosPuros++;
+                  valorOrcadoNovosPuros += valor;
+                }
               }
             }
             const taxaConversaoNovos = cotacoesNovos > 0 ? parseFloat(((novosDoMes.osNovos / cotacoesNovos) * 100).toFixed(1)) : 0;
             const taxaFaturamentoNovos = valorOrcadoNovos > 0 ? parseFloat(((novosDoMes.faturamentoNovos / valorOrcadoNovos) * 100).toFixed(1)) : 0;
+            const taxaConversaoNovosPuros = cotacoesNovosPuros > 0 ? parseFloat(((novosDoMes.osNovosPuros / cotacoesNovosPuros) * 100).toFixed(1)) : 0;
+            const taxaFaturamentoNovosPuros = valorOrcadoNovosPuros > 0 ? parseFloat(((novosDoMes.faturamentoNovosPuros / valorOrcadoNovosPuros) * 100).toFixed(1)) : 0;
             novosMap.set(`${mes}_${ano}`, {
               osNovos: novosDoMes.osNovos,
+              osNovosPuros: novosDoMes.osNovosPuros,
               faturamentoNovos: novosDoMes.faturamentoNovos,
               faturamentoReativados: novosDoMes.faturamentoReativados,
               faturamentoNovosPuros: novosDoMes.faturamentoNovosPuros,
@@ -1915,7 +1989,8 @@ export const performanceComercialRouter = router({
               clientesReativados: novosDoMes.clientesReativados,
               clientesNovosPuros: novosDoMes.clientesNovosPuros,
               ticketMedioNovos: novosDoMes.ticketMedioNovos,
-              cotacoesNovos, taxaConversaoNovos, taxaFaturamentoNovos,
+              ticketMedioNovosPuros: novosDoMes.ticketMedioNovosPuros,
+              cotacoesNovos, cotacoesNovosPuros, taxaConversaoNovos, taxaConversaoNovosPuros, taxaFaturamentoNovos, taxaFaturamentoNovosPuros,
               clientesUnicos, clientesComRecompra,
             });
           }
@@ -1973,9 +2048,16 @@ export const performanceComercialRouter = router({
               faturamentoReativados: novos?.faturamentoReativados ?? 0,
               faturamentoNovosPuros: novos?.faturamentoNovosPuros ?? 0,
               osNovos: osNovosSnap,
+              // "Puros" (sem reativados) do banco local — não têm equivalente no snapshot
+              // congelado (que só guarda o total), então vêm sempre de `novos`.
+              osNovosPuros: novos?.osNovosPuros ?? 0,
               ticketMedioNovos: novos?.ticketMedioNovos ?? 0,
+              ticketMedioNovosPuros: novos?.ticketMedioNovosPuros ?? 0,
               cotacoesNovos: cotacoesNovosSnap,
+              cotacoesNovosPuros: novos?.cotacoesNovosPuros ?? 0,
+              taxaConversaoNovosPuros: novos?.taxaConversaoNovosPuros ?? 0,
               taxaFaturamentoNovos: novos?.taxaFaturamentoNovos ?? 0,
+              taxaFaturamentoNovosPuros: novos?.taxaFaturamentoNovosPuros ?? 0,
               clientesUnicos: novos?.clientesUnicos ?? 0,
               clientesComRecompra: novos?.clientesComRecompra ?? 0,
               porVendedor: [], // array vazio para compatibilidade com EvolucaoVendedor
@@ -2053,9 +2135,10 @@ export const performanceComercialRouter = router({
 
           // Enriquecer com dados de clientes novos do banco local
           const novos = novosMap.get(`${mes}_${ano}`) ?? {
-            osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0,
+            osNovos: 0, osNovosPuros: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0,
             clientesNovosUnicos: 0, clientesReativados: 0, clientesNovosPuros: 0,
-            ticketMedioNovos: 0, cotacoesNovos: 0, taxaConversaoNovos: 0, taxaFaturamentoNovos: 0,
+            ticketMedioNovos: 0, ticketMedioNovosPuros: 0, cotacoesNovos: 0, cotacoesNovosPuros: 0,
+            taxaConversaoNovos: 0, taxaConversaoNovosPuros: 0, taxaFaturamentoNovos: 0, taxaFaturamentoNovosPuros: 0,
             clientesUnicos: 0, clientesComRecompra: 0,
           };
           return {

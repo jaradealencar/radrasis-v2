@@ -974,20 +974,20 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Cotações (Novos)"
-              value={loadingClientesNovos ? "..." : String(clientesNovos?.cotacoesNovos ?? 0)}
-              sub="Cotações de novos clientes"
+              value={loadingClientesNovos ? "..." : String((clientesNovos as any)?.cotacoesNovosPuros ?? 0)}
+              sub="Cotações de clientes que nunca compraram antes (reativados não entram)"
               icon={ShoppingCart}
               color="#a855f7"
-              metaReal={clientesNovos?.cotacoesNovos ?? 0}
+              metaReal={(clientesNovos as any)?.cotacoesNovosPuros ?? 0}
               metaTarget={metaGeral?.metaCotacoesNovos ?? undefined}
             />
             <KpiCardComMeta
               label="Vendas (Novos Clientes)"
-              value={loadingClientesNovos ? "..." : String(clientesNovos?.osNovos ?? 0)}
-              sub="Pedidos de novos + reativados no mês (incl. recompras)"
+              value={loadingClientesNovos ? "..." : String((clientesNovos as any)?.osNovosPuros ?? 0)}
+              sub="Pedidos de clientes que nunca compraram antes (reativados não entram)"
               icon={CheckCircle2}
               color="#06b6d4"
-              metaReal={clientesNovos?.osNovos ?? 0}
+              metaReal={(clientesNovos as any)?.osNovosPuros ?? 0}
               metaTarget={metaGeral?.metaOsNovos ?? undefined}
             />
             <KpiCardComMeta
@@ -1031,21 +1031,21 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Taxa Conv. Novos"
-              value={loadingClientesNovos ? "..." : `${clientesNovos?.taxaConversaoNovos ?? 0}%`}
-              sub="Vendas / Cotações (novos)"
+              value={loadingClientesNovos ? "..." : `${(clientesNovos as any)?.taxaConversaoNovosPuros ?? 0}%`}
+              sub="Vendas / Cotações (só clientes que nunca compraram antes)"
               icon={Percent}
-              color={!clientesNovos ? "#94a3b8" : Number(clientesNovos?.taxaConversaoNovos) >= 30 ? "#22c55e" : Number(clientesNovos?.taxaConversaoNovos) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number(clientesNovos?.taxaConversaoNovos ?? 0)}
+              color={!clientesNovos ? "#94a3b8" : Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 30 ? "#22c55e" : Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 15 ? "#f59e0b" : "#ef4444"}
+              metaReal={Number((clientesNovos as any)?.taxaConversaoNovosPuros ?? 0)}
               metaTarget={metaGeral?.metaConversaoNovos ? Number(metaGeral.metaConversaoNovos) : undefined}
               isPct
             />
             <KpiCardComMeta
               label="Taxa Fat. Novos"
-              value={loadingClientesNovos ? "..." : `${(clientesNovos as any)?.taxaFaturamentoNovos ?? 0}%`}
-              sub="Fat. / Orçado (novos)"
+              value={loadingClientesNovos ? "..." : `${(clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0}%`}
+              sub="Fat. / Orçado (só clientes que nunca compraram antes)"
               icon={Percent}
-              color={!clientesNovos ? "#94a3b8" : Number((clientesNovos as any)?.taxaFaturamentoNovos) >= 30 ? "#22c55e" : Number((clientesNovos as any)?.taxaFaturamentoNovos) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number((clientesNovos as any)?.taxaFaturamentoNovos ?? 0)}
+              color={!clientesNovos ? "#94a3b8" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 30 ? "#22c55e" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 15 ? "#f59e0b" : "#ef4444"}
+              metaReal={Number((clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0)}
               metaTarget={metaGeral?.metaTaxaFaturamentoNovos ? Number(metaGeral.metaTaxaFaturamentoNovos) : undefined}
               isPct
             />
@@ -1061,11 +1061,11 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Ticket Médio Novos"
-              value={loadingClientesNovos ? "..." : `R$ ${Number((clientesNovos as any)?.ticketMedioNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              sub="Fat. novos / OS novos"
+              value={loadingClientesNovos ? "..." : `R$ ${Number((clientesNovos as any)?.ticketMedioNovosPuros ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              sub="Fat. novos / OS novos (só clientes que nunca compraram antes)"
               icon={TrendingUp}
               color="#f59e0b"
-              metaReal={Number((clientesNovos as any)?.ticketMedioNovos ?? 0)}
+              metaReal={Number((clientesNovos as any)?.ticketMedioNovosPuros ?? 0)}
               metaTarget={metaGeral?.metaTicketMedioNovos ? Number(metaGeral.metaTicketMedioNovos) : undefined}
               isCurrency
             />
@@ -1284,17 +1284,19 @@ export default function PerformanceComercial() {
                         { key: "clientesUnicos", label: "Clientes Únicos", fmt: (v) => String(Math.round(v)), color: "#0d9488" },
                         { key: "clientesComRecompra", label: "Clientes c/ Recompra", fmt: (v) => String(Math.round(v)), color: "#a16207" },
                         // Novos e Reativados nunca são somados na mesma métrica — mesma regra da Visão Geral.
-                        // "clientesNovosPuros" (não "clientesNovos", que é a SOMA novos+reativados) —
-                        // bug reportado pelo usuário 28/09/2026: esta coluna somava as duas famílias.
+                        // Todas as chaves "...Puros" abaixo (não a versão sem sufixo, que é a SOMA
+                        // novos+reativados) — bug reportado pelo usuário 28/09/2026: essas colunas
+                        // somavam as duas famílias (corrigido primeiro só para clientes/faturamento,
+                        // depois estendido para OS/ticket/cotações/taxas).
                         { key: "clientesNovosPuros", label: "Clientes Novos", fmt: (v) => String(Math.round(v)), color: "#0ea5e9", metaKey: "metaClientesNovos", isNovos: true },
                         { key: "clientesReativados", label: "Clientes Reativados", fmt: (v) => String(Math.round(v)), color: "#f97316", isNovos: true },
-                        { key: "osNovos", label: "OS (Novos)", fmt: (v) => String(Math.round(v)), color: "#0d9488", metaKey: "metaOsNovos", isNovos: true },
+                        { key: "osNovosPuros", label: "OS (Novos)", fmt: (v) => String(Math.round(v)), color: "#0d9488", metaKey: "metaOsNovos", isNovos: true },
                         { key: "faturamentoNovosPuros", label: "Fat. (Novos)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#0891b2", metaKey: "metaFaturamentoNovos", isNovos: true },
                         { key: "faturamentoReativados", label: "Fat. (Reativados)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#fb923c", isNovos: true },
-                        { key: "ticketMedioNovos", label: "Ticket (Novos)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#7c3aed", metaKey: "metaTicketMedioNovos", isNovos: true },
-                        { key: "cotacoesNovos", label: "Cot. (Novos)", fmt: (v) => String(Math.round(v)), color: "#f97316", metaKey: "metaCotacoesNovos", isNovos: true },
-                        { key: "taxaConversaoNovos", label: "Conv. Novos", fmt: (v) => `${parseFloat(v.toFixed(1))}%`, color: "#84cc16", metaKey: "metaConversaoNovos", isNovos: true },
-                        { key: "taxaFaturamentoNovos", label: "Taxa Fat. Novos", fmt: (v) => `${parseFloat(v.toFixed(1))}%`, color: "#06b6d4", metaKey: "metaTaxaFaturamentoNovos", isNovos: true },
+                        { key: "ticketMedioNovosPuros", label: "Ticket (Novos)", fmt: (v) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`, color: "#7c3aed", metaKey: "metaTicketMedioNovos", isNovos: true },
+                        { key: "cotacoesNovosPuros", label: "Cot. (Novos)", fmt: (v) => String(Math.round(v)), color: "#f97316", metaKey: "metaCotacoesNovos", isNovos: true },
+                        { key: "taxaConversaoNovosPuros", label: "Conv. Novos", fmt: (v) => `${parseFloat(v.toFixed(1))}%`, color: "#84cc16", metaKey: "metaConversaoNovos", isNovos: true },
+                        { key: "taxaFaturamentoNovosPuros", label: "Taxa Fat. Novos", fmt: (v) => `${parseFloat(v.toFixed(1))}%`, color: "#06b6d4", metaKey: "metaTaxaFaturamentoNovos", isNovos: true },
                       ];
                       return (
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
@@ -1523,7 +1525,7 @@ export default function PerformanceComercial() {
                                 <TableCell className="text-right font-mono text-amber-700">{r.clientesComRecompra ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-sky-600">{r.clientesNovosPuros ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-orange-600">{r.clientesReativados ?? 0}</TableCell>
-                                <TableCell className="text-right font-mono text-teal-700">{r.osNovos ?? 0}</TableCell>
+                                <TableCell className="text-right font-mono text-teal-700">{r.osNovosPuros ?? 0}</TableCell>
                                 <TableCell className="text-right font-mono text-teal-700">
                                   R$ {Number(r.faturamentoNovosPuros ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
@@ -1531,7 +1533,7 @@ export default function PerformanceComercial() {
                                   R$ {Number(r.faturamentoReativados ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-teal-700">
-                                  R$ {Number(r.ticketMedioNovos ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  R$ {Number(r.ticketMedioNovosPuros ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
                               </TableRow>
                             );
@@ -1568,7 +1570,7 @@ export default function PerformanceComercial() {
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesComRecompra").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesNovosPuros").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">{avg("clientesReativados").toFixed(0)}</TableCell>
-                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("osNovos").toFixed(0)}</TableCell>
+                                <TableCell className="text-right font-mono font-bold text-amber-700">{avg("osNovosPuros").toFixed(0)}</TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">
                                   R$ {avg("faturamentoNovosPuros").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
@@ -1576,7 +1578,7 @@ export default function PerformanceComercial() {
                                   R$ {avg("faturamentoReativados").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
                                 <TableCell className="text-right font-mono font-bold text-amber-700">
-                                  R$ {avg("ticketMedioNovos").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                  R$ {avg("ticketMedioNovosPuros").toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </TableCell>
                               </TableRow>
                             );
@@ -2238,7 +2240,7 @@ export default function PerformanceComercial() {
                         {metaGeral.metaConversaoNovos ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-teal-700">{Number(metaGeral.metaConversaoNovos)}%</span>
-                            <MetaBadge real={Number((clientesNovos as any)?.taxaConversaoNovos ?? 0)} meta={Number(metaGeral.metaConversaoNovos)} />
+                            <MetaBadge real={Number((clientesNovos as any)?.taxaConversaoNovosPuros ?? 0)} meta={Number(metaGeral.metaConversaoNovos)} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
                       </TableCell>
@@ -2247,7 +2249,7 @@ export default function PerformanceComercial() {
                         {metaGeral.metaTaxaFaturamentoNovos ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="text-[11px] font-mono text-teal-700">{Number(metaGeral.metaTaxaFaturamentoNovos)}%</span>
-                            <MetaBadge real={Number((clientesNovos as any)?.taxaFaturamentoNovos ?? 0)} meta={Number(metaGeral.metaTaxaFaturamentoNovos)} />
+                            <MetaBadge real={Number((clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0)} meta={Number(metaGeral.metaTaxaFaturamentoNovos)} />
                           </div>
                         ) : <span className="text-slate-300 text-xs">—</span>}
                       </TableCell>
@@ -2280,14 +2282,14 @@ export default function PerformanceComercial() {
                     </TableCell>
                     {/* Conv. Novos total */}
                     <TableCell className="text-right">
-                      <span className={`font-bold ${Number((clientesNovos as any)?.taxaConversaoNovos ?? 0) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaConversaoNovos ?? 0) >= 15 ? "text-amber-600" : "text-teal-700"}`}>
-                        {(clientesNovos as any)?.taxaConversaoNovos ?? 0}%
+                      <span className={`font-bold ${Number((clientesNovos as any)?.taxaConversaoNovosPuros ?? 0) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaConversaoNovosPuros ?? 0) >= 15 ? "text-amber-600" : "text-teal-700"}`}>
+                        {(clientesNovos as any)?.taxaConversaoNovosPuros ?? 0}%
                       </span>
                     </TableCell>
                     {/* Fat. Novos total */}
                     <TableCell className="text-right">
-                      <span className={`font-bold ${Number((clientesNovos as any)?.taxaFaturamentoNovos ?? 0) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaFaturamentoNovos ?? 0) >= 15 ? "text-amber-600" : "text-cyan-700"}`}>
-                        {(clientesNovos as any)?.taxaFaturamentoNovos ?? 0}%
+                      <span className={`font-bold ${Number((clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0) >= 15 ? "text-amber-600" : "text-cyan-700"}`}>
+                        {(clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0}%
                       </span>
                     </TableCell>
                   </TableRow>
@@ -2394,16 +2396,16 @@ export default function PerformanceComercial() {
                           {mesDados?.taxaFaturamento ?? 0}%
                         </span>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-yellow-700">{clientesNovos?.cotacoesNovos ?? "—"}</TableCell>
-                      <TableCell className="text-right font-mono text-yellow-700">{clientesNovos?.osNovos ?? "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-yellow-700">{(clientesNovos as any)?.cotacoesNovosPuros ?? "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-yellow-700">{(clientesNovos as any)?.osNovosPuros ?? "—"}</TableCell>
                       <TableCell className="text-right">
-                        <span className={`font-bold ${ Number(clientesNovos?.taxaConversaoNovos) >= 30 ? "text-green-600" : Number(clientesNovos?.taxaConversaoNovos) >= 15 ? "text-amber-600" : "text-red-500"}`}>
-                          {clientesNovos?.taxaConversaoNovos ?? 0}%
+                        <span className={`font-bold ${ Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 15 ? "text-amber-600" : "text-red-500"}`}>
+                          {(clientesNovos as any)?.taxaConversaoNovosPuros ?? 0}%
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <span className={`font-bold ${ Number((clientesNovos as any)?.taxaFaturamentoNovos) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaFaturamentoNovos) >= 15 ? "text-amber-600" : "text-red-500"}`}>
-                          {(clientesNovos as any)?.taxaFaturamentoNovos ?? 0}%
+                        <span className={`font-bold ${ Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 30 ? "text-green-600" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 15 ? "text-amber-600" : "text-red-500"}`}>
+                          {(clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0}%
                         </span>
                       </TableCell>
                     </TableRow>
