@@ -1,0 +1,1 @@
+ALTER TABLE "propostas" ADD COLUMN "clienteCnpj" varchar(20);

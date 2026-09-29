@@ -11,6 +11,7 @@ import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { propostas, propostaItens, produtos, configuracoesComerciais } from "../../drizzle/schema";
 import { eq, asc, desc } from "drizzle-orm";
+import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
 
 function gerarToken(): string {
   return randomBytes(24).toString("base64url");
@@ -91,6 +92,7 @@ export const propostasRouter = router({
     .input(
       z.object({
         clienteNome: z.string().min(1),
+        clienteCnpj: z.string().optional(),
         clienteContato: z.string().optional(),
         vendedorNome: z.string().min(1),
         formasPagamento: z.array(z.string()).optional().default([]),
@@ -106,6 +108,7 @@ export const propostasRouter = router({
         .values({
           token: gerarToken(),
           clienteNome: input.clienteNome,
+          clienteCnpj: input.clienteCnpj || null,
           clienteContato: input.clienteContato || null,
           vendedorNome: input.vendedorNome,
           formasPagamentoJson: JSON.stringify(input.formasPagamento),
@@ -116,11 +119,28 @@ export const propostasRouter = router({
       return { success: true, id: result.id, token: result.token };
     }),
 
+  /** Consulta CNPJ na OpenCNPJ (mesma API já usada em outros módulos) pra
+   *  autocompletar razão social/nome fantasia no formulário de proposta —
+   *  não há endpoint de escrita no MubiSys, então isto não cria nada lá,
+   *  só evita digitação manual do nome do cliente aqui. */
+  consultarCnpj: protectedProcedure
+    .input(z.object({ cnpj: z.string().min(1) }))
+    .query(async ({ input }) => {
+      try {
+        const dados = await consultarCnpj(input.cnpj);
+        return { encontrado: true as const, razaoSocial: dados.razao_social, nomeFantasia: dados.nome_fantasia };
+      } catch (e) {
+        if (e instanceof CnpjNaoEncontradoError) return { encontrado: false as const };
+        throw e;
+      }
+    }),
+
   atualizar: protectedProcedure
     .input(
       z.object({
         id: z.number(),
         clienteNome: z.string().min(1),
+        clienteCnpj: z.string().optional(),
         clienteContato: z.string().optional(),
         vendedorNome: z.string().min(1),
         formasPagamento: z.array(z.string()).optional().default([]),
@@ -136,6 +156,7 @@ export const propostasRouter = router({
         .update(propostas)
         .set({
           clienteNome: input.clienteNome,
+          clienteCnpj: input.clienteCnpj || null,
           clienteContato: input.clienteContato || null,
           vendedorNome: input.vendedorNome,
           formasPagamentoJson: JSON.stringify(input.formasPagamento),

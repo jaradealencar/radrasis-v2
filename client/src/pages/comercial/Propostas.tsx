@@ -32,6 +32,37 @@ function linkPublico(token: string): string {
   return `${window.location.origin}/proposta/${token}`;
 }
 
+/** Consulta o CNPJ (OpenCNPJ, via backend) e devolve a razão social/nome
+ *  fantasia pra autocompletar o nome do cliente — dispara só quando o campo
+ *  de CNPJ perde o foco com 14 dígitos, nunca a cada tecla. Não cria nada no
+ *  MubiSys (a API dele não tem endpoint de escrita): só evita digitação
+ *  manual do nome aqui na proposta. */
+function useAutocompleteCnpj(onEncontrado: (nome: string) => void) {
+  const utils = trpc.useUtils();
+  const [buscando, setBuscando] = useState(false);
+
+  const buscar = async (cnpjDigitado: string) => {
+    const digitos = cnpjDigitado.replace(/\D/g, "");
+    if (digitos.length !== 14) return;
+    setBuscando(true);
+    try {
+      const resultado = await utils.propostas.consultarCnpj.fetch({ cnpj: digitos });
+      if (resultado.encontrado) {
+        onEncontrado(resultado.nomeFantasia || resultado.razaoSocial);
+        toast.success("CNPJ encontrado", { description: resultado.razaoSocial });
+      } else {
+        toast.warning("CNPJ não encontrado na Receita Federal");
+      }
+    } catch (e: any) {
+      toast.error("Erro ao consultar CNPJ", { description: e.message });
+    } finally {
+      setBuscando(false);
+    }
+  };
+
+  return { buscar, buscando };
+}
+
 export default function Propostas() {
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
 
@@ -69,14 +100,17 @@ function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }
   const utils = trpc.useUtils();
   const { data: lista, isLoading } = trpc.propostas.listar.useQuery();
   const [criando, setCriando] = useState(false);
+  const [clienteCnpj, setClienteCnpj] = useState("");
   const [clienteNome, setClienteNome] = useState("");
   const [vendedorNome, setVendedorNome] = useState("");
+  const { buscar: buscarCnpj, buscando: buscandoCnpj } = useAutocompleteCnpj(setClienteNome);
 
   const criar = trpc.propostas.criar.useMutation({
     onSuccess: (r) => {
       toast.success("Proposta criada");
       utils.propostas.listar.invalidate();
       setCriando(false);
+      setClienteCnpj("");
       setClienteNome("");
       setVendedorNome("");
       onSelecionar(r.id);
@@ -98,7 +132,17 @@ function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }
         {criando && (
           <div className="border rounded-lg p-3 flex flex-wrap items-end gap-3 bg-muted/30">
             <div className="space-y-1">
-              <Label className="text-xs">Cliente</Label>
+              <Label className="text-xs">CNPJ do cliente</Label>
+              <Input
+                className="w-44"
+                value={clienteCnpj}
+                onChange={(e) => setClienteCnpj(e.target.value)}
+                onBlur={(e) => buscarCnpj(e.target.value)}
+                placeholder="00.000.000/0000-00"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Cliente {buscandoCnpj && <span className="text-muted-foreground">(buscando...)</span>}</Label>
               <Input className="w-56" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Nome do cliente" />
             </div>
             <div className="space-y-1">
@@ -108,7 +152,7 @@ function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }
             <Button
               size="sm"
               disabled={!clienteNome.trim() || !vendedorNome.trim() || criar.isPending}
-              onClick={() => criar.mutate({ clienteNome, vendedorNome })}
+              onClick={() => criar.mutate({ clienteNome, clienteCnpj: clienteCnpj || undefined, vendedorNome })}
             >
               Criar
             </Button>
@@ -163,6 +207,7 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.propostas.obter.useQuery({ id });
 
+  const [clienteCnpj, setClienteCnpj] = useState("");
   const [clienteNome, setClienteNome] = useState("");
   const [clienteContato, setClienteContato] = useState("");
   const [vendedorNome, setVendedorNome] = useState("");
@@ -170,9 +215,11 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
   const [condicaoPagamentoObs, setCondicaoPagamentoObs] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [status, setStatus] = useState<"aberta" | "aceita" | "recusada" | "expirada">("aberta");
+  const { buscar: buscarCnpj, buscando: buscandoCnpj } = useAutocompleteCnpj(setClienteNome);
 
   useEffect(() => {
     if (!data) return;
+    setClienteCnpj(data.proposta.clienteCnpj ?? "");
     setClienteNome(data.proposta.clienteNome);
     setClienteContato(data.proposta.clienteContato ?? "");
     setVendedorNome(data.proposta.vendedorNome);
@@ -216,6 +263,7 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
     salvar.mutate({
       id,
       clienteNome,
+      clienteCnpj: clienteCnpj || undefined,
       clienteContato: clienteContato || undefined,
       vendedorNome,
       formasPagamento,
@@ -282,7 +330,16 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
         </CardHeader>
         <CardContent className="grid sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
-            <Label className="text-xs">Cliente</Label>
+            <Label className="text-xs">CNPJ do cliente</Label>
+            <Input
+              value={clienteCnpj}
+              onChange={(e) => setClienteCnpj(e.target.value)}
+              onBlur={(e) => buscarCnpj(e.target.value)}
+              placeholder="00.000.000/0000-00"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Cliente {buscandoCnpj && <span className="text-muted-foreground">(buscando...)</span>}</Label>
             <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
           </div>
           <div className="space-y-1.5">

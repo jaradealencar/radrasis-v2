@@ -362,6 +362,7 @@ export const propostas = pgTable("propostas", {
   // crypto.randomBytes, nunca reaproveitado.
   token: varchar("token", { length: 64 }).notNull().unique(),
   clienteNome: varchar("clienteNome", { length: 256 }).notNull(),
+  clienteCnpj: varchar("clienteCnpj", { length: 20 }),
   clienteContato: varchar("clienteContato", { length: 256 }),
   vendedorNome: varchar("vendedorNome", { length: 256 }).notNull(),
   // JSON (string[]) das formas de pagamento habilitadas nesta proposta —
