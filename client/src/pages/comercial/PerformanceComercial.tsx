@@ -371,6 +371,14 @@ export default function PerformanceComercial() {
   // ─── Estado de Auditoria / Congelamento ──────────────────────────────────────────────
   const [showAuditoriaModal, setShowAuditoriaModal] = useState(false);
   const [auditandoStep, setAuditandoStep] = useState<'idle' | 'loading' | 'confirmar' | 'congelando'>('idle');
+  // Valores editáveis do modal de auditoria — pré-preenchidos com o que a tela mostra
+  // (pode ser o fallback local desatualizado), mas corrigíveis à mão contra um relatório
+  // baixado do MubiSys antes de congelar (API instável não deve travar a auditoria —
+  // achado do usuário 29/09/2026: API de orçamentos ficou fora do ar por horas).
+  const [auditoriaValores, setAuditoriaValores] = useState<{
+    cotacoes: number; osNormais: number; taxaConversao: number; faturamento: number;
+    valorOrcado: number; clientesNovos: number; cotacoesNovos: number; taxaConvNovos: number; faturamentoNovos: number;
+  } | null>(null);
   // ─── Congelamento em lote (múltiplos meses) ──────────────────────────────────────────────
   const [showCongelarLoteModal, setShowCongelarLoteModal] = useState(false);
   const [loteProgress, setLoteProgress] = useState<{ mes: number; ano: number; status: 'pendente' | 'processando' | 'ok' | 'erro' }[]>([]);
@@ -725,7 +733,22 @@ export default function PerformanceComercial() {
               {fonteStatus !== 'congelado' ? (
                 <Button
                   variant="outline" size="sm"
-                  onClick={() => setShowAuditoriaModal(true)}
+                  onClick={() => {
+                    const d = mesDados as any;
+                    const cn = clientesNovos as any;
+                    setAuditoriaValores({
+                      cotacoes: d?.cotacoes ?? 0,
+                      osNormais: d?.osGeradas ?? 0,
+                      taxaConversao: d?.taxaConversao ?? 0,
+                      faturamento: d?.faturamento ?? 0,
+                      valorOrcado: d?.valorOrcado ?? 0,
+                      clientesNovos: d?.clientesNovos ?? cn?.total ?? 0,
+                      cotacoesNovos: cn?.cotacoesNovos ?? 0,
+                      taxaConvNovos: d?.taxaConvNovos ?? cn?.taxaConversaoNovos ?? 0,
+                      faturamentoNovos: d?.faturamentoNovos ?? cn?.faturamentoNovos ?? 0,
+                    });
+                    setShowAuditoriaModal(true);
+                  }}
                   disabled={loadingMes || !mesDados}
                   className="gap-1.5 h-9 border-blue-300 text-blue-700 hover:bg-blue-50 flex-1 sm:flex-none text-xs sm:text-sm"
                 >
@@ -2820,33 +2843,41 @@ export default function PerformanceComercial() {
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Tabela de auditoria — scroll horizontal no mobile */}
+            {/* Tabela de auditoria, editável — scroll horizontal no mobile */}
             <div className="rounded-lg border border-slate-200 overflow-hidden">
               <Table className="text-xs sm:text-sm min-w-[300px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Indicador</TableHead>
-                      <TableHead className="text-right">Valor ERP</TableHead>
-                      <TableHead className="text-center hidden sm:table-cell">Status</TableHead>
+                      <TableHead className="text-right">Valor a congelar</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {[
-                      { label: 'Cotações Enviadas', value: (mesDados as any)?.cotacoes ?? 0, fmt: (v: number) => v.toLocaleString('pt-BR') },
-                      { label: 'Vendas Realizadas', value: (mesDados as any)?.osGeradas ?? 0, fmt: (v: number) => v.toLocaleString('pt-BR') },
-                      { label: 'Taxa de Conversão', value: (mesDados as any)?.taxaConversao ?? 0, fmt: (v: number) => `${v.toFixed(1)}%` },
-                      { label: 'Faturamento Total', value: (mesDados as any)?.faturamento ?? 0, fmt: (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
-                      { label: 'Valor Orçado', value: (mesDados as any)?.valorOrcado ?? 0, fmt: (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
-                      { label: 'Clientes Novos', value: (mesDados as any)?.clientesNovos ?? (clientesNovos as any)?.total ?? 0, fmt: (v: number) => v.toLocaleString('pt-BR') },
-                      { label: 'Taxa Conv. Novos', value: (mesDados as any)?.taxaConvNovos ?? (clientesNovos as any)?.taxaConversaoNovos ?? 0, fmt: (v: number) => `${v.toFixed(1)}%` },
-                    ].map(row => (
-                      <TableRow key={row.label}>
+                    {auditoriaValores && ([
+                      { key: 'cotacoes', label: 'Cotações Enviadas', tipo: 'num' as const },
+                      { key: 'osNormais', label: 'Vendas Realizadas', tipo: 'num' as const },
+                      { key: 'taxaConversao', label: 'Taxa de Conversão (%)', tipo: 'pct' as const },
+                      { key: 'faturamento', label: 'Faturamento Total', tipo: 'brl' as const },
+                      { key: 'valorOrcado', label: 'Valor Orçado', tipo: 'brl' as const },
+                      { key: 'clientesNovos', label: 'Clientes Novos', tipo: 'num' as const },
+                      { key: 'cotacoesNovos', label: 'Cotações (Novos)', tipo: 'num' as const },
+                      { key: 'taxaConvNovos', label: 'Taxa Conv. Novos (%)', tipo: 'pct' as const },
+                      { key: 'faturamentoNovos', label: 'Faturamento (Novos)', tipo: 'brl' as const },
+                    ] as const).map(row => (
+                      <TableRow key={row.key}>
                         <TableCell className="text-slate-700 font-medium">{row.label}</TableCell>
-                        <TableCell className="text-right font-mono font-semibold text-slate-800">{row.fmt(row.value)}</TableCell>
-                        <TableCell className="text-center hidden sm:table-cell">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                            ✓ ERP
-                          </span>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {row.tipo === 'brl' && <span className="text-slate-400 text-xs">R$</span>}
+                            <Input
+                              type="number"
+                              step={row.tipo === 'num' ? 1 : 0.01}
+                              value={auditoriaValores[row.key]}
+                              onChange={e => setAuditoriaValores(prev => prev ? { ...prev, [row.key]: parseFloat(e.target.value) || 0 } : prev)}
+                              className="h-8 w-28 sm:w-32 text-right font-mono"
+                            />
+                            {row.tipo === 'pct' && <span className="text-slate-400 text-xs">%</span>}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -2860,12 +2891,13 @@ export default function PerformanceComercial() {
               <div className="text-xs sm:text-sm text-amber-800">
                 <p className="font-semibold">Ao congelar, esses dados ficam protegidos.</p>
                 <p className="mt-0.5">O sistema não irá sobrescrever esses valores. Para atualizar, use <strong>Recalibrar</strong>.</p>
+                <p className="mt-0.5">Os campos vêm pré-preenchidos com o que a tela mostra agora (pode ser o fallback local, se a API do MubiSys estiver instável) — corrija à mão contra um relatório baixado do MubiSys antes de confirmar, se necessário.</p>
               </div>
             </div>
 
             {/* Log de validação */}
             <div className="text-[10px] sm:text-xs text-slate-500 bg-slate-50 rounded p-2 font-mono break-all">
-              Leitura: {new Date().toLocaleString('pt-BR')} | ERP: OK | Fonte: API MubiSys
+              Leitura: {new Date().toLocaleString('pt-BR')} | Fonte: {fonteStatus === 'tempo-real' && !dadosDeFallbackLocal ? 'API MubiSys (tempo real)' : 'fallback local / editado manualmente'}
             </div>
           </div>
 
@@ -2874,29 +2906,20 @@ export default function PerformanceComercial() {
             <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowAuditoriaModal(false)}>Cancelar</Button>
             <Button
               onClick={() => {
-                const d = mesDados as any;
-                const cn = clientesNovos as any;
+                if (!auditoriaValores) return;
                 salvarAuditoriaMut.mutate({
                   mes: mesSelecionado,
                   ano: anoSelecionado,
-                  cotacoes: d?.cotacoes ?? 0,
-                  osNormais: d?.osGeradas ?? 0,
-                  taxaConversao: d?.taxaConversao ?? 0,
-                  faturamento: d?.faturamento ?? 0,
-                  valorOrcado: d?.valorOrcado ?? 0,
-                  clientesNovos: d?.clientesNovos ?? cn?.total ?? 0,
-                  cotacoesNovos: cn?.cotacoesNovos ?? 0,
-                  taxaConvNovos: d?.taxaConvNovos ?? cn?.taxaConversaoNovos ?? 0,
-                  faturamentoNovos: d?.faturamentoNovos ?? cn?.faturamentoNovos ?? 0,
-                  statusValidacao: 'validado',
-                  observacoes: `Auditado em ${new Date().toLocaleString('pt-BR')} | Fonte: API MubiSys`,
+                  ...auditoriaValores,
+                  statusValidacao: 'corrigido_excel',
+                  observacoes: `Auditado em ${new Date().toLocaleString('pt-BR')} | Valores conferidos/corrigidos manualmente contra relatório do MubiSys`,
                 }, {
                   onSuccess: () => {
                     congelarAuditoriaMut.mutate({ mes: mesSelecionado, ano: anoSelecionado });
                   }
                 });
               }}
-              disabled={salvarAuditoriaMut.isPending || congelarAuditoriaMut.isPending}
+              disabled={salvarAuditoriaMut.isPending || congelarAuditoriaMut.isPending || !auditoriaValores}
               className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
             >
               {(salvarAuditoriaMut.isPending || congelarAuditoriaMut.isPending)
