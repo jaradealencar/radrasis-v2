@@ -1891,6 +1891,39 @@ export const performanceComercialRouter = router({
       const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const db = await getDb();
 
+      // Pré-buscar snapshots congelados de todos os meses solicitados em uma única query
+      const mesesSolicitados = input.meses;
+      const snapsCongelados = db && mesesSolicitados.length > 0 ? await db.select().from(performanceAuditada)
+        .where(and(
+          eq(performanceAuditada.congelado, true),
+          sql`(${performanceAuditada.mes}, ${performanceAuditada.ano}) IN (${sql.join(
+            mesesSolicitados.map(m => sql`(${m.mes}, ${m.ano})`),
+            sql`, `
+          )})`
+        )) : [];
+      const snapMap = new Map<string, typeof snapsCongelados[0]>();
+      for (const s of snapsCongelados) snapMap.set(`${s.mes}_${s.ano}`, s);
+
+      // Disparar TODAS as chamadas de API (meses não congelados + "ao vivo" do mês vigente)
+      // já aqui, em paralelo, antes do cálculo local. Antes o "ao vivo" do mês vigente
+      // (até 40s) rodava em série ANTES das chamadas por mês (até 40s) — somado passava do
+      // maxDuration:60s da Vercel, a função morria e a tela mostrava "Sem dados para os
+      // meses selecionados". Agora o pior caso é ~40s no total.
+      const comTimeout = <T,>(p: Promise<T>): Promise<T | null> => {
+        const t = new Promise<null>((resolve) => setTimeout(() => resolve(null), 40000));
+        return Promise.race([p, t]).catch(() => null);
+      };
+      const apiMesPromises = new Map<string, Promise<any>>();
+      const aoVivoPromises = new Map<string, Promise<any>>();
+      for (const { mes, ano } of input.meses) {
+        const k = `${mes}_${ano}`;
+        if (snapMap.has(k)) continue;
+        if (publicKey && accessToken) apiMesPromises.set(k, comTimeout(getMesFromApi(mes, ano)));
+        if (ano === now.getFullYear() && mes === now.getMonth() + 1) {
+          aoVivoPromises.set(k, comTimeout(getClientesNovosMes(mes, ano, input.forceRefresh)));
+        }
+      }
+
       // Buscar todos os dados do banco em uma única query por ano
       // Agrupar meses por ano para minimizar queries ao banco
       const anoSet = Array.from(new Set(input.meses.map(m => m.ano)));
@@ -1950,10 +1983,7 @@ export const performanceComercialRouter = router({
             const ehMesVigente = ano === now.getFullYear() && mes === now.getMonth() + 1;
             if (ehMesVigente) {
               try {
-                const timeoutPromise = new Promise<null>((_, reject) =>
-                  setTimeout(() => reject(new Error("timeout")), 40000)
-                );
-                const aoVivo = await Promise.race([getClientesNovosMes(mes, ano, input.forceRefresh), timeoutPromise]);
+                const aoVivo = await aoVivoPromises.get(`${mes}_${ano}`);
                 if (aoVivo) {
                   novosMap.set(`${mes}_${ano}`, {
                     osNovos: aoVivo.osNovos,
@@ -2033,19 +2063,6 @@ export const performanceComercialRouter = router({
         }
       }
 
-      // Pré-buscar snapshots congelados de todos os meses solicitados em uma única query
-      const mesesSolicitados = input.meses;
-      const snapsCongelados = db ? await db.select().from(performanceAuditada)
-        .where(and(
-          eq(performanceAuditada.congelado, true),
-          sql`(${performanceAuditada.mes}, ${performanceAuditada.ano}) IN (${sql.join(
-            mesesSolicitados.map(m => sql`(${m.mes}, ${m.ano})`),
-            sql`, `
-          )})`
-        )) : [];
-      const snapMap = new Map<string, typeof snapsCongelados[0]>();
-      for (const s of snapsCongelados) snapMap.set(`${s.mes}_${s.ano}`, s);
-
       const results = await Promise.all(
         input.meses.map(async ({ mes, ano }) => {
           // ─── SNAPSHOT CONGELADO: retornar dados do banco imediatamente se congelado ───
@@ -2105,17 +2122,8 @@ export const performanceComercialRouter = router({
 
           // Usar API Mubisys para TODOS os meses (não apenas o atual)
           // Isso garante consistência entre histórico e dados em tempo real
-          if (publicKey && accessToken) {
-            try {
-              // Timeout aumentado para 40s: buscar 555 orçamentos em 3 páginas (per_page=200) leva ~6-15s
-              const timeoutPromise = new Promise<null>((_, reject) =>
-                setTimeout(() => reject(new Error("timeout")), 40000)
-              );
-              raw = await Promise.race([getMesFromApi(mes, ano), timeoutPromise]);
-            } catch {
-              raw = null; // fallback para banco local
-            }
-          }
+          // (chamada já disparada em paralelo lá em cima, com timeout de 40s; null → fallback local)
+          raw = (await apiMesPromises.get(`${mes}_${ano}`)) ?? null;
           const isMesAtualMulti = mes === now.getMonth() + 1 && ano === now.getFullYear();
           if (!raw) {
             // Fallback: usar dados já carregados em memória (banco local)

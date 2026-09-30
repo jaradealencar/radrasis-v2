@@ -494,7 +494,7 @@ export default function PerformanceComercial() {
     trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSelecionado }, RETRY_1);
 
   // Query de comparação multi-mês (Power BI)
-  const { data: comparaMesesDados, isLoading: loadingComparaMeses, refetch: refetchComparaMeses } =
+  const { data: comparaMesesDados, isLoading: loadingComparaMeses, isError: erroComparaMeses, refetch: refetchComparaMeses } =
     trpc.performanceComercial.getMultiMes.useQuery(
       { meses: comparaMesesSelecionados, forceRefresh: forceRefreshMes },
       { enabled: showComparaMeses && comparaMesesSelecionados.length > 0, ...RETRY_1 }
@@ -1282,6 +1282,15 @@ export default function PerformanceComercial() {
                 </Empty>
               ) : loadingComparaMeses ? (
                 <div className="p-8 text-center text-slate-400 text-sm animate-pulse">Carregando dados...</div>
+              ) : erroComparaMeses ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>Não foi possível carregar os meses (a API demorou demais)</EmptyTitle>
+                  </EmptyHeader>
+                  <button onClick={() => refetchComparaMeses()} className="text-xs text-blue-600 underline">
+                    Tentar novamente
+                  </button>
+                </Empty>
               ) : (comparaMesesDados ?? []).filter(Boolean).length === 0 ? (
                 <Empty>
                   <EmptyHeader>
