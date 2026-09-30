@@ -1,0 +1,153 @@
+<title>Changelog Radrasys</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Layout: coluna única de registros agrupados por sistema, ordem cronológica;
+     cada registro é um cartão com rótulo de tipo + estado, ecoando o padrão
+     visual já usado no Estúdio Letra Caixa (Sora/Inter/JetBrains Mono, azul de
+     marca) sem copiá-lo. */
+  :root{
+    --bg:#f3f5f9; --surface:#ffffff; --surface-2:#eef1f6; --border:#dde2ea;
+    --text:#151b2c; --text-dim:#59617a; --text-faint:#8891a3;
+    --accent:#1e6fd9; --accent-ink:#0d4fa8; --accent-soft:#e7f0fd;
+    --ok:#15803d; --ok-soft:#e7f8ed;
+    --warn:#b45309; --warn-soft:#fdf1de;
+    --shadow: 0 1px 2px rgba(20,30,60,.05), 0 10px 28px -14px rgba(20,30,60,.16);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0e1420; --surface:#161d2c; --surface-2:#1c2435; --border:#2a3348;
+      --text:#e7ebf6; --text-dim:#a3acc2; --text-faint:#747f9c;
+      --accent:#5b9df0; --accent-ink:#bcdaff; --accent-soft:#1b2c4a;
+      --ok:#4ade80; --ok-soft:#123420;
+      --warn:#f5a524; --warn-soft:#3a2a0c;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.6);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1420; --surface:#161d2c; --surface-2:#1c2435; --border:#2a3348;
+    --text:#e7ebf6; --text-dim:#a3acc2; --text-faint:#747f9c;
+    --accent:#5b9df0; --accent-ink:#bcdaff; --accent-soft:#1b2c4a;
+    --ok:#4ade80; --ok-soft:#123420;
+    --warn:#f5a524; --warn-soft:#3a2a0c;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; padding-inline:16px;}
+  h1,h2,h3{font-family:'Sora',system-ui,sans-serif; text-wrap:balance; margin:0;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums;}
+  #shell{max-width:760px; margin:0 auto; padding-block:36px 56px;}
+
+  header{margin-bottom:34px;}
+  .eyebrow{font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-ink); margin-bottom:8px;}
+  h1{font-size:28px; font-weight:800; letter-spacing:-.01em;}
+  .sub{font-size:14.5px; color:var(--text-dim); margin-top:8px; line-height:1.55; max-width:56ch;}
+
+  .stats{display:flex; gap:22px; margin-top:22px; padding-top:18px; border-top:1px solid var(--border); flex-wrap:wrap;}
+  .stat b{display:block; font-family:'Sora'; font-size:20px; font-weight:700;}
+  .stat span{font-size:11.5px; color:var(--text-faint);}
+
+  section.group{margin-top:40px;}
+  .group-head{display:flex; align-items:baseline; gap:10px; margin-bottom:14px;}
+  .group-head h2{font-size:15px; font-weight:700;}
+  .group-head .count{font-size:11.5px; color:var(--text-faint); font-family:'JetBrains Mono';}
+
+  .entries{display:flex; flex-direction:column; gap:10px;}
+  .entry{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow);}
+  .entry-head{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:6px;}
+  .entry h3{font-size:14.5px; font-weight:700; line-height:1.4;}
+  .tag{flex:none; font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; padding:3px 9px; border-radius:99px; white-space:nowrap;}
+  .tag-done{background:var(--ok-soft); color:var(--ok);}
+  .tag-doc{background:var(--warn-soft); color:var(--warn);}
+  .entry p{font-size:13px; color:var(--text-dim); line-height:1.6;}
+  .entry p + p{margin-top:6px;}
+  .why{color:var(--text-faint); font-size:12.5px;}
+
+  footer{margin-top:44px; padding-top:20px; border-top:1px solid var(--border);}
+  footer p{font-size:12.5px; color:var(--text-faint); line-height:1.6;}
+  footer p + p{margin-top:6px;}
+</style>
+
+<div id="shell">
+  <header>
+    <div class="eyebrow">Registro de sessão · 29–30 set 2026</div>
+    <h1>O que mudou hoje</h1>
+    <p class="sub">Resumo do trabalho em duas frentes: o repositório real do Radrasys e o protótipo Estúdio Letra Caixa (orçamento de letreiros por foto).</p>
+    <div class="stats">
+      <div class="stat"><b class="mono">2</b><span>commits no repo</span></div>
+      <div class="stat"><b class="mono">10</b><span>mudanças no protótipo</span></div>
+      <div class="stat"><b class="mono">105</b><span>linhas reais da Tabela de Preços importadas</span></div>
+    </div>
+  </header>
+
+  <section class="group">
+    <div class="group-head"><h2>Repositório Radrasys (commitado e publicado)</h2><span class="count">2</span></div>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-head"><h3>Propostas: autocompletar cliente por CNPJ</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Novo campo <code class="mono">clienteCnpj</code> em Propostas (migration 0056). Ao sair do campo com 14 dígitos, consulta a OpenCNPJ e preenche o nome do cliente com a razão social ou nome fantasia.</p>
+        <p class="why">Por quê: evita digitação manual do nome — a API do MubiSys não tem endpoint de escrita, então isso não altera nada lá.</p>
+      </div>
+      <div class="entry">
+        <div class="entry-head"><h3>Simulador de Meta lembra travas entre visitas</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Estado do simulador (travas do cadeado, meta, modo automático, prazo) agora persiste em <code class="mono">localStorage</code>. Nova ficha "Esforço nos indicadores livres" mostra quanto os indicadores destravados precisam subir ou cair.</p>
+        <p class="why">Por quê: antes, sair da página resetava tudo pros padrões — parecia que a trava "não funcionava".</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <div class="group-head"><h2>Estúdio Letra Caixa — cadastro de produtos</h2><span class="count">5</span></div>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-head"><h3>Produto e matéria-prima excluídos vão para o fim da lista</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Ordenação estável: itens ativos mantêm a ordem do catálogo, excluídos ficam sempre por último — em Produtos e em Matérias-primas.</p>
+      </div>
+      <div class="entry">
+        <div class="entry-head"><h3>Nova categoria "Pintura"</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Dois níveis, reaproveitando a taxonomia do wizard de pintura já existente: subcategoria Galvanizado/PVC, cada uma com tipo Tradicional/Metalizada/Poliéster.</p>
+      </div>
+      <div class="entry">
+        <div class="entry-head"><h3>"Produtos do kit" virou busca com múltipla seleção</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Campo de texto com resultados em lista, no lugar do menu suspenso de um item por vez. A busca agora cobre todo o catálogo do MubiSys, não só produtos já abertos antes no editor.</p>
+      </div>
+      <div class="entry">
+        <div class="entry-head"><h3>Corrigido: seleção não aparecia e só dava pra adicionar um item</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Causa raiz: um bind de eventos genérico se anexava também a elementos com handler próprio (papel na peça, adicionar matéria-prima) e disparava um <code class="mono">render()</code> prematuro por cima do clique em andamento. Corrigido restringindo esse bind só às ações que ele de fato trata.</p>
+      </div>
+      <div class="entry">
+        <div class="entry-head"><h3>Precificação vinculada por ID de linha, com buscador</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Importadas as 105 linhas reais da Tabela de Preços (antes eram 20 seções montadas à mão). Cada linha tem o mesmo ID da tabela física — o campo aceita buscar por número ou por nome.</p>
+        <p class="why">Envolveu configurar <code class="mono">PRICE_TABLE_API_KEY</code> na Vercel e buscar os dados pela API real do Radrasys.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <div class="group-head"><h2>Estúdio Letra Caixa — orçamento do vendedor</h2><span class="count">3</span></div>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-head"><h3>Editor vetorial rápido</h3><span class="tag tag-done">Concluído</span></div>
+        <p>No passo de Vetorização: mover, girar, expandir, apagar e mudar cor dos elementos do vetor, em tela cheia. Ao aplicar, o resultado é rasterizado e reprocessado pelo mesmo traçador já usado para fotos, para manter a geometria (área, perímetro) correta.</p>
+      </div>
+      <div class="entry">
+        <div class="entry-head"><h3>Reconhece arquivo .CDR (CorelDraw)</h3><span class="tag tag-done">Concluído</span></div>
+        <p>Orienta a exportar como SVG em vez de travar com um erro genérico — o protótipo roda só no navegador, sem como converter o formato de verdade.</p>
+      </div>
+      <div class="entry">
+        <div class="entry-head"><h3>Arquitetura para conversão CDR→SVG real</h3><span class="tag tag-doc">Documentado</span></div>
+        <p>Ferramenta recomendada (Inkscape CLI via libcdr), exemplo de microsserviço em Node e o prompt de IA para extrair matéria-prima e isolar o letreiro do entorno.</p>
+        <p class="why">Não implementado — só faz sentido no backend real, quando o protótipo migrar para o Radrasys.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Pendências conhecidas: liberar as páginas <code class="mono">/comercial/produtos</code> e <code class="mono">/comercial/propostas</code> para vendedor no Admin.tsx (hoje só master/admin acessam); o arquivo <code class="mono">tabela-precos.json</code> na Área de Trabalho já pode ser apagado.</p>
+    <p>Estúdio Letra Caixa é um protótipo de validação, publicado separado do repositório — as features seguem hard-coded até virar produto real.</p>
+  </footer>
+</div>
