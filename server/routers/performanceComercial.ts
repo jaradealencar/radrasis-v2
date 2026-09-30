@@ -1354,6 +1354,23 @@ async function getClientesNovosMes(mes: number, ano: number, forceRefresh = fals
 
   // Montar lista final — contato e cidade já vêm da OS (campos cliente_contato e cliente_endereco)
   // Não é mais necessário buscar por nome na API (que retornava dados da Radra)
+  // Quando a busca ao vivo caiu no fallback do banco local (historico_os) — ou o cache bruto
+  // veio sem cliente_contato — as OS não trazem telefone. Completa só contato/cidade/UF a
+  // partir das OS do mês em janelas curtas (com cache), igual ao caminho do snapshot congelado.
+  if (listaRaw.some(item => !item.telefone)) {
+    const contatosMes = await obterContatosDoMes(mes, ano);
+    if (contatosMes) {
+      for (const item of listaRaw) {
+        if (item.telefone) continue;
+        const c = contatosMes[normalizeEmpresaKey(item.empresa)];
+        if (!c) continue;
+        item.telefone = c.telefone;
+        item.contato ||= c.contato;
+        item.cidade ||= c.cidade;
+        item.estado ||= c.estado;
+      }
+    }
+  }
   const lista: ClienteNovoListaItem[] = [];
   for (const item of listaRaw) {
     lista.push({
