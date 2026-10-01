@@ -419,19 +419,32 @@ function computeOrcamento(p){
   return {matTotal, servTotal, custoDireto, precoBase, precoComInstalacao, precoFinal};
 }
 
-/* ---------- CATÁLOGO REAL (snapshot MubiSys, via API, baixado hoje) ---------- */
+/* ---------- CATÁLOGO ATUAL DO MUBISYS (consultado pelo servidor) ---------- */
 const catalog = { produtos:[], materias:[], margens:[], ready:false, error:null, baixadoEm:null };
 async function loadCatalog(){
+  catalog.ready = false;
+  catalog.error = null;
+  render();
   try{
-    const [pr, mp, mg] = await Promise.all([
-      fetch('produtos-mubisys.json').then(r=>r.json()),
-      fetch('materias-mubisys.json').then(r=>r.json()),
-      fetch('tabela-precos-margens.json').then(r=>r.json()),
-    ]);
-    catalog.produtos = pr; catalog.materias = mp; catalog.margens = mg;
-  }catch(e){ catalog.error = String(e && e.message || e); }
+    const response = await fetch('/api/letra-caixa/catalogo', { credentials:'same-origin', cache:'no-store' });
+    const dados = await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(dados.error || `Falha ao consultar o catálogo (HTTP ${response.status}).`);
+    catalog.produtos = Array.isArray(dados.produtos) ? dados.produtos : [];
+    catalog.materias = Array.isArray(dados.materias) ? dados.materias : [];
+    catalog.margens = Array.isArray(dados.margens) ? dados.margens : [];
+    catalog.baixadoEm = dados.carregadoEm || null;
+  }catch(e){
+    catalog.produtos = [];
+    catalog.materias = [];
+    catalog.margens = [];
+    catalog.error = String(e && e.message || 'Não foi possível consultar o MubiSys.');
+  }
   catalog.ready = true;
   render();
+}
+function catalogErrorNotice(){
+  if(!catalog.error) return '';
+  return `<div class="role-note" role="alert" style="margin:10px 0; padding:10px; border:1px solid var(--bad); border-radius:8px; color:var(--bad);">Falha ao carregar os dados do MubiSys: ${escaparHtml(catalog.error)}</div>`;
 }
 
 /* ---------- TABELA DE PREÇOS REAL (margem por faixa de ticket) ---------- */
@@ -1375,8 +1388,16 @@ function topbar(){
 }
 
 function banner(){
+  const statusCatalogo = !catalog.ready
+    ? 'Consultando o catálogo do MubiSys…'
+    : catalog.error
+      ? 'Falha ao carregar o catálogo do MubiSys.'
+      : 'Catálogo do MubiSys conectado.';
+  const detalheCatalogo = catalog.error
+    ? escaparHtml(catalog.error)
+    : 'Produtos, modelos e matérias-primas são consultados pela API do ERP, e os custos vêm do cadastro do MubiSys.';
   return `<div class="banner">${ICONS.info}
-    <div><b>Protótipo navegável ? dados comerciais de demonstração.</b> Fotos, medidas, custos de ERP e valores de orçamento desta tela são fictícios e rotulados; não foram gravados no ERP e não devem ser usados como preço. A reconstrução visual já chama GPT Image no servidor; a integração com ERP e a persistência das propostas continuam pendentes.</div>
+    <div><b>${statusCatalogo}</b> ${detalheCatalogo} O Estúdio não altera cadastros no ERP. Revise a composição e os valores antes de enviar uma proposta.</div>
   </div>`;
 }
 
@@ -1399,7 +1420,7 @@ function renderProjectPicker(){
       </div>
     </div>
     <button class="btn btn-primary" data-act="start-real">📤 Iniciar proposta real</button>
-    <div class="role-note" style="margin-top:10px;">${ICONS.db} Catálogo: ${catalog.ready ? `${catalog.produtos.length} produtos e ${catalog.materias.length} matérias-primas carregados de um snapshot real da API do MubiSys (hoje).` : 'carregando catálogo real do MubiSys…'}</div>
+    <div class="role-note" style="margin-top:10px;">${ICONS.db} Catálogo: ${catalog.ready ? (catalog.error ? escaparHtml(catalog.error) : `${catalog.produtos.length} produtos e ${catalog.materias.length} matérias-primas carregados da API do MubiSys agora.`) : 'consultando o catálogo do MubiSys…'}</div>
   </div>`;
 }
 
@@ -1857,7 +1878,7 @@ function realStepProposta(){
 
   return `
   <div class="card">
-    <div class="cardhead"><div><h3>1 · Proposta</h3><p>Produtos e modelos abaixo são o catálogo real do MubiSys (snapshot de hoje, ${catalog.produtos.length} produtos / ${catalog.materias.length} matérias-primas via API).</p></div></div>
+    <div class="cardhead"><div><h3>1 · Proposta</h3><p>Produtos e modelos vêm do catálogo atual do MubiSys (${catalog.produtos.length} produtos / ${catalog.materias.length} matérias-primas via API).</p></div></div>
     <div class="grid2">
       <label class="field">CPF ou CNPJ do cliente<input type="text" inputmode="numeric" autocomplete="off" placeholder="CPF: 000.000.000-00 · CNPJ: 00.000.000/0000-00" value="${escaparHtml(REAL.cliente.cnpj)}" data-act="real-cnpj"></label>
       <label class="field">Nome / razão social<input type="text" placeholder="Preenchido pelo CNPJ ou informe o nome do cliente" value="${escaparHtml(REAL.cliente.razao)}" data-act="real-razao"></label>
@@ -3110,6 +3131,7 @@ function adminProdutos(){
         <span class="badge ${dbApi?'b-ok':'b-warn'}">${dbApi?'✓ salvo no banco':'⚠ sem banco — só nesta sessão'}</span>
       </div>
     </div>
+    ${catalogErrorNotice()}
     <input type="text" placeholder="Buscar produto ou SKU…" value="${adminState.produtoQuery}" data-act="admin-produto-query" style="width:100%; margin-bottom:12px;">
     <div class="tablewrap">
       ${visiveis.length? visiveis.map(p=>adminProdutoRow(p)).join('') : `<div class="empty-hint">Nenhum produto encontrado para "${adminState.produtoQuery}".</div>`}
@@ -3335,6 +3357,7 @@ function adminMateriasAdmin(){
       <div><h3>Matérias-primas (catálogo real do MubiSys)</h3><p>${catalog.materias.length} itens espelhados via API GET /materia-prima. Exclua os que a Letreiros Express não trabalha — eles somem da busca usada ao montar composições.</p></div>
       <span class="badge ${excluidas?'b-warn':'b-neutral'}">${excluidas} excluída(s)</span>
     </div>
+    ${catalogErrorNotice()}
     <input type="text" placeholder="Buscar matéria-prima…" value="${adminState.materiaQuery}" data-act="admin-materia-query" style="width:100%; margin-bottom:12px;">
     <div class="tablewrap">
       <div class="erpitem head"><span>ID</span><span>Nome</span><span>Unidade</span><span>Custo</span><span>Atualizado</span><span>Ação</span></div>

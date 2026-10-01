@@ -208,7 +208,9 @@ server/
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
-                       estudio-cotacoes.ts (cotações do HTML estático do Estúdio)
+                       estudio-cotacoes.ts (cotações do HTML estático do Estúdio),
+                       estudio-catalogo-mubisys.ts (catálogos de produtos e matérias-primas
+                       via API MubiSys, com sessão autenticada)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts

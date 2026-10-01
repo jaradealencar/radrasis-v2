@@ -184,6 +184,10 @@ export async function createApp(): Promise<Express> {
     await import("../routes/estudio-cotacoes");
   registrarRotasEstudioCotacoes(app);
 
+  const { registrarRotaEstudioCatalogoMubiSys } =
+    await import("../routes/estudio-catalogo-mubisys");
+  registrarRotaEstudioCatalogoMubiSys(app);
+
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
   const { handleSincronizarOS, handleStatusSincronizacao } =
     await import("../sync/scheduled-sync-os-handler");
