@@ -47,14 +47,13 @@ function instrucaoEscopo(params: RedesenharLetreiroParams): string {
  * Redesenho fiel (Prompt 1): transforma uma foto de letreiro/logo na reconstrução
  * visual limpa — face gráfica plana, cores chapadas, sem estrutura física (aros,
  * perfis) nem efeitos de luz (halo, reflexo, sombra) — via edição de imagem da
- * OpenAI (gpt-image-1), usando docs/prompts/prompt-1-reconstrucao-visual.md como
+ * OpenAI (gpt-image-2.5-sunburst), usando docs/prompts/prompt-1-reconstrucao-visual.md como
  * instrução completa.
  *
- * ⚠️ Não verificado com chamada real (conta OpenAI sem crédito em 28/09/2026 — ver
- * nota em generateImageEdit). Antes de considerar esta etapa pronta para uso: rodar
- * `tsx server/scripts/testar-redesenho-letreiro.ts <foto>` com uma foto real assim
- * que houver crédito, e comparar o resultado com o par Imagem A/B da seção 21 do
- * Prompt 1 (o próprio caso "Garagem de Carro" usado como exemplo no documento).
+ * A rota autenticada `POST /api/letra-caixa/redesenho` expõe esta função ao
+ * protótipo servido pelo próprio app; a chave da OpenAI permanece no servidor.
+ * A chamada ainda precisa ser validada com uma foto real quando a conta tiver
+ * crédito disponível.
  */
 export async function redesenharLetreiro(
   params: RedesenharLetreiroParams,
@@ -78,8 +77,10 @@ export async function redesenharLetreiro(
     imageMimeType: params.imageMimeType,
     prompt,
     background,
-    quality: "high",
-    size: "1024x1024",
+    inputFidelity: "high",
+    model: "gpt-image-2.5-sunburst",
+    quality: "xhigh",
+    size: "auto",
   });
 
   const { url } = await storagePut(

@@ -331,14 +331,15 @@ export type ImageEditParams = {
   imageMimeType: string;
   prompt: string;
   size?: "1024x1024" | "1536x1024" | "1024x1536" | "auto";
-  quality?: "low" | "medium" | "high" | "auto";
+  quality?: "low" | "medium" | "high" | "xhigh" | "max" | "auto";
   background?: "transparent" | "opaque" | "auto";
+  inputFidelity?: "low" | "high";
   model?: string;
 };
 
 export type ImageEditResult = {
   buffer: Buffer;
-  /** gpt-image-1 sempre devolve PNG em base64 (sem opção de URL, diferente do dall-e). */
+  /** GPT Image devolve base64; esta chamada força a saída no formato PNG. */
   mimeType: string;
 };
 
@@ -346,12 +347,10 @@ export type ImageEditResult = {
  * Edita uma imagem existente a partir de um prompt textual — endpoint separado do
  * chat completions (`/v1/images/edits`, multipart/form-data, resposta em base64).
  *
- * ⚠️ Não verificado com chamada real: a conta em OPENAI_API_KEY está sem crédito
- * (erro 429 insufficient_quota, checado em 28/09/2026 direto contra a API). Os
- * parâmetros abaixo seguem a documentação do gpt-image-1 no momento da escrita —
- * confirme contra a documentação atual da OpenAI antes de depender disso em
- * produção, e rode um teste real assim que houver crédito (ver
- * server/scripts/testar-redesenho-letreiro.ts).
+ * Os campos enviados, a forma `image[]`, o formato PNG e os parâmetros de
+ * fidelidade/qualidade seguem a referência oficial atual da API. A conta não
+ * tinha crédito disponível na última chamada real conhecida (28/09/2026), então
+ * o acesso a partir do protótipo ainda precisa de uma geração real para validar.
  */
 export async function generateImageEdit(params: ImageEditParams): Promise<ImageEditResult> {
   assertApiKey();
@@ -362,8 +361,10 @@ export async function generateImageEdit(params: ImageEditParams): Promise<ImageE
   form.append("size", params.size ?? "1024x1024");
   if (params.quality) form.append("quality", params.quality);
   if (params.background) form.append("background", params.background);
+  if (params.inputFidelity) form.append("input_fidelity", params.inputFidelity);
+  form.append("output_format", "png");
   form.append(
-    "image",
+    "image[]",
     new Blob([new Uint8Array(params.imageBuffer)], { type: params.imageMimeType }),
     params.imageFilename,
   );
@@ -372,6 +373,7 @@ export async function generateImageEdit(params: ImageEditParams): Promise<ImageE
     method: "POST",
     headers: { authorization: `Bearer ${ENV.openaiApiKey}` },
     body: form,
+    signal: AbortSignal.timeout(55_000),
   });
 
   if (!response.ok) {
