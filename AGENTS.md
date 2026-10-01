@@ -207,7 +207,8 @@ server/
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
-                       PRICE_TABLE_API_KEY, para o precificador automatizado externo)
+                       PRICE_TABLE_API_KEY, para o precificador automatizado externo),
+                       estudio-cotacoes.ts (cotações do HTML estático do Estúdio)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
@@ -350,7 +351,13 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`client/src/App.tsx`), sem exigir sessão. Reaproveitar esse padrão
   (`publicProcedure` + bypass no `AuthGate`) para qualquer link público
   futuro dentro do próprio app — só usar o padrão REST+CORS do Guia de
-  Fornecedores quando for de fato um domínio/deploy diferente.
+  Fornecedores quando for de fato um domínio/deploy diferente. Exceção
+  específica: o HTML estático do Estúdio de Letra Caixa não usa React/tRPC;
+  suas cotações concluídas usam `/api/letra-caixa/cotacoes` no mesmo host,
+  com sessão para criar/listar e token público para abrir a cotação e enviar
+  a resposta do cliente. Esses registros ficam em `propostas.observacoes`
+  com o prefixo `[ESTUDIO_COTACAO_V1]` e são excluídos da lista do módulo
+  comercial Propostas.
 - **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
   o LLM já ser 100% OpenAI desde a Fase 1 do `docs/sprint-saida-forge`:
   `geminiAnswer`/`geminiAnswerIsGeneral` (`server/routers.ts`,

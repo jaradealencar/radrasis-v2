@@ -178,6 +178,12 @@ export async function createApp(): Promise<Express> {
     await import("../routes/price-table-api");
   registrarRotasPriceTableApi(app);
 
+  // Cotações concluídas do Estúdio: criação autenticada, histórico do vendedor
+  // e link público interativo para resposta do cliente.
+  const { registrarRotasEstudioCotacoes } =
+    await import("../routes/estudio-cotacoes");
+  registrarRotasEstudioCotacoes(app);
+
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
   const { handleSincronizarOS, handleStatusSincronizacao } =
     await import("../sync/scheduled-sync-os-handler");

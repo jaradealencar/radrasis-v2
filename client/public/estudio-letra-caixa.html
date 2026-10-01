@@ -593,6 +593,7 @@ async function consultarDadosCnpj(cnpj){
 function novaProposta(){
   return {
     id: gerarIdProposta(),
+    cotacaoId:null, cotacaoNumero:null, cotacaoToken:null, cotacaoLink:null,
     grupoId: null, // setado ao criar uma versão nova — identifica todas as versões da mesma proposta
     versao: 1,
     dataEmissao: new Date().toISOString(),
@@ -2571,7 +2572,7 @@ function realStepOrcamento(){
         <button class="btn btn-soft" data-act="real-salvar-proposta">${ICONS.db} Salvar proposta</button>
         <button class="btn btn-ghost" data-act="real-nova-versao" title="Mantém cliente/vendedor, deixa escolher outro produto — pra apresentar opções diferentes ao cliente">➕ Criar nova versão</button>
       </div>
-      ${curIdx<statuses.length-1? `<button class="btn btn-primary" data-act="real-advance-status">${ICONS.check} Avançar para "${statuses[curIdx+1]}"</button>` : `<span class="badge b-ok">${ICONS.check} Orçamento enviado</span>`}
+      ${curIdx<statuses.length-1? `<button class="btn btn-primary" data-act="real-advance-status">${ICONS.check} Avançar para "${statuses[curIdx+1]}"</button>` : (REAL.cotacaoLink ? `<a class="btn btn-primary" href="${escaparHtml(REAL.cotacaoLink)}" target="_blank" rel="noopener">${ICONS.check} Abrir ${escaparHtml(REAL.cotacaoNumero||'cotação interativa')}</a>` : `<button class="btn btn-primary" data-act="real-concluir-cotacao">${ICONS.check} Concluir orçamento e gerar link</button>`)}
     </div>
   </div>`;
 }
@@ -2580,6 +2581,8 @@ function realStepOrcamento(){
 /* ---------- ADMIN: catálogo real (produtos/modelos + matérias-primas do MubiSys) ---------- */
 const adminState = {
   produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', precoLinhaQuery:'', filtroVendedorPropostas:'',
+  filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
+  cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   expandedProdutoId:null, editingKey:null,
   // { 'produtoId_modeloId': { linhas:[{matId,nome,unidade,custo,atualizado,status,papel,formulaType,mult}], precificacao:{lineId}|{modo:'fixo',precoFixo}|null, nomeCompleto, prazoDiasUteis, kitProdutos, fotoUrl, fotoAssetId } }
   kits:{},
@@ -2596,6 +2599,7 @@ function kitKey(produtoId, modeloId){ return produtoId+'_'+modeloId; }
  * ao vivo entre todas as abas que tiverem esta página aberta. */
 let dbApi = null;
 let assetsApi = null;
+let cotacaoEmCriacao = false;
 const _kitSaveTimers = {};
 let _exclSaveTimer = null;
 let _configSaveTimer = null;
@@ -2613,6 +2617,92 @@ const configGeral = {
 /** Propostas confirmadas pelo vendedor no fluxo real — carregadas do banco
  *  pra alimentar a aba "Propostas realizadas" em Administração. */
 const propostasReais = {};
+
+function linkCotacaoPublica(token){
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.searchParams.set('cotacao', token);
+  return url.toString();
+}
+
+async function carregarCotacoesServidor(){
+  adminState.cotacoesCarregando = true;
+  adminState.cotacoesErro = '';
+  try{
+    const response = await fetch('/api/letra-caixa/cotacoes', {credentials:'same-origin'});
+    const body = await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error || 'Não foi possível carregar as cotações.');
+    adminState.cotacoesServidor = body.cotacoes || [];
+  }catch(error){
+    adminState.cotacoesErro = error.message || 'Não foi possível carregar as cotações.';
+  }finally{
+    adminState.cotacoesCarregando = false;
+    if(state.tab==='admin' && state.adminTab==='propostas') render();
+  }
+}
+
+function snapshotCotacaoReal(){
+  const g = computeGeomReal();
+  const o = computeOrcamentoReal();
+  const kitPronto = REAL.produtoId && REAL.modeloId ? adminState.kits[kitKey(REAL.produtoId, REAL.modeloId)] : null;
+  return {
+    dataEmissao: REAL.dataEmissao,
+    validadeDias: REAL.validadeDias || 20,
+    modalidadeFrete: REAL.modalidadeFrete || null,
+    metodoPagamento: REAL.metodoPagamento || null,
+    cliente:{
+      cnpj:REAL.cliente.cnpj || null,
+      razao:REAL.cliente.razao || null,
+      fantasia:REAL.cliente.fantasia || null,
+      endereco:REAL.cliente.endereco || null,
+    },
+    vendedor:REAL.vendedor || '',
+    modeloNome:REAL.modeloNome || '',
+    areaM2:Number.isFinite(g.areaM2) ? g.areaM2 : null,
+    areaGeralM2:Number.isFinite(g.areaGeralM2) ? g.areaGeralM2 : null,
+    precoFinal:o.precoFinal,
+    prazoDiasUteis:kitPronto?.prazoDiasUteis ?? null,
+    status:'enviado',
+  };
+}
+
+async function criarCotacaoPublica(){
+  const response = await fetch('/api/letra-caixa/cotacoes', {
+    method:'POST',
+    credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sourceId:REAL.id, snapshot:snapshotCotacaoReal()}),
+  });
+  const body = await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(body.error || 'Não foi possível gerar o link da cotação.');
+  REAL.cotacaoId = body.id;
+  REAL.cotacaoNumero = body.numero;
+  REAL.cotacaoToken = body.token;
+  REAL.cotacaoLink = linkCotacaoPublica(body.token);
+  await carregarCotacoesServidor();
+  return REAL.cotacaoLink;
+}
+
+async function concluirOrcamentoEabrirCotacao(){
+  if(cotacaoEmCriacao) return;
+  cotacaoEmCriacao=true;
+  const janela = window.open('about:blank','_blank');
+  if(janela) janela.opener = null;
+  try{
+    REAL.orcamentoStatus='enviado';
+    const link = await criarCotacaoPublica();
+    if(janela) janela.location.href=link;
+    state.tab='admin';
+    state.adminTab='propostas';
+    render();
+  }catch(error){
+    if(janela) janela.close();
+    alert(error.message || 'Não foi possível concluir o orçamento.');
+    render();
+  }finally{
+    cotacaoEmCriacao=false;
+  }
+}
 
 async function initDb(){
   try{ dbApi = await claude.use('db'); }catch(e){ dbApi = null; }
@@ -2788,13 +2878,13 @@ function criarNovaVersao(){
 function renderAdmin(){
   const paineis = {
     produtos: adminProdutos, erp: adminMateriasAdmin,
-    propostas: adminPropostasReais, config: adminConfiguracoes,
+    propostas: adminCotacoesHistorico, config: adminConfiguracoes,
   };
   return `
   <div class="subtabs">
     <button data-act="admin-tab" data-val="produtos" class="${state.adminTab==='produtos'?'active':''}">Produtos &amp; kits</button>
     <button data-act="admin-tab" data-val="erp" class="${state.adminTab==='erp'?'active':''}">Matérias-primas (real)</button>
-    <button data-act="admin-tab" data-val="propostas" class="${state.adminTab==='propostas'?'active':''}">Propostas realizadas</button>
+    <button data-act="admin-tab" data-val="propostas" class="${state.adminTab==='propostas'?'active':''}">Cotações</button>
     <button data-act="admin-tab" data-val="config" class="${state.adminTab==='config'?'active':''}">Configurações</button>
   </div>
   ${(paineis[state.adminTab]||adminProdutos)()}`;
@@ -2852,6 +2942,65 @@ function adminPropostasReais(){
         </tbody>
       </table>
     </div>
+  </div>`;
+}
+
+function adminCotacoesHistorico(){
+  const servidor = adminState.cotacoesServidor.map(p=>({
+    ...p, id:'servidor-'+p.id, numeroCotacao:p.numero, vendedor:p.vendedor,
+    modeloNome:p.modeloNome, clienteRazao:p.clienteNome, precoFinal:p.precoFinal,
+    clienteFantasia:p.clienteFantasia, clienteEndereco:p.clienteEndereco,
+    clienteCnpj:p.clienteCnpj, status:p.status, criadoEm:p.criadaEm, reacaoCliente:p.reacaoCliente,
+  }));
+  const lista = servidor;
+  const numero = (adminState.filtroNumeroPropostas||'').trim().toLowerCase();
+  const inicio = adminState.filtroDataInicioPropostas||'';
+  const fim = adminState.filtroDataFimPropostas||'';
+  const vendedor = adminState.filtroVendedorPropostas||'';
+  const filtradas = lista.filter(p=>{
+    const dataObj = new Date(p.dataEmissao||p.criadoEm||0);
+    const data = Number.isNaN(dataObj.getTime())?'':[dataObj.getFullYear(),String(dataObj.getMonth()+1).padStart(2,'0'),String(dataObj.getDate()).padStart(2,'0')].join('-');
+    return (!numero || String(p.numeroCotacao||'').toLowerCase().includes(numero))
+      && (!inicio || data>=inicio) && (!fim || data<=fim)
+      && (!vendedor || p.vendedor===vendedor);
+  }).sort((a,b)=>new Date(b.criadoEm||b.dataEmissao||0)-new Date(a.criadoEm||a.dataEmissao||0));
+  const vendedores = [...new Set(lista.map(p=>p.vendedor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const STATUS_LABEL = {aberta:'Enviada', aceita:'Aceita', recusada:'Recusada', expirada:'Expirada', enviado:'Enviada'};
+  return `
+  <div class="card">
+    <div class="cardhead">
+      <div><h3>Cotações concluídas</h3><p>Orçamentos concluídos no Estúdio, com número e link interativo para o cliente responder.</p></div>
+      <span class="badge b-accent">${adminState.cotacoesCarregando?'Atualizando…':filtradas.length+' cotação(ões)'}</span>
+    </div>
+    ${adminState.cotacoesErro?`<div class="warnbox" style="margin-bottom:12px;">${escaparHtml(adminState.cotacoesErro)}</div>`:''}
+    <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">
+      <label class="field">Data inicial<input type="date" value="${escaparHtml(inicio)}" data-act="admin-propostas-data-inicio"></label>
+      <label class="field">Data final<input type="date" value="${escaparHtml(fim)}" data-act="admin-propostas-data-fim"></label>
+      <label class="field">Número da cotação<input type="text" placeholder="Ex.: COT-000123" value="${escaparHtml(adminState.filtroNumeroPropostas||'')}" data-act="admin-propostas-filtro-numero"></label>
+      <label class="field">Vendedor<select data-act="admin-propostas-filtro-vendedor"><option value="">Todos</option>${vendedores.map(v=>`<option value="${escaparHtml(v)}" ${vendedor===v?'selected':''}>${escaparHtml(v)}</option>`).join('')}</select></label>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Data</th><th>Número</th><th>Vendedor</th><th>Cliente</th><th>Produto</th><th>Frete</th><th>Pagamento</th><th>Valor</th><th>Status / resposta</th><th>Link</th></tr></thead>
+      <tbody>${filtradas.length?filtradas.map(p=>{
+        const reacao = p.reacaoCliente?.tipo ? REACOES_CLIENTE.find(x=>x.key===p.reacaoCliente.tipo) : null;
+        const link = p.token ? linkCotacaoPublica(p.token) : '';
+        const data = p.dataEmissao||p.criadoEm;
+        const cliente = p.clienteNome||p.clienteRazao||p.clienteCnpj||'—';
+        return `<tr>
+          <td>${data?new Date(data).toLocaleDateString('pt-BR'):'—'}</td>
+          <td class="mono">${escaparHtml(p.numeroCotacao||'—')}</td>
+          <td>${escaparHtml(p.vendedor||'—')}</td>
+          <td title="${escaparHtml([p.clienteCnpj,p.clienteEndereco].filter(Boolean).join(' · '))}">${escaparHtml(cliente)}${p.clienteFantasia?`<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">${escaparHtml(p.clienteFantasia)}</div>`:''}</td>
+          <td>${escaparHtml(p.modeloNome||'—')}</td>
+          <td>${FRETE_LABEL[p.modalidadeFrete]||'—'}</td>
+          <td>${PAGAMENTO_LABEL[p.metodoPagamento]||'—'}</td>
+          <td class="num">${money(p.precoFinal||0)}</td>
+          <td><span class="badge b-neutral">${STATUS_LABEL[p.status]||p.status||'Enviada'}</span>${reacao?`<div style="font-size:11px;margin-top:4px;" title="${escaparHtml(reacao.label+(p.reacaoCliente.comentario?' — '+p.reacaoCliente.comentario:''))}">${reacao.emoji} ${escaparHtml(reacao.label)}</div>`:''}</td>
+          <td>${link?`<div style="display:flex;gap:6px;flex-wrap:wrap;"><a class="btn btn-ghost btn-sm" href="${escaparHtml(link)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-ghost btn-sm" data-act="admin-cotacao-copiar" data-url="${escaparHtml(link)}">Copiar link</button></div>`:'<span style="color:var(--text-faint);">Link não disponível</span>'}</td>
+        </tr>`;
+      }).join(''):`<tr><td colspan="10" class="empty-hint">Nenhuma cotação encontrada para estes filtros.</td></tr>`}</tbody>
+    </table></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn btn-ghost btn-sm" data-act="admin-propostas-atualizar">Atualizar histórico</button></div>
   </div>`;
 }
 
@@ -3170,7 +3319,7 @@ function bindEvents(){
       switch(act){
         case 'tab': state.tab=val; break;
         case 'role': state.role=val; break;
-        case 'admin-tab': state.adminTab=val; break;
+        case 'admin-tab': state.adminTab=val; if(val==='propostas') carregarCotacoesServidor(); break;
         case 'pick-project': resetProjectState(val); break;
         case 'back-picker': state.projectId=null; break;
         case 'goto-step': state.step=parseInt(val); break;
@@ -3250,6 +3399,28 @@ function bindAdminEvents(){
 
   const filtroVend = document.querySelector('[data-act="admin-propostas-filtro-vendedor"]');
   if(filtroVend) filtroVend.addEventListener('change', e=>{ adminState.filtroVendedorPropostas=e.target.value; render(); });
+  const filtroInicio = document.querySelector('[data-act="admin-propostas-data-inicio"]');
+  if(filtroInicio) filtroInicio.addEventListener('change', e=>{ adminState.filtroDataInicioPropostas=e.target.value; render(); });
+  const filtroFim = document.querySelector('[data-act="admin-propostas-data-fim"]');
+  if(filtroFim) filtroFim.addEventListener('change', e=>{ adminState.filtroDataFimPropostas=e.target.value; render(); });
+  const filtroNumero = document.querySelector('[data-act="admin-propostas-filtro-numero"]');
+  if(filtroNumero) filtroNumero.addEventListener('input', e=>{
+    adminState.filtroNumeroPropostas=e.target.value;
+    clearTimeout(_renderDebounceTimer);
+    _renderDebounceTimer=setTimeout(renderPreservingFocus,250);
+  });
+  const atualizarCotacoes = document.querySelector('[data-act="admin-propostas-atualizar"]');
+  if(atualizarCotacoes) atualizarCotacoes.addEventListener('click', ()=>carregarCotacoesServidor());
+  document.querySelectorAll('[data-act="admin-cotacao-copiar"]').forEach(botao=>botao.addEventListener('click',async()=>{
+    const link=botao.dataset.url||'';
+    try{
+      if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
+      else window.prompt('Copie o link da cotação:',link);
+      const label=botao.textContent;
+      botao.textContent='Copiado';
+      setTimeout(()=>{if(botao.isConnected) botao.textContent=label;},1400);
+    }catch{window.prompt('Copie o link da cotação:',link);}
+  }));
 
   const custoFixoEl = document.querySelector('[data-act="config-custo-fixo"]');
   if(custoFixoEl) custoFixoEl.addEventListener('input', e=>{
@@ -3777,12 +3948,20 @@ function bindRealEvents(){
   if(realAdvanceBtn) realAdvanceBtn.addEventListener('click', ()=>{
     const order=['rascunho','pendente','aprovado','enviado'];
     const i=order.indexOf(REAL.orcamentoStatus);
+    if(i===order.length-2){ concluirOrcamentoEabrirCotacao(); return; }
     if(i<order.length-1) REAL.orcamentoStatus=order[i+1];
     salvarPropostaReal();
     render();
   });
+  const concluirCotacao = document.querySelector('[data-act="real-concluir-cotacao"]');
+  if(concluirCotacao) concluirCotacao.addEventListener('click', ()=>concluirOrcamentoEabrirCotacao());
   const realSalvarBtn = document.querySelector('[data-act="real-salvar-proposta"]');
   if(realSalvarBtn) realSalvarBtn.addEventListener('click', ()=>{
+    if(REAL.orcamentoStatus==='enviado'){
+      if(REAL.cotacaoLink){ window.open(REAL.cotacaoLink,'_blank','noopener'); return; }
+      concluirOrcamentoEabrirCotacao();
+      return;
+    }
     if(!dbApi){ alert('Sem banco disponível nesta visão — a proposta não pode ser salva na aba de Administração.'); return; }
     salvarPropostaReal();
     alert('Proposta salva — aparece em Administração > Propostas realizadas.');
@@ -3796,15 +3975,121 @@ function bindRealEvents(){
   bindNumberLive('[data-act="real-validade-dias"]', v=>{ REAL.validadeDias=parseInt(v)||20; });
 }
 
+let cotacaoPublicaAtual = null;
+let respostaPublicaSelecionada = null;
+let comentarioRespostaPublica = '';
+
+function renderCotacaoPublica(mensagemErro=''){
+  const root=document.getElementById('shell');
+  if(mensagemErro){
+    root.innerHTML=`<div class="card" style="max-width:760px;margin:48px auto;"><h2>Não foi possível abrir a cotação</h2><p style="margin-top:8px;color:var(--text-dim);">${escaparHtml(mensagemErro)}</p></div>`;
+    return;
+  }
+  const p=cotacaoPublicaAtual;
+  if(!p){
+    root.innerHTML='<div class="card" style="max-width:760px;margin:48px auto;">Carregando cotação…</div>';
+    return;
+  }
+  const emissao=new Date(p.dataEmissao);
+  const validade=new Date(emissao.getTime()+(p.validadeDias||20)*86400000);
+  const reacao=p.reacaoCliente?.tipo?REACOES_CLIENTE.find(x=>x.key===p.reacaoCliente.tipo):null;
+  root.innerHTML=`
+    <div style="max-width:900px;margin:22px auto 48px;">
+      <div class="brand" style="margin:8px 0 18px;"><div class="mark" style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;">R</div><div><div class="brand-name">Radrasys · Cotação</div><div class="brand-sub">Link interativo para o cliente</div></div></div>
+      <div class="cliente-hero">
+        <div class="badge b-accent" style="margin-bottom:10px;">${escaparHtml(p.numero)}</div>
+        <h1 style="font-size:24px;">${escaparHtml(p.modeloNome)}</h1>
+        <p style="font-size:13px;color:var(--text-dim);margin:8px 0;">Cotação para ${escaparHtml(p.cliente.razao||p.cliente.fantasia||'você')} · emitida em ${emissao.toLocaleDateString('pt-BR')} · válida até ${validade.toLocaleDateString('pt-BR')}</p>
+        ${p.cliente.cnpj?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>${rotuloDocumento(p.cliente.cnpj)}:</b> ${escaparHtml(p.cliente.cnpj)}</p>`:''}
+        ${p.cliente.fantasia?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Nome fantasia:</b> ${escaparHtml(p.cliente.fantasia)}</p>`:''}
+        ${p.cliente.endereco?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Endereço:</b> ${escaparHtml(p.cliente.endereco)}</p>`:''}
+        <div class="cliente-preco" style="margin-top:14px;">${money(p.precoFinal)}</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;">
+          ${p.modalidadeFrete?`<span class="badge b-accent">${FRETE_LABEL[p.modalidadeFrete]||p.modalidadeFrete}</span>`:''}
+          ${p.metodoPagamento?`<span class="badge b-accent">${PAGAMENTO_LABEL[p.metodoPagamento]||p.metodoPagamento}</span>`:''}
+          ${p.prazoDiasUteis!=null?`<span class="badge b-neutral">${p.prazoDiasUteis} dias úteis</span>`:''}
+          ${p.areaM2!=null?`<span class="badge b-neutral">${p.areaM2.toLocaleString('pt-BR',{maximumFractionDigits:2})} m²</span>`:''}
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="cardhead"><div><h3>${reacao?'Sua resposta':'O que você achou da cotação?'}</h3><p>${reacao?escaparHtml(reacao.label):'Escolha uma opção e, se quiser, deixe um comentário para o vendedor.'}</p></div></div>
+        ${reacao?`
+          ${p.reacaoCliente.comentario?`<p style="font-style:italic;color:var(--text-dim);">“${escaparHtml(p.reacaoCliente.comentario)}”</p>`:''}
+          <div class="role-note">Respondido em ${new Date(p.reacaoCliente.respondidoEm).toLocaleString('pt-BR')}</div>
+          <button class="btn btn-ghost btn-sm" data-act="publica-alterar-resposta">Alterar resposta</button>
+        `:`
+          <div class="reacoes-grid">${REACOES_CLIENTE.map(rc=>`<button type="button" class="reacao-card cor-${rc.cor}" data-act="publica-escolher-resposta" data-val="${rc.key}" aria-pressed="false"><span class="emoji">${rc.emoji}</span><span class="txt">${escaparHtml(rc.label)}</span></button>`).join('')}</div>
+          <label class="field" style="margin-top:16px;">Comentário (opcional)
+            <textarea data-act="publica-comentario" rows="3" style="width:100%;resize:vertical;font-family:inherit;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);" placeholder="Escreva aqui para complementar sua resposta">${escaparHtml(comentarioRespostaPublica)}</textarea>
+          </label>
+          <div class="footer-nav"><span></span><button class="btn btn-primary" data-act="publica-enviar-resposta" ${respostaPublicaSelecionada?'':'disabled'}>${ICONS.check} Enviar resposta</button></div>
+        `}
+      </div>
+      <p style="text-align:center;color:var(--text-faint);font-size:11px;margin-top:14px;">Vendedor responsável: ${escaparHtml(p.vendedor)}</p>
+    </div>`;
+  root.querySelectorAll('[data-act="publica-escolher-resposta"]').forEach(botao=>botao.addEventListener('click',()=>{
+    respostaPublicaSelecionada=botao.dataset.val;
+    root.querySelectorAll('[data-act="publica-escolher-resposta"]').forEach(outro=>{
+      const selecionado=outro===botao;
+      outro.setAttribute('aria-pressed',String(selecionado));
+      outro.style.borderColor=selecionado?'var(--accent)':'';
+      outro.style.background=selecionado?'var(--accent-soft)':'';
+    });
+    const enviar=root.querySelector('[data-act="publica-enviar-resposta"]');
+    if(enviar) enviar.disabled=false;
+  }));
+  const comentario=root.querySelector('[data-act="publica-comentario"]');
+  if(comentario) comentario.addEventListener('input',e=>{comentarioRespostaPublica=e.target.value;});
+  const enviar=root.querySelector('[data-act="publica-enviar-resposta"]');
+  if(enviar) enviar.addEventListener('click',async()=>{
+    if(!respostaPublicaSelecionada) return;
+    enviar.disabled=true;
+    try{
+      const response=await fetch('/api/letra-caixa/cotacoes/'+encodeURIComponent(new URLSearchParams(location.search).get('cotacao'))+'/resposta',{
+        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({tipo:respostaPublicaSelecionada,comentario:comentarioRespostaPublica}),
+      });
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(body.error||'Não foi possível enviar a resposta.');
+      cotacaoPublicaAtual.reacaoCliente=body.reacaoCliente;
+      renderCotacaoPublica();
+    }catch(error){alert(error.message||'Não foi possível enviar a resposta.');enviar.disabled=false;}
+  });
+  const alterar=root.querySelector('[data-act="publica-alterar-resposta"]');
+  if(alterar) alterar.addEventListener('click',()=>{
+    comentarioRespostaPublica=p.reacaoCliente?.comentario||'';
+    respostaPublicaSelecionada=null;
+    cotacaoPublicaAtual.reacaoCliente=null;
+    renderCotacaoPublica();
+  });
+}
+
+async function iniciarCotacaoPublica(token){
+  renderCotacaoPublica();
+  try{
+    const response=await fetch('/api/letra-caixa/cotacoes/'+encodeURIComponent(token),{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Link inválido ou cotação não encontrada.');
+    cotacaoPublicaAtual=body;
+    renderCotacaoPublica();
+  }catch(error){renderCotacaoPublica(error.message||'Não foi possível abrir a cotação.');}
+}
+
 /* start-real precisa de handler mesmo fora do modo 'real' (está na tela demo/picker) */
 document.addEventListener('click', (e)=>{
   const el = e.target.closest('[data-act="start-real"]');
   if(el){ state.mode='real'; REAL=novaProposta(); render(); }
 });
 
-render();
-loadCatalog();
-initDb();
+const tokenCotacaoPublica=new URLSearchParams(window.location.search).get('cotacao');
+if(tokenCotacaoPublica){
+  document.title='Cotação do Estúdio · Radrasys';
+  iniciarCotacaoPublica(tokenCotacaoPublica);
+}else{
+  render();
+  loadCatalog();
+  initDb();
+}
 </script>
 
 </body></html>

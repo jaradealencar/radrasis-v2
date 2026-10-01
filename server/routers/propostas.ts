@@ -17,6 +17,8 @@ function gerarToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
+const PREFIXO_COTACAO_ESTUDIO = "[ESTUDIO_COTACAO_V1]";
+
 function calcularTotal(itens: { ativo: boolean; precoUnitario: string; quantidade: string }[]): number {
   return itens
     .filter((i) => i.ativo)
@@ -60,7 +62,8 @@ export const propostasRouter = router({
   listar: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
-    const lista = await db.select().from(propostas).orderBy(desc(propostas.createdAt));
+    const lista = (await db.select().from(propostas).orderBy(desc(propostas.createdAt)))
+      .filter((proposta) => !proposta.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO));
     const resultado = [];
     for (const p of lista) {
       const itens = await db
@@ -78,7 +81,7 @@ export const propostasRouter = router({
       const db = await getDb();
       if (!db) return null;
       const [proposta] = await db.select().from(propostas).where(eq(propostas.id, input.id));
-      if (!proposta) return null;
+      if (!proposta || proposta.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) return null;
       const itens = await carregarItensComProduto(db, input.id);
       return {
         proposta,
