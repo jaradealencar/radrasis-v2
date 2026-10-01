@@ -366,9 +366,10 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   e o número da cotação preenchidos, sem enviar a mensagem automaticamente.
   Em Administração > Configurações, formas de pagamento e as taxas totais do
   cartão por plano (1x a 6x) ficam em `config/geral`. Cada cotação salva um
-  snapshot das opções e taxas: o link começa em PIX, permite simular cartão,
-  boleto e TED/DOC conforme habilitados, e inclui a condição escolhida na
-  mensagem do WhatsApp e na resposta registrada para o vendedor.
+  snapshot das opções e taxas: o link começa em PIX dividido em duas partes
+  iguais (50% + 50%), permite simular cartão, boleto e TED/DOC conforme
+  habilitados, e inclui a condição escolhida na mensagem do WhatsApp e na
+  resposta registrada para o vendedor.
   O catálogo do Estúdio deriva um SKU Radrasys determinístico do ID MubiSys de
   cada produto (`SKU-000123`) e compõe um SKU de modelo com o ID da variante
   (`SKU-000123-M007`); os dois aparecem no fluxo e podem ser buscados na

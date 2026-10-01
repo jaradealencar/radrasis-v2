@@ -2528,7 +2528,7 @@ function realStepOrcamento(){
           </select>
         </label>
         <div class="field" style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-dim);font-weight:600;">Forma de pagamento inicial
-          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:13px;color:var(--text);font-weight:400;">PIX</div>
+          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:13px;color:var(--text);font-weight:400;">${PAGAMENTO_LABEL.pix}</div>
         </div>
         <label class="field">Validade da proposta (dias)
           <input type="text" inputmode="numeric" value="${REAL.validadeDias}" data-act="real-validade-dias">
@@ -2928,7 +2928,7 @@ function renderAdmin(){
 }
 
 const FRETE_LABEL = {FOB:'FOB', CIF:'CIF', retira:'Cliente retira', entrega:'Entrega'};
-const PAGAMENTO_LABEL = {boleto:'Boleto', cartao:'Cartão de crédito', pix:'PIX', ted:'TED/DOC'};
+const PAGAMENTO_LABEL = {boleto:'Boleto', cartao:'Cartão de crédito', pix:'PIX · 50% + 50%', ted:'TED/DOC'};
 
 function adminPropostasReais(){
   const lista = Object.entries(propostasReais).map(([id,d])=>({id, ...d}));
@@ -3051,9 +3051,9 @@ function adminConfiguracoes(){
     </label>
   </div>
   <div class="card">
-    <div class="cardhead"><div><h3>Formas de pagamento</h3><p>As cotações novas são enviadas com PIX como condição inicial. O cliente pode simular outra opção no link.</p></div></div>
+    <div class="cardhead"><div><h3>Formas de pagamento</h3><p>As cotações novas são enviadas com PIX dividido em 50% + 50% como condição inicial. O cliente pode simular outra opção no link.</p></div></div>
     <div style="display:flex;flex-wrap:wrap;gap:10px 18px;margin-bottom:16px;">
-      <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" checked disabled> PIX (sempre disponível)</label>
+      <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" checked disabled> PIX · 50% + 50% (sempre disponível)</label>
       <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" data-act="config-pagamento-forma" data-forma="cartao" ${configGeral.formasPagamento.cartao?'checked':''}> Cartão de crédito</label>
       <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" data-act="config-pagamento-forma" data-forma="boleto" ${configGeral.formasPagamento.boleto?'checked':''}> Boleto</label>
       <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" data-act="config-pagamento-forma" data-forma="ted" ${configGeral.formasPagamento.ted?'checked':''}> TED/DOC</label>
@@ -4078,6 +4078,12 @@ let comentarioRespostaPublica = '';
 let formaPagamentoPublica = 'pix';
 let parcelasCartaoPublica = 1;
 
+function dividirValorPix(valor){
+  const primeira=Math.round((Number(valor)||0)*50)/100;
+  const total=Math.round((Number(valor)||0)*100)/100;
+  return {primeira,segunda:Math.round((total-primeira)*100)/100};
+}
+
 function calcularPagamentoPublico(p){
   const formasValidas=['pix','cartao','boleto','ted'];
   const configuradas=Array.isArray(p?.formasPagamentoPermitidas)?p.formasPagamentoPermitidas.filter(f=>formasValidas.includes(f)):formasValidas;
@@ -4088,7 +4094,8 @@ function calcularPagamentoPublico(p){
   const taxa=forma==='cartao'?Math.max(0,Math.min(100,Number(taxas[parcelas-1])||0)):0;
   const base=Number(p?.precoFinal)||0;
   const total=base*(1+taxa/100);
-  return {permitidas,forma,parcelas,taxa,base,total,valorParcela:total/parcelas};
+  const splitPix=dividirValorPix(base);
+  return {permitidas,forma,parcelas,taxa,base,total,valorParcela:total/parcelas,...splitPix};
 }
 
 function abrirWhatsAppRespostaPublica(tipo, comentario){
@@ -4100,7 +4107,7 @@ function abrirWhatsAppRespostaPublica(tipo, comentario){
   const linhas=[
     `Olá, ${p.vendedor}! Sou ${cliente} e estou retornando sobre a cotação ${p.numero} (${p.modeloNome}).`,
     `Minha resposta: ${reacao.label}`,
-    `Forma de pagamento simulada: ${PAGAMENTO_LABEL[pagamento.forma]}${pagamento.forma==='cartao'?` em ${pagamento.parcelas}x de ${money(pagamento.valorParcela)} (total ${money(pagamento.total)}, taxa ${fmt(pagamento.taxa,2)}%)`:''}.`,
+    `Forma de pagamento simulada: ${PAGAMENTO_LABEL[pagamento.forma]}${pagamento.forma==='cartao'?` em ${pagamento.parcelas}x de ${money(pagamento.valorParcela)} (total ${money(pagamento.total)}, taxa ${fmt(pagamento.taxa,2)}%)`:pagamento.forma==='pix'?` em duas partes: ${money(pagamento.primeira)} + ${money(pagamento.segunda)}`:''}.`,
     `Cotação: ${window.location.href}`,
   ];
   if(comentario?.trim()) linhas.push(`Complemento: ${comentario.trim()}`);
@@ -4140,7 +4147,7 @@ function renderCotacaoPublica(mensagemErro=''){
         ${p.cliente.email?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>E-mail:</b> ${escaparHtml(p.cliente.email)}</p>`:''}
         ${p.cliente.whatsapp?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>WhatsApp:</b> ${escaparHtml(p.cliente.whatsapp)}</p>`:''}
         <div class="cliente-preco" style="margin-top:14px;">${money(pagamento.total)}</div>
-        <div style="font-size:12px;color:var(--text-dim);">${pagamento.forma==='cartao'?`${pagamento.parcelas}x de ${money(pagamento.valorParcela)} no cartão · taxa de ${fmt(pagamento.taxa,2)}%`: `Valor em ${PAGAMENTO_LABEL[pagamento.forma]}`}</div>
+        <div style="font-size:12px;color:var(--text-dim);">${pagamento.forma==='cartao'?`${pagamento.parcelas}x de ${money(pagamento.valorParcela)} no cartão · taxa de ${fmt(pagamento.taxa,2)}%`:pagamento.forma==='pix'?`PIX em duas partes iguais (50% + 50%): ${money(pagamento.primeira)} + ${money(pagamento.segunda)}`:`Valor em ${PAGAMENTO_LABEL[pagamento.forma]}`}</div>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;">
           ${p.modalidadeFrete?`<span class="badge b-accent">${FRETE_LABEL[p.modalidadeFrete]||p.modalidadeFrete}</span>`:''}
           ${p.prazoDiasUteis!=null?`<span class="badge b-neutral">${p.prazoDiasUteis} dias úteis</span>`:''}
@@ -4148,7 +4155,7 @@ function renderCotacaoPublica(mensagemErro=''){
         </div>
       </div>
       <div class="card" style="margin-top:14px;">
-        <div class="cardhead"><div><h3>Forma de pagamento</h3><p>Valor base da cotação no PIX: <b>${money(pagamento.base)}</b>. Selecione outra forma para simular.</p></div></div>
+        <div class="cardhead"><div><h3>Forma de pagamento</h3><p>O PIX é dividido em duas partes iguais (50% + 50%) sobre a cotação de <b>${money(pagamento.base)}</b>. Selecione outra forma para simular.</p></div></div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
           ${pagamento.permitidas.map(forma=>`<button type="button" class="btn ${pagamento.forma===forma?'btn-primary':'btn-ghost'}" data-act="publica-forma-pagamento" data-val="${forma}" aria-pressed="${pagamento.forma===forma}">${PAGAMENTO_LABEL[forma]}</button>`).join('')}
         </div>
@@ -4172,7 +4179,7 @@ function renderCotacaoPublica(mensagemErro=''){
         ${!reacao && !p.whatsappVendedor?'<p class="role-note">O WhatsApp do vendedor ainda não foi cadastrado. Depois de abrir, escolha o contato do vendedor.</p>':''}
         ${reacao?`
           ${p.reacaoCliente.comentario?`<p style="font-style:italic;color:var(--text-dim);">“${escaparHtml(p.reacaoCliente.comentario)}”</p>`:''}
-          ${p.reacaoCliente.formaPagamento?`<p class="role-note">Forma simulada: ${PAGAMENTO_LABEL[p.reacaoCliente.formaPagamento]||p.reacaoCliente.formaPagamento}${p.reacaoCliente.formaPagamento==='cartao'?` em ${p.reacaoCliente.parcelasCartao||1}x · total ${money(p.reacaoCliente.valorPagamento??p.precoFinal)}`:''}</p>`:''}
+          ${p.reacaoCliente.formaPagamento?`<p class="role-note">Forma simulada: ${PAGAMENTO_LABEL[p.reacaoCliente.formaPagamento]||p.reacaoCliente.formaPagamento}${p.reacaoCliente.formaPagamento==='cartao'?` em ${p.reacaoCliente.parcelasCartao||1}x · total ${money(p.reacaoCliente.valorPagamento??p.precoFinal)}`:p.reacaoCliente.formaPagamento==='pix'?` · 2 partes: ${money(dividirValorPix(p.reacaoCliente.valorPagamento??p.precoFinal).primeira)} + ${money(dividirValorPix(p.reacaoCliente.valorPagamento??p.precoFinal).segunda)}`:''}</p>`:''}
           <div class="role-note">Respondido em ${new Date(p.reacaoCliente.respondidoEm).toLocaleString('pt-BR')}</div>
           <button class="btn btn-ghost btn-sm" data-act="publica-alterar-resposta">Alterar resposta</button>
         `:`
