@@ -80,6 +80,9 @@ export default function PropostaPublica() {
               <div key={item.id} className={`py-3 flex items-center justify-between gap-3 ${!item.ativo ? "opacity-50" : ""}`}>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{item.produtoNome}</p>
+                  {item.descricao?.trim() && (
+                    <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{item.descricao}</p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {Number(item.quantidade)}x {fmtBrl(Number(item.precoUnitario))}
                     {item.prazoFabricacaoDiasUteis != null && ` · ${item.prazoFabricacaoDiasUteis} dias úteis`}

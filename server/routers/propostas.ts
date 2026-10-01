@@ -37,6 +37,7 @@ async function carregarItensComProduto(db: NonNullable<Awaited<ReturnType<typeof
       id: propostaItens.id,
       produtoId: propostaItens.produtoId,
       produtoNome: propostaItens.produtoNome,
+      descricao: propostaItens.descricao,
       quantidade: propostaItens.quantidade,
       precoUnitario: propostaItens.precoUnitario,
       ativo: propostaItens.ativo,
@@ -188,6 +189,7 @@ export const propostasRouter = router({
         produtoId: z.number(),
         quantidade: z.number().min(0.0001).default(1),
         precoUnitario: z.number().min(0),
+        descricao: z.string().max(5000).optional().default(""),
       }),
     )
     .mutation(async ({ input }) => {
@@ -205,6 +207,7 @@ export const propostasRouter = router({
           propostaId: input.propostaId,
           produtoId: input.produtoId,
           produtoNome: produto.nome,
+          descricao: input.descricao,
           quantidade: String(input.quantidade),
           precoUnitario: String(input.precoUnitario),
           ordem: existentes.length,
@@ -214,13 +217,22 @@ export const propostasRouter = router({
     }),
 
   itemAtualizar: protectedProcedure
-    .input(z.object({ id: z.number(), quantidade: z.number().min(0.0001), precoUnitario: z.number().min(0) }))
+    .input(z.object({
+      id: z.number(),
+      quantidade: z.number().min(0.0001),
+      precoUnitario: z.number().min(0),
+      descricao: z.string().max(5000).optional(),
+    }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
       await db
         .update(propostaItens)
-        .set({ quantidade: String(input.quantidade), precoUnitario: String(input.precoUnitario) })
+        .set({
+          quantidade: String(input.quantidade),
+          precoUnitario: String(input.precoUnitario),
+          ...(input.descricao !== undefined ? { descricao: input.descricao } : {}),
+        })
         .where(eq(propostaItens.id, input.id));
       return { success: true };
     }),

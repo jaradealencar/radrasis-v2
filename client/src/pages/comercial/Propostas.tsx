@@ -423,6 +423,7 @@ function ItensProposta({
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState("");
   const [quantidade, setQuantidade] = useState("1");
   const [precoUnitario, setPrecoUnitario] = useState("");
+  const [descricoes, setDescricoes] = useState<Record<number, string>>({});
 
   const { data: produtoDetalhe } = trpc.produtos.obter.useQuery(
     { id: Number(produtoSelecionadoId) },
@@ -448,6 +449,11 @@ function ItensProposta({
   const remover = trpc.propostas.itemRemover.useMutation({
     onSuccess: () => utils.propostas.obter.invalidate({ id: propostaId }),
     onError: (e) => toast.error("Erro ao remover", { description: e.message }),
+  });
+
+  const atualizarItem = trpc.propostas.itemAtualizar.useMutation({
+    onSuccess: () => utils.propostas.obter.invalidate({ id: propostaId }),
+    onError: (e) => toast.error("Erro ao salvar a descrição", { description: e.message }),
   });
 
   const opcoes = (produtosCadastrados ?? []).filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()));
@@ -503,6 +509,7 @@ function ItensProposta({
             <TableHeader>
               <TableRow>
                 <TableHead>Produto</TableHead>
+                <TableHead>Descrição para a cotação</TableHead>
                 <TableHead>Qtd</TableHead>
                 <TableHead>Preço unit.</TableHead>
                 <TableHead>Subtotal</TableHead>
@@ -515,6 +522,29 @@ function ItensProposta({
               {itens.map((item) => (
                 <TableRow key={item.id} className={!item.ativo ? "opacity-50" : ""}>
                   <TableCell className="font-medium">{item.produtoNome}</TableCell>
+                  <TableCell className="min-w-64">
+                    <Textarea
+                      rows={2}
+                      maxLength={5000}
+                      value={descricoes[item.id] ?? item.descricao ?? ""}
+                      onChange={(e) => setDescricoes((atual) => ({ ...atual, [item.id]: e.target.value }))}
+                      onBlur={(e) => {
+                        const descricao = e.target.value;
+                        if (descricao !== (item.descricao ?? "")) {
+                          atualizarItem.mutate({
+                            id: item.id,
+                            quantidade: Number(item.quantidade),
+                            precoUnitario: Number(item.precoUnitario),
+                            descricao,
+                          });
+                        }
+                      }}
+                      placeholder="Descreva este produto para o cliente"
+                      aria-label={`Descrição para ${item.produtoNome}`}
+                      disabled={atualizarItem.isPending}
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">Salva ao sair do campo</p>
+                  </TableCell>
                   <TableCell>{Number(item.quantidade)}</TableCell>
                   <TableCell>{fmtBrl(Number(item.precoUnitario))}</TableCell>
                   <TableCell>{fmtBrl(Number(item.precoUnitario) * Number(item.quantidade))}</TableCell>

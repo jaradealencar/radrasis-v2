@@ -387,6 +387,8 @@ export const propostaItens = pgTable("proposta_itens", {
   propostaId: integer("propostaId").notNull().references(() => propostas.id, { onDelete: "cascade" }),
   produtoId: integer("produtoId").notNull().references(() => produtos.id),
   produtoNome: varchar("produtoNome", { length: 256 }).notNull(),
+  // Texto livre do vendedor sobre este item, exibido na cotação pública e no PDF.
+  descricao: text("descricao").notNull().default(""),
   quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("1"),
   precoUnitario: decimal("precoUnitario", { precision: 12, scale: 2 }).notNull().default("0"),
   ativo: boolean("ativo").notNull().default(true),

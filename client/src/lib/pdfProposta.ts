@@ -6,7 +6,7 @@ export interface PropostaParaPdf {
   clienteNome: string;
   vendedorNome: string;
   createdAt: Date | string;
-  itens: { produtoNome: string; quantidade: string | number; precoUnitario: string | number; ativo: boolean }[];
+  itens: { produtoNome: string; descricao?: string | null; quantidade: string | number; precoUnitario: string | number; ativo: boolean }[];
   valorTotal: number;
   prazoFabricacaoDiasUteis: number | null;
   formasPagamento: string[];
@@ -32,7 +32,7 @@ export function gerarPdfProposta(p: PropostaParaPdf) {
     startY: 50,
     head: [["Produto", "Qtd", "Preço unit.", "Subtotal"]],
     body: itensAtivos.map((i) => [
-      i.produtoNome,
+      i.descricao?.trim() ? `${i.produtoNome}\n${i.descricao}` : i.produtoNome,
       String(Number(i.quantidade)),
       fmtBrl(Number(i.precoUnitario)),
       fmtBrl(Number(i.precoUnitario) * Number(i.quantidade)),

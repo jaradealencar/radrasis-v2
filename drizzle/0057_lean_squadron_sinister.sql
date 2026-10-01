@@ -1,0 +1,1 @@
+ALTER TABLE "proposta_itens" ADD COLUMN "descricao" text DEFAULT '' NOT NULL;

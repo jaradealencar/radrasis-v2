@@ -611,7 +611,7 @@ function novaProposta(){
     consultaCnpj:{status:'idle', mensagem:''},
     vendedor:'',
     escopoRedesenho:'somente_logo', elementosSelecionados:'',
-    produtoId:null, modeloId:null, modeloNome:null,
+    produtoId:null, modeloId:null, modeloNome:null, descricaoProduto:'',
     sourceKind:null, // 'raster' | 'vetor' — define qual caminho de processamento
     uploadError:null, uploadWarning:null, gerandoRedesenho:false,
     imgOriginal:null, imgReconstructed:null, imgPreview:null,
@@ -2535,6 +2535,11 @@ function realStepOrcamento(){
       </div>
       <p style="font-size:11.5px; color:var(--text-faint); margin-top:8px;">Válida até ${dataValidade.toLocaleDateString('pt-BR')} (emitida ${dataEmissao.toLocaleDateString('pt-BR')} + ${REAL.validadeDias||20} dias).</p>
     </div>
+    <div class="card" style="background:var(--surface-2); box-shadow:none; margin-bottom:12px;">
+      <label class="field" style="font-size:13px;color:var(--text);">Descrição do produto para o cliente
+        <textarea data-act="real-descricao-produto" rows="3" maxlength="5000" placeholder="Descreva o produto, acabamento, dimensões ou detalhes combinados com o cliente" style="width:100%;resize:vertical;font-family:inherit;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:400;">${escaparHtml(REAL.descricaoProduto||'')}</textarea>
+      </label>
+    </div>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Linha</th><th>Qtd.</th><th>Custo unit.</th><th>Subtotal</th></tr></thead>
@@ -2658,6 +2663,7 @@ function snapshotCotacaoReal(){
     },
     vendedor:REAL.vendedor || '',
     modeloNome:REAL.modeloNome || '',
+    descricaoProduto:REAL.descricaoProduto || '',
     areaM2:Number.isFinite(g.areaM2) ? g.areaM2 : null,
     areaGeralM2:Number.isFinite(g.areaGeralM2) ? g.areaGeralM2 : null,
     precoFinal:o.precoFinal,
@@ -3817,10 +3823,12 @@ function bindRealEvents(){
     render();
   });
   const produtoEl = document.querySelector('[data-act="real-produto"]');
-  if(produtoEl) produtoEl.addEventListener('change', e=>{ REAL.produtoId=parseInt(e.target.value)||null; REAL.modeloId=null; REAL.modeloNome=null; render(); });
+  if(produtoEl) produtoEl.addEventListener('change', e=>{ REAL.produtoId=parseInt(e.target.value)||null; REAL.modeloId=null; REAL.modeloNome=null; REAL.descricaoProduto=''; render(); });
   const modeloEl = document.querySelector('[data-act="real-modelo"]');
   if(modeloEl) modeloEl.addEventListener('change', e=>{
-    REAL.modeloId=parseInt(e.target.value)||null;
+    const novoModeloId=parseInt(e.target.value)||null;
+    if(REAL.modeloId!==novoModeloId) REAL.descricaoProduto='';
+    REAL.modeloId=novoModeloId;
     const prod = catalog.produtos.find(p=>p.id===REAL.produtoId);
     const mod = prod && prod.modelos.find(m=>m.id===REAL.modeloId);
     REAL.modeloNome = mod ? (prod.nome+' — '+mod.nome) : null;
@@ -3970,6 +3978,8 @@ function bindRealEvents(){
   if(realNovaVersaoBtn) realNovaVersaoBtn.addEventListener('click', ()=>{ criarNovaVersao(); });
   const freteEl = document.querySelector('[data-act="real-frete"]');
   if(freteEl) freteEl.addEventListener('change', e=>{ REAL.modalidadeFrete=e.target.value||null; render(); });
+  const descricaoProdutoEl = document.querySelector('[data-act="real-descricao-produto"]');
+  if(descricaoProdutoEl) descricaoProdutoEl.addEventListener('input', e=>{ REAL.descricaoProduto=e.target.value; });
   const metodoPagEl = document.querySelector('[data-act="real-metodo-pagamento"]');
   if(metodoPagEl) metodoPagEl.addEventListener('change', e=>{ REAL.metodoPagamento=e.target.value||null; render(); });
   bindNumberLive('[data-act="real-validade-dias"]', v=>{ REAL.validadeDias=parseInt(v)||20; });
@@ -3999,6 +4009,7 @@ function renderCotacaoPublica(mensagemErro=''){
       <div class="cliente-hero">
         <div class="badge b-accent" style="margin-bottom:10px;">${escaparHtml(p.numero)}</div>
         <h1 style="font-size:24px;">${escaparHtml(p.modeloNome)}</h1>
+        ${p.descricaoProduto?`<div style="max-width:680px;margin:12px auto 0;text-align:left;"><p style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-faint);margin-bottom:4px;">Descrição do produto</p><p style="font-size:13px;white-space:pre-wrap;line-height:1.55;">${escaparHtml(p.descricaoProduto)}</p></div>`:''}
         <p style="font-size:13px;color:var(--text-dim);margin:8px 0;">Cotação para ${escaparHtml(p.cliente.razao||p.cliente.fantasia||'você')} · emitida em ${emissao.toLocaleDateString('pt-BR')} · válida até ${validade.toLocaleDateString('pt-BR')}</p>
         ${p.cliente.cnpj?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>${rotuloDocumento(p.cliente.cnpj)}:</b> ${escaparHtml(p.cliente.cnpj)}</p>`:''}
         ${p.cliente.fantasia?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Nome fantasia:</b> ${escaparHtml(p.cliente.fantasia)}</p>`:''}
