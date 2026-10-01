@@ -577,6 +577,8 @@ async function consultarDadosCnpj(cnpj){
     REAL.cliente.razao = String(dados.razao_social||'');
     REAL.cliente.fantasia = String(dados.nome_fantasia||'');
     REAL.cliente.endereco = montarEnderecoCnpj(dados);
+    // E-mail e WhatsApp são informados pelo vendedor: não importar os contatos
+    // que a API de CNPJ eventualmente retorne.
     REAL.cliente.cnpjConsultado = cnpj;
     REAL.consultaCnpj = {status:'success', mensagem:'Dados encontrados. Confira as informações antes de iniciar a proposta.'};
   }catch(erro){
@@ -607,7 +609,7 @@ function novaProposta(){
     // Filtro de categoria/subcategoria/tipo no passo 1 — pedido do usuário
     // 28/09/2026: escolher a categoria ANTES do produto, pra reduzir a lista.
     filtroCategoria:null, filtroSubcategoria:null, filtroTipo:null,
-    cliente:{ cnpj:'', razao:'', fantasia:'', endereco:'', cnpjConsultado:'' },
+    cliente:{ cnpj:'', razao:'', fantasia:'', endereco:'', email:'', whatsapp:'', cnpjConsultado:'' },
     consultaCnpj:{status:'idle', mensagem:''},
     vendedor:'',
     escopoRedesenho:'somente_logo', elementosSelecionados:'',
@@ -1866,6 +1868,10 @@ function realStepProposta(){
       <label class="field">Endereço da empresa<input type="text" placeholder="Preenchido automaticamente pelo CNPJ" value="${escaparHtml(REAL.cliente.endereco)}" data-act="real-endereco"></label>
     </div>
     <div class="grid2" style="margin-top:12px;">
+      <label class="field">E-mail do cliente (informado manualmente)<input type="email" inputmode="email" autocomplete="email" placeholder="cliente@empresa.com.br" value="${escaparHtml(REAL.cliente.email)}" data-act="real-email"></label>
+      <label class="field">WhatsApp do cliente (informado manualmente)<input type="tel" inputmode="tel" autocomplete="tel" placeholder="(67) 99999-9999" value="${escaparHtml(REAL.cliente.whatsapp)}" data-act="real-whatsapp"></label>
+    </div>
+    <div class="grid2" style="margin-top:12px;">
       <label class="field">Vendedor
         <select data-act="real-vendedor">
           <option value="">${configGeral.vendedores.length?'Selecione…':'Cadastre vendedores em Administração'}</option>
@@ -1919,7 +1925,7 @@ function realStepProposta(){
         </div>
       </div>
     </div>` : ''}
-    <div class="role-note" style="margin-top:10px;">${ICONS.info} Para CNPJ, a BrasilAPI consulta dados públicos e preenche razão social, nome fantasia e endereço. Para CPF, o navegador confere os dígitos verificadores sem enviar o número a uma API; o nome pode ser informado manualmente.</div>
+    <div class="role-note" style="margin-top:10px;">${ICONS.info} Para CNPJ, a BrasilAPI consulta razão social, nome fantasia e endereço. O e-mail e o WhatsApp são preenchidos por você e não vêm da API. Para CPF, o navegador confere os dígitos verificadores sem enviar o número a uma API; o nome pode ser informado manualmente.</div>
     <div class="footer-nav">
       <div></div>
       <button class="btn btn-primary" data-act="real-approve" data-val="proposta" ${podeAvancar?'':'disabled'}>${ICONS.check} Iniciar proposta</button>
@@ -2670,6 +2676,8 @@ function snapshotCotacaoReal(){
       razao:REAL.cliente.razao || null,
       fantasia:REAL.cliente.fantasia || null,
       endereco:REAL.cliente.endereco || null,
+      email:String(REAL.cliente.email||'').trim() || null,
+      whatsapp:String(REAL.cliente.whatsapp||'').trim() || null,
     },
     vendedor:REAL.vendedor || '',
     whatsappVendedor:normalizarTelefoneWhatsApp(configGeral.whatsappVendedores[REAL.vendedor]) || null,
@@ -2865,6 +2873,7 @@ function salvarPropostaReal(){
     modalidadeFrete: REAL.modalidadeFrete, metodoPagamento: REAL.metodoPagamento,
     clienteCnpj: REAL.cliente.cnpj, clienteRazao: REAL.cliente.razao,
     clienteFantasia: REAL.cliente.fantasia, clienteEndereco: REAL.cliente.endereco,
+    clienteEmail: REAL.cliente.email, clienteWhatsapp: REAL.cliente.whatsapp,
     vendedor: REAL.vendedor||'', modeloNome: REAL.modeloNome||'',
     prazoDiasUteis: kitPronto ? kitPronto.prazoDiasUteis??null : null,
     custoDireto: o.custoDireto, precoFinal: o.precoFinal, margin: o.margin,
@@ -3877,6 +3886,10 @@ function bindRealEvents(){
   if(fantasiaEl) fantasiaEl.addEventListener('input', e=>{ REAL.cliente.fantasia=e.target.value; renderPreservingFocus(); });
   const enderecoEl = document.querySelector('[data-act="real-endereco"]');
   if(enderecoEl) enderecoEl.addEventListener('input', e=>{ REAL.cliente.endereco=e.target.value; renderPreservingFocus(); });
+  const emailClienteEl = document.querySelector('[data-act="real-email"]');
+  if(emailClienteEl) emailClienteEl.addEventListener('input',e=>{ REAL.cliente.email=e.target.value; renderPreservingFocus(); });
+  const whatsappClienteEl = document.querySelector('[data-act="real-whatsapp"]');
+  if(whatsappClienteEl) whatsappClienteEl.addEventListener('input',e=>{ REAL.cliente.whatsapp=e.target.value; renderPreservingFocus(); });
   const vendedorEl = document.querySelector('[data-act="real-vendedor"]');
   if(vendedorEl) vendedorEl.addEventListener('change', e=>{ REAL.vendedor=e.target.value; render(); });
   const filtroCatEl = document.querySelector('[data-act="real-filtro-categoria"]');
@@ -4124,6 +4137,8 @@ function renderCotacaoPublica(mensagemErro=''){
         ${p.cliente.cnpj?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>${rotuloDocumento(p.cliente.cnpj)}:</b> ${escaparHtml(p.cliente.cnpj)}</p>`:''}
         ${p.cliente.fantasia?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Nome fantasia:</b> ${escaparHtml(p.cliente.fantasia)}</p>`:''}
         ${p.cliente.endereco?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Endereço:</b> ${escaparHtml(p.cliente.endereco)}</p>`:''}
+        ${p.cliente.email?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>E-mail:</b> ${escaparHtml(p.cliente.email)}</p>`:''}
+        ${p.cliente.whatsapp?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>WhatsApp:</b> ${escaparHtml(p.cliente.whatsapp)}</p>`:''}
         <div class="cliente-preco" style="margin-top:14px;">${money(pagamento.total)}</div>
         <div style="font-size:12px;color:var(--text-dim);">${pagamento.forma==='cartao'?`${pagamento.parcelas}x de ${money(pagamento.valorParcela)} no cartão · taxa de ${fmt(pagamento.taxa,2)}%`: `Valor em ${PAGAMENTO_LABEL[pagamento.forma]}`}</div>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;">

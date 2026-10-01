@@ -377,6 +377,9 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   A descrição comercial é configurada por produto/modelo no cadastro de kit,
   gravada no documento `kits` e pré-preenchida na descrição editável da
   proposta do vendedor; o snapshot público registra o texto final da cotação.
+  No cadastro do cliente do Estúdio, razão social/fantasia/endereço vêm da
+  consulta de CNPJ, enquanto e-mail e WhatsApp são informados manualmente e
+  incluídos no snapshot da cotação; os campos de contato da API são ignorados.
   Esses registros ficam em `propostas.observacoes`
   com o prefixo `[ESTUDIO_COTACAO_V1]` e são excluídos da lista do módulo
   comercial Propostas.

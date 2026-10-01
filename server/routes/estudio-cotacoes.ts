@@ -28,6 +28,8 @@ const snapshotSchema = z.object({
     razao: z.string().max(256).nullable(),
     fantasia: z.string().max(256).nullable(),
     endereco: z.string().max(1000).nullable(),
+    email: z.string().max(320).nullable().optional().default(null),
+    whatsapp: z.string().max(40).nullable().optional().default(null),
   }),
   vendedor: z.string().min(1).max(256),
   whatsappVendedor: z.string().max(32).nullable().optional().default(null),
