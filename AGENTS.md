@@ -364,6 +364,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   a resposta do cliente. A cotação guarda o WhatsApp configurado para o
   vendedor; ao escolher uma reação, o link público abre `wa.me` com a resposta
   e o número da cotação preenchidos, sem enviar a mensagem automaticamente.
+  Em Administração > Configurações, formas de pagamento e as taxas totais do
+  cartão por plano (1x a 6x) ficam em `config/geral`. Cada cotação salva um
+  snapshot das opções e taxas: o link começa em PIX, permite simular cartão,
+  boleto e TED/DOC conforme habilitados, e inclui a condição escolhida na
+  mensagem do WhatsApp e na resposta registrada para o vendedor.
   Esses registros ficam em `propostas.observacoes`
   com o prefixo `[ESTUDIO_COTACAO_V1]` e são excluídos da lista do módulo
   comercial Propostas.

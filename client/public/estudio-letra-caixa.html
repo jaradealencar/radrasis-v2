@@ -599,7 +599,7 @@ function novaProposta(){
     dataEmissao: new Date().toISOString(),
     modalidadeFrete: null, // 'FOB'|'CIF'|'retira'|'entrega'
     validadeDias: 20,
-    metodoPagamento: null, // 'boleto'|'cartao'|'pix'|'ted'
+    metodoPagamento: 'pix', // a cotacao sempre sai com PIX selecionado
     // Reação do cliente na Visão do cliente — pedido do usuário 28/09/2026:
     // respostas pré-configuradas + comentário livre, pra fechar o loop sem
     // depender de ligação/mensagem separada.
@@ -2520,15 +2520,9 @@ function realStepOrcamento(){
             <option value="entrega" ${REAL.modalidadeFrete==='entrega'?'selected':''}>Entrega</option>
           </select>
         </label>
-        <label class="field">Método de pagamento
-          <select data-act="real-metodo-pagamento">
-            <option value="">Selecione…</option>
-            <option value="boleto" ${REAL.metodoPagamento==='boleto'?'selected':''}>Boleto</option>
-            <option value="cartao" ${REAL.metodoPagamento==='cartao'?'selected':''}>Cartão de crédito</option>
-            <option value="pix" ${REAL.metodoPagamento==='pix'?'selected':''}>PIX</option>
-            <option value="ted" ${REAL.metodoPagamento==='ted'?'selected':''}>TED/DOC</option>
-          </select>
-        </label>
+        <div class="field" style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-dim);font-weight:600;">Forma de pagamento inicial
+          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:13px;color:var(--text);font-weight:400;">PIX</div>
+        </div>
         <label class="field">Validade da proposta (dias)
           <input type="text" inputmode="numeric" value="${REAL.validadeDias}" data-act="real-validade-dias">
         </label>
@@ -2617,6 +2611,8 @@ const configGeral = {
   custoFixoPct: 40,
   vendedores: [],
   whatsappVendedores: {},
+  formasPagamento: { cartao:true, boleto:true, ted:true },
+  jurosCartaoPct: [0,0,0,0,0,0],
   papeisPeca: ['Face','Fundo','Lateral','Pintura','Iluminação','Fixação','Insumo fabricação','Produtividade'],
 };
 
@@ -2662,7 +2658,9 @@ function snapshotCotacaoReal(){
     dataEmissao: REAL.dataEmissao,
     validadeDias: REAL.validadeDias || 20,
     modalidadeFrete: REAL.modalidadeFrete || null,
-    metodoPagamento: REAL.metodoPagamento || null,
+    metodoPagamento: 'pix',
+    formasPagamentoPermitidas: ['pix', ...Object.entries(configGeral.formasPagamento).filter(([,habilitada])=>habilitada).map(([forma])=>forma)],
+    jurosCartaoPct: configGeral.jurosCartaoPct.slice(0,6),
     cliente:{
       cnpj:REAL.cliente.cnpj || null,
       razao:REAL.cliente.razao || null,
@@ -2751,6 +2749,13 @@ async function initDb(){
       if(typeof data.custoFixoPct==='number') configGeral.custoFixoPct = data.custoFixoPct;
       if(Array.isArray(data.vendedores)) configGeral.vendedores = data.vendedores;
       if(data.whatsappVendedores && typeof data.whatsappVendedores==='object' && !Array.isArray(data.whatsappVendedores)) configGeral.whatsappVendedores = data.whatsappVendedores;
+      if(data.formasPagamento && typeof data.formasPagamento==='object' && !Array.isArray(data.formasPagamento)){
+        for(const forma of ['cartao','boleto','ted']) if(typeof data.formasPagamento[forma]==='boolean') configGeral.formasPagamento[forma]=data.formasPagamento[forma];
+      }
+      if(Array.isArray(data.jurosCartaoPct)) configGeral.jurosCartaoPct=Array.from({length:6},(_,i)=>{
+        const valor=Number(data.jurosCartaoPct[i]);
+        return Number.isFinite(valor)?Math.min(100,Math.max(0,valor)):0;
+      });
       if(Array.isArray(data.papeisPeca) && data.papeisPeca.length) configGeral.papeisPeca = data.papeisPeca;
     }
   }catch(e){}
@@ -2999,6 +3004,7 @@ function adminCotacoesHistorico(){
       <thead><tr><th>Data</th><th>Número</th><th>Vendedor</th><th>Cliente</th><th>Produto</th><th>Frete</th><th>Pagamento</th><th>Valor</th><th>Status / resposta</th><th>Link</th></tr></thead>
       <tbody>${filtradas.length?filtradas.map(p=>{
         const reacao = p.reacaoCliente?.tipo ? REACOES_CLIENTE.find(x=>x.key===p.reacaoCliente.tipo) : null;
+        const pagamentoResposta=p.reacaoCliente?.formaPagamento?`${PAGAMENTO_LABEL[p.reacaoCliente.formaPagamento]||p.reacaoCliente.formaPagamento}${p.reacaoCliente.formaPagamento==='cartao'?` ${p.reacaoCliente.parcelasCartao||1}x · ${money(p.reacaoCliente.valorPagamento||p.precoFinal||0)}`:''}`:'';
         const link = p.token ? linkCotacaoPublica(p.token) : '';
         const data = p.dataEmissao||p.criadoEm;
         const cliente = p.clienteNome||p.clienteRazao||p.clienteCnpj||'—';
@@ -3011,7 +3017,7 @@ function adminCotacoesHistorico(){
           <td>${FRETE_LABEL[p.modalidadeFrete]||'—'}</td>
           <td>${PAGAMENTO_LABEL[p.metodoPagamento]||'—'}</td>
           <td class="num">${money(p.precoFinal||0)}</td>
-          <td><span class="badge b-neutral">${STATUS_LABEL[p.status]||p.status||'Enviada'}</span>${reacao?`<div style="font-size:11px;margin-top:4px;" title="${escaparHtml(reacao.label+(p.reacaoCliente.comentario?' — '+p.reacaoCliente.comentario:''))}">${reacao.emoji} ${escaparHtml(reacao.label)}</div>`:''}</td>
+          <td><span class="badge b-neutral">${STATUS_LABEL[p.status]||p.status||'Enviada'}</span>${reacao?`<div style="font-size:11px;margin-top:4px;" title="${escaparHtml(reacao.label+(p.reacaoCliente.comentario?' — '+p.reacaoCliente.comentario:''))}">${reacao.emoji} ${escaparHtml(reacao.label)}</div>`:''}${pagamentoResposta?`<div style="font-size:10.5px;color:var(--text-dim);margin-top:3px;">Pagamento: ${escaparHtml(pagamentoResposta)}</div>`:''}</td>
           <td>${link?`<div style="display:flex;gap:6px;flex-wrap:wrap;"><a class="btn btn-ghost btn-sm" href="${escaparHtml(link)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-ghost btn-sm" data-act="admin-cotacao-copiar" data-url="${escaparHtml(link)}">Copiar link</button></div>`:'<span style="color:var(--text-faint);">Link não disponível</span>'}</td>
         </tr>`;
       }).join(''):`<tr><td colspan="10" class="empty-hint">Nenhuma cotação encontrada para estes filtros.</td></tr>`}</tbody>
@@ -3027,6 +3033,20 @@ function adminConfiguracoes(){
     <label class="field" style="max-width:160px;">% custo fixo (global)
       <input type="text" inputmode="decimal" value="${configGeral.custoFixoPct}" data-act="config-custo-fixo" placeholder="ex: 40">
     </label>
+  </div>
+  <div class="card">
+    <div class="cardhead"><div><h3>Formas de pagamento</h3><p>As cotações novas são enviadas com PIX como condição inicial. O cliente pode simular outra opção no link.</p></div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px 18px;margin-bottom:16px;">
+      <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" checked disabled> PIX (sempre disponível)</label>
+      <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" data-act="config-pagamento-forma" data-forma="cartao" ${configGeral.formasPagamento.cartao?'checked':''}> Cartão de crédito</label>
+      <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" data-act="config-pagamento-forma" data-forma="boleto" ${configGeral.formasPagamento.boleto?'checked':''}> Boleto</label>
+      <label style="display:flex;align-items:center;gap:7px;"><input type="checkbox" data-act="config-pagamento-forma" data-forma="ted" ${configGeral.formasPagamento.ted?'checked':''}> TED/DOC</label>
+    </div>
+    <h4 style="margin:0 0 4px;">Taxas do cartão por parcelamento</h4>
+    <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Informe o percentual total acrescentado ao valor da cotação em cada plano. O valor da parcela é calculado automaticamente, de 1x a 6x.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;">
+      ${configGeral.jurosCartaoPct.map((taxa,i)=>`<label class="field">${i+1}x (${i+1} parcela${i?'s':''})<div style="position:relative;"><input type="text" inputmode="decimal" value="${taxa}" data-act="config-pagamento-juros" data-idx="${i}" placeholder="0" style="padding-right:28px;"><span style="position:absolute;right:10px;top:10px;color:var(--text-faint);">%</span></div></label>`).join('')}
+    </div>
   </div>
   <div class="card">
     <div class="cardhead"><div><h3>Vendedores</h3><p>Lista usada no passo 1 da proposta. Cadastre o WhatsApp com DDD para que o cliente abra a conversa diretamente.</p></div></div>
@@ -3445,6 +3465,23 @@ function bindAdminEvents(){
     clearTimeout(_renderDebounceTimer);
     _renderDebounceTimer = setTimeout(renderPreservingFocus, 400);
   });
+
+  document.querySelectorAll('[data-act="config-pagamento-forma"]').forEach(el=>el.addEventListener('change',()=>{
+    const forma=el.dataset.forma;
+    if(!Object.prototype.hasOwnProperty.call(configGeral.formasPagamento,forma)) return;
+    configGeral.formasPagamento[forma]=el.checked;
+    salvarConfigGeral();
+    render();
+  }));
+  document.querySelectorAll('[data-act="config-pagamento-juros"]').forEach(el=>el.addEventListener('input',e=>{
+    const indice=Number(el.dataset.idx);
+    if(!Number.isInteger(indice)||indice<0||indice>5) return;
+    const valor=parseFloat(String(e.target.value).replace(',','.'));
+    configGeral.jurosCartaoPct[indice]=Number.isFinite(valor)?Math.min(100,Math.max(0,valor)):0;
+    salvarConfigGeral();
+    clearTimeout(_renderDebounceTimer);
+    _renderDebounceTimer=setTimeout(renderPreservingFocus,400);
+  }));
 
   const vendedorNovoEl = document.querySelector('[data-act="config-vendedor-novo"]');
   const addVendedor = ()=>{
@@ -4002,23 +4039,38 @@ function bindRealEvents(){
   if(freteEl) freteEl.addEventListener('change', e=>{ REAL.modalidadeFrete=e.target.value||null; render(); });
   const descricaoProdutoEl = document.querySelector('[data-act="real-descricao-produto"]');
   if(descricaoProdutoEl) descricaoProdutoEl.addEventListener('input', e=>{ REAL.descricaoProduto=e.target.value; });
-  const metodoPagEl = document.querySelector('[data-act="real-metodo-pagamento"]');
-  if(metodoPagEl) metodoPagEl.addEventListener('change', e=>{ REAL.metodoPagamento=e.target.value||null; render(); });
   bindNumberLive('[data-act="real-validade-dias"]', v=>{ REAL.validadeDias=parseInt(v)||20; });
 }
 
 let cotacaoPublicaAtual = null;
 let respostaPublicaSelecionada = null;
 let comentarioRespostaPublica = '';
+let formaPagamentoPublica = 'pix';
+let parcelasCartaoPublica = 1;
+
+function calcularPagamentoPublico(p){
+  const formasValidas=['pix','cartao','boleto','ted'];
+  const configuradas=Array.isArray(p?.formasPagamentoPermitidas)?p.formasPagamentoPermitidas.filter(f=>formasValidas.includes(f)):formasValidas;
+  const permitidas=[...new Set(['pix',...configuradas])];
+  const forma=permitidas.includes(formaPagamentoPublica)?formaPagamentoPublica:'pix';
+  const parcelas=forma==='cartao'?Math.max(1,Math.min(6,Number(parcelasCartaoPublica)||1)):1;
+  const taxas=Array.isArray(p?.jurosCartaoPct)?p.jurosCartaoPct:[];
+  const taxa=forma==='cartao'?Math.max(0,Math.min(100,Number(taxas[parcelas-1])||0)):0;
+  const base=Number(p?.precoFinal)||0;
+  const total=base*(1+taxa/100);
+  return {permitidas,forma,parcelas,taxa,base,total,valorParcela:total/parcelas};
+}
 
 function abrirWhatsAppRespostaPublica(tipo, comentario){
   const p=cotacaoPublicaAtual;
   const reacao=REACOES_CLIENTE.find(x=>x.key===tipo);
   if(!p || !reacao) return;
   const cliente=p.cliente?.razao || p.cliente?.fantasia || 'cliente';
+  const pagamento=calcularPagamentoPublico(p);
   const linhas=[
     `Olá, ${p.vendedor}! Sou ${cliente} e estou retornando sobre a cotação ${p.numero} (${p.modeloNome}).`,
     `Minha resposta: ${reacao.label}`,
+    `Forma de pagamento simulada: ${PAGAMENTO_LABEL[pagamento.forma]}${pagamento.forma==='cartao'?` em ${pagamento.parcelas}x de ${money(pagamento.valorParcela)} (total ${money(pagamento.total)}, taxa ${fmt(pagamento.taxa,2)}%)`:''}.`,
     `Cotação: ${window.location.href}`,
   ];
   if(comentario?.trim()) linhas.push(`Complemento: ${comentario.trim()}`);
@@ -4043,6 +4095,7 @@ function renderCotacaoPublica(mensagemErro=''){
   const emissao=new Date(p.dataEmissao);
   const validade=new Date(emissao.getTime()+(p.validadeDias||20)*86400000);
   const reacao=p.reacaoCliente?.tipo?REACOES_CLIENTE.find(x=>x.key===p.reacaoCliente.tipo):null;
+  const pagamento=calcularPagamentoPublico(p);
   root.innerHTML=`
     <div style="max-width:900px;margin:22px auto 48px;">
       <div class="brand" style="margin:8px 0 18px;"><div class="mark" style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;">R</div><div><div class="brand-name">Radrasys · Cotação</div><div class="brand-sub">Link interativo para o cliente</div></div></div>
@@ -4054,19 +4107,40 @@ function renderCotacaoPublica(mensagemErro=''){
         ${p.cliente.cnpj?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>${rotuloDocumento(p.cliente.cnpj)}:</b> ${escaparHtml(p.cliente.cnpj)}</p>`:''}
         ${p.cliente.fantasia?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Nome fantasia:</b> ${escaparHtml(p.cliente.fantasia)}</p>`:''}
         ${p.cliente.endereco?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Endereço:</b> ${escaparHtml(p.cliente.endereco)}</p>`:''}
-        <div class="cliente-preco" style="margin-top:14px;">${money(p.precoFinal)}</div>
+        <div class="cliente-preco" style="margin-top:14px;">${money(pagamento.total)}</div>
+        <div style="font-size:12px;color:var(--text-dim);">${pagamento.forma==='cartao'?`${pagamento.parcelas}x de ${money(pagamento.valorParcela)} no cartão · taxa de ${fmt(pagamento.taxa,2)}%`: `Valor em ${PAGAMENTO_LABEL[pagamento.forma]}`}</div>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;">
           ${p.modalidadeFrete?`<span class="badge b-accent">${FRETE_LABEL[p.modalidadeFrete]||p.modalidadeFrete}</span>`:''}
-          ${p.metodoPagamento?`<span class="badge b-accent">${PAGAMENTO_LABEL[p.metodoPagamento]||p.metodoPagamento}</span>`:''}
           ${p.prazoDiasUteis!=null?`<span class="badge b-neutral">${p.prazoDiasUteis} dias úteis</span>`:''}
           ${p.areaM2!=null?`<span class="badge b-neutral">${p.areaM2.toLocaleString('pt-BR',{maximumFractionDigits:2})} m²</span>`:''}
         </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="cardhead"><div><h3>Forma de pagamento</h3><p>Valor base da cotação no PIX: <b>${money(pagamento.base)}</b>. Selecione outra forma para simular.</p></div></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          ${pagamento.permitidas.map(forma=>`<button type="button" class="btn ${pagamento.forma===forma?'btn-primary':'btn-ghost'}" data-act="publica-forma-pagamento" data-val="${forma}" aria-pressed="${pagamento.forma===forma}">${PAGAMENTO_LABEL[forma]}</button>`).join('')}
+        </div>
+        ${pagamento.forma==='cartao'?`
+          <div style="margin-top:16px;">
+            <p style="font-size:12px;font-weight:700;margin-bottom:8px;">Simulador do cartão (até 6x)</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;">
+              ${Array.from({length:6},(_,i)=>{
+                const taxa=Number(p.jurosCartaoPct?.[i])||0;
+                const total=pagamento.base*(1+taxa/100);
+                const parcela=total/(i+1);
+                const selecionada=pagamento.parcelas===i+1;
+                return `<button type="button" data-act="publica-parcelas-cartao" data-val="${i+1}" aria-pressed="${selecionada}" style="text-align:left;padding:10px;border-radius:9px;border:1px solid ${selecionada?'var(--accent)':'var(--border)'};background:${selecionada?'var(--accent-soft)':'var(--surface-2)'};color:var(--text);cursor:pointer;"><b>${i+1}x de ${money(parcela)}</b><div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Total ${money(total)} · juros ${fmt(taxa,2)}%</div></button>`;
+              }).join('')}
+            </div>
+          </div>
+        `:''}
       </div>
       <div class="card" style="margin-top:14px;">
         <div class="cardhead"><div><h3>${reacao?'Sua resposta':'O que você achou da cotação?'}</h3><p>${reacao?escaparHtml(reacao.label):'Toque numa opção para abrir o WhatsApp com uma mensagem pronta. Revise e envie por lá.'}</p></div></div>
         ${!reacao && !p.whatsappVendedor?'<p class="role-note">O WhatsApp do vendedor ainda não foi cadastrado. Depois de abrir, escolha o contato do vendedor.</p>':''}
         ${reacao?`
           ${p.reacaoCliente.comentario?`<p style="font-style:italic;color:var(--text-dim);">“${escaparHtml(p.reacaoCliente.comentario)}”</p>`:''}
+          ${p.reacaoCliente.formaPagamento?`<p class="role-note">Forma simulada: ${PAGAMENTO_LABEL[p.reacaoCliente.formaPagamento]||p.reacaoCliente.formaPagamento}${p.reacaoCliente.formaPagamento==='cartao'?` em ${p.reacaoCliente.parcelasCartao||1}x · total ${money(p.reacaoCliente.valorPagamento??p.precoFinal)}`:''}</p>`:''}
           <div class="role-note">Respondido em ${new Date(p.reacaoCliente.respondidoEm).toLocaleString('pt-BR')}</div>
           <button class="btn btn-ghost btn-sm" data-act="publica-alterar-resposta">Alterar resposta</button>
         `:`
@@ -4080,6 +4154,15 @@ function renderCotacaoPublica(mensagemErro=''){
       </div>
       <p style="text-align:center;color:var(--text-faint);font-size:11px;margin-top:14px;">Vendedor responsável: ${escaparHtml(p.vendedor)}</p>
     </div>`;
+  root.querySelectorAll('[data-act="publica-forma-pagamento"]').forEach(botao=>botao.addEventListener('click',()=>{
+    formaPagamentoPublica=botao.dataset.val||'pix';
+    if(formaPagamentoPublica==='cartao') parcelasCartaoPublica=1;
+    renderCotacaoPublica();
+  }));
+  root.querySelectorAll('[data-act="publica-parcelas-cartao"]').forEach(botao=>botao.addEventListener('click',()=>{
+    parcelasCartaoPublica=Number(botao.dataset.val)||1;
+    renderCotacaoPublica();
+  }));
   root.querySelectorAll('[data-act="publica-escolher-resposta"]').forEach(botao=>botao.addEventListener('click',()=>{
     respostaPublicaSelecionada=botao.dataset.val;
     abrirWhatsAppRespostaPublica(respostaPublicaSelecionada,comentarioRespostaPublica);
@@ -4101,7 +4184,7 @@ function renderCotacaoPublica(mensagemErro=''){
     try{
       const response=await fetch('/api/letra-caixa/cotacoes/'+encodeURIComponent(new URLSearchParams(location.search).get('cotacao'))+'/resposta',{
         method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({tipo:respostaPublicaSelecionada,comentario:comentarioRespostaPublica}),
+        body:JSON.stringify({tipo:respostaPublicaSelecionada,comentario:comentarioRespostaPublica,formaPagamento:pagamento.forma,parcelasCartao:pagamento.forma==='cartao'?pagamento.parcelas:null}),
       });
       const body=await response.json().catch(()=>({}));
       if(!response.ok) throw new Error(body.error||'Não foi possível enviar a resposta.');
@@ -4125,6 +4208,8 @@ async function iniciarCotacaoPublica(token){
     const body=await response.json().catch(()=>({}));
     if(!response.ok) throw new Error(body.error||'Link inválido ou cotação não encontrada.');
     cotacaoPublicaAtual=body;
+    formaPagamentoPublica='pix';
+    parcelasCartaoPublica=1;
     renderCotacaoPublica();
   }catch(error){renderCotacaoPublica(error.message||'Não foi possível abrir a cotação.');}
 }

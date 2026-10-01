@@ -21,6 +21,8 @@ const snapshotSchema = z.object({
   validadeDias: z.number().int().min(1).max(365),
   modalidadeFrete: z.enum(["FOB", "CIF", "retira", "entrega"]).nullable(),
   metodoPagamento: z.enum(["boleto", "cartao", "pix", "ted"]).nullable(),
+  formasPagamentoPermitidas: z.array(z.enum(["boleto", "cartao", "pix", "ted"])).refine((formas) => formas.includes("pix")).optional().default(["pix", "cartao", "boleto", "ted"]),
+  jurosCartaoPct: z.array(z.number().min(0).max(100)).length(6).optional().default([0, 0, 0, 0, 0, 0]),
   cliente: z.object({
     cnpj: z.string().max(20).nullable(),
     razao: z.string().max(256).nullable(),
@@ -46,7 +48,14 @@ const criarSchema = z.object({
 type Snapshot = z.infer<typeof snapshotSchema> & {
   sourceId: string;
   numeroCotacao: string;
-  reacaoCliente: { tipo: typeof reacooes[number]; comentario: string; respondidoEm: string } | null;
+  reacaoCliente: {
+    tipo: typeof reacooes[number];
+    comentario: string;
+    respondidoEm: string;
+    formaPagamento?: "boleto" | "cartao" | "pix" | "ted";
+    parcelasCartao?: number | null;
+    valorPagamento?: number;
+  } | null;
 };
 
 function lerSnapshot(observacoes: string | null): Snapshot | null {
@@ -229,6 +238,8 @@ async function obterCotacaoPublica(req: Request, res: Response): Promise<void> {
     validadeDias: snapshot.validadeDias,
     modalidadeFrete: snapshot.modalidadeFrete,
     metodoPagamento: snapshot.metodoPagamento,
+    formasPagamentoPermitidas: snapshot.formasPagamentoPermitidas ?? ["pix", "cartao", "boleto", "ted"],
+    jurosCartaoPct: snapshot.jurosCartaoPct ?? [0, 0, 0, 0, 0, 0],
     cliente: snapshot.cliente,
     vendedor: snapshot.vendedor,
     whatsappVendedor: snapshot.whatsappVendedor || null,
@@ -245,7 +256,12 @@ async function obterCotacaoPublica(req: Request, res: Response): Promise<void> {
 
 async function registrarResposta(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res)) return;
-  const parsed = z.object({ tipo: z.enum(reacooes), comentario: z.string().max(2000).default("") }).safeParse(req.body);
+  const parsed = z.object({
+    tipo: z.enum(reacooes),
+    comentario: z.string().max(2000).default(""),
+    formaPagamento: z.enum(["boleto", "cartao", "pix", "ted"]).default("pix"),
+    parcelasCartao: z.number().int().min(1).max(6).nullable().default(null),
+  }).safeParse(req.body);
   if (!parsed.success) {
     respostaErro(res, 400, "Escolha uma resposta válida para a cotação.");
     return;
@@ -262,9 +278,24 @@ async function registrarResposta(req: Request, res: Response): Promise<void> {
     respostaErro(res, 404, "Cotação não encontrada ou link inválido.");
     return;
   }
+  const formasPermitidas = snapshot.formasPagamentoPermitidas ?? ["pix", "cartao", "boleto", "ted"];
+  if (!formasPermitidas.includes(parsed.data.formaPagamento)) {
+    respostaErro(res, 400, "Esta forma de pagamento não está disponível para a cotação.");
+    return;
+  }
+  const parcelasCartao = parsed.data.formaPagamento === "cartao" ? (parsed.data.parcelasCartao ?? 1) : null;
+  const taxaCartao = parcelasCartao ? (snapshot.jurosCartaoPct?.[parcelasCartao - 1] ?? 0) : 0;
+  const valorPagamento = snapshot.precoFinal * (1 + taxaCartao / 100);
   const atualizado: Snapshot = {
     ...snapshot,
-    reacaoCliente: { ...parsed.data, respondidoEm: new Date().toISOString() },
+    reacaoCliente: {
+      tipo: parsed.data.tipo,
+      comentario: parsed.data.comentario,
+      formaPagamento: parsed.data.formaPagamento,
+      parcelasCartao,
+      valorPagamento,
+      respondidoEm: new Date().toISOString(),
+    },
   };
   const status = parsed.data.tipo === "aprovado" ? "aceita" : parsed.data.tipo === "fora_orcamento" ? "recusada" : "aberta";
   await db.update(propostas).set({ observacoes: gravarSnapshot(atualizado), status, updatedAt: new Date() })
