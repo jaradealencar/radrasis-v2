@@ -26,10 +26,23 @@ export interface MarginRow {
   values: string[];
 }
 
+/** Linha técnica da consulta de fontes LED; não participa dos IDs de preço. */
+export interface LedSourcePriceRow {
+  fonte: string;
+  potencia: string;
+  saida: string;
+  quantidadeModulos: string;
+  equivalencia: string;
+  limiteMaximo: string;
+  preco: string;
+}
+
 export interface ContentJson {
-  type: "config" | "margin_table" | "margin_table_multi" | "list" | "rich_text";
+  type: "config" | "margin_table" | "margin_table_multi" | "list" | "rich_text" | "led_source_table";
   columns?: string[];
   rows?: MarginRow[];
   items?: ConfigItem[] | string[];
   html?: string;
+  moduleDescription?: string;
+  sourceRows?: LedSourcePriceRow[];
 }

@@ -47,7 +47,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useRef, useCallback } from "react";
 import RichTextEditor from "../../components/RichTextEditor";
-import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
+import type { ConfigItem, LedSourcePriceRow, MarginRow, ContentJson } from "@shared/price-table";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -266,6 +266,45 @@ function MarginTable({
   );
 }
 
+function LedSourceTable({
+  moduleDescription,
+  rows,
+}: {
+  moduleDescription: string;
+  rows: LedSourcePriceRow[];
+}) {
+  const columns = ["Fonte / modelo", "Potência", "Saída", "Módulos recomendados (85%)", "Equivalência", "Limite máximo (100%)", "Preço unitário"];
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-950">
+        <strong>Módulo LED:</strong> {moduleDescription}
+      </div>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-orange-50">
+              {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, index) => (
+              <TableRow key={index}>
+                <TableCell className="font-medium">{row.fonte || "—"}</TableCell>
+                <TableCell>{row.potencia || "—"}</TableCell>
+                <TableCell>{row.saida || "—"}</TableCell>
+                <TableCell>{row.quantidadeModulos || "—"}</TableCell>
+                <TableCell>{row.equivalencia || "—"}</TableCell>
+                <TableCell>{row.limiteMaximo || "—"}</TableCell>
+                <TableCell className="font-semibold text-orange-800">{row.preco || "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 function ListContent({ items }: { items: string[] }) {
   return (
     <ul className="space-y-1.5">
@@ -287,6 +326,14 @@ function SectionContent({ contentJson }: { contentJson: string }) {
     if (data.type === "margin_table" || data.type === "margin_table_multi") {
       return (
         <MarginTable columns={data.columns ?? []} rows={data.rows ?? []} />
+      );
+    }
+    if (data.type === "led_source_table") {
+      return (
+        <LedSourceTable
+          moduleDescription={data.moduleDescription ?? "Módulo LED 2,5 W, IP68, 3 lentes tradicional"}
+          rows={data.sourceRows ?? []}
+        />
       );
     }
     if (data.type === "list")
@@ -505,6 +552,107 @@ function MarginTableEditor({
   );
 }
 
+function LedSourceTableEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const parsed = useMemo(() => {
+    try {
+      const data = JSON.parse(value) as ContentJson;
+      return data.type === "led_source_table" ? data : null;
+    } catch {
+      return null;
+    }
+  }, [value]);
+
+  if (!parsed) return null;
+  const rows = parsed.sourceRows ?? [];
+  const columns: Array<{ key: keyof LedSourcePriceRow; label: string }> = [
+    { key: "fonte", label: "Fonte / modelo" },
+    { key: "potencia", label: "Potência" },
+    { key: "saida", label: "Saída" },
+    { key: "quantidadeModulos", label: "Módulos recomendados (85%)" },
+    { key: "equivalencia", label: "Equivalência" },
+    { key: "limiteMaximo", label: "Limite máximo (100%)" },
+    { key: "preco", label: "Preço unitário" },
+  ];
+
+  function update(rowsAtualizados: LedSourcePriceRow[]) {
+    onChange(JSON.stringify({ ...parsed, sourceRows: rowsAtualizados }));
+  }
+
+  function updateCell(index: number, key: keyof LedSourcePriceRow, cellValue: string) {
+    update(rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: cellValue } : row));
+  }
+
+  return (
+    <div className="space-y-3">
+      <label className="block max-w-xl space-y-1 text-xs font-medium text-slate-600">
+        Descrição do módulo LED
+        <Input
+          value={parsed.moduleDescription ?? ""}
+          onChange={e => onChange(JSON.stringify({ ...parsed, moduleDescription: e.target.value }))}
+          className="h-8 text-sm font-normal"
+        />
+      </label>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-slate-100">
+              {columns.map(column => <TableHead key={column.key} className="min-w-32">{column.label}</TableHead>)}
+              <TableHead className="w-8" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, rowIndex) => (
+              <TableRow key={rowIndex}>
+                {columns.map(column => (
+                  <TableCell key={column.key} className="p-1.5">
+                    <Input
+                      value={row[column.key]}
+                      onChange={e => updateCell(rowIndex, column.key, e.target.value)}
+                      className="h-8 min-w-28 text-xs"
+                      aria-label={`${column.label}, linha ${rowIndex + 1}`}
+                    />
+                  </TableCell>
+                ))}
+                <TableCell className="p-1.5 text-center">
+                  <button
+                    type="button"
+                    onClick={() => update(rows.filter((_, index) => index !== rowIndex))}
+                    className="text-slate-400 hover:text-red-500"
+                    aria-label={`Remover linha ${rowIndex + 1}`}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <button
+        type="button"
+        onClick={() => update([...rows, {
+          fonte: "",
+          potencia: "",
+          saida: "",
+          quantidadeModulos: "",
+          equivalencia: "",
+          limiteMaximo: "",
+          preco: "",
+        }])}
+        className="flex items-center gap-1 text-xs text-orange-700 hover:text-orange-900"
+      >
+        <Plus size={12} /> Adicionar fonte
+      </button>
+    </div>
+  );
+}
+
 /** Editor visual para config items (type: "config") */
 function ConfigEditor({
   value,
@@ -597,6 +745,8 @@ function SmartEditor({
   if (type === "list") return <ListEditor value={value} onChange={onChange} />;
   if (type === "margin_table" || type === "margin_table_multi")
     return <MarginTableEditor value={value} onChange={onChange} />;
+  if (type === "led_source_table")
+    return <LedSourceTableEditor value={value} onChange={onChange} />;
   if (type === "config")
     return <ConfigEditor value={value} onChange={onChange} />;
   if (type === "rich_text") {
@@ -810,9 +960,37 @@ const PAGE_LABELS: Record<number, string> = {
   1: "Pág. 1 — Frontlight Galvanizado",
   2: "Pág. 2 — Inox / PVC / Acrílico",
   3: "Pág. 3 — Pintura",
-  4: "Pág. 4 — Instalação",
+  4: "Pág. 4 — Instalação / Fontes LED",
   5: "Pág. 5 — Condições Comerciais",
 };
+
+const LED_SOURCE_SECTION_TITLE = "Tabela de fontes e preços — módulos LED";
+const LED_SOURCE_SECTION_NOTES =
+  "Compatibilidade a conferir antes da ligação: o módulo de referência foi informado como 2,5 W, IP68 e 3 lentes tradicional, mas a imagem do módulo indica 12 V e a Fonte 10A informada é 24 V. Os limites 136/160 também equivalem a 1,5 W por módulo (240 W ÷ 160), não 2,5 W. Mantive os dados recebidos; confirme tensão e potência com o fornecedor.";
+const LED_SOURCE_TABLE = JSON.stringify({
+  type: "led_source_table",
+  moduleDescription: "Módulo LED 2,5 W, IP68, 3 lentes tradicional",
+  sourceRows: [
+    {
+      fonte: "Fonte 10A",
+      potencia: "240 W",
+      saida: "24 V",
+      quantidadeModulos: "Até 136 módulos (85%)",
+      equivalencia: "6 correntes plenas (20 pçs) + 16 módulos",
+      limiteMaximo: "160 módulos (100%)",
+      preco: "",
+    },
+    ...[2, 3, 4].map(n => ({
+      fonte: `Fonte ${n}`,
+      potencia: "",
+      saida: "",
+      quantidadeModulos: "",
+      equivalencia: "",
+      limiteMaximo: "",
+      preco: "",
+    })),
+  ],
+});
 
 function SearchResults({
   sections,
@@ -891,21 +1069,25 @@ function gerarPdfTabela(
     1: "Frontlight / Galvanizado",
     2: "Inox / PVC / Acrílico",
     3: "Pintura",
+    4: "Instalação / Fontes LED",
   };
   const pageIcons: Record<number, string> = {
     1: "&#x1F4A1;",
     2: "&#x2728;",
     3: "&#x1F3A8;",
+    4: "&#x1F50C;",
   };
   const pageSubtitles: Record<number, string> = {
     1: "Letreiros iluminados e estruturas galvanizadas",
     2: "Inox escovado, PVC e acrílico",
     3: "Acabamentos e pintura especial",
+    4: "Módulos LED 2,5 W IP68 e fontes de alimentação",
   };
   const pageColors: Record<number, string> = {
     1: "#1e40af",
     2: "#0f766e",
     3: "#7c3aed",
+    4: "#c2410c",
   };
 
   // Helper para extrair label de identificação do título
@@ -1007,7 +1189,7 @@ function gerarPdfTabela(
     byPage[normalizedPage].push(s);
   });
 
-  for (const page of [1, 2, 3]) {
+  for (const page of [1, 2, 3, 4]) {
     const pageSections = (byPage[page] ?? []).sort(
       (a, b) => a.sectionOrder - b.sectionOrder
     );
@@ -1045,6 +1227,21 @@ function gerarPdfTabela(
               html += `<td style="text-align:left;font-weight:600;color:#1e3a5f">${row.label}</td>`;
             row.values.forEach(v => {
               html += `<td><span class="val">${v}</span></td>`;
+            });
+            html += `</tr>`;
+          });
+          html += `</tbody></table>`;
+        } else if (c.type === "led_source_table") {
+          const columns = ["Fonte / modelo", "Potência", "Saída", "Módulos recomendados (85%)", "Equivalência", "Limite máximo (100%)", "Preço unitário"];
+          html += `<div style="margin-bottom:4px;padding:4px 8px;background:#fff7ed;border-left:3px solid #c2410c;color:#7c2d12">Módulo LED: ${escapeHtml(c.moduleDescription ?? "Módulo LED 2,5 W, IP68, 3 lentes tradicional")}</div>`;
+          html += `<table><thead><tr style="background:${color}">`;
+          columns.forEach(column => { html += `<th>${column}</th>`; });
+          html += `</tr></thead><tbody>`;
+          (c.sourceRows ?? []).forEach((row, ri) => {
+            const rowBg = ri % 2 === 0 ? "" : ' style="background:#f8fafc"';
+            html += `<tr${rowBg}>`;
+            [row.fonte, row.potencia, row.saida, row.quantidadeModulos, row.equivalencia, row.limiteMaximo, row.preco].forEach(value => {
+              html += `<td>${escapeHtml(value || "—")}</td>`;
             });
             html += `</tr>`;
           });
@@ -1124,6 +1321,45 @@ export default function TabelaPrecos() {
     { enabled: showHistory }
   );
 
+  const hasLedSourceSection = (allSections ?? []).some(
+    section => section.page === 4 && section.sectionTitle === LED_SOURCE_SECTION_TITLE
+  );
+
+  function criarTabelaFontesLED() {
+    if (hasLedSourceSection || addSectionMut.isPending) return;
+    addSectionMut.mutate({
+      page: 4,
+      sectionTitle: LED_SOURCE_SECTION_TITLE,
+      contentJson: LED_SOURCE_TABLE,
+      notes: LED_SOURCE_SECTION_NOTES,
+    }, {
+      onSuccess: () => {
+        setActiveTab("4");
+        setActiveTabNC("4");
+      },
+    });
+  }
+
+  function adicionarSecao() {
+    const sectionTitle = newSectionTitle.trim();
+    if (!sectionTitle) {
+      toast.error("Informe o nome da seção.");
+      return;
+    }
+    const page = newSectionPage;
+    addSectionMut.mutate({
+      page,
+      sectionTitle,
+      contentJson: JSON.stringify({ type: "rich_text", html: "<p></p>" }),
+      notes: null,
+    }, {
+      onSuccess: () => {
+        if (page >= 11) setActiveTabNC(String(page));
+        else setActiveTab(String(page));
+      },
+    });
+  }
+
   const isSearching = searchQuery.trim().length > 0;
 
   const sectionsForPage = (page: number) =>
@@ -1146,6 +1382,7 @@ export default function TabelaPrecos() {
     { key: "1", label: "Pág. 1 — Frontlight / Galvanizado" },
     { key: "2", label: "Pág. 2 — Inox / PVC / Acrílico" },
     { key: "3", label: "Pág. 3 — Pintura" },
+    { key: "4", label: "Pág. 4 — Instalação / Fontes LED" },
   ];
 
   // Seções da Tabela Novo Cliente (pages 11, 12, 13)
@@ -1158,6 +1395,7 @@ export default function TabelaPrecos() {
     { key: "11", label: "Pág. 1" },
     { key: "12", label: "Pág. 2" },
     { key: "13", label: "Pág. 3" },
+    { key: "4", label: "Pág. 4 — Fontes LED" },
   ];
 
   return (
@@ -1207,7 +1445,11 @@ export default function TabelaPrecos() {
                 <Button
                   size="sm"
                   className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => setShowAddModal(true)}
+                  onClick={() => {
+                    setNewSectionPage(Number(activeTabNC));
+                    setNewSectionTitle("");
+                    setShowAddModal(true);
+                  }}
                 >
                   <Plus className="w-4 h-4" />
                   Nova Seção
@@ -1219,7 +1461,7 @@ export default function TabelaPrecos() {
                   onClick={() =>
                     gerarPdfTabela(
                       (allSections ?? []).filter(
-                        s => s.page >= 11 && s.page <= 13
+                        s => (s.page >= 11 && s.page <= 13) || s.page === 4
                       ),
                       meta ?? null
                     )
@@ -1254,6 +1496,24 @@ export default function TabelaPrecos() {
 
             {allPagesNC.map(p => (
               <TabsContent key={p.key} value={p.key}>
+                {p.key === "4" && !isLoadingNC && (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+                    <p className="text-sm text-orange-950">
+                      <strong>Módulo LED:</strong> 2,5 W, IP68, 3 lentes tradicional.
+                    </p>
+                    {!hasLedSourceSection && (
+                      <Button
+                        size="sm"
+                        className="gap-2 bg-orange-700 text-white hover:bg-orange-800"
+                        onClick={criarTabelaFontesLED}
+                        disabled={addSectionMut.isPending}
+                      >
+                        <Plus className="w-4 h-4" />
+                        {addSectionMut.isPending ? "Criando tabela..." : "Criar tabela de fontes e preços"}
+                      </Button>
+                    )}
+                  </div>
+                )}
                 <div className="mb-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
                   <Pencil className="w-3 h-3" />
                   Clique em <strong>Editar</strong> para atualizar valores. Use{" "}
@@ -1354,7 +1614,7 @@ export default function TabelaPrecos() {
                   className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
                   onClick={() =>
                     gerarPdfTabela(
-                      allSections ?? [],
+                      (allSections ?? []).filter(s => s.page >= 1 && s.page <= 4),
                       meta ?? null,
                       "Tabela Clientes Antigos"
                     )
@@ -1430,6 +1690,7 @@ export default function TabelaPrecos() {
                     { value: "1", label: "Frontlight / Galvanizado" },
                     { value: "2", label: "Inox / PVC / Acrílico" },
                     { value: "3", label: "Pintura" },
+                    { value: "4", label: "Instalação / Fontes LED" },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -1491,9 +1752,27 @@ export default function TabelaPrecos() {
                 ))}
               </TabsList>
 
-              {allPages.map(p => (
-                <TabsContent key={p.key} value={p.key}>
-                  <div className="mb-3 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+            {allPages.map(p => (
+              <TabsContent key={p.key} value={p.key}>
+                {p.key === "4" && !isLoading && (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+                    <p className="text-sm text-orange-950">
+                      <strong>Módulo LED:</strong> 2,5 W, IP68, 3 lentes tradicional.
+                    </p>
+                    {!hasLedSourceSection && (
+                      <Button
+                        size="sm"
+                        className="gap-2 bg-orange-700 text-white hover:bg-orange-800"
+                        onClick={criarTabelaFontesLED}
+                        disabled={addSectionMut.isPending}
+                      >
+                        <Plus className="w-4 h-4" />
+                        {addSectionMut.isPending ? "Criando tabela..." : "Criar tabela de fontes e preços"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                <div className="mb-3 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-3 py-2">
                     <Pencil className="w-3 h-3" />
                     Clique em <strong>Editar</strong> em qualquer seção para
                     atualizar valores.
@@ -1529,6 +1808,49 @@ export default function TabelaPrecos() {
           )}
         </div>
       )}
+
+      <Dialog
+        open={showAddModal}
+        onOpenChange={open => {
+          setShowAddModal(open);
+          if (!open) setNewSectionTitle("");
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar seção à página {newSectionPage}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="nova-secao-titulo" className="text-sm font-medium text-slate-700">
+              Nome da seção
+            </label>
+            <Input
+              id="nova-secao-titulo"
+              value={newSectionTitle}
+              onChange={e => setNewSectionTitle(e.target.value)}
+              placeholder="Ex.: Fontes para módulos LED"
+              autoFocus
+              onKeyDown={e => { if (e.key === "Enter") adicionarSecao(); }}
+            />
+            <p className="text-xs text-slate-500">
+              Depois de criar, use Editar para inserir uma tabela ou descrição.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowAddModal(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={adicionarSecao}
+              disabled={!newSectionTitle.trim() || addSectionMut.isPending}
+              className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              <Plus className="w-4 h-4" />
+              {addSectionMut.isPending ? "Adicionando..." : "Adicionar seção"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Histórico de Versões */}
       <Dialog open={showHistory} onOpenChange={setShowHistory}>

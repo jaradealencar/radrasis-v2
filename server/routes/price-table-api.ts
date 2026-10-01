@@ -47,8 +47,8 @@ function exigirChaveApi(req: Request, res: Response, next: NextFunction) {
 }
 
 /** "Clientes Antigos" = páginas 1-3, "Novo Cliente" = páginas 11-13 (mesmo
- * critério usado em TabelaPrecos.tsx). Páginas 4-5 são de consulta, sem
- * linhas/regras editáveis com ID. */
+ * critério usado em TabelaPrecos.tsx). Páginas 4-5 são de consulta; a página
+ * 4 guarda a tabela técnica de fontes LED, sem IDs de regras de preço. */
 function abaDaPagina(
   page: number
 ): "clientes_antigos" | "novo_cliente" | "consulta" {
