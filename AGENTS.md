@@ -374,6 +374,9 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`SKU-000123-M007`); os dois aparecem no fluxo e podem ser buscados na
   Administração. Não há coluna nova no banco, pois os códigos derivam dos IDs
   já estáveis do catálogo.
+  A descrição comercial é configurada por produto/modelo no cadastro de kit,
+  gravada no documento `kits` e pré-preenchida na descrição editável da
+  proposta do vendedor; o snapshot público registra o texto final da cotação.
   Esses registros ficam em `propostas.observacoes`
   com o prefixo `[ESTUDIO_COTACAO_V1]` e são excluídos da lista do módulo
   comercial Propostas.

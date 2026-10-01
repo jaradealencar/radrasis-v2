@@ -2584,7 +2584,7 @@ const adminState = {
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   expandedProdutoId:null, editingKey:null,
-  // { 'produtoId_modeloId': { linhas:[{matId,nome,unidade,custo,atualizado,status,papel,formulaType,mult}], precificacao:{lineId}|{modo:'fixo',precoFixo}|null, nomeCompleto, prazoDiasUteis, kitProdutos, fotoUrl, fotoAssetId } }
+  // { 'produtoId_modeloId': { linhas:[{matId,nome,unidade,custo,atualizado,status,papel,formulaType,mult}], precificacao:{lineId}|{modo:'fixo',precoFixo}|null, nomeCompleto, descricaoProduto, prazoDiasUteis, kitProdutos, fotoUrl, fotoAssetId } }
   kits:{},
   produtosExcluidos:new Set(), materiasExcluidas:new Set(),
 };
@@ -2732,6 +2732,7 @@ async function initDb(){
       if(data) adminState.kits[d.id] = {
         linhas: data.linhas||[], precificacao: data.precificacao||null,
         nomeCompleto: data.nomeCompleto||null,
+        descricaoProduto: data.descricaoProduto||'',
         prazoDiasUteis: data.prazoDiasUteis??null, kitProdutos: data.kitProdutos||[],
         fotoUrl: data.fotoUrl||null, fotoAssetId: data.fotoAssetId||null,
         categoria: data.categoria||null, subcategoria: data.subcategoria||null, tipoProduto: data.tipoProduto||null,
@@ -2771,6 +2772,7 @@ async function initDb(){
         if(data) adminState.kits[ch.doc.id] = {
           linhas: data.linhas||[], precificacao: data.precificacao||null,
           nomeCompleto: data.nomeCompleto||null,
+          descricaoProduto: data.descricaoProduto||'',
           prazoDiasUteis: data.prazoDiasUteis??null, kitProdutos: data.kitProdutos||[],
           fotoUrl: data.fotoUrl||null, fotoAssetId: data.fotoAssetId||null,
           categoria: data.categoria||null, subcategoria: data.subcategoria||null, tipoProduto: data.tipoProduto||null,
@@ -2800,6 +2802,7 @@ function salvarKit(key){
     dbApi.doc('kits/'+key).set({
       produtoId, modeloId, linhas:kit.linhas, precificacao:kit.precificacao||null,
       nomeCompleto:kit.nomeCompleto||null,
+      descricaoProduto:kit.descricaoProduto||'',
       prazoDiasUteis:kit.prazoDiasUteis??null, kitProdutos:kit.kitProdutos||[],
       fotoUrl:kit.fotoUrl||null, fotoAssetId:kit.fotoAssetId||null,
       categoria:kit.categoria||null, subcategoria:kit.subcategoria||null, tipoProduto:kit.tipoProduto||null,
@@ -3212,6 +3215,10 @@ function adminKitEditor(p, m, key){
       </label>
     </div>
 
+    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Descrição do produto <span style="font-weight:400; text-transform:none;">— aparece na proposta comercial</span></p>
+    <textarea data-act="admin-descricao-produto" data-key="${key}" rows="4" maxlength="5000" placeholder="Descreva características, acabamento, materiais ou observações importantes para o cliente" style="width:100%;resize:vertical;font-family:inherit;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:400;">${escaparHtml(kitState.descricaoProduto||'')}</textarea>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:4px;">Será sugerida automaticamente na proposta do vendedor, que poderá ajustá-la para cada cotação.</p>
+
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Foto do produto <span style="font-weight:400; text-transform:none;">— aparece na proposta comercial</span></p>
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
       ${kitState.fotoUrl? `<img src="${kitState.fotoUrl}" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:1px solid var(--border);">` : `<div style="width:90px; height:90px; border-radius:8px; border:1px dashed var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--text-faint); text-align:center;">sem foto</div>`}
@@ -3576,7 +3583,7 @@ function bindAdminEvents(){
       if(adminState.editingKey===key){ adminState.editingKey=null; }
       else{
         adminState.editingKey=key;
-        if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
+        if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
         adminState.kits[key].nomeCompleto = el.dataset.nome;
         adminState.adminMatQuery='';
       }
@@ -3637,6 +3644,10 @@ function bindAdminEvents(){
       if(file) uploadFotoProduto(el.dataset.key, file);
     });
   });
+  document.querySelectorAll('[data-act="admin-descricao-produto"]').forEach(el=>el.addEventListener('input',e=>{
+    const kit=adminState.kits[el.dataset.key];
+    if(kit){ kit.descricaoProduto=e.target.value; salvarKit(el.dataset.key); }
+  }));
   document.querySelectorAll('[data-act="admin-prazo-dias"]').forEach(el=>{
     el.addEventListener('input', e=>{
       const kit = adminState.kits[el.dataset.key];
@@ -3673,7 +3684,7 @@ function bindAdminEvents(){
       const key = el.dataset.key;
       const outroKey = el.dataset.val;
       if(key && outroKey){
-        const kit = adminState.kits[key] || (adminState.kits[key]={linhas:[], precificacao:null, prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null});
+        const kit = adminState.kits[key] || (adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null});
         if(!Array.isArray(kit.kitProdutos)) kit.kitProdutos=[];
         if(!kit.kitProdutos.some(kp=>kp.key===outroKey)){
           // Resolve o nome no catálogo mesmo que o produto ainda não tenha sido aberto no editor.
@@ -3899,6 +3910,7 @@ function bindRealEvents(){
     // se o admin já cadastrou a composição desse modelo, carrega automaticamente
     // (cópia — editar aqui não altera o cadastro-mestre do admin)
     const kitPronto = prod && mod ? adminState.kits[kitKey(prod.id, mod.id)] : null;
+    REAL.descricaoProduto = kitPronto?.descricaoProduto || '';
     REAL.kit = kitPronto ? kitPronto.linhas.map(k=>({...k})) : [];
     REAL.precificacao = kitPronto && kitPronto.precificacao ? {...kitPronto.precificacao} : null;
     render();
