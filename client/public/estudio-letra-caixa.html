@@ -617,7 +617,7 @@ function novaProposta(){
     ajuste:{ brilho:100, contraste:100, cinza:false },
     threshold:130, invert:false, overlayOpacity:50,
     tracedSvg:null, fgD:'', tracedW:0, tracedH:0, traceError:null,
-    geomRaw:null,
+    geomRaw:null, traceQuality:null,
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], matQuery:'', precificacao:null,
     // Pintura: pré-configurada em todo orçamento, mas desabilitada por padrão
@@ -634,6 +634,13 @@ function novaProposta(){
 }
 let REAL = novaProposta();
 let redrawRequestId = 0;
+let traceRequestId = 0;
+
+function invalidarRastreamento(){
+  traceRequestId++;
+  state.tracing=false;
+  REAL.traceQuality=null;
+}
 
 /* ---------- GEOMETRIA REAL (integração poligonal sobre o SVG rastreado) ---------- */
 function shoelaceSigned(points){
@@ -670,9 +677,11 @@ function measureSubpath(dStr){
   try{ bbox = path.getBBox(); }catch(e){}
   const points=[];
   if(len>0){
-    const step = Math.max(len/80, 1.5);
-    for(let t=0; t<=len; t+=step) points.push(path.getPointAtLength(t));
-    points.push(path.getPointAtLength(len));
+    // Prompt 3 pede área vetorial, mas a API SVG do navegador só expõe o
+    // comprimento da curva. Amostrar a cada ~0,5 unidade reduz o erro da
+    // integração poligonal; o limite evita travar em SVGs com escala extrema.
+    const samples=Math.min(10000,Math.max(32,Math.ceil(len/0.5)));
+    for(let i=0;i<=samples;i++) points.push(path.getPointAtLength(len*i/samples));
   }
   const areaSigned = points.length>2 ? shoelaceSigned(points) : 0;
   return { d:dStr, len, bbox, area:Math.abs(areaSigned) };
@@ -684,15 +693,21 @@ function bboxContains(outer, inner){
          (inner.y+inner.height) <= (outer.y+outer.height+0.5);
 }
 
-/** Classifica subcaminhos em externos (peças) e internos (vazados) por contenção
- *  de bounding box; área líquida = soma dos externos menos soma dos internos. */
+function caixasSobrepostas(a,b){
+  return a.x < b.x+b.width && a.x+a.width > b.x &&
+         a.y < b.y+b.height && a.y+a.height > b.y;
+}
+
+/** Classifica contornos pelo número de outros contornos que os envolvem.
+ *  Profundidade par = peça/material; ímpar = vazado (regra even-odd). */
 function classifyGeometry(dString){
   const subpaths = splitSubpaths(dString).map(measureSubpath).filter(s=>s.area>3 && s.len>0);
   const external=[], internal=[];
   subpaths.forEach((s,i)=>{
-    const containedBy = subpaths.find((o,j)=> j!==i && o.area>s.area && bboxContains(o.bbox, s.bbox));
-    if(containedBy) internal.push(s); else external.push(s);
+    const depth=subpaths.filter((o,j)=>j!==i && o.area>s.area && bboxContains(o.bbox,s.bbox)).length;
+    if(depth%2) internal.push(s); else external.push(s);
   });
+  const possivelSobreposicao=external.some((a,i)=>external.slice(i+1).some(b=>caixasSobrepostas(a.bbox,b.bbox)));
   const areaPx = Math.max(external.reduce((a,s)=>a+s.area,0) - internal.reduce((a,s)=>a+s.area,0), 0);
   const perimExtPx = external.reduce((a,s)=>a+s.len,0);
   const perimIntPx = internal.reduce((a,s)=>a+s.len,0);
@@ -701,9 +716,32 @@ function classifyGeometry(dString){
   if(!isFinite(bx1)){ bx1=0; by1=0; bx2=0; by2=0; }
   return {
     areaPx, perimExtPx, perimIntPx,
+    possivelSobreposicao,
     bboxPx:{x:bx1,y:by1,w:bx2-bx1,h:by2-by1},
     pieces: external.map((s,i)=>({ n:i+1, bbox:s.bbox, area:s.area })),
   };
+}
+
+/** Prompt 2: compara a silhueta binária usada no rastreamento com o SVG
+ *  rasterizado na mesma escala. A meta de 95% é um indicador de triagem; a
+ *  conferência visual continua necessária para textos e detalhes da marca. */
+function medirSobreposicaoVetor(bin,d,w,h){
+  try{
+    const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    if(!ctx || typeof Path2D==='undefined') return null;
+    ctx.fillStyle='#000'; ctx.fill(new Path2D(d),'evenodd');
+    const vetor=ctx.getImageData(0,0,w,h).data;
+    let intersecao=0, uniao=0;
+    for(let i=0;i<bin.data.length;i+=4){
+      const referencia=bin.data[i]<128;
+      const forma=vetor[i+3]>127 && (0.299*vetor[i]+0.587*vetor[i+1]+0.114*vetor[i+2])<128;
+      if(referencia&&forma) intersecao++;
+      if(referencia||forma) uniao++;
+    }
+    const iouPct=uniao?intersecao/uniao*100:0;
+    return {iouPct:Number(iouPct.toFixed(1)),metaPct:95,atingiuMeta:iouPct>=95};
+  }catch(e){ return null; }
 }
 
 function computeGeomReal(){
@@ -729,6 +767,7 @@ function computeGeomReal(){
     perimExtM: g.perimExtPx*scaleFactor,
     perimIntM: g.perimIntPx*scaleFactor,
     corteTotalM: (g.perimExtPx+g.perimIntPx)*scaleFactor,
+    possivelSobreposicao: !!g.possivelSobreposicao,
   };
 }
 
@@ -794,10 +833,11 @@ function extractPathsFromRawSVG(svgText){
   const d = paths.join(' ');
   let vw=0, vh=0;
   const vb = svgEl.getAttribute('viewBox');
-  if(vb){ const parts=vb.split(/\s+/).map(Number); vw=parts[2]||0; vh=parts[3]||0; }
+  if(vb){ const parts=vb.trim().split(/[\s,]+/).map(Number); vw=parts[2]||0; vh=parts[3]||0; }
   if(!vw||!vh){ vw=parseFloat(svgEl.getAttribute('width'))||vw; vh=parseFloat(svgEl.getAttribute('height'))||vh; }
-  const nonPathCount = doc.querySelectorAll('rect,circle,ellipse,polygon,polyline,line').length;
-  return { d, w:vw, h:vh, pathCount:paths.length, nonPathCount };
+  const nonPathCount = doc.querySelectorAll('rect,circle,ellipse,polygon,polyline,line,text,image,use').length;
+  const transformedCount = doc.querySelectorAll('[transform]').length;
+  return { d, w:vw, h:vh, pathCount:paths.length, nonPathCount, transformedCount };
 }
 
 const RASTER_EXT = ['.png','.jpg','.jpeg'];
@@ -814,6 +854,7 @@ const UNSUPPORTED_EXT = ['.pdf','.ai','.eps','.cdr'];
  *  29/09/2026 (CDR é o formato nativo do CorelDraw, usado por vários
  *  clientes/gráficas parceiras). */
 async function handleUploadedFile(file){
+  invalidarRastreamento();
   REAL.uploadError=null; REAL.uploadWarning=null;
   const name = (file.name||'').toLowerCase();
   const isSvg = name.endsWith('.svg') || file.type==='image/svg+xml';
@@ -836,13 +877,22 @@ async function handleUploadedFile(file){
       render();
       return;
     }
+    if(!Number.isFinite(parsed.w)||!Number.isFinite(parsed.h)||parsed.w<=0||parsed.h<=0){
+      REAL.uploadError = 'O SVG precisa ter um viewBox ou largura e altura válidos para calcular escala e medidas.';
+      render();
+      return;
+    }
     REAL.sourceKind='vetor';
     REAL.tracedSvg=text; REAL.fgD=parsed.d; REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
+    REAL.traceQuality=null;
     REAL.geomRaw = classifyGeometry(parsed.d);
     REAL.traceError=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
     if(parsed.nonPathCount>0){
-      REAL.uploadWarning = `Detectei ${parsed.nonPathCount} forma(s) que não são <path> (retângulo/círculo/etc.) — elas foram ignoradas no cálculo de área e perímetro. No seu editor, converta tudo para caminho (ex.: "Object to Path" no Illustrator/Inkscape) e reenvie para um resultado completo.`;
+      REAL.uploadWarning = `Detectei ${parsed.nonPathCount} elemento(s) que não são <path> (formas, texto ou imagem); foram ignorados. Converta texto e formas em caminhos no editor vetorial e remova imagens raster antes de usar este resultado.`;
+    }
+    if(parsed.transformedCount>0){
+      REAL.uploadWarning = [REAL.uploadWarning,`Detectei ${parsed.transformedCount} elemento(s) com transformações SVG; o protótipo ainda não aplica esses transforms ao cálculo. Achate as transformações no editor antes de reenviar.`].filter(Boolean).join(' ');
     }
     render();
     return;
@@ -857,7 +907,7 @@ async function handleUploadedFile(file){
     REAL.sourceKind='raster';
     REAL.imgReconstructed = dataUrl;
     REAL.imgPreview=null;
-    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null;
+    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
     render();
     await retrace();
@@ -870,10 +920,13 @@ async function handleUploadedFile(file){
 async function retrace(){
   const rasterSource=REAL.imgReconstructed||REAL.imgOriginal;
   if(!rasterSource) return;
+  const requestId=++traceRequestId;
+  REAL.traceQuality=null;
   REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
   state.tracing = true; render();
   try{
     const img = await loadImageEl(rasterSource);
+    if(requestId!==traceRequestId) return;
     const maxDim = 640;
     const scale = Math.min(1, maxDim/Math.max(img.width, img.height));
     const w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
@@ -889,11 +942,15 @@ async function retrace(){
     const fg = extractForegroundPath(svgStr);
     REAL.tracedSvg = svgStr; REAL.fgD = fg.d;
     REAL.tracedW = fg.w; REAL.tracedH = fg.h;
+    REAL.traceQuality = fg.d ? medirSobreposicaoVetor(bin,fg.d,fg.w,fg.h) : null;
     REAL.geomRaw = fg.d ? classifyGeometry(fg.d) : {areaPx:0,perimExtPx:0,perimIntPx:0,bboxPx:{x:0,y:0,w:0,h:0},pieces:[]};
     REAL.traceError = null;
   }catch(e){
+    if(requestId!==traceRequestId) return;
     REAL.traceError = String(e && e.message || e);
+    REAL.traceQuality = null;
   }
+  if(requestId!==traceRequestId) return;
   state.tracing = false;
   render();
 }
@@ -1016,7 +1073,7 @@ async function aplicarEdicaoVetor(){
   REAL.sourceKind = 'raster';
   REAL.imgOriginal = dataUrl;
   REAL.ajuste = { brilho:100, contraste:100, cinza:false };
-  REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null;
+  REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
   render();
   await retrace();
 }
@@ -1893,20 +1950,22 @@ async function handleReferenceUpload(file, target){
     render();
     return;
   }
+  invalidarRastreamento();
   const dataUrl=await new Promise((resolve,reject)=>{
     const reader=new FileReader(); reader.onload=()=>resolve(reader.result); reader.onerror=reject; reader.readAsDataURL(file);
   });
   if(target==='photo'){
     REAL.imgOriginal=dataUrl;
     REAL.imgReconstructed=null; REAL.imgPreview=null;
-    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.sourceKind=null;
+    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind=null;
     REAL.approvals.foto=false; REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
   }else{
     REAL.imgReconstructed=dataUrl;
-    REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.sourceKind='raster';
+    REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind='raster';
     REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
   }
   render();
+  if(target==='redraw') await retrace();
 }
 
 async function blobParaDataUrl(blob){
@@ -1954,6 +2013,7 @@ async function gerarRedesenhoComGPT(){
   }
 
   const requestId=++redrawRequestId;
+  invalidarRastreamento();
   REAL.gerandoRedesenho=true;
   REAL.uploadError=null;
   render();
@@ -1975,9 +2035,12 @@ async function gerarRedesenhoComGPT(){
     if(requestId!==redrawRequestId) return;
     REAL.imgReconstructed=await blobParaDataUrl(resultado);
     REAL.imgPreview=null;
-    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.sourceKind='raster';
+    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind='raster';
     REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false;
     REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
+    // Antecipar o traçado enquanto o operador confere o redesenho reduz a
+    // espera depois da aprovação sem fazer uma segunda chamada ao GPT.
+    void retrace();
   }catch(error){
     if(requestId===redrawRequestId){
       REAL.uploadError=error instanceof Error?error.message:'Falha ao gerar a reconstrução.';
@@ -2060,7 +2123,7 @@ function realStepVetorizacao(){
       ${uploadMessages()}
       <div class="checklist" style="margin-top:14px;">
         <div class="checkrow">${ICONS.check}${g?g.pieces.length:0} peça(s) externa(s) detectada(s)${g&&g.perimIntPx>0.5?', com vazados internos':''}</div>
-        <div class="checkrow">${ICONS.check}A comparação com a arte aprovada deve preservar silhueta, recortes, tipografia e posições</div>
+        <div class="checkrow">${ICONS.check}Confira silhueta, recortes, tipografia, proporções e posições contra a arte aprovada</div>
         <div class="checkrow">${ICONS.check}O cálculo usa os caminhos lidos; formas SVG diferentes de &lt;path&gt; podem ser ignoradas</div>
       </div>
       ${hasTrace? `<div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;"><button class="btn btn-soft btn-sm" data-act="editor-vetor-abrir">✏️ Editor rápido (mover, girar, expandir, apagar, cor)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG vetorial</button></div>` : ''}
@@ -2092,6 +2155,10 @@ function realStepVetorizacao(){
         <svg viewBox="0 0 ${REAL.tracedW} ${REAL.tracedH}" style="position:absolute;inset:0;width:100%;height:100%;opacity:${REAL.overlayOpacity/100};mix-blend-mode:difference;pointer-events:none;"><path d="${REAL.fgD}" fill="#fff" fill-rule="evenodd"/></svg>
       </div>
       <div class="rangewrap" style="margin-top:10px;"><span style="font-size:12px;color:var(--text-faint);">Opacidade do vetor</span><input type="range" min="0" max="100" value="${REAL.overlayOpacity}" data-act="real-overlay-opacity"><span class="val">${REAL.overlayOpacity}%</span></div>
+    </div>`:''}
+    ${REAL.traceQuality?`<div class="warnbox" style="margin-top:12px;background:${REAL.traceQuality.atingiuMeta?'var(--ok-soft)':'var(--warn-soft)'};border-color:color-mix(in oklab, ${REAL.traceQuality.atingiuMeta?'var(--ok)':'var(--warn)'} 35%,var(--border));">
+      <span style="color:${REAL.traceQuality.atingiuMeta?'var(--ok)':'var(--warn)'};">${ICONS.info}</span>
+      <div><b>Coincidência da silhueta: ${fmt(REAL.traceQuality.iouPct,1)}%.</b> Meta de referência do Prompt 2: 95%. ${REAL.traceQuality.atingiuMeta?'A sobreposição binária atingiu a meta.':'A meta ainda não foi atingida; ajuste o limiar e confira os detalhes antes de aprovar.'} Este indicador compara pixels da entrada com o SVG rasterizado; não substitui a revisão visual de letras, símbolo e espaçamentos.</div>
     </div>`:''}
     <div class="card" style="background:var(--surface-2); box-shadow:none; margin-top:14px;">
       <div class="grid2">
@@ -2159,7 +2226,7 @@ function realStepEscala(){
           <tr><td>Altura total (proporcional)</td><td class="num">${fmt(g.totalHeightM,3)} m</td></tr>
           <tr><td>Proporção (largura/altura)</td><td class="num">${fmt(proporcao,3)}</td></tr>
           <tr><td>Fator de escala</td><td class="num">${g.scaleFactor.toExponential(3)}</td></tr>
-          <tr><td>Área líquida (descontados vazados)</td><td class="num">${fmt(g.areaM2,3)} m²</td></tr>
+          <tr><td>Área líquida (amostragem, descontados vazados)</td><td class="num">${fmt(g.areaM2,3)} m²</td></tr>
           <tr><td>Área geral (retângulo envolvente)</td><td class="num">${fmt(g.areaGeralM2,3)} m²</td></tr>
           <tr><td>Perímetro externo</td><td class="num">${fmt(g.perimExtM,2)} m</td></tr>
           <tr><td>Perímetro interno / vazados</td><td class="num">${fmt(g.perimIntM,2)} m</td></tr>
@@ -2176,10 +2243,10 @@ function realStepEscala(){
       </div>
     </div>
     <div class="warnbox" style="margin-top:12px;background:var(--warn-soft);border-color:color-mix(in oklab,var(--warn) 35%,var(--border));">
-      <span style="color:var(--warn);">${ICONS.info}</span><div><b>${medidaDeRaster?'Medição aproximada da arte original.':'Medição referente ao SVG fornecido.'}</b> ${medidaDeRaster?'Os valores são calculados sobre o traçado automático; ruído, perspectiva e qualidade do redesenho podem alterar os contornos.':'Os valores descrevem a geometria vetorial enviada.'} Kerf, diâmetro da ferramenta, offsets e desperdício não estão incluídos.</div>
+      <span style="color:var(--warn);">${ICONS.info}</span><div><b>Resultado geométrico aproximado por amostragem.</b> ${medidaDeRaster?'A medida parte do traçado automático; ruído, perspectiva e qualidade do redesenho podem alterar os contornos.':'A medida parte dos caminhos vetoriais lidos no SVG.'} ${g.possivelSobreposicao?'As caixas envolventes de peças se cruzam; confira sobreposições, pois áreas coincidentes podem ser contadas mais de uma vez.':''} Kerf, diâmetro da ferramenta, offsets e desperdício não estão incluídos.</div>
     </div>
     <div class="footer-nav">
-      <div class="role-note">${ICONS.info} ${REAL.geomRaw?REAL.geomRaw.pieces.length:0} peça(s) externa(s); sobreposições e recortes dependem da geometria aprovada.</div>
+      <div class="role-note">${ICONS.info} ${REAL.geomRaw?REAL.geomRaw.pieces.length:0} contorno(s) externo(s); revise vazados e sobreposições antes de usar para fabricação.</div>
       <button class="btn btn-primary" data-act="real-approve" data-val="escala">${ICONS.check} Confirmar medidas e avançar</button>
     </div>
   </div>`;
@@ -2217,7 +2284,7 @@ function pranchaTecnicaSvg(g=computeGeomReal()){
     <text x="1290" y="190" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#0f172a">RESULTADOS</text>
     <text x="1290" y="235" font-size="15" fill="#334155">Largura: ${widthLabel}</text>
     <text x="1290" y="270" font-size="15" fill="#334155">Altura: ${heightLabel}</text>
-    <text x="1290" y="305" font-size="15" fill="#334155">Área líquida: ${area} m²</text>
+    <text x="1290" y="305" font-size="15" fill="#334155">Área líquida (aprox.): ${area} m²</text>
     <text x="1290" y="340" font-size="15" fill="#334155">Perímetro externo: ${fmt(g.perimExtM,2)} m</text>
     <text x="1290" y="375" font-size="15" fill="#334155">Vazados: ${fmt(g.perimIntM,2)} m</text>
     <text x="1290" y="410" font-size="15" font-weight="700" fill="#0f172a">Corte total: ${totalCut} m</text>
@@ -2225,8 +2292,8 @@ function pranchaTecnicaSvg(g=computeGeomReal()){
     <text x="1290" y="495" font-size="13" fill="#475569">Referência medida: ${refText}</text>
     <text x="1290" y="530" font-size="13" fill="#475569">Arquivo de origem: ${REAL.sourceKind==='raster'?'raster rastreado (aproximado)':'SVG vetorial'}</text>
     <line x1="1290" y1="565" x2="1700" y2="565" stroke="#cbd5e1"/>
-    <text x="1290" y="600" font-size="12" fill="#64748b">Não inclui kerf, ferramenta, offset, margens ou desperdício.</text>
-    <text x="1290" y="625" font-size="12" fill="#64748b">Valores do desenho e do relatório usam a mesma geometria.</text>
+    <text x="1290" y="600" font-size="12" fill="#64748b">Cálculo por amostragem; não inclui kerf, ferramenta, offset ou desperdício.</text>
+    <text x="1290" y="625" font-size="12" fill="#64748b">${g.possivelSobreposicao?'Confira peças sobrepostas: a área pode ser somada duas vezes.':'Confira contornos e vazados antes de fabricar.'}</text>
     <text x="${drawX}" y="${height-35}" font-size="12" fill="#64748b">${title} · prancha gerada pelo protótipo Estúdio Letra Caixa</text>
   </svg>`;
 }
@@ -3502,7 +3569,7 @@ function bindRealEvents(){
   if(state.mode!=='real') return;
 
   const startBtn = document.querySelector('[data-act="start-real"]');
-  if(startBtn) startBtn.addEventListener('click', ()=>{ state.mode='real'; REAL=novaProposta(); render(); });
+  if(startBtn) startBtn.addEventListener('click', ()=>{ invalidarRastreamento(); state.mode='real'; REAL=novaProposta(); render(); });
 
   document.querySelectorAll('[data-act="real-approve"]').forEach(el=>{
     el.addEventListener('click', ()=>{
@@ -3512,12 +3579,12 @@ function bindRealEvents(){
       const idx = STEP_DEFS_REAL.findIndex(s=>s.k===val);
       if(idx>-1 && idx<STEP_DEFS_REAL.length-1) REAL.step = STEP_DEFS_REAL[idx+1].n;
       render();
-      if(val==='redesenho' && REAL.sourceKind==='raster') retrace();
+      if(val==='redesenho' && REAL.sourceKind==='raster' && !REAL.fgD && !state.tracing) retrace();
     });
   });
   document.querySelectorAll('[data-act="real-goto-step"]').forEach(el=> el.addEventListener('click', ()=>{ REAL.step=parseInt(el.dataset.val); render(); }));
   const backBtn = document.querySelector('[data-act="real-back"]');
-  if(backBtn) backBtn.addEventListener('click', ()=>{ REAL=novaProposta(); state.step=1; render(); });
+  if(backBtn) backBtn.addEventListener('click', ()=>{ invalidarRastreamento(); REAL=novaProposta(); state.step=1; render(); });
 
   const cnpjEl = document.querySelector('[data-act="real-cnpj"]');
   if(cnpjEl) cnpjEl.addEventListener('input', e=>{
@@ -3612,16 +3679,18 @@ function bindRealEvents(){
   const escopoEl=document.querySelector('[data-act="real-escopo"]');
   if(escopoEl) escopoEl.addEventListener('change', e=>{
     redrawRequestId++; REAL.gerandoRedesenho=false;
+    invalidarRastreamento();
     REAL.escopoRedesenho=e.target.value; REAL.approvals.foto=false; REAL.approvals.redesenho=false;
-    REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.sourceKind=null;
+    REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
     render();
   });
   const escopoItemsEl=document.querySelector('[data-act="real-escopo-elementos"]');
   if(escopoItemsEl) escopoItemsEl.addEventListener('input', e=>{
     redrawRequestId++; REAL.gerandoRedesenho=false;
+    invalidarRastreamento();
     REAL.elementosSelecionados=e.target.value; REAL.approvals.foto=false; REAL.approvals.redesenho=false;
-    REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.sourceKind=null;
+    REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
     renderPreservingFocus();
   });
@@ -3630,8 +3699,9 @@ function bindRealEvents(){
   const removeImgBtn = document.querySelector('[data-act="real-remove-image"]');
   if(removeImgBtn) removeImgBtn.addEventListener('click', ()=>{
     redrawRequestId++; REAL.gerandoRedesenho=false;
+    invalidarRastreamento();
     REAL.sourceKind=null; REAL.uploadError=null; REAL.uploadWarning=null;
-    REAL.imgOriginal=null; REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null;
+    REAL.imgOriginal=null; REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
     REAL.approvals.foto=false; REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false;
     REAL.step=2;
     render();

@@ -383,6 +383,13 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `insufficient_quota` em 28/09/2026. Os parâmetros atuais foram conferidos na
   documentação oficial em 30/09/2026, mas ainda é necessária uma geração real
   com uma foto depois de haver crédito disponível.
+- **Prompts 2 e 3 do Estúdio são executados por funções locais.** Os PDFs do
+  usuário foram transcritos em `docs/prompts/prompt-2-vetorizacao.md` e
+  `docs/prompts/prompt-3-area-perimetro-prancha.md`. O navegador vetoriza com
+  ImageTracer, calcula uma coincidência de silhueta pixel/SVG e gera as medidas
+  e a prancha sem chamadas adicionais ao GPT. A área é aproximada por amostragem;
+  caixas de peças que se cruzam geram um aviso, pois o protótipo não faz união
+  booleana de formas sobrepostas.
 
 ## Patches
 
