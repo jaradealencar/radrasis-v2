@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -18,18 +18,38 @@ import DetalhamentoMarketing from "./DetalhamentoMarketing";
 import ImportarCustoMarketing from "./ImportarCustoMarketing";
 import ResultadoGeral from "./ResultadoGeral";
 import InsightsCarteira from "./InsightsCarteira";
+import MarketingLancamentoCAC from "./MarketingLancamentoCAC";
 
 interface Props {
   anoSel: number;
+  abrirCACRequest?: number;
 }
 
 type Categoria = "novo" | "recorrenteAtivo" | "reativado" | null;
+type AbaMarketing = "geral" | "insights" | "aquisicao" | "reativacao" | "mensal" | "campanhas" | "fornecedor" | "config";
 
-export default function MarketingFinanceiro({ anoSel }: Props) {
+export default function MarketingFinanceiro({ anoSel, abrirCACRequest = 0 }: Props) {
   const [abaPrincipal, setAbaPrincipal] = useState<"marketing" | "resultado">("marketing");
+  const [abaMarketing, setAbaMarketing] = useState<AbaMarketing>("geral");
   const [importOpen, setImportOpen] = useState(false);
   const [filtros, setFiltros] = useState<FiltrosMarketingState>({ mesFiltro: null, vendedor: null, cidade: null, classificacao: null });
   const [drillDown, setDrillDown] = useState<{ mes: number | null; categoria: Categoria; titulo: string } | null>(null);
+
+  useEffect(() => {
+    if (abrirCACRequest > 0) {
+      setAbaPrincipal("marketing");
+      setAbaMarketing("mensal");
+      setFiltros({ mesFiltro: null, vendedor: null, cidade: null, classificacao: null });
+    }
+  }, [abrirCACRequest]);
+
+  function alterarAbaMarketing(valor: string) {
+    const proximaAba = valor as AbaMarketing;
+    if (proximaAba === "mensal") {
+      setFiltros({ mesFiltro: null, vendedor: null, cidade: null, classificacao: null });
+    }
+    setAbaMarketing(proximaAba);
+  }
 
   const {
     data: relatorio, isLoading, isError, refetch,
@@ -68,7 +88,7 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
         </TabsList>
 
         <TabsContent value="marketing" className="pt-4">
-          <Tabs defaultValue="geral">
+          <Tabs value={abaMarketing} onValueChange={alterarAbaMarketing}>
             <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
               <TabsList>
                 <TabsTrigger value="geral" className="gap-1.5"><LayoutGrid size={14} /> Visão Geral</TabsTrigger>
@@ -125,7 +145,12 @@ export default function MarketingFinanceiro({ anoSel }: Props) {
             </TabsContent>
 
             <TabsContent value="mensal">
-              {dados ? <MarketingAnaliseMensal ano={anoSel} relatorio={dados.relatorio} refetch={refetch} /> : semDados}
+              {dados ? (
+                <div className="space-y-5">
+                  <MarketingLancamentoCAC ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
+                  <MarketingAnaliseMensal ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
+                </div>
+              ) : semDados}
             </TabsContent>
 
             <TabsContent value="campanhas">

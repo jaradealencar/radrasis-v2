@@ -5,7 +5,7 @@ import {
   AlertTriangle, Percent, CalendarDays, DollarSign, Repeat, Trophy, Info,
   CheckCircle2, XCircle, Clock3, ChevronRight, HelpCircle, Filter, Layers,
   Download, Sparkles, Send, UserCheck, SlidersHorizontal, MessageSquareText,
-  Printer,
+  Printer, Calculator,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -1586,6 +1586,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
   const [dataInicialMes, setDataInicialMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [dataFinalMes, setDataFinalMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [vista, setVista] = useState<Vista>("visao-geral");
+  const [abrirCACRequest, setAbrirCACRequest] = useState(0);
   // "crescimento" fica restrita a admin/master/gestor — mostra CAC, ROI,
   // lucro/prejuízo e ponto de equilíbrio, dado sensível demais pra ficar
   // exposto a qualquer papel que um dia ganhe acesso a Performance Comercial
@@ -1615,6 +1616,19 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Período de Análise</p>
             <SeletorPeriodo dataInicial={dataInicialMes} dataFinal={dataFinalMes} onChange={(ini, fim) => { setDataInicialMes(ini); setDataFinalMes(fim); }} />
           </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setVista("crescimento");
+                setAbrirCACRequest(n => n + 1);
+              }}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-purple-300 bg-purple-50 px-4 text-sm font-semibold text-purple-800 transition-colors hover:bg-purple-100"
+            >
+              <Calculator size={16} aria-hidden="true" />
+              Lançar CAC
+            </button>
+          )}
           <p className="text-[11px] text-slate-400 max-w-xs text-right">
             Calculado direto do histórico local de OS (2023–hoje) — sem consulta à API do ERP, sem necessidade de congelar.
           </p>
@@ -1636,7 +1650,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       </div>
 
       {vista === "visao-geral" && <VistaVisaoGeral dataInicial={dataInicial} dataFinal={dataFinal} />}
-      {vista === "crescimento" && isAdmin && <MarketingFinanceiro anoSel={anoSelecionado} />}
+      {vista === "crescimento" && isAdmin && <MarketingFinanceiro anoSel={anoSelecionado} abrirCACRequest={abrirCACRequest} />}
       {vista === "clientes" && <VistaClientes dataInicial={dataInicial} dataFinal={dataFinal} />}
       {vista === "fila" && <VistaFilaAcoes />}
       {vista === "retencao" && <VistaRetencao />}
