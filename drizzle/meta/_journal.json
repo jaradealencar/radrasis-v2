@@ -414,6 +414,13 @@
       "when": 1790826213324,
       "tag": "0058_careless_carnage",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790859613164,
+      "tag": "0059_spicy_alex_power",
+      "breakpoints": true
     }
   ]
 }

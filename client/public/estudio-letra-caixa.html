@@ -2646,6 +2646,11 @@ const configGeral = {
   jurosCartaoPct: [0,0,0,0,0,0],
   papeisPeca: ['Face','Fundo','Lateral','Pintura','Iluminação','Fixação','Insumo fabricação','Produtividade'],
 };
+let configGeralCarregada = false;
+let configGeralEstado = 'carregando';
+let configGeralErro = '';
+let _configSaveChain = Promise.resolve();
+let _configSaveRevision = 0;
 
 /** Propostas confirmadas pelo vendedor no fluxo real — carregadas do banco
  *  pra alimentar a aba "Propostas realizadas" em Administração. */
@@ -2751,9 +2756,10 @@ async function concluirOrcamentoEabrirCotacao(){
 }
 
 async function initDb(){
+  const configPromise = carregarConfigGeralServidor();
   try{ dbApi = await claude.use('db'); }catch(e){ dbApi = null; }
   try{ assetsApi = await claude.use('assets'); }catch(e){ assetsApi = null; }
-  if(!dbApi) return; // visão sem banco (link público, viewer sem grant etc.) — segue só em memória
+  if(!dbApi){ await configPromise; return; } // kits ainda usam a capability do artifact; config geral usa o servidor Radrasys.
   try{
     const snap = await dbApi.collection('kits').get();
     snap.docs.forEach(d=>{
@@ -2776,23 +2782,7 @@ async function initDb(){
       adminState.materiasExcluidas = new Set(data.materias||[]);
     }
   }catch(e){}
-  try{
-    const cfg = await dbApi.doc('config/geral').get();
-    if(cfg.exists){
-      const data = cfg.data()||{};
-      if(typeof data.custoFixoPct==='number') configGeral.custoFixoPct = data.custoFixoPct;
-      if(Array.isArray(data.vendedores)) configGeral.vendedores = data.vendedores;
-      if(data.whatsappVendedores && typeof data.whatsappVendedores==='object' && !Array.isArray(data.whatsappVendedores)) configGeral.whatsappVendedores = data.whatsappVendedores;
-      if(data.formasPagamento && typeof data.formasPagamento==='object' && !Array.isArray(data.formasPagamento)){
-        for(const forma of ['cartao','boleto','ted']) if(typeof data.formasPagamento[forma]==='boolean') configGeral.formasPagamento[forma]=data.formasPagamento[forma];
-      }
-      if(Array.isArray(data.jurosCartaoPct)) configGeral.jurosCartaoPct=Array.from({length:6},(_,i)=>{
-        const valor=Number(data.jurosCartaoPct[i]);
-        return Number.isFinite(valor)?Math.min(100,Math.max(0,valor)):0;
-      });
-      if(Array.isArray(data.papeisPeca) && data.papeisPeca.length) configGeral.papeisPeca = data.papeisPeca;
-    }
-  }catch(e){}
+  await configPromise;
   dbApi.collection('kits').onSnapshot(snap=>{
     snap.docChanges().forEach(ch=>{
       if(ch.type==='removed') delete adminState.kits[ch.doc.id];
@@ -2851,12 +2841,64 @@ function salvarExclusoes(){
   }, 400);
 }
 
-/** Grava (debounced) a configuração geral (custo fixo global, vendedores, papéis de peça). */
+/** Carrega a configuração global do endpoint do Radrasys. */
+async function carregarConfigGeralServidor(){
+  configGeralEstado='carregando';
+  configGeralErro='';
+  try{
+    const response=await fetch('/api/letra-caixa/configuracoes',{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível carregar as configurações compartilhadas.');
+    const data=body.config||{};
+    if(typeof data.custoFixoPct==='number') configGeral.custoFixoPct=data.custoFixoPct;
+    if(Array.isArray(data.vendedores)) configGeral.vendedores=data.vendedores;
+    if(data.whatsappVendedores && typeof data.whatsappVendedores==='object' && !Array.isArray(data.whatsappVendedores)) configGeral.whatsappVendedores=data.whatsappVendedores;
+    if(data.formasPagamento && typeof data.formasPagamento==='object'){
+      for(const forma of ['cartao','boleto','ted']) if(typeof data.formasPagamento[forma]==='boolean') configGeral.formasPagamento[forma]=data.formasPagamento[forma];
+    }
+    if(Array.isArray(data.jurosCartaoPct)) configGeral.jurosCartaoPct=Array.from({length:6},(_,i)=>{
+      const valor=Number(data.jurosCartaoPct[i]);
+      return Number.isFinite(valor)?Math.min(100,Math.max(0,valor)):0;
+    });
+    if(Array.isArray(data.papeisPeca)) configGeral.papeisPeca=data.papeisPeca;
+    configGeralCarregada=true;
+    configGeralEstado='pronto';
+  }catch(error){
+    configGeralCarregada=false;
+    configGeralEstado='erro';
+    configGeralErro=String(error && error.message || 'Não foi possível carregar as configurações compartilhadas.');
+  }finally{
+    render();
+  }
+}
+
+/** Grava (debounced) a configuração geral no banco Postgres do Radrasys. */
 function salvarConfigGeral(){
-  if(!dbApi) return;
+  if(!configGeralCarregada) return;
   clearTimeout(_configSaveTimer);
+  const revisao=++_configSaveRevision;
+  configGeralEstado='salvando';
+  configGeralErro='';
   _configSaveTimer = setTimeout(()=>{
-    dbApi.doc('config/geral').set({ ...configGeral }).catch(()=>{});
+    const config=JSON.parse(JSON.stringify(configGeral));
+    _configSaveChain=_configSaveChain.catch(()=>{}).then(async()=>{
+      const response=await fetch('/api/letra-caixa/configuracoes',{
+        method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({config}),
+      });
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(body.error||'Não foi possível salvar as configurações.');
+    });
+    _configSaveChain.then(()=>{
+      if(revisao!==_configSaveRevision) return;
+      configGeralEstado='salvo';
+      configGeralErro='';
+      renderPreservingFocus();
+    }).catch(error=>{
+      if(revisao!==_configSaveRevision) return;
+      configGeralEstado='erro';
+      configGeralErro=String(error && error.message || 'Não foi possível salvar as configurações.');
+      renderPreservingFocus();
+    });
   }, 400);
 }
 
@@ -3064,7 +3106,13 @@ function adminCotacoesHistorico(){
 }
 
 function adminConfiguracoes(){
+  const mensagemConfig = configGeralEstado==='carregando' ? 'Carregando configurações compartilhadas…'
+    : configGeralEstado==='salvando' ? 'Salvando alterações no banco compartilhado…'
+    : configGeralEstado==='erro' ? `Falha ao ${configGeralCarregada?'salvar':'carregar'} configurações: ${escaparHtml(configGeralErro)}`
+    : configGeralEstado==='pronto' ? 'Configurações carregadas; alterações serão salvas automaticamente.'
+    : 'Configurações salvas no banco compartilhado.';
   return `
+  <fieldset ${configGeralCarregada?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;width:100%;">
   <div class="card">
     <div class="cardhead"><div><h3>% custo fixo sobre matéria-prima</h3><p>Rateio de energia/mão-de-obra fixa — sempre o MESMO valor pra todos os produtos (não é por produto).</p></div></div>
     <label class="field" style="max-width:160px;">% custo fixo (global)
@@ -3105,7 +3153,8 @@ function adminConfiguracoes(){
       ${configGeral.papeisPeca.map((pp,i)=>`<span class="badge b-neutral" style="gap:6px;">${pp} <button data-act="config-papel-remove" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
     </div>
   </div>
-  <div class="role-note">${ICONS.info} ${dbApi?'Configurações salvas no banco compartilhado.':'⚠ Sem banco nesta visão — mudanças não são salvas.'}</div>`;
+  </fieldset>
+  <div class="role-note" role="status" aria-live="polite">${configGeralEstado==='erro'?ICONS.alert:ICONS.info} ${mensagemConfig}${configGeralEstado==='erro'?` <button class="btn btn-ghost btn-sm" data-act="config-retry">Tentar novamente</button>`:''}</div>`;
 }
 
 function adminProdutos(){
@@ -3476,6 +3525,12 @@ function bindClienteEvents(){
 
 function bindAdminEvents(){
   if(state.tab!=='admin') return;
+
+  const repetirConfig = document.querySelector('[data-act="config-retry"]');
+  if(repetirConfig) repetirConfig.addEventListener('click',()=>{
+    if(configGeralCarregada) salvarConfigGeral();
+    else carregarConfigGeralServidor();
+  });
 
   const filtroVend = document.querySelector('[data-act="admin-propostas-filtro-vendedor"]');
   if(filtroVend) filtroVend.addEventListener('change', e=>{ adminState.filtroVendedorPropostas=e.target.value; render(); });

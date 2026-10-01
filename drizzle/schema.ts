@@ -4,6 +4,7 @@ import {
   decimal,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   serial,
@@ -417,6 +418,16 @@ export const configuracoesComerciais = pgTable("configuracoes_comerciais", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type ConfiguracaoComercial = typeof configuracoesComerciais.$inferSelect;
+
+// Configurações compartilhadas do Estúdio Letra Caixa. A página HTML usa
+// rotas do próprio Radrasys; o armazenamento embutido de artifacts não existe
+// no deploy da Vercel.
+export const estudioConfiguracoes = pgTable("estudio_configuracoes", {
+  id: integer("id").primaryKey().default(1),
+  configuracaoJson: jsonb("configuracaoJson").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type EstudioConfiguracao = typeof estudioConfiguracoes.$inferSelect;
 
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 

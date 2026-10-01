@@ -210,7 +210,8 @@ server/
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
                        estudio-cotacoes.ts (cotações do HTML estático do Estúdio),
                        estudio-catalogo-mubisys.ts (catálogos de produtos e matérias-primas
-                       via API MubiSys, com sessão autenticada)
+                       via API MubiSys, com sessão autenticada) e
+                       estudio-configuracoes.ts (configurações compartilhadas do Estúdio)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
