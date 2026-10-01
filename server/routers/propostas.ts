@@ -5,12 +5,12 @@
  * pode ligar/desligar item pra simular o valor (escolha fica salva) e ver
  * juros de parcelamento + condições comerciais configuradas em Admin.
  */
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { propostas, propostaItens, produtos, configuracoesComerciais } from "../../drizzle/schema";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, and, inArray } from "drizzle-orm";
 import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
 
 function gerarToken(): string {
@@ -38,6 +38,8 @@ async function carregarItensComProduto(db: NonNullable<Awaited<ReturnType<typeof
       produtoId: propostaItens.produtoId,
       produtoNome: propostaItens.produtoNome,
       descricao: propostaItens.descricao,
+      grupoId: propostaItens.grupoId,
+      grupoDescricao: propostaItens.grupoDescricao,
       quantidade: propostaItens.quantidade,
       precoUnitario: propostaItens.precoUnitario,
       ativo: propostaItens.ativo,
@@ -49,6 +51,46 @@ async function carregarItensComProduto(db: NonNullable<Awaited<ReturnType<typeof
     .innerJoin(produtos, eq(propostaItens.produtoId, produtos.id))
     .where(eq(propostaItens.propostaId, propostaId))
     .orderBy(asc(propostaItens.ordem));
+}
+
+type ItemCarregado = Awaited<ReturnType<typeof carregarItensComProduto>>[number];
+
+/** Mantém os componentes separados no orçamento, mas entrega um único item por grupo ao cliente. */
+function consolidarItensPublicos(itens: ItemCarregado[]) {
+  const resultado: Omit<ItemCarregado, "grupoId" | "grupoDescricao" | "produtoId" | "ordem">[] = [];
+  const gruposProcessados = new Set<string>();
+
+  for (const item of itens) {
+    if (!item.grupoId) {
+      const { grupoId: _grupoId, grupoDescricao: _grupoDescricao, produtoId: _produtoId, ordem: _ordem, ...publico } = item;
+      resultado.push(publico);
+      continue;
+    }
+    if (gruposProcessados.has(item.grupoId)) continue;
+
+    const membros = itens.filter((membro) => membro.grupoId === item.grupoId);
+    gruposProcessados.add(item.grupoId);
+    const prazos = membros
+      .map((membro) => membro.prazoFabricacaoDiasUteis)
+      .filter((prazo): prazo is number => prazo != null);
+    const valorConjunto = membros.reduce(
+      (soma, membro) => soma + Number(membro.quantidade) * Number(membro.precoUnitario),
+      0,
+    );
+
+    resultado.push({
+      id: item.id,
+      produtoNome: "Conjunto",
+      descricao: item.grupoDescricao,
+      quantidade: "1",
+      precoUnitario: valorConjunto.toFixed(2),
+      ativo: membros.every((membro) => membro.ativo),
+      prazoFabricacaoDiasUteis: prazos.length ? Math.max(...prazos) : null,
+      instagramUrl: null,
+    });
+  }
+
+  return resultado;
 }
 
 async function obterConfiguracoes(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
@@ -237,11 +279,91 @@ export const propostasRouter = router({
       return { success: true };
     }),
 
+  grupoCriar: protectedProcedure
+    .input(
+      z.object({
+        propostaId: z.number(),
+        itemIds: z.array(z.number()).min(2).max(50).refine((ids) => new Set(ids).size === ids.length, "Itens repetidos"),
+        descricao: z.string().max(5000).default(""),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const [proposta] = await db
+        .select({ id: propostas.id, observacoes: propostas.observacoes })
+        .from(propostas)
+        .where(eq(propostas.id, input.propostaId));
+      if (!proposta || proposta.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) throw new Error("Proposta não encontrada");
+
+      const itens = await db
+        .select({ id: propostaItens.id, grupoId: propostaItens.grupoId, ativo: propostaItens.ativo })
+        .from(propostaItens)
+        .where(and(eq(propostaItens.propostaId, input.propostaId), inArray(propostaItens.id, input.itemIds)));
+      if (itens.length !== input.itemIds.length) throw new Error("Um ou mais itens não pertencem a esta proposta");
+      if (itens.some((item) => item.grupoId)) throw new Error("Desfaça os grupos existentes antes de agrupar esses itens");
+      if (new Set(itens.map((item) => item.ativo)).size > 1) {
+        throw new Error("Para agrupar, os itens precisam estar todos ativos ou todos desligados");
+      }
+
+      const grupoId = randomUUID();
+      await db
+        .update(propostaItens)
+        .set({ grupoId, grupoDescricao: input.descricao })
+        .where(and(eq(propostaItens.propostaId, input.propostaId), inArray(propostaItens.id, input.itemIds)));
+      return { success: true, grupoId };
+    }),
+
+  grupoAtualizarDescricao: protectedProcedure
+    .input(z.object({ propostaId: z.number(), grupoId: z.string().uuid(), descricao: z.string().max(5000) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const itens = await db
+        .select({ id: propostaItens.id })
+        .from(propostaItens)
+        .where(and(eq(propostaItens.propostaId, input.propostaId), eq(propostaItens.grupoId, input.grupoId)));
+      if (itens.length < 2) throw new Error("Grupo não encontrado");
+      await db
+        .update(propostaItens)
+        .set({ grupoDescricao: input.descricao })
+        .where(and(eq(propostaItens.propostaId, input.propostaId), eq(propostaItens.grupoId, input.grupoId)));
+      return { success: true };
+    }),
+
+  grupoDesfazer: protectedProcedure
+    .input(z.object({ propostaId: z.number(), grupoId: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      await db
+        .update(propostaItens)
+        .set({ grupoId: null, grupoDescricao: "" })
+        .where(and(eq(propostaItens.propostaId, input.propostaId), eq(propostaItens.grupoId, input.grupoId)));
+      return { success: true };
+    }),
+
   itemRemover: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      const [item] = await db
+        .select({ propostaId: propostaItens.propostaId, grupoId: propostaItens.grupoId })
+        .from(propostaItens)
+        .where(eq(propostaItens.id, input.id));
+      if (item?.grupoId) {
+        const membros = await db
+          .select({ id: propostaItens.id })
+          .from(propostaItens)
+          .where(and(eq(propostaItens.propostaId, item.propostaId), eq(propostaItens.grupoId, item.grupoId)));
+        if (membros.length === 2) {
+          await db
+            .update(propostaItens)
+            .set({ grupoId: null, grupoDescricao: "" })
+            .where(and(eq(propostaItens.propostaId, item.propostaId), eq(propostaItens.grupoId, item.grupoId)));
+        }
+      }
       await db.delete(propostaItens).where(eq(propostaItens.id, input.id));
       return { success: true };
     }),
@@ -301,7 +423,7 @@ export const propostasRouter = router({
             status: proposta.status,
             createdAt: proposta.createdAt,
           },
-          itens,
+          itens: consolidarItensPublicos(itens),
           valorTotal: calcularTotal(itens),
           prazoFabricacaoDiasUteis: calcularPrazo(itens),
           condicoesComerciaisUrl: config.condicoesComerciaisUrl,
@@ -318,13 +440,20 @@ export const propostasRouter = router({
         const [proposta] = await db.select({ id: propostas.id }).from(propostas).where(eq(propostas.token, input.token));
         if (!proposta) throw new Error("Proposta não encontrada");
         const [item] = await db
-          .select({ id: propostaItens.id, propostaId: propostaItens.propostaId })
+          .select({ id: propostaItens.id, propostaId: propostaItens.propostaId, grupoId: propostaItens.grupoId })
           .from(propostaItens)
           .where(eq(propostaItens.id, input.itemId));
         // O item precisa pertencer à proposta do token — senão qualquer link
         // válido poderia mexer em item de outra proposta pelo id.
         if (!item || item.propostaId !== proposta.id) throw new Error("Item não pertence a esta proposta");
-        await db.update(propostaItens).set({ ativo: input.ativo }).where(eq(propostaItens.id, input.itemId));
+        if (item.grupoId) {
+          await db
+            .update(propostaItens)
+            .set({ ativo: input.ativo })
+            .where(and(eq(propostaItens.propostaId, proposta.id), eq(propostaItens.grupoId, item.grupoId)));
+        } else {
+          await db.update(propostaItens).set({ ativo: input.ativo }).where(eq(propostaItens.id, input.itemId));
+        }
         return { success: true };
       }),
   }),

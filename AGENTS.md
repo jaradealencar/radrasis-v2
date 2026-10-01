@@ -344,6 +344,10 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   automaticamente, ver ponta solta do módulo Produtos acima).
   Cada linha de `proposta_itens` também tem `descricao`, texto livre por
   produto preenchido pelo vendedor, exibido no link público e no PDF.
+  Produtos da mesma cotação podem ser associados por `grupoId` e ganhar uma
+  `grupoDescricao` compartilhada: o cálculo interno mantém os componentes
+  separados, enquanto o link público e o PDF mostram um único conjunto com
+  valor agregado; o cliente ativa/desativa o conjunto inteiro.
   **Padrão de rota pública**: diferente do site espelho do Guia de
   Fornecedores (`server/routes/publico-guia-fornecedores.ts`, REST fora do
   tRPC por ser outro deploy Vercel/outra origem), a Proposta pública é

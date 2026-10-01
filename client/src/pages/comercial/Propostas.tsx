@@ -11,10 +11,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { FileText, Plus, Search, Trash2, ArrowLeft, Link as LinkIcon, Settings2, Download, FileDown } from "lucide-react";
+import { FileText, Plus, Search, Trash2, ArrowLeft, Link as LinkIcon, Settings2, Download, FileDown, Layers, Ungroup } from "lucide-react";
 import { fmtBrl, fmtDateTime } from "@/lib/format";
 import { enviarArquivo } from "@/lib/upload";
 import { gerarPdfProposta } from "@/lib/pdfProposta";
@@ -424,6 +425,10 @@ function ItensProposta({
   const [quantidade, setQuantidade] = useState("1");
   const [precoUnitario, setPrecoUnitario] = useState("");
   const [descricoes, setDescricoes] = useState<Record<number, string>>({});
+  const [descricoesGrupo, setDescricoesGrupo] = useState<Record<string, string>>({});
+  const [itensSelecionados, setItensSelecionados] = useState<number[]>([]);
+  const [dialogAgruparAberto, setDialogAgruparAberto] = useState(false);
+  const [descricaoNovoGrupo, setDescricaoNovoGrupo] = useState("");
 
   const { data: produtoDetalhe } = trpc.produtos.obter.useQuery(
     { id: Number(produtoSelecionadoId) },
@@ -447,7 +452,10 @@ function ItensProposta({
   });
 
   const remover = trpc.propostas.itemRemover.useMutation({
-    onSuccess: () => utils.propostas.obter.invalidate({ id: propostaId }),
+    onSuccess: () => {
+      utils.propostas.obter.invalidate({ id: propostaId });
+      setItensSelecionados([]);
+    },
     onError: (e) => toast.error("Erro ao remover", { description: e.message }),
   });
 
@@ -456,7 +464,45 @@ function ItensProposta({
     onError: (e) => toast.error("Erro ao salvar a descrição", { description: e.message }),
   });
 
+  const criarGrupo = trpc.propostas.grupoCriar.useMutation({
+    onSuccess: () => {
+      toast.success("Produtos agrupados; o cliente verá um único item");
+      setItensSelecionados([]);
+      setDescricaoNovoGrupo("");
+      setDialogAgruparAberto(false);
+      utils.propostas.obter.invalidate({ id: propostaId });
+    },
+    onError: (e) => toast.error("Não foi possível agrupar", { description: e.message }),
+  });
+
+  const atualizarDescricaoGrupo = trpc.propostas.grupoAtualizarDescricao.useMutation({
+    onSuccess: () => utils.propostas.obter.invalidate({ id: propostaId }),
+    onError: (e) => toast.error("Erro ao salvar a descrição do conjunto", { description: e.message }),
+  });
+
+  const desfazerGrupo = trpc.propostas.grupoDesfazer.useMutation({
+    onSuccess: () => {
+      toast.success("Grupo desfeito");
+      utils.propostas.obter.invalidate({ id: propostaId });
+    },
+    onError: (e) => toast.error("Erro ao desfazer grupo", { description: e.message }),
+  });
+
   const opcoes = (produtosCadastrados ?? []).filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()));
+  const quantidadePorGrupo = new Map<string, number>();
+  for (const item of itens) {
+    if (!item.grupoId) continue;
+    quantidadePorGrupo.set(item.grupoId, (quantidadePorGrupo.get(item.grupoId) ?? 0) + 1);
+  }
+  const statusDosSelecionados = new Set(
+    itens.filter((item) => itensSelecionados.includes(item.id)).map((item) => item.ativo),
+  );
+  const selecaoComStatusMisturado = statusDosSelecionados.size > 1;
+  const alternarSelecaoItem = (itemId: number, selecionado: boolean) => {
+    setItensSelecionados((atuais) => selecionado
+      ? [...atuais, itemId]
+      : atuais.filter((id) => id !== itemId));
+  };
 
   const handleAdicionar = () => {
     const qtd = parseFloat(quantidade.replace(",", "."));
@@ -505,60 +551,166 @@ function ItensProposta({
         {itens.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum item adicionado ainda.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead>Descrição para a cotação</TableHead>
-                <TableHead>Qtd</TableHead>
-                <TableHead>Preço unit.</TableHead>
-                <TableHead>Subtotal</TableHead>
-                <TableHead>Prazo (d.ú.)</TableHead>
-                <TableHead>Ativo</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {itens.map((item) => (
-                <TableRow key={item.id} className={!item.ativo ? "opacity-50" : ""}>
-                  <TableCell className="font-medium">{item.produtoNome}</TableCell>
-                  <TableCell className="min-w-64">
-                    <Textarea
-                      rows={2}
-                      maxLength={5000}
-                      value={descricoes[item.id] ?? item.descricao ?? ""}
-                      onChange={(e) => setDescricoes((atual) => ({ ...atual, [item.id]: e.target.value }))}
-                      onBlur={(e) => {
-                        const descricao = e.target.value;
-                        if (descricao !== (item.descricao ?? "")) {
-                          atualizarItem.mutate({
-                            id: item.id,
-                            quantidade: Number(item.quantidade),
-                            precoUnitario: Number(item.precoUnitario),
-                            descricao,
-                          });
-                        }
-                      }}
-                      placeholder="Descreva este produto para o cliente"
-                      aria-label={`Descrição para ${item.produtoNome}`}
-                      disabled={atualizarItem.isPending}
-                    />
-                    <p className="mt-1 text-[11px] text-muted-foreground">Salva ao sair do campo</p>
-                  </TableCell>
-                  <TableCell>{Number(item.quantidade)}</TableCell>
-                  <TableCell>{fmtBrl(Number(item.precoUnitario))}</TableCell>
-                  <TableCell>{fmtBrl(Number(item.precoUnitario) * Number(item.quantidade))}</TableCell>
-                  <TableCell>{item.prazoFabricacaoDiasUteis ?? "—"}</TableCell>
-                  <TableCell>{item.ativo ? "Sim" : "Desligado pelo cliente"}</TableCell>
-                  <TableCell>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => remover.mutate({ id: item.id })}>
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                    </Button>
-                  </TableCell>
+          <div className="space-y-3">
+            {itensSelecionados.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3 bg-muted/30">
+                <p className="text-sm">{itensSelecionados.length} produto(s) selecionado(s)</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={itensSelecionados.length < 2 || selecaoComStatusMisturado}
+                  onClick={() => setDialogAgruparAberto(true)}
+                >
+                  <Layers className="mr-2 h-4 w-4" /> Agrupar em um item
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setItensSelecionados([])}>
+                  Limpar seleção
+                </Button>
+                {selecaoComStatusMisturado && (
+                  <p className="w-full text-xs text-destructive">
+                    Para manter o total correto, agrupe produtos que estejam todos ativos ou todos desligados.
+                  </p>
+                )}
+              </div>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">Agrupar</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Descrição para a cotação</TableHead>
+                  <TableHead>Qtd</TableHead>
+                  <TableHead>Preço unit.</TableHead>
+                  <TableHead>Subtotal</TableHead>
+                  <TableHead>Prazo (d.ú.)</TableHead>
+                  <TableHead>Ativo</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {itens.map((item, itemIndex) => {
+                  const ehPrimeiroDoGrupo = !!item.grupoId && itens.findIndex((candidato) => candidato.grupoId === item.grupoId) === itemIndex;
+                  return (
+                    <TableRow key={item.id} className={!item.ativo ? "opacity-50" : ""}>
+                      <TableCell>
+                        <Checkbox
+                          checked={itensSelecionados.includes(item.id)}
+                          disabled={!!item.grupoId}
+                          aria-label={`Selecionar ${item.produtoNome} para agrupar`}
+                          onCheckedChange={(checked) => alternarSelecaoItem(item.id, checked === true)}
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">{item.produtoNome}</TableCell>
+                      <TableCell className="min-w-64">
+                        {item.grupoId ? (
+                          ehPrimeiroDoGrupo ? (
+                            <div className="space-y-1">
+                              <Badge variant="secondary">Exibido como um único item</Badge>
+                              <Textarea
+                                rows={2}
+                                maxLength={5000}
+                                value={descricoesGrupo[item.grupoId] ?? item.grupoDescricao}
+                                onChange={(e) => setDescricoesGrupo((atual) => ({ ...atual, [item.grupoId!]: e.target.value }))}
+                                onBlur={(e) => {
+                                  const descricao = e.target.value;
+                                  if (descricao !== item.grupoDescricao) {
+                                    atualizarDescricaoGrupo.mutate({ propostaId, grupoId: item.grupoId!, descricao });
+                                  }
+                                }}
+                                placeholder="Descreva o conjunto para o cliente"
+                                aria-label={`Descrição do conjunto com ${quantidadePorGrupo.get(item.grupoId) ?? 0} produtos`}
+                                disabled={atualizarDescricaoGrupo.isPending}
+                              />
+                              <p className="text-[11px] text-muted-foreground">
+                                Descrição compartilhada pelos {quantidadePorGrupo.get(item.grupoId) ?? 0} produtos. Salva ao sair.
+                              </p>
+                            </div>
+                          ) : (
+                            <Badge variant="outline">Componente oculto do cliente</Badge>
+                          )
+                        ) : (
+                          <>
+                            <Textarea
+                              rows={2}
+                              maxLength={5000}
+                              value={descricoes[item.id] ?? item.descricao ?? ""}
+                              onChange={(e) => setDescricoes((atual) => ({ ...atual, [item.id]: e.target.value }))}
+                              onBlur={(e) => {
+                                const descricao = e.target.value;
+                                if (descricao !== (item.descricao ?? "")) {
+                                  atualizarItem.mutate({
+                                    id: item.id,
+                                    quantidade: Number(item.quantidade),
+                                    precoUnitario: Number(item.precoUnitario),
+                                    descricao,
+                                  });
+                                }
+                              }}
+                              placeholder="Descreva este produto para o cliente"
+                              aria-label={`Descrição para ${item.produtoNome}`}
+                              disabled={atualizarItem.isPending}
+                            />
+                            <p className="mt-1 text-[11px] text-muted-foreground">Salva ao sair do campo</p>
+                          </>
+                        )}
+                      </TableCell>
+                      <TableCell>{Number(item.quantidade)}</TableCell>
+                      <TableCell>{fmtBrl(Number(item.precoUnitario))}</TableCell>
+                      <TableCell>{fmtBrl(Number(item.precoUnitario) * Number(item.quantidade))}</TableCell>
+                      <TableCell>{item.prazoFabricacaoDiasUteis ?? "—"}</TableCell>
+                      <TableCell>{item.ativo ? "Sim" : "Desligado pelo cliente"}</TableCell>
+                      <TableCell>
+                        {item.grupoId && ehPrimeiroDoGrupo && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            title="Desfazer grupo"
+                            onClick={() => desfazerGrupo.mutate({ propostaId, grupoId: item.grupoId! })}
+                          >
+                            <Ungroup className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => remover.mutate({ id: item.id })}>
+                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <Dialog open={dialogAgruparAberto} onOpenChange={setDialogAgruparAberto}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Agrupar produtos em um item</DialogTitle>
+                  <DialogDescription>
+                    Os {itensSelecionados.length} produtos continuarão separados no cálculo interno, mas o cliente verá uma linha com esta descrição. Agrupe itens que estejam todos ativos ou todos desligados.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label htmlFor="descricao-novo-grupo">Descrição exibida na proposta</Label>
+                  <Textarea
+                    id="descricao-novo-grupo"
+                    rows={4}
+                    maxLength={5000}
+                    value={descricaoNovoGrupo}
+                    onChange={(e) => setDescricaoNovoGrupo(e.target.value)}
+                    placeholder="Ex.: Conjunto de fachada com letras caixa, estrutura e instalação"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDialogAgruparAberto(false)}>Cancelar</Button>
+                  <Button
+                    disabled={criarGrupo.isPending || itensSelecionados.length < 2}
+                    onClick={() => criarGrupo.mutate({ propostaId, itemIds: itensSelecionados, descricao: descricaoNovoGrupo })}
+                  >
+                    {criarGrupo.isPending ? "Agrupando…" : "Agrupar produtos"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         )}
       </CardContent>
     </Card>
