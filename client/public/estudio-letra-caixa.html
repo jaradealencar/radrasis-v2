@@ -1842,10 +1842,10 @@ function realStepProposta(){
   const produtosFiltrados = filtroAtivo
     ? produtosAtivos.filter(p=>p.modelos.some(m=>modeloBateFiltro(p.id, m.id)))
     : produtosAtivos;
-  const produtosOptions = produtosFiltrados.map(p=>`<option value="${p.id}" ${REAL.produtoId===p.id?'selected':''}>${p.nome}</option>`).join('');
+  const produtosOptions = produtosFiltrados.map(p=>`<option value="${p.id}" ${REAL.produtoId===p.id?'selected':''}>${p.nome} · ${skuProduto(p.id)}</option>`).join('');
   const produtoSel = produtosFiltrados.find(p=>p.id===REAL.produtoId);
   const modelosDoProduto = produtoSel ? produtoSel.modelos.filter(m=>modeloBateFiltro(produtoSel.id, m.id)) : [];
-  const modelosOptions = produtoSel ? modelosDoProduto.map(m=>`<option value="${m.id}" ${REAL.modeloId===m.id?'selected':''}>${m.nome}${m.unidade?` (${m.unidade})`:''}${adminState.kits[kitKey(produtoSel.id,m.id)]?' ✓ composição pronta':''}</option>`).join('') : '';
+  const modelosOptions = produtoSel ? modelosDoProduto.map(m=>`<option value="${m.id}" ${REAL.modeloId===m.id?'selected':''}>${m.nome} · ${skuModelo(produtoSel.id,m.id)}${m.unidade?` (${m.unidade})`:''}${adminState.kits[kitKey(produtoSel.id,m.id)]?' ✓ composição pronta':''}</option>`).join('') : '';
   const modeloSel = produtoSel ? modelosDoProduto.find(m=>m.id===REAL.modeloId) : null;
   const kitPronto = produtoSel && modeloSel ? adminState.kits[kitKey(produtoSel.id, modeloSel.id)] : null;
   const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && REAL.vendedor;
@@ -1910,6 +1910,7 @@ function realStepProposta(){
       <div style="display:flex; gap:12px; align-items:flex-start;">
         ${kitPronto && kitPronto.fotoUrl? `<img src="${kitPronto.fotoUrl}" style="width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--border); flex:none;">` : ''}
         <div style="flex:1;">
+          <div class="kv"><span>SKU do produto / modelo</span><span class="mono">${skuProduto(produtoSel.id)} / ${skuModelo(produtoSel.id,modeloSel.id)}</span></div>
           <div class="kv"><span>Unidade de cobrança</span><span>${modeloSel.unidade||'—'}</span></div>
           ${kitPronto && kitPronto.prazoDiasUteis!=null? `<div class="kv"><span>Prazo de produção</span><span>${kitPronto.prazoDiasUteis} dias úteis</span></div>` : ''}
           ${modeloSel.desc? `<p style="font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.5;">${modeloSel.desc}</p>`:''}
@@ -2588,6 +2589,9 @@ const adminState = {
   produtosExcluidos:new Set(), materiasExcluidas:new Set(),
 };
 function kitKey(produtoId, modeloId){ return produtoId+'_'+modeloId; }
+function skuProduto(produtoId){ return 'SKU-'+String(produtoId??'').trim().padStart(6,'0'); }
+function skuModelo(produtoId, modeloId){ return `${skuProduto(produtoId)}-M${String(modeloId??'').trim().padStart(3,'0')}`; }
+function skuModeloPorKey(key){ const [produtoId,modeloId]=String(key||'').split('_'); return skuModelo(produtoId,modeloId); }
 
 /* ---------- PERSISTÊNCIA REAL (banco do artifact) ----------
  * Sem isso, adminState.kits/exclusões viviam só em memória JS: qualquer
@@ -3081,20 +3085,20 @@ function adminProdutos(){
   // separado: excluir/reativar já reordena e já fica salvo. Pedido do
   // usuário 29/09/2026.
   const visiveis = catalog.produtos
-    .filter(p=> !q || normalizeSearch(p.nome).includes(q))
+    .filter(p=> !q || normalizeSearch(p.nome+' '+skuProduto(p.id)+' '+p.modelos.map(m=>skuModelo(p.id,m.id)).join(' ')).includes(q))
     .slice()
     .sort((a,b)=> (adminState.produtosExcluidos.has(a.id)?1:0) - (adminState.produtosExcluidos.has(b.id)?1:0));
   const cadastrados = Object.keys(adminState.kits).length;
   return `
   <div class="card">
     <div class="cardhead">
-      <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. A composição não vem da API — ela não expõe isso (verificado: só há endpoint de catálogo e de matéria-prima, não de ficha técnica) — monte uma vez por modelo abaixo e fica salva para o vendedor reaproveitar.</p></div>
+      <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. Cada produto recebe um SKU Radrasys fixo a partir do ID MubiSys; cada modelo tem um SKU derivado do produto e do ID do modelo. Busque por nome ou SKU para localizar configurações.</p><p>A composição não vem da API — ela não expõe isso (verificado: só há endpoint de catálogo e de matéria-prima, não de ficha técnica) — monte uma vez por modelo abaixo e fica salva para o vendedor reaproveitar.</p></div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
         <span class="badge b-accent">${cadastrados} modelo(s) cadastrado(s)</span>
         <span class="badge ${dbApi?'b-ok':'b-warn'}">${dbApi?'✓ salvo no banco':'⚠ sem banco — só nesta sessão'}</span>
       </div>
     </div>
-    <input type="text" placeholder="Buscar produto…" value="${adminState.produtoQuery}" data-act="admin-produto-query" style="width:100%; margin-bottom:12px;">
+    <input type="text" placeholder="Buscar produto ou SKU…" value="${adminState.produtoQuery}" data-act="admin-produto-query" style="width:100%; margin-bottom:12px;">
     <div class="tablewrap">
       ${visiveis.length? visiveis.map(p=>adminProdutoRow(p)).join('') : `<div class="empty-hint">Nenhum produto encontrado para "${adminState.produtoQuery}".</div>`}
     </div>
@@ -3112,6 +3116,7 @@ function adminProdutoRow(p){
         <span style="color:var(--text-faint); font-size:12px;">${expanded?'▾':'▸'}</span>
         <div>
           <div style="font-weight:600; font-size:13.5px;">${p.nome}${excluido?' <span class="badge b-bad" style="margin-left:6px;">excluído</span>':''}</div>
+          <div style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">SKU do produto: <span class="mono">${skuProduto(p.id)}</span></div>
           <div style="font-size:11.5px; color:var(--text-faint);">${p.modelos.length} modelo(s) · ${cadastradosCount} cadastrado(s) no Radrasys</div>
         </div>
       </div>
@@ -3130,7 +3135,7 @@ function adminModeloRow(p, m){
     <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
       <div>
         <div style="font-size:13px; font-weight:600;">${m.nome}</div>
-        <div style="font-size:11.5px; color:var(--text-faint);">${m.unidade||'—'}${kit && kit.categoria? ` · ${kit.categoria} ▸ ${kit.subcategoria||'—'}${kit.tipoProduto?' ▸ '+kit.tipoProduto:''}` : ''}</div>
+        <div style="font-size:11.5px; color:var(--text-faint);"><span class="mono" style="color:var(--accent-ink);">${skuModelo(p.id,m.id)}</span> · ${m.unidade||'—'}${kit && kit.categoria? ` · ${kit.categoria} ▸ ${kit.subcategoria||'—'}${kit.tipoProduto?' ▸ '+kit.tipoProduto:''}` : ''}</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         ${kit? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':' · margem vinculada'):''})</span>` : `<span class="badge b-neutral">Não cadastrado</span>`}
@@ -3167,13 +3172,13 @@ function adminKitEditor(p, m, key){
       const k = kitKey(prod.id, mod.id);
       if(k===key) return;
       const existente = adminState.kits[k];
-      outrosModelos.push({ key:k, nome: (existente && existente.nomeCompleto) || `${prod.nome} — ${mod.nome}` });
+      outrosModelos.push({ key:k, sku:skuModelo(prod.id,mod.id), nome: (existente && existente.nomeCompleto) || `${prod.nome} — ${mod.nome}` });
     });
   });
   const kitProdutos = Array.isArray(kitState.kitProdutos) ? kitState.kitProdutos : [];
   const kpq = adminState.kitProdutoQuery||'';
   const kitProdutoMatches = kpq.length>=1
-    ? outrosModelos.filter(o=>!kitProdutos.some(kp=>kp.key===o.key) && normalizeSearch(o.nome).includes(normalizeSearch(kpq))).slice(0,40)
+    ? outrosModelos.filter(o=>!kitProdutos.some(kp=>kp.key===o.key) && normalizeSearch(o.nome+' '+o.sku).includes(normalizeSearch(kpq))).slice(0,40)
     : [];
 
   const catAtual = kitState.categoria && CATEGORIAS_PRODUTO[kitState.categoria] ? kitState.categoria : '';
@@ -3183,7 +3188,7 @@ function adminKitEditor(p, m, key){
 
   return `
   <div class="card" style="background:var(--surface-2); box-shadow:none; margin-top:10px;">
-    <p style="font-size:12px; font-weight:700; margin-bottom:8px;">✏️ Editando — ${p.nome} · ${m.nome}</p>
+    <p style="font-size:12px; font-weight:700; margin-bottom:8px;">✏️ Editando — ${p.nome} · ${m.nome} <span class="badge b-accent mono" style="margin-left:6px;">${skuModelo(p.id,m.id)}</span></p>
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Categoria</p>
     <div class="grid3">
@@ -3222,13 +3227,13 @@ function adminKitEditor(p, m, key){
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Produtos do kit <span style="font-weight:400; text-transform:none;">— vincule vários itens: pesquise e clique em cada produto; os selecionados ficam abaixo</span></p>
     <div style="position:relative;">
-      <input type="text" placeholder="Buscar produto pelo nome…" value="${kpq}" data-act="admin-kitproduto-query" style="width:100%;">
+      <input type="text" placeholder="Buscar produto pelo nome ou SKU…" value="${kpq}" data-act="admin-kitproduto-query" style="width:100%;">
       ${kitProdutoMatches.length? `<div class="card" style="position:absolute; z-index:20; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
-        ${kitProdutoMatches.map(o=>`<button type="button" data-act="admin-kitproduto-add" data-val="${o.key}" data-key="${key}" style="display:block; width:100%; padding:8px 9px; border:0; border-radius:8px; background:transparent; color:var(--text); text-align:left; cursor:pointer; font-size:12.5px;"><span style="color:var(--accent); font-weight:700; margin-right:6px;">+</span>${o.nome}</button>`).join('')}
+        ${kitProdutoMatches.map(o=>`<button type="button" data-act="admin-kitproduto-add" data-val="${o.key}" data-key="${key}" style="display:block; width:100%; padding:8px 9px; border:0; border-radius:8px; background:transparent; color:var(--text); text-align:left; cursor:pointer; font-size:12.5px;"><span style="color:var(--accent); font-weight:700; margin-right:6px;">+</span><span class="mono" style="color:var(--accent-ink);margin-right:6px;">${o.sku}</span>${o.nome}</button>`).join('')}
       </div>` : (kpq.length ? '<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum outro produto encontrado para esta busca.</p>' : '')}
     </div>
     ${kitProdutos.length? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
-      ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;">${kp.nome} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
+      ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;"><span class="mono">${skuModeloPorKey(kp.key)}</span> ${kp.nome} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
     </div><p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${kitProdutos.length} produto(s) vinculado(s). Pesquise outro item para adicionar mais.</p>` : `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum produto vinculado. Você pode adicionar vários itens do catálogo.</p>`}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Composição — matéria-prima real <span style="font-weight:400; text-transform:none;">(quantas quiser)</span></p>
