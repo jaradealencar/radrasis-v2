@@ -2616,6 +2616,7 @@ let _configSaveTimer = null;
 const configGeral = {
   custoFixoPct: 40,
   vendedores: [],
+  whatsappVendedores: {},
   papeisPeca: ['Face','Fundo','Lateral','Pintura','Iluminação','Fixação','Insumo fabricação','Produtividade'],
 };
 
@@ -2628,6 +2629,13 @@ function linkCotacaoPublica(token){
   url.search = '';
   url.searchParams.set('cotacao', token);
   return url.toString();
+}
+
+function normalizarTelefoneWhatsApp(valor){
+  const digitos=String(valor||'').replace(/\D/g,'');
+  if(digitos.length===10 || digitos.length===11) return '55'+digitos;
+  if((digitos.length===12 || digitos.length===13) && digitos.startsWith('55')) return digitos;
+  return '';
 }
 
 async function carregarCotacoesServidor(){
@@ -2662,6 +2670,7 @@ function snapshotCotacaoReal(){
       endereco:REAL.cliente.endereco || null,
     },
     vendedor:REAL.vendedor || '',
+    whatsappVendedor:normalizarTelefoneWhatsApp(configGeral.whatsappVendedores[REAL.vendedor]) || null,
     modeloNome:REAL.modeloNome || '',
     descricaoProduto:REAL.descricaoProduto || '',
     areaM2:Number.isFinite(g.areaM2) ? g.areaM2 : null,
@@ -2741,6 +2750,7 @@ async function initDb(){
       const data = cfg.data()||{};
       if(typeof data.custoFixoPct==='number') configGeral.custoFixoPct = data.custoFixoPct;
       if(Array.isArray(data.vendedores)) configGeral.vendedores = data.vendedores;
+      if(data.whatsappVendedores && typeof data.whatsappVendedores==='object' && !Array.isArray(data.whatsappVendedores)) configGeral.whatsappVendedores = data.whatsappVendedores;
       if(Array.isArray(data.papeisPeca) && data.papeisPeca.length) configGeral.papeisPeca = data.papeisPeca;
     }
   }catch(e){}
@@ -3019,13 +3029,13 @@ function adminConfiguracoes(){
     </label>
   </div>
   <div class="card">
-    <div class="cardhead"><div><h3>Vendedores</h3><p>Lista usada no passo 1 da proposta — toda proposta salva registra o nome do vendedor.</p></div></div>
+    <div class="cardhead"><div><h3>Vendedores</h3><p>Lista usada no passo 1 da proposta. Cadastre o WhatsApp com DDD para que o cliente abra a conversa diretamente.</p></div></div>
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <input type="text" placeholder="Nome do vendedor" data-act="config-vendedor-novo" style="flex:1;">
       <button class="btn btn-primary btn-sm" data-act="config-vendedor-add">${ICONS.check} Adicionar</button>
     </div>
-    ${configGeral.vendedores.length? `<div style="display:flex; flex-wrap:wrap; gap:6px;">
-      ${configGeral.vendedores.map((v,i)=>`<span class="badge b-neutral" style="gap:6px;">${v} <button data-act="config-vendedor-remove" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
+    ${configGeral.vendedores.length? `<div style="display:grid; gap:8px;">
+      ${configGeral.vendedores.map((v,i)=>`<div class="card" style="display:flex; align-items:center; gap:10px; padding:10px 12px; margin:0; box-shadow:none;"><b style="min-width:150px;">${escaparHtml(v)}</b><label class="field" style="flex:1; margin:0;">WhatsApp<input type="tel" inputmode="tel" autocomplete="tel" placeholder="(67) 99999-9999" value="${escaparHtml(configGeral.whatsappVendedores[v]||'')}" data-act="config-vendedor-whatsapp" data-idx="${i}"></label><button class="btn btn-ghost btn-sm" data-act="config-vendedor-remove" data-idx="${i}" aria-label="Remover vendedor ${escaparHtml(v)}">✕</button></div>`).join('')}
     </div>` : `<p class="empty-hint">Nenhum vendedor cadastrado ainda.</p>`}
   </div>
   <div class="card">
@@ -3448,9 +3458,21 @@ function bindAdminEvents(){
   const vendedorAddBtn = document.querySelector('[data-act="config-vendedor-add"]');
   if(vendedorAddBtn) vendedorAddBtn.addEventListener('click', addVendedor);
   if(vendedorNovoEl) vendedorNovoEl.addEventListener('keydown', e=>{ if(e.key==='Enter') addVendedor(); });
+  document.querySelectorAll('[data-act="config-vendedor-whatsapp"]').forEach(el=>{
+    el.addEventListener('input', ()=>{
+      const nome=configGeral.vendedores[+el.dataset.idx];
+      if(!nome) return;
+      const numero=String(el.value||'').replace(/\D/g,'');
+      if(numero) configGeral.whatsappVendedores[nome]=numero;
+      else delete configGeral.whatsappVendedores[nome];
+      salvarConfigGeral();
+    });
+  });
   document.querySelectorAll('[data-act="config-vendedor-remove"]').forEach(el=>{
     el.addEventListener('click', ()=>{
+      const nome=configGeral.vendedores[+el.dataset.idx];
       configGeral.vendedores.splice(+el.dataset.idx,1);
+      if(nome) delete configGeral.whatsappVendedores[nome];
       salvarConfigGeral();
       render();
     });
@@ -3989,6 +4011,24 @@ let cotacaoPublicaAtual = null;
 let respostaPublicaSelecionada = null;
 let comentarioRespostaPublica = '';
 
+function abrirWhatsAppRespostaPublica(tipo, comentario){
+  const p=cotacaoPublicaAtual;
+  const reacao=REACOES_CLIENTE.find(x=>x.key===tipo);
+  if(!p || !reacao) return;
+  const cliente=p.cliente?.razao || p.cliente?.fantasia || 'cliente';
+  const linhas=[
+    `Olá, ${p.vendedor}! Sou ${cliente} e estou retornando sobre a cotação ${p.numero} (${p.modeloNome}).`,
+    `Minha resposta: ${reacao.label}`,
+    `Cotação: ${window.location.href}`,
+  ];
+  if(comentario?.trim()) linhas.push(`Complemento: ${comentario.trim()}`);
+  const telefone=normalizarTelefoneWhatsApp(p.whatsappVendedor);
+  const url=`https://wa.me/${telefone}?text=${encodeURIComponent(linhas.join(String.fromCharCode(10)))}`;
+  const janela=window.open(url,'_blank');
+  if(janela) janela.opener=null;
+  else window.location.href=url;
+}
+
 function renderCotacaoPublica(mensagemErro=''){
   const root=document.getElementById('shell');
   if(mensagemErro){
@@ -4023,7 +4063,8 @@ function renderCotacaoPublica(mensagemErro=''){
         </div>
       </div>
       <div class="card" style="margin-top:14px;">
-        <div class="cardhead"><div><h3>${reacao?'Sua resposta':'O que você achou da cotação?'}</h3><p>${reacao?escaparHtml(reacao.label):'Escolha uma opção e, se quiser, deixe um comentário para o vendedor.'}</p></div></div>
+        <div class="cardhead"><div><h3>${reacao?'Sua resposta':'O que você achou da cotação?'}</h3><p>${reacao?escaparHtml(reacao.label):'Toque numa opção para abrir o WhatsApp com uma mensagem pronta. Revise e envie por lá.'}</p></div></div>
+        ${!reacao && !p.whatsappVendedor?'<p class="role-note">O WhatsApp do vendedor ainda não foi cadastrado. Depois de abrir, escolha o contato do vendedor.</p>':''}
         ${reacao?`
           ${p.reacaoCliente.comentario?`<p style="font-style:italic;color:var(--text-dim);">“${escaparHtml(p.reacaoCliente.comentario)}”</p>`:''}
           <div class="role-note">Respondido em ${new Date(p.reacaoCliente.respondidoEm).toLocaleString('pt-BR')}</div>
@@ -4033,13 +4074,15 @@ function renderCotacaoPublica(mensagemErro=''){
           <label class="field" style="margin-top:16px;">Comentário (opcional)
             <textarea data-act="publica-comentario" rows="3" style="width:100%;resize:vertical;font-family:inherit;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);" placeholder="Escreva aqui para complementar sua resposta">${escaparHtml(comentarioRespostaPublica)}</textarea>
           </label>
-          <div class="footer-nav"><span></span><button class="btn btn-primary" data-act="publica-enviar-resposta" ${respostaPublicaSelecionada?'':'disabled'}>${ICONS.check} Enviar resposta</button></div>
+          <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Para incluir o complemento na mensagem, escreva e toque novamente na opção escolhida.</p>
+          <div class="footer-nav"><span></span><button class="btn btn-primary" data-act="publica-enviar-resposta" ${respostaPublicaSelecionada?'':'disabled'}>${ICONS.check} Registrar resposta também na cotação</button></div>
         `}
       </div>
       <p style="text-align:center;color:var(--text-faint);font-size:11px;margin-top:14px;">Vendedor responsável: ${escaparHtml(p.vendedor)}</p>
     </div>`;
   root.querySelectorAll('[data-act="publica-escolher-resposta"]').forEach(botao=>botao.addEventListener('click',()=>{
     respostaPublicaSelecionada=botao.dataset.val;
+    abrirWhatsAppRespostaPublica(respostaPublicaSelecionada,comentarioRespostaPublica);
     root.querySelectorAll('[data-act="publica-escolher-resposta"]').forEach(outro=>{
       const selecionado=outro===botao;
       outro.setAttribute('aria-pressed',String(selecionado));

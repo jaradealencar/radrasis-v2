@@ -361,7 +361,10 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   específica: o HTML estático do Estúdio de Letra Caixa não usa React/tRPC;
   suas cotações concluídas usam `/api/letra-caixa/cotacoes` no mesmo host,
   com sessão para criar/listar e token público para abrir a cotação e enviar
-  a resposta do cliente. Esses registros ficam em `propostas.observacoes`
+  a resposta do cliente. A cotação guarda o WhatsApp configurado para o
+  vendedor; ao escolher uma reação, o link público abre `wa.me` com a resposta
+  e o número da cotação preenchidos, sem enviar a mensagem automaticamente.
+  Esses registros ficam em `propostas.observacoes`
   com o prefixo `[ESTUDIO_COTACAO_V1]` e são excluídos da lista do módulo
   comercial Propostas.
 - **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
