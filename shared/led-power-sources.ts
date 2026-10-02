@@ -43,6 +43,7 @@ export const ledPowerSourceTextKey = {
   common: (part: "powerUnit" | "meterUnit" | "moduleUnit" | "moduleRecommendedPrefix") => `common.${part}`,
   title: (tableKey: LedTapeTable["key"] | LedModuleTable["key"]) => `${tableKey}.title`,
   subtitle: (tableKey: LedTapeTable["key"] | LedModuleTable["key"]) => `${tableKey}.subtitle`,
+  image: (tableKey: LedTapeTable["key"] | LedModuleTable["key"]) => `${tableKey}.imageUrl`,
   column: (
     tableKey: LedTapeTable["key"] | LedModuleTable["key"],
     column: "source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence"

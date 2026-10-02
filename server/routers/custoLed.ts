@@ -9,7 +9,7 @@ import {
   saveLedPowerSourceTextOverride,
 } from "../db/db";
 
-const ledTextKeyPattern = /^(page\.(tableTabLabel|tapesTab|modulesTab|pdfTitle|pdfSubtitle|tapesHeading|modulesHeading)|common\.(powerUnit|meterUnit|moduleUnit|moduleRecommendedPrefix)|(tape-24v|tape-12v|modules-24v|modules-7025-12v|modules-3030-12v|micro-2835-12v)\.(title|subtitle|column\.(source|voltage|power|recommended|maximum|equivalence)|row\.\d+\.(source|voltage)))$/;
+const ledTextKeyPattern = /^(page\.(tableTabLabel|tapesTab|modulesTab|pdfTitle|pdfSubtitle|tapesHeading|modulesHeading)|common\.(powerUnit|meterUnit|moduleUnit|moduleRecommendedPrefix)|(tape-24v|tape-12v|modules-24v|modules-7025-12v|modules-3030-12v|micro-2835-12v)\.(title|subtitle|imageUrl|column\.(source|voltage|power|recommended|maximum|equivalence)|row\.\d+\.(source|voltage)))$/;
 
 // ─── Tipos de LED ─────────────────────────────────────────────────────────────
 
@@ -26,6 +26,13 @@ export const custoLedRouter = router({
     .input(z.object({
       key: z.string().regex(ledTextKeyPattern),
       value: z.string().max(300),
+    }).superRefine((input, ctx) => {
+      if (!input.key.endsWith(".imageUrl") || !input.value) return;
+      try {
+        if (new URL(input.value).protocol !== "https:") throw new Error();
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "A imagem precisa usar uma URL HTTPS válida." });
+      }
     }))
     .mutation(async ({ input }) => {
       await saveLedPowerSourceTextOverride(input.key, input.value);

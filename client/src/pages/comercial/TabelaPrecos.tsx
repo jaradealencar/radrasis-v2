@@ -52,8 +52,11 @@ import {
   Download,
   History,
   Clock,
+  Image as ImageIcon,
+  Upload,
 } from "lucide-react";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
 
@@ -372,6 +375,7 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
     ["maximum", `Fita LED ${tabela.wattsPerMeter} W/m — limite máximo (100%)`],
   ];
   const subtitle = `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
+  const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
 
   return (
     <Card className="border border-slate-200 shadow-sm">
@@ -382,6 +386,7 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
         <span className="block w-fit max-w-full rounded border border-sky-200 bg-sky-100 px-2.5 py-1 text-sm font-semibold text-sky-800">
           <EditableLedText textKey={ledPowerSourceTextKey.subtitle(tabela.key)} value={subtitle} texts={texts} />
         </span>
+        <LedImageLink tableKey={tabela.key} title={title} texts={texts} />
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
@@ -417,6 +422,7 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
     ...(hasCurrentEquivalence ? [["equivalence", "Equivalência em correntes (20 peças)"] as ["equivalence", string]] : []),
     ["maximum", "Limite máximo (100%)"],
   ];
+  const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
   return (
     <Card className="border border-slate-200 shadow-sm">
       <CardHeader className="items-start gap-1 pb-3 pt-3 text-left">
@@ -426,6 +432,7 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
         <span className="block w-fit max-w-full rounded border border-violet-200 bg-violet-100 px-2.5 py-1 text-sm font-semibold text-violet-800">
           <EditableLedText textKey={ledPowerSourceTextKey.subtitle(tabela.key)} value={tabela.subtitle} texts={texts} />
         </span>
+        <LedImageLink tableKey={tabela.key} title={title} texts={texts} />
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
@@ -504,7 +511,7 @@ function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: Led
   const subtitle = `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
   const subtitleText = getLedText(texts, ledPowerSourceTextKey.subtitle(tabela.key), subtitle);
-  return `<div class="section-block"><div class="section-title">${escapeHtml(title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${escapeHtml(subtitleText)}</div><table><thead><tr style="background:${color}">${columns.map(([key, fallback]) => `<th>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.column(tabela.key, key), fallback))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="section-block"><div class="section-title">${escapeHtml(title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${escapeHtml(subtitleText)}</div>${gerarHtmlLinkImagemLed(tabela.key, texts)}<table><thead><tr style="background:${color}">${columns.map(([key, fallback]) => `<th>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.column(tabela.key, key), fallback))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts: LedPowerSourceTextOverrides) {
@@ -529,7 +536,7 @@ function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts:
     </tr>`).join("");
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
   const subtitle = getLedText(texts, ledPowerSourceTextKey.subtitle(tabela.key), tabela.subtitle);
-  return `<div class="section-block"><div class="section-title">${escapeHtml(title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #ddd6fe;border-radius:4px;background:#ede9fe;color:#5b21b6;font-weight:600">${escapeHtml(subtitle)}</div><table><thead><tr style="background:${color}">${columns.map(([key, fallback]) => `<th>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.column(tabela.key, key), fallback))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="section-block"><div class="section-title">${escapeHtml(title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #ddd6fe;border-radius:4px;background:#ede9fe;color:#5b21b6;font-weight:600">${escapeHtml(subtitle)}</div>${gerarHtmlLinkImagemLed(tabela.key, texts)}<table><thead><tr style="background:${color}">${columns.map(([key, fallback]) => `<th>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.column(tabela.key, key), fallback))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function gerarHtmlDimensionamentoLed(color: string, dimensionamento: LedPowerSourceTables, texts: LedPowerSourceTextOverrides) {
@@ -903,6 +910,119 @@ function escapeHtml(s: string): string {
 
 function getLedText(texts: LedPowerSourceTextOverrides, key: string, fallback: string): string {
   return texts[key] ?? fallback;
+}
+
+function gerarHtmlLinkImagemLed(
+  tableKey: LedTapeTable["key"] | LedModuleTable["key"],
+  texts: LedPowerSourceTextOverrides,
+): string {
+  const imageUrl = getLedText(texts, ledPowerSourceTextKey.image(tableKey), "");
+  if (!imageUrl) return "";
+  return `<div style="margin:2px 0 6px 4px;font-size:10.5px"><a href="${escapeHtml(imageUrl)}" target="_blank" rel="noopener noreferrer" style="color:#0369a1;font-weight:600;text-decoration:underline">Clique para ver a imagem</a></div>`;
+}
+
+function LedImageLink({
+  tableKey,
+  title,
+  texts,
+}: {
+  tableKey: LedTapeTable["key"] | LedModuleTable["key"];
+  title: string;
+  texts: LedPowerSourceTextOverrides;
+}) {
+  const imageKey = ledPowerSourceTextKey.image(tableKey);
+  const imageUrl = getLedText(texts, imageKey, "");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const utils = trpc.useUtils();
+  const saveImage = trpc.custoLed.saveDimensionamentoTexto.useMutation();
+
+  async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione um arquivo de imagem.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const uploaded = await enviarArquivo("imagem", file);
+      await saveImage.mutateAsync({ key: imageKey, value: uploaded.url });
+      await utils.custoLed.getDimensionamentoFontes.invalidate();
+      toast.success("Imagem do LED salva.");
+    } catch {
+      toast.error("Não foi possível enviar a imagem do LED.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeImage() {
+    try {
+      await saveImage.mutateAsync({ key: imageKey, value: "" });
+      await utils.custoLed.getDimensionamentoFontes.invalidate();
+      toast.success("Imagem removida.");
+    } catch {
+      toast.error("Não foi possível remover a imagem.");
+    }
+  }
+
+  return (
+    <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs">
+      {imageUrl && (
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(true)}
+          className="inline-flex items-center gap-1 font-medium text-sky-700 hover:text-sky-900 hover:underline"
+        >
+          <ImageIcon className="h-3.5 w-3.5" /> Clique para ver a imagem
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        className="inline-flex items-center gap-1 text-slate-500 hover:text-sky-700 disabled:opacity-50"
+      >
+        <Upload className="h-3.5 w-3.5" />
+        {uploading ? "Enviando imagem…" : imageUrl ? "Trocar imagem" : "Adicionar imagem do LED"}
+      </button>
+      {imageUrl && (
+        <button
+          type="button"
+          onClick={removeImage}
+          disabled={saveImage.isPending}
+          className="text-slate-400 hover:text-red-600 disabled:opacity-50"
+        >
+          Remover
+        </button>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleUpload}
+      />
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Imagem — {title}</DialogTitle>
+          </DialogHeader>
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              alt={title}
+              className="mx-auto max-h-[75vh] max-w-full rounded object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
 
 // ─── EditableSection ─────────────────────────────────────────────────────────
