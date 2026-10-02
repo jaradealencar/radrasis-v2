@@ -1219,7 +1219,7 @@ function gerarPdfTabela(
 
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titulo} v${versao}</title>
 <style>
-  @page{size:A4;margin:9mm 11mm}
+  @page{size:A3 landscape;margin:10mm 12mm}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;line-height:1.3;color:#1e293b;background:#fff}
   /* ─── CABEÇALHO DO DOCUMENTO (compacto, não ocupa página própria) ─── */
@@ -1268,9 +1268,33 @@ function gerarPdfTabela(
   .footer{margin-top:6px;padding:4px 0;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}
   .footer-brand{font-weight:700;color:#64748b;font-size:9.5px}
   @media print{
-    body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:11px}
-    .section-block{page-break-inside:avoid}
-    table{page-break-inside:avoid}
+    html,body{width:100%;background:#fff}
+    body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:12px;line-height:1.35}
+    .doc-header{break-inside:avoid;page-break-inside:avoid;padding:9px 16px;margin-bottom:10px}
+    .doc-header-title{font-size:17px}
+    .doc-header-sub,.doc-header-meta{font-size:11px}
+    .page-section{break-inside:auto;page-break-inside:auto}
+    .page-section+.page-section{break-before:page;page-break-before:always}
+    .page-header{break-after:avoid-page;page-break-after:avoid;margin:10px 0 8px;padding:6px 0}
+    .page-header-title{font-size:16px}
+    .page-header-sub{font-size:11px}
+    .section-block{break-inside:auto;page-break-inside:auto;margin-bottom:10px}
+    .section-title{break-after:avoid-page;page-break-after:avoid;font-size:12.5px;margin-bottom:5px;padding-bottom:3px}
+    .section-badge{font-size:10px;padding:2px 8px}
+    table{width:100%;font-size:12.5px;box-shadow:none;break-inside:auto;page-break-inside:auto}
+    thead{display:table-header-group}
+    thead th{font-size:11.5px;padding:6px 9px}
+    tbody tr{break-inside:avoid;page-break-inside:avoid}
+    tbody td{font-size:12.5px;line-height:1.3;padding:5px 9px}
+    tbody td .val{font-size:13px}
+    .config-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}
+    .config-item{break-inside:avoid;padding:5px 10px}
+    .config-label{font-size:11px}
+    .config-value{font-size:12.5px}
+    .list-items li{font-size:12.5px;padding:4px 0 4px 16px;break-inside:avoid}
+    .note-box{font-size:11px;margin-top:5px;padding:6px 10px;break-inside:avoid}
+    .footer{font-size:10px;margin-top:10px;padding:6px 0}
+    .footer-brand{font-size:10.5px}
   }
 </style></head><body>
 <div class="doc-header">
