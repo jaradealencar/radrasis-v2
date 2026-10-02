@@ -1,7 +1,6 @@
 /**
  * Resume a diferença entre duas versões do `contentJson` de uma seção da
- * Tabela de Preços (estrutura `margin_table`, `margin_table_multi` ou
- * `led_source_table`) num
+ * Tabela de Preços (estrutura `margin_table` ou `margin_table_multi`) num
  * texto legível — usado para popular a observação da métrica automática
  * "Alteração na Tabela de Preços" (ver server/db/db.ts, updatePriceTableSection).
  */
@@ -10,37 +9,14 @@ type ConteudoMargem = {
   type?: string;
   columns?: string[];
   rows?: LinhaMargem[];
-  sourceRows?: Array<{
-    fonte: string;
-    potencia: string;
-    saida: string;
-    quantidadeModulos: string;
-    equivalencia: string;
-    limiteMaximo: string;
-    preco: string;
-  }>;
 };
-
-const COLUNAS_FONTES_LED = ["Fonte / modelo", "Potência", "Saída", "Módulos recomendados (85%)", "Equivalência", "Limite máximo (100%)", "Preço unitário"];
-
-function normalizarTabelaTecnica(conteudo: ConteudoMargem): ConteudoMargem {
-  if (conteudo.type !== "led_source_table") return conteudo;
-  return {
-    type: "margin_table_multi",
-    columns: COLUNAS_FONTES_LED,
-    rows: (conteudo.sourceRows ?? []).map(row => ({
-      label: row.fonte,
-      values: [row.potencia, row.saida, row.quantidadeModulos, row.equivalencia, row.limiteMaximo, row.preco],
-    })),
-  };
-}
 
 export function resumirDiffTabelaPrecos(anteriorRaw: string, novoRaw: string): { resumo: string; qtdAlteracoes: number } {
   let antes: ConteudoMargem;
   let novo: ConteudoMargem;
   try {
-    antes = normalizarTabelaTecnica(JSON.parse(anteriorRaw || "{}"));
-    novo = normalizarTabelaTecnica(JSON.parse(novoRaw || "{}"));
+    antes = JSON.parse(anteriorRaw || "{}");
+    novo = JSON.parse(novoRaw || "{}");
   } catch {
     return { resumo: "conteúdo alterado", qtdAlteracoes: 1 };
   }
