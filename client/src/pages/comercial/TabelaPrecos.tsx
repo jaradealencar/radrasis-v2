@@ -266,6 +266,8 @@ function MarginTable({
   );
 }
 
+const FONTES_CHAVEADAS_LED_TITLE = "Fontes chaveadas 24 V para módulos LED";
+
 const FONTES_CHAVEADAS_LED = [
   {
     fonte: "Fonte chaveada 10A",
@@ -307,9 +309,9 @@ function LedPowerSourcesTable() {
   ];
   return (
     <Card className="border border-slate-200 shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-semibold text-slate-800">
-          Fontes chaveadas para módulos LED
+      <CardHeader className="items-start pb-3 text-left">
+        <CardTitle className="text-left text-base font-semibold text-slate-800">
+          {FONTES_CHAVEADAS_LED_TITLE}
         </CardTitle>
       </CardHeader>
       <div className="overflow-x-auto">
@@ -1112,7 +1114,7 @@ function gerarPdfTabela(
         <div class="page-header-title" style="color:${color}">${pageNames[page] ?? "Página " + page}<span class="page-header-sub"> — ${pageSubtitles[page] ?? ""}</span></div>
       </div>`;
     if (page === 4) {
-      html += `<div class="section-block"><div class="section-title">Fontes chaveadas para módulos LED</div>${gerarHtmlFontesChaveadas(color)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_TITLE}</div>${gerarHtmlFontesChaveadas(color)}</div>`;
     } else for (const sec of pageSections) {
       const lbl = getSectionLabel(sec.sectionTitle);
       const badgeHtml = lbl.badge
