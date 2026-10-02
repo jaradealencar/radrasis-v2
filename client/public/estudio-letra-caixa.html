@@ -420,9 +420,10 @@ function computeOrcamento(p){
 }
 
 /* ---------- CATÁLOGO ATUAL DO MUBISYS (consultado pelo servidor) ---------- */
-const catalog = { produtos:[], materias:[], margens:[], ready:false, error:null, baixadoEm:null };
+const catalog = { produtos:[], materias:[], margens:[], ready:false, refreshing:false, error:null, baixadoEm:null };
 async function loadCatalog(){
-  catalog.ready = false;
+  const jaCarregado=catalog.ready;
+  catalog.refreshing = true;
   catalog.error = null;
   render();
   try{
@@ -434,13 +435,17 @@ async function loadCatalog(){
     catalog.margens = Array.isArray(dados.margens) ? dados.margens : [];
     catalog.baixadoEm = dados.carregadoEm || null;
   }catch(e){
-    catalog.produtos = [];
-    catalog.materias = [];
-    catalog.margens = [];
+    if(!jaCarregado){
+      catalog.produtos = [];
+      catalog.materias = [];
+      catalog.margens = [];
+    }
     catalog.error = String(e && e.message || 'Não foi possível consultar o MubiSys.');
+  }finally{
+    catalog.ready = true;
+    catalog.refreshing = false;
+    render();
   }
-  catalog.ready = true;
-  render();
 }
 function catalogErrorNotice(){
   if(!catalog.error) return '';
@@ -3373,10 +3378,11 @@ function adminProdutos(){
   return `
   <div class="card">
     <div class="cardhead">
-      <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. Cada produto recebe um SKU Radrasys fixo a partir do ID MubiSys; cada modelo tem um SKU derivado do produto e do ID do modelo. Busque por nome ou SKU para localizar configurações.</p><p>A composição não vem da API — ela não expõe isso (verificado: só há endpoint de catálogo e de matéria-prima, não de ficha técnica) — monte uma vez por modelo abaixo e fica salva para o vendedor reaproveitar.</p></div>
+      <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. Cada produto recebe um SKU Radrasys fixo a partir do ID MubiSys; cada modelo tem um SKU derivado do produto e do ID do modelo. Busque por nome ou SKU para localizar configurações.</p><p>A composição não vem da API — ela não expõe isso (verificado: só há endpoint de catálogo e de matéria-prima, não de ficha técnica) — monte uma vez por modelo abaixo e fica salva para o vendedor reaproveitar.</p>${catalog.baixadoEm?`<p style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Última consulta ao MubiSys: ${new Date(catalog.baixadoEm).toLocaleString('pt-BR')}</p>`:''}</div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
         <span class="badge b-accent">${cadastrados} modelo(s) cadastrado(s)</span>
         <span class="badge ${dbApi?'b-ok':'b-warn'}">${dbApi?'✓ salvo no banco':'⚠ sem banco — só nesta sessão'}</span>
+        <button class="btn btn-ghost btn-sm" data-act="admin-catalogo-atualizar" ${catalog.refreshing?'disabled':''}>${catalog.refreshing?'Atualizando…':'Atualizar catálogo do MubiSys'}</button>
       </div>
     </div>
     ${catalogErrorNotice()}
@@ -3798,6 +3804,9 @@ function bindClienteEvents(){
 
 function bindAdminEvents(){
   if(state.tab!=='admin') return;
+
+  const atualizarCatalogo=document.querySelector('[data-act="admin-catalogo-atualizar"]');
+  if(atualizarCatalogo) atualizarCatalogo.addEventListener('click',()=>loadCatalog());
 
   const clientesBusca=document.querySelector('[data-act="admin-clientes-busca"]');
   if(clientesBusca){
