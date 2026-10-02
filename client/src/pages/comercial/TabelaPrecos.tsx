@@ -268,7 +268,7 @@ function MarginTable({
 
 const FONTES_CHAVEADAS_LED_TITLE = "Fontes chaveadas 24 V para módulos LED";
 const FONTES_CHAVEADAS_LED_12V_TITLE = "Fontes chaveadas 12 V para módulos LED";
-const LED_TEMPERATURA_TEXTO = "LED branco frio e quente";
+const LED_TEMPERATURA_TEXTO = "LED branco frio e quente · Coloridos · Micro LED · Módulo 3030 · Fita Ultra LED";
 const FITA_LED_24V_REFERENCIA = "Fita LED: 17 W/m; capacidade estimada pela potência informada. Calcule o total com alimentação distribuída em trechos.";
 const FITA_LED_12V_REFERENCIA = "Fita LED: 8 W/m; capacidade estimada pela potência informada. Calcule o total com alimentação distribuída em trechos.";
 
