@@ -350,7 +350,7 @@ function EditableLedText({
         title={`Editar: ${displayed || "texto vazio"}`}
         aria-label={`Editar texto ${displayed || "vazio"}`}
         onClick={() => setEditing(true)}
-        className="rounded p-0.5 text-slate-400 opacity-0 transition-opacity hover:bg-sky-50 hover:text-sky-700 group-hover/led-text:opacity-100 focus:opacity-100"
+        className="rounded p-0.5 text-sky-700 opacity-70 transition-opacity hover:bg-sky-50 hover:opacity-100 focus:opacity-100"
       >
         <Pencil className="h-3 w-3" />
       </button>
