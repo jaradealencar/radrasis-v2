@@ -1929,6 +1929,54 @@ function modeloBateFiltro(produtoId, modeloId){
   return true;
 }
 
+function renderComposicaoDoModelo(kitPronto){
+  if(!REAL.produtoId) return '';
+  if(!REAL.modeloId){
+    return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
+      <div style="font-weight:700;">Composição e produtos do kit</div>
+      <p class="role-note" style="margin-top:5px;">Escolha o modelo para carregar as matérias-primas, as variações e os produtos vinculados. A composição é configurada por modelo.</p>
+    </div>`;
+  }
+
+  const linhas=Array.isArray(REAL.kit)?REAL.kit:[];
+  const vinculados=Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[];
+  return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
+    <div style="font-weight:700;">Composição e produtos do kit</div>
+    <p class="role-note" style="margin-top:5px;">Confira as matérias-primas deste modelo e escolha uma variação quando necessário. Essas escolhas serão usadas no orçamento.</p>
+    <div class="grid2" style="margin-top:12px;align-items:start;">
+      <section>
+        <div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Matérias-primas (${linhas.length})</div>
+        ${linhas.length?`<div style="display:grid;gap:7px;">
+          ${linhas.map((linha,i)=>{
+            const material=materialKitAtivo(linha);
+            const variantes=Array.isArray(linha.variantes)?linha.variantes:[];
+            return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
+              <div style="font-weight:600;">${escaparHtml(material.nome)}${material.unidade?` <span style="color:var(--text-faint);font-weight:400;">· ${escaparHtml(material.unidade)}</span>`:''}</div>
+              ${linha.papel?`<div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">Papel na peça: ${escaparHtml(linha.papel)}</div>`:''}
+              ${variantes.length?`<label class="field" style="display:block;margin-top:7px;font-size:11.5px;">${escaparHtml(linha.variacaoNome||'Variação')}
+                <select data-act="real-kit-variacao" data-idx="${i}" style="display:block;margin-top:4px;width:min(100%,380px);font-size:12px;">
+                  <option value="">Nenhuma (manter ${escaparHtml(linha.nome)})</option>
+                  ${variantes.map(v=>`<option value="${v.matId}" ${String(linha.variacaoSelecionadaMatId)===String(v.matId)?'selected':''}>${escaparHtml(v.valor||v.nome)} · ${escaparHtml(v.nome)}</option>`).join('')}
+                </select>
+              </label>`:`<div style="font-size:11.5px;color:var(--text-faint);margin-top:3px;">Sem variações cadastradas</div>`}
+            </div>`;
+          }).join('')}
+        </div>`:`<div class="empty-hint">Este modelo ainda não tem matérias-primas cadastradas.</div>`}
+      </section>
+      <section>
+        <div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Produtos que formam o kit (${vinculados.length})</div>
+        ${vinculados.length?`<div style="display:grid;gap:7px;">
+          ${vinculados.map(item=>`<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
+            <div class="mono" style="font-size:10.5px;color:var(--accent-ink);">${escaparHtml(skuModeloPorKey(item.key))}</div>
+            <div style="font-weight:600;margin-top:3px;">${escaparHtml(item.nome||nomeModeloPorKey(item.key))}</div>
+          </div>`).join('')}
+        </div>`:`<div class="empty-hint">Nenhum produto vinculado a este kit.</div>`}
+      </section>
+    </div>
+    ${kitPronto?.precificacao?`<div class="role-note" style="margin-top:10px;">${ICONS.info} A regra de precificação cadastrada para o modelo também será carregada.</div>`:''}
+  </div>`;
+}
+
 function realStepProposta(){
   if(!catalog.ready){
     return `<div class="card"><div class="empty-hint">Carregando catálogo real do MubiSys…</div></div>`;
@@ -2015,10 +2063,10 @@ function realStepProposta(){
           ${kitPronto && kitPronto.prazoDiasUteis!=null? `<div class="kv"><span>Prazo de produção</span><span>${kitPronto.prazoDiasUteis} dias úteis</span></div>` : ''}
           ${modeloSel.desc? `<p style="font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.5;">${modeloSel.desc}</p>`:''}
           ${kitPronto? `<div style="margin-top:8px;"><span class="badge b-ok">${ICONS.check} Composição já cadastrada (${kitPronto.linhas.length} item${kitPronto.linhas.length===1?'':'s'}${kitPronto.precificacao?(kitPronto.precificacao.modo==='fixo'?' · preço fixo':' · margem vinculada'):''}) — vai ser carregada automaticamente</span></div>` : `<div style="margin-top:8px;"><span class="badge b-warn">Sem composição cadastrada — você monta no passo 5</span></div>`}
-          ${kitPronto && kitPronto.kitProdutos && kitPronto.kitProdutos.length? `<div class="role-note" style="margin-top:8px;">${ICONS.info} Costuma acompanhar: ${kitPronto.kitProdutos.map(kp=>kp.nome).join(', ')}</div>` : ''}
         </div>
       </div>
     </div>` : ''}
+    ${renderComposicaoDoModelo(kitPronto)}
     <div class="role-note" style="margin-top:10px;">${ICONS.info} Para CNPJ, a BrasilAPI consulta razão social, nome fantasia e endereço. O e-mail e o WhatsApp são preenchidos por você e não vêm da API. Para CPF, o navegador confere os dígitos verificadores sem enviar o número a uma API; ao informar o nome, ele também preenche o nome fantasia.</div>
     <div class="footer-nav">
       <div></div>
