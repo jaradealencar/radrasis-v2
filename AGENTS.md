@@ -385,9 +385,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   pré-preenchida na proposta do vendedor; o snapshot público registra o texto
   final da cotação.
   O cadastro de kit também permite clonar a composição e os produtos vinculados
-  de outro modelo. Cada linha de matéria-prima pode ter opções de variação com
-  outras matérias-primas da mesma unidade e uma opção padrão para novos
-  orçamentos; “Nenhuma” mantém o material principal. O vendedor pode trocar a
+  de outro modelo. Cada linha de matéria-prima pode ter opções de variação e
+  uma opção padrão para novos orçamentos; “Nenhuma” mantém o material
+  principal. A busca inclui matérias-primas de todas as unidades. Ao cadastrar
+  uma opção com unidade diferente, o editor avisa que o orçamento usará a
+  quantidade calculada sem conversão automática. O vendedor pode trocar a
   escolha em cada orçamento, recalculando o custo sem alterar o padrão salvo.
   O snapshot da cotação pública salva e exibe as variações escolhidas.
   No cadastro do cliente do Estúdio, razão social/fantasia/endereço vêm da
