@@ -268,10 +268,13 @@ function MarginTable({
 
 const FONTES_CHAVEADAS_LED_TITLE = "Fontes chaveadas 24 V para módulos LED";
 const FONTES_CHAVEADAS_LED_12V_TITLE = "Fontes chaveadas 12 V para módulos LED";
+const FITA_LED_24V_REFERENCIA = "Fita LED: 17 W/m e 2 A/m; capacidade calculada pela corrente informada.";
+const FITA_LED_12V_REFERENCIA = "Fita LED: 8 W/m e 1 A/m; capacidade calculada pela corrente informada.";
 
 const FONTES_CHAVEADAS_LED = [
   {
     fonte: "Fonte chaveada 10A",
+    correnteA: 10,
     tensao: "24 V",
     potencia: "240 W",
     modulosRecomendados: "Até 136 módulos (85%)",
@@ -279,6 +282,7 @@ const FONTES_CHAVEADAS_LED = [
   },
   {
     fonte: "Fonte chaveada 20A",
+    correnteA: 20,
     tensao: "24 V",
     potencia: "480 W",
     modulosRecomendados: "Até 272 módulos (85%)",
@@ -286,6 +290,7 @@ const FONTES_CHAVEADAS_LED = [
   },
   {
     fonte: "Fonte chaveada 30A",
+    correnteA: 30,
     tensao: "24 V",
     potencia: "720 W",
     modulosRecomendados: "Até 408 módulos (85%)",
@@ -293,6 +298,7 @@ const FONTES_CHAVEADAS_LED = [
   },
   {
     fonte: "Fonte chaveada 50A",
+    correnteA: 50,
     tensao: "24 V",
     potencia: "1200 W",
     modulosRecomendados: "Até 680 módulos (85%)",
@@ -303,6 +309,7 @@ const FONTES_CHAVEADAS_LED = [
 const FONTES_CHAVEADAS_LED_12V = [
   {
     fonte: "Fonte 10A",
+    correnteA: 10,
     tensao: "12V DC",
     potencia: "120W",
     modulosRecomendados: "Até 68 Módulos",
@@ -310,6 +317,7 @@ const FONTES_CHAVEADAS_LED_12V = [
   },
   {
     fonte: "Fonte 20A",
+    correnteA: 20,
     tensao: "12V DC",
     potencia: "240W",
     modulosRecomendados: "Até 136 Módulos",
@@ -317,6 +325,7 @@ const FONTES_CHAVEADAS_LED_12V = [
   },
   {
     fonte: "Fonte 30A",
+    correnteA: 30,
     tensao: "12V DC",
     potencia: "360W",
     modulosRecomendados: "Até 204 Módulos",
@@ -324,12 +333,18 @@ const FONTES_CHAVEADAS_LED_12V = [
   },
   {
     fonte: "Fonte 50A",
+    correnteA: 50,
     tensao: "12V DC",
     potencia: "600W",
     modulosRecomendados: "Até 340 Módulos",
     modulosMaximos: "400 Módulos",
   },
 ];
+
+function formatarMetrosFitaLed(amperagemFonte: number, amperagemPorMetro: number, fatorCarga = 1) {
+  const metros = (amperagemFonte * fatorCarga) / amperagemPorMetro;
+  return `${metros.toString().replace(".", ",")} m`;
+}
 
 function LedPowerSourcesTable() {
   const columns = [
@@ -338,6 +353,8 @@ function LedPowerSourcesTable() {
     "Potência",
     "Módulos recomendados (85%)",
     "Limite máximo (100%)",
+    "Fita LED (m) — 85%",
+    "Fita LED (m) — 100%",
   ];
   return (
     <Card className="border border-slate-200 shadow-sm">
@@ -345,9 +362,10 @@ function LedPowerSourcesTable() {
         <CardTitle className="text-left text-base font-semibold text-slate-800">
           {FONTES_CHAVEADAS_LED_TITLE}
         </CardTitle>
+        <p className="text-sm text-slate-500">{FITA_LED_24V_REFERENCIA}</p>
       </CardHeader>
       <div className="overflow-x-auto">
-        <Table className="min-w-[760px]">
+        <Table className="min-w-[1120px]">
           <TableHeader>
             <TableRow className="bg-slate-100">
               {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
@@ -361,6 +379,8 @@ function LedPowerSourcesTable() {
                 <TableCell>{row.potencia}</TableCell>
                 <TableCell>{row.modulosRecomendados}</TableCell>
                 <TableCell>{row.modulosMaximos}</TableCell>
+                <TableCell>{formatarMetrosFitaLed(row.correnteA, 2, 0.85)}</TableCell>
+                <TableCell>{formatarMetrosFitaLed(row.correnteA, 2)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -377,6 +397,8 @@ function LedPowerSources12VTable() {
     "Potência",
     "Recomendado Vendas (85%)",
     "Limite Máximo (100%)",
+    "Fita LED (m) — 85%",
+    "Fita LED (m) — 100%",
   ];
   return (
     <Card className="border border-slate-200 shadow-sm">
@@ -384,9 +406,10 @@ function LedPowerSources12VTable() {
         <CardTitle className="text-left text-base font-semibold text-slate-800">
           {FONTES_CHAVEADAS_LED_12V_TITLE}
         </CardTitle>
+        <p className="text-sm text-slate-500">{FITA_LED_12V_REFERENCIA}</p>
       </CardHeader>
       <div className="overflow-x-auto">
-        <Table className="min-w-[820px]">
+        <Table className="min-w-[1040px]">
           <TableHeader>
             <TableRow className="bg-slate-100">
               {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
@@ -400,6 +423,8 @@ function LedPowerSources12VTable() {
                 <TableCell>{row.potencia}</TableCell>
                 <TableCell>{row.modulosRecomendados}</TableCell>
                 <TableCell>{row.modulosMaximos}</TableCell>
+                <TableCell>{formatarMetrosFitaLed(row.correnteA, 1, 0.85)}</TableCell>
+                <TableCell>{formatarMetrosFitaLed(row.correnteA, 1)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -416,6 +441,8 @@ function gerarHtmlFontesChaveadas(color: string) {
     "Potência",
     "Módulos recomendados (85%)",
     "Limite máximo (100%)",
+    "Fita LED (m) — 85%",
+    "Fita LED (m) — 100%",
   ];
   const rows = FONTES_CHAVEADAS_LED.map(row => `
     <tr>
@@ -424,6 +451,8 @@ function gerarHtmlFontesChaveadas(color: string) {
       <td>${escapeHtml(row.potencia)}</td>
       <td>${escapeHtml(row.modulosRecomendados)}</td>
       <td>${escapeHtml(row.modulosMaximos)}</td>
+      <td>${escapeHtml(formatarMetrosFitaLed(row.correnteA, 2, 0.85))}</td>
+      <td>${escapeHtml(formatarMetrosFitaLed(row.correnteA, 2))}</td>
     </tr>`).join("");
   return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -435,6 +464,8 @@ function gerarHtmlFontesChaveadas12V(color: string) {
     "Potência",
     "Recomendado Vendas (85%)",
     "Limite Máximo (100%)",
+    "Fita LED (m) — 85%",
+    "Fita LED (m) — 100%",
   ];
   const rows = FONTES_CHAVEADAS_LED_12V.map(row => `
     <tr>
@@ -443,6 +474,8 @@ function gerarHtmlFontesChaveadas12V(color: string) {
       <td>${escapeHtml(row.potencia)}</td>
       <td>${escapeHtml(row.modulosRecomendados)}</td>
       <td>${escapeHtml(row.modulosMaximos)}</td>
+      <td>${escapeHtml(formatarMetrosFitaLed(row.correnteA, 1, 0.85))}</td>
+      <td>${escapeHtml(formatarMetrosFitaLed(row.correnteA, 1))}</td>
     </tr>`).join("");
   return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -1204,8 +1237,8 @@ function gerarPdfTabela(
         <div class="page-header-title" style="color:${color}">${pageNames[page] ?? "Página " + page}<span class="page-header-sub"> — ${pageSubtitles[page] ?? ""}</span></div>
       </div>`;
     if (page === 4) {
-      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_TITLE}</div>${gerarHtmlFontesChaveadas(color)}</div>`;
-      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_12V_TITLE}</div>${gerarHtmlFontesChaveadas12V(color)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_TITLE}</div><p>${FITA_LED_24V_REFERENCIA}</p>${gerarHtmlFontesChaveadas(color)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_12V_TITLE}</div><p>${FITA_LED_12V_REFERENCIA}</p>${gerarHtmlFontesChaveadas12V(color)}</div>`;
     } else for (const sec of pageSections) {
       const lbl = getSectionLabel(sec.sectionTitle);
       const badgeHtml = lbl.badge
