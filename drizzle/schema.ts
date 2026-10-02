@@ -429,6 +429,26 @@ export const estudioConfiguracoes = pgTable("estudio_configuracoes", {
 });
 export type EstudioConfiguracao = typeof estudioConfiguracoes.$inferSelect;
 
+// Cadastro compartilhado de clientes do Estúdio, independente dos snapshots
+// imutáveis de cada cotação.
+export const estudioClientes = pgTable("estudio_clientes", {
+  id: serial("id").primaryKey(),
+  documento: varchar("documento", { length: 14 }).notNull(),
+  razao: varchar("razao", { length: 256 }),
+  fantasia: varchar("fantasia", { length: 256 }),
+  endereco: varchar("endereco", { length: 1000 }),
+  email: varchar("email", { length: 320 }),
+  whatsapp: varchar("whatsapp", { length: 40 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  documentoIdx: uniqueIndex("estudio_clientes_documento_idx").on(table.documento),
+  nomeIdx: index("estudio_clientes_razao_idx").on(table.razao),
+  updatedIdx: index("estudio_clientes_updated_at_idx").on(table.updatedAt),
+}));
+export type EstudioCliente = typeof estudioClientes.$inferSelect;
+export type InsertEstudioCliente = typeof estudioClientes.$inferInsert;
+
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 
 // Tipos de role do sistema

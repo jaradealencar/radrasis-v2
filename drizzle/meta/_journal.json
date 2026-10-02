@@ -421,6 +421,13 @@
       "when": 1790859613164,
       "tag": "0059_spicy_alex_power",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1790903356785,
+      "tag": "0060_hot_switch",
+      "breakpoints": true
     }
   ]
 }

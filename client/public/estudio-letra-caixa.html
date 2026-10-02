@@ -569,6 +569,68 @@ function renderAvisoConsultaCnpj(){
 let _consultaCnpjTimer = null;
 let _consultaCnpjController = null;
 let _consultaCnpjRequestId = 0;
+let _clienteLookupTimer = null;
+let _clienteLookupRequestId = 0;
+let _clienteEmSalvamento = false;
+
+function cancelarBuscaCliente(){
+  clearTimeout(_clienteLookupTimer);
+  _clienteLookupRequestId++;
+}
+
+function payloadClienteCadastrado(){
+  return {
+    documento:normalizarDocumento(REAL.cliente.cnpj),
+    razao:String(REAL.cliente.razao||'').trim()||null,
+    fantasia:String(REAL.cliente.fantasia||'').trim()||null,
+    endereco:String(REAL.cliente.endereco||'').trim()||null,
+    email:String(REAL.cliente.email||'').trim()||null,
+    whatsapp:String(REAL.cliente.whatsapp||'').trim()||null,
+  };
+}
+
+async function salvarClienteCadastrado(){
+  const cliente=payloadClienteCadastrado();
+  if(!validarDocumento(cliente.documento)) throw new Error('Confira o CPF ou CNPJ antes de salvar o cliente.');
+  const response=await fetch('/api/letra-caixa/clientes',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(cliente)});
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(body.error||'Não foi possível salvar o cliente no cadastro.');
+  return body.cliente;
+}
+
+async function consultarClienteCadastrado(documento, requestId){
+  try{
+    const response=await fetch('/api/letra-caixa/clientes?documento='+encodeURIComponent(documento),{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível consultar o cadastro de clientes.');
+    if(requestId!==_clienteLookupRequestId||normalizarDocumento(REAL.cliente.cnpj)!==documento) return;
+    if(body.cliente){
+      REAL.cliente.razao=body.cliente.razao||'';
+      REAL.cliente.fantasia=body.cliente.fantasia||(documento.length===11?body.cliente.razao:'')||'';
+      REAL.cliente.endereco=body.cliente.endereco||'';
+      REAL.cliente.email=body.cliente.email||'';
+      REAL.cliente.whatsapp=body.cliente.whatsapp||'';
+      REAL.cliente.cnpjConsultado=documento;
+      REAL.consultaCnpj={status:'success',mensagem:'Cliente encontrado no cadastro. Dados carregados.'};
+    }else if(documento.length===14){
+      REAL.consultaCnpj={status:'loading',mensagem:'Cliente não cadastrado. Consultando dados do CNPJ…'};
+      _consultaCnpjTimer=setTimeout(()=>consultarDadosCnpj(documento),350);
+    }else{
+      REAL.cliente.cnpjConsultado=documento;
+      REAL.consultaCnpj={status:'success',mensagem:'CPF válido. Informe os dados do cliente para cadastrá-lo.'};
+    }
+  }catch(error){
+    if(requestId!==_clienteLookupRequestId||normalizarDocumento(REAL.cliente.cnpj)!==documento) return;
+    if(documento.length===14){
+      REAL.consultaCnpj={status:'loading',mensagem:'Consultando dados cadastrais do CNPJ…'};
+      _consultaCnpjTimer=setTimeout(()=>consultarDadosCnpj(documento),350);
+    }else{
+      REAL.consultaCnpj={status:'success',mensagem:'CPF válido. Informe os dados do cliente para cadastrá-lo.'};
+    }
+  }finally{
+    if(requestId===_clienteLookupRequestId) renderPreservingFocus();
+  }
+}
 
 async function consultarDadosCnpj(cnpj){
   const requestId = ++_consultaCnpjRequestId;
@@ -2627,6 +2689,7 @@ const adminState = {
   produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', kitVariacaoMaterialSelecionadoId:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
+  clientesServidor:[], clientesCarregando:false, clientesErro:'', clientesBusca:'', clientesPagina:1, clientesTotal:0,
   expandedProdutoId:null, editingKey:null,
   // { 'produtoId_modeloId': { linhas:[{matId,nome,unidade,custo,atualizado,status,papel,formulaType,mult}], precificacao:{lineId}|{modo:'fixo',precoFixo}|null, nomeCompleto, descricaoProduto, prazoDiasUteis, kitProdutos, fotoUrl, fotoAssetId } }
   kits:{},
@@ -2711,6 +2774,32 @@ async function carregarCotacoesServidor(){
   }
 }
 
+let _clientesAdminRequestId=0;
+async function carregarClientesCadastrados(){
+  const requestId=++_clientesAdminRequestId;
+  adminState.clientesCarregando=true;
+  adminState.clientesErro='';
+  if(state.tab==='admin'&&state.adminTab==='clientes') render();
+  try{
+    const params=new URLSearchParams({pagina:String(adminState.clientesPagina),limite:'25'});
+    if(adminState.clientesBusca.trim()) params.set('q',adminState.clientesBusca.trim());
+    const response=await fetch('/api/letra-caixa/clientes?'+params.toString(),{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível carregar os clientes.');
+    if(requestId===_clientesAdminRequestId){
+      adminState.clientesServidor=body.clientes||[];
+      adminState.clientesTotal=Number(body.total)||0;
+    }
+  }catch(error){
+    if(requestId===_clientesAdminRequestId) adminState.clientesErro=error.message||'Não foi possível carregar os clientes.';
+  }finally{
+    if(requestId===_clientesAdminRequestId){
+      adminState.clientesCarregando=false;
+      if(state.tab==='admin'&&state.adminTab==='clientes') render();
+    }
+  }
+}
+
 function snapshotCotacaoReal(){
   const g = computeGeomReal();
   const o = computeOrcamentoReal();
@@ -2744,6 +2833,7 @@ function snapshotCotacaoReal(){
 }
 
 async function criarCotacaoPublica(){
+  await salvarClienteCadastrado();
   const response = await fetch('/api/letra-caixa/cotacoes', {
     method:'POST',
     credentials:'same-origin',
@@ -3003,13 +3093,14 @@ function criarNovaVersao(){
 
 function renderAdmin(){
   const paineis = {
-    produtos: adminProdutos, erp: adminMateriasAdmin,
+    produtos: adminProdutos, erp: adminMateriasAdmin, clientes: adminClientesCadastrados,
     propostas: adminCotacoesHistorico, config: adminConfiguracoes,
   };
   return `
   <div class="subtabs">
     <button data-act="admin-tab" data-val="produtos" class="${state.adminTab==='produtos'?'active':''}">Produtos &amp; kits</button>
     <button data-act="admin-tab" data-val="erp" class="${state.adminTab==='erp'?'active':''}">Matérias-primas (real)</button>
+    <button data-act="admin-tab" data-val="clientes" class="${state.adminTab==='clientes'?'active':''}">Clientes</button>
     <button data-act="admin-tab" data-val="propostas" class="${state.adminTab==='propostas'?'active':''}">Cotações</button>
     <button data-act="admin-tab" data-val="config" class="${state.adminTab==='config'?'active':''}">Configurações</button>
   </div>
@@ -3018,6 +3109,40 @@ function renderAdmin(){
 
 const FRETE_LABEL = {FOB:'FOB', CIF:'CIF', retira:'Cliente retira', entrega:'Entrega'};
 const PAGAMENTO_LABEL = {boleto:'Boleto', cartao:'Cartão de crédito', pix:'PIX · 50% + 50%', ted:'TED/DOC'};
+
+function formatarDocumentoCliente(documento){
+  const digitos=normalizarDocumento(documento);
+  if(digitos.length===11) return digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
+  if(digitos.length===14) return digitos.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
+  return documento||'—';
+}
+
+function adminClientesCadastrados(){
+  const paginas=Math.max(1,Math.ceil(adminState.clientesTotal/25));
+  return `
+  <div class="card">
+    <div class="cardhead">
+      <div><h3>Clientes cadastrados</h3><p>Cadastro compartilhado do Estúdio. Ao informar um CPF ou CNPJ salvo, os dados são carregados automaticamente no formulário da proposta.</p></div>
+      <span class="badge b-accent">${adminState.clientesTotal} cliente(s)</span>
+    </div>
+    ${adminState.clientesErro?`<div class="warnbox" style="margin-bottom:12px;">${escaparHtml(adminState.clientesErro)}</div>`:''}
+    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:12px;">
+      <label class="field" style="flex:1;min-width:220px;">Buscar cliente
+        <input type="search" value="${escaparHtml(adminState.clientesBusca)}" placeholder="Nome, CPF/CNPJ, e-mail ou WhatsApp" data-act="admin-clientes-busca">
+      </label>
+      <button type="button" class="btn btn-primary" data-act="admin-clientes-buscar">Buscar</button>
+      <button type="button" class="btn btn-ghost" data-act="admin-clientes-atualizar">Atualizar</button>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>CPF/CNPJ</th><th>Nome / razão social</th><th>Nome fantasia</th><th>E-mail</th><th>WhatsApp</th><th>Atualizado</th></tr></thead>
+      <tbody>${adminState.clientesCarregando?'<tr><td colspan="6" class="empty-hint">Carregando clientes…</td></tr>':adminState.clientesServidor.length?adminState.clientesServidor.map(cliente=>{
+        const atualizado=cliente.updatedAt?new Date(cliente.updatedAt).toLocaleDateString('pt-BR'):'—';
+        return `<tr><td class="mono">${escaparHtml(rotuloDocumento(cliente.documento))} ${escaparHtml(formatarDocumentoCliente(cliente.documento))}</td><td>${escaparHtml(cliente.razao||'—')}</td><td>${escaparHtml(cliente.fantasia||'—')}</td><td>${escaparHtml(cliente.email||'—')}</td><td>${escaparHtml(cliente.whatsapp||'—')}</td><td>${atualizado}</td></tr>`;
+      }).join(''):'<tr><td colspan="6" class="empty-hint">Nenhum cliente encontrado.</td></tr>'}</tbody>
+    </table></div>
+    <div class="footer-nav"><span class="role-note">Página ${adminState.clientesPagina} de ${paginas}${adminState.clientesCarregando?' · atualizando':''}</span><div style="display:flex;gap:8px;"><button type="button" class="btn btn-ghost btn-sm" data-act="admin-clientes-pagina" data-delta="-1" ${adminState.clientesPagina<=1?'disabled':''}>Anterior</button><button type="button" class="btn btn-ghost btn-sm" data-act="admin-clientes-pagina" data-delta="1" ${adminState.clientesPagina>=paginas?'disabled':''}>Próxima</button></div></div>
+  </div>`;
+}
 
 function adminPropostasReais(){
   const lista = Object.entries(propostasReais).map(([id,d])=>({id, ...d}));
@@ -3548,7 +3673,7 @@ function bindEvents(){
       switch(act){
         case 'tab': state.tab=val; break;
         case 'role': state.role=val; break;
-        case 'admin-tab': state.adminTab=val; if(val==='propostas') carregarCotacoesServidor(); break;
+        case 'admin-tab': state.adminTab=val; if(val==='propostas') carregarCotacoesServidor(); if(val==='clientes') carregarClientesCadastrados(); break;
         case 'pick-project': resetProjectState(val); break;
         case 'back-picker': state.projectId=null; break;
         case 'goto-step': state.step=parseInt(val); break;
@@ -3625,6 +3750,23 @@ function bindClienteEvents(){
 
 function bindAdminEvents(){
   if(state.tab!=='admin') return;
+
+  const clientesBusca=document.querySelector('[data-act="admin-clientes-busca"]');
+  if(clientesBusca){
+    clientesBusca.addEventListener('input',e=>{ adminState.clientesBusca=e.target.value; });
+    clientesBusca.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){ e.preventDefault(); adminState.clientesPagina=1; carregarClientesCadastrados(); }
+    });
+  }
+  const clientesBuscar=document.querySelector('[data-act="admin-clientes-buscar"]');
+  if(clientesBuscar) clientesBuscar.addEventListener('click',()=>{ adminState.clientesPagina=1; carregarClientesCadastrados(); });
+  const clientesAtualizar=document.querySelector('[data-act="admin-clientes-atualizar"]');
+  if(clientesAtualizar) clientesAtualizar.addEventListener('click',()=>carregarClientesCadastrados());
+  document.querySelectorAll('[data-act="admin-clientes-pagina"]').forEach(botao=>botao.addEventListener('click',()=>{
+    const paginas=Math.max(1,Math.ceil(adminState.clientesTotal/25));
+    adminState.clientesPagina=Math.min(paginas,Math.max(1,adminState.clientesPagina+(parseInt(botao.dataset.delta)||0)));
+    carregarClientesCadastrados();
+  }));
 
   const repetirConfig = document.querySelector('[data-act="config-retry"]');
   if(repetirConfig) repetirConfig.addEventListener('click',()=>{
@@ -4164,8 +4306,22 @@ function bindRealEvents(){
   if(startBtn) startBtn.addEventListener('click', ()=>{ invalidarRastreamento(); state.mode='real'; REAL=novaProposta(); render(); });
 
   document.querySelectorAll('[data-act="real-approve"]').forEach(el=>{
-    el.addEventListener('click', ()=>{
+    el.addEventListener('click', async ()=>{
       const val = el.dataset.val;
+      if(val==='proposta'){
+        if(_clienteEmSalvamento) return;
+        _clienteEmSalvamento=true;
+        el.disabled=true;
+        try{
+          await salvarClienteCadastrado();
+        }catch(error){
+          alert(error.message||'Não foi possível salvar o cliente.');
+          render();
+          return;
+        }finally{
+          _clienteEmSalvamento=false;
+        }
+      }
       REAL.approvals[val]=true;
       if(val==='escala') REAL.nesting=null;
       const idx = STEP_DEFS_REAL.findIndex(s=>s.k===val);
@@ -4183,26 +4339,32 @@ function bindRealEvents(){
     const documento = normalizarDocumento(e.target.value);
     REAL.cliente.cnpj = e.target.value;
     clearTimeout(_consultaCnpjTimer);
+    cancelarBuscaCliente();
     if(_consultaCnpjController){ _consultaCnpjController.abort(); _consultaCnpjController=null; }
     _consultaCnpjRequestId++;
     const jaConsultado = !!documento && documento===REAL.cliente.cnpjConsultado;
     if(!jaConsultado){
-      REAL.cliente.razao=''; REAL.cliente.fantasia=''; REAL.cliente.endereco=''; REAL.cliente.cnpjConsultado='';
+      REAL.cliente.razao=''; REAL.cliente.fantasia=''; REAL.cliente.endereco=''; REAL.cliente.email=''; REAL.cliente.whatsapp=''; REAL.cliente.cnpjConsultado='';
     }
     if(!documento){
       REAL.consultaCnpj = {status:'idle', mensagem:''};
     }else if(documento.length===11){
-      REAL.consultaCnpj = validarCpf(documento)
-        ? {status:'success', mensagem:'CPF com dígitos verificadores válidos.'}
-        : {status:'invalid', mensagem:'CPF inválido. Confira os 11 dígitos e tente novamente.'};
+      if(!validarCpf(documento)) REAL.consultaCnpj = {status:'invalid', mensagem:'CPF inválido. Confira os 11 dígitos e tente novamente.'};
+      else if(jaConsultado) REAL.consultaCnpj = {status:'success', mensagem:'CPF válido. Dados do cadastro carregados ou prontos para preenchimento.'};
+      else{
+        REAL.consultaCnpj = {status:'loading', mensagem:'CPF válido. Buscando cliente cadastrado…'};
+        const requestId=_clienteLookupRequestId;
+        _clienteLookupTimer=setTimeout(()=>consultarClienteCadastrado(documento,requestId),250);
+      }
     }else if(documento.length===14){
       if(!validarCnpj(documento)){
         REAL.consultaCnpj = {status:'invalid', mensagem:'CNPJ inválido. Confira os 14 dígitos e tente novamente.'};
       }else if(jaConsultado){
         REAL.consultaCnpj = {status:'success', mensagem:'Dados encontrados. Confira as informações antes de iniciar a proposta.'};
       }else{
-        REAL.consultaCnpj = {status:'loading', mensagem:'CNPJ válido. Consultando dados cadastrais…'};
-        _consultaCnpjTimer = setTimeout(()=>consultarDadosCnpj(documento), 450);
+        REAL.consultaCnpj = {status:'loading', mensagem:'CNPJ válido. Buscando cliente cadastrado…'};
+        const requestId=_clienteLookupRequestId;
+        _clienteLookupTimer=setTimeout(()=>consultarClienteCadastrado(documento,requestId),250);
       }
     }else if(documento.length>14){
       REAL.consultaCnpj = {status:'invalid', mensagem:'Informe um CPF com 11 dígitos ou um CNPJ com 14 dígitos.'};
@@ -4213,18 +4375,19 @@ function bindRealEvents(){
   });
   const razaoEl = document.querySelector('[data-act="real-razao"]');
   if(razaoEl) razaoEl.addEventListener('input', e=>{
+    cancelarBuscaCliente();
     REAL.cliente.razao=e.target.value;
     if(normalizarDocumento(REAL.cliente.cnpj).length===11) REAL.cliente.fantasia=e.target.value;
     renderPreservingFocus();
   });
   const fantasiaEl = document.querySelector('[data-act="real-fantasia"]');
-  if(fantasiaEl) fantasiaEl.addEventListener('input', e=>{ REAL.cliente.fantasia=e.target.value; renderPreservingFocus(); });
+  if(fantasiaEl) fantasiaEl.addEventListener('input', e=>{ cancelarBuscaCliente(); REAL.cliente.fantasia=e.target.value; renderPreservingFocus(); });
   const enderecoEl = document.querySelector('[data-act="real-endereco"]');
-  if(enderecoEl) enderecoEl.addEventListener('input', e=>{ REAL.cliente.endereco=e.target.value; renderPreservingFocus(); });
+  if(enderecoEl) enderecoEl.addEventListener('input', e=>{ cancelarBuscaCliente(); REAL.cliente.endereco=e.target.value; renderPreservingFocus(); });
   const emailClienteEl = document.querySelector('[data-act="real-email"]');
-  if(emailClienteEl) emailClienteEl.addEventListener('input',e=>{ REAL.cliente.email=e.target.value; renderPreservingFocus(); });
+  if(emailClienteEl) emailClienteEl.addEventListener('input',e=>{ cancelarBuscaCliente(); REAL.cliente.email=e.target.value; renderPreservingFocus(); });
   const whatsappClienteEl = document.querySelector('[data-act="real-whatsapp"]');
-  if(whatsappClienteEl) whatsappClienteEl.addEventListener('input',e=>{ REAL.cliente.whatsapp=e.target.value; renderPreservingFocus(); });
+  if(whatsappClienteEl) whatsappClienteEl.addEventListener('input',e=>{ cancelarBuscaCliente(); REAL.cliente.whatsapp=e.target.value; renderPreservingFocus(); });
   const vendedorEl = document.querySelector('[data-act="real-vendedor"]');
   if(vendedorEl) vendedorEl.addEventListener('change', e=>{ REAL.vendedor=e.target.value; render(); });
   const filtroCatEl = document.querySelector('[data-act="real-filtro-categoria"]');

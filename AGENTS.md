@@ -209,6 +209,7 @@ server/
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
                        estudio-cotacoes.ts (cotações do HTML estático do Estúdio),
+                       estudio-clientes.ts (cadastro e busca autenticados de clientes do Estúdio),
                        estudio-catalogo-mubisys.ts (catálogos de produtos e matérias-primas
                        via API MubiSys, com sessão autenticada) e
                        estudio-configuracoes.ts (configurações compartilhadas do Estúdio)
@@ -391,8 +392,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   consulta de CNPJ, enquanto e-mail e WhatsApp são informados manualmente e
   incluídos no snapshot da cotação; os campos de contato da API são ignorados.
   Para CPF, o nome informado manualmente também preenche o nome fantasia.
-  Esses registros ficam em `propostas.observacoes`
-  com o prefixo `[ESTUDIO_COTACAO_V1]` e são excluídos da lista do módulo
+  O cliente é salvo em `estudio_clientes` quando inicia e conclui uma cotação,
+  pode ser localizado pelo CPF/CNPJ no próximo cadastro e é listado na aba
+  Clientes da Administração. Cotações antigas alimentam essa base na migration
+  de criação da tabela.
+  Cada cotação mantém seu snapshot em `propostas.observacoes` com o prefixo
+  `[ESTUDIO_COTACAO_V1]`; esses snapshots são excluídos da lista do módulo
   comercial Propostas.
 - **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
   o LLM já ser 100% OpenAI desde a Fase 1 do `docs/sprint-saida-forge`:
