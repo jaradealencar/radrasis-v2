@@ -413,7 +413,7 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
 }
 
 function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts: LedPowerSourceTextOverrides }) {
-  const hasCurrentEquivalence = tabela.rows.some(row => row.currentEquivalence);
+  const hasCurrentEquivalence = !tabela.key.endsWith("-12v") && tabela.rows.some(row => row.currentEquivalence);
   const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence", string]> = [
     ["source", "Fonte"],
     ["voltage", "Tensão"],
@@ -515,7 +515,7 @@ function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: Led
 }
 
 function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts: LedPowerSourceTextOverrides) {
-  const hasCurrentEquivalence = tabela.rows.some(row => row.currentEquivalence);
+  const hasCurrentEquivalence = !tabela.key.endsWith("-12v") && tabela.rows.some(row => row.currentEquivalence);
   const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence", string]> = [
     ["source", "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
     ["recommended", "Recomendado para vendas (85%)"],
