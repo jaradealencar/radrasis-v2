@@ -54,6 +54,7 @@ import {
   AuditoriaCustoMarketing,
   marketingConfigAuditoria,
   MarketingConfigAuditoria,
+  ledPowerSourceTexts,
 } from "../../drizzle/schema";
 import { resumirDiffTabelaPrecos } from "../integrations/priceTableDiff";
 import { normalizarIdsTabelaPrecos } from "../integrations/priceTableIds";
@@ -906,6 +907,23 @@ export async function getPermissionsForRole(role: AppRole): Promise<string[]> {
 }
 
 // ─── TABELA DE PREÇOS ────────────────────────────────────────────────────────
+
+export async function getLedPowerSourceTextOverrides(): Promise<Record<string, string>> {
+  const db = await getDb();
+  if (!db) return {};
+  const rows = await db.select().from(ledPowerSourceTexts).limit(200);
+  return Object.fromEntries(rows.map(row => [row.key, row.value]));
+}
+
+export async function saveLedPowerSourceTextOverride(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB indisponível");
+  await db.insert(ledPowerSourceTexts).values({ key, value, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: ledPowerSourceTexts.key,
+      set: { value, updatedAt: new Date() },
+    });
+}
 
 export async function listPriceTableSections(
   page?: number

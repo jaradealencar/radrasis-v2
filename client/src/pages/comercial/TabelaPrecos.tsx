@@ -28,9 +28,11 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { fmtNum } from "@/lib/format";
+import { ledPowerSourceTextKey } from "@shared/led-power-sources";
 import type {
   LedModuleTable,
   LedPowerSourceTables,
+  LedPowerSourceTextOverrides,
   LedTapeTable,
 } from "@shared/led-power-sources";
 import {
@@ -51,7 +53,7 @@ import {
   History,
   Clock,
 } from "lucide-react";
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
 
@@ -272,45 +274,130 @@ function MarginTable({
   );
 }
 
-function formatarMetrosLed(valor: number, tabela: LedTapeTable): string {
-  const casas = tabela.fixedDecimals || !Number.isInteger(valor) ? tabela.decimals : 0;
-  return `${fmtNum(valor, casas)} m`;
+function EditableLedText({
+  textKey,
+  value,
+  texts,
+  className = "",
+  showValue = true,
+}: {
+  textKey: string;
+  value: string;
+  texts: LedPowerSourceTextOverrides;
+  className?: string;
+  showValue?: boolean;
+}) {
+  const displayed = texts[textKey] ?? value;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(displayed);
+  const utils = trpc.useUtils();
+  const saveMutation = trpc.custoLed.saveDimensionamentoTexto.useMutation({
+    onSuccess: () => {
+      utils.custoLed.getDimensionamentoFontes.invalidate();
+      setEditing(false);
+      toast.success("Texto atualizado.");
+    },
+    onError: () => toast.error("Não foi possível salvar o texto."),
+  });
+
+  useEffect(() => {
+    if (!editing) setDraft(displayed);
+  }, [displayed, editing]);
+
+  if (editing) {
+    return (
+      <span className={`inline-flex items-center gap-1 ${className}`}>
+        <Input
+          autoFocus
+          value={draft}
+          maxLength={300}
+          onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === "Enter") saveMutation.mutate({ key: textKey, value: draft });
+            if (event.key === "Escape") setEditing(false);
+          }}
+          className="h-7 min-w-24 px-2 text-sm"
+          aria-label="Editar texto"
+        />
+        <button
+          type="button"
+          title="Salvar texto"
+          aria-label="Salvar texto"
+          disabled={saveMutation.isPending}
+          onClick={() => saveMutation.mutate({ key: textKey, value: draft })}
+          className="rounded p-1 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          title="Cancelar edição"
+          aria-label="Cancelar edição"
+          onClick={() => { setDraft(displayed); setEditing(false); }}
+          className="rounded p-1 text-slate-500 hover:bg-slate-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className={`group/led-text inline-flex items-center gap-1 ${className}`}>
+      {showValue && <span>{displayed}</span>}
+      <button
+        type="button"
+        title={`Editar: ${displayed || "texto vazio"}`}
+        aria-label={`Editar texto ${displayed || "vazio"}`}
+        onClick={() => setEditing(true)}
+        className="rounded p-0.5 text-slate-400 opacity-0 transition-opacity hover:bg-sky-50 hover:text-sky-700 group-hover/led-text:opacity-100 focus:opacity-100"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+    </span>
+  );
 }
 
-function LedTapePowerTable({ tabela }: { tabela: LedTapeTable }) {
-  const columns = [
-    "Fonte",
-    "Tensão",
-    "Potência da fonte",
-    `Fita LED ${tabela.wattsPerMeter} W/m — recomendado (85%)`,
-    `Fita LED ${tabela.wattsPerMeter} W/m — limite máximo (100%)`,
+function formatarMetrosLed(valor: number, tabela: LedTapeTable, unit: string): string {
+  const casas = tabela.fixedDecimals || !Number.isInteger(valor) ? tabela.decimals : 0;
+  return `${fmtNum(valor, casas)} ${unit}`;
+}
+
+function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: LedPowerSourceTextOverrides }) {
+  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
+    ["source", "Fonte"],
+    ["voltage", "Tensão"],
+    ["power", "Potência da fonte"],
+    ["recommended", `Fita LED ${tabela.wattsPerMeter} W/m — recomendado (85%)`],
+    ["maximum", `Fita LED ${tabela.wattsPerMeter} W/m — limite máximo (100%)`],
   ];
+  const subtitle = `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
 
   return (
     <Card className="border border-slate-200 shadow-sm">
       <CardHeader className="items-start gap-1 pb-3 pt-3 text-left">
         <CardTitle className="text-left text-base font-semibold text-slate-800">
-          {tabela.title}
+          <EditableLedText textKey={ledPowerSourceTextKey.title(tabela.key)} value={tabela.title} texts={texts} />
         </CardTitle>
         <span className="block w-fit max-w-full rounded border border-sky-200 bg-sky-100 px-2.5 py-1 text-sm font-semibold text-sky-800">
-          Fita LED linear · consumo de {tabela.wattsPerMeter} W por metro
+          <EditableLedText textKey={ledPowerSourceTextKey.subtitle(tabela.key)} value={subtitle} texts={texts} />
         </span>
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="bg-slate-100">
-              {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
+              {columns.map(([key, value]) => <TableHead key={key} className="whitespace-nowrap"><EditableLedText textKey={ledPowerSourceTextKey.column(tabela.key, key)} value={value} texts={texts} /></TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tabela.rows.map(row => (
+            {tabela.rows.map((row, rowIndex) => (
               <TableRow key={row.source}>
-                <TableCell className="font-medium">{row.source}</TableCell>
-                <TableCell>{row.voltage}</TableCell>
-                <TableCell>{fmtNum(row.powerW)} W</TableCell>
-                <TableCell>{formatarMetrosLed(row.recommendedMeters, tabela)}</TableCell>
-                <TableCell>{formatarMetrosLed(row.maximumMeters, tabela)}</TableCell>
+                <TableCell className="font-medium"><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "source")} value={row.source} texts={texts} /></TableCell>
+                <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage")} value={row.voltage} texts={texts} /></TableCell>
+                <TableCell>{fmtNum(row.powerW)} <EditableLedText textKey={ledPowerSourceTextKey.common("powerUnit")} value="W" texts={texts} /></TableCell>
+                <TableCell>{fmtNum(row.recommendedMeters, tabela.fixedDecimals || !Number.isInteger(row.recommendedMeters) ? tabela.decimals : 0)} <EditableLedText textKey={ledPowerSourceTextKey.common("meterUnit")} value="m" texts={texts} /></TableCell>
+                <TableCell>{fmtNum(row.maximumMeters, tabela.fixedDecimals || !Number.isInteger(row.maximumMeters) ? tabela.decimals : 0)} <EditableLedText textKey={ledPowerSourceTextKey.common("meterUnit")} value="m" texts={texts} /></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -320,43 +407,42 @@ function LedTapePowerTable({ tabela }: { tabela: LedTapeTable }) {
   );
 }
 
-function LedModulePowerTable({ tabela }: { tabela: LedModuleTable }) {
+function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts: LedPowerSourceTextOverrides }) {
   const hasCurrentEquivalence = tabela.rows.some(row => row.currentEquivalence);
-  const columns = [
-    "Fonte",
-    "Tensão",
-    "Potência da fonte",
-    "Recomendado para vendas (85%)",
-    ...(hasCurrentEquivalence ? ["Equivalência em correntes (20 peças)"] : []),
-    "Limite máximo (100%)",
+  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence", string]> = [
+    ["source", "Fonte"],
+    ["voltage", "Tensão"],
+    ["power", "Potência da fonte"],
+    ["recommended", "Recomendado para vendas (85%)"],
+    ...(hasCurrentEquivalence ? [["equivalence", "Equivalência em correntes (20 peças)"] as ["equivalence", string]] : []),
+    ["maximum", "Limite máximo (100%)"],
   ];
-
   return (
     <Card className="border border-slate-200 shadow-sm">
       <CardHeader className="items-start gap-1 pb-3 pt-3 text-left">
         <CardTitle className="text-left text-base font-semibold text-slate-800">
-          {tabela.title}
+          <EditableLedText textKey={ledPowerSourceTextKey.title(tabela.key)} value={tabela.title} texts={texts} />
         </CardTitle>
         <span className="block w-fit max-w-full rounded border border-violet-200 bg-violet-100 px-2.5 py-1 text-sm font-semibold text-violet-800">
-          {tabela.subtitle}
+          <EditableLedText textKey={ledPowerSourceTextKey.subtitle(tabela.key)} value={tabela.subtitle} texts={texts} />
         </span>
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="bg-slate-100">
-              {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
+              {columns.map(([key, value]) => <TableHead key={key} className="whitespace-nowrap"><EditableLedText textKey={ledPowerSourceTextKey.column(tabela.key, key)} value={value} texts={texts} /></TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tabela.rows.map(row => (
+            {tabela.rows.map((row, rowIndex) => (
               <TableRow key={row.source}>
-                <TableCell className="font-medium">{row.source}</TableCell>
-                <TableCell>{row.voltage}</TableCell>
-                <TableCell>{fmtNum(row.powerW)} W</TableCell>
-                <TableCell>Até {fmtNum(row.recommendedModules)} módulos</TableCell>
+                <TableCell className="font-medium"><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "source")} value={row.source} texts={texts} /></TableCell>
+                <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage")} value={row.voltage} texts={texts} /></TableCell>
+                <TableCell>{fmtNum(row.powerW)} <EditableLedText textKey={ledPowerSourceTextKey.common("powerUnit")} value="W" texts={texts} /></TableCell>
+                <TableCell><EditableLedText textKey={ledPowerSourceTextKey.common("moduleRecommendedPrefix")} value="Até" texts={texts} /> {fmtNum(row.recommendedModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
                 {hasCurrentEquivalence && <TableCell>{row.currentEquivalence}</TableCell>}
-                <TableCell>{fmtNum(row.maximumModules)} módulos</TableCell>
+                <TableCell>{fmtNum(row.maximumModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -366,73 +452,92 @@ function LedModulePowerTable({ tabela }: { tabela: LedModuleTable }) {
   );
 }
 
-function LedPowerSourcesSection({ dimensionamento }: { dimensionamento?: LedPowerSourceTables }) {
+function LedPowerSourcesSection({ dimensionamento }: { dimensionamento?: { tables: LedPowerSourceTables; texts: LedPowerSourceTextOverrides } }) {
   if (!dimensionamento) {
     return <div className="h-40 animate-pulse rounded-xl bg-slate-100" />;
   }
 
   return (
+    <div className="space-y-3">
+    <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+      <Pencil className="h-3.5 w-3.5 shrink-0" />
+      Passe o cursor sobre um texto e clique no lápis para editá-lo.
+    </div>
     <Tabs defaultValue="fitas" className="space-y-4">
       <TabsList className="grid h-auto w-full max-w-md grid-cols-2 bg-slate-100 p-1">
-        <TabsTrigger value="fitas" className="py-2">Fitas LED (metros)</TabsTrigger>
-        <TabsTrigger value="modulos" className="py-2">Módulos LED (unidades)</TabsTrigger>
+        <div className="relative">
+          <TabsTrigger value="fitas" className="w-full py-2">{getLedText(dimensionamento.texts, ledPowerSourceTextKey.page("tapesTab"), "Fitas LED (metros)")}</TabsTrigger>
+          <EditableLedText textKey={ledPowerSourceTextKey.page("tapesTab")} value="Fitas LED (metros)" texts={dimensionamento.texts} showValue={false} className="absolute right-1 top-1/2 z-10 -translate-y-1/2" />
+        </div>
+        <div className="relative">
+          <TabsTrigger value="modulos" className="w-full py-2">{getLedText(dimensionamento.texts, ledPowerSourceTextKey.page("modulesTab"), "Módulos LED (unidades)")}</TabsTrigger>
+          <EditableLedText textKey={ledPowerSourceTextKey.page("modulesTab")} value="Módulos LED (unidades)" texts={dimensionamento.texts} showValue={false} className="absolute right-1 top-1/2 z-10 -translate-y-1/2" />
+        </div>
       </TabsList>
       <TabsContent value="fitas" className="space-y-4">
-        {dimensionamento.tapes.map(tabela => <LedTapePowerTable key={tabela.key} tabela={tabela} />)}
+        {dimensionamento.tables.tapes.map(tabela => <LedTapePowerTable key={tabela.key} tabela={tabela} texts={dimensionamento.texts} />)}
       </TabsContent>
       <TabsContent value="modulos" className="space-y-4">
-        {dimensionamento.modules.map(tabela => <LedModulePowerTable key={tabela.key} tabela={tabela} />)}
+        {dimensionamento.tables.modules.map(tabela => <LedModulePowerTable key={tabela.key} tabela={tabela} texts={dimensionamento.texts} />)}
       </TabsContent>
     </Tabs>
+    </div>
   );
 }
 
-function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable) {
-  const columns = [
-    "Fonte",
-    "Tensão",
-    "Potência da fonte",
-    `Fita LED ${tabela.wattsPerMeter} W/m — recomendado (85%)`,
-    `Fita LED ${tabela.wattsPerMeter} W/m — limite máximo (100%)`,
+function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: LedPowerSourceTextOverrides) {
+  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
+    ["source", "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
+    ["recommended", `Fita LED ${tabela.wattsPerMeter} W/m — recomendado (85%)`],
+    ["maximum", `Fita LED ${tabela.wattsPerMeter} W/m — limite máximo (100%)`],
   ];
-  const rows = tabela.rows.map(row => `
+  const powerUnit = getLedText(texts, ledPowerSourceTextKey.common("powerUnit"), "W");
+  const meterUnit = getLedText(texts, ledPowerSourceTextKey.common("meterUnit"), "m");
+  const rows = tabela.rows.map((row, rowIndex) => `
     <tr>
-      <td>${escapeHtml(row.source)}</td>
-      <td>${escapeHtml(row.voltage)}</td>
-      <td>${fmtNum(row.powerW)} W</td>
-      <td>${escapeHtml(formatarMetrosLed(row.recommendedMeters, tabela))}</td>
-      <td>${escapeHtml(formatarMetrosLed(row.maximumMeters, tabela))}</td>
+      <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "source"), row.source))}</td>
+      <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage"), row.voltage))}</td>
+      <td>${fmtNum(row.powerW)} ${escapeHtml(powerUnit)}</td>
+      <td>${escapeHtml(formatarMetrosLed(row.recommendedMeters, tabela, meterUnit))}</td>
+      <td>${escapeHtml(formatarMetrosLed(row.maximumMeters, tabela, meterUnit))}</td>
     </tr>`).join("");
   const subtitle = `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
-  return `<div class="section-block"><div class="section-title">${escapeHtml(tabela.title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${escapeHtml(subtitle)}</div><table><thead><tr style="background:${color}">${columns.map(column => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
+  const subtitleText = getLedText(texts, ledPowerSourceTextKey.subtitle(tabela.key), subtitle);
+  return `<div class="section-block"><div class="section-title">${escapeHtml(title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${escapeHtml(subtitleText)}</div><table><thead><tr style="background:${color}">${columns.map(([key, fallback]) => `<th>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.column(tabela.key, key), fallback))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable) {
+function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts: LedPowerSourceTextOverrides) {
   const hasCurrentEquivalence = tabela.rows.some(row => row.currentEquivalence);
-  const columns = [
-    "Fonte",
-    "Tensão",
-    "Potência da fonte",
-    "Recomendado para vendas (85%)",
-    ...(hasCurrentEquivalence ? ["Equivalência em correntes (20 peças)"] : []),
-    "Limite máximo (100%)",
+  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence", string]> = [
+    ["source", "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
+    ["recommended", "Recomendado para vendas (85%)"],
+    ...(hasCurrentEquivalence ? [["equivalence", "Equivalência em correntes (20 peças)"] as ["equivalence", string]] : []),
+    ["maximum", "Limite máximo (100%)"],
   ];
-  const rows = tabela.rows.map(row => `
+  const powerUnit = getLedText(texts, ledPowerSourceTextKey.common("powerUnit"), "W");
+  const moduleUnit = getLedText(texts, ledPowerSourceTextKey.common("moduleUnit"), "módulos");
+  const recommendedPrefix = getLedText(texts, ledPowerSourceTextKey.common("moduleRecommendedPrefix"), "Até");
+  const rows = tabela.rows.map((row, rowIndex) => `
     <tr>
-      <td>${escapeHtml(row.source)}</td>
-      <td>${escapeHtml(row.voltage)}</td>
-      <td>${fmtNum(row.powerW)} W</td>
-      <td>Até ${fmtNum(row.recommendedModules)} módulos</td>
+      <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "source"), row.source))}</td>
+      <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage"), row.voltage))}</td>
+      <td>${fmtNum(row.powerW)} ${escapeHtml(powerUnit)}</td>
+      <td>${escapeHtml(recommendedPrefix)} ${fmtNum(row.recommendedModules)} ${escapeHtml(moduleUnit)}</td>
       ${hasCurrentEquivalence ? `<td>${escapeHtml(row.currentEquivalence ?? "")}</td>` : ""}
-      <td>${fmtNum(row.maximumModules)} módulos</td>
+      <td>${fmtNum(row.maximumModules)} ${escapeHtml(moduleUnit)}</td>
     </tr>`).join("");
-  return `<div class="section-block"><div class="section-title">${escapeHtml(tabela.title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #ddd6fe;border-radius:4px;background:#ede9fe;color:#5b21b6;font-weight:600">${escapeHtml(tabela.subtitle)}</div><table><thead><tr style="background:${color}">${columns.map(column => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
+  const subtitle = getLedText(texts, ledPowerSourceTextKey.subtitle(tabela.key), tabela.subtitle);
+  return `<div class="section-block"><div class="section-title">${escapeHtml(title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #ddd6fe;border-radius:4px;background:#ede9fe;color:#5b21b6;font-weight:600">${escapeHtml(subtitle)}</div><table><thead><tr style="background:${color}">${columns.map(([key, fallback]) => `<th>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.column(tabela.key, key), fallback))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function gerarHtmlDimensionamentoLed(color: string, dimensionamento: LedPowerSourceTables) {
-  const fitas = dimensionamento.tapes.map(tabela => gerarHtmlTabelaFitasLed(color, tabela)).join("");
-  const modulos = dimensionamento.modules.map(tabela => gerarHtmlTabelaModulosLed(color, tabela)).join("");
-  return `<div class="section-block"><div class="section-title">Fitas de LED por metro linear (W/m)</div>${fitas}</div><div class="section-block"><div class="section-title">Módulos de LED por unidade (peças)</div>${modulos}</div>`;
+function gerarHtmlDimensionamentoLed(color: string, dimensionamento: LedPowerSourceTables, texts: LedPowerSourceTextOverrides) {
+  const fitas = dimensionamento.tapes.map(tabela => gerarHtmlTabelaFitasLed(color, tabela, texts)).join("");
+  const modulos = dimensionamento.modules.map(tabela => gerarHtmlTabelaModulosLed(color, tabela, texts)).join("");
+  const tapeHeading = getLedText(texts, ledPowerSourceTextKey.page("tapesHeading"), "Fitas de LED por metro linear (W/m)");
+  const moduleHeading = getLedText(texts, ledPowerSourceTextKey.page("modulesHeading"), "Módulos de LED por unidade (peças)");
+  return `<div class="section-block"><div class="section-title">${escapeHtml(tapeHeading)}</div>${fitas}</div><div class="section-block"><div class="section-title">${escapeHtml(moduleHeading)}</div>${modulos}</div>`;
 }
 function ListContent({ items }: { items: string[] }) {
   return (
@@ -796,6 +901,10 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function getLedText(texts: LedPowerSourceTextOverrides, key: string, fallback: string): string {
+  return texts[key] ?? fallback;
+}
+
 // ─── EditableSection ─────────────────────────────────────────────────────────
 
 function EditableSection({
@@ -1047,6 +1156,7 @@ function gerarPdfTabela(
   sections: Section[],
   meta: { versao: string; dataModificacao: Date | string } | null,
   dimensionamentoLed: LedPowerSourceTables,
+  ledTexts: LedPowerSourceTextOverrides,
   titulo = "Tabela de Preços"
 ) {
   const dataStr = meta?.dataModificacao
@@ -1060,7 +1170,7 @@ function gerarPdfTabela(
     1: "Frontlight / Galvanizado",
     2: "Inox / PVC / Acrílico",
     3: "Pintura",
-    4: "Fontes Chaveadas",
+    4: getLedText(ledTexts, ledPowerSourceTextKey.page("pdfTitle"), "Fontes Chaveadas"),
   };
   const pageIcons: Record<number, string> = {
     1: "&#x1F4A1;",
@@ -1072,7 +1182,7 @@ function gerarPdfTabela(
     1: "Letreiros iluminados e estruturas galvanizadas",
     2: "Inox escovado, PVC e acrílico",
     3: "Acabamentos e pintura especial",
-    4: "Fontes chaveadas e capacidade de módulos LED",
+    4: getLedText(ledTexts, ledPowerSourceTextKey.page("pdfSubtitle"), "Fontes chaveadas e capacidade de módulos LED"),
   };
   const pageColors: Record<number, string> = {
     1: "#1e40af",
@@ -1192,7 +1302,7 @@ function gerarPdfTabela(
         <div class="page-header-title" style="color:${color}">${pageNames[page] ?? "Página " + page}<span class="page-header-sub"> — ${pageSubtitles[page] ?? ""}</span></div>
       </div>`;
     if (page === 4) {
-      html += gerarHtmlDimensionamentoLed(color, dimensionamentoLed);
+      html += gerarHtmlDimensionamentoLed(color, dimensionamentoLed, ledTexts);
     } else for (const sec of pageSections) {
       const lbl = getSectionLabel(sec.sectionTitle);
       const badgeHtml = lbl.badge
@@ -1426,7 +1536,8 @@ export default function TabelaPrecos() {
                         s => (s.page >= 11 && s.page <= 13) || s.page === 4
                       ),
                       meta ?? null,
-                      dimensionamentoLed!,
+                      dimensionamentoLed!.tables,
+                      dimensionamentoLed!.texts,
                       "Tabela Novo Cliente"
                     )
                   }
@@ -1453,7 +1564,7 @@ export default function TabelaPrecos() {
                   className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
                   <Pencil className="w-3 h-3 mr-1 text-emerald-500" />
-                  {p.label}
+                  {p.key === "4" ? getLedText(dimensionamentoLed?.texts ?? {}, ledPowerSourceTextKey.page("tableTabLabel"), p.label) : p.label}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -1462,6 +1573,10 @@ export default function TabelaPrecos() {
               <TabsContent key={p.key} value={p.key}>
                 {p.key === "4" ? (
                   <div className="space-y-4">
+                    <div className="flex items-center justify-end gap-2 text-xs text-slate-500">
+                      <span>Nome da aba:</span>
+                      <EditableLedText textKey={ledPowerSourceTextKey.page("tableTabLabel")} value="Pág. 4 — Fontes Chaveadas" texts={dimensionamentoLed?.texts ?? {}} />
+                    </div>
                     <LedPowerSourcesSection dimensionamento={dimensionamentoLed} />
                   </div>
                 ) : (
@@ -1570,7 +1685,8 @@ export default function TabelaPrecos() {
                     gerarPdfTabela(
                       (allSections ?? []).filter(s => s.page >= 1 && s.page <= 4),
                       meta ?? null,
-                      dimensionamentoLed!,
+                      dimensionamentoLed!.tables,
+                      dimensionamentoLed!.texts,
                       "Tabela Clientes Antigos"
                     )
                   }
@@ -1702,7 +1818,7 @@ export default function TabelaPrecos() {
                     className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm"
                   >
                     <Pencil className="w-3 h-3 mr-1 text-blue-500" />
-                    {p.label}
+                    {p.key === "4" ? getLedText(dimensionamentoLed?.texts ?? {}, ledPowerSourceTextKey.page("tableTabLabel"), p.label) : p.label}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -1711,6 +1827,10 @@ export default function TabelaPrecos() {
               <TabsContent key={p.key} value={p.key}>
                 {p.key === "4" ? (
                   <div className="space-y-4">
+                    <div className="flex items-center justify-end gap-2 text-xs text-slate-500">
+                      <span>Nome da aba:</span>
+                      <EditableLedText textKey={ledPowerSourceTextKey.page("tableTabLabel")} value="Pág. 4 — Fontes Chaveadas" texts={dimensionamentoLed?.texts ?? {}} />
+                    </div>
                     <LedPowerSourcesSection dimensionamento={dimensionamentoLed} />
                   </div>
                 ) : (

@@ -2061,6 +2061,16 @@ export const ledTipos = pgTable("led_tipos", {
 export type LedTipo = typeof ledTipos.$inferSelect;
 export type InsertLedTipo = typeof ledTipos.$inferInsert;
 
+// Textos apresentados na página 4 da Tabela de Preços (dimensionamento LED).
+// As chaves identificam partes editáveis separadamente; valores numéricos
+// seguem calculados pelo serviço de dimensionamento.
+export const ledPowerSourceTexts = pgTable("led_power_source_texts", {
+  key: varchar("key", { length: 200 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type LedPowerSourceText = typeof ledPowerSourceTexts.$inferSelect;
+
 export const custoLedLancamentos = pgTable("custo_led_lancamentos", {
   id: serial("id").primaryKey(),
   os: varchar("os", { length: 64 }).notNull(),

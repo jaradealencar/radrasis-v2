@@ -435,6 +435,13 @@
       "when": 1790905533361,
       "tag": "0061_stiff_ronan",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1790908928555,
+      "tag": "0062_empty_guardsmen",
+      "breakpoints": true
     }
   ]
 }

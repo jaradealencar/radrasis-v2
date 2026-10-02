@@ -4,11 +4,33 @@ import { getDb } from "../db/db";
 import { ledTipos, custoLedLancamentos } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { getLedPowerSourceTables } from "../services/ledPowerSources";
+import {
+  getLedPowerSourceTextOverrides,
+  saveLedPowerSourceTextOverride,
+} from "../db/db";
+
+const ledTextKeyPattern = /^(page\.(tableTabLabel|tapesTab|modulesTab|pdfTitle|pdfSubtitle|tapesHeading|modulesHeading)|common\.(powerUnit|meterUnit|moduleUnit|moduleRecommendedPrefix)|(tape-24v|tape-12v|modules-24v|modules-3030-12v|micro-2835-12v)\.(title|subtitle|column\.(source|voltage|power|recommended|maximum|equivalence)|row\.\d+\.(source|voltage)))$/;
 
 // ─── Tipos de LED ─────────────────────────────────────────────────────────────
 
 export const custoLedRouter = router({
-  getDimensionamentoFontes: publicProcedure.query(() => getLedPowerSourceTables()),
+  getDimensionamentoFontes: publicProcedure.query(async () => {
+    const [tables, texts] = await Promise.all([
+      Promise.resolve(getLedPowerSourceTables()),
+      getLedPowerSourceTextOverrides(),
+    ]);
+    return { tables, texts };
+  }),
+
+  saveDimensionamentoTexto: protectedProcedure
+    .input(z.object({
+      key: z.string().regex(ledTextKeyPattern),
+      value: z.string().max(300),
+    }))
+    .mutation(async ({ input }) => {
+      await saveLedPowerSourceTextOverride(input.key, input.value);
+      return { ok: true };
+    }),
 
   // Listar todos os tipos de LED ativos
   listTipos: publicProcedure.query(async () => {
