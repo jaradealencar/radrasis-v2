@@ -1957,7 +1957,7 @@ function realStepProposta(){
         </div>
       </div>
     </div>` : ''}
-    <div class="role-note" style="margin-top:10px;">${ICONS.info} Para CNPJ, a BrasilAPI consulta razão social, nome fantasia e endereço. O e-mail e o WhatsApp são preenchidos por você e não vêm da API. Para CPF, o navegador confere os dígitos verificadores sem enviar o número a uma API; o nome pode ser informado manualmente.</div>
+    <div class="role-note" style="margin-top:10px;">${ICONS.info} Para CNPJ, a BrasilAPI consulta razão social, nome fantasia e endereço. O e-mail e o WhatsApp são preenchidos por você e não vêm da API. Para CPF, o navegador confere os dígitos verificadores sem enviar o número a uma API; ao informar o nome, ele também preenche o nome fantasia.</div>
     <div class="footer-nav">
       <div></div>
       <button class="btn btn-primary" data-act="real-approve" data-val="proposta" ${podeAvancar?'':'disabled'}>${ICONS.check} Iniciar proposta</button>
@@ -4212,7 +4212,11 @@ function bindRealEvents(){
     renderPreservingFocus();
   });
   const razaoEl = document.querySelector('[data-act="real-razao"]');
-  if(razaoEl) razaoEl.addEventListener('input', e=>{ REAL.cliente.razao=e.target.value; renderPreservingFocus(); });
+  if(razaoEl) razaoEl.addEventListener('input', e=>{
+    REAL.cliente.razao=e.target.value;
+    if(normalizarDocumento(REAL.cliente.cnpj).length===11) REAL.cliente.fantasia=e.target.value;
+    renderPreservingFocus();
+  });
   const fantasiaEl = document.querySelector('[data-act="real-fantasia"]');
   if(fantasiaEl) fantasiaEl.addEventListener('input', e=>{ REAL.cliente.fantasia=e.target.value; renderPreservingFocus(); });
   const enderecoEl = document.querySelector('[data-act="real-endereco"]');
