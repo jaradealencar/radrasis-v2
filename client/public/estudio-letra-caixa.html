@@ -2607,7 +2607,7 @@ function realStepOrcamento(){
 /* ---- ADMIN ---- */
 /* ---------- ADMIN: catálogo real (produtos/modelos + matérias-primas do MubiSys) ---------- */
 const adminState = {
-  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
+  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   expandedProdutoId:null, editingKey:null,
@@ -2619,6 +2619,14 @@ function kitKey(produtoId, modeloId){ return produtoId+'_'+modeloId; }
 function skuProduto(produtoId){ return 'SKU-'+String(produtoId??'').trim().padStart(6,'0'); }
 function skuModelo(produtoId, modeloId){ return `${skuProduto(produtoId)}-M${String(modeloId??'').trim().padStart(3,'0')}`; }
 function skuModeloPorKey(key){ const [produtoId,modeloId]=String(key||'').split('_'); return skuModelo(produtoId,modeloId); }
+function nomeModeloPorKey(key){
+  const kit=adminState.kits[key];
+  if(kit && kit.nomeCompleto) return kit.nomeCompleto;
+  const [produtoId,modeloId]=String(key||'').split('_').map(Number);
+  const produto=catalog.produtos.find(item=>item.id===produtoId);
+  const modelo=produto && produto.modelos.find(item=>item.id===modeloId);
+  return produto && modelo ? `${produto.nome} — ${modelo.nome}` : String(key||'Modelo sem nome');
+}
 
 /* ---------- PERSISTÊNCIA REAL (banco do artifact) ----------
  * Sem isso, adminState.kits/exclusões viviam só em memória JS: qualquer
@@ -3256,6 +3264,27 @@ function adminKitEditor(p, m, key){
         return normalizeSearch(`${prod.nome} ${skuProduto(prod.id)} ${modelosTexto}`).includes(normalizeSearch(kpq));
       }).slice(0,40)
     : [];
+  const kitCopiaQuery=String(adminState.kitCopiaQuery||'').trim();
+  const kitCopiaSelecionadoKey=adminState.kitCopiaSelecionadoKey===key?null:adminState.kitCopiaSelecionadoKey;
+  const kitCopiaSelecionado=kitCopiaSelecionadoKey?adminState.kits[kitCopiaSelecionadoKey]:null;
+  const kitCopiaMatches=kitCopiaQuery.length>=1
+    ? Object.entries(adminState.kits).filter(([origemKey,origem])=>{
+        if(origemKey===key) return false;
+        const linhas=Array.isArray(origem.linhas)?origem.linhas:[];
+        const vinculados=Array.isArray(origem.kitProdutos)?origem.kitProdutos:[];
+        if(!linhas.length&&!vinculados.length) return false;
+        const [produtoId,modeloId]=origemKey.split('_').map(Number);
+        const produto=catalog.produtos.find(item=>item.id===produtoId);
+        const modelo=produto && produto.modelos.find(item=>item.id===modeloId);
+        const busca=`${nomeModeloPorKey(origemKey)} ${skuModeloPorKey(origemKey)} ${produto?.nome||''} ${modelo?.nome||''}`;
+        return normalizeSearch(busca).includes(normalizeSearch(kitCopiaQuery));
+      }).slice(0,30).map(([origemKey,origem])=>({
+        key:origemKey,
+        nome:nomeModeloPorKey(origemKey),
+        linhas:Array.isArray(origem.linhas)?origem.linhas:[],
+        vinculados:Array.isArray(origem.kitProdutos)?origem.kitProdutos:[],
+      }))
+    : [];
 
   const catAtual = kitState.categoria && CATEGORIAS_PRODUTO[kitState.categoria] ? kitState.categoria : '';
   const subcatsDaCat = catAtual ? Object.keys(CATEGORIAS_PRODUTO[catAtual]) : [];
@@ -3305,6 +3334,21 @@ function adminKitEditor(p, m, key){
     </label>
     <p style="font-size:11px; color:var(--text-faint); margin-top:4px;">Aparece pro vendedor e pro cliente na proposta. O % de custo fixo sobre matéria-prima agora é global — edite em Administração &gt; Configurações.</p>
 
+    <div class="card" style="margin-top:14px;padding:12px;box-shadow:none;background:var(--surface);">
+      <p style="font-size:12px;font-weight:700;margin-bottom:4px;">Copiar de outro produto</p>
+      <p style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Copie a composi??o de mat?rias-primas e os produtos vinculados de um modelo j? configurado. Descri??o, pre?o, categoria e prazo deste cadastro n?o ser?o alterados.</p>
+      <div style="position:relative;">
+        <input type="text" placeholder="Buscar modelo cadastrado pelo nome ou SKU?" value="${escaparHtml(kitCopiaQuery)}" data-act="admin-kit-copia-query" data-key="${key}" style="width:100%;">
+        ${kitCopiaSelecionado? `<div class="card" style="margin-top:6px;padding:10px;box-shadow:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div><strong>${escaparHtml(nomeModeloPorKey(kitCopiaSelecionadoKey))}</strong><div class="mono" style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">${skuModeloPorKey(kitCopiaSelecionadoKey)} ? ${Array.isArray(kitCopiaSelecionado.linhas)?kitCopiaSelecionado.linhas.length:0} mat?ria(s)-prima(s) ? ${Array.isArray(kitCopiaSelecionado.kitProdutos)?kitCopiaSelecionado.kitProdutos.length:0} produto(s) vinculado(s)</div></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-sm" data-act="admin-kit-copiar" data-key="${key}" data-origem="${kitCopiaSelecionadoKey}">Copiar para este modelo</button><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-copia-limpar" data-key="${key}">Trocar origem</button></div>
+          </div>
+        </div>` : kitCopiaMatches.length? `<div class="card" style="position:absolute;z-index:20;width:100%;margin-top:4px;padding:6px;max-height:240px;overflow:auto;">
+          ${kitCopiaMatches.map(origem=>`<button type="button" data-act="admin-kit-copia-selecionar" data-val="${origem.key}" data-key="${key}" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:transparent;color:var(--text);text-align:left;cursor:pointer;font-size:12px;"><span class="mono" style="color:var(--accent-ink);">${skuModeloPorKey(origem.key)}</span><span>${escaparHtml(origem.nome)}</span><span style="margin-left:auto;color:var(--text-faint);">${origem.linhas.length} mat. ? ${origem.vinculados.length} vinculados</span></button>`).join("")}
+        </div>` : (kitCopiaQuery? '<p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Nenhum outro modelo com composi??o ou produtos vinculados foi encontrado.</p>' : '')}
+      </div>
+    </div>
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Produtos do kit <span style="font-weight:400; text-transform:none;">— pesquise um produto, escolha o modelo e repita para adicionar outros; os selecionados ficam abaixo</span></p>
     <div style="position:relative;">
       <input type="text" placeholder="Buscar produto pelo nome ou SKU…" value="${escaparHtml(kpq)}" data-act="admin-kitproduto-query" style="width:100%;">
@@ -3655,6 +3699,8 @@ function bindAdminEvents(){
       adminState.expandedProdutoId = adminState.expandedProdutoId===id ? null : id;
       adminState.kitProdutoProdutoIdSelecionado=null;
       adminState.kitProdutoQuery='';
+      adminState.kitCopiaQuery='';
+      adminState.kitCopiaSelecionadoKey=null;
       render();
     });
   });
@@ -3683,6 +3729,8 @@ function bindAdminEvents(){
         adminState.editingKey=key;
         adminState.kitProdutoProdutoIdSelecionado=null;
         adminState.kitProdutoQuery='';
+        adminState.kitCopiaQuery='';
+        adminState.kitCopiaSelecionadoKey=null;
         if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
         adminState.kits[key].nomeCompleto = el.dataset.nome;
         adminState.adminMatQuery='';
@@ -3829,6 +3877,54 @@ function bindAdminEvents(){
     el.addEventListener('click', ()=>{
       const kit = adminState.kits[el.dataset.key];
       if(kit && kit.kitProdutos){ kit.kitProdutos.splice(+el.dataset.idx,1); salvarKit(el.dataset.key); }
+      render();
+    });
+  });
+
+  const kitCopiaQueryEl=document.querySelector('[data-act="admin-kit-copia-query"]');
+  if(kitCopiaQueryEl) kitCopiaQueryEl.addEventListener('input',e=>{
+    adminState.kitCopiaQuery=e.target.value;
+    adminState.kitCopiaSelecionadoKey=null;
+    renderPreservingFocus();
+  });
+  document.querySelectorAll('[data-act="admin-kit-copia-selecionar"]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      adminState.kitCopiaSelecionadoKey=el.dataset.val;
+      adminState.kitCopiaQuery='';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-kit-copia-limpar"]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      adminState.kitCopiaSelecionadoKey=null;
+      adminState.kitCopiaQuery='';
+      render();
+      document.querySelector('[data-act="admin-kit-copia-query"]')?.focus();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-kit-copiar"]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const destinoKey=el.dataset.key;
+      const origemKey=el.dataset.origem;
+      const origem=adminState.kits[origemKey];
+      if(!destinoKey||!origemKey||destinoKey===origemKey||!origem) return;
+      const nomeOrigem=nomeModeloPorKey(origemKey);
+      const nomeDestino=nomeModeloPorKey(destinoKey);
+      const confirmou=confirm(`Copiar a configuração de "${nomeOrigem}" para "${nomeDestino}"?\n\nA composição de matérias-primas e os produtos vinculados atuais serão substituídos. Descrição, preço, categoria, prazo e foto serão mantidos.`);
+      if(!confirmou) return;
+      const destino=adminState.kits[destinoKey] || (adminState.kits[destinoKey]={linhas:[],precificacao:null,descricaoProduto:'',prazoDiasUteis:null,kitProdutos:[],fotoUrl:null,fotoAssetId:null,categoria:null,subcategoria:null,tipoProduto:null});
+      const linhasOrigem=Array.isArray(origem.linhas)?origem.linhas:[];
+      const vinculadosOrigem=Array.isArray(origem.kitProdutos)?origem.kitProdutos:[];
+      destino.linhas=linhasOrigem.map(linha=>({...linha}));
+      const vistos=new Set();
+      destino.kitProdutos=vinculadosOrigem.filter(item=>{
+        if(!item||!item.key||item.key===destinoKey||vistos.has(item.key)) return false;
+        vistos.add(item.key);
+        return true;
+      }).map(item=>({...item}));
+      salvarKit(destinoKey);
+      adminState.kitCopiaSelecionadoKey=null;
+      adminState.kitCopiaQuery='';
       render();
     });
   });
