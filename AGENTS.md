@@ -381,6 +381,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   A descrição comercial é configurada por produto/modelo no cadastro de kit,
   gravada no documento `kits` e pré-preenchida na descrição editável da
   proposta do vendedor; o snapshot público registra o texto final da cotação.
+  O cadastro de kit também permite clonar a composição e os produtos vinculados
+  de outro modelo. Cada linha de matéria-prima pode ter opções de variação com
+  outras matérias-primas da mesma unidade; no orçamento, “Nenhuma” mantém o
+  material principal e a opção selecionada recalcula o custo. O snapshot da
+  cotação pública salva e exibe as variações escolhidas.
   No cadastro do cliente do Estúdio, razão social/fantasia/endereço vêm da
   consulta de CNPJ, enquanto e-mail e WhatsApp são informados manualmente e
   incluídos no snapshot da cotação; os campos de contato da API são ignorados.

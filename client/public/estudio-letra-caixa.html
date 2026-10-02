@@ -1185,6 +1185,16 @@ function addKitLine(materiaId){
 }
 function removeKitLine(idx){ REAL.kit.splice(idx,1); }
 function kitLineQty(line, geom){ return (FORMULA_TYPES[line.formulaType]||FORMULA_TYPES.fixo).calc(geom, line.mult); }
+function materialKitAtivo(line){
+  const variacao=(Array.isArray(line.variantes)?line.variantes:[]).find(item=>String(item.matId)===String(line.variacaoSelecionadaMatId));
+  return variacao?{...line,...variacao}:line;
+}
+function variacoesSelecionadasCotacao(){
+  return REAL.kit.flatMap(line=>{
+    const variacao=(Array.isArray(line.variantes)?line.variantes:[]).find(item=>String(item.matId)===String(line.variacaoSelecionadaMatId));
+    return variacao?[{nome:String(line.variacaoNome||'Variação').slice(0,80),valor:String(variacao.valor||variacao.nome||'').slice(0,120)}]:[];
+  });
+}
 
 /* ---------- PINTURA (opcional, pré-configurada em todo orçamento) ----------
  * Wizard de múltipla escolha que resolve sozinho qual matéria-prima real usar,
@@ -1263,7 +1273,7 @@ function removerPintura(){
 
 function computeOrcamentoReal(){
   const g = computeGeomReal();
-  const matTotal = REAL.kit.reduce((a,k)=>a+kitLineQty(k,g)*k.custo,0);
+  const matTotal = REAL.kit.reduce((a,k)=>a+kitLineQty(k,g)*materialKitAtivo(k).custo,0);
   const servTotal = REAL.servicos.reduce((a,s)=>a+s.v,0);
   // % custo fixo sobre matéria-prima — GLOBAL, igual pra todo produto
   // (rateio de energia/mão-de-obra fixa), editável só em Administração >
@@ -1319,6 +1329,7 @@ function renderVisaoCliente(){
   <div class="cliente-hero">
     ${kitPronto && kitPronto.fotoUrl? `<img src="${kitPronto.fotoUrl}" style="width:96px; height:96px; object-fit:cover; border-radius:14px; border:1px solid var(--border); margin-bottom:14px;">` : ''}
     <h2>${REAL.modeloNome}</h2>
+    ${variacoesSelecionadasCotacao().length? `<div style="display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin:8px 0;">${variacoesSelecionadasCotacao().map(v=>`<span class="badge b-neutral">${escaparHtml(v.nome)}: ${escaparHtml(v.valor)}</span>`).join('')}</div>`:''}
     <p style="font-size:13px; color:var(--text-dim); margin-bottom:6px;">Proposta para ${escaparHtml(REAL.cliente.razao||REAL.cliente.cnpj||'você')} · emitida em ${dataEmissao.toLocaleDateString('pt-BR')} · válida até ${dataValidade.toLocaleDateString('pt-BR')}</p>
      ${REAL.cliente.cnpj ? '<p style="font-size:12px; color:var(--text-dim); margin:0 0 4px;"><b>'+rotuloDocumento(REAL.cliente.cnpj)+':</b> '+escaparHtml(REAL.cliente.cnpj)+'</p>' : ''}
      ${REAL.cliente.fantasia ? '<p style="font-size:12px; color:var(--text-dim); margin:0 0 4px;"><b>Nome fantasia:</b> '+escaparHtml(REAL.cliente.fantasia)+'</p>' : ''}
@@ -2473,17 +2484,23 @@ function realStepKit(){
         <tbody>
         ${REAL.kit.length? REAL.kit.map((k,i)=>{
           const qty = kitLineQty(k,g);
+          const material = materialKitAtivo(k);
+          const variantes = Array.isArray(k.variantes)?k.variantes:[];
           return `<tr>
-            <td>${k.nome}<div class="source-tag">${ICONS.db} MubiSys real · ${k.atualizado||'—'}${k.status==='Inativo'?' · <span style="color:var(--bad);">inativo</span>':''}</div></td>
+            <td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}${material.status==='Inativo'?' · <span style="color:var(--bad);">inativo</span>':''}</div>
+              ${variantes.length? `<label style="display:block;margin-top:6px;font-size:10.5px;color:var(--text-faint);">${escaparHtml(k.variacaoNome||'Variação')}
+                <select data-act="real-kit-variacao" data-idx="${i}" style="display:block;margin-top:3px;width:min(100%,300px);font-size:11px;"><option value="">Nenhuma (manter matéria-prima principal)</option>${variantes.map(v=>`<option value="${v.matId}" ${String(k.variacaoSelecionadaMatId)===String(v.matId)?'selected':''}>${escaparHtml(v.valor||v.nome)} · ${escaparHtml(v.nome)}</option>`).join('')}</select>
+              </label>`:''}
+            </td>
             <td><select data-act="real-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
               ${configGeral.papeisPeca.map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
             </select></td>
             <td><select data-act="real-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([key,f])=>`<option value="${key}" ${k.formulaType===key?'selected':''}>${f.label}</option>`).join('')}</select></td>
             <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="real-kit-mult" data-idx="${i}" style="width:70px;"></td>
-            <td class="num">${fmt(qty,2)} ${k.unidade}</td>
-            <td class="num">${money(k.custo)}</td>
-            <td class="num">${money(qty*k.custo)}</td>
+            <td class="num">${fmt(qty,2)} ${material.unidade}</td>
+            <td class="num">${money(material.custo)}</td>
+            <td class="num">${money(qty*material.custo)}</td>
             <td><button class="btn btn-ghost btn-sm" data-act="real-kit-remove" data-idx="${i}">✕</button></td>
           </tr>`;
         }).join('') : `<tr><td colspan="8" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado para adicionar.</td></tr>`}
@@ -2566,7 +2583,7 @@ function realStepOrcamento(){
       <table>
         <thead><tr><th>Linha</th><th>Qtd.</th><th>Custo unit.</th><th>Subtotal</th></tr></thead>
         <tbody>
-        ${REAL.kit.map(k=>{const qty=kitLineQty(k,g); return `<tr><td>${k.nome}<div class="source-tag">${ICONS.db} MubiSys real · ${k.atualizado||'—'}</div></td><td class="num">${fmt(qty,2)} ${k.unidade}</td><td class="num">${money(k.custo)}</td><td class="num">${money(qty*k.custo)}</td></tr>`;}).join('')}
+        ${REAL.kit.map(k=>{const qty=kitLineQty(k,g); const material=materialKitAtivo(k); return `<tr><td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}</div></td><td class="num">${fmt(qty,2)} ${material.unidade}</td><td class="num">${money(material.custo)}</td><td class="num">${money(qty*material.custo)}</td></tr>`;}).join('')}
         ${REAL.servicos.map(s=>`<tr><td>${s.n}</td><td class="num">—</td><td class="num">—</td><td class="num">${money(s.v)}</td></tr>`).join('')}
         <tr><td colspan="3">% custo fixo (global, ${configGeral.custoFixoPct}% sobre matéria-prima)</td><td class="num">${money(o.custoFixo)}</td></tr>
         <tr><td colspan="3"><b>Custo direto</b></td><td class="num"><b>${money(o.custoDireto)}</b></td></tr>
@@ -2607,7 +2624,7 @@ function realStepOrcamento(){
 /* ---- ADMIN ---- */
 /* ---------- ADMIN: catálogo real (produtos/modelos + matérias-primas do MubiSys) ---------- */
 const adminState = {
-  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
+  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', precoLinhaQuery:'', filtroVendedorPropostas:'',
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   expandedProdutoId:null, editingKey:null,
@@ -2717,6 +2734,7 @@ function snapshotCotacaoReal(){
     whatsappVendedor:normalizarTelefoneWhatsApp(configGeral.whatsappVendedores[REAL.vendedor]) || null,
     modeloNome:REAL.modeloNome || '',
     descricaoProduto:REAL.descricaoProduto || '',
+    variacoes:variacoesSelecionadasCotacao(),
     areaM2:Number.isFinite(g.areaM2) ? g.areaM2 : null,
     areaGeralM2:Number.isFinite(g.areaGeralM2) ? g.areaGeralM2 : null,
     precoFinal:o.precoFinal,
@@ -3286,6 +3304,14 @@ function adminKitEditor(p, m, key){
       }))
     : [];
 
+  const kitVariacaoQuery=String(adminState.kitVariacaoQuery||'').trim();
+  const variacaoIdx=String(adminState.kitVariacaoLinhaKey||'').startsWith(`${key}:`)?parseInt(adminState.kitVariacaoLinhaKey.slice(key.length+1)):null;
+  const kitVariacaoLinha=Number.isInteger(variacaoIdx)?kit[variacaoIdx]:null;
+  const kitVariacaoOpcoes=kitVariacaoLinha && Array.isArray(kitVariacaoLinha.variantes)?kitVariacaoLinha.variantes:[];
+  const kitVariacaoMatches=kitVariacaoLinha && kitVariacaoQuery.length>=2
+    ? catalog.materias.filter(m=>!adminState.materiasExcluidas.has(m.id)&&m.id!==kitVariacaoLinha.matId&&m.unidade===kitVariacaoLinha.unidade&&!kitVariacaoOpcoes.some(v=>v.matId===m.id)&&normalizeSearch(m.nome).includes(normalizeSearch(kitVariacaoQuery))).slice(0,25)
+    : [];
+
   const catAtual = kitState.categoria && CATEGORIAS_PRODUTO[kitState.categoria] ? kitState.categoria : '';
   const subcatsDaCat = catAtual ? Object.keys(CATEGORIAS_PRODUTO[catAtual]) : [];
   const subcatAtual = kitState.subcategoria && subcatsDaCat.includes(kitState.subcategoria) ? kitState.subcategoria : '';
@@ -3336,17 +3362,17 @@ function adminKitEditor(p, m, key){
 
     <div class="card" style="margin-top:14px;padding:12px;box-shadow:none;background:var(--surface);">
       <p style="font-size:12px;font-weight:700;margin-bottom:4px;">Copiar de outro produto</p>
-      <p style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Copie a composi??o de mat?rias-primas e os produtos vinculados de um modelo j? configurado. Descri??o, pre?o, categoria e prazo deste cadastro n?o ser?o alterados.</p>
+      <p style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Copie a composi&ccedil;&atilde;o de mat&eacute;rias-primas e os produtos vinculados de um modelo j&aacute; configurado. Descri&ccedil;&atilde;o, pre&ccedil;o, categoria e prazo deste cadastro n&atilde;o ser&atilde;o alterados.</p>
       <div style="position:relative;">
-        <input type="text" placeholder="Buscar modelo cadastrado pelo nome ou SKU?" value="${escaparHtml(kitCopiaQuery)}" data-act="admin-kit-copia-query" data-key="${key}" style="width:100%;">
+        <input type="text" placeholder="Buscar modelo cadastrado pelo nome ou SKU..." value="${escaparHtml(kitCopiaQuery)}" data-act="admin-kit-copia-query" data-key="${key}" style="width:100%;">
         ${kitCopiaSelecionado? `<div class="card" style="margin-top:6px;padding:10px;box-shadow:none;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <div><strong>${escaparHtml(nomeModeloPorKey(kitCopiaSelecionadoKey))}</strong><div class="mono" style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">${skuModeloPorKey(kitCopiaSelecionadoKey)} ? ${Array.isArray(kitCopiaSelecionado.linhas)?kitCopiaSelecionado.linhas.length:0} mat?ria(s)-prima(s) ? ${Array.isArray(kitCopiaSelecionado.kitProdutos)?kitCopiaSelecionado.kitProdutos.length:0} produto(s) vinculado(s)</div></div>
+            <div><strong>${escaparHtml(nomeModeloPorKey(kitCopiaSelecionadoKey))}</strong><div class="mono" style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">${skuModeloPorKey(kitCopiaSelecionadoKey)} | ${Array.isArray(kitCopiaSelecionado.linhas)?kitCopiaSelecionado.linhas.length:0} mat&eacute;ria(s)-prima(s) | ${Array.isArray(kitCopiaSelecionado.kitProdutos)?kitCopiaSelecionado.kitProdutos.length:0} produto(s) vinculado(s)</div></div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-sm" data-act="admin-kit-copiar" data-key="${key}" data-origem="${kitCopiaSelecionadoKey}">Copiar para este modelo</button><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-copia-limpar" data-key="${key}">Trocar origem</button></div>
           </div>
         </div>` : kitCopiaMatches.length? `<div class="card" style="position:absolute;z-index:20;width:100%;margin-top:4px;padding:6px;max-height:240px;overflow:auto;">
-          ${kitCopiaMatches.map(origem=>`<button type="button" data-act="admin-kit-copia-selecionar" data-val="${origem.key}" data-key="${key}" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:transparent;color:var(--text);text-align:left;cursor:pointer;font-size:12px;"><span class="mono" style="color:var(--accent-ink);">${skuModeloPorKey(origem.key)}</span><span>${escaparHtml(origem.nome)}</span><span style="margin-left:auto;color:var(--text-faint);">${origem.linhas.length} mat. ? ${origem.vinculados.length} vinculados</span></button>`).join("")}
-        </div>` : (kitCopiaQuery? '<p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Nenhum outro modelo com composi??o ou produtos vinculados foi encontrado.</p>' : '')}
+          ${kitCopiaMatches.map(origem=>`<button type="button" data-act="admin-kit-copia-selecionar" data-val="${origem.key}" data-key="${key}" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:transparent;color:var(--text);text-align:left;cursor:pointer;font-size:12px;"><span class="mono" style="color:var(--accent-ink);">${skuModeloPorKey(origem.key)}</span><span>${escaparHtml(origem.nome)}</span><span style="margin-left:auto;color:var(--text-faint);">${origem.linhas.length} materias | ${origem.vinculados.length} vinculados</span></button>`).join("")}
+        </div>` : (kitCopiaQuery? '<p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Nenhum outro modelo com composi&ccedil;&atilde;o ou produtos vinculados foi encontrado.</p>' : '')}
       </div>
     </div>
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Produtos do kit <span style="font-weight:400; text-transform:none;">— pesquise um produto, escolha o modelo e repita para adicionar outros; os selecionados ficam abaixo</span></p>
@@ -3391,7 +3417,7 @@ function adminKitEditor(p, m, key){
         <tbody>
         ${kit.length? kit.map((k,i)=>`
           <tr>
-            <td>${k.nome}<div class="source-tag">${ICONS.db} unidade real: ${k.unidade}</div></td>
+            <td>${k.nome}<div class="source-tag">${ICONS.db} unidade real: ${k.unidade}</div><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-variacao-toggle" data-key="${key}" data-idx="${i}" style="display:block;margin-top:5px;">${Array.isArray(k.variantes)&&k.variantes.length?`Variações (${k.variantes.length})`:"Criar variação"}</button></td>
             <td><select data-act="admin-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
               ${configGeral.papeisPeca.map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
@@ -3404,6 +3430,18 @@ function adminKitEditor(p, m, key){
       </table>
     </div>
 
+    ${kitVariacaoLinha? `<div class="card" style="margin-top:10px;padding:12px;box-shadow:none;background:var(--surface-2);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><strong>Variações da matéria-prima: ${escaparHtml(kitVariacaoLinha.nome)}</strong><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-variacao-fechar">Fechar</button></div>
+      <p style="font-size:11px;color:var(--text-faint);margin:4px 0 10px;">No orçamento, escolha uma das opções para trocar a matéria-prima desta linha. "Nenhuma" mantém a matéria-prima principal. As opções usam a mesma unidade da matéria principal.</p>
+      <label class="field" style="max-width:320px;">Nome da variação (ex.: Cor)
+        <input type="text" maxlength="80" placeholder="Ex.: Cor" value="${escaparHtml(kitVariacaoLinha.variacaoNome||"")}" data-act="admin-kit-variacao-nome" data-key="${key}" data-idx="${variacaoIdx}">
+      </label>
+      <label class="field" style="margin-top:8px;">Adicionar opção buscando outra matéria-prima
+        <input type="text" placeholder="Buscar matéria-prima no catálogo..." value="${escaparHtml(kitVariacaoQuery)}" data-act="admin-kit-variacao-query" data-key="${key}" data-idx="${variacaoIdx}">
+      </label>
+      ${kitVariacaoMatches.length? `<div class="card" style="margin-top:4px;padding:5px;box-shadow:none;">${kitVariacaoMatches.map(m=>`<button type="button" data-act="admin-kit-variacao-add" data-key="${key}" data-idx="${variacaoIdx}" data-mat="${m.id}" style="display:flex;justify-content:space-between;gap:10px;width:100%;padding:7px 8px;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer;"><span>+ ${escaparHtml(m.nome)}</span><span class="mono">${money(m.valor)}/${escaparHtml(m.unidade)}</span></button>`).join("")}</div>` : kitVariacaoQuery.length>=2? '<p style="font-size:11px;color:var(--text-faint);">Nenhuma matéria-prima encontrada.</p>' : ''}
+      ${kitVariacaoOpcoes.length? `<div style="display:grid;gap:6px;margin-top:10px;">${kitVariacaoOpcoes.map((opcao,opIdx)=>`<div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(180px,2fr) auto auto;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;"><input type="text" maxlength="80" placeholder="Valor da opção" value="${escaparHtml(opcao.valor||opcao.nome||"")}" data-act="admin-kit-variacao-valor" data-key="${key}" data-idx="${variacaoIdx}" data-opcao="${opIdx}"><span>${escaparHtml(opcao.nome)}</span><span class="mono">${money(opcao.custo)}/${escaparHtml(opcao.unidade)}</span><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-variacao-remover" data-key="${key}" data-idx="${variacaoIdx}" data-opcao="${opIdx}">Remover</button></div>`).join("")}</div>` : '<p style="font-size:11px;color:var(--text-faint);margin-top:8px;">Ainda não há opções. Sem opção selecionada, o orçamento usa a matéria-prima principal.</p>'}
+    </div>` : ""}
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Precificação — linha da Tabela de Preços</p>
     <div class="segtabs" style="width:fit-content; margin-bottom:10px;">
       <button type="button" data-act="admin-preco-modo" data-key="${key}" data-val="margem" class="${modoPreco==='margem'?'active':''}">Margem por faixa (oscila com o ticket)</button>
@@ -3701,6 +3739,8 @@ function bindAdminEvents(){
       adminState.kitProdutoQuery='';
       adminState.kitCopiaQuery='';
       adminState.kitCopiaSelecionadoKey=null;
+      adminState.kitVariacaoLinhaKey=null;
+      adminState.kitVariacaoQuery='';
       render();
     });
   });
@@ -3731,6 +3771,8 @@ function bindAdminEvents(){
         adminState.kitProdutoQuery='';
         adminState.kitCopiaQuery='';
         adminState.kitCopiaSelecionadoKey=null;
+        adminState.kitVariacaoLinhaKey=null;
+        adminState.kitVariacaoQuery='';
         if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
         adminState.kits[key].nomeCompleto = el.dataset.nome;
         adminState.adminMatQuery='';
@@ -3739,7 +3781,7 @@ function bindAdminEvents(){
     });
   });
   document.querySelectorAll('[data-act="admin-kit-done"]').forEach(el=>{
-    el.addEventListener('click', ()=>{ adminState.editingKey=null; render(); });
+    el.addEventListener('click', ()=>{ adminState.editingKey=null; adminState.kitVariacaoLinhaKey=null; adminState.kitVariacaoQuery=''; render(); });
   });
   const amq = document.querySelector('[data-act="admin-mat-query"]');
   if(amq) amq.addEventListener('input', e=>{ adminState.adminMatQuery=e.target.value; renderPreservingFocus(); });
@@ -3748,7 +3790,7 @@ function bindAdminEvents(){
       const key = el.dataset.key;
       const m = catalog.materias.find(x=>x.id===parseInt(el.dataset.val));
       if(m && adminState.kits[key]){
-        adminState.kits[key].linhas.push({ matId:m.id, nome:m.nome, unidade:m.unidade, custo:m.valor, atualizado:m.atualizado, status:m.status, papel:'', formulaType:'area', mult:1.0 });
+        adminState.kits[key].linhas.push({ matId:m.id, nome:m.nome, unidade:m.unidade, custo:m.valor, atualizado:m.atualizado, status:m.status, papel:'', formulaType:'area', mult:1.0, variantes:[] });
         salvarKit(key);
       }
       adminState.adminMatQuery='';
@@ -3782,6 +3824,8 @@ function bindAdminEvents(){
     el.addEventListener('click', ()=>{
       const kit = adminState.kits[adminState.editingKey];
       if(kit){ kit.linhas.splice(+el.dataset.idx, 1); salvarKit(adminState.editingKey); }
+      adminState.kitVariacaoLinhaKey=null;
+      adminState.kitVariacaoQuery='';
       render();
     });
   });
@@ -3881,6 +3925,54 @@ function bindAdminEvents(){
     });
   });
 
+  document.querySelectorAll('[data-act="admin-kit-variacao-toggle"]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const linhaKey=`${el.dataset.key}:${el.dataset.idx}`;
+      adminState.kitVariacaoLinhaKey=adminState.kitVariacaoLinhaKey===linhaKey?null:linhaKey;
+      adminState.kitVariacaoQuery='';
+      render();
+    });
+  });
+  const kitVariacaoFechar=document.querySelector('[data-act="admin-kit-variacao-fechar"]');
+  if(kitVariacaoFechar) kitVariacaoFechar.addEventListener('click',()=>{
+    adminState.kitVariacaoLinhaKey=null;
+    adminState.kitVariacaoQuery='';
+    render();
+  });
+  document.querySelectorAll('[data-act="admin-kit-variacao-nome"]').forEach(el=>el.addEventListener('input',e=>{
+    const kit=adminState.kits[el.dataset.key];
+    if(kit&&kit.linhas[+el.dataset.idx]){ kit.linhas[+el.dataset.idx].variacaoNome=e.target.value; salvarKit(el.dataset.key); }
+  }));
+  const kitVariacaoQueryEl=document.querySelector('[data-act="admin-kit-variacao-query"]');
+  if(kitVariacaoQueryEl) kitVariacaoQueryEl.addEventListener('input',e=>{
+    adminState.kitVariacaoQuery=e.target.value;
+    renderPreservingFocus();
+  });
+  document.querySelectorAll('[data-act="admin-kit-variacao-add"]').forEach(el=>el.addEventListener('click',()=>{
+    const kit=adminState.kits[el.dataset.key];
+    const linha=kit&&kit.linhas[+el.dataset.idx];
+    const material=catalog.materias.find(item=>item.id===parseInt(el.dataset.mat));
+    if(linha&&material&&material.unidade===linha.unidade){
+      if(!Array.isArray(linha.variantes)) linha.variantes=[];
+      if(!linha.variantes.some(item=>item.matId===material.id)) linha.variantes.push({matId:material.id,nome:material.nome,unidade:material.unidade,custo:material.valor,atualizado:material.atualizado,status:material.status,valor:material.nome});
+      salvarKit(el.dataset.key);
+    }
+    adminState.kitVariacaoQuery='';
+    render();
+  }));
+  document.querySelectorAll('[data-act="admin-kit-variacao-valor"]').forEach(el=>el.addEventListener('input',e=>{
+    const kit=adminState.kits[el.dataset.key];
+    const linha=kit&&kit.linhas[+el.dataset.idx];
+    const variacao=linha&&Array.isArray(linha.variantes)?linha.variantes[+el.dataset.opcao]:null;
+    if(variacao){ variacao.valor=e.target.value; salvarKit(el.dataset.key); }
+  }));
+  document.querySelectorAll('[data-act="admin-kit-variacao-remover"]').forEach(el=>el.addEventListener('click',()=>{
+    const kit=adminState.kits[el.dataset.key];
+    const linha=kit&&kit.linhas[+el.dataset.idx];
+    if(linha&&Array.isArray(linha.variantes)){ linha.variantes.splice(+el.dataset.opcao,1); salvarKit(el.dataset.key); }
+    render();
+  }));
+
   const kitCopiaQueryEl=document.querySelector('[data-act="admin-kit-copia-query"]');
   if(kitCopiaQueryEl) kitCopiaQueryEl.addEventListener('input',e=>{
     adminState.kitCopiaQuery=e.target.value;
@@ -3915,7 +4007,7 @@ function bindAdminEvents(){
       const destino=adminState.kits[destinoKey] || (adminState.kits[destinoKey]={linhas:[],precificacao:null,descricaoProduto:'',prazoDiasUteis:null,kitProdutos:[],fotoUrl:null,fotoAssetId:null,categoria:null,subcategoria:null,tipoProduto:null});
       const linhasOrigem=Array.isArray(origem.linhas)?origem.linhas:[];
       const vinculadosOrigem=Array.isArray(origem.kitProdutos)?origem.kitProdutos:[];
-      destino.linhas=linhasOrigem.map(linha=>({...linha}));
+      destino.linhas=linhasOrigem.map(linha=>({...linha,variantes:Array.isArray(linha.variantes)?linha.variantes.map(variacao=>({...variacao})):[]}));
       const vistos=new Set();
       destino.kitProdutos=vinculadosOrigem.filter(item=>{
         if(!item||!item.key||item.key===destinoKey||vistos.has(item.key)) return false;
@@ -4131,7 +4223,7 @@ function bindRealEvents(){
     // (cópia — editar aqui não altera o cadastro-mestre do admin)
     const kitPronto = prod && mod ? adminState.kits[kitKey(prod.id, mod.id)] : null;
     REAL.descricaoProduto = kitPronto?.descricaoProduto || '';
-    REAL.kit = kitPronto ? kitPronto.linhas.map(k=>({...k})) : [];
+    REAL.kit = kitPronto ? kitPronto.linhas.map(k=>({...k,variantes:Array.isArray(k.variantes)?k.variantes.map(v=>({...v})):[]})) : [];
     REAL.precificacao = kitPronto && kitPronto.precificacao ? {...kitPronto.precificacao} : null;
     render();
   });
@@ -4235,6 +4327,10 @@ function bindRealEvents(){
   if(pintRemover) pintRemover.addEventListener('click', ()=>{ removerPintura(); });
 
   document.querySelectorAll('[data-act="real-kit-papel"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].papel=e.target.value; render(); }));
+  document.querySelectorAll('[data-act="real-kit-variacao"]').forEach(el=>el.addEventListener('change',e=>{
+    REAL.kit[+el.dataset.idx].variacaoSelecionadaMatId=e.target.value?parseInt(e.target.value):null;
+    render();
+  }));
   document.querySelectorAll('[data-act="real-kit-formula"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].formulaType=e.target.value; render(); }));
   document.querySelectorAll('[data-act="real-kit-mult"]').forEach(el=>{
     el.addEventListener('input', e=>{
@@ -4347,6 +4443,7 @@ function renderCotacaoPublica(mensagemErro=''){
         <div class="badge b-accent" style="margin-bottom:10px;">${escaparHtml(p.numero)}</div>
         <h1 style="font-size:24px;">${escaparHtml(p.modeloNome)}</h1>
         ${p.descricaoProduto?`<div style="max-width:680px;margin:12px auto 0;text-align:left;"><p style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-faint);margin-bottom:4px;">Descrição do produto</p><p style="font-size:13px;white-space:pre-wrap;line-height:1.55;">${escaparHtml(p.descricaoProduto)}</p></div>`:''}
+        ${Array.isArray(p.variacoes)&&p.variacoes.length?`<div style="max-width:680px;margin:10px auto 0;text-align:left;"><p style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-faint);margin-bottom:4px;">Variações escolhidas</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${p.variacoes.map(v=>`<span class="badge b-neutral">${escaparHtml(v.nome)}: ${escaparHtml(v.valor)}</span>`).join('')}</div></div>`:''}
         <p style="font-size:13px;color:var(--text-dim);margin:8px 0;">Cotação para ${escaparHtml(p.cliente.razao||p.cliente.fantasia||'você')} · emitida em ${emissao.toLocaleDateString('pt-BR')} · válida até ${validade.toLocaleDateString('pt-BR')}</p>
         ${p.cliente.cnpj?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>${rotuloDocumento(p.cliente.cnpj)}:</b> ${escaparHtml(p.cliente.cnpj)}</p>`:''}
         ${p.cliente.fantasia?`<p style="font-size:12px;color:var(--text-dim);margin:4px 0;"><b>Nome fantasia:</b> ${escaparHtml(p.cliente.fantasia)}</p>`:''}

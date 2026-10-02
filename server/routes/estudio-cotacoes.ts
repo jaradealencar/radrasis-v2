@@ -35,6 +35,10 @@ const snapshotSchema = z.object({
   whatsappVendedor: z.string().max(32).nullable().optional().default(null),
   modeloNome: z.string().min(1).max(256),
   descricaoProduto: z.string().max(5000).default(""),
+  variacoes: z.array(z.object({
+    nome: z.string().min(1).max(80),
+    valor: z.string().min(1).max(120),
+  })).max(100).optional().default([]),
   areaM2: z.number().nonnegative().nullable(),
   areaGeralM2: z.number().nonnegative().nullable(),
   precoFinal: z.number().nonnegative(),
@@ -247,6 +251,7 @@ async function obterCotacaoPublica(req: Request, res: Response): Promise<void> {
     whatsappVendedor: snapshot.whatsappVendedor || null,
     modeloNome: snapshot.modeloNome,
     descricaoProduto: snapshot.descricaoProduto || "",
+    variacoes: snapshot.variacoes || [],
     areaM2: snapshot.areaM2,
     areaGeralM2: snapshot.areaGeralM2,
     precoFinal: snapshot.precoFinal,
