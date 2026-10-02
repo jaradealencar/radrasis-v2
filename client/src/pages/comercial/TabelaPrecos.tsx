@@ -267,6 +267,7 @@ function MarginTable({
 }
 
 const FONTES_CHAVEADAS_LED_TITLE = "Fontes chaveadas 24 V para módulos LED";
+const FONTES_CHAVEADAS_LED_12V_TITLE = "Fontes chaveadas 12 V para módulos LED";
 
 const FONTES_CHAVEADAS_LED = [
   {
@@ -296,6 +297,41 @@ const FONTES_CHAVEADAS_LED = [
     potencia: "1200 W",
     modulosRecomendados: "Até 680 módulos (85%)",
     modulosMaximos: "800 módulos (100%)",
+  },
+];
+
+const FONTES_CHAVEADAS_LED_12V = [
+  {
+    fonte: "Fonte 10A",
+    tensao: "12V DC",
+    potencia: "120W",
+    modulosRecomendados: "Até 68 Módulos",
+    equivalenciaCorrentes: "3 correntes + 8 módulos",
+    modulosMaximos: "80 Módulos",
+  },
+  {
+    fonte: "Fonte 20A",
+    tensao: "12V DC",
+    potencia: "240W",
+    modulosRecomendados: "Até 136 Módulos",
+    equivalenciaCorrentes: "6 correntes + 16 módulos",
+    modulosMaximos: "160 Módulos",
+  },
+  {
+    fonte: "Fonte 30A",
+    tensao: "12V DC",
+    potencia: "360W",
+    modulosRecomendados: "Até 204 Módulos",
+    equivalenciaCorrentes: "10 correntes + 4 módulos",
+    modulosMaximos: "240 Módulos",
+  },
+  {
+    fonte: "Fonte 50A",
+    tensao: "12V DC",
+    potencia: "600W",
+    modulosRecomendados: "Até 340 Módulos",
+    equivalenciaCorrentes: "17 correntes plenas",
+    modulosMaximos: "400 Módulos",
   },
 ];
 
@@ -338,6 +374,47 @@ function LedPowerSourcesTable() {
   );
 }
 
+function LedPowerSources12VTable() {
+  const columns = [
+    "Fonte",
+    "Tensão",
+    "Potência",
+    "Recomendado Vendas (85%)",
+    "Equivalência em Correntes (20 pçs)",
+    "Limite Máximo (100%)",
+  ];
+  return (
+    <Card className="border border-slate-200 shadow-sm">
+      <CardHeader className="items-start pb-3 text-left">
+        <CardTitle className="text-left text-base font-semibold text-slate-800">
+          {FONTES_CHAVEADAS_LED_12V_TITLE}
+        </CardTitle>
+      </CardHeader>
+      <div className="overflow-x-auto">
+        <Table className="min-w-[980px]">
+          <TableHeader>
+            <TableRow className="bg-slate-100">
+              {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {FONTES_CHAVEADAS_LED_12V.map(row => (
+              <TableRow key={row.fonte}>
+                <TableCell className="font-medium">{row.fonte}</TableCell>
+                <TableCell>{row.tensao}</TableCell>
+                <TableCell>{row.potencia}</TableCell>
+                <TableCell>{row.modulosRecomendados}</TableCell>
+                <TableCell>{row.equivalenciaCorrentes}</TableCell>
+                <TableCell>{row.modulosMaximos}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
+  );
+}
+
 function gerarHtmlFontesChaveadas(color: string) {
   const columns = [
     "Fonte chaveada",
@@ -352,6 +429,27 @@ function gerarHtmlFontesChaveadas(color: string) {
       <td>${escapeHtml(row.tensao)}</td>
       <td>${escapeHtml(row.potencia)}</td>
       <td>${escapeHtml(row.modulosRecomendados)}</td>
+      <td>${escapeHtml(row.modulosMaximos)}</td>
+    </tr>`).join("");
+  return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function gerarHtmlFontesChaveadas12V(color: string) {
+  const columns = [
+    "Fonte",
+    "Tensão",
+    "Potência",
+    "Recomendado Vendas (85%)",
+    "Equivalência em Correntes (20 pçs)",
+    "Limite Máximo (100%)",
+  ];
+  const rows = FONTES_CHAVEADAS_LED_12V.map(row => `
+    <tr>
+      <td>${escapeHtml(row.fonte)}</td>
+      <td>${escapeHtml(row.tensao)}</td>
+      <td>${escapeHtml(row.potencia)}</td>
+      <td>${escapeHtml(row.modulosRecomendados)}</td>
+      <td>${escapeHtml(row.equivalenciaCorrentes)}</td>
       <td>${escapeHtml(row.modulosMaximos)}</td>
     </tr>`).join("");
   return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -1115,6 +1213,7 @@ function gerarPdfTabela(
       </div>`;
     if (page === 4) {
       html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_TITLE}</div>${gerarHtmlFontesChaveadas(color)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_12V_TITLE}</div>${gerarHtmlFontesChaveadas12V(color)}</div>`;
     } else for (const sec of pageSections) {
       const lbl = getSectionLabel(sec.sectionTitle);
       const badgeHtml = lbl.badge
@@ -1380,7 +1479,10 @@ export default function TabelaPrecos() {
             {allPagesNC.map(p => (
               <TabsContent key={p.key} value={p.key}>
                 {p.key === "4" ? (
-                  <LedPowerSourcesTable />
+                  <div className="space-y-4">
+                    <LedPowerSourcesTable />
+                    <LedPowerSources12VTable />
+                  </div>
                 ) : (
                   <>
                     <div className="mb-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
@@ -1626,7 +1728,10 @@ export default function TabelaPrecos() {
             {allPages.map(p => (
               <TabsContent key={p.key} value={p.key}>
                 {p.key === "4" ? (
-                  <LedPowerSourcesTable />
+                  <div className="space-y-4">
+                    <LedPowerSourcesTable />
+                    <LedPowerSources12VTable />
+                  </div>
                 ) : (
                   <>
                     <div className="mb-3 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-3 py-2">
