@@ -25,7 +25,7 @@ export interface LedModuleSourceRow {
 }
 
 export interface LedModuleTable {
-  key: "modules-24v" | "modules-3030-12v" | "micro-2835-12v";
+  key: "modules-24v" | "modules-7025-12v" | "modules-3030-12v" | "micro-2835-12v";
   title: string;
   subtitle: string;
   rows: LedModuleSourceRow[];

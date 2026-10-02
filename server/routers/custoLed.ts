@@ -9,7 +9,7 @@ import {
   saveLedPowerSourceTextOverride,
 } from "../db/db";
 
-const ledTextKeyPattern = /^(page\.(tableTabLabel|tapesTab|modulesTab|pdfTitle|pdfSubtitle|tapesHeading|modulesHeading)|common\.(powerUnit|meterUnit|moduleUnit|moduleRecommendedPrefix)|(tape-24v|tape-12v|modules-24v|modules-3030-12v|micro-2835-12v)\.(title|subtitle|column\.(source|voltage|power|recommended|maximum|equivalence)|row\.\d+\.(source|voltage)))$/;
+const ledTextKeyPattern = /^(page\.(tableTabLabel|tapesTab|modulesTab|pdfTitle|pdfSubtitle|tapesHeading|modulesHeading)|common\.(powerUnit|meterUnit|moduleUnit|moduleRecommendedPrefix)|(tape-24v|tape-12v|modules-24v|modules-7025-12v|modules-3030-12v|micro-2835-12v)\.(title|subtitle|column\.(source|voltage|power|recommended|maximum|equivalence)|row\.\d+\.(source|voltage)))$/;
 
 // ─── Tipos de LED ─────────────────────────────────────────────────────────────
 

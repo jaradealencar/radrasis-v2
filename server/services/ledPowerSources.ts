@@ -59,7 +59,7 @@ function equivalenciaCorrentes(modulos: number): string {
 }
 
 function criarTabelaModulos12V(
-  key: "modules-3030-12v" | "micro-2835-12v",
+  key: "modules-7025-12v" | "modules-3030-12v" | "micro-2835-12v",
   title: string,
   wattsPorModulo: number
 ): LedModuleTable {
@@ -112,6 +112,11 @@ export function getLedPowerSourceTables(): LedPowerSourceTables {
     ],
     modules: [
       modulos24V,
+      criarTabelaModulos12V(
+        "modules-7025-12v",
+        "MÓDULO LED 7025 (12V)",
+        1.5
+      ),
       criarTabelaModulos12V("modules-3030-12v", "MÓDULO 3030 3W (12V)", 3),
       criarTabelaModulos12V(
         "micro-2835-12v",
