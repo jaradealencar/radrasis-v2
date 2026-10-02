@@ -268,6 +268,8 @@ function MarginTable({
 
 const FONTES_CHAVEADAS_LED_TITLE = "Fontes chaveadas 24 V para módulos LED";
 const FONTES_CHAVEADAS_LED_12V_TITLE = "Fontes chaveadas 12 V para módulos LED";
+const MODULO_3030_12V_TITLE = "MÓDULO 3030 3W (12V)";
+const MICRO_MODULO_2835_12V_TITLE = "MICRO MÓDULO 2835 1,5W (12V)";
 const LED_TEMPERATURA_TEXTO = "LED branco frio e quente, coloridos, Micro LED, Módulo 3030, Fita Ultra LED";
 const FITA_LED_24V_REFERENCIA = "Fita LED: 17 W/m; capacidade estimada pela potência informada. Calcule o total com alimentação distribuída em trechos.";
 const FITA_LED_12V_REFERENCIA = "Fita LED: 8 W/m; capacidade estimada pela potência informada. Calcule o total com alimentação distribuída em trechos.";
@@ -307,39 +309,45 @@ const FONTES_CHAVEADAS_LED = [
   },
 ];
 
-const FONTES_CHAVEADAS_LED_12V = [
+const FONTES_CHAVEADAS_FITA_LED_12V = [
   {
     fonte: "Fonte 10A",
     potenciaW: 120,
     tensao: "12V DC",
     potencia: "120W",
-    modulosRecomendados: "Até 68 Módulos",
-    modulosMaximos: "80 Módulos",
   },
   {
     fonte: "Fonte 20A",
     potenciaW: 240,
     tensao: "12V DC",
     potencia: "240W",
-    modulosRecomendados: "Até 136 Módulos",
-    modulosMaximos: "160 Módulos",
   },
   {
     fonte: "Fonte 30A",
     potenciaW: 360,
     tensao: "12V DC",
     potencia: "360W",
-    modulosRecomendados: "Até 204 Módulos",
-    modulosMaximos: "240 Módulos",
   },
   {
     fonte: "Fonte 50A",
     potenciaW: 600,
     tensao: "12V DC",
     potencia: "600W",
-    modulosRecomendados: "Até 340 Módulos",
-    modulosMaximos: "400 Módulos",
   },
+];
+
+const FONTES_MODULO_3030_12V = [
+  { fonte: "Fonte 10A", tensao: "12V DC", potencia: "120W", modulosRecomendados: "Até 34 Módulos", equivalenciaCorrentes: "1 corrente + 14 módulos", modulosMaximos: "40 Módulos" },
+  { fonte: "Fonte 20A", tensao: "12V DC", potencia: "240W", modulosRecomendados: "Até 68 Módulos", equivalenciaCorrentes: "3 correntes + 8 módulos", modulosMaximos: "80 Módulos" },
+  { fonte: "Fonte 30A", tensao: "12V DC", potencia: "360W", modulosRecomendados: "Até 102 Módulos", equivalenciaCorrentes: "5 correntes + 2 módulos", modulosMaximos: "120 Módulos" },
+  { fonte: "Fonte 50A", tensao: "12V DC", potencia: "600W", modulosRecomendados: "Até 170 Módulos", equivalenciaCorrentes: "8 correntes + 10 módulos", modulosMaximos: "200 Módulos" },
+];
+
+const FONTES_MICRO_MODULO_2835_12V = [
+  { fonte: "Fonte 10A", tensao: "12V DC", potencia: "120W", modulosRecomendados: "Até 68 Módulos", equivalenciaCorrentes: "3 correntes + 8 módulos", modulosMaximos: "80 Módulos" },
+  { fonte: "Fonte 20A", tensao: "12V DC", potencia: "240W", modulosRecomendados: "Até 136 Módulos", equivalenciaCorrentes: "6 correntes + 16 módulos", modulosMaximos: "160 Módulos" },
+  { fonte: "Fonte 30A", tensao: "12V DC", potencia: "360W", modulosRecomendados: "Até 204 Módulos", equivalenciaCorrentes: "10 correntes + 4 módulos", modulosMaximos: "240 Módulos" },
+  { fonte: "Fonte 50A", tensao: "12V DC", potencia: "600W", modulosRecomendados: "Até 340 Módulos", equivalenciaCorrentes: "17 correntes plenas", modulosMaximos: "400 Módulos" },
 ];
 
 function formatarMetrosFitaLed(potenciaFonteW: number, potenciaPorMetroW: number, fatorCarga = 1) {
@@ -399,8 +407,6 @@ function LedPowerSources12VTable() {
     "Fonte",
     "Tensão",
     "Potência",
-    "Recomendado Vendas (85%)",
-    "Limite Máximo (100%)",
     "Fita LED 8 W/m — 85%",
     "Fita LED 8 W/m — 100%",
   ];
@@ -416,22 +422,76 @@ function LedPowerSources12VTable() {
         <p className="text-sm text-slate-500">{FITA_LED_12V_REFERENCIA}</p>
       </CardHeader>
       <div className="overflow-x-auto">
-        <Table className="min-w-[1040px]">
+        <Table className="min-w-[820px]">
           <TableHeader>
             <TableRow className="bg-slate-100">
               {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {FONTES_CHAVEADAS_LED_12V.map(row => (
+            {FONTES_CHAVEADAS_FITA_LED_12V.map(row => (
+              <TableRow key={row.fonte}>
+                <TableCell className="font-medium">{row.fonte}</TableCell>
+                <TableCell>{row.tensao}</TableCell>
+                <TableCell>{row.potencia}</TableCell>
+                <TableCell>{formatarMetrosFitaLed(row.potenciaW, 8, 0.85)}</TableCell>
+                <TableCell>{formatarMetrosFitaLed(row.potenciaW, 8)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
+  );
+}
+
+type FonteModuloLed12V = {
+  fonte: string;
+  tensao: string;
+  potencia: string;
+  modulosRecomendados: string;
+  equivalenciaCorrentes: string;
+  modulosMaximos: string;
+};
+
+function LedModulePowerSources12VTable({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: FonteModuloLed12V[];
+}) {
+  const columns = [
+    "Fonte",
+    "Tensão",
+    "Potência",
+    "Recomendado Vendas (85%)",
+    "Equivalência em Correntes (20 pçs)",
+    "Limite Máximo (100%)",
+  ];
+  return (
+    <Card className="border border-slate-200 shadow-sm">
+      <CardHeader className="items-start pb-3 text-left">
+        <CardTitle className="text-left text-base font-semibold text-slate-800">
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <div className="overflow-x-auto">
+        <Table className="min-w-[1080px]">
+          <TableHeader>
+            <TableRow className="bg-slate-100">
+              {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map(row => (
               <TableRow key={row.fonte}>
                 <TableCell className="font-medium">{row.fonte}</TableCell>
                 <TableCell>{row.tensao}</TableCell>
                 <TableCell>{row.potencia}</TableCell>
                 <TableCell>{row.modulosRecomendados}</TableCell>
+                <TableCell>{row.equivalenciaCorrentes}</TableCell>
                 <TableCell>{row.modulosMaximos}</TableCell>
-                <TableCell>{formatarMetrosFitaLed(row.potenciaW, 8, 0.85)}</TableCell>
-                <TableCell>{formatarMetrosFitaLed(row.potenciaW, 8)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -469,22 +529,39 @@ function gerarHtmlFontesChaveadas12V(color: string) {
     "Fonte",
     "Tensão",
     "Potência",
-    "Recomendado Vendas (85%)",
-    "Limite Máximo (100%)",
     "Fita LED 8 W/m — 85%",
     "Fita LED 8 W/m — 100%",
   ];
-  const rows = FONTES_CHAVEADAS_LED_12V.map(row => `
+  const rows = FONTES_CHAVEADAS_FITA_LED_12V.map(row => `
+    <tr>
+      <td>${escapeHtml(row.fonte)}</td>
+      <td>${escapeHtml(row.tensao)}</td>
+      <td>${escapeHtml(row.potencia)}</td>
+      <td>${escapeHtml(formatarMetrosFitaLed(row.potenciaW, 8, 0.85))}</td>
+      <td>${escapeHtml(formatarMetrosFitaLed(row.potenciaW, 8))}</td>
+    </tr>`).join("");
+  return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function gerarHtmlFontesModuloLed12V(color: string, rows: FonteModuloLed12V[]) {
+  const columns = [
+    "Fonte",
+    "Tensão",
+    "Potência",
+    "Recomendado Vendas (85%)",
+    "Equivalência em Correntes (20 pçs)",
+    "Limite Máximo (100%)",
+  ];
+  const htmlRows = rows.map(row => `
     <tr>
       <td>${escapeHtml(row.fonte)}</td>
       <td>${escapeHtml(row.tensao)}</td>
       <td>${escapeHtml(row.potencia)}</td>
       <td>${escapeHtml(row.modulosRecomendados)}</td>
+      <td>${escapeHtml(row.equivalenciaCorrentes)}</td>
       <td>${escapeHtml(row.modulosMaximos)}</td>
-      <td>${escapeHtml(formatarMetrosFitaLed(row.potenciaW, 8, 0.85))}</td>
-      <td>${escapeHtml(formatarMetrosFitaLed(row.potenciaW, 8))}</td>
     </tr>`).join("");
-  return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${htmlRows}</tbody></table>`;
 }
 
 function ListContent({ items }: { items: string[] }) {
@@ -1246,6 +1323,8 @@ function gerarPdfTabela(
     if (page === 4) {
       html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_TITLE}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${LED_TEMPERATURA_TEXTO}</div><p>${FITA_LED_24V_REFERENCIA}</p>${gerarHtmlFontesChaveadas(color)}</div>`;
       html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_12V_TITLE}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${LED_TEMPERATURA_TEXTO}</div><p>${FITA_LED_12V_REFERENCIA}</p>${gerarHtmlFontesChaveadas12V(color)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${MODULO_3030_12V_TITLE}</div>${gerarHtmlFontesModuloLed12V(color, FONTES_MODULO_3030_12V)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${MICRO_MODULO_2835_12V_TITLE}</div>${gerarHtmlFontesModuloLed12V(color, FONTES_MICRO_MODULO_2835_12V)}</div>`;
     } else for (const sec of pageSections) {
       const lbl = getSectionLabel(sec.sectionTitle);
       const badgeHtml = lbl.badge
@@ -1514,6 +1593,8 @@ export default function TabelaPrecos() {
                   <div className="space-y-4">
                     <LedPowerSourcesTable />
                     <LedPowerSources12VTable />
+                    <LedModulePowerSources12VTable title={MODULO_3030_12V_TITLE} rows={FONTES_MODULO_3030_12V} />
+                    <LedModulePowerSources12VTable title={MICRO_MODULO_2835_12V_TITLE} rows={FONTES_MICRO_MODULO_2835_12V} />
                   </div>
                 ) : (
                   <>
@@ -1763,6 +1844,8 @@ export default function TabelaPrecos() {
                   <div className="space-y-4">
                     <LedPowerSourcesTable />
                     <LedPowerSources12VTable />
+                    <LedModulePowerSources12VTable title={MODULO_3030_12V_TITLE} rows={FONTES_MODULO_3030_12V} />
+                    <LedModulePowerSources12VTable title={MICRO_MODULO_2835_12V_TITLE} rows={FONTES_MICRO_MODULO_2835_12V} />
                   </div>
                 ) : (
                   <>
