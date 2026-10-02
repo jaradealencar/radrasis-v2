@@ -2607,7 +2607,7 @@ function realStepOrcamento(){
 /* ---- ADMIN ---- */
 /* ---------- ADMIN: catálogo real (produtos/modelos + matérias-primas do MubiSys) ---------- */
 const adminState = {
-  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', precoLinhaQuery:'', filtroVendedorPropostas:'',
+  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   expandedProdutoId:null, editingKey:null,
@@ -3243,25 +3243,18 @@ function adminKitEditor(p, m, key){
   const precoLinhaQuery = adminState.precoLinhaQuery||'';
   const precoLinhaMatches = buscarLinhasPrecificacao(precoLinhaQuery);
 
-  // Todo produto/modelo já cadastrado no catálogo real pode ser vinculado
-  // como "produto do kit" — antes só entravam aqui os que já tinham UM kit
-  // salvo nesta sessão, o que escondia produtos reais ainda não abertos no
-  // editor. Ampliado pra cobrir o catálogo inteiro, pedido do usuário
-  // 29/09/2026; o nome usado é o já cadastrado (nomeCompleto) quando existe,
-  // senão "Produto — Modelo" direto do catálogo.
-  const outrosModelos = [];
-  catalog.produtos.forEach(prod=>{
-    prod.modelos.forEach(mod=>{
-      const k = kitKey(prod.id, mod.id);
-      if(k===key) return;
-      const existente = adminState.kits[k];
-      outrosModelos.push({ key:k, sku:skuModelo(prod.id,mod.id), nome: (existente && existente.nomeCompleto) || `${prod.nome} — ${mod.nome}` });
-    });
-  });
   const kitProdutos = Array.isArray(kitState.kitProdutos) ? kitState.kitProdutos : [];
-  const kpq = adminState.kitProdutoQuery||'';
+  const kpq = String(adminState.kitProdutoQuery||'').trim();
+  const kitProdutoModeloSelecionado = catalog.produtos.find(prod=>prod.id===adminState.kitProdutoProdutoIdSelecionado) || null;
   const kitProdutoMatches = kpq.length>=1
-    ? outrosModelos.filter(o=>!kitProdutos.some(kp=>kp.key===o.key) && normalizeSearch(o.nome+' '+o.sku).includes(normalizeSearch(kpq))).slice(0,40)
+    ? catalog.produtos.filter(prod=>{
+        const modelosTexto=prod.modelos.map(mod=>{
+          const k=kitKey(prod.id,mod.id);
+          const existente=adminState.kits[k];
+          return (existente && existente.nomeCompleto) || `${prod.nome} ${mod.nome} ${skuModelo(prod.id,mod.id)}`;
+        }).join(' ');
+        return normalizeSearch(`${prod.nome} ${skuProduto(prod.id)} ${modelosTexto}`).includes(normalizeSearch(kpq));
+      }).slice(0,40)
     : [];
 
   const catAtual = kitState.categoria && CATEGORIAS_PRODUTO[kitState.categoria] ? kitState.categoria : '';
@@ -3312,16 +3305,32 @@ function adminKitEditor(p, m, key){
     </label>
     <p style="font-size:11px; color:var(--text-faint); margin-top:4px;">Aparece pro vendedor e pro cliente na proposta. O % de custo fixo sobre matéria-prima agora é global — edite em Administração &gt; Configurações.</p>
 
-    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Produtos do kit <span style="font-weight:400; text-transform:none;">— vincule vários itens: pesquise e clique em cada produto; os selecionados ficam abaixo</span></p>
+    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Produtos do kit <span style="font-weight:400; text-transform:none;">— pesquise um produto, escolha o modelo e repita para adicionar outros; os selecionados ficam abaixo</span></p>
     <div style="position:relative;">
-      <input type="text" placeholder="Buscar produto pelo nome ou SKU…" value="${kpq}" data-act="admin-kitproduto-query" style="width:100%;">
-      ${kitProdutoMatches.length? `<div class="card" style="position:absolute; z-index:20; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
-        ${kitProdutoMatches.map(o=>`<button type="button" data-act="admin-kitproduto-add" data-val="${o.key}" data-key="${key}" style="display:block; width:100%; padding:8px 9px; border:0; border-radius:8px; background:transparent; color:var(--text); text-align:left; cursor:pointer; font-size:12.5px;"><span style="color:var(--accent); font-weight:700; margin-right:6px;">+</span><span class="mono" style="color:var(--accent-ink);margin-right:6px;">${o.sku}</span>${o.nome}</button>`).join('')}
-      </div>` : (kpq.length ? '<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum outro produto encontrado para esta busca.</p>' : '')}
+      <input type="text" placeholder="Buscar produto pelo nome ou SKU…" value="${escaparHtml(kpq)}" data-act="admin-kitproduto-query" style="width:100%;">
+      ${kitProdutoModeloSelecionado? `<div class="card" style="margin-top:6px; padding:10px; box-shadow:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+          <div><strong>${escaparHtml(kitProdutoModeloSelecionado.nome)}</strong><div class="mono" style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">${skuProduto(kitProdutoModeloSelecionado.id)} · escolha um modelo</div></div>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="admin-kitproduto-voltar">Voltar à busca</button>
+        </div>
+        ${kitProdutoModeloSelecionado.modelos.length?kitProdutoModeloSelecionado.modelos.map(mod=>{
+          const modeloKey=kitKey(kitProdutoModeloSelecionado.id,mod.id);
+          const jaVinculado=kitProdutos.some(kp=>kp.key===modeloKey);
+          const principal=modeloKey===key;
+          const cadastro=adminState.kits[modeloKey];
+          const nomeModelo=(cadastro&&cadastro.nomeCompleto)||`${kitProdutoModeloSelecionado.nome} — ${mod.nome}`;
+          return `<button type="button" data-act="admin-kitproduto-add" data-val="${modeloKey}" data-key="${key}" ${jaVinculado||principal?'disabled':''} style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:transparent;color:${jaVinculado||principal?'var(--text-faint)':'var(--text)'};text-align:left;cursor:${jaVinculado||principal?'default':'pointer'};font-size:12.5px;"><span style="color:var(--accent);font-weight:700;">${jaVinculado?'✓':principal?'•':'+'}</span><span class="mono" style="color:var(--accent-ink);">${skuModelo(kitProdutoModeloSelecionado.id,mod.id)}</span><span>${escaparHtml(nomeModelo)}</span><span style="margin-left:auto;color:var(--text-faint);">${jaVinculado?'já vinculado':principal?'produto principal':''}</span></button>`;
+        }).join(''):'<p class="empty-hint">Este produto não possui modelos cadastrados no MubiSys.</p>'}
+      </div>` : kitProdutoMatches.length? `<div class="card" style="position:absolute; z-index:20; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
+        ${kitProdutoMatches.map(prod=>{
+          const disponiveis=prod.modelos.filter(mod=>kitKey(prod.id,mod.id)!==key&&!kitProdutos.some(kp=>kp.key===kitKey(prod.id,mod.id))).length;
+          return `<button type="button" data-act="admin-kitproduto-selecionar-produto" data-val="${prod.id}" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:transparent;color:var(--text);text-align:left;cursor:pointer;font-size:12.5px;"><span style="color:var(--accent);font-weight:700;">›</span><span class="mono" style="color:var(--accent-ink);">${skuProduto(prod.id)}</span><span>${escaparHtml(prod.nome)}</span><span style="margin-left:auto;color:var(--text-faint);">${disponiveis} modelo(s) disponível(is)</span></button>`;
+        }).join('')}
+      </div>` : (kpq.length ? '<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum produto encontrado para esta busca.</p>' : '')}
     </div>
     ${kitProdutos.length? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
       ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;"><span class="mono">${skuModeloPorKey(kp.key)}</span> ${kp.nome} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
-    </div><p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${kitProdutos.length} produto(s) vinculado(s). Pesquise outro item para adicionar mais.</p>` : `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum produto vinculado. Você pode adicionar vários itens do catálogo.</p>`}
+    </div><p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${kitProdutos.length} modelo(s) vinculado(s). Pesquise outro produto para adicionar mais.</p>` : `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum modelo vinculado. Você pode adicionar vários produtos e modelos do catálogo.</p>`}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Composição — matéria-prima real <span style="font-weight:400; text-transform:none;">(quantas quiser)</span></p>
     <div style="position:relative;">
@@ -3644,6 +3653,8 @@ function bindAdminEvents(){
     el.addEventListener('click', ()=>{
       const id = parseInt(el.dataset.val);
       adminState.expandedProdutoId = adminState.expandedProdutoId===id ? null : id;
+      adminState.kitProdutoProdutoIdSelecionado=null;
+      adminState.kitProdutoQuery='';
       render();
     });
   });
@@ -3670,6 +3681,8 @@ function bindAdminEvents(){
       if(adminState.editingKey===key){ adminState.editingKey=null; }
       else{
         adminState.editingKey=key;
+        adminState.kitProdutoProdutoIdSelecionado=null;
+        adminState.kitProdutoQuery='';
         if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
         adminState.kits[key].nomeCompleto = el.dataset.nome;
         adminState.adminMatQuery='';
@@ -3765,7 +3778,25 @@ function bindAdminEvents(){
     });
   });
   const kpqEl = document.querySelector('[data-act="admin-kitproduto-query"]');
-  if(kpqEl) kpqEl.addEventListener('input', e=>{ adminState.kitProdutoQuery=e.target.value; renderPreservingFocus(); });
+  if(kpqEl) kpqEl.addEventListener('input', e=>{
+    adminState.kitProdutoQuery=e.target.value;
+    adminState.kitProdutoProdutoIdSelecionado=null;
+    renderPreservingFocus();
+  });
+  document.querySelectorAll('[data-act="admin-kitproduto-selecionar-produto"]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      adminState.kitProdutoProdutoIdSelecionado=parseInt(el.dataset.val)||null;
+      adminState.kitProdutoQuery='';
+      render();
+    });
+  });
+  const voltarBuscaKitProduto=document.querySelector('[data-act="admin-kitproduto-voltar"]');
+  if(voltarBuscaKitProduto) voltarBuscaKitProduto.addEventListener('click',()=>{
+    adminState.kitProdutoProdutoIdSelecionado=null;
+    adminState.kitProdutoQuery='';
+    render();
+    document.querySelector('[data-act="admin-kitproduto-query"]')?.focus();
+  });
   document.querySelectorAll('[data-act="admin-kitproduto-add"]').forEach(el=>{
     el.addEventListener('click', ()=>{
       const key = el.dataset.key;
@@ -3787,6 +3818,8 @@ function bindAdminEvents(){
           salvarKit(key);
         }
       }
+      adminState.kitProdutoProdutoIdSelecionado=null;
+      adminState.kitProdutoQuery='';
       render();
       const busca = document.querySelector('[data-act="admin-kitproduto-query"]');
       if(busca){ busca.focus(); busca.setSelectionRange(busca.value.length, busca.value.length); }
