@@ -449,6 +449,21 @@ export const estudioClientes = pgTable("estudio_clientes", {
 export type EstudioCliente = typeof estudioClientes.$inferSelect;
 export type InsertEstudioCliente = typeof estudioClientes.$inferInsert;
 
+// Configuração de composição comercial de cada modelo do catálogo MubiSys.
+// A API do ERP não fornece a ficha técnica; este cadastro é compartilhado entre
+// vendedores no banco do Radrasys.
+export const estudioKits = pgTable("estudio_kits", {
+  chave: varchar("chave", { length: 80 }).primaryKey(),
+  produtoId: integer("produto_id").notNull(),
+  modeloId: integer("modelo_id").notNull(),
+  dadosJson: jsonb("dados_json").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  produtoModeloIdx: uniqueIndex("estudio_kits_produto_modelo_idx").on(table.produtoId, table.modeloId),
+}));
+export type EstudioKit = typeof estudioKits.$inferSelect;
+export type InsertEstudioKit = typeof estudioKits.$inferInsert;
+
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 
 // Tipos de role do sistema

@@ -2761,17 +2761,19 @@ function nomeModeloPorKey(key){
   return produto && modelo ? `${produto.nome} — ${modelo.nome}` : String(key||'Modelo sem nome');
 }
 
-/* ---------- PERSISTÊNCIA REAL (banco do artifact) ----------
- * Sem isso, adminState.kits/exclusões viviam só em memória JS: qualquer
- * reload (ou outro vendedor abrindo o mesmo link) via o cadastro do
- * administrador sumir, mesmo já tendo sido preenchido antes — a composição
- * de matéria-prima "desaparecia" e sem ela não há orçamento. Agora o
- * cadastro do admin é gravado no banco do artifact e recarregado/sincronizado
- * ao vivo entre todas as abas que tiverem esta página aberta. */
+/* ---------- PERSISTÊNCIA COMPARTILHADA DO ESTÚDIO ----------
+ * As composições por modelo são gravadas no Postgres pelo próprio Radrasys.
+ * A capability `claude.use('db')` não existe no HTML servido pelo app/Vercel;
+ * ela continua abaixo apenas para dados legados do protótipo. */
 let dbApi = null;
 let assetsApi = null;
 let cotacaoEmCriacao = false;
 const _kitSaveTimers = {};
+const _kitSaveChains = {};
+const kitSaveState = {};
+let kitsApiDisponivel = false;
+let kitsCarregando = true;
+let kitsApiErro = '';
 let _exclSaveTimer = null;
 let _configSaveTimer = null;
 
@@ -2924,78 +2926,113 @@ async function concluirOrcamentoEabrirCotacao(){
   }
 }
 
-async function initDb(){
-  const configPromise = carregarConfigGeralServidor();
-  try{ dbApi = await claude.use('db'); }catch(e){ dbApi = null; }
-  try{ assetsApi = await claude.use('assets'); }catch(e){ assetsApi = null; }
-  if(!dbApi){ await configPromise; return; } // kits ainda usam a capability do artifact; config geral usa o servidor Radrasys.
-  try{
-    const snap = await dbApi.collection('kits').get();
-    snap.docs.forEach(d=>{
-      const data = d.data();
-      if(data) adminState.kits[d.id] = {
-        linhas: data.linhas||[], precificacao: data.precificacao||null,
-        nomeCompleto: data.nomeCompleto||null,
-        descricaoProduto: data.descricaoProduto||'',
-        prazoDiasUteis: data.prazoDiasUteis??null, kitProdutos: data.kitProdutos||[],
-        fotoUrl: data.fotoUrl||null, fotoAssetId: data.fotoAssetId||null,
-        categoria: data.categoria||null, subcategoria: data.subcategoria||null, tipoProduto: data.tipoProduto||null,
-      };
-    });
-  }catch(e){ /* leitura falhou: segue com o que já está em memória */ }
-  try{
-    const cfg = await dbApi.doc('config/exclusoes').get();
-    if(cfg.exists){
-      const data = cfg.data()||{};
-      adminState.produtosExcluidos = new Set(data.produtos||[]);
-      adminState.materiasExcluidas = new Set(data.materias||[]);
-    }
-  }catch(e){}
-  await configPromise;
-  dbApi.collection('kits').onSnapshot(snap=>{
-    snap.docChanges().forEach(ch=>{
-      if(ch.type==='removed') delete adminState.kits[ch.doc.id];
-      else{
-        const data = ch.doc.data();
-        if(data) adminState.kits[ch.doc.id] = {
-          linhas: data.linhas||[], precificacao: data.precificacao||null,
-          nomeCompleto: data.nomeCompleto||null,
-          descricaoProduto: data.descricaoProduto||'',
-          prazoDiasUteis: data.prazoDiasUteis??null, kitProdutos: data.kitProdutos||[],
-          fotoUrl: data.fotoUrl||null, fotoAssetId: data.fotoAssetId||null,
-          categoria: data.categoria||null, subcategoria: data.subcategoria||null, tipoProduto: data.tipoProduto||null,
-        };
-      }
-    });
-    render();
-  }, ()=>{ /* stream caiu: o que já foi carregado permanece visível */ });
-  dbApi.collection('propostasReais').onSnapshot(snap=>{
-    snap.docChanges().forEach(ch=>{
-      if(ch.type==='removed') delete propostasReais[ch.doc.id];
-      else propostasReais[ch.doc.id] = ch.doc.data();
-    });
-    render();
-  }, ()=>{});
-  render();
+function textoEstadoSalvamentoKit(key){
+  const estado=kitSaveState[key];
+  if(estado?.status==='pendente') return 'Alteração pendente de salvamento…';
+  if(estado?.status==='salvando') return 'Salvando no banco compartilhado…';
+  if(estado?.status==='salvo') return 'Alterações salvas no banco compartilhado.';
+  if(estado?.status==='erro') return `Falha ao salvar: ${estado.erro}`;
+  if(kitsCarregando) return 'Carregando os cadastros salvos…';
+  if(kitsApiDisponivel) return 'As alterações são salvas no banco compartilhado.';
+  return kitsApiErro ? `Banco indisponível: ${kitsApiErro}` : 'Banco compartilhado indisponível.';
 }
 
-/** Grava (debounced) a composição de um modelo no banco compartilhado. */
-function salvarKit(key){
-  if(!dbApi || !key) return;
-  const kit = adminState.kits[key];
-  if(!kit) return;
+function atualizarEstadoSalvamentoKit(key, status, erro=''){
+  kitSaveState[key]={status,erro};
+  document.querySelectorAll('[data-kit-save-status]').forEach(el=>{
+    if(el.dataset.kitSaveStatus===key) el.textContent=textoEstadoSalvamentoKit(key);
+  });
+}
+
+async function carregarKitsServidor(){
+  kitsCarregando=true;
+  kitsApiErro='';
+  try{
+    const response=await fetch('/api/letra-caixa/kits',{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível carregar os cadastros de produtos.');
+    const kits={};
+    (Array.isArray(body.kits)?body.kits:[]).forEach(item=>{
+      const chave=String(item?.chave||'');
+      if(/^\d+_\d+$/.test(chave)&&item.kit&&typeof item.kit==='object'&&!Array.isArray(item.kit)) kits[chave]=item.kit;
+    });
+    adminState.kits=kits;
+    kitsApiDisponivel=true;
+  }catch(error){
+    kitsApiDisponivel=false;
+    kitsApiErro=String(error&&error.message||'Não foi possível acessar o banco compartilhado.');
+  }finally{
+    kitsCarregando=false;
+    render();
+  }
+}
+
+async function salvarKitImediato(key){
   clearTimeout(_kitSaveTimers[key]);
-  _kitSaveTimers[key] = setTimeout(()=>{
-    const [produtoId, modeloId] = key.split('_').map(Number);
-    dbApi.doc('kits/'+key).set({
-      produtoId, modeloId, linhas:kit.linhas, precificacao:kit.precificacao||null,
-      nomeCompleto:kit.nomeCompleto||null,
-      descricaoProduto:kit.descricaoProduto||'',
-      prazoDiasUteis:kit.prazoDiasUteis??null, kitProdutos:kit.kitProdutos||[],
-      fotoUrl:kit.fotoUrl||null, fotoAssetId:kit.fotoAssetId||null,
-      categoria:kit.categoria||null, subcategoria:kit.subcategoria||null, tipoProduto:kit.tipoProduto||null,
-    }).catch(()=>{});
-  }, 500);
+  delete _kitSaveTimers[key];
+  const kit=adminState.kits[key];
+  if(!kit||!/^\d+_\d+$/.test(key)) return false;
+  const payload=JSON.stringify({kit});
+  const gravacao=(_kitSaveChains[key]||Promise.resolve()).catch(()=>{}).then(async()=>{
+    atualizarEstadoSalvamentoKit(key,'salvando');
+    const response=await fetch(`/api/letra-caixa/kits/${encodeURIComponent(key)}`,{
+      method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload,
+    });
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível salvar o cadastro do produto.');
+    kitsApiDisponivel=true;
+    kitsApiErro='';
+    atualizarEstadoSalvamentoKit(key,'salvo');
+    return true;
+  }).catch(error=>{
+    const mensagem=String(error&&error.message||'Não foi possível salvar o cadastro do produto.');
+    kitsApiErro=mensagem;
+    atualizarEstadoSalvamentoKit(key,'erro',mensagem);
+    return false;
+  });
+  _kitSaveChains[key]=gravacao;
+  return gravacao;
+}
+
+/** Salva alterações rapidamente após o vendedor parar de editar um campo. */
+function salvarKit(key){
+  if(!key||!adminState.kits[key]) return Promise.resolve(false);
+  clearTimeout(_kitSaveTimers[key]);
+  atualizarEstadoSalvamentoKit(key,'pendente');
+  return new Promise(resolve=>{
+    _kitSaveTimers[key]=setTimeout(()=>{
+      delete _kitSaveTimers[key];
+      salvarKitImediato(key).then(resolve);
+    },500);
+  });
+}
+
+async function initDb(){
+  const configPromise=carregarConfigGeralServidor();
+  try{ dbApi=await claude.use('db'); }catch(e){ dbApi=null; }
+  try{ assetsApi=await claude.use('assets'); }catch(e){ assetsApi=null; }
+  const kitsPromise=carregarKitsServidor();
+
+  if(dbApi){
+    try{
+      const cfg=await dbApi.doc('config/exclusoes').get();
+      if(cfg.exists){
+        const data=cfg.data()||{};
+        adminState.produtosExcluidos=new Set(data.produtos||[]);
+        adminState.materiasExcluidas=new Set(data.materias||[]);
+      }
+    }catch(e){}
+  }
+
+  await Promise.all([configPromise,kitsPromise]);
+  if(dbApi) dbApi.collection('propostasReais').onSnapshot(snap=>{
+    snap.docChanges().forEach(ch=>{
+      if(ch.type==='removed') delete propostasReais[ch.doc.id];
+      else propostasReais[ch.doc.id]=ch.doc.data();
+    });
+    render();
+  },()=>{});
+  render();
 }
 
 /** Grava (debounced) quais produtos/matérias o admin marcou como excluídos. */
@@ -3381,7 +3418,7 @@ function adminProdutos(){
       <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. Cada produto recebe um SKU Radrasys fixo a partir do ID MubiSys; cada modelo tem um SKU derivado do produto e do ID do modelo. Busque por nome ou SKU para localizar configurações.</p><p>A composição não vem da API — ela não expõe isso (verificado: só há endpoint de catálogo e de matéria-prima, não de ficha técnica) — monte uma vez por modelo abaixo e fica salva para o vendedor reaproveitar.</p>${catalog.baixadoEm?`<p style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Última consulta ao MubiSys: ${new Date(catalog.baixadoEm).toLocaleString('pt-BR')}</p>`:''}</div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
         <span class="badge b-accent">${cadastrados} modelo(s) cadastrado(s)</span>
-        <span class="badge ${dbApi?'b-ok':'b-warn'}">${dbApi?'✓ salvo no banco':'⚠ sem banco — só nesta sessão'}</span>
+        <span class="badge ${kitsApiDisponivel?'b-ok':'b-warn'}">${kitsCarregando?'Carregando cadastros…':kitsApiDisponivel?'✓ gravação no banco compartilhado':`⚠ banco indisponível${kitsApiErro?': '+escaparHtml(kitsApiErro):''}`}</span>
         <button class="btn btn-ghost btn-sm" data-act="admin-catalogo-atualizar" ${catalog.refreshing?'disabled':''}>${catalog.refreshing?'Atualizando…':'Atualizar catálogo do MubiSys'}</button>
       </div>
     </div>
@@ -3427,7 +3464,7 @@ function adminModeloRow(p, m){
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         ${kit? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':' · margem vinculada'):''})</span>` : `<span class="badge b-neutral">Não cadastrado</span>`}
-        <button class="btn btn-soft btn-sm" data-act="admin-edit-kit" data-val="${key}" data-nome="${p.nome} — ${m.nome}">${editing?'Fechar':'✏️ '+(kit?'Editar produto':'Cadastrar produto')}</button>
+        <button class="btn btn-soft btn-sm" data-act="admin-edit-kit" data-val="${key}" data-nome="${p.nome} — ${m.nome}" ${kitsCarregando?'disabled':''}>${editing?'Fechar':'✏️ '+(kit?'Editar produto':'Cadastrar produto')}</button>
       </div>
     </div>
     ${editing? adminKitEditor(p, m, key) : ''}
@@ -3436,6 +3473,7 @@ function adminModeloRow(p, m){
 
 function adminKitEditor(p, m, key){
   const kitState = adminState.kits[key] || {linhas:[], precificacao:null};
+  const estadoSalvamento=textoEstadoSalvamentoKit(key);
   const kit = kitState.linhas;
   const q = adminState.adminMatQuery||'';
   const matches = q.length>=2 ? catalog.materias.filter(x=>!adminState.materiasExcluidas.has(x.id) && normalizeSearch(x.nome).includes(normalizeSearch(q))).slice(0,40) : [];
@@ -3661,8 +3699,11 @@ function adminKitEditor(p, m, key){
     `}
 
     <div class="footer-nav">
-      <div class="role-note">${ICONS.info} A unidade de medida vem automática da matéria-prima real. O cálculo do orçamento real usa a geometria vetorizada de verdade — sem calculadora de teste separada.</div>
-      <button class="btn btn-primary btn-sm" data-act="admin-kit-done" data-val="${key}">${ICONS.check} Concluir</button>
+      <div>
+        <div class="role-note" data-kit-save-status="${key}" role="status" aria-live="polite">${escaparHtml(estadoSalvamento)}</div>
+        <div class="role-note" style="margin-top:4px;">${ICONS.info} A unidade de medida vem automática da matéria-prima real. O cálculo do orçamento usa a geometria vetorizada.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" data-act="admin-kit-done" data-val="${key}">${ICONS.check} Salvar e concluir</button>
     </div>
   </div>`;
 }
@@ -3971,9 +4012,19 @@ function bindAdminEvents(){
     });
   });
   document.querySelectorAll('[data-act="admin-edit-kit"]').forEach(el=>{
-    el.addEventListener('click', ()=>{
+    el.addEventListener('click', async ()=>{
       const key = el.dataset.val;
-      if(adminState.editingKey===key){ adminState.editingKey=null; }
+      if(adminState.editingKey===key){
+        el.disabled=true;
+        el.textContent='Salvando…';
+        const salvo=await salvarKitImediato(key);
+        if(!salvo){
+          alert(kitSaveState[key]?.erro||'Não foi possível salvar o cadastro do produto.');
+          render();
+          return;
+        }
+        adminState.editingKey=null;
+      }
       else{
         adminState.editingKey=key;
         adminState.kitProdutoProdutoIdSelecionado=null;
@@ -3991,7 +4042,22 @@ function bindAdminEvents(){
     });
   });
   document.querySelectorAll('[data-act="admin-kit-done"]').forEach(el=>{
-    el.addEventListener('click', ()=>{ adminState.editingKey=null; adminState.kitVariacaoLinhaKey=null; adminState.kitVariacaoQuery=''; adminState.kitVariacaoMaterialSelecionadoId=null; render(); });
+    el.addEventListener('click', async ()=>{
+      const key=el.dataset.val;
+      el.disabled=true;
+      el.textContent='Salvando…';
+      const salvo=await salvarKitImediato(key);
+      if(!salvo){
+        alert(kitSaveState[key]?.erro||'Não foi possível salvar o cadastro do produto.');
+        render();
+        return;
+      }
+      adminState.editingKey=null;
+      adminState.kitVariacaoLinhaKey=null;
+      adminState.kitVariacaoQuery='';
+      adminState.kitVariacaoMaterialSelecionadoId=null;
+      render();
+    });
   });
   const amq = document.querySelector('[data-act="admin-mat-query"]');
   if(amq) amq.addEventListener('input', e=>{ adminState.adminMatQuery=e.target.value; renderPreservingFocus(); });

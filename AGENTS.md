@@ -210,6 +210,7 @@ server/
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
                        estudio-cotacoes.ts (cotações do HTML estático do Estúdio),
                        estudio-clientes.ts (cadastro e busca autenticados de clientes do Estúdio),
+                       estudio-kits.ts (composições de produto por modelo, compartilhadas no Postgres),
                        estudio-catalogo-mubisys.ts (catálogos de produtos e matérias-primas
                        via API MubiSys, com sessão autenticada) e
                        estudio-configuracoes.ts (configurações compartilhadas do Estúdio)
@@ -379,9 +380,10 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`SKU-000123-M007`); os dois aparecem no fluxo e podem ser buscados na
   Administração. Não há coluna nova no banco, pois os códigos derivam dos IDs
   já estáveis do catálogo.
-  A descrição comercial é configurada por produto/modelo no cadastro de kit,
-  gravada no documento `kits` e pré-preenchida na descrição editável da
-  proposta do vendedor; o snapshot público registra o texto final da cotação.
+  A composição e descrição comercial são configuradas por produto/modelo no
+  cadastro de kit e gravadas em `estudio_kits` no Postgres. A descrição é
+  pré-preenchida na proposta do vendedor; o snapshot público registra o texto
+  final da cotação.
   O cadastro de kit também permite clonar a composição e os produtos vinculados
   de outro modelo. Cada linha de matéria-prima pode ter opções de variação com
   outras matérias-primas da mesma unidade e uma opção padrão para novos
