@@ -940,15 +940,37 @@ function LedImageLink({
       toast.error("Selecione um arquivo de imagem.");
       return;
     }
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("A imagem precisa ter no máximo 16 MB.");
+      return;
+    }
 
     setUploading(true);
     try {
-      const uploaded = await enviarArquivo("imagem", file);
-      await saveImage.mutateAsync({ key: imageKey, value: uploaded.url });
-      await utils.custoLed.getDimensionamentoFontes.invalidate();
+      let uploaded: Awaited<ReturnType<typeof enviarArquivo>>;
+      try {
+        uploaded = await enviarArquivo("imagem", file);
+        if (!uploaded?.url) throw new Error("O serviço não retornou uma URL para a imagem.");
+      } catch (error) {
+        console.error("[Tabela de Preços] Falha no upload da imagem de LED:", error);
+        const reason = error instanceof Error ? error.message : String(error);
+        toast.error(`Falha ao enviar a imagem ao serviço de arquivos: ${reason}`, { duration: 10000 });
+        return;
+      }
+
+      try {
+        await saveImage.mutateAsync({ key: imageKey, value: uploaded.url });
+      } catch (error) {
+        console.error("[Tabela de Preços] Imagem enviada, mas falhou ao salvar a URL:", error);
+        const reason = error instanceof Error ? error.message : String(error);
+        toast.error(`A imagem foi enviada, mas não foi possível salvar o link: ${reason}`, { duration: 10000 });
+        return;
+      }
+
+      void utils.custoLed.getDimensionamentoFontes.invalidate().catch(error => {
+        console.error("[Tabela de Preços] Imagem salva, mas não foi possível atualizar a tabela:", error);
+      });
       toast.success("Imagem do LED salva.");
-    } catch {
-      toast.error("Não foi possível enviar a imagem do LED.");
     } finally {
       setUploading(false);
     }
