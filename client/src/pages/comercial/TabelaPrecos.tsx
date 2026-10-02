@@ -271,8 +271,6 @@ const FONTES_CHAVEADAS_LED_12V_TITLE = "Fontes chaveadas 12 V para módulos LED"
 const MODULO_3030_12V_TITLE = "MÓDULO 3030 3W (12V)";
 const MICRO_MODULO_2835_12V_TITLE = "MICRO MÓDULO 2835 1,5W (12V)";
 const LED_TEMPERATURA_TEXTO = "LED branco frio e quente, coloridos, Micro LED, Módulo 3030, Fita Ultra LED";
-const FITA_LED_24V_REFERENCIA = "Fita LED: 17 W/m; capacidade estimada pela potência informada. Calcule o total com alimentação distribuída em trechos.";
-const FITA_LED_12V_REFERENCIA = "Fita LED: 8 W/m; capacidade estimada pela potência informada. Calcule o total com alimentação distribuída em trechos.";
 
 const FONTES_CHAVEADAS_LED = [
   {
@@ -374,7 +372,6 @@ function LedPowerSourcesTable() {
         <span className="block w-fit max-w-full rounded border border-sky-200 bg-sky-100 px-2.5 py-1 text-sm font-semibold text-sky-800">
           {LED_TEMPERATURA_TEXTO}
         </span>
-        <p className="text-sm text-slate-500">{FITA_LED_24V_REFERENCIA}</p>
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[1120px]">
@@ -419,7 +416,6 @@ function LedPowerSources12VTable() {
         <span className="block w-fit max-w-full rounded border border-sky-200 bg-sky-100 px-2.5 py-1 text-sm font-semibold text-sky-800">
           {LED_TEMPERATURA_TEXTO}
         </span>
-        <p className="text-sm text-slate-500">{FITA_LED_12V_REFERENCIA}</p>
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[820px]">
@@ -1321,8 +1317,8 @@ function gerarPdfTabela(
         <div class="page-header-title" style="color:${color}">${pageNames[page] ?? "Página " + page}<span class="page-header-sub"> — ${pageSubtitles[page] ?? ""}</span></div>
       </div>`;
     if (page === 4) {
-      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_TITLE}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${LED_TEMPERATURA_TEXTO}</div><p>${FITA_LED_24V_REFERENCIA}</p>${gerarHtmlFontesChaveadas(color)}</div>`;
-      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_12V_TITLE}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${LED_TEMPERATURA_TEXTO}</div><p>${FITA_LED_12V_REFERENCIA}</p>${gerarHtmlFontesChaveadas12V(color)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_TITLE}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${LED_TEMPERATURA_TEXTO}</div>${gerarHtmlFontesChaveadas(color)}</div>`;
+      html += `<div class="section-block"><div class="section-title">${FONTES_CHAVEADAS_LED_12V_TITLE}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${LED_TEMPERATURA_TEXTO}</div>${gerarHtmlFontesChaveadas12V(color)}</div>`;
       html += `<div class="section-block"><div class="section-title">${MODULO_3030_12V_TITLE}</div>${gerarHtmlFontesModuloLed12V(color, FONTES_MODULO_3030_12V)}</div>`;
       html += `<div class="section-block"><div class="section-title">${MICRO_MODULO_2835_12V_TITLE}</div>${gerarHtmlFontesModuloLed12V(color, FONTES_MICRO_MODULO_2835_12V)}</div>`;
     } else for (const sec of pageSections) {
