@@ -2624,7 +2624,7 @@ function realStepOrcamento(){
 /* ---- ADMIN ---- */
 /* ---------- ADMIN: catálogo real (produtos/modelos + matérias-primas do MubiSys) ---------- */
 const adminState = {
-  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', precoLinhaQuery:'', filtroVendedorPropostas:'',
+  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', kitVariacaoMaterialSelecionadoId:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   expandedProdutoId:null, editingKey:null,
@@ -3308,6 +3308,7 @@ function adminKitEditor(p, m, key){
   const variacaoIdx=String(adminState.kitVariacaoLinhaKey||'').startsWith(`${key}:`)?parseInt(adminState.kitVariacaoLinhaKey.slice(key.length+1)):null;
   const kitVariacaoLinha=Number.isInteger(variacaoIdx)?kit[variacaoIdx]:null;
   const kitVariacaoOpcoes=kitVariacaoLinha && Array.isArray(kitVariacaoLinha.variantes)?kitVariacaoLinha.variantes:[];
+  const kitVariacaoMaterialSelecionado=catalog.materias.find(m=>m.id===adminState.kitVariacaoMaterialSelecionadoId) || null;
   const kitVariacaoMatches=kitVariacaoLinha && kitVariacaoQuery.length>=2
     ? catalog.materias.filter(m=>!adminState.materiasExcluidas.has(m.id)&&m.id!==kitVariacaoLinha.matId&&m.unidade===kitVariacaoLinha.unidade&&!kitVariacaoOpcoes.some(v=>v.matId===m.id)&&normalizeSearch(m.nome).includes(normalizeSearch(kitVariacaoQuery))).slice(0,25)
     : [];
@@ -3443,10 +3444,11 @@ function adminKitEditor(p, m, key){
         </select>
       </label>
       <p style="font-size:11px;color:var(--text-faint);margin:4px 0 8px;">O orçamento começa com esta escolha; o vendedor ainda pode trocar a opção ou selecionar “Nenhuma”.</p>
-      <label class="field" style="margin-top:8px;">Adicionar opção buscando outra matéria-prima
+      <label class="field" style="margin-top:8px;">Buscar matéria-prima para uma opção de variação
         <input type="text" placeholder="Buscar matéria-prima no catálogo..." value="${escaparHtml(kitVariacaoQuery)}" data-act="admin-kit-variacao-query" data-key="${key}" data-idx="${variacaoIdx}">
       </label>
-      ${kitVariacaoMatches.length? `<div class="card" style="margin-top:4px;padding:5px;box-shadow:none;">${kitVariacaoMatches.map(m=>`<button type="button" data-act="admin-kit-variacao-add" data-key="${key}" data-idx="${variacaoIdx}" data-mat="${m.id}" style="display:flex;justify-content:space-between;gap:10px;width:100%;padding:7px 8px;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer;"><span>+ ${escaparHtml(m.nome)}</span><span class="mono">${money(m.valor)}/${escaparHtml(m.unidade)}</span></button>`).join("")}</div>` : kitVariacaoQuery.length>=2? '<p style="font-size:11px;color:var(--text-faint);">Nenhuma matéria-prima encontrada.</p>' : ''}
+      ${kitVariacaoMatches.length? `<div class="card" style="margin-top:4px;padding:5px;box-shadow:none;">${kitVariacaoMatches.map(m=>`<button type="button" data-act="admin-kit-variacao-selecionar" data-key="${key}" data-idx="${variacaoIdx}" data-mat="${m.id}" style="display:flex;justify-content:space-between;gap:10px;width:100%;padding:7px 8px;border:0;border-radius:6px;background:${adminState.kitVariacaoMaterialSelecionadoId===m.id?'var(--surface-2)':'transparent'};color:var(--text);text-align:left;cursor:pointer;"><span>${adminState.kitVariacaoMaterialSelecionadoId===m.id?'✓':'○'} ${escaparHtml(m.nome)}</span><span class="mono">${money(m.valor)}/${escaparHtml(m.unidade)}</span></button>`).join("")}</div>` : kitVariacaoQuery.length>=2? '<p style="font-size:11px;color:var(--text-faint);">Nenhuma matéria-prima encontrada com a mesma unidade desta linha.</p>' : '<p style="font-size:11px;color:var(--text-faint);margin:4px 0;">Pesquise e selecione um material; depois clique em “Adicionar variação”. Repita para cadastrar outras opções.</p>'}
+      ${kitVariacaoMaterialSelecionado? `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;padding:9px;box-shadow:none;"><div><strong>Opção selecionada</strong><div style="font-size:11px;color:var(--text-faint);">${escaparHtml(kitVariacaoMaterialSelecionado.nome)} · ${money(kitVariacaoMaterialSelecionado.valor)}/${escaparHtml(kitVariacaoMaterialSelecionado.unidade)}</div></div><button type="button" class="btn btn-primary btn-sm" data-act="admin-kit-variacao-add" data-key="${key}" data-idx="${variacaoIdx}" data-mat="${kitVariacaoMaterialSelecionado.id}">+ Adicionar variação</button></div>` : ''}
       ${kitVariacaoOpcoes.length? `<div style="display:grid;gap:6px;margin-top:10px;">${kitVariacaoOpcoes.map((opcao,opIdx)=>`<div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(180px,2fr) auto auto;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;"><input type="text" maxlength="80" placeholder="Valor da opção" value="${escaparHtml(opcao.valor||opcao.nome||"")}" data-act="admin-kit-variacao-valor" data-key="${key}" data-idx="${variacaoIdx}" data-opcao="${opIdx}"><span>${escaparHtml(opcao.nome)}</span><span class="mono">${money(opcao.custo)}/${escaparHtml(opcao.unidade)}</span><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-variacao-remover" data-key="${key}" data-idx="${variacaoIdx}" data-opcao="${opIdx}">Remover</button></div>`).join("")}</div>` : '<p style="font-size:11px;color:var(--text-faint);margin-top:8px;">Ainda não há opções. Sem opção selecionada, o orçamento usa a matéria-prima principal.</p>'}
     </div>` : ""}
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Precificação — linha da Tabela de Preços</p>
@@ -3748,6 +3750,7 @@ function bindAdminEvents(){
       adminState.kitCopiaSelecionadoKey=null;
       adminState.kitVariacaoLinhaKey=null;
       adminState.kitVariacaoQuery='';
+      adminState.kitVariacaoMaterialSelecionadoId=null;
       render();
     });
   });
@@ -3780,6 +3783,7 @@ function bindAdminEvents(){
         adminState.kitCopiaSelecionadoKey=null;
         adminState.kitVariacaoLinhaKey=null;
         adminState.kitVariacaoQuery='';
+        adminState.kitVariacaoMaterialSelecionadoId=null;
         if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
         adminState.kits[key].nomeCompleto = el.dataset.nome;
         adminState.adminMatQuery='';
@@ -3788,7 +3792,7 @@ function bindAdminEvents(){
     });
   });
   document.querySelectorAll('[data-act="admin-kit-done"]').forEach(el=>{
-    el.addEventListener('click', ()=>{ adminState.editingKey=null; adminState.kitVariacaoLinhaKey=null; adminState.kitVariacaoQuery=''; render(); });
+    el.addEventListener('click', ()=>{ adminState.editingKey=null; adminState.kitVariacaoLinhaKey=null; adminState.kitVariacaoQuery=''; adminState.kitVariacaoMaterialSelecionadoId=null; render(); });
   });
   const amq = document.querySelector('[data-act="admin-mat-query"]');
   if(amq) amq.addEventListener('input', e=>{ adminState.adminMatQuery=e.target.value; renderPreservingFocus(); });
@@ -3833,6 +3837,7 @@ function bindAdminEvents(){
       if(kit){ kit.linhas.splice(+el.dataset.idx, 1); salvarKit(adminState.editingKey); }
       adminState.kitVariacaoLinhaKey=null;
       adminState.kitVariacaoQuery='';
+      adminState.kitVariacaoMaterialSelecionadoId=null;
       render();
     });
   });
@@ -3937,6 +3942,7 @@ function bindAdminEvents(){
       const linhaKey=`${el.dataset.key}:${el.dataset.idx}`;
       adminState.kitVariacaoLinhaKey=adminState.kitVariacaoLinhaKey===linhaKey?null:linhaKey;
       adminState.kitVariacaoQuery='';
+      adminState.kitVariacaoMaterialSelecionadoId=null;
       render();
     });
   });
@@ -3944,6 +3950,7 @@ function bindAdminEvents(){
   if(kitVariacaoFechar) kitVariacaoFechar.addEventListener('click',()=>{
     adminState.kitVariacaoLinhaKey=null;
     adminState.kitVariacaoQuery='';
+    adminState.kitVariacaoMaterialSelecionadoId=null;
     render();
   });
   document.querySelectorAll('[data-act="admin-kit-variacao-nome"]').forEach(el=>el.addEventListener('input',e=>{
@@ -3959,19 +3966,26 @@ function bindAdminEvents(){
   const kitVariacaoQueryEl=document.querySelector('[data-act="admin-kit-variacao-query"]');
   if(kitVariacaoQueryEl) kitVariacaoQueryEl.addEventListener('input',e=>{
     adminState.kitVariacaoQuery=e.target.value;
+    adminState.kitVariacaoMaterialSelecionadoId=null;
     renderPreservingFocus();
   });
+  document.querySelectorAll('[data-act="admin-kit-variacao-selecionar"]').forEach(el=>el.addEventListener('click',()=>{
+    adminState.kitVariacaoMaterialSelecionadoId=parseInt(el.dataset.mat);
+    render();
+  }));
   document.querySelectorAll('[data-act="admin-kit-variacao-add"]').forEach(el=>el.addEventListener('click',()=>{
     const kit=adminState.kits[el.dataset.key];
     const linha=kit&&kit.linhas[+el.dataset.idx];
     const material=catalog.materias.find(item=>item.id===parseInt(el.dataset.mat));
-    if(linha&&material&&material.unidade===linha.unidade){
+    if(linha&&material&&material.id===adminState.kitVariacaoMaterialSelecionadoId&&material.unidade===linha.unidade){
       if(!Array.isArray(linha.variantes)) linha.variantes=[];
       if(!linha.variantes.some(item=>item.matId===material.id)) linha.variantes.push({matId:material.id,nome:material.nome,unidade:material.unidade,custo:material.valor,atualizado:material.atualizado,status:material.status,valor:material.nome});
       salvarKit(el.dataset.key);
     }
     adminState.kitVariacaoQuery='';
+    adminState.kitVariacaoMaterialSelecionadoId=null;
     render();
+    document.querySelector('[data-act="admin-kit-variacao-query"]')?.focus();
   }));
   document.querySelectorAll('[data-act="admin-kit-variacao-valor"]').forEach(el=>el.addEventListener('input',e=>{
     const kit=adminState.kits[el.dataset.key];
