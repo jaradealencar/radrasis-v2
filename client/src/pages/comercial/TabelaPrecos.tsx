@@ -306,7 +306,6 @@ const FONTES_CHAVEADAS_LED_12V = [
     tensao: "12V DC",
     potencia: "120W",
     modulosRecomendados: "Até 68 Módulos",
-    equivalenciaCorrentes: "3 correntes + 8 módulos",
     modulosMaximos: "80 Módulos",
   },
   {
@@ -314,7 +313,6 @@ const FONTES_CHAVEADAS_LED_12V = [
     tensao: "12V DC",
     potencia: "240W",
     modulosRecomendados: "Até 136 Módulos",
-    equivalenciaCorrentes: "6 correntes + 16 módulos",
     modulosMaximos: "160 Módulos",
   },
   {
@@ -322,7 +320,6 @@ const FONTES_CHAVEADAS_LED_12V = [
     tensao: "12V DC",
     potencia: "360W",
     modulosRecomendados: "Até 204 Módulos",
-    equivalenciaCorrentes: "10 correntes + 4 módulos",
     modulosMaximos: "240 Módulos",
   },
   {
@@ -330,7 +327,6 @@ const FONTES_CHAVEADAS_LED_12V = [
     tensao: "12V DC",
     potencia: "600W",
     modulosRecomendados: "Até 340 Módulos",
-    equivalenciaCorrentes: "17 correntes plenas",
     modulosMaximos: "400 Módulos",
   },
 ];
@@ -380,7 +376,6 @@ function LedPowerSources12VTable() {
     "Tensão",
     "Potência",
     "Recomendado Vendas (85%)",
-    "Equivalência em Correntes (20 pçs)",
     "Limite Máximo (100%)",
   ];
   return (
@@ -391,7 +386,7 @@ function LedPowerSources12VTable() {
         </CardTitle>
       </CardHeader>
       <div className="overflow-x-auto">
-        <Table className="min-w-[980px]">
+        <Table className="min-w-[820px]">
           <TableHeader>
             <TableRow className="bg-slate-100">
               {columns.map(column => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}
@@ -404,7 +399,6 @@ function LedPowerSources12VTable() {
                 <TableCell>{row.tensao}</TableCell>
                 <TableCell>{row.potencia}</TableCell>
                 <TableCell>{row.modulosRecomendados}</TableCell>
-                <TableCell>{row.equivalenciaCorrentes}</TableCell>
                 <TableCell>{row.modulosMaximos}</TableCell>
               </TableRow>
             ))}
@@ -440,7 +434,6 @@ function gerarHtmlFontesChaveadas12V(color: string) {
     "Tensão",
     "Potência",
     "Recomendado Vendas (85%)",
-    "Equivalência em Correntes (20 pçs)",
     "Limite Máximo (100%)",
   ];
   const rows = FONTES_CHAVEADAS_LED_12V.map(row => `
@@ -449,7 +442,6 @@ function gerarHtmlFontesChaveadas12V(color: string) {
       <td>${escapeHtml(row.tensao)}</td>
       <td>${escapeHtml(row.potencia)}</td>
       <td>${escapeHtml(row.modulosRecomendados)}</td>
-      <td>${escapeHtml(row.equivalenciaCorrentes)}</td>
       <td>${escapeHtml(row.modulosMaximos)}</td>
     </tr>`).join("");
   return `<table><thead><tr style="background:${color}">${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
