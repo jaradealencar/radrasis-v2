@@ -3,10 +3,13 @@ import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { ledTipos, custoLedLancamentos } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
+import { getLedPowerSourceTables } from "../services/ledPowerSources";
 
 // ─── Tipos de LED ─────────────────────────────────────────────────────────────
 
 export const custoLedRouter = router({
+  getDimensionamentoFontes: publicProcedure.query(() => getLedPowerSourceTables()),
+
   // Listar todos os tipos de LED ativos
   listTipos: publicProcedure.query(async () => {
     const db = await getDb();
