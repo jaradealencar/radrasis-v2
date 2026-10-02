@@ -3436,6 +3436,13 @@ function adminKitEditor(p, m, key){
       <label class="field" style="max-width:320px;">Nome da variação (ex.: Cor)
         <input type="text" maxlength="80" placeholder="Ex.: Cor" value="${escaparHtml(kitVariacaoLinha.variacaoNome||"")}" data-act="admin-kit-variacao-nome" data-key="${key}" data-idx="${variacaoIdx}">
       </label>
+      <label class="field" style="max-width:420px;margin-top:8px;">Padrão para novos orçamentos
+        <select data-act="admin-kit-variacao-padrao" data-key="${key}" data-idx="${variacaoIdx}">
+          <option value="">Nenhuma (matéria-prima principal)</option>
+          ${kitVariacaoOpcoes.map(opcao=>`<option value="${opcao.matId}" ${String(kitVariacaoLinha.variacaoPadraoMatId)===String(opcao.matId)?'selected':''}>${escaparHtml(opcao.valor||opcao.nome)} · ${escaparHtml(opcao.nome)}</option>`).join('')}
+        </select>
+      </label>
+      <p style="font-size:11px;color:var(--text-faint);margin:4px 0 8px;">O orçamento começa com esta escolha; o vendedor ainda pode trocar a opção ou selecionar “Nenhuma”.</p>
       <label class="field" style="margin-top:8px;">Adicionar opção buscando outra matéria-prima
         <input type="text" placeholder="Buscar matéria-prima no catálogo..." value="${escaparHtml(kitVariacaoQuery)}" data-act="admin-kit-variacao-query" data-key="${key}" data-idx="${variacaoIdx}">
       </label>
@@ -3943,6 +3950,12 @@ function bindAdminEvents(){
     const kit=adminState.kits[el.dataset.key];
     if(kit&&kit.linhas[+el.dataset.idx]){ kit.linhas[+el.dataset.idx].variacaoNome=e.target.value; salvarKit(el.dataset.key); }
   }));
+  document.querySelectorAll('[data-act="admin-kit-variacao-padrao"]').forEach(el=>el.addEventListener('change',e=>{
+    const kit=adminState.kits[el.dataset.key];
+    const linha=kit&&kit.linhas[+el.dataset.idx];
+    if(linha){ linha.variacaoPadraoMatId=e.target.value?parseInt(e.target.value):null; salvarKit(el.dataset.key); }
+    render();
+  }));
   const kitVariacaoQueryEl=document.querySelector('[data-act="admin-kit-variacao-query"]');
   if(kitVariacaoQueryEl) kitVariacaoQueryEl.addEventListener('input',e=>{
     adminState.kitVariacaoQuery=e.target.value;
@@ -3969,7 +3982,12 @@ function bindAdminEvents(){
   document.querySelectorAll('[data-act="admin-kit-variacao-remover"]').forEach(el=>el.addEventListener('click',()=>{
     const kit=adminState.kits[el.dataset.key];
     const linha=kit&&kit.linhas[+el.dataset.idx];
-    if(linha&&Array.isArray(linha.variantes)){ linha.variantes.splice(+el.dataset.opcao,1); salvarKit(el.dataset.key); }
+    if(linha&&Array.isArray(linha.variantes)){
+      const removida=linha.variantes[+el.dataset.opcao];
+      if(removida&&String(linha.variacaoPadraoMatId)===String(removida.matId)) linha.variacaoPadraoMatId=null;
+      linha.variantes.splice(+el.dataset.opcao,1);
+      salvarKit(el.dataset.key);
+    }
     render();
   }));
 
@@ -4223,7 +4241,7 @@ function bindRealEvents(){
     // (cópia — editar aqui não altera o cadastro-mestre do admin)
     const kitPronto = prod && mod ? adminState.kits[kitKey(prod.id, mod.id)] : null;
     REAL.descricaoProduto = kitPronto?.descricaoProduto || '';
-    REAL.kit = kitPronto ? kitPronto.linhas.map(k=>({...k,variantes:Array.isArray(k.variantes)?k.variantes.map(v=>({...v})):[]})) : [];
+    REAL.kit = kitPronto ? kitPronto.linhas.map(k=>({...k,variantes:Array.isArray(k.variantes)?k.variantes.map(v=>({...v})):[],variacaoSelecionadaMatId:k.variacaoPadraoMatId??null})) : [];
     REAL.precificacao = kitPronto && kitPronto.precificacao ? {...kitPronto.precificacao} : null;
     render();
   });
