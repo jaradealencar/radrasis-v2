@@ -274,6 +274,27 @@ const FONTES_CHAVEADAS_LED = [
     modulosRecomendados: "Até 136 módulos (85%)",
     modulosMaximos: "160 módulos (100%)",
   },
+  {
+    fonte: "Fonte chaveada 20A",
+    tensao: "24 V",
+    potencia: "480 W",
+    modulosRecomendados: "Até 272 módulos (85%)",
+    modulosMaximos: "320 módulos (100%)",
+  },
+  {
+    fonte: "Fonte chaveada 30A",
+    tensao: "24 V",
+    potencia: "720 W",
+    modulosRecomendados: "Até 408 módulos (85%)",
+    modulosMaximos: "480 módulos (100%)",
+  },
+  {
+    fonte: "Fonte chaveada 50A",
+    tensao: "24 V",
+    potencia: "1200 W",
+    modulosRecomendados: "Até 680 módulos (85%)",
+    modulosMaximos: "800 módulos (100%)",
+  },
 ];
 
 function LedPowerSourcesTable() {
