@@ -50,14 +50,6 @@ function criarTabelaFitas(
   };
 }
 
-function equivalenciaCorrentes(modulos: number): string {
-  const correntesPlenas = Math.floor(modulos / 20);
-  const modulosRestantes = modulos % 20;
-  if (modulosRestantes === 0) return `${correntesPlenas} correntes plenas`;
-  const corrente = correntesPlenas === 1 ? "corrente" : "correntes";
-  return `${correntesPlenas} ${corrente} + ${modulosRestantes} módulos`;
-}
-
 function criarTabelaModulos12V(
   key: "modules-7025-12v" | "modules-3030-12v" | "micro-2835-12v",
   title: string,
@@ -78,7 +70,6 @@ function criarTabelaModulos12V(
         powerW: fonte.potenciaW,
         recommendedModules: recomendados,
         maximumModules: maximos,
-        currentEquivalence: equivalenciaCorrentes(recomendados),
       };
     }),
   };
