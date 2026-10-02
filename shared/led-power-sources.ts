@@ -21,7 +21,6 @@ export interface LedModuleSourceRow {
   powerW: number;
   recommendedModules: number;
   maximumModules: number;
-  currentEquivalence?: string;
 }
 
 export interface LedModuleTable {
@@ -46,7 +45,7 @@ export const ledPowerSourceTextKey = {
   image: (tableKey: LedTapeTable["key"] | LedModuleTable["key"]) => `${tableKey}.imageUrl`,
   column: (
     tableKey: LedTapeTable["key"] | LedModuleTable["key"],
-    column: "source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence"
+    column: "source" | "voltage" | "power" | "recommended" | "maximum"
   ) => `${tableKey}.column.${column}`,
   row: (
     tableKey: LedTapeTable["key"] | LedModuleTable["key"],

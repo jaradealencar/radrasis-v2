@@ -413,13 +413,11 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
 }
 
 function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts: LedPowerSourceTextOverrides }) {
-  const hasCurrentEquivalence = !tabela.key.endsWith("-12v") && tabela.rows.some(row => row.currentEquivalence);
-  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence", string]> = [
+  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
     ["source", "Fonte"],
     ["voltage", "Tensão"],
     ["power", "Potência da fonte"],
     ["recommended", "Recomendado para vendas (85%)"],
-    ...(hasCurrentEquivalence ? [["equivalence", "Equivalência em correntes (20 peças)"] as ["equivalence", string]] : []),
     ["maximum", "Limite máximo (100%)"],
   ];
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
@@ -448,7 +446,6 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
                 <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage")} value={row.voltage} texts={texts} /></TableCell>
                 <TableCell>{fmtNum(row.powerW)} <EditableLedText textKey={ledPowerSourceTextKey.common("powerUnit")} value="W" texts={texts} /></TableCell>
                 <TableCell><EditableLedText textKey={ledPowerSourceTextKey.common("moduleRecommendedPrefix")} value="Até" texts={texts} /> {fmtNum(row.recommendedModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
-                {hasCurrentEquivalence && <TableCell>{row.currentEquivalence}</TableCell>}
                 <TableCell>{fmtNum(row.maximumModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
               </TableRow>
             ))}
@@ -515,11 +512,9 @@ function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: Led
 }
 
 function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts: LedPowerSourceTextOverrides) {
-  const hasCurrentEquivalence = !tabela.key.endsWith("-12v") && tabela.rows.some(row => row.currentEquivalence);
-  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum" | "equivalence", string]> = [
+  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
     ["source", "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
     ["recommended", "Recomendado para vendas (85%)"],
-    ...(hasCurrentEquivalence ? [["equivalence", "Equivalência em correntes (20 peças)"] as ["equivalence", string]] : []),
     ["maximum", "Limite máximo (100%)"],
   ];
   const powerUnit = getLedText(texts, ledPowerSourceTextKey.common("powerUnit"), "W");
@@ -531,7 +526,6 @@ function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts:
       <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage"), row.voltage))}</td>
       <td>${fmtNum(row.powerW)} ${escapeHtml(powerUnit)}</td>
       <td>${escapeHtml(recommendedPrefix)} ${fmtNum(row.recommendedModules)} ${escapeHtml(moduleUnit)}</td>
-      ${hasCurrentEquivalence ? `<td>${escapeHtml(row.currentEquivalence ?? "")}</td>` : ""}
       <td>${fmtNum(row.maximumModules)} ${escapeHtml(moduleUnit)}</td>
     </tr>`).join("");
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
