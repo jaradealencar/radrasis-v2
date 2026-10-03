@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, BanIcon, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
@@ -144,11 +145,22 @@ export default function MarketingCampanhasWhatsapp() {
                       <TableCell className="whitespace-nowrap">{labelCategoria(c.categoria)}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         {c.frequenciaDias} dias
-                        {c.tipo === "gatilho_venda" && <div className="text-[11px] text-muted-foreground">após a venda</div>}
+                        {c.tipo === "gatilho_venda" && (
+                          <div className="text-[11px] text-muted-foreground">
+                            após a venda<br />e só depois de 16 dias úteis da aprovação
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{c.ultimoEnvio ? formatarDataBr(c.ultimoEnvio) : "—"}</TableCell>
                       <TableCell className="whitespace-nowrap">{c.proximoEnvio ? formatarDataBr(c.proximoEnvio) : "—"}</TableCell>
-                      <TableCell className="whitespace-nowrap"><StatusCampanhaBadge campanha={c} hoje={hoje} /></TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <StatusCampanhaBadge campanha={c} hoje={hoje} />
+                        {c.tipo === "gatilho_venda" && c.status === "ativa" && (c.clientesAguardando ?? 0) > 0 && (
+                          <div className="mt-1 text-[11px] text-muted-foreground" title="Compraram há menos de 16 dias úteis: ainda não podem receber a mensagem.">
+                            + {fmtNum(c.clientesAguardando ?? 0)} aguardando os 16 dias úteis
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="sticky right-0 bg-white shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
                         <div className="flex items-center justify-end gap-1">
                           <Button
