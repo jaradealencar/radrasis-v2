@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers } from "lucide-react";
+import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Link2 } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 import { UNIDADE_CONSUMO_MATERIA_PRIMA, UNIDADE_CONSUMO_LABEL, type UnidadeConsumoMateriaPrima } from "@shared/produto-composicao";
 
@@ -151,8 +151,8 @@ function DialogNovoProduto({
           <DialogTitle>Novo produto</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground -mt-2">
-          Busque o produto no catálogo do MubiSys. Nome e categoria vêm de lá; a composição de matéria-prima, kit e
-          precificação você completa depois de criar.
+          Busque o produto no catálogo do MubiSys. Nome e categoria vêm de lá; depois de criar, você pode importar a
+          ficha de matéria-prima e configurar kit e precificação.
         </p>
         <div className="flex gap-2">
           <Input
@@ -354,7 +354,12 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
         </Card>
       </div>
 
-      <ComposicaoMateriaPrima produtoId={id} composicao={data.composicao} />
+      <ComposicaoMateriaPrima
+        produtoId={id}
+        mubisysProdutoId={produto.mubisysProdutoId}
+        mubisysModeloId={produto.mubisysModeloId}
+        composicao={data.composicao}
+      />
       <KitProduto produtoId={id} kit={data.kit} />
     </div>
   );
@@ -364,9 +369,13 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
 
 function ComposicaoMateriaPrima({
   produtoId,
+  mubisysProdutoId,
+  mubisysModeloId,
   composicao,
 }: {
   produtoId: number;
+  mubisysProdutoId: number;
+  mubisysModeloId: number;
   composicao: NonNullable<RouterOutputs["produtos"]["obter"]>["composicao"];
 }) {
   const utils = trpc.useUtils();
@@ -426,6 +435,11 @@ function ComposicaoMateriaPrima({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <MubiSysCompositionImporter
+          produtoId={produtoId}
+          mubisysProdutoId={mubisysProdutoId}
+          mubisysModeloId={mubisysModeloId}
+        />
         <div className="flex gap-2">
           <Input
             placeholder="Buscar matéria-prima no MubiSys..."
@@ -520,6 +534,333 @@ function ComposicaoMateriaPrima({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+type CatalogoComposicaoMubiSys = {
+  produtos: Array<{
+    id: number;
+    modelos: Array<{
+      id: number;
+      nome: string;
+      unidade: string;
+      variacoes: Array<{ id: number; nome: string; padrao: boolean }>;
+    }>;
+  }>;
+  materias: Array<{ id: number; nome: string; unidade: string; valor: number }>;
+  composicoesMubiSys: Array<{
+    modeloId: number | null;
+    variacaoId: number | null;
+    materiaPrimaId: number;
+    quantidade: number;
+    unidade: string;
+  }>;
+  mubisysWebConectado: boolean;
+  erroComposicoesMubiSys: string | null;
+};
+
+function normalizarUnidadeConsumo(valor: string): string {
+  return valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/²/g, "2").replace(/[^a-z0-9]/g, "");
+}
+
+function inferirUnidadeConsumo(unidadeMubiSys: string, unidadeModelo: string): UnidadeConsumoMateriaPrima {
+  const unidade = normalizarUnidadeConsumo(unidadeMubiSys);
+  if (["m2", "metroquadrado", "metrosquadrados", "areadequadrada"].some((s) => unidade.includes(s))) return "m2";
+  if (["ml", "metrolinear", "metroslineares", "metro", "metros"].some((s) => unidade.includes(s))) return "ml";
+  if (["perimetro", "comprimento", "linear"].some((s) => unidade.includes(s))) return "perimetro";
+  if (["un", "und", "unidade", "unidades", "peca", "pecas"].some((s) => unidade === s || unidade.startsWith(s))) return "unidade";
+
+  const unidadeBase = normalizarUnidadeConsumo(unidadeModelo);
+  if (["m2", "area", "quadrad"].some((s) => unidadeBase.includes(s))) return "m2";
+  if (["perimetro", "linear", "comprimento"].some((s) => unidadeBase.includes(s)) || unidadeBase === "m") return "perimetro";
+  return "unidade";
+}
+
+function numeroPtBr(valor: string): number {
+  const limpo = valor.trim().replace(/\s/g, "");
+  if (!limpo) return Number.NaN;
+  return Number(limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo);
+}
+
+function MubiSysCompositionImporter({
+  produtoId,
+  mubisysProdutoId,
+  mubisysModeloId,
+}: {
+  produtoId: number;
+  mubisysProdutoId: number;
+  mubisysModeloId: number;
+}) {
+  const utils = trpc.useUtils();
+  const [conectado, setConectado] = useState<boolean | null>(null);
+  const [mostrarConexao, setMostrarConexao] = useState(false);
+  const [conectando, setConectando] = useState(false);
+  const [carregando, setCarregando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [catalogo, setCatalogo] = useState<CatalogoComposicaoMubiSys | null>(null);
+  const [dialogAberto, setDialogAberto] = useState(false);
+  const [variacaoId, setVariacaoId] = useState<number | null>(null);
+  const [unidadesEditadas, setUnidadesEditadas] = useState<Record<string, UnidadeConsumoMateriaPrima>>({});
+  const [quantidadesEditadas, setQuantidadesEditadas] = useState<Record<string, string>>({});
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    let ativo = true;
+    fetch("/api/letra-caixa/mubisys/sessao", { credentials: "same-origin", cache: "no-store" })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || "Falha ao verificar a sessão MubiSys.");
+        return body as { connected?: boolean };
+      })
+      .then((body) => { if (ativo) setConectado(Boolean(body.connected)); })
+      .catch(() => { if (ativo) setConectado(false); });
+    return () => { ativo = false; };
+  }, []);
+
+  const importar = trpc.produtos.composicaoImportarMubisys.useMutation({
+    onSuccess: (resultado) => {
+      toast.success("Composição importada do MubiSys", {
+        description: `${resultado.adicionadas} adicionada(s) e ${resultado.atualizadas} atualizada(s).`,
+      });
+      utils.produtos.obter.invalidate({ id: produtoId });
+      setDialogAberto(false);
+      setImportando(false);
+    },
+    onError: (error) => {
+      toast.error("Erro ao importar composição", { description: error.message });
+      setImportando(false);
+    },
+  });
+
+  const carregarFicha = async () => {
+    setCarregando(true);
+    setErro("");
+    try {
+      const response = await fetch("/api/letra-caixa/catalogo", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Não foi possível consultar o catálogo do MubiSys.");
+
+      const dados = body as CatalogoComposicaoMubiSys;
+      setCatalogo(dados);
+      setConectado(Boolean(dados.mubisysWebConectado));
+      if (!dados.mubisysWebConectado) {
+        setMostrarConexao(true);
+        throw new Error(dados.erroComposicoesMubiSys || "Conecte sua conta MubiSys para ler a ficha de materiais.");
+      }
+      if (dados.erroComposicoesMubiSys) throw new Error(dados.erroComposicoesMubiSys);
+
+      const modelo = dados.produtos.find((produto) => produto.id === mubisysProdutoId)
+        ?.modelos.find((item) => item.id === mubisysModeloId);
+      const variationIds = new Set((modelo?.variacoes ?? []).map((item) => item.id));
+      const linhas = dados.composicoesMubiSys.filter((linha) =>
+        linha.modeloId === mubisysModeloId || (linha.modeloId == null && linha.variacaoId != null && variationIds.has(linha.variacaoId)),
+      );
+      const rowsByVariation = new Set(linhas.filter((linha) => linha.variacaoId != null).map((linha) => linha.variacaoId as number));
+      const variacoes = [...rowsByVariation].map((id) =>
+        modelo?.variacoes.find((item) => item.id === id) ?? { id, nome: `Variação #${id}`, padrao: false },
+      );
+      const defaultVariation = variacoes.find((item) => item.padrao) ?? variacoes[0];
+      const hasModelRows = linhas.some((linha) => linha.variacaoId == null && linha.modeloId === mubisysModeloId);
+      if (!defaultVariation && !hasModelRows) throw new Error("Não encontrei matérias-primas vinculadas a este modelo no MubiSys.");
+
+      setVariacaoId(defaultVariation?.id ?? null);
+      setUnidadesEditadas({});
+      setQuantidadesEditadas({});
+      setDialogAberto(true);
+    } catch (cause) {
+      const mensagem = cause instanceof Error ? cause.message : "Não foi possível ler a ficha de materiais do MubiSys.";
+      setErro(mensagem);
+      toast.error("Composição do MubiSys indisponível", { description: mensagem });
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  const conectar = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const dados = new FormData(form);
+    setConectando(true);
+    setErro("");
+    try {
+      const response = await fetch("/api/letra-caixa/mubisys/sessao", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          codigo: String(dados.get("codigo") || ""),
+          usuario: String(dados.get("usuario") || ""),
+          senha: String(dados.get("senha") || ""),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      form.reset();
+      if (!response.ok) throw new Error(body.error || "Não foi possível conectar ao MubiSys.");
+      setConectado(true);
+      setMostrarConexao(false);
+      toast.success("MubiSys conectado. Lendo a ficha do modelo.");
+      await carregarFicha();
+    } catch (cause) {
+      form.reset();
+      const mensagem = cause instanceof Error ? cause.message : "Não foi possível conectar ao MubiSys.";
+      setErro(mensagem);
+      toast.error("Falha na conexão com o MubiSys", { description: mensagem });
+    } finally {
+      setConectando(false);
+    }
+  };
+
+  const modelo = catalogo?.produtos.find((produto) => produto.id === mubisysProdutoId)
+    ?.modelos.find((item) => item.id === mubisysModeloId);
+  const variationIds = new Set((modelo?.variacoes ?? []).map((item) => item.id));
+  const linhasDoModelo = (catalogo?.composicoesMubiSys ?? []).filter((linha) =>
+    linha.modeloId === mubisysModeloId || (linha.modeloId == null && linha.variacaoId != null && variationIds.has(linha.variacaoId)),
+  );
+  const variacoesComFicha = [...new Set(linhasDoModelo.map((linha) => linha.variacaoId).filter((id): id is number => id != null))]
+    .map((id) => modelo?.variacoes.find((variation) => variation.id === id) ?? { id, nome: `Variação #${id}`, padrao: false });
+  const linhasVariacao = variacaoId == null ? [] : linhasDoModelo.filter((linha) => linha.variacaoId === variacaoId);
+  const linhasModeloCompartilhadas = linhasDoModelo.filter((linha) => linha.variacaoId == null && linha.modeloId === mubisysModeloId);
+  const linhasSelecionadas = linhasVariacao.length ? linhasVariacao : linhasModeloCompartilhadas;
+  const preview = linhasSelecionadas.map((linha, index) => {
+    const materia = catalogo?.materias.find((item) => item.id === linha.materiaPrimaId);
+    const chave = `${variacaoId ?? "modelo"}-${index}-${linha.materiaPrimaId}`;
+    return {
+      linha,
+      materia,
+      chave,
+      unidade: unidadesEditadas[chave] ?? inferirUnidadeConsumo(linha.unidade || materia?.unidade || "", modelo?.unidade || ""),
+      quantidade: quantidadesEditadas[chave] ?? String(linha.quantidade),
+    };
+  });
+  const previewValido = preview.length > 0 && preview.every((item) => {
+    const quantidade = numeroPtBr(item.quantidade);
+    return item.materia != null && Number.isFinite(quantidade) && quantidade >= 0 && quantidade <= 99999999.9999;
+  });
+
+  const confirmarImportacao = () => {
+    const linhasAgrupadas = new Map<string, {
+      mubisysMateriaPrimaId: number;
+      materialNome: string;
+      unidadeConsumo: UnidadeConsumoMateriaPrima;
+      quantidade: number;
+    }>();
+    for (const item of preview) {
+      if (!item.materia) continue;
+      const quantidade = numeroPtBr(item.quantidade);
+      const chave = `${item.materia.id}:${item.unidade}`;
+      const existente = linhasAgrupadas.get(chave);
+      if (existente) existente.quantidade += quantidade;
+      else linhasAgrupadas.set(chave, {
+        mubisysMateriaPrimaId: item.materia.id,
+        materialNome: item.materia.nome,
+        unidadeConsumo: item.unidade,
+        quantidade,
+      });
+    }
+    setImportando(true);
+    importar.mutate({ produtoId, linhas: [...linhasAgrupadas.values()] });
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">Ficha de matéria-prima do MubiSys</p>
+          <p className="text-xs text-muted-foreground">
+            {conectado === null ? "Verificando conexão..." : conectado ? "Conectado" : "Conecte sua conta para importar os materiais do modelo."}
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={conectado ? carregarFicha : () => setMostrarConexao((aberto) => !aberto)}
+          disabled={carregando || conectado === null}
+          className="gap-1.5"
+        >
+          {carregando ? <Spinner className="h-4 w-4" /> : conectado ? <Download className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+          {carregando ? "Consultando..." : conectado ? "Importar composição" : "Conectar MubiSys"}
+        </Button>
+      </div>
+
+      {mostrarConexao && conectado !== true && (
+        <form onSubmit={conectar} className="space-y-3 rounded-md border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Informe código da empresa, usuário e senha. A senha será usada apenas para abrir a sessão e não será salva. A sessão fica protegida por até 8 horas.</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="space-y-1"><Label className="text-xs">Código da empresa</Label><Input name="codigo" autoComplete="off" required /></div>
+            <div className="space-y-1"><Label className="text-xs">Usuário</Label><Input name="usuario" autoComplete="username" required /></div>
+            <div className="space-y-1"><Label className="text-xs">Senha</Label><Input name="senha" type="password" autoComplete="current-password" required /></div>
+          </div>
+          {erro && <p className="text-xs text-destructive">{erro}</p>}
+          <div className="flex gap-2">
+            <Button size="sm" type="submit" disabled={conectando}>{conectando ? "Conectando..." : "Conectar e importar"}</Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => setMostrarConexao(false)}>Cancelar</Button>
+          </div>
+        </form>
+      )}
+
+      <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader><DialogTitle>Importar composição do MubiSys</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Confira quantidade e unidade de consumo. O Radrasys atualiza o mesmo material/unidade e mantém os outros itens cadastrados manualmente.</p>
+          {variacoesComFicha.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Ficha do modelo / variação</Label>
+              <Select value={variacaoId == null ? "modelo" : String(variacaoId)} onValueChange={(value) => setVariacaoId(value === "modelo" ? null : Number(value))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {linhasModeloCompartilhadas.length > 0 && <SelectItem value="modelo">Composição padrão do modelo</SelectItem>}
+                  {variacoesComFicha.map((variation) => <SelectItem key={variation.id} value={String(variation.id)}>{variation.nome}{variation.padrao ? " (padrão)" : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+            Quantidade e unidade informadas na ficha vêm do MubiSys. Quando falta unidade, a sugestão usa a unidade do modelo. Revise a unidade de consumo antes de salvar.
+          </div>
+          {variacaoId != null && (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+              O cadastro de Produtos guarda uma composição por modelo. A ficha de “{variacoesComFicha.find((item) => item.id === variacaoId)?.nome ?? "variação selecionada"}” será usada como composição deste modelo; os demais materiais locais serão preservados.
+            </p>
+          )}
+          {preview.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Não há matérias-primas cadastradas para esta opção no MubiSys.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableHeader><TableRow><TableHead>Matéria-prima</TableHead><TableHead>Quantidade</TableHead><TableHead>Unidade MubiSys</TableHead><TableHead>Consumo Radrasys</TableHead><TableHead>Custo atual</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {preview.map((item) => (
+                    <TableRow key={item.chave}>
+                      <TableCell className="font-medium">{item.materia?.nome ?? `Matéria-prima #${item.linha.materiaPrimaId} não encontrada`}</TableCell>
+                      <TableCell><Input className="h-8 w-24" inputMode="decimal" value={item.quantidade} onChange={(event) => setQuantidadesEditadas((atual) => ({ ...atual, [item.chave]: event.target.value }))} /></TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{item.linha.unidade || item.materia?.unidade || "—"}</TableCell>
+                      <TableCell>
+                        <Select value={item.unidade} onValueChange={(value) => setUnidadesEditadas((atual) => ({ ...atual, [item.chave]: value as UnidadeConsumoMateriaPrima }))}>
+                          <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>{UNIDADE_CONSUMO_MATERIA_PRIMA.map((opcao) => <SelectItem key={opcao} value={opcao}>{UNIDADE_CONSUMO_LABEL[opcao]}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{item.materia ? `${fmtBrl(item.materia.valor)} / ${item.materia.unidade || "un."}` : "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {!previewValido && preview.length > 0 && <p className="text-sm text-destructive">Há material ausente ou quantidade inválida. Corrija antes de importar.</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDialogAberto(false)}>Cancelar</Button>
+            <Button onClick={confirmarImportacao} disabled={!previewValido || importando || importar.isPending}>
+              {(importando || importar.isPending) && <Spinner className="mr-2 h-4 w-4" />}
+              Importar {preview.length} {preview.length === 1 ? "material" : "materiais"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

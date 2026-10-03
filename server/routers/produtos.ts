@@ -226,6 +226,74 @@ export const produtosRouter = router({
       return { success: true, id: result.id };
     }),
 
+  composicaoImportarMubisys: protectedProcedure
+    .input(
+      z.object({
+        produtoId: z.number(),
+        linhas: z.array(
+          z.object({
+            mubisysMateriaPrimaId: z.number().int().positive(),
+            materialNome: z.string().min(1).max(256),
+            unidadeConsumo: unidadeConsumoSchema,
+            quantidade: z.number().min(0).max(99999999.9999),
+          }),
+        ).min(1).max(500),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+
+      const [produto] = await db.select({ id: produtos.id }).from(produtos).where(eq(produtos.id, input.produtoId));
+      if (!produto) throw new Error("Produto não encontrado.");
+
+      const existentes = await db
+        .select({
+          id: produtoComposicaoMateriais.id,
+          mubisysMateriaPrimaId: produtoComposicaoMateriais.mubisysMateriaPrimaId,
+          unidadeConsumo: produtoComposicaoMateriais.unidadeConsumo,
+          ordem: produtoComposicaoMateriais.ordem,
+        })
+        .from(produtoComposicaoMateriais)
+        .where(eq(produtoComposicaoMateriais.produtoId, input.produtoId))
+        .orderBy(asc(produtoComposicaoMateriais.ordem));
+
+      let proximaOrdem = existentes.reduce((maior, item) => Math.max(maior, item.ordem), -1) + 1;
+      let atualizadas = 0;
+      let adicionadas = 0;
+
+      for (const linha of input.linhas) {
+        const indiceExistente = existentes.findIndex(
+          item => item.mubisysMateriaPrimaId === linha.mubisysMateriaPrimaId && item.unidadeConsumo === linha.unidadeConsumo,
+        );
+        const existente = indiceExistente >= 0 ? existentes.splice(indiceExistente, 1)[0] : undefined;
+
+        if (existente) {
+          await db
+            .update(produtoComposicaoMateriais)
+            .set({
+              materialNome: linha.materialNome,
+              quantidade: String(linha.quantidade),
+              updatedAt: new Date(),
+            })
+            .where(eq(produtoComposicaoMateriais.id, existente.id));
+          atualizadas++;
+        } else {
+          await db.insert(produtoComposicaoMateriais).values({
+            produtoId: input.produtoId,
+            mubisysMateriaPrimaId: linha.mubisysMateriaPrimaId,
+            materialNome: linha.materialNome,
+            unidadeConsumo: linha.unidadeConsumo,
+            quantidade: String(linha.quantidade),
+            ordem: proximaOrdem++,
+          });
+          adicionadas++;
+        }
+      }
+
+      return { success: true, atualizadas, adicionadas };
+    }),
+
   composicaoRemover: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {

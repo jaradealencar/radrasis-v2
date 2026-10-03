@@ -338,8 +338,18 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   conexão deve ser validada com uma sessão real após publicar a mudança.
   O módulo **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
   `server/routers/produtos.ts`, tabelas `produtos`/
-  `produto_composicao_materiais`/`produto_kit_itens`) continua com
-  composição cadastrada localmente. O campo `produtos.idPrecificacao`
+  `produto_composicao_materiais`/`produto_kit_itens`) importa a ficha do
+  modelo ou variação pela mesma sessão, mostra quantidade, unidade e custo
+  atual para revisão, e grava material, quantidade e unidade de consumo no
+  banco local. As unidades MubiSys são mapeadas para o enum local (`m2`,
+  `ml`, `perimetro`, `unidade`) com possibilidade de ajuste antes de salvar;
+  a importação atualiza linhas com o mesmo material/unidade e preserva os
+  demais itens locais. Como o cadastro de Produtos guarda uma composição por
+  modelo, uma ficha específica de variação é importada como a composição do
+  modelo atual. O custo continua vindo ao vivo de
+  `listarMateriasPrimas()`. Como usa a tela interna não oficial do MubiSys,
+  mudanças no formato podem exigir ajuste do parser e a integração deve ser
+  validada com uma sessão real após publicar. O campo `produtos.idPrecificacao`
   referencia um `id` de linha/regra da Tabela de Preços (ver
   `shared/price-table.ts`) só por número — não há resolução automática de
   qual coluna/faixa de valor usar ainda.
