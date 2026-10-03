@@ -59,7 +59,7 @@ export default function ArquivosCampanhaPopover({ campanhaId }: { campanhaId: nu
           <FolderOpen size={12} /> Arquivos{arquivos && arquivos.length > 0 ? ` (${arquivos.length})` : ""}
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="start" avoidCollisions={false} className="w-96 p-0 shadow-xl border-0 rounded-xl overflow-hidden" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+      <PopoverContent align="start" collisionPadding={16} className="w-96 max-w-[calc(100vw-2rem)] max-h-(--radix-popover-content-available-height) p-0 shadow-xl border-0 rounded-xl overflow-y-auto">
         <div className="px-4 py-3 border-b flex items-center justify-between bg-amber-50 border-amber-300 text-amber-800">
           <div className="flex items-center gap-2"><FolderOpen className="w-4 h-4" /><span className="text-sm font-bold">Listas de contatos e arquivos</span></div>
           <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-white/50"><X className="w-4 h-4" /></button>

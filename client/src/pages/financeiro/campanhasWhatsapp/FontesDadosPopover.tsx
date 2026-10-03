@@ -46,7 +46,7 @@ export default function FontesDadosPopover({ campanhaId }: { campanhaId: number 
           <Database size={12} /> Fontes de dados{selecionadas.size > 0 ? ` (${selecionadas.size})` : ""}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-96 p-3 space-y-3">
+      <PopoverContent align="start" collisionPadding={16} className="w-96 max-w-[calc(100vw-2rem)] max-h-(--radix-popover-content-available-height) overflow-y-auto p-3 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-slate-700">Combine as audiências desta campanha</p>
           {vincular.isPending && <Spinner className="size-3.5" />}

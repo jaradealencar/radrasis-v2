@@ -55,7 +55,7 @@ export default function GerenciarCategoriasPopover() {
           <Settings2 size={12} /> Gerenciar categorias
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-3 space-y-3">
+      <PopoverContent align="start" collisionPadding={16} className="w-80 max-h-(--radix-popover-content-available-height) overflow-y-auto p-3 space-y-3">
         <p className="text-xs font-semibold text-slate-700">Categorias de campanha</p>
 
         {isLoading ? (

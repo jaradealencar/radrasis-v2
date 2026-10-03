@@ -144,7 +144,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!salvando) onOpenChange(v); }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editando ? "Editar campanha" : "Nova campanha"}</DialogTitle>
         </DialogHeader>
