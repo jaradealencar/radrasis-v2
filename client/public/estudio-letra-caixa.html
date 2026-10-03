@@ -2740,7 +2740,7 @@ function realStepOrcamento(){
 /* ---- ADMIN ---- */
 /* ---------- ADMIN: catálogo real (produtos/modelos + matérias-primas do MubiSys) ---------- */
 const adminState = {
-  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', kitVariacaoMaterialSelecionadoId:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
+  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitProdutoModeloSelecionadoKey:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', kitVariacaoMaterialSelecionadoId:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   clientesServidor:[], clientesCarregando:false, clientesErro:'', clientesBusca:'', clientesPagina:1, clientesTotal:0,
@@ -3490,6 +3490,10 @@ function adminKitEditor(p, m, key){
   const kitProdutos = Array.isArray(kitState.kitProdutos) ? kitState.kitProdutos : [];
   const kpq = String(adminState.kitProdutoQuery||'').trim();
   const kitProdutoModeloSelecionado = catalog.produtos.find(prod=>prod.id===adminState.kitProdutoProdutoIdSelecionado) || null;
+  const kitProdutoModeloSelecionadoKey = String(adminState.kitProdutoModeloSelecionadoKey||'');
+  const kitProdutoModeloSelecionadoMod = kitProdutoModeloSelecionado
+    ? kitProdutoModeloSelecionado.modelos.find(mod=>kitKey(kitProdutoModeloSelecionado.id,mod.id)===kitProdutoModeloSelecionadoKey) || null
+    : null;
   const kitProdutoMatches = kpq.length>=1
     ? catalog.produtos.filter(prod=>{
         const modelosTexto=prod.modelos.map(mod=>{
@@ -3607,10 +3611,12 @@ function adminKitEditor(p, m, key){
           const modeloKey=kitKey(kitProdutoModeloSelecionado.id,mod.id);
           const jaVinculado=kitProdutos.some(kp=>kp.key===modeloKey);
           const principal=modeloKey===key;
+          const selecionado=modeloKey===kitProdutoModeloSelecionadoKey;
           const cadastro=adminState.kits[modeloKey];
           const nomeModelo=(cadastro&&cadastro.nomeCompleto)||`${kitProdutoModeloSelecionado.nome} — ${mod.nome}`;
-          return `<button type="button" data-act="admin-kitproduto-add" data-val="${modeloKey}" data-key="${key}" ${jaVinculado||principal?'disabled':''} style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:transparent;color:${jaVinculado||principal?'var(--text-faint)':'var(--text)'};text-align:left;cursor:${jaVinculado||principal?'default':'pointer'};font-size:12.5px;"><span style="color:var(--accent);font-weight:700;">${jaVinculado?'✓':principal?'•':'+'}</span><span class="mono" style="color:var(--accent-ink);">${skuModelo(kitProdutoModeloSelecionado.id,mod.id)}</span><span>${escaparHtml(nomeModelo)}</span><span style="margin-left:auto;color:var(--text-faint);">${jaVinculado?'já vinculado':principal?'produto principal':''}</span></button>`;
+          return `<button type="button" data-act="admin-kitproduto-selecionar-modelo" data-val="${modeloKey}" data-key="${key}" ${jaVinculado||principal?'disabled':''} style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:${selecionado?'var(--surface-2)':'transparent'};color:${jaVinculado||principal?'var(--text-faint)':'var(--text)'};text-align:left;cursor:${jaVinculado||principal?'default':'pointer'};font-size:12.5px;"><span style="color:var(--accent);font-weight:700;">${jaVinculado?'✓':principal?'•':selecionado?'✓':'○'}</span><span class="mono" style="color:var(--accent-ink);">${skuModelo(kitProdutoModeloSelecionado.id,mod.id)}</span><span>${escaparHtml(nomeModelo)}</span><span style="margin-left:auto;color:var(--text-faint);">${jaVinculado?'já vinculado':principal?'produto principal':selecionado?'selecionado':''}</span></button>`;
         }).join(''):'<p class="empty-hint">Este produto não possui modelos cadastrados no MubiSys.</p>'}
+        ${kitProdutoModeloSelecionadoMod?`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;padding:9px;box-shadow:none;background:var(--surface-2);"><div><strong>Modelo selecionado para adicionar</strong><div class="mono" style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">${skuModelo(kitProdutoModeloSelecionado.id,kitProdutoModeloSelecionadoMod.id)} · ${escaparHtml((adminState.kits[kitProdutoModeloSelecionadoKey]&&adminState.kits[kitProdutoModeloSelecionadoKey].nomeCompleto)||`${kitProdutoModeloSelecionado.nome} — ${kitProdutoModeloSelecionadoMod.nome}`)}</div></div><button type="button" class="btn btn-primary btn-sm" data-act="admin-kitproduto-confirmar" data-val="${kitProdutoModeloSelecionadoKey}" data-key="${key}">Adicionar produto ao kit</button></div>`:''}
       </div>` : kitProdutoMatches.length? `<div class="card" style="position:absolute; z-index:20; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
         ${kitProdutoMatches.map(prod=>{
           const disponiveis=prod.modelos.filter(mod=>kitKey(prod.id,mod.id)!==key&&!kitProdutos.some(kp=>kp.key===kitKey(prod.id,mod.id))).length;
@@ -3987,6 +3993,7 @@ function bindAdminEvents(){
       const id = parseInt(el.dataset.val);
       adminState.expandedProdutoId = adminState.expandedProdutoId===id ? null : id;
       adminState.kitProdutoProdutoIdSelecionado=null;
+      adminState.kitProdutoModeloSelecionadoKey=null;
       adminState.kitProdutoQuery='';
       adminState.kitCopiaQuery='';
       adminState.kitCopiaSelecionadoKey=null;
@@ -4030,6 +4037,7 @@ function bindAdminEvents(){
       else{
         adminState.editingKey=key;
         adminState.kitProdutoProdutoIdSelecionado=null;
+        adminState.kitProdutoModeloSelecionadoKey=null;
         adminState.kitProdutoQuery='';
         adminState.kitCopiaQuery='';
         adminState.kitCopiaSelecionadoKey=null;
@@ -4152,11 +4160,13 @@ function bindAdminEvents(){
   if(kpqEl) kpqEl.addEventListener('input', e=>{
     adminState.kitProdutoQuery=e.target.value;
     adminState.kitProdutoProdutoIdSelecionado=null;
+    adminState.kitProdutoModeloSelecionadoKey=null;
     renderPreservingFocus();
   });
   document.querySelectorAll('[data-act="admin-kitproduto-selecionar-produto"]').forEach(el=>{
     el.addEventListener('click',()=>{
       adminState.kitProdutoProdutoIdSelecionado=parseInt(el.dataset.val)||null;
+      adminState.kitProdutoModeloSelecionadoKey=null;
       adminState.kitProdutoQuery='';
       render();
     });
@@ -4164,36 +4174,49 @@ function bindAdminEvents(){
   const voltarBuscaKitProduto=document.querySelector('[data-act="admin-kitproduto-voltar"]');
   if(voltarBuscaKitProduto) voltarBuscaKitProduto.addEventListener('click',()=>{
     adminState.kitProdutoProdutoIdSelecionado=null;
+    adminState.kitProdutoModeloSelecionadoKey=null;
     adminState.kitProdutoQuery='';
     render();
     document.querySelector('[data-act="admin-kitproduto-query"]')?.focus();
   });
-  document.querySelectorAll('[data-act="admin-kitproduto-add"]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const key = el.dataset.key;
-      const outroKey = el.dataset.val;
-      if(key && outroKey){
-        const kit = adminState.kits[key] || (adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null});
-        if(!Array.isArray(kit.kitProdutos)) kit.kitProdutos=[];
-        if(!kit.kitProdutos.some(kp=>kp.key===outroKey)){
-          // Resolve o nome no catálogo mesmo que o produto ainda não tenha sido aberto no editor.
-          const outro = adminState.kits[outroKey];
-          let nome = outro && outro.nomeCompleto;
-          if(!nome){
-            const [prodId, modId] = outroKey.split('_').map(Number);
-            const prod = catalog.produtos.find(p=>p.id===prodId);
-            const mod = prod && prod.modelos.find(m=>m.id===modId);
-            nome = prod && mod ? prod.nome+' — '+mod.nome : outroKey;
-          }
-          kit.kitProdutos.push({key:outroKey, nome});
-          salvarKit(key);
-        }
-      }
-      adminState.kitProdutoProdutoIdSelecionado=null;
-      adminState.kitProdutoQuery='';
+  document.querySelectorAll('[data-act="admin-kitproduto-selecionar-modelo"]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const key=el.dataset.key;
+      const modeloKey=el.dataset.val;
+      const kit=adminState.kits[key];
+      if(!key||!modeloKey||modeloKey===key||kit?.kitProdutos?.some(item=>item.key===modeloKey)) return;
+      adminState.kitProdutoModeloSelecionadoKey=modeloKey;
       render();
-      const busca = document.querySelector('[data-act="admin-kitproduto-query"]');
-      if(busca){ busca.focus(); busca.setSelectionRange(busca.value.length, busca.value.length); }
+    });
+  });
+  document.querySelectorAll('[data-act="admin-kitproduto-confirmar"]').forEach(el=>{
+    el.addEventListener('click',async()=>{
+      const key=el.dataset.key;
+      const modeloKey=el.dataset.val;
+      const kit=adminState.kits[key];
+      if(!key||!kit||!modeloKey||modeloKey!==adminState.kitProdutoModeloSelecionadoKey) return;
+      if(!Array.isArray(kit.kitProdutos)) kit.kitProdutos=[];
+      if(modeloKey===key||kit.kitProdutos.some(item=>item.key===modeloKey)) return;
+
+      const [produtoId,modeloId]=modeloKey.split('_').map(Number);
+      const produto=catalog.produtos.find(item=>item.id===produtoId);
+      const modelo=produto?.modelos.find(item=>item.id===modeloId);
+      if(!produto||!modelo) return;
+      const cadastro=adminState.kits[modeloKey];
+      const nome=(cadastro&&cadastro.nomeCompleto)||`${produto.nome} — ${modelo.nome}`;
+
+      el.disabled=true;
+      el.textContent='Adicionando…';
+      kit.kitProdutos.push({key:modeloKey,nome});
+      const salvo=await salvarKitImediato(key);
+      if(!salvo){
+        kit.kitProdutos=kit.kitProdutos.filter(item=>item.key!==modeloKey);
+        alert(kitSaveState[key]?.erro||'Não foi possível adicionar o produto ao kit.');
+        render();
+        return;
+      }
+      adminState.kitProdutoModeloSelecionadoKey=null;
+      render();
     });
   });
   document.querySelectorAll('[data-act="admin-kitproduto-remove"]').forEach(el=>{
