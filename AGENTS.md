@@ -345,12 +345,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `ml`, `perimetro`, `unidade`) com possibilidade de ajuste antes de salvar;
   a importação atualiza linhas com o mesmo material/unidade e preserva os
   demais itens locais. Cada linha continua podendo ser removida, e a ação
-  "Clonar composição de outro produto" substitui a composição atual por uma
-  cópia das linhas de um produto de origem. Como o cadastro de Produtos guarda
-  uma composição por modelo, uma ficha específica de variação é importada
-  como a composição do modelo atual. O custo continua vindo ao vivo de
-  `listarMateriasPrimas()`. Como usa a tela interna não oficial do MubiSys,
-  mudanças no formato podem exigir ajuste do parser e a integração deve ser
+  "Clonar composição de outro produto" mantém o produto atual e substitui
+  matérias-primas e itens de kit por cópias de um produto de origem. Como o
+  cadastro de Produtos guarda uma composição por modelo, uma ficha específica
+  de variação é importada como a composição do modelo atual. O custo continua
+  vindo ao vivo de `listarMateriasPrimas()`. Como usa a tela interna não
+  oficial do MubiSys, mudanças no formato podem exigir ajuste do parser e a integração deve ser
   validada com uma sessão real após publicar. O campo `produtos.idPrecificacao`
   referencia um `id` de linha/regra da Tabela de Preços (ver
   `shared/price-table.ts`) só por número — não há resolução automática de

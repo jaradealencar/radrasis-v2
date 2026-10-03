@@ -309,15 +309,23 @@ export const produtosRouter = router({
       ]);
       if (!destino || !origem) throw new Error("Produto de origem ou destino não encontrado.");
 
-      const [composicaoOrigem, composicaoDestino] = await Promise.all([
+      const [composicaoOrigem, composicaoDestino, kitsOrigem, kitsDestino] = await Promise.all([
         db.select().from(produtoComposicaoMateriais)
           .where(eq(produtoComposicaoMateriais.produtoId, input.produtoOrigemId))
           .orderBy(asc(produtoComposicaoMateriais.ordem)),
         db.select().from(produtoComposicaoMateriais)
           .where(eq(produtoComposicaoMateriais.produtoId, input.produtoId))
           .orderBy(asc(produtoComposicaoMateriais.ordem)),
+        db.select().from(produtoKitItens)
+          .where(eq(produtoKitItens.produtoId, input.produtoOrigemId))
+          .orderBy(asc(produtoKitItens.id)),
+        db.select().from(produtoKitItens)
+          .where(eq(produtoKitItens.produtoId, input.produtoId))
+          .orderBy(asc(produtoKitItens.id)),
       ]);
-      if (!composicaoOrigem.length) throw new Error("O produto de origem não tem matérias-primas para clonar.");
+      if (!composicaoOrigem.length && !kitsOrigem.length) {
+        throw new Error("O produto de origem não tem matérias-primas nem itens de kit para clonar.");
+      }
 
       for (const [ordem, material] of composicaoOrigem.entries()) {
         const valores = {
@@ -341,7 +349,30 @@ export const produtosRouter = router({
         await db.delete(produtoComposicaoMateriais).where(eq(produtoComposicaoMateriais.id, extra.id));
       }
 
-      return { success: true, quantidade: composicaoOrigem.length };
+      const kitsCopiados = kitsOrigem.filter((item) => item.produtoAssociadoId !== input.produtoId);
+      for (const [ordem, item] of kitsCopiados.entries()) {
+        const valores = {
+          produtoAssociadoId: item.produtoAssociadoId,
+          quantidade: item.quantidade,
+        };
+        const existente = kitsDestino[ordem];
+        if (existente) {
+          await db.update(produtoKitItens).set(valores).where(eq(produtoKitItens.id, existente.id));
+        } else {
+          await db.insert(produtoKitItens).values({ produtoId: input.produtoId, ...valores });
+        }
+      }
+
+      for (const extra of kitsDestino.slice(kitsCopiados.length)) {
+        await db.delete(produtoKitItens).where(eq(produtoKitItens.id, extra.id));
+      }
+
+      return {
+        success: true,
+        materias: composicaoOrigem.length,
+        itensKit: kitsCopiados.length,
+        kitsIgnorados: kitsOrigem.length - kitsCopiados.length,
+      };
     }),
 
   composicaoRemover: protectedProcedure

@@ -550,8 +550,9 @@ function ClonarComposicaoProduto({ produtoId }: { produtoId: number }) {
 
   const clonar = trpc.produtos.composicaoClonar.useMutation({
     onSuccess: (resultado) => {
-      toast.success("Composição clonada", {
-        description: `${resultado.quantidade} matéria(s)-prima(s) copiada(s).`,
+      const avisoKits = resultado.kitsIgnorados ? ` ${resultado.kitsIgnorados} item(ns) de kit ignorado(s) para evitar o produto em si no kit.` : "";
+      toast.success("Materiais e kits clonados", {
+        description: `${resultado.materias} matéria(s)-prima(s) e ${resultado.itensKit} item(ns) de kit copiado(s).${avisoKits}`,
       });
       utils.produtos.obter.invalidate({ id: produtoId });
       setAberto(false);
@@ -574,7 +575,7 @@ function ClonarComposicaoProduto({ produtoId }: { produtoId: number }) {
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader><DialogTitle>Clonar composição</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Escolha um produto de origem. A composição atual deste produto será substituída pelas matérias-primas, quantidades e unidades da origem.
+            O produto atual será mantido. As matérias-primas e os itens de kit do produto de origem substituirão os atuais.
           </p>
           <div className="space-y-1.5">
             <Label className="text-xs">Produto de origem</Label>
@@ -589,11 +590,9 @@ function ClonarComposicaoProduto({ produtoId }: { produtoId: number }) {
             carregandoOrigem ? <div className="flex justify-center py-5"><Spinner /></div> : origem ? (
               <div className="space-y-2 rounded-lg border p-3">
                 <p className="text-sm font-medium">{origem.produto.nome}</p>
-                {origem.composicao.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Este produto não tem matérias-primas para clonar.</p>
-                ) : (
-                  <>
-                    <p className="text-xs text-muted-foreground">{origem.composicao.length} matéria(s)-prima(s)</p>
+                {origem.composicao.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Matérias-primas · {origem.composicao.length}</p>
                     <div className="max-h-48 overflow-y-auto divide-y">
                       {origem.composicao.slice(0, 8).map((item) => (
                         <div key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
@@ -605,7 +604,24 @@ function ClonarComposicaoProduto({ produtoId }: { produtoId: number }) {
                       ))}
                       {origem.composicao.length > 8 && <p className="py-2 text-xs text-muted-foreground">e mais {origem.composicao.length - 8} item(ns)</p>}
                     </div>
-                  </>
+                  </div>
+                )}
+                {origem.kit.length > 0 && (
+                  <div className="border-t pt-2">
+                    <p className="text-xs font-medium text-muted-foreground">Itens de kit · {origem.kit.length}</p>
+                    <div className="max-h-36 overflow-y-auto divide-y">
+                      {origem.kit.slice(0, 6).map((item) => (
+                        <div key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                          <span>{item.nomeAssociado}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">Qtd. {Number(item.quantidade)}</span>
+                        </div>
+                      ))}
+                      {origem.kit.length > 6 && <p className="py-2 text-xs text-muted-foreground">e mais {origem.kit.length - 6} item(ns)</p>}
+                    </div>
+                  </div>
+                )}
+                {origem.composicao.length === 0 && origem.kit.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Este produto não tem matérias-primas nem itens de kit para clonar.</p>
                 )}
               </div>
             ) : null
@@ -614,10 +630,10 @@ function ClonarComposicaoProduto({ produtoId }: { produtoId: number }) {
             <Button variant="outline" onClick={() => setAberto(false)}>Cancelar</Button>
             <Button
               onClick={() => produtoOrigemId != null && clonar.mutate({ produtoId, produtoOrigemId })}
-              disabled={produtoOrigemId == null || carregandoOrigem || !origem?.composicao.length || clonar.isPending}
+              disabled={produtoOrigemId == null || carregandoOrigem || (!origem?.composicao.length && !origem?.kit.length) || clonar.isPending}
             >
               {clonar.isPending && <Spinner className="mr-2 h-4 w-4" />}
-              Clonar composição
+              Clonar materiais + kits
             </Button>
           </div>
         </DialogContent>
