@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateImageEdit } from "../_core/llm";
-import { storagePut } from "../db/storage";
 
 const PROMPT_1_PATH = join(process.cwd(), "docs/prompts/prompt-1-reconstrucao-visual.md");
 const PROMPT_1B_PATH = join(process.cwd(), "docs/prompts/prompt-1b-extracao-logo-vetorizacao.md");
@@ -29,8 +28,6 @@ export type RedesenharLetreiroParams = {
 export type RedesenharLetreiroResult = {
   imageBuffer: Buffer;
   mimeType: string;
-  /** Já armazenado no UploadThing — pronto para exibir na tela de aprovação. */
-  url: string;
 };
 
 function instrucaoEscopo(params: RedesenharLetreiroParams): string {
@@ -88,11 +85,8 @@ export async function redesenharLetreiro(
     size: "auto",
   });
 
-  const { url } = await storagePut(
-    `letra-caixa/redesenho-${Date.now()}.png`,
-    buffer,
-    mimeType,
-  );
-
-  return { imageBuffer: buffer, mimeType, url };
+  // A prévia fica no navegador durante a revisão. O upload persistente ocorre
+  // quando a cotação é salva; uma falha temporária do storage não deve bloquear
+  // uma reconstrução já gerada pela OpenAI.
+  return { imageBuffer: buffer, mimeType };
 }

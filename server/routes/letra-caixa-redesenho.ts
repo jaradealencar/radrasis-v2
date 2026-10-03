@@ -219,6 +219,16 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
     res.status(401).json({ error: "Entre no sistema para gerar a reconstrução com GPT." });
     return;
   }
+  if ((process.env.JWT_SECRET?.trim().length ?? 0) < 32) {
+    res.status(503).json({
+      error: "Configure JWT_SECRET com pelo menos 32 caracteres para aprovar e vetorizar a reconstrução.",
+    });
+    return;
+  }
+  if (!process.env.OPENAI_API_KEY?.trim()) {
+    res.status(503).json({ error: "A chave da OpenAI não está configurada no servidor." });
+    return;
+  }
 
   const params = inputSchema.safeParse({
     escopo: req.query.escopo,
@@ -261,21 +271,48 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
         "Content-Type": resultado.mimeType,
         "Cache-Control": "no-store",
         "X-Redesenho-Token": emitirTicketRedesenho(session.user.id, resultado.imageBuffer),
-        "X-Redesenho-Storage-Url": resultado.url,
       })
       .send(resultado.imageBuffer);
   } catch (error) {
     const detalhe = error instanceof Error ? error.message : String(error);
     console.error("[letra-caixa] falha ao gerar reconstrução:", detalhe);
 
-    if (/insufficient_quota|429/i.test(detalhe)) {
+    if (
+      /insufficient_quota|billing_hard_limit_reached|billing_not_active|rate_limit_exceeded|\b429\b/i.test(
+        detalhe,
+      )
+    ) {
       res.status(429).json({
         error: "A OpenAI recusou a geração por limite de uso ou falta de crédito. Verifique o faturamento da API e tente novamente.",
       });
       return;
     }
-    if (/OPENAI_API_KEY/i.test(detalhe)) {
-      res.status(503).json({ error: "A chave da OpenAI não está configurada no servidor." });
+    if (
+      /OPENAI_API_KEY|invalid_api_key|incorrect api key|\b401\b/i.test(detalhe)
+    ) {
+      res.status(503).json({ error: "A chave da OpenAI não está configurada ou não é aceita pela API." });
+      return;
+    }
+    if (
+      /organization_verification_required|organization.{0,40}verif|verif.{0,40}organization/i.test(
+        detalhe,
+      )
+    ) {
+      res.status(503).json({
+        error: "A organização da OpenAI precisa concluir a verificação da API antes de gerar imagens.",
+      });
+      return;
+    }
+    if (/moderation_blocked|content_policy_violation|safety system/i.test(detalhe)) {
+      res.status(422).json({
+        error: "A OpenAI bloqueou esta imagem ou instrução. Revise a foto e tente novamente.",
+      });
+      return;
+    }
+    if (/AbortError|TimeoutError|timed out/i.test(detalhe)) {
+      res.status(504).json({
+        error: "A reconstrução demorou mais de 2 minutos. Tente novamente.",
+      });
       return;
     }
 

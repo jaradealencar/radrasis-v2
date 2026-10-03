@@ -34,4 +34,3 @@ const outPath = fotoPath.slice(0, -ext.length) + "-redesenho.png";
 writeFileSync(outPath, resultado.imageBuffer);
 
 console.log("Salvo localmente em:", outPath);
-console.log("URL pública (UploadThing):", resultado.url);
