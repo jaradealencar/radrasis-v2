@@ -130,6 +130,21 @@ export default function MarketingCampanhasWhatsapp() {
                     <TableRow key={c.id} className={c.status !== "ativa" ? "opacity-60" : undefined}>
                       <TableCell className="font-medium min-w-[13rem] max-w-[17rem] align-top">
                         <span title={c.descricao ?? undefined}>{c.nome}</span>
+                        {/* Pós-venda: quantos clientes já podem receber e quantos aguardam os 16 dias úteis. */}
+                        {c.tipo === "gatilho_venda" && c.status === "ativa" && ((c.clientesPendentes ?? 0) > 0 || (c.clientesAguardando ?? 0) > 0) && (
+                          <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+                            {(c.clientesPendentes ?? 0) > 0 && (
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-700" title="Clientes que já podem receber a mensagem">
+                                {fmtNum(c.clientesPendentes ?? 0)} para contatar
+                              </span>
+                            )}
+                            {(c.clientesAguardando ?? 0) > 0 && (
+                              <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-normal text-amber-800" title="Compraram há menos de 16 dias úteis: ainda não podem receber a mensagem.">
+                                {fmtNum(c.clientesAguardando ?? 0)} aguardando
+                              </span>
+                            )}
+                          </span>
+                        )}
                         <div className="text-[11px] font-normal text-muted-foreground">
                           {labelCategoria(c.categoria)}
                           {" · "}{c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
@@ -155,11 +170,6 @@ export default function MarketingCampanhasWhatsapp() {
                       </TableCell>
                       <TableCell className="align-top min-w-[11rem]">
                         <div className="whitespace-nowrap"><StatusCampanhaBadge campanha={c} hoje={hoje} /></div>
-                        {c.tipo === "gatilho_venda" && c.status === "ativa" && (c.clientesAguardando ?? 0) > 0 && (
-                          <div className="mt-1 max-w-[11rem] text-[11px] leading-tight text-muted-foreground" title="Compraram há menos de 16 dias úteis: ainda não podem receber a mensagem.">
-                            + {fmtNum(c.clientesAguardando ?? 0)} aguardando os 16 dias úteis
-                          </div>
-                        )}
                       </TableCell>
                       <TableCell className="sticky right-0 bg-white align-top shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
                         <div className="flex items-center justify-end gap-1">

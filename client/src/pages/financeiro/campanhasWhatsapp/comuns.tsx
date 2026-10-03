@@ -24,8 +24,8 @@ const plural = (n: number, singular: string, pl: string) => `${n} ${n === 1 ? si
 /** Texto curto do estado da campanha ("Disparar hoje", "Atrasada 3 dias", "Em 5 dias"...). */
 export function textoStatus(c: CampanhaLinha, hoje: string): string {
   if (c.tipo === "gatilho_venda") {
-    if (c.clientesPendentes) return `${plural(c.clientesPendentes, "cliente", "clientes")} para contatar`;
-    if (c.clientesAguardando) return `${plural(c.clientesAguardando, "cliente aguarda", "clientes aguardam")} o prazo`;
+    if (c.clientesPendentes) return "Disparo pendente";
+    if (c.clientesAguardando) return "Aguardando o prazo";
     if (!c.proximoEnvio) return "Sem vendas a vencer";
   }
   if (c.primeiroDisparoPendente) return "1º disparo pendente";
