@@ -10,7 +10,7 @@ import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { propostas, propostaItens, produtos, configuracoesComerciais } from "../../drizzle/schema";
-import { eq, asc, desc, and, inArray } from "drizzle-orm";
+import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
 import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
 
 function gerarToken(): string {
@@ -18,6 +18,74 @@ function gerarToken(): string {
 }
 
 const PREFIXO_COTACAO_ESTUDIO = "[ESTUDIO_COTACAO_V1]";
+
+const medidasNestingSchema = z.object({
+  areaTotalNestingM2: z.number().nonnegative().nullable(),
+  areaM2: z.number().nonnegative().nullable(),
+  areaGeralM2: z.number().nonnegative().nullable(),
+  perimExtM: z.number().nonnegative().nullable(),
+  perimTotalM: z.number().nonnegative().nullable(),
+}).strict();
+
+const materialConfiguracaoSchema = z.object({
+  mubisysMateriaPrimaId: z.number().int().positive().nullable(),
+  nome: z.string().min(1).max(256),
+  unidade: z.string().max(80),
+  custoUnitario: z.number().nonnegative(),
+  quantidade: z.number().nonnegative(),
+  custoTotal: z.number().nonnegative(),
+  formulaType: z.enum(["areaTotal", "area", "areaGeral", "perimExt", "perimTotal", "fixo"]),
+  multiplicador: z.number().nonnegative(),
+  variacaoModeloId: z.number().int().positive().nullable(),
+  variacaoModeloNome: z.string().max(256).nullable(),
+  variacaoMaterial: z.object({
+    nome: z.string().max(80),
+    valor: z.string().max(120),
+    materiaPrimaNome: z.string().max(256),
+  }).nullable(),
+  incluir: z.boolean(),
+}).strict();
+
+const configuracaoItemSchema = z.object({
+  nestingSourceId: z.string().max(80).nullable(),
+  nestingNumero: z.string().max(40).nullable(),
+  nestingModeloNome: z.string().max(256).nullable(),
+  medidas: medidasNestingSchema,
+  variacoesModelo: z.array(z.object({ id: z.number().int().positive(), nome: z.string().max(256) }).strict()).max(100),
+  materiais: z.array(materialConfiguracaoSchema).max(500),
+}).strict();
+
+function lerSnapshotEstudio(observacoes: string | null): Record<string, unknown> | null {
+  if (!observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) return null;
+  try {
+    const snapshot: unknown = JSON.parse(observacoes.slice(PREFIXO_COTACAO_ESTUDIO.length));
+    return snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) ? snapshot as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function nomesVariacoes(configuracao: unknown): { nome: string; valor: string }[] {
+  if (!configuracao || typeof configuracao !== "object" || Array.isArray(configuracao)) return [];
+  const dados = configuracao as Record<string, unknown>;
+  const modelo = Array.isArray(dados.variacoesModelo) ? dados.variacoesModelo.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const linha = item as Record<string, unknown>;
+    return typeof linha.nome === "string" && typeof linha.id === "number"
+      ? [{ nome: "Variação do modelo", valor: linha.nome }]
+      : [];
+  }) : [];
+  const materiais = Array.isArray(dados.materiais) ? dados.materiais.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const linha = item as Record<string, unknown>;
+    if (!linha.variacaoMaterial || typeof linha.variacaoMaterial !== "object" || Array.isArray(linha.variacaoMaterial)) return [];
+    const variacao = linha.variacaoMaterial as Record<string, unknown>;
+    return typeof variacao.nome === "string" && typeof variacao.valor === "string"
+      ? [{ nome: variacao.nome, valor: variacao.valor }]
+      : [];
+  }) : [];
+  return [...new Map([...modelo, ...materiais].map((variacao) => [`${variacao.nome}:${variacao.valor}`, variacao])).values()];
+}
 
 function calcularTotal(itens: { ativo: boolean; precoUnitario: string; quantidade: string }[]): number {
   return itens
@@ -38,6 +106,7 @@ async function carregarItensComProduto(db: NonNullable<Awaited<ReturnType<typeof
       produtoId: propostaItens.produtoId,
       produtoNome: propostaItens.produtoNome,
       descricao: propostaItens.descricao,
+      configuracaoJson: propostaItens.configuracaoJson,
       grupoId: propostaItens.grupoId,
       grupoDescricao: propostaItens.grupoDescricao,
       quantidade: propostaItens.quantidade,
@@ -54,16 +123,19 @@ async function carregarItensComProduto(db: NonNullable<Awaited<ReturnType<typeof
 }
 
 type ItemCarregado = Awaited<ReturnType<typeof carregarItensComProduto>>[number];
+type ItemPublico = Omit<ItemCarregado, "grupoId" | "grupoDescricao" | "produtoId" | "ordem" | "configuracaoJson"> & {
+  variacoes: { nome: string; valor: string }[];
+};
 
 /** Mantém os componentes separados no orçamento, mas entrega um único item por grupo ao cliente. */
 function consolidarItensPublicos(itens: ItemCarregado[]) {
-  const resultado: Omit<ItemCarregado, "grupoId" | "grupoDescricao" | "produtoId" | "ordem">[] = [];
+  const resultado: ItemPublico[] = [];
   const gruposProcessados = new Set<string>();
 
   for (const item of itens) {
     if (!item.grupoId) {
-      const { grupoId: _grupoId, grupoDescricao: _grupoDescricao, produtoId: _produtoId, ordem: _ordem, ...publico } = item;
-      resultado.push(publico);
+      const { grupoId: _grupoId, grupoDescricao: _grupoDescricao, produtoId: _produtoId, ordem: _ordem, configuracaoJson, ...publico } = item;
+      resultado.push({ ...publico, variacoes: nomesVariacoes(configuracaoJson) });
       continue;
     }
     if (gruposProcessados.has(item.grupoId)) continue;
@@ -78,6 +150,7 @@ function consolidarItensPublicos(itens: ItemCarregado[]) {
       0,
     );
 
+    const variacoes = membros.flatMap((membro) => nomesVariacoes(membro.configuracaoJson));
     resultado.push({
       id: item.id,
       produtoNome: "Conjunto",
@@ -87,6 +160,7 @@ function consolidarItensPublicos(itens: ItemCarregado[]) {
       ativo: membros.every((membro) => membro.ativo),
       prazoFabricacaoDiasUteis: prazos.length ? Math.max(...prazos) : null,
       instagramUrl: null,
+      variacoes: [...new Map(variacoes.map((variacao) => [variacao.valor, variacao])).values()],
     });
   }
 
@@ -101,6 +175,62 @@ async function obterConfiguracoes(db: NonNullable<Awaited<ReturnType<typeof getD
 }
 
 export const propostasRouter = router({
+  nestingsEstudio: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    const registros = await db.select({
+      id: propostas.id,
+      clienteNome: propostas.clienteNome,
+      createdAt: propostas.createdAt,
+      observacoes: propostas.observacoes,
+    }).from(propostas)
+      .where(sql`left(${propostas.observacoes}, ${PREFIXO_COTACAO_ESTUDIO.length}) = ${PREFIXO_COTACAO_ESTUDIO}`)
+      .orderBy(desc(propostas.createdAt))
+      .limit(100);
+
+    const numeroOuNulo = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+    return registros.flatMap((registro) => {
+      const snapshot = lerSnapshotEstudio(registro.observacoes);
+      if (!snapshot || typeof snapshot.sourceId !== "string" || typeof snapshot.modeloNome !== "string") return [];
+      const variacoesModelo = Array.isArray(snapshot.variacoesModelo)
+        ? snapshot.variacoesModelo.flatMap((item) => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+            const variacao = item as Record<string, unknown>;
+            return typeof variacao.id === "number" && typeof variacao.nome === "string"
+              ? [{ id: variacao.id, nome: variacao.nome }]
+              : [];
+          })
+        : [];
+      const medidas = {
+        areaTotalNestingM2: numeroOuNulo(snapshot.areaTotalNestingM2),
+        areaM2: numeroOuNulo(snapshot.areaM2),
+        areaGeralM2: numeroOuNulo(snapshot.areaGeralM2),
+        perimExtM: numeroOuNulo(snapshot.perimExtM),
+        perimTotalM: numeroOuNulo(snapshot.perimTotalM),
+      };
+      const materiais = Array.isArray(snapshot.materiais)
+        ? snapshot.materiais.flatMap((item) => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+            const parsed = materialConfiguracaoSchema.safeParse({ ...(item as Record<string, unknown>), incluir: true });
+            return parsed.success ? [parsed.data] : [];
+          })
+        : [];
+      return [{
+        cotacaoId: registro.id,
+        sourceId: snapshot.sourceId,
+        numero: typeof snapshot.numeroCotacao === "string" ? snapshot.numeroCotacao : `COT-${String(registro.id).padStart(6, "0")}`,
+        criadaEm: registro.createdAt,
+        clienteNome: registro.clienteNome,
+        modeloNome: snapshot.modeloNome,
+        mubisysProdutoId: typeof snapshot.mubisysProdutoId === "number" ? snapshot.mubisysProdutoId : null,
+        mubisysModeloId: typeof snapshot.mubisysModeloId === "number" ? snapshot.mubisysModeloId : null,
+        variacoesModelo,
+        medidas,
+        materiais,
+      }];
+    });
+  }),
+
   // ─── Admin ───────────────────────────────────────────────────────────────
   listar: protectedProcedure.query(async () => {
     const db = await getDb();
@@ -232,6 +362,7 @@ export const propostasRouter = router({
         quantidade: z.number().min(0.0001).default(1),
         precoUnitario: z.number().min(0),
         descricao: z.string().max(5000).optional().default(""),
+        configuracao: configuracaoItemSchema.optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -250,6 +381,7 @@ export const propostasRouter = router({
           produtoId: input.produtoId,
           produtoNome: produto.nome,
           descricao: input.descricao,
+          configuracaoJson: input.configuracao ?? {},
           quantidade: String(input.quantidade),
           precoUnitario: String(input.precoUnitario),
           ordem: existentes.length,
@@ -264,6 +396,7 @@ export const propostasRouter = router({
       quantidade: z.number().min(0.0001),
       precoUnitario: z.number().min(0),
       descricao: z.string().max(5000).optional(),
+      configuracao: configuracaoItemSchema.optional(),
     }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -274,6 +407,7 @@ export const propostasRouter = router({
           quantidade: String(input.quantidade),
           precoUnitario: String(input.precoUnitario),
           ...(input.descricao !== undefined ? { descricao: input.descricao } : {}),
+          ...(input.configuracao !== undefined ? { configuracaoJson: input.configuracao } : {}),
         })
         .where(eq(propostaItens.id, input.id));
       return { success: true };

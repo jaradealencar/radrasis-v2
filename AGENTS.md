@@ -328,30 +328,35 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   por navegador, sem persistência no banco. O catálogo do Estúdio lê as
   variações pela API pública e tenta importar a ficha da variação/modelo
   pelo AJAX interno; os custos continuam vindo ao vivo de
-  `listarMateriasPrimas()`. A quantidade importada é aplicada conforme a
-  unidade de cobrança do modelo (área → área, linear → perímetro externo,
-  demais unidades → quantidade fixa); confirme essa regra para unidades
-  MubiSys atípicas. Se a sessão expirar, o formato interno mudar ou não
-  houver composição para a variação, o fluxo preserva a composição manual
-  do Estúdio como fallback. A tela autenticada é uma interface interna e
+  `listarMateriasPrimas()`.
+  No Estúdio, a fórmula padrão acompanha a unidade de consumo da linha MubiSys
+  e as medidas do nesting: área usa a área total das peças, consumo linear usa
+  perímetro externo e demais unidades usam quantidade fixa; o vendedor pode
+  trocar a fórmula no cadastro do kit. Se a sessão expirar, o formato interno
+  mudar ou não houver composição para a variação, o fluxo preserva a composição
+  manual do Estúdio como fallback. A tela autenticada é uma interface interna e
   não oficial do MubiSys: alterações nela podem exigir ajuste do parser e a
   conexão deve ser validada com uma sessão real após publicar a mudança.
   O módulo **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
   `server/routers/produtos.ts`, tabelas `produtos`/
-  `produto_composicao_materiais`/`produto_kit_itens`) importa a ficha do
-  modelo ou variação pela mesma sessão, mostra quantidade, unidade e custo
-  atual para revisão, e grava material, quantidade e unidade de consumo no
-  banco local. As unidades MubiSys são mapeadas para o enum local (`m2`,
-  `ml`, `perimetro`, `unidade`) com possibilidade de ajuste antes de salvar;
-  a importação atualiza linhas com o mesmo material/unidade e preserva os
-  demais itens locais. Cada linha continua podendo ser removida, e a ação
-  "Clonar composição de outro produto" mantém o produto atual e substitui
-  matérias-primas e itens de kit por cópias de um produto de origem. Como o
-  cadastro de Produtos guarda uma composição por modelo, uma ficha específica
-  de variação é importada como a composição do modelo atual. O custo continua
-  vindo ao vivo de `listarMateriasPrimas()`. Como usa a tela interna não
-  oficial do MubiSys, mudanças no formato podem exigir ajuste do parser e a integração deve ser
-  validada com uma sessão real após publicar. O campo `produtos.idPrecificacao`
+  `produto_composicao_materiais`/`produto_kit_itens`) importa a ficha comum do
+  modelo e as fichas de todas as variações pela mesma sessão; mostra
+  quantidade, unidade e custo atual para revisão; e grava as linhas no banco
+  local com id, nome e indicador padrão da variação. As unidades MubiSys são
+  mapeadas para o enum local (`m2`, `ml`, `perimetro`, `unidade`) com
+  possibilidade de ajuste antes de salvar. Cada linha continua podendo ser
+  removida, e a ação "Clonar composição de outro produto" mantém o produto
+  atual e substitui matérias-primas (incluindo seus vínculos de variação) e
+  itens de kit por cópias de um produto de origem. O custo continua vindo ao
+  vivo de `listarMateriasPrimas()`. O Estúdio permite selecionar várias
+  variações do modelo e soma a composição comum às linhas específicas
+  escolhidas; salva as medidas do nesting e os materiais calculados no
+  snapshot da cotação. Comercial > Propostas pode importar medidas de uma
+  cotação salva no Estúdio, permite ajustá-las manualmente, combinar
+  variações e excluir materiais da composição daquele item.
+  A ficha é lida pela interface interna não oficial do MubiSys. Mudanças no
+  formato podem exigir ajuste no parser; valide a integração com sessão real
+  após publicar. O campo `produtos.idPrecificacao`
   referencia um `id` de linha/regra da Tabela de Preços (ver
   `shared/price-table.ts`) só por número — não há resolução automática de
   qual coluna/faixa de valor usar ainda.
@@ -371,6 +376,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   automaticamente, ver ponta solta do módulo Produtos acima).
   Cada linha de `proposta_itens` também tem `descricao`, texto livre por
   produto preenchido pelo vendedor, exibido no link público e no PDF.
+  `proposta_itens.configuracaoJson` guarda, por item, as variações marcadas,
+  o nesting de origem, suas medidas ajustáveis e as matérias-primas com
+  fórmula, quantidade e custo calculados. Propostas importa nestings entre as
+  cotações salvas do Estúdio; o link público mostra os nomes das variações,
+  sem revelar custos ou a composição interna.
   Produtos da mesma cotação podem ser associados por `grupoId` e ganhar uma
   `grupoDescricao` compartilhada: o cálculo interno mantém os componentes
   separados, enquanto o link público e o PDF mostram um único conjunto com

@@ -16,7 +16,7 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { FileText, Plus, Search, Trash2, ArrowLeft, Link as LinkIcon, Settings2, Download, FileDown, Layers, Ungroup } from "lucide-react";
-import { fmtBrl, fmtDateTime } from "@/lib/format";
+import { fmtBrl, fmtDateTime, fmtNum } from "@/lib/format";
 import { enviarArquivo } from "@/lib/upload";
 import { gerarPdfProposta } from "@/lib/pdfProposta";
 
@@ -31,6 +31,143 @@ const STATUS_LABEL: Record<string, string> = {
 
 function linkPublico(token: string): string {
   return `${window.location.origin}/proposta/${token}`;
+}
+
+type MedidasNesting = {
+  areaTotalNestingM2: number | null;
+  areaM2: number | null;
+  areaGeralM2: number | null;
+  perimExtM: number | null;
+  perimTotalM: number | null;
+};
+
+type FormulaMaterial = "areaTotal" | "area" | "areaGeral" | "perimExt" | "perimTotal" | "fixo";
+
+type MaterialCotacao = {
+  mubisysMateriaPrimaId: number | null;
+  nome: string;
+  unidade: string;
+  custoUnitario: number;
+  quantidade: number;
+  custoTotal: number;
+  formulaType: FormulaMaterial;
+  multiplicador: number;
+  variacaoModeloId: number | null;
+  variacaoModeloNome: string | null;
+  variacaoMaterial: { nome: string; valor: string; materiaPrimaNome: string } | null;
+  incluir: boolean;
+};
+
+type ConfiguracaoItemCotacao = {
+  nestingSourceId: string | null;
+  nestingNumero: string | null;
+  nestingModeloNome: string | null;
+  medidas: MedidasNesting;
+  variacoesModelo: { id: number; nome: string }[];
+  materiais: MaterialCotacao[];
+};
+
+const MEDIDAS_VAZIAS: MedidasNesting = {
+  areaTotalNestingM2: null,
+  areaM2: null,
+  areaGeralM2: null,
+  perimExtM: null,
+  perimTotalM: null,
+};
+
+const FORMULA_LABEL: Record<FormulaMaterial, string> = {
+  areaTotal: "Área total do nesting",
+  area: "Área líquida",
+  areaGeral: "Área geral",
+  perimExt: "Perímetro externo",
+  perimTotal: "Perímetro total",
+  fixo: "Quantidade fixa",
+};
+
+const CAMPOS_MEDIDA: { chave: keyof MedidasNesting; rotulo: string; unidade: string }[] = [
+  { chave: "areaTotalNestingM2", rotulo: "Área total das peças", unidade: "m²" },
+  { chave: "areaM2", rotulo: "Área líquida", unidade: "m²" },
+  { chave: "areaGeralM2", rotulo: "Área geral", unidade: "m²" },
+  { chave: "perimExtM", rotulo: "Perímetro externo", unidade: "m" },
+  { chave: "perimTotalM", rotulo: "Perímetro total", unidade: "m" },
+];
+
+function parseMedida(valor: string): number | null {
+  const limpo = valor.trim().replace(/\s/g, "");
+  if (!limpo) return null;
+  const numero = Number(limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo);
+  return Number.isFinite(numero) && numero >= 0 ? numero : null;
+}
+
+function calcularQuantidadeMaterial(material: MaterialCotacao, medidas: MedidasNesting): number {
+  const base = material.formulaType === "fixo" ? 1
+    : material.formulaType === "areaTotal" ? (medidas.areaTotalNestingM2 ?? medidas.areaGeralM2 ?? 0)
+    : material.formulaType === "area" ? (medidas.areaM2 ?? 0)
+    : material.formulaType === "areaGeral" ? (medidas.areaGeralM2 ?? 0)
+    : material.formulaType === "perimExt" ? (medidas.perimExtM ?? 0)
+    : (medidas.perimTotalM ?? 0);
+  return base * material.multiplicador;
+}
+
+function recalcularMateriais(materiais: MaterialCotacao[], medidas: MedidasNesting): MaterialCotacao[] {
+  return materiais.map((material) => {
+    const quantidade = calcularQuantidadeMaterial(material, medidas);
+    return { ...material, quantidade, custoTotal: quantidade * material.custoUnitario };
+  });
+}
+
+function formulaDaUnidade(unidade: string): FormulaMaterial {
+  if (unidade === "m2") return "areaTotal";
+  if (unidade === "ml") return "perimExt";
+  if (unidade === "perimetro") return "perimTotal";
+  return "fixo";
+}
+
+function variacoesDoProduto(composicao: NonNullable<RouterOutputs["produtos"]["obter"]>["composicao"]) {
+  const unicas = new Map<number, { id: number; nome: string; padrao: boolean }>();
+  for (const linha of composicao) {
+    if (linha.mubisysVariacaoId == null) continue;
+    const id = linha.mubisysVariacaoId;
+    const atual = unicas.get(id);
+    unicas.set(id, {
+      id,
+      nome: linha.variacaoNome || `Variação #${id}`,
+      padrao: linha.variacaoPadrao || Boolean(atual?.padrao),
+    });
+  }
+  return [...unicas.values()];
+}
+
+function materiaisDoProduto(
+  composicao: NonNullable<RouterOutputs["produtos"]["obter"]>["composicao"],
+  variacoesSelecionadas: number[],
+  medidas: MedidasNesting,
+): MaterialCotacao[] {
+  const linhas = composicao.filter((linha) => linha.mubisysVariacaoId == null || variacoesSelecionadas.includes(linha.mubisysVariacaoId));
+  return recalcularMateriais(linhas.map((linha) => ({
+    mubisysMateriaPrimaId: linha.mubisysMateriaPrimaId,
+    nome: linha.materialNome,
+    unidade: linha.unidadeConsumo,
+    custoUnitario: linha.custoUnitarioAtual ?? 0,
+    quantidade: 0,
+    custoTotal: 0,
+    formulaType: formulaDaUnidade(linha.unidadeConsumo),
+    multiplicador: Number(linha.quantidade),
+    variacaoModeloId: linha.mubisysVariacaoId,
+    variacaoModeloNome: linha.variacaoNome,
+    variacaoMaterial: null,
+    incluir: true,
+  })), medidas);
+}
+
+function materiaisDoNesting(
+  materiais: RouterOutputs["propostas"]["nestingsEstudio"][number]["materiais"],
+  variacoesSelecionadas: number[],
+  medidas: MedidasNesting,
+): MaterialCotacao[] {
+  return recalcularMateriais(materiais
+    .filter((linha) => linha.variacaoModeloId == null || variacoesSelecionadas.includes(linha.variacaoModeloId))
+    .map((linha) => ({ ...linha, incluir: true })), medidas);
 }
 
 /** Consulta o CNPJ (OpenCNPJ, via backend) e devolve a razão social/nome
@@ -420,10 +557,16 @@ function ItensProposta({
 }) {
   const utils = trpc.useUtils();
   const { data: produtosCadastrados } = trpc.produtos.listar.useQuery();
+  const { data: nestingsSalvas } = trpc.propostas.nestingsEstudio.useQuery();
   const [busca, setBusca] = useState("");
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState("");
+  const [variacoesSelecionadas, setVariacoesSelecionadas] = useState<number[]>([]);
+  const [nestingSourceId, setNestingSourceId] = useState("");
+  const [medidas, setMedidas] = useState<MedidasNesting>(MEDIDAS_VAZIAS);
+  const [materiaisCotacao, setMateriaisCotacao] = useState<MaterialCotacao[]>([]);
   const [quantidade, setQuantidade] = useState("1");
   const [precoUnitario, setPrecoUnitario] = useState("");
+  const [precoEditado, setPrecoEditado] = useState(false);
   const [descricoes, setDescricoes] = useState<Record<number, string>>({});
   const [descricoesGrupo, setDescricoesGrupo] = useState<Record<string, string>>({});
   const [itensSelecionados, setItensSelecionados] = useState<number[]>([]);
@@ -434,18 +577,112 @@ function ItensProposta({
     { id: Number(produtoSelecionadoId) },
     { enabled: !!produtoSelecionadoId },
   );
+  const produtoAtual = produtoDetalhe?.produto.id === Number(produtoSelecionadoId) ? produtoDetalhe : null;
+  const nestingsCompativeis = (nestingsSalvas ?? []).filter((nesting) =>
+    !!produtoAtual
+      && (nesting.mubisysProdutoId == null || nesting.mubisysProdutoId === produtoAtual.produto.mubisysProdutoId)
+      && (nesting.mubisysModeloId == null || nesting.mubisysModeloId === produtoAtual.produto.mubisysModeloId),
+  );
+  const nestingAtivo = nestingsCompativeis.find((nesting) => nesting.sourceId === nestingSourceId);
+  const variacoesProduto = produtoAtual ? variacoesDoProduto(produtoAtual.composicao) : [];
+  const nestingsDoMesmoModelo = nestingsCompativeis.filter((nesting) =>
+    nesting.mubisysProdutoId === produtoAtual?.produto.mubisysProdutoId
+      && nesting.mubisysModeloId === produtoAtual?.produto.mubisysModeloId,
+  );
+  const variacoesDisponiveis = [...new Map([
+    ...variacoesProduto,
+    ...nestingsDoMesmoModelo.flatMap((nesting) => nesting.variacoesModelo.map((variacao) => ({ ...variacao, padrao: false }))),
+    ...(nestingAtivo?.variacoesModelo ?? []).map((variacao) => ({ ...variacao, padrao: false })),
+  ].map((variacao) => [variacao.id, variacao])).values()];
+
+  const montarMateriais = (variacoes: number[], metricas: MedidasNesting, nesting = nestingAtivo) => {
+    if (!produtoAtual) return [];
+    if (nesting && nesting.materiais.length > 0) {
+      const idsDoNesting = nesting.variacoesModelo.map((item) => item.id);
+      if (variacoes.every((id) => idsDoNesting.includes(id))) {
+        return materiaisDoNesting(nesting.materiais, variacoes, metricas);
+      }
+    }
+    return materiaisDoProduto(produtoAtual.composicao, variacoes, metricas);
+  };
+
+  const selecionarNesting = (sourceId: string) => {
+    setNestingSourceId(sourceId === "__manual" ? "" : sourceId);
+    const nesting = nestingsCompativeis.find((item) => item.sourceId === sourceId);
+    if (!nesting || !produtoAtual) {
+      const variacoes = variacoesProduto.filter((item) => item.padrao).map((item) => item.id);
+      const padrao = variacoes.length ? variacoes : variacoesProduto.length === 1 ? [variacoesProduto[0].id] : [];
+      setMedidas(MEDIDAS_VAZIAS);
+      setVariacoesSelecionadas(padrao);
+      setMateriaisCotacao(materiaisDoProduto(produtoAtual?.composicao ?? [], padrao, MEDIDAS_VAZIAS));
+      setPrecoEditado(false);
+      return;
+    }
+    const metricas = nesting.medidas;
+    const variacoes = nesting.variacoesModelo.map((item) => item.id);
+    setMedidas(metricas);
+    setVariacoesSelecionadas(variacoes);
+    setMateriaisCotacao(montarMateriais(variacoes, metricas, nesting));
+    setPrecoEditado(false);
+  };
+
+  const alternarVariacaoProduto = (id: number, selecionada: boolean) => {
+    const novas = selecionada
+      ? [...new Set([...variacoesSelecionadas, id])]
+      : variacoesSelecionadas.filter((variacaoId) => variacaoId !== id);
+    setVariacoesSelecionadas(novas);
+    setMateriaisCotacao(montarMateriais(novas, medidas));
+    setPrecoEditado(false);
+  };
+
+  const alterarMedida = (campo: keyof MedidasNesting, valor: string) => {
+    const novasMedidas = { ...medidas, [campo]: parseMedida(valor) };
+    setMedidas(novasMedidas);
+    setMateriaisCotacao(montarMateriais(variacoesSelecionadas, novasMedidas));
+    setPrecoEditado(false);
+  };
+
+  const alternarMaterial = (indice: number, incluir: boolean) => {
+    setMateriaisCotacao((atuais) => atuais.map((material, idx) => idx === indice ? { ...material, incluir } : material));
+    setPrecoEditado(false);
+  };
 
   useEffect(() => {
-    if (produtoDetalhe) setPrecoUnitario(String(produtoDetalhe.custoComFixo.toFixed(2)));
+    if (!produtoDetalhe) return;
+    const variacoes = variacoesDoProduto(produtoDetalhe.composicao);
+    const padrao = variacoes.filter((item) => item.padrao).map((item) => item.id);
+    const selecionadas = padrao.length ? padrao : variacoes.length === 1 ? [variacoes[0].id] : [];
+    setVariacoesSelecionadas(selecionadas);
+    setNestingSourceId("");
+    setMedidas(MEDIDAS_VAZIAS);
+    setMateriaisCotacao(materiaisDoProduto(produtoDetalhe.composicao, selecionadas, MEDIDAS_VAZIAS));
+    setPrecoEditado(false);
+    setPrecoUnitario(String(produtoDetalhe.custoComFixo.toFixed(2)));
   }, [produtoDetalhe?.produto.id]);
+
+  useEffect(() => {
+    if (!produtoDetalhe || precoEditado) return;
+    const custoMateriais = materiaisCotacao.filter((material) => material.incluir).reduce((total, material) => total + material.custoTotal, 0);
+    const percentualFixo = Number(produtoDetalhe.produto.percentualCustoFixo) || 0;
+    const temMedidas = Object.values(medidas).some((valor) => valor != null);
+    const custoComFixo = temMedidas && materiaisCotacao.length > 0
+      ? custoMateriais * (1 + percentualFixo / 100)
+      : produtoDetalhe.custoComFixo;
+    setPrecoUnitario(custoComFixo.toFixed(2));
+  }, [materiaisCotacao, medidas, produtoDetalhe?.produto.id, precoEditado]);
 
   const adicionar = trpc.propostas.itemAdicionar.useMutation({
     onSuccess: () => {
       toast.success("Item adicionado");
       utils.propostas.obter.invalidate({ id: propostaId });
       setProdutoSelecionadoId("");
+      setVariacoesSelecionadas([]);
+      setNestingSourceId("");
+      setMedidas(MEDIDAS_VAZIAS);
+      setMateriaisCotacao([]);
       setQuantidade("1");
       setPrecoUnitario("");
+      setPrecoEditado(false);
       setBusca("");
     },
     onError: (e) => toast.error("Erro ao adicionar item", { description: e.message }),
@@ -498,6 +735,11 @@ function ItensProposta({
     itens.filter((item) => itensSelecionados.includes(item.id)).map((item) => item.ativo),
   );
   const selecaoComStatusMisturado = statusDosSelecionados.size > 1;
+  const custoMateriaisSelecionados = materiaisCotacao.filter((material) => material.incluir).reduce((total, material) => total + material.custoTotal, 0);
+  const temMedidasCotacao = Object.values(medidas).some((valor) => valor != null);
+  const custoEstimado = temMedidasCotacao && materiaisCotacao.length > 0
+    ? custoMateriaisSelecionados * (1 + (Number(produtoAtual?.produto.percentualCustoFixo) || 0) / 100)
+    : (produtoAtual?.custoComFixo ?? 0);
   const alternarSelecaoItem = (itemId: number, selecionado: boolean) => {
     setItensSelecionados((atuais) => selecionado
       ? [...atuais, itemId]
@@ -511,7 +753,24 @@ function ItensProposta({
       toast.error("Preencha produto, quantidade e preço corretamente");
       return;
     }
-    adicionar.mutate({ propostaId, produtoId: Number(produtoSelecionadoId), quantidade: qtd, precoUnitario: preco });
+    if (!produtoAtual) {
+      toast.error("Aguarde o carregamento do produto");
+      return;
+    }
+    const configuracao: ConfiguracaoItemCotacao = {
+      nestingSourceId: nestingAtivo?.sourceId ?? null,
+      nestingNumero: nestingAtivo?.numero ?? null,
+      nestingModeloNome: nestingAtivo?.modeloNome ?? null,
+      medidas,
+      variacoesModelo: variacoesSelecionadas.map((id) => ({
+        id,
+        nome: variacoesDisponiveis.find((variacao) => variacao.id === id)?.nome
+          ?? nestingAtivo?.variacoesModelo.find((variacao) => variacao.id === id)?.nome
+          ?? `Variação #${id}`,
+      })),
+      materiais: materiaisCotacao,
+    };
+    adicionar.mutate({ propostaId, produtoId: Number(produtoSelecionadoId), quantidade: qtd, precoUnitario: preco, configuracao });
   };
 
   return (
@@ -521,31 +780,131 @@ function ItensProposta({
         <p className="text-xs text-muted-foreground">Produtos vêm do catálogo cadastrado em Comercial &gt; Produtos.</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3 border rounded-lg p-3 bg-muted/30">
-          <div className="space-y-1">
-            <Label className="text-xs">Produto</Label>
-            <div className="flex gap-2">
-              <Input className="w-48 h-8 text-xs" placeholder="Filtrar..." value={busca} onChange={(e) => setBusca(e.target.value)} />
-              <Select value={produtoSelecionadoId} onValueChange={setProdutoSelecionadoId}>
-                <SelectTrigger className="w-56 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  {opcoes.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+        <div className="space-y-4 rounded-lg border p-3 bg-muted/30">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Produto</Label>
+              <div className="flex gap-2">
+                <Input className="w-48 h-8 text-xs" placeholder="Filtrar..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+                <Select value={produtoSelecionadoId} onValueChange={(value) => {
+                  setProdutoSelecionadoId(value);
+                  setVariacoesSelecionadas([]);
+                  setNestingSourceId("");
+                  setMedidas(MEDIDAS_VAZIAS);
+                  setMateriaisCotacao([]);
+                  setPrecoEditado(false);
+                }}>
+                  <SelectTrigger className="w-56 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {opcoes.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Quantidade</Label>
+              <Input className="w-24 h-8 text-xs" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Preço de venda (un.)</Label>
+              <Input className="w-32 h-8 text-xs" value={precoUnitario} onChange={(e) => { setPrecoUnitario(e.target.value); setPrecoEditado(true); }} />
+              {produtoAtual && (
+                <p className="text-[11px] text-muted-foreground">
+                  custo estimado: {fmtBrl(custoEstimado)}
+                </p>
+              )}
+            </div>
+            <Button size="sm" onClick={handleAdicionar} disabled={adicionar.isPending || !produtoAtual}>Adicionar</Button>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Quantidade</Label>
-            <Input className="w-24 h-8 text-xs" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Preço de venda (un.)</Label>
-            <Input className="w-32 h-8 text-xs" value={precoUnitario} onChange={(e) => setPrecoUnitario(e.target.value)} />
-            {produtoDetalhe && (
-              <p className="text-[11px] text-muted-foreground">custo: {fmtBrl(produtoDetalhe.custoComFixo)}</p>
-            )}
-          </div>
-          <Button size="sm" onClick={handleAdicionar} disabled={adicionar.isPending}>Adicionar</Button>
+
+          {produtoAtual && (
+            <div className="space-y-4 border-t pt-4">
+              {variacoesDisponiveis.length > 0 && (
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">Variações do modelo</Label>
+                    <p className="text-[11px] text-muted-foreground">Marque todas as variações e materiais que devem participar deste item.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {variacoesDisponiveis.map((variacao) => (
+                      <label key={variacao.id} className="flex items-center gap-2 text-xs">
+                        <Checkbox
+                          checked={variacoesSelecionadas.includes(variacao.id)}
+                          onCheckedChange={(checked) => alternarVariacaoProduto(variacao.id, checked === true)}
+                        />
+                        <span>{variacao.nome}{variacao.padrao ? " (padrão)" : ""}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_2fr]">
+                <div className="space-y-2">
+                  <Label className="text-xs">Medidas do nesting salvo no Estúdio</Label>
+                  <Select value={nestingSourceId || "__manual"} onValueChange={selecionarNesting}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__manual">Sem nesting — informar medidas</SelectItem>
+                      {nestingsCompativeis.map((nesting) => (
+                        <SelectItem key={nesting.sourceId} value={nesting.sourceId}>
+                          {nesting.numero} · {nesting.modeloNome} · {fmtDateTime(nesting.criadaEm)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">Os valores importados são editáveis. Materiais seguem as fórmulas da composição e atualizam o custo automaticamente.</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  {CAMPOS_MEDIDA.map((campo) => (
+                    <label key={campo.chave} className="space-y-1">
+                      <span className="text-[11px] text-muted-foreground">{campo.rotulo} ({campo.unidade})</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        className="h-8 text-xs"
+                        value={medidas[campo.chave] ?? ""}
+                        onChange={(event) => alterarMedida(campo.chave, event.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-xs">Matérias-primas deste item ({materiaisCotacao.filter((material) => material.incluir).length} selecionadas)</Label>
+                  {nestingAtivo && <Badge variant="outline">Origem: {nestingAtivo.numero}</Badge>}
+                </div>
+                {materiaisCotacao.length === 0 ? (
+                  <p className="rounded-md border p-3 text-xs text-muted-foreground">Não há materiais na composição para as variações selecionadas.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border bg-background">
+                    <Table>
+                      <TableHeader><TableRow><TableHead className="w-10">Usar</TableHead><TableHead>Matéria-prima / variação</TableHead><TableHead>Fórmula</TableHead><TableHead>Qtd. por produto</TableHead><TableHead>Custo unit.</TableHead><TableHead>Custo</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {materiaisCotacao.map((material, index) => (
+                          <TableRow key={`${material.mubisysMateriaPrimaId ?? material.nome}-${material.variacaoModeloId ?? "base"}-${index}`} className={!material.incluir ? "opacity-50" : ""}>
+                            <TableCell><Checkbox checked={material.incluir} onCheckedChange={(checked) => alternarMaterial(index, checked === true)} aria-label={`Incluir ${material.nome}`} /></TableCell>
+                            <TableCell className="font-medium">
+                              {material.nome}
+                              {material.variacaoModeloNome && <div className="text-[11px] font-normal text-muted-foreground">{material.variacaoModeloNome}</div>}
+                              {material.variacaoMaterial && <div className="text-[11px] font-normal text-muted-foreground">{material.variacaoMaterial.nome}: {material.variacaoMaterial.valor}</div>}
+                            </TableCell>
+                            <TableCell className="text-xs">{FORMULA_LABEL[material.formulaType]}</TableCell>
+                            <TableCell className="whitespace-nowrap">{fmtNum(material.quantidade, 3)} {material.unidade}</TableCell>
+                            <TableCell>{fmtBrl(material.custoUnitario)}</TableCell>
+                            <TableCell>{fmtBrl(material.custoTotal)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {itens.length === 0 ? (

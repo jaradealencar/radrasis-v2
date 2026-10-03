@@ -501,6 +501,7 @@ function ComposicaoMateriaPrima({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Modelo / variação</TableHead>
                 <TableHead>Matéria-prima</TableHead>
                 <TableHead>Unidade de consumo</TableHead>
                 <TableHead>Qtd</TableHead>
@@ -512,6 +513,7 @@ function ComposicaoMateriaPrima({
             <TableBody>
               {composicao.map((item) => (
                 <TableRow key={item.id}>
+                  <TableCell className="text-xs">{item.variacaoNome ? `${item.variacaoNome}${item.variacaoPadrao ? " (padrão)" : ""}` : "Comum ao modelo"}</TableCell>
                   <TableCell className="font-medium">{item.materialNome}</TableCell>
                   <TableCell>{UNIDADE_CONSUMO_LABEL[item.unidadeConsumo as UnidadeConsumoMateriaPrima]}</TableCell>
                   <TableCell>{Number(item.quantidade)}</TableCell>
@@ -704,7 +706,6 @@ function MubiSysCompositionImporter({
   const [importando, setImportando] = useState(false);
   const [catalogo, setCatalogo] = useState<CatalogoComposicaoMubiSys | null>(null);
   const [dialogAberto, setDialogAberto] = useState(false);
-  const [variacaoId, setVariacaoId] = useState<number | null>(null);
   const [unidadesEditadas, setUnidadesEditadas] = useState<Record<string, UnidadeConsumoMateriaPrima>>({});
   const [quantidadesEditadas, setQuantidadesEditadas] = useState<Record<string, string>>({});
   const [erro, setErro] = useState("");
@@ -763,15 +764,11 @@ function MubiSysCompositionImporter({
       const linhas = dados.composicoesMubiSys.filter((linha) =>
         linha.modeloId === mubisysModeloId || (linha.modeloId == null && linha.variacaoId != null && variationIds.has(linha.variacaoId)),
       );
-      const rowsByVariation = new Set(linhas.filter((linha) => linha.variacaoId != null).map((linha) => linha.variacaoId as number));
-      const variacoes = [...rowsByVariation].map((id) =>
-        modelo?.variacoes.find((item) => item.id === id) ?? { id, nome: `Variação #${id}`, padrao: false },
-      );
-      const defaultVariation = variacoes.find((item) => item.padrao) ?? variacoes[0];
       const hasModelRows = linhas.some((linha) => linha.variacaoId == null && linha.modeloId === mubisysModeloId);
-      if (!defaultVariation && !hasModelRows) throw new Error("Não encontrei matérias-primas vinculadas a este modelo no MubiSys.");
+      if (!hasModelRows && !linhas.some((linha) => linha.variacaoId != null)) {
+        throw new Error("Não encontrei matérias-primas vinculadas a este modelo no MubiSys.");
+      }
 
-      setVariacaoId(defaultVariation?.id ?? null);
       setUnidadesEditadas({});
       setQuantidadesEditadas({});
       setDialogAberto(true);
@@ -826,15 +823,16 @@ function MubiSysCompositionImporter({
   );
   const variacoesComFicha = [...new Set(linhasDoModelo.map((linha) => linha.variacaoId).filter((id): id is number => id != null))]
     .map((id) => modelo?.variacoes.find((variation) => variation.id === id) ?? { id, nome: `Variação #${id}`, padrao: false });
-  const linhasVariacao = variacaoId == null ? [] : linhasDoModelo.filter((linha) => linha.variacaoId === variacaoId);
   const linhasModeloCompartilhadas = linhasDoModelo.filter((linha) => linha.variacaoId == null && linha.modeloId === mubisysModeloId);
-  const linhasSelecionadas = linhasVariacao.length ? linhasVariacao : linhasModeloCompartilhadas;
+  const linhasSelecionadas = [...linhasModeloCompartilhadas, ...linhasDoModelo.filter((linha) => linha.variacaoId != null)];
   const preview = linhasSelecionadas.map((linha, index) => {
     const materia = catalogo?.materias.find((item) => item.id === linha.materiaPrimaId);
-    const chave = `${variacaoId ?? "modelo"}-${index}-${linha.materiaPrimaId}`;
+    const variacao = linha.variacaoId == null ? null : variacoesComFicha.find((item) => item.id === linha.variacaoId);
+    const chave = `${linha.variacaoId ?? "modelo"}-${index}-${linha.materiaPrimaId}`;
     return {
       linha,
       materia,
+      variacao,
       chave,
       unidade: unidadesEditadas[chave] ?? inferirUnidadeConsumo(linha.unidade || materia?.unidade || "", modelo?.unidade || ""),
       quantidade: quantidadesEditadas[chave] ?? String(linha.quantidade),
@@ -849,18 +847,24 @@ function MubiSysCompositionImporter({
     const linhasAgrupadas = new Map<string, {
       mubisysMateriaPrimaId: number;
       materialNome: string;
+      mubisysVariacaoId: number | null;
+      variacaoNome: string | null;
+      variacaoPadrao: boolean;
       unidadeConsumo: UnidadeConsumoMateriaPrima;
       quantidade: number;
     }>();
     for (const item of preview) {
       if (!item.materia) continue;
       const quantidade = numeroPtBr(item.quantidade);
-      const chave = `${item.materia.id}:${item.unidade}`;
+      const chave = `${item.linha.variacaoId ?? "modelo"}:${item.materia.id}:${item.unidade}`;
       const existente = linhasAgrupadas.get(chave);
       if (existente) existente.quantidade += quantidade;
       else linhasAgrupadas.set(chave, {
         mubisysMateriaPrimaId: item.materia.id,
         materialNome: item.materia.nome,
+        mubisysVariacaoId: item.linha.variacaoId,
+        variacaoNome: item.variacao?.nome ?? null,
+        variacaoPadrao: item.variacao?.padrao ?? false,
         unidadeConsumo: item.unidade,
         quantidade,
       });
@@ -909,36 +913,20 @@ function MubiSysCompositionImporter({
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader><DialogTitle>Importar composição do MubiSys</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Confira quantidade e unidade de consumo. O Radrasys atualiza o mesmo material/unidade e mantém os outros itens cadastrados manualmente.</p>
-          {variacoesComFicha.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Ficha do modelo / variação</Label>
-              <Select value={variacaoId == null ? "modelo" : String(variacaoId)} onValueChange={(value) => setVariacaoId(value === "modelo" ? null : Number(value))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {linhasModeloCompartilhadas.length > 0 && <SelectItem value="modelo">Composição padrão do modelo</SelectItem>}
-                  {variacoesComFicha.map((variation) => <SelectItem key={variation.id} value={String(variation.id)}>{variation.nome}{variation.padrao ? " (padrão)" : ""}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <p className="text-sm text-muted-foreground">O Radrasys importa a composição comum do modelo e a ficha de cada variação. Na cotação, você escolhe quais variações entram e pode remover materiais quando necessário.</p>
           <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
             Quantidade e unidade informadas na ficha vêm do MubiSys. Quando falta unidade, a sugestão usa a unidade do modelo. Revise a unidade de consumo antes de salvar.
           </div>
-          {variacaoId != null && (
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
-              O cadastro de Produtos guarda uma composição por modelo. A ficha de “{variacoesComFicha.find((item) => item.id === variacaoId)?.nome ?? "variação selecionada"}” será usada como composição deste modelo; os demais materiais locais serão preservados.
-            </p>
-          )}
           {preview.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Não há matérias-primas cadastradas para esta opção no MubiSys.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border">
               <Table>
-                <TableHeader><TableRow><TableHead>Matéria-prima</TableHead><TableHead>Quantidade</TableHead><TableHead>Unidade MubiSys</TableHead><TableHead>Consumo Radrasys</TableHead><TableHead>Custo atual</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Variação</TableHead><TableHead>Matéria-prima</TableHead><TableHead>Quantidade</TableHead><TableHead>Unidade MubiSys</TableHead><TableHead>Consumo Radrasys</TableHead><TableHead>Custo atual</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {preview.map((item) => (
                     <TableRow key={item.chave}>
+                      <TableCell className="text-xs">{item.variacao ? `${item.variacao.nome}${item.variacao.padrao ? " (padrão)" : ""}` : "Comum ao modelo"}</TableCell>
                       <TableCell className="font-medium">{item.materia?.nome ?? `Matéria-prima #${item.linha.materiaPrimaId} não encontrada`}</TableCell>
                       <TableCell><Input className="h-8 w-24" inputMode="decimal" value={item.quantidade} onChange={(event) => setQuantidadesEditadas((atual) => ({ ...atual, [item.chave]: event.target.value }))} /></TableCell>
                       <TableCell className="text-xs text-muted-foreground">{item.linha.unidade || item.materia?.unidade || "—"}</TableCell>
@@ -960,7 +948,7 @@ function MubiSysCompositionImporter({
             <Button variant="outline" onClick={() => setDialogAberto(false)}>Cancelar</Button>
             <Button onClick={confirmarImportacao} disabled={!previewValido || importando || importar.isPending}>
               {(importando || importar.isPending) && <Spinner className="mr-2 h-4 w-4" />}
-              Importar {preview.length} {preview.length === 1 ? "material" : "materiais"}
+              Importar {preview.length} {preview.length === 1 ? "linha" : "linhas"} de composição
             </Button>
           </div>
         </DialogContent>

@@ -6,7 +6,7 @@ export interface PropostaParaPdf {
   clienteNome: string;
   vendedorNome: string;
   createdAt: Date | string;
-  itens: { produtoNome: string; descricao?: string | null; quantidade: string | number; precoUnitario: string | number; ativo: boolean }[];
+  itens: { produtoNome: string; descricao?: string | null; variacoes?: { nome: string; valor: string }[]; quantidade: string | number; precoUnitario: string | number; ativo: boolean }[];
   valorTotal: number;
   prazoFabricacaoDiasUteis: number | null;
   formasPagamento: string[];
@@ -31,12 +31,18 @@ export function gerarPdfProposta(p: PropostaParaPdf) {
   autoTable(doc, {
     startY: 50,
     head: [["Produto", "Qtd", "Preço unit.", "Subtotal"]],
-    body: itensAtivos.map((i) => [
-      i.descricao?.trim() ? `${i.produtoNome}\n${i.descricao}` : i.produtoNome,
-      String(Number(i.quantidade)),
-      fmtBrl(Number(i.precoUnitario)),
-      fmtBrl(Number(i.precoUnitario) * Number(i.quantidade)),
-    ]),
+    body: itensAtivos.map((i) => {
+      const detalhes = [
+        i.variacoes?.length ? `Variações: ${i.variacoes.map((variacao) => `${variacao.nome}: ${variacao.valor}`).join(", ")}` : "",
+        i.descricao?.trim() ?? "",
+      ].filter(Boolean).join("\n");
+      return [
+        detalhes ? `${i.produtoNome}\n${detalhes}` : i.produtoNome,
+        String(Number(i.quantidade)),
+        fmtBrl(Number(i.precoUnitario)),
+        fmtBrl(Number(i.precoUnitario) * Number(i.quantidade)),
+      ];
+    }),
     foot: [["", "", "Total", fmtBrl(p.valorTotal)]],
     theme: "grid",
     headStyles: { fillColor: [30, 111, 217] },

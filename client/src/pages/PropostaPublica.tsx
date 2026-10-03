@@ -80,6 +80,11 @@ export default function PropostaPublica() {
               <div key={item.id} className={`py-3 flex items-center justify-between gap-3 ${!item.ativo ? "opacity-50" : ""}`}>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{item.produtoNome}</p>
+                  {item.variacoes.length > 0 && (
+                    <p className="mt-0.5 text-xs text-gray-600">
+                      Variações: {item.variacoes.map((variacao) => `${variacao.nome}: ${variacao.valor}`).join(", ")}
+                    </p>
+                  )}
                   {item.descricao?.trim() && (
                     <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{item.descricao}</p>
                   )}

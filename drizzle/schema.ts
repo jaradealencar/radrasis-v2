@@ -323,6 +323,11 @@ export const produtoComposicaoMateriais = pgTable("produto_composicao_materiais"
   produtoId: integer("produtoId").notNull().references(() => produtos.id, { onDelete: "cascade" }),
   mubisysMateriaPrimaId: integer("mubisysMateriaPrimaId").notNull(),
   materialNome: varchar("materialNome", { length: 256 }).notNull(),
+  // Linhas sem variação são comuns ao modelo; linhas com id são consumos
+  // específicos de uma variação comercial do MubiSys.
+  mubisysVariacaoId: integer("mubisysVariacaoId"),
+  variacaoNome: varchar("variacaoNome", { length: 256 }),
+  variacaoPadrao: boolean("variacaoPadrao").notNull().default(false),
   unidadeConsumo: unidadeConsumoMateriaPrimaEnum("unidadeConsumo").notNull(),
   quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("0"),
   ordem: integer("ordem").notNull().default(0),
@@ -390,6 +395,8 @@ export const propostaItens = pgTable("proposta_itens", {
   produtoNome: varchar("produtoNome", { length: 256 }).notNull(),
   // Texto livre do vendedor sobre este item, exibido na cotação pública e no PDF.
   descricao: text("descricao").notNull().default(""),
+  // Snapshot da nesting, variações selecionadas e consumo de cada matéria-prima.
+  configuracaoJson: jsonb("configuracaoJson").$type<Record<string, unknown>>().notNull().default({}),
   // Componentes seguem separados para custo/cálculo, mas podem ser exibidos
   // como um único conjunto na proposta pública.
   grupoId: varchar("grupoId", { length: 36 }),

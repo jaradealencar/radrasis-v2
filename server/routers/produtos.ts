@@ -201,6 +201,9 @@ export const produtosRouter = router({
         produtoId: z.number(),
         mubisysMateriaPrimaId: z.number(),
         materialNome: z.string().min(1),
+        mubisysVariacaoId: z.number().int().positive().nullable().optional(),
+        variacaoNome: z.string().max(256).nullable().optional(),
+        variacaoPadrao: z.boolean().optional().default(false),
         unidadeConsumo: unidadeConsumoSchema,
         quantidade: z.number(),
       }),
@@ -218,6 +221,9 @@ export const produtosRouter = router({
           produtoId: input.produtoId,
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
           materialNome: input.materialNome,
+          mubisysVariacaoId: input.mubisysVariacaoId ?? null,
+          variacaoNome: input.variacaoNome ?? null,
+          variacaoPadrao: input.variacaoPadrao,
           unidadeConsumo: input.unidadeConsumo,
           quantidade: String(input.quantidade),
           ordem: existentes.length,
@@ -234,6 +240,9 @@ export const produtosRouter = router({
           z.object({
             mubisysMateriaPrimaId: z.number().int().positive(),
             materialNome: z.string().min(1).max(256),
+            mubisysVariacaoId: z.number().int().positive().nullable().optional(),
+            variacaoNome: z.string().max(256).nullable().optional(),
+            variacaoPadrao: z.boolean().optional().default(false),
             unidadeConsumo: unidadeConsumoSchema,
             quantidade: z.number().min(0).max(99999999.9999),
           }),
@@ -251,6 +260,7 @@ export const produtosRouter = router({
         .select({
           id: produtoComposicaoMateriais.id,
           mubisysMateriaPrimaId: produtoComposicaoMateriais.mubisysMateriaPrimaId,
+          mubisysVariacaoId: produtoComposicaoMateriais.mubisysVariacaoId,
           unidadeConsumo: produtoComposicaoMateriais.unidadeConsumo,
           ordem: produtoComposicaoMateriais.ordem,
         })
@@ -264,7 +274,9 @@ export const produtosRouter = router({
 
       for (const linha of input.linhas) {
         const indiceExistente = existentes.findIndex(
-          item => item.mubisysMateriaPrimaId === linha.mubisysMateriaPrimaId && item.unidadeConsumo === linha.unidadeConsumo,
+          item => item.mubisysMateriaPrimaId === linha.mubisysMateriaPrimaId
+            && item.mubisysVariacaoId === (linha.mubisysVariacaoId ?? null)
+            && item.unidadeConsumo === linha.unidadeConsumo,
         );
         const existente = indiceExistente >= 0 ? existentes.splice(indiceExistente, 1)[0] : undefined;
 
@@ -273,6 +285,9 @@ export const produtosRouter = router({
             .update(produtoComposicaoMateriais)
             .set({
               materialNome: linha.materialNome,
+              mubisysVariacaoId: linha.mubisysVariacaoId ?? null,
+              variacaoNome: linha.variacaoNome ?? null,
+              variacaoPadrao: linha.variacaoPadrao,
               quantidade: String(linha.quantidade),
               updatedAt: new Date(),
             })
@@ -283,6 +298,9 @@ export const produtosRouter = router({
             produtoId: input.produtoId,
             mubisysMateriaPrimaId: linha.mubisysMateriaPrimaId,
             materialNome: linha.materialNome,
+            mubisysVariacaoId: linha.mubisysVariacaoId ?? null,
+            variacaoNome: linha.variacaoNome ?? null,
+            variacaoPadrao: linha.variacaoPadrao,
             unidadeConsumo: linha.unidadeConsumo,
             quantidade: String(linha.quantidade),
             ordem: proximaOrdem++,
@@ -331,6 +349,9 @@ export const produtosRouter = router({
         const valores = {
           mubisysMateriaPrimaId: material.mubisysMateriaPrimaId,
           materialNome: material.materialNome,
+          mubisysVariacaoId: material.mubisysVariacaoId,
+          variacaoNome: material.variacaoNome,
+          variacaoPadrao: material.variacaoPadrao,
           unidadeConsumo: material.unidadeConsumo,
           quantidade: material.quantidade,
           ordem,

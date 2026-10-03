@@ -521,7 +521,7 @@ function bindMubiSysConnectionEvents(){
       if(REAL.produtoId&&REAL.modeloId){
         const produto=catalog.produtos.find(p=>p.id===REAL.produtoId);
         const modelo=produto?.modelos.find(m=>m.id===REAL.modeloId);
-        carregarComposicaoModeloReal(produto,modelo,REAL.variacaoModeloId);
+        carregarComposicaoModeloReal(produto,modelo,REAL.variacaoModeloIds);
       }
     }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível desconectar agora.')};}
     render();
@@ -769,7 +769,8 @@ function novaProposta(){
     consultaCnpj:{status:'idle', mensagem:''},
     vendedor:'',
     escopoRedesenho:'somente_logo', elementosSelecionados:'',
-    produtoId:null, modeloId:null, modeloNome:null, variacaoModeloId:null, variacaoModeloNome:null, descricaoProduto:'',
+    produtoId:null, modeloId:null, modeloNome:null, variacaoModeloId:null, variacaoModeloNome:null,
+    variacaoModeloIds:[], variacaoModeloNomes:[], descricaoProduto:'',
     sourceKind:null, // 'raster' | 'vetor' — define qual caminho de processamento
     uploadError:null, uploadWarning:null, gerandoRedesenho:false,
     imgOriginal:null, imgReconstructed:null, imgPreview:null,
@@ -905,7 +906,7 @@ function medirSobreposicaoVetor(bin,d,w,h){
 
 function computeGeomReal(){
   const g = REAL.geomRaw;
-  if(!g || !g.bboxPx.w) return {scaleFactor:0,totalWidthM:0,totalHeightM:0,areaM2:0,areaGeralM2:0,perimExtM:0,perimIntM:0,corteTotalM:0};
+  if(!g || !g.bboxPx.w) return {scaleFactor:0,totalWidthM:0,totalHeightM:0,areaM2:0,areaGeralM2:0,areaTotalNestingM2:0,perimExtM:0,perimIntM:0,corteTotalM:0};
   const s = REAL.scale;
   const knownM = unitToM(s.valor, s.unidade);
   const refPx = s.byHeight ? g.bboxPx.h : g.bboxPx.w;
@@ -923,6 +924,7 @@ function computeGeomReal(){
     // fórmula "por área" sempre subestimava o consumo real de chapa.
     areaM2: g.areaPx*scaleFactor*scaleFactor,
     areaGeralM2: totalWidthM*totalHeightM,
+    areaTotalNestingM2: (g.pieces||[]).reduce((total,p)=>total+p.bbox.width*p.bbox.height,0)*scaleFactor*scaleFactor,
     perimExtM: g.perimExtPx*scaleFactor,
     perimIntM: g.perimIntPx*scaleFactor,
     corteTotalM: (g.perimExtPx+g.perimIntPx)*scaleFactor,
@@ -1292,6 +1294,7 @@ function packPiecesReal(sheetWmm, sheetHmm, gapMm){
 
 /* ---------- COMPOSIÇÃO (KIT) REAL — matéria-prima real do MubiSys ---------- */
 const FORMULA_TYPES = {
+  areaTotal: {label:'Área total das peças no nesting (m²)', calc:(g,mult)=> (g.areaTotalNestingM2||g.areaGeralM2||0)*mult},
   area: {label:'Área líquida (m²) — conteúdo da letra', calc:(g,mult)=> g.areaM2*mult},
   areaGeral: {label:'Área geral (m²) — chapa consumida', calc:(g,mult)=> (g.areaGeralM2||0)*mult},
   perimExt: {label:'Perímetro externo', calc:(g,mult)=> g.perimExtM*mult},
@@ -1334,11 +1337,11 @@ function materialKitAtivo(line){
   return variacao?{...line,...variacao}:line;
 }
 function variacoesSelecionadasCotacao(){
-  const variacoesModelo = REAL.variacaoModeloNome ? [{nome:'Variação do modelo',valor:String(REAL.variacaoModeloNome).slice(0,120)}] : [];
+  const variacoesModelo = (REAL.variacaoModeloNomes||[]).map(nome=>({nome:'Variação do modelo',valor:String(nome).slice(0,120)}));
   return [...variacoesModelo,...REAL.kit.flatMap(line=>{
     const variacao=(Array.isArray(line.variantes)?line.variantes:[]).find(item=>String(item.matId)===String(line.variacaoSelecionadaMatId));
     return variacao?[{nome:String(line.variacaoNome||'Variação').slice(0,80),valor:String(variacao.valor||variacao.nome||'').slice(0,120)}]:[];
-  })];
+  })].slice(0,100);
 }
 
 function variacoesAtivasDoModelo(modelo){
@@ -1346,33 +1349,39 @@ function variacoesAtivasDoModelo(modelo){
 }
 function formulaPorUnidadeModelo(unidade){
   const u=normalizeSearch(String(unidade||'')).replace(/²/g,'2');
-  if(u.includes('area')||u.includes('quadrad')||u.includes('m2')||u.includes('metro quadrado')) return 'area';
+  if(u.includes('area')||u.includes('quadrad')||u.includes('m2')||u.includes('metro quadrado')) return 'areaTotal';
   if(u.includes('perimetro')||u.includes('linear')||u.includes('comprimento')||u==='m'||u.includes('metro linear')) return 'perimExt';
   return 'fixo';
 }
-function composicaoMubiSysDoModelo(modelo, variacaoId){
+function composicaoMubiSysDoModelo(modelo, variacaoIds){
   const todas=Array.isArray(catalog.composicoesMubiSys)?catalog.composicoesMubiSys:[];
-  let registros=variacaoId ? todas.filter(item=>Number(item.variacaoId)===Number(variacaoId)) : [];
-  if(!registros.length) registros=todas.filter(item=>!item.variacaoId&&Number(item.modeloId)===Number(modelo.id));
+  const ids=new Set((Array.isArray(variacaoIds)?variacaoIds:variacaoIds?[variacaoIds]:[]).map(Number));
+  const variacoes=todas.filter(item=>item.variacaoId!=null&&ids.has(Number(item.variacaoId)));
+  const compartilhadas=todas.filter(item=>!item.variacaoId&&Number(item.modeloId)===Number(modelo.id));
+  const registros=[...compartilhadas,...variacoes];
   if(!registros.length) return null;
-  const formulaType=formulaPorUnidadeModelo(modelo.unidade);
   const linhas=[];
   for(const item of registros){
     const m=catalog.materias.find(x=>Number(x.id)===Number(item.materiaPrimaId));
     if(!m) return {erro:`A matéria-prima ${item.materiaPrimaId} desta composição não está no catálogo atual do MubiSys.`};
-    linhas.push({matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',formulaType,mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,consumoBaseUnidade:modelo.unidade||'unidade',unidadeConsumo:item.unidade||m.unidade});
+    const variacao=item.variacaoId==null?null:variacoesAtivasDoModelo(modelo).find(v=>Number(v.id)===Number(item.variacaoId));
+    const unidadeConsumo=item.unidade||m.unidade||modelo.unidade||'unidade';
+    linhas.push({matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',formulaType:formulaPorUnidadeModelo(unidadeConsumo),mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,consumoBaseUnidade:variacao?.nome||modelo.unidade||'unidade',unidadeConsumo,variacaoModeloId:item.variacaoId??null,variacaoModeloNome:variacao?.nome||null});
   }
   return {linhas};
 }
-function carregarComposicaoModeloReal(produto, modelo, variacaoId){
+function carregarComposicaoModeloReal(produto, modelo, variacaoIds){
   const kitPronto=produto&&modelo?adminState.kits[kitKey(produto.id,modelo.id)]:null;
-  const variacao=variacoesAtivasDoModelo(modelo).find(item=>Number(item.id)===Number(variacaoId));
-  REAL.variacaoModeloId=variacao?Number(variacao.id):null;
-  REAL.variacaoModeloNome=variacao?.nome||null;
+  const ids=(Array.isArray(variacaoIds)?variacaoIds:variacaoIds?[variacaoIds]:[]).map(Number).filter(Number.isFinite);
+  const variacoes=variacoesAtivasDoModelo(modelo).filter(item=>ids.includes(Number(item.id)));
+  REAL.variacaoModeloIds=variacoes.map(item=>Number(item.id));
+  REAL.variacaoModeloNomes=variacoes.map(item=>item.nome);
+  REAL.variacaoModeloId=REAL.variacaoModeloIds[0]??null;
+  REAL.variacaoModeloNome=REAL.variacaoModeloNomes.join(', ')||null;
   REAL.modeloNome=modelo?`${produto.nome} — ${modelo.nome}`:null;
   REAL.descricaoProduto=kitPronto?.descricaoProduto||'';
   REAL.precificacao=kitPronto?.precificacao?{...kitPronto.precificacao}:null;
-  const importada=modelo?composicaoMubiSysDoModelo(modelo,REAL.variacaoModeloId):null;
+  const importada=modelo?composicaoMubiSysDoModelo(modelo,REAL.variacaoModeloIds):null;
   if(importada?.linhas){
     REAL.kit=importada.linhas;
     REAL.kitSource='mubisys';
@@ -2068,7 +2077,7 @@ function renderComposicaoDoModelo(kitPronto){
   const vinculados=Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[];
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
     <div style="font-weight:700;">Composição e produtos do kit</div>
-    <p class="role-note" style="margin-top:5px;">Confira as matérias-primas carregadas para o modelo e a variação escolhida. O custo atual de cada matéria-prima vem do catálogo do MubiSys.</p>
+    <p class="role-note" style="margin-top:5px;">Confira as matérias-primas comuns ao modelo e as específicas das variações selecionadas. O custo atual de cada matéria-prima vem do catálogo do MubiSys.</p>
     ${REAL.kitSource==='mubisys'?`<div class="banner" style="margin:10px 0 0;">${ICONS.info}<div>Consumo importado da ficha do MubiSys para <b>${escaparHtml(REAL.variacaoModeloNome||modeloNomePorKey(kitKey(REAL.produtoId,REAL.modeloId)))}</b>. O cálculo acompanha a unidade de cobrança do modelo.</div></div>`:''}
     ${REAL.kitWarning?`<div class="warnbox" style="margin-top:10px;">${escaparHtml(REAL.kitWarning)}</div>`:''}
     <div class="grid2" style="margin-top:12px;align-items:start;">
@@ -2121,9 +2130,9 @@ function realStepProposta(){
   const modelosOptions = produtoSel ? modelosDoProduto.map(m=>`<option value="${m.id}" ${REAL.modeloId===m.id?'selected':''}>${m.nome} · ${skuModelo(produtoSel.id,m.id)}${m.unidade?` (${m.unidade})`:''}${adminState.kits[kitKey(produtoSel.id,m.id)]?' ✓ composição pronta':''}</option>`).join('') : '';
   const modeloSel = produtoSel ? modelosDoProduto.find(m=>m.id===REAL.modeloId) : null;
   const variacoesModelo = modeloSel ? variacoesAtivasDoModelo(modeloSel) : [];
-  const variacoesOptions = variacoesModelo.map(v=>`<option value="${v.id}" ${Number(REAL.variacaoModeloId)===Number(v.id)?'selected':''}>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</option>`).join('');
+  const variacoesSelecionadas = new Set((REAL.variacaoModeloIds||[]).map(Number));
   const kitPronto = produtoSel && modeloSel ? adminState.kits[kitKey(produtoSel.id, modeloSel.id)] : null;
-  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || REAL.variacaoModeloId) && REAL.vendedor;
+  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || variacoesSelecionadas.size>0) && REAL.vendedor;
 
   const subcatsDoFiltro = REAL.filtroCategoria ? Object.keys(CATEGORIAS_PRODUTO[REAL.filtroCategoria]) : [];
   const tiposDoFiltro = (REAL.filtroCategoria && REAL.filtroSubcategoria) ? CATEGORIAS_PRODUTO[REAL.filtroCategoria][REAL.filtroSubcategoria] : [];
@@ -2185,9 +2194,11 @@ function realStepProposta(){
         <select data-act="real-modelo" ${!produtoSel?'disabled':''}><option value="">${produtoSel?'Selecione…':'Escolha um produto primeiro'}</option>${modelosOptions}</select>
       </label>
     </div>
-    ${variacoesModelo.length?`<div style="max-width:560px;margin-top:12px;"><label class="field">Variação do modelo (MubiSys)
-      <select data-act="real-variacao-modelo"><option value="">Selecione a variação…</option>${variacoesOptions}</select>
-    </label><div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Cada variação pode carregar seu próprio consumo de matéria-prima.</div></div>`:''}
+    ${variacoesModelo.length?`<div style="max-width:680px;margin-top:12px;"><div class="field">Variações do modelo (MubiSys) — selecione as que entram na cotação
+      <div style="display:grid;gap:6px;margin-top:7px;">
+        ${variacoesModelo.map(v=>`<label style="display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12px;"><input type="checkbox" data-act="real-variacao-modelo" data-val="${v.id}" ${variacoesSelecionadas.has(Number(v.id))?'checked':''}><span>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span></label>`).join('')}
+      </div>
+    </div><div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Você pode combinar várias variações. O consumo comum ao modelo e os materiais específicos selecionados serão somados.</div></div>`:''}
     ${renderConexaoMubiSys()}
     ${modeloSel? `<div class="card" style="background:var(--surface-2); box-shadow:none; margin-top:12px;">
       <div style="display:flex; gap:12px; align-items:flex-start;">
@@ -2990,6 +3001,24 @@ function snapshotCotacaoReal(){
   const g = computeGeomReal();
   const o = computeOrcamentoReal();
   const kitPronto = REAL.produtoId && REAL.modeloId ? adminState.kits[kitKey(REAL.produtoId, REAL.modeloId)] : null;
+  const materiais = (REAL.kit||[]).map(linha=>{
+    const material=materialKitAtivo(linha);
+    const quantidade=Math.max(0,kitLineQty(linha,g));
+    const alternativa=(Array.isArray(linha.variantes)?linha.variantes:[]).find(item=>String(item.matId)===String(linha.variacaoSelecionadaMatId));
+    return {
+      mubisysMateriaPrimaId:Number(material.matId)||null,
+      nome:String(material.nome||''),
+      unidade:String(material.unidade||''),
+      custoUnitario:Number(material.custo)||0,
+      quantidade:Number.isFinite(quantidade)?quantidade:0,
+      custoTotal:Number.isFinite(quantidade)?quantidade*(Number(material.custo)||0):0,
+      formulaType:String(linha.formulaType||'fixo'),
+      multiplicador:Math.max(0,Number(linha.mult)||0),
+      variacaoModeloId:linha.variacaoModeloId??null,
+      variacaoModeloNome:linha.variacaoModeloNome||null,
+      variacaoMaterial:alternativa?{nome:String(linha.variacaoNome||'Variação'),valor:String(alternativa.valor||alternativa.nome||''),materiaPrimaNome:String(alternativa.nome||'')}:null,
+    };
+  });
   return {
     dataEmissao: REAL.dataEmissao,
     validadeDias: REAL.validadeDias || 20,
@@ -3007,11 +3036,18 @@ function snapshotCotacaoReal(){
     },
     vendedor:REAL.vendedor || '',
     whatsappVendedor:normalizarTelefoneWhatsApp(configGeral.whatsappVendedores[REAL.vendedor]) || null,
-    modeloNome:REAL.variacaoModeloNome ? `${REAL.modeloNome || ''} — ${REAL.variacaoModeloNome}` : (REAL.modeloNome || ''),
+    mubisysProdutoId:REAL.produtoId,
+    mubisysModeloId:REAL.modeloId,
+    variacoesModelo:(REAL.variacaoModeloIds||[]).map((id,index)=>({id,nome:REAL.variacaoModeloNomes?.[index]||''})),
+    modeloNome:(REAL.variacaoModeloNome ? `${REAL.modeloNome || ''} — ${REAL.variacaoModeloNome}` : (REAL.modeloNome || '')).slice(0,256),
     descricaoProduto:REAL.descricaoProduto || '',
     variacoes:variacoesSelecionadasCotacao(),
     areaM2:Number.isFinite(g.areaM2) ? g.areaM2 : null,
     areaGeralM2:Number.isFinite(g.areaGeralM2) ? g.areaGeralM2 : null,
+    areaTotalNestingM2:Number.isFinite(g.areaTotalNestingM2) ? g.areaTotalNestingM2 : null,
+    perimExtM:Number.isFinite(g.perimExtM) ? g.perimExtM : null,
+    perimTotalM:Number.isFinite(g.corteTotalM) ? g.corteTotalM : null,
+    materiais,
     precoFinal:o.precoFinal,
     prazoDiasUteis:kitPronto?.prazoDiasUteis ?? null,
     status:'enviado',
@@ -4677,23 +4713,23 @@ function bindRealEvents(){
   const filtroCatEl = document.querySelector('[data-act="real-filtro-categoria"]');
   if(filtroCatEl) filtroCatEl.addEventListener('change', e=>{
     REAL.filtroCategoria = e.target.value||null; REAL.filtroSubcategoria=null; REAL.filtroTipo=null;
-    REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null;
+    REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[];
     render();
   });
   const filtroSubEl = document.querySelector('[data-act="real-filtro-subcategoria"]');
   if(filtroSubEl) filtroSubEl.addEventListener('change', e=>{
     REAL.filtroSubcategoria = e.target.value||null; REAL.filtroTipo=null;
-    REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null;
+    REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[];
     render();
   });
   const filtroTipoEl = document.querySelector('[data-act="real-filtro-tipo"]');
   if(filtroTipoEl) filtroTipoEl.addEventListener('change', e=>{
     REAL.filtroTipo = e.target.value||null;
-    REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null;
+    REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[];
     render();
   });
   const produtoEl = document.querySelector('[data-act="real-produto"]');
-  if(produtoEl) produtoEl.addEventListener('change', e=>{ REAL.produtoId=parseInt(e.target.value)||null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.kit=[]; REAL.kitSource='nenhuma'; REAL.kitWarning=null; REAL.descricaoProduto=''; render(); });
+  if(produtoEl) produtoEl.addEventListener('change', e=>{ REAL.produtoId=parseInt(e.target.value)||null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[]; REAL.kit=[]; REAL.kitSource='nenhuma'; REAL.kitWarning=null; REAL.descricaoProduto=''; render(); });
   const modeloEl = document.querySelector('[data-act="real-modelo"]');
   if(modeloEl) modeloEl.addEventListener('change', e=>{
     const novoModeloId=parseInt(e.target.value)||null;
@@ -4703,16 +4739,16 @@ function bindRealEvents(){
     const mod = prod && prod.modelos.find(m=>m.id===REAL.modeloId);
     const variacoes=variacoesAtivasDoModelo(mod);
     const variacaoPadrao=variacoes.find(v=>v.padrao) || (variacoes.length===1?variacoes[0]:null);
-    carregarComposicaoModeloReal(prod,mod,variacaoPadrao?.id||null);
+    carregarComposicaoModeloReal(prod,mod,variacaoPadrao?[variacaoPadrao.id]:[]);
     render();
   });
-  const variacaoModeloEl=document.querySelector('[data-act="real-variacao-modelo"]');
-  if(variacaoModeloEl) variacaoModeloEl.addEventListener('change',e=>{
+  document.querySelectorAll('[data-act="real-variacao-modelo"]').forEach(variacaoModeloEl=>variacaoModeloEl.addEventListener('change',()=>{
     const prod=catalog.produtos.find(p=>p.id===REAL.produtoId);
     const mod=prod?.modelos.find(m=>m.id===REAL.modeloId);
-    carregarComposicaoModeloReal(prod,mod,parseInt(e.target.value)||null);
+    const variacaoIds=[...document.querySelectorAll('[data-act="real-variacao-modelo"]:checked')].map(input=>Number(input.dataset.val)).filter(Number.isInteger);
+    carregarComposicaoModeloReal(prod,mod,variacaoIds);
     render();
-  });
+  }));
 
   document.querySelectorAll('[data-act="real-upload"]').forEach(el=>{
     el.addEventListener('change', e=>{
