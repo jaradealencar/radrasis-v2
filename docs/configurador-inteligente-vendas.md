@@ -78,55 +78,94 @@ briefing do cliente ao catálogo e a explicar por que encontrou um produto.
 - Mostrar na recomendação quais tags e requisitos do briefing combinaram e
   quais critérios técnicos ainda precisam ser confirmados.
 
+### Briefing comercial e de engenharia conduzido pelo chat
+
+O chat coleta os dados que mudam configuração, consumo e preço, perguntando só
+pelos campos ainda não esclarecidos. Antes de cotar, apresenta um resumo
+estruturado para o vendedor confirmar:
+
+- **Iluminação:** sem luz, iluminação frontal ou retroiluminada. Registrar a
+  escolha explicitamente; não inferir o tipo apenas pela imagem.
+- **Medidas e origem:** aceitar dimensões informadas pelo usuário ou solicitar
+  que o CPQ extraia cotas dos arquivos anexados. Salvar valor, unidade, arquivo
+  e localização/origem de cada medida, além da confirmação do vendedor. Se o
+  arquivo for uma imagem sem escala ou cota física, pedir uma dimensão de
+  referência; pixels sozinhos não determinam centímetros.
+- **Acabamento/entrega:** oferecer “pronto para instalar” com os acabamentos
+  especificados — por exemplo, LED, pintura e componentes necessários — ou
+  “semiacabado”. Perguntar quais operações e componentes entram no semiacabado;
+  não presumir que esse termo define uma composição padrão. Serviço de instalação
+  no local deve ser discriminado à parte quando fizer parte do orçamento.
+- **Alternativas:** permitir gerar as duas versões para comparação. Reutilizar
+  projeto, medidas e geometria, mas montar composição, componentes, custos,
+  preço e margem separados para cada nível de acabamento.
+
+Informações ausentes devem gerar uma pergunta ou pendência visível. O chat pode
+manter a conversa natural, mas as respostas precisam atualizar os campos
+estruturados do projeto para alimentar cálculo e snapshot da proposta.
+
 ### Jornada pretendida
 
 1. **Abrir projeto e conversar:** iniciar um projeto de orçamento numa tela de
    chat, anexar uma ou mais imagens e descrever por texto ou áudio o letreiro.
    Transcrever a fala e organizar a conversa em campos editáveis — por exemplo,
-   dimensões, local de instalação, iluminação, acabamento e quantidade —,
-   perguntando pelo que estiver ausente ou ambíguo.
+   dimensões e sua origem, iluminação (nenhuma, frontal ou retroiluminada),
+   acabamento (pronto para instalar, semiacabado ou ambos), local de instalação
+   e quantidade — perguntando pelo que estiver ausente ou ambíguo.
 2. **Entender e configurar:** detectar elementos visuais e quantidade de cores
    visíveis, procurar produtos, modelos, variações, materiais e kits disponíveis
    no MubiSys e cruzar os resultados com as tags de contexto dos produtos.
-   Mostrar as opções mais próximas com os motivos da recomendação.
+   Apresentar os produtos mais alinhados em ordem de aderência, com os motivos,
+   requisitos atendidos e pontos que precisam de confirmação.
    Cor visível na imagem não determina sozinha o material ou acabamento de
    fabricação; cada camada precisa ser associada a uma opção real e confirmada.
 3. **Preparar o desenho:** gerar uma prévia redesenhada a partir da referência
    e do briefing aprovado. Manter o desenho de apresentação separado da
    geometria de produção: antes de calcular consumo ou nesting, a forma vetorial,
    escala, dimensões e detalhes relevantes precisam de validação.
-4. **Validar produção e nesting:** calcular área líquida, área total, perímetro,
-   chapas, perdas e compatibilidade usando a geometria aprovada e as dimensões
-   reais do material. Mostrar limitações, aproximações e peças que não caibam;
-   solicitar revisão de engenharia quando a geometria ou o encaixe forem
-   incertos.
+4. **Validar produção e nesting:** com geometria aprovada, calcular e apresentar
+   área externa/bruta, área líquida, perímetro externo e perímetros internos
+   quando houver recortes, além de chapas, perdas e compatibilidade com as
+   dimensões reais do material. Mostrar a origem e a unidade de cada medida,
+   limitações e aproximações; solicitar revisão de engenharia quando a geometria
+   ou o encaixe forem incertos.
 5. **Calcular e revisar:** combinar a composição importada com modelos,
    variações, cores e ajustes do vendedor; obter custos atuais do MubiSys e
-   calcular consumo, custo, preço e margem pelo motor do servidor. O vendedor
-   pode revisar a composição e remover ou acrescentar materiais. Toda sugestão
-   ou preço automático exige aprovação humana antes de entrar na proposta.
+   calcular consumo, custo, preço e margem pelo motor do servidor. Se o usuário
+   pedir ambas as opções de acabamento, apresentar cenários separados e
+   comparáveis. O vendedor pode revisar a composição e remover ou acrescentar
+   materiais. Toda sugestão ou preço automático exige aprovação humana antes
+   de entrar na proposta.
 6. **Emitir a proposta:** apresentar pendências e aprovações em uma lista única.
    Quando tudo estiver confirmado, gerar a proposta com snapshot rastreável da
-   imagem, briefing/transcrição, opções selecionadas, desenho, medidas,
-   composição, custos, regra de preço e aprovação.
+   imagem/arquivo, briefing/transcrição, origem e confirmação das medidas,
+   iluminação, produtos selecionados, desenho, métricas de geometria, nível de
+   acabamento (e cenários comparados, se houver), composição, custos, regra de
+   preço e aprovações.
 
 ### Etapas de construção
 
 - **Projeto conversacional:** criar uma conversa por projeto, com anexos de
   imagem, entrada por texto ou áudio, transcrição e briefing estruturado; o
-  vendedor pode corrigir o entendimento sem perder o contexto do projeto.
+  vendedor pode corrigir o entendimento sem perder o contexto do projeto. O
+  briefing registra iluminação, dimensões e origem, nível de acabamento e
+  quantidade; perguntas aparecem conforme os dados ainda faltantes.
 - **Busca e recomendação de catálogo:** pesquisa de produtos, modelos,
   variações, materiais e kits reais, ranqueados pelas tags de contexto e pelos
   requisitos do briefing. Manter tags e sinônimos gerenciados no cadastro de
-  produtos, com opção de especialização por modelo. Mostrar evidências, custos
-  disponíveis e dados ausentes. Não criar materiais ou custos que não existam
-  na fonte.
+  produtos, com opção de especialização por modelo. Apresentar produtos
+  candidatos ordenados com motivos de aderência, evidências, custos disponíveis
+  e dados ausentes. Não criar materiais ou custos que não existam na fonte.
 - **Desenho e geometria:** geração de prévias e conversão para geometria de
   produção editável, com dimensões e cores/layers revisáveis. Separar claramente
   estimativas visuais de medidas calculadas em geometria validada.
 - **Engenharia e nesting:** validar limites de chapa, aproveitamento, perdas,
-  fórmulas de consumo e compatibilidade; substituir as aproximações atuais por
-  resultados que possam ser explicados e conferidos.
+  área externa/bruta, área líquida, perímetros e fórmulas de consumo, além da
+  compatibilidade; substituir as aproximações atuais por resultados que possam
+  ser explicados e conferidos.
+- **Alternativas de acabamento:** calcular opções pronta para instalar e
+  semiacabada sobre as mesmas medidas aprovadas, mantendo BOM e preço distintos
+  para comparação comercial.
 - **Preço e proposta:** integrar o fluxo ao motor comum do servidor, validar
   custos e margens, exigir aprovação humana para todo preço automático e salvar
   o snapshot da decisão junto à proposta.

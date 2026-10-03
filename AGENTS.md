@@ -66,10 +66,13 @@ esses controles já estejam implementados.
   vendedor anexa imagens e explica por texto ou áudio o letreiro desejado.
   O briefing editável orienta a busca de modelos e materiais reais do MubiSys,
   usando também tags de contexto cadastradas nos produtos, a estimativa de
-  cores, o redesenho, a validação da geometria, o nesting e a proposta. IA deve
-  mostrar evidências e incertezas, sem inventar itens, custos ou medidas.
-  Materiais, cores e desenho precisam ser confirmados; quantidades vêm de
-  geometria validada; todo preço automático continua exigindo aprovação humana.
+  cores, o redesenho, a validação da geometria, o nesting e a proposta. O chat
+  coleta tipo de iluminação, origem das medidas e nível de acabamento; pode
+  comparar versões prontas para instalar e semiacabadas. IA deve mostrar
+  evidências e incertezas, sem inventar itens, custos ou medidas. Materiais,
+  cores, desenho, medidas extraídas e opções de produto precisam ser confirmados;
+  quantidades vêm de geometria validada; todo preço automático continua exigindo
+  aprovação humana.
 
 Plano de melhorias e riscos atuais: `docs/configurador-inteligente-vendas.md`.
 
