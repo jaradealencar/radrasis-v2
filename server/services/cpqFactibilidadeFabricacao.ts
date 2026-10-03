@@ -29,6 +29,8 @@ const ESCALA_MINIMA_AUTOMATICA = 1 / 1.03;
 const AREA_MINIMA_FRAGMENTO_MM2 = 0.01;
 const MAX_CAMINHOS = 500;
 const MAX_PONTOS = 250_000;
+const MAX_PECAS_POR_MATERIAL = 100;
+const MAX_LINHAS_DE_CORTE = 2_000;
 
 export const OPCOES_FACTIBILIDADE = [
   {
@@ -81,6 +83,13 @@ export type CpqFragmentoFatiado = {
   alturaMm: number;
 };
 
+export type CpqPecaParaNesting = {
+  id: string;
+  svg: string;
+  larguraMm: number;
+  alturaMm: number;
+};
+
 export type CpqFactibilidadeMaterialResult = {
   id_materia_prima: number;
   materia_prima: string;
@@ -91,7 +100,11 @@ export type CpqFactibilidadeMaterialResult = {
   svg_para_nesting: string;
   svg_visualizacao: string;
   hash_svg_para_nesting: string;
+  hash_pecas_para_nesting: string;
+  hash_pecas_redimensionadas_opcao: string | null;
   fragmentos: CpqFragmentoFatiado[];
+  pecas_para_nesting: CpqPecaParaNesting[];
+  pecas_redimensionadas_opcao?: CpqPecaParaNesting[];
 };
 
 export type CpqFactibilidadeResult = {
@@ -99,9 +112,12 @@ export type CpqFactibilidadeResult = {
   projeto_fatiado: boolean;
   projeto_redimensionado: boolean;
   fator_escala_aplicado: number;
+  fator_escala_minimo_para_caber: number;
   largura_projeto_mm: number;
   altura_projeto_mm: number;
   svg_ajustado: string | null;
+  svg_redimensionado_opcao: string | null;
+  hash_svg_redimensionado_opcao: string | null;
   detalhes_corte: {
     pecas_afetadas: string[];
     quantidade_emendas: number;
@@ -515,6 +531,8 @@ function parseSvg(
         bounds: polygonBounds,
         pathIndex,
       });
+      if (pieces.length > MAX_PECAS_POR_MATERIAL)
+        throw new CpqFactibilidadeError("O SVG excede o limite de 100 peças independentes aceito pelo Deepnest.", "invalid_geometry");
     }
   });
   if (!pieces.length)
@@ -743,6 +761,46 @@ function pathD(geometry: MultiPolygon, parsed: ParsedSvg): string {
   return commands.join(" ");
 }
 
+function fragmentSvg(fragment: OutputFragment): CpqPecaParaNesting {
+  const larguraMm = fragment.bounds.maxX - fragment.bounds.minX;
+  const alturaMm = fragment.bounds.maxY - fragment.bounds.minY;
+  const commands = fragment.geometry.flatMap(polygon => polygon).map(ring => {
+    if (ring.length < 4) return "";
+    const points = ring.map(([x, y]) => [x - fragment.bounds.minX, y - fragment.bounds.minY] as Pair);
+    return `M ${formatNum(points[0][0])} ${formatNum(points[0][1])} ` +
+      points.slice(1, -1).map(point => `L ${formatNum(point[0])} ${formatNum(point[1])}`).join(" ") + " Z";
+  }).filter(Boolean).join(" ");
+  const svg = svgRoot(
+    { x: 0, y: 0, width: larguraMm, height: alturaMm },
+    larguraMm,
+    alturaMm,
+    `<path id="${attrEscape(fragment.id)}" d="${commands}" fill="#000000" fill-rule="evenodd"/>`
+  );
+  return { id: fragment.id, svg, larguraMm, alturaMm };
+}
+
+function nestingPieces(fragments: OutputFragment[], materialName: string): CpqPecaParaNesting[] {
+  if (fragments.length > MAX_PECAS_POR_MATERIAL)
+    throw new CpqFactibilidadeError(`O fatiamento de ${materialName} gerou mais de 100 peças para o Deepnest.`, "invalid_geometry");
+  const pieces = fragments.map(fragment => fragmentSvg(fragment));
+  if (pieces.reduce((sum, piece) => sum + piece.svg.length, 0) > 1_500_000)
+    throw new CpqFactibilidadeError(`Os SVGs de corte de ${materialName} excedem 1,5 MB para o Deepnest.`, "invalid_geometry");
+  return pieces;
+}
+
+export function calcularHashPecasParaNesting(pecas: CpqPecaParaNesting[]): string {
+  return sha256(JSON.stringify(pecas.map(peca => ({
+    id: peca.id,
+    larguraMm: peca.larguraMm,
+    alturaMm: peca.alturaMm,
+    hashSvg: sha256(peca.svg),
+  }))));
+}
+
+function scaleGeometry(geometry: MultiPolygon, factor: number): MultiPolygon {
+  return geometry.map(polygon => polygon.map(ring => ring.map(([x, y]) => [x * factor, y * factor])));
+}
+
 function xmlLength(value: number): string {
   return `${formatNum(value)}mm`;
 }
@@ -822,6 +880,7 @@ function noCutMaterial(
   svg: string,
   fragments: OutputFragment[]
 ): CpqFactibilidadeMaterialResult {
+  const pecasParaNesting = nestingPieces(fragments, material.nome);
   return {
     id_materia_prima: material.id,
     materia_prima: material.nome,
@@ -832,12 +891,15 @@ function noCutMaterial(
     svg_para_nesting: svg,
     svg_visualizacao: svg,
     hash_svg_para_nesting: sha256(svg),
+    hash_pecas_para_nesting: calcularHashPecasParaNesting(pecasParaNesting),
+    hash_pecas_redimensionadas_opcao: null,
     fragmentos: fragments.map(fragment => ({
       id: fragment.id,
       pecaId: fragment.pecaId,
       larguraMm: fragment.bounds.maxX - fragment.bounds.minX,
       alturaMm: fragment.bounds.maxY - fragment.bounds.minY,
     })),
+    pecas_para_nesting: pecasParaNesting,
   };
 }
 
@@ -909,6 +971,7 @@ export function calcularFactibilidadeFabricacao(input: {
         svgAjustado,
         fragments.map(fragment => ({
           ...fragment,
+          geometry: scaleGeometry(fragment.geometry, fatorEscala),
           bounds: {
             minX: fragment.bounds.minX * fatorEscala,
             maxX: fragment.bounds.maxX * fatorEscala,
@@ -923,9 +986,12 @@ export function calcularFactibilidadeFabricacao(input: {
       projeto_fatiado: false,
       projeto_redimensionado: true,
       fator_escala_aplicado: fatorEscala,
+      fator_escala_minimo_para_caber: fatorEscala,
       largura_projeto_mm: larguraFinal,
       altura_projeto_mm: alturaFinal,
       svg_ajustado: svgAjustado,
+      svg_redimensionado_opcao: null,
+      hash_svg_redimensionado_opcao: null,
       detalhes_corte: { pecas_afetadas: [], quantidade_emendas: 0, coordenadas_linha_corte: [] },
       opcoes_disponiveis: [],
       materiais,
@@ -945,9 +1011,12 @@ export function calcularFactibilidadeFabricacao(input: {
       projeto_fatiado: false,
       projeto_redimensionado: false,
       fator_escala_aplicado: 1,
+      fator_escala_minimo_para_caber: 1,
       largura_projeto_mm: input.larguraSvgMm,
       altura_projeto_mm: input.alturaSvgMm,
       svg_ajustado: null,
+      svg_redimensionado_opcao: null,
+      hash_svg_redimensionado_opcao: null,
       detalhes_corte: { pecas_afetadas: [], quantidade_emendas: 0, coordenadas_linha_corte: [] },
       opcoes_disponiveis: [],
       materiais,
@@ -955,6 +1024,16 @@ export function calcularFactibilidadeFabricacao(input: {
     };
   }
 
+  const fragmentosRedimensionados = allOriginalPieces(parsed).map(fragment => ({
+    ...fragment,
+    geometry: scaleGeometry(fragment.geometry, fatorEscala),
+    bounds: {
+      minX: fragment.bounds.minX * fatorEscala,
+      maxX: fragment.bounds.maxX * fatorEscala,
+      minY: fragment.bounds.minY * fatorEscala,
+      maxY: fragment.bounds.maxY * fatorEscala,
+    },
+  }));
   const lines: CpqLinhaCorte[] = [];
   const affected = new Set<string>();
   const materialResults: CpqFactibilidadeMaterialResult[] = [];
@@ -979,6 +1058,10 @@ export function calcularFactibilidadeFabricacao(input: {
       affected.add(piece.id);
     }
     lines.push(...materialLines);
+    if (lines.length > MAX_LINHAS_DE_CORTE)
+      throw new CpqFactibilidadeError("O projeto excede o limite de 2.000 linhas de emenda para revisão CNC.", "invalid_geometry");
+    if (fragments.length > MAX_PECAS_POR_MATERIAL)
+      throw new CpqFactibilidadeError(`O fatiamento de ${material.nome} gerou mais de 100 peças para o Deepnest.`, "invalid_geometry");
     const svgParaNesting = outputSvg(
       parsed,
       input.larguraSvgMm,
@@ -995,6 +1078,8 @@ export function calcularFactibilidadeFabricacao(input: {
       materialLines,
       true
     );
+    const pecasParaNesting = nestingPieces(fragments, material.nome);
+    const pecasRedimensionadas = nestingPieces(fragmentosRedimensionados, material.nome);
     materialResults.push({
       id_materia_prima: material.id,
       materia_prima: material.nome,
@@ -1005,12 +1090,16 @@ export function calcularFactibilidadeFabricacao(input: {
       svg_para_nesting: svgParaNesting,
       svg_visualizacao: svgVisualizacao,
       hash_svg_para_nesting: sha256(svgParaNesting),
+      hash_pecas_para_nesting: calcularHashPecasParaNesting(pecasParaNesting),
+      hash_pecas_redimensionadas_opcao: calcularHashPecasParaNesting(pecasRedimensionadas),
       fragmentos: fragments.map(fragment => ({
         id: fragment.id,
         pecaId: fragment.pecaId,
         larguraMm: fragment.bounds.maxX - fragment.bounds.minX,
         alturaMm: fragment.bounds.maxY - fragment.bounds.minY,
       })),
+      pecas_para_nesting: pecasParaNesting,
+      pecas_redimensionadas_opcao: pecasRedimensionadas,
     });
   }
   if (!lines.length)
@@ -1018,17 +1107,32 @@ export function calcularFactibilidadeFabricacao(input: {
       "O projeto excede a faixa automática, mas o fatiamento não gerou linhas de emenda.",
       "boolean_failure"
     );
+  const svgRedimensionadoOpcao = updateSvgPhysicalSize(
+    input.svg,
+    input.larguraSvgMm * fatorEscala,
+    input.alturaSvgMm * fatorEscala
+  );
+  const uniqueSeams = new Set(
+    lines.map(line =>
+      [line.pecaId, line.x1, line.y1, line.x2, line.y2]
+        .map(value => typeof value === "number" ? value.toFixed(3) : value)
+        .join(":")
+    )
+  );
   return {
     status_factibilidade: "REQUER_APROVACAO_EMENDA",
     projeto_fatiado: true,
     projeto_redimensionado: false,
     fator_escala_aplicado: 1,
+    fator_escala_minimo_para_caber: fatorEscala,
     largura_projeto_mm: input.larguraSvgMm,
     altura_projeto_mm: input.alturaSvgMm,
     svg_ajustado: null,
+    svg_redimensionado_opcao: svgRedimensionadoOpcao,
+    hash_svg_redimensionado_opcao: sha256(svgRedimensionadoOpcao),
     detalhes_corte: {
       pecas_afetadas: [...affected],
-      quantidade_emendas: lines.length,
+      quantidade_emendas: uniqueSeams.size,
       coordenadas_linha_corte: lines.map(line => ({
         ...line,
         x1: Number(line.x1.toFixed(3)),
@@ -1056,13 +1160,16 @@ export type CpqFactibilidadeResumoAssinavel = Pick<
   | "projeto_fatiado"
   | "projeto_redimensionado"
   | "fator_escala_aplicado"
+  | "fator_escala_minimo_para_caber"
+  | "hash_svg_redimensionado_opcao"
   | "largura_projeto_mm"
   | "altura_projeto_mm"
   | "detalhes_corte"
 > & {
   materiais: Array<Pick<
     CpqFactibilidadeMaterialResult,
-    "id_materia_prima" | "id_maior_chapa" | "hash_svg_para_nesting"
+    "id_materia_prima" | "id_maior_chapa" | "hash_svg_para_nesting" |
+    "hash_pecas_para_nesting" | "hash_pecas_redimensionadas_opcao"
   >>;
 };
 
@@ -1076,6 +1183,8 @@ export function calcularHashFactibilidade(
     projeto_fatiado: resumo.projeto_fatiado,
     projeto_redimensionado: resumo.projeto_redimensionado,
     fator_escala_aplicado: Number(resumo.fator_escala_aplicado.toFixed(8)),
+    fator_escala_minimo_para_caber: Number(resumo.fator_escala_minimo_para_caber.toFixed(8)),
+    hash_svg_redimensionado_opcao: resumo.hash_svg_redimensionado_opcao,
     largura_projeto_mm: Number(resumo.largura_projeto_mm.toFixed(4)),
     altura_projeto_mm: Number(resumo.altura_projeto_mm.toFixed(4)),
     detalhes_corte: resumo.detalhes_corte,
@@ -1084,6 +1193,8 @@ export function calcularHashFactibilidade(
         id_materia_prima: material.id_materia_prima,
         id_maior_chapa: material.id_maior_chapa,
         hash_svg_para_nesting: material.hash_svg_para_nesting,
+        hash_pecas_para_nesting: material.hash_pecas_para_nesting,
+        hash_pecas_redimensionadas_opcao: material.hash_pecas_redimensionadas_opcao,
       }))
       .sort((a, b) => a.id_materia_prima - b.id_materia_prima),
   };
@@ -1097,6 +1208,7 @@ export type CpqFactibilidadeDecisionClaims = {
   acao: Exclude<CpqFactibilidadeAcao, "SOLICITAR_ANALISE_HUMANA">;
   aprovadoPor: CpqFactibilidadeAtor;
   aprovadoEm: string;
+  fatorEscalaAprovada?: number;
 };
 
 function sha256(value: string): string {
@@ -1150,12 +1262,32 @@ function lerClaims<T extends { kind: string; exp: number }>(ticket: string): T {
 export function emitirTicketAnaliseFactibilidade(input: {
   sourceId: string;
   resultadoHash: string;
+  hashSvgEntrada: string;
+  detalhesCorteHash: string;
+  statusFactibilidade: CpqFactibilidadeResult["status_factibilidade"];
+  fatorEscalaAplicado: number;
+  fatorEscalaMinimoParaCaber: number;
+  hashSvgRedimensionadoOpcao: string | null;
+  materiais: Array<{
+    idMateriaPrima: number;
+    idChapa: number;
+    hashSvgParaNesting: string;
+    hashPecasParaNesting: string;
+    hashPecasRedimensionadasOpcao: string | null;
+  }>;
   validadeMs?: number;
 }): string {
   return assinarClaims({
     kind: "analysis",
     sourceId: input.sourceId,
     resultadoHash: input.resultadoHash,
+    hashSvgEntrada: input.hashSvgEntrada,
+    detalhesCorteHash: input.detalhesCorteHash,
+    statusFactibilidade: input.statusFactibilidade,
+    fatorEscalaAplicado: input.fatorEscalaAplicado,
+    fatorEscalaMinimoParaCaber: input.fatorEscalaMinimoParaCaber,
+    hashSvgRedimensionadoOpcao: input.hashSvgRedimensionadoOpcao,
+    materiais: input.materiais,
     exp: Date.now() + (input.validadeMs ?? 7 * 24 * 60 * 60 * 1000),
   });
 }
@@ -1164,15 +1296,51 @@ export function verificarTicketAnaliseFactibilidade(
   ticket: string,
   sourceId: string,
   resultadoHash: string
-): void {
+): {
+  statusFactibilidade: CpqFactibilidadeResult["status_factibilidade"];
+  hashSvgEntrada: string;
+  detalhesCorteHash: string;
+  fatorEscalaAplicado: number;
+  fatorEscalaMinimoParaCaber: number;
+  hashSvgRedimensionadoOpcao: string | null;
+  materiais: Array<{
+    idMateriaPrima: number;
+    idChapa: number;
+    hashSvgParaNesting: string;
+    hashPecasParaNesting: string;
+    hashPecasRedimensionadasOpcao: string | null;
+  }>;
+} {
   const claims = lerClaims<{
     kind: string;
     sourceId: string;
     resultadoHash: string;
+    statusFactibilidade: CpqFactibilidadeResult["status_factibilidade"];
+    hashSvgEntrada: string;
+    detalhesCorteHash: string;
+    fatorEscalaAplicado: number;
+    fatorEscalaMinimoParaCaber: number;
+    hashSvgRedimensionadoOpcao: string | null;
+    materiais: Array<{
+      idMateriaPrima: number;
+      idChapa: number;
+      hashSvgParaNesting: string;
+      hashPecasParaNesting: string;
+      hashPecasRedimensionadasOpcao: string | null;
+    }>;
     exp: number;
   }>(ticket);
   if (claims.kind !== "analysis" || claims.sourceId !== sourceId || claims.resultadoHash !== resultadoHash)
     throw new CpqFactibilidadeError("O ticket não pertence a esta análise de factibilidade.", "invalid_geometry");
+  return {
+    statusFactibilidade: claims.statusFactibilidade,
+    hashSvgEntrada: claims.hashSvgEntrada,
+    detalhesCorteHash: claims.detalhesCorteHash,
+    fatorEscalaAplicado: claims.fatorEscalaAplicado,
+    fatorEscalaMinimoParaCaber: claims.fatorEscalaMinimoParaCaber,
+    hashSvgRedimensionadoOpcao: claims.hashSvgRedimensionadoOpcao,
+    materiais: claims.materiais,
+  };
 }
 
 export function emitirReciboDecisaoFactibilidade(
@@ -1185,6 +1353,7 @@ export function emitirReciboDecisaoFactibilidade(
     acao: input.acao,
     aprovadoPor: input.aprovadoPor,
     aprovadoEm: input.aprovadoEm,
+    fatorEscalaAprovada: input.fatorEscalaAprovada,
     exp: Date.now() + (input.validadeMs ?? 7 * 24 * 60 * 60 * 1000),
   });
 }

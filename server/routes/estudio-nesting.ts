@@ -9,8 +9,14 @@ import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
   calcularNestingMultiMaterial,
   CpqNestingError,
+  emitirReciboNesting,
   type CpqMaterial,
 } from "../services/cpqNesting";
+import {
+  calcularHashPecasParaNesting,
+  verificarReciboDecisaoFactibilidade,
+  verificarTicketAnaliseFactibilidade,
+} from "../services/cpqFactibilidadeFabricacao";
 
 const chapaInput = z
   .object({
@@ -24,14 +30,34 @@ const chapaInput = z
 
 const nestingInput = z
   .object({
-    svg: z.string().min(20).max(1_500_000),
-    larguraSvgMm: z.number().finite().positive().max(50_000),
-    alturaSvgMm: z.number().finite().positive().max(50_000),
+    sourceId: z.string().min(1).max(80).optional(),
+    resultadoHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    ticketAnalise: z.string().min(20).max(2000).optional(),
+    acaoFactibilidade: z.enum(["APROVAR_EMENDA_TECNICA", "REDIMENSIONAR_PARA_CABER"]).nullable().optional(),
+    reciboDecisaoFactibilidade: z.string().min(20).max(2000).nullable().optional(),
+    svg: z.string().min(20).max(1_500_000).optional(),
+    larguraSvgMm: z.number().finite().positive().max(50_000).optional(),
+    alturaSvgMm: z.number().finite().positive().max(50_000).optional(),
+    pecas: z.array(z.object({
+      id: z.string().min(1).max(80),
+      svg: z.string().min(20).max(1_500_000),
+      larguraMm: z.number().finite().positive().max(50_000),
+      alturaMm: z.number().finite().positive().max(50_000),
+    }).strict()).min(1).max(100).optional(),
     espacamentoMm: z.number().finite().min(0).max(50).optional().default(0),
     materiaPrimaIds: z.array(z.number().int().positive()).min(1).max(100),
   })
   .strict()
   .superRefine((input, context) => {
+    if (!input.pecas?.length && (!input.svg || !input.larguraSvgMm || !input.alturaSvgMm)) {
+      context.addIssue({ code: "custom", message: "Informe uma arte e escala física ou uma lista de peças vetoriais." });
+    }
+    if (input.sourceId && (!input.resultadoHash || !input.ticketAnalise || !input.pecas?.length || input.materiaPrimaIds.length !== 1)) {
+      context.addIssue({ code: "custom", message: "Nesting do CPQ precisa do recibo de factibilidade e de uma lista de peças por material." });
+    }
+    if (input.pecas?.length && input.pecas.reduce((sum, peca) => sum + peca.svg.length, 0) > 1_500_000) {
+      context.addIssue({ code: "custom", message: "O conjunto de SVGs excede o limite de tamanho permitido." });
+    }
     if (new Set(input.materiaPrimaIds).size !== input.materiaPrimaIds.length) {
       context.addIssue({
         code: "custom",
@@ -280,6 +306,46 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
     });
   }
 
+  if (parsed.data.sourceId) {
+    try {
+      const claims = verificarTicketAnaliseFactibilidade(
+        parsed.data.ticketAnalise!,
+        parsed.data.sourceId,
+        parsed.data.resultadoHash!
+      );
+      let factorPecas: "hashPecasParaNesting" | "hashPecasRedimensionadasOpcao" = "hashPecasParaNesting";
+      if (claims.statusFactibilidade === "REQUER_APROVACAO_EMENDA") {
+        const acao = parsed.data.acaoFactibilidade;
+        const recibo = parsed.data.reciboDecisaoFactibilidade;
+        if (!acao || !recibo) throw new Error("A emenda precisa ser aprovada antes do nesting.");
+        const decisao = verificarReciboDecisaoFactibilidade(
+          recibo,
+          parsed.data.sourceId,
+          parsed.data.resultadoHash!,
+          acao
+        );
+        if (acao === "REDIMENSIONAR_PARA_CABER") {
+          if (
+            claims.hashSvgRedimensionadoOpcao == null ||
+            decisao.fatorEscalaAprovada == null ||
+            Math.abs(decisao.fatorEscalaAprovada - claims.fatorEscalaMinimoParaCaber) > 1e-8
+          ) throw new Error("O redimensionamento não corresponde à opção aprovada.");
+          factorPecas = "hashPecasRedimensionadasOpcao";
+        }
+      } else if (parsed.data.acaoFactibilidade || parsed.data.reciboDecisaoFactibilidade) {
+        throw new Error("Uma análise apta não pode usar uma decisão de emenda.");
+      }
+      const materialAssinado = claims.materiais.find(item => item.idMateriaPrima === parsed.data.materiaPrimaIds[0]);
+      if (!materialAssinado) throw new Error("O material não pertence à análise de factibilidade assinada.");
+      const hashEsperado = materialAssinado[factorPecas];
+      if (!hashEsperado || calcularHashPecasParaNesting(parsed.data.pecas!) !== hashEsperado)
+        throw new Error("As peças enviadas ao Deepnest não correspondem ao resultado aprovado.");
+    } catch (error) {
+      erro(res, 409, error instanceof Error ? error.message : "Recalcule a factibilidade antes do nesting.");
+      return;
+    }
+  }
+
   try {
     const resultado = await calcularNestingMultiMaterial({
       ...parsed.data,
@@ -290,7 +356,12 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       motor: "Deepnest local",
       unidades: { comprimento: "mm", area: "m2", perimetro: "m" },
       calculadoEm: new Date().toISOString(),
-      materiais: resultado,
+      materiais: resultado.map(material => ({
+        ...material,
+        reciboIntegridade: parsed.data.sourceId
+          ? emitirReciboNesting(parsed.data.sourceId, parsed.data.resultadoHash!, parsed.data.acaoFactibilidade ?? null, material)
+          : null,
+      })),
     });
   } catch (error) {
     if (error instanceof CpqNestingError) {

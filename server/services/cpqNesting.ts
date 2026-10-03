@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { dirname, resolve } from "node:path";
 
 export type CpqChapa = {
@@ -68,6 +69,61 @@ export type CpqNestingMaterialResult = {
   chapa: { largura_mm: number; altura_mm: number };
   posicionamentos: CpqNestingPlacement[];
 };
+
+export type CpqNestingResultadoAssinavel = Pick<
+  CpqNestingMaterialResult,
+  | "id_materia_prima"
+  | "materia_prima"
+  | "custo_unitario"
+  | "unidade_custo"
+  | "custo_material_estimado"
+  | "custo_sobra_estimado"
+  | "alerta_custo"
+  | "area_liquida_m2"
+  | "area_sobra_m2"
+  | "perimetro_total_m"
+  | "area_chapa_utilizada_m2"
+  | "porcentagem_aproveitamento"
+  | "criterio_escolha"
+  | "id_chapa_utilizada"
+  | "nome_chapa_utilizada"
+  | "chapa_principal"
+  | "chapa"
+>;
+
+function nestingSecret(): string {
+  const value = process.env.JWT_SECRET;
+  if (!value || value.length < 32) throw new CpqNestingError("JWT_SECRET precisa ter pelo menos 32 caracteres para assinar o resultado de nesting.", "configuration");
+  return value;
+}
+
+export function emitirReciboNesting(sourceId: string, resultadoHash: string, acaoFactibilidade: string | null, result: CpqNestingMaterialResult): string {
+  const claims = {
+    kind: "cpq-nesting",
+    sourceId,
+    resultadoHash,
+    acaoFactibilidade,
+    result: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "posicionamentos")),
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+  };
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const signature = createHmac("sha256", nestingSecret()).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+export function verificarReciboNesting(ticket: string, sourceId: string, resultadoHash: string, acaoFactibilidade: string | null): CpqNestingResultadoAssinavel {
+  const [payload, supplied, extra] = ticket.split(".");
+  if (!payload || !supplied || extra) throw new CpqNestingError("O recibo do nesting e invalido.", "invalid_geometry");
+  const expected = createHmac("sha256", nestingSecret()).update(payload).digest();
+  const actual = Buffer.from(supplied, "base64url");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw new CpqNestingError("O recibo do nesting nao corresponde ao servidor.", "invalid_geometry");
+  let claims: { kind?: string; sourceId?: string; resultadoHash?: string; acaoFactibilidade?: string | null; result?: CpqNestingResultadoAssinavel; exp?: number };
+  try { claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); }
+  catch { throw new CpqNestingError("O recibo do nesting e invalido.", "invalid_geometry"); }
+  if (claims.kind !== "cpq-nesting" || claims.sourceId !== sourceId || claims.resultadoHash !== resultadoHash || claims.acaoFactibilidade !== acaoFactibilidade || !claims.result || !claims.exp || claims.exp <= Date.now())
+    throw new CpqNestingError("O recibo do nesting expirou ou nao pertence a esta cotacao.", "invalid_geometry");
+  return claims.result;
+}
 
 export class CpqNestingError extends Error {
   constructor(
@@ -200,7 +256,7 @@ function executarMotor(
 }
 
 function unidadeNormalizada(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/²/g, "2").toLowerCase().trim();
 }
 
 function estimarCustos(material: CpqMaterial, areaUsadaM2: number, areaPecaM2: number, areaChapaM2: number, perimetroM: number) {

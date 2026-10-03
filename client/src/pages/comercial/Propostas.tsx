@@ -19,6 +19,10 @@ import { FileText, Plus, Search, Trash2, ArrowLeft, Link as LinkIcon, Settings2,
 import { fmtBrl, fmtDateTime, fmtNum } from "@/lib/format";
 import { enviarArquivo } from "@/lib/upload";
 import { gerarPdfProposta } from "@/lib/pdfProposta";
+import { useAuth } from "@/hooks/useAuth";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import ParametrosDecupagem from "./ParametrosDecupagem";
+import DashboardOrcamentos from "./DashboardOrcamentos";
 
 const FORMAS_PAGAMENTO = ["À vista", "Cartão de crédito", "Boleto", "PIX", "Transferência"];
 
@@ -31,6 +35,12 @@ const STATUS_LABEL: Record<string, string> = {
 
 function linkPublico(token: string): string {
   return `${window.location.origin}/proposta/${token}`;
+}
+
+function camposCondicaoFinanceira(selecao: string): { custoFinanceiroPct: number; parcelasFinanceira: number | null } {
+  if (selecao === "0") return { custoFinanceiroPct: 0, parcelasFinanceira: null };
+  const [parcelas, taxa] = selecao.split(":").map(Number);
+  return { custoFinanceiroPct: Number.isFinite(taxa) ? taxa : 0, parcelasFinanceira: Number.isInteger(parcelas) && parcelas > 0 ? parcelas : null };
 }
 
 type MedidasNesting = {
@@ -203,6 +213,9 @@ function useAutocompleteCnpj(onEncontrado: (nome: string) => void) {
 
 export default function Propostas() {
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
+  const { user } = useAuth();
+  const podeVerDecupagem = user?.role === "admin" || user?.role === "master" || user?.role === "gestor";
+  const podeConfigurar = user?.role === "admin" || user?.role === "master";
 
   return (
     <div className="space-y-6">
@@ -215,7 +228,9 @@ export default function Propostas() {
       <Tabs defaultValue="propostas">
         <TabsList>
           <TabsTrigger value="propostas">Propostas</TabsTrigger>
-          <TabsTrigger value="configuracoes" className="gap-1.5"><Settings2 className="w-3.5 h-3.5" /> Configurações</TabsTrigger>
+          <TabsTrigger value="juncao" className="gap-1.5"><Layers className="w-3.5 h-3.5" /> Junção de propostas</TabsTrigger>
+          {podeVerDecupagem && <TabsTrigger value="dashboard">Painel executivo</TabsTrigger>}
+          {podeConfigurar && <TabsTrigger value="configuracoes" className="gap-1.5"><Settings2 className="w-3.5 h-3.5" /> Parâmetros</TabsTrigger>}
         </TabsList>
         <TabsContent value="propostas" className="space-y-4 mt-4">
           {selecionadoId === null ? (
@@ -224,9 +239,9 @@ export default function Propostas() {
             <DetalheProposta id={selecionadoId} onVoltar={() => setSelecionadoId(null)} />
           )}
         </TabsContent>
-        <TabsContent value="configuracoes" className="mt-4">
-          <ConfiguracoesComerciais />
-        </TabsContent>
+        <TabsContent value="juncao" className="mt-4"><JuncaoPropostas /></TabsContent>
+        {podeVerDecupagem && <TabsContent value="dashboard" className="mt-4"><DashboardOrcamentos /></TabsContent>}
+        {podeConfigurar && <TabsContent value="configuracoes" className="mt-4 space-y-4"><ConfiguracoesComerciais /><ParametrosDecupagem /></TabsContent>}
       </Tabs>
     </div>
   );
@@ -234,13 +249,86 @@ export default function Propostas() {
 
 // ─── Lista de propostas ─────────────────────────────────────────────────────
 
+function JuncaoPropostas() {
+  const { data: cotacoes, isLoading } = trpc.propostas.nestingsEstudio.useQuery();
+  const [selecionadas, setSelecionadas] = useState<number[]>([]);
+  const [resultado, setResultado] = useState<RouterOutputs["propostas"]["juncaoSimular"] | null>(null);
+  const simular = trpc.propostas.juncaoSimular.useMutation({
+    onSuccess: (data) => { setResultado(data); toast.success("Simulação de nesting agrupado concluída"); },
+    onError: (error) => toast.error("Não foi possível agrupar", { description: error.message }),
+  });
+  const disponiveis = (cotacoes ?? []).filter((cotacao) => cotacao.status === "aberta");
+  const alternar = (id: number, marcado: boolean) => {
+    setSelecionadas((atuais) => marcado ? [...new Set([...atuais, id])] : atuais.filter((item) => item !== id));
+    setResultado(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Junção de propostas comerciais</CardTitle>
+          <p className="text-sm text-muted-foreground">Selecione pelo menos duas propostas abertas do mesmo cliente, com vetor e escala salvos. O Deepnest compara os formatos ativos para cada material compartilhado.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? <div className="flex justify-center py-8"><Spinner /></div> : !disponiveis.length ? (
+            <Empty><EmptyHeader><EmptyMedia variant="icon"><Layers /></EmptyMedia><EmptyTitle>Nenhuma cotação aberta</EmptyTitle><EmptyDescription>As cotações CPQ abertas aparecem aqui após serem salvas.</EmptyDescription></EmptyHeader></Empty>
+          ) : (
+            <Table>
+              <TableHeader><TableRow><TableHead></TableHead><TableHead>Proposta / projeto</TableHead><TableHead>Cliente</TableHead><TableHead>Materiais</TableHead><TableHead>Vetor</TableHead><TableHead>Criada em</TableHead></TableRow></TableHeader>
+              <TableBody>{disponiveis.map((cotacao) => (
+                <TableRow key={cotacao.cotacaoId}>
+                  <TableCell><Checkbox checked={selecionadas.includes(cotacao.cotacaoId)} disabled={!cotacao.temVetor} onCheckedChange={(marcado) => alternar(cotacao.cotacaoId, marcado === true)} aria-label={`Selecionar ${cotacao.numero}`} /></TableCell>
+                  <TableCell className="font-medium">{cotacao.numero} · {cotacao.tituloProposta || cotacao.modeloNome}</TableCell>
+                  <TableCell>{cotacao.clienteNome}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{cotacao.materiais.filter((material) => material.mubisysMateriaPrimaId != null).map((material) => material.nome).join(", ") || "—"}</TableCell>
+                  <TableCell><Badge variant={cotacao.temVetor ? "secondary" : "outline"}>{cotacao.temVetor ? "Pronto" : "Ausente"}</Badge></TableCell>
+                  <TableCell className="text-muted-foreground">{fmtDateTime(cotacao.criadaEm)}</TableCell>
+                </TableRow>
+              ))}</TableBody>
+            </Table>
+          )}
+          <div className="flex items-center justify-between gap-3 border-t pt-4">
+            <p className="text-xs text-muted-foreground">{selecionadas.length} proposta(s) selecionada(s). As propostas originais não são alteradas pela simulação.</p>
+            <Button disabled={selecionadas.length < 2 || simular.isPending} onClick={() => simular.mutate({ cotacaoIds: selecionadas })} className="gap-1.5">
+              <Layers className="h-4 w-4" />{simular.isPending ? "Calculando lote…" : "Simular nesting conjunto"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      {resultado && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Resultado do lote · {resultado.cliente}</CardTitle><p className="text-xs text-muted-foreground">Prévia de economia e preço. Cada proposta precisa de nova aprovação humana antes de gerar outro link comercial.</p></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">{resultado.resultadosNesting.map((material) => (
+              <div key={material.id_materia_prima} className="rounded-lg border p-3 text-sm">
+                <p className="font-medium">{material.materia_prima} · {material.nome_chapa_utilizada}</p>
+                <p className="mt-1 text-muted-foreground">Chapa {material.chapa.largura_mm} × {material.chapa.altura_mm} mm · aproveitamento {fmtNum(material.porcentagem_aproveitamento, 1)}%</p>
+                <p className="mt-1">Custo rateado do corte: {material.custo_material_estimado == null ? "revisão necessária" : fmtBrl(material.custo_material_estimado)}</p>
+              </div>
+            ))}</div>
+            <Table><TableHeader><TableRow><TableHead>Projeto</TableHead><TableHead>Custo anterior</TableHead><TableHead>Custo agrupado</TableHead><TableHead>Preço anterior</TableHead><TableHead>Preço recalculado</TableHead><TableHead>Regra aplicada</TableHead></TableRow></TableHeader>
+              <TableBody>{resultado.propostas.map((proposta) => <TableRow key={proposta.cotacaoId}>
+                <TableCell>{proposta.modeloNome}</TableCell><TableCell>{fmtBrl(proposta.custoDiretoAnterior)}</TableCell><TableCell>{fmtBrl(proposta.custoDiretoAgrupado)}</TableCell><TableCell>{fmtBrl(proposta.precoAnterior)}</TableCell><TableCell>{proposta.precoCalculadoAgrupado == null ? "—" : fmtBrl(proposta.precoCalculadoAgrupado)}</TableCell><TableCell className="text-xs text-muted-foreground">{proposta.regraReprecificacao}</TableCell>
+              </TableRow>)}</TableBody>
+            </Table>
+            <p className="text-xs text-amber-700">Economia estimada de material: {fmtBrl(resultado.propostas.reduce((total, proposta) => total + proposta.economiaMaterial, 0))}. Os preços calculados são sugestões; o fluxo de aprovação vigente continua obrigatório.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }) {
   const utils = trpc.useUtils();
   const { data: lista, isLoading } = trpc.propostas.listar.useQuery();
+  const { data: vendedores } = trpc.propostas.vendedoresAtivos.useQuery();
   const [criando, setCriando] = useState(false);
   const [clienteCnpj, setClienteCnpj] = useState("");
   const [clienteNome, setClienteNome] = useState("");
   const [vendedorNome, setVendedorNome] = useState("");
+  const [tituloProposta, setTituloProposta] = useState("");
   const { buscar: buscarCnpj, buscando: buscandoCnpj } = useAutocompleteCnpj(setClienteNome);
 
   const criar = trpc.propostas.criar.useMutation({
@@ -251,6 +339,7 @@ function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }
       setClienteCnpj("");
       setClienteNome("");
       setVendedorNome("");
+      setTituloProposta("");
       onSelecionar(r.id);
     },
     onError: (e) => toast.error("Erro ao criar proposta", { description: e.message }),
@@ -285,12 +374,17 @@ function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Vendedor</Label>
-              <Input className="w-48" value={vendedorNome} onChange={(e) => setVendedorNome(e.target.value)} placeholder="Nome do vendedor" />
+              <Input className="w-48" list="vendedores-cadastrados" value={vendedorNome} onChange={(e) => setVendedorNome(e.target.value)} placeholder="Nome do vendedor" />
+              <datalist id="vendedores-cadastrados">{(vendedores ?? []).map((vendedor) => <option key={vendedor.id} value={vendedor.nome} />)}</datalist>
+            </div>
+            <div className="space-y-1 min-w-64 flex-1">
+              <Label className="text-xs">Título do projeto</Label>
+              <Input value={tituloProposta} onChange={(e) => setTituloProposta(e.target.value)} maxLength={256} placeholder="Ex.: Fachada principal — Loja Centro" />
             </div>
             <Button
               size="sm"
               disabled={!clienteNome.trim() || !vendedorNome.trim() || criar.isPending}
-              onClick={() => criar.mutate({ clienteNome, clienteCnpj: clienteCnpj || undefined, vendedorNome })}
+              onClick={() => criar.mutate({ clienteNome, clienteCnpj: clienteCnpj || undefined, vendedorNome, tituloProposta })}
             >
               Criar
             </Button>
@@ -344,11 +438,19 @@ function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }
 function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void }) {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.propostas.obter.useQuery({ id });
+  const { data: vendedores } = trpc.propostas.vendedoresAtivos.useQuery();
+  const { user } = useAuth();
+  const podeVerDecupagem = user?.role === "admin" || user?.role === "master" || user?.role === "gestor";
 
   const [clienteCnpj, setClienteCnpj] = useState("");
   const [clienteNome, setClienteNome] = useState("");
   const [clienteContato, setClienteContato] = useState("");
   const [vendedorNome, setVendedorNome] = useState("");
+  const [tituloProposta, setTituloProposta] = useState("");
+  const [imagemReferenciaUrl, setImagemReferenciaUrl] = useState<string | null>(null);
+  const [imagemRedesenhadaUrl, setImagemRedesenhadaUrl] = useState<string | null>(null);
+  const [imagemZoomUrl, setImagemZoomUrl] = useState<string | null>(null);
+  const [uploadImagem, setUploadImagem] = useState<"referencia" | "redesenhada" | null>(null);
   const [formasPagamento, setFormasPagamento] = useState<string[]>([]);
   const [condicaoPagamentoObs, setCondicaoPagamentoObs] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -361,6 +463,9 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
     setClienteNome(data.proposta.clienteNome);
     setClienteContato(data.proposta.clienteContato ?? "");
     setVendedorNome(data.proposta.vendedorNome);
+    setTituloProposta(data.proposta.tituloProposta ?? "");
+    setImagemReferenciaUrl(data.proposta.imagemReferenciaUrl ?? null);
+    setImagemRedesenhadaUrl(data.proposta.imagemRedesenhadaUrl ?? null);
     setFormasPagamento(JSON.parse(data.proposta.formasPagamentoJson || "[]"));
     setCondicaoPagamentoObs(data.proposta.condicaoPagamentoObs ?? "");
     setObservacoes(data.proposta.observacoes ?? "");
@@ -400,6 +505,9 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
   const handleSalvar = () => {
     salvar.mutate({
       id,
+      tituloProposta,
+      imagemReferenciaUrl,
+      imagemRedesenhadaUrl,
       clienteNome,
       clienteCnpj: clienteCnpj || undefined,
       clienteContato: clienteContato || undefined,
@@ -409,6 +517,25 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
       observacoes: observacoes || undefined,
       status,
     });
+  };
+
+  const enviarImagemProposta = async (tipo: "referencia" | "redesenhada", arquivo?: File) => {
+    if (!arquivo) return;
+    if (!arquivo.type.startsWith("image/") || arquivo.size > 12 * 1024 * 1024) {
+      toast.error("Escolha uma imagem de até 12 MB.");
+      return;
+    }
+    setUploadImagem(tipo);
+    try {
+      const resultado = await enviarArquivo("imagem", arquivo);
+      if (tipo === "referencia") setImagemReferenciaUrl(resultado.url);
+      else setImagemRedesenhadaUrl(resultado.url);
+      toast.success("Imagem enviada", { description: "Salve os dados da proposta para publicar a imagem." });
+    } catch (error) {
+      toast.error("Não foi possível enviar a imagem", { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setUploadImagem(null);
+    }
   };
 
   const link = linkPublico(data.proposta.token);
@@ -426,6 +553,7 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
             className="gap-1.5"
             onClick={() =>
               gerarPdfProposta({
+                tituloProposta: data.proposta.tituloProposta || "",
                 clienteNome: data.proposta.clienteNome,
                 vendedorNome: data.proposta.vendedorNome,
                 createdAt: data.proposta.createdAt,
@@ -467,6 +595,10 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
           </div>
         </CardHeader>
         <CardContent className="grid sm:grid-cols-3 gap-4">
+          <div className="sm:col-span-3 space-y-1.5">
+            <Label className="text-xs">Título do projeto</Label>
+            <Input value={tituloProposta} onChange={(e) => setTituloProposta(e.target.value)} maxLength={256} placeholder="Ex.: Fachada principal — Loja Centro" />
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs">CNPJ do cliente</Label>
             <Input
@@ -486,7 +618,8 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Vendedor</Label>
-            <Input value={vendedorNome} onChange={(e) => setVendedorNome(e.target.value)} />
+            <Input list="vendedores-cadastrados" value={vendedorNome} onChange={(e) => setVendedorNome(e.target.value)} />
+            <datalist id="vendedores-cadastrados">{(vendedores ?? []).map((vendedor) => <option key={vendedor.id} value={vendedor.nome} />)}</datalist>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Status</Label>
@@ -516,6 +649,26 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
             <Label className="text-xs">Observações</Label>
             <Textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={2} />
           </div>
+          <div className="sm:col-span-3 grid gap-4 sm:grid-cols-2">
+            {([
+              ["referencia", "Imagem de referência (foto original)", imagemReferenciaUrl, setImagemReferenciaUrl],
+              ["redesenhada", "Imagem redesenhada (visão plana/2D)", imagemRedesenhadaUrl, setImagemRedesenhadaUrl],
+            ] as const).map(([tipo, titulo, url, setUrl]) => (
+              <div key={tipo} className="space-y-2 rounded-lg border p-3">
+                <Label className="text-xs">{titulo}</Label>
+                {url ? (
+                  <button type="button" className="block w-full cursor-zoom-in overflow-hidden rounded-md border bg-muted" onClick={() => setImagemZoomUrl(url)}>
+                    <img src={url} alt={titulo} className="h-44 w-full object-contain" />
+                  </button>
+                ) : <div className="flex h-44 items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">Nenhuma imagem adicionada</div>}
+                <div className="flex items-center gap-2">
+                  <Input type="file" accept="image/jpeg,image/png,image/webp" className="text-xs" disabled={uploadImagem !== null} onChange={(e) => void enviarImagemProposta(tipo, e.target.files?.[0])} />
+                  {url && <Button type="button" variant="ghost" size="sm" onClick={() => setUrl(null)}>Remover</Button>}
+                  {uploadImagem === tipo && <span className="text-xs text-muted-foreground">Enviando…</span>}
+                </div>
+              </div>
+            ))}
+          </div>
           <div className="sm:col-span-3">
             <Button size="sm" onClick={handleSalvar} disabled={salvar.isPending}>
               {salvar.isPending ? "Salvando..." : "Salvar dados da proposta"}
@@ -542,11 +695,78 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
       </div>
 
       <ItensProposta propostaId={id} itens={data.itens} />
+      {podeVerDecupagem && <DecupadorProposta propostaId={id} />}
+      <Dialog open={!!imagemZoomUrl} onOpenChange={(aberto) => !aberto && setImagemZoomUrl(null)}>
+        <DialogContent className="max-w-5xl p-2">
+          <DialogTitle className="sr-only">Pré-visualização da imagem</DialogTitle>
+          {imagemZoomUrl && <img src={imagemZoomUrl} alt="Pré-visualização ampliada" className="max-h-[85vh] w-full object-contain" />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 // ─── Itens da proposta ──────────────────────────────────────────────────────
+
+function DecupadorProposta({ propostaId }: { propostaId: number }) {
+  const { data, isLoading } = trpc.propostas.decupagemObter.useQuery({ propostaId });
+  if (isLoading) return <div className="flex justify-center py-6"><Spinner /></div>;
+  if (!data?.length) return null;
+  const componentes = [
+    ["Matéria-prima / insumos", "materiaPrima"],
+    ["Mão de obra direta", "maoDeObra"],
+    ["Custos fixos rateados", "custoFixo"],
+    ["Comissão do vendedor", "comissao"],
+    ["Tributos", "impostos"],
+    ["Custo financeiro", "custoFinanceiro"],
+    ["Margem líquida", "lucroLiquido"],
+  ] as const;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Decupador de preço</CardTitle>
+        <p className="text-xs text-muted-foreground">Visão interna de gestor/admin. Valores multiplicados pela quantidade do item; o cliente não recebe esta decomposição.</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {data.map((item) => {
+          const decupagem = item.decupagem as Record<string, any> | null;
+          const quantidade = Number(item.quantidade);
+          return (
+            <div key={item.id} className="rounded-lg border p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">{item.produtoNome}</p>
+                <Badge variant="outline">{fmtBrl(Number(item.precoUnitario) * quantidade)} total</Badge>
+              </div>
+              {decupagem?.complete !== true ? (
+                <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="font-medium">Decupagem incompleta</p>
+                  <ul className="mt-1 list-disc pl-5 text-xs">
+                    {(Array.isArray(decupagem?.pendencias) ? decupagem.pendencias : ["Recalcule o item para gerar o snapshot financeiro."]).map((pendencia: string) => <li key={pendencia}>{pendencia}</li>)}
+                  </ul>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader><TableRow><TableHead>Componente</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="text-right">% do preço</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {componentes.map(([rotulo, chave]) => {
+                      const componente = decupagem[chave];
+                      if (!componente) return null;
+                      return <TableRow key={chave}>
+                        <TableCell className={chave === "lucroLiquido" ? "font-semibold" : ""}>{rotulo}</TableCell>
+                        <TableCell className="text-right">{fmtBrl(Number(componente.valor) * quantidade)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(Number(componente.percentual), 2)}%</TableCell>
+                      </TableRow>;
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
 
 function ItensProposta({
   propostaId,
@@ -556,8 +776,11 @@ function ItensProposta({
   itens: NonNullable<RouterOutputs["propostas"]["obter"]>["itens"];
 }) {
   const utils = trpc.useUtils();
+  const { user } = useAuth();
+  const podeVerTaxasInternas = user?.role === "admin" || user?.role === "master" || user?.role === "gestor";
   const { data: produtosCadastrados } = trpc.produtos.listar.useQuery();
   const { data: nestingsSalvas } = trpc.propostas.nestingsEstudio.useQuery();
+  const { data: opcoesPagamento } = trpc.propostas.opcoesPagamento.useQuery(undefined, { enabled: podeVerTaxasInternas });
   const [busca, setBusca] = useState("");
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState("");
   const [variacoesSelecionadas, setVariacoesSelecionadas] = useState<number[]>([]);
@@ -566,6 +789,7 @@ function ItensProposta({
   const [materiaisCotacao, setMateriaisCotacao] = useState<MaterialCotacao[]>([]);
   const [quantidade, setQuantidade] = useState("1");
   const [precoUnitario, setPrecoUnitario] = useState("");
+  const [custoFinanceiroPct, setCustoFinanceiroPct] = useState("0");
   const [precoEditado, setPrecoEditado] = useState(false);
   const [sugestaoPreco, setSugestaoPreco] = useState<RouterOutputs["propostas"]["precoSugerir"] | null>(null);
   const [aprovacaoPreco, setAprovacaoPreco] = useState<RouterOutputs["propostas"]["precoAprovar"] | null>(null);
@@ -709,6 +933,7 @@ function ItensProposta({
       setMateriaisCotacao([]);
       setQuantidade("1");
       setPrecoUnitario("");
+      setCustoFinanceiroPct("0");
       setPrecoEditado(false);
       setSugestaoPreco(null);
       setAprovacaoPreco(null);
@@ -800,6 +1025,7 @@ function ItensProposta({
       propostaId,
       produtoId: Number(produtoSelecionadoId),
       quantidade: Math.max(0.0001, Number(quantidade.replace(",", ".")) || 1),
+      ...camposCondicaoFinanceira(custoFinanceiroPct),
       precoAtual,
       configuracao: montarConfiguracaoAtual(),
     });
@@ -822,6 +1048,7 @@ function ItensProposta({
       propostaId,
       produtoId: Number(produtoSelecionadoId),
       quantidade: qtd,
+      ...camposCondicaoFinanceira(custoFinanceiroPct),
       configuracao: montarConfiguracaoAtual(),
       precoAtual: precoAtualInformado,
       precoAprovado,
@@ -855,6 +1082,7 @@ function ItensProposta({
       produtoId: Number(produtoSelecionadoId),
       quantidade: qtd,
       precoUnitario: preco,
+      ...camposCondicaoFinanceira(custoFinanceiroPct),
       configuracao: montarConfiguracaoAtual(),
       aprovacaoPreco: { recibo: aprovacaoPreco.recibo, contexto: aprovacaoPreco.contexto },
     });
@@ -902,6 +1130,17 @@ function ItensProposta({
                 </p>
               )}
             </div>
+            {podeVerTaxasInternas && <div className="space-y-1">
+              <Label className="text-xs">Custo financeiro</Label>
+              <Select value={custoFinanceiroPct} onValueChange={(value) => { setCustoFinanceiroPct(value); invalidarPrecoAprovado(); }}>
+                <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Sem custo (0%)</SelectItem>
+                  {(opcoesPagamento ?? []).map((opcao) => <SelectItem key={String(opcao.parcelas) + ":" + String(opcao.custoFinanceiroPct)} value={String(opcao.parcelas) + ":" + String(opcao.custoFinanceiroPct)}>{opcao.parcelas}x · {fmtNum(opcao.custoFinanceiroPct, 2)}%</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Taxa financeira interna usada nesta decupagem.</p>
+            </div>}
             <Button size="sm" onClick={handleAdicionar} disabled={adicionar.isPending || !produtoAtual || !aprovacaoPreco}>Adicionar</Button>
           </div>
 
@@ -1205,12 +1444,12 @@ function ItensProposta({
 function ConfiguracoesComerciais() {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.propostas.configuracoesObter.useQuery();
-  const [juros, setJuros] = useState<{ parcelas: string; jurosPct: string }[]>([]);
+  const [juros, setJuros] = useState<{ parcelas: string; jurosPct: string; custoFinanceiroPct: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
     if (!data) return;
-    setJuros(data.jurosParcelamento.map((j: { parcelas: number; jurosPct: number }) => ({ parcelas: String(j.parcelas), jurosPct: String(j.jurosPct) })));
+    setJuros(data.jurosParcelamento.map((j: { parcelas: number; jurosPct: number; custoFinanceiroPct: number }) => ({ parcelas: String(j.parcelas), jurosPct: String(j.jurosPct), custoFinanceiroPct: String(j.custoFinanceiroPct) })));
   }, [data?.updatedAt]);
 
   const salvar = trpc.propostas.configuracoesSalvar.useMutation({
@@ -1232,7 +1471,7 @@ function ConfiguracoesComerciais() {
       salvar.mutate({
         condicoesComerciaisUrl: enviado.url,
         condicoesComerciaisNome: enviado.fileName,
-        jurosParcelamento: juros.map((j) => ({ parcelas: Number(j.parcelas) || 1, jurosPct: Number(j.jurosPct) || 0 })),
+        jurosParcelamento: juros.map((j) => ({ parcelas: Number(j.parcelas) || 1, jurosPct: Number(j.jurosPct) || 0, custoFinanceiroPct: Number(j.custoFinanceiroPct) || 0 })),
       });
     } catch (e: any) {
       toast.error("Erro ao subir arquivo", { description: e.message });
@@ -1247,7 +1486,7 @@ function ConfiguracoesComerciais() {
       condicoesComerciaisNome: data.condicoesComerciaisNome ?? undefined,
       jurosParcelamento: juros
         .filter((j) => j.parcelas.trim())
-        .map((j) => ({ parcelas: Number(j.parcelas) || 1, jurosPct: Number(j.jurosPct) || 0 })),
+        .map((j) => ({ parcelas: Number(j.parcelas) || 1, jurosPct: Number(j.jurosPct) || 0, custoFinanceiroPct: Number(j.custoFinanceiroPct) || 0 })),
     });
   };
 
@@ -1300,7 +1539,7 @@ function ConfiguracoesComerciais() {
               </Button>
             </div>
           ))}
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setJuros((prev) => [...prev, { parcelas: "", jurosPct: "0" }])}>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setJuros((prev) => [...prev, { parcelas: "", jurosPct: "0", custoFinanceiroPct: "0" }])}>
             <Plus className="w-3.5 h-3.5" /> Adicionar faixa
           </Button>
           <div>

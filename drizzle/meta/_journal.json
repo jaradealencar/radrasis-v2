@@ -463,6 +463,13 @@
       "when": 1791053275321,
       "tag": "0065_clammy_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791054675060,
+      "tag": "0066_slimy_frightful_four",
+      "breakpoints": true
     }
   ]
 }

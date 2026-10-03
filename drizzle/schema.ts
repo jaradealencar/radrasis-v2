@@ -295,6 +295,9 @@ export const produtos = pgTable("produtos", {
   // matéria-prima do produto — ex: 30 = custo final de MP é multiplicado
   // por 1,30. Definido manualmente pelo usuário, não vem do MubiSys.
   percentualCustoFixo: decimal("percentualCustoFixo", { precision: 6, scale: 2 }).notNull().default("0"),
+  // Custo direto de mão de obra por unidade do produto. NULL significa que
+  // ainda não foi levantado; decupagem não pode assumir custo zero.
+  custoMaoObra: decimal("custoMaoObra", { precision: 12, scale: 2 }),
   // ID de uma linha (MarginRow.id) ou regra (ConfigItem.id) da Tabela de
   // Preços (ver shared/price-table.ts e server/integrations/priceTableIds.ts)
   // — aponta a margem que esse produto deve seguir. Não é FK (o id vive
@@ -361,6 +364,19 @@ export type InsertProdutoKitItem = typeof produtoKitItens.$inferInsert;
 // ligar/desligar item e simular o valor.
 export const propostaStatusEnum = pgEnum("proposta_status", ["aberta", "aceita", "recusada", "expirada"]);
 
+// Cadastro comercial local: nome vinculado às propostas e taxa de comissão
+// versionada no snapshot de cada item ao calcular a decupagem.
+export const vendedoresComerciais = pgTable("vendedores_comerciais", {
+  id: serial("id").primaryKey(),
+  nome: varchar("nome", { length: 256 }).notNull().unique(),
+  comissaoPct: decimal("comissao_pct", { precision: 7, scale: 4 }).notNull().default("0"),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type VendedorComercial = typeof vendedoresComerciais.$inferSelect;
+export type InsertVendedorComercial = typeof vendedoresComerciais.$inferInsert;
+
 export const propostas = pgTable("propostas", {
   id: serial("id").primaryKey(),
   tituloProposta: varchar("titulo_proposta", { length: 256 }).notNull().default(""),
@@ -374,6 +390,7 @@ export const propostas = pgTable("propostas", {
   clienteCnpj: varchar("clienteCnpj", { length: 20 }),
   clienteContato: varchar("clienteContato", { length: 256 }),
   vendedorNome: varchar("vendedorNome", { length: 256 }).notNull(),
+  vendedorComercialId: integer("vendedor_comercial_id").references(() => vendedoresComerciais.id, { onDelete: "set null" }),
   // JSON (string[]) das formas de pagamento habilitadas nesta proposta —
   // mesmo padrão de `priceTableSections.contentJson`: texto, não jsonb.
   formasPagamentoJson: text("formasPagamentoJson").notNull().default("[]"),
@@ -400,6 +417,10 @@ export const propostaItens = pgTable("proposta_itens", {
   descricao: text("descricao").notNull().default(""),
   // Snapshot da nesting, variações selecionadas e consumo de cada matéria-prima.
   configuracaoJson: jsonb("configuracaoJson").$type<Record<string, unknown>>().notNull().default({}),
+  // Decupagem privada, calculada no servidor e preservada como snapshot.
+  // Não incluir em consultas públicas nem no PDF da proposta.
+  decupagemJson: jsonb("decupagem_json").$type<Record<string, unknown>>(),
+  custoMaoObraUnitario: decimal("custo_mao_obra_unitario", { precision: 12, scale: 2 }),
   // Componentes seguem separados para custo/cálculo, mas podem ser exibidos
   // como um único conjunto na proposta pública.
   grupoId: varchar("grupoId", { length: 36 }),
@@ -425,6 +446,10 @@ export const configuracoesComerciais = pgTable("configuracoes_comerciais", {
   condicoesComerciaisNome: text("condicoesComerciaisNome"),
   // JSON de { parcelas: number, jurosPct: number }[], ordenado por parcelas.
   jurosParcelamentoJson: text("jurosParcelamentoJson").notNull().default("[]"),
+  // Taxa incidente sobre o preço bruto; regras por categoria substituem o padrão.
+  impostoPct: decimal("imposto_pct", { precision: 7, scale: 4 }).notNull().default("0"),
+  custoFixoPct: decimal("custo_fixo_pct", { precision: 7, scale: 4 }).notNull().default("0"),
+  impostosPorCategoriaJson: text("impostos_por_categoria_json").notNull().default("[]"),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type ConfiguracaoComercial = typeof configuracoesComerciais.$inferSelect;

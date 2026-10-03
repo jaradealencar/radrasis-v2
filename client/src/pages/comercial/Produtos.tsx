@@ -213,6 +213,7 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
   const { data, isLoading } = trpc.produtos.obter.useQuery({ id });
 
   const [percentualCustoFixo, setPercentualCustoFixo] = useState("");
+  const [custoMaoObra, setCustoMaoObra] = useState("");
   const [idPrecificacao, setIdPrecificacao] = useState("");
   const [observacao, setObservacao] = useState("");
   const [prazoFabricacaoDiasUteis, setPrazoFabricacaoDiasUteis] = useState("");
@@ -221,6 +222,7 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
   useEffect(() => {
     if (!data) return;
     setPercentualCustoFixo(String(Number(data.produto.percentualCustoFixo)));
+    setCustoMaoObra(data.produto.custoMaoObra == null ? "" : String(Number(data.produto.custoMaoObra)));
     setIdPrecificacao(data.produto.idPrecificacao != null ? String(data.produto.idPrecificacao) : "");
     setObservacao(data.produto.observacao ?? "");
     setPrazoFabricacaoDiasUteis(data.produto.prazoFabricacaoDiasUteis != null ? String(data.produto.prazoFabricacaoDiasUteis) : "");
@@ -257,6 +259,7 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
 
   const handleSalvar = () => {
     const pct = parseFloat(percentualCustoFixo.replace(",", "."));
+    const maoDeObra = custoMaoObra.trim() ? parseFloat(custoMaoObra.replace(",", ".")) : null;
     const prazo = parseInt(prazoFabricacaoDiasUteis, 10);
     salvar.mutate({
       id: produto.id,
@@ -266,6 +269,7 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
       categoria: produto.categoria ?? undefined,
       ativo: produto.ativo,
       percentualCustoFixo: isNaN(pct) ? 0 : pct,
+      custoMaoObra: maoDeObra != null && Number.isFinite(maoDeObra) ? maoDeObra : null,
       idPrecificacao: idPrecificacao.trim() ? Number(idPrecificacao) : undefined,
       prazoFabricacaoDiasUteis: isNaN(prazo) ? undefined : prazo,
       instagramUrl: instagramUrl.trim() || undefined,
@@ -296,7 +300,12 @@ function DetalheProduto({ id, onVoltar }: { id: number; onVoltar: () => void }) 
           </CardTitle>
           <p className="text-xs text-muted-foreground">{produto.categoria || "sem categoria"} · MubiSys #{produto.mubisysProdutoId} / modelo #{produto.mubisysModeloId}</p>
         </CardHeader>
-        <CardContent className="grid sm:grid-cols-3 gap-4">
+        <CardContent className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Mão de obra direta por unidade (R$)</Label>
+            <Input type="number" min="0" step="0.01" value={custoMaoObra} onChange={(e) => setCustoMaoObra(e.target.value)} placeholder="Informe o custo; vazio = pendente" />
+            <p className="text-[11px] text-muted-foreground">Usado no decupador interno; custo pendente não é tratado como zero.</p>
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs">% custo fixo sobre matéria-prima</Label>
             <Input value={percentualCustoFixo} onChange={(e) => setPercentualCustoFixo(e.target.value)} placeholder="Ex: 30" />

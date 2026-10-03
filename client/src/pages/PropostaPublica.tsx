@@ -7,8 +7,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { fmtBrl, fmtDate } from "@/lib/format";
 import { gerarPdfProposta } from "@/lib/pdfProposta";
 import { Instagram, Download, FileDown, Package } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useState } from "react";
 
 export default function PropostaPublica() {
+  const [imagemZoomUrl, setImagemZoomUrl] = useState<string | null>(null);
   const { token } = useParams<{ token: string }>();
   const utils = trpc.useUtils();
   const { data, isLoading, isError } = trpc.propostas.publico.obterPorToken.useQuery(
@@ -62,11 +65,28 @@ export default function PropostaPublica() {
     <div className="min-h-screen bg-gray-100 py-8 px-4">
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">Proposta comercial</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{data.proposta.tituloProposta || "Proposta comercial"}</h1>
           <p className="text-sm text-gray-500 mt-1">
             {data.proposta.clienteNome} · {fmtDate(data.proposta.createdAt)}
           </p>
         </div>
+
+        {(data.proposta.imagemReferenciaUrl || data.proposta.imagemRedesenhadaUrl) && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Preparação visual do projeto</CardTitle></CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              {([
+                [data.proposta.imagemReferenciaUrl, "Imagem de referência (foto original)"],
+                [data.proposta.imagemRedesenhadaUrl, "Imagem redesenhada (visão plana/2D)"],
+              ] as const).map(([url, label]) => url && (
+                <button key={label} type="button" className="overflow-hidden rounded-lg border bg-white text-left" onClick={() => setImagemZoomUrl(url)}>
+                  <img src={url} alt={label} className="h-56 w-full object-contain" />
+                  <span className="block border-t px-3 py-2 text-xs font-medium text-gray-700">{label} · clique para ampliar</span>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -154,6 +174,7 @@ export default function PropostaPublica() {
             className="gap-1.5"
             onClick={() =>
               gerarPdfProposta({
+                tituloProposta: data.proposta.tituloProposta,
                 clienteNome: data.proposta.clienteNome,
                 vendedorNome: data.proposta.vendedorNome,
                 createdAt: data.proposta.createdAt,
@@ -175,6 +196,12 @@ export default function PropostaPublica() {
             </Button>
           )}
         </div>
+        <Dialog open={!!imagemZoomUrl} onOpenChange={(aberto) => !aberto && setImagemZoomUrl(null)}>
+          <DialogContent className="max-w-5xl p-2">
+            <DialogTitle className="sr-only">Pré-visualização da imagem</DialogTitle>
+            {imagemZoomUrl && <img src={imagemZoomUrl} alt="Pré-visualização ampliada" className="max-h-[85vh] w-full object-contain" />}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

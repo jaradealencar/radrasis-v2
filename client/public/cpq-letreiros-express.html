@@ -779,6 +779,7 @@ function novaProposta(){
     geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], kitSource:'nenhuma', kitWarning:null, matQuery:'', precificacao:null,
+    factibilidade:null, factibilidadeCarregando:false, factibilidadeErro:null, nestingCarregando:false, nestingMateriais:[],
     precoSugestao:null, precoAprovacao:null, precoAprovadoFinal:null, precoIACarregando:false, precoAprovacaoCarregando:false, precoIAErro:'',
     // Pintura: pré-configurada em todo orçamento, mas desabilitada por padrão
     // (não entra no kit nem aparece pro cliente até o vendedor habilitar e
@@ -800,6 +801,7 @@ function invalidarRastreamento(){
   traceRequestId++;
   state.tracing=false;
   REAL.traceQuality=null;
+  invalidarFactibilidadeReal();
 }
 
 /* ---------- GEOMETRIA REAL (integração poligonal sobre o SVG rastreado) ---------- */
@@ -878,7 +880,8 @@ function classifyGeometry(dString){
     areaPx, perimExtPx, perimIntPx,
     possivelSobreposicao,
     bboxPx:{x:bx1,y:by1,w:bx2-bx1,h:by2-by1},
-    pieces: external.map((s,i)=>({ n:i+1, bbox:s.bbox, area:s.area })),
+    pieces: external.map((s,i)=>({ n:i+1, bbox:s.bbox, area:s.area, d:s.d })),
+    contours:[...external.map(s=>({d:s.d,bbox:s.bbox,area:s.area,tipo:'externo'})),...internal.map(s=>({d:s.d,bbox:s.bbox,area:s.area,tipo:'vazado'}))],
   };
 }
 
@@ -888,7 +891,7 @@ function computeGeomReal(){
   const s = REAL.scale;
   const knownM = unitToM(s.valor, s.unidade);
   const refPx = s.byHeight ? g.bboxPx.h : g.bboxPx.w;
-  const scaleFactor = refPx>0 ? knownM/refPx : 0;
+  const scaleFactor = refPx>0 ? knownM/refPx*(Number(REAL.factibilidade?.fator_escala_aplicado)||1) : 0;
   const totalWidthM = g.bboxPx.w*scaleFactor;
   const totalHeightM = g.bboxPx.h*scaleFactor;
   return {
@@ -1260,7 +1263,7 @@ async function handleUploadedFile(file){
       return;
     }
     REAL.sourceKind='vetor';
-    REAL.tracedSvg=styled.svgText; REAL.fgD=parsed.d; REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
+    REAL.tracedSvg=styled.svgText; REAL.fgD=parsed.d; REAL.tracedW=parsed.w; REAL.tracedH=parsed.h; invalidarFactibilidadeReal();
     const approvedArtwork=REAL.imgReconstructed||REAL.imgPreview||null;
     REAL.imgPreview=approvedArtwork;
     REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
@@ -1333,7 +1336,7 @@ async function retrace(){
     if(parsed.transformedCount>0) throw new Error('O SVG retornado contém transformações que o cálculo ainda não interpreta. Baixe e achate as transformações em um editor vetorial antes de continuar.');
     REAL.imgPreview=rasterSource;
     REAL.vectorizerCredits=response.headers.get('X-Vectorizer-Credits-Charged');
-    REAL.tracedSvg=svgStr; REAL.fgD=parsed.d;
+    REAL.tracedSvg=svgStr; REAL.fgD=parsed.d; invalidarFactibilidadeReal();
     REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
     REAL.geomRaw=classifyGeometry(parsed.d);
     REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
@@ -1471,98 +1474,22 @@ function aplicarEdicaoVetor(){
 }
 
 /* ---------- NESTING REAL (shelf-packing sobre as peças rastreadas) ---------- */
-function packPiecesReal(sheetWmm, sheetHmm, gapMm){
-  sheetWmm = sheetWmm||1220; sheetHmm = sheetHmm||2440; gapMm = gapMm||10;
-  const g = REAL.geomRaw;
-  const geom = computeGeomReal();
-  const mmPerPx = geom.scaleFactor*1000;
-  if(!g || !g.pieces.length || !mmPerPx){
-    return { folhas:[], algoritmo:'shelf-packing (altura decrescente)', versao:'real v1' };
-  }
-  const pieces = g.pieces.map(p=>({ n:p.n, wmm:p.bbox.width*mmPerPx, hmm:p.bbox.height*mmPerPx, label:'peça '+p.n }))
-    .sort((a,b)=> b.hmm-a.hmm);
-
-  const folhas=[]; let sheet=null;
-  function newSheet(){ sheet={ material:'Material do kit — chapa 1220×2440mm', pecas:[], shelves:[], usedArea:0 }; folhas.push(sheet); }
-  for(const pc of pieces){
-    let placed=false;
-    const orientations = pc.wmm<=sheetWmm-2*gapMm && pc.hmm<=sheetHmm-2*gapMm ? [[pc.wmm,pc.hmm,0]] : [];
-    if(pc.hmm<=sheetWmm-2*gapMm && pc.wmm<=sheetHmm-2*gapMm) orientations.push([pc.hmm,pc.wmm,90]);
-    for(const [ow,oh,rot] of (sheet?orientations:[])){
-      for(const shelf of sheet.shelves){
-        if(shelf.h>=oh && (sheetWmm-shelf.usedW-gapMm)>=ow){
-          sheet.pecas.push({n:pc.n, x:shelf.usedW+gapMm, y:shelf.y, w:ow, h:oh, rot, label:pc.label});
-          shelf.usedW += ow+gapMm; sheet.usedArea += ow*oh; placed=true; break;
-        }
-      }
-      if(placed) break;
-      const lastShelf = sheet.shelves[sheet.shelves.length-1];
-      const lastY = lastShelf ? lastShelf.y+lastShelf.h+gapMm : gapMm;
-      if(lastY+oh <= sheetHmm-gapMm){
-        sheet.shelves.push({y:lastY, h:oh, usedW:ow+gapMm});
-        sheet.pecas.push({n:pc.n, x:gapMm, y:lastY, w:ow, h:oh, rot, label:pc.label});
-        sheet.usedArea += ow*oh; placed=true; break;
-      }
-    }
-    if(!placed){
-      newSheet();
-      const ow=Math.min(pc.wmm, sheetWmm-2*gapMm), oh=pc.hmm;
-      sheet.shelves.push({y:gapMm, h:oh, usedW:ow+gapMm});
-      sheet.pecas.push({n:pc.n, x:gapMm, y:gapMm, w:ow, h:oh, rot:0, label:pc.label});
-      sheet.usedArea += ow*oh;
-    }
-  }
-  const sheetArea = sheetWmm*sheetHmm;
-  folhas.forEach(f=>{
-    f.aproveitamento = Math.round(f.usedArea/sheetArea*100);
-    const shelvesArea = f.shelves.reduce((a,s)=>a+s.h*sheetWmm,0);
-    const sobraArea = Math.max(shelvesArea-f.usedArea,0);
-    f.sobra = Math.round(sobraArea/sheetArea*100);
-    f.descarte = Math.max(0, 100-f.aproveitamento-f.sobra);
-  });
-  return { folhas, algoritmo:'shelf-packing (altura decrescente, real)', versao:'real v1' };
-}
-
-/* ---------- COMPOSIÇÃO (KIT) REAL — matéria-prima real do MubiSys ---------- */
-const FORMULA_TYPES = {
-  areaTotal: {label:'Área total das peças no nesting (m²)', calc:(g,mult)=> (g.areaTotalNestingM2||g.areaGeralM2||0)*mult},
-  area: {label:'Área líquida (m²) — conteúdo da letra', calc:(g,mult)=> g.areaM2*mult},
-  areaGeral: {label:'Área geral (m²) — chapa consumida', calc:(g,mult)=> (g.areaGeralM2||0)*mult},
-  perimExt: {label:'Perímetro externo', calc:(g,mult)=> g.perimExtM*mult},
-  perimTotal: {label:'Comprimento total de corte', calc:(g,mult)=> g.corteTotalM*mult},
-  fixo: {label:'Quantidade fixa', calc:(g,mult)=> mult},
-};
-/** Taxonomia de categoria/subcategoria/tipo do cadastro de produtos —
- *  pedido do usuário 28/09/2026. "Outros" dentro de Letreiros são materiais
- *  sem tipo (frontlight/backlight/tradicional não se aplica); Acessórios
- *  não tem terceiro nível — a subcategoria já é o item final. */
-const CATEGORIAS_PRODUTO = {
-  'Letreiros': {
-    'Galvanizado': ['Frontlight', 'Backlight', 'Tradicional'],
-    'Alumínio': ['Frontlight', 'Backlight', 'Tradicional'],
-    'Inox': ['Frontlight', 'Backlight', 'Tradicional'],
-    'Latão': ['Frontlight', 'Backlight', 'Tradicional'],
-    'Outros': ['Acrílico montado', 'Acrílico cortado', 'ACM', 'PVC Expandido', 'Impresso 3D'],
-  },
-  'Acessórios': {
-    'Gabarito': [], 'LED': [], 'Fonte': [], 'Fixadores': [], 'Outros': [],
-  },
-  // Mesma taxonomia (substrato × tipo) já usada no wizard de pintura do
-  // orçamento (resolverItensPintura) — reaproveitada aqui pra cadastro de
-  // produto, decisão do usuário 29/09/2026.
-  'Pintura': {
-    'Galvanizado': ['Tradicional', 'Metalizada', 'Poliéster'],
-    'PVC': ['Tradicional', 'Metalizada', 'Poliéster'],
-  },
-};
-
 function addKitLine(materiaId){
   const m = catalog.materias.find(x=>x.id===materiaId);
   if(!m) return;
+  invalidarFactibilidadeReal();
   REAL.kit.push({ matId:m.id, nome:m.nome, unidade:m.unidade, custo:m.valor, atualizado:m.atualizado, status:m.status, papel:'', formulaType:'area', mult:1.0 });
 }
-function removeKitLine(idx){ REAL.kit.splice(idx,1); }
-function kitLineQty(line, geom){ return (FORMULA_TYPES[line.formulaType]||FORMULA_TYPES.fixo).calc(geom, line.mult); }
+function removeKitLine(idx){ invalidarFactibilidadeReal(); REAL.kit.splice(idx,1); }
+function kitLineQty(line, geom){
+  const material=materialKitAtivo(line);
+  const resultados=REAL.nestingMateriais?.length?REAL.nestingMateriais:(REAL.nesting?.materiais||[]);
+  const nesting=resultados.find(item=>Number(item.id_materia_prima)===Number(material.matId));
+  if(nesting&&line.formulaType==='areaTotal') return Math.max(0,Number(nesting.area_chapa_utilizada_m2)||0)*(Number(line.mult)||0);
+  if(nesting&&line.formulaType==='area') return Math.max(0,Number(nesting.area_liquida_m2)||0)*(Number(line.mult)||0);
+  if(nesting&&line.formulaType==='perimTotal') return Math.max(0,Number(nesting.perimetro_total_m)||0)*(Number(line.mult)||0);
+  return (FORMULA_TYPES[line.formulaType]||FORMULA_TYPES.fixo).calc(geom, line.mult);
+}
 function materialKitAtivo(line){
   const variacao=(Array.isArray(line.variantes)?line.variantes:[]).find(item=>String(item.matId)===String(line.variacaoSelecionadaMatId));
   return variacao?{...line,...variacao}:line;
@@ -1699,9 +1626,24 @@ function removerPintura(){
   render();
 }
 
+function linhaComCustoNesting(linha, geom=computeGeomReal()){
+  const material=materialKitAtivo(linha);
+  const resultadosNesting=REAL.nestingMateriais?.length?REAL.nestingMateriais:(REAL.nesting?.materiais||[]);
+  const nesting=resultadosNesting.find(item=>Number(item.id_materia_prima)===Number(material.matId));
+  const quantidade=Math.max(0,kitLineQty(linha,geom));
+  const custoBase=quantidade*(Number(material.custo)||0);
+  if(!nesting||nesting.custo_material_estimado==null||!Number.isFinite(Number(nesting.custo_material_estimado))) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:null};
+  const linhasMesmoMaterial=(REAL.kit||[]).filter(item=>Number(materialKitAtivo(item).matId)===Number(material.matId));
+  const custoBaseTotal=linhasMesmoMaterial.reduce((total,item)=>{const atual=materialKitAtivo(item);return total+Math.max(0,kitLineQty(item,geom))*(Number(atual.custo)||0);},0);
+  const parcela=custoBaseTotal>0?custoBase/ custoBaseTotal:1/Math.max(1,linhasMesmoMaterial.length);
+  const custoTotal=Math.max(0,Number(nesting.custo_material_estimado)*parcela);
+  const metadados={idChapa:nesting.id_chapa_utilizada,nomeChapa:nesting.nome_chapa_utilizada,larguraMm:nesting.chapa.largura_mm,alturaMm:nesting.chapa.altura_mm,areaChapaM2:nesting.chapa.largura_mm*nesting.chapa.altura_mm/1e6,areaUtilizadaM2:nesting.area_chapa_utilizada_m2,areaLiquidaM2:nesting.area_liquida_m2,areaSobraM2:nesting.area_sobra_m2,perimetroTotalM:nesting.perimetro_total_m,aproveitamentoPct:nesting.porcentagem_aproveitamento,criterio:nesting.criterio_escolha,custoUnitarioCatalogo:Number(nesting.custo_unitario)||0,unidadeCusto:nesting.unidade_custo,custoMaterialEstimado:nesting.custo_material_estimado,custoSobraEstimado:nesting.custo_sobra_estimado,alertaCusto:nesting.alerta_custo,chapaPrincipal:nesting.chapa_principal,reciboIntegridade:nesting.reciboIntegridade};
+  return {quantidade,custoTotal,custoUnitario:quantidade>0?custoTotal/quantidade:0,nesting:metadados};
+}
+
 function computeOrcamentoReal(){
   const g = computeGeomReal();
-  const matTotal = REAL.kit.reduce((a,k)=>a+kitLineQty(k,g)*materialKitAtivo(k).custo,0);
+  const matTotal = REAL.kit.reduce((a,k)=>a+linhaComCustoNesting(k,g).custoTotal,0);
   const servTotal = REAL.servicos.reduce((a,s)=>a+s.v,0);
   // % custo fixo sobre matéria-prima — GLOBAL, igual pra todo produto
   // (rateio de energia/mão-de-obra fixa), editável só em Administração >
@@ -2147,9 +2089,9 @@ function stepNesting(p){
 }
 
 function nestingSheet(f,fi){
-  const W=1220,H=2440, vh = W*0.30;
+  const W=f.larguraMm||1220,H=f.alturaMm||2440, vh = H;
   const colors=['#1e6fd9','#0d9488','#d97706','#c23b3b','#7c3aed'];
-  const maxY = Math.max(...f.pecas.map(pc=>pc.y+pc.w)) + 60;
+  const maxY = Math.max(...f.pecas.map(pc=>pc.y+pc.h)) + 30;
   const usableH = Math.min(vh, Math.max(maxY, W*0.16));
   return `
   <div class="card" style="background:var(--surface-2); box-shadow:none;">
@@ -2287,7 +2229,7 @@ function renderRealStepContent(){
     case 4: return realStepVetorizacao();
     case 5: return realStepEscala();
     case 6: return realStepKit();
-    case 7: return realStepNesting();
+    case 7: return realStepNestingV2();
     case 8: return realStepOrcamento();
     default: return '';
   }
@@ -3064,16 +3006,94 @@ function realStepKit(){
   </div>`;
 }
 
-function realStepNesting(){
-  if(!REAL.nesting) REAL.nesting = packPiecesReal();
-  return `
-  <div class="card">
-    <div class="cardhead"><div><h3>7 · Nesting (real)</h3><p>Empacotamento real das peças detectadas na vetorização, nas dimensões confirmadas na escala. Algoritmo <span class="mono">${REAL.nesting.algoritmo}</span>.</p></div></div>
-    ${REAL.nesting.folhas.length? REAL.nesting.folhas.map((f,fi)=>nestingSheet(f,fi)).join('') : `<div class="empty-hint">Nenhuma peça para posicionar — confirme a escala no passo anterior.</div>`}
-    <div class="footer-nav">
-      <div></div>
-      <button class="btn btn-primary" data-act="real-approve" data-val="nesting" ${REAL.nesting.folhas.length?'':'disabled'}>${ICONS.check} Confirmar nesting e avançar</button>
-    </div>
+async function analisarFactibilidadeReal(){
+  if(REAL.factibilidadeCarregando||REAL.nestingCarregando) return;
+  REAL.factibilidadeCarregando=true; REAL.factibilidadeErro=null; REAL.factibilidade=null; REAL.nesting=null;
+  render();
+  try{
+    const boardResponse=await fetch('/api/letra-caixa/chapas',{credentials:'same-origin'});
+    const boardBody=await boardResponse.json().catch(()=>({}));
+    if(!boardResponse.ok) throw new Error(boardBody.error||'Nao foi possivel carregar as chapas cadastradas.');
+    const selectedIds=[...new Set((REAL.kit||[]).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
+    const configured=new Set((boardBody.chapas||[]).filter(board=>board.ativo).map(board=>Number(board.mubisysMateriaPrimaId)));
+    const requiredSheetIds=[...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&line.formulaType==='areaTotal').map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
+    const missingSheets=requiredSheetIds.filter(id=>!configured.has(id));
+    if(missingSheets.length) throw new Error('Cadastre chapas ativas para as materias-primas de chapa: '+missingSheets.join(', ')+'.');
+    const materiaPrimaIds=selectedIds.filter(id=>configured.has(id));
+    if(!materiaPrimaIds.length) throw new Error('Nenhuma materia-prima do kit possui chapa ativa. Cadastre formatos de chapa antes do nesting.');
+    if(materiaPrimaIds.length>10) throw new Error('A factibilidade aceita ate 10 materiais de chapa por projeto.');
+    const g=computeGeomReal();
+    const response=await fetch('/api/letra-caixa/factibilidade',{
+      method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sourceId:REAL.id,svg:REAL.tracedSvg,larguraSvgMm:REAL.tracedW*g.scaleFactor*1000,alturaSvgMm:REAL.tracedH*g.scaleFactor*1000,materiaPrimaIds}),
+    });
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Nao foi possivel analisar a factibilidade de fabricacao.');
+    REAL.factibilidade={...body,acao:null,reciboDecisao:null,resultadoDecisao:null};
+    if(body.status_factibilidade==='APTO_NESTING') await executarNestingFactibilidadeReal();
+  }catch(error){ REAL.factibilidadeErro=error.message||'Falha ao analisar a factibilidade.'; }
+  finally{ REAL.factibilidadeCarregando=false; render(); }
+}
+
+async function executarNestingFactibilidadeReal(){
+  const fact=REAL.factibilidade;
+  if(!fact) throw new Error('Analise a factibilidade antes do nesting.');
+  if(fact.status_factibilidade==='REQUER_APROVACAO_EMENDA'&&!fact.reciboDecisao) return;
+  REAL.nestingCarregando=true; REAL.nesting=null; REAL.factibilidadeErro=null; render();
+  try{
+    const resultados=await Promise.all(fact.materiais.map(async material=>{
+      const pecas=fact.acao==='REDIMENSIONAR_PARA_CABER'?material.pecas_redimensionadas_opcao:material.pecas_para_nesting;
+      if(!Array.isArray(pecas)||!pecas.length) throw new Error('Nao ha pecas de corte para '+material.materia_prima+'.');
+      const response=await fetch('/api/letra-caixa/nesting',{
+        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          sourceId:REAL.id,resultadoHash:fact.resultadoHash,ticketAnalise:fact.ticketAnalise,
+          acaoFactibilidade:fact.acao||null,reciboDecisaoFactibilidade:fact.reciboDecisao||null,
+          pecas,materiaPrimaIds:[material.id_materia_prima],espacamentoMm:3,
+        }),
+      });
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(body.error||'Falha no Deepnest para '+material.materia_prima+'.');
+      return body.materiais?.[0];
+    }));
+    if(resultados.some(resultado=>!resultado)) throw new Error('O Deepnest nao retornou todos os materiais.');
+    REAL.nesting={materiais:resultados,algoritmo:'Deepnest local'};
+  }finally{ REAL.nestingCarregando=false; }
+}
+
+function realStepNestingV2(){
+  const fact=REAL.factibilidade;
+  const nesting=REAL.nesting;
+  const bloqueado=!!fact&&fact.status_factibilidade==='REQUER_APROVACAO_EMENDA'&&!fact.reciboDecisao;
+  const podeAprovar=['gestor','admin','master'].includes(state.role);
+  const previews=fact?.materiais?.map(material=>`<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
+    <div class="cardhead"><div><h4>${escaparHtml(material.materia_prima)} - preview de corte</h4><p>Chapa de referencia ${material.largura_chapa_mm} x ${material.altura_chapa_mm} mm</p></div></div>
+    <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:8px;">${material.svg_visualizacao}</div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-act="factibilidade-download" data-material-id="${material.id_materia_prima}">Baixar SVG de visualizacao</button>
+  </div>`).join('')||'';
+  const cards=nesting?.materiais?.map(material=>`<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
+    <div class="cardhead"><div><h4>${escaparHtml(material.materia_prima)}</h4><p>Chapa ${escaparHtml(material.nome_chapa_utilizada)} - ${material.chapa.largura_mm} x ${material.chapa.altura_mm} mm</p></div><span class="badge b-ok">${fmt(material.porcentagem_aproveitamento,1)}% liquido</span></div>
+    <div class="grid3"><div class="kv"><span>Area liquida</span><span>${fmt(material.area_liquida_m2,4)} m2</span></div><div class="kv"><span>Area cobrada</span><span>${fmt(material.area_chapa_utilizada_m2,4)} m2</span></div><div class="kv"><span>Perimetro de corte</span><span>${fmt(material.perimetro_total_m,2)} m</span></div></div>
+    <div class="role-note">${material.posicionamentos.length} peca(s) posicionada(s) - chapa ID ${material.id_chapa_utilizada} (${material.chapa_principal?'principal':'alternativa'}); critério: ${material.criterio_escolha==='menor_sobra_financeira'?'menor sobra financeira':'maior aproveitamento'}.</div>
+    ${material.custo_material_estimado==null?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(material.alerta_custo||'Unidade sem conversão automática; revise o custo antes de emitir.')}</div>`:`<div class="kv"><span>Custo proporcional estimado da chapa</span><span>${money(material.custo_material_estimado)}</span></div>`}
+  </div>`).join('')||'';
+  if(REAL.factibilidadeCarregando) return `<div class="card"><div class="empty-hint">Analisando chapas e preparando o nesting...</div></div>`;
+  return `<div class="card">
+    <div class="cardhead"><div><h3>7 - Factibilidade e nesting por material</h3><p>O servidor valida o maior formato ativo, prepara as pecas de corte e executa o Deepnest local por material.</p></div></div>
+    ${REAL.factibilidadeErro?`<div class="warnbox" role="alert"><span>${ICONS.alert}</span><div>${escaparHtml(REAL.factibilidadeErro)}</div></div>`:''}
+    ${fact?.status_factibilidade==='APTO_NESTING'?`<div class="banner" style="margin:10px 0 0;">${ICONS.check}<div><b>Projeto apto para nesting.</b> ${fact.projeto_redimensionado?`Reducao automatica de ${fmt((1-fact.fator_escala_aplicado)*100,2)}% aplicada, dentro do limite de 3%.`:'Nenhuma alteracao geometrica foi necessaria.'}</div></div>`:''}
+    ${bloqueado?`<div class="warnbox" style="margin-top:10px;"><span>${ICONS.alert}</span><div><b>REQUER_APROVACAO_EMENDA</b><p style="margin:5px 0;">${fact.detalhes_corte.pecas_afetadas.length} peca(s) exigem emenda tecnica; ${fact.detalhes_corte.quantidade_emendas} linha(s) de corte. O desenho preserva o tamanho original.</p>${fact.avisos.map(aviso=>`<div>${escaparHtml(aviso)}</div>`).join('')}</div></div>${previews}
+      <div class="footer-nav"><div class="role-note">Aprovacao de emenda ou reducao acima de 3% exige Gestor, Admin ou Master.</div><div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" data-act="factibilidade-acao" data-val="APROVAR_EMENDA_TECNICA" ${podeAprovar?'':'disabled'}>Aprovar emenda tecnica</button>
+        <button class="btn btn-ghost" data-act="factibilidade-acao" data-val="REDIMENSIONAR_PARA_CABER" ${podeAprovar?'':'disabled'}>Redimensionar para caber (${fmt((1-fact.fator_escala_minimo_para_caber)*100,2)}%)</button>
+        <button class="btn btn-soft" data-act="factibilidade-acao" data-val="SOLICITAR_ANALISE_HUMANA">Solicitar analise humana</button>
+      </div></div>`:''}
+    ${fact?.resultadoDecisao?.status_factibilidade==='ANALISE_HUMANA_SOLICITADA'?`<div class="warnbox" style="margin-top:10px;"><span>${ICONS.info}</span><div>Analise humana solicitada por ${escaparHtml(fact.resultadoDecisao.solicitadoPor?.nome||'usuario')}. A cotacao e o nesting continuam bloqueados.</div></div>`:''}
+    ${fact?.reciboDecisao?`<div class="banner" style="margin-top:10px;">${ICONS.check}<div>Decisao registrada por ${escaparHtml(fact.aprovadoPor?.nome||'usuario autorizado')}. ${fact.acao==='REDIMENSIONAR_PARA_CABER'?`Fator aplicado: ${fmt(fact.fator_escala_aplicado*100,2)}%.`:''}</div></div>`:''}
+    ${REAL.nestingCarregando?`<div class="empty-hint">Deepnest esta posicionando as pecas em cada material...</div>`:''}
+    ${fact&&!nesting&&!bloqueado&&!REAL.nestingCarregando?`<button class="btn btn-primary" data-act="real-nesting-factibilidade-retry" style="margin-top:10px;">Executar Deepnest novamente</button>`:''}
+    ${cards}
+    <div class="footer-nav"><div></div><button class="btn btn-primary" data-act="real-approve" data-val="nesting" ${nesting?.materiais?.length&&!bloqueado?'':'disabled'}>${ICONS.check} Confirmar nesting e avancar</button></div>
   </div>`;
 }
 
@@ -3094,6 +3114,12 @@ function realStepOrcamento(){
       </div>
       <div class="status-flow">${statuses.map((s,i)=>`<span class="fseg ${i===curIdx?'active':''}">${s}</span>${i<statuses.length-1?'<span class="arrow">→</span>':''}`).join('')}</div>
     </div>
+    ${REAL.tituloProposta?`<div style="font-size:18px;font-weight:700;margin:4px 0 12px;">${escaparHtml(REAL.tituloProposta)}</div>`:''}
+    ${(REAL.imagemReferenciaUrl||REAL.imgOriginal||REAL.imagemRedesenhadaUrl||REAL.imgReconstructed)?`<div class="grid2" style="margin:0 0 12px;">
+      ${REAL.imagemReferenciaUrl||REAL.imgOriginal?`<button type="button" data-act="real-imagem-zoom" data-url="${escaparHtml(REAL.imagemReferenciaUrl||REAL.imgOriginal)}" class="card" style="padding:8px;text-align:left;cursor:zoom-in;background:var(--surface-2);"><img src="${escaparHtml(REAL.imagemReferenciaUrl||REAL.imgOriginal)}" alt="Foto original de referência" style="width:100%;height:150px;object-fit:contain;background:#fff;border-radius:6px;"><span class="source-tag">Imagem de referência · ampliar</span></button>`:''}
+      ${REAL.imagemRedesenhadaUrl||REAL.imgReconstructed?`<button type="button" data-act="real-imagem-zoom" data-url="${escaparHtml(REAL.imagemRedesenhadaUrl||REAL.imgReconstructed)}" class="card" style="padding:8px;text-align:left;cursor:zoom-in;background:var(--surface-2);"><img src="${escaparHtml(REAL.imagemRedesenhadaUrl||REAL.imgReconstructed)}" alt="Imagem redesenhada plana" style="width:100%;height:150px;object-fit:contain;background:#fff;border-radius:6px;"><span class="source-tag">Redesenho plano 2D · ampliar</span></button>`:''}
+    </div>`:''}
+    ${imagemCotacaoZoomUrl?`<div data-act="real-imagem-zoom-fechar" style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;"><button type="button" aria-label="Fechar imagem ampliada" data-act="real-imagem-zoom-fechar" style="position:absolute;top:16px;right:20px;border:0;background:transparent;color:white;font-size:32px;cursor:pointer;">×</button><img src="${escaparHtml(imagemCotacaoZoomUrl)}" alt="Imagem ampliada" style="max-width:96vw;max-height:92vh;object-fit:contain;background:white;border-radius:8px;cursor:default;"></div>`:''}
     ${kitPronto && (kitPronto.fotoUrl || kitPronto.prazoDiasUteis!=null)? `<div class="card" style="background:var(--surface-2); box-shadow:none; margin-bottom:12px;">
       <div style="display:flex; gap:12px; align-items:center;">
         ${kitPronto.fotoUrl? `<img src="${kitPronto.fotoUrl}" style="width:56px; height:56px; object-fit:cover; border-radius:8px; border:1px solid var(--border); flex:none;">` : ''}
@@ -3133,7 +3159,7 @@ function realStepOrcamento(){
       <table>
         <thead><tr><th>Linha</th><th>Qtd.</th><th>Custo unit.</th><th>Subtotal</th></tr></thead>
         <tbody>
-        ${REAL.kit.map(k=>{const qty=kitLineQty(k,g); const material=materialKitAtivo(k); return `<tr><td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}</div></td><td class="num">${fmt(qty,2)} ${material.unidade}</td><td class="num">${money(material.custo)}</td><td class="num">${money(qty*material.custo)}</td></tr>`;}).join('')}
+        ${REAL.kit.map(k=>{const calculo=linhaComCustoNesting(k,g); const qty=calculo.quantidade; const material=materialKitAtivo(k); return `<tr><td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}</div></td><td class="num">${fmt(qty,2)} ${material.unidade}</td><td class="num">${money(calculo.custoUnitario)}</td><td class="num">${money(calculo.custoTotal)}${calculo.nesting?`<div class="source-tag">Deepnest ? ${escaparHtml(calculo.nesting.nomeChapa)}</div>`:''}</td></tr>`;}).join('')}
         ${REAL.servicos.map(s=>`<tr><td>${s.n}</td><td class="num">—</td><td class="num">—</td><td class="num">${money(s.v)}</td></tr>`).join('')}
         <tr><td colspan="3">% custo fixo (global, ${configGeral.custoFixoPct}% sobre matéria-prima)</td><td class="num">${money(o.custoFixo)}</td></tr>
         <tr><td colspan="3"><b>Custo direto</b></td><td class="num"><b>${money(o.custoDireto)}</b></td></tr>
@@ -3224,6 +3250,13 @@ const kitSaveState = {};
 let kitsApiDisponivel = false;
 let kitsCarregando = true;
 let kitsApiErro = '';
+let chapasCotacao = [];
+let chapasCotacaoCarregando = false;
+let chapasCotacaoErro = '';
+let chapaMateriaSelecionada = '';
+let chapaLarguraNova = '';
+let chapaAlturaNova = '';
+let chapaNomeNovo = '';
 let _exclSaveTimer = null;
 let _configSaveTimer = null;
 
@@ -3310,20 +3343,22 @@ function snapshotCotacaoReal(){
   const kitPronto = REAL.produtoId && REAL.modeloId ? adminState.kits[kitKey(REAL.produtoId, REAL.modeloId)] : null;
   const materiais = (REAL.kit||[]).map(linha=>{
     const material=materialKitAtivo(linha);
-    const quantidade=Math.max(0,kitLineQty(linha,g));
+    const calculoLinha=linhaComCustoNesting(linha,g);
+    const quantidade=calculoLinha.quantidade;
     const alternativa=(Array.isArray(linha.variantes)?linha.variantes:[]).find(item=>String(item.matId)===String(linha.variacaoSelecionadaMatId));
     return {
       mubisysMateriaPrimaId:Number(material.matId)||null,
       nome:String(material.nome||''),
       unidade:String(material.unidade||''),
-      custoUnitario:Number(material.custo)||0,
+      custoUnitario:calculoLinha.custoUnitario,
       quantidade:Number.isFinite(quantidade)?quantidade:0,
-      custoTotal:Number.isFinite(quantidade)?quantidade*(Number(material.custo)||0):0,
+      custoTotal:Number.isFinite(quantidade)?calculoLinha.custoTotal:0,
       formulaType:String(linha.formulaType||'fixo'),
       multiplicador:Math.max(0,Number(linha.mult)||0),
       variacaoModeloId:linha.variacaoModeloId??null,
       variacaoModeloNome:linha.variacaoModeloNome||null,
       variacaoMaterial:alternativa?{nome:String(linha.variacaoNome||'Variação'),valor:String(alternativa.valor||alternativa.nome||''),materiaPrimaNome:String(alternativa.nome||'')}:null,
+      nesting:calculoLinha.nesting,
     };
   });
   return {
@@ -3331,6 +3366,23 @@ function snapshotCotacaoReal(){
     imagemReferenciaUrl:REAL.imagemReferenciaUrl||null,
     imagemRedesenhadaUrl:REAL.imagemRedesenhadaUrl||null,
     nestingSvg:REAL.tracedSvg||null,
+    factibilidade:REAL.factibilidade?{
+      statusFactibilidade:REAL.factibilidade.status_factibilidade,
+      resultadoHash:REAL.factibilidade.resultadoHash,
+      ticketAnalise:REAL.factibilidade.ticketAnalise,
+      fatorEscalaAplicado:REAL.factibilidade.fator_escala_aplicado,
+      acao:REAL.factibilidade.acao||null,
+      reciboDecisao:REAL.factibilidade.reciboDecisao||null,
+      detalhesCorte:REAL.factibilidade.detalhes_corte,
+      avisos:REAL.factibilidade.avisos||[],
+      materiais:REAL.factibilidade.materiais.map(material=>({
+        idMateriaPrima:material.id_materia_prima,
+        idChapa:material.id_maior_chapa,
+        hashSvgParaNesting:material.hash_svg_para_nesting,
+        hashPecasParaNesting:material.hash_pecas_para_nesting,
+        hashPecasRedimensionadasOpcao:material.hash_pecas_redimensionadas_opcao,
+      })),
+    }:null,
     larguraNestingMm:Number.isFinite(g.totalWidthM)?Math.round(g.totalWidthM*1000):null,
     alturaNestingMm:Number.isFinite(g.totalHeightM)?Math.round(g.totalHeightM*1000):null,
     dataEmissao: REAL.dataEmissao,
@@ -3367,6 +3419,7 @@ function snapshotCotacaoReal(){
     custoDireto:o.custoDireto,
     precoCalculado:o.precoCalculado,
     modoPreco:o.modoFixo?'fixo':'margem',
+    linhaPrecificacaoId:Number(REAL.precificacao?.lineId)||null,
     margemAplicadaPct:o.margin==null?null:o.margin*100,
     precoFixo:o.modoFixo?Number(REAL.precificacao?.precoFixo)||0:null,
     instalacao:REAL.instalacao,
@@ -3390,6 +3443,13 @@ function chaveBasePrecoReal(){
     mubisysModeloId:snapshot.mubisysModeloId??null,
     modeloNome:snapshot.modeloNome,
     variacoesModelo:snapshot.variacoesModelo||[],
+    factibilidade:snapshot.factibilidade?{
+      resultadoHash:snapshot.factibilidade.resultadoHash,
+      statusFactibilidade:snapshot.factibilidade.statusFactibilidade,
+      fatorEscalaAplicado:snapshot.factibilidade.fatorEscalaAplicado,
+      acao:snapshot.factibilidade.acao,
+      materiais:snapshot.factibilidade.materiais,
+    }:null,
     medidas:{areaM2:snapshot.areaM2,areaGeralM2:snapshot.areaGeralM2,areaTotalNestingM2:snapshot.areaTotalNestingM2??null,perimExtM:snapshot.perimExtM??null,perimTotalM:snapshot.perimTotalM??null},
     materiais:snapshot.materiais||[],
     custoDireto:snapshot.custoDireto,
@@ -3759,7 +3819,7 @@ function criarNovaVersao(){
 
 function renderAdmin(){
   const paineis = {
-    produtos: adminProdutos, erp: adminMateriasAdmin, clientes: adminClientesCadastrados,
+    produtos: adminProdutos, erp: adminMateriasAdmin, chapas: adminChapasNesting, clientes: adminClientesCadastrados,
     propostas: adminCotacoesHistorico, config: adminConfiguracoes,
   };
   return `
@@ -3767,6 +3827,7 @@ function renderAdmin(){
     <button data-act="admin-tab" data-val="produtos" class="${state.adminTab==='produtos'?'active':''}">Produtos &amp; kits</button>
     <button data-act="admin-tab" data-val="erp" class="${state.adminTab==='erp'?'active':''}">Matérias-primas (real)</button>
     <button data-act="admin-tab" data-val="clientes" class="${state.adminTab==='clientes'?'active':''}">Clientes</button>
+    <button data-act="admin-tab" data-val="chapas" class="${state.adminTab==='chapas'?'active':''}">Chapas para nesting</button>
     <button data-act="admin-tab" data-val="propostas" class="${state.adminTab==='propostas'?'active':''}">Cotações</button>
     <button data-act="admin-tab" data-val="config" class="${state.adminTab==='config'?'active':''}">Configurações</button>
   </div>
@@ -3909,7 +3970,7 @@ function adminCotacoesHistorico(){
           <td class="mono">${escaparHtml(p.numeroCotacao||'—')}</td>
           <td>${escaparHtml(p.vendedor||'—')}</td>
           <td title="${escaparHtml([p.clienteCnpj,p.clienteEndereco].filter(Boolean).join(' · '))}">${escaparHtml(cliente)}${p.clienteFantasia?`<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">${escaparHtml(p.clienteFantasia)}</div>`:''}</td>
-          <td>${escaparHtml(p.modeloNome||'—')}</td>
+          <td>${p.tituloProposta?`<b>${escaparHtml(p.tituloProposta)}</b><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">${escaparHtml(p.modeloNome||'')}</div>`:escaparHtml(p.modeloNome||'—')}</td>
           <td>${FRETE_LABEL[p.modalidadeFrete]||'—'}</td>
           <td>${PAGAMENTO_LABEL[p.metodoPagamento]||'—'}</td>
           <td class="num">${money(p.precoFinal||0)}</td>
@@ -4332,6 +4393,59 @@ function adminMateriasAdmin(){
 }
 
 /* ---------- EVENTOS ---------- */
+function adminChapasNesting(){
+  if(!catalog.ready) return `<div class="card"><div class="empty-hint">Carregando catálogo real do MubiSys…</div></div>`;
+  return `<div class="card">
+    <div class="cardhead"><div><h3>Formatos de chapa para o Deepnest</h3><p>Cadastre o tamanho principal e alternativas por matéria-prima. O servidor compara todas as chapas ativas pela sobra financeira e aproveitamento.</p></div><button class="btn btn-ghost btn-sm" data-act="chapas-atualizar">Atualizar</button></div>
+    ${chapasCotacaoErro?`<div class="warnbox">${escaparHtml(chapasCotacaoErro)}</div>`:''}
+    ${chapasCotacaoCarregando?'<div class="empty-hint">Carregando formatos...</div>':''}
+    <div class="grid2" style="margin:12px 0;">
+      <label class="field">Matéria-prima
+        <select data-act="chapa-materia"><option value="">Selecione do catálogo</option>${catalog.materias.filter(item=>!adminState.materiasExcluidas.has(item.id)).map(item=>`<option value="${item.id}" ${String(chapaMateriaSelecionada)===String(item.id)?'selected':''}>${escaparHtml(item.nome)} · ${item.id}</option>`).join('')}</select>
+      </label>
+      <label class="field">Nome do formato (opcional)<input data-act="chapa-nome" maxlength="256" value="${escaparHtml(chapaNomeNovo)}" placeholder="Ex.: Acrílico 3 mm — 1000 × 2000"></label>
+      <label class="field">Largura (mm)<input data-act="chapa-largura" inputmode="numeric" type="number" min="10" max="50000" value="${escaparHtml(chapaLarguraNova)}" placeholder="1000"></label>
+      <label class="field">Altura (mm)<input data-act="chapa-altura" inputmode="numeric" type="number" min="10" max="50000" value="${escaparHtml(chapaAlturaNova)}" placeholder="2000"></label>
+    </div>
+    <button class="btn btn-primary btn-sm" data-act="chapa-salvar" ${chapasCotacaoCarregando?'disabled':''}>Cadastrar chapa alternativa</button>
+    <div class="tablewrap" style="margin-top:14px;"><table><thead><tr><th>Matéria-prima</th><th>Formato</th><th>Dimensões</th><th>Tipo</th><th>Ações</th></tr></thead><tbody>
+      ${chapasCotacao.map(chapa=>{const material=catalog.materias.find(item=>item.id===chapa.mubisysMateriaPrimaId);return `<tr><td>${escaparHtml(material?.nome||chapa.nome)}</td><td>${escaparHtml(chapa.nome)}</td><td class="mono">${chapa.larguraMm} × ${chapa.alturaMm} mm</td><td>${chapa.principal?'<span class="badge b-ok">Principal</span>':'<span class="badge b-neutral">Alternativa</span>'}${chapa.ativo?'':' · Inativa'}</td><td style="white-space:nowrap;">${chapa.principal?'':`<button class="btn btn-ghost btn-sm" data-act="chapa-principal" data-id="${chapa.id}">Tornar principal</button>`} <button class="btn btn-ghost btn-sm" data-act="chapa-remover" data-id="${chapa.id}">Desativar</button></td></tr>`;}).join('')||'<tr><td colspan="5" class="empty-hint">Nenhum formato de chapa cadastrado.</td></tr>'}
+    </tbody></table></div>
+  </div>`;
+}
+
+async function carregarChapasServidor(){
+  chapasCotacaoCarregando=true;chapasCotacaoErro='';
+  if(state.tab==='admin'&&state.adminTab==='chapas') render();
+  try{
+    const response=await fetch('/api/letra-caixa/chapas',{credentials:'same-origin',cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||'Não foi possível carregar os formatos de chapa.');
+    chapasCotacao=Array.isArray(data.chapas)?data.chapas:[];
+  }catch(error){chapasCotacaoErro=error.message||'Falha ao carregar formatos de chapa.';}
+  finally{chapasCotacaoCarregando=false;if(state.tab==='admin'&&state.adminTab==='chapas')render();}
+}
+
+async function salvarChapaServidor(payload, id){
+  try{
+    const response=await fetch(id?`/api/letra-caixa/chapas/${id}`:'/api/letra-caixa/chapas',{method:id?'PUT':'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||'Não foi possível salvar o formato de chapa.');
+    chapaLarguraNova='';chapaAlturaNova='';chapaNomeNovo='';
+    await carregarChapasServidor();
+  }catch(error){alert(error.message||'Falha ao salvar formato de chapa.');}
+}
+
+async function desativarChapaServidor(id){
+  if(!confirm('Desativar este formato de chapa?')) return;
+  try{
+    const response=await fetch(`/api/letra-caixa/chapas/${id}`,{method:'DELETE',credentials:'same-origin'});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||'Não foi possível desativar o formato.');
+    await carregarChapasServidor();
+  }catch(error){alert(error.message||'Falha ao desativar formato de chapa.');}
+}
+
 // Únicas data-act tratadas pelo handler de clique GENÉRICO abaixo — tudo que
 // não está nesta lista tem handler próprio e dedicado em bindAdminEvents/
 // bindRealEvents/bindClienteEvents (ou nos blocos logo após este bind).
@@ -4344,7 +4458,7 @@ function adminMateriasAdmin(){
 // atrapalhava cliques em sequência (ex: adicionar mais de uma matéria-prima),
 // porque o DOM já tinha sido reconstruído prematuramente por baixo do clique
 // em andamento. Achado e corrigido 29/09/2026.
-const GENERIC_CLICK_ACTS = new Set(['tab','admin-tab','pick-project','back-picker','goto-step','approve','advance-status','erp-search']);
+const GENERIC_CLICK_ACTS = new Set(['tab','admin-tab','pick-project','back-picker','goto-step','approve','advance-status','erp-search','chapas-atualizar','chapa-salvar','chapa-principal','chapa-remover','real-imagem-zoom','real-imagem-zoom-fechar']);
 function bindEvents(){
   document.querySelectorAll('[data-act]').forEach(el=>{
     const act = el.dataset.act;
@@ -4353,7 +4467,7 @@ function bindEvents(){
       switch(act){
         case 'tab': state.tab=val; break;
         case 'role': state.role=val; break;
-        case 'admin-tab': state.adminTab=val; if(val==='propostas') carregarCotacoesServidor(); if(val==='clientes') carregarClientesCadastrados(); break;
+        case 'admin-tab': state.adminTab=val; if(val==='propostas') carregarCotacoesServidor(); if(val==='clientes') carregarClientesCadastrados(); if(val==='chapas') carregarChapasServidor(); break;
         case 'pick-project': resetProjectState(val); break;
         case 'back-picker': state.projectId=null; break;
         case 'goto-step': state.step=parseInt(val); break;
@@ -4431,6 +4545,29 @@ function bindClienteEvents(){
 
 function bindAdminEvents(){
   if(state.tab!=='admin') return;
+
+  const chapaMateria=document.querySelector('[data-act="chapa-materia"]');
+  if(chapaMateria) chapaMateria.addEventListener('change',event=>{chapaMateriaSelecionada=event.target.value;});
+  const chapaNome=document.querySelector('[data-act="chapa-nome"]');
+  if(chapaNome) chapaNome.addEventListener('input',event=>{chapaNomeNovo=event.target.value;});
+  const chapaLargura=document.querySelector('[data-act="chapa-largura"]');
+  if(chapaLargura) chapaLargura.addEventListener('input',event=>{chapaLarguraNova=event.target.value;});
+  const chapaAltura=document.querySelector('[data-act="chapa-altura"]');
+  if(chapaAltura) chapaAltura.addEventListener('input',event=>{chapaAlturaNova=event.target.value;});
+  const chapaSalvar=document.querySelector('[data-act="chapa-salvar"]');
+  if(chapaSalvar) chapaSalvar.addEventListener('click',()=>{
+    const material=catalog.materias.find(item=>item.id===Number(chapaMateriaSelecionada));
+    const larguraMm=Number(chapaLarguraNova), alturaMm=Number(chapaAlturaNova);
+    if(!material||!Number.isInteger(larguraMm)||!Number.isInteger(alturaMm)||larguraMm<10||alturaMm<10){alert('Selecione uma matéria-prima e informe largura e altura válidas em milímetros.');return;}
+    salvarChapaServidor({mubisysMateriaPrimaId:material.id,nome:chapaNomeNovo.trim()||`${material.nome} · ${larguraMm} × ${alturaMm} mm`,larguraMm,alturaMm,principal:!chapasCotacao.some(chapa=>chapa.mubisysMateriaPrimaId===material.id&&chapa.ativo)},null);
+  });
+  const chapasAtualizar=document.querySelector('[data-act="chapas-atualizar"]');
+  if(chapasAtualizar) chapasAtualizar.addEventListener('click',()=>carregarChapasServidor());
+  document.querySelectorAll('[data-act="chapa-principal"]').forEach(botao=>botao.addEventListener('click',()=>{
+    const chapa=chapasCotacao.find(item=>item.id===Number(botao.dataset.id));
+    if(chapa) salvarChapaServidor({mubisysMateriaPrimaId:chapa.mubisysMateriaPrimaId,nome:chapa.nome,larguraMm:chapa.larguraMm,alturaMm:chapa.alturaMm,principal:true},chapa.id);
+  }));
+  document.querySelectorAll('[data-act="chapa-remover"]').forEach(botao=>botao.addEventListener('click',()=>desativarChapaServidor(Number(botao.dataset.id))));
 
   const atualizarCatalogo=document.querySelector('[data-act="admin-catalogo-atualizar"]');
   if(atualizarCatalogo) atualizarCatalogo.addEventListener('click',()=>loadCatalog());
@@ -5031,12 +5168,21 @@ function bindNumberLive(selector, setValue, commitFn){
 function bindRealEvents(){
   if(state.mode!=='real') return;
 
+  document.querySelectorAll('[data-act="real-imagem-zoom"]').forEach(botao=>botao.addEventListener('click',()=>{imagemCotacaoZoomUrl=botao.dataset.url||null;render();}));
+  document.querySelectorAll('[data-act="real-imagem-zoom-fechar"]').forEach(botao=>botao.addEventListener('click',event=>{if(event.target===botao||event.target.closest('button')){imagemCotacaoZoomUrl=null;render();}}));
+
+
   const startBtn = document.querySelector('[data-act="start-real"]');
   if(startBtn) startBtn.addEventListener('click', ()=>{ invalidarRastreamento(); state.mode='real'; REAL=novaProposta(); render(); });
 
   document.querySelectorAll('[data-act="real-approve"]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const val = el.dataset.val;
+      if(val==='kit'){
+        REAL.approvals.kit=true; REAL.step=7; render();
+        await analisarFactibilidadeReal();
+        return;
+      }
       if(val==='vetorizacao' && !traceReviewReady()){
         alert('A vetorização só pode avançar depois de atender aos critérios do Prompt 2 e concluir a revisão visual.');
         return;
@@ -5056,12 +5202,48 @@ function bindRealEvents(){
         }
       }
       REAL.approvals[val]=true;
-      if(val==='escala') REAL.nesting=null;
+      if(val==='escala') invalidarFactibilidadeReal();
       const idx = STEP_DEFS_REAL.findIndex(s=>s.k===val);
       if(idx>-1 && idx<STEP_DEFS_REAL.length-1) REAL.step = STEP_DEFS_REAL[idx+1].n;
       render();
     });
   });
+  document.querySelectorAll('[data-act="factibilidade-acao"]').forEach(el=>el.addEventListener('click',async()=>{
+    const fact=REAL.factibilidade;
+    if(!fact||REAL.nestingCarregando) return;
+    const acao=el.dataset.val;
+    el.disabled=true;
+    try{
+      const payload={sourceId:REAL.id,resultadoHash:fact.resultadoHash,ticketAnalise:fact.ticketAnalise,acao,detalhesCorte:fact.detalhes_corte};
+      if(acao==='REDIMENSIONAR_PARA_CABER') payload.fatorEscalaAprovada=fact.fator_escala_minimo_para_caber;
+      const response=await fetch('/api/letra-caixa/factibilidade/decidir',{
+        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
+      });
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(body.error||'A decisao de fabricacao nao foi registrada.');
+      fact.resultadoDecisao=body;
+      if(acao==='SOLICITAR_ANALISE_HUMANA'){render();return;}
+      fact.acao=acao; fact.reciboDecisao=body.reciboDecisao; fact.aprovadoPor=body.aprovadoPor;
+      if(acao==='REDIMENSIONAR_PARA_CABER') fact.fator_escala_aplicado=body.fatorEscalaAprovada;
+      await executarNestingFactibilidadeReal();
+    }catch(error){ REAL.factibilidadeErro=error.message||'Falha ao processar a decisao.'; }
+    render();
+  }));
+  const factibilidadeRetry=document.querySelector('[data-act="real-factibilidade-retry"]');
+  if(factibilidadeRetry) factibilidadeRetry.addEventListener('click',()=>analisarFactibilidadeReal());
+  const nestingFactibilidadeRetry=document.querySelector('[data-act="real-nesting-factibilidade-retry"]');
+  if(nestingFactibilidadeRetry) nestingFactibilidadeRetry.addEventListener('click',async()=>{
+    try{ await executarNestingFactibilidadeReal(); }
+    catch(error){ REAL.factibilidadeErro=error.message||'Falha ao executar o Deepnest.'; }
+    render();
+  });
+  document.querySelectorAll('[data-act="factibilidade-download"]').forEach(el=>el.addEventListener('click',()=>{
+    const material=REAL.factibilidade?.materiais?.find(item=>String(item.id_materia_prima)===String(el.dataset.materialId));
+    if(!material) return;
+    const url=URL.createObjectURL(new Blob([material.svg_visualizacao],{type:'image/svg+xml'}));
+    const link=document.createElement('a'); link.href=url; link.download=`factibilidade-${material.id_materia_prima}.svg`; link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }));
   document.querySelectorAll('[data-act="real-goto-step"]').forEach(el=> el.addEventListener('click', ()=>{ REAL.step=parseInt(el.dataset.val); render(); }));
   document.querySelectorAll('[data-act="trace-review"]').forEach(el=>el.addEventListener('change',()=>{
     REAL.traceReview[el.dataset.val]=el.checked;
@@ -5132,26 +5314,30 @@ function bindRealEvents(){
   if(vendedorEl) vendedorEl.addEventListener('change', e=>{ REAL.vendedor=e.target.value; render(); });
   const filtroCatEl = document.querySelector('[data-act="real-filtro-categoria"]');
   if(filtroCatEl) filtroCatEl.addEventListener('change', e=>{
+    invalidarFactibilidadeReal();
     REAL.filtroCategoria = e.target.value||null; REAL.filtroSubcategoria=null; REAL.filtroTipo=null;
     REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[];
     render();
   });
   const filtroSubEl = document.querySelector('[data-act="real-filtro-subcategoria"]');
   if(filtroSubEl) filtroSubEl.addEventListener('change', e=>{
+    invalidarFactibilidadeReal();
     REAL.filtroSubcategoria = e.target.value||null; REAL.filtroTipo=null;
     REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[];
     render();
   });
   const filtroTipoEl = document.querySelector('[data-act="real-filtro-tipo"]');
   if(filtroTipoEl) filtroTipoEl.addEventListener('change', e=>{
+    invalidarFactibilidadeReal();
     REAL.filtroTipo = e.target.value||null;
     REAL.produtoId=null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[];
     render();
   });
   const produtoEl = document.querySelector('[data-act="real-produto"]');
-  if(produtoEl) produtoEl.addEventListener('change', e=>{ REAL.produtoId=parseInt(e.target.value)||null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[]; REAL.kit=[]; REAL.kitSource='nenhuma'; REAL.kitWarning=null; REAL.descricaoProduto=''; render(); });
+  if(produtoEl) produtoEl.addEventListener('change', e=>{ invalidarFactibilidadeReal(); REAL.produtoId=parseInt(e.target.value)||null; REAL.modeloId=null; REAL.modeloNome=null; REAL.variacaoModeloId=null; REAL.variacaoModeloNome=null; REAL.variacaoModeloIds=[]; REAL.variacaoModeloNomes=[]; REAL.kit=[]; REAL.kitSource='nenhuma'; REAL.kitWarning=null; REAL.descricaoProduto=''; render(); });
   const modeloEl = document.querySelector('[data-act="real-modelo"]');
   if(modeloEl) modeloEl.addEventListener('change', e=>{
+    invalidarFactibilidadeReal();
     const novoModeloId=parseInt(e.target.value)||null;
     if(REAL.modeloId!==novoModeloId) REAL.descricaoProduto='';
     REAL.modeloId=novoModeloId;
@@ -5163,6 +5349,7 @@ function bindRealEvents(){
     render();
   });
   document.querySelectorAll('[data-act="real-variacao-modelo"]').forEach(variacaoModeloEl=>variacaoModeloEl.addEventListener('change',()=>{
+    invalidarFactibilidadeReal();
     const prod=catalog.produtos.find(p=>p.id===REAL.produtoId);
     const mod=prod?.modelos.find(m=>m.id===REAL.modeloId);
     const variacaoIds=[...document.querySelectorAll('[data-act="real-variacao-modelo"]:checked')].map(input=>Number(input.dataset.val)).filter(Number.isInteger);
@@ -5221,16 +5408,16 @@ function bindRealEvents(){
   if(vectorizeBtn) vectorizeBtn.addEventListener('click', retrace);
 
   bindNumberLive('[data-act="real-scale-value"]', v=>{
-    REAL.scale.valor=parseFloat(v)||0; REAL.nesting=null; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
+    REAL.scale.valor=parseFloat(v)||0; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
   });
   const scaleUnitEl = document.querySelector('[data-act="real-scale-unit"]');
-  if(scaleUnitEl) scaleUnitEl.addEventListener('change', e=>{ REAL.scale.unidade=e.target.value; REAL.nesting=null; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; render(); });
+  if(scaleUnitEl) scaleUnitEl.addEventListener('change', e=>{ REAL.scale.unidade=e.target.value; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; render(); });
   const scaleReferenceEl = document.querySelector('[data-act="real-scale-reference"]');
-  if(scaleReferenceEl) scaleReferenceEl.addEventListener('change', e=>{ REAL.scale.reference=e.target.value; REAL.nesting=null; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; render(); });
+  if(scaleReferenceEl) scaleReferenceEl.addEventListener('change', e=>{ REAL.scale.reference=e.target.value; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; render(); });
   const scaleReferenceDescEl = document.querySelector('[data-act="real-scale-reference-desc"]');
-  if(scaleReferenceDescEl) scaleReferenceDescEl.addEventListener('input', e=>{ REAL.scale.referenceDesc=e.target.value; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; renderPreservingFocus(); });
+  if(scaleReferenceDescEl) scaleReferenceDescEl.addEventListener('input', e=>{ REAL.scale.referenceDesc=e.target.value; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; renderPreservingFocus(); });
   const scaleByHeightEl = document.querySelector('[data-act="real-scale-byheight"]');
-  if(scaleByHeightEl) scaleByHeightEl.addEventListener('change', e=>{ REAL.scale.byHeight=e.target.checked; REAL.nesting=null; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; render(); });
+  if(scaleByHeightEl) scaleByHeightEl.addEventListener('change', e=>{ REAL.scale.byHeight=e.target.checked; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; render(); });
 
   document.querySelectorAll('[data-act="download-tech-sheet"]').forEach(el=>el.addEventListener('click', downloadTechnicalSheetPNG));
   document.querySelectorAll('[data-act="download-vector-svg"]').forEach(el=>el.addEventListener('click', downloadVectorSvg));
@@ -5267,15 +5454,17 @@ function bindRealEvents(){
   const pintRemover = document.querySelector('[data-act="pintura-remover"]');
   if(pintRemover) pintRemover.addEventListener('click', ()=>{ removerPintura(); });
 
-  document.querySelectorAll('[data-act="real-kit-papel"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].papel=e.target.value; render(); }));
+  document.querySelectorAll('[data-act="real-kit-papel"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].papel=e.target.value; invalidarFactibilidadeReal(); render(); }));
   document.querySelectorAll('[data-act="real-kit-variacao"]').forEach(el=>el.addEventListener('change',e=>{
     REAL.kit[+el.dataset.idx].variacaoSelecionadaMatId=e.target.value?parseInt(e.target.value):null;
+    invalidarFactibilidadeReal();
     render();
   }));
-  document.querySelectorAll('[data-act="real-kit-formula"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].formulaType=e.target.value; render(); }));
+  document.querySelectorAll('[data-act="real-kit-formula"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].formulaType=e.target.value; invalidarFactibilidadeReal(); render(); }));
   document.querySelectorAll('[data-act="real-kit-mult"]').forEach(el=>{
     el.addEventListener('input', e=>{
       REAL.kit[+el.dataset.idx].mult = parseFloat(e.target.value)||0;
+      invalidarFactibilidadeReal();
       clearTimeout(_renderDebounceTimer);
       _renderDebounceTimer = setTimeout(renderPreservingFocus, 400);
     });

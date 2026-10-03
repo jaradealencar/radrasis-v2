@@ -7,10 +7,10 @@
  */
 import { randomBytes, randomUUID } from "crypto";
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure, requireRole } from "../_core/trpc";
+import { router, protectedProcedure, publicProcedure, requireRole, adminProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
-import { propostas, propostaItens, produtos, configuracoesComerciais } from "../../drizzle/schema";
-import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
+import { propostas, propostaItens, produtos, configuracoesComerciais, vendedoresComerciais, estudioChapas, priceTableSections } from "../../drizzle/schema";
+import { eq, asc, desc, and, inArray, sql, gte, lt } from "drizzle-orm";
 import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
 import {
   aprovarPrecoCalculado,
@@ -20,6 +20,9 @@ import {
   verificarAprovacaoPreco,
   type ResultadoAprovacaoPreco,
 } from "../services/cpqPrecoAssistente";
+import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { calcularNestingMultiMaterial, type CpqNestingPeca } from "../services/cpqNesting";
+import { decuparPreco, type DecupagemPreco } from "../services/decupadorPreco";
 
 function gerarToken(): string {
   return randomBytes(24).toString("base64url");
@@ -51,6 +54,17 @@ const materialConfiguracaoSchema = z.object({
     valor: z.string().max(120),
     materiaPrimaNome: z.string().max(256),
   }).nullable(),
+  nesting: z.object({
+    idChapa: z.number().int().positive(),
+    nomeChapa: z.string().max(256),
+    larguraMm: z.number().positive(),
+    alturaMm: z.number().positive(),
+    areaChapaM2: z.number().positive(),
+    areaUtilizadaM2: z.number().positive(),
+    aproveitamentoPct: z.number().min(0).max(100),
+    criterio: z.enum(["menor_sobra_financeira", "maior_aproveitamento"]),
+    custoUnitarioCatalogo: z.number().nonnegative(),
+  }).nullable().optional(),
   incluir: z.boolean(),
 }).strict();
 
@@ -72,11 +86,13 @@ const basePrecoPropostaSchema = z.object({
   propostaId: z.number().int().positive(),
   produtoId: z.number().int().positive(),
   quantidade: z.number().finite().positive(),
+  custoFinanceiroPct: z.number().min(0).max(100).default(0),
+  parcelasFinanceira: z.number().int().positive().nullable().default(null),
   configuracao: configuracaoItemSchema,
 }).strict();
 
 function calcularContextoPrecoProposta(args: {
-  produto: { nome: string; percentualCustoFixo: string; idPrecificacao: number | null };
+  produto: { nome: string; percentualCustoFixo: string; custoMaoObra: string | null; idPrecificacao: number | null };
   configuracao: z.infer<typeof configuracaoItemSchema>;
   precoAtual: number;
 }) {
@@ -110,18 +126,20 @@ function calcularContextoPrecoProposta(args: {
   if (itens.some((material) => Math.abs(material.custoTotal - material.quantidade * material.custoUnitario) > 0.02)) {
     throw new Error("O subtotal de uma matéria-prima não corresponde à quantidade e ao custo unitário.");
   }
+  if (args.produto.custoMaoObra == null) throw new Error("Cadastre o custo de mão de obra direta no produto antes de sugerir ou aprovar o preço.");
   const custoMateriais = itens.reduce((soma, material) => soma + material.custoTotal, 0);
   const percentualFixo = Number(args.produto.percentualCustoFixo) || 0;
-  const custoDireto = Math.round(custoMateriais * (1 + percentualFixo / 100) * 100) / 100;
+  const custoMaoObra = Number(args.produto.custoMaoObra);
+  const custoDireto = Math.round((custoMateriais * (1 + percentualFixo / 100) + custoMaoObra) * 100) / 100;
   if (custoDireto <= 0) throw new Error("O custo direto está zerado. Revise a composição e os custos antes de continuar.");
   const margemAtual = args.precoAtual > 0 ? ((args.precoAtual - custoDireto) / args.precoAtual) * 100 : null;
   return precoContextoSchema.parse({
     produto: args.produto.nome,
     custoDireto,
     precoAtual: args.precoAtual,
-    regra: `Custo das matérias-primas + ${percentualFixo}% de custo fixo${args.produto.idPrecificacao ? `; produto vinculado à regra ${args.produto.idPrecificacao} da Tabela de Preços, cuja faixa ainda requer revisão` : "; sem regra de margem resolvida automaticamente"}`,
+    regra: `Custo das matérias-primas + mão de obra de ${custoMaoObra} + ${percentualFixo}% de custo fixo${args.produto.idPrecificacao ? `; produto vinculado à regra ${args.produto.idPrecificacao} da Tabela de Preços, cuja faixa ainda requer revisão` : "; sem regra de margem resolvida automaticamente"}`,
     margemAtualPct: margemAtual != null && Math.abs(margemAtual) <= 1000 ? margemAtual : null,
-    itens: itens.map(({ nome, quantidade, custoTotal }) => ({ nome, quantidade, custoTotal })),
+    itens: [...itens.map(({ nome, quantidade, custoTotal }) => ({ nome, quantidade, custoTotal })), { nome: "Mão de obra direta", quantidade: 1, custoTotal: custoMaoObra }],
   });
 }
 
@@ -192,6 +210,40 @@ async function carregarItensComProduto(db: NonNullable<Awaited<ReturnType<typeof
     .orderBy(asc(propostaItens.ordem));
 }
 
+function numeroSnapshot(snapshot: Record<string, unknown>, chave: string): number | null {
+  const valor = snapshot[chave];
+  return typeof valor === "number" && Number.isFinite(valor) && valor > 0 ? valor : null;
+}
+
+function percentualDaTabela(secoes: { contentJson: string }[], linhaId: number, custo: number): number | null {
+  for (const secao of secoes) {
+    try {
+      const dados = JSON.parse(secao.contentJson) as { columns?: unknown; rows?: unknown };
+      const columns = Array.isArray(dados.columns) ? dados.columns.filter((item): item is string => typeof item === "string") : [];
+      const rows = Array.isArray(dados.rows) ? dados.rows as Array<{ id?: unknown; values?: unknown }> : [];
+      const linha = rows.find((item) => Number(item.id) === linhaId);
+      if (!linha || !Array.isArray(linha.values) || columns.length === 0) continue;
+      const index = columns.findIndex((label) => {
+        const faixa = label.replace(/R\$/g, "").trim();
+        const valor = (texto: string) => /k$/i.test(texto.trim())
+          ? Number.parseFloat(texto.trim().replace(/k$/i, "").replace(",", ".")) * 1000
+          : Number.parseFloat(texto.trim().replace(/\./g, "").replace(",", ".")) || 0;
+        if (/^at[eé]/i.test(faixa)) return custo <= valor(faixa.match(/[\d.,]+k?/i)?.[0] || "0");
+        if (/\+\s*$/.test(faixa)) return custo >= valor(faixa.match(/[\d.,]+k?/i)?.[0] || "0");
+        const partes = faixa.split("~");
+        return partes.length === 2 && custo >= valor(partes[0]) && custo <= valor(partes[1]);
+      });
+      if (index < 0) return null;
+      const value = String(linha.values[index] ?? "");
+      const pct = Number.parseFloat(value.replace("%", "").replace(",", "."));
+      if (Number.isFinite(pct) && pct >= 0 && pct < 100) return pct;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 type ItemCarregado = Awaited<ReturnType<typeof carregarItensComProduto>>[number];
 type ItemPublico = Omit<ItemCarregado, "grupoId" | "grupoDescricao" | "produtoId" | "ordem" | "configuracaoJson"> & {
   variacoes: { nome: string; valor: string }[];
@@ -244,6 +296,82 @@ async function obterConfiguracoes(db: NonNullable<Awaited<ReturnType<typeof getD
   return criado;
 }
 
+type RegraTributaria = { categoria: string; impostoPct: number };
+
+function lerRegrasTributarias(json: string): RegraTributaria[] {
+  try {
+    const parsed: unknown = JSON.parse(json || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const regra = item as Record<string, unknown>;
+      const categoria = typeof regra.categoria === "string" ? regra.categoria.trim() : "";
+      const impostoPct = Number(regra.impostoPct);
+      return categoria && Number.isFinite(impostoPct) && impostoPct >= 0 && impostoPct <= 100
+        ? [{ categoria, impostoPct }]
+        : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function taxaImpostoProduto(categoria: string | null, padraoPct: number, regras: RegraTributaria[]): number {
+  const categoriaNormalizada = categoria?.trim().toLocaleLowerCase("pt-BR");
+  const regra = regras.find((item) => item.categoria.toLocaleLowerCase("pt-BR") === categoriaNormalizada);
+  return regra?.impostoPct ?? padraoPct;
+}
+
+async function buscarVendedorPorNome(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, nome: string) {
+  const [vendedor] = await db.select({ id: vendedoresComerciais.id, comissaoPct: vendedoresComerciais.comissaoPct })
+    .from(vendedoresComerciais)
+    .where(and(sql`lower(trim(${vendedoresComerciais.nome})) = lower(trim(${nome}))`, eq(vendedoresComerciais.ativo, true)))
+    .limit(1);
+  return vendedor ?? null;
+}
+
+function criarSnapshotDecupagem(args: {
+  precoVenda: number;
+  custoMateriais: number;
+  custoMaoObra: number | null;
+  custoFixoPct: number;
+  comissaoPct: number | null;
+  impostoPct: number;
+  custoFinanceiroPct: number;
+  parcelasFinanceira: number | null;
+  categoria: string | null;
+  vendedorNome: string;
+}): Record<string, unknown> {
+  const pendencias: string[] = [];
+  if (args.custoMaoObra == null) pendencias.push("Cadastre o custo de mão de obra direta no produto.");
+  if (args.comissaoPct == null) pendencias.push(`Associe ${args.vendedorNome} a um vendedor cadastrado com comissão.`);
+  if (!Number.isFinite(args.precoVenda) || args.precoVenda <= 0) pendencias.push("O preço de venda precisa ser maior que zero.");
+  const base = {
+    version: 1,
+    calculadoEm: new Date().toISOString(),
+    categoria: args.categoria,
+    taxas: {
+      custoFixoPct: args.custoFixoPct,
+      comissaoPct: args.comissaoPct,
+      impostoPct: args.impostoPct,
+      custoFinanceiroPct: args.custoFinanceiroPct,
+      parcelasFinanceira: args.parcelasFinanceira,
+    },
+    custos: { materiaPrima: Math.round(args.custoMateriais * 100) / 100, maoDeObra: args.custoMaoObra },
+  };
+  if (pendencias.length) return { ...base, complete: false, pendencias };
+  const calculo = decuparPreco({
+    precoVenda: args.precoVenda,
+    materiaPrima: args.custoMateriais,
+    maoDeObra: args.custoMaoObra!,
+    custoFixoPct: args.custoFixoPct,
+    comissaoPct: args.comissaoPct!,
+    impostoPct: args.impostoPct,
+    custoFinanceiroPct: args.custoFinanceiroPct,
+  });
+  return { ...calculo, taxas: { ...calculo.taxas, parcelasFinanceira: args.parcelasFinanceira }, complete: true, categoria: args.categoria, vendedorNome: args.vendedorNome };
+}
+
 export const propostasRouter = router({
   precoSugerir: protectedProcedure
     .input(basePrecoPropostaSchema.extend({ precoAtual: z.number().finite().nonnegative() }))
@@ -254,6 +382,7 @@ export const propostasRouter = router({
       const [produto] = await db.select({
         nome: produtos.nome,
         percentualCustoFixo: produtos.percentualCustoFixo,
+        custoMaoObra: produtos.custoMaoObra,
         idPrecificacao: produtos.idPrecificacao,
       }).from(produtos).where(eq(produtos.id, input.produtoId));
       if (!proposta || !produto) throw new Error("Proposta ou produto não encontrado.");
@@ -262,6 +391,8 @@ export const propostasRouter = router({
         propostaId: input.propostaId,
         produtoId: input.produtoId,
         quantidade: input.quantidade,
+        custoFinanceiroPct: input.custoFinanceiroPct,
+        parcelasFinanceira: input.parcelasFinanceira,
         configuracao: input.configuracao,
       };
       const sugestao = await sugerirPrecoComGPT({ fluxo: "propostas", base, contexto, atorId: ctx.user.id });
@@ -283,6 +414,7 @@ export const propostasRouter = router({
       const [produto] = await db.select({
         nome: produtos.nome,
         percentualCustoFixo: produtos.percentualCustoFixo,
+        custoMaoObra: produtos.custoMaoObra,
         idPrecificacao: produtos.idPrecificacao,
       }).from(produtos).where(eq(produtos.id, input.produtoId));
       if (!proposta || !produto) throw new Error("Proposta ou produto não encontrado.");
@@ -291,6 +423,8 @@ export const propostasRouter = router({
         propostaId: input.propostaId,
         produtoId: input.produtoId,
         quantidade: input.quantidade,
+        custoFinanceiroPct: input.custoFinanceiroPct,
+        parcelasFinanceira: input.parcelasFinanceira,
         configuracao: input.configuracao,
       };
       const ator = { id: ctx.user.id, nome: ctx.user.name, role: ctx.user.role };
@@ -313,6 +447,11 @@ export const propostasRouter = router({
     const registros = await db.select({
       id: propostas.id,
       clienteNome: propostas.clienteNome,
+      clienteCnpj: propostas.clienteCnpj,
+      status: propostas.status,
+      tituloProposta: propostas.tituloProposta,
+      imagemReferenciaUrl: propostas.imagemReferenciaUrl,
+      imagemRedesenhadaUrl: propostas.imagemRedesenhadaUrl,
       createdAt: propostas.createdAt,
       observacoes: propostas.observacoes,
     }).from(propostas)
@@ -347,12 +486,19 @@ export const propostasRouter = router({
             return parsed.success ? [parsed.data] : [];
           })
         : [];
+      const svg = typeof snapshot.nestingSvg === "string" ? snapshot.nestingSvg : null;
       return [{
         cotacaoId: registro.id,
         sourceId: snapshot.sourceId,
         numero: typeof snapshot.numeroCotacao === "string" ? snapshot.numeroCotacao : `COT-${String(registro.id).padStart(6, "0")}`,
         criadaEm: registro.createdAt,
         clienteNome: registro.clienteNome,
+        clienteCnpj: registro.clienteCnpj,
+        status: registro.status,
+        tituloProposta: registro.tituloProposta || (typeof snapshot.tituloProposta === "string" ? snapshot.tituloProposta : ""),
+        imagemReferenciaUrl: registro.imagemReferenciaUrl || (typeof snapshot.imagemReferenciaUrl === "string" ? snapshot.imagemReferenciaUrl : null),
+        imagemRedesenhadaUrl: registro.imagemRedesenhadaUrl || (typeof snapshot.imagemRedesenhadaUrl === "string" ? snapshot.imagemRedesenhadaUrl : null),
+        temVetor: !!svg && !!numeroSnapshot(snapshot, "larguraNestingMm") && !!numeroSnapshot(snapshot, "alturaNestingMm"),
         modeloNome: snapshot.modeloNome,
         mubisysProdutoId: typeof snapshot.mubisysProdutoId === "number" ? snapshot.mubisysProdutoId : null,
         mubisysModeloId: typeof snapshot.mubisysModeloId === "number" ? snapshot.mubisysModeloId : null,
@@ -362,6 +508,127 @@ export const propostasRouter = router({
       }];
     });
   }),
+
+  juncaoSimular: protectedProcedure
+    .input(z.object({ cotacaoIds: z.array(z.number().int().positive()).min(2).max(10), espacamentoMm: z.number().finite().min(0).max(50).default(3) }).strict())
+    .mutation(async ({ input }) => {
+      if (new Set(input.cotacaoIds).size !== input.cotacaoIds.length) throw new Error("Selecione cotações diferentes.");
+      const db = await getDb();
+      if (!db) throw new Error("Banco de dados indisponível.");
+      const rows = await db.select({
+        id: propostas.id,
+        clienteNome: propostas.clienteNome,
+        clienteCnpj: propostas.clienteCnpj,
+        status: propostas.status,
+        observacoes: propostas.observacoes,
+      }).from(propostas).where(inArray(propostas.id, input.cotacaoIds));
+      if (rows.length !== input.cotacaoIds.length) throw new Error("Uma ou mais cotações não foram encontradas.");
+      if (rows.some((row) => row.status !== "aberta")) throw new Error("A junção aceita apenas propostas abertas.");
+      const normalizarCliente = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\W/g, "").toLowerCase();
+      const clienteBase = rows[0].clienteCnpj?.replace(/\D/g, "") || normalizarCliente(rows[0].clienteNome);
+      if (rows.some((row) => (row.clienteCnpj?.replace(/\D/g, "") || normalizarCliente(row.clienteNome)) !== clienteBase)) {
+        throw new Error("Para agrupar, as propostas precisam ser do mesmo cliente.");
+      }
+      const snapshots = rows.map((row) => {
+        const snapshot = lerSnapshotEstudio(row.observacoes);
+        if (!snapshot) throw new Error(`A proposta ${row.id} não contém um snapshot válido do CPQ.`);
+        const nestingSvg = typeof snapshot.nestingSvg === "string" ? snapshot.nestingSvg : "";
+        const larguraMm = numeroSnapshot(snapshot, "larguraNestingMm");
+        const alturaMm = numeroSnapshot(snapshot, "alturaNestingMm");
+        if (!nestingSvg || !larguraMm || !alturaMm) throw new Error(`A proposta ${row.id} não tem vetor validado com escala física. Regrave-a pelo CPQ antes da junção.`);
+        return { row, snapshot, peca: { id: String(row.id), svg: nestingSvg, larguraMm, alturaMm } satisfies CpqNestingPeca };
+      });
+      const materialIdsComuns = snapshots.map(({ snapshot }) => new Set(
+        (Array.isArray(snapshot.materiais) ? snapshot.materiais : []).flatMap((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+          const linha = item as Record<string, unknown>;
+          return typeof linha.mubisysMateriaPrimaId === "number" && linha.mubisysMateriaPrimaId > 0 ? [linha.mubisysMateriaPrimaId] : [];
+        }),
+      ));
+      const comuns = [...materialIdsComuns[0]].filter((id) => materialIdsComuns.every((ids) => ids.has(id)));
+      if (!comuns.length) throw new Error("As propostas não compartilham uma matéria-prima para corte em chapa.");
+      const [catalogo, chapasAtivas] = await Promise.all([
+        listarMateriasPrimas(),
+        db.select().from(estudioChapas).where(and(inArray(estudioChapas.mubisysMateriaPrimaId, comuns), eq(estudioChapas.ativo, true))),
+      ]);
+      const idsComChapas = comuns.filter((id) => chapasAtivas.some((chapa) => chapa.mubisysMateriaPrimaId === id));
+      if (!idsComChapas.length) throw new Error("Cadastre chapas ativas para ao menos um material comum às propostas.");
+      const materiaisCatalogo = new Map(catalogo.map((item) => [item.id, item]));
+      const resultados = await calcularNestingMultiMaterial({
+        espacamentoMm: input.espacamentoMm,
+        materiais: idsComChapas.map((id) => {
+          const material = materiaisCatalogo.get(id);
+          if (!material) throw new Error(`A matéria-prima ${id} não existe no catálogo atual do MubiSys.`);
+          return {
+            id,
+            nome: material.nome,
+            custoUnitario: Number(material.valor_custo) || 0,
+            unidadeCusto: material.unidade_custo || "",
+            chapas: chapasAtivas.filter((chapa) => chapa.mubisysMateriaPrimaId === id),
+            pecas: snapshots.map(({ peca }) => peca),
+          };
+        }),
+      });
+      const custoIndefinido = resultados.find((resultado) => resultado.custo_material_estimado == null);
+      if (custoIndefinido) throw new Error(custoIndefinido.alerta_custo || `Não há regra de custo compatível para ${custoIndefinido.materia_prima}.`);
+
+      const secoesPreco = await db.select({ contentJson: priceTableSections.contentJson }).from(priceTableSections);
+      const distribuicaoPorCotacao = snapshots.map(({ row, snapshot, peca }) => {
+        const areaPeca = peca.larguraMm * peca.alturaMm;
+        const materiais = Array.isArray(snapshot.materiais) ? snapshot.materiais as Array<Record<string, unknown>> : [];
+        let novoCustoMateriais = Number(snapshot.custoMateriais) || 0;
+        let economiaMaterial = 0;
+        for (const resultado of resultados) {
+          const linhas = materiais.filter((item) => Number(item.mubisysMateriaPrimaId) === resultado.id_materia_prima);
+          if (!linhas.length) continue;
+          const somaAreas = snapshots.reduce((total, item) => total + item.peca.larguraMm * item.peca.alturaMm, 0);
+          const novoSubtotal = resultado.custo_material_estimado! * areaPeca / Math.max(somaAreas, 1);
+          const custoAnterior = linhas.reduce((total, linha) => total + (Number(linha.custoTotal) || 0), 0);
+          novoCustoMateriais += novoSubtotal - custoAnterior;
+          economiaMaterial += custoAnterior - novoSubtotal;
+        }
+        const percentualCustoFixo = Number(snapshot.custoMateriais) > 0 ? (Number(snapshot.custoFixo) || 0) / Number(snapshot.custoMateriais) : 0;
+        const novoCustoDireto = novoCustoMateriais * (1 + percentualCustoFixo) + (Number(snapshot.custoServicos) || 0);
+        const modoPreco = snapshot.modoPreco;
+        const desconto = Number(snapshot.descontoPct) || 0;
+        let margemPct: number | null = null;
+        let novoPrecoCalculado: number | null = null;
+        let regraReprecificacao: string;
+        if (modoPreco === "fixo") {
+          novoPrecoCalculado = (Number(snapshot.precoFixo) || 0) * (1 - desconto / 100);
+          regraReprecificacao = "Preço fixo mantido; custo agrupado atualizado para revisão.";
+        } else {
+          const linhaId = Number(snapshot.linhaPrecificacaoId);
+          margemPct = Number.isInteger(linhaId) && linhaId > 0
+            ? percentualDaTabela(secoesPreco, linhaId, novoCustoDireto)
+            : typeof snapshot.margemAplicadaPct === "number" ? snapshot.margemAplicadaPct : null;
+          if (margemPct == null || margemPct >= 100) {
+            regraReprecificacao = "Sem margem de tabela/manual válida para recalcular o preço automaticamente.";
+          } else {
+            novoPrecoCalculado = (novoCustoDireto / (1 - margemPct / 100) + (Number(snapshot.instalacao) || 0)) * (1 - desconto / 100);
+            regraReprecificacao = Number.isInteger(linhaId) && linhaId > 0 ? `Tabela de Preços, linha ${linhaId}, recalculada pela faixa do novo custo` : `Margem manual preservada (${margemPct}%)`;
+          }
+        }
+        return {
+          cotacaoId: row.id,
+          clienteNome: row.clienteNome,
+          modeloNome: String(snapshot.modeloNome || "Projeto"),
+          economiaMaterial: Math.round(economiaMaterial * 100) / 100,
+          custoDiretoAnterior: Number(snapshot.custoDireto) || 0,
+          custoDiretoAgrupado: Math.round(novoCustoDireto * 100) / 100,
+          precoAnterior: Number(snapshot.precoFinal) || 0,
+          precoCalculadoAgrupado: novoPrecoCalculado == null ? null : Math.round(novoPrecoCalculado * 100) / 100,
+          regraReprecificacao,
+        };
+      });
+      return {
+        simulacao: true,
+        exigeNovaAprovacaoHumana: true,
+        cliente: rows[0].clienteNome,
+        resultadosNesting: resultados,
+        propostas: distribuicaoPorCotacao,
+      };
+    }),
 
   // ─── Admin ───────────────────────────────────────────────────────────────
   listar: protectedProcedure.query(async () => {
@@ -400,6 +667,9 @@ export const propostasRouter = router({
     .input(
       z.object({
         clienteNome: z.string().min(1),
+        tituloProposta: z.string().max(256).optional().default(""),
+        imagemReferenciaUrl: z.string().url().max(2048).nullable().optional().default(null),
+        imagemRedesenhadaUrl: z.string().url().max(2048).nullable().optional().default(null),
         clienteCnpj: z.string().optional(),
         clienteContato: z.string().optional(),
         vendedorNome: z.string().min(1),
@@ -411,14 +681,19 @@ export const propostasRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      const vendedor = await buscarVendedorPorNome(db, input.vendedorNome);
       const [result] = await db
         .insert(propostas)
         .values({
           token: gerarToken(),
+          tituloProposta: input.tituloProposta,
+          imagemReferenciaUrl: input.imagemReferenciaUrl,
+          imagemRedesenhadaUrl: input.imagemRedesenhadaUrl,
           clienteNome: input.clienteNome,
           clienteCnpj: input.clienteCnpj || null,
           clienteContato: input.clienteContato || null,
           vendedorNome: input.vendedorNome,
+          vendedorComercialId: vendedor?.id ?? null,
           formasPagamentoJson: JSON.stringify(input.formasPagamento),
           condicaoPagamentoObs: input.condicaoPagamentoObs || null,
           observacoes: input.observacoes || null,
@@ -448,6 +723,9 @@ export const propostasRouter = router({
       z.object({
         id: z.number(),
         clienteNome: z.string().min(1),
+        tituloProposta: z.string().max(256).optional().default(""),
+        imagemReferenciaUrl: z.string().url().max(2048).nullable().optional().default(null),
+        imagemRedesenhadaUrl: z.string().url().max(2048).nullable().optional().default(null),
         clienteCnpj: z.string().optional(),
         clienteContato: z.string().optional(),
         vendedorNome: z.string().min(1),
@@ -460,13 +738,18 @@ export const propostasRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      const vendedor = await buscarVendedorPorNome(db, input.vendedorNome);
       await db
         .update(propostas)
         .set({
+          tituloProposta: input.tituloProposta,
+          imagemReferenciaUrl: input.imagemReferenciaUrl,
+          imagemRedesenhadaUrl: input.imagemRedesenhadaUrl,
           clienteNome: input.clienteNome,
           clienteCnpj: input.clienteCnpj || null,
           clienteContato: input.clienteContato || null,
           vendedorNome: input.vendedorNome,
+          vendedorComercialId: vendedor?.id ?? null,
           formasPagamentoJson: JSON.stringify(input.formasPagamento),
           condicaoPagamentoObs: input.condicaoPagamentoObs || null,
           observacoes: input.observacoes || null,
@@ -493,6 +776,8 @@ export const propostasRouter = router({
         produtoId: z.number(),
         quantidade: z.number().min(0.0001).default(1),
         precoUnitario: z.number().min(0),
+        custoFinanceiroPct: z.number().min(0).max(100).optional().default(0),
+        parcelasFinanceira: z.number().int().positive().nullable().optional().default(null),
         descricao: z.string().max(5000).optional().default(""),
         configuracao: configuracaoItemSchema,
         aprovacaoPreco: aprovacaoPrecoInputSchema,
@@ -503,11 +788,13 @@ export const propostasRouter = router({
       if (!db) throw new Error("DB unavailable");
       const [produto] = await db.select({
         nome: produtos.nome,
+        categoria: produtos.categoria,
+        custoMaoObra: produtos.custoMaoObra,
         percentualCustoFixo: produtos.percentualCustoFixo,
         idPrecificacao: produtos.idPrecificacao,
       }).from(produtos).where(eq(produtos.id, input.produtoId));
       if (!produto) throw new Error("Produto não encontrado");
-      const [proposta] = await db.select({ id: propostas.id }).from(propostas).where(eq(propostas.id, input.propostaId));
+      const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId }).from(propostas).where(eq(propostas.id, input.propostaId));
       if (!proposta) throw new Error("Proposta não encontrada");
       const configuracao = input.configuracao;
       const contextoAtual = calcularContextoPrecoProposta({
@@ -518,9 +805,35 @@ export const propostasRouter = router({
       const aprovacao = verificarAprovacaoPreco({
         recibo: input.aprovacaoPreco.recibo,
         fluxo: "propostas",
-        base: { propostaId: input.propostaId, produtoId: input.produtoId, quantidade: input.quantidade, configuracao },
+        base: { propostaId: input.propostaId, produtoId: input.produtoId, quantidade: input.quantidade, custoFinanceiroPct: input.custoFinanceiroPct, parcelasFinanceira: input.parcelasFinanceira, configuracao },
         contexto: contextoAtual,
         preco: input.precoUnitario,
+      });
+      const [configPreco, vendedor] = await Promise.all([
+        obterConfiguracoes(db),
+        proposta.vendedorComercialId
+          ? db.select({ comissaoPct: vendedoresComerciais.comissaoPct }).from(vendedoresComerciais).where(eq(vendedoresComerciais.id, proposta.vendedorComercialId)).then(([row]) => row ?? null)
+          : buscarVendedorPorNome(db, proposta.vendedorNome),
+      ]);
+      if (!vendedor) throw new Error("Cadastre o vendedor e sua comissão antes de adicionar itens à proposta.");
+      if (input.custoFinanceiroPct > 0 || input.parcelasFinanceira != null) {
+        const opcoes = JSON.parse(configPreco.jurosParcelamentoJson || "[]") as Array<{ custoFinanceiroPct?: number }>;
+        const optionsWithInstallment = opcoes as Array<{ parcelas?: number; custoFinanceiroPct?: number }>;
+        const taxaConfigurada = Array.isArray(optionsWithInstallment) && optionsWithInstallment.some((opcao) => opcao.parcelas === input.parcelasFinanceira && Math.abs(Number(opcao.custoFinanceiroPct ?? 0) - input.custoFinanceiroPct) < 0.0001);
+        if (!taxaConfigurada) throw new Error("A taxa financeira selecionada não está configurada para parcelamento.");
+      }
+      const custoMateriais = configuracao.materiais.filter((material) => material.incluir).reduce((total, material) => total + material.custoTotal, 0);
+      const decupagem = criarSnapshotDecupagem({
+        precoVenda: input.precoUnitario,
+        custoMateriais,
+        custoMaoObra: produto.custoMaoObra == null ? null : Number(produto.custoMaoObra),
+        custoFixoPct: Number(configPreco.custoFixoPct),
+        comissaoPct: vendedor ? Number(vendedor.comissaoPct) : null,
+        impostoPct: taxaImpostoProduto(produto.categoria, Number(configPreco.impostoPct), lerRegrasTributarias(configPreco.impostosPorCategoriaJson)),
+        custoFinanceiroPct: input.custoFinanceiroPct,
+        parcelasFinanceira: input.parcelasFinanceira,
+        categoria: produto.categoria,
+        vendedorNome: proposta.vendedorNome,
       });
       const existentes = await db
         .select({ id: propostaItens.id })
@@ -537,6 +850,8 @@ export const propostasRouter = router({
             ...configuracao,
             precificacaoIA: { ...aprovacao, contexto: contextoAtual },
           },
+          decupagemJson: decupagem,
+          custoMaoObraUnitario: produto.custoMaoObra,
           quantidade: String(input.quantidade),
           precoUnitario: String(input.precoUnitario),
           ordem: existentes.length,
@@ -550,6 +865,8 @@ export const propostasRouter = router({
       id: z.number(),
       quantidade: z.number().min(0.0001),
       precoUnitario: z.number().min(0),
+      custoFinanceiroPct: z.number().min(0).max(100).optional().default(0),
+      parcelasFinanceira: z.number().int().positive().nullable().optional().default(null),
       descricao: z.string().max(5000).optional(),
       configuracao: configuracaoItemSchema.optional(),
       aprovacaoPreco: aprovacaoPrecoInputSchema.optional(),
@@ -574,6 +891,7 @@ export const propostasRouter = router({
         const [produto] = await db.select({
           nome: produtos.nome,
           percentualCustoFixo: produtos.percentualCustoFixo,
+          custoMaoObra: produtos.custoMaoObra,
           idPrecificacao: produtos.idPrecificacao,
         }).from(produtos).where(eq(produtos.id, atual.produtoId));
         if (!produto) throw new Error("Produto não encontrado.");
@@ -589,6 +907,8 @@ export const propostasRouter = router({
             propostaId: atual.propostaId,
             produtoId: atual.produtoId,
             quantidade: input.quantidade,
+            custoFinanceiroPct: input.custoFinanceiroPct,
+            parcelasFinanceira: input.parcelasFinanceira,
             configuracao: input.configuracao,
           },
           contexto,
@@ -707,19 +1027,45 @@ export const propostasRouter = router({
     }),
 
   // ─── Configurações comerciais globais (condições + juros) ────────────────
-  configuracoesObter: protectedProcedure.query(async () => {
+  configuracoesObter: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) return null;
     const config = await obterConfiguracoes(db);
-    return { ...config, jurosParcelamento: JSON.parse(config.jurosParcelamentoJson || "[]") };
+    let jurosParcelamento: Array<{ parcelas: number; jurosPct: number; custoFinanceiroPct: number }> = [];
+    try {
+      const parsed: unknown = JSON.parse(config.jurosParcelamentoJson || "[]");
+      if (Array.isArray(parsed)) jurosParcelamento = parsed.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const row = item as Record<string, unknown>;
+        const parcelas = Number(row.parcelas);
+        const jurosPct = Number(row.jurosPct);
+        const custoFinanceiroPct = Number(row.custoFinanceiroPct ?? 0);
+        return Number.isInteger(parcelas) && parcelas > 0 && [jurosPct, custoFinanceiroPct].every((n) => Number.isFinite(n) && n >= 0 && n <= 100)
+          ? [{ parcelas, jurosPct, custoFinanceiroPct }]
+          : [];
+      });
+    } catch { /* configuração anterior inválida: inicia sem taxas */ }
+    return {
+      id: config.id,
+      condicoesComerciaisUrl: config.condicoesComerciaisUrl,
+      condicoesComerciaisNome: config.condicoesComerciaisNome,
+      impostoPct: Number(config.impostoPct),
+      custoFixoPct: Number(config.custoFixoPct),
+      impostosPorCategoria: lerRegrasTributarias(config.impostosPorCategoriaJson),
+      jurosParcelamento,
+      updatedAt: config.updatedAt,
+    };
   }),
 
-  configuracoesSalvar: protectedProcedure
+  configuracoesSalvar: adminProcedure
     .input(
       z.object({
         condicoesComerciaisUrl: z.string().optional(),
         condicoesComerciaisNome: z.string().optional(),
-        jurosParcelamento: z.array(z.object({ parcelas: z.number().int().min(1), jurosPct: z.number().min(0) })),
+        jurosParcelamento: z.array(z.object({ parcelas: z.number().int().min(1), jurosPct: z.number().min(0).max(100), custoFinanceiroPct: z.number().min(0).max(100).optional().default(0) })),
+        impostoPct: z.number().min(0).max(100).optional(),
+        custoFixoPct: z.number().min(0).max(100).optional(),
+        impostosPorCategoria: z.array(z.object({ categoria: z.string().trim().min(1).max(128), impostoPct: z.number().min(0).max(100) })).max(100).optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -734,10 +1080,160 @@ export const propostasRouter = router({
           jurosParcelamentoJson: JSON.stringify(
             [...input.jurosParcelamento].sort((a, b) => a.parcelas - b.parcelas),
           ),
+          impostoPct: input.impostoPct == null ? atual.impostoPct : String(input.impostoPct),
+          custoFixoPct: input.custoFixoPct == null ? atual.custoFixoPct : String(input.custoFixoPct),
+          impostosPorCategoriaJson: input.impostosPorCategoria == null ? atual.impostosPorCategoriaJson : JSON.stringify(input.impostosPorCategoria),
           updatedAt: new Date(),
         })
         .where(eq(configuracoesComerciais.id, atual.id));
       return { success: true };
+    }),
+
+  opcoesPagamento: protectedProcedure.use(requireRole("admin", "master", "gestor")).query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    const config = await obterConfiguracoes(db);
+    try {
+      const parsed: unknown = JSON.parse(config.jurosParcelamentoJson || "[]");
+      return Array.isArray(parsed) ? parsed.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const row = item as Record<string, unknown>;
+        const parcelas = Number(row.parcelas);
+        const custoFinanceiroPct = Number(row.custoFinanceiroPct ?? 0);
+        return Number.isInteger(parcelas) && parcelas > 0 && Number.isFinite(custoFinanceiroPct) && custoFinanceiroPct >= 0 && custoFinanceiroPct <= 100
+          ? [{ parcelas, custoFinanceiroPct }]
+          : [];
+      }) : [];
+    } catch { return []; }
+  }),
+
+  vendedoresAtivos: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return db.select({ id: vendedoresComerciais.id, nome: vendedoresComerciais.nome })
+      .from(vendedoresComerciais).where(eq(vendedoresComerciais.ativo, true)).orderBy(asc(vendedoresComerciais.nome));
+  }),
+
+  vendedoresAdminListar: adminProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return db.select().from(vendedoresComerciais).orderBy(asc(vendedoresComerciais.nome));
+  }),
+
+  vendedorSalvar: adminProcedure
+    .input(z.object({ id: z.number().int().positive().optional(), nome: z.string().trim().min(1).max(256), comissaoPct: z.number().min(0).max(100), ativo: z.boolean().default(true) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const [duplicado] = await db.select({ id: vendedoresComerciais.id }).from(vendedoresComerciais)
+        .where(sql`lower(trim(${vendedoresComerciais.nome})) = lower(trim(${input.nome}))`).limit(1);
+      if (duplicado && duplicado.id !== input.id) throw new Error("Já existe um vendedor com esse nome.");
+      const dados = { nome: input.nome, comissaoPct: String(input.comissaoPct), ativo: input.ativo, updatedAt: new Date() };
+      if (input.id) await db.update(vendedoresComerciais).set(dados).where(eq(vendedoresComerciais.id, input.id));
+      else await db.insert(vendedoresComerciais).values(dados);
+      return { success: true };
+    }),
+
+  vendedorRemover: adminProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      await db.delete(vendedoresComerciais).where(eq(vendedoresComerciais.id, input.id));
+      return { success: true };
+    }),
+
+  decupagemObter: protectedProcedure.use(requireRole("admin", "master", "gestor"))
+    .input(z.object({ propostaId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const [proposta] = await db.select({ id: propostas.id, observacoes: propostas.observacoes }).from(propostas).where(eq(propostas.id, input.propostaId));
+      if (!proposta || proposta.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) return [];
+      return db.select({ id: propostaItens.id, produtoNome: propostaItens.produtoNome, quantidade: propostaItens.quantidade, precoUnitario: propostaItens.precoUnitario, decupagem: propostaItens.decupagemJson })
+        .from(propostaItens).where(eq(propostaItens.propostaId, input.propostaId)).orderBy(asc(propostaItens.ordem));
+    }),
+
+  dashboard: protectedProcedure.use(requireRole("admin", "master", "gestor"))
+    .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      const vazio = { propostas: 0, valorEmitido: 0, valorConvertido: 0, margemMediaValor: 0, margemMediaPct: 0, ticketMedio: 0, porMargem: [], produtos: [], materiais: [], vendedores: [] };
+      if (!db) return vazio;
+      const inicio = new Date(`${input.de}T00:00:00`);
+      const fim = new Date(`${input.ate}T00:00:00`);
+      fim.setDate(fim.getDate() + 1);
+      if (!Number.isFinite(inicio.getTime()) || !Number.isFinite(fim.getTime()) || inicio >= fim) throw new Error("Selecione um período válido.");
+      const propostasPeriodo = (await db.select().from(propostas).where(and(gte(propostas.createdAt, inicio), lt(propostas.createdAt, fim))))
+        .filter((proposal) => !proposal.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO));
+      const ids = propostasPeriodo.map((proposal) => proposal.id);
+      if (!ids.length) return vazio;
+      const linhas = await db.select().from(propostaItens).where(inArray(propostaItens.propostaId, ids));
+      const porProposta = new Map<number, { valor: number; lucro: number; valorComMargem: number; vendedorNome: string; aceito: boolean }>();
+      for (const proposta of propostasPeriodo) porProposta.set(proposta.id, { valor: 0, lucro: 0, valorComMargem: 0, vendedorNome: proposta.vendedorNome, aceito: proposta.status === "aceita" });
+      const rankingProdutos = new Map<string, { nome: string; ocorrencias: number; valor: number }>();
+      const rankingMateriais = new Map<string, { nome: string; ocorrencias: number; quantidade: number }>();
+      for (const item of linhas) {
+        const quantidade = Number(item.quantidade);
+        const valor = item.ativo ? Number(item.precoUnitario) * quantidade : 0;
+        const resumo = porProposta.get(item.propostaId)!;
+        resumo.valor += valor;
+        const produto = rankingProdutos.get(item.produtoNome) ?? { nome: item.produtoNome, ocorrencias: 0, valor: 0 };
+        produto.ocorrencias++;
+        produto.valor += valor;
+        rankingProdutos.set(item.produtoNome, produto);
+        const snapshot = item.decupagemJson as (DecupagemPreco & { complete?: boolean }) | null;
+        if (item.ativo && snapshot?.complete === true) {
+          resumo.lucro += snapshot.lucroLiquido.valor * quantidade;
+          resumo.valorComMargem += snapshot.precoVenda * quantidade;
+        }
+        const config = item.configuracaoJson as Record<string, unknown>;
+        const materiais = Array.isArray(config?.materiais) ? config.materiais : [];
+        for (const materialRaw of materiais) {
+          if (!materialRaw || typeof materialRaw !== "object") continue;
+          const material = materialRaw as Record<string, unknown>;
+          if (material.incluir !== true || typeof material.nome !== "string") continue;
+          const entrada = rankingMateriais.get(material.nome) ?? { nome: material.nome, ocorrencias: 0, quantidade: 0 };
+          entrada.ocorrencias++;
+          entrada.quantidade += (Number(material.quantidade) * quantidade) || 0;
+          rankingMateriais.set(material.nome, entrada);
+        }
+      }
+      const resumos = [...porProposta.values()];
+      const valorEmitido = resumos.reduce((sum, item) => sum + item.valor, 0);
+      const valorConvertido = resumos.filter((item) => item.aceito).reduce((sum, item) => sum + item.valor, 0);
+      const propostasComMargem = resumos.filter((item) => item.valorComMargem > 0);
+      const margemMediaValor = propostasComMargem.length ? propostasComMargem.reduce((sum, item) => sum + item.lucro, 0) / propostasComMargem.length : 0;
+      const margemMediaPct = propostasComMargem.length ? propostasComMargem.reduce((sum, item) => sum + item.lucro / item.valorComMargem * 100, 0) / propostasComMargem.length : 0;
+      const bins = [{ faixa: "< 15%", valor: 0 }, { faixa: "15–30%", valor: 0 }, { faixa: "> 30%", valor: 0 }];
+      for (const item of propostasComMargem) {
+        const pct = item.lucro / item.valorComMargem * 100;
+        bins[pct < 15 ? 0 : pct <= 30 ? 1 : 2].valor += item.valor;
+      }
+      const vendedores = new Map<string, { nome: string; propostas: number; fechadas: number; valorOrcado: number; valorFechado: number; lucro: number; valorComMargem: number }>();
+      for (const proposta of propostasPeriodo) {
+        const resumo = porProposta.get(proposta.id)!;
+        const vendedor = vendedores.get(proposta.vendedorNome) ?? { nome: proposta.vendedorNome, propostas: 0, fechadas: 0, valorOrcado: 0, valorFechado: 0, lucro: 0, valorComMargem: 0 };
+        vendedor.propostas++;
+        vendedor.fechadas += resumo.aceito ? 1 : 0;
+        vendedor.valorOrcado += resumo.valor;
+        vendedor.valorFechado += resumo.aceito ? resumo.valor : 0;
+        vendedor.lucro += resumo.lucro;
+        vendedor.valorComMargem += resumo.valorComMargem;
+        vendedores.set(vendedor.nome, vendedor);
+      }
+      return {
+        propostas: propostasPeriodo.length,
+        valorEmitido: Math.round(valorEmitido * 100) / 100,
+        valorConvertido: Math.round(valorConvertido * 100) / 100,
+        margemMediaValor: Math.round(margemMediaValor * 100) / 100,
+        margemMediaPct: Math.round(margemMediaPct * 100) / 100,
+        ticketMedio: Math.round(valorEmitido / propostasPeriodo.length * 100) / 100,
+        porMargem: bins.map((item) => ({ ...item, valor: Math.round(item.valor * 100) / 100 })),
+        produtos: [...rankingProdutos.values()].sort((a, b) => b.ocorrencias - a.ocorrencias).slice(0, 10),
+        materiais: [...rankingMateriais.values()].sort((a, b) => b.ocorrencias - a.ocorrencias).slice(0, 10),
+        vendedores: [...vendedores.values()].map((item) => ({ ...item, conversaoPct: item.propostas ? Math.round(item.fechadas / item.propostas * 10000) / 100 : 0, margemMediaPct: item.valorComMargem ? Math.round(item.lucro / item.valorComMargem * 10000) / 100 : null })).sort((a, b) => b.valorOrcado - a.valorOrcado),
+      };
     }),
 
   // ─── Público (sem login — posse do link no token é a autorização) ────────
@@ -754,6 +1250,9 @@ export const propostasRouter = router({
         return {
           proposta: {
             id: proposta.id,
+            tituloProposta: proposta.tituloProposta,
+            imagemReferenciaUrl: proposta.imagemReferenciaUrl,
+            imagemRedesenhadaUrl: proposta.imagemRedesenhadaUrl,
             clienteNome: proposta.clienteNome,
             vendedorNome: proposta.vendedorNome,
             formasPagamento: JSON.parse(proposta.formasPagamentoJson || "[]") as string[],
@@ -766,7 +1265,9 @@ export const propostasRouter = router({
           prazoFabricacaoDiasUteis: calcularPrazo(itens),
           condicoesComerciaisUrl: config.condicoesComerciaisUrl,
           condicoesComerciaisNome: config.condicoesComerciaisNome,
-          jurosParcelamento: JSON.parse(config.jurosParcelamentoJson || "[]") as { parcelas: number; jurosPct: number }[],
+          jurosParcelamento: (JSON.parse(config.jurosParcelamentoJson || "[]") as Array<{ parcelas?: number; jurosPct?: number }>)
+            .filter((item) => Number.isInteger(item.parcelas) && Number.isFinite(item.jurosPct))
+            .map((item) => ({ parcelas: item.parcelas!, jurosPct: item.jurosPct! })),
         };
       }),
 

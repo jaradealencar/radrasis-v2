@@ -271,7 +271,10 @@ server/
                        estudio-kits.ts (composições de produto por modelo, compartilhadas no Postgres),
                        estudio-catalogo-mubisys.ts (catálogos de produtos e matérias-primas
                        via API MubiSys, com sessão autenticada) e
-                       estudio-configuracoes.ts (configurações compartilhadas do CPQ)
+                       estudio-configuracoes.ts (configurações compartilhadas do CPQ),
+                       estudio-nesting.ts (CRUD de chapas e execução local do Deepnest),
+                       estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
+                       letra-caixa-redesenho.ts (reconstrução, vetor e upload de imagens do CPQ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
@@ -597,15 +600,42 @@ scale), so area/perimeter are high-precision polygon approximations, not analyti
 exact values. Cost is estimated only for recognized MubiSys cost units; unsupported
 units or missing cost return an alert and null estimate.
 
-`server/services/cpqFactibilidadeFabricacao.ts` contains the pure geometry step
-that checks sheet fit and can split oversized closed-path pieces at sheet boundaries,
-returning the fragments and the human approval options. This service is not yet
-called by the nesting route.
+`server/services/cpqFactibilidadeFabricacao.ts` contains the geometry checks for
+sheet fit and oversized-piece seams. The authenticated
+`server/routes/estudio-factibilidade.ts` route calls it before nesting and records
+the decision receipt for approved seams or reductions.
 
-The static CPQ HTML still calculates nesting with its existing browser
-`packPiecesReal()` routine. It saves the approved SVG and its physical dimensions
-in the quote snapshot but does not call `/api/letra-caixa/nesting` or persist that
-endpoint's returned metrics yet.
+The static CPQ HTML calls the factibility and nesting routes. It sends the
+per-material piece SVGs, and the server compares all active formats before
+returning the chosen board, placement metrics and estimated material/waste cost.
+The budget and price snapshot use that nesting cost when it has a recognized cost
+unit; an unsupported unit keeps the MubiSys cost and shows a review alert.
+
+The CPQ stores project title and reference/redrawn image URLs on `propostas` and
+inside `[ESTUDIO_COTACAO_V1]` snapshots. The static CPQ public quote shows both
+images with zoom. Commercial Propostas also stores a project title and optional
+image URLs, shows the images publicly with zoom, and includes the title in its PDF.
+Image uploads use the authenticated UploadThing-backed route registered by
+`server/routes/letra-caixa-redesenho.ts`.
+
+The Propostas tab `Junção de propostas` simulates a Deepnest batch for 2–10 open
+CPQ quotes belonging to one customer and sharing a chapa material. It redistributes
+the estimated material cost by project geometry and reapplies each stored pricing
+rule (including a stored Tabela de Preços line ID). The preview does not change
+issued quotes; each recalculated price still needs a fresh human approval before
+another commercial link is generated.
+
+### Comercial > Propostas: decupador e painel executivo
+
+`server/services/decupadorPreco.ts` decompõe o preço bruto em materiais,
+mão de obra, custo fixo, comissão, impostos, custo financeiro e margem.
+O custo unitário de mão de obra fica no produto; vendedor e percentuais
+comerciais são parametrizados em Admin > Propostas > Parâmetros. Cada item
+guarda `proposta_itens.decupagem_json` como snapshot versionado das taxas,
+custos e parcelas usadas. `decupagemObter` e o painel exigem role `gestor`,
+`admin` ou `master`; as consultas públicas e o PDF não incluem esse snapshot.
+O painel agrega propostas e itens do módulo comercial Propostas, filtrados por
+data de criação; cotações do CPQ Letreiros Express continuam excluídas.
 
 ## Patches
 

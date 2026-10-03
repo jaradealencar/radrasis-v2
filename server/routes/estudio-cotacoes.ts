@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
 import { desc, eq, sql } from "drizzle-orm";
@@ -14,6 +14,11 @@ import {
   sugerirPrecoComGPT,
   verificarAprovacaoPreco,
 } from "../services/cpqPrecoAssistente";
+import {
+  verificarReciboDecisaoFactibilidade,
+  verificarTicketAnaliseFactibilidade,
+} from "../services/cpqFactibilidadeFabricacao";
+import { verificarReciboNesting } from "../services/cpqNesting";
 
 const PREFIXO_ESTUDIO = "[ESTUDIO_COTACAO_V1]";
 const reacooes = [
@@ -23,6 +28,31 @@ const reacooes = [
   "em_analise",
   "fora_orcamento",
 ] as const;
+
+const factibilidadeSchema = z.object({
+  statusFactibilidade: z.enum(["APTO_NESTING", "REQUER_APROVACAO_EMENDA"]),
+  resultadoHash: z.string().regex(/^[a-f0-9]{64}$/),
+  ticketAnalise: z.string().min(20).max(2000),
+  fatorEscalaAplicado: z.number().finite().positive().max(1),
+  acao: z.enum(["APROVAR_EMENDA_TECNICA", "REDIMENSIONAR_PARA_CABER"]).nullable(),
+  reciboDecisao: z.string().min(20).max(2000).nullable(),
+  detalhesCorte: z.object({
+    pecas_afetadas: z.array(z.string().max(120)).max(500),
+    quantidade_emendas: z.number().int().nonnegative().max(5000),
+    coordenadas_linha_corte: z.array(z.object({
+      x1: z.number().finite(), y1: z.number().finite(), x2: z.number().finite(), y2: z.number().finite(),
+      materiaPrimaId: z.number().int().positive(), materiaPrima: z.string().max(256), pecaId: z.string().max(120),
+    }).strict()).max(2000),
+  }).strict(),
+  avisos: z.array(z.string().max(1000)).max(20),
+  materiais: z.array(z.object({
+    idMateriaPrima: z.number().int().positive(),
+    idChapa: z.number().int().positive(),
+    hashSvgParaNesting: z.string().regex(/^[a-f0-9]{64}$/),
+    hashPecasParaNesting: z.string().regex(/^[a-f0-9]{64}$/),
+    hashPecasRedimensionadasOpcao: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  }).strict()).min(1).max(10),
+}).strict();
 
 const snapshotSchema = z.object({
   dataEmissao: z.string().datetime(),
@@ -45,6 +75,7 @@ const snapshotSchema = z.object({
   imagemReferenciaUrl: z.string().url().max(2048).nullable().optional().default(null),
   imagemRedesenhadaUrl: z.string().url().max(2048).nullable().optional().default(null),
   nestingSvg: z.string().max(1_500_000).nullable().optional().default(null),
+  factibilidade: factibilidadeSchema.nullable().optional().default(null),
   larguraNestingMm: z.number().finite().positive().max(50_000).nullable().optional().default(null),
   alturaNestingMm: z.number().finite().positive().max(50_000).nullable().optional().default(null),
   modeloNome: z.string().min(1).max(256),
@@ -80,6 +111,26 @@ const snapshotSchema = z.object({
       valor: z.string().max(120),
       materiaPrimaNome: z.string().max(256),
     }).nullable(),
+    nesting: z.object({
+      idChapa: z.number().int().positive(),
+      nomeChapa: z.string().max(256),
+      larguraMm: z.number().positive(),
+      alturaMm: z.number().positive(),
+      areaChapaM2: z.number().positive(),
+      areaUtilizadaM2: z.number().positive(),
+      areaLiquidaM2: z.number().positive(),
+      areaSobraM2: z.number().nonnegative(),
+      perimetroTotalM: z.number().nonnegative(),
+      aproveitamentoPct: z.number().min(0).max(100),
+      criterio: z.enum(["menor_sobra_financeira", "maior_aproveitamento"]),
+      custoUnitarioCatalogo: z.number().nonnegative(),
+      unidadeCusto: z.string().max(80),
+      custoMaterialEstimado: z.number().nonnegative().nullable(),
+      custoSobraEstimado: z.number().nonnegative().nullable(),
+      alertaCusto: z.string().max(1000).nullable(),
+      chapaPrincipal: z.boolean(),
+      reciboIntegridade: z.string().min(20).max(4000),
+    }).nullable().optional(),
   }).strict()).max(300).optional().default([]),
   custoMateriais: z.number().finite().nonnegative(),
   custoFixo: z.number().finite().nonnegative(),
@@ -87,6 +138,7 @@ const snapshotSchema = z.object({
   custoDireto: z.number().finite().nonnegative(),
   precoCalculado: z.number().finite().nonnegative(),
   modoPreco: z.enum(["margem", "fixo"]),
+  linhaPrecificacaoId: z.number().int().positive().nullable().optional().default(null),
   margemAplicadaPct: z.number().finite().min(0).max(99.99).nullable(),
   precoFixo: z.number().finite().nonnegative().nullable(),
   instalacao: z.number().finite().nonnegative(),
@@ -150,6 +202,117 @@ function numeroCotacao(id: number): string {
   return `COT-${String(id).padStart(6, "0")}`;
 }
 
+function validarFactibilidadeSnapshot(
+  sourceId: string,
+  snapshot: z.infer<typeof snapshotSchema>
+) {
+  const factibilidade = snapshot.factibilidade;
+  if (!snapshot.nestingSvg) {
+    throw new Error("O SVG vetorial é obrigatório para analisar e cotar a geometria.");
+  }
+  if (!factibilidade)
+    throw new Error("Calcule e aprove a factibilidade antes de analisar ou emitir esta cotação.");
+
+  const analise = verificarTicketAnaliseFactibilidade(
+    factibilidade.ticketAnalise,
+    sourceId,
+    factibilidade.resultadoHash
+  );
+  const fatorEscalaEsperado = factibilidade.acao === "REDIMENSIONAR_PARA_CABER"
+    ? analise.fatorEscalaMinimoParaCaber
+    : analise.fatorEscalaAplicado;
+  if (
+    analise.statusFactibilidade !== factibilidade.statusFactibilidade ||
+    analise.hashSvgEntrada !== createHash("sha256").update(snapshot.nestingSvg).digest("hex") ||
+    analise.detalhesCorteHash !== createHash("sha256").update(JSON.stringify(factibilidade.detalhesCorte)).digest("hex") ||
+    Math.abs(fatorEscalaEsperado - factibilidade.fatorEscalaAplicado) > 1e-8
+  ) {
+    throw new Error("A factibilidade não corresponde ao resultado assinado pelo servidor.");
+  }
+  const materiaisAssinados = [...analise.materiais].sort((a, b) => a.idMateriaPrima - b.idMateriaPrima);
+  const materiaisRecebidos = factibilidade.materiais
+    .map(material => ({
+      idMateriaPrima: material.idMateriaPrima,
+      idChapa: material.idChapa,
+      hashSvgParaNesting: material.hashSvgParaNesting,
+      hashPecasParaNesting: material.hashPecasParaNesting,
+      hashPecasRedimensionadasOpcao: material.hashPecasRedimensionadasOpcao,
+    }))
+    .sort((a, b) => a.idMateriaPrima - b.idMateriaPrima);
+  if (JSON.stringify(materiaisAssinados) !== JSON.stringify(materiaisRecebidos))
+    throw new Error("Os materiais ou arquivos de nesting foram alterados depois da análise.");
+
+  const idsMateriaisComChapa = new Set(materiaisAssinados.map(material => material.idMateriaPrima));
+  const linhasNesting = (snapshot.materiais ?? []).filter(linha => linha.nesting);
+  for (const idMateriaPrima of idsMateriaisComChapa) {
+    if (!(snapshot.materiais ?? []).some(linha => linha.mubisysMateriaPrimaId === idMateriaPrima))
+      throw new Error(`O nesting da matéria-prima ${idMateriaPrima} não está no snapshot do orçamento.`);
+  }
+  for (const linha of snapshot.materiais ?? []) {
+    const idMateriaPrima = linha.mubisysMateriaPrimaId;
+    if (idMateriaPrima != null && idsMateriaisComChapa.has(idMateriaPrima) && !linha.nesting)
+      throw new Error(`O nesting da matéria-prima ${idMateriaPrima} precisa constar em cada linha de consumo.`);
+    if (!linha.nesting) continue;
+    const nesting = linha.nesting;
+    if (idMateriaPrima == null || !idsMateriaisComChapa.has(idMateriaPrima))
+      throw new Error("O snapshot contém um nesting sem matéria-prima vinculada à análise.");
+    const assinado = verificarReciboNesting(nesting.reciboIntegridade, sourceId, factibilidade.resultadoHash, factibilidade.acao);
+    const dimensoes = { larguraMm: assinado.chapa.largura_mm, alturaMm: assinado.chapa.altura_mm };
+    if (
+      assinado.id_materia_prima !== idMateriaPrima ||
+      assinado.materia_prima !== linha.nome ||
+      assinado.id_chapa_utilizada !== nesting.idChapa ||
+      assinado.nome_chapa_utilizada !== nesting.nomeChapa ||
+      dimensoes.larguraMm !== nesting.larguraMm || dimensoes.alturaMm !== nesting.alturaMm ||
+      Math.abs(assinado.chapa.largura_mm * assinado.chapa.altura_mm / 1_000_000 - nesting.areaChapaM2) > 1e-8 ||
+      Math.abs(assinado.area_chapa_utilizada_m2 - nesting.areaUtilizadaM2) > 1e-8 ||
+      Math.abs(assinado.area_liquida_m2 - nesting.areaLiquidaM2) > 1e-8 ||
+      Math.abs(assinado.area_sobra_m2 - nesting.areaSobraM2) > 1e-8 ||
+      Math.abs(assinado.perimetro_total_m - nesting.perimetroTotalM) > 1e-8 ||
+      Math.abs(assinado.porcentagem_aproveitamento - nesting.aproveitamentoPct) > 1e-8 ||
+      assinado.criterio_escolha !== nesting.criterio ||
+      assinado.chapa_principal !== nesting.chapaPrincipal ||
+      (assinado.custo_unitario ?? 0) !== nesting.custoUnitarioCatalogo ||
+      assinado.unidade_custo !== nesting.unidadeCusto ||
+      assinado.custo_material_estimado !== nesting.custoMaterialEstimado ||
+      assinado.custo_sobra_estimado !== nesting.custoSobraEstimado ||
+      assinado.alerta_custo !== nesting.alertaCusto
+    ) throw new Error("As métricas de nesting foram alteradas depois do cálculo no servidor.");
+  }
+
+  if (factibilidade.statusFactibilidade === "REQUER_APROVACAO_EMENDA") {
+    if (!factibilidade.acao || !factibilidade.reciboDecisao)
+      throw new Error("A cotação está bloqueada até a emenda ou o redimensionamento ser aprovado.");
+    const decisao = verificarReciboDecisaoFactibilidade(
+      factibilidade.reciboDecisao,
+      sourceId,
+      factibilidade.resultadoHash,
+      factibilidade.acao
+    );
+    if (factibilidade.acao === "REDIMENSIONAR_PARA_CABER") {
+      if (
+        analise.hashSvgRedimensionadoOpcao == null ||
+        decisao.fatorEscalaAprovada == null ||
+        Math.abs(decisao.fatorEscalaAprovada - factibilidade.fatorEscalaAplicado) > 1e-8
+      ) {
+        throw new Error("O fator de redimensionamento não corresponde à opção aprovada.");
+      }
+    } else if (factibilidade.fatorEscalaAplicado !== 1) {
+      throw new Error("A emenda técnica aprovada deve manter a escala original.");
+    }
+  } else if (factibilidade.acao || factibilidade.reciboDecisao) {
+    throw new Error("Esta cotação está apta e não deve conter uma decisão de emenda.");
+  }
+
+  return {
+    statusFactibilidade: factibilidade.statusFactibilidade,
+    resultadoHash: factibilidade.resultadoHash,
+    fatorEscalaAplicado: factibilidade.fatorEscalaAplicado,
+    acao: factibilidade.acao,
+    materiais: materiaisRecebidos,
+  };
+}
+
 function respostaErro(res: Response, status: number, mensagem: string): void {
   res.status(status).json({ error: mensagem });
 }
@@ -193,6 +356,7 @@ export function registrarRotasEstudioCotacoes(app: Express): void {
 }
 
 function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSchema>) {
+  const factibilidade = validarFactibilidadeSnapshot(sourceId, snapshot);
   return {
     sourceId,
     mubisysProdutoId: snapshot.mubisysProdutoId ?? null,
@@ -207,12 +371,14 @@ function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSc
       perimTotalM: snapshot.perimTotalM ?? null,
     },
     materiais: snapshot.materiais ?? [],
+    factibilidade,
     custoDireto: snapshot.custoDireto,
     custoMateriais: snapshot.custoMateriais,
     custoFixo: snapshot.custoFixo,
     custoServicos: snapshot.custoServicos,
     precoCalculado: snapshot.precoCalculado,
     modoPreco: snapshot.modoPreco,
+    linhaPrecificacaoId: snapshot.linhaPrecificacaoId ?? null,
     margemAplicadaPct: snapshot.margemAplicadaPct,
     precoFixo: snapshot.precoFixo,
     instalacao: snapshot.instalacao,
@@ -229,11 +395,11 @@ function assinaturaSnapshotCotacao(sourceId: string, snapshot: z.infer<typeof sn
 
 function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
   for (const linha of snapshot.materiais ?? []) {
-    const medida = linha.formulaType === "areaTotal" ? (snapshot.areaTotalNestingM2 || snapshot.areaGeralM2 || 0)
-      : linha.formulaType === "area" ? snapshot.areaM2
+    const medida = linha.formulaType === "areaTotal" ? (linha.nesting?.areaUtilizadaM2 ?? snapshot.areaTotalNestingM2 ?? snapshot.areaGeralM2 ?? 0)
+      : linha.formulaType === "area" ? (linha.nesting?.areaLiquidaM2 ?? snapshot.areaM2)
       : linha.formulaType === "areaGeral" ? snapshot.areaGeralM2
       : linha.formulaType === "perimExt" ? snapshot.perimExtM
-      : linha.formulaType === "perimTotal" ? snapshot.perimTotalM
+      : linha.formulaType === "perimTotal" ? (linha.nesting?.perimetroTotalM ?? snapshot.perimTotalM)
       : 1;
     if (linha.formulaType !== "fixo" && ["areaTotal", "area", "areaGeral", "perimExt", "perimTotal"].includes(linha.formulaType)
       && (medida == null || (medida <= 0 && linha.multiplicador > 0))) {
@@ -490,6 +656,9 @@ async function listarCotacoes(req: Request, res: Response): Promise<void> {
       clienteEndereco: snapshot.cliente.endereco,
       vendedor: snapshot.vendedor,
       modeloNome: snapshot.modeloNome,
+      tituloProposta: snapshot.tituloProposta || linha.tituloProposta || "",
+      imagemReferenciaUrl: snapshot.imagemReferenciaUrl || linha.imagemReferenciaUrl || null,
+      imagemRedesenhadaUrl: snapshot.imagemRedesenhadaUrl || linha.imagemRedesenhadaUrl || null,
       mubisysProdutoId: snapshot.mubisysProdutoId ?? null,
       mubisysModeloId: snapshot.mubisysModeloId ?? null,
       variacoesModelo: snapshot.variacoesModelo ?? [],

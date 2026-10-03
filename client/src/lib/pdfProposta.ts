@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import { fmtBrl, fmtDate } from "@/lib/format";
 
 export interface PropostaParaPdf {
+  tituloProposta?: string | null;
   clienteNome: string;
   vendedorNome: string;
   createdAt: Date | string;
@@ -18,18 +19,28 @@ export function gerarPdfProposta(p: PropostaParaPdf) {
 
   doc.setFontSize(16);
   doc.text("Proposta comercial", 14, 18);
+  let inicioTabela = 50;
+  let inicioMetadados = 26;
+  if (p.tituloProposta?.trim()) {
+    doc.setFontSize(13);
+    doc.setTextColor(25, 55, 95);
+    const titulo = doc.splitTextToSize(p.tituloProposta.trim(), 180);
+    doc.text(titulo, 14, 27);
+    inicioMetadados = 32 + titulo.length * 6;
+    inicioTabela = inicioMetadados + 24;
+  }
   doc.setFontSize(10);
   doc.setTextColor(100);
-  doc.text(`Cliente: ${p.clienteNome}`, 14, 26);
-  doc.text(`Vendedor: ${p.vendedorNome}`, 14, 32);
-  doc.text(`Data: ${fmtDate(p.createdAt)}`, 14, 38);
+  doc.text(`Cliente: ${p.clienteNome}`, 14, inicioMetadados);
+  doc.text(`Vendedor: ${p.vendedorNome}`, 14, inicioMetadados + 6);
+  doc.text(`Data: ${fmtDate(p.createdAt)}`, 14, inicioMetadados + 12);
   if (p.prazoFabricacaoDiasUteis != null) {
-    doc.text(`Prazo de fabricação: ${p.prazoFabricacaoDiasUteis} dias úteis`, 14, 44);
+    doc.text(`Prazo de fabricação: ${p.prazoFabricacaoDiasUteis} dias úteis`, 14, inicioMetadados + 18);
   }
 
   const itensAtivos = p.itens.filter((i) => i.ativo);
   autoTable(doc, {
-    startY: 50,
+    startY: inicioTabela,
     head: [["Produto", "Qtd", "Preço unit.", "Subtotal"]],
     body: itensAtivos.map((i) => {
       const detalhes = [
