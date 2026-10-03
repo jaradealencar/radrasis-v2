@@ -543,9 +543,9 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   reconstrução é obrigatória para raster antes da rota do Vectorizer; no escopo
   “somente logo”, o serviço concatena Prompt 1B. O fluxo usa
   `server/services/letraCaixaRedesign.ts` e `generateImageEdit`
-  (`server/_core/llm.ts`), modelo `gpt-image-2.5-sunburst`, qualidade `xhigh`,
-  fidelidade alta à imagem de entrada e tamanho automático para preservar a
-  proporção da foto. A última chamada real conhecida devolveu 429
+  (`server/_core/llm.ts`), endpoint `/v1/images/edits`, modelo
+  `gpt-image-2.5-sunburst`, qualidade `xhigh`, tamanho automático e saída PNG.
+  A última chamada real conhecida devolveu 429
   `insufficient_quota` em 28/09/2026. Os parâmetros atuais foram conferidos na
   documentação oficial em 30/09/2026, mas ainda é necessária uma geração real
   com uma foto depois de haver crédito disponível.

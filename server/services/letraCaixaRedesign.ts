@@ -83,7 +83,6 @@ export async function redesenharLetreiro(
     imageMimeType: params.imageMimeType,
     prompt,
     background,
-    inputFidelity: "high",
     model: "gpt-image-2.5-sunburst",
     quality: "xhigh",
     size: "auto",
