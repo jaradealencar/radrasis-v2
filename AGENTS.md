@@ -498,9 +498,17 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   e expira em 30 minutos. Após uma vetorização bem-sucedida, outro ticket permite
   rasterizar edições do SVG no editor e vetorizar novamente. Configure
   `VECTORIZER_API_ID` e `VECTORIZER_API_SECRET`; a produção cobra 1 crédito por
-  chamada. SVG já vetorizado passa direto. Após receber o SVG, o CPQ calcula
-  caminhos e nesting localmente (não há API externa de nesting configurada), e
-  exige revisão visual e confirmação de escala física.
+  chamada. SVG já vetorizado passa direto. No passo raster → SVG, o CPQ aplica
+  o Prompt 2: normaliza caminhos vetoriais para preenchimento branco e contorno
+  preto; rejeita raster, texto, formas fora de caminho, transforms, recursos
+  externos, duplicados e contornos abertos; e compara a silhueta rasterizada
+  com a arte aprovada (IoU mínimo 95%, variação de proporção e deslocamento
+  máximo de 1%). Sobreposição, mapa de diferenças, preview PNG e relatório
+  podem ser baixados. O nesting local só é liberado após passar nos limites e
+  o vendedor confirmar letras, símbolo e isolamento. SVG recebido sem bitmap
+  de referência exige a mesma revisão manual, com validação estrutural. Após
+  receber o SVG, o CPQ calcula caminhos e nesting localmente (não há API
+  externa de nesting configurada), e ainda exige confirmação de escala física.
   Cada cotação mantém seu snapshot em `propostas.observacoes` com o prefixo
   `[ESTUDIO_COTACAO_V1]`; esses snapshots são excluídos da lista do módulo
   comercial Propostas.

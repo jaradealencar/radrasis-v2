@@ -775,7 +775,7 @@ function novaProposta(){
     ajuste:{ brilho:100, contraste:100, cinza:false },
     overlayOpacity:50,
     tracedSvg:null, fgD:'', tracedW:0, tracedH:0, traceError:null,
-    geomRaw:null, traceQuality:null, vectorizerCredits:null,
+    geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], kitSource:'nenhuma', kitWarning:null, matQuery:'', precificacao:null,
     precoSugestao:null, precoAprovacao:null, precoAprovadoFinal:null, precoIACarregando:false, precoAprovacaoCarregando:false, precoIAErro:'',
@@ -931,6 +931,285 @@ function extractPathsFromRawSVG(svgText){
   return { d, w:vw, h:vh, pathCount:paths.length, nonPathCount, transformedCount };
 }
 
+const TRACE_REVIEW_DEFAULTS = {letras:false, simbolo:false, isolamento:false};
+const TRACE_COMPARE_SIZE = 512;
+const TRACE_IOU_MIN = 95;
+const TRACE_ASPECT_MAX = 1;
+const TRACE_SHIFT_MAX_PERCENT = 1;
+
+function inspectPrompt2Svg(svgText){
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  if(doc.querySelector('parsererror')) return {ok:false, fatal:['O arquivo SVG não é XML válido.'], warnings:[], pathCount:0, openPathCount:0, duplicateCount:0, viewBox:null};
+  const root = doc.documentElement;
+  if(!root || root.localName.toLowerCase()!=='svg') return {ok:false, fatal:['A raiz do arquivo não é <svg>.'], warnings:[], pathCount:0, openPathCount:0, duplicateCount:0, viewBox:null};
+  const fatal=[]; const warnings=[];
+  const paths=[...doc.querySelectorAll('path')];
+  const viewBox=(root.getAttribute('viewBox')||'').trim().split(/[\s,]+/).map(Number);
+  const width=parseFloat(root.getAttribute('width'))||0, height=parseFloat(root.getAttribute('height'))||0;
+  const vw=viewBox.length===4?viewBox[2]:width, vh=viewBox.length===4?viewBox[3]:height;
+  if(!Number.isFinite(vw)||!Number.isFinite(vh)||vw<=0||vh<=0) fatal.push('O SVG precisa ter viewBox ou dimensões positivas.');
+  if(!paths.length) fatal.push('O SVG não contém caminhos <path>.');
+  const rasterCount=doc.querySelectorAll('image,foreignObject').length;
+  const textCount=doc.querySelectorAll('text,tspan,textPath').length;
+  const useCount=doc.querySelectorAll('use').length;
+  const activeContentCount=doc.querySelectorAll('script,style,a,animate,animateMotion,animateTransform,set').length;
+  const nonPathCount=doc.querySelectorAll('rect,circle,ellipse,polygon,polyline,line').length;
+  const transformedCount=doc.querySelectorAll('[transform]').length;
+  const complexCount=doc.querySelectorAll('clipPath,mask,filter,pattern,linearGradient,radialGradient,marker').length;
+  const allowedElements=new Set(['svg','g','path','defs','title','desc','metadata']);
+  const unsupportedElements=[...doc.querySelectorAll('*')].filter(el=>!allowedElements.has(el.localName)).length;
+  const nestedSvgCount=doc.querySelectorAll('svg svg').length;
+  const externalRefs=[...doc.querySelectorAll('[href],[xlink\\:href]')].filter(el=>{
+    const href=el.getAttribute('href')||el.getAttribute('xlink:href')||'';
+    return href && !href.startsWith('#');
+  }).length;
+  const cssRefs=[...doc.querySelectorAll('[style]')].filter(el=>/url\((?!\s*['"]?#)/i.test(el.getAttribute('style')||'')).length;
+  const nonPathStyles=[...doc.querySelectorAll('[style]')].filter(el=>el.localName.toLowerCase()!=='path').length;
+  if(rasterCount) fatal.push(`Há ${rasterCount} elemento(s) de imagem/objeto incorporado; a saída precisa ser 100% vetorial.`);
+  if(textCount) fatal.push(`Há ${textCount} elemento(s) de texto; converta todas as letras em caminhos.`);
+  if(useCount) fatal.push(`Há ${useCount} referência(s) <use> que não entram no cálculo do nesting.`);
+  if(activeContentCount) fatal.push(`Há ${activeContentCount} elemento(s) de estilo, link ou animação que não pertencem à arte estática.`);
+  if(nonPathCount) fatal.push(`Há ${nonPathCount} forma(s) SVG fora de <path>; converta-as em caminhos para calcular o nesting.`);
+  if(unsupportedElements) fatal.push(`Há ${unsupportedElements} elemento(s) SVG fora da estrutura vetorial suportada.`);
+  if(nestedSvgCount) fatal.push(`Há ${nestedSvgCount} SVG(s) aninhado(s); achate a estrutura antes de usar o nesting.`);
+  if(transformedCount) fatal.push(`Há ${transformedCount} transformação(ões) SVG; achate-as antes de calcular medidas.`);
+  if(externalRefs||cssRefs) fatal.push('O SVG contém referências externas ou recursos vinculados.');
+  if(nonPathStyles) fatal.push(`Há ${nonPathStyles} regra(s) de estilo fora dos caminhos; simplifique o SVG para que a geometria calculada corresponda à visualização.`);
+  const hiddenElements=[...doc.querySelectorAll('*')].filter(el=>['display','visibility','opacity','fill-opacity','stroke-opacity'].some(name=>{
+    const value=el.getAttribute(name)?.trim().toLowerCase();
+    return value==='none'||value==='hidden'||value==='0'||value==='0.0';
+  })).length;
+  if(hiddenElements) fatal.push(`Há ${hiddenElements} elemento(s) com atributo de visibilidade/opacity que não entram no cálculo geométrico.`);
+  const partialOpacity=[...doc.querySelectorAll('*')].filter(el=>['opacity','fill-opacity','stroke-opacity'].some(name=>{
+    const value=el.getAttribute(name);
+    return value!==null && Number.isFinite(Number(value)) && Number(value)<0.999;
+  })).length;
+  if(partialOpacity) fatal.push(`Há ${partialOpacity} elemento(s) sem opacidade total; a arte vetorial precisa ter cores chapadas.`);
+  if(complexCount) fatal.push(`Há ${complexCount} recurso(s) SVG avançado(s) (recorte, máscara, filtro, padrão ou gradiente) que alteram a geometria visível.`);
+  const seen=new Set(); let duplicateCount=0, openPathCount=0;
+  for(const path of paths){
+    const d=(path.getAttribute('d')||'').replace(/\s+/g,' ').trim();
+    if(d && seen.has(d)) duplicateCount++;
+    if(d) seen.add(d);
+    const commands=d.match(/[a-zA-Z]/g)||[]; let open=false;
+    for(const command of commands){
+      if(command.toLowerCase()==='m') { if(open) openPathCount++; open=true; }
+      else if(command.toLowerCase()==='z') open=false;
+    }
+    if(open) openPathCount++;
+  }
+  if(duplicateCount) fatal.push(`Foram encontrados ${duplicateCount} caminho(s) duplicado(s), que poderiam gerar peças sobrepostas no nesting.`);
+  if(openPathCount) fatal.push(`${openPathCount} subcaminho(s) aberto(s); feche os contornos ou corrija as linhas abertas antes de produzir.`);
+  if(!fatal.length && !openPathCount) warnings.push('Estrutura vetorial sem texto, raster ou contornos abertos detectáveis.');
+  return {ok:fatal.length===0, fatal, warnings, pathCount:paths.length, openPathCount, duplicateCount, viewBox:{w:vw,h:vh}, doc};
+}
+
+function applyPrompt2VectorStyle(svgText){
+  const audit=inspectPrompt2Svg(svgText);
+  if(!audit.ok) return {svgText, audit};
+  const root=audit.doc.documentElement;
+  const strokeWidth=Math.max(Math.min(audit.viewBox.w,audit.viewBox.h)*0.0015,0.35);
+  for(const path of audit.doc.querySelectorAll('path')){
+    for(const attr of ['class','fill','stroke','stroke-width','fill-opacity','stroke-opacity','opacity','style','vector-effect']) path.removeAttribute(attr);
+    path.setAttribute('fill','#FFFFFF');
+    path.setAttribute('stroke','#000000');
+    path.setAttribute('stroke-width',String(strokeWidth));
+    path.setAttribute('stroke-linejoin','round');
+    path.setAttribute('stroke-linecap','round');
+  }
+  return {svgText:new XMLSerializer().serializeToString(root), audit};
+}
+
+function loadTraceImage(src){
+  return new Promise((resolve,reject)=>{
+    const image=new Image();
+    image.onload=()=>resolve(image);
+    image.onerror=()=>reject(new Error('Não foi possível abrir a imagem para comparar a silhueta.'));
+    image.src=src;
+  });
+}
+
+function canvasForTraceImage(image){
+  const size=768, canvas=document.createElement('canvas'); canvas.width=size; canvas.height=size;
+  const context=canvas.getContext('2d',{willReadFrequently:true});
+  context.clearRect(0,0,size,size);
+  const scale=Math.min((size-24)/image.naturalWidth,(size-24)/image.naturalHeight);
+  const width=image.naturalWidth*scale, height=image.naturalHeight*scale;
+  context.drawImage(image,(size-width)/2,(size-height)/2,width,height);
+  return canvas;
+}
+
+function binarySilhouette(canvas){
+  const width=canvas.width,height=canvas.height,pixels=canvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,width,height).data;
+  const mask=new Uint8Array(width*height); let transparent=0;
+  for(let i=3;i<pixels.length;i+=4) if(pixels[i]<248) transparent++;
+  if(transparent>width*height*0.002){
+    for(let i=0;i<mask.length;i++) if(pixels[i*4+3]>48) mask[i]=1;
+  }else{
+    const border=[];
+    for(let x=0;x<width;x++) for(const y of [0,height-1]){const i=(y*width+x)*4;border.push([pixels[i],pixels[i+1],pixels[i+2]]);}
+    for(let y=1;y<height-1;y++) for(const x of [0,width-1]){const i=(y*width+x)*4;border.push([pixels[i],pixels[i+1],pixels[i+2]]);}
+    const median=channel=>{const values=border.map(rgb=>rgb[channel]).sort((a,b)=>a-b);return values[Math.floor(values.length/2)]||255;};
+    const bg=[median(0),median(1),median(2)];
+    const nearBg=i=>{const p=i*4,dr=pixels[p]-bg[0],dg=pixels[p+1]-bg[1],db=pixels[p+2]-bg[2];return dr*dr+dg*dg+db*db<48*48;};
+    const queue=new Int32Array(width*height); let head=0,tail=0;
+    const seed=i=>{if(mask[i]===0 && nearBg(i)){mask[i]=2;queue[tail++]=i;}};
+    for(let x=0;x<width;x++){seed(x);seed((height-1)*width+x);}
+    for(let y=1;y<height-1;y++){seed(y*width);seed(y*width+width-1);}
+    while(head<tail){const i=queue[head++],x=i%width,y=(i/width)|0;
+      if(x>0){const j=i-1;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+      if(x+1<width){const j=i+1;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+      if(y>0){const j=i-width;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+      if(y+1<height){const j=i+width;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+    }
+    for(let i=0;i<mask.length;i++) mask[i]=mask[i]===2?0:1;
+  }
+  let minX=width,minY=height,maxX=-1,maxY=-1;
+  for(let i=0;i<mask.length;i++) if(mask[i]){const x=i%width,y=(i/width)|0;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}
+  if(maxX<minX||maxY<minY) throw new Error('A imagem não tem uma silhueta visível para comparar.');
+  return {mask,width,height,bounds:{x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1}};
+}
+
+function normalizeSilhouette(shape,scale,center=TRACE_COMPARE_SIZE/2){
+  const size=TRACE_COMPARE_SIZE, out=new Uint8Array(size*size), b=shape.bounds;
+  const w=Math.max(1,Math.round(b.w*scale)),h=Math.max(1,Math.round(b.h*scale));
+  const left=Math.round(center-w/2),top=Math.round(center-h/2);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const sx=b.x+Math.min(b.w-1,Math.floor((x/w)*b.w));
+    const sy=b.y+Math.min(b.h-1,Math.floor((y/h)*b.h));
+    if(shape.mask[sy*shape.width+sx]){const dx=left+x,dy=top+y;if(dx>=0&&dy>=0&&dx<size&&dy<size)out[dy*size+dx]=1;}
+  }
+  return out;
+}
+
+function silhouetteEdge(mask){
+  const size=TRACE_COMPARE_SIZE, edge=new Uint8Array(mask.length);
+  for(let y=0;y<size;y++) for(let x=0;x<size;x++){const i=y*size+x;if(!mask[i])continue;
+    if(!x||!y||x===size-1||y===size-1||!mask[i-1]||!mask[i+1]||!mask[i-size]||!mask[i+size])edge[i]=1;
+  }
+  return edge;
+}
+
+function edgeDistance(edge){
+  const size=TRACE_COMPARE_SIZE, inf=1e6, dist=new Float32Array(edge.length);
+  for(let i=0;i<dist.length;i++)dist[i]=edge[i]?0:inf;
+  const diagonal=Math.SQRT2;
+  for(let y=0;y<size;y++) for(let x=0;x<size;x++){const i=y*size+x;let d=dist[i];if(x)d=Math.min(d,dist[i-1]+1);if(y)d=Math.min(d,dist[i-size]+1);if(x&&y)d=Math.min(d,dist[i-size-1]+diagonal);if(x+1<size&&y)d=Math.min(d,dist[i-size+1]+diagonal);dist[i]=d;}
+  for(let y=size-1;y>=0;y--) for(let x=size-1;x>=0;x--){const i=y*size+x;let d=dist[i];if(x+1<size)d=Math.min(d,dist[i+1]+1);if(y+1<size)d=Math.min(d,dist[i+size]+1);if(x+1<size&&y+1<size)d=Math.min(d,dist[i+size+1]+diagonal);if(x&&y+1<size)d=Math.min(d,dist[i+size-1]+diagonal);dist[i]=d;}
+  return dist;
+}
+
+function traceEvidenceCanvases(referenceMask,vectorMask){
+  const size=TRACE_COMPARE_SIZE, overlay=document.createElement('canvas'),difference=document.createElement('canvas');
+  overlay.width=overlay.height=difference.width=difference.height=size;
+  const o=overlay.getContext('2d'),d=difference.getContext('2d');
+  const oi=o.createImageData(size,size),di=d.createImageData(size,size);
+  for(let i=0;i<referenceMask.length;i++){
+    const a=referenceMask[i],b=vectorMask[i],p=i*4;
+    if(a&&b){oi.data[p]=di.data[p]=255;oi.data[p+1]=di.data[p+1]=255;oi.data[p+2]=di.data[p+2]=255;oi.data[p+3]=di.data[p+3]=255;}
+    else if(a){oi.data[p]=0;oi.data[p+1]=166;oi.data[p+2]=220;oi.data[p+3]=255;di.data[p]=235;di.data[p+1]=50;di.data[p+2]=70;di.data[p+3]=255;}
+    else if(b){oi.data[p]=230;oi.data[p+1]=0;oi.data[p+2]=120;oi.data[p+3]=255;di.data[p]=35;di.data[p+1]=115;di.data[p+2]=230;di.data[p+3]=255;}
+    else {oi.data[p]=di.data[p]=247;oi.data[p+1]=di.data[p+1]=248;oi.data[p+2]=di.data[p+2]=250;oi.data[p+3]=di.data[p+3]=255;}
+  }
+  o.putImageData(oi,0,0);d.putImageData(di,0,0);
+  return {overlay:overlay.toDataURL('image/png'),difference:difference.toDataURL('image/png')};
+}
+
+function compareSilhouetteMasks(source,vector){
+  const aspectSource=source.bounds.w/source.bounds.h,aspectVector=vector.bounds.w/vector.bounds.h;
+  const aspectDelta=Math.abs(aspectVector-aspectSource)/aspectSource*100;
+  const maxDimension=Math.max(source.bounds.w,source.bounds.h,vector.bounds.w,vector.bounds.h);
+  const scale=420/maxDimension;
+  const sourceMask=normalizeSilhouette(source,scale),vectorMask=normalizeSilhouette(vector,scale);
+  let intersection=0,union=0;
+  for(let i=0;i<sourceMask.length;i++){if(sourceMask[i]&&vectorMask[i])intersection++;if(sourceMask[i]||vectorMask[i])union++;}
+  const iou=union?intersection/union*100:0;
+  const sourceEdge=silhouetteEdge(sourceMask),vectorEdge=silhouetteEdge(vectorMask);
+  const distanceToSource=edgeDistance(sourceEdge),distanceToVector=edgeDistance(vectorEdge);
+  let maxShift=0;
+  for(let i=0;i<sourceEdge.length;i++){if(sourceEdge[i])maxShift=Math.max(maxShift,distanceToVector[i]);if(vectorEdge[i])maxShift=Math.max(maxShift,distanceToSource[i]);}
+  return {metrics:{iou,aspectDelta,shiftPercent:maxShift/420*100},sourceMask,vectorMask};
+}
+
+function traceMetricsPass(metrics,audit){
+  return metrics.iou>=TRACE_IOU_MIN && metrics.aspectDelta<=TRACE_ASPECT_MAX && metrics.shiftPercent<=TRACE_SHIFT_MAX_PERCENT && audit.openPathCount===0;
+}
+
+async function validatePrompt2Trace(referenceSrc,svgText){
+  const audit=inspectPrompt2Svg(svgText);
+  const result={status:'fail',fatal:audit.fatal,warnings:audit.warnings,metrics:null,overlay:null,difference:null,audit:{pathCount:audit.pathCount,openPathCount:audit.openPathCount,duplicateCount:audit.duplicateCount}};
+  if(!audit.ok) return result;
+  if(!referenceSrc){result.status='manual';result.warnings.push('Não há bitmap de referência neste envio de SVG; a comparação de silhueta não pode ser calculada.');return result;}
+  try{
+    const sourceImage=await loadTraceImage(referenceSrc);
+    const vectorUrl=URL.createObjectURL(new Blob([svgText],{type:'image/svg+xml'}));
+    let vectorImage;
+    try{vectorImage=await loadTraceImage(vectorUrl);}finally{URL.revokeObjectURL(vectorUrl);}
+    const source=binarySilhouette(canvasForTraceImage(sourceImage)),vector=binarySilhouette(canvasForTraceImage(vectorImage));
+    const comparison=compareSilhouetteMasks(source,vector),{iou,aspectDelta,shiftPercent}=comparison.metrics;
+    const evidence=traceEvidenceCanvases(comparison.sourceMask,comparison.vectorMask);
+    result.metrics=comparison.metrics; result.overlay=evidence.overlay;result.difference=evidence.difference;
+    result.status=traceMetricsPass(comparison.metrics,audit)?'pass':'fail';
+    if(iou<TRACE_IOU_MIN)result.fatal.push(`Coincidência de silhueta ${iou.toFixed(2)}%; o mínimo é ${TRACE_IOU_MIN}%.`);
+    if(aspectDelta>TRACE_ASPECT_MAX)result.fatal.push(`Variação de proporção ${aspectDelta.toFixed(2)}%; o máximo é ${TRACE_ASPECT_MAX}%.`);
+    if(shiftPercent>TRACE_SHIFT_MAX_PERCENT)result.fatal.push(`Deslocamento máximo de contorno ${shiftPercent.toFixed(2)}%; o máximo é ${TRACE_SHIFT_MAX_PERCENT}%.`);
+    if(audit.openPathCount)result.fatal.push('Feche ou revise os subcaminhos abertos antes de aprovar.');
+  }catch(error){result.status='fail';result.fatal.push(error.message||'Não foi possível calcular a comparação de silhueta.');}
+  return result;
+}
+
+function traceReviewReady(){
+  const quality=REAL.traceQuality;
+  return !!REAL.fgD && !!quality && ['pass','manual'].includes(quality.status) && Object.values(REAL.traceReview||{}).every(Boolean);
+}
+
+function traceQualityPanel(){
+  const q=REAL.traceQuality;
+  if(!q) return `<div class="warnbox" style="margin-top:14px;"><span>${ICONS.info}</span><div>A conferência do Prompt 2 aparece depois que o SVG estiver disponível.</div></div>`;
+  const passed=q.status==='pass', manual=q.status==='manual';
+  const metrics=q.metrics;
+  return `<div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none;">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+      <div><h4 style="margin:0 0 4px;">Validação automática do Prompt 2</h4><div style="font-size:12px;color:var(--text-faint);">${passed?'Limites geométricos atendidos.':manual?'Sem bitmap de referência; revisão manual necessária.':'Aprovação bloqueada até corrigir os itens abaixo.'}</div></div>
+      <span class="badge ${passed?'b-ok':manual?'b-warn':'b-bad'}">${passed?'APROVADO NA MÉTRICA':manual?'REVISÃO MANUAL':'DIVERGÊNCIA'}</span>
+    </div>
+    ${metrics?`<div class="grid3" style="margin-top:12px;">
+      <div style="padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;"><span style="display:block;font-size:11px;color:var(--text-faint);">Silhueta (IoU)</span><strong style="display:block;font-size:21px;">${metrics.iou.toFixed(2)}%</strong><small>mínimo ${TRACE_IOU_MIN}%</small></div>
+      <div style="padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;"><span style="display:block;font-size:11px;color:var(--text-faint);">Variação de proporção</span><strong style="display:block;font-size:21px;">${metrics.aspectDelta.toFixed(2)}%</strong><small>máximo ${TRACE_ASPECT_MAX}%</small></div>
+      <div style="padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;"><span style="display:block;font-size:11px;color:var(--text-faint);">Deslocamento máximo</span><strong style="display:block;font-size:21px;">${metrics.shiftPercent.toFixed(2)}%</strong><small>máximo ${TRACE_SHIFT_MAX_PERCENT}%</small></div>
+    </div>`:`<div class="role-note" style="margin-top:10px;">SVG: ${q.audit.pathCount} caminho(s), ${q.audit.openPathCount} contorno(s) aberto(s), ${q.audit.duplicateCount} duplicado(s).</div>`}
+    ${(q.fatal||[]).length?`<div class="warnbox" style="margin-top:10px;"><span>${ICONS.alert}</span><div>${q.fatal.map(x=>`<div>${escaparHtml(x)}</div>`).join('')}</div></div>`:''}
+    ${(q.warnings||[]).length?`<div class="role-note" style="margin-top:8px;">${q.warnings.map(escaparHtml).join(' ')}</div>`:''}
+    ${q.overlay?`<div class="grid2" style="margin-top:12px;">
+      <figure style="margin:0;"><figcaption style="font-size:11px;font-weight:700;margin-bottom:5px;">Sobreposição de silhuetas: branco coincide · azul referência · magenta vetor</figcaption><img src="${q.overlay}" alt="Sobreposição de comparação" style="width:100%;border:1px solid var(--border);border-radius:8px;background:white;"></figure>
+      <figure style="margin:0;"><figcaption style="font-size:11px;font-weight:700;margin-bottom:5px;">Diferenças: vermelho falta na saída · azul extra na saída</figcaption><img src="${q.difference}" alt="Diferenças entre silhuetas" style="width:100%;border:1px solid var(--border);border-radius:8px;background:white;"></figure>
+    </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;"><button class="btn btn-ghost btn-sm" data-act="download-trace-overlay">Baixar sobreposição PNG</button><button class="btn btn-ghost btn-sm" data-act="download-trace-difference">Baixar diferenças PNG</button></div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;"><button class="btn btn-ghost btn-sm" data-act="download-trace-report">Baixar relatório de validação</button></div>
+    <div class="checklist" style="margin-top:14px;">
+      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="letras" ${REAL.traceReview.letras?'checked':''} ${q.status==='fail'?'disabled':''}> Conferi cada letra, acento, espaçamento e proporção contra a arte aprovada.</label>
+      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="simbolo" ${REAL.traceReview.simbolo?'checked':''} ${q.status==='fail'?'disabled':''}> Conferi o símbolo, recortes, vazados e posições; não há peça faltando ou sobrando.</label>
+      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="isolamento" ${REAL.traceReview.isolamento?'checked':''} ${q.status==='fail'?'disabled':''}> Confirmei que só há a identidade visual, sem fundo, perspectiva, relevo ou elementos da fachada.</label>
+    </div>
+    ${!traceReviewReady()?`<div class="role-note" style="margin-top:9px;">${q.status==='fail'?(REAL.sourceKind==='vetor'?'Corrija o SVG em um editor vetorial e envie novamente. O avanço continua bloqueado até passar na validação.':'Corrija a arte no editor e vetorize novamente para recalcular.'):'Marque os três itens de revisão para liberar o avanço.'}</div>`:''}
+  </div>`;
+}
+
+function downloadTraceEvidence(kind){
+  const q=REAL.traceQuality;
+  const data=kind==='overlay'?q?.overlay:q?.difference;
+  if(!data)return;
+  const anchor=document.createElement('a');anchor.href=data;anchor.download=kind==='overlay'?'cpq-comparacao-sobreposicao.png':'cpq-comparacao-diferencas.png';anchor.click();
+}
+
+function downloadTraceReport(){
+  const q=REAL.traceQuality;if(!q)return;
+  const metrics=q.metrics;
+  const lines=['CPQ Letreiros Express — relatório de validação do Prompt 2',`Status: ${q.status}`,`Caminhos SVG: ${q.audit.pathCount}`,`Subcaminhos abertos: ${q.audit.openPathCount}`,`Caminhos duplicados: ${q.audit.duplicateCount}`];
+  if(metrics)lines.push(`Coincidência de silhueta (IoU): ${metrics.iou.toFixed(2)}% (mínimo ${TRACE_IOU_MIN}%)`,`Variação de proporção: ${metrics.aspectDelta.toFixed(2)}% (máximo ${TRACE_ASPECT_MAX}%)`,`Deslocamento máximo: ${metrics.shiftPercent.toFixed(2)}% (máximo ${TRACE_SHIFT_MAX_PERCENT}%)`);
+  lines.push('', 'Pendências:',...(q.fatal||[]).map(x=>`- ${x}`),'Observações:',...(q.warnings||[]).map(x=>`- ${x}`),'','A métrica compara silhuetas rasterizadas e não confirma grafia, identidade da marca ou adequação para produção.');
+  const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cpq-relatorio-vetorizacao.txt';a.click();URL.revokeObjectURL(url);
+}
+
 const RASTER_EXT = ['.png','.jpg','.jpeg'];
 const UNSUPPORTED_EXT = ['.pdf','.ai','.eps','.cdr'];
 
@@ -963,7 +1242,8 @@ async function handleUploadedFile(file){
   }
   if(isSvg){
     const text = await file.text();
-    const parsed = extractPathsFromRawSVG(text);
+    const styled = applyPrompt2VectorStyle(text);
+    const parsed = extractPathsFromRawSVG(styled.svgText);
     if(!parsed || !parsed.d){
       REAL.uploadError = 'Não consegui ler caminhos vetoriais nesse SVG (arquivo inválido ou sem elementos <path>).';
       render();
@@ -975,8 +1255,11 @@ async function handleUploadedFile(file){
       return;
     }
     REAL.sourceKind='vetor';
-    REAL.tracedSvg=text; REAL.fgD=parsed.d; REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
-    REAL.traceQuality=null;
+    REAL.tracedSvg=styled.svgText; REAL.fgD=parsed.d; REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
+    const approvedArtwork=REAL.imgReconstructed||REAL.imgPreview||null;
+    REAL.imgPreview=approvedArtwork;
+    REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
+    REAL.traceQuality=await validatePrompt2Trace(approvedArtwork,REAL.tracedSvg);
     REAL.geomRaw = classifyGeometry(parsed.d);
     REAL.traceError=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
@@ -999,7 +1282,7 @@ async function handleUploadedFile(file){
     REAL.sourceKind='raster';
     REAL.imgReconstructed = dataUrl;
     REAL.imgPreview=null;
-    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
+    REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
     render();
     return;
@@ -1013,6 +1296,7 @@ async function retrace(){
   if(!rasterSource || !REAL.redesenhoToken) return;
   const requestId=++traceRequestId;
   REAL.traceQuality=null;
+  REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
   REAL.traceError=null;
   REAL.vectorizerCredits=null;
   REAL.uploadError=null; REAL.uploadWarning=null;
@@ -1034,8 +1318,10 @@ async function retrace(){
     if(requestId!==traceRequestId) return;
     const ticketEdicao=response.headers.get('X-Redesenho-Token');
     if(ticketEdicao) REAL.redesenhoToken=ticketEdicao;
-    const svgStr=await response.text();
+    const svgResponse=await response.text();
     if(requestId!==traceRequestId) return;
+    const styled=applyPrompt2VectorStyle(svgResponse);
+    const svgStr=styled.svgText;
     const parsed=extractPathsFromRawSVG(svgStr);
     if(!parsed || !parsed.d) throw new Error('O Vectorizer.AI não retornou caminhos vetoriais utilizáveis.');
     if(!Number.isFinite(parsed.w)||!Number.isFinite(parsed.h)||parsed.w<=0||parsed.h<=0) throw new Error('O SVG retornado não contém dimensões válidas para calcular a escala.');
@@ -1045,6 +1331,9 @@ async function retrace(){
     REAL.tracedSvg=svgStr; REAL.fgD=parsed.d;
     REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
     REAL.geomRaw=classifyGeometry(parsed.d);
+    REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
+    REAL.traceQuality=await validatePrompt2Trace(rasterSource,svgStr);
+    if(requestId!==traceRequestId) return;
     if(parsed.nonPathCount>0){
       REAL.uploadWarning=`O SVG contém ${parsed.nonPathCount} elemento(s) que não são caminhos e não entram no cálculo geométrico. Confira o resultado no preview antes de aprovar.`;
     }
@@ -2363,19 +2652,18 @@ function realStepVetorizacao(){
     return `
     <div class="card">
       <div class="cardhead"><div><h3>4 · Etapa 3 — vetorização</h3><p>SVG fornecido diretamente. A geometria é lida dos caminhos vetoriais, sem chamar o Vectorizer.AI.</p></div></div>
-      <div class="compare" style="display:flex; align-items:center; justify-content:center; min-height:160px;">
-        <svg viewBox="0 0 ${REAL.tracedW} ${REAL.tracedH}" style="width:100%; height:auto; background:white;"><path d="${REAL.fgD}" fill="white" stroke="black" stroke-width="1" fill-rule="evenodd"/></svg>
-      </div>
+      ${REAL.imgPreview?`<div class="grid2"><div><p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Arte aprovada (referência)</p><div class="compare"><img src="${REAL.imgPreview}" alt="Arte aprovada para comparação" style="display:block;width:100%;height:auto;"></div></div><div><p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">SVG técnico normalizado</p><div class="compare"><img src="${svgPreviewDataUrl()}" alt="SVG técnico enviado" style="display:block;width:100%;height:auto;background:white;"></div></div></div>`:`<div class="compare" style="display:flex; align-items:center; justify-content:center; min-height:160px;"><img src="${svgPreviewDataUrl()}" alt="SVG técnico enviado" style="display:block;width:100%;height:auto;background:white;"></div>`}
       ${uploadMessages()}
       <div class="checklist" style="margin-top:14px;">
         <div class="checkrow">${ICONS.check}${g?g.pieces.length:0} peça(s) externa(s) detectada(s)${g&&g.perimIntPx>0.5?', com vazados internos':''}</div>
         <div class="checkrow">${ICONS.check}Confira silhueta, recortes, tipografia, proporções e posições contra a arte aprovada</div>
-        <div class="checkrow">${ICONS.check}O cálculo usa os caminhos lidos; formas SVG diferentes de &lt;path&gt; podem ser ignoradas</div>
+        <div class="checkrow">${ICONS.check}Apenas caminhos sem transformações ou recursos externos seguem para o cálculo geométrico</div>
       </div>
-      ${hasTrace? `<div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;"><button class="btn btn-soft btn-sm" data-act="editor-vetor-abrir">✏️ Editor rápido (mover, girar, expandir, apagar, cor)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG vetorial</button></div>` : ''}
+      ${traceQualityPanel()}
+      ${hasTrace? `<div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG técnico</button><button class="btn btn-ghost btn-sm" data-act="download-vector-preview">Baixar preview PNG</button></div>` : ''}
       <div class="footer-nav">
         <div>${uploadBox('Substituir por outro SVG', 'se preferir enviar um vetor revisado','real-upload','image/svg+xml,.svg')}</div>
-        <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${hasTrace?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
+        <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${traceReviewReady()?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
       </div>
     </div>`;
   }
@@ -2390,7 +2678,7 @@ function realStepVetorizacao(){
       <div>
         <p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">SVG gerado pelo Vectorizer.AI</p>
         <div class="compare" style="display:flex; align-items:center; justify-content:center; min-height:120px;">
-          ${state.tracing? `<div class="empty-hint">Vetorizando…</div>` : hasTrace ? `<svg viewBox="0 0 ${REAL.tracedW} ${REAL.tracedH}" style="width:100%; height:auto; background:white;"><path d="${REAL.fgD}" fill="white" stroke="black" stroke-width="1" fill-rule="evenodd"/></svg>` : `<div class="empty-hint">${REAL.traceError||'Ainda não vetorizado'}</div>`}
+          ${state.tracing? `<div class="empty-hint">Vetorizando…</div>` : hasTrace ? `<img src="${svgPreviewDataUrl()}" alt="SVG técnico vetorizado" style="display:block;width:100%;height:auto;background:white;">` : `<div class="empty-hint">${REAL.traceError||'Ainda não vetorizado'}</div>`}
         </div>
       </div>
     </div>
@@ -2408,7 +2696,8 @@ function realStepVetorizacao(){
       <div class="checkrow">${ICONS.check}Confira letras, contornos, curvas, vazados, espaçamentos e proporções contra a arte aprovada</div>
       <div class="checkrow">${ICONS.check}O SVG contém caminhos vetoriais; escala física e adequação ao corte ainda precisam de confirmação</div>
     </div>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-soft btn-sm" data-act="editor-vetor-abrir">✏️ Editor rápido (mover, girar, expandir, apagar, cor)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG vetorial</button></div>` : ''}
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-soft btn-sm" data-act="editor-vetor-abrir">✏️ Editor rápido (mover, girar, expandir, apagar, cor)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG técnico</button><button class="btn btn-ghost btn-sm" data-act="download-vector-preview">Baixar preview PNG</button></div>` : ''}
+    ${hasTrace?traceQualityPanel():''}
     <details style="margin-top:14px;">
       <summary style="cursor:pointer; font-size:12.5px; color:var(--accent-ink); font-weight:600;">Prefiro enviar um arquivo já vetorizado</summary>
       <div style="margin-top:10px;">${uploadBox('Enviar SVG pronto', 'usa os caminhos do arquivo sem chamar o Vectorizer.AI','real-upload','image/svg+xml,.svg')}</div>
@@ -2421,7 +2710,7 @@ function realStepVetorizacao(){
         <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed||!REAL.redesenhoToken?'disabled':''}>${state.tracing?'Vetorizando com Vectorizer.AI…':hasTrace?'Vetorizar novamente · 1 crédito':'Vetorizar com Vectorizer.AI · 1 crédito'}</button>
         <span class="role-note">Confira o resultado e confirme a escala física antes do nesting.</span>
       </div>
-      <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${hasTrace?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
+      <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${traceReviewReady()?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
     </div>
   </div>`;
 }
@@ -2557,8 +2846,25 @@ async function downloadTechnicalSheetPNG(){
 function downloadVectorSvg(){
   if(!REAL.fgD){ alert('Ainda não há geometria vetorial para exportar.'); return; }
   const b=REAL.geomRaw && REAL.geomRaw.bboxPx || {x:0,y:0,w:REAL.tracedW||1,h:REAL.tracedH||1};
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${b.w}" height="${b.h}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}"><path d="${escaparHtml(REAL.fgD)}" fill="#fff" stroke="#000" stroke-width="1" fill-rule="evenodd"/></svg>`;
+  const svg=REAL.tracedSvg||`<svg xmlns="http://www.w3.org/2000/svg" width="${b.w}" height="${b.h}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}"><path d="${escaparHtml(REAL.fgD)}" fill="#fff" stroke="#000" stroke-width="1" fill-rule="evenodd"/></svg>`;
   const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'})), link=document.createElement('a'); link.href=url; link.download='arte-vetorizada.svg'; link.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function downloadVectorPreview(){
+  try{
+    if(!REAL.tracedSvg) throw new Error('Ainda não há SVG para pré-visualizar.');
+    const image=await loadTraceImage(svgPreviewDataUrl());
+    const scale=Math.min(2400/Math.max(image.naturalWidth,image.naturalHeight),4);
+    const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+    canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+    if(!blob) throw new Error('Não foi possível exportar o PNG de pré-visualização.');
+    const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download='arte-vetorizada-preview.png';anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){alert(error.message||'Falha ao exportar o preview PNG.');}
+}
+
+function svgPreviewDataUrl(){
+  return REAL.tracedSvg?`data:image/svg+xml;charset=utf-8,${encodeURIComponent(REAL.tracedSvg)}`:'';
 }
 
 function montarInstrucaoRedesenho(){
@@ -4680,6 +4986,10 @@ function bindRealEvents(){
   document.querySelectorAll('[data-act="real-approve"]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const val = el.dataset.val;
+      if(val==='vetorizacao' && !traceReviewReady()){
+        alert('A vetorização só pode avançar depois de atender aos critérios do Prompt 2 e concluir a revisão visual.');
+        return;
+      }
       if(val==='proposta'){
         if(_clienteEmSalvamento) return;
         _clienteEmSalvamento=true;
@@ -4702,6 +5012,14 @@ function bindRealEvents(){
     });
   });
   document.querySelectorAll('[data-act="real-goto-step"]').forEach(el=> el.addEventListener('click', ()=>{ REAL.step=parseInt(el.dataset.val); render(); }));
+  document.querySelectorAll('[data-act="trace-review"]').forEach(el=>el.addEventListener('change',()=>{
+    REAL.traceReview[el.dataset.val]=el.checked;
+    render();
+  }));
+  document.querySelectorAll('[data-act="download-trace-overlay"]').forEach(el=>el.addEventListener('click',()=>downloadTraceEvidence('overlay')));
+  document.querySelectorAll('[data-act="download-trace-difference"]').forEach(el=>el.addEventListener('click',()=>downloadTraceEvidence('difference')));
+  document.querySelectorAll('[data-act="download-trace-report"]').forEach(el=>el.addEventListener('click',downloadTraceReport));
+  document.querySelectorAll('[data-act="download-vector-preview"]').forEach(el=>el.addEventListener('click',downloadVectorPreview));
   const backBtn = document.querySelector('[data-act="real-back"]');
   if(backBtn) backBtn.addEventListener('click', ()=>{ invalidarRastreamento(); REAL=novaProposta(); state.step=1; render(); });
 
