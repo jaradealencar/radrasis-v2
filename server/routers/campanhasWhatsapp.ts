@@ -30,7 +30,7 @@ import {
   normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
-  expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
+  agruparPorCliente, expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
   resumirCampanhas, resumirVendas,
   type ContatoIgnorado, type ContatoInvalido, type VendaPosVenda,
 } from "../services/campanhasWhatsapp";
@@ -148,7 +148,7 @@ async function carregarPosVenda(
     })
     .from(historicoOs)
     .where(and(
-      isNotNull(historicoOs.osNumero), isNotNull(historicoOs.dataFaturamento),
+      isNotNull(historicoOs.osNumero),
       anoMinimo === null ? undefined : gte(historicoOs.ano, anoMinimo),
     ))).filter(isOsNormalDb);
 
@@ -395,8 +395,10 @@ export const campanhasWhatsappRouter = router({
         periodoInicio: c.periodoInicio ? iso(c.periodoInicio) : null,
         periodoFim: c.periodoFim ? iso(c.periodoFim) : null,
         ...status,
-        vendasPendentes: vendas?.pendentes.length ?? null,
-        vendasSemTelefone: vendas?.pendentes.filter(v => !v.telefone).length ?? null,
+        // Clientes únicos (não OS): o pós-venda manda uma mensagem por cliente.
+        clientesPendentes: vendas ? resumirVendas(vendas).pendentes : null,
+        clientesAguardando: vendas ? resumirVendas(vendas).aguardando : null,
+        clientesSemTelefone: vendas ? agruparPorCliente(vendas.pendentes).filter(c => !c.telefone).length : null,
       };
     }).sort((a, b) =>
       (a.semaforo ? rank[a.semaforo] : 3) - (b.semaforo ? rank[b.semaforo] : 3)
@@ -632,15 +634,20 @@ export const campanhasWhatsappRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Só campanhas de gatilho de venda têm lista de vendas." });
       }
       const listas = (await carregarPosVenda(db, [campanha], hojeCampoGrande())).get(campanha.id)!;
-      const recorte = (vs: VendaPosVenda[]) => vs.slice(0, MAX_LISTA_TELA);
+      const prontos = agruparPorCliente(listas.pendentes);
+      const chavesProntas = new Set(prontos.map(c => c.chave));
+      const aguardando = agruparPorCliente(listas.proximas).filter(c => !chavesProntas.has(c.chave));
+      const recorte = <T,>(vs: T[]) => vs.slice(0, MAX_LISTA_TELA);
       return {
-        totalPendentes: listas.pendentes.length,
-        pendentesSemTelefone: listas.pendentes.filter(v => !v.telefone).length,
-        pendentes: recorte(listas.pendentes),
+        // Tudo em CLIENTES únicos; `totalVendas*` guarda quantas OS há por trás.
+        totalPendentes: prontos.length,
+        totalVendasPendentes: listas.pendentes.length,
+        pendentesSemTelefone: prontos.filter(c => !c.telefone).length,
+        pendentes: recorte(prontos),
         /** Para "Usar vendas pendentes" no disparo: todas as pendentes com telefone, sem o recorte da tela. */
         contatosDisparo: listas.pendentes.filter(v => v.telefone).map(v => ({ telefone: v.telefone!, nome: v.empresa, osNumero: v.osNumero })),
-        totalProximas: listas.proximas.length,
-        proximas: recorte(listas.proximas),
+        totalProximas: aguardando.length,
+        proximas: recorte(aguardando),
       };
     }),
 

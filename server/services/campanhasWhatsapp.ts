@@ -174,8 +174,11 @@ export interface VendaPosVenda {
   telefone: string | null;
   vendedor: string | null;
   valor: number | null;
-  dataFaturamento: string;
-  /** Data de faturamento + frequência da campanha. */
+  /** Data da compra (aprovação da venda); `null` quando o histórico não a tem. */
+  dataAprovacao: string | null;
+  /** `null` enquanto a venda ainda não foi faturada. */
+  dataFaturamento: string | null;
+  /** Maior entre faturamento + frequência e 16 dias úteis após a aprovação. */
   prazo: string;
   /** Dias de atraso em relação a hoje (negativo = faltam dias). */
   diasAtraso: number;
@@ -189,10 +192,12 @@ export function dataLocalParaIso(d: Date): string {
 }
 
 /**
- * Vendas de uma campanha de pós-venda: prazo = faturamento + `frequenciaDias`. `pendentes` são as de prazo vencido
- * (≤ hoje) ainda não contatadas — sem limite de atraso, a menos que a campanha tenha `gatilhoAPartirDe`;
- * `proximas` são as que ainda vão vencer. Ambas ordenadas do prazo mais antigo para o mais novo.
- * O chamador já filtrou OS que não são venda normal (retrabalho, amostra, cortesia, cancelada).
+ * Vendas de uma campanha de pós-venda. A **data da compra** (aprovação; sem ela, o faturamento) é a que o período
+ * de apuração filtra — pedido do usuário 03/10/2026 ("clientes que compraram em setembro"), então venda ainda não
+ * faturada também entra. Prazo = o maior entre faturamento + `frequenciaDias` (quando já faturada) e 16 dias úteis
+ * após a aprovação. `pendentes` são as de prazo vencido (≤ hoje) ainda não contatadas; `proximas` as que ainda vão
+ * vencer. Ambas ordenadas do prazo mais antigo para o mais novo. O chamador já filtrou OS que não são venda normal
+ * (retrabalho, amostra, cortesia, cancelada).
  */
 export function listarVendasPosVenda(
   linhas: LinhaVenda[],
@@ -202,28 +207,31 @@ export function listarVendasPosVenda(
 ): { pendentes: VendaPosVenda[]; proximas: VendaPosVenda[] } {
   const pendentes: VendaPosVenda[] = [];
   const proximas: VendaPosVenda[] = [];
+  const isoDe = (valor: string | null | undefined): { iso: string; data: Date } | null => {
+    const dt = parseDataFlexivel(valor ?? null);
+    if (!dt) return null;
+    const iso = dataLocalParaIso(dt);
+    return dataIsoValida(iso) ? { iso, data: dt } : null;
+  };
 
   for (const l of linhas) {
     const osNumero = String(l.osNumero ?? "").trim();
     if (!osNumero || osJaContatadas.has(osNumero)) continue;
 
-    const dt = parseDataFlexivel(l.dataFaturamento);
-    if (!dt) continue;
-    const dataFaturamento = dataLocalParaIso(dt);
-    if (!dataIsoValida(dataFaturamento)) continue;
-    if (dataFaturamento > hoje) continue; // data no futuro = erro de cadastro, não é venda faturada
-    if (campanha.gatilhoAPartirDe && dataFaturamento < campanha.gatilhoAPartirDe) continue;
-    // Data final da apuração (opcional): vendas faturadas depois dela ficam de fora. Sem ela, a lista é permanente.
-    if (campanha.gatilhoAte && dataFaturamento > campanha.gatilhoAte) continue;
+    const aprovacao = isoDe(l.dataAprovacao);
+    const faturamento = isoDe(l.dataFaturamento);
+    const dataCompra = aprovacao?.iso ?? faturamento?.iso;
+    if (!dataCompra) continue;
+    if (dataCompra > hoje) continue;
+    if (faturamento && faturamento.iso > hoje) continue; // data no futuro = erro de cadastro, não é venda faturada
+    if (campanha.gatilhoAPartirDe && dataCompra < campanha.gatilhoAPartirDe) continue;
+    // Data final da apuração (opcional): compras depois dela ficam de fora. Sem ela, a lista é permanente.
+    if (campanha.gatilhoAte && dataCompra > campanha.gatilhoAte) continue;
 
-    // Prazo = faturamento + frequência da campanha, mas nunca antes de 16 dias úteis (sem feriados nacionais)
-    // após a aprovação da venda — pedido do usuário 03/10/2026.
-    let prazo = somarDias(dataFaturamento, campanha.frequenciaDias);
-    const aprovacao = parseDataFlexivel(l.dataAprovacao ?? null);
-    if (aprovacao) {
-      const piso = dataLocalParaIso(adicionarDiasUteisComFeriados(aprovacao, DIAS_UTEIS_MINIMOS_POS_VENDA));
-      if (piso > prazo) prazo = piso;
-    }
+    // Nunca antes de 16 dias úteis (sem feriados nacionais) após a aprovação — pedido do usuário 03/10/2026.
+    const piso = aprovacao ? dataLocalParaIso(adicionarDiasUteisComFeriados(aprovacao.data, DIAS_UTEIS_MINIMOS_POS_VENDA)) : null;
+    const porFaturamento = faturamento ? somarDias(faturamento.iso, campanha.frequenciaDias) : null;
+    const prazo = [piso, porFaturamento].filter((d): d is string => !!d).sort().pop()!;
     const valor = l.valorOs === null || l.valorOs === undefined || l.valorOs === "" ? null : Number(l.valorOs);
     const venda: VendaPosVenda = {
       osNumero,
@@ -231,7 +239,8 @@ export function listarVendasPosVenda(
       telefone: normalizarTelefone(l.telefone),
       vendedor: l.vendedor ?? null,
       valor: valor !== null && Number.isFinite(valor) ? valor : null,
-      dataFaturamento,
+      dataAprovacao: aprovacao?.iso ?? null,
+      dataFaturamento: faturamento?.iso ?? null,
       prazo,
       diasAtraso: diasEntre(prazo, hoje),
     };
@@ -244,8 +253,55 @@ export function listarVendasPosVenda(
   return { pendentes, proximas };
 }
 
+/** Um cliente do pós-venda, com todas as OS dele no período (a mensagem vai uma vez por cliente). */
+export interface ClientePosVenda {
+  /** Telefone normalizado; sem telefone, o nome da empresa em minúsculas. */
+  chave: string;
+  empresa: string;
+  telefone: string | null;
+  vendedor: string | null;
+  osNumeros: string[];
+  valor: number;
+  /** Compra mais antiga entre as OS do grupo. */
+  dataCompra: string;
+  /** Menor prazo entre as OS do grupo. */
+  prazo: string;
+  diasAtraso: number;
+}
+
+/** Agrupa as vendas por cliente único (mesmo telefone; sem telefone, mesma empresa), na ordem do prazo. */
+export function agruparPorCliente(vendas: VendaPosVenda[]): ClientePosVenda[] {
+  const mapa = new Map<string, ClientePosVenda>();
+  for (const v of vendas) {
+    const chave = v.telefone ?? v.empresa.toLowerCase();
+    const compra = v.dataAprovacao ?? v.dataFaturamento ?? v.prazo;
+    const atual = mapa.get(chave);
+    if (!atual) {
+      mapa.set(chave, {
+        chave, empresa: v.empresa, telefone: v.telefone, vendedor: v.vendedor, osNumeros: [v.osNumero],
+        valor: v.valor ?? 0, dataCompra: compra, prazo: v.prazo, diasAtraso: v.diasAtraso,
+      });
+      continue;
+    }
+    atual.osNumeros.push(v.osNumero);
+    atual.valor += v.valor ?? 0;
+    if (compra < atual.dataCompra) atual.dataCompra = compra;
+    if (v.prazo < atual.prazo) { atual.prazo = v.prazo; atual.diasAtraso = v.diasAtraso; }
+  }
+  return [...mapa.values()];
+}
+
+
+/** Resumo em CLIENTES únicos (não em OS): quem já pode receber e quem ainda aguarda o prazo. */
 export function resumirVendas(listas: { pendentes: VendaPosVenda[]; proximas: VendaPosVenda[] }): ResumoVendasCampanha {
-  return { pendentes: listas.pendentes.length, prazoMaisProximo: listas.pendentes[0]?.prazo ?? listas.proximas[0]?.prazo ?? null };
+  const prontos = agruparPorCliente(listas.pendentes);
+  const chavesProntas = new Set(prontos.map(c => c.chave));
+  const aguardando = agruparPorCliente(listas.proximas).filter(c => !chavesProntas.has(c.chave));
+  return {
+    pendentes: prontos.length,
+    aguardando: aguardando.length,
+    prazoMaisProximo: listas.pendentes[0]?.prazo ?? listas.proximas[0]?.prazo ?? null,
+  };
 }
 
 // ─── Status / semáforo de cada campanha ─────────────────────────────────────
@@ -259,7 +315,10 @@ export interface CampanhaParaStatus {
 }
 
 export interface ResumoVendasCampanha {
+  /** Clientes únicos com prazo vencido. */
   pendentes: number;
+  /** Clientes únicos que ainda aguardam o prazo (e não estão em `pendentes`). */
+  aguardando: number;
   /** Menor prazo entre as pendentes (a mais atrasada) ou, se não há pendentes, o menor prazo futuro. */
   prazoMaisProximo: string | null;
 }

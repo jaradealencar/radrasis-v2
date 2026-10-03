@@ -5,7 +5,7 @@ import {
 } from "../../shared/campanhas-whatsapp";
 import {
   expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
-  resumirCampanhas, resumirVendas,
+  agruparPorCliente, resumirCampanhas, resumirVendas,
   type ContatoLimpo, type LinhaVenda,
 } from "../services/campanhasWhatsapp";
 import { checkQuarantineBodySchema, exigirChaveApi, logSendBodySchema } from "../routes/campanhas-whatsapp-api";
@@ -205,10 +205,11 @@ describe("listarVendasPosVenda (hoje = 2026-09-26, frequência 30)", () => {
 
   it("resumirVendas: prazo mais próximo é o da pendente mais atrasada; sem pendentes, o da próxima", () => {
     const com = listarVendasPosVenda(linhas, { frequenciaDias: 30, gatilhoAPartirDe: null }, hoje, new Set());
-    expect(resumirVendas(com)).toEqual({ pendentes: 4, prazoMaisProximo: "2026-08-31" });
+    // 4 OS vencidas, mas só 2 clientes únicos (B, C e D têm o mesmo telefone; E não tem telefone).
+    expect(resumirVendas(com)).toEqual({ pendentes: 2, aguardando: 0, prazoMaisProximo: "2026-08-31" });
     const sem = listarVendasPosVenda([venda("A", "28/08/2026")], { frequenciaDias: 30, gatilhoAPartirDe: null }, hoje, new Set());
-    expect(resumirVendas(sem)).toEqual({ pendentes: 0, prazoMaisProximo: "2026-09-27" });
-    expect(resumirVendas({ pendentes: [], proximas: [] })).toEqual({ pendentes: 0, prazoMaisProximo: null });
+    expect(resumirVendas(sem)).toEqual({ pendentes: 0, aguardando: 1, prazoMaisProximo: "2026-09-27" });
+    expect(resumirVendas({ pendentes: [], proximas: [] })).toEqual({ pendentes: 0, aguardando: 0, prazoMaisProximo: null });
   });
 });
 
@@ -412,5 +413,52 @@ describe("listarVendasPosVenda — período de apuração (início e data final)
 
   it("com data final, vendas faturadas depois dela ficam de fora", () => {
     expect(os(listarVendasPosVenda(linhas, { frequenciaDias: 5, gatilhoAPartirDe: "2026-07-15", gatilhoAte: "2026-08-15" }, hoje, new Set()))).toEqual(["B"]);
+  });
+});
+
+describe("pós-venda por cliente único e período pela data da compra", () => {
+  const hoje = "2026-10-03";
+  const venda = (osNumero: string, empresa: string, telefone: string | null, dataAprovacao: string, dataFaturamento: string | null): LinhaVenda => ({
+    osNumero, empresa, telefone, dataAprovacao, dataFaturamento, vendedor: "Ana", valorOs: "1000",
+  });
+  const setembro = { frequenciaDias: 16, gatilhoAPartirDe: "2026-09-01", gatilhoAte: "2026-09-30" };
+
+  it("o período filtra pela data da compra (aprovação) e inclui venda ainda não faturada", () => {
+    const linhas = [
+      venda("1", "Gráfica A", "(67) 99999-0001", "02/09/2026", "05/09/2026"), // comprou em setembro, faturada
+      venda("2", "Gráfica B", "(67) 99999-0002", "10/09/2026", null), // comprou em setembro, NÃO faturada
+      venda("3", "Gráfica C", "(67) 99999-0003", "25/08/2026", "02/09/2026"), // comprou em agosto, faturou em setembro
+      venda("4", "Gráfica D", "(67) 99999-0004", "02/10/2026", "03/10/2026"), // outubro
+    ];
+    const { pendentes, proximas } = listarVendasPosVenda(linhas, setembro, hoje, new Set());
+    const todas = [...pendentes, ...proximas].map(v => v.osNumero).sort();
+    expect(todas).toEqual(["1", "2"]); // 3 (compra em agosto) e 4 (outubro) ficam fora
+    // 1: aprovada 02/09 → 16 úteis = 24/09 (feriado 07/09) → pendente; 2: aprovada 10/09 → 02/10 → pendente hoje (03/10).
+    expect(pendentes.map(v => v.osNumero)).toEqual(["1", "2"]);
+    expect(pendentes.find(v => v.osNumero === "2")!.prazo).toBe("2026-10-02");
+  });
+
+  it("agrupa por cliente único: várias OS do mesmo telefone viram um contato; sem telefone agrupa pela empresa", () => {
+    const linhas = [
+      venda("1", "Gráfica A", "(67) 99999-0001", "02/09/2026", "05/09/2026"),
+      venda("2", "Gráfica A Ltda", "67 99999-0001", "03/09/2026", "06/09/2026"), // mesmo telefone, outra grafia
+      venda("3", "Sem Fone", null, "04/09/2026", "07/09/2026"),
+      venda("4", "Sem Fone", null, "05/09/2026", "08/09/2026"),
+    ];
+    const { pendentes } = listarVendasPosVenda(linhas, setembro, hoje, new Set());
+    const clientes = agruparPorCliente(pendentes);
+    expect(clientes).toHaveLength(2);
+    expect(clientes.find(c => c.telefone)!.osNumeros.sort()).toEqual(["1", "2"]);
+    expect(clientes.find(c => !c.telefone)!.osNumeros.sort()).toEqual(["3", "4"]);
+    expect(clientes.find(c => c.telefone)!.valor).toBe(2000);
+  });
+
+  it("resumo conta cliente que já tem OS pendente apenas como pendente (não como aguardando)", () => {
+    const linhas = [
+      venda("1", "Gráfica A", "(67) 99999-0001", "02/09/2026", "05/09/2026"), // pendente
+      venda("2", "Gráfica A", "(67) 99999-0001", "25/09/2026", null), // mesma cliente, ainda no prazo
+      venda("3", "Gráfica B", "(67) 99999-0002", "25/09/2026", null), // outra cliente, aguardando
+    ];
+    expect(resumirVendas(listarVendasPosVenda(linhas, setembro, hoje, new Set()))).toMatchObject({ pendentes: 1, aguardando: 1 });
   });
 });

@@ -112,6 +112,13 @@ aprovação da OS (`DIAS_UTEIS_MINIMOS_POS_VENDA`).
 `atualizarDadosErp` (`sincronizarHistoricoRecente(1)`: mês atual e anterior, trava de 2 minutos), e a lista é
 recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair está na lista "Não quer receber".
 
+**Pós-venda por cliente único** (pedido do usuário 03/10/2026): a lista, o contador do painel e o diálogo de
+vendas contam **clientes** (mesmo telefone; sem telefone, mesma empresa), não OS — `agruparPorCliente` e
+`resumirVendas` (`pendentes` = clientes com prazo vencido, `aguardando` = clientes ainda dentro do prazo). O período de
+apuração filtra a **data da compra** (aprovação; sem ela, faturamento), então venda aprovada e ainda **não faturada**
+também entra (a carga deixou de exigir `data_faturamento`). Prazo = maior entre faturamento + frequência e 16 dias
+úteis após a aprovação. O disparo continua registrando cada OS em `campanhas_whatsapp_gatilhos`.
+
 **Período de apuração no formulário da campanha** (pedido do usuário 03/10/2026): o campo "Só vendas faturadas a
 partir de" do pós-venda virou "Período de apuração", para **todos** os tipos, com início e final em duas opções:
 data final ou **automático** (sem data final — a lista é permanente e se retroalimenta). Grava em

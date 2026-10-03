@@ -81,7 +81,7 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
     : fonte === "fontes" ? (gerarLista.data?.aprovados ?? [])
     : leitura?.ok ? leitura.contatos : [];
   // A lista já vem da venda mais antiga para a mais nova; a primeira serve de alerta contra disparo em massa "do histórico inteiro".
-  const vendaMaisAntiga = fonte === "vendas" ? vendas.data?.pendentes[0]?.dataFaturamento ?? null : null;
+  const vendaMaisAntiga = fonte === "vendas" ? vendas.data?.pendentes[0]?.dataCompra ?? null : null;
   const vendaMaisAntigaEhAntiga = !!vendaMaisAntiga && diasEntre(vendaMaisAntiga, hoje) > 180;
   const processando = enviandoArquivo || registrar.isPending;
   const podeProcessar = !!campanha && contatos.length > 0 && !processando
@@ -209,7 +209,7 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
                 {ehGatilho && (
                   <Button size="sm" variant={fonte === "vendas" ? "default" : "outline"} className="gap-1.5" onClick={() => setFonte("vendas")}>
                     <ListChecks size={14} /> Usar vendas pendentes
-                    {campanha?.vendasPendentes != null && ` (${fmtNum(campanha.vendasPendentes)})`}
+                    {campanha?.clientesPendentes != null && ` (${fmtNum(campanha.clientesPendentes)} clientes)`}
                   </Button>
                 )}
                 {!!fontesVinculadas.data?.length && (
@@ -299,7 +299,7 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
                       </p>
                     )}
                     {vendas.data.pendentesSemTelefone > 0 && (
-                      <p className="text-amber-700">{fmtNum(vendas.data.pendentesSemTelefone)} venda(s) sem telefone ficam de fora.</p>
+                      <p className="text-amber-700">{fmtNum(vendas.data.pendentesSemTelefone)} cliente(s) sem telefone ficam de fora.</p>
                     )}
                   </>
                 ) : (

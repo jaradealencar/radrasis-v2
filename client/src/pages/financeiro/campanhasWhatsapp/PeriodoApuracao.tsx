@@ -22,6 +22,12 @@ interface Props {
  * final, então quem entra no grupo depois aparece sozinho (lista permanente, como a de clientes a reativar).
  * Mesmo controle no formulário da campanha e em "Ver contatos".
  */
+/** Último dia do mês "AAAA-MM" como AAAA-MM-DD. */
+function ultimoDiaDoMes(anoMes: string): string {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  return `${anoMes}-${String(new Date(Date.UTC(ano, mes, 0)).getUTCDate()).padStart(2, "0")}`;
+}
+
 export default function PeriodoApuracao({ id, inicio, onInicio, fimAutomatico, onFimAutomatico, fim, onFim, hoje, inicioPadrao }: Props) {
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
@@ -30,6 +36,18 @@ export default function PeriodoApuracao({ id, inicio, onInicio, fimAutomatico, o
         <Input id={`${id}-inicio`} type="date" className="w-44" max={fimAutomatico ? hoje : (fim || hoje)}
           value={inicio || inicioPadrao || ""} onChange={e => onInicio(e.target.value)} />
         {!inicio && inicioPadrao && <p className="text-[11px] text-muted-foreground">Padrão: primeiro registro do histórico.</p>}
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${id}-mes`} className="text-xs">Atalho: mês inteiro</Label>
+        <Input id={`${id}-mes`} type="month" className="w-44"
+          value={!fimAutomatico && inicio.endsWith("-01") && fim === ultimoDiaDoMes(inicio.slice(0, 7)) ? inicio.slice(0, 7) : ""}
+          onChange={e => {
+            if (!e.target.value) return;
+            onInicio(`${e.target.value}-01`);
+            onFim(ultimoDiaDoMes(e.target.value));
+            onFimAutomatico(false);
+          }} />
+        <p className="text-[11px] text-muted-foreground">Preenche início e final.</p>
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs">Final da apuração</Label>
