@@ -1,13 +1,17 @@
-import { ListChecks } from "lucide-react";
+import { useState } from "react";
+import { Download, ListChecks } from "lucide-react";
+import { toast } from "sonner";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { fmtBrl, fmtNum } from "@/lib/format";
+import { exportRowsToXlsx } from "@/lib/exportXlsx";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatarDataBr, formatarTelefone } from "@shared/campanhas-whatsapp";
-import type { CampanhaLinha } from "./comuns";
+import { slugArquivo, type CampanhaLinha } from "./comuns";
 
 type Venda = RouterOutputs["campanhasWhatsapp"]["vendasPosVenda"]["pendentes"][number];
 
@@ -61,7 +65,30 @@ function TabelaVendas({ vendas, total }: { vendas: Venda[]; total: number }) {
   );
 }
 
+type DadosVendas = RouterOutputs["campanhasWhatsapp"]["vendasPosVenda"];
+
+const linhasDaAba = (data: DadosVendas, aba: "pendentes" | "proximas") => (aba === "pendentes" ? data.pendentes : data.proximas);
+
+/** Baixa os clientes da aba atual: só quem tem telefone (é para envio); avisa quantos ficaram de fora. */
+function baixar(data: DadosVendas, aba: "pendentes" | "proximas", nomeCampanha: string) {
+  const todas = linhasDaAba(data, aba);
+  const comTelefone = todas.filter(c => c.telefone);
+  exportRowsToXlsx(comTelefone, [
+    { header: "telefone", valor: c => c.telefone, largura: 18 },
+    { header: "nome_cliente", valor: c => c.empresa, largura: 32 },
+    { header: "vendedor", valor: c => c.vendedor, largura: 20 },
+    { header: "os", valor: c => c.osNumeros.join(", "), largura: 24 },
+    { header: "valor", valor: c => c.valor, largura: 14 },
+    { header: "data_compra", valor: c => c.dataCompra, largura: 14 },
+    { header: "prazo", valor: c => c.prazo, largura: 14 },
+  ], `${slugArquivo(nomeCampanha)}-${aba === "pendentes" ? "para-contatar" : "aguardando-prazo"}`, "Clientes");
+  if (comTelefone.length < todas.length) {
+    toast.info(`${fmtNum(todas.length - comTelefone.length)} cliente(s) sem telefone ficaram fora do arquivo.`);
+  }
+}
+
 export default function VendasPosVendaDialog({ campanha, onClose }: Props) {
+  const [aba, setAba] = useState<"pendentes" | "proximas">("pendentes");
   const { data, isLoading, isError, error } = trpc.campanhasWhatsapp.vendasPosVenda.useQuery(
     { campanhaId: campanha?.id ?? 0 },
     { enabled: !!campanha },
@@ -84,11 +111,17 @@ export default function VendasPosVendaDialog({ campanha, onClose }: Props) {
         ) : isError ? (
           <p className="text-sm text-red-700 py-6">Não consegui carregar as vendas: {error.message}</p>
         ) : data && (
-          <Tabs defaultValue="pendentes">
+          <Tabs value={aba} onValueChange={v => setAba(v as "pendentes" | "proximas")}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
             <TabsList>
               <TabsTrigger value="pendentes">Para contatar ({fmtNum(data.totalPendentes)} clientes)</TabsTrigger>
               <TabsTrigger value="proximas">Aguardando prazo ({fmtNum(data.totalProximas)} clientes)</TabsTrigger>
             </TabsList>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={linhasDaAba(data, aba).length === 0}
+              onClick={() => baixar(data, aba, campanha?.nome ?? "pos-venda")}>
+              <Download size={14} /> Baixar esta lista (.xlsx)
+            </Button>
+            </div>
             <TabsContent value="pendentes" className="pt-3 space-y-2">
               {data.pendentesSemTelefone > 0 && (
                 <p className="text-xs text-amber-700">

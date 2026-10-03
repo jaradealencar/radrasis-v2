@@ -48,6 +48,8 @@ const campanhasProcedure = protectedProcedure.use(requireRole("admin", "master",
 
 export const MAX_CONTATOS_POR_DISPARO = 20_000;
 const MAX_LISTA_TELA = 500;
+/** Pós-venda devolve todos os clientes (a tela rola e o botão de baixar exporta a lista inteira). */
+const MAX_CLIENTES_POS_VENDA_TELA = 5000;
 const MAX_JANELA_CALENDARIO_DIAS = 62;
 
 // ─── Schemas de entrada (exportados: o REST valida com os mesmos) ───────────
@@ -637,7 +639,7 @@ export const campanhasWhatsappRouter = router({
       const prontos = agruparPorCliente(listas.pendentes);
       const chavesProntas = new Set(prontos.map(c => c.chave));
       const aguardando = agruparPorCliente(listas.proximas).filter(c => !chavesProntas.has(c.chave));
-      const recorte = <T,>(vs: T[]) => vs.slice(0, MAX_LISTA_TELA);
+      const recorte = <T,>(vs: T[]) => vs.slice(0, MAX_CLIENTES_POS_VENDA_TELA);
       return {
         // Tudo em CLIENTES únicos; `totalVendas*` guarda quantas OS há por trás.
         totalPendentes: prontos.length,

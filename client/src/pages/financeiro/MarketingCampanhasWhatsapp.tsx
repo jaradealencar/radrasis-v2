@@ -157,7 +157,7 @@ export default function MarketingCampanhasWhatsapp() {
                           >
                             <Send size={13} /> Registrar disparo
                           </Button>
-                          <BotaoIcone rotulo="Ver contatos" onClick={() => setVerContatos(c)}><Users size={15} /></BotaoIcone>
+                          <BotaoIcone rotulo="Ver contatos" onClick={() => (c.tipo === "gatilho_venda" ? setVendas(c) : setVerContatos(c))}><Users size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Editar campanha" onClick={() => setFormulario(c)}><Pencil size={15} /></BotaoIcone>
                           {/* Ações secundárias num menu: a coluna fica estreita e os ícones sempre alinhados. */}
                           <DropdownMenu>
