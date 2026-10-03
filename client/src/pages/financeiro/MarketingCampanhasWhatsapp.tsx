@@ -156,8 +156,11 @@ export default function MarketingCampanhasWhatsapp() {
                           >
                             <Send size={13} /> Registrar disparo
                           </Button>
-                          {c.tipo === "gatilho_venda" && (
+                          {/* Espaço reservado nas campanhas sem este botão: mantém os ícones alinhados em coluna. */}
+                          {c.tipo === "gatilho_venda" ? (
                             <BotaoIcone rotulo="Ver vendas do pós-venda" onClick={() => setVendas(c)}><ListChecks size={15} /></BotaoIcone>
+                          ) : (
+                            <span className="size-8 shrink-0" aria-hidden="true" />
                           )}
                           <BotaoIcone rotulo="Ver contatos" onClick={() => setVerContatos(c)}><Users size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Ver histórico" onClick={() => setHistorico(c)}><History size={15} /></BotaoIcone>
