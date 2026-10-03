@@ -121,6 +121,7 @@ export default function MarketingCampanhasWhatsapp() {
                     <TableHead>Campanha</TableHead>
                     <TableHead>Frequência</TableHead>
                     <TableHead>Envios</TableHead>
+                    <TableHead>Contatos</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right sticky right-0 bg-white">Ações</TableHead>
                   </TableRow>
@@ -128,33 +129,12 @@ export default function MarketingCampanhasWhatsapp() {
                 <TableBody>
                   {campanhas.map(c => (
                     <TableRow key={c.id} className={c.status !== "ativa" ? "opacity-60" : undefined}>
-                      <TableCell className="font-medium min-w-[13rem] max-w-[17rem] align-top">
-                        <span title={c.descricao ?? undefined}>{c.nome}</span>
-                        {/* Pós-venda: quantos clientes já podem receber e quantos aguardam os 16 dias úteis. */}
-                        {c.tipo === "gatilho_venda" && c.status === "ativa" && ((c.clientesPendentes ?? 0) > 0 || (c.clientesAguardando ?? 0) > 0) && (
-                          <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
-                            {(c.clientesPendentes ?? 0) > 0 && (
-                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-700" title="Clientes que já podem receber a mensagem">
-                                {fmtNum(c.clientesPendentes ?? 0)} para contatar
-                              </span>
-                            )}
-                            {(c.clientesAguardando ?? 0) > 0 && (
-                              <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-normal text-amber-800" title="Compraram há menos de 16 dias úteis: ainda não podem receber a mensagem.">
-                                {fmtNum(c.clientesAguardando ?? 0)} aguardando
-                              </span>
-                            )}
-                          </span>
-                        )}
-                        <div className="text-[11px] font-normal text-muted-foreground">
-                          {labelCategoria(c.categoria)}
-                          {" · "}{c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
+                      <TableCell className="font-medium min-w-[13rem] max-w-[16rem] align-top whitespace-normal">
+                        <div title={c.descricao ?? undefined}>{c.nome}</div>
+                        <div className="mt-0.5 text-[11px] font-normal leading-snug text-muted-foreground">
+                          {labelCategoria(c.categoria)} · {c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
                           {c.quarentenaDias > 0 && ` · quarentena ${c.quarentenaDias}d`}
                         </div>
-                        {c.descricao && (
-                          <div className="text-[11px] font-normal text-muted-foreground mt-0.5 line-clamp-2" title={c.descricao}>
-                            {c.descricao}
-                          </div>
-                        )}
                       </TableCell>
                       <TableCell className="align-top">
                         <span className="whitespace-nowrap">{c.frequenciaDias} dias</span>
@@ -164,7 +144,23 @@ export default function MarketingCampanhasWhatsapp() {
                         <div><span className="text-[11px] text-muted-foreground">Último: </span>{c.ultimoEnvio ? formatarDataBr(c.ultimoEnvio) : "—"}</div>
                         <div><span className="text-[11px] text-muted-foreground">Próximo: </span>{c.proximoEnvio ? formatarDataBr(c.proximoEnvio) : "—"}</div>
                       </TableCell>
-                      <TableCell className="align-top min-w-[11rem]">
+                      <TableCell className="align-top whitespace-nowrap text-sm">
+                        {c.tipo === "gatilho_venda" && c.status === "ativa" ? (
+                          <div className="space-y-0.5">
+                            <div title="Clientes que já podem receber a mensagem">
+                              <span className="font-semibold">{fmtNum(c.clientesPendentes ?? 0)}</span>{" "}
+                              <span className="text-[11px] text-muted-foreground">para contatar</span>
+                            </div>
+                            <div title="Compraram há menos de 16 dias úteis: ainda não podem receber a mensagem.">
+                              <span className="font-semibold text-amber-700">{fmtNum(c.clientesAguardando ?? 0)}</span>{" "}
+                              <span className="text-[11px] text-muted-foreground">aguardando prazo</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="align-top min-w-[10rem]">
                         <div className="whitespace-nowrap"><StatusCampanhaBadge campanha={c} hoje={hoje} /></div>
                       </TableCell>
                       <TableCell className="sticky right-0 bg-white align-top shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
