@@ -4,7 +4,7 @@ import { Check, Copy, Loader2, MessageSquareText, Pencil, Plus, Save, Trash2, X 
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
@@ -81,7 +81,7 @@ function ScriptCard({ script, onRefresh }: { script: ScriptRow; onRefresh: () =>
       </div>
       <div className="px-3 py-2">
         {editing ? (
-          <Textarea value={editConteudo} onChange={e => setEditConteudo(e.target.value)} className="text-xs min-h-[70px] resize-y" placeholder="Texto do modelo de mensagem..." />
+          <Textarea value={editConteudo} onChange={e => setEditConteudo(e.target.value)} className="text-sm min-h-[140px] resize-y" placeholder="Texto do modelo de mensagem..." />
         ) : (
           <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{script.conteudo}</p>
         )}
@@ -111,7 +111,7 @@ function AddScriptForm({ campanhaId, onAdded }: { campanhaId: number; onAdded: (
     <div className="rounded-lg border bg-white shadow-sm p-3 space-y-2">
       <span className="text-xs font-semibold text-gray-700">Novo modelo</span>
       <Input value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Título (ex.: Primeiro contato)" className="h-7 text-xs" maxLength={128} />
-      <Textarea value={conteudo} onChange={e => setConteudo(e.target.value)} placeholder="Texto da mensagem..." className="text-xs min-h-[70px] resize-y" />
+      <Textarea value={conteudo} onChange={e => setConteudo(e.target.value)} placeholder="Texto da mensagem..." className="text-sm min-h-[140px] resize-y" />
       <div className="flex gap-2">
         <Button size="sm" className="h-7 text-xs flex-1" disabled={!conteudo.trim() || addScript.isPending}
           onClick={() => addScript.mutate({ campanhaId, titulo: titulo || undefined, conteudo })}>
@@ -123,29 +123,29 @@ function AddScriptForm({ campanhaId, onAdded }: { campanhaId: number; onAdded: (
   );
 }
 
-export default function ScriptsCampanhaPopover({ campanhaId }: { campanhaId: number }) {
+export default function ScriptsCampanhaDialog({ campanhaId }: { campanhaId: number }) {
   const [open, setOpen] = useState(false);
   const { data: scripts, refetch, isLoading } = trpc.campanhasWhatsapp.listScripts.useQuery({ campanhaId });
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs gap-1 text-muted-foreground">
-          <MessageSquareText size={12} /> Modelos de mensagem{scripts && scripts.length > 0 ? ` (${scripts.length})` : ""}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" collisionPadding={16} className="w-[380px] max-w-[calc(100vw-2rem)] max-h-(--radix-popover-content-available-height) p-0 shadow-xl border-0 rounded-xl overflow-y-auto">
-        <div className="px-4 py-3 border-b flex items-center justify-between bg-blue-50 border-blue-300 text-blue-800">
-          <div className="flex items-center gap-2"><MessageSquareText className="w-4 h-4" /><span className="text-sm font-bold">Modelos de mensagem</span></div>
-          <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-white/50"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="p-3 space-y-3 bg-gray-50">
-          {isLoading && <div className="flex items-center justify-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...</div>}
-          {!isLoading && scripts?.length === 0 && <p className="text-xs text-center text-muted-foreground py-4">Nenhum modelo cadastrado ainda.</p>}
-          {!isLoading && (scripts ?? []).map(s => <ScriptCard key={s.id} script={s} onRefresh={refetch} />)}
-          <AddScriptForm campanhaId={campanhaId} onAdded={refetch} />
-        </div>
-      </PopoverContent>
-    </Popover>
+    <>
+      <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs gap-1 text-muted-foreground" onClick={() => setOpen(true)}>
+        <MessageSquareText size={12} /> Modelos de mensagem{scripts && scripts.length > 0 ? ` (${scripts.length})` : ""}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b bg-blue-50 text-blue-800">
+            <DialogTitle className="flex items-center gap-2 text-base"><MessageSquareText className="w-4 h-4" /> Modelos de mensagem</DialogTitle>
+            <DialogDescription className="sr-only">Cadastre, edite e copie os modelos de mensagem desta campanha.</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-50">
+            {isLoading && <div className="flex items-center justify-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...</div>}
+            {!isLoading && scripts?.length === 0 && <p className="text-xs text-center text-muted-foreground py-4">Nenhum modelo cadastrado ainda.</p>}
+            {!isLoading && (scripts ?? []).map(s => <ScriptCard key={s.id} script={s} onRefresh={refetch} />)}
+            <AddScriptForm campanhaId={campanhaId} onAdded={refetch} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

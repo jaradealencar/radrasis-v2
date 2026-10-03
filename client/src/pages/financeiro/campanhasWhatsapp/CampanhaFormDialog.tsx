@@ -15,7 +15,7 @@ import {
 import ArquivosCampanhaPopover from "./ArquivosCampanhaPopover";
 import FontesDadosPopover from "./FontesDadosPopover";
 import GerenciarCategoriasPopover from "./GerenciarCategoriasPopover";
-import ScriptsCampanhaPopover from "./ScriptsCampanhaPopover";
+import ScriptsCampanhaDialog from "./ScriptsCampanhaDialog";
 import { LabelComAjuda, type CampanhaLinha } from "./comuns";
 
 // Conteúdo das "janelinhas de ajuda" (ícone (i) ao lado do label) — pedido do usuário para orientar o
@@ -168,7 +168,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
             <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-slate-50 px-3 py-2">
               <FontesDadosPopover campanhaId={campanha.id} />
               <span className="text-slate-300">·</span>
-              <ScriptsCampanhaPopover campanhaId={campanha.id} />
+              <ScriptsCampanhaDialog campanhaId={campanha.id} />
               <span className="text-slate-300">·</span>
               <ArquivosCampanhaPopover campanhaId={campanha.id} />
             </div>
