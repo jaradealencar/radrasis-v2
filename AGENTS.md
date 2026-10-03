@@ -245,9 +245,12 @@ server/
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
                        opencnpj-client.ts (consulta de CNPJ, sem chave)
-  services/            lógica de cálculo pura (sem I/O), reutilizada por routers:
+  services/            lógica de domínio reutilizada por routers; manter funções
+                       puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
+                       e cpqPrecoAssistente.ts (sugestões GPT e recibos assinados
+                       de aprovação humana de preço)
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
@@ -479,6 +482,17 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   Cada cotação mantém seu snapshot em `propostas.observacoes` com o prefixo
   `[ESTUDIO_COTACAO_V1]`; esses snapshots são excluídos da lista do módulo
   comercial Propostas.
+  Em 03/10/2026, ambos os fluxos ganharam análise consultiva de preço com
+  `gpt-5-mini` e aprovação humana obrigatória: novo item de Propostas e link
+  final do CPQ exigem assinatura de preço aprovada por `gestor`, `admin` ou
+  `master`. O recibo HMAC usa `JWT_SECRET`, registra o aprovador no snapshot e
+  fica vinculado aos custos, medidas, composição e preço base; mudanças nesses
+  dados exigem nova aprovação. Sugestão GPT expira em 20 minutos e aprovação
+  em 7 dias. O modelo não consulta mercado nem determina o preço final. O
+  servidor confere subtotais e fórmula enviados, mas ainda não reconsulta toda
+  a composição/custo do MubiSys nem resolve a margem da Tabela de Preços; a
+  centralização completa do cálculo segue no plano
+  `docs/configurador-inteligente-vendas.md`.
 - **Nomenclatura "Gemini" sobrevivendo na UI e em nomes de campo**, apesar de
   o LLM já ser 100% OpenAI desde a Fase 1 do `docs/sprint-saida-forge`:
   `geminiAnswer`/`geminiAnswerIsGeneral` (`server/routers.ts`,

@@ -27,10 +27,12 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
 - Produtos, CPQ Letreiros Express e Propostas já têm importação de composição MubiSys,
   escolha de variações e medidas de nesting. A mudança recente está commitada,
   mas sua migration ainda precisa ser aplicada e o site publicado.
-- `Comercial > Propostas` preenche o preço unitário com `custoComFixo`, sem
-  aplicar uma margem. O servidor aceita esse preço e o snapshot de materiais
-  enviado pelo navegador sem recalcular o orçamento
-  (`client/src/pages/comercial/Propostas.tsx`, `server/routers/propostas.ts`).
+- `Comercial > Propostas` ainda preenche o preço unitário inicial com
+  `custoComFixo`, sem aplicar uma margem. O item só pode ser salvo depois da
+  aprovação humana do preço. O servidor confere a aritmética da configuração
+  enviada, mas ainda não reconsulta no MubiSys todos os custos e vínculos do
+  produto (`client/src/pages/comercial/Propostas.tsx`,
+  `server/routers/propostas.ts`).
 - O custo do MubiSys ausente vira `null` no produto e pode entrar como zero no
   total ou no item da proposta (`server/routers/produtos.ts`,
   `client/src/pages/comercial/Propostas.tsx`). O custo geral do produto ainda
@@ -44,6 +46,34 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
   separadamente do número de folhas/aproveitamento. Essas aproximações ainda
   não impedem a emissão (`client/public/cpq-letreiros-express.html`,
   `client/src/pages/comercial/Propostas.tsx`).
+
+## Assistente de preço e aprovação humana
+
+Em 03/10/2026 foi iniciado o uso de IA nos dois fluxos comerciais:
+
+- CPQ Letreiros Express e Comercial > Propostas podem pedir ao GPT uma revisão
+  do preço, com parecer, alertas e um valor sugerido. O modelo usado é
+  `gpt-5-mini`; ele recebe custo direto, preço atual, regra informada e linhas
+  de custo disponíveis. A resposta é consultiva, não consulta preços de
+  concorrentes e não determina sozinha o preço final.
+- Preços calculados ou sugeridos exigem aprovação explícita de uma pessoa com
+  perfil `gestor`, `admin` ou `master` antes de adicionar o item à Proposta ou
+  gerar o link público do CPQ. A aprovação registra identificador e nome do
+  aprovador, data, origem do preço e valor aprovado.
+- A aprovação é assinada no servidor usando `JWT_SECRET`, expira em sete dias
+  e fica vinculada à composição, medidas, custo e preço base usados na análise.
+  Alterar esses dados invalida a aprovação. Sugestões GPT expiram em vinte
+  minutos. Preço abaixo do custo direto, custo zerado, custo de material ausente
+  e subtotais inconsistentes são bloqueados.
+- A consulta ao GPT depende de `OPENAI_API_KEY` e da disponibilidade do modelo;
+  sem a IA, o fluxo ainda permite aprovar humanamente o preço calculado.
+- O servidor verifica a consistência aritmética dos dados enviados pelo
+  navegador e impede a alteração do preço depois da aprovação. A validação
+  ainda não busca novamente todos os custos e o BOM diretamente no MubiSys nem
+  resolve a margem vinculada à Tabela de Preços; por isso, a confirmação dos
+  custos importados e a aprovação humana continuam necessárias. A próxima
+  entrega do motor CPQ deve transferir o cálculo definitivo de consumo, custo,
+  preço e margem para uma função de domínio no servidor.
 
 ## Próximas entregas, em ordem
 

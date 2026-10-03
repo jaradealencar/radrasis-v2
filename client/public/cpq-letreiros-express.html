@@ -779,6 +779,7 @@ function novaProposta(){
     geomRaw:null, traceQuality:null,
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], kitSource:'nenhuma', kitWarning:null, matQuery:'', precificacao:null,
+    precoSugestao:null, precoAprovacao:null, precoAprovadoFinal:null, precoIACarregando:false, precoAprovacaoCarregando:false, precoIAErro:'',
     // Pintura: pré-configurada em todo orçamento, mas desabilitada por padrão
     // (não entra no kit nem aparece pro cliente até o vendedor habilitar e
     // responder o wizard) — decisão do usuário 28/09/2026.
@@ -1484,16 +1485,18 @@ function computeOrcamentoReal(){
   // vinda da Tabela de Preços real — a margem MUDA sozinha conforme o custo
   // direto muda de faixa.
   if(REAL.precificacao && REAL.precificacao.modo==='fixo' && REAL.precificacao.precoFixo){
-    const precoFinal = REAL.precificacao.precoFixo*(1-descontoFrac);
-    return {matTotal, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoFinal, margemInfo:null, margin:null, modoFixo:true};
+    const precoCalculado = REAL.precificacao.precoFixo*(1-descontoFrac);
+    const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
+    return {matTotal, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoCalculado, precoFinal, margemInfo:null, margin:null, modoFixo:true};
   }
 
   const margemInfo = REAL.precificacao ? margemDaTabela(REAL.precificacao, custoDireto) : null;
   const margin = margemInfo ? margemInfo.percentual : REAL.margin;
   const precoBase = custoDireto/(1-margin);
   const precoComInstalacao = precoBase+REAL.instalacao;
-  const precoFinal = precoComInstalacao*(1-descontoFrac);
-  return {matTotal, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoFinal, margemInfo, margin, modoFixo:false};
+  const precoCalculado = precoComInstalacao*(1-descontoFrac);
+  const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
+  return {matTotal, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoCalculado, precoFinal, margemInfo, margin, modoFixo:false};
 }
 
 /* ---------- RENDER ---------- */
@@ -1560,6 +1563,16 @@ function renderVisaoCliente(){
 }
 
 function render(){
+  if((REAL.precoAprovacao?.localBaseKey||REAL.precoSugestao?.localBaseKey)){
+    const chaveAtual=chaveBasePrecoReal();
+    if(REAL.precoAprovacao?.localBaseKey && REAL.precoAprovacao.localBaseKey!==chaveAtual){
+      REAL.precoAprovacao=null;
+      REAL.precoAprovadoFinal=null;
+    }
+    if(REAL.precoSugestao?.localBaseKey && REAL.precoSugestao.localBaseKey!==chaveAtual){
+      REAL.precoSugestao=null;
+    }
+  }
   const root = document.getElementById('shell');
   const paineisTab = { vendedor: renderVendedor, admin: renderAdmin, cliente: renderVisaoCliente };
   root.innerHTML = topbar() + (state.tab==='cliente'? '' : banner()) + (paineisTab[state.tab]||renderVendedor)();
@@ -2867,12 +2880,27 @@ function realStepOrcamento(){
         <div class="kv" style="border-top:1px solid var(--border); margin-top:6px; padding-top:8px;"><span style="font-weight:700; color:var(--text);">Preço final</span><span style="font-size:16px; color:var(--accent-ink);">${money(o.precoFinal)}</span></div>
       </div>
     </div>
+    <div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
+      <p style="font-size:12.5px;font-weight:700;margin-bottom:5px;">Revisão e aprovação do preço</p>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:0 0 10px;">O GPT pode sugerir um preço e explicar os riscos. Um gestor, admin ou master precisa aprovar qualquer preço antes de gerar o link.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-soft btn-sm" data-act="real-preco-gpt" ${REAL.precoIACarregando?'disabled':''}>${REAL.precoIACarregando?'GPT analisando…':'Analisar preço com GPT'}</button>
+        <button class="btn btn-ghost btn-sm" data-act="real-preco-aprovar-calculado" ${REAL.precoAprovacaoCarregando?'disabled':''}>Aprovar preço calculado · ${money(o.precoCalculado)}</button>
+      </div>
+      ${REAL.precoSugestao?`<div class="warnbox" style="margin-top:10px;">
+        <div><b>Sugestão do GPT: ${money(REAL.precoSugestao.precoSugerido)}${REAL.precoSugestao.margemSugeridaPct!=null?` · margem estimada ${fmt(REAL.precoSugestao.margemSugeridaPct,1)}%`:''}</b><p style="margin:5px 0;">${escaparHtml(REAL.precoSugestao.parecer||'')}</p>
+        ${REAL.precoSugestao.alertas?.length?`<ul style="margin:4px 0 8px;padding-left:20px;">${REAL.precoSugestao.alertas.map(alerta=>`<li>${escaparHtml(alerta)}</li>`).join('')}</ul>`:''}
+        <button class="btn btn-primary btn-sm" data-act="real-preco-aprovar-gpt" ${REAL.precoAprovacaoCarregando?'disabled':''}>Aprovar sugestão do GPT · ${money(REAL.precoSugestao.precoSugerido)}</button></div>
+      </div>`:''}
+      ${REAL.precoAprovacao?`<div class="role-note" style="margin-top:9px;color:var(--ok);">Preço aprovado por ${escaparHtml(REAL.precoAprovacao.aprovadoPor?.nome||'usuário autorizado')} em ${new Date(REAL.precoAprovacao.aprovadoEm).toLocaleString('pt-BR')}. Se custo, medidas, composição ou regra mudar, aprove novamente.</div>`:`<div class="role-note" style="margin-top:9px;">Ainda sem aprovação. O link da cotação só será liberado depois da revisão humana.</div>`}
+      ${REAL.precoIAErro?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(REAL.precoIAErro)}</div>`:''}
+    </div>
     <div class="footer-nav">
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-soft" data-act="real-salvar-proposta">${ICONS.db} Salvar proposta</button>
         <button class="btn btn-ghost" data-act="real-nova-versao" title="Mantém cliente/vendedor, deixa escolher outro produto — pra apresentar opções diferentes ao cliente">➕ Criar nova versão</button>
       </div>
-      ${curIdx<statuses.length-1? `<button class="btn btn-primary" data-act="real-advance-status">${ICONS.check} Avançar para "${statuses[curIdx+1]}"</button>` : (REAL.cotacaoLink ? `<a class="btn btn-primary" href="${escaparHtml(REAL.cotacaoLink)}" target="_blank" rel="noopener">${ICONS.check} Abrir ${escaparHtml(REAL.cotacaoNumero||'cotação interativa')}</a>` : `<button class="btn btn-primary" data-act="real-concluir-cotacao">${ICONS.check} Concluir orçamento e gerar link</button>`)}
+      ${curIdx<statuses.length-1? `<button class="btn btn-primary" data-act="real-advance-status">${ICONS.check} Avançar para "${statuses[curIdx+1]}"</button>` : (REAL.cotacaoLink ? `<a class="btn btn-primary" href="${escaparHtml(REAL.cotacaoLink)}" target="_blank" rel="noopener">${ICONS.check} Abrir ${escaparHtml(REAL.cotacaoNumero||'cotação interativa')}</a>` : `<button class="btn btn-primary" data-act="real-concluir-cotacao" ${REAL.precoAprovacao?'':'disabled'}>${ICONS.check} Concluir orçamento e gerar link</button>`)}
     </div>
   </div>`;
 }
@@ -3046,10 +3074,105 @@ function snapshotCotacaoReal(){
     perimExtM:Number.isFinite(g.perimExtM) ? g.perimExtM : null,
     perimTotalM:Number.isFinite(g.corteTotalM) ? g.corteTotalM : null,
     materiais,
+    custoMateriais:o.matTotal,
+    custoFixo:o.custoFixo,
+    custoServicos:o.servTotal,
+    custoDireto:o.custoDireto,
+    precoCalculado:o.precoCalculado,
+    modoPreco:o.modoFixo?'fixo':'margem',
+    margemAplicadaPct:o.margin==null?null:o.margin*100,
+    precoFixo:o.modoFixo?Number(REAL.precificacao?.precoFixo)||0:null,
+    instalacao:REAL.instalacao,
+    descontoPct:REAL.desconto,
+    regraPreco:o.modoFixo
+      ? `Preço fixo cadastrado${REAL.desconto?` com desconto de ${REAL.desconto}%`:''}`
+      : `${o.margemInfo?`Tabela de Preços: ${o.margemInfo.secaoTitulo} · faixa ${o.margemInfo.faixaLabel}`:`Margem manual de ${Math.round((o.margin||0)*100)}%`}; instalação ${money(REAL.instalacao)}; desconto ${REAL.desconto}%`,
+    margemPct:o.margin==null?null:o.margin*100,
+    precificacaoIA:REAL.precoAprovacao?{recibo:REAL.precoAprovacao.recibo,contexto:REAL.precoAprovacao.contexto}:undefined,
     precoFinal:o.precoFinal,
     prazoDiasUteis:kitPronto?.prazoDiasUteis ?? null,
     status:'enviado',
   };
+}
+
+function chaveBasePrecoReal(){
+  const snapshot=snapshotCotacaoReal();
+  return JSON.stringify({
+    sourceId:REAL.id,
+    mubisysProdutoId:snapshot.mubisysProdutoId??null,
+    mubisysModeloId:snapshot.mubisysModeloId??null,
+    modeloNome:snapshot.modeloNome,
+    variacoesModelo:snapshot.variacoesModelo||[],
+    medidas:{areaM2:snapshot.areaM2,areaGeralM2:snapshot.areaGeralM2,areaTotalNestingM2:snapshot.areaTotalNestingM2??null,perimExtM:snapshot.perimExtM??null,perimTotalM:snapshot.perimTotalM??null},
+    materiais:snapshot.materiais||[],
+    custoDireto:snapshot.custoDireto,
+    custoMateriais:snapshot.custoMateriais,
+    custoFixo:snapshot.custoFixo,
+    custoServicos:snapshot.custoServicos,
+    precoCalculado:snapshot.precoCalculado,
+    modoPreco:snapshot.modoPreco,
+    margemAplicadaPct:snapshot.margemAplicadaPct,
+    precoFixo:snapshot.precoFixo,
+    instalacao:snapshot.instalacao,
+    descontoPct:snapshot.descontoPct,
+    regraPreco:snapshot.regraPreco,
+    margemPct:snapshot.margemPct,
+  });
+}
+
+async function solicitarSugestaoPrecoReal(){
+  if(REAL.precoIACarregando||REAL.precoAprovacaoCarregando) return;
+  REAL.precoSugestao=null;
+  REAL.precoAprovacao=null;
+  REAL.precoAprovadoFinal=null;
+  REAL.precoIAErro='';
+  REAL.precoIACarregando=true;
+  render();
+  try{
+    const response=await fetch('/api/letra-caixa/precos/sugerir',{
+      method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sourceId:REAL.id,snapshot:snapshotCotacaoReal()}),
+    });
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível analisar o preço.');
+    REAL.precoSugestao={...body,localBaseKey:chaveBasePrecoReal()};
+  }catch(error){
+    REAL.precoIAErro=error.message||'Não foi possível analisar o preço.';
+  }finally{
+    REAL.precoIACarregando=false;
+    render();
+  }
+}
+
+async function aprovarPrecoReal(origem){
+  if(REAL.precoIACarregando||REAL.precoAprovacaoCarregando) return;
+  const precoAprovado=origem==='gpt'?Number(REAL.precoSugestao?.precoSugerido):Number(computeOrcamentoReal().precoCalculado);
+  if(!Number.isFinite(precoAprovado)||precoAprovado<0){REAL.precoIAErro='O preço não é válido para aprovação.';render();return;}
+  REAL.precoIAErro='';
+  REAL.precoAprovacaoCarregando=true;
+  render();
+  try{
+    const response=await fetch('/api/letra-caixa/precos/aprovar',{
+      method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        sourceId:REAL.id,
+        snapshot:snapshotCotacaoReal(),
+        origem,
+        precoAprovado,
+        ticket:origem==='gpt'?REAL.precoSugestao?.ticket??null:null,
+      }),
+    });
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível aprovar o preço.');
+    REAL.precoAprovacao=body;
+    REAL.precoAprovadoFinal=body.precoAprovado;
+    REAL.precoAprovacao.localBaseKey=chaveBasePrecoReal();
+  }catch(error){
+    REAL.precoIAErro=error.message||'Não foi possível aprovar o preço.';
+  }finally{
+    REAL.precoAprovacaoCarregando=false;
+    render();
+  }
 }
 
 async function criarCotacaoPublica(){
@@ -4865,6 +4988,12 @@ function bindRealEvents(){
   bindRangeLive('[data-act="real-margin"]', v=>{ REAL.margin=parseFloat(v); return REAL.margin; }, v=>Math.round(v*100)+'%');
   bindRangeLive('[data-act="real-desconto"]', v=>{ REAL.desconto=parseFloat(v); return REAL.desconto; }, v=>v+'%');
   const realAdvanceBtn = document.querySelector('[data-act="real-advance-status"]');
+  const analisarPrecoGPT=document.querySelector('[data-act="real-preco-gpt"]');
+  if(analisarPrecoGPT) analisarPrecoGPT.addEventListener('click',()=>solicitarSugestaoPrecoReal());
+  const aprovarPrecoCalculado=document.querySelector('[data-act="real-preco-aprovar-calculado"]');
+  if(aprovarPrecoCalculado) aprovarPrecoCalculado.addEventListener('click',()=>aprovarPrecoReal('calculado'));
+  const aprovarPrecoGPT=document.querySelector('[data-act="real-preco-aprovar-gpt"]');
+  if(aprovarPrecoGPT) aprovarPrecoGPT.addEventListener('click',()=>aprovarPrecoReal('gpt'));
   if(realAdvanceBtn) realAdvanceBtn.addEventListener('click', ()=>{
     const order=['rascunho','pendente','aprovado','enviado'];
     const i=order.indexOf(REAL.orcamentoStatus);

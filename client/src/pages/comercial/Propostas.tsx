@@ -567,6 +567,8 @@ function ItensProposta({
   const [quantidade, setQuantidade] = useState("1");
   const [precoUnitario, setPrecoUnitario] = useState("");
   const [precoEditado, setPrecoEditado] = useState(false);
+  const [sugestaoPreco, setSugestaoPreco] = useState<RouterOutputs["propostas"]["precoSugerir"] | null>(null);
+  const [aprovacaoPreco, setAprovacaoPreco] = useState<RouterOutputs["propostas"]["precoAprovar"] | null>(null);
   const [descricoes, setDescricoes] = useState<Record<number, string>>({});
   const [descricoesGrupo, setDescricoesGrupo] = useState<Record<string, string>>({});
   const [itensSelecionados, setItensSelecionados] = useState<number[]>([]);
@@ -606,7 +608,27 @@ function ItensProposta({
     return materiaisDoProduto(produtoAtual.composicao, variacoes, metricas);
   };
 
+  const invalidarPrecoAprovado = () => {
+    setAprovacaoPreco(null);
+    setSugestaoPreco(null);
+  };
+
+  const montarConfiguracaoAtual = (): ConfiguracaoItemCotacao => ({
+    nestingSourceId: nestingAtivo?.sourceId ?? null,
+    nestingNumero: nestingAtivo?.numero ?? null,
+    nestingModeloNome: nestingAtivo?.modeloNome ?? null,
+    medidas,
+    variacoesModelo: variacoesSelecionadas.map((id) => ({
+      id,
+      nome: variacoesDisponiveis.find((variacao) => variacao.id === id)?.nome
+        ?? nestingAtivo?.variacoesModelo.find((variacao) => variacao.id === id)?.nome
+        ?? `Variação #${id}`,
+    })),
+    materiais: materiaisCotacao,
+  });
+
   const selecionarNesting = (sourceId: string) => {
+    invalidarPrecoAprovado();
     setNestingSourceId(sourceId === "__manual" ? "" : sourceId);
     const nesting = nestingsCompativeis.find((item) => item.sourceId === sourceId);
     if (!nesting || !produtoAtual) {
@@ -627,6 +649,7 @@ function ItensProposta({
   };
 
   const alternarVariacaoProduto = (id: number, selecionada: boolean) => {
+    invalidarPrecoAprovado();
     const novas = selecionada
       ? [...new Set([...variacoesSelecionadas, id])]
       : variacoesSelecionadas.filter((variacaoId) => variacaoId !== id);
@@ -636,6 +659,7 @@ function ItensProposta({
   };
 
   const alterarMedida = (campo: keyof MedidasNesting, valor: string) => {
+    invalidarPrecoAprovado();
     const novasMedidas = { ...medidas, [campo]: parseMedida(valor) };
     setMedidas(novasMedidas);
     setMateriaisCotacao(montarMateriais(variacoesSelecionadas, novasMedidas));
@@ -643,6 +667,7 @@ function ItensProposta({
   };
 
   const alternarMaterial = (indice: number, incluir: boolean) => {
+    invalidarPrecoAprovado();
     setMateriaisCotacao((atuais) => atuais.map((material, idx) => idx === indice ? { ...material, incluir } : material));
     setPrecoEditado(false);
   };
@@ -658,6 +683,8 @@ function ItensProposta({
     setMateriaisCotacao(materiaisDoProduto(produtoDetalhe.composicao, selecionadas, MEDIDAS_VAZIAS));
     setPrecoEditado(false);
     setPrecoUnitario(String(produtoDetalhe.custoComFixo.toFixed(2)));
+    setSugestaoPreco(null);
+    setAprovacaoPreco(null);
   }, [produtoDetalhe?.produto.id]);
 
   useEffect(() => {
@@ -683,6 +710,8 @@ function ItensProposta({
       setQuantidade("1");
       setPrecoUnitario("");
       setPrecoEditado(false);
+      setSugestaoPreco(null);
+      setAprovacaoPreco(null);
       setBusca("");
     },
     onError: (e) => toast.error("Erro ao adicionar item", { description: e.message }),
@@ -699,6 +728,25 @@ function ItensProposta({
   const atualizarItem = trpc.propostas.itemAtualizar.useMutation({
     onSuccess: () => utils.propostas.obter.invalidate({ id: propostaId }),
     onError: (e) => toast.error("Erro ao salvar a descrição", { description: e.message }),
+  });
+
+  const sugerirPreco = trpc.propostas.precoSugerir.useMutation({
+    onSuccess: (resultado) => {
+      setSugestaoPreco(resultado);
+      setAprovacaoPreco(null);
+      toast.success("Sugestão de preço pronta", { description: "Revise a análise e aprove o preço antes de adicionar o item." });
+    },
+    onError: (e) => toast.error("Não foi possível analisar o preço", { description: e.message }),
+  });
+
+  const aprovarPreco = trpc.propostas.precoAprovar.useMutation({
+    onSuccess: (resultado) => {
+      setAprovacaoPreco(resultado);
+      setPrecoUnitario(resultado.precoAprovado.toFixed(2));
+      setPrecoEditado(true);
+      toast.success("Preço aprovado", { description: `Aprovação registrada por ${resultado.aprovadoPor.nome}.` });
+    },
+    onError: (e) => toast.error("Aprovação não concluída", { description: e.message }),
   });
 
   const criarGrupo = trpc.propostas.grupoCriar.useMutation({
@@ -740,6 +788,47 @@ function ItensProposta({
   const custoEstimado = temMedidasCotacao && materiaisCotacao.length > 0
     ? custoMateriaisSelecionados * (1 + (Number(produtoAtual?.produto.percentualCustoFixo) || 0) / 100)
     : (produtoAtual?.custoComFixo ?? 0);
+
+  const solicitarSugestaoPreco = () => {
+    const precoAtual = Number(precoUnitario.replace(",", "."));
+    if (!produtoAtual || !propostaId || !Number.isFinite(precoAtual) || precoAtual < 0) {
+      toast.error("Informe o produto e um preço atual válido antes da análise.");
+      return;
+    }
+    invalidarPrecoAprovado();
+    sugerirPreco.mutate({
+      propostaId,
+      produtoId: Number(produtoSelecionadoId),
+      quantidade: Math.max(0.0001, Number(quantidade.replace(",", ".")) || 1),
+      precoAtual,
+      configuracao: montarConfiguracaoAtual(),
+    });
+  };
+
+  const aprovarPrecoAtual = (origem: "calculado" | "gpt") => {
+    const qtd = Number(quantidade.replace(",", "."));
+    if (!produtoAtual || !Number.isFinite(qtd) || qtd <= 0) return;
+    const precoAtualInformado = origem === "gpt" && sugestaoPreco
+      ? sugestaoPreco.contexto.precoAtual
+      : Number(precoUnitario.replace(",", "."));
+    const precoAprovado = origem === "gpt" && sugestaoPreco
+      ? sugestaoPreco.precoSugerido
+      : Number(precoUnitario.replace(",", "."));
+    if (!Number.isFinite(precoAprovado) || precoAprovado < 0) {
+      toast.error("Informe um preço válido antes da aprovação.");
+      return;
+    }
+    aprovarPreco.mutate({
+      propostaId,
+      produtoId: Number(produtoSelecionadoId),
+      quantidade: qtd,
+      configuracao: montarConfiguracaoAtual(),
+      precoAtual: precoAtualInformado,
+      precoAprovado,
+      origem,
+      ticket: origem === "gpt" ? sugestaoPreco?.ticket ?? null : null,
+    });
+  };
   const alternarSelecaoItem = (itemId: number, selecionado: boolean) => {
     setItensSelecionados((atuais) => selecionado
       ? [...atuais, itemId]
@@ -757,20 +846,18 @@ function ItensProposta({
       toast.error("Aguarde o carregamento do produto");
       return;
     }
-    const configuracao: ConfiguracaoItemCotacao = {
-      nestingSourceId: nestingAtivo?.sourceId ?? null,
-      nestingNumero: nestingAtivo?.numero ?? null,
-      nestingModeloNome: nestingAtivo?.modeloNome ?? null,
-      medidas,
-      variacoesModelo: variacoesSelecionadas.map((id) => ({
-        id,
-        nome: variacoesDisponiveis.find((variacao) => variacao.id === id)?.nome
-          ?? nestingAtivo?.variacoesModelo.find((variacao) => variacao.id === id)?.nome
-          ?? `Variação #${id}`,
-      })),
-      materiais: materiaisCotacao,
-    };
-    adicionar.mutate({ propostaId, produtoId: Number(produtoSelecionadoId), quantidade: qtd, precoUnitario: preco, configuracao });
+    if (!aprovacaoPreco) {
+      toast.error("Aprovação humana obrigatória", { description: "Aprove o preço calculado ou a sugestão do GPT antes de adicionar o item." });
+      return;
+    }
+    adicionar.mutate({
+      propostaId,
+      produtoId: Number(produtoSelecionadoId),
+      quantidade: qtd,
+      precoUnitario: preco,
+      configuracao: montarConfiguracaoAtual(),
+      aprovacaoPreco: { recibo: aprovacaoPreco.recibo, contexto: aprovacaoPreco.contexto },
+    });
   };
 
   return (
@@ -793,6 +880,7 @@ function ItensProposta({
                   setMedidas(MEDIDAS_VAZIAS);
                   setMateriaisCotacao([]);
                   setPrecoEditado(false);
+                  invalidarPrecoAprovado();
                 }}>
                   <SelectTrigger className="w-56 h-8 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
@@ -803,19 +891,55 @@ function ItensProposta({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Quantidade</Label>
-              <Input className="w-24 h-8 text-xs" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+              <Input className="w-24 h-8 text-xs" value={quantidade} onChange={(e) => { setQuantidade(e.target.value); invalidarPrecoAprovado(); }} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Preço de venda (un.)</Label>
-              <Input className="w-32 h-8 text-xs" value={precoUnitario} onChange={(e) => { setPrecoUnitario(e.target.value); setPrecoEditado(true); }} />
+              <Input className="w-32 h-8 text-xs" value={precoUnitario} onChange={(e) => { setPrecoUnitario(e.target.value); setPrecoEditado(true); invalidarPrecoAprovado(); }} />
               {produtoAtual && (
                 <p className="text-[11px] text-muted-foreground">
                   custo estimado: {fmtBrl(custoEstimado)}
                 </p>
               )}
             </div>
-            <Button size="sm" onClick={handleAdicionar} disabled={adicionar.isPending || !produtoAtual}>Adicionar</Button>
+            <Button size="sm" onClick={handleAdicionar} disabled={adicionar.isPending || !produtoAtual || !aprovacaoPreco}>Adicionar</Button>
           </div>
+
+          {produtoAtual && (
+            <div className="space-y-2 rounded-md border bg-background p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={solicitarSugestaoPreco} disabled={sugerirPreco.isPending || aprovarPreco.isPending}>
+                  {sugerirPreco.isPending ? "GPT analisando…" : "Analisar preço com GPT"}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => aprovarPrecoAtual("calculado")} disabled={aprovarPreco.isPending || sugerirPreco.isPending || !precoUnitario}>
+                  {aprovarPreco.isPending ? "Registrando aprovação…" : `Aprovar preço atual (${fmtBrl(Number(precoUnitario.replace(",", ".")) || 0)})`}
+                </Button>
+              </div>
+              {sugestaoPreco && (
+                <div className="space-y-2 rounded-md bg-muted/50 p-3 text-xs">
+                  <p className="font-medium">Sugestão do GPT: {fmtBrl(sugestaoPreco.precoSugerido)} por unidade
+                    {sugestaoPreco.margemSugeridaPct != null && ` · margem estimada ${fmtNum(sugestaoPreco.margemSugeridaPct, 1)}%`}
+                  </p>
+                  <p className="text-muted-foreground">{sugestaoPreco.parecer}</p>
+                  {sugestaoPreco.alertas.length > 0 && (
+                    <ul className="list-disc pl-5 text-amber-700">
+                      {sugestaoPreco.alertas.map((alerta, index) => <li key={`${index}-${alerta}`}>{alerta}</li>)}
+                    </ul>
+                  )}
+                  <Button size="sm" onClick={() => aprovarPrecoAtual("gpt")} disabled={aprovarPreco.isPending}>
+                    Aprovar sugestão do GPT ({fmtBrl(sugestaoPreco.precoSugerido)})
+                  </Button>
+                </div>
+              )}
+              {aprovacaoPreco ? (
+                <p className="text-[11px] text-emerald-700">
+                  Preço {aprovacaoPreco.origem === "gpt" ? "sugerido pelo GPT" : "atual"} aprovado por {aprovacaoPreco.aprovadoPor.nome} em {fmtDateTime(aprovacaoPreco.aprovadoEm)}. Alterar produto, composição, medidas, quantidade ou preço invalida a aprovação.
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">A aprovação deve ser feita por gestor, admin ou master. O item só entra na proposta após a aprovação do preço.</p>
+              )}
+            </div>
+          )}
 
           {produtoAtual && (
             <div className="space-y-4 border-t pt-4">

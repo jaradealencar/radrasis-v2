@@ -7,11 +7,19 @@
  */
 import { randomBytes, randomUUID } from "crypto";
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
+import { router, protectedProcedure, publicProcedure, requireRole } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { propostas, propostaItens, produtos, configuracoesComerciais } from "../../drizzle/schema";
 import { eq, asc, desc, and, inArray, sql } from "drizzle-orm";
 import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
+import {
+  aprovarPrecoCalculado,
+  aprovarSugestaoPreco,
+  precoContextoSchema,
+  sugerirPrecoComGPT,
+  verificarAprovacaoPreco,
+  type ResultadoAprovacaoPreco,
+} from "../services/cpqPrecoAssistente";
 
 function gerarToken(): string {
   return randomBytes(24).toString("base64url");
@@ -54,6 +62,68 @@ const configuracaoItemSchema = z.object({
   variacoesModelo: z.array(z.object({ id: z.number().int().positive(), nome: z.string().max(256) }).strict()).max(100),
   materiais: z.array(materialConfiguracaoSchema).max(500),
 }).strict();
+
+const aprovacaoPrecoInputSchema = z.object({
+  recibo: z.string().min(20).max(6000),
+  contexto: precoContextoSchema,
+}).strict();
+
+const basePrecoPropostaSchema = z.object({
+  propostaId: z.number().int().positive(),
+  produtoId: z.number().int().positive(),
+  quantidade: z.number().finite().positive(),
+  configuracao: configuracaoItemSchema,
+}).strict();
+
+function calcularContextoPrecoProposta(args: {
+  produto: { nome: string; percentualCustoFixo: string; idPrecificacao: number | null };
+  configuracao: z.infer<typeof configuracaoItemSchema>;
+  precoAtual: number;
+}) {
+  const medidaPorFormula: Record<z.infer<typeof materialConfiguracaoSchema>["formulaType"], number | null> = {
+    areaTotal: args.configuracao.medidas.areaTotalNestingM2 ?? args.configuracao.medidas.areaGeralM2,
+    area: args.configuracao.medidas.areaM2,
+    areaGeral: args.configuracao.medidas.areaGeralM2,
+    perimExt: args.configuracao.medidas.perimExtM,
+    perimTotal: args.configuracao.medidas.perimTotalM,
+    fixo: 1,
+  };
+  for (const material of args.configuracao.materiais.filter((linha) => linha.incluir)) {
+    const medida = medidaPorFormula[material.formulaType];
+    if (material.formulaType !== "fixo" && (medida == null || (medida <= 0 && material.multiplicador > 0))) {
+      throw new Error(`A medida usada pela fórmula de ${material.nome} está ausente ou zerada.`);
+    }
+    const quantidadeEsperada = (medida ?? 0) * material.multiplicador;
+    if (Math.abs(material.quantidade - quantidadeEsperada) > 0.005) {
+      throw new Error(`A quantidade de ${material.nome} não corresponde à fórmula e às medidas atuais.`);
+    }
+  }
+  const itens = args.configuracao.materiais.filter((material) => material.incluir).map((material) => ({
+    nome: material.nome,
+    quantidade: material.quantidade,
+    custoTotal: material.custoTotal,
+    custoUnitario: material.custoUnitario,
+  }));
+  if (itens.some((material) => material.quantidade > 0 && material.custoUnitario <= 0)) {
+    throw new Error("Há matéria-prima sem custo válido. Atualize os custos antes da análise ou aprovação.");
+  }
+  if (itens.some((material) => Math.abs(material.custoTotal - material.quantidade * material.custoUnitario) > 0.02)) {
+    throw new Error("O subtotal de uma matéria-prima não corresponde à quantidade e ao custo unitário.");
+  }
+  const custoMateriais = itens.reduce((soma, material) => soma + material.custoTotal, 0);
+  const percentualFixo = Number(args.produto.percentualCustoFixo) || 0;
+  const custoDireto = Math.round(custoMateriais * (1 + percentualFixo / 100) * 100) / 100;
+  if (custoDireto <= 0) throw new Error("O custo direto está zerado. Revise a composição e os custos antes de continuar.");
+  const margemAtual = args.precoAtual > 0 ? ((args.precoAtual - custoDireto) / args.precoAtual) * 100 : null;
+  return precoContextoSchema.parse({
+    produto: args.produto.nome,
+    custoDireto,
+    precoAtual: args.precoAtual,
+    regra: `Custo das matérias-primas + ${percentualFixo}% de custo fixo${args.produto.idPrecificacao ? `; produto vinculado à regra ${args.produto.idPrecificacao} da Tabela de Preços, cuja faixa ainda requer revisão` : "; sem regra de margem resolvida automaticamente"}`,
+    margemAtualPct: margemAtual != null && Math.abs(margemAtual) <= 1000 ? margemAtual : null,
+    itens: itens.map(({ nome, quantidade, custoTotal }) => ({ nome, quantidade, custoTotal })),
+  });
+}
 
 function lerSnapshotEstudio(observacoes: string | null): Record<string, unknown> | null {
   if (!observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) return null;
@@ -175,6 +245,68 @@ async function obterConfiguracoes(db: NonNullable<Awaited<ReturnType<typeof getD
 }
 
 export const propostasRouter = router({
+  precoSugerir: protectedProcedure
+    .input(basePrecoPropostaSchema.extend({ precoAtual: z.number().finite().nonnegative() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const [proposta] = await db.select({ id: propostas.id }).from(propostas).where(eq(propostas.id, input.propostaId));
+      const [produto] = await db.select({
+        nome: produtos.nome,
+        percentualCustoFixo: produtos.percentualCustoFixo,
+        idPrecificacao: produtos.idPrecificacao,
+      }).from(produtos).where(eq(produtos.id, input.produtoId));
+      if (!proposta || !produto) throw new Error("Proposta ou produto não encontrado.");
+      const contexto = calcularContextoPrecoProposta({ produto, configuracao: input.configuracao, precoAtual: input.precoAtual });
+      const base = {
+        propostaId: input.propostaId,
+        produtoId: input.produtoId,
+        quantidade: input.quantidade,
+        configuracao: input.configuracao,
+      };
+      const sugestao = await sugerirPrecoComGPT({ fluxo: "propostas", base, contexto, atorId: ctx.user.id });
+      return { ...sugestao, contexto };
+    }),
+
+  precoAprovar: protectedProcedure
+    .use(requireRole("gestor", "admin", "master"))
+    .input(basePrecoPropostaSchema.extend({
+      precoAtual: z.number().finite().nonnegative(),
+      precoAprovado: z.number().finite().nonnegative(),
+      origem: z.enum(["calculado", "gpt"]),
+      ticket: z.string().min(20).max(6000).nullable().default(null),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const [proposta] = await db.select({ id: propostas.id }).from(propostas).where(eq(propostas.id, input.propostaId));
+      const [produto] = await db.select({
+        nome: produtos.nome,
+        percentualCustoFixo: produtos.percentualCustoFixo,
+        idPrecificacao: produtos.idPrecificacao,
+      }).from(produtos).where(eq(produtos.id, input.produtoId));
+      if (!proposta || !produto) throw new Error("Proposta ou produto não encontrado.");
+      const contexto = calcularContextoPrecoProposta({ produto, configuracao: input.configuracao, precoAtual: input.precoAtual });
+      const base = {
+        propostaId: input.propostaId,
+        produtoId: input.produtoId,
+        quantidade: input.quantidade,
+        configuracao: input.configuracao,
+      };
+      const ator = { id: ctx.user.id, nome: ctx.user.name, role: ctx.user.role };
+      let aprovacao: ResultadoAprovacaoPreco;
+      if (input.origem === "gpt") {
+        if (!input.ticket) throw new Error("A sugestão do GPT expirou ou não foi carregada. Faça a análise novamente.");
+        aprovacao = aprovarSugestaoPreco({ ticket: input.ticket, fluxo: "propostas", base, contexto, ator });
+      } else {
+        aprovacao = aprovarPrecoCalculado({ fluxo: "propostas", base, contexto, preco: input.precoAprovado, ator });
+      }
+      if (Math.abs(aprovacao.precoAprovado - input.precoAprovado) >= 0.005) {
+        throw new Error("O preço informado não corresponde ao preço que foi aprovado.");
+      }
+      return { ...aprovacao, contexto };
+    }),
+
   nestingsEstudio: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
@@ -362,14 +494,34 @@ export const propostasRouter = router({
         quantidade: z.number().min(0.0001).default(1),
         precoUnitario: z.number().min(0),
         descricao: z.string().max(5000).optional().default(""),
-        configuracao: configuracaoItemSchema.optional(),
+        configuracao: configuracaoItemSchema,
+        aprovacaoPreco: aprovacaoPrecoInputSchema,
       }),
     )
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      const [produto] = await db.select({ nome: produtos.nome }).from(produtos).where(eq(produtos.id, input.produtoId));
+      const [produto] = await db.select({
+        nome: produtos.nome,
+        percentualCustoFixo: produtos.percentualCustoFixo,
+        idPrecificacao: produtos.idPrecificacao,
+      }).from(produtos).where(eq(produtos.id, input.produtoId));
       if (!produto) throw new Error("Produto não encontrado");
+      const [proposta] = await db.select({ id: propostas.id }).from(propostas).where(eq(propostas.id, input.propostaId));
+      if (!proposta) throw new Error("Proposta não encontrada");
+      const configuracao = input.configuracao;
+      const contextoAtual = calcularContextoPrecoProposta({
+        produto,
+        configuracao,
+        precoAtual: input.aprovacaoPreco.contexto.precoAtual,
+      });
+      const aprovacao = verificarAprovacaoPreco({
+        recibo: input.aprovacaoPreco.recibo,
+        fluxo: "propostas",
+        base: { propostaId: input.propostaId, produtoId: input.produtoId, quantidade: input.quantidade, configuracao },
+        contexto: contextoAtual,
+        preco: input.precoUnitario,
+      });
       const existentes = await db
         .select({ id: propostaItens.id })
         .from(propostaItens)
@@ -381,7 +533,10 @@ export const propostasRouter = router({
           produtoId: input.produtoId,
           produtoNome: produto.nome,
           descricao: input.descricao,
-          configuracaoJson: input.configuracao ?? {},
+          configuracaoJson: {
+            ...configuracao,
+            precificacaoIA: { ...aprovacao, contexto: contextoAtual },
+          },
           quantidade: String(input.quantidade),
           precoUnitario: String(input.precoUnitario),
           ordem: existentes.length,
@@ -397,10 +552,59 @@ export const propostasRouter = router({
       precoUnitario: z.number().min(0),
       descricao: z.string().max(5000).optional(),
       configuracao: configuracaoItemSchema.optional(),
+      aprovacaoPreco: aprovacaoPrecoInputSchema.optional(),
     }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      const [atual] = await db.select({
+        id: propostaItens.id,
+        propostaId: propostaItens.propostaId,
+        produtoId: propostaItens.produtoId,
+        quantidade: propostaItens.quantidade,
+        precoUnitario: propostaItens.precoUnitario,
+      }).from(propostaItens).where(eq(propostaItens.id, input.id));
+      if (!atual) throw new Error("Item de proposta não encontrado.");
+      const mudouPreco = Math.abs(Number(atual.precoUnitario) - input.precoUnitario) >= 0.005;
+      const mudouQuantidade = Math.abs(Number(atual.quantidade) - input.quantidade) >= 0.0001;
+      if (mudouPreco || mudouQuantidade || input.configuracao !== undefined) {
+        if (!input.aprovacaoPreco || !input.configuracao) {
+          throw new Error("Alterar preço, quantidade ou composição exige nova aprovação humana do preço.");
+        }
+        const [produto] = await db.select({
+          nome: produtos.nome,
+          percentualCustoFixo: produtos.percentualCustoFixo,
+          idPrecificacao: produtos.idPrecificacao,
+        }).from(produtos).where(eq(produtos.id, atual.produtoId));
+        if (!produto) throw new Error("Produto não encontrado.");
+        const contexto = calcularContextoPrecoProposta({
+          produto,
+          configuracao: input.configuracao,
+          precoAtual: input.aprovacaoPreco.contexto.precoAtual,
+        });
+        const aprovacao = verificarAprovacaoPreco({
+          recibo: input.aprovacaoPreco.recibo,
+          fluxo: "propostas",
+          base: {
+            propostaId: atual.propostaId,
+            produtoId: atual.produtoId,
+            quantidade: input.quantidade,
+            configuracao: input.configuracao,
+          },
+          contexto,
+          preco: input.precoUnitario,
+        });
+        await db
+          .update(propostaItens)
+          .set({
+            quantidade: String(input.quantidade),
+            precoUnitario: String(input.precoUnitario),
+            ...(input.descricao !== undefined ? { descricao: input.descricao } : {}),
+            configuracaoJson: { ...input.configuracao, precificacaoIA: { ...aprovacao, contexto } },
+          })
+          .where(eq(propostaItens.id, input.id));
+        return { success: true };
+      }
       await db
         .update(propostaItens)
         .set({
