@@ -28,6 +28,34 @@ a auth já é 100% Better Auth (Fases 1-3); só falta a Fase 5 (remover
 dele, é limpeza final, sem urgência funcional). Plano completo, histórico
 do que já foi feito: `docs/migracao-postgres-better-auth.md`.
 
+## Norte do Comercial: configurador inteligente de vendas
+
+Ao desenvolver Produtos, Estúdio de Letra Caixa, Propostas e integrações,
+tratar cada orçamento como uma configuração rastreável: **produto →
+composição (matérias-primas e kits) → modelos → variações → medidas do nesting
+→ consumo → custo → preço e margem → proposta**. O objetivo é montar propostas
+complexas em minutos, com revisão explícita dos dados que afetam preço e
+engenharia. Esta seção define a direção do produto; não significa que todos
+esses controles já estejam implementados.
+
+- Reaproveitar composições importadas, modelos, variações e configurações
+  aprovadas, mantendo a liberdade de incluir, excluir e ajustar materiais em
+  cada orçamento. As escolhas devem recalcular consumo e preço imediatamente.
+- Exibir a origem, unidade, fórmula, quantidade e custo de cada insumo e a
+  regra que formou o preço. Custo ausente, unidade incompatível ou medida
+  essencial desconhecida devem ficar visíveis e impedir a emissão até serem
+  resolvidos; nunca assumir custo zero silenciosamente.
+- Centralizar no servidor o cálculo definitivo de consumo, preço e margem.
+  Ajustes manuais precisam de validação de margem; exceções abaixo do piso
+  exigem aprovação identificável. Salvar um snapshot versionado dos dados,
+  regras e decisões usados na proposta emitida.
+- Validar medidas e limites físicos do nesting, desperdício e compatibilidade
+  entre peças, materiais, modelos e variações antes de liberar a proposta.
+  Priorizar padrões úteis, importação de dados e um resumo claro do que falta
+  para cotar, de modo que a rapidez não dependa de digitação repetida.
+
+Plano de melhorias e riscos atuais: `docs/configurador-inteligente-vendas.md`.
+
 ## Gerenciador de pacotes
 
 **Yarn (classic, 1.x)** — não use `npm install` nem `pnpm`. O projeto foi
