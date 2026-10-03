@@ -6,7 +6,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 300,
-      "includeFiles": "docs/prompts/**/*.md"
+      "includeFiles": "{docs/prompts/**/*.md,node_modules/polygon-clipping/**,node_modules/splaytree/**,node_modules/robust-predicates/**}"
     }
   },
   "rewrites": [
