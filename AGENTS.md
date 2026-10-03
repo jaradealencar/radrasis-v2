@@ -490,6 +490,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   pode ser localizado pelo CPF/CNPJ no próximo cadastro e é listado na aba
   Clientes da Administração. Cotações antigas alimentam essa base na migration
   de criação da tabela.
+  Na etapa raster → SVG do CPQ, a arte aprovada é enviada do servidor ao
+  Vectorizer.AI pela rota autenticada `/api/letra-caixa/vetorizacao`; configure
+  `VECTORIZER_API_ID` e `VECTORIZER_API_SECRET` no ambiente. A produção cobra
+  1 crédito por chamada, inclusive nova tentativa e edição aplicada. Arquivo
+  SVG já vetorizado passa direto sem consumir crédito; a saída rasterizada do
+  serviço ainda precisa de revisão visual e confirmação de escala física.
   Cada cotação mantém seu snapshot em `propostas.observacoes` com o prefixo
   `[ESTUDIO_COTACAO_V1]`; esses snapshots são excluídos da lista do módulo
   comercial Propostas.
@@ -536,13 +542,15 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `insufficient_quota` em 28/09/2026. Os parâmetros atuais foram conferidos na
   documentação oficial em 30/09/2026, mas ainda é necessária uma geração real
   com uma foto depois de haver crédito disponível.
-- **Prompts 2 e 3 do CPQ são executados por funções locais.** Os PDFs do
-  usuário foram transcritos em `docs/prompts/prompt-2-vetorizacao.md` e
-  `docs/prompts/prompt-3-area-perimetro-prancha.md`. O navegador vetoriza com
-  ImageTracer, calcula uma coincidência de silhueta pixel/SVG e gera as medidas
-  e a prancha sem chamadas adicionais ao GPT. A área é aproximada por amostragem;
-  caixas de peças que se cruzam geram um aviso, pois o protótipo não faz união
-  booleana de formas sobrepostas.
+- **Geometria dos Prompts 2 e 3 do CPQ ainda exige validação de engenharia.** Os
+  PDFs do usuário foram transcritos em `docs/prompts/prompt-2-vetorizacao.md` e
+  `docs/prompts/prompt-3-area-perimetro-prancha.md`. Raster aprovado é enviado
+  pelo servidor ao Vectorizer.AI e o SVG de caminhos volta para o navegador,
+  que calcula medidas e prancha. Configure `VECTORIZER_API_ID` e
+  `VECTORIZER_API_SECRET`; produção cobra 1 crédito por chamada. A integração
+  ainda precisa de uma vetorização real para validar o parser e a geometria. A
+  área é aproximada por amostragem; caixas de peças que se cruzam geram aviso,
+  pois o protótipo não faz união booleana de formas sobrepostas.
 
 ## Patches
 

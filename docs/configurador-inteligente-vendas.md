@@ -27,6 +27,11 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
 - Produtos, CPQ Letreiros Express e Propostas já têm importação de composição MubiSys,
   escolha de variações e medidas de nesting. A mudança recente está commitada,
   mas sua migration ainda precisa ser aplicada e o site publicado.
+- A etapa raster → SVG do CPQ chama o Vectorizer.AI no servidor após a aprovação
+  da arte. Configure `VECTORIZER_API_ID` e `VECTORIZER_API_SECRET` nos ambientes;
+  cada chamada de produção consome 1 crédito, inclusive uma nova tentativa ou
+  uma edição aplicada. A integração precisa de uma chamada real com credenciais
+  ativas para validar a saída do SVG e a geometria calculada.
 - `Comercial > Propostas` ainda preenche o preço unitário inicial com
   `custoComFixo`, sem aplicar uma margem. O item só pode ser salvo depois da
   aprovação humana do preço. O servidor confere a aritmética da configuração

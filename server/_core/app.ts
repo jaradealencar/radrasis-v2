@@ -91,7 +91,7 @@ export async function createApp(): Promise<Express> {
     app.use("/api/auth/sign-up", loginLimiter);
   }
 
-  // Edição de imagem GPT autenticada. A rota lê o corpo binário antes dos
+  // Processamento de imagem autenticado. As rotas leem o corpo binário antes dos
   // parsers JSON para manter o envio da foto abaixo do limite serverless.
   const { registrarRotasRedesenhoLetraCaixa } =
     await import("../routes/letra-caixa-redesenho");

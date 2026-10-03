@@ -2,7 +2,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 <style>
   :root{
@@ -774,9 +773,9 @@ function novaProposta(){
     uploadError:null, uploadWarning:null, gerandoRedesenho:false,
     imgOriginal:null, imgReconstructed:null, imgPreview:null,
     ajuste:{ brilho:100, contraste:100, cinza:false },
-    threshold:130, invert:false, overlayOpacity:50,
+    overlayOpacity:50,
     tracedSvg:null, fgD:'', tracedW:0, tracedH:0, traceError:null,
-    geomRaw:null, traceQuality:null,
+    geomRaw:null, traceQuality:null, vectorizerCredits:null,
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], kitSource:'nenhuma', kitWarning:null, matQuery:'', precificacao:null,
     precoSugestao:null, precoAprovacao:null, precoAprovadoFinal:null, precoIACarregando:false, precoAprovacaoCarregando:false, precoIAErro:'',
@@ -882,28 +881,6 @@ function classifyGeometry(dString){
   };
 }
 
-/** Prompt 2: compara a silhueta binária usada no rastreamento com o SVG
- *  rasterizado na mesma escala. A meta de 95% é um indicador de triagem; a
- *  conferência visual continua necessária para textos e detalhes da marca. */
-function medirSobreposicaoVetor(bin,d,w,h){
-  try{
-    const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
-    const ctx=canvas.getContext('2d',{willReadFrequently:true});
-    if(!ctx || typeof Path2D==='undefined') return null;
-    ctx.fillStyle='#000'; ctx.fill(new Path2D(d),'evenodd');
-    const vetor=ctx.getImageData(0,0,w,h).data;
-    let intersecao=0, uniao=0;
-    for(let i=0;i<bin.data.length;i+=4){
-      const referencia=bin.data[i]<128;
-      const forma=vetor[i+3]>127 && (0.299*vetor[i]+0.587*vetor[i+1]+0.114*vetor[i+2])<128;
-      if(referencia&&forma) intersecao++;
-      if(referencia||forma) uniao++;
-    }
-    const iouPct=uniao?intersecao/uniao*100:0;
-    return {iouPct:Number(iouPct.toFixed(1)),metaPct:95,atingiuMeta:iouPct>=95};
-  }catch(e){ return null; }
-}
-
 function computeGeomReal(){
   const g = REAL.geomRaw;
   if(!g || !g.bboxPx.w) return {scaleFactor:0,totalWidthM:0,totalHeightM:0,areaM2:0,areaGeralM2:0,areaTotalNestingM2:0,perimExtM:0,perimIntM:0,corteTotalM:0};
@@ -930,53 +907,6 @@ function computeGeomReal(){
     corteTotalM: (g.perimExtPx+g.perimIntPx)*scaleFactor,
     possivelSobreposicao: !!g.possivelSobreposicao,
   };
-}
-
-/* ---------- VETORIZAÇÃO REAL (raster→vetor no navegador, via imagetracer.js) ---------- */
-function loadImageEl(dataUrl){
-  return new Promise((resolve,reject)=>{
-    const img = new Image();
-    img.onload = ()=>resolve(img);
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-}
-
-function thresholdImageData(ctx, w, h, threshold, invert){
-  const src = ctx.getImageData(0,0,w,h);
-  const out = ctx.createImageData(w,h);
-  for(let i=0;i<src.data.length;i+=4){
-    const lum = 0.299*src.data[i] + 0.587*src.data[i+1] + 0.114*src.data[i+2];
-    let isFg = lum < threshold;
-    if(invert) isFg = !isFg;
-    const v = isFg ? 0 : 255;
-    out.data[i]=v; out.data[i+1]=v; out.data[i+2]=v; out.data[i+3]=255;
-  }
-  return out;
-}
-
-function traceBinary(imageData){
-  return window.ImageTracer.imagedataToSVG(imageData, {
-    numberofcolors:2, pathomit:6, ltres:1, qtres:1, scale:1, strokewidth:0, roundcoords:1, viewbox:true,
-  });
-}
-
-function extractForegroundPath(svgStr){
-  const doc = new DOMParser().parseFromString(svgStr, 'image/svg+xml');
-  const svgEl = doc.querySelector('svg');
-  const paths = [...doc.querySelectorAll('path')];
-  let best=null, bestLum=999;
-  paths.forEach(p=>{
-    const fill = p.getAttribute('fill')||'';
-    const m = fill.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-    const lum = m ? (0.299*+m[1]+0.587*+m[2]+0.114*+m[3]) : 128;
-    if(lum<bestLum){ bestLum=lum; best=p; }
-  });
-  let vw=0, vh=0;
-  const vb = svgEl && svgEl.getAttribute('viewBox');
-  if(vb){ const parts=vb.split(/\s+/).map(Number); vw=parts[2]||0; vh=parts[3]||0; }
-  if(!vw || !vh){ vw = parseFloat(svgEl && svgEl.getAttribute('width'))||vw; vh = parseFloat(svgEl && svgEl.getAttribute('height'))||vh; }
-  return { d: best ? (best.getAttribute('d')||'') : '', w: vw, h: vh };
 }
 
 /* ---------- IMPORTAÇÃO DE VETOR JÁ PRONTO (SVG enviado direto, sem rastreamento) ---------- */
@@ -1006,7 +936,7 @@ const UNSUPPORTED_EXT = ['.pdf','.ai','.eps','.cdr'];
 
 /** Ponto único de entrada para os três estágios de upload do fluxo (envio
  *  inicial, troca no redesenho, envio direto de vetor na vetorização). Decide
- *  entre o caminho raster (rastreamento real via imagetracer.js) e o caminho
+ *  entre o caminho raster (Vectorizer.AI no servidor) e o caminho
  *  vetor (SVG já pronto, geometria extraída direto dos caminhos reais — sem
  *  rastrear nada). AI/EPS/PDF/CDR não são processáveis no navegador nesta
  *  demonstração (exigiriam conversão no servidor, ex. Inkscape CLI — este
@@ -1071,7 +1001,6 @@ async function handleUploadedFile(file){
     REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
     render();
-    await retrace();
     return;
   }
   REAL.uploadError = 'Tipo de arquivo não reconhecido. Envie JPG, PNG ou SVG.';
@@ -1083,28 +1012,38 @@ async function retrace(){
   if(!rasterSource) return;
   const requestId=++traceRequestId;
   REAL.traceQuality=null;
+  REAL.traceError=null;
+  REAL.vectorizerCredits=null;
+  REAL.uploadError=null; REAL.uploadWarning=null;
+  REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.tracedW=0; REAL.tracedH=0; REAL.geomRaw=null;
   REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
   state.tracing = true; render();
   try{
-    const img = await loadImageEl(rasterSource);
+    const imagem=await fetch(rasterSource).then(response=>response.blob());
     if(requestId!==traceRequestId) return;
-    const maxDim = 640;
-    const scale = Math.min(1, maxDim/Math.max(img.width, img.height));
-    const w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
-    const canvas = document.createElement('canvas');
-    canvas.width=w; canvas.height=h;
-    const ctx = canvas.getContext('2d');
-    ctx.filter = `brightness(${REAL.ajuste.brilho}%) contrast(${REAL.ajuste.contraste}%) ${REAL.ajuste.cinza?'grayscale(100%)':''}`;
-    ctx.drawImage(img,0,0,w,h);
-    REAL.imgPreview = canvas.toDataURL('image/png');
-    ctx.filter = 'none';
-    const bin = thresholdImageData(ctx, w, h, REAL.threshold, REAL.invert);
-    const svgStr = traceBinary(bin);
-    const fg = extractForegroundPath(svgStr);
-    REAL.tracedSvg = svgStr; REAL.fgD = fg.d;
-    REAL.tracedW = fg.w; REAL.tracedH = fg.h;
-    REAL.traceQuality = fg.d ? medirSobreposicaoVetor(bin,fg.d,fg.w,fg.h) : null;
-    REAL.geomRaw = fg.d ? classifyGeometry(fg.d) : {areaPx:0,perimExtPx:0,perimIntPx:0,bboxPx:{x:0,y:0,w:0,h:0},pieces:[]};
+    if(!['image/png','image/jpeg'].includes(imagem.type)) throw new Error('Envie uma imagem PNG ou JPG para vetorizar.');
+    if(imagem.size>4*1024*1024) throw new Error('A imagem excede 4 MB. Reduza o arquivo e envie novamente.');
+    const response=await fetch('/api/letra-caixa/vetorizacao',{
+      method:'POST',credentials:'same-origin',headers:{'Content-Type':imagem.type},body:imagem,
+    });
+    if(!response.ok){
+      const body=await response.json().catch(()=>({}));
+      throw new Error(body.error||'O Vectorizer.AI não conseguiu vetorizar a imagem.');
+    }
+    const svgStr=await response.text();
+    if(requestId!==traceRequestId) return;
+    const parsed=extractPathsFromRawSVG(svgStr);
+    if(!parsed || !parsed.d) throw new Error('O Vectorizer.AI não retornou caminhos vetoriais utilizáveis.');
+    if(!Number.isFinite(parsed.w)||!Number.isFinite(parsed.h)||parsed.w<=0||parsed.h<=0) throw new Error('O SVG retornado não contém dimensões válidas para calcular a escala.');
+    if(parsed.transformedCount>0) throw new Error('O SVG retornado contém transformações que o cálculo ainda não interpreta. Baixe e achate as transformações em um editor vetorial antes de continuar.');
+    REAL.imgPreview=rasterSource;
+    REAL.vectorizerCredits=response.headers.get('X-Vectorizer-Credits-Charged');
+    REAL.tracedSvg=svgStr; REAL.fgD=parsed.d;
+    REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
+    REAL.geomRaw=classifyGeometry(parsed.d);
+    if(parsed.nonPathCount>0){
+      REAL.uploadWarning=`O SVG contém ${parsed.nonPathCount} elemento(s) que não são caminhos e não entram no cálculo geométrico. Confira o resultado no preview antes de aprovar.`;
+    }
     REAL.traceError = null;
   }catch(e){
     if(requestId!==traceRequestId) return;
@@ -1155,7 +1094,7 @@ function abrirEditorVetor(){
         <button class="btn btn-ghost btn-sm" id="editor-vetor-desagrupar">Desagrupar (editar partes)</button>
         <button class="btn btn-ghost btn-sm" id="editor-vetor-apagar">🗑 Apagar selecionado</button>
         <div style="flex:1;"></div>
-        <button class="btn btn-primary btn-sm" id="editor-vetor-aplicar">${ICONS.check} Aplicar e recalcular</button>
+        <button class="btn btn-primary btn-sm" id="editor-vetor-aplicar">${ICONS.check} Aplicar edição · 1 crédito para vetorizar</button>
       </div>
       <div style="flex:1; overflow:auto; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--bg);">
         <canvas id="editor-vetor-canvas" width="820" height="560" style="border:1px solid var(--border); background:white; box-shadow:var(--shadow); max-width:100%;"></canvas>
@@ -1163,11 +1102,8 @@ function abrirEditorVetor(){
     </div>`;
   document.body.appendChild(overlay);
 
-  // backgroundColor branco OPACO é obrigatório aqui: o canvas do Fabric é
-  // transparente por padrão, e thresholdImageData (reaproveitado no apply,
-  // via retrace) só lê R/G/B — ignora alpha. Fundo transparente leria como
-  // luminância 0 (preto) e inverteria a máscara inteira, marcando o fundo
-  // vazio como "foreground".
+  // Fundo branco opaco facilita a inspeção do SVG no editor e mantém a
+  // referência visual consistente ao aplicar as alterações.
   _fabricCanvas = new fabric.Canvas('editor-vetor-canvas', { preserveObjectStacking:true, selection:true, backgroundColor:'#ffffff' });
   const svgSource = REAL.tracedSvg || `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${REAL.tracedW||600} ${REAL.tracedH||260}"><path d="${REAL.fgD}" fill="black"/></svg>`;
   fabric.loadSVGFromString(svgSource, (objects, options)=>{
@@ -1222,21 +1158,18 @@ function fecharEditorVetor(){
   if(_fabricCanvas){ _fabricCanvas.dispose(); _fabricCanvas=null; }
 }
 
-/** Rasteriza o canvas editado (multiplier:2 — reduz a perda de nitidez do
- *  novo traçado) e roda pelo mesmo pipeline de retrace() já usado pra
- *  fotos: threshold, imagetracer.js, classifyGeometry. Reseta os ajustes de
- *  brilho/contraste/cinza pro padrão, pra não aplicar filtros residuais de
- *  uma edição raster anterior sobre o resultado recém montado. */
-async function aplicarEdicaoVetor(){
+/** Rasteriza a edição do canvas e a define como nova entrada. A chamada paga
+ *  ao Vectorizer.AI fica explícita no botão da etapa de vetorização. */
+function aplicarEdicaoVetor(){
   if(!_fabricCanvas) return;
   const dataUrl = _fabricCanvas.toDataURL({ format:'png', multiplier:2 });
   fecharEditorVetor();
   REAL.sourceKind = 'raster';
-  REAL.imgOriginal = dataUrl;
-  REAL.ajuste = { brilho:100, contraste:100, cinza:false };
-  REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
+  REAL.imgReconstructed = dataUrl;
+  REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.vectorizerCredits=null;
+  REAL.uploadError=null; REAL.uploadWarning=null;
+  REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
   render();
-  await retrace();
 }
 
 /* ---------- NESTING REAL (shelf-packing sobre as peças rastreadas) ---------- */
@@ -2274,7 +2207,6 @@ async function handleReferenceUpload(file, target){
     REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
   }
   render();
-  if(target==='redraw') await retrace();
 }
 
 async function blobParaDataUrl(blob){
@@ -2347,9 +2279,6 @@ async function gerarRedesenhoComGPT(){
     REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind='raster';
     REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false;
     REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
-    // Antecipar o traçado enquanto o operador confere o redesenho reduz a
-    // espera depois da aprovação sem fazer uma segunda chamada ao GPT.
-    void retrace();
   }catch(error){
     if(requestId===redrawRequestId){
       REAL.uploadError=error instanceof Error?error.message:'Falha ao gerar a reconstrução.';
@@ -2425,7 +2354,7 @@ function realStepVetorizacao(){
   if(REAL.sourceKind==='vetor'){
     return `
     <div class="card">
-      <div class="cardhead"><div><h3>4 · Etapa 3 — vetorização (Prompt 2)</h3><p>SVG fornecido diretamente. A geometria é lida dos caminhos vetoriais, sem rastrear pixels.</p></div></div>
+      <div class="cardhead"><div><h3>4 · Etapa 3 — vetorização</h3><p>SVG fornecido diretamente. A geometria é lida dos caminhos vetoriais, sem chamar o Vectorizer.AI.</p></div></div>
       <div class="compare" style="display:flex; align-items:center; justify-content:center; min-height:160px;">
         <svg viewBox="0 0 ${REAL.tracedW} ${REAL.tracedH}" style="width:100%; height:auto; background:white;"><path d="${REAL.fgD}" fill="white" stroke="black" stroke-width="1" fill-rule="evenodd"/></svg>
       </div>
@@ -2444,14 +2373,14 @@ function realStepVetorizacao(){
   }
   return `
   <div class="card">
-    <div class="cardhead"><div><h3>4 · Etapa 3 — vetorização (Prompt 2)</h3><p>O rastreamento usa a reconstrução aprovada do Prompt 1. Ajuste o limiar, confira curvas e vazados e compare o vetor com a imagem antes de aprovar.</p></div></div>
+    <div class="cardhead"><div><h3>4 · Etapa 3 — vetorização (Vectorizer.AI)</h3><p>A arte aprovada é convertida em SVG no servidor. Confira curvas, vazados e proporções antes de usar a geometria no cálculo.</p></div></div>
     <div class="grid2">
       <div>
         <p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Reconstrução aprovada (entrada)</p>
         <div class="compare">${REAL.imgPreview?`<img src="${REAL.imgPreview}" style="display:block;width:100%;height:auto;">`:REAL.imgReconstructed?`<img src="${REAL.imgReconstructed}" style="display:block;width:100%;height:auto;">`:''}</div>
       </div>
       <div>
-        <p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">SVG vetorizado (peça a cortar)</p>
+        <p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">SVG gerado pelo Vectorizer.AI</p>
         <div class="compare" style="display:flex; align-items:center; justify-content:center; min-height:120px;">
           ${state.tracing? `<div class="empty-hint">Vetorizando…</div>` : hasTrace ? `<svg viewBox="0 0 ${REAL.tracedW} ${REAL.tracedH}" style="width:100%; height:auto; background:white;"><path d="${REAL.fgD}" fill="white" stroke="black" stroke-width="1" fill-rule="evenodd"/></svg>` : `<div class="empty-hint">${REAL.traceError||'Ainda não vetorizado'}</div>`}
         </div>
@@ -2465,31 +2394,25 @@ function realStepVetorizacao(){
       </div>
       <div class="rangewrap" style="margin-top:10px;"><span style="font-size:12px;color:var(--text-faint);">Opacidade do vetor</span><input type="range" min="0" max="100" value="${REAL.overlayOpacity}" data-act="real-overlay-opacity"><span class="val">${REAL.overlayOpacity}%</span></div>
     </div>`:''}
-    ${REAL.traceQuality?`<div class="warnbox" style="margin-top:12px;background:${REAL.traceQuality.atingiuMeta?'var(--ok-soft)':'var(--warn-soft)'};border-color:color-mix(in oklab, ${REAL.traceQuality.atingiuMeta?'var(--ok)':'var(--warn)'} 35%,var(--border));">
-      <span style="color:${REAL.traceQuality.atingiuMeta?'var(--ok)':'var(--warn)'};">${ICONS.info}</span>
-      <div><b>Coincidência da silhueta: ${fmt(REAL.traceQuality.iouPct,1)}%.</b> Meta de referência do Prompt 2: 95%. ${REAL.traceQuality.atingiuMeta?'A sobreposição binária atingiu a meta.':'A meta ainda não foi atingida; ajuste o limiar e confira os detalhes antes de aprovar.'} Este indicador compara pixels da entrada com o SVG rasterizado; não substitui a revisão visual de letras, símbolo e espaçamentos.</div>
-    </div>`:''}
-    <div class="card" style="background:var(--surface-2); box-shadow:none; margin-top:14px;">
-      <div class="grid2">
-        <div class="rangewrap"><span style="font-size:12px;width:70px;color:var(--text-faint);">Limiar</span><input type="range" min="20" max="235" value="${REAL.threshold}" data-act="real-threshold"><span class="val">${REAL.threshold}</span></div>
-        <label style="display:flex; align-items:center; gap:6px; font-size:12.5px;"><input type="checkbox" data-act="real-invert" ${REAL.invert?'checked':''}> Inverter (arte clara sobre fundo escuro)</label>
-      </div>
-    </div>
     ${hasTrace? `
     <div class="checklist" style="margin-top:14px;">
       <div class="checkrow">${ICONS.check}${g.pieces.length} peça(s) externa(s) detectada(s)${g.perimIntPx>0.5?', com vazados internos':''}</div>
-      <div class="checkrow">${ICONS.check}Compare contornos, curvas, vértices, vazados, letras, proporções e posições na sobreposição</div>
-      <div class="checkrow">${ICONS.check}O SVG não contém bitmap; em fotos, a precisão depende do traçado e da reconstrução enviados</div>
-      <div class="checkrow">${ICONS.check}SVG sem bitmap incorporado — caminhos vetoriais reais</div>
+      <div class="checkrow">${ICONS.check}Confira letras, contornos, curvas, vazados, espaçamentos e proporções contra a arte aprovada</div>
+      <div class="checkrow">${ICONS.check}O SVG contém caminhos vetoriais; escala física e adequação ao corte ainda precisam de confirmação</div>
     </div>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-soft btn-sm" data-act="editor-vetor-abrir">✏️ Editor rápido (mover, girar, expandir, apagar, cor)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG vetorial</button></div>` : ''}
     <details style="margin-top:14px;">
       <summary style="cursor:pointer; font-size:12.5px; color:var(--accent-ink); font-weight:600;">Prefiro enviar um arquivo já vetorizado</summary>
-      <div style="margin-top:10px;">${uploadBox('Enviar SVG já vetorizado', 'substitui o rastreamento acima por um arquivo pronto','real-upload','image/svg+xml,.svg')}</div>
+      <div style="margin-top:10px;">${uploadBox('Enviar SVG pronto', 'usa os caminhos do arquivo sem chamar o Vectorizer.AI','real-upload','image/svg+xml,.svg')}</div>
     </details>
+    ${REAL.vectorizerCredits?`<div class="role-note" style="margin-top:10px;">Vectorizer.AI informou ${escaparHtml(REAL.vectorizerCredits)} crédito(s) cobrados nesta chamada.</div>`:''}
+    <div class="role-note" style="margin-top:10px;">Cada vetorização de produção consome 1 crédito da conta Vectorizer.AI. Uma nova tentativa ou edição aplicada chama o serviço novamente.</div>
     ${uploadMessages()}
     <div class="footer-nav">
-      <div class="role-note">${ICONS.info} Silhueta ruidosa? Ajuste o limiar, ou volte e mude brilho/contraste.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed?'disabled':''}>${state.tracing?'Vetorizando com Vectorizer.AI…':hasTrace?'Vetorizar novamente · 1 crédito':'Vetorizar com Vectorizer.AI · 1 crédito'}</button>
+        <span class="role-note">Confira o resultado e confirme a escala física antes do nesting.</span>
+      </div>
       <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${hasTrace?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
     </div>
   </div>`;
@@ -4768,7 +4691,6 @@ function bindRealEvents(){
       const idx = STEP_DEFS_REAL.findIndex(s=>s.k===val);
       if(idx>-1 && idx<STEP_DEFS_REAL.length-1) REAL.step = STEP_DEFS_REAL[idx+1].n;
       render();
-      if(val==='redesenho' && REAL.sourceKind==='raster' && !REAL.fgD && !state.tracing) retrace();
     });
   });
   document.querySelectorAll('[data-act="real-goto-step"]').forEach(el=> el.addEventListener('click', ()=>{ REAL.step=parseInt(el.dataset.val); render(); }));
@@ -4917,10 +4839,9 @@ function bindRealEvents(){
     render();
   });
 
-  bindRangeLive('[data-act="real-threshold"]', v=>{ REAL.threshold=parseInt(v); return REAL.threshold; }, v=>v, retrace);
   bindRangeLive('[data-act="real-overlay-opacity"]', v=>{ REAL.overlayOpacity=parseInt(v); return REAL.overlayOpacity; }, v=>v+'%');
-  const invertEl = document.querySelector('[data-act="real-invert"]');
-  if(invertEl) invertEl.addEventListener('change', e=>{ REAL.invert=e.target.checked; retrace(); });
+  const vectorizeBtn = document.querySelector('[data-act="real-vectorize"]');
+  if(vectorizeBtn) vectorizeBtn.addEventListener('click', retrace);
 
   bindNumberLive('[data-act="real-scale-value"]', v=>{
     REAL.scale.valor=parseFloat(v)||0; REAL.nesting=null; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;

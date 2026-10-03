@@ -3,6 +3,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import { auth } from "../_core/auth";
 import { redesenharLetreiro, type EscopoRedesenho } from "../services/letraCaixaRedesign";
+import { vectorizeImage, VectorizerAiError } from "../services/vectorizerAi";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const imageBodyParser = express.raw({
@@ -33,6 +34,95 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
       void executarRedesenho(req, res);
     });
   });
+
+  app.post("/api/letra-caixa/vetorizacao", (req, res) => {
+    imageBodyParser(req, res, (parseError) => {
+      if (parseError) {
+        const status = (parseError as { status?: number }).status ?? 400;
+        res.status(status).json({
+          error:
+            status === 413
+              ? "A imagem ficou grande demais. Envie um arquivo menor que 4 MB."
+              : "Não consegui ler a imagem. Envie JPG ou PNG.",
+        });
+        return;
+      }
+
+      void executarVetorizacao(req, res);
+    });
+  });
+}
+
+async function executarVetorizacao(req: Request, res: Response): Promise<void> {
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) {
+        res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." });
+        return;
+      }
+    } catch {
+      res.status(403).json({ error: "Origem da solicitação inválida." });
+      return;
+    }
+  }
+
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: "Entre no sistema para vetorizar a arte." });
+    return;
+  }
+
+  const mimeType = req.get("content-type")?.split(";")[0].toLowerCase();
+  if (mimeType !== "image/jpeg" && mimeType !== "image/png") {
+    res.status(415).json({ error: "Envie uma imagem JPG ou PNG para vetorizar." });
+    return;
+  }
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    res.status(400).json({ error: "A imagem enviada está vazia." });
+    return;
+  }
+
+  try {
+    const resultado = await vectorizeImage({
+      imageBuffer: req.body,
+      imageFilename: mimeType === "image/png" ? "arte-aprovada.png" : "arte-aprovada.jpg",
+      imageMimeType: mimeType,
+    });
+    res
+      .status(200)
+      .set({
+        "Content-Type": "image/svg+xml; charset=utf-8",
+        "Cache-Control": "no-store",
+        ...(resultado.creditsCharged ? { "X-Vectorizer-Credits-Charged": resultado.creditsCharged } : {}),
+      })
+      .send(resultado.svgBuffer);
+  } catch (error) {
+    if (error instanceof VectorizerAiError) {
+      console.error(`[letra-caixa] Vectorizer.AI ${error.code}:`, error.message);
+      if (error.code === "configuration") {
+        res.status(503).json({
+          error: "Configure VECTORIZER_API_ID e VECTORIZER_API_SECRET no servidor para habilitar a vetorização.",
+        });
+        return;
+      }
+      if (error.code === "credentials") {
+        res.status(503).json({ error: "O Vectorizer.AI recusou as credenciais configuradas no servidor." });
+        return;
+      }
+      if (error.code === "credits") {
+        res.status(429).json({ error: "O Vectorizer.AI atingiu o limite de uso ou está sem créditos." });
+        return;
+      }
+      if (error.code === "timeout") {
+        res.status(504).json({ error: "A vetorização demorou mais de 3 minutos. Tente novamente." });
+        return;
+      }
+    } else {
+      console.error("[letra-caixa] falha ao vetorizar arte:", error);
+    }
+    res.status(502).json({ error: "O Vectorizer.AI não conseguiu vetorizar a imagem agora. Tente novamente." });
+  }
 }
 
 async function executarRedesenho(req: Request, res: Response): Promise<void> {

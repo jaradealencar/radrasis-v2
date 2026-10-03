@@ -5,7 +5,7 @@
   "outputDirectory": "dist/public",
   "functions": {
     "api/index.js": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "includeFiles": "docs/prompts/prompt-1-reconstrucao-visual.md"
     }
   },
