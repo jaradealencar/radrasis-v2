@@ -13,6 +13,7 @@ import { eq, asc } from "drizzle-orm";
 import { listarProdutos, listarMateriasPrimas } from "../integrations/mubisys-client";
 import { UNIDADE_CONSUMO_MATERIA_PRIMA } from "../../shared/produto-composicao";
 import type { ConfigItem, MarginRow } from "../../shared/price-table";
+import { materiasPrimasRouter } from "./materiasPrimas";
 
 const unidadeConsumoSchema = z.enum(UNIDADE_CONSUMO_MATERIA_PRIMA);
 
@@ -49,6 +50,7 @@ async function buscarPrecificacaoPorId(
 }
 
 export const produtosRouter = router({
+  materiasPrimas: materiasPrimasRouter,
   // ─── Busca no catálogo do MubiSys (pra vincular ao criar produto) ───────
   buscarMubisys: protectedProcedure
     .input(z.object({ busca: z.string().optional().default("") }))

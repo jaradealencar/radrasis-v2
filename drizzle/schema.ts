@@ -356,6 +356,29 @@ export const produtoKitItens = pgTable("produto_kit_itens", {
 export type ProdutoKitItem = typeof produtoKitItens.$inferSelect;
 export type InsertProdutoKitItem = typeof produtoKitItens.$inferInsert;
 
+// Classificação e dados técnicos locais das matérias-primas do MubiSys.
+// Nome, custo e unidade continuam vindo do catálogo remoto; categoria,
+// espessura, densidade e formatos de chapa são mantidos pelo Radrasys.
+export const materiaPrimaCategorias = pgTable("materia_prima_categorias", {
+  id: serial("id").primaryKey(),
+  nome: varchar("nome", { length: 128 }).notNull().unique(),
+  usaDadosChapa: boolean("usa_dados_chapa").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type MateriaPrimaCategoria = typeof materiaPrimaCategorias.$inferSelect;
+export type InsertMateriaPrimaCategoria = typeof materiaPrimaCategorias.$inferInsert;
+
+export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
+  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").primaryKey(),
+  categoriaId: integer("categoria_id").references(() => materiaPrimaCategorias.id, { onDelete: "restrict" }),
+  espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
+  densidadeKgM3: decimal("densidade_kg_m3", { precision: 12, scale: 4 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;
+export type InsertMateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferInsert;
+
 // ─── PROPOSTA (cotação gerada a partir do catálogo de Produtos) ────────────
 // Diferente de `crm_propostas` (tabela órfã, nunca usada — o CRM de
 // Propostas hoje lê orçamentos ao vivo do MubiSys, sem lista de itens). Esta

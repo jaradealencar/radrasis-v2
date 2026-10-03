@@ -409,7 +409,16 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   removida, e a ação "Clonar composição de outro produto" mantém o produto
   atual e substitui matérias-primas (incluindo seus vínculos de variação) e
   itens de kit por cópias de um produto de origem. O custo continua vindo ao
-  vivo de `listarMateriasPrimas()`. O CPQ permite selecionar várias
+  vivo de `listarMateriasPrimas()`. Em Administração > Produtos, a aba
+  Matérias-primas classifica o catálogo em categorias locais editáveis
+  (Iluminação, Chapas, Insumos Gerais, Elétrica e Insumos Solda). Elas e os
+  dados técnicos ficam nas tabelas `materia_prima_categorias` e
+  `materia_prima_cadastros`; nomes, custos e unidades continuam vindo do
+  MubiSys, que não oferece gravação pública para esses campos. Marcar uma
+  categoria com `usa_dados_chapa` exige espessura, densidade e pelo menos um
+  tamanho ativo, salvo como formato em `estudio_chapas` e normalizado para
+  orientação horizontal. Gestor, admin e master podem editar categorias e
+  especificações. O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
   escolhidas; salva as medidas do nesting e os materiais calculados no
   snapshot da cotação. Comercial > Propostas pode importar medidas de uma

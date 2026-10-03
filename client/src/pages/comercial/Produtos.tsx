@@ -7,43 +7,361 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Link2, Copy } from "lucide-react";
+import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Link2, Copy, Pencil, Settings2, Ruler, RefreshCw } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 import { UNIDADE_CONSUMO_MATERIA_PRIMA, UNIDADE_CONSUMO_LABEL, type UnidadeConsumoMateriaPrima } from "@shared/produto-composicao";
 
 export default function Produtos() {
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
   const [dialogNovoAberto, setDialogNovoAberto] = useState(false);
+  const [aba, setAba] = useState("produtos");
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Produtos"
-        description="Composição de matéria-prima, kit de venda e precificação de cada produto."
+        description="Produtos, matérias-primas e dados técnicos de fabricação."
         icon={Package}
       />
 
-      {selecionadoId === null ? (
-        <ListaProdutos onSelecionar={setSelecionadoId} onNovo={() => setDialogNovoAberto(true)} />
-      ) : (
-        <DetalheProduto id={selecionadoId} onVoltar={() => setSelecionadoId(null)} />
-      )}
-
-      <DialogNovoProduto
-        aberto={dialogNovoAberto}
-        onFechar={() => setDialogNovoAberto(false)}
-        onCriado={(id) => {
-          setDialogNovoAberto(false);
-          setSelecionadoId(id);
-        }}
-      />
+      <Tabs value={aba} onValueChange={setAba} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="produtos">Produtos</TabsTrigger>
+          <TabsTrigger value="materias-primas">Matérias-primas</TabsTrigger>
+        </TabsList>
+        <TabsContent value="produtos" className="mt-0 space-y-4">
+          {selecionadoId === null ? (
+            <ListaProdutos onSelecionar={setSelecionadoId} onNovo={() => setDialogNovoAberto(true)} />
+          ) : (
+            <DetalheProduto id={selecionadoId} onVoltar={() => setSelecionadoId(null)} />
+          )}
+          <DialogNovoProduto
+            aberto={dialogNovoAberto}
+            onFechar={() => setDialogNovoAberto(false)}
+            onCriado={(id) => {
+              setDialogNovoAberto(false);
+              setSelecionadoId(id);
+            }}
+          />
+        </TabsContent>
+        <TabsContent value="materias-primas" className="mt-0">
+          <CadastroMateriasPrimas />
+        </TabsContent>
+      </Tabs>
     </div>
+  );
+}
+
+type MateriaPrimaCadastroItem = RouterOutputs["produtos"]["materiasPrimas"]["listar"][number];
+type MateriaPrimaCategoriaItem = RouterOutputs["produtos"]["materiasPrimas"]["categoriasListar"][number];
+type FormatoChapaForm = {
+  id?: number;
+  nome: string;
+  larguraMm: string;
+  alturaMm: string;
+  ativo: boolean;
+  principal: boolean;
+};
+
+function CadastroMateriasPrimas() {
+  const [busca, setBusca] = useState("");
+  const [categoriaFiltro, setCategoriaFiltro] = useState("todas");
+  const [materialEditando, setMaterialEditando] = useState<MateriaPrimaCadastroItem | null>(null);
+  const [gerenciarCategorias, setGerenciarCategorias] = useState(false);
+  const { data: materias, isLoading, error, refetch } = trpc.produtos.materiasPrimas.listar.useQuery();
+  const { data: categorias = [] } = trpc.produtos.materiasPrimas.categoriasListar.useQuery();
+
+  const listaFiltrada = (materias ?? []).filter(material => {
+    const termo = busca.trim().toLocaleLowerCase("pt-BR");
+    const correspondeBusca = !termo || material.nome.toLocaleLowerCase("pt-BR").includes(termo)
+      || String(material.id).includes(termo)
+      || (material.categoriaMubiSys ?? "").toLocaleLowerCase("pt-BR").includes(termo);
+    const correspondeCategoria = categoriaFiltro === "todas"
+      || material.categoriaId === Number(categoriaFiltro)
+      || (categoriaFiltro === "sem-categoria" && material.categoriaId == null);
+    return correspondeBusca && correspondeCategoria;
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-base">Matérias-primas</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Classifique os materiais do MubiSys e mantenha os dados técnicos locais usados na fabricação.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setGerenciarCategorias(true)} className="gap-1.5">
+              <Settings2 className="h-4 w-4" /> Gerenciar categorias
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void refetch()} className="gap-1.5">
+              <RefreshCw className="h-4 w-4" /> Atualizar catálogo
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_240px]">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Buscar por matéria-prima ou código MubiSys..." value={busca} onChange={event => setBusca(event.target.value)} />
+            </div>
+            <Select value={categoriaFiltro} onValueChange={setCategoriaFiltro}>
+              <SelectTrigger><SelectValue placeholder="Todas as categorias" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as categorias</SelectItem>
+                <SelectItem value="sem-categoria">Sem categoria</SelectItem>
+                {categorias.map(categoria => <SelectItem key={categoria.id} value={String(categoria.id)}>{categoria.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : error ? (
+            <Empty><EmptyHeader><EmptyMedia variant="icon"><Boxes /></EmptyMedia><EmptyTitle>Catálogo indisponível</EmptyTitle><EmptyDescription>{error.message}</EmptyDescription></EmptyHeader></Empty>
+          ) : listaFiltrada.length === 0 ? (
+            <Empty><EmptyHeader><EmptyMedia variant="icon"><Boxes /></EmptyMedia><EmptyTitle>Nenhuma matéria-prima encontrada</EmptyTitle><EmptyDescription>Revise a busca ou atualize o catálogo do MubiSys.</EmptyDescription></EmptyHeader></Empty>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead>Matéria-prima</TableHead><TableHead>Categoria Radrasys</TableHead><TableHead>Unidade e custo MubiSys</TableHead><TableHead>Dados técnicos</TableHead><TableHead className="w-24">Ação</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {listaFiltrada.map(material => (
+                    <TableRow key={material.id}>
+                      <TableCell>
+                        <div className="font-medium">{material.nome}</div>
+                        <div className="text-xs text-muted-foreground">MubiSys #{material.id}{material.categoriaMubiSys ? ` · ${material.categoriaMubiSys}` : ""}</div>
+                      </TableCell>
+                      <TableCell>
+                        {material.categoriaNome ? <Badge variant="secondary">{material.categoriaNome}</Badge> : <span className="text-sm text-muted-foreground">Sem categoria</span>}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {material.unidadeCusto || material.unidadeMovimentacao || "—"}
+                        <div className="text-xs text-muted-foreground">{material.valorCusto > 0 ? `${fmtBrl(material.valorCusto)} / ${material.unidadeCusto || "un."}` : "Custo não informado"}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {material.categoriaUsaDadosChapa ? (
+                          <span>{material.espessuraMm ?? "—"} mm · {material.densidadeKgM3 ?? "—"} kg/m³ · {material.chapas.filter(chapa => chapa.ativo).length} formato(s)</span>
+                        ) : <span className="text-muted-foreground">{material.tipo || "Sem dados técnicos adicionais"}</span>}
+                      </TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setMaterialEditando(material)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">Nome, custo e unidade são sincronizados do MubiSys. As categorias e especificações de fabricação são editadas localmente no Radrasys.</p>
+        </CardContent>
+      </Card>
+
+      <DialogEditarMateriaPrima
+        material={materialEditando}
+        categorias={categorias}
+        onFechar={() => setMaterialEditando(null)}
+      />
+      <DialogCategoriasMateriaPrima aberto={gerenciarCategorias} onFechar={() => setGerenciarCategorias(false)} />
+    </div>
+  );
+}
+
+function DialogEditarMateriaPrima({
+  material,
+  categorias,
+  onFechar,
+}: {
+  material: MateriaPrimaCadastroItem | null;
+  categorias: MateriaPrimaCategoriaItem[];
+  onFechar: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [categoriaId, setCategoriaId] = useState("sem-categoria");
+  const [espessuraMm, setEspessuraMm] = useState("");
+  const [densidadeKgM3, setDensidadeKgM3] = useState("");
+  const [chapas, setChapas] = useState<FormatoChapaForm[]>([]);
+  const categoria = categorias.find(item => String(item.id) === categoriaId);
+
+  useEffect(() => {
+    if (!material) return;
+    setCategoriaId(material.categoriaId == null ? "sem-categoria" : String(material.categoriaId));
+    setEspessuraMm(material.espessuraMm == null ? "" : String(material.espessuraMm));
+    setDensidadeKgM3(material.densidadeKgM3 == null ? "" : String(material.densidadeKgM3));
+    setChapas(material.chapas.map(chapa => ({
+      id: chapa.id,
+      nome: chapa.nome,
+      larguraMm: String(chapa.larguraMm),
+      alturaMm: String(chapa.alturaMm),
+      ativo: chapa.ativo,
+      principal: chapa.principal,
+    })));
+  }, [material]);
+
+  const salvar = trpc.produtos.materiasPrimas.salvar.useMutation({
+    onSuccess: async () => {
+      toast.success("Matéria-prima atualizada");
+      await utils.produtos.materiasPrimas.listar.invalidate();
+      onFechar();
+    },
+    onError: error => toast.error("Não foi possível salvar", { description: error.message }),
+  });
+
+  const atualizarChapa = (index: number, values: Partial<FormatoChapaForm>) => {
+    setChapas(atual => atual.map((chapa, i) => i === index ? { ...chapa, ...values } : chapa));
+  };
+
+  const handleSalvar = (event: FormEvent) => {
+    event.preventDefault();
+    if (!material) return;
+    const formatos = chapas.map((chapa, index) => ({
+      ...(chapa.id == null ? {} : { id: chapa.id }),
+      nome: chapa.nome.trim() || `${material.nome} · ${chapa.larguraMm} × ${chapa.alturaMm} mm`,
+      larguraMm: Number(chapa.larguraMm),
+      alturaMm: Number(chapa.alturaMm),
+      ativo: categoria?.usaDadosChapa ? chapa.ativo : false,
+      principal: categoria?.usaDadosChapa && chapa.ativo ? chapa.principal : false,
+      index,
+    }));
+    if (categoria?.usaDadosChapa && formatos.some(chapa => !Number.isInteger(chapa.larguraMm) || !Number.isInteger(chapa.alturaMm) || chapa.larguraMm < 10 || chapa.alturaMm < 10)) {
+      toast.error("Informe largura e altura em milímetros para todos os formatos.");
+      return;
+    }
+    salvar.mutate({
+      mubisysMateriaPrimaId: material.id,
+      categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
+      espessuraMm: categoria?.usaDadosChapa ? Number(espessuraMm) : null,
+      densidadeKgM3: categoria?.usaDadosChapa ? Number(densidadeKgM3) : null,
+      chapas: formatos.map(({ index: _index, ...chapa }) => chapa),
+    });
+  };
+
+  return (
+    <Dialog open={material != null} onOpenChange={aberto => !aberto && onFechar()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Editar matéria-prima</DialogTitle>
+          <DialogDescription>{material?.nome} · MubiSys #{material?.id}. Nome e custo são mantidos pelo catálogo do MubiSys.</DialogDescription>
+        </DialogHeader>
+        {material && <form onSubmit={handleSalvar} className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Categoria</Label>
+              <Select value={categoriaId} onValueChange={setCategoriaId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sem-categoria">Sem categoria</SelectItem>
+                  {categorias.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Custo no MubiSys</Label>
+              <Input readOnly value={material.valorCusto > 0 ? `${fmtBrl(material.valorCusto)} / ${material.unidadeCusto || "un."}` : "Não informado"} />
+            </div>
+          </div>
+
+          {categoria?.usaDadosChapa && <div className="space-y-4 rounded-lg border p-4">
+            <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da chapa</h3><p className="text-xs text-muted-foreground">Dimensões são mantidas em orientação horizontal para o nesting.</p></div></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Espessura (mm)</Label><Input type="number" min="0.001" step="0.001" value={espessuraMm} onChange={event => setEspessuraMm(event.target.value)} required /></div>
+              <div className="space-y-2"><Label>Densidade (kg/m³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /></div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2"><div><h4 className="text-sm font-medium">Tamanhos cadastrados</h4><p className="text-xs text-muted-foreground">Cadastre cada formato de chapa disponível para esta matéria-prima.</p></div><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setChapas(atual => [...atual, { nome: "", larguraMm: "", alturaMm: "", ativo: true, principal: atual.length === 0 }])}><Plus className="h-3.5 w-3.5" /> Adicionar tamanho</Button></div>
+              {chapas.length === 0 ? <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">Nenhum tamanho cadastrado.</p> : chapas.map((chapa, index) => (
+                <div key={chapa.id ?? `novo-${index}`} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[minmax(130px,1fr)_110px_110px_auto]">
+                  <div className="space-y-1"><Label className="text-xs">Identificação</Label><Input value={chapa.nome} placeholder="Ex.: 3000 × 1500 mm" onChange={event => atualizarChapa(index, { nome: event.target.value })} /></div>
+                  <div className="space-y-1"><Label className="text-xs">Largura (mm)</Label><Input type="number" min="10" step="1" value={chapa.larguraMm} onChange={event => atualizarChapa(index, { larguraMm: event.target.value })} /></div>
+                  <div className="space-y-1"><Label className="text-xs">Altura (mm)</Label><Input type="number" min="10" step="1" value={chapa.alturaMm} onChange={event => atualizarChapa(index, { alturaMm: event.target.value })} /></div>
+                  <div className="flex flex-wrap items-end gap-1">
+                    <Button type="button" size="sm" variant={chapa.principal ? "default" : "outline"} aria-pressed={chapa.principal} onClick={() => setChapas(atual => atual.map((item, i) => ({ ...item, principal: i === index })))}>{chapa.principal ? "Principal" : "Definir principal"}</Button>
+                    <Button type="button" size="icon" variant="ghost" aria-label="Remover tamanho" onClick={() => setChapas(atual => atual.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                    {chapa.id != null && <label className="flex w-full items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" checked={chapa.ativo} onChange={event => atualizarChapa(index, { ativo: event.target.checked })} /> Disponível para nesting</label>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onFechar}>Cancelar</Button>
+            <Button type="submit" disabled={salvar.isPending}>{salvar.isPending && <Spinner className="mr-2 h-4 w-4" />}Salvar matéria-prima</Button>
+          </div>
+        </form>}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LinhaCategoriaMateriaPrima({ categoria }: { categoria: MateriaPrimaCategoriaItem }) {
+  const utils = trpc.useUtils();
+  const [nome, setNome] = useState(categoria.nome);
+  const [usaDadosChapa, setUsaDadosChapa] = useState(categoria.usaDadosChapa);
+  useEffect(() => { setNome(categoria.nome); setUsaDadosChapa(categoria.usaDadosChapa); }, [categoria]);
+  const atualizar = trpc.produtos.materiasPrimas.categoriaAtualizar.useMutation({
+    onSuccess: async () => {
+      toast.success("Categoria atualizada");
+      await Promise.all([utils.produtos.materiasPrimas.categoriasListar.invalidate(), utils.produtos.materiasPrimas.listar.invalidate()]);
+    },
+    onError: error => toast.error("Não foi possível atualizar a categoria", { description: error.message }),
+  });
+  const remover = trpc.produtos.materiasPrimas.categoriaRemover.useMutation({
+    onSuccess: async () => {
+      toast.success("Categoria removida");
+      await utils.produtos.materiasPrimas.categoriasListar.invalidate();
+    },
+    onError: error => toast.error("Não foi possível remover a categoria", { description: error.message }),
+  });
+  const alterada = nome.trim() !== categoria.nome || usaDadosChapa !== categoria.usaDadosChapa;
+  return (
+    <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto] sm:items-center">
+      <Input value={nome} onChange={event => setNome(event.target.value)} aria-label={`Nome da categoria ${categoria.nome}`} />
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosChapa} onChange={event => setUsaDadosChapa(event.target.checked)} /> Categoria de chapa</label>
+      <Button size="sm" variant="outline" disabled={!alterada || atualizar.isPending} onClick={() => atualizar.mutate({ id: categoria.id, nome: nome.trim(), usaDadosChapa })}>Salvar</Button>
+      <Button size="icon" variant="ghost" aria-label={`Remover categoria ${categoria.nome}`} disabled={remover.isPending} onClick={() => remover.mutate({ id: categoria.id })}><Trash2 className="h-4 w-4" /></Button>
+    </div>
+  );
+}
+
+function DialogCategoriasMateriaPrima({ aberto, onFechar }: { aberto: boolean; onFechar: () => void }) {
+  const utils = trpc.useUtils();
+  const [nome, setNome] = useState("");
+  const [usaDadosChapa, setUsaDadosChapa] = useState(false);
+  const { data: categorias = [] } = trpc.produtos.materiasPrimas.categoriasListar.useQuery();
+  const criar = trpc.produtos.materiasPrimas.categoriaCriar.useMutation({
+    onSuccess: async () => {
+      setNome("");
+      setUsaDadosChapa(false);
+      toast.success("Categoria criada");
+      await utils.produtos.materiasPrimas.categoriasListar.invalidate();
+    },
+    onError: error => toast.error("Não foi possível criar a categoria", { description: error.message }),
+  });
+  return (
+    <Dialog open={aberto} onOpenChange={value => !value && onFechar()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader><DialogTitle>Gerenciar categorias de matérias-primas</DialogTitle><DialogDescription>Renomeie, crie ou remova categorias. Só categorias marcadas como chapa abrem os campos técnicos e os tamanhos de chapa.</DialogDescription></DialogHeader>
+        <form className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto] sm:items-center" onSubmit={event => { event.preventDefault(); criar.mutate({ nome: nome.trim(), usaDadosChapa }); }}>
+          <Input value={nome} onChange={event => setNome(event.target.value)} placeholder="Nova categoria" required />
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosChapa} onChange={event => setUsaDadosChapa(event.target.checked)} /> Categoria de chapa</label>
+          <Button type="submit" size="sm" disabled={!nome.trim() || criar.isPending}><Plus className="mr-1 h-4 w-4" /> Adicionar</Button>
+        </form>
+        <div className="space-y-2">{categorias.map(categoria => <LinhaCategoriaMateriaPrima key={categoria.id} categoria={categoria} />)}</div>
+        <div className="flex justify-end"><Button variant="outline" onClick={onFechar}>Concluir</Button></div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
