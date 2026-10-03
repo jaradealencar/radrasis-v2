@@ -13,7 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Link2 } from "lucide-react";
+import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Link2, Copy } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 import { UNIDADE_CONSUMO_MATERIA_PRIMA, UNIDADE_CONSUMO_LABEL, type UnidadeConsumoMateriaPrima } from "@shared/produto-composicao";
 
@@ -440,6 +440,7 @@ function ComposicaoMateriaPrima({
           mubisysProdutoId={mubisysProdutoId}
           mubisysModeloId={mubisysModeloId}
         />
+        <ClonarComposicaoProduto produtoId={produtoId} />
         <div className="flex gap-2">
           <Input
             placeholder="Buscar matéria-prima no MubiSys..."
@@ -534,6 +535,94 @@ function ComposicaoMateriaPrima({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ClonarComposicaoProduto({ produtoId }: { produtoId: number }) {
+  const utils = trpc.useUtils();
+  const [aberto, setAberto] = useState(false);
+  const [produtoOrigemId, setProdutoOrigemId] = useState<number | null>(null);
+  const { data: produtos } = trpc.produtos.listar.useQuery();
+  const { data: origem, isLoading: carregandoOrigem } = trpc.produtos.obter.useQuery(
+    { id: produtoOrigemId ?? 0 },
+    { enabled: produtoOrigemId != null },
+  );
+
+  const clonar = trpc.produtos.composicaoClonar.useMutation({
+    onSuccess: (resultado) => {
+      toast.success("Composição clonada", {
+        description: `${resultado.quantidade} matéria(s)-prima(s) copiada(s).`,
+      });
+      utils.produtos.obter.invalidate({ id: produtoId });
+      setAberto(false);
+      setProdutoOrigemId(null);
+    },
+    onError: (error) => toast.error("Erro ao clonar composição", { description: error.message }),
+  });
+
+  const opcoes = (produtos ?? []).filter((produto) => produto.id !== produtoId);
+
+  return (
+    <div className="flex justify-end">
+      <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setAberto(true)}>
+        <Copy className="h-4 w-4" /> Clonar composição de outro produto
+      </Button>
+      <Dialog open={aberto} onOpenChange={(open) => {
+        setAberto(open);
+        if (!open) setProdutoOrigemId(null);
+      }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader><DialogTitle>Clonar composição</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Escolha um produto de origem. A composição atual deste produto será substituída pelas matérias-primas, quantidades e unidades da origem.
+          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Produto de origem</Label>
+            <Select value={produtoOrigemId == null ? "" : String(produtoOrigemId)} onValueChange={(value) => setProdutoOrigemId(Number(value))}>
+              <SelectTrigger><SelectValue placeholder="Escolha um produto" /></SelectTrigger>
+              <SelectContent>
+                {opcoes.map((produto) => <SelectItem key={produto.id} value={String(produto.id)}>{produto.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {produtoOrigemId != null && (
+            carregandoOrigem ? <div className="flex justify-center py-5"><Spinner /></div> : origem ? (
+              <div className="space-y-2 rounded-lg border p-3">
+                <p className="text-sm font-medium">{origem.produto.nome}</p>
+                {origem.composicao.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Este produto não tem matérias-primas para clonar.</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">{origem.composicao.length} matéria(s)-prima(s)</p>
+                    <div className="max-h-48 overflow-y-auto divide-y">
+                      {origem.composicao.slice(0, 8).map((item) => (
+                        <div key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                          <span>{item.materialNome}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {Number(item.quantidade)} · {UNIDADE_CONSUMO_LABEL[item.unidadeConsumo as UnidadeConsumoMateriaPrima]}
+                          </span>
+                        </div>
+                      ))}
+                      {origem.composicao.length > 8 && <p className="py-2 text-xs text-muted-foreground">e mais {origem.composicao.length - 8} item(ns)</p>}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAberto(false)}>Cancelar</Button>
+            <Button
+              onClick={() => produtoOrigemId != null && clonar.mutate({ produtoId, produtoOrigemId })}
+              disabled={produtoOrigemId == null || carregandoOrigem || !origem?.composicao.length || clonar.isPending}
+            >
+              {clonar.isPending && <Spinner className="mr-2 h-4 w-4" />}
+              Clonar composição
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

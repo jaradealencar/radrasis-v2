@@ -344,9 +344,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   banco local. As unidades MubiSys são mapeadas para o enum local (`m2`,
   `ml`, `perimetro`, `unidade`) com possibilidade de ajuste antes de salvar;
   a importação atualiza linhas com o mesmo material/unidade e preserva os
-  demais itens locais. Como o cadastro de Produtos guarda uma composição por
-  modelo, uma ficha específica de variação é importada como a composição do
-  modelo atual. O custo continua vindo ao vivo de
+  demais itens locais. Cada linha continua podendo ser removida, e a ação
+  "Clonar composição de outro produto" substitui a composição atual por uma
+  cópia das linhas de um produto de origem. Como o cadastro de Produtos guarda
+  uma composição por modelo, uma ficha específica de variação é importada
+  como a composição do modelo atual. O custo continua vindo ao vivo de
   `listarMateriasPrimas()`. Como usa a tela interna não oficial do MubiSys,
   mudanças no formato podem exigir ajuste do parser e a integração deve ser
   validada com uma sessão real após publicar. O campo `produtos.idPrecificacao`

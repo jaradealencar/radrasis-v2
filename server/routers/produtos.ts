@@ -294,6 +294,56 @@ export const produtosRouter = router({
       return { success: true, atualizadas, adicionadas };
     }),
 
+  composicaoClonar: protectedProcedure
+    .input(z.object({ produtoId: z.number().int().positive(), produtoOrigemId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      if (input.produtoId === input.produtoOrigemId) {
+        throw new Error("Escolha outro produto para clonar a composição.");
+      }
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+
+      const [[destino], [origem]] = await Promise.all([
+        db.select({ id: produtos.id }).from(produtos).where(eq(produtos.id, input.produtoId)),
+        db.select({ id: produtos.id }).from(produtos).where(eq(produtos.id, input.produtoOrigemId)),
+      ]);
+      if (!destino || !origem) throw new Error("Produto de origem ou destino não encontrado.");
+
+      const [composicaoOrigem, composicaoDestino] = await Promise.all([
+        db.select().from(produtoComposicaoMateriais)
+          .where(eq(produtoComposicaoMateriais.produtoId, input.produtoOrigemId))
+          .orderBy(asc(produtoComposicaoMateriais.ordem)),
+        db.select().from(produtoComposicaoMateriais)
+          .where(eq(produtoComposicaoMateriais.produtoId, input.produtoId))
+          .orderBy(asc(produtoComposicaoMateriais.ordem)),
+      ]);
+      if (!composicaoOrigem.length) throw new Error("O produto de origem não tem matérias-primas para clonar.");
+
+      for (const [ordem, material] of composicaoOrigem.entries()) {
+        const valores = {
+          mubisysMateriaPrimaId: material.mubisysMateriaPrimaId,
+          materialNome: material.materialNome,
+          unidadeConsumo: material.unidadeConsumo,
+          quantidade: material.quantidade,
+          ordem,
+          updatedAt: new Date(),
+        };
+        const existente = composicaoDestino[ordem];
+        if (existente) {
+          await db.update(produtoComposicaoMateriais).set(valores)
+            .where(eq(produtoComposicaoMateriais.id, existente.id));
+        } else {
+          await db.insert(produtoComposicaoMateriais).values({ produtoId: input.produtoId, ...valores });
+        }
+      }
+
+      for (const extra of composicaoDestino.slice(composicaoOrigem.length)) {
+        await db.delete(produtoComposicaoMateriais).where(eq(produtoComposicaoMateriais.id, extra.id));
+      }
+
+      return { success: true, quantidade: composicaoOrigem.length };
+    }),
+
   composicaoRemover: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
