@@ -496,8 +496,8 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   revisa e aprova a imagem antes da vetorização. Um ticket HMAC com `JWT_SECRET`
   vincula o usuário e o hash SHA-256 do PNG à rota `/api/letra-caixa/vetorizacao`
   e expira em 30 minutos. Após uma vetorização bem-sucedida, outro ticket permite
-  rasterizar edições do SVG no editor e vetorizar novamente. Configure `VECTORIZER_API_ID` e
-  `VECTORIZER_API_SECRET`; a produção cobra 1 crédito por
+  rasterizar edições do SVG no editor e vetorizar novamente. Configure
+  `VECTORIZER_API_ID` e `VECTORIZER_API_SECRET`; a produção cobra 1 crédito por
   chamada. SVG já vetorizado passa direto. Após receber o SVG, o CPQ calcula
   caminhos e nesting localmente (não há API externa de nesting configurada), e
   exige revisão visual e confirmação de escala física.
@@ -547,7 +547,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `gpt-image-2.5-sunburst`, qualidade `xhigh`, tamanho automático e saída PNG.
   A última chamada real conhecida devolveu 429
   `insufficient_quota` em 28/09/2026. Os parâmetros atuais foram conferidos na
-  documentação oficial em 30/09/2026, mas ainda é necessária uma geração real
+  documentação oficial em 03/10/2026, mas ainda é necessária uma geração real
   com uma foto depois de haver crédito disponível.
 - **Geometria dos Prompts 2 e 3 do CPQ ainda exige validação de engenharia.** Os
   PDFs do usuário foram transcritos em `docs/prompts/prompt-2-vetorizacao.md` e

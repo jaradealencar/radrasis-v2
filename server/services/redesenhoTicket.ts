@@ -31,7 +31,7 @@ export function emitirTicketRedesenho(userId: string, imageBuffer: Buffer): stri
 
 /** Autoriza uma nova vetorização após o editor rasterizar um SVG já vetorizado. */
 export function emitirTicketEdicaoVetor(userId: string): string {
-  if (!ENV.cookieSecret) throw new Error("Configure JWT_SECRET para habilitar a aprovação do pré-processamento.");
+  if (!ENV.cookieSecret) throw new Error("Configure JWT_SECRET para habilitar a edição vetorial.");
 
   const payload = Buffer.from(
     JSON.stringify({
