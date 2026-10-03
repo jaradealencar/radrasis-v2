@@ -28,7 +28,16 @@ a auth já é 100% Better Auth (Fases 1-3); só falta a Fase 5 (remover
 dele, é limpeza final, sem urgência funcional). Plano completo, histórico
 do que já foi feito: `docs/migracao-postgres-better-auth.md`.
 
-## Norte do Comercial: configurador inteligente de vendas
+## Norte do Comercial: CPQ (Configure, Price, Quote)
+
+**CPQ Letreiros Express** é um produto de **Configurar, Preço e Orçamento**:
+
+- **Configure / Configurar:** escolher produto, composição, kits, modelos,
+  variações e medidas do nesting; permitir ajustes rastreáveis.
+- **Price / Preço:** transformar escolhas e medidas em consumo, custo, preço e
+  margem, com regras comerciais e validações de engenharia.
+- **Quote / Orçamento:** emitir uma proposta revisada, com snapshot do cálculo,
+  apresentação para o cliente e registro da resposta.
 
 Ao desenvolver Produtos, CPQ Letreiros Express, Propostas e integrações,
 tratar cada orçamento como uma configuração rastreável: **produto →

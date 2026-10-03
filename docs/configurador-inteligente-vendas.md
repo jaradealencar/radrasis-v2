@@ -2,6 +2,16 @@
 
 ## Objetivo
 
+**CPQ** significa **Configure, Price, Quote** (**Configurar, Preço e
+Orçamento**). As três etapas formam um fluxo único:
+
+1. **Configurar:** produto, composição, kits, modelos, variações e medidas do
+   nesting escolhidos pelo vendedor.
+2. **Preço:** quantitativos calculados, custos atualizados, serviços, regras de
+   precificação, margem e pendências de engenharia.
+3. **Orçamento:** proposta comercial revisada, com memória de cálculo interna,
+   versão emitida e resposta do cliente.
+
 Montar propostas complexas em minutos a partir de **produto → composição de
 matérias-primas e kits → modelos → variações → nesting → consumo → custo → preço
 e margem**. O vendedor pode ajustar a composição, selecionar várias variações
