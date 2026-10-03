@@ -79,7 +79,7 @@ async function exigirSessao(req: Request, res: Response): Promise<boolean> {
   return false;
 }
 
-/** Cadastro compartilhado de clientes do Estúdio, separado dos snapshots de cotação. */
+/** Cadastro compartilhado de clientes do CPQ Letreiros Express, separado dos snapshots de cotação. */
 export function registrarRotasEstudioClientes(app: Express): void {
   app.get("/api/letra-caixa/clientes", rota(listarOuConsultarCliente));
   app.post("/api/letra-caixa/clientes", rota(salvarCliente));

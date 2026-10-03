@@ -841,7 +841,7 @@ function ItensProposta({
 
               <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_2fr]">
                 <div className="space-y-2">
-                  <Label className="text-xs">Medidas do nesting salvo no Estúdio</Label>
+                  <Label className="text-xs">Medidas do nesting salvo no CPQ Letreiros Express</Label>
                   <Select value={nestingSourceId || "__manual"} onValueChange={selecionarNesting}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>

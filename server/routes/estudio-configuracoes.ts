@@ -82,7 +82,7 @@ function registrarHandler(
   };
 }
 
-/** Configuração comum do Estúdio, armazenada no Postgres do Radrasys. */
+/** Configuração comum do CPQ Letreiros Express, armazenada no Postgres do Radrasys. */
 export function registrarRotasEstudioConfiguracoes(app: Express): void {
   app.get(
     "/api/letra-caixa/configuracoes",

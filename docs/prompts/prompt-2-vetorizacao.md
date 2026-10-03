@@ -1,6 +1,6 @@
 # Prompt 2 — Vetorização fiel de logomarca para CNC
 
-> Transcrição de `Prompt 2 Vetorização.pdf`, fornecido pelo usuário. A vetorização e a comparação são executadas por lógica determinística no Estúdio; o texto completo não é enviado ao modelo a cada orçamento.
+> Transcrição de `Prompt 2 Vetorização.pdf`, fornecido pelo usuário. A vetorização e a comparação são executadas por lógica determinística no CPQ Letreiros Express; o texto completo não é enviado ao modelo a cada orçamento.
 
 # PROMPT FINAL 2 — VETORIZAÇÃO FIEL DE LOGOMARCA PARA CNC COM
 VERIFICAÇÃO GEOMÉTRICA

@@ -30,7 +30,7 @@ do que já foi feito: `docs/migracao-postgres-better-auth.md`.
 
 ## Norte do Comercial: configurador inteligente de vendas
 
-Ao desenvolver Produtos, Estúdio de Letra Caixa, Propostas e integrações,
+Ao desenvolver Produtos, CPQ Letreiros Express, Propostas e integrações,
 tratar cada orçamento como uma configuração rastreável: **produto →
 composição (matérias-primas e kits) → modelos → variações → medidas do nesting
 → consumo → custo → preço e margem → proposta**. O objetivo é montar propostas
@@ -55,6 +55,13 @@ esses controles já estejam implementados.
   para cotar, de modo que a rapidez não dependa de digitação repetida.
 
 Plano de melhorias e riscos atuais: `docs/configurador-inteligente-vendas.md`.
+
+**Nome público do configurador:** CPQ Letreiros Express. A página canônica é
+`/cpq-letreiros-express.html`; `/estudio-letra-caixa.html` redireciona para ela
+preservando a query string dos links de cotação antigos. Nomes técnicos já
+persistidos (`estudio_*`, `/api/letra-caixa/*`, `[ESTUDIO_COTACAO_V1]`) continuam
+iguais para manter dados e integrações compatíveis. Use o nome novo em toda
+interface, proposta e documentação atual.
 
 ## Gerenciador de pacotes
 
@@ -236,12 +243,12 @@ server/
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
-                       estudio-cotacoes.ts (cotações do HTML estático do Estúdio),
-                       estudio-clientes.ts (cadastro e busca autenticados de clientes do Estúdio),
+                       estudio-cotacoes.ts (cotações do HTML estático do CPQ),
+                       estudio-clientes.ts (cadastro e busca autenticados de clientes do CPQ),
                        estudio-kits.ts (composições de produto por modelo, compartilhadas no Postgres),
                        estudio-catalogo-mubisys.ts (catálogos de produtos e matérias-primas
                        via API MubiSys, com sessão autenticada) e
-                       estudio-configuracoes.ts (configurações compartilhadas do Estúdio)
+                       estudio-configuracoes.ts (configurações compartilhadas do CPQ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
@@ -350,19 +357,19 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   produto↔matéria-prima com quantidade/unidade de consumo só existe na tela
   logada do MubiSys, via AJAX interno
   (`index.php?modulo=matModelos&acao=cadastrados`, autenticado por sessão de
-  usuário, não pelo `Access-Token`). O **Estúdio de Letra Caixa** agora tem
+  usuário, não pelo `Access-Token`). O **CPQ Letreiros Express** agora tem
   conexão opcional pelo formulário da própria tela: a senha é transitória;
   a sessão fica cifrada com AES-256-GCM em cookie `HttpOnly` por até 8 horas,
-  por navegador, sem persistência no banco. O catálogo do Estúdio lê as
+  por navegador, sem persistência no banco. O catálogo do CPQ lê as
   variações pela API pública e tenta importar a ficha da variação/modelo
   pelo AJAX interno; os custos continuam vindo ao vivo de
   `listarMateriasPrimas()`.
-  No Estúdio, a fórmula padrão acompanha a unidade de consumo da linha MubiSys
+  No CPQ, a fórmula padrão acompanha a unidade de consumo da linha MubiSys
   e as medidas do nesting: área usa a área total das peças, consumo linear usa
   perímetro externo e demais unidades usam quantidade fixa; o vendedor pode
   trocar a fórmula no cadastro do kit. Se a sessão expirar, o formato interno
   mudar ou não houver composição para a variação, o fluxo preserva a composição
-  manual do Estúdio como fallback. A tela autenticada é uma interface interna e
+  manual do CPQ como fallback. A tela autenticada é uma interface interna e
   não oficial do MubiSys: alterações nela podem exigir ajuste do parser e a
   conexão deve ser validada com uma sessão real após publicar a mudança.
   O módulo **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
@@ -376,11 +383,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   removida, e a ação "Clonar composição de outro produto" mantém o produto
   atual e substitui matérias-primas (incluindo seus vínculos de variação) e
   itens de kit por cópias de um produto de origem. O custo continua vindo ao
-  vivo de `listarMateriasPrimas()`. O Estúdio permite selecionar várias
+  vivo de `listarMateriasPrimas()`. O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
   escolhidas; salva as medidas do nesting e os materiais calculados no
   snapshot da cotação. Comercial > Propostas pode importar medidas de uma
-  cotação salva no Estúdio, permite ajustá-las manualmente, combinar
+  cotação salva no CPQ, permite ajustá-las manualmente, combinar
   variações e excluir materiais da composição daquele item.
   A ficha é lida pela interface interna não oficial do MubiSys. Mudanças no
   formato podem exigir ajuste no parser; valide a integração com sessão real
@@ -407,7 +414,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `proposta_itens.configuracaoJson` guarda, por item, as variações marcadas,
   o nesting de origem, suas medidas ajustáveis e as matérias-primas com
   fórmula, quantidade e custo calculados. Propostas importa nestings entre as
-  cotações salvas do Estúdio; o link público mostra os nomes das variações,
+  cotações salvas do CPQ; o link público mostra os nomes das variações,
   sem revelar custos ou a composição interna.
   Produtos da mesma cotação podem ser associados por `grupoId` e ganhar uma
   `grupoDescricao` compartilhada: o cálculo interno mantém os componentes
@@ -423,7 +430,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`publicProcedure` + bypass no `AuthGate`) para qualquer link público
   futuro dentro do próprio app — só usar o padrão REST+CORS do Guia de
   Fornecedores quando for de fato um domínio/deploy diferente. Exceção
-  específica: o HTML estático do Estúdio de Letra Caixa não usa React/tRPC;
+  específica: o HTML estático do CPQ Letreiros Express não usa React/tRPC;
   suas cotações concluídas usam `/api/letra-caixa/cotacoes` no mesmo host,
   com sessão para criar/listar e token público para abrir a cotação e enviar
   a resposta do cliente. A cotação guarda o WhatsApp configurado para o
@@ -435,7 +442,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   iguais (50% + 50%), permite simular cartão, boleto e TED/DOC conforme
   habilitados, e inclui a condição escolhida na mensagem do WhatsApp e na
   resposta registrada para o vendedor.
-  O catálogo do Estúdio deriva um SKU Radrasys determinístico do ID MubiSys de
+  O catálogo do CPQ deriva um SKU Radrasys determinístico do ID MubiSys de
   cada produto (`SKU-000123`) e compõe um SKU de modelo com o ID da variante
   (`SKU-000123-M007`); os dois aparecem no fluxo e podem ser buscados na
   Administração. Não há coluna nova no banco, pois os códigos derivam dos IDs
@@ -452,7 +459,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   quantidade calculada sem conversão automática. O vendedor pode trocar a
   escolha em cada orçamento, recalculando o custo sem alterar o padrão salvo.
   O snapshot da cotação pública salva e exibe as variações escolhidas.
-  No cadastro do cliente do Estúdio, razão social/fantasia/endereço vêm da
+  No cadastro do cliente do CPQ, razão social/fantasia/endereço vêm da
   consulta de CNPJ, enquanto e-mail e WhatsApp são informados manualmente e
   incluídos no snapshot da cotação; os campos de contato da API são ignorados.
   Para CPF, o nome informado manualmente também preenche o nome fantasia.
@@ -486,7 +493,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   store distribuído (Redis) ou regra de firewall na Vercel — nenhum dos dois
   está implementado.
 - **Redesenho de letra caixa via GPT Image ainda sem validação real.**
-  `client/public/estudio-letra-caixa.html` chama a rota autenticada
+  `client/public/cpq-letreiros-express.html` chama a rota autenticada
   `POST /api/letra-caixa/redesenho`; a chave OpenAI fica no servidor. O fluxo
   usa `server/services/letraCaixaRedesign.ts` e `generateImageEdit`
   (`server/_core/llm.ts`), modelo `gpt-image-2.5-sunburst`, qualidade `xhigh`,
@@ -495,7 +502,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `insufficient_quota` em 28/09/2026. Os parâmetros atuais foram conferidos na
   documentação oficial em 30/09/2026, mas ainda é necessária uma geração real
   com uma foto depois de haver crédito disponível.
-- **Prompts 2 e 3 do Estúdio são executados por funções locais.** Os PDFs do
+- **Prompts 2 e 3 do CPQ são executados por funções locais.** Os PDFs do
   usuário foram transcritos em `docs/prompts/prompt-2-vetorizacao.md` e
   `docs/prompts/prompt-3-area-perimetro-prancha.md`. O navegador vetoriza com
   ImageTracer, calcula uma coincidência de silhueta pixel/SVG e gera as medidas

@@ -178,7 +178,7 @@ export async function createApp(): Promise<Express> {
     await import("../routes/price-table-api");
   registrarRotasPriceTableApi(app);
 
-  // Cotações concluídas do Estúdio: criação autenticada, histórico do vendedor
+  // Cotações concluídas do CPQ Letreiros Express: criação autenticada, histórico do vendedor
   // e link público interativo para resposta do cliente.
   const { registrarRotasEstudioCotacoes } =
     await import("../routes/estudio-cotacoes");

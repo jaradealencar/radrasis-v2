@@ -1,4 +1,4 @@
-# Configurador inteligente de vendas
+# CPQ Letreiros Express — configurador inteligente de vendas
 
 ## Objetivo
 
@@ -14,7 +14,7 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
 
 ## Estado em 03/10/2026
 
-- Produtos, Estúdio e Propostas já têm importação de composição MubiSys,
+- Produtos, CPQ Letreiros Express e Propostas já têm importação de composição MubiSys,
   escolha de variações e medidas de nesting. A mudança recente está commitada,
   mas sua migration ainda precisa ser aplicada e o site publicado.
 - `Comercial > Propostas` preenche o preço unitário com `custoComFixo`, sem
@@ -25,14 +25,14 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
   total ou no item da proposta (`server/routers/produtos.ts`,
   `client/src/pages/comercial/Propostas.tsx`). O custo geral do produto ainda
   soma linhas de variações distintas e não agrega os produtos de kit.
-- O Estúdio usa faixas de margem da Tabela de Preços; Propostas não usa a mesma
-  regra. O modo de preço fixo do Estúdio não soma instalação ao preço final, e
+- O CPQ usa faixas de margem da Tabela de Preços; Propostas não usa a mesma
+  regra. O modo de preço fixo do CPQ não soma instalação ao preço final, e
   o cálculo do orçamento não soma produtos associados ao kit
-  (`client/public/estudio-letra-caixa.html`).
+  (`client/public/cpq-letreiros-express.html`).
 - Medidas ausentes podem virar zero no cálculo de material. O nesting mostra
   uma peça maior que a chapa como se coubesse e calcula área das peças
   separadamente do número de folhas/aproveitamento. Essas aproximações ainda
-  não impedem a emissão (`client/public/estudio-letra-caixa.html`,
+  não impedem a emissão (`client/public/cpq-letreiros-express.html`,
   `client/src/pages/comercial/Propostas.tsx`).
 
 ## Próximas entregas, em ordem
@@ -64,7 +64,7 @@ aprovação.
 
 Uma função de domínio deve receber produto, composição editada, modelos,
 variações, medidas, serviços, instalação, descontos e regras comerciais. Ela
-devolve quantidades, custos, preço, margem e pendências por linha. Estúdio e
+devolve quantidades, custos, preço, margem e pendências por linha. CPQ e
 Propostas devem usar o mesmo cálculo. Ao salvar/emitir, o servidor recalcula o
 resultado e grava um snapshot versionado das entradas, fontes de custo, regra
 de preço e resultado. Incluir produtos associados ao kit e verificar os modos
@@ -92,7 +92,7 @@ Criar configurações aprovadas reutilizáveis por produto/modelo/variação,
 mantendo edição e exclusão de materiais por cotação. Ao importar nesting antigo,
 reutilizar a geometria, atualizar composição e custos e mostrar o que mudou.
 Ter biblioteca pesquisável de nestings aprovados, em vez de depender das 100
-cotações recentes do Estúdio. Exibir em uma tela resumo de escolhas, consumo,
+cotações recentes do CPQ. Exibir em uma tela resumo de escolhas, consumo,
 preço, margem e pendências. Medir tempo até proposta e frequência de ajustes
 manuais para orientar simplificações.
 

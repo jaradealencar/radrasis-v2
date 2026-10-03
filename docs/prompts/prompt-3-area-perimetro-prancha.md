@@ -1,6 +1,6 @@
 # Prompt 3 — Área líquida, perímetro e prancha técnica
 
-> Transcrição de `Prompt 3 Área líquida, perímetro e pracha técnica.pdf`, fornecido pelo usuário. As medidas e a prancha são geradas por lógica determinística no Estúdio; o texto completo não é enviado ao modelo a cada orçamento.
+> Transcrição de `Prompt 3 Área líquida, perímetro e pracha técnica.pdf`, fornecido pelo usuário. As medidas e a prancha são geradas por lógica determinística no CPQ Letreiros Express; o texto completo não é enviado ao modelo a cada orçamento.
 
 PROMPT 3 — CÁLCULO DE ÁREA
 LÍQUIDA, PERÍMETRO E PRANCHA

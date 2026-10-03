@@ -426,7 +426,7 @@ export const configuracoesComerciais = pgTable("configuracoes_comerciais", {
 });
 export type ConfiguracaoComercial = typeof configuracoesComerciais.$inferSelect;
 
-// Configurações compartilhadas do Estúdio Letra Caixa. A página HTML usa
+// Configurações compartilhadas do CPQ Letreiros Express. A página HTML usa
 // rotas do próprio Radrasys; o armazenamento embutido de artifacts não existe
 // no deploy da Vercel.
 export const estudioConfiguracoes = pgTable("estudio_configuracoes", {
@@ -436,7 +436,7 @@ export const estudioConfiguracoes = pgTable("estudio_configuracoes", {
 });
 export type EstudioConfiguracao = typeof estudioConfiguracoes.$inferSelect;
 
-// Cadastro compartilhado de clientes do Estúdio, independente dos snapshots
+// Cadastro compartilhado de clientes do CPQ, independente dos snapshots
 // imutáveis de cada cotação.
 export const estudioClientes = pgTable("estudio_clientes", {
   id: serial("id").primaryKey(),

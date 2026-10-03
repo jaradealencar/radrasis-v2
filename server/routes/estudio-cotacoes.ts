@@ -140,7 +140,7 @@ async function exigirSessao(req: Request, res: Response): Promise<boolean> {
   return false;
 }
 
-/** Cotações do Estúdio usam a tabela existente, com snapshot próprio no campo observações. */
+/** Cotações do CPQ Letreiros Express usam a tabela existente, com snapshot próprio no campo observações. */
 export function registrarRotasEstudioCotacoes(app: Express): void {
   app.post("/api/letra-caixa/cotacoes", rota(criarCotacao));
   app.get("/api/letra-caixa/cotacoes", rota(listarCotacoes));

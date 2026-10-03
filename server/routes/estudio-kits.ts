@@ -55,7 +55,7 @@ async function exigirSessao(req: Request, res: Response): Promise<boolean> {
   return false;
 }
 
-/** Composições por modelo do Estúdio, persistidas no Postgres compartilhado. */
+/** Composições por modelo do CPQ Letreiros Express, persistidas no Postgres compartilhado. */
 export function registrarRotasEstudioKits(app: Express): void {
   app.get("/api/letra-caixa/kits", rota(listarKits));
   app.put("/api/letra-caixa/kits/:chave", rota(salvarKit));
