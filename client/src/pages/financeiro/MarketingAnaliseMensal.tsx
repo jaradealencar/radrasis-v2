@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Edit3, Check, X, Download, Target, RefreshCw, Layers } from "lucide-react";
 import { fmtBrl, fmtPct, fmtNum, MESES } from "@/lib/format";
@@ -33,6 +33,15 @@ function parseValor(texto: string): number | null {
   if (texto.trim() === "") return null; // vazio = limpar (tri-state), não zero
   const n = parseFloat(texto.replace(/\./g, "").replace(",", "."));
   return isNaN(n) ? NaN : n;
+}
+
+/** Média ignorando meses sem valor (tri-state: "não preenchido" é null, não
+ *  zero — um mês sem investimento lançado não pode puxar a média pra baixo
+ *  como se fosse R$0). null quando não há nenhum valor preenchido no período. */
+function media(valores: (number | null | undefined)[]): number | null {
+  const validos = valores.filter((v): v is number => v != null);
+  if (validos.length === 0) return null;
+  return validos.reduce((a, b) => a + b, 0) / validos.length;
 }
 
 /** Cada bloco (Aquisição/Reativação) é uma tabela estreita e independente —
@@ -79,6 +88,13 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
     if (Number.isNaN(val) || (val != null && val < 0)) { toast.error("Valor inválido"); return; }
     upsertMarketing.mutate({ mes, ano, investimentoReativacao: val }, { onSuccess: () => setEditReativacao(null) });
   }
+
+  const mediaInvestAquisicao = media(relatorio.meses.map(m => m.investimentoAquisicao));
+  const mediaNovos = media(relatorio.meses.map(m => m.novo.qtdClientesUnicos)) ?? 0;
+  const mediaCac = media(relatorio.meses.map(m => m.novo.cacPonderado));
+  const mediaFaturamentoNovos = media(relatorio.meses.map(m => m.novo.faturamento)) ?? 0;
+  const mediaMargemNovos = media(relatorio.meses.map(m => m.novo.margem.margemTotal)) ?? 0;
+  const mediaRoiNovos = media(relatorio.meses.map(m => m.novo.roiPct));
 
   function exportar() {
     exportRowsToXlsx(
@@ -177,6 +193,18 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                   );
                 })}
               </TableBody>
+              <TableFooter>
+                <TableRow className="bg-purple-50/60 font-semibold hover:bg-purple-50/60">
+                  <TableCell className="text-purple-700">Média do período</TableCell>
+                  <TableCell className="text-right">{celulaValor(mediaInvestAquisicao, "text-purple-700")}</TableCell>
+                  <TableCell className="text-right">{fmtNum(mediaNovos)}</TableCell>
+                  <TableCell className="text-right">{mediaCac != null ? fmtBrl(mediaCac) : "—"}</TableCell>
+                  <TableCell className="text-right text-emerald-700">{fmtBrl(mediaFaturamentoNovos)}</TableCell>
+                  <TableCell className="text-right">{fmtBrl(mediaMargemNovos)}</TableCell>
+                  <TableCell className="text-right">{celulaRoi(mediaRoiNovos)}</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
         </CardContent>
