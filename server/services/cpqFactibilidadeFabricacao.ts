@@ -614,6 +614,59 @@ function geometryArea(geometry: MultiPolygon): number {
   return Math.max(0, area);
 }
 
+/**
+ * Área visível de cada caminho, em m², na ordem de pintura SVG (último caminho
+ * por cima). As curvas usam a mesma aproximação geométrica de 0,1 mm do
+ * nesting; strokes não entram na área de face.
+ */
+export function calcularAreasVisiveisSvgPorCaminho(
+  svg: string,
+  larguraSvgMm: number,
+  alturaSvgMm: number,
+): number[] {
+  const parsed = parseSvg(svg, larguraSvgMm, alturaSvgMm);
+  const geometriaPorCaminho = new Map<number, MultiPolygon>();
+  for (const piece of parsed.pieces) {
+    const atual = geometriaPorCaminho.get(piece.pathIndex);
+    if (!atual) {
+      geometriaPorCaminho.set(piece.pathIndex, piece.geometry);
+      continue;
+    }
+    try {
+      geometriaPorCaminho.set(piece.pathIndex, polygonClipping.union(atual, piece.geometry) as MultiPolygon);
+    } catch {
+      throw new CpqFactibilidadeError(
+        "Não foi possível calcular a área visível de um caminho SVG.",
+        "boolean_failure",
+      );
+    }
+  }
+
+  const areasMm2 = Array.from({ length: parsed.paths.length }, () => 0);
+  let coberto: MultiPolygon | null = null;
+  for (let pathIndex = parsed.paths.length - 1; pathIndex >= 0; pathIndex -= 1) {
+    const geometria = geometriaPorCaminho.get(pathIndex);
+    if (!geometria?.length) continue;
+    try {
+      const coberturaAnterior = coberto as MultiPolygon | null;
+      const temCobertura = coberturaAnterior !== null && coberturaAnterior.length > 0;
+      const visivel = temCobertura
+        ? polygonClipping.difference(geometria, coberturaAnterior) as MultiPolygon
+        : geometria;
+      areasMm2[pathIndex] = geometryArea(visivel);
+      coberto = temCobertura
+        ? polygonClipping.union(coberturaAnterior, geometria) as MultiPolygon
+        : geometria;
+    } catch {
+      throw new CpqFactibilidadeError(
+        "Não foi possível descontar sobreposições entre regiões de cor.",
+        "boolean_failure",
+      );
+    }
+  }
+  return areasMm2.map(areaMm2 => Number((areaMm2 / 1_000_000).toFixed(8)));
+}
+
 function clipToSheets(
   piece: ParsedPiece,
   board: ReturnType<typeof canonicalBoard>,

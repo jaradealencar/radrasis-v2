@@ -51,6 +51,7 @@ async function buscarPrecificacaoPorId(
 
 export const produtosRouter = router({
   materiasPrimas: materiasPrimasRouter,
+
   // ─── Busca no catálogo do MubiSys (pra vincular ao criar produto) ───────
   buscarMubisys: protectedProcedure
     .input(z.object({ busca: z.string().optional().default("") }))

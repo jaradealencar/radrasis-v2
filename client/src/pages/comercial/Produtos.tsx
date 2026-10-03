@@ -66,6 +66,12 @@ type FormatoChapaForm = {
   nome: string;
   larguraMm: string;
   alturaMm: string;
+  pantoneCode: string;
+  cmykC: string;
+  cmykM: string;
+  cmykY: string;
+  cmykK: string;
+  transmissaoLuzPct: string;
   ativo: boolean;
   principal: boolean;
 };
@@ -204,6 +210,12 @@ function DialogEditarMateriaPrima({
       nome: chapa.nome,
       larguraMm: String(chapa.larguraMm),
       alturaMm: String(chapa.alturaMm),
+      pantoneCode: chapa.pantoneCode ?? "",
+      cmykC: chapa.cmykC == null ? "" : String(chapa.cmykC),
+      cmykM: chapa.cmykM == null ? "" : String(chapa.cmykM),
+      cmykY: chapa.cmykY == null ? "" : String(chapa.cmykY),
+      cmykK: chapa.cmykK == null ? "" : String(chapa.cmykK),
+      transmissaoLuzPct: chapa.transmissaoLuzPct == null ? "" : String(chapa.transmissaoLuzPct),
       ativo: chapa.ativo,
       principal: chapa.principal,
     })));
@@ -230,6 +242,12 @@ function DialogEditarMateriaPrima({
       nome: chapa.nome.trim() || `${material.nome} · ${chapa.larguraMm} × ${chapa.alturaMm} mm`,
       larguraMm: Number(chapa.larguraMm),
       alturaMm: Number(chapa.alturaMm),
+      pantoneCode: chapa.pantoneCode.trim() || null,
+      cmykC: chapa.cmykC.trim() === "" ? null : Number(chapa.cmykC),
+      cmykM: chapa.cmykM.trim() === "" ? null : Number(chapa.cmykM),
+      cmykY: chapa.cmykY.trim() === "" ? null : Number(chapa.cmykY),
+      cmykK: chapa.cmykK.trim() === "" ? null : Number(chapa.cmykK),
+      transmissaoLuzPct: chapa.transmissaoLuzPct.trim() === "" ? null : Number(chapa.transmissaoLuzPct),
       ativo: categoria?.usaDadosChapa ? chapa.ativo : false,
       principal: categoria?.usaDadosChapa && chapa.ativo ? chapa.principal : false,
       index,
@@ -279,16 +297,23 @@ function DialogEditarMateriaPrima({
               <div className="space-y-2"><Label>Densidade (kg/m³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /></div>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2"><div><h4 className="text-sm font-medium">Tamanhos cadastrados</h4><p className="text-xs text-muted-foreground">Cadastre cada formato de chapa disponível para esta matéria-prima.</p></div><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setChapas(atual => [...atual, { nome: "", larguraMm: "", alturaMm: "", ativo: true, principal: atual.length === 0 }])}><Plus className="h-3.5 w-3.5" /> Adicionar tamanho</Button></div>
+              <div className="flex items-center justify-between gap-2"><div><h4 className="text-sm font-medium">Tamanhos cadastrados</h4><p className="text-xs text-muted-foreground">Cadastre cada formato de chapa disponível para esta matéria-prima.</p></div><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setChapas(atual => [...atual, { nome: "", larguraMm: "", alturaMm: "", pantoneCode: "", cmykC: "", cmykM: "", cmykY: "", cmykK: "", transmissaoLuzPct: "", ativo: true, principal: atual.length === 0 }])}><Plus className="h-3.5 w-3.5" /> Adicionar tamanho</Button></div>
               {chapas.length === 0 ? <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">Nenhum tamanho cadastrado.</p> : chapas.map((chapa, index) => (
-                <div key={chapa.id ?? `novo-${index}`} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[minmax(130px,1fr)_110px_110px_auto]">
-                  <div className="space-y-1"><Label className="text-xs">Identificação</Label><Input value={chapa.nome} placeholder="Ex.: 3000 × 1500 mm" onChange={event => atualizarChapa(index, { nome: event.target.value })} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Largura (mm)</Label><Input type="number" min="10" step="1" value={chapa.larguraMm} onChange={event => atualizarChapa(index, { larguraMm: event.target.value })} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Altura (mm)</Label><Input type="number" min="10" step="1" value={chapa.alturaMm} onChange={event => atualizarChapa(index, { alturaMm: event.target.value })} /></div>
-                  <div className="flex flex-wrap items-end gap-1">
-                    <Button type="button" size="sm" variant={chapa.principal ? "default" : "outline"} aria-pressed={chapa.principal} onClick={() => setChapas(atual => atual.map((item, i) => ({ ...item, principal: i === index })))}>{chapa.principal ? "Principal" : "Definir principal"}</Button>
-                    <Button type="button" size="icon" variant="ghost" aria-label="Remover tamanho" onClick={() => setChapas(atual => atual.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
-                    {chapa.id != null && <label className="flex w-full items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" checked={chapa.ativo} onChange={event => atualizarChapa(index, { ativo: event.target.checked })} /> Disponível para nesting</label>}
+                <div key={chapa.id ?? `novo-${index}`} className="space-y-3 rounded-md border p-3">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(130px,1fr)_110px_110px_auto]">
+                    <div className="space-y-1"><Label className="text-xs">Identificação</Label><Input value={chapa.nome} placeholder="Ex.: 3000 × 1500 mm" onChange={event => atualizarChapa(index, { nome: event.target.value })} /></div>
+                    <div className="space-y-1"><Label className="text-xs">Largura (mm)</Label><Input type="number" min="10" step="1" value={chapa.larguraMm} onChange={event => atualizarChapa(index, { larguraMm: event.target.value })} /></div>
+                    <div className="space-y-1"><Label className="text-xs">Altura (mm)</Label><Input type="number" min="10" step="1" value={chapa.alturaMm} onChange={event => atualizarChapa(index, { alturaMm: event.target.value })} /></div>
+                    <div className="flex flex-wrap items-end gap-1">
+                      <Button type="button" size="sm" variant={chapa.principal ? "default" : "outline"} aria-pressed={chapa.principal} onClick={() => setChapas(atual => atual.map((item, i) => ({ ...item, principal: i === index })))}>{chapa.principal ? "Principal" : "Definir principal"}</Button>
+                      <Button type="button" size="icon" variant="ghost" aria-label="Remover tamanho" onClick={() => setChapas(atual => atual.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                      {chapa.id != null && <label className="flex w-full items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" checked={chapa.ativo} onChange={event => atualizarChapa(index, { ativo: event.target.checked })} /> Disponível para nesting</label>}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="space-y-1"><Label className="text-xs">Pantone</Label><Input value={chapa.pantoneCode} placeholder="Ex.: 185 C" onChange={event => atualizarChapa(index, { pantoneCode: event.target.value })} /></div>
+                    {(["cmykC", "cmykM", "cmykY", "cmykK"] as const).map((channel, channelIndex) => <div key={channel} className="space-y-1"><Label className="text-xs">CMYK {(["C", "M", "Y", "K"] as const)[channelIndex]} (%)</Label><Input type="number" min="0" max="100" step="0.01" value={chapa[channel]} onChange={event => atualizarChapa(index, { [channel]: event.target.value })} /></div>)}
+                    <div className="space-y-1"><Label className="text-xs">Transmissão de luz (%)</Label><Input type="number" min="0" max="100" step="0.1" value={chapa.transmissaoLuzPct} onChange={event => atualizarChapa(index, { transmissaoLuzPct: event.target.value })} /></div>
                   </div>
                 </div>
               ))}

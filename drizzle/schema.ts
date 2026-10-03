@@ -531,6 +531,12 @@ export const estudioChapas = pgTable("estudio_chapas", {
   nome: varchar("nome", { length: 256 }).notNull(),
   larguraMm: integer("largura_mm").notNull(),
   alturaMm: integer("altura_mm").notNull(),
+  pantoneCode: varchar("pantone_code", { length: 32 }),
+  cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
+  cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
+  cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
+  cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
+  transmissaoLuzPct: decimal("transmissao_luz_pct", { precision: 5, scale: 2 }),
   principal: boolean("principal").notNull().default(false),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -545,6 +551,78 @@ export const estudioChapas = pgTable("estudio_chapas", {
 }));
 export type EstudioChapa = typeof estudioChapas.$inferSelect;
 export type InsertEstudioChapa = typeof estudioChapas.$inferInsert;
+
+// Catálogo de cores sólidas e translúcidas Imprimax. Os registros são
+// importados de catálogo/planilha validada; não há API pública documentada.
+export const estudioImprimaxAdesivos = pgTable("estudio_imprimax_adesivos", {
+  id: serial("id").primaryKey(),
+  codigo: varchar("codigo", { length: 80 }).notNull(),
+  linha: varchar("linha", { length: 120 }).notNull(),
+  nomeCor: varchar("nome_cor", { length: 160 }).notNull(),
+  tipoVinil: varchar("tipo_vinil", { length: 24 }).notNull(),
+  acabamento: varchar("acabamento", { length: 40 }),
+  corHex: varchar("cor_hex", { length: 7 }),
+  pantoneCode: varchar("pantone_code", { length: 32 }),
+  cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
+  cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
+  cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
+  cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
+  transmissaoLuzPct: decimal("transmissao_luz_pct", { precision: 5, scale: 2 }),
+  precoM2: decimal("preco_m2", { precision: 12, scale: 4 }),
+  catalogoVersao: varchar("catalogo_versao", { length: 60 }),
+  origemUrl: text("origem_url"),
+  ativo: boolean("ativo").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  codigoUidx: uniqueIndex("estudio_imprimax_codigo_uidx").on(table.codigo),
+  ativoIdx: index("estudio_imprimax_ativo_idx").on(table.ativo, table.linha),
+}));
+export type EstudioImprimaxAdesivo = typeof estudioImprimaxAdesivos.$inferSelect;
+export type InsertEstudioImprimaxAdesivo = typeof estudioImprimaxAdesivos.$inferInsert;
+
+// Custos unitários de impressão. Valores nulos são pendências comerciais,
+// nunca custo zero presumido.
+export const estudioPrecosImpressao = pgTable("estudio_precos_impressao", {
+  id: integer("id").primaryKey().default(1),
+  vinilBrancoM2: decimal("vinil_branco_m2", { precision: 12, scale: 4 }),
+  vinilTransparenteM2: decimal("vinil_transparente_m2", { precision: 12, scale: 4 }),
+  impressaoM2: decimal("impressao_m2", { precision: 12, scale: 4 }),
+  laminacaoM2: decimal("laminacao_m2", { precision: 12, scale: 4 }),
+  laminacaoPadrao: boolean("laminacao_padrao").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type EstudioPrecoImpressao = typeof estudioPrecosImpressao.$inferSelect;
+
+// Snapshot por região de cor para auditoria e recálculo da proposta.
+export const estudioMapeamentoCoresCotacao = pgTable("estudio_mapeamento_cores_cotacao", {
+  id: serial("id").primaryKey(),
+  sourceId: varchar("source_id", { length: 80 }).notNull(),
+  regionKey: varchar("region_key", { length: 80 }).notNull(),
+  corHex: varchar("cor_hex", { length: 7 }),
+  corRgbJson: jsonb("cor_rgb_json").$type<{ r: number; g: number; b: number } | null>(),
+  pantoneCode: varchar("pantone_code", { length: 32 }),
+  cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
+  cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
+  cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
+  cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
+  tipoCor: varchar("tipo_cor", { length: 24 }).notNull(),
+  areaM2: decimal("area_m2", { precision: 12, scale: 6 }),
+  modoIluminacao: varchar("modo_iluminacao", { length: 24 }).notNull().default("sem_iluminacao"),
+  tipoSugestao: varchar("tipo_sugestao", { length: 24 }).notNull(),
+  chapaId: integer("chapa_id"),
+  imprimaxAdesivoId: integer("imprimax_adesivo_id"),
+  deltaE00: decimal("delta_e00", { precision: 8, scale: 3 }),
+  custoEstimado: decimal("custo_estimado", { precision: 12, scale: 4 }),
+  detalhesJson: jsonb("detalhes_json").$type<Record<string, unknown>>().notNull().default({}),
+  aprovado: boolean("aprovado").notNull().default(false),
+  aprovadoPor: varchar("aprovado_por", { length: 80 }),
+  aprovadoEm: timestamp("aprovado_em"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  sourceRegionUidx: uniqueIndex("estudio_cores_cotacao_source_region_uidx").on(table.sourceId, table.regionKey),
+  sourceIdx: index("estudio_cores_cotacao_source_idx").on(table.sourceId),
+}));
+export type EstudioMapeamentoCorCotacao = typeof estudioMapeamentoCoresCotacao.$inferSelect;
 
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 

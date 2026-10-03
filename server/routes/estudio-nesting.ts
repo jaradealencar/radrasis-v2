@@ -24,9 +24,20 @@ const chapaInput = z
     nome: z.string().trim().min(1).max(256),
     larguraMm: z.number().int().min(10).max(50_000),
     alturaMm: z.number().int().min(10).max(50_000),
+    pantoneCode: z.string().trim().max(32).nullable().optional(),
+    cmykC: z.number().finite().min(0).max(100).nullable().optional(),
+    cmykM: z.number().finite().min(0).max(100).nullable().optional(),
+    cmykY: z.number().finite().min(0).max(100).nullable().optional(),
+    cmykK: z.number().finite().min(0).max(100).nullable().optional(),
+    transmissaoLuzPct: z.number().finite().min(0).max(100).nullable().optional(),
     principal: z.boolean().optional().default(false),
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    const cmyk = [input.cmykC, input.cmykM, input.cmykY, input.cmykK];
+    if (cmyk.some(value => value != null) && cmyk.some(value => value == null))
+      context.addIssue({ code: "custom", message: "Preencha os quatro canais CMYK ou deixe todos vazios." });
+  });
 
 const nestingInput = z
   .object({
@@ -185,6 +196,12 @@ async function salvarChapa(
     nome: data.nome,
     larguraMm: Math.max(data.larguraMm, data.alturaMm),
     alturaMm: Math.min(data.larguraMm, data.alturaMm),
+    pantoneCode: data.pantoneCode?.trim().toUpperCase() || null,
+    cmykC: data.cmykC == null ? null : String(data.cmykC),
+    cmykM: data.cmykM == null ? null : String(data.cmykM),
+    cmykY: data.cmykY == null ? null : String(data.cmykY),
+    cmykK: data.cmykK == null ? null : String(data.cmykK),
+    transmissaoLuzPct: data.transmissaoLuzPct == null ? null : String(data.transmissaoLuzPct),
     ativo: true,
     updatedAt: new Date(),
   };

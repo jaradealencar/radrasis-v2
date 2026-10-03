@@ -260,8 +260,10 @@ server/
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
-                       e cpqPrecoAssistente.ts (sugestões GPT e recibos assinados
-                       de aprovação humana de preço)
+                       cpqPrecoAssistente.ts (sugestões GPT e recibos assinados
+                       de aprovação humana de preço),
+                       cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)
+                       e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor)
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
@@ -274,6 +276,7 @@ server/
                        estudio-configuracoes.ts (configurações compartilhadas do CPQ),
                        estudio-nesting.ts (CRUD de chapas e execução local do Deepnest),
                        estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
+                       estudio-cores.ts (catálogo local, análise e aprovação de cores antes do nesting),
                        letra-caixa-redesenho.ts (reconstrução, vetor e upload de imagens do CPQ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
@@ -328,6 +331,7 @@ nem mocks da camada de dados.
   importante pra entender o estado real do banco/auth agora.**
 - `docs/campanhas-whatsapp.md` — módulo Campanhas WhatsApp (aba ao lado de ROI Marketing): regras de
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
+- `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias
   partes já não valem pra este repo, ver aviso na seção "O que é este
@@ -613,6 +617,16 @@ units or missing cost return an alert and null estimate.
 sheet fit and oversized-piece seams. The authenticated
 `server/routes/estudio-factibilidade.ts` route calls it before nesting and records
 the decision receipt for approved seams or reductions.
+
+`server/services/cpqCoresMateriais.ts` extracts color regions and ranks material
+matches with CIEDE2000. The authenticated `server/routes/estudio-cores.ts` route
+loads local sheet and Imprimax color catalogs, persists the per-quote analysis,
+and records human approval. Color analysis is required before factibility; unknown
+print costs block price approval and quote issuance. Migration
+`0068_estudio_cores.sql` adds its catalog, pricing and quote-mapping tables plus
+optional Pantone/CMYK/light-transmission fields on sheet formats. Provider catalog
+data and print costs are maintained by managers; this service does not query an
+Imprimax API.
 
 The static CPQ HTML calls the factibility and nesting routes. It sends the
 per-material piece SVGs, and the server compares all active formats before

@@ -1,0 +1,408 @@
+import { fromNodeHeaders } from "better-auth/node";
+import type { Express, Request, Response } from "express";
+import { asc, eq } from "drizzle-orm";
+import { z } from "zod";
+import {
+  estudioChapas,
+  estudioImprimaxAdesivos,
+  estudioMapeamentoCoresCotacao,
+  estudioPrecosImpressao,
+} from "../../drizzle/schema";
+import { auth } from "../_core/auth";
+import { getDb } from "../db/db";
+import { CpqFactibilidadeError, calcularAreasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
+import { extrairRegioesCorSvg, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+
+const porcentagem = z.number().finite().min(0).max(100).nullable().optional();
+const moedaM2 = z.number().finite().min(0).max(1_000_000).nullable();
+const cmykInput = z.object({ c: porcentagem, m: porcentagem, y: porcentagem, k: porcentagem }).strict().nullable().optional()
+  .superRefine((value, context) => {
+    if (!value) return;
+    const channels = [value.c, value.m, value.y, value.k];
+    if (channels.some(channel => channel != null) && channels.some(channel => channel == null))
+      context.addIssue({ code: "custom", message: "Preencha os quatro canais CMYK ou deixe-os vazios." });
+  });
+const catalogoItem = z.object({
+  codigo: z.string().trim().min(1).max(80),
+  linha: z.string().trim().min(1).max(120),
+  nomeCor: z.string().trim().min(1).max(160),
+  tipoVinil: z.enum(["monomerico", "polimerico", "translucido"]),
+  acabamento: z.string().trim().max(40).nullable().optional(),
+  corHex: z.string().regex(/^#[\da-f]{6}$/i).nullable().optional(),
+  pantoneCode: z.string().trim().max(32).nullable().optional(),
+  cmykC: porcentagem, cmykM: porcentagem, cmykY: porcentagem, cmykK: porcentagem,
+  transmissaoLuzPct: porcentagem,
+  precoM2: moedaM2.optional(),
+  catalogoVersao: z.string().trim().max(60).nullable().optional(),
+  origemUrl: z.string().trim().max(1000).url().nullable().optional(),
+}).strict().superRefine((item, context) => {
+  const channels = [item.cmykC, item.cmykM, item.cmykY, item.cmykK];
+  if (channels.some(channel => channel != null) && channels.some(channel => channel == null))
+    context.addIssue({ code: "custom", message: "Preencha os quatro canais CMYK ou deixe todos vazios." });
+  if (!item.corHex && !item.pantoneCode && channels.every(channel => channel == null))
+    context.addIssue({ code: "custom", message: "Informe HEX, Pantone ou CMYK para localizar a cor do adesivo." });
+});
+
+const analisarInput = z.object({
+  sourceId: z.string().trim().min(1).max(80),
+  regioes: z.array(z.object({
+    key: z.string().trim().min(1).max(80),
+    tipoCor: z.enum(["solida", "gradiente", "complexa", "desconhecida"]),
+    corHex: z.string().regex(/^#[\da-f]{6}$/i).nullable().optional(),
+    pantoneCode: z.string().trim().max(32).nullable().optional(),
+    cmyk: cmykInput,
+    coresGradiente: z.array(z.string().regex(/^#[\da-f]{6}$/i)).max(20).optional(),
+    pathIndexes: z.array(z.number().int().nonnegative().max(499)).max(500).optional(),
+    areaM2: z.number().finite().min(0).max(50_000).nullable().optional(),
+  }).strict()).min(1).max(500),
+  iluminacao: z.enum(["sem_iluminacao", "frontlight", "backlight"]),
+  transmissaoMinimaPct: z.number().finite().min(0).max(100).nullable().optional(),
+  baseImpressao: z.enum(["branco", "transparente"]),
+  laminar: z.boolean(),
+}).strict().superRefine((input, context) => {
+  if (new Set(input.regioes.map(region => region.key)).size !== input.regioes.length)
+    context.addIssue({ code: "custom", message: "As regiões de cor precisam ter identificadores únicos." });
+});
+
+const analisarSvgInput = z.object({
+  sourceId: z.string().trim().min(1).max(80),
+  svgArte: z.string().min(20).max(1_500_000),
+  svgGeometria: z.string().min(20).max(1_500_000),
+  larguraSvgMm: z.number().finite().positive().max(50_000),
+  alturaSvgMm: z.number().finite().positive().max(50_000),
+  iluminacao: z.enum(["sem_iluminacao", "frontlight", "backlight"]),
+  transmissaoMinimaPct: z.number().finite().min(0).max(100).nullable().optional(),
+  baseImpressao: z.enum(["branco", "transparente"]),
+  laminar: z.boolean(),
+}).strict();
+
+const aprovarInput = z.object({ sourceId: z.string().trim().min(1).max(80) }).strict();
+
+function erro(res: Response, status: number, mensagem: string): void {
+  res.status(status).json({ error: mensagem });
+}
+
+function decimalBanco(value: number | null | undefined): string | null {
+  return value == null ? null : String(value);
+}
+
+function cmykCompleto(value: {
+  c?: number | null;
+  m?: number | null;
+  y?: number | null;
+  k?: number | null;
+} | null | undefined): { c: number; m: number; y: number; k: number } | null {
+  if (value?.c == null || value.m == null || value.y == null || value.k == null) return null;
+  return { c: value.c, m: value.m, y: value.y, k: value.k };
+}
+
+function mesmaOrigem(req: Request, res: Response): boolean {
+  const origin = req.get("origin");
+  if (!origin) return true;
+  try { if (new URL(origin).host === req.get("host")) return true; } catch { /* rejeita origem inválida */ }
+  erro(res, 403, "A solicitação precisa vir do próprio sistema.");
+  return false;
+}
+
+async function obterSessao(req: Request, res: Response) {
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) erro(res, 401, "Entre no Radrasys para usar a análise de cores do CPQ.");
+  return session;
+}
+
+async function exigirGestor(req: Request, res: Response) {
+  const session = await obterSessao(req, res);
+  if (!session) return null;
+  if (!["admin", "master", "gestor"].includes(String(session.user.role ?? ""))) {
+    erro(res, 403, "Somente gestor, admin ou master pode manter o catálogo de cores e custos.");
+    return null;
+  }
+  return session;
+}
+
+function rota(handler: (req: Request, res: Response) => Promise<void>) {
+  return (req: Request, res: Response) => {
+    void handler(req, res).catch((error: unknown) => {
+      console.error("[EstudioCores] Falha na rota:", error);
+      if (!res.headersSent) erro(res, 500, "Não foi possível concluir a operação de cores agora.");
+    });
+  };
+}
+
+export function registrarRotasEstudioCores(app: Express): void {
+  app.get("/api/letra-caixa/cores/catalogo", rota(carregarCatalogo));
+  app.put("/api/letra-caixa/cores/catalogo-imprimax", rota(importarCatalogo));
+  app.put("/api/letra-caixa/cores/precos-impressao", rota(salvarPrecos));
+  app.post("/api/letra-caixa/cores/analisar-svg", rota(analisarSvg));
+  app.post("/api/letra-caixa/cores/aprovar", rota(aprovarCores));
+}
+
+async function carregarCatalogo(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await obterSessao(req, res))) return;
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const [adesivos, precos] = await Promise.all([
+    db.select().from(estudioImprimaxAdesivos).where(eq(estudioImprimaxAdesivos.ativo, true)).orderBy(asc(estudioImprimaxAdesivos.linha), asc(estudioImprimaxAdesivos.codigo)),
+    db.select().from(estudioPrecosImpressao).where(eq(estudioPrecosImpressao.id, 1)).limit(1),
+  ]);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ adesivos, precos: precos[0] ?? null });
+}
+
+async function importarCatalogo(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await exigirGestor(req, res))) return;
+  const parsed = z.object({ itens: z.array(catalogoItem).min(1).max(5000) }).strict().safeParse(req.body);
+  if (!parsed.success) return void erro(res, 400, "Revise os itens do catálogo Imprimax antes de importar.");
+  if (new Set(parsed.data.itens.map(item => item.codigo.toLocaleUpperCase("pt-BR"))).size !== parsed.data.itens.length)
+    return void erro(res, 400, "Cada item importado precisa ter um código único.");
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const now = new Date();
+  await db.transaction(async tx => {
+    for (const item of parsed.data.itens) {
+      const values = {
+        ...item,
+        codigo: item.codigo.trim().toLocaleUpperCase("pt-BR"),
+        cmykC: decimalBanco(item.cmykC),
+        cmykM: decimalBanco(item.cmykM),
+        cmykY: decimalBanco(item.cmykY),
+        cmykK: decimalBanco(item.cmykK),
+        transmissaoLuzPct: decimalBanco(item.transmissaoLuzPct),
+        precoM2: decimalBanco(item.precoM2),
+        ativo: true,
+        updatedAt: now,
+      };
+      await tx.insert(estudioImprimaxAdesivos).values(values)
+        .onConflictDoUpdate({
+          target: estudioImprimaxAdesivos.codigo,
+          set: values,
+        });
+    }
+  });
+  res.json({ importados: parsed.data.itens.length });
+}
+
+async function salvarPrecos(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await exigirGestor(req, res))) return;
+  const parsed = z.object({
+    vinilBrancoM2: moedaM2,
+    vinilTransparenteM2: moedaM2,
+    impressaoM2: moedaM2,
+    laminacaoM2: moedaM2,
+    laminacaoPadrao: z.boolean(),
+  }).strict().safeParse(req.body);
+  if (!parsed.success) return void erro(res, 400, "Informe valores válidos por m²; use nulo para custo ainda não cadastrado.");
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const values = {
+    vinilBrancoM2: decimalBanco(parsed.data.vinilBrancoM2),
+    vinilTransparenteM2: decimalBanco(parsed.data.vinilTransparenteM2),
+    impressaoM2: decimalBanco(parsed.data.impressaoM2),
+    laminacaoM2: decimalBanco(parsed.data.laminacaoM2),
+    laminacaoPadrao: parsed.data.laminacaoPadrao,
+    updatedAt: new Date(),
+  };
+  await db.insert(estudioPrecosImpressao).values({ id: 1, ...values })
+    .onConflictDoUpdate({ target: estudioPrecosImpressao.id, set: values });
+  res.json({ success: true });
+}
+
+async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res: Response): Promise<void> {
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const [chapas, adesivos, precosRows] = await Promise.all([
+    db.select().from(estudioChapas).where(eq(estudioChapas.ativo, true)),
+    db.select().from(estudioImprimaxAdesivos).where(eq(estudioImprimaxAdesivos.ativo, true)),
+    db.select().from(estudioPrecosImpressao).where(eq(estudioPrecosImpressao.id, 1)).limit(1),
+  ]);
+  const precos = precosRows[0] ?? null;
+  const resultados = parsed.regioes.map(regiao => sugerirMaterialParaCor({
+    regiao: { ...regiao, cmyk: cmykCompleto(regiao.cmyk) },
+    chapas,
+    adesivos,
+    iluminacao: parsed.iluminacao,
+    transmissaoMinimaPct: parsed.transmissaoMinimaPct,
+    baseImpressao: parsed.baseImpressao,
+    laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
+    precos,
+  }));
+  await db.transaction(async tx => {
+    await tx.delete(estudioMapeamentoCoresCotacao)
+      .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.sourceId));
+    for (const resultado of resultados) {
+      const regiao = parsed.regioes.find(item => item.key === resultado.regionKey)!;
+      await tx.insert(estudioMapeamentoCoresCotacao).values({
+        sourceId: parsed.sourceId,
+        regionKey: resultado.regionKey,
+        corHex: regiao.corHex ?? null,
+        corRgbJson: resultado.corRgb,
+        pantoneCode: regiao.pantoneCode ?? null,
+        cmykC: resultado.cmyk?.c == null ? null : String(resultado.cmyk.c),
+        cmykM: resultado.cmyk?.m == null ? null : String(resultado.cmyk.m),
+        cmykY: resultado.cmyk?.y == null ? null : String(resultado.cmyk.y),
+        cmykK: resultado.cmyk?.k == null ? null : String(resultado.cmyk.k),
+        tipoCor: regiao.tipoCor,
+        areaM2: regiao.areaM2 == null ? null : String(regiao.areaM2),
+        modoIluminacao: parsed.iluminacao,
+        tipoSugestao: resultado.tipoSugestao,
+        chapaId: resultado.chapaId,
+        imprimaxAdesivoId: resultado.imprimaxAdesivoId,
+        deltaE00: resultado.deltaE00 == null ? null : String(resultado.deltaE00),
+        custoEstimado: resultado.custoEstimado == null ? null : String(resultado.custoEstimado),
+        detalhesJson: {
+          corRgb: resultado.corRgb,
+          cmyk: resultado.cmyk ?? null,
+          cmykOriginal: regiao.cmyk ?? null,
+          coresGradiente: regiao.coresGradiente ?? [],
+          pathIndexes: regiao.pathIndexes ?? [],
+          avisos: resultado.avisos,
+          alternativas: resultado.alternativas,
+          unidadeCusto: resultado.unidadeCusto,
+          precificacao: resultado.precificacao,
+          baseImpressao: parsed.baseImpressao,
+          transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
+          iluminacao: parsed.iluminacao,
+          laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
+          fatorVersaoAlgoritmo: "ciede2000-d65-v1",
+        },
+        aprovado: false,
+        aprovadoPor: null,
+        aprovadoEm: null,
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: [estudioMapeamentoCoresCotacao.sourceId, estudioMapeamentoCoresCotacao.regionKey],
+        set: {
+          corHex: regiao.corHex ?? null,
+          corRgbJson: resultado.corRgb,
+          pantoneCode: regiao.pantoneCode ?? null,
+          cmykC: resultado.cmyk?.c == null ? null : String(resultado.cmyk.c),
+          cmykM: resultado.cmyk?.m == null ? null : String(resultado.cmyk.m),
+          cmykY: resultado.cmyk?.y == null ? null : String(resultado.cmyk.y),
+          cmykK: resultado.cmyk?.k == null ? null : String(resultado.cmyk.k),
+          tipoCor: regiao.tipoCor,
+          areaM2: regiao.areaM2 == null ? null : String(regiao.areaM2),
+          modoIluminacao: parsed.iluminacao,
+          tipoSugestao: resultado.tipoSugestao,
+          chapaId: resultado.chapaId,
+          imprimaxAdesivoId: resultado.imprimaxAdesivoId,
+          deltaE00: resultado.deltaE00 == null ? null : String(resultado.deltaE00),
+          custoEstimado: resultado.custoEstimado == null ? null : String(resultado.custoEstimado),
+          detalhesJson: {
+            corRgb: resultado.corRgb,
+            cmyk: resultado.cmyk ?? null,
+            cmykOriginal: regiao.cmyk ?? null,
+            coresGradiente: regiao.coresGradiente ?? [],
+            pathIndexes: regiao.pathIndexes ?? [],
+            avisos: resultado.avisos,
+            alternativas: resultado.alternativas,
+            unidadeCusto: resultado.unidadeCusto,
+            precificacao: resultado.precificacao,
+            baseImpressao: parsed.baseImpressao,
+            transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
+            iluminacao: parsed.iluminacao,
+            laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
+            fatorVersaoAlgoritmo: "ciede2000-d65-v1",
+          },
+          aprovado: false,
+          aprovadoPor: null,
+          aprovadoEm: null,
+          updatedAt: new Date(),
+        },
+      });
+    }
+  });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ sourceId: parsed.sourceId, resultados });
+}
+
+async function analisarSvg(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await obterSessao(req, res))) return;
+  const parsed = analisarSvgInput.safeParse(req.body);
+  if (!parsed.success) return void erro(res, 400, "Confira arte, geometria, escala e iluminação antes de analisar as cores.");
+  try {
+    const regioes = extrairRegioesCorSvg(parsed.data.svgArte);
+    const areas = calcularAreasVisiveisSvgPorCaminho(
+      parsed.data.svgGeometria,
+      parsed.data.larguraSvgMm,
+      parsed.data.alturaSvgMm,
+    );
+    if (areas.length !== regioes.length)
+      return void erro(res, 422, "A fonte colorida e o vetor de corte não têm os mesmos caminhos. Reenvie ou revise a arte.");
+
+    const agregadas = new Map<string, {
+      tipoCor: "solida" | "gradiente" | "complexa" | "desconhecida";
+      corHex: string | null;
+      pantoneCode: string | null;
+      cmyk: { c: number; m: number; y: number; k: number } | null;
+      coresGradiente: string[];
+      areaM2: number;
+      pathIndexes: number[];
+    }>();
+    regioes.forEach((regiao, index) => {
+      const areaM2 = areas[index];
+      if (regiao.tipoCor === "desconhecida" || areaM2 <= 0) return;
+      const signature = JSON.stringify([
+        regiao.tipoCor,
+        regiao.corHex ?? null,
+        (regiao.pantoneCode ?? "").toUpperCase().replace(/\s+/g, ""),
+        regiao.cmyk ?? null,
+        regiao.coresGradiente ?? [],
+      ]);
+      const group = agregadas.get(signature) ?? {
+        tipoCor: regiao.tipoCor,
+        corHex: regiao.corHex ?? null,
+        pantoneCode: regiao.pantoneCode ?? null,
+        cmyk: regiao.cmyk ?? null,
+        coresGradiente: regiao.coresGradiente ?? [],
+        areaM2: 0,
+        pathIndexes: [],
+      };
+      group.areaM2 += areaM2;
+      group.pathIndexes.push(regiao.pathIndex ?? index);
+      agregadas.set(signature, group);
+    });
+    if (!agregadas.size)
+      return void erro(res, 422, "Não há regiões preenchidas visíveis para analisar no vetor.");
+
+    const body = {
+      sourceId: parsed.data.sourceId,
+      regioes: [...agregadas.values()].map((region, index) => ({
+        ...region,
+        key: `regiao-${index + 1}`,
+        areaM2: Number(region.areaM2.toFixed(6)),
+      })),
+      iluminacao: parsed.data.iluminacao,
+      transmissaoMinimaPct: parsed.data.transmissaoMinimaPct ?? null,
+      baseImpressao: parsed.data.baseImpressao,
+      laminar: parsed.data.laminar,
+    };
+    const validated = analisarInput.safeParse(body);
+    if (!validated.success)
+      return void erro(res, 422, "A extração vetorial produziu dados fora dos limites aceitos.");
+    await persistirAnaliseCores(validated.data, res);
+  } catch (error) {
+    if (error instanceof CpqFactibilidadeError)
+      return void erro(res, 422, error.message);
+    return void erro(res, 400, error instanceof Error ? error.message : "Não foi possível extrair cores da arte.");
+  }
+}
+
+async function aprovarCores(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res)) return;
+  const session = await obterSessao(req, res);
+  if (!session) return;
+  const parsed = aprovarInput.safeParse(req.body);
+  if (!parsed.success) return void erro(res, 400, "A cotação informada é inválida.");
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const mappings = await db.select().from(estudioMapeamentoCoresCotacao)
+    .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.data.sourceId));
+  if (!mappings.length) return void erro(res, 409, "Analise as cores antes de aprovar os materiais.");
+  await db.update(estudioMapeamentoCoresCotacao).set({
+    aprovado: true,
+    aprovadoPor: session.user.id,
+    aprovadoEm: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.data.sourceId));
+  res.json({ success: true, aprovadoPor: session.user.name, quantidade: mappings.length });
+}

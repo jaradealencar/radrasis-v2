@@ -3,7 +3,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { propostas } from "../../drizzle/schema";
+import { estudioMapeamentoCoresCotacao, propostas } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import {
@@ -28,6 +28,27 @@ const reacooes = [
   "em_analise",
   "fora_orcamento",
 ] as const;
+
+const mapeamentoRegiaoSchema = z.object({
+  regionKey: z.string().min(1).max(80),
+  tipoCor: z.enum(["solida", "gradiente", "complexa", "desconhecida"]),
+  corHex: z.string().regex(/^#[\da-f]{6}$/i).nullable(),
+  corRgb: z.object({ r: z.number().int().min(0).max(255), g: z.number().int().min(0).max(255), b: z.number().int().min(0).max(255) }).nullable(),
+  pantoneCode: z.string().max(32).nullable(),
+  cmyk: z.object({ c: z.number().min(0).max(100), m: z.number().min(0).max(100), y: z.number().min(0).max(100), k: z.number().min(0).max(100) }).strict().nullable(),
+  coresGradiente: z.array(z.string().regex(/^#[\da-f]{6}$/i)).max(20),
+  pathIndexes: z.array(z.number().int().nonnegative().max(499)).max(500),
+  areaM2: z.number().finite().nonnegative().nullable(),
+  tipoSugestao: z.enum(["chapa", "imprimax", "impresso", "pendente"]),
+  chapaId: z.number().int().positive().nullable(),
+  imprimaxAdesivoId: z.number().int().positive().nullable(),
+  deltaE00: z.number().finite().nonnegative().nullable(),
+  custoEstimado: z.number().finite().nonnegative().nullable(),
+  unidadeCusto: z.enum(["m2"]).nullable(),
+  avisos: z.array(z.string().max(1000)).max(20),
+  alternativas: z.array(z.record(z.string(), z.unknown())).max(5),
+  precificacao: z.record(z.string(), z.unknown()).nullable(),
+}).strict();
 
 const factibilidadeSchema = z.object({
   statusFactibilidade: z.enum(["APTO_NESTING", "REQUER_APROVACAO_EMENDA"]),
@@ -132,6 +153,13 @@ const snapshotSchema = z.object({
       reciboIntegridade: z.string().min(20).max(4000),
     }).nullable().optional(),
   }).strict()).max(300).optional().default([]),
+  mapeamentoCores: z.object({
+    aprovado: z.boolean(),
+    iluminacao: z.enum(["sem_iluminacao", "frontlight", "backlight"]),
+    regioes: z.array(mapeamentoRegiaoSchema).max(500),
+    custoAdicional: z.number().finite().nonnegative(),
+    pendencias: z.array(z.record(z.string(), z.unknown())).max(500),
+  }).strict().nullable().optional().default(null),
   custoMateriais: z.number().finite().nonnegative(),
   custoFixo: z.number().finite().nonnegative(),
   custoServicos: z.number().finite().nonnegative(),
@@ -207,6 +235,14 @@ function validarFactibilidadeSnapshot(
   snapshot: z.infer<typeof snapshotSchema>
 ) {
   const factibilidade = snapshot.factibilidade;
+  if (!snapshot.mapeamentoCores?.aprovado)
+    throw new Error("Revise e aprove o mapeamento de cores e materiais antes de emitir a cotação.");
+  const pendenciaCustoCor = snapshot.mapeamentoCores.regioes.some(regiao =>
+    (regiao.tipoSugestao === "imprimax" || regiao.tipoSugestao === "impresso")
+      && (regiao.custoEstimado == null || regiao.areaM2 == null)
+  );
+  if (pendenciaCustoCor)
+    throw new Error("Há adesivo sem área ou custo por m². Atualize o catálogo/custos e refaça o mapeamento antes de emitir.");
   if (!snapshot.nestingSvg) {
     throw new Error("O SVG vetorial é obrigatório para analisar e cotar a geometria.");
   }
@@ -371,6 +407,7 @@ function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSc
       perimTotalM: snapshot.perimTotalM ?? null,
     },
     materiais: snapshot.materiais ?? [],
+    mapeamentoCores: snapshot.mapeamentoCores,
     factibilidade,
     custoDireto: snapshot.custoDireto,
     custoMateriais: snapshot.custoMateriais,
@@ -410,7 +447,10 @@ function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
       throw new Error(`A quantidade de ${linha.nome} não corresponde à fórmula e às medidas atuais.`);
     }
   }
-  const custoMateriaisLinhas = (snapshot.materiais ?? []).reduce((total, linha) => total + linha.custoTotal, 0);
+  const custoMateriaisLinhas = (snapshot.materiais ?? []).reduce(
+    (total, linha) => total + linha.custoTotal,
+    snapshot.mapeamentoCores?.custoAdicional ?? 0,
+  );
   if ((snapshot.materiais ?? []).some((linha) => linha.quantidade > 0 && linha.custoUnitario <= 0)) {
     throw new Error("Há matéria-prima sem custo válido. Atualize os custos antes da análise ou aprovação.");
   }
@@ -437,11 +477,20 @@ function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
     precoAtual: snapshot.precoCalculado,
     regra: snapshot.regraPreco,
     margemAtualPct: snapshot.margemPct,
-    itens: (snapshot.materiais ?? []).map((material) => ({
-      nome: material.nome,
-      quantidade: material.quantidade,
-      custoTotal: material.custoTotal,
-    })),
+    itens: [
+      ...(snapshot.materiais ?? []).map((material) => ({
+        nome: material.nome,
+        quantidade: material.quantidade,
+        custoTotal: material.custoTotal,
+      })),
+      ...(snapshot.mapeamentoCores?.regioes ?? [])
+        .filter(region => region.tipoSugestao === "imprimax" || region.tipoSugestao === "impresso")
+        .map(region => ({
+          nome: `${region.tipoSugestao === "impresso" ? "Adesivo impresso" : "Adesivo Imprimax"} · ${region.corHex ?? region.regionKey}`,
+          quantidade: region.areaM2 ?? 0,
+          custoTotal: region.custoEstimado ?? 0,
+        })),
+    ],
   });
 }
 
@@ -461,7 +510,68 @@ async function lerSnapshotPreco(req: Request, res: Response) {
     respostaErro(res, 400, "Confira os dados de custo e composição antes de analisar o preço.");
     return null;
   }
+  const erroCores = await validarMapeamentoCoresPersistido(parsed.data.sourceId, parsed.data.snapshot);
+  if (erroCores) {
+    respostaErro(res, 409, erroCores);
+    return null;
+  }
   return parsed.data;
+}
+
+async function validarMapeamentoCoresPersistido(
+  sourceId: string,
+  snapshot: z.infer<typeof snapshotSchema>,
+): Promise<string | null> {
+  const mapping = snapshot.mapeamentoCores;
+  if (!mapping?.aprovado) return "Aprove o mapeamento de cores antes de analisar ou emitir esta cotação.";
+  if (mapping.pendencias.length) return "Há custos de adesivo pendentes; preencha os valores e refaça o mapeamento.";
+  const db = await getDb();
+  if (!db) return "O banco de dados está indisponível para validar o mapeamento de cores.";
+  const saved = await db.select().from(estudioMapeamentoCoresCotacao)
+    .where(eq(estudioMapeamentoCoresCotacao.sourceId, sourceId));
+  if (!saved.length || saved.length !== mapping.regioes.length || saved.some(row => !row.aprovado))
+    return "O mapeamento enviado não corresponde a uma análise completa aprovada no servidor. Analise e aprove as cores novamente.";
+
+  const byKey = new Map(mapping.regioes.map(region => [region.regionKey, region]));
+  const stableJson = (value: unknown): string => JSON.stringify(value, (_key, child: unknown) => {
+    if (child && typeof child === "object" && !Array.isArray(child))
+      return Object.fromEntries(Object.entries(child as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)));
+    return child;
+  });
+  let custoPersistido = 0;
+  for (const row of saved) {
+    const region = byKey.get(row.regionKey);
+    const details = row.detalhesJson as Record<string, unknown>;
+    if (!region
+      || region.tipoCor !== row.tipoCor
+      || region.corHex !== row.corHex
+      || stableJson(region.corRgb) !== stableJson(row.corRgbJson ?? null)
+      || region.pantoneCode !== row.pantoneCode
+      || region.tipoSugestao !== row.tipoSugestao
+      || region.chapaId !== row.chapaId
+      || region.imprimaxAdesivoId !== row.imprimaxAdesivoId
+      || region.deltaE00 !== (row.deltaE00 == null ? null : Number(row.deltaE00))
+      || region.custoEstimado !== (row.custoEstimado == null ? null : Number(row.custoEstimado))
+      || region.areaM2 !== (row.areaM2 == null ? null : Number(row.areaM2))
+      || mapping.iluminacao !== row.modoIluminacao
+      || stableJson(region.cmyk) !== stableJson(details.cmyk ?? null)
+      || stableJson(region.coresGradiente) !== stableJson(details.coresGradiente ?? [])
+      || stableJson(region.pathIndexes) !== stableJson(details.pathIndexes ?? [])
+      || stableJson(region.avisos) !== stableJson(details.avisos ?? [])
+      || stableJson(region.alternativas) !== stableJson(details.alternativas ?? [])
+      || region.unidadeCusto !== (details.unidadeCusto ?? null)
+      || stableJson(region.precificacao) !== stableJson(details.precificacao ?? null)) {
+      return "Os dados de cor, área, material ou custo foram alterados depois da aprovação. Refazer a análise de cores.";
+    }
+    if (region.tipoSugestao === "imprimax" || region.tipoSugestao === "impresso") {
+      if (region.areaM2 == null || region.custoEstimado == null)
+        return "Há adesivo sem área ou custo cadastrado. Atualize os dados antes de emitir.";
+      custoPersistido += region.custoEstimado;
+    }
+  }
+  if (Math.abs(custoPersistido - mapping.custoAdicional) > 0.0002)
+    return "O custo adicional de cores não corresponde aos valores aprovados no servidor.";
+  return null;
 }
 
 async function sugerirPreco(req: Request, res: Response): Promise<void> {
@@ -500,6 +610,8 @@ async function aprovarPreco(req: Request, res: Response): Promise<void> {
     ticket: z.string().min(20).max(6000).nullable().default(null),
   }).strict().safeParse(req.body);
   if (!parsed.success) { respostaErro(res, 400, "Confira o preço e a configuração antes de aprovar."); return; }
+  const erroCores = await validarMapeamentoCoresPersistido(parsed.data.sourceId, parsed.data.snapshot);
+  if (erroCores) { respostaErro(res, 409, erroCores); return; }
   try {
     const { sourceId, snapshot } = parsed.data;
     const base = basePrecoSnapshot(sourceId, snapshot);
@@ -529,6 +641,11 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
     return;
   }
   const dadosRecebidos = parsed.data.snapshot;
+  const erroCores = await validarMapeamentoCoresPersistido(parsed.data.sourceId, dadosRecebidos);
+  if (erroCores) {
+    respostaErro(res, 409, erroCores);
+    return;
+  }
   if (!dadosRecebidos.precificacaoIA?.recibo) {
     respostaErro(res, 400, "Aprovação humana obrigatória. Aprove o preço antes de gerar o link da cotação.");
     return;

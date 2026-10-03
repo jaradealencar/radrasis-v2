@@ -21,9 +21,19 @@ const formatosChapaInput = z.array(z.object({
   nome: z.string().trim().min(1).max(256),
   larguraMm: z.number().int().min(10).max(50_000),
   alturaMm: z.number().int().min(10).max(50_000),
+  pantoneCode: z.string().trim().max(32).nullable().optional(),
+  cmykC: z.number().finite().min(0).max(100).nullable().optional(),
+  cmykM: z.number().finite().min(0).max(100).nullable().optional(),
+  cmykY: z.number().finite().min(0).max(100).nullable().optional(),
+  cmykK: z.number().finite().min(0).max(100).nullable().optional(),
+  transmissaoLuzPct: z.number().finite().min(0).max(100).nullable().optional(),
   ativo: z.boolean().default(true),
   principal: z.boolean().default(false),
-}).strict()).max(50);
+}).strict().superRefine((input, context) => {
+  const cmyk = [input.cmykC, input.cmykM, input.cmykY, input.cmykK];
+  if (cmyk.some(value => value != null) && cmyk.some(value => value == null))
+    context.addIssue({ code: "custom", message: "Preencha os quatro canais CMYK ou deixe todos vazios." });
+})).max(50);
 
 export const materiasPrimasRouter = router({
   listar: protectedProcedure.query(async () => {
@@ -69,6 +79,12 @@ export const materiasPrimasRouter = router({
             nome: chapa.nome,
             larguraMm: chapa.larguraMm,
             alturaMm: chapa.alturaMm,
+            pantoneCode: chapa.pantoneCode,
+            cmykC: chapa.cmykC == null ? null : Number(chapa.cmykC),
+            cmykM: chapa.cmykM == null ? null : Number(chapa.cmykM),
+            cmykY: chapa.cmykY == null ? null : Number(chapa.cmykY),
+            cmykK: chapa.cmykK == null ? null : Number(chapa.cmykK),
+            transmissaoLuzPct: chapa.transmissaoLuzPct == null ? null : Number(chapa.transmissaoLuzPct),
             ativo: chapa.ativo,
             principal: chapa.principal,
           })),
@@ -203,11 +219,17 @@ export const materiasPrimasRouter = router({
           const alturaMm = Math.min(formato.larguraMm, formato.alturaMm);
           const existentePorTamanho = existentes.find(chapa => chapa.larguraMm === larguraMm && chapa.alturaMm === alturaMm);
           const id = existentePorTamanho?.id ?? formato.id;
-          const values = {
+      const values = {
             mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
             nome: formato.nome,
             larguraMm,
             alturaMm,
+            pantoneCode: usaDadosChapa ? formato.pantoneCode?.trim().toUpperCase() || null : null,
+            cmykC: usaDadosChapa && formato.cmykC != null ? String(formato.cmykC) : null,
+            cmykM: usaDadosChapa && formato.cmykM != null ? String(formato.cmykM) : null,
+            cmykY: usaDadosChapa && formato.cmykY != null ? String(formato.cmykY) : null,
+            cmykK: usaDadosChapa && formato.cmykK != null ? String(formato.cmykK) : null,
+            transmissaoLuzPct: usaDadosChapa && formato.transmissaoLuzPct != null ? String(formato.transmissaoLuzPct) : null,
             ativo: usaDadosChapa && formato.ativo,
             principal: usaDadosChapa && formato.ativo && formato === formatoPrincipal,
             updatedAt: now,

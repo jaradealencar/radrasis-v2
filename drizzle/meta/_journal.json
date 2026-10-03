@@ -477,6 +477,13 @@
       "when": 1791057299972,
       "tag": "0067_odd_sumo",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1791058079322,
+      "tag": "0068_estudio_cores",
+      "breakpoints": true
     }
   ]
 }
