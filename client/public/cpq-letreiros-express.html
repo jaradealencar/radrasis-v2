@@ -944,9 +944,13 @@ function inspectPrompt2Svg(svgText){
   if(!root || root.localName.toLowerCase()!=='svg') return {ok:false, fatal:['A raiz do arquivo não é <svg>.'], warnings:[], pathCount:0, openPathCount:0, duplicateCount:0, viewBox:null};
   const fatal=[]; const warnings=[];
   const paths=[...doc.querySelectorAll('path')];
-  const viewBox=(root.getAttribute('viewBox')||'').trim().split(/[\s,]+/).map(Number);
+  const viewBoxText=root.getAttribute('viewBox');
+  const viewBox=(viewBoxText||'').trim().split(/[\s,]+/).map(Number);
   const width=parseFloat(root.getAttribute('width'))||0, height=parseFloat(root.getAttribute('height'))||0;
-  const vw=viewBox.length===4?viewBox[2]:width, vh=viewBox.length===4?viewBox[3]:height;
+  const hasValidViewBox=viewBox.length===4 && viewBox.every(Number.isFinite) && viewBox[2]>0 && viewBox[3]>0;
+  const vw=hasValidViewBox?viewBox[2]:width, vh=hasValidViewBox?viewBox[3]:height;
+  if(!viewBoxText) fatal.push('O SVG precisa ter um viewBox explícito para garantir escala e proporções.');
+  else if(!hasValidViewBox) fatal.push('O viewBox do SVG precisa ter quatro números finitos e largura/altura positivas.');
   if(!Number.isFinite(vw)||!Number.isFinite(vh)||vw<=0||vh<=0) fatal.push('O SVG precisa ter viewBox ou dimensões positivas.');
   if(!paths.length) fatal.push('O SVG não contém caminhos <path>.');
   const rasterCount=doc.querySelectorAll('image,foreignObject').length;
