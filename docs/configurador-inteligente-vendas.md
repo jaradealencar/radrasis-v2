@@ -47,6 +47,72 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
   não impedem a emissão (`client/public/cpq-letreiros-express.html`,
   `client/src/pages/comercial/Propostas.tsx`).
 
+## Visão futura: proposta a partir de imagem e voz
+
+O fluxo desejado começa com uma imagem de referência e uma descrição falada do
+letreiro. O CPQ converte a fala em um briefing editável, encontra opções no
+catálogo real do MubiSys, prepara uma proposta visual, valida as medidas de
+produção e calcula materiais e preço. A automação deve reduzir a montagem a
+minutos e deixar claro o que foi reconhecido, o que foi estimado e o que ainda
+precisa de confirmação.
+
+### Jornada pretendida
+
+1. **Receber referência e briefing:** enviar uma foto ou arte e gravar a
+   instrução por áudio. Transcrever a fala para campos editáveis — por exemplo,
+   dimensões, local de instalação, iluminação, acabamento e quantidade — e
+   perguntar pelo que estiver ausente ou ambíguo.
+2. **Entender e configurar:** detectar elementos visuais e quantidade de cores
+   visíveis, procurar produtos, modelos, variações, materiais e kits disponíveis
+   no MubiSys e mostrar as opções mais próximas com os motivos da recomendação.
+   Cor visível na imagem não determina sozinha o material ou acabamento de
+   fabricação; cada camada precisa ser associada a uma opção real e confirmada.
+3. **Preparar o desenho:** gerar uma prévia redesenhada a partir da referência
+   e do briefing aprovado. Manter o desenho de apresentação separado da
+   geometria de produção: antes de calcular consumo ou nesting, a forma vetorial,
+   escala, dimensões e detalhes relevantes precisam de validação.
+4. **Validar produção e nesting:** calcular área líquida, área total, perímetro,
+   chapas, perdas e compatibilidade usando a geometria aprovada e as dimensões
+   reais do material. Mostrar limitações, aproximações e peças que não caibam;
+   solicitar revisão de engenharia quando a geometria ou o encaixe forem
+   incertos.
+5. **Calcular e revisar:** combinar a composição importada com modelos,
+   variações, cores e ajustes do vendedor; obter custos atuais do MubiSys e
+   calcular consumo, custo, preço e margem pelo motor do servidor. O vendedor
+   pode revisar a composição e remover ou acrescentar materiais. Toda sugestão
+   ou preço automático exige aprovação humana antes de entrar na proposta.
+6. **Emitir a proposta:** apresentar pendências e aprovações em uma lista única.
+   Quando tudo estiver confirmado, gerar a proposta com snapshot rastreável da
+   imagem, briefing/transcrição, opções selecionadas, desenho, medidas,
+   composição, custos, regra de preço e aprovação.
+
+### Etapas de construção
+
+- **Entrada multimodal:** captura de imagem e áudio, transcrição e editor de
+  briefing estruturado com perguntas para lacunas importantes.
+- **Busca e recomendação de catálogo:** pesquisa de produtos, modelos,
+  variações, materiais e kits reais; resultados classificados com evidências,
+  custos disponíveis e indicação de dados ausentes. Não criar materiais ou
+  custos que não existam na fonte.
+- **Desenho e geometria:** geração de prévias e conversão para geometria de
+  produção editável, com dimensões e cores/layers revisáveis. Separar claramente
+  estimativas visuais de medidas calculadas em geometria validada.
+- **Engenharia e nesting:** validar limites de chapa, aproveitamento, perdas,
+  fórmulas de consumo e compatibilidade; substituir as aproximações atuais por
+  resultados que possam ser explicados e conferidos.
+- **Preço e proposta:** integrar o fluxo ao motor comum do servidor, validar
+  custos e margens, exigir aprovação humana para todo preço automático e salvar
+  o snapshot da decisão junto à proposta.
+- **Piloto assistido:** comparar recomendações com pedidos reais, registrar
+  correções feitas por vendas e engenharia e só ampliar a automação quando a
+  qualidade de modelo, cores, geometria, consumo e preço for demonstrada.
+
+**Critérios para avançar:** cada recomendação deve indicar sua fonte e grau de
+confiança; informação desconhecida fica como pendência, nunca como zero ou
+palpite silencioso; cores e materiais estimados precisam de confirmação; só
+geometria validada pode determinar quantitativos; e nenhum preço automático é
+finalizado sem aprovação humana identificável.
+
 ## Assistente de preço e aprovação humana
 
 Em 03/10/2026 foi iniciado o uso de IA nos dois fluxos comerciais:

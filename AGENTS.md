@@ -62,6 +62,13 @@ esses controles já estejam implementados.
   entre peças, materiais, modelos e variações antes de liberar a proposta.
   Priorizar padrões úteis, importação de dados e um resumo claro do que falta
   para cotar, de modo que a rapidez não dependa de digitação repetida.
+- Visão futura: o vendedor envia uma imagem e descreve por áudio o letreiro;
+  o CPQ transforma isso num briefing editável, busca modelos e materiais reais
+  do MubiSys, estima cores, propõe um redesenho, valida a geometria, faz o
+  nesting e prepara a proposta. IA deve mostrar evidências e incertezas, sem
+  inventar itens, custos ou medidas. Materiais, cores e desenho precisam ser
+  confirmados; quantidades vêm de geometria validada; todo preço automático
+  continua exigindo aprovação humana.
 
 Plano de melhorias e riscos atuais: `docs/configurador-inteligente-vendas.md`.
 
