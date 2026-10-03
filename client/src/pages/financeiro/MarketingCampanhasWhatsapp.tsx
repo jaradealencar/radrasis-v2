@@ -158,11 +158,7 @@ export default function MarketingCampanhasWhatsapp() {
                       </TableCell>
                       <TableCell className="align-top">
                         <span className="whitespace-nowrap">{c.frequenciaDias} dias</span>
-                        {c.tipo === "gatilho_venda" && (
-                          <div className="mt-0.5 max-w-[9.5rem] text-[11px] leading-tight text-muted-foreground">
-                            após a venda, e só depois de 16 dias úteis da aprovação
-                          </div>
-                        )}
+                        {c.tipo === "gatilho_venda" && <div className="text-[11px] text-muted-foreground">após a venda</div>}
                       </TableCell>
                       <TableCell className="whitespace-nowrap align-top text-sm">
                         <div><span className="text-[11px] text-muted-foreground">Último: </span>{c.ultimoEnvio ? formatarDataBr(c.ultimoEnvio) : "—"}</div>

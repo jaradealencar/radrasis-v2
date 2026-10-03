@@ -106,6 +106,11 @@ export default function VendasPosVendaDialog({ campanha, onClose }: Props) {
           </DialogDescription>
         </DialogHeader>
 
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 space-y-1">
+          <p><strong>Regra dos 16 dias úteis:</strong> a mensagem nunca sai antes de 16 dias úteis (segunda a sexta, sem feriados nacionais) depois da <strong>aprovação</strong> da venda.</p>
+          <p>Quem comprou há menos tempo fica em <strong>Aguardando prazo</strong> e passa sozinho para <strong>Para contatar</strong> quando o prazo chega. Cada cliente recebe uma mensagem só, mesmo com várias compras no período.</p>
+        </div>
+
         {isLoading ? (
           <div className="flex justify-center py-10"><Spinner className="size-6" /></div>
         ) : isError ? (
