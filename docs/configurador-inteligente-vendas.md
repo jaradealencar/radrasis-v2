@@ -47,24 +47,48 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
   não impedem a emissão (`client/public/cpq-letreiros-express.html`,
   `client/src/pages/comercial/Propostas.tsx`).
 
-## Visão futura: proposta a partir de imagem e voz
+## Visão futura: projeto conversacional com imagem e voz
 
-O fluxo desejado começa com uma imagem de referência e uma descrição falada do
-letreiro. O CPQ converte a fala em um briefing editável, encontra opções no
-catálogo real do MubiSys, prepara uma proposta visual, valida as medidas de
-produção e calcula materiais e preço. A automação deve reduzir a montagem a
-minutos e deixar claro o que foi reconhecido, o que foi estimado e o que ainda
-precisa de confirmação.
+Cada orçamento começa como um projeto numa interface com cara de chat. O
+vendedor adiciona imagens e explica por texto ou áudio o que quer produzir. O
+CPQ mantém a conversa, os arquivos e as escolhas num briefing editável, busca
+opções no catálogo real do MubiSys, prepara uma proposta visual, valida as
+medidas de produção e calcula materiais e preço. A automação deve reduzir a
+montagem a minutos e deixar claro o que foi reconhecido, o que foi estimado e
+o que ainda precisa de confirmação. A conversa conduz o trabalho; decisões,
+medidas, composição, preço e aprovações também ficam registrados em campos
+estruturados para serem conferidos e usados no cálculo.
+
+### Tags de contexto no cadastro de produtos
+
+Cada produto poderá receber tags que descrevem onde e para que tipo de projeto
+ele costuma servir — por exemplo, fachada, ambiente interno, vitrine, recepção,
+retroiluminado ou sinalização externa. As tags ajudam o agente a relacionar o
+briefing do cliente ao catálogo e a explicar por que encontrou um produto.
+
+- Preferir uma taxonomia gerenciada, com sinônimos de busca, para termos iguais
+  não virarem tags incompatíveis por diferenças de escrita. Permitir várias
+  tags por produto e revisar/remover tags no cadastro.
+- Usar tags como contexto de descoberta e ranqueamento. Confirmar as
+  características técnicas, modelos, variações, composição e custos nos dados
+  reais do catálogo; uma tag não prova compatibilidade física ou elétrica.
+- Se modelos ou variações do mesmo produto servirem a contextos diferentes,
+  permitir especializar tags nesse nível ou indicar claramente que as tags do
+  produto são herdadas.
+- Mostrar na recomendação quais tags e requisitos do briefing combinaram e
+  quais critérios técnicos ainda precisam ser confirmados.
 
 ### Jornada pretendida
 
-1. **Receber referência e briefing:** enviar uma foto ou arte e gravar a
-   instrução por áudio. Transcrever a fala para campos editáveis — por exemplo,
-   dimensões, local de instalação, iluminação, acabamento e quantidade — e
-   perguntar pelo que estiver ausente ou ambíguo.
+1. **Abrir projeto e conversar:** iniciar um projeto de orçamento numa tela de
+   chat, anexar uma ou mais imagens e descrever por texto ou áudio o letreiro.
+   Transcrever a fala e organizar a conversa em campos editáveis — por exemplo,
+   dimensões, local de instalação, iluminação, acabamento e quantidade —,
+   perguntando pelo que estiver ausente ou ambíguo.
 2. **Entender e configurar:** detectar elementos visuais e quantidade de cores
    visíveis, procurar produtos, modelos, variações, materiais e kits disponíveis
-   no MubiSys e mostrar as opções mais próximas com os motivos da recomendação.
+   no MubiSys e cruzar os resultados com as tags de contexto dos produtos.
+   Mostrar as opções mais próximas com os motivos da recomendação.
    Cor visível na imagem não determina sozinha o material ou acabamento de
    fabricação; cada camada precisa ser associada a uma opção real e confirmada.
 3. **Preparar o desenho:** gerar uma prévia redesenhada a partir da referência
@@ -88,12 +112,15 @@ precisa de confirmação.
 
 ### Etapas de construção
 
-- **Entrada multimodal:** captura de imagem e áudio, transcrição e editor de
-  briefing estruturado com perguntas para lacunas importantes.
+- **Projeto conversacional:** criar uma conversa por projeto, com anexos de
+  imagem, entrada por texto ou áudio, transcrição e briefing estruturado; o
+  vendedor pode corrigir o entendimento sem perder o contexto do projeto.
 - **Busca e recomendação de catálogo:** pesquisa de produtos, modelos,
-  variações, materiais e kits reais; resultados classificados com evidências,
-  custos disponíveis e indicação de dados ausentes. Não criar materiais ou
-  custos que não existam na fonte.
+  variações, materiais e kits reais, ranqueados pelas tags de contexto e pelos
+  requisitos do briefing. Manter tags e sinônimos gerenciados no cadastro de
+  produtos, com opção de especialização por modelo. Mostrar evidências, custos
+  disponíveis e dados ausentes. Não criar materiais ou custos que não existam
+  na fonte.
 - **Desenho e geometria:** geração de prévias e conversão para geometria de
   produção editável, com dimensões e cores/layers revisáveis. Separar claramente
   estimativas visuais de medidas calculadas em geometria validada.
