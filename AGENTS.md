@@ -490,12 +490,17 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   pode ser localizado pelo CPF/CNPJ no próximo cadastro e é listado na aba
   Clientes da Administração. Cotações antigas alimentam essa base na migration
   de criação da tabela.
-  Na etapa raster → SVG do CPQ, a arte aprovada é enviada do servidor ao
-  Vectorizer.AI pela rota autenticada `/api/letra-caixa/vetorizacao`; configure
-  `VECTORIZER_API_ID` e `VECTORIZER_API_SECRET` no ambiente. A produção cobra
-  1 crédito por chamada, inclusive nova tentativa e edição aplicada. Arquivo
-  SVG já vetorizado passa direto sem consumir crédito; a saída rasterizada do
-  serviço ainda precisa de revisão visual e confirmação de escala física.
+  Na etapa raster → SVG do CPQ, a foto passa obrigatoriamente pela reconstrução
+  com GPT Image no servidor antes do Vectorizer.AI. Para “somente logo”, a
+  chamada inclui `docs/prompts/prompt-1b-extracao-logo-vetorizacao.md`; o usuário
+  revisa e aprova a imagem antes da vetorização. Um ticket HMAC com `JWT_SECRET`
+  vincula o usuário e o hash SHA-256 do PNG à rota `/api/letra-caixa/vetorizacao`
+  e expira em 30 minutos. Após uma vetorização bem-sucedida, outro ticket permite
+  rasterizar edições do SVG no editor e vetorizar novamente. Configure `VECTORIZER_API_ID` e
+  `VECTORIZER_API_SECRET`; a produção cobra 1 crédito por
+  chamada. SVG já vetorizado passa direto. Após receber o SVG, o CPQ calcula
+  caminhos e nesting localmente (não há API externa de nesting configurada), e
+  exige revisão visual e confirmação de escala física.
   Cada cotação mantém seu snapshot em `propostas.observacoes` com o prefixo
   `[ESTUDIO_COTACAO_V1]`; esses snapshots são excluídos da lista do módulo
   comercial Propostas.
@@ -532,10 +537,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   10/min em sign-in e sign-up). Para reativar em produção seria preciso um
   store distribuído (Redis) ou regra de firewall na Vercel — nenhum dos dois
   está implementado.
-- **Redesenho de letra caixa via GPT Image ainda sem validação real.**
+- **Pré-processamento e redesenho de letra caixa via GPT Image ainda sem validação real.**
   `client/public/cpq-letreiros-express.html` chama a rota autenticada
-  `POST /api/letra-caixa/redesenho`; a chave OpenAI fica no servidor. O fluxo
-  usa `server/services/letraCaixaRedesign.ts` e `generateImageEdit`
+  `POST /api/letra-caixa/redesenho`; a chave OpenAI fica no servidor. A
+  reconstrução é obrigatória para raster antes da rota do Vectorizer; no escopo
+  “somente logo”, o serviço concatena Prompt 1B. O fluxo usa
+  `server/services/letraCaixaRedesign.ts` e `generateImageEdit`
   (`server/_core/llm.ts`), modelo `gpt-image-2.5-sunburst`, qualidade `xhigh`,
   fidelidade alta à imagem de entrada e tamanho automático para preservar a
   proporção da foto. A última chamada real conhecida devolveu 429

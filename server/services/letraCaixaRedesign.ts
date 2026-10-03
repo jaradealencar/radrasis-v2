@@ -4,10 +4,15 @@ import { generateImageEdit } from "../_core/llm";
 import { storagePut } from "../db/storage";
 
 const PROMPT_1_PATH = join(process.cwd(), "docs/prompts/prompt-1-reconstrucao-visual.md");
+const PROMPT_1B_PATH = join(process.cwd(), "docs/prompts/prompt-1b-extracao-logo-vetorizacao.md");
 
 /** Lido a cada chamada (não em import) para permitir editar o .md sem rebuild. */
 function carregarPrompt1(): string {
   return readFileSync(PROMPT_1_PATH, "utf-8");
+}
+
+function carregarPrompt1B(): string {
+  return readFileSync(PROMPT_1B_PATH, "utf-8");
 }
 
 export type EscopoRedesenho = "somente_logo" | "letreiro_completo" | "elementos_selecionados";
@@ -60,6 +65,7 @@ export async function redesenharLetreiro(
 ): Promise<RedesenharLetreiroResult> {
   const prompt = [
     carregarPrompt1(),
+    ...(params.escopo === "somente_logo" ? ["", "---", "", carregarPrompt1B()] : []),
     "",
     "---",
     "",

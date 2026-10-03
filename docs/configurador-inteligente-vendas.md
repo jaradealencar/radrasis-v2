@@ -27,11 +27,20 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
 - Produtos, CPQ Letreiros Express e Propostas já têm importação de composição MubiSys,
   escolha de variações e medidas de nesting. A mudança recente está commitada,
   mas sua migration ainda precisa ser aplicada e o site publicado.
-- A etapa raster → SVG do CPQ chama o Vectorizer.AI no servidor após a aprovação
-  da arte. Configure `VECTORIZER_API_ID` e `VECTORIZER_API_SECRET` nos ambientes;
-  cada chamada de produção consome 1 crédito, inclusive uma nova tentativa ou
-  uma edição aplicada. A integração precisa de uma chamada real com credenciais
-  ativas para validar a saída do SVG e a geometria calculada.
+- A etapa raster → SVG do CPQ exige primeiro o pré-processamento da imagem pelo
+  GPT Image no servidor. No escopo “somente logo”, usa também o Prompt 1B em
+  `docs/prompts/prompt-1b-extracao-logo-vetorizacao.md` para isolar e retificar
+  a marca; o botão de avançar só libera após essa geração e aprovação humana.
+  Um ticket HMAC de 30 minutos, assinado com `JWT_SECRET`, vincula o usuário ao
+  hash SHA-256 do PNG gerado e impede enviar outra imagem à rota do Vectorizer.
+  Após uma vetorização bem-sucedida, outro ticket permite rasterizar uma edição
+  do SVG e chamar o Vectorizer novamente. Depois da aprovação, o servidor envia
+  o PNG ao Vectorizer.AI; configure `VECTORIZER_API_ID` e
+  `VECTORIZER_API_SECRET` nos ambientes. Cada tentativa de vetorização em
+  produção consome 1 crédito. O SVG volta ao navegador, onde o CPQ extrai os
+  caminhos e calcula o nesting localmente; não existe hoje uma API externa de
+  nesting configurada. Ainda é necessária uma chamada real com créditos para
+  validar a fidelidade visual, o SVG e a geometria.
 - `Comercial > Propostas` ainda preenche o preço unitário inicial com
   `custoComFixo`, sem aplicar uma margem. O item só pode ser salvo depois da
   aprovação humana do preço. O servidor confere a aritmética da configuração

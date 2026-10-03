@@ -6,7 +6,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 300,
-      "includeFiles": "docs/prompts/prompt-1-reconstrucao-visual.md"
+      "includeFiles": "docs/prompts/**/*.md"
     }
   },
   "rewrites": [

@@ -373,7 +373,7 @@ export async function generateImageEdit(params: ImageEditParams): Promise<ImageE
     method: "POST",
     headers: { authorization: `Bearer ${ENV.openaiApiKey}` },
     body: form,
-    signal: AbortSignal.timeout(55_000),
+    signal: AbortSignal.timeout(120_000),
   });
 
   if (!response.ok) {

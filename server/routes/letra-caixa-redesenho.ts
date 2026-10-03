@@ -3,12 +3,22 @@ import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import { auth } from "../_core/auth";
 import { redesenharLetreiro, type EscopoRedesenho } from "../services/letraCaixaRedesign";
+import {
+  emitirTicketEdicaoVetor,
+  emitirTicketRedesenho,
+  validarTicketRedesenho,
+} from "../services/redesenhoTicket";
 import { vectorizeImage, VectorizerAiError } from "../services/vectorizerAi";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_PREPROCESSED_IMAGE_BYTES = 12 * 1024 * 1024;
 const imageBodyParser = express.raw({
   type: ["image/jpeg", "image/png"],
   limit: MAX_IMAGE_BYTES,
+});
+const preprocessedImageBodyParser = express.raw({
+  type: ["image/jpeg", "image/png"],
+  limit: MAX_PREPROCESSED_IMAGE_BYTES,
 });
 
 const inputSchema = z.object({
@@ -36,13 +46,13 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
   });
 
   app.post("/api/letra-caixa/vetorizacao", (req, res) => {
-    imageBodyParser(req, res, (parseError) => {
+    preprocessedImageBodyParser(req, res, (parseError) => {
       if (parseError) {
         const status = (parseError as { status?: number }).status ?? 400;
         res.status(status).json({
           error:
             status === 413
-              ? "A imagem ficou grande demais. Envie um arquivo menor que 4 MB."
+              ? "A imagem preparada ficou grande demais. Envie um arquivo menor que 12 MB."
               : "Não consegui ler a imagem. Envie JPG ou PNG.",
         });
         return;
@@ -72,7 +82,6 @@ async function executarVetorizacao(req: Request, res: Response): Promise<void> {
     res.status(401).json({ error: "Entre no sistema para vetorizar a arte." });
     return;
   }
-
   const mimeType = req.get("content-type")?.split(";")[0].toLowerCase();
   if (mimeType !== "image/jpeg" && mimeType !== "image/png") {
     res.status(415).json({ error: "Envie uma imagem JPG ou PNG para vetorizar." });
@@ -80,6 +89,11 @@ async function executarVetorizacao(req: Request, res: Response): Promise<void> {
   }
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
     res.status(400).json({ error: "A imagem enviada está vazia." });
+    return;
+  }
+  const ticketKind = validarTicketRedesenho(req.get("x-redesenho-token"), session.user.id, req.body);
+  if (!ticketKind) {
+    res.status(409).json({ error: "Use o PNG exato retornado pela reconstrução por IA nesta sessão para vetorizar." });
     return;
   }
 
@@ -94,6 +108,7 @@ async function executarVetorizacao(req: Request, res: Response): Promise<void> {
       .set({
         "Content-Type": "image/svg+xml; charset=utf-8",
         "Cache-Control": "no-store",
+        "X-Redesenho-Token": emitirTicketEdicaoVetor(session.user.id),
         ...(resultado.creditsCharged ? { "X-Vectorizer-Credits-Charged": resultado.creditsCharged } : {}),
       })
       .send(resultado.svgBuffer);
@@ -185,6 +200,7 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
       .set({
         "Content-Type": resultado.mimeType,
         "Cache-Control": "no-store",
+        "X-Redesenho-Token": emitirTicketRedesenho(session.user.id, resultado.imageBuffer),
         "X-Redesenho-Storage-Url": resultado.url,
       })
       .send(resultado.imageBuffer);

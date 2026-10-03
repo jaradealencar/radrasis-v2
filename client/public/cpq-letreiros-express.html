@@ -771,7 +771,7 @@ function novaProposta(){
     variacaoModeloIds:[], variacaoModeloNomes:[], descricaoProduto:'',
     sourceKind:null, // 'raster' | 'vetor' — define qual caminho de processamento
     uploadError:null, uploadWarning:null, gerandoRedesenho:false,
-    imgOriginal:null, imgReconstructed:null, imgPreview:null,
+    imgOriginal:null, imgReconstructed:null, imgPreview:null, redesenhoToken:null,
     ajuste:{ brilho:100, contraste:100, cinza:false },
     overlayOpacity:50,
     tracedSvg:null, fgD:'', tracedW:0, tracedH:0, traceError:null,
@@ -946,6 +946,7 @@ const UNSUPPORTED_EXT = ['.pdf','.ai','.eps','.cdr'];
  *  clientes/gráficas parceiras). */
 async function handleUploadedFile(file){
   invalidarRastreamento();
+  REAL.redesenhoToken=null;
   REAL.uploadError=null; REAL.uploadWarning=null;
   const name = (file.name||'').toLowerCase();
   const isSvg = name.endsWith('.svg') || file.type==='image/svg+xml';
@@ -1008,8 +1009,8 @@ async function handleUploadedFile(file){
 }
 
 async function retrace(){
-  const rasterSource=REAL.imgReconstructed||REAL.imgOriginal;
-  if(!rasterSource) return;
+  const rasterSource=REAL.imgReconstructed;
+  if(!rasterSource || !REAL.redesenhoToken) return;
   const requestId=++traceRequestId;
   REAL.traceQuality=null;
   REAL.traceError=null;
@@ -1022,14 +1023,17 @@ async function retrace(){
     const imagem=await fetch(rasterSource).then(response=>response.blob());
     if(requestId!==traceRequestId) return;
     if(!['image/png','image/jpeg'].includes(imagem.type)) throw new Error('Envie uma imagem PNG ou JPG para vetorizar.');
-    if(imagem.size>4*1024*1024) throw new Error('A imagem excede 4 MB. Reduza o arquivo e envie novamente.');
+    if(imagem.size>12*1024*1024) throw new Error('A imagem preparada excede 12 MB. Gere novamente uma versao menor.');
     const response=await fetch('/api/letra-caixa/vetorizacao',{
-      method:'POST',credentials:'same-origin',headers:{'Content-Type':imagem.type},body:imagem,
+      method:'POST',credentials:'same-origin',headers:{'Content-Type':imagem.type,'X-Redesenho-Token':REAL.redesenhoToken},body:imagem,
     });
     if(!response.ok){
       const body=await response.json().catch(()=>({}));
       throw new Error(body.error||'O Vectorizer.AI não conseguiu vetorizar a imagem.');
     }
+    if(requestId!==traceRequestId) return;
+    const ticketEdicao=response.headers.get('X-Redesenho-Token');
+    if(ticketEdicao) REAL.redesenhoToken=ticketEdicao;
     const svgStr=await response.text();
     if(requestId!==traceRequestId) return;
     const parsed=extractPathsFromRawSVG(svgStr);
@@ -2186,6 +2190,7 @@ function uploadMessages(){
 async function handleReferenceUpload(file, target){
   redrawRequestId++;
   REAL.gerandoRedesenho=false;
+  REAL.redesenhoToken=null;
   REAL.uploadError=null; REAL.uploadWarning=null;
   if(!file || !/^image\/(png|jpeg)$/.test(file.type)){
     REAL.uploadError='Envie uma fotografia ou print em PNG/JPG.';
@@ -2255,6 +2260,7 @@ async function gerarRedesenhoComGPT(){
 
   const requestId=++redrawRequestId;
   invalidarRastreamento();
+  REAL.redesenhoToken=null;
   REAL.gerandoRedesenho=true;
   REAL.uploadError=null;
   render();
@@ -2272,9 +2278,12 @@ async function gerarRedesenhoComGPT(){
       const body=await response.json().catch(()=>({}));
       throw new Error(body.error||'O GPT nao conseguiu gerar a reconstrução.');
     }
+    const redesenhoToken=response.headers.get('X-Redesenho-Token');
+    if(!redesenhoToken) throw new Error('O servidor não confirmou o pré-processamento por IA. Gere a reconstrução novamente.');
     const resultado=await response.blob();
     if(requestId!==redrawRequestId) return;
     REAL.imgReconstructed=await blobParaDataUrl(resultado);
+    REAL.redesenhoToken=redesenhoToken;
     REAL.imgPreview=null;
     REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind='raster';
     REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false;
@@ -2317,7 +2326,7 @@ function realStepFoto(){
 function realStepRedesenho(){
   const hasReference=!!REAL.imgOriginal;
   const hasReconstruction=!!REAL.imgReconstructed;
-  const canApprove=hasReconstruction && (REAL.escopoRedesenho!=='elementos_selecionados'||REAL.elementosSelecionados.trim());
+  const canApprove=hasReconstruction && !!REAL.redesenhoToken && (REAL.escopoRedesenho!=='elementos_selecionados'||REAL.elementosSelecionados.trim());
   return `
   <div class="card">
     <div class="cardhead"><div><h3>3 · Etapa 2 — reconstrução visual fiel (Prompt 1)</h3><p>Corrige perspectiva e remove ambiente/efeitos físicos sem modernizar, inventar conteúdo ou trocar a tipografia. O resultado precisa continuar parecendo a mesma identidade.</p></div></div>
@@ -2326,7 +2335,6 @@ function realStepRedesenho(){
         <div><p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Foto original</p><div class="compare"><img src="${REAL.imgOriginal}" alt="Referência original" style="display:block;width:100%;height:auto;"></div></div>
         <div><p style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:6px;">Redesenho aprovado</p><div class="compare">${hasReconstruction?`<img src="${REAL.imgReconstructed}" alt="Reconstrução enviada" style="display:block;width:100%;height:auto;">`:`<div class="empty-hint">Envie a imagem redesenhada para comparar e seguir para a vetorização.</div>`}</div></div>
       </div>
-      ${hasReconstruction?uploadBox('Trocar a imagem reconstruída','Envie a versão final aprovada em PNG/JPG','real-redraw-upload','image/png,image/jpeg,.jpg,.jpeg,.png'):uploadBox('Enviar imagem reconstruída','PNG/JPG frontal, limpa e fiel à referência','real-redraw-upload','image/png,image/jpeg,.jpg,.jpeg,.png')}
       <div style="display:flex;align-items:center;gap:10px;margin:14px 0 4px;flex-wrap:wrap;">
         <button class="btn btn-primary" data-act="real-redraw-generate" ${REAL.gerandoRedesenho?'disabled':''}>${REAL.gerandoRedesenho?'GPT redesenhando...':hasReconstruction?'Gerar nova vers\u00e3o com GPT':'Gerar reconstru\u00e7\u00e3o com GPT'}</button>
         ${REAL.gerandoRedesenho?'<span class="role-note">O GPT est\u00e1 reconstruindo a imagem. Isso pode levar alguns instantes...</span>':'<span class="role-note">Voc\u00ea poder\u00e1 comparar a sa\u00edda com a foto e aprovar antes de vetorizar.</span>'}
@@ -2410,7 +2418,7 @@ function realStepVetorizacao(){
     ${uploadMessages()}
     <div class="footer-nav">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed?'disabled':''}>${state.tracing?'Vetorizando com Vectorizer.AI…':hasTrace?'Vetorizar novamente · 1 crédito':'Vetorizar com Vectorizer.AI · 1 crédito'}</button>
+        <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed||!REAL.redesenhoToken?'disabled':''}>${state.tracing?'Vetorizando com Vectorizer.AI…':hasTrace?'Vetorizar novamente · 1 crédito':'Vetorizar com Vectorizer.AI · 1 crédito'}</button>
         <span class="role-note">Confira o resultado e confirme a escala física antes do nesting.</span>
       </div>
       <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${hasTrace?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
@@ -4812,7 +4820,7 @@ function bindRealEvents(){
   if(escopoEl) escopoEl.addEventListener('change', e=>{
     redrawRequestId++; REAL.gerandoRedesenho=false;
     invalidarRastreamento();
-    REAL.escopoRedesenho=e.target.value; REAL.approvals.foto=false; REAL.approvals.redesenho=false;
+    REAL.escopoRedesenho=e.target.value; REAL.redesenhoToken=null; REAL.approvals.foto=false; REAL.approvals.redesenho=false;
     REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
     render();
@@ -4821,7 +4829,7 @@ function bindRealEvents(){
   if(escopoItemsEl) escopoItemsEl.addEventListener('input', e=>{
     redrawRequestId++; REAL.gerandoRedesenho=false;
     invalidarRastreamento();
-    REAL.elementosSelecionados=e.target.value; REAL.approvals.foto=false; REAL.approvals.redesenho=false;
+    REAL.elementosSelecionados=e.target.value; REAL.redesenhoToken=null; REAL.approvals.foto=false; REAL.approvals.redesenho=false;
     REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null; REAL.sourceKind=null;
     REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
     renderPreservingFocus();
@@ -4833,7 +4841,7 @@ function bindRealEvents(){
     redrawRequestId++; REAL.gerandoRedesenho=false;
     invalidarRastreamento();
     REAL.sourceKind=null; REAL.uploadError=null; REAL.uploadWarning=null;
-    REAL.imgOriginal=null; REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
+    REAL.imgOriginal=null; REAL.imgReconstructed=null; REAL.imgPreview=null; REAL.redesenhoToken=null; REAL.tracedSvg=null; REAL.fgD=''; REAL.geomRaw=null; REAL.traceQuality=null;
     REAL.approvals.foto=false; REAL.approvals.redesenho=false; REAL.approvals.vetorizacao=false; REAL.approvals.escala=false;
     REAL.step=2;
     render();
