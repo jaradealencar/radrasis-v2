@@ -1,6 +1,6 @@
 import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { estudioChapas } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
@@ -18,6 +18,7 @@ const chapaInput = z
     nome: z.string().trim().min(1).max(256),
     larguraMm: z.number().int().min(10).max(50_000),
     alturaMm: z.number().int().min(10).max(50_000),
+    principal: z.boolean().optional().default(false),
   })
   .strict();
 
@@ -164,22 +165,29 @@ async function salvarChapa(
   const db = await getDb();
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
   try {
-    if (id == null) {
-      const [record] = await db
-        .insert(estudioChapas)
-        .values(values)
-        .returning();
-      res.status(201).json({ chapa: record });
-    } else {
-      const [record] = await db
-        .update(estudioChapas)
-        .set(values)
-        .where(eq(estudioChapas.id, id))
-        .returning();
-      if (!record)
-        return void erro(res, 404, "Formato de chapa não encontrado.");
-      res.json({ chapa: record });
-    }
+    const record = await db.transaction(async tx => {
+      const existentes = await tx
+        .select({ id: estudioChapas.id, principal: estudioChapas.principal })
+        .from(estudioChapas)
+        .where(eq(estudioChapas.mubisysMateriaPrimaId, data.mubisysMateriaPrimaId));
+      const outroPrincipal = existentes.some(row => row.principal && row.id !== id);
+      const principal = data.principal || !outroPrincipal;
+      if (principal) {
+        await tx.update(estudioChapas).set({ principal: false })
+          .where(eq(estudioChapas.mubisysMateriaPrimaId, data.mubisysMateriaPrimaId));
+      }
+      const chapaValues = { ...values, principal };
+      if (id == null) {
+        const [inserted] = await tx.insert(estudioChapas).values(chapaValues).returning();
+        return inserted;
+      }
+      const [updated] = await tx.update(estudioChapas).set(chapaValues)
+        .where(eq(estudioChapas.id, id)).returning();
+      return updated;
+    });
+    if (!record) return void erro(res, 404, "Formato de chapa não encontrado.");
+    if (id == null) res.status(201).json({ chapa: record });
+    else res.json({ chapa: record });
   } catch (error) {
     if ((error as { code?: string })?.code === "23505") {
       erro(res, 409, "Já existe esse tamanho de chapa para a matéria-prima.");
@@ -207,11 +215,23 @@ async function desativarChapa(req: Request, res: Response): Promise<void> {
     return void erro(res, 400, "O ID do formato de chapa é inválido.");
   const db = await getDb();
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
-  const [record] = await db
-    .update(estudioChapas)
-    .set({ ativo: false, updatedAt: new Date() })
-    .where(eq(estudioChapas.id, id))
-    .returning({ id: estudioChapas.id });
+  const record = await db.transaction(async tx => {
+    const [chapa] = await tx.select().from(estudioChapas).where(eq(estudioChapas.id, id));
+    if (!chapa) return null;
+    await tx.update(estudioChapas)
+      .set({ ativo: false, principal: false, updatedAt: new Date() })
+      .where(eq(estudioChapas.id, id));
+    if (chapa.principal) {
+      const [substituta] = await tx.select({ id: estudioChapas.id }).from(estudioChapas)
+        .where(and(eq(estudioChapas.mubisysMateriaPrimaId, chapa.mubisysMateriaPrimaId), eq(estudioChapas.ativo, true)))
+        .orderBy(asc(estudioChapas.larguraMm), asc(estudioChapas.alturaMm))
+        .limit(1);
+      if (substituta) await tx.update(estudioChapas)
+        .set({ principal: true, updatedAt: new Date() })
+        .where(eq(estudioChapas.id, substituta.id));
+    }
+    return { id: chapa.id };
+  });
   if (!record) return void erro(res, 404, "Formato de chapa não encontrado.");
   res.json({ success: true, id });
 }

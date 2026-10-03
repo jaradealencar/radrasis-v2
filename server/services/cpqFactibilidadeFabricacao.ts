@@ -1,0 +1,1208 @@
+import { createRequire } from "node:module";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
+const require = createRequire(import.meta.url);
+const polygonClipping = require("polygon-clipping") as typeof import("polygon-clipping");
+type SVGCommand =
+  | { type: 2; x: number; y: number }
+  | { type: 16; x: number; y: number }
+  | { type: 32; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
+  | { type: 1 };
+type SVGPath = {
+  commands: SVGCommand[];
+  toAbs(): SVGPath;
+  normalizeHVZ(normalizeZ?: boolean): SVGPath;
+  normalizeST(): SVGPath;
+  qtToC(): SVGPath;
+  aToC(): SVGPath;
+};
+const SVGPathData = require("svg-pathdata").SVGPathData as {
+  new (data: string): SVGPath;
+  MOVE_TO: 2;
+  LINE_TO: 16;
+  CURVE_TO: 32;
+  CLOSE_PATH: 1;
+};
+
+const MARGEM_CORTE_MM = 20;
+const ESCALA_MINIMA_AUTOMATICA = 1 / 1.03;
+const AREA_MINIMA_FRAGMENTO_MM2 = 0.01;
+const MAX_CAMINHOS = 500;
+const MAX_PONTOS = 250_000;
+
+export const OPCOES_FACTIBILIDADE = [
+  {
+    acao: "APROVAR_EMENDA_TECNICA",
+    descricao:
+      "Aprovar o corte da peça com a linha de emenda indicada para manter o tamanho original do letreiro.",
+  },
+  {
+    acao: "REDIMENSIONAR_PARA_CABER",
+    descricao:
+      "Redimensionar todo o projeto proporcionalmente para que nenhuma peça precise de emenda.",
+  },
+  {
+    acao: "SOLICITAR_ANALISE_HUMANA",
+    descricao:
+      "Encaminhar o projeto para avaliação do setor de engenharia/vendas.",
+  },
+] as const;
+
+export type CpqFactibilidadeAcao =
+  (typeof OPCOES_FACTIBILIDADE)[number]["acao"];
+
+export type CpqFactibilidadeChapa = {
+  id: number;
+  nome: string;
+  larguraMm: number;
+  alturaMm: number;
+};
+
+export type CpqFactibilidadeMaterial = {
+  id: number;
+  nome: string;
+  chapas: CpqFactibilidadeChapa[];
+};
+
+export type CpqLinhaCorte = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  materiaPrimaId: number;
+  materiaPrima: string;
+  pecaId: string;
+};
+
+export type CpqFragmentoFatiado = {
+  id: string;
+  pecaId: string;
+  larguraMm: number;
+  alturaMm: number;
+};
+
+export type CpqFactibilidadeMaterialResult = {
+  id_materia_prima: number;
+  materia_prima: string;
+  id_maior_chapa: number;
+  nome_maior_chapa: string;
+  largura_chapa_mm: number;
+  altura_chapa_mm: number;
+  svg_para_nesting: string;
+  svg_visualizacao: string;
+  hash_svg_para_nesting: string;
+  fragmentos: CpqFragmentoFatiado[];
+};
+
+export type CpqFactibilidadeResult = {
+  status_factibilidade: "APTO_NESTING" | "REQUER_APROVACAO_EMENDA";
+  projeto_fatiado: boolean;
+  projeto_redimensionado: boolean;
+  fator_escala_aplicado: number;
+  largura_projeto_mm: number;
+  altura_projeto_mm: number;
+  svg_ajustado: string | null;
+  detalhes_corte: {
+    pecas_afetadas: string[];
+    quantidade_emendas: number;
+    coordenadas_linha_corte: CpqLinhaCorte[];
+  };
+  opcoes_disponiveis: typeof OPCOES_FACTIBILIDADE | [];
+  materiais: CpqFactibilidadeMaterialResult[];
+  avisos: string[];
+};
+
+export class CpqFactibilidadeError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | "invalid_geometry"
+      | "missing_board"
+      | "unsupported_geometry"
+      | "boolean_failure"
+      | "configuration"
+  ) {
+    super(message);
+    this.name = "CpqFactibilidadeError";
+  }
+}
+
+type Pair = [number, number];
+type Ring = Pair[];
+type Polygon = Ring[];
+type MultiPolygon = Polygon[];
+type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
+type ViewBox = { x: number; y: number; width: number; height: number };
+type ParsedPiece = {
+  id: string;
+  geometry: MultiPolygon;
+  bounds: Bounds;
+  pathIndex: number;
+};
+type ParsedSvg = {
+  viewBox: ViewBox;
+  paths: Array<{ id: string; d: string }>;
+  pieces: ParsedPiece[];
+  mmPerUnitX: number;
+  mmPerUnitY: number;
+};
+type OutputFragment = {
+  id: string;
+  pecaId: string;
+  geometry: MultiPolygon;
+  bounds: Bounds;
+};
+
+function attrs(text: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const pattern = /([\w:-]+)\s*=\s*(["'])(.*?)\2/g;
+  for (const match of text.matchAll(pattern)) result[match[1].toLowerCase()] = match[3];
+  return result;
+}
+
+function attrEscape(value: string): string {
+  return value.replace(/[&<>"']/g, character => {
+    const escaped: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&apos;",
+    };
+    return escaped[character];
+  });
+}
+
+function boundsOf(rings: Ring[]): Bounds {
+  const points = rings.flat();
+  if (!points.length)
+    throw new CpqFactibilidadeError(
+      "Um contorno vetorial ficou vazio durante a análise.",
+      "invalid_geometry"
+    );
+  return {
+    minX: points.reduce((minimum, point) => Math.min(minimum, point[0]), Infinity),
+    maxX: points.reduce((maximum, point) => Math.max(maximum, point[0]), -Infinity),
+    minY: points.reduce((minimum, point) => Math.min(minimum, point[1]), Infinity),
+    maxY: points.reduce((maximum, point) => Math.max(maximum, point[1]), -Infinity),
+  };
+}
+
+function signedArea(ring: Ring): number {
+  let twiceArea = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const a = ring[index];
+    const b = ring[(index + 1) % ring.length];
+    twiceArea += a[0] * b[1] - b[0] * a[1];
+  }
+  return twiceArea / 2;
+}
+
+function pointOnSegment(point: Pair, a: Pair, b: Pair): boolean {
+  const cross =
+    (point[1] - a[1]) * (b[0] - a[0]) -
+    (point[0] - a[0]) * (b[1] - a[1]);
+  if (Math.abs(cross) > 1e-7) return false;
+  return (
+    point[0] >= Math.min(a[0], b[0]) - 1e-7 &&
+    point[0] <= Math.max(a[0], b[0]) + 1e-7 &&
+    point[1] >= Math.min(a[1], b[1]) - 1e-7 &&
+    point[1] <= Math.max(a[1], b[1]) + 1e-7
+  );
+}
+
+function pointInRing(point: Pair, ring: Ring): boolean {
+  let inside = false;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+    const a = ring[index];
+    const b = ring[previous];
+    if (pointOnSegment(point, a, b)) return false;
+    const crosses =
+      (a[1] > point[1]) !== (b[1] > point[1]) &&
+      point[0] <
+        ((b[0] - a[0]) * (point[1] - a[1])) / (b[1] - a[1]) + a[0];
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function distanceToLine(point: Pair, start: Pair, end: Pair): number {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-12) return Math.hypot(point[0] - start[0], point[1] - start[1]);
+  return Math.abs(dy * point[0] - dx * point[1] + end[0] * start[1] - end[1] * start[0]) / length;
+}
+
+function splitCubic(
+  p0: Pair,
+  p1: Pair,
+  p2: Pair,
+  p3: Pair
+): [Pair[], Pair[]] {
+  const midpoint = (a: Pair, b: Pair): Pair => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const p01 = midpoint(p0, p1);
+  const p12 = midpoint(p1, p2);
+  const p23 = midpoint(p2, p3);
+  const p012 = midpoint(p01, p12);
+  const p123 = midpoint(p12, p23);
+  const p0123 = midpoint(p012, p123);
+  return [
+    [p0, p01, p012, p0123],
+    [p0123, p123, p23, p3],
+  ];
+}
+
+function flattenCubic(
+  p0: Pair,
+  p1: Pair,
+  p2: Pair,
+  p3: Pair,
+  tolerance: number,
+  depth = 0
+): Pair[] {
+  if (
+    depth >= 14 ||
+    Math.max(distanceToLine(p1, p0, p3), distanceToLine(p2, p0, p3)) <= tolerance
+  ) {
+    return [p3];
+  }
+  const [left, right] = splitCubic(p0, p1, p2, p3);
+  return [
+    ...flattenCubic(left[0], left[1], left[2], left[3], tolerance, depth + 1),
+    ...flattenCubic(right[0], right[1], right[2], right[3], tolerance, depth + 1),
+  ];
+}
+
+function commandPoint(x: number, y: number): Pair {
+  return [x, y];
+}
+
+function pathContours(
+  d: string,
+  origin: ViewBox,
+  scaleX: number,
+  scaleY: number,
+  tolerance: number
+): Ring[] {
+  let commands: SVGCommand[];
+  try {
+    commands = new SVGPathData(d)
+      .toAbs()
+      .normalizeHVZ(false)
+      .normalizeST()
+      .qtToC()
+      .aToC().commands;
+  } catch {
+    throw new CpqFactibilidadeError(
+      "Um caminho SVG contém comandos que não puderam ser interpretados.",
+      "invalid_geometry"
+    );
+  }
+
+  const rings: Ring[] = [];
+  let points: Ring | null = null;
+  let current: Pair = [0, 0];
+  let start: Pair = [0, 0];
+  let totalPoints = 0;
+  const convert = (point: Pair): Pair => [
+    (point[0] - origin.x) * scaleX,
+    (point[1] - origin.y) * scaleY,
+  ];
+  const finish = (closed: boolean) => {
+    if (!points) return;
+    if (!closed)
+      throw new CpqFactibilidadeError(
+        "Todos os contornos precisam estar fechados antes do corte CNC.",
+        "invalid_geometry"
+      );
+    const deduped = points.filter(
+      (point, index) =>
+        index === 0 ||
+        Math.hypot(
+          point[0] - points![index - 1][0],
+          point[1] - points![index - 1][1]
+        ) > 1e-8
+    );
+    if (deduped.length > 1 && Math.hypot(deduped[0][0] - deduped.at(-1)![0], deduped[0][1] - deduped.at(-1)![1]) > 1e-8) {
+      deduped.push(deduped[0]);
+    }
+    if (deduped.length >= 4 && Math.abs(signedArea(deduped)) > AREA_MINIMA_FRAGMENTO_MM2) rings.push(deduped);
+    points = null;
+  };
+
+  for (const command of commands) {
+    if (command.type === SVGPathData.MOVE_TO) {
+      finish(false);
+      current = commandPoint(command.x, command.y);
+      start = current;
+      points = [convert(current)];
+      totalPoints += 1;
+      continue;
+    }
+    if (!points)
+      throw new CpqFactibilidadeError(
+        "O caminho SVG precisa iniciar cada contorno com M.",
+        "invalid_geometry"
+      );
+    if (command.type === SVGPathData.LINE_TO) {
+      current = commandPoint(command.x, command.y);
+      points.push(convert(current));
+      totalPoints += 1;
+    } else if (command.type === SVGPathData.CURVE_TO) {
+      const p0 = current;
+      const p1 = commandPoint(command.x1, command.y1);
+      const p2 = commandPoint(command.x2, command.y2);
+      const p3 = commandPoint(command.x, command.y);
+      const flattened = flattenCubic(p0, p1, p2, p3, tolerance / Math.max(scaleX, scaleY));
+      for (const point of flattened) points.push(convert(point));
+      totalPoints += flattened.length;
+      current = p3;
+    } else if (command.type === SVGPathData.CLOSE_PATH) {
+      current = start;
+      const startPhysical = convert(start);
+      if (Math.hypot(points[0][0] - startPhysical[0], points[0][1] - startPhysical[1]) > 1e-8) points.push(startPhysical);
+      finish(true);
+    } else {
+      throw new CpqFactibilidadeError(
+        "O SVG possui um comando de caminho que não foi normalizado.",
+        "unsupported_geometry"
+      );
+    }
+    if (totalPoints > MAX_PONTOS)
+      throw new CpqFactibilidadeError(
+        "O SVG ultrapassou o limite de pontos permitido para fatiamento.",
+        "invalid_geometry"
+      );
+  }
+  finish(false);
+  return rings;
+}
+
+function areaBounds(rings: Ring[]): number {
+  return Math.abs(signedArea(rings[0]));
+}
+
+function parseSvg(
+  svg: string,
+  larguraSvgMm: number,
+  alturaSvgMm: number
+): ParsedSvg {
+  if (
+    svg.length > 1_500_000 ||
+    /<!doctype|<!entity|<\s*(script|foreignObject|image|use)\b|\son[a-z]+\s*=|(?:href|xlink:href|transform)\s*=/i.test(svg)
+  ) {
+    throw new CpqFactibilidadeError(
+      "O SVG excede o limite ou contém conteúdo não permitido para fabricação.",
+      "invalid_geometry"
+    );
+  }
+  const tags = [...svg.matchAll(/<\s*\/?\s*([a-zA-Z][\w:-]*)\b[^>]*>/g)].map(match => match[1].toLowerCase());
+  const allowedTags = new Set(["svg", "g", "path", "defs", "title", "desc", "metadata"]);
+  const unsupportedTag = tags.find(tag => !allowedTags.has(tag));
+  if (unsupportedTag)
+    throw new CpqFactibilidadeError(
+      `O elemento SVG <${unsupportedTag}> precisa ser convertido em caminho antes da fabricação.`,
+      "unsupported_geometry"
+    );
+  const root = svg.match(/<svg\b([^>]*)>/i)?.[1];
+  const viewBoxText = root ? attrs(root).viewbox : undefined;
+  const viewBoxValues = viewBoxText?.trim().split(/[\s,]+/).map(Number);
+  if (
+    !viewBoxValues ||
+    viewBoxValues.length !== 4 ||
+    !viewBoxValues.every(Number.isFinite) ||
+    viewBoxValues[2] <= 0 ||
+    viewBoxValues[3] <= 0
+  ) {
+    throw new CpqFactibilidadeError(
+      "O SVG precisa ter um viewBox válido para calcular cortes físicos.",
+      "invalid_geometry"
+    );
+  }
+  const viewBox = {
+    x: viewBoxValues[0],
+    y: viewBoxValues[1],
+    width: viewBoxValues[2],
+    height: viewBoxValues[3],
+  };
+  const mmPerUnitX = larguraSvgMm / viewBox.width;
+  const mmPerUnitY = alturaSvgMm / viewBox.height;
+  if (
+    Math.abs(mmPerUnitX - mmPerUnitY) / Math.max(mmPerUnitX, mmPerUnitY) > 0.002
+  ) {
+    throw new CpqFactibilidadeError(
+      "Largura e altura físicas precisam manter a proporção do viewBox.",
+      "invalid_geometry"
+    );
+  }
+  const pathTags = [...svg.matchAll(/<path\b([^>]*)\/?\s*>/gi)];
+  if (!pathTags.length || pathTags.length > MAX_CAMINHOS)
+    throw new CpqFactibilidadeError(
+      "O SVG precisa conter entre 1 e 500 caminhos vetoriais.",
+      "invalid_geometry"
+    );
+
+  const paths: ParsedSvg["paths"] = [];
+  const pieces: ParsedPiece[] = [];
+  let pointCount = 0;
+  pathTags.forEach((match, pathIndex) => {
+    const attributes = attrs(match[1]);
+    const d = attributes.d;
+    if (!d)
+      throw new CpqFactibilidadeError(
+        "Um caminho SVG não possui dados geométricos.",
+        "invalid_geometry"
+      );
+    if (d.length > 250_000)
+      throw new CpqFactibilidadeError(
+        "Um caminho SVG excede o limite de complexidade permitido.",
+        "invalid_geometry"
+      );
+    const id = (attributes.id || `Peca_${pathIndex + 1}`).slice(0, 120);
+    paths.push({ id, d });
+    const rings = pathContours(d, viewBox, mmPerUnitX, mmPerUnitY, 0.1);
+    pointCount += rings.reduce((sum, ring) => sum + ring.length, 0);
+    if (pointCount > MAX_PONTOS)
+      throw new CpqFactibilidadeError(
+        "O SVG ultrapassou o limite de pontos permitido para fatiamento.",
+        "invalid_geometry"
+      );
+    const parents = rings.map((ring, index) => {
+      let parent = -1;
+      let parentArea = Infinity;
+      for (let other = 0; other < rings.length; other += 1) {
+        if (other === index || areaBounds([rings[other]]) <= areaBounds([ring])) continue;
+        if (
+          pointInRing(ring[0], rings[other]) &&
+          areaBounds([rings[other]]) < parentArea
+        ) {
+          parent = other;
+          parentArea = areaBounds([rings[other]]);
+        }
+      }
+      return parent;
+    });
+    const depth = (index: number): number => {
+      let level = 0;
+      let parent = parents[index];
+      const visited = new Set([index]);
+      while (parent >= 0) {
+        if (visited.has(parent))
+          throw new CpqFactibilidadeError(
+            "A geometria possui contornos vetoriais recursivos inválidos.",
+            "invalid_geometry"
+          );
+        visited.add(parent);
+        level += 1;
+        parent = parents[parent];
+      }
+      return level;
+    };
+    for (let ringIndex = 0; ringIndex < rings.length; ringIndex += 1) {
+      if (depth(ringIndex) % 2 !== 0) continue;
+      const shell = rings[ringIndex];
+      const holes = rings.filter((_, index) => parents[index] === ringIndex && depth(index) % 2 === 1);
+      const polygon: Polygon = [shell, ...holes];
+      const polygonBounds = boundsOf(polygon);
+      const externalId =
+        rings.filter((_, index) => depth(index) % 2 === 0).length > 1
+          ? `${id}_${pieces.length + 1}`
+          : id;
+      pieces.push({
+        id: externalId,
+        geometry: [polygon],
+        bounds: polygonBounds,
+        pathIndex,
+      });
+    }
+  });
+  if (!pieces.length)
+    throw new CpqFactibilidadeError(
+      "O SVG não contém contornos fechados com área para fabricar.",
+      "invalid_geometry"
+    );
+  return { viewBox, paths, pieces, mmPerUnitX, mmPerUnitY };
+}
+
+function canonicalBoard(chapa: CpqFactibilidadeChapa) {
+  return {
+    id: chapa.id,
+    nome: chapa.nome,
+    larguraMm: Math.max(chapa.larguraMm, chapa.alturaMm),
+    alturaMm: Math.min(chapa.larguraMm, chapa.alturaMm),
+    areaMm2: chapa.larguraMm * chapa.alturaMm,
+  };
+}
+
+function maiorChapa(material: CpqFactibilidadeMaterial) {
+  return [...material.chapas]
+    .filter(
+      chapa =>
+        Number.isInteger(chapa.larguraMm) &&
+        Number.isInteger(chapa.alturaMm) &&
+        chapa.larguraMm > 0 &&
+        chapa.alturaMm > 0
+    )
+    .map(canonicalBoard)
+    .sort(
+      (a, b) =>
+        b.areaMm2 - a.areaMm2 ||
+        b.larguraMm - a.larguraMm ||
+        a.id - b.id
+    )[0];
+}
+
+function melhorFatorDeEncaixe(bounds: Bounds, board: ReturnType<typeof canonicalBoard>): number {
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  const normalFits = width <= board.larguraMm && height <= board.alturaMm;
+  const rotatedFits = height <= board.larguraMm && width <= board.alturaMm;
+  if (normalFits || rotatedFits) return 1;
+  return Math.max(
+    Math.min(board.larguraMm / width, board.alturaMm / height),
+    Math.min(board.larguraMm / height, board.alturaMm / width)
+  );
+}
+
+function rect(x1: number, y1: number, x2: number, y2: number): MultiPolygon {
+  return [[[[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]]];
+}
+
+function rotateGeometry(geometry: MultiPolygon, bounds: Bounds): MultiPolygon {
+  return geometry.map(polygon =>
+    polygon.map(ring =>
+      ring.map(([x, y]) => [y - bounds.minY, bounds.maxX - x] as Pair)
+    )
+  );
+}
+
+function unrotateGeometry(geometry: MultiPolygon, bounds: Bounds): MultiPolygon {
+  return geometry.map(polygon =>
+    polygon.map(ring =>
+      ring.map(([x, y]) => [bounds.maxX - y, bounds.minY + x] as Pair)
+    )
+  );
+}
+
+function geometryArea(geometry: MultiPolygon): number {
+  let area = 0;
+  for (const polygon of geometry) {
+    for (let index = 0; index < polygon.length; index += 1) {
+      const ringArea = Math.abs(signedArea(polygon[index]));
+      area += index === 0 ? ringArea : -ringArea;
+    }
+  }
+  return Math.max(0, area);
+}
+
+function clipToSheets(
+  piece: ParsedPiece,
+  board: ReturnType<typeof canonicalBoard>,
+  material: CpqFactibilidadeMaterial
+): { fragments: OutputFragment[]; lines: CpqLinhaCorte[] } {
+  const usableWidth = board.larguraMm - 2 * MARGEM_CORTE_MM;
+  const usableHeight = board.alturaMm - 2 * MARGEM_CORTE_MM;
+  if (usableWidth <= 0 || usableHeight <= 0)
+    throw new CpqFactibilidadeError(
+      `A chapa ${board.nome} é menor que a margem técnica de 20 mm por borda.`,
+      "missing_board"
+    );
+  const width = piece.bounds.maxX - piece.bounds.minX;
+  const height = piece.bounds.maxY - piece.bounds.minY;
+  const plan = (w: number, h: number) => ({
+    cols: Math.max(1, Math.ceil((w - 1e-7) / usableWidth)),
+    rows: Math.max(1, Math.ceil((h - 1e-7) / usableHeight)),
+  });
+  const normalPlan = plan(width, height);
+  const rotatedPlan = plan(height, width);
+  const useRotation = rotatedPlan.cols * rotatedPlan.rows < normalPlan.cols * normalPlan.rows;
+  const oriented = useRotation ? rotateGeometry(piece.geometry, piece.bounds) : piece.geometry;
+  const orientedWidth = useRotation ? height : width;
+  const orientedHeight = useRotation ? width : height;
+  const selected = useRotation ? rotatedPlan : normalPlan;
+  const fragments: OutputFragment[] = [];
+  let fragmentNumber = 0;
+  try {
+    for (let row = 0; row < selected.rows; row += 1) {
+      const y1 = row * usableHeight;
+      const y2 = Math.min(orientedHeight, y1 + usableHeight);
+      for (let col = 0; col < selected.cols; col += 1) {
+        const x1 = col * usableWidth;
+        const x2 = Math.min(orientedWidth, x1 + usableWidth);
+        const clipped = polygonClipping.intersection(
+          oriented,
+          rect(x1, y1, x2, y2)
+        );
+        for (const polygon of clipped) {
+          if (geometryArea([polygon]) < AREA_MINIMA_FRAGMENTO_MM2) continue;
+          const geometry: MultiPolygon = useRotation
+            ? unrotateGeometry([polygon], piece.bounds)
+            : [polygon];
+          const bounds = boundsOf(geometry.flat());
+          fragments.push({
+            id: `${piece.id}_parte_${++fragmentNumber}`,
+            pecaId: piece.id,
+            geometry,
+            bounds,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof CpqFactibilidadeError) throw error;
+    throw new CpqFactibilidadeError(
+      `Falha booleana ao dividir a peça ${piece.id}. Revise a geometria antes de fabricar.`,
+      "boolean_failure"
+    );
+  }
+  if (fragments.length < 2)
+    throw new CpqFactibilidadeError(
+      `O corte não gerou duas ou mais partes válidas para ${piece.id}.`,
+      "boolean_failure"
+    );
+
+  const lines: CpqLinhaCorte[] = [];
+  if (!useRotation) {
+    for (let col = 1; col < selected.cols; col += 1) {
+      const x = piece.bounds.minX + col * usableWidth;
+      lines.push({
+        x1: x,
+        y1: piece.bounds.minY,
+        x2: x,
+        y2: piece.bounds.maxY,
+        materiaPrimaId: material.id,
+        materiaPrima: material.nome,
+        pecaId: piece.id,
+      });
+    }
+    for (let row = 1; row < selected.rows; row += 1) {
+      const y = piece.bounds.minY + row * usableHeight;
+      lines.push({
+        x1: piece.bounds.minX,
+        y1: y,
+        x2: piece.bounds.maxX,
+        y2: y,
+        materiaPrimaId: material.id,
+        materiaPrima: material.nome,
+        pecaId: piece.id,
+      });
+    }
+  } else {
+    for (let col = 1; col < selected.cols; col += 1) {
+      const y = piece.bounds.minY + col * usableWidth;
+      lines.push({
+        x1: piece.bounds.minX,
+        y1: y,
+        x2: piece.bounds.maxX,
+        y2: y,
+        materiaPrimaId: material.id,
+        materiaPrima: material.nome,
+        pecaId: piece.id,
+      });
+    }
+    for (let row = 1; row < selected.rows; row += 1) {
+      const x = piece.bounds.maxX - row * usableHeight;
+      lines.push({
+        x1: x,
+        y1: piece.bounds.minY,
+        x2: x,
+        y2: piece.bounds.maxY,
+        materiaPrimaId: material.id,
+        materiaPrima: material.nome,
+        pecaId: piece.id,
+      });
+    }
+  }
+  return { fragments, lines };
+}
+
+function formatNum(value: number): string {
+  return Number(value.toFixed(4)).toString();
+}
+
+function pathD(geometry: MultiPolygon, parsed: ParsedSvg): string {
+  const commands: string[] = [];
+  for (const polygon of geometry) {
+    for (const ring of polygon) {
+      if (ring.length < 4) continue;
+      const asViewBox = ring.map(([x, y]) => [
+        x / parsed.mmPerUnitX + parsed.viewBox.x,
+        y / parsed.mmPerUnitY + parsed.viewBox.y,
+      ] as Pair);
+      commands.push(
+        `M ${formatNum(asViewBox[0][0])} ${formatNum(asViewBox[0][1])} ` +
+          asViewBox
+            .slice(1, -1)
+            .map(point => `L ${formatNum(point[0])} ${formatNum(point[1])}`)
+            .join(" ") +
+          " Z"
+      );
+    }
+  }
+  return commands.join(" ");
+}
+
+function xmlLength(value: number): string {
+  return `${formatNum(value)}mm`;
+}
+
+function svgRoot(
+  viewBox: ViewBox,
+  widthMm: number,
+  heightMm: number,
+  content: string
+): string {
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" ` +
+    `width="${xmlLength(widthMm)}" height="${xmlLength(heightMm)}" ` +
+    `viewBox="${formatNum(viewBox.x)} ${formatNum(viewBox.y)} ${formatNum(viewBox.width)} ${formatNum(viewBox.height)}">` +
+    content +
+    "</svg>"
+  );
+}
+
+function outputSvg(
+  parsed: ParsedSvg,
+  widthMm: number,
+  heightMm: number,
+  fragments: OutputFragment[],
+  cutLines: CpqLinhaCorte[],
+  withCutLayer: boolean
+): string {
+  const paths = fragments
+    .map(
+      fragment =>
+        `<path id="${attrEscape(fragment.id)}" data-peca-origem="${attrEscape(fragment.pecaId)}" ` +
+        `d="${pathD(fragment.geometry, parsed)}" fill="#000000" fill-rule="evenodd"/>`
+    )
+    .join("");
+  const layer = withCutLayer
+    ? `<g id="linha_emenda_tecnica" inkscape:groupmode="layer" inkscape:label="linha_emenda_tecnica" ` +
+      `data-layer-name="linha_emenda_tecnica" fill="none" stroke="#f43f5e" stroke-width="1.5" ` +
+      `stroke-dasharray="12 8" vector-effect="non-scaling-stroke">${cutLines
+        .map(line => {
+          const x1 = line.x1 / parsed.mmPerUnitX + parsed.viewBox.x;
+          const y1 = line.y1 / parsed.mmPerUnitY + parsed.viewBox.y;
+          const x2 = line.x2 / parsed.mmPerUnitX + parsed.viewBox.x;
+          const y2 = line.y2 / parsed.mmPerUnitY + parsed.viewBox.y;
+          return `<path data-peca="${attrEscape(line.pecaId)}" d="M ${formatNum(x1)} ${formatNum(y1)} L ${formatNum(x2)} ${formatNum(y2)}"/>`;
+        })
+        .join("")}</g>`
+    : "";
+  return svgRoot(
+    parsed.viewBox,
+    widthMm,
+    heightMm,
+    `<g id="pecas_de_corte" fill="#000000" fill-rule="evenodd">${paths}</g>${layer}`
+  );
+}
+
+function updateSvgPhysicalSize(svg: string, widthMm: number, heightMm: number): string {
+  const root = svg.match(/<svg\b[^>]*>/i)?.[0];
+  if (!root) return svg;
+  const nextRoot = root
+    .replace(/\s(width|height)\s*=\s*(["']).*?\2/gi, "")
+    .replace(/\s*\/?\s*>$/, ` width="${xmlLength(widthMm)}" height="${xmlLength(heightMm)}">`);
+  return svg.replace(root, nextRoot);
+}
+
+function allOriginalPieces(parsed: ParsedSvg): OutputFragment[] {
+  return parsed.pieces.map(piece => ({
+    id: piece.id,
+    pecaId: piece.id,
+    geometry: piece.geometry,
+    bounds: piece.bounds,
+  }));
+}
+
+function noCutMaterial(
+  material: CpqFactibilidadeMaterial,
+  board: ReturnType<typeof canonicalBoard>,
+  svg: string,
+  fragments: OutputFragment[]
+): CpqFactibilidadeMaterialResult {
+  return {
+    id_materia_prima: material.id,
+    materia_prima: material.nome,
+    id_maior_chapa: board.id,
+    nome_maior_chapa: board.nome,
+    largura_chapa_mm: board.larguraMm,
+    altura_chapa_mm: board.alturaMm,
+    svg_para_nesting: svg,
+    svg_visualizacao: svg,
+    hash_svg_para_nesting: sha256(svg),
+    fragmentos: fragments.map(fragment => ({
+      id: fragment.id,
+      pecaId: fragment.pecaId,
+      larguraMm: fragment.bounds.maxX - fragment.bounds.minX,
+      alturaMm: fragment.bounds.maxY - fragment.bounds.minY,
+    })),
+  };
+}
+
+/**
+ * Confere cada contorno contra a maior chapa de cada material. Redimensiona o
+ * SVG completo somente quando todos os excessos ficam dentro de 3%; caso
+ * contrário, recorta cada contorno por interseção booleana em painéis seguros.
+ */
+export function calcularFactibilidadeFabricacao(input: {
+  svg: string;
+  larguraSvgMm: number;
+  alturaSvgMm: number;
+  materiais: CpqFactibilidadeMaterial[];
+}): CpqFactibilidadeResult {
+  if (
+    !Number.isFinite(input.larguraSvgMm) ||
+    !Number.isFinite(input.alturaSvgMm) ||
+    input.larguraSvgMm <= 0 ||
+    input.alturaSvgMm <= 0 ||
+    input.larguraSvgMm > 50_000 ||
+    input.alturaSvgMm > 50_000
+  ) {
+    throw new CpqFactibilidadeError(
+      "As dimensões físicas do projeto precisam ser válidas em milímetros.",
+      "invalid_geometry"
+    );
+  }
+  if (!input.materiais.length)
+    throw new CpqFactibilidadeError(
+      "Selecione ao menos um material de chapa com formatos cadastrados.",
+      "missing_board"
+    );
+  const parsed = parseSvg(input.svg, input.larguraSvgMm, input.alturaSvgMm);
+  const boards = new Map<number, ReturnType<typeof canonicalBoard>>();
+  for (const material of input.materiais) {
+    const board = maiorChapa(material);
+    if (!board)
+      throw new CpqFactibilidadeError(
+        `Não há chapa ativa cadastrada para ${material.nome} (${material.id}).`,
+        "missing_board"
+      );
+    boards.set(material.id, board);
+  }
+
+  let fatorEscalaNecessario = 1;
+  const needsByMaterial = new Map<number, Map<string, number>>();
+  for (const material of input.materiais) {
+    const board = boards.get(material.id)!;
+    const pieceFits = new Map<string, number>();
+    for (const piece of parsed.pieces) {
+      const fitScale = melhorFatorDeEncaixe(piece.bounds, board);
+      pieceFits.set(piece.id, fitScale);
+      fatorEscalaNecessario = Math.min(fatorEscalaNecessario, fitScale);
+    }
+    needsByMaterial.set(material.id, pieceFits);
+  }
+
+  const fatorEscala = Math.max(0, Math.min(1, fatorEscalaNecessario));
+  const redimensionarAutomatico = fatorEscala < 1 && fatorEscala >= ESCALA_MINIMA_AUTOMATICA;
+  if (fatorEscala < 1 && redimensionarAutomatico) {
+    const larguraFinal = input.larguraSvgMm * fatorEscala;
+    const alturaFinal = input.alturaSvgMm * fatorEscala;
+    const svgAjustado = updateSvgPhysicalSize(input.svg, larguraFinal, alturaFinal);
+    const fragments = allOriginalPieces(parsed);
+    const materiais = input.materiais.map(material =>
+      noCutMaterial(
+        material,
+        boards.get(material.id)!,
+        svgAjustado,
+        fragments.map(fragment => ({
+          ...fragment,
+          bounds: {
+            minX: fragment.bounds.minX * fatorEscala,
+            maxX: fragment.bounds.maxX * fatorEscala,
+            minY: fragment.bounds.minY * fatorEscala,
+            maxY: fragment.bounds.maxY * fatorEscala,
+          },
+        }))
+      )
+    );
+    return {
+      status_factibilidade: "APTO_NESTING",
+      projeto_fatiado: false,
+      projeto_redimensionado: true,
+      fator_escala_aplicado: fatorEscala,
+      largura_projeto_mm: larguraFinal,
+      altura_projeto_mm: alturaFinal,
+      svg_ajustado: svgAjustado,
+      detalhes_corte: { pecas_afetadas: [], quantidade_emendas: 0, coordenadas_linha_corte: [] },
+      opcoes_disponiveis: [],
+      materiais,
+      avisos: [
+        `Projeto reduzido proporcionalmente em ${((1 - fatorEscala) * 100).toFixed(2)}% para caber nas chapas.`,
+      ],
+    };
+  }
+
+  if (fatorEscala >= 1) {
+    const fragments = allOriginalPieces(parsed);
+    const materiais = input.materiais.map(material =>
+      noCutMaterial(material, boards.get(material.id)!, input.svg, fragments)
+    );
+    return {
+      status_factibilidade: "APTO_NESTING",
+      projeto_fatiado: false,
+      projeto_redimensionado: false,
+      fator_escala_aplicado: 1,
+      largura_projeto_mm: input.larguraSvgMm,
+      altura_projeto_mm: input.alturaSvgMm,
+      svg_ajustado: null,
+      detalhes_corte: { pecas_afetadas: [], quantidade_emendas: 0, coordenadas_linha_corte: [] },
+      opcoes_disponiveis: [],
+      materiais,
+      avisos: [],
+    };
+  }
+
+  const lines: CpqLinhaCorte[] = [];
+  const affected = new Set<string>();
+  const materialResults: CpqFactibilidadeMaterialResult[] = [];
+  for (const material of input.materiais) {
+    const board = boards.get(material.id)!;
+    const fragments: OutputFragment[] = [];
+    const materialLines: CpqLinhaCorte[] = [];
+    for (const piece of parsed.pieces) {
+      const requiredScale = needsByMaterial.get(material.id)!.get(piece.id) ?? 1;
+      if (requiredScale >= 1) {
+        fragments.push({
+          id: piece.id,
+          pecaId: piece.id,
+          geometry: piece.geometry,
+          bounds: piece.bounds,
+        });
+        continue;
+      }
+      const cut = clipToSheets(piece, board, material);
+      fragments.push(...cut.fragments);
+      materialLines.push(...cut.lines);
+      affected.add(piece.id);
+    }
+    lines.push(...materialLines);
+    const svgParaNesting = outputSvg(
+      parsed,
+      input.larguraSvgMm,
+      input.alturaSvgMm,
+      fragments,
+      [],
+      false
+    );
+    const svgVisualizacao = outputSvg(
+      parsed,
+      input.larguraSvgMm,
+      input.alturaSvgMm,
+      fragments,
+      materialLines,
+      true
+    );
+    materialResults.push({
+      id_materia_prima: material.id,
+      materia_prima: material.nome,
+      id_maior_chapa: board.id,
+      nome_maior_chapa: board.nome,
+      largura_chapa_mm: board.larguraMm,
+      altura_chapa_mm: board.alturaMm,
+      svg_para_nesting: svgParaNesting,
+      svg_visualizacao: svgVisualizacao,
+      hash_svg_para_nesting: sha256(svgParaNesting),
+      fragmentos: fragments.map(fragment => ({
+        id: fragment.id,
+        pecaId: fragment.pecaId,
+        larguraMm: fragment.bounds.maxX - fragment.bounds.minX,
+        alturaMm: fragment.bounds.maxY - fragment.bounds.minY,
+      })),
+    });
+  }
+  if (!lines.length)
+    throw new CpqFactibilidadeError(
+      "O projeto excede a faixa automática, mas o fatiamento não gerou linhas de emenda.",
+      "boolean_failure"
+    );
+  return {
+    status_factibilidade: "REQUER_APROVACAO_EMENDA",
+    projeto_fatiado: true,
+    projeto_redimensionado: false,
+    fator_escala_aplicado: 1,
+    largura_projeto_mm: input.larguraSvgMm,
+    altura_projeto_mm: input.alturaSvgMm,
+    svg_ajustado: null,
+    detalhes_corte: {
+      pecas_afetadas: [...affected],
+      quantidade_emendas: lines.length,
+      coordenadas_linha_corte: lines.map(line => ({
+        ...line,
+        x1: Number(line.x1.toFixed(3)),
+        y1: Number(line.y1.toFixed(3)),
+        x2: Number(line.x2.toFixed(3)),
+        y2: Number(line.y2.toFixed(3)),
+      })),
+    },
+    opcoes_disponiveis: OPCOES_FACTIBILIDADE,
+    materiais: materialResults,
+    avisos: [
+      `Cada fragmento deixa margem de segurança de ${MARGEM_CORTE_MM} mm em cada borda da chapa.`,
+      "Curvas SVG são aproximadas por segmentos com tolerância física de 0,1 mm antes das operações booleanas.",
+    ],
+  };
+}
+
+export function validarAcaoFactibilidade(value: unknown): value is CpqFactibilidadeAcao {
+  return OPCOES_FACTIBILIDADE.some(option => option.acao === value);
+}
+
+export type CpqFactibilidadeResumoAssinavel = Pick<
+  CpqFactibilidadeResult,
+  | "status_factibilidade"
+  | "projeto_fatiado"
+  | "projeto_redimensionado"
+  | "fator_escala_aplicado"
+  | "largura_projeto_mm"
+  | "altura_projeto_mm"
+  | "detalhes_corte"
+> & {
+  materiais: Array<Pick<
+    CpqFactibilidadeMaterialResult,
+    "id_materia_prima" | "id_maior_chapa" | "hash_svg_para_nesting"
+  >>;
+};
+
+export function calcularHashFactibilidade(
+  sourceId: string,
+  resumo: CpqFactibilidadeResumoAssinavel
+): string {
+  const base = {
+    sourceId,
+    status_factibilidade: resumo.status_factibilidade,
+    projeto_fatiado: resumo.projeto_fatiado,
+    projeto_redimensionado: resumo.projeto_redimensionado,
+    fator_escala_aplicado: Number(resumo.fator_escala_aplicado.toFixed(8)),
+    largura_projeto_mm: Number(resumo.largura_projeto_mm.toFixed(4)),
+    altura_projeto_mm: Number(resumo.altura_projeto_mm.toFixed(4)),
+    detalhes_corte: resumo.detalhes_corte,
+    materiais: [...resumo.materiais]
+      .map(material => ({
+        id_materia_prima: material.id_materia_prima,
+        id_maior_chapa: material.id_maior_chapa,
+        hash_svg_para_nesting: material.hash_svg_para_nesting,
+      }))
+      .sort((a, b) => a.id_materia_prima - b.id_materia_prima),
+  };
+  return sha256(JSON.stringify(base));
+}
+
+export type CpqFactibilidadeAtor = { id: string; nome: string; role: string };
+export type CpqFactibilidadeDecisionClaims = {
+  sourceId: string;
+  resultadoHash: string;
+  acao: Exclude<CpqFactibilidadeAcao, "SOLICITAR_ANALISE_HUMANA">;
+  aprovadoPor: CpqFactibilidadeAtor;
+  aprovadoEm: string;
+};
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function secret(): string {
+  const value = process.env.JWT_SECRET;
+  if (!value || value.length < 32)
+    throw new CpqFactibilidadeError(
+      "JWT_SECRET precisa ter pelo menos 32 caracteres para assinar as decisões de factibilidade.",
+      "configuration"
+    );
+  return value;
+}
+
+function assinarClaims(claims: Record<string, unknown>): string {
+  const encoded = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const signature = createHmac("sha256", secret()).update(encoded).digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function lerClaims<T extends { kind: string; exp: number }>(ticket: string): T {
+  const [encoded, suppliedSignature, extra] = ticket.split(".");
+  if (!encoded || !suppliedSignature || extra)
+    throw new CpqFactibilidadeError("O recibo de factibilidade é inválido.", "invalid_geometry");
+  const expectedSignature = createHmac("sha256", secret()).update(encoded).digest();
+  let actualSignature: Buffer;
+  try {
+    actualSignature = Buffer.from(suppliedSignature, "base64url");
+  } catch {
+    throw new CpqFactibilidadeError("O recibo de factibilidade é inválido.", "invalid_geometry");
+  }
+  if (
+    actualSignature.length !== expectedSignature.length ||
+    !timingSafeEqual(actualSignature, expectedSignature)
+  ) {
+    throw new CpqFactibilidadeError("O recibo de factibilidade não corresponde à assinatura do servidor.", "invalid_geometry");
+  }
+  let parsed: T;
+  try {
+    parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as T;
+  } catch {
+    throw new CpqFactibilidadeError("O recibo de factibilidade é inválido.", "invalid_geometry");
+  }
+  if (parsed.exp <= Date.now())
+    throw new CpqFactibilidadeError("O recibo de factibilidade expirou. Recalcule a factibilidade.", "invalid_geometry");
+  return parsed;
+}
+
+export function emitirTicketAnaliseFactibilidade(input: {
+  sourceId: string;
+  resultadoHash: string;
+  validadeMs?: number;
+}): string {
+  return assinarClaims({
+    kind: "analysis",
+    sourceId: input.sourceId,
+    resultadoHash: input.resultadoHash,
+    exp: Date.now() + (input.validadeMs ?? 7 * 24 * 60 * 60 * 1000),
+  });
+}
+
+export function verificarTicketAnaliseFactibilidade(
+  ticket: string,
+  sourceId: string,
+  resultadoHash: string
+): void {
+  const claims = lerClaims<{
+    kind: string;
+    sourceId: string;
+    resultadoHash: string;
+    exp: number;
+  }>(ticket);
+  if (claims.kind !== "analysis" || claims.sourceId !== sourceId || claims.resultadoHash !== resultadoHash)
+    throw new CpqFactibilidadeError("O ticket não pertence a esta análise de factibilidade.", "invalid_geometry");
+}
+
+export function emitirReciboDecisaoFactibilidade(
+  input: CpqFactibilidadeDecisionClaims & { validadeMs?: number }
+): string {
+  return assinarClaims({
+    kind: "decision",
+    sourceId: input.sourceId,
+    resultadoHash: input.resultadoHash,
+    acao: input.acao,
+    aprovadoPor: input.aprovadoPor,
+    aprovadoEm: input.aprovadoEm,
+    exp: Date.now() + (input.validadeMs ?? 7 * 24 * 60 * 60 * 1000),
+  });
+}
+
+export function verificarReciboDecisaoFactibilidade(
+  ticket: string,
+  sourceId: string,
+  resultadoHash: string,
+  acao: string
+): CpqFactibilidadeDecisionClaims {
+  const claims = lerClaims<CpqFactibilidadeDecisionClaims & { kind: string; exp: number }>(ticket);
+  if (
+    claims.kind !== "decision" ||
+    claims.sourceId !== sourceId ||
+    claims.resultadoHash !== resultadoHash ||
+    claims.acao !== acao
+  ) {
+    throw new CpqFactibilidadeError("A decisão não corresponde ao resultado calculado.", "invalid_geometry");
+  }
+  return claims;
+}

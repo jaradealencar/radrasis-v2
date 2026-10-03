@@ -21,6 +21,12 @@ try {
   const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   const entry = process.env.DEEPNEST_NODE_ENTRY;
   if (!entry) throw new Error("DEEPNEST_NODE_ENTRY não foi configurado.");
+  const pecas = Array.isArray(input.pecas) && input.pecas.length
+    ? input.pecas
+    : [{ id: "peca-1", svg: input.svg }];
+  if (pecas.length > 100 || pecas.some(peca => typeof peca?.svg !== "string" || !peca.svg)) {
+    throw new Error("O worker recebeu uma lista de peças inválida.");
+  }
   const { nest } = await import(pathToFileURL(entry).href);
   const factor = 25.4 / 72;
   const areaOf = points => {
@@ -84,7 +90,7 @@ try {
   };
 
   abort = await nest(
-    [input.svg],
+    pecas.map(peca => peca.svg),
     data => {
       const geometries = data.elements.map((element, source) => {
         const tree = element.polygontree;

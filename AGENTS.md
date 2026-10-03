@@ -574,7 +574,9 @@ and manager-only CRUD for chapa formats at `/api/letra-caixa/chapas`. Chapa dime
 are stored in local Postgres table `estudio_chapas`, keyed by MubiSys raw-material ID;
 the MubiSys API supplies the current material name and cost, but not sheet dimensions.
 Migration `0064_narrow_strong_guy.sql` creates this table. Format rows must be entered
-before the material can be nested.
+before the material can be nested. Migration `0065_clammy_roulette.sql` adds
+the preferred-board flag and stores the CPQ proposal title and reference/redesign
+image URLs.
 
 The nesting endpoint runs `server/scripts/cpq-deepnest-worker.mjs` with a separate
 Node 20 executable (`DEEPNEST_NODE_BIN`) and a local Deepnest Node entry
@@ -584,19 +586,26 @@ compiled addon; the current Vercel serverless deployment cannot execute this loc
 worker. Configure the two variables in `.env` only on a compatible self-hosted node.
 
 The endpoint needs the approved SVG canvas width/height in millimeters and the IDs
-of the selected sheet materials. It tries each configured board in area-ascending
-order, landscape orientation, and stops at the first complete layout. Deepnest uses
-true-shape polygons, automatic contour containment for holes, gravity placement,
-and 72 discrete rotations (5-degree increments). Cubic SVG paths are polygonized
-with a 0.3 internal-unit tolerance (about 0.106 mm at the configured scale), so
-area/perimeter are high-precision polygon approximations, not analytic exact values.
-Cost is estimated only for recognized MubiSys cost units; unsupported units or
-missing cost return an alert and null estimate.
+of the selected sheet materials. It evaluates every active format in landscape
+orientation and chooses the lowest estimated sheet-plus-leftover cost when all
+formats have comparable MubiSys costs; otherwise it chooses the highest material
+utilization. A format marked principal only breaks equivalent-result ties.
+Deepnest uses true-shape polygons, automatic contour containment for holes, gravity
+placement, and 72 discrete rotations (5-degree increments). Cubic SVG paths are
+polygonized with a 0.3 internal-unit tolerance (about 0.106 mm at the configured
+scale), so area/perimeter are high-precision polygon approximations, not analytic
+exact values. Cost is estimated only for recognized MubiSys cost units; unsupported
+units or missing cost return an alert and null estimate.
 
-The static CPQ HTML still calls its existing browser `packPiecesReal()` routine;
-it has not yet been wired to this backend endpoint. This endpoint implementation
-therefore does not replace the current UI nesting result or persist the returned
-metrics into quote snapshots yet.
+`server/services/cpqFactibilidadeFabricacao.ts` contains the pure geometry step
+that checks sheet fit and can split oversized closed-path pieces at sheet boundaries,
+returning the fragments and the human approval options. This service is not yet
+called by the nesting route.
+
+The static CPQ HTML still calculates nesting with its existing browser
+`packPiecesReal()` routine. It saves the approved SVG and its physical dimensions
+in the quote snapshot but does not call `/api/letra-caixa/nesting` or persist that
+endpoint's returned metrics yet.
 
 ## Patches
 

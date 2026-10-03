@@ -1,7 +1,9 @@
 import express, { type Express, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
 import { fromNodeHeaders } from "better-auth/node";
 import { z } from "zod";
 import { auth } from "../_core/auth";
+import { storagePut } from "../db/storage";
 import { redesenharLetreiro, type EscopoRedesenho } from "../services/letraCaixaRedesign";
 import {
   emitirTicketEdicaoVetor,
@@ -20,6 +22,10 @@ const preprocessedImageBodyParser = express.raw({
   type: ["image/jpeg", "image/png"],
   limit: MAX_PREPROCESSED_IMAGE_BYTES,
 });
+const proposalImageBodyParser = express.raw({
+  type: ["image/jpeg", "image/png"],
+  limit: 3 * 1024 * 1024,
+});
 
 const inputSchema = z.object({
   escopo: z.enum(["somente_logo", "letreiro_completo", "elementos_selecionados"]),
@@ -28,6 +34,17 @@ const inputSchema = z.object({
 
 /** Edição de imagem autenticada; a chave da OpenAI nunca sai do servidor. */
 export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
+  app.post("/api/letra-caixa/cotacoes/imagem/:tipo", (req, res) => {
+    proposalImageBodyParser(req, res, parseError => {
+      if (parseError) {
+        const status = (parseError as { status?: number }).status ?? 400;
+        res.status(status).json({ error: status === 413 ? "A miniatura precisa ter até 3 MB." : "Envie uma imagem JPG ou PNG." });
+        return;
+      }
+      void armazenarImagemCotacao(req, res);
+    });
+  });
+
   app.post("/api/letra-caixa/redesenho", (req, res) => {
     imageBodyParser(req, res, (parseError) => {
       if (parseError) {
@@ -61,6 +78,49 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
       void executarVetorizacao(req, res);
     });
   });
+}
+
+async function armazenarImagemCotacao(req: Request, res: Response): Promise<void> {
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) {
+        res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." });
+        return;
+      }
+    } catch {
+      res.status(403).json({ error: "Origem da solicitação inválida." });
+      return;
+    }
+  }
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: "Entre no sistema para salvar imagens na proposta." });
+    return;
+  }
+  const tipo = req.params.tipo;
+  if (tipo !== "referencia" && tipo !== "redesenhada") {
+    res.status(400).json({ error: "Tipo de imagem inválido." });
+    return;
+  }
+  const mimeType = req.get("content-type")?.split(";")[0].toLowerCase();
+  if (mimeType !== "image/jpeg" && mimeType !== "image/png") {
+    res.status(415).json({ error: "Envie uma imagem JPG ou PNG." });
+    return;
+  }
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    res.status(400).json({ error: "A imagem enviada está vazia." });
+    return;
+  }
+  try {
+    const ext = mimeType === "image/png" ? "png" : "jpg";
+    const stored = await storagePut(`cpq-propostas/${session.user.id}/${tipo}-${randomUUID()}.${ext}`, req.body, mimeType);
+    res.setHeader("Cache-Control", "no-store");
+    res.status(201).json({ url: stored.url });
+  } catch (error) {
+    console.error("[letra-caixa] falha ao armazenar imagem da cotação:", error);
+    res.status(502).json({ error: "Não foi possível armazenar a imagem para a proposta." });
+  }
 }
 
 async function executarVetorizacao(req: Request, res: Response): Promise<void> {

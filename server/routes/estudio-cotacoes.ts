@@ -41,6 +41,12 @@ const snapshotSchema = z.object({
   }),
   vendedor: z.string().min(1).max(256),
   whatsappVendedor: z.string().max(32).nullable().optional().default(null),
+  tituloProposta: z.string().max(256).optional().default(""),
+  imagemReferenciaUrl: z.string().url().max(2048).nullable().optional().default(null),
+  imagemRedesenhadaUrl: z.string().url().max(2048).nullable().optional().default(null),
+  nestingSvg: z.string().max(1_500_000).nullable().optional().default(null),
+  larguraNestingMm: z.number().finite().positive().max(50_000).nullable().optional().default(null),
+  alturaNestingMm: z.number().finite().positive().max(50_000).nullable().optional().default(null),
   modeloNome: z.string().min(1).max(256),
   mubisysProdutoId: z.number().int().positive().nullable().optional(),
   mubisysModeloId: z.number().int().positive().nullable().optional(),
@@ -412,6 +418,9 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
       reacaoCliente,
     };
     await db.update(propostas).set({
+      tituloProposta: dados.tituloProposta || "",
+      imagemReferenciaUrl: dados.imagemReferenciaUrl,
+      imagemRedesenhadaUrl: dados.imagemRedesenhadaUrl,
       clienteNome: dados.cliente.razao || dados.cliente.fantasia || dados.modeloNome,
       clienteCnpj: dados.cliente.cnpj,
       vendedorNome: dados.vendedor,
@@ -432,6 +441,9 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
   } satisfies Snapshot;
   const [inserida] = await db.insert(propostas).values({
     token,
+    tituloProposta: dados.tituloProposta || "",
+    imagemReferenciaUrl: dados.imagemReferenciaUrl,
+    imagemRedesenhadaUrl: dados.imagemRedesenhadaUrl,
     clienteNome: dados.cliente.razao || dados.cliente.fantasia || dados.modeloNome,
     clienteCnpj: dados.cliente.cnpj,
     vendedorNome: dados.vendedor,
@@ -513,6 +525,9 @@ async function obterCotacaoPublica(req: Request, res: Response): Promise<void> {
   res.setHeader("Cache-Control", "no-store");
   res.json({
     numero: snapshot.numeroCotacao,
+    tituloProposta: snapshot.tituloProposta || linha.tituloProposta || "",
+    imagemReferenciaUrl: snapshot.imagemReferenciaUrl || linha.imagemReferenciaUrl || null,
+    imagemRedesenhadaUrl: snapshot.imagemRedesenhadaUrl || linha.imagemRedesenhadaUrl || null,
     dataEmissao: snapshot.dataEmissao,
     validadeDias: snapshot.validadeDias,
     modalidadeFrete: snapshot.modalidadeFrete,

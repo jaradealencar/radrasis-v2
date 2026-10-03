@@ -363,6 +363,9 @@ export const propostaStatusEnum = pgEnum("proposta_status", ["aberta", "aceita",
 
 export const propostas = pgTable("propostas", {
   id: serial("id").primaryKey(),
+  tituloProposta: varchar("titulo_proposta", { length: 256 }).notNull().default(""),
+  imagemReferenciaUrl: text("imagem_referencia_url"),
+  imagemRedesenhadaUrl: text("imagem_redesenhada_url"),
   // Token de acesso público — posse do link é a autorização (mesmo modelo
   // do site espelho do Guia de Fornecedores, sem senha), gerado com
   // crypto.randomBytes, nunca reaproveitado.
@@ -480,6 +483,7 @@ export const estudioChapas = pgTable("estudio_chapas", {
   nome: varchar("nome", { length: 256 }).notNull(),
   larguraMm: integer("largura_mm").notNull(),
   alturaMm: integer("altura_mm").notNull(),
+  principal: boolean("principal").notNull().default(false),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
