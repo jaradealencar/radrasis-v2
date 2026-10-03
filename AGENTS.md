@@ -624,7 +624,9 @@ loads local sheet and Imprimax color catalogs, persists the per-quote analysis,
 and records human approval. Color analysis is required before factibility; unknown
 print costs block price approval and quote issuance. Migration
 `0068_estudio_cores.sql` adds its catalog, pricing and quote-mapping tables plus
-optional Pantone/CMYK/light-transmission fields on sheet formats. Provider catalog
+optional Pantone/CMYK/light-transmission fields on sheet formats. Migration
+`0069_abnormal_avengers.sql` records the light transmission of white and transparent
+print-vinyl bases. Provider catalog
 data and print costs are maintained by managers; this service does not query an
 Imprimax API.
 

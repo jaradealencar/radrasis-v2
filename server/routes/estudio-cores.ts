@@ -186,7 +186,9 @@ async function salvarPrecos(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await exigirGestor(req, res))) return;
   const parsed = z.object({
     vinilBrancoM2: moedaM2,
+    vinilBrancoTransmissaoPct: porcentagem,
     vinilTransparenteM2: moedaM2,
+    vinilTransparenteTransmissaoPct: porcentagem,
     impressaoM2: moedaM2,
     laminacaoM2: moedaM2,
     laminacaoPadrao: z.boolean(),
@@ -196,7 +198,9 @@ async function salvarPrecos(req: Request, res: Response): Promise<void> {
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
   const values = {
     vinilBrancoM2: decimalBanco(parsed.data.vinilBrancoM2),
+    vinilBrancoTransmissaoPct: decimalBanco(parsed.data.vinilBrancoTransmissaoPct),
     vinilTransparenteM2: decimalBanco(parsed.data.vinilTransparenteM2),
+    vinilTransparenteTransmissaoPct: decimalBanco(parsed.data.vinilTransparenteTransmissaoPct),
     impressaoM2: decimalBanco(parsed.data.impressaoM2),
     laminacaoM2: decimalBanco(parsed.data.laminacaoM2),
     laminacaoPadrao: parsed.data.laminacaoPadrao,
@@ -319,6 +323,8 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await obterSessao(req, res))) return;
   const parsed = analisarSvgInput.safeParse(req.body);
   if (!parsed.success) return void erro(res, 400, "Confira arte, geometria, escala e iluminação antes de analisar as cores.");
+  if (parsed.data.iluminacao === "backlight" && parsed.data.transmissaoMinimaPct == null)
+    return void erro(res, 400, "Informe a transmissão mínima definida pela engenharia para avaliar uma face backlight.");
   try {
     const regioes = extrairRegioesCorSvg(parsed.data.svgArte);
     const areas = calcularAreasVisiveisSvgPorCaminho(

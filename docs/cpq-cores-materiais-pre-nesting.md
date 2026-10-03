@@ -8,16 +8,18 @@ O fluxo atual do CPQ aceita SVG vetorial e imagens raster (JPG/PNG, que passam p
 
 ## Persistência
 
-As definições ficam em `drizzle/schema.ts`; a migration `0068_estudio_cores.sql` foi gerada e deve ser aplicada pelos ambientes conforme o procedimento normal de migrations do repositório.
+As definições ficam em `drizzle/schema.ts`; as migrations `0068_estudio_cores.sql` e `0069_abnormal_avengers.sql` devem ser aplicadas pelos ambientes conforme o procedimento normal de migrations do repositório.
 
 | Tabela | Uso |
 | --- | --- |
 | `estudio_chapas` | Mantém Pantone, CMYK e transmissão de luz opcional junto do cadastro existente de chapa. CMYK é armazenado com dois decimais; todos os quatro canais devem ser preenchidos ou deixados vazios. |
 | `estudio_imprimax_adesivos` | Catálogo importado de vinis sólidos, poliméricos, monoméricos e translúcidos: linha, código, nome, acabamento, amostra HEX, Pantone/CMYK, transmissão, preço/m², versão e origem. Código é único. |
-| `estudio_precos_impressao` | Custos configuráveis por m² de vinil branco/transparente, impressão e laminação, mais indicação de laminação padrão. Nulo significa custo desconhecido e impede emitir a cotação quando a região depende desse processo. |
+| `estudio_precos_impressao` | Custos configuráveis por m² de vinil branco/transparente, impressão e laminação, transmissão de luz informada para as duas bases e indicação de laminação padrão. Nulo significa custo ou propriedade técnica desconhecida e impede emitir a cotação quando a região depende desse processo. |
 | `estudio_mapeamento_cores_cotacao` | Snapshot por região e `sourceId`: cor de origem, área, iluminação, material sugerido, ΔE00, custo, alternativas, parâmetros e versão do algoritmo, além de aprovação, autor e data. A chave única é origem + região. |
 
 Os códigos e preços de fornecedores não são inventados pelo sistema. O catálogo da Imprimax deve ser importado por usuário gestor/admin/master e os valores comerciais devem ser mantidos pela empresa. A Imprimax publica catálogos para download, mas não foi localizada uma API pública documentada; por isso a integração entregue é de importação do catálogo validado, e não consulta automática de endpoint externo. Fontes oficiais: [catálogos Imprimax](https://www.imprimax.com.br/catalogos-imprimax), [comunicação visual](https://www.imprimax.com.br/comunicacao-visual), [Max Lux translúcido para backlight](https://www.imprimax.com.br/max-lux).
+
+A migration `0069_abnormal_avengers.sql` acrescenta à tabela de custos a transmissão de luz cadastrada separadamente para o vinil branco e o transparente. Em faces iluminadas, a base de impressão também precisa ter transmissão positiva cadastrada; se houver mínimo de engenharia, o valor deve atendê-lo. Sem esse dado, a impressão fica sem custo aprovável até a ficha técnica ser informada. Atenção operacional: enquanto as duas transmissões não forem cadastradas em Administração > Chapas, projetos iluminados com região impressa não liberam o preço.
 
 ## Extração e cálculo cromático
 
@@ -39,7 +41,7 @@ Esses limites são critérios para organizar opções, não promessa de identida
 
 ## Iluminação e transmissão
 
-Em projeto sem iluminação, a transmissão não filtra os candidatos. Em frontlight, o usuário pode definir transmissão mínima; quando informada, candidatos precisam ter transmissão cadastrada e igual ou maior. Sem mínimo informado, candidatos com transmissão ausente ou igual a zero são excluídos e o resultado pede revisão de engenharia. Backlight exige transmissão mínima e exclui materiais sem dado ou abaixo do mínimo. A transmissão fornecida no catálogo é uma triagem, não substitui a validação da face acrílica/ACM e da fonte luminosa.
+Em projeto sem iluminação, a transmissão não filtra os candidatos. Em projeto iluminado, chapas e vinis sólidos sem transmissão cadastrada ou igual a zero são excluídos. Em frontlight, o usuário pode definir transmissão mínima; quando informada, candidatos precisam atingir esse valor. Sem mínimo, o resultado exige confirmação da engenharia. Backlight exige transmissão mínima e exclui materiais sem dado ou abaixo do mínimo. Na impressão digital, a transmissão cadastrada para a base branca/transparente também precisa atender à condição informada; sem dado, incompatibilidade ou abaixo do mínimo, o custo fica pendente e a emissão é bloqueada. A transmissão fornecida no catálogo é uma triagem, não substitui a validação da face acrílica/ACM e da fonte luminosa.
 
 ## Regra de material e preço
 
@@ -83,7 +85,7 @@ As linhas de adesivo/impressão aprovadas entram como custo adicional no snapsho
 
 ## Importação Imprimax e manutenção
 
-Em Administração > Chapas, o cadastro guarda Pantone/CMYK/transmissão das chapas. A seção do catálogo/custos de cor permite importar itens Imprimax em JSON compatível com os campos da API interna e editar os quatro custos por m². Use código de catálogo conferido, linha, tipo de vinil e amostra/códigos validados pelo fornecedor. O CPQ registra versão e URL de origem para auditoria; não consulta o fornecedor nem fabrica códigos faltantes.
+Em Administração > Chapas, o cadastro guarda Pantone/CMYK/transmissão das chapas. A seção do catálogo/custos de cor permite importar itens Imprimax em JSON compatível com os campos da API interna e editar os quatro custos por m², a transmissão das bases branca/transparente e a laminação padrão. Use código de catálogo conferido, linha, tipo de vinil e amostra/códigos validados pelo fornecedor. O CPQ registra versão e URL de origem para auditoria; não consulta o fornecedor nem fabrica códigos faltantes.
 
 ## Limites conhecidos
 
