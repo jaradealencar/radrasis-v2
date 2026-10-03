@@ -46,6 +46,9 @@ export const JANELA_SEMANA_DIAS = 7;
 const ISO_DATA = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** Hoje no calendário de Campo Grande (`YYYY-MM-DD`), independente do fuso do servidor/navegador. */
+/** Pós-venda: nunca contatar antes de tantos dias úteis (sem feriados nacionais) após a aprovação da venda. */
+export const DIAS_UTEIS_MINIMOS_POS_VENDA = 16;
+
 export function hojeCampoGrande(agora: Date = new Date()): string {
   // en-CA formata como YYYY-MM-DD.
   return new Intl.DateTimeFormat("en-CA", {

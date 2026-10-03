@@ -17,6 +17,7 @@ import { and, count, desc, eq, gte, inArray, isNotNull, lte, max, sql } from "dr
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
+import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
   campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
@@ -34,7 +35,7 @@ import {
   type ContatoIgnorado, type ContatoInvalido, type VendaPosVenda,
 } from "../services/campanhasWhatsapp";
 import {
-  carregarContextoErp, filtrarPorPeriodo, lerArquivoDeUrl, primeiroRegistroErp, resolverFonteErp,
+  JANELA_PADRAO_DIAS, carregarContextoErp, filtrarPorPeriodo, lerArquivoDeUrl, primeiroRegistroErp, resolverFonteErp,
   type ContatoFonte, type ContextoErp,
 } from "../services/fontesErpCampanhas";
 import { isOsNormalDb } from "./performanceComercial";
@@ -136,7 +137,7 @@ async function carregarPosVenda(
   const linhas = (await db
     .select({
       osNumero: historicoOs.osNumero, empresa: historicoOs.empresa, telefone: historicoOs.telefone,
-      dataFaturamento: historicoOs.dataFaturamento, vendedor: historicoOs.vendedor, valorOs: historicoOs.valorOs,
+      dataFaturamento: historicoOs.dataFaturamento, dataAprovacao: historicoOs.dataAprovacao, vendedor: historicoOs.vendedor, valorOs: historicoOs.valorOs,
       tipoOs: historicoOs.tipoOs, status: historicoOs.status,
     })
     .from(historicoOs)
@@ -359,6 +360,8 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
 
   return { registrado: true, disparoId: r.rows[0].id as number, proximaData, ...base };
 }
+
+let ultimaAtualizacaoErp = 0;
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 
@@ -911,8 +914,11 @@ export const campanhasWhatsappRouter = router({
         let contatos: ContatoFonte[];
         if (fonte.tipo === "erp") {
           if (!fonte.consultaErp) continue;
+          // Fonte sem data inicial escolhida pode ter uma janela padrão (ex.: primeira compra = últimos 60 dias).
+          const janelaPadrao = JANELA_PADRAO_DIAS[fonte.consultaErp];
+          const inicioDaFonte = periodoInicio ?? (janelaPadrao !== undefined ? somarDias(dataReferencia, -janelaPadrao) : null);
           contatos = filtrarPorPeriodo(
-            await resolverFonteErp(fonte.consultaErp, dataReferencia, ctxErp ?? undefined), periodoInicio, periodoFim,
+            await resolverFonteErp(fonte.consultaErp, dataReferencia, ctxErp ?? undefined), inicioDaFonte, periodoFim,
           );
         } else {
           if (!fonte.arquivoId) continue;
@@ -960,6 +966,30 @@ export const campanhasWhatsappRouter = router({
         invalidosOuDuplicados: higienizado.invalidos,
       };
     }),
+
+  /**
+   * "Atualizar do MubiSys": busca na API do ERP as OS e orçamentos do mês corrente e do anterior e grava no
+   * histórico local de onde as fontes calculam as listas — assim quem acabou de comprar (ou de orçar) sai/entra
+   * do grupo sem esperar o cron. Pedido do usuário 03/10/2026 (reativação: quem comprou precisa sair da lista).
+   * Trava de 2 minutos por processo para um clique repetido não disparar a mesma carga na API.
+   */
+  atualizarDadosErp: campanhasProcedure.mutation(async () => {
+    const agora = Date.now();
+    if (agora - ultimaAtualizacaoErp < 2 * 60_000) {
+      return { atualizado: false, motivo: "Os dados foram atualizados há menos de 2 minutos.", osProcessadas: 0, orcamentosProcessados: 0 };
+    }
+    const resultados = await sincronizarHistoricoRecente(1);
+    const erro = resultados.find(r => r.status === "ERRO");
+    if (erro) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Não consegui atualizar pelo MubiSys: ${erro.mensagemErro ?? "erro desconhecido"}` });
+    }
+    ultimaAtualizacaoErp = agora;
+    return {
+      atualizado: true, motivo: null,
+      osProcessadas: resultados.reduce((t, r) => t + r.osProcessadas, 0),
+      orcamentosProcessados: resultados.reduce((t, r) => t + r.orcamentosProcessados, 0),
+    };
+  }),
 
   // ─── Não quer receber (opt-out) ─────────────────────────────────────────────────────────────────
   // Pedido do usuário 03/10/2026: aba no painel para registrar os números que não querem mais mensagem. Vale para

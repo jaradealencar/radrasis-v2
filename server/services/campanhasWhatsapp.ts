@@ -7,8 +7,9 @@
 
 import {
   calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, normalizarTelefone, somarDias,
-  JANELA_SEMANA_DIAS, type SemaforoCampanha, type StatusCampanha, type TipoCampanha,
+  DIAS_UTEIS_MINIMOS_POS_VENDA, JANELA_SEMANA_DIAS, type SemaforoCampanha, type StatusCampanha, type TipoCampanha,
 } from "../../shared/campanhas-whatsapp";
+import { adicionarDiasUteisComFeriados } from "../../shared/feriados-nacionais";
 import { parseDataFlexivel } from "./inteligenciaClientes";
 
 // ─── Higienização de lista (quarentena) ─────────────────────────────────────
@@ -160,6 +161,8 @@ export interface LinhaVenda {
   empresa: string | null;
   telefone: string | null;
   dataFaturamento: string | null;
+  /** Data de aprovação da venda; quando presente, vale o piso de DIAS_UTEIS_MINIMOS_POS_VENDA (16) dias úteis, ver abaixo. */
+  dataAprovacao?: string | null;
   vendedor: string | null;
   valorOs: string | null;
 }
@@ -211,7 +214,14 @@ export function listarVendasPosVenda(
     if (dataFaturamento > hoje) continue; // data no futuro = erro de cadastro, não é venda faturada
     if (campanha.gatilhoAPartirDe && dataFaturamento < campanha.gatilhoAPartirDe) continue;
 
-    const prazo = somarDias(dataFaturamento, campanha.frequenciaDias);
+    // Prazo = faturamento + frequência da campanha, mas nunca antes de 16 dias úteis (sem feriados nacionais)
+    // após a aprovação da venda — pedido do usuário 03/10/2026.
+    let prazo = somarDias(dataFaturamento, campanha.frequenciaDias);
+    const aprovacao = parseDataFlexivel(l.dataAprovacao ?? null);
+    if (aprovacao) {
+      const piso = dataLocalParaIso(adicionarDiasUteisComFeriados(aprovacao, DIAS_UTEIS_MINIMOS_POS_VENDA));
+      if (piso > prazo) prazo = piso;
+    }
     const valor = l.valorOs === null || l.valorOs === undefined || l.valorOs === "" ? null : Number(l.valorOs);
     const venda: VendaPosVenda = {
       osNumero,

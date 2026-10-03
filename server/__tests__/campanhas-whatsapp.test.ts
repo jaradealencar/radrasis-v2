@@ -376,3 +376,24 @@ describe("higienizarLista — não quer receber (opt-out)", () => {
     expect(r.enviar.map(c => c.telefone)).toEqual(["5567990000002"]);
   });
 });
+
+describe("listarVendasPosVenda — piso de 16 dias úteis após a aprovação", () => {
+  const hoje = "2026-09-26";
+  const venda = (osNumero: string, dataAprovacao: string | null, dataFaturamento: string): LinhaVenda => ({
+    osNumero, dataAprovacao, dataFaturamento, empresa: `Empresa ${osNumero}`, telefone: "(67) 99999-0000", vendedor: "Ana", valorOs: "1000",
+  });
+
+  it("nunca vence antes de 16 dias úteis da aprovação, mesmo com a frequência curta já cumprida", () => {
+    const { pendentes, proximas } = listarVendasPosVenda([
+      venda("A", "01/09/2026", "01/09/2026"), // 16 úteis (sem o feriado de 07/09) = 24/09 → vencida
+      venda("B", "10/09/2026", "10/09/2026"), // 16 úteis = 02/10 → ainda não pode
+    ], { frequenciaDias: 5, gatilhoAPartirDe: null }, hoje, new Set());
+    expect(pendentes.map(v => [v.osNumero, v.prazo])).toEqual([["A", "2026-09-24"]]);
+    expect(proximas.map(v => [v.osNumero, v.prazo])).toEqual([["B", "2026-10-02"]]);
+  });
+
+  it("sem data de aprovação vale só faturamento + frequência", () => {
+    const { pendentes } = listarVendasPosVenda([venda("C", null, "01/09/2026")], { frequenciaDias: 5, gatilhoAPartirDe: null }, hoje, new Set());
+    expect(pendentes.map(v => v.prazo)).toEqual(["2026-09-06"]);
+  });
+});

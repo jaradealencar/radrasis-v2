@@ -67,13 +67,14 @@ Pedido do usuário: um "cérebro" que resolve a audiência de uma campanha a par
 campanha (multi-seleção com autosave a cada clique — `FontesDadosPopover.tsx`) + "Gerenciar fontes"
 (`GerenciarFontesPopover.tsx`) para criar fontes externas ou arquivar qualquer fonte.
 
-**9 fontes automáticas do ERP** (seed fixo das migrations `0049`/`0050`/`0053`, calculadas do histórico local —
+**10 fontes automáticas do ERP** (seed fixo das migrations `0049`/`0050`/`0053`, calculadas do histórico local —
 sem chamada à API MubiSys, mesmo espírito de `inteligenciaClientes.ts`):
 
 | Fonte | Regra |
 |---|---|
 | Clientes ativos | última compra ≤ 180 dias |
-| Primeira compra/onboarding | só 1 compra até agora, feita há ≤ 60 dias |
+| Primeira compra | primeira compra da vida dentro do período escolhido (sem período: últimos 60 dias — `JANELA_PADRAO_DIAS`); quem já recomprou continua no grupo daquele período (mudou em 03/10/2026; antes exigia 1 única compra) |
+| Ativos com 5+ compras (6 meses) | 5 ou mais OS válidas nos últimos 180 dias; entra no dia da 5ª compra (`resolverAtivosCincoMais`, fonte nova em 03/10/2026) |
 | Inativos 6+ meses | última compra entre 180 dias e **24 meses** (teto adicionado 28/09/2026 — ver nota abaixo) |
 | Orçaram e não compraram | status que não é venda ganha, em **todo o histórico** (sem limite de janela — decisão do usuário 27/09/2026) |
 | Compraram 1 vez e sumiram | só 1 compra na vida **e** ela já esfriou (180+ dias) |
@@ -93,6 +94,23 @@ valores da tabela acima.
 Alinhado ao alcance do backfill de telefone (`MESES_BACKFILL_PADRAO` em `server/sync/telefone-historico.ts`,
 também aumentado de 13 para 24 meses nesta mesma rodada) — sem o teto, a fonte trazia clientes tão antigos que
 nunca teriam telefone preenchido mesmo depois do backfill rodar. Ver "Limitações conhecidas" abaixo.
+
+**Os 7 grupos de clientes** (pedido do usuário 03/10/2026, migration `0072`; substituem as categorias antigas, `novo_lead`
+fica arquivada e `orcamento_perdido` virou `orcaram_nao_compraram`): 1) Outbound (listas externas, sem fonte do ERP),
+2) Primeira compra, 3) Pós-venda, 4) Reativação de inativos, 5) Orçaram e não compraram, 6) Uma só compra
+(`erp_compraram_uma_vez`), 7) Ativos com 5+ compras (5 ou mais em 6 meses; a regra "< 5" do pedido foi esclarecida
+como "5 ou mais"). A migration cria uma campanha inicial para cada grupo que ainda não tinha uma (cadência 30/30/60/30
+dias e quarentena de 15 dias, ponto de partida editável) e vincula a fonte do ERP. Campanhas recorrentes têm o
+calendário automático: ao registrar o disparo o próximo envio já é projetado (`calcularProximoEnvio`).
+
+**Pós-venda: piso de 16 dias úteis.** `listarVendasPosVenda` calcula o prazo como faturamento + frequência da
+campanha, mas nunca antes de 16 dias úteis (sem feriados nacionais, `adicionarDiasUteisComFeriados`) após a data de
+aprovação da OS (`DIAS_UTEIS_MINIMOS_POS_VENDA`).
+
+**Atualizar do MubiSys.** As fontes do ERP calculam a lista a cada consulta a partir de `historico_os` /
+`historico_orcamentos` (alimentados pela API do MubiSys). O botão "Atualizar do MubiSys" em "Ver contatos" chama
+`atualizarDadosErp` (`sincronizarHistoricoRecente(1)`: mês atual e anterior, trava de 2 minutos), e a lista é
+recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair está na lista "Não quer receber".
 
 **Período de entrada no grupo** (pedido do usuário 03/10/2026): em "Ver contatos" o usuário escolhe uma data
 inicial e final, aplicadas à data em que cada contato **entrou no grupo** da fonte (`ContatoFonte.dataEntrada`):

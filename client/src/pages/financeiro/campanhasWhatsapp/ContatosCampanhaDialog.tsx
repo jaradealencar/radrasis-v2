@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarRange, Database, Download, Pin, Users } from "lucide-react";
+import { AlertTriangle, CalendarRange, Database, Download, Pin, RefreshCw, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
 import { fmtNum } from "@/lib/format";
@@ -58,6 +58,16 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const { data, isFetching, isError, error } = trpc.campanhasWhatsapp.gerarListaDaCampanha.useQuery(
     { campanhaId: campanha?.id ?? 0, periodo }, { enabled: !!campanha && !periodoInvalido, retry: false },
   );
+
+  // Busca OS e orçamentos recentes no MubiSys e recalcula: quem acabou de comprar sai de "inativos", etc.
+  const atualizarErp = trpc.campanhasWhatsapp.atualizarDadosErp.useMutation({
+    onSuccess: r => {
+      if (!r.atualizado) { toast.info(r.motivo ?? "Dados já atualizados."); return; }
+      utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate();
+      toast.success(`MubiSys consultado: ${fmtNum(r.osProcessadas)} OS e ${fmtNum(r.orcamentosProcessados)} orçamentos atualizados.`);
+    },
+    onError: e => toast.error(e.message),
+  });
 
   const fixar = trpc.campanhasWhatsapp.atualizar.useMutation({
     onSuccess: () => {
@@ -142,7 +152,15 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
             novos e "1 compra" = data da compra; orçaram e não compraram = data do orçamento. Deixando "De" em branco,
             vale desde a primeira compra do histórico. "Novos/Reativados do mês" e "Redução de volume" olham só o
             mês/janela da data final, e listas de arquivo não têm data de entrada, então a data inicial não as afeta.
+            "Primeira compra" sem data inicial considera os últimos 60 dias.
           </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <Button size="sm" variant="outline" className="gap-1.5" disabled={atualizarErp.isPending} onClick={() => atualizarErp.mutate()}>
+            {atualizarErp.isPending ? <Spinner className="size-3.5" /> : <RefreshCw size={13} />} Atualizar do MubiSys
+          </Button>
+          <span>Consulta as vendas e orçamentos mais recentes (mês atual e anterior) antes de calcular a lista.</span>
         </div>
 
         {isFetching ? (

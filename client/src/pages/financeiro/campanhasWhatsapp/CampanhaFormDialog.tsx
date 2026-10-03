@@ -211,7 +211,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
               <Input id="camp-freq" inputMode="numeric" value={frequencia} onChange={e => setFrequencia(e.target.value)} />
               <p className="text-[11px] text-muted-foreground">
                 {tipo === "gatilho_venda"
-                  ? "Contato individual: data de faturamento da venda + este número de dias."
+                  ? "Contato individual: faturamento da venda + este número de dias, e nunca antes de 16 dias úteis após a aprovação."
                   : "Próximo envio = último envio + este número de dias."}
               </p>
             </div>

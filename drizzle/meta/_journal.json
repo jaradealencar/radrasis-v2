@@ -505,6 +505,13 @@
       "when": 1791063520579,
       "tag": "0071_campanhas_optout",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1791064512787,
+      "tag": "0072_campanhas_grupos_clientes",
+      "breakpoints": true
     }
   ]
 }

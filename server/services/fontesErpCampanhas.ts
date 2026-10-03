@@ -94,11 +94,50 @@ export function resolverClientesAtivos(base: Map<string, ClienteComTelefone>, ho
   return resultado;
 }
 
-/** Primeira compra (onboarding): só tem 1 compra até agora, e ela foi recente (padrão 60 dias). */
-export function resolverPrimeiraCompra(base: Map<string, ClienteComTelefone>, hoje: string, janelaDias = 60): ContatoFonte[] {
+/**
+ * Primeira compra: clientes cuja primeira compra da vida caiu no período escolhido (pedido do usuário
+ * 03/10/2026) — mesmo quem já recomprou depois continua no grupo daquele período. Sem `janelaDias` devolve todo
+ * mundo com a primeira compra até `hoje`; o recorte vem do filtro por período (`dataEntrada`), e quando nenhum
+ * período é informado o roteador aplica a janela padrão de `JANELA_PADRAO_DIAS`.
+ */
+export function resolverPrimeiraCompra(base: Map<string, ClienteComTelefone>, hoje: string, janelaDias?: number): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) <= janelaDias) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.primeiraCompra });
+    if (c.primeiraCompra > hoje) continue;
+    if (janelaDias !== undefined && diasEntre(c.primeiraCompra, hoje) > janelaDias) continue;
+    resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.primeiraCompra });
+  }
+  return resultado;
+}
+
+/**
+ * Ativos com 5+ compras: clientes que fizeram `minCompras` ou mais compras (OS válidas) nos últimos `janelaDias`
+ * (padrão 5 em 180 dias ≈ 6 meses). `dataEntrada` = dia da compra que completou a 5ª na janela, então o grupo
+ * cresce sozinho conforme o cliente compra mais.
+ */
+export function resolverAtivosCincoMais(osRows: HistoricoOs[], hoje: string, janelaDias = 180, minCompras = 5): ContatoFonte[] {
+  const inicioJanela = somarDias(hoje, -janelaDias);
+  const porCliente = new Map<string, { empresa: string; telefone: string | null; datas: string[]; ultima: string }>();
+  for (const r of osRows) {
+    if (!isOsNormalDb(r)) continue;
+    const empresaBruta = (r.empresa ?? "").trim();
+    if (!empresaBruta) continue;
+    const data = parseDataFlexivel(r.dataAprovacao);
+    if (!data) continue;
+    const dataIso = dataLocalParaIso(data);
+    if (dataIso < inicioJanela || dataIso > hoje) continue;
+    const key = normalizeEmpresaKey(empresaBruta);
+    let c = porCliente.get(key);
+    if (!c) { c = { empresa: empresaBruta, telefone: null, datas: [], ultima: dataIso }; porCliente.set(key, c); }
+    c.datas.push(dataIso);
+    if (dataIso >= c.ultima) { c.ultima = dataIso; c.empresa = empresaBruta; }
+    if (r.telefone) c.telefone = r.telefone;
+  }
+  const resultado: ContatoFonte[] = [];
+  for (const c of porCliente.values()) {
+    if (c.datas.length < minCompras) continue;
+    c.datas.sort();
+    resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.datas[minCompras - 1] });
   }
   return resultado;
 }
@@ -346,6 +385,7 @@ const MESES_TETO_INATIVOS_SEED = 24;
 export const RESOLVEDORES_ERP: Record<string, (ctx: ContextoErp, hoje: string) => ContatoFonte[]> = {
   clientes_ativos: (ctx, hoje) => resolverClientesAtivos(ctx.base, hoje),
   primeira_compra: (ctx, hoje) => resolverPrimeiraCompra(ctx.base, hoje),
+  ativos_5_mais_6m: (ctx, hoje) => resolverAtivosCincoMais(ctx.osRows, hoje),
   inativos_6m: (ctx, hoje) => resolverInativos(ctx.base, hoje, 180, diasEntre(subtrairMesesIso(hoje, MESES_TETO_INATIVOS_SEED), hoje)),
   orcaram_nao_compraram: (ctx, hoje) => resolverOrcaramNaoCompraram(ctx.orcamentos, ctx.base, hoje),
   compraram_uma_vez_sumiram: (ctx, hoje) => resolverCompraramUmaVezESumiram(ctx.base, hoje),
@@ -353,6 +393,12 @@ export const RESOLVEDORES_ERP: Record<string, (ctx: ContextoErp, hoje: string) =
   novos_do_mes: (ctx, hoje) => resolverNovosDoMes(obterComprasPorCliente(ctx), hoje),
   reativados_do_mes: (ctx, hoje) => resolverReativadosDoMes(obterComprasPorCliente(ctx), hoje),
   reducao_volume: (ctx, hoje) => resolverReducaoDeVolume(obterVolumePorJanela(ctx, hoje)),
+};
+
+/** Janela (dias antes da data final) usada quando a campanha não tem data inicial, para fontes que sem recorte
+ * trariam o histórico inteiro. Primeira compra: o padrão histórico de 60 dias do onboarding. */
+export const JANELA_PADRAO_DIAS: Record<string, number> = {
+  primeira_compra: 60,
 };
 
 export interface ContextoErp {

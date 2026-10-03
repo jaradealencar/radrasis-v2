@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  filtrarPorPeriodo, primeiroRegistroErp,
+  filtrarPorPeriodo, primeiroRegistroErp, resolverAtivosCincoMais,
   construirBaseComTelefone, construirHistoricoComprasPorCliente, construirVolumePorJanela,
   resolverClientesAtivos, resolverCompraramUmaVez, resolverCompraramUmaVezESumiram, resolverInativos,
   resolverNovosDoMes, resolverOrcaramNaoCompraram, resolverPrimeiraCompra, resolverReativadosDoMes,
@@ -42,15 +42,30 @@ describe("fontes ERP — resolução local (sem chamada à API)", () => {
     expect(ativos[0].telefone).toBe("67999990000");
   });
 
-  it("primeira compra (onboarding): só 1 compra até agora e recente (60 dias); quem já recomprou não conta", () => {
+  it("primeira compra: traz todo cliente pela data da 1ª compra (inclusive quem já recomprou); a janela é opcional", () => {
     const base = construirBaseComTelefone([
-      os("TESTE Onboarding", "10/09/2026"), // 1 compra, 16 dias atrás
-      os("TESTE Ja Recomprou", "01/01/2026"),
-      os("TESTE Ja Recomprou", "10/09/2026"), // 2ª compra — não é mais "primeira compra"
-      os("TESTE Primeira Mas Antiga", "01/01/2025"), // só 1 compra, mas há mais de 60 dias
+      os("TESTE Onboarding", "10/09/2026"), // 1ª compra há 16 dias
+      os("TESTE Ja Recomprou", "01/09/2026"),
+      os("TESTE Ja Recomprou", "20/09/2026"), // recomprou, mas a 1ª compra foi em setembro
+      os("TESTE Primeira Antiga", "01/01/2025"), // 1ª compra há mais de 60 dias
     ]);
-    const onboarding = resolverPrimeiraCompra(base, HOJE);
-    expect(onboarding.map(c => c.nome)).toEqual(["TESTE Onboarding"]);
+    // Sem janela: todos, cada um com a data da sua primeira compra.
+    expect(resolverPrimeiraCompra(base, HOJE).map(c => [c.nome, c.dataEntrada])).toEqual([
+      ["TESTE Onboarding", "2026-09-10"], ["TESTE Ja Recomprou", "2026-09-01"], ["TESTE Primeira Antiga", "2025-01-01"],
+    ]);
+    // Com janela de 60 dias: só as primeiras compras recentes (quem recomprou continua).
+    expect(resolverPrimeiraCompra(base, HOJE, 60).map(c => c.nome)).toEqual(["TESTE Onboarding", "TESTE Ja Recomprou"]);
+  });
+
+  it("ativos com 5+ compras: conta OS dos últimos 180 dias; a data de entrada é a da 5ª compra", () => {
+    const rows = [
+      ...["01/06/2026", "20/06/2026", "10/07/2026", "05/08/2026", "01/09/2026", "20/09/2026"].map(d => os("TESTE Fiel", d)),
+      ...["01/06/2026", "20/06/2026", "10/07/2026", "05/08/2026"].map(d => os("TESTE Quase", d)), // só 4
+      ...["01/01/2026", "02/01/2026", "03/01/2026", "04/01/2026", "05/01/2026"].map(d => os("TESTE Fora Da Janela", d)), // 5, mas antigas
+    ];
+    const r = resolverAtivosCincoMais(rows, HOJE);
+    expect(r.map(c => [c.nome, c.dataEntrada])).toEqual([["TESTE Fiel", "2026-09-01"]]);
+    expect(resolverAtivosCincoMais(rows, HOJE, 180, 4).map(c => c.nome).sort()).toEqual(["TESTE Fiel", "TESTE Quase"]);
   });
 
   it("inativos: já compraram, última compra há 6+ meses (180 dias)", () => {
@@ -183,7 +198,7 @@ describe("fontes ERP — período de entrada no grupo", () => {
     ]);
     // Inativo "entra" 180 dias depois da última compra: 01/01 + 180d = 30/06/2026.
     expect(resolverInativos(base, HOJE)[0].dataEntrada).toBe("2026-06-30");
-    expect(resolverPrimeiraCompra(base, HOJE)[0].dataEntrada).toBe("2026-09-10");
+    expect(resolverPrimeiraCompra(base, HOJE, 60).map(c => [c.nome, c.dataEntrada])).toEqual([["TESTE Onboarding", "2026-09-10"]]);
     expect(resolverClientesAtivos(base, HOJE).map(c => c.dataEntrada)).toEqual(["2026-09-10"]);
   });
 

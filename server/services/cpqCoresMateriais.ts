@@ -33,7 +33,9 @@ export type CpqCorCatalogo = {
 
 export type CpqPrecoImpressaoCor = {
   vinilBrancoM2?: string | number | null;
+  vinilBrancoTransmissaoPct?: string | number | null;
   vinilTransparenteM2?: string | number | null;
+  vinilTransparenteTransmissaoPct?: string | number | null;
   impressaoM2?: string | number | null;
   laminacaoM2?: string | number | null;
   laminacaoPadrao?: boolean;
@@ -356,11 +358,22 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
   const area = input.regiao.areaM2 != null && Number.isFinite(input.regiao.areaM2) && input.regiao.areaM2 >= 0
     ? input.regiao.areaM2 : null;
   const vinil = valor(input.baseImpressao === "branco" ? input.precos?.vinilBrancoM2 : input.precos?.vinilTransparenteM2);
+  const transmissao = valor(input.baseImpressao === "branco" ? input.precos?.vinilBrancoTransmissaoPct : input.precos?.vinilTransparenteTransmissaoPct);
   const impressao = valor(input.precos?.impressaoM2);
   const laminacao = input.laminar ? valor(input.precos?.laminacaoM2) : 0;
-  const complete = area != null && vinil != null && impressao != null && laminacao != null;
+  const iluminacaoRequerTransmissao = input.iluminacao !== "sem_iluminacao";
+  const transmissaoCompativel = !iluminacaoRequerTransmissao
+    || (transmissao != null && transmissao > 0
+      && (input.transmissaoMinimaPct == null || transmissao >= input.transmissaoMinimaPct));
+  const complete = area != null && vinil != null && impressao != null && laminacao != null && transmissaoCompativel;
   if (area == null) avisos.push("Área física não calculada; confirme escala e extração da região.");
   if (vinil == null) avisos.push(`Custo por m² do vinil ${input.baseImpressao} não cadastrado.`);
+  if (iluminacaoRequerTransmissao && transmissao == null) avisos.push(`Transmissão de luz do vinil ${input.baseImpressao} não cadastrada; confirme a compatibilidade antes de aprovar.`);
+  else if (iluminacaoRequerTransmissao && transmissao === 0) avisos.push(`Vinil ${input.baseImpressao} sem transmissão de luz; incompatível com a face iluminada.`);
+  else if (iluminacaoRequerTransmissao && input.transmissaoMinimaPct != null && transmissao! < input.transmissaoMinimaPct)
+    avisos.push(`Transmissão de ${transmissao}% do vinil ${input.baseImpressao} abaixo do mínimo informado (${input.transmissaoMinimaPct}%).`);
+  else if (iluminacaoRequerTransmissao && input.transmissaoMinimaPct == null)
+    avisos.push("Transmissão do vinil cadastrada; engenharia precisa confirmar se atende ao nível de iluminação do projeto.");
   if (impressao == null) avisos.push("Custo de impressão digital por m² não cadastrado.");
   if (input.laminar && laminacao == null) avisos.push("Custo de laminação por m² não cadastrado.");
   const unit = complete ? vinil! + impressao! + laminacao! : null;
@@ -386,6 +399,7 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
       base: input.baseImpressao,
       areaM2: area,
       vinilM2: vinil,
+      transmissaoLuzPct: transmissao,
       impressaoM2: impressao,
       laminacaoM2: input.laminar ? laminacao : 0,
       custoUnitarioM2: unit,
@@ -420,6 +434,7 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
   const chapa = candidatos(input.chapas, target, lab, input, "chapa");
   const direta = chapa.find(item => item.deltaE00! <= DELTA_E_CHAPA_DIRETA);
   if (direta) {
+    avisos.push(...direta.avisosIluminacao);
     if (area == null) avisos.push("Área física não calculada; sugestão cromática pode ser revisada, mas consumo fica pendente.");
     avisos.push("Correspondência interna direta por Pantone ou CIEDE2000; confirme a amostra física do lote.");
     return {
@@ -437,6 +452,7 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
   const vinis = candidatos(input.adesivos, target, lab, input, "imprimax");
   const solido = vinis.find(item => item.deltaE00! <= DELTA_E_IMPRIMAX_SOLIDO && item.raw.tipoVinil !== "transparente");
   if (solido) {
+    avisos.push(...solido.avisosIluminacao);
     const price = valor(solido.raw.precoM2);
     if (area == null) avisos.push("Área física não calculada; confirme escala antes de fechar consumo do vinil.");
     if (price == null) avisos.push("Preço de compra do adesivo não cadastrado; o custo desta região está pendente.");
