@@ -449,6 +449,13 @@
       "when": 1791026282419,
       "tag": "0063_silent_victor_mancha",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791051155060,
+      "tag": "0064_narrow_strong_guy",
+      "breakpoints": true
     }
   ]
 }

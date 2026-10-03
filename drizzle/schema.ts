@@ -471,6 +471,29 @@ export const estudioKits = pgTable("estudio_kits", {
 export type EstudioKit = typeof estudioKits.$inferSelect;
 export type InsertEstudioKit = typeof estudioKits.$inferInsert;
 
+// Formatos de chapa por matéria-prima do catálogo MubiSys. O ERP fornece custo
+// e identificação do material, mas não expõe dimensões de chapa; os formatos
+// usados pelo nesting ficam cadastrados localmente e podem ter vários tamanhos.
+export const estudioChapas = pgTable("estudio_chapas", {
+  id: serial("id").primaryKey(),
+  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull(),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  larguraMm: integer("largura_mm").notNull(),
+  alturaMm: integer("altura_mm").notNull(),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  materialIdx: index("estudio_chapas_material_idx").on(table.mubisysMateriaPrimaId, table.ativo),
+  tamanhoUidx: uniqueIndex("estudio_chapas_material_tamanho_uidx").on(
+    table.mubisysMateriaPrimaId,
+    table.larguraMm,
+    table.alturaMm,
+  ),
+}));
+export type EstudioChapa = typeof estudioChapas.$inferSelect;
+export type InsertEstudioChapa = typeof estudioChapas.$inferInsert;
+
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 
 // Tipos de role do sistema
