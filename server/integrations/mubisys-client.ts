@@ -123,6 +123,17 @@ export interface MubiSysProdutoModelo {
   nome: string;
   unidade_cobranca: string;
   status: string;
+  variacoes?: MubiSysProdutoVariacao[];
+  [k: string]: unknown;
+}
+
+/** Variação comercial do modelo, devolvida dentro de `modelos[]` pela API pública. */
+export interface MubiSysProdutoVariacao {
+  id: number;
+  nome: string;
+  descricao?: string;
+  status?: string;
+  padrao?: string | boolean;
   [k: string]: unknown;
 }
 

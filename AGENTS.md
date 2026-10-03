@@ -316,23 +316,33 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   não existem mais no repo.
 - **A API pública do MubiSys não expõe composição de produto** (testado ao
   vivo em 28/09/2026 contra `produto/{id}` e `materia-prima/{id}`): o
-  cadastro básico do produto (`produto`/`produto/{id}`, com `modelos[]`) e o
-  custo da matéria-prima (`materia-prima`/`materia-prima/{id}`, campo
-  `valor_custo`) existem, mas o vínculo produto↔matéria-prima com
-  quantidade/unidade de consumo só existe na tela logada do MubiSys, via
-  AJAX interno (`index.php?modulo=matModelos&acao=cadastrados`, autenticado
-  por sessão de usuário, não pelo `Access-Token`). Por isso o módulo
-  **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
+  cadastro básico do produto (`produto`/`produto/{id}`, com `modelos[]` e
+  `variacoes[]`) e o custo da matéria-prima (`materia-prima`/
+  `materia-prima/{id}`, campo `valor_custo`) existem, mas o vínculo
+  produto↔matéria-prima com quantidade/unidade de consumo só existe na tela
+  logada do MubiSys, via AJAX interno
+  (`index.php?modulo=matModelos&acao=cadastrados`, autenticado por sessão de
+  usuário, não pelo `Access-Token`). O **Estúdio de Letra Caixa** agora tem
+  conexão opcional pelo formulário da própria tela: a senha é transitória;
+  a sessão fica cifrada com AES-256-GCM em cookie `HttpOnly` por até 8 horas,
+  por navegador, sem persistência no banco. O catálogo do Estúdio lê as
+  variações pela API pública e tenta importar a ficha da variação/modelo
+  pelo AJAX interno; os custos continuam vindo ao vivo de
+  `listarMateriasPrimas()`. A quantidade importada é aplicada conforme a
+  unidade de cobrança do modelo (área → área, linear → perímetro externo,
+  demais unidades → quantidade fixa); confirme essa regra para unidades
+  MubiSys atípicas. Se a sessão expirar, o formato interno mudar ou não
+  houver composição para a variação, o fluxo preserva a composição manual
+  do Estúdio como fallback. A tela autenticada é uma interface interna e
+  não oficial do MubiSys: alterações nela podem exigir ajuste do parser e a
+  conexão deve ser validada com uma sessão real após publicar a mudança.
+  O módulo **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
   `server/routers/produtos.ts`, tabelas `produtos`/
-  `produto_composicao_materiais`/`produto_kit_itens`) guarda essa
-  composição localmente, cadastrada à mão — decisão do usuário 28/09/2026,
-  descartando scraping da tela autenticada por ser frágil/não-oficial. O
-  custo de cada matéria-prima na composição é buscado ao vivo em
-  `listarMateriasPrimas()` (`server/integrations/mubisys-client.ts`), não
-  fica congelado no cadastro. O campo `produtos.idPrecificacao` referencia
-  um `id` de linha/regra da Tabela de Preços (ver `shared/price-table.ts`)
-  só por número — não há resolução automática de qual coluna/faixa de valor
-  usar ainda.
+  `produto_composicao_materiais`/`produto_kit_itens`) continua com
+  composição cadastrada localmente. O campo `produtos.idPrecificacao`
+  referencia um `id` de linha/regra da Tabela de Preços (ver
+  `shared/price-table.ts`) só por número — não há resolução automática de
+  qual coluna/faixa de valor usar ainda.
 - **Módulo Proposta (cotação) é diferente de `crm_propostas`.** A tabela
   `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o "CRM
   de Propostas" (`client/src/pages/comercial/CRM.tsx`,

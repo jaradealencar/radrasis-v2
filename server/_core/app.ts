@@ -196,6 +196,10 @@ export async function createApp(): Promise<Express> {
     await import("../routes/estudio-catalogo-mubisys");
   registrarRotaEstudioCatalogoMubiSys(app);
 
+  const { registrarRotasEstudioMubiSysSession } =
+    await import("../routes/estudio-mubisys-session");
+  registrarRotasEstudioMubiSysSession(app);
+
   const { registrarRotasEstudioConfiguracoes } =
     await import("../routes/estudio-configuracoes");
   registrarRotasEstudioConfiguracoes(app);
