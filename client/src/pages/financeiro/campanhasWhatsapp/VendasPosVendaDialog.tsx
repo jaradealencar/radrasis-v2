@@ -74,7 +74,8 @@ export default function VendasPosVendaDialog({ campanha, onClose }: Props) {
           <DialogTitle className="flex items-center gap-2"><ListChecks size={18} className="text-blue-600" /> Vendas do pós-venda</DialogTitle>
           <DialogDescription>
             {campanha?.nome} · prazo = data de faturamento + {campanha?.frequenciaDias} dias
-            {campanha?.gatilhoAPartirDe && ` · só faturadas a partir de ${formatarDataBr(campanha.gatilhoAPartirDe)}`}
+            {(campanha?.periodoInicio ?? campanha?.gatilhoAPartirDe) && ` · só faturadas a partir de ${formatarDataBr((campanha.periodoInicio ?? campanha.gatilhoAPartirDe)!)}`}
+            {campanha?.periodoFim && ` até ${formatarDataBr(campanha.periodoFim)}`}
           </DialogDescription>
         </DialogHeader>
 

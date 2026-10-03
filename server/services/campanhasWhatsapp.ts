@@ -196,7 +196,7 @@ export function dataLocalParaIso(d: Date): string {
  */
 export function listarVendasPosVenda(
   linhas: LinhaVenda[],
-  campanha: { frequenciaDias: number; gatilhoAPartirDe: string | null },
+  campanha: { frequenciaDias: number; gatilhoAPartirDe: string | null; gatilhoAte?: string | null },
   hoje: string,
   osJaContatadas: ReadonlySet<string>,
 ): { pendentes: VendaPosVenda[]; proximas: VendaPosVenda[] } {
@@ -213,6 +213,8 @@ export function listarVendasPosVenda(
     if (!dataIsoValida(dataFaturamento)) continue;
     if (dataFaturamento > hoje) continue; // data no futuro = erro de cadastro, não é venda faturada
     if (campanha.gatilhoAPartirDe && dataFaturamento < campanha.gatilhoAPartirDe) continue;
+    // Data final da apuração (opcional): vendas faturadas depois dela ficam de fora. Sem ela, a lista é permanente.
+    if (campanha.gatilhoAte && dataFaturamento > campanha.gatilhoAte) continue;
 
     // Prazo = faturamento + frequência da campanha, mas nunca antes de 16 dias úteis (sem feriados nacionais)
     // após a aprovação da venda — pedido do usuário 03/10/2026.

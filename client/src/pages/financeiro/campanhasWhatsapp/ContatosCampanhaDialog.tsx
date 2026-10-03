@@ -6,10 +6,8 @@ import { exportRowsToXlsx } from "@/lib/exportXlsx";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import PeriodoApuracao from "./PeriodoApuracao";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatarTelefone, hojeCampoGrande } from "@shared/campanhas-whatsapp";
 import { slugArquivo, type CampanhaLinha } from "./comuns";
@@ -120,22 +118,9 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
         </DialogHeader>
 
         <div className="space-y-2 rounded-lg border p-3">
-          <div className="flex items-center gap-1.5 text-sm font-medium"><CalendarRange size={14} className="text-blue-600" /> Período de entrada no grupo</div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label htmlFor="contatos-inicio" className="text-xs">De</Label>
-              <Input id="contatos-inicio" type="date" className="w-40" max={periodo.fim ?? hoje}
-                value={inicio || data?.primeiroRegistro || ""} onChange={e => setInicio(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="contatos-fim" className="text-xs">Até</Label>
-              <Input id="contatos-fim" type="date" className="w-40" max={hoje} disabled={fimAteHoje}
-                value={fimAteHoje ? hoje : fim} onChange={e => setFim(e.target.value)} />
-            </div>
-            <label className="flex items-center gap-1.5 pb-2 text-xs">
-              <Checkbox checked={fimAteHoje} onCheckedChange={v => setFimAteHoje(v === true)} /> Até hoje (atualiza sozinho)
-            </label>
-          </div>
+          <div className="flex items-center gap-1.5 text-sm font-medium"><CalendarRange size={14} className="text-blue-600" /> Período de apuração (data de entrada no grupo)</div>
+          <PeriodoApuracao id="contatos" inicio={inicio} onInicio={setInicio} fimAutomatico={fimAteHoje}
+            onFimAutomatico={setFimAteHoje} fim={fim} onFim={setFim} hoje={hoje} inicioPadrao={data?.primeiroRegistro} />
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant={fixado ? "outline" : "default"} className="gap-1.5" disabled={fixado || periodoInvalido || fixar.isPending}
               onClick={() => fixar.mutate({ id: campanha!.id, periodoInicio: periodo.inicio, periodoFim: periodo.fim })}>

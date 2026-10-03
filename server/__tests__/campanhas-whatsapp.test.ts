@@ -397,3 +397,20 @@ describe("listarVendasPosVenda — piso de 16 dias úteis após a aprovação", 
     expect(pendentes.map(v => v.prazo)).toEqual(["2026-09-06"]);
   });
 });
+
+describe("listarVendasPosVenda — período de apuração (início e data final)", () => {
+  const hoje = "2026-09-26";
+  const venda = (osNumero: string, dataFaturamento: string): LinhaVenda => ({
+    osNumero, dataFaturamento, empresa: `Empresa ${osNumero}`, telefone: "(67) 99999-0000", vendedor: "Ana", valorOs: "1000",
+  });
+  const linhas = [venda("A", "01/07/2026"), venda("B", "01/08/2026"), venda("C", "01/09/2026")];
+  const os = (r: ReturnType<typeof listarVendasPosVenda>) => [...r.pendentes, ...r.proximas].map(v => v.osNumero).sort();
+
+  it("sem data final (automático) entram todas as vendas a partir do início, inclusive as novas", () => {
+    expect(os(listarVendasPosVenda(linhas, { frequenciaDias: 5, gatilhoAPartirDe: "2026-08-01" }, hoje, new Set()))).toEqual(["B", "C"]);
+  });
+
+  it("com data final, vendas faturadas depois dela ficam de fora", () => {
+    expect(os(listarVendasPosVenda(linhas, { frequenciaDias: 5, gatilhoAPartirDe: "2026-07-15", gatilhoAte: "2026-08-15" }, hoje, new Set()))).toEqual(["B"]);
+  });
+});

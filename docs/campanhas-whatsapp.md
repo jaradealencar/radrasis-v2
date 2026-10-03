@@ -112,6 +112,14 @@ aprovação da OS (`DIAS_UTEIS_MINIMOS_POS_VENDA`).
 `atualizarDadosErp` (`sincronizarHistoricoRecente(1)`: mês atual e anterior, trava de 2 minutos), e a lista é
 recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair está na lista "Não quer receber".
 
+**Período de apuração no formulário da campanha** (pedido do usuário 03/10/2026): o campo "Só vendas faturadas a
+partir de" do pós-venda virou "Período de apuração", para **todos** os tipos, com início e final em duas opções:
+data final ou **automático** (sem data final — a lista é permanente e se retroalimenta). Grava em
+`periodo_inicio`/`periodo_fim` (null = automático); o corte antigo `gatilho_a_partir_de` continua honrado quando
+`periodo_inicio` está vazio e o formulário o migra ao salvar. No pós-venda filtra a data de **faturamento**
+(`listarVendasPosVenda`, parâmetro `gatilhoAte`); nas fontes do ERP, a data de entrada no grupo. Mesmo controle
+(`PeriodoApuracao.tsx`) em "Ver contatos".
+
 **Período de entrada no grupo** (pedido do usuário 03/10/2026): em "Ver contatos" o usuário escolhe uma data
 inicial e final, aplicadas à data em que cada contato **entrou no grupo** da fonte (`ContatoFonte.dataEntrada`):
 inativos = última compra + prazo (180 dias), clientes ativos = última compra, primeira compra / 1 compra = data da

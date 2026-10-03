@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BanIcon, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
+import { AlertTriangle, BanIcon, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import KpiCard from "@/components/KpiCard";
 import { formatarDataBr } from "@shared/campanhas-whatsapp";
 import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
@@ -128,7 +129,7 @@ export default function MarketingCampanhasWhatsapp() {
                 <TableBody>
                   {campanhas.map(c => (
                     <TableRow key={c.id} className={c.status !== "ativa" ? "opacity-60" : undefined}>
-                      <TableCell className="font-medium max-w-xs">
+                      <TableCell className="font-medium max-w-[15rem]">
                         <span title={c.descricao ?? undefined}>{c.nome}</span>
                         <div className="text-[11px] font-normal text-muted-foreground">
                           {c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
@@ -140,14 +141,14 @@ export default function MarketingCampanhasWhatsapp() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell>{labelCategoria(c.categoria)}</TableCell>
+                      <TableCell className="whitespace-nowrap">{labelCategoria(c.categoria)}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         {c.frequenciaDias} dias
                         {c.tipo === "gatilho_venda" && <div className="text-[11px] text-muted-foreground">após a venda</div>}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{c.ultimoEnvio ? formatarDataBr(c.ultimoEnvio) : "—"}</TableCell>
                       <TableCell className="whitespace-nowrap">{c.proximoEnvio ? formatarDataBr(c.proximoEnvio) : "—"}</TableCell>
-                      <TableCell><StatusCampanhaBadge campanha={c} hoje={hoje} /></TableCell>
+                      <TableCell className="whitespace-nowrap"><StatusCampanhaBadge campanha={c} hoje={hoje} /></TableCell>
                       <TableCell className="sticky right-0 bg-white shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
                         <div className="flex items-center justify-end gap-1">
                           <Button
@@ -156,17 +157,23 @@ export default function MarketingCampanhasWhatsapp() {
                           >
                             <Send size={13} /> Registrar disparo
                           </Button>
-                          {/* Espaço reservado nas campanhas sem este botão: mantém os ícones alinhados em coluna. */}
-                          {c.tipo === "gatilho_venda" ? (
-                            <BotaoIcone rotulo="Ver vendas do pós-venda" onClick={() => setVendas(c)}><ListChecks size={15} /></BotaoIcone>
-                          ) : (
-                            <span className="size-8 shrink-0" aria-hidden="true" />
-                          )}
                           <BotaoIcone rotulo="Ver contatos" onClick={() => setVerContatos(c)}><Users size={15} /></BotaoIcone>
-                          <BotaoIcone rotulo="Ver histórico" onClick={() => setHistorico(c)}><History size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Editar campanha" onClick={() => setFormulario(c)}><Pencil size={15} /></BotaoIcone>
-                          <BotaoIcone rotulo="Duplicar campanha" onClick={() => setDuplicar(c)}><Copy size={15} /></BotaoIcone>
-                          <BotaoIcone rotulo="Excluir campanha" onClick={() => setExcluir(c)}><Trash2 size={15} className="text-red-600" /></BotaoIcone>
+                          {/* Ações secundárias num menu: a coluna fica estreita e os ícones sempre alinhados. */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="size-8" aria-label="Mais ações"><MoreHorizontal size={16} /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {c.tipo === "gatilho_venda" && (
+                                <DropdownMenuItem onSelect={() => setVendas(c)}><ListChecks size={14} /> Ver vendas do pós-venda</DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onSelect={() => setHistorico(c)}><History size={14} /> Ver histórico</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setDuplicar(c)}><Copy size={14} /> Duplicar campanha</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem variant="destructive" onSelect={() => setExcluir(c)}><Trash2 size={14} /> Excluir campanha</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>

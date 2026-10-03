@@ -91,6 +91,12 @@ function iso(v: unknown): string {
   return v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
 }
 
+/** Início da apuração do pós-venda: o período novo vale; o corte antigo (`gatilhoAPartirDe`) continua honrado. */
+function inicioApuracao(c: CampanhaWhatsapp): string | null {
+  const v = c.periodoInicio ?? c.gatilhoAPartirDe;
+  return v ? iso(v) : null;
+}
+
 async function obterDb(): Promise<Db> {
   const db = await getDb();
   if (!db) throw new Error("DB indisponível");
@@ -130,9 +136,9 @@ async function carregarPosVenda(
   if (gatilho.length === 0) return resultado;
 
   // `ano` do historico_os pode ser o da aprovação (anterior ao do faturamento): folga de 1 ano no pré-filtro.
-  const anoMinimo = gatilho.some(c => !c.gatilhoAPartirDe)
+  const anoMinimo = gatilho.some(c => !inicioApuracao(c))
     ? null
-    : Math.min(...gatilho.map(c => Number(c.gatilhoAPartirDe!.slice(0, 4)))) - 1;
+    : Math.min(...gatilho.map(c => Number(inicioApuracao(c)!.slice(0, 4)))) - 1;
 
   const linhas = (await db
     .select({
@@ -159,7 +165,7 @@ async function carregarPosVenda(
   for (const c of gatilho) {
     resultado.set(c.id, listarVendasPosVenda(
       linhas,
-      { frequenciaDias: c.frequenciaDias, gatilhoAPartirDe: c.gatilhoAPartirDe ? iso(c.gatilhoAPartirDe) : null },
+      { frequenciaDias: c.frequenciaDias, gatilhoAPartirDe: inicioApuracao(c), gatilhoAte: c.periodoFim ? iso(c.periodoFim) : null },
       hoje,
       contatadasPorCampanha.get(c.id) ?? new Set(),
     ));

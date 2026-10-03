@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import PeriodoApuracao from "./PeriodoApuracao";
 import {
-  STATUS_CAMPANHA, STATUS_CAMPANHA_LABEL, TIPO_CAMPANHA_LABEL, TIPOS_CAMPANHA,
+  STATUS_CAMPANHA, STATUS_CAMPANHA_LABEL, TIPO_CAMPANHA_LABEL, TIPOS_CAMPANHA, hojeCampoGrande,
   type StatusCampanha, type TipoCampanha,
 } from "@shared/campanhas-whatsapp";
 import ArquivosCampanhaPopover from "./ArquivosCampanhaPopover";
@@ -85,7 +86,10 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   const [frequencia, setFrequencia] = useState("30");
   const [quarentena, setQuarentena] = useState("0");
   const [status, setStatus] = useState<StatusCampanha>("ativa");
-  const [aPartirDe, setAPartirDe] = useState("");
+  const hoje = hojeCampoGrande();
+  const [inicio, setInicio] = useState("");
+  const [fimAutomatico, setFimAutomatico] = useState(true);
+  const [fim, setFim] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -96,7 +100,10 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
     setFrequencia(String(campanha?.frequenciaDias ?? 30));
     setQuarentena(String(campanha?.quarentenaDias ?? 0));
     setStatus(campanha?.status ?? "ativa");
-    setAPartirDe(campanha?.gatilhoAPartirDe ?? "");
+    // O corte antigo do pós-venda (gatilhoAPartirDe) aparece como início da apuração.
+    setInicio(campanha?.periodoInicio ?? campanha?.gatilhoAPartirDe ?? "");
+    setFimAutomatico(!campanha?.periodoFim);
+    setFim(campanha?.periodoFim ?? "");
   }, [open, campanha]);
 
   // Nova campanha: assim que a lista de categorias chegar, pré-seleciona a primeira ativa (sem sobrescrever
@@ -130,13 +137,18 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
     : !categoria ? "Selecione a categoria."
     : freq === null || freq < 1 || freq > 730 ? "A frequência deve ser um número de 1 a 730 dias."
     : quar === null || quar > 365 ? "A quarentena deve ser um número de 0 a 365 dias."
+    : !fimAutomatico && !fim ? "Escolha a data final da apuração ou deixe no automático."
+    : !fimAutomatico && inicio && inicio > fim ? "O início da apuração não pode ser depois da data final."
     : null;
 
   const salvar = () => {
     if (erro || freq === null || quar === null) return toast.error(erro ?? "Confira os campos.");
     const base = {
       nome: nome.trim(), descricao: descricao.trim() || null, categoria, frequenciaDias: freq, quarentenaDias: quar,
-      gatilhoAPartirDe: tipo === "gatilho_venda" && aPartirDe ? aPartirDe : null,
+      // Início/final da apuração valem para todos os tipos; o corte antigo do pós-venda é migrado para cá.
+      periodoInicio: inicio || null,
+      periodoFim: fimAutomatico ? null : fim || null,
+      gatilhoAPartirDe: null,
     };
     if (campanha) atualizar.mutate({ id: campanha.id, ...base, status });
     else criar.mutate({ ...base, tipo });
@@ -224,16 +236,17 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
             </div>
           </div>
 
-          {tipo === "gatilho_venda" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="camp-apartir">Só vendas faturadas a partir de (opcional)</Label>
-              <Input id="camp-apartir" type="date" value={aPartirDe} onChange={e => setAPartirDe(e.target.value)} className="sm:w-48" />
-              <p className="text-[11px] text-muted-foreground">
-                Vazio = sem limite: toda venda com prazo vencido e ainda não contatada entra na lista. Use para evitar
-                que a primeira lista traga o histórico inteiro.
-              </p>
-            </div>
-          )}
+          <div className="space-y-2 rounded-lg border p-3">
+            <Label>Período de apuração</Label>
+            <PeriodoApuracao id="camp" inicio={inicio} onInicio={setInicio} fimAutomatico={fimAutomatico}
+              onFimAutomatico={setFimAutomatico} fim={fim} onFim={setFim} hoje={hoje} />
+            <p className="text-[11px] text-muted-foreground">
+              {tipo === "gatilho_venda"
+                ? "Só entram vendas faturadas dentro do período. Sem início, toda venda com prazo vencido entra (a primeira lista pode trazer o histórico inteiro). "
+                : "Conta a data em que cada cliente entrou no grupo (ex.: completou 6 meses sem comprar). Sem início, vale desde o primeiro registro. "}
+              No modo automático não há data final: a lista é permanente e se retroalimenta, com quem for entrando.
+            </p>
+          </div>
 
           {editando && (
             <div className="space-y-1.5">
