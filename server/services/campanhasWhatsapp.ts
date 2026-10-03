@@ -42,8 +42,15 @@ export interface ContatoInvalido {
   motivo: "telefone_invalido" | "duplicado";
 }
 
+export interface ContatoBloqueado {
+  telefone: string;
+  nome: string;
+}
+
 export interface ResultadoHigienizacao {
   enviar: ContatoLimpo[];
+  /** Telefones da lista de "não quer mais receber" — nunca entram em disparo, em nenhuma campanha. */
+  ignoradosBloqueados: ContatoBloqueado[];
   ignoradosQuarentena: ContatoIgnorado[];
   invalidos: ContatoInvalido[];
 }
@@ -55,6 +62,9 @@ export interface ResultadoHigienizacao {
  * `quarentenaDias` dias da data do envio — em qualquer sentido, para que um registro retroativo também respeite a
  * trava. Com 30 dias, quem recebeu há exatamente 30 já pode receber. `quarentenaDias = 0` desliga a trava.
  *
+ * Bloqueados (opt-out): telefone que pediu para não receber mais mensagens é sempre descartado, antes mesmo da
+ * quarentena, e não depende de data nem de campanha.
+ *
  * Telefone repetido na lista conta como "duplicado" (um só envio), mas as OS do repetido são somadas ao contato que
  * foi mantido — senão a venda extra ficaria pendente para sempre no pós-venda.
  */
@@ -63,8 +73,10 @@ export function higienizarLista(
   quarentena: ReadonlyMap<string, string>,
   dataEnvio: string,
   quarentenaDias: number,
+  bloqueados: ReadonlySet<string> = new Set(),
 ): ResultadoHigienizacao {
   const enviar: ContatoLimpo[] = [];
+  const ignoradosBloqueados: ContatoBloqueado[] = [];
   const ignoradosQuarentena: ContatoIgnorado[] = [];
   const invalidos: ContatoInvalido[] = [];
   const vistos = new Map<string, ContatoLimpo | null>(); // null = telefone ignorado por quarentena
@@ -85,6 +97,12 @@ export function higienizarLista(
       continue;
     }
 
+    if (bloqueados.has(telefone)) {
+      vistos.set(telefone, null);
+      ignoradosBloqueados.push({ telefone, nome });
+      continue;
+    }
+
     const ultimo = quarentena.get(telefone);
     if (quarentenaDias > 0 && ultimo && Math.abs(diasEntre(ultimo, dataEnvio)) < quarentenaDias) {
       vistos.set(telefone, null);
@@ -97,7 +115,7 @@ export function higienizarLista(
     enviar.push(limpo);
   }
 
-  return { enviar, ignoradosQuarentena, invalidos };
+  return { enviar, ignoradosBloqueados, ignoradosQuarentena, invalidos };
 }
 
 // ─── Cadência da campanha (Fontes de Dados) ─────────────────────────────────

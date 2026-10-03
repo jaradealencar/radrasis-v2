@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
+import { AlertTriangle, BanIcon, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -14,6 +14,7 @@ import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
 import ContatosCampanhaDialog from "./campanhasWhatsapp/ContatosCampanhaDialog";
 import DuplicarCampanhaDialog from "./campanhasWhatsapp/DuplicarCampanhaDialog";
 import ExcluirCampanhaDialog from "./campanhasWhatsapp/ExcluirCampanhaDialog";
+import NaoReceberMensagens from "./campanhasWhatsapp/NaoReceberMensagens";
 import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
 import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
 import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
@@ -85,6 +86,7 @@ export default function MarketingCampanhasWhatsapp() {
           <TabsTrigger value="painel" className="gap-1.5"><LayoutList size={14} /> Painel</TabsTrigger>
           <TabsTrigger value="calendario" className="gap-1.5"><CalendarDays size={14} /> Calendário</TabsTrigger>
           <TabsTrigger value="relatorios" className="gap-1.5"><BarChart3 size={14} /> Relatórios</TabsTrigger>
+          <TabsTrigger value="nao-receber" className="gap-1.5"><BanIcon size={14} /> Não quer receber</TabsTrigger>
         </TabsList>
 
         <TabsContent value="painel" className="space-y-4 pt-3">
@@ -178,6 +180,10 @@ export default function MarketingCampanhasWhatsapp() {
 
         <TabsContent value="relatorios" className="pt-3">
           <RelatorioPeriodo />
+        </TabsContent>
+
+        <TabsContent value="nao-receber" className="pt-3">
+          <NaoReceberMensagens />
         </TabsContent>
       </Tabs>
 

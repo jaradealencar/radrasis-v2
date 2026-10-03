@@ -270,6 +270,9 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
                         <li key={i}>{f.fonte}: {fmtNum(f.total)} contato(s){f.semTelefone > 0 && `, ${fmtNum(f.semTelefone)} sem telefone`}</li>
                       ))}
                     </ul>
+                    {gerarLista.data.ignoradosBloqueados.length > 0 && (
+                      <p className="text-amber-700">{fmtNum(gerarLista.data.ignoradosBloqueados.length)} pediram para não receber mensagens (lista "Não quer receber").</p>
+                    )}
                     {gerarLista.data.ignoradosQuarentenaGlobal.length > 0 && (
                       <p className="text-amber-700">{fmtNum(gerarLista.data.ignoradosQuarentenaGlobal.length)} em quarentena de outra campanha.</p>
                     )}

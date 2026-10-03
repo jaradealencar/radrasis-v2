@@ -20,7 +20,7 @@ import { getPool } from "../db/db-connection";
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
   campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
-  campanhasWhatsappGatilhos, campanhasWhatsappScripts, historicoOs,
+  campanhasWhatsappGatilhos, campanhasWhatsappOptout, campanhasWhatsappScripts, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
@@ -177,6 +177,16 @@ async function buscarQuarentena(telefones: string[]): Promise<Map<string, string
   return new Map(r.rows.map((row: { telefone: string; ultimo: string }) => [row.telefone, row.ultimo]));
 }
 
+/** Telefones (já normalizados) que pediram para não receber mais mensagens. Uma ida ao banco. */
+async function buscarBloqueados(telefones: string[]): Promise<Set<string>> {
+  if (telefones.length === 0) return new Set();
+  const r = await getPool().query(
+    `SELECT telefone FROM campanhas_whatsapp_optout WHERE telefone = ANY($1::text[])`,
+    [telefones],
+  );
+  return new Set(r.rows.map((row: { telefone: string }) => row.telefone));
+}
+
 // ─── Verificação de quarentena (tRPC e REST) ────────────────────────────────
 
 export interface ResultadoVerificacao {
@@ -248,6 +258,8 @@ export interface ResultadoDisparo {
   enviados: number;
   ignorados: number;
   invalidos: number;
+  /** Telefones da lista de "não quer receber": descartados no disparo manual, só reportados no webhook. */
+  bloqueados: number;
   violacoesQuarentena: number;
   enviar: Array<{ telefone: string; nome: string }>;
   ignoradosQuarentena: ContatoIgnorado[];
@@ -266,8 +278,14 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
 
   const telefonesDaLista = [...new Set(p.contatos.map(c => normalizarTelefone(c.telefone)).filter((t): t is string => !!t))];
   const quarentena = await buscarQuarentena(telefonesDaLista);
+  // Lista de "não quer receber": vale em todo disparo montado aqui. No webhook (`aplicarQuarentena: false`) a lista
+  // já foi enviada, então só reportamos quantos bloqueados ela continha, sem tirá-los do registro.
+  const bloqueados = await buscarBloqueados(telefonesDaLista);
 
-  const limpeza = higienizarLista(p.contatos, quarentena, p.dataEnvio, p.aplicarQuarentena ? campanha.quarentenaDias : 0);
+  const limpeza = higienizarLista(
+    p.contatos, quarentena, p.dataEnvio, p.aplicarQuarentena ? campanha.quarentenaDias : 0,
+    p.aplicarQuarentena ? bloqueados : new Set(),
+  );
   const enviados = new Set(limpeza.enviar.map(e => e.telefone));
   const violacoesQuarentena = p.aplicarQuarentena
     ? 0
@@ -279,6 +297,9 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
     enviados: limpeza.enviar.length,
     ignorados: limpeza.ignoradosQuarentena.length,
     invalidos: limpeza.invalidos.length,
+    bloqueados: p.aplicarQuarentena
+      ? limpeza.ignoradosBloqueados.length
+      : telefonesDaLista.filter(t => bloqueados.has(t)).length,
     violacoesQuarentena,
     enviar: limpeza.enviar.map(c => ({ telefone: c.telefone, nome: c.nome })),
     ignoradosQuarentena: limpeza.ignoradosQuarentena,
@@ -911,7 +932,8 @@ export const campanhasWhatsappRouter = router({
       // Quarentena global (0 dias = sem trava, mesma convenção do resto do módulo).
       const telefonesNormalizados = [...new Set(brutos.map(c => normalizarTelefone(c.telefone)).filter((t): t is string => !!t))];
       const quarentenaGlobal = await buscarQuarentena(telefonesNormalizados);
-      const higienizado = higienizarLista(brutos, quarentenaGlobal, dataEnvio, campanha.quarentenaDias);
+      const bloqueados = await buscarBloqueados(telefonesNormalizados);
+      const higienizado = higienizarLista(brutos, quarentenaGlobal, dataEnvio, campanha.quarentenaDias, bloqueados);
 
       // Cadência DESTA campanha — só aqui, não no registrarDisparo genérico (ver comentário na migration/schema).
       const historicoRows = telefonesNormalizados.length
@@ -932,10 +954,55 @@ export const campanhasWhatsappRouter = router({
         porFonte,
         totalResolvido: brutos.length,
         aprovados: aprovados.map(c => ({ telefone: c.telefone, nome: c.nome })),
+        ignoradosBloqueados: higienizado.ignoradosBloqueados,
         ignoradosQuarentenaGlobal: higienizado.ignoradosQuarentena,
         ignoradosCadenciaCampanha: descartadosCadencia,
         invalidosOuDuplicados: higienizado.invalidos,
       };
+    }),
+
+  // ─── Não quer receber (opt-out) ─────────────────────────────────────────────────────────────────
+  // Pedido do usuário 03/10/2026: aba no painel para registrar os números que não querem mais mensagem. Vale para
+  // todas as campanhas e some da lista de qualquer disparo (ver `higienizarLista`).
+
+  listarOptOut: campanhasProcedure.query(async () => {
+    const db = await obterDb();
+    const rows = await db.select().from(campanhasWhatsappOptout).orderBy(desc(campanhasWhatsappOptout.createdAt));
+    return rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() }));
+  }),
+
+  adicionarOptOut: campanhasProcedure
+    .input(z.object({
+      telefones: z.array(z.union([z.string().max(40), z.number()])).min(1, "Informe ao menos um número").max(5000),
+      nome: z.string().trim().max(200).nullish(),
+      motivo: z.string().trim().max(300).nullish(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await obterDb();
+      const validos = new Set<string>();
+      const invalidos: string[] = [];
+      for (const bruto of input.telefones) {
+        const tel = normalizarTelefone(bruto);
+        if (tel) validos.add(tel); else invalidos.push(String(bruto).trim());
+      }
+      // O nome só faz sentido quando é um número isolado; em lote cada linha fica sem nome.
+      const nome = validos.size === 1 ? input.nome?.trim() || null : null;
+      const inseridos = validos.size === 0 ? [] : await db.insert(campanhasWhatsappOptout)
+        .values([...validos].map(telefone => ({
+          telefone, nome, motivo: input.motivo?.trim() || null,
+          registradoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+        })))
+        .onConflictDoNothing({ target: campanhasWhatsappOptout.telefone })
+        .returning({ id: campanhasWhatsappOptout.id });
+      return { adicionados: inseridos.length, jaExistiam: validos.size - inseridos.length, invalidos };
+    }),
+
+  removerOptOut: campanhasProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await db.delete(campanhasWhatsappOptout).where(eq(campanhasWhatsappOptout.id, input.id));
+      return { ok: true };
     }),
 
   // ─── Planner: agendamentos de campanha no calendário ────────────────────────────────────────────

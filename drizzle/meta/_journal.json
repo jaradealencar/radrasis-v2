@@ -498,6 +498,13 @@
       "when": 1791063090437,
       "tag": "0070_campanhas_periodo_contatos",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1791063520579,
+      "tag": "0071_campanhas_optout",
+      "breakpoints": true
     }
   ]
 }

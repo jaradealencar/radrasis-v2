@@ -2956,6 +2956,18 @@ export const campanhasWhatsappQuarentena = pgTable("campanhas_whatsapp_quarenten
 export type CampanhaWhatsappQuarentena = typeof campanhasWhatsappQuarentena.$inferSelect;
 export type InsertCampanhaWhatsappQuarentena = typeof campanhasWhatsappQuarentena.$inferInsert;
 
+// Telefones que pediram para não receber mais mensagens. Vale para TODAS as campanhas e é consultado em toda
+// geração de lista e registro de disparo (diferente da quarentena, que é só um descanso de N dias).
+export const campanhasWhatsappOptout = pgTable("campanhas_whatsapp_optout", {
+  id: serial("id").primaryKey(),
+  telefone: varchar("telefone", { length: 20 }).notNull().unique(), // só dígitos, com DDI 55 (normalizarTelefone)
+  nome: varchar("nome", { length: 200 }),
+  motivo: varchar("motivo", { length: 300 }),
+  registradoPor: varchar("registrado_por", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type CampanhaWhatsappOptout = typeof campanhasWhatsappOptout.$inferSelect;
+
 // Vendas (OS) de campanhas gatilho_venda que já foram contatadas — sem isto o pós-venda re-listaria a mesma venda.
 export const campanhasWhatsappGatilhos = pgTable("campanhas_whatsapp_gatilhos", {
   id: serial("id").primaryKey(),

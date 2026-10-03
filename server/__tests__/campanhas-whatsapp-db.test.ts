@@ -486,3 +486,30 @@ describe("Planner (agendamentos) e relatório por período", () => {
     await expect(admin().relatorioPeriodo({ inicio: dia(5), fim: dia(0) })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
+
+describe("Não quer receber (opt-out)", () => {
+  const telOut = "(67) 99000-9951";
+  const limpar = () => getPool().query("DELETE FROM campanhas_whatsapp_optout WHERE telefone = ANY($1::text[])", [[norm(telOut), norm("(67) 99000-9952")]]);
+  afterAll(limpar);
+
+  it("adiciona (normaliza, ignora repetido e inválido), tira da lista do disparo e permite remover", async () => {
+    await limpar();
+    const r = await admin().adicionarOptOut({ telefones: [telOut, "67 99000-9951", "123", "(67) 99000-9952"], motivo: "TESTE pediu para sair" });
+    expect(r).toMatchObject({ adicionados: 2, jaExistiam: 0, invalidos: ["123"] });
+    const de_novo = await admin().adicionarOptOut({ telefones: [telOut] });
+    expect(de_novo).toMatchObject({ adicionados: 0, jaExistiam: 1 });
+
+    const lista = await admin().listarOptOut();
+    const meu = lista.find(l => l.telefone === norm(telOut))!;
+    expect(meu.motivo).toBe("TESTE pediu para sair");
+
+    // O disparo manual não envia para o bloqueado.
+    const livre = "(67) 99000-9953";
+    const d = await disparo(recorrenteId, hoje, [{ telefone: telOut, nome: "Bloqueado" }, { telefone: livre, nome: "Livre" }]);
+    expect(d.bloqueados).toBe(1);
+    expect(d.enviar.map(c => c.telefone)).toEqual([norm(livre)]);
+
+    await admin().removerOptOut({ id: meu.id });
+    expect((await admin().listarOptOut()).some(l => l.telefone === norm(telOut))).toBe(false);
+  });
+});

@@ -362,3 +362,17 @@ describe("webhooks REST — autenticação e validação", () => {
     expect(checkQuarantineBodySchema.safeParse({ phones: ["67999990000"], quarantine_days: 30 }).success).toBe(true);
   });
 });
+
+describe("higienizarLista — não quer receber (opt-out)", () => {
+  it("descarta o bloqueado antes da quarentena, mesmo repetido, e libera os demais", () => {
+    const bloqueados = new Set(["5567990000001"]);
+    const r = higienizarLista(
+      [{ telefone: "67990000001", nome: "Saiu" }, { telefone: "(67) 99000-0001", nome: "Saiu de novo" }, { telefone: "67990000002", nome: "Fica" }],
+      new Map([["5567990000001", "2026-09-26"]]), "2026-09-26", 30, bloqueados,
+    );
+    expect(r.ignoradosBloqueados).toEqual([{ telefone: "5567990000001", nome: "Saiu" }]);
+    expect(r.ignoradosQuarentena).toEqual([]);
+    expect(r.invalidos.map(i => i.motivo)).toEqual(["duplicado"]);
+    expect(r.enviar.map(c => c.telefone)).toEqual(["5567990000002"]);
+  });
+});

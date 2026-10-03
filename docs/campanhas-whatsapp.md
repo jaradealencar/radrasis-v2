@@ -104,6 +104,13 @@ as corta, e a data final funciona como "hoje" das regras. Inicial vazia = primei
 `campanhas_whatsapp.periodo_inicio/periodo_fim` (migration `0070`) e o período passa a valer também em
 `gerarListaDaCampanha` chamado pelo disparo.
 
+**Não quer receber (opt-out)** (pedido do usuário 03/10/2026): aba no painel para registrar números que pediram
+para sair (um ou vários colados). Tabela `campanhas_whatsapp_optout` (migration `0071`, telefone normalizado
+único). Diferente da quarentena (descanso de N dias entre campanhas), o bloqueio vale para **todas** as campanhas e
+sem prazo: `higienizarLista` descarta o bloqueado antes da quarentena, tanto em `gerarListaDaCampanha`
+(`ignoradosBloqueados`) quanto no disparo manual (`bloqueados`). No webhook (`aplicarQuarentena: false`, lista já
+enviada) o bloqueio só é reportado em `bloqueados`, sem tirar o contato do registro.
+
 **Fonte externa (upload) — fundida com "Arquivos"** (decisão do usuário): não existe uma tabela separada de
 "contatos da fonte". Criar uma fonte externa sobe o arquivo pela mesma rota de sempre
 (`campanhas_whatsapp_arquivos`, que pode nascer **solto**, sem `campanha_id` — coluna ficou nullable na migration

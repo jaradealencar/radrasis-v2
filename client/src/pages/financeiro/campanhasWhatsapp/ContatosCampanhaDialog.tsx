@@ -33,7 +33,7 @@ const MAX_LISTA_TELA = 200;
  * grupo depois aparece sozinho. "Fixar na campanha" grava o período e passa a valer também no disparo.
  */
 export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
-  const [aba, setAba] = useState<"aprovados" | "ignorados" | "invalidos">("aprovados");
+  const [aba, setAba] = useState<"aprovados" | "ignorados" | "bloqueados" | "invalidos">("aprovados");
   const hoje = hojeCampoGrande();
   const utils = trpc.useUtils();
 
@@ -71,6 +71,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const linhas = !data ? []
     : aba === "aprovados" ? data.aprovados
     : aba === "ignorados" ? [...data.ignoradosQuarentenaGlobal, ...data.ignoradosCadenciaCampanha]
+    : aba === "bloqueados" ? data.ignoradosBloqueados
     : data.invalidosOuDuplicados;
 
   const baixar = () => {
@@ -86,6 +87,11 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
         { header: "telefone", valor: r => r.telefone, largura: 18 },
         { header: "nome_cliente", valor: r => r.nome, largura: 32 },
       ], `${base}-ignorados`, "Ignorados");
+    } else if (aba === "bloqueados" && data) {
+      exportRowsToXlsx(data.ignoradosBloqueados, [
+        { header: "telefone", valor: r => r.telefone, largura: 18 },
+        { header: "nome_cliente", valor: r => r.nome, largura: 32 },
+      ], `${base}-nao-quer-receber`, "Bloqueados");
     } else if (data) {
       exportRowsToXlsx(data.invalidosOuDuplicados, [
         { header: "telefone", valor: r => r.telefoneOriginal, largura: 22 },
@@ -168,6 +174,9 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
               </Button>
               <Button size="sm" variant={aba === "ignorados" ? "default" : "outline"} onClick={() => setAba("ignorados")}>
                 Em quarentena ({fmtNum(data.ignoradosQuarentenaGlobal.length + data.ignoradosCadenciaCampanha.length)})
+              </Button>
+              <Button size="sm" variant={aba === "bloqueados" ? "default" : "outline"} onClick={() => setAba("bloqueados")}>
+                Não querem receber ({fmtNum(data.ignoradosBloqueados.length)})
               </Button>
               <Button size="sm" variant={aba === "invalidos" ? "default" : "outline"} onClick={() => setAba("invalidos")}>
                 Inválidos/repetidos ({fmtNum(data.invalidosOuDuplicados.length)})
