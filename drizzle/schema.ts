@@ -585,7 +585,9 @@ export type InsertEstudioImprimaxAdesivo = typeof estudioImprimaxAdesivos.$infer
 export const estudioPrecosImpressao = pgTable("estudio_precos_impressao", {
   id: integer("id").primaryKey().default(1),
   vinilBrancoM2: decimal("vinil_branco_m2", { precision: 12, scale: 4 }),
+  vinilBrancoTransmissaoPct: decimal("vinil_branco_transmissao_pct", { precision: 5, scale: 2 }),
   vinilTransparenteM2: decimal("vinil_transparente_m2", { precision: 12, scale: 4 }),
+  vinilTransparenteTransmissaoPct: decimal("vinil_transparente_transmissao_pct", { precision: 5, scale: 2 }),
   impressaoM2: decimal("impressao_m2", { precision: 12, scale: 4 }),
   laminacaoM2: decimal("laminacao_m2", { precision: 12, scale: 4 }),
   laminacaoPadrao: boolean("laminacao_padrao").notNull().default(false),
@@ -2906,10 +2908,15 @@ export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   // Só para gatilho_venda: ignora vendas faturadas antes desta data. Nulo = sem limite (toda venda com prazo
   // vencido e ainda não contatada entra na lista). Existe para o usuário conter a 1ª lista de uma campanha nova.
   gatilhoAPartirDe: date("gatilho_a_partir_de"),
+  // Período "fixado" para a lista de contatos (fontes do ERP): filtra pela data em que cada contato entrou no
+  // grupo. Nulo no início = desde o primeiro registro do histórico; nulo no fim = até hoje (a lista acompanha
+  // sozinha quem vai entrando). Só uma data final escolhida fica congelada.
+  periodoInicio: date("periodo_inicio"),
+  periodoFim: date("periodo_fim"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-export type CampanhaWhatsapp = typeof campanhasWhatsapp.$inferSelect;
+export type CampanhaWhatsapp =typeof campanhasWhatsapp.$inferSelect;
 export type InsertCampanhaWhatsapp = typeof campanhasWhatsapp.$inferInsert;
 
 // Um registro por disparo feito. `proximaData` = enviadoEm + frequência VIGENTE naquele momento (fato histórico,

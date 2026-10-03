@@ -23,6 +23,24 @@ export interface ContatoFonte {
    * pós-venda: historico_os.telefone só existe a partir de 21/09/2026, backfill em completarTelefones). */
   telefone: string | null;
   nome: string;
+  /** Dia (ISO) em que o contato passou a fazer parte desta fonte — base do filtro por período na tela de
+   * contatos: inativos = quando completou o prazo sem comprar, novos/1 compra = data da compra, orçaram e não
+   * compraram = data do orçamento. Ausente (fontes de arquivo; "do mês"; redução de volume, que são janelas
+   * relativas à data final) = o contato não é cortado pela data inicial. */
+  dataEntrada?: string | null;
+}
+
+/** Mantém o contato sem `dataEntrada` e os que entraram dentro de [inicio, fim] (extremos nulos = sem limite). */
+export function filtrarPorPeriodo<T extends { dataEntrada?: string | null }>(contatos: T[], inicio: string | null, fim: string | null): T[] {
+  if (!inicio && !fim) return contatos;
+  return contatos.filter(c => !c.dataEntrada || ((!inicio || c.dataEntrada >= inicio) && (!fim || c.dataEntrada <= fim)));
+}
+
+/** Data da primeira compra registrada no histórico local — padrão da data inicial na tela de contatos. */
+export function primeiroRegistroErp(base: Map<string, ClienteComTelefone>): string | null {
+  let menor: string | null = null;
+  for (const c of base.values()) if (!menor || c.primeiraCompra < menor) menor = c.primeiraCompra;
+  return menor;
 }
 
 // ─── Agregação local com telefone (não é ClienteBase — aquele não carrega telefone) ────────────────────
@@ -71,7 +89,7 @@ export function construirBaseComTelefone(rows: HistoricoOs[]): Map<string, Clien
 export function resolverClientesAtivos(base: Map<string, ClienteComTelefone>, hoje: string, janelaDias = 180): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (diasEntre(c.ultimaCompra, hoje) <= janelaDias) resultado.push({ telefone: c.telefone, nome: c.empresa });
+    if (diasEntre(c.ultimaCompra, hoje) <= janelaDias) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.ultimaCompra });
   }
   return resultado;
 }
@@ -80,7 +98,7 @@ export function resolverClientesAtivos(base: Map<string, ClienteComTelefone>, ho
 export function resolverPrimeiraCompra(base: Map<string, ClienteComTelefone>, hoje: string, janelaDias = 60): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) <= janelaDias) resultado.push({ telefone: c.telefone, nome: c.empresa });
+    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) <= janelaDias) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.primeiraCompra });
   }
   return resultado;
 }
@@ -98,7 +116,7 @@ export function resolverInativos(base: Map<string, ClienteComTelefone>, hoje: st
     const dias = diasEntre(c.ultimaCompra, hoje);
     if (dias < minDias) continue;
     if (maxDias !== undefined && dias > maxDias) continue;
-    resultado.push({ telefone: c.telefone, nome: c.empresa });
+    resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: somarDias(c.ultimaCompra, minDias) });
   }
   return resultado;
 }
@@ -116,8 +134,8 @@ export function resolverInativos(base: Map<string, ClienteComTelefone>, hoje: st
 export function resolverOrcaramNaoCompraram(
   orcamentos: HistoricoOrcamento[], base: Map<string, ClienteComTelefone>, hoje: string, janelaDias?: number,
 ): ContatoFonte[] {
-  const vistos = new Set<string>();
-  const resultado: ContatoFonte[] = [];
+  // 1 contato por empresa; `dataEntrada` = orçamento não ganho mais recente dela.
+  const porEmpresa = new Map<string, { empresaBruta: string; dataEntrada: string }>();
   for (const o of orcamentos) {
     const status = (o.status ?? "").trim().toLowerCase();
     if (STATUS_GANHO.has(status)) continue;
@@ -128,10 +146,14 @@ export function resolverOrcaramNaoCompraram(
     const empresaBruta = (o.empresa ?? "").trim();
     if (!empresaBruta) continue;
     const key = normalizeEmpresaKey(empresaBruta);
-    if (vistos.has(key)) continue;
-    vistos.add(key);
+    const atual = porEmpresa.get(key);
+    if (!atual) porEmpresa.set(key, { empresaBruta, dataEntrada: dataIso });
+    else if (dataIso > atual.dataEntrada) atual.dataEntrada = dataIso;
+  }
+  const resultado: ContatoFonte[] = [];
+  for (const [key, { empresaBruta, dataEntrada }] of porEmpresa) {
     const cliente = base.get(key);
-    resultado.push({ telefone: cliente?.telefone ?? null, nome: cliente?.empresa ?? empresaBruta });
+    resultado.push({ telefone: cliente?.telefone ?? null, nome: cliente?.empresa ?? empresaBruta, dataEntrada });
   }
   return resultado;
 }
@@ -146,7 +168,7 @@ export function resolverOrcaramNaoCompraram(
 export function resolverCompraramUmaVezESumiram(base: Map<string, ClienteComTelefone>, hoje: string, minDias = 180): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) >= minDias) resultado.push({ telefone: c.telefone, nome: c.empresa });
+    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) >= minDias) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: somarDias(c.primeiraCompra, minDias) });
   }
   return resultado;
 }
@@ -159,7 +181,7 @@ export function resolverCompraramUmaVezESumiram(base: Map<string, ClienteComTele
 export function resolverCompraramUmaVez(base: Map<string, ClienteComTelefone>): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (c.totalCompras === 1) resultado.push({ telefone: c.telefone, nome: c.empresa });
+    if (c.totalCompras === 1) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.primeiraCompra });
   }
   return resultado;
 }
@@ -364,11 +386,11 @@ export async function carregarContextoErp(): Promise<ContextoErp> {
   return { base: construirBaseComTelefone(osRows), orcamentos, osRows };
 }
 
-export async function resolverFonteErp(consultaErp: string, dataReferencia: string = hojeCampoGrande()): Promise<ContatoFonte[]> {
+/** `ctx` opcional: quem resolve várias fontes de uma vez carrega o histórico uma só vez e reaproveita. */
+export async function resolverFonteErp(consultaErp: string, dataReferencia: string = hojeCampoGrande(), ctx?: ContextoErp): Promise<ContatoFonte[]> {
   const resolvedor = RESOLVEDORES_ERP[consultaErp];
   if (!resolvedor) throw new Error(`Consulta ERP desconhecida: "${consultaErp}"`);
-  const ctx = await carregarContextoErp();
-  return resolvedor(ctx, dataReferencia);
+  return resolvedor(ctx ?? await carregarContextoErp(), dataReferencia);
 }
 
 // ─── Fonte tipo "arquivo": lê o arquivo salvo (campanhas_whatsapp_arquivos) sob demanda ──────────────────

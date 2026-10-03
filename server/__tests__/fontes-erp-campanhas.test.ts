@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filtrarPorPeriodo, primeiroRegistroErp,
   construirBaseComTelefone, construirHistoricoComprasPorCliente, construirVolumePorJanela,
   resolverClientesAtivos, resolverCompraramUmaVez, resolverCompraramUmaVezESumiram, resolverInativos,
   resolverNovosDoMes, resolverOrcaramNaoCompraram, resolverPrimeiraCompra, resolverReativadosDoMes,
@@ -171,5 +172,48 @@ describe("fontes ERP — resolução local (sem chamada à API)", () => {
     ], HOJE);
     const r = resolverReducaoDeVolume(mapa);
     expect(r.map(c => c.nome)).toEqual(["TESTE Queda Grande"]);
+  });
+});
+
+describe("fontes ERP — período de entrada no grupo", () => {
+  it("cada fonte informa a data em que o contato entrou no grupo", () => {
+    const base = construirBaseComTelefone([
+      os("TESTE Inativo", "01/01/2026"),
+      os("TESTE Onboarding", "10/09/2026"),
+    ]);
+    // Inativo "entra" 180 dias depois da última compra: 01/01 + 180d = 30/06/2026.
+    expect(resolverInativos(base, HOJE)[0].dataEntrada).toBe("2026-06-30");
+    expect(resolverPrimeiraCompra(base, HOJE)[0].dataEntrada).toBe("2026-09-10");
+    expect(resolverClientesAtivos(base, HOJE).map(c => c.dataEntrada)).toEqual(["2026-09-10"]);
+  });
+
+  it("orçaram e não compraram: a data de entrada é a do orçamento mais recente da empresa", () => {
+    const base = construirBaseComTelefone([]);
+    const r = resolverOrcaramNaoCompraram([
+      orc("TESTE Orcou", "05/03/2026", "perdido"),
+      orc("TESTE Orcou", "20/08/2026", "aberto"),
+    ], base, HOJE);
+    expect(r).toHaveLength(1);
+    expect(r[0].dataEntrada).toBe("2026-08-20");
+  });
+
+  it("filtra por [inicio, fim]; sem datas devolve tudo; contato sem dataEntrada nunca é cortado", () => {
+    const contatos = [
+      { nome: "A", dataEntrada: "2026-01-10" },
+      { nome: "B", dataEntrada: "2026-06-30" },
+      { nome: "C", dataEntrada: "2026-09-10" },
+      { nome: "Arquivo" }, // fonte de arquivo: não tem data de entrada
+    ];
+    const nomes = (r: typeof contatos) => r.map(c => c.nome);
+    expect(nomes(filtrarPorPeriodo(contatos, null, null))).toEqual(["A", "B", "C", "Arquivo"]);
+    expect(nomes(filtrarPorPeriodo(contatos, "2026-06-30", null))).toEqual(["B", "C", "Arquivo"]);
+    expect(nomes(filtrarPorPeriodo(contatos, null, "2026-06-30"))).toEqual(["A", "B", "Arquivo"]);
+    expect(nomes(filtrarPorPeriodo(contatos, "2026-02-01", "2026-09-01"))).toEqual(["B", "Arquivo"]);
+  });
+
+  it("primeiro registro = a compra mais antiga do histórico", () => {
+    const base = construirBaseComTelefone([os("TESTE X", "15/03/2023"), os("TESTE Y", "01/11/2024")]);
+    expect(primeiroRegistroErp(base)).toBe("2023-03-15");
+    expect(primeiroRegistroErp(new Map())).toBeNull();
   });
 });

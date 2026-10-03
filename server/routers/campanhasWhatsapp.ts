@@ -33,7 +33,10 @@ import {
   resumirCampanhas, resumirVendas,
   type ContatoIgnorado, type ContatoInvalido, type VendaPosVenda,
 } from "../services/campanhasWhatsapp";
-import { lerArquivoDeUrl, resolverFonteErp, type ContatoFonte } from "../services/fontesErpCampanhas";
+import {
+  carregarContextoErp, filtrarPorPeriodo, lerArquivoDeUrl, primeiroRegistroErp, resolverFonteErp,
+  type ContatoFonte, type ContextoErp,
+} from "../services/fontesErpCampanhas";
 import { isOsNormalDb } from "./performanceComercial";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
@@ -69,7 +72,16 @@ const campanhaBaseSchema = z.object({
   frequenciaDias: z.number().int().min(1).max(730),
   quarentenaDias: z.number().int().min(0).max(365),
   gatilhoAPartirDe: dataIsoSchema.nullish(),
+  // Período "fixado" da lista de contatos (ver comentário em drizzle/schema.ts). null = automático.
+  periodoInicio: dataIsoSchema.nullish(),
+  periodoFim: dataIsoSchema.nullish(),
 });
+
+function validarPeriodo(inicio: string | null | undefined, fim: string | null | undefined): void {
+  if (inicio && fim && inicio > fim) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A data inicial não pode ser depois da data final." });
+  }
+}
 
 // ─── Utilitários ────────────────────────────────────────────────────────────
 
@@ -350,6 +362,8 @@ export const campanhasWhatsappRouter = router({
       return {
         ...c,
         gatilhoAPartirDe: c.gatilhoAPartirDe ? iso(c.gatilhoAPartirDe) : null,
+        periodoInicio: c.periodoInicio ? iso(c.periodoInicio) : null,
+        periodoFim: c.periodoFim ? iso(c.periodoFim) : null,
         ...status,
         vendasPendentes: vendas?.pendentes.length ?? null,
         vendasSemTelefone: vendas?.pendentes.filter(v => !v.telefone).length ?? null,
@@ -367,8 +381,11 @@ export const campanhasWhatsappRouter = router({
     .mutation(async ({ input }) => {
       const db = await obterDb();
       await validarCategoria(db, input.categoria);
+      validarPeriodo(input.periodoInicio, input.periodoFim);
       const [row] = await db.insert(campanhasWhatsapp).values({
         ...input,
+        periodoInicio: input.periodoInicio ?? null,
+        periodoFim: input.periodoFim ?? null,
         descricao: input.descricao?.trim() || null,
         gatilhoAPartirDe: input.tipo === "gatilho_venda" ? input.gatilhoAPartirDe ?? null : null,
       }).returning();
@@ -383,6 +400,10 @@ export const campanhasWhatsappRouter = router({
       const { id, ...campos } = input;
       const atual = await buscarCampanha(db, id);
       if (campos.categoria !== undefined) await validarCategoria(db, campos.categoria);
+      validarPeriodo(
+        campos.periodoInicio === undefined ? atual.periodoInicio : campos.periodoInicio,
+        campos.periodoFim === undefined ? atual.periodoFim : campos.periodoFim,
+      );
       const tipo = campos.tipo ?? atual.tipo;
       await db.update(campanhasWhatsapp).set({
         ...campos,
@@ -417,6 +438,8 @@ export const campanhasWhatsappRouter = router({
         quarentenaDias: original.quarentenaDias,
         status: "ativa",
         gatilhoAPartirDe: original.tipo === "gatilho_venda" ? original.gatilhoAPartirDe : null,
+        periodoInicio: original.periodoInicio,
+        periodoFim: original.periodoFim,
       }).returning();
 
       const [fontes, scripts] = await Promise.all([
@@ -834,11 +857,21 @@ export const campanhasWhatsappRouter = router({
    * nada; o client passa o resultado (`aprovados`) para `registrarDisparo` como faz hoje com "vendas pendentes".
    */
   gerarListaDaCampanha: campanhasProcedure
-    .input(z.object({ campanhaId: z.number().int(), dataEnvio: dataIsoSchema.optional() }))
+    .input(z.object({
+      campanhaId: z.number().int(),
+      dataEnvio: dataIsoSchema.optional(),
+      // Prévia de um período ainda não salvo (tela de contatos). Ausente = usa o período gravado na campanha.
+      periodo: z.object({ inicio: dataIsoSchema.nullable(), fim: dataIsoSchema.nullable() }).optional(),
+    }))
     .query(async ({ input }) => {
       const db = await obterDb();
       const campanha = await buscarCampanha(db, input.campanhaId);
       const dataEnvio = input.dataEnvio ?? hojeCampoGrande();
+      const periodoInicio = input.periodo ? input.periodo.inicio : (campanha.periodoInicio ? iso(campanha.periodoInicio) : null);
+      const periodoFim = input.periodo ? input.periodo.fim : (campanha.periodoFim ? iso(campanha.periodoFim) : null);
+      validarPeriodo(periodoInicio, periodoFim);
+      // Data final = "como se hoje fosse" para as regras do ERP (inativo há 6 meses etc.); sem ela, vale hoje.
+      const dataReferencia = periodoFim ?? dataEnvio;
 
       const fontes = await db.select({ fonte: campanhasWhatsappFontes })
         .from(campanhasWhatsappCampanhaFontes)
@@ -850,11 +883,16 @@ export const campanhasWhatsappRouter = router({
 
       const porFonte: Array<{ fonte: string; total: number; semTelefone: number }> = [];
       const brutos: Array<{ telefone: unknown; nome: string }> = [];
+      // Histórico carregado uma só vez para todas as fontes do ERP da campanha.
+      let ctxErp: ContextoErp | null = null;
+      if (fontes.some(f => f.fonte.tipo === "erp" && f.fonte.consultaErp)) ctxErp = await carregarContextoErp();
       for (const { fonte } of fontes) {
         let contatos: ContatoFonte[];
         if (fonte.tipo === "erp") {
           if (!fonte.consultaErp) continue;
-          contatos = await resolverFonteErp(fonte.consultaErp, dataEnvio);
+          contatos = filtrarPorPeriodo(
+            await resolverFonteErp(fonte.consultaErp, dataReferencia, ctxErp ?? undefined), periodoInicio, periodoFim,
+          );
         } else {
           if (!fonte.arquivoId) continue;
           const [arquivo] = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId)).limit(1);
@@ -888,6 +926,9 @@ export const campanhasWhatsappRouter = router({
 
       return {
         dataEnvio,
+        periodo: { inicio: periodoInicio, fim: periodoFim },
+        // Padrão da data inicial na tela: primeira compra registrada no histórico (null sem fonte do ERP).
+        primeiroRegistro: ctxErp ? primeiroRegistroErp(ctxErp.base) : null,
         porFonte,
         totalResolvido: brutos.length,
         aprovados: aprovados.map(c => ({ telefone: c.telefone, nome: c.nome })),

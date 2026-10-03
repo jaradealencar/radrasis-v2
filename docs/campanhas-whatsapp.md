@@ -94,6 +94,16 @@ Alinhado ao alcance do backfill de telefone (`MESES_BACKFILL_PADRAO` em `server/
 também aumentado de 13 para 24 meses nesta mesma rodada) — sem o teto, a fonte trazia clientes tão antigos que
 nunca teriam telefone preenchido mesmo depois do backfill rodar. Ver "Limitações conhecidas" abaixo.
 
+**Período de entrada no grupo** (pedido do usuário 03/10/2026): em "Ver contatos" o usuário escolhe uma data
+inicial e final, aplicadas à data em que cada contato **entrou no grupo** da fonte (`ContatoFonte.dataEntrada`):
+inativos = última compra + prazo (180 dias), clientes ativos = última compra, primeira compra / 1 compra = data da
+compra, 1 compra e sumiram = compra + 180 dias, orçaram e não compraram = orçamento não ganho mais recente da
+empresa. Fontes de arquivo, "Novos/Reativados do mês" e "Redução de volume" não têm data de entrada: a inicial não
+as corta, e a data final funciona como "hoje" das regras. Inicial vazia = primeira compra do histórico
+(`primeiroRegistroErp`); final "até hoje" não congela, então a lista cresce sozinha. "Fixar na campanha" grava em
+`campanhas_whatsapp.periodo_inicio/periodo_fim` (migration `0070`) e o período passa a valer também em
+`gerarListaDaCampanha` chamado pelo disparo.
+
 **Fonte externa (upload) — fundida com "Arquivos"** (decisão do usuário): não existe uma tabela separada de
 "contatos da fonte". Criar uma fonte externa sobe o arquivo pela mesma rota de sempre
 (`campanhas_whatsapp_arquivos`, que pode nascer **solto**, sem `campanha_id` — coluna ficou nullable na migration

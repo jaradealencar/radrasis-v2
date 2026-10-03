@@ -1,0 +1,2 @@
+ALTER TABLE "estudio_precos_impressao" ADD COLUMN "vinil_branco_transmissao_pct" numeric(5, 2);--> statement-breakpoint
+ALTER TABLE "estudio_precos_impressao" ADD COLUMN "vinil_transparente_transmissao_pct" numeric(5, 2);

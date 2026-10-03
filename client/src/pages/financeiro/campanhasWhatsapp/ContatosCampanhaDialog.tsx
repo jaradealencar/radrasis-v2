@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Database, Download, Users } from "lucide-react";
+import { toast } from "sonner";
+import { AlertTriangle, CalendarRange, Database, Download, Pin, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,20 +27,46 @@ const MAX_LISTA_TELA = 200;
  * externas vinculadas) sem precisar passar pelo fluxo de "Registrar disparo" (que já processa/grava o disparo).
  * Reaproveita a mesma query só-leitura `gerarListaDaCampanha` do disparo — nada aqui grava quarentena, cadência
  * nem qualquer outro registro; é puramente consulta + exportação.
+ *
+ * Período (pedido do usuário 03/10/2026): data inicial/final pela data em que cada contato entrou no grupo.
+ * Inicial vazia = primeiro registro do histórico; final "até hoje" = acompanha o relógio, então quem entra no
+ * grupo depois aparece sozinho. "Fixar na campanha" grava o período e passa a valer também no disparo.
  */
 export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const [aba, setAba] = useState<"aprovados" | "ignorados" | "invalidos">("aprovados");
   const hoje = hojeCampoGrande();
-  // Data de referência para as fontes ERP: "Novos do mês"/"Reativados do mês" calculam o mês a partir dela —
-  // escolher uma data de outro mês (ex.: dentro de setembro) mostra a audiência DAQUELE mês, não só do mês
-  // corrente. Reseta para hoje sempre que o diálogo abre para uma campanha (evita "esquecer" a data escolhida
-  // numa campanha anterior e aplicá-la sem querer a outra). Pedido do usuário 28/09/2026.
-  const [dataReferencia, setDataReferencia] = useState(hoje);
-  useEffect(() => { if (campanha) setDataReferencia(hoje); }, [campanha?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const utils = trpc.useUtils();
+
+  // Período gravado na campanha (atualizado localmente ao fixar, pois `campanha` vem de uma lista já carregada).
+  const [salvo, setSalvo] = useState<{ inicio: string | null; fim: string | null }>({ inicio: null, fim: null });
+  const [inicio, setInicio] = useState("");
+  const [fimAteHoje, setFimAteHoje] = useState(true);
+  const [fim, setFim] = useState(hoje);
+  // Reinicia a partir do que está gravado sempre que o diálogo abre para uma campanha (não herda a escolha da anterior).
+  useEffect(() => {
+    if (!campanha) return;
+    setSalvo({ inicio: campanha.periodoInicio, fim: campanha.periodoFim });
+    setInicio(campanha.periodoInicio ?? "");
+    setFimAteHoje(!campanha.periodoFim);
+    setFim(campanha.periodoFim ?? hoje);
+  }, [campanha?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const periodo = { inicio: inicio || null, fim: fimAteHoje ? null : fim || null };
+  const periodoInvalido = !!periodo.inicio && !!periodo.fim && periodo.inicio > periodo.fim;
+  const fixado = (periodo.inicio ?? null) === salvo.inicio && (periodo.fim ?? null) === salvo.fim;
 
   const { data, isFetching, isError, error } = trpc.campanhasWhatsapp.gerarListaDaCampanha.useQuery(
-    { campanhaId: campanha?.id ?? 0, dataEnvio: dataReferencia }, { enabled: !!campanha, retry: false },
+    { campanhaId: campanha?.id ?? 0, periodo }, { enabled: !!campanha && !periodoInvalido, retry: false },
   );
+
+  const fixar = trpc.campanhasWhatsapp.atualizar.useMutation({
+    onSuccess: () => {
+      setSalvo(periodo);
+      utils.campanhasWhatsapp.listar.invalidate();
+      toast.success("Período fixado na campanha.");
+    },
+    onError: e => toast.error(e.message),
+  });
 
   const linhas = !data ? []
     : aba === "aprovados" ? data.aprovados
@@ -47,7 +75,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
 
   const baixar = () => {
     if (!campanha) return;
-    const base = `${slugArquivo(campanha.nome)}-contatos-${dataReferencia}`;
+    const base = `${slugArquivo(campanha.nome)}-contatos-${periodo.fim ?? hoje}`;
     if (aba === "aprovados" && data) {
       exportRowsToXlsx(data.aprovados, [
         { header: "telefone", valor: r => r.telefone, largura: 18 },
@@ -75,15 +103,39 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
           <DialogDescription>{campanha?.nome} — audiência resolvida pelas fontes de dados vinculadas na data de referência abaixo</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="contatos-data-ref">Data de referência</Label>
-          <Input
-            id="contatos-data-ref" type="date" className="sm:w-48" max={hoje}
-            value={dataReferencia} onChange={e => setDataReferencia(e.target.value || hoje)}
-          />
+        <div className="space-y-2 rounded-lg border p-3">
+          <div className="flex items-center gap-1.5 text-sm font-medium"><CalendarRange size={14} className="text-blue-600" /> Período de entrada no grupo</div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="contatos-inicio" className="text-xs">De</Label>
+              <Input id="contatos-inicio" type="date" className="w-40" max={periodo.fim ?? hoje}
+                value={inicio || data?.primeiroRegistro || ""} onChange={e => setInicio(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="contatos-fim" className="text-xs">Até</Label>
+              <Input id="contatos-fim" type="date" className="w-40" max={hoje} disabled={fimAteHoje}
+                value={fimAteHoje ? hoje : fim} onChange={e => setFim(e.target.value)} />
+            </div>
+            <label className="flex items-center gap-1.5 pb-2 text-xs">
+              <Checkbox checked={fimAteHoje} onCheckedChange={v => setFimAteHoje(v === true)} /> Até hoje (atualiza sozinho)
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant={fixado ? "outline" : "default"} className="gap-1.5" disabled={fixado || periodoInvalido || fixar.isPending}
+              onClick={() => fixar.mutate({ id: campanha!.id, periodoInicio: periodo.inicio, periodoFim: periodo.fim })}>
+              {fixar.isPending ? <Spinner className="size-3.5" /> : <Pin size={13} />}
+              {fixado ? "Período fixado" : "Fixar na campanha"}
+            </Button>
+            {(inicio || !fimAteHoje) && (
+              <Button size="sm" variant="ghost" onClick={() => { setInicio(""); setFimAteHoje(true); }}>Voltar ao padrão</Button>
+            )}
+          </div>
+          {periodoInvalido && <p className="text-[11px] text-red-600">A data inicial não pode ser depois da final.</p>}
           <p className="text-[11px] text-muted-foreground">
-            Fontes como "Novos do mês"/"Reativados do mês" calculam o mês a partir desta data — escolha um dia
-            dentro do mês que quer conferir (ex.: setembro) para ver a audiência daquele mês.
+            Cada fonte conta a data de entrada de um jeito: inativos = quando completaram o prazo sem comprar;
+            novos e "1 compra" = data da compra; orçaram e não compraram = data do orçamento. Deixando "De" em branco,
+            vale desde a primeira compra do histórico. "Novos/Reativados do mês" e "Redução de volume" olham só o
+            mês/janela da data final, e listas de arquivo não têm data de entrada, então a data inicial não as afeta.
           </p>
         </div>
 
