@@ -74,7 +74,7 @@ const HISTORICO_OS_COLS = [
 
 const HISTORICO_ORC_COLS = [
   'orcNumero', 'empresa', 'trabalho', 'dataCadastro', 'validade', 'vendedor', 'status', 'motivoCancelamento',
-  'total', 'custosTotal', 'margemLiquida', 'mes', 'ano',
+  'total', 'custosTotal', 'margemLiquida', 'clienteId', 'mes', 'ano',
 ];
 
 function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, unknown> {
@@ -134,6 +134,7 @@ function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<s
     total: (Number(orc.valor_total) || 0).toFixed(2),
     custosTotal: (Number((orc as any).valor_custo) || 0).toFixed(2),
     margemLiquida: (Number((orc as any).valor_margem) || 0).toFixed(2),
+    clienteId: Number.isInteger(orc.cliente_id) && orc.cliente_id > 0 ? orc.cliente_id : null,
     mes,
     ano,
   };
@@ -172,12 +173,12 @@ async function upsertEmLotes(table: string, cols: string[], linhas: Record<strin
  * 2 dias (~80 orçamentos) fecha em ~26s; 4 dias (~143) já vai a 42s e 7 dias
  * estoura o TIMEOUT_LISTA_MS de 45s. O ganho vem de rodar as janelas em
  * paralelo, não de deixá-las grandes. */
-const DIAS_POR_JANELA = 2;
+export const DIAS_POR_JANELA = 2;
 
 /** A API do ERP derruba a conexão com frequência (TimeoutError) quando está
  * sob carga. Uma segunda tentativa quase sempre passa, e o custo de tentar de
  * novo é muito menor que o de perder a janela inteira. */
-async function comTentativas<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
+export async function comTentativas<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
   let ultimoErro: unknown;
   for (let i = 1; i <= tentativas; i++) {
     try {
@@ -190,7 +191,7 @@ async function comTentativas<T>(fn: () => Promise<T>, tentativas = 3): Promise<T
   throw ultimoErro;
 }
 
-function fatiarEmJanelas(di: string, df: string, diasPorJanela: number): Array<{ di: string; df: string }> {
+export function fatiarEmJanelas(di: string, df: string, diasPorJanela: number): Array<{ di: string; df: string }> {
   const [anoI, mesI, diaI] = di.split('-').map(Number);
   const inicio = new Date(Date.UTC(anoI, mesI - 1, diaI));
   const [anoF, mesF, diaF] = df.split('-').map(Number);

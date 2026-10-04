@@ -91,9 +91,8 @@ cliente, não só primeira/última: `construirHistoricoComprasPorCliente`). `res
 valores da tabela acima.
 
 **Teto de 24 meses em "Inativos"** (28/09/2026): antes a fonte pegava qualquer inativo, sem limite superior.
-Alinhado ao alcance do backfill de telefone (`MESES_BACKFILL_PADRAO` em `server/sync/telefone-historico.ts`,
-também aumentado de 13 para 24 meses nesta mesma rodada) — sem o teto, a fonte trazia clientes tão antigos que
-nunca teriam telefone preenchido mesmo depois do backfill rodar. Ver "Limitações conhecidas" abaixo.
+O recorte da lista limita a idade da venda; o backfill do histórico roda por até 48 meses para preencher também
+registros antigos usados por outras fontes. Ver "Limitações conhecidas" abaixo.
 
 **Os 7 grupos de clientes** (pedido do usuário 03/10/2026, migration `0072`; substituem as categorias antigas, `novo_lead`
 fica arquivada e `orcamento_perdido` virou `orcaram_nao_compraram`): 1) Outbound (listas externas, sem fonte do ERP),
@@ -114,15 +113,17 @@ recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair e
 
 **Telefones: "sem telefone" x "inválido" e preenchimento do histórico** (03/10/2026). Investigado a pedido do usuário
 ("muitos inválidos, mas o cadastro tem ~98% de números"): o MubiSys tem telefone válido em 98–100% das OS (amostras de
-2023, 2024, 2025 e 2026), mas `historico_os.telefone` só estava preenchido nos meses em que o backfill rodou (cobertura
-~100% nesses, 0% nos demais, e o backfill antigo só alcançava 24 meses). A lista chamava tudo de "inválido". Agora:
-`higienizarLista` separa `sem_telefone` (campo vazio/só zeros) de `telefone_invalido` (número que não parece
-brasileiro) e "Ver contatos" tem a aba "Sem telefone"; `normalizarTelefone` usa o primeiro número válido quando o campo
-guarda vários ("(67) 8405-8895 / (67) 99999-0000"); e o botão **"Completar telefones do histórico"** em "Ver contatos"
-chama `completarTelefonesHistorico` em laço — um mês por chamada, do mais recente ao mais antigo, até 48 meses
-(`MESES_COMPLETAR_TELEFONES`), reaproveitando `planoBackfillTelefone`/`completarTelefonesJanela` — e copia o contato
-das OS do MubiSys só onde está vazio (idempotente; pode parar e continuar). "Repetido" é só o mesmo telefone duas vezes
-na MESMA lista; entre listas vale só a quarentena (15 dias), então o mesmo cliente pode receber de listas diferentes
+2023, 2024, 2025 e 2026), mas `historico_os.telefone` só estava preenchido nos meses em que o backfill rodou. A lista
+chamava tudo de "inválido". `higienizarLista` separa `sem_telefone` (campo vazio/só zeros) de `telefone_invalido`
+(número que não parece brasileiro) e "Ver contatos" tem a aba "Sem telefone"; `normalizarTelefone` usa o primeiro
+número válido quando o campo guarda vários ("(67) 8405-8895 / (67) 99999-0000"). O botão **"Completar telefones do
+histórico"** permite escolher O.S. ou orçamentos, pode ser interrompido e grava apenas onde o campo está vazio.
+O.S. são processadas em uma janela de 7 dias por chamada tRPC, até 48 meses. Orçamentos são processados em duas fases:
+cada chamada do primeiro passo consulta uma janela de 2 dias no MubiSys e grava `clienteId`; o segundo percorre páginas
+de até 12 clientes distintos, com no máximo quatro consultas simultâneas ao cadastro. Consultas que falham ficam
+registradas, não marcam o telefone como concluído e podem ser tentadas de novo. Telefone ausente no cadastro é gravado
+como string vazia para não repetir uma consulta sem resultado. "Repetido" é só o mesmo telefone duas vezes na MESMA lista;
+entre listas vale só a quarentena (15 dias), então o mesmo cliente pode receber de listas diferentes
 em dias diferentes.
 
 **Contatos de cada lista no painel** (pedido do usuário 03/10/2026): a coluna "Contatos" da tabela mostra, por

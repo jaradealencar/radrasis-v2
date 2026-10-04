@@ -6,21 +6,19 @@ import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
-const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+type TipoBackfill = "os" | "orcamentos";
 
-/**
- * "Completar telefones do histórico": copia do cadastro de contatos do MubiSys o telefone das vendas (O.S.)
- * e dos orçamentos que ainda não o têm, um mês por vez (do mais recente ao mais antigo). Deixe a janela aberta
- * até terminar; pode parar e continuar depois, pois só preenche o que está vazio.
- */
+/** Backfill retomável: uma janela/listagem por chamada e lotes pequenos de consultas pontuais. */
 export default function CompletarTelefones({ onProgresso }: { onProgresso?: () => void }) {
   const utils = trpc.useUtils();
   const completarOs = trpc.campanhasWhatsapp.completarTelefonesHistorico.useMutation();
-  const completarOrc = (trpc.campanhasWhatsapp as any).completarTelefonesOrcamentos?.useMutation?.();
+  const completarClienteId = trpc.campanhasWhatsapp.orcamentosClienteIdJanela.useMutation();
+  const completarLoteOrcamentos = trpc.campanhasWhatsapp.orcamentosTelefoneLote.useMutation();
+  const [tipo, setTipo] = useState<TipoBackfill>("os");
   const [rodando, setRodando] = useState(false);
-  const [tipo, setTipo] = useState<"os" | "orcamentos">("os");
-  const [mesAtual, setMesAtual] = useState<string | null>(null);
-  const [mesesFeitos, setMesesFeitos] = useState(0);
+  const [etapa, setEtapa] = useState("");
+  const [rotulo, setRotulo] = useState<string | null>(null);
+  const [blocosFeitos, setBlocosFeitos] = useState(0);
   const [preenchidos, setPreenchidos] = useState(0);
   const [restantes, setRestantes] = useState<number | null>(null);
   const parar = useRef(false);
@@ -28,33 +26,93 @@ export default function CompletarTelefones({ onProgresso }: { onProgresso?: () =
   async function iniciar() {
     parar.current = false;
     setRodando(true);
-    setMesesFeitos(0); setPreenchidos(0); setRestantes(null);
-    const ignorar: string[] = [];
-    let total = 0, meses = 0, comErro = 0;
-    const completar = tipo === "os" ? completarOs : completarOrc;
+    setEtapa(tipo === "os" ? "O.S." : "Vinculando orçamentos aos clientes");
+    setBlocosFeitos(0);
+    setPreenchidos(0);
+    setRestantes(null);
+    setRotulo(null);
+
+    let totalPreenchido = 0;
+    let blocos = 0;
+    const falhas: string[] = [];
+
     try {
-      while (!parar.current) {
-        const r = await completar.mutateAsync({ ignorar });
-        if (!r.processado) break;
-        const p = r.processado;
-        ignorar.push(p.chave);
-        meses++; total += p.atualizadas; comErro += p.janelasComErro;
-        setMesAtual(`${MESES[p.mes - 1]}/${p.ano}`);
-        setMesesFeitos(meses); setPreenchidos(total); setRestantes(r.mesesRestantes);
-        onProgresso?.();
+      if (tipo === "os") {
+        const ignorar: string[] = [];
+        while (!parar.current) {
+          const r = await completarOs.mutateAsync({ ignorar });
+          const p = r.processado;
+          if (!p) {
+            setRestantes(0);
+            break;
+          }
+
+          ignorar.push(p.chave);
+          blocos++;
+          totalPreenchido += p.atualizadas;
+          if (p.erro) falhas.push(`${p.di} a ${p.df}: ${p.erro}`);
+          setRotulo(`${p.di} a ${p.df}`);
+          setBlocosFeitos(blocos);
+          setPreenchidos(totalPreenchido);
+          setRestantes(r.janelasRestantes);
+          onProgresso?.();
+        }
+      } else {
+        const plano = await utils.campanhasWhatsapp.orcamentosClienteIdPlano.fetch();
+        const janelas = plano.flatMap(m => m.janelas);
+        setRestantes(janelas.length);
+
+        for (const janela of janelas) {
+          if (parar.current) break;
+          try {
+            await completarClienteId.mutateAsync(janela);
+          } catch (erro) {
+            console.error(`[TELEFONE-ORC] Falha na janela ${janela.di}..${janela.df}:`, erro);
+            falhas.push(`${janela.di} a ${janela.df}: ${erro instanceof Error ? erro.message : "erro do MubiSys"}`);
+          }
+          blocos++;
+          setRotulo(`${janela.di} a ${janela.df}`);
+          setBlocosFeitos(blocos);
+          setRestantes(janelas.length - blocos);
+          onProgresso?.();
+        }
+
+        if (!parar.current) {
+          setEtapa("Consultando telefones dos clientes");
+          let pagina = 1;
+          while (!parar.current) {
+            const r = await completarLoteOrcamentos.mutateAsync({ pagina, limitePorLote: 12 });
+            blocos++;
+            totalPreenchido += r.atualizadas;
+            falhas.push(...r.falhasIds.map(id => `cliente ${id}`));
+            if (r.falhasSemClienteId > 0) falhas.push(`${fmtNum(r.falhasSemClienteId)} orçamento(s) sem clienteId`);
+            setRotulo(`${fmtNum(r.consultados)} clientes consultados`);
+            setBlocosFeitos(blocos);
+            setPreenchidos(totalPreenchido);
+            setRestantes(r.restantes);
+            onProgresso?.();
+            if (r.fimAlcancado || r.proximaPagina == null) break;
+            pagina = r.proximaPagina;
+          }
+        }
       }
-      const tipoLabel = tipo === "os" ? "de vendas" : "de orçamentos";
-      toast.success(
-        parar.current
-          ? `Interrompido: ${fmtNum(total)} telefones ${tipoLabel} preenchidos em ${fmtNum(meses)} mês(es).`
-          : `Concluído: ${fmtNum(total)} telefones ${tipoLabel} preenchidos em ${fmtNum(meses)} mês(es).${comErro > 0 ? ` ${comErro} trecho(s) não responderam; rode de novo para completar.` : ""}`,
-      );
+
+      const status = parar.current ? "Interrompido" : "Concluído";
+      const detalhesFalhas = falhas.length
+        ? ` ${fmtNum(falhas.length)} falha(s) foram registradas; exemplo: ${falhas[0]}. Execute novamente para tentar de novo.`
+        : "";
+      toast.success(`${status}: ${fmtNum(totalPreenchido)} telefones preenchidos em ${fmtNum(blocos)} lote(s).${detalhesFalhas}`);
     } catch (e) {
       toast.error(`Parei no meio: ${e instanceof Error ? e.message : "erro ao consultar o MubiSys"}. O que já foi preenchido ficou salvo.`);
     } finally {
       setRodando(false);
-      setMesAtual(null);
-      await Promise.all([utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate(), utils.campanhasWhatsapp.contagemAudiencias.invalidate()]);
+      setEtapa("");
+      setRotulo(null);
+      await Promise.all([
+        utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate(),
+        utils.campanhasWhatsapp.contagemAudiencias.invalidate(),
+        utils.campanhasWhatsapp.orcamentosClienteIdPlano.invalidate(),
+      ]);
     }
   }
 
@@ -62,7 +120,7 @@ export default function CompletarTelefones({ onProgresso }: { onProgresso?: () =
     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
       {rodando ? (
         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { parar.current = true; }}>
-          <Square size={12} /> Parar
+          <Square size={12} /> Parar após a chamada atual
         </Button>
       ) : (
         <>
@@ -80,11 +138,15 @@ export default function CompletarTelefones({ onProgresso }: { onProgresso?: () =
       {rodando ? (
         <span className="flex items-center gap-1.5">
           <Spinner className="size-3.5" />
-          Buscando no MubiSys{mesAtual ? ` (${tipo === "os" ? "O.S." : "orçamento"}: ${mesAtual})` : ""} · {fmtNum(mesesFeitos)} mês(es), {fmtNum(preenchidos)} telefones
-          {restantes != null ? ` · faltam ${fmtNum(restantes)} mês(es)` : ""}. Mantenha esta janela aberta.
+          {etapa}{rotulo ? ` (${rotulo})` : ""} · {fmtNum(blocosFeitos)} lote(s), {fmtNum(preenchidos)} telefones preenchidos
+          {restantes != null ? ` · ${fmtNum(restantes)} pendentes` : ""}. Mantenha esta janela aberta.
         </span>
       ) : (
-        <span>Copia o telefone do cadastro do MubiSys para as {tipo === "os" ? "vendas" : "orçamentos"} antigas que estão sem número (um mês por vez).</span>
+        <span>
+          {tipo === "os"
+            ? "Preenche O.S. antigas em janelas curtas, uma chamada por vez."
+            : "Localiza o cliente de cada orçamento em janelas curtas e consulta telefones em lotes limitados."}
+        </span>
       )}
     </div>
   );

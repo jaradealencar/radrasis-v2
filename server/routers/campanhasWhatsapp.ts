@@ -19,8 +19,12 @@ import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
-import { completarTelefonesJanela, planoBackfillTelefone } from "../sync/telefone-historico";
-import { completarTelefonesOrcamentosMes, planoBackfillTelefoneOrcamentos } from "../sync/telefone-historico";
+import {
+  completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
+  gravarClienteIdOrcamentosJanela,
+  janelaValida, planoBackfillTelefone, planoClienteIdOrcamentos,
+  type MesOrcamentoSemCliente,
+} from "../sync/telefone-historico";
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
   campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
@@ -1053,35 +1057,28 @@ export const campanhasWhatsappRouter = router({
     };
   }),
 
-  /**
-   * Preenche o telefone do histórico (`historico_os.telefone`) direto do cadastro de contatos das OS no MubiSys,
-   * UM mês por chamada, do mais recente para o mais antigo. O cliente chama em laço até `processado` voltar
-   * `null`, passando em `ignorar` os meses já tentados (um mês cujas OS o MubiSys nunca teve contato continuaria
-   * "pendente" para sempre). Pedido do usuário 03/10/2026: as listas traziam muitos "sem telefone" porque só
-   * alguns meses tinham o número gravado, embora o cadastro o tenha. Idempotente: só grava onde está vazio.
-   */
+  /** Uma janela de O.S. por chamada: a listagem do ERP pode consumir dezenas de segundos. */
   completarTelefonesHistorico: campanhasProcedure
-    .input(z.object({ ignorar: z.array(z.string().regex(/^\d{4}-\d{2}$/)).max(80).default([]) }))
+    .input(z.object({ ignorar: z.array(z.string().max(32)).max(1000).default([]) }))
     .mutation(async ({ input }) => {
       const plano = await planoBackfillTelefone(MESES_COMPLETAR_TELEFONES);
-      const chave = (m: { ano: number; mes: number }) => `${m.ano}-${String(m.mes).padStart(2, "0")}`;
-      const faltam = plano.filter(m => m.precisa && !input.ignorar.includes(chave(m)));
-      const mes = faltam[0];
-      if (!mes) return { processado: null, mesesRestantes: 0 };
+      const janelas = plano.filter(m => m.precisa).flatMap(m => m.janelas);
+      const disponiveis = janelas.filter(j => !input.ignorar.includes(`${j.di}|${j.df}`));
+      const janela = disponiveis[0];
+      if (!janela) return { processado: null, janelasRestantes: 0 };
 
-      let encontrados = 0, atualizadas = 0, janelasComErro = 0;
-      for (const j of mes.janelas) {
-        try {
-          const r = await completarTelefonesJanela(j);
-          encontrados += r.encontrados;
-          atualizadas += r.atualizadas;
-        } catch {
-          janelasComErro++; // API do MubiSys lenta/indisponível nessa janela: segue para as outras
-        }
+      let encontrados = 0, atualizadas = 0, erro: string | null = null;
+      try {
+        const r = await completarTelefonesJanela(janela);
+        encontrados = r.encontrados;
+        atualizadas = r.atualizadas;
+      } catch (e) {
+        console.error(`[TELEFONE-OS] Falha na janela ${janela.di}..${janela.df}:`, e);
+        erro = "O MubiSys não concluiu esta janela; ela será tentada novamente em outra execução.";
       }
       return {
-        processado: { chave: chave(mes), ano: mes.ano, mes: mes.mes, pendentesAntes: mes.pendentes, encontrados, atualizadas, janelasComErro },
-        mesesRestantes: faltam.length - 1,
+        processado: { chave: `${janela.di}|${janela.df}`, di: janela.di, df: janela.df, encontrados, atualizadas, erro },
+        janelasRestantes: disponiveis.length - 1,
       };
     }),
 
@@ -1167,24 +1164,33 @@ export const campanhasWhatsappRouter = router({
     }),
 
   /**
-   * Telefones de orçamentos: busca pelo cadastro de clientes do MubiSys (cliente_id), um mês por vez.
-   * Semelhante a `completarTelefonesHistorico`, mas preenche `historico_orcamentos.telefone`.
+   * Telefones de orçamentos, em dois passos dirigidos pelo navegador (cada chamada cabe nos 60s da Vercel):
+   * 1) `orcamentosClienteIdPlano` + `orcamentosClienteIdJanela`: grava o id do cliente dos orçamentos antigos, uma janela
+   *    de 2 dias por chamada; 2) `orcamentosTelefoneLote`: consulta até 12 clientes distintos por chamada.
    */
-  completarTelefonesOrcamentos: campanhasProcedure
-    .input(z.object({ ignorar: z.array(z.string().regex(/^d{4}-d{2}$/)).max(80).default([]) }))
-    .mutation(async ({ input }) => {
-      const plano = await planoBackfillTelefoneOrcamentos(MESES_COMPLETAR_TELEFONES);
-      const chave = (m: { ano: number; mes: number }) => `${m.ano}-${String(m.mes).padStart(2, "0")}`;
-      const faltam = plano.filter(m => m.precisa && !input.ignorar.includes(chave(m)));
-      const mes = faltam[0];
-      if (!mes) return { processado: null, mesesRestantes: 0 };
+  orcamentosClienteIdPlano: campanhasProcedure.query(async () => {
+    const plano = await planoClienteIdOrcamentos(MESES_COMPLETAR_TELEFONES);
+    return plano.map((m: MesOrcamentoSemCliente) => ({ mes: m.mes, ano: m.ano, pendentes: m.pendentes, janelas: m.janelas }));
+  }),
 
-      const r = await completarTelefonesOrcamentosMes(mes.mes, mes.ano);
-      return {
-        processado: { chave: chave(mes), ano: mes.ano, mes: mes.mes, pendentesAntes: mes.pendentes, encontrados: r.encontrados, atualizadas: r.atualizadas, janelasComErro: 0 },
-        mesesRestantes: faltam.length - 1,
-      };
+  orcamentosClienteIdJanela: campanhasProcedure
+    .input(z.object({ di: dataIsoSchema, df: dataIsoSchema }))
+    .mutation(async ({ input }) => {
+      if (!janelaValida(input, new Date(), MESES_COMPLETAR_TELEFONES)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Janela de datas inválida." });
+      }
+      try {
+        return await gravarClienteIdOrcamentosJanela(input);
+      } catch (erro) {
+        console.error(`❌ [TELEFONE-ORC] janela ${input.di}..${input.df}:`, erro);
+        if (!(erro instanceof ErroConsultaMubiSysBackfill)) throw erro;
+        throw new TRPCError({ code: "BAD_GATEWAY", message: `O MubiSys não respondeu para ${input.di} a ${input.df}. Tente de novo.` });
+      }
     }),
+
+  orcamentosTelefoneLote: campanhasProcedure
+    .input(z.object({ pagina: z.number().int().min(1).default(1), limitePorLote: z.number().int().min(1).max(12).default(12) }))
+    .mutation(({ input }) => completarTelefonesClientesOrcamentos(input.pagina, input.limitePorLote)),
 
   /** O botão "disparada"/"não disparada"/"voltar a planejado" do calendário e do relatório. */
   marcarAgendamento: campanhasProcedure
