@@ -216,7 +216,7 @@ export function telefoneParaGravar(cliente: any): string {
 }
 
 export interface LoteTelefonesOrcamentos {
-  consultados: number; comTelefone: number; semTelefone: number; falhas: number; falhasSemClienteId: number; falhasIds: number[];
+  consultados: number; comTelefone: number; semTelefone: number; falhas: number; semClienteVinculado: number; falhasIds: number[];
   atualizadas: number; restantes: number; pagina: number; proximaPagina: number | null; fimAlcancado: boolean;
 }
 
@@ -243,42 +243,31 @@ export async function completarTelefonesClientesOrcamentos(
     .orderBy(asc(historicoOrcamentos.clienteId))
     .limit(limitePorLote)
     .offset((pagina - 1) * limitePorLote);
-  const [clientes, [totalClientesRow], [totalSemClienteRow], semClientePagina] = await Promise.all([
+  const [clientes, [totalClientesRow], [semClienteRow]] = await Promise.all([
     clientesQuery,
     db.select({ total: sql<number>`count(distinct ${historicoOrcamentos.clienteId})` })
       .from(historicoOrcamentos)
       .where(isNotNull(historicoOrcamentos.clienteId)),
-    db.select({ total: count() }).from(historicoOrcamentos)
-      .where(and(isNull(historicoOrcamentos.clienteId), isNull(historicoOrcamentos.telefone))),
-    db.select({ id: historicoOrcamentos.id, orcNumero: historicoOrcamentos.orcNumero })
-      .from(historicoOrcamentos)
-      .where(and(isNull(historicoOrcamentos.clienteId), isNull(historicoOrcamentos.telefone)))
-      .orderBy(asc(historicoOrcamentos.id))
-      .limit(limitePorLote)
-      .offset((pagina - 1) * limitePorLote),
+    db.select({ total: count() }).from(historicoOrcamentos).where(isNull(historicoOrcamentos.clienteId)),
   ]);
   const ids: number[] = clientes.flatMap(row => row.clienteId == null ? [] : [row.clienteId]);
   const totalClientes = Number(totalClientesRow?.total ?? 0);
-  const totalSemClienteId = Number(totalSemClienteRow?.total ?? 0);
-  const fimAlcancado = pagina * limitePorLote >= Math.max(totalClientes, totalSemClienteId);
-  const proximaPagina = fimAlcancado ? null : pagina + 1;
-
-  const falhasSemClienteId = semClientePagina.length;
-  for (const registro of semClientePagina) {
-    console.error(`[TELEFONE-ORC] Orçamento ${registro.orcNumero ?? registro.id} sem clienteId; telefone não pode ser consultado.`);
+  // Orçamentos sem clienteId não têm como ser consultados: são só informados (uma vez, na 1ª página) e ficam
+  // fora de `falhas`, de `restantes` e do cálculo de fim — senão a paginação nunca terminaria.
+  const semClienteVinculado = Number(semClienteRow?.total ?? 0);
+  if (pagina === 1 && semClienteVinculado > 0) {
+    console.warn(`[TELEFONE-ORC] ${semClienteVinculado} orçamento(s) sem clienteId: rode o passo de vinculação por janela para resolvê-los.`);
   }
+  const fimAlcancado = pagina * limitePorLote >= totalClientes;
+  const proximaPagina = fimAlcancado ? null : pagina + 1;
 
   if (ids.length === 0) {
     const [restoComCliente] = await db.select({ total: sql<number>`count(distinct ${historicoOrcamentos.clienteId})` })
       .from(historicoOrcamentos)
       .where(and(isNotNull(historicoOrcamentos.clienteId), isNull(historicoOrcamentos.telefone)));
-    const [semCliente] = await db.select({ total: count() }).from(historicoOrcamentos)
-      .where(and(isNull(historicoOrcamentos.clienteId), isNull(historicoOrcamentos.telefone)));
     return {
-      consultados: 0, comTelefone: 0, semTelefone: 0, falhas: falhasSemClienteId,
-      falhasSemClienteId, falhasIds: [], atualizadas: 0,
-      restantes: Number(restoComCliente?.total ?? 0) + Number(semCliente?.total ?? 0),
-      pagina, proximaPagina, fimAlcancado,
+      consultados: 0, comTelefone: 0, semTelefone: 0, falhas: 0, semClienteVinculado, falhasIds: [], atualizadas: 0,
+      restantes: Number(restoComCliente?.total ?? 0), pagina, proximaPagina, fimAlcancado,
     };
   }
 
@@ -324,14 +313,10 @@ export async function completarTelefonesClientesOrcamentos(
   const [resto] = await db.select({ total: sql<number>`count(distinct ${historicoOrcamentos.clienteId})` })
     .from(historicoOrcamentos)
     .where(and(isNotNull(historicoOrcamentos.clienteId), isNull(historicoOrcamentos.telefone)));
-  const [semClienteId] = await db.select({ total: count() }).from(historicoOrcamentos)
-    .where(and(isNull(historicoOrcamentos.clienteId), isNull(historicoOrcamentos.telefone)));
   const comTelefone = [...resolvidos.values()].filter(t => t !== "").length;
   return {
     consultados: idsPendentes.length, comTelefone, semTelefone: resolvidos.size - comTelefone,
-    falhas: falhas + falhasSemClienteId, falhasSemClienteId, atualizadas,
-    falhasIds,
-    restantes: Number(resto?.total ?? 0) + Number(semClienteId?.total ?? 0),
-    pagina, proximaPagina, fimAlcancado,
+    falhas, semClienteVinculado, atualizadas, falhasIds,
+    restantes: Number(resto?.total ?? 0), pagina, proximaPagina, fimAlcancado,
   };
 }

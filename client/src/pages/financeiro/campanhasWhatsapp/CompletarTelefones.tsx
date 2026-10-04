@@ -33,6 +33,7 @@ export default function CompletarTelefones({ onProgresso }: { onProgresso?: () =
     setRotulo(null);
 
     let totalPreenchido = 0;
+    let semVinculo = 0;
     let blocos = 0;
     const falhas: string[] = [];
 
@@ -80,12 +81,13 @@ export default function CompletarTelefones({ onProgresso }: { onProgresso?: () =
         if (!parar.current) {
           setEtapa("Consultando telefones dos clientes");
           let pagina = 1;
+          semVinculo = 0;
           while (!parar.current) {
             const r = await completarLoteOrcamentos.mutateAsync({ pagina, limitePorLote: 12 });
             blocos++;
             totalPreenchido += r.atualizadas;
             falhas.push(...r.falhasIds.map(id => `cliente ${id}`));
-            if (r.falhasSemClienteId > 0) falhas.push(`${fmtNum(r.falhasSemClienteId)} orçamento(s) sem clienteId`);
+            semVinculo = r.semClienteVinculado;
             setRotulo(`${fmtNum(r.consultados)} clientes consultados`);
             setBlocosFeitos(blocos);
             setPreenchidos(totalPreenchido);
@@ -101,7 +103,10 @@ export default function CompletarTelefones({ onProgresso }: { onProgresso?: () =
       const detalhesFalhas = falhas.length
         ? ` ${fmtNum(falhas.length)} falha(s) foram registradas; exemplo: ${falhas[0]}. Execute novamente para tentar de novo.`
         : "";
-      toast.success(`${status}: ${fmtNum(totalPreenchido)} telefones preenchidos em ${fmtNum(blocos)} lote(s).${detalhesFalhas}`);
+      const detalheSemVinculo = semVinculo > 0
+        ? ` ${fmtNum(semVinculo)} orçamento(s) seguem sem cliente vinculado (a etapa de vinculação por janela não os alcançou).`
+        : "";
+      toast.success(`${status}: ${fmtNum(totalPreenchido)} telefones preenchidos em ${fmtNum(blocos)} lote(s).${detalhesFalhas}${detalheSemVinculo}`);
     } catch (e) {
       toast.error(`Parei no meio: ${e instanceof Error ? e.message : "erro ao consultar o MubiSys"}. O que já foi preenchido ficou salvo.`);
     } finally {

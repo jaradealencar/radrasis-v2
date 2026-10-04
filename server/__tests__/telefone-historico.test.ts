@@ -70,10 +70,8 @@ describe("backfill paginado de telefones dos orçamentos", () => {
       respostasSelect: [
         [{ total: 3 }], // total de clientes com ID
         [{ total: 0 }], // total sem clienteId
-        [], // página de orçamentos corrompidos
         [{ clienteId: 101 }, { clienteId: 102 }, { clienteId: 103 }], // IDs com telefone pendente
         [{ total: 1 }], // restante com ID (o cliente que falhou)
-        [{ total: 0 }], // restante sem ID
       ],
       linhasAtualizadas: 1,
     });
@@ -95,32 +93,55 @@ describe("backfill paginado de telefones dos orçamentos", () => {
     erroLog.mockRestore();
   });
 
-  it("contabiliza e pula orçamentos corrompidos sem clienteId sem consultar a API", async () => {
-    configurarDb({
+  it("orçamentos sem clienteId só são informados: não consultam a API, não viram falha, não ficam em 'restantes' e não impedem o fim", async () => {
+    const mkDb = () => configurarDb({
       clientes: [],
       respostasSelect: [
         [{ total: 0 }], // total de clientes com ID
-        [{ total: 2 }], // total sem clienteId
-        [{ id: 9, orcNumero: null }, { id: 10, orcNumero: "ORC-10" }],
+        [{ total: 2 }], // orçamentos sem clienteId
         [{ total: 0 }], // restante com ID
-        [{ total: 2 }], // restante sem ID
       ],
     });
     const erroLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const avisoLog = vi.spyOn(console, "warn").mockImplementation(() => {});
 
+    mkDb();
     const resultado = await completarTelefonesClientesOrcamentos(1, 12);
 
     expect(buscarClientePorIdMock).not.toHaveBeenCalled();
     expect(resultado).toMatchObject({
-      consultados: 0,
-      falhas: 2,
-      falhasSemClienteId: 2,
-      falhasIds: [],
-      restantes: 2,
+      consultados: 0, falhas: 0, semClienteVinculado: 2, falhasIds: [], restantes: 0,
+      proximaPagina: null, fimAlcancado: true,
     });
-    expect(erroLog).toHaveBeenCalledTimes(2);
-    expect(erroLog).toHaveBeenCalledWith(expect.stringContaining("Orçamento 9 sem clienteId;"));
+    expect(erroLog).not.toHaveBeenCalled();
+    expect(avisoLog).toHaveBeenCalledTimes(1);
+    expect(avisoLog).toHaveBeenCalledWith(expect.stringContaining("2 orçamento(s) sem clienteId"));
+
+    // Das páginas seguintes em diante o aviso não se repete (era um console.error por orçamento por página).
+    mkDb();
+    await completarTelefonesClientesOrcamentos(2, 12);
+    expect(avisoLog).toHaveBeenCalledTimes(1);
     erroLog.mockRestore();
+    avisoLog.mockRestore();
+  });
+
+  it("mistura: clientes com ID seguem a paginação própria e os órfãos não somam em 'restantes'", async () => {
+    buscarClientePorIdMock.mockResolvedValue({ telefone_pri: "67933334444" });
+    configurarDb({
+      clientes: [{ clienteId: 301 }],
+      respostasSelect: [
+        [{ total: 1 }], // 1 cliente com ID
+        [{ total: 5000 }], // 5000 órfãos
+        [{ clienteId: 301 }], // pendente
+        [{ total: 0 }], // nada restante com ID
+      ],
+    });
+    const avisoLog = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const resultado = await completarTelefonesClientesOrcamentos(1, 12);
+
+    expect(resultado).toMatchObject({ consultados: 1, comTelefone: 1, restantes: 0, semClienteVinculado: 5000, fimAlcancado: true, proximaPagina: null });
+    avisoLog.mockRestore();
   });
 
   it("processa lote final parcial e sinaliza fim sem próxima página", async () => {
@@ -133,10 +154,8 @@ describe("backfill paginado de telefones dos orçamentos", () => {
         respostasSelect: [
           [{ total: 3 }], // total permanece estável nas páginas
           [{ total: 0 }],
-          [],
           clientes.map(({ clienteId }) => ({ clienteId })),
           [{ total: pagina === 1 ? 1 : 0 }],
-          [{ total: 0 }],
         ],
       });
       buscarClientePorIdMock.mockResolvedValue({ telefone_pri: "67922223333" });
