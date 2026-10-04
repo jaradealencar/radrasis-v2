@@ -231,12 +231,22 @@ export function aprovarPrecoCalculado(args: {
   contexto: PrecoContexto;
   preco: number;
   ator: AtorAprovador;
+  justificativaExcecao?: string;
 }): ResultadoAprovacaoPreco {
   const contexto = precoContextoSchema.parse(args.contexto);
   const preco = z.number().finite().nonnegative().parse(args.preco);
   if (contexto.custoDireto <= 0) throw new Error("O custo direto está zerado. Revise custos e composição antes da aprovação.");
-  if (preco + 0.005 < (contexto.precoMinimo ?? contexto.custoDireto)) {
-    throw new Error("O preço está abaixo do preço mínimo. Corrija-o antes da aprovação.");
+  const precoMinimo = contexto.precoMinimo ?? contexto.custoDireto;
+  const estaAbaixoDoPiso = preco + 0.005 < precoMinimo;
+  const justificativa = args.justificativaExcecao?.trim();
+  if (estaAbaixoDoPiso && !justificativa) {
+    throw new Error("O preço está abaixo do preço mínimo. Corrija-o ou solicite aprovação por alçada de exceção.");
+  }
+  if (justificativa && (!estaAbaixoDoPiso || args.fluxo !== "propostas")) {
+    throw new Error("A justificativa de exceção só pode ser usada para preço abaixo do piso em propostas.");
+  }
+  if (justificativa && (justificativa.length < 10 || !["gestor", "admin", "master"].includes(args.ator.role))) {
+    throw new Error("A exceção exige justificativa válida e aprovação por gestor, admin ou master.");
   }
   return emitirRecibo({
     fluxo: args.fluxo,
@@ -246,8 +256,8 @@ export function aprovarPrecoCalculado(args: {
     origem: "calculado",
     sugeridoPorId: null,
     sugestaoId: null,
-    parecer: null,
-    alertas: [],
+    parecer: justificativa ? `Exceção autorizada por alçada superior: ${justificativa}` : null,
+    alertas: justificativa ? ["PRECO_ABAIXO_DO_PISO"] : [],
     ator: args.ator,
   });
 }

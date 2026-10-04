@@ -681,6 +681,29 @@ export const user = pgTable("user", {
 export type BetterAuthUser = typeof user.$inferSelect;
 export type InsertBetterAuthUser = typeof user.$inferInsert;
 
+// Trilha append-only das exceções de margem aplicadas a itens de propostas.
+// A auditoria conserva o itemId mesmo se a linha comercial for removida.
+export const propostasExcecoesMargem = pgTable("propostas_excecoes_margem", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propostaId: integer("proposta_id").notNull().references(() => propostas.id),
+  itemId: integer("item_id").notNull(),
+  gestorId: text("gestor_id").notNull().references(() => user.id),
+  gestorNome: varchar("gestor_nome", { length: 128 }).notNull(),
+  gestorRole: varchar("gestor_role", { length: 32 }).notNull(),
+  produtoId: integer("produto_id").notNull(),
+  precoAprovado: decimal("preco_aprovado", { precision: 12, scale: 2 }).notNull(),
+  precoMinimoTecnico: decimal("preco_minimo_tecnico", { precision: 12, scale: 2 }).notNull(),
+  motivoJustificativa: text("motivo_justificativa").notNull(),
+  reciboAssinado: text("recibo_assinado").notNull(),
+  dadosJson: jsonb("dados_json").$type<Record<string, unknown>>().notNull(),
+  criadoEm: timestamp("criado_em").defaultNow().notNull(),
+}, table => ({
+  propostaIdx: index("propostas_excecoes_margem_proposta_idx").on(table.propostaId, table.criadoEm),
+  itemIdx: index("propostas_excecoes_margem_item_idx").on(table.itemId, table.criadoEm),
+  gestorIdx: index("propostas_excecoes_margem_gestor_idx").on(table.gestorId),
+}));
+export type PropostaExcecaoMargem = typeof propostasExcecoesMargem.$inferSelect;
+
 export const session = pgTable("session", {
   id: text("id").primaryKey(),
   expiresAt: timestamp("expiresAt").notNull(),

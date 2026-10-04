@@ -825,11 +825,16 @@ function ItensProposta({
   const [precoEditado, setPrecoEditado] = useState(false);
   const [sugestaoPreco, setSugestaoPreco] = useState<RouterOutputs["propostas"]["precoSugerir"] | null>(null);
   const [aprovacaoPreco, setAprovacaoPreco] = useState<RouterOutputs["propostas"]["precoAprovar"] | null>(null);
+  const [modalExcecaoAberto, setModalExcecaoAberto] = useState(false);
+  const [justificativaExcecao, setJustificativaExcecao] = useState("");
+  const [erroJustificativa, setErroJustificativa] = useState("");
+  const [pisoTecnicoCalculado, setPisoTecnicoCalculado] = useState<number | null>(null);
   const [descricoes, setDescricoes] = useState<Record<number, string>>({});
   const [descricoesGrupo, setDescricoesGrupo] = useState<Record<string, string>>({});
   const [itensSelecionados, setItensSelecionados] = useState<number[]>([]);
   const [dialogAgruparAberto, setDialogAgruparAberto] = useState(false);
   const [descricaoNovoGrupo, setDescricaoNovoGrupo] = useState("");
+  const podeAutorizarExcecao = ["gestor", "admin", "master"].includes(user?.role ?? "");
 
   const { data: produtoDetalhe } = trpc.produtos.obter.useQuery(
     { id: Number(produtoSelecionadoId) },
@@ -957,6 +962,10 @@ function ItensProposta({
   const adicionar = trpc.propostas.itemAdicionar.useMutation({
     onSuccess: () => {
       toast.success("Item adicionado");
+      setModalExcecaoAberto(false);
+      setJustificativaExcecao("");
+      setErroJustificativa("");
+      setPisoTecnicoCalculado(null);
       utils.propostas.obter.invalidate({ id: propostaId });
       utils.propostas.decupagemObter.invalidate({ propostaId });
       utils.propostas.dashboard.invalidate();
@@ -973,7 +982,14 @@ function ItensProposta({
       setAprovacaoPreco(null);
       setBusca("");
     },
-    onError: (e) => toast.error("Erro ao adicionar item", { description: e.message }),
+    onError: (e) => {
+      toast.error("Erro ao adicionar item", { description: e.message });
+      if (justificativaExcecao.trim()) setModalExcecaoAberto(true);
+    },
+  });
+
+  const consultarPiso = trpc.propostas.precoPiso.useMutation({
+    onError: (e) => toast.error("Não foi possível calcular o piso técnico", { description: e.message }),
   });
 
   const remover = trpc.propostas.itemRemover.useMutation({
@@ -1109,7 +1125,7 @@ function ItensProposta({
       : atuais.filter((id) => id !== itemId));
   };
 
-  const handleAdicionar = () => {
+  const handleAdicionar = async (justificativaValidada?: string) => {
     const qtd = parseFloat(quantidade.replace(",", "."));
     const preco = parseFloat(precoUnitario.replace(",", "."));
     if (!produtoSelecionadoId || isNaN(qtd) || qtd <= 0 || isNaN(preco) || preco < 0) {
@@ -1120,19 +1136,69 @@ function ItensProposta({
       toast.error("Aguarde o carregamento do produto");
       return;
     }
+    const dadosBase = {
+      propostaId,
+      produtoId: Number(produtoSelecionadoId),
+      quantidade: qtd,
+      ...camposCondicaoFinanceira(custoFinanceiroPct),
+      configuracao: montarConfiguracaoAtual(),
+    };
+
+    let pisoTecnico: number;
+    try {
+      const resultado = await consultarPiso.mutateAsync({ ...dadosBase, precoAtual: preco });
+      pisoTecnico = resultado.precoMinimo;
+    } catch {
+      return;
+    }
+
+    setPisoTecnicoCalculado(pisoTecnico);
+    const precoAbaixoDoPiso = preco + 0.005 < pisoTecnico;
+    if (precoAbaixoDoPiso) {
+      if (!justificativaValidada || !podeAutorizarExcecao) {
+        setErroJustificativa("");
+        setModalExcecaoAberto(true);
+        return;
+      }
+      setModalExcecaoAberto(false);
+      adicionar.mutate({
+        ...dadosBase,
+        precoUnitario: preco,
+        justificativaExcecao: justificativaValidada,
+      });
+      return;
+    }
+
+    if (justificativaValidada) {
+      setErroJustificativa("O preço informado não está abaixo do piso técnico. Atualize o preço ou feche o modal para aprová-lo pelo fluxo normal.");
+      return;
+    }
     if (!aprovacaoPreco) {
       toast.error("Aprovação humana obrigatória", { description: "Aprove o preço calculado ou a sugestão do GPT antes de adicionar o item." });
       return;
     }
     adicionar.mutate({
-      propostaId,
-      produtoId: Number(produtoSelecionadoId),
-      quantidade: qtd,
+      ...dadosBase,
       precoUnitario: preco,
-      ...camposCondicaoFinanceira(custoFinanceiroPct),
-      configuracao: montarConfiguracaoAtual(),
       aprovacaoPreco: { recibo: aprovacaoPreco.recibo, contexto: aprovacaoPreco.contexto },
     });
+  };
+
+  const fecharModalExcecao = () => {
+    setModalExcecaoAberto(false);
+    setJustificativaExcecao("");
+    setErroJustificativa("");
+  };
+
+  const confirmarExcecao = () => {
+    const motivo = justificativaExcecao.trim();
+    if (motivo.length < 10) {
+      setErroJustificativa("A justificativa precisa ter pelo menos 10 caracteres.");
+      return;
+    }
+    if (!podeAutorizarExcecao) return;
+    setErroJustificativa("");
+    void handleAdicionar(motivo);
   };
 
   return (
@@ -1188,7 +1254,9 @@ function ItensProposta({
               </Select>
               <p className="text-[11px] text-muted-foreground">Taxa financeira interna usada nesta decupagem.</p>
             </div>}
-            <Button size="sm" onClick={handleAdicionar} disabled={adicionar.isPending || !produtoAtual || !aprovacaoPreco}>Adicionar</Button>
+            <Button size="sm" onClick={() => void handleAdicionar()} disabled={adicionar.isPending || consultarPiso.isPending || !produtoAtual}>
+              {consultarPiso.isPending ? "Calculando piso…" : "Adicionar"}
+            </Button>
           </div>
 
           {produtoAtual && (
@@ -1481,6 +1549,76 @@ function ItensProposta({
                     {criarGrupo.isPending ? "Agrupando…" : "Agrupar produtos"}
                   </Button>
                 </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog
+              open={modalExcecaoAberto}
+              onOpenChange={(aberto) => {
+                if (aberto) setModalExcecaoAberto(true);
+                else if (!adicionar.isPending && !consultarPiso.isPending) fecharModalExcecao();
+              }}
+            >
+              <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-destructive">
+                    <span aria-hidden="true">⚠️</span> Alçada de exceção requerida
+                  </DialogTitle>
+                  <DialogDescription>
+                    O preço proposto ({fmtBrl(Number(precoUnitario.replace(",", ".")) || 0)}) está abaixo do piso técnico permitido
+                    ({pisoTecnicoCalculado == null ? "calculando…" : fmtBrl(pisoTecnicoCalculado)}).
+                  </DialogDescription>
+                </DialogHeader>
+
+                {podeAutorizarExcecao ? (
+                  <div className="grid gap-3 py-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="justificativa-excecao">Justificativa do desconto (obrigatória)</Label>
+                      <Textarea
+                        id="justificativa-excecao"
+                        className="min-h-28"
+                        maxLength={3000}
+                        minLength={10}
+                        required
+                        value={justificativaExcecao}
+                        onChange={(event) => {
+                          setJustificativaExcecao(event.target.value);
+                          if (erroJustificativa) setErroJustificativa("");
+                        }}
+                        placeholder="Descreva o motivo comercial para autorizar a venda abaixo do piso técnico."
+                        aria-invalid={!!erroJustificativa}
+                        aria-describedby={erroJustificativa ? "erro-justificativa-excecao" : undefined}
+                      />
+                      <p className="text-xs text-muted-foreground">Mínimo de 10 caracteres. A justificativa ficará registrada com o responsável e o cálculo usado.</p>
+                      {erroJustificativa && (
+                        <p id="erro-justificativa-excecao" className="text-xs font-medium text-destructive" role="alert">{erroJustificativa}</p>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={fecharModalExcecao} disabled={adicionar.isPending || consultarPiso.isPending}>
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={confirmarExcecao}
+                        disabled={adicionar.isPending || consultarPiso.isPending}
+                        className="bg-red-600 text-white hover:bg-red-700"
+                      >
+                        {adicionar.isPending || consultarPiso.isPending ? "Validando e salvando…" : "Autorizar e Salvar Item"}
+                      </Button>
+                    </DialogFooter>
+                  </div>
+                ) : (
+                  <div className="space-y-4 py-2">
+                    <p className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      Este valor está abaixo do piso permitido. Solicite que um Gestor, Administrador ou Master insira a justificativa para liberar esta venda.
+                    </p>
+                    <p className="text-xs font-medium text-amber-700">
+                      Sua conta {user?.name ? `(${user.name})` : "atual"} não tem alçada para autorizar esse desconto. Um responsável precisa entrar com a própria sessão para registrar a justificativa.
+                    </p>
+                    <DialogFooter>
+                      <Button className="w-full" onClick={fecharModalExcecao}>Entendido</Button>
+                    </DialogFooter>
+                  </div>
+                )}
               </DialogContent>
             </Dialog>
           </div>

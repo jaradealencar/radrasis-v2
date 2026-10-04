@@ -7,9 +7,10 @@
  */
 import { randomBytes, randomUUID } from "crypto";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure, requireRole, adminProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
-import { propostas, propostaItens, produtos, configuracoesComerciais, vendedoresComerciais, estudioChapas, priceTableSections } from "../../drizzle/schema";
+import { propostas, propostaItens, propostasExcecoesMargem, produtos, configuracoesComerciais, vendedoresComerciais, estudioChapas, priceTableSections } from "../../drizzle/schema";
 import { eq, asc, desc, and, inArray, sql, gte, lt } from "drizzle-orm";
 import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
 import {
@@ -29,6 +30,11 @@ function gerarToken(): string {
 }
 
 const PREFIXO_COTACAO_ESTUDIO = "[ESTUDIO_COTACAO_V1]";
+const ROLES_ALCADA_EXCECAO = ["gestor", "admin", "master"] as const;
+const MENSAGEM_JUSTIFICATIVA_EXCECAO = "EXCECAO_MARGEM_REQUER_JUSTIFICATIVA";
+type PropostasDb = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+type PropostasTx = Parameters<Parameters<PropostasDb["transaction"]>[0]>[0];
+type PropostasDbExecutor = PropostasDb | PropostasTx;
 
 const medidasNestingSchema = z.object({
   areaTotalNestingM2: z.number().nonnegative().nullable(),
@@ -92,14 +98,15 @@ const basePrecoPropostaSchema = z.object({
 }).strict();
 
 async function validarCustosCatalogo(
-  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  db: PropostasDbExecutor,
   configuracao: z.infer<typeof configuracaoItemSchema>,
+  catalogoAtual?: ReadonlyMap<number, number>,
 ): Promise<void> {
   const linhas = configuracao.materiais.filter((material) => material.incluir);
   if (!linhas.length) return;
   const linhasCatalogo = linhas.filter((linha) => linha.mubisysMateriaPrimaId != null);
   const catalogo = linhasCatalogo.length
-    ? new Map((await listarMateriasPrimas()).map((material) => [material.id, Number(material.valor_custo)]))
+    ? catalogoAtual ?? new Map((await listarMateriasPrimas()).map((material) => [material.id, Number(material.valor_custo)]))
     : new Map<number, number>();
   let materiaisOrigem: z.infer<typeof materialConfiguracaoSchema>[] = [];
   if (linhas.some((linha) => linha.nesting)) {
@@ -135,6 +142,11 @@ async function validarCustosCatalogo(
       throw new Error(`O custo de ${linha.nome} mudou no MubiSys. Atualize a composição e solicite nova aprovação.`);
     }
   }
+}
+
+async function carregarCustosCatalogoAtual(configuracao: z.infer<typeof configuracaoItemSchema>): Promise<ReadonlyMap<number, number>> {
+  if (!configuracao.materiais.some((material) => material.incluir && material.mubisysMateriaPrimaId != null)) return new Map();
+  return new Map((await listarMateriasPrimas()).map((material) => [material.id, Number(material.valor_custo)]));
 }
 
 function calcularContextoPrecoProposta(args: {
@@ -223,6 +235,29 @@ function exigirMargemLiquidaNaoNegativa(
     .reduce((total, material) => total + material.custoTotal, 0);
   const calculo = decuparPreco({ precoVenda, materiaPrima, maoDeObra: Number(custoMaoObra), ...taxas });
   if (calculo.lucroLiquido.valor < 0) throw new Error("O preço aprovado gera margem líquida negativa. Revise o preço e as taxas.");
+}
+
+function validarAutorizacaoExcecaoPreco(args: {
+  preco: number;
+  contexto: z.infer<typeof precoContextoSchema>;
+  justificativa: string | undefined;
+  role: string;
+  lucroLiquidoNegativo: boolean;
+}): boolean {
+  const precoMinimo = args.contexto.precoMinimo ?? args.contexto.custoDireto;
+  const abaixoDoPiso = args.preco + 0.005 < precoMinimo;
+  const exigeAlcada = abaixoDoPiso || args.lucroLiquidoNegativo;
+  if (!exigeAlcada) {
+    if (args.justificativa) throw new TRPCError({ code: "BAD_REQUEST", message: "A justificativa só pode ser usada quando a margem ou o preço exige exceção." });
+    return false;
+  }
+  if (!ROLES_ALCADA_EXCECAO.includes(args.role as typeof ROLES_ALCADA_EXCECAO[number])) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Operação recusada: margem negativa ou preço abaixo do piso técnico exige autorização de gestor, admin ou master." });
+  }
+  if (!args.justificativa || args.justificativa.trim().length < 10) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: MENSAGEM_JUSTIFICATIVA_EXCECAO });
+  }
+  return true;
 }
 
 function lerSnapshotEstudio(observacoes: string | null): Record<string, unknown> | null {
@@ -371,7 +406,7 @@ function consolidarItensPublicos(itens: ItemCarregado[]) {
   return resultado;
 }
 
-async function obterConfiguracoes(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+async function obterConfiguracoes(db: PropostasDbExecutor) {
   const [config] = await db.select().from(configuracoesComerciais).limit(1);
   if (config) return config;
   const [criado] = await db.insert(configuracoesComerciais).values({}).returning();
@@ -404,7 +439,7 @@ function taxaImpostoProduto(categoria: string | null, padraoPct: number, regras:
   return regra?.impostoPct ?? padraoPct;
 }
 
-async function buscarVendedorPorNome(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, nome: string) {
+async function buscarVendedorPorNome(db: PropostasDbExecutor, nome: string) {
   const [vendedor] = await db.select({ id: vendedoresComerciais.id, comissaoPct: vendedoresComerciais.comissaoPct })
     .from(vendedoresComerciais)
     .where(and(sql`lower(trim(${vendedoresComerciais.nome})) = lower(trim(${nome}))`, eq(vendedoresComerciais.ativo, true)))
@@ -416,7 +451,7 @@ type PropostaParaPreco = { id: number; vendedorNome: string; vendedorComercialId
 type ProdutoParaPreco = { nome: string; categoria: string | null; custoMaoObra: string | null; idPrecificacao: number | null };
 
 async function parametrosPrecoProposta(
-  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  db: PropostasDbExecutor,
   proposta: PropostaParaPreco,
   produto: ProdutoParaPreco,
   financeiro: { custoFinanceiroPct: number; parcelasFinanceira: number | null },
@@ -504,6 +539,32 @@ function criarSnapshotDecupagem(args: {
 }
 
 export const propostasRouter = router({
+  precoPiso: protectedProcedure
+    .use(requireRole("gestor", "admin", "master"))
+    .input(basePrecoPropostaSchema.extend({ precoAtual: z.number().finite().nonnegative() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId })
+        .from(propostas).where(eq(propostas.id, input.propostaId));
+      const [produto] = await db.select({
+        nome: produtos.nome,
+        categoria: produtos.categoria,
+        custoMaoObra: produtos.custoMaoObra,
+        idPrecificacao: produtos.idPrecificacao,
+      }).from(produtos).where(eq(produtos.id, input.produtoId));
+      if (!proposta || !produto) throw new Error("Proposta ou produto não encontrado.");
+      await validarCustosCatalogo(db, input.configuracao);
+      const parametros = await parametrosPrecoProposta(db, proposta, produto, input);
+      const contexto = calcularContextoPrecoProposta({
+        produto,
+        configuracao: input.configuracao,
+        precoAtual: input.precoAtual,
+        taxas: parametros.taxas,
+      });
+      return { precoMinimo: contexto.precoMinimo ?? contexto.custoDireto };
+    }),
+
   precoSugerir: protectedProcedure
     .input(basePrecoPropostaSchema.extend({ precoAtual: z.number().finite().nonnegative() }))
     .mutation(async ({ input, ctx }) => {
@@ -933,158 +994,231 @@ export const propostasRouter = router({
     }),
 
   itemAdicionar: protectedProcedure
-    .input(
-      z.object({
-        propostaId: z.number(),
-        produtoId: z.number(),
-        quantidade: z.number().min(0.0001).default(1),
-        precoUnitario: z.number().min(0),
-        custoFinanceiroPct: z.number().min(0).max(100).optional().default(0),
-        parcelasFinanceira: z.number().int().positive().nullable().optional().default(null),
-        descricao: z.string().max(5000).optional().default(""),
-        configuracao: configuracaoItemSchema,
-        aprovacaoPreco: aprovacaoPrecoInputSchema,
-      }),
-    )
-    .mutation(async ({ input }) => {
+    .input(z.object({
+      propostaId: z.number().int().positive(),
+      produtoId: z.number().int().positive(),
+      quantidade: z.number().finite().min(0.0001).default(1),
+      precoUnitario: z.number().finite().nonnegative(),
+      custoFinanceiroPct: z.number().min(0).max(100).optional().default(0),
+      parcelasFinanceira: z.number().int().positive().nullable().optional().default(null),
+      descricao: z.string().max(5000).optional().default(""),
+      configuracao: configuracaoItemSchema,
+      aprovacaoPreco: aprovacaoPrecoInputSchema.optional(),
+      justificativaExcecao: z.string().trim().min(10).max(3000).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      const [produto] = await db.select({
-        nome: produtos.nome,
-        categoria: produtos.categoria,
-        custoMaoObra: produtos.custoMaoObra,
-        percentualCustoFixo: produtos.percentualCustoFixo,
-        idPrecificacao: produtos.idPrecificacao,
-      }).from(produtos).where(eq(produtos.id, input.produtoId));
-      if (!produto) throw new Error("Produto não encontrado");
-      const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId }).from(propostas).where(eq(propostas.id, input.propostaId));
-      if (!proposta) throw new Error("Proposta não encontrada");
       const configuracao = input.configuracao;
-      await validarCustosCatalogo(db, configuracao);
-      const parametros = await parametrosPrecoProposta(db, proposta, produto, input);
-      const contextoAtual = calcularContextoPrecoProposta({
-        produto,
-        configuracao,
-        precoAtual: input.aprovacaoPreco.contexto.precoAtual,
-        taxas: parametros.taxas,
-      });
-      const aprovacao = verificarAprovacaoPreco({
-        recibo: input.aprovacaoPreco.recibo,
-        fluxo: "propostas",
-        base: { propostaId: input.propostaId, produtoId: input.produtoId, quantidade: input.quantidade, custoFinanceiroPct: input.custoFinanceiroPct, parcelasFinanceira: input.parcelasFinanceira, parametros: parametros.assinatura, configuracao },
-        contexto: contextoAtual,
-        preco: input.precoUnitario,
-      });
-      const custoMateriais = configuracao.materiais.filter((material) => material.incluir).reduce((total, material) => total + material.custoTotal, 0);
-      const decupagem = criarSnapshotDecupagem({
-        precoVenda: input.precoUnitario,
-        quantidadeEmitida: input.quantidade,
-        custoMateriais,
-        custoMaoObra: produto.custoMaoObra == null ? null : Number(produto.custoMaoObra),
-        ...parametros.taxas,
-        parcelasFinanceira: input.parcelasFinanceira,
-        categoria: produto.categoria,
-        vendedorNome: proposta.vendedorNome,
-      });
-      if (decupagem.complete !== true || Number((decupagem as unknown as DecupagemPreco).lucroLiquido.valor) < 0) {
-        throw new Error("A decupagem está incompleta ou a margem líquida é negativa. Revise e aprove novamente o preço.");
-      }
-      const existentes = await db
-        .select({ id: propostaItens.id })
-        .from(propostaItens)
-        .where(eq(propostaItens.propostaId, input.propostaId));
-      const [result] = await db
-        .insert(propostaItens)
-        .values({
+      // Buscar o catálogo remoto antes da transação evita manter locks durante
+      // a chamada externa; validações locais e as duas gravações usam o mesmo tx.
+      const catalogoAtual = await carregarCustosCatalogoAtual(configuracao);
+
+      return db.transaction(async (tx) => {
+        const [proposta] = await tx.select({
+          id: propostas.id,
+          vendedorNome: propostas.vendedorNome,
+          vendedorComercialId: propostas.vendedorComercialId,
+        }).from(propostas).where(eq(propostas.id, input.propostaId)).for("update");
+        if (!proposta) throw new Error("Proposta não encontrada");
+
+        const [produto] = await tx.select({
+          nome: produtos.nome,
+          categoria: produtos.categoria,
+          custoMaoObra: produtos.custoMaoObra,
+          percentualCustoFixo: produtos.percentualCustoFixo,
+          idPrecificacao: produtos.idPrecificacao,
+        }).from(produtos).where(eq(produtos.id, input.produtoId));
+        if (!produto) throw new Error("Produto não encontrado");
+
+        await validarCustosCatalogo(tx, configuracao, catalogoAtual);
+        const parametros = await parametrosPrecoProposta(tx, proposta, produto, input);
+        const contextoAtual = calcularContextoPrecoProposta({
+          produto,
+          configuracao,
+          precoAtual: input.aprovacaoPreco?.contexto.precoAtual ?? input.precoUnitario,
+          taxas: parametros.taxas,
+        });
+        const custoMateriais = configuracao.materiais.filter((material) => material.incluir)
+          .reduce((total, material) => total + material.custoTotal, 0);
+        const decupagem = criarSnapshotDecupagem({
+          precoVenda: input.precoUnitario,
+          quantidadeEmitida: input.quantidade,
+          custoMateriais,
+          custoMaoObra: produto.custoMaoObra == null ? null : Number(produto.custoMaoObra),
+          ...parametros.taxas,
+          parcelasFinanceira: input.parcelasFinanceira,
+          categoria: produto.categoria,
+          vendedorNome: proposta.vendedorNome,
+        });
+        if (decupagem.complete !== true) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "A decupagem está incompleta. Revise custos e medidas antes de salvar." });
+        }
+
+        const lucroLiquidoNegativo = Number((decupagem as unknown as DecupagemPreco).lucroLiquido.valor) < 0;
+        const excecaoAutorizada = validarAutorizacaoExcecaoPreco({
+          preco: input.precoUnitario,
+          contexto: contextoAtual,
+          justificativa: input.justificativaExcecao,
+          role: ctx.user.role,
+          lucroLiquidoNegativo,
+        });
+        if (excecaoAutorizada && input.aprovacaoPreco) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Remova a aprovação anterior para gerar o recibo da exceção dentro do salvamento." });
+        }
+        if (!excecaoAutorizada && !input.aprovacaoPreco) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Aprovação humana obrigatória. Aprove o preço antes de adicionar o item." });
+        }
+
+        const base = {
+          propostaId: input.propostaId,
+          produtoId: input.produtoId,
+          quantidade: input.quantidade,
+          custoFinanceiroPct: input.custoFinanceiroPct,
+          parcelasFinanceira: input.parcelasFinanceira,
+          parametros: parametros.assinatura,
+          configuracao,
+        };
+        let aprovacaoPersistida: Record<string, unknown>;
+        let reciboAuditoria: string | null = null;
+        if (excecaoAutorizada) {
+          const aprovacaoExcecao = aprovarPrecoCalculado({
+            fluxo: "propostas",
+            base,
+            contexto: contextoAtual,
+            preco: input.precoUnitario,
+            ator: { id: ctx.user.id, role: ctx.user.role, nome: ctx.user.name },
+            justificativaExcecao: input.justificativaExcecao,
+          });
+          aprovacaoPersistida = { ...aprovacaoExcecao, contexto: contextoAtual };
+          reciboAuditoria = aprovacaoExcecao.recibo;
+        } else {
+          const aprovacao = verificarAprovacaoPreco({
+            recibo: input.aprovacaoPreco!.recibo,
+            fluxo: "propostas",
+            base,
+            contexto: contextoAtual,
+            preco: input.precoUnitario,
+          });
+          aprovacaoPersistida = { ...aprovacao, recibo: input.aprovacaoPreco!.recibo, contexto: contextoAtual };
+        }
+
+        const existentes = await tx.select({ id: propostaItens.id }).from(propostaItens)
+          .where(eq(propostaItens.propostaId, input.propostaId));
+        const [item] = await tx.insert(propostaItens).values({
           propostaId: input.propostaId,
           produtoId: input.produtoId,
           produtoNome: produto.nome,
           descricao: input.descricao,
-          configuracaoJson: {
-            ...configuracao,
-            precificacaoIA: { ...aprovacao, contexto: contextoAtual },
-          },
+          configuracaoJson: { ...configuracao, precificacaoIA: aprovacaoPersistida },
           decupagemJson: decupagem,
           custoMaoObraUnitario: produto.custoMaoObra,
           quantidade: String(input.quantidade),
           precoUnitario: String(input.precoUnitario),
           ordem: existentes.length,
-        })
-        .returning({ id: propostaItens.id });
-      return { success: true, id: result.id };
+        }).returning({ id: propostaItens.id });
+
+        if (excecaoAutorizada) {
+          await tx.insert(propostasExcecoesMargem).values({
+            propostaId: input.propostaId,
+            itemId: item.id,
+            gestorId: ctx.user.id,
+            gestorNome: ctx.user.name.slice(0, 128),
+            gestorRole: ctx.user.role,
+            produtoId: input.produtoId,
+            precoAprovado: input.precoUnitario.toFixed(2),
+            precoMinimoTecnico: (contextoAtual.precoMinimo ?? contextoAtual.custoDireto).toFixed(2),
+            motivoJustificativa: input.justificativaExcecao!,
+            reciboAssinado: reciboAuditoria!,
+            dadosJson: { base, contexto: contextoAtual, configuracao, parametros: parametros.assinatura, decupagem },
+          });
+        }
+        return { success: true as const, id: item.id };
+      });
     }),
 
   itemAtualizar: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      quantidade: z.number().min(0.0001),
-      precoUnitario: z.number().min(0),
+      id: z.number().int().positive(),
+      quantidade: z.number().finite().min(0.0001),
+      precoUnitario: z.number().finite().nonnegative(),
       custoFinanceiroPct: z.number().min(0).max(100).optional(),
       parcelasFinanceira: z.number().int().positive().nullable().optional(),
       descricao: z.string().max(5000).optional(),
       configuracao: configuracaoItemSchema.optional(),
       aprovacaoPreco: aprovacaoPrecoInputSchema.optional(),
+      justificativaExcecao: z.string().trim().min(10).max(3000).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      const [atual] = await db.select({
-        id: propostaItens.id,
-        propostaId: propostaItens.propostaId,
-        produtoId: propostaItens.produtoId,
-        quantidade: propostaItens.quantidade,
-        precoUnitario: propostaItens.precoUnitario,
-        decupagemJson: propostaItens.decupagemJson,
-      }).from(propostaItens).where(eq(propostaItens.id, input.id));
-      if (!atual) throw new Error("Item de proposta não encontrado.");
-      const taxasAnteriores = atual.decupagemJson && typeof atual.decupagemJson.taxas === "object" && atual.decupagemJson.taxas
-        ? atual.decupagemJson.taxas as Record<string, unknown> : {};
-      const custoFinanceiroAnterior = Number(taxasAnteriores.custoFinanceiroPct ?? 0);
-      const parcelasAnteriores = typeof taxasAnteriores.parcelasFinanceira === "number" ? taxasAnteriores.parcelasFinanceira : null;
-      const financeiro = {
-        custoFinanceiroPct: input.custoFinanceiroPct ?? custoFinanceiroAnterior,
-        parcelasFinanceira: input.parcelasFinanceira === undefined ? parcelasAnteriores : input.parcelasFinanceira,
-      };
-      const mudouPreco = Math.abs(Number(atual.precoUnitario) - input.precoUnitario) >= 0.005;
-      const mudouQuantidade = Math.abs(Number(atual.quantidade) - input.quantidade) >= 0.0001;
-      const mudouFinanceiro = Math.abs(financeiro.custoFinanceiroPct - custoFinanceiroAnterior) >= 0.0001
-        || financeiro.parcelasFinanceira !== parcelasAnteriores;
-      if (mudouPreco || mudouQuantidade || mudouFinanceiro || input.configuracao !== undefined) {
-        if (!input.aprovacaoPreco || !input.configuracao) {
-          throw new Error("Alterar preço, quantidade, composição ou condição financeira exige nova aprovação humana do preço.");
+      const catalogoAtual = input.configuracao
+        ? await carregarCustosCatalogoAtual(input.configuracao)
+        : new Map<number, number>();
+
+      return db.transaction(async (tx) => {
+        const [atual] = await tx.select({
+          id: propostaItens.id,
+          propostaId: propostaItens.propostaId,
+          produtoId: propostaItens.produtoId,
+          quantidade: propostaItens.quantidade,
+          precoUnitario: propostaItens.precoUnitario,
+          decupagemJson: propostaItens.decupagemJson,
+        }).from(propostaItens).where(eq(propostaItens.id, input.id)).for("update");
+        if (!atual) throw new Error("Item de proposta não encontrado.");
+
+        const taxasAnteriores = atual.decupagemJson && typeof atual.decupagemJson.taxas === "object" && atual.decupagemJson.taxas
+          ? atual.decupagemJson.taxas as Record<string, unknown> : {};
+        const custoFinanceiroAnterior = Number(taxasAnteriores.custoFinanceiroPct ?? 0);
+        const parcelasAnteriores = typeof taxasAnteriores.parcelasFinanceira === "number" ? taxasAnteriores.parcelasFinanceira : null;
+        const financeiro = {
+          custoFinanceiroPct: input.custoFinanceiroPct ?? custoFinanceiroAnterior,
+          parcelasFinanceira: input.parcelasFinanceira === undefined ? parcelasAnteriores : input.parcelasFinanceira,
+        };
+        const mudouPreco = Math.abs(Number(atual.precoUnitario) - input.precoUnitario) >= 0.005;
+        const mudouQuantidade = Math.abs(Number(atual.quantidade) - input.quantidade) >= 0.0001;
+        const mudouFinanceiro = Math.abs(financeiro.custoFinanceiroPct - custoFinanceiroAnterior) >= 0.0001
+          || financeiro.parcelasFinanceira !== parcelasAnteriores;
+        const precisaReaprovar = mudouPreco || mudouQuantidade || mudouFinanceiro || input.configuracao !== undefined;
+
+        if (!precisaReaprovar) {
+          if (input.justificativaExcecao) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "A justificativa só pode ser usada ao autorizar uma exceção de preço." });
+          }
+          await tx.update(propostaItens).set({
+            quantidade: String(input.quantidade),
+            precoUnitario: String(input.precoUnitario),
+            ...(input.descricao !== undefined ? { descricao: input.descricao } : {}),
+          }).where(eq(propostaItens.id, input.id));
+          return { success: true as const };
         }
-        const [produto] = await db.select({
+
+        if (!input.configuracao) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Alterar preço, quantidade, composição ou condição financeira exige a configuração completa do item." });
+        }
+        const configuracao = input.configuracao;
+        const [produto] = await tx.select({
           nome: produtos.nome,
           categoria: produtos.categoria,
           custoMaoObra: produtos.custoMaoObra,
           idPrecificacao: produtos.idPrecificacao,
         }).from(produtos).where(eq(produtos.id, atual.produtoId));
-        const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId })
-          .from(propostas).where(eq(propostas.id, atual.propostaId));
+        const [proposta] = await tx.select({
+          id: propostas.id,
+          vendedorNome: propostas.vendedorNome,
+          vendedorComercialId: propostas.vendedorComercialId,
+        }).from(propostas).where(eq(propostas.id, atual.propostaId)).for("update");
         if (!produto || !proposta) throw new Error("Proposta ou produto não encontrado.");
-        await validarCustosCatalogo(db, input.configuracao);
-        const parametros = await parametrosPrecoProposta(db, proposta, produto, financeiro);
+
+        await validarCustosCatalogo(tx, configuracao, catalogoAtual);
+        const parametros = await parametrosPrecoProposta(tx, proposta, produto, financeiro);
         const contexto = calcularContextoPrecoProposta({
           produto,
-          configuracao: input.configuracao,
-          precoAtual: input.aprovacaoPreco.contexto.precoAtual,
+          configuracao,
+          precoAtual: input.aprovacaoPreco?.contexto.precoAtual ?? input.precoUnitario,
           taxas: parametros.taxas,
         });
-        const aprovacao = verificarAprovacaoPreco({
-          recibo: input.aprovacaoPreco.recibo,
-          fluxo: "propostas",
-          base: {
-            propostaId: atual.propostaId,
-            produtoId: atual.produtoId,
-            quantidade: input.quantidade,
-            ...financeiro,
-            parametros: parametros.assinatura,
-            configuracao: input.configuracao,
-          },
-          contexto,
-          preco: input.precoUnitario,
-        });
-        const custoMateriais = input.configuracao.materiais.filter((material) => material.incluir)
+        const custoMateriais = configuracao.materiais.filter((material) => material.incluir)
           .reduce((total, material) => total + material.custoTotal, 0);
         const decupagem = criarSnapshotDecupagem({
           precoVenda: input.precoUnitario,
@@ -1096,34 +1230,83 @@ export const propostasRouter = router({
           categoria: produto.categoria,
           vendedorNome: proposta.vendedorNome,
         });
-        if (decupagem.complete !== true || Number((decupagem as unknown as DecupagemPreco).lucroLiquido.valor) < 0) {
-          throw new Error("A decupagem está incompleta ou a margem líquida é negativa. Revise e aprove novamente o preço.");
+        if (decupagem.complete !== true) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "A decupagem está incompleta. Revise custos e medidas antes de salvar." });
         }
-        await db
-          .update(propostaItens)
-          .set({
-            quantidade: String(input.quantidade),
-            precoUnitario: String(input.precoUnitario),
-            ...(input.descricao !== undefined ? { descricao: input.descricao } : {}),
-            configuracaoJson: { ...input.configuracao, precificacaoIA: { ...aprovacao, contexto } },
-            decupagemJson: decupagem,
-            custoMaoObraUnitario: produto.custoMaoObra,
-          })
-          .where(eq(propostaItens.id, input.id));
-        return { success: true };
-      }
-      await db
-        .update(propostaItens)
-        .set({
+        const lucroLiquidoNegativo = Number((decupagem as unknown as DecupagemPreco).lucroLiquido.valor) < 0;
+        const excecaoAutorizada = validarAutorizacaoExcecaoPreco({
+          preco: input.precoUnitario,
+          contexto,
+          justificativa: input.justificativaExcecao,
+          role: ctx.user.role,
+          lucroLiquidoNegativo,
+        });
+        if (excecaoAutorizada && input.aprovacaoPreco) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Remova a aprovação anterior para gerar o recibo da exceção dentro do salvamento." });
+        }
+        if (!excecaoAutorizada && !input.aprovacaoPreco) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Alterar preço ou composição exige aprovação humana do preço." });
+        }
+
+        const base = {
+          propostaId: atual.propostaId,
+          produtoId: atual.produtoId,
+          quantidade: input.quantidade,
+          ...financeiro,
+          parametros: parametros.assinatura,
+          configuracao,
+        };
+        let aprovacaoPersistida: Record<string, unknown>;
+        let reciboAuditoria: string | null = null;
+        if (excecaoAutorizada) {
+          const aprovacaoExcecao = aprovarPrecoCalculado({
+            fluxo: "propostas",
+            base,
+            contexto,
+            preco: input.precoUnitario,
+            ator: { id: ctx.user.id, role: ctx.user.role, nome: ctx.user.name },
+            justificativaExcecao: input.justificativaExcecao,
+          });
+          aprovacaoPersistida = { ...aprovacaoExcecao, contexto };
+          reciboAuditoria = aprovacaoExcecao.recibo;
+        } else {
+          const aprovacao = verificarAprovacaoPreco({
+            recibo: input.aprovacaoPreco!.recibo,
+            fluxo: "propostas",
+            base,
+            contexto,
+            preco: input.precoUnitario,
+          });
+          aprovacaoPersistida = { ...aprovacao, recibo: input.aprovacaoPreco!.recibo, contexto };
+        }
+
+        await tx.update(propostaItens).set({
           quantidade: String(input.quantidade),
           precoUnitario: String(input.precoUnitario),
           ...(input.descricao !== undefined ? { descricao: input.descricao } : {}),
-          ...(input.configuracao !== undefined ? { configuracaoJson: input.configuracao } : {}),
-        })
-        .where(eq(propostaItens.id, input.id));
-      return { success: true };
-    }),
+          configuracaoJson: { ...configuracao, precificacaoIA: aprovacaoPersistida },
+          decupagemJson: decupagem,
+          custoMaoObraUnitario: produto.custoMaoObra,
+        }).where(eq(propostaItens.id, input.id));
 
+        if (excecaoAutorizada) {
+          await tx.insert(propostasExcecoesMargem).values({
+            propostaId: atual.propostaId,
+            itemId: atual.id,
+            gestorId: ctx.user.id,
+            gestorNome: ctx.user.name.slice(0, 128),
+            gestorRole: ctx.user.role,
+            produtoId: atual.produtoId,
+            precoAprovado: input.precoUnitario.toFixed(2),
+            precoMinimoTecnico: (contexto.precoMinimo ?? contexto.custoDireto).toFixed(2),
+            motivoJustificativa: input.justificativaExcecao!,
+            reciboAssinado: reciboAuditoria!,
+            dadosJson: { base, contexto, configuracao, parametros: parametros.assinatura, decupagem },
+          });
+        }
+        return { success: true as const };
+      });
+    }),
   grupoCriar: protectedProcedure
     .input(
       z.object({

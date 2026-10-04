@@ -459,6 +459,14 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `grupoDescricao` compartilhada: o cálculo interno mantém os componentes
   separados, enquanto o link público e o PDF mostram um único conjunto com
   valor agregado; o cliente ativa/desativa o conjunto inteiro.
+  **Exceções abaixo do piso técnico**: o formulário consulta `precoPiso`
+  antes de adicionar o item e abre a alçada quando o preço fica abaixo do
+  cálculo do servidor. Só gestor, admin e master podem informar justificativa
+  com pelo menos 10 caracteres. `itemAdicionar` e `itemAtualizar` recalculam
+  o preço no servidor, emitem recibo assinado e gravam item e auditoria na
+  mesma transação. A tabela `propostas_excecoes_margem` não tem operações de
+  edição/exclusão; sua migration também bloqueia `UPDATE`, `DELETE` e
+  `TRUNCATE` no banco.
   **Padrão de rota pública**: diferente do site espelho do Guia de
   Fornecedores (`server/routes/publico-guia-fornecedores.ts`, REST fora do
   tRPC por ser outro deploy Vercel/outra origem), a Proposta pública é
