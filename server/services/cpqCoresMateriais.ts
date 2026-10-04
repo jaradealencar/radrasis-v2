@@ -79,6 +79,7 @@ export type CpqCorrespondenciaCorResult = {
   cmyk: CpqCorAlvo["cmyk"];
   areaM2: number | null;
   areaConsumoM2: number | null;
+  dadosPreco?: RegiaoPrecificacao | null;
   tipoSugestao: "chapa" | "imprimax" | "impresso" | "pendente";
   chapaId: number | null;
   chapaMateriaPrimaId: number | null;
@@ -317,7 +318,7 @@ export function calcularConsumosBobina(
   for (const regiao of regioes) {
     const dadosPreco = regiao.dadosPreco;
     const caixas = dadosPreco?.boundingBoxesMm ?? [];
-    if (!dadosPreco || !Number.isFinite(dadosPreco.areaLiquidaM2) || dadosPreco.areaLiquidaM2 < 0
+    if (!dadosPreco || !Number.isFinite(dadosPreco.areaLiquidaM2) || dadosPreco.areaLiquidaM2 <= 0
       || !Number.isFinite(dadosPreco.larguraMm) || dadosPreco.larguraMm <= 0
       || !Number.isFinite(dadosPreco.alturaMm) || dadosPreco.alturaMm <= 0 || !caixas.length) {
       caixasInvalidas = true;
@@ -471,7 +472,10 @@ export function aplicarCustosBobinaAgrupados(
     }));
     for (const [key, consumo] of calcularConsumosBobina(regioesDoGrupo, precos)) consumoPorRegiao.set(key, consumo);
   }
-  return resultados.map(item => aplicarConsumoBobina(item, consumoPorRegiao.get(item.regionKey)));
+  return resultados.map(item => ({
+    ...aplicarConsumoBobina(item, consumoPorRegiao.get(item.regionKey)),
+    dadosPreco: regiaoPorChave.get(item.regionKey)?.dadosPreco ?? null,
+  }));
 }
 
 function normalizarPantone(value: string | null | undefined): string {

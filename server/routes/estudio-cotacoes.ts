@@ -39,6 +39,16 @@ const mapeamentoRegiaoSchema = z.object({
   coresGradiente: z.array(z.string().regex(/^#[\da-f]{6}$/i)).max(20),
   pathIndexes: z.array(z.number().int().nonnegative().max(499)).max(500),
   areaM2: z.number().finite().nonnegative().nullable(),
+  areaConsumoM2: z.number().finite().nonnegative().nullable().optional(),
+  dadosPreco: z.object({
+    areaLiquidaM2: z.number().finite().nonnegative(),
+    larguraMm: z.number().finite().positive(),
+    alturaMm: z.number().finite().positive(),
+    boundingBoxesMm: z.array(z.object({
+      minX: z.number().finite(), maxX: z.number().finite(),
+      minY: z.number().finite(), maxY: z.number().finite(),
+    }).strict().refine(box => box.maxX > box.minX && box.maxY > box.minY)).min(1).max(500),
+  }).strict().nullable().optional(),
   tipoSugestao: z.enum(["chapa", "imprimax", "impresso", "pendente"]),
   chapaId: z.number().int().positive().nullable(),
   chapaMateriaPrimaId: z.number().int().positive().nullable(),
@@ -245,10 +255,11 @@ function validarFactibilidadeSnapshot(
     throw new Error("Revise e aprove o mapeamento de cores e materiais antes de emitir a cotação.");
   const pendenciaCustoCor = snapshot.mapeamentoCores.regioes.some(regiao =>
     (regiao.tipoSugestao === "imprimax" || regiao.tipoSugestao === "impresso")
-      && (regiao.custoEstimado == null || regiao.areaM2 == null)
+      && (regiao.custoEstimado == null || regiao.areaM2 == null
+        || regiao.areaConsumoM2 == null || regiao.areaConsumoM2 <= 0 || !regiao.dadosPreco)
   );
   if (pendenciaCustoCor)
-    throw new Error("Há adesivo sem área ou custo por m². Atualize o catálogo/custos e refaça o mapeamento antes de emitir.");
+    throw new Error("Há adesivo sem geometria, consumo de bobina ou custo calculado. Confira os custos e a configuração da bobina antes de emitir.");
   if (!snapshot.nestingSvg) {
     throw new Error("O SVG vetorial é obrigatório para analisar e cotar a geometria.");
   }
@@ -493,7 +504,7 @@ function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
         .filter(region => region.tipoSugestao === "imprimax" || region.tipoSugestao === "impresso")
         .map(region => ({
           nome: `${region.tipoSugestao === "impresso" ? "Adesivo impresso" : "Adesivo Imprimax"} · ${region.corHex ?? region.regionKey}`,
-          quantidade: region.areaM2 ?? 0,
+          quantidade: region.areaConsumoM2 ?? region.areaM2 ?? 0,
           custoTotal: region.custoEstimado ?? 0,
         })),
     ],
@@ -560,6 +571,8 @@ async function validarMapeamentoCoresPersistido(
       || region.deltaE00 !== (row.deltaE00 == null ? null : Number(row.deltaE00))
       || region.custoEstimado !== (row.custoEstimado == null ? null : Number(row.custoEstimado))
       || region.areaM2 !== (row.areaM2 == null ? null : Number(row.areaM2))
+      || (region.areaConsumoM2 ?? null) !== (details.areaConsumoM2 ?? null)
+      || stableJson(region.dadosPreco ?? null) !== stableJson(details.dadosPreco ?? null)
       || mapping.iluminacao !== row.modoIluminacao
       || stableJson(region.cmyk) !== stableJson(details.cmyk ?? null)
       || stableJson(region.coresGradiente) !== stableJson(details.coresGradiente ?? [])
@@ -592,8 +605,9 @@ async function validarMapeamentoCoresPersistido(
       return "A chapa definida pela análise de cor não participa da composição da cotação. Reaplique a composição e refaça o nesting.";
     }
     if (region.tipoSugestao === "imprimax" || region.tipoSugestao === "impresso") {
-      if (region.areaM2 == null || region.custoEstimado == null)
-        return "Há adesivo sem área ou custo cadastrado. Atualize os dados antes de emitir.";
+      if (region.areaM2 == null || region.areaConsumoM2 == null || region.areaConsumoM2 <= 0
+        || !region.dadosPreco || region.custoEstimado == null)
+        return "Há adesivo sem geometria, consumo de bobina ou custo calculado. Refaça a análise de cores e confira a configuração da bobina.";
       custoPersistido += region.custoEstimado;
     }
   }

@@ -69,13 +69,14 @@ flowchart TD
   L --> R[Validar composição e executar nesting]
 ```
 
-Impressão digital é calculada como:
+Impressão digital é calculada sobre o consumo físico da bobina, não apenas sobre
+a área vetorial visível:
 
-`custo = área_visível_m² × (custo_vinil_base_m² + custo_impressão_m² + custo_laminação_m², se selecionada)`
+`custo = área_consumida_da_bobina_m² × (custo_vinil_base_m² + custo_impressão_m² + custo_laminação_m², se selecionada)`
 
-O custo de vinil sólido é `área_visível_m² × preço_m²` do item de catálogo. Chapa segue a composição e o cálculo de material já existentes no kit/nesting; a sugestão de cor não substitui nem altera silenciosamente uma linha de composição.
+O custo de vinil sólido é `área_consumida_da_bobina_m² × preço_m²` do item de catálogo. A área visível líquida continua registrada para referência. Chapa segue a composição e o cálculo de material já existentes no kit/nesting; a sugestão de cor não substitui nem altera silenciosamente uma linha de composição.
 
-Se um componente de preço necessário ou a área estiver ausente, o custo permanece nulo e a emissão é bloqueada. O fluxo não transforma dado ausente em custo zero.
+Se a geometria, a configuração da bobina ou um componente de preço necessário estiver ausente, o custo permanece nulo e a emissão é bloqueada. O fluxo não transforma dado ausente em custo zero.
 
 ## Consumo físico de bobina
 
@@ -106,7 +107,7 @@ cadastrado pela operação.
 
 ## Revisão, snapshot e relação com nesting
 
-O vendedor revisa sugestões e confirma o mapa antes da factibilidade/nesting. Reanalisar ou alterar iluminação, base de impressão, laminação ou catálogo invalida a aprovação anterior. As rotas de análise, aprovação, análise de preço e emissão consultam o snapshot persistido no servidor; valores enviados pelo navegador precisam corresponder ao registro aprovado.
+O vendedor revisa sugestões e confirma o mapa antes da factibilidade/nesting. Reanalisar ou alterar iluminação, base de impressão, laminação ou catálogo invalida a aprovação anterior. O snapshot da cotação guarda área líquida, caixas individuais, área consumida e os parâmetros de bobina usados. As rotas de análise, aprovação, análise de preço e emissão consultam o snapshot persistido no servidor; valores enviados pelo navegador precisam corresponder ao registro aprovado.
 
 As linhas de adesivo/impressão aprovadas entram como custo adicional no snapshot da cotação. Materiais de chapa continuam ligados ao kit/linhas que já alimentam o nesting. A sugestão de uma chapa colorida ou de um vinil não adiciona automaticamente uma matéria-prima ao kit, não redivide o vetor por material e não gera percursos CNC separados por cor. O nesting atual valida a geometria de corte existente; essa automação por material requer uma etapa futura de composição/fabricação que conecte regiões aprovadas a matérias-primas e processos.
 
