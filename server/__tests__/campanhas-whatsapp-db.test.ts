@@ -377,6 +377,17 @@ describe("Fontes de Dados (ERP local + arquivo)", () => {
   }, 10_000); // recarrega historico_os inteiro — na suíte completa (muita carga concorrente no Neon via
   // HTTP), a latência varia o bastante para estourar o default de 5s à toa.
 
+  it("contagemAudiencias bate com o 'Ver contatos' (gerarListaDaCampanha) das campanhas recorrentes", async () => {
+    const lista = await admin().gerarListaDaCampanha({ campanhaId: campanhaFontesId });
+    const contagens = await admin().contagemAudiencias();
+    expect(contagens[campanhaFontesId]).toEqual({
+      paraContatar: lista.aprovados.length,
+      emEspera: lista.ignoradosQuarentenaGlobal.length + lista.ignoradosCadenciaCampanha.length,
+    });
+    // Pós-venda (gatilho de venda) não entra: tem contagem própria por vendas.
+    expect(contagens[gatilhoId]).toBeUndefined();
+  }, 40_000);
+
   it("cadência da campanha: quem acabou de receber ESTA campanha some de gerarListaDaCampanha (mas não de outras)", async () => {
     // gerarListaDaCampanha recarrega o historico_os inteiro (ver carregarContextoErp) — chamado 2x aqui.
     const antes = await admin().gerarListaDaCampanha({ campanhaId: campanhaFontesId });

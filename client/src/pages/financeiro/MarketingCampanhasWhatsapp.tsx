@@ -52,6 +52,8 @@ export default function MarketingCampanhasWhatsapp() {
   const [vendas, setVendas] = useState<CampanhaLinha | null>(null);
   const [duplicar, setDuplicar] = useState<CampanhaLinha | null>(null);
   const [verContatos, setVerContatos] = useState<CampanhaLinha | null>(null);
+  // Contatos das campanhas recorrentes: cálculo mais pesado, por isso numa consulta à parte.
+  const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(undefined, { staleTime: 5 * 60_000, refetchOnWindowFocus: false });
   const [excluir, setExcluir] = useState<CampanhaLinha | null>(null);
 
   if (isLoading) {
@@ -156,6 +158,25 @@ export default function MarketingCampanhasWhatsapp() {
                               <span className="text-[11px] text-muted-foreground">aguardando prazo</span>
                             </div>
                           </div>
+                        ) : c.tipo === "recorrente" && c.status === "ativa" ? (
+                          contagens.isLoading ? (
+                            <Spinner className="size-3.5 text-muted-foreground" />
+                          ) : contagens.data?.[c.id] ? (
+                            <div className="space-y-0.5">
+                              <div title="Contatos que já podem receber agora (fontes + período, sem quarentena, cadência ou bloqueados)">
+                                <span className="font-semibold">{fmtNum(contagens.data[c.id]!.paraContatar)}</span>{" "}
+                                <span className="text-[11px] text-muted-foreground">para contatar</span>
+                              </div>
+                              {contagens.data[c.id]!.emEspera > 0 && (
+                                <div title="Em quarentena (outra campanha) ou já receberam esta campanha há pouco: voltam sozinhos quando o prazo passa.">
+                                  <span className="font-semibold text-amber-700">{fmtNum(contagens.data[c.id]!.emEspera)}</span>{" "}
+                                  <span className="text-[11px] text-muted-foreground">em espera</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground" title="Vincule uma fonte de dados à campanha para ver os contatos.">sem fonte</span>
+                          )
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

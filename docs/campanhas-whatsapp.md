@@ -112,6 +112,14 @@ aprovação da OS (`DIAS_UTEIS_MINIMOS_POS_VENDA`).
 `atualizarDadosErp` (`sincronizarHistoricoRecente(1)`: mês atual e anterior, trava de 2 minutos), e a lista é
 recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair está na lista "Não quer receber".
 
+**Contatos de cada lista no painel** (pedido do usuário 03/10/2026): a coluna "Contatos" da tabela mostra, por
+campanha, quantos contatos podem receber agora ("para contatar") e quantos estão em espera. Pós-venda usa a contagem
+de clientes das vendas (`listar`: `clientesPendentes`/`clientesAguardando`); as recorrentes usam
+`contagemAudiencias`, que roda à parte da lista (para não atrasá-la) e reaproveita `montarListaCampanha` — o mesmo
+cálculo de "Ver contatos": fontes + período, quarentena, "não quer receber" e cadência —, lendo o histórico uma só vez.
+Campanha sem fonte vinculada mostra "sem fonte". O resultado fica em cache de 5 minutos no navegador e é recalculado
+depois de registrar um disparo.
+
 **Pós-venda por cliente único** (pedido do usuário 03/10/2026): a lista, o contador do painel e o diálogo de
 vendas contam **clientes** (mesmo telefone; sem telefone, mesma empresa), não OS — `agruparPorCliente` e
 `resumirVendas` (`pendentes` = clientes com prazo vencido, `aguardando` = clientes ainda dentro do prazo). O período de

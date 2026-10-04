@@ -373,6 +373,95 @@ let ultimaAtualizacaoErp = 0;
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 
+/**
+ * Monta a lista de contatos de uma campanha pelas fontes vinculadas: resolve as fontes (ERP ao vivo do histórico
+ * local + arquivo), filtra pelo período, higieniza (telefone, repetidos, quarentena global, "não quer receber") e
+ * aplica a cadência da própria campanha. Só consulta — não grava nada. `ctxCompartilhado` evita reler o histórico
+ * quando várias campanhas são calculadas de uma vez (contagens do painel).
+ */
+async function montarListaCampanha(
+  db: Db,
+  campanha: CampanhaWhatsapp,
+  input: { dataEnvio?: string; periodo?: { inicio: string | null; fim: string | null } },
+  ctxCompartilhado?: ContextoErp | null,
+) {
+  const dataEnvio = input.dataEnvio ?? hojeCampoGrande();
+  const periodoInicio = input.periodo ? input.periodo.inicio : (campanha.periodoInicio ? iso(campanha.periodoInicio) : null);
+  const periodoFim = input.periodo ? input.periodo.fim : (campanha.periodoFim ? iso(campanha.periodoFim) : null);
+  validarPeriodo(periodoInicio, periodoFim);
+  // Data final = "como se hoje fosse" para as regras do ERP (inativo há 6 meses etc.); sem ela, vale hoje.
+  const dataReferencia = periodoFim ?? dataEnvio;
+
+  const fontes = await db.select({ fonte: campanhasWhatsappFontes })
+    .from(campanhasWhatsappCampanhaFontes)
+    .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+    .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, campanha.id), eq(campanhasWhatsappFontes.ativo, true)));
+  if (fontes.length === 0) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma fonte vinculada a esta campanha. Vincule ao menos uma em \"Fontes de dados\"." });
+  }
+
+  const porFonte: Array<{ fonte: string; total: number; semTelefone: number }> = [];
+  const brutos: Array<{ telefone: unknown; nome: string }> = [];
+  // Histórico carregado uma só vez para todas as fontes do ERP da campanha.
+  let ctxErp: ContextoErp | null = ctxCompartilhado ?? null;
+  if (!ctxErp && fontes.some(f => f.fonte.tipo === "erp" && f.fonte.consultaErp)) ctxErp = await carregarContextoErp();
+  for (const { fonte } of fontes) {
+    let contatos: ContatoFonte[];
+    if (fonte.tipo === "erp") {
+      if (!fonte.consultaErp) continue;
+      // Fonte sem data inicial escolhida pode ter uma janela padrão (ex.: primeira compra = últimos 60 dias).
+      const janelaPadrao = JANELA_PADRAO_DIAS[fonte.consultaErp];
+      const inicioDaFonte = periodoInicio ?? (janelaPadrao !== undefined ? somarDias(dataReferencia, -janelaPadrao) : null);
+      contatos = filtrarPorPeriodo(
+        await resolverFonteErp(fonte.consultaErp, dataReferencia, ctxErp ?? undefined), inicioDaFonte, periodoFim,
+      );
+    } else {
+      if (!fonte.arquivoId) continue;
+      const [arquivo] = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId)).limit(1);
+      if (!arquivo) continue;
+      const leitura = await lerArquivoDeUrl(arquivo.url, arquivo.nome);
+      if (!leitura.ok) {
+        porFonte.push({ fonte: fonte.label, total: 0, semTelefone: 0 });
+        continue;
+      }
+      contatos = leitura.contatos.map(c => ({ telefone: c.telefone || null, nome: c.nome }));
+    }
+    porFonte.push({ fonte: fonte.label, total: contatos.length, semTelefone: contatos.filter(c => !c.telefone).length });
+    for (const c of contatos) brutos.push({ telefone: c.telefone, nome: c.nome });
+  }
+
+  // Quarentena global (0 dias = sem trava, mesma convenção do resto do módulo).
+  const telefonesNormalizados = [...new Set(brutos.map(c => normalizarTelefone(c.telefone)).filter((t): t is string => !!t))];
+  const quarentenaGlobal = await buscarQuarentena(telefonesNormalizados);
+  const bloqueados = await buscarBloqueados(telefonesNormalizados);
+  const higienizado = higienizarLista(brutos, quarentenaGlobal, dataEnvio, campanha.quarentenaDias, bloqueados);
+
+  // Cadência DESTA campanha — só aqui, não no registrarDisparo genérico (ver comentário na migration/schema).
+  const historicoRows = telefonesNormalizados.length
+    ? await getPool().query(
+        `SELECT telefone, ultimo_envio_em::text AS ultimo FROM campanhas_whatsapp_contatos_historico
+           WHERE campanha_id = $1 AND telefone = ANY($2::text[])`,
+        [campanha.id, telefonesNormalizados],
+      )
+    : { rows: [] as Array<{ telefone: string; ultimo: string }> };
+  const historicoCampanha = new Map(historicoRows.rows.map(r => [r.telefone, r.ultimo]));
+  const { aprovados, descartadosCadencia } = filtrarPorCadenciaCampanha(higienizado.enviar, historicoCampanha, dataEnvio, campanha.frequenciaDias);
+
+  return {
+    dataEnvio,
+    periodo: { inicio: periodoInicio, fim: periodoFim },
+    // Padrão da data inicial na tela: primeira compra registrada no histórico (null sem fonte do ERP).
+    primeiroRegistro: ctxErp ? primeiroRegistroErp(ctxErp.base) : null,
+    porFonte,
+    totalResolvido: brutos.length,
+    aprovados: aprovados.map(c => ({ telefone: c.telefone, nome: c.nome })),
+    ignoradosBloqueados: higienizado.ignoradosBloqueados,
+    ignoradosQuarentenaGlobal: higienizado.ignoradosQuarentena,
+    ignoradosCadenciaCampanha: descartadosCadencia,
+    invalidosOuDuplicados: higienizado.invalidos,
+  };
+}
+
 export const campanhasWhatsappRouter = router({
   /** Painel: campanhas com último/próximo envio, semáforo e os 3 contadores do topo. */
   listar: campanhasProcedure.query(async () => {
@@ -905,82 +994,34 @@ export const campanhasWhatsappRouter = router({
     .query(async ({ input }) => {
       const db = await obterDb();
       const campanha = await buscarCampanha(db, input.campanhaId);
-      const dataEnvio = input.dataEnvio ?? hojeCampoGrande();
-      const periodoInicio = input.periodo ? input.periodo.inicio : (campanha.periodoInicio ? iso(campanha.periodoInicio) : null);
-      const periodoFim = input.periodo ? input.periodo.fim : (campanha.periodoFim ? iso(campanha.periodoFim) : null);
-      validarPeriodo(periodoInicio, periodoFim);
-      // Data final = "como se hoje fosse" para as regras do ERP (inativo há 6 meses etc.); sem ela, vale hoje.
-      const dataReferencia = periodoFim ?? dataEnvio;
-
-      const fontes = await db.select({ fonte: campanhasWhatsappFontes })
-        .from(campanhasWhatsappCampanhaFontes)
-        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
-        .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId), eq(campanhasWhatsappFontes.ativo, true)));
-      if (fontes.length === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma fonte vinculada a esta campanha. Vincule ao menos uma em \"Fontes de dados\"." });
-      }
-
-      const porFonte: Array<{ fonte: string; total: number; semTelefone: number }> = [];
-      const brutos: Array<{ telefone: unknown; nome: string }> = [];
-      // Histórico carregado uma só vez para todas as fontes do ERP da campanha.
-      let ctxErp: ContextoErp | null = null;
-      if (fontes.some(f => f.fonte.tipo === "erp" && f.fonte.consultaErp)) ctxErp = await carregarContextoErp();
-      for (const { fonte } of fontes) {
-        let contatos: ContatoFonte[];
-        if (fonte.tipo === "erp") {
-          if (!fonte.consultaErp) continue;
-          // Fonte sem data inicial escolhida pode ter uma janela padrão (ex.: primeira compra = últimos 60 dias).
-          const janelaPadrao = JANELA_PADRAO_DIAS[fonte.consultaErp];
-          const inicioDaFonte = periodoInicio ?? (janelaPadrao !== undefined ? somarDias(dataReferencia, -janelaPadrao) : null);
-          contatos = filtrarPorPeriodo(
-            await resolverFonteErp(fonte.consultaErp, dataReferencia, ctxErp ?? undefined), inicioDaFonte, periodoFim,
-          );
-        } else {
-          if (!fonte.arquivoId) continue;
-          const [arquivo] = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId)).limit(1);
-          if (!arquivo) continue;
-          const leitura = await lerArquivoDeUrl(arquivo.url, arquivo.nome);
-          if (!leitura.ok) {
-            porFonte.push({ fonte: fonte.label, total: 0, semTelefone: 0 });
-            continue;
-          }
-          contatos = leitura.contatos.map(c => ({ telefone: c.telefone || null, nome: c.nome }));
-        }
-        porFonte.push({ fonte: fonte.label, total: contatos.length, semTelefone: contatos.filter(c => !c.telefone).length });
-        for (const c of contatos) brutos.push({ telefone: c.telefone, nome: c.nome });
-      }
-
-      // Quarentena global (0 dias = sem trava, mesma convenção do resto do módulo).
-      const telefonesNormalizados = [...new Set(brutos.map(c => normalizarTelefone(c.telefone)).filter((t): t is string => !!t))];
-      const quarentenaGlobal = await buscarQuarentena(telefonesNormalizados);
-      const bloqueados = await buscarBloqueados(telefonesNormalizados);
-      const higienizado = higienizarLista(brutos, quarentenaGlobal, dataEnvio, campanha.quarentenaDias, bloqueados);
-
-      // Cadência DESTA campanha — só aqui, não no registrarDisparo genérico (ver comentário na migration/schema).
-      const historicoRows = telefonesNormalizados.length
-        ? await getPool().query(
-            `SELECT telefone, ultimo_envio_em::text AS ultimo FROM campanhas_whatsapp_contatos_historico
-               WHERE campanha_id = $1 AND telefone = ANY($2::text[])`,
-            [campanha.id, telefonesNormalizados],
-          )
-        : { rows: [] as Array<{ telefone: string; ultimo: string }> };
-      const historicoCampanha = new Map(historicoRows.rows.map(r => [r.telefone, r.ultimo]));
-      const { aprovados, descartadosCadencia } = filtrarPorCadenciaCampanha(higienizado.enviar, historicoCampanha, dataEnvio, campanha.frequenciaDias);
-
-      return {
-        dataEnvio,
-        periodo: { inicio: periodoInicio, fim: periodoFim },
-        // Padrão da data inicial na tela: primeira compra registrada no histórico (null sem fonte do ERP).
-        primeiroRegistro: ctxErp ? primeiroRegistroErp(ctxErp.base) : null,
-        porFonte,
-        totalResolvido: brutos.length,
-        aprovados: aprovados.map(c => ({ telefone: c.telefone, nome: c.nome })),
-        ignoradosBloqueados: higienizado.ignoradosBloqueados,
-        ignoradosQuarentenaGlobal: higienizado.ignoradosQuarentena,
-        ignoradosCadenciaCampanha: descartadosCadencia,
-        invalidosOuDuplicados: higienizado.invalidos,
-      };
+      return montarListaCampanha(db, campanha, input);
     }),
+
+  /**
+   * Contagem de contatos das campanhas recorrentes para o painel (coluna "Contatos"): mesmo cálculo de "Ver
+   * contatos" (período, quarentena, "não quer receber", cadência), com o histórico lido uma única vez. Roda à
+   * parte da lista do painel para não atrasá-la. Campanha sem fonte ou com erro devolve `null`.
+   */
+  contagemAudiencias: campanhasProcedure.query(async () => {
+    const db = await obterDb();
+    const campanhas = (await db.select().from(campanhasWhatsapp))
+      .filter(c => c.status === "ativa" && c.tipo === "recorrente");
+    const ctx = campanhas.length ? await carregarContextoErp() : null;
+    const resultado: Record<number, { paraContatar: number; emEspera: number } | null> = {};
+    for (const c of campanhas) {
+      try {
+        const r = await montarListaCampanha(db, c, {}, ctx);
+        resultado[c.id] = {
+          paraContatar: r.aprovados.length,
+          // Quarentena de outra campanha + cadência desta: voltam sozinhos quando o prazo passa.
+          emEspera: r.ignoradosQuarentenaGlobal.length + r.ignoradosCadenciaCampanha.length,
+        };
+      } catch {
+        resultado[c.id] = null;
+      }
+    }
+    return resultado;
+  }),
 
   /**
    * "Atualizar do MubiSys": busca na API do ERP as OS e orçamentos do mês corrente e do anterior e grava no
