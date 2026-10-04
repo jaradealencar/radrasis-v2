@@ -15,6 +15,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, count, desc, eq, gte, inArray, isNotNull, lte, max, sql } from "drizzle-orm";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
+import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
@@ -1202,6 +1203,51 @@ export const campanhasWhatsappRouter = router({
       const db = await obterDb();
       await db.delete(campanhasWhatsappAgendamentos).where(eq(campanhasWhatsappAgendamentos.id, input.id));
       return { ok: true };
+    }),
+
+  // ─── Gerador de Scripts com IA ─────────────────────────────────────────────────────────────────
+  // Chat interativo para sugerir mensagens/scripts usando Claude
+
+  gerarScriptComIA: campanhasProcedure
+    .input(z.object({
+      descricao: z.string().min(10).max(2000),
+      contextoMensagens: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).max(10).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const contextoAnterior = (input.contextoMensagens ?? [])
+        .map(m => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
+        .join("\n\n");
+
+      const prompt = `Você é um especialista em copywriting para WhatsApp e campanhas de marketing.
+Seu trabalho é sugerir 2-3 modelos de mensagens curtas, diretas e efetivas para campanhas WhatsApp.
+
+${contextoAnterior ? `Contexto da conversa:\n${contextoAnterior}\n\n` : ""}Novo pedido do usuário:
+${input.descricao}
+
+Forneça sugestões de script para WhatsApp. Para cada script:
+1. Use um título descritivo (ex: "Script 1: Abordagem amigável", "Opção 2: Urgência")
+2. Forneça o texto completo da mensagem (até 160 caracteres quando possível)
+3. O texto deve ser casualmente profissional, sem usar "clique aqui" ou emojis demais
+
+Formato esperado:
+Script 1: [Título]
+[Texto da mensagem]
+
+Script 2: [Título]
+[Texto da mensagem]`;
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system", content: "Você é um especialista em WhatsApp marketing que gera scripts efetivos." },
+          { role: "user", content: prompt },
+        ],
+        maxCompletionTokens: 1000,
+      });
+
+      const resposta = response?.choices?.[0]?.message?.content ?? "";
+      if (!resposta) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Nenhuma resposta da IA" });
+
+      return { resposta };
     }),
 
   // ─── Relatório por período ───────────────────────────────────────────────────────────────────────

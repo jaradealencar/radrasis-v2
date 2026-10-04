@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Check, Copy, Loader2, MessageSquareText, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { Check, Copy, Loader2, MessageSquareText, Pencil, Plus, Save, Trash2, X, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import GeradorScriptsChat from "./GeradorScriptsChat";
 
 /**
  * Modelos de mensagem sugeridos para a campanha — mesmo padrão de
@@ -102,9 +103,12 @@ function AddScriptForm({ campanhaId, onAdded }: { campanhaId: number; onAdded: (
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded border border-dashed border-blue-400 text-blue-700 hover:bg-blue-50">
-        <Plus className="w-3.5 h-3.5" /> Adicionar modelo de mensagem
-      </button>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={() => setOpen(true)} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded border border-dashed border-blue-400 text-blue-700 hover:bg-blue-50">
+          <Plus className="w-3.5 h-3.5" /> Novo modelo
+        </button>
+        <GeradorScriptsChat />
+      </div>
     );
   }
   return (
