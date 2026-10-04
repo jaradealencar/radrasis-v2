@@ -1642,6 +1642,9 @@ export const historicoOrcamentos = pgTable("historico_orcamentos", {
   total: decimal("total", { precision: 14, scale: 2 }),
   custosTotal: decimal("custosTotal", { precision: 14, scale: 2 }),
   margemLiquida: decimal("margemLiquida", { precision: 14, scale: 2 }),
+  // id do cliente no MubiSys (gravado pela sync) e telefone do cadastro dele (gravado só pelo backfill).
+  clienteId: integer("clienteId"),
+  telefone: varchar("telefone", { length: 32 }),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
