@@ -3027,10 +3027,10 @@ function realStepKit(){
 }
 
 function camadaFisicaKit(line){
-  const papel=normalizeSearch(String(line?.papel||'')).replace(/[^a-z0-9]+/g,'');
-  const face=['face','frente','visual','translucida'].some(token=>papel.includes(token));
-  const aro=['aro','lateral','laterais','contorno'].some(token=>papel.includes(token));
-  const fundo=['fundo','base','costas','verso','back'].some(token=>papel.includes(token));
+  const tokens=new Set(normalizeSearch(String(line?.papel||'')).split(/[^a-z0-9]+/).filter(Boolean));
+  const face=['face','frente','visual','translucida'].some(token=>tokens.has(token));
+  const aro=['aro','lateral','laterais','contorno','perfil'].some(token=>tokens.has(token));
+  const fundo=['fundo','base','costas','verso','back'].some(token=>tokens.has(token));
   const matches=[face?'face':null,aro?'aro':null,fundo?'fundo':null].filter(Boolean);
   return matches.length===1?matches[0]:null;
 }
@@ -3313,7 +3313,7 @@ function realStepOrcamento(){
         <thead><tr><th>Linha</th><th>Qtd.</th><th>Custo unit.</th><th>Subtotal</th></tr></thead>
         <tbody>
         ${REAL.kit.map(k=>{const calculo=linhaComCustoNesting(k,g); const qty=calculo.quantidade; const material=materialKitAtivo(k); return `<tr><td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}</div></td><td class="num">${fmt(qty,2)} ${material.unidade}</td><td class="num">${money(calculo.custoUnitario)}</td><td class="num">${money(calculo.custoTotal)}${calculo.nesting?`<div class="source-tag">Deepnest ? ${escaparHtml(calculo.nesting.nomeChapa)}</div>`:''}</td></tr>`;}).join('')}
-        ${(REAL.colorAnalysis.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso').map(item=>`<tr><td>${item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax'} · ${escaparHtml(item.corHex||item.regionKey)}<div class="source-tag">Área vetorial ${fmt(item.areaLiquidaM2??item.areaM2??0,4)} m² · Bounding Box agrupado ${fmt(item.areaTotalM2??0,4)} m² · Consumo faturado da bobina ${fmt(item.areaConsumoM2??0,4)} m²</div></td><td class="num">${item.areaConsumoM2==null?'Pendente':`${fmt(item.areaConsumoM2,4)} m²`}</td><td class="num">${item.custoEstimado==null||item.areaConsumoM2==null?'Pendente':money(Number(item.custoEstimado)/Math.max(Number(item.areaConsumoM2)||0,0.000001))}</td><td class="num">${item.custoEstimado==null?'Pendente':money(item.custoEstimado)}</td></tr>`).join('')}
+        ${(REAL.colorAnalysis.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso').map(item=>`<tr><td>${item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax'} · ${escaparHtml(item.corHex||item.regionKey)}<div class="source-tag">Área total das peças ${fmt(item.areaTotalM2??item.areaM2??0,4)} m² · Consumo faturado da bobina ${fmt(item.areaConsumoM2??0,4)} m²</div></td><td class="num">${item.areaConsumoM2==null?'Pendente':`${fmt(item.areaConsumoM2,4)} m²`}</td><td class="num">${item.custoEstimado==null||item.areaConsumoM2==null?'Pendente':money(Number(item.custoEstimado)/Math.max(Number(item.areaConsumoM2)||0,0.000001))}</td><td class="num">${item.custoEstimado==null?'Pendente':money(item.custoEstimado)}</td></tr>`).join('')}
         ${REAL.servicos.map(s=>`<tr><td>${s.n}</td><td class="num">—</td><td class="num">—</td><td class="num">${money(s.v)}</td></tr>`).join('')}
         <tr><td colspan="3">% custo fixo (global, ${configGeral.custoFixoPct}% sobre matéria-prima)</td><td class="num">${money(o.custoFixo)}</td></tr>
         <tr><td colspan="3"><b>Custo direto</b></td><td class="num"><b>${money(o.custoDireto)}</b></td></tr>

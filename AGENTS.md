@@ -657,9 +657,11 @@ Missing width/geometry or an unfit layout leaves cost pending and blocks approva
 Migrations `0075_chubby_tenebrous.sql` and `0076_reconciliar_retalho_bobina.sql`
 add the settings.
 
-The static CPQ HTML calls the factibility and nesting routes. It sends the
-per-material piece SVGs, and the server compares all active formats before
-returning the chosen board, placement metrics and estimated material/waste cost.
+The static CPQ HTML calls the factibility and nesting routes. Kit roles Face,
+Aro and Fundo select matching named SVG layers; approved color path indexes can
+split Face geometry across materials. Each material receives its own signed piece
+batch, and the server compares all active formats before returning the chosen
+board, placement metrics and estimated material/waste cost.
 The budget and price snapshot use that nesting cost when it has a recognized cost
 unit; an unsupported unit keeps the MubiSys cost and shows a review alert.
 
