@@ -99,7 +99,13 @@ export async function statusCacheClientes(agora: Date = new Date()): Promise<Sta
   }).from(mubisysClientesCache);
   const atualizadoEm = r?.ultima ? new Date(r.ultima) : null;
   const idadeH = atualizadoEm ? (agora.getTime() - atualizadoEm.getTime()) / 3_600_000 : Infinity;
-  return { total: Number(r?.total ?? 0), comTelefone: Number(r?.comTelefone ?? 0), atualizadoEm, obsoleto: idadeH > CACHE_CLIENTES_VALIDADE_HORAS };
+  const total = Number(r?.total ?? 0);
+  // Cache parcial recente (varredura interrompida) não é "velho" pela data: compara com o total que a API informa.
+  let incompleto = false;
+  if (idadeH <= CACHE_CLIENTES_VALIDADE_HORAS) {
+    try { incompleto = total < ((await listarClientesPagina(1)).pagination?.total ?? 0); } catch { /* sem API: confia na data */ }
+  }
+  return { total, comTelefone: Number(r?.comTelefone ?? 0), atualizadoEm, obsoleto: idadeH > CACHE_CLIENTES_VALIDADE_HORAS || incompleto };
 }
 
 export interface TelefonesClientes { porId: Map<number, string>; porNome: Map<string, string> }
