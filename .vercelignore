@@ -1,6 +1,7 @@
 node_modules
 dist
-docs
+docs/*
+!docs/prompts
 .manus-logs
 attached_assets
 drizzle/meta/*_snapshot.json
