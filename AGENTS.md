@@ -602,10 +602,12 @@ compiled addon; the current Vercel serverless deployment cannot execute this loc
 worker. Configure the two variables in `.env` only on a compatible self-hosted node.
 
 The endpoint needs the approved SVG canvas width/height in millimeters and the IDs
-of the selected sheet materials. It evaluates every active format in landscape
-orientation and chooses the lowest estimated sheet-plus-leftover cost when all
-formats have comparable MubiSys costs; otherwise it chooses the highest material
-utilization. A format marked principal only breaks equivalent-result ties.
+of the selected sheet materials. It evaluates active formats in landscape
+orientation and chooses the smallest sheet by area that returns a complete layout.
+Equal-area formats prefer the principal format and then the lower ID. Material
+cost estimates do not change sheet selection. `porcentagem_aproveitamento` is the
+placed-layout bounding-box area divided by the selected sheet area; the worker
+translates that layout so its leftmost X coordinate is zero.
 Deepnest uses true-shape polygons, automatic contour containment for holes, gravity
 placement, and 72 discrete rotations (5-degree increments). Cubic SVG paths are
 polygonized with a 0.3 internal-unit tolerance (about 0.106 mm at the configured

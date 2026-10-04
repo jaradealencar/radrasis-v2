@@ -8,7 +8,7 @@ O fluxo atual do CPQ aceita SVG vetorial e imagens raster (JPG/PNG, que passam p
 
 ## Persistência
 
-As definições ficam em `drizzle/schema.ts`; as migrations `0068_estudio_cores.sql` e `0069_abnormal_avengers.sql` devem ser aplicadas pelos ambientes conforme o procedimento normal de migrations do repositório.
+As definições ficam em `drizzle/schema.ts`; as migrations `0068_estudio_cores.sql` e `0069_abnormal_avengers.sql` devem ser aplicadas pelos ambientes conforme o procedimento normal de migrations do repositório. Para aplicar migrations já geradas sem criar outra, configure `DATABASE_URL` para o banco alvo e execute `yarn run drizzle-kit migrate` na raiz do projeto. O migrator aplica apenas as migrations pendentes, em ordem do journal; confirme no banco alvo que `0069_abnormal_avengers` foi registrada antes de usar os campos de transmissão da impressão.
 
 | Tabela | Uso |
 | --- | --- |
