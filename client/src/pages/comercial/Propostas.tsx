@@ -1074,11 +1074,18 @@ function ItensProposta({
   const aprovarPrecoAtual = (origem: "calculado" | "gpt") => {
     const qtd = Number(quantidade.replace(",", "."));
     if (!produtoAtual || !Number.isFinite(qtd) || qtd <= 0) return;
-    const precoAtualInformado = origem === "gpt" && sugestaoPreco
-      ? sugestaoPreco.contexto.precoAtual
+    const sugestaoPrivilegiada = origem === "gpt" && sugestaoPreco && "contexto" in sugestaoPreco && "ticket" in sugestaoPreco
+      ? sugestaoPreco
+      : null;
+    if (origem === "gpt" && !sugestaoPrivilegiada) {
+      toast.error("A aprovação da sugestão do GPT deve ser feita por gestor, admin ou master.");
+      return;
+    }
+    const precoAtualInformado = sugestaoPrivilegiada
+      ? sugestaoPrivilegiada.contexto.precoAtual
       : Number(precoUnitario.replace(",", "."));
-    const precoAprovado = origem === "gpt" && sugestaoPreco
-      ? sugestaoPreco.precoSugerido
+    const precoAprovado = sugestaoPrivilegiada
+      ? sugestaoPrivilegiada.precoSugerido
       : Number(precoUnitario.replace(",", "."));
     if (!Number.isFinite(precoAprovado) || precoAprovado < 0) {
       toast.error("Informe um preço válido antes da aprovação.");
@@ -1093,7 +1100,7 @@ function ItensProposta({
       precoAtual: precoAtualInformado,
       precoAprovado,
       origem,
-      ticket: origem === "gpt" ? sugestaoPreco?.ticket ?? null : null,
+      ticket: sugestaoPrivilegiada?.ticket ?? null,
     });
   };
   const alternarSelecaoItem = (itemId: number, selecionado: boolean) => {
@@ -1196,18 +1203,22 @@ function ItensProposta({
               </div>
               {sugestaoPreco && (
                 <div className="space-y-2 rounded-md bg-muted/50 p-3 text-xs">
-                  <p className="font-medium">Sugestão do GPT: {fmtBrl(sugestaoPreco.precoSugerido)} por unidade
-                    {sugestaoPreco.margemSugeridaPct != null && ` · margem estimada ${fmtNum(sugestaoPreco.margemSugeridaPct, 1)}%`}
-                  </p>
-                  <p className="text-muted-foreground">{sugestaoPreco.parecer}</p>
-                  {sugestaoPreco.alertas.length > 0 && (
+                  <p className="font-medium">Sugestão do GPT: {fmtBrl(sugestaoPreco.precoSugerido)} por unidade</p>
+                  <p>Imposto obrigatório: {fmtNum(sugestaoPreco.impostoPct, 2)}%</p>
+                  {"margemSugeridaPct" in sugestaoPreco && sugestaoPreco.margemSugeridaPct != null && (
+                    <p>Margem estimada: {fmtNum(sugestaoPreco.margemSugeridaPct, 1)}%</p>
+                  )}
+                  {"parecer" in sugestaoPreco && <p className="text-muted-foreground">{sugestaoPreco.parecer}</p>}
+                  {"alertas" in sugestaoPreco && sugestaoPreco.alertas.length > 0 && (
                     <ul className="list-disc pl-5 text-amber-700">
                       {sugestaoPreco.alertas.map((alerta, index) => <li key={`${index}-${alerta}`}>{alerta}</li>)}
                     </ul>
                   )}
-                  <Button size="sm" onClick={() => aprovarPrecoAtual("gpt")} disabled={aprovarPreco.isPending}>
-                    Aprovar sugestão do GPT ({fmtBrl(sugestaoPreco.precoSugerido)})
-                  </Button>
+                  {"ticket" in sugestaoPreco && (
+                    <Button size="sm" onClick={() => aprovarPrecoAtual("gpt")} disabled={aprovarPreco.isPending}>
+                      Aprovar sugestão do GPT ({fmtBrl(sugestaoPreco.precoSugerido)})
+                    </Button>
+                  )}
                 </div>
               )}
               {aprovacaoPreco ? (
