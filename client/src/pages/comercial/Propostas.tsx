@@ -983,6 +983,11 @@ function ItensProposta({
       setBusca("");
     },
     onError: (e) => {
+      if (podeAutorizarExcecao && e.message === "EXCECAO_MARGEM_REQUER_JUSTIFICATIVA") {
+        setErroJustificativa("");
+        setModalExcecaoAberto(true);
+        return;
+      }
       toast.error("Erro ao adicionar item", { description: e.message });
       if (justificativaExcecao.trim()) setModalExcecaoAberto(true);
     },
