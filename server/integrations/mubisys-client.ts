@@ -507,3 +507,14 @@ export async function verificarConexaoMubiSys(): Promise<{
     return { ok: false, latenciaMs: Date.now() - inicio, erro: erro?.message, tokenExpiradoEm: expDoToken() };
   }
 }
+
+export interface MubiSysClientePagina {
+  pagination: { current_page: number; last_page: number; per_page: number; total: number };
+  data: Array<Record<string, any>>;
+}
+
+/** GET /cliente?page=N — 100 por página, ~1s cada (5,5 mil clientes = 56 páginas). */
+export async function listarClientesPagina(pagina: number): Promise<MubiSysClientePagina> {
+  const r = await mubisysGetOrNull<MubiSysClientePagina>("cliente", { page: String(pagina) }, { timeoutMs: TIMEOUT_PONTUAL_MS * 2 });
+  return r ?? { pagination: { current_page: pagina, last_page: pagina, per_page: 100, total: 0 }, data: [] };
+}

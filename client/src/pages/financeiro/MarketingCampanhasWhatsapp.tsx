@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import KpiCard from "@/components/KpiCard";
 import { formatarDataBr } from "@shared/campanhas-whatsapp";
+import AtualizarClientesAuto from "./campanhasWhatsapp/AtualizarClientesAuto";
 import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
 import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
 import ContatosCampanhaDialog from "./campanhasWhatsapp/ContatosCampanhaDialog";
@@ -84,6 +85,8 @@ export default function MarketingCampanhasWhatsapp() {
         </div>
         <Button className="gap-1.5" onClick={() => setFormulario(null)}><Plus size={15} /> Nova campanha</Button>
       </div>
+
+      <AtualizarClientesAuto />
 
       <Tabs defaultValue="painel">
         <TabsList>

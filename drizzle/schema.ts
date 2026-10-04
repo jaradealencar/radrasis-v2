@@ -1679,6 +1679,17 @@ export const historicoOrcamentos = pgTable("historico_orcamentos", {
   mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t.mes, t.ano),
   orcNumeroIdx: uniqueIndex("historico_orcamentos_orc_numero_idx").on(t.orcNumero),
 }));
+// Espelho do cadastro de clientes do MubiSys (id, nomes e o melhor telefone de WhatsApp), mantido pela sync
+// server/sync/clientes-mubisys.ts. As campanhas usam para completar o telefone de OS/orçamentos antigos.
+export const mubisysClientesCache = pgTable("mubisys_clientes_cache", {
+  id: integer("id").primaryKey(),
+  nomeFantasia: varchar("nome_fantasia", { length: 256 }),
+  razaoSocial: varchar("razao_social", { length: 256 }),
+  telefone: varchar("telefone", { length: 32 }),
+  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+});
+export type MubisysClienteCache = typeof mubisysClientesCache.$inferSelect;
+
 export type HistoricoOrcamento = typeof historicoOrcamentos.$inferSelect;
 export type InsertHistoricoOrcamento = typeof historicoOrcamentos.$inferInsert;
 

@@ -15,6 +15,7 @@ import { historicoOs, historicoOrcamentos, type HistoricoOs, type HistoricoOrcam
 import { isClienteNovoPorRecencia, isOsNormalDb, normalizeEmpresaKey } from "../routers/performanceComercial";
 import { parseDataFlexivel, STATUS_GANHO } from "./inteligenciaClientes";
 import { dataLocalParaIso } from "./campanhasWhatsapp";
+import { carregarTelefonesClientes, completarTelefonesPeloCadastro } from "../sync/clientes-mubisys";
 import { diasEntre, hojeCampoGrande, somarDias } from "../../shared/campanhas-whatsapp";
 import { extrairContatos, detectarSeparadorCsv, type LeituraLista } from "../../shared/lista-contatos";
 
@@ -429,10 +430,14 @@ function obterVolumePorJanela(ctx: ContextoErp, hoje: string): Map<string, Volum
 export async function carregarContextoErp(): Promise<ContextoErp> {
   const db = await getDb();
   if (!db) throw new Error("DB indisponível");
-  const [osRows, orcamentos] = await Promise.all([
+  const [osRows, orcamentos, cadastro] = await Promise.all([
     db.select().from(historicoOs),
     db.select().from(historicoOrcamentos),
+    carregarTelefonesClientes(),
   ]);
+  // Telefone que o histórico não tem (OS antigas, orçamentos) vem do espelho do cadastro de clientes do MubiSys.
+  completarTelefonesPeloCadastro(osRows, cadastro);
+  completarTelefonesPeloCadastro(orcamentos, cadastro);
   return { base: construirBaseComTelefone(osRows), orcamentos, osRows };
 }
 

@@ -46,6 +46,9 @@ import {
   type ContatoFonte, type ContextoErp,
 } from "../services/fontesErpCampanhas";
 import { isOsNormalDb } from "./performanceComercial";
+import {
+  carregarTelefonesClientes, completarTelefonesPeloCadastro, sincronizarClientesLote, statusCacheClientes,
+} from "../sync/clientes-mubisys";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 
@@ -160,6 +163,7 @@ async function carregarPosVenda(
       isNotNull(historicoOs.osNumero),
       anoMinimo === null ? undefined : gte(historicoOs.ano, anoMinimo),
     ))).filter(isOsNormalDb);
+  completarTelefonesPeloCadastro(linhas, await carregarTelefonesClientes());
 
   const contatadas = await db
     .select({ campanhaId: campanhasWhatsappGatilhos.campanhaId, osNumero: campanhasWhatsappGatilhos.osNumero })
@@ -1185,6 +1189,20 @@ export const campanhasWhatsappRouter = router({
         console.error(`❌ [TELEFONE-ORC] janela ${input.di}..${input.df}:`, erro);
         if (!(erro instanceof ErroConsultaMubiSysBackfill)) throw erro;
         throw new TRPCError({ code: "BAD_GATEWAY", message: `O MubiSys não respondeu para ${input.di} a ${input.df}. Tente de novo.` });
+      }
+    }),
+
+  /** Espelho do cadastro de clientes do MubiSys (telefones para as listas). A tela o atualiza sozinha quando vazio
+   * ou com mais de 24h, lendo até 20 páginas por chamada (cabe nos 60s da Vercel). */
+  clientesCacheStatus: campanhasProcedure.query(() => statusCacheClientes()),
+
+  clientesCacheLote: campanhasProcedure
+    .input(z.object({ pagina: z.number().int().min(1).default(1) }))
+    .mutation(async ({ input }) => {
+      try {
+        return await sincronizarClientesLote(input.pagina);
+      } catch (erro) {
+        throw new TRPCError({ code: "BAD_GATEWAY", message: erro instanceof Error ? erro.message : "O MubiSys não respondeu." });
       }
     }),
 
