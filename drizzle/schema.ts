@@ -591,6 +591,10 @@ export const estudioPrecosImpressao = pgTable("estudio_precos_impressao", {
   vinilTransparenteTransmissaoPct: decimal("vinil_transparente_transmissao_pct", { precision: 5, scale: 2 }),
   impressaoM2: decimal("impressao_m2", { precision: 12, scale: 4 }),
   laminacaoM2: decimal("laminacao_m2", { precision: 12, scale: 4 }),
+  larguraBobinaMm: integer("largura_bobina_mm"),
+  larguraUtilBobinaMm: integer("largura_util_bobina_mm"),
+  sangriaPerimetralMm: decimal("sangria_perimetral_mm", { precision: 6, scale: 2 }).notNull().default("3.00"),
+  retalhoReutilizavel: boolean("retalho_reutilizavel").notNull().default(false),
   laminacaoPadrao: boolean("laminacao_padrao").notNull().default(false),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -647,6 +647,14 @@ optional Pantone/CMYK/light-transmission fields on sheet formats. Migration
 print-vinyl bases. Provider catalog
 data and print costs are maintained by managers; this service does not query an
 Imprimax API.
+Printed and solid-vinyl costs also use each visible path's bounding box with
+configurable per-edge bleed (default 3 mm). Admin settings store roll width,
+usable width, and bleed in `estudio_precos_impressao`; default charged consumption
+is full roll width times the shortest fitting linear length across either orientation.
+Only an explicit reusable-scrap setting charges the union of expanded path boxes.
+Missing width/geometry or an unfit layout leaves cost pending and blocks approval.
+Migrations `0075_chubby_tenebrous.sql` and `0076_reconciliar_retalho_bobina.sql`
+add the settings.
 
 The static CPQ HTML calls the factibility and nesting routes. It sends the
 per-material piece SVGs, and the server compares all active formats before

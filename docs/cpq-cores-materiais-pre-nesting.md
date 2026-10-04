@@ -77,6 +77,33 @@ O custo de vinil sólido é `área_visível_m² × preço_m²` do item de catál
 
 Se um componente de preço necessário ou a área estiver ausente, o custo permanece nulo e a emissão é bloqueada. O fluxo não transforma dado ausente em custo zero.
 
+## Consumo físico de bobina
+
+A análise do SVG calcula a área visível e o Bounding Box original de cada contorno
+fechado. Contornos agrupados por cor mantêm cada caixa no objeto estruturado de
+preço; a sangria configurada é aplicada em cada borda de cada caixa antes de medir o layout.
+O padrão é 3 mm por lado.
+
+Em Administração > Chapas, configure a largura total do rolo, a largura útil máxima
+de impressão e a sangria. Sem as duas larguras cadastradas, o custo de vinil fica
+pendente. O motor verifica o layout com sangria nas orientações original e rotacionada,
+escolhendo o menor comprimento linear que caiba na largura útil. O consumo cobrado
+é `largura_total_da_bobina_mm × comprimento_linear_mm / 1.000.000`; portanto, inclui
+a faixa lateral não aproveitada. Esse consumo é rateado entre as regiões do mesmo
+trabalho conforme a área dos retângulos com sangria, e então multiplicado pela soma
+dos custos por m² de vinil, impressão e laminação aplicáveis. Se nenhuma orientação
+caber, ou faltar geometria/configuração, o custo permanece nulo e a aprovação dos
+materiais é bloqueada.
+
+A opção administrativa “Reutilizar retalhos de bobina em outros trabalhos” começa
+desativada. Quando a operação confirmar que o retalho pode ser aproveitado, o custo
+considera a união dos retângulos com sangria, sem cobrar a faixa residual da bobina.
+
+As migrations `0075_chubby_tenebrous.sql` e `0076_reconciliar_retalho_bobina.sql`
+adicionam as larguras, a sangria e a opção de retalho em `estudio_precos_impressao`;
+larguras começam sem valor para evitar assumir um formato de rolo que não esteja
+cadastrado pela operação.
+
 ## Revisão, snapshot e relação com nesting
 
 O vendedor revisa sugestões e confirma o mapa antes da factibilidade/nesting. Reanalisar ou alterar iluminação, base de impressão, laminação ou catálogo invalida a aprovação anterior. As rotas de análise, aprovação, análise de preço e emissão consultam o snapshot persistido no servidor; valores enviados pelo navegador precisam corresponder ao registro aprovado.

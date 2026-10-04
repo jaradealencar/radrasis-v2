@@ -526,6 +526,20 @@
       "when": 1791121213259,
       "tag": "0074_propostas_excecoes_margem",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1791123421729,
+      "tag": "0075_chubby_tenebrous",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1791123910156,
+      "tag": "0076_reconciliar_retalho_bobina",
+      "breakpoints": true
     }
   ]
 }

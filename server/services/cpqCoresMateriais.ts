@@ -9,7 +9,16 @@ export type CpqCorAlvo = {
   pantoneCode?: string | null;
   cmyk?: { c: number; m: number; y: number; k: number } | null;
   areaM2?: number | null;
+  dadosPreco?: RegiaoPrecificacao;
 };
+
+export type CpqBoundingBoxMm = { minX: number; maxX: number; minY: number; maxY: number };
+export interface RegiaoPrecificacao {
+  areaLiquidaM2: number;
+  larguraMm: number;
+  alturaMm: number;
+  boundingBoxesMm: CpqBoundingBoxMm[];
+}
 
 export type CpqCorCatalogo = {
   id: number;
@@ -41,6 +50,10 @@ export type CpqPrecoImpressaoCor = {
   impressaoM2?: string | number | null;
   laminacaoM2?: string | number | null;
   laminacaoPadrao?: boolean;
+  larguraBobinaMm?: string | number | null;
+  larguraUtilBobinaMm?: string | number | null;
+  sangriaPerimetralMm?: string | number | null;
+  retalhoReutilizavel?: boolean;
 } | null;
 
 export type CpqCorrespondenciaCorInput = {
@@ -65,6 +78,7 @@ export type CpqCorrespondenciaCorResult = {
   corRgb: { r: number; g: number; b: number } | null;
   cmyk: CpqCorAlvo["cmyk"];
   areaM2: number | null;
+  areaConsumoM2: number | null;
   tipoSugestao: "chapa" | "imprimax" | "impresso" | "pendente";
   chapaId: number | null;
   chapaMateriaPrimaId: number | null;
@@ -220,6 +234,244 @@ function valor(input: string | number | null | undefined): number | null {
   if (input == null || input === "") return null;
   const parsed = Number(input);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export type CpqConsumoBobinaResultado = {
+  areaConsumoM2: number | null;
+  areaRetangulosSangriaM2: number | null;
+  areaTotalBobinaM2: number | null;
+  comprimentoLinearMm: number | null;
+  larguraBobinaMm: number | null;
+  larguraUtilBobinaMm: number | null;
+  sangriaPerimetralMm: number;
+  retalhoReutilizavel: boolean;
+  avisos: string[];
+};
+
+type CaixaComArea = CpqBoundingBoxMm & { areaM2: number };
+
+function calcularAreaUniaoCaixas(caixas: CpqBoundingBoxMm[]): number {
+  if (!caixas.length) return 0;
+  const coordenadasX = [...new Set(caixas.flatMap(caixa => [caixa.minX, caixa.maxX]))].sort((a, b) => a - b);
+  let areaMm2 = 0;
+  for (let index = 0; index < coordenadasX.length - 1; index += 1) {
+    const x1 = coordenadasX[index];
+    const x2 = coordenadasX[index + 1];
+    if (x2 <= x1) continue;
+    const intervalosY = caixas
+      .filter(caixa => caixa.minX < x2 && caixa.maxX > x1)
+      .map(caixa => [caixa.minY, caixa.maxY] as const)
+      .sort((a, b) => a[0] - b[0]);
+    let alturaUnida = 0;
+    let inicio = -Infinity;
+    let fim = -Infinity;
+    for (const [minY, maxY] of intervalosY) {
+      if (inicio === -Infinity) {
+        inicio = minY;
+        fim = maxY;
+      } else if (minY > fim) {
+        alturaUnida += fim - inicio;
+        inicio = minY;
+        fim = maxY;
+      } else {
+        fim = Math.max(fim, maxY);
+      }
+    }
+    if (inicio !== -Infinity) alturaUnida += fim - inicio;
+    areaMm2 += (x2 - x1) * alturaUnida;
+  }
+  return areaMm2 / 1_000_000;
+}
+
+/**
+ * Calcula a área faturável de cada região dentro de um trabalho de bobina.
+ * A sangria é aplicada em cada lado de cada bounding box; quando o retalho não
+ * é reutilizável, a área total do rolo consumida é rateada entre as regiões.
+ */
+export function calcularConsumosBobina(
+  regioes: Array<{ regionKey: string; dadosPreco?: RegiaoPrecificacao }>,
+  precos: CpqPrecoImpressaoCor,
+): Map<string, CpqConsumoBobinaResultado> {
+  const resultado = new Map<string, CpqConsumoBobinaResultado>();
+  if (!regioes.length) return resultado;
+
+  const larguraBobinaMm = valor(precos?.larguraBobinaMm);
+  const larguraUtilBobinaMm = valor(precos?.larguraUtilBobinaMm);
+  const sangriaPerimetralMm = valor(precos?.sangriaPerimetralMm) ?? 3;
+  const retalhoReutilizavel = precos?.retalhoReutilizavel === true;
+  const avisosBase: string[] = [];
+  if (larguraBobinaMm == null || larguraUtilBobinaMm == null) {
+    avisosBase.push("Cadastre no CPQ a largura total e a largura útil da bobina; o custo do vinil permanece pendente.");
+  } else if (larguraBobinaMm <= 0 || larguraUtilBobinaMm <= 0 || larguraUtilBobinaMm > larguraBobinaMm) {
+    avisosBase.push("As larguras total e útil da bobina estão inválidas; revise o cadastro antes de precificar.");
+  }
+  if (!Number.isFinite(sangriaPerimetralMm) || sangriaPerimetralMm < 0 || sangriaPerimetralMm > 50) {
+    avisosBase.push("A sangria perimetral cadastrada deve estar entre 0 e 50 mm.");
+  }
+
+  const caixasPorRegiao = new Map<string, { caixas: CaixaComArea[]; areaM2: number }>();
+  const caixasTotais: CpqBoundingBoxMm[] = [];
+  let pesoTotal = 0;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let caixasInvalidas = false;
+  for (const regiao of regioes) {
+    const dadosPreco = regiao.dadosPreco;
+    const caixas = dadosPreco?.boundingBoxesMm ?? [];
+    if (!dadosPreco || !Number.isFinite(dadosPreco.areaLiquidaM2) || dadosPreco.areaLiquidaM2 < 0
+      || !Number.isFinite(dadosPreco.larguraMm) || dadosPreco.larguraMm <= 0
+      || !Number.isFinite(dadosPreco.alturaMm) || dadosPreco.alturaMm <= 0 || !caixas.length) {
+      caixasInvalidas = true;
+      continue;
+    }
+    const expandidas = caixas.map(caixa => {
+      const valid = [caixa.minX, caixa.maxX, caixa.minY, caixa.maxY].every(Number.isFinite)
+        && caixa.maxX > caixa.minX && caixa.maxY > caixa.minY;
+      if (!valid) {
+        caixasInvalidas = true;
+        return null;
+      }
+      const box = {
+        minX: caixa.minX - sangriaPerimetralMm,
+        maxX: caixa.maxX + sangriaPerimetralMm,
+        minY: caixa.minY - sangriaPerimetralMm,
+        maxY: caixa.maxY + sangriaPerimetralMm,
+      };
+      const areaM2 = ((box.maxX - box.minX) * (box.maxY - box.minY)) / 1_000_000;
+      minX = Math.min(minX, box.minX);
+      maxX = Math.max(maxX, box.maxX);
+      minY = Math.min(minY, box.minY);
+      maxY = Math.max(maxY, box.maxY);
+      caixasTotais.push(box);
+      return { ...box, areaM2 };
+    }).filter((box): box is NonNullable<typeof box> => box != null);
+    if (expandidas.length !== caixas.length) caixasInvalidas = true;
+    const larguraAgrupadaMm = Math.max(...caixas.map(caixa => caixa.maxX)) - Math.min(...caixas.map(caixa => caixa.minX));
+    const alturaAgrupadaMm = Math.max(...caixas.map(caixa => caixa.maxY)) - Math.min(...caixas.map(caixa => caixa.minY));
+    if (Math.abs(larguraAgrupadaMm - dadosPreco.larguraMm) > 0.02
+      || Math.abs(alturaAgrupadaMm - dadosPreco.alturaMm) > 0.02) caixasInvalidas = true;
+    const areaRegiaoM2 = calcularAreaUniaoCaixas(expandidas);
+    pesoTotal += areaRegiaoM2;
+    caixasPorRegiao.set(regiao.regionKey, { caixas: expandidas, areaM2: areaRegiaoM2 });
+  }
+  const areaRetangulosSangriaTotalM2 = calcularAreaUniaoCaixas(caixasTotais);
+  if (caixasInvalidas) avisosBase.push("Bounding Box de uma ou mais regiões não foi calculado; confirme a geometria vetorial para precificar o vinil.");
+
+  let comprimentoLinearMm: number | null = null;
+  let areaTotalBobinaM2: number | null = null;
+  if (avisosBase.length === 0 && areaRetangulosSangriaTotalM2 != null) {
+    const larguraLayout = maxX - minX;
+    const alturaLayout = maxY - minY;
+    const cabemSemRotacao = larguraLayout <= larguraUtilBobinaMm!;
+    const cabemRotadas = alturaLayout <= larguraUtilBobinaMm!;
+    if (!cabemSemRotacao && !cabemRotadas) {
+      avisosBase.push(`O layout com sangria (${larguraLayout.toFixed(1)} × ${alturaLayout.toFixed(1)} mm) excede a largura útil da bobina (${larguraUtilBobinaMm} mm), mesmo rotacionado.`);
+    } else {
+      comprimentoLinearMm = cabemSemRotacao && cabemRotadas
+        ? Math.min(alturaLayout, larguraLayout)
+        : cabemSemRotacao ? alturaLayout : larguraLayout;
+      areaTotalBobinaM2 = retalhoReutilizavel
+        ? areaRetangulosSangriaTotalM2
+        : larguraBobinaMm! * comprimentoLinearMm / 1_000_000;
+    }
+  }
+  const utilizavel = avisosBase.length === 0 && pesoTotal > 0 && areaTotalBobinaM2 != null;
+  const totalBobinaArredondadoM2 = areaTotalBobinaM2 == null ? null : Number(areaTotalBobinaM2.toFixed(6));
+  const totalBobinaMicros = totalBobinaArredondadoM2 == null ? null : Math.round(totalBobinaArredondadoM2 * 1_000_000);
+  const pesosRegioes = regioes.map(regiao => ({
+    regiao,
+    peso: caixasPorRegiao.get(regiao.regionKey)?.areaM2 ?? 0,
+  }));
+  let ultimaRegiaoComPesoIndex = -1;
+  for (let index = 0; index < pesosRegioes.length; index += 1) {
+    if (pesosRegioes[index].peso > 0) ultimaRegiaoComPesoIndex = index;
+  }
+  let areaAlocadaMicros = 0;
+  for (const [index, { regiao, peso: pesoRegiao }] of pesosRegioes.entries()) {
+    let areaConsumoM2: number | null = null;
+    if (utilizavel && pesoRegiao > 0 && totalBobinaMicros != null) {
+      const restanteMicros = Math.max(0, totalBobinaMicros - areaAlocadaMicros);
+      const consumoMicros = index === ultimaRegiaoComPesoIndex
+        ? restanteMicros
+        : Math.min(restanteMicros, Math.round(totalBobinaMicros * pesoRegiao / pesoTotal));
+      areaAlocadaMicros += consumoMicros;
+      areaConsumoM2 = consumoMicros / 1_000_000;
+    }
+    resultado.set(regiao.regionKey, {
+      areaConsumoM2,
+      areaRetangulosSangriaM2: pesoRegiao > 0 ? Number(pesoRegiao.toFixed(6)) : null,
+      areaTotalBobinaM2: totalBobinaArredondadoM2,
+      comprimentoLinearMm,
+      larguraBobinaMm,
+      larguraUtilBobinaMm,
+      sangriaPerimetralMm,
+      retalhoReutilizavel,
+      avisos: [...avisosBase],
+    });
+  }
+  return resultado;
+}
+
+function aplicarConsumoBobina(
+  resultado: CpqCorrespondenciaCorResult,
+  consumo: CpqConsumoBobinaResultado | undefined,
+): CpqCorrespondenciaCorResult {
+  if (!consumo || (resultado.tipoSugestao !== "imprimax" && resultado.tipoSugestao !== "impresso")) return resultado;
+  const precificacao = resultado.precificacao ?? {};
+  const precoVinil = valor(precificacao.precoM2 as string | number | null | undefined);
+  const vinil = valor(precificacao.vinilM2 as string | number | null | undefined);
+  const impressao = valor(precificacao.impressaoM2 as string | number | null | undefined);
+  const laminacao = valor(precificacao.laminacaoM2 as string | number | null | undefined) ?? 0;
+  const custoUnitarioM2 = resultado.tipoSugestao === "imprimax"
+    ? precoVinil
+    : vinil != null && impressao != null ? vinil + impressao + laminacao : null;
+  const custoPodeSerCalculado = precificacao.custoPodeSerCalculado === true;
+  const custoEstimado = consumo.areaConsumoM2 != null && custoUnitarioM2 != null && custoPodeSerCalculado
+    ? Number((consumo.areaConsumoM2 * custoUnitarioM2).toFixed(4)) : null;
+  const avisos = [...new Set([...resultado.avisos, ...consumo.avisos])];
+  if (consumo.areaConsumoM2 == null) avisos.push("Consumo físico da bobina não calculado; o custo de vinil/impressão fica pendente.");
+  return {
+    ...resultado,
+    areaConsumoM2: consumo.areaConsumoM2,
+    custoEstimado,
+    avisos: [...new Set(avisos)],
+    precificacao: {
+      ...precificacao,
+      areaVetorialM2: resultado.areaM2,
+      areaRetangulosSangriaM2: consumo.areaRetangulosSangriaM2,
+      areaConsumoM2: consumo.areaConsumoM2,
+      areaTotalBobinaM2: consumo.areaTotalBobinaM2,
+      comprimentoLinearMm: consumo.comprimentoLinearMm,
+      larguraBobinaMm: consumo.larguraBobinaMm,
+      larguraUtilBobinaMm: consumo.larguraUtilBobinaMm,
+      sangriaPerimetralMm: consumo.sangriaPerimetralMm,
+      retalhoReutilizavel: consumo.retalhoReutilizavel,
+      custoUnitarioM2,
+    },
+  };
+}
+
+/** Recalcula a cobrança após agrupar regiões que compartilham o mesmo rolo. */
+export function aplicarCustosBobinaAgrupados(
+  resultados: CpqCorrespondenciaCorResult[],
+  regioes: Array<Pick<CpqCorAlvo, "key" | "dadosPreco">>,
+  precos: CpqPrecoImpressaoCor,
+): CpqCorrespondenciaCorResult[] {
+  const regiaoPorChave = new Map(regioes.map(regiao => [regiao.key, regiao]));
+  const grupos = new Map<string, CpqCorrespondenciaCorResult[]>();
+  for (const item of resultados) {
+    if (item.tipoSugestao !== "impresso" && item.tipoSugestao !== "imprimax") continue;
+    const grupo = item.tipoSugestao === "impresso" ? "impresso" : `imprimax:${item.imprimaxAdesivoId ?? "pendente"}`;
+    grupos.set(grupo, [...(grupos.get(grupo) ?? []), item]);
+  }
+  const consumoPorRegiao = new Map<string, CpqConsumoBobinaResultado>();
+  for (const itens of grupos.values()) {
+    const regioesDoGrupo = itens.map(item => ({
+      regionKey: item.regionKey,
+      dadosPreco: regiaoPorChave.get(item.regionKey)?.dadosPreco,
+    }));
+    for (const [key, consumo] of calcularConsumosBobina(regioesDoGrupo, precos)) consumoPorRegiao.set(key, consumo);
+  }
+  return resultados.map(item => aplicarConsumoBobina(item, consumoPorRegiao.get(item.regionKey)));
 }
 
 function normalizarPantone(value: string | null | undefined): string {
@@ -409,8 +661,8 @@ function planoComposicaoFace(input: CpqCorrespondenciaCorInput, avisos: string[]
 }
 
 function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorrespondenciaCorResult {
-  const area = input.regiao.areaM2 != null && Number.isFinite(input.regiao.areaM2) && input.regiao.areaM2 >= 0
-    ? input.regiao.areaM2 : null;
+  const areaBruta = input.regiao.dadosPreco?.areaLiquidaM2 ?? input.regiao.areaM2;
+  const area = areaBruta != null && Number.isFinite(areaBruta) && areaBruta >= 0 ? areaBruta : null;
   const vinil = valor(input.baseImpressao === "branco" ? input.precos?.vinilBrancoM2 : input.precos?.vinilTransparenteM2);
   const transmissao = valor(input.baseImpressao === "branco" ? input.precos?.vinilBrancoTransmissaoPct : input.precos?.vinilTransparenteTransmissaoPct);
   const impressao = valor(input.precos?.impressaoM2);
@@ -419,7 +671,9 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
   const transmissaoCompativel = !iluminacaoRequerTransmissao
     || (transmissao != null && transmissao > 0
       && (input.transmissaoMinimaPct == null || transmissao >= input.transmissaoMinimaPct));
-  const complete = area != null && vinil != null && impressao != null && laminacao != null && transmissaoCompativel;
+  const consumo = calcularConsumosBobina([{ regionKey: input.regiao.key, dadosPreco: input.regiao.dadosPreco }], input.precos)
+    .get(input.regiao.key);
+  const custosConfigurados = area != null && vinil != null && impressao != null && laminacao != null && transmissaoCompativel;
   if (area == null) avisos.push("Área física não calculada; confirme escala e extração da região.");
   if (vinil == null) avisos.push(`Custo por m² do vinil ${input.baseImpressao} não cadastrado.`);
   if (iluminacaoRequerTransmissao && transmissao == null) avisos.push(`Transmissão de luz do vinil ${input.baseImpressao} não cadastrada; confirme a compatibilidade antes de aprovar.`);
@@ -430,9 +684,9 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
     avisos.push("Transmissão do vinil cadastrada; engenharia precisa confirmar se atende ao nível de iluminação do projeto.");
   if (impressao == null) avisos.push("Custo de impressão digital por m² não cadastrado.");
   if (input.laminar && laminacao == null) avisos.push("Custo de laminação por m² não cadastrado.");
-  const unit = complete ? vinil! + impressao! + laminacao! : null;
+  const unit = custosConfigurados ? vinil! + impressao! + laminacao! : null;
   const planoFace = planoComposicaoFace(input, avisos);
-  return {
+  const resultado: CpqCorrespondenciaCorResult = {
     regionKey: input.regiao.key,
     tipoCor: input.regiao.tipoCor,
     corHex: input.regiao.corHex ?? null,
@@ -442,27 +696,30 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
     coresGradiente: input.regiao.coresGradiente ?? [],
     pathIndexes: input.regiao.pathIndexes ?? (input.regiao.pathIndex == null ? [] : [input.regiao.pathIndex]),
     areaM2: area == null ? null : Number(area.toFixed(6)),
+    areaConsumoM2: consumo?.areaConsumoM2 ?? null,
     tipoSugestao: "impresso",
     chapaId: null,
     chapaMateriaPrimaId: null,
     ...planoFace,
     imprimaxAdesivoId: null,
     deltaE00: null,
-    custoEstimado: unit != null ? Number((unit * area!).toFixed(4)) : null,
+    custoEstimado: unit != null && consumo?.areaConsumoM2 != null ? Number((unit * consumo.areaConsumoM2).toFixed(4)) : null,
     unidadeCusto: unit == null ? null : "m2",
     avisos,
     alternativas: [],
-    precificacao: unit == null ? null : {
+    precificacao: {
       base: input.baseImpressao,
-      areaM2: area,
+      areaVetorialM2: area,
       vinilM2: vinil,
       transmissaoLuzPct: transmissao,
       impressaoM2: impressao,
       laminacaoM2: input.laminar ? laminacao : 0,
       custoUnitarioM2: unit,
+      custoPodeSerCalculado: custosConfigurados,
       laminar: input.laminar,
     },
   };
+  return aplicarConsumoBobina(resultado, consumo);
 }
 
 export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCorrespondenciaCorResult {
@@ -485,8 +742,9 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       : "Região complexa ou sem cor sólida identificável: classificada para impressão digital.");
     return { ...impresso(input, avisos), corRgb, cmyk };
   }
-  const area = target.areaM2 != null && Number.isFinite(target.areaM2) && target.areaM2 >= 0
-    ? Number(target.areaM2.toFixed(6)) : null;
+  const areaLiquida = target.dadosPreco?.areaLiquidaM2 ?? target.areaM2;
+  const area = areaLiquida != null && Number.isFinite(areaLiquida) && areaLiquida >= 0
+    ? Number(areaLiquida.toFixed(6)) : null;
   const lab = alvoLab(target);
   const chapa = candidatos(input.chapas, target, lab, input, "chapa");
   const direta = chapa.find(item => item.deltaE00! <= DELTA_E_CHAPA_DIRETA);
@@ -499,6 +757,7 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       pantoneCode: target.pantoneCode ?? null,
       coresGradiente: target.coresGradiente ?? [],
       pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: area,
+      areaConsumoM2: null,
       corRgb, cmyk,
       tipoSugestao: "chapa", chapaId: Number(direta.id), imprimaxAdesivoId: null,
       chapaMateriaPrimaId: direta.mubisysMateriaPrimaId == null ? null : Number(direta.mubisysMateriaPrimaId),
@@ -520,22 +779,26 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
     if (area == null) avisos.push("Área física não calculada; confirme escala antes de fechar consumo do vinil.");
     if (price == null) avisos.push("Preço de compra do adesivo não cadastrado; o custo desta região está pendente.");
     avisos.push("Sugestão de vinil sólido Imprimax pela menor diferença CIEDE2000; confirme código e amostra física.");
+    const consumo = calcularConsumosBobina([{ regionKey: target.key, dadosPreco: target.dadosPreco }], input.precos)
+      .get(target.key);
     const planoFace = planoComposicaoFace(input, avisos);
-    return {
+    const resultado: CpqCorrespondenciaCorResult = {
       regionKey: target.key, tipoCor: target.tipoCor, corHex: target.corHex ?? null,
       pantoneCode: target.pantoneCode ?? null,
       coresGradiente: target.coresGradiente ?? [],
       pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: area,
+      areaConsumoM2: consumo?.areaConsumoM2 ?? null,
       corRgb, cmyk,
       tipoSugestao: "imprimax", chapaId: null, imprimaxAdesivoId: Number(solido.id),
       chapaMateriaPrimaId: null,
       ...planoFace,
       deltaE00: solido.deltaE00,
-      custoEstimado: area != null && price != null ? Number((area * price).toFixed(4)) : null,
+      custoEstimado: consumo?.areaConsumoM2 != null && price != null ? Number((consumo.areaConsumoM2 * price).toFixed(4)) : null,
       unidadeCusto: price == null ? null : "m2", avisos,
       alternativas: vinis.slice(0, 5).map(({ raw: _raw, ...item }) => item),
-      precificacao: area != null && price != null ? { areaM2: area, precoM2: price } : null,
+      precificacao: { areaVetorialM2: area, precoM2: price, custoPodeSerCalculado: area != null && price != null },
     };
+    return aplicarConsumoBobina(resultado, consumo);
   }
   if (!vinis.length) avisos.push("Nenhuma amostra cromática Imprimax compatível com a iluminação foi importada.");
   else avisos.push(`A melhor cor sólida Imprimax excede ΔE00 ${DELTA_E_IMPRIMAX_SOLIDO}; impressão digital evita uma substituição visivelmente distante.`);

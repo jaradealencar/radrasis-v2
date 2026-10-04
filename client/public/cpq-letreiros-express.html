@@ -3297,7 +3297,7 @@ function realStepOrcamento(){
         <thead><tr><th>Linha</th><th>Qtd.</th><th>Custo unit.</th><th>Subtotal</th></tr></thead>
         <tbody>
         ${REAL.kit.map(k=>{const calculo=linhaComCustoNesting(k,g); const qty=calculo.quantidade; const material=materialKitAtivo(k); return `<tr><td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}</div></td><td class="num">${fmt(qty,2)} ${material.unidade}</td><td class="num">${money(calculo.custoUnitario)}</td><td class="num">${money(calculo.custoTotal)}${calculo.nesting?`<div class="source-tag">Deepnest ? ${escaparHtml(calculo.nesting.nomeChapa)}</div>`:''}</td></tr>`;}).join('')}
-        ${(REAL.colorAnalysis.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso').map(item=>`<tr><td>${item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax'} · ${escaparHtml(item.corHex||item.regionKey)}<div class="source-tag">Área da região vetorial · ${fmt(item.areaM2||0,4)} m²</div></td><td class="num">${fmt(item.areaM2||0,4)} m²</td><td class="num">${item.custoEstimado==null?'Pendente':money(Number(item.custoEstimado)/Math.max(Number(item.areaM2)||0,0.000001))}</td><td class="num">${item.custoEstimado==null?'Pendente':money(item.custoEstimado)}</td></tr>`).join('')}
+        ${(REAL.colorAnalysis.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso').map(item=>`<tr><td>${item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax'} · ${escaparHtml(item.corHex||item.regionKey)}<div class="source-tag">Vetor ${fmt(item.areaM2||0,4)} m² · Consumo faturado ${fmt(item.areaConsumoM2??0,4)} m²</div></td><td class="num">${item.areaConsumoM2==null?'Pendente':`${fmt(item.areaConsumoM2,4)} m²`}</td><td class="num">${item.custoEstimado==null||item.areaConsumoM2==null?'Pendente':money(Number(item.custoEstimado)/Math.max(Number(item.areaConsumoM2)||0,0.000001))}</td><td class="num">${item.custoEstimado==null?'Pendente':money(item.custoEstimado)}</td></tr>`).join('')}
         ${REAL.servicos.map(s=>`<tr><td>${s.n}</td><td class="num">—</td><td class="num">—</td><td class="num">${money(s.v)}</td></tr>`).join('')}
         <tr><td colspan="3">% custo fixo (global, ${configGeral.custoFixoPct}% sobre matéria-prima)</td><td class="num">${money(o.custoFixo)}</td></tr>
         <tr><td colspan="3"><b>Custo direto</b></td><td class="num"><b>${money(o.custoDireto)}</b></td></tr>
@@ -3393,7 +3393,7 @@ let chapasCotacao = [];
 let chapasCotacaoCarregando = false;
 let chapasCotacaoErro = '';
 let catalogoImprimax = [];
-let precosImpressaoCor = {vinilBrancoM2:null,vinilBrancoTransmissaoPct:null,vinilTransparenteM2:null,vinilTransparenteTransmissaoPct:null,impressaoM2:null,laminacaoM2:null,laminacaoPadrao:false};
+let precosImpressaoCor = {vinilBrancoM2:null,vinilBrancoTransmissaoPct:null,vinilTransparenteM2:null,vinilTransparenteTransmissaoPct:null,impressaoM2:null,laminacaoM2:null,larguraBobinaMm:null,larguraUtilBobinaMm:null,sangriaPerimetralMm:3,retalhoReutilizavel:false,laminacaoPadrao:false};
 let catalogoCorErro = '';
 let imprimaxJsonNovo = '';
 let chapaEditandoId = null;
@@ -4586,9 +4586,14 @@ function adminChapasNesting(){
         <label class="field">Transmissão do vinil transparente · %<input data-act="cor-transmissao-transparente" type="number" min="0" max="100" step="0.1" value="${precosImpressaoCor.vinilTransparenteTransmissaoPct??''}"></label>
         <label class="field">Impressão digital · R$/m²<input data-act="cor-preco-impressao" type="number" min="0" step="0.0001" value="${precosImpressaoCor.impressaoM2??''}"></label>
         <label class="field">Laminação · R$/m²<input data-act="cor-preco-laminacao" type="number" min="0" step="0.0001" value="${precosImpressaoCor.laminacaoM2??''}"></label>
+        <label class="field">Largura total da bobina (mm)<input data-act="cor-largura-bobina" type="number" min="1" step="1" value="${precosImpressaoCor.larguraBobinaMm??''}" placeholder="Obrigatória para precificar vinil"></label>
+        <label class="field">Largura útil da bobina (mm)<input data-act="cor-largura-util-bobina" type="number" min="1" step="1" value="${precosImpressaoCor.larguraUtilBobinaMm??''}" placeholder="Largura máxima imprimível"></label>
+        <label class="field">Sangria por lado (mm)<input data-act="cor-sangria-perimetral" type="number" min="0" max="50" step="0.1" value="${precosImpressaoCor.sangriaPerimetralMm??3}"></label>
       </div>
       <label class="checkrow" style="margin-top:7px;"><input type="checkbox" data-act="cor-laminacao-padrao" ${precosImpressaoCor.laminacaoPadrao?'checked':''}> Incluir laminação por padrão nas sugestões de impressão</label>
-      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-act="cor-precos-salvar">Salvar custos por m²</button>
+      <label class="checkrow" style="margin-top:7px;"><input type="checkbox" data-act="cor-retalho-reutilizavel" ${precosImpressaoCor.retalhoReutilizavel?'checked':''}> Reutilizar retalhos de bobina em outros trabalhos</label>
+      <p class="role-note">As larguras total e útil são obrigatórias para calcular o consumo. A sangria é aplicada em cada lado do Bounding Box; sem reaproveitamento, cobra-se a largura total do rolo pelo comprimento utilizado.</p>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-act="cor-precos-salvar">Salvar custos e bobina</button>
       <p class="role-note">Custos vazios permanecem como pendência e bloqueiam a emissão do preço. Em face iluminada, cadastre a transmissão de luz conforme a ficha técnica do fornecedor; não estime esse valor pela cor visual.</p>
     </div>
   </div>`;
@@ -4632,7 +4637,7 @@ async function importarCatalogoImprimax(){
 
 async function salvarPrecosCorServidor(){
   const numberOrNull=value=>String(value??'').trim()===''?null:Number(value);
-  const payload={vinilBrancoM2:numberOrNull(precosImpressaoCor.vinilBrancoM2),vinilBrancoTransmissaoPct:numberOrNull(precosImpressaoCor.vinilBrancoTransmissaoPct),vinilTransparenteM2:numberOrNull(precosImpressaoCor.vinilTransparenteM2),vinilTransparenteTransmissaoPct:numberOrNull(precosImpressaoCor.vinilTransparenteTransmissaoPct),impressaoM2:numberOrNull(precosImpressaoCor.impressaoM2),laminacaoM2:numberOrNull(precosImpressaoCor.laminacaoM2),laminacaoPadrao:Boolean(precosImpressaoCor.laminacaoPadrao)};
+  const payload={vinilBrancoM2:numberOrNull(precosImpressaoCor.vinilBrancoM2),vinilBrancoTransmissaoPct:numberOrNull(precosImpressaoCor.vinilBrancoTransmissaoPct),vinilTransparenteM2:numberOrNull(precosImpressaoCor.vinilTransparenteM2),vinilTransparenteTransmissaoPct:numberOrNull(precosImpressaoCor.vinilTransparenteTransmissaoPct),impressaoM2:numberOrNull(precosImpressaoCor.impressaoM2),laminacaoM2:numberOrNull(precosImpressaoCor.laminacaoM2),larguraBobinaMm:numberOrNull(precosImpressaoCor.larguraBobinaMm),larguraUtilBobinaMm:numberOrNull(precosImpressaoCor.larguraUtilBobinaMm),sangriaPerimetralMm:numberOrNull(precosImpressaoCor.sangriaPerimetralMm),retalhoReutilizavel:Boolean(precosImpressaoCor.retalhoReutilizavel),laminacaoPadrao:Boolean(precosImpressaoCor.laminacaoPadrao)};
   try{
     const response=await fetch('/api/letra-caixa/cores/precos-impressao',{method:'PUT',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     const body=await response.json().catch(()=>({}));
@@ -4805,11 +4810,13 @@ function bindAdminEvents(){
   if(imprimaxJson) imprimaxJson.addEventListener('input',event=>{imprimaxJsonNovo=event.target.value;});
   const imprimaxImportar=document.querySelector('[data-act="imprimax-importar"]');
   if(imprimaxImportar) imprimaxImportar.addEventListener('click',importarCatalogoImprimax);
-  for(const [act,key] of [['cor-preco-branco','vinilBrancoM2'],['cor-transmissao-branco','vinilBrancoTransmissaoPct'],['cor-preco-transparente','vinilTransparenteM2'],['cor-transmissao-transparente','vinilTransparenteTransmissaoPct'],['cor-preco-impressao','impressaoM2'],['cor-preco-laminacao','laminacaoM2']]){
+  for(const [act,key] of [['cor-preco-branco','vinilBrancoM2'],['cor-transmissao-branco','vinilBrancoTransmissaoPct'],['cor-preco-transparente','vinilTransparenteM2'],['cor-transmissao-transparente','vinilTransparenteTransmissaoPct'],['cor-preco-impressao','impressaoM2'],['cor-preco-laminacao','laminacaoM2'],['cor-largura-bobina','larguraBobinaMm'],['cor-largura-util-bobina','larguraUtilBobinaMm'],['cor-sangria-perimetral','sangriaPerimetralMm']]){
     const input=document.querySelector(`[data-act="${act}"]`);if(input)input.addEventListener('input',event=>{precosImpressaoCor[key]=event.target.value===''?null:Number(event.target.value);});
   }
   const laminaPadrao=document.querySelector('[data-act="cor-laminacao-padrao"]');
   if(laminaPadrao)laminaPadrao.addEventListener('change',event=>{precosImpressaoCor.laminacaoPadrao=event.target.checked;});
+  const retalhoReutilizavel=document.querySelector('[data-act="cor-retalho-reutilizavel"]');
+  if(retalhoReutilizavel)retalhoReutilizavel.addEventListener('change',event=>{precosImpressaoCor.retalhoReutilizavel=event.target.checked;});
   const salvarCorPrecos=document.querySelector('[data-act="cor-precos-salvar"]');
   if(salvarCorPrecos)salvarCorPrecos.addEventListener('click',salvarPrecosCorServidor);
 

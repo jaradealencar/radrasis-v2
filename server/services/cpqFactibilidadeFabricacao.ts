@@ -619,14 +619,24 @@ function geometryArea(geometry: MultiPolygon): number {
  * por cima). As curvas usam a mesma aproximação geométrica de 0,1 mm do
  * nesting; strokes não entram na área de face.
  */
-export function calcularAreasVisiveisSvgPorCaminho(
+export type CpqMetricaCaminhoSvg = {
+  areaM2: number;
+  boundsMm: Bounds | null;
+  contornosBoundsMm: Bounds[];
+};
+
+export function calcularMetricasVisiveisSvgPorCaminho(
   svg: string,
   larguraSvgMm: number,
   alturaSvgMm: number,
-): number[] {
+): CpqMetricaCaminhoSvg[] {
   const parsed = parseSvg(svg, larguraSvgMm, alturaSvgMm);
   const geometriaPorCaminho = new Map<number, MultiPolygon>();
+  const pecasPorCaminho = new Map<number, ParsedPiece[]>();
   for (const piece of parsed.pieces) {
+    const pecas = pecasPorCaminho.get(piece.pathIndex) ?? [];
+    pecas.push(piece);
+    pecasPorCaminho.set(piece.pathIndex, pecas);
     const atual = geometriaPorCaminho.get(piece.pathIndex);
     if (!atual) {
       geometriaPorCaminho.set(piece.pathIndex, piece.geometry);
@@ -642,7 +652,11 @@ export function calcularAreasVisiveisSvgPorCaminho(
     }
   }
 
-  const areasMm2 = Array.from({ length: parsed.paths.length }, () => 0);
+  const metricasMm = Array.from({ length: parsed.paths.length }, () => ({
+    areaMm2: 0,
+    boundsMm: null as Bounds | null,
+    contornosBoundsMm: [] as Bounds[],
+  }));
   let coberto: MultiPolygon | null = null;
   for (let pathIndex = parsed.paths.length - 1; pathIndex >= 0; pathIndex -= 1) {
     const geometria = geometriaPorCaminho.get(pathIndex);
@@ -653,7 +667,18 @@ export function calcularAreasVisiveisSvgPorCaminho(
       const visivel = temCobertura
         ? polygonClipping.difference(geometria, coberturaAnterior) as MultiPolygon
         : geometria;
-      areasMm2[pathIndex] = geometryArea(visivel);
+      const contornosBoundsMm = (pecasPorCaminho.get(pathIndex) ?? []).flatMap(piece => {
+        if (!visivel.length) return [];
+        const parcelaVisivel = polygonClipping.intersection(piece.geometry, visivel) as MultiPolygon;
+        return geometryArea(parcelaVisivel) > 0
+          ? [boundsOf(parcelaVisivel.flatMap(polygon => polygon))]
+          : [];
+      });
+      metricasMm[pathIndex] = {
+        areaMm2: geometryArea(visivel),
+        boundsMm: visivel.length ? boundsOf(visivel.flatMap(polygon => polygon)) : null,
+        contornosBoundsMm,
+      };
       coberto = temCobertura
         ? polygonClipping.union(coberturaAnterior, geometria) as MultiPolygon
         : geometria;
@@ -664,7 +689,20 @@ export function calcularAreasVisiveisSvgPorCaminho(
       );
     }
   }
-  return areasMm2.map(areaMm2 => Number((areaMm2 / 1_000_000).toFixed(8)));
+  return metricasMm.map(({ areaMm2, boundsMm, contornosBoundsMm }) => ({
+    areaM2: Number((areaMm2 / 1_000_000).toFixed(8)),
+    boundsMm,
+    contornosBoundsMm,
+  }));
+}
+
+/** Compatibilidade para consumidores que precisam somente das áreas vetoriais. */
+export function calcularAreasVisiveisSvgPorCaminho(
+  svg: string,
+  larguraSvgMm: number,
+  alturaSvgMm: number,
+): number[] {
+  return calcularMetricasVisiveisSvgPorCaminho(svg, larguraSvgMm, alturaSvgMm).map(metrica => metrica.areaM2);
 }
 
 function clipToSheets(

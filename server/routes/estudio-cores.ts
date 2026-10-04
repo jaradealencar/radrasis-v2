@@ -10,11 +10,20 @@ import {
 } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
-import { CpqFactibilidadeError, calcularAreasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
-import { type CpqCorCatalogo, extrairRegioesCorSvg, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+import { CpqFactibilidadeError, calcularMetricasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
+import { aplicarCustosBobinaAgrupados, type CpqCorCatalogo, extrairRegioesCorSvg, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
 
 const porcentagem = z.number().finite().min(0).max(100).nullable().optional();
 const moedaM2 = z.number().finite().min(0).max(1_000_000).nullable();
+const boundingBoxMm = z.object({
+  minX: z.number().finite(), maxX: z.number().finite(), minY: z.number().finite(), maxY: z.number().finite(),
+}).strict().refine(box => box.maxX > box.minX && box.maxY > box.minY);
+const dadosRegiaoPreco = z.object({
+  areaLiquidaM2: z.number().finite().min(0).max(50_000),
+  larguraMm: z.number().finite().positive().max(50_000),
+  alturaMm: z.number().finite().positive().max(50_000),
+  boundingBoxesMm: z.array(boundingBoxMm).min(1).max(500),
+}).strict();
 const cmykInput = z.object({ c: porcentagem, m: porcentagem, y: porcentagem, k: porcentagem }).strict().nullable().optional()
   .superRefine((value, context) => {
     if (!value) return;
@@ -53,6 +62,7 @@ const analisarInput = z.object({
     cmyk: cmykInput,
     coresGradiente: z.array(z.string().regex(/^#[\da-f]{6}$/i)).max(20).optional(),
     pathIndexes: z.array(z.number().int().nonnegative().max(499)).max(500).optional(),
+    dadosPreco: dadosRegiaoPreco.optional(),
     areaM2: z.number().finite().min(0).max(50_000).nullable().optional(),
   }).strict()).min(1).max(500),
   iluminacao: z.enum(["sem_iluminacao", "frontlight", "backlight"]),
@@ -193,8 +203,17 @@ async function salvarPrecos(req: Request, res: Response): Promise<void> {
     vinilTransparenteTransmissaoPct: porcentagem,
     impressaoM2: moedaM2,
     laminacaoM2: moedaM2,
+    larguraBobinaMm: z.number().int().positive().max(50_000).nullable(),
+    larguraUtilBobinaMm: z.number().int().positive().max(50_000).nullable(),
+    sangriaPerimetralMm: z.number().finite().min(0).max(50),
+    retalhoReutilizavel: z.boolean(),
     laminacaoPadrao: z.boolean(),
-  }).strict().safeParse(req.body);
+  }).strict().superRefine((value, context) => {
+    if (value.larguraBobinaMm != null && value.larguraUtilBobinaMm != null
+      && value.larguraUtilBobinaMm > value.larguraBobinaMm) {
+      context.addIssue({ code: "custom", path: ["larguraUtilBobinaMm"], message: "A largura útil não pode superar a largura total da bobina." });
+    }
+  }).safeParse(req.body);
   if (!parsed.success) return void erro(res, 400, "Informe valores válidos por m²; use nulo para custo ainda não cadastrado.");
   const db = await getDb();
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
@@ -205,6 +224,10 @@ async function salvarPrecos(req: Request, res: Response): Promise<void> {
     vinilTransparenteTransmissaoPct: decimalBanco(parsed.data.vinilTransparenteTransmissaoPct),
     impressaoM2: decimalBanco(parsed.data.impressaoM2),
     laminacaoM2: decimalBanco(parsed.data.laminacaoM2),
+    larguraBobinaMm: parsed.data.larguraBobinaMm,
+    larguraUtilBobinaMm: parsed.data.larguraUtilBobinaMm,
+    sangriaPerimetralMm: String(parsed.data.sangriaPerimetralMm),
+    retalhoReutilizavel: parsed.data.retalhoReutilizavel,
     laminacaoPadrao: parsed.data.laminacaoPadrao,
     updatedAt: new Date(),
   };
@@ -222,7 +245,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
     db.select().from(estudioPrecosImpressao).where(eq(estudioPrecosImpressao.id, 1)).limit(1),
   ]);
   const precos = precosRows[0] ?? null;
-  const resultados = parsed.regioes.map(regiao => sugerirMaterialParaCor({
+  const sugestoes = parsed.regioes.map(regiao => sugerirMaterialParaCor({
     regiao: { ...regiao, cmyk: cmykCompleto(regiao.cmyk) },
     chapas: chapas as CpqCorCatalogo[],
     adesivos: adesivos as CpqCorCatalogo[],
@@ -233,6 +256,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
     precos,
     construcaoFace: parsed.construcaoFace,
   }));
+  const resultados = aplicarCustosBobinaAgrupados(sugestoes, parsed.regioes, precos);
   await db.transaction(async tx => {
     await tx.delete(estudioMapeamentoCoresCotacao)
       .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.sourceId));
@@ -262,6 +286,8 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
           cmykOriginal: regiao.cmyk ?? null,
           coresGradiente: regiao.coresGradiente ?? [],
           pathIndexes: regiao.pathIndexes ?? [],
+          dadosPreco: regiao.dadosPreco ?? null,
+          areaConsumoM2: resultado.areaConsumoM2,
           avisos: resultado.avisos,
           alternativas: resultado.alternativas,
           unidadeCusto: resultado.unidadeCusto,
@@ -277,7 +303,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
           transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
           iluminacao: parsed.iluminacao,
           laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
-          fatorVersaoAlgoritmo: "ciede2000-d65-v1",
+          fatorVersaoAlgoritmo: "ciede2000-d65-bobina-v2",
         },
         aprovado: false,
         aprovadoPor: null,
@@ -307,6 +333,8 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
             cmykOriginal: regiao.cmyk ?? null,
             coresGradiente: regiao.coresGradiente ?? [],
             pathIndexes: regiao.pathIndexes ?? [],
+            dadosPreco: regiao.dadosPreco ?? null,
+            areaConsumoM2: resultado.areaConsumoM2,
             avisos: resultado.avisos,
             alternativas: resultado.alternativas,
             unidadeCusto: resultado.unidadeCusto,
@@ -322,7 +350,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
             transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
             iluminacao: parsed.iluminacao,
             laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
-            fatorVersaoAlgoritmo: "ciede2000-d65-v1",
+            fatorVersaoAlgoritmo: "ciede2000-d65-bobina-v2",
           },
           aprovado: false,
           aprovadoPor: null,
@@ -344,12 +372,12 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
     return void erro(res, 400, "Informe a transmissão mínima definida pela engenharia para avaliar a face iluminada.");
   try {
     const regioes = extrairRegioesCorSvg(parsed.data.svgArte);
-    const areas = calcularAreasVisiveisSvgPorCaminho(
+    const metricas = calcularMetricasVisiveisSvgPorCaminho(
       parsed.data.svgGeometria,
       parsed.data.larguraSvgMm,
       parsed.data.alturaSvgMm,
     );
-    if (areas.length !== regioes.length)
+    if (metricas.length !== regioes.length)
       return void erro(res, 422, "A fonte colorida e o vetor de corte não têm os mesmos caminhos. Reenvie ou revise a arte.");
 
     const agregadas = new Map<string, {
@@ -360,10 +388,13 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
       coresGradiente: string[];
       areaM2: number;
       pathIndexes: number[];
+      caixasMm: Array<{ minX: number; maxX: number; minY: number; maxY: number }>;
     }>();
     regioes.forEach((regiao, index) => {
-      const areaM2 = areas[index];
+      const metrica = metricas[index];
+      const areaM2 = metrica.areaM2;
       if (regiao.tipoCor === "desconhecida" || areaM2 <= 0) return;
+      if (!metrica.boundsMm || !metrica.contornosBoundsMm.length) throw new CpqFactibilidadeError("Missing bounds for a vector region.", "invalid_geometry");
       const signature = JSON.stringify([
         regiao.tipoCor,
         regiao.corHex ?? null,
@@ -379,9 +410,11 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
         coresGradiente: regiao.coresGradiente ?? [],
         areaM2: 0,
         pathIndexes: [],
+        caixasMm: [],
       };
       group.areaM2 += areaM2;
       group.pathIndexes.push(regiao.pathIndex ?? index);
+      group.caixasMm.push(...metrica.contornosBoundsMm);
       agregadas.set(signature, group);
     });
     if (!agregadas.size)
@@ -389,10 +422,16 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
 
     const body = {
       sourceId: parsed.data.sourceId,
-      regioes: [...agregadas.values()].map((region, index) => ({
+      regioes: [...agregadas.values()].map(({ caixasMm, ...region }, index) => ({
         ...region,
         key: `regiao-${index + 1}`,
         areaM2: Number(region.areaM2.toFixed(6)),
+        dadosPreco: {
+          areaLiquidaM2: Number(region.areaM2.toFixed(8)),
+          larguraMm: Math.max(...caixasMm.map(box => box.maxX)) - Math.min(...caixasMm.map(box => box.minX)),
+          alturaMm: Math.max(...caixasMm.map(box => box.maxY)) - Math.min(...caixasMm.map(box => box.minY)),
+          boundingBoxesMm: caixasMm,
+        },
       })),
       iluminacao: parsed.data.iluminacao,
       transmissaoMinimaPct: parsed.data.transmissaoMinimaPct ?? null,
@@ -422,6 +461,13 @@ async function aprovarCores(req: Request, res: Response): Promise<void> {
   const mappings = await db.select().from(estudioMapeamentoCoresCotacao)
     .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.data.sourceId));
   if (!mappings.length) return void erro(res, 409, "Analise as cores antes de aprovar os materiais.");
+  const pendenciaConsumoBobina = mappings.find(row => {
+    if (row.tipoSugestao !== "impresso" && row.tipoSugestao !== "imprimax") return false;
+    const details = row.detalhesJson as Record<string, unknown>;
+    return row.custoEstimado == null || typeof details.areaConsumoM2 !== "number" || details.areaConsumoM2 <= 0;
+  });
+  if (pendenciaConsumoBobina)
+    return void erro(res, 409, "O consumo físico da bobina está pendente. Confira geometria, largura útil, sangria e custos antes de aprovar os materiais.");
   const pendenciaComposicao = mappings.find(row => {
     const details = row.detalhesJson as Record<string, unknown>;
     return (details.requerChapaBase === true && details.chapaBaseMateriaPrimaId == null)
