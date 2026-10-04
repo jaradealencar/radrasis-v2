@@ -1483,6 +1483,39 @@ function aplicarEdicaoVetor(){
 }
 
 /* ---------- NESTING REAL (shelf-packing sobre as peças rastreadas) ---------- */
+/* ---------- COMPOSIÇÃO (KIT) REAL — matéria-prima real do MubiSys ---------- */
+const FORMULA_TYPES = {
+  areaTotal: {label:'Área total das peças no nesting (m²)', calc:(g,mult)=> (g.areaTotalNestingM2||g.areaGeralM2||0)*mult},
+  area: {label:'Área líquida (m²) — conteúdo da letra', calc:(g,mult)=> g.areaM2*mult},
+  areaGeral: {label:'Área geral (m²) — chapa consumida', calc:(g,mult)=> (g.areaGeralM2||0)*mult},
+  perimExt: {label:'Perímetro externo', calc:(g,mult)=> g.perimExtM*mult},
+  perimTotal: {label:'Comprimento total de corte', calc:(g,mult)=> g.corteTotalM*mult},
+  fixo: {label:'Quantidade fixa', calc:(g,mult)=> mult},
+};
+/** Taxonomia de categoria/subcategoria/tipo do cadastro de produtos —
+ *  pedido do usuário 28/09/2026. "Outros" dentro de Letreiros são materiais
+ *  sem tipo (frontlight/backlight/tradicional não se aplica); Acessórios
+ *  não tem terceiro nível — a subcategoria já é o item final. */
+const CATEGORIAS_PRODUTO = {
+  'Letreiros': {
+    'Galvanizado': ['Frontlight', 'Backlight', 'Tradicional'],
+    'Alumínio': ['Frontlight', 'Backlight', 'Tradicional'],
+    'Inox': ['Frontlight', 'Backlight', 'Tradicional'],
+    'Latão': ['Frontlight', 'Backlight', 'Tradicional'],
+    'Outros': ['Acrílico montado', 'Acrílico cortado', 'ACM', 'PVC Expandido', 'Impresso 3D'],
+  },
+  'Acessórios': {
+    'Gabarito': [], 'LED': [], 'Fonte': [], 'Fixadores': [], 'Outros': [],
+  },
+  // Mesma taxonomia (substrato × tipo) já usada no wizard de pintura do
+  // orçamento (resolverItensPintura) — reaproveitada aqui pra cadastro de
+  // produto, decisão do usuário 29/09/2026.
+  'Pintura': {
+    'Galvanizado': ['Tradicional', 'Metalizada', 'Poliéster'],
+    'PVC': ['Tradicional', 'Metalizada', 'Poliéster'],
+  },
+};
+
 function addKitLine(materiaId){
   const m = catalog.materias.find(x=>x.id===materiaId);
   if(!m) return;
