@@ -135,11 +135,20 @@ export class CpqNestingError extends Error {
   }
 }
 
-function dimensoesLandscape(chapa: CpqChapa): { larguraMm: number; alturaMm: number } {
-  return {
-    larguraMm: Math.max(chapa.larguraMm, chapa.alturaMm),
-    alturaMm: Math.min(chapa.larguraMm, chapa.alturaMm),
-  };
+function orientacoesChapa(chapa: CpqChapa): Array<{ larguraMm: number; alturaMm: number; ordemOrientacao: number }> {
+  const orientacoes = [{
+    larguraMm: chapa.larguraMm,
+    alturaMm: chapa.alturaMm,
+    ordemOrientacao: 0,
+  }];
+  if (chapa.larguraMm !== chapa.alturaMm) {
+    orientacoes.push({
+      larguraMm: chapa.alturaMm,
+      alturaMm: chapa.larguraMm,
+      ordemOrientacao: 1,
+    });
+  }
+  return orientacoes;
 }
 
 /** Ordena as opções; a principal só desempata resultados equivalentes. */
@@ -259,12 +268,12 @@ function unidadeNormalizada(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/²/g, "2").toLowerCase().trim();
 }
 
-function estimarCustos(material: CpqMaterial, areaUsadaM2: number, areaPecaM2: number, areaChapaM2: number, perimetroM: number) {
+function estimarCustos(material: CpqMaterial, areaUsadaM2: number, areaChapaM2: number, perimetroM: number) {
   if (!Number.isFinite(material.custoUnitario) || material.custoUnitario <= 0) {
     return { custo: null, sobra: null, unidadeMetrica: false, alerta: "Matéria-prima sem custo válido no MubiSys; a precificação deve ficar bloqueada." };
   }
   const unidade = unidadeNormalizada(material.unidadeCusto);
-  const areaSobra = Math.max(0, areaChapaM2 - areaPecaM2);
+  const areaSobra = Math.max(0, areaChapaM2 - areaUsadaM2);
   if (["m2", "m2", "metro quadrado", "metros quadrados"].includes(unidade)) {
     return { custo: areaUsadaM2 * material.custoUnitario, sobra: areaSobra * material.custoUnitario, unidadeMetrica: true, alerta: null };
   }
@@ -289,18 +298,20 @@ function estimarCustos(material: CpqMaterial, areaUsadaM2: number, areaPecaM2: n
 
 type AvaliacaoChapa = {
   chapa: CpqChapa;
+  dimensoes: { larguraMm: number; alturaMm: number };
+  ordemOrientacao: number;
   nesting: DeepnestWorkerResult;
   caixa: ReturnType<typeof calcularBoundingBoxEsquerdo>;
   areaChapaM2: number;
   areaLiquidaM2: number;
   aproveitamento: number;
-  custos: ReturnType<typeof estimarCustos>;
 };
 
 function compararAvaliacoes(a: AvaliacaoChapa, b: AvaliacaoChapa): number {
-  return a.areaChapaM2 - b.areaChapaM2
+  return (a.dimensoes.larguraMm * a.dimensoes.alturaMm) - (b.dimensoes.larguraMm * b.dimensoes.alturaMm)
     || Number(!!b.chapa.principal) - Number(!!a.chapa.principal)
-    || a.chapa.id - b.chapa.id;
+    || a.chapa.id - b.chapa.id
+    || a.ordemOrientacao - b.ordemOrientacao;
 }
 
 /** Testa os formatos em ordem de área e escolhe a menor chapa que comporta todas as peças. */
@@ -344,36 +355,40 @@ export async function calcularNestingMultiMaterial(input: {
     const pecasMaterial = pecasMaterialOriginal.map(peca => ({ ...peca, svg: normalizarSvgFisico(peca) }));
     const avaliacoes: AvaliacaoChapa[] = [];
     for (const chapa of chapas) {
-      const dimensoes = dimensoesLandscape(chapa);
-      const nesting = await executarMotor(pecasMaterial, dimensoes.larguraMm, dimensoes.alturaMm, espacamentoMm, 20_000);
-      if (!nesting.completo || nesting.quantidadePosicionada === 0 || nesting.placements.length !== nesting.quantidadePecas) continue;
-      const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
-      const areaChapaM2 = (dimensoes.larguraMm * dimensoes.alturaMm) / 1_000_000;
-      const areaLiquidaM2 = nesting.areaLiquidaMm2 / 1_000_000;
-      const custos = estimarCustos(material, caixa.areaM2, areaLiquidaM2, areaChapaM2, nesting.perimetroTotalMm / 1000);
-      avaliacoes.push({
-        chapa,
-        nesting,
-        caixa,
-        areaChapaM2,
-        areaLiquidaM2,
-        aproveitamento: areaChapaM2 > 0 ? (caixa.areaM2 / areaChapaM2) * 100 : 0,
-        custos,
-      });
+      for (const { larguraMm, alturaMm, ordemOrientacao } of orientacoesChapa(chapa)) {
+        const dimensoes = { larguraMm, alturaMm };
+        const nesting = await executarMotor(pecasMaterial, larguraMm, alturaMm, espacamentoMm, 20_000);
+        if (!nesting.completo || nesting.quantidadePosicionada === 0 || nesting.placements.length !== nesting.quantidadePecas) continue;
+        const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
+        const areaChapaM2 = (larguraMm * alturaMm) / 1_000_000;
+        const areaLiquidaM2 = nesting.areaLiquidaMm2 / 1_000_000;
+        const areaBlocoOcupadoM2 = caixa.areaM2;
+        avaliacoes.push({
+          chapa,
+          dimensoes,
+          ordemOrientacao,
+          nesting,
+          caixa,
+          areaChapaM2,
+          areaLiquidaM2,
+          aproveitamento: areaChapaM2 > 0 ? (areaBlocoOcupadoM2 / areaChapaM2) * 100 : 0,
+        });
+      }
     }
     if (!avaliacoes.length) throw new CpqNestingError(`As peças de ${material.nome} não couberam em nenhum dos formatos de chapa cadastrados.`, "no_fit");
     avaliacoes.sort(compararAvaliacoes);
     const melhor = avaliacoes[0];
-    const dimensoes = dimensoesLandscape(melhor.chapa);
-    const areaSobraM2 = Math.max(0, melhor.areaChapaM2 - melhor.areaLiquidaM2);
+    const dimensoes = melhor.dimensoes;
+    const custos = estimarCustos(material, melhor.caixa.areaM2, melhor.areaChapaM2, melhor.nesting.perimetroTotalMm / 1000);
+    const areaSobraM2 = Math.max(0, melhor.areaChapaM2 - melhor.caixa.areaM2);
     resultados.push({
       id_materia_prima: material.id,
       materia_prima: material.nome,
       custo_unitario: material.custoUnitario > 0 ? material.custoUnitario : null,
       unidade_custo: material.unidadeCusto,
-      custo_material_estimado: melhor.custos.custo,
-      custo_sobra_estimado: melhor.custos.sobra,
-      alerta_custo: melhor.custos.alerta,
+      custo_material_estimado: custos.custo,
+      custo_sobra_estimado: custos.sobra,
+      alerta_custo: custos.alerta,
       area_liquida_m2: melhor.areaLiquidaM2,
       area_sobra_m2: areaSobraM2,
       perimetro_total_m: melhor.nesting.perimetroTotalMm / 1000,

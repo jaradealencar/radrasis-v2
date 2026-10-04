@@ -27,7 +27,7 @@ function orc(empresa: string, dataCadastro: string, status: string, extra: Parti
   return {
     id: 0, orcNumero: `ORC-${empresa}-${dataCadastro}`, empresa, trabalho: null, dataCadastro, validade: null,
     vendedor: "Ana", status, motivoCancelamento: null, total: "500", custosTotal: null, margemLiquida: null,
-    mes: 1, ano: 2026, createdAt: new Date(), ...extra,
+    clienteId: null, telefone: null, mes: 1, ano: 2026, createdAt: new Date(), ...extra,
   } as HistoricoOrcamento;
 }
 
@@ -112,6 +112,23 @@ describe("fontes ERP — resolução local (sem chamada à API)", () => {
     expect(nomes.filter(n => n === "TESTE Duplicado")).toHaveLength(1);
     expect(r.find(c => c.nome === "TESTE Empresa Com Telefone")?.telefone).toBe("67911112222");
     expect(r.find(c => c.nome === "TESTE Em Aberto")?.telefone).toBeNull();
+  });
+
+  it("orçaram e não compraram: telefone gravado no orçamento é fallback; o de compras prevalece; '' (cadastro sem número) vira null", () => {
+    const base = construirBaseComTelefone([os("TESTE Ja Cliente", "01/01/2026", { telefone: "67911112222" })]);
+    const r = resolverOrcaramNaoCompraram([
+      orc("TESTE So Orcamento", "01/09/2026", "em aberto", { telefone: "67955556666" }),
+      orc("TESTE Ja Cliente", "01/09/2026", "em aberto", { telefone: "67900001111" }),
+      orc("TESTE Sem Numero", "01/09/2026", "em aberto", { telefone: "" }),
+      // Mesma empresa: o orçamento mais recente não tem telefone, o antigo tem — vale o que existir.
+      orc("TESTE Varios", "02/03/2026", "em aberto", { telefone: "67977778888" }),
+      orc("TESTE Varios", "02/09/2026", "em aberto", { telefone: null }),
+    ], base, HOJE);
+    const tel = (nome: string) => r.find(c => c.nome === nome)?.telefone;
+    expect(tel("TESTE So Orcamento")).toBe("67955556666");
+    expect(tel("TESTE Ja Cliente")).toBe("67911112222");
+    expect(tel("TESTE Sem Numero")).toBeNull();
+    expect(tel("TESTE Varios")).toBe("67977778888");
   });
 
   it("orçaram e não compraram: janelaDias explícito continua disponível para quem quiser restringir", () => {

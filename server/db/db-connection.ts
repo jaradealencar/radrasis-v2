@@ -14,14 +14,12 @@
 
 import { Pool, neonConfig, type QueryResult } from '@neondatabase/serverless';
 
-// Faz cada `pool.query()` avulso ir por HTTP (fetch) em vez de abrir uma
-// sessão WebSocket. É o modo mais barato e o que serve para 100% do uso
-// atual do projeto — não há transação multi-statement nem `pool.connect()`
-// em lugar nenhum (validado no passo 2.0 da fase).
-//
-// ⚠️ Se algum dia o projeto precisar de `db.transaction(...)`, isto aqui
-// deixa de bastar: transação exige a sessão WebSocket. Nesse caso, pare e
-// trate como decisão de arquitetura.
+// Consultas avulsas via `pool.query()` usam HTTP (fetch). O Drizzle executa
+// `db.transaction(...)` fazendo `pool.connect()` e usa o PoolClient por
+// WebSocket durante BEGIN/COMMIT/ROLLBACK. Endpoints transacionais exigem
+// runtime Node com suporte a WebSocket; use exclusivamente o `tx` recebido
+// dentro do callback para que todas as queries participem da mesma transação.
+
 neonConfig.poolQueryViaFetch = true;
 
 let pool: Pool | null = null;

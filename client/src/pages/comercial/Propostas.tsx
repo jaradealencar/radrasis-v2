@@ -983,7 +983,7 @@ function ItensProposta({
       setBusca("");
     },
     onError: (e) => {
-      if (podeAutorizarExcecao && e.message === "EXCECAO_MARGEM_REQUER_JUSTIFICATIVA") {
+      if (e.message === "EXCECAO_MARGEM_REQUER_JUSTIFICATIVA") {
         setErroJustificativa("");
         setModalExcecaoAberto(true);
         return;
