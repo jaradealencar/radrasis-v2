@@ -6,6 +6,10 @@ import { invokeLLM } from "../_core/llm";
 export const precoContextoSchema = z.object({
   produto: z.string().min(1).max(256),
   custoDireto: z.number().finite().nonnegative(),
+  // Em Propostas, custoDireto é material + mão de obra; o piso bruto inclui
+  // também as taxas sobre a venda. O CPQ legado não informa estes campos.
+  precoMinimo: z.number().finite().nonnegative().optional(),
+  taxasSobreVendaPct: z.number().finite().min(0).max(100).optional(),
   precoAtual: z.number().finite().nonnegative(),
   regra: z.string().min(1).max(500),
   margemAtualPct: z.number().finite().min(-1000).max(1000).nullable(),
@@ -120,9 +124,9 @@ function lerToken<T extends { exp: number }>(token: string): T {
   return payload;
 }
 
-function margemPercentual(preco: number, custo: number): number | null {
+function margemPercentual(preco: number, contexto: PrecoContexto): number | null {
   if (preco <= 0) return null;
-  return ((preco - custo) / preco) * 100;
+  return ((preco - contexto.custoDireto - preco * (contexto.taxasSobreVendaPct ?? 0) / 100) / preco) * 100;
 }
 
 export async function sugerirPrecoComGPT(args: {
@@ -143,7 +147,7 @@ export async function sugerirPrecoComGPT(args: {
         content: [
           "Você é um consultor de precificação B2B para fabricação de letreiros.",
           "Analise somente os dados numéricos e a regra informados; não invente custo, imposto, concorrente ou dado de mercado.",
-          "Sugira um preço unitário em reais que preserve pelo menos o custo direto informado.",
+          "Sugira um preço unitário em reais que preserve pelo menos o preço mínimo bruto informado, quando presente; caso contrário preserve o custo direto.",
           "Use o preço atual e a regra como referência. Explique as premissas e sinalize riscos ou dados insuficientes.",
           "A sugestão não é uma aprovação e nunca deve ser tratada como preço final sem aprovação humana.",
         ].join(" "),
@@ -167,8 +171,8 @@ export async function sugerirPrecoComGPT(args: {
   } catch {
     throw new Error("A resposta do consultor de preço veio fora do formato esperado.");
   }
-  if (sugestao.precoSugerido + 0.005 < contexto.custoDireto) {
-    throw new Error("A sugestão ficou abaixo do custo direto e não pode ser aprovada como preço automático.");
+  if (sugestao.precoSugerido + 0.005 < (contexto.precoMinimo ?? contexto.custoDireto)) {
+    throw new Error("A sugestão ficou abaixo do preço mínimo e não pode ser aprovada como preço automático.");
   }
   const ticket: TicketSugestao = {
     v: 1,
@@ -179,7 +183,7 @@ export async function sugerirPrecoComGPT(args: {
     contextoHash: hashBasePreco(contexto),
     sugestaoId: randomUUID(),
     precoSugerido: Math.round((sugestao.precoSugerido + Number.EPSILON) * 100) / 100,
-    margemSugeridaPct: margemPercentual(sugestao.precoSugerido, contexto.custoDireto),
+    margemSugeridaPct: margemPercentual(Math.round((sugestao.precoSugerido + Number.EPSILON) * 100) / 100, contexto),
     parecer: sugestao.parecer,
     alertas: sugestao.alertas,
     exp: Date.now() + 20 * 60 * 1000,
@@ -231,8 +235,8 @@ export function aprovarPrecoCalculado(args: {
   const contexto = precoContextoSchema.parse(args.contexto);
   const preco = z.number().finite().nonnegative().parse(args.preco);
   if (contexto.custoDireto <= 0) throw new Error("O custo direto está zerado. Revise custos e composição antes da aprovação.");
-  if (preco + 0.005 < contexto.custoDireto) {
-    throw new Error("O preço está abaixo do custo direto. Corrija-o antes da aprovação.");
+  if (preco + 0.005 < (contexto.precoMinimo ?? contexto.custoDireto)) {
+    throw new Error("O preço está abaixo do preço mínimo. Corrija-o antes da aprovação.");
   }
   return emitirRecibo({
     fluxo: args.fluxo,

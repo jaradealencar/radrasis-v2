@@ -537,6 +537,7 @@ export const estudioChapas = pgTable("estudio_chapas", {
   cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
   cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
   transmissaoLuzPct: decimal("transmissao_luz_pct", { precision: 5, scale: 2 }),
+  transparenciaTipo: varchar("transparencia_tipo", { length: 20 }),
   principal: boolean("principal").notNull().default(false),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -11,7 +11,7 @@ import {
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { CpqFactibilidadeError, calcularAreasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
-import { extrairRegioesCorSvg, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+import { type CpqCorCatalogo, extrairRegioesCorSvg, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
 
 const porcentagem = z.number().finite().min(0).max(100).nullable().optional();
 const moedaM2 = z.number().finite().min(0).max(1_000_000).nullable();
@@ -58,6 +58,7 @@ const analisarInput = z.object({
   iluminacao: z.enum(["sem_iluminacao", "frontlight", "backlight"]),
   transmissaoMinimaPct: z.number().finite().min(0).max(100).nullable().optional(),
   baseImpressao: z.enum(["branco", "transparente"]),
+  construcaoFace: z.enum(["acrilico_total", "outra", "nao_informada"]).default("nao_informada"),
   laminar: z.boolean(),
 }).strict().superRefine((input, context) => {
   if (new Set(input.regioes.map(region => region.key)).size !== input.regioes.length)
@@ -73,6 +74,7 @@ const analisarSvgInput = z.object({
   iluminacao: z.enum(["sem_iluminacao", "frontlight", "backlight"]),
   transmissaoMinimaPct: z.number().finite().min(0).max(100).nullable().optional(),
   baseImpressao: z.enum(["branco", "transparente"]),
+  construcaoFace: z.enum(["acrilico_total", "outra", "nao_informada"]).default("nao_informada"),
   laminar: z.boolean(),
 }).strict();
 
@@ -222,13 +224,14 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
   const precos = precosRows[0] ?? null;
   const resultados = parsed.regioes.map(regiao => sugerirMaterialParaCor({
     regiao: { ...regiao, cmyk: cmykCompleto(regiao.cmyk) },
-    chapas,
-    adesivos,
+    chapas: chapas as CpqCorCatalogo[],
+    adesivos: adesivos as CpqCorCatalogo[],
     iluminacao: parsed.iluminacao,
     transmissaoMinimaPct: parsed.transmissaoMinimaPct,
     baseImpressao: parsed.baseImpressao,
     laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
     precos,
+    construcaoFace: parsed.construcaoFace,
   }));
   await db.transaction(async tx => {
     await tx.delete(estudioMapeamentoCoresCotacao)
@@ -263,6 +266,13 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
           alternativas: resultado.alternativas,
           unidadeCusto: resultado.unidadeCusto,
           precificacao: resultado.precificacao,
+          chapaMateriaPrimaId: resultado.chapaMateriaPrimaId,
+          chapaBaseId: resultado.chapaBaseId,
+          chapaBaseMateriaPrimaId: resultado.chapaBaseMateriaPrimaId,
+          requerChapaBase: resultado.requerChapaBase,
+          requerConfirmacaoConstrucao: resultado.requerConfirmacaoConstrucao,
+          composicaoFace: resultado.composicaoFace,
+          construcaoFace: parsed.construcaoFace,
           baseImpressao: parsed.baseImpressao,
           transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
           iluminacao: parsed.iluminacao,
@@ -301,6 +311,13 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
             alternativas: resultado.alternativas,
             unidadeCusto: resultado.unidadeCusto,
             precificacao: resultado.precificacao,
+            chapaMateriaPrimaId: resultado.chapaMateriaPrimaId,
+            chapaBaseId: resultado.chapaBaseId,
+            chapaBaseMateriaPrimaId: resultado.chapaBaseMateriaPrimaId,
+            requerChapaBase: resultado.requerChapaBase,
+            requerConfirmacaoConstrucao: resultado.requerConfirmacaoConstrucao,
+            composicaoFace: resultado.composicaoFace,
+            construcaoFace: parsed.construcaoFace,
             baseImpressao: parsed.baseImpressao,
             transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
             iluminacao: parsed.iluminacao,
@@ -323,8 +340,8 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await obterSessao(req, res))) return;
   const parsed = analisarSvgInput.safeParse(req.body);
   if (!parsed.success) return void erro(res, 400, "Confira arte, geometria, escala e iluminação antes de analisar as cores.");
-  if (parsed.data.iluminacao === "backlight" && parsed.data.transmissaoMinimaPct == null)
-    return void erro(res, 400, "Informe a transmissão mínima definida pela engenharia para avaliar uma face backlight.");
+  if (parsed.data.iluminacao !== "sem_iluminacao" && parsed.data.transmissaoMinimaPct == null)
+    return void erro(res, 400, "Informe a transmissão mínima definida pela engenharia para avaliar a face iluminada.");
   try {
     const regioes = extrairRegioesCorSvg(parsed.data.svgArte);
     const areas = calcularAreasVisiveisSvgPorCaminho(
@@ -381,6 +398,7 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
       transmissaoMinimaPct: parsed.data.transmissaoMinimaPct ?? null,
       baseImpressao: parsed.data.baseImpressao,
       laminar: parsed.data.laminar,
+      construcaoFace: parsed.data.construcaoFace,
     };
     const validated = analisarInput.safeParse(body);
     if (!validated.success)
@@ -404,6 +422,22 @@ async function aprovarCores(req: Request, res: Response): Promise<void> {
   const mappings = await db.select().from(estudioMapeamentoCoresCotacao)
     .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.data.sourceId));
   if (!mappings.length) return void erro(res, 409, "Analise as cores antes de aprovar os materiais.");
+  const pendenciaComposicao = mappings.find(row => {
+    const details = row.detalhesJson as Record<string, unknown>;
+    return (details.requerChapaBase === true && details.chapaBaseMateriaPrimaId == null)
+      || details.requerConfirmacaoConstrucao === true;
+  });
+  if (pendenciaComposicao)
+    return void erro(res, 409, "Falta definir a composição da face: cadastre uma chapa transparente principal compatível e confirme se a face é toda em acrílico.");
+  const materiaisFace = new Set(mappings.flatMap(row => {
+    const details = row.detalhesJson as Record<string, unknown>;
+    const materialId = row.tipoSugestao === "chapa"
+      ? details.chapaMateriaPrimaId
+      : details.requerChapaBase === true ? details.chapaBaseMateriaPrimaId : null;
+    return typeof materialId === "number" ? [materialId] : [];
+  }));
+  if (materiaisFace.size > 1)
+    return void erro(res, 409, "As cores da face exigem chapas diferentes. Separe os caminhos vetoriais por material antes de aprovar o nesting.");
   await db.update(estudioMapeamentoCoresCotacao).set({
     aprovado: true,
     aprovadoPor: session.user.id,

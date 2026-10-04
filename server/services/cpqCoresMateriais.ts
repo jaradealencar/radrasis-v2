@@ -27,6 +27,8 @@ export type CpqCorCatalogo = {
   cmykY?: string | number | null;
   cmykK?: string | number | null;
   transmissaoLuzPct?: string | number | null;
+  transparenciaTipo?: "opaca" | "translucida" | "transparente" | null;
+  principal?: boolean;
   precoM2?: string | number | null;
   ativo?: boolean;
 };
@@ -50,6 +52,7 @@ export type CpqCorrespondenciaCorInput = {
   baseImpressao: "branco" | "transparente";
   laminar: boolean;
   precos: CpqPrecoImpressaoCor;
+  construcaoFace?: "acrilico_total" | "outra" | "nao_informada";
 };
 
 export type CpqCorrespondenciaCorResult = {
@@ -64,6 +67,11 @@ export type CpqCorrespondenciaCorResult = {
   areaM2: number | null;
   tipoSugestao: "chapa" | "imprimax" | "impresso" | "pendente";
   chapaId: number | null;
+  chapaMateriaPrimaId: number | null;
+  chapaBaseId: number | null;
+  chapaBaseMateriaPrimaId: number | null;
+  requerChapaBase: boolean;
+  requerConfirmacaoConstrucao: boolean;
   imprimaxAdesivoId: number | null;
   deltaE00: number | null;
   custoEstimado: number | null;
@@ -71,6 +79,7 @@ export type CpqCorrespondenciaCorResult = {
   avisos: string[];
   alternativas: Array<Record<string, unknown>>;
   precificacao: Record<string, unknown> | null;
+  composicaoFace: Record<string, unknown> | null;
 };
 
 const DELTA_E_CHAPA_DIRETA = 2;
@@ -345,6 +354,8 @@ function candidatos(
       pantoneCode: item.pantoneCode ?? null,
       deltaE00: deltaE == null ? null : Number(deltaE.toFixed(3)),
       transmissaoLuzPct: valor(item.transmissaoLuzPct),
+      transparenciaTipo: item.transparenciaTipo ?? null,
+      principal: item.principal ?? false,
       precoM2: valor(item.precoM2),
       compativelIluminacao: luz.ok,
       avisosIluminacao: luz.avisos,
@@ -352,6 +363,49 @@ function candidatos(
     };
   }).filter(item => item.compativelIluminacao && item.deltaE00 != null)
     .sort((a, b) => a.deltaE00! - b.deltaE00!);
+}
+
+function planoComposicaoFace(input: CpqCorrespondenciaCorInput, avisos: string[]) {
+  const requerChapaBase = input.iluminacao !== "sem_iluminacao" || input.construcaoFace === "acrilico_total";
+  const requerConfirmacaoConstrucao = input.iluminacao === "sem_iluminacao"
+    && input.construcaoFace !== "acrilico_total"
+    && input.construcaoFace !== "outra";
+  const basesTransparentes = input.chapas.filter(item => item.ativo !== false
+    && item.transparenciaTipo === "transparente"
+    && item.mubisysMateriaPrimaId != null
+    && luzCompativel(item, input).ok);
+  const basesPorMaterial = new Map<number, CpqCorCatalogo[]>();
+  for (const chapa of basesTransparentes) {
+    const id = Number(chapa.mubisysMateriaPrimaId);
+    basesPorMaterial.set(id, [...(basesPorMaterial.get(id) ?? []), chapa]);
+  }
+  const basesPreferenciais = [...basesPorMaterial.values()].filter(opcoes => opcoes.some(item => item.principal));
+  const baseSelecionada = basesPreferenciais.length === 1
+    ? basesPreferenciais[0].find(item => item.principal)!
+    : basesPorMaterial.size === 1
+      ? [...basesPorMaterial.values()][0].find(item => item.principal) ?? [...basesPorMaterial.values()][0][0]
+      : null;
+  if (requerChapaBase && !baseSelecionada)
+    avisos.push(basesPorMaterial.size > 1
+      ? "Há mais de uma matéria-prima transparente compatível; marque uma como principal ou confirme qual deve ser usada na face."
+      : "Não há chapa transparente cadastrada e compatível; classifique a matéria-prima da face para compor acrílico transparente + adesivo.");
+  if (requerConfirmacaoConstrucao)
+    avisos.push("Confirme se a face é de acrílico ou de outro substrato para definir a composição da região sem correspondência sólida.");
+  return {
+    chapaBaseId: baseSelecionada?.id ?? null,
+    chapaBaseMateriaPrimaId: baseSelecionada?.mubisysMateriaPrimaId ?? null,
+    requerChapaBase,
+    requerConfirmacaoConstrucao,
+    composicaoFace: requerChapaBase && baseSelecionada ? {
+      papel: "Face",
+      base: "chapa_transparente",
+      chapaId: baseSelecionada.id,
+      mubisysMateriaPrimaId: baseSelecionada.mubisysMateriaPrimaId,
+      transparenciaTipo: baseSelecionada.transparenciaTipo,
+      transmissaoLuzPct: valor(baseSelecionada.transmissaoLuzPct),
+      aplicarAutomaticamenteSeFaceUnica: true,
+    } : null,
+  };
 }
 
 function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorrespondenciaCorResult {
@@ -377,6 +431,7 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
   if (impressao == null) avisos.push("Custo de impressão digital por m² não cadastrado.");
   if (input.laminar && laminacao == null) avisos.push("Custo de laminação por m² não cadastrado.");
   const unit = complete ? vinil! + impressao! + laminacao! : null;
+  const planoFace = planoComposicaoFace(input, avisos);
   return {
     regionKey: input.regiao.key,
     tipoCor: input.regiao.tipoCor,
@@ -389,6 +444,8 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
     areaM2: area == null ? null : Number(area.toFixed(6)),
     tipoSugestao: "impresso",
     chapaId: null,
+    chapaMateriaPrimaId: null,
+    ...planoFace,
     imprimaxAdesivoId: null,
     deltaE00: null,
     custoEstimado: unit != null ? Number((unit * area!).toFixed(4)) : null,
@@ -444,8 +501,14 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: area,
       corRgb, cmyk,
       tipoSugestao: "chapa", chapaId: Number(direta.id), imprimaxAdesivoId: null,
+      chapaMateriaPrimaId: direta.mubisysMateriaPrimaId == null ? null : Number(direta.mubisysMateriaPrimaId),
+      chapaBaseId: null, chapaBaseMateriaPrimaId: null, requerChapaBase: false, requerConfirmacaoConstrucao: false,
       deltaE00: direta.deltaE00, custoEstimado: null, unidadeCusto: null, avisos,
       alternativas: chapa.slice(0, 5).map(({ raw: _raw, ...item }) => item), precificacao: null,
+      composicaoFace: direta.mubisysMateriaPrimaId == null ? null : {
+        papel: "Face", base: "chapa_colorida", chapaId: direta.id,
+        mubisysMateriaPrimaId: Number(direta.mubisysMateriaPrimaId), aplicarAutomaticamenteSeFaceUnica: true,
+      },
     };
   }
 
@@ -457,6 +520,7 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
     if (area == null) avisos.push("Área física não calculada; confirme escala antes de fechar consumo do vinil.");
     if (price == null) avisos.push("Preço de compra do adesivo não cadastrado; o custo desta região está pendente.");
     avisos.push("Sugestão de vinil sólido Imprimax pela menor diferença CIEDE2000; confirme código e amostra física.");
+    const planoFace = planoComposicaoFace(input, avisos);
     return {
       regionKey: target.key, tipoCor: target.tipoCor, corHex: target.corHex ?? null,
       pantoneCode: target.pantoneCode ?? null,
@@ -464,6 +528,8 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: area,
       corRgb, cmyk,
       tipoSugestao: "imprimax", chapaId: null, imprimaxAdesivoId: Number(solido.id),
+      chapaMateriaPrimaId: null,
+      ...planoFace,
       deltaE00: solido.deltaE00,
       custoEstimado: area != null && price != null ? Number((area * price).toFixed(4)) : null,
       unidadeCusto: price == null ? null : "m2", avisos,

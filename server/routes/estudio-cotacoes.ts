@@ -41,6 +41,11 @@ const mapeamentoRegiaoSchema = z.object({
   areaM2: z.number().finite().nonnegative().nullable(),
   tipoSugestao: z.enum(["chapa", "imprimax", "impresso", "pendente"]),
   chapaId: z.number().int().positive().nullable(),
+  chapaMateriaPrimaId: z.number().int().positive().nullable(),
+  chapaBaseId: z.number().int().positive().nullable(),
+  chapaBaseMateriaPrimaId: z.number().int().positive().nullable(),
+  requerChapaBase: z.boolean(),
+  requerConfirmacaoConstrucao: z.boolean(),
   imprimaxAdesivoId: z.number().int().positive().nullable(),
   deltaE00: z.number().finite().nonnegative().nullable(),
   custoEstimado: z.number().finite().nonnegative().nullable(),
@@ -48,6 +53,7 @@ const mapeamentoRegiaoSchema = z.object({
   avisos: z.array(z.string().max(1000)).max(20),
   alternativas: z.array(z.record(z.string(), z.unknown())).max(5),
   precificacao: z.record(z.string(), z.unknown()).nullable(),
+  composicaoFace: z.record(z.string(), z.unknown()).nullable(),
 }).strict();
 
 const factibilidadeSchema = z.object({
@@ -539,6 +545,7 @@ async function validarMapeamentoCoresPersistido(
     return child;
   });
   let custoPersistido = 0;
+  const materiaisFace = new Set<number>();
   for (const row of saved) {
     const region = byKey.get(row.regionKey);
     const details = row.detalhesJson as Record<string, unknown>;
@@ -563,12 +570,35 @@ async function validarMapeamentoCoresPersistido(
       || stableJson(region.precificacao) !== stableJson(details.precificacao ?? null)) {
       return "Os dados de cor, área, material ou custo foram alterados depois da aprovação. Refazer a análise de cores.";
     }
+    if (region.chapaMateriaPrimaId !== (details.chapaMateriaPrimaId ?? null)
+      || region.chapaBaseId !== (details.chapaBaseId ?? null)
+      || region.chapaBaseMateriaPrimaId !== (details.chapaBaseMateriaPrimaId ?? null)
+      || region.requerChapaBase !== (details.requerChapaBase ?? false)
+      || region.requerConfirmacaoConstrucao !== (details.requerConfirmacaoConstrucao ?? false)
+      || stableJson(region.composicaoFace) !== stableJson(details.composicaoFace ?? null)) {
+      return "A composição sugerida para a face foi alterada depois da análise. Refazer o mapeamento de cores.";
+    }
+    if (details.requerConfirmacaoConstrucao === true
+      || (details.requerChapaBase === true && details.chapaBaseMateriaPrimaId == null)
+      || (row.tipoSugestao === "chapa" && details.chapaMateriaPrimaId == null)) {
+      return "Há uma pergunta de composição da face sem resposta. Resolva-a antes de emitir.";
+    }
+    const materialFaceEsperado = row.tipoSugestao === "chapa"
+      ? details.chapaMateriaPrimaId
+      : details.requerChapaBase === true ? details.chapaBaseMateriaPrimaId : null;
+    if (typeof materialFaceEsperado === "number") materiaisFace.add(materialFaceEsperado);
+    if (typeof materialFaceEsperado === "number"
+      && !snapshot.materiais.some(material => material.mubisysMateriaPrimaId === materialFaceEsperado)) {
+      return "A chapa definida pela análise de cor não participa da composição da cotação. Reaplique a composição e refaça o nesting.";
+    }
     if (region.tipoSugestao === "imprimax" || region.tipoSugestao === "impresso") {
       if (region.areaM2 == null || region.custoEstimado == null)
         return "Há adesivo sem área ou custo cadastrado. Atualize os dados antes de emitir.";
       custoPersistido += region.custoEstimado;
     }
   }
+  if (materiaisFace.size > 1)
+    return "As cores da face dependem de chapas distintas e ainda precisam de nesting separado por caminho vetorial.";
   if (Math.abs(custoPersistido - mapping.custoAdicional) > 0.0002)
     return "O custo adicional de cores não corresponde aos valores aprovados no servidor.";
   return null;

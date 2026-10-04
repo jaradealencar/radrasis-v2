@@ -20,7 +20,9 @@ import { fmtBrl, fmtDateTime, fmtNum } from "@/lib/format";
 import { enviarArquivo } from "@/lib/upload";
 import { gerarPdfProposta } from "@/lib/pdfProposta";
 import { useAuth } from "@/hooks/useAuth";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import ChartTooltip from "@/components/ChartTooltip";
+import { chartColor } from "@/lib/chartColors";
 import ParametrosDecupagem from "./ParametrosDecupagem";
 import DashboardOrcamentos from "./DashboardOrcamentos";
 
@@ -335,6 +337,7 @@ function ListaPropostas({ onSelecionar }: { onSelecionar: (id: number) => void }
     onSuccess: (r) => {
       toast.success("Proposta criada");
       utils.propostas.listar.invalidate();
+      utils.propostas.dashboard.invalidate();
       setCriando(false);
       setClienteCnpj("");
       setClienteNome("");
@@ -476,7 +479,9 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
     onSuccess: () => {
       toast.success("Proposta atualizada");
       utils.propostas.obter.invalidate({ id });
+      utils.propostas.decupagemObter.invalidate({ propostaId: id });
       utils.propostas.listar.invalidate();
+      utils.propostas.dashboard.invalidate();
     },
     onError: (e) => toast.error("Erro ao salvar", { description: e.message }),
   });
@@ -485,6 +490,7 @@ function DetalheProposta({ id, onVoltar }: { id: number; onVoltar: () => void })
     onSuccess: () => {
       toast.success("Proposta removida");
       utils.propostas.listar.invalidate();
+      utils.propostas.dashboard.invalidate();
       onVoltar();
     },
     onError: (e) => toast.error("Erro ao remover", { description: e.message }),
@@ -725,12 +731,19 @@ function DecupadorProposta({ propostaId }: { propostaId: number }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Decupador de preço</CardTitle>
-        <p className="text-xs text-muted-foreground">Visão interna de gestor/admin. Valores multiplicados pela quantidade do item; o cliente não recebe esta decomposição.</p>
+        <p className="text-xs text-muted-foreground">Visão interna de gestor, admin e master. Valores multiplicados pela quantidade do item.</p>
       </CardHeader>
       <CardContent className="space-y-4">
         {data.map((item) => {
           const decupagem = item.decupagem as Record<string, any> | null;
           const quantidade = Number(item.quantidade);
+          const dadosGrafico = decupagem?.complete === true ? componentes.flatMap(([rotulo, chave], index) => {
+            const valor = Number(decupagem[chave]?.valor) * quantidade;
+            return Number.isFinite(valor) && valor > 0
+              ? [{ nome: rotulo, valor, cor: chartColor(index) }]
+              : [];
+          }) : [];
+          const lucroLiquido = Number(decupagem?.lucroLiquido?.valor) * quantidade;
           return (
             <div key={item.id} className="rounded-lg border p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -745,20 +758,39 @@ function DecupadorProposta({ propostaId }: { propostaId: number }) {
                   </ul>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader><TableRow><TableHead>Componente</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="text-right">% do preço</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {componentes.map(([rotulo, chave]) => {
-                      const componente = decupagem[chave];
-                      if (!componente) return null;
-                      return <TableRow key={chave}>
-                        <TableCell className={chave === "lucroLiquido" ? "font-semibold" : ""}>{rotulo}</TableCell>
-                        <TableCell className="text-right">{fmtBrl(Number(componente.valor) * quantidade)}</TableCell>
-                        <TableCell className="text-right">{fmtNum(Number(componente.percentual), 2)}%</TableCell>
-                      </TableRow>;
-                    })}
-                  </TableBody>
-                </Table>
+                <div className="space-y-3">
+                  {dadosGrafico.length > 0 && <figure>
+                    <figcaption className="mb-2 text-sm font-medium">Composição do preço em reais</figcaption>
+                    <div role="img" aria-label={`Gráfico de barras da composição do preço de ${item.produtoNome}. Valores detalhados na tabela abaixo.`} className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={dadosGrafico} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" tickFormatter={(valor) => fmtBrl(Number(valor))} />
+                          <YAxis type="category" dataKey="nome" width={160} tick={{ fontSize: 11 }} />
+                          <RechartsTooltip content={<ChartTooltip format={fmtBrl} />} />
+                          <Bar dataKey="valor" name="Valor" radius={[0, 4, 4, 0]}>
+                            {dadosGrafico.map((componente) => <Cell key={componente.nome} fill={componente.cor} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    {lucroLiquido < 0 && <p className="text-sm font-medium text-destructive">Prejuízo líquido: {fmtBrl(Math.abs(lucroLiquido))}. O valor negativo consta na tabela.</p>}
+                  </figure>}
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Componente</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="text-right">% do preço</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {componentes.map(([rotulo, chave]) => {
+                        const componente = decupagem[chave];
+                        if (!componente) return null;
+                        return <TableRow key={chave}>
+                          <TableCell className={chave === "lucroLiquido" ? "font-semibold" : ""}>{rotulo}</TableCell>
+                          <TableCell className="text-right">{fmtBrl(Number(componente.valor) * quantidade)}</TableCell>
+                          <TableCell className="text-right">{fmtNum(Number(componente.percentual), 2)}%</TableCell>
+                        </TableRow>;
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </div>
           );
@@ -926,6 +958,8 @@ function ItensProposta({
     onSuccess: () => {
       toast.success("Item adicionado");
       utils.propostas.obter.invalidate({ id: propostaId });
+      utils.propostas.decupagemObter.invalidate({ propostaId });
+      utils.propostas.dashboard.invalidate();
       setProdutoSelecionadoId("");
       setVariacoesSelecionadas([]);
       setNestingSourceId("");
@@ -945,13 +979,19 @@ function ItensProposta({
   const remover = trpc.propostas.itemRemover.useMutation({
     onSuccess: () => {
       utils.propostas.obter.invalidate({ id: propostaId });
+      utils.propostas.decupagemObter.invalidate({ propostaId });
+      utils.propostas.dashboard.invalidate();
       setItensSelecionados([]);
     },
     onError: (e) => toast.error("Erro ao remover", { description: e.message }),
   });
 
   const atualizarItem = trpc.propostas.itemAtualizar.useMutation({
-    onSuccess: () => utils.propostas.obter.invalidate({ id: propostaId }),
+    onSuccess: () => {
+      utils.propostas.obter.invalidate({ id: propostaId });
+      utils.propostas.decupagemObter.invalidate({ propostaId });
+      utils.propostas.dashboard.invalidate();
+    },
     onError: (e) => toast.error("Erro ao salvar a descrição", { description: e.message }),
   });
 

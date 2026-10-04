@@ -33,7 +33,7 @@ export default function DashboardOrcamentos() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Painel executivo de orçamentos" description="Emissão, conversão, rentabilidade, produtos e desempenho por vendedor." icon={TrendingUp} />
+      <PageHeader title="Painel executivo de orçamentos" description="Emissão, conversão, rentabilidade, itens e desempenho por vendedor." icon={TrendingUp} />
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 pt-4">
           <div className="space-y-1"><Label htmlFor="painel-de">De</Label><Input id="painel-de" type="date" value={de} onChange={(event) => setDe(event.target.value)} /></div>
@@ -47,15 +47,15 @@ export default function DashboardOrcamentos() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Propostas geradas" value={fmtNum(data.propostas, 0)} icon={FileText} color={chartColor(0)} variant="border" />
           <KpiCard label="Valor emitido" value={fmtBrl(data.valorEmitido)} icon={Wallet} color={chartColor(1)} variant="border" sub={"Convertido: " + fmtBrl(data.valorConvertido)} />
-          <KpiCard label="Margem média" value={fmtBrl(data.margemMediaValor)} icon={Percent} color={chartColor(2)} variant="border" sub={fmtNum(data.margemMediaPct, 2) + "% das propostas com decupagem completa"} />
+          <KpiCard label="Margem média das propostas decupadas" value={fmtBrl(data.margemMediaValor)} icon={Percent} color={chartColor(2)} variant="border" sub={fmtNum(data.margemMediaPct, 2) + "% · apenas propostas com decupagem completa"} />
           <KpiCard label="Ticket médio" value={fmtBrl(data.ticketMedio)} icon={TrendingUp} color={chartColor(3)} variant="border" />
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle className="text-base">Faturamento cotado por margem</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Valor cotado por margem</CardTitle><p className="text-xs text-muted-foreground">Apenas propostas com decupagem completa.</p></CardHeader>
             <CardContent>
-              {data.porMargem.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Ainda não há decupagens completas neste período.</p> : <div className="h-72">
+              {data.porMargem.every((faixa) => faixa.valor === 0) ? <p className="py-8 text-center text-sm text-muted-foreground">Ainda não há propostas com decupagem completa neste período.</p> : <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.porMargem} margin={{ top: 12, right: 12, bottom: 4, left: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -81,7 +81,7 @@ export default function DashboardOrcamentos() {
           </Card>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-3">
           <Card>
             <CardHeader><CardTitle className="text-base">Produtos mais orçados</CardTitle></CardHeader>
             <CardContent className="overflow-x-auto"><Table>
@@ -95,6 +95,13 @@ export default function DashboardOrcamentos() {
               <TableHeader><TableRow><TableHead>Insumo</TableHead><TableHead>Linhas</TableHead><TableHead>Quantidade</TableHead></TableRow></TableHeader>
               <TableBody>{data.materiais.map((item) => <TableRow key={item.nome}><TableCell>{item.nome}</TableCell><TableCell>{fmtNum(item.ocorrencias, 0)}</TableCell><TableCell>{fmtNum(item.quantidade, 3)}</TableCell></TableRow>)}</TableBody>
             </Table>{data.materiais.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground">Nenhuma matéria-prima no período.</p>}</CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-base">Serviços mais orçados</CardTitle></CardHeader>
+            <CardContent className="overflow-x-auto"><Table>
+              <TableHeader><TableRow><TableHead>Serviço</TableHead><TableHead>Linhas</TableHead><TableHead>Quantidade</TableHead></TableRow></TableHeader>
+              <TableBody>{data.servicos.map((item) => <TableRow key={item.nome}><TableCell>{item.nome}</TableCell><TableCell>{fmtNum(item.ocorrencias, 0)}</TableCell><TableCell>{fmtNum(item.quantidade, 3)}</TableCell></TableRow>)}</TableBody>
+            </Table>{data.servicos.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground">Nenhum serviço no período.</p>}</CardContent>
           </Card>
         </div>
       </>}

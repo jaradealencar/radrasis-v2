@@ -13,7 +13,7 @@
  * em 21/09/2026. Idempotente: só grava onde telefone ainda é NULL.
  */
 import { getPool } from "../db/db-connection";
-import { listarOSMubiSys } from "../integrations/mubisys-client";
+import { listarOSMubiSys, buscarClientePorId } from "../integrations/mubisys-client";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const JANELA_DIAS = 7;
@@ -38,6 +38,10 @@ export function primeiroTelefone(os: any): string {
   const ativo = (c: any) => String(c?.status ?? "").toLowerCase() !== "inativo";
   const escolhido = contatos.find(c => numeroDe(c) && ativo(c)) ?? contatos.find(c => numeroDe(c));
   return numeroDe(escolhido);
+}
+
+export function primeiroTelefoneCliente(cliente: any): string {
+  return cliente?.celular || cliente?.telefone_pri || cliente?.telefone_sec || "";
 }
 
 export function fatiarMesEmJanelas(mes: number, ano: number, hoje: Date = new Date()): JanelaBackfill[] {
@@ -116,4 +120,64 @@ export function janelaValida(j: JanelaBackfill, hoje: Date = new Date()): boolea
   if (dias > JANELA_DIAS) return false;
   const limiteAntigo = new Date(hoje.getFullYear(), hoje.getMonth() - MESES_BACKFILL_PADRAO, 1);
   return di >= limiteAntigo && df <= new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
+}
+
+/** Plano de preenchimento de orçamentos: busca meses com orçamentos sem telefone. */
+export async function planoBackfillTelefoneOrcamentos(totalMeses = MESES_BACKFILL_PADRAO, hoje: Date = new Date()): Promise<MesBackfill[]> {
+  const chaveAtual = hoje.getFullYear() * 12 + hoje.getMonth() + 1;
+  const chaveInicial = chaveAtual - (totalMeses - 1);
+  const { rows } = await getPool().query(
+    `SELECT mes, ano, count(*)::int AS total, (count(*) FILTER (WHERE telefone IS NULL))::int AS pendentes
+       FROM historico_orcamentos WHERE (ano * 12 + mes) BETWEEN $1 AND $2 GROUP BY mes, ano`,
+    [chaveInicial, chaveAtual],
+  );
+  const porMes = new Map<number, { total: number; pendentes: number }>(rows.map((r: any) => [r.ano * 12 + r.mes, { total: r.total, pendentes: r.pendentes }]));
+
+  const plano: MesBackfill[] = [];
+  for (let i = 0; i < totalMeses; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const mes = d.getMonth() + 1, ano = d.getFullYear();
+    const dados = porMes.get(ano * 12 + mes) ?? { total: 0, pendentes: 0 };
+    const precisa = dados.pendentes > Math.max(5, Math.round(dados.total * 0.05));
+    plano.push({ mes, ano, ...dados, precisa, janelas: fatiarMesEmJanelas(mes, ano, hoje) });
+  }
+  return plano;
+}
+
+/** Preenche telefone do cadastro de clientes do MubiSys para orçamentos de um mês (uma lote de até 100 orçamentos). */
+export async function completarTelefonesOrcamentosMes(mes: number, ano: number): Promise<{ encontrados: number; atualizadas: number }> {
+  const { rows } = await getPool().query(
+    `SELECT "orcNumero", cliente_id FROM historico_orcamentos WHERE mes = $1 AND ano = $2 AND telefone IS NULL LIMIT 100`,
+    [mes, ano],
+  );
+
+  let encontrados = 0, atualizadas = 0;
+  const mapa = new Map<string, string>();
+
+  for (const row of rows) {
+    try {
+      const cliente = await buscarClientePorId(row.cliente_id);
+      const tel = cliente ? primeiroTelefoneCliente(cliente) : "";
+      if (tel) {
+        mapa.set(row.orcNumero, tel);
+        encontrados++;
+      }
+    } catch {
+      // Pula orçamentos onde o MubiSys não responde — tenta de novo depois
+    }
+  }
+
+  if (mapa.size > 0) {
+    const numeros = [...mapa.keys()];
+    const telefones = numeros.map(n => mapa.get(n)!);
+    const r = await getPool().query(
+      `UPDATE historico_orcamentos h SET telefone = v.tel
+         FROM unnest($1::text[], $2::text[]) AS v(orc, tel)
+        WHERE h."orcNumero" = v.orc AND h.telefone IS NULL`,
+      [numeros, telefones],
+    );
+    atualizadas = r.rowCount ?? 0;
+  }
+
+  return { encontrados, atualizadas };
 }

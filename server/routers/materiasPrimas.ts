@@ -27,6 +27,7 @@ const formatosChapaInput = z.array(z.object({
   cmykY: z.number().finite().min(0).max(100).nullable().optional(),
   cmykK: z.number().finite().min(0).max(100).nullable().optional(),
   transmissaoLuzPct: z.number().finite().min(0).max(100).nullable().optional(),
+  transparenciaTipo: z.enum(["opaca", "translucida", "transparente"]).nullable().optional(),
   ativo: z.boolean().default(true),
   principal: z.boolean().default(false),
 }).strict().superRefine((input, context) => {
@@ -85,6 +86,7 @@ export const materiasPrimasRouter = router({
             cmykY: chapa.cmykY == null ? null : Number(chapa.cmykY),
             cmykK: chapa.cmykK == null ? null : Number(chapa.cmykK),
             transmissaoLuzPct: chapa.transmissaoLuzPct == null ? null : Number(chapa.transmissaoLuzPct),
+            transparenciaTipo: chapa.transparenciaTipo,
             ativo: chapa.ativo,
             principal: chapa.principal,
           })),
@@ -230,6 +232,7 @@ export const materiasPrimasRouter = router({
             cmykY: usaDadosChapa && formato.cmykY != null ? String(formato.cmykY) : null,
             cmykK: usaDadosChapa && formato.cmykK != null ? String(formato.cmykK) : null,
             transmissaoLuzPct: usaDadosChapa && formato.transmissaoLuzPct != null ? String(formato.transmissaoLuzPct) : null,
+            transparenciaTipo: usaDadosChapa ? formato.transparenciaTipo ?? null : null,
             ativo: usaDadosChapa && formato.ativo,
             principal: usaDadosChapa && formato.ativo && formato === formatoPrincipal,
             updatedAt: now,

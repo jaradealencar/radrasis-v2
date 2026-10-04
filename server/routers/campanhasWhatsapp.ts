@@ -19,6 +19,7 @@ import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import { completarTelefonesJanela, planoBackfillTelefone } from "../sync/telefone-historico";
+import { completarTelefonesOrcamentosMes, planoBackfillTelefoneOrcamentos } from "../sync/telefone-historico";
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
   campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
@@ -1162,6 +1163,26 @@ export const campanhasWhatsappRouter = router({
         campanhaId: input.campanhaId, dataAgendada: input.dataAgendada, observacoes: input.observacoes || null,
       }).returning();
       return row;
+    }),
+
+  /**
+   * Telefones de orçamentos: busca pelo cadastro de clientes do MubiSys (cliente_id), um mês por vez.
+   * Semelhante a `completarTelefonesHistorico`, mas preenche `historico_orcamentos.telefone`.
+   */
+  completarTelefonesOrcamentos: campanhasProcedure
+    .input(z.object({ ignorar: z.array(z.string().regex(/^d{4}-d{2}$/)).max(80).default([]) }))
+    .mutation(async ({ input }) => {
+      const plano = await planoBackfillTelefoneOrcamentos(MESES_COMPLETAR_TELEFONES);
+      const chave = (m: { ano: number; mes: number }) => `${m.ano}-${String(m.mes).padStart(2, "0")}`;
+      const faltam = plano.filter(m => m.precisa && !input.ignorar.includes(chave(m)));
+      const mes = faltam[0];
+      if (!mes) return { processado: null, mesesRestantes: 0 };
+
+      const r = await completarTelefonesOrcamentosMes(mes.mes, mes.ano);
+      return {
+        processado: { chave: chave(mes), ano: mes.ano, mes: mes.mes, pendentesAntes: mes.pendentes, encontrados: r.encontrados, atualizadas: r.atualizadas, janelasComErro: 0 },
+        mesesRestantes: faltam.length - 1,
+      };
     }),
 
   /** O botão "disparada"/"não disparada"/"voltar a planejado" do calendário e do relatório. */

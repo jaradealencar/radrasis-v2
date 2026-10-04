@@ -30,6 +30,7 @@ const chapaInput = z
     cmykY: z.number().finite().min(0).max(100).nullable().optional(),
     cmykK: z.number().finite().min(0).max(100).nullable().optional(),
     transmissaoLuzPct: z.number().finite().min(0).max(100).nullable().optional(),
+    transparenciaTipo: z.enum(["opaca", "translucida", "transparente"]).nullable().optional(),
     principal: z.boolean().optional().default(false),
   })
   .strict()
@@ -202,6 +203,7 @@ async function salvarChapa(
     cmykY: data.cmykY == null ? null : String(data.cmykY),
     cmykK: data.cmykK == null ? null : String(data.cmykK),
     transmissaoLuzPct: data.transmissaoLuzPct == null ? null : String(data.transmissaoLuzPct),
+    transparenciaTipo: data.transparenciaTipo ?? null,
     ativo: true,
     updatedAt: new Date(),
   };

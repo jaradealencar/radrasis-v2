@@ -91,10 +91,57 @@ const basePrecoPropostaSchema = z.object({
   configuracao: configuracaoItemSchema,
 }).strict();
 
+async function validarCustosCatalogo(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  configuracao: z.infer<typeof configuracaoItemSchema>,
+): Promise<void> {
+  const linhas = configuracao.materiais.filter((material) => material.incluir);
+  if (!linhas.length) return;
+  const linhasCatalogo = linhas.filter((linha) => linha.mubisysMateriaPrimaId != null);
+  const catalogo = linhasCatalogo.length
+    ? new Map((await listarMateriasPrimas()).map((material) => [material.id, Number(material.valor_custo)]))
+    : new Map<number, number>();
+  let materiaisOrigem: z.infer<typeof materialConfiguracaoSchema>[] = [];
+  if (linhas.some((linha) => linha.nesting)) {
+    if (!configuracao.nestingSourceId) throw new Error("O material de nesting precisa estar vinculado a uma cotação CPQ salva.");
+    const registros = await db.select({ observacoes: propostas.observacoes }).from(propostas)
+      .where(sql`left(${propostas.observacoes}, ${PREFIXO_COTACAO_ESTUDIO.length}) = ${PREFIXO_COTACAO_ESTUDIO}`);
+    const origem = registros.map((registro) => lerSnapshotEstudio(registro.observacoes))
+      .find((snapshot) => snapshot?.sourceId === configuracao.nestingSourceId);
+    if (!origem || !Array.isArray(origem.materiais)) throw new Error("A cotação de origem do nesting não foi encontrada.");
+    materiaisOrigem = origem.materiais.flatMap((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const parsed = materialConfiguracaoSchema.safeParse({ ...(item as Record<string, unknown>), incluir: true });
+      return parsed.success ? [parsed.data] : [];
+    });
+  }
+  for (const linha of linhas) {
+    if (linha.nesting && linha.mubisysMateriaPrimaId == null) throw new Error("O nesting não identifica a matéria-prima de origem.");
+    if (linha.mubisysMateriaPrimaId == null) continue; // Material manual fica sujeito à aprovação humana assinada.
+    const custoAtual = catalogo.get(linha.mubisysMateriaPrimaId);
+    if (custoAtual == null || !Number.isFinite(custoAtual) || custoAtual <= 0) {
+      throw new Error(`O custo de ${linha.nome} não está disponível no catálogo atual. Atualize o material antes de aprovar o preço.`);
+    }
+    if (linha.nesting) {
+      const original = materiaisOrigem.find((material) => material.mubisysMateriaPrimaId === linha.mubisysMateriaPrimaId
+        && material.nesting?.idChapa === linha.nesting?.idChapa && material.nome === linha.nome
+        && Math.abs(material.custoUnitario - linha.custoUnitario) <= 0.02);
+      if (!original || !original.nesting
+        || Math.abs(original.nesting.custoUnitarioCatalogo - linha.nesting.custoUnitarioCatalogo) > 0.02
+        || Math.abs(custoAtual - original.nesting.custoUnitarioCatalogo) > 0.02) {
+        throw new Error(`O custo de nesting de ${linha.nome} não corresponde à cotação de origem e ao catálogo atual.`);
+      }
+    } else if (Math.abs(custoAtual - linha.custoUnitario) > 0.02) {
+      throw new Error(`O custo de ${linha.nome} mudou no MubiSys. Atualize a composição e solicite nova aprovação.`);
+    }
+  }
+}
+
 function calcularContextoPrecoProposta(args: {
-  produto: { nome: string; percentualCustoFixo: string; custoMaoObra: string | null; idPrecificacao: number | null };
+  produto: { nome: string; custoMaoObra: string | null; idPrecificacao: number | null };
   configuracao: z.infer<typeof configuracaoItemSchema>;
   precoAtual: number;
+  taxas: { custoFixoPct: number; comissaoPct: number; impostoPct: number; custoFinanceiroPct: number };
 }) {
   const medidaPorFormula: Record<z.infer<typeof materialConfiguracaoSchema>["formulaType"], number | null> = {
     areaTotal: args.configuracao.medidas.areaTotalNestingM2 ?? args.configuracao.medidas.areaGeralM2,
@@ -128,19 +175,54 @@ function calcularContextoPrecoProposta(args: {
   }
   if (args.produto.custoMaoObra == null) throw new Error("Cadastre o custo de mão de obra direta no produto antes de sugerir ou aprovar o preço.");
   const custoMateriais = itens.reduce((soma, material) => soma + material.custoTotal, 0);
-  const percentualFixo = Number(args.produto.percentualCustoFixo) || 0;
   const custoMaoObra = Number(args.produto.custoMaoObra);
-  const custoDireto = Math.round((custoMateriais * (1 + percentualFixo / 100) + custoMaoObra) * 100) / 100;
-  if (custoDireto <= 0) throw new Error("O custo direto está zerado. Revise a composição e os custos antes de continuar.");
-  const margemAtual = args.precoAtual > 0 ? ((args.precoAtual - custoDireto) / args.precoAtual) * 100 : null;
+  const custoBase = custoMateriais + custoMaoObra;
+  if (!Number.isFinite(custoBase) || custoBase <= 0) throw new Error("O custo direto está zerado. Revise a composição e os custos antes de continuar.");
+  const somaTaxas = Object.values(args.taxas).reduce((total, taxa) => total + taxa, 0);
+  if (!Number.isFinite(somaTaxas) || Object.values(args.taxas).some((taxa) => taxa < 0 || taxa > 100) || somaTaxas >= 100) {
+    throw new Error("As taxas somadas impedem um preço com margem líquida não negativa. Revise os parâmetros comerciais.");
+  }
+  // Verificamos o piso bruto em centavos porque cada parcela da decupagem
+  // é arredondada individualmente.
+  const fracaoLiquida = 1 - somaTaxas / 100;
+  let pisoPreco = Math.ceil((custoBase / fracaoLiquida - 0.00000001) * 100) / 100;
+  if (!Number.isFinite(pisoPreco) || pisoPreco > 9_999_999_999.99) throw new Error("O preço mínimo excede o limite monetário da proposta.");
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const calculo = decuparPreco({ precoVenda: pisoPreco, materiaPrima: custoMateriais, maoDeObra: custoMaoObra, ...args.taxas });
+    if (calculo.lucroLiquido.valor >= 0) break;
+    pisoPreco = Math.round((pisoPreco + Math.max(0.01, Math.ceil(-calculo.lucroLiquido.valor / fracaoLiquida * 100) / 100)) * 100) / 100;
+    if (pisoPreco > 9_999_999_999.99) throw new Error("O preço mínimo excede o limite monetário da proposta.");
+  }
+  if (decuparPreco({ precoVenda: pisoPreco, materiaPrima: custoMateriais, maoDeObra: custoMaoObra, ...args.taxas }).lucroLiquido.valor < 0) {
+    throw new Error("Não foi possível determinar o preço mínimo com estas taxas.");
+  }
+  const custoDireto = custoBase;
+  const margemAtual = args.precoAtual > 0
+    ? decuparPreco({ precoVenda: args.precoAtual, materiaPrima: custoMateriais, maoDeObra: custoMaoObra, ...args.taxas }).lucroLiquido.percentual
+    : null;
   return precoContextoSchema.parse({
     produto: args.produto.nome,
     custoDireto,
+    precoMinimo: pisoPreco,
+    taxasSobreVendaPct: somaTaxas,
     precoAtual: args.precoAtual,
-    regra: `Custo das matérias-primas + mão de obra de ${custoMaoObra} + ${percentualFixo}% de custo fixo${args.produto.idPrecificacao ? `; produto vinculado à regra ${args.produto.idPrecificacao} da Tabela de Preços, cuja faixa ainda requer revisão` : "; sem regra de margem resolvida automaticamente"}`,
+    regra: `Custo direto real ${custoBase.toFixed(2)}; preço mínimo bruto ${pisoPreco.toFixed(2)} após taxas: fixo ${args.taxas.custoFixoPct}%, comissão ${args.taxas.comissaoPct}%, imposto ${args.taxas.impostoPct}%, financeiro ${args.taxas.custoFinanceiroPct}%${args.produto.idPrecificacao ? `; regra ${args.produto.idPrecificacao} da Tabela de Preços requer revisão da faixa` : ""}`,
     margemAtualPct: margemAtual != null && Math.abs(margemAtual) <= 1000 ? margemAtual : null,
     itens: [...itens.map(({ nome, quantidade, custoTotal }) => ({ nome, quantidade, custoTotal })), { nome: "Mão de obra direta", quantidade: 1, custoTotal: custoMaoObra }],
   });
+}
+
+function exigirMargemLiquidaNaoNegativa(
+  precoVenda: number,
+  configuracao: z.infer<typeof configuracaoItemSchema>,
+  custoMaoObra: string | null,
+  taxas: { custoFixoPct: number; comissaoPct: number; impostoPct: number; custoFinanceiroPct: number },
+): void {
+  if (custoMaoObra == null) throw new Error("Cadastre o custo de mão de obra direta antes de aprovar o preço.");
+  const materiaPrima = configuracao.materiais.filter((material) => material.incluir)
+    .reduce((total, material) => total + material.custoTotal, 0);
+  const calculo = decuparPreco({ precoVenda, materiaPrima, maoDeObra: Number(custoMaoObra), ...taxas });
+  if (calculo.lucroLiquido.valor < 0) throw new Error("O preço aprovado gera margem líquida negativa. Revise o preço e as taxas.");
 }
 
 function lerSnapshotEstudio(observacoes: string | null): Record<string, unknown> | null {
@@ -330,8 +412,56 @@ async function buscarVendedorPorNome(db: NonNullable<Awaited<ReturnType<typeof g
   return vendedor ?? null;
 }
 
+type PropostaParaPreco = { id: number; vendedorNome: string; vendedorComercialId: number | null };
+type ProdutoParaPreco = { nome: string; categoria: string | null; custoMaoObra: string | null; idPrecificacao: number | null };
+
+async function parametrosPrecoProposta(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  proposta: PropostaParaPreco,
+  produto: ProdutoParaPreco,
+  financeiro: { custoFinanceiroPct: number; parcelasFinanceira: number | null },
+) {
+  const [config, vendedor] = await Promise.all([
+    obterConfiguracoes(db),
+    proposta.vendedorComercialId
+      ? db.select({ id: vendedoresComerciais.id, comissaoPct: vendedoresComerciais.comissaoPct, ativo: vendedoresComerciais.ativo })
+        .from(vendedoresComerciais).where(eq(vendedoresComerciais.id, proposta.vendedorComercialId)).then(([row]) => row ?? null)
+      : buscarVendedorPorNome(db, proposta.vendedorNome),
+  ]);
+  if (!vendedor || ("ativo" in vendedor && !vendedor.ativo)) {
+    throw new Error("Cadastre e ative o vendedor com sua comissão antes de calcular o preço.");
+  }
+  if (financeiro.custoFinanceiroPct > 0 || financeiro.parcelasFinanceira != null) {
+    let opcoes: unknown;
+    try { opcoes = JSON.parse(config.jurosParcelamentoJson || "[]"); }
+    catch { throw new Error("A configuração de parcelamento está inválida."); }
+    const configurada = Array.isArray(opcoes) && opcoes.some((opcao) =>
+      opcao && typeof opcao === "object" && opcao.parcelas === financeiro.parcelasFinanceira
+      && Math.abs(Number(opcao.custoFinanceiroPct ?? 0) - financeiro.custoFinanceiroPct) < 0.0001,
+    );
+    if (!configurada) throw new Error("A taxa financeira selecionada não está configurada para parcelamento.");
+  }
+  const taxas = {
+    custoFixoPct: Number(config.custoFixoPct),
+    comissaoPct: Number(vendedor.comissaoPct),
+    impostoPct: taxaImpostoProduto(produto.categoria, Number(config.impostoPct), lerRegrasTributarias(config.impostosPorCategoriaJson)),
+    custoFinanceiroPct: financeiro.custoFinanceiroPct,
+  };
+  return {
+    taxas,
+    assinatura: {
+      vendedorComercialId: vendedor.id,
+      vendedorNome: proposta.vendedorNome,
+      categoria: produto.categoria,
+      ...taxas,
+      parcelasFinanceira: financeiro.parcelasFinanceira,
+    },
+  };
+}
+
 function criarSnapshotDecupagem(args: {
   precoVenda: number;
+  quantidadeEmitida: number;
   custoMateriais: number;
   custoMaoObra: number | null;
   custoFixoPct: number;
@@ -349,6 +479,7 @@ function criarSnapshotDecupagem(args: {
   const base = {
     version: 1,
     calculadoEm: new Date().toISOString(),
+    quantidadeEmitida: args.quantidadeEmitida,
     categoria: args.categoria,
     taxas: {
       custoFixoPct: args.custoFixoPct,
@@ -378,21 +509,24 @@ export const propostasRouter = router({
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      const [proposta] = await db.select({ id: propostas.id }).from(propostas).where(eq(propostas.id, input.propostaId));
+      const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId }).from(propostas).where(eq(propostas.id, input.propostaId));
       const [produto] = await db.select({
         nome: produtos.nome,
-        percentualCustoFixo: produtos.percentualCustoFixo,
+        categoria: produtos.categoria,
         custoMaoObra: produtos.custoMaoObra,
         idPrecificacao: produtos.idPrecificacao,
       }).from(produtos).where(eq(produtos.id, input.produtoId));
       if (!proposta || !produto) throw new Error("Proposta ou produto não encontrado.");
-      const contexto = calcularContextoPrecoProposta({ produto, configuracao: input.configuracao, precoAtual: input.precoAtual });
+      await validarCustosCatalogo(db, input.configuracao);
+      const parametros = await parametrosPrecoProposta(db, proposta, produto, input);
+      const contexto = calcularContextoPrecoProposta({ produto, configuracao: input.configuracao, precoAtual: input.precoAtual, taxas: parametros.taxas });
       const base = {
         propostaId: input.propostaId,
         produtoId: input.produtoId,
         quantidade: input.quantidade,
         custoFinanceiroPct: input.custoFinanceiroPct,
         parcelasFinanceira: input.parcelasFinanceira,
+        parametros: parametros.assinatura,
         configuracao: input.configuracao,
       };
       const sugestao = await sugerirPrecoComGPT({ fluxo: "propostas", base, contexto, atorId: ctx.user.id });
@@ -410,21 +544,24 @@ export const propostasRouter = router({
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      const [proposta] = await db.select({ id: propostas.id }).from(propostas).where(eq(propostas.id, input.propostaId));
+      const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId }).from(propostas).where(eq(propostas.id, input.propostaId));
       const [produto] = await db.select({
         nome: produtos.nome,
-        percentualCustoFixo: produtos.percentualCustoFixo,
+        categoria: produtos.categoria,
         custoMaoObra: produtos.custoMaoObra,
         idPrecificacao: produtos.idPrecificacao,
       }).from(produtos).where(eq(produtos.id, input.produtoId));
       if (!proposta || !produto) throw new Error("Proposta ou produto não encontrado.");
-      const contexto = calcularContextoPrecoProposta({ produto, configuracao: input.configuracao, precoAtual: input.precoAtual });
+      await validarCustosCatalogo(db, input.configuracao);
+      const parametros = await parametrosPrecoProposta(db, proposta, produto, input);
+      const contexto = calcularContextoPrecoProposta({ produto, configuracao: input.configuracao, precoAtual: input.precoAtual, taxas: parametros.taxas });
       const base = {
         propostaId: input.propostaId,
         produtoId: input.produtoId,
         quantidade: input.quantidade,
         custoFinanceiroPct: input.custoFinanceiroPct,
         parcelasFinanceira: input.parcelasFinanceira,
+        parametros: parametros.assinatura,
         configuracao: input.configuracao,
       };
       const ator = { id: ctx.user.id, nome: ctx.user.name, role: ctx.user.role };
@@ -438,6 +575,7 @@ export const propostasRouter = router({
       if (Math.abs(aprovacao.precoAprovado - input.precoAprovado) >= 0.005) {
         throw new Error("O preço informado não corresponde ao preço que foi aprovado.");
       }
+      exigirMargemLiquidaNaoNegativa(aprovacao.precoAprovado, input.configuracao, produto.custoMaoObra, parametros.taxas);
       return { ...aprovacao, contexto };
     }),
 
@@ -649,15 +787,26 @@ export const propostasRouter = router({
 
   obter: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) return null;
       const [proposta] = await db.select().from(propostas).where(eq(propostas.id, input.id));
       if (!proposta || proposta.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) return null;
       const itens = await carregarItensComProduto(db, input.id);
+      const podeVerCustos = ["admin", "master", "gestor"].includes(ctx.user.role);
+      const itensVisiveis = podeVerCustos ? itens : itens.map((item) => {
+        const configuracao = item.configuracaoJson as Record<string, unknown>;
+        return {
+          ...item,
+          configuracaoJson: {
+            variacoesModelo: configuracao?.variacoesModelo ?? [],
+            medidas: configuracao?.medidas ?? null,
+          },
+        };
+      });
       return {
         proposta,
-        itens,
+        itens: itensVisiveis,
         valorTotal: calcularTotal(itens),
         prazoFabricacaoDiasUteis: calcularPrazo(itens),
       };
@@ -738,10 +887,18 @@ export const propostasRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      const [anterior] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId, observacoes: propostas.observacoes })
+        .from(propostas).where(eq(propostas.id, input.id));
+      if (!anterior || anterior.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) throw new Error("Proposta não encontrada.");
       const vendedor = await buscarVendedorPorNome(db, input.vendedorNome);
-      await db
-        .update(propostas)
-        .set({
+      const mudouVendedor = anterior.vendedorComercialId !== (vendedor?.id ?? null)
+        || anterior.vendedorNome.trim().toLocaleLowerCase("pt-BR") !== input.vendedorNome.trim().toLocaleLowerCase("pt-BR");
+      if (mudouVendedor) {
+        const [item] = await db.select({ id: propostaItens.id }).from(propostaItens)
+          .where(eq(propostaItens.propostaId, input.id)).limit(1);
+        if (item) throw new Error("A proposta já tem itens aprovados. Para mudar o vendedor, crie outra proposta ou remova os itens e aprove os preços novamente.");
+      }
+      await db.update(propostas).set({
           tituloProposta: input.tituloProposta,
           imagemReferenciaUrl: input.imagemReferenciaUrl,
           imagemRedesenhadaUrl: input.imagemRedesenhadaUrl,
@@ -755,8 +912,7 @@ export const propostasRouter = router({
           observacoes: input.observacoes || null,
           ...(input.status ? { status: input.status } : {}),
           updatedAt: new Date(),
-        })
-        .where(eq(propostas.id, input.id));
+        }).where(eq(propostas.id, input.id));
       return { success: true };
     }),
 
@@ -797,44 +953,35 @@ export const propostasRouter = router({
       const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId }).from(propostas).where(eq(propostas.id, input.propostaId));
       if (!proposta) throw new Error("Proposta não encontrada");
       const configuracao = input.configuracao;
+      await validarCustosCatalogo(db, configuracao);
+      const parametros = await parametrosPrecoProposta(db, proposta, produto, input);
       const contextoAtual = calcularContextoPrecoProposta({
         produto,
         configuracao,
         precoAtual: input.aprovacaoPreco.contexto.precoAtual,
+        taxas: parametros.taxas,
       });
       const aprovacao = verificarAprovacaoPreco({
         recibo: input.aprovacaoPreco.recibo,
         fluxo: "propostas",
-        base: { propostaId: input.propostaId, produtoId: input.produtoId, quantidade: input.quantidade, custoFinanceiroPct: input.custoFinanceiroPct, parcelasFinanceira: input.parcelasFinanceira, configuracao },
+        base: { propostaId: input.propostaId, produtoId: input.produtoId, quantidade: input.quantidade, custoFinanceiroPct: input.custoFinanceiroPct, parcelasFinanceira: input.parcelasFinanceira, parametros: parametros.assinatura, configuracao },
         contexto: contextoAtual,
         preco: input.precoUnitario,
       });
-      const [configPreco, vendedor] = await Promise.all([
-        obterConfiguracoes(db),
-        proposta.vendedorComercialId
-          ? db.select({ comissaoPct: vendedoresComerciais.comissaoPct }).from(vendedoresComerciais).where(eq(vendedoresComerciais.id, proposta.vendedorComercialId)).then(([row]) => row ?? null)
-          : buscarVendedorPorNome(db, proposta.vendedorNome),
-      ]);
-      if (!vendedor) throw new Error("Cadastre o vendedor e sua comissão antes de adicionar itens à proposta.");
-      if (input.custoFinanceiroPct > 0 || input.parcelasFinanceira != null) {
-        const opcoes = JSON.parse(configPreco.jurosParcelamentoJson || "[]") as Array<{ custoFinanceiroPct?: number }>;
-        const optionsWithInstallment = opcoes as Array<{ parcelas?: number; custoFinanceiroPct?: number }>;
-        const taxaConfigurada = Array.isArray(optionsWithInstallment) && optionsWithInstallment.some((opcao) => opcao.parcelas === input.parcelasFinanceira && Math.abs(Number(opcao.custoFinanceiroPct ?? 0) - input.custoFinanceiroPct) < 0.0001);
-        if (!taxaConfigurada) throw new Error("A taxa financeira selecionada não está configurada para parcelamento.");
-      }
       const custoMateriais = configuracao.materiais.filter((material) => material.incluir).reduce((total, material) => total + material.custoTotal, 0);
       const decupagem = criarSnapshotDecupagem({
         precoVenda: input.precoUnitario,
+        quantidadeEmitida: input.quantidade,
         custoMateriais,
         custoMaoObra: produto.custoMaoObra == null ? null : Number(produto.custoMaoObra),
-        custoFixoPct: Number(configPreco.custoFixoPct),
-        comissaoPct: vendedor ? Number(vendedor.comissaoPct) : null,
-        impostoPct: taxaImpostoProduto(produto.categoria, Number(configPreco.impostoPct), lerRegrasTributarias(configPreco.impostosPorCategoriaJson)),
-        custoFinanceiroPct: input.custoFinanceiroPct,
+        ...parametros.taxas,
         parcelasFinanceira: input.parcelasFinanceira,
         categoria: produto.categoria,
         vendedorNome: proposta.vendedorNome,
       });
+      if (decupagem.complete !== true || Number((decupagem as unknown as DecupagemPreco).lucroLiquido.valor) < 0) {
+        throw new Error("A decupagem está incompleta ou a margem líquida é negativa. Revise e aprove novamente o preço.");
+      }
       const existentes = await db
         .select({ id: propostaItens.id })
         .from(propostaItens)
@@ -865,8 +1012,8 @@ export const propostasRouter = router({
       id: z.number(),
       quantidade: z.number().min(0.0001),
       precoUnitario: z.number().min(0),
-      custoFinanceiroPct: z.number().min(0).max(100).optional().default(0),
-      parcelasFinanceira: z.number().int().positive().nullable().optional().default(null),
+      custoFinanceiroPct: z.number().min(0).max(100).optional(),
+      parcelasFinanceira: z.number().int().positive().nullable().optional(),
       descricao: z.string().max(5000).optional(),
       configuracao: configuracaoItemSchema.optional(),
       aprovacaoPreco: aprovacaoPrecoInputSchema.optional(),
@@ -880,25 +1027,41 @@ export const propostasRouter = router({
         produtoId: propostaItens.produtoId,
         quantidade: propostaItens.quantidade,
         precoUnitario: propostaItens.precoUnitario,
+        decupagemJson: propostaItens.decupagemJson,
       }).from(propostaItens).where(eq(propostaItens.id, input.id));
       if (!atual) throw new Error("Item de proposta não encontrado.");
+      const taxasAnteriores = atual.decupagemJson && typeof atual.decupagemJson.taxas === "object" && atual.decupagemJson.taxas
+        ? atual.decupagemJson.taxas as Record<string, unknown> : {};
+      const custoFinanceiroAnterior = Number(taxasAnteriores.custoFinanceiroPct ?? 0);
+      const parcelasAnteriores = typeof taxasAnteriores.parcelasFinanceira === "number" ? taxasAnteriores.parcelasFinanceira : null;
+      const financeiro = {
+        custoFinanceiroPct: input.custoFinanceiroPct ?? custoFinanceiroAnterior,
+        parcelasFinanceira: input.parcelasFinanceira === undefined ? parcelasAnteriores : input.parcelasFinanceira,
+      };
       const mudouPreco = Math.abs(Number(atual.precoUnitario) - input.precoUnitario) >= 0.005;
       const mudouQuantidade = Math.abs(Number(atual.quantidade) - input.quantidade) >= 0.0001;
-      if (mudouPreco || mudouQuantidade || input.configuracao !== undefined) {
+      const mudouFinanceiro = Math.abs(financeiro.custoFinanceiroPct - custoFinanceiroAnterior) >= 0.0001
+        || financeiro.parcelasFinanceira !== parcelasAnteriores;
+      if (mudouPreco || mudouQuantidade || mudouFinanceiro || input.configuracao !== undefined) {
         if (!input.aprovacaoPreco || !input.configuracao) {
-          throw new Error("Alterar preço, quantidade ou composição exige nova aprovação humana do preço.");
+          throw new Error("Alterar preço, quantidade, composição ou condição financeira exige nova aprovação humana do preço.");
         }
         const [produto] = await db.select({
           nome: produtos.nome,
-          percentualCustoFixo: produtos.percentualCustoFixo,
+          categoria: produtos.categoria,
           custoMaoObra: produtos.custoMaoObra,
           idPrecificacao: produtos.idPrecificacao,
         }).from(produtos).where(eq(produtos.id, atual.produtoId));
-        if (!produto) throw new Error("Produto não encontrado.");
+        const [proposta] = await db.select({ id: propostas.id, vendedorNome: propostas.vendedorNome, vendedorComercialId: propostas.vendedorComercialId })
+          .from(propostas).where(eq(propostas.id, atual.propostaId));
+        if (!produto || !proposta) throw new Error("Proposta ou produto não encontrado.");
+        await validarCustosCatalogo(db, input.configuracao);
+        const parametros = await parametrosPrecoProposta(db, proposta, produto, financeiro);
         const contexto = calcularContextoPrecoProposta({
           produto,
           configuracao: input.configuracao,
           precoAtual: input.aprovacaoPreco.contexto.precoAtual,
+          taxas: parametros.taxas,
         });
         const aprovacao = verificarAprovacaoPreco({
           recibo: input.aprovacaoPreco.recibo,
@@ -907,13 +1070,28 @@ export const propostasRouter = router({
             propostaId: atual.propostaId,
             produtoId: atual.produtoId,
             quantidade: input.quantidade,
-            custoFinanceiroPct: input.custoFinanceiroPct,
-            parcelasFinanceira: input.parcelasFinanceira,
+            ...financeiro,
+            parametros: parametros.assinatura,
             configuracao: input.configuracao,
           },
           contexto,
           preco: input.precoUnitario,
         });
+        const custoMateriais = input.configuracao.materiais.filter((material) => material.incluir)
+          .reduce((total, material) => total + material.custoTotal, 0);
+        const decupagem = criarSnapshotDecupagem({
+          precoVenda: input.precoUnitario,
+          quantidadeEmitida: input.quantidade,
+          custoMateriais,
+          custoMaoObra: produto.custoMaoObra == null ? null : Number(produto.custoMaoObra),
+          ...parametros.taxas,
+          parcelasFinanceira: financeiro.parcelasFinanceira,
+          categoria: produto.categoria,
+          vendedorNome: proposta.vendedorNome,
+        });
+        if (decupagem.complete !== true || Number((decupagem as unknown as DecupagemPreco).lucroLiquido.valor) < 0) {
+          throw new Error("A decupagem está incompleta ou a margem líquida é negativa. Revise e aprove novamente o preço.");
+        }
         await db
           .update(propostaItens)
           .set({
@@ -921,6 +1099,8 @@ export const propostasRouter = router({
             precoUnitario: String(input.precoUnitario),
             ...(input.descricao !== undefined ? { descricao: input.descricao } : {}),
             configuracaoJson: { ...input.configuracao, precificacaoIA: { ...aprovacao, contexto } },
+            decupagemJson: decupagem,
+            custoMaoObraUnitario: produto.custoMaoObra,
           })
           .where(eq(propostaItens.id, input.id));
         return { success: true };
@@ -1158,35 +1338,80 @@ export const propostasRouter = router({
     .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
     .query(async ({ input }) => {
       const db = await getDb();
-      const vazio = { propostas: 0, valorEmitido: 0, valorConvertido: 0, margemMediaValor: 0, margemMediaPct: 0, ticketMedio: 0, porMargem: [], produtos: [], materiais: [], vendedores: [] };
+      const vazio = { propostas: 0, valorEmitido: 0, valorConvertido: 0, margemMediaValor: 0, margemMediaPct: 0, ticketMedio: 0, porMargem: [], produtos: [], materiais: [], servicos: [] as Array<{ nome: string; ocorrencias: number; quantidade: number }>, vendedores: [] };
       if (!db) return vazio;
       const inicio = new Date(`${input.de}T00:00:00`);
       const fim = new Date(`${input.ate}T00:00:00`);
       fim.setDate(fim.getDate() + 1);
       if (!Number.isFinite(inicio.getTime()) || !Number.isFinite(fim.getTime()) || inicio >= fim) throw new Error("Selecione um período válido.");
-      const propostasPeriodo = (await db.select().from(propostas).where(and(gte(propostas.createdAt, inicio), lt(propostas.createdAt, fim))))
-        .filter((proposal) => !proposal.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO));
-      const ids = propostasPeriodo.map((proposal) => proposal.id);
-      if (!ids.length) return vazio;
-      const linhas = await db.select().from(propostaItens).where(inArray(propostaItens.propostaId, ids));
-      const porProposta = new Map<number, { valor: number; lucro: number; valorComMargem: number; vendedorNome: string; aceito: boolean }>();
-      for (const proposta of propostasPeriodo) porProposta.set(proposta.id, { valor: 0, lucro: 0, valorComMargem: 0, vendedorNome: proposta.vendedorNome, aceito: proposta.status === "aceita" });
+      const propostasPeriodo = await db.select().from(propostas).where(and(gte(propostas.createdAt, inicio), lt(propostas.createdAt, fim)));
+      if (!propostasPeriodo.length) return vazio;
+      const idsItens = propostasPeriodo.filter((proposta) => !proposta.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)).map((proposta) => proposta.id);
+      const linhas = idsItens.length ? await db.select().from(propostaItens).where(inArray(propostaItens.propostaId, idsItens)) : [];
+      const produtoIds = [...new Set(linhas.map((item) => item.produtoId))];
+      const categorias = produtoIds.length
+        ? await db.select({ id: produtos.id, categoria: produtos.categoria }).from(produtos).where(inArray(produtos.id, produtoIds))
+        : [];
+      const categoriaPorProduto = new Map(categorias.map((produto) => [produto.id, produto.categoria]));
+      type Resumo = { valor: number; valorFechado: number; lucro: number; valorComMargem: number; margemIncompleta: boolean; vendedorNome: string; vendedorId: number | null; aceito: boolean };
+      const porProposta = new Map<number, Resumo>();
+      for (const proposta of propostasPeriodo) porProposta.set(proposta.id, {
+        valor: 0, valorFechado: 0, lucro: 0, valorComMargem: 0,
+        margemIncompleta: false, vendedorNome: proposta.vendedorNome,
+        vendedorId: proposta.vendedorComercialId, aceito: proposta.status === "aceita",
+      });
       const rankingProdutos = new Map<string, { nome: string; ocorrencias: number; valor: number }>();
       const rankingMateriais = new Map<string, { nome: string; ocorrencias: number; quantidade: number }>();
+      const rankingServicos = new Map<string, { nome: string; ocorrencias: number; quantidade: number }>();
+      for (const proposta of propostasPeriodo) {
+        if (!proposta.observacoes?.startsWith(PREFIXO_COTACAO_ESTUDIO)) continue;
+        const resumo = porProposta.get(proposta.id)!;
+        resumo.margemIncompleta = true; // O CPQ tem custo direto próprio, sem os mesmos tributos/comissões da decupagem.
+        const snapshot = lerSnapshotEstudio(proposta.observacoes);
+        const valor = typeof snapshot?.precoFinal === "number" && Number.isFinite(snapshot.precoFinal) && snapshot.precoFinal >= 0
+          ? snapshot.precoFinal : 0;
+        resumo.valor = valor;
+        resumo.valorFechado = valor;
+        const nomeProduto = typeof snapshot?.modeloNome === "string" ? snapshot.modeloNome : "CPQ Letreiros Express";
+        const produto = rankingProdutos.get(nomeProduto) ?? { nome: nomeProduto, ocorrencias: 0, valor: 0 };
+        produto.ocorrencias++;
+        produto.valor += valor;
+        rankingProdutos.set(nomeProduto, produto);
+        if (Array.isArray(snapshot?.materiais)) for (const linha of snapshot.materiais) {
+          if (!linha || typeof linha !== "object" || Array.isArray(linha)) continue;
+          const material = linha as Record<string, unknown>;
+          if (typeof material.nome !== "string") continue;
+          const entrada = rankingMateriais.get(material.nome) ?? { nome: material.nome, ocorrencias: 0, quantidade: 0 };
+          entrada.ocorrencias++;
+          entrada.quantidade += Number(material.quantidade) || 0;
+          rankingMateriais.set(material.nome, entrada);
+        }
+      }
       for (const item of linhas) {
         const quantidade = Number(item.quantidade);
-        const valor = item.ativo ? Number(item.precoUnitario) * quantidade : 0;
+        const valor = Number(item.precoUnitario) * quantidade;
         const resumo = porProposta.get(item.propostaId)!;
         resumo.valor += valor;
+        if (item.ativo) resumo.valorFechado += valor;
         const produto = rankingProdutos.get(item.produtoNome) ?? { nome: item.produtoNome, ocorrencias: 0, valor: 0 };
         produto.ocorrencias++;
         produto.valor += valor;
         rankingProdutos.set(item.produtoNome, produto);
+        if (/servi[cç]o|instala[cç][aã]o/i.test(categoriaPorProduto.get(item.produtoId) ?? "")) {
+          const servico = rankingServicos.get(item.produtoNome) ?? { nome: item.produtoNome, ocorrencias: 0, quantidade: 0 };
+          servico.ocorrencias++;
+          servico.quantidade += quantidade;
+          rankingServicos.set(item.produtoNome, servico);
+        }
         const snapshot = item.decupagemJson as (DecupagemPreco & { complete?: boolean }) | null;
-        if (item.ativo && snapshot?.complete === true) {
+        const quantidadeSnapshot = (snapshot as (DecupagemPreco & { quantidadeEmitida?: number }) | null)?.quantidadeEmitida;
+        if (snapshot?.complete === true && Number.isFinite(snapshot.precoVenda)
+          && Number.isFinite(snapshot.lucroLiquido?.valor)
+          && Math.abs(snapshot.precoVenda - Number(item.precoUnitario)) < 0.005
+          && (quantidadeSnapshot == null || Math.abs(quantidadeSnapshot - quantidade) < 0.0001)) {
           resumo.lucro += snapshot.lucroLiquido.valor * quantidade;
           resumo.valorComMargem += snapshot.precoVenda * quantidade;
-        }
+        } else resumo.margemIncompleta = true;
         const config = item.configuracaoJson as Record<string, unknown>;
         const materiais = Array.isArray(config?.materiais) ? config.materiais : [];
         for (const materialRaw of materiais) {
@@ -1201,26 +1426,29 @@ export const propostasRouter = router({
       }
       const resumos = [...porProposta.values()];
       const valorEmitido = resumos.reduce((sum, item) => sum + item.valor, 0);
-      const valorConvertido = resumos.filter((item) => item.aceito).reduce((sum, item) => sum + item.valor, 0);
-      const propostasComMargem = resumos.filter((item) => item.valorComMargem > 0);
+      const valorConvertido = resumos.filter((item) => item.aceito).reduce((sum, item) => sum + item.valorFechado, 0);
+      const propostasComMargem = resumos.filter((item) => !item.margemIncompleta && item.valorComMargem > 0);
       const margemMediaValor = propostasComMargem.length ? propostasComMargem.reduce((sum, item) => sum + item.lucro, 0) / propostasComMargem.length : 0;
       const margemMediaPct = propostasComMargem.length ? propostasComMargem.reduce((sum, item) => sum + item.lucro / item.valorComMargem * 100, 0) / propostasComMargem.length : 0;
       const bins = [{ faixa: "< 15%", valor: 0 }, { faixa: "15–30%", valor: 0 }, { faixa: "> 30%", valor: 0 }];
       for (const item of propostasComMargem) {
         const pct = item.lucro / item.valorComMargem * 100;
-        bins[pct < 15 ? 0 : pct <= 30 ? 1 : 2].valor += item.valor;
+        bins[pct < 15 ? 0 : pct <= 30 ? 1 : 2].valor += item.valorComMargem;
       }
       const vendedores = new Map<string, { nome: string; propostas: number; fechadas: number; valorOrcado: number; valorFechado: number; lucro: number; valorComMargem: number }>();
       for (const proposta of propostasPeriodo) {
         const resumo = porProposta.get(proposta.id)!;
-        const vendedor = vendedores.get(proposta.vendedorNome) ?? { nome: proposta.vendedorNome, propostas: 0, fechadas: 0, valorOrcado: 0, valorFechado: 0, lucro: 0, valorComMargem: 0 };
+        const chave = resumo.vendedorId == null ? `nome:${resumo.vendedorNome.trim().toLocaleLowerCase("pt-BR")}` : `id:${resumo.vendedorId}`;
+        const vendedor = vendedores.get(chave) ?? { nome: resumo.vendedorNome, propostas: 0, fechadas: 0, valorOrcado: 0, valorFechado: 0, lucro: 0, valorComMargem: 0 };
         vendedor.propostas++;
         vendedor.fechadas += resumo.aceito ? 1 : 0;
         vendedor.valorOrcado += resumo.valor;
-        vendedor.valorFechado += resumo.aceito ? resumo.valor : 0;
-        vendedor.lucro += resumo.lucro;
-        vendedor.valorComMargem += resumo.valorComMargem;
-        vendedores.set(vendedor.nome, vendedor);
+        vendedor.valorFechado += resumo.aceito ? resumo.valorFechado : 0;
+        if (!resumo.margemIncompleta) {
+          vendedor.lucro += resumo.lucro;
+          vendedor.valorComMargem += resumo.valorComMargem;
+        }
+        vendedores.set(chave, vendedor);
       }
       return {
         propostas: propostasPeriodo.length,
@@ -1232,6 +1460,7 @@ export const propostasRouter = router({
         porMargem: bins.map((item) => ({ ...item, valor: Math.round(item.valor * 100) / 100 })),
         produtos: [...rankingProdutos.values()].sort((a, b) => b.ocorrencias - a.ocorrencias).slice(0, 10),
         materiais: [...rankingMateriais.values()].sort((a, b) => b.ocorrencias - a.ocorrencias).slice(0, 10),
+        servicos: [...rankingServicos.values()].sort((a, b) => b.ocorrencias - a.ocorrencias).slice(0, 10),
         vendedores: [...vendedores.values()].map((item) => ({ ...item, conversaoPct: item.propostas ? Math.round(item.fechadas / item.propostas * 10000) / 100 : 0, margemMediaPct: item.valorComMargem ? Math.round(item.lucro / item.valorComMargem * 10000) / 100 : null })).sort((a, b) => b.valorOrcado - a.valorOrcado),
       };
     }),
