@@ -22,7 +22,15 @@ export default function AtualizarClientesAuto() {
       let pagina = 1;
       try {
         while (true) {
-          const r = await lote.mutateAsync({ pagina });
+          // Falha transitória (limite de requisições do MubiSys, timeout) retoma da mesma página em vez de abandonar.
+          let r;
+          for (let tentativa = 0; ; tentativa++) {
+            try { r = await lote.mutateAsync({ pagina }); break; }
+            catch (e) {
+              if (tentativa >= 3) throw e;
+              await new Promise(res => setTimeout(res, 3000 * (tentativa + 1)));
+            }
+          }
           setProgresso({ pagina: (r.proximaPagina ?? r.ultimaPagina), total: r.ultimaPagina });
           if (r.proximaPagina == null) break;
           pagina = r.proximaPagina;

@@ -265,6 +265,9 @@ server/
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
+                       (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
+                       de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
+                       o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),
                        cpqPrecoAssistente.ts (sugestões GPT e recibos assinados
                        de aprovação humana de preço),
                        cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)

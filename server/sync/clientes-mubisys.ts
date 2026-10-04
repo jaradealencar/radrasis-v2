@@ -9,7 +9,7 @@
  * A sincronização é retomável e idempotente: cada chamada processa até `maxPaginas` páginas e devolve a próxima, para
  * caber nos 60s da Vercel. Falha de API numa página lança erro (não grava página parcial como se fosse completa).
  */
-import { count, isNotNull, max, sql } from "drizzle-orm";
+import { count, isNotNull, min, sql } from "drizzle-orm";
 import { getDb } from "../db/db";
 import { mubisysClientesCache } from "../../drizzle/schema";
 import { listarClientesPagina } from "../integrations/mubisys-client";
@@ -17,6 +17,8 @@ import { normalizarTelefone } from "../../shared/campanhas-whatsapp";
 import { normalizeEmpresaKey } from "../services/probabilidadeCompra";
 
 export const MAX_PAGINAS_POR_LOTE = 20;
+/** Orçamento de tempo de um lote: para antes dos 60s da Vercel (retentativas de 429 podem alongar as páginas). */
+export const ORCAMENTO_LOTE_MS = 40_000;
 /** Depois disso o espelho é considerado velho e a tela o atualiza sozinha. */
 export const CACHE_CLIENTES_VALIDADE_HORAS = 24;
 
@@ -50,8 +52,9 @@ export async function sincronizarClientesLote(paginaInicial = 1, maxPaginas = MA
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível para sincronizar clientes.");
 
+  const inicio = Date.now();
   let pagina = paginaInicial, ultimaPagina = paginaInicial, clientes = 0, comTelefone = 0, processadas = 0;
-  while (processadas < maxPaginas && pagina <= ultimaPagina) {
+  while (processadas < maxPaginas && pagina <= ultimaPagina && Date.now() - inicio < ORCAMENTO_LOTE_MS) {
     let resposta;
     try {
       resposta = await listarClientesPagina(pagina);
@@ -92,7 +95,7 @@ export async function statusCacheClientes(agora: Date = new Date()): Promise<Sta
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   const [r] = await db.select({
-    total: count(), comTelefone: count(mubisysClientesCache.telefone), ultima: max(mubisysClientesCache.atualizadoEm),
+    total: count(), comTelefone: count(mubisysClientesCache.telefone), ultima: min(mubisysClientesCache.atualizadoEm),
   }).from(mubisysClientesCache);
   const atualizadoEm = r?.ultima ? new Date(r.ultima) : null;
   const idadeH = atualizadoEm ? (agora.getTime() - atualizadoEm.getTime()) / 3_600_000 : Infinity;

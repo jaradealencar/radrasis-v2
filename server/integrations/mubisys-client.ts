@@ -515,6 +515,17 @@ export interface MubiSysClientePagina {
 
 /** GET /cliente?page=N — 100 por página, ~1s cada (5,5 mil clientes = 56 páginas). */
 export async function listarClientesPagina(pagina: number): Promise<MubiSysClientePagina> {
-  const r = await mubisysGetOrNull<MubiSysClientePagina>("cliente", { page: String(pagina) }, { timeoutMs: TIMEOUT_PONTUAL_MS * 2 });
+  // A API limita requisições por janela (429 medido em 04/10/2026 na página 31 de uma varredura seguida):
+  // espera e tenta de novo em vez de derrubar o lote inteiro.
+  let r: MubiSysClientePagina | null = null;
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      r = await mubisysGetOrNull<MubiSysClientePagina>("cliente", { page: String(pagina) }, { timeoutMs: TIMEOUT_PONTUAL_MS * 2 });
+      break;
+    } catch (erro) {
+      if (!(erro instanceof MubiSysError) || erro.status !== 429 || tentativa >= 3) throw erro;
+      await new Promise(res => setTimeout(res, 2000 * (tentativa + 1)));
+    }
+  }
   return r ?? { pagination: { current_page: pagina, last_page: pagina, per_page: 100, total: 0 }, data: [] };
 }
