@@ -15,6 +15,7 @@ export type CpqCorAlvo = {
 export type CpqBoundingBoxMm = { minX: number; maxX: number; minY: number; maxY: number };
 export interface RegiaoPrecificacao {
   areaLiquidaM2: number;
+  areaTotalM2: number;
   larguraMm: number;
   alturaMm: number;
   boundingBoxesMm: CpqBoundingBoxMm[];
@@ -78,6 +79,8 @@ export type CpqCorrespondenciaCorResult = {
   corRgb: { r: number; g: number; b: number } | null;
   cmyk: CpqCorAlvo["cmyk"];
   areaM2: number | null;
+  areaLiquidaM2?: number | null;
+  areaTotalM2?: number | null;
   areaConsumoM2: number | null;
   dadosPreco?: RegiaoPrecificacao | null;
   tipoSugestao: "chapa" | "imprimax" | "impresso" | "pendente";
@@ -96,6 +99,25 @@ export type CpqCorrespondenciaCorResult = {
   precificacao: Record<string, unknown> | null;
   composicaoFace: Record<string, unknown> | null;
 };
+
+/** Junta os caminhos da face por substrato aprovado, sem impor uma chapa mestre. */
+export function agruparCaminhosFacePorMateriaPrima(
+  regioes: Array<{ materiaPrimaId: number; pathIndexes: number[] }>,
+): Array<{ materiaPrimaId: number; pathIndexes: number[] }> {
+  const grupos = new Map<number, Set<number>>();
+  for (const regiao of regioes) {
+    if (!Number.isInteger(regiao.materiaPrimaId) || regiao.materiaPrimaId <= 0) continue;
+    const indexes = grupos.get(regiao.materiaPrimaId) ?? new Set<number>();
+    for (const pathIndex of regiao.pathIndexes) {
+      if (Number.isInteger(pathIndex) && pathIndex >= 0) indexes.add(pathIndex);
+    }
+    grupos.set(regiao.materiaPrimaId, indexes);
+  }
+  return [...grupos.entries()]
+    .map(([materiaPrimaId, indexes]) => ({ materiaPrimaId, pathIndexes: [...indexes].sort((a, b) => a - b) }))
+    .filter(grupo => grupo.pathIndexes.length > 0)
+    .sort((a, b) => a.materiaPrimaId - b.materiaPrimaId);
+}
 
 const DELTA_E_CHAPA_DIRETA = 2;
 const DELTA_E_IMPRIMAX_SOLIDO = 5;
@@ -318,7 +340,11 @@ export function calcularConsumosBobina(
   for (const regiao of regioes) {
     const dadosPreco = regiao.dadosPreco;
     const caixas = dadosPreco?.boundingBoxesMm ?? [];
-    if (!dadosPreco || !Number.isFinite(dadosPreco.areaLiquidaM2) || dadosPreco.areaLiquidaM2 <= 0
+    if (!dadosPreco || !Number.isFinite(dadosPreco.areaTotalM2) || dadosPreco.areaTotalM2 <= 0
+      || !Number.isFinite(dadosPreco.areaLiquidaM2) || dadosPreco.areaLiquidaM2 < 0
+      || dadosPreco.areaTotalM2 + 0.000001 < dadosPreco.areaLiquidaM2
+      || Math.abs(dadosPreco.areaTotalM2 - caixas.reduce((sum, caixa) =>
+        sum + ((caixa.maxX - caixa.minX) * (caixa.maxY - caixa.minY)) / 1_000_000, 0)) > 0.000001
       || !Number.isFinite(dadosPreco.larguraMm) || dadosPreco.larguraMm <= 0
       || !Number.isFinite(dadosPreco.alturaMm) || dadosPreco.alturaMm <= 0 || !caixas.length) {
       caixasInvalidas = true;
@@ -437,7 +463,8 @@ function aplicarConsumoBobina(
     avisos: [...new Set(avisos)],
     precificacao: {
       ...precificacao,
-      areaVetorialM2: resultado.areaM2,
+      areaLiquidaM2: resultado.areaLiquidaM2 ?? null,
+      areaTotalM2: resultado.areaTotalM2 ?? resultado.areaM2,
       areaRetangulosSangriaM2: consumo.areaRetangulosSangriaM2,
       areaConsumoM2: consumo.areaConsumoM2,
       areaTotalBobinaM2: consumo.areaTotalBobinaM2,
@@ -665,8 +692,12 @@ function planoComposicaoFace(input: CpqCorrespondenciaCorInput, avisos: string[]
 }
 
 function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorrespondenciaCorResult {
-  const areaBruta = input.regiao.dadosPreco?.areaLiquidaM2 ?? input.regiao.areaM2;
-  const area = areaBruta != null && Number.isFinite(areaBruta) && areaBruta >= 0 ? areaBruta : null;
+  const areaLiquidaInformada = input.regiao.dadosPreco?.areaLiquidaM2 ?? input.regiao.areaM2;
+  const areaLiquida = areaLiquidaInformada != null && Number.isFinite(areaLiquidaInformada) && areaLiquidaInformada >= 0
+    ? Number(areaLiquidaInformada.toFixed(6)) : null;
+  const areaTotalInformada = input.regiao.dadosPreco?.areaTotalM2 ?? null;
+  const areaTotal = areaTotalInformada != null && Number.isFinite(areaTotalInformada) && areaTotalInformada > 0
+    ? Number(areaTotalInformada.toFixed(6)) : null;
   const vinil = valor(input.baseImpressao === "branco" ? input.precos?.vinilBrancoM2 : input.precos?.vinilTransparenteM2);
   const transmissao = valor(input.baseImpressao === "branco" ? input.precos?.vinilBrancoTransmissaoPct : input.precos?.vinilTransparenteTransmissaoPct);
   const impressao = valor(input.precos?.impressaoM2);
@@ -677,8 +708,8 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
       && (input.transmissaoMinimaPct == null || transmissao >= input.transmissaoMinimaPct));
   const consumo = calcularConsumosBobina([{ regionKey: input.regiao.key, dadosPreco: input.regiao.dadosPreco }], input.precos)
     .get(input.regiao.key);
-  const custosConfigurados = area != null && vinil != null && impressao != null && laminacao != null && transmissaoCompativel;
-  if (area == null) avisos.push("Área física não calculada; confirme escala e extração da região.");
+  const custosConfigurados = areaTotal != null && vinil != null && impressao != null && laminacao != null && transmissaoCompativel;
+  if (areaTotal == null) avisos.push("Area total da peca nao calculada; confirme escala e extracao vetorial.");
   if (vinil == null) avisos.push(`Custo por m² do vinil ${input.baseImpressao} não cadastrado.`);
   if (iluminacaoRequerTransmissao && transmissao == null) avisos.push(`Transmissão de luz do vinil ${input.baseImpressao} não cadastrada; confirme a compatibilidade antes de aprovar.`);
   else if (iluminacaoRequerTransmissao && transmissao === 0) avisos.push(`Vinil ${input.baseImpressao} sem transmissão de luz; incompatível com a face iluminada.`);
@@ -699,7 +730,9 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
     cmyk: input.regiao.cmyk ?? null,
     coresGradiente: input.regiao.coresGradiente ?? [],
     pathIndexes: input.regiao.pathIndexes ?? (input.regiao.pathIndex == null ? [] : [input.regiao.pathIndex]),
-    areaM2: area == null ? null : Number(area.toFixed(6)),
+    areaM2: areaLiquida,
+    areaLiquidaM2: areaLiquida,
+    areaTotalM2: areaTotal,
     areaConsumoM2: consumo?.areaConsumoM2 ?? null,
     tipoSugestao: "impresso",
     chapaId: null,
@@ -713,7 +746,8 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
     alternativas: [],
     precificacao: {
       base: input.baseImpressao,
-      areaVetorialM2: area,
+      areaLiquidaM2: areaLiquida,
+      areaTotalM2: areaTotal,
       vinilM2: vinil,
       transmissaoLuzPct: transmissao,
       impressaoM2: impressao,
@@ -746,21 +780,25 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       : "Região complexa ou sem cor sólida identificável: classificada para impressão digital.");
     return { ...impresso(input, avisos), corRgb, cmyk };
   }
-  const areaLiquida = target.dadosPreco?.areaLiquidaM2 ?? target.areaM2;
-  const area = areaLiquida != null && Number.isFinite(areaLiquida) && areaLiquida >= 0
-    ? Number(areaLiquida.toFixed(6)) : null;
+  const areaLiquidaInformada = target.dadosPreco?.areaLiquidaM2 ?? target.areaM2;
+  const areaLiquida = areaLiquidaInformada != null && Number.isFinite(areaLiquidaInformada) && areaLiquidaInformada >= 0
+    ? Number(areaLiquidaInformada.toFixed(6)) : null;
+  const areaTotalInformada = target.dadosPreco?.areaTotalM2 ?? null;
+  const areaTotal = areaTotalInformada != null && Number.isFinite(areaTotalInformada) && areaTotalInformada > 0
+    ? Number(areaTotalInformada.toFixed(6)) : null;
   const lab = alvoLab(target);
   const chapa = candidatos(input.chapas, target, lab, input, "chapa");
   const direta = chapa.find(item => item.deltaE00! <= DELTA_E_CHAPA_DIRETA);
   if (direta) {
     avisos.push(...direta.avisosIluminacao);
-    if (area == null) avisos.push("Área física não calculada; sugestão cromática pode ser revisada, mas consumo fica pendente.");
+    if (areaLiquida == null) avisos.push("Area liquida nao calculada; confirme a geometria antes de revisar a chapa.");
     avisos.push("Correspondência interna direta por Pantone ou CIEDE2000; confirme a amostra física do lote.");
     return {
       regionKey: target.key, tipoCor: target.tipoCor, corHex: target.corHex ?? null,
       pantoneCode: target.pantoneCode ?? null,
       coresGradiente: target.coresGradiente ?? [],
-      pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: area,
+      pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: areaLiquida,
+      areaLiquidaM2: areaLiquida, areaTotalM2: areaTotal,
       areaConsumoM2: null,
       corRgb, cmyk,
       tipoSugestao: "chapa", chapaId: Number(direta.id), imprimaxAdesivoId: null,
@@ -780,7 +818,7 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
   if (solido) {
     avisos.push(...solido.avisosIluminacao);
     const price = valor(solido.raw.precoM2);
-    if (area == null) avisos.push("Área física não calculada; confirme escala antes de fechar consumo do vinil.");
+    if (areaTotal == null) avisos.push("Area total da peca nao calculada; confirme escala antes de fechar consumo do vinil.");
     if (price == null) avisos.push("Preço de compra do adesivo não cadastrado; o custo desta região está pendente.");
     avisos.push("Sugestão de vinil sólido Imprimax pela menor diferença CIEDE2000; confirme código e amostra física.");
     const consumo = calcularConsumosBobina([{ regionKey: target.key, dadosPreco: target.dadosPreco }], input.precos)
@@ -790,7 +828,8 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       regionKey: target.key, tipoCor: target.tipoCor, corHex: target.corHex ?? null,
       pantoneCode: target.pantoneCode ?? null,
       coresGradiente: target.coresGradiente ?? [],
-      pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: area,
+      pathIndexes: target.pathIndexes ?? (target.pathIndex == null ? [] : [target.pathIndex]), areaM2: areaLiquida,
+      areaLiquidaM2: areaLiquida, areaTotalM2: areaTotal,
       areaConsumoM2: consumo?.areaConsumoM2 ?? null,
       corRgb, cmyk,
       tipoSugestao: "imprimax", chapaId: null, imprimaxAdesivoId: Number(solido.id),
@@ -800,7 +839,7 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       custoEstimado: consumo?.areaConsumoM2 != null && price != null ? Number((consumo.areaConsumoM2 * price).toFixed(4)) : null,
       unidadeCusto: price == null ? null : "m2", avisos,
       alternativas: vinis.slice(0, 5).map(({ raw: _raw, ...item }) => item),
-      precificacao: { areaVetorialM2: area, precoM2: price, custoPodeSerCalculado: area != null && price != null },
+      precificacao: { areaLiquidaM2: areaLiquida, areaTotalM2: areaTotal, precoM2: price, custoPodeSerCalculado: areaTotal != null && price != null },
     };
     return aplicarConsumoBobina(resultado, consumo);
   }

@@ -35,7 +35,7 @@ export type CpqMaterial = {
   custoUnitario: number;
   unidadeCusto: string;
   chapas: CpqChapa[];
-  /** Em junções, cada matéria-prima pode usar um subconjunto das artes. */
+  /** Lote geométrico isolado desta matéria-prima; sem ele usa as peças globais. */
   pecas?: CpqNestingPeca[];
 };
 
@@ -324,26 +324,28 @@ export async function calcularNestingMultiMaterial(input: {
   materiais: CpqMaterial[];
 }): Promise<CpqNestingMaterialResult[]> {
   if (input.materiais.length === 0) throw new CpqNestingError("Selecione ao menos um material de chapa.", "invalid_geometry");
-  const pecasOriginais = input.pecas?.length ? input.pecas : input.svg ? [{
+  const pecasGlobais = input.pecas?.length ? input.pecas : input.svg ? [{
     id: "peca-1",
     svg: input.svg,
     larguraMm: input.larguraSvgMm ?? 0,
     alturaMm: input.alturaSvgMm ?? 0,
   }] : [];
-  if (pecasOriginais.length === 0 || pecasOriginais.length > 100) {
+  if (input.materiais.some(material => (material.pecas ?? pecasGlobais).length === 0)
+    || input.materiais.some(material => (material.pecas ?? pecasGlobais).length > 100)) {
     throw new CpqNestingError("Informe entre uma e cem artes vetoriais para calcular o nesting.", "invalid_geometry");
   }
   const espacamentoMm = input.espacamentoMm ?? 0;
   if (!Number.isFinite(espacamentoMm) || espacamentoMm < 0 || espacamentoMm > 50) {
     throw new CpqNestingError("O espaçamento entre peças precisa ficar entre 0 e 50 mm.", "invalid_geometry");
   }
-  const pecas = pecasOriginais.map(peca => ({ ...peca, svg: normalizarSvgFisico(peca) }));
-  const resultados: CpqNestingMaterialResult[] = [];
   const ids = new Set<number>();
-
-  for (const material of input.materiais) {
-    if (ids.has(material.id)) continue;
+  const materiaisUnicos = input.materiais.filter(material => {
+    if (ids.has(material.id)) return false;
     ids.add(material.id);
+    return true;
+  });
+
+  return Promise.all(materiaisUnicos.map(async (material): Promise<CpqNestingMaterialResult> => {
     const chapas = ordenarChapasMenoresPrimeiro(material.chapas.filter(chapa =>
       chapa.mubisysMateriaPrimaId === material.id
       && Number.isInteger(chapa.larguraMm) && chapa.larguraMm > 0
@@ -351,7 +353,7 @@ export async function calcularNestingMultiMaterial(input: {
     ));
     if (!chapas.length) throw new CpqNestingError(`Não há formato de chapa cadastrado para ${material.nome} (matéria-prima ${material.id}).`, "no_fit");
 
-    const pecasMaterialOriginal = material.pecas?.length ? material.pecas : pecasOriginais;
+    const pecasMaterialOriginal = material.pecas ?? pecasGlobais;
     const pecasMaterial = pecasMaterialOriginal.map(peca => ({ ...peca, svg: normalizarSvgFisico(peca) }));
     const avaliacoes: AvaliacaoChapa[] = [];
     for (const chapa of chapas) {
@@ -381,7 +383,7 @@ export async function calcularNestingMultiMaterial(input: {
     const dimensoes = melhor.dimensoes;
     const custos = estimarCustos(material, melhor.caixa.areaM2, melhor.areaChapaM2, melhor.nesting.perimetroTotalMm / 1000);
     const areaSobraM2 = Math.max(0, melhor.areaChapaM2 - melhor.caixa.areaM2);
-    resultados.push({
+    return {
       id_materia_prima: material.id,
       materia_prima: material.nome,
       custo_unitario: material.custoUnitario > 0 ? material.custoUnitario : null,
@@ -404,7 +406,6 @@ export async function calcularNestingMultiMaterial(input: {
         origemId: pecasMaterialOriginal[position.source ?? 0]?.id,
         xMm: position.xMm - (melhor.nesting.bounds?.minX ?? 0),
       })),
-    });
-  }
-  return resultados;
+    };
+  }));
 }

@@ -1655,7 +1655,7 @@ function resumoCustoCoresReal(){
   const additional=results.filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso');
   return {
     total:REAL.colorAnalysis?.aprovado?additional.reduce((sum,item)=>sum+(item.custoEstimado!=null&&Number.isFinite(Number(item.custoEstimado))?Number(item.custoEstimado):0),0):0,
-    pendencias:REAL.colorAnalysis?.aprovado?additional.filter(item=>item.custoEstimado==null||item.areaM2==null):[],
+    pendencias:REAL.colorAnalysis?.aprovado?additional.filter(item=>item.custoEstimado==null||!(Number(item.areaTotalM2)>0)||!(Number(item.areaConsumoM2)>0)):[],
   };
 }
 
@@ -3006,7 +3006,7 @@ function realStepKit(){
             </td>
             <td><select data-act="real-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
-              ${configGeral.papeisPeca.map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
+              ${[...new Set([...configGeral.papeisPeca,'Aro'])].map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
             </select></td>
             <td><select data-act="real-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([key,f])=>`<option value="${key}" ${k.formulaType===key?'selected':''}>${f.label}</option>`).join('')}</select></td>
             <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="real-kit-mult" data-idx="${i}" style="width:70px;"></td>
@@ -3026,6 +3026,15 @@ function realStepKit(){
   </div>`;
 }
 
+function camadaFisicaKit(line){
+  const papel=normalizeSearch(String(line?.papel||'')).replace(/[^a-z0-9]+/g,'');
+  const face=['face','frente','visual','translucida'].some(token=>papel.includes(token));
+  const aro=['aro','lateral','laterais','contorno'].some(token=>papel.includes(token));
+  const fundo=['fundo','base','costas','verso','back'].some(token=>papel.includes(token));
+  const matches=[face?'face':null,aro?'aro':null,fundo?'fundo':null].filter(Boolean);
+  return matches.length===1?matches[0]:null;
+}
+
 async function analisarFactibilidadeReal(){
   if(!REAL.colorAnalysis.aprovado){REAL.factibilidadeErro='Revise e confirme o mapeamento de cores antes de analisar as chapas e iniciar o nesting.';render();return;}
   if(REAL.factibilidadeCarregando||REAL.nestingCarregando) return;
@@ -3035,18 +3044,29 @@ async function analisarFactibilidadeReal(){
     const boardResponse=await fetch('/api/letra-caixa/chapas',{credentials:'same-origin'});
     const boardBody=await boardResponse.json().catch(()=>({}));
     if(!boardResponse.ok) throw new Error(boardBody.error||'Nao foi possivel carregar as chapas cadastradas.');
-    const selectedIds=[...new Set((REAL.kit||[]).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
     const configured=new Set((boardBody.chapas||[]).filter(board=>board.ativo).map(board=>Number(board.mubisysMateriaPrimaId)));
-    const requiredSheetIds=[...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&line.formulaType==='areaTotal').map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
-    const missingSheets=requiredSheetIds.filter(id=>!configured.has(id));
+    const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line));
+    const mappedLineIds=new Set(physicalLines.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0));
+    const unassignedSheet=(REAL.kit||[]).find(line=>!line.origemPintura&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
+    if(REAL.colorAnalysis.iluminacao==='frontlight'&&!physicalLines.some(line=>camadaFisicaKit(line)==='aro'))
+      throw new Error('Letreiros Frontlight precisam de uma matéria-prima com papel Aro no kit. O aro sustenta o acrílico frontal e deve ter sua camada SVG e chapa configuradas.');
+    if(unassignedSheet) throw new Error('Defina o papel da chapa como Face, Aro ou Fundo no kit para separar os contornos do SVG.');
+    const missingSheets=[...mappedLineIds].filter(id=>!configured.has(id));
     if(missingSheets.length) throw new Error('Cadastre chapas ativas para as materias-primas de chapa: '+missingSheets.join(', ')+'.');
-    const materiaPrimaIds=selectedIds.filter(id=>configured.has(id));
+    const materiaPrimaIds=[...mappedLineIds].filter(id=>configured.has(id));
     if(!materiaPrimaIds.length) throw new Error('Nenhuma materia-prima do kit possui chapa ativa. Cadastre formatos de chapa antes do nesting.');
     if(materiaPrimaIds.length>10) throw new Error('A factibilidade aceita ate 10 materiais de chapa por projeto.');
+    const camadaKeys=new Set();
+    const camadasMateriais=physicalLines.flatMap(line=>{
+      const materiaPrimaId=Number(materialKitAtivo(line).matId), camada=camadaFisicaKit(line);
+      const key=`${materiaPrimaId}:${camada}`;
+      if(!Number.isInteger(materiaPrimaId)||materiaPrimaId<=0||!camada||camadaKeys.has(key))return [];
+      camadaKeys.add(key);return [{materiaPrimaId,camada}];
+    });
     const g=computeGeomReal();
     const response=await fetch('/api/letra-caixa/factibilidade',{
       method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sourceId:REAL.id,svg:REAL.tracedSvg,larguraSvgMm:REAL.tracedW*g.scaleFactor*1000,alturaSvgMm:REAL.tracedH*g.scaleFactor*1000,materiaPrimaIds}),
+      body:JSON.stringify({sourceId:REAL.id,svg:REAL.tracedSvg,larguraSvgMm:REAL.tracedW*g.scaleFactor*1000,alturaSvgMm:REAL.tracedH*g.scaleFactor*1000,materiaPrimaIds,camadasMateriais}),
     });
     const body=await response.json().catch(()=>({}));
     if(!response.ok) throw new Error(body.error||'Nao foi possivel analisar a factibilidade de fabricacao.');
@@ -3100,25 +3120,17 @@ function aplicarComposicaoSugeridaCoresReal(){
     if(item.requerChapaBase) return item.chapaBaseMateriaPrimaId?[Number(item.chapaBaseMateriaPrimaId)]:[];
     return [];
   }))];
-  if(materialIds.length>1)
-    throw new Error('As regiões pedem mais de uma chapa de face. Separe as regiões por material no projeto antes de liberar o nesting.');
   if(!materialIds.length)return;
-  const materialId=materialIds[0];
-  const material=catalog.materias.find(item=>Number(item.id)===materialId);
-  if(!material)throw new Error(`Atualize o catálogo MubiSys para incluir a matéria-prima ${materialId} sugerida para a face.`);
-  const normalizarPapel=value=>normalizeSearch(String(value||'')).replace(/[^a-z0-9]+/g,'');
-  const faces=REAL.kit.filter(line=>normalizarPapel(line.papel)==='face');
-  if(faces.length>1)throw new Error('O kit tem mais de uma linha marcada como Face. Defina uma única linha para o sistema atualizar.');
+  const materiais=materialIds.map(materialId=>{
+    const material=catalog.materias.find(item=>Number(item.id)===materialId);
+    if(!material)throw new Error(`Atualize o catálogo MubiSys para incluir a matéria-prima ${materialId} sugerida para a face.`);
+    return material;
+  });
+  const faces=REAL.kit.filter(line=>camadaFisicaKit(line)==='face');
+  if(faces.some(line=>line.variantes?.length))throw new Error('Remova as variações da linha Face antes de aplicar a composição por cor.');
   if(REAL.colorAnalysis.composicaoKitOriginal==null)REAL.colorAnalysis.composicaoKitOriginal=REAL.kit.map(line=>({...line}));
-  const valores={matId:material.id,nome:material.nome,unidade:material.unidade,custo:material.valor,atualizado:material.atualizado,status:material.status,papel:'Face',formulaType:'areaTotal',mult:1,variantes:[],variacaoSelecionadaMatId:null,origemComposicaoCor:true};
-  if(faces.length===1){
-    if(faces[0].variantes?.length)throw new Error('A linha Face possui variações de material. Selecione a variação correta antes de aplicar a composição por cor.');
-    Object.assign(faces[0],valores);
-  }else{
-    const linhaChapaSemPapel=REAL.kit.find(line=>line.formulaType==='areaTotal'&&!String(line.papel||'').trim());
-    if(linhaChapaSemPapel)throw new Error('Há uma chapa sem papel definido no kit. Marque-a como Face para o sistema poder aplicar a sugestão de cor.');
-    REAL.kit.push(valores);
-  }
+  REAL.kit=REAL.kit.filter(line=>camadaFisicaKit(line)!=='face'&&!line.origemComposicaoCor);
+  for(const material of materiais) REAL.kit.push({matId:material.id,nome:material.nome,unidade:material.unidade,custo:material.valor,atualizado:material.atualizado,status:material.status,papel:'Face',formulaType:'areaTotal',mult:1,variantes:[],variacaoSelecionadaMatId:null,origemComposicaoCor:true});
 }
 
 async function aprovarCoresESeguirReal(){
@@ -3150,22 +3162,24 @@ function renderAnaliseCoresReal(){
     const rgb=result.corRgb?`RGB ${result.corRgb.r}/${result.corRgb.g}/${result.corRgb.b}`:'';
     const cmyk=result.cmyk?`CMYK ${result.cmyk.c}/${result.cmyk.m}/${result.cmyk.y}/${result.cmyk.k}`:'';
     const pantone=result.pantoneCode?`Pantone ${result.pantoneCode}`:'';
+    const areaExibida=result.areaTotalM2??result.areaM2;
+    const rotuloArea=result.areaTotalM2!=null?'Área total da peça':'Área estimada';
     const kitMaterialId=chosen?.mubisysMateriaPrimaId;
     const kitTemMaterial=kitMaterialId!=null&&REAL.kit.some(line=>Number(materialKitAtivo(line).matId)===Number(kitMaterialId));
     const materialBase=result.chapaBaseMateriaPrimaId?catalog.materias.find(item=>Number(item.id)===Number(result.chapaBaseMateriaPrimaId)):null;
     const planoBase=result.requerChapaBase?`<div class="source-tag">Composição automática: Face em chapa transparente${materialBase?` · ${escaparHtml(materialBase.nome)}`:` · matéria-prima #${result.chapaBaseMateriaPrimaId||'pendente'}`}</div>`:'';
     const pendenciaKit=result.tipoSugestao==='chapa'&&!kitTemMaterial?'<div class="role-note">A chapa de cor será aplicada à linha Face antes do nesting.</div>':'';
     const coresGradiente=(result.coresGradiente||[]).length?`Gradiente: ${result.coresGradiente.join(' → ')}`:'';
-    return `<tr><td><span style="display:inline-block;width:14px;height:14px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${result.corHex||'#e2e8f0'};"></span> ${escaparHtml(result.corHex||pantone||result.tipoCor)}<div class="source-tag">${escaparHtml([pantone,rgb,cmyk,coresGradiente].filter(Boolean).join(' · ')||'Cor sem valor numérico confirmado')}</div></td><td>${result.areaM2==null?'—':`${fmt(result.areaM2,4)} m²`}</td><td>${escaparHtml(title)}${result.deltaE00!=null?`<div class="source-tag">ΔE00 ${fmt(result.deltaE00,2)}</div>`:''}${planoBase}${pendenciaKit}${(result.avisos||[]).map(message=>`<div class="role-note">${escaparHtml(message)}</div>`).join('')}</td><td>${result.custoEstimado==null?(result.tipoSugestao==='chapa'?'Composição atual':'Custo pendente'):money(result.custoEstimado)}</td></tr>`;
+    return `<tr><td><span style="display:inline-block;width:14px;height:14px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${result.corHex||'#e2e8f0'};"></span> ${escaparHtml(result.corHex||pantone||result.tipoCor)}<div class="source-tag">${escaparHtml([pantone,rgb,cmyk,coresGradiente].filter(Boolean).join(' · ')||'Cor sem valor numérico confirmado')}</div></td><td>${areaExibida==null?'—':`${rotuloArea}: ${fmt(areaExibida,4)} m²`}</td><td>${escaparHtml(title)}${result.deltaE00!=null?`<div class="source-tag">ΔE00 ${fmt(result.deltaE00,2)}</div>`:''}${planoBase}${pendenciaKit}${(result.avisos||[]).map(message=>`<div class="role-note">${escaparHtml(message)}</div>`).join('')}</td><td>${result.custoEstimado==null?(result.tipoSugestao==='chapa'?'Composição atual':'Custo pendente'):money(result.custoEstimado)}</td></tr>`;
   }).join('');
   const countColors=new Set((color.resultados||[]).map(result=>result.corHex||result.pantoneCode||`${result.tipoCor}:${result.cmyk?Object.values(result.cmyk).join(','):(result.coresGradiente||[]).join(',')}`)).size;
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">
-    <div class="cardhead"><div><h4>Correspondência de cores antes do nesting</h4><p>O servidor agrupa as cores distintas e calcula a área vetorial visível em escala real antes da normalização branco/preto.</p></div></div>
+    <div class="cardhead"><div><h4>Correspondência de cores antes do nesting</h4><p>O servidor calcula a área total por Bounding Box para adesivos e mantém a área líquida separada para pintura que envolve a peça.</p></div></div>
     ${controles}
     ${color.error?`<div class="warnbox" role="alert" style="margin-top:8px;">${escaparHtml(color.error)}</div>`:''}
     ${color.loading?'<div class="empty-hint">Extraindo regiões e comparando ΔE00 com chapas e o catálogo Imprimax…</div>':''}
     ${color.resultados?.length?`<div class="tablewrap" style="margin-top:10px;"><table><thead><tr><th>Cor da arte</th><th>Área estimada</th><th>Sugestão e revisão</th><th>Custo adicional</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="role-note" style="margin-top:8px;">${countColors} grupo(s) cromático(s) em ${color.resultados.length} região(ões). A chapa única resolvida é aplicada à linha Face antes do nesting; vinil/impressão entra como insumo adicional. Valores ausentes e construções incertas viram perguntas e bloqueiam a aprovação.</div>
+      <div class="role-note" style="margin-top:8px;">${countColors} grupo(s) cromático(s) em ${color.resultados.length} região(ões). Cada substrato aprovado recebe seus próprios caminhos da camada Face; vinil/impressão entra como insumo adicional. Valores ausentes e construções incertas viram perguntas e bloqueiam a aprovação.</div>
       ${color.aprovado?`<div class="banner" style="margin-top:8px;">${ICONS.check}<div>Composição de cores confirmada por ${escaparHtml(color.aprovadoPor||'usuário')}; a face foi atualizada no kit e o nesting pode seguir.</div></div>`:`<button class="btn btn-primary btn-sm" style="margin-top:10px;" data-act="cor-aprovar-seguir">Aplicar composição e analisar nesting</button>`}`:
       `<button class="btn btn-primary btn-sm" style="margin-top:10px;" data-act="cor-analisar" ${color.loading?'disabled':''}>${color.loading?'Analisando cores…':'Analisar cores e sugerir materiais'}</button>`}
   </div>`;
@@ -3177,22 +3191,23 @@ async function executarNestingFactibilidadeReal(){
   if(fact.status_factibilidade==='REQUER_APROVACAO_EMENDA'&&!fact.reciboDecisao) return;
   REAL.nestingCarregando=true; REAL.nesting=null; REAL.factibilidadeErro=null; render();
   try{
-    const resultados=await Promise.all(fact.materiais.map(async material=>{
+    const lotesPorMaterial=fact.materiais.map(material=>{
       const pecas=fact.acao==='REDIMENSIONAR_PARA_CABER'?material.pecas_redimensionadas_opcao:material.pecas_para_nesting;
       if(!Array.isArray(pecas)||!pecas.length) throw new Error('Nao ha pecas de corte para '+material.materia_prima+'.');
-      const response=await fetch('/api/letra-caixa/nesting',{
-        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          sourceId:REAL.id,resultadoHash:fact.resultadoHash,ticketAnalise:fact.ticketAnalise,
-          acaoFactibilidade:fact.acao||null,reciboDecisaoFactibilidade:fact.reciboDecisao||null,
-          pecas,materiaPrimaIds:[material.id_materia_prima],espacamentoMm:3,
-        }),
-      });
-      const body=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(body.error||'Falha no Deepnest para '+material.materia_prima+'.');
-      return body.materiais?.[0];
-    }));
-    if(resultados.some(resultado=>!resultado)) throw new Error('O Deepnest nao retornou todos os materiais.');
+      return {materiaPrimaId:material.id_materia_prima,pecas};
+    });
+    const response=await fetch('/api/letra-caixa/nesting',{
+      method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        sourceId:REAL.id,resultadoHash:fact.resultadoHash,ticketAnalise:fact.ticketAnalise,
+        acaoFactibilidade:fact.acao||null,reciboDecisaoFactibilidade:fact.reciboDecisao||null,
+        lotesPorMaterial,materiaPrimaIds:lotesPorMaterial.map(lote=>lote.materiaPrimaId),espacamentoMm:3,
+      }),
+    });
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Falha no Deepnest para os materiais selecionados.');
+    const resultados=body.materiais||[];
+    if(resultados.length!==lotesPorMaterial.length) throw new Error('O Deepnest nao retornou todos os materiais.');
     REAL.nesting={materiais:resultados,algoritmo:'Deepnest local'};
   }finally{ REAL.nestingCarregando=false; }
 }
@@ -3200,6 +3215,7 @@ async function executarNestingFactibilidadeReal(){
 function realStepNestingV2(){
   const fact=REAL.factibilidade;
   const nesting=REAL.nesting;
+  const custosNestCompletos=!!nesting?.materiais?.length&&nesting.materiais.length===(fact?.materiais?.length||0)&&nesting.materiais.every(material=>material.custo_material_estimado!=null&&Number.isFinite(Number(material.custo_material_estimado)));
   const bloqueado=!!fact&&fact.status_factibilidade==='REQUER_APROVACAO_EMENDA'&&!fact.reciboDecisao;
   const podeAprovar=['gestor','admin','master'].includes(state.role);
   const previews=fact?.materiais?.map(material=>`<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
@@ -3230,7 +3246,7 @@ function realStepNestingV2(){
     ${REAL.nestingCarregando?`<div class="empty-hint">Deepnest esta posicionando as pecas em cada material...</div>`:''}
     ${fact&&!nesting&&!bloqueado&&!REAL.nestingCarregando?`<button class="btn btn-primary" data-act="real-nesting-factibilidade-retry" style="margin-top:10px;">Executar Deepnest novamente</button>`:''}
     ${cards}
-    <div class="footer-nav"><div></div><button class="btn btn-primary" data-act="real-approve" data-val="nesting" ${nesting?.materiais?.length&&!bloqueado?'':'disabled'}>${ICONS.check} Confirmar nesting e avancar</button></div>
+    <div class="footer-nav"><div></div><button class="btn btn-primary" data-act="real-approve" data-val="nesting" ${custosNestCompletos&&!bloqueado?'':'disabled'}>${ICONS.check} Confirmar nesting e avancar</button></div>
   </div>`;
 }
 
@@ -3297,7 +3313,7 @@ function realStepOrcamento(){
         <thead><tr><th>Linha</th><th>Qtd.</th><th>Custo unit.</th><th>Subtotal</th></tr></thead>
         <tbody>
         ${REAL.kit.map(k=>{const calculo=linhaComCustoNesting(k,g); const qty=calculo.quantidade; const material=materialKitAtivo(k); return `<tr><td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}</div></td><td class="num">${fmt(qty,2)} ${material.unidade}</td><td class="num">${money(calculo.custoUnitario)}</td><td class="num">${money(calculo.custoTotal)}${calculo.nesting?`<div class="source-tag">Deepnest ? ${escaparHtml(calculo.nesting.nomeChapa)}</div>`:''}</td></tr>`;}).join('')}
-        ${(REAL.colorAnalysis.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso').map(item=>`<tr><td>${item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax'} · ${escaparHtml(item.corHex||item.regionKey)}<div class="source-tag">Vetor ${fmt(item.areaM2||0,4)} m² · Consumo faturado ${fmt(item.areaConsumoM2??0,4)} m²</div></td><td class="num">${item.areaConsumoM2==null?'Pendente':`${fmt(item.areaConsumoM2,4)} m²`}</td><td class="num">${item.custoEstimado==null||item.areaConsumoM2==null?'Pendente':money(Number(item.custoEstimado)/Math.max(Number(item.areaConsumoM2)||0,0.000001))}</td><td class="num">${item.custoEstimado==null?'Pendente':money(item.custoEstimado)}</td></tr>`).join('')}
+        ${(REAL.colorAnalysis.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso').map(item=>`<tr><td>${item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax'} · ${escaparHtml(item.corHex||item.regionKey)}<div class="source-tag">Área vetorial ${fmt(item.areaLiquidaM2??item.areaM2??0,4)} m² · Bounding Box agrupado ${fmt(item.areaTotalM2??0,4)} m² · Consumo faturado da bobina ${fmt(item.areaConsumoM2??0,4)} m²</div></td><td class="num">${item.areaConsumoM2==null?'Pendente':`${fmt(item.areaConsumoM2,4)} m²`}</td><td class="num">${item.custoEstimado==null||item.areaConsumoM2==null?'Pendente':money(Number(item.custoEstimado)/Math.max(Number(item.areaConsumoM2)||0,0.000001))}</td><td class="num">${item.custoEstimado==null?'Pendente':money(item.custoEstimado)}</td></tr>`).join('')}
         ${REAL.servicos.map(s=>`<tr><td>${s.n}</td><td class="num">—</td><td class="num">—</td><td class="num">${money(s.v)}</td></tr>`).join('')}
         <tr><td colspan="3">% custo fixo (global, ${configGeral.custoFixoPct}% sobre matéria-prima)</td><td class="num">${money(o.custoFixo)}</td></tr>
         <tr><td colspan="3"><b>Custo direto</b></td><td class="num"><b>${money(o.custoDireto)}</b></td></tr>
@@ -3421,7 +3437,7 @@ const configGeral = {
   whatsappVendedores: {},
   formasPagamento: { cartao:true, boleto:true, ted:true },
   jurosCartaoPct: [0,0,0,0,0,0],
-  papeisPeca: ['Face','Fundo','Lateral','Pintura','Iluminação','Fixação','Insumo fabricação','Produtividade'],
+  papeisPeca: ['Face','Aro','Fundo','Lateral','Pintura','Iluminação','Fixação','Insumo fabricação','Produtividade'],
 };
 let configGeralCarregada = false;
 let configGeralEstado = 'carregando';
@@ -3859,6 +3875,7 @@ async function carregarConfigGeralServidor(){
       return Number.isFinite(valor)?Math.min(100,Math.max(0,valor)):0;
     });
     if(Array.isArray(data.papeisPeca)) configGeral.papeisPeca=data.papeisPeca;
+    if(!configGeral.papeisPeca.includes('Aro')) configGeral.papeisPeca.push('Aro');
     configGeralCarregada=true;
     configGeralEstado='pronto';
   }catch(error){
@@ -4184,7 +4201,7 @@ function adminConfiguracoes(){
       <button class="btn btn-primary btn-sm" data-act="config-papel-add">${ICONS.check} Adicionar</button>
     </div>
     <div style="display:flex; flex-wrap:wrap; gap:6px;">
-      ${configGeral.papeisPeca.map((pp,i)=>`<span class="badge b-neutral" style="gap:6px;">${pp} <button data-act="config-papel-remove" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
+      ${configGeral.papeisPeca.map((pp,i)=>`<span class="badge b-neutral" style="gap:6px;">${pp} <button ${pp==='Aro'?'disabled title="Papel obrigatorio"':''} data-act="config-papel-remove" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
     </div>
   </div>
   </fieldset>
@@ -4440,7 +4457,7 @@ function adminKitEditor(p, m, key){
             <td>${k.nome}<div class="source-tag">${ICONS.db} unidade real: ${k.unidade}</div><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-variacao-toggle" data-key="${key}" data-idx="${i}" style="display:block;margin-top:5px;">${Array.isArray(k.variantes)&&k.variantes.length?`Variações (${k.variantes.length})`:"Criar variação"}</button></td>
             <td><select data-act="admin-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
-              ${configGeral.papeisPeca.map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
+              ${[...new Set([...configGeral.papeisPeca,'Aro'])].map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
             </select></td>
             <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select></td>
             <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="admin-kit-mult" data-idx="${i}" style="width:70px;"></td>
@@ -4942,6 +4959,7 @@ function bindAdminEvents(){
   if(papelNovoEl) papelNovoEl.addEventListener('keydown', e=>{ if(e.key==='Enter') addPapel(); });
   document.querySelectorAll('[data-act="config-papel-remove"]').forEach(el=>{
     el.addEventListener('click', ()=>{
+      if(configGeral.papeisPeca[+el.dataset.idx]==='Aro') return;
       configGeral.papeisPeca.splice(+el.dataset.idx,1);
       salvarConfigGeral();
       render();

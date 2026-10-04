@@ -74,14 +74,16 @@ a área vetorial visível:
 
 `custo = área_consumida_da_bobina_m² × (custo_vinil_base_m² + custo_impressão_m² + custo_laminação_m², se selecionada)`
 
-O custo de vinil sólido é `área_consumida_da_bobina_m² × preço_m²` do item de catálogo. A área visível líquida continua registrada para referência. Chapa segue a composição e o cálculo de material já existentes no kit/nesting; a sugestão de cor não substitui nem altera silenciosamente uma linha de composição.
+Para adesivo sólido e adesivo impresso, a quantidade geométrica usa a área total das peças, obtida pela soma dos Bounding Boxes individuais; ela não usa a área líquida dos preenchimentos. O consumo faturado pode ser maior que essa área quando a sobra da bobina não for reutilizável: nesse caso, a precificação considera a largura total do rolo pelo comprimento linear utilizado. A área líquida fica registrada separadamente e serve somente ao cálculo de pintura que envolve a peça. Chapa segue a composição e o cálculo de material já existentes no kit/nesting; a sugestão de cor não substitui nem altera silenciosamente uma linha de composição.
 
 Se a geometria, a configuração da bobina ou um componente de preço necessário estiver ausente, o custo permanece nulo e a emissão é bloqueada. O fluxo não transforma dado ausente em custo zero.
 
 ## Consumo físico de bobina
 
-A análise do SVG calcula a área visível e o Bounding Box original de cada contorno
-fechado. Contornos agrupados por cor mantêm cada caixa no objeto estruturado de
+A análise do SVG calcula a área líquida visível e o Bounding Box original de cada contorno
+fechado. Para adesivos, a área total é a soma das áreas desses Bounding Boxes, sem descontar
+furos ou sobreposições visuais; a área líquida permanece separada para pintura que envolve
+a peça. Contornos agrupados por cor mantêm cada caixa no objeto estruturado de
 preço; a sangria configurada é aplicada em cada borda de cada caixa antes de medir o layout.
 O padrão é 3 mm por lado.
 
@@ -109,7 +111,7 @@ cadastrado pela operação.
 
 O vendedor revisa sugestões e confirma o mapa antes da factibilidade/nesting. Reanalisar ou alterar iluminação, base de impressão, laminação ou catálogo invalida a aprovação anterior. O snapshot da cotação guarda área líquida, caixas individuais, área consumida e os parâmetros de bobina usados. As rotas de análise, aprovação, análise de preço e emissão consultam o snapshot persistido no servidor; valores enviados pelo navegador precisam corresponder ao registro aprovado.
 
-As linhas de adesivo/impressão aprovadas entram como custo adicional no snapshot da cotação. Materiais de chapa continuam ligados ao kit/linhas que já alimentam o nesting. A sugestão de uma chapa colorida ou de um vinil não adiciona automaticamente uma matéria-prima ao kit, não redivide o vetor por material e não gera percursos CNC separados por cor. O nesting atual valida a geometria de corte existente; essa automação por material requer uma etapa futura de composição/fabricação que conecte regiões aprovadas a matérias-primas e processos.
+As linhas de adesivo/impressão aprovadas entram como custo adicional no snapshot da cotação. Materiais de chapa continuam ligados ao kit/linhas que alimentam o nesting. Quando o SVG contém camadas nomeadas Face, Aro e Fundo, a factibilidade seleciona os caminhos de cada camada; os caminhos da Face são associados aos substratos aprovados por cor e cada matéria-prima segue para um lote de nesting próprio. O mapeamento persiste áreas vetoriais, caixas individuais e consumo faturado. Caminhos sem camada reconhecida ou sem geometria aprovada deixam a factibilidade pendente; impressão em vinil permanece como custo adicional do rolo.
 
 ## Importação Imprimax e manutenção
 

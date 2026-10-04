@@ -30,6 +30,7 @@ const AREA_MINIMA_FRAGMENTO_MM2 = 0.01;
 const MAX_CAMINHOS = 500;
 const MAX_PONTOS = 250_000;
 const MAX_PECAS_POR_MATERIAL = 100;
+const MAX_PECAS_NO_SVG = MAX_PECAS_POR_MATERIAL * 3;
 const MAX_LINHAS_DE_CORTE = 2_000;
 
 export const OPCOES_FACTIBILIDADE = [
@@ -60,10 +61,20 @@ export type CpqFactibilidadeChapa = {
   alturaMm: number;
 };
 
+export type CpqNestingCamada = "face" | "aro" | "fundo";
+
+export type CpqFactibilidadeLoteMaterial = {
+  camada: CpqNestingCamada;
+  /** Restringe uma camada a caminhos aprovados, como regiões cromáticas da face. */
+  pathIndexes?: number[];
+};
+
 export type CpqFactibilidadeMaterial = {
   id: number;
   nome: string;
   chapas: CpqFactibilidadeChapa[];
+  /** Ausente em fluxos antigos: mantém o comportamento de nesting da arte inteira. */
+  lotes?: CpqFactibilidadeLoteMaterial[];
 };
 
 export type CpqLinhaCorte = {
@@ -154,10 +165,11 @@ type ParsedPiece = {
   geometry: MultiPolygon;
   bounds: Bounds;
   pathIndex: number;
+  camada: CpqNestingCamada | null;
 };
 type ParsedSvg = {
   viewBox: ViewBox;
-  paths: Array<{ id: string; d: string }>;
+  paths: Array<{ id: string; d: string; camada: CpqNestingCamada | null }>;
   pieces: ParsedPiece[];
   mmPerUnitX: number;
   mmPerUnitY: number;
@@ -173,6 +185,39 @@ function attrs(text: string): Record<string, string> {
   const result: Record<string, string> = {};
   const pattern = /([\w:-]+)\s*=\s*(["'])(.*?)\2/g;
   for (const match of text.matchAll(pattern)) result[match[1].toLowerCase()] = match[3];
+  return result;
+}
+
+function camadaSvg(value: string | undefined): CpqNestingCamada | null {
+  if (!value) return null;
+  const tokens = new Set(value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  const face = ["face", "frente", "visual", "translucida"].some(alias => tokens.has(alias));
+  const aro = ["aro", "lateral", "laterais", "contorno", "perfil"].some(alias => tokens.has(alias));
+  const fundo = ["fundo", "base", "costas", "verso", "back"].some(alias => tokens.has(alias));
+  const matches = [face ? "face" : null, aro ? "aro" : null, fundo ? "fundo" : null].filter(Boolean);
+  return matches.length === 1 ? matches[0] as CpqNestingCamada : null;
+}
+
+/** Associa cada path à camada sem interpretar ou transformar a geometria SVG. */
+function camadasPorCaminho(svg: string): Array<CpqNestingCamada | null> {
+  const stack: Array<CpqNestingCamada | null> = [];
+  const result: Array<CpqNestingCamada | null> = [];
+  const tags = /<\s*\/\s*g\b[^>]*>|<\s*g\b[^>]*>|<\s*path\b[^>]*\/?\s*>/gi;
+  for (const match of svg.matchAll(tags)) {
+    const tag = match[0];
+    if (/^<\s*\//.test(tag)) {
+      if (/^<\s*\/\s*g\b/i.test(tag)) stack.pop();
+      continue;
+    }
+    if (/^<\s*g\b/i.test(tag)) {
+      const attributes = attrs(tag.replace(/^<\s*g\b/i, "").replace(/\/?\s*>$/, ""));
+      const namespaceLabel = Object.entries(attributes).find(([key]) => key.endsWith(":label"))?.[1];
+      const ownLayer = camadaSvg(attributes["inkscape:label"] ?? namespaceLabel ?? attributes["data-layer-name"] ?? attributes["aria-label"] ?? attributes.label ?? attributes.id);
+      if (!/\/\s*>$/.test(tag)) stack.push(ownLayer ?? stack[stack.length - 1] ?? null);
+      continue;
+    }
+    result.push(stack[stack.length - 1] ?? null);
+  }
   return result;
 }
 
@@ -453,6 +498,7 @@ function parseSvg(
     );
   }
   const pathTags = [...svg.matchAll(/<path\b([^>]*)\/?\s*>/gi)];
+  const pathLayers = camadasPorCaminho(svg);
   if (!pathTags.length || pathTags.length > MAX_CAMINHOS)
     throw new CpqFactibilidadeError(
       "O SVG precisa conter entre 1 e 500 caminhos vetoriais.",
@@ -476,7 +522,8 @@ function parseSvg(
         "invalid_geometry"
       );
     const id = (attributes.id || `Peca_${pathIndex + 1}`).slice(0, 120);
-    paths.push({ id, d });
+    const camada = pathLayers[pathIndex] ?? null;
+    paths.push({ id, d, camada });
     const rings = pathContours(d, viewBox, mmPerUnitX, mmPerUnitY, 0.1);
     pointCount += rings.reduce((sum, ring) => sum + ring.length, 0);
     if (pointCount > MAX_PONTOS)
@@ -530,9 +577,10 @@ function parseSvg(
         geometry: [polygon],
         bounds: polygonBounds,
         pathIndex,
+        camada,
       });
-      if (pieces.length > MAX_PECAS_POR_MATERIAL)
-        throw new CpqFactibilidadeError("O SVG excede o limite de 100 peças independentes aceito pelo Deepnest.", "invalid_geometry");
+      if (pieces.length > MAX_PECAS_NO_SVG)
+        throw new CpqFactibilidadeError("O SVG excede o limite de 300 contornos independentes das três camadas.", "invalid_geometry");
     }
   });
   if (!pieces.length)
@@ -623,6 +671,7 @@ export type CpqMetricaCaminhoSvg = {
   areaM2: number;
   boundsMm: Bounds | null;
   contornosBoundsMm: Bounds[];
+  camada: CpqNestingCamada | null;
 };
 
 export function calcularMetricasVisiveisSvgPorCaminho(
@@ -657,12 +706,13 @@ export function calcularMetricasVisiveisSvgPorCaminho(
     boundsMm: null as Bounds | null,
     contornosBoundsMm: [] as Bounds[],
   }));
-  let coberto: MultiPolygon | null = null;
+  const coberturaPorCamada = new Map<string, MultiPolygon>();
   for (let pathIndex = parsed.paths.length - 1; pathIndex >= 0; pathIndex -= 1) {
     const geometria = geometriaPorCaminho.get(pathIndex);
     if (!geometria?.length) continue;
     try {
-      const coberturaAnterior = coberto as MultiPolygon | null;
+      const chaveCamada = parsed.paths[pathIndex].camada ?? "geometria-sem-camada";
+      const coberturaAnterior = coberturaPorCamada.get(chaveCamada) ?? null;
       const temCobertura = coberturaAnterior !== null && coberturaAnterior.length > 0;
       const visivel = temCobertura
         ? polygonClipping.difference(geometria, coberturaAnterior) as MultiPolygon
@@ -670,18 +720,17 @@ export function calcularMetricasVisiveisSvgPorCaminho(
       const contornosBoundsMm = (pecasPorCaminho.get(pathIndex) ?? []).flatMap(piece => {
         if (!visivel.length) return [];
         const parcelaVisivel = polygonClipping.intersection(piece.geometry, visivel) as MultiPolygon;
-        return geometryArea(parcelaVisivel) > 0
-          ? [boundsOf(parcelaVisivel.flatMap(polygon => polygon))]
-          : [];
+        return geometryArea(parcelaVisivel) > 0 ? [piece.bounds] : [];
       });
       metricasMm[pathIndex] = {
         areaMm2: geometryArea(visivel),
         boundsMm: visivel.length ? boundsOf(visivel.flatMap(polygon => polygon)) : null,
         contornosBoundsMm,
       };
-      coberto = temCobertura
+      const coberturaAtual = temCobertura
         ? polygonClipping.union(coberturaAnterior, geometria) as MultiPolygon
         : geometria;
+      coberturaPorCamada.set(chaveCamada, coberturaAtual);
     } catch {
       throw new CpqFactibilidadeError(
         "Não foi possível descontar sobreposições entre regiões de cor.",
@@ -689,10 +738,11 @@ export function calcularMetricasVisiveisSvgPorCaminho(
       );
     }
   }
-  return metricasMm.map(({ areaMm2, boundsMm, contornosBoundsMm }) => ({
+  return metricasMm.map(({ areaMm2, boundsMm, contornosBoundsMm }, pathIndex) => ({
     areaM2: Number((areaMm2 / 1_000_000).toFixed(8)),
     boundsMm,
     contornosBoundsMm,
+    camada: parsed.paths[pathIndex]?.camada ?? null,
   }));
 }
 
@@ -956,8 +1006,41 @@ function updateSvgPhysicalSize(svg: string, widthMm: number, heightMm: number): 
   return svg.replace(root, nextRoot);
 }
 
-function allOriginalPieces(parsed: ParsedSvg): OutputFragment[] {
-  return parsed.pieces.map(piece => ({
+function pecasDaMateriaPrima(parsed: ParsedSvg, material: CpqFactibilidadeMaterial): ParsedPiece[] {
+  if (!material.lotes?.length) return parsed.pieces.map(piece => ({ ...piece, id: idPecaNesting(piece) }));
+  const selecionadas = new Map<string, ParsedPiece>();
+  for (const lote of material.lotes) {
+    const indexes = lote.pathIndexes == null ? null : new Set(lote.pathIndexes);
+    for (const pathIndex of indexes ?? []) {
+      if (parsed.paths[pathIndex]?.camada !== lote.camada) {
+        throw new CpqFactibilidadeError(
+          `O caminho ${pathIndex + 1} não pertence à camada ${lote.camada} do material ${material.nome}.`,
+          "invalid_geometry"
+        );
+      }
+    }
+    for (const piece of parsed.pieces) {
+      if (piece.camada !== lote.camada || (indexes && !indexes.has(piece.pathIndex))) continue;
+      selecionadas.set(`${piece.pathIndex}:${piece.id}`, piece);
+    }
+  }
+  const pieces = [...selecionadas.values()];
+  if (!pieces.length) {
+    const camadas = [...new Set(material.lotes.map(lote => lote.camada))].join(", ");
+    throw new CpqFactibilidadeError(
+      `Não há contornos fechados nas camadas ${camadas} para o material ${material.nome}. Revise os nomes das camadas e a composição.`,
+      "invalid_geometry"
+    );
+  }
+  return pieces.map(piece => ({ ...piece, id: idPecaNesting(piece) }));
+}
+
+function idPecaNesting(piece: ParsedPiece): string {
+  return `${piece.camada ?? "contorno"}-${piece.pathIndex + 1}-${sha256(piece.id).slice(0, 10)}`;
+}
+
+function allOriginalPieces(parsed: ParsedSvg, pieces: ParsedPiece[] = parsed.pieces): OutputFragment[] {
+  return pieces.map(piece => ({
     id: piece.id,
     pecaId: piece.id,
     geometry: piece.geometry,
@@ -1025,6 +1108,7 @@ export function calcularFactibilidadeFabricacao(input: {
     );
   const parsed = parseSvg(input.svg, input.larguraSvgMm, input.alturaSvgMm);
   const boards = new Map<number, ReturnType<typeof canonicalBoard>>();
+  const pecasPorMaterial = new Map<number, ParsedPiece[]>();
   for (const material of input.materiais) {
     const board = maiorChapa(material);
     if (!board)
@@ -1033,6 +1117,7 @@ export function calcularFactibilidadeFabricacao(input: {
         "missing_board"
       );
     boards.set(material.id, board);
+    pecasPorMaterial.set(material.id, pecasDaMateriaPrima(parsed, material));
   }
 
   let fatorEscalaNecessario = 1;
@@ -1040,7 +1125,7 @@ export function calcularFactibilidadeFabricacao(input: {
   for (const material of input.materiais) {
     const board = boards.get(material.id)!;
     const pieceFits = new Map<string, number>();
-    for (const piece of parsed.pieces) {
+    for (const piece of pecasPorMaterial.get(material.id)!) {
       const fitScale = melhorFatorDeEncaixe(piece.bounds, board);
       pieceFits.set(piece.id, fitScale);
       fatorEscalaNecessario = Math.min(fatorEscalaNecessario, fitScale);
@@ -1054,9 +1139,9 @@ export function calcularFactibilidadeFabricacao(input: {
     const larguraFinal = input.larguraSvgMm * fatorEscala;
     const alturaFinal = input.alturaSvgMm * fatorEscala;
     const svgAjustado = updateSvgPhysicalSize(input.svg, larguraFinal, alturaFinal);
-    const fragments = allOriginalPieces(parsed);
-    const materiais = input.materiais.map(material =>
-      noCutMaterial(
+    const materiais = input.materiais.map(material => {
+      const fragments = allOriginalPieces(parsed, pecasPorMaterial.get(material.id)!);
+      return noCutMaterial(
         material,
         boards.get(material.id)!,
         svgAjustado,
@@ -1070,8 +1155,8 @@ export function calcularFactibilidadeFabricacao(input: {
             maxY: fragment.bounds.maxY * fatorEscala,
           },
         }))
-      )
-    );
+      );
+    });
     return {
       status_factibilidade: "APTO_NESTING",
       projeto_fatiado: false,
@@ -1093,9 +1178,8 @@ export function calcularFactibilidadeFabricacao(input: {
   }
 
   if (fatorEscala >= 1) {
-    const fragments = allOriginalPieces(parsed);
     const materiais = input.materiais.map(material =>
-      noCutMaterial(material, boards.get(material.id)!, input.svg, fragments)
+      noCutMaterial(material, boards.get(material.id)!, input.svg, allOriginalPieces(parsed, pecasPorMaterial.get(material.id)!))
     );
     return {
       status_factibilidade: "APTO_NESTING",
@@ -1115,16 +1199,16 @@ export function calcularFactibilidadeFabricacao(input: {
     };
   }
 
-  const fragmentosRedimensionados = allOriginalPieces(parsed).map(fragment => ({
-    ...fragment,
-    geometry: scaleGeometry(fragment.geometry, fatorEscala),
-    bounds: {
-      minX: fragment.bounds.minX * fatorEscala,
-      maxX: fragment.bounds.maxX * fatorEscala,
-      minY: fragment.bounds.minY * fatorEscala,
-      maxY: fragment.bounds.maxY * fatorEscala,
-    },
-  }));
+  const redimensionarFragmentos = (pieces: ParsedPiece[]) => allOriginalPieces(parsed, pieces).map(fragment => ({
+      ...fragment,
+      geometry: scaleGeometry(fragment.geometry, fatorEscala),
+      bounds: {
+        minX: fragment.bounds.minX * fatorEscala,
+        maxX: fragment.bounds.maxX * fatorEscala,
+        minY: fragment.bounds.minY * fatorEscala,
+        maxY: fragment.bounds.maxY * fatorEscala,
+      },
+    }));
   const lines: CpqLinhaCorte[] = [];
   const affected = new Set<string>();
   const materialResults: CpqFactibilidadeMaterialResult[] = [];
@@ -1132,7 +1216,7 @@ export function calcularFactibilidadeFabricacao(input: {
     const board = boards.get(material.id)!;
     const fragments: OutputFragment[] = [];
     const materialLines: CpqLinhaCorte[] = [];
-    for (const piece of parsed.pieces) {
+    for (const piece of pecasPorMaterial.get(material.id)!) {
       const requiredScale = needsByMaterial.get(material.id)!.get(piece.id) ?? 1;
       if (requiredScale >= 1) {
         fragments.push({
@@ -1170,7 +1254,7 @@ export function calcularFactibilidadeFabricacao(input: {
       true
     );
     const pecasParaNesting = nestingPieces(fragments, material.nome);
-    const pecasRedimensionadas = nestingPieces(fragmentosRedimensionados, material.nome);
+    const pecasRedimensionadas = nestingPieces(redimensionarFragmentos(pecasPorMaterial.get(material.id)!), material.nome);
     materialResults.push({
       id_materia_prima: material.id,
       materia_prima: material.nome,

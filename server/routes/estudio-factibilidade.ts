@@ -1,9 +1,9 @@
 import { fromNodeHeaders } from "better-auth/node";
 import { createHash } from "node:crypto";
 import type { Express, Request, Response } from "express";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { estudioChapas } from "../../drizzle/schema";
+import { estudioChapas, estudioMapeamentoCoresCotacao } from "../../drizzle/schema";
 import { criarAlerta } from "../db/alertas-helpers";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
@@ -17,7 +17,9 @@ import {
   validarAcaoFactibilidade,
   verificarTicketAnaliseFactibilidade,
   type CpqFactibilidadeMaterial,
+  type CpqNestingCamada,
 } from "../services/cpqFactibilidadeFabricacao";
+import { agruparCaminhosFacePorMateriaPrima } from "../services/cpqCoresMateriais";
 
 const analisarInput = z
   .object({
@@ -26,6 +28,10 @@ const analisarInput = z
     larguraSvgMm: z.number().finite().positive().max(50_000),
     alturaSvgMm: z.number().finite().positive().max(50_000),
     materiaPrimaIds: z.array(z.number().int().positive()).min(1).max(10),
+    camadasMateriais: z.array(z.object({
+      materiaPrimaId: z.number().int().positive(),
+      camada: z.enum(["face", "aro", "fundo"]),
+    }).strict()).min(1).max(30).optional(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -34,6 +40,13 @@ const analisarInput = z
         code: "custom",
         message: "A lista de matérias-primas não pode ter IDs repetidos.",
       });
+    if (input.camadasMateriais) {
+      const assignments = input.camadasMateriais.map(item => `${item.materiaPrimaId}:${item.camada}`);
+      if (new Set(assignments).size !== assignments.length)
+        context.addIssue({ code: "custom", message: "Cada matéria-prima pode ser associada uma vez a cada camada." });
+      if (input.camadasMateriais.some(item => !input.materiaPrimaIds.includes(item.materiaPrimaId)))
+        context.addIssue({ code: "custom", message: "As camadas precisam usar matérias-primas selecionadas para a factibilidade." });
+    }
   });
 
 const decisionInput = z
@@ -114,14 +127,54 @@ async function analisar(req: Request, res: Response): Promise<void> {
   const db = await getDb();
   if (!db) return void respostaErro(res, 503, "O banco de dados está indisponível.");
 
-  const [catalogo, chapas] = await Promise.all([
+  const [catalogo, chapas, mapeamentosCor] = await Promise.all([
     listarMateriasPrimas(),
     db
       .select()
       .from(estudioChapas)
       .where(inArray(estudioChapas.mubisysMateriaPrimaId, parsed.data.materiaPrimaIds))
       .then(rows => rows.filter(row => row.ativo)),
+    parsed.data.camadasMateriais
+      ? db.select().from(estudioMapeamentoCoresCotacao).where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.data.sourceId))
+      : Promise.resolve([]),
   ]);
+  if (parsed.data.camadasMateriais && (!mapeamentosCor.length || mapeamentosCor.some(row => !row.aprovado)))
+    return void respostaErro(res, 409, "A análise de materiais da face precisa estar aprovada antes da factibilidade por camada.");
+
+  const faceCaminhos = agruparCaminhosFacePorMateriaPrima(mapeamentosCor.flatMap(row => {
+    const details = row.detalhesJson as Record<string, unknown>;
+    const materiaPrimaId = row.tipoSugestao === "chapa"
+      ? details.chapaMateriaPrimaId
+      : details.requerChapaBase === true ? details.chapaBaseMateriaPrimaId : null;
+    const pathIndexes = Array.isArray(details.pathIndexes)
+      ? details.pathIndexes.filter((value): value is number => Number.isInteger(value) && Number(value) >= 0)
+      : [];
+    return typeof materiaPrimaId === "number" && pathIndexes.length
+      ? [{ materiaPrimaId, pathIndexes }]
+      : [];
+  }));
+  const facePorMaterial = new Map(faceCaminhos.map(item => [item.materiaPrimaId, item.pathIndexes]));
+  if (parsed.data.camadasMateriais && [...facePorMaterial.keys()].some(id => !parsed.data.materiaPrimaIds.includes(id)))
+    return void respostaErro(res, 409, "Inclua no nesting todas as matérias-primas aprovadas para a face.");
+  const camadasPorMaterial = new Map<number, Array<{ camada: CpqNestingCamada; pathIndexes?: number[] }>>();
+  for (const item of parsed.data.camadasMateriais ?? []) {
+    const lotes = camadasPorMaterial.get(item.materiaPrimaId) ?? [];
+    if (item.camada === "face") {
+      const pathIndexes = facePorMaterial.get(item.materiaPrimaId);
+      if (pathIndexes?.length) lotes.push({ camada: item.camada, pathIndexes });
+      else lotes.push({ camada: item.camada });
+    } else {
+      lotes.push({ camada: item.camada });
+    }
+    camadasPorMaterial.set(item.materiaPrimaId, lotes);
+  }
+  for (const [materiaPrimaId, pathIndexes] of facePorMaterial) {
+    const lotes = camadasPorMaterial.get(materiaPrimaId) ?? [];
+    if (!lotes.some(item => item.camada === "face")) lotes.push({ camada: "face", pathIndexes });
+    camadasPorMaterial.set(materiaPrimaId, lotes);
+  }
+  if (parsed.data.camadasMateriais && parsed.data.materiaPrimaIds.some(id => !camadasPorMaterial.get(id)?.length))
+    return void respostaErro(res, 409, "Associe cada matéria-prima a uma camada Face, Aro ou Fundo antes de analisar.");
   const byId = new Map(catalogo.map(material => [material.id, material]));
   const materials: CpqFactibilidadeMaterial[] = [];
   for (const id of parsed.data.materiaPrimaIds) {
@@ -135,6 +188,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
     materials.push({
       id: material.id,
       nome: material.nome,
+      lotes: camadasPorMaterial.get(id),
       chapas: chapas
         .filter(chapa => chapa.mubisysMateriaPrimaId === id)
         .map(chapa => ({

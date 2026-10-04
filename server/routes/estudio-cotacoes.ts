@@ -39,9 +39,12 @@ const mapeamentoRegiaoSchema = z.object({
   coresGradiente: z.array(z.string().regex(/^#[\da-f]{6}$/i)).max(20),
   pathIndexes: z.array(z.number().int().nonnegative().max(499)).max(500),
   areaM2: z.number().finite().nonnegative().nullable(),
+  areaLiquidaM2: z.number().finite().nonnegative().nullable().optional(),
+  areaTotalM2: z.number().finite().nonnegative().nullable().optional(),
   areaConsumoM2: z.number().finite().nonnegative().nullable().optional(),
   dadosPreco: z.object({
     areaLiquidaM2: z.number().finite().nonnegative(),
+    areaTotalM2: z.number().finite().positive(),
     larguraMm: z.number().finite().positive(),
     alturaMm: z.number().finite().positive(),
     boundingBoxesMm: z.array(z.object({
@@ -255,8 +258,9 @@ function validarFactibilidadeSnapshot(
     throw new Error("Revise e aprove o mapeamento de cores e materiais antes de emitir a cotação.");
   const pendenciaCustoCor = snapshot.mapeamentoCores.regioes.some(regiao =>
     (regiao.tipoSugestao === "imprimax" || regiao.tipoSugestao === "impresso")
-      && (regiao.custoEstimado == null || regiao.areaM2 == null
-        || regiao.areaConsumoM2 == null || regiao.areaConsumoM2 <= 0 || !regiao.dadosPreco)
+      && (regiao.custoEstimado == null || regiao.areaTotalM2 == null || regiao.areaTotalM2 <= 0
+        || regiao.areaConsumoM2 == null || regiao.areaConsumoM2 <= 0
+        || !regiao.dadosPreco || regiao.dadosPreco.areaTotalM2 == null || regiao.dadosPreco.areaTotalM2 <= 0)
   );
   if (pendenciaCustoCor)
     throw new Error("Há adesivo sem geometria, consumo de bobina ou custo calculado. Confira os custos e a configuração da bobina antes de emitir.");
@@ -556,7 +560,6 @@ async function validarMapeamentoCoresPersistido(
     return child;
   });
   let custoPersistido = 0;
-  const materiaisFace = new Set<number>();
   for (const row of saved) {
     const region = byKey.get(row.regionKey);
     const details = row.detalhesJson as Record<string, unknown>;
@@ -571,6 +574,8 @@ async function validarMapeamentoCoresPersistido(
       || region.deltaE00 !== (row.deltaE00 == null ? null : Number(row.deltaE00))
       || region.custoEstimado !== (row.custoEstimado == null ? null : Number(row.custoEstimado))
       || region.areaM2 !== (row.areaM2 == null ? null : Number(row.areaM2))
+      || (region.areaLiquidaM2 ?? null) !== (details.areaLiquidaM2 ?? null)
+      || (region.areaTotalM2 ?? null) !== (details.areaTotalM2 ?? null)
       || (region.areaConsumoM2 ?? null) !== (details.areaConsumoM2 ?? null)
       || stableJson(region.dadosPreco ?? null) !== stableJson(details.dadosPreco ?? null)
       || mapping.iluminacao !== row.modoIluminacao
@@ -599,20 +604,18 @@ async function validarMapeamentoCoresPersistido(
     const materialFaceEsperado = row.tipoSugestao === "chapa"
       ? details.chapaMateriaPrimaId
       : details.requerChapaBase === true ? details.chapaBaseMateriaPrimaId : null;
-    if (typeof materialFaceEsperado === "number") materiaisFace.add(materialFaceEsperado);
     if (typeof materialFaceEsperado === "number"
       && !snapshot.materiais.some(material => material.mubisysMateriaPrimaId === materialFaceEsperado)) {
       return "A chapa definida pela análise de cor não participa da composição da cotação. Reaplique a composição e refaça o nesting.";
     }
     if (region.tipoSugestao === "imprimax" || region.tipoSugestao === "impresso") {
-      if (region.areaM2 == null || region.areaConsumoM2 == null || region.areaConsumoM2 <= 0
-        || !region.dadosPreco || region.custoEstimado == null)
+      if (region.areaTotalM2 == null || region.areaTotalM2 <= 0
+        || region.areaConsumoM2 == null || region.areaConsumoM2 <= 0
+        || !region.dadosPreco || region.dadosPreco.areaTotalM2 == null || region.custoEstimado == null)
         return "Há adesivo sem geometria, consumo de bobina ou custo calculado. Refaça a análise de cores e confira a configuração da bobina.";
       custoPersistido += region.custoEstimado;
     }
   }
-  if (materiaisFace.size > 1)
-    return "As cores da face dependem de chapas distintas e ainda precisam de nesting separado por caminho vetorial.";
   if (Math.abs(custoPersistido - mapping.custoAdicional) > 0.0002)
     return "O custo adicional de cores não corresponde aos valores aprovados no servidor.";
   return null;

@@ -40,6 +40,13 @@ const chapaInput = z
       context.addIssue({ code: "custom", message: "Preencha os quatro canais CMYK ou deixe todos vazios." });
   });
 
+const pecaNestingInput = z.object({
+  id: z.string().min(1).max(80),
+  svg: z.string().min(20).max(1_500_000),
+  larguraMm: z.number().finite().positive().max(50_000),
+  alturaMm: z.number().finite().positive().max(50_000),
+}).strict();
+
 const nestingInput = z
   .object({
     sourceId: z.string().min(1).max(80).optional(),
@@ -50,25 +57,34 @@ const nestingInput = z
     svg: z.string().min(20).max(1_500_000).optional(),
     larguraSvgMm: z.number().finite().positive().max(50_000).optional(),
     alturaSvgMm: z.number().finite().positive().max(50_000).optional(),
-    pecas: z.array(z.object({
-      id: z.string().min(1).max(80),
-      svg: z.string().min(20).max(1_500_000),
-      larguraMm: z.number().finite().positive().max(50_000),
-      alturaMm: z.number().finite().positive().max(50_000),
-    }).strict()).min(1).max(100).optional(),
+    pecas: z.array(pecaNestingInput).min(1).max(100).optional(),
+    lotesPorMaterial: z.array(z.object({
+      materiaPrimaId: z.number().int().positive(),
+      pecas: z.array(pecaNestingInput).min(1).max(100),
+    }).strict()).min(1).max(10).optional(),
     espacamentoMm: z.number().finite().min(0).max(50).optional().default(0),
     materiaPrimaIds: z.array(z.number().int().positive()).min(1).max(100),
   })
   .strict()
   .superRefine((input, context) => {
-    if (!input.pecas?.length && (!input.svg || !input.larguraSvgMm || !input.alturaSvgMm)) {
+    if (!input.pecas?.length && !input.lotesPorMaterial?.length && (!input.svg || !input.larguraSvgMm || !input.alturaSvgMm)) {
       context.addIssue({ code: "custom", message: "Informe uma arte e escala física ou uma lista de peças vetoriais." });
     }
-    if (input.sourceId && (!input.resultadoHash || !input.ticketAnalise || !input.pecas?.length || input.materiaPrimaIds.length !== 1)) {
+    if (input.sourceId && (!input.resultadoHash || !input.ticketAnalise || (!input.lotesPorMaterial?.length && (!input.pecas?.length || input.materiaPrimaIds.length !== 1)))) {
       context.addIssue({ code: "custom", message: "Nesting do CPQ precisa do recibo de factibilidade e de uma lista de peças por material." });
     }
     if (input.pecas?.length && input.pecas.reduce((sum, peca) => sum + peca.svg.length, 0) > 1_500_000) {
       context.addIssue({ code: "custom", message: "O conjunto de SVGs excede o limite de tamanho permitido." });
+    }
+    if (input.lotesPorMaterial && input.lotesPorMaterial.reduce((sum, lote) => sum + lote.pecas.reduce((subtotal, peca) => subtotal + peca.svg.length, 0), 0) > 1_500_000) {
+      context.addIssue({ code: "custom", message: "Os lotes de SVG excedem o limite de tamanho permitido." });
+    }
+    if (input.lotesPorMaterial) {
+      const loteIds = input.lotesPorMaterial.map(lote => lote.materiaPrimaId);
+      if (new Set(loteIds).size !== loteIds.length || loteIds.length !== input.materiaPrimaIds.length
+        || loteIds.some(id => !input.materiaPrimaIds.includes(id))) {
+        context.addIssue({ code: "custom", message: "Cada materia-prima precisa ter exatamente um lote geometrico." });
+      }
     }
     if (new Set(input.materiaPrimaIds).size !== input.materiaPrimaIds.length) {
       context.addIssue({
@@ -307,6 +323,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       .then(rows => rows.filter(row => row.ativo)),
   ]);
   const byId = new Map(catalogo.map(material => [material.id, material]));
+  const lotesPorMaterial = new Map((parsed.data.lotesPorMaterial ?? []).map(lote => [lote.materiaPrimaId, lote.pecas]));
   const materiais: CpqMaterial[] = [];
   for (const id of parsed.data.materiaPrimaIds) {
     const material = byId.get(id);
@@ -322,6 +339,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       custoUnitario: Number(material.valor_custo) || 0,
       unidadeCusto: material.unidade_custo || "",
       chapas: chapas.filter(chapa => chapa.mubisysMateriaPrimaId === id),
+      ...(lotesPorMaterial.has(id) ? { pecas: lotesPorMaterial.get(id)! } : {}),
     });
   }
 
@@ -354,11 +372,16 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       } else if (parsed.data.acaoFactibilidade || parsed.data.reciboDecisaoFactibilidade) {
         throw new Error("Uma análise apta não pode usar uma decisão de emenda.");
       }
-      const materialAssinado = claims.materiais.find(item => item.idMateriaPrima === parsed.data.materiaPrimaIds[0]);
-      if (!materialAssinado) throw new Error("O material não pertence à análise de factibilidade assinada.");
-      const hashEsperado = materialAssinado[factorPecas];
-      if (!hashEsperado || calcularHashPecasParaNesting(parsed.data.pecas!) !== hashEsperado)
-        throw new Error("As peças enviadas ao Deepnest não correspondem ao resultado aprovado.");
+      const lotes = parsed.data.lotesPorMaterial ?? [{ materiaPrimaId: parsed.data.materiaPrimaIds[0], pecas: parsed.data.pecas! }];
+      if (parsed.data.lotesPorMaterial && claims.materiais.length !== lotes.length)
+        throw new Error("Os lotes de materiais não correspondem à análise de factibilidade assinada.");
+      for (const lote of lotes) {
+        const materialAssinado = claims.materiais.find(item => item.idMateriaPrima === lote.materiaPrimaId);
+        if (!materialAssinado) throw new Error(`O material ${lote.materiaPrimaId} não pertence à análise de factibilidade assinada.`);
+        const hashEsperado = materialAssinado[factorPecas];
+        if (!hashEsperado || calcularHashPecasParaNesting(lote.pecas) !== hashEsperado)
+          throw new Error(`As peças de ${lote.materiaPrimaId} não correspondem ao resultado aprovado.`);
+      }
     } catch (error) {
       erro(res, 409, error instanceof Error ? error.message : "Recalcule a factibilidade antes do nesting.");
       return;
@@ -367,7 +390,11 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
 
   try {
     const resultado = await calcularNestingMultiMaterial({
-      ...parsed.data,
+      svg: parsed.data.svg,
+      larguraSvgMm: parsed.data.larguraSvgMm,
+      alturaSvgMm: parsed.data.alturaSvgMm,
+      pecas: parsed.data.pecas,
+      espacamentoMm: parsed.data.espacamentoMm,
       materiais,
     });
     res.setHeader("Cache-Control", "private, no-store");

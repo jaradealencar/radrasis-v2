@@ -20,10 +20,13 @@ const boundingBoxMm = z.object({
 }).strict().refine(box => box.maxX > box.minX && box.maxY > box.minY);
 const dadosRegiaoPreco = z.object({
   areaLiquidaM2: z.number().finite().min(0).max(50_000),
+  areaTotalM2: z.number().finite().positive().max(50_000),
   larguraMm: z.number().finite().positive().max(50_000),
   alturaMm: z.number().finite().positive().max(50_000),
   boundingBoxesMm: z.array(boundingBoxMm).min(1).max(500),
-}).strict();
+}).strict().refine(dados => dados.areaTotalM2 + 0.000001 >= dados.areaLiquidaM2, {
+  path: ["areaTotalM2"], message: "A área do Bounding Box não pode ser menor que a área líquida.",
+});
 const cmykInput = z.object({ c: porcentagem, m: porcentagem, y: porcentagem, k: porcentagem }).strict().nullable().optional()
   .superRefine((value, context) => {
     if (!value) return;
@@ -273,7 +276,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
         cmykY: resultado.cmyk?.y == null ? null : String(resultado.cmyk.y),
         cmykK: resultado.cmyk?.k == null ? null : String(resultado.cmyk.k),
         tipoCor: regiao.tipoCor,
-        areaM2: regiao.areaM2 == null ? null : String(regiao.areaM2),
+        areaM2: resultado.areaM2 == null ? null : String(resultado.areaM2),
         modoIluminacao: parsed.iluminacao,
         tipoSugestao: resultado.tipoSugestao,
         chapaId: resultado.chapaId,
@@ -288,6 +291,8 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
           pathIndexes: regiao.pathIndexes ?? [],
           dadosPreco: regiao.dadosPreco ?? null,
           areaConsumoM2: resultado.areaConsumoM2,
+          areaLiquidaM2: resultado.areaLiquidaM2 ?? null,
+          areaTotalM2: resultado.areaTotalM2 ?? resultado.areaM2,
           avisos: resultado.avisos,
           alternativas: resultado.alternativas,
           unidadeCusto: resultado.unidadeCusto,
@@ -320,7 +325,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
           cmykY: resultado.cmyk?.y == null ? null : String(resultado.cmyk.y),
           cmykK: resultado.cmyk?.k == null ? null : String(resultado.cmyk.k),
           tipoCor: regiao.tipoCor,
-          areaM2: regiao.areaM2 == null ? null : String(regiao.areaM2),
+          areaM2: resultado.areaM2 == null ? null : String(resultado.areaM2),
           modoIluminacao: parsed.iluminacao,
           tipoSugestao: resultado.tipoSugestao,
           chapaId: resultado.chapaId,
@@ -335,6 +340,8 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
             pathIndexes: regiao.pathIndexes ?? [],
             dadosPreco: regiao.dadosPreco ?? null,
             areaConsumoM2: resultado.areaConsumoM2,
+            areaLiquidaM2: resultado.areaLiquidaM2 ?? null,
+            areaTotalM2: resultado.areaTotalM2 ?? resultado.areaM2,
             avisos: resultado.avisos,
             alternativas: resultado.alternativas,
             unidadeCusto: resultado.unidadeCusto,
@@ -379,6 +386,9 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
     );
     if (metricas.length !== regioes.length)
       return void erro(res, 422, "A fonte colorida e o vetor de corte não têm os mesmos caminhos. Reenvie ou revise a arte.");
+    const possuiCamadas = metricas.some(metrica => metrica.camada != null);
+    if (possuiCamadas && !metricas.some(metrica => metrica.camada === "face" && metrica.areaM2 > 0))
+      return void erro(res, 422, "O SVG em camadas precisa conter caminhos fechados na camada Face.");
 
     const agregadas = new Map<string, {
       tipoCor: "solida" | "gradiente" | "complexa" | "desconhecida";
@@ -392,6 +402,7 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
     }>();
     regioes.forEach((regiao, index) => {
       const metrica = metricas[index];
+      if (possuiCamadas && metrica.camada !== "face") return;
       const areaM2 = metrica.areaM2;
       if (regiao.tipoCor === "desconhecida" || areaM2 <= 0) return;
       if (!metrica.boundsMm || !metrica.contornosBoundsMm.length) throw new CpqFactibilidadeError("Missing bounds for a vector region.", "invalid_geometry");
@@ -428,6 +439,7 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
         areaM2: Number(region.areaM2.toFixed(6)),
         dadosPreco: {
           areaLiquidaM2: Number(region.areaM2.toFixed(8)),
+          areaTotalM2: Number(((Math.max(...caixasMm.map(box => box.maxX)) - Math.min(...caixasMm.map(box => box.minX))) * (Math.max(...caixasMm.map(box => box.maxY)) - Math.min(...caixasMm.map(box => box.minY))) / 1_000_000).toFixed(8)),
           larguraMm: Math.max(...caixasMm.map(box => box.maxX)) - Math.min(...caixasMm.map(box => box.minX)),
           alturaMm: Math.max(...caixasMm.map(box => box.maxY)) - Math.min(...caixasMm.map(box => box.minY)),
           boundingBoxesMm: caixasMm,
@@ -464,7 +476,8 @@ async function aprovarCores(req: Request, res: Response): Promise<void> {
   const pendenciaConsumoBobina = mappings.find(row => {
     if (row.tipoSugestao !== "impresso" && row.tipoSugestao !== "imprimax") return false;
     const details = row.detalhesJson as Record<string, unknown>;
-    return row.custoEstimado == null || typeof details.areaConsumoM2 !== "number" || details.areaConsumoM2 <= 0;
+    return row.custoEstimado == null || typeof details.areaTotalM2 !== "number" || details.areaTotalM2 <= 0
+      || typeof details.areaConsumoM2 !== "number" || details.areaConsumoM2 <= 0;
   });
   if (pendenciaConsumoBobina)
     return void erro(res, 409, "O consumo físico da bobina está pendente. Confira geometria, largura útil, sangria e custos antes de aprovar os materiais.");
@@ -475,15 +488,6 @@ async function aprovarCores(req: Request, res: Response): Promise<void> {
   });
   if (pendenciaComposicao)
     return void erro(res, 409, "Falta definir a composição da face: cadastre uma chapa transparente principal compatível e confirme se a face é toda em acrílico.");
-  const materiaisFace = new Set(mappings.flatMap(row => {
-    const details = row.detalhesJson as Record<string, unknown>;
-    const materialId = row.tipoSugestao === "chapa"
-      ? details.chapaMateriaPrimaId
-      : details.requerChapaBase === true ? details.chapaBaseMateriaPrimaId : null;
-    return typeof materialId === "number" ? [materialId] : [];
-  }));
-  if (materiaisFace.size > 1)
-    return void erro(res, 409, "As cores da face exigem chapas diferentes. Separe os caminhos vetoriais por material antes de aprovar o nesting.");
   await db.update(estudioMapeamentoCoresCotacao).set({
     aprovado: true,
     aprovadoPor: session.user.id,
