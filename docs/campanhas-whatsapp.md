@@ -366,3 +366,21 @@ modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de p
 Planner/agendamentos + `relatorioPeriodo`), `server/__tests__/fontes-erp-campanhas.test.ts` (as 9 resoluções ERP,
 puro, incl. teto de 24 meses em Inativos, Novos/Reativados do mês e Redução de volume) e
 `client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).
+
+## Telefones pelo cadastro de clientes do MubiSys (04/10/2026)
+
+`historico_os.telefone` só existe desde 21/09/2026 e `historico_orcamentos` nunca teve número, o que deixava
+centenas de contatos "sem telefone" nas listas. O cadastro de clientes do MubiSys tem o número de quase todos e a API
+lista a base inteira (`GET /cliente?page=N`: 100 por página, ~1s, ~5,5 mil clientes).
+
+- **Espelho local:** tabela `mubisys_clientes_cache` (id, nome fantasia, razão social, melhor telefone WhatsApp já
+  normalizado). `server/sync/clientes-mubisys.ts` lê até 20 páginas por chamada (cabe nos 60s da Vercel), é retomável e
+  idempotente; falha de API numa página lança erro. Telefone escolhido: celular de contato ativo, depois
+  `telefone_pri`/`telefone_sec`, por último contato inativo; só vale número que `normalizarTelefone` aceita.
+- **Uso:** `carregarContextoErp` (fontes ERP) e `carregarPosVenda` completam, em memória, o telefone que falta — por
+  `clienteId` quando a linha tem (orçamentos) e senão pelo nome normalizado (fantasia ou razão). Nunca sobrescreve um
+  telefone já gravado e não altera o histórico. Nome repetido entre clientes: vale o de menor id.
+- **Automático:** ao abrir o painel, `AtualizarClientesAuto` atualiza o espelho se estiver vazio ou com mais de 24h
+  (`clientesCacheStatus` / `clientesCacheLote`) e recarrega as listas. Sem botão.
+- **Limite conhecido:** o casamento por nome falha quando histórico e cadastro escrevem a empresa de forma diferente.
+  O percentual real de contatos ainda sem telefone só pode ser medido na produção (o banco local é de teste).
