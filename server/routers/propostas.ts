@@ -997,6 +997,9 @@ export const propostasRouter = router({
     .input(z.object({
       propostaId: z.number().int().positive(),
       produtoId: z.number().int().positive(),
+      // A identidade do autorizador nunca vem do navegador; qualquer tentativa explícita é rejeitada.
+      gestorId: z.never().optional(),
+      autorizadoPorGestorId: z.never().optional(),
       quantidade: z.number().finite().min(0.0001).default(1),
       precoUnitario: z.number().finite().nonnegative(),
       custoFinanceiroPct: z.number().min(0).max(100).optional().default(0),
@@ -1005,7 +1008,7 @@ export const propostasRouter = router({
       configuracao: configuracaoItemSchema,
       aprovacaoPreco: aprovacaoPrecoInputSchema.optional(),
       justificativaExcecao: z.string().trim().min(10).max(3000).optional(),
-    }))
+    }).strict())
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
@@ -1089,6 +1092,7 @@ export const propostasRouter = router({
             preco: input.precoUnitario,
             ator: { id: ctx.user.id, role: ctx.user.role, nome: ctx.user.name },
             justificativaExcecao: input.justificativaExcecao,
+            margemLiquidaNegativa: lucroLiquidoNegativo,
           });
           aprovacaoPersistida = { ...aprovacaoExcecao, contexto: contextoAtual };
           reciboAuditoria = aprovacaoExcecao.recibo;
@@ -1140,6 +1144,9 @@ export const propostasRouter = router({
   itemAtualizar: protectedProcedure
     .input(z.object({
       id: z.number().int().positive(),
+      // A identidade do autorizador nunca vem do navegador; qualquer tentativa explícita é rejeitada.
+      gestorId: z.never().optional(),
+      autorizadoPorGestorId: z.never().optional(),
       quantidade: z.number().finite().min(0.0001),
       precoUnitario: z.number().finite().nonnegative(),
       custoFinanceiroPct: z.number().min(0).max(100).optional(),
@@ -1148,7 +1155,7 @@ export const propostasRouter = router({
       configuracao: configuracaoItemSchema.optional(),
       aprovacaoPreco: aprovacaoPrecoInputSchema.optional(),
       justificativaExcecao: z.string().trim().min(10).max(3000).optional(),
-    }))
+    }).strict())
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
@@ -1266,6 +1273,7 @@ export const propostasRouter = router({
             preco: input.precoUnitario,
             ator: { id: ctx.user.id, role: ctx.user.role, nome: ctx.user.name },
             justificativaExcecao: input.justificativaExcecao,
+            margemLiquidaNegativa: lucroLiquidoNegativo,
           });
           aprovacaoPersistida = { ...aprovacaoExcecao, contexto };
           reciboAuditoria = aprovacaoExcecao.recibo;
