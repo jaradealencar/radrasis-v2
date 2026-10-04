@@ -7,10 +7,11 @@ import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import CompletarTelefones from "./CompletarTelefones";
 import PeriodoApuracao from "./PeriodoApuracao";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatarTelefone, hojeCampoGrande } from "@shared/campanhas-whatsapp";
-import { slugArquivo, type CampanhaLinha } from "./comuns";
+import { rotuloMotivoInvalido, slugArquivo, type CampanhaLinha } from "./comuns";
 
 interface Props {
   /** `null` = fechado. */
@@ -31,7 +32,7 @@ const MAX_LISTA_TELA = 200;
  * grupo depois aparece sozinho. "Fixar na campanha" grava o período e passa a valer também no disparo.
  */
 export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
-  const [aba, setAba] = useState<"aprovados" | "ignorados" | "bloqueados" | "invalidos">("aprovados");
+  const [aba, setAba] = useState<"aprovados" | "ignorados" | "bloqueados" | "semtelefone" | "invalidos">("aprovados");
   const hoje = hojeCampoGrande();
   const utils = trpc.useUtils();
 
@@ -80,7 +81,8 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
     : aba === "aprovados" ? data.aprovados
     : aba === "ignorados" ? [...data.ignoradosQuarentenaGlobal, ...data.ignoradosCadenciaCampanha]
     : aba === "bloqueados" ? data.ignoradosBloqueados
-    : data.invalidosOuDuplicados;
+    : aba === "semtelefone" ? data.invalidosOuDuplicados.filter(i => i.motivo === "sem_telefone")
+    : data.invalidosOuDuplicados.filter(i => i.motivo !== "sem_telefone");
 
   const baixar = () => {
     if (!campanha) return;
@@ -101,11 +103,11 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
         { header: "nome_cliente", valor: r => r.nome, largura: 32 },
       ], `${base}-nao-quer-receber`, "Bloqueados");
     } else if (data) {
-      exportRowsToXlsx(data.invalidosOuDuplicados, [
+      exportRowsToXlsx(linhas as typeof data.invalidosOuDuplicados, [
         { header: "telefone", valor: r => r.telefoneOriginal, largura: 22 },
         { header: "nome_cliente", valor: r => r.nome, largura: 32 },
-        { header: "motivo", valor: r => (r.motivo === "duplicado" ? "Repetido na lista" : "Telefone inválido"), largura: 20 },
-      ], `${base}-invalidos`, "Invalidos");
+        { header: "motivo", valor: r => rotuloMotivoInvalido(r.motivo), largura: 24 },
+      ], `${base}-${aba === "semtelefone" ? "sem-telefone" : "invalidos"}`, aba === "semtelefone" ? "Sem telefone" : "Invalidos");
     }
   };
 
@@ -147,6 +149,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
           </Button>
           <span>Consulta as vendas e orçamentos mais recentes (mês atual e anterior) antes de calcular a lista.</span>
         </div>
+        <CompletarTelefones />
 
         {isFetching ? (
           <div className="flex justify-center py-10"><Spinner className="size-6 text-muted-foreground" /></div>
@@ -181,8 +184,11 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
               <Button size="sm" variant={aba === "bloqueados" ? "default" : "outline"} onClick={() => setAba("bloqueados")}>
                 Não querem receber ({fmtNum(data.ignoradosBloqueados.length)})
               </Button>
+              <Button size="sm" variant={aba === "semtelefone" ? "default" : "outline"} onClick={() => setAba("semtelefone")}>
+                Sem telefone ({fmtNum(data.invalidosOuDuplicados.filter(i => i.motivo === "sem_telefone").length)})
+              </Button>
               <Button size="sm" variant={aba === "invalidos" ? "default" : "outline"} onClick={() => setAba("invalidos")}>
-                Inválidos/repetidos ({fmtNum(data.invalidosOuDuplicados.length)})
+                Inválidos/repetidos ({fmtNum(data.invalidosOuDuplicados.filter(i => i.motivo !== "sem_telefone").length)})
               </Button>
             </div>
 
@@ -202,7 +208,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
                     <TableRow key={i}>
                       <TableCell className="whitespace-nowrap">{formatarTelefone(c.telefone ?? c.telefoneOriginal ?? "")}</TableCell>
                       <TableCell>{c.nome}</TableCell>
-                      {aba === "invalidos" && <TableCell className="text-[11px] text-muted-foreground">{c.motivo === "duplicado" ? "Repetido" : "Telefone inválido"}</TableCell>}
+                      {aba === "invalidos" && <TableCell className="text-[11px] text-muted-foreground">{rotuloMotivoInvalido(c.motivo)}</TableCell>}
                     </TableRow>
                   ))}
                 </TableBody>

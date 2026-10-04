@@ -112,6 +112,19 @@ aprovação da OS (`DIAS_UTEIS_MINIMOS_POS_VENDA`).
 `atualizarDadosErp` (`sincronizarHistoricoRecente(1)`: mês atual e anterior, trava de 2 minutos), e a lista é
 recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair está na lista "Não quer receber".
 
+**Telefones: "sem telefone" x "inválido" e preenchimento do histórico** (03/10/2026). Investigado a pedido do usuário
+("muitos inválidos, mas o cadastro tem ~98% de números"): o MubiSys tem telefone válido em 98–100% das OS (amostras de
+2023, 2024, 2025 e 2026), mas `historico_os.telefone` só estava preenchido nos meses em que o backfill rodou (cobertura
+~100% nesses, 0% nos demais, e o backfill antigo só alcançava 24 meses). A lista chamava tudo de "inválido". Agora:
+`higienizarLista` separa `sem_telefone` (campo vazio/só zeros) de `telefone_invalido` (número que não parece
+brasileiro) e "Ver contatos" tem a aba "Sem telefone"; `normalizarTelefone` usa o primeiro número válido quando o campo
+guarda vários ("(67) 8405-8895 / (67) 99999-0000"); e o botão **"Completar telefones do histórico"** em "Ver contatos"
+chama `completarTelefonesHistorico` em laço — um mês por chamada, do mais recente ao mais antigo, até 48 meses
+(`MESES_COMPLETAR_TELEFONES`), reaproveitando `planoBackfillTelefone`/`completarTelefonesJanela` — e copia o contato
+das OS do MubiSys só onde está vazio (idempotente; pode parar e continuar). "Repetido" é só o mesmo telefone duas vezes
+na MESMA lista; entre listas vale só a quarentena (15 dias), então o mesmo cliente pode receber de listas diferentes
+em dias diferentes.
+
 **Contatos de cada lista no painel** (pedido do usuário 03/10/2026): a coluna "Contatos" da tabela mostra, por
 campanha, quantos contatos podem receber agora ("para contatar") e quantos estão em espera. Pós-venda usa a contagem
 de clientes das vendas (`listar`: `clientesPendentes`/`clientesAguardando`); as recorrentes usam

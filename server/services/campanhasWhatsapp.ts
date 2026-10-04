@@ -6,7 +6,7 @@
  */
 
 import {
-  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, normalizarTelefone, somarDias,
+  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, normalizarTelefone, semNumeroDeTelefone, somarDias,
   DIAS_UTEIS_MINIMOS_POS_VENDA, JANELA_SEMANA_DIAS, type SemaforoCampanha, type StatusCampanha, type TipoCampanha,
 } from "../../shared/campanhas-whatsapp";
 import { adicionarDiasUteisComFeriados } from "../../shared/feriados-nacionais";
@@ -40,7 +40,8 @@ export interface ContatoIgnorado {
 export interface ContatoInvalido {
   telefoneOriginal: string;
   nome: string;
-  motivo: "telefone_invalido" | "duplicado";
+  /** `sem_telefone`: o cadastro não tem número; `telefone_invalido`: tem, mas não parece um número brasileiro. */
+  motivo: "telefone_invalido" | "sem_telefone" | "duplicado";
 }
 
 export interface ContatoBloqueado {
@@ -87,7 +88,7 @@ export function higienizarLista(
     const os = String(c.osNumero ?? "").trim();
     const telefone = normalizarTelefone(c.telefone);
     if (!telefone) {
-      invalidos.push({ telefoneOriginal: String(c.telefone ?? "").trim(), nome, motivo: "telefone_invalido" });
+      invalidos.push({ telefoneOriginal: String(c.telefone ?? "").trim(), nome, motivo: semNumeroDeTelefone(c.telefone) ? "sem_telefone" : "telefone_invalido" });
       continue;
     }
 

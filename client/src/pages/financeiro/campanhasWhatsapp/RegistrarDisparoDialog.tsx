@@ -14,7 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { diasEntre, formatarDataBr } from "@shared/campanhas-whatsapp";
-import { slugArquivo, type CampanhaLinha } from "./comuns";
+import { rotuloMotivoInvalido, slugArquivo, type CampanhaLinha } from "./comuns";
 
 type Resultado = RouterOutputs["campanhasWhatsapp"]["registrarDisparo"];
 
@@ -137,7 +137,7 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
       exportRowsToXlsx(resultado.invalidosLista, [
         { header: "telefone", valor: r => r.telefoneOriginal, largura: 22 },
         { header: "nome_cliente", valor: r => r.nome, largura: 32 },
-        { header: "motivo", valor: r => (r.motivo === "duplicado" ? "Repetido na lista" : "Telefone inválido"), largura: 20 },
+        { header: "motivo", valor: r => rotuloMotivoInvalido(r.motivo), largura: 24 },
       ], `${base}-invalidos`, "Invalidos");
     }
   };
@@ -280,7 +280,7 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
                       <p className="text-amber-700">{fmtNum(gerarLista.data.ignoradosCadenciaCampanha.length)} já receberam esta campanha recentemente (cadência).</p>
                     )}
                     {gerarLista.data.invalidosOuDuplicados.length > 0 && (
-                      <p className="text-muted-foreground">{fmtNum(gerarLista.data.invalidosOuDuplicados.length)} sem telefone válido ou duplicados entre as fontes.</p>
+                      <p className="text-muted-foreground">{fmtNum(gerarLista.data.invalidosOuDuplicados.filter(i => i.motivo === "sem_telefone").length)} sem telefone cadastrado, {fmtNum(gerarLista.data.invalidosOuDuplicados.filter(i => i.motivo === "telefone_invalido").length)} com telefone inválido e {fmtNum(gerarLista.data.invalidosOuDuplicados.filter(i => i.motivo === "duplicado").length)} repetidos entre as fontes.</p>
                     )}
                   </>
                 ) : null}

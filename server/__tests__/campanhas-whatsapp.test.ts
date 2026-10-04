@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, formatarTelefone, gerarChaveCategoria,
-  hojeCampoGrande, formatarDataBr, normalizarTelefone, somarDias,
+  hojeCampoGrande, formatarDataBr, normalizarTelefone, semNumeroDeTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
   expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
@@ -149,7 +149,7 @@ describe("higienizarLista", () => {
     const r = higienizarLista(contatos, quarentena, envio, 30);
     expect(r.enviar).toHaveLength(1);
     expect(r.ignoradosQuarentena).toHaveLength(1);
-    expect(r.invalidos.map(i => i.motivo)).toEqual(["duplicado", "telefone_invalido", "telefone_invalido"]);
+    expect(r.invalidos.map(i => i.motivo)).toEqual(["duplicado", "telefone_invalido", "sem_telefone"]);
     expect(r.enviar.length + r.ignoradosQuarentena.length + r.invalidos.length).toBe(contatos.length);
   });
 
@@ -460,5 +460,37 @@ describe("pós-venda por cliente único e período pela data da compra", () => {
       venda("3", "Gráfica B", "(67) 99999-0002", "25/09/2026", null), // outra cliente, aguardando
     ];
     expect(resumirVendas(listarVendasPosVenda(linhas, setembro, hoje, new Set()))).toMatchObject({ pendentes: 1, aguardando: 1 });
+  });
+});
+
+describe("telefone: vários números no mesmo campo e 'sem telefone' x 'inválido'", () => {
+  it("usa o primeiro número válido quando o cadastro guarda mais de um", () => {
+    expect(normalizarTelefone("(67) 8405-8895 / (0000) 0000-0")).toBe("556784058895");
+    expect(normalizarTelefone("(67) 2109-8708 / (67) 99393-2345")).toBe("556721098708");
+    expect(normalizarTelefone("0000-0000; (67) 99999-0000")).toBe("5567999990000");
+    expect(normalizarTelefone("(67) 3333-4444 e (67) 99999-0000")).toBe("556733334444");
+  });
+
+  it("número impossível continua inválido (DDD errado, dígito a mais, só zeros)", () => {
+    expect(normalizarTelefone("+5555119979661")).toBeNull(); // 9 dígitos começando em 1
+    expect(normalizarTelefone("(00) 00000-0000")).toBeNull();
+    expect(normalizarTelefone("12345")).toBeNull();
+  });
+
+  it("semNumeroDeTelefone: vazio, símbolos e só zeros são ausência, não erro", () => {
+    expect(semNumeroDeTelefone(null)).toBe(true);
+    expect(semNumeroDeTelefone("")).toBe(true);
+    expect(semNumeroDeTelefone("  - ")).toBe(true);
+    expect(semNumeroDeTelefone("(00) 00000-0000")).toBe(true);
+    expect(semNumeroDeTelefone("12345")).toBe(false);
+  });
+
+  it("higienizarLista separa 'sem telefone' de 'telefone inválido'", () => {
+    const r = higienizarLista(
+      [{ telefone: null, nome: "A" }, { telefone: "(00) 00000-0000", nome: "B" }, { telefone: "12345", nome: "C" }, { telefone: "(67) 99999-0000", nome: "D" }],
+      new Map(), "2026-10-03", 0,
+    );
+    expect(r.invalidos.map(i => [i.nome, i.motivo])).toEqual([["A", "sem_telefone"], ["B", "sem_telefone"], ["C", "telefone_invalido"]]);
+    expect(r.enviar.map(c => c.nome)).toEqual(["D"]);
   });
 });

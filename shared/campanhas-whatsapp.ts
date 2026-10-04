@@ -103,10 +103,25 @@ export function classificarSemaforo(proxima: string, hoje: string): SemaforoCamp
  * Exige DDD válido (11–99, sem zero no 2º dígito) e 8 dígitos (fixo) ou 9 começando em 9 (celular).
  */
 export function normalizarTelefone(bruto: unknown): string | null {
-  const digitos = String(bruto ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  // O cadastro às vezes guarda mais de um número no mesmo campo ("(67) 8405-8895 / (67) 99999-0000"): vale o
+  // primeiro que for válido, em vez de juntar todos os dígitos num número impossível.
+  for (const parte of String(bruto ?? "").split(/[/;,|]|\s+e\s+/i)) {
+    const n = normalizarUmTelefone(parte);
+    if (n) return n;
+  }
+  return null;
+}
+
+function normalizarUmTelefone(bruto: string): string | null {
+  const digitos = bruto.replace(/\D/g, "").replace(/^0+/, "");
   if (!digitos) return null;
   const completo = digitos.length >= 12 && digitos.startsWith("55") ? digitos : `55${digitos}`;
   return /^55[1-9][1-9](9\d{8}|[2-9]\d{7})$/.test(completo) ? completo : null;
+}
+
+/** Campo sem nenhum número de verdade (vazio, só símbolos ou só zeros como "(00) 00000-0000"): é ausência, não erro. */
+export function semNumeroDeTelefone(bruto: unknown): boolean {
+  return !/[1-9]/.test(String(bruto ?? ""));
 }
 
 /** `5567999990000` → `(67) 99999-0000` (só para exibição). */

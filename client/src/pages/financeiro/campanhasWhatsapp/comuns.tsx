@@ -123,6 +123,11 @@ export function AgendamentoItem({ agendamento, mostrarNome = false }: { agendame
   );
 }
 
+/** Motivo pelo qual um contato ficou fora da lista de envio. */
+export function rotuloMotivoInvalido(motivo: "telefone_invalido" | "sem_telefone" | "duplicado"): string {
+  return motivo === "duplicado" ? "Repetido na lista" : motivo === "sem_telefone" ? "Sem telefone cadastrado" : "Telefone inválido";
+}
+
 export function slugArquivo(nome: string): string {
   return nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "campanha";
 }

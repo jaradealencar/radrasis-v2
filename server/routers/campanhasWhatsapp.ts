@@ -18,6 +18,7 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
+import { completarTelefonesJanela, planoBackfillTelefone } from "../sync/telefone-historico";
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
   campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
@@ -370,6 +371,9 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
 }
 
 let ultimaAtualizacaoErp = 0;
+
+/** Quantos meses para trás o preenchimento de telefones das campanhas alcança (o histórico começa em mai/2023). */
+const MESES_COMPLETAR_TELEFONES = 48;
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 
@@ -1046,6 +1050,38 @@ export const campanhasWhatsappRouter = router({
       orcamentosProcessados: resultados.reduce((t, r) => t + r.orcamentosProcessados, 0),
     };
   }),
+
+  /**
+   * Preenche o telefone do histórico (`historico_os.telefone`) direto do cadastro de contatos das OS no MubiSys,
+   * UM mês por chamada, do mais recente para o mais antigo. O cliente chama em laço até `processado` voltar
+   * `null`, passando em `ignorar` os meses já tentados (um mês cujas OS o MubiSys nunca teve contato continuaria
+   * "pendente" para sempre). Pedido do usuário 03/10/2026: as listas traziam muitos "sem telefone" porque só
+   * alguns meses tinham o número gravado, embora o cadastro o tenha. Idempotente: só grava onde está vazio.
+   */
+  completarTelefonesHistorico: campanhasProcedure
+    .input(z.object({ ignorar: z.array(z.string().regex(/^\d{4}-\d{2}$/)).max(80).default([]) }))
+    .mutation(async ({ input }) => {
+      const plano = await planoBackfillTelefone(MESES_COMPLETAR_TELEFONES);
+      const chave = (m: { ano: number; mes: number }) => `${m.ano}-${String(m.mes).padStart(2, "0")}`;
+      const faltam = plano.filter(m => m.precisa && !input.ignorar.includes(chave(m)));
+      const mes = faltam[0];
+      if (!mes) return { processado: null, mesesRestantes: 0 };
+
+      let encontrados = 0, atualizadas = 0, janelasComErro = 0;
+      for (const j of mes.janelas) {
+        try {
+          const r = await completarTelefonesJanela(j);
+          encontrados += r.encontrados;
+          atualizadas += r.atualizadas;
+        } catch {
+          janelasComErro++; // API do MubiSys lenta/indisponível nessa janela: segue para as outras
+        }
+      }
+      return {
+        processado: { chave: chave(mes), ano: mes.ano, mes: mes.mes, pendentesAntes: mes.pendentes, encontrados, atualizadas, janelasComErro },
+        mesesRestantes: faltam.length - 1,
+      };
+    }),
 
   // ─── Não quer receber (opt-out) ─────────────────────────────────────────────────────────────────
   // Pedido do usuário 03/10/2026: aba no painel para registrar os números que não querem mais mensagem. Vale para
