@@ -174,7 +174,7 @@ export function resolverOrcaramNaoCompraram(
   orcamentos: HistoricoOrcamento[], base: Map<string, ClienteComTelefone>, hoje: string, janelaDias?: number,
 ): ContatoFonte[] {
   // 1 contato por empresa; `dataEntrada` = orçamento não ganho mais recente dela.
-  const porEmpresa = new Map<string, { empresaBruta: string; dataEntrada: string }>();
+  const porEmpresa = new Map<string, { empresaBruta: string; dataEntrada: string; telefone: string | null }>();
   for (const o of orcamentos) {
     const status = (o.status ?? "").trim().toLowerCase();
     if (STATUS_GANHO.has(status)) continue;
@@ -185,14 +185,18 @@ export function resolverOrcaramNaoCompraram(
     const empresaBruta = (o.empresa ?? "").trim();
     if (!empresaBruta) continue;
     const key = normalizeEmpresaKey(empresaBruta);
+    const telefoneOrc = o.telefone?.trim() || null; // '' = cadastro consultado sem número
     const atual = porEmpresa.get(key);
-    if (!atual) porEmpresa.set(key, { empresaBruta, dataEntrada: dataIso });
-    else if (dataIso > atual.dataEntrada) atual.dataEntrada = dataIso;
+    if (!atual) porEmpresa.set(key, { empresaBruta, dataEntrada: dataIso, telefone: telefoneOrc });
+    else {
+      if (dataIso > atual.dataEntrada) atual.dataEntrada = dataIso;
+      if (!atual.telefone && telefoneOrc) atual.telefone = telefoneOrc;
+    }
   }
   const resultado: ContatoFonte[] = [];
-  for (const [key, { empresaBruta, dataEntrada }] of porEmpresa) {
+  for (const [key, { empresaBruta, dataEntrada, telefone }] of porEmpresa) {
     const cliente = base.get(key);
-    resultado.push({ telefone: cliente?.telefone ?? null, nome: cliente?.empresa ?? empresaBruta, dataEntrada });
+    resultado.push({ telefone: cliente?.telefone ?? telefone, nome: cliente?.empresa ?? empresaBruta, dataEntrada });
   }
   return resultado;
 }
