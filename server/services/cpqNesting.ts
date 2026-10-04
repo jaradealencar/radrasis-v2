@@ -62,7 +62,7 @@ export type CpqNestingMaterialResult = {
   perimetro_total_m: number;
   area_chapa_utilizada_m2: number;
   porcentagem_aproveitamento: number;
-  criterio_escolha: "menor_sobra_financeira" | "maior_aproveitamento";
+  criterio_escolha: "menor_chapa_que_comporta" | "menor_sobra_financeira" | "maior_aproveitamento";
   id_chapa_utilizada: number;
   nome_chapa_utilizada: string;
   chapa_principal: boolean;
@@ -298,18 +298,12 @@ type AvaliacaoChapa = {
 };
 
 function compararAvaliacoes(a: AvaliacaoChapa, b: AvaliacaoChapa): number {
-  const podeCompararCusto = a.custos.sobra !== null && b.custos.sobra !== null;
-  if (podeCompararCusto && Math.abs(a.custos.sobra! - b.custos.sobra!) > 0.005) {
-    return a.custos.sobra! - b.custos.sobra!;
-  }
-  const aproveitamento = b.aproveitamento - a.aproveitamento;
-  if (Math.abs(aproveitamento) > 0.0001) return aproveitamento;
-  return Number(!!b.chapa.principal) - Number(!!a.chapa.principal)
-    || a.areaChapaM2 - b.areaChapaM2
+  return a.areaChapaM2 - b.areaChapaM2
+    || Number(!!b.chapa.principal) - Number(!!a.chapa.principal)
     || a.chapa.id - b.chapa.id;
 }
 
-/** Testa todas as chapas cadastradas e escolhe menor sobra em R$; sem preço comparável, maior aproveitamento. */
+/** Testa os formatos em ordem de área e escolhe a menor chapa que comporta todas as peças. */
 export async function calcularNestingMultiMaterial(input: {
   svg?: string;
   larguraSvgMm?: number;
@@ -363,7 +357,7 @@ export async function calcularNestingMultiMaterial(input: {
         caixa,
         areaChapaM2,
         areaLiquidaM2,
-        aproveitamento: areaChapaM2 > 0 ? Math.min(100, (areaLiquidaM2 / areaChapaM2) * 100) : 0,
+        aproveitamento: areaChapaM2 > 0 ? (caixa.areaM2 / areaChapaM2) * 100 : 0,
         custos,
       });
     }
@@ -385,8 +379,7 @@ export async function calcularNestingMultiMaterial(input: {
       perimetro_total_m: melhor.nesting.perimetroTotalMm / 1000,
       area_chapa_utilizada_m2: melhor.caixa.areaM2,
       porcentagem_aproveitamento: melhor.aproveitamento,
-      criterio_escolha: melhor.custos.sobra !== null && avaliacoes.every(item => item.custos.sobra !== null)
-        ? "menor_sobra_financeira" : "maior_aproveitamento",
+      criterio_escolha: "menor_chapa_que_comporta",
       id_chapa_utilizada: melhor.chapa.id,
       nome_chapa_utilizada: melhor.chapa.nome,
       chapa_principal: !!melhor.chapa.principal,

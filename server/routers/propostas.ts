@@ -62,7 +62,7 @@ const materialConfiguracaoSchema = z.object({
     areaChapaM2: z.number().positive(),
     areaUtilizadaM2: z.number().positive(),
     aproveitamentoPct: z.number().min(0).max(100),
-    criterio: z.enum(["menor_sobra_financeira", "maior_aproveitamento"]),
+    criterio: z.enum(["menor_chapa_que_comporta", "menor_sobra_financeira", "maior_aproveitamento"]),
     custoUnitarioCatalogo: z.number().nonnegative(),
   }).nullable().optional(),
   incluir: z.boolean(),
@@ -530,7 +530,14 @@ export const propostasRouter = router({
         configuracao: input.configuracao,
       };
       const sugestao = await sugerirPrecoComGPT({ fluxo: "propostas", base, contexto, atorId: ctx.user.id });
-      return { ...sugestao, contexto };
+      const impostoPct = parametros.taxas.impostoPct;
+      const podeVerCustos = ["gestor", "admin", "master"].includes(ctx.user.role);
+      if (!podeVerCustos) {
+        // Não retornar contexto, parecer, alertas ou ticket: o payload assinado
+        // é apenas autenticado (HMAC), não cifrado, e pode ser decodificado.
+        return { precoSugerido: sugestao.precoSugerido, impostoPct };
+      }
+      return { ...sugestao, impostoPct, contexto };
     }),
 
   precoAprovar: protectedProcedure

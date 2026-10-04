@@ -149,7 +149,7 @@ const snapshotSchema = z.object({
       areaSobraM2: z.number().nonnegative(),
       perimetroTotalM: z.number().nonnegative(),
       aproveitamentoPct: z.number().min(0).max(100),
-      criterio: z.enum(["menor_sobra_financeira", "maior_aproveitamento"]),
+      criterio: z.enum(["menor_chapa_que_comporta", "menor_sobra_financeira", "maior_aproveitamento"]),
       custoUnitarioCatalogo: z.number().nonnegative(),
       unidadeCusto: z.string().max(80),
       custoMaterialEstimado: z.number().nonnegative().nullable(),
