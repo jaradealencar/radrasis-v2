@@ -262,9 +262,6 @@ export const materiasPrimasRouter = router({
       const idsInformados = formatos.flatMap(formato => formato.id == null ? [] : [formato.id]);
       if (new Set(idsInformados).size !== idsInformados.length)
         throw new Error("Há formatos repetidos no formulário.");
-      const dimensoes = formatos.map(formato => [Math.max(formato.larguraMm, formato.alturaMm), Math.min(formato.larguraMm, formato.alturaMm)].join("x"));
-      if (usaDadosBobina && new Set(dimensoes).size !== dimensoes.length)
-        throw new Error("Cada bobina precisa ter uma largura diferente.");
       const usaFormatos = usaDadosChapa || usaDadosBobina;
 
       await db.transaction(async tx => {
