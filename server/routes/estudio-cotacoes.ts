@@ -194,6 +194,10 @@ const snapshotSchema = z.object({
   precoFixo: z.number().finite().nonnegative().nullable(),
   instalacao: z.number().finite().nonnegative(),
   descontoPct: z.number().finite().min(0).max(100),
+  // Embalagem Acabamento: % sobre o preço de todos os outros itens, já incluída em precoCalculado.
+  // 0 quando o vendedor exclui a linha da proposta.
+  embalagemPct: z.number().finite().min(0).max(100).optional().default(0),
+  embalagemValor: z.number().finite().nonnegative().optional().default(0),
   regraPreco: z.string().min(1).max(500),
   margemPct: z.number().finite().min(-1000).max(1000).nullable(),
   precificacaoIA: z.object({
@@ -465,6 +469,7 @@ function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSc
     precoFixo: snapshot.precoFixo,
     instalacao: snapshot.instalacao,
     descontoPct: snapshot.descontoPct,
+    embalagemPct: snapshot.embalagemPct,
     regraPreco: snapshot.regraPreco,
     margemPct: snapshot.margemPct,
   };
@@ -508,12 +513,15 @@ function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
     || Math.abs(arredondar(custoDiretoEsperado) - arredondar(snapshot.custoDireto)) > 0.02) {
     throw new Error("Os custos das linhas não fecham com o custo direto. Recalcule o orçamento antes da aprovação.");
   }
-  const precoEsperado = snapshot.modoPreco === "fixo"
+  const precoSemEmbalagem = snapshot.modoPreco === "fixo"
     ? (snapshot.precoFixo ?? 0) * (1 - snapshot.descontoPct / 100)
     : snapshot.margemAplicadaPct == null || snapshot.margemAplicadaPct >= 100
       ? Number.NaN
       : (snapshot.custoDireto / (1 - snapshot.margemAplicadaPct / 100) + snapshot.instalacao) * (1 - snapshot.descontoPct / 100);
-  if (!Number.isFinite(precoEsperado) || Math.abs(arredondar(precoEsperado) - arredondar(snapshot.precoCalculado)) > 0.02) {
+  const embalagemEsperada = precoSemEmbalagem * (snapshot.embalagemPct / 100);
+  const precoEsperado = precoSemEmbalagem + embalagemEsperada;
+  if (!Number.isFinite(precoEsperado) || Math.abs(arredondar(precoEsperado) - arredondar(snapshot.precoCalculado)) > 0.02
+    || Math.abs(arredondar(embalagemEsperada) - arredondar(snapshot.embalagemValor)) > 0.02) {
     throw new Error("O preço calculado não corresponde à regra informada. Recalcule o orçamento antes da aprovação.");
   }
   return precoContextoSchema.parse({

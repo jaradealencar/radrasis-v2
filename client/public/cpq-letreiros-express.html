@@ -798,6 +798,7 @@ function novaProposta(){
     step:1,
     approvals:{proposta:false, foto:false, redesenho:false, vetorizacao:false, escala:false, kit:false, nesting:false},
     orcamentoStatus:'rascunho', margin:0.35, desconto:0,
+    embalagemAtiva:true,
   };
 }
 let REAL = novaProposta();
@@ -2558,6 +2559,16 @@ function resumoCustoCoresReal(){
   };
 }
 
+/* Embalagem Acabamento (MubiSys #4258): item especial, entra em toda proposta e o
+ * vendedor pode excluir. Não é matéria-prima com consumo: cobra 3,5% sobre o preço
+ * de todos os outros itens (pedido do usuário 05/10/2026). */
+const EMBALAGEM_PCT = 3.5;
+function aplicarEmbalagem(precoSemEmbalagem){
+  const pct = REAL.embalagemAtiva===false ? 0 : EMBALAGEM_PCT;
+  const valor = precoSemEmbalagem*pct/100;
+  return {embalagemPct:pct, embalagemValor:valor, precoCalculado:precoSemEmbalagem+valor};
+}
+
 function computeOrcamentoReal(){
   const g = computeGeomReal();
   const matKitTotal = REAL.kit.reduce((a,k)=>a+linhaComCustoNesting(k,g).custoTotal,0);
@@ -2577,18 +2588,20 @@ function computeOrcamentoReal(){
   // vinda da Tabela de Preços real — a margem MUDA sozinha conforme o custo
   // direto muda de faixa.
   if(REAL.precificacao && REAL.precificacao.modo==='fixo' && REAL.precificacao.precoFixo){
-    const precoCalculado = REAL.precificacao.precoFixo*(1-descontoFrac);
+    const emb = aplicarEmbalagem(REAL.precificacao.precoFixo*(1-descontoFrac));
+    const precoCalculado = emb.precoCalculado;
     const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
-    return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoCalculado, precoFinal, margemInfo:null, margin:null, modoFixo:true};
+    return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoCalculado, precoFinal, margemInfo:null, margin:null, modoFixo:true, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
   }
 
   const margemInfo = REAL.precificacao ? margemDaTabela(REAL.precificacao, custoDireto) : null;
   const margin = margemInfo ? margemInfo.percentual : REAL.margin;
   const precoBase = custoDireto/(1-margin);
   const precoComInstalacao = precoBase+REAL.instalacao;
-  const precoCalculado = precoComInstalacao*(1-descontoFrac);
+  const emb = aplicarEmbalagem(precoComInstalacao*(1-descontoFrac));
+  const precoCalculado = emb.precoCalculado;
   const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
-  return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoCalculado, precoFinal, margemInfo, margin, modoFixo:false};
+  return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoCalculado, precoFinal, margemInfo, margin, modoFixo:false, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
 }
 
 /* ---------- RENDER ---------- */
@@ -4424,6 +4437,7 @@ function realStepOrcamento(){
         <p style="font-size:12.5px; font-weight:700; margin-bottom:10px; color:var(--accent-ink);">Resumo financeiro</p>
         <div class="kv"><span>Custo direto</span><span>${money(o.custoDireto)}</span></div>
         ${!o.modoFixo? `<div class="kv"><span>Preço com margem</span><span>${money(o.precoBase)}</span></div>` : ''}
+        <div class="kv" style="align-items:center;"><span><label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" data-act="real-embalagem" ${REAL.embalagemAtiva!==false?'checked':''}> Embalagem Acabamento (${fmt(EMBALAGEM_PCT,1)}% sobre os demais itens)</label></span><span>${REAL.embalagemAtiva!==false?money(o.embalagemValor):'Excluída'}</span></div>
         <div class="kv" style="border-top:1px solid var(--border); margin-top:6px; padding-top:8px;"><span style="font-weight:700; color:var(--text);">Preço final</span><span style="font-size:16px; color:var(--accent-ink);">${money(o.precoFinal)}</span></div>
       </div>
     </div>
@@ -4763,9 +4777,12 @@ function snapshotCotacaoReal(){
     precoFixo:o.modoFixo?Number(REAL.precificacao?.precoFixo)||0:null,
     instalacao:REAL.instalacao,
     descontoPct:REAL.desconto,
-    regraPreco:o.modoFixo
+    embalagemPct:o.embalagemPct,
+    embalagemValor:o.embalagemValor,
+    regraPreco:(o.modoFixo
       ? `Preço fixo cadastrado${REAL.desconto?` com desconto de ${REAL.desconto}%`:''}`
-      : `${o.margemInfo?`Tabela de Preços: ${o.margemInfo.secaoTitulo} · faixa ${o.margemInfo.faixaLabel}`:`Margem manual de ${Math.round((o.margin||0)*100)}%`}; instalação ${money(REAL.instalacao)}; desconto ${REAL.desconto}%`,
+      : `${o.margemInfo?`Tabela de Preços: ${o.margemInfo.secaoTitulo} · faixa ${o.margemInfo.faixaLabel}`:`Margem manual de ${Math.round((o.margin||0)*100)}%`}; instalação ${money(REAL.instalacao)}; desconto ${REAL.desconto}%`)
+      +(o.embalagemPct>0?`; Embalagem Acabamento ${fmt(o.embalagemPct,1)}% sobre os demais itens`:''),
     margemPct:o.margin==null?null:o.margin*100,
     precificacaoIA:REAL.precoAprovacao?{recibo:REAL.precoAprovacao.recibo,contexto:REAL.precoAprovacao.contexto}:undefined,
     precoFinal:o.precoFinal,
@@ -4801,6 +4818,7 @@ function chaveBasePrecoReal(){
     precoFixo:snapshot.precoFixo,
     instalacao:snapshot.instalacao,
     descontoPct:snapshot.descontoPct,
+    embalagemPct:snapshot.embalagemPct,
     regraPreco:snapshot.regraPreco,
     margemPct:snapshot.margemPct,
   });
@@ -7075,6 +7093,7 @@ function bindRealEvents(){
   });
   document.querySelectorAll('[data-act="real-kit-remove"]').forEach(el=> el.addEventListener('click', ()=>{ removeKitLine(+el.dataset.idx); render(); }));
 
+  document.querySelectorAll('[data-act="real-embalagem"]').forEach(el=> el.addEventListener('change', ()=>{ REAL.embalagemAtiva=el.checked; render(); }));
   bindRangeLive('[data-act="real-margin"]', v=>{ REAL.margin=parseFloat(v); return REAL.margin; }, v=>Math.round(v*100)+'%');
   bindRangeLive('[data-act="real-desconto"]', v=>{ REAL.desconto=parseFloat(v); return REAL.desconto; }, v=>v+'%');
   const realAdvanceBtn = document.querySelector('[data-act="real-advance-status"]');
