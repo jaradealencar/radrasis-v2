@@ -582,6 +582,13 @@
       "when": 1791213328777,
       "tag": "0082_cooing_tattoo",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1791219641396,
+      "tag": "0083_bobina_custo_base",
+      "breakpoints": true
     }
   ]
 }

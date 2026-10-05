@@ -382,6 +382,10 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   perfilAlturaMm: decimal("perfil_altura_mm", { precision: 10, scale: 3 }),
   perfilLarguraMm: decimal("perfil_largura_mm", { precision: 10, scale: 3 }),
   perfilComprimentoMm: decimal("perfil_comprimento_mm", { precision: 12, scale: 3 }),
+  // Bobina: como o custo do MubiSys é cobrado ("m2", "ml" ou "rolo"); o MubiSys nem sempre traz unidade de área/comprimento.
+  bobinaCustoBase: varchar("bobina_custo_base", { length: 8 }),
+  // Bobina cobrada "por rolo": comprimento total do rolo em mm, para converter o custo do rolo em consumo.
+  bobinaComprimentoRoloMm: decimal("bobina_comprimento_rolo_mm", { precision: 14, scale: 3 }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;
