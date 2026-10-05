@@ -94,6 +94,9 @@ export const materiasPrimasRouter = router({
           espessuraMm: cadastro?.espessuraMm == null ? null : Number(cadastro.espessuraMm),
           densidadeKgM3: cadastro?.densidadeKgM3 == null ? null : Number(cadastro.densidadeKgM3),
           pesoEspecificoKg: cadastro?.pesoEspecificoKg == null ? null : Number(cadastro.pesoEspecificoKg),
+          perfilAlturaMm: cadastro?.perfilAlturaMm == null ? null : Number(cadastro.perfilAlturaMm),
+          perfilLarguraMm: cadastro?.perfilLarguraMm == null ? null : Number(cadastro.perfilLarguraMm),
+          perfilComprimentoMm: cadastro?.perfilComprimentoMm == null ? null : Number(cadastro.perfilComprimentoMm),
           bobinas: (chapasPorId.get(material.id) ?? []).filter(chapa => chapa.bobina).map(bobina => ({
             id: bobina.id,
             nome: bobina.nome,
@@ -185,6 +188,9 @@ export const materiasPrimasRouter = router({
       espessuraMm: z.number().finite().positive().max(10_000).nullable(),
       densidadeKgM3: z.number().finite().positive().max(1_000_000).nullable(),
       pesoEspecificoKg: z.number().finite().positive().max(1_000_000).nullable().default(null),
+      perfilAlturaMm: z.number().finite().positive().max(100_000).nullable().default(null),
+      perfilLarguraMm: z.number().finite().positive().max(100_000).nullable().default(null),
+      perfilComprimentoMm: z.number().finite().positive().max(1_000_000).nullable().default(null),
       chapas: formatosChapaInput,
       bobinas: formatosBobinaInput.default([]),
     }).strict())
@@ -218,8 +224,8 @@ export const materiasPrimasRouter = router({
       const formatosAtivos = formatos.filter(formato => formato.ativo);
       if (usaDadosChapa && (!input.espessuraMm || !input.densidadeKgM3 || formatosAtivos.length === 0))
         throw new Error("Para salvar uma chapa, informe espessura, densidade e ao menos um formato ativo.");
-      if (usaDadosPerfil && (!input.espessuraMm || !input.densidadeKgM3))
-        throw new Error("Para salvar um perfil, informe espessura e densidade.");
+      if (usaDadosPerfil && (!input.espessuraMm || !input.densidadeKgM3 || !input.perfilAlturaMm || !input.perfilLarguraMm || !input.perfilComprimentoMm))
+        throw new Error("Para salvar um perfil, informe altura, largura, espessura, comprimento e densidade.");
       if (usaDadosBobina && formatosAtivos.length === 0)
         throw new Error("Para salvar uma bobina, informe ao menos uma largura ativa.");
       if ((usaDadosChapa || usaDadosBobina) && formatos.filter(formato => formato.ativo && formato.principal).length > 1)
@@ -243,6 +249,7 @@ export const materiasPrimasRouter = router({
 
         const now = new Date();
         const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
+        const perfilSalvo = (valor: number | null) => usaDadosPerfil && valor != null ? String(valor) : null;
         const espessuraSalva = usaDadosChapa || usaDadosPerfil || (usaDadosBobina && input.espessuraMm) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
@@ -250,6 +257,9 @@ export const materiasPrimasRouter = router({
           espessuraMm: espessuraSalva,
           densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
           pesoEspecificoKg: pesoEspecificoSalvo,
+          perfilAlturaMm: perfilSalvo(input.perfilAlturaMm),
+          perfilLarguraMm: perfilSalvo(input.perfilLarguraMm),
+          perfilComprimentoMm: perfilSalvo(input.perfilComprimentoMm),
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
@@ -258,6 +268,9 @@ export const materiasPrimasRouter = router({
             espessuraMm: espessuraSalva,
             densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
             pesoEspecificoKg: pesoEspecificoSalvo,
+            perfilAlturaMm: perfilSalvo(input.perfilAlturaMm),
+            perfilLarguraMm: perfilSalvo(input.perfilLarguraMm),
+            perfilComprimentoMm: perfilSalvo(input.perfilComprimentoMm),
             updatedAt: now,
           },
         });
