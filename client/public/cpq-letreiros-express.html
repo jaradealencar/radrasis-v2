@@ -942,10 +942,18 @@ function extractPathsFromRawSVG(svgText){
 }
 
 const TRACE_REVIEW_DEFAULTS = {letras:false, simbolo:false, isolamento:false};
-const TRACE_COMPARE_SIZE = 512;
+// A comparação roda em 1024 px (antes 512): em letras finas, 1 px de borda já derrubava a coincidência.
+const TRACE_COMPARE_SIZE = 1024;
+const TRACE_COMPARE_ALVO = 920; // maior lado da arte, em pixels, dentro da área de comparação
 const TRACE_IOU_MIN = 95;
 const TRACE_ASPECT_MAX = 1;
 const TRACE_SHIFT_MAX_PERCENT = 1;
+// Faixa de revisão manual (decisão de 05/10/2026): diferenças pequenas e só de borda não bloqueiam o vendedor,
+// que passa a conferir a sobreposição e confirmar; vetor visivelmente errado continua bloqueado.
+const TRACE_IOU_TOLERANTE_MIN = 97; // coincidência aceitando diferença de até ~0,4% do tamanho nas bordas
+const TRACE_IOU_MANUAL_MIN = 85;
+const TRACE_ASPECT_MANUAL_MAX = 3;
+const TRACE_SHIFT_MANUAL_MAX_PERCENT = 2;
 
 function inspectPrompt2Svg(svgText){
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
@@ -1047,42 +1055,61 @@ function loadTraceImage(src){
 }
 
 function canvasForTraceImage(image){
-  const size=768, canvas=document.createElement('canvas'); canvas.width=size; canvas.height=size;
+  // 1536 px (antes 768): num logotipo largo, 768 deixava a arte com menos de 200 px de altura e as letras finas
+  // com poucos pixels, o que tornava a comparação de silhuetas ruidosa.
+  const size=1536, canvas=document.createElement('canvas'); canvas.width=size; canvas.height=size;
   const context=canvas.getContext('2d',{willReadFrequently:true});
   context.clearRect(0,0,size,size);
   const scale=Math.min((size-24)/image.naturalWidth,(size-24)/image.naturalHeight);
   const width=image.naturalWidth*scale, height=image.naturalHeight*scale;
-  context.drawImage(image,(size-width)/2,(size-height)/2,width,height);
+  const x=(size-width)/2, y=(size-height)/2;
+  context.drawImage(image,x,y,width,height);
+  // Região realmente ocupada pela imagem: o resto do quadrado é só enquadramento, não é fundo da arte.
+  canvas.__area={x,y,w:width,h:height};
   return canvas;
 }
-
 function binarySilhouette(canvas){
   const width=canvas.width,height=canvas.height,pixels=canvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,width,height).data;
-  const mask=new Uint8Array(width*height); let transparent=0;
-  for(let i=3;i<pixels.length;i+=4) if(pixels[i]<248) transparent++;
-  if(transparent>width*height*0.002){
-    for(let i=0;i<mask.length;i++) if(pixels[i*4+3]>48) mask[i]=1;
+  const area=canvas.__area||{x:0,y:0,w:width,h:height};
+  const ax0=Math.max(0,Math.ceil(area.x)+2), ay0=Math.max(0,Math.ceil(area.y)+2);
+  const ax1=Math.min(width,Math.floor(area.x+area.w)-2), ay1=Math.min(height,Math.floor(area.y+area.h)-2);
+  const mask=new Uint8Array(width*height); let transparent=0, interior=0;
+  for(let y=ay0;y<ay1;y++) for(let x=ax0;x<ax1;x++){interior++;if(pixels[(y*width+x)*4+3]<248) transparent++;}
+  if(transparent>interior*0.002){
+    for(let y=ay0;y<ay1;y++) for(let x=ax0;x<ax1;x++){const i=y*width+x;if(pixels[i*4+3]>48) mask[i]=1;}
   }else{
     const border=[];
-    for(let x=0;x<width;x++) for(const y of [0,height-1]){const i=(y*width+x)*4;border.push([pixels[i],pixels[i+1],pixels[i+2]]);}
-    for(let y=1;y<height-1;y++) for(const x of [0,width-1]){const i=(y*width+x)*4;border.push([pixels[i],pixels[i+1],pixels[i+2]]);}
+    for(let x=ax0;x<ax1;x++) for(const y of [ay0,ay1-1]){const i=(y*width+x)*4;border.push([pixels[i],pixels[i+1],pixels[i+2]]);}
+    for(let y=ay0+1;y<ay1-1;y++) for(const x of [ax0,ax1-1]){const i=(y*width+x)*4;border.push([pixels[i],pixels[i+1],pixels[i+2]]);}
     const median=channel=>{const values=border.map(rgb=>rgb[channel]).sort((a,b)=>a-b);return values[Math.floor(values.length/2)]||255;};
     const bg=[median(0),median(1),median(2)];
     const nearBg=i=>{const p=i*4,dr=pixels[p]-bg[0],dg=pixels[p+1]-bg[1],db=pixels[p+2]-bg[2];return dr*dr+dg*dg+db*db<48*48;};
     const queue=new Int32Array(width*height); let head=0,tail=0;
     const seed=i=>{if(mask[i]===0 && nearBg(i)){mask[i]=2;queue[tail++]=i;}};
-    for(let x=0;x<width;x++){seed(x);seed((height-1)*width+x);}
-    for(let y=1;y<height-1;y++){seed(y*width);seed(y*width+width-1);}
+    for(let x=ax0;x<ax1;x++){seed(ay0*width+x);seed((ay1-1)*width+x);}
+    for(let y=ay0+1;y<ay1-1;y++){seed(y*width+ax0);seed(y*width+ax1-1);}
     while(head<tail){const i=queue[head++],x=i%width,y=(i/width)|0;
-      if(x>0){const j=i-1;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
-      if(x+1<width){const j=i+1;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
-      if(y>0){const j=i-width;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
-      if(y+1<height){const j=i+width;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+      if(x>ax0){const j=i-1;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+      if(x+1<ax1){const j=i+1;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+      if(y>ay0){const j=i-width;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
+      if(y+1<ay1){const j=i+width;if(!mask[j]&&nearBg(j)){mask[j]=2;queue[tail++]=j;}}
     }
-    for(let i=0;i<mask.length;i++) mask[i]=mask[i]===2?0:1;
+    for(let y=ay0;y<ay1;y++) for(let x=ax0;x<ax1;x++){const i=y*width+x;mask[i]=mask[i]===2?0:1;}
+    for(let i=0;i<mask.length;i++) if(mask[i]===2) mask[i]=0;
   }
-  let minX=width,minY=height,maxX=-1,maxY=-1;
-  for(let i=0;i<mask.length;i++) if(mask[i]){const x=i%width,y=(i/width)|0;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}
+  // Limites da silhueta ignorando manchas isoladas (0,05% dos pixels de cada lado), que distorceriam escala e proporção.
+  const colunas=new Uint32Array(width), linhasMask=new Uint32Array(height); let total=0;
+  for(let i=0;i<mask.length;i++) if(mask[i]){colunas[i%width]++;linhasMask[(i/width)|0]++;total++;}
+  if(!total) throw new Error('A imagem não tem uma silhueta visível para comparar.');
+  const corte=Math.floor(total*0.0005);
+  const limites=(contagens)=>{
+    let acumulado=0,inicio=0,fim=contagens.length-1;
+    for(let k=0;k<contagens.length;k++){acumulado+=contagens[k];if(acumulado>corte){inicio=k;break;}}
+    acumulado=0;
+    for(let k=contagens.length-1;k>=0;k--){acumulado+=contagens[k];if(acumulado>corte){fim=k;break;}}
+    return [inicio,fim];
+  };
+  const [minX,maxX]=limites(colunas),[minY,maxY]=limites(linhasMask);
   if(maxX<minX||maxY<minY) throw new Error('A imagem não tem uma silhueta visível para comparar.');
   return {mask,width,height,bounds:{x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1}};
 }
@@ -1129,14 +1156,25 @@ function traceEvidenceCanvases(referenceMask,vectorMask){
     else {oi.data[p]=di.data[p]=247;oi.data[p+1]=di.data[p+1]=248;oi.data[p+2]=di.data[p+2]=250;oi.data[p+3]=di.data[p+3]=255;}
   }
   o.putImageData(oi,0,0);d.putImageData(di,0,0);
-  return {overlay:overlay.toDataURL('image/png'),difference:difference.toDataURL('image/png')};
+  // Recorta rente à arte (com margem) para o logotipo aparecer grande, em vez de pequeno no meio de um quadrado.
+  let x0=size,y0=size,x1=-1,y1=-1;
+  for(let i=0;i<referenceMask.length;i++) if(referenceMask[i]||vectorMask[i]){const x=i%size,y=(i/size)|0;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+  if(x1<x0||y1<y0) return {overlay:overlay.toDataURL('image/png'),difference:difference.toDataURL('image/png')};
+  const margem=Math.round(Math.max(x1-x0,y1-y0)*0.04)+6;
+  x0=Math.max(0,x0-margem);y0=Math.max(0,y0-margem);x1=Math.min(size-1,x1+margem);y1=Math.min(size-1,y1+margem);
+  const recortar=(origem)=>{
+    const c=document.createElement('canvas');c.width=x1-x0+1;c.height=y1-y0+1;
+    const ctx=c.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.drawImage(origem,x0,y0,c.width,c.height,0,0,c.width,c.height);
+    return c.toDataURL('image/png');
+  };
+  return {overlay:recortar(overlay),difference:recortar(difference)};
 }
 
 function compareSilhouetteMasks(source,vector){
   const aspectSource=source.bounds.w/source.bounds.h,aspectVector=vector.bounds.w/vector.bounds.h;
   const aspectDelta=Math.abs(aspectVector-aspectSource)/aspectSource*100;
   const maxDimension=Math.max(source.bounds.w,source.bounds.h,vector.bounds.w,vector.bounds.h);
-  const scale=420/maxDimension;
+  const scale=TRACE_COMPARE_ALVO/maxDimension;
   const sourceMask=normalizeSilhouette(source,scale),vectorMask=normalizeSilhouette(vector,scale);
   let intersection=0,union=0;
   for(let i=0;i<sourceMask.length;i++){if(sourceMask[i]&&vectorMask[i])intersection++;if(sourceMask[i]||vectorMask[i])union++;}
@@ -1145,11 +1183,32 @@ function compareSilhouetteMasks(source,vector){
   const distanceToSource=edgeDistance(sourceEdge),distanceToVector=edgeDistance(vectorEdge);
   let maxShift=0;
   for(let i=0;i<sourceEdge.length;i++){if(sourceEdge[i])maxShift=Math.max(maxShift,distanceToVector[i]);if(vectorEdge[i])maxShift=Math.max(maxShift,distanceToSource[i]);}
-  return {metrics:{iou,aspectDelta,shiftPercent:maxShift/420*100},sourceMask,vectorMask};
+  // Coincidência tolerante: um pixel que só difere numa faixa estreita de borda (até ~0,4% do tamanho) conta como igual.
+  const toleranciaPx=Math.max(2,TRACE_COMPARE_ALVO*0.004);
+  let toleradas=0;
+  for(let i=0;i<sourceMask.length;i++){
+    if(sourceMask[i]===vectorMask[i]) continue;
+    const distancia=sourceMask[i]?distanceToVector[i]:distanceToSource[i];
+    if(distancia<=toleranciaPx) toleradas++;
+  }
+  const iouTolerante=union?(intersection+toleradas)/union*100:0;
+  return {metrics:{iou,iouTolerante,toleranciaPx,aspectDelta,shiftPercent:maxShift/TRACE_COMPARE_ALVO*100},sourceMask,vectorMask};
 }
 
 function traceMetricsPass(metrics,audit){
   return metrics.iou>=TRACE_IOU_MIN && metrics.aspectDelta<=TRACE_ASPECT_MAX && metrics.shiftPercent<=TRACE_SHIFT_MAX_PERCENT && audit.openPathCount===0;
+}
+
+/** 'pass' (dentro dos limites), 'manual' (só diferenças de borda: o vendedor confere) ou 'fail' (vetor visivelmente diferente). */
+function classificarMetricasTrace(metrics,audit){
+  if(audit.openPathCount) return {status:'fail',aviso:null};
+  if(traceMetricsPass(metrics,audit)) return {status:'pass',aviso:null};
+  const proporcaoOk=metrics.aspectDelta<=TRACE_ASPECT_MAX, deslocamentoOk=metrics.shiftPercent<=TRACE_SHIFT_MAX_PERCENT;
+  if(metrics.iouTolerante>=TRACE_IOU_TOLERANTE_MIN && proporcaoOk && deslocamentoOk)
+    return {status:'pass',aviso:`Coincidência exata de ${metrics.iou.toFixed(1)}%, abaixo de ${TRACE_IOU_MIN}%, mas a diferença é só de borda (até ${metrics.toleranciaPx.toFixed(0)} px de ${TRACE_COMPARE_ALVO}); aceita.`};
+  if(metrics.iou>=TRACE_IOU_MANUAL_MIN && metrics.aspectDelta<=TRACE_ASPECT_MANUAL_MAX && metrics.shiftPercent<=TRACE_SHIFT_MANUAL_MAX_PERCENT)
+    return {status:'manual',aviso:`O vetor difere um pouco da arte (coincidência ${metrics.iou.toFixed(1)}%, deslocamento ${metrics.shiftPercent.toFixed(2)}%). Compare a sobreposição e confirme abaixo; se houver letra faltando, sobrando ou deformada, vetorize de novo.`};
+  return {status:'fail',aviso:null};
 }
 
 async function validatePrompt2Trace(referenceSrc,svgText){
@@ -1166,11 +1225,15 @@ async function validatePrompt2Trace(referenceSrc,svgText){
     const comparison=compareSilhouetteMasks(source,vector),{iou,aspectDelta,shiftPercent}=comparison.metrics;
     const evidence=traceEvidenceCanvases(comparison.sourceMask,comparison.vectorMask);
     result.metrics=comparison.metrics; result.overlay=evidence.overlay;result.difference=evidence.difference;
-    result.status=traceMetricsPass(comparison.metrics,audit)?'pass':'fail';
-    if(iou<TRACE_IOU_MIN)result.fatal.push(`Coincidência de silhueta ${iou.toFixed(2)}%; o mínimo é ${TRACE_IOU_MIN}%.`);
-    if(aspectDelta>TRACE_ASPECT_MAX)result.fatal.push(`Variação de proporção ${aspectDelta.toFixed(2)}%; o máximo é ${TRACE_ASPECT_MAX}%.`);
-    if(shiftPercent>TRACE_SHIFT_MAX_PERCENT)result.fatal.push(`Deslocamento máximo de contorno ${shiftPercent.toFixed(2)}%; o máximo é ${TRACE_SHIFT_MAX_PERCENT}%.`);
-    if(audit.openPathCount)result.fatal.push('Feche ou revise os subcaminhos abertos antes de aprovar.');
+    const classe=classificarMetricasTrace(comparison.metrics,audit);
+    result.status=classe.status;
+    if(classe.aviso) result.warnings.push(classe.aviso);
+    if(classe.status==='fail'){
+      if(iou<TRACE_IOU_MANUAL_MIN)result.fatal.push(`Coincidência de silhueta ${iou.toFixed(2)}%; abaixo de ${TRACE_IOU_MANUAL_MIN}%, o vetor está visivelmente diferente da arte.`);
+      if(aspectDelta>TRACE_ASPECT_MANUAL_MAX)result.fatal.push(`Variação de proporção ${aspectDelta.toFixed(2)}%; o máximo aceito é ${TRACE_ASPECT_MANUAL_MAX}%.`);
+      if(shiftPercent>TRACE_SHIFT_MANUAL_MAX_PERCENT)result.fatal.push(`Deslocamento máximo de contorno ${shiftPercent.toFixed(2)}%; o máximo aceito é ${TRACE_SHIFT_MANUAL_MAX_PERCENT}%.`);
+      if(!result.fatal.length)result.fatal.push('Feche ou revise os subcaminhos abertos antes de aprovar.');
+    }
   }catch(error){result.status='fail';result.fatal.push(error.message||'Não foi possível calcular a comparação de silhueta.');}
   return result;
 }
@@ -1187,7 +1250,7 @@ function traceQualityPanel(){
   const metrics=q.metrics;
   return `<div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none;">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
-      <div><h4 style="margin:0 0 4px;">Validação automática do Prompt 2</h4><div style="font-size:12px;color:var(--text-faint);">${passed?'Limites geométricos atendidos.':manual?'Sem bitmap de referência; revisão manual necessária.':'Aprovação bloqueada até corrigir os itens abaixo.'}</div></div>
+      <div><h4 style="margin:0 0 4px;">Validação automática do Prompt 2</h4><div style="font-size:12px;color:var(--text-faint);">${passed?'Limites geométricos atendidos.':manual?(metrics?'Pequena diferença em relação à arte; confira a sobreposição e confirme abaixo.':'Sem bitmap de referência; revisão manual necessária.'):'Aprovação bloqueada até corrigir os itens abaixo.'}</div></div>
       <span class="badge ${passed?'b-ok':manual?'b-warn':'b-bad'}">${passed?'APROVADO NA MÉTRICA':manual?'REVISÃO MANUAL':'DIVERGÊNCIA'}</span>
     </div>
     ${metrics?`<div class="grid3" style="margin-top:12px;">
