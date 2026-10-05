@@ -636,6 +636,29 @@ scale), so area/perimeter are high-precision polygon approximations, not analyti
 exact values. Cost is estimated only for recognized MubiSys cost units; unsupported
 units or missing cost return an alert and null estimate.
 
+**Bobinas (adesivo comum, papel kraft; pedido de 05/10/2026):** rolo tem só a largura
+fixa (hoje 1200 mm nos dois); o comprimento nunca é cadastrado. Em Administração >
+Produtos > Matérias-primas, categorias marcadas como "de bobina" (seed `Bobinas`,
+migration `0078_bobinas_materias_primas.sql`; chapa e bobina são exclusivas) abrem só
+largura(s) do rolo e espessura opcional. A linha fica em `estudio_chapas` com
+`bobina = true`, `altura_mm` = largura e `largura_mm` = teto de 50 000 mm
+(`shared/bobina.ts`), então factibilidade e junção de propostas leem sem mudança; a
+sugestão de cor (`estudio-cores.ts`) ignora bobinas. No nesting
+(`calcularNestingMultiMaterial`) a bobina não gira, o motor recebe um comprimento
+finito (folga sobre a área das peças, repetindo com o teto se não fechar) e o consumo é
+o comprimento realmente ocupado (bounding box em X, arredondado para cima). O cobrado é
+largura × esse comprimento: `area_chapa_utilizada_m2` = faixa cobrada, `area_sobra_m2`
+= faixa − área líquida, `porcentagem_aproveitamento` = área líquida / faixa, e `chapa`
+= `{largura_mm: comprimento consumido, altura_mm: largura do rolo}`; o resultado traz
+`formato: "bobina"`, `comprimento_consumido_mm` e `largura_bobina_mm`. Custo em m² usa
+a faixa cobrada, em m/ml usa o comprimento consumido (não o perímetro); outra unidade
+bloqueia com alerta. Com várias larguras vence a que cobra menos material. Margem
+lateral de borda do rolo ainda não existe (só o espaçamento entre peças). Dimensões
+de material (largura, altura, espessura, comprimento) ficam sempre em mm; m²/m do
+resultado e unidades de custo do MubiSys, e as métricas de produção em metros da
+Operações (solda), seguem como estão. A tela legada de chapas do HTML do CPQ
+(`/api/letra-caixa/chapas`) lista as bobinas como 50 000 × largura.
+
 `server/services/cpqFactibilidadeFabricacao.ts` contains the geometry checks for
 sheet fit and oversized-piece seams. The authenticated
 `server/routes/estudio-factibilidade.ts` route calls it before nesting and records

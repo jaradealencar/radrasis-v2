@@ -363,6 +363,7 @@ export const materiaPrimaCategorias = pgTable("materia_prima_categorias", {
   id: serial("id").primaryKey(),
   nome: varchar("nome", { length: 128 }).notNull().unique(),
   usaDadosChapa: boolean("usa_dados_chapa").notNull().default(false),
+  usaDadosBobina: boolean("usa_dados_bobina").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -538,6 +539,8 @@ export const estudioChapas = pgTable("estudio_chapas", {
   cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
   transmissaoLuzPct: decimal("transmissao_luz_pct", { precision: 5, scale: 2 }),
   transparenciaTipo: varchar("transparencia_tipo", { length: 20 }),
+  /** Bobina: altura_mm é a largura fixa; largura_mm guarda só o comprimento máximo (teto) do rolo. */
+  bobina: boolean("bobina").notNull().default(false),
   principal: boolean("principal").notNull().default(false),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

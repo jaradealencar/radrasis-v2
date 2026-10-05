@@ -9,6 +9,8 @@ export type CpqChapa = {
   larguraMm: number;
   alturaMm: number;
   principal?: boolean;
+  /** Bobina: `alturaMm` é a largura fixa e `larguraMm` só o teto de comprimento do rolo. */
+  bobina?: boolean;
 };
 
 export type CpqNestingPeca = {
@@ -66,7 +68,13 @@ export type CpqNestingMaterialResult = {
   id_chapa_utilizada: number;
   nome_chapa_utilizada: string;
   chapa_principal: boolean;
+  /** Em bobina, `largura_mm` é o comprimento consumido (cobrado) e `altura_mm` a largura do rolo. */
   chapa: { largura_mm: number; altura_mm: number };
+  formato: "chapa" | "bobina";
+  /** Só em bobina: comprimento do rolo consumido pelo layout, em mm. */
+  comprimento_consumido_mm?: number;
+  /** Só em bobina: largura do rolo, em mm. */
+  largura_bobina_mm?: number;
   posicionamentos: CpqNestingPlacement[];
 };
 
@@ -89,6 +97,9 @@ export type CpqNestingResultadoAssinavel = Pick<
   | "nome_chapa_utilizada"
   | "chapa_principal"
   | "chapa"
+  | "formato"
+  | "comprimento_consumido_mm"
+  | "largura_bobina_mm"
 >;
 
 function nestingSecret(): string {
@@ -141,7 +152,8 @@ function orientacoesChapa(chapa: CpqChapa): Array<{ larguraMm: number; alturaMm:
     alturaMm: chapa.alturaMm,
     ordemOrientacao: 0,
   }];
-  if (chapa.larguraMm !== chapa.alturaMm) {
+  // A bobina sai do rolo numa só direção: a largura do material não gira.
+  if (!chapa.bobina && chapa.larguraMm !== chapa.alturaMm) {
     orientacoes.push({
       larguraMm: chapa.alturaMm,
       alturaMm: chapa.larguraMm,
@@ -268,12 +280,33 @@ function unidadeNormalizada(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/²/g, "2").toLowerCase().trim();
 }
 
-function estimarCustos(material: CpqMaterial, areaUsadaM2: number, areaChapaM2: number, perimetroM: number) {
+function estimarCustos(
+  material: CpqMaterial,
+  areaUsadaM2: number,
+  areaChapaM2: number,
+  perimetroM: number,
+  /** Bobina: comprimento do rolo consumido, em metros (a área cobrada é largura × comprimento). */
+  comprimentoBobinaM?: number
+) {
   if (!Number.isFinite(material.custoUnitario) || material.custoUnitario <= 0) {
     return { custo: null, sobra: null, unidadeMetrica: false, alerta: "Matéria-prima sem custo válido no MubiSys; a precificação deve ficar bloqueada." };
   }
   const unidade = unidadeNormalizada(material.unidadeCusto);
   const areaSobra = Math.max(0, areaChapaM2 - areaUsadaM2);
+  if (comprimentoBobinaM != null) {
+    if (["m2", "metro quadrado", "metros quadrados"].includes(unidade)) {
+      return { custo: areaChapaM2 * material.custoUnitario, sobra: areaSobra * material.custoUnitario, unidadeMetrica: true, alerta: null };
+    }
+    if (["m", "ml", "metro", "metros", "metro linear", "metros lineares"].includes(unidade)) {
+      return { custo: comprimentoBobinaM * material.custoUnitario, sobra: null, unidadeMetrica: true, alerta: null };
+    }
+    return {
+      custo: null,
+      sobra: null,
+      unidadeMetrica: false,
+      alerta: `Unidade de custo "${material.unidadeCusto}" não converte em consumo de bobina (use m² ou metro linear no MubiSys); revise antes de emitir a proposta.`,
+    };
+  }
   if (["m2", "m2", "metro quadrado", "metros quadrados"].includes(unidade)) {
     return { custo: areaUsadaM2 * material.custoUnitario, sobra: areaSobra * material.custoUnitario, unidadeMetrica: true, alerta: null };
   }
@@ -305,7 +338,16 @@ type AvaliacaoChapa = {
   areaChapaM2: number;
   areaLiquidaM2: number;
   aproveitamento: number;
+  /** Só em bobina: comprimento consumido (mm, arredondado para cima). */
+  comprimentoConsumidoMm?: number;
 };
+
+/** Comprimento de rolo oferecido ao motor: folga sobre a área das peças, limitado ao teto cadastrado. */
+function comprimentoInicialBobinaMm(pecas: CpqNestingPeca[], larguraBobinaMm: number, tetoMm: number): number {
+  const areaCaixasMm2 = pecas.reduce((total, peca) => total + peca.larguraMm * peca.alturaMm, 0);
+  const maiorLadoMm = Math.max(...pecas.flatMap(peca => [peca.larguraMm, peca.alturaMm]));
+  return Math.min(tetoMm, Math.ceil(Math.max(maiorLadoMm, (areaCaixasMm2 * 2) / larguraBobinaMm + maiorLadoMm)));
+}
 
 function compararAvaliacoes(a: AvaliacaoChapa, b: AvaliacaoChapa): number {
   return (a.dimensoes.larguraMm * a.dimensoes.alturaMm) - (b.dimensoes.larguraMm * b.dimensoes.alturaMm)
@@ -358,9 +400,36 @@ export async function calcularNestingMultiMaterial(input: {
     const avaliacoes: AvaliacaoChapa[] = [];
     for (const chapa of chapas) {
       for (const { larguraMm, alturaMm, ordemOrientacao } of orientacoesChapa(chapa)) {
+        const completo = (resultado: DeepnestWorkerResult) =>
+          resultado.completo && resultado.quantidadePosicionada > 0 && resultado.placements.length === resultado.quantidadePecas;
+        if (chapa.bobina) {
+          // Largura fixa (alturaMm); o comprimento é medido pelo layout, não cadastrado.
+          const larguraBobinaMm = alturaMm;
+          const comprimentoInicialMm = comprimentoInicialBobinaMm(pecasMaterialOriginal, larguraBobinaMm, larguraMm);
+          let nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, 20_000);
+          if (!completo(nesting) && comprimentoInicialMm < larguraMm)
+            nesting = await executarMotor(pecasMaterial, larguraMm, larguraBobinaMm, espacamentoMm, 20_000);
+          if (!completo(nesting)) continue;
+          const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
+          const comprimentoConsumidoMm = Math.ceil(caixa.larguraMm);
+          const areaCobradaM2 = (comprimentoConsumidoMm * larguraBobinaMm) / 1_000_000;
+          const areaLiquidaM2 = nesting.areaLiquidaMm2 / 1_000_000;
+          avaliacoes.push({
+            chapa,
+            dimensoes: { larguraMm: comprimentoConsumidoMm, alturaMm: larguraBobinaMm },
+            ordemOrientacao,
+            nesting,
+            caixa,
+            areaChapaM2: areaCobradaM2,
+            areaLiquidaM2,
+            aproveitamento: areaCobradaM2 > 0 ? (areaLiquidaM2 / areaCobradaM2) * 100 : 0,
+            comprimentoConsumidoMm,
+          });
+          continue;
+        }
         const dimensoes = { larguraMm, alturaMm };
         const nesting = await executarMotor(pecasMaterial, larguraMm, alturaMm, espacamentoMm, 20_000);
-        if (!nesting.completo || nesting.quantidadePosicionada === 0 || nesting.placements.length !== nesting.quantidadePecas) continue;
+        if (!completo(nesting)) continue;
         const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
         const areaChapaM2 = (larguraMm * alturaMm) / 1_000_000;
         const areaLiquidaM2 = nesting.areaLiquidaMm2 / 1_000_000;
@@ -381,8 +450,17 @@ export async function calcularNestingMultiMaterial(input: {
     avaliacoes.sort(compararAvaliacoes);
     const melhor = avaliacoes[0];
     const dimensoes = melhor.dimensoes;
-    const custos = estimarCustos(material, melhor.caixa.areaM2, melhor.areaChapaM2, melhor.nesting.perimetroTotalMm / 1000);
-    const areaSobraM2 = Math.max(0, melhor.areaChapaM2 - melhor.caixa.areaM2);
+    const emBobina = melhor.comprimentoConsumidoMm != null;
+    // Chapa: o bloco ocupado é o consumo. Bobina: cobra-se a faixa inteira (largura do rolo × comprimento).
+    const areaConsumoM2 = emBobina ? melhor.areaLiquidaM2 : melhor.caixa.areaM2;
+    const custos = estimarCustos(
+      material,
+      areaConsumoM2,
+      melhor.areaChapaM2,
+      melhor.nesting.perimetroTotalMm / 1000,
+      emBobina ? melhor.comprimentoConsumidoMm! / 1000 : undefined
+    );
+    const areaSobraM2 = Math.max(0, melhor.areaChapaM2 - areaConsumoM2);
     return {
       id_materia_prima: material.id,
       materia_prima: material.nome,
@@ -394,13 +472,18 @@ export async function calcularNestingMultiMaterial(input: {
       area_liquida_m2: melhor.areaLiquidaM2,
       area_sobra_m2: areaSobraM2,
       perimetro_total_m: melhor.nesting.perimetroTotalMm / 1000,
-      area_chapa_utilizada_m2: melhor.caixa.areaM2,
+      area_chapa_utilizada_m2: emBobina ? melhor.areaChapaM2 : melhor.caixa.areaM2,
       porcentagem_aproveitamento: melhor.aproveitamento,
       criterio_escolha: "menor_chapa_que_comporta",
       id_chapa_utilizada: melhor.chapa.id,
       nome_chapa_utilizada: melhor.chapa.nome,
       chapa_principal: !!melhor.chapa.principal,
       chapa: { largura_mm: dimensoes.larguraMm, altura_mm: dimensoes.alturaMm },
+      formato: emBobina ? "bobina" : "chapa",
+      ...(emBobina ? {
+        comprimento_consumido_mm: melhor.comprimentoConsumidoMm,
+        largura_bobina_mm: dimensoes.alturaMm,
+      } : {}),
       posicionamentos: melhor.nesting.placements.map(position => ({
         ...position,
         origemId: pecasMaterialOriginal[position.source ?? 0]?.id,

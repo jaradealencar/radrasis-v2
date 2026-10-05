@@ -5,6 +5,7 @@ import {
   materiaPrimaCadastros,
   materiaPrimaCategorias,
 } from "../../drizzle/schema";
+import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
@@ -14,7 +15,21 @@ const gestorCadastroProcedure = protectedProcedure.use(requireRole("gestor", "ad
 const categoriaInput = z.object({
   nome: z.string().trim().min(1).max(128),
   usaDadosChapa: z.boolean().default(false),
+  usaDadosBobina: z.boolean().default(false),
 });
+
+function exigirChapaOuBobina(input: { usaDadosChapa: boolean; usaDadosBobina: boolean }) {
+  if (input.usaDadosChapa && input.usaDadosBobina)
+    throw new Error("Uma categoria é de chapa ou de bobina, não das duas.");
+}
+
+const formatosBobinaInput = z.array(z.object({
+  id: z.number().int().positive().optional(),
+  nome: z.string().trim().min(1).max(256),
+  larguraMm: z.number().int().min(BOBINA_LARGURA_MINIMA_MM).max(BOBINA_COMPRIMENTO_MAXIMO_MM),
+  ativo: z.boolean().default(true),
+  principal: z.boolean().default(false),
+}).strict()).max(20);
 
 const formatosChapaInput = z.array(z.object({
   id: z.number().int().positive().optional(),
@@ -73,9 +88,17 @@ export const materiasPrimasRouter = router({
           categoriaId: categoria?.id ?? null,
           categoriaNome: categoria?.nome ?? null,
           categoriaUsaDadosChapa: categoria?.usaDadosChapa ?? false,
+          categoriaUsaDadosBobina: categoria?.usaDadosBobina ?? false,
           espessuraMm: cadastro?.espessuraMm == null ? null : Number(cadastro.espessuraMm),
           densidadeKgM3: cadastro?.densidadeKgM3 == null ? null : Number(cadastro.densidadeKgM3),
-          chapas: (chapasPorId.get(material.id) ?? []).map(chapa => ({
+          bobinas: (chapasPorId.get(material.id) ?? []).filter(chapa => chapa.bobina).map(bobina => ({
+            id: bobina.id,
+            nome: bobina.nome,
+            larguraMm: bobina.alturaMm,
+            ativo: bobina.ativo,
+            principal: bobina.principal,
+          })),
+          chapas: (chapasPorId.get(material.id) ?? []).filter(chapa => !chapa.bobina).map(chapa => ({
             id: chapa.id,
             nome: chapa.nome,
             larguraMm: chapa.larguraMm,
@@ -103,6 +126,7 @@ export const materiasPrimasRouter = router({
   categoriaCriar: gestorCadastroProcedure
     .input(categoriaInput)
     .mutation(async ({ input }) => {
+      exigirChapaOuBobina(input);
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
       const categorias = await db.select({ nome: materiaPrimaCategorias.nome }).from(materiaPrimaCategorias);
@@ -115,6 +139,7 @@ export const materiasPrimasRouter = router({
   categoriaAtualizar: gestorCadastroProcedure
     .input(categoriaInput.extend({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
+      exigirChapaOuBobina(input);
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
       const [atual] = await db.select().from(materiaPrimaCategorias).where(eq(materiaPrimaCategorias.id, input.id));
@@ -122,15 +147,15 @@ export const materiasPrimasRouter = router({
       const categorias = await db.select({ id: materiaPrimaCategorias.id, nome: materiaPrimaCategorias.nome }).from(materiaPrimaCategorias);
       if (categorias.some(item => item.id !== input.id && item.nome.localeCompare(input.nome, "pt-BR", { sensitivity: "base" }) === 0))
         throw new Error("Já existe uma categoria com esse nome.");
-      if (atual.usaDadosChapa && !input.usaDadosChapa) {
+      if ((atual.usaDadosChapa && !input.usaDadosChapa) || (atual.usaDadosBobina && !input.usaDadosBobina)) {
         const materiaisVinculados = await db.select({ id: materiaPrimaCadastros.mubisysMateriaPrimaId })
           .from(materiaPrimaCadastros)
           .where(eq(materiaPrimaCadastros.categoriaId, input.id));
         if (materiaisVinculados.length)
-          throw new Error("Reclassifique as matérias-primas desta categoria antes de desativar os campos de chapa.");
+          throw new Error("Reclassifique as matérias-primas desta categoria antes de desativar os campos de chapa ou bobina.");
       }
       const [categoria] = await db.update(materiaPrimaCategorias)
-        .set({ nome: input.nome, usaDadosChapa: input.usaDadosChapa, updatedAt: new Date() })
+        .set({ nome: input.nome, usaDadosChapa: input.usaDadosChapa, usaDadosBobina: input.usaDadosBobina, updatedAt: new Date() })
         .where(eq(materiaPrimaCategorias.id, input.id))
         .returning();
       return categoria;
@@ -157,6 +182,7 @@ export const materiasPrimasRouter = router({
       espessuraMm: z.number().finite().positive().max(10_000).nullable(),
       densidadeKgM3: z.number().finite().positive().max(1_000_000).nullable(),
       chapas: formatosChapaInput,
+      bobinas: formatosBobinaInput.default([]),
     }).strict())
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -171,40 +197,56 @@ export const materiasPrimasRouter = router({
         if (!encontrada) throw new Error("Selecione uma categoria cadastrada.");
         categoria = encontrada;
       }
-      const formatosAtivos = input.chapas.filter(chapa => chapa.ativo);
       const usaDadosChapa = categoria?.usaDadosChapa ?? false;
+      const usaDadosBobina = categoria?.usaDadosBobina ?? false;
+      // Bobina: só a largura é informada; o comprimento gravado é apenas o teto do nesting.
+      const formatos = usaDadosBobina
+        ? input.bobinas.map(bobina => ({
+            id: bobina.id,
+            nome: bobina.nome,
+            larguraMm: BOBINA_COMPRIMENTO_MAXIMO_MM,
+            alturaMm: bobina.larguraMm,
+            ativo: bobina.ativo,
+            principal: bobina.principal,
+          }))
+        : input.chapas;
+      const formatosAtivos = formatos.filter(formato => formato.ativo);
       if (usaDadosChapa && (!input.espessuraMm || !input.densidadeKgM3 || formatosAtivos.length === 0))
         throw new Error("Para salvar uma chapa, informe espessura, densidade e ao menos um formato ativo.");
-      if (usaDadosChapa && input.chapas.filter(chapa => chapa.ativo && chapa.principal).length > 1)
+      if (usaDadosBobina && formatosAtivos.length === 0)
+        throw new Error("Para salvar uma bobina, informe ao menos uma largura ativa.");
+      if ((usaDadosChapa || usaDadosBobina) && formatos.filter(formato => formato.ativo && formato.principal).length > 1)
         throw new Error("Marque no máximo um formato principal.");
-      const idsInformados = input.chapas.flatMap(chapa => chapa.id == null ? [] : [chapa.id]);
+      const idsInformados = formatos.flatMap(formato => formato.id == null ? [] : [formato.id]);
       if (new Set(idsInformados).size !== idsInformados.length)
-        throw new Error("Há formatos de chapa repetidos no formulário.");
-      const dimensoes = input.chapas.map(chapa => [Math.max(chapa.larguraMm, chapa.alturaMm), Math.min(chapa.larguraMm, chapa.alturaMm)].join("x"));
+        throw new Error("Há formatos repetidos no formulário.");
+      const dimensoes = formatos.map(formato => [Math.max(formato.larguraMm, formato.alturaMm), Math.min(formato.larguraMm, formato.alturaMm)].join("x"));
       if (new Set(dimensoes).size !== dimensoes.length)
-        throw new Error("Cada formato precisa ter um tamanho diferente.");
+        throw new Error(usaDadosBobina ? "Cada bobina precisa ter uma largura diferente." : "Cada formato precisa ter um tamanho diferente.");
+      const usaFormatos = usaDadosChapa || usaDadosBobina;
 
       await db.transaction(async tx => {
         const existentes = await tx.select().from(estudioChapas)
           .where(eq(estudioChapas.mubisysMateriaPrimaId, input.mubisysMateriaPrimaId));
         const existentesPorId = new Map(existentes.map(chapa => [chapa.id, chapa]));
-        for (const formato of input.chapas) {
+        for (const formato of formatos) {
           if (formato.id != null && !existentesPorId.has(formato.id))
             throw new Error("Um formato enviado não pertence a esta matéria-prima.");
         }
 
         const now = new Date();
+        const espessuraSalva = usaDadosChapa || (usaDadosBobina && input.espessuraMm) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
           categoriaId: input.categoriaId,
-          espessuraMm: usaDadosChapa ? String(input.espessuraMm) : null,
+          espessuraMm: espessuraSalva,
           densidadeKgM3: usaDadosChapa ? String(input.densidadeKgM3) : null,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
           set: {
             categoriaId: input.categoriaId,
-            espessuraMm: usaDadosChapa ? String(input.espessuraMm) : null,
+            espessuraMm: espessuraSalva,
             densidadeKgM3: usaDadosChapa ? String(input.densidadeKgM3) : null,
             updatedAt: now,
           },
@@ -216,25 +258,27 @@ export const materiasPrimasRouter = router({
           .where(eq(estudioChapas.mubisysMateriaPrimaId, input.mubisysMateriaPrimaId));
 
         const formatoPrincipal = formatosAtivos.find(formato => formato.principal) ?? formatosAtivos[0];
-        for (const formato of input.chapas) {
+        for (const formato of formatos) {
           const larguraMm = Math.max(formato.larguraMm, formato.alturaMm);
           const alturaMm = Math.min(formato.larguraMm, formato.alturaMm);
           const existentePorTamanho = existentes.find(chapa => chapa.larguraMm === larguraMm && chapa.alturaMm === alturaMm);
           const id = existentePorTamanho?.id ?? formato.id;
-      const values = {
+          const cor = "pantoneCode" in formato ? formato : null;
+          const values = {
             mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
             nome: formato.nome,
             larguraMm,
             alturaMm,
-            pantoneCode: usaDadosChapa ? formato.pantoneCode?.trim().toUpperCase() || null : null,
-            cmykC: usaDadosChapa && formato.cmykC != null ? String(formato.cmykC) : null,
-            cmykM: usaDadosChapa && formato.cmykM != null ? String(formato.cmykM) : null,
-            cmykY: usaDadosChapa && formato.cmykY != null ? String(formato.cmykY) : null,
-            cmykK: usaDadosChapa && formato.cmykK != null ? String(formato.cmykK) : null,
-            transmissaoLuzPct: usaDadosChapa && formato.transmissaoLuzPct != null ? String(formato.transmissaoLuzPct) : null,
-            transparenciaTipo: usaDadosChapa ? formato.transparenciaTipo ?? null : null,
-            ativo: usaDadosChapa && formato.ativo,
-            principal: usaDadosChapa && formato.ativo && formato === formatoPrincipal,
+            bobina: usaDadosBobina,
+            pantoneCode: usaDadosChapa ? cor?.pantoneCode?.trim().toUpperCase() || null : null,
+            cmykC: usaDadosChapa && cor?.cmykC != null ? String(cor.cmykC) : null,
+            cmykM: usaDadosChapa && cor?.cmykM != null ? String(cor.cmykM) : null,
+            cmykY: usaDadosChapa && cor?.cmykY != null ? String(cor.cmykY) : null,
+            cmykK: usaDadosChapa && cor?.cmykK != null ? String(cor.cmykK) : null,
+            transmissaoLuzPct: usaDadosChapa && cor?.transmissaoLuzPct != null ? String(cor.transmissaoLuzPct) : null,
+            transparenciaTipo: usaDadosChapa ? cor?.transparenciaTipo ?? null : null,
+            ativo: usaFormatos && formato.ativo,
+            principal: usaFormatos && formato.ativo && formato === formatoPrincipal,
             updatedAt: now,
           };
           if (id != null) {
