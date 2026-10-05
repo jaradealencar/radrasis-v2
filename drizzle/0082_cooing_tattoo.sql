@@ -1,0 +1,1 @@
+ALTER TABLE "estudio_chapas" ADD COLUMN "tem_cor" boolean DEFAULT true NOT NULL;

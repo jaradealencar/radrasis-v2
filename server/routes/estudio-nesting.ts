@@ -32,6 +32,7 @@ const chapaInput = z
     transmissaoLuzPct: z.number().finite().min(0).max(100).nullable().optional(),
     transparenciaTipo: z.enum(["opaca", "translucida", "transparente"]).nullable().optional(),
     principal: z.boolean().optional().default(false),
+    temCor: z.boolean().optional().default(true),
     espessuraMm: z.number().finite().positive().max(10_000).nullable().optional(),
     densidadeGCm3: z.number().finite().positive().max(1_000).nullable().optional(),
   })
@@ -219,18 +220,20 @@ async function salvarChapa(
       "A matéria-prima não existe no catálogo atual do MubiSys."
     );
   }
+  const { temCor } = data;
   const values = {
     mubisysMateriaPrimaId: data.mubisysMateriaPrimaId,
+    temCor,
     nome: data.nome,
     larguraMm: Math.max(data.larguraMm, data.alturaMm),
     alturaMm: Math.min(data.larguraMm, data.alturaMm),
-    pantoneCode: data.pantoneCode?.trim().toUpperCase() || null,
-    cmykC: data.cmykC == null ? null : String(data.cmykC),
-    cmykM: data.cmykM == null ? null : String(data.cmykM),
-    cmykY: data.cmykY == null ? null : String(data.cmykY),
-    cmykK: data.cmykK == null ? null : String(data.cmykK),
-    transmissaoLuzPct: data.transmissaoLuzPct == null ? null : String(data.transmissaoLuzPct),
-    transparenciaTipo: data.transparenciaTipo ?? null,
+    pantoneCode: temCor ? data.pantoneCode?.trim().toUpperCase() || null : null,
+    cmykC: temCor ? data.cmykC == null ? null : String(data.cmykC) : null,
+    cmykM: temCor ? data.cmykM == null ? null : String(data.cmykM) : null,
+    cmykY: temCor ? data.cmykY == null ? null : String(data.cmykY) : null,
+    cmykK: temCor ? data.cmykK == null ? null : String(data.cmykK) : null,
+    transmissaoLuzPct: temCor ? data.transmissaoLuzPct == null ? null : String(data.transmissaoLuzPct) : null,
+    transparenciaTipo: temCor ? data.transparenciaTipo ?? null : null,
     ativo: true,
     updatedAt: new Date(),
   };

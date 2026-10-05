@@ -80,6 +80,7 @@ type FormatoChapaForm = {
   cmykK: string;
   transmissaoLuzPct: string;
   transparenciaTipo: string;
+  temCor: boolean;
   ativo: boolean;
   principal: boolean;
 };
@@ -234,6 +235,7 @@ function DialogEditarMateriaPrima({
       cmykK: chapa.cmykK == null ? "" : String(chapa.cmykK),
       transmissaoLuzPct: chapa.transmissaoLuzPct == null ? "" : String(chapa.transmissaoLuzPct),
       transparenciaTipo: chapa.transparenciaTipo ?? "",
+      temCor: chapa.temCor,
       ativo: chapa.ativo,
       principal: chapa.principal,
     })));
@@ -274,6 +276,7 @@ function DialogEditarMateriaPrima({
       cmykK: chapa.cmykK.trim() === "" ? null : Number(chapa.cmykK),
       transmissaoLuzPct: chapa.transmissaoLuzPct.trim() === "" ? null : Number(chapa.transmissaoLuzPct),
       transparenciaTipo: chapa.transparenciaTipo === "" ? null : chapa.transparenciaTipo as "opaca" | "translucida" | "transparente",
+      temCor: chapa.temCor,
       ativo: categoria?.usaDadosChapa ? chapa.ativo : false,
       principal: categoria?.usaDadosChapa && chapa.ativo ? chapa.principal : false,
       index,
@@ -340,7 +343,7 @@ function DialogEditarMateriaPrima({
               <div className="space-y-2"><Label>Densidade (g/cm³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /></div>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2"><div><h4 className="text-sm font-medium">Tamanhos cadastrados</h4><p className="text-xs text-muted-foreground">Cadastre cada formato de chapa disponível para esta matéria-prima.</p></div><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setChapas(atual => [...atual, { nome: "", larguraMm: "", alturaMm: "", pantoneCode: "", cmykC: "", cmykM: "", cmykY: "", cmykK: "", transmissaoLuzPct: "", transparenciaTipo: "", ativo: true, principal: atual.length === 0 }])}><Plus className="h-3.5 w-3.5" /> Adicionar tamanho</Button></div>
+              <div className="flex items-center justify-between gap-2"><div><h4 className="text-sm font-medium">Tamanhos cadastrados</h4><p className="text-xs text-muted-foreground">Cadastre cada formato de chapa disponível para esta matéria-prima.</p></div><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setChapas(atual => [...atual, { nome: "", larguraMm: "", alturaMm: "", pantoneCode: "", cmykC: "", cmykM: "", cmykY: "", cmykK: "", transmissaoLuzPct: "", transparenciaTipo: "", temCor: true, ativo: true, principal: atual.length === 0 }])}><Plus className="h-3.5 w-3.5" /> Adicionar tamanho</Button></div>
               {chapas.length === 0 ? <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">Nenhum tamanho cadastrado.</p> : chapas.map((chapa, index) => (
                 <div key={chapa.id ?? `novo-${index}`} className="space-y-3 rounded-md border p-3">
                   <div className="grid gap-2 sm:grid-cols-[minmax(130px,1fr)_110px_110px_auto]">
@@ -353,12 +356,18 @@ function DialogEditarMateriaPrima({
                       {chapa.id != null && <label className="flex w-full items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" checked={chapa.ativo} onChange={event => atualizarChapa(index, { ativo: event.target.checked })} /> Disponível para nesting</label>}
                     </div>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm">Tem configuração de cor?</span>
+                    <Button type="button" size="sm" variant={chapa.temCor ? "default" : "outline"} aria-pressed={chapa.temCor} onClick={() => atualizarChapa(index, { temCor: true })}>Sim</Button>
+                    <Button type="button" size="sm" variant={!chapa.temCor ? "default" : "outline"} aria-pressed={!chapa.temCor} onClick={() => atualizarChapa(index, { temCor: false })}>Não</Button>
+                    {!chapa.temCor && <span className="text-xs text-muted-foreground">Fica fora da análise de cores.</span>}
+                  </div>
+                  {chapa.temCor && <div className="grid gap-2 sm:grid-cols-3">
                     <div className="space-y-1"><Label className="text-xs">Pantone</Label><Input value={chapa.pantoneCode} placeholder="Ex.: 185 C" onChange={event => atualizarChapa(index, { pantoneCode: event.target.value })} /></div>
                     {(["cmykC", "cmykM", "cmykY", "cmykK"] as const).map((channel, channelIndex) => <div key={channel} className="space-y-1"><Label className="text-xs">CMYK {(["C", "M", "Y", "K"] as const)[channelIndex]} (%)</Label><Input type="number" min="0" max="100" step="0.01" value={chapa[channel]} onChange={event => atualizarChapa(index, { [channel]: event.target.value })} /></div>)}
                     <div className="space-y-1"><Label className="text-xs">Transmissão de luz (%)</Label><Input type="number" min="0" max="100" step="0.1" value={chapa.transmissaoLuzPct} onChange={event => atualizarChapa(index, { transmissaoLuzPct: event.target.value })} /></div>
                     <div className="space-y-1"><Label className="text-xs">Transparência</Label><Select value={chapa.transparenciaTipo || "nao-informada"} onValueChange={value => atualizarChapa(index, { transparenciaTipo: value === "nao-informada" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nao-informada">Não informada</SelectItem><SelectItem value="opaca">Opaca</SelectItem><SelectItem value="translucida">Translúcida</SelectItem><SelectItem value="transparente">Transparente / cristal</SelectItem></SelectContent></Select></div>
-                  </div>
+                  </div>}
                 </div>
               ))}
             </div>

@@ -548,6 +548,8 @@ export const estudioChapas = pgTable("estudio_chapas", {
   transparenciaTipo: varchar("transparencia_tipo", { length: 20 }),
   /** Bobina: altura_mm é a largura fixa; largura_mm guarda só o comprimento máximo (teto) do rolo. */
   bobina: boolean("bobina").notNull().default(false),
+  /** Falso = a matéria-prima não tem configuração de cor e fica fora da análise de cores. */
+  temCor: boolean("tem_cor").notNull().default(true),
   principal: boolean("principal").notNull().default(false),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

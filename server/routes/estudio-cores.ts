@@ -306,7 +306,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
   const [chapas, adesivos, precosRows] = await Promise.all([
     // Bobinas (adesivo comum, kraft) não têm cor de chapa: só entram no nesting, não na sugestão de material.
-    db.select().from(estudioChapas).where(and(eq(estudioChapas.ativo, true), eq(estudioChapas.bobina, false))),
+    db.select().from(estudioChapas).where(and(eq(estudioChapas.ativo, true), eq(estudioChapas.bobina, false), eq(estudioChapas.temCor, true))),
     db.select().from(estudioImprimaxAdesivos).where(eq(estudioImprimaxAdesivos.ativo, true)),
     db.select().from(estudioPrecosImpressao).where(eq(estudioPrecosImpressao.id, 1)).limit(1),
   ]);
