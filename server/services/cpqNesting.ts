@@ -54,9 +54,34 @@ type DeepnestWorkerResult = {
   bounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
 };
 
+export type CpqNestingFormatoResultado = {
+  id_chapa: number;
+  nome_chapa: string;
+  chapa_principal: boolean;
+  largura_cadastrada_mm: number;
+  altura_cadastrada_mm: number;
+  formato: "chapa" | "bobina";
+  status: "apto" | "nao_cabe" | "falha";
+  mensagem: string | null;
+  largura_nesting_mm: number | null;
+  altura_nesting_mm: number | null;
+  quantidade_pecas: number;
+  quantidade_posicionada: number;
+  area_liquida_m2: number | null;
+  area_sobra_m2: number | null;
+  perimetro_total_m: number | null;
+  area_chapa_utilizada_m2: number | null;
+  porcentagem_aproveitamento: number | null;
+  custo_material_estimado: number | null;
+  custo_sobra_estimado: number | null;
+  alerta_custo: string | null;
+  posicionamentos: CpqNestingPlacement[];
+}
+
 export type CpqNestingMaterialResult = {
   espacamento_pecas_mm: number;
   margem_borda_mm: number;
+  formatos_avaliados: CpqNestingFormatoResultado[];
   id_materia_prima: number;
   materia_prima: string;
   custo_unitario: number | null;
@@ -124,7 +149,7 @@ export function emitirReciboNesting(sourceId: string, resultadoHash: string, aca
     sourceId,
     resultadoHash,
     acaoFactibilidade,
-    result: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "posicionamentos")),
+    result: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "posicionamentos" && key !== "formatos_avaliados")),
     exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
@@ -383,6 +408,15 @@ function compararAvaliacoes(a: AvaliacaoChapa, b: AvaliacaoChapa): number {
     || a.ordemOrientacao - b.ordemOrientacao;
 }
 
+function mapearPosicionamentos(avaliacao: AvaliacaoChapa, pecas: CpqNestingPeca[], margemBordaMm: number): CpqNestingPlacement[] {
+  return avaliacao.nesting.placements.map(position => ({
+    ...position,
+    origemId: pecas[position.source ?? 0]?.id,
+    xMm: position.xMm - (avaliacao.nesting.bounds?.minX ?? 0) + margemBordaMm,
+    yMm: position.yMm - (avaliacao.nesting.bounds?.minY ?? 0) + margemBordaMm,
+  }));
+}
+
 /** Testa os formatos em ordem de área e escolhe a menor chapa que comporta todas as peças. */
 export async function calcularNestingMultiMaterial(input: {
   svg?: string;
@@ -426,6 +460,7 @@ export async function calcularNestingMultiMaterial(input: {
     const pecasMaterialOriginal = material.pecas ?? pecasGlobais;
     const pecasMaterial = pecasMaterialOriginal.map(peca => ({ ...peca, svg: normalizarSvgFisico(peca) }));
     const avaliacoes: AvaliacaoChapa[] = [];
+    const falhasFormatos = new Map<number, string>();
     for (const chapa of chapas) {
       for (const { larguraMm, alturaMm, ordemOrientacao } of orientacoesChapa(chapa)) {
         const completo = (resultado: DeepnestWorkerResult) =>
@@ -439,14 +474,26 @@ export async function calcularNestingMultiMaterial(input: {
           // O worker real não devolve layout incompleto: sem encaixe no tempo, ele falha com erro de motor.
           // Por isso o comprimento curto que não fecha (resultado incompleto OU erro de motor) repete com o teto.
           let nesting: DeepnestWorkerResult | null = null;
+          let erroMotor: string | null = null;
           try {
             nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS);
           } catch (error) {
-            if (!(error instanceof CpqNestingError) || error.code !== "engine" || comprimentoInicialMm >= comprimentoMaximoMm) throw error;
+            if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
+            erroMotor = error.message;
           }
-          if ((!nesting || !completo(nesting)) && comprimentoInicialMm < comprimentoMaximoMm)
-            nesting = await executarMotor(pecasMaterial, comprimentoMaximoMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS);
-          if (!nesting || !completo(nesting)) continue;
+          if ((!nesting || !completo(nesting)) && comprimentoInicialMm < comprimentoMaximoMm) {
+            try {
+              nesting = await executarMotor(pecasMaterial, comprimentoMaximoMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS);
+              erroMotor = null;
+            } catch (error) {
+              if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
+              erroMotor = error.message;
+            }
+          }
+          if (!nesting || !completo(nesting)) {
+            if (erroMotor) falhasFormatos.set(chapa.id, erroMotor);
+            continue;
+          }
           const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
           const comprimentoConsumidoMm = Math.ceil(caixa.larguraMm + 2 * margemBordaMm);
           const areaCobradaM2 = (comprimentoConsumidoMm * alturaMm) / 1_000_000;
@@ -468,7 +515,14 @@ export async function calcularNestingMultiMaterial(input: {
         const alturaUtilMm = alturaMm - 2 * margemBordaMm;
         if (larguraUtilMm <= 0 || alturaUtilMm <= 0) continue;
         const dimensoes = { larguraMm, alturaMm };
-        const nesting = await executarMotor(pecasMaterial, larguraUtilMm, alturaUtilMm, espacamentoMm, TEMPO_MOTOR_MS);
+        let nesting: DeepnestWorkerResult;
+        try {
+          nesting = await executarMotor(pecasMaterial, larguraUtilMm, alturaUtilMm, espacamentoMm, TEMPO_MOTOR_MS);
+        } catch (error) {
+          if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
+          falhasFormatos.set(chapa.id, error.message);
+          continue;
+        }
         if (!completo(nesting)) continue;
         const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
         const areaChapaM2 = (larguraMm * alturaMm) / 1_000_000;
@@ -486,9 +540,52 @@ export async function calcularNestingMultiMaterial(input: {
         });
       }
     }
-    if (!avaliacoes.length) throw new CpqNestingError(`As peças de ${material.nome} não couberam em nenhum dos formatos de chapa cadastrados.`, "no_fit");
-    avaliacoes.sort(compararAvaliacoes);
-    const melhor = avaliacoes[0];
+    const melhoresPorChapa = new Map<number, AvaliacaoChapa>();
+    for (const chapa of chapas) {
+      const layouts = avaliacoes.filter(item => item.chapa.id === chapa.id);
+      layouts.sort((a, b) => b.aproveitamento - a.aproveitamento || a.ordemOrientacao - b.ordemOrientacao);
+      if (layouts[0]) melhoresPorChapa.set(chapa.id, layouts[0]);
+    }
+    const candidatas = [...melhoresPorChapa.values()].sort(compararAvaliacoes);
+    if (!candidatas.length) {
+      const detalhesFormatos = chapas.map(chapa => `${chapa.nome} (${chapa.larguraMm} × ${chapa.alturaMm} mm): ${falhasFormatos.get(chapa.id) ?? "o desenho não coube com o espaçamento e a margem selecionados"}`).join("; ");
+      throw new CpqNestingError(`As peças de ${material.nome} não couberam em nenhum formato cadastrado. ${detalhesFormatos}`, "no_fit");
+    }
+    const melhor = candidatas[0];
+    const formatosAvaliados = chapas.map(chapa => {
+      const layout = melhoresPorChapa.get(chapa.id);
+      if (!layout) {
+        const mensagem = falhasFormatos.get(chapa.id) ?? "As pe\u00e7as n\u00e3o couberam com o espa\u00e7amento e a margem selecionados.";
+        return {
+          id_chapa: chapa.id, nome_chapa: chapa.nome, chapa_principal: !!chapa.principal,
+          largura_cadastrada_mm: chapa.larguraMm, altura_cadastrada_mm: chapa.alturaMm,
+          formato: chapa.bobina ? "bobina" as const : "chapa" as const,
+          status: falhasFormatos.has(chapa.id) ? "falha" as const : "nao_cabe" as const,
+          mensagem, largura_nesting_mm: null, altura_nesting_mm: null,
+          quantidade_pecas: pecasMaterialOriginal.length, quantidade_posicionada: 0,
+          area_liquida_m2: null, area_sobra_m2: null, perimetro_total_m: null,
+          area_chapa_utilizada_m2: null, porcentagem_aproveitamento: null,
+          custo_material_estimado: null, custo_sobra_estimado: null, alerta_custo: mensagem,
+          posicionamentos: [],
+        };
+      }
+      const emBobina = layout.comprimentoConsumidoMm != null;
+      const areaConsumoM2 = emBobina ? layout.areaLiquidaM2 : ((layout.caixa.larguraMm + 2 * margemBordaMm) * (layout.caixa.alturaMm + 2 * margemBordaMm)) / 1_000_000;
+      const custosFormato = estimarCustos(material, areaConsumoM2, layout.areaChapaM2, layout.nesting.perimetroTotalMm / 1000, emBobina ? layout.comprimentoConsumidoMm! / 1000 : undefined);
+      return {
+        id_chapa: chapa.id, nome_chapa: chapa.nome, chapa_principal: !!chapa.principal,
+        largura_cadastrada_mm: chapa.larguraMm, altura_cadastrada_mm: chapa.alturaMm,
+        formato: emBobina ? "bobina" as const : "chapa" as const, status: "apto" as const, mensagem: null,
+        largura_nesting_mm: layout.dimensoes.larguraMm, altura_nesting_mm: layout.dimensoes.alturaMm,
+        quantidade_pecas: layout.nesting.quantidadePecas, quantidade_posicionada: layout.nesting.quantidadePosicionada,
+        area_liquida_m2: layout.areaLiquidaM2, area_sobra_m2: Math.max(0, layout.areaChapaM2 - areaConsumoM2),
+        perimetro_total_m: layout.nesting.perimetroTotalMm / 1000,
+        area_chapa_utilizada_m2: emBobina ? layout.areaChapaM2 : areaConsumoM2,
+        porcentagem_aproveitamento: layout.aproveitamento,
+        custo_material_estimado: custosFormato.custo, custo_sobra_estimado: custosFormato.sobra, alerta_custo: custosFormato.alerta,
+        posicionamentos: mapearPosicionamentos(layout, pecasMaterialOriginal, margemBordaMm),
+      };
+    });
     const dimensoes = melhor.dimensoes;
     const emBobina = melhor.comprimentoConsumidoMm != null;
     // Chapa: o bloco ocupado é o consumo. Bobina: cobra-se a faixa inteira (largura do rolo × comprimento).
@@ -504,6 +601,7 @@ export async function calcularNestingMultiMaterial(input: {
     return {
       espacamento_pecas_mm: espacamentoMm,
       margem_borda_mm: margemBordaMm,
+      formatos_avaliados: formatosAvaliados,
       id_materia_prima: material.id,
       materia_prima: material.nome,
       custo_unitario: material.custoUnitario > 0 ? material.custoUnitario : null,
@@ -526,12 +624,7 @@ export async function calcularNestingMultiMaterial(input: {
         comprimento_consumido_mm: melhor.comprimentoConsumidoMm,
         largura_bobina_mm: dimensoes.alturaMm,
       } : {}),
-      posicionamentos: melhor.nesting.placements.map(position => ({
-        ...position,
-        origemId: pecasMaterialOriginal[position.source ?? 0]?.id,
-        xMm: position.xMm - (melhor.nesting.bounds?.minX ?? 0) + margemBordaMm,
-        yMm: position.yMm - (melhor.nesting.bounds?.minY ?? 0) + margemBordaMm,
-      })),
+      posicionamentos: mapearPosicionamentos(melhor, pecasMaterialOriginal, margemBordaMm),
     };
   }));
 }

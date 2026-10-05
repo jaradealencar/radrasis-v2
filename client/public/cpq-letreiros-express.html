@@ -4205,7 +4205,7 @@ function renderConfiguracaoNestingReal(){
 function realStepNestingV2(){
   const fact=REAL.factibilidade;
   const nesting=REAL.nesting;
-  const custosNestCompletos=!!nesting?.materiais?.length&&nesting.materiais.length===(fact?.materiais?.length||0)&&nesting.materiais.every(material=>material.custo_material_estimado!=null&&Number.isFinite(Number(material.custo_material_estimado)));
+  const custosNestCompletos=!!nesting?.materiais?.length&&nesting.materiais.length===(fact?.materiais?.length||0)&&nesting.materiais.every(material=>material.custo_material_estimado!=null&&Number.isFinite(Number(material.custo_material_estimado))&&material.formatos_avaliados?.length&&material.formatos_avaliados.every(formato=>formato.status!=='falha'));
   const bloqueado=!!fact&&fact.status_factibilidade==='REQUER_APROVACAO_EMENDA'&&!fact.reciboDecisao;
   const podeAprovar=['gestor','admin','master'].includes(state.role);
   const previews=fact?.materiais?.map(material=>`<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
@@ -4219,6 +4219,27 @@ function realStepNestingV2(){
     <div class="role-note">${material.posicionamentos.length} peça(s) posicionada(s) - ${material.formato==='bobina'?'bobina / rolo':'chapa'} ID ${material.id_chapa_utilizada} (${material.chapa_principal?'principal':'alternativa'}); espaço entre peças: ${material.espacamento_pecas_mm} mm; borda: ${material.margem_borda_mm} mm; critério: ${material.criterio_escolha==='menor_chapa_que_comporta'?(material.formato==='bobina'?'menor consumo de rolo':'menor chapa que comporta'):material.criterio_escolha==='menor_sobra_financeira'?'menor sobra financeira':'maior aproveitamento'}.</div>
     ${material.custo_material_estimado==null?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(material.alerta_custo||'Unidade sem conversão automática; revise o custo antes de emitir.')}</div>`:`<div class="kv"><span>${material.formato==='bobina'?'Custo estimado do rolo consumido (largura x comprimento)':'Custo proporcional estimado da chapa'}</span><span>${money(material.custo_material_estimado)}</span></div>`}
   </div>`).join('')||'';
+  const formatosAvaliadosHtml=nesting?.materiais?.map(material=>{
+    const formatos=material.formatos_avaliados||[];
+    if(formatos.length<2) return '';
+    const itens=formatos.map(formato=>{
+      const dimensoes=formato.formato==='bobina'
+        ? 'Bobina / rolo · largura '+formato.altura_cadastrada_mm+' mm · comprimento máximo '+formato.largura_cadastrada_mm+' mm'
+        : formato.largura_cadastrada_mm+' × '+formato.altura_cadastrada_mm+' mm';
+      const escolhido=formato.id_chapa===material.id_chapa_utilizada;
+      const layoutWidth=Number(formato.largura_nesting_mm||formato.largura_cadastrada_mm);
+      const layoutHeight=Number(formato.altura_nesting_mm||formato.altura_cadastrada_mm);
+      const cores=['#1e6fd9','#0d9488','#d97706','#c23b3b','#7c3aed'];
+      const layoutSvg=formato.status==='apto'&&layoutWidth>0&&layoutHeight>0?'<svg viewBox="0 0 '+layoutWidth+' '+layoutHeight+'" style="width:100%;max-height:260px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:10px;"><rect x="0" y="0" width="'+layoutWidth+'" height="'+layoutHeight+'" fill="var(--surface)" stroke="var(--border)"/>'+(formato.posicionamentos||[]).map((pos,index)=>{const x=Number(pos.xMm)||0,y=Number(pos.yMm)||0,w=Number(pos.larguraMm)||0,h=Number(pos.alturaMm)||0;return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="3" fill="'+cores[index%cores.length]+'33" stroke="'+cores[index%cores.length]+'" stroke-width="'+Math.max(1,layoutWidth/800)+'"><title>Peça '+(index+1)+'</title></rect>';}).join('')+'</svg>':'';
+      if(formato.status!=='apto') return '<div class="role-note" style="margin-top:8px;"><b>'+escaparHtml(formato.nome_chapa)+'</b> · '+dimensoes+' — '+(formato.status==='falha'?'Falha no cálculo':'O desenho não cabe')+': '+escaparHtml(formato.mensagem||'')+'</div>';
+      return '<div class="card" style="background:var(--surface);box-shadow:none;margin-top:8px;"><div class="cardhead"><div><b>'+escaparHtml(formato.nome_chapa)+'</b><p>'+dimensoes+'</p></div><span class="badge '+(escolhido?'b-ok':'b-neutral')+'">'+(escolhido?'Usado no orçamento':'Alternativa')+'</span></div>'+layoutSvg
+        +'<div class="grid3"><div class="kv"><span>Área líquida</span><span>'+fmt(formato.area_liquida_m2,4)+' m2</span></div><div class="kv"><span>Área de consumo</span><span>'+fmt(formato.area_chapa_utilizada_m2,4)+' m2</span></div><div class="kv"><span>Perímetro total</span><span>'+fmt(formato.perimetro_total_m,2)+' m</span></div></div>'
+        +'<div class="role-note">'+formato.quantidade_posicionada+' de '+formato.quantidade_pecas+' peça(s) posicionada(s) · aproveitamento '+fmt(formato.porcentagem_aproveitamento,1)+'%</div>'
+        +(formato.custo_material_estimado==null?'<div class="warnbox" style="margin-top:8px;">'+escaparHtml(formato.alerta_custo||'Custo não estimado.')+'</div>':'<div class="kv"><span>Custo estimado neste formato</span><span>'+money(formato.custo_material_estimado)+'</span></div>')
+        +'</div>';
+    }).join('');
+    return '<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;"><div class="cardhead"><div><h4>Resultados por tamanho de chapa · '+escaparHtml(material.materia_prima)+'</h4><p>O mesmo desenho foi calculado separadamente em cada formato ativo.</p></div><span class="badge b-neutral">'+formatos.length+' formatos</span></div>'+itens+'</div>';
+  }).join('')||'';
   if(REAL.factibilidadeCarregando) return `<div class="card"><div class="empty-hint">Analisando chapas e preparando o nesting...</div></div>`;
   return `<div class="card">
     <div class="cardhead"><div><h3>7 - Factibilidade e nesting por material</h3><p>Além de organizar as peças, o nesting calcula para cada matéria-prima da composição a área de consumo, a área líquida das peças e o perímetro total de corte. Nas fórmulas por área ou perímetro total, esses resultados definem a quantidade no orçamento.</p></div></div>
@@ -4236,7 +4257,7 @@ function realStepNestingV2(){
     ${fact?.reciboDecisao?`<div class="banner" style="margin-top:10px;">${ICONS.check}<div>Decisao registrada por ${escaparHtml(fact.aprovadoPor?.nome||'usuario autorizado')}. ${fact.acao==='REDIMENSIONAR_PARA_CABER'?`Fator aplicado: ${fmt(fact.fator_escala_aplicado*100,2)}%.`:''}</div></div>`:''}
     ${REAL.nestingCarregando?`<div class="empty-hint">Deepnest esta posicionando as pecas em cada material...</div>`:''}
     ${fact&&!nesting&&!bloqueado&&!REAL.nestingCarregando?`<button class="btn btn-primary" data-act="real-nesting-factibilidade-retry" style="margin-top:10px;">Executar Deepnest novamente</button>`:''}
-    ${cards}
+    ${cards}${formatosAvaliadosHtml}
     <div class="footer-nav"><div></div><button class="btn btn-primary" data-act="real-approve" data-val="nesting" ${custosNestCompletos&&!bloqueado?'':'disabled'}>${ICONS.check} Confirmar nesting e avancar</button></div>
   </div>`;
 }
