@@ -5,6 +5,7 @@ import {
   kgM3ParaGCm3,
   kgPorMetroPerfil,
   pesoChapaKg,
+  formatoPerfilUsaAltura,
   formatoPerfilUsaEspessura,
   secaoPerfilMm2,
   secaoTuboRetangularMm2,
@@ -206,5 +207,59 @@ describe("peso do perfil (cantoneira e barra maciça)", () => {
     const base = { tipo: "perfil" as const, perfilAlturaMm: 30, perfilLarguraMm: 20, densidadeGCm3: 2.7 };
     expect(calcularPesoLinha(linha({ unidade: "Metro" }), dados({ ...base, espessuraMm: null })).kg).toBeNull();
     expect(calcularPesoLinha(linha({ unidade: "Metro" }), dados({ ...base, espessuraMm: 1.5 })).kg).toBeCloseTo(0.3807, 4);
+  });
+});
+
+describe("peso do perfil (U e barra redonda)", () => {
+  it("U 40×20 (base 20, abas 40) com parede de 2 mm tem 2·(20 + 80 − 4) = 192 mm²", () => {
+    expect(secaoPerfilMm2("u", 40, 20, 2)).toBe(192);
+  });
+  it("U de alumínio 40×20×2 (2,7 g/cm³) pesa 0,5184 kg/m", () => {
+    expect(kgPorMetroPerfil(40, 20, 2, 2.7, "u")).toBeCloseTo(0.5184, 4);
+  });
+  it("U com parede maior ou igual à aba, ou que não cabe na base, devolve null", () => {
+    expect(secaoPerfilMm2("u", 10, 30, 10)).toBeNull();
+    expect(secaoPerfilMm2("u", 30, 10, 5)).toBeNull();
+  });
+  it("U sem espessura devolve null", () => {
+    expect(secaoPerfilMm2("u", 40, 20, null)).toBeNull();
+  });
+  it("barra redonda de 10 mm tem π·25 ≈ 78,54 mm² e ignora altura e espessura", () => {
+    expect(secaoPerfilMm2("redonda", 0, 10, null)).toBeCloseTo(Math.PI * 25, 6);
+    expect(secaoPerfilMm2("redonda", 999, 10, 5)).toBeCloseTo(Math.PI * 25, 6);
+  });
+  it("barra redonda de aço Ø10 (7,85 g/cm³) pesa ≈ 0,6165 kg/m", () => {
+    expect(kgPorMetroPerfil(null, 10, null, 7.85, "redonda")).toBeCloseTo(0.61654, 4);
+  });
+  it("barra redonda sem diâmetro (largura) devolve null", () => {
+    expect(secaoPerfilMm2("redonda", 10, 0, null)).toBeNull();
+  });
+  it("formatoPerfilUsaEspessura/Altura: redonda dispensa as duas, U exige as duas", () => {
+    expect(formatoPerfilUsaEspessura("redonda")).toBe(false);
+    expect(formatoPerfilUsaAltura("redonda")).toBe(false);
+    expect(formatoPerfilUsaEspessura("u")).toBe(true);
+    expect(formatoPerfilUsaAltura("u")).toBe(true);
+    expect(formatoPerfilUsaAltura("barra")).toBe(true);
+  });
+  it("calcularPesoLinha: U em metro linear e redonda sem altura/espessura cadastradas", () => {
+    const u = calcularPesoLinha(
+      linha({ unidade: "Metro linear", quantidade: 5 }),
+      dados({ tipo: "perfil", perfilFormato: "u", perfilAlturaMm: 40, perfilLarguraMm: 20, espessuraMm: 2, densidadeGCm3: 2.7 }),
+    );
+    expect(u.kg).toBeCloseTo(5 * 0.5184, 4);
+    expect(u.como).toContain("U");
+    const redonda = calcularPesoLinha(
+      linha({ unidade: "Metro linear", quantidade: 2 }),
+      dados({ tipo: "perfil", perfilFormato: "redonda", perfilAlturaMm: null, perfilLarguraMm: 10, espessuraMm: null, densidadeGCm3: 7.85 }),
+    );
+    expect(redonda.kg).toBeCloseTo(2 * 0.61654, 4);
+  });
+  it("calcularPesoLinha: redonda sem diâmetro e U sem espessura ficam pendentes com motivo", () => {
+    const semDiametro = calcularPesoLinha(linha({ unidade: "Metro linear" }), dados({ tipo: "perfil", perfilFormato: "redonda", perfilLarguraMm: null, densidadeGCm3: 7.85 }));
+    expect(semDiametro.kg).toBeNull();
+    expect(semDiametro.motivo).toContain("diâmetro");
+    const uSemEspessura = calcularPesoLinha(linha({ unidade: "Metro linear" }), dados({ tipo: "perfil", perfilFormato: "u", perfilAlturaMm: 40, perfilLarguraMm: 20, densidadeGCm3: 2.7 }));
+    expect(uSemEspessura.kg).toBeNull();
+    expect(uSemEspessura.motivo).toContain("espessura");
   });
 });

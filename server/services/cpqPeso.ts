@@ -1,4 +1,4 @@
-import { formatoPerfilUsaEspessura, kgPorMetroPerfil, pesoChapaKg, type FormatoPerfil } from "../../shared/peso";
+import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, kgPorMetroPerfil, pesoChapaKg, type FormatoPerfil } from "../../shared/peso";
 
 /** Dados técnicos de uma matéria-prima (materia_prima_cadastros + categoria). */
 export type DadosPesoMateria = {
@@ -53,11 +53,12 @@ export function calcularPesoLinha(linha: LinhaPesoInput, dados: DadosPesoMateria
     const { perfilAlturaMm: h, perfilLarguraMm: w, espessuraMm: e, densidadeGCm3: d, perfilComprimentoMm: c } = dados;
     const formato = dados.perfilFormato ?? "tubo";
     const precisaEspessura = formatoPerfilUsaEspessura(formato);
-    if (!(h && w && d && (e || !precisaEspessura)))
-      return pendente(precisaEspessura ? "Perfil sem altura, largura, espessura ou densidade cadastrada." : "Barra sem altura, largura ou densidade cadastrada.");
+    const precisaAltura = formatoPerfilUsaAltura(formato);
+    if (!((h || !precisaAltura) && w && d && (e || !precisaEspessura)))
+      return pendente(`Perfil sem ${[precisaAltura ? "altura" : "diâmetro (largura)", precisaAltura ? "largura" : null, precisaEspessura ? "espessura" : null, "densidade"].filter(Boolean).join(", ")} cadastrada.`);
     const kgPorM = kgPorMetroPerfil(h, w, e, d, formato);
-    if (kgPorM == null) return pendente("Espessura do perfil incompatível com a altura/largura (a parede não cabe na seção).");
-    const aviso = formato === "tubo" ? "seção oca estimada" : formato === "cantoneira" ? "cantoneira estimada" : "barra maciça";
+    if (kgPorM == null) return pendente("Medidas do perfil incompatíveis (a parede não cabe na seção).");
+    const aviso = ({ tubo: "seção oca estimada", cantoneira: "cantoneira estimada", barra: "barra maciça", u: "perfil em U estimado", redonda: "barra redonda maciça" } as const)[formato];
     const unidade = semAcento(linha.unidade);
     if ((unidade.includes("metro") && !unidade.includes("quadrad")) || unidade === "m" || unidade === "ml")
       return { kg: quantidade * kgPorM, como: `${fmt(quantidade, 2)} m × ${fmt(kgPorM, 3)} kg/m (${aviso})`, motivo: "" };

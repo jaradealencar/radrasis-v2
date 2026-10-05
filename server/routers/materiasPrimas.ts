@@ -5,7 +5,7 @@ import {
   materiaPrimaCadastros,
   materiaPrimaCategorias,
 } from "../../drizzle/schema";
-import { secaoPerfilMm2 } from "@shared/peso";
+import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, secaoPerfilMm2, type FormatoPerfil, normalizarFormatoPerfil } from "@shared/peso";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
@@ -54,7 +54,7 @@ const formatosChapaInput = z.array(z.object({
     context.addIssue({ code: "custom", message: "Preencha os quatro canais CMYK ou deixe todos vazios." });
 })).max(50);
 
-const perfilSecaoInvalida = (input: { perfilFormato: "tubo" | "cantoneira" | "barra"; perfilAlturaMm: number | null; perfilLarguraMm: number | null; espessuraMm: number | null }) =>
+const perfilSecaoInvalida = (input: { perfilFormato: FormatoPerfil; perfilAlturaMm: number | null; perfilLarguraMm: number | null; espessuraMm: number | null }) =>
   secaoPerfilMm2(input.perfilFormato, input.perfilAlturaMm ?? 0, input.perfilLarguraMm ?? 0, input.espessuraMm) == null;
 
 export const materiasPrimasRouter = router({
@@ -99,7 +99,7 @@ export const materiasPrimasRouter = router({
           espessuraMm: cadastro?.espessuraMm == null ? null : Number(cadastro.espessuraMm),
           densidadeKgM3: cadastro?.densidadeKgM3 == null ? null : Number(cadastro.densidadeKgM3),
           pesoEspecificoKg: cadastro?.pesoEspecificoKg == null ? null : Number(cadastro.pesoEspecificoKg),
-          perfilFormato: (cadastro?.perfilFormato === "cantoneira" || cadastro?.perfilFormato === "barra" ? cadastro.perfilFormato : "tubo") as "tubo" | "cantoneira" | "barra",
+          perfilFormato: normalizarFormatoPerfil(cadastro?.perfilFormato),
           perfilAlturaMm: cadastro?.perfilAlturaMm == null ? null : Number(cadastro.perfilAlturaMm),
           perfilLarguraMm: cadastro?.perfilLarguraMm == null ? null : Number(cadastro.perfilLarguraMm),
           perfilComprimentoMm: cadastro?.perfilComprimentoMm == null ? null : Number(cadastro.perfilComprimentoMm),
@@ -195,7 +195,7 @@ export const materiasPrimasRouter = router({
       espessuraMm: z.number().finite().positive().max(10_000).nullable(),
       densidadeKgM3: z.number().finite().positive().max(1_000_000).nullable(),
       pesoEspecificoKg: z.number().finite().positive().max(1_000_000).nullable().default(null),
-      perfilFormato: z.enum(["tubo", "cantoneira", "barra"]).default("tubo"),
+      perfilFormato: z.enum(PERFIL_FORMATOS).default("tubo"),
       perfilAlturaMm: z.number().finite().positive().max(100_000).nullable().default(null),
       perfilLarguraMm: z.number().finite().positive().max(100_000).nullable().default(null),
       perfilComprimentoMm: z.number().finite().positive().max(1_000_000).nullable().default(null),
@@ -232,10 +232,12 @@ export const materiasPrimasRouter = router({
       const formatosAtivos = formatos.filter(formato => formato.ativo);
       if (usaDadosChapa && (!input.espessuraMm || !input.densidadeKgM3 || formatosAtivos.length === 0))
         throw new Error("Para salvar uma chapa, informe espessura, densidade e ao menos um formato ativo.");
-      if (usaDadosPerfil && (!input.densidadeKgM3 || !input.perfilAlturaMm || !input.perfilLarguraMm || !input.perfilComprimentoMm || (input.perfilFormato !== "barra" && !input.espessuraMm)))
-        throw new Error(input.perfilFormato === "barra" ? "Para salvar uma barra maciça, informe altura, largura, comprimento e densidade." : "Para salvar um perfil, informe altura, largura, espessura, comprimento e densidade.");
-      if (usaDadosPerfil && input.perfilFormato !== "barra" && input.espessuraMm && perfilSecaoInvalida(input))
-        throw new Error("A espessura não cabe na altura/largura do perfil.");
+      const perfilUsaAltura = formatoPerfilUsaAltura(input.perfilFormato);
+      const perfilUsaEspessura = formatoPerfilUsaEspessura(input.perfilFormato);
+      if (usaDadosPerfil && (!input.densidadeKgM3 || (perfilUsaAltura && !input.perfilAlturaMm) || !input.perfilLarguraMm || !input.perfilComprimentoMm || (perfilUsaEspessura && !input.espessuraMm)))
+        throw new Error(`Para salvar este perfil, informe ${[perfilUsaAltura ? "altura" : "diâmetro (largura)", perfilUsaAltura ? "largura" : null, perfilUsaEspessura ? "espessura" : null, "comprimento", "densidade"].filter(Boolean).join(", ")}.`);
+      if (usaDadosPerfil && perfilSecaoInvalida(input))
+        throw new Error("As medidas do perfil não formam uma seção válida (confira se a espessura cabe na altura/largura).");
       if (usaDadosBobina && !input.espessuraMm)
         throw new Error("Para salvar uma bobina, informe a espessura.");
       if (usaDadosBobina && formatosAtivos.length === 0)
@@ -262,7 +264,7 @@ export const materiasPrimasRouter = router({
         const now = new Date();
         const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
         const perfilSalvo = (valor: number | null) => usaDadosPerfil && valor != null ? String(valor) : null;
-        const espessuraSalva = input.espessuraMm && (usaDadosChapa || usaDadosBobina || (usaDadosPerfil && input.perfilFormato !== "barra")) ? String(input.espessuraMm) : null;
+        const espessuraSalva = input.espessuraMm && (usaDadosChapa || usaDadosBobina || (usaDadosPerfil && perfilUsaEspessura)) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
           categoriaId: input.categoriaId,
