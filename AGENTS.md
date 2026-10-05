@@ -656,7 +656,7 @@ bloqueia com alerta. Com várias larguras vence a que cobra menos material. Marg
 lateral de borda do rolo ainda não existe (só o espaçamento entre peças). Dimensões
 de material (largura, altura, espessura, comprimento) ficam sempre em mm; m²/m do
 resultado e unidades de custo do MubiSys, e as métricas de produção em metros da
-Operações (solda), seguem como estão. A bobina exige espessura (mm ou µm na tela). A
+Operações (solda), seguem como estão. A bobina exige espessura (mm ou µm na tela) e densidade em g/cm³: o peso do letreiro usa área × espessura × densidade, como a chapa (sem densidade ou com fórmula que não é em área, cai no peso específico). A densidade é sempre g/cm³ na tela e kg/m³ no banco; o campo "peso específico" (kg por unidade de custo) NÃO é densidade e só aparece para categorias sem chapa, perfil ou bobina. A
 base de cobrança do custo (`materia_prima_cadastros.bobina_custo_base`: `m2`, `ml` ou `rolo`, com
 `bobina_comprimento_rolo_mm` para rolo; migration 0083) é obrigatória no cadastro da bobina e vale mais que a
 unidade de custo do MubiSys (`server/db/bobinaCusto.ts` alimenta o nesting e a junção de propostas); sem ela, só

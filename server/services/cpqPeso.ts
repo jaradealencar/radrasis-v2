@@ -34,10 +34,14 @@ export function calcularPesoLinha(linha: LinhaPesoInput, dados: DadosPesoMateria
   if (!dados) return pendente("Sem dados de peso cadastrados (categoria, densidade ou peso específico).");
   const quantidade = Math.max(0, linha.quantidade);
 
-  if (dados.tipo === "chapa") {
+  // Chapa e bobina (com densidade) pesam por área × espessura × densidade; a bobina sem fórmula em área cai no peso específico.
+  const formulaEmArea = linha.formulaType === "area" || linha.formulaType === "areaTotal";
+  const usaDensidade = dados.tipo === "chapa" || (dados.tipo === "bobina" && !!(dados.densidadeGCm3 && dados.densidadeGCm3 > 0) && formulaEmArea);
+  if (usaDensidade) {
+    const rotulo = dados.tipo === "bobina" ? "Bobina" : "Chapa";
     if (!(dados.espessuraMm && dados.espessuraMm > 0) || !(dados.densidadeGCm3 && dados.densidadeGCm3 > 0))
-      return pendente("Chapa sem espessura ou densidade cadastrada.");
-    if (linha.formulaType !== "area" && linha.formulaType !== "areaTotal")
+      return pendente(`${rotulo} sem espessura ou densidade cadastrada.`);
+    if (!formulaEmArea)
       return pendente("A fórmula desta linha não é em área (m²).");
     const usaAreaLiquida = linha.formulaType === "areaTotal" && linha.areaLiquidaM2 != null;
     const areaM2 = usaAreaLiquida ? Math.max(0, linha.areaLiquidaM2 as number) : quantidade;

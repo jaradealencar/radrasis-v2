@@ -198,7 +198,7 @@ function CadastroMateriasPrimas() {
                         ) : material.categoriaUsaDadosPerfil ? (
                           <span>{FORMATOS_PERFIL[material.perfilFormato ?? "tubo"]} · {material.perfilAlturaMm ?? "—"} × {material.perfilLarguraMm ?? "—"} × {material.perfilComprimentoMm ?? "—"} mm · esp. {fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³</span>
                         ) : material.categoriaUsaDadosBobina ? (
-                          <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${material.espessuraMm} mm de espessura` : ""}</span>
+                          <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${fmtEspessura(material.espessuraMm)} de espessura` : ""}{material.densidadeKgM3 != null ? ` · ${kgM3ParaGCm3(material.densidadeKgM3)} g/cm³` : ""}</span>
                         ) : <span className="text-muted-foreground">{material.pesoEspecificoKg != null ? `${material.pesoEspecificoKg} kg / ${material.unidadeCusto || "un."}` : material.tipo || "Sem dados técnicos adicionais"}</span>}
                       </TableCell>
                       <TableCell>
@@ -416,8 +416,8 @@ function DialogEditarMateriaPrima({
       mubisysMateriaPrimaId: material.id,
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
       espessuraMm: categoria?.usaDadosChapa || (categoria?.usaDadosPerfil && formatoPerfilUsaEspessura(perfil.formato)) || categoria?.usaDadosBobina ? espessuraParaMm(Number(espessuraMm), espessuraUnidade) : null,
-      densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? gCm3ParaKgM3(Number(densidadeKgM3)) : null,
-      pesoEspecificoKg: !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
+      densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil || categoria?.usaDadosBobina ? gCm3ParaKgM3(Number(densidadeKgM3)) : null,
+      pesoEspecificoKg: !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && !categoria?.usaDadosBobina && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
       perfilFormato: perfil.formato,
       perfilAlturaMm: categoria?.usaDadosPerfil && formatoPerfilUsaAltura(perfil.formato) ? Number(perfil.altura) : null,
       perfilLarguraMm: categoria?.usaDadosPerfil ? Number(perfil.largura) : null,
@@ -512,10 +512,10 @@ function DialogEditarMateriaPrima({
             </div>
           </div>}
 
-          {!categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && <div className="space-y-2 rounded-lg border p-4">
+          {!categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && !categoria?.usaDadosBobina && <div className="space-y-2 rounded-lg border p-4">
             <Label>Peso específico (kg por {material.unidadeCusto || "unidade de consumo"}) — opcional</Label>
             <Input type="number" min="0.0001" step="0.0001" className="max-w-xs" value={pesoEspecificoKg} onChange={event => setPesoEspecificoKg(event.target.value)} placeholder="Ex.: 0,35" />
-            <p className="text-xs text-muted-foreground">Usado para calcular o peso do letreiro: peso = quantidade consumida × este valor. Chapas e perfis usam a densidade.</p>
+            <p className="text-xs text-muted-foreground">Usado para calcular o peso do letreiro: peso = quantidade consumida × este valor. Atenção: este campo NÃO é a densidade. A densidade (sempre em g/cm³, ex.: alumínio 2,70) fica nas categorias de chapa, perfil e bobina; aqui vai só o peso de itens vendidos por unidade ou kg (ex.: um brinde de 0,35 kg).</p>
           </div>}
 
           {categoria?.usaDadosPerfil && <div className="space-y-4 rounded-lg border p-4">
@@ -532,7 +532,10 @@ function DialogEditarMateriaPrima({
 
           {categoria?.usaDadosBobina && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da bobina</h3><p className="text-xs text-muted-foreground">Bobina tem só altura (a largura do rolo) e espessura; o comprimento não é cadastrado. O nesting mede quanto do rolo o layout consome e o custo usa altura × comprimento consumido.</p></div></div>
-            <div className="max-w-xs"><CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio />
+              <div className="space-y-2"><Label>Densidade (g/cm³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /><p className="text-xs text-muted-foreground">Ex.: vinil ≈ 1,4 · papel ≈ 0,8 a 1,0 (confirme na ficha). Peso do letreiro = área × espessura × densidade.</p></div>
+            </div>
             <div className="space-y-2 rounded-md border p-3">
               <Label>Como o custo do MubiSys é cobrado</Label>
               <p className="text-xs text-muted-foreground">No MubiSys: {material.valorCusto > 0 ? `${fmtBrl(material.valorCusto)} / ${material.unidadeCusto || "un."}` : "custo não informado"}. Escolha a base para o nesting converter o consumo do rolo em custo; o sistema não adivinha quando a unidade não é de área ou comprimento.</p>

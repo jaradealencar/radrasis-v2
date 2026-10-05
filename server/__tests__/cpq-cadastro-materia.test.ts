@@ -26,15 +26,17 @@ describe("situação do cadastro de matéria-prima", () => {
       .toBe("atualizada");
   });
 
-  it("bobina: pede largura, espessura e base de custo; por rolo exige o comprimento", () => {
+  it("bobina: pede largura, espessura, densidade e base de custo; por rolo exige o comprimento", () => {
     const categoria = { ...nenhuma, usaDadosBobina: true };
-    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08 }, formatosAtivos: 1 }).pendencias)
+    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, bobinaCustoBase: "m2" }, formatosAtivos: 1 }).pendencias)
+      .toEqual(["densidade"]);
+    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, densidadeKgM3: 1_400 }, formatosAtivos: 1 }).pendencias)
       .toEqual(["como o custo é cobrado"]);
-    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, bobinaCustoBase: "rolo" }, formatosAtivos: 1 }).pendencias)
+    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, densidadeKgM3: 1_400, bobinaCustoBase: "rolo" }, formatosAtivos: 1 }).pendencias)
       .toEqual(["comprimento do rolo"]);
-    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, bobinaCustoBase: "m2" }, formatosAtivos: 1 }).status)
+    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, densidadeKgM3: 1_400, bobinaCustoBase: "m2" }, formatosAtivos: 1 }).status)
       .toBe("atualizada");
-    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, bobinaCustoBase: "rolo", bobinaComprimentoRoloMm: 200_000 }, formatosAtivos: 1 }).status)
+    expect(statusCadastroMateriaPrima({ categoria, cadastro: { ...cadastroVazio, espessuraMm: 0.08, densidadeKgM3: 1_400, bobinaCustoBase: "rolo", bobinaComprimentoRoloMm: 200_000 }, formatosAtivos: 1 }).status)
       .toBe("atualizada");
   });
 

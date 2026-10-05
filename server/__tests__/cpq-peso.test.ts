@@ -150,6 +150,37 @@ describe("calcularPesoLinha", () => {
   });
 });
 
+describe("peso da bobina (densidade em g/cm³)", () => {
+  const kraft = dados({ tipo: "bobina", espessuraMm: 0.08, densidadeGCm3: 0.9, pesoEspecificoKg: 5 });
+
+  it("usa área × espessura × densidade, como a chapa: 10 m² de 0,08 mm a 0,9 g/cm³ = 0,72 kg", () => {
+    const r = calcularPesoLinha(linha({ quantidade: 10, formulaType: "area" }), kraft);
+    expect(r.kg).toBeCloseTo(0.72, 6);
+    expect(r.como).toContain("g/cm³");
+  });
+
+  it("com área total do nesting usa a área líquida, sem a sobra do rolo", () => {
+    const r = calcularPesoLinha(linha({ quantidade: 12, formulaType: "areaTotal", areaLiquidaM2: 10 }), kraft);
+    expect(r.kg).toBeCloseTo(0.72, 6);
+  });
+
+  it("sem densidade, cai no peso específico (kg por unidade de custo)", () => {
+    const r = calcularPesoLinha(linha({ quantidade: 3, formulaType: "area" }), { ...kraft, densidadeGCm3: null });
+    expect(r.kg).toBe(15);
+  });
+
+  it("fórmula que não é em área também cai no peso específico em vez de ficar sem peso", () => {
+    const r = calcularPesoLinha(linha({ quantidade: 2, formulaType: "perimExt", unidade: "Metro linear" }), kraft);
+    expect(r.kg).toBe(10);
+  });
+
+  it("densidade sem espessura fica sem peso, com motivo, nunca zero", () => {
+    const r = calcularPesoLinha(linha({ quantidade: 10, formulaType: "area" }), { ...kraft, espessuraMm: null });
+    expect(r.kg).toBeNull();
+    expect(r.motivo).toContain("Bobina");
+  });
+});
+
 describe("somarPesos", () => {
   it("soma só os itens com peso e conta os pendentes", () => {
     const total = somarPesos([

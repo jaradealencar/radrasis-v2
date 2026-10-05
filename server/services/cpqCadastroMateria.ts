@@ -41,6 +41,7 @@ export function statusCadastroMateriaPrima({ categoria, cadastro, formatosAtivos
   } else if (categoria.usaDadosBobina) {
     if (formatosAtivos < 1) pendencias.push("ao menos uma largura de bobina");
     if (!positivo(cadastro?.espessuraMm)) pendencias.push("espessura");
+    if (!positivo(cadastro?.densidadeKgM3)) pendencias.push("densidade");
     if (!cadastro?.bobinaCustoBase) pendencias.push("como o custo é cobrado");
     else if (cadastro.bobinaCustoBase === "rolo" && !positivo(cadastro.bobinaComprimentoRoloMm)) pendencias.push("comprimento do rolo");
   } else if (categoria.usaDadosPerfil) {

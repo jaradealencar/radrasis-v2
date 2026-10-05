@@ -32,7 +32,7 @@ preencher → **Salvar**.
 
 | Material (MubiSys) | Largura do rolo | Espessura (obrigatória) | Observação |
 | --- | --- | --- | --- |
-| Papel Kraft Pardo Embrulho Mercado Livre 120cm 200m 80g (#1098) | 1200 mm | informar (campo aceita mm ou µm; kraft 80 g ≈ 80–100 µm, conferir na ficha) | **Como o custo é cobrado:** o MubiSys traz R$ 2,61 por `Unidade/Gl/Lt/Kg` (movimentação em m²). Escolher a base correta (ver abaixo) |
+| Papel Kraft Pardo Embrulho Mercado Livre 120cm 200m 80g (#1098) | 1200 mm | informar espessura (campo aceita mm ou µm; kraft 80 g ≈ 80–100 µm, conferir na ficha) **e densidade em g/cm³** (papel ≈ 0,8 a 1,0; é ela que calcula o peso do letreiro) | **Como o custo é cobrado:** o MubiSys traz R$ 2,61 por `Unidade/Gl/Lt/Kg` (movimentação em m²). Escolher a base correta (ver abaixo) |
 | Adesivo comum (não impresso) | 1200 mm | informar | **Não existe no catálogo atual do MubiSys** (ver abaixo): criar o item lá ou indicar qual existente usar |
 
 - [ ] O "Adesivo Imprimax Sortido 1,22" (#1147, mídia em rolo) tem **1220 mm**, não 1200. Só entra aqui se

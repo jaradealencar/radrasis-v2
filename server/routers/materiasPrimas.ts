@@ -253,6 +253,8 @@ export const materiasPrimasRouter = router({
         throw new Error("Bobina cobrada por rolo precisa do comprimento do rolo (mm).");
       if (usaDadosBobina && !input.espessuraMm)
         throw new Error("Para salvar uma bobina, informe a espessura.");
+      if (usaDadosBobina && !input.densidadeKgM3)
+        throw new Error("Para salvar uma bobina, informe a densidade (g/cm³): é ela que permite calcular o peso do letreiro.");
       if (usaDadosBobina && formatosAtivos.length === 0)
         throw new Error("Para salvar uma bobina, informe ao menos uma largura ativa.");
       if ((usaDadosChapa || usaDadosBobina) && formatos.filter(formato => formato.ativo && formato.principal).length > 1)
@@ -277,14 +279,14 @@ export const materiasPrimasRouter = router({
         const now = new Date();
         const bobinaCustoBaseSalva = usaDadosBobina ? input.bobinaCustoBase : null;
         const bobinaComprimentoRoloSalvo = usaDadosBobina && input.bobinaCustoBase === "rolo" && input.bobinaComprimentoRoloMm != null ? String(input.bobinaComprimentoRoloMm) : null;
-        const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
+        const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && !usaDadosBobina && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
         const perfilSalvo = (valor: number | null) => usaDadosPerfil && valor != null ? String(valor) : null;
         const espessuraSalva = input.espessuraMm && (usaDadosChapa || usaDadosBobina || (usaDadosPerfil && perfilUsaEspessura)) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
           categoriaId: input.categoriaId,
           espessuraMm: espessuraSalva,
-          densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
+          densidadeKgM3: usaDadosChapa || usaDadosPerfil || usaDadosBobina ? String(input.densidadeKgM3) : null,
           pesoEspecificoKg: pesoEspecificoSalvo,
           perfilFormato: usaDadosPerfil ? input.perfilFormato : "tubo",
           perfilAlturaMm: perfilSalvo(input.perfilAlturaMm),
@@ -298,7 +300,7 @@ export const materiasPrimasRouter = router({
           set: {
             categoriaId: input.categoriaId,
             espessuraMm: espessuraSalva,
-            densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
+            densidadeKgM3: usaDadosChapa || usaDadosPerfil || usaDadosBobina ? String(input.densidadeKgM3) : null,
             pesoEspecificoKg: pesoEspecificoSalvo,
             perfilFormato: usaDadosPerfil ? input.perfilFormato : "tubo",
             perfilAlturaMm: perfilSalvo(input.perfilAlturaMm),
