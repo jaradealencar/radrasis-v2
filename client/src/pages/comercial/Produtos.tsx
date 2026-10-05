@@ -167,9 +167,9 @@ function CadastroMateriasPrimas() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {material.categoriaUsaDadosChapa ? (
-                          <span>{material.espessuraMm ?? "—"} mm · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³ · {material.chapas.filter(chapa => chapa.ativo).length} formato(s)</span>
+                          <span>{fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³ · {material.chapas.filter(chapa => chapa.ativo).length} formato(s)</span>
                         ) : material.categoriaUsaDadosPerfil ? (
-                          <span>Perfil · {material.perfilAlturaMm ?? "—"} × {material.perfilLarguraMm ?? "—"} × {material.perfilComprimentoMm ?? "—"} mm · esp. {material.espessuraMm ?? "—"} mm · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³</span>
+                          <span>Perfil · {material.perfilAlturaMm ?? "—"} × {material.perfilLarguraMm ?? "—"} × {material.perfilComprimentoMm ?? "—"} mm · esp. {fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³</span>
                         ) : material.categoriaUsaDadosBobina ? (
                           <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${material.espessuraMm} mm de espessura` : ""}</span>
                         ) : <span className="text-muted-foreground">{material.pesoEspecificoKg != null ? `${material.pesoEspecificoKg} kg / ${material.unidadeCusto || "un."}` : material.tipo || "Sem dados técnicos adicionais"}</span>}
@@ -197,6 +197,29 @@ function CadastroMateriasPrimas() {
   );
 }
 
+type UnidadeEspessura = "mm" | "µm";
+const espessuraParaMm = (valor: string, unidade: UnidadeEspessura) => Number(valor) / (unidade === "µm" ? 1000 : 1);
+const fmtEspessura = (mm: number | null) => mm == null ? "—" : mm < 1 ? `${Number((mm * 1000).toFixed(2))} µm` : `${mm} mm`;
+
+/** Espessura digitada em milímetros ou micras; o valor é sempre gravado em mm. */
+function CampoEspessura({ valor, unidade, onValor, onUnidade, obrigatorio, rotulo = "Espessura" }: {
+  valor: string; unidade: UnidadeEspessura; onValor: (valor: string) => void; onUnidade: (unidade: UnidadeEspessura) => void; obrigatorio?: boolean; rotulo?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{rotulo} ({unidade})</Label>
+      <div className="flex gap-2">
+        <Input type="number" min="0.001" step="0.001" value={valor} onChange={event => onValor(event.target.value)} required={obrigatorio} />
+        <Select value={unidade} onValueChange={value => onUnidade(value as UnidadeEspessura)}>
+          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="mm">mm</SelectItem><SelectItem value="µm">µm</SelectItem></SelectContent>
+        </Select>
+      </div>
+      {unidade === "µm" && valor.trim() !== "" && <p className="text-xs text-muted-foreground">= {Number((Number(valor) / 1000).toFixed(4))} mm</p>}
+    </div>
+  );
+}
+
 function DialogEditarMateriaPrima({
   material,
   categorias,
@@ -209,6 +232,7 @@ function DialogEditarMateriaPrima({
   const utils = trpc.useUtils();
   const [categoriaId, setCategoriaId] = useState("sem-categoria");
   const [espessuraMm, setEspessuraMm] = useState("");
+  const [espessuraUnidade, setEspessuraUnidade] = useState<UnidadeEspessura>("mm");
   const [densidadeKgM3, setDensidadeKgM3] = useState("");
   const [pesoEspecificoKg, setPesoEspecificoKg] = useState("");
   const [perfil, setPerfil] = useState({ altura: "", largura: "", comprimento: "" });
@@ -220,6 +244,7 @@ function DialogEditarMateriaPrima({
     if (!material) return;
     setCategoriaId(material.categoriaId == null ? "sem-categoria" : String(material.categoriaId));
     setEspessuraMm(material.espessuraMm == null ? "" : String(material.espessuraMm));
+    setEspessuraUnidade("mm");
     setDensidadeKgM3(material.densidadeKgM3 == null ? "" : String(Number((material.densidadeKgM3 / 1000).toFixed(4))));
     setPesoEspecificoKg(material.pesoEspecificoKg == null ? "" : String(material.pesoEspecificoKg));
     setPerfil({ altura: material.perfilAlturaMm == null ? "" : String(material.perfilAlturaMm), largura: material.perfilLarguraMm == null ? "" : String(material.perfilLarguraMm), comprimento: material.perfilComprimentoMm == null ? "" : String(material.perfilComprimentoMm) });
@@ -299,8 +324,7 @@ function DialogEditarMateriaPrima({
     salvar.mutate({
       mubisysMateriaPrimaId: material.id,
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
-      espessuraMm: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? Number(espessuraMm)
-        : categoria?.usaDadosBobina && espessuraMm.trim() !== "" ? Number(espessuraMm) : null,
+      espessuraMm: categoria?.usaDadosChapa || categoria?.usaDadosPerfil || categoria?.usaDadosBobina ? espessuraParaMm(espessuraMm, espessuraUnidade) : null,
       densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? Math.round(Number(densidadeKgM3) * 1000 * 10000) / 10000 : null,
       pesoEspecificoKg: !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
       perfilAlturaMm: categoria?.usaDadosPerfil ? Number(perfil.altura) : null,
@@ -339,7 +363,7 @@ function DialogEditarMateriaPrima({
           {categoria?.usaDadosChapa && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da chapa</h3><p className="text-xs text-muted-foreground">Dimensões são mantidas em orientação horizontal para o nesting.</p></div></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Espessura (mm)</Label><Input type="number" min="0.001" step="0.001" value={espessuraMm} onChange={event => setEspessuraMm(event.target.value)} required /></div>
+              <CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio />
               <div className="space-y-2"><Label>Densidade (g/cm³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /></div>
             </div>
             <div className="space-y-3">
@@ -385,20 +409,20 @@ function DialogEditarMateriaPrima({
               <div className="space-y-2"><Label>Altura (mm)</Label><Input type="number" min="0.001" step="0.001" value={perfil.altura} onChange={event => setPerfil(atual => ({ ...atual, altura: event.target.value }))} required /></div>
               <div className="space-y-2"><Label>Largura (mm)</Label><Input type="number" min="0.001" step="0.001" value={perfil.largura} onChange={event => setPerfil(atual => ({ ...atual, largura: event.target.value }))} required /></div>
               <div className="space-y-2"><Label>Comprimento da barra (mm)</Label><Input type="number" min="1" step="1" value={perfil.comprimento} onChange={event => setPerfil(atual => ({ ...atual, comprimento: event.target.value }))} required /></div>
-              <div className="space-y-2"><Label>Espessura (mm)</Label><Input type="number" min="0.001" step="0.001" value={espessuraMm} onChange={event => setEspessuraMm(event.target.value)} required /></div>
+              <CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio />
               <div className="space-y-2"><Label>Densidade (g/cm³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /></div>
             </div>
           </div>}
 
           {categoria?.usaDadosBobina && <div className="space-y-4 rounded-lg border p-4">
-            <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da bobina</h3><p className="text-xs text-muted-foreground">Só a largura é fixa: o comprimento não é cadastrado. O nesting mede quanto do rolo o layout consome e o custo usa largura × comprimento consumido.</p></div></div>
-            <div className="max-w-xs space-y-2"><Label>Espessura (mm) — opcional</Label><Input type="number" min="0.001" step="0.001" value={espessuraMm} onChange={event => setEspessuraMm(event.target.value)} /></div>
+            <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da bobina</h3><p className="text-xs text-muted-foreground">Bobina tem só altura (a largura do rolo) e espessura; o comprimento não é cadastrado. O nesting mede quanto do rolo o layout consome e o custo usa altura × comprimento consumido.</p></div></div>
+            <div className="max-w-xs"><CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio /></div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2"><div><h4 className="text-sm font-medium">Larguras disponíveis</h4><p className="text-xs text-muted-foreground">Cadastre cada largura de rolo (ex.: 1200 mm). Com mais de uma, o nesting escolhe a que consome menos material.</p></div><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setBobinas(atual => [...atual, { nome: "", larguraMm: "", ativo: true, principal: atual.length === 0 }])}><Plus className="h-3.5 w-3.5" /> Adicionar largura</Button></div>
               {bobinas.length === 0 ? <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">Nenhuma largura cadastrada.</p> : bobinas.map((bobina, index) => (
                 <div key={bobina.id ?? `nova-${index}`} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[minmax(130px,1fr)_130px_auto]">
                   <div className="space-y-1"><Label className="text-xs">Identificação</Label><Input value={bobina.nome} placeholder="Ex.: Bobina 1200 mm" onChange={event => setBobinas(atual => atual.map((item, i) => i === index ? { ...item, nome: event.target.value } : item))} /></div>
-                  <div className="space-y-1"><Label className="text-xs">Largura (mm)</Label><Input type="number" min="10" step="1" value={bobina.larguraMm} onChange={event => setBobinas(atual => atual.map((item, i) => i === index ? { ...item, larguraMm: event.target.value } : item))} /></div>
+                  <div className="space-y-1"><Label className="text-xs">Altura do rolo (mm)</Label><Input type="number" min="10" step="1" value={bobina.larguraMm} onChange={event => setBobinas(atual => atual.map((item, i) => i === index ? { ...item, larguraMm: event.target.value } : item))} /></div>
                   <div className="flex flex-wrap items-end gap-1">
                     <Button type="button" size="sm" variant={bobina.principal ? "default" : "outline"} aria-pressed={bobina.principal} onClick={() => setBobinas(atual => atual.map((item, i) => ({ ...item, principal: i === index })))}>{bobina.principal ? "Principal" : "Definir principal"}</Button>
                     <Button type="button" size="icon" variant="ghost" aria-label="Remover largura" onClick={() => setBobinas(atual => atual.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>

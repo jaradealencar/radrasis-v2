@@ -4424,6 +4424,7 @@ let chapaCmykYNova = '';
 let chapaCmykKNova = '';
 let chapaTransmissaoNova = '';
 let chapaEspessuraNova = '';
+let chapaEspessuraUnidade = 'mm';
 let chapaTemCor = true;
 let chapaDensidadeNova = '';
 let chapaTransparenciaNova = '';
@@ -5677,7 +5678,7 @@ function adminChapasNesting(){
       <label class="field">Nome do formato (opcional)<input data-act="chapa-nome" maxlength="256" value="${escaparHtml(chapaNomeNovo)}" placeholder="Ex.: Acrílico 3 mm — 1000 × 2000"></label>
       <label class="field">Largura (mm)<input data-act="chapa-largura" inputmode="numeric" type="number" min="10" max="50000" value="${escaparHtml(chapaLarguraNova)}" placeholder="1000"></label>
       <label class="field">Altura (mm)<input data-act="chapa-altura" inputmode="numeric" type="number" min="10" max="50000" value="${escaparHtml(chapaAlturaNova)}" placeholder="2000"></label>
-      <label class="field">Espessura (mm)<input data-act="chapa-espessura" type="number" min="0.001" step="0.001" value="${escaparHtml(chapaEspessuraNova)}" placeholder="Ex.: 3"></label>
+      <label class="field">Espessura<span style="display:flex;gap:6px;"><input data-act="chapa-espessura" type="number" min="0.001" step="0.001" value="${escaparHtml(chapaEspessuraNova)}" placeholder="${chapaEspessuraUnidade==='mm'?'Ex.: 3':'Ex.: 80'}" style="flex:1;"><select data-act="chapa-espessura-unidade" style="width:78px;"><option value="mm" ${chapaEspessuraUnidade==='mm'?'selected':''}>mm</option><option value="µm" ${chapaEspessuraUnidade==='µm'?'selected':''}>µm</option></select></span></label>
       <label class="field">Densidade (g/cm³)<input data-act="chapa-densidade" type="number" min="0.0001" step="0.0001" value="${escaparHtml(chapaDensidadeNova)}" placeholder="Ex.: 1.19 (acrílico) · 7.85 (aço)"></label>
       <div class="field" style="grid-column:1/-1;"><span>Esta matéria-prima tem configuração de cor?</span><div style="display:flex;gap:8px;margin-top:4px;"><button type="button" class="btn ${chapaTemCor?'btn-primary':'btn-ghost'} btn-sm" data-act="chapa-tem-cor" data-val="sim">Sim</button><button type="button" class="btn ${!chapaTemCor?'btn-primary':'btn-ghost'} btn-sm" data-act="chapa-tem-cor" data-val="nao">Não</button></div>${chapaTemCor?'':'<p class="role-note" style="margin-top:6px;">Sem configuração de cor: esta matéria-prima fica fora da análise de cores.</p>'}</div>
       ${chapaTemCor?`
@@ -5772,7 +5773,7 @@ async function salvarChapaServidor(payload, id){
     const response=await fetch(id?`/api/letra-caixa/chapas/${id}`:'/api/letra-caixa/chapas',{method:id?'PUT':'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     const data=await response.json();
     if(!response.ok) throw new Error(data.error||'Não foi possível salvar o formato de chapa.');
-    chapaEditandoId=null;chapaLarguraNova='';chapaAlturaNova='';chapaNomeNovo='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';chapaEspessuraNova='';chapaDensidadeNova='';chapaTemCor=true;
+    chapaEditandoId=null;chapaLarguraNova='';chapaAlturaNova='';chapaNomeNovo='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';chapaEspessuraNova='';chapaEspessuraUnidade='mm';chapaDensidadeNova='';chapaTemCor=true;
     await carregarChapasServidor();
   }catch(error){alert(error.message||'Falha ao salvar formato de chapa.');}
 }
@@ -5924,6 +5925,8 @@ function bindAdminEvents(){
   if(chapaTransmissao) chapaTransmissao.addEventListener('input',event=>{chapaTransmissaoNova=event.target.value;});
   const chapaEspessura=document.querySelector('[data-act="chapa-espessura"]');
   if(chapaEspessura) chapaEspessura.addEventListener('input',event=>{chapaEspessuraNova=event.target.value;});
+  const chapaEspessuraUn=document.querySelector('[data-act="chapa-espessura-unidade"]');
+  if(chapaEspessuraUn) chapaEspessuraUn.addEventListener('change',event=>{chapaEspessuraUnidade=event.target.value;render();});
   const chapaDensidade=document.querySelector('[data-act="chapa-densidade"]');
   if(chapaDensidade) chapaDensidade.addEventListener('input',event=>{chapaDensidadeNova=event.target.value;});
   const chapaTransparencia=document.querySelector('[data-act="chapa-transparencia"]');
@@ -5939,15 +5942,15 @@ function bindAdminEvents(){
     const larguraMm=Number(chapaLarguraNova), alturaMm=Number(chapaAlturaNova);
     if(!material||!Number.isInteger(larguraMm)||!Number.isInteger(alturaMm)||larguraMm<10||alturaMm<10){alert('Selecione uma matéria-prima e informe largura e altura válidas em milímetros.');return;}
     const optionalNumber=value=>String(value??'').trim()===''?null:Number(value);
-    if(!(optionalNumber(chapaEspessuraNova)>0)||!(optionalNumber(chapaDensidadeNova)>0)){alert('Informe a espessura (mm) e a densidade (g/cm³): o sistema usa os dois para calcular o peso do letreiro.');return;}
-    salvarChapaServidor({mubisysMateriaPrimaId:material.id,nome:chapaNomeNovo.trim()||`${material.nome} · ${larguraMm} × ${alturaMm} mm`,larguraMm,alturaMm,pantoneCode:chapaPantoneNovo.trim()||null,cmykC:optionalNumber(chapaCmykCNova),cmykM:optionalNumber(chapaCmykMNova),cmykY:optionalNumber(chapaCmykYNova),cmykK:optionalNumber(chapaCmykKNova),transmissaoLuzPct:optionalNumber(chapaTransmissaoNova),transparenciaTipo:chapaTransparenciaNova||null,espessuraMm:optionalNumber(chapaEspessuraNova),densidadeGCm3:optionalNumber(chapaDensidadeNova),temCor:chapaTemCor,principal:!chapasCotacao.some(chapa=>chapa.mubisysMateriaPrimaId===material.id&&chapa.ativo)},chapaEditandoId);
+    if(!(optionalNumber(chapaEspessuraNova)>0)||!(optionalNumber(chapaDensidadeNova)>0)){alert('Informe a espessura e a densidade (g/cm³): o sistema usa os dois para calcular o peso do letreiro.');return;}
+    salvarChapaServidor({mubisysMateriaPrimaId:material.id,nome:chapaNomeNovo.trim()||`${material.nome} · ${larguraMm} × ${alturaMm} mm`,larguraMm,alturaMm,pantoneCode:chapaPantoneNovo.trim()||null,cmykC:optionalNumber(chapaCmykCNova),cmykM:optionalNumber(chapaCmykMNova),cmykY:optionalNumber(chapaCmykYNova),cmykK:optionalNumber(chapaCmykKNova),transmissaoLuzPct:optionalNumber(chapaTransmissaoNova),transparenciaTipo:chapaTransparenciaNova||null,espessuraMm:optionalNumber(chapaEspessuraNova)==null?null:optionalNumber(chapaEspessuraNova)/(chapaEspessuraUnidade==='µm'?1000:1),densidadeGCm3:optionalNumber(chapaDensidadeNova),temCor:chapaTemCor,principal:!chapasCotacao.some(chapa=>chapa.mubisysMateriaPrimaId===material.id&&chapa.ativo)},chapaEditandoId);
   });
   document.querySelectorAll('[data-act="chapa-editar"]').forEach(botao=>botao.addEventListener('click',()=>{
     const chapa=chapasCotacao.find(item=>item.id===Number(botao.dataset.id));if(!chapa)return;
-    chapaEditandoId=chapa.id;chapaMateriaSelecionada=String(chapa.mubisysMateriaPrimaId);chapaNomeNovo=chapa.nome;chapaLarguraNova=String(chapa.larguraMm);chapaAlturaNova=String(chapa.alturaMm);chapaPantoneNovo=chapa.pantoneCode||'';chapaCmykCNova=chapa.cmykC??'';chapaCmykMNova=chapa.cmykM??'';chapaCmykYNova=chapa.cmykY??'';chapaCmykKNova=chapa.cmykK??'';chapaTransmissaoNova=chapa.transmissaoLuzPct??'';chapaTransparenciaNova=chapa.transparenciaTipo||'';chapaEspessuraNova=chapa.espessuraMm??'';chapaDensidadeNova=chapa.densidadeGCm3??'';chapaTemCor=chapa.temCor!==false;render();
+    chapaEditandoId=chapa.id;chapaMateriaSelecionada=String(chapa.mubisysMateriaPrimaId);chapaNomeNovo=chapa.nome;chapaLarguraNova=String(chapa.larguraMm);chapaAlturaNova=String(chapa.alturaMm);chapaPantoneNovo=chapa.pantoneCode||'';chapaCmykCNova=chapa.cmykC??'';chapaCmykMNova=chapa.cmykM??'';chapaCmykYNova=chapa.cmykY??'';chapaCmykKNova=chapa.cmykK??'';chapaTransmissaoNova=chapa.transmissaoLuzPct??'';chapaTransparenciaNova=chapa.transparenciaTipo||'';chapaEspessuraUnidade='mm';chapaEspessuraNova=chapa.espessuraMm??'';chapaDensidadeNova=chapa.densidadeGCm3??'';chapaTemCor=chapa.temCor!==false;render();
   }));
   const chapaCancelar=document.querySelector('[data-act="chapa-cancelar"]');
-  if(chapaCancelar) chapaCancelar.addEventListener('click',()=>{chapaEditandoId=null;chapaMateriaSelecionada='';chapaNomeNovo='';chapaLarguraNova='';chapaAlturaNova='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';chapaEspessuraNova='';chapaDensidadeNova='';chapaTemCor=true;chapaCorTocada=false;chapaPantoneSugestoes=[];render();});
+  if(chapaCancelar) chapaCancelar.addEventListener('click',()=>{chapaEditandoId=null;chapaMateriaSelecionada='';chapaNomeNovo='';chapaLarguraNova='';chapaAlturaNova='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';chapaEspessuraNova='';chapaEspessuraUnidade='mm';chapaDensidadeNova='';chapaTemCor=true;chapaCorTocada=false;chapaPantoneSugestoes=[];render();});
   const chapasAtualizar=document.querySelector('[data-act="chapas-atualizar"]');
   if(chapasAtualizar) chapasAtualizar.addEventListener('click',()=>carregarChapasServidor());
   document.querySelectorAll('[data-act="chapa-principal"]').forEach(botao=>botao.addEventListener('click',()=>{
@@ -6138,7 +6141,7 @@ function bindAdminEvents(){
       const id=parseInt(el.dataset.val);
       state.adminTab='chapas';
       chapaPantoneSugestoes=[];chapaCorTocada=false;
-      chapaEditandoId=null;chapaMateriaSelecionada=String(id);chapaNomeNovo='';chapaLarguraNova='';chapaAlturaNova='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';chapaEspessuraNova='';chapaDensidadeNova='';chapaTemCor=true;
+      chapaEditandoId=null;chapaMateriaSelecionada=String(id);chapaNomeNovo='';chapaLarguraNova='';chapaAlturaNova='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';chapaEspessuraNova='';chapaEspessuraUnidade='mm';chapaDensidadeNova='';chapaTemCor=true;
       render();
       if(window.scrollTo) window.scrollTo({top:0,behavior:'smooth'});
       await carregarChapasServidor();

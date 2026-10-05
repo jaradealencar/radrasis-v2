@@ -228,6 +228,8 @@ export const materiasPrimasRouter = router({
         throw new Error("Para salvar uma chapa, informe espessura, densidade e ao menos um formato ativo.");
       if (usaDadosPerfil && (!input.espessuraMm || !input.densidadeKgM3 || !input.perfilAlturaMm || !input.perfilLarguraMm || !input.perfilComprimentoMm))
         throw new Error("Para salvar um perfil, informe altura, largura, espessura, comprimento e densidade.");
+      if (usaDadosBobina && !input.espessuraMm)
+        throw new Error("Para salvar uma bobina, informe a espessura.");
       if (usaDadosBobina && formatosAtivos.length === 0)
         throw new Error("Para salvar uma bobina, informe ao menos uma largura ativa.");
       if ((usaDadosChapa || usaDadosBobina) && formatos.filter(formato => formato.ativo && formato.principal).length > 1)

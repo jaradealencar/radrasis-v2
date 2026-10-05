@@ -429,7 +429,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   MubiSys, que não oferece gravação pública para esses campos. Marcar uma
   categoria com `usa_dados_chapa` exige espessura, densidade e pelo menos um
   tamanho ativo, salvo como formato em `estudio_chapas` e normalizado para
-  orientação horizontal. Categorias de perfil (migrations `0079` e `0081`) abrem altura, largura, espessura, comprimento e densidade, sem formatos; a densidade é digitada em g/cm³ e gravada em kg/m³ (×1000), e matérias-primas fora de chapa/perfil têm `peso_especifico_kg` (kg por unidade de consumo), base do cálculo de peso do letreiro, ainda não implementado. Gestor, admin e master podem editar categorias e
+  orientação horizontal. Categorias de perfil (migrations `0079` e `0081`) abrem altura, largura, espessura, comprimento e densidade, sem formatos; a densidade é digitada em g/cm³ e gravada em kg/m³ (×1000), e matérias-primas fora de chapa/perfil têm `peso_especifico_kg` (kg por unidade de consumo), base do cálculo de peso do letreiro, implementado no fim do orçamento do CPQ (`blocoPesoReal`, uso interno; chapa = área líquida × espessura × densidade, perfil = tubo retangular oco, demais = quantidade × peso específico; itens sem dado ficam destacados). Espessura é digitada em mm ou µm e gravada em mm; bobina tem só altura (largura do rolo) e espessura. Gestor, admin e master podem editar categorias e
   especificações. O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
   escolhidas; salva as medidas do nesting e os materiais calculados no
