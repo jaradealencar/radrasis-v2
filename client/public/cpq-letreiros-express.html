@@ -5555,7 +5555,7 @@ function adminMateriasAdmin(){
           <span>${m.unidade}</span>
           <span class="mono">${money(m.valor)}</span>
           <span>${m.atualizado||'—'}</span>
-          <span style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-act="admin-editar-materia" data-val="${m.id}">Editar</button> <button class="btn btn-ghost btn-sm" data-act="admin-excluir-materia" data-val="${m.id}">${excl?'Reativar':'Excluir'}</button></span>
+          <span style="white-space:nowrap;"><a class="btn btn-ghost btn-sm" target="_top" style="text-decoration:none;" href="/comercial/produtos?aba=materias-primas&busca=${m.id}" title="Categorizar e editar dados técnicos no cadastro de Produtos">Categorizar</a> <button class="btn btn-ghost btn-sm" data-act="admin-excluir-materia" data-val="${m.id}">${excl?'Reativar':'Excluir'}</button></span>
         </div>`;
       }).join('')}
     </div>
