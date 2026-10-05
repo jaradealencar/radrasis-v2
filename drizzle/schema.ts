@@ -364,6 +364,7 @@ export const materiaPrimaCategorias = pgTable("materia_prima_categorias", {
   nome: varchar("nome", { length: 128 }).notNull().unique(),
   usaDadosChapa: boolean("usa_dados_chapa").notNull().default(false),
   usaDadosBobina: boolean("usa_dados_bobina").notNull().default(false),
+  usaDadosPerfil: boolean("usa_dados_perfil").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

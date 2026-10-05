@@ -16,11 +16,12 @@ const categoriaInput = z.object({
   nome: z.string().trim().min(1).max(128),
   usaDadosChapa: z.boolean().default(false),
   usaDadosBobina: z.boolean().default(false),
+  usaDadosPerfil: z.boolean().default(false),
 });
 
-function exigirChapaOuBobina(input: { usaDadosChapa: boolean; usaDadosBobina: boolean }) {
-  if (input.usaDadosChapa && input.usaDadosBobina)
-    throw new Error("Uma categoria é de chapa ou de bobina, não das duas.");
+function exigirChapaOuBobina(input: { usaDadosChapa: boolean; usaDadosBobina: boolean; usaDadosPerfil: boolean }) {
+  if ([input.usaDadosChapa, input.usaDadosBobina, input.usaDadosPerfil].filter(Boolean).length > 1)
+    throw new Error("Uma categoria é de chapa, de bobina ou de perfil, não de mais de um tipo.");
 }
 
 const formatosBobinaInput = z.array(z.object({
@@ -89,6 +90,7 @@ export const materiasPrimasRouter = router({
           categoriaNome: categoria?.nome ?? null,
           categoriaUsaDadosChapa: categoria?.usaDadosChapa ?? false,
           categoriaUsaDadosBobina: categoria?.usaDadosBobina ?? false,
+          categoriaUsaDadosPerfil: categoria?.usaDadosPerfil ?? false,
           espessuraMm: cadastro?.espessuraMm == null ? null : Number(cadastro.espessuraMm),
           densidadeKgM3: cadastro?.densidadeKgM3 == null ? null : Number(cadastro.densidadeKgM3),
           bobinas: (chapasPorId.get(material.id) ?? []).filter(chapa => chapa.bobina).map(bobina => ({
@@ -147,15 +149,15 @@ export const materiasPrimasRouter = router({
       const categorias = await db.select({ id: materiaPrimaCategorias.id, nome: materiaPrimaCategorias.nome }).from(materiaPrimaCategorias);
       if (categorias.some(item => item.id !== input.id && item.nome.localeCompare(input.nome, "pt-BR", { sensitivity: "base" }) === 0))
         throw new Error("Já existe uma categoria com esse nome.");
-      if ((atual.usaDadosChapa && !input.usaDadosChapa) || (atual.usaDadosBobina && !input.usaDadosBobina)) {
+      if ((atual.usaDadosChapa && !input.usaDadosChapa) || (atual.usaDadosBobina && !input.usaDadosBobina) || (atual.usaDadosPerfil && !input.usaDadosPerfil)) {
         const materiaisVinculados = await db.select({ id: materiaPrimaCadastros.mubisysMateriaPrimaId })
           .from(materiaPrimaCadastros)
           .where(eq(materiaPrimaCadastros.categoriaId, input.id));
         if (materiaisVinculados.length)
-          throw new Error("Reclassifique as matérias-primas desta categoria antes de desativar os campos de chapa ou bobina.");
+          throw new Error("Reclassifique as matérias-primas desta categoria antes de desativar os campos de chapa, bobina ou perfil.");
       }
       const [categoria] = await db.update(materiaPrimaCategorias)
-        .set({ nome: input.nome, usaDadosChapa: input.usaDadosChapa, usaDadosBobina: input.usaDadosBobina, updatedAt: new Date() })
+        .set({ nome: input.nome, usaDadosChapa: input.usaDadosChapa, usaDadosBobina: input.usaDadosBobina, usaDadosPerfil: input.usaDadosPerfil, updatedAt: new Date() })
         .where(eq(materiaPrimaCategorias.id, input.id))
         .returning();
       return categoria;
@@ -199,6 +201,7 @@ export const materiasPrimasRouter = router({
       }
       const usaDadosChapa = categoria?.usaDadosChapa ?? false;
       const usaDadosBobina = categoria?.usaDadosBobina ?? false;
+      const usaDadosPerfil = categoria?.usaDadosPerfil ?? false;
       // Bobina: só a largura é informada; o comprimento gravado é apenas o teto do nesting.
       const formatos = usaDadosBobina
         ? input.bobinas.map(bobina => ({
@@ -213,6 +216,8 @@ export const materiasPrimasRouter = router({
       const formatosAtivos = formatos.filter(formato => formato.ativo);
       if (usaDadosChapa && (!input.espessuraMm || !input.densidadeKgM3 || formatosAtivos.length === 0))
         throw new Error("Para salvar uma chapa, informe espessura, densidade e ao menos um formato ativo.");
+      if (usaDadosPerfil && (!input.espessuraMm || !input.densidadeKgM3))
+        throw new Error("Para salvar um perfil, informe espessura e densidade.");
       if (usaDadosBobina && formatosAtivos.length === 0)
         throw new Error("Para salvar uma bobina, informe ao menos uma largura ativa.");
       if ((usaDadosChapa || usaDadosBobina) && formatos.filter(formato => formato.ativo && formato.principal).length > 1)
@@ -235,19 +240,19 @@ export const materiasPrimasRouter = router({
         }
 
         const now = new Date();
-        const espessuraSalva = usaDadosChapa || (usaDadosBobina && input.espessuraMm) ? String(input.espessuraMm) : null;
+        const espessuraSalva = usaDadosChapa || usaDadosPerfil || (usaDadosBobina && input.espessuraMm) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
           categoriaId: input.categoriaId,
           espessuraMm: espessuraSalva,
-          densidadeKgM3: usaDadosChapa ? String(input.densidadeKgM3) : null,
+          densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
           set: {
             categoriaId: input.categoriaId,
             espessuraMm: espessuraSalva,
-            densidadeKgM3: usaDadosChapa ? String(input.densidadeKgM3) : null,
+            densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
             updatedAt: now,
           },
         });

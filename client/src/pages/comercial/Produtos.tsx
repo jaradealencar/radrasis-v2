@@ -167,6 +167,8 @@ function CadastroMateriasPrimas() {
                       <TableCell className="text-sm">
                         {material.categoriaUsaDadosChapa ? (
                           <span>{material.espessuraMm ?? "—"} mm · {material.densidadeKgM3 ?? "—"} kg/m³ · {material.chapas.filter(chapa => chapa.ativo).length} formato(s)</span>
+                        ) : material.categoriaUsaDadosPerfil ? (
+                          <span>Perfil · {material.espessuraMm ?? "—"} mm · {material.densidadeKgM3 ?? "—"} kg/m³</span>
                         ) : material.categoriaUsaDadosBobina ? (
                           <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${material.espessuraMm} mm de espessura` : ""}</span>
                         ) : <span className="text-muted-foreground">{material.tipo || "Sem dados técnicos adicionais"}</span>}
@@ -290,9 +292,9 @@ function DialogEditarMateriaPrima({
     salvar.mutate({
       mubisysMateriaPrimaId: material.id,
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
-      espessuraMm: categoria?.usaDadosChapa ? Number(espessuraMm)
+      espessuraMm: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? Number(espessuraMm)
         : categoria?.usaDadosBobina && espessuraMm.trim() !== "" ? Number(espessuraMm) : null,
-      densidadeKgM3: categoria?.usaDadosChapa ? Number(densidadeKgM3) : null,
+      densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? Number(densidadeKgM3) : null,
       chapas: formatos.map(({ index: _index, ...chapa }) => chapa),
       bobinas: categoria?.usaDadosBobina ? formatosBobina : [],
     });
@@ -354,6 +356,14 @@ function DialogEditarMateriaPrima({
             </div>
           </div>}
 
+          {categoria?.usaDadosPerfil && <div className="space-y-4 rounded-lg border p-4">
+            <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados do perfil</h3><p className="text-xs text-muted-foreground">Espessura e densidade do material do perfil.</p></div></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Espessura (mm)</Label><Input type="number" min="0.001" step="0.001" value={espessuraMm} onChange={event => setEspessuraMm(event.target.value)} required /></div>
+              <div className="space-y-2"><Label>Densidade (kg/m³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /></div>
+            </div>
+          </div>}
+
           {categoria?.usaDadosBobina && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da bobina</h3><p className="text-xs text-muted-foreground">Só a largura é fixa: o comprimento não é cadastrado. O nesting mede quanto do rolo o layout consome e o custo usa largura × comprimento consumido.</p></div></div>
             <div className="max-w-xs space-y-2"><Label>Espessura (mm) — opcional</Label><Input type="number" min="0.001" step="0.001" value={espessuraMm} onChange={event => setEspessuraMm(event.target.value)} /></div>
@@ -388,7 +398,8 @@ function LinhaCategoriaMateriaPrima({ categoria }: { categoria: MateriaPrimaCate
   const [nome, setNome] = useState(categoria.nome);
   const [usaDadosChapa, setUsaDadosChapa] = useState(categoria.usaDadosChapa);
   const [usaDadosBobina, setUsaDadosBobina] = useState(categoria.usaDadosBobina);
-  useEffect(() => { setNome(categoria.nome); setUsaDadosChapa(categoria.usaDadosChapa); setUsaDadosBobina(categoria.usaDadosBobina); }, [categoria]);
+  const [usaDadosPerfil, setUsaDadosPerfil] = useState(categoria.usaDadosPerfil);
+  useEffect(() => { setNome(categoria.nome); setUsaDadosChapa(categoria.usaDadosChapa); setUsaDadosBobina(categoria.usaDadosBobina); setUsaDadosPerfil(categoria.usaDadosPerfil); }, [categoria]);
   const atualizar = trpc.produtos.materiasPrimas.categoriaAtualizar.useMutation({
     onSuccess: async () => {
       toast.success("Categoria atualizada");
@@ -403,13 +414,14 @@ function LinhaCategoriaMateriaPrima({ categoria }: { categoria: MateriaPrimaCate
     },
     onError: error => toast.error("Não foi possível remover a categoria", { description: error.message }),
   });
-  const alterada = nome.trim() !== categoria.nome || usaDadosChapa !== categoria.usaDadosChapa || usaDadosBobina !== categoria.usaDadosBobina;
+  const alterada = nome.trim() !== categoria.nome || usaDadosChapa !== categoria.usaDadosChapa || usaDadosBobina !== categoria.usaDadosBobina || usaDadosPerfil !== categoria.usaDadosPerfil;
   return (
-    <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto_auto] sm:items-center">
+    <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto_auto_auto] sm:items-center">
       <Input value={nome} onChange={event => setNome(event.target.value)} aria-label={`Nome da categoria ${categoria.nome}`} />
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosChapa} onChange={event => { setUsaDadosChapa(event.target.checked); if (event.target.checked) setUsaDadosBobina(false); }} /> Categoria de chapa</label>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosBobina} onChange={event => { setUsaDadosBobina(event.target.checked); if (event.target.checked) setUsaDadosChapa(false); }} /> Categoria de bobina</label>
-      <Button size="sm" variant="outline" disabled={!alterada || atualizar.isPending} onClick={() => atualizar.mutate({ id: categoria.id, nome: nome.trim(), usaDadosChapa, usaDadosBobina })}>Salvar</Button>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosChapa} onChange={event => { setUsaDadosChapa(event.target.checked); if (event.target.checked) { setUsaDadosBobina(false); setUsaDadosPerfil(false); } }} /> Categoria de chapa</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosBobina} onChange={event => { setUsaDadosBobina(event.target.checked); if (event.target.checked) { setUsaDadosChapa(false); setUsaDadosPerfil(false); } }} /> Categoria de bobina</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosPerfil} onChange={event => { setUsaDadosPerfil(event.target.checked); if (event.target.checked) { setUsaDadosChapa(false); setUsaDadosBobina(false); } }} /> Categoria de perfil</label>
+      <Button size="sm" variant="outline" disabled={!alterada || atualizar.isPending} onClick={() => atualizar.mutate({ id: categoria.id, nome: nome.trim(), usaDadosChapa, usaDadosBobina, usaDadosPerfil })}>Salvar</Button>
       <Button size="icon" variant="ghost" aria-label={`Remover categoria ${categoria.nome}`} disabled={remover.isPending} onClick={() => remover.mutate({ id: categoria.id })}><Trash2 className="h-4 w-4" /></Button>
     </div>
   );
@@ -420,12 +432,14 @@ function DialogCategoriasMateriaPrima({ aberto, onFechar }: { aberto: boolean; o
   const [nome, setNome] = useState("");
   const [usaDadosChapa, setUsaDadosChapa] = useState(false);
   const [usaDadosBobina, setUsaDadosBobina] = useState(false);
+  const [usaDadosPerfil, setUsaDadosPerfil] = useState(false);
   const { data: categorias = [] } = trpc.produtos.materiasPrimas.categoriasListar.useQuery();
   const criar = trpc.produtos.materiasPrimas.categoriaCriar.useMutation({
     onSuccess: async () => {
       setNome("");
       setUsaDadosChapa(false);
       setUsaDadosBobina(false);
+      setUsaDadosPerfil(false);
       toast.success("Categoria criada");
       await utils.produtos.materiasPrimas.categoriasListar.invalidate();
     },
@@ -434,11 +448,12 @@ function DialogCategoriasMateriaPrima({ aberto, onFechar }: { aberto: boolean; o
   return (
     <Dialog open={aberto} onOpenChange={value => !value && onFechar()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader><DialogTitle>Gerenciar categorias de matérias-primas</DialogTitle><DialogDescription>Renomeie, crie ou remova categorias. Categorias de chapa abrem espessura, densidade e tamanhos; categorias de bobina (adesivo, papel kraft) abrem só a largura do rolo, e o comprimento é medido pelo nesting.</DialogDescription></DialogHeader>
-        <form className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto] sm:items-center" onSubmit={event => { event.preventDefault(); criar.mutate({ nome: nome.trim(), usaDadosChapa, usaDadosBobina }); }}>
+        <DialogHeader><DialogTitle>Gerenciar categorias de matérias-primas</DialogTitle><DialogDescription>Renomeie, crie ou remova categorias. Categorias de chapa abrem espessura, densidade e tamanhos; categorias de perfil abrem espessura e densidade; categorias de bobina (adesivo, papel kraft) abrem só a largura do rolo, e o comprimento é medido pelo nesting.</DialogDescription></DialogHeader>
+        <form className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto_auto] sm:items-center" onSubmit={event => { event.preventDefault(); criar.mutate({ nome: nome.trim(), usaDadosChapa, usaDadosBobina, usaDadosPerfil }); }}>
           <Input value={nome} onChange={event => setNome(event.target.value)} placeholder="Nova categoria" required />
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosChapa} onChange={event => { setUsaDadosChapa(event.target.checked); if (event.target.checked) setUsaDadosBobina(false); }} /> Categoria de chapa</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosBobina} onChange={event => { setUsaDadosBobina(event.target.checked); if (event.target.checked) setUsaDadosChapa(false); }} /> Categoria de bobina</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosChapa} onChange={event => { setUsaDadosChapa(event.target.checked); if (event.target.checked) { setUsaDadosBobina(false); setUsaDadosPerfil(false); } }} /> Categoria de chapa</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosBobina} onChange={event => { setUsaDadosBobina(event.target.checked); if (event.target.checked) { setUsaDadosChapa(false); setUsaDadosPerfil(false); } }} /> Categoria de bobina</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={usaDadosPerfil} onChange={event => { setUsaDadosPerfil(event.target.checked); if (event.target.checked) { setUsaDadosChapa(false); setUsaDadosBobina(false); } }} /> Categoria de perfil</label>
           <Button type="submit" size="sm" disabled={!nome.trim() || criar.isPending}><Plus className="mr-1 h-4 w-4" /> Adicionar</Button>
         </form>
         <div className="space-y-2">{categorias.map(categoria => <LinhaCategoriaMateriaPrima key={categoria.id} categoria={categoria} />)}</div>

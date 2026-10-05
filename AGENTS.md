@@ -429,7 +429,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   MubiSys, que não oferece gravação pública para esses campos. Marcar uma
   categoria com `usa_dados_chapa` exige espessura, densidade e pelo menos um
   tamanho ativo, salvo como formato em `estudio_chapas` e normalizado para
-  orientação horizontal. Gestor, admin e master podem editar categorias e
+  orientação horizontal. Categorias de perfil (migration `0079`) abrem só espessura e densidade, sem formatos. Gestor, admin e master podem editar categorias e
   especificações. O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
   escolhidas; salva as medidas do nesting e os materiais calculados no
