@@ -1,0 +1,1 @@
+ALTER TABLE "estudio_chapas" ALTER COLUMN "pantone_code" SET DATA TYPE varchar(200);

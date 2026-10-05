@@ -545,7 +545,8 @@ export const estudioChapas = pgTable("estudio_chapas", {
   nome: varchar("nome", { length: 256 }).notNull(),
   larguraMm: integer("largura_mm").notNull(),
   alturaMm: integer("altura_mm").notNull(),
-  pantoneCode: varchar("pantone_code", { length: 32 }),
+  // Uma ou mais referências Pantone da mesma chapa, separadas por vírgula (ex.: "021 C, 804 C").
+  pantoneCode: varchar("pantone_code", { length: 200 }),
   cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
   cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
   cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
