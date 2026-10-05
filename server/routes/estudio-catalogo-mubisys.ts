@@ -57,11 +57,13 @@ function mapearProduto(produto: MubiSysProduto) {
       nome: modelo.nome,
       unidade: modelo.unidade_cobranca || "",
       status: modelo.status || "",
+      valorFinal: Number(modelo.valor_final) || 0,
       variacoes: (Array.isArray(modelo.variacoes) ? modelo.variacoes : []).map(variacao => ({
         id: Number(variacao.id),
         nome: String(variacao.nome || ""),
         descricao: String(variacao.descricao || ""),
         status: String(variacao.status || ""),
+        valorFinal: Number(variacao.valor_final) || 0,
         padrao: variacao.padrao === true || ["sim", "1", "true"].includes(String(variacao.padrao || "").toLowerCase()),
       })).filter(variacao => Number.isInteger(variacao.id) && variacao.id > 0 && variacao.nome),
     })),

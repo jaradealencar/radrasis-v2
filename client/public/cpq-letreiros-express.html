@@ -463,6 +463,7 @@ function renderConexaoMubiSys(){
   return `<div class="role-note" style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:9px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
     <div><b>${catalog.mubisysWebConectado?'MubiSys conectado':'Consumo por variação do MubiSys'}</b><div style="margin-top:3px;">${escaparHtml(estado)} ${catalog.mubisysWebConectado?'A sessão fica neste navegador por até 8 horas.':''}</div>
       ${catalog.connectionMessage?`<div style="margin-top:4px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
+      ${catalog.importMsg?`<div style="margin-top:4px;color:var(--ok);">${escaparHtml(catalog.importMsg)}</div>`:''}
       ${catalog.connectionOpen&&!catalog.mubisysWebConectado?`<form data-act="mubisys-connect-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;align-items:end;">
         <label class="field">Código da empresa<input type="text" name="codigo" autocomplete="off" required></label>
         <label class="field">Usuário<input type="text" name="usuario" autocomplete="off" required></label>
@@ -471,7 +472,7 @@ function renderConexaoMubiSys(){
       </form>`:''}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${catalog.mubisysWebConectado?`<button class="btn btn-ghost btn-sm" data-act="mubisys-reload">Atualizar consumos</button><button class="btn btn-ghost btn-sm" data-act="mubisys-disconnect">Desconectar</button>`:`<button class="btn btn-soft btn-sm" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
+      ${catalog.mubisysWebConectado?`<button class="btn btn-primary btn-sm" data-act="mubisys-importar-tudo" ${catalog.importando||!linhas?'disabled':''}>${catalog.importando?'Importando…':'Importar composições de todos os produtos'}</button><button class="btn btn-ghost btn-sm" data-act="mubisys-reload">Atualizar consumos</button><button class="btn btn-ghost btn-sm" data-act="mubisys-disconnect">Desconectar</button>`:`<button class="btn btn-soft btn-sm" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
     </div>
   </div>`;
 }
@@ -503,6 +504,10 @@ function bindMubiSysConnectionEvents(){
       catalog.connectionBusy=false;
       render();
     }
+  });
+  const importarTudo=document.querySelector('[data-act="mubisys-importar-tudo"]');
+  if(importarTudo) importarTudo.addEventListener('click',()=>{
+    if(confirm('Importar do MubiSys a composição (comum e por variação) de todos os modelos? Modelos que já têm composição cadastrada manualmente no Radrasys serão pulados.')) importarComposicoesMubiSysEmMassa();
   });
   const atualizar=document.querySelector('[data-act="mubisys-reload"]');
   if(atualizar) atualizar.addEventListener('click',()=>{catalog.connectionMessage=null;loadCatalog();});
@@ -4964,6 +4969,39 @@ async function carregarKitsServidor(){
   }
 }
 
+/** Traz do MubiSys a composição comum do modelo + a de cada variação ativa para o kit do Radrasys.
+ *  Linhas manuais (sem origemMubiSys) só são mantidas com substituir=false; kits com linhas manuais
+ *  são pulados na importação em massa para não duplicar custo. */
+function importarComposicaoMubiSysNoKit(produto, modelo, {substituir=false}={}){
+  const key=kitKey(produto.id,modelo.id);
+  const importada=composicaoMubiSysDoModelo(modelo,variacoesAtivasDoModelo(modelo).map(v=>v.id));
+  if(!importada) return {status:'sem-composicao'};
+  if(importada.erro) return {status:'erro',erro:importada.erro};
+  const existente=adminState.kits[key];
+  const manuais=(existente?.linhas||[]).filter(l=>!l.origemMubiSys);
+  if(manuais.length&&!substituir) return {status:'pulado'};
+  const kit=existente||(adminState.kits[key]={linhas:[],precificacao:null,descricaoProduto:'',prazoDiasUteis:null,kitProdutos:[],fotoUrl:null,fotoAssetId:null,categoria:null,subcategoria:null,tipoProduto:null,nomeCompleto:`${produto.nome} — ${modelo.nome}`});
+  kit.linhas=importada.linhas.map(l=>({...l,variantes:[]}));
+  return {status:'importado',key,linhas:kit.linhas.length};
+}
+
+async function importarComposicoesMubiSysEmMassa(){
+  if(catalog.importando||!catalog.mubisysWebConectado) return;
+  catalog.importando=true;catalog.importMsg='Importando…';render();
+  const total={importado:0,pulado:0,'sem-composicao':0,erro:0,falhaSalvar:0};
+  for(const produto of catalog.produtos){
+    if(adminState.produtosExcluidos.has(produto.id)) continue;
+    for(const modelo of produto.modelos){
+      const r=importarComposicaoMubiSysNoKit(produto,modelo);
+      total[r.status]++;
+      if(r.status==='importado'&&!(await salvarKitImediato(r.key))) total.falhaSalvar++;
+    }
+  }
+  catalog.importando=false;
+  catalog.importMsg=`${total.importado} modelo(s) importado(s); ${total.pulado} pulado(s) por já terem composição manual; ${total['sem-composicao']} sem composição no MubiSys${total.erro?`; ${total.erro} com matéria-prima fora do catálogo`:''}${total.falhaSalvar?`; ${total.falhaSalvar} não salvaram`:''}.`;
+  render();
+}
+
 async function salvarKitImediato(key){
   clearTimeout(_kitSaveTimers[key]);
   delete _kitSaveTimers[key];
@@ -5661,7 +5699,8 @@ function adminKitEditor(p, m, key){
     </div><p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${kitProdutos.length} modelo(s) vinculado(s). Pesquise outro produto para adicionar mais.</p>` : `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum modelo vinculado. Você pode adicionar vários produtos e modelos do catálogo.</p>`}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Variações do modelo <span style="font-weight:400; text-transform:none;">— importadas do MubiSys (${variacoesModelo.length})</span></p>
-    ${variacoesModelo.length? `<div style="display:flex; flex-wrap:wrap; gap:6px;">${variacoesModelo.map(v=>`<span class="badge b-neutral" title="ID MubiSys ${v.id}">${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span>`).join('')}</div>
+    ${variacoesModelo.length? `<div style="display:flex; flex-wrap:wrap; gap:6px;">${variacoesModelo.map(v=>`<span class="badge b-neutral" title="ID MubiSys ${v.id}">${escaparHtml(v.nome)}${v.padrao?' · padrão':''}${v.valorFinal>0?` · ${money(v.valorFinal)}`:''}</span>`).join('')}</div>
+    <div style="margin-top:8px;"><button type="button" class="btn btn-soft btn-sm" data-act="admin-kit-importar-mubisys" data-key="${key}" ${catalog.mubisysWebConectado?'':'disabled'}>Importar composição do MubiSys (comum + variações)</button>${catalog.mubisysWebConectado?'':' <span style="font-size:11px;color:var(--text-faint);">Conecte o MubiSys na barra acima para habilitar.</span>'}</div>
     <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Na composição abaixo, cada matéria-prima pode valer para todas as variações (comum) ou só para uma delas. No orçamento entram as linhas comuns mais as das variações escolhidas pelo vendedor.</p>`
     : `<p style="font-size:11.5px;color:var(--text-faint);">Este modelo não tem variações ativas no MubiSys. Se acabou de cadastrá-las lá, recarregue a página para atualizar o catálogo.</p>`}
 
@@ -6372,6 +6411,20 @@ function bindAdminEvents(){
     el.addEventListener('change', e=>{
       const kit = adminState.kits[adminState.editingKey];
       if(kit){ kit.linhas[+el.dataset.idx].papel = e.target.value; salvarKit(adminState.editingKey); }
+      render();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-kit-importar-mubisys"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key=el.dataset.key;
+      const [produtoId,modeloId]=key.split('_').map(Number);
+      const produto=catalog.produtos.find(p=>p.id===produtoId);
+      const modelo=produto?.modelos.find(mod=>mod.id===modeloId);
+      if(!modelo) return;
+      if((adminState.kits[key]?.linhas||[]).length&&!confirm('Isto substitui TODA a composição atual deste modelo pela do MubiSys. Continuar?')) return;
+      const r=importarComposicaoMubiSysNoKit(produto,modelo,{substituir:true});
+      if(r.status==='importado') salvarKit(key);
+      else alert(r.status==='erro'?r.erro:'O MubiSys não tem composição cadastrada para este modelo ou suas variações.');
       render();
     });
   });
