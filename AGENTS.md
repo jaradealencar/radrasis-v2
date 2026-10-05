@@ -640,7 +640,7 @@ units or missing cost return an alert and null estimate.
 fixa (hoje 1200 mm nos dois); o comprimento nunca é cadastrado. Em Administração >
 Produtos > Matérias-primas, categorias marcadas como "de bobina" (seed `Bobinas`,
 migration `0078_bobinas_materias_primas.sql`; chapa e bobina são exclusivas) abrem só
-largura(s) do rolo e espessura opcional. A linha fica em `estudio_chapas` com
+largura(s) do rolo e espessura. A linha fica em `estudio_chapas` com
 `bobina = true`, `altura_mm` = largura e `largura_mm` = teto de 50 000 mm
 (`shared/bobina.ts`), então factibilidade e junção de propostas leem sem mudança; a
 sugestão de cor (`estudio-cores.ts`) ignora bobinas. No nesting
@@ -656,8 +656,16 @@ bloqueia com alerta. Com várias larguras vence a que cobra menos material. Marg
 lateral de borda do rolo ainda não existe (só o espaçamento entre peças). Dimensões
 de material (largura, altura, espessura, comprimento) ficam sempre em mm; m²/m do
 resultado e unidades de custo do MubiSys, e as métricas de produção em metros da
-Operações (solda), seguem como estão. A tela legada de chapas do HTML do CPQ
-(`/api/letra-caixa/chapas`) lista as bobinas como 50 000 × largura.
+Operações (solda), seguem como estão. A bobina exige espessura (mm ou µm na tela). O
+worker real do Deepnest nunca devolve layout incompleto (só falha por tempo), então a
+bobina repete com o teto também quando o motor dá erro. A rota antiga
+`/api/letra-caixa/chapas` e a lista antiga de chapas do HTML do CPQ **não editam**
+bobinas (PUT/DELETE em bobina e POST em matéria-prima de categoria bobina respondem 409;
+a lista mostra "Bobina / Rolo"), e o resultado do nesting mostra "Bobina / Rolo".
+O nesting de bobina **ainda não foi validado com o Deepnest real** (o ambiente de
+desenvolvimento não o tem): rodar `server/scripts/validar-bobina-deepnest.ts` onde ele
+existir. Checklist de produção (migrations 0078+, cadastro do kraft #1098 e do adesivo
+comum, unidade de custo no MubiSys): `docs/cpq-bobinas-producao.md`.
 
 `server/services/cpqFactibilidadeFabricacao.ts` contains the geometry checks for
 sheet fit and oversized-piece seams. The authenticated

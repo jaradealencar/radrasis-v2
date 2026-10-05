@@ -160,3 +160,34 @@ describe("CPQ nesting em bobina (largura fixa, comprimento medido)", () => {
     expect(resultado.id_chapa_utilizada).toBe(301);
   });
 });
+
+describe("CPQ factibilidade com bobina (geometria real, sem Deepnest)", () => {
+  const rolo = (larguraRoloMm: number) => ({
+    id: 30,
+    nome: "Adesivo comum",
+    chapas: [{ id: 300, nome: `Bobina ${larguraRoloMm} mm`, larguraMm: 50_000, alturaMm: larguraRoloMm }],
+  });
+  const retangulo = (larguraMm: number, alturaMm: number) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${larguraMm}mm" height="${alturaMm}mm" viewBox="0 0 ${larguraMm} ${alturaMm}"><path id="peca-principal" d="M 0 0 H ${larguraMm} V ${alturaMm} H 0 Z"/></svg>`;
+
+  it("letreiro comprido cabe no rolo de 1200 mm sem emenda: o comprimento do rolo não limita", async () => {
+    const { calcularFactibilidadeFabricacao } = await import("../services/cpqFactibilidadeFabricacao");
+    const resultado = calcularFactibilidadeFabricacao({
+      svg: retangulo(6_000, 500), larguraSvgMm: 6_000, alturaSvgMm: 500, materiais: [rolo(1_200)],
+    });
+
+    expect(resultado.status_factibilidade).toBe("APTO_NESTING");
+    expect(resultado.detalhes_corte.quantidade_emendas).toBe(0);
+    expect(resultado.materiais[0].pecas_para_nesting).toHaveLength(1);
+  });
+
+  it("peça mais alta que a largura útil do rolo exige emenda ou redução, nunca passa em silêncio", async () => {
+    const { calcularFactibilidadeFabricacao } = await import("../services/cpqFactibilidadeFabricacao");
+    const resultado = calcularFactibilidadeFabricacao({
+      svg: retangulo(1_800, 1_500), larguraSvgMm: 1_800, alturaSvgMm: 1_500, materiais: [rolo(1_200)],
+    });
+
+    expect(resultado.status_factibilidade).toBe("REQUER_APROVACAO_EMENDA");
+    expect(resultado.detalhes_corte.quantidade_emendas).toBeGreaterThan(0);
+  });
+});
