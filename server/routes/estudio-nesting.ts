@@ -7,6 +7,7 @@ import { gCm3ParaKgM3, kgM3ParaGCm3, normalizarFormatoPerfil } from "../../share
 import { calcularPesoLinha, somarPesos, type DadosPesoMateria } from "../services/cpqPeso";
 import { auth } from "../_core/auth";
 import { carregarCustoBobina } from "../db/bobinaCusto";
+import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
@@ -159,6 +160,7 @@ export function registrarRotasEstudioNesting(app: Express): void {
   app.delete("/api/letra-caixa/chapas/:id", capturar(desativarChapa));
   app.post("/api/letra-caixa/nesting", capturar(calcularNesting));
   app.post("/api/letra-caixa/peso", capturar(calcularPeso));
+  app.get("/api/letra-caixa/materias-cadastro", capturar(listarStatusCadastro));
 }
 
 async function listarChapas(req: Request, res: Response): Promise<void> {
@@ -213,6 +215,36 @@ const pesoInput = z.object({
  * Peso estimado do letreiro (informativo, uso interno do vendedor). O cálculo
  * fica no servidor; as quantidades vêm do CPQ, que é quem tem a geometria.
  */
+/**
+ * Situação do cadastro (categoria e dados técnicos) de cada matéria-prima, para o selo "Atualizada"
+ * da administração do CPQ. Matéria-prima sem linha no cadastro local não aparece: é "sem categoria".
+ */
+async function listarStatusCadastro(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const [cadastros, categorias, formatos] = await Promise.all([
+    db.select().from(materiaPrimaCadastros),
+    db.select().from(materiaPrimaCategorias),
+    db.select().from(estudioChapas),
+  ]);
+  const categoriaPorId = new Map(categorias.map(item => [item.id, item]));
+  const formatosPorMateria = new Map<number, typeof formatos>();
+  for (const formato of formatos) {
+    const lista = formatosPorMateria.get(formato.mubisysMateriaPrimaId) ?? [];
+    lista.push(formato);
+    formatosPorMateria.set(formato.mubisysMateriaPrimaId, lista);
+  }
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({
+    materias: cadastros.map(cadastro => {
+      const categoria = cadastro.categoriaId == null ? null : categoriaPorId.get(cadastro.categoriaId) ?? null;
+      const { status, pendencias } = statusCadastroDeLinhas(categoria, cadastro, formatosPorMateria.get(cadastro.mubisysMateriaPrimaId) ?? []);
+      return { id: cadastro.mubisysMateriaPrimaId, status, categoria: categoria?.nome ?? null, pendencias };
+    }),
+  });
+}
+
 async function calcularPeso(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
   const parsed = pesoInput.safeParse(req.body);

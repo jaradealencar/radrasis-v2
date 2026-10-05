@@ -89,6 +89,7 @@ type FormatoChapaForm = {
 function CadastroMateriasPrimas() {
   const [busca, setBusca] = useState(() => new URLSearchParams(window.location.search).get("busca") ?? "");
   const [categoriaFiltro, setCategoriaFiltro] = useState("todas");
+  const [situacaoFiltro, setSituacaoFiltro] = useState("todas");
   const [materialEditando, setMaterialEditando] = useState<MateriaPrimaCadastroItem | null>(null);
   const [gerenciarCategorias, setGerenciarCategorias] = useState(false);
   const { data: materias, isLoading, error, refetch } = trpc.produtos.materiasPrimas.listar.useQuery();
@@ -102,8 +103,11 @@ function CadastroMateriasPrimas() {
     const correspondeCategoria = categoriaFiltro === "todas"
       || material.categoriaId === Number(categoriaFiltro)
       || (categoriaFiltro === "sem-categoria" && material.categoriaId == null);
-    return correspondeBusca && correspondeCategoria;
+    const correspondeSituacao = situacaoFiltro === "todas" || material.statusCadastro === situacaoFiltro;
+    return correspondeBusca && correspondeCategoria && correspondeSituacao;
   });
+  const contagemSituacao = { atualizada: 0, incompleta: 0, sem_categoria: 0 };
+  for (const material of materias ?? []) contagemSituacao[material.statusCadastro] += 1;
 
   return (
     <div className="space-y-4">
@@ -114,6 +118,11 @@ function CadastroMateriasPrimas() {
             <p className="mt-1 text-sm text-muted-foreground">
               Classifique os materiais do MubiSys e mantenha os dados técnicos locais usados na fabricação.
             </p>
+            <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+              <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200">{contagemSituacao.atualizada} atualizada(s)</Badge>
+              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200">{contagemSituacao.incompleta} incompleta(s)</Badge>
+              <Badge variant="secondary">{contagemSituacao.sem_categoria} sem categoria</Badge>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setGerenciarCategorias(true)} className="gap-1.5">
@@ -125,7 +134,7 @@ function CadastroMateriasPrimas() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_240px]">
+          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_240px_220px]">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Buscar por matéria-prima ou código MubiSys..." value={busca} onChange={event => setBusca(event.target.value)} />
@@ -136,6 +145,15 @@ function CadastroMateriasPrimas() {
                 <SelectItem value="todas">Todas as categorias</SelectItem>
                 <SelectItem value="sem-categoria">Sem categoria</SelectItem>
                 {categorias.map(categoria => <SelectItem key={categoria.id} value={String(categoria.id)}>{categoria.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={situacaoFiltro} onValueChange={setSituacaoFiltro}>
+              <SelectTrigger><SelectValue placeholder="Todas as situações" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as situações</SelectItem>
+                <SelectItem value="atualizada">Atualizadas</SelectItem>
+                <SelectItem value="incompleta">Incompletas</SelectItem>
+                <SelectItem value="sem_categoria">Sem categoria</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -160,7 +178,14 @@ function CadastroMateriasPrimas() {
                         <div className="text-xs text-muted-foreground">MubiSys #{material.id}{material.categoriaMubiSys ? ` · ${material.categoriaMubiSys}` : ""}</div>
                       </TableCell>
                       <TableCell>
-                        {material.categoriaNome ? <Badge variant="secondary">{material.categoriaNome}</Badge> : <span className="text-sm text-muted-foreground">Sem categoria</span>}
+                        <div className="flex flex-col items-start gap-1">
+                          {material.categoriaNome ? <Badge variant="secondary">{material.categoriaNome}</Badge> : <span className="text-sm text-muted-foreground">Sem categoria</span>}
+                          {material.statusCadastro === "atualizada" && <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200">Atualizada</Badge>}
+                          {material.statusCadastro === "incompleta" && <>
+                            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200">Incompleta</Badge>
+                            <span className="text-xs text-muted-foreground">Falta: {material.pendenciasCadastro.join(", ")}</span>
+                          </>}
+                        </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-sm">
                         {material.unidadeCusto || material.unidadeMovimentacao || "—"}

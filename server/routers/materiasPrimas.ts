@@ -8,6 +8,7 @@ import {
 import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, secaoPerfilMm2, type FormatoPerfil, normalizarFormatoPerfil } from "@shared/peso";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 
@@ -81,6 +82,7 @@ export const materiasPrimasRouter = router({
       .map(material => {
         const cadastro = cadastroPorId.get(material.id);
         const categoria = cadastro?.categoriaId == null ? null : categoriaPorId.get(cadastro.categoriaId) ?? null;
+        const situacao = statusCadastroDeLinhas(categoria, cadastro, chapasPorId.get(material.id) ?? []);
         return {
           id: material.id,
           nome: material.nome,
@@ -95,6 +97,8 @@ export const materiasPrimasRouter = router({
           categoriaNome: categoria?.nome ?? null,
           categoriaUsaDadosChapa: categoria?.usaDadosChapa ?? false,
           categoriaUsaDadosBobina: categoria?.usaDadosBobina ?? false,
+          statusCadastro: situacao.status,
+          pendenciasCadastro: situacao.pendencias,
           bobinaCustoBase: (BOBINA_CUSTO_BASES as readonly string[]).includes(cadastro?.bobinaCustoBase ?? "") ? (cadastro!.bobinaCustoBase as (typeof BOBINA_CUSTO_BASES)[number]) : null,
           bobinaComprimentoRoloMm: cadastro?.bobinaComprimentoRoloMm == null ? null : Number(cadastro.bobinaComprimentoRoloMm),
           categoriaUsaDadosPerfil: categoria?.usaDadosPerfil ?? false,

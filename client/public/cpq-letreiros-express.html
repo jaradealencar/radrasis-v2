@@ -4386,6 +4386,20 @@ let kitsApiDisponivel = false;
 let kitsCarregando = true;
 let kitsApiErro = '';
 let chapasCotacao = [];
+/* Situação do cadastro local de cada matéria-prima (categoria + dados técnicos): Map id -> {status, categoria, pendencias}; null = ainda não carregado. */
+let cadastroMaterias = null;
+let cadastroMateriasCarregando = false;
+async function carregarCadastroMaterias(){
+  if(cadastroMateriasCarregando) return;
+  cadastroMateriasCarregando=true;
+  try{
+    const response=await fetch('/api/letra-caixa/materias-cadastro',{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível carregar a situação do cadastro.');
+    cadastroMaterias=new Map((body.materias||[]).map(item=>[item.id,item]));
+  }catch(error){cadastroMaterias=new Map();}
+  finally{cadastroMateriasCarregando=false;if(state.tab==='admin')render();}
+}
 let chapasCotacaoCarregando = false;
 let chapasCotacaoErro = '';
 let catalogoImprimax = [];
@@ -5618,6 +5632,17 @@ function adminMateriasAdmin(){
     .slice()
     .sort((a,b)=> (adminState.materiasExcluidas.has(a.id)?1:0) - (adminState.materiasExcluidas.has(b.id)?1:0));
   const excluidas = adminState.materiasExcluidas.size;
+  if(cadastroMaterias===null) carregarCadastroMaterias();
+  const situacaoMateria=id=>cadastroMaterias?.get(id)||{status:'sem_categoria',categoria:null,pendencias:['Sem categoria']};
+  const contagemCadastro={atualizada:0,incompleta:0,sem_categoria:0};
+  if(cadastroMaterias) for(const m of catalog.materias) if(!adminState.materiasExcluidas.has(m.id)) contagemCadastro[situacaoMateria(m.id).status]+=1;
+  const seloCadastro=id=>{
+    if(!cadastroMaterias) return '';
+    const s=situacaoMateria(id);
+    if(s.status==='atualizada') return ` <span class="badge b-ok" style="margin-left:4px;" title="Categoria: ${escaparHtml(s.categoria||'')}">Atualizada</span>`;
+    if(s.status==='incompleta') return ` <span class="badge b-warn" style="margin-left:4px;" title="Falta: ${escaparHtml(s.pendencias.join(', '))}">Incompleta</span>`;
+    return ' <span class="badge b-neutral" style="margin-left:4px;" title="Ainda não categorizada no cadastro de Produtos">Sem categoria</span>';
+  };
   return `
   <div class="card">
     <div class="cardhead">
@@ -5625,6 +5650,7 @@ function adminMateriasAdmin(){
       <span class="badge ${excluidas?'b-warn':'b-neutral'}">${excluidas} excluída(s)</span>
     </div>
     ${catalogErrorNotice()}
+    ${cadastroMaterias?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;"><span class="badge b-ok">${contagemCadastro.atualizada} atualizada(s)</span><span class="badge b-warn">${contagemCadastro.incompleta} incompleta(s)</span><span class="badge b-neutral">${contagemCadastro.sem_categoria} sem categoria</span></div>`:''}
     <input type="text" placeholder="Buscar matéria-prima…" value="${adminState.materiaQuery}" data-act="admin-materia-query" style="width:100%; margin-bottom:12px;">
     <div class="tablewrap">
       <div class="erpitem head"><span>ID</span><span>Nome</span><span>Unidade</span><span>Custo</span><span>Atualizado</span><span>Ação</span></div>
@@ -5632,7 +5658,7 @@ function adminMateriasAdmin(){
         const excl = adminState.materiasExcluidas.has(m.id);
         return `<div class="erpitem" style="${excl?'opacity:.45;':''}">
           <span class="mono">${m.id}</span>
-          <span>${m.nome}${m.status!=='Ativo'?` <span class="badge b-bad" style="margin-left:4px;">${m.status}</span>`:''}</span>
+          <span>${m.nome}${m.status!=='Ativo'?` <span class="badge b-bad" style="margin-left:4px;">${m.status}</span>`:''}${seloCadastro(m.id)}</span>
           <span>${m.unidade}</span>
           <span class="mono">${money(m.valor)}</span>
           <span>${m.atualizado||'—'}</span>
