@@ -25,15 +25,43 @@ export class VectorizerAiError extends Error {
  */
 export type VectorizacaoModo = "completo" | "corte";
 
+/** Ajustes que a leitura da arte (ou as regras do administrador) podem pedir; só estes três, sempre limitados. */
+export type AjustesVetorizacao = {
+  maxCores?: number | null;
+  minAreaPx?: number | null;
+  tolerancia?: number | null;
+};
+
+const LIMITES_AJUSTES = { maxCores: [2, 48], minAreaPx: [0.5, 30], tolerancia: [0.02, 0.5] } as const;
+
+/** Qualquer valor que não seja número finito é descartado; os demais são levados para dentro da faixa permitida. */
+export function limitarAjustesVetorizacao(bruto: Record<string, unknown> | null | undefined): AjustesVetorizacao {
+  const saida: AjustesVetorizacao = {};
+  const numero = (valor: unknown) => (typeof valor === "string" && valor.trim() !== "" ? Number(valor) : valor);
+  const aplicar = (chave: keyof AjustesVetorizacao, inteiro: boolean) => {
+    const valor = numero(bruto?.[chave]);
+    if (typeof valor !== "number" || !Number.isFinite(valor)) return;
+    const [min, max] = LIMITES_AJUSTES[chave];
+    const limitado = Math.min(max, Math.max(min, valor));
+    saida[chave] = inteiro ? Math.round(limitado) : Number(limitado.toFixed(3));
+  };
+  aplicar("maxCores", true);
+  aplicar("minAreaPx", false);
+  aplicar("tolerancia", false);
+  return saida;
+}
+
 export type VectorizeImageParams = {
   imageBuffer: Buffer;
   imageFilename: string;
   imageMimeType: "image/jpeg" | "image/png";
   modo?: VectorizacaoModo;
+  ajustes?: AjustesVetorizacao;
 };
 
 /** Parâmetros do Vectorizer.AI (nomes conforme a especificação OpenAPI oficial) pensados no corte CNC. */
-export function parametrosVetorizacao(modo: VectorizacaoModo = "completo"): Array<[string, string]> {
+export function parametrosVetorizacao(modo: VectorizacaoModo = "completo", ajustes: AjustesVetorizacao = {}): Array<[string, string]> {
+  const seguros = limitarAjustesVetorizacao(ajustes as Record<string, unknown>);
   const comuns: Array<[string, string]> = [
     ["mode", "production"],
     ["output.file_format", "svg"],
@@ -50,11 +78,15 @@ export function parametrosVetorizacao(modo: VectorizacaoModo = "completo"): Arra
     ["output.curves.allowed.elliptical_arc", "false"],
     ["output.svg.adobe_compatibility_mode", "true"],
   ];
-  return modo === "corte"
+  if (modo === "corte") {
     // Uma cor só: tudo que é arte vira uma única silhueta, com vazados reais. Fotos e adesivos viram bloco cheio.
-    ? [...comuns, ["processing.max_colors", "1"], ["processing.shapes.min_area_px", "16"]]
-    // Descarta ruídos menores que ~2 × 2 px, que gerariam contornos minúsculos soltos.
-    : [...comuns, ["processing.shapes.min_area_px", "4"]];
+    return [...comuns, ["processing.max_colors", "1"], ["processing.shapes.min_area_px", "16"]];
+  }
+  // Descarta ruídos menores que ~2 × 2 px, que gerariam contornos minúsculos soltos (ajustável pela leitura da arte).
+  const completo: Array<[string, string]> = [...comuns, ["processing.shapes.min_area_px", String(seguros.minAreaPx ?? 4)]];
+  if (seguros.maxCores != null) completo.push(["processing.max_colors", String(seguros.maxCores)]);
+  if (seguros.tolerancia != null) completo.push(["output.curves.line_fit_tolerance", String(seguros.tolerancia)]);
+  return completo;
 }
 
 export type VectorizeImageResult = {

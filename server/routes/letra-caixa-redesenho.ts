@@ -10,7 +10,11 @@ import {
   emitirTicketRedesenho,
   validarTicketRedesenho,
 } from "../services/redesenhoTicket";
-import { vectorizeImage, VectorizerAiError } from "../services/vectorizerAi";
+import { vectorizeImage, VectorizerAiError, limitarAjustesVetorizacao } from "../services/vectorizerAi";
+import { analisarArte } from "../services/cpqAnaliseArte";
+import { estudioConfiguracoes } from "../../drizzle/schema";
+import { getDb } from "../db/db";
+import { eq } from "drizzle-orm";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_PREPROCESSED_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -59,6 +63,16 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
       }
 
       void executarRedesenho(req, res);
+    });
+  });
+
+  app.post("/api/letra-caixa/analise-arte", (req, res) => {
+    preprocessedImageBodyParser(req, res, (parseError) => {
+      if (parseError) {
+        res.status((parseError as { status?: number }).status ?? 400).json({ error: "Não consegui ler a imagem. Envie JPG ou PNG." });
+        return;
+      }
+      void executarAnaliseArte(req, res);
     });
   });
 
@@ -123,6 +137,37 @@ async function armazenarImagemCotacao(req: Request, res: Response): Promise<void
   }
 }
 
+/** Lê a arte aprovada com um modelo de visão e devolve o que enxergou e os ajustes sugeridos para o Vectorizer.AI. */
+async function executarAnaliseArte(req: Request, res: Response): Promise<void> {
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) { res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." }); return; }
+    } catch { res.status(403).json({ error: "Origem da solicitação inválida." }); return; }
+  }
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) { res.status(401).json({ error: "Entre no sistema para analisar a arte." }); return; }
+  const mimeType = req.get("content-type")?.split(";")[0].toLowerCase();
+  if (mimeType !== "image/jpeg" && mimeType !== "image/png") { res.status(415).json({ error: "Envie uma imagem JPG ou PNG." }); return; }
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) { res.status(400).json({ error: "A imagem enviada está vazia." }); return; }
+  if (!validarTicketRedesenho(req.get("x-redesenho-token"), session.user.id, req.body)) {
+    res.status(409).json({ error: "Use o PNG exato retornado pela reconstrução por IA nesta sessão." });
+    return;
+  }
+  try {
+    const db = await getDb();
+    const [linha] = db ? await db.select().from(estudioConfiguracoes).where(eq(estudioConfiguracoes.id, 1)).limit(1) : [];
+    const salvo = linha?.configuracaoJson as { regrasLeituraArte?: unknown } | null | undefined;
+    const regrasAdministrador = typeof salvo?.regrasLeituraArte === "string" ? salvo.regrasLeituraArte : "";
+    const resultado = await analisarArte({ imageBuffer: req.body, mimeType, regrasAdministrador });
+    res.setHeader("Cache-Control", "no-store");
+    res.json(resultado);
+  } catch (error) {
+    console.error("[letra-caixa] falha na leitura da arte:", error);
+    res.status(502).json({ error: "Não consegui ler a arte agora. A vetorização segue com os parâmetros padrão." });
+  }
+}
+
 async function executarVetorizacao(req: Request, res: Response): Promise<void> {
   const origin = req.get("origin");
   if (origin) {
@@ -165,6 +210,7 @@ async function executarVetorizacao(req: Request, res: Response): Promise<void> {
       imageFilename: mimeType === "image/png" ? "arte-aprovada.png" : "arte-aprovada.jpg",
       imageMimeType: mimeType,
       modo,
+      ajustes: limitarAjustesVetorizacao({ maxCores: req.query.maxCores, minAreaPx: req.query.minArea, tolerancia: req.query.tolerancia }),
     });
     res
       .status(200)

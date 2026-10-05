@@ -22,6 +22,7 @@ const CONFIGURACAO_PADRAO = {
     "Insumo fabricação",
     "Produtividade",
   ],
+  regrasLeituraArte: "",
 };
 
 const configuracaoSchema = z
@@ -38,6 +39,7 @@ const configuracaoSchema = z
       .strict(),
     jurosCartaoPct: z.array(z.number().min(0).max(100)).length(6),
     papeisPeca: z.array(z.string().trim().min(1).max(120)).max(200),
+    regrasLeituraArte: z.string().max(4000).default(""),
   })
   .strict();
 

@@ -682,6 +682,16 @@ enviado à factibilidade recebe o grupo `Face` (`svgComCamadaFace`): sem ele o S
 camada Face. Fotos dentro do logotipo (20+ cores sólidas pequenas) são reunidas numa região complexa →
 adesivo impresso (`consolidarRegioesFotograficas`). A "área total" de uma região é a soma das caixas de cada
 contorno, como a conferência de consumo de bobina exige.
+Leitura da arte antes de vetorizar (05/10/2026): `POST /api/letra-caixa/analise-arte` (`server/services/cpqAnaliseArte.ts`)
+manda o PNG aprovado (mesmo ticket da vetorização) a um modelo de visão (OpenAI `gpt-5-mini`, saída JSON estrita,
+uma chamada barata por vetorização) que descreve fundo, textos, foto/degradê, nº de cores chapadas e detalhes finos.
+Daí sai uma recomendação padrão (poucas cores chapadas: limite = cores + 2; foto/degradê: 32; detalhes finos: área
+mínima 2). O administrador escreve regras em palavras em Administração > Configurações (`regrasLeituraArte`, em
+`estudio_configuracoes`); o modelo as usa para sugerir ajustes que **vencem** a recomendação padrão. Só existem três
+ajustes (`maxCores` 2–48, `minAreaPx` 0,5–30, `tolerancia` 0,02–0,5), sempre limitados por
+`limitarAjustesVetorizacao`; texto da imagem nunca vira regra. Os ajustes viajam como `?maxCores&minArea&tolerancia`
+na vetorização e aparecem no quadro "Leitura da arte". A leitura só informa (fundo, textos): não bloqueia nada e, se
+falhar, a vetorização usa os parâmetros padrão.
 O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a
 reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com
