@@ -174,6 +174,11 @@ contatos são extraídos do arquivo **sob demanda**, a cada geração de lista (
 `extrairContatos` do upload manual) — nada é duplicado no banco. Isso também permite reaproveitar como fonte
 qualquer arquivo já salvo em qualquer campanha.
 
+**Fonte sem arquivo, lista por campanha** (pedido do usuário 05/10/2026, migration `0086`): tipo `campanha_arquivos`.
+Em "Gerenciar fontes" > "Criar sem arquivo" nasce uma fonte (ex.: "Prospecção Nacional") sem `arquivo_id`; cada campanha
+que a vincula usa **todos os arquivos anexados na sua própria pasta** (Arquivos da campanha, `campanha_id`), lidos sob
+demanda em `montarListaCampanha`. Assim várias campanhas compartilham a classificação e cada uma sobe a sua planilha.
+
 **Pipeline de resolução (`gerarListaDaCampanha`, só leitura — não grava nada):** resolve cada fonte vinculada →
 concatena os contatos brutos de todas → `higienizarLista` (normaliza telefone, desduplica **entre** fontes por
 telefone normalizado, aplica a quarentena global) → `filtrarPorCadenciaCampanha` (nova checagem, só aqui — ver

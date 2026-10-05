@@ -3086,7 +3086,9 @@ export type InsertCampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$in
 // conceitos em vez de duplicar dado) — o arquivo pode ter nascido solto ou dentro de qualquer campanha; a
 // fonte só referencia, e os contatos são extraídos do arquivo sob demanda (parse ao gerar a lista, não
 // guardado à parte). Ver server/services/fontesErpCampanhas.ts.
-export const campanhaFonteTipoEnum = pgEnum("campanha_fonte_tipo", ["erp", "arquivo"]);
+// "campanha_arquivos": fonte sem arquivo próprio — cada campanha que a vincula usa os arquivos anexados na sua
+// própria pasta (campanhas_whatsapp_arquivos.campanha_id), ex.: "Prospecção Nacional" com uma lista por campanha.
+export const campanhaFonteTipoEnum = pgEnum("campanha_fonte_tipo", ["erp", "arquivo", "campanha_arquivos"]);
 
 export const campanhasWhatsappFontes = pgTable("campanhas_whatsapp_fontes", {
   id: serial("id").primaryKey(),

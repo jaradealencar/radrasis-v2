@@ -429,6 +429,14 @@ async function montarListaCampanha(
       contatos = filtrarPorPeriodo(
         await resolverFonteErp(fonte.consultaErp, dataReferencia, ctxErp ?? undefined), inicioDaFonte, periodoFim,
       );
+    } else if (fonte.tipo === "campanha_arquivos") {
+      // Fonte sem arquivo próprio: vale o que foi anexado na pasta DESTA campanha (uma lista por campanha).
+      const arquivos = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.campanhaId, campanha.id));
+      contatos = [];
+      for (const arquivo of arquivos) {
+        const leitura = await lerArquivoDeUrl(arquivo.url, arquivo.nome);
+        if (leitura.ok) contatos.push(...leitura.contatos.map(c => ({ telefone: c.telefone || null, nome: c.nome })));
+      }
     } else {
       if (!fonte.arquivoId) continue;
       const [arquivo] = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId)).limit(1);
@@ -954,6 +962,24 @@ export const campanhasWhatsappRouter = router({
       for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
       const [row] = await db.insert(campanhasWhatsappFontes).values({
         tipo: "arquivo", chave, label: input.label, descricao: input.descricao || null, arquivoId: input.arquivoId,
+      }).returning();
+      return row;
+    }),
+
+  /** Cria uma fonte tipo "campanha_arquivos": sem arquivo vinculado — cada campanha anexa a sua própria lista
+   * na pasta de arquivos (ex.: "Prospecção Nacional" reutilizada em várias campanhas, uma planilha em cada). */
+  criarFonteCampanhaArquivos: campanhasProcedure
+    .input(z.object({ label: z.string().trim().min(1).max(120), descricao: z.string().trim().max(500).nullish() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const existentes = await db.select({ chave: campanhasWhatsappFontes.chave }).from(campanhasWhatsappFontes);
+      const chaves = new Set(existentes.map(e => e.chave));
+      const base = gerarChaveCategoria(input.label);
+      let chave = base;
+      for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
+      const [row] = await db.insert(campanhasWhatsappFontes).values({
+        tipo: "campanha_arquivos", chave, label: input.label,
+        descricao: input.descricao || "Cada campanha usa a lista anexada na sua própria pasta de arquivos.",
       }).returning();
       return row;
     }),

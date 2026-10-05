@@ -1,0 +1,1 @@
+ALTER TYPE "public"."campanha_fonte_tipo" ADD VALUE 'campanha_arquivos';

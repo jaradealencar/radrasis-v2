@@ -30,6 +30,10 @@ export default function GerenciarFontesPopover() {
     onSuccess: () => { setLabel(""); setCriando(false); invalidar(); toast.success("Fonte criada."); },
     onError: e => toast.error(e.message),
   });
+  const criarFonteCampanhaArquivos = trpc.campanhasWhatsapp.criarFonteCampanhaArquivos.useMutation({
+    onSuccess: () => { setLabel(""); setCriando(false); invalidar(); toast.success("Fonte criada. Anexe a lista em cada campanha, em Arquivos."); },
+    onError: e => toast.error(e.message),
+  });
   const arquivar = trpc.campanhasWhatsapp.arquivarFonte.useMutation({ onSuccess: invalidar, onError: e => toast.error(e.message) });
 
   async function escolherArquivo(file: File | undefined) {
@@ -49,7 +53,7 @@ export default function GerenciarFontesPopover() {
     }
   }
 
-  const ocupado = enviando || arquivar.isPending;
+  const ocupado = enviando || arquivar.isPending || criarFonteCampanhaArquivos.isPending;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -73,6 +77,9 @@ export default function GerenciarFontesPopover() {
                 <span className={`flex-1 truncate ${!f.ativo ? "text-muted-foreground line-through" : ""}`} title={f.descricao ?? undefined}>
                   {f.label}
                 </span>
+                {f.tipo === "campanha_arquivos" && (
+                  <span className="text-[10px] text-muted-foreground">lista por campanha</span>
+                )}
                 {f.tipo === "arquivo" && f.arquivo && (
                   <span className="text-[10px] text-muted-foreground truncate max-w-[6rem]" title={f.arquivo.nome}>{f.arquivo.nome}</span>
                 )}
@@ -103,6 +110,10 @@ export default function GerenciarFontesPopover() {
                   <X size={14} />
                 </Button>
               </div>
+              <Button type="button" size="sm" variant="secondary" className="h-8 w-full gap-1.5" disabled={ocupado}
+                onClick={() => label.trim() ? criarFonteCampanhaArquivos.mutate({ label: label.trim() }) : toast.error("Dê um nome à fonte.")}>
+                <FolderInput size={14} /> Criar sem arquivo (cada campanha anexa a sua lista)
+              </Button>
               <p className="text-[11px] text-muted-foreground">Mesmo formato do disparo: colunas <code>telefone</code> e <code>nome_cliente</code>.</p>
             </div>
           )}
