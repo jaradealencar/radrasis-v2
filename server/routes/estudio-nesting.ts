@@ -2,7 +2,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { estudioChapas, materiaPrimaCadastros } from "../../drizzle/schema";
+import { estudioChapas, materiaPrimaCadastros, materiaPrimaCategorias } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
@@ -155,6 +155,7 @@ export function registrarRotasEstudioNesting(app: Express): void {
   app.put("/api/letra-caixa/chapas/:id", capturar(atualizarChapa));
   app.delete("/api/letra-caixa/chapas/:id", capturar(desativarChapa));
   app.post("/api/letra-caixa/nesting", capturar(calcularNesting));
+  app.get("/api/letra-caixa/materias-peso", capturar(listarDadosPeso));
 }
 
 async function listarChapas(req: Request, res: Response): Promise<void> {
@@ -192,6 +193,36 @@ async function listarChapas(req: Request, res: Response): Promise<void> {
     densidadeGCm3: item.densidadeKgM3 == null ? null : Number((Number(item.densidadeKgM3) / 1000).toFixed(4)),
   }]));
   res.json({ chapas: rows.map(row => ({ ...row, espessuraMm: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.espessuraMm ?? null, densidadeGCm3: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.densidadeGCm3 ?? null })) });
+}
+
+/** Dados técnicos (espessura, densidade, dimensões do perfil, peso específico) usados só para estimar o peso do letreiro. */
+async function listarDadosPeso(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const [cadastros, categorias] = await Promise.all([
+    db.select().from(materiaPrimaCadastros),
+    db.select().from(materiaPrimaCategorias),
+  ]);
+  const categoriaPorId = new Map(categorias.map(item => [item.id, item]));
+  const numero = (valor: string | null) => (valor == null ? null : Number(valor));
+  const materias = cadastros.map(cadastro => {
+    const categoria = cadastro.categoriaId == null ? null : categoriaPorId.get(cadastro.categoriaId) ?? null;
+    const tipo = categoria?.usaDadosChapa ? "chapa" : categoria?.usaDadosPerfil ? "perfil" : categoria?.usaDadosBobina ? "bobina" : "outro";
+    const densidadeKgM3 = numero(cadastro.densidadeKgM3);
+    return {
+      id: cadastro.mubisysMateriaPrimaId,
+      tipo,
+      espessuraMm: numero(cadastro.espessuraMm),
+      densidadeGCm3: densidadeKgM3 == null ? null : densidadeKgM3 / 1000,
+      perfilAlturaMm: numero(cadastro.perfilAlturaMm),
+      perfilLarguraMm: numero(cadastro.perfilLarguraMm),
+      perfilComprimentoMm: numero(cadastro.perfilComprimentoMm),
+      pesoEspecificoKg: numero(cadastro.pesoEspecificoKg),
+    };
+  });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ materias });
 }
 
 async function salvarChapa(

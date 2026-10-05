@@ -4176,6 +4176,79 @@ function realStepNestingV2(){
   </div>`;
 }
 
+/* ---- Peso estimado do letreiro (só para o vendedor; nunca vai ao link do cliente) ---- */
+let dadosPesoMaterias = null; // Map id -> dados técnicos; null = ainda não carregado
+let dadosPesoErro = '';
+let dadosPesoCarregando = false;
+async function carregarDadosPeso(){
+  if(dadosPesoCarregando) return;
+  dadosPesoCarregando=true;
+  try{
+    const response=await fetch('/api/letra-caixa/materias-peso',{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível carregar os dados de peso.');
+    dadosPesoMaterias=new Map((body.materias||[]).map(item=>[item.id,item]));
+    dadosPesoErro='';
+  }catch(error){dadosPesoErro=error.message||'Falha ao carregar os dados de peso.';dadosPesoMaterias=new Map();}
+  finally{dadosPesoCarregando=false;render();}
+}
+function pesoLinhaKit(linha, geom){
+  const material=materialKitAtivo(linha);
+  const qtd=Math.max(0,kitLineQty(linha,geom));
+  const base={nome:material.nome,quantidade:qtd,unidade:material.unidade||'',kg:null,motivo:'',como:''};
+  const dados=dadosPesoMaterias&&dadosPesoMaterias.get(Number(material.matId));
+  if(!dados) return {...base,motivo:'Sem dados de peso cadastrados (categoria, densidade ou peso específico).'};
+  if(dados.tipo==='chapa'){
+    if(!(dados.espessuraMm>0)||!(dados.densidadeGCm3>0)) return {...base,motivo:'Chapa sem espessura ou densidade cadastrada.'};
+    if(linha.formulaType!=='area'&&linha.formulaType!=='areaTotal') return {...base,motivo:'A fórmula desta linha não é em área (m²).'};
+    let areaM2=qtd; let nota='';
+    if(linha.formulaType==='areaTotal'){
+      const resultados=REAL.nestingMateriais?.length?REAL.nestingMateriais:(REAL.nesting?.materiais||[]);
+      const nesting=resultados.find(item=>Number(item.id_materia_prima)===Number(material.matId));
+      if(nesting&&Number.isFinite(Number(nesting.area_liquida_m2))) areaM2=Number(nesting.area_liquida_m2)*(Number(linha.mult)||0);
+      else nota=' (área total, pode incluir sobra)';
+    }
+    return {...base,kg:areaM2*dados.espessuraMm*dados.densidadeGCm3,como:fmt(areaM2,3)+' m² × '+dados.espessuraMm+' mm × '+dados.densidadeGCm3+' g/cm³'+nota};
+  }
+  if(dados.tipo==='perfil'){
+    const h=dados.perfilAlturaMm,w=dados.perfilLarguraMm,e=dados.espessuraMm,d=dados.densidadeGCm3,c=dados.perfilComprimentoMm;
+    if(!(h>0&&w>0&&e>0&&d>0)) return {...base,motivo:'Perfil sem altura, largura, espessura ou densidade cadastrada.'};
+    const secaoMm2=2*e*(h+w-2*e); // tubo retangular oco
+    const kgPorM=secaoMm2*d/1000;
+    const un=normalizeSearch(String(material.unidade||''));
+    if(un.includes('metro')||un==='m'||un==='ml') return {...base,kg:qtd*kgPorM,como:fmt(qtd,2)+' m × '+fmt(kgPorM,3)+' kg/m (seção oca estimada)'};
+    if(c>0&&(un.includes('unid')||un==='un'||un==='pc'||un.includes('barra'))) return {...base,kg:qtd*(c/1000)*kgPorM,como:fmt(qtd,2)+' barra(s) × '+fmt(c/1000,2)+' m × '+fmt(kgPorM,3)+' kg/m (seção oca estimada)'};
+    return {...base,motivo:'Unidade do perfil não permite converter em peso (use metro linear ou unidade com comprimento).'};
+  }
+  if(dados.pesoEspecificoKg>0) return {...base,kg:qtd*dados.pesoEspecificoKg,como:fmt(qtd,3)+' × '+dados.pesoEspecificoKg+' kg/'+(material.unidade||'un.')};
+  return {...base,motivo:'Sem peso específico cadastrado.'};
+}
+function computePesoReal(){
+  const g=computeGeomReal();
+  const linhas=REAL.kit.map(k=>pesoLinhaKit(k,g));
+  const extras=(REAL.colorAnalysis?.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso')
+    .map(item=>({nome:item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax',quantidade:null,unidade:'',kg:null,motivo:'Adesivos ainda não têm peso cadastrado.',como:''}));
+  const kitPronto=REAL.produtoId&&REAL.modeloId?adminState.kits[kitKey(REAL.produtoId,REAL.modeloId)]:null;
+  const produtos=(Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[])
+    .map(kp=>({nome:kp.nome,quantidade:null,unidade:'',kg:null,produto:true,motivo:'Produto vinculado ao kit: o peso dele não entra na soma.',como:''}));
+  const todas=[...linhas,...extras,...produtos];
+  return {todas,totalKg:todas.reduce((s,l)=>s+(l.kg||0),0),pendentes:todas.filter(l=>l.kg==null).length};
+}
+function blocoPesoReal(){
+  if(dadosPesoMaterias==null){carregarDadosPeso();return '<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:14px;"><div class="empty-hint">Carregando dados de peso…</div></div>';}
+  const peso=computePesoReal();
+  const linhasHtml=peso.todas.map(l=>l.kg!=null
+    ?'<tr><td>'+escaparHtml(l.nome)+'</td><td style="font-size:12px;color:var(--text-dim);">'+escaparHtml(l.como)+'</td><td class="num">'+fmt(l.kg,3)+' kg</td></tr>'
+    :'<tr style="background:rgba(245,158,11,.14);"><td><b>'+escaparHtml(l.nome)+'</b>'+(l.produto?' <span class="badge b-neutral">produto</span>':'')+'</td><td style="font-size:12px;">'+ICONS.alert+' '+escaparHtml(l.motivo)+'</td><td class="num"><span class="badge b-warn">sem peso</span></td></tr>').join('');
+  return '<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:14px;">'
+    +'<div class="cardhead"><div><h3>Peso estimado do letreiro</h3><p>Uso interno do vendedor: não aparece no link do cliente. Calculado com a densidade das chapas e perfis e o peso específico das demais matérias-primas.</p></div>'
+    +'<span class="badge '+(peso.pendentes?'b-warn':'b-ok')+'">'+(peso.pendentes?peso.pendentes+' item(ns) sem peso':'Todos com peso calculado')+'</span></div>'
+    +(dadosPesoErro?'<div class="warnbox">'+escaparHtml(dadosPesoErro)+'</div>':'')
+    +'<div class="tablewrap"><table><thead><tr><th>Item</th><th>Cálculo</th><th>Peso</th></tr></thead><tbody>'+linhasHtml
+    +'<tr><td colspan="2"><b>Peso total estimado do letreiro</b>'+(peso.pendentes?'<div class="role-note">Soma apenas os itens com peso calculado; os destacados em amarelo ficaram de fora.</div>':'')+'</td><td class="num"><b>'+fmt(peso.totalKg,3)+' kg</b></td></tr>'
+    +'</tbody></table></div></div>';
+}
+
 function realStepOrcamento(){
   const g = computeGeomReal();
   const o = computeOrcamentoReal();
@@ -4283,6 +4356,7 @@ function realStepOrcamento(){
       ${REAL.precoAprovacao?`<div class="role-note" style="margin-top:9px;color:var(--ok);">Preço aprovado por ${escaparHtml(REAL.precoAprovacao.aprovadoPor?.nome||'usuário autorizado')} em ${new Date(REAL.precoAprovacao.aprovadoEm).toLocaleString('pt-BR')}. Se custo, medidas, composição ou regra mudar, aprove novamente.</div>`:`<div class="role-note" style="margin-top:9px;">Ainda sem aprovação. O link da cotação só será liberado depois da revisão humana.</div>`}
       ${REAL.precoIAErro?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(REAL.precoIAErro)}</div>`:''}
     </div>
+    ${blocoPesoReal()}
     <div class="footer-nav">
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-soft" data-act="real-salvar-proposta">${ICONS.db} Salvar proposta</button>
