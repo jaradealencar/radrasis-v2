@@ -671,6 +671,17 @@ desenvolvimento não o tem): rodar `server/scripts/validar-bobina-deepnest.ts` o
 existir. Checklist de produção (migrations 0078+, cadastro do kraft #1098 e do adesivo
 comum, unidade de custo no MubiSys): `docs/cpq-bobinas-producao.md`.
 
+**Cadastro de matérias-primas (05/10/2026):** cada matéria-prima mostra o selo **Atualizada / Incompleta / Sem
+categoria** (regra única em `server/services/cpqCadastroMateria.ts`: categorizada e com os dados que a categoria
+exige — chapa, bobina ou perfil — conta como atualizada), no `listar` do tRPC (Produtos, com contadores e filtro)
+e em `GET /api/letra-caixa/materias-cadastro` (lista da administração do CPQ). O diálogo de edição tem **Clonar
+dados de outra matéria-prima**: preenche o formulário com categoria, espessura, densidade, formatos/larguras,
+perfil e peso específico da origem (sem ids, nomes em branco, cor só se o vendedor marcar), sem salvar. `estudio_chapas.pantone_code` guarda até 6
+referências Pantone separadas por vírgula (migration 0085; `separarPantones`/`normalizarListaPantone` em
+`shared/pantone-referencia.ts` aceitam também "021 C  804 C", "+", "/", "e", "ou"). O casamento de cor
+(`labsCatalogo` em `cpqCoresMateriais.ts`) considera cor hex, CMYK e cada Pantone da lista e usa a mais próxima
+(ΔE00); código fora da tabela de amostras (ex.: 804 C) só casa pelo código exato da arte.
+
 `server/services/cpqFactibilidadeFabricacao.ts` contains the geometry checks for
 sheet fit and oversized-piece seams. The authenticated
 `server/routes/estudio-factibilidade.ts` route calls it before nesting and records

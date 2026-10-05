@@ -6,6 +6,7 @@ import {
   materiaPrimaCategorias,
 } from "../../drizzle/schema";
 import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, secaoPerfilMm2, type FormatoPerfil, normalizarFormatoPerfil } from "@shared/peso";
+import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-referencia";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
@@ -39,7 +40,7 @@ const formatosChapaInput = z.array(z.object({
   nome: z.string().trim().min(1).max(256),
   larguraMm: z.number().int().min(10).max(50_000),
   alturaMm: z.number().int().min(10).max(50_000),
-  pantoneCode: z.string().trim().max(32).nullable().optional(),
+  pantoneCode: z.string().trim().max(200).nullable().optional().refine(valor => valor == null || listaPantoneValida(valor), { message: "Informe até 6 referências Pantone de até 30 caracteres cada." }),
   cmykC: z.number().finite().min(0).max(100).nullable().optional(),
   cmykM: z.number().finite().min(0).max(100).nullable().optional(),
   cmykY: z.number().finite().min(0).max(100).nullable().optional(),
@@ -328,7 +329,7 @@ export const materiasPrimasRouter = router({
             alturaMm,
             bobina: usaDadosBobina,
             temCor: usaDadosChapa ? cor?.temCor ?? true : true,
-            pantoneCode: usaDadosChapa && cor?.temCor !== false ? cor?.pantoneCode?.trim().toUpperCase() || null : null,
+            pantoneCode: usaDadosChapa && cor?.temCor !== false ? normalizarListaPantone(cor?.pantoneCode) : null,
             cmykC: usaDadosChapa && cor?.temCor !== false && cor?.cmykC != null ? String(cor.cmykC) : null,
             cmykM: usaDadosChapa && cor?.temCor !== false && cor?.cmykM != null ? String(cor.cmykM) : null,
             cmykY: usaDadosChapa && cor?.temCor !== false && cor?.cmykY != null ? String(cor.cmykY) : null,

@@ -10,7 +10,7 @@ O código novo lê colunas que só existem depois das migrations. Publicar sem m
 matérias-primas e o nesting.
 
 - [ ] Conferir quais migrations o banco de produção já tem (`drizzle.__drizzle_migrations`): a **0078** e as
-  seguintes (**0079 a 0084** na data deste documento) ainda não foram aplicadas lá.
+  seguintes (**0079 a 0085** na data deste documento) ainda não foram aplicadas lá.
 - [ ] Aplicar com `npx drizzle-kit migrate` (nunca SQL solto). As migrations são só aditivas
   (colunas novas com default + um `INSERT` de seed), então não alteram dados existentes.
 - [ ] **0078** (`0078_bobinas_materias_primas.sql`): `estudio_chapas.bobina` (default `false`),
@@ -18,8 +18,10 @@ matérias-primas e o nesting.
   categoria chamada "Bobinas", ela é apenas marcada como de bobina (`ON CONFLICT … DO UPDATE`).
 - [ ] **0083** (`0083_bobina_custo_base.sql`): `materia_prima_cadastros.bobina_custo_base` e
   `bobina_comprimento_rolo_mm` (como o custo do MubiSys é cobrado — ver seção 2).
+- [ ] **0085** (`0085_pantone_varias_referencias.sql`): `estudio_chapas.pantone_code` passa a `varchar(200)` (várias
+  referências Pantone por chapa, separadas por vírgula).
 - [ ] 0079 a 0082 e 0084 (perfil, peso específico, `tem_cor`, formato do perfil): vieram de outras tarefas, mas o
-  cadastro de matérias-primas e a rota de chapas dependem delas junto com a 0078 e a 0083.
+  cadastro de matérias-primas e a rota de chapas dependem delas junto com a 0078, a 0083 e a 0085.
 - [ ] Depois de migrar: `select nome, usa_dados_bobina from materia_prima_categorias` deve listar "Bobinas" com `true`.
 - [ ] Rollback: as colunas novas são inofensivas se o código antigo voltar; não é preciso reverter a migration.
 

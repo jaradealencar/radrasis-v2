@@ -6,6 +6,7 @@ import { estudioChapas, materiaPrimaCadastros, materiaPrimaCategorias } from "..
 import { gCm3ParaKgM3, kgM3ParaGCm3, normalizarFormatoPerfil } from "../../shared/peso";
 import { calcularPesoLinha, somarPesos, type DadosPesoMateria } from "../services/cpqPeso";
 import { auth } from "../_core/auth";
+import { listaPantoneValida, normalizarListaPantone } from "../../shared/pantone-referencia";
 import { carregarCustoBobina } from "../db/bobinaCusto";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -28,7 +29,7 @@ const chapaInput = z
     nome: z.string().trim().min(1).max(256),
     larguraMm: z.number().int().min(10).max(50_000),
     alturaMm: z.number().int().min(10).max(50_000),
-    pantoneCode: z.string().trim().max(32).nullable().optional(),
+    pantoneCode: z.string().trim().max(200).nullable().optional().refine(valor => valor == null || listaPantoneValida(valor), { message: "Informe até 6 referências Pantone de até 30 caracteres cada." }),
     cmykC: z.number().finite().min(0).max(100).nullable().optional(),
     cmykM: z.number().finite().min(0).max(100).nullable().optional(),
     cmykY: z.number().finite().min(0).max(100).nullable().optional(),
@@ -324,7 +325,7 @@ async function salvarChapa(
     nome: data.nome,
     larguraMm: Math.max(data.larguraMm, data.alturaMm),
     alturaMm: Math.min(data.larguraMm, data.alturaMm),
-    pantoneCode: temCor ? data.pantoneCode?.trim().toUpperCase() || null : null,
+    pantoneCode: temCor ? normalizarListaPantone(data.pantoneCode) : null,
     cmykC: temCor ? data.cmykC == null ? null : String(data.cmykC) : null,
     cmykM: temCor ? data.cmykM == null ? null : String(data.cmykM) : null,
     cmykY: temCor ? data.cmykY == null ? null : String(data.cmykY) : null,

@@ -1,3 +1,4 @@
+import { hexesDoPantone } from "@shared/pantone-referencia";
 import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaAltura, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
@@ -216,6 +217,7 @@ function CadastroMateriasPrimas() {
       <DialogEditarMateriaPrima
         material={materialEditando}
         categorias={categorias}
+        materias={materias ?? []}
         onFechar={() => setMaterialEditando(null)}
       />
       <DialogCategoriasMateriaPrima aberto={gerenciarCategorias} onFechar={() => setGerenciarCategorias(false)} />
@@ -232,6 +234,26 @@ function sugerirBaseCustoBobina(unidadeCusto: string): "" | "m2" | "ml" {
 }
 
 const fmtEspessura = (mm: number | null) => mm == null ? "—" : mm < 1 ? `${Number((mm * 1000).toFixed(2))} µm` : `${mm} mm`;
+
+/** Referências Pantone digitadas na mesma célula, cada uma com a amostra da tabela (ou aviso quando não há amostra). */
+function PantoneChips({ valor }: { valor: string }) {
+  const itens = hexesDoPantone(valor);
+  if (itens.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 pt-1">
+      {itens.map(item => (
+        <span
+          key={item.codigo}
+          className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+          title={item.hex ? `Amostra ${item.hex}` : "Código fora da tabela de amostras: só casa pelo código exato da arte"}
+        >
+          <span className="inline-block h-3 w-3 rounded-full border" style={{ background: item.hex ?? "transparent" }} />
+          {item.codigo}{item.hex ? "" : " · sem amostra"}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /** Espessura digitada em milímetros ou micras; o valor é sempre gravado em mm. */
 function CampoEspessura({ valor, unidade, onValor, onUnidade, obrigatorio, rotulo = "Espessura" }: {
@@ -255,10 +277,12 @@ function CampoEspessura({ valor, unidade, onValor, onUnidade, obrigatorio, rotul
 function DialogEditarMateriaPrima({
   material,
   categorias,
+  materias,
   onFechar,
 }: {
   material: MateriaPrimaCadastroItem | null;
   categorias: MateriaPrimaCategoriaItem[];
+  materias: MateriaPrimaCadastroItem[];
   onFechar: () => void;
 }) {
   const utils = trpc.useUtils();
@@ -272,42 +296,65 @@ function DialogEditarMateriaPrima({
   const [bobinas, setBobinas] = useState<FormatoBobinaForm[]>([]);
   const [bobinaCustoBase, setBobinaCustoBase] = useState<"" | "m2" | "ml" | "rolo">("");
   const [bobinaComprimentoRolo, setBobinaComprimentoRolo] = useState("");
+  const [origemBusca, setOrigemBusca] = useState("");
+  const [origemId, setOrigemId] = useState("");
+  const [copiarCor, setCopiarCor] = useState(false);
   const categoria = categorias.find(item => String(item.id) === categoriaId);
 
-  useEffect(() => {
-    if (!material) return;
-    setCategoriaId(material.categoriaId == null ? "sem-categoria" : String(material.categoriaId));
-    setEspessuraMm(material.espessuraMm == null ? "" : String(material.espessuraMm));
+  /** Preenche o formulário com os dados de `fonte`: o próprio material ao abrir, ou outro material ao clonar (sem ids; cor só se pedido). */
+  const aplicarDados = (fonte: MateriaPrimaCadastroItem, clonar: boolean) => {
+    setCategoriaId(fonte.categoriaId == null ? "sem-categoria" : String(fonte.categoriaId));
+    setEspessuraMm(fonte.espessuraMm == null ? "" : String(fonte.espessuraMm));
     setEspessuraUnidade("mm");
-    setDensidadeKgM3(material.densidadeKgM3 == null ? "" : String(kgM3ParaGCm3(material.densidadeKgM3)));
-    setPesoEspecificoKg(material.pesoEspecificoKg == null ? "" : String(material.pesoEspecificoKg));
-    setPerfil({ formato: material.perfilFormato ?? "tubo", altura: material.perfilAlturaMm == null ? "" : String(material.perfilAlturaMm), largura: material.perfilLarguraMm == null ? "" : String(material.perfilLarguraMm), comprimento: material.perfilComprimentoMm == null ? "" : String(material.perfilComprimentoMm) });
-    setChapas(material.chapas.map(chapa => ({
-      id: chapa.id,
-      nome: chapa.nome,
+    setDensidadeKgM3(fonte.densidadeKgM3 == null ? "" : String(kgM3ParaGCm3(fonte.densidadeKgM3)));
+    setPesoEspecificoKg(fonte.pesoEspecificoKg == null ? "" : String(fonte.pesoEspecificoKg));
+    setPerfil({ formato: fonte.perfilFormato ?? "tubo", altura: fonte.perfilAlturaMm == null ? "" : String(fonte.perfilAlturaMm), largura: fonte.perfilLarguraMm == null ? "" : String(fonte.perfilLarguraMm), comprimento: fonte.perfilComprimentoMm == null ? "" : String(fonte.perfilComprimentoMm) });
+    setChapas(fonte.chapas.map(chapa => ({
+      id: clonar ? undefined : chapa.id,
+      nome: clonar ? "" : chapa.nome,
       larguraMm: String(chapa.larguraMm),
       alturaMm: String(chapa.alturaMm),
-      pantoneCode: chapa.pantoneCode ?? "",
-      cmykC: chapa.cmykC == null ? "" : String(chapa.cmykC),
-      cmykM: chapa.cmykM == null ? "" : String(chapa.cmykM),
-      cmykY: chapa.cmykY == null ? "" : String(chapa.cmykY),
-      cmykK: chapa.cmykK == null ? "" : String(chapa.cmykK),
-      transmissaoLuzPct: chapa.transmissaoLuzPct == null ? "" : String(chapa.transmissaoLuzPct),
-      transparenciaTipo: chapa.transparenciaTipo ?? "",
+      pantoneCode: clonar && !copiarCor ? "" : chapa.pantoneCode ?? "",
+      cmykC: (clonar && !copiarCor) || chapa.cmykC == null ? "" : String(chapa.cmykC),
+      cmykM: (clonar && !copiarCor) || chapa.cmykM == null ? "" : String(chapa.cmykM),
+      cmykY: (clonar && !copiarCor) || chapa.cmykY == null ? "" : String(chapa.cmykY),
+      cmykK: (clonar && !copiarCor) || chapa.cmykK == null ? "" : String(chapa.cmykK),
+      transmissaoLuzPct: (clonar && !copiarCor) || chapa.transmissaoLuzPct == null ? "" : String(chapa.transmissaoLuzPct),
+      transparenciaTipo: clonar && !copiarCor ? "" : chapa.transparenciaTipo ?? "",
       temCor: chapa.temCor,
       ativo: chapa.ativo,
       principal: chapa.principal,
     })));
-    setBobinas(material.bobinas.map(bobina => ({
-      id: bobina.id,
-      nome: bobina.nome,
+    setBobinas(fonte.bobinas.map(bobina => ({
+      id: clonar ? undefined : bobina.id,
+      nome: clonar ? "" : bobina.nome,
       larguraMm: String(bobina.larguraMm),
       ativo: bobina.ativo,
       principal: bobina.principal,
     })));
-    setBobinaCustoBase(material.bobinaCustoBase ?? sugerirBaseCustoBobina(material.unidadeCusto));
-    setBobinaComprimentoRolo(material.bobinaComprimentoRoloMm == null ? "" : String(material.bobinaComprimentoRoloMm));
+    setBobinaCustoBase(fonte.bobinaCustoBase ?? sugerirBaseCustoBobina((clonar ? material : fonte)?.unidadeCusto ?? ""));
+    setBobinaComprimentoRolo(fonte.bobinaComprimentoRoloMm == null ? "" : String(fonte.bobinaComprimentoRoloMm));
+  };
+
+  useEffect(() => {
+    if (!material) return;
+    aplicarDados(material, false);
+    setOrigemBusca("");
+    setOrigemId("");
+    setCopiarCor(false);
   }, [material]);
+
+  const termoOrigem = origemBusca.trim().toLocaleLowerCase("pt-BR");
+  const origens = materias
+    .filter(item => item.id !== material?.id && item.categoriaId != null
+      && (!termoOrigem || item.nome.toLocaleLowerCase("pt-BR").includes(termoOrigem) || String(item.id).includes(termoOrigem)))
+    .slice(0, 60);
+  const origemSelecionada = materias.find(item => String(item.id) === origemId) ?? null;
+  const clonarDeOrigem = () => {
+    if (!origemSelecionada) return;
+    aplicarDados(origemSelecionada, true);
+    toast.success(`Dados copiados de "${origemSelecionada.nome}"`, { description: "Revise o formulário e clique em Salvar matéria-prima: nada foi salvo ainda." });
+  };
 
   const salvar = trpc.produtos.materiasPrimas.salvar.useMutation({
     onSuccess: async () => {
@@ -390,6 +437,27 @@ function DialogEditarMateriaPrima({
           <DialogDescription>{material?.nome} · MubiSys #{material?.id}. Nome e custo são mantidos pelo catálogo do MubiSys.</DialogDescription>
         </DialogHeader>
         {material && <form onSubmit={handleSalvar} className="space-y-5">
+          <div className="space-y-2 rounded-lg border border-dashed p-3">
+            <div className="flex items-start gap-2">
+              <Copy className="mt-0.5 h-4 w-4 text-primary" />
+              <div>
+                <h3 className="text-sm font-medium">Clonar dados de outra matéria-prima</h3>
+                <p className="text-xs text-muted-foreground">Copia categoria, espessura, densidade, formatos de chapa ou larguras de bobina, perfil e peso específico de uma matéria-prima já cadastrada. Nada é salvo até você clicar em Salvar.</p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(150px,1fr)_minmax(220px,2fr)_auto] sm:items-center">
+              <Input placeholder="Filtrar a origem…" value={origemBusca} onChange={event => setOrigemBusca(event.target.value)} />
+              <Select value={origemId || "nenhuma"} onValueChange={valor => setOrigemId(valor === "nenhuma" ? "" : valor)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nenhuma">{origens.length ? "Escolha a matéria-prima de origem" : "Nenhuma matéria-prima categorizada encontrada"}</SelectItem>
+                  {origens.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.nome} · {item.categoriaNome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={!origemSelecionada} onClick={clonarDeOrigem}><Copy className="h-3.5 w-3.5" /> Clonar dados</Button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={copiarCor} onChange={event => setCopiarCor(event.target.checked)} /> Copiar também a cor (Pantone, CMYK, transmissão): deixe desmarcado se a origem tem outra cor</label>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Categoria</Label>
@@ -434,7 +502,7 @@ function DialogEditarMateriaPrima({
                     {!chapa.temCor && <span className="text-xs text-muted-foreground">Fica fora da análise de cores.</span>}
                   </div>
                   {chapa.temCor && <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="space-y-1"><Label className="text-xs">Pantone</Label><Input value={chapa.pantoneCode} placeholder="Ex.: 185 C" onChange={event => atualizarChapa(index, { pantoneCode: event.target.value })} /></div>
+                    <div className="space-y-1"><Label className="text-xs">Pantone (uma ou mais referências)</Label><Input value={chapa.pantoneCode} placeholder="Ex.: 185 C, 021 C" onChange={event => atualizarChapa(index, { pantoneCode: event.target.value })} /><PantoneChips valor={chapa.pantoneCode} /></div>
                     {(["cmykC", "cmykM", "cmykY", "cmykK"] as const).map((channel, channelIndex) => <div key={channel} className="space-y-1"><Label className="text-xs">CMYK {(["C", "M", "Y", "K"] as const)[channelIndex]} (%)</Label><Input type="number" min="0" max="100" step="0.01" value={chapa[channel]} onChange={event => atualizarChapa(index, { [channel]: event.target.value })} /></div>)}
                     <div className="space-y-1"><Label className="text-xs">Transmissão de luz (%)</Label><Input type="number" min="0" max="100" step="0.1" value={chapa.transmissaoLuzPct} onChange={event => atualizarChapa(index, { transmissaoLuzPct: event.target.value })} /></div>
                     <div className="space-y-1"><Label className="text-xs">Transparência</Label><Select value={chapa.transparenciaTipo || "nao-informada"} onValueChange={value => atualizarChapa(index, { transparenciaTipo: value === "nao-informada" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nao-informada">Não informada</SelectItem><SelectItem value="opaca">Opaca</SelectItem><SelectItem value="translucida">Translúcida</SelectItem><SelectItem value="transparente">Transparente / cristal</SelectItem></SelectContent></Select></div>

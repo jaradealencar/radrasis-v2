@@ -1,4 +1,4 @@
-import { hexDoPantone } from "../../shared/pantone-referencia";
+import { chaveExataPantone, hexesDoPantone, separarPantones } from "../../shared/pantone-referencia";
 
 export type CpqCorAlvo = {
   key: string;
@@ -653,12 +653,22 @@ function alvoLab(regiao: CpqCorAlvo): [number, number, number] | null {
   return rgb ? rgbParaLab(rgb) : null;
 }
 
-function labCatalogo(material: CpqCorCatalogo): [number, number, number] | null {
-  const rgb = hexParaRgb(material.corHex) ?? (() => {
-    const c = valor(material.cmykC), m = valor(material.cmykM), y = valor(material.cmykY), k = valor(material.cmykK);
-    return c == null || m == null || y == null || k == null ? null : cmykParaRgb({ c, m, y, k });
-  })() ?? hexParaRgb(hexDoPantone(material.pantoneCode));
-  return rgb ? rgbParaLab(rgb) : null;
+/**
+ * Todas as referências de cor cadastradas do material: cor em hex, CMYK completo e cada Pantone da lista
+ * ("021 C, 804 C"). A correspondência usa a mais próxima da cor alvo; códigos fora da tabela de amostras
+ * só valem para casamento exato de código.
+ */
+function labsCatalogo(material: CpqCorCatalogo): Array<[number, number, number]> {
+  const rgbs: Array<[number, number, number]> = [];
+  const doHex = hexParaRgb(material.corHex);
+  if (doHex) rgbs.push(doHex);
+  const c = valor(material.cmykC), m = valor(material.cmykM), y = valor(material.cmykY), k = valor(material.cmykK);
+  if (c != null && m != null && y != null && k != null) rgbs.push(cmykParaRgb({ c, m, y, k }));
+  for (const { hex } of hexesDoPantone(material.pantoneCode)) {
+    const doPantone = hexParaRgb(hex);
+    if (doPantone) rgbs.push(doPantone);
+  }
+  return rgbs.map(rgbParaLab);
 }
 
 function luzCompativel(material: CpqCorCatalogo, input: CpqCorrespondenciaCorInput): { ok: boolean; avisos: string[] } {
@@ -683,10 +693,10 @@ function candidatos(
   identidade: "chapa" | "imprimax"
 ) {
   return lista.filter(item => item.ativo !== false).map(item => {
-    const pantoneExato = !!normalizarPantone(alvo.pantoneCode)
-      && normalizarPantone(alvo.pantoneCode) === normalizarPantone(item.pantoneCode);
-    const labItem = labCatalogo(item);
-    const deltaE = pantoneExato ? 0 : lab && labItem ? deltaE2000(lab, labItem) : null;
+    const chaveAlvo = chaveExataPantone(alvo.pantoneCode);
+    const pantoneExato = !!chaveAlvo && separarPantones(item.pantoneCode).some(ref => chaveExataPantone(ref) === chaveAlvo);
+    const labsItem = labsCatalogo(item);
+    const deltaE = pantoneExato ? 0 : lab && labsItem.length ? Math.min(...labsItem.map(labDoItem => deltaE2000(lab, labDoItem))) : null;
     const luz = luzCompativel(item, input);
     return {
       kind: identidade,

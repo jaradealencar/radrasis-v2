@@ -933,14 +933,82 @@ export const PANTONE_REFERENCIA: ReadonlyArray<readonly [codigo: string, hex: st
 ];
 
 function chavePantone(value: string | null | undefined): string {
-  return (value ?? "").toUpperCase().replace(/s+/g, "").replace(/®/g, "");
+  return (value ?? "").toUpperCase().replace(/\s+/g, "").replace(/®/g, "");
 }
 
 const HEX_POR_CODIGO = new Map(PANTONE_REFERENCIA.map(([codigo, hex]) => [chavePantone(codigo), hex]));
 
-/** Hex da amostra de referência para um código Pantone ("PMS 185" ou "185"), ou null se não estiver na tabela. */
+/** Sufixo de cobertura/material do Pantone ("185 C", "185U", "185 CVC"): não muda a cor de referência da tabela. */
+const SUFIXO_COBERTURA = /(?:(?<=\d)|\s+)(?:CVC|CVU|CP|UP|EC|TCX|TPX|XGC|C|U|M)$/i;
+
+/**
+ * Hex da amostra de referência para um código Pantone ("PMS 185", "185", "185 C" ou "021 C"), ou null se não
+ * estiver na tabela. O sufixo de cobertura (C, U…) é ignorado e "021" também procura "Orange 021".
+ */
 export function hexDoPantone(codigo: string | null | undefined): string | null {
-  const chave = chavePantone(codigo);
-  if (!chave) return null;
-  return HEX_POR_CODIGO.get(chave) ?? HEX_POR_CODIGO.get(chavePantone("PMS " + codigo)) ?? null;
+  const base = (codigo ?? "").trim();
+  if (!base) return null;
+  for (const candidato of [base, base.replace(SUFIXO_COBERTURA, "").trim()]) {
+    if (!candidato) continue;
+    const achado = HEX_POR_CODIGO.get(chavePantone(candidato))
+      ?? HEX_POR_CODIGO.get(chavePantone("PMS " + candidato))
+      ?? HEX_POR_CODIGO.get(chavePantone("Orange " + candidato));
+    if (achado) return achado;
+  }
+  return null;
+}
+
+/** Chave para comparar dois códigos Pantone iguais ("PMS 185 C" = "pantone 185c"). Mantém o sufixo de cobertura. */
+export function chaveExataPantone(codigo: string | null | undefined): string {
+  return chavePantone(codigo).replace(/^(?:PMS|PANTONE)/, "");
+}
+
+const CODIGO_NUMERICO = /(?:(?:PMS|PANTONE)\s*)?\d{1,5}(?:\s*(?:CVC|CVU|CP|UP|C|U|M)(?![A-Za-z]))?/gi;
+
+/**
+ * Separa várias referências Pantone digitadas na mesma célula. Aceita vírgula, ponto e vírgula, barra, "+", "e",
+ * "ou", quebra de linha, dois ou mais espaços e códigos numéricos colados ("021 C 804 C" → "021 C" e "804 C").
+ * Nomes ("Orange 021", "Process Yellow") ficam inteiros.
+ */
+export function separarPantones(texto: string | null | undefined): string[] {
+  const pedacos = (texto ?? "").replace(/®/g, "")
+    .split(/[,;/+|\n]+|\s{2,}|\s+(?:e|ou|and|&)\s+/i)
+    .map(pedaco => pedaco.trim())
+    .filter(Boolean);
+  const codigos: string[] = [];
+  for (const pedaco of pedacos) {
+    const achados = pedaco.match(CODIGO_NUMERICO);
+    const soCodigos = achados != null && achados.length >= 2
+      && achados.join("").replace(/\s/g, "").length === pedaco.replace(/\s/g, "").length;
+    codigos.push(...(soCodigos ? achados!.map(item => item.trim()) : [pedaco]));
+  }
+  const vistos = new Set<string>();
+  return codigos
+    .map(codigo => codigo.toUpperCase().replace(/\s+/g, " "))
+    .filter(codigo => {
+      const chave = chaveExataPantone(codigo);
+      if (!chave || vistos.has(chave)) return false;
+      vistos.add(chave);
+      return true;
+    });
+}
+
+export const PANTONE_MAXIMO_REFERENCIAS = 6;
+export const PANTONE_MAXIMO_CARACTERES = 30;
+
+/** Valida a lista digitada: até 6 referências de até 30 caracteres (cabe nos 200 caracteres da coluna). */
+export function listaPantoneValida(texto: string | null | undefined): boolean {
+  const lista = separarPantones(texto);
+  return lista.length <= PANTONE_MAXIMO_REFERENCIAS && lista.every(codigo => codigo.length <= PANTONE_MAXIMO_CARACTERES);
+}
+
+/** Texto salvo no cadastro: referências em maiúsculas, sem repetição, separadas por vírgula; null se vazio. */
+export function normalizarListaPantone(texto: string | null | undefined): string | null {
+  const lista = separarPantones(texto);
+  return lista.length ? lista.join(", ") : null;
+}
+
+/** Cada referência da lista com o hex da amostra (ou null quando o código não está na tabela de referência). */
+export function hexesDoPantone(texto: string | null | undefined): Array<{ codigo: string; hex: string | null }> {
+  return separarPantones(texto).map(codigo => ({ codigo, hex: hexDoPantone(codigo) }));
 }
