@@ -2174,7 +2174,7 @@ const FORMULA_TYPES = {
   areaGeral: {label:'Área geral (m²) — chapa consumida', calc:(g,mult)=> (g.areaGeralM2||0)*mult},
   perimExt: {label:'Perímetro externo', calc:(g,mult)=> g.perimExtM*mult},
   perimTotal: {label:'Comprimento total de corte', calc:(g,mult)=> g.corteTotalM*mult},
-  fixo: {label:'Quantidade fixa', calc:(g,mult)=> mult},
+  fixo: {label:'Unidade (quantidade por letreiro, ex.: brinde)', calc:(g,mult)=> mult},
 };
 /** Taxonomia de categoria/subcategoria/tipo do cadastro de produtos —
  *  pedido do usuário 28/09/2026. "Outros" dentro de Letreiros são materiais

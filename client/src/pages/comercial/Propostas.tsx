@@ -93,7 +93,7 @@ const FORMULA_LABEL: Record<FormulaMaterial, string> = {
   areaGeral: "Área geral",
   perimExt: "Perímetro externo",
   perimTotal: "Perímetro total",
-  fixo: "Quantidade fixa",
+  fixo: "Unidade (por letreiro)",
 };
 
 const CAMPOS_MEDIDA: { chave: keyof MedidasNesting; rotulo: string; unidade: string }[] = [
