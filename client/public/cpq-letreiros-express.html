@@ -776,6 +776,8 @@ function novaProposta(){
     ajuste:{ brilho:100, contraste:100, cinza:false },
     overlayOpacity:50,
     tracedSvg:null, tracedSvgOriginal:null, fgD:'', tracedW:0, tracedH:0, traceError:null,
+    // Contorno de corte CNC (silhueta de uma cor, +1 crédito do Vectorizer.AI) e o SVG realmente usado no nesting.
+    gerarContornoCnc:true, tracedSvgCorte:null, tracedSvgCorteOriginal:null, tracedSvgCorteDe:null, corteInfo:null, corteErro:null, corteCreditos:null, svgNesting:null,
     colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:null,transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,composicaoKitOriginal:null},
     geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
@@ -800,7 +802,7 @@ let traceRequestId = 0;
 
 function invalidarFactibilidadeReal(){
   REAL.factibilidade=null;REAL.factibilidadeErro=null;REAL.factibilidadeCarregando=false;REAL.nesting=null;REAL.nestingMateriais=[];
-  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.composicaoKitOriginal=null;REAL.approvals.nesting=false;
+  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.composicaoKitOriginal=null;REAL.approvals.nesting=false;REAL.svgNesting=null;
 }
 
 function invalidarRastreamento(){
@@ -1334,7 +1336,7 @@ async function handleUploadedFile(file){
       render();
       return;
     }
-    REAL.sourceKind='vetor';
+    REAL.sourceKind='vetor'; limparContornoCorte();
     REAL.tracedSvg=styled.svgText; REAL.tracedSvgOriginal=text; REAL.fgD=parsed.d; REAL.tracedW=parsed.w; REAL.tracedH=parsed.h; invalidarFactibilidadeReal();
     const approvedArtwork=REAL.imgReconstructed||REAL.imgPreview||null;
     REAL.imgPreview=approvedArtwork;
@@ -1371,6 +1373,101 @@ async function handleUploadedFile(file){
   render();
 }
 
+/** A factibilidade separa as peças por camada: o SVG do Vectorizer não traz o grupo Face, então ele é acrescentado. */
+function svgComCamadaFace(svgText){
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  const raiz = doc.documentElement;
+  if(doc.querySelector('parsererror') || !raiz || raiz.localName.toLowerCase() !== 'svg') return svgText;
+  if(raiz.querySelector('g[id],g[inkscape\\:label],g[data-layer-name],g[aria-label]')) return svgText;
+  const grupo = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
+  grupo.setAttribute('id', 'Face');
+  [...raiz.childNodes].filter(no => no.nodeType === 1 && no.localName.toLowerCase() === 'path').forEach(no => grupo.appendChild(no));
+  raiz.appendChild(grupo);
+  return new XMLSerializer().serializeToString(raiz);
+}
+
+async function silhuetaDoSvg(svgText){
+  const url = URL.createObjectURL(new Blob([svgText], {type:'image/svg+xml'}));
+  try{ return binarySilhouette(canvasForTraceImage(await loadTraceImage(url))); }
+  finally{ URL.revokeObjectURL(url); }
+}
+
+/** Confere se o SVG de uma cor só é de fato o contorno da arte (e não um fundo cheio ou um desenho diferente). */
+async function validarContornoCorte(svgText){
+  const estilizado = applyPrompt2VectorStyle(svgText);
+  if(!estilizado.audit.ok) return {ok:false, erro:'O SVG do contorno não passou na validação: ' + estilizado.audit.fatal.join(' ')};
+  const lido = extractPathsFromRawSVG(estilizado.svgText);
+  if(!lido || !lido.d || !(lido.w > 0) || !(lido.h > 0)) return {ok:false, erro:'O contorno de corte veio sem caminhos ou sem medidas.'};
+  if(Math.abs(lido.w - REAL.tracedW) / REAL.tracedW > 0.005 || Math.abs(lido.h - REAL.tracedH) / REAL.tracedH > 0.005)
+    return {ok:false, erro:'O contorno de corte tem dimensões diferentes do vetor completo.'};
+  const geom = classifyGeometry(lido.d);
+  if(!geom.pieces.length) return {ok:false, erro:'Não encontrei contornos fechados no desenho de corte.'};
+  const cobreTudo = geom.bboxPx.w >= lido.w * 0.97 && geom.bboxPx.h >= lido.h * 0.97 && geom.areaPx >= lido.w * lido.h * 0.85;
+  if(cobreTudo) return {ok:false, erro:'A arte aprovada parece ter fundo: a silhueta ocupou a imagem inteira. Use uma arte com fundo transparente para extrair o contorno.'};
+  const comparacao = compareSilhouetteMasks(await silhuetaDoSvg(REAL.tracedSvg), await silhuetaDoSvg(estilizado.svgText)).metrics;
+  if(comparacao.iouTolerante < 90) return {ok:false, erro:`O contorno de corte não confere com o vetor completo (coincidência ${comparacao.iouTolerante.toFixed(0)}%).`};
+  return {
+    ok:true, svgOriginal:svgText, svg:estilizado.svgText,
+    info:{externos:geom.pieces.length, vazados:geom.contours.filter(c => c.tipo === 'vazado').length, caminhos:lido.pathCount, coincidencia:comparacao.iouTolerante},
+  };
+}
+
+function limparContornoCorte(){
+  REAL.tracedSvgCorte = null; REAL.tracedSvgCorteOriginal = null; REAL.tracedSvgCorteDe = null;
+  REAL.corteInfo = null; REAL.corteErro = null; REAL.corteCreditos = null;
+}
+
+/** Segunda chamada (+1 crédito): só a silhueta que a CNC corta. Falhar aqui nunca invalida a vetorização completa. */
+async function gerarContornoCorte(imagem, requestId){
+  limparContornoCorte();
+  if(!REAL.gerarContornoCnc) return;
+  try{
+    const response = await fetch('/api/letra-caixa/vetorizacao?modo=corte', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':imagem.type, 'X-Redesenho-Token':REAL.redesenhoToken}, body:imagem,
+    });
+    if(!response.ok){
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || 'O Vectorizer.AI não gerou o contorno de corte.');
+    }
+    const ticket = response.headers.get('X-Redesenho-Token');
+    if(ticket) REAL.redesenhoToken = ticket;
+    const creditos = response.headers.get('X-Vectorizer-Credits-Charged');
+    const svgCorte = await response.text();
+    if(requestId !== traceRequestId) return;
+    REAL.corteCreditos = creditos;
+    const resultado = await validarContornoCorte(svgCorte);
+    if(requestId !== traceRequestId) return;
+    if(!resultado.ok){ REAL.corteErro = resultado.erro; return; }
+    REAL.tracedSvgCorte = resultado.svg; REAL.tracedSvgCorteOriginal = resultado.svgOriginal; REAL.tracedSvgCorteDe = REAL.tracedSvg; REAL.corteInfo = resultado.info;
+  }catch(erro){
+    if(requestId !== traceRequestId) return;
+    REAL.corteErro = String(erro && erro.message || erro);
+  }
+}
+
+/** O contorno único só vale quando toda a face é adesivo sobre acrílico transparente: a chapa tem uma silhueta só. */
+function contornoCorteAplicavel(){
+  const resultados = REAL.colorAnalysis.resultados || [];
+  return !!REAL.tracedSvgCorte && REAL.tracedSvgCorteDe === REAL.tracedSvg && resultados.length > 0
+    && resultados.every(r => (r.tipoSugestao === 'impresso' || r.tipoSugestao === 'imprimax') && r.requerChapaBase && r.chapaBaseMateriaPrimaId);
+}
+
+function painelContornoCorte(){
+  if(!REAL.gerarContornoCnc && !REAL.tracedSvgCorte && !REAL.corteErro) return '';
+  const info = REAL.corteInfo;
+  const corpo = info
+    ? `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
+        <img alt="Contorno de corte CNC" src="data:image/svg+xml;utf8,${encodeURIComponent(REAL.tracedSvgCorte)}" style="height:90px;max-width:260px;object-fit:contain;background:#1e293b;border-radius:8px;padding:6px;">
+        <div style="font-size:12.5px;line-height:1.6;"><b>${info.externos}</b> contorno(s) de corte e <b>${info.vazados}</b> vazado(s), sem linhas duplas nem cortes internos de cor. Fotos e áreas de adesivo viram bloco cheio.
+          <div class="role-note">Coincide ${info.coincidencia.toFixed(1)}% com o vetor completo${REAL.corteCreditos?` · ${escaparHtml(REAL.corteCreditos)} crédito(s)`:''}. O nesting usa este contorno quando toda a face for adesivo sobre acrílico transparente.</div>
+          <button class="btn btn-ghost btn-sm" data-act="download-contorno-corte" style="margin-top:6px;">Baixar contorno de corte (SVG)</button></div>
+      </div>`
+    : REAL.corteErro
+      ? `<div class="warnbox"><span>${ICONS.alert}</span><div>O contorno de corte CNC não pôde ser gerado: ${escaparHtml(REAL.corteErro)} O nesting seguirá com o vetor completo.</div></div>`
+      : '<div class="role-note">O contorno de corte será gerado junto com a próxima vetorização.</div>';
+  return `<div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none;"><h4 style="margin:0 0 8px;">Contorno de corte CNC</h4>${corpo}</div>`;
+}
+
 async function retrace(){
   const rasterSource=REAL.imgReconstructed;
   if(!rasterSource || !REAL.redesenhoToken) return;
@@ -1380,7 +1477,7 @@ async function retrace(){
   REAL.traceError=null;
   REAL.vectorizerCredits=null;
   REAL.uploadError=null; REAL.uploadWarning=null;
-  REAL.imgPreview=null; REAL.tracedSvg=null; REAL.tracedSvgOriginal=null; REAL.fgD=''; REAL.tracedW=0; REAL.tracedH=0; REAL.geomRaw=null;
+  REAL.imgPreview=null; REAL.tracedSvg=null; REAL.tracedSvgOriginal=null; REAL.fgD=''; REAL.tracedW=0; REAL.tracedH=0; REAL.geomRaw=null; limparContornoCorte();
   REAL.approvals.vetorizacao=false; REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; REAL.nesting=null;
   state.tracing = true; render();
   try{
@@ -1413,6 +1510,8 @@ async function retrace(){
     REAL.geomRaw=classifyGeometry(parsed.d);
     REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
     REAL.traceQuality=await validatePrompt2Trace(rasterSource,svgStr);
+    if(requestId!==traceRequestId) return;
+    await gerarContornoCorte(imagem,requestId);
     if(requestId!==traceRequestId) return;
     if(parsed.nonPathCount>0){
       REAL.uploadWarning=`O SVG contém ${parsed.nonPathCount} elemento(s) que não são caminhos e não entram no cálculo geométrico. Confira o resultado no preview antes de aprovar.`;
@@ -1877,6 +1976,7 @@ async function aplicarEdicaoVetorial(){
   if(!lido || !lido.d || !(lido.w > 0) || !(lido.h > 0)){ alert('Não foi possível ler as medidas do desenho editado.'); return; }
   fecharEditorVetorial();
   if(!REAL.vetorBaseSvg) REAL.vetorBaseSvg = REAL.tracedSvgOriginal;
+  limparContornoCorte();
   invalidarFactibilidadeReal();
   REAL.tracedSvg = estilizado.svgText; REAL.tracedSvgOriginal = svg; REAL.fgD = lido.d; REAL.tracedW = lido.w; REAL.tracedH = lido.h;
   REAL.geomRaw = classifyGeometry(lido.d);
@@ -3261,6 +3361,7 @@ function realStepVetorizacao(){
     </div>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" data-act="editor-vetorial-abrir">✂️ Editor vetorial: apagar, mover, esticar (sem custo)</button><button class="btn btn-ghost btn-sm" data-act="editor-vetor-abrir" title="Pinta sobre a imagem e vetoriza de novo, consumindo 1 crédito do Vectorizer.AI">Editor por imagem (re-vetoriza, 1 crédito)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG técnico</button><button class="btn btn-ghost btn-sm" data-act="download-vector-preview">Baixar preview PNG</button></div>` : ''}
     ${hasTrace?traceQualityPanel():''}
+    ${hasTrace?painelContornoCorte():''}
     <details style="margin-top:14px;">
       <summary style="cursor:pointer; font-size:12.5px; color:var(--accent-ink); font-weight:600;">Prefiro enviar um arquivo já vetorizado</summary>
       <div style="margin-top:10px;">${uploadBox('Enviar SVG pronto', 'usa os caminhos do arquivo sem chamar o Vectorizer.AI','real-upload','image/svg+xml,.svg')}</div>
@@ -3270,7 +3371,8 @@ function realStepVetorizacao(){
     ${uploadMessages()}
     <div class="footer-nav">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed||!REAL.redesenhoToken?'disabled':''}>${state.tracing?'Vetorizando com Vectorizer.AI…':hasTrace?'Vetorizar novamente · 1 crédito':'Vetorizar com Vectorizer.AI · 1 crédito'}</button>
+        <label class="checkrow" style="margin-bottom:8px;"><input type="checkbox" data-act="real-contorno-cnc" ${REAL.gerarContornoCnc?'checked':''} ${state.tracing?'disabled':''}> Gerar também o contorno de corte CNC (apenas as silhuetas a cortar; usa +1 crédito)</label>
+        <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed||!REAL.redesenhoToken?'disabled':''}>${state.tracing?'Vetorizando com Vectorizer.AI…':(hasTrace?'Vetorizar novamente':'Vetorizar com Vectorizer.AI')+(REAL.gerarContornoCnc?' · 2 créditos (arte + contorno de corte)':' · 1 crédito')}</button>
         <span class="role-note">Confira o resultado e confirme a escala física antes do nesting.</span>
       </div>
       <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${traceReviewReady()?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
@@ -3621,9 +3723,11 @@ async function analisarFactibilidadeReal(){
       camadaKeys.add(key);return [{materiaPrimaId,camada}];
     });
     const g=computeGeomReal();
+    const usarContornoCorte=contornoCorteAplicavel();
+    REAL.svgNesting=svgComCamadaFace(usarContornoCorte?REAL.tracedSvgCorte:REAL.tracedSvg);
     const response=await fetch('/api/letra-caixa/factibilidade',{
       method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sourceId:REAL.id,svg:REAL.tracedSvg,larguraSvgMm:REAL.tracedW*g.scaleFactor*1000,alturaSvgMm:REAL.tracedH*g.scaleFactor*1000,materiaPrimaIds,camadasMateriais}),
+      body:JSON.stringify({sourceId:REAL.id,svg:REAL.svgNesting,contornoCorte:usarContornoCorte,larguraSvgMm:REAL.tracedW*g.scaleFactor*1000,alturaSvgMm:REAL.tracedH*g.scaleFactor*1000,materiaPrimaIds,camadasMateriais}),
     });
     const body=await response.json().catch(()=>({}));
     if(!response.ok) throw new Error(body.error||'Nao foi possivel analisar a factibilidade de fabricacao.');
@@ -4180,7 +4284,7 @@ function snapshotCotacaoReal(){
     tituloProposta:String(REAL.tituloProposta||'').trim().slice(0,256),
     imagemReferenciaUrl:REAL.imagemReferenciaUrl||null,
     imagemRedesenhadaUrl:REAL.imagemRedesenhadaUrl||null,
-    nestingSvg:REAL.tracedSvg||null,
+    nestingSvg:REAL.svgNesting||REAL.tracedSvg||null,
     factibilidade:REAL.factibilidade?{
       statusFactibilidade:REAL.factibilidade.status_factibilidade,
       resultadoHash:REAL.factibilidade.resultadoHash,
@@ -6403,6 +6507,13 @@ function bindRealEvents(){
   });
 
   bindRangeLive('[data-act="real-overlay-opacity"]', v=>{ REAL.overlayOpacity=parseInt(v); return REAL.overlayOpacity; }, v=>v+'%');
+  const contornoCncBox = document.querySelector('[data-act="real-contorno-cnc"]');
+  if(contornoCncBox) contornoCncBox.addEventListener('change', event=>{ REAL.gerarContornoCnc = event.target.checked; render(); });
+  const baixarContorno = document.querySelector('[data-act="download-contorno-corte"]');
+  if(baixarContorno) baixarContorno.addEventListener('click', ()=>{
+    const url = URL.createObjectURL(new Blob([REAL.tracedSvgCorteOriginal || REAL.tracedSvgCorte], {type:'image/svg+xml'}));
+    const link = document.createElement('a'); link.href = url; link.download = 'contorno-de-corte-cnc.svg'; link.click(); URL.revokeObjectURL(url);
+  });
   const vectorizeBtn = document.querySelector('[data-act="real-vectorize"]');
   if(vectorizeBtn) vectorizeBtn.addEventListener('click', retrace);
 

@@ -12,6 +12,8 @@ export type CpqCorAlvo = {
   cmyk?: { c: number; m: number; y: number; k: number } | null;
   areaM2?: number | null;
   dadosPreco?: RegiaoPrecificacao;
+  /** Aviso para o vendedor sobre como a região foi formada (ex.: foto reconhecida). */
+  observacao?: string | null;
 };
 
 export type CpqBoundingBoxMm = { minX: number; maxX: number; minY: number; maxY: number };
@@ -101,6 +103,47 @@ export type CpqCorrespondenciaCorResult = {
   precificacao: Record<string, unknown> | null;
   composicaoFace: Record<string, unknown> | null;
 };
+
+export type CpqGrupoCor = {
+  tipoCor: CpqCorAlvo["tipoCor"];
+  corHex: string | null;
+  pantoneCode: string | null;
+  cmyk: CpqCorAlvo["cmyk"];
+  coresGradiente: string[];
+  areaM2: number;
+  pathIndexes: number[];
+  caixasMm: CpqBoundingBoxMm[];
+  observacao?: string | null;
+};
+
+const FOTO_MIN_CORES_PEQUENAS = 20;
+const FOTO_AREA_PEQUENA_FRACAO = 0.008;
+
+/**
+ * Uma foto (ou arte com degradês muito trabalhados) vira dezenas de manchas pequenas de cores diferentes depois da
+ * vetorização. Em vez de casar cada mancha com chapa ou adesivo, elas são reunidas numa única região "complexa",
+ * que segue para o adesivo impresso. São "pequenas" as cores sólidas com menos de 0,8% da área da arte.
+ */
+export function consolidarRegioesFotograficas<T extends CpqGrupoCor>(grupos: T[]): T[] {
+  const total = grupos.reduce((soma, grupo) => soma + grupo.areaM2, 0);
+  if (!(total > 0)) return grupos;
+  const pequenas = grupos.filter(grupo => grupo.tipoCor === "solida" && grupo.areaM2 < total * FOTO_AREA_PEQUENA_FRACAO);
+  if (pequenas.length < FOTO_MIN_CORES_PEQUENAS) return grupos;
+  const reunida: T = {
+    ...pequenas[0],
+    tipoCor: "complexa",
+    corHex: null,
+    pantoneCode: null,
+    cmyk: null,
+    coresGradiente: [],
+    areaM2: pequenas.reduce((soma, grupo) => soma + grupo.areaM2, 0),
+    pathIndexes: pequenas.flatMap(grupo => grupo.pathIndexes),
+    caixasMm: pequenas.flatMap(grupo => grupo.caixasMm),
+    observacao: `Foto ou arte com muitas cores pequenas (${pequenas.length} cores reunidas): será adesivo impresso.`,
+  };
+  const posicao = grupos.indexOf(pequenas[0]);
+  return [...grupos.slice(0, posicao), reunida, ...grupos.slice(posicao + 1).filter(grupo => !pequenas.includes(grupo))];
+}
 
 /** Junta os caminhos da face por substrato aprovado, sem impor uma chapa mestre. */
 export function agruparCaminhosFacePorMateriaPrima(
@@ -786,6 +829,7 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
 export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCorrespondenciaCorResult {
   const target = input.regiao;
   const avisos: string[] = [];
+  if (target.observacao) avisos.push(target.observacao);
   if (target.cmyk && !target.corHex)
     avisos.push("CMYK foi convertido por aproximação para sRGB; confirme perfil ICC e prova física antes de fabricar.");
   const rgb = hexParaRgb(target.corHex) ?? (target.cmyk ? cmykParaRgb(target.cmyk) : null);

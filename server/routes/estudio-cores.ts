@@ -11,7 +11,7 @@ import {
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { CpqFactibilidadeError, calcularMetricasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
-import { aplicarCustosBobinaAgrupados, type CpqCorCatalogo, extrairRegioesCorSvg, hexParaRgb, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+import { aplicarCustosBobinaAgrupados, consolidarRegioesFotograficas, type CpqCorCatalogo, extrairRegioesCorSvg, hexParaRgb, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
 import { listarPantone, pantoneMaisProximos, rgbParaCmykAproximado } from "../services/cpqPantone";
 import { IMPRIMAX_CATALOGO_PADRAO, IMPRIMAX_CATALOGO_VERSAO } from "../../shared/imprimax-catalogo-2026-08";
 
@@ -69,6 +69,7 @@ const analisarInput = z.object({
     pathIndexes: z.array(z.number().int().nonnegative().max(499)).max(500).optional(),
     dadosPreco: dadosRegiaoPreco.optional(),
     areaM2: z.number().finite().min(0).max(50_000).nullable().optional(),
+    observacao: z.string().trim().max(300).nullable().optional(),
   }).strict()).min(1).max(500),
   iluminacao: z.enum(["sem_iluminacao", "frontlight", "backlight"]),
   transmissaoMinimaPct: z.number().finite().min(0).max(100).nullable().optional(),
@@ -492,7 +493,8 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
     if (!agregadas.size)
       return void erro(res, 422, "Não há regiões preenchidas visíveis para analisar no vetor.");
 
-    const todasCaixas = [...agregadas.values()].flatMap(grupo => grupo.caixasMm);
+    const grupos = consolidarRegioesFotograficas([...agregadas.values()]);
+    const todasCaixas = grupos.flatMap(grupo => grupo.caixasMm);
     const caixaLetreiroMm = {
       minX: Math.min(...todasCaixas.map(box => box.minX)), maxX: Math.max(...todasCaixas.map(box => box.maxX)),
       minY: Math.min(...todasCaixas.map(box => box.minY)), maxY: Math.max(...todasCaixas.map(box => box.maxY)),
@@ -500,13 +502,13 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
     const body = {
       sourceId: parsed.data.sourceId,
       caixaLetreiroMm,
-      regioes: [...agregadas.values()].map(({ caixasMm, ...region }, index) => ({
+      regioes: grupos.map(({ caixasMm, ...region }, index) => ({
         ...region,
         key: `regiao-${index + 1}`,
         areaM2: Number(region.areaM2.toFixed(6)),
         dadosPreco: {
           areaLiquidaM2: Number(region.areaM2.toFixed(8)),
-          areaTotalM2: Number(((Math.max(...caixasMm.map(box => box.maxX)) - Math.min(...caixasMm.map(box => box.minX))) * (Math.max(...caixasMm.map(box => box.maxY)) - Math.min(...caixasMm.map(box => box.minY))) / 1_000_000).toFixed(8)),
+          areaTotalM2: Number(caixasMm.reduce((soma, box) => soma + ((box.maxX - box.minX) * (box.maxY - box.minY)) / 1_000_000, 0).toFixed(8)),
           larguraMm: Math.max(...caixasMm.map(box => box.maxX)) - Math.min(...caixasMm.map(box => box.minX)),
           alturaMm: Math.max(...caixasMm.map(box => box.maxY)) - Math.min(...caixasMm.map(box => box.minY)),
           boundingBoxesMm: caixasMm,

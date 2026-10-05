@@ -158,10 +158,13 @@ async function executarVetorizacao(req: Request, res: Response): Promise<void> {
   }
 
   try {
+    // ?modo=corte gera só a silhueta de corte CNC (uma cor), em chamada separada e com crédito próprio.
+    const modo = req.query.modo === "corte" ? "corte" : "completo";
     const resultado = await vectorizeImage({
       imageBuffer: req.body,
       imageFilename: mimeType === "image/png" ? "arte-aprovada.png" : "arte-aprovada.jpg",
       imageMimeType: mimeType,
+      modo,
     });
     res
       .status(200)

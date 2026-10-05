@@ -28,6 +28,8 @@ const analisarInput = z
     larguraSvgMm: z.number().finite().positive().max(50_000),
     alturaSvgMm: z.number().finite().positive().max(50_000),
     materiaPrimaIds: z.array(z.number().int().positive()).min(1).max(10),
+    /** O SVG é o contorno de corte (uma silhueta): toda a face vira peças da chapa transparente, sem separar por cor. */
+    contornoCorte: z.boolean().optional(),
     camadasMateriais: z.array(z.object({
       materiaPrimaId: z.number().int().positive(),
       camada: z.enum(["face", "aro", "fundo"]),
@@ -153,7 +155,18 @@ async function analisar(req: Request, res: Response): Promise<void> {
       ? [{ materiaPrimaId, pathIndexes }]
       : [];
   }));
-  const facePorMaterial = new Map(faceCaminhos.map(item => [item.materiaPrimaId, item.pathIndexes]));
+  if (parsed.data.contornoCorte) {
+    // O contorno único só substitui os caminhos por cor quando TODA a face é adesivo sobre acrílico transparente.
+    const toda = mapeamentosCor.length > 0 && mapeamentosCor.every(row => {
+      const details = row.detalhesJson as Record<string, unknown>;
+      return (row.tipoSugestao === "impresso" || row.tipoSugestao === "imprimax")
+        && details.requerChapaBase === true && typeof details.chapaBaseMateriaPrimaId === "number";
+    });
+    if (!toda)
+      return void respostaErro(res, 409, "O contorno de corte só vale quando toda a face é adesivo sobre acrílico transparente. Refaça a análise de cores.");
+  }
+  // Com o contorno de corte, os índices por cor não se aplicam ao SVG: a chapa usa todas as peças da camada Face.
+  const facePorMaterial = new Map(faceCaminhos.map(item => [item.materiaPrimaId, parsed.data.contornoCorte ? [] : item.pathIndexes]));
   if (parsed.data.camadasMateriais && [...facePorMaterial.keys()].some(id => !parsed.data.materiaPrimaIds.includes(id)))
     return void respostaErro(res, 409, "Inclua no nesting todas as matérias-primas aprovadas para a face.");
   const camadasPorMaterial = new Map<number, Array<{ camada: CpqNestingCamada; pathIndexes?: number[] }>>();
@@ -170,7 +183,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
   }
   for (const [materiaPrimaId, pathIndexes] of facePorMaterial) {
     const lotes = camadasPorMaterial.get(materiaPrimaId) ?? [];
-    if (!lotes.some(item => item.camada === "face")) lotes.push({ camada: "face", pathIndexes });
+    if (!lotes.some(item => item.camada === "face")) lotes.push(pathIndexes.length ? { camada: "face", pathIndexes } : { camada: "face" });
     camadasPorMaterial.set(materiaPrimaId, lotes);
   }
   if (parsed.data.camadasMateriais && parsed.data.materiaPrimaIds.some(id => !camadasPorMaterial.get(id)?.length))

@@ -672,6 +672,16 @@ quadro próprio; o novo desenho herda o cliente do primeiro. Cada desenho contin
 das assinaturas de preço. O cliente recebe um link único `?grupo=...` com os desenhos e o total somado
 (`GET /api/letra-caixa/cotacoes/grupo/:id`), e uma única resposta (`POST .../grupo/:id/resposta`) vale para todos.
 O servidor limita o grupo a 3 desenhos, do mesmo cliente (CPF/CNPJ), sem posição repetida.
+Vetorização pensada para o corte CNC (05/10/2026): `parametrosVetorizacao` (`server/services/vectorizerAi.ts`, nomes da
+OpenAPI oficial do Vectorizer.AI) pede formas recortadas umas das outras (`shape_stacking=cutouts`, sem contorno
+duplo), sem o preenchedor de frestas, sem arcos e sem ruídos minúsculos. Opcionalmente (padrão ligado, +1 crédito)
+uma segunda chamada `?modo=corte` (`max_colors=1`) devolve só a silhueta que a CNC corta; o CPQ valida (sem fundo
+cheio, mesmas dimensões e silhueta igual à do vetor completo) e, quando **toda** a face é adesivo sobre acrílico
+transparente, o nesting usa esse contorno (`contornoCorte` na factibilidade) em vez dos caminhos por cor. O SVG
+enviado à factibilidade recebe o grupo `Face` (`svgComCamadaFace`): sem ele o SVG do Vectorizer não tinha peças na
+camada Face. Fotos dentro do logotipo (20+ cores sólidas pequenas) são reunidas numa região complexa →
+adesivo impresso (`consolidarRegioesFotograficas`). A "área total" de uma região é a soma das caixas de cada
+contorno, como a conferência de consumo de bobina exige.
 O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a
 reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com

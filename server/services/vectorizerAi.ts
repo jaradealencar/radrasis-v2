@@ -19,11 +19,43 @@ export class VectorizerAiError extends Error {
   }
 }
 
+/**
+ * "completo": vetor com todas as cores da arte. "corte": silhueta de uma cor só, apenas os contornos que a CNC corta
+ * (uma chamada a mais, +1 crédito). Em ambos, os parâmetros evitam contornos duplos, quebrados ou cheios de nós.
+ */
+export type VectorizacaoModo = "completo" | "corte";
+
 export type VectorizeImageParams = {
   imageBuffer: Buffer;
   imageFilename: string;
   imageMimeType: "image/jpeg" | "image/png";
+  modo?: VectorizacaoModo;
 };
+
+/** Parâmetros do Vectorizer.AI (nomes conforme a especificação OpenAPI oficial) pensados no corte CNC. */
+export function parametrosVetorizacao(modo: VectorizacaoModo = "completo"): Array<[string, string]> {
+  const comuns: Array<[string, string]> = [
+    ["mode", "production"],
+    ["output.file_format", "svg"],
+    // Formas recortadas umas das outras, sem sobreposição: nada de contorno duplo empilhado.
+    ["output.shape_stacking", "cutouts"],
+    ["output.group_by", "none"],
+    ["output.draw_style", "fill_shapes"],
+    // Sem os traços auxiliares do preenchedor de frestas (viravam elementos com opacidade parcial e engordavam o corte).
+    ["output.gap_filler.enabled", "false"],
+    // Círculos, retângulos e estrelas viram curvas, e arcos ficam proibidos: tudo em linhas e Béziers, que o
+    // editor, a factibilidade e o nesting sabem processar.
+    ["output.parameterized_shapes.flatten", "true"],
+    ["output.curves.allowed.circular_arc", "false"],
+    ["output.curves.allowed.elliptical_arc", "false"],
+    ["output.svg.adobe_compatibility_mode", "true"],
+  ];
+  return modo === "corte"
+    // Uma cor só: tudo que é arte vira uma única silhueta, com vazados reais. Fotos e adesivos viram bloco cheio.
+    ? [...comuns, ["processing.max_colors", "1"], ["processing.shapes.min_area_px", "16"]]
+    // Descarta ruídos menores que ~2 × 2 px, que gerariam contornos minúsculos soltos.
+    : [...comuns, ["processing.shapes.min_area_px", "4"]];
+}
 
 export type VectorizeImageResult = {
   svgBuffer: Buffer;
@@ -46,11 +78,7 @@ export async function vectorizeImage(
     new Blob([new Uint8Array(params.imageBuffer)], { type: params.imageMimeType }),
     params.imageFilename,
   );
-  form.append("mode", "production");
-  form.append("output.file_format", "svg");
-  form.append("output.group_by", "none");
-  form.append("output.parameterized_shapes.flatten", "true");
-  form.append("output.svg.adobe_compatibility_mode", "true");
+  for (const [nome, valor] of parametrosVetorizacao(params.modo)) form.append(nome, valor);
 
   let response: Response;
   try {
