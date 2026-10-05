@@ -1365,6 +1365,467 @@ async function retrace(){
   render();
 }
 
+/* ---------- EDITOR VETORIAL DIRETO (sem rasterizar, sem crédito) ----------
+ * Edita os próprios caminhos do SVG: selecionar, apagar, mover, esticar/ampliar
+ * (proporcional ou livre), girar e espelhar. Cada transformação é aplicada
+ * matematicamente aos comandos do caminho (M, L, H, V, C, S, Q, T, Z), então as
+ * curvas continuam exatas e nada é revetorizado nem cobrado. Vive FORA do #shell
+ * (anexado ao <body>) porque render() reconstrói o #shell inteiro e destruiria a
+ * edição em andamento. Ao aplicar, o desenho é recortado rente à arte e volta pelo
+ * mesmo caminho de um SVG enviado: o tamanho real do letreiro precisa ser
+ * informado de novo na etapa seguinte (escala) antes do nesting. */
+const VT_NS = 'http://www.w3.org/2000/svg';
+let _vt = null;
+
+function vtLerCaminho(d){
+  const tokens = String(d || '').match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) || [];
+  const argumentos = {M:2, L:2, H:1, V:1, C:6, S:4, Q:4, T:2, A:7, Z:0};
+  const saida = [];
+  let i = 0;
+  while(i < tokens.length){
+    const comando = tokens[i++];
+    if(!/[A-Za-z]/.test(comando)) throw new Error('Caminho inválido.');
+    const n = argumentos[comando.toUpperCase()];
+    if(n === 0){ saida.push({c:comando, a:[]}); continue; }
+    let primeiro = true;
+    while(i < tokens.length && !/[A-Za-z]/.test(tokens[i])){
+      if(i + n > tokens.length) throw new Error('Caminho incompleto.');
+      const a = tokens.slice(i, i + n).map(Number);
+      i += n;
+      let c = comando;
+      if(!primeiro && comando === 'M') c = 'L';
+      if(!primeiro && comando === 'm') c = 'l';
+      saida.push({c, a});
+      primeiro = false;
+    }
+  }
+  return saida;
+}
+
+/** Aplica uma matriz [a,b,c,d,e,f] a um caminho SVG e devolve o novo "d" (sempre em coordenadas absolutas). */
+function vtTransformarCaminho(d, m){
+  const comandos = vtLerCaminho(d);
+  const P = (x, y) => [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]];
+  const f = n => String(Math.round(n * 1000) / 1000);
+  const par = (x, y) => { const [px, py] = P(x, y); return f(px) + ' ' + f(py); };
+  const saida = [];
+  let cx = 0, cy = 0, sx = 0, sy = 0, ultimo = '', lcx = 0, lcy = 0;
+  for(const {c, a} of comandos){
+    const rel = c === c.toLowerCase();
+    const C = c.toUpperCase();
+    const ox = rel ? cx : 0, oy = rel ? cy : 0;
+    if(C === 'A') throw new Error('Este desenho tem arcos (A), que o editor ainda não transforma.');
+    if(C === 'M'){
+      cx = a[0] + ox; cy = a[1] + oy; sx = cx; sy = cy;
+      saida.push('M' + par(cx, cy));
+    }else if(C === 'L'){
+      cx = a[0] + ox; cy = a[1] + oy;
+      saida.push('L' + par(cx, cy));
+    }else if(C === 'H'){
+      cx = a[0] + ox;
+      saida.push('L' + par(cx, cy));
+    }else if(C === 'V'){
+      cy = a[0] + oy;
+      saida.push('L' + par(cx, cy));
+    }else if(C === 'C'){
+      const x1 = a[0] + ox, y1 = a[1] + oy, x2 = a[2] + ox, y2 = a[3] + oy, x = a[4] + ox, y = a[5] + oy;
+      saida.push('C' + par(x1, y1) + ' ' + par(x2, y2) + ' ' + par(x, y));
+      lcx = x2; lcy = y2; cx = x; cy = y;
+    }else if(C === 'S'){
+      const x1 = (ultimo === 'C' || ultimo === 'S') ? 2*cx - lcx : cx;
+      const y1 = (ultimo === 'C' || ultimo === 'S') ? 2*cy - lcy : cy;
+      const x2 = a[0] + ox, y2 = a[1] + oy, x = a[2] + ox, y = a[3] + oy;
+      saida.push('C' + par(x1, y1) + ' ' + par(x2, y2) + ' ' + par(x, y));
+      lcx = x2; lcy = y2; cx = x; cy = y;
+    }else if(C === 'Q'){
+      const x1 = a[0] + ox, y1 = a[1] + oy, x = a[2] + ox, y = a[3] + oy;
+      saida.push('Q' + par(x1, y1) + ' ' + par(x, y));
+      lcx = x1; lcy = y1; cx = x; cy = y;
+    }else if(C === 'T'){
+      const x1 = (ultimo === 'Q' || ultimo === 'T') ? 2*cx - lcx : cx;
+      const y1 = (ultimo === 'Q' || ultimo === 'T') ? 2*cy - lcy : cy;
+      const x = a[0] + ox, y = a[1] + oy;
+      saida.push('Q' + par(x1, y1) + ' ' + par(x, y));
+      lcx = x1; lcy = y1; cx = x; cy = y;
+    }else if(C === 'Z'){
+      saida.push('Z');
+      cx = sx; cy = sy;
+    }
+    ultimo = C;
+  }
+  return saida.join('');
+}
+
+const VT_ATRIBUTOS = ['fill','fill-opacity','opacity','stroke','stroke-width','stroke-opacity','data-pantone','data-pantone-code','data-cmyk','id'];
+function vtAtributos(attrs){
+  return Object.keys(attrs || {}).filter(nome => VT_ATRIBUTOS.includes(nome))
+    .map(nome => ` ${nome}="${escaparHtml(String(attrs[nome]))}"`).join('');
+}
+
+function vtCaixaSelecao(){
+  if(!_vt || !_vt.sel.size) return null;
+  const caixas = [..._vt.sel].map(i => document.querySelector(`#vt-svg [data-i="${i}"]`)).filter(Boolean).map(el => el.getBBox());
+  if(!caixas.length) return null;
+  const x0 = Math.min(...caixas.map(b => b.x)), y0 = Math.min(...caixas.map(b => b.y));
+  const x1 = Math.max(...caixas.map(b => b.x + b.width)), y1 = Math.max(...caixas.map(b => b.y + b.height));
+  return {x:x0, y:y0, w:x1 - x0, h:y1 - y0};
+}
+
+function vtPonto(ev){
+  const svg = document.getElementById('vt-svg');
+  const ponto = svg.createSVGPoint();
+  ponto.x = ev.clientX; ponto.y = ev.clientY;
+  const p = ponto.matrixTransform(svg.getScreenCTM().inverse());
+  return {x:p.x, y:p.y};
+}
+
+function vtSnapshot(){ return JSON.stringify(_vt.els.map(e => ({d:e.d, deleted:e.deleted}))); }
+function vtGuardarDesfazer(){
+  _vt.desfazer.push(vtSnapshot());
+  if(_vt.desfazer.length > 60) _vt.desfazer.shift();
+}
+function vtDesfazer(){
+  const anterior = _vt.desfazer.pop();
+  if(!anterior) return;
+  JSON.parse(anterior).forEach((item, i) => { _vt.els[i].d = item.d; _vt.els[i].deleted = item.deleted; });
+  _vt.sel = new Set();
+  vtDesenhar();
+}
+
+function vtAjustarVista(){
+  const arte = document.getElementById('vt-art');
+  if(!arte || !arte.childNodes.length) return;
+  const b = arte.getBBox();
+  const margem = Math.max(b.width, b.height) * 0.08 || 1;
+  _vt.view = {x:b.x - margem, y:b.y - margem, w:b.width + 2*margem, h:b.height + 2*margem};
+}
+
+function vtDesenhar(){
+  const host = document.getElementById('vt-canvas');
+  if(!host) return;
+  const v = _vt.view;
+  const ativos = _vt.els.map((e, i) => ({e, i})).filter(x => !x.e.deleted);
+  host.innerHTML = `<svg id="vt-svg" xmlns="${VT_NS}" viewBox="${v.x} ${v.y} ${v.w} ${v.h}" style="width:100%;height:100%;touch-action:none;display:block;background:${_vt.escuro ? '#1e293b' : '#ffffff'};">`
+    + `<g id="vt-art">${ativos.map(({e, i}) => `<path data-i="${i}" d="${e.d}"${e.attrs.fill ? '' : ' fill="#000000"'}${vtAtributos(e.attrs)} style="cursor:move;"/>`).join('')}</g>`
+    + `<g id="vt-sel"></g><rect id="vt-caixa" x="0" y="0" width="0" height="0" fill="rgba(37,99,235,.12)" stroke="#2563eb" stroke-dasharray="4 3" stroke-width="${v.w / 700}" style="display:none;pointer-events:none;"/></svg>`;
+  vtDesenharSelecao();
+}
+
+function vtDesenharSelecao(caixaPrevia){
+  const alvo = document.getElementById('vt-sel');
+  const info = document.getElementById('vt-info');
+  const ativos = _vt.els.filter(e => !e.deleted).length;
+  if(info) info.textContent = `${ativos} elemento(s) no desenho · ${_vt.sel.size} selecionado(s)`;
+  if(!alvo) return;
+  const b = caixaPrevia || vtCaixaSelecao();
+  const campoL = document.getElementById('vt-largura'), campoA = document.getElementById('vt-altura');
+  if(!b){
+    alvo.innerHTML = '';
+    if(campoL){ campoL.value = ''; campoA.value = ''; }
+    return;
+  }
+  const v = _vt.view, t = v.w / 90, linha = v.w / 600;
+  const pontos = {nw:[b.x, b.y], n:[b.x + b.w/2, b.y], ne:[b.x + b.w, b.y], e:[b.x + b.w, b.y + b.h/2], se:[b.x + b.w, b.y + b.h], s:[b.x + b.w/2, b.y + b.h], sw:[b.x, b.y + b.h], w:[b.x, b.y + b.h/2]};
+  const cursores = {nw:'nwse-resize', se:'nwse-resize', ne:'nesw-resize', sw:'nesw-resize', n:'ns-resize', s:'ns-resize', e:'ew-resize', w:'ew-resize'};
+  alvo.innerHTML = `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#2563eb" stroke-width="${linha}" stroke-dasharray="${linha * 4} ${linha * 3}" style="pointer-events:none;"/>`
+    + Object.keys(pontos).map(h => `<rect data-h="${h}" x="${pontos[h][0] - t/2}" y="${pontos[h][1] - t/2}" width="${t}" height="${t}" fill="#ffffff" stroke="#2563eb" stroke-width="${linha}" style="cursor:${cursores[h]};"/>`).join('');
+  if(campoL && document.activeElement !== campoL && document.activeElement !== campoA){
+    campoL.value = b.w.toFixed(1);
+    campoA.value = b.h.toFixed(1);
+  }
+}
+
+function vtConfirmar(m){
+  if(!_vt.sel.size) return;
+  vtGuardarDesfazer();
+  try{
+    _vt.sel.forEach(i => { _vt.els[i].d = vtTransformarCaminho(_vt.els[i].d, m); });
+  }catch(erro){ _vt.desfazer.pop(); alert(erro.message); }
+  vtDesenhar();
+}
+
+function vtApagar(){
+  if(!_vt.sel.size) return;
+  vtGuardarDesfazer();
+  _vt.sel.forEach(i => { _vt.els[i].deleted = true; });
+  _vt.sel = new Set();
+  vtDesenhar();
+}
+
+function vtPrevia(m){
+  [..._vt.sel].forEach(i => {
+    const el = document.querySelector(`#vt-svg [data-i="${i}"]`);
+    if(el) el.setAttribute('transform', `matrix(${m.join(' ')})`);
+  });
+}
+
+function vtMatrizEscala(b, sx, sy, ax, ay){ return [sx, 0, 0, sy, ax * (1 - sx), ay * (1 - sy)]; }
+
+function vtLigarEventos(overlay){
+  const host = document.getElementById('vt-canvas');
+  let arrasto = null;
+
+  host.addEventListener('contextmenu', ev => ev.preventDefault());
+  host.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const p = vtPonto(ev), fator = ev.deltaY < 0 ? 0.85 : 1 / 0.85, v = _vt.view;
+    v.x = p.x - (p.x - v.x) * fator; v.y = p.y - (p.y - v.y) * fator; v.w *= fator; v.h *= fator;
+    vtDesenhar();
+  }, {passive:false});
+
+  host.addEventListener('pointerdown', ev => {
+    const svg = document.getElementById('vt-svg');
+    if(!svg) return;
+    if(ev.button === 2 || ev.button === 1){
+      arrasto = {tipo:'pan', ini:{x:ev.clientX, y:ev.clientY}, vista:{..._vt.view}, escala:svg.getScreenCTM().a};
+      host.setPointerCapture(ev.pointerId);
+      return;
+    }
+    if(ev.button !== 0) return;
+    const p = vtPonto(ev), alvo = ev.target;
+    const alca = alvo.getAttribute && alvo.getAttribute('data-h');
+    if(alca){
+      arrasto = {tipo:'escala', alca, caixa:vtCaixaSelecao(), ini:p, m:null};
+      host.setPointerCapture(ev.pointerId);
+      return;
+    }
+    const indice = alvo.getAttribute && alvo.getAttribute('data-i');
+    if(indice != null){
+      const i = Number(indice);
+      if(ev.shiftKey){ if(_vt.sel.has(i)) _vt.sel.delete(i); else _vt.sel.add(i); }
+      else if(!_vt.sel.has(i)) _vt.sel = new Set([i]);
+      vtDesenharSelecao();
+      arrasto = {tipo:'mover', ini:p, caixa:vtCaixaSelecao(), m:null};
+      host.setPointerCapture(ev.pointerId);
+      return;
+    }
+    if(!ev.shiftKey) _vt.sel = new Set();
+    vtDesenharSelecao();
+    arrasto = {tipo:'caixa', ini:p, atual:p};
+    host.setPointerCapture(ev.pointerId);
+  });
+
+  host.addEventListener('pointermove', ev => {
+    if(!arrasto) return;
+    if(arrasto.tipo === 'pan'){
+      const dx = (ev.clientX - arrasto.ini.x) / arrasto.escala, dy = (ev.clientY - arrasto.ini.y) / arrasto.escala;
+      _vt.view = {..._vt.view, x:arrasto.vista.x - dx, y:arrasto.vista.y - dy};
+      document.getElementById('vt-svg').setAttribute('viewBox', `${_vt.view.x} ${_vt.view.y} ${_vt.view.w} ${_vt.view.h}`);
+      return;
+    }
+    const p = vtPonto(ev);
+    if(arrasto.tipo === 'mover'){
+      arrasto.m = [1, 0, 0, 1, p.x - arrasto.ini.x, p.y - arrasto.ini.y];
+      vtPrevia(arrasto.m);
+      const b = arrasto.caixa;
+      vtDesenharSelecao({x:b.x + arrasto.m[4], y:b.y + arrasto.m[5], w:b.w, h:b.h});
+    }else if(arrasto.tipo === 'escala'){
+      const b = arrasto.caixa, h = arrasto.alca;
+      let sx = 1, sy = 1, ax = b.x, ay = b.y;
+      if(h.includes('e')){ sx = (p.x - b.x) / b.w; ax = b.x; }
+      else if(h.includes('w')){ sx = (b.x + b.w - p.x) / b.w; ax = b.x + b.w; }
+      if(h.includes('s')){ sy = (p.y - b.y) / b.h; ay = b.y; }
+      else if(h.includes('n')){ sy = (b.y + b.h - p.y) / b.h; ay = b.y + b.h; }
+      if(h.length === 2 && !ev.altKey){
+        const s = Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy;
+        sx = s; sy = s;
+      }
+      sx = Math.max(0.02, sx); sy = Math.max(0.02, sy);
+      arrasto.m = vtMatrizEscala(b, sx, sy, ax, ay);
+      vtPrevia(arrasto.m);
+      vtDesenharSelecao({x:arrasto.m[0] * b.x + arrasto.m[4], y:arrasto.m[3] * b.y + arrasto.m[5], w:b.w * sx, h:b.h * sy});
+    }else if(arrasto.tipo === 'caixa'){
+      arrasto.atual = p;
+      const r = document.getElementById('vt-caixa');
+      r.style.display = '';
+      r.setAttribute('x', Math.min(arrasto.ini.x, p.x)); r.setAttribute('y', Math.min(arrasto.ini.y, p.y));
+      r.setAttribute('width', Math.abs(p.x - arrasto.ini.x)); r.setAttribute('height', Math.abs(p.y - arrasto.ini.y));
+    }
+  });
+
+  const terminar = ev => {
+    if(!arrasto) return;
+    const a = arrasto; arrasto = null;
+    try{ host.releasePointerCapture(ev.pointerId); }catch(e){}
+    if(a.tipo === 'pan') return;
+    if((a.tipo === 'mover' || a.tipo === 'escala') && a.m){
+      const mudou = a.m.some((valor, k) => Math.abs(valor - [1, 0, 0, 1, 0, 0][k]) > 1e-9);
+      if(mudou) vtConfirmar(a.m); else vtDesenhar();
+    }else if(a.tipo === 'caixa'){
+      const x0 = Math.min(a.ini.x, a.atual.x), x1 = Math.max(a.ini.x, a.atual.x), y0 = Math.min(a.ini.y, a.atual.y), y1 = Math.max(a.ini.y, a.atual.y);
+      if(x1 - x0 > _vt.view.w / 400 || y1 - y0 > _vt.view.w / 400){
+        document.querySelectorAll('#vt-svg [data-i]').forEach(el => {
+          const b = el.getBBox();
+          if(b.x < x1 && b.x + b.width > x0 && b.y < y1 && b.y + b.height > y0) _vt.sel.add(Number(el.getAttribute('data-i')));
+        });
+      }
+      vtDesenhar();
+    }
+  };
+  host.addEventListener('pointerup', terminar);
+  host.addEventListener('pointercancel', terminar);
+
+  const teclado = ev => {
+    const emCampo = document.activeElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+    if((ev.key === 'Delete' || ev.key === 'Backspace') && !emCampo){ ev.preventDefault(); vtApagar(); }
+    else if((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' && !emCampo){ ev.preventDefault(); vtDesfazer(); }
+    else if((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'a' && !emCampo){
+      ev.preventDefault();
+      _vt.sel = new Set(_vt.els.map((e, i) => e.deleted ? null : i).filter(i => i != null));
+      vtDesenharSelecao();
+    }else if(ev.key === 'Escape' && !emCampo) fecharEditorVetorial();
+  };
+  overlay._teclado = teclado;
+  window.addEventListener('keydown', teclado);
+}
+
+function abrirEditorVetorial(){
+  if(document.getElementById('editor-vetorial-overlay')) return;
+  const fonte = REAL.tracedSvgOriginal || REAL.tracedSvg;
+  if(!fonte){ alert('Nada vetorizado ainda para editar.'); return; }
+  const doc = new DOMParser().parseFromString(fonte, 'image/svg+xml');
+  if(doc.querySelector('parsererror') || !doc.querySelector('svg')){ alert('Não foi possível ler o desenho vetorial.'); return; }
+  if(doc.querySelector('[transform]')){ alert('Este SVG tem transformações internas. Achate-as em um editor vetorial antes de usar este editor.'); return; }
+  const caminhos = [...doc.querySelectorAll('path')].filter(p => p.getAttribute('d'));
+  if(!caminhos.length){ alert('O desenho não tem caminhos para editar.'); return; }
+  const els = caminhos.map(p => {
+    const attrs = {};
+    for(const nome of VT_ATRIBUTOS){ const valor = p.getAttribute(nome); if(valor != null) attrs[nome] = valor; }
+    if(attrs.fill == null){ const pai = p.closest('[fill]'); if(pai) attrs.fill = pai.getAttribute('fill'); }
+    return {attrs, d:p.getAttribute('d'), deleted:false};
+  });
+  try{ els.forEach(e => vtTransformarCaminho(e.d, [1, 0, 0, 1, 0, 0])); }
+  catch(erro){ alert(erro.message); return; }
+  const raiz = doc.querySelector('svg');
+  const vb = (raiz.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  const view = vb.length === 4 && vb.every(Number.isFinite) && vb[2] > 0 && vb[3] > 0
+    ? {x:vb[0], y:vb[1], w:vb[2], h:vb[3]}
+    : {x:0, y:0, w:parseFloat(raiz.getAttribute('width')) || 1000, h:parseFloat(raiz.getAttribute('height')) || 500};
+
+  const overlay = document.createElement('div');
+  overlay.id = 'editor-vetorial-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(15,20,32,.78);display:flex;align-items:center;justify-content:center;padding:12px;';
+  const botao = (id, texto, extra) => `<button class="btn btn-ghost btn-sm" id="${id}" type="button"${extra || ''}>${texto}</button>`;
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border-radius:14px;box-shadow:var(--shadow);width:min(1180px,100%);height:min(88vh,860px);display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div>
+          <h3 style="font-size:14px;color:var(--text);">✂️ Editor vetorial (sem custo de vetorização)</h3>
+          <p style="font-size:11.5px;color:var(--text-faint);">Clique para selecionar (Shift soma) · arraste o vazio para selecionar vários · arraste para mover · alças para esticar (cantos mantêm a proporção; Alt libera) · roda do mouse dá zoom · botão direito arrasta a tela · Delete apaga · Ctrl+Z desfaz.</p>
+        </div>
+        ${botao('vt-fechar', '✕ Fechar sem aplicar')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:var(--surface-2);">
+        ${botao('vt-todos', 'Selecionar tudo')}${botao('vt-apagar', '🗑 Apagar')}${botao('vt-desfazer', '↶ Desfazer')}${botao('vt-ajustar', 'Ajustar à tela')}${botao('vt-restaurar', 'Restaurar original')}${botao('vt-fundo', 'Fundo claro/escuro')}
+        <span id="vt-info" style="font-size:12px;color:var(--text-faint);margin-left:6px;"></span>
+        <div style="flex:1;"></div>
+        <button class="btn btn-primary btn-sm" id="vt-aplicar" type="button">${ICONS.check} Aplicar edição</button>
+      </div>
+      <div style="flex:1;display:flex;min-height:0;">
+        <div id="vt-canvas" style="flex:1;min-width:0;"></div>
+        <div style="width:240px;border-left:1px solid var(--border);padding:12px;overflow:auto;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-weight:700;font-size:12.5px;">Tamanho da seleção</div>
+          <label class="field">Largura<input id="vt-largura" type="number" step="0.1" min="0.1"></label>
+          <label class="field">Altura<input id="vt-altura" type="number" step="0.1" min="0.1"></label>
+          <label class="checkrow"><input type="checkbox" id="vt-proporcao" checked> Manter proporção</label>
+          ${botao('vt-tamanho', 'Aplicar tamanho')}
+          <div style="font-weight:700;font-size:12.5px;margin-top:6px;">Girar e espelhar</div>
+          <label class="field">Ângulo (graus)<input id="vt-angulo" type="number" step="1" value="90"></label>
+          ${botao('vt-girar', 'Girar seleção')}
+          <div style="display:flex;gap:6px;">${botao('vt-espelhar-h', '↔ Espelhar')}${botao('vt-espelhar-v', '↕ Espelhar')}</div>
+          <p class="role-note" style="margin-top:8px;">As medidas aqui são do próprio desenho, sem unidade real. Depois de aplicar, informe o <b>tamanho real do letreiro</b> na etapa “Escala, área e perímetros”: ele é obrigatório antes do nesting e precisa ser conferido de novo, porque esticar ou apagar muda as proporções.</p>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  _vt = {els, sel:new Set(), view, escuro:true, desfazer:[], original:els.map(e => ({d:e.d, deleted:false}))};
+  vtDesenhar();
+  vtAjustarVista();
+  vtDesenhar();
+  vtLigarEventos(overlay);
+
+  const por = (id, evento, fn) => document.getElementById(id).addEventListener(evento, fn);
+  por('vt-fechar', 'click', fecharEditorVetorial);
+  por('vt-apagar', 'click', vtApagar);
+  por('vt-desfazer', 'click', vtDesfazer);
+  por('vt-todos', 'click', () => { _vt.sel = new Set(_vt.els.map((e, i) => e.deleted ? null : i).filter(i => i != null)); vtDesenharSelecao(); });
+  por('vt-ajustar', 'click', () => { vtAjustarVista(); vtDesenhar(); });
+  por('vt-fundo', 'click', () => { _vt.escuro = !_vt.escuro; vtDesenhar(); });
+  por('vt-restaurar', 'click', () => {
+    if(!confirm('Voltar o desenho ao estado em que o editor foi aberto?')) return;
+    vtGuardarDesfazer();
+    _vt.original.forEach((item, i) => { _vt.els[i].d = item.d; _vt.els[i].deleted = false; });
+    _vt.sel = new Set();
+    vtDesenhar();
+  });
+  por('vt-tamanho', 'click', () => {
+    const b = vtCaixaSelecao();
+    if(!b){ alert('Selecione um ou mais elementos.'); return; }
+    const novaL = Number(document.getElementById('vt-largura').value), novaA = Number(document.getElementById('vt-altura').value);
+    if(!(novaL > 0) || !(novaA > 0)){ alert('Informe largura e altura maiores que zero.'); return; }
+    const proporcional = document.getElementById('vt-proporcao').checked;
+    const alterouAltura = Math.abs(novaA - b.h) > Math.abs(novaL - b.w) * (b.h / b.w);
+    const sx = proporcional ? (alterouAltura ? novaA / b.h : novaL / b.w) : novaL / b.w;
+    const sy = proporcional ? sx : novaA / b.h;
+    vtConfirmar(vtMatrizEscala(b, sx, sy, b.x, b.y));
+  });
+  por('vt-girar', 'click', () => {
+    const b = vtCaixaSelecao();
+    if(!b){ alert('Selecione um ou mais elementos.'); return; }
+    const graus = Number(document.getElementById('vt-angulo').value);
+    if(!Number.isFinite(graus)) return;
+    const r = graus * Math.PI / 180, cos = Math.cos(r), sen = Math.sin(r), cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    vtConfirmar([cos, sen, -sen, cos, cx - cos * cx + sen * cy, cy - sen * cx - cos * cy]);
+  });
+  por('vt-espelhar-h', 'click', () => { const b = vtCaixaSelecao(); if(b) vtConfirmar([-1, 0, 0, 1, 2 * (b.x + b.w / 2), 0]); });
+  por('vt-espelhar-v', 'click', () => { const b = vtCaixaSelecao(); if(b) vtConfirmar([1, 0, 0, -1, 0, 2 * (b.y + b.h / 2)]); });
+  por('vt-aplicar', 'click', aplicarEdicaoVetorial);
+}
+
+function fecharEditorVetorial(){
+  const overlay = document.getElementById('editor-vetorial-overlay');
+  if(overlay){
+    if(overlay._teclado) window.removeEventListener('keydown', overlay._teclado);
+    overlay.remove();
+  }
+  _vt = null;
+}
+
+/** Recorta o desenho editado rente à arte, valida e devolve ao fluxo como vetor (sem Vectorizer.AI). */
+async function aplicarEdicaoVetorial(){
+  if(!_vt) return;
+  const ativos = _vt.els.filter(e => !e.deleted);
+  if(!ativos.length){ alert('Não sobrou nenhum elemento no desenho.'); return; }
+  const arte = document.getElementById('vt-art');
+  const caixa = arte.getBBox();
+  if(!(caixa.width > 0) || !(caixa.height > 0)){ alert('O desenho editado ficou sem largura ou altura.'); return; }
+  const folga = Math.max(caixa.width, caixa.height) * 0.02;
+  const m = [1, 0, 0, 1, -caixa.x + folga, -caixa.y + folga];
+  const largura = Math.round((caixa.width + 2 * folga) * 1000) / 1000, altura = Math.round((caixa.height + 2 * folga) * 1000) / 1000;
+  let caminhos;
+  try{ caminhos = ativos.map(e => ({attrs:e.attrs, d:vtTransformarCaminho(e.d, m)})); }
+  catch(erro){ alert(erro.message); return; }
+  const svg = `<svg xmlns="${VT_NS}" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}">`
+    + caminhos.map(c => `<path d="${c.d}"${c.attrs.fill ? '' : ' fill="#000000"'}${vtAtributos(c.attrs)}/>`).join('') + '</svg>';
+  const estilizado = applyPrompt2VectorStyle(svg);
+  if(!estilizado.audit.ok){ alert('O desenho editado não passou na validação: ' + estilizado.audit.fatal.join(' ')); return; }
+  const lido = extractPathsFromRawSVG(estilizado.svgText);
+  if(!lido || !lido.d || !(lido.w > 0) || !(lido.h > 0)){ alert('Não foi possível ler as medidas do desenho editado.'); return; }
+  fecharEditorVetorial();
+  if(!REAL.vetorBaseSvg) REAL.vetorBaseSvg = REAL.tracedSvgOriginal;
+  invalidarFactibilidadeReal();
+  REAL.tracedSvg = estilizado.svgText; REAL.tracedSvgOriginal = svg; REAL.fgD = lido.d; REAL.tracedW = lido.w; REAL.tracedH = lido.h;
+  REAL.geomRaw = classifyGeometry(lido.d);
+  REAL.traceReview = {...TRACE_REVIEW_DEFAULTS};
+  REAL.traceQuality = await validatePrompt2Trace(null, estilizado.svgText);
+  REAL.traceError = null;
+  REAL.uploadError = null;
+  REAL.uploadWarning = 'Desenho editado no editor vetorial. Confira o resultado e informe de novo o tamanho real do letreiro na etapa de escala antes do nesting.';
+  REAL.approvals.vetorizacao = false; REAL.approvals.escala = false; REAL.approvals.kit = false; REAL.approvals.nesting = false; REAL.nesting = null;
+  render();
+}
+
 /* ---------- EDITOR VETORIAL RÁPIDO (Fabric.js) ----------
  * Mover/girar/expandir/apagar/mudar cor sobre o vetor do passo de
  * Vetorização. Vive FORA do ciclo normal de render() do app (anexado direto
@@ -2735,7 +3196,7 @@ function realStepVetorizacao(){
       <div class="checkrow">${ICONS.check}Confira letras, contornos, curvas, vazados, espaçamentos e proporções contra a arte aprovada</div>
       <div class="checkrow">${ICONS.check}O SVG contém caminhos vetoriais; escala física e adequação ao corte ainda precisam de confirmação</div>
     </div>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-soft btn-sm" data-act="editor-vetor-abrir">✏️ Editor rápido (mover, girar, expandir, apagar, cor)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG técnico</button><button class="btn btn-ghost btn-sm" data-act="download-vector-preview">Baixar preview PNG</button></div>` : ''}
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" data-act="editor-vetorial-abrir">✂️ Editor vetorial: apagar, mover, esticar (sem custo)</button><button class="btn btn-ghost btn-sm" data-act="editor-vetor-abrir" title="Pinta sobre a imagem e vetoriza de novo, consumindo 1 crédito do Vectorizer.AI">Editor por imagem (re-vetoriza, 1 crédito)</button><button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG técnico</button><button class="btn btn-ghost btn-sm" data-act="download-vector-preview">Baixar preview PNG</button></div>` : ''}
     ${hasTrace?traceQualityPanel():''}
     <details style="margin-top:14px;">
       <summary style="cursor:pointer; font-size:12.5px; color:var(--accent-ink); font-weight:600;">Prefiro enviar um arquivo já vetorizado</summary>
@@ -5810,6 +6271,8 @@ function bindRealEvents(){
   });
   const abrirEditorBtn = document.querySelector('[data-act="editor-vetor-abrir"]');
   if(abrirEditorBtn) abrirEditorBtn.addEventListener('click', abrirEditorVetor);
+  const abrirEditorVetorialBtn = document.querySelector('[data-act="editor-vetorial-abrir"]');
+  if(abrirEditorVetorialBtn) abrirEditorVetorialBtn.addEventListener('click', abrirEditorVetorial);
   const removeImgBtn = document.querySelector('[data-act="real-remove-image"]');
   if(removeImgBtn) removeImgBtn.addEventListener('click', ()=>{
     redrawRequestId++; REAL.gerandoRedesenho=false;
