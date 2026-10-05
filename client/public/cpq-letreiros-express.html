@@ -778,6 +778,7 @@ function novaProposta(){
     tracedSvg:null, tracedSvgOriginal:null, fgD:'', tracedW:0, tracedH:0, traceError:null,
     // Contorno de corte CNC (silhueta de uma cor, +1 crédito do Vectorizer.AI) e o SVG realmente usado no nesting.
     analiseArte:null, analiseErro:null, analisandoArte:false,
+    chatVetor:[], chatRascunho:'', chatCarregando:false, vetorAnterior:null, ajustesVetorizacao:null,
     gerarContornoCnc:true, tracedSvgCorte:null, tracedSvgCorteOriginal:null, tracedSvgCorteDe:null, corteInfo:null, corteErro:null, corteCreditos:null, svgNesting:null,
     colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:null,transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,composicaoKitOriginal:null},
     geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
@@ -1470,6 +1471,129 @@ function painelLeituraArte(){
   </div>`;
 }
 
+/* ---------- AJUSTE POR CONVERSA ----------
+ * O vendedor descreve o que saiu errado; um modelo de visão enxerga o vetor atual (elementos numerados) e propõe um plano
+ * (vetorizar de novo com outros ajustes OU editar elementos). Nada é executado sem o vendedor aprovar o plano. */
+function prepararContextoChat(){
+  const {els} = lerElementosEditaveis(REAL.tracedSvgOriginal || REAL.tracedSvg);
+  const {uniao, caixas} = caixasDosCaminhos(els.map(e => e.d));
+  if(!(uniao.width > 0) || !(uniao.height > 0)) throw new Error('O desenho não tem tamanho para ser analisado.');
+  const pct = (valor, total) => Number((valor / total * 100).toFixed(1));
+  const tabela = els.map((e, i) => ({
+    i, x:pct(caixas[i].x - uniao.x, uniao.width), y:pct(caixas[i].y - uniao.y, uniao.height), w:pct(caixas[i].width, uniao.width), h:pct(caixas[i].height, uniao.height),
+    cor:String(e.attrs.fill || '#000000').slice(0, 30), areaPct:pct(caixas[i].width * caixas[i].height, uniao.width * uniao.height),
+  }));
+  const usados = [...tabela].sort((a, b) => b.areaPct - a.areaPct).slice(0, 120).sort((a, b) => a.i - b.i);
+  // Imagem do vetor com o número de cada elemento, para o modelo saber de qual o vendedor está falando.
+  const lado = 1100, escala = lado / Math.max(uniao.width, uniao.height), margem = 24;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(uniao.width * escala + margem * 2); canvas.height = Math.ceil(uniao.height * escala + margem * 2);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#d9dee8'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(escala, 0, 0, escala, margem - uniao.x * escala, margem - uniao.y * escala);
+  els.forEach(e => { try{ ctx.fillStyle = e.attrs.fill || '#000000'; ctx.fill(new Path2D(e.d)); }catch(erro){} });
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  usados.forEach(item => {
+    const cx = margem + (caixas[item.i].x + caixas[item.i].width / 2 - uniao.x) * escala, cy = margem + (caixas[item.i].y + caixas[item.i].height / 2 - uniao.y) * escala;
+    ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#111827'; ctx.stroke();
+    ctx.fillStyle = '#111827'; ctx.fillText(String(item.i), cx, cy + 1);
+  });
+  const q = REAL.traceQuality, m = q && q.metrics;
+  return {
+    imagem:canvas.toDataURL('image/png'), totalElementos:els.length, elementos:usados,
+    ajustesAtuais:REAL.ajustesVetorizacao || {},
+    qualidade:{status:q ? q.status : 'sem_validacao', iou:m ? m.iou : null, iouTolerante:m ? m.iouTolerante : null, proporcao:m ? m.aspectDelta : null, deslocamento:m ? m.shiftPercent : null, falhas:((q && q.fatal) || []).slice(0, 10)},
+  };
+}
+
+async function enviarMensagemChat(){
+  const texto = (REAL.chatRascunho || '').trim();
+  if(texto.length < 2 || REAL.chatCarregando) return;
+  REAL.chatVetor = REAL.chatVetor || [];
+  REAL.chatVetor.push({papel:'vendedor', texto});
+  REAL.chatRascunho = ''; REAL.chatCarregando = true; render();
+  try{
+    const contexto = prepararContextoChat();
+    const historico = REAL.chatVetor.slice(-9, -1).map(item => ({papel:item.papel, texto:String(item.texto).slice(0, 1000)}));
+    const response = await fetch('/api/letra-caixa/ajuste-conversa', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mensagem:texto, ...contexto, historico}),
+    });
+    const body = await response.json().catch(() => ({}));
+    if(!response.ok) throw new Error(body.error || 'O assistente não respondeu agora.');
+    REAL.chatVetor.push({papel:'assistente', texto:body.resposta, acoes:body.acoes || [], estado:(body.acoes || []).length ? 'pendente' : 'sem_acao'});
+  }catch(erro){
+    REAL.chatVetor.push({papel:'assistente', texto:'Não consegui ajudar agora: ' + String(erro && erro.message || erro), acoes:[], estado:'erro'});
+  }finally{
+    REAL.chatCarregando = false; render();
+  }
+}
+
+/** Executa as edições aprovadas direto nos caminhos (apagar, mover, esticar, girar, espelhar): sem crédito. */
+async function executarAcoesDeEdicao(acoes){
+  const {els} = lerElementosEditaveis(REAL.tracedSvgOriginal || REAL.tracedSvg);
+  const ativos = () => els.filter(e => !e.deleted);
+  for(const acao of acoes){
+    const alvo = acao.indices.map(i => els[i]).filter(e => e && !e.deleted);
+    if(!alvo.length) continue;
+    if(acao.tipo === 'apagar'){ alvo.forEach(e => { e.deleted = true; }); continue; }
+    const caixa = caixaDeCaminhos(alvo.map(e => e.d)), cx = caixa.x + caixa.width / 2, cy = caixa.y + caixa.height / 2;
+    let m;
+    if(acao.tipo === 'mover'){ const tudo = caixaDeCaminhos(ativos().map(e => e.d)); m = [1, 0, 0, 1, acao.dxPct / 100 * tudo.width, acao.dyPct / 100 * tudo.height]; }
+    else if(acao.tipo === 'escalar') m = [acao.fator, 0, 0, acao.fatorY, cx * (1 - acao.fator), cy * (1 - acao.fatorY)];
+    else if(acao.tipo === 'girar'){ const r = acao.graus * Math.PI / 180, cos = Math.cos(r), sen = Math.sin(r); m = [cos, sen, -sen, cos, cx - cos * cx + sen * cy, cy - sen * cx - cos * cy]; }
+    else if(acao.tipo === 'espelhar') m = acao.eixo === 'horizontal' ? [-1, 0, 0, 1, 2 * cx, 0] : [1, 0, 0, -1, 0, 2 * cy];
+    else continue;
+    alvo.forEach(e => { e.d = vtTransformarCaminho(e.d, m); });
+  }
+  const resultado = await finalizarEdicaoVetor(ativos().map(e => ({attrs:e.attrs, d:e.d})), 'Desenho ajustado por conversa. Confira o resultado e informe de novo o tamanho real do letreiro na etapa de escala antes do nesting.');
+  if(!resultado.ok) throw new Error(resultado.erro);
+}
+
+async function aplicarPlanoChat(indice){
+  const mensagem = (REAL.chatVetor || [])[indice];
+  if(!mensagem || mensagem.estado !== 'pendente' || state.tracing) return;
+  mensagem.estado = 'aplicando'; render();
+  try{
+    const nova = mensagem.acoes.find(acao => acao.tipo === 'revetorizar');
+    if(nova) await retrace({ajustes:nova.ajustes});
+    else await executarAcoesDeEdicao(mensagem.acoes);
+    mensagem.estado = 'aplicado';
+  }catch(erro){
+    mensagem.estado = 'erro_aplicar'; mensagem.erro = String(erro && erro.message || erro);
+  }
+  (REAL.chatVetor || []).forEach((item, i) => { if(i !== indice && item.estado === 'pendente') item.estado = 'obsoleto'; });
+  render();
+}
+
+function painelConversaVetor(){
+  const mensagens = REAL.chatVetor || [];
+  const rotulos = {aplicado:'✔ Aplicado', descartado:'Descartado', obsoleto:'Não vale mais (o desenho mudou)', aplicando:'Aplicando…', erro_aplicar:'Não foi possível aplicar'};
+  const bolha = (item, i) => {
+    if(item.papel === 'vendedor') return `<div style="align-self:flex-end;max-width:85%;background:var(--accent-soft);border-radius:12px 12px 2px 12px;padding:8px 11px;font-size:13px;white-space:pre-wrap;">${escaparHtml(item.texto)}</div>`;
+    const temNova = (item.acoes || []).some(acao => acao.tipo === 'revetorizar');
+    const plano = (item.acoes || []).length ? `<div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px;">
+        <b style="font-size:12px;">Plano proposto</b>
+        <ul style="margin:4px 0 4px 18px;font-size:12.5px;">${item.acoes.map(acao => `<li>${escaparHtml(acao.descricao)}${acao.motivo ? ` <span class="role-note">(${escaparHtml(acao.motivo)})</span>` : ''}</li>`).join('')}</ul>
+        <div class="role-note">${temNova ? `Gasta ${REAL.gerarContornoCnc ? '2 créditos' : '1 crédito'} do Vectorizer.AI (${REAL.gerarContornoCnc ? 'arte + contorno de corte' : 'só a arte'}). Dá para desfazer depois.` : 'Sem custo de crédito. Dá para desfazer depois.'}</div>
+        ${item.estado === 'pendente' ? `<div style="display:flex;gap:8px;margin-top:6px;"><button class="btn btn-primary btn-sm" data-act="chat-vetor-aplicar" data-idx="${i}" ${state.tracing || REAL.chatCarregando ? 'disabled' : ''}>Aplicar</button><button class="btn btn-ghost btn-sm" data-act="chat-vetor-descartar" data-idx="${i}">Descartar</button></div>` : `<div class="role-note" style="margin-top:6px;"><b>${rotulos[item.estado] || ''}</b>${item.erro ? ' — ' + escaparHtml(item.erro) : ''}</div>`}
+      </div>` : '';
+    return `<div style="align-self:flex-start;max-width:92%;background:var(--surface);border:1px solid var(--border);border-radius:12px 12px 12px 2px;padding:8px 11px;font-size:13px;"><div style="white-space:pre-wrap;">${escaparHtml(item.texto)}</div>${plano}</div>`;
+  };
+  return `<div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none;">
+    <h4 style="margin:0 0 4px;">Ajustar por conversa</h4>
+    <p class="role-note" style="margin:0 0 8px;">Diga o que saiu errado e o assistente propõe um plano para você aprovar. Ele pode pedir uma nova vetorização com outros ajustes (gasta crédito) ou editar o desenho (apagar, mover, esticar, girar; sem custo). Exemplos: “as letras R e A ficaram coladas”, “apague o círculo de baixo”, “aumente o símbolo em 20%”.</p>
+    <div id="chat-vetor-msgs" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow:auto;padding:2px;">
+      ${mensagens.map(bolha).join('')}${REAL.chatCarregando ? '<div class="role-note">O assistente está olhando o desenho…</div>' : ''}
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:8px;">
+      <textarea data-act="chat-vetor-texto" rows="2" maxlength="1000" placeholder="Descreva o que precisa mudar…" style="flex:1;resize:vertical;font-family:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);">${escaparHtml(REAL.chatRascunho || '')}</textarea>
+      <button class="btn btn-primary btn-sm" data-act="chat-vetor-enviar" ${REAL.chatCarregando || state.tracing ? 'disabled' : ''}>Enviar</button>
+    </div>
+    ${REAL.vetorAnterior ? '<button class="btn btn-ghost btn-sm" data-act="chat-vetor-desfazer" style="margin-top:8px;">↶ Desfazer o último ajuste</button>' : ''}
+  </div>`;
+}
+
 /** Segunda chamada (+1 crédito): só a silhueta que a CNC corta. Falhar aqui nunca invalida a vetorização completa. */
 async function gerarContornoCorte(imagem, requestId){
   limparContornoCorte();
@@ -1521,9 +1645,11 @@ function painelContornoCorte(){
   return `<div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none;"><h4 style="margin:0 0 8px;">Contorno de corte CNC</h4>${corpo}</div>`;
 }
 
-async function retrace(){
+async function retrace(opcoes){
   const rasterSource=REAL.imgReconstructed;
   if(!rasterSource || !REAL.redesenhoToken) return;
+  REAL.vetorAnterior=capturarVetorAtual()||REAL.vetorAnterior;
+  (REAL.chatVetor||[]).forEach(m=>{ if(m.estado==='pendente') m.estado='obsoleto'; });
   const requestId=++traceRequestId;
   REAL.traceQuality=null;
   REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
@@ -1538,9 +1664,11 @@ async function retrace(){
     if(requestId!==traceRequestId) return;
     if(!['image/png','image/jpeg'].includes(imagem.type)) throw new Error('Envie uma imagem PNG ou JPG para vetorizar.');
     if(imagem.size>12*1024*1024) throw new Error('A imagem preparada excede 12 MB. Gere novamente uma versao menor.');
-    const leitura=await lerArteAprovada(imagem,requestId);
+    const manuais=opcoes&&opcoes.ajustes?opcoes.ajustes:null;
+    const leitura=manuais?null:await lerArteAprovada(imagem,requestId);
     if(requestId!==traceRequestId) return;
-    const ajustes=(leitura&&leitura.ajustes)||{};
+    const ajustes=manuais||(leitura&&leitura.ajustes)||{};
+    REAL.ajustesVetorizacao=ajustes;
     const consulta=new URLSearchParams();
     if(ajustes.maxCores!=null) consulta.set('maxCores',String(ajustes.maxCores));
     if(ajustes.minAreaPx!=null) consulta.set('minArea',String(ajustes.minAreaPx));
@@ -1901,28 +2029,69 @@ function vtLigarEventos(overlay){
   window.addEventListener('keydown', teclado);
 }
 
-function abrirEditorVetorial(){
-  if(document.getElementById('editor-vetorial-overlay')) return;
-  const fonte = REAL.tracedSvgOriginal || REAL.tracedSvg;
-  if(!fonte){ alert('Nada vetorizado ainda para editar.'); return; }
+/** Lê os caminhos do vetor atual como elementos editáveis (usado pelo editor e pelo chat de ajustes). */
+function lerElementosEditaveis(fonte){
+  if(!fonte) throw new Error('Nada vetorizado ainda para editar.');
   const doc = new DOMParser().parseFromString(fonte, 'image/svg+xml');
-  if(doc.querySelector('parsererror') || !doc.querySelector('svg')){ alert('Não foi possível ler o desenho vetorial.'); return; }
-  if(doc.querySelector('[transform]')){ alert('Este SVG tem transformações internas. Achate-as em um editor vetorial antes de usar este editor.'); return; }
+  if(doc.querySelector('parsererror') || !doc.querySelector('svg')) throw new Error('Não foi possível ler o desenho vetorial.');
+  if(doc.querySelector('[transform]')) throw new Error('Este SVG tem transformações internas. Achate-as em um editor vetorial antes de editar.');
   const caminhos = [...doc.querySelectorAll('path')].filter(p => p.getAttribute('d'));
-  if(!caminhos.length){ alert('O desenho não tem caminhos para editar.'); return; }
+  if(!caminhos.length) throw new Error('O desenho não tem caminhos para editar.');
   const els = caminhos.map(p => {
     const attrs = {};
     for(const nome of VT_ATRIBUTOS){ const valor = p.getAttribute(nome); if(valor != null) attrs[nome] = valor; }
     if(attrs.fill == null){ const pai = p.closest('[fill]'); if(pai) attrs.fill = pai.getAttribute('fill'); }
     return {attrs, d:p.getAttribute('d'), deleted:false};
   });
-  try{ els.forEach(e => vtTransformarCaminho(e.d, [1, 0, 0, 1, 0, 0])); }
-  catch(erro){ alert(erro.message); return; }
+  els.forEach(e => vtTransformarCaminho(e.d, [1, 0, 0, 1, 0, 0]));
   const raiz = doc.querySelector('svg');
   const vb = (raiz.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
   const view = vb.length === 4 && vb.every(Number.isFinite) && vb[2] > 0 && vb[3] > 0
     ? {x:vb[0], y:vb[1], w:vb[2], h:vb[3]}
     : {x:0, y:0, w:parseFloat(raiz.getAttribute('width')) || 1000, h:parseFloat(raiz.getAttribute('height')) || 500};
+  return {els, view};
+}
+
+/** Caixa de cada caminho (e da união) medida num SVG invisível, sem depender do editor aberto. */
+function caixasDosCaminhos(ds){
+  const svg = document.createElementNS(VT_NS, 'svg');
+  svg.setAttribute('width', '10'); svg.setAttribute('height', '10');
+  svg.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;';
+  const grupo = document.createElementNS(VT_NS, 'g');
+  svg.appendChild(grupo);
+  const nos = ds.map(d => { const no = document.createElementNS(VT_NS, 'path'); no.setAttribute('d', d); grupo.appendChild(no); return no; });
+  document.body.appendChild(svg);
+  try{ return {uniao:grupo.getBBox(), caixas:nos.map(no => no.getBBox())}; }
+  finally{ svg.remove(); }
+}
+function caixaDeCaminhos(ds){ return caixasDosCaminhos(ds).uniao; }
+
+function capturarVetorAtual(){
+  if(!REAL.tracedSvg) return null;
+  return {
+    tracedSvg:REAL.tracedSvg, tracedSvgOriginal:REAL.tracedSvgOriginal, fgD:REAL.fgD, tracedW:REAL.tracedW, tracedH:REAL.tracedH, geomRaw:REAL.geomRaw,
+    traceQuality:REAL.traceQuality, tracedSvgCorte:REAL.tracedSvgCorte, tracedSvgCorteOriginal:REAL.tracedSvgCorteOriginal, tracedSvgCorteDe:REAL.tracedSvgCorteDe,
+    corteInfo:REAL.corteInfo, corteErro:REAL.corteErro, corteCreditos:REAL.corteCreditos, analiseArte:REAL.analiseArte, ajustesVetorizacao:REAL.ajustesVetorizacao,
+    uploadWarning:REAL.uploadWarning,
+  };
+}
+function desfazerAjusteVetor(){
+  const anterior = REAL.vetorAnterior;
+  if(!anterior) return;
+  Object.assign(REAL, anterior);
+  REAL.vetorAnterior = null;
+  REAL.traceReview = {...TRACE_REVIEW_DEFAULTS};
+  invalidarFactibilidadeReal();
+  REAL.approvals.vetorizacao = false; REAL.approvals.escala = false; REAL.approvals.kit = false; REAL.approvals.nesting = false; REAL.nesting = null;
+  render();
+}
+
+function abrirEditorVetorial(){
+  if(document.getElementById('editor-vetorial-overlay')) return;
+  let lido;
+  try{ lido = lerElementosEditaveis(REAL.tracedSvgOriginal || REAL.tracedSvg); }
+  catch(erro){ alert(erro.message); return; }
+  const {els, view} = lido;
 
   const overlay = document.createElement('div');
   overlay.id = 'editor-vetorial-overlay';
@@ -2017,24 +2186,30 @@ function fecharEditorVetorial(){
 /** Recorta o desenho editado rente à arte, valida e devolve ao fluxo como vetor (sem Vectorizer.AI). */
 async function aplicarEdicaoVetorial(){
   if(!_vt) return;
-  const ativos = _vt.els.filter(e => !e.deleted);
-  if(!ativos.length){ alert('Não sobrou nenhum elemento no desenho.'); return; }
-  const arte = document.getElementById('vt-art');
-  const caixa = arte.getBBox();
-  if(!(caixa.width > 0) || !(caixa.height > 0)){ alert('O desenho editado ficou sem largura ou altura.'); return; }
+  const ativos = _vt.els.filter(e => !e.deleted).map(e => ({attrs:e.attrs, d:e.d}));
+  const resultado = await finalizarEdicaoVetor(ativos, 'Desenho editado no editor vetorial. Confira o resultado e informe de novo o tamanho real do letreiro na etapa de escala antes do nesting.');
+  if(!resultado.ok){ alert(resultado.erro); return; }
+  fecharEditorVetorial();
+}
+
+/** Recorta o desenho rente à arte, valida e devolve ao fluxo como vetor (sem Vectorizer.AI). Serve ao editor e ao chat. */
+async function finalizarEdicaoVetor(ativos, aviso){
+  if(!ativos.length) return {ok:false, erro:'Não sobrou nenhum elemento no desenho.'};
+  const caixa = caixaDeCaminhos(ativos.map(e => e.d));
+  if(!(caixa.width > 0) || !(caixa.height > 0)) return {ok:false, erro:'O desenho editado ficou sem largura ou altura.'};
   const folga = Math.max(caixa.width, caixa.height) * 0.02;
   const m = [1, 0, 0, 1, -caixa.x + folga, -caixa.y + folga];
   const largura = Math.round((caixa.width + 2 * folga) * 1000) / 1000, altura = Math.round((caixa.height + 2 * folga) * 1000) / 1000;
   let caminhos;
   try{ caminhos = ativos.map(e => ({attrs:e.attrs, d:vtTransformarCaminho(e.d, m)})); }
-  catch(erro){ alert(erro.message); return; }
+  catch(erro){ return {ok:false, erro:erro.message}; }
   const svg = `<svg xmlns="${VT_NS}" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}">`
     + caminhos.map(c => `<path d="${c.d}"${c.attrs.fill ? '' : ' fill="#000000"'}${vtAtributos(c.attrs)}/>`).join('') + '</svg>';
   const estilizado = applyPrompt2VectorStyle(svg);
-  if(!estilizado.audit.ok){ alert('O desenho editado não passou na validação: ' + estilizado.audit.fatal.join(' ')); return; }
+  if(!estilizado.audit.ok) return {ok:false, erro:'O desenho editado não passou na validação: ' + estilizado.audit.fatal.join(' ')};
   const lido = extractPathsFromRawSVG(estilizado.svgText);
-  if(!lido || !lido.d || !(lido.w > 0) || !(lido.h > 0)){ alert('Não foi possível ler as medidas do desenho editado.'); return; }
-  fecharEditorVetorial();
+  if(!lido || !lido.d || !(lido.w > 0) || !(lido.h > 0)) return {ok:false, erro:'Não foi possível ler as medidas do desenho editado.'};
+  REAL.vetorAnterior = capturarVetorAtual();
   if(!REAL.vetorBaseSvg) REAL.vetorBaseSvg = REAL.tracedSvgOriginal;
   limparContornoCorte();
   invalidarFactibilidadeReal();
@@ -2044,9 +2219,10 @@ async function aplicarEdicaoVetorial(){
   REAL.traceQuality = await validatePrompt2Trace(null, estilizado.svgText);
   REAL.traceError = null;
   REAL.uploadError = null;
-  REAL.uploadWarning = 'Desenho editado no editor vetorial. Confira o resultado e informe de novo o tamanho real do letreiro na etapa de escala antes do nesting.';
+  REAL.uploadWarning = aviso;
   REAL.approvals.vetorizacao = false; REAL.approvals.escala = false; REAL.approvals.kit = false; REAL.approvals.nesting = false; REAL.nesting = null;
   render();
+  return {ok:true};
 }
 
 /* ---------- EDITOR VETORIAL RÁPIDO (Fabric.js) ----------
@@ -3423,6 +3599,7 @@ function realStepVetorizacao(){
     ${hasTrace||REAL.analisandoArte||REAL.analiseErro?painelLeituraArte():''}
     ${hasTrace?traceQualityPanel():''}
     ${hasTrace?painelContornoCorte():''}
+    ${hasTrace?painelConversaVetor():''}
     <details style="margin-top:14px;">
       <summary style="cursor:pointer; font-size:12.5px; color:var(--accent-ink); font-weight:600;">Prefiro enviar um arquivo já vetorizado</summary>
       <div style="margin-top:10px;">${uploadBox('Enviar SVG pronto', 'usa os caminhos do arquivo sem chamar o Vectorizer.AI','real-upload','image/svg+xml,.svg')}</div>
@@ -6579,6 +6756,22 @@ function bindRealEvents(){
   });
 
   bindRangeLive('[data-act="real-overlay-opacity"]', v=>{ REAL.overlayOpacity=parseInt(v); return REAL.overlayOpacity; }, v=>v+'%');
+  const chatTexto = document.querySelector('[data-act="chat-vetor-texto"]');
+  if(chatTexto){
+    chatTexto.addEventListener('input', event => { REAL.chatRascunho = event.target.value; });
+    chatTexto.addEventListener('keydown', event => { if(event.key === 'Enter' && (event.ctrlKey || event.metaKey)){ event.preventDefault(); enviarMensagemChat(); } });
+  }
+  const chatEnviar = document.querySelector('[data-act="chat-vetor-enviar"]');
+  if(chatEnviar) chatEnviar.addEventListener('click', enviarMensagemChat);
+  document.querySelectorAll('[data-act="chat-vetor-aplicar"]').forEach(botao => botao.addEventListener('click', () => aplicarPlanoChat(Number(botao.dataset.idx))));
+  document.querySelectorAll('[data-act="chat-vetor-descartar"]').forEach(botao => botao.addEventListener('click', () => {
+    const item = (REAL.chatVetor || [])[Number(botao.dataset.idx)];
+    if(item){ item.estado = 'descartado'; render(); }
+  }));
+  const chatDesfazer = document.querySelector('[data-act="chat-vetor-desfazer"]');
+  if(chatDesfazer) chatDesfazer.addEventListener('click', desfazerAjusteVetor);
+  const chatCaixa = document.getElementById('chat-vetor-msgs');
+  if(chatCaixa) chatCaixa.scrollTop = chatCaixa.scrollHeight;
   const contornoCncBox = document.querySelector('[data-act="real-contorno-cnc"]');
   if(contornoCncBox) contornoCncBox.addEventListener('change', event=>{ REAL.gerarContornoCnc = event.target.checked; render(); });
   const baixarContorno = document.querySelector('[data-act="download-contorno-corte"]');
@@ -6587,7 +6780,7 @@ function bindRealEvents(){
     const link = document.createElement('a'); link.href = url; link.download = 'contorno-de-corte-cnc.svg'; link.click(); URL.revokeObjectURL(url);
   });
   const vectorizeBtn = document.querySelector('[data-act="real-vectorize"]');
-  if(vectorizeBtn) vectorizeBtn.addEventListener('click', retrace);
+  if(vectorizeBtn) vectorizeBtn.addEventListener('click', ()=>retrace());
 
   bindNumberLive('[data-act="real-scale-value"]', v=>{
     REAL.scale.valor=parseFloat(v)||0; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
@@ -6945,6 +7138,7 @@ window.__cpqResumo = function(){
   const ocupado = [
     [REAL.gerandoRedesenho, 'gerando a reconstrução (GPT)'],
     [REAL.analisandoArte, 'lendo a arte'],
+    [REAL.chatCarregando, 'conversando sobre o vetor'],
     [state.tracing, 'vetorizando'],
     [REAL.colorAnalysis && REAL.colorAnalysis.loading, 'analisando as cores'],
     [REAL.factibilidadeCarregando, 'verificando a factibilidade'],

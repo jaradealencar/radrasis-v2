@@ -715,6 +715,16 @@ ajustes (`maxCores` 2–48, `minAreaPx` 0,5–30, `tolerancia` 0,02–0,5), semp
 `limitarAjustesVetorizacao`; texto da imagem nunca vira regra. Os ajustes viajam como `?maxCores&minArea&tolerancia`
 na vetorização e aparecem no quadro "Leitura da arte". A leitura só informa (fundo, textos): não bloqueia nada e, se
 falhar, a vetorização usa os parâmetros padrão.
+Ajuste por conversa (05/10/2026): a API do Vectorizer.AI **não** tem recurso conversacional (só parâmetros); a conversa é
+nossa. Na etapa de vetorização o vendedor descreve o problema e `POST /api/letra-caixa/ajuste-conversa`
+(`server/services/cpqAjusteConversa.ts`, `gpt-5-mini`) recebe a mensagem, uma imagem do vetor com cada elemento
+numerado, a tabela de elementos e o resultado da validação. Devolve um plano de ações de lista fechada
+(`revetorizar` com os 3 ajustes permitidos, ou `apagar`/`mover`/`escalar`/`girar`/`espelhar` por número de elemento),
+com valores e índices limitados em `sanearAcoes`. Nada roda sem o vendedor aprovar o plano na tela: `revetorizar`
+gasta crédito (1, ou 2 com o contorno de corte) e as edições não gastam; as edições usam o mesmo motor do editor
+vetorial (`finalizarEdicaoVetor`) e `REAL.vetorAnterior` permite desfazer. Revetorizar e editar nunca vão no mesmo
+plano (a numeração muda). Erro na arte aprovada (letra errada) não é corrigido ali: o assistente orienta refazer a
+reconstrução.
 O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a
 reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com

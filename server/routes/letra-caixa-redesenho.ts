@@ -12,6 +12,7 @@ import {
 } from "../services/redesenhoTicket";
 import { vectorizeImage, VectorizerAiError, limitarAjustesVetorizacao } from "../services/vectorizerAi";
 import { analisarArte } from "../services/cpqAnaliseArte";
+import { conversarSobreVetor, entradaConversaSchema } from "../services/cpqAjusteConversa";
 import { REGRAS_LEITURA_ARTE_PADRAO } from "../../shared/cpq-regras-leitura-padrao";
 import { estudioConfiguracoes } from "../../drizzle/schema";
 import { getDb } from "../db/db";
@@ -23,6 +24,7 @@ const imageBodyParser = express.raw({
   type: ["image/jpeg", "image/png"],
   limit: MAX_IMAGE_BYTES,
 });
+const conversaJsonParser = express.json({ limit: "6mb" });
 const preprocessedImageBodyParser = express.raw({
   type: ["image/jpeg", "image/png"],
   limit: MAX_PREPROCESSED_IMAGE_BYTES,
@@ -64,6 +66,16 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
       }
 
       void executarRedesenho(req, res);
+    });
+  });
+
+  app.post("/api/letra-caixa/ajuste-conversa", (req, res) => {
+    conversaJsonParser(req, res, (parseError) => {
+      if (parseError) {
+        res.status((parseError as { status?: number }).status ?? 400).json({ error: "Não consegui ler o pedido. Tente com uma mensagem mais curta." });
+        return;
+      }
+      void executarAjusteConversa(req, res);
     });
   });
 
@@ -138,6 +150,36 @@ async function armazenarImagemCotacao(req: Request, res: Response): Promise<void
   }
 }
 
+/** Regras escritas pelo administrador. Sem texto salvo valem as sugeridas; quem salvou o campo vazio fica sem regras. */
+async function lerRegrasAdministrador(): Promise<string> {
+  const db = await getDb();
+  const [linha] = db ? await db.select().from(estudioConfiguracoes).where(eq(estudioConfiguracoes.id, 1)).limit(1) : [];
+  const salvo = linha?.configuracaoJson as { regrasLeituraArte?: unknown } | null | undefined;
+  return typeof salvo?.regrasLeituraArte === "string" ? salvo.regrasLeituraArte : REGRAS_LEITURA_ARTE_PADRAO;
+}
+
+/** Conversa para corrigir a vetorização: devolve um plano de ações (limitadas e validadas) que o vendedor aprova. */
+async function executarAjusteConversa(req: Request, res: Response): Promise<void> {
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) { res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." }); return; }
+    } catch { res.status(403).json({ error: "Origem da solicitação inválida." }); return; }
+  }
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) { res.status(401).json({ error: "Entre no sistema para conversar sobre a vetorização." }); return; }
+  const entrada = entradaConversaSchema.safeParse(req.body);
+  if (!entrada.success) { res.status(400).json({ error: "Não consegui entender o pedido. Descreva o que precisa mudar em uma frase." }); return; }
+  try {
+    const resultado = await conversarSobreVetor(entrada.data, await lerRegrasAdministrador());
+    res.setHeader("Cache-Control", "no-store");
+    res.json(resultado);
+  } catch (error) {
+    console.error("[letra-caixa] falha na conversa sobre o vetor:", error);
+    res.status(502).json({ error: "O assistente não conseguiu responder agora. Tente de novo em instantes." });
+  }
+}
+
 /** Lê a arte aprovada com um modelo de visão e devolve o que enxergou e os ajustes sugeridos para o Vectorizer.AI. */
 async function executarAnaliseArte(req: Request, res: Response): Promise<void> {
   const origin = req.get("origin");
@@ -156,11 +198,7 @@ async function executarAnaliseArte(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
-    const db = await getDb();
-    const [linha] = db ? await db.select().from(estudioConfiguracoes).where(eq(estudioConfiguracoes.id, 1)).limit(1) : [];
-    const salvo = linha?.configuracaoJson as { regrasLeituraArte?: unknown } | null | undefined;
-    // Sem texto salvo, valem as regras sugeridas; quem salvou o campo vazio fica sem regras.
-    const regrasAdministrador = typeof salvo?.regrasLeituraArte === "string" ? salvo.regrasLeituraArte : REGRAS_LEITURA_ARTE_PADRAO;
+    const regrasAdministrador = await lerRegrasAdministrador();
     const resultado = await analisarArte({ imageBuffer: req.body, mimeType, regrasAdministrador });
     res.setHeader("Cache-Control", "no-store");
     res.json(resultado);
