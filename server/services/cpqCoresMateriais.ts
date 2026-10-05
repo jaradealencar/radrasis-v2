@@ -1,3 +1,5 @@
+import { hexDoPantone } from "../../shared/pantone-referencia";
+
 export type CpqCorAlvo = {
   key: string;
   pathIndex?: number;
@@ -509,14 +511,14 @@ function normalizarPantone(value: string | null | undefined): string {
   return (value ?? "").toUpperCase().replace(/\s+/g, "").replace(/®/g, "");
 }
 
-function hexParaRgb(hex: string | null | undefined): [number, number, number] | null {
+export function hexParaRgb(hex: string | null | undefined): [number, number, number] | null {
   const value = (hex ?? "").trim().replace(/^#/, "");
   if (!/^(?:[\da-f]{3}|[\da-f]{6})$/i.test(value)) return null;
   const full = value.length === 3 ? [...value].map(char => char + char).join("") : value;
   return [0, 2, 4].map(offset => parseInt(full.slice(offset, offset + 2), 16)) as [number, number, number];
 }
 
-function cmykParaRgb(cmyk: { c: number; m: number; y: number; k: number }): [number, number, number] {
+export function cmykParaRgb(cmyk: { c: number; m: number; y: number; k: number }): [number, number, number] {
   const c = Math.max(0, Math.min(100, cmyk.c)) / 100;
   const m = Math.max(0, Math.min(100, cmyk.m)) / 100;
   const y = Math.max(0, Math.min(100, cmyk.y)) / 100;
@@ -528,7 +530,7 @@ function cmykParaRgb(cmyk: { c: number; m: number; y: number; k: number }): [num
   ];
 }
 
-function rgbParaLab(rgb: [number, number, number]): [number, number, number] {
+export function rgbParaLab(rgb: [number, number, number]): [number, number, number] {
   const linear = rgb.map(channel => {
     const value = channel / 255;
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
@@ -593,7 +595,7 @@ function labCatalogo(material: CpqCorCatalogo): [number, number, number] | null 
   const rgb = hexParaRgb(material.corHex) ?? (() => {
     const c = valor(material.cmykC), m = valor(material.cmykM), y = valor(material.cmykY), k = valor(material.cmykK);
     return c == null || m == null || y == null || k == null ? null : cmykParaRgb({ c, m, y, k });
-  })();
+  })() ?? hexParaRgb(hexDoPantone(material.pantoneCode));
   return rgb ? rgbParaLab(rgb) : null;
 }
 

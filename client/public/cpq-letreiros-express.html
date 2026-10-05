@@ -3139,6 +3139,7 @@ async function analisarCorrespondenciaCoresReal(){
     const body=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(body.error||'Não foi possível comparar as cores da arte com os materiais.');
     color.resultados=body.resultados||[];color.aprovado=false;
+    await anexarReferenciasPantone(color);
   }catch(error){color.error=error.message||'Falha na análise cromática.';}
   finally{color.loading=false;render();}
 }
@@ -3195,6 +3196,9 @@ function renderAnaliseCoresReal(){
     const rgb=result.corRgb?`RGB ${result.corRgb.r}/${result.corRgb.g}/${result.corRgb.b}`:'';
     const cmyk=result.cmyk?`CMYK ${result.cmyk.c}/${result.cmyk.m}/${result.cmyk.y}/${result.cmyk.k}`:'';
     const pantone=result.pantoneCode?`Pantone ${result.pantoneCode}`:'';
+    const referenciaCor=result.corHex&&color.referencias?color.referencias[result.corHex]:null;
+    const pantoneProximo=referenciaCor&&referenciaCor.pantone&&referenciaCor.pantone[0]?`Pantone aprox. ${referenciaCor.pantone[0].codigo} (ΔE ${fmt(referenciaCor.pantone[0].deltaE00,1)})`:'';
+    const cmykAproximado=referenciaCor&&referenciaCor.cmykAproximado&&!result.cmyk?`CMYK aprox. ${referenciaCor.cmykAproximado.c}/${referenciaCor.cmykAproximado.m}/${referenciaCor.cmykAproximado.y}/${referenciaCor.cmykAproximado.k}`:'';
     const areaExibida=result.areaTotalM2??result.areaM2;
     const rotuloArea=result.areaTotalM2!=null?'Área total da peça':'Área estimada';
     const kitMaterialId=chosen?.mubisysMateriaPrimaId;
@@ -3203,7 +3207,7 @@ function renderAnaliseCoresReal(){
     const planoBase=result.requerChapaBase?`<div class="source-tag">Composição automática: Face em chapa transparente${materialBase?` · ${escaparHtml(materialBase.nome)}`:` · matéria-prima #${result.chapaBaseMateriaPrimaId||'pendente'}`}</div>`:'';
     const pendenciaKit=result.tipoSugestao==='chapa'&&!kitTemMaterial?'<div class="role-note">A chapa de cor será aplicada à linha Face antes do nesting.</div>':'';
     const coresGradiente=(result.coresGradiente||[]).length?`Gradiente: ${result.coresGradiente.join(' → ')}`:'';
-    return `<tr><td><span style="display:inline-block;width:14px;height:14px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${result.corHex||'#e2e8f0'};"></span> ${escaparHtml(result.corHex||pantone||result.tipoCor)}<div class="source-tag">${escaparHtml([pantone,rgb,cmyk,coresGradiente].filter(Boolean).join(' · ')||'Cor sem valor numérico confirmado')}</div></td><td>${areaExibida==null?'—':`${rotuloArea}: ${fmt(areaExibida,4)} m²`}</td><td>${escaparHtml(title)}${result.deltaE00!=null?`<div class="source-tag">ΔE00 ${fmt(result.deltaE00,2)}</div>`:''}${planoBase}${pendenciaKit}${(result.avisos||[]).map(message=>`<div class="role-note">${escaparHtml(message)}</div>`).join('')}</td><td>${result.custoEstimado==null?(result.tipoSugestao==='chapa'?'Composição atual':'Custo pendente'):money(result.custoEstimado)}</td></tr>`;
+    return `<tr><td><span style="display:inline-block;width:14px;height:14px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${result.corHex||'#e2e8f0'};"></span> ${escaparHtml(result.corHex||pantone||result.tipoCor)}<div class="source-tag">${escaparHtml([pantone,pantoneProximo,rgb,cmyk,cmykAproximado,coresGradiente].filter(Boolean).join(' · ')||'Cor sem valor numérico confirmado')}</div></td><td>${areaExibida==null?'—':`${rotuloArea}: ${fmt(areaExibida,4)} m²`}</td><td>${escaparHtml(title)}${result.deltaE00!=null?`<div class="source-tag">ΔE00 ${fmt(result.deltaE00,2)}</div>`:''}${planoBase}${pendenciaKit}${(result.avisos||[]).map(message=>`<div class="role-note">${escaparHtml(message)}</div>`).join('')}</td><td>${result.custoEstimado==null?(result.tipoSugestao==='chapa'?'Composição atual':'Custo pendente'):money(result.custoEstimado)}</td></tr>`;
   }).join('');
   const countColors=new Set((color.resultados||[]).map(result=>result.corHex||result.pantoneCode||`${result.tipoCor}:${result.cmyk?Object.values(result.cmyk).join(','):(result.coresGradiente||[]).join(',')}`)).size;
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">
@@ -3457,7 +3461,54 @@ let chapaCmykYNova = '';
 let chapaCmykKNova = '';
 let chapaTransmissaoNova = '';
 let chapaTransparenciaNova = '';
+let chapaCorAmostra = '#ffffff';
+let chapaCorTocada = false;
+let chapaPantoneSugestoes = [];
+let chapaPantoneErro = '';
+let pantoneReferencia = null;
+let pantoneReferenciaPromise = null;
 let _exclSaveTimer = null;
+
+/** Lista de Pantones de referência (guia fornecido pela Radra), carregada uma vez do servidor. */
+function carregarPantoneReferencia(){
+  if(pantoneReferencia) return Promise.resolve(pantoneReferencia);
+  if(!pantoneReferenciaPromise){
+    pantoneReferenciaPromise=fetch('/api/letra-caixa/cores/pantone',{credentials:'same-origin'})
+      .then(response=>response.ok?response.json():Promise.reject(new Error('Não foi possível carregar a tabela Pantone.')))
+      .then(body=>{pantoneReferencia=Array.isArray(body.pantone)?body.pantone:[];if(state.tab==='admin'&&state.adminTab==='chapas')render();return pantoneReferencia;})
+      .catch(error=>{pantoneReferenciaPromise=null;chapaPantoneErro=error.message||'Tabela Pantone indisponível.';return [];});
+  }
+  return pantoneReferenciaPromise;
+}
+function chavePantoneCliente(codigo){
+  return String(codigo||'').toUpperCase().replace(/\s+/g,'');
+}
+function pantoneHexDe(codigo){
+  const chave=chavePantoneCliente(codigo);
+  if(!chave||!pantoneReferencia) return null;
+  const achado=pantoneReferencia.find(item=>chavePantoneCliente(item.codigo)===chave)||pantoneReferencia.find(item=>chavePantoneCliente(item.codigo)==='PMS'+chave);
+  return achado?achado.hex:null;
+}
+async function consultarReferenciasCor(hexes){
+  const response=await fetch('/api/letra-caixa/cores/pantone/referencias',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({cores:hexes})});
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(body.error||'Não foi possível consultar o Pantone mais próximo.');
+  return body.referencias||[];
+}
+function cmykParaHexCliente(c,m,y,k){
+  const canal=(valor,preto)=>Math.round(255*(1-valor/100)*(1-preto/100)).toString(16).padStart(2,'0');
+  return '#'+canal(c,k)+canal(m,k)+canal(y,k);
+}
+/** Anexa o Pantone de referência mais próximo e um CMYK aproximado a cada cor da análise (sem alterar o cálculo). */
+async function anexarReferenciasPantone(color){
+  const hexes=[...new Set((color.resultados||[]).map(item=>item.corHex).filter(Boolean))].slice(0,60);
+  if(!hexes.length){color.referencias={};return;}
+  try{
+    const lista=await consultarReferenciasCor(hexes);
+    color.referencias={};
+    lista.forEach(item=>{if(item.valida) color.referencias[item.hex]=item;});
+  }catch(error){color.referencias={};}
+}
 let _configSaveTimer = null;
 
 /** Config GLOBAL (não por produto): % custo fixo é sempre o mesmo pra todo
@@ -4590,7 +4641,7 @@ function adminMateriasAdmin(){
           <span>${m.unidade}</span>
           <span class="mono">${money(m.valor)}</span>
           <span>${m.atualizado||'—'}</span>
-          <span><button class="btn btn-ghost btn-sm" data-act="admin-excluir-materia" data-val="${m.id}">${excl?'Reativar':'Excluir'}</button></span>
+          <span style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-act="admin-editar-materia" data-val="${m.id}">Editar</button> <button class="btn btn-ghost btn-sm" data-act="admin-excluir-materia" data-val="${m.id}">${excl?'Reativar':'Excluir'}</button></span>
         </div>`;
       }).join('')}
     </div>
@@ -4612,13 +4663,23 @@ function adminChapasNesting(){
       <label class="field">Nome do formato (opcional)<input data-act="chapa-nome" maxlength="256" value="${escaparHtml(chapaNomeNovo)}" placeholder="Ex.: Acrílico 3 mm — 1000 × 2000"></label>
       <label class="field">Largura (mm)<input data-act="chapa-largura" inputmode="numeric" type="number" min="10" max="50000" value="${escaparHtml(chapaLarguraNova)}" placeholder="1000"></label>
       <label class="field">Altura (mm)<input data-act="chapa-altura" inputmode="numeric" type="number" min="10" max="50000" value="${escaparHtml(chapaAlturaNova)}" placeholder="2000"></label>
-      <label class="field">Pantone<input data-act="chapa-pantone" maxlength="32" value="${escaparHtml(chapaPantoneNovo)}" placeholder="Ex.: 300 C"></label>
+      <label class="field">Pantone (cor mais parecida)<input data-act="chapa-pantone" list="pantone-lista" maxlength="32" value="${escaparHtml(chapaPantoneNovo)}" placeholder="Digite ou escolha. Ex.: PMS 185"><datalist id="pantone-lista">${(pantoneReferencia||[]).map(item=>`<option value="${escaparHtml(item.codigo)}">${escaparHtml(item.hex)}</option>`).join('')}</datalist></label>
       <label class="field">Transmissão de luz (%)<input data-act="chapa-transmissao" type="number" min="0" max="100" step="0.01" value="${escaparHtml(chapaTransmissaoNova)}" placeholder="Ex.: conforme ficha técnica"></label>
       <label class="field">Transparência<select data-act="chapa-transparencia"><option value="" ${!chapaTransparenciaNova?'selected':''}>Não informada</option><option value="opaca" ${chapaTransparenciaNova==='opaca'?'selected':''}>Opaca</option><option value="translucida" ${chapaTransparenciaNova==='translucida'?'selected':''}>Translúcida</option><option value="transparente" ${chapaTransparenciaNova==='transparente'?'selected':''}>Transparente / cristal</option></select></label>
       <label class="field">CMYK · C<input data-act="chapa-cmyk-c" type="number" min="0" max="100" step="0.01" value="${escaparHtml(chapaCmykCNova)}"></label>
       <label class="field">CMYK · M<input data-act="chapa-cmyk-m" type="number" min="0" max="100" step="0.01" value="${escaparHtml(chapaCmykMNova)}"></label>
       <label class="field">CMYK · Y<input data-act="chapa-cmyk-y" type="number" min="0" max="100" step="0.01" value="${escaparHtml(chapaCmykYNova)}"></label>
       <label class="field">CMYK · K<input data-act="chapa-cmyk-k" type="number" min="0" max="100" step="0.01" value="${escaparHtml(chapaCmykKNova)}"></label>
+    </div>
+    <div class="pantone-sugestao" style="margin:4px 0 12px;padding:12px;border:1px solid var(--border);border-radius:10px;">
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <label class="field" style="min-width:150px;">Cor real da chapa<input data-act="chapa-cor-amostra" type="color" value="${escaparHtml(chapaCorAmostra)}" style="height:38px;padding:2px;"></label>
+        <button class="btn btn-ghost btn-sm" data-act="chapa-sugerir-pantone" type="button">Sugerir Pantone mais próximo</button>
+        ${(()=>{const hex=pantoneHexDe(chapaPantoneNovo);return hex?`<span style="display:inline-flex;align-items:center;gap:8px;"><span style="display:inline-block;width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:${escaparHtml(hex)};"></span><span class="role-note">${escaparHtml(chapaPantoneNovo)} · amostra do guia ${escaparHtml(hex)}</span></span>`:(chapaPantoneNovo?'<span class="role-note">Código fora da tabela de referência: vale como texto, mas sem amostra de cor.</span>':'');})()}
+      </div>
+      ${chapaPantoneErro?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(chapaPantoneErro)}</div>`:''}
+      ${chapaPantoneSugestoes.length?`<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">${chapaPantoneSugestoes.map(item=>`<button class="btn btn-ghost btn-sm" type="button" data-act="chapa-usar-pantone" data-codigo="${escaparHtml(item.codigo)}" style="display:inline-flex;align-items:center;gap:8px;"><span style="display:inline-block;width:18px;height:18px;border-radius:4px;border:1px solid var(--border);background:${escaparHtml(item.hex)};"></span>${escaparHtml(item.codigo)} · ΔE ${fmt(item.deltaE00,1)}</button>`).join('')}</div>`:''}
+      <p class="role-note" style="margin-top:8px;">Escolha a cor que a chapa tem na prática (ou digite o CMYK) e clique em sugerir: o sistema compara com a tabela Pantone de referência. O ΔE mostra a diferença (abaixo de 3 é muito próximo). É uma aproximação de tela, confirme no catálogo físico.</p>
     </div>
     <button class="btn btn-primary btn-sm" data-act="chapa-salvar" ${chapasCotacaoCarregando?'disabled':''}>${chapaEditandoId?'Salvar alterações':'Cadastrar chapa alternativa'}</button> ${chapaEditandoId?'<button class="btn btn-ghost btn-sm" data-act="chapa-cancelar">Cancelar edição</button>':''}
     <div class="tablewrap" style="margin-top:14px;"><table><thead><tr><th>Matéria-prima</th><th>Formato</th><th>Dimensões</th><th>Cor / CMYK</th><th>Transmissão</th><th>Tipo</th><th>Ações</th></tr></thead><tbody>
@@ -4650,6 +4711,7 @@ function adminChapasNesting(){
 }
 
 async function carregarChapasServidor(){
+  carregarPantoneReferencia();
   chapasCotacaoCarregando=true;chapasCotacaoErro='';
   if(state.tab==='admin'&&state.adminTab==='chapas') render();
   try{
@@ -4825,7 +4887,30 @@ function bindAdminEvents(){
   const chapaAltura=document.querySelector('[data-act="chapa-altura"]');
   if(chapaAltura) chapaAltura.addEventListener('input',event=>{chapaAlturaNova=event.target.value;});
   const chapaPantone=document.querySelector('[data-act="chapa-pantone"]');
-  if(chapaPantone) chapaPantone.addEventListener('input',event=>{chapaPantoneNovo=event.target.value;});
+  if(chapaPantone){
+    chapaPantone.addEventListener('input',event=>{chapaPantoneNovo=event.target.value;});
+    chapaPantone.addEventListener('change',()=>render());
+  }
+  const chapaCorInput=document.querySelector('[data-act="chapa-cor-amostra"]');
+  if(chapaCorInput) chapaCorInput.addEventListener('input',event=>{chapaCorAmostra=event.target.value;chapaCorTocada=true;});
+  const chapaSugerir=document.querySelector('[data-act="chapa-sugerir-pantone"]');
+  if(chapaSugerir) chapaSugerir.addEventListener('click',async()=>{
+    const cmykPreenchido=[chapaCmykCNova,chapaCmykMNova,chapaCmykYNova,chapaCmykKNova].every(value=>String(value??'').trim()!=='');
+    const hex=(!chapaCorTocada&&cmykPreenchido)?cmykParaHexCliente(Number(chapaCmykCNova),Number(chapaCmykMNova),Number(chapaCmykYNova),Number(chapaCmykKNova)):chapaCorAmostra;
+    chapaPantoneErro='';chapaSugerir.disabled=true;
+    try{
+      const [referencia]=await consultarReferenciasCor([hex]);
+      chapaPantoneSugestoes=referencia&&referencia.valida?referencia.pantone:[];
+      if(chapaPantoneSugestoes.length){
+        chapaPantoneNovo=chapaPantoneSugestoes[0].codigo;
+        if(![chapaCmykCNova,chapaCmykMNova,chapaCmykYNova,chapaCmykKNova].some(value=>String(value??'').trim()!=='')){
+          const cmyk=referencia.cmykAproximado;chapaCmykCNova=String(cmyk.c);chapaCmykMNova=String(cmyk.m);chapaCmykYNova=String(cmyk.y);chapaCmykKNova=String(cmyk.k);
+        }
+      }
+    }catch(error){chapaPantoneErro=error.message||'Falha ao sugerir o Pantone.';}
+    render();
+  });
+  document.querySelectorAll('[data-act="chapa-usar-pantone"]').forEach(botao=>botao.addEventListener('click',()=>{chapaPantoneNovo=botao.dataset.codigo||'';render();}));
   const chapaTransmissao=document.querySelector('[data-act="chapa-transmissao"]');
   if(chapaTransmissao) chapaTransmissao.addEventListener('input',event=>{chapaTransmissaoNova=event.target.value;});
   const chapaTransparencia=document.querySelector('[data-act="chapa-transparencia"]');
@@ -4847,7 +4932,7 @@ function bindAdminEvents(){
     chapaEditandoId=chapa.id;chapaMateriaSelecionada=String(chapa.mubisysMateriaPrimaId);chapaNomeNovo=chapa.nome;chapaLarguraNova=String(chapa.larguraMm);chapaAlturaNova=String(chapa.alturaMm);chapaPantoneNovo=chapa.pantoneCode||'';chapaCmykCNova=chapa.cmykC??'';chapaCmykMNova=chapa.cmykM??'';chapaCmykYNova=chapa.cmykY??'';chapaCmykKNova=chapa.cmykK??'';chapaTransmissaoNova=chapa.transmissaoLuzPct??'';chapaTransparenciaNova=chapa.transparenciaTipo||'';render();
   }));
   const chapaCancelar=document.querySelector('[data-act="chapa-cancelar"]');
-  if(chapaCancelar) chapaCancelar.addEventListener('click',()=>{chapaEditandoId=null;chapaMateriaSelecionada='';chapaNomeNovo='';chapaLarguraNova='';chapaAlturaNova='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';render();});
+  if(chapaCancelar) chapaCancelar.addEventListener('click',()=>{chapaEditandoId=null;chapaMateriaSelecionada='';chapaNomeNovo='';chapaLarguraNova='';chapaAlturaNova='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';chapaCorTocada=false;chapaPantoneSugestoes=[];render();});
   const chapasAtualizar=document.querySelector('[data-act="chapas-atualizar"]');
   if(chapasAtualizar) chapasAtualizar.addEventListener('click',()=>carregarChapasServidor());
   document.querySelectorAll('[data-act="chapa-principal"]').forEach(botao=>botao.addEventListener('click',()=>{
@@ -5027,6 +5112,24 @@ function bindAdminEvents(){
       if(adminState.produtosExcluidos.has(id)) adminState.produtosExcluidos.delete(id); else adminState.produtosExcluidos.add(id);
       salvarExclusoes();
       render();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-editar-materia"]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const id=parseInt(el.dataset.val);
+      state.adminTab='chapas';
+      chapaPantoneSugestoes=[];chapaCorTocada=false;
+      chapaEditandoId=null;chapaMateriaSelecionada=String(id);chapaNomeNovo='';chapaLarguraNova='';chapaAlturaNova='';chapaPantoneNovo='';chapaCmykCNova='';chapaCmykMNova='';chapaCmykYNova='';chapaCmykKNova='';chapaTransmissaoNova='';chapaTransparenciaNova='';
+      render();
+      if(window.scrollTo) window.scrollTo({top:0,behavior:'smooth'});
+      await carregarChapasServidor();
+      // Com a lista de chapas carregada, abre a chapa já cadastrada dessa matéria-prima para edição.
+      if(chapaMateriaSelecionada!==String(id)||chapaEditandoId!=null) return;
+      const existente=chapasCotacao.find(item=>item.mubisysMateriaPrimaId===id&&item.ativo)||chapasCotacao.find(item=>item.mubisysMateriaPrimaId===id);
+      if(existente){
+        chapaEditandoId=existente.id;chapaNomeNovo=existente.nome;chapaLarguraNova=String(existente.larguraMm);chapaAlturaNova=String(existente.alturaMm);chapaPantoneNovo=existente.pantoneCode||'';chapaCmykCNova=existente.cmykC??'';chapaCmykMNova=existente.cmykM??'';chapaCmykYNova=existente.cmykY??'';chapaCmykKNova=existente.cmykK??'';chapaTransmissaoNova=existente.transmissaoLuzPct??'';chapaTransparenciaNova=existente.transparenciaTipo||'';
+        render();
+      }
     });
   });
   document.querySelectorAll('[data-act="admin-excluir-materia"]').forEach(el=>{

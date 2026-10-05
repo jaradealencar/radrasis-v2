@@ -11,7 +11,8 @@ import {
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { CpqFactibilidadeError, calcularMetricasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
-import { aplicarCustosBobinaAgrupados, type CpqCorCatalogo, extrairRegioesCorSvg, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+import { aplicarCustosBobinaAgrupados, type CpqCorCatalogo, extrairRegioesCorSvg, hexParaRgb, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+import { listarPantone, pantoneMaisProximos, rgbParaCmykAproximado } from "../services/cpqPantone";
 
 const porcentagem = z.number().finite().min(0).max(100).nullable().optional();
 const moedaM2 = z.number().finite().min(0).max(1_000_000).nullable();
@@ -150,6 +151,33 @@ export function registrarRotasEstudioCores(app: Express): void {
   app.put("/api/letra-caixa/cores/precos-impressao", rota(salvarPrecos));
   app.post("/api/letra-caixa/cores/analisar-svg", rota(analisarSvg));
   app.post("/api/letra-caixa/cores/aprovar", rota(aprovarCores));
+  app.get("/api/letra-caixa/cores/pantone", rota(listarPantoneReferencia));
+  app.post("/api/letra-caixa/cores/pantone/referencias", rota(referenciasPantone));
+}
+
+async function listarPantoneReferencia(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await obterSessao(req, res))) return;
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.json({ pantone: listarPantone() });
+}
+
+/** Para cada cor (#RRGGBB) devolve o Pantone de referência mais próximo e um CMYK aproximado. */
+async function referenciasPantone(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await obterSessao(req, res))) return;
+  const parsed = z.object({ cores: z.array(z.string().trim().max(9)).min(1).max(60) }).strict().safeParse(req.body);
+  if (!parsed.success) return void erro(res, 400, "Informe de 1 a 60 cores em hexadecimal.");
+  const referencias = parsed.data.cores.map(hex => {
+    const rgb = hexParaRgb(hex);
+    if (!rgb) return { hex, valida: false as const };
+    return {
+      hex,
+      valida: true as const,
+      cmykAproximado: rgbParaCmykAproximado(rgb),
+      pantone: pantoneMaisProximos(hex, 3) ?? [],
+    };
+  });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ referencias });
 }
 
 async function carregarCatalogo(req: Request, res: Response): Promise<void> {

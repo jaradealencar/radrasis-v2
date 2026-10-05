@@ -650,6 +650,13 @@ optional Pantone/CMYK/light-transmission fields on sheet formats. Migration
 print-vinyl bases. Provider catalog
 data and print costs are maintained by managers; this service does not query an
 Imprimax API.
+`shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com
+amostra em hex) e `server/services/cpqPantone.ts` sugere o Pantone mais próximo (CIEDE2000) e um CMYK
+aproximado. Em Administração > Chapas para nesting, o gestor escolhe o Pantone de cada chapa (lista, ou cor
++ "Sugerir Pantone mais próximo"); a matéria-prima da chapa sem CMYK passa a usar a amostra do Pantone no
+cálculo de cor. A análise de cores da arte mostra Pantone e CMYK **aproximados** (rotas
+`/api/letra-caixa/cores/pantone` e `/pantone/referencias`); eles não substituem o catálogo físico e não
+entram no custo nem na decisão de material.
 Printed and solid-vinyl costs also use each visible closed contour's bounding box
 with configurable per-edge bleed (default 3 mm). The approved quote snapshot
 retains the individual boxes, billed area, and roll parameters. Admin settings store roll width,
