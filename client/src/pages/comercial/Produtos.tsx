@@ -1,3 +1,4 @@
+import { espessuraParaMm, gCm3ParaKgM3, kgM3ParaGCm3, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import PageHeader from "@/components/PageHeader";
@@ -167,7 +168,7 @@ function CadastroMateriasPrimas() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {material.categoriaUsaDadosChapa ? (
-                          <span>{fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³ · {material.chapas.filter(chapa => chapa.ativo).length} formato(s)</span>
+                          <span>{fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : kgM3ParaGCm3(material.densidadeKgM3)} g/cm³ · {material.chapas.filter(chapa => chapa.ativo).length} formato(s)</span>
                         ) : material.categoriaUsaDadosPerfil ? (
                           <span>Perfil · {material.perfilAlturaMm ?? "—"} × {material.perfilLarguraMm ?? "—"} × {material.perfilComprimentoMm ?? "—"} mm · esp. {fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³</span>
                         ) : material.categoriaUsaDadosBobina ? (
@@ -197,8 +198,6 @@ function CadastroMateriasPrimas() {
   );
 }
 
-type UnidadeEspessura = "mm" | "µm";
-const espessuraParaMm = (valor: string, unidade: UnidadeEspessura) => Number(valor) / (unidade === "µm" ? 1000 : 1);
 const fmtEspessura = (mm: number | null) => mm == null ? "—" : mm < 1 ? `${Number((mm * 1000).toFixed(2))} µm` : `${mm} mm`;
 
 /** Espessura digitada em milímetros ou micras; o valor é sempre gravado em mm. */
@@ -245,7 +244,7 @@ function DialogEditarMateriaPrima({
     setCategoriaId(material.categoriaId == null ? "sem-categoria" : String(material.categoriaId));
     setEspessuraMm(material.espessuraMm == null ? "" : String(material.espessuraMm));
     setEspessuraUnidade("mm");
-    setDensidadeKgM3(material.densidadeKgM3 == null ? "" : String(Number((material.densidadeKgM3 / 1000).toFixed(4))));
+    setDensidadeKgM3(material.densidadeKgM3 == null ? "" : String(kgM3ParaGCm3(material.densidadeKgM3)));
     setPesoEspecificoKg(material.pesoEspecificoKg == null ? "" : String(material.pesoEspecificoKg));
     setPerfil({ altura: material.perfilAlturaMm == null ? "" : String(material.perfilAlturaMm), largura: material.perfilLarguraMm == null ? "" : String(material.perfilLarguraMm), comprimento: material.perfilComprimentoMm == null ? "" : String(material.perfilComprimentoMm) });
     setChapas(material.chapas.map(chapa => ({
@@ -324,8 +323,8 @@ function DialogEditarMateriaPrima({
     salvar.mutate({
       mubisysMateriaPrimaId: material.id,
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
-      espessuraMm: categoria?.usaDadosChapa || categoria?.usaDadosPerfil || categoria?.usaDadosBobina ? espessuraParaMm(espessuraMm, espessuraUnidade) : null,
-      densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? Math.round(Number(densidadeKgM3) * 1000 * 10000) / 10000 : null,
+      espessuraMm: categoria?.usaDadosChapa || categoria?.usaDadosPerfil || categoria?.usaDadosBobina ? espessuraParaMm(Number(espessuraMm), espessuraUnidade) : null,
+      densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? gCm3ParaKgM3(Number(densidadeKgM3)) : null,
       pesoEspecificoKg: !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
       perfilAlturaMm: categoria?.usaDadosPerfil ? Number(perfil.altura) : null,
       perfilLarguraMm: categoria?.usaDadosPerfil ? Number(perfil.largura) : null,

@@ -3,6 +3,8 @@ import type { Express, Request, Response } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { estudioChapas, materiaPrimaCadastros, materiaPrimaCategorias } from "../../drizzle/schema";
+import { gCm3ParaKgM3, kgM3ParaGCm3 } from "../../shared/peso";
+import { calcularPesoLinha, somarPesos, type DadosPesoMateria } from "../services/cpqPeso";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
@@ -155,7 +157,7 @@ export function registrarRotasEstudioNesting(app: Express): void {
   app.put("/api/letra-caixa/chapas/:id", capturar(atualizarChapa));
   app.delete("/api/letra-caixa/chapas/:id", capturar(desativarChapa));
   app.post("/api/letra-caixa/nesting", capturar(calcularNesting));
-  app.get("/api/letra-caixa/materias-peso", capturar(listarDadosPeso));
+  app.post("/api/letra-caixa/peso", capturar(calcularPeso));
 }
 
 async function listarChapas(req: Request, res: Response): Promise<void> {
@@ -190,37 +192,55 @@ async function listarChapas(req: Request, res: Response): Promise<void> {
     : [];
   const dadosPorMateria = new Map(cadastros.map(item => [item.id, {
     espessuraMm: item.espessuraMm == null ? null : Number(item.espessuraMm),
-    densidadeGCm3: item.densidadeKgM3 == null ? null : Number((Number(item.densidadeKgM3) / 1000).toFixed(4)),
+    densidadeGCm3: item.densidadeKgM3 == null ? null : kgM3ParaGCm3(Number(item.densidadeKgM3)),
   }]));
   res.json({ chapas: rows.map(row => ({ ...row, espessuraMm: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.espessuraMm ?? null, densidadeGCm3: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.densidadeGCm3 ?? null })) });
 }
 
-/** Dados técnicos (espessura, densidade, dimensões do perfil, peso específico) usados só para estimar o peso do letreiro. */
-async function listarDadosPeso(req: Request, res: Response): Promise<void> {
+const pesoInput = z.object({
+  linhas: z.array(z.object({
+    matId: z.number().int().positive(),
+    nome: z.string().trim().max(256),
+    quantidade: z.number().finite().min(0).max(10_000_000),
+    unidade: z.string().trim().max(64).default(""),
+    formulaType: z.string().trim().max(32),
+    areaLiquidaM2: z.number().finite().min(0).max(10_000_000).nullable().default(null),
+  }).strict()).max(200),
+}).strict();
+
+/**
+ * Peso estimado do letreiro (informativo, uso interno do vendedor). O cálculo
+ * fica no servidor; as quantidades vêm do CPQ, que é quem tem a geometria.
+ */
+async function calcularPeso(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
+  const parsed = pesoInput.safeParse(req.body);
+  if (!parsed.success) return void erro(res, 400, "Confira as linhas enviadas para o cálculo de peso.");
   const db = await getDb();
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
-  const [cadastros, categorias] = await Promise.all([
-    db.select().from(materiaPrimaCadastros),
-    db.select().from(materiaPrimaCategorias),
-  ]);
+  const ids = Array.from(new Set(parsed.data.linhas.map(linha => linha.matId)));
+  const [cadastros, categorias] = ids.length
+    ? await Promise.all([
+        db.select().from(materiaPrimaCadastros).where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, ids)),
+        db.select().from(materiaPrimaCategorias),
+      ])
+    : [[], []];
   const categoriaPorId = new Map(categorias.map(item => [item.id, item]));
   const numero = (valor: string | null) => (valor == null ? null : Number(valor));
-  const materias = cadastros.map(cadastro => {
+  const dadosPorId = new Map<number, DadosPesoMateria>(cadastros.map(cadastro => {
     const categoria = cadastro.categoriaId == null ? null : categoriaPorId.get(cadastro.categoriaId) ?? null;
-    const tipo = categoria?.usaDadosChapa ? "chapa" : categoria?.usaDadosPerfil ? "perfil" : categoria?.usaDadosBobina ? "bobina" : "outro";
     const densidadeKgM3 = numero(cadastro.densidadeKgM3);
-    return {
-      id: cadastro.mubisysMateriaPrimaId,
-      tipo,
+    return [cadastro.mubisysMateriaPrimaId, {
+      tipo: categoria?.usaDadosChapa ? "chapa" : categoria?.usaDadosPerfil ? "perfil" : categoria?.usaDadosBobina ? "bobina" : "outro",
       espessuraMm: numero(cadastro.espessuraMm),
-      densidadeGCm3: densidadeKgM3 == null ? null : densidadeKgM3 / 1000,
+      densidadeGCm3: densidadeKgM3 == null ? null : kgM3ParaGCm3(densidadeKgM3),
       perfilAlturaMm: numero(cadastro.perfilAlturaMm),
       perfilLarguraMm: numero(cadastro.perfilLarguraMm),
       perfilComprimentoMm: numero(cadastro.perfilComprimentoMm),
       pesoEspecificoKg: numero(cadastro.pesoEspecificoKg),
-    };
-  });
+    }];
+  }));
+  const itens = parsed.data.linhas.map(linha => calcularPesoLinha(linha, dadosPorId.get(linha.matId) ?? null));
   res.setHeader("Cache-Control", "private, no-store");
   res.json({ itens, ...somarPesos(itens) });
 }
@@ -282,6 +302,13 @@ async function salvarChapa(
   };
   const db = await getDb();
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  // Bobinas só se editam em Produtos > Matérias-primas: esta rota normalizaria o tamanho como chapa.
+  if (id != null) {
+    const [atual] = await db.select({ bobina: estudioChapas.bobina }).from(estudioChapas).where(eq(estudioChapas.id, id));
+    if (atual?.bobina) return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
+  }
+  if (await materiaPrimaEhBobina(db, data.mubisysMateriaPrimaId))
+    return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
   try {
     const record = await db.transaction(async tx => {
       const existentes = await tx
@@ -297,18 +324,11 @@ async function salvarChapa(
       if (espessuraMm != null || densidadeGCm3 != null) {
         const dadosTecnicos = {
           ...(espessuraMm != null ? { espessuraMm: String(espessuraMm) } : {}),
-          ...(densidadeGCm3 != null ? { densidadeKgM3: String(Math.round(densidadeGCm3 * 1000 * 10000) / 10000) } : {}),
+          ...(densidadeGCm3 != null ? { densidadeKgM3: String(gCm3ParaKgM3(densidadeGCm3)) } : {}),
         };
         await tx.insert(materiaPrimaCadastros)
           .values({ mubisysMateriaPrimaId: data.mubisysMateriaPrimaId, ...dadosTecnicos, updatedAt: new Date() })
           .onConflictDoUpdate({ target: materiaPrimaCadastros.mubisysMateriaPrimaId, set: { ...dadosTecnicos, updatedAt: new Date() } });
-  // Bobinas só se editam em Produtos > Matérias-primas: esta rota normalizaria o tamanho como chapa.
-  if (id != null) {
-    const [atual] = await db.select({ bobina: estudioChapas.bobina }).from(estudioChapas).where(eq(estudioChapas.id, id));
-    if (atual?.bobina) return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
-  }
-  if (await materiaPrimaEhBobina(db, data.mubisysMateriaPrimaId))
-    return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
       }
       const chapaValues = { ...values, principal };
       if (id == null) {
@@ -352,6 +372,7 @@ async function desativarChapa(req: Request, res: Response): Promise<void> {
   const record = await db.transaction(async tx => {
     const [chapa] = await tx.select().from(estudioChapas).where(eq(estudioChapas.id, id));
     if (!chapa) return null;
+    if (chapa.bobina) return "bobina" as const;
     await tx.update(estudioChapas)
       .set({ ativo: false, principal: false, updatedAt: new Date() })
       .where(eq(estudioChapas.id, id));
@@ -367,12 +388,12 @@ async function desativarChapa(req: Request, res: Response): Promise<void> {
     return { id: chapa.id };
   });
   if (!record) return void erro(res, 404, "Formato de chapa não encontrado.");
+  if (record === "bobina") return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
   res.json({ success: true, id });
 }
 
 async function calcularNesting(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
-    if (chapa.bobina) return "bobina" as const;
   const parsed = nestingInput.safeParse(req.body);
   if (!parsed.success)
     return void erro(
@@ -388,7 +409,6 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
     db
       .select()
       .from(estudioChapas)
-  if (record === "bobina") return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
       .where(
         inArray(
           estudioChapas.mubisysMateriaPrimaId,
