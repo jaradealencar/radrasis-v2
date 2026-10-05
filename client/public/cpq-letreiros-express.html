@@ -2451,7 +2451,8 @@ function carregarComposicaoModeloReal(produto, modelo, variacaoIds){
     REAL.kitSource='mubisys';
     REAL.kitWarning=null;
   }else{
-    REAL.kit=kitPronto?kitPronto.linhas.map(k=>({...k,variantes:Array.isArray(k.variantes)?k.variantes.map(v=>({...v})):[],variacaoSelecionadaMatId:k.variacaoPadraoMatId??null})):[];
+    // Linha sem variacaoModeloId vale para todas; com ele, só entra se a variação foi escolhida.
+    REAL.kit=kitPronto?kitPronto.linhas.filter(k=>k.variacaoModeloId==null||ids.includes(Number(k.variacaoModeloId))).map(k=>({...k,variantes:Array.isArray(k.variantes)?k.variantes.map(v=>({...v})):[],variacaoSelecionadaMatId:k.variacaoPadraoMatId??null})):[];
     REAL.kitSource=kitPronto?'radrasys':'nenhuma';
     REAL.kitWarning=importada?.erro||((catalog.mubisysWebConectado&&catalog.composicoesMubiSys.length)?'Não encontrei consumo do MubiSys para esta variação; usando a composição cadastrada no Radrasys.':null);
   }
@@ -5566,6 +5567,7 @@ function adminKitEditor(p, m, key){
     ? catalog.materias.filter(m=>!adminState.materiasExcluidas.has(m.id)&&m.id!==kitVariacaoLinha.matId&&!kitVariacaoOpcoes.some(v=>v.matId===m.id)&&normalizeSearch(m.nome).includes(kitVariacaoTermo)).sort((a,b)=>normalizeSearch(a.nome).indexOf(kitVariacaoTermo)-normalizeSearch(b.nome).indexOf(kitVariacaoTermo)).slice(0,25)
     : [];
 
+  const variacoesModelo = variacoesAtivasDoModelo(m);
   const catAtual = kitState.categoria && CATEGORIAS_PRODUTO[kitState.categoria] ? kitState.categoria : '';
   const subcatsDaCat = catAtual ? Object.keys(CATEGORIAS_PRODUTO[catAtual]) : [];
   const subcatAtual = kitState.subcategoria && subcatsDaCat.includes(kitState.subcategoria) ? kitState.subcategoria : '';
@@ -5658,6 +5660,11 @@ function adminKitEditor(p, m, key){
       ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;"><span class="mono">${skuModeloPorKey(kp.key)}</span> ${kp.nome} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
     </div><p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${kitProdutos.length} modelo(s) vinculado(s). Pesquise outro produto para adicionar mais.</p>` : `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum modelo vinculado. Você pode adicionar vários produtos e modelos do catálogo.</p>`}
 
+    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Variações do modelo <span style="font-weight:400; text-transform:none;">— importadas do MubiSys (${variacoesModelo.length})</span></p>
+    ${variacoesModelo.length? `<div style="display:flex; flex-wrap:wrap; gap:6px;">${variacoesModelo.map(v=>`<span class="badge b-neutral" title="ID MubiSys ${v.id}">${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span>`).join('')}</div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Na composição abaixo, cada matéria-prima pode valer para todas as variações (comum) ou só para uma delas. No orçamento entram as linhas comuns mais as das variações escolhidas pelo vendedor.</p>`
+    : `<p style="font-size:11.5px;color:var(--text-faint);">Este modelo não tem variações ativas no MubiSys. Se acabou de cadastrá-las lá, recarregue a página para atualizar o catálogo.</p>`}
+
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Composição — matéria-prima real <span style="font-weight:400; text-transform:none;">(quantas quiser)</span></p>
     <div style="position:relative;">
       <input type="text" placeholder="Buscar matéria-prima real…" value="${q}" data-act="admin-mat-query" style="width:100%;">
@@ -5669,7 +5676,7 @@ function adminKitEditor(p, m, key){
     </div>
     <div class="tablewrap" style="margin-top:${matches.length?'60px':'10px'};">
       <table>
-        <thead><tr><th>Matéria-prima</th><th>Papel na peça</th><th>Fórmula de consumo</th><th>Mult.</th><th></th></tr></thead>
+        <thead><tr><th>Matéria-prima</th><th>Papel na peça</th>${variacoesModelo.length?'<th>Vale para</th>':''}<th>Fórmula de consumo</th><th>Mult.</th><th></th></tr></thead>
         <tbody>
         ${kit.length? kit.map((k,i)=>`
           <tr>
@@ -5678,10 +5685,14 @@ function adminKitEditor(p, m, key){
               <option value="">— selecione —</option>
               ${[...new Set([...configGeral.papeisPeca,'Aro'])].map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
             </select></td>
+            ${variacoesModelo.length?`<td><select data-act="admin-kit-variacao-modelo" data-idx="${i}" style="max-width:190px;">
+              <option value="">Todas (comum)</option>
+              ${variacoesModelo.map(v=>`<option value="${v.id}" ${String(k.variacaoModeloId)===String(v.id)?'selected':''}>${escaparHtml(v.nome)}</option>`).join('')}
+            </select></td>`:''}
             <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select></td>
             <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="admin-kit-mult" data-idx="${i}" style="width:70px;"></td>
             <td><button class="btn btn-ghost btn-sm" data-act="admin-kit-remove" data-idx="${i}">✕</button></td>
-          </tr>`).join('') : `<tr><td colspan="5" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado (pode adicionar quantas matérias-primas precisar).</td></tr>`}
+          </tr>`).join('') : `<tr><td colspan="6" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado (pode adicionar quantas matérias-primas precisar).</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -6361,6 +6372,25 @@ function bindAdminEvents(){
     el.addEventListener('change', e=>{
       const kit = adminState.kits[adminState.editingKey];
       if(kit){ kit.linhas[+el.dataset.idx].papel = e.target.value; salvarKit(adminState.editingKey); }
+      render();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-kit-variacao-modelo"]').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const kit = adminState.kits[adminState.editingKey];
+      if(kit){
+        const linha = kit.linhas[+el.dataset.idx];
+        const id = Number(e.target.value);
+        if(id>0){
+          const [produtoId,modeloId] = adminState.editingKey.split('_').map(Number);
+          const modelo = catalog.produtos.find(p=>p.id===produtoId)?.modelos.find(mod=>mod.id===modeloId);
+          linha.variacaoModeloId = id;
+          linha.variacaoModeloNome = variacoesAtivasDoModelo(modelo).find(v=>Number(v.id)===id)?.nome||null;
+        }else{
+          delete linha.variacaoModeloId; delete linha.variacaoModeloNome;
+        }
+        salvarKit(adminState.editingKey);
+      }
       render();
     });
   });
