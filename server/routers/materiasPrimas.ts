@@ -6,7 +6,7 @@ import {
   materiaPrimaCategorias,
 } from "../../drizzle/schema";
 import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, secaoPerfilMm2, type FormatoPerfil, normalizarFormatoPerfil } from "@shared/peso";
-import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
+import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
@@ -95,6 +95,8 @@ export const materiasPrimasRouter = router({
           categoriaNome: categoria?.nome ?? null,
           categoriaUsaDadosChapa: categoria?.usaDadosChapa ?? false,
           categoriaUsaDadosBobina: categoria?.usaDadosBobina ?? false,
+          bobinaCustoBase: (BOBINA_CUSTO_BASES as readonly string[]).includes(cadastro?.bobinaCustoBase ?? "") ? (cadastro!.bobinaCustoBase as (typeof BOBINA_CUSTO_BASES)[number]) : null,
+          bobinaComprimentoRoloMm: cadastro?.bobinaComprimentoRoloMm == null ? null : Number(cadastro.bobinaComprimentoRoloMm),
           categoriaUsaDadosPerfil: categoria?.usaDadosPerfil ?? false,
           espessuraMm: cadastro?.espessuraMm == null ? null : Number(cadastro.espessuraMm),
           densidadeKgM3: cadastro?.densidadeKgM3 == null ? null : Number(cadastro.densidadeKgM3),
@@ -201,6 +203,8 @@ export const materiasPrimasRouter = router({
       perfilComprimentoMm: z.number().finite().positive().max(1_000_000).nullable().default(null),
       chapas: formatosChapaInput,
       bobinas: formatosBobinaInput.default([]),
+      bobinaCustoBase: z.enum(BOBINA_CUSTO_BASES).nullable().default(null),
+      bobinaComprimentoRoloMm: z.number().finite().positive().max(10_000_000).nullable().default(null),
     }).strict())
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -238,6 +242,10 @@ export const materiasPrimasRouter = router({
         throw new Error(`Para salvar este perfil, informe ${[perfilUsaAltura ? "altura" : "diâmetro (largura)", perfilUsaAltura ? "largura" : null, perfilUsaEspessura ? "espessura" : null, "comprimento", "densidade"].filter(Boolean).join(", ")}.`);
       if (usaDadosPerfil && perfilSecaoInvalida(input))
         throw new Error("As medidas do perfil não formam uma seção válida (confira se a espessura cabe na altura/largura).");
+      if (usaDadosBobina && !input.bobinaCustoBase)
+        throw new Error("Para salvar uma bobina, informe como o custo do MubiSys é cobrado (m², metro linear ou rolo).");
+      if (usaDadosBobina && input.bobinaCustoBase === "rolo" && !input.bobinaComprimentoRoloMm)
+        throw new Error("Bobina cobrada por rolo precisa do comprimento do rolo (mm).");
       if (usaDadosBobina && !input.espessuraMm)
         throw new Error("Para salvar uma bobina, informe a espessura.");
       if (usaDadosBobina && formatosAtivos.length === 0)
@@ -262,6 +270,8 @@ export const materiasPrimasRouter = router({
         }
 
         const now = new Date();
+        const bobinaCustoBaseSalva = usaDadosBobina ? input.bobinaCustoBase : null;
+        const bobinaComprimentoRoloSalvo = usaDadosBobina && input.bobinaCustoBase === "rolo" && input.bobinaComprimentoRoloMm != null ? String(input.bobinaComprimentoRoloMm) : null;
         const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
         const perfilSalvo = (valor: number | null) => usaDadosPerfil && valor != null ? String(valor) : null;
         const espessuraSalva = input.espessuraMm && (usaDadosChapa || usaDadosBobina || (usaDadosPerfil && perfilUsaEspessura)) ? String(input.espessuraMm) : null;
@@ -275,6 +285,8 @@ export const materiasPrimasRouter = router({
           perfilAlturaMm: perfilSalvo(input.perfilAlturaMm),
           perfilLarguraMm: perfilSalvo(input.perfilLarguraMm),
           perfilComprimentoMm: perfilSalvo(input.perfilComprimentoMm),
+          bobinaCustoBase: bobinaCustoBaseSalva,
+          bobinaComprimentoRoloMm: bobinaComprimentoRoloSalvo,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
@@ -287,6 +299,8 @@ export const materiasPrimasRouter = router({
             perfilAlturaMm: perfilSalvo(input.perfilAlturaMm),
             perfilLarguraMm: perfilSalvo(input.perfilLarguraMm),
             perfilComprimentoMm: perfilSalvo(input.perfilComprimentoMm),
+            bobinaCustoBase: bobinaCustoBaseSalva,
+            bobinaComprimentoRoloMm: bobinaComprimentoRoloSalvo,
             updatedAt: now,
           },
         });

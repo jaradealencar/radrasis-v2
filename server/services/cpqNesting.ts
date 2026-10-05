@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import type { BobinaCustoConfig } from "../../shared/bobina";
 
 export type CpqChapa = {
   id: number;
@@ -39,6 +40,8 @@ export type CpqMaterial = {
   chapas: CpqChapa[];
   /** Lote geométrico isolado desta matéria-prima; sem ele usa as peças globais. */
   pecas?: CpqNestingPeca[];
+  /** Bobina: como o custo do MubiSys é cobrado (cadastro local). Sem isso, deduz pela unidade de custo. */
+  bobinaCusto?: BobinaCustoConfig | null;
 };
 
 type DeepnestWorkerResult = {
@@ -297,17 +300,34 @@ function estimarCustos(
   const unidade = unidadeNormalizada(material.unidadeCusto);
   const areaSobra = Math.max(0, areaChapaM2 - areaUsadaM2);
   if (comprimentoBobinaM != null) {
-    if (["m2", "metro quadrado", "metros quadrados"].includes(unidade)) {
+    // Base de cobrança: a escolhida no cadastro da bobina; sem ela, só se deduz de m² ou metro linear.
+    const base = material.bobinaCusto?.base
+      ?? (["m2", "metro quadrado", "metros quadrados"].includes(unidade) ? "m2"
+        : ["m", "ml", "metro", "metros", "metro linear", "metros lineares"].includes(unidade) ? "ml" : null);
+    if (base === "m2") {
       return { custo: areaChapaM2 * material.custoUnitario, sobra: areaSobra * material.custoUnitario, unidadeMetrica: true, alerta: null };
     }
-    if (["m", "ml", "metro", "metros", "metro linear", "metros lineares"].includes(unidade)) {
+    if (base === "ml") {
       return { custo: comprimentoBobinaM * material.custoUnitario, sobra: null, unidadeMetrica: true, alerta: null };
+    }
+    if (base === "rolo") {
+      const comprimentoRoloMm = material.bobinaCusto?.comprimentoRoloMm ?? 0;
+      if (!(comprimentoRoloMm > 0)) {
+        return { custo: null, sobra: null, unidadeMetrica: false, alerta: "Bobina cobrada por rolo sem o comprimento do rolo cadastrado; informe em Produtos > Matérias-primas antes de emitir a proposta." };
+      }
+      const fracaoDoRolo = (comprimentoBobinaM * 1000) / comprimentoRoloMm;
+      return {
+        custo: fracaoDoRolo * material.custoUnitario,
+        sobra: areaChapaM2 > 0 ? fracaoDoRolo * material.custoUnitario * (areaSobra / areaChapaM2) : null,
+        unidadeMetrica: true,
+        alerta: null,
+      };
     }
     return {
       custo: null,
       sobra: null,
       unidadeMetrica: false,
-      alerta: `Unidade de custo "${material.unidadeCusto}" não converte em consumo de bobina (use m² ou metro linear no MubiSys); revise antes de emitir a proposta.`,
+      alerta: `Unidade de custo "${material.unidadeCusto}" não converte em consumo de bobina; escolha em Produtos > Matérias-primas como o custo é cobrado (m², metro linear ou rolo) antes de emitir a proposta.`,
     };
   }
   if (["m2", "m2", "metro quadrado", "metros quadrados"].includes(unidade)) {

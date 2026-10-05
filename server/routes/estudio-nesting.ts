@@ -6,6 +6,7 @@ import { estudioChapas, materiaPrimaCadastros, materiaPrimaCategorias } from "..
 import { gCm3ParaKgM3, kgM3ParaGCm3, normalizarFormatoPerfil } from "../../shared/peso";
 import { calcularPesoLinha, somarPesos, type DadosPesoMateria } from "../services/cpqPeso";
 import { auth } from "../_core/auth";
+import { carregarCustoBobina } from "../db/bobinaCusto";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
@@ -419,6 +420,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       .then(rows => rows.filter(row => row.ativo)),
   ]);
   const byId = new Map(catalogo.map(material => [material.id, material]));
+  const custosBobina = await carregarCustoBobina(db, parsed.data.materiaPrimaIds);
   const lotesPorMaterial = new Map((parsed.data.lotesPorMaterial ?? []).map(lote => [lote.materiaPrimaId, lote.pecas]));
   const materiais: CpqMaterial[] = [];
   for (const id of parsed.data.materiaPrimaIds) {
@@ -435,6 +437,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       custoUnitario: Number(material.valor_custo) || 0,
       unidadeCusto: material.unidade_custo || "",
       chapas: chapas.filter(chapa => chapa.mubisysMateriaPrimaId === id),
+      bobinaCusto: custosBobina.get(id) ?? null,
       ...(lotesPorMaterial.has(id) ? { pecas: lotesPorMaterial.get(id)! } : {}),
     });
   }

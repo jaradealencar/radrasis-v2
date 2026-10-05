@@ -10,14 +10,16 @@ O código novo lê colunas que só existem depois das migrations. Publicar sem m
 matérias-primas e o nesting.
 
 - [ ] Conferir quais migrations o banco de produção já tem (`drizzle.__drizzle_migrations`): a **0078** e as
-  seguintes (**0079 a 0082** na data deste documento) ainda não foram aplicadas lá.
+  seguintes (**0079 a 0084** na data deste documento) ainda não foram aplicadas lá.
 - [ ] Aplicar com `npx drizzle-kit migrate` (nunca SQL solto). As migrations são só aditivas
   (colunas novas com default + um `INSERT` de seed), então não alteram dados existentes.
 - [ ] **0078** (`0078_bobinas_materias_primas.sql`): `estudio_chapas.bobina` (default `false`),
   `materia_prima_categorias.usa_dados_bobina` (default `false`) e a categoria **Bobinas**. Se já existir uma
   categoria chamada "Bobinas", ela é apenas marcada como de bobina (`ON CONFLICT … DO UPDATE`).
-- [ ] 0079 a 0082 (perfil, peso específico, `tem_cor`): vieram de outras tarefas, mas o cadastro de
-  matérias-primas e a rota de chapas dependem delas junto com a 0078.
+- [ ] **0083** (`0083_bobina_custo_base.sql`): `materia_prima_cadastros.bobina_custo_base` e
+  `bobina_comprimento_rolo_mm` (como o custo do MubiSys é cobrado — ver seção 2).
+- [ ] 0079 a 0082 e 0084 (perfil, peso específico, `tem_cor`, formato do perfil): vieram de outras tarefas, mas o
+  cadastro de matérias-primas e a rota de chapas dependem delas junto com a 0078 e a 0083.
 - [ ] Depois de migrar: `select nome, usa_dados_bobina from materia_prima_categorias` deve listar "Bobinas" com `true`.
 - [ ] Rollback: as colunas novas são inofensivas se o código antigo voltar; não é preciso reverter a migration.
 
@@ -28,16 +30,26 @@ preencher → **Salvar**.
 
 | Material (MubiSys) | Largura do rolo | Espessura (obrigatória) | Observação |
 | --- | --- | --- | --- |
-| Papel Kraft Pardo Embrulho Mercado Livre 120cm 200m 80g (#1098) | 1200 mm | informar (campo aceita mm ou µm) | confirmado no catálogo como 120 cm |
-| Adesivo comum (não impresso) | 1200 mm | informar | **confirmar qual item do MubiSys é** — candidatos vistos no catálogo: #4448 "Adesivo Vinil Branco Impresso Recortado" e #4377 "Adesivo Vinil Transparente Impresso + Branco" (os nomes dizem "Impresso"; o adesivo comum pode ter outro cadastro) |
+| Papel Kraft Pardo Embrulho Mercado Livre 120cm 200m 80g (#1098) | 1200 mm | informar (campo aceita mm ou µm; kraft 80 g ≈ 80–100 µm, conferir na ficha) | **Como o custo é cobrado:** o MubiSys traz R$ 2,61 por `Unidade/Gl/Lt/Kg` (movimentação em m²). Escolher a base correta (ver abaixo) |
+| Adesivo comum (não impresso) | 1200 mm | informar | **Não existe no catálogo atual do MubiSys** (ver abaixo): criar o item lá ou indicar qual existente usar |
 
 - [ ] O "Adesivo Imprimax Sortido 1,22" (#1147, mídia em rolo) tem **1220 mm**, não 1200. Só entra aqui se
   for consumido pelo nesting; se entrar, cadastrar 1220.
 - [ ] Cada largura recebe uma identificação (ex.: "Bobina 1200 mm"; vazio assume esse padrão) e uma marcada como principal.
-- [ ] **Unidade de custo no MubiSys:** o nesting só calcula custo de bobina quando a unidade é **m²** ou
-  **metro linear (m/ml)**. O kraft #1098 aparece no MubiSys com unidade `Unidade/Gl/Lt/Kg`, que **não converte**:
-  o orçamento fica bloqueado com o alerta "Unidade de custo … não converte em consumo de bobina". Antes de
-  liberar para os vendedores, ajustar a unidade/custo no MubiSys (ou aceitar o bloqueio visível).
+- [ ] **Adesivo comum — pendente de decisão.** Em 05/10/2026 o catálogo do MubiSys (359 itens) não tem um
+  adesivo vinil comum, não impresso, de 1200 mm. O que existe: #4448 "Adesivo Vinil Branco Impresso Recortado"
+  (m², R$ 50) e #4377 "Adesivo Vinil Transparente Impresso + Branco" (m², R$ 80), que são serviços de adesivo
+  **impresso** (tratados pela análise de cores, não são o rolo comum); e #1147 "Adesivo Imprimax Sortido 1,22"
+  (rolo de 1220 mm, metro linear, R$ 35). O MubiSys não aceita gravação pela API pública: **criar no MubiSys** um
+  item (ex.: "Adesivo Vinil Comum 1,20 m", tipo Mídia, unidade de custo m² ou metro linear) e só então cadastrar a
+  bobina aqui. Alternativa: se for o Imprimax, cadastrar com 1220 mm.
+- [ ] **Como o custo do MubiSys é cobrado (campo obrigatório no cadastro da bobina).** O MubiSys nem sempre traz
+  unidade de área ou comprimento (o kraft #1098 vem como `Unidade/Gl/Lt/Kg`). Por isso o gestor escolhe a base:
+  **por m²** (custo × área cobrada), **por metro linear de rolo** (custo × comprimento consumido) ou **por rolo
+  inteiro** (custo × fração do rolo consumida; exige o comprimento total do rolo em mm, ex.: 200 000 mm). A tela
+  pré-seleciona m² ou metro linear quando a unidade do MubiSys é essa e deixa em branco nos demais casos: o sistema
+  não adivinha. **Atenção ao kraft #1098:** R$ 2,61 por rolo de 200 m seria irreal; é mais provável R$ 2,61 por m²
+  (o MubiSys movimenta em m²). Confirmar o valor com quem cuida do estoque antes de escolher "por m²" ou "por rolo".
 - [ ] Lembrar: a rota/tela antiga **Administração > Chapas para nesting** não edita bobinas (responde 409).
 
 ## 3. Validação em produção (depois de publicar)

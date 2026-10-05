@@ -198,6 +198,14 @@ function CadastroMateriasPrimas() {
   );
 }
 
+/** Pré-seleção da base de cobrança pelo texto da unidade de custo do MubiSys; sem correspondência clara, fica vazio para o gestor escolher. */
+function sugerirBaseCustoBobina(unidadeCusto: string): "" | "m2" | "ml" {
+  const unidade = unidadeCusto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/²/g, "2");
+  if (unidade.includes("quadrado") || unidade === "m2") return "m2";
+  if (unidade.includes("linear") || unidade === "m" || unidade === "ml") return "ml";
+  return "";
+}
+
 const fmtEspessura = (mm: number | null) => mm == null ? "—" : mm < 1 ? `${Number((mm * 1000).toFixed(2))} µm` : `${mm} mm`;
 
 /** Espessura digitada em milímetros ou micras; o valor é sempre gravado em mm. */
@@ -237,6 +245,8 @@ function DialogEditarMateriaPrima({
   const [perfil, setPerfil] = useState<{ formato: FormatoPerfil; altura: string; largura: string; comprimento: string }>({ formato: "tubo", altura: "", largura: "", comprimento: "" });
   const [chapas, setChapas] = useState<FormatoChapaForm[]>([]);
   const [bobinas, setBobinas] = useState<FormatoBobinaForm[]>([]);
+  const [bobinaCustoBase, setBobinaCustoBase] = useState<"" | "m2" | "ml" | "rolo">("");
+  const [bobinaComprimentoRolo, setBobinaComprimentoRolo] = useState("");
   const categoria = categorias.find(item => String(item.id) === categoriaId);
 
   useEffect(() => {
@@ -270,6 +280,8 @@ function DialogEditarMateriaPrima({
       ativo: bobina.ativo,
       principal: bobina.principal,
     })));
+    setBobinaCustoBase(material.bobinaCustoBase ?? sugerirBaseCustoBobina(material.unidadeCusto));
+    setBobinaComprimentoRolo(material.bobinaComprimentoRoloMm == null ? "" : String(material.bobinaComprimentoRoloMm));
   }, [material]);
 
   const salvar = trpc.produtos.materiasPrimas.salvar.useMutation({
@@ -320,6 +332,14 @@ function DialogEditarMateriaPrima({
       toast.error("Informe a largura da bobina em milímetros (número inteiro).");
       return;
     }
+    if (categoria?.usaDadosBobina && !bobinaCustoBase) {
+      toast.error("Escolha como o custo do MubiSys é cobrado (m², metro linear ou rolo).");
+      return;
+    }
+    if (categoria?.usaDadosBobina && bobinaCustoBase === "rolo" && !(Number(bobinaComprimentoRolo) > 0)) {
+      toast.error("Informe o comprimento do rolo em milímetros.");
+      return;
+    }
     salvar.mutate({
       mubisysMateriaPrimaId: material.id,
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
@@ -332,6 +352,8 @@ function DialogEditarMateriaPrima({
       perfilComprimentoMm: categoria?.usaDadosPerfil ? Number(perfil.comprimento) : null,
       chapas: formatos.map(({ index: _index, ...chapa }) => chapa),
       bobinas: categoria?.usaDadosBobina ? formatosBobina : [],
+      bobinaCustoBase: categoria?.usaDadosBobina && bobinaCustoBase ? bobinaCustoBase : null,
+      bobinaComprimentoRoloMm: categoria?.usaDadosBobina && bobinaCustoBase === "rolo" ? Number(bobinaComprimentoRolo) : null,
     });
   };
 
@@ -418,6 +440,20 @@ function DialogEditarMateriaPrima({
           {categoria?.usaDadosBobina && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da bobina</h3><p className="text-xs text-muted-foreground">Bobina tem só altura (a largura do rolo) e espessura; o comprimento não é cadastrado. O nesting mede quanto do rolo o layout consome e o custo usa altura × comprimento consumido.</p></div></div>
             <div className="max-w-xs"><CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio /></div>
+            <div className="space-y-2 rounded-md border p-3">
+              <Label>Como o custo do MubiSys é cobrado</Label>
+              <p className="text-xs text-muted-foreground">No MubiSys: {material.valorCusto > 0 ? `${fmtBrl(material.valorCusto)} / ${material.unidadeCusto || "un."}` : "custo não informado"}. Escolha a base para o nesting converter o consumo do rolo em custo; o sistema não adivinha quando a unidade não é de área ou comprimento.</p>
+              <Select value={bobinaCustoBase || "nao-definida"} onValueChange={value => setBobinaCustoBase(value === "nao-definida" ? "" : value as "m2" | "ml" | "rolo")}>
+                <SelectTrigger className="max-w-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nao-definida">Selecione…</SelectItem>
+                  <SelectItem value="m2">Por metro quadrado (m²)</SelectItem>
+                  <SelectItem value="ml">Por metro linear de rolo</SelectItem>
+                  <SelectItem value="rolo">Por rolo inteiro</SelectItem>
+                </SelectContent>
+              </Select>
+              {bobinaCustoBase === "rolo" && <div className="max-w-xs space-y-1"><Label className="text-xs">Comprimento do rolo (mm)</Label><Input type="number" min="1" step="1" value={bobinaComprimentoRolo} onChange={event => setBobinaComprimentoRolo(event.target.value)} placeholder="Ex.: 200000 (rolo de 200 m)" required /></div>}
+            </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2"><div><h4 className="text-sm font-medium">Larguras disponíveis</h4><p className="text-xs text-muted-foreground">Cadastre cada largura de rolo (ex.: 1200 mm). Com mais de uma, o nesting escolhe a que consome menos material.</p></div><Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setBobinas(atual => [...atual, { nome: "", larguraMm: "", ativo: true, principal: atual.length === 0 }])}><Plus className="h-3.5 w-3.5" /> Adicionar largura</Button></div>
               {bobinas.length === 0 ? <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">Nenhuma largura cadastrada.</p> : bobinas.map((bobina, index) => (

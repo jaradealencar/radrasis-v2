@@ -656,7 +656,11 @@ bloqueia com alerta. Com várias larguras vence a que cobra menos material. Marg
 lateral de borda do rolo ainda não existe (só o espaçamento entre peças). Dimensões
 de material (largura, altura, espessura, comprimento) ficam sempre em mm; m²/m do
 resultado e unidades de custo do MubiSys, e as métricas de produção em metros da
-Operações (solda), seguem como estão. A bobina exige espessura (mm ou µm na tela). O
+Operações (solda), seguem como estão. A bobina exige espessura (mm ou µm na tela). A
+base de cobrança do custo (`materia_prima_cadastros.bobina_custo_base`: `m2`, `ml` ou `rolo`, com
+`bobina_comprimento_rolo_mm` para rolo; migration 0083) é obrigatória no cadastro da bobina e vale mais que a
+unidade de custo do MubiSys (`server/db/bobinaCusto.ts` alimenta o nesting e a junção de propostas); sem ela, só
+m² e metro linear se deduzem da unidade. O
 worker real do Deepnest nunca devolve layout incompleto (só falha por tempo), então a
 bobina repete com o teto também quando o motor dá erro. A rota antiga
 `/api/letra-caixa/chapas` e a lista antiga de chapas do HTML do CPQ **não editam**

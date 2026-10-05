@@ -141,6 +141,51 @@ describe("CPQ nesting em bobina (largura fixa, comprimento medido)", () => {
     expect(resultado.custo_sobra_estimado).toBeNull();
   });
 
+  it("base de cobrança do cadastro destrava a unidade 'Unidade/Gl/Lt/Kg' do MubiSys (caso do kraft)", async () => {
+    mockDeepnest(() => layoutCompleto);
+    const areaCobradaM2 = (251 * 1_200) / 1e6;
+    const porM2 = await calcularNestingMultiMaterial({
+      pecas, materiais: [{ ...bobina("Unidade/Gl/Lt/Kg"), bobinaCusto: { base: "m2", comprimentoRoloMm: null } }],
+    });
+    expect(porM2[0].alerta_custo).toBeNull();
+    expect(porM2[0].custo_material_estimado).toBeCloseTo(areaCobradaM2 * 10);
+
+    const porMl = await calcularNestingMultiMaterial({
+      pecas, materiais: [{ ...bobina("Unidade/Gl/Lt/Kg"), bobinaCusto: { base: "ml", comprimentoRoloMm: null } }],
+    });
+    expect(porMl[0].custo_material_estimado).toBeCloseTo(0.251 * 10);
+  });
+
+  it("bobina cobrada por rolo: custo = fração consumida do rolo × custo do rolo", async () => {
+    mockDeepnest(() => layoutCompleto);
+    const [resultado] = await calcularNestingMultiMaterial({
+      pecas, materiais: [{ ...bobina("Unidade/Gl/Lt/Kg"), bobinaCusto: { base: "rolo", comprimentoRoloMm: 200_000 } }],
+    });
+
+    expect(resultado.custo_material_estimado).toBeCloseTo((251 / 200_000) * 10);
+    expect(resultado.custo_sobra_estimado).toBeCloseTo((251 / 200_000) * 10 * (1 - 0.02 / ((251 * 1_200) / 1e6)));
+    expect(resultado.alerta_custo).toBeNull();
+  });
+
+  it("bobina por rolo sem o comprimento do rolo bloqueia o custo com alerta", async () => {
+    mockDeepnest(() => layoutCompleto);
+    const [resultado] = await calcularNestingMultiMaterial({
+      pecas, materiais: [{ ...bobina("m2"), bobinaCusto: { base: "rolo", comprimentoRoloMm: null } }],
+    });
+
+    expect(resultado.custo_material_estimado).toBeNull();
+    expect(resultado.alerta_custo).toMatch(/comprimento do rolo/i);
+  });
+
+  it("a base escolhida no cadastro vale mais que a unidade do MubiSys", async () => {
+    mockDeepnest(() => layoutCompleto);
+    const [resultado] = await calcularNestingMultiMaterial({
+      pecas, materiais: [{ ...bobina("ml"), bobinaCusto: { base: "m2", comprimentoRoloMm: null } }],
+    });
+
+    expect(resultado.custo_material_estimado).toBeCloseTo(((251 * 1_200) / 1e6) * 10);
+  });
+
   it("bloqueia custo em unidade sem conversão para bobina", async () => {
     mockDeepnest(() => layoutCompleto);
     const [resultado] = await calcularNestingMultiMaterial({ pecas, materiais: [bobina("un")] });

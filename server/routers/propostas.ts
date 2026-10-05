@@ -10,6 +10,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure, requireRole, adminProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
+import { carregarCustoBobina } from "../db/bobinaCusto";
 import { propostas, propostaItens, propostasExcecoesMargem, produtos, configuracoesComerciais, vendedoresComerciais, estudioChapas, priceTableSections } from "../../drizzle/schema";
 import { eq, asc, desc, and, inArray, sql, gte, lt } from "drizzle-orm";
 import { consultarCnpj, CnpjNaoEncontradoError } from "../integrations/opencnpj-client";
@@ -760,6 +761,7 @@ export const propostasRouter = router({
       const idsComChapas = comuns.filter((id) => chapasAtivas.some((chapa) => chapa.mubisysMateriaPrimaId === id));
       if (!idsComChapas.length) throw new Error("Cadastre chapas ativas para ao menos um material comum às propostas.");
       const materiaisCatalogo = new Map(catalogo.map((item) => [item.id, item]));
+      const custosBobina = await carregarCustoBobina(db, idsComChapas);
       const resultados = await calcularNestingMultiMaterial({
         espacamentoMm: input.espacamentoMm,
         materiais: idsComChapas.map((id) => {
@@ -771,6 +773,7 @@ export const propostasRouter = router({
             custoUnitario: Number(material.valor_custo) || 0,
             unidadeCusto: material.unidade_custo || "",
             chapas: chapasAtivas.filter((chapa) => chapa.mubisysMateriaPrimaId === id),
+            bobinaCusto: custosBobina.get(id) ?? null,
             pecas: snapshots.map(({ peca }) => peca),
           };
         }),
