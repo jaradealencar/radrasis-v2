@@ -806,7 +806,8 @@ let traceRequestId = 0;
 
 function invalidarFactibilidadeReal(){
   REAL.factibilidade=null;REAL.factibilidadeErro=null;REAL.factibilidadeCarregando=false;REAL.nesting=null;REAL.nestingMateriais=[];
-  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.composicaoKitOriginal=null;REAL.approvals.nesting=false;REAL.svgNesting=null;
+  REAL.nestingMateriaPrimaIds=[];REAL.nestingFormatosPendentes=[];REAL.nestingFormatosUsados=[];
+  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.composicaoKitOriginal=null;REAL.approvals.nesting=false;REAL.approvals.kit=false;REAL.svgNesting=null;
 }
 
 function invalidarRastreamento(){
@@ -2515,6 +2516,7 @@ function aplicarPintura(){
       adicionados.push(m.nome);
     } else naoEncontrados.push(spec.termo);
   });
+  REAL.approvals.kit=false;
   p.habilitada = true;
   p.concluida = true;
   p.itensAdicionados = adicionados;
@@ -2526,6 +2528,7 @@ function aplicarPintura(){
  *  volta pro estado "cinza claro", não aparece mais na proposta. */
 function removerPintura(){
   REAL.kit = REAL.kit.filter(k=>!k.origemPintura);
+  REAL.approvals.kit=false;
   REAL.pintura = { habilitada:false, concluida:false, substrato:null, tipo:null, cores:null, temCoresAdicionais:null, coresAdicionais:null, acabamento:null, corMetal:null, itensAdicionados:[] };
   render();
 }
@@ -2789,7 +2792,7 @@ function renderStepper(p){
     ${STEP_DEFS.map((s,i)=>{
       const done = state.approvals[s.k] || (s.k==='orcamento' && state.orcamentoStatus!=='rascunho');
       const current = state.step===s.n;
-      const locked = i>unlockedIdx;
+      const locked = i>unlockedIdx && !(s.k==='kit' && REAL.step===s.n);
       return `<div class="step-pill ${done?'done':''} ${current?'current':''} ${locked?'locked':'clickable'}" ${locked?'':`data-act="goto-step" data-val="${s.n}"`}>
         <span class="dot">${done?'✓':s.n}</span>${s.label}
       </div>`;
@@ -3103,9 +3106,9 @@ const STEP_DEFS_REAL = [
   {k:'foto', n:2, label:'Foto e escopo'},
   {k:'redesenho', n:3, label:'Reconstrução visual'},
   {k:'vetorizacao', n:4, label:'Vetorização'},
-  {k:'escala', n:5, label:'Área e medidas'},
-  {k:'kit', n:6, label:'Composição (kit)'},
-  {k:'nesting', n:7, label:'Nesting'},
+  {k:'escala', n:5, label:'Ficha técnica'},
+  {k:'nesting', n:6, label:'Nesting'},
+  {k:'kit', n:7, label:'Composição'},
   {k:'orcamento', n:8, label:'Orçamento'},
 ];
 
@@ -3144,8 +3147,8 @@ function renderRealStepContent(){
     case 3: return realStepRedesenho();
     case 4: return realStepVetorizacao();
     case 5: return realStepEscala();
-    case 6: return realStepKit();
-    case 7: return realStepNestingV2();
+    case 6: return realStepNestingV2();
+    case 7: return realStepKit();
     case 8: return realStepOrcamento();
     default: return '';
   }
@@ -3312,7 +3315,7 @@ function realStepProposta(){
           <div class="kv"><span>Unidade de cobrança</span><span>${modeloSel.unidade||'—'}</span></div>
           ${kitPronto && kitPronto.prazoDiasUteis!=null? `<div class="kv"><span>Prazo de produção</span><span>${kitPronto.prazoDiasUteis} dias úteis</span></div>` : ''}
           ${modeloSel.desc? `<p style="font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.5;">${modeloSel.desc}</p>`:''}
-          ${REAL.kitSource==='mubisys'?`<div style="margin-top:8px;"><span class="badge b-ok">${ICONS.check} Consumo desta variação importado do MubiSys (${REAL.kit.length} matéria(s)-prima(s))</span></div>`:kitPronto? `<div style="margin-top:8px;"><span class="badge b-ok">${ICONS.check} Composição já cadastrada (${kitPronto.linhas.length} item${kitPronto.linhas.length===1?'':'s'}${kitPronto.precificacao?(kitPronto.precificacao.modo==='fixo'?' · preço fixo':' · margem vinculada'):''}) — vai ser carregada automaticamente</span></div>` : `<div style="margin-top:8px;"><span class="badge b-warn">Sem composição cadastrada — você monta no passo 5</span></div>`}
+          ${REAL.kitSource==='mubisys'?`<div style="margin-top:8px;"><span class="badge b-ok">${ICONS.check} Consumo desta variação importado do MubiSys (${REAL.kit.length} matéria(s)-prima(s))</span></div>`:kitPronto? `<div style="margin-top:8px;"><span class="badge b-ok">${ICONS.check} Composição já cadastrada (${kitPronto.linhas.length} item${kitPronto.linhas.length===1?'':'s'}${kitPronto.precificacao?(kitPronto.precificacao.modo==='fixo'?' · preço fixo':' · margem vinculada'):''}) — vai ser carregada automaticamente</span></div>` : `<div style="margin-top:8px;"><span class="badge b-warn">Sem composição cadastrada — você monta no passo Composição</span></div>`}
           ${REAL.kitWarning?`<div style="margin-top:6px;color:var(--warn);font-size:11.5px;">${ICONS.info} ${escaparHtml(REAL.kitWarning)}</div>`:''}
         </div>
       </div>
@@ -3877,11 +3880,11 @@ function renderPinturaBox(){
 function realStepKit(){
   const g = computeGeomReal();
   const q = REAL.matQuery||'';
+  const proximoPasso=REAL.approvals.nesting?'Confirmar composição e ir ao orçamento':'Confirmar composição e voltar ao nesting';
   const matches = q.length>=2 ? catalog.materias.filter(m=>!adminState.materiasExcluidas.has(m.id) && normalizeSearch(m.nome).includes(normalizeSearch(q))).slice(0,40) : [];
   return `
-  ${renderPinturaBox()}
   <div class="card">
-    <div class="cardhead"><div><h3>6 · Composição (kit) — matéria-prima real</h3><p>${REAL.kit.length? 'Composição carregada do cadastro do administrador para este modelo — ajuste se precisar.' : 'Sem composição cadastrada para este modelo ainda — busque direto no catálogo real de matérias-primas ('+catalog.materias.length+' itens). Isso fica salvo: um administrador pode revisar em Administração.'}</p></div></div>
+    <div class="cardhead"><div><h3>7 · Composição — consumo das matérias-primas</h3><p>${REAL.kit.length? 'Composição carregada do cadastro do administrador para este modelo — ajuste fórmulas e multiplicadores com base no nesting.' : 'Sem composição cadastrada para este modelo ainda — busque direto no catálogo real de matérias-primas ('+catalog.materias.length+' itens), defina o papel físico e confirme. O nesting será calculado em seguida.'}</p><p class="role-note">O nesting anterior fornece área de consumo, área líquida e perímetro às fórmulas. Alterar uma matéria-prima ou camada exige novo nesting; fórmulas e multiplicadores recalculam o orçamento sem refazer o layout.</p></div></div>
     <div style="position:relative;">
       <input type="text" placeholder="Buscar matéria-prima real (ex: ACM, acrílico, LED)…" value="${q}" data-act="real-mat-query" style="width:100%;">
       ${matches.length? `<div class="card" style="position:absolute; z-index:10; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
@@ -3921,7 +3924,7 @@ function realStepKit(){
     </div>
     <div class="footer-nav">
       <div class="role-note">${ICONS.info} Preço/status/unidade vêm do snapshot real do catálogo — em produção, item inativo ou custo vencido bloqueia o preço final.</div>
-      <button class="btn btn-primary" data-act="real-approve" data-val="kit" ${REAL.kit.length?'':'disabled'}>${ICONS.check} Confirmar composição e avançar</button>
+      <button class="btn btn-primary" data-act="real-approve" data-val="kit" ${REAL.kit.length?'':'disabled'}>${ICONS.check} ${proximoPasso}</button>
     </div>
   </div>`;
 }
@@ -3948,11 +3951,14 @@ async function analisarFactibilidadeReal(){
     const configured=new Set(chapas.filter(board=>board.ativo!==false).map(board=>Number(board.mubisysMateriaPrimaId)));
     const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line));
     const mappedLineIds=new Set(physicalLines.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0));
-    const unassignedSheet=(REAL.kit||[]).find(line=>!line.origemPintura&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
-    if(unassignedSheet) throw new Error('Defina o papel da chapa como Face, Aro ou Fundo no kit para separar os contornos do SVG.');
+    const linhasChapaSemCamada=(REAL.kit||[]).filter(line=>!line.origemPintura&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
+    if(linhasChapaSemCamada.length){
+      REAL.nestingMateriaPrimaIds=[...new Set([...mappedLineIds,...linhasChapaSemCamada.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0)])];
+      throw new Error('Vincule cada matéria-prima de chapa à Face, ao Aro ou ao Fundo no bloco desta etapa.');
+    }
     const materiaPrimaIds=[...mappedLineIds];
     REAL.nestingMateriaPrimaIds=materiaPrimaIds;
-    if(!materiaPrimaIds.length) throw new Error('Associe ao menos uma materia-prima a Face, Aro ou Fundo no passo Composicao.');
+    if(!materiaPrimaIds.length) throw new Error('Associe ao menos uma matéria-prima à Face, ao Aro ou ao Fundo antes de calcular o nesting.');
     if(materiaPrimaIds.length>10) throw new Error('A factibilidade aceita ate 10 materiais de chapa por projeto.');
     const missingFormats=materiaPrimaIds.filter(id=>!configured.has(id));
     const formatosTemporarios=[];
@@ -4006,7 +4012,7 @@ function construcaoFaceEfetiva(color){
 
 function invalidarAnaliseCoresReal(){
   restaurarComposicaoCoresReal();
-  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.autorizaAdesivo=false;REAL.factibilidade=null;REAL.nesting=null;REAL.approvals.nesting=false;
+  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.autorizaAdesivo=false;REAL.factibilidade=null;REAL.nesting=null;REAL.nestingMateriaPrimaIds=[];REAL.approvals.nesting=false;REAL.approvals.kit=false;
 }
 
 function restaurarComposicaoCoresReal(){
@@ -4023,7 +4029,7 @@ async function analisarCorrespondenciaCoresReal(){
   if(!REAL.tracedSvgOriginal){color.error='A arte vetorial original com cores não está disponível. Reenvie o SVG ou gere uma nova vetorização.';render();return;}
   const geom=computeGeomReal();
   if(!geom.scaleFactor){color.error='Confirme uma escala física válida antes de calcular as áreas por cor.';render();return;}
-  color.loading=true;color.error=null;color.resultados=null;color.aprovado=false;REAL.factibilidade=null;REAL.nesting=null;render();
+  color.loading=true;color.error=null;color.resultados=null;color.aprovado=false;REAL.factibilidade=null;REAL.nesting=null;REAL.nestingMateriaPrimaIds=[];REAL.approvals.nesting=false;REAL.approvals.kit=false;render();
   try{
     const minimum=String(color.transmissaoMinimaPct??'').trim()===''?null:Number(color.transmissaoMinimaPct);
     const response=await fetch('/api/letra-caixa/cores/analisar-svg',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -4174,11 +4180,22 @@ function renderConfiguracaoNestingReal(){
   const nomes=new Map((catalog.materias||[]).map(material=>[Number(material.id),material.nome]));
   const linhas=[];
   linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">');
-  linhas.push('<div class="cardhead"><div><h4>Executar nesting nesta etapa</h4><p>O nesting pode ser calculado sem preencher iluminação ou cor. O sistema usa a composição do passo anterior e pede as dimensões que faltarem.</p></div></div>');
+  linhas.push('<div class="cardhead"><div><h4>Executar nesting nesta etapa</h4><p>Use as matérias-primas e camadas já vinculadas ao modelo. Depois do nesting, a composição aplica fórmulas e multiplicadores aos resultados.</p></div></div>');
   linhas.push('<div class="grid2" style="margin-top:10px;">');
   linhas.push('<label class="field">Distanciamento entre peças (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.espacamentoMm)+'" data-act="nesting-espacamento"></label>');
   linhas.push('<label class="field">Distanciamento da borda (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.margemBordaMm)+'" data-act="nesting-margem-borda"></label>');
   linhas.push('</div>');
+  const chapasAtivasIds=new Set(chapas.filter(chapa=>chapa.ativo!==false).map(chapa=>Number(chapa.mubisysMateriaPrimaId)));
+  const papeisPendentes=(REAL.kit||[]).map((linha,idx)=>({linha,idx,material:materialKitAtivo(linha)})).filter(item=>!item.linha.origemPintura&&chapasAtivasIds.has(Number(item.material.matId))&&!camadaFisicaKit(item.linha));
+  if(papeisPendentes.length){
+    linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;"><b>Vincule as chapas às camadas do desenho</b><p class="role-note">Este vínculo mínimo permite separar Face, Aro e Fundo para o nesting. As fórmulas e multiplicadores ficam para a próxima etapa.</p>');
+    for(const item of papeisPendentes){
+      const papeis=[...new Set([...configGeral.papeisPeca,'Aro'])];
+      const opcoes='<option value="">Selecione a camada</option>'+papeis.map(papel=>'<option value="'+escaparHtml(papel)+'">'+escaparHtml(papel)+'</option>').join('');
+      linhas.push('<label class="field" style="margin-top:8px;">'+escaparHtml(item.material.nome)+'<select data-act="nesting-kit-papel" data-idx="'+item.idx+'">'+opcoes+'</select></label>');
+    }
+    linhas.push('</div>');
+  }
   for(const id of ids){
     const opcoes=chapas.filter(chapa=>chapa.ativo!==false&&Number(chapa.mubisysMateriaPrimaId)===id);
     if(opcoes.length){
@@ -4197,7 +4214,10 @@ function renderConfiguracaoNestingReal(){
     linhas.push('</div></div>');
   }
   if(semFormato.length) linhas.push('<div class="role-note" style="margin-top:8px;">Essas dimensões serão usadas somente nesta cotação e não alteram o cadastro de matérias-primas.</div>');
-  if(!ids.length) linhas.push('<div class="role-note" style="margin-top:8px;">No passo Composição, associe cada chapa à camada Face, Aro ou Fundo.</div>');
+  if(!ids.length){
+    linhas.push('<div class="role-note" style="margin-top:8px;">Ainda não há matéria-prima de chapa vinculada a Face, Aro ou Fundo.</div>');
+    linhas.push('<button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-act="real-nesting-go-composition">Abrir composição para escolher materiais</button>');
+  }
   linhas.push('<button class="btn btn-primary" style="margin-top:10px;" data-act="real-nesting-iniciar" '+(REAL.factibilidadeCarregando||REAL.nestingCarregando?'disabled':'')+'>'+(REAL.factibilidadeCarregando||REAL.nestingCarregando?'Calculando…':'Calcular nesting')+'</button><div class="role-note" data-nesting-config-status style="display:none;"></div></div>');
   return linhas.join('');
 }
@@ -4241,8 +4261,8 @@ function realStepNestingV2(){
     return '<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;"><div class="cardhead"><div><h4>Resultados por tamanho de chapa · '+escaparHtml(material.materia_prima)+'</h4><p>O mesmo desenho foi calculado separadamente em cada formato ativo.</p></div><span class="badge b-neutral">'+formatos.length+' formatos</span></div>'+itens+'</div>';
   }).join('')||'';
   if(REAL.factibilidadeCarregando) return `<div class="card"><div class="empty-hint">Analisando chapas e preparando o nesting...</div></div>`;
-  return `<div class="card">
-    <div class="cardhead"><div><h3>7 - Factibilidade e nesting por material</h3><p>Além de organizar as peças, o nesting calcula para cada matéria-prima da composição a área de consumo, a área líquida das peças e o perímetro total de corte. Nas fórmulas por área ou perímetro total, esses resultados definem a quantidade no orçamento.</p></div></div>
+  return `${renderPinturaBox()}<div class="card">
+    <div class="cardhead"><div><h3>6 - Factibilidade e nesting por material</h3><p>Além de organizar as peças, o nesting calcula para cada matéria-prima da composição a área de consumo, a área líquida das peças e o perímetro total de corte. Nas fórmulas por área ou perímetro total, esses resultados definem a quantidade no orçamento.</p></div></div>
     ${renderConfiguracaoNestingReal()}
     ${renderAnaliseCoresReal()}
     ${REAL.factibilidadeErro?`<div class="warnbox" role="alert"><span>${ICONS.alert}</span><div>${escaparHtml(REAL.factibilidadeErro)}</div></div>`:''}
@@ -6700,7 +6720,9 @@ function bindRealEvents(){
     el.addEventListener('click', async ()=>{
       const val = el.dataset.val;
       if(val==='kit'){
-        REAL.approvals.kit=true; REAL.step=7; render();
+        if(REAL.approvals.nesting){REAL.approvals.kit=true;REAL.step=8;}
+        else{REAL.approvals.kit=false;REAL.step=6;}
+        render();
         return;
       }
       if(val==='vetorizacao' && !traceReviewReady()){
@@ -6722,6 +6744,7 @@ function bindRealEvents(){
         }
       }
       REAL.approvals[val]=true;
+      if(val==='nesting'&&REAL.approvals.kit){REAL.step=8;render();return;}
       if(val==='escala') invalidarFactibilidadeReal();
       const idx = STEP_DEFS_REAL.findIndex(s=>s.k===val);
       if(idx>-1 && idx<STEP_DEFS_REAL.length-1) REAL.step = STEP_DEFS_REAL[idx+1].n;
@@ -6753,7 +6776,10 @@ function bindRealEvents(){
   if(factibilidadeRetry) factibilidadeRetry.addEventListener('click',()=>analisarFactibilidadeReal());
   const nestingIniciar=document.querySelector('[data-act="real-nesting-iniciar"]');
   if(nestingIniciar) nestingIniciar.addEventListener('click',()=>analisarFactibilidadeReal());
-  const invalidarNestingConfiguracao=()=>{REAL.factibilidade=null;REAL.nesting=null;REAL.approvals.nesting=false;REAL.factibilidadeErro=null;};
+  document.querySelectorAll('[data-act="nesting-kit-papel"]').forEach(el=>el.addEventListener('change',event=>{REAL.kit[Number(event.target.dataset.idx)].papel=event.target.value;invalidarFactibilidadeReal();render();}));
+  const nestingComposicao=document.querySelector('[data-act="real-nesting-go-composition"]');
+  if(nestingComposicao) nestingComposicao.addEventListener('click',()=>{REAL.step=7;render();});
+  const invalidarNestingConfiguracao=()=>{REAL.factibilidade=null;REAL.nesting=null;REAL.approvals.nesting=false;REAL.approvals.kit=false;REAL.nestingMateriaPrimaIds=[];REAL.factibilidadeErro=null;};
   const marcarNestingConfiguracaoAlterada=()=>{const status=document.querySelector('[data-nesting-config-status]');if(status&&(REAL.factibilidade||REAL.nesting||status.style.display!=='none')){status.style.display='block';status.textContent='Os parâmetros mudaram. Calcule novamente para atualizar o nesting.';}};
   const spacingInput=document.querySelector('[data-act="nesting-espacamento"]');
   if(spacingInput) spacingInput.addEventListener('input',event=>{REAL.nestingConfiguracao.espacamentoMm=Number(event.target.value)||0;marcarNestingConfiguracaoAlterada();invalidarNestingConfiguracao();});
@@ -7037,11 +7063,11 @@ function bindRealEvents(){
     invalidarFactibilidadeReal();
     render();
   }));
-  document.querySelectorAll('[data-act="real-kit-formula"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].formulaType=e.target.value; invalidarFactibilidadeReal(); render(); }));
+  document.querySelectorAll('[data-act="real-kit-formula"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].formulaType=e.target.value; REAL.approvals.kit=false; render(); }));
   document.querySelectorAll('[data-act="real-kit-mult"]').forEach(el=>{
     el.addEventListener('input', e=>{
       REAL.kit[+el.dataset.idx].mult = parseFloat(e.target.value)||0;
-      invalidarFactibilidadeReal();
+      REAL.approvals.kit=false;
       clearTimeout(_renderDebounceTimer);
       _renderDebounceTimer = setTimeout(renderPreservingFocus, 400);
     });
