@@ -660,6 +660,11 @@ Imprimax sólido segue por contorno. O catálogo Imprimax de 05/08/2026 (155 cor
 `shared/imprimax-catalogo-2026-08.ts` e é carregado pelo gestor em Administração > Chapas para nesting
 (`PUT /api/letra-caixa/cores/imprimax-padrao`, preserva preço/Pantone/CMYK já cadastrados). Os códigos `IMX-…` são
 internos (o PDF não traz código Imprimax) e o hex vem da foto do catálogo, não de Pantone/CMYK oficiais.
+O CPQ abre até 6 orçamentos em paralelo (pedido de 05/10/2026): a página de topo (`montarAbasOrcamento`) só
+desenha as abas e cada orçamento roda em um quadro (iframe `?orc=N`) com estado, requisições e temporizadores
+isolados, de modo que um orçamento continua processando em segundo plano enquanto o vendedor usa outro. As abas
+leem `window.__cpqResumo()` de cada quadro (cliente, etapa, o que está ocupado). Links públicos (`?cotacao=`) e
+`?semabas` abrem a página sem abas. Pendente: vários desenhos/produtos dentro de uma mesma cotação.
 O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a
 reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com

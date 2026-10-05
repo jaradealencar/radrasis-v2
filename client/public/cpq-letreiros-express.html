@@ -6635,10 +6635,152 @@ document.addEventListener('click', (e)=>{
   if(el){ state.mode='real'; REAL=novaProposta(); render(); }
 });
 
-const tokenCotacaoPublica=new URLSearchParams(window.location.search).get('cotacao');
+/* ---------- ORÇAMENTOS EM PARALELO (até 6 abas) ----------
+ * Pedido do usuário 05/10/2026: enquanto o sistema processa um orçamento (GPT, vetorização, cores, nesting), o
+ * vendedor já inicia outro. Cada aba é uma instância independente desta mesma página, carregada num quadro
+ * (iframe) com ?orc=N: estado, requisições e temporizadores são isolados, então o que uma aba está processando
+ * continua em segundo plano quando o vendedor troca de aba. A página de topo só desenha as abas e consulta o
+ * resumo de cada quadro (__cpqResumo) para mostrar cliente, etapa e o que está em andamento. */
+const MAX_ORCAMENTOS = 6;
+const _paramsPagina = new URLSearchParams(window.location.search);
+const MODO_ABAS = window.self === window.top && !_paramsPagina.get('cotacao') && !_paramsPagina.has('orc') && !_paramsPagina.has('semabas');
+
+/** Resumo do orçamento desta instância, lido pela página de abas. */
+window.__cpqResumo = function(){
+  const ocupado = [
+    [REAL.gerandoRedesenho, 'gerando a reconstrução (GPT)'],
+    [state.tracing, 'vetorizando'],
+    [REAL.colorAnalysis && REAL.colorAnalysis.loading, 'analisando as cores'],
+    [REAL.factibilidadeCarregando, 'verificando a factibilidade'],
+    [REAL.nestingCarregando, 'calculando o nesting'],
+    [REAL.precoIACarregando || REAL.precoAprovacaoCarregando, 'analisando o preço'],
+    [REAL.consultaCnpj && REAL.consultaCnpj.status === 'loading', 'consultando o cliente'],
+  ].find(item => item[0]);
+  return {
+    cliente: (REAL.cliente && (REAL.cliente.fantasia || REAL.cliente.razao)) || '',
+    titulo: REAL.tituloProposta || '',
+    modelo: REAL.modeloNome || '',
+    etapa: REAL.step || 1,
+    emAndamento: state.mode === 'real',
+    ocupado: ocupado ? ocupado[1] : null,
+    cotacaoNumero: REAL.cotacaoNumero || null,
+    enviada: !!REAL.cotacaoLink,
+  };
+};
+
+function montarAbasOrcamento(){
+  document.title = 'CPQ Letreiros Express';
+  document.getElementById('shell').style.display = 'none';
+  const estilo = document.createElement('style');
+  estilo.textContent = `
+    #abas-orc{position:fixed;top:0;left:0;right:0;height:46px;z-index:50;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;}
+    #abas-orc .aba{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);border-radius:10px;padding:5px 8px 5px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;max-width:300px;}
+    #abas-orc .aba.ativa{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:600;}
+    #abas-orc .aba .nome{overflow:hidden;text-overflow:ellipsis;}
+    #abas-orc .aba .chip{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface);color:var(--text-dim);}
+    #abas-orc .aba .chip.ocupado{background:#fff4d6;color:#8a5a00;}
+    #abas-orc .aba .chip.pronto{background:#d9f5e3;color:#14683a;}
+    #abas-orc .aba .fechar{border:none;background:none;color:inherit;opacity:.6;cursor:pointer;font-size:14px;padding:0 2px;}
+    #abas-orc .aba .fechar:hover{opacity:1;}
+    #abas-orc .nova{border:1px dashed var(--border);background:none;color:var(--accent);border-radius:10px;padding:5px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;}
+    #abas-orc .nova:disabled{opacity:.45;cursor:not-allowed;}
+    #quadros-orc{position:fixed;top:46px;left:0;right:0;bottom:0;}
+    #quadros-orc iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg);}
+  `;
+  document.head.appendChild(estilo);
+  const barra = document.createElement('div');
+  barra.id = 'abas-orc';
+  const quadros = document.createElement('div');
+  quadros.id = 'quadros-orc';
+  document.body.append(barra, quadros);
+
+  const abas = [];
+  let contador = 0, ativa = null;
+
+  const resumoDe = aba => { try{ return aba.iframe.contentWindow.__cpqResumo ? aba.iframe.contentWindow.__cpqResumo() : null; }catch(e){ return null; } };
+  const corta = (texto, max) => texto.length > max ? texto.slice(0, max - 1) + '…' : texto;
+  const esc = valor => String(valor).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function desenhar(){
+    barra.innerHTML = abas.map((aba, i) => {
+      const r = aba.resumo;
+      const nome = r && (r.cliente || r.titulo || r.modelo) ? corta(r.cliente || r.titulo || r.modelo, 24) : 'Novo orçamento';
+      let chip = '';
+      if(r && r.ocupado) chip = `<span class="chip ocupado">⏳ ${esc(r.ocupado)}</span>`;
+      else if(aba.pronto && aba.id !== ativa) chip = '<span class="chip pronto">● pronto</span>';
+      else if(r && r.enviada) chip = `<span class="chip pronto">✔ ${esc(r.cotacaoNumero || 'enviada')}</span>`;
+      else if(r && r.emAndamento) chip = `<span class="chip">etapa ${r.etapa}/8</span>`;
+      return `<div class="aba ${aba.id === ativa ? 'ativa' : ''}" data-aba="${aba.id}" title="Orçamento ${i + 1}"><span class="nome">${i + 1}. ${esc(nome)}</span>${chip}<button class="fechar" data-fechar="${aba.id}" title="Fechar este orçamento" type="button">×</button></div>`;
+    }).join('') + `<button class="nova" data-nova="1" type="button" ${abas.length >= MAX_ORCAMENTOS ? 'disabled title="Máximo de 6 orçamentos abertos"' : ''}>+ Novo orçamento (${abas.length}/${MAX_ORCAMENTOS})</button>`;
+  }
+
+  function ativar(id){
+    ativa = id;
+    abas.forEach(aba => { aba.iframe.style.display = aba.id === id ? 'block' : 'none'; if(aba.id === id) aba.pronto = false; });
+    desenhar();
+  }
+
+  function novaAba(){
+    if(abas.length >= MAX_ORCAMENTOS){ alert('Você já tem 6 orçamentos abertos. Conclua ou feche um para abrir outro.'); return; }
+    const id = ++contador;
+    const iframe = document.createElement('iframe');
+    iframe.src = window.location.pathname + '?orc=' + id;
+    iframe.title = 'Orçamento ' + id;
+    iframe.style.display = 'none';
+    quadros.appendChild(iframe);
+    abas.push({ id, iframe, resumo:null, pronto:false });
+    ativar(id);
+  }
+
+  function fechar(id){
+    const aba = abas.find(item => item.id === id);
+    if(!aba) return;
+    const r = resumoDe(aba) || aba.resumo;
+    if(r && r.emAndamento && !r.enviada && !confirm('Fechar este orçamento? O que não foi enviado ao cliente será perdido.')) return;
+    const posicao = abas.indexOf(aba);
+    aba.iframe.remove();
+    abas.splice(posicao, 1);
+    if(!abas.length) novaAba();
+    else if(ativa === id) ativar(abas[Math.min(posicao, abas.length - 1)].id);
+    else desenhar();
+  }
+
+  barra.addEventListener('click', ev => {
+    const fecharBtn = ev.target.closest('[data-fechar]');
+    if(fecharBtn){ ev.stopPropagation(); fechar(Number(fecharBtn.dataset.fechar)); return; }
+    const abaEl = ev.target.closest('[data-aba]');
+    if(abaEl){ ativar(Number(abaEl.dataset.aba)); return; }
+    if(ev.target.closest('[data-nova]')) novaAba();
+  });
+
+  // Consulta o resumo de cada quadro; avisa quando uma aba em segundo plano termina de processar.
+  setInterval(() => {
+    let mudou = false;
+    for(const aba of abas){
+      const r = resumoDe(aba);
+      if(!r) continue;
+      const antes = aba.resumo;
+      if(antes && antes.ocupado && !r.ocupado && aba.id !== ativa){ aba.pronto = true; mudou = true; }
+      if(!antes || JSON.stringify(antes) !== JSON.stringify(r)) mudou = true;
+      aba.resumo = r;
+    }
+    if(mudou) desenhar();
+  }, 1200);
+
+  window.addEventListener('beforeunload', ev => {
+    const emAndamento = abas.some(aba => aba.resumo && aba.resumo.emAndamento && !aba.resumo.enviada);
+    if(emAndamento){ ev.preventDefault(); ev.returnValue = ''; }
+  });
+
+  novaAba();
+}
+
+const tokenCotacaoPublica=_paramsPagina.get('cotacao');
 if(tokenCotacaoPublica){
   document.title='Cotação · CPQ Letreiros Express';
   iniciarCotacaoPublica(tokenCotacaoPublica);
+}else if(MODO_ABAS){
+  montarAbasOrcamento();
 }else{
   render();
   loadCatalog();
