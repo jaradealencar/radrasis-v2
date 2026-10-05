@@ -999,7 +999,7 @@ function inspectPrompt2Svg(svgText){
     const value=el.getAttribute(name);
     return value!==null && Number.isFinite(Number(value)) && Number(value)<0.999;
   })).length;
-  if(partialOpacity) fatal.push(`Há ${partialOpacity} elemento(s) sem opacidade total; a arte vetorial precisa ter cores chapadas.`);
+  if(partialOpacity) warnings.push(`${partialOpacity} elemento(s) do vetor colorido têm opacidade parcial; a versão de geometria (branco com contorno preto) é gerada com cores chapadas, mas confira as cores extraídas.`);
   if(complexCount) fatal.push(`Há ${complexCount} recurso(s) SVG avançado(s) (recorte, máscara, filtro, padrão ou marcador) que alteram a geometria visível.`);
   if(gradientCount) warnings.push(`${gradientCount} gradiente(s) identificado(s): as regiões serão classificadas para adesivo impresso antes da normalização para corte.`);
   const seen=new Set(); let duplicateCount=0, openPathCount=0;
