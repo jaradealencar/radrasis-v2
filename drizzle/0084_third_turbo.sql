@@ -1,0 +1,1 @@
+ALTER TABLE "materia_prima_cadastros" ADD COLUMN "perfil_formato" varchar(16) DEFAULT 'tubo' NOT NULL;

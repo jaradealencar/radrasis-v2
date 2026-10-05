@@ -5,6 +5,8 @@ import {
   kgM3ParaGCm3,
   kgPorMetroPerfil,
   pesoChapaKg,
+  formatoPerfilUsaEspessura,
+  secaoPerfilMm2,
   secaoTuboRetangularMm2,
 } from "../../shared/peso";
 import { calcularPesoLinha, somarPesos, type DadosPesoMateria, type LinhaPesoInput } from "../services/cpqPeso";
@@ -156,5 +158,53 @@ describe("somarPesos", () => {
     ]);
     expect(total.totalKg).toBe(3.5);
     expect(total.pendentes).toBe(1);
+  });
+});
+
+describe("peso do perfil (cantoneira e barra maciça)", () => {
+  it("cantoneira 30×30 com aba de 3 mm tem 171 mm² (canto contado uma vez)", () => {
+    expect(secaoPerfilMm2("cantoneira", 30, 30, 3)).toBeCloseTo(3 * (30 + 30 - 3), 6);
+  });
+  it("cantoneira de aço 30×30×3 (7,85 g/cm³) pesa 1,34235 kg/m", () => {
+    expect(kgPorMetroPerfil(30, 30, 3, 7.85, "cantoneira")).toBeCloseTo(1.34235, 5);
+  });
+  it("cantoneira com abas desiguais 50×30×4 tem 4·(80−4) = 304 mm²", () => {
+    expect(secaoPerfilMm2("cantoneira", 50, 30, 4)).toBe(304);
+  });
+  it("cantoneira com espessura maior ou igual à menor aba devolve null", () => {
+    expect(secaoPerfilMm2("cantoneira", 30, 20, 20)).toBeNull();
+  });
+  it("barra maciça 20×10 de aço pesa 1,57 kg/m e ignora a espessura", () => {
+    expect(secaoPerfilMm2("barra", 20, 10, null)).toBe(200);
+    expect(kgPorMetroPerfil(20, 10, null, 7.85, "barra")).toBeCloseTo(1.57, 6);
+    expect(kgPorMetroPerfil(20, 10, 99, 7.85, "barra")).toBeCloseTo(1.57, 6);
+  });
+  it("tubo e cantoneira sem espessura devolvem null; o formato padrão continua sendo tubo", () => {
+    expect(secaoPerfilMm2("tubo", 30, 20, null)).toBeNull();
+    expect(secaoPerfilMm2("cantoneira", 30, 20, null)).toBeNull();
+    expect(kgPorMetroPerfil(30, 20, 1.5, 2.7)).toBeCloseTo(kgPorMetroPerfil(30, 20, 1.5, 2.7, "tubo")!, 10);
+  });
+  it("formatoPerfilUsaEspessura: só a barra dispensa", () => {
+    expect(formatoPerfilUsaEspessura("tubo")).toBe(true);
+    expect(formatoPerfilUsaEspessura("cantoneira")).toBe(true);
+    expect(formatoPerfilUsaEspessura("barra")).toBe(false);
+  });
+  it("calcularPesoLinha: cantoneira em metros e barra sem espessura cadastrada", () => {
+    const cant = calcularPesoLinha(
+      linha({ quantidade: 2, unidade: "Metro" }),
+      dados({ tipo: "perfil", perfilFormato: "cantoneira", perfilAlturaMm: 30, perfilLarguraMm: 30, espessuraMm: 3, densidadeGCm3: 7.85 }),
+    );
+    expect(cant.kg).toBeCloseTo(2 * 1.34235, 5);
+    expect(cant.como).toContain("cantoneira");
+    const barra = calcularPesoLinha(
+      linha({ quantidade: 1, unidade: "Unidade" }),
+      dados({ tipo: "perfil", perfilFormato: "barra", perfilAlturaMm: 20, perfilLarguraMm: 10, perfilComprimentoMm: 6000, espessuraMm: null, densidadeGCm3: 7.85 }),
+    );
+    expect(barra.kg).toBeCloseTo(6 * 1.57, 5);
+  });
+  it("calcularPesoLinha: tubo sem espessura continua pendente; sem formato = tubo", () => {
+    const base = { tipo: "perfil" as const, perfilAlturaMm: 30, perfilLarguraMm: 20, densidadeGCm3: 2.7 };
+    expect(calcularPesoLinha(linha({ unidade: "Metro" }), dados({ ...base, espessuraMm: null })).kg).toBeNull();
+    expect(calcularPesoLinha(linha({ unidade: "Metro" }), dados({ ...base, espessuraMm: 1.5 })).kg).toBeCloseTo(0.3807, 4);
   });
 });

@@ -234,6 +234,7 @@ async function calcularPeso(req: Request, res: Response): Promise<void> {
       tipo: categoria?.usaDadosChapa ? "chapa" : categoria?.usaDadosPerfil ? "perfil" : categoria?.usaDadosBobina ? "bobina" : "outro",
       espessuraMm: numero(cadastro.espessuraMm),
       densidadeGCm3: densidadeKgM3 == null ? null : kgM3ParaGCm3(densidadeKgM3),
+      perfilFormato: cadastro.perfilFormato === "cantoneira" || cadastro.perfilFormato === "barra" ? cadastro.perfilFormato : "tubo",
       perfilAlturaMm: numero(cadastro.perfilAlturaMm),
       perfilLarguraMm: numero(cadastro.perfilLarguraMm),
       perfilComprimentoMm: numero(cadastro.perfilComprimentoMm),

@@ -1,10 +1,12 @@
-import { kgPorMetroPerfil, pesoChapaKg } from "../../shared/peso";
+import { formatoPerfilUsaEspessura, kgPorMetroPerfil, pesoChapaKg, type FormatoPerfil } from "../../shared/peso";
 
 /** Dados técnicos de uma matéria-prima (materia_prima_cadastros + categoria). */
 export type DadosPesoMateria = {
   tipo: "chapa" | "perfil" | "bobina" | "outro";
   espessuraMm: number | null;
   densidadeGCm3: number | null;
+  /** Ausente = tubo retangular oco (comportamento anterior). */
+  perfilFormato?: FormatoPerfil;
   perfilAlturaMm: number | null;
   perfilLarguraMm: number | null;
   perfilComprimentoMm: number | null;
@@ -49,16 +51,20 @@ export function calcularPesoLinha(linha: LinhaPesoInput, dados: DadosPesoMateria
 
   if (dados.tipo === "perfil") {
     const { perfilAlturaMm: h, perfilLarguraMm: w, espessuraMm: e, densidadeGCm3: d, perfilComprimentoMm: c } = dados;
-    if (!(h && w && e && d)) return pendente("Perfil sem altura, largura, espessura ou densidade cadastrada.");
-    const kgPorM = kgPorMetroPerfil(h, w, e, d);
+    const formato = dados.perfilFormato ?? "tubo";
+    const precisaEspessura = formatoPerfilUsaEspessura(formato);
+    if (!(h && w && d && (e || !precisaEspessura)))
+      return pendente(precisaEspessura ? "Perfil sem altura, largura, espessura ou densidade cadastrada." : "Barra sem altura, largura ou densidade cadastrada.");
+    const kgPorM = kgPorMetroPerfil(h, w, e, d, formato);
     if (kgPorM == null) return pendente("Espessura do perfil incompatível com a altura/largura (a parede não cabe na seção).");
+    const aviso = formato === "tubo" ? "seção oca estimada" : formato === "cantoneira" ? "cantoneira estimada" : "barra maciça";
     const unidade = semAcento(linha.unidade);
     if ((unidade.includes("metro") && !unidade.includes("quadrad")) || unidade === "m" || unidade === "ml")
-      return { kg: quantidade * kgPorM, como: `${fmt(quantidade, 2)} m × ${fmt(kgPorM, 3)} kg/m (seção oca estimada)`, motivo: "" };
+      return { kg: quantidade * kgPorM, como: `${fmt(quantidade, 2)} m × ${fmt(kgPorM, 3)} kg/m (${aviso})`, motivo: "" };
     if (c && c > 0 && (unidade.includes("unid") || unidade === "un" || unidade === "pc" || unidade.includes("barra")))
       return {
         kg: quantidade * (c / 1000) * kgPorM,
-        como: `${fmt(quantidade, 2)} barra(s) × ${fmt(c / 1000, 2)} m × ${fmt(kgPorM, 3)} kg/m (seção oca estimada)`,
+        como: `${fmt(quantidade, 2)} barra(s) × ${fmt(c / 1000, 2)} m × ${fmt(kgPorM, 3)} kg/m (${aviso})`,
         motivo: "",
       };
     return pendente("Unidade do perfil não permite converter em peso (use metro linear ou unidade com comprimento).");

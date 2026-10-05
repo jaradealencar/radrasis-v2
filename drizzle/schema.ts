@@ -379,6 +379,8 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   // Peso por unidade de consumo (a unidade de custo do MubiSys: kg/m², kg/m, kg/un...), para matérias-primas que não são chapa nem perfil.
   pesoEspecificoKg: decimal("peso_especifico_kg", { precision: 12, scale: 4 }),
   // Dimensões da barra de perfil (seção e comprimento), necessárias para calcular o peso com a densidade.
+  // Formato da seção: define a fórmula da área (tubo oco, cantoneira em L ou barra maciça).
+  perfilFormato: varchar("perfil_formato", { length: 16 }).default("tubo").notNull(),
   perfilAlturaMm: decimal("perfil_altura_mm", { precision: 10, scale: 3 }),
   perfilLarguraMm: decimal("perfil_largura_mm", { precision: 10, scale: 3 }),
   perfilComprimentoMm: decimal("perfil_comprimento_mm", { precision: 12, scale: 3 }),

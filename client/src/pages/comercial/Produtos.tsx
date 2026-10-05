@@ -1,4 +1,4 @@
-import { espessuraParaMm, gCm3ParaKgM3, kgM3ParaGCm3, type UnidadeEspessura } from "@shared/peso";
+import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import PageHeader from "@/components/PageHeader";
@@ -170,7 +170,7 @@ function CadastroMateriasPrimas() {
                         {material.categoriaUsaDadosChapa ? (
                           <span>{fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : kgM3ParaGCm3(material.densidadeKgM3)} g/cm³ · {material.chapas.filter(chapa => chapa.ativo).length} formato(s)</span>
                         ) : material.categoriaUsaDadosPerfil ? (
-                          <span>Perfil · {material.perfilAlturaMm ?? "—"} × {material.perfilLarguraMm ?? "—"} × {material.perfilComprimentoMm ?? "—"} mm · esp. {fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³</span>
+                          <span>{FORMATOS_PERFIL[material.perfilFormato ?? "tubo"]} · {material.perfilAlturaMm ?? "—"} × {material.perfilLarguraMm ?? "—"} × {material.perfilComprimentoMm ?? "—"} mm · esp. {fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³</span>
                         ) : material.categoriaUsaDadosBobina ? (
                           <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${material.espessuraMm} mm de espessura` : ""}</span>
                         ) : <span className="text-muted-foreground">{material.pesoEspecificoKg != null ? `${material.pesoEspecificoKg} kg / ${material.unidadeCusto || "un."}` : material.tipo || "Sem dados técnicos adicionais"}</span>}
@@ -234,7 +234,7 @@ function DialogEditarMateriaPrima({
   const [espessuraUnidade, setEspessuraUnidade] = useState<UnidadeEspessura>("mm");
   const [densidadeKgM3, setDensidadeKgM3] = useState("");
   const [pesoEspecificoKg, setPesoEspecificoKg] = useState("");
-  const [perfil, setPerfil] = useState({ altura: "", largura: "", comprimento: "" });
+  const [perfil, setPerfil] = useState<{ formato: FormatoPerfil; altura: string; largura: string; comprimento: string }>({ formato: "tubo", altura: "", largura: "", comprimento: "" });
   const [chapas, setChapas] = useState<FormatoChapaForm[]>([]);
   const [bobinas, setBobinas] = useState<FormatoBobinaForm[]>([]);
   const categoria = categorias.find(item => String(item.id) === categoriaId);
@@ -246,7 +246,7 @@ function DialogEditarMateriaPrima({
     setEspessuraUnidade("mm");
     setDensidadeKgM3(material.densidadeKgM3 == null ? "" : String(kgM3ParaGCm3(material.densidadeKgM3)));
     setPesoEspecificoKg(material.pesoEspecificoKg == null ? "" : String(material.pesoEspecificoKg));
-    setPerfil({ altura: material.perfilAlturaMm == null ? "" : String(material.perfilAlturaMm), largura: material.perfilLarguraMm == null ? "" : String(material.perfilLarguraMm), comprimento: material.perfilComprimentoMm == null ? "" : String(material.perfilComprimentoMm) });
+    setPerfil({ formato: material.perfilFormato ?? "tubo", altura: material.perfilAlturaMm == null ? "" : String(material.perfilAlturaMm), largura: material.perfilLarguraMm == null ? "" : String(material.perfilLarguraMm), comprimento: material.perfilComprimentoMm == null ? "" : String(material.perfilComprimentoMm) });
     setChapas(material.chapas.map(chapa => ({
       id: chapa.id,
       nome: chapa.nome,
@@ -323,9 +323,10 @@ function DialogEditarMateriaPrima({
     salvar.mutate({
       mubisysMateriaPrimaId: material.id,
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
-      espessuraMm: categoria?.usaDadosChapa || categoria?.usaDadosPerfil || categoria?.usaDadosBobina ? espessuraParaMm(Number(espessuraMm), espessuraUnidade) : null,
+      espessuraMm: categoria?.usaDadosChapa || (categoria?.usaDadosPerfil && formatoPerfilUsaEspessura(perfil.formato)) || categoria?.usaDadosBobina ? espessuraParaMm(Number(espessuraMm), espessuraUnidade) : null,
       densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? gCm3ParaKgM3(Number(densidadeKgM3)) : null,
       pesoEspecificoKg: !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
+      perfilFormato: perfil.formato,
       perfilAlturaMm: categoria?.usaDadosPerfil ? Number(perfil.altura) : null,
       perfilLarguraMm: categoria?.usaDadosPerfil ? Number(perfil.largura) : null,
       perfilComprimentoMm: categoria?.usaDadosPerfil ? Number(perfil.comprimento) : null,
@@ -362,7 +363,7 @@ function DialogEditarMateriaPrima({
           {categoria?.usaDadosChapa && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da chapa</h3><p className="text-xs text-muted-foreground">Dimensões são mantidas em orientação horizontal para o nesting.</p></div></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio />
+              {formatoPerfilUsaEspessura(perfil.formato) && <CampoEspessura valor={espessuraMm} unidade={espessuraUnidade} onValor={setEspessuraMm} onUnidade={setEspessuraUnidade} obrigatorio />}
               <div className="space-y-2"><Label>Densidade (g/cm³)</Label><Input type="number" min="0.0001" step="0.0001" value={densidadeKgM3} onChange={event => setDensidadeKgM3(event.target.value)} required /></div>
             </div>
             <div className="space-y-3">
@@ -405,6 +406,7 @@ function DialogEditarMateriaPrima({
           {categoria?.usaDadosPerfil && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados do perfil</h3><p className="text-xs text-muted-foreground">Dimensões da barra de perfil: com elas e a densidade o sistema calcula o peso.</p></div></div>
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2"><Label>Formato do perfil</Label><Select value={perfil.formato} onValueChange={valor => setPerfil(atual => ({ ...atual, formato: valor as FormatoPerfil }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(Object.keys(FORMATOS_PERFIL) as FormatoPerfil[]).map(formato => <SelectItem key={formato} value={formato}>{FORMATOS_PERFIL[formato]}</SelectItem>)}</SelectContent></Select><p className="text-xs text-muted-foreground">{perfil.formato === "barra" ? "Seção maciça: altura × largura, sem espessura de parede." : perfil.formato === "cantoneira" ? "Altura e largura são as duas abas do L; a espessura é a da aba." : "Altura e largura externas; a espessura é a da parede."}</p></div>
               <div className="space-y-2"><Label>Altura (mm)</Label><Input type="number" min="0.001" step="0.001" value={perfil.altura} onChange={event => setPerfil(atual => ({ ...atual, altura: event.target.value }))} required /></div>
               <div className="space-y-2"><Label>Largura (mm)</Label><Input type="number" min="0.001" step="0.001" value={perfil.largura} onChange={event => setPerfil(atual => ({ ...atual, largura: event.target.value }))} required /></div>
               <div className="space-y-2"><Label>Comprimento da barra (mm)</Label><Input type="number" min="1" step="1" value={perfil.comprimento} onChange={event => setPerfil(atual => ({ ...atual, comprimento: event.target.value }))} required /></div>
