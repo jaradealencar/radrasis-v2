@@ -664,7 +664,12 @@ O CPQ abre até 6 orçamentos em paralelo (pedido de 05/10/2026): a página de t
 desenha as abas e cada orçamento roda em um quadro (iframe `?orc=N`) com estado, requisições e temporizadores
 isolados, de modo que um orçamento continua processando em segundo plano enquanto o vendedor usa outro. As abas
 leem `window.__cpqResumo()` de cada quadro (cliente, etapa, o que está ocupado). Links públicos (`?cotacao=`) e
-`?semabas` abrem a página sem abas. Pendente: vários desenhos/produtos dentro de uma mesma cotação.
+`?semabas` abrem a página sem abas. Cada orçamento aceita até 3 desenhos (um produto em cada), cada um num
+quadro próprio; o novo desenho herda o cliente do primeiro. Cada desenho continua sendo uma cotação normal
+(validada e com preço aprovado por desenho); elas se ligam por `grupo {id, posicao}`, gravado no snapshot **fora**
+das assinaturas de preço. O cliente recebe um link único `?grupo=...` com os desenhos e o total somado
+(`GET /api/letra-caixa/cotacoes/grupo/:id`), e uma única resposta (`POST .../grupo/:id/resposta`) vale para todos.
+O servidor limita o grupo a 3 desenhos, do mesmo cliente (CPF/CNPJ), sem posição repetida.
 O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a
 reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com

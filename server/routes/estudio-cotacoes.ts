@@ -213,14 +213,28 @@ const snapshotSchema = z.object({
   status: z.literal("enviado"),
 }).strict();
 
+const MAX_DESENHOS_POR_COTACAO = 3;
+const GRUPO_ID_REGEX = /^g[A-Za-z0-9_-]{20,40}$/;
+/**
+ * Vários desenhos (cada um com seu produto) numa mesma proposta ao cliente: cada desenho continua sendo uma
+ * cotação própria, validada e com preço aprovado como sempre; o grupo só liga essas cotações para o cliente ver
+ * tudo num único link, com o total somado e uma resposta só. O código do grupo fica fora do snapshot assinado.
+ */
+const grupoSchema = z.object({
+  id: z.string().regex(GRUPO_ID_REGEX),
+  posicao: z.number().int().min(1).max(MAX_DESENHOS_POR_COTACAO),
+}).strict();
+
 const criarSchema = z.object({
   sourceId: z.string().min(1).max(80),
   snapshot: snapshotSchema,
+  grupo: grupoSchema.optional(),
 });
 
 type Snapshot = z.infer<typeof snapshotSchema> & {
   sourceId: string;
   numeroCotacao: string;
+  grupo?: z.infer<typeof grupoSchema> | null;
   reacaoCliente: {
     tipo: typeof reacooes[number];
     comentario: string;
@@ -408,6 +422,8 @@ export function registrarRotasEstudioCotacoes(app: Express): void {
   app.post("/api/letra-caixa/precos/aprovar", rota(aprovarPreco));
   app.post("/api/letra-caixa/cotacoes", rota(criarCotacao));
   app.get("/api/letra-caixa/cotacoes", rota(listarCotacoes));
+  app.get("/api/letra-caixa/cotacoes/grupo/:grupoId", rota(obterGrupoPublico));
+  app.post("/api/letra-caixa/cotacoes/grupo/:grupoId/resposta", rota(registrarRespostaGrupo));
   app.get("/api/letra-caixa/cotacoes/:token", rota(obterCotacaoPublica));
   app.post("/api/letra-caixa/cotacoes/:token/resposta", rota(registrarResposta));
 }
@@ -731,6 +747,23 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
 
   const { sourceId } = parsed.data;
   const dados = dadosComAprovacao;
+  const grupo = parsed.data.grupo ?? null;
+  if (grupo) {
+    const membros = (await carregarMembrosGrupo(db, grupo.id)).filter(m => m.snapshot.sourceId !== sourceId);
+    if (membros.length >= MAX_DESENHOS_POR_COTACAO) {
+      respostaErro(res, 409, `Uma cotação aceita no máximo ${MAX_DESENHOS_POR_COTACAO} desenhos.`);
+      return;
+    }
+    if (membros.some(m => m.snapshot.grupo?.posicao === grupo.posicao)) {
+      respostaErro(res, 409, "Já existe outro desenho nesta posição da cotação.");
+      return;
+    }
+    const documento = (dados.cliente.cnpj ?? "").replace(/\D/g, "");
+    if (membros.some(m => (m.snapshot.cliente.cnpj ?? "").replace(/\D/g, "") !== documento)) {
+      respostaErro(res, 409, "Todos os desenhos da mesma cotação precisam ser do mesmo cliente.");
+      return;
+    }
+  }
   const existentes = await db.select().from(propostas)
     .where(sql`left(${propostas.observacoes}, ${PREFIXO_ESTUDIO.length}) = ${PREFIXO_ESTUDIO}`);
   const existente = existentes.find((item) => lerSnapshot(item.observacoes)?.sourceId === sourceId);
@@ -746,6 +779,7 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
       sourceId,
       numeroCotacao: numeroCotacao(existente.id),
       reacaoCliente,
+      grupo,
     };
     await db.update(propostas).set({
       tituloProposta: dados.tituloProposta || "",
@@ -768,6 +802,7 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
     sourceId,
     numeroCotacao: "",
     reacaoCliente: null,
+    grupo,
   } satisfies Snapshot;
   const [inserida] = await db.insert(propostas).values({
     token,
@@ -837,6 +872,8 @@ async function listarCotacoes(req: Request, res: Response): Promise<void> {
       metodoPagamento: snapshot.metodoPagamento,
       status: linha.status,
       reacaoCliente: snapshot.reacaoCliente,
+      grupoId: snapshot.grupo?.id ?? null,
+      grupoPosicao: snapshot.grupo?.posicao ?? null,
     }];
   });
   res.json({ cotacoes });
@@ -856,7 +893,11 @@ async function obterCotacaoPublica(req: Request, res: Response): Promise<void> {
     return;
   }
   res.setHeader("Cache-Control", "no-store");
-  res.json({
+  res.json(visaoPublica(linha, snapshot));
+}
+
+function visaoPublica(linha: typeof propostas.$inferSelect, snapshot: Snapshot) {
+  return {
     numero: snapshot.numeroCotacao,
     tituloProposta: snapshot.tituloProposta || linha.tituloProposta || "",
     imagemReferenciaUrl: snapshot.imagemReferenciaUrl || linha.imagemReferenciaUrl || null,
@@ -882,6 +923,132 @@ async function obterCotacaoPublica(req: Request, res: Response): Promise<void> {
     prazoDiasUteis: snapshot.prazoDiasUteis,
     status: linha.status,
     reacaoCliente: snapshot.reacaoCliente,
+  };
+}
+
+type MembroGrupo = { linha: typeof propostas.$inferSelect; snapshot: Snapshot };
+
+/** Cotações do mesmo grupo (desenhos de uma mesma proposta), em ordem de posição. */
+async function carregarMembrosGrupo(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, grupoId: string): Promise<MembroGrupo[]> {
+  if (!GRUPO_ID_REGEX.test(grupoId)) return [];
+  const linhas = await db.select().from(propostas)
+    .where(sql`left(${propostas.observacoes}, ${PREFIXO_ESTUDIO.length}) = ${PREFIXO_ESTUDIO} and ${propostas.observacoes} like ${"%" + grupoId + "%"}`);
+  return linhas
+    .flatMap(linha => {
+      const snapshot = lerSnapshot(linha.observacoes);
+      return snapshot?.grupo?.id === grupoId ? [{ linha, snapshot }] : [];
+    })
+    .sort((a, b) => (a.snapshot.grupo?.posicao ?? 0) - (b.snapshot.grupo?.posicao ?? 0));
+}
+
+async function obterGrupoPublico(req: Request, res: Response): Promise<void> {
+  const grupoId = typeof req.params.grupoId === "string" ? req.params.grupoId : "";
+  const db = await getDb();
+  if (!db) {
+    respostaErro(res, 503, "Não foi possível carregar esta cotação agora.");
+    return;
+  }
+  const membros = await carregarMembrosGrupo(db, grupoId);
+  if (!membros.length) {
+    respostaErro(res, 404, "Cotação não encontrada ou link inválido.");
+    return;
+  }
+  const itens = membros.map(m => visaoPublica(m.linha, m.snapshot));
+  const base = itens[0];
+  const soma = (valores: Array<number | null | undefined>) => valores.reduce<number>((total, valor) => total + (valor ?? 0), 0);
+  const todasResponderam = itens.every(item => item.reacaoCliente);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    ...base,
+    grupoId,
+    numero: itens.map(item => item.numero).join(" + "),
+    tituloProposta: itens.length > 1 ? `Proposta com ${itens.length} desenhos` : base.tituloProposta,
+    modeloNome: itens.map(item => item.modeloNome).join(", "),
+    imagemReferenciaUrl: null,
+    imagemRedesenhadaUrl: null,
+    descricaoProduto: "",
+    variacoes: [],
+    areaM2: soma(itens.map(item => item.areaM2)),
+    areaGeralM2: soma(itens.map(item => item.areaGeralM2)),
+    areaTotalNestingM2: null,
+    perimExtM: null,
+    perimTotalM: null,
+    precoFinal: soma(itens.map(item => item.precoFinal)),
+    prazoDiasUteis: itens.some(item => item.prazoDiasUteis != null)
+      ? Math.max(...itens.map(item => item.prazoDiasUteis ?? 0)) : null,
+    reacaoCliente: todasResponderam ? base.reacaoCliente : null,
+    itens: itens.map(item => ({
+      numero: item.numero,
+      tituloProposta: item.tituloProposta,
+      modeloNome: item.modeloNome,
+      descricaoProduto: item.descricaoProduto,
+      variacoes: item.variacoes,
+      imagemReferenciaUrl: item.imagemReferenciaUrl,
+      imagemRedesenhadaUrl: item.imagemRedesenhadaUrl,
+      areaM2: item.areaM2,
+      precoFinal: item.precoFinal,
+      prazoDiasUteis: item.prazoDiasUteis,
+    })),
+  });
+}
+
+const respostaSchema = z.object({
+  tipo: z.enum(reacooes),
+  comentario: z.string().max(2000).default(""),
+  formaPagamento: z.enum(["boleto", "cartao", "pix", "ted"]).default("pix"),
+  parcelasCartao: z.number().int().min(1).max(6).nullable().default(null),
+});
+
+/** Uma resposta do cliente vale para todos os desenhos da proposta. */
+async function registrarRespostaGrupo(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res)) return;
+  const parsed = respostaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    respostaErro(res, 400, "Escolha uma resposta válida para a cotação.");
+    return;
+  }
+  const db = await getDb();
+  if (!db) {
+    respostaErro(res, 503, "Não foi possível registrar sua resposta agora.");
+    return;
+  }
+  const grupoId = typeof req.params.grupoId === "string" ? req.params.grupoId : "";
+  const membros = await carregarMembrosGrupo(db, grupoId);
+  if (!membros.length) {
+    respostaErro(res, 404, "Cotação não encontrada ou link inválido.");
+    return;
+  }
+  const formasPermitidas = membros[0].snapshot.formasPagamentoPermitidas ?? ["pix", "cartao", "boleto", "ted"];
+  if (!formasPermitidas.includes(parsed.data.formaPagamento)) {
+    respostaErro(res, 400, "Esta forma de pagamento não está disponível para a cotação.");
+    return;
+  }
+  const parcelasCartao = parsed.data.formaPagamento === "cartao" ? (parsed.data.parcelasCartao ?? 1) : null;
+  const respondidoEm = new Date().toISOString();
+  const status = parsed.data.tipo === "aprovado" ? "aceita" : parsed.data.tipo === "fora_orcamento" ? "recusada" : "aberta";
+  let valorTotal = 0;
+  await db.transaction(async tx => {
+    for (const { linha, snapshot } of membros) {
+      const taxaCartao = parcelasCartao ? (snapshot.jurosCartaoPct?.[parcelasCartao - 1] ?? 0) : 0;
+      const valorPagamento = snapshot.precoFinal * (1 + taxaCartao / 100);
+      valorTotal += valorPagamento;
+      const atualizado: Snapshot = {
+        ...snapshot,
+        reacaoCliente: {
+          tipo: parsed.data.tipo, comentario: parsed.data.comentario, formaPagamento: parsed.data.formaPagamento,
+          parcelasCartao, valorPagamento, respondidoEm,
+        },
+      };
+      await tx.update(propostas).set({ observacoes: gravarSnapshot(atualizado), status, updatedAt: new Date() })
+        .where(eq(propostas.id, linha.id));
+    }
+  });
+  res.json({
+    success: true,
+    reacaoCliente: {
+      tipo: parsed.data.tipo, comentario: parsed.data.comentario, formaPagamento: parsed.data.formaPagamento,
+      parcelasCartao, valorPagamento: valorTotal, respondidoEm,
+    },
   });
 }
 

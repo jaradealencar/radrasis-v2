@@ -3883,7 +3883,7 @@ function realStepOrcamento(){
         <button class="btn btn-soft" data-act="real-salvar-proposta">${ICONS.db} Salvar proposta</button>
         <button class="btn btn-ghost" data-act="real-nova-versao" title="Mantém cliente/vendedor, deixa escolher outro produto — pra apresentar opções diferentes ao cliente">➕ Criar nova versão</button>
       </div>
-      ${curIdx<statuses.length-1? `<button class="btn btn-primary" data-act="real-advance-status">${ICONS.check} Avançar para "${statuses[curIdx+1]}"</button>` : (REAL.cotacaoLink ? `<a class="btn btn-primary" href="${escaparHtml(REAL.cotacaoLink)}" target="_blank" rel="noopener">${ICONS.check} Abrir ${escaparHtml(REAL.cotacaoNumero||'cotação interativa')}</a>` : `<button class="btn btn-primary" data-act="real-concluir-cotacao" ${REAL.precoAprovacao?'':'disabled'}>${ICONS.check} Concluir orçamento e gerar link</button>`)}
+      ${curIdx<statuses.length-1? `<button class="btn btn-primary" data-act="real-advance-status">${ICONS.check} Avançar para "${statuses[curIdx+1]}"</button>` : (REAL.cotacaoLink ? `<a class="btn btn-primary" href="${escaparHtml(linkParaCliente())}" target="_blank" rel="noopener">${ICONS.check} ${desenhosNoOrcamento()>1?`Abrir a cotação única (${desenhosNoOrcamento()} desenhos)`:`Abrir ${escaparHtml(REAL.cotacaoNumero||'cotação interativa')}`}</a>` : `<button class="btn btn-primary" data-act="real-concluir-cotacao" ${REAL.precoAprovacao?'':'disabled'}>${ICONS.check} Concluir orçamento e gerar link</button>`)}
     </div>
   </div>`;
 }
@@ -4021,6 +4021,22 @@ function linkCotacaoPublica(token){
   const url = new URL('/cpq-letreiros-express.html', window.location.origin);
   url.searchParams.set('cotacao', token);
   return url.toString();
+}
+
+function linkGrupoCotacao(grupoId){
+  const url = new URL('/cpq-letreiros-express.html', window.location.origin);
+  url.searchParams.set('grupo', grupoId);
+  return url.toString();
+}
+
+/** Orçamento (aba) e posição deste desenho; definidos pela página de abas via ?g=&d=. */
+const GRUPO = { id: new URLSearchParams(window.location.search).get('g') || null, posicao: Number(new URLSearchParams(window.location.search).get('d')) || 1 };
+function desenhosNoOrcamento(){
+  try{ return window.parent !== window && window.parent.__cpqDesenhosDoGrupo ? window.parent.__cpqDesenhosDoGrupo(GRUPO.id) : 1; }catch(e){ return 1; }
+}
+/** Com mais de um desenho no orçamento, o cliente recebe um link único com todos eles. */
+function linkParaCliente(){
+  return GRUPO.id && desenhosNoOrcamento() > 1 ? linkGrupoCotacao(GRUPO.id) : REAL.cotacaoLink;
 }
 
 function normalizarTelefoneWhatsApp(valor){
@@ -4268,7 +4284,7 @@ async function criarCotacaoPublica(){
     method:'POST',
     credentials:'same-origin',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({sourceId:REAL.id, snapshot:snapshotCotacaoReal()}),
+    body:JSON.stringify({sourceId:REAL.id, snapshot:snapshotCotacaoReal(), ...(GRUPO.id?{grupo:{id:GRUPO.id, posicao:GRUPO.posicao}}:{})}),
   });
   const body = await response.json().catch(()=>({}));
   if(!response.ok) throw new Error(body.error || 'Não foi possível gerar o link da cotação.');
@@ -4289,7 +4305,7 @@ async function concluirOrcamentoEabrirCotacao(){
   try{
     REAL.orcamentoStatus='enviado';
     const link = await criarCotacaoPublica();
-    if(janela) janela.location.href=link;
+    if(janela) janela.location.href=linkParaCliente()||link;
     state.tab='admin';
     state.adminTab='propostas';
     render();
@@ -6414,7 +6430,7 @@ function bindRealEvents(){
   const realSalvarBtn = document.querySelector('[data-act="real-salvar-proposta"]');
   if(realSalvarBtn) realSalvarBtn.addEventListener('click', ()=>{
     if(REAL.orcamentoStatus==='enviado'){
-      if(REAL.cotacaoLink){ window.open(REAL.cotacaoLink,'_blank','noopener'); return; }
+      if(REAL.cotacaoLink){ window.open(linkParaCliente(),'_blank','noopener'); return; }
       concluirOrcamentoEabrirCotacao();
       return;
     }
@@ -6480,6 +6496,22 @@ function abrirWhatsAppRespostaPublica(tipo, comentario){
   else window.location.href=url;
 }
 
+/** Cartões dos desenhos de uma proposta com vários produtos (link único do grupo). */
+function blocoItensPublica(p){
+  const imagem = (url, legenda) => url ? `<button type="button" data-act="publica-imagem-zoom" data-url="${escaparHtml(url)}" style="border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:6px;color:var(--text);text-align:left;cursor:zoom-in;"><img src="${escaparHtml(url)}" alt="${escaparHtml(legenda)}" style="display:block;width:100%;max-height:150px;object-fit:contain;"><span style="font-size:11px;color:var(--text-faint);">${escaparHtml(legenda)}</span></button>` : '';
+  return `<div style="max-width:760px;margin:16px auto 0;display:grid;gap:12px;text-align:left;">${p.itens.map((item, i) => `
+    <div style="border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:12px;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;">
+        <div><span class="badge b-neutral">Desenho ${i + 1}</span> <b>${escaparHtml(item.tituloProposta || item.modeloNome)}</b>${item.tituloProposta ? `<div style="font-size:12px;color:var(--text-dim);">${escaparHtml(item.modeloNome)}</div>` : ''}</div>
+        <div style="font-weight:800;">${money(item.precoFinal)}</div>
+      </div>
+      ${item.imagemReferenciaUrl || item.imagemRedesenhadaUrl ? `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">${imagem(item.imagemReferenciaUrl, 'Referência')}${imagem(item.imagemRedesenhadaUrl, 'Arte redesenhada')}</div>` : ''}
+      ${item.descricaoProduto ? `<p style="font-size:12.5px;white-space:pre-wrap;line-height:1.5;margin-top:10px;">${escaparHtml(item.descricaoProduto)}</p>` : ''}
+      ${Array.isArray(item.variacoes) && item.variacoes.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.variacoes.map(v => `<span class="badge b-neutral">${escaparHtml(v.nome)}: ${escaparHtml(v.valor)}</span>`).join('')}</div>` : ''}
+      <div style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">${escaparHtml(item.numero)}${item.areaM2 != null ? ` · ${item.areaM2.toLocaleString('pt-BR', {maximumFractionDigits:2})} m²` : ''}${item.prazoDiasUteis != null ? ` · ${item.prazoDiasUteis} dias úteis` : ''}</div>
+    </div>`).join('')}</div>`;
+}
+
 function renderCotacaoPublica(mensagemErro=''){
   const root=document.getElementById('shell');
   if(mensagemErro){
@@ -6502,6 +6534,7 @@ function renderCotacaoPublica(mensagemErro=''){
         <div class="badge b-accent" style="margin-bottom:10px;">${escaparHtml(p.numero)}</div>
         <h1 style="font-size:24px;">${escaparHtml(p.tituloProposta||p.modeloNome)}</h1>
         ${p.tituloProposta?`<p style="font-size:13px;color:var(--text-dim);margin-top:5px;">${escaparHtml(p.modeloNome)}</p>`:''}
+        ${Array.isArray(p.itens)?blocoItensPublica(p):''}
         ${p.imagemReferenciaUrl||p.imagemRedesenhadaUrl?`<div style="max-width:760px;margin:16px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;text-align:left;">
           ${p.imagemReferenciaUrl?`<button type="button" data-act="publica-imagem-zoom" data-url="${escaparHtml(p.imagemReferenciaUrl)}" style="border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:8px;color:var(--text);text-align:left;cursor:zoom-in;"><img src="${escaparHtml(p.imagemReferenciaUrl)}" alt="Foto original de referência" style="display:block;width:100%;height:170px;object-fit:contain;background:#fff;border-radius:6px;"><span style="display:block;font-size:12px;font-weight:600;margin-top:7px;">Foto original de referência</span></button>`:''}
           ${p.imagemRedesenhadaUrl?`<button type="button" data-act="publica-imagem-zoom" data-url="${escaparHtml(p.imagemRedesenhadaUrl)}" style="border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:8px;color:var(--text);text-align:left;cursor:zoom-in;"><img src="${escaparHtml(p.imagemRedesenhadaUrl)}" alt="Logo redesenhada e retificada" style="display:block;width:100%;height:170px;object-fit:contain;background:#fff;border-radius:6px;"><span style="display:block;font-size:12px;font-weight:600;margin-top:7px;">Redesenho plano para vetorização</span></button>`:''}
@@ -6597,7 +6630,8 @@ function renderCotacaoPublica(mensagemErro=''){
     if(!respostaPublicaSelecionada) return;
     enviar.disabled=true;
     try{
-      const response=await fetch('/api/letra-caixa/cotacoes/'+encodeURIComponent(new URLSearchParams(location.search).get('cotacao'))+'/resposta',{
+      const alvoResposta=p.grupoId?'grupo/'+encodeURIComponent(p.grupoId):encodeURIComponent(new URLSearchParams(location.search).get('cotacao'));
+      const response=await fetch('/api/letra-caixa/cotacoes/'+alvoResposta+'/resposta',{
         method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({tipo:respostaPublicaSelecionada,comentario:comentarioRespostaPublica,formaPagamento:pagamento.forma,parcelasCartao:pagamento.forma==='cartao'?pagamento.parcelas:null}),
       });
@@ -6629,23 +6663,38 @@ async function iniciarCotacaoPublica(token){
   }catch(error){renderCotacaoPublica(error.message||'Não foi possível abrir a cotação.');}
 }
 
+async function iniciarGrupoPublico(grupoId){
+  renderCotacaoPublica();
+  try{
+    const response=await fetch('/api/letra-caixa/cotacoes/grupo/'+encodeURIComponent(grupoId),{credentials:'same-origin',cache:'no-store'});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Link inválido ou cotação não encontrada.');
+    cotacaoPublicaAtual=body;
+    formaPagamentoPublica='pix';
+    parcelasCartaoPublica=1;
+    renderCotacaoPublica();
+  }catch(error){renderCotacaoPublica(error.message||'Não foi possível abrir a cotação.');}
+}
+
 /* start-real precisa de handler mesmo fora do modo 'real' (está na tela demo/picker) */
 document.addEventListener('click', (e)=>{
   const el = e.target.closest('[data-act="start-real"]');
   if(el){ state.mode='real'; REAL=novaProposta(); render(); }
 });
 
-/* ---------- ORÇAMENTOS EM PARALELO (até 6 abas) ----------
- * Pedido do usuário 05/10/2026: enquanto o sistema processa um orçamento (GPT, vetorização, cores, nesting), o
- * vendedor já inicia outro. Cada aba é uma instância independente desta mesma página, carregada num quadro
- * (iframe) com ?orc=N: estado, requisições e temporizadores são isolados, então o que uma aba está processando
- * continua em segundo plano quando o vendedor troca de aba. A página de topo só desenha as abas e consulta o
- * resumo de cada quadro (__cpqResumo) para mostrar cliente, etapa e o que está em andamento. */
+/* ---------- ORÇAMENTOS EM PARALELO (até 6 abas) E VÁRIOS DESENHOS POR ORÇAMENTO (até 3) ----------
+ * Pedidos do usuário 05/10/2026. Cada desenho é uma instância independente desta mesma página, carregada num
+ * quadro (iframe) com ?orc=N&d=K&g=GRUPO: estado, requisições e temporizadores são isolados, então o que um
+ * orçamento ou desenho está processando continua em segundo plano quando o vendedor troca de aba. A página de
+ * topo só desenha as abas (orçamentos) e a barra de desenhos do orçamento ativo, e consulta o resumo de cada
+ * quadro (__cpqResumo). Cada desenho vira uma cotação própria no servidor, ligada às outras pelo código do grupo
+ * (g=...); o cliente recebe um único link (?grupo=...) com todos os desenhos e o total somado. */
 const MAX_ORCAMENTOS = 6;
+const MAX_DESENHOS = 3;
 const _paramsPagina = new URLSearchParams(window.location.search);
-const MODO_ABAS = window.self === window.top && !_paramsPagina.get('cotacao') && !_paramsPagina.has('orc') && !_paramsPagina.has('semabas');
+const MODO_ABAS = window.self === window.top && !_paramsPagina.get('cotacao') && !_paramsPagina.get('grupo') && !_paramsPagina.has('orc') && !_paramsPagina.has('semabas');
 
-/** Resumo do orçamento desta instância, lido pela página de abas. */
+/** Resumo do desenho desta instância, lido pela página de abas. */
 window.__cpqResumo = function(){
   const ocupado = [
     [REAL.gerandoRedesenho, 'gerando a reconstrução (GPT)'],
@@ -6668,117 +6717,223 @@ window.__cpqResumo = function(){
   };
 };
 
+/** Dados do cliente e do orçamento que um novo desenho herda do primeiro. */
+window.__cpqDadosCliente = function(){
+  return JSON.parse(JSON.stringify({
+    cliente: REAL.cliente, consultaCnpj: REAL.consultaCnpj, vendedor: REAL.vendedor, tituloProposta: REAL.tituloProposta,
+    escopoRedesenho: REAL.escopoRedesenho,
+  }));
+};
+window.__cpqHerdar = function(dados){
+  state.mode = 'real';
+  REAL = novaProposta();
+  Object.assign(REAL.cliente, dados.cliente || {});
+  if(dados.consultaCnpj) REAL.consultaCnpj = {...dados.consultaCnpj};
+  REAL.vendedor = dados.vendedor || '';
+  REAL.tituloProposta = dados.tituloProposta || '';
+  if(dados.escopoRedesenho) REAL.escopoRedesenho = dados.escopoRedesenho;
+  render();
+};
+
 function montarAbasOrcamento(){
   document.title = 'CPQ Letreiros Express';
   document.getElementById('shell').style.display = 'none';
   const estilo = document.createElement('style');
   estilo.textContent = `
-    #abas-orc{position:fixed;top:0;left:0;right:0;height:46px;z-index:50;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;}
-    #abas-orc .aba{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);border-radius:10px;padding:5px 8px 5px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;max-width:300px;}
-    #abas-orc .aba.ativa{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:600;}
-    #abas-orc .aba .nome{overflow:hidden;text-overflow:ellipsis;}
-    #abas-orc .aba .chip{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface);color:var(--text-dim);}
-    #abas-orc .aba .chip.ocupado{background:#fff4d6;color:#8a5a00;}
-    #abas-orc .aba .chip.pronto{background:#d9f5e3;color:#14683a;}
-    #abas-orc .aba .fechar{border:none;background:none;color:inherit;opacity:.6;cursor:pointer;font-size:14px;padding:0 2px;}
-    #abas-orc .aba .fechar:hover{opacity:1;}
-    #abas-orc .nova{border:1px dashed var(--border);background:none;color:var(--accent);border-radius:10px;padding:5px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;}
-    #abas-orc .nova:disabled{opacity:.45;cursor:not-allowed;}
-    #quadros-orc{position:fixed;top:46px;left:0;right:0;bottom:0;}
+    #abas-orc,#desenhos-orc{position:fixed;left:0;right:0;z-index:50;display:flex;align-items:center;gap:6px;padding:0 10px;overflow-x:auto;}
+    #abas-orc{top:0;height:46px;background:var(--surface);border-bottom:1px solid var(--border);}
+    #desenhos-orc{top:46px;height:38px;background:var(--surface-2);border-bottom:1px solid var(--border);}
+    #abas-orc .aba,#desenhos-orc .des{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);border-radius:10px;padding:5px 8px 5px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;max-width:300px;}
+    #desenhos-orc .des{background:var(--surface);padding:3px 8px 3px 11px;font-size:12px;}
+    #abas-orc .aba.ativa,#desenhos-orc .des.ativa{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:600;}
+    .nome{overflow:hidden;text-overflow:ellipsis;}
+    .chip{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface);color:var(--text-dim);}
+    .chip.ocupado{background:#fff4d6;color:#8a5a00;}
+    .chip.pronto{background:#d9f5e3;color:#14683a;}
+    .fechar{border:none;background:none;color:inherit;opacity:.6;cursor:pointer;font-size:14px;padding:0 2px;}
+    .fechar:hover{opacity:1;}
+    .nova{border:1px dashed var(--border);background:none;color:var(--accent);border-radius:10px;padding:5px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;}
+    #desenhos-orc .nova{padding:3px 10px;font-size:12px;}
+    .nova:disabled{opacity:.45;cursor:not-allowed;}
+    #quadros-orc{position:fixed;top:84px;left:0;right:0;bottom:0;}
     #quadros-orc iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg);}
   `;
   document.head.appendChild(estilo);
-  const barra = document.createElement('div');
-  barra.id = 'abas-orc';
-  const quadros = document.createElement('div');
-  quadros.id = 'quadros-orc';
-  document.body.append(barra, quadros);
+  const barra = document.createElement('div'); barra.id = 'abas-orc';
+  const barraDesenhos = document.createElement('div'); barraDesenhos.id = 'desenhos-orc';
+  const quadros = document.createElement('div'); quadros.id = 'quadros-orc';
+  document.body.append(barra, barraDesenhos, quadros);
 
-  const abas = [];
-  let contador = 0, ativa = null;
+  const orcs = [];
+  let contador = 0, ativo = null;
 
-  const resumoDe = aba => { try{ return aba.iframe.contentWindow.__cpqResumo ? aba.iframe.contentWindow.__cpqResumo() : null; }catch(e){ return null; } };
+  const resumoDe = des => { try{ return des.iframe.contentWindow.__cpqResumo ? des.iframe.contentWindow.__cpqResumo() : null; }catch(e){ return null; } };
   const corta = (texto, max) => texto.length > max ? texto.slice(0, max - 1) + '…' : texto;
   const esc = valor => String(valor).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const novoGrupoId = () => 'g' + btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const orcAtivo = () => orcs.find(orc => orc.id === ativo);
+  const emAndamento = r => !!(r && r.emAndamento && !r.enviada);
 
-  function desenhar(){
-    barra.innerHTML = abas.map((aba, i) => {
-      const r = aba.resumo;
-      const nome = r && (r.cliente || r.titulo || r.modelo) ? corta(r.cliente || r.titulo || r.modelo, 24) : 'Novo orçamento';
-      let chip = '';
-      if(r && r.ocupado) chip = `<span class="chip ocupado">⏳ ${esc(r.ocupado)}</span>`;
-      else if(aba.pronto && aba.id !== ativa) chip = '<span class="chip pronto">● pronto</span>';
-      else if(r && r.enviada) chip = `<span class="chip pronto">✔ ${esc(r.cotacaoNumero || 'enviada')}</span>`;
-      else if(r && r.emAndamento) chip = `<span class="chip">etapa ${r.etapa}/8</span>`;
-      return `<div class="aba ${aba.id === ativa ? 'ativa' : ''}" data-aba="${aba.id}" title="Orçamento ${i + 1}"><span class="nome">${i + 1}. ${esc(nome)}</span>${chip}<button class="fechar" data-fechar="${aba.id}" title="Fechar este orçamento" type="button">×</button></div>`;
-    }).join('') + `<button class="nova" data-nova="1" type="button" ${abas.length >= MAX_ORCAMENTOS ? 'disabled title="Máximo de 6 orçamentos abertos"' : ''}>+ Novo orçamento (${abas.length}/${MAX_ORCAMENTOS})</button>`;
+  function chipDe(r, des, orc){
+    if(r && r.ocupado) return `<span class="chip ocupado">⏳ ${esc(r.ocupado)}</span>`;
+    if(des.pronto && !(orc.id === ativo && orc.posAtiva === des.pos)) return '<span class="chip pronto">● pronto</span>';
+    if(r && r.enviada) return `<span class="chip pronto">✔ ${esc(r.cotacaoNumero || 'enviada')}</span>`;
+    if(r && r.emAndamento) return `<span class="chip">etapa ${r.etapa}/8</span>`;
+    return '';
   }
 
-  function ativar(id){
-    ativa = id;
-    abas.forEach(aba => { aba.iframe.style.display = aba.id === id ? 'block' : 'none'; if(aba.id === id) aba.pronto = false; });
+  function desenhar(){
+    barra.innerHTML = orcs.map((orc, i) => {
+      const rs = orc.desenhos.map(des => des.resumo);
+      const primeiro = rs[0];
+      const nome = primeiro && (primeiro.cliente || primeiro.titulo || primeiro.modelo) ? corta(primeiro.cliente || primeiro.titulo || primeiro.modelo, 22) : 'Novo orçamento';
+      const ocupadoDes = orc.desenhos.find(des => des.resumo && des.resumo.ocupado);
+      const prontos = orc.desenhos.some(des => des.pronto) && orc.id !== ativo;
+      const enviados = rs.filter(r => r && r.enviada).length;
+      let chip = '';
+      if(ocupadoDes) chip = `<span class="chip ocupado">⏳ ${orc.desenhos.length > 1 ? 'D' + ocupadoDes.pos + ': ' : ''}${esc(ocupadoDes.resumo.ocupado)}</span>`;
+      else if(prontos) chip = '<span class="chip pronto">● pronto</span>';
+      else if(enviados) chip = `<span class="chip pronto">✔ ${enviados}/${orc.desenhos.length} enviado${enviados > 1 ? 's' : ''}</span>`;
+      else if(orc.desenhos.length > 1) chip = `<span class="chip">${orc.desenhos.length} desenhos</span>`;
+      else if(primeiro && primeiro.emAndamento) chip = `<span class="chip">etapa ${primeiro.etapa}/8</span>`;
+      return `<div class="aba ${orc.id === ativo ? 'ativa' : ''}" data-aba="${orc.id}" title="Orçamento ${i + 1}"><span class="nome">${i + 1}. ${esc(nome)}</span>${chip}<button class="fechar" data-fechar="${orc.id}" title="Fechar este orçamento" type="button">×</button></div>`;
+    }).join('') + `<button class="nova" data-nova="1" type="button" ${orcs.length >= MAX_ORCAMENTOS ? 'disabled title="Máximo de 6 orçamentos abertos"' : ''}>+ Novo orçamento (${orcs.length}/${MAX_ORCAMENTOS})</button>`;
+
+    const orc = orcAtivo();
+    barraDesenhos.innerHTML = orc ? orc.desenhos.map(des => {
+      const r = des.resumo;
+      const nome = r && (r.modelo || r.titulo) ? corta(r.modelo || r.titulo, 22) : 'novo produto';
+      return `<div class="des ${orc.posAtiva === des.pos ? 'ativa' : ''}" data-des="${des.pos}"><span class="nome">Desenho ${des.pos} · ${esc(nome)}</span>${chipDe(r, des, orc)}${orc.desenhos.length > 1 ? `<button class="fechar" data-fechar-des="${des.pos}" title="Remover este desenho" type="button">×</button>` : ''}</div>`;
+    }).join('') + `<button class="nova" data-novo-des="1" type="button" ${orc.desenhos.length >= MAX_DESENHOS ? 'disabled title="Máximo de 3 desenhos por orçamento"' : 'title="Outro desenho, com outro produto, na mesma cotação do cliente"'}>+ Adicionar desenho (${orc.desenhos.length}/${MAX_DESENHOS})</button>` : '';
+  }
+
+  function mostrar(){
+    for(const orc of orcs) for(const des of orc.desenhos){
+      const visivel = orc.id === ativo && orc.posAtiva === des.pos;
+      des.iframe.style.display = visivel ? 'block' : 'none';
+      if(visivel) des.pronto = false;
+    }
     desenhar();
   }
 
-  function novaAba(){
-    if(abas.length >= MAX_ORCAMENTOS){ alert('Você já tem 6 orçamentos abertos. Conclua ou feche um para abrir outro.'); return; }
-    const id = ++contador;
+  function criarQuadro(orc, pos){
     const iframe = document.createElement('iframe');
-    iframe.src = window.location.pathname + '?orc=' + id;
-    iframe.title = 'Orçamento ' + id;
+    iframe.src = window.location.pathname + `?orc=${orc.id}&d=${pos}&g=${orc.grupoId}`;
+    iframe.title = `Orçamento ${orc.id} · desenho ${pos}`;
     iframe.style.display = 'none';
     quadros.appendChild(iframe);
-    abas.push({ id, iframe, resumo:null, pronto:false });
-    ativar(id);
+    const des = { pos, iframe, resumo:null, pronto:false };
+    orc.desenhos.push(des);
+    orc.desenhos.sort((a, b) => a.pos - b.pos);
+    return des;
   }
 
-  function fechar(id){
-    const aba = abas.find(item => item.id === id);
-    if(!aba) return;
-    const r = resumoDe(aba) || aba.resumo;
-    if(r && r.emAndamento && !r.enviada && !confirm('Fechar este orçamento? O que não foi enviado ao cliente será perdido.')) return;
-    const posicao = abas.indexOf(aba);
-    aba.iframe.remove();
-    abas.splice(posicao, 1);
-    if(!abas.length) novaAba();
-    else if(ativa === id) ativar(abas[Math.min(posicao, abas.length - 1)].id);
+  function novoOrcamento(){
+    if(orcs.length >= MAX_ORCAMENTOS){ alert('Você já tem 6 orçamentos abertos. Conclua ou feche um para abrir outro.'); return; }
+    const orc = { id: ++contador, grupoId: novoGrupoId(), desenhos: [], posAtiva: 1 };
+    orcs.push(orc);
+    criarQuadro(orc, 1);
+    ativo = orc.id;
+    mostrar();
+  }
+
+  function adicionarDesenho(orc){
+    if(orc.desenhos.length >= MAX_DESENHOS){ alert('Um orçamento aceita no máximo 3 desenhos.'); return; }
+    const primeiro = orc.desenhos.find(des => des.pos === 1) || orc.desenhos[0];
+    let dados = null;
+    try{ dados = primeiro.iframe.contentWindow.__cpqDadosCliente(); }catch(e){}
+    if(!dados || !dados.cliente || !(dados.cliente.cnpj || '').replace(/\D/g, '')){
+      alert('Preencha primeiro o CPF/CNPJ e os dados do cliente no Desenho 1. O novo desenho herda o cliente.');
+      return;
+    }
+    const pos = [1, 2, 3].find(n => !orc.desenhos.some(des => des.pos === n));
+    const des = criarQuadro(orc, pos);
+    orc.posAtiva = pos;
+    mostrar();
+    // Assim que o novo quadro termina de carregar, entrega o cliente do Desenho 1.
+    const inicio = Date.now();
+    const espera = setInterval(() => {
+      try{
+        const w = des.iframe.contentWindow;
+        if(w && typeof w.__cpqHerdar === 'function'){ clearInterval(espera); w.__cpqHerdar(dados); return; }
+      }catch(e){}
+      if(Date.now() - inicio > 20000) clearInterval(espera);
+    }, 300);
+  }
+
+  function fecharOrcamento(id){
+    const orc = orcs.find(item => item.id === id);
+    if(!orc) return;
+    if(orc.desenhos.some(des => emAndamento(resumoDe(des) || des.resumo)) && !confirm('Fechar este orçamento? O que não foi enviado ao cliente será perdido.')) return;
+    const posicao = orcs.indexOf(orc);
+    orc.desenhos.forEach(des => des.iframe.remove());
+    orcs.splice(posicao, 1);
+    if(!orcs.length) novoOrcamento();
+    else if(ativo === id){ ativo = orcs[Math.min(posicao, orcs.length - 1)].id; mostrar(); }
     else desenhar();
+  }
+
+  function removerDesenho(orc, pos){
+    const des = orc.desenhos.find(item => item.pos === pos);
+    if(!des || orc.desenhos.length <= 1) return;
+    if(emAndamento(resumoDe(des) || des.resumo) && !confirm('Remover este desenho? O que não foi enviado ao cliente será perdido.')) return;
+    des.iframe.remove();
+    orc.desenhos.splice(orc.desenhos.indexOf(des), 1);
+    if(orc.posAtiva === pos) orc.posAtiva = orc.desenhos[0].pos;
+    mostrar();
   }
 
   barra.addEventListener('click', ev => {
     const fecharBtn = ev.target.closest('[data-fechar]');
-    if(fecharBtn){ ev.stopPropagation(); fechar(Number(fecharBtn.dataset.fechar)); return; }
+    if(fecharBtn){ ev.stopPropagation(); fecharOrcamento(Number(fecharBtn.dataset.fechar)); return; }
     const abaEl = ev.target.closest('[data-aba]');
-    if(abaEl){ ativar(Number(abaEl.dataset.aba)); return; }
-    if(ev.target.closest('[data-nova]')) novaAba();
+    if(abaEl){ ativo = Number(abaEl.dataset.aba); mostrar(); return; }
+    if(ev.target.closest('[data-nova]')) novoOrcamento();
+  });
+  barraDesenhos.addEventListener('click', ev => {
+    const orc = orcAtivo();
+    if(!orc) return;
+    const fecharBtn = ev.target.closest('[data-fechar-des]');
+    if(fecharBtn){ ev.stopPropagation(); removerDesenho(orc, Number(fecharBtn.dataset.fecharDes)); return; }
+    const desEl = ev.target.closest('[data-des]');
+    if(desEl){ orc.posAtiva = Number(desEl.dataset.des); mostrar(); return; }
+    if(ev.target.closest('[data-novo-des]')) adicionarDesenho(orc);
   });
 
-  // Consulta o resumo de cada quadro; avisa quando uma aba em segundo plano termina de processar.
+  // Usadas pelos quadros: quantos desenhos tem o orçamento e o resumo de cada um.
+  window.__cpqDesenhosDoGrupo = grupoId => (orcs.find(orc => orc.grupoId === grupoId) || { desenhos: [] }).desenhos.length || 1;
+  window.__cpqGrupoResumo = grupoId => (orcs.find(orc => orc.grupoId === grupoId) || { desenhos: [] }).desenhos.map(des => des.resumo);
+
+  // Consulta o resumo de cada quadro; avisa quando um desenho em segundo plano termina de processar.
   setInterval(() => {
     let mudou = false;
-    for(const aba of abas){
-      const r = resumoDe(aba);
+    for(const orc of orcs) for(const des of orc.desenhos){
+      const r = resumoDe(des);
       if(!r) continue;
-      const antes = aba.resumo;
-      if(antes && antes.ocupado && !r.ocupado && aba.id !== ativa){ aba.pronto = true; mudou = true; }
+      const antes = des.resumo;
+      const visivel = orc.id === ativo && orc.posAtiva === des.pos;
+      if(antes && antes.ocupado && !r.ocupado && !visivel){ des.pronto = true; mudou = true; }
       if(!antes || JSON.stringify(antes) !== JSON.stringify(r)) mudou = true;
-      aba.resumo = r;
+      des.resumo = r;
     }
     if(mudou) desenhar();
   }, 1200);
 
   window.addEventListener('beforeunload', ev => {
-    const emAndamento = abas.some(aba => aba.resumo && aba.resumo.emAndamento && !aba.resumo.enviada);
-    if(emAndamento){ ev.preventDefault(); ev.returnValue = ''; }
+    if(orcs.some(orc => orc.desenhos.some(des => emAndamento(des.resumo)))){ ev.preventDefault(); ev.returnValue = ''; }
   });
 
-  novaAba();
+  novoOrcamento();
 }
 
 const tokenCotacaoPublica=_paramsPagina.get('cotacao');
+const tokenGrupoPublico=_paramsPagina.get('grupo');
 if(tokenCotacaoPublica){
   document.title='Cotação · CPQ Letreiros Express';
   iniciarCotacaoPublica(tokenCotacaoPublica);
+}else if(tokenGrupoPublico){
+  document.title='Cotação · CPQ Letreiros Express';
+  iniciarGrupoPublico(tokenGrupoPublico);
 }else if(MODO_ABAS){
   montarAbasOrcamento();
 }else{
