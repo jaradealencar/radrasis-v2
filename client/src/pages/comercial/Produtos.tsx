@@ -21,7 +21,7 @@ import { UNIDADE_CONSUMO_MATERIA_PRIMA, UNIDADE_CONSUMO_LABEL, type UnidadeConsu
 export default function Produtos() {
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
   const [dialogNovoAberto, setDialogNovoAberto] = useState(false);
-  const [aba, setAba] = useState("produtos");
+  const [aba, setAba] = useState(() => new URLSearchParams(window.location.search).get("aba") === "materias-primas" ? "materias-primas" : "produtos");
 
   return (
     <div className="space-y-6">
@@ -85,7 +85,7 @@ type FormatoChapaForm = {
 };
 
 function CadastroMateriasPrimas() {
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(() => new URLSearchParams(window.location.search).get("busca") ?? "");
   const [categoriaFiltro, setCategoriaFiltro] = useState("todas");
   const [materialEditando, setMaterialEditando] = useState<MateriaPrimaCadastroItem | null>(null);
   const [gerenciarCategorias, setGerenciarCategorias] = useState(false);
@@ -278,7 +278,7 @@ function DialogEditarMateriaPrima({
     }
     const formatosBobina = bobinas.map(bobina => ({
       ...(bobina.id == null ? {} : { id: bobina.id }),
-      nome: bobina.nome.trim() || `${material.nome} · ${bobina.larguraMm} mm`,
+      nome: bobina.nome.trim() || `Bobina ${bobina.larguraMm} mm`,
       larguraMm: Number(bobina.larguraMm),
       ativo: bobina.ativo,
       principal: bobina.ativo && bobina.principal,
