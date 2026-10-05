@@ -376,6 +376,8 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   categoriaId: integer("categoria_id").references(() => materiaPrimaCategorias.id, { onDelete: "restrict" }),
   espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
   densidadeKgM3: decimal("densidade_kg_m3", { precision: 12, scale: 4 }),
+  // Peso por unidade de consumo (a unidade de custo do MubiSys: kg/m², kg/m, kg/un...), para matérias-primas que não são chapa nem perfil.
+  pesoEspecificoKg: decimal("peso_especifico_kg", { precision: 12, scale: 4 }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;

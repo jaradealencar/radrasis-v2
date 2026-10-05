@@ -1,0 +1,1 @@
+ALTER TABLE "materia_prima_cadastros" ADD COLUMN "peso_especifico_kg" numeric(12, 4);

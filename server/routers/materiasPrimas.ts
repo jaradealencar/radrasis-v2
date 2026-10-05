@@ -93,6 +93,7 @@ export const materiasPrimasRouter = router({
           categoriaUsaDadosPerfil: categoria?.usaDadosPerfil ?? false,
           espessuraMm: cadastro?.espessuraMm == null ? null : Number(cadastro.espessuraMm),
           densidadeKgM3: cadastro?.densidadeKgM3 == null ? null : Number(cadastro.densidadeKgM3),
+          pesoEspecificoKg: cadastro?.pesoEspecificoKg == null ? null : Number(cadastro.pesoEspecificoKg),
           bobinas: (chapasPorId.get(material.id) ?? []).filter(chapa => chapa.bobina).map(bobina => ({
             id: bobina.id,
             nome: bobina.nome,
@@ -183,6 +184,7 @@ export const materiasPrimasRouter = router({
       categoriaId: z.number().int().positive().nullable(),
       espessuraMm: z.number().finite().positive().max(10_000).nullable(),
       densidadeKgM3: z.number().finite().positive().max(1_000_000).nullable(),
+      pesoEspecificoKg: z.number().finite().positive().max(1_000_000).nullable().default(null),
       chapas: formatosChapaInput,
       bobinas: formatosBobinaInput.default([]),
     }).strict())
@@ -240,12 +242,14 @@ export const materiasPrimasRouter = router({
         }
 
         const now = new Date();
+        const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
         const espessuraSalva = usaDadosChapa || usaDadosPerfil || (usaDadosBobina && input.espessuraMm) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
           categoriaId: input.categoriaId,
           espessuraMm: espessuraSalva,
           densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
+          pesoEspecificoKg: pesoEspecificoSalvo,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
@@ -253,6 +257,7 @@ export const materiasPrimasRouter = router({
             categoriaId: input.categoriaId,
             espessuraMm: espessuraSalva,
             densidadeKgM3: usaDadosChapa || usaDadosPerfil ? String(input.densidadeKgM3) : null,
+            pesoEspecificoKg: pesoEspecificoSalvo,
             updatedAt: now,
           },
         });

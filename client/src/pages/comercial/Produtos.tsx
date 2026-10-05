@@ -171,7 +171,7 @@ function CadastroMateriasPrimas() {
                           <span>Perfil · {material.espessuraMm ?? "—"} mm · {material.densidadeKgM3 ?? "—"} kg/m³</span>
                         ) : material.categoriaUsaDadosBobina ? (
                           <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${material.espessuraMm} mm de espessura` : ""}</span>
-                        ) : <span className="text-muted-foreground">{material.tipo || "Sem dados técnicos adicionais"}</span>}
+                        ) : <span className="text-muted-foreground">{material.pesoEspecificoKg != null ? `${material.pesoEspecificoKg} kg / ${material.unidadeCusto || "un."}` : material.tipo || "Sem dados técnicos adicionais"}</span>}
                       </TableCell>
                       <TableCell>
                         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setMaterialEditando(material)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
@@ -209,6 +209,7 @@ function DialogEditarMateriaPrima({
   const [categoriaId, setCategoriaId] = useState("sem-categoria");
   const [espessuraMm, setEspessuraMm] = useState("");
   const [densidadeKgM3, setDensidadeKgM3] = useState("");
+  const [pesoEspecificoKg, setPesoEspecificoKg] = useState("");
   const [chapas, setChapas] = useState<FormatoChapaForm[]>([]);
   const [bobinas, setBobinas] = useState<FormatoBobinaForm[]>([]);
   const categoria = categorias.find(item => String(item.id) === categoriaId);
@@ -218,6 +219,7 @@ function DialogEditarMateriaPrima({
     setCategoriaId(material.categoriaId == null ? "sem-categoria" : String(material.categoriaId));
     setEspessuraMm(material.espessuraMm == null ? "" : String(material.espessuraMm));
     setDensidadeKgM3(material.densidadeKgM3 == null ? "" : String(material.densidadeKgM3));
+    setPesoEspecificoKg(material.pesoEspecificoKg == null ? "" : String(material.pesoEspecificoKg));
     setChapas(material.chapas.map(chapa => ({
       id: chapa.id,
       nome: chapa.nome,
@@ -295,6 +297,7 @@ function DialogEditarMateriaPrima({
       espessuraMm: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? Number(espessuraMm)
         : categoria?.usaDadosBobina && espessuraMm.trim() !== "" ? Number(espessuraMm) : null,
       densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil ? Number(densidadeKgM3) : null,
+      pesoEspecificoKg: !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
       chapas: formatos.map(({ index: _index, ...chapa }) => chapa),
       bobinas: categoria?.usaDadosBobina ? formatosBobina : [],
     });
@@ -354,6 +357,12 @@ function DialogEditarMateriaPrima({
                 </div>
               ))}
             </div>
+          </div>}
+
+          {!categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && <div className="space-y-2 rounded-lg border p-4">
+            <Label>Peso específico (kg por {material.unidadeCusto || "unidade de consumo"}) — opcional</Label>
+            <Input type="number" min="0.0001" step="0.0001" className="max-w-xs" value={pesoEspecificoKg} onChange={event => setPesoEspecificoKg(event.target.value)} placeholder="Ex.: 0,35" />
+            <p className="text-xs text-muted-foreground">Usado para calcular o peso do letreiro: peso = quantidade consumida × este valor. Chapas e perfis usam a densidade.</p>
           </div>}
 
           {categoria?.usaDadosPerfil && <div className="space-y-4 rounded-lg border p-4">
