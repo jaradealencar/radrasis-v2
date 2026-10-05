@@ -560,6 +560,12 @@ function encontrarFaixaIndex(colunas, custo){
  *  vínculo direto por linha, pedido do usuário 29-30/09/2026: a tabela física
  *  que o usuário consulta tem um ID por linha, não por seção. */
 function margemDaTabela(precificacao, custoDireto){
+  // Modo "lucro": % de lucro (margem sobre o preço de venda) definido no cadastro do produto.
+  if(precificacao && precificacao.modo==='lucro'){
+    const pct=Number(precificacao.margemPct);
+    if(!Number.isFinite(pct)||pct<=0||pct>=100) return null;
+    return { percentual:pct/100, faixaLabel:'fixa', rotulo:'Margem', secaoTitulo:'Lucro definido no cadastro do produto', propria:true };
+  }
   if(!precificacao || !precificacao.lineId) return null;
   const linha = catalog.margens.find(l=>l.lineId===precificacao.lineId);
   if(!linha) return null;
@@ -2450,16 +2456,55 @@ function carregarComposicaoModeloReal(produto, modelo, variacaoIds){
   REAL.modeloNome=modelo?`${produto.nome} — ${modelo.nome}`:null;
   REAL.descricaoProduto=kitPronto?.descricaoProduto||'';
   REAL.precificacao=kitPronto?.precificacao?{...kitPronto.precificacao}:null;
-  const importada=modelo?composicaoMubiSysDoModelo(modelo,REAL.variacaoModeloIds):null;
-  if(importada?.linhas){
-    REAL.kit=importada.linhas;
-    REAL.kitSource='mubisys';
-    REAL.kitWarning=null;
-  }else{
-    // Linha sem variacaoModeloId vale para todas; com ele, só entra se a variação foi escolhida.
-    REAL.kit=kitPronto?kitPronto.linhas.filter(k=>k.variacaoModeloId==null||ids.includes(Number(k.variacaoModeloId))).map(k=>({...k,variantes:Array.isArray(k.variantes)?k.variantes.map(v=>({...v})):[],variacaoSelecionadaMatId:k.variacaoPadraoMatId??null})):[];
-    REAL.kitSource=kitPronto?'radrasys':'nenhuma';
-    REAL.kitWarning=importada?.erro||((catalog.mubisysWebConectado&&catalog.composicoesMubiSys.length)?'Não encontrei consumo do MubiSys para esta variação; usando a composição cadastrada no Radrasys.':null);
+  const base=modelo?linhasDoModelo(produto,modelo,ids):{linhas:[],fonte:'nenhuma',erro:null};
+  REAL.kit=base.linhas;
+  REAL.kitSource=base.fonte;
+  REAL.kitWarning=base.fonte==='mubisys'?null:(base.erro||((catalog.mubisysWebConectado&&catalog.composicoesMubiSys.length)?'Não encontrei consumo do MubiSys para esta variação; usando a composição cadastrada no Radrasys.':null));
+  // Troca de variação do produto principal preserva as escolhas já feitas nos produtos do kit.
+  const chaveKit=modelo?kitKey(produto.id,modelo.id):null;
+  if(!Array.isArray(REAL.kitProdutosSel)||REAL.kitProdutosSelDe!==chaveKit){
+    REAL.kitProdutosSel=kitProdutosPadrao(kitPronto);
+    REAL.kitProdutosSelDe=chaveKit;
+  }
+  aplicarKitProdutosNoKit();
+}
+
+/** Linhas de composição de um modelo para as variações dadas: ficha do MubiSys quando houver,
+ *  senão a composição cadastrada no Radrasys. Linha sem variacaoModeloId vale para todas as variações. */
+function linhasDoModelo(produto, modelo, ids){
+  const kitPronto=adminState.kits[kitKey(produto.id,modelo.id)];
+  const importada=composicaoMubiSysDoModelo(modelo,ids);
+  if(importada?.linhas) return {linhas:importada.linhas,fonte:'mubisys',erro:null};
+  const linhas=kitPronto?kitPronto.linhas.filter(k=>k.variacaoModeloId==null||ids.includes(Number(k.variacaoModeloId))).map(k=>({...k,variantes:Array.isArray(k.variantes)?k.variantes.map(v=>({...v})):[],variacaoSelecionadaMatId:k.variacaoPadraoMatId??null})):[];
+  return {linhas,fonte:kitPronto?'radrasys':'nenhuma',erro:importada?.erro||null};
+}
+
+/** Seleção inicial dos produtos do kit: o modelo vinculado e a variação padrão cadastrada
+ *  (senão a padrão do MubiSys, senão a única existente). O vendedor pode trocar na cotação. */
+function kitProdutosPadrao(kitPronto){
+  return (Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[]).map(kp=>{
+    const [produtoId,modeloId]=kp.key.split('_').map(Number);
+    const modelo=catalog.produtos.find(p=>p.id===produtoId)?.modelos.find(m=>m.id===modeloId);
+    return {slot:kp.key,key:kp.key,nome:kp.nome,variacaoIds:variacoesPadraoDoKitProduto(kp,modelo)};
+  });
+}
+function variacoesPadraoDoKitProduto(kp, modelo){
+  const ativas=variacoesAtivasDoModelo(modelo);
+  const cadastrada=ativas.find(v=>String(v.id)===String(kp?.variacaoPadraoId));
+  const padrao=cadastrada||ativas.find(v=>v.padrao)||(ativas.length===1?ativas[0]:null);
+  return padrao?[Number(padrao.id)]:[];
+}
+
+/** Recompõe, em REAL.kit, as matérias-primas dos produtos que formam o kit conforme a seleção atual. */
+function aplicarKitProdutosNoKit(){
+  REAL.kit=(REAL.kit||[]).filter(l=>!l.origemKitProduto);
+  for(const sel of (REAL.kitProdutosSel||[])){
+    const [produtoId,modeloId]=sel.key.split('_').map(Number);
+    const produto=catalog.produtos.find(p=>p.id===produtoId);
+    const modelo=produto?.modelos.find(m=>m.id===modeloId);
+    if(!modelo) continue;
+    const nome=adminState.kits[sel.key]?.nomeCompleto||`${produto.nome} — ${modelo.nome}`;
+    REAL.kit.push(...linhasDoModelo(produto,modelo,sel.variacaoIds.map(Number)).linhas.map(l=>({...l,origemKitProduto:sel.slot,kitProdutoNome:nome})));
   }
 }
 
@@ -3213,6 +3258,7 @@ function renderComposicaoDoModelo(kitPronto){
             return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
               <div style="font-weight:600;">${escaparHtml(material.nome)}${material.unidade?` <span style="color:var(--text-faint);font-weight:400;">· ${escaparHtml(material.unidade)}</span>`:''}</div>
               ${linha.origemMubiSys?`<div style="font-size:11.5px;color:var(--text-dim);margin-top:3px;">Consumo cadastrado: ${fmt(linha.mult,3)} ${escaparHtml(linha.unidadeConsumo||'')} por ${escaparHtml(linha.consumoBaseUnidade||'unidade do modelo')}</div>`:''}
+              ${linha.origemKitProduto?`<div style="font-size:11.5px;color:var(--accent-ink);margin-top:2px;">Do produto do kit: ${escaparHtml(linha.kitProdutoNome||'')}</div>`:''}
               ${linha.papel?`<div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">Papel na peça: ${escaparHtml(linha.papel)}</div>`:''}
               ${variantes.length?`<label class="field" style="display:block;margin-top:7px;font-size:11.5px;">${escaparHtml(linha.variacaoNome||'Variação')}
                 <select data-act="real-kit-variacao" data-idx="${i}" style="display:block;margin-top:4px;width:min(100%,380px);font-size:12px;">
@@ -3227,10 +3273,24 @@ function renderComposicaoDoModelo(kitPronto){
       <section>
         <div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Produtos que formam o kit (${vinculados.length})</div>
         ${vinculados.length?`<div style="display:grid;gap:7px;">
-          ${vinculados.map(item=>`<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
-            <div class="mono" style="font-size:10.5px;color:var(--accent-ink);">${escaparHtml(skuModeloPorKey(item.key))}</div>
-            <div style="font-weight:600;margin-top:3px;">${escaparHtml(item.nome||nomeModeloPorKey(item.key))}</div>
-          </div>`).join('')}
+          ${(REAL.kitProdutosSel||[]).map(sel=>{
+            const [produtoId,modeloId]=sel.key.split('_').map(Number);
+            const produto=catalog.produtos.find(p=>p.id===produtoId);
+            const modelo=produto?.modelos.find(m=>m.id===modeloId);
+            const variacoes=variacoesAtivasDoModelo(modelo);
+            const qtdLinhas=(REAL.kit||[]).filter(l=>l.origemKitProduto===sel.slot).length;
+            return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
+              <div class="mono" style="font-size:10.5px;color:var(--accent-ink);">${escaparHtml(skuModeloPorKey(sel.key))}</div>
+              <div style="font-weight:600;margin-top:3px;">${escaparHtml(produto?.nome||sel.nome)}</div>
+              <label class="field" style="display:block;margin-top:6px;font-size:11.5px;">Modelo
+                <select data-act="real-kitproduto-modelo" data-slot="${escaparHtml(sel.slot)}" style="display:block;margin-top:4px;width:min(100%,380px);font-size:12px;">
+                  ${(produto?.modelos||[]).filter(m=>String(m.status||'').toLowerCase()!=='inativo'||m.id===modeloId).map(m=>`<option value="${m.id}" ${m.id===modeloId?'selected':''}>${escaparHtml(m.nome)}</option>`).join('')}
+                </select>
+              </label>
+              ${variacoes.length?`<div style="margin-top:6px;font-size:11.5px;">Variações
+                <div style="display:grid;gap:4px;margin-top:4px;">${variacoes.map(v=>`<label style="display:flex;gap:7px;align-items:center;"><input type="checkbox" data-act="real-kitproduto-variacao" data-slot="${escaparHtml(sel.slot)}" data-val="${v.id}" ${sel.variacaoIds.map(Number).includes(Number(v.id))?'checked':''}><span>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span></label>`).join('')}</div></div>`:''}
+              <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${qtdLinhas} matéria(s)-prima(s) somada(s) ao orçamento</div>
+            </div>`;}).join('')}
         </div>`:`<div class="empty-hint">Nenhum produto vinculado a este kit.</div>`}
       </section>
     </div>
@@ -4339,9 +4399,6 @@ function blocoPesoReal(){
   const itens=linhas.map((linha,i)=>({nome:linha.nome,...(pesoServidor.itens[i]||{kg:null,como:'',motivo:'Sem resposta do servidor.'})}));
   (REAL.colorAnalysis?.resultados||[]).filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso')
     .forEach(item=>itens.push({nome:item.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax',kg:null,como:'',motivo:'Adesivos ainda não têm peso cadastrado.'}));
-  const kitPronto=REAL.produtoId&&REAL.modeloId?adminState.kits[kitKey(REAL.produtoId,REAL.modeloId)]:null;
-  (Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[])
-    .forEach(kp=>itens.push({nome:kp.nome,produto:true,kg:null,como:'',motivo:'Produto vinculado ao kit: o peso dele não entra na soma.'}));
   const pendentes=itens.filter(item=>item.kg==null).length;
   const totalKg=itens.reduce((soma,item)=>soma+(item.kg||0),0);
   const linhasHtml=itens.map(l=>l.kg!=null
@@ -4432,9 +4489,9 @@ function realStepOrcamento(){
           <div class="kv"><span>Modo</span><span>Preço fixo</span></div>
           <p style="font-size:11px; color:var(--text-faint); margin-top:4px;">Este produto usa preço de venda fixo cadastrado em Administração — não deriva do custo/margem.</p>
         ` : o.margemInfo? `
-          <div class="kv"><span>Margem (Tabela de Preços real)</span><span>${(o.margemInfo.percentual*100).toFixed(1)}%</span></div>
-          <div class="source-tag">${ICONS.db} ${o.margemInfo.secaoTitulo}${o.margemInfo.rotulo!=='Margem'?' · '+o.margemInfo.rotulo:''} · faixa ${o.margemInfo.faixaLabel}</div>
-          <p style="font-size:11px; color:var(--text-faint); margin-top:8px;">Vem do cadastro do produto em Administração — a margem muda sozinha conforme o custo direto (ticket) muda de faixa. Para usar margem manual, remova o vínculo em Administração.</p>
+          <div class="kv"><span>${o.margemInfo.propria?'Lucro do produto (sobre o preço)':'Margem (Tabela de Preços real)'}</span><span>${(o.margemInfo.percentual*100).toFixed(1)}%</span></div>
+          ${o.margemInfo.propria?`<p style="font-size:11px; color:var(--text-faint); margin-top:8px;">Definido no cadastro do produto em Administração.</p>`:`<div class="source-tag">${ICONS.db} ${o.margemInfo.secaoTitulo}${o.margemInfo.rotulo!=='Margem'?' · '+o.margemInfo.rotulo:''} · faixa ${o.margemInfo.faixaLabel}</div>
+          <p style="font-size:11px; color:var(--text-faint); margin-top:8px;">Vem do cadastro do produto em Administração — a margem muda sozinha conforme o custo direto (ticket) muda de faixa. Para usar margem manual, remova o vínculo em Administração.</p>`}
         ` : `<div class="rangewrap"><span style="font-size:12px;width:70px;color:var(--text-faint);">Margem</span><input type="range" min="0.20" max="0.45" step="0.01" value="${REAL.margin}" data-act="real-margin" ${gestorPode?'':'disabled'}><span class="val">${Math.round(REAL.margin*100)}%</span></div>`}
         <div class="rangewrap" style="margin-top:8px;"><span style="font-size:12px;width:70px;color:var(--text-faint);">Desconto</span><input type="range" min="0" max="15" step="1" value="${REAL.desconto}" data-act="real-desconto" ${gestorPode?'':'disabled'}><span class="val">${REAL.desconto}%</span></div>
         <div class="role-note" style="margin-top:8px;">${ICONS.lock} ${gestorPode?'Perfil Gestor: ajuste liberado.':'Restrito ao perfil Gestor.'}</div>
@@ -4787,7 +4844,7 @@ function snapshotCotacaoReal(){
     embalagemValor:o.embalagemValor,
     regraPreco:(o.modoFixo
       ? `Preço fixo cadastrado${REAL.desconto?` com desconto de ${REAL.desconto}%`:''}`
-      : `${o.margemInfo?`Tabela de Preços: ${o.margemInfo.secaoTitulo} · faixa ${o.margemInfo.faixaLabel}`:`Margem manual de ${Math.round((o.margin||0)*100)}%`}; instalação ${money(REAL.instalacao)}; desconto ${REAL.desconto}%`)
+      : `${o.margemInfo?(o.margemInfo.propria?`Lucro do cadastro do produto: ${fmt(o.margemInfo.percentual*100,1)}% sobre o preço`:`Tabela de Preços: ${o.margemInfo.secaoTitulo} · faixa ${o.margemInfo.faixaLabel}`):`Margem manual de ${Math.round((o.margin||0)*100)}%`}; instalação ${money(REAL.instalacao)}; desconto ${REAL.desconto}%`)
       +(o.embalagemPct>0?`; Embalagem Acabamento ${fmt(o.embalagemPct,1)}% sobre os demais itens`:''),
     margemPct:o.margin==null?null:o.margin*100,
     precificacaoIA:REAL.precoAprovacao?{recibo:REAL.precoAprovacao.recibo,contexto:REAL.precoAprovacao.contexto}:undefined,
@@ -5533,7 +5590,7 @@ function adminModeloRow(p, m){
         <div style="font-size:11.5px; color:var(--text-faint);"><span class="mono" style="color:var(--accent-ink);">${skuModelo(p.id,m.id)}</span> · ${m.unidade||'—'}${kit && kit.categoria? ` · ${kit.categoria} ▸ ${kit.subcategoria||'—'}${kit.tipoProduto?' ▸ '+kit.tipoProduto:''}` : ''}</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
-        ${kit? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':' · margem vinculada'):''})</span>` : `<span class="badge b-neutral">Não cadastrado</span>`}
+        ${kit? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':kit.precificacao.modo==='lucro'?` · lucro ${kit.precificacao.margemPct||0}%`:' · margem vinculada'):''})</span>` : `<span class="badge b-neutral">Não cadastrado</span>`}
         <button class="btn btn-soft btn-sm" data-act="admin-edit-kit" data-val="${key}" data-nome="${p.nome} — ${m.nome}" ${kitsCarregando?'disabled':''}>${editing?'Fechar':'✏️ '+(kit?'Editar produto':'Cadastrar produto')}</button>
       </div>
     </div>
@@ -5548,7 +5605,7 @@ function adminKitEditor(p, m, key){
   const q = adminState.adminMatQuery||'';
   const matches = q.length>=2 ? catalog.materias.filter(x=>!adminState.materiasExcluidas.has(x.id) && normalizeSearch(x.nome).includes(normalizeSearch(q))).slice(0,40) : [];
 
-  const modoPreco = kitState.precificacao && kitState.precificacao.modo==='fixo' ? 'fixo' : 'margem';
+  const modoPreco = kitState.precificacao && ['fixo','lucro'].includes(kitState.precificacao.modo) ? kitState.precificacao.modo : 'margem';
   // Linha da Tabela de Preços já vinculada (se houver) — resolvida direto
   // pelo ID de linha, não mais por seção. Pedido do usuário 29-30/09/2026.
   const linhaVinculada = kitState.precificacao && kitState.precificacao.lineId!=null
@@ -5686,7 +5743,7 @@ function adminKitEditor(p, m, key){
           const nomeModelo=(cadastro&&cadastro.nomeCompleto)||`${kitProdutoModeloSelecionado.nome} — ${mod.nome}`;
           return `<button type="button" data-act="admin-kitproduto-selecionar-modelo" data-val="${modeloKey}" data-key="${key}" ${jaVinculado||principal?'disabled':''} style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:0;border-radius:8px;background:${selecionado?'var(--surface-2)':'transparent'};color:${jaVinculado||principal?'var(--text-faint)':'var(--text)'};text-align:left;cursor:${jaVinculado||principal?'default':'pointer'};font-size:12.5px;"><span style="color:var(--accent);font-weight:700;">${jaVinculado?'✓':principal?'•':selecionado?'✓':'○'}</span><span class="mono" style="color:var(--accent-ink);">${skuModelo(kitProdutoModeloSelecionado.id,mod.id)}</span><span>${escaparHtml(nomeModelo)}</span><span style="margin-left:auto;color:var(--text-faint);">${jaVinculado?'já vinculado':principal?'produto principal':selecionado?'selecionado':''}</span></button>`;
         }).join(''):'<p class="empty-hint">Este produto não possui modelos cadastrados no MubiSys.</p>'}
-        ${kitProdutoModeloSelecionadoMod?`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;padding:9px;box-shadow:none;background:var(--surface-2);"><div><strong>Modelo selecionado para adicionar</strong><div class="mono" style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">${skuModelo(kitProdutoModeloSelecionado.id,kitProdutoModeloSelecionadoMod.id)} · ${escaparHtml((adminState.kits[kitProdutoModeloSelecionadoKey]&&adminState.kits[kitProdutoModeloSelecionadoKey].nomeCompleto)||`${kitProdutoModeloSelecionado.nome} — ${kitProdutoModeloSelecionadoMod.nome}`)}</div></div><button type="button" class="btn btn-primary btn-sm" data-act="admin-kitproduto-confirmar" data-val="${kitProdutoModeloSelecionadoKey}" data-key="${key}">Adicionar produto ao kit</button></div>`:''}
+        ${kitProdutoModeloSelecionadoMod?`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;padding:9px;box-shadow:none;background:var(--surface-2);"><div><strong>Modelo selecionado para adicionar</strong><div class="mono" style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">${skuModelo(kitProdutoModeloSelecionado.id,kitProdutoModeloSelecionadoMod.id)} · ${escaparHtml((adminState.kits[kitProdutoModeloSelecionadoKey]&&adminState.kits[kitProdutoModeloSelecionadoKey].nomeCompleto)||`${kitProdutoModeloSelecionado.nome} — ${kitProdutoModeloSelecionadoMod.nome}`)}</div></div>${variacoesAtivasDoModelo(kitProdutoModeloSelecionadoMod).length?`<label class="field" style="min-width:220px;">Variação padrão<select data-act="admin-kitproduto-variacao-padrao"><option value="">Nenhuma (escolher na cotação)</option>${variacoesAtivasDoModelo(kitProdutoModeloSelecionadoMod).map(v=>`<option value="${v.id}" ${String(adminState.kitProdutoVariacaoPadrao)===String(v.id)?'selected':''}>${escaparHtml(v.nome)}${v.padrao?' · padrão no MubiSys':''}</option>`).join('')}</select></label>`:''}<button type="button" class="btn btn-primary btn-sm" data-act="admin-kitproduto-confirmar" data-val="${kitProdutoModeloSelecionadoKey}" data-key="${key}">Adicionar produto ao kit</button></div>`:''}
       </div>` : kitProdutoMatches.length? `<div class="card" style="position:absolute; z-index:20; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
         ${kitProdutoMatches.map(prod=>{
           const disponiveis=prod.modelos.filter(mod=>kitKey(prod.id,mod.id)!==key&&!kitProdutos.some(kp=>kp.key===kitKey(prod.id,mod.id))).length;
@@ -5695,7 +5752,7 @@ function adminKitEditor(p, m, key){
       </div>` : (kpq.length ? '<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum produto encontrado para esta busca.</p>' : '')}
     </div>
     ${kitProdutos.length? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
-      ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;"><span class="mono">${skuModeloPorKey(kp.key)}</span> ${kp.nome} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
+      ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;"><span class="mono">${skuModeloPorKey(kp.key)}</span> ${kp.nome}${kp.variacaoPadraoNome?` · ${escaparHtml(kp.variacaoPadraoNome)}`:''} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
     </div><p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${kitProdutos.length} modelo(s) vinculado(s). Pesquise outro produto para adicionar mais.</p>` : `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum modelo vinculado. Você pode adicionar vários produtos e modelos do catálogo.</p>`}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Variações do modelo <span style="font-weight:400; text-transform:none;">— importadas do MubiSys (${variacoesModelo.length})</span></p>
@@ -5759,9 +5816,15 @@ function adminKitEditor(p, m, key){
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Precificação — linha da Tabela de Preços</p>
     <div class="segtabs" style="width:fit-content; margin-bottom:10px;">
       <button type="button" data-act="admin-preco-modo" data-key="${key}" data-val="margem" class="${modoPreco==='margem'?'active':''}">Margem por faixa (oscila com o ticket)</button>
+      <button type="button" data-act="admin-preco-modo" data-key="${key}" data-val="lucro" class="${modoPreco==='lucro'?'active':''}">% de lucro do produto</button>
       <button type="button" data-act="admin-preco-modo" data-key="${key}" data-val="fixo" class="${modoPreco==='fixo'?'active':''}">Preço fixo</button>
     </div>
-    ${modoPreco==='fixo'? `
+    ${modoPreco==='lucro'? `
+    <label class="field" style="max-width:220px;">% de lucro (sobre o preço de venda)
+      <input type="text" inputmode="decimal" value="${kitState.precificacao && kitState.precificacao.margemPct || ''}" data-act="admin-preco-lucro-valor" data-key="${key}" placeholder="ex: 35">
+    </label>
+    <p style="font-size:11px; color:var(--text-faint); margin-top:4px;">Preço = custo direto ÷ (1 − lucro). Ex.: 35% de lucro sobre um custo de R$ 65 dá preço de R$ 100. O custo vem da composição de matérias-primas (e das variações escolhidas no orçamento).</p>
+    ` : modoPreco==='fixo'? `
     <label class="field" style="max-width:220px;">Preço de venda fixo (R$)
       <input type="text" inputmode="decimal" value="${kitState.precificacao && kitState.precificacao.precoFixo || ''}" data-act="admin-preco-fixo-valor" data-key="${key}" placeholder="ex: 350,00">
     </label>
@@ -6543,8 +6606,12 @@ function bindAdminEvents(){
       const kit=adminState.kits[key];
       if(!key||!modeloKey||modeloKey===key||kit?.kitProdutos?.some(item=>item.key===modeloKey)) return;
       adminState.kitProdutoModeloSelecionadoKey=modeloKey;
+      adminState.kitProdutoVariacaoPadrao=null;
       render();
     });
+  });
+  document.querySelectorAll('[data-act="admin-kitproduto-variacao-padrao"]').forEach(el=>{
+    el.addEventListener('change',e=>{ adminState.kitProdutoVariacaoPadrao=e.target.value||null; });
   });
   document.querySelectorAll('[data-act="admin-kitproduto-confirmar"]').forEach(el=>{
     el.addEventListener('click',async()=>{
@@ -6564,7 +6631,9 @@ function bindAdminEvents(){
 
       el.disabled=true;
       el.textContent='Adicionando…';
-      kit.kitProdutos.push({key:modeloKey,nome});
+      const variacaoPadrao=variacoesAtivasDoModelo(modelo).find(v=>String(v.id)===String(adminState.kitProdutoVariacaoPadrao));
+      kit.kitProdutos.push({key:modeloKey,nome,...(variacaoPadrao?{variacaoPadraoId:variacaoPadrao.id,variacaoPadraoNome:variacaoPadrao.nome}:{})});
+      adminState.kitProdutoVariacaoPadrao=null;
       const salvo=await salvarKitImediato(key);
       if(!salvo){
         kit.kitProdutos=kit.kitProdutos.filter(item=>item.key!==modeloKey);
@@ -6730,9 +6799,20 @@ function bindAdminEvents(){
       if(!kit) return;
       const modo = el.dataset.val;
       if(modo==='fixo') kit.precificacao = { modo:'fixo', precoFixo: (kit.precificacao&&kit.precificacao.precoFixo)||0 };
+      else if(modo==='lucro') kit.precificacao = { modo:'lucro', margemPct: (kit.precificacao&&kit.precificacao.margemPct)||0 };
       else kit.precificacao = kit.precificacao && kit.precificacao.lineId!=null ? { lineId:kit.precificacao.lineId } : null;
       salvarKit(key);
       render();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-preco-lucro-valor"]').forEach(el=>{
+    el.addEventListener('input', e=>{
+      const kit = adminState.kits[el.dataset.key];
+      if(kit && kit.precificacao && kit.precificacao.modo==='lucro'){
+        const pct = parseFloat(e.target.value.replace(',','.'))||0;
+        kit.precificacao.margemPct = Math.min(Math.max(pct,0),99);
+        salvarKit(el.dataset.key);
+      }
     });
   });
   document.querySelectorAll('[data-act="admin-preco-fixo-valor"]').forEach(el=>{
@@ -7174,6 +7254,23 @@ function bindRealEvents(){
     });
     el.addEventListener('change', ()=>{ clearTimeout(_renderDebounceTimer); renderPreservingFocus(); });
   });
+  document.querySelectorAll('[data-act="real-kitproduto-modelo"]').forEach(el=>el.addEventListener('change',e=>{
+    const sel=(REAL.kitProdutosSel||[]).find(item=>item.slot===el.dataset.slot);
+    if(!sel) return;
+    const [produtoId]=sel.key.split('_').map(Number);
+    const novaKey=kitKey(produtoId,Number(e.target.value));
+    const modelo=catalog.produtos.find(p=>p.id===produtoId)?.modelos.find(m=>m.id===Number(e.target.value));
+    sel.key=novaKey;
+    sel.variacaoIds=variacoesPadraoDoKitProduto(null,modelo);
+    invalidarFactibilidadeReal(); aplicarKitProdutosNoKit(); REAL.approvals.kit=false; render();
+  }));
+  document.querySelectorAll('[data-act="real-kitproduto-variacao"]').forEach(el=>el.addEventListener('change',()=>{
+    const sel=(REAL.kitProdutosSel||[]).find(item=>item.slot===el.dataset.slot);
+    if(!sel) return;
+    const id=Number(el.dataset.val);
+    sel.variacaoIds=el.checked?[...new Set([...sel.variacaoIds.map(Number),id])]:sel.variacaoIds.map(Number).filter(x=>x!==id);
+    invalidarFactibilidadeReal(); aplicarKitProdutosNoKit(); REAL.approvals.kit=false; render();
+  }));
   document.querySelectorAll('[data-act="real-kit-remove"]').forEach(el=> el.addEventListener('click', ()=>{ removeKitLine(+el.dataset.idx); render(); }));
 
   document.querySelectorAll('[data-act="real-embalagem"]').forEach(el=> el.addEventListener('change', ()=>{ REAL.embalagemAtiva=el.checked; render(); }));

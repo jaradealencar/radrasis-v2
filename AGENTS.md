@@ -494,6 +494,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   No editor de kit (Administração > Produtos), as variações ativas do modelo vêm do MubiSys
   (`modelos[].variacoes[]`) e cada linha tem "Vale para" (`variacaoModeloId`, vazio = comum a todas); o
   orçamento filtra a composição do Radrasys pelas variações escolhidas.
+  Precificação do cadastro do kit tem três modos: margem por faixa da Tabela de Preços, **% de lucro do
+  produto** (`precificacao = {modo:'lucro', margemPct}`, margem sobre o preço: preço = custo ÷ (1 − lucro)) e
+  preço fixo. Produtos vinculados ao kit (`kitProdutos`) guardam modelo e variação padrão
+  (`variacaoPadraoId`); na cotação o vendedor troca modelo e variações de cada um (`REAL.kitProdutosSel`) e as
+  matérias-primas deles entram em `REAL.kit` com `origemKitProduto`. Esses itens não passam por papel/nesting
+  próprio: usam as fórmulas simples sobre a geometria do produto principal.
   **Embalagem Acabamento (MubiSys #4258, pedido de 05/10/2026):** item especial do CPQ, incluído em toda
   cotação e removível pelo vendedor (checkbox no Resumo financeiro). Não tem consumo: cobra 3,5% sobre o
   preço de todos os outros itens (`EMBALAGEM_PCT`/`aplicarEmbalagem` no HTML); o snapshot guarda
