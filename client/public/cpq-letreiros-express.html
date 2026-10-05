@@ -2347,11 +2347,11 @@ function aplicarEdicaoVetor(){
 /* ---------- NESTING REAL (shelf-packing sobre as peças rastreadas) ---------- */
 /* ---------- COMPOSIÇÃO (KIT) REAL — matéria-prima real do MubiSys ---------- */
 const FORMULA_TYPES = {
-  areaTotal: {label:'Área total das peças no nesting (m²)', calc:(g,mult)=> (g.areaTotalNestingM2||g.areaGeralM2||0)*mult},
-  area: {label:'Área líquida (m²) — conteúdo da letra', calc:(g,mult)=> g.areaM2*mult},
+  areaTotal: {label:'Área de consumo calculada pelo nesting (m²)', calc:(g,mult)=> (g.areaTotalNestingM2||g.areaGeralM2||0)*mult},
+  area: {label:'Área líquida das peças (m²) — conteúdo da letra', calc:(g,mult)=> g.areaM2*mult},
   areaGeral: {label:'Área geral (m²) — chapa consumida', calc:(g,mult)=> (g.areaGeralM2||0)*mult},
   perimExt: {label:'Perímetro externo', calc:(g,mult)=> g.perimExtM*mult},
-  perimTotal: {label:'Comprimento total de corte', calc:(g,mult)=> g.corteTotalM*mult},
+  perimTotal: {label:'Perímetro total de corte (m)', calc:(g,mult)=> g.corteTotalM*mult},
   fixo: {label:'Unidade (quantidade por letreiro, ex.: brinde)', calc:(g,mult)=> mult},
 };
 /** Taxonomia de categoria/subcategoria/tipo do cadastro de produtos —
@@ -2536,12 +2536,13 @@ function linhaComCustoNesting(linha, geom=computeGeomReal()){
   const nesting=resultadosNesting.find(item=>Number(item.id_materia_prima)===Number(material.matId));
   const quantidade=Math.max(0,kitLineQty(linha,geom));
   const custoBase=quantidade*(Number(material.custo)||0);
-  if(!nesting||nesting.custo_material_estimado==null||!Number.isFinite(Number(nesting.custo_material_estimado))) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:null};
+  if(!nesting) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:null};
+  const metadados={idChapa:nesting.id_chapa_utilizada,nomeChapa:nesting.nome_chapa_utilizada,larguraMm:nesting.chapa.largura_mm,alturaMm:nesting.chapa.altura_mm,areaChapaM2:nesting.chapa.largura_mm*nesting.chapa.altura_mm/1e6,areaUtilizadaM2:nesting.area_chapa_utilizada_m2,areaLiquidaM2:nesting.area_liquida_m2,areaSobraM2:nesting.area_sobra_m2,perimetroTotalM:nesting.perimetro_total_m,aproveitamentoPct:nesting.porcentagem_aproveitamento,criterio:nesting.criterio_escolha,custoUnitarioCatalogo:Number(nesting.custo_unitario)||0,unidadeCusto:nesting.unidade_custo,custoMaterialEstimado:nesting.custo_material_estimado,custoSobraEstimado:nesting.custo_sobra_estimado,alertaCusto:nesting.alerta_custo,chapaPrincipal:nesting.chapa_principal,espacamentoPecasMm:nesting.espacamento_pecas_mm,margemBordaMm:nesting.margem_borda_mm,reciboIntegridade:nesting.reciboIntegridade};
+  if(nesting.custo_material_estimado==null||!Number.isFinite(Number(nesting.custo_material_estimado))) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:metadados};
   const linhasMesmoMaterial=(REAL.kit||[]).filter(item=>Number(materialKitAtivo(item).matId)===Number(material.matId));
   const custoBaseTotal=linhasMesmoMaterial.reduce((total,item)=>{const atual=materialKitAtivo(item);return total+Math.max(0,kitLineQty(item,geom))*(Number(atual.custo)||0);},0);
   const parcela=custoBaseTotal>0?custoBase/ custoBaseTotal:1/Math.max(1,linhasMesmoMaterial.length);
   const custoTotal=Math.max(0,Number(nesting.custo_material_estimado)*parcela);
-  const metadados={idChapa:nesting.id_chapa_utilizada,nomeChapa:nesting.nome_chapa_utilizada,larguraMm:nesting.chapa.largura_mm,alturaMm:nesting.chapa.altura_mm,areaChapaM2:nesting.chapa.largura_mm*nesting.chapa.altura_mm/1e6,areaUtilizadaM2:nesting.area_chapa_utilizada_m2,areaLiquidaM2:nesting.area_liquida_m2,areaSobraM2:nesting.area_sobra_m2,perimetroTotalM:nesting.perimetro_total_m,aproveitamentoPct:nesting.porcentagem_aproveitamento,criterio:nesting.criterio_escolha,custoUnitarioCatalogo:Number(nesting.custo_unitario)||0,unidadeCusto:nesting.unidade_custo,custoMaterialEstimado:nesting.custo_material_estimado,custoSobraEstimado:nesting.custo_sobra_estimado,alertaCusto:nesting.alerta_custo,chapaPrincipal:nesting.chapa_principal,espacamentoPecasMm:nesting.espacamento_pecas_mm,margemBordaMm:nesting.margem_borda_mm,reciboIntegridade:nesting.reciboIntegridade};
   return {quantidade,custoTotal,custoUnitario:quantidade>0?custoTotal/quantidade:0,nesting:metadados};
 }
 
@@ -4214,13 +4215,13 @@ function realStepNestingV2(){
   </div>`).join('')||'';
   const cards=nesting?.materiais?.map(material=>`<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
     <div class="cardhead"><div><h4>${escaparHtml(material.materia_prima)}</h4><p>${material.formato==='bobina'?`Bobina / Rolo ${escaparHtml(material.nome_chapa_utilizada)} - largura ${material.chapa.altura_mm} mm x comprimento consumido ${material.chapa.largura_mm} mm`:`Chapa ${escaparHtml(material.nome_chapa_utilizada)} - ${material.chapa.largura_mm} x ${material.chapa.altura_mm} mm`}</p></div><span class="badge b-ok">${fmt(material.porcentagem_aproveitamento,1)}% ${material.formato==='bobina'?'aproveitamento do rolo consumido':'ocupacao da chapa'}</span></div>
-    <div class="grid3"><div class="kv"><span>Area liquida</span><span>${fmt(material.area_liquida_m2,4)} m2</span></div><div class="kv"><span>Area cobrada</span><span>${fmt(material.area_chapa_utilizada_m2,4)} m2</span></div><div class="kv"><span>Perimetro de corte</span><span>${fmt(material.perimetro_total_m,2)} m</span></div></div>
+    <div class="grid3"><div class="kv"><span>Área líquida das peças</span><span>${fmt(material.area_liquida_m2,4)} m2</span></div><div class="kv"><span>Área de consumo</span><span>${fmt(material.area_chapa_utilizada_m2,4)} m2</span></div><div class="kv"><span>Perímetro total de corte</span><span>${fmt(material.perimetro_total_m,2)} m</span></div></div>
     <div class="role-note">${material.posicionamentos.length} peça(s) posicionada(s) - ${material.formato==='bobina'?'bobina / rolo':'chapa'} ID ${material.id_chapa_utilizada} (${material.chapa_principal?'principal':'alternativa'}); espaço entre peças: ${material.espacamento_pecas_mm} mm; borda: ${material.margem_borda_mm} mm; critério: ${material.criterio_escolha==='menor_chapa_que_comporta'?(material.formato==='bobina'?'menor consumo de rolo':'menor chapa que comporta'):material.criterio_escolha==='menor_sobra_financeira'?'menor sobra financeira':'maior aproveitamento'}.</div>
     ${material.custo_material_estimado==null?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(material.alerta_custo||'Unidade sem conversão automática; revise o custo antes de emitir.')}</div>`:`<div class="kv"><span>${material.formato==='bobina'?'Custo estimado do rolo consumido (largura x comprimento)':'Custo proporcional estimado da chapa'}</span><span>${money(material.custo_material_estimado)}</span></div>`}
   </div>`).join('')||'';
   if(REAL.factibilidadeCarregando) return `<div class="card"><div class="empty-hint">Analisando chapas e preparando o nesting...</div></div>`;
   return `<div class="card">
-    <div class="cardhead"><div><h3>7 - Factibilidade e nesting por material</h3><p>O servidor valida o maior formato ativo, prepara as pecas de corte e executa o Deepnest local por material.</p></div></div>
+    <div class="cardhead"><div><h3>7 - Factibilidade e nesting por material</h3><p>Além de organizar as peças, o nesting calcula para cada matéria-prima da composição a área de consumo, a área líquida das peças e o perímetro total de corte. Nas fórmulas por área ou perímetro total, esses resultados definem a quantidade no orçamento.</p></div></div>
     ${renderConfiguracaoNestingReal()}
     ${renderAnaliseCoresReal()}
     ${REAL.factibilidadeErro?`<div class="warnbox" role="alert"><span>${ICONS.alert}</span><div>${escaparHtml(REAL.factibilidadeErro)}</div></div>`:''}
