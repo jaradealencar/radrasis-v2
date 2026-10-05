@@ -32,6 +32,8 @@ const chapaInput = z
     transmissaoLuzPct: z.number().finite().min(0).max(100).nullable().optional(),
     transparenciaTipo: z.enum(["opaca", "translucida", "transparente"]).nullable().optional(),
     principal: z.boolean().optional().default(false),
+    espessuraMm: z.number().finite().positive().max(10_000).nullable().optional(),
+    densidadeGCm3: z.number().finite().positive().max(1_000).nullable().optional(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -180,12 +182,15 @@ async function listarChapas(req: Request, res: Response): Promise<void> {
     );
   res.setHeader("Cache-Control", "private, no-store");
   const cadastros = rows.length
-    ? await db.select({ id: materiaPrimaCadastros.mubisysMateriaPrimaId, espessuraMm: materiaPrimaCadastros.espessuraMm })
+    ? await db.select({ id: materiaPrimaCadastros.mubisysMateriaPrimaId, espessuraMm: materiaPrimaCadastros.espessuraMm, densidadeKgM3: materiaPrimaCadastros.densidadeKgM3 })
         .from(materiaPrimaCadastros)
         .where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, Array.from(new Set(rows.map(row => row.mubisysMateriaPrimaId)))))
     : [];
-  const espessuraPorMateria = new Map(cadastros.map(item => [item.id, item.espessuraMm == null ? null : Number(item.espessuraMm)]));
-  res.json({ chapas: rows.map(row => ({ ...row, espessuraMm: espessuraPorMateria.get(row.mubisysMateriaPrimaId) ?? null })) });
+  const dadosPorMateria = new Map(cadastros.map(item => [item.id, {
+    espessuraMm: item.espessuraMm == null ? null : Number(item.espessuraMm),
+    densidadeGCm3: item.densidadeKgM3 == null ? null : Number((Number(item.densidadeKgM3) / 1000).toFixed(4)),
+  }]));
+  res.json({ chapas: rows.map(row => ({ ...row, espessuraMm: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.espessuraMm ?? null, densidadeGCm3: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.densidadeGCm3 ?? null })) });
 }
 
 async function salvarChapa(
@@ -201,7 +206,7 @@ async function salvarChapa(
       400,
       "Confira material e dimensões da chapa (em milímetros)."
     );
-  const { data } = parsed;
+  const { espessuraMm, densidadeGCm3, ...data } = parsed.data;
   const materiasMubiSys = await listarMateriasPrimas();
   if (
     !materiasMubiSys.some(
@@ -242,6 +247,15 @@ async function salvarChapa(
       if (principal) {
         await tx.update(estudioChapas).set({ principal: false })
           .where(eq(estudioChapas.mubisysMateriaPrimaId, data.mubisysMateriaPrimaId));
+      }
+      if (espessuraMm != null || densidadeGCm3 != null) {
+        const dadosTecnicos = {
+          ...(espessuraMm != null ? { espessuraMm: String(espessuraMm) } : {}),
+          ...(densidadeGCm3 != null ? { densidadeKgM3: String(Math.round(densidadeGCm3 * 1000 * 10000) / 10000) } : {}),
+        };
+        await tx.insert(materiaPrimaCadastros)
+          .values({ mubisysMateriaPrimaId: data.mubisysMateriaPrimaId, ...dadosTecnicos, updatedAt: new Date() })
+          .onConflictDoUpdate({ target: materiaPrimaCadastros.mubisysMateriaPrimaId, set: { ...dadosTecnicos, updatedAt: new Date() } });
       }
       const chapaValues = { ...values, principal };
       if (id == null) {
