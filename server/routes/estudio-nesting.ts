@@ -18,7 +18,9 @@ import {
   type CpqMaterial,
 } from "../services/cpqNesting";
 import {
+  calcularHashFormatosNesting,
   calcularHashPecasParaNesting,
+  idFormatoTemporarioNesting,
   verificarReciboDecisaoFactibilidade,
   verificarTicketAnaliseFactibilidade,
 } from "../services/cpqFactibilidadeFabricacao";
@@ -71,6 +73,13 @@ const nestingInput = z
       pecas: z.array(pecaNestingInput).min(1).max(100),
     }).strict()).min(1).max(10).optional(),
     espacamentoMm: z.number().finite().min(0).max(50).optional().default(0),
+    margemBordaMm: z.number().finite().min(0).max(50).optional().default(0),
+    formatosTemporarios: z.array(z.object({
+      materiaPrimaId: z.number().int().positive(),
+      larguraMm: z.number().int().min(10).max(50_000),
+      alturaMm: z.number().int().min(10).max(50_000),
+      bobina: z.boolean().optional().default(false),
+    }).strict()).max(10).optional().default([]),
     materiaPrimaIds: z.array(z.number().int().positive()).min(1).max(100),
   })
   .strict()
@@ -94,6 +103,9 @@ const nestingInput = z
         context.addIssue({ code: "custom", message: "Cada materia-prima precisa ter exatamente um lote geometrico." });
       }
     }
+    const idsManuais = input.formatosTemporarios.map(formato => formato.materiaPrimaId);
+    if (new Set(idsManuais).size !== idsManuais.length || idsManuais.some(id => !input.materiaPrimaIds.includes(id)))
+      context.addIssue({ code: "custom", message: "Cada formato informado precisa pertencer a uma materia-prima selecionada." });
     if (new Set(input.materiaPrimaIds).size !== input.materiaPrimaIds.length) {
       context.addIssue({
         code: "custom",
@@ -455,6 +467,8 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
   const byId = new Map(catalogo.map(material => [material.id, material]));
   const custosBobina = await carregarCustoBobina(db, parsed.data.materiaPrimaIds);
   const lotesPorMaterial = new Map((parsed.data.lotesPorMaterial ?? []).map(lote => [lote.materiaPrimaId, lote.pecas]));
+  const formatosManuais = new Map(parsed.data.formatosTemporarios.map(formato => [formato.materiaPrimaId, formato]));
+  const chapasAtivas = chapas.filter(chapa => chapa.ativo);
   const materiais: CpqMaterial[] = [];
   for (const id of parsed.data.materiaPrimaIds) {
     const material = byId.get(id);
@@ -469,7 +483,20 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       nome: material.nome,
       custoUnitario: Number(material.valor_custo) || 0,
       unidadeCusto: material.unidade_custo || "",
-      chapas: chapas.filter(chapa => chapa.mubisysMateriaPrimaId === id),
+      chapas: (() => {
+        const cadastradas = chapasAtivas.filter(chapa => chapa.mubisysMateriaPrimaId === id);
+        if (cadastradas.length) return cadastradas;
+        const manual = formatosManuais.get(id);
+        return manual ? [{
+          id: idFormatoTemporarioNesting(id),
+          mubisysMateriaPrimaId: id,
+          nome: "Dimensões informadas para este nesting",
+          larguraMm: manual.larguraMm,
+          alturaMm: manual.alturaMm,
+          bobina: manual.bobina,
+          principal: true,
+        }] : [];
+      })(),
       bobinaCusto: custosBobina.get(id) ?? null,
       ...(lotesPorMaterial.has(id) ? { pecas: lotesPorMaterial.get(id)! } : {}),
     });
@@ -504,6 +531,14 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       } else if (parsed.data.acaoFactibilidade || parsed.data.reciboDecisaoFactibilidade) {
         throw new Error("Uma análise apta não pode usar uma decisão de emenda.");
       }
+      if (claims.margemBordaMm != null && claims.margemBordaMm !== parsed.data.margemBordaMm)
+        throw new Error("A margem da borda mudou depois da análise de factibilidade.");
+      const materiaisAnalisados = claims.materiais;
+      for (const material of materiais) {
+        const assinado = materiaisAnalisados.find(item => item.idMateriaPrima === material.id);
+        if (assinado?.hashFormatos && assinado.hashFormatos !== calcularHashFormatosNesting(material.chapas))
+          throw new Error("As dimensões cadastradas para " + material.nome + " mudaram depois da análise de factibilidade.");
+      }
       const lotes = parsed.data.lotesPorMaterial ?? [{ materiaPrimaId: parsed.data.materiaPrimaIds[0], pecas: parsed.data.pecas! }];
       if (parsed.data.lotesPorMaterial && claims.materiais.length !== lotes.length)
         throw new Error("Os lotes de materiais não correspondem à análise de factibilidade assinada.");
@@ -527,6 +562,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       alturaSvgMm: parsed.data.alturaSvgMm,
       pecas: parsed.data.pecas,
       espacamentoMm: parsed.data.espacamentoMm,
+      margemBordaMm: parsed.data.margemBordaMm,
       materiais,
     });
     res.setHeader("Cache-Control", "private, no-store");

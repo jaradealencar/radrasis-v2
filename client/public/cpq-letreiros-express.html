@@ -785,6 +785,8 @@ function novaProposta(){
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], kitSource:'nenhuma', kitWarning:null, matQuery:'', precificacao:null,
     factibilidade:null, factibilidadeCarregando:false, factibilidadeErro:null, nestingCarregando:false, nestingMateriais:[],
+    nestingConfiguracao:{espacamentoMm:3,margemBordaMm:5},
+    nestingFormatosTemporarios:{}, nestingFormatosUsados:[], nestingFormatosPendentes:[], nestingFormatosCadastrados:[], nestingMateriaPrimaIds:[],
     precoSugestao:null, precoAprovacao:null, precoAprovadoFinal:null, precoIACarregando:false, precoAprovacaoCarregando:false, precoIAErro:'',
     // Pintura: pré-configurada em todo orçamento, mas desabilitada por padrão
     // (não entra no kit nem aparece pro cliente até o vendedor habilitar e
@@ -2539,7 +2541,7 @@ function linhaComCustoNesting(linha, geom=computeGeomReal()){
   const custoBaseTotal=linhasMesmoMaterial.reduce((total,item)=>{const atual=materialKitAtivo(item);return total+Math.max(0,kitLineQty(item,geom))*(Number(atual.custo)||0);},0);
   const parcela=custoBaseTotal>0?custoBase/ custoBaseTotal:1/Math.max(1,linhasMesmoMaterial.length);
   const custoTotal=Math.max(0,Number(nesting.custo_material_estimado)*parcela);
-  const metadados={idChapa:nesting.id_chapa_utilizada,nomeChapa:nesting.nome_chapa_utilizada,larguraMm:nesting.chapa.largura_mm,alturaMm:nesting.chapa.altura_mm,areaChapaM2:nesting.chapa.largura_mm*nesting.chapa.altura_mm/1e6,areaUtilizadaM2:nesting.area_chapa_utilizada_m2,areaLiquidaM2:nesting.area_liquida_m2,areaSobraM2:nesting.area_sobra_m2,perimetroTotalM:nesting.perimetro_total_m,aproveitamentoPct:nesting.porcentagem_aproveitamento,criterio:nesting.criterio_escolha,custoUnitarioCatalogo:Number(nesting.custo_unitario)||0,unidadeCusto:nesting.unidade_custo,custoMaterialEstimado:nesting.custo_material_estimado,custoSobraEstimado:nesting.custo_sobra_estimado,alertaCusto:nesting.alerta_custo,chapaPrincipal:nesting.chapa_principal,reciboIntegridade:nesting.reciboIntegridade};
+  const metadados={idChapa:nesting.id_chapa_utilizada,nomeChapa:nesting.nome_chapa_utilizada,larguraMm:nesting.chapa.largura_mm,alturaMm:nesting.chapa.altura_mm,areaChapaM2:nesting.chapa.largura_mm*nesting.chapa.altura_mm/1e6,areaUtilizadaM2:nesting.area_chapa_utilizada_m2,areaLiquidaM2:nesting.area_liquida_m2,areaSobraM2:nesting.area_sobra_m2,perimetroTotalM:nesting.perimetro_total_m,aproveitamentoPct:nesting.porcentagem_aproveitamento,criterio:nesting.criterio_escolha,custoUnitarioCatalogo:Number(nesting.custo_unitario)||0,unidadeCusto:nesting.unidade_custo,custoMaterialEstimado:nesting.custo_material_estimado,custoSobraEstimado:nesting.custo_sobra_estimado,alertaCusto:nesting.alerta_custo,chapaPrincipal:nesting.chapa_principal,espacamentoPecasMm:nesting.espacamento_pecas_mm,margemBordaMm:nesting.margem_borda_mm,reciboIntegridade:nesting.reciboIntegridade};
   return {quantidade,custoTotal,custoUnitario:quantidade>0?custoTotal/quantidade:0,nesting:metadados};
 }
 
@@ -3933,7 +3935,6 @@ function camadaFisicaKit(line){
 }
 
 async function analisarFactibilidadeReal(){
-  if(!REAL.colorAnalysis.aprovado){REAL.factibilidadeErro='Revise e confirme o mapeamento de cores antes de analisar as chapas e iniciar o nesting.';render();return;}
   if(REAL.factibilidadeCarregando||REAL.nestingCarregando) return;
   REAL.factibilidadeCarregando=true; REAL.factibilidadeErro=null; REAL.factibilidade=null; REAL.nesting=null;
   render();
@@ -3941,18 +3942,31 @@ async function analisarFactibilidadeReal(){
     const boardResponse=await fetch('/api/letra-caixa/chapas',{credentials:'same-origin'});
     const boardBody=await boardResponse.json().catch(()=>({}));
     if(!boardResponse.ok) throw new Error(boardBody.error||'Nao foi possivel carregar as chapas cadastradas.');
-    const configured=new Set((boardBody.chapas||[]).filter(board=>board.ativo).map(board=>Number(board.mubisysMateriaPrimaId)));
+    const chapas=Array.isArray(boardBody.chapas)?boardBody.chapas:[];
+    REAL.nestingFormatosCadastrados=chapas;
+    const configured=new Set(chapas.filter(board=>board.ativo!==false).map(board=>Number(board.mubisysMateriaPrimaId)));
     const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line));
     const mappedLineIds=new Set(physicalLines.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0));
     const unassignedSheet=(REAL.kit||[]).find(line=>!line.origemPintura&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
-    if(REAL.colorAnalysis.iluminacao==='frontlight'&&!physicalLines.some(line=>camadaFisicaKit(line)==='aro'))
-      throw new Error('Letreiros Frontlight precisam de uma matéria-prima com papel Aro no kit. O aro sustenta o acrílico frontal e deve ter sua camada SVG e chapa configuradas.');
     if(unassignedSheet) throw new Error('Defina o papel da chapa como Face, Aro ou Fundo no kit para separar os contornos do SVG.');
-    const missingSheets=[...mappedLineIds].filter(id=>!configured.has(id));
-    if(missingSheets.length) throw new Error('Cadastre chapas ativas para as materias-primas de chapa: '+missingSheets.join(', ')+'.');
-    const materiaPrimaIds=[...mappedLineIds].filter(id=>configured.has(id));
-    if(!materiaPrimaIds.length) throw new Error('Nenhuma materia-prima do kit possui chapa ativa. Cadastre formatos de chapa antes do nesting.');
+    const materiaPrimaIds=[...mappedLineIds];
+    REAL.nestingMateriaPrimaIds=materiaPrimaIds;
+    if(!materiaPrimaIds.length) throw new Error('Associe ao menos uma materia-prima a Face, Aro ou Fundo no passo Composicao.');
     if(materiaPrimaIds.length>10) throw new Error('A factibilidade aceita ate 10 materiais de chapa por projeto.');
+    const missingFormats=materiaPrimaIds.filter(id=>!configured.has(id));
+    const formatosTemporarios=[];
+    for(const id of missingFormats){
+      const manual=REAL.nestingFormatosTemporarios[id]||{};
+      const larguraMm=Number(manual.larguraMm), alturaMm=Number(manual.alturaMm);
+      if(!Number.isInteger(larguraMm)||larguraMm<10||larguraMm>50000||!Number.isInteger(alturaMm)||alturaMm<10||alturaMm>50000){
+        REAL.nestingFormatosPendentes=missingFormats;
+        REAL.factibilidadeErro=null;
+        return;
+      }
+      formatosTemporarios.push({materiaPrimaId:id,larguraMm,alturaMm,bobina:!!manual.bobina});
+    }
+    REAL.nestingFormatosPendentes=[];
+    REAL.nestingFormatosUsados=formatosTemporarios;
     const camadaKeys=new Set();
     const camadasMateriais=physicalLines.flatMap(line=>{
       const materiaPrimaId=Number(materialKitAtivo(line).matId), camada=camadaFisicaKit(line);
@@ -3961,16 +3975,22 @@ async function analisarFactibilidadeReal(){
       camadaKeys.add(key);return [{materiaPrimaId,camada}];
     });
     const g=computeGeomReal();
-    const usarContornoCorte=contornoCorteAplicavel();
+    const usarContornoCorte=REAL.colorAnalysis.aprovado&&contornoCorteAplicavel();
     REAL.svgNesting=svgComCamadaFace(usarContornoCorte?REAL.tracedSvgCorte:REAL.tracedSvg);
     const response=await fetch('/api/letra-caixa/factibilidade',{
       method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sourceId:REAL.id,svg:REAL.svgNesting,contornoCorte:usarContornoCorte,larguraSvgMm:REAL.tracedW*g.scaleFactor*1000,alturaSvgMm:REAL.tracedH*g.scaleFactor*1000,materiaPrimaIds,camadasMateriais}),
+      body:JSON.stringify({
+        sourceId:REAL.id,svg:REAL.svgNesting,contornoCorte:usarContornoCorte,
+        larguraSvgMm:REAL.tracedW*g.scaleFactor*1000,alturaSvgMm:REAL.tracedH*g.scaleFactor*1000,
+        materiaPrimaIds,camadasMateriais,
+        formatosTemporarios,
+        margemBordaMm:Number(REAL.nestingConfiguracao.margemBordaMm)||0,
+      }),
     });
     const body=await response.json().catch(()=>({}));
     if(!response.ok) throw new Error(body.error||'Nao foi possivel analisar a factibilidade de fabricacao.');
     REAL.factibilidade={...body,acao:null,reciboDecisao:null,resultadoDecisao:null};
-    if(body.status_factibilidade==='APTO_NESTING') await executarNestingFactibilidadeReal();
+    if(body.status_factibilidade==='APTO_NESTING') await executarNestingFactibilidadeReal(formatosTemporarios);
   }catch(error){ REAL.factibilidadeErro=error.message||'Falha ao analisar a factibilidade.'; }
   finally{ REAL.factibilidadeCarregando=false; render(); }
 }
@@ -4099,7 +4119,7 @@ function renderAnaliseCoresReal(){
       </div>`:'';
   const countColors=new Set((color.resultados||[]).map(result=>result.corHex||result.pantoneCode||`${result.tipoCor}:${result.cmyk?Object.values(result.cmyk).join(','):(result.coresGradiente||[]).join(',')}`)).size;
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">
-    <div class="cardhead"><div><h4>Correspondência de cores antes do nesting</h4><p>O servidor calcula a área total por Bounding Box para adesivos e mantém a área líquida separada para pintura que envolve a peça.</p></div></div>
+    <div class="cardhead"><div><h4>Correspondência de cores (opcional para o nesting)</h4><p>O servidor calcula a área total por Bounding Box para adesivos e mantém a área líquida separada para pintura que envolve a peça.</p></div></div>
     ${controles}
     ${color.error?`<div class="warnbox" role="alert" style="margin-top:8px;">${escaparHtml(color.error)}</div>`:''}
     ${color.loading?'<div class="empty-hint">Extraindo regiões e comparando ΔE00 com chapas e o catálogo Imprimax…</div>':''}
@@ -4111,7 +4131,7 @@ function renderAnaliseCoresReal(){
   </div>`;
 }
 
-async function executarNestingFactibilidadeReal(){
+async function executarNestingFactibilidadeReal(formatosTemporarios=REAL.nestingFormatosUsados||[]){
   const fact=REAL.factibilidade;
   if(!fact) throw new Error('Analise a factibilidade antes do nesting.');
   if(fact.status_factibilidade==='REQUER_APROVACAO_EMENDA'&&!fact.reciboDecisao) return;
@@ -4127,7 +4147,10 @@ async function executarNestingFactibilidadeReal(){
       body:JSON.stringify({
         sourceId:REAL.id,resultadoHash:fact.resultadoHash,ticketAnalise:fact.ticketAnalise,
         acaoFactibilidade:fact.acao||null,reciboDecisaoFactibilidade:fact.reciboDecisao||null,
-        lotesPorMaterial,materiaPrimaIds:lotesPorMaterial.map(lote=>lote.materiaPrimaId),espacamentoMm:3,
+        lotesPorMaterial,materiaPrimaIds:lotesPorMaterial.map(lote=>lote.materiaPrimaId),
+        formatosTemporarios,
+        espacamentoMm:Number(REAL.nestingConfiguracao.espacamentoMm)||0,
+        margemBordaMm:Number(REAL.nestingConfiguracao.margemBordaMm)||0,
       }),
     });
     const body=await response.json().catch(()=>({}));
@@ -4136,6 +4159,46 @@ async function executarNestingFactibilidadeReal(){
     if(resultados.length!==lotesPorMaterial.length) throw new Error('O Deepnest nao retornou todos os materiais.');
     REAL.nesting={materiais:resultados,algoritmo:'Deepnest local'};
   }finally{ REAL.nestingCarregando=false; }
+}
+
+function renderConfiguracaoNestingReal(){
+  const config=REAL.nestingConfiguracao||{espacamentoMm:3,margemBordaMm:5};
+  const ids=REAL.nestingMateriaPrimaIds?.length
+    ? REAL.nestingMateriaPrimaIds
+    : [...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line)).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
+  const chapas=REAL.nestingFormatosCadastrados||[];
+  const semFormato=REAL.nestingFormatosPendentes?.length
+    ? REAL.nestingFormatosPendentes
+    : (chapas.length?ids.filter(id=>!chapas.some(chapa=>chapa.ativo!==false&&Number(chapa.mubisysMateriaPrimaId)===id)):[]);
+  const nomes=new Map((catalog.materias||[]).map(material=>[Number(material.id),material.nome]));
+  const linhas=[];
+  linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">');
+  linhas.push('<div class="cardhead"><div><h4>Executar nesting nesta etapa</h4><p>O nesting pode ser calculado sem preencher iluminação ou cor. O sistema usa a composição do passo anterior e pede as dimensões que faltarem.</p></div></div>');
+  linhas.push('<div class="grid2" style="margin-top:10px;">');
+  linhas.push('<label class="field">Distanciamento entre peças (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.espacamentoMm)+'" data-act="nesting-espacamento"></label>');
+  linhas.push('<label class="field">Distanciamento da borda (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.margemBordaMm)+'" data-act="nesting-margem-borda"></label>');
+  linhas.push('</div>');
+  for(const id of ids){
+    const opcoes=chapas.filter(chapa=>chapa.ativo!==false&&Number(chapa.mubisysMateriaPrimaId)===id);
+    if(opcoes.length){
+      const resumo=opcoes.map(chapa=>escaparHtml(chapa.nome||'Formato cadastrado')+' · '+chapa.larguraMm+' × '+chapa.alturaMm+' mm').join(' / ');
+      linhas.push('<div class="role-note"><b>'+escaparHtml(nomes.get(id)||('Matéria-prima '+id))+':</b> '+resumo+'</div>');
+    }
+  }
+  for(const id of semFormato){
+    const manual=REAL.nestingFormatosTemporarios[id]||{larguraMm:'',alturaMm:'',bobina:false};
+    const bobina=!!manual.bobina;
+    linhas.push('<div class="card" style="background:var(--surface);box-shadow:none;margin-top:8px;"><b>'+escaparHtml(nomes.get(id)||('Matéria-prima '+id))+'</b>');
+    linhas.push('<div class="grid2" style="margin-top:8px;">');
+    linhas.push('<label class="field">'+(bobina?'Comprimento máximo':'Largura')+' (mm)<input type="number" min="10" max="50000" step="1" value="'+escaparHtml(manual.larguraMm)+'" data-act="nesting-formato-largura" data-material-id="'+id+'" placeholder="Ex.: 2000"></label>');
+    linhas.push('<label class="field">'+(bobina?'Largura do rolo':'Altura')+' (mm)<input type="number" min="10" max="50000" step="1" value="'+escaparHtml(manual.alturaMm)+'" data-act="nesting-formato-altura" data-material-id="'+id+'" placeholder="Ex.: 1000"></label>');
+    linhas.push('<label class="checkrow" style="grid-column:1/-1;"><input type="checkbox" data-act="nesting-formato-bobina" data-material-id="'+id+'" '+(bobina?'checked':'')+'> Matéria-prima em bobina (sem rotação)</label>');
+    linhas.push('</div></div>');
+  }
+  if(semFormato.length) linhas.push('<div class="role-note" style="margin-top:8px;">Essas dimensões serão usadas somente nesta cotação e não alteram o cadastro de matérias-primas.</div>');
+  if(!ids.length) linhas.push('<div class="role-note" style="margin-top:8px;">No passo Composição, associe cada chapa à camada Face, Aro ou Fundo.</div>');
+  linhas.push('<button class="btn btn-primary" style="margin-top:10px;" data-act="real-nesting-iniciar" '+(REAL.factibilidadeCarregando||REAL.nestingCarregando?'disabled':'')+'>'+(REAL.factibilidadeCarregando||REAL.nestingCarregando?'Calculando…':'Calcular nesting')+'</button><div class="role-note" data-nesting-config-status style="display:none;"></div></div>');
+  return linhas.join('');
 }
 
 function realStepNestingV2(){
@@ -4152,12 +4215,13 @@ function realStepNestingV2(){
   const cards=nesting?.materiais?.map(material=>`<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
     <div class="cardhead"><div><h4>${escaparHtml(material.materia_prima)}</h4><p>${material.formato==='bobina'?`Bobina / Rolo ${escaparHtml(material.nome_chapa_utilizada)} - largura ${material.chapa.altura_mm} mm x comprimento consumido ${material.chapa.largura_mm} mm`:`Chapa ${escaparHtml(material.nome_chapa_utilizada)} - ${material.chapa.largura_mm} x ${material.chapa.altura_mm} mm`}</p></div><span class="badge b-ok">${fmt(material.porcentagem_aproveitamento,1)}% ${material.formato==='bobina'?'aproveitamento do rolo consumido':'ocupacao da chapa'}</span></div>
     <div class="grid3"><div class="kv"><span>Area liquida</span><span>${fmt(material.area_liquida_m2,4)} m2</span></div><div class="kv"><span>Area cobrada</span><span>${fmt(material.area_chapa_utilizada_m2,4)} m2</span></div><div class="kv"><span>Perimetro de corte</span><span>${fmt(material.perimetro_total_m,2)} m</span></div></div>
-    <div class="role-note">${material.posicionamentos.length} peca(s) posicionada(s) - ${material.formato==='bobina'?'bobina / rolo':'chapa'} ID ${material.id_chapa_utilizada} (${material.chapa_principal?'principal':'alternativa'}); critério: ${material.criterio_escolha==='menor_chapa_que_comporta'?(material.formato==='bobina'?'menor consumo de rolo':'menor chapa que comporta'):material.criterio_escolha==='menor_sobra_financeira'?'menor sobra financeira':'maior aproveitamento'}.</div>
+    <div class="role-note">${material.posicionamentos.length} peça(s) posicionada(s) - ${material.formato==='bobina'?'bobina / rolo':'chapa'} ID ${material.id_chapa_utilizada} (${material.chapa_principal?'principal':'alternativa'}); espaço entre peças: ${material.espacamento_pecas_mm} mm; borda: ${material.margem_borda_mm} mm; critério: ${material.criterio_escolha==='menor_chapa_que_comporta'?(material.formato==='bobina'?'menor consumo de rolo':'menor chapa que comporta'):material.criterio_escolha==='menor_sobra_financeira'?'menor sobra financeira':'maior aproveitamento'}.</div>
     ${material.custo_material_estimado==null?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(material.alerta_custo||'Unidade sem conversão automática; revise o custo antes de emitir.')}</div>`:`<div class="kv"><span>${material.formato==='bobina'?'Custo estimado do rolo consumido (largura x comprimento)':'Custo proporcional estimado da chapa'}</span><span>${money(material.custo_material_estimado)}</span></div>`}
   </div>`).join('')||'';
   if(REAL.factibilidadeCarregando) return `<div class="card"><div class="empty-hint">Analisando chapas e preparando o nesting...</div></div>`;
   return `<div class="card">
     <div class="cardhead"><div><h3>7 - Factibilidade e nesting por material</h3><p>O servidor valida o maior formato ativo, prepara as pecas de corte e executa o Deepnest local por material.</p></div></div>
+    ${renderConfiguracaoNestingReal()}
     ${renderAnaliseCoresReal()}
     ${REAL.factibilidadeErro?`<div class="warnbox" role="alert"><span>${ICONS.alert}</span><div>${escaparHtml(REAL.factibilidadeErro)}</div></div>`:''}
     ${fact?.status_factibilidade==='APTO_NESTING'?`<div class="banner" style="margin:10px 0 0;">${ICONS.check}<div><b>Projeto apto para nesting.</b> ${fact.projeto_redimensionado?`Reducao automatica de ${fmt((1-fact.fator_escala_aplicado)*100,2)}% aplicada, dentro do limite de 3%.`:'Nenhuma alteracao geometrica foi necessaria.'}</div></div>`:''}
@@ -4601,6 +4665,7 @@ function snapshotCotacaoReal(){
       resultadoHash:REAL.factibilidade.resultadoHash,
       ticketAnalise:REAL.factibilidade.ticketAnalise,
       fatorEscalaAplicado:REAL.factibilidade.fator_escala_aplicado,
+      margemBordaMm:REAL.factibilidade.margemBordaMm??REAL.nestingConfiguracao.margemBordaMm,
       acao:REAL.factibilidade.acao||null,
       reciboDecisao:REAL.factibilidade.reciboDecisao||null,
       detalhesCorte:REAL.factibilidade.detalhes_corte,
@@ -4608,6 +4673,7 @@ function snapshotCotacaoReal(){
       materiais:REAL.factibilidade.materiais.map(material=>({
         idMateriaPrima:material.id_materia_prima,
         idChapa:material.id_maior_chapa,
+        hashFormatos:material.hashFormatos,
         hashSvgParaNesting:material.hash_svg_para_nesting,
         hashPecasParaNesting:material.hash_pecas_para_nesting,
         hashPecasRedimensionadasOpcao:material.hash_pecas_redimensionadas_opcao,
@@ -6663,6 +6729,22 @@ function bindRealEvents(){
   }));
   const factibilidadeRetry=document.querySelector('[data-act="real-factibilidade-retry"]');
   if(factibilidadeRetry) factibilidadeRetry.addEventListener('click',()=>analisarFactibilidadeReal());
+  const nestingIniciar=document.querySelector('[data-act="real-nesting-iniciar"]');
+  if(nestingIniciar) nestingIniciar.addEventListener('click',()=>analisarFactibilidadeReal());
+  const invalidarNestingConfiguracao=()=>{REAL.factibilidade=null;REAL.nesting=null;REAL.approvals.nesting=false;REAL.factibilidadeErro=null;};
+  const marcarNestingConfiguracaoAlterada=()=>{const status=document.querySelector('[data-nesting-config-status]');if(status&&(REAL.factibilidade||REAL.nesting||status.style.display!=='none')){status.style.display='block';status.textContent='Os parâmetros mudaram. Calcule novamente para atualizar o nesting.';}};
+  const spacingInput=document.querySelector('[data-act="nesting-espacamento"]');
+  if(spacingInput) spacingInput.addEventListener('input',event=>{REAL.nestingConfiguracao.espacamentoMm=Number(event.target.value)||0;marcarNestingConfiguracaoAlterada();invalidarNestingConfiguracao();});
+  const borderInput=document.querySelector('[data-act="nesting-margem-borda"]');
+  if(borderInput) borderInput.addEventListener('input',event=>{REAL.nestingConfiguracao.margemBordaMm=Number(event.target.value)||0;marcarNestingConfiguracaoAlterada();invalidarNestingConfiguracao();});
+  document.querySelectorAll('[data-act="nesting-formato-largura"],[data-act="nesting-formato-altura"]').forEach(el=>el.addEventListener('input',event=>{
+    const id=Number(event.target.dataset.materialId), chave=event.target.dataset.act.endsWith('largura')?'larguraMm':'alturaMm';
+    REAL.nestingFormatosTemporarios[id]={...(REAL.nestingFormatosTemporarios[id]||{bobina:false}),[chave]:event.target.value};marcarNestingConfiguracaoAlterada();invalidarNestingConfiguracao();
+  }));
+  document.querySelectorAll('[data-act="nesting-formato-bobina"]').forEach(el=>el.addEventListener('change',event=>{
+    const id=Number(event.target.dataset.materialId);
+    REAL.nestingFormatosTemporarios[id]={...(REAL.nestingFormatosTemporarios[id]||{larguraMm:'',alturaMm:''}),bobina:event.target.checked};marcarNestingConfiguracaoAlterada();invalidarNestingConfiguracao();render();
+  }));
   const nestingFactibilidadeRetry=document.querySelector('[data-act="real-nesting-factibilidade-retry"]');
   if(nestingFactibilidadeRetry) nestingFactibilidadeRetry.addEventListener('click',async()=>{
     try{ await executarNestingFactibilidadeReal(); }

@@ -59,7 +59,25 @@ export type CpqFactibilidadeChapa = {
   nome: string;
   larguraMm: number;
   alturaMm: number;
+  bobina?: boolean;
+  principal?: boolean;
 };
+
+export function idFormatoTemporarioNesting(materiaPrimaId: number): number {
+  return 1_000_000_000 + (materiaPrimaId % 1_000_000_000);
+}
+
+export function calcularHashFormatosNesting(chapas: CpqFactibilidadeChapa[]): string {
+  const dados = chapas.map(chapa => ({
+    id: chapa.id,
+    nome: chapa.nome,
+    larguraMm: chapa.larguraMm,
+    alturaMm: chapa.alturaMm,
+    bobina: !!chapa.bobina,
+    principal: !!chapa.principal,
+  })).sort((a, b) => a.id - b.id || a.larguraMm - b.larguraMm || a.alturaMm - b.alturaMm);
+  return sha256(JSON.stringify(dados));
+}
 
 export type CpqNestingCamada = "face" | "aro" | "fundo";
 
@@ -591,17 +609,22 @@ function parseSvg(
   return { viewBox, paths, pieces, mmPerUnitX, mmPerUnitY };
 }
 
-function canonicalBoard(chapa: CpqFactibilidadeChapa) {
+function canonicalBoard(chapa: CpqFactibilidadeChapa, margemBordaMm = 0) {
+  const larguraMm = chapa.bobina ? chapa.larguraMm : Math.max(chapa.larguraMm, chapa.alturaMm);
+  const alturaMm = chapa.bobina ? chapa.alturaMm : Math.min(chapa.larguraMm, chapa.alturaMm);
   return {
     id: chapa.id,
     nome: chapa.nome,
-    larguraMm: Math.max(chapa.larguraMm, chapa.alturaMm),
-    alturaMm: Math.min(chapa.larguraMm, chapa.alturaMm),
+    larguraMm,
+    alturaMm,
+    larguraUtilMm: larguraMm - 2 * margemBordaMm,
+    alturaUtilMm: alturaMm - 2 * margemBordaMm,
+    bobina: !!chapa.bobina,
     areaMm2: chapa.larguraMm * chapa.alturaMm,
   };
 }
 
-function maiorChapa(material: CpqFactibilidadeMaterial) {
+function maiorChapa(material: CpqFactibilidadeMaterial, margemBordaMm = 0) {
   return [...material.chapas]
     .filter(
       chapa =>
@@ -610,7 +633,8 @@ function maiorChapa(material: CpqFactibilidadeMaterial) {
         chapa.larguraMm > 0 &&
         chapa.alturaMm > 0
     )
-    .map(canonicalBoard)
+    .map(chapa => canonicalBoard(chapa, margemBordaMm))
+    .filter(board => board.larguraUtilMm > 0 && board.alturaUtilMm > 0)
     .sort(
       (a, b) =>
         b.areaMm2 - a.areaMm2 ||
@@ -622,12 +646,12 @@ function maiorChapa(material: CpqFactibilidadeMaterial) {
 function melhorFatorDeEncaixe(bounds: Bounds, board: ReturnType<typeof canonicalBoard>): number {
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
-  const normalFits = width <= board.larguraMm && height <= board.alturaMm;
-  const rotatedFits = height <= board.larguraMm && width <= board.alturaMm;
+  const normalFits = width <= board.larguraUtilMm && height <= board.alturaUtilMm;
+  const rotatedFits = !board.bobina && height <= board.larguraUtilMm && width <= board.alturaUtilMm;
   if (normalFits || rotatedFits) return 1;
   return Math.max(
-    Math.min(board.larguraMm / width, board.alturaMm / height),
-    Math.min(board.larguraMm / height, board.alturaMm / width)
+    Math.min(board.larguraUtilMm / width, board.alturaUtilMm / height),
+    board.bobina ? 0 : Math.min(board.larguraUtilMm / height, board.alturaUtilMm / width)
   );
 }
 
@@ -760,8 +784,8 @@ function clipToSheets(
   board: ReturnType<typeof canonicalBoard>,
   material: CpqFactibilidadeMaterial
 ): { fragments: OutputFragment[]; lines: CpqLinhaCorte[] } {
-  const usableWidth = board.larguraMm - 2 * MARGEM_CORTE_MM;
-  const usableHeight = board.alturaMm - 2 * MARGEM_CORTE_MM;
+  const usableWidth = board.larguraUtilMm - 2 * MARGEM_CORTE_MM;
+  const usableHeight = board.alturaUtilMm - 2 * MARGEM_CORTE_MM;
   if (usableWidth <= 0 || usableHeight <= 0)
     throw new CpqFactibilidadeError(
       `A chapa ${board.nome} é menor que a margem técnica de 20 mm por borda.`,
@@ -775,7 +799,7 @@ function clipToSheets(
   });
   const normalPlan = plan(width, height);
   const rotatedPlan = plan(height, width);
-  const useRotation = rotatedPlan.cols * rotatedPlan.rows < normalPlan.cols * normalPlan.rows;
+  const useRotation = !board.bobina && rotatedPlan.cols * rotatedPlan.rows < normalPlan.cols * normalPlan.rows;
   const oriented = useRotation ? rotateGeometry(piece.geometry, piece.bounds) : piece.geometry;
   const orientedWidth = useRotation ? height : width;
   const orientedHeight = useRotation ? width : height;
@@ -1087,7 +1111,11 @@ export function calcularFactibilidadeFabricacao(input: {
   larguraSvgMm: number;
   alturaSvgMm: number;
   materiais: CpqFactibilidadeMaterial[];
+  margemBordaMm?: number;
 }): CpqFactibilidadeResult {
+  const margemBordaMm = input.margemBordaMm ?? 0;
+  if (!Number.isFinite(margemBordaMm) || margemBordaMm < 0 || margemBordaMm > 50)
+    throw new CpqFactibilidadeError("A margem da borda precisa ficar entre 0 e 50 mm.", "invalid_geometry");
   if (
     !Number.isFinite(input.larguraSvgMm) ||
     !Number.isFinite(input.alturaSvgMm) ||
@@ -1110,7 +1138,7 @@ export function calcularFactibilidadeFabricacao(input: {
   const boards = new Map<number, ReturnType<typeof canonicalBoard>>();
   const pecasPorMaterial = new Map<number, ParsedPiece[]>();
   for (const material of input.materiais) {
-    const board = maiorChapa(material);
+    const board = maiorChapa(material, margemBordaMm);
     if (!board)
       throw new CpqFactibilidadeError(
         `Não há chapa ativa cadastrada para ${material.nome} (${material.id}).`,
@@ -1443,9 +1471,11 @@ export function emitirTicketAnaliseFactibilidade(input: {
   fatorEscalaAplicado: number;
   fatorEscalaMinimoParaCaber: number;
   hashSvgRedimensionadoOpcao: string | null;
+  margemBordaMm?: number;
   materiais: Array<{
     idMateriaPrima: number;
     idChapa: number;
+    hashFormatos?: string;
     hashSvgParaNesting: string;
     hashPecasParaNesting: string;
     hashPecasRedimensionadasOpcao: string | null;
@@ -1462,6 +1492,7 @@ export function emitirTicketAnaliseFactibilidade(input: {
     fatorEscalaAplicado: input.fatorEscalaAplicado,
     fatorEscalaMinimoParaCaber: input.fatorEscalaMinimoParaCaber,
     hashSvgRedimensionadoOpcao: input.hashSvgRedimensionadoOpcao,
+    margemBordaMm: input.margemBordaMm,
     materiais: input.materiais,
     exp: Date.now() + (input.validadeMs ?? 7 * 24 * 60 * 60 * 1000),
   });
@@ -1478,9 +1509,11 @@ export function verificarTicketAnaliseFactibilidade(
   fatorEscalaAplicado: number;
   fatorEscalaMinimoParaCaber: number;
   hashSvgRedimensionadoOpcao: string | null;
+  margemBordaMm?: number;
   materiais: Array<{
     idMateriaPrima: number;
     idChapa: number;
+    hashFormatos?: string;
     hashSvgParaNesting: string;
     hashPecasParaNesting: string;
     hashPecasRedimensionadasOpcao: string | null;
@@ -1496,9 +1529,11 @@ export function verificarTicketAnaliseFactibilidade(
     fatorEscalaAplicado: number;
     fatorEscalaMinimoParaCaber: number;
     hashSvgRedimensionadoOpcao: string | null;
+    margemBordaMm?: number;
     materiais: Array<{
       idMateriaPrima: number;
       idChapa: number;
+      hashFormatos?: string;
       hashSvgParaNesting: string;
       hashPecasParaNesting: string;
       hashPecasRedimensionadasOpcao: string | null;
@@ -1514,6 +1549,7 @@ export function verificarTicketAnaliseFactibilidade(
     fatorEscalaAplicado: claims.fatorEscalaAplicado,
     fatorEscalaMinimoParaCaber: claims.fatorEscalaMinimoParaCaber,
     hashSvgRedimensionadoOpcao: claims.hashSvgRedimensionadoOpcao,
+    margemBordaMm: claims.margemBordaMm,
     materiais: claims.materiais,
   };
 }

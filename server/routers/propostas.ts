@@ -71,6 +71,8 @@ const materialConfiguracaoSchema = z.object({
     aproveitamentoPct: z.number().min(0).max(100),
     criterio: z.enum(["menor_chapa_que_comporta", "menor_sobra_financeira", "maior_aproveitamento"]),
     custoUnitarioCatalogo: z.number().nonnegative(),
+    espacamentoPecasMm: z.number().min(0).max(50).optional(),
+    margemBordaMm: z.number().min(0).max(50).optional(),
   }).nullable().optional(),
   incluir: z.boolean(),
 }).strict();

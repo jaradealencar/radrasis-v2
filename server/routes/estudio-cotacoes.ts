@@ -74,6 +74,7 @@ const factibilidadeSchema = z.object({
   resultadoHash: z.string().regex(/^[a-f0-9]{64}$/),
   ticketAnalise: z.string().min(20).max(2000),
   fatorEscalaAplicado: z.number().finite().positive().max(1),
+  margemBordaMm: z.number().finite().min(0).max(50).optional().default(0),
   acao: z.enum(["APROVAR_EMENDA_TECNICA", "REDIMENSIONAR_PARA_CABER"]).nullable(),
   reciboDecisao: z.string().min(20).max(2000).nullable(),
   detalhesCorte: z.object({
@@ -88,6 +89,7 @@ const factibilidadeSchema = z.object({
   materiais: z.array(z.object({
     idMateriaPrima: z.number().int().positive(),
     idChapa: z.number().int().positive(),
+    hashFormatos: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     hashSvgParaNesting: z.string().regex(/^[a-f0-9]{64}$/),
     hashPecasParaNesting: z.string().regex(/^[a-f0-9]{64}$/),
     hashPecasRedimensionadasOpcao: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
@@ -169,6 +171,8 @@ const snapshotSchema = z.object({
       custoSobraEstimado: z.number().nonnegative().nullable(),
       alertaCusto: z.string().max(1000).nullable(),
       chapaPrincipal: z.boolean(),
+      espacamentoPecasMm: z.number().min(0).max(50).optional(),
+      margemBordaMm: z.number().min(0).max(50).optional(),
       reciboIntegridade: z.string().min(20).max(4000),
     }).nullable().optional(),
   }).strict()).max(300).optional().default([]),
@@ -296,7 +300,8 @@ function validarFactibilidadeSnapshot(
     analise.statusFactibilidade !== factibilidade.statusFactibilidade ||
     analise.hashSvgEntrada !== createHash("sha256").update(snapshot.nestingSvg).digest("hex") ||
     analise.detalhesCorteHash !== createHash("sha256").update(JSON.stringify(factibilidade.detalhesCorte)).digest("hex") ||
-    Math.abs(fatorEscalaEsperado - factibilidade.fatorEscalaAplicado) > 1e-8
+    Math.abs(fatorEscalaEsperado - factibilidade.fatorEscalaAplicado) > 1e-8 ||
+    Math.abs((analise.margemBordaMm ?? 0) - factibilidade.margemBordaMm) > 1e-8
   ) {
     throw new Error("A factibilidade não corresponde ao resultado assinado pelo servidor.");
   }
@@ -305,6 +310,7 @@ function validarFactibilidadeSnapshot(
     .map(material => ({
       idMateriaPrima: material.idMateriaPrima,
       idChapa: material.idChapa,
+      hashFormatos: material.hashFormatos,
       hashSvgParaNesting: material.hashSvgParaNesting,
       hashPecasParaNesting: material.hashPecasParaNesting,
       hashPecasRedimensionadasOpcao: material.hashPecasRedimensionadasOpcao,
@@ -332,6 +338,8 @@ function validarFactibilidadeSnapshot(
     if (
       assinado.id_materia_prima !== idMateriaPrima ||
       assinado.materia_prima !== linha.nome ||
+      (assinado.espacamento_pecas_mm != null && assinado.espacamento_pecas_mm !== nesting.espacamentoPecasMm) ||
+      (assinado.margem_borda_mm != null && assinado.margem_borda_mm !== nesting.margemBordaMm) ||
       assinado.id_chapa_utilizada !== nesting.idChapa ||
       assinado.nome_chapa_utilizada !== nesting.nomeChapa ||
       dimensoes.larguraMm !== nesting.larguraMm || dimensoes.alturaMm !== nesting.alturaMm ||

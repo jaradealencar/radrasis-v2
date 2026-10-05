@@ -11,6 +11,8 @@ import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
   calcularFactibilidadeFabricacao,
   calcularHashFactibilidade,
+  calcularHashFormatosNesting,
+  idFormatoTemporarioNesting,
   CpqFactibilidadeError,
   emitirReciboDecisaoFactibilidade,
   emitirTicketAnaliseFactibilidade,
@@ -28,6 +30,13 @@ const analisarInput = z
     larguraSvgMm: z.number().finite().positive().max(50_000),
     alturaSvgMm: z.number().finite().positive().max(50_000),
     materiaPrimaIds: z.array(z.number().int().positive()).min(1).max(10),
+    margemBordaMm: z.number().finite().min(0).max(50).optional().default(0),
+    formatosTemporarios: z.array(z.object({
+      materiaPrimaId: z.number().int().positive(),
+      larguraMm: z.number().int().min(10).max(50_000),
+      alturaMm: z.number().int().min(10).max(50_000),
+      bobina: z.boolean().optional().default(false),
+    }).strict()).max(10).optional().default([]),
     /** O SVG é o contorno de corte (uma silhueta): toda a face vira peças da chapa transparente, sem separar por cor. */
     contornoCorte: z.boolean().optional(),
     camadasMateriais: z.array(z.object({
@@ -42,6 +51,9 @@ const analisarInput = z
         code: "custom",
         message: "A lista de matérias-primas não pode ter IDs repetidos.",
       });
+    const idsManuais = input.formatosTemporarios.map(formato => formato.materiaPrimaId);
+    if (new Set(idsManuais).size !== idsManuais.length || idsManuais.some(id => !input.materiaPrimaIds.includes(id)))
+      context.addIssue({ code: "custom", message: "Cada formato informado precisa pertencer a uma materia-prima do nesting." });
     if (input.camadasMateriais) {
       const assignments = input.camadasMateriais.map(item => `${item.materiaPrimaId}:${item.camada}`);
       if (new Set(assignments).size !== assignments.length)
@@ -140,10 +152,13 @@ async function analisar(req: Request, res: Response): Promise<void> {
       ? db.select().from(estudioMapeamentoCoresCotacao).where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.data.sourceId))
       : Promise.resolve([]),
   ]);
-  if (parsed.data.camadasMateriais && (!mapeamentosCor.length || mapeamentosCor.some(row => !row.aprovado)))
-    return void respostaErro(res, 409, "A análise de materiais da face precisa estar aprovada antes da factibilidade por camada.");
+  const mapeamentosCorAprovados = mapeamentosCor.length > 0 && mapeamentosCor.every(row => row.aprovado)
+    ? mapeamentosCor
+    : [];
+  if (parsed.data.contornoCorte && !mapeamentosCorAprovados.length)
+    return void respostaErro(res, 409, "A extração do contorno de corte depende da analise de cores aprovada.");
 
-  const faceCaminhos = agruparCaminhosFacePorMateriaPrima(mapeamentosCor.flatMap(row => {
+  const faceCaminhos = agruparCaminhosFacePorMateriaPrima(mapeamentosCorAprovados.flatMap(row => {
     const details = row.detalhesJson as Record<string, unknown>;
     const materiaPrimaId = row.tipoSugestao === "chapa"
       ? details.chapaMateriaPrimaId
@@ -157,7 +172,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
   }));
   if (parsed.data.contornoCorte) {
     // O contorno único só substitui os caminhos por cor quando TODA a face é adesivo sobre acrílico transparente.
-    const toda = mapeamentosCor.length > 0 && mapeamentosCor.every(row => {
+    const toda = mapeamentosCorAprovados.length > 0 && mapeamentosCorAprovados.every(row => {
       const details = row.detalhesJson as Record<string, unknown>;
       return (row.tipoSugestao === "impresso" || row.tipoSugestao === "imprimax")
         && details.requerChapaBase === true && typeof details.chapaBaseMateriaPrimaId === "number";
@@ -198,18 +213,34 @@ async function analisar(req: Request, res: Response): Promise<void> {
         422,
         `A matéria-prima ${id} não está no catálogo atual do MubiSys.`
       );
-    materials.push({
-      id: material.id,
-      nome: material.nome,
-      lotes: camadasPorMaterial.get(id),
-      chapas: chapas
-        .filter(chapa => chapa.mubisysMateriaPrimaId === id)
-        .map(chapa => ({
+    const chapasCadastradas = chapas.filter(chapa => chapa.mubisysMateriaPrimaId === id);
+    const formatoTemporario = parsed.data.formatosTemporarios.find(formato => formato.materiaPrimaId === id);
+    const chapasResolvidas = chapasCadastradas.length
+      ? chapasCadastradas.map(chapa => ({
           id: chapa.id,
           nome: chapa.nome,
           larguraMm: chapa.larguraMm,
           alturaMm: chapa.alturaMm,
-        })),
+          bobina: chapa.bobina,
+          principal: chapa.principal,
+        }))
+      : formatoTemporario
+        ? [{
+            id: idFormatoTemporarioNesting(id),
+            nome: "Dimensões informadas para este nesting",
+            larguraMm: formatoTemporario.larguraMm,
+            alturaMm: formatoTemporario.alturaMm,
+            bobina: formatoTemporario.bobina,
+            principal: true,
+          }]
+        : [];
+    if (!chapasResolvidas.length)
+      return void respostaErro(res, 422, `Informe largura e altura para ${material.nome} antes do nesting.`);
+    materials.push({
+      id: material.id,
+      nome: material.nome,
+      lotes: camadasPorMaterial.get(id),
+      chapas: chapasResolvidas,
     });
   }
 
@@ -219,6 +250,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
       larguraSvgMm: parsed.data.larguraSvgMm,
       alturaSvgMm: parsed.data.alturaSvgMm,
       materiais: materials,
+      margemBordaMm: parsed.data.margemBordaMm,
     });
     const resultadoHash = calcularHashFactibilidade(parsed.data.sourceId, resultado);
     const ticketAnalise = emitirTicketAnaliseFactibilidade({
@@ -230,9 +262,11 @@ async function analisar(req: Request, res: Response): Promise<void> {
       fatorEscalaAplicado: resultado.fator_escala_aplicado,
       fatorEscalaMinimoParaCaber: resultado.fator_escala_minimo_para_caber,
       hashSvgRedimensionadoOpcao: resultado.hash_svg_redimensionado_opcao,
+      margemBordaMm: parsed.data.margemBordaMm,
       materiais: resultado.materiais.map(material => ({
         idMateriaPrima: material.id_materia_prima,
         idChapa: material.id_maior_chapa,
+        hashFormatos: calcularHashFormatosNesting(materials.find(item => item.id === material.id_materia_prima)?.chapas ?? []),
         hashSvgParaNesting: material.hash_svg_para_nesting,
         hashPecasParaNesting: material.hash_pecas_para_nesting,
         hashPecasRedimensionadasOpcao: material.hash_pecas_redimensionadas_opcao,
@@ -241,6 +275,10 @@ async function analisar(req: Request, res: Response): Promise<void> {
     res.setHeader("Cache-Control", "private, no-store");
     res.json({
       ...resultado,
+      materiais: resultado.materiais.map(material => ({
+        ...material,
+        hashFormatos: calcularHashFormatosNesting(materials.find(item => item.id === material.id_materia_prima)?.chapas ?? []),
+      })),
       sourceId: parsed.data.sourceId,
       resultadoHash,
       ticketAnalise,
