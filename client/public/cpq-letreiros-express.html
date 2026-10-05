@@ -944,7 +944,8 @@ function extractPathsFromRawSVG(svgText){
   return { d, w:vw, h:vh, pathCount:paths.length, nonPathCount, transformedCount };
 }
 
-const TRACE_REVIEW_DEFAULTS = {letras:false, simbolo:false, isolamento:false};
+// 'forcar' só vale quando a validação automática reprova: o vendedor pode avançar por conta própria (decisão de 05/10/2026).
+const TRACE_REVIEW_DEFAULTS = {letras:false, simbolo:false, isolamento:false, forcar:false};
 // A comparação roda em 1024 px (antes 512): em letras finas, 1 px de borda já derrubava a coincidência.
 const TRACE_COMPARE_SIZE = 1024;
 const TRACE_COMPARE_ALVO = 920; // maior lado da arte, em pixels, dentro da área de comparação
@@ -1243,7 +1244,12 @@ async function validatePrompt2Trace(referenceSrc,svgText){
 
 function traceReviewReady(){
   const quality=REAL.traceQuality;
-  return !!REAL.fgD && !!quality && ['pass','manual'].includes(quality.status) && Object.values(REAL.traceReview||{}).every(Boolean);
+  if(!REAL.fgD || !quality) return false;
+  const {forcar, ...conferencias}=REAL.traceReview||{};
+  if(!Object.values(conferencias).every(Boolean)) return false;
+  // Reprovado pela validação: segue só se o vendedor declarar que entende o risco. Pass/manual seguem como antes.
+  if(quality.status==='fail') return !!forcar;
+  return ['pass','manual'].includes(quality.status);
 }
 
 function traceQualityPanel(){
@@ -1253,7 +1259,7 @@ function traceQualityPanel(){
   const metrics=q.metrics;
   return `<div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none;">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
-      <div><h4 style="margin:0 0 4px;">Validação automática do Prompt 2</h4><div style="font-size:12px;color:var(--text-faint);">${passed?'Limites geométricos atendidos.':manual?(metrics?'Pequena diferença em relação à arte; confira a sobreposição e confirme abaixo.':'Sem bitmap de referência; revisão manual necessária.'):'Aprovação bloqueada até corrigir os itens abaixo.'}</div></div>
+      <div><h4 style="margin:0 0 4px;">Validação automática do Prompt 2</h4><div style="font-size:12px;color:var(--text-faint);">${passed?'Limites geométricos atendidos.':manual?(metrics?'Pequena diferença em relação à arte; confira a sobreposição e confirme abaixo.':'Sem bitmap de referência; revisão manual necessária.'):'A validação automática reprovou. O ideal é corrigir a arte; se você entende o risco, pode avançar por sua conta.'}</div></div>
       <span class="badge ${passed?'b-ok':manual?'b-warn':'b-bad'}">${passed?'APROVADO NA MÉTRICA':manual?'REVISÃO MANUAL':'DIVERGÊNCIA'}</span>
     </div>
     ${metrics?`<div class="grid3" style="margin-top:12px;">
@@ -1269,11 +1275,12 @@ function traceQualityPanel(){
     </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;"><button class="btn btn-ghost btn-sm" data-act="download-trace-overlay">Baixar sobreposição PNG</button><button class="btn btn-ghost btn-sm" data-act="download-trace-difference">Baixar diferenças PNG</button></div>`:''}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;"><button class="btn btn-ghost btn-sm" data-act="download-trace-report">Baixar relatório de validação</button></div>
     <div class="checklist" style="margin-top:14px;">
-      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="letras" ${REAL.traceReview.letras?'checked':''} ${q.status==='fail'?'disabled':''}> Conferi cada letra, acento, espaçamento e proporção contra a arte aprovada.</label>
-      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="simbolo" ${REAL.traceReview.simbolo?'checked':''} ${q.status==='fail'?'disabled':''}> Conferi o símbolo, recortes, vazados e posições; não há peça faltando ou sobrando.</label>
-      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="isolamento" ${REAL.traceReview.isolamento?'checked':''} ${q.status==='fail'?'disabled':''}> Confirmei que só há a identidade visual, sem fundo, perspectiva, relevo ou elementos da fachada.</label>
+      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="letras" ${REAL.traceReview.letras?'checked':''}> Conferi cada letra, acento, espaçamento e proporção contra a arte aprovada.</label>
+      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="simbolo" ${REAL.traceReview.simbolo?'checked':''}> Conferi o símbolo, recortes, vazados e posições; não há peça faltando ou sobrando.</label>
+      <label class="checkrow"><input type="checkbox" data-act="trace-review" data-val="isolamento" ${REAL.traceReview.isolamento?'checked':''}> Confirmei que só há a identidade visual, sem fundo, perspectiva, relevo ou elementos da fachada.</label>
+      ${q.status==='fail'?`<label class="checkrow" style="margin-top:6px;"><input type="checkbox" data-act="trace-review" data-val="forcar" ${REAL.traceReview.forcar?'checked':''}> <b>Entendo que a validação automática reprovou esta vetorização e quero avançar mesmo assim, por minha conta.</b></label>`:''}
     </div>
-    ${!traceReviewReady()?`<div class="role-note" style="margin-top:9px;">${q.status==='fail'?(REAL.sourceKind==='vetor'?'Corrija o SVG em um editor vetorial e envie novamente. O avanço continua bloqueado até passar na validação.':'Corrija a arte no editor e vetorize novamente para recalcular.'):'Marque os três itens de revisão para liberar o avanço.'}</div>`:''}
+    ${!traceReviewReady()?`<div class="role-note" style="margin-top:9px;">${q.status==='fail'?'Para avançar mesmo assim, marque os três itens de conferência e a ciência do risco. Para corrigir, '+(REAL.sourceKind==='vetor'?'ajuste o SVG em um editor vetorial e envie novamente.':'edite a arte e vetorize novamente.'):'Marque os três itens de revisão para liberar o avanço.'}</div>`:''}
   </div>`;
 }
 
@@ -1290,6 +1297,7 @@ function downloadTraceReport(){
   const lines=['CPQ Letreiros Express — relatório de validação do Prompt 2',`Status: ${q.status}`,`Caminhos SVG: ${q.audit.pathCount}`,`Subcaminhos abertos: ${q.audit.openPathCount}`,`Caminhos duplicados: ${q.audit.duplicateCount}`];
   if(metrics)lines.push(`Coincidência de silhueta (IoU): ${metrics.iou.toFixed(2)}% (mínimo ${TRACE_IOU_MIN}%)`,`Variação de proporção: ${metrics.aspectDelta.toFixed(2)}% (máximo ${TRACE_ASPECT_MAX}%)`,`Deslocamento máximo: ${metrics.shiftPercent.toFixed(2)}% (máximo ${TRACE_SHIFT_MAX_PERCENT}%)`);
   lines.push('', 'Pendências:',...(q.fatal||[]).map(x=>`- ${x}`),'Observações:',...(q.warnings||[]).map(x=>`- ${x}`),'','A métrica compara silhuetas rasterizadas e não confirma grafia, identidade da marca ou adequação para produção.');
+  if(q.status==='fail'&&REAL.traceReview&&REAL.traceReview.forcar)lines.push('','AVANÇO MANUAL: o vendedor aprovou a vetorização mesmo com a validação automática reprovada, declarando entender o risco.');
   const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cpq-relatorio-vetorizacao.txt';a.click();URL.revokeObjectURL(url);
 }
 
@@ -1454,7 +1462,7 @@ function painelLeituraArte(){
     </div>
     ${a.textos.length ? `<div style="font-size:12.5px;margin-bottom:6px;"><b>Textos lidos:</b> ${a.textos.map(texto => '“' + escaparHtml(texto) + '”').join(' · ')}<div class="role-note">Confira com a arte: a validação de letras depende de você.</div></div>` : ''}
     ${a.temFundo ? `<div class="warnbox" style="margin-bottom:6px;"><span>${ICONS.alert}</span><div>A leitura viu fundo na arte${a.descricaoFundo ? ' (' + escaparHtml(a.descricaoFundo) + ')' : ''}. Se for fundo de verdade, o contorno de corte pode sair errado; prefira reconstruir só o logotipo.</div></div>` : ''}
-    ${a.temFoto || a.temDegrade ? '<div class="role-note">Foto ou degradê: essa parte será adesivo impresso.</div>' : ''}
+    ${(a.areasAdesivo || []).length ? `<div class="warnbox" style="margin-bottom:6px;"><span>${ICONS.info}</span><div><b>Áreas que provavelmente terão adesivo impresso:</b>${a.areasAdesivo.map(area => `<div>• ${escaparHtml(area.descricao)}${area.posicao ? ' — ' + escaparHtml(area.posicao) : ''}${area.motivo ? ' (' + escaparHtml(area.motivo) + ')' : ''}</div>`).join('')}</div></div>` : (a.temFoto || a.temDegrade ? '<div class="role-note">Foto ou degradê: essa parte será adesivo impresso.</div>' : '')}
     ${a.avisos.map(aviso => `<div class="role-note">${escaparHtml(aviso)}</div>`).join('')}
     <div style="font-size:12px;margin-top:8px;"><b>Ajustes enviados ao Vectorizer.AI:</b> ${enviados.length ? escaparHtml(enviados.join(' · ')) : 'nenhum (parâmetros padrão)'}</div>
     ${(leitura.motivos || []).map(motivo => `<div class="role-note">${escaparHtml(motivo)}</div>`).join('')}
@@ -5011,11 +5019,11 @@ function adminConfiguracoes(){
     </div>
   </div>
   <div class="card">
-    <div class="cardhead"><div><h3>Regras para a leitura da arte e a vetorização</h3><p>Escreva em palavras como o leitor de imagem deve orientar o Vectorizer.AI. Antes de vetorizar, um modelo de visão olha a arte aprovada e aplica estas regras. Ele só pode ajustar três coisas, sempre dentro de limites seguros: <b>limite de cores</b> (2 a 48), <b>área mínima das formas</b> em pixels (0,5 a 30) e <b>tolerância das curvas</b> (0,02 a 0,5).</p></div></div>
+    <div class="cardhead"><div><h3>Regras para a leitura da arte e a vetorização</h3><p>Já vem preenchido com regras sugeridas; edite à vontade. Escreva em palavras como o leitor de imagem deve orientar o Vectorizer.AI. Antes de vetorizar, um modelo de visão olha a arte aprovada e aplica estas regras. Ele só pode ajustar três coisas, sempre dentro de limites seguros: <b>limite de cores</b> (2 a 48), <b>área mínima das formas</b> em pixels (0,5 a 30) e <b>tolerância das curvas</b> (0,02 a 0,5).</p></div></div>
     <label class="field">Regras (uma por linha)
       <textarea data-act="config-regras-leitura" rows="7" maxlength="4000" style="width:100%;resize:vertical;font-family:inherit;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);" placeholder="Exemplos:&#10;- Se a arte tiver só letras sem foto, use limite de cores igual ao número de cores mais 1.&#10;- Se houver letras muito finas, use área mínima de 1 pixel.&#10;- Se houver foto dentro do logotipo, limite de 24 cores.&#10;- Se as curvas saírem com muitos pontos, aumente a tolerância para 0,2.">${escaparHtml(configGeral.regrasLeituraArte||'')}</textarea>
     </label>
-    <p class="role-note" style="margin-top:6px;">Sem regras, o sistema usa a recomendação padrão (poucas cores chapadas: limite de cores + 2; foto ou degradê: 32 cores; detalhes finos: área mínima 2). As regras que o modelo usar aparecem no quadro "Leitura da arte" da vetorização. O que estiver escrito dentro da imagem nunca vira regra.</p>
+    <p class="role-note" style="margin-top:6px;">Se você apagar tudo e salvar, o sistema usa só a recomendação padrão (poucas cores chapadas: limite de cores + 2; foto ou degradê: 32 cores; detalhes finos: área mínima 2). As regras que o modelo usar aparecem no quadro "Leitura da arte" da vetorização. O que estiver escrito dentro da imagem nunca vira regra.</p>
   </div>
   </fieldset>
   <div class="role-note" role="status" aria-live="polite">${configGeralEstado==='erro'?ICONS.alert:ICONS.info} ${mensagemConfig}${configGeralEstado==='erro'?` <button class="btn btn-ghost btn-sm" data-act="config-retry">Tentar novamente</button>`:''}</div>`;

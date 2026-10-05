@@ -12,6 +12,7 @@ import {
 } from "../services/redesenhoTicket";
 import { vectorizeImage, VectorizerAiError, limitarAjustesVetorizacao } from "../services/vectorizerAi";
 import { analisarArte } from "../services/cpqAnaliseArte";
+import { REGRAS_LEITURA_ARTE_PADRAO } from "../../shared/cpq-regras-leitura-padrao";
 import { estudioConfiguracoes } from "../../drizzle/schema";
 import { getDb } from "../db/db";
 import { eq } from "drizzle-orm";
@@ -158,7 +159,8 @@ async function executarAnaliseArte(req: Request, res: Response): Promise<void> {
     const db = await getDb();
     const [linha] = db ? await db.select().from(estudioConfiguracoes).where(eq(estudioConfiguracoes.id, 1)).limit(1) : [];
     const salvo = linha?.configuracaoJson as { regrasLeituraArte?: unknown } | null | undefined;
-    const regrasAdministrador = typeof salvo?.regrasLeituraArte === "string" ? salvo.regrasLeituraArte : "";
+    // Sem texto salvo, valem as regras sugeridas; quem salvou o campo vazio fica sem regras.
+    const regrasAdministrador = typeof salvo?.regrasLeituraArte === "string" ? salvo.regrasLeituraArte : REGRAS_LEITURA_ARTE_PADRAO;
     const resultado = await analisarArte({ imageBuffer: req.body, mimeType, regrasAdministrador });
     res.setHeader("Cache-Control", "no-store");
     res.json(resultado);

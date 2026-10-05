@@ -18,6 +18,11 @@ export const analiseArteSchema = z.object({
   quantidadeCoresChapadas: z.number().int().min(0).max(40),
   coresPrincipais: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(8),
   detalhesFinos: z.boolean(),
+  areasAdesivo: z.array(z.object({
+    descricao: z.string().max(200),
+    posicao: z.string().max(80),
+    motivo: z.string().max(160),
+  })).max(8),
   elementos: z.array(z.object({
     tipo: z.enum(["texto", "simbolo", "foto", "degrade", "forma_chapada"]),
     descricao: z.string().max(200),
@@ -42,7 +47,7 @@ export const ANALISE_ARTE_JSON_SCHEMA: JsonSchema = {
     type: "object",
     additionalProperties: false,
     required: ["temFundo", "descricaoFundo", "textos", "temFoto", "temDegrade", "quantidadeCoresChapadas", "coresPrincipais",
-      "detalhesFinos", "elementos", "avisos", "confianca", "parametros", "regrasAplicadas"],
+      "detalhesFinos", "areasAdesivo", "elementos", "avisos", "confianca", "parametros", "regrasAplicadas"],
     properties: {
       temFundo: { type: "boolean" },
       descricaoFundo: textoNulavel,
@@ -52,6 +57,13 @@ export const ANALISE_ARTE_JSON_SCHEMA: JsonSchema = {
       quantidadeCoresChapadas: { type: "integer" },
       coresPrincipais: { type: "array", items: { type: "string" } },
       detalhesFinos: { type: "boolean" },
+      areasAdesivo: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false, required: ["descricao", "posicao", "motivo"],
+          properties: { descricao: { type: "string" }, posicao: { type: "string" }, motivo: { type: "string" } },
+        },
+      },
       elementos: {
         type: "array",
         items: {
@@ -84,6 +96,7 @@ Regras:
 - "temFoto": há fotografia ou imagem com tons contínuos e muitos detalhes. "temDegrade": há transições suaves de cor.
 - "quantidadeCoresChapadas": quantas cores de preenchimento chapado distintas existem (não conte bordas suavizadas, sombras nem tons de foto/degradê).
 - "detalhesFinos": há linhas, letras ou detalhes muito pequenos ou finos que não podem ser perdidos.
+- "areasAdesivo": áreas que provavelmente terão de receber adesivo impresso em vez de chapa de cor (fotos, degradês, imagens dentro de círculos ou molduras, regiões com muitos tons pequenos). Para cada uma, diga onde fica ("posicao", ex.: "círculo à esquerda do texto") e por quê ("motivo"). Lista vazia se a arte for só de cores chapadas.
 - "parametros": ajustes do Vectorizer.AI (maxCores 2 a 48; minAreaPx 0,5 a 30, área mínima de uma forma em pixels; tolerancia 0,02 a 0,5, erro das curvas). Use null quando nenhuma regra do administrador pedir o ajuste.
 - "regrasAplicadas": copie, de forma curta, cada regra do administrador que você usou. Se não houver regras, devolva uma lista vazia.`;
 
