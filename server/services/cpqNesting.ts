@@ -102,6 +102,9 @@ export type CpqNestingResultadoAssinavel = Pick<
   | "largura_bobina_mm"
 >;
 
+/** Tempo máximo do Deepnest por tentativa (formato de chapa ou comprimento de bobina). */
+const TEMPO_MOTOR_MS = 20_000;
+
 function nestingSecret(): string {
   const value = process.env.JWT_SECRET;
   if (!value || value.length < 32) throw new CpqNestingError("JWT_SECRET precisa ter pelo menos 32 caracteres para assinar o resultado de nesting.", "configuration");
@@ -406,10 +409,17 @@ export async function calcularNestingMultiMaterial(input: {
           // Largura fixa (alturaMm); o comprimento é medido pelo layout, não cadastrado.
           const larguraBobinaMm = alturaMm;
           const comprimentoInicialMm = comprimentoInicialBobinaMm(pecasMaterialOriginal, larguraBobinaMm, larguraMm);
-          let nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, 20_000);
-          if (!completo(nesting) && comprimentoInicialMm < larguraMm)
-            nesting = await executarMotor(pecasMaterial, larguraMm, larguraBobinaMm, espacamentoMm, 20_000);
-          if (!completo(nesting)) continue;
+          // O worker real não devolve layout incompleto: sem encaixe no tempo, ele falha com erro de motor.
+          // Por isso o comprimento curto que não fecha (resultado incompleto OU erro de motor) repete com o teto.
+          let nesting: DeepnestWorkerResult | null = null;
+          try {
+            nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS);
+          } catch (error) {
+            if (!(error instanceof CpqNestingError) || error.code !== "engine" || comprimentoInicialMm >= larguraMm) throw error;
+          }
+          if ((!nesting || !completo(nesting)) && comprimentoInicialMm < larguraMm)
+            nesting = await executarMotor(pecasMaterial, larguraMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS);
+          if (!nesting || !completo(nesting)) continue;
           const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
           const comprimentoConsumidoMm = Math.ceil(caixa.larguraMm);
           const areaCobradaM2 = (comprimentoConsumidoMm * larguraBobinaMm) / 1_000_000;
@@ -428,7 +438,7 @@ export async function calcularNestingMultiMaterial(input: {
           continue;
         }
         const dimensoes = { larguraMm, alturaMm };
-        const nesting = await executarMotor(pecasMaterial, larguraMm, alturaMm, espacamentoMm, 20_000);
+        const nesting = await executarMotor(pecasMaterial, larguraMm, alturaMm, espacamentoMm, TEMPO_MOTOR_MS);
         if (!completo(nesting)) continue;
         const caixa = calcularBoundingBoxEsquerdo(nesting.bounds);
         const areaChapaM2 = (larguraMm * alturaMm) / 1_000_000;

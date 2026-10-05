@@ -107,6 +107,32 @@ describe("CPQ nesting em bobina (largura fixa, comprimento medido)", () => {
     expect(resultado.formato).toBe("bobina");
   });
 
+  it("o worker real falha com erro (não devolve layout incompleto): repete com o teto em vez de abortar", async () => {
+    const entradas: EntradaMotor[] = [];
+    mockDeepnest(input => {
+      entradas.push(input);
+      return input.larguraMm < 50_000 ? { error: "O Deepnest excedeu o tempo sem concluir um layout válido." } : layoutCompleto;
+    });
+    const [resultado] = await calcularNestingMultiMaterial({ pecas, materiais: [bobina("m2")] });
+
+    expect(entradas.length).toBe(2);
+    expect(resultado.formato).toBe("bobina");
+  });
+
+  it("se nem o teto fecha o layout, a falha do motor sobe como erro de motor", async () => {
+    mockDeepnest(() => ({ error: "O Deepnest excedeu o tempo sem concluir um layout válido." }));
+    await expect(calcularNestingMultiMaterial({ pecas, materiais: [bobina("m2")] }))
+      .rejects.toMatchObject({ name: "CpqNestingError", code: "engine" });
+  });
+
+  it("peça mais larga que o rolo não vira layout: avisa que não coube", async () => {
+    mockDeepnest(() => ({ ...layoutCompleto, completo: false, quantidadePosicionada: 0, placements: [], bounds: null }));
+    await expect(calcularNestingMultiMaterial({
+      pecas: [{ id: "larga", svg, larguraMm: 1_500, alturaMm: 1_400 }],
+      materiais: [bobina("m2")],
+    })).rejects.toMatchObject({ code: "no_fit" });
+  });
+
   it("cobra metro linear pelo comprimento consumido, e não pelo perímetro", async () => {
     mockDeepnest(() => layoutCompleto);
     const [resultado] = await calcularNestingMultiMaterial({ pecas, materiais: [bobina("ml")] });

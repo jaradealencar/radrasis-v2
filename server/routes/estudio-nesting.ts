@@ -222,7 +222,19 @@ async function listarDadosPeso(req: Request, res: Response): Promise<void> {
     };
   });
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ materias });
+  res.json({ itens, ...somarPesos(itens) });
+}
+
+const MENSAGEM_BOBINA_FORA_DAQUI =
+  "Bobinas (adesivo, papel kraft) são cadastradas em Produtos > Matérias-primas, na categoria de bobina; esta tela é só para chapas.";
+
+async function materiaPrimaEhBobina(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, materiaPrimaId: number): Promise<boolean> {
+  const [linha] = await db
+    .select({ usaDadosBobina: materiaPrimaCategorias.usaDadosBobina })
+    .from(materiaPrimaCadastros)
+    .innerJoin(materiaPrimaCategorias, eq(materiaPrimaCategorias.id, materiaPrimaCadastros.categoriaId))
+    .where(eq(materiaPrimaCadastros.mubisysMateriaPrimaId, materiaPrimaId));
+  return linha?.usaDadosBobina === true;
 }
 
 async function salvarChapa(
@@ -290,6 +302,13 @@ async function salvarChapa(
         await tx.insert(materiaPrimaCadastros)
           .values({ mubisysMateriaPrimaId: data.mubisysMateriaPrimaId, ...dadosTecnicos, updatedAt: new Date() })
           .onConflictDoUpdate({ target: materiaPrimaCadastros.mubisysMateriaPrimaId, set: { ...dadosTecnicos, updatedAt: new Date() } });
+  // Bobinas só se editam em Produtos > Matérias-primas: esta rota normalizaria o tamanho como chapa.
+  if (id != null) {
+    const [atual] = await db.select({ bobina: estudioChapas.bobina }).from(estudioChapas).where(eq(estudioChapas.id, id));
+    if (atual?.bobina) return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
+  }
+  if (await materiaPrimaEhBobina(db, data.mubisysMateriaPrimaId))
+    return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
       }
       const chapaValues = { ...values, principal };
       if (id == null) {
@@ -353,6 +372,7 @@ async function desativarChapa(req: Request, res: Response): Promise<void> {
 
 async function calcularNesting(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
+    if (chapa.bobina) return "bobina" as const;
   const parsed = nestingInput.safeParse(req.body);
   if (!parsed.success)
     return void erro(
@@ -368,6 +388,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
     db
       .select()
       .from(estudioChapas)
+  if (record === "bobina") return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
       .where(
         inArray(
           estudioChapas.mubisysMateriaPrimaId,
