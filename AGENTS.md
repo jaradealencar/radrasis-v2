@@ -534,8 +534,10 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   o Prompt 2: normaliza caminhos vetoriais para preenchimento branco e contorno
   preto; rejeita raster, texto, formas fora de caminho, transforms, recursos
   externos, duplicados e contornos abertos; e compara a silhueta rasterizada
-  com a arte aprovada (IoU mínimo 95%, variação de proporção e deslocamento
-  máximo de 1%). Sobreposição, mapa de diferenças, preview PNG e relatório
+  com a arte aprovada em 1024 px (aprovado: IoU ≥ 95% ou, aceitando diferença de borda de ~0,4%, ≥ 97%, com
+  variação de proporção e deslocamento ≤ 1%; revisão manual do vendedor: IoU ≥ 85%, proporção ≤ 3% e deslocamento
+  ≤ 2%; abaixo disso, bloqueado. A faixa manual é de 05/10/2026: o limite único de 95% reprovava vetorizações
+  boas de letras finas). Sobreposição, mapa de diferenças, preview PNG e relatório
   podem ser baixados. O nesting local só é liberado após passar nos limites e
   o vendedor confirmar letras, símbolo e isolamento. SVG recebido sem bitmap
   de referência exige a mesma revisão manual, com validação estrutural. Após
