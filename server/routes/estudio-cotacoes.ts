@@ -4,6 +4,7 @@ import type { Express, Request, Response } from "express";
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { estudioMapeamentoCoresCotacao, propostas } from "../../drizzle/schema";
+import { consumoGabaritoKraftM2 } from "../../shared/gabarito";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import {
@@ -482,6 +483,17 @@ function assinaturaSnapshotCotacao(sourceId: string, snapshot: z.infer<typeof sn
 
 function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
   for (const linha of snapshot.materiais ?? []) {
+    // Gabarito kraft: medida já em m² de papel (faixas de bobina × comprimento do letreiro).
+    if (linha.formulaType === "gabaritoKraft") {
+      if (!(snapshot.larguraNestingMm && snapshot.alturaNestingMm)) {
+        throw new Error(`As medidas do letreiro necessárias para ${linha.nome} estão ausentes.`);
+      }
+      const esperado = consumoGabaritoKraftM2(snapshot.larguraNestingMm / 1000, snapshot.alturaNestingMm / 1000) * linha.multiplicador;
+      if (Math.abs(linha.quantidade - esperado) > 0.005) {
+        throw new Error(`A quantidade de ${linha.nome} não corresponde à regra do gabarito de kraft e às medidas atuais.`);
+      }
+      continue;
+    }
     const medida = linha.formulaType === "areaTotal" ? (linha.nesting?.areaUtilizadaM2 ?? snapshot.areaTotalNestingM2 ?? snapshot.areaGeralM2 ?? 0)
       : linha.formulaType === "area" ? (linha.nesting?.areaLiquidaM2 ?? snapshot.areaM2)
       : linha.formulaType === "areaGeral" ? snapshot.areaGeralM2

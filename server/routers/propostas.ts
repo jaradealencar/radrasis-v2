@@ -52,7 +52,7 @@ const materialConfiguracaoSchema = z.object({
   custoUnitario: z.number().nonnegative(),
   quantidade: z.number().nonnegative(),
   custoTotal: z.number().nonnegative(),
-  formulaType: z.enum(["areaTotal", "area", "areaGeral", "perimExt", "perimTotal", "fixo"]),
+  formulaType: z.enum(["areaTotal", "area", "areaGeral", "perimExt", "perimTotal", "fixo", "gabaritoKraft"]),
   multiplicador: z.number().nonnegative(),
   variacaoModeloId: z.number().int().positive().nullable(),
   variacaoModeloNome: z.string().max(256).nullable(),
@@ -165,8 +165,12 @@ function calcularContextoPrecoProposta(args: {
     perimExt: args.configuracao.medidas.perimExtM,
     perimTotal: args.configuracao.medidas.perimTotalM,
     fixo: 1,
+    gabaritoKraft: null,
   };
   for (const material of args.configuracao.materiais.filter((linha) => linha.incluir)) {
+    // Gabarito kraft depende da largura/altura do letreiro, que esta configuração não guarda: a
+    // quantidade vem do CPQ (já validada lá) e aqui só o subtotal é conferido, mais abaixo.
+    if (material.formulaType === "gabaritoKraft") continue;
     const medida = medidaPorFormula[material.formulaType];
     if (material.formulaType !== "fixo" && (medida == null || (medida <= 0 && material.multiplicador > 0))) {
       throw new Error(`A medida usada pela fórmula de ${material.nome} está ausente ou zerada.`);

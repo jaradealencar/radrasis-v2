@@ -809,7 +809,7 @@ function novaProposta(){
     step:1,
     approvals:{proposta:false, foto:false, redesenho:false, vetorizacao:false, escala:false, kit:false, nesting:false},
     orcamentoStatus:'rascunho', margin:0.35, desconto:0,
-    embalagemAtiva:true,
+    embalagemAtiva:true, gabaritoAtivo:true,
   };
 }
 let REAL = novaProposta();
@@ -2366,7 +2366,15 @@ const FORMULA_TYPES = {
   perimExt: {label:'Perímetro externo', calc:(g,mult)=> g.perimExtM*mult},
   perimTotal: {label:'Perímetro total de corte (m)', calc:(g,mult)=> g.corteTotalM*mult},
   fixo: {label:'Unidade (quantidade por letreiro, ex.: brinde)', calc:(g,mult)=> mult},
+  // Gabarito de kraft (shared/gabarito.ts): comprimento = largura do letreiro aberto; a altura atravessa a
+  // bobina de 1,2 m e, passando dela, o papel repete em faixas. Resultado em m² de papel cobrado.
+  gabaritoKraft: {label:'Gabarito kraft: faixas da bobina × largura do letreiro (m²)', calc:(g,mult)=>{
+    const faixas=Math.max(1,Math.ceil(Math.round((g.totalHeightM||0)*1000)/(KRAFT_LARGURA_BOBINA_M*1000)));
+    return faixas*KRAFT_LARGURA_BOBINA_M*(Math.round((g.totalWidthM||0)*1000)/1000)*mult;
+  }},
 };
+const GABARITO_PRODUTO_ID = 127, GABARITO_MODELO_KRAFT_ID = 570, KRAFT_MATERIA_PRIMA_ID = 1098, KRAFT_LARGURA_BOBINA_M = 1.2;
+const GABARITO_SLOT = `${GABARITO_PRODUTO_ID}_${GABARITO_MODELO_KRAFT_ID}`;
 /** Taxonomia de categoria/subcategoria/tipo do cadastro de produtos —
  *  pedido do usuário 28/09/2026. "Outros" dentro de Letreiros são materiais
  *  sem tipo (frontlight/backlight/tradicional não se aplica); Acessórios
@@ -2479,14 +2487,31 @@ function linhasDoModelo(produto, modelo, ids){
   return {linhas,fonte:kitPronto?'radrasys':'nenhuma',erro:importada?.erro||null};
 }
 
+/** Gabarito kraft (produto 127 / modelo 570): o papel #1098 usa a regra de faixas da bobina em vez
+ *  da fórmula comum. Sem composição cadastrada, o gabarito ainda assim leva o papel kraft. */
+function ajustarGabaritoKraft(linhas){
+  const ajustadas=linhas.map(l=>Number(l.matId)===KRAFT_MATERIA_PRIMA_ID?{...l,formulaType:'gabaritoKraft',mult:1,unidadeConsumo:'m²'}:l);
+  if(ajustadas.some(l=>l.formulaType==='gabaritoKraft')) return ajustadas;
+  const kraft=catalog.materias.find(m=>Number(m.id)===KRAFT_MATERIA_PRIMA_ID);
+  if(!kraft) return ajustadas;
+  return [...ajustadas,{matId:kraft.id,nome:kraft.nome,unidade:kraft.unidade,custo:kraft.valor,atualizado:kraft.atualizado,status:kraft.status,papel:'Gabarito',formulaType:'gabaritoKraft',mult:1,variantes:[]}];
+}
+
 /** Seleção inicial dos produtos do kit: o modelo vinculado e a variação padrão cadastrada
  *  (senão a padrão do MubiSys, senão a única existente). O vendedor pode trocar na cotação. */
 function kitProdutosPadrao(kitPronto){
-  return (Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[]).map(kp=>{
+  const vinculados=Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[];
+  const sel=vinculados.map(kp=>{
     const [produtoId,modeloId]=kp.key.split('_').map(Number);
     const modelo=catalog.produtos.find(p=>p.id===produtoId)?.modelos.find(m=>m.id===modeloId);
     return {slot:kp.key,key:kp.key,nome:kp.nome,variacaoIds:variacoesPadraoDoKitProduto(kp,modelo)};
   });
+  // Gabarito de fixação entra em todo kit (modelo kraft por padrão), salvo se o kit já vincula um gabarito.
+  if(!sel.some(s=>s.key.startsWith(`${GABARITO_PRODUTO_ID}_`))
+    && catalog.produtos.some(p=>p.id===GABARITO_PRODUTO_ID&&p.modelos.some(m=>m.id===GABARITO_MODELO_KRAFT_ID))){
+    sel.push({slot:GABARITO_SLOT,key:GABARITO_SLOT,nome:'Gabarito de Fixação',variacaoIds:[],implicito:true});
+  }
+  return sel;
 }
 function variacoesPadraoDoKitProduto(kp, modelo){
   const ativas=variacoesAtivasDoModelo(modelo);
@@ -2499,12 +2524,15 @@ function variacoesPadraoDoKitProduto(kp, modelo){
 function aplicarKitProdutosNoKit(){
   REAL.kit=(REAL.kit||[]).filter(l=>!l.origemKitProduto);
   for(const sel of (REAL.kitProdutosSel||[])){
+    if(sel.implicito&&REAL.gabaritoAtivo===false) continue;
     const [produtoId,modeloId]=sel.key.split('_').map(Number);
     const produto=catalog.produtos.find(p=>p.id===produtoId);
     const modelo=produto?.modelos.find(m=>m.id===modeloId);
     if(!modelo) continue;
     const nome=adminState.kits[sel.key]?.nomeCompleto||`${produto.nome} — ${modelo.nome}`;
-    REAL.kit.push(...linhasDoModelo(produto,modelo,sel.variacaoIds.map(Number)).linhas.map(l=>({...l,origemKitProduto:sel.slot,kitProdutoNome:nome})));
+    let linhasModelo=linhasDoModelo(produto,modelo,sel.variacaoIds.map(Number)).linhas;
+    if(produtoId===GABARITO_PRODUTO_ID&&modeloId===GABARITO_MODELO_KRAFT_ID) linhasModelo=ajustarGabaritoKraft(linhasModelo);
+    REAL.kit.push(...linhasModelo.map(l=>({...l,origemKitProduto:sel.slot,kitProdutoNome:nome})));
   }
 }
 
@@ -3271,8 +3299,8 @@ function renderComposicaoDoModelo(kitPronto){
         </div>`:`<div class="empty-hint">Este modelo ainda não tem matérias-primas cadastradas.</div>`}
       </section>
       <section>
-        <div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Produtos que formam o kit (${vinculados.length})</div>
-        ${vinculados.length?`<div style="display:grid;gap:7px;">
+        <div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Produtos que formam o kit (${(REAL.kitProdutosSel||[]).length})</div>
+        ${(REAL.kitProdutosSel||[]).length?`<div style="display:grid;gap:7px;">
           ${(REAL.kitProdutosSel||[]).map(sel=>{
             const [produtoId,modeloId]=sel.key.split('_').map(Number);
             const produto=catalog.produtos.find(p=>p.id===produtoId);
@@ -3281,14 +3309,17 @@ function renderComposicaoDoModelo(kitPronto){
             const qtdLinhas=(REAL.kit||[]).filter(l=>l.origemKitProduto===sel.slot).length;
             return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
               <div class="mono" style="font-size:10.5px;color:var(--accent-ink);">${escaparHtml(skuModeloPorKey(sel.key))}</div>
-              <div style="font-weight:600;margin-top:3px;">${escaparHtml(produto?.nome||sel.nome)}</div>
-              <label class="field" style="display:block;margin-top:6px;font-size:11.5px;">Modelo
+              <div style="font-weight:600;margin-top:3px;">${escaparHtml(produto?.nome||sel.nome)}${sel.implicito?' <span class="badge b-neutral">automático</span>':''}</div>
+              ${sel.implicito?`<label style="display:flex;gap:7px;align-items:center;margin-top:6px;font-size:11.5px;cursor:pointer;"><input type="checkbox" data-act="real-gabarito-ativo" ${REAL.gabaritoAtivo!==false?'checked':''}> Incluir o gabarito neste orçamento</label>`:''}
+              ${sel.implicito&&REAL.gabaritoAtivo===false?'':`<label class="field" style="display:block;margin-top:6px;font-size:11.5px;">Modelo
                 <select data-act="real-kitproduto-modelo" data-slot="${escaparHtml(sel.slot)}" style="display:block;margin-top:4px;width:min(100%,380px);font-size:12px;">
                   ${(produto?.modelos||[]).filter(m=>String(m.status||'').toLowerCase()!=='inativo'||m.id===modeloId).map(m=>`<option value="${m.id}" ${m.id===modeloId?'selected':''}>${escaparHtml(m.nome)}</option>`).join('')}
                 </select>
               </label>
               ${variacoes.length?`<div style="margin-top:6px;font-size:11.5px;">Variações
                 <div style="display:grid;gap:4px;margin-top:4px;">${variacoes.map(v=>`<label style="display:flex;gap:7px;align-items:center;"><input type="checkbox" data-act="real-kitproduto-variacao" data-slot="${escaparHtml(sel.slot)}" data-val="${v.id}" ${sel.variacaoIds.map(Number).includes(Number(v.id))?'checked':''}><span>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span></label>`).join('')}</div></div>`:''}
+              `}
+              ${produtoId===GABARITO_PRODUTO_ID&&modeloId===GABARITO_MODELO_KRAFT_ID&&(!sel.implicito||REAL.gabaritoAtivo!==false)?`<div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Kraft: comprimento = largura do letreiro aberto; bobina de ${KRAFT_LARGURA_BOBINA_M*1000} mm, repetida em faixas se a altura passar disso. O custo do papel é aplicado por m² de bobina consumida — confira a base de cobrança no cadastro da bobina.</div>`:''}
               <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${qtdLinhas} matéria(s)-prima(s) somada(s) ao orçamento</div>
             </div>`;}).join('')}
         </div>`:`<div class="empty-hint">Nenhum produto vinculado a este kit.</div>`}
@@ -7254,6 +7285,10 @@ function bindRealEvents(){
     });
     el.addEventListener('change', ()=>{ clearTimeout(_renderDebounceTimer); renderPreservingFocus(); });
   });
+  document.querySelectorAll('[data-act="real-gabarito-ativo"]').forEach(el=>el.addEventListener('change',()=>{
+    REAL.gabaritoAtivo=el.checked;
+    invalidarFactibilidadeReal(); aplicarKitProdutosNoKit(); REAL.approvals.kit=false; render();
+  }));
   document.querySelectorAll('[data-act="real-kitproduto-modelo"]').forEach(el=>el.addEventListener('change',e=>{
     const sel=(REAL.kitProdutosSel||[]).find(item=>item.slot===el.dataset.slot);
     if(!sel) return;

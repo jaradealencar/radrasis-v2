@@ -53,7 +53,7 @@ type MedidasNesting = {
   perimTotalM: number | null;
 };
 
-type FormulaMaterial = "areaTotal" | "area" | "areaGeral" | "perimExt" | "perimTotal" | "fixo";
+type FormulaMaterial = "areaTotal" | "area" | "areaGeral" | "perimExt" | "perimTotal" | "fixo" | "gabaritoKraft";
 
 type MaterialCotacao = {
   mubisysMateriaPrimaId: number | null;
@@ -94,6 +94,7 @@ const FORMULA_LABEL: Record<FormulaMaterial, string> = {
   perimExt: "Perímetro externo",
   perimTotal: "Perímetro total",
   fixo: "Unidade (por letreiro)",
+  gabaritoKraft: "Gabarito kraft (faixas da bobina; quantidade do CPQ)",
 };
 
 const CAMPOS_MEDIDA: { chave: keyof MedidasNesting; rotulo: string; unidade: string }[] = [
@@ -112,6 +113,8 @@ function parseMedida(valor: string): number | null {
 }
 
 function calcularQuantidadeMaterial(material: MaterialCotacao, medidas: MedidasNesting): number {
+  // Depende da largura/altura do letreiro, que não fazem parte destas medidas: mantém a quantidade do CPQ.
+  if (material.formulaType === "gabaritoKraft") return material.quantidade;
   const base = material.formulaType === "fixo" ? 1
     : material.formulaType === "areaTotal" ? (medidas.areaTotalNestingM2 ?? medidas.areaGeralM2 ?? 0)
     : material.formulaType === "area" ? (medidas.areaM2 ?? 0)

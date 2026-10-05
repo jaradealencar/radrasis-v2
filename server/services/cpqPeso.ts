@@ -35,7 +35,7 @@ export function calcularPesoLinha(linha: LinhaPesoInput, dados: DadosPesoMateria
   const quantidade = Math.max(0, linha.quantidade);
 
   // Chapa e bobina (com densidade) pesam por área × espessura × densidade; a bobina sem fórmula em área cai no peso específico.
-  const formulaEmArea = linha.formulaType === "area" || linha.formulaType === "areaTotal";
+  const formulaEmArea = linha.formulaType === "area" || linha.formulaType === "areaTotal" || linha.formulaType === "gabaritoKraft";
   const usaDensidade = dados.tipo === "chapa" || (dados.tipo === "bobina" && !!(dados.densidadeGCm3 && dados.densidadeGCm3 > 0) && formulaEmArea);
   if (usaDensidade) {
     const rotulo = dados.tipo === "bobina" ? "Bobina" : "Chapa";

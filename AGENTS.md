@@ -500,6 +500,13 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`variacaoPadraoId`); na cotação o vendedor troca modelo e variações de cada um (`REAL.kitProdutosSel`) e as
   matérias-primas deles entram em `REAL.kit` com `origemKitProduto`. Esses itens não passam por papel/nesting
   próprio: usam as fórmulas simples sobre a geometria do produto principal.
+  **Gabarito de Fixação (MubiSys produto 127, pedido de 05/10/2026):** entra automaticamente no kit de todo
+  produto (`kitProdutosPadrao`, slot implícito `127_570` = modelo Kraft), com checkbox para excluir
+  (`REAL.gabaritoAtivo`) e troca de modelo na cotação (MDF/Eucadur e Papelão Onda B usam a composição normal).
+  No kraft (#1098, bobina de 1200 mm), `formulaType: "gabaritoKraft"` cobra faixas × 1,2 m × largura do letreiro
+  aberto na prancha, com faixas = ceil(altura ÷ 1200 mm); regra em `shared/gabarito.ts` e repetida em
+  `FORMULA_TYPES` do HTML, validada no servidor (`estudio-cotacoes.ts`). O custo é por m² de bobina; a base de
+  cobrança real do #1098 (m²/ml/rolo) ainda não é lida pelo CPQ, então confira no cadastro da bobina.
   **Embalagem Acabamento (MubiSys #4258, pedido de 05/10/2026):** item especial do CPQ, incluído em toda
   cotação e removível pelo vendedor (checkbox no Resumo financeiro). Não tem consumo: cobra 3,5% sobre o
   preço de todos os outros itens (`EMBALAGEM_PCT`/`aplicarEmbalagem` no HTML); o snapshot guarda
