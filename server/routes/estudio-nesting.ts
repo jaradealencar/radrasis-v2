@@ -198,7 +198,7 @@ async function listarChapas(req: Request, res: Response): Promise<void> {
     .orderBy(
       asc(estudioChapas.mubisysMateriaPrimaId),
       asc(estudioChapas.larguraMm),
-      asc(estudioChapas.alturaMm)
+      asc(estudioChapas.alturaMm), asc(estudioChapas.id)
     );
   res.setHeader("Cache-Control", "private, no-store");
   const cadastros = rows.length
@@ -391,7 +391,7 @@ async function salvarChapa(
     else res.json({ chapa: record });
   } catch (error) {
     if ((error as { code?: string })?.code === "23505") {
-      erro(res, 409, "Já existe esse tamanho de chapa para a matéria-prima.");
+      erro(res, 409, "Conflito ao salvar formato de chapa.");
       return;
     }
     throw error;

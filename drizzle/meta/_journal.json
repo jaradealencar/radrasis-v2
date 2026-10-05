@@ -610,6 +610,13 @@
       "when": 1791233743848,
       "tag": "0086_closed_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1791240856034,
+      "tag": "0087_chemical_white_queen",
+      "breakpoints": true
     }
   ]
 }

@@ -563,11 +563,6 @@ export const estudioChapas = pgTable("estudio_chapas", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   materialIdx: index("estudio_chapas_material_idx").on(table.mubisysMateriaPrimaId, table.ativo),
-  tamanhoUidx: uniqueIndex("estudio_chapas_material_tamanho_uidx").on(
-    table.mubisysMateriaPrimaId,
-    table.larguraMm,
-    table.alturaMm,
-  ),
 }));
 export type EstudioChapa = typeof estudioChapas.$inferSelect;
 export type InsertEstudioChapa = typeof estudioChapas.$inferInsert;

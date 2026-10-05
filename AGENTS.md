@@ -491,6 +491,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   a resposta do cliente. A cotação guarda o WhatsApp configurado para o
   vendedor; ao escolher uma reação, o link público abre `wa.me` com a resposta
   e o número da cotação preenchidos, sem enviar a mensagem automaticamente.
+  **Embalagem Acabamento (MubiSys #4258, pedido de 05/10/2026):** item especial do CPQ, incluído em toda
+  cotação e removível pelo vendedor (checkbox no Resumo financeiro). Não tem consumo: cobra 3,5% sobre o
+  preço de todos os outros itens (`EMBALAGEM_PCT`/`aplicarEmbalagem` no HTML); o snapshot guarda
+  `embalagemPct`/`embalagemValor` e `estudio-cotacoes.ts` confere a fórmula. **Ainda não existe em
+  Comercial > Propostas** (módulo React).
   Em Administração > Configurações, formas de pagamento e as taxas totais do
   cartão por plano (1x a 6x) ficam em `config/geral`. Cada cotação salva um
   snapshot das opções e taxas: o link começa em PIX dividido em duas partes

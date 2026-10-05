@@ -1,0 +1,1 @@
+DROP INDEX "estudio_chapas_material_tamanho_uidx";

@@ -67,7 +67,7 @@ export const materiasPrimasRouter = router({
       listarMateriasPrimas(),
       db.select().from(materiaPrimaCadastros),
       db.select().from(materiaPrimaCategorias).orderBy(asc(materiaPrimaCategorias.nome)),
-      db.select().from(estudioChapas).orderBy(asc(estudioChapas.larguraMm), asc(estudioChapas.alturaMm)),
+      db.select().from(estudioChapas).orderBy(asc(estudioChapas.larguraMm), asc(estudioChapas.alturaMm), asc(estudioChapas.id)),
     ]);
     const cadastroPorId = new Map(cadastros.map(item => [item.mubisysMateriaPrimaId, item]));
     const categoriaPorId = new Map(categorias.map(item => [item.id, item]));
@@ -263,8 +263,8 @@ export const materiasPrimasRouter = router({
       if (new Set(idsInformados).size !== idsInformados.length)
         throw new Error("Há formatos repetidos no formulário.");
       const dimensoes = formatos.map(formato => [Math.max(formato.larguraMm, formato.alturaMm), Math.min(formato.larguraMm, formato.alturaMm)].join("x"));
-      if (new Set(dimensoes).size !== dimensoes.length)
-        throw new Error(usaDadosBobina ? "Cada bobina precisa ter uma largura diferente." : "Cada formato precisa ter um tamanho diferente.");
+      if (usaDadosBobina && new Set(dimensoes).size !== dimensoes.length)
+        throw new Error("Cada bobina precisa ter uma largura diferente.");
       const usaFormatos = usaDadosChapa || usaDadosBobina;
 
       await db.transaction(async tx => {
@@ -321,8 +321,8 @@ export const materiasPrimasRouter = router({
         for (const formato of formatos) {
           const larguraMm = Math.max(formato.larguraMm, formato.alturaMm);
           const alturaMm = Math.min(formato.larguraMm, formato.alturaMm);
-          const existentePorTamanho = existentes.find(chapa => chapa.larguraMm === larguraMm && chapa.alturaMm === alturaMm);
-          const id = existentePorTamanho?.id ?? formato.id;
+          // Dimensões podem se repetir em variações de cor; cada formato existente é atualizado pelo ID.
+          const id = formato.id;
           const cor = "pantoneCode" in formato ? formato : null;
           const values = {
             mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
