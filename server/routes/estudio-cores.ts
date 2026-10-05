@@ -13,6 +13,7 @@ import { getDb } from "../db/db";
 import { CpqFactibilidadeError, calcularMetricasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
 import { aplicarCustosBobinaAgrupados, type CpqCorCatalogo, extrairRegioesCorSvg, hexParaRgb, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
 import { listarPantone, pantoneMaisProximos, rgbParaCmykAproximado } from "../services/cpqPantone";
+import { IMPRIMAX_CATALOGO_PADRAO, IMPRIMAX_CATALOGO_VERSAO } from "../../shared/imprimax-catalogo-2026-08";
 
 const porcentagem = z.number().finite().min(0).max(100).nullable().optional();
 const moedaM2 = z.number().finite().min(0).max(1_000_000).nullable();
@@ -74,6 +75,7 @@ const analisarInput = z.object({
   baseImpressao: z.enum(["branco", "transparente"]),
   construcaoFace: z.enum(["acrilico_total", "outra", "nao_informada"]).default("nao_informada"),
   laminar: z.boolean(),
+  caixaLetreiroMm: boundingBoxMm.nullable().optional(),
 }).strict().superRefine((input, context) => {
   if (new Set(input.regioes.map(region => region.key)).size !== input.regioes.length)
     context.addIssue({ code: "custom", message: "As regiões de cor precisam ter identificadores únicos." });
@@ -92,7 +94,10 @@ const analisarSvgInput = z.object({
   laminar: z.boolean(),
 }).strict();
 
-const aprovarInput = z.object({ sourceId: z.string().trim().min(1).max(80) }).strict();
+const aprovarInput = z.object({
+  sourceId: z.string().trim().min(1).max(80),
+  autorizaAdesivoSobreAcrilico: z.boolean().optional(),
+}).strict();
 
 function erro(res: Response, status: number, mensagem: string): void {
   res.status(status).json({ error: mensagem });
@@ -151,8 +156,36 @@ export function registrarRotasEstudioCores(app: Express): void {
   app.put("/api/letra-caixa/cores/precos-impressao", rota(salvarPrecos));
   app.post("/api/letra-caixa/cores/analisar-svg", rota(analisarSvg));
   app.post("/api/letra-caixa/cores/aprovar", rota(aprovarCores));
+  app.put("/api/letra-caixa/cores/imprimax-padrao", rota(importarCatalogoImprimaxPadrao));
   app.get("/api/letra-caixa/cores/pantone", rota(listarPantoneReferencia));
   app.post("/api/letra-caixa/cores/pantone/referencias", rota(referenciasPantone));
+}
+
+/**
+ * Carrega o catálogo Imprimax do repositório (cores sólidas do catálogo 05/08/2026). Atualiza só os dados que vêm do
+ * catálogo e preserva o que o gestor já cadastrou à mão (preço por m², Pantone, CMYK e transmissão de luz).
+ */
+async function importarCatalogoImprimaxPadrao(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await exigirGestor(req, res))) return;
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const now = new Date();
+  await db.transaction(async tx => {
+    for (const item of IMPRIMAX_CATALOGO_PADRAO) {
+      const dados = {
+        codigo: item.codigo,
+        linha: item.linha,
+        nomeCor: item.nomeCor,
+        tipoVinil: item.tipoVinil,
+        acabamento: item.acabamento,
+        corHex: item.corHex,
+        catalogoVersao: IMPRIMAX_CATALOGO_VERSAO,
+      };
+      await tx.insert(estudioImprimaxAdesivos).values({ ...dados, ativo: true, updatedAt: now })
+        .onConflictDoUpdate({ target: estudioImprimaxAdesivos.codigo, set: { ...dados, ativo: true, updatedAt: now } });
+    }
+  });
+  res.json({ importados: IMPRIMAX_CATALOGO_PADRAO.length, versao: IMPRIMAX_CATALOGO_VERSAO });
 }
 
 async function listarPantoneReferencia(req: Request, res: Response): Promise<void> {
@@ -287,7 +320,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
     precos,
     construcaoFace: parsed.construcaoFace,
   }));
-  const resultados = aplicarCustosBobinaAgrupados(sugestoes, parsed.regioes, precos);
+  const resultados = aplicarCustosBobinaAgrupados(sugestoes, parsed.regioes, precos, parsed.caixaLetreiroMm ?? null);
   await db.transaction(async tx => {
     await tx.delete(estudioMapeamentoCoresCotacao)
       .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.sourceId));
@@ -459,8 +492,14 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
     if (!agregadas.size)
       return void erro(res, 422, "Não há regiões preenchidas visíveis para analisar no vetor.");
 
+    const todasCaixas = [...agregadas.values()].flatMap(grupo => grupo.caixasMm);
+    const caixaLetreiroMm = {
+      minX: Math.min(...todasCaixas.map(box => box.minX)), maxX: Math.max(...todasCaixas.map(box => box.maxX)),
+      minY: Math.min(...todasCaixas.map(box => box.minY)), maxY: Math.max(...todasCaixas.map(box => box.maxY)),
+    };
     const body = {
       sourceId: parsed.data.sourceId,
+      caixaLetreiroMm,
       regioes: [...agregadas.values()].map(({ caixasMm, ...region }, index) => ({
         ...region,
         key: `regiao-${index + 1}`,
@@ -501,6 +540,11 @@ async function aprovarCores(req: Request, res: Response): Promise<void> {
   const mappings = await db.select().from(estudioMapeamentoCoresCotacao)
     .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.data.sourceId));
   if (!mappings.length) return void erro(res, 409, "Analise as cores antes de aprovar os materiais.");
+  const exigeAutorizacaoAdesivo = mappings.some(row =>
+    (row.tipoSugestao === "impresso" || row.tipoSugestao === "imprimax")
+      && (row.detalhesJson as Record<string, unknown>).requerChapaBase === true);
+  if (exigeAutorizacaoAdesivo && parsed.data.autorizaAdesivoSobreAcrilico !== true)
+    return void erro(res, 409, "O vendedor precisa autorizar a composição de acrílico transparente com adesivo antes da aprovação.");
   const pendenciaConsumoBobina = mappings.find(row => {
     if (row.tipoSugestao !== "impresso" && row.tipoSugestao !== "imprimax") return false;
     const details = row.detalhesJson as Record<string, unknown>;

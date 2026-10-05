@@ -650,6 +650,18 @@ optional Pantone/CMYK/light-transmission fields on sheet formats. Migration
 print-vinyl bases. Provider catalog
 data and print costs are maintained by managers; this service does not query an
 Imprimax API.
+Regras de cor definidas pelo usuário em 04/10/2026: arte sem cor sólida (gradiente/complexa) vira adesivo
+impresso; cor sólida sem chapa de acrílico equivalente usa o adesivo Imprimax **mais próximo** (sempre, avisando o
+vendedor quando o ΔE00 passa de 5). Nos dois casos, se a face for de acrílico (detectada pela linha Face do kit
+ou escolhida na tela), a composição é **acrílico transparente + adesivo**, e o vendedor precisa marcar a
+autorização na tela (o servidor recusa a aprovação sem `autorizaAdesivoSobreAcrilico`). O adesivo **impresso** é
+cobrado com a dimensão do letreiro inteiro (união dos contornos da face, `caixaLetreiroMm`), uma única peça; o
+Imprimax sólido segue por contorno. O catálogo Imprimax de 05/08/2026 (155 cores sólidas) está em
+`shared/imprimax-catalogo-2026-08.ts` e é carregado pelo gestor em Administração > Chapas para nesting
+(`PUT /api/letra-caixa/cores/imprimax-padrao`, preserva preço/Pantone/CMYK já cadastrados). Os códigos `IMX-…` são
+internos (o PDF não traz código Imprimax) e o hex vem da foto do catálogo, não de Pantone/CMYK oficiais.
+O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a
+reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com
 amostra em hex) e `server/services/cpqPantone.ts` sugere o Pantone mais próximo (CIEDE2000) e um CMYK
 aproximado. Em Administração > Chapas para nesting, o gestor escolhe o Pantone de cada chapa (lista, ou cor

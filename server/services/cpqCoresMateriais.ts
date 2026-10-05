@@ -483,9 +483,28 @@ function aplicarConsumoBobina(
 /** Recalcula a cobrança após agrupar regiões que compartilham o mesmo rolo. */
 export function aplicarCustosBobinaAgrupados(
   resultados: CpqCorrespondenciaCorResult[],
-  regioes: Array<Pick<CpqCorAlvo, "key" | "dadosPreco">>,
+  regioesOriginais: Array<Pick<CpqCorAlvo, "key" | "dadosPreco">>,
   precos: CpqPrecoImpressaoCor,
+  caixaLetreiroMm?: CpqBoundingBoxMm | null,
 ): CpqCorrespondenciaCorResult[] {
+  // Regra do usuário (04/10/2026): o adesivo impresso tem a mesma dimensão do letreiro, e não a de cada contorno.
+  const tipoPorRegiao = new Map(resultados.map(item => [item.regionKey, item.tipoSugestao]));
+  const regioes = regioesOriginais.map(regiao => {
+    if (!caixaLetreiroMm || tipoPorRegiao.get(regiao.key) !== "impresso" || !regiao.dadosPreco) return regiao;
+    const larguraMm = caixaLetreiroMm.maxX - caixaLetreiroMm.minX;
+    const alturaMm = caixaLetreiroMm.maxY - caixaLetreiroMm.minY;
+    if (!(larguraMm > 0) || !(alturaMm > 0)) return regiao;
+    return {
+      ...regiao,
+      dadosPreco: {
+        ...regiao.dadosPreco,
+        boundingBoxesMm: [caixaLetreiroMm],
+        areaTotalM2: Number(((larguraMm * alturaMm) / 1_000_000).toFixed(8)),
+        larguraMm,
+        alturaMm,
+      },
+    };
+  });
   const regiaoPorChave = new Map(regioes.map(regiao => [regiao.key, regiao]));
   const grupos = new Map<string, CpqCorrespondenciaCorResult[]>();
   for (const item of resultados) {
@@ -650,7 +669,7 @@ function candidatos(
     .sort((a, b) => a.deltaE00! - b.deltaE00!);
 }
 
-function planoComposicaoFace(input: CpqCorrespondenciaCorInput, avisos: string[]) {
+function planoComposicaoFace(input: CpqCorrespondenciaCorInput, avisos: string[], adesivoDescricao?: string) {
   const requerChapaBase = input.iluminacao !== "sem_iluminacao" || input.construcaoFace === "acrilico_total";
   const requerConfirmacaoConstrucao = input.iluminacao === "sem_iluminacao"
     && input.construcaoFace !== "acrilico_total"
@@ -674,6 +693,8 @@ function planoComposicaoFace(input: CpqCorrespondenciaCorInput, avisos: string[]
     avisos.push(basesPorMaterial.size > 1
       ? "Há mais de uma matéria-prima transparente compatível; marque uma como principal ou confirme qual deve ser usada na face."
       : "Não há chapa transparente cadastrada e compatível; classifique a matéria-prima da face para compor acrílico transparente + adesivo.");
+  if (requerChapaBase && adesivoDescricao)
+    avisos.push(`Sugestão ao vendedor: acrílico TRANSPARENTE + ${adesivoDescricao}. Peça a autorização do cliente para essa composição antes de aprovar.`);
   if (requerConfirmacaoConstrucao)
     avisos.push("Confirme se a face é de acrílico ou de outro substrato para definir a composição da região sem correspondência sólida.");
   return {
@@ -722,7 +743,7 @@ function impresso(input: CpqCorrespondenciaCorInput, avisos: string[]): CpqCorre
   if (impressao == null) avisos.push("Custo de impressão digital por m² não cadastrado.");
   if (input.laminar && laminacao == null) avisos.push("Custo de laminação por m² não cadastrado.");
   const unit = custosConfigurados ? vinil! + impressao! + laminacao! : null;
-  const planoFace = planoComposicaoFace(input, avisos);
+  const planoFace = planoComposicaoFace(input, avisos, "adesivo impresso com a dimensão do letreiro");
   const resultado: CpqCorrespondenciaCorResult = {
     regionKey: input.regiao.key,
     tipoCor: input.regiao.tipoCor,
@@ -816,16 +837,19 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
   }
 
   const vinis = candidatos(input.adesivos, target, lab, input, "imprimax");
-  const solido = vinis.find(item => item.deltaE00! <= DELTA_E_IMPRIMAX_SOLIDO && item.raw.tipoVinil !== "transparente");
+  const solido = vinis.find(item => item.raw.tipoVinil !== "transparente");
   if (solido) {
     avisos.push(...solido.avisosIluminacao);
+    avisos.push("Não há chapa de acrílico com esta cor sólida: o acrílico deve ser transparente, com o adesivo Imprimax aplicado.");
+    if (solido.deltaE00! > DELTA_E_IMPRIMAX_SOLIDO)
+      avisos.push(`Atenção vendedor: o adesivo Imprimax mais próximo ainda tem diferença visível (ΔE00 ${solido.deltaE00!.toFixed(1)}). Mostre a amostra ao cliente antes de aprovar.`);
     const price = valor(solido.raw.precoM2);
     if (areaTotal == null) avisos.push("Area total da peca nao calculada; confirme escala antes de fechar consumo do vinil.");
     if (price == null) avisos.push("Preço de compra do adesivo não cadastrado; o custo desta região está pendente.");
     avisos.push("Sugestão de vinil sólido Imprimax pela menor diferença CIEDE2000; confirme código e amostra física.");
     const consumo = calcularConsumosBobina([{ regionKey: target.key, dadosPreco: target.dadosPreco }], input.precos)
       .get(target.key);
-    const planoFace = planoComposicaoFace(input, avisos);
+    const planoFace = planoComposicaoFace(input, avisos, `adesivo Imprimax ${[solido.linha, solido.nome].filter(Boolean).join(" ")}`);
     const resultado: CpqCorrespondenciaCorResult = {
       regionKey: target.key, tipoCor: target.tipoCor, corHex: target.corHex ?? null,
       pantoneCode: target.pantoneCode ?? null,
@@ -845,7 +869,6 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
     };
     return aplicarConsumoBobina(resultado, consumo);
   }
-  if (!vinis.length) avisos.push("Nenhuma amostra cromática Imprimax compatível com a iluminação foi importada.");
-  else avisos.push(`A melhor cor sólida Imprimax excede ΔE00 ${DELTA_E_IMPRIMAX_SOLIDO}; impressão digital evita uma substituição visivelmente distante.`);
+  avisos.push("Nenhuma cor Imprimax compatível com a iluminação foi importada; a região segue para impressão digital. Carregue o catálogo Imprimax em Administração.");
   return { ...impresso(input, avisos), corRgb, cmyk };
 }

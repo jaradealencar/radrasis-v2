@@ -6,9 +6,13 @@ import { sugerirMaterialParaCor, type CpqCorrespondenciaCorInput } from "../serv
  * atende à iluminação do projeto — a regra pedida para faces iluminadas (migration 0069). Região sólida não
  * passa por aqui, então estes testes usam sempre `tipoCor: "gradiente"`.
  */
+// O custo do vinil só fecha com a bobina cadastrada e a geometria da região (consumo físico de bobina).
+const BOBINA = { larguraBobinaMm: 1000, larguraUtilBobinaMm: 1000, sangriaPerimetralMm: 0, retalhoReutilizavel: true };
+const GEOMETRIA_2M2 = { areaLiquidaM2: 2, areaTotalM2: 2, larguraMm: 1000, alturaMm: 2000, boundingBoxesMm: [{ minX: 0, maxX: 1000, minY: 0, maxY: 2000 }] };
+
 function entrada(extra: Partial<CpqCorrespondenciaCorInput> = {}): CpqCorrespondenciaCorInput {
   return {
-    regiao: { key: "r1", tipoCor: "gradiente", areaM2: 2 },
+    regiao: { key: "r1", tipoCor: "gradiente", areaM2: 2, dadosPreco: GEOMETRIA_2M2 },
     chapas: [],
     adesivos: [],
     iluminacao: "sem_iluminacao",
@@ -17,7 +21,7 @@ function entrada(extra: Partial<CpqCorrespondenciaCorInput> = {}): CpqCorrespond
     precos: {
       vinilBrancoM2: 30, vinilBrancoTransmissaoPct: 40,
       vinilTransparenteM2: 35, vinilTransparenteTransmissaoPct: null,
-      impressaoM2: 20, laminacaoM2: 10,
+      impressaoM2: 20, laminacaoM2: 10, ...BOBINA,
     },
     ...extra,
   };
@@ -25,7 +29,7 @@ function entrada(extra: Partial<CpqCorrespondenciaCorInput> = {}): CpqCorrespond
 
 describe("CPQ cores — custo de impressão digital e transmissão de luz", () => {
   it("sem iluminação, a transmissão não é exigida: custo = (vinil + impressão) × área", () => {
-    const r = sugerirMaterialParaCor(entrada({ precos: { vinilBrancoM2: 30, impressaoM2: 20 } }));
+    const r = sugerirMaterialParaCor(entrada({ precos: { vinilBrancoM2: 30, impressaoM2: 20, ...BOBINA } }));
     expect(r.tipoSugestao).toBe("impresso");
     expect(r.custoEstimado).toBe(100); // (30 + 20) × 2 m²
     expect(r.avisos.some(a => a.includes("Transmissão"))).toBe(false);
@@ -33,17 +37,17 @@ describe("CPQ cores — custo de impressão digital e transmissão de luz", () =
 
   it("face iluminada sem transmissão cadastrada deixa o custo pendente e avisa", () => {
     const r = sugerirMaterialParaCor(entrada({
-      iluminacao: "frontlight", precos: { vinilBrancoM2: 30, impressaoM2: 20 },
+      iluminacao: "frontlight", precos: { vinilBrancoM2: 30, impressaoM2: 20, ...BOBINA },
     }));
     expect(r.custoEstimado).toBeNull();
-    expect(r.precificacao).toBeNull();
+    expect(r.precificacao?.custoPodeSerCalculado).toBe(false);
     expect(r.avisos).toContain("Transmissão de luz do vinil branco não cadastrada; confirme a compatibilidade antes de aprovar.");
   });
 
   it("transmissão zero é incompatível com face iluminada", () => {
     const r = sugerirMaterialParaCor(entrada({
       iluminacao: "backlight", transmissaoMinimaPct: 20,
-      precos: { vinilBrancoM2: 30, vinilBrancoTransmissaoPct: 0, impressaoM2: 20 },
+      precos: { vinilBrancoM2: 30, vinilBrancoTransmissaoPct: 0, impressaoM2: 20, ...BOBINA },
     }));
     expect(r.custoEstimado).toBeNull();
     expect(r.avisos.some(a => a.includes("sem transmissão de luz"))).toBe(true);
@@ -74,7 +78,7 @@ describe("CPQ cores — custo de impressão digital e transmissão de luz", () =
   });
 
   it("custo ausente continua impedindo o custo, com ou sem iluminação", () => {
-    const r = sugerirMaterialParaCor(entrada({ precos: { vinilBrancoM2: null, impressaoM2: 20 } }));
+    const r = sugerirMaterialParaCor(entrada({ precos: { vinilBrancoM2: null, impressaoM2: 20, ...BOBINA } }));
     expect(r.custoEstimado).toBeNull();
     expect(r.avisos).toContain("Custo por m² do vinil branco não cadastrado.");
   });
