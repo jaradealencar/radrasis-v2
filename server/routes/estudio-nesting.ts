@@ -2,7 +2,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { estudioChapas } from "../../drizzle/schema";
+import { estudioChapas, materiaPrimaCadastros } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
@@ -179,7 +179,13 @@ async function listarChapas(req: Request, res: Response): Promise<void> {
       asc(estudioChapas.alturaMm)
     );
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ chapas: rows });
+  const cadastros = rows.length
+    ? await db.select({ id: materiaPrimaCadastros.mubisysMateriaPrimaId, espessuraMm: materiaPrimaCadastros.espessuraMm })
+        .from(materiaPrimaCadastros)
+        .where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, Array.from(new Set(rows.map(row => row.mubisysMateriaPrimaId)))))
+    : [];
+  const espessuraPorMateria = new Map(cadastros.map(item => [item.id, item.espessuraMm == null ? null : Number(item.espessuraMm)]));
+  res.json({ chapas: rows.map(row => ({ ...row, espessuraMm: espessuraPorMateria.get(row.mubisysMateriaPrimaId) ?? null })) });
 }
 
 async function salvarChapa(
