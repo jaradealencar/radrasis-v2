@@ -244,9 +244,11 @@ Cadastro de tipos de LED, lançamentos e resumo mensal (`custoLed.*`).
 ### Tabela de Preços
 Seções configuráveis, edição de itens, metadados e **histórico de alterações**
 (`price.getHistory`, `price_table_history`).
-A página **Produtividades de solda** consulta o cadastro atual do MubiSys e permite
+A página 5, **Produtividades de solda**, consulta o cadastro atual do MubiSys e permite
 buscar e filtrar por material aplicável, tipo de solda e tamanho; a subclassificação
-é feita em Produtos > Matérias-primas.
+é feita em Produtos > Matérias-primas. As condições comerciais antes armazenadas na
+página 5 são exibidas como página 6, sem alterar os registros do banco. O PDF da tabela
+também inclui a página 5 com custos atuais do catálogo.
 
 ### Performance Comercial
 - Visão mensal, multi-mês e anual (`getMes`, `getMultiMes`, `getAno`).

@@ -1,4 +1,4 @@
-import { trpc } from "@/lib/trpc";
+import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -1235,7 +1235,8 @@ const PAGE_LABELS: Record<number, string> = {
   2: "Pág. 2 — Inox / PVC / Acrílico",
   3: "Pág. 3 — Pintura",
   4: "Pág. 4 — Fontes Chaveadas",
-  5: "Pág. 5 — Condições Comerciais",
+  5: "Pág. 5 — Produtividades de solda",
+  6: "Pág. 6 — Condições Comerciais",
 };
 
 function SearchResults({
@@ -1299,12 +1300,15 @@ function SearchResults({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 // ─── Gerador de PDF enxuto ───────────────────────────────────────────────────
+type MateriaPrimaProdutividade = RouterOutputs["produtos"]["materiasPrimas"]["listar"][number];
+
 function gerarPdfTabela(
   sections: Section[],
   meta: { versao: string; dataModificacao: Date | string } | null,
   dimensionamentoLed: LedPowerSourceTables,
   ledTexts: LedPowerSourceTextOverrides,
-  titulo = "Tabela de Preços"
+  titulo = "Tabela de Preços",
+  produtividadesSolda?: MateriaPrimaProdutividade[]
 ) {
   const dataStr = meta?.dataModificacao
     ? new Date(meta.dataModificacao).toLocaleDateString("pt-BR")
@@ -1318,24 +1322,32 @@ function gerarPdfTabela(
     2: "Inox / PVC / Acrílico",
     3: "Pintura",
     4: getLedText(ledTexts, ledPowerSourceTextKey.page("pdfTitle"), "Fontes Chaveadas"),
+    5: "Produtividades de solda",
+    6: "Condições Comerciais",
   };
   const pageIcons: Record<number, string> = {
     1: "&#x1F4A1;",
     2: "&#x2728;",
     3: "&#x1F3A8;",
     4: "&#x1F50C;",
+    5: "&#x1F527;",
+    6: "&#x1F4C4;",
   };
   const pageSubtitles: Record<number, string> = {
     1: "Letreiros iluminados e estruturas galvanizadas",
     2: "Inox escovado, PVC e acrílico",
     3: "Acabamentos e pintura especial",
     4: getLedText(ledTexts, ledPowerSourceTextKey.page("pdfSubtitle"), "Fontes chaveadas e capacidade de módulos LED"),
+    5: "Custos atuais do catálogo MubiSys, por aplicação e classificação",
+    6: "Condições comerciais",
   };
   const pageColors: Record<number, string> = {
     1: "#1e40af",
     2: "#0f766e",
     3: "#7c3aed",
     4: "#c2410c",
+    5: "#b45309",
+    6: "#475569",
   };
 
   // Helper para extrair label de identificação do título
@@ -1456,16 +1468,17 @@ function gerarPdfTabela(
 
   const byPage: Record<number, Section[]> = {};
   sections.forEach(s => {
-    const normalizedPage = s.page > 10 ? s.page - pageOffset : s.page;
+    const normalizedPage = s.page > 10 ? s.page - pageOffset : s.page === 5 && !isNovoCliente ? 6 : s.page;
     if (!byPage[normalizedPage]) byPage[normalizedPage] = [];
     byPage[normalizedPage].push(s);
   });
 
-  for (const page of [1, 2, 3, 4]) {
-    const pageSections = page === 4 ? [] : (byPage[page] ?? []).sort(
+  const pagesToRender = produtividadesSolda ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4];
+  for (const page of pagesToRender) {
+    const pageSections = page === 4 || page === 5 ? [] : (byPage[page] ?? []).sort(
       (a, b) => a.sectionOrder - b.sectionOrder
     );
-    if (!pageSections.length && page !== 4) continue;
+    if (!pageSections.length && page !== 4 && page !== 5) continue;
     const color = pageColors[page] ?? "#1e3a5f";
     html += `<div class="page-section">
       <div class="page-header" style="border-color:${color}">
@@ -1474,6 +1487,29 @@ function gerarPdfTabela(
       </div>`;
     if (page === 4) {
       html += gerarHtmlDimensionamentoLed(color, dimensionamentoLed, ledTexts);
+    } else if (page === 5) {
+      const escaparHtml = (texto: string) =>
+        texto
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      const itensSolda = (produtividadesSolda ?? []).filter(
+        item => item.ehProdutividade
+      );
+      if (itensSolda.length === 0) {
+        html += `<p>Nenhuma produtividade de solda encontrada no catálogo MubiSys.</p>`;
+      } else {
+        html += `<table><thead><tr style="background:${color}"><th>Matéria-prima MubiSys</th><th>Aplicável a</th><th>Tipo de solda</th><th>Tamanho</th><th>Unidade</th><th>Custo MubiSys</th></tr></thead><tbody>`;
+        itensSolda.forEach(item => {
+          const materiais = item.produtividadeMateriais.map(material => ROTULO_MATERIAL_SOLDA[material]).join(", ") || "Sem material";
+          const tipos = item.produtividadeTiposSolda.map(tipo => ROTULO_TIPO_SOLDA[tipo]).join(", ") || "Sem tipo";
+          const tamanho = item.produtividadeTamanho ? ROTULO_TAMANHO_PRODUTIVIDADE[item.produtividadeTamanho] : "Sem tamanho";
+          html += `<tr><td>${escaparHtml(item.nome)}<br><small>Código MubiSys #${item.id}</small></td><td>${escaparHtml(materiais)}</td><td>${escaparHtml(tipos)}</td><td>${escaparHtml(tamanho)}</td><td>${escaparHtml(item.unidadeCusto || "—")}</td><td><span class="val">${fmtBrl(item.valorCusto)}</span></td></tr>`;
+        });
+        html += `</tbody></table>`;
+      }
     } else for (const sec of pageSections) {
       const lbl = getSectionLabel(sec.sectionTitle);
       const badgeHtml = lbl.badge
@@ -1905,7 +1941,7 @@ function ProdutividadesSolda() {
 }
 
 export default function TabelaPrecos() {
-  const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente" | "produtividade_solda">(
+  const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente">(
     "principal"
   );
   const [activeTab, setActiveTab] = useState("1");
@@ -1965,14 +2001,18 @@ export default function TabelaPrecos() {
 
   const isSearching = searchQuery.trim().length > 0;
 
-  const sectionsForPage = (page: number) => page === 4 ? [] :
-    (allSections ?? [])
-      .filter(s => s.page === page)
+  const sectionsForPage = (page: number) => {
+    if (page === 4 || page === 5) return [];
+    const storedPages = page === 6 ? [5, 6] : [page];
+    return (allSections ?? [])
+      .filter(section => storedPages.includes(section.page))
+      .map(section => section.page === 5 ? { ...section, page: 6 } : section)
       .sort((a, b) => a.sectionOrder - b.sectionOrder);
+  };
 
   // Filtro combinado: busca por texto + filtro por página
   const filteredSections = useMemo(() => {
-    let sections = (allSections ?? []).filter(section => section.page !== 4);
+    let sections = (allSections ?? []).filter(section => section.page !== 4).map(section => section.page === 5 ? { ...section, page: 6 } : section);
     if (filterPage !== "all") {
       sections = sections.filter(s => s.page === Number(filterPage));
     }
@@ -1986,6 +2026,8 @@ export default function TabelaPrecos() {
     { key: "2", label: "Pág. 2 — Inox / PVC / Acrílico" },
     { key: "3", label: "Pág. 3 — Pintura" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
+    { key: "5", label: "Pág. 5 — Produtividades de solda" },
+    { key: "6", label: "Pág. 6 — Condições Comerciais" },
   ];
 
   // Seções da Tabela Novo Cliente (pages 11, 12, 13)
@@ -2027,19 +2069,7 @@ export default function TabelaPrecos() {
           <Plus className="w-4 h-4 inline mr-1.5" />
           Tabela Novo Cliente
         </button>
-        <button
-          onClick={() => setTabelaAtiva("produtividade_solda")}
-          className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${
-            tabelaAtiva === "produtividade_solda"
-              ? "bg-white border-amber-200 text-amber-800 shadow-sm -mb-px"
-              : "bg-slate-50 border-transparent text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          <Hammer className="w-4 h-4 inline mr-1.5" />
-          Produtividades de solda
-        </button>
       </div>
-      {tabelaAtiva === "produtividade_solda" && <ProdutividadesSolda />}
 
 
       {/* ─── ABA: TABELA NOVO CLIENTE ─── */}
@@ -2227,15 +2257,22 @@ export default function TabelaPrecos() {
                   size="sm"
                   variant="outline"
                   className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
-                  onClick={() =>
-                    gerarPdfTabela(
-                      (allSections ?? []).filter(s => s.page >= 1 && s.page <= 4),
-                      meta ?? null,
-                      dimensionamentoLed!.tables,
-                      dimensionamentoLed!.texts,
-                      "Tabela Clientes Antigos"
-                    )
-                  }
+                  onClick={async () => {
+                    try {
+                      const catalogo = await utils.produtos.materiasPrimas.listar.fetch();
+                      gerarPdfTabela(
+                        (allSections ?? []).filter(s => s.page >= 1 && s.page <= 6),
+                        meta ?? null,
+                        dimensionamentoLed!.tables,
+                        dimensionamentoLed!.texts,
+                        "Tabela Clientes Antigos",
+                        catalogo.filter(material => material.ehProdutividade)
+                      );
+                    } catch (erro) {
+                      console.error("[Tabela de Preços] Falha ao carregar produtividades para impressão:", erro);
+                      toast.error("Não foi possível carregar as produtividades de solda para o PDF.");
+                    }
+                  }}
                   disabled={isLoading || !dimensionamentoLed}
                 >
                   <Download className="w-4 h-4" />
@@ -2308,6 +2345,7 @@ export default function TabelaPrecos() {
                     { value: "2", label: "Inox / PVC / Acrílico" },
                     { value: "3", label: "Pintura" },
                     { value: "4", label: "Fontes Chaveadas" },
+                    { value: "6", label: "Condições Comerciais" },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -2363,7 +2401,7 @@ export default function TabelaPrecos() {
                     value={p.key}
                     className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm"
                   >
-                    <Pencil className="w-3 h-3 mr-1 text-blue-500" />
+                    {p.key === "5" ? <Hammer className="w-3 h-3 mr-1 text-amber-700" /> : <Pencil className="w-3 h-3 mr-1 text-blue-500" />}
                     {p.key === "4" ? getLedText(dimensionamentoLed?.texts ?? {}, ledPowerSourceTextKey.page("tableTabLabel"), p.label) : p.label}
                   </TabsTrigger>
                 ))}
@@ -2371,7 +2409,9 @@ export default function TabelaPrecos() {
 
             {allPages.map(p => (
               <TabsContent key={p.key} value={p.key}>
-                {p.key === "4" ? (
+                {p.key === "5" ? (
+                  <ProdutividadesSolda />
+                ) : p.key === "4" ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-end gap-2 text-xs text-slate-500">
                       <span>Nome da aba:</span>

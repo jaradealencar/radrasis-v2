@@ -83,10 +83,12 @@ export function registrarRotasPriceTableApi(app: Express) {
           conteudo.type === "margin_table_multi";
         const isConfig = conteudo.type === "config";
 
+        // As condições comerciais legadas da página 5 aparecem como página 6 na interface.
+        const pagina = sec.page === 5 ? 6 : sec.page;
         return {
           secao_id: sec.id,
-          pagina: sec.page,
-          aba: abaDaPagina(sec.page),
+          pagina,
+          aba: abaDaPagina(pagina),
           titulo: sec.sectionTitle,
           tipo: conteudo.type ?? null,
           colunas: isMargin ? (conteudo.columns ?? []) : null,
