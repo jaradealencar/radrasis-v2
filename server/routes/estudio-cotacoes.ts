@@ -21,6 +21,9 @@ import {
   verificarTicketAnaliseFactibilidade,
 } from "../services/cpqFactibilidadeFabricacao";
 import { verificarReciboNesting } from "../services/cpqNesting";
+import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
+import { carregarCatalogoEspelhado } from "../services/mubisysEspelho";
+import { calcularComposicaoComAcabamentos } from "../services/cpqComposicao";
 
 const PREFIXO_ESTUDIO = "[ESTUDIO_COTACAO_V1]";
 const reacooes = [
@@ -145,6 +148,7 @@ const snapshotSchema = z.object({
   alturaNestingMm: z.number().finite().positive().max(50_000).nullable().optional().default(null),
   modeloNome: z.string().min(1).max(256),
   mubisysProdutoId: z.number().int().positive().nullable().optional(),
+  origemComposicao: z.enum(["mubisys", "radrasys", "nenhuma"]).optional(),
   mubisysModeloId: z.number().int().positive().nullable().optional(),
   variacoesModelo: z.array(z.object({
     id: z.number().int().positive(),
@@ -167,6 +171,26 @@ const snapshotSchema = z.object({
     custoUnitario: z.number().nonnegative(),
     quantidade: z.number().nonnegative(),
     custoTotal: z.number().nonnegative(),
+    composicaoItemId: z.number().int().positive().nullable().optional().default(null),
+    custoAcabamentos: z.number().nonnegative().optional().default(0),
+    custoEquipamentos: z.number().nonnegative().optional().default(0),
+    acabamentos: z.array(z.object({
+      id: z.number().int().positive(),
+      nome: z.string().max(256),
+      quantidade: z.number().nonnegative(),
+      custoUnitario: z.number().nonnegative().nullable(),
+      custoTotal: z.number().nonnegative().nullable(),
+      horas: z.number().nonnegative(),
+      formulaType: z.string().max(40),
+      multiplicador: z.number().nonnegative(),
+    }).strict()).max(200).optional().default([]),
+    equipamentos: z.array(z.object({
+      id: z.number().int().positive(),
+      nome: z.string().max(256),
+      horas: z.number().nonnegative(),
+      custoHora: z.number().nonnegative().nullable(),
+      custoTotal: z.number().nonnegative().nullable(),
+    }).strict()).max(200).optional().default([]),
     formulaType: z.string().max(40),
     multiplicador: z.number().nonnegative(),
     variacaoModeloId: z.number().int().positive().nullable(),
@@ -532,14 +556,33 @@ function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
     }
   }
   const custoMateriaisLinhas = (snapshot.materiais ?? []).reduce(
-    (total, linha) => total + linha.custoTotal,
+    (total, linha) => total + linha.custoTotal + linha.custoAcabamentos + linha.custoEquipamentos,
     snapshot.mapeamentoCores?.custoAdicional ?? 0,
   );
   if ((snapshot.materiais ?? []).some((linha) => linha.quantidade > 0 && linha.custoUnitario <= 0)) {
     throw new Error("Há matéria-prima sem custo válido. Atualize os custos antes da análise ou aprovação.");
   }
+  for (const linha of snapshot.materiais ?? []) {
+    const totalAcabamentos = linha.acabamentos.reduce((total, acabamento) => {
+      if (acabamento.quantidade > 0 && (acabamento.custoUnitario == null || acabamento.custoUnitario <= 0))
+        throw new Error("O acabamento " + acabamento.nome + " não tem custo unitário válido.");
+      if (acabamento.custoTotal == null || Math.abs(acabamento.custoTotal - acabamento.quantidade * (acabamento.custoUnitario ?? 0)) > 0.02)
+        throw new Error("O subtotal do acabamento " + acabamento.nome + " não corresponde ao consumo e ao custo.");
+      return total + acabamento.custoTotal;
+    }, 0);
+    const totalEquipamentos = linha.equipamentos.reduce((total, equipamento) => {
+      if (equipamento.horas > 0 && (equipamento.custoHora == null || equipamento.custoHora <= 0))
+        throw new Error("O equipamento " + equipamento.nome + " não tem custo por hora válido.");
+      if (equipamento.custoTotal == null || Math.abs(equipamento.custoTotal - equipamento.horas * (equipamento.custoHora ?? 0)) > 0.02)
+        throw new Error("O subtotal do equipamento " + equipamento.nome + " não corresponde às horas e ao custo por hora.");
+      return total + equipamento.custoTotal;
+    }, 0);
+    if (Math.abs(totalAcabamentos - linha.custoAcabamentos) > 0.02 ||
+        Math.abs(totalEquipamentos - linha.custoEquipamentos) > 0.02)
+      throw new Error("Os custos de acabamento/equipamento não fecham com as linhas da matéria-prima.");
+  }
   if ((snapshot.materiais ?? []).some((linha) => Math.abs(linha.custoTotal - linha.quantidade * linha.custoUnitario) > 0.02)) {
-    throw new Error("O subtotal de uma matéria-prima não corresponde à quantidade e ao custo unitário.");
+    throw new Error("O subtotal da matéria-prima não corresponde à quantidade e ao custo unitário.");
   }
   const custoDiretoEsperado = snapshot.custoMateriais + snapshot.custoFixo + snapshot.custoServicos;
   const arredondar = (valor: number) => Math.round((valor + Number.EPSILON) * 100) / 100;
@@ -591,10 +634,120 @@ async function obterAtor(req: Request) {
   };
 }
 
+async function validarBOMComAcabamentosNoServidor(snapshot: z.infer<typeof snapshotSchema>): Promise<string | null> {
+
+  const linhas = snapshot.materiais.filter(linha => linha.composicaoItemId != null);
+  if (!linhas.length) return null;
+  if (!snapshot.mubisysProdutoId || !snapshot.mubisysModeloId)
+    return "A BOM MubiSys está sem produto ou modelo de origem.";
+  const ids = linhas.map(linha => linha.composicaoItemId!).filter(Number.isInteger);
+  const idsUnicos = new Set(ids);
+  if (ids.length !== idsUnicos.size)
+    return "O snapshot tem linhas de BOM MubiSys duplicadas.";
+  try {
+    const catalogo = await carregarCatalogoEspelhado();
+    const variacoes = new Set(snapshot.variacoesModelo.map(item => item.id));
+    const elegiveis = catalogo.composicoesMubiSys.filter(item =>
+      item.produtoId === snapshot.mubisysProdutoId &&
+      item.modeloId === snapshot.mubisysModeloId &&
+      (item.variacaoId == null || variacoes.has(item.variacaoId))
+    );
+    const oficiais = elegiveis.filter(item => idsUnicos.has(item.itemId));
+    if (oficiais.length !== idsUnicos.size || elegiveis.length !== idsUnicos.size ||
+        elegiveis.some(item => !idsUnicos.has(item.itemId)))
+      return "A BOM mudou ou o snapshot omite linhas da composição. Atualize a composição e recalcule o preço.";
+    const porId = new Map(linhas.map(linha => [linha.composicaoItemId!, linha]));
+    const nestingsPorMaterial = new Map<number, {
+      areaLiquidaM2: number; areaUtilizadaM2: number; perimetroTotalM: number; custoMaterialEstimado: number | null;
+    }>();
+    for (const linha of linhas) {
+      if (linha.nesting && linha.mubisysMateriaPrimaId)
+        nestingsPorMaterial.set(linha.mubisysMateriaPrimaId, {
+          areaLiquidaM2: linha.nesting.areaLiquidaM2,
+          areaUtilizadaM2: linha.nesting.areaUtilizadaM2,
+          perimetroTotalM: linha.nesting.perimetroTotalM,
+          custoMaterialEstimado: linha.nesting.custoMaterialEstimado,
+        });
+    }
+    const nestings = [...nestingsPorMaterial].map(([materiaPrimaId, nesting]) => ({
+      materiaPrimaId, ...nesting,
+    }));
+    const calculo = calcularComposicaoComAcabamentos(oficiais.map(item => ({
+      itemId: item.itemId,
+      materiaPrimaId: item.materiaPrimaId,
+      materiaPrima: item.materiaPrimaNome,
+      unidade: item.unidade,
+      formula: item.formulaConsumo,
+      multiplicador: item.quantidade,
+      custoUnitario: item.custoUnitario,
+      acabamentos: item.acabamentos.map(acabamento => ({
+        id: acabamento.id, nome: acabamento.nome, tipoCalculo: acabamento.tipoCalculo,
+        formula: BASES_COBRANCA_PRODUTO.find(formula => formula === acabamento.formulaConsumo) ?? null,
+        quantidade: acabamento.quantidade, custoAdicional: acabamento.custoAdicional,
+        custoMateriaPrima: acabamento.custoMateriaPrima, custoMaoDeObra: acabamento.custoMaoDeObra,
+        produtividadeHora: acabamento.produtividadeHora, horasEquipamento: acabamento.horasEquipamento,
+      })),
+      equipamentos: item.equipamentos.map(equipamento => ({
+        id: equipamento.id, nome: equipamento.nome, horas: equipamento.horas,
+        quantidade: equipamento.quantidade, custoHora: equipamento.custoHora,
+      })),
+    })), {
+      areaM2: snapshot.areaM2, areaGeralM2: snapshot.areaGeralM2,
+      areaTotalNestingM2: snapshot.areaTotalNestingM2,
+      perimExtM: snapshot.perimExtM, perimTotalM: snapshot.perimTotalM,
+    }, nestings);
+    if (calculo.pendencias.length)
+      return "A BOM tem custo, fórmula ou medida pendente: " + calculo.pendencias.slice(0, 5).join(" ");
+    const perto = (a: number | null | undefined, b: number | null | undefined) =>
+      Math.abs((a ?? 0) - (b ?? 0)) <= 0.02;
+    for (const calculada of calculo.linhas) {
+      const linha = porId.get(calculada.itemId!);
+      if (!linha) return "Uma linha calculada da BOM não está no snapshot.";
+      const original = oficiais.find(item => item.itemId === calculada.itemId);
+      if (!original || linha.mubisysMateriaPrimaId !== original.materiaPrimaId ||
+          linha.formulaType !== original.formulaConsumo ||
+          !perto(linha.multiplicador, original.quantidade) ||
+          !perto(linha.quantidade, calculada.quantidade) ||
+          !perto(linha.custoTotal, calculada.custoMateriaPrima) ||
+          !perto(linha.custoAcabamentos, calculada.custoAcabamentos) ||
+          !perto(linha.custoEquipamentos, calculada.custoEquipamentos))
+        return "Consumo ou custo de matéria-prima da BOM não corresponde ao recálculo do servidor.";
+      const acabamentos = new Map(calculada.acabamentos.map(item => [item.id, item]));
+      if (linha.acabamentos.length !== acabamentos.size)
+        return "A lista de acabamentos do snapshot não corresponde à BOM atual.";
+      for (const acabamento of linha.acabamentos) {
+        const esperado = acabamentos.get(acabamento.id);
+        if (!esperado || !perto(acabamento.quantidade, esperado.quantidade) ||
+            !perto(acabamento.custoTotal, esperado.custo) || !perto(acabamento.horas, esperado.horas))
+          return "Consumo ou custo de acabamento não corresponde ao recálculo do servidor.";
+      }
+      const equipamentos = new Map(calculada.equipamentos.map(item => [item.id, item]));
+      if (linha.equipamentos.length !== equipamentos.size)
+        return "A lista de equipamentos do snapshot não corresponde à BOM atual.";
+      for (const equipamento of linha.equipamentos) {
+        const esperado = equipamentos.get(equipamento.id);
+        if (!esperado || !perto(equipamento.horas, esperado.horas) ||
+            !perto(equipamento.custoTotal, esperado.custo))
+          return "Horas ou custo de equipamento não corresponde ao recálculo do servidor.";
+      }
+    }
+    return null;
+  } catch (error) {
+    return error instanceof Error
+      ? "Não foi possível validar a BOM no servidor: " + error.message
+      : "Não foi possível validar a BOM no servidor.";
+  }
+}
+
 async function lerSnapshotPreco(req: Request, res: Response) {
   const parsed = z.object({ sourceId: z.string().min(1).max(80), snapshot: snapshotSchema }).strict().safeParse(req.body);
   if (!parsed.success) {
     respostaErro(res, 400, "Confira os dados de custo e composição antes de analisar o preço.");
+    return null;
+  }
+  const erroBOM = await validarBOMComAcabamentosNoServidor(parsed.data.snapshot);
+  if (erroBOM) {
+    respostaErro(res, 409, erroBOM);
     return null;
   }
   const erroCores = await validarMapeamentoCoresPersistido(parsed.data.sourceId, parsed.data.snapshot);
@@ -724,6 +877,8 @@ async function aprovarPreco(req: Request, res: Response): Promise<void> {
     ticket: z.string().min(20).max(6000).nullable().default(null),
   }).strict().safeParse(req.body);
   if (!parsed.success) { respostaErro(res, 400, "Confira o preço e a configuração antes de aprovar."); return; }
+  const erroBOM = await validarBOMComAcabamentosNoServidor(parsed.data.snapshot);
+  if (erroBOM) { respostaErro(res, 409, erroBOM); return; }
   const erroCores = await validarMapeamentoCoresPersistido(parsed.data.sourceId, parsed.data.snapshot);
   if (erroCores) { respostaErro(res, 409, erroCores); return; }
   try {
@@ -755,6 +910,11 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
     return;
   }
   const dadosRecebidos = parsed.data.snapshot;
+  const erroBOM = await validarBOMComAcabamentosNoServidor(dadosRecebidos);
+  if (erroBOM) {
+    respostaErro(res, 409, erroBOM);
+    return;
+  }
   const erroCores = await validarMapeamentoCoresPersistido(parsed.data.sourceId, dadosRecebidos);
   if (erroCores) {
     respostaErro(res, 409, erroCores);

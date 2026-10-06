@@ -2645,6 +2645,39 @@ function materialKitAtivo(line){
   const variacao=(Array.isArray(line.variantes)?line.variantes:[]).find(item=>String(item.matId)===String(line.variacaoSelecionadaMatId));
   return variacao?{...line,...variacao}:line;
 }
+function formulaAcabamentoCpq(acabamento){
+  if(acabamento.formulaType&&FORMULA_TYPES[acabamento.formulaType]) return acabamento.formulaType;
+  const tipo=String(acabamento.tipoCalculo||'').replace(/²/g,'2').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(tipo.includes('m2')||tipo.includes('area')||tipo.includes('metro quadrado')) return 'area';
+  if(tipo.includes('ml')||tipo.includes('metro linear')||tipo.includes('perimetro')||tipo.includes('comprimento')) return 'perimExt';
+  if(tipo.includes('peca')||tipo.includes('unidade')||tipo.includes('fixo')) return 'fixo';
+  return null;
+}
+function custosAdicionaisComposicao(linha,geom){
+  const acabamentos=[],equipamentos=[],pendencias=[];
+  let custoAcabamentos=0,custoEquipamentos=0;
+  (Array.isArray(linha.acabamentos)?linha.acabamentos:[]).forEach(a=>{
+    const formula=formulaAcabamentoCpq(a);
+    if(!formula){pendencias.push('Tipo de cálculo ausente ou desconhecido no acabamento '+(a.nome||a.id)+'.');return;}
+    const quantidade=Math.max(0,kitLineQty({matId:linha.matId,formulaType:formula,mult:Number(a.mult)||0},geom));
+    const mp=a.custoMateriaPrima,mo=a.custoMaoDeObra,adicional=a.custoAdicional;
+    const unit=adicional!=null&&Number.isFinite(Number(adicional))?Number(adicional):(mp!=null&&mo!=null?Number(mp)+Number(mo):null);
+    const custo=unit==null?null:quantidade*unit;
+    const horas=a.horasEquipamento!=null?Number(a.horasEquipamento)*(Number(a.mult)||0):(Number(a.produtividadeHora)>0?quantidade/Number(a.produtividadeHora):0);
+    if(quantidade>0&&(unit==null||unit<=0)) pendencias.push('Custo ausente ou inválido no acabamento '+(a.nome||a.id)+'.');
+    if(custo!=null)custoAcabamentos+=custo;
+    acabamentos.push({id:Number(a.id)||0,nome:String(a.nome||''),quantidade,custoUnitario:unit,custoTotal:custo,horas,formulaType:formula,multiplicador:Number(a.mult)||0});
+  });
+  (Array.isArray(linha.equipamentos)?linha.equipamentos:[]).forEach(e=>{
+    const horas=Math.max(0,Number(e.horas)||0)*Math.max(0,Number(e.mult)||0);
+    const unit=e.custoHora==null?null:Number(e.custoHora),custo=unit==null?null:horas*unit;
+    if(horas>0&&(unit==null||unit<=0)) pendencias.push('Custo por hora ausente ou inválido no equipamento '+(e.nome||e.id)+'.');
+    if(custo!=null)custoEquipamentos+=custo;
+    equipamentos.push({id:Number(e.id)||0,nome:String(e.nome||''),horas,custoHora:unit,custoTotal:custo});
+  });
+  return {acabamentos,equipamentos,custoAcabamentos:pendencias.some(p=>p.includes('acabamento'))?null:custoAcabamentos,
+    custoEquipamentos:pendencias.some(p=>p.includes('equipamento'))?null:custoEquipamentos,pendencias};
+}
 function variacoesSelecionadasCotacao(){
   const variacoesModelo = (REAL.variacaoModeloNomes||[]).map(nome=>({nome:'Variação do modelo',valor:String(nome).slice(0,120)}));
   return [...variacoesModelo,...REAL.kit.flatMap(line=>{
@@ -2681,7 +2714,26 @@ function composicaoMubiSysDoModelo(modelo, variacaoIds){
     if(!item.perfilConsumo||!item.formulaConsumo||!BASES_COBRANCA_PRODUTO.includes(item.formulaConsumo)) return {erro:`A matéria-prima ${m.nome} (#${m.id}) veio com o perfil de consumo “${item.perfilConsumo||'não informado'}”, que ainda não possui equivalente seguro no Radrasys. A importação foi interrompida para evitar cálculo incorreto.`};
     const variacao=item.variacaoId==null?null:variacoesAtivasDoModelo(modelo).find(v=>Number(v.id)===Number(item.variacaoId));
     const unidadeConsumo=item.unidade||m.unidade||modelo.unidade||'unidade';
-    linhas.push({matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',formulaType:item.formulaConsumo,mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,perfilConsumoMubiSys:item.perfilConsumo,consumoBaseUnidade:variacao?.nome||modelo.unidade||'unidade',unidadeConsumo,variacaoModeloId:item.variacaoId??null,variacaoModeloNome:variacao?.nome||null});
+    linhas.push({
+      matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',
+      formulaType:item.formulaConsumo,mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,
+      composicaoItemId:Number(item.itemId)||null,perfilConsumoMubiSys:item.perfilConsumo,
+      consumoBaseUnidade:variacao?.nome||modelo.unidade||'unidade',unidadeConsumo,
+      variacaoModeloId:item.variacaoId??null,variacaoModeloNome:variacao?.nome||null,
+      acabamentos:(Array.isArray(item.acabamentos)?item.acabamentos:[]).map(a=>({
+        id:Number(a.id)||0,nome:String(a.nome||''),tipoCalculo:String(a.tipoCalculo||''),
+        formulaType:a.formulaConsumo||null,mult:Number(a.quantidade)||1,
+        custoAdicional:a.custoAdicional==null?null:Number(a.custoAdicional),
+        custoMateriaPrima:a.custoMateriaPrima==null?null:Number(a.custoMateriaPrima),
+        custoMaoDeObra:a.custoMaoDeObra==null?null:Number(a.custoMaoDeObra),
+        produtividadeHora:a.produtividadeHora==null?null:Number(a.produtividadeHora),
+        horasEquipamento:a.horasEquipamento==null?null:Number(a.horasEquipamento),
+      })),
+      equipamentos:(Array.isArray(item.equipamentos)?item.equipamentos:[]).map(e=>({
+        id:Number(e.id)||0,nome:String(e.nome||''),horas:Number(e.horas)||0,
+        mult:Number(e.quantidade)||1,custoHora:e.custoHora==null?null:Number(e.custoHora),
+      })),
+    });
   }
   return {linhas};
 }
@@ -2851,17 +2903,26 @@ function linhaComCustoNesting(linha, geom=computeGeomReal()){
   const resultadosNesting=REAL.nestingMateriais?.length?REAL.nestingMateriais:(REAL.nesting?.materiais||[]);
   const nesting=resultadosNesting.find(item=>Number(item.id_materia_prima)===Number(material.matId));
   const quantidade=Math.max(0,kitLineQty(linha,geom));
-  const custoBase=quantidade*(Number(material.custo)||0);
-  if(!nesting) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:null};
+  const custoUnitCatalogo=Number(material.custo)||0;
+  const extras=custosAdicionaisComposicao({...linha,matId:material.matId},geom);
+  const pendencias=[...extras.pendencias];
+  if(quantidade>0&&custoUnitCatalogo<=0) pendencias.push('Custo unitário ausente ou inválido para '+(material.nome||'matéria-prima')+'.');
+  const fechar=(custoMateriaPrima,custoUnitario,metadados)=>{
+    const custoTotal=pendencias.length?null:custoMateriaPrima+extras.custoAcabamentos+extras.custoEquipamentos;
+    return {quantidade,custoMateriaPrima,custoAcabamentos:extras.custoAcabamentos,custoEquipamentos:extras.custoEquipamentos,
+      acabamentos:extras.acabamentos,equipamentos:extras.equipamentos,pendencias,custoTotal,
+      custoUnitario,nesting:metadados};
+  };
+  const custoBase=quantidade*custoUnitCatalogo;
+  if(!nesting) return fechar(custoBase,custoUnitCatalogo,null);
   const metadados={idChapa:nesting.id_chapa_utilizada,nomeChapa:nesting.nome_chapa_utilizada,larguraMm:nesting.chapa.largura_mm,alturaMm:nesting.chapa.altura_mm,areaChapaM2:nesting.chapa.largura_mm*nesting.chapa.altura_mm/1e6,areaUtilizadaM2:nesting.area_chapa_utilizada_m2,areaLiquidaM2:nesting.area_liquida_m2,areaSobraM2:nesting.area_sobra_m2,perimetroTotalM:nesting.perimetro_total_m,aproveitamentoPct:nesting.porcentagem_aproveitamento,criterio:nesting.criterio_escolha,custoUnitarioCatalogo:Number(nesting.custo_unitario)||0,unidadeCusto:nesting.unidade_custo,custoMaterialEstimado:nesting.custo_material_estimado,custoSobraEstimado:nesting.custo_sobra_estimado,alertaCusto:nesting.alerta_custo,chapaPrincipal:nesting.chapa_principal,espacamentoPecasMm:nesting.espacamento_pecas_mm,margemBordaMm:nesting.margem_borda_mm,reciboIntegridade:nesting.reciboIntegridade};
-  if(nesting.custo_material_estimado==null||!Number.isFinite(Number(nesting.custo_material_estimado))) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:metadados};
+  if(nesting.custo_material_estimado==null||!Number.isFinite(Number(nesting.custo_material_estimado))) return fechar(custoBase,custoUnitCatalogo,metadados);
   const linhasMesmoMaterial=(REAL.kit||[]).filter(item=>Number(materialKitAtivo(item).matId)===Number(material.matId));
   const custoBaseTotal=linhasMesmoMaterial.reduce((total,item)=>{const atual=materialKitAtivo(item);return total+Math.max(0,kitLineQty(item,geom))*(Number(atual.custo)||0);},0);
-  const parcela=custoBaseTotal>0?custoBase/ custoBaseTotal:1/Math.max(1,linhasMesmoMaterial.length);
-  const custoTotal=Math.max(0,Number(nesting.custo_material_estimado)*parcela);
-  return {quantidade,custoTotal,custoUnitario:quantidade>0?custoTotal/quantidade:0,nesting:metadados};
+  const parcela=custoBaseTotal>0?custoBase/custoBaseTotal:1/Math.max(1,linhasMesmoMaterial.length);
+  const custoMateriaPrima=Math.max(0,Number(nesting.custo_material_estimado)*parcela);
+  return fechar(custoMateriaPrima,quantidade>0?custoMateriaPrima/quantidade:0,metadados);
 }
-
 function resumoCustoCoresReal(){
   const results=REAL.colorAnalysis?.resultados||[];
   const additional=results.filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso');
@@ -2884,7 +2945,9 @@ function aplicarEmbalagem(precoSemEmbalagem){
 
 function computeOrcamentoReal(){
   const g = computeGeomReal();
-  const matKitTotal = REAL.kit.reduce((a,k)=>a+linhaComCustoNesting(k,g).custoTotal,0);
+  const custosKit=REAL.kit.map(linha=>linhaComCustoNesting(linha,g));
+  const pendenciasBOM=[...new Set(custosKit.flatMap(linha=>linha.pendencias||[]))];
+  const matKitTotal=custosKit.reduce((total,linha)=>total+(Number(linha.custoTotal)||0),0);
   const corCusto=resumoCustoCoresReal();
   const matTotal = matKitTotal+corCusto.total;
   const servTotal = REAL.servicos.reduce((a,s)=>a+s.v,0);
@@ -2904,7 +2967,7 @@ function computeOrcamentoReal(){
     const emb = aplicarEmbalagem(REAL.precificacao.precoFixo*(1-descontoFrac));
     const precoCalculado = emb.precoCalculado;
     const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
-    return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoCalculado, precoFinal, margemInfo:null, margin:null, modoFixo:true, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
+    return {matTotal, matKitTotal, pendenciasBOM, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoCalculado, precoFinal, margemInfo:null, margin:null, modoFixo:true, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
   }
 
   const margemInfo = REAL.precificacao ? margemDaTabela(REAL.precificacao, custoDireto) : null;
@@ -2914,7 +2977,7 @@ function computeOrcamentoReal(){
   const emb = aplicarEmbalagem(precoComInstalacao*(1-descontoFrac));
   const precoCalculado = emb.precoCalculado;
   const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
-  return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoCalculado, precoFinal, margemInfo, margin, modoFixo:false, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
+  return {matTotal, matKitTotal, pendenciasBOM, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoCalculado, precoFinal, margemInfo, margin, modoFixo:false, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
 }
 
 /* ---------- RENDER ---------- */
@@ -6085,11 +6148,16 @@ function snapshotCotacaoReal(){
     const alternativa=(Array.isArray(linha.variantes)?linha.variantes:[]).find(item=>String(item.matId)===String(linha.variacaoSelecionadaMatId));
     return {
       mubisysMateriaPrimaId:Number(material.matId)||null,
+      composicaoItemId:Number(linha.composicaoItemId)||null,
       nome:String(material.nome||''),
       unidade:String(material.unidade||''),
       custoUnitario:calculoLinha.custoUnitario,
       quantidade:Number.isFinite(quantidade)?quantidade:0,
-      custoTotal:Number.isFinite(quantidade)?calculoLinha.custoTotal:0,
+      custoTotal:Number.isFinite(quantidade)?(calculoLinha.custoMateriaPrima??0):0,
+      custoAcabamentos:calculoLinha.custoAcabamentos??0,
+      custoEquipamentos:calculoLinha.custoEquipamentos??0,
+      acabamentos:calculoLinha.acabamentos||[],
+      equipamentos:calculoLinha.equipamentos||[],
       ...formulaParaServidor(linha,quantidade),
       variacaoModeloId:linha.variacaoModeloId??null,
       variacaoModeloNome:linha.variacaoModeloNome||null,
@@ -6143,6 +6211,7 @@ function snapshotCotacaoReal(){
     vendedor:REAL.vendedor || '',
     whatsappVendedor:normalizarTelefoneWhatsApp(configGeral.whatsappVendedores[REAL.vendedor]) || null,
     mubisysProdutoId:REAL.produtoId,
+    origemComposicao:String(REAL.kitSource||'nenhuma'),
     mubisysModeloId:REAL.modeloId,
     variacoesModelo:(REAL.variacaoModeloIds||[]).map((id,index)=>({id,nome:REAL.variacaoModeloNomes?.[index]||''})),
     modeloNome:(REAL.variacaoModeloNome ? `${REAL.modeloNome || ''} — ${REAL.variacaoModeloNome}` : (REAL.modeloNome || '')).slice(0,256),
@@ -6270,9 +6339,59 @@ async function aprovarPrecoReal(origem){
   }
 }
 
+async function validarComposicaoBOMNoServidor(snapshot){
+  if(REAL.kitSource!=="mubisys") return;
+  const linhas=(snapshot.materiais||[]).filter(linha=>Number(linha.composicaoItemId)>0);
+  if(!linhas.length) return;
+  const response=await fetch("/api/letra-caixa/mubisys/composicoes/calcular",{
+    method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      produtoId:Number(REAL.produtoId),modeloId:Number(REAL.modeloId),
+      variacaoIds:[...new Set((REAL.variacaoModeloIds||[]).map(Number).filter(Number.isInteger))],
+      composicaoItemIds:linhas.map(linha=>Number(linha.composicaoItemId)),
+      medidas:{areaM2:snapshot.areaM2,areaGeralM2:snapshot.areaGeralM2,
+        areaTotalNestingM2:snapshot.areaTotalNestingM2,perimExtM:snapshot.perimExtM,perimTotalM:snapshot.perimTotalM},
+      nestings:linhas.filter(linha=>linha.nesting).map(linha=>({
+        materiaPrimaId:Number(linha.mubisysMateriaPrimaId),
+        areaLiquidaM2:linha.nesting.areaLiquidaM2,areaUtilizadaM2:linha.nesting.areaUtilizadaM2,
+        perimetroTotalM:linha.nesting.perimetroTotalM,custoMaterialEstimado:linha.nesting.custoMaterialEstimado,
+      })),
+    }),
+  });
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(body.error||"O servidor não conseguiu validar a composição MubiSys.");
+  const porId=new Map((body.linhas||[]).map(linha=>[Number(linha.itemId),linha]));
+  const perto=(a,b)=>Math.abs(Number(a||0)-Number(b||0))<=0.02;
+  for(const linha of linhas){
+    const oficial=porId.get(Number(linha.composicaoItemId));
+    if(!oficial) throw new Error("Uma linha da composição MubiSys não foi encontrada no recálculo do servidor.");
+    if(!perto(linha.quantidade,oficial.quantidade)||
+       !perto(linha.custoTotal,oficial.custoMateriaPrima)||
+       !perto(linha.custoAcabamentos,oficial.custoAcabamentos)||
+       !perto(linha.custoEquipamentos,oficial.custoEquipamentos)){
+      throw new Error("A composição ou os custos foram alterados desde o último cálculo. Recalcule o orçamento antes de emitir.");
+    }
+    const acabamentos=new Map((oficial.acabamentos||[]).map(item=>[Number(item.id),item]));
+    if((linha.acabamentos||[]).length!==acabamentos.size) throw new Error("A lista de acabamentos mudou desde o último cálculo.");
+    for(const acabamento of linha.acabamentos||[]){
+      const atual=acabamentos.get(Number(acabamento.id));
+      if(!atual||!perto(acabamento.quantidade,atual.quantidade)||!perto(acabamento.custoTotal,atual.custo)||!perto(acabamento.horas,atual.horas))
+        throw new Error("O custo ou consumo do acabamento "+(acabamento.nome||"selecionado")+" não corresponde à ficha MubiSys.");
+    }
+    const equipamentos=new Map((oficial.equipamentos||[]).map(item=>[Number(item.id),item]));
+    if((linha.equipamentos||[]).length!==equipamentos.size) throw new Error("A lista de equipamentos mudou desde o último cálculo.");
+    for(const equipamento of linha.equipamentos||[]){
+      const atual=equipamentos.get(Number(equipamento.id));
+      if(!atual||!perto(equipamento.horas,atual.horas)||!perto(equipamento.custoTotal,atual.custo))
+        throw new Error("O custo ou as horas do equipamento "+(equipamento.nome||"selecionado")+" não correspondem à ficha MubiSys.");
+    }
+  }
+}
+
 async function criarCotacaoPublica(){
   await salvarClienteCadastrado();
   await prepararImagensCotacao();
+  await validarComposicaoBOMNoServidor(snapshotCotacaoReal());
   const response = await fetch('/api/letra-caixa/cotacoes', {
     method:'POST',
     credentials:'same-origin',
@@ -6290,6 +6409,8 @@ async function criarCotacaoPublica(){
 }
 
 async function concluirOrcamentoEabrirCotacao(){
+  const pendenciasBOM=computeOrcamentoReal().pendenciasBOM||[];
+  if(pendenciasBOM.length){alert("Resolva as pendências da BOM antes de emitir: "+pendenciasBOM.join(" "));return;}
   if(resumoCustoCoresReal().pendencias.length){alert('Há custos de vinil/ impressão/ laminação pendentes. Atualize o cadastro por m² e refaça a análise de cores antes de emitir.');return;}
   if(cotacaoEmCriacao) return;
   cotacaoEmCriacao=true;

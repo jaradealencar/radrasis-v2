@@ -417,6 +417,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   cancela o lote sem gravação parcial. Perfis mantêm o texto de origem e são
   traduzidos sem heurística para `area`, `areaTotal`, `areaGeral`, `perimExt`,
   `perimTotal` ou `fixo`; a fórmula guia a unidade compatível no cadastro.
+  A migration `0097` guarda acabamentos (`acabamentos`, `composicao_item_acabamentos`) e
+  equipamentos (`equipamentos`, `composicao_item_equipamentos`) adjuntos a cada linha da BOM,
+  com custo, unidade/fórmula, produtividade, horas e ordem. CSV/XLS/XLSX e JSON aceitam
+  `acabamentos_json`/`equipamentos_json`; `cpqComposicao.ts` calcula nesting, acabamentos e
+  horas no servidor. Análise, aprovação e emissão recalculam a BOM espelhada e recusam
+  snapshot divergente ou com custos/medidas pendentes.
   O catálogo do CPQ (`/api/letra-caixa/catalogo`) lê somente o espelho local e
   combina no orçamento as linhas comuns do modelo com as linhas das variações
   selecionadas. Preço/custo de materiais, nesting, factibilidade, produtos e
