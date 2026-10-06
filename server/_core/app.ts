@@ -216,6 +216,10 @@ export async function createApp(): Promise<Express> {
     await import("../routes/estudio-configuracoes");
   registrarRotasEstudioConfiguracoes(app);
 
+  const { registrarRotasEstudioSoldaProdutividade } =
+    await import("../routes/estudio-solda-produtividade");
+  registrarRotasEstudioSoldaProdutividade(app);
+
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
   const { handleSincronizarOS, handleStatusSincronizacao } =
     await import("../sync/scheduled-sync-os-handler");

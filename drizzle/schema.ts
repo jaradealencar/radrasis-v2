@@ -404,6 +404,49 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
 export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;
 export type InsertMateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferInsert;
 
+// Treino da escolha automática de "Produtividade Solda …" no CPQ (ver server/services/cpqSoldaProdutividade.ts).
+// Regra: condições (nulo/vazio = qualquer) que, batendo com o orçamento, fixam a produtividade escolhida; vence a pontuação automática.
+export const cpqSoldaRegras = pgTable("cpq_solda_regras", {
+  id: serial("id").primaryKey(),
+  nome: varchar("nome", { length: 160 }).notNull(),
+  ativa: boolean("ativa").notNull().default(true),
+  prioridade: integer("prioridade").notNull().default(0),
+  material: varchar("material", { length: 16 }),
+  tipoProduto: varchar("tipo_produto", { length: 80 }),
+  /** Conjunto exato de tipos de fixação (ver shared/produtividade-solda.ts); nulo = qualquer. */
+  fixacaoTipos: text("fixacao_tipos").array(),
+  /** Palavras que precisam aparecer no título do produto. */
+  palavrasTitulo: text("palavras_titulo").array().notNull().default([]),
+  faixa: varchar("faixa", { length: 12 }),
+  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull(),
+  criadaPorNome: varchar("criada_por_nome", { length: 160 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  ativaPrioridadeIdx: index("cpq_solda_regras_ativa_prioridade_idx").on(t.ativa, t.prioridade),
+}));
+export type CpqSoldaRegra = typeof cpqSoldaRegras.$inferSelect;
+
+// Correções: o vendedor trocou a produtividade sugerida. O gestor revisa e pode transformar a correção numa regra.
+export const cpqSoldaCorrecoes = pgTable("cpq_solda_correcoes", {
+  id: serial("id").primaryKey(),
+  cotacaoRef: varchar("cotacao_ref", { length: 80 }),
+  faixa: varchar("faixa", { length: 12 }).notNull(),
+  /** Contexto do orçamento no momento da troca: título, tipo, material, fixação, perímetro e elementos da faixa. */
+  contextoJson: jsonb("contexto_json").$type<Record<string, unknown>>().notNull(),
+  sugeridaMateriaPrimaId: integer("sugerida_materia_prima_id"),
+  escolhidaMateriaPrimaId: integer("escolhida_materia_prima_id").notNull(),
+  nota: varchar("nota", { length: 500 }),
+  /** pendente | virou_regra | descartada */
+  status: varchar("status", { length: 16 }).notNull().default("pendente"),
+  regraId: integer("regra_id").references(() => cpqSoldaRegras.id, { onDelete: "set null" }),
+  usuarioNome: varchar("usuario_nome", { length: 160 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({
+  statusDataIdx: index("cpq_solda_correcoes_status_data_idx").on(t.status, t.createdAt),
+}));
+export type CpqSoldaCorrecao = typeof cpqSoldaCorrecoes.$inferSelect;
+
 // ─── PROPOSTA (cotação gerada a partir do catálogo de Produtos) ────────────
 // Diferente de `crm_propostas` (tabela órfã, nunca usada — o CRM de
 // Propostas hoje lê orçamentos ao vivo do MubiSys, sem lista de itens). Esta

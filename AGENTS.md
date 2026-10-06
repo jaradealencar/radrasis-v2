@@ -664,6 +664,20 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`shared/produtividade-solda.ts`): `contagemElementosPorAltura()` devolve
   `{ate, acima}` para isso, mas **a ligação com a composição/orçamento ainda não
   existe** — a contagem só é exibida e não entra no snapshot da cotação.
+  **Produtividade de solda automática (pedido de 06/10/2026, em andamento):** o vendedor escolhe só o tipo de
+  fixação (etapa 1); o sistema escolhe as "Produtividade Solda …" na Ficha técnica e as acrescenta ao orçamento,
+  quantificadas pelo **perímetro total (externo + vazados, em metros) de cada faixa de altura** (≤ 11 cm e > 11 cm).
+  O produto não cadastra produtividade na composição. O motor é puro, em `server/services/cpqSoldaProdutividade.ts`:
+  `detectarMaterialLetreiro` (subcategoria do kit > tipo do produto > título > composição; divergência só informa) e
+  `sugerirProdutividades` (tamanho como filtro, fixação por **igualdade de conjunto**, material e estilo — cursivo, aro
+  recuado, frontlight, F/F… — pelo título/tipo contra o nome, devolvendo motivos e confiança alta/média/baixa; **regras
+  treinadas vencem a heurística**). As candidatas são as produtividades relacionadas ao produto
+  (`estudio_kits.dadosJson.produtividadesRelacionadas`) ou, se não houver nenhuma, todo o cadastro. Rotas em
+  `server/routes/estudio-solda-produtividade.ts` (`/api/letra-caixa/solda/*`): `sugerir` e `correcoes` (o vendedor trocou a
+  sugestão) para qualquer usuário logado; `regras`, `correcoes` (listar, descartar, virar regra) e `simular` só para
+  gestor/admin/master. Tabelas `cpq_solda_regras` e `cpq_solda_correcoes` (migration `0091`); uma regra exige ao menos uma
+  condição e a fixação dela é um conjunto exato. A unidade da produtividade no MubiSys não é conferida: a quantidade é o
+  perímetro em metros. Ainda faltam, nesta ordem: o seletor de fixação e a sugestão no CPQ e a aba de treino.
 
 ## CPQ nesting backend
 
