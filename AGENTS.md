@@ -645,8 +645,13 @@ image URLs.
 (1) serviço Deepnest remoto (`DEEPNEST_REMOTE_URL` + `DEEPNEST_REMOTE_TOKEN`; o serviço é
 `server/scripts/cpq-deepnest-service.mjs`, que embrulha o worker abaixo e roda numa máquina com o Deepnest),
 (2) Deepnest local (`DEEPNEST_NODE_BIN`/`DEEPNEST_NODE_ENTRY`) e (3) o **motor interno**
-(`server/services/cpqNestingInterno.ts`: caixas giradas de 5 em 5°, MaxRects com 4 estratégias, roda em qualquer
-servidor, inclusive Vercel). O interno é uma estimativa conservadora (não encaixa peça no vazio de outra); o
+(`server/services/cpqNestingInterno.ts`, roda em qualquer servidor, inclusive Vercel; calcula dois empacotamentos e fica
+com o de menor consumo: caixas giradas de 5 em 5° com MaxRects, e **contorno real** em `cpqNestingRaster.ts` — máscara
+de células conservadora por peça e ângulo (4 lados + alinhamento da maior aresta), posição mais à esquerda/abaixo,
+avançando pelo comprimento da chapa como quem fatia um pão; peças pequenas entram nos vazados das grandes; espaçamento
+respeitado (verificado por geometria em `cpq-nesting-contorno.test.ts`); prazo de 12 s por chamada, depois vale o de
+caixas). Entre as duas orientações da mesma chapa vale a de **menor consumo** (antes escolhia a de maior). É uma
+estimativa conservadora (máscara até 1 célula maior por borda); o
 resultado traz `motor: "interno"` e o CPQ mostra o aviso. Remoto indisponível (rede/401/404/5xx) cai no interno;
 falha de cálculo do Deepnest (tempo) continua sendo erro de motor. Nenhum fork do Deepnest com a API `nest(svgs,
 onUpdate, opts)` que o worker espera foi encontrado/validado: o worker e o serviço só foram testados com motor

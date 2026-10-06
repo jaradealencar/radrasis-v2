@@ -1,10 +1,13 @@
 import { contornosFisicosDoSvg, CpqFactibilidadeError } from "./cpqFactibilidadeFabricacao";
+import { empacotarPorContorno, TempoEsgotadoRaster } from "./cpqNestingRaster";
 
 /**
- * Motor de nesting interno (sem addon nativo): empacota as caixas delimitadoras das peças, girando cada uma em
- * passos de 5°, com MaxRects. Roda em qualquer servidor, inclusive serverless. Não encaixa uma peça dentro do
- * vazio da outra como o Deepnest faz; por isso o consumo é uma estimativa conservadora (igual ou maior que o
- * real) e o resultado vai marcado como `motor: "interno"`.
+ * Motor de nesting interno (sem addon nativo). Roda dois empacotadores e fica com o melhor:
+ *  1. caixas delimitadoras girando de 5 em 5° (MaxRects) — rápido, não aproveita vazios;
+ *  2. contorno real (`cpqNestingRaster`): máscara de células conservadora, peça por peça em vários ângulos, na posição
+ *     mais à esquerda e mais abaixo, avançando pelo comprimento da chapa; peças pequenas entram nos vazados das grandes.
+ * Roda em qualquer servidor, inclusive serverless. O espaçamento é conservador (até 1 célula a mais por borda); por isso
+ * o consumo é uma estimativa igual ou maior que a do Deepnest e o resultado vai marcado como `motor: "interno"`.
  */
 
 type Par = [number, number];
@@ -36,6 +39,8 @@ const PASSO_GRAUS = 5;
 // A caixa girada a θ+180° é igual à de θ: 0°–175° cobre todas as caixas possíveis.
 const ANGULOS = Array.from({ length: 180 / PASSO_GRAUS }, (_, i) => i * PASSO_GRAUS);
 const EPS = 1e-9;
+/** Tempo máximo do encaixe por contorno em cada chamada; passou disso vale o resultado por caixas. */
+const PRAZO_CONTORNO_MS = 12_000;
 
 function areaAnel(anel: Anel): number {
   let soma = 0;
@@ -81,6 +86,8 @@ type PecaPreparada = {
   perimetro: number;
   caixas: Array<{ graus: number; largura: number; altura: number }>;
   areaMenorCaixa: number;
+  aneis: Anel[];
+  casco: Par[];
 };
 
 function prepararPeca(peca: PecaMotorInterno, indice: number): PecaPreparada {
@@ -117,7 +124,7 @@ function prepararPeca(peca: PecaMotorInterno, indice: number): PecaPreparada {
     // 1e-6 mm: elimina o ruído de ponto flutuante (100,00000000001 viraria 101 mm no arredondamento para cima).
     return { graus, largura: Math.round((maxX - minX) * 1e6) / 1e6, altura: Math.round((maxY - minY) * 1e6) / 1e6 };
   });
-  return { indice, area, perimetro, caixas, areaMenorCaixa: Math.min(...caixas.map(c => c.largura * c.altura)) };
+  return { indice, area, perimetro, caixas, areaMenorCaixa: Math.min(...caixas.map(c => c.largura * c.altura)), aneis: poligonos.flat(), casco };
 }
 
 type Retangulo = { x: number; y: number; w: number; h: number };
@@ -224,6 +231,25 @@ export function executarMotorInterno(
     const candidato = tentar(preparadas, estrategia, larguraMm, alturaMm, espacamentoMm, bobina);
     if (candidato.colocadas.length > melhor.colocadas.length
       || (candidato.colocadas.length === melhor.colocadas.length && consumo(candidato) < consumo(melhor) - EPS)) melhor = candidato;
+  }
+  // Contorno real: tenta encaixar de verdade (vazados, rotações) e vence quando posiciona mais peças ou gasta menos.
+  try {
+    const posicoes = empacotarPorContorno(
+      preparadas.map(peca => ({ indice: peca.indice, aneis: peca.aneis, casco: peca.casco, area: peca.area })),
+      larguraMm, alturaMm, espacamentoMm, { prazoMs: PRAZO_CONTORNO_MS },
+    );
+    const colocadasRaster = posicoes.map((posicao, id) => ({
+      id, source: posicao.indice, xMm: posicao.xMm, yMm: posicao.yMm, larguraMm: posicao.larguraMm, alturaMm: posicao.alturaMm, rotacaoGraus: posicao.rotacaoGraus,
+    }));
+    const candidato = {
+      colocadas: colocadasRaster,
+      extensaoX: colocadasRaster.reduce((m, item) => Math.max(m, item.xMm + item.larguraMm), 0),
+      extensaoY: colocadasRaster.reduce((m, item) => Math.max(m, item.yMm + item.alturaMm), 0),
+    };
+    if (candidato.colocadas.length > melhor.colocadas.length
+      || (candidato.colocadas.length === melhor.colocadas.length && consumo(candidato) < consumo(melhor) - EPS)) melhor = candidato;
+  } catch (erro) {
+    if (!(erro instanceof TempoEsgotadoRaster)) throw erro;
   }
   const { colocadas } = melhor;
 

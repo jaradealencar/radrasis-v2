@@ -459,6 +459,8 @@ type AvaliacaoChapa = {
   areaChapaM2: number;
   areaLiquidaM2: number;
   aproveitamento: number;
+  /** Material consumido por este layout (m²): caixa ocupada na chapa; faixa cobrada na bobina. Menor é melhor. */
+  consumoM2: number;
   /** Só em bobina: comprimento consumido (mm, arredondado para cima). */
   comprimentoConsumidoMm?: number;
 };
@@ -576,6 +578,7 @@ export async function calcularNestingMultiMaterial(input: {
             areaChapaM2: areaCobradaM2,
             areaLiquidaM2,
             aproveitamento: areaCobradaM2 > 0 ? (areaLiquidaM2 / areaCobradaM2) * 100 : 0,
+            consumoM2: areaCobradaM2,
             comprimentoConsumidoMm,
           });
           continue;
@@ -606,13 +609,15 @@ export async function calcularNestingMultiMaterial(input: {
           areaChapaM2,
           areaLiquidaM2,
           aproveitamento: areaChapaM2 > 0 ? (areaBlocoOcupadoM2 / areaChapaM2) * 100 : 0,
+          consumoM2: areaBlocoOcupadoM2,
         });
       }
     }
     const melhoresPorChapa = new Map<number, AvaliacaoChapa>();
     for (const chapa of chapas) {
       const layouts = avaliacoes.filter(item => item.chapa.id === chapa.id);
-      layouts.sort((a, b) => b.aproveitamento - a.aproveitamento || a.ordemOrientacao - b.ordemOrientacao);
+      // Entre as orientações da mesma chapa vale a que consome menos material (antes escolhia a de maior caixa ocupada).
+      layouts.sort((a, b) => a.consumoM2 - b.consumoM2 || a.ordemOrientacao - b.ordemOrientacao);
       if (layouts[0]) melhoresPorChapa.set(chapa.id, layouts[0]);
     }
     const candidatas = [...melhoresPorChapa.values()].sort(compararAvaliacoes);
