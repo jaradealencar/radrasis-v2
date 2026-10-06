@@ -4284,7 +4284,11 @@ async function iniciarNestingAutomatico(){
   const color=REAL.colorAnalysis;
   if(REAL.step!==6||REAL.factibilidadeCarregando||REAL.nestingCarregando||color.loading) return;
   if(!color.resultados?.length) await analisarCorrespondenciaCoresReal();
-  if(!color.resultados?.length) return;
+  if(!color.resultados?.length){
+    // Sem a leitura das cores o nesting ainda roda com a composição do kit; as cores precisam ser resolvidas antes de emitir.
+    if(color.error&&!REAL.factibilidade&&!REAL.nesting) await analisarFactibilidadeReal();
+    return;
+  }
   if(color.aprovado){ await analisarFactibilidadeReal(); return; }
   // Sem chapa equivalente, acrílico transparente + adesivo Imprimax entra sozinho; o vendedor é informado no aviso da tela.
   color.autorizaAdesivo=true;

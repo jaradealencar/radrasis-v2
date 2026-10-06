@@ -217,12 +217,35 @@ function lerCMYK(value: string | undefined): CpqCorAlvo["cmyk"] {
 }
 
 /** Lê os preenchimentos por caminho da arte original, antes da normalização monocromática do CNC. */
-export function extrairRegioesCorSvg(svg: string): CpqCorAlvo[] {
-  if (svg.length > 1_500_000
-    || /<!doctype|<!entity|<\s*(script|style|a|foreignObject|image|use|clipPath|mask|filter|pattern|marker)\b|\son[a-z]+\s*=|\btransform\s*=/i.test(svg)
-    || /\b(?:display|visibility)\s*=\s*["'](?:none|hidden)["']/i.test(svg)
-    || /\b(?:opacity|fill-opacity|stroke-opacity)\s*=\s*["'](?!1(?:\.0*)?["'])\d*\.?\d+["']/i.test(svg))
-    throw new Error("A arte colorida excede o limite ou contém elementos não permitidos.");
+/** Remove o cabeçalho inofensivo que o Vectorizer.AI e os editores gravam (<?xml?>, DOCTYPE simples, comentários). */
+export function limparCabecalhoSvg(svg: string): string {
+  return svg
+    .replace(/<\?xml[\s\S]*?\?>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    // DOCTYPE sem subconjunto interno ([...]): sem declarações de entidade não há expansão para explorar.
+    .replace(/<!doctype\b[^>[]*>/gi, "")
+    .trim();
+}
+
+/** Motivo exato da rejeição da arte colorida, ou null quando ela pode ser lida. */
+function motivoArteColoridaRejeitada(svg: string): string | null {
+  if (svg.length > 1_500_000) return "o arquivo passa de 1,5 MB";
+  const regras: Array<[RegExp, string]> = [
+    [/<!doctype|<!entity/i, "declara DOCTYPE com entidades"],
+    [/<\s*(script|style|a|foreignObject|image|use|clipPath|mask|filter|pattern|marker)\b/i, "usa elementos não suportados (script, style, image, use, clipPath, mask, filter, pattern ou marker)"],
+    [/\son[a-z]+\s*=/i, "tem atributos de evento"],
+    [/\btransform\s*=/i, "tem transformações (transform)"],
+    [/\b(?:display|visibility)\s*=\s*["'](?:none|hidden)["']/i, "tem elementos ocultos"],
+    [/\b(?:opacity|fill-opacity|stroke-opacity)\s*=\s*["'](?!1(?:\.0*)?["'])\d*\.?\d+["']/i, "tem transparência parcial (opacity)"],
+  ];
+  const regra = regras.find(([padrao]) => padrao.test(svg));
+  return regra ? regra[1] : null;
+}
+
+export function extrairRegioesCorSvg(arteOriginal: string): CpqCorAlvo[] {
+  const svg = limparCabecalhoSvg(arteOriginal);
+  const motivo = motivoArteColoridaRejeitada(svg);
+  if (motivo) throw new Error(`A arte colorida não pôde ser lida: ${motivo}.`);
   const paths: Array<{ attributes: Record<string, string>; inheritedFill: string; index: number }> = [];
   const groupFills: string[] = [];
   const rootAttributes = atributosSvg(svg.match(/<svg\b([^>]*)>/i)?.[1] ?? "");
