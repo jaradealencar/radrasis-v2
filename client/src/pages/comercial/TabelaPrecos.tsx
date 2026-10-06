@@ -2173,28 +2173,74 @@ function adicionarDiasCorridos(data: Date, dias: number): Date {
   return resultado;
 }
 
+type JurosBoletoFaixas = {
+  prazo7: number;
+  prazo14: number;
+  prazo21: number;
+  prazo28: number;
+  adicional28: number;
+};
+
+function calcularTaxaBoleto(dias: number, taxas: JurosBoletoFaixas): number {
+  const faixas = [
+    { dias: 7, taxa: taxas.prazo7 },
+    { dias: 14, taxa: taxas.prazo14 },
+    { dias: 21, taxa: taxas.prazo21 },
+    { dias: 28, taxa: taxas.prazo28 },
+  ];
+
+  if (dias <= 7) return (Math.max(0, dias) / 7) * taxas.prazo7;
+  for (let indice = 1; indice < faixas.length; indice++) {
+    const anterior = faixas[indice - 1];
+    const atual = faixas[indice];
+    if (dias <= atual.dias) {
+      const proporcao = (dias - anterior.dias) / (atual.dias - anterior.dias);
+      return anterior.taxa + (atual.taxa - anterior.taxa) * proporcao;
+    }
+  }
+  return taxas.prazo28 + ((dias - 28) / 28) * taxas.adicional28;
+}
+
 function SimuladorBoletos() {
   const [valorBase, setValorBase] = useState("");
   const [dataBase, setDataBase] = useState(() => dataLocalIso(new Date()));
   const [diasParaFaturar, setDiasParaFaturar] = useState("7");
   const [condicao, setCondicao] = useState("20");
   const [prazos, setPrazos] = useState("20");
-  const [taxa28Dias, setTaxa28Dias] = useState("1");
-  const [diasCarencia, setDiasCarencia] = useState("7");
+  const [jurosEditaveis, setJurosEditaveis] = useState({
+    prazo7: "0",
+    prazo14: "0.25",
+    prazo21: "0.5",
+    prazo28: "0.75",
+    adicional28: "1",
+  });
 
   const valor = Number(valorBase.replace(",", "."));
-  const taxa = Number(taxa28Dias.replace(",", "."));
-  const carencia = Number(diasCarencia);
   const diasFaturamento = Number(diasParaFaturar);
   const dataReferencia = lerDataLocal(dataBase);
   const intervalos = prazos.split("/").map(parte => Number(parte.trim())).filter(Number.isFinite);
-  const intervalosValidos = intervalos.length > 0 &&
+  const intervalosValidos =
+    intervalos.length > 0 &&
     intervalos.every(dia => Number.isInteger(dia) && dia > 0 && dia <= 365) &&
     intervalos.every((dia, indice) => indice === 0 || dia > intervalos[indice - 1]);
   const valorValido = Number.isFinite(valor) && valor > 0;
-  const parametrosValidos = valorValido && Boolean(dataReferencia) && [7, 10].includes(diasFaturamento) &&
-    intervalosValidos && Number.isFinite(taxa) && taxa >= 0 && taxa <= 100 &&
-    Number.isInteger(carencia) && carencia >= 0 && carencia <= 365;
+  const taxasNumericas = useMemo(() => ({
+    prazo7: Number(jurosEditaveis.prazo7.replace(",", ".")),
+    prazo14: Number(jurosEditaveis.prazo14.replace(",", ".")),
+    prazo21: Number(jurosEditaveis.prazo21.replace(",", ".")),
+    prazo28: Number(jurosEditaveis.prazo28.replace(",", ".")),
+    adicional28: Number(jurosEditaveis.adicional28.replace(",", ".")),
+  }), [jurosEditaveis]);
+  const taxasValidas = Object.values(jurosEditaveis).every(valorTaxa => {
+    const taxa = Number(valorTaxa.replace(",", "."));
+    return valorTaxa.trim() !== "" && Number.isFinite(taxa) && taxa >= 0 && taxa <= 100;
+  });
+  const parametrosValidos =
+    valorValido &&
+    Boolean(dataReferencia) &&
+    [7, 10].includes(diasFaturamento) &&
+    intervalosValidos &&
+    taxasValidas;
 
   const simulacao = useMemo(() => {
     if (!parametrosValidos || !dataReferencia) return null;
@@ -2206,59 +2252,154 @@ function SimuladorBoletos() {
       const principalCentavos = indice === intervalos.length - 1
         ? totalCentavos - parcelaBaseCentavos * (intervalos.length - 1)
         : parcelaBaseCentavos;
-      const percentualJuros = Math.max(0, dias - carencia) / 28 * taxa;
+      const percentualJuros = calcularTaxaBoleto(dias, taxasNumericas);
       const jurosCentavos = Math.round(principalCentavos * percentualJuros / 100);
       const totalParcelaCentavos = principalCentavos + jurosCentavos;
       somaParcelasCentavos += totalParcelaCentavos;
-      return { dias, vencimento: adicionarDiasCorridos(faturamento, dias), principal: principalCentavos / 100,
-        percentualJuros, juros: jurosCentavos / 100, total: totalParcelaCentavos / 100 };
+      return {
+        dias,
+        vencimento: adicionarDiasCorridos(faturamento, dias),
+        principal: principalCentavos / 100,
+        percentualJuros,
+        juros: jurosCentavos / 100,
+        total: totalParcelaCentavos / 100,
+      };
     });
-    return { faturamento, parcelas, total: somaParcelasCentavos / 100,
-      juros: (somaParcelasCentavos - totalCentavos) / 100 };
-  }, [carencia, diasFaturamento, dataReferencia, intervalos, parametrosValidos, taxa, valor]);
+    return {
+      faturamento,
+      parcelas,
+      total: somaParcelasCentavos / 100,
+      juros: (somaParcelasCentavos - totalCentavos) / 100,
+    };
+  }, [dataReferencia, diasFaturamento, intervalos, parametrosValidos, taxasNumericas, valor]);
 
   const alterarCondicao = (novaCondicao: string) => {
     setCondicao(novaCondicao);
     if (novaCondicao !== "personalizado") setPrazos(novaCondicao);
   };
 
+  const atualizarJuros = (campo: keyof typeof jurosEditaveis, valorCampo: string) => {
+    setJurosEditaveis(atual => ({ ...atual, [campo]: valorCampo }));
+  };
+
   return (
     <Card className="mb-4 border-blue-200">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base"><Calculator className="h-4 w-4 text-blue-600" />Simulador de boletos</CardTitle>
-        <p className="text-xs text-slate-500">Simula juros simples proporcionais por parcela, com carencia sem acrescimo. Prazos e taxa podem ser alterados.</p>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Calculator className="h-4 w-4 text-blue-600" />
+          Simulador de boletos
+        </CardTitle>
+        <p className="text-xs text-slate-500">
+          Edite prazos e juros para simular o valor de cada boleto.
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <label className="space-y-1 text-xs font-medium text-slate-600">Valor base (R$)<Input type="number" min="0" step="0.01" value={valorBase} onChange={e => setValorBase(e.target.value)} placeholder="15000.00" /></label>
-          <label className="space-y-1 text-xs font-medium text-slate-600">Data base do pedido<Input type="date" value={dataBase} onChange={e => setDataBase(e.target.value)} /></label>
-          <label className="space-y-1 text-xs font-medium text-slate-600">Faturar ap&oacute;s<select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900" value={diasParaFaturar} onChange={e => setDiasParaFaturar(e.target.value)}><option value="7">7 dias &uacute;teis</option><option value="10">10 dias &uacute;teis</option></select></label>
-          <label className="space-y-1 text-xs font-medium text-slate-600">Condi&ccedil;&atilde;o de prazo<select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900" value={PRAZOS_BOLETO_PADRAO.includes(condicao) ? condicao : "personalizado"} onChange={e => alterarCondicao(e.target.value)}>{PRAZOS_BOLETO_PADRAO.map(opcao => <option key={opcao} value={opcao}>{opcao.replace(/\//g, " / ")} dias</option>)}<option value="personalizado">Personalizado</option></select></label>
-          <label className="space-y-1 text-xs font-medium text-slate-600">Prazos edit&aacute;veis (dias)<Input value={prazos} onFocus={() => setCondicao("personalizado")} onChange={e => { setCondicao("personalizado"); setPrazos(e.target.value); }} placeholder="20/40/60" /></label>
-          <label className="space-y-1 text-xs font-medium text-slate-600">Taxa por 28 dias (%)<Input type="number" min="0" max="100" step="0.01" value={taxa28Dias} onChange={e => setTaxa28Dias(e.target.value)} /></label>
-          <label className="space-y-1 text-xs font-medium text-slate-600">Car&ecirc;ncia sem juros (dias)<Input type="number" min="0" max="365" step="1" value={diasCarencia} onChange={e => setDiasCarencia(e.target.value)} /></label>
+          <label className="space-y-1 text-xs font-medium text-slate-600">
+            Valor base (R$)
+            <Input type="number" min="0" step="0.01" value={valorBase} onChange={e => setValorBase(e.target.value)} placeholder="15000.00" />
+          </label>
+          <label className="space-y-1 text-xs font-medium text-slate-600">
+            Data base do pedido
+            <Input type="date" value={dataBase} onChange={e => setDataBase(e.target.value)} />
+          </label>
+          <label className="space-y-1 text-xs font-medium text-slate-600">
+            Faturar ap&oacute;s
+            <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900" value={diasParaFaturar} onChange={e => setDiasParaFaturar(e.target.value)}>
+              <option value="7">7 dias &uacute;teis</option>
+              <option value="10">10 dias &uacute;teis</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-xs font-medium text-slate-600">
+            Condi&ccedil;&atilde;o de prazo
+            <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900" value={PRAZOS_BOLETO_PADRAO.includes(condicao) ? condicao : "personalizado"} onChange={e => alterarCondicao(e.target.value)}>
+              {PRAZOS_BOLETO_PADRAO.map(opcao => <option key={opcao} value={opcao}>{opcao.replace(/\//g, " / ")} dias</option>)}
+              <option value="personalizado">Personalizado</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-xs font-medium text-slate-600">
+            Prazos edit&aacute;veis (dias)
+            <Input value={prazos} onFocus={() => setCondicao("personalizado")} onChange={e => { setCondicao("personalizado"); setPrazos(e.target.value); }} placeholder="20/40/60" />
+          </label>
         </div>
-        {!intervalosValidos && <p className="text-xs text-amber-700">Informe prazos inteiros crescentes separados por barra, por exemplo: 20/40/60.</p>}
-        {valorBase && !valorValido && <p className="text-xs text-amber-700">Informe um valor maior que zero.</p>}
-        {simulacao && <div className="space-y-3">
-          <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-900">
-            <span>Faturamento estimado: <strong>{fmtDate(simulacao.faturamento)}</strong> ({diasFaturamento} dias &uacute;teis ap&oacute;s a data base)</span>
-            <span>Total com juros: <strong>{fmtBrl(simulacao.total)}</strong></span><span>Acr&eacute;scimo total: <strong>{fmtBrl(simulacao.juros)}</strong></span>
+
+        <section className="space-y-3 rounded-md border border-slate-200 p-3">
+          <div>
+            <h3 className="text-sm font-semibold">Configurar juros do boleto</h3>
+            <p className="text-xs text-slate-500">
+              Valores iniciais baixos e edit&aacute;veis. Entre as faixas, o simulador interpola; ap&oacute;s 28 dias, aplica a taxa adicional proporcional a cada per&iacute;odo de 28 dias.
+            </p>
           </div>
-          <div className="overflow-x-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Parcela</TableHead><TableHead>Vencimento</TableHead><TableHead>Principal</TableHead><TableHead>Juros</TableHead><TableHead className="text-right">Valor do boleto</TableHead></TableRow></TableHeader>
-            <TableBody>{simulacao.parcelas.map((parcela, indice) => <TableRow key={`${parcela.dias}-${indice}`}>
-              <TableCell>{indice + 1}a ({parcela.dias} dias)</TableCell><TableCell>{fmtDate(parcela.vencimento)}</TableCell><TableCell>{fmtBrl(parcela.principal)}</TableCell>
-              <TableCell>{fmtBrl(parcela.juros)} <span className="text-xs text-slate-500">({fmtNum(parcela.percentualJuros, 2)}%)</span></TableCell><TableCell className="text-right font-semibold">{fmtBrl(parcela.total)}</TableCell>
-            </TableRow>)}</TableBody>
-          </Table></div>
-          <p className="text-[11px] text-slate-500">As datas das parcelas contam dias corridos ap&oacute;s o faturamento. Juros simples: {fmtNum(taxa, 2)}% por 28 dias, proporcionais aos dias ap&oacute;s a car&ecirc;ncia de {carencia} dias.</p>
-        </div>}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <label className="space-y-1 text-xs font-medium text-slate-600">
+              Boleto 7 dias (%)
+              <Input type="number" min="0" max="100" step="0.01" value={jurosEditaveis.prazo7} onChange={e => atualizarJuros("prazo7", e.target.value)} />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-slate-600">
+              Boleto 14 dias (%)
+              <Input type="number" min="0" max="100" step="0.01" value={jurosEditaveis.prazo14} onChange={e => atualizarJuros("prazo14", e.target.value)} />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-slate-600">
+              Boleto 21 dias (%)
+              <Input type="number" min="0" max="100" step="0.01" value={jurosEditaveis.prazo21} onChange={e => atualizarJuros("prazo21", e.target.value)} />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-slate-600">
+              Boleto 28 dias (%)
+              <Input type="number" min="0" max="100" step="0.01" value={jurosEditaveis.prazo28} onChange={e => atualizarJuros("prazo28", e.target.value)} />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-slate-600">
+              Adicional por mais 28 dias (%)
+              <Input type="number" min="0" max="100" step="0.01" value={jurosEditaveis.adicional28} onChange={e => atualizarJuros("adicional28", e.target.value)} />
+            </label>
+          </div>
+        </section>
+
+        {!intervalosValidos && <p className="text-xs text-amber-700">Informe prazos inteiros crescentes separados por barra, por exemplo: 20/40/60.</p>}
+        {!taxasValidas && <p className="text-xs text-amber-700">Informe cada taxa entre 0 e 100%.</p>}
+        {valorBase && !valorValido && <p className="text-xs text-amber-700">Informe um valor maior que zero.</p>}
+
+        {simulacao && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-900">
+              <span>Faturamento estimado: <strong>{fmtDate(simulacao.faturamento)}</strong> ({diasFaturamento} dias &uacute;teis ap&oacute;s a data base)</span>
+              <span>Total com juros: <strong>{fmtBrl(simulacao.total)}</strong></span>
+              <span>Acr&eacute;scimo total: <strong>{fmtBrl(simulacao.juros)}</strong></span>
+            </div>
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Parcela</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead>Principal</TableHead>
+                    <TableHead>Juros</TableHead>
+                    <TableHead className="text-right">Valor do boleto</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {simulacao.parcelas.map((parcela, indice) => (
+                    <TableRow key={`${parcela.dias}-${indice}`}>
+                      <TableCell>{indice + 1}a ({parcela.dias} dias)</TableCell>
+                      <TableCell>{fmtDate(parcela.vencimento)}</TableCell>
+                      <TableCell>{fmtBrl(parcela.principal)}</TableCell>
+                      <TableCell>
+                        {fmtBrl(parcela.juros)} <span className="text-xs text-slate-500">({fmtNum(parcela.percentualJuros, 2)}%)</span>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">{fmtBrl(parcela.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              As datas das parcelas contam dias corridos ap&oacute;s o faturamento. Taxas de cada parcela usam as faixas configuradas acima.
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
-
-
 export default function TabelaPrecos() {
   const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente">(
     "principal"
