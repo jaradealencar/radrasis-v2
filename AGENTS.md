@@ -655,6 +655,12 @@ avançando pelo comprimento da chapa como quem fatia um pão; peças pequenas en
 respeitado (verificado por geometria em `cpq-nesting-contorno.test.ts`); prazo de 12 s por chamada, depois vale o de
 caixas). Entre as duas orientações da mesma chapa vale a de **menor consumo** (antes escolhia a de maior). É uma
 estimativa conservadora (máscara até 1 célula maior por borda).
+**Prancha de nesting (pedido de 05/10/2026):** o resultado do nesting no CPQ segue o estilo da prancha técnica — uma prancha
+1800×1120 por chapa (`pranchaNestingSvg`: título, desenho com cotas, bloco ocupado tracejado e painel RESULTADOS com material,
+% da chapa utilizada, % com peças, áreas, **área líquida** e **perímetro de corte** calculados no navegador sobre o contorno das
+peças posicionadas — `metricasChapaNesting`), tabela-resumo por material (`resumoNesting`), download em PNG (2400 px) e em SVG
+em mm. **Carregar uma logo por vez** (pedido de 05/10/2026): o passo da foto, o envio de SVG e a escala avisam que a escala é
+dimensionada logo por logo; outras logos do projeto entram em "Adicionar desenho" (`htmlAvisoUmaLogoPorVez`).
 **Várias chapas (pedido de 05/10/2026):** se o desenho não cabe numa chapa de nenhum formato, `resultadoEmVariasChapas`
 (`cpqNesting.ts`) distribui as peças em até 8 chapas do mesmo formato (o de menor consumo total), com a maior dimensão ao
 longo do eixo X; o resultado é UM por material, com consumo e custo somados, `quantidade_chapas`, `chapaIndice` em cada
