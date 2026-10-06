@@ -950,6 +950,16 @@ Missing width/geometry or an unfit layout leaves cost pending and blocks approva
 Migrations `0075_chubby_tenebrous.sql` and `0076_reconciliar_retalho_bobina.sql`
 add the settings.
 
+**Papéis das peças e como os materiais de um letreiro se combinam (informação do usuário, 06/10/2026):** o select "Papel na
+peça" (composição do CPQ, cadastro do kit e vínculo das camadas do nesting; as opções vêm de Administração > Configurações, e `Aro`
+está sempre presente, logo depois de `Face` — helper `papeisDePeca` no HTML) diz o que cada matéria-prima faz no produto.
+**Aro** é sempre uma chapa metálica (ex.: galvanizada) da qual se corta o miolo, sobrando só as bordas: uma faixa que acompanha o
+contorno de cada letra/símbolo e sustenta o acrílico da face nos letreiros *frontlight* de face iluminada. Exemplo real (Império das
+Rações, desenho do usuário): **Aro galvanizado com perfil lateral de 80 mm soldado** nele + **Face em acrílico branco** + **Fundo em
+PVC 10 mm**. Os três desenhos seguem o mesmo contorno do logo; no desenho do Aro cada letra/símbolo tem contorno duplo (a faixa de
+metal que sobra) e na Face e no Fundo o contorno é simples. A largura da faixa do Aro **não foi informada**, e hoje o nesting
+exige uma camada `Aro` própria no SVG; derivar a faixa a partir da silhueta da face (como já se faz com o Fundo) ainda não existe.
+
 The static CPQ HTML calls the factibility and nesting routes. Kit roles Face,
 Aro and Fundo select matching named SVG layers (só chapa/bobina com formato cadastrado entra no nesting; perfil não;
 SVG vetorizado de imagem só tem a camada Face, então o Fundo **deriva da silhueta da face** — `fundoSegueSilhuetaDaFace`

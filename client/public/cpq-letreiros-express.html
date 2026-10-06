@@ -4595,7 +4595,7 @@ function realStepKit(){
             </td>
             <td><select data-act="real-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
-              ${[...new Set([...configGeral.papeisPeca,'Aro'])].map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
+              ${papeisDePeca().map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
             </select></td>
             <td><select data-act="real-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([key,f])=>`<option value="${key}" ${k.formulaType===key?'selected':''}>${f.label}</option>`).join('')}</select></td>
             <td><input type="text" inputmode="decimal" value="${escaparHtml(textoNumero(k, k.mult))}" data-act="real-kit-mult" data-idx="${i}" style="width:70px;"></td>
@@ -4992,7 +4992,7 @@ function renderConfiguracaoNestingReal(){
   if(papeisPendentes.length){
     linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;"><b>Vincule as chapas às camadas do desenho</b><p class="role-note">Este vínculo mínimo permite separar Face, Aro e Fundo para o nesting. As fórmulas e multiplicadores ficam para a próxima etapa.</p>');
     for(const item of papeisPendentes){
-      const papeis=[...new Set([...configGeral.papeisPeca,'Aro'])];
+      const papeis=papeisDePeca();
       const opcoes='<option value="">Selecione a camada</option>'+papeis.map(papel=>'<option value="'+escaparHtml(papel)+'">'+escaparHtml(papel)+'</option>').join('');
       linhas.push('<label class="field" style="margin-top:8px;">'+escaparHtml(item.material.nome)+'<select data-act="nesting-kit-papel" data-idx="'+item.idx+'">'+opcoes+'</select></label>');
     }
@@ -5681,6 +5681,13 @@ const configGeral = {
   papeisPeca: ['Face','Aro','Fundo','Lateral','Pintura','Iluminação','Fixação','Insumo fabricação','Produtividade'],
   regrasLeituraArte: '',
 };
+/** Papéis do campo "Papel na peça": a lista de Administração > Configurações, sempre com "Aro" (chapa metálica com o miolo cortado, que
+ *  sustenta a face de acrílico nos letreiros frontlight). Se a lista salva ainda não tiver o Aro, ele entra logo depois de "Face". */
+function papeisDePeca(){
+  const lista=[...new Set(configGeral.papeisPeca)];
+  if(!lista.includes('Aro')){ const i=lista.indexOf('Face'); lista.splice(i>=0?i+1:lista.length,0,'Aro'); }
+  return lista;
+}
 let configGeralCarregada = false;
 let configGeralEstado = 'carregando';
 let configGeralErro = '';
@@ -6174,7 +6181,7 @@ async function carregarConfigGeralServidor(){
     });
     if(Array.isArray(data.papeisPeca)) configGeral.papeisPeca=data.papeisPeca;
     if(typeof data.regrasLeituraArte==='string') configGeral.regrasLeituraArte=data.regrasLeituraArte;
-    if(!configGeral.papeisPeca.includes('Aro')) configGeral.papeisPeca.push('Aro');
+    configGeral.papeisPeca=papeisDePeca();
     configGeralCarregada=true;
     configGeralEstado='pronto';
   }catch(error){
@@ -7031,7 +7038,7 @@ function adminKitEditor(p, m, key){
             <td>${k.nome}<div class="source-tag">${ICONS.db} unidade real: ${k.unidade}</div><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-variacao-toggle" data-key="${key}" data-idx="${i}" style="display:block;margin-top:5px;">${Array.isArray(k.variantes)&&k.variantes.length?`Variações (${k.variantes.length})`:"Criar variação"}</button></td>
             <td><select data-act="admin-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
-              ${[...new Set([...configGeral.papeisPeca,'Aro'])].map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
+              ${papeisDePeca().map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
             </select></td>
             ${variacoesModelo.length?`<td><select data-act="admin-kit-variacao-modelo" data-idx="${i}" style="max-width:190px;">
               <option value="">Todas (comum)</option>
