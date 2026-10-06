@@ -2151,6 +2151,139 @@ function ProdutividadesSolda() {
 }
 
 const PRAZOS_BOLETO_PADRAO = ["20", "20/40", "20/40/60", "28", "28/56", "28/56/72"];
+const TAXAS_CARTAO_LINK = {
+  avista: 3.05,
+  ate6Parcelas: 2.8,
+  ate12Parcelas: 3.53,
+  ate18Parcelas: 3.83,
+  parcelamentoPorParcela: 0.9,
+};
+
+function calcularTaxaVendaCartao(parcelas: number): number {
+  if (parcelas <= 1) return TAXAS_CARTAO_LINK.avista;
+  if (parcelas <= 6) return TAXAS_CARTAO_LINK.ate6Parcelas;
+  if (parcelas <= 12) return TAXAS_CARTAO_LINK.ate12Parcelas;
+  return TAXAS_CARTAO_LINK.ate18Parcelas;
+}
+
+function SimuladorCartao() {
+  const [valorInformado, setValorInformado] = useState("1000");
+  const [modo, setModo] = useState<"receber" | "cobrar">("receber");
+  const [parcelas, setParcelas] = useState("3");
+  const valor = Number(valorInformado.replace(",", "."));
+  const numeroParcelas = Number(parcelas);
+  const taxaVenda = calcularTaxaVendaCartao(numeroParcelas);
+  const taxaParcelamento = numeroParcelas > 1 ? numeroParcelas * TAXAS_CARTAO_LINK.parcelamentoPorParcela : 0;
+  const taxaTotal = taxaVenda + taxaParcelamento;
+  const parametrosValidos = Number.isFinite(valor) && valor > 0 && Number.isInteger(numeroParcelas) && numeroParcelas >= 1 && numeroParcelas <= 18 && taxaTotal < 100;
+
+  const simulacao = useMemo(() => {
+    if (!parametrosValidos) return null;
+    const valorCentavos = Math.round(valor * 100);
+    const totalCentavos = modo === "receber" ? Math.round(valorCentavos / (1 - taxaTotal / 100)) : valorCentavos;
+    const taxaVendaCentavos = Math.round(totalCentavos * taxaVenda / 100);
+    const taxaParcelamentoCentavos = Math.round(totalCentavos * taxaParcelamento / 100);
+    return {
+      totalCobrado: totalCentavos / 100,
+      valorRecebido: (totalCentavos - taxaVendaCentavos - taxaParcelamentoCentavos) / 100,
+      taxaVenda: taxaVendaCentavos / 100,
+      taxaParcelamento: taxaParcelamentoCentavos / 100,
+      percentualVenda: taxaVenda,
+      percentualParcelamento: taxaParcelamento,
+      valorParcela: totalCentavos / 100 / numeroParcelas,
+    };
+  }, [modo, numeroParcelas, parametrosValidos, taxaParcelamento, taxaTotal, taxaVenda, valor]);
+
+  return (
+    <Card className="mb-4 border-blue-200">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Calculator className="h-4 w-4 text-blue-600" />
+          Simulador de cartão — Link de pagamento
+        </CardTitle>
+        <p className="text-xs text-slate-500">
+          Parcelado pelo vendedor, com recebimento na hora e tarifas do Mercado Pago informadas.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="space-y-4">
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-medium text-slate-600">O que deseja calcular?</legend>
+              <div className="flex w-fit rounded-full border bg-slate-50 p-1">
+                {(["receber", "cobrar"] as const).map(opcao => (
+                  <button
+                    key={opcao}
+                    type="button"
+                    aria-pressed={modo === opcao}
+                    onClick={() => setModo(opcao)}
+                    className={"rounded-full px-3 py-1.5 text-xs font-medium transition-colors " + (modo === opcao ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900")}
+                  >
+                    {opcao === "receber" ? "Receber" : "Cobrar"}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1 text-xs font-medium text-slate-600">
+                {modo === "receber" ? "Quanto você quer receber? (R$)" : "Quanto quer cobrar? (R$)"}
+                <Input type="number" min="0" step="0.01" value={valorInformado} onChange={e => setValorInformado(e.target.value)} placeholder="1000.00" />
+              </label>
+              <label className="space-y-1 text-xs font-medium text-slate-600">
+                Em quantas parcelas?
+                <select className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900" value={parcelas} onChange={e => setParcelas(e.target.value)}>
+                  {Array.from({ length: 18 }, (_, indice) => indice + 1).map(quantidade => (
+                    <option key={quantidade} value={quantidade}>
+                      {quantidade} {quantidade === 1 ? "parcela (à vista)" : "parcelas"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-xs sm:grid-cols-2">
+              <div><span className="text-slate-500">Meio de cobrança</span><div className="font-medium">Link de pagamento</div></div>
+              <div><span className="text-slate-500">Forma de pagamento</span><div className="font-medium">Cartão de crédito</div></div>
+              <div><span className="text-slate-500">Tipo de parcelamento</span><div className="font-medium">{numeroParcelas === 1 ? "À vista" : "Parcelado pelo vendedor"}</div></div>
+              <div><span className="text-slate-500">Prazo para receber</span><div className="font-medium">Na hora</div></div>
+            </div>
+          </div>
+          <div className="space-y-3 rounded-md border p-3">
+            {simulacao ? (
+              <>
+                <div className="flex items-center justify-between border-b pb-3 text-sm font-semibold">
+                  <span>{modo === "receber" ? "Para receber" : "Você recebe"}</span>
+                  <span>{fmtBrl(simulacao.valorRecebido)}</span>
+                </div>
+                <div className="flex items-start justify-between gap-3 border-b py-2 text-sm">
+                  <div>Taxa por venda<div className="text-xs text-slate-500">Na hora · {fmtNum(simulacao.percentualVenda, 2)}%</div></div>
+                  <span className="whitespace-nowrap">+ {fmtBrl(simulacao.taxaVenda)}</span>
+                </div>
+                <div className="flex items-start justify-between gap-3 border-b py-2 text-sm">
+                  <div>Taxa de parcelamento<div className="text-xs text-slate-500">{fmtNum(simulacao.percentualParcelamento, 2)}%</div></div>
+                  <span className="whitespace-nowrap">+ {fmtBrl(simulacao.taxaParcelamento)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 pt-1 text-sm font-semibold">
+                  <span>Cliente paga</span>
+                  <span>{fmtBrl(simulacao.totalCobrado)}</span>
+                </div>
+                <p className="text-xs text-slate-500">Em {numeroParcelas}x de {fmtBrl(simulacao.valorParcela)}</p>
+              </>
+            ) : (
+              <p className="text-xs text-amber-700">Informe um valor positivo e selecione de 1 a 18 parcelas.</p>
+            )}
+          </div>
+        </div>
+        <details className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <summary className="cursor-pointer font-medium">Tarifas usadas na simulação</summary>
+          <p className="mt-2">
+            Taxa por venda na hora: à vista 3,05%; de 2x a 6x 2,80%; de 7x a 12x 3,53%; de 13x a 18x 3,83%. Taxa de parcelamento pelo vendedor: 0,90% por parcela (3x = 2,70%; 6x = 5,40%).
+          </p>
+          <p className="mt-1">O valor cobrado desconta as duas taxas do total para chegar ao valor líquido informado.</p>
+        </details>
+      </CardContent>
+    </Card>
+  );
+}
 
 function dataLocalIso(data: Date): string {
   const ano = data.getFullYear();
@@ -2881,7 +3014,12 @@ export default function TabelaPrecos() {
                   </div>
                 ) : (
                   <>
-                    {p.key === "6" && <SimuladorBoletos />}
+                    {p.key === "6" && (
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        <SimuladorBoletos />
+                        <SimuladorCartao />
+                      </div>
+                    )}
                     <div className="mb-3 flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-3 py-2">
                       <Pencil className="w-3 h-3" />
                       Clique em <strong>Editar</strong> em qualquer seção para
