@@ -4,7 +4,9 @@
  * As linhas "Produtividade …" do MubiSys (mão de obra da solda e afins) ganham três marcações locais, que o MubiSys não tem:
  * - tipo de solda (fixação): até 3 entre barra roscada, patinha para LED, chapinha dupla-face, orelhinha e sem fixação;
  * - tamanho: menor ou igual a 11 cm e/ou maior que 11 cm (uma produtividade pode valer para os dois tamanhos);
- * - materiais: a quais materiais a solda se aplica (inox, galvanizado, latão, acrílico, alumínio), sem limite.
+ * - materiais: a quais materiais a solda se aplica (inox, galvanizado, latão, acrílico, alumínio), sem limite;
+ * - estilo do letreiro (pedido de 06/10/2026), cada grupo com marcação múltipla: categoria (Frontlight ou Tradicionais, e o aro do
+ *   Frontlight: normal ou recuado), formato (cursiva ou tradicional) e fundo (com ou sem fundo).
  *
  * "Sem fixação" é o oposto das demais fixações, então não combina com elas.
  */
@@ -120,6 +122,125 @@ export function alternarTipoSolda(selecionados: readonly TipoSolda[], tipo: Tipo
   if (comOutros.length >= MAX_TIPOS_SOLDA) return [...selecionados];
   return TIPOS_SOLDA.filter(item => item === tipo || comOutros.includes(item));
 }
+
+// ─── Estilo do letreiro: categoria (+ aro do Frontlight), formato e fundo ─────────────────────────────────────────
+
+export const CATEGORIAS_PRODUTIVIDADE = ["frontlight", "tradicional"] as const;
+export type CategoriaProdutividade = (typeof CATEGORIAS_PRODUTIVIDADE)[number];
+export const ROTULO_CATEGORIA_PRODUTIVIDADE: Record<CategoriaProdutividade, string> = {
+  frontlight: "Frontlight",
+  tradicional: "Tradicionais",
+};
+
+/** Subcategoria do Frontlight: só vale quando a produtividade também está marcada como Frontlight. */
+export const AROS_FRONTLIGHT = ["normal", "recuado"] as const;
+export type AroFrontlight = (typeof AROS_FRONTLIGHT)[number];
+export const ROTULO_ARO_FRONTLIGHT: Record<AroFrontlight, string> = {
+  normal: "Aro normal",
+  recuado: "Aro recuado",
+};
+
+export const FORMATOS_PRODUTIVIDADE = ["cursiva", "tradicional"] as const;
+export type FormatoProdutividade = (typeof FORMATOS_PRODUTIVIDADE)[number];
+export const ROTULO_FORMATO_PRODUTIVIDADE: Record<FormatoProdutividade, string> = {
+  cursiva: "Cursiva",
+  tradicional: "Tradicional",
+};
+
+export const FUNDOS_PRODUTIVIDADE = ["com_fundo", "sem_fundo"] as const;
+export type FundoProdutividade = (typeof FUNDOS_PRODUTIVIDADE)[number];
+export const ROTULO_FUNDO_PRODUTIVIDADE: Record<FundoProdutividade, string> = {
+  com_fundo: "Com fundo",
+  sem_fundo: "Sem fundo",
+};
+
+/** Lê uma lista do banco: descarta desconhecidos e repetidos e devolve na ordem fixa de `ordem`. */
+function normalizarPorOrdem<T extends string>(valor: unknown, ordem: readonly T[]): T[] {
+  if (!Array.isArray(valor)) return [];
+  return ordem.filter(item => valor.includes(item));
+}
+
+/** Marca ou desmarca `item`, mantendo a ordem fixa (o grupo aceita mais de uma marcação). */
+function alternarPorOrdem<T extends string>(selecionados: readonly T[], ordem: readonly T[], item: T): T[] {
+  return ordem.filter(opcao => (opcao === item ? !selecionados.includes(opcao) : selecionados.includes(opcao)));
+}
+
+export const normalizarCategoriasProdutividade = (valor: unknown) => normalizarPorOrdem(valor, CATEGORIAS_PRODUTIVIDADE);
+export const normalizarArosFrontlight = (valor: unknown) => normalizarPorOrdem(valor, AROS_FRONTLIGHT);
+export const normalizarFormatosProdutividade = (valor: unknown) => normalizarPorOrdem(valor, FORMATOS_PRODUTIVIDADE);
+export const normalizarFundosProdutividade = (valor: unknown) => normalizarPorOrdem(valor, FUNDOS_PRODUTIVIDADE);
+
+export const alternarFormatoProdutividade = (selecionados: readonly FormatoProdutividade[], formato: FormatoProdutividade) =>
+  alternarPorOrdem(selecionados, FORMATOS_PRODUTIVIDADE, formato);
+export const alternarFundoProdutividade = (selecionados: readonly FundoProdutividade[], fundo: FundoProdutividade) =>
+  alternarPorOrdem(selecionados, FUNDOS_PRODUTIVIDADE, fundo);
+export const alternarAroFrontlight = (selecionados: readonly AroFrontlight[], aro: AroFrontlight) =>
+  alternarPorOrdem(selecionados, AROS_FRONTLIGHT, aro);
+
+export interface EstiloProdutividade {
+  categorias: CategoriaProdutividade[];
+  aros: AroFrontlight[];
+  formatos: FormatoProdutividade[];
+  fundos: FundoProdutividade[];
+}
+
+export const ESTILO_PRODUTIVIDADE_VAZIO: EstiloProdutividade = { categorias: [], aros: [], formatos: [], fundos: [] };
+
+/**
+ * Alterna uma categoria. Desmarcar Frontlight leva junto os aros (eles só existem dentro do Frontlight); devolve a nova
+ * categoria e os aros que sobraram.
+ */
+export function alternarCategoriaProdutividade(
+  estilo: Pick<EstiloProdutividade, "categorias" | "aros">,
+  categoria: CategoriaProdutividade
+): Pick<EstiloProdutividade, "categorias" | "aros"> {
+  const categorias = alternarPorOrdem(estilo.categorias, CATEGORIAS_PRODUTIVIDADE, categoria);
+  return { categorias, aros: categorias.includes("frontlight") ? [...estilo.aros] : [] };
+}
+
+/** Lê o estilo do banco ou do formulário: normaliza cada grupo e tira os aros de quem não é Frontlight. */
+export function normalizarEstiloProdutividade(entrada: { categorias?: unknown; aros?: unknown; formatos?: unknown; fundos?: unknown }): EstiloProdutividade {
+  const categorias = normalizarCategoriasProdutividade(entrada.categorias);
+  return {
+    categorias,
+    aros: categorias.includes("frontlight") ? normalizarArosFrontlight(entrada.aros) : [],
+    formatos: normalizarFormatosProdutividade(entrada.formatos),
+    fundos: normalizarFundosProdutividade(entrada.fundos),
+  };
+}
+
+/** Mensagem de erro se o estilo enviado não for permitido (repetidos, ou aro sem Frontlight); `null` se estiver ok. */
+export function erroEstiloProdutividade(estilo: EstiloProdutividade): string | null {
+  const grupos: Array<[readonly string[], string]> = [
+    [estilo.categorias, "Há categorias repetidas."],
+    [estilo.aros, "Há aros repetidos."],
+    [estilo.formatos, "Há formatos repetidos."],
+    [estilo.fundos, "Há fundos repetidos."],
+  ];
+  for (const [lista, mensagem] of grupos) if (new Set(lista).size !== lista.length) return mensagem;
+  if (estilo.aros.length > 0 && !estilo.categorias.includes("frontlight")) return "Aro normal ou recuado só vale para Frontlight.";
+  return null;
+}
+
+/**
+ * Rótulos do estilo para exibir (tabela, cadastro, PDF): o Frontlight com aro vira "Frontlight · Aro recuado" (um por aro);
+ * sem aro, só "Frontlight". Depois vêm categoria Tradicionais, formatos e fundos. Sem marcação, lista vazia.
+ */
+export function rotulosEstiloProdutividade(estilo: EstiloProdutividade): string[] {
+  const categorias = estilo.categorias.flatMap(categoria => {
+    if (categoria !== "frontlight" || estilo.aros.length === 0) return [ROTULO_CATEGORIA_PRODUTIVIDADE[categoria]];
+    return estilo.aros.map(aro => `${ROTULO_CATEGORIA_PRODUTIVIDADE.frontlight} · ${ROTULO_ARO_FRONTLIGHT[aro]}`);
+  });
+  return [
+    ...categorias,
+    ...estilo.formatos.map(formato => ROTULO_FORMATO_PRODUTIVIDADE[formato]),
+    ...estilo.fundos.map(fundo => ROTULO_FUNDO_PRODUTIVIDADE[fundo]),
+  ];
+}
+
+/** True se algum grupo do estilo tem marcação. */
+export const temEstiloProdutividade = (estilo: EstiloProdutividade) =>
+  estilo.categorias.length + estilo.aros.length + estilo.formatos.length + estilo.fundos.length > 0;
 
 /** Categoria de produto (cadastro de kit do CPQ) que pode ligar produtividades de solda: só os Letreiros. */
 export const CATEGORIA_COM_PRODUTIVIDADES = "Letreiros";

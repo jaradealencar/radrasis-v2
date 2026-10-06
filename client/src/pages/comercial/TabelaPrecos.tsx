@@ -41,15 +41,34 @@ import {
   type PlanoFontes,
 } from "@shared/led-fontes-calculo";
 import {
+  AROS_FRONTLIGHT,
+  CATEGORIAS_PRODUTIVIDADE,
+  ESTILO_PRODUTIVIDADE_VAZIO,
+  FORMATOS_PRODUTIVIDADE,
+  FUNDOS_PRODUTIVIDADE,
   MATERIAIS_SOLDA,
+  ROTULO_ARO_FRONTLIGHT,
+  ROTULO_CATEGORIA_PRODUTIVIDADE,
+  ROTULO_FORMATO_PRODUTIVIDADE,
+  ROTULO_FUNDO_PRODUTIVIDADE,
   ROTULO_MATERIAL_SOLDA,
   ROTULO_TAMANHO_PRODUTIVIDADE,
   ROTULO_TIPO_SOLDA,
   TAMANHOS_PRODUTIVIDADE,
   TIPOS_SOLDA,
+  alternarAroFrontlight,
+  alternarCategoriaProdutividade,
+  alternarFormatoProdutividade,
+  alternarFundoProdutividade,
   alternarMaterialSolda,
   alternarTamanhoProdutividade,
   alternarTipoSolda,
+  rotulosEstiloProdutividade,
+  type AroFrontlight,
+  type CategoriaProdutividade,
+  type EstiloProdutividade,
+  type FormatoProdutividade,
+  type FundoProdutividade,
   type MaterialSolda,
   type TamanhoProdutividade,
   type TipoSolda,
@@ -1710,12 +1729,13 @@ function gerarPdfTabela(
       if (itensSolda.length === 0) {
         html += `<p>Nenhuma produtividade de solda encontrada no catálogo MubiSys.</p>`;
       } else {
-        html += `<table><thead><tr style="background:${color}"><th>Matéria-prima MubiSys</th><th>Aplicável a</th><th>Tipo de solda</th><th>Tamanho</th><th>Unidade</th><th>Custo MubiSys</th></tr></thead><tbody>`;
+        html += `<table><thead><tr style="background:${color}"><th>Matéria-prima MubiSys</th><th>Aplicável a</th><th>Tipo de solda</th><th>Tamanho</th><th>Estilo</th><th>Unidade</th><th>Custo MubiSys</th></tr></thead><tbody>`;
         itensSolda.forEach(item => {
           const materiais = item.produtividadeMateriais.map(material => ROTULO_MATERIAL_SOLDA[material]).join(", ") || "Sem material";
           const tipos = item.produtividadeTiposSolda.map(tipo => ROTULO_TIPO_SOLDA[tipo]).join(", ") || "Sem tipo";
           const tamanho = item.produtividadeTamanhos.map(valor => ROTULO_TAMANHO_PRODUTIVIDADE[valor]).join(", ") || "Sem tamanho";
-          html += `<tr><td>${escaparHtml(item.nome)}<br><small>Código MubiSys #${item.id}</small></td><td>${escaparHtml(materiais)}</td><td>${escaparHtml(tipos)}</td><td>${escaparHtml(tamanho)}</td><td>${escaparHtml(item.unidadeCusto || "—")}</td><td><span class="val">${fmtBrl(item.valorCusto)}</span></td></tr>`;
+          const estilo = rotulosEstiloProdutividade(estiloDaMateria(item)).join(", ") || "—";
+          html += `<tr><td>${escaparHtml(item.nome)}<br><small>Código MubiSys #${item.id}</small></td><td>${escaparHtml(materiais)}</td><td>${escaparHtml(tipos)}</td><td>${escaparHtml(tamanho)}</td><td>${escaparHtml(estilo)}</td><td>${escaparHtml(item.unidadeCusto || "—")}</td><td><span class="val">${fmtBrl(item.valorCusto)}</span></td></tr>`;
         });
         html += `</tbody></table>`;
       }
@@ -1808,6 +1828,56 @@ const TAMANHOS_SOLDA_FILTRO: {
   { value: "acima_11cm", label: ROTULO_TAMANHO_PRODUTIVIDADE.acima_11cm },
 ];
 
+/** Estilo (categoria, aro, formato e fundo) de uma matéria-prima de produtividade vinda da listagem. */
+function estiloDaMateria(material: Pick<MateriaPrimaProdutividade, "produtividadeCategorias" | "produtividadeAros" | "produtividadeFormatos" | "produtividadeFundos">): EstiloProdutividade {
+  return {
+    categorias: material.produtividadeCategorias,
+    aros: material.produtividadeAros,
+    formatos: material.produtividadeFormatos,
+    fundos: material.produtividadeFundos,
+  };
+}
+
+const temEstilo = (material: Parameters<typeof estiloDaMateria>[0]) => rotulosEstiloProdutividade(estiloDaMateria(material)).length > 0;
+
+/** Uma linha de filtro por botões ("Todos" + as opções, cada uma com a contagem de itens). */
+function LinhaFiltroChips<T extends string>({
+  rotulo,
+  rotuloTodos,
+  total,
+  opcoes,
+  ativo,
+  aoEscolher,
+  contar,
+}: {
+  rotulo: string;
+  rotuloTodos: string;
+  total: number;
+  opcoes: { value: T; label: string }[];
+  ativo: T | "todos";
+  aoEscolher: (valor: T | "todos") => void;
+  contar: (valor: T) => number;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">{rotulo}</span>
+      <Button size="sm" variant={ativo === "todos" ? "secondary" : "ghost"} onClick={() => aoEscolher("todos")}>
+        {rotuloTodos} ({total})
+      </Button>
+      {opcoes.map(opcao => (
+        <Button
+          key={opcao.value}
+          size="sm"
+          variant={ativo === opcao.value ? "secondary" : "ghost"}
+          onClick={() => aoEscolher(opcao.value)}
+        >
+          {opcao.label} ({contar(opcao.value)})
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function ProdutividadesSolda() {
   const [busca, setBusca] = useState("");
   const [materialEditando, setMaterialEditando] =
@@ -1815,6 +1885,7 @@ function ProdutividadesSolda() {
   const [materiaisEditados, setMateriaisEditados] = useState<MaterialSolda[]>([]);
   const [tiposEditados, setTiposEditados] = useState<TipoSolda[]>([]);
   const [tamanhosEditados, setTamanhosEditados] = useState<TamanhoProdutividade[]>([]);
+  const [estiloEditado, setEstiloEditado] = useState<EstiloProdutividade>(ESTILO_PRODUTIVIDADE_VAZIO);
   const { user } = useAuth();
   const podeEditarClassificação =
     user != null && ["gestor", "admin", "master"].includes(user.role ?? "");
@@ -1835,6 +1906,10 @@ function ProdutividadesSolda() {
   const [tamanhoAtivo, setTamanhoAtivo] = useState<
     TamanhoProdutividade | "todos"
   >("todos");
+  const [categoriaAtiva, setCategoriaAtiva] = useState<CategoriaProdutividade | "todos">("todos");
+  const [aroAtivo, setAroAtivo] = useState<AroFrontlight | "todos">("todos");
+  const [formatoAtivo, setFormatoAtivo] = useState<FormatoProdutividade | "todos">("todos");
+  const [fundoAtivo, setFundoAtivo] = useState<FundoProdutividade | "todos">("todos");
   const {
     data: catalogo,
     isLoading,
@@ -1878,14 +1953,47 @@ function ProdutividadesSolda() {
       const correspondeTamanho =
         tamanhoAtivo === "todos" ||
         material.produtividadeTamanhos.includes(tamanhoAtivo);
+      const correspondeCategoria =
+        categoriaAtiva === "todos" ||
+        material.produtividadeCategorias.includes(categoriaAtiva);
+      // O aro é uma subcategoria do Frontlight: só filtra quando o Frontlight está escolhido.
+      const correspondeAro =
+        categoriaAtiva !== "frontlight" ||
+        aroAtivo === "todos" ||
+        material.produtividadeAros.includes(aroAtivo);
+      const correspondeFormato =
+        formatoAtivo === "todos" ||
+        material.produtividadeFormatos.includes(formatoAtivo);
+      const correspondeFundo =
+        fundoAtivo === "todos" ||
+        material.produtividadeFundos.includes(fundoAtivo);
       return (
         correspondeBusca &&
         correspondeMaterial &&
         correspondeTipo &&
-        correspondeTamanho
+        correspondeTamanho &&
+        correspondeCategoria &&
+        correspondeAro &&
+        correspondeFormato &&
+        correspondeFundo
       );
     });
-  }, [busca, materialAtivo, produtividades, tamanhoAtivo, tipoAtivo]);
+  }, [
+    aroAtivo,
+    busca,
+    categoriaAtiva,
+    formatoAtivo,
+    fundoAtivo,
+    materialAtivo,
+    produtividades,
+    tamanhoAtivo,
+    tipoAtivo,
+  ]);
+
+  const escolherCategoria = (valor: CategoriaProdutividade | "todos") => {
+    setCategoriaAtiva(valor);
+    if (valor !== "frontlight") setAroAtivo("todos");
+  };
 
   const quantidadePorMaterial = (material: MaterialSolda | "sem_material") =>
     material === "sem_material"
@@ -1900,6 +2008,7 @@ function ProdutividadesSolda() {
     setMateriaisEditados([...material.produtividadeMateriais]);
     setTiposEditados([...material.produtividadeTiposSolda]);
     setTamanhosEditados([...material.produtividadeTamanhos]);
+    setEstiloEditado(estiloDaMateria(material));
   };
 
   const confirmarEdição = () => {
@@ -1909,6 +2018,10 @@ function ProdutividadesSolda() {
       produtividadeMateriais: materiaisEditados,
       produtividadeTiposSolda: tiposEditados,
       produtividadeTamanhos: tamanhosEditados,
+      produtividadeCategorias: estiloEditado.categorias,
+      produtividadeAros: estiloEditado.aros,
+      produtividadeFormatos: estiloEditado.formatos,
+      produtividadeFundos: estiloEditado.fundos,
     });
   };
 
@@ -2048,6 +2161,46 @@ function ProdutividadesSolda() {
               </Button>
             ))}
           </div>
+          <LinhaFiltroChips
+            rotulo="Categoria"
+            rotuloTodos="Todas"
+            total={produtividades.length}
+            opcoes={CATEGORIAS_PRODUTIVIDADE.map(value => ({ value, label: ROTULO_CATEGORIA_PRODUTIVIDADE[value] }))}
+            ativo={categoriaAtiva}
+            aoEscolher={escolherCategoria}
+            contar={categoria => produtividades.filter(item => item.produtividadeCategorias.includes(categoria)).length}
+          />
+          {categoriaAtiva === "frontlight" && (
+            <LinhaFiltroChips
+              rotulo="Frontlight"
+              rotuloTodos="Todos os aros"
+              total={produtividades.filter(item => item.produtividadeCategorias.includes("frontlight")).length}
+              opcoes={AROS_FRONTLIGHT.map(value => ({ value, label: ROTULO_ARO_FRONTLIGHT[value] }))}
+              ativo={aroAtivo}
+              aoEscolher={setAroAtivo}
+              contar={aro =>
+                produtividades.filter(item => item.produtividadeCategorias.includes("frontlight") && item.produtividadeAros.includes(aro)).length
+              }
+            />
+          )}
+          <LinhaFiltroChips
+            rotulo="Formato"
+            rotuloTodos="Todos"
+            total={produtividades.length}
+            opcoes={FORMATOS_PRODUTIVIDADE.map(value => ({ value, label: ROTULO_FORMATO_PRODUTIVIDADE[value] }))}
+            ativo={formatoAtivo}
+            aoEscolher={setFormatoAtivo}
+            contar={formato => produtividades.filter(item => item.produtividadeFormatos.includes(formato)).length}
+          />
+          <LinhaFiltroChips
+            rotulo="Fundo"
+            rotuloTodos="Todos"
+            total={produtividades.length}
+            opcoes={FUNDOS_PRODUTIVIDADE.map(value => ({ value, label: ROTULO_FUNDO_PRODUTIVIDADE[value] }))}
+            ativo={fundoAtivo}
+            aoEscolher={setFundoAtivo}
+            contar={fundo => produtividades.filter(item => item.produtividadeFundos.includes(fundo)).length}
+          />
         </CardContent>
       </Card>
 
@@ -2106,22 +2259,25 @@ function ProdutividadesSolda() {
           <Table className="table-fixed text-xs">
             <TableHeader>
               <TableRow>
-                <TableHead className="h-auto w-[32%] whitespace-normal px-2 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[25%] whitespace-normal px-2 py-2 text-xs leading-tight">
                   Matéria-prima MubiSys
                 </TableHead>
-                <TableHead className="h-auto w-[15%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[12%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Aplicável a
                 </TableHead>
-                <TableHead className="h-auto w-[15%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[13%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Tipo de solda
                 </TableHead>
-                <TableHead className="h-auto w-[11%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[10%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Tamanho
                 </TableHead>
-                <TableHead className="h-auto w-[9%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[16%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                  Estilo
+                </TableHead>
+                <TableHead className="h-auto w-[7%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Unidade
                 </TableHead>
-                <TableHead className="h-auto w-[11%] whitespace-normal px-1.5 py-2 text-right text-xs leading-tight">
+                <TableHead className="h-auto w-[10%] whitespace-normal px-1.5 py-2 text-right text-xs leading-tight">
                   Custo MubiSys
                 </TableHead>
                 <TableHead className="h-auto w-[7%] px-1 py-2 text-center text-xs leading-tight">
@@ -2192,6 +2348,22 @@ function ProdutividadesSolda() {
                     ) : (
                       <span className="text-amber-700">Sem tamanho</span>
                     )}
+                  </TableCell>
+                  <TableCell className="max-w-0 whitespace-normal px-1.5 py-1.5">
+                    <div className="flex flex-wrap gap-1">
+                      {rotulosEstiloProdutividade(estiloDaMateria(material)).map(rotulo => (
+                        <Badge
+                          key={rotulo}
+                          variant="outline"
+                          className="px-1.5 py-0 text-[10px] leading-4"
+                        >
+                          {rotulo}
+                        </Badge>
+                      ))}
+                      {!temEstilo(material) && (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="max-w-0 whitespace-normal break-words px-1.5 py-1.5 text-xs leading-tight">
                     {material.unidadeCusto || "—"}
@@ -2324,6 +2496,82 @@ function ProdutividadesSolda() {
                     </Button>
                   ))}
                 </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Categoria</h3>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIAS_PRODUTIVIDADE.map(categoria => (
+                    <Button
+                      key={categoria}
+                      type="button"
+                      size="sm"
+                      variant={estiloEditado.categorias.includes(categoria) ? "default" : "outline"}
+                      aria-pressed={estiloEditado.categorias.includes(categoria)}
+                      onClick={() => setEstiloEditado(atual => ({ ...atual, ...alternarCategoriaProdutividade(atual, categoria) }))}
+                    >
+                      {ROTULO_CATEGORIA_PRODUTIVIDADE[categoria]}
+                    </Button>
+                  ))}
+                </div>
+                {estiloEditado.categorias.includes("frontlight") && (
+                  <div className="ml-4 space-y-2 border-l-2 border-blue-200 pl-3">
+                    <h4 className="text-xs font-semibold text-slate-600">Aro do Frontlight</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {AROS_FRONTLIGHT.map(aro => (
+                        <Button
+                          key={aro}
+                          type="button"
+                          size="sm"
+                          variant={estiloEditado.aros.includes(aro) ? "default" : "outline"}
+                          aria-pressed={estiloEditado.aros.includes(aro)}
+                          onClick={() => setEstiloEditado(atual => ({ ...atual, aros: alternarAroFrontlight(atual.aros, aro) }))}
+                        >
+                          {ROTULO_ARO_FRONTLIGHT[aro]}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Formato</h3>
+                <div className="flex flex-wrap gap-2">
+                  {FORMATOS_PRODUTIVIDADE.map(formato => (
+                    <Button
+                      key={formato}
+                      type="button"
+                      size="sm"
+                      variant={estiloEditado.formatos.includes(formato) ? "default" : "outline"}
+                      aria-pressed={estiloEditado.formatos.includes(formato)}
+                      onClick={() => setEstiloEditado(atual => ({ ...atual, formatos: alternarFormatoProdutividade(atual.formatos, formato) }))}
+                    >
+                      {ROTULO_FORMATO_PRODUTIVIDADE[formato]}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Fundo</h3>
+                <div className="flex flex-wrap gap-2">
+                  {FUNDOS_PRODUTIVIDADE.map(fundo => (
+                    <Button
+                      key={fundo}
+                      type="button"
+                      size="sm"
+                      variant={estiloEditado.fundos.includes(fundo) ? "default" : "outline"}
+                      aria-pressed={estiloEditado.fundos.includes(fundo)}
+                      onClick={() => setEstiloEditado(atual => ({ ...atual, fundos: alternarFundoProdutividade(atual.fundos, fundo) }))}
+                    >
+                      {ROTULO_FUNDO_PRODUTIVIDADE[fundo]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Categoria, formato e fundo: clique de novo para desmarcar; sem marcação, a produtividade fica sem essa classificação. O aro só existe dentro do Frontlight.
+                </p>
               </section>
 
               <div className="flex justify-end gap-2 border-t pt-4">

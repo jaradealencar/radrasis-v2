@@ -452,7 +452,14 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
   (`ehMateriaProdutividade`), ignorando o que vier para as demais. A página 5 da Tabela de Preços, Produtividades de solda, consulta o catálogo do MubiSys e permite filtrar e editar classificações de
   material, tipo de solda e tamanho. A classificação é manual (não deduzida do texto do nome); nenhum cálculo de custo ou
-  preço lê esses campos ainda. **Produtividades relacionadas ao produto (pedido de 06/10/2026):** no editor de produto do
+  preço lê esses campos ainda. **Estilo do letreiro (pedido de 06/10/2026, migration `0095`):** quatro grupos a mais, também
+  de marcação múltipla — categoria (Frontlight ou Tradicionais), aro (normal ou recuado; só existe junto de Frontlight, e o servidor
+  recusa aro sem ele), formato (cursiva ou tradicional) e fundo (com ou sem fundo) —, em `materia_prima_cadastros.produtividade_categorias`,
+  `produtividade_aros`, `produtividade_formatos` e `produtividade_fundos` (`text[]`). Filtros (o de aro só aparece com Frontlight
+  escolhido), coluna "Estilo" e edição estão na página 5 da Tabela de Preços e no cadastro de Produtos > Matérias-primas; os campos são
+  opcionais no `salvar`/`produtividadeClassificacaoSalvar` (tela antiga que não os envia não apaga o que está marcado). O motor de
+  escolha de solda do CPQ **ainda não lê** esses quatro grupos (continua usando o nome/título para cursivo, aro recuado e frontlight): ligá-los
+  ao `sugerirProdutividades` é o passo seguinte. **Produtividades relacionadas ao produto (pedido de 06/10/2026):** no editor de produto do
   CPQ (Administração > Produtos & kits), todo produto de categoria **Letreiros** tem a lista fechada "Produtividades de solda
   relacionadas", com marcação múltipla, filtro (nome, #código, tipo de solda, tamanho, material) e a classificação de cada
   produtividade. Os IDs ficam em `estudio_kits.dadosJson.produtividadesRelacionadas` (JSON, sem migration; salvo pela gravação

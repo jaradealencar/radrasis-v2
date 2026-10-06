@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  alternarAroFrontlight,
+  alternarCategoriaProdutividade,
+  alternarFormatoProdutividade,
+  alternarFundoProdutividade,
   alternarMaterialSolda,
   alternarTamanhoProdutividade,
   alternarTipoSolda,
   ehMateriaProdutividade,
+  erroEstiloProdutividade,
   erroMateriaisSolda,
   erroTamanhosProdutividade,
   erroTiposSolda,
   MATERIAIS_SOLDA,
   MAX_TIPOS_SOLDA,
+  normalizarEstiloProdutividade,
   normalizarMateriaisSolda,
   normalizarTamanhosProdutividade,
   normalizarTiposSolda,
+  rotulosEstiloProdutividade,
   TAMANHOS_PRODUTIVIDADE,
   TIPOS_SOLDA,
   type MaterialSolda,
@@ -154,5 +161,65 @@ describe("tamanhos: mais de um por produtividade", () => {
     sel = alternarTamanhoProdutividade(sel, "ate_11cm");
     expect(sel).toEqual(["ate_11cm", "acima_11cm"]);
     expect(alternarTamanhoProdutividade(sel, "ate_11cm")).toEqual(["acima_11cm"]);
+  });
+});
+
+describe("estilo do letreiro: categoria (+ aro do Frontlight), formato e fundo", () => {
+  it("lê do banco descartando desconhecidos e repetidos, na ordem fixa", () => {
+    expect(normalizarEstiloProdutividade({ categorias: ["tradicional", "frontlight", "xpto", "frontlight"], aros: ["recuado", "normal"], formatos: ["tradicional", "cursiva"], fundos: ["sem_fundo", "com_fundo"] })).toEqual({
+      categorias: ["frontlight", "tradicional"],
+      aros: ["normal", "recuado"],
+      formatos: ["cursiva", "tradicional"],
+      fundos: ["com_fundo", "sem_fundo"],
+    });
+    expect(normalizarEstiloProdutividade({})).toEqual({ categorias: [], aros: [], formatos: [], fundos: [] });
+    expect(normalizarEstiloProdutividade({ categorias: "frontlight", aros: null, formatos: undefined, fundos: 3 })).toEqual({ categorias: [], aros: [], formatos: [], fundos: [] });
+  });
+
+  it("o aro só existe dentro do Frontlight: sem ele a leitura devolve aros vazios", () => {
+    expect(normalizarEstiloProdutividade({ categorias: ["tradicional"], aros: ["recuado"] }).aros).toEqual([]);
+    expect(normalizarEstiloProdutividade({ categorias: [], aros: ["normal"] }).aros).toEqual([]);
+    expect(normalizarEstiloProdutividade({ categorias: ["frontlight"], aros: ["recuado"] }).aros).toEqual(["recuado"]);
+  });
+
+  it("desmarcar Frontlight leva os aros junto; marcar Tradicionais e Frontlight juntos é permitido", () => {
+    let estado = alternarCategoriaProdutividade({ categorias: [], aros: [] }, "frontlight");
+    expect(estado).toEqual({ categorias: ["frontlight"], aros: [] });
+    estado = { ...estado, aros: alternarAroFrontlight(estado.aros, "recuado") };
+    expect(estado.aros).toEqual(["recuado"]);
+    estado = { ...estado, ...alternarCategoriaProdutividade(estado, "tradicional") };
+    expect(estado).toEqual({ categorias: ["frontlight", "tradicional"], aros: ["recuado"] });
+    estado = alternarCategoriaProdutividade(estado, "frontlight");
+    expect(estado).toEqual({ categorias: ["tradicional"], aros: [] });
+  });
+
+  it("formato e fundo aceitam os dois valores juntos e mantêm a ordem", () => {
+    expect(alternarFormatoProdutividade(["tradicional"], "cursiva")).toEqual(["cursiva", "tradicional"]);
+    expect(alternarFormatoProdutividade(["cursiva", "tradicional"], "cursiva")).toEqual(["tradicional"]);
+    expect(alternarFundoProdutividade([], "sem_fundo")).toEqual(["sem_fundo"]);
+    expect(alternarFundoProdutividade(["sem_fundo"], "com_fundo")).toEqual(["com_fundo", "sem_fundo"]);
+  });
+
+  it("recusa repetidos e aro sem Frontlight", () => {
+    const vazio = { categorias: [], aros: [], formatos: [], fundos: [] };
+    expect(erroEstiloProdutividade(vazio)).toBeNull();
+    expect(erroEstiloProdutividade({ ...vazio, categorias: ["frontlight"], aros: ["normal", "recuado"] })).toBeNull();
+    expect(erroEstiloProdutividade({ ...vazio, categorias: ["frontlight", "frontlight"] })).toMatch(/categorias repetidas/);
+    expect(erroEstiloProdutividade({ ...vazio, formatos: ["cursiva", "cursiva"] })).toMatch(/formatos repetidos/);
+    expect(erroEstiloProdutividade({ ...vazio, fundos: ["com_fundo", "com_fundo"] })).toMatch(/fundos repetidos/);
+    expect(erroEstiloProdutividade({ ...vazio, categorias: ["tradicional"], aros: ["normal"] })).toMatch(/só vale para Frontlight/);
+    expect(erroEstiloProdutividade({ ...vazio, aros: ["recuado"] })).toMatch(/só vale para Frontlight/);
+  });
+
+  it("rotula o estilo para exibição: um rótulo por aro do Frontlight", () => {
+    expect(rotulosEstiloProdutividade({ categorias: [], aros: [], formatos: [], fundos: [] })).toEqual([]);
+    expect(rotulosEstiloProdutividade({ categorias: ["frontlight", "tradicional"], aros: ["normal", "recuado"], formatos: ["cursiva"], fundos: ["sem_fundo"] })).toEqual([
+      "Frontlight · Aro normal",
+      "Frontlight · Aro recuado",
+      "Tradicionais",
+      "Cursiva",
+      "Sem fundo",
+    ]);
+    expect(rotulosEstiloProdutividade({ categorias: ["frontlight"], aros: [], formatos: ["cursiva", "tradicional"], fundos: ["com_fundo"] })).toEqual(["Frontlight", "Cursiva", "Tradicional", "Com fundo"]);
   });
 });

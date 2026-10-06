@@ -9,7 +9,7 @@ import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, sec
 import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-referencia";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { ehProcessoCorte, normalizarRotacao, PROCESSOS_CORTE, ROTACOES_PERMITIDAS } from "@shared/politica-corte";
-import { ehCategoriaProdutividade, ehMateriaProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, MATERIAIS_SOLDA, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "@shared/produtividade-solda";
+import { AROS_FRONTLIGHT, CATEGORIAS_PRODUTIVIDADE, ehCategoriaProdutividade, ehMateriaProdutividade, erroEstiloProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, ESTILO_PRODUTIVIDADE_VAZIO, FORMATOS_PRODUTIVIDADE, FUNDOS_PRODUTIVIDADE, MATERIAIS_SOLDA, normalizarEstiloProdutividade, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type EstiloProdutividade } from "@shared/produtividade-solda";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -60,6 +60,39 @@ const formatosChapaInput = z.array(z.object({
 
 const perfilSecaoInvalida = (input: { perfilFormato: FormatoPerfil; perfilAlturaMm: number | null; perfilLarguraMm: number | null; espessuraMm: number | null }) =>
   secaoPerfilMm2(input.perfilFormato, input.perfilAlturaMm ?? 0, input.perfilLarguraMm ?? 0, input.espessuraMm) == null;
+
+/**
+ * Estilo do letreiro (categoria + aro do Frontlight, formato e fundo). Os quatro campos são opcionais: uma tela antiga, que não os conhece,
+ * não apaga o que já foi marcado. Se algum vier, os quatro valem como uma unidade (o que faltar é vazio).
+ */
+const estiloProdutividadeInput = {
+  produtividadeCategorias: z.array(z.enum(CATEGORIAS_PRODUTIVIDADE)).optional(),
+  produtividadeAros: z.array(z.enum(AROS_FRONTLIGHT)).optional(),
+  produtividadeFormatos: z.array(z.enum(FORMATOS_PRODUTIVIDADE)).optional(),
+  produtividadeFundos: z.array(z.enum(FUNDOS_PRODUTIVIDADE)).optional(),
+};
+
+/** Estilo a gravar, ou `null` se a tela não mandou nenhum grupo (então as colunas ficam como estão). Erro se a combinação não for permitida. */
+function estiloParaGravar(input: { produtividadeCategorias?: EstiloProdutividade["categorias"]; produtividadeAros?: EstiloProdutividade["aros"]; produtividadeFormatos?: EstiloProdutividade["formatos"]; produtividadeFundos?: EstiloProdutividade["fundos"] }): EstiloProdutividade | null {
+  const enviados = [input.produtividadeCategorias, input.produtividadeAros, input.produtividadeFormatos, input.produtividadeFundos];
+  if (enviados.every(grupo => grupo === undefined)) return null;
+  const estilo: EstiloProdutividade = {
+    categorias: input.produtividadeCategorias ?? [],
+    aros: input.produtividadeAros ?? [],
+    formatos: input.produtividadeFormatos ?? [],
+    fundos: input.produtividadeFundos ?? [],
+  };
+  const erro = erroEstiloProdutividade(estilo);
+  if (erro) throw new Error(erro);
+  return normalizarEstiloProdutividade(estilo);
+}
+
+const colunasEstilo = (estilo: EstiloProdutividade) => ({
+  produtividadeCategorias: estilo.categorias,
+  produtividadeAros: estilo.aros,
+  produtividadeFormatos: estilo.formatos,
+  produtividadeFundos: estilo.fundos,
+});
 
 const texturaUploadUrlValida = (url: string | null) => {
   if (url == null) return true;
@@ -138,6 +171,10 @@ export const materiasPrimasRouter = router({
           produtividadeTiposSolda: normalizarTiposSolda(cadastro?.produtividadeTiposSolda),
           produtividadeTamanhos: normalizarTamanhosProdutividade(cadastro?.produtividadeTamanhos),
           produtividadeMateriais: normalizarMateriaisSolda(cadastro?.produtividadeMateriais),
+          ...(() => {
+            const estilo = normalizarEstiloProdutividade({ categorias: cadastro?.produtividadeCategorias, aros: cadastro?.produtividadeAros, formatos: cadastro?.produtividadeFormatos, fundos: cadastro?.produtividadeFundos });
+            return { produtividadeCategorias: estilo.categorias, produtividadeAros: estilo.aros, produtividadeFormatos: estilo.formatos, produtividadeFundos: estilo.fundos };
+          })(),
           bobinas: (chapasPorId.get(material.id) ?? []).filter(chapa => chapa.bobina).map(bobina => ({
             id: bobina.id,
             nome: bobina.nome,
@@ -171,6 +208,7 @@ export const materiasPrimasRouter = router({
       produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)),
       produtividadeTamanhos: z.array(z.enum(TAMANHOS_PRODUTIVIDADE)),
       produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)),
+      ...estiloProdutividadeInput,
     }).strict())
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -185,12 +223,14 @@ export const materiasPrimasRouter = router({
       if (erroMateriais) throw new Error(erroMateriais);
       const erroTamanhos = erroTamanhosProdutividade(input.produtividadeTamanhos);
       if (erroTamanhos) throw new Error(erroTamanhos);
+      const estilo = estiloParaGravar(input);
       const now = new Date();
       await db.insert(materiaPrimaCadastros).values({
         mubisysMateriaPrimaId: material.id,
         produtividadeTiposSolda: normalizarTiposSolda(input.produtividadeTiposSolda),
         produtividadeTamanhos: normalizarTamanhosProdutividade(input.produtividadeTamanhos),
         produtividadeMateriais: normalizarMateriaisSolda(input.produtividadeMateriais),
+        ...(estilo ? colunasEstilo(estilo) : {}),
         updatedAt: now,
       }).onConflictDoUpdate({
         target: materiaPrimaCadastros.mubisysMateriaPrimaId,
@@ -198,6 +238,7 @@ export const materiasPrimasRouter = router({
           produtividadeTiposSolda: normalizarTiposSolda(input.produtividadeTiposSolda),
           produtividadeTamanhos: normalizarTamanhosProdutividade(input.produtividadeTamanhos),
           produtividadeMateriais: normalizarMateriaisSolda(input.produtividadeMateriais),
+          ...(estilo ? colunasEstilo(estilo) : {}),
           updatedAt: now,
         },
       });
@@ -286,6 +327,7 @@ export const materiasPrimasRouter = router({
       produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)).default([]),
       produtividadeTamanhos: z.array(z.enum(TAMANHOS_PRODUTIVIDADE)).default([]),
       produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)).default([]),
+      ...estiloProdutividadeInput,
       aparenciaModo: z.enum(["nao_informada", "cor", "textura"]).default("nao_informada"),
       aparenciaCorHex: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
       aparenciaCorDescricao: z.string().trim().max(500).nullable().default(null),
@@ -318,6 +360,9 @@ export const materiasPrimasRouter = router({
       const tiposSoldaSalvos = ehProdutividade ? normalizarTiposSolda(input.produtividadeTiposSolda) : [];
       const tamanhosProdutividadeSalvos = ehProdutividade ? normalizarTamanhosProdutividade(input.produtividadeTamanhos) : [];
       const materiaisSoldaSalvos = ehProdutividade ? normalizarMateriaisSolda(input.produtividadeMateriais) : [];
+      const estiloEnviado = estiloParaGravar(input);
+      // Fora das produtividades o estilo é sempre vazio; sem o campo na requisição (tela antiga), nada muda.
+      const estiloSalvo = estiloEnviado && ehProdutividade ? estiloEnviado : estiloEnviado ? ESTILO_PRODUTIVIDADE_VAZIO : null;
 
       let categoria: typeof materiaPrimaCategorias.$inferSelect | null = null;
       if (input.categoriaId != null) {
@@ -413,6 +458,7 @@ export const materiasPrimasRouter = router({
           produtividadeTiposSolda: tiposSoldaSalvos,
           produtividadeTamanhos: tamanhosProdutividadeSalvos,
           produtividadeMateriais: materiaisSoldaSalvos,
+          ...(estiloSalvo ? colunasEstilo(estiloSalvo) : {}),
           aparenciaModo: aparenciaModoSalva,
           aparenciaCorHex: aparenciaCorHexSalva,
           aparenciaCorDescricao: aparenciaCorDescricaoSalva,
@@ -442,6 +488,7 @@ export const materiasPrimasRouter = router({
             produtividadeTiposSolda: tiposSoldaSalvos,
             produtividadeTamanhos: tamanhosProdutividadeSalvos,
             produtividadeMateriais: materiaisSoldaSalvos,
+            ...(estiloSalvo ? colunasEstilo(estiloSalvo) : {}),
             aparenciaModo: aparenciaModoSalva,
             aparenciaCorHex: aparenciaCorHexSalva,
             aparenciaCorDescricao: aparenciaCorDescricaoSalva,

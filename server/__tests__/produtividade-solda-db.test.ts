@@ -88,6 +88,62 @@ describe("subclassificação das matérias-primas de produtividade (router + ban
   });
 });
 
+describe("estilo do letreiro (categoria, aro, formato e fundo) no router + banco", () => {
+  beforeAll(limpar);
+  afterAll(limpar);
+
+  it("nasce vazio e grava os quatro grupos, devolvendo na ordem fixa", async () => {
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeCategorias: [], produtividadeAros: [], produtividadeFormatos: [], produtividadeFundos: [] });
+    await gestor().salvar({ ...base(ID_SOLDA), produtividadeCategorias: ["tradicional", "frontlight"], produtividadeAros: ["recuado", "normal"], produtividadeFormatos: ["tradicional", "cursiva"], produtividadeFundos: ["sem_fundo"] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeCategorias: ["frontlight", "tradicional"], produtividadeAros: ["normal", "recuado"], produtividadeFormatos: ["cursiva", "tradicional"], produtividadeFundos: ["sem_fundo"] });
+  });
+
+  it("o editor da Tabela de Preços (produtividadeClassificacaoSalvar) grava o estilo junto das outras marcações", async () => {
+    await gestor().produtividadeClassificacaoSalvar({
+      mubisysMateriaPrimaId: ID_SOLDA,
+      produtividadeTiposSolda: ["orelhinha"], produtividadeTamanhos: ["ate_11cm"], produtividadeMateriais: ["inox"],
+      produtividadeCategorias: ["frontlight"], produtividadeAros: ["recuado"], produtividadeFormatos: ["cursiva"], produtividadeFundos: ["com_fundo"],
+    });
+    expect(await linha(ID_SOLDA)).toMatchObject({
+      produtividadeTiposSolda: ["orelhinha"], produtividadeTamanhos: ["ate_11cm"], produtividadeMateriais: ["inox"],
+      produtividadeCategorias: ["frontlight"], produtividadeAros: ["recuado"], produtividadeFormatos: ["cursiva"], produtividadeFundos: ["com_fundo"],
+    });
+  });
+
+  it("uma tela antiga, que não manda o estilo, não apaga o que já estava marcado", async () => {
+    await gestor().salvar({ ...base(ID_SOLDA), produtividadeCategorias: ["tradicional"], produtividadeFormatos: ["cursiva"] });
+    await gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["barra_roscada"] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: ["barra_roscada"], produtividadeCategorias: ["tradicional"], produtividadeFormatos: ["cursiva"] });
+    await gestor().produtividadeClassificacaoSalvar({ mubisysMateriaPrimaId: ID_SOLDA, produtividadeTiposSolda: [], produtividadeTamanhos: [], produtividadeMateriais: [] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeCategorias: ["tradicional"], produtividadeFormatos: ["cursiva"] });
+  });
+
+  it("mandar o estilo vazio limpa os quatro grupos", async () => {
+    await gestor().salvar({ ...base(ID_SOLDA), produtividadeCategorias: [], produtividadeAros: [], produtividadeFormatos: [], produtividadeFundos: [] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeCategorias: [], produtividadeAros: [], produtividadeFormatos: [], produtividadeFundos: [] });
+  });
+
+  it("recusa aro sem Frontlight, repetidos e valores fora da lista", async () => {
+    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeCategorias: ["tradicional"], produtividadeAros: ["normal"] })).rejects.toThrow(/só vale para Frontlight/);
+    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeAros: ["normal"] })).rejects.toThrow(/só vale para Frontlight/);
+    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeFormatos: ["cursiva", "cursiva"] })).rejects.toThrow(/formatos repetidos/);
+    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeFundos: ["meio_fundo" as any] })).rejects.toThrow();
+    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeCategorias: ["backlight" as any] })).rejects.toThrow();
+    await expect(gestor().produtividadeClassificacaoSalvar({ mubisysMateriaPrimaId: ID_SOLDA, produtividadeTiposSolda: [], produtividadeTamanhos: [], produtividadeMateriais: [], produtividadeAros: ["recuado"] })).rejects.toThrow(/só vale para Frontlight/);
+  });
+
+  it("matéria-prima que não é produtividade ignora o estilo enviado", async () => {
+    for (const id of [ID_GERAL, ID_CHAPA]) {
+      await gestor().salvar({ ...base(id), produtividadeCategorias: ["frontlight"], produtividadeAros: ["normal"], produtividadeFormatos: ["cursiva"], produtividadeFundos: ["com_fundo"] });
+      expect(await linha(id)).toMatchObject({ produtividadeCategorias: [], produtividadeAros: [], produtividadeFormatos: [], produtividadeFundos: [] });
+    }
+  });
+
+  it("só gestor, admin e master gravam o estilo", async () => {
+    await expect(materiasPrimasRouter.createCaller(ctxVendas).salvar({ ...base(ID_SOLDA), produtividadeCategorias: ["frontlight"] })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
 describe("mão de obra (produtividade) não tem peso específico", () => {
   beforeAll(limpar);
   afterAll(limpar);

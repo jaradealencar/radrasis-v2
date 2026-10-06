@@ -1,5 +1,5 @@
 import { hexesDoPantone } from "@shared/pantone-referencia";
-import { alternarMaterialSolda, alternarTamanhoProdutividade, ehCategoriaProdutividade, alternarTipoSolda, MATERIAIS_SOLDA, MAX_TIPOS_SOLDA, ROTULO_MATERIAL_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type MaterialSolda, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
+import { alternarAroFrontlight, alternarCategoriaProdutividade, alternarFormatoProdutividade, alternarFundoProdutividade, alternarMaterialSolda, alternarTamanhoProdutividade, ehCategoriaProdutividade, alternarTipoSolda, AROS_FRONTLIGHT, CATEGORIAS_PRODUTIVIDADE, ESTILO_PRODUTIVIDADE_VAZIO, FORMATOS_PRODUTIVIDADE, FUNDOS_PRODUTIVIDADE, MATERIAIS_SOLDA, MAX_TIPOS_SOLDA, ROTULO_ARO_FRONTLIGHT, ROTULO_CATEGORIA_PRODUTIVIDADE, ROTULO_FORMATO_PRODUTIVIDADE, ROTULO_FUNDO_PRODUTIVIDADE, ROTULO_MATERIAL_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, rotulosEstiloProdutividade, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, temEstiloProdutividade, type EstiloProdutividade, type MaterialSolda, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
 import { PADRAO_PROCESSO_CORTE, PROCESSOS_CORTE, ROTACOES_PERMITIDAS, ROTULO_PROCESSO_CORTE, ROTULO_ROTACAO, type ProcessoCorte, type RotacaoPermitida } from "@shared/politica-corte";
 import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaAltura, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
@@ -205,7 +205,7 @@ function CadastroMateriasPrimas() {
                         ) : material.categoriaUsaDadosBobina ? (
                           <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${fmtEspessura(material.espessuraMm)} de espessura` : ""}{material.densidadeKgM3 != null ? ` · ${kgM3ParaGCm3(material.densidadeKgM3)} g/cm³` : ""}</span>
                         ) : material.ehProdutividade ? (
-                          <ResumoProdutividade tipos={material.produtividadeTiposSolda} tamanhos={material.produtividadeTamanhos} materiais={material.produtividadeMateriais} />
+                          <ResumoProdutividade tipos={material.produtividadeTiposSolda} tamanhos={material.produtividadeTamanhos} materiais={material.produtividadeMateriais} estilo={estiloDoCadastro(material)} />
                         ) : <span className="text-muted-foreground">{material.pesoEspecificoKg != null ? `${material.pesoEspecificoKg} kg / ${material.unidadeCusto || "un."}` : material.tipo || "Sem dados técnicos adicionais"}</span>}
                       </TableCell>
                       <TableCell>
@@ -232,14 +232,23 @@ function CadastroMateriasPrimas() {
   );
 }
 
-/** Tipos de solda, tamanho e materiais da matéria-prima de produtividade; o que ainda falta aparece em âmbar. */
-function ResumoProdutividade({ tipos, tamanhos, materiais }: { tipos: TipoSolda[]; tamanhos: TamanhoProdutividade[]; materiais: MaterialSolda[] }) {
+/** Estilo do letreiro (categoria, aro, formato e fundo) de uma matéria-prima da listagem. */
+const estiloDoCadastro = (item: Pick<MateriaPrimaCadastroItem, "produtividadeCategorias" | "produtividadeAros" | "produtividadeFormatos" | "produtividadeFundos">): EstiloProdutividade => ({
+  categorias: item.produtividadeCategorias,
+  aros: item.produtividadeAros,
+  formatos: item.produtividadeFormatos,
+  fundos: item.produtividadeFundos,
+});
+
+/** Tipos de solda, tamanho e materiais da matéria-prima de produtividade; o que ainda falta aparece em âmbar. O estilo é opcional: só aparece se marcado. */
+function ResumoProdutividade({ tipos, tamanhos, materiais, estilo }: { tipos: TipoSolda[]; tamanhos: TamanhoProdutividade[]; materiais: MaterialSolda[]; estilo: EstiloProdutividade }) {
   const falta = "text-xs text-amber-700 dark:text-amber-300";
   return (
     <div className="flex flex-wrap items-center gap-1">
       {materiais.length ? materiais.map(material => <Badge key={material} className="bg-sky-100 text-sky-800 hover:bg-sky-100 dark:bg-sky-900/40 dark:text-sky-200">{ROTULO_MATERIAL_SOLDA[material]}</Badge>) : <span className={falta}>Sem material</span>}
       {tipos.length ? tipos.map(tipo => <Badge key={tipo} variant="outline">{ROTULO_TIPO_SOLDA[tipo]}</Badge>) : <span className={falta}>Sem tipo de solda</span>}
       {tamanhos.length ? tamanhos.map(tamanho => <Badge key={tamanho} variant="secondary">{ROTULO_TAMANHO_PRODUTIVIDADE[tamanho]}</Badge>) : <span className={falta}>Sem tamanho</span>}
+      {rotulosEstiloProdutividade(estilo).map(rotulo => <Badge key={rotulo} variant="outline" className="border-dashed">{rotulo}</Badge>)}
     </div>
   );
 }
@@ -252,7 +261,7 @@ function sugerirBaseCustoBobina(unidadeCusto: string): "" | "m2" | "ml" {
   return "";
 }
 
-const produtividadeClassificada = (item: MateriaPrimaCadastroItem) => item.ehProdutividade && (item.produtividadeTiposSolda.length > 0 || item.produtividadeTamanhos.length > 0 || item.produtividadeMateriais.length > 0);
+const produtividadeClassificada = (item: MateriaPrimaCadastroItem) => item.ehProdutividade && (item.produtividadeTiposSolda.length > 0 || item.produtividadeTamanhos.length > 0 || item.produtividadeMateriais.length > 0 || temEstiloProdutividade(estiloDoCadastro(item)));
 
 const fmtEspessura = (mm: number | null) => mm == null ? "—" : mm < 1 ? `${Number((mm * 1000).toFixed(2))} µm` : `${mm} mm`;
 
@@ -324,6 +333,7 @@ function DialogEditarMateriaPrima({
   const [tiposSolda, setTiposSolda] = useState<TipoSolda[]>([]);
   const [tamanhosProdutividade, setTamanhosProdutividade] = useState<TamanhoProdutividade[]>([]);
   const [materiaisSolda, setMateriaisSolda] = useState<MaterialSolda[]>([]);
+  const [estiloProdutividade, setEstiloProdutividade] = useState<EstiloProdutividade>(ESTILO_PRODUTIVIDADE_VAZIO);
   const [origemBusca, setOrigemBusca] = useState("");
   const [origemId, setOrigemId] = useState("");
   const [copiarCor, setCopiarCor] = useState(false);
@@ -381,6 +391,7 @@ function DialogEditarMateriaPrima({
     setTiposSolda(fonte.produtividadeTiposSolda);
     setTamanhosProdutividade(fonte.produtividadeTamanhos);
     setMateriaisSolda(fonte.produtividadeMateriais);
+    setEstiloProdutividade(estiloDoCadastro(fonte));
     const copiarAparencia = !clonar || copiarCor;
     const modoAparenciaFonte: AparenciaModo = fonte.aparenciaModo === "cor" || fonte.aparenciaModo === "textura" ? fonte.aparenciaModo : "nao_informada";
     setAparenciaModo(copiarAparencia ? modoAparenciaFonte : "nao_informada");
@@ -509,6 +520,10 @@ function DialogEditarMateriaPrima({
       produtividadeTiposSolda: material.ehProdutividade ? tiposSolda : [],
       produtividadeTamanhos: material.ehProdutividade ? tamanhosProdutividade : [],
       produtividadeMateriais: material.ehProdutividade ? materiaisSolda : [],
+      produtividadeCategorias: material.ehProdutividade ? estiloProdutividade.categorias : [],
+      produtividadeAros: material.ehProdutividade ? estiloProdutividade.aros : [],
+      produtividadeFormatos: material.ehProdutividade ? estiloProdutividade.formatos : [],
+      produtividadeFundos: material.ehProdutividade ? estiloProdutividade.fundos : [],
       aparenciaModo,
       aparenciaCorHex: aparenciaModo === "cor" ? aparenciaCorHex.trim() || null : null,
       aparenciaCorDescricao: aparenciaModo === "cor" ? aparenciaCorDescricao.trim() || null : null,
@@ -630,7 +645,35 @@ function DialogEditarMateriaPrima({
                 return <Button key={tamanho} type="button" size="sm" variant={marcado ? "secondary" : "ghost"} aria-pressed={marcado} onClick={() => setTamanhosProdutividade(atual => alternarTamanhoProdutividade(atual, tamanho))}>{ROTULO_TAMANHO_PRODUTIVIDADE[tamanho]}</Button>;
               })}
             </div>
-            <p className="text-xs text-muted-foreground">Material e tamanho: marque quantos valerem, sem limite (os dois tamanhos juntos significam que a produtividade serve para ambos; "Galvanizado ou Inox" = os dois materiais). Tipo de solda: até {MAX_TIPOS_SOLDA} ({tiposSolda.length} marcado(s)); "Sem fixação" não combina com os outros e marcá-lo desmarca os demais.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">Categoria</span>
+              {CATEGORIAS_PRODUTIVIDADE.map(categoriaProdutividade => {
+                const marcado = estiloProdutividade.categorias.includes(categoriaProdutividade);
+                return <Button key={categoriaProdutividade} type="button" size="sm" variant={marcado ? "secondary" : "ghost"} aria-pressed={marcado} onClick={() => setEstiloProdutividade(atual => ({ ...atual, ...alternarCategoriaProdutividade(atual, categoriaProdutividade) }))}>{ROTULO_CATEGORIA_PRODUTIVIDADE[categoriaProdutividade]}</Button>;
+              })}
+            </div>
+            {estiloProdutividade.categorias.includes("frontlight") && <div className="ml-6 flex flex-wrap items-center gap-2 border-l-2 border-blue-200 pl-3">
+              <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">Frontlight</span>
+              {AROS_FRONTLIGHT.map(aro => {
+                const marcado = estiloProdutividade.aros.includes(aro);
+                return <Button key={aro} type="button" size="sm" variant={marcado ? "secondary" : "ghost"} aria-pressed={marcado} onClick={() => setEstiloProdutividade(atual => ({ ...atual, aros: alternarAroFrontlight(atual.aros, aro) }))}>{ROTULO_ARO_FRONTLIGHT[aro]}</Button>;
+              })}
+            </div>}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">Formato</span>
+              {FORMATOS_PRODUTIVIDADE.map(formato => {
+                const marcado = estiloProdutividade.formatos.includes(formato);
+                return <Button key={formato} type="button" size="sm" variant={marcado ? "secondary" : "ghost"} aria-pressed={marcado} onClick={() => setEstiloProdutividade(atual => ({ ...atual, formatos: alternarFormatoProdutividade(atual.formatos, formato) }))}>{ROTULO_FORMATO_PRODUTIVIDADE[formato]}</Button>;
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">Fundo</span>
+              {FUNDOS_PRODUTIVIDADE.map(fundo => {
+                const marcado = estiloProdutividade.fundos.includes(fundo);
+                return <Button key={fundo} type="button" size="sm" variant={marcado ? "secondary" : "ghost"} aria-pressed={marcado} onClick={() => setEstiloProdutividade(atual => ({ ...atual, fundos: alternarFundoProdutividade(atual.fundos, fundo) }))}>{ROTULO_FUNDO_PRODUTIVIDADE[fundo]}</Button>;
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">Material e tamanho: marque quantos valerem, sem limite (os dois tamanhos juntos significam que a produtividade serve para ambos; "Galvanizado ou Inox" = os dois materiais). Tipo de solda: até {MAX_TIPOS_SOLDA} ({tiposSolda.length} marcado(s)); "Sem fixação" não combina com os outros e marcá-lo desmarca os demais. Categoria, formato e fundo também aceitam mais de uma marcação (clique de novo para desmarcar); o aro só existe dentro do Frontlight.</p>
           </div>}
 
           {categoria?.usaDadosChapa && <div className="space-y-4 rounded-lg border p-4">

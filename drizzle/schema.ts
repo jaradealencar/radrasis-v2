@@ -402,6 +402,11 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   produtividadeTamanho: varchar("produtividade_tamanho", { length: 12 }),
   produtividadeTamanhos: text("produtividade_tamanhos").array().notNull().default([]),
   produtividadeMateriais: text("produtividade_materiais").array().notNull().default([]),
+  // Estilo do letreiro (06/10/2026), marcação múltipla em cada grupo. Os aros só valem junto de "frontlight"; o servidor limpa os aros sem ele.
+  produtividadeCategorias: text("produtividade_categorias").array().notNull().default([]),
+  produtividadeAros: text("produtividade_aros").array().notNull().default([]),
+  produtividadeFormatos: text("produtividade_formatos").array().notNull().default([]),
+  produtividadeFundos: text("produtividade_fundos").array().notNull().default([]),
   // Appearance for CPQ/3D rendering. The image is a visual reference, not a calibrated PBR map.
   aparenciaModo: varchar("aparencia_modo", { length: 16 }).notNull().default("nao_informada"),
   aparenciaCorHex: varchar("aparencia_cor_hex", { length: 7 }),
