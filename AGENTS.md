@@ -634,6 +634,17 @@ before the material can be nested. Migration `0065_clammy_roulette.sql` adds
 the preferred-board flag and stores the CPQ proposal title and reference/redesign
 image URLs.
 
+**Motor de nesting (decisão de 05/10/2026):** `executarMotor` em `server/services/cpqNesting.ts` escolhe, nesta ordem,
+(1) serviço Deepnest remoto (`DEEPNEST_REMOTE_URL` + `DEEPNEST_REMOTE_TOKEN`; o serviço é
+`server/scripts/cpq-deepnest-service.mjs`, que embrulha o worker abaixo e roda numa máquina com o Deepnest),
+(2) Deepnest local (`DEEPNEST_NODE_BIN`/`DEEPNEST_NODE_ENTRY`) e (3) o **motor interno**
+(`server/services/cpqNestingInterno.ts`: caixas giradas de 5 em 5°, MaxRects com 4 estratégias, roda em qualquer
+servidor, inclusive Vercel). O interno é uma estimativa conservadora (não encaixa peça no vazio de outra); o
+resultado traz `motor: "interno"` e o CPQ mostra o aviso. Remoto indisponível (rede/401/404/5xx) cai no interno;
+falha de cálculo do Deepnest (tempo) continua sendo erro de motor. Nenhum fork do Deepnest com a API `nest(svgs,
+onUpdate, opts)` que o worker espera foi encontrado/validado: o worker e o serviço só foram testados com motor
+falso.
+
 The nesting endpoint runs `server/scripts/cpq-deepnest-worker.mjs` with a separate
 Node 20 executable (`DEEPNEST_NODE_BIN`) and a local Deepnest Node entry
 (`DEEPNEST_NODE_ENTRY`). This isolates Deepnest's native addon from the Radrasys

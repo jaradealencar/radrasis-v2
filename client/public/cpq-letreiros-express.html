@@ -4317,7 +4317,7 @@ async function executarNestingFactibilidadeReal(formatosTemporarios=REAL.nesting
     if(!response.ok) throw new Error(body.error||'Falha no Deepnest para os materiais selecionados.');
     const resultados=body.materiais||[];
     if(resultados.length!==lotesPorMaterial.length) throw new Error('O Deepnest nao retornou todos os materiais.');
-    REAL.nesting={materiais:resultados,algoritmo:'Deepnest local'};
+    REAL.nesting={materiais:resultados,algoritmo:body.motor||'Deepnest'};
   }finally{ REAL.nestingCarregando=false; }
 }
 
@@ -4390,6 +4390,7 @@ function realStepNestingV2(){
     <div class="cardhead"><div><h4>${escaparHtml(material.materia_prima)}</h4><p>${material.formato==='bobina'?`Bobina / Rolo ${escaparHtml(material.nome_chapa_utilizada)} - largura ${material.chapa.altura_mm} mm x comprimento consumido ${material.chapa.largura_mm} mm`:`Chapa ${escaparHtml(material.nome_chapa_utilizada)} - ${material.chapa.largura_mm} x ${material.chapa.altura_mm} mm`}</p></div><span class="badge b-ok">${fmt(material.porcentagem_aproveitamento,1)}% ${material.formato==='bobina'?'aproveitamento do rolo consumido':'ocupacao da chapa'}</span></div>
     <div class="grid3"><div class="kv"><span>Área líquida das peças</span><span>${fmt(material.area_liquida_m2,4)} m2</span></div><div class="kv"><span>Área de consumo</span><span>${fmt(material.area_chapa_utilizada_m2,4)} m2</span></div><div class="kv"><span>Perímetro total de corte</span><span>${fmt(material.perimetro_total_m,2)} m</span></div></div>
     <div class="role-note">${material.posicionamentos.length} peça(s) posicionada(s) - ${material.formato==='bobina'?'bobina / rolo':'chapa'} ID ${material.id_chapa_utilizada} (${material.chapa_principal?'principal':'alternativa'}); espaço entre peças: ${material.espacamento_pecas_mm} mm; borda: ${material.margem_borda_mm} mm; critério: ${material.criterio_escolha==='menor_chapa_que_comporta'?(material.formato==='bobina'?'menor consumo de rolo':'menor chapa que comporta'):material.criterio_escolha==='menor_sobra_financeira'?'menor sobra financeira':'maior aproveitamento'}.</div>
+    ${material.motor==='interno'?`<div class="role-note" style="margin-top:8px;">${ICONS.info} Nesting estimado por caixas giradas (o motor Deepnest não está disponível neste servidor): o consumo é conservador, o encaixe real tende a gastar igual ou menos material.</div>`:''}
     ${material.custo_material_estimado==null?`<div class="warnbox" style="margin-top:8px;">${escaparHtml(material.alerta_custo||'Unidade sem conversão automática; revise o custo antes de emitir.')}</div>`:`<div class="kv"><span>${material.formato==='bobina'?'Custo estimado do rolo consumido (largura x comprimento)':'Custo proporcional estimado da chapa'}</span><span>${money(material.custo_material_estimado)}</span></div>`}
   </div>`).join('')||'';
   const formatosAvaliadosHtml=nesting?.materiais?.map(material=>{

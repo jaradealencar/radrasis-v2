@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { BobinaCustoConfig } from "../../shared/bobina";
+import { executarMotorInterno, GeometriaInvalidaMotorInterno } from "./cpqNestingInterno";
 
 export type CpqChapa = {
   id: number;
@@ -52,6 +53,8 @@ type DeepnestWorkerResult = {
   perimetroTotalMm: number;
   placements: CpqNestingPlacement[];
   bounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
+  /** Quem calculou: o Deepnest (local ou remoto) ou o motor interno por caixas (estimativa conservadora). */
+  motor?: "deepnest" | "interno";
 };
 
 export type CpqNestingFormatoResultado = {
@@ -101,6 +104,8 @@ export type CpqNestingMaterialResult = {
   /** Em bobina, `largura_mm` é o comprimento consumido (cobrado) e `altura_mm` a largura do rolo. */
   chapa: { largura_mm: number; altura_mm: number };
   formato: "chapa" | "bobina";
+  /** Motor que calculou este layout; "interno" = caixas giradas, sem o encaixe fino do Deepnest. */
+  motor?: "deepnest" | "interno";
   /** Só em bobina: comprimento do rolo consumido pelo layout, em mm. */
   comprimento_consumido_mm?: number;
   /** Só em bobina: largura do rolo, em mm. */
@@ -245,7 +250,71 @@ function normalizarSvgFisico(peca: CpqNestingPeca): string {
   return svg.replace(root, novoRoot);
 }
 
-function executarMotor(
+/** O serviço Deepnest remoto não respondeu (rede, autenticação ou instância fora do ar): cai no motor interno. */
+class MotorIndisponivelError extends Error {}
+
+async function executarMotorRemoto(
+  url: string,
+  payload: { pecas: Array<CpqNestingPeca & { svg: string }>; larguraMm: number; alturaMm: number; espacamentoMm: number; timeoutMs: number },
+): Promise<DeepnestWorkerResult> {
+  const token = process.env.DEEPNEST_REMOTE_TOKEN?.trim();
+  const controle = new AbortController();
+  const limite = setTimeout(() => controle.abort(), payload.timeoutMs + 15_000);
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${url.replace(/\/+$/, "")}/nesting`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(payload),
+      signal: controle.signal,
+    });
+  } catch (error) {
+    throw new MotorIndisponivelError(error instanceof Error ? error.message : "Serviço Deepnest inacessível.");
+  } finally {
+    clearTimeout(limite);
+  }
+  if ([401, 403, 404, 502, 503, 504].includes(resposta.status)) throw new MotorIndisponivelError(`Serviço Deepnest respondeu ${resposta.status}.`);
+  const corpo = await resposta.json().catch(() => null) as (Partial<DeepnestWorkerResult> & { error?: string }) | null;
+  if (!resposta.ok || !corpo || corpo.error)
+    throw new CpqNestingError(corpo?.error || `O serviço Deepnest respondeu ${resposta.status}.`, "engine");
+  if (typeof corpo.completo !== "boolean" || !Array.isArray(corpo.placements) || typeof corpo.areaLiquidaMm2 !== "number")
+    throw new CpqNestingError("O serviço Deepnest devolveu um resultado inválido.", "engine");
+  return corpo as DeepnestWorkerResult;
+}
+
+/**
+ * Escolhe o motor: serviço Deepnest remoto (DEEPNEST_REMOTE_URL) → Deepnest local (DEEPNEST_NODE_BIN/ENTRY) →
+ * motor interno. Sem nenhum Deepnest configurado (ou com o remoto fora do ar) o nesting nunca trava: o motor
+ * interno devolve um layout por caixas, marcado como `motor: "interno"`.
+ */
+async function executarMotor(
+  pecas: Array<CpqNestingPeca & { svg: string }>,
+  larguraMm: number,
+  alturaMm: number,
+  espacamentoMm: number,
+  timeoutMs: number,
+  opcoes: { bobina?: boolean } = {},
+): Promise<DeepnestWorkerResult> {
+  const remoto = process.env.DEEPNEST_REMOTE_URL?.trim();
+  if (remoto) {
+    try {
+      return { ...(await executarMotorRemoto(remoto, { pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs })), motor: "deepnest" };
+    } catch (error) {
+      if (!(error instanceof MotorIndisponivelError)) throw error;
+      console.warn(`[cpq-nesting] Deepnest remoto indisponível (${error.message}); usando o motor interno.`);
+    }
+  } else if (process.env.DEEPNEST_NODE_BIN && process.env.DEEPNEST_NODE_ENTRY) {
+    return { ...(await executarMotorLocal(pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs)), motor: "deepnest" };
+  }
+  try {
+    return { ...executarMotorInterno(pecas, larguraMm, alturaMm, espacamentoMm, opcoes), motor: "interno" };
+  } catch (error) {
+    if (error instanceof GeometriaInvalidaMotorInterno) throw new CpqNestingError(error.message, "invalid_geometry");
+    throw error;
+  }
+}
+
+function executarMotorLocal(
   pecas: Array<CpqNestingPeca & { svg: string }>,
   larguraMm: number,
   alturaMm: number,
@@ -476,14 +545,14 @@ export async function calcularNestingMultiMaterial(input: {
           let nesting: DeepnestWorkerResult | null = null;
           let erroMotor: string | null = null;
           try {
-            nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS);
+            nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS, { bobina: true });
           } catch (error) {
             if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
             erroMotor = error.message;
           }
           if ((!nesting || !completo(nesting)) && comprimentoInicialMm < comprimentoMaximoMm) {
             try {
-              nesting = await executarMotor(pecasMaterial, comprimentoMaximoMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS);
+              nesting = await executarMotor(pecasMaterial, comprimentoMaximoMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS, { bobina: true });
               erroMotor = null;
             } catch (error) {
               if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
@@ -549,7 +618,13 @@ export async function calcularNestingMultiMaterial(input: {
     const candidatas = [...melhoresPorChapa.values()].sort(compararAvaliacoes);
     if (!candidatas.length) {
       const detalhesFormatos = chapas.map(chapa => `${chapa.nome} (${chapa.larguraMm} × ${chapa.alturaMm} mm): ${falhasFormatos.get(chapa.id) ?? "o desenho não coube com o espaçamento e a margem selecionados"}`).join("; ");
-      throw new CpqNestingError(`As peças de ${material.nome} não couberam em nenhum formato cadastrado. ${detalhesFormatos}`, "no_fit");
+      const todosFalharamNoMotor = falhasFormatos.size > 0 && chapas.every(chapa => falhasFormatos.has(chapa.id));
+      throw new CpqNestingError(
+        todosFalharamNoMotor
+          ? `O motor de nesting falhou para ${material.nome}. ${detalhesFormatos}`
+          : `As peças de ${material.nome} não couberam em nenhum formato cadastrado. ${detalhesFormatos}`,
+        todosFalharamNoMotor ? "engine" : "no_fit",
+      );
     }
     const melhor = candidatas[0];
     const formatosAvaliados = chapas.map(chapa => {
@@ -620,6 +695,7 @@ export async function calcularNestingMultiMaterial(input: {
       chapa_principal: !!melhor.chapa.principal,
       chapa: { largura_mm: dimensoes.larguraMm, altura_mm: dimensoes.alturaMm },
       formato: emBobina ? "bobina" : "chapa",
+      motor: melhor.nesting.motor ?? "deepnest",
       ...(emBobina ? {
         comprimento_consumido_mm: melhor.comprimentoConsumidoMm,
         largura_bobina_mm: dimensoes.alturaMm,

@@ -1414,6 +1414,15 @@ export type CpqFactibilidadeDecisionClaims = {
   fatorEscalaAprovada?: number;
 };
 
+/** Contornos físicos (mm) de um SVG de peça: cada polígono é [casca, ...furos]. Usado pelo motor de nesting interno. */
+export function contornosFisicosDoSvg(
+  svg: string,
+  larguraMm: number,
+  alturaMm: number,
+): Array<Array<Array<[number, number]>>> {
+  return parseSvg(svg, larguraMm, alturaMm).pieces.flatMap(piece => piece.geometry);
+}
+
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }

@@ -567,7 +567,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
     });
     res.setHeader("Cache-Control", "private, no-store");
     res.json({
-      motor: "Deepnest local",
+      motor: resultado.some(material => material.motor === "interno") ? "Estimativa interna por caixas" : "Deepnest",
       unidades: { comprimento: "mm", area: "m2", perimetro: "m" },
       calculadoEm: new Date().toISOString(),
       materiais: resultado.map(material => ({
