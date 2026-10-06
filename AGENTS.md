@@ -781,6 +781,23 @@ gasta crédito (1, ou 2 com o contorno de corte) e as edições não gastam; as 
 vetorial (`finalizarEdicaoVetor`) e `REAL.vetorAnterior` permite desfazer. Revetorizar e editar nunca vão no mesmo
 plano (a numeração muda). Erro na arte aprovada (letra errada) não é corrigido ali: o assistente orienta refazer a
 reconstrução.
+**Plano B da vetorização (decisão de 05/10/2026):** o passo de vetorização tem um seletor de motor
+(`REAL.motorVetorizacao`: `auto` | `vectorizer` | `local` | `gpt`). No `auto`, `retrace` tenta Vectorizer.AI →
+traçador local → GPT e desce a lista quando um motor falha (erro, sem crédito, SVG fora do padrão) ou a silhueta
+reprova na validação contra a arte aprovada; fica com o melhor resultado e mostra "Plano B acionado" com os motivos.
+(1) **Traçador local**: `client/public/cpq-vetorizador-local.js`, JavaScript puro, roda no navegador (canvas), sem
+crédito: separa o fundo, agrupa cores (k-means), traça cada cor com marching squares + Douglas-Peucker e entrega um
+`<path>` composto por cor, com os vazados como subcaminhos; modo `corte` gera a silhueta única (substitui a 2ª chamada
+do Vectorizer.AI). Testado no Node (`server/__tests__/cpq-vetorizador-local.test.ts`) e num Edge real (IoU ≈ 98%).
+Fundo = tudo que é transparente ou perto da cor mais comum da borda, inclusive miolos de letras (viram vazados).
+(2) **GPT escreve o SVG**: `POST /api/letra-caixa/vetorizacao-gpt` (`server/services/cpqPlanoBArte.ts`, modelo
+`gpt-5` ou `CPQ_GPT_SVG_MODEL`, saída JSON estrita de camadas `{cor, d}`; só comandos M L H V C S Q T Z fechados,
+sem outros elementos). É aproximado e **nunca foi chamado com a API real** (OpenAI sem crédito); o SVG passa pela
+mesma validação de silhueta e pela conferência do vendedor. (3) **Limpar fundo com GPT**: `POST
+/api/letra-caixa/limpar-fundo` devolve a arte sobre branco liso (GPT Image) com novo ticket, e a vetorização roda de
+novo; também sem validação real. As duas rotas usam o mesmo ticket HMAC da vetorização.
+A leitura das cores (`extrairRegioesCorSvg`) tolera o cabeçalho `<?xml?>`/DOCTYPE simples do Vectorizer.AI e
+transparência parcial; cada recusa informa o motivo exato.
 O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a
 reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com

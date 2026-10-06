@@ -12,6 +12,7 @@ import {
 } from "../services/redesenhoTicket";
 import { vectorizeImage, VectorizerAiError, limitarAjustesVetorizacao } from "../services/vectorizerAi";
 import { analisarArte } from "../services/cpqAnaliseArte";
+import { lerDimensoesPng, limparFundoComGpt, vetorizarComGpt } from "../services/cpqPlanoBArte";
 import { conversarSobreVetor, entradaConversaSchema } from "../services/cpqAjusteConversa";
 import { REGRAS_LEITURA_ARTE_PADRAO } from "../../shared/cpq-regras-leitura-padrao";
 import { estudioConfiguracoes } from "../../drizzle/schema";
@@ -86,6 +87,20 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
         return;
       }
       void executarAnaliseArte(req, res);
+    });
+  });
+
+  // Plano B da vetorização: SVG escrito por um modelo de visão e limpeza de fundo com o GPT Image.
+  app.post("/api/letra-caixa/vetorizacao-gpt", (req, res) => {
+    preprocessedImageBodyParser(req, res, parseError => {
+      if (parseError) { res.status((parseError as { status?: number }).status ?? 400).json({ error: "Não consegui ler a imagem. Envie JPG ou PNG." }); return; }
+      void executarVetorizacaoGpt(req, res);
+    });
+  });
+  app.post("/api/letra-caixa/limpar-fundo", (req, res) => {
+    preprocessedImageBodyParser(req, res, parseError => {
+      if (parseError) { res.status((parseError as { status?: number }).status ?? 400).json({ error: "Não consegui ler a imagem. Envie JPG ou PNG." }); return; }
+      void executarLimpezaFundo(req, res);
     });
   });
 
@@ -408,5 +423,77 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
     res.status(502).json({
       error: "O GPT não conseguiu gerar a reconstrução agora. Tente novamente em instantes.",
     });
+  }
+}
+
+/** Origem do próprio sistema + sessão + PNG/JPG com o ticket da reconstrução. Responde o erro e devolve null se algo falhar. */
+async function autenticarImagemAprovada(req: Request, res: Response, mensagemSessao: string) {
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) { res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." }); return null; }
+    } catch { res.status(403).json({ error: "Origem da solicitação inválida." }); return null; }
+  }
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) { res.status(401).json({ error: mensagemSessao }); return null; }
+  const mimeType = req.get("content-type")?.split(";")[0].toLowerCase();
+  if (mimeType !== "image/jpeg" && mimeType !== "image/png") { res.status(415).json({ error: "Envie uma imagem JPG ou PNG." }); return null; }
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) { res.status(400).json({ error: "A imagem enviada está vazia." }); return null; }
+  if (!validarTicketRedesenho(req.get("x-redesenho-token"), session.user.id, req.body)) {
+    res.status(409).json({ error: "Use o PNG exato retornado pela reconstrução por IA nesta sessão." });
+    return null;
+  }
+  if (!process.env.OPENAI_API_KEY?.trim()) { res.status(503).json({ error: "A chave da OpenAI não está configurada no servidor." }); return null; }
+  return { userId: session.user.id, mimeType: mimeType as "image/png" | "image/jpeg", imagem: req.body as Buffer };
+}
+
+function erroOpenAi(detalhe: string, res: Response, padrao: string): void {
+  if (/insufficient_quota|billing_hard_limit_reached|billing_not_active|rate_limit_exceeded|\b429\b/i.test(detalhe))
+    res.status(429).json({ error: "A OpenAI recusou a chamada por limite de uso ou falta de crédito. Verifique o faturamento da API." });
+  else if (/AbortError|TimeoutError|timed out/i.test(detalhe))
+    res.status(504).json({ error: "O GPT demorou demais para responder. Tente novamente." });
+  else res.status(502).json({ error: padrao });
+}
+
+/** Plano B: o GPT escreve o SVG da arte aprovada. Aproximado; a validação de silhueta do CPQ continua valendo. */
+async function executarVetorizacaoGpt(req: Request, res: Response): Promise<void> {
+  const dados = await autenticarImagemAprovada(req, res, "Entre no sistema para vetorizar a arte.");
+  if (!dados) return;
+  const dimensoes = dados.mimeType === "image/png" ? lerDimensoesPng(dados.imagem) : null;
+  if (!dimensoes) { res.status(415).json({ error: "O plano B com GPT precisa do PNG da reconstrução." }); return; }
+  try {
+    const maxCores = Number(req.query.maxCores);
+    const svg = await vetorizarComGpt({
+      imageBuffer: dados.imagem, mimeType: dados.mimeType, largura: dimensoes.largura, altura: dimensoes.altura,
+      maxCores: Number.isFinite(maxCores) && maxCores >= 1 ? maxCores : null,
+    });
+    res.status(200).set({
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Redesenho-Token": emitirTicketEdicaoVetor(dados.userId),
+      "X-Vetorizacao-Motor": "gpt",
+    }).send(svg);
+  } catch (error) {
+    const detalhe = error instanceof Error ? error.message : String(error);
+    console.error("[letra-caixa] falha ao vetorizar com GPT:", detalhe);
+    erroOpenAi(detalhe, res, "O GPT não conseguiu gerar um SVG utilizável desta arte. Tente o traçador local ou o editor vetorial.");
+  }
+}
+
+/** Plano B: o GPT Image remove fundo/ruído da arte aprovada; o PNG limpo ganha um novo ticket para vetorizar. */
+async function executarLimpezaFundo(req: Request, res: Response): Promise<void> {
+  const dados = await autenticarImagemAprovada(req, res, "Entre no sistema para limpar a arte.");
+  if (!dados) return;
+  try {
+    const limpa = await limparFundoComGpt({ imageBuffer: dados.imagem, mimeType: dados.mimeType });
+    res.status(200).set({
+      "Content-Type": "image/png",
+      "Cache-Control": "no-store",
+      "X-Redesenho-Token": emitirTicketRedesenho(dados.userId, limpa),
+    }).send(limpa);
+  } catch (error) {
+    const detalhe = error instanceof Error ? error.message : String(error);
+    console.error("[letra-caixa] falha ao limpar o fundo da arte:", detalhe);
+    erroOpenAi(detalhe, res, "O GPT não conseguiu limpar o fundo da arte agora. Tente novamente em instantes.");
   }
 }

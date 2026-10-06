@@ -3,6 +3,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script src="/cpq-vetorizador-local.js"></script>
 <style>
   :root{
     --bg:#f4f6fa; --surface:#ffffff; --surface-2:#eef1f7; --border:#dce2ec;
@@ -789,6 +790,7 @@ function novaProposta(){
     tracedSvg:null, tracedSvgOriginal:null, fgD:'', tracedW:0, tracedH:0, traceError:null,
     // Contorno de corte CNC (silhueta de uma cor, +1 crédito do Vectorizer.AI) e o SVG realmente usado no nesting.
     analiseArte:null, analiseErro:null, analisandoArte:false,
+    motorVetorizacao:'auto', motorUsado:null, motoresFalhas:[], fundoLimpoGpt:false,
     chatVetor:[], chatRascunho:'', chatCarregando:false, vetorAnterior:null, ajustesVetorizacao:null,
     gerarContornoCnc:true, tracedSvgCorte:null, tracedSvgCorteOriginal:null, tracedSvgCorteDe:null, corteInfo:null, corteErro:null, corteCreditos:null, svgNesting:null,
     colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:'sem_iluminacao',transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,composicaoKitOriginal:null},
@@ -1610,21 +1612,28 @@ function painelConversaVetor(){
 }
 
 /** Segunda chamada (+1 crédito): só a silhueta que a CNC corta. Falhar aqui nunca invalida a vetorização completa. */
-async function gerarContornoCorte(imagem, requestId){
+async function gerarContornoCorte(imagem, requestId, motor){
   limparContornoCorte();
   if(!REAL.gerarContornoCnc) return;
   try{
-    const response = await fetch('/api/letra-caixa/vetorizacao?modo=corte', {
-      method:'POST', credentials:'same-origin', headers:{'Content-Type':imagem.type, 'X-Redesenho-Token':REAL.redesenhoToken}, body:imagem,
-    });
-    if(!response.ok){
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || 'O Vectorizer.AI não gerou o contorno de corte.');
+    let svgCorte, creditos = null;
+    if(motor === 'gpt') return; // sem contorno de corte separado: o nesting usa o vetor completo
+    if(motor === 'local'){
+      if(!window.CpqVetorizadorLocal) throw new Error('o traçador local não carregou; recarregue a página (Ctrl+F5).');
+      svgCorte = (await window.CpqVetorizadorLocal.vetorizarImagem(imagem, {modo:'corte'})).svg;
+    }else{
+      const response = await fetch('/api/letra-caixa/vetorizacao?modo=corte', {
+        method:'POST', credentials:'same-origin', headers:{'Content-Type':imagem.type, 'X-Redesenho-Token':REAL.redesenhoToken}, body:imagem,
+      });
+      if(!response.ok){
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'O Vectorizer.AI não gerou o contorno de corte.');
+      }
+      const ticket = response.headers.get('X-Redesenho-Token');
+      if(ticket) REAL.redesenhoToken = ticket;
+      creditos = response.headers.get('X-Vectorizer-Credits-Charged');
+      svgCorte = await response.text();
     }
-    const ticket = response.headers.get('X-Redesenho-Token');
-    if(ticket) REAL.redesenhoToken = ticket;
-    const creditos = response.headers.get('X-Vectorizer-Credits-Charged');
-    const svgCorte = await response.text();
     if(requestId !== traceRequestId) return;
     REAL.corteCreditos = creditos;
     const resultado = await validarContornoCorte(svgCorte);
@@ -1660,6 +1669,116 @@ function painelContornoCorte(){
   return `<div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none;"><h4 style="margin:0 0 8px;">Contorno de corte CNC</h4>${corpo}</div>`;
 }
 
+/* ---------- PLANO B DA VETORIZAÇÃO ----------
+ * Vectorizer.AI (principal) → traçador local (grátis, no navegador) → GPT (SVG aproximado). No modo automático o
+ * sistema desce a lista quando um motor falha (sem crédito, erro, SVG inválido) ou a silhueta não bate com a arte
+ * aprovada. O vendedor também pode escolher o motor ou limpar o fundo da arte com o GPT antes de vetorizar. */
+const MOTOR_ROTULO = {vectorizer:'Vectorizer.AI', local:'traçador local', gpt:'GPT (SVG)'};
+
+async function svgPorMotor(motor, imagem, ajustes){
+  if(motor === 'local'){
+    if(!window.CpqVetorizadorLocal) throw new Error('o traçador local não carregou; recarregue a página (Ctrl+F5).');
+    const r = await window.CpqVetorizadorLocal.vetorizarImagem(imagem, {maxCores:ajustes.maxCores, minAreaPx:ajustes.minAreaPx});
+    return {svg:r.svg, creditos:null, ticket:null};
+  }
+  const consulta = new URLSearchParams();
+  if(ajustes.maxCores != null) consulta.set('maxCores', String(ajustes.maxCores));
+  if(motor === 'vectorizer'){
+    if(ajustes.minAreaPx != null) consulta.set('minArea', String(ajustes.minAreaPx));
+    if(ajustes.tolerancia != null) consulta.set('tolerancia', String(ajustes.tolerancia));
+  }
+  const rota = motor === 'gpt' ? '/api/letra-caixa/vetorizacao-gpt' : '/api/letra-caixa/vetorizacao';
+  const response = await fetch(rota + (consulta.toString() ? '?' + consulta : ''), {
+    method:'POST', credentials:'same-origin', headers:{'Content-Type':imagem.type, 'X-Redesenho-Token':REAL.redesenhoToken}, body:imagem,
+  });
+  if(!response.ok){
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || (MOTOR_ROTULO[motor] + ' não conseguiu vetorizar a imagem.'));
+  }
+  return {svg:await response.text(), creditos:response.headers.get('X-Vectorizer-Credits-Charged'), ticket:response.headers.get('X-Redesenho-Token')};
+}
+
+/** Vetoriza com um motor e já confere o resultado (caminhos legíveis + silhueta contra a arte aprovada). */
+async function candidatoDoMotor(motor, imagem, ajustes, rasterSource, rigoroso){
+  const r = await svgPorMotor(motor, imagem, ajustes);
+  if(r.ticket) REAL.redesenhoToken = r.ticket;
+  const styled = applyPrompt2VectorStyle(r.svg);
+  if(rigoroso && styled.audit && !styled.audit.ok) throw new Error(styled.audit.fatal.join(' '));
+  const parsed = extractPathsFromRawSVG(styled.svgText);
+  if(!parsed || !parsed.d) throw new Error('não retornou caminhos vetoriais utilizáveis.');
+  if(!Number.isFinite(parsed.w)||!Number.isFinite(parsed.h)||parsed.w<=0||parsed.h<=0) throw new Error('o SVG não contém dimensões válidas para calcular a escala.');
+  if(parsed.transformedCount > 0) throw new Error('o SVG contém transformações que o cálculo ainda não interpreta.');
+  const quality = await validatePrompt2Trace(rasterSource, styled.svgText);
+  return {motor, r, svgStr:styled.svgText, parsed, quality};
+}
+
+/** O GPT Image remove fundo/ruído da arte aprovada (sobre branco liso) e a vetorização roda de novo. */
+async function limparFundoEVetorizar(){
+  if(state.tracing || !REAL.imgReconstructed || !REAL.redesenhoToken) return;
+  state.tracing = true; REAL.traceError = null; render();
+  try{
+    const imagem = await fetch(REAL.imgReconstructed).then(response => response.blob());
+    const response = await fetch('/api/letra-caixa/limpar-fundo', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':imagem.type, 'X-Redesenho-Token':REAL.redesenhoToken}, body:imagem,
+    });
+    if(!response.ok){
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || 'O GPT não conseguiu limpar o fundo da arte.');
+    }
+    const ticket = response.headers.get('X-Redesenho-Token');
+    if(!ticket) throw new Error('O servidor não confirmou a arte limpa. Tente novamente.');
+    REAL.imgReconstructed = await blobParaDataUrl(await response.blob());
+    REAL.redesenhoToken = ticket;
+    REAL.fundoLimpoGpt = true;
+  }catch(erro){
+    REAL.traceError = String(erro && erro.message || erro);
+    state.tracing = false; render();
+    return;
+  }
+  state.tracing = false;
+  await retrace(REAL.motorVetorizacao === 'gpt' ? {motor:'auto'} : undefined);
+}
+
+function textoBotaoVetorizar(hasTrace){
+  const motor = REAL.motorVetorizacao || 'auto';
+  const base = hasTrace ? 'Vetorizar novamente' : 'Vetorizar';
+  if(motor === 'local') return base + ' com o traçador local · grátis';
+  if(motor === 'gpt') return base + ' com GPT (aproximado)';
+  const credito = REAL.gerarContornoCnc ? ' · 2 créditos (arte + contorno de corte)' : ' · 1 crédito';
+  return base + (motor === 'auto' ? ' (automático, com plano B)' : ' com Vectorizer.AI') + credito;
+}
+
+function painelMotorVetorizacao(){
+  const ocupado = state.tracing || !REAL.imgReconstructed || !REAL.redesenhoToken;
+  const motor = REAL.motorVetorizacao || 'auto';
+  const opcao = (valor, rotulo) => `<option value="${valor}" ${motor === valor ? 'selected' : ''}>${rotulo}</option>`;
+  const falhas = (REAL.motoresFalhas || []).length
+    ? `<div class="warnbox" style="margin-top:8px;"><span>${ICONS.alert}</span><div><b>Plano B acionado.</b> ${REAL.motoresFalhas.map(escaparHtml).join(' · ')}</div></div>` : '';
+  const aviso = REAL.motorUsado === 'gpt'
+    ? `<div class="warnbox" style="margin-top:8px;"><span>${ICONS.alert}</span><div>Este SVG foi escrito pelo GPT e é aproximado: confira letra por letra na sobreposição antes de aprovar.</div></div>`
+    : REAL.motorUsado === 'local'
+      ? '<div class="role-note" style="margin-top:8px;">Vetorizado pelo traçador local (sem créditos). Confira curvas finas e vazados na sobreposição.</div>' : '';
+  return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
+    <p style="font-size:12.5px;font-weight:700;margin-bottom:6px;">Plano B da vetorização</p>
+    <label class="field" style="display:block;font-size:12px;">Motor
+      <select data-act="real-motor-vetorizacao" ${state.tracing ? 'disabled' : ''} style="display:block;margin-top:4px;width:min(100%,420px);">
+        ${opcao('auto', 'Automático: Vectorizer.AI → traçador local → GPT')}
+        ${opcao('vectorizer', 'Só Vectorizer.AI')}
+        ${opcao('local', 'Só traçador local (grátis, no navegador)')}
+        ${opcao('gpt', 'Só GPT (SVG aproximado)')}
+      </select>
+    </label>
+    <div class="role-note" style="margin-top:6px;">No automático, se o Vectorizer.AI falhar, estiver sem crédito ou a silhueta não bater com a arte, o sistema tenta o traçador local e, por último, o GPT. O resultado sempre passa pela mesma validação de silhueta e pela sua conferência.</div>
+    ${REAL.motorUsado ? `<div class="role-note" style="margin-top:6px;">Última vetorização: <b>${MOTOR_ROTULO[REAL.motorUsado]}</b>${REAL.fundoLimpoGpt ? ' · fundo da arte limpo pelo GPT' : ''}.</div>` : ''}
+    ${falhas}${aviso}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn btn-ghost btn-sm" data-act="real-vetorizar-local" ${ocupado ? 'disabled' : ''}>Refazer com o traçador local</button>
+      <button class="btn btn-ghost btn-sm" data-act="real-vetorizar-gpt" ${ocupado ? 'disabled' : ''}>Refazer com GPT</button>
+      <button class="btn btn-ghost btn-sm" data-act="real-limpar-fundo-gpt" ${ocupado ? 'disabled' : ''} title="O GPT Image tira fundo, sombras e ruído da arte e a vetorização roda de novo (consome crédito da OpenAI)">Limpar fundo com GPT e vetorizar</button>
+    </div>
+  </div>`;
+}
+
 async function retrace(opcoes){
   const rasterSource=REAL.imgReconstructed;
   if(!rasterSource || !REAL.redesenhoToken) return;
@@ -1684,37 +1803,38 @@ async function retrace(opcoes){
     if(requestId!==traceRequestId) return;
     const ajustes=manuais||(leitura&&leitura.ajustes)||{};
     REAL.ajustesVetorizacao=ajustes;
-    const consulta=new URLSearchParams();
-    if(ajustes.maxCores!=null) consulta.set('maxCores',String(ajustes.maxCores));
-    if(ajustes.minAreaPx!=null) consulta.set('minArea',String(ajustes.minAreaPx));
-    if(ajustes.tolerancia!=null) consulta.set('tolerancia',String(ajustes.tolerancia));
-    const response=await fetch('/api/letra-caixa/vetorizacao'+(consulta.toString()?'?'+consulta:''),{
-      method:'POST',credentials:'same-origin',headers:{'Content-Type':imagem.type,'X-Redesenho-Token':REAL.redesenhoToken},body:imagem,
-    });
-    if(!response.ok){
-      const body=await response.json().catch(()=>({}));
-      throw new Error(body.error||'O Vectorizer.AI não conseguiu vetorizar a imagem.');
+    const motorPedido=(opcoes&&opcoes.motor)||REAL.motorVetorizacao||'auto';
+    const ordem=motorPedido==='auto'?['vectorizer','local','gpt']:[motorPedido];
+    const falhas=[];
+    let melhor=null;
+    const nota=candidato=>(candidato.quality.status==='fail'?0:1000)+(candidato.quality.metrics?Number(candidato.quality.metrics.iou)||0:0);
+    for(const motor of ordem){
+      try{
+        // No automático, SVG fora do padrão também conta como falha e passa ao próximo motor.
+        const candidato=await candidatoDoMotor(motor,imagem,ajustes,rasterSource,motorPedido==='auto');
+        if(requestId!==traceRequestId) return;
+        if(!melhor||nota(candidato)>nota(melhor)) melhor=candidato;
+        if(candidato.quality.status!=='fail') break;
+        falhas.push(MOTOR_ROTULO[motor]+': a silhueta não bateu com a arte aprovada.');
+      }catch(erro){
+        if(requestId!==traceRequestId) return;
+        falhas.push(MOTOR_ROTULO[motor]+': '+String(erro&&erro.message||erro));
+      }
     }
-    if(requestId!==traceRequestId) return;
-    const ticketEdicao=response.headers.get('X-Redesenho-Token');
-    if(ticketEdicao) REAL.redesenhoToken=ticketEdicao;
-    const svgResponse=await response.text();
-    if(requestId!==traceRequestId) return;
-    const styled=applyPrompt2VectorStyle(svgResponse);
-    const svgStr=styled.svgText;
-    const parsed=extractPathsFromRawSVG(svgStr);
-    if(!parsed || !parsed.d) throw new Error('O Vectorizer.AI não retornou caminhos vetoriais utilizáveis.');
-    if(!Number.isFinite(parsed.w)||!Number.isFinite(parsed.h)||parsed.w<=0||parsed.h<=0) throw new Error('O SVG retornado não contém dimensões válidas para calcular a escala.');
-    if(parsed.transformedCount>0) throw new Error('O SVG retornado contém transformações que o cálculo ainda não interpreta. Baixe e achate as transformações em um editor vetorial antes de continuar.');
+    if(!melhor) throw new Error(falhas.join(' · ')||'Nenhum motor conseguiu vetorizar a imagem.');
+    const svgResponse=melhor.r.svg, svgStr=melhor.svgStr, parsed=melhor.parsed;
+    REAL.motorUsado=melhor.motor;
+    // Só vale como "plano B acionado" quando outro motor assumiu o lugar do primeiro da lista.
+    REAL.motoresFalhas=melhor.motor===ordem[0]?[]:falhas;
     REAL.imgPreview=rasterSource;
-    REAL.vectorizerCredits=response.headers.get('X-Vectorizer-Credits-Charged');
+    REAL.vectorizerCredits=melhor.motor==='vectorizer'?melhor.r.creditos:null;
     REAL.tracedSvg=svgStr; REAL.tracedSvgOriginal=svgResponse; REAL.fgD=parsed.d; invalidarFactibilidadeReal();
     REAL.tracedW=parsed.w; REAL.tracedH=parsed.h;
     REAL.geomRaw=classifyGeometry(parsed.d);
     REAL.traceReview={...TRACE_REVIEW_DEFAULTS};
-    REAL.traceQuality=await validatePrompt2Trace(rasterSource,svgStr);
+    REAL.traceQuality=melhor.quality;
     if(requestId!==traceRequestId) return;
-    await gerarContornoCorte(imagem,requestId);
+    await gerarContornoCorte(imagem,requestId,melhor.motor);
     if(requestId!==traceRequestId) return;
     if(parsed.nonPathCount>0){
       REAL.uploadWarning=`O SVG contém ${parsed.nonPathCount} elemento(s) que não são caminhos e não entram no cálculo geométrico. Confira o resultado no preview antes de aprovar.`;
@@ -3693,6 +3813,7 @@ function realStepVetorizacao(){
     ${hasTrace?traceQualityPanel():''}
     ${hasTrace?painelContornoCorte():''}
     ${hasTrace?painelConversaVetor():''}
+    ${painelMotorVetorizacao()}
     <details style="margin-top:14px;">
       <summary style="cursor:pointer; font-size:12.5px; color:var(--accent-ink); font-weight:600;">Prefiro enviar um arquivo já vetorizado</summary>
       <div style="margin-top:10px;">${uploadBox('Enviar SVG pronto', 'usa os caminhos do arquivo sem chamar o Vectorizer.AI','real-upload','image/svg+xml,.svg')}</div>
@@ -3703,7 +3824,7 @@ function realStepVetorizacao(){
     <div class="footer-nav">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <label class="checkrow" style="margin-bottom:8px;"><input type="checkbox" data-act="real-contorno-cnc" ${REAL.gerarContornoCnc?'checked':''} ${state.tracing?'disabled':''}> Gerar também o contorno de corte CNC (apenas as silhuetas a cortar; usa +1 crédito)</label>
-        <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed||!REAL.redesenhoToken?'disabled':''}>${state.tracing?'Vetorizando com Vectorizer.AI…':(hasTrace?'Vetorizar novamente':'Vetorizar com Vectorizer.AI')+(REAL.gerarContornoCnc?' · 2 créditos (arte + contorno de corte)':' · 1 crédito')}</button>
+        <button class="btn btn-soft btn-sm" data-act="real-vectorize" ${state.tracing||!REAL.imgReconstructed||!REAL.redesenhoToken?'disabled':''}>${state.tracing?'Vetorizando…':textoBotaoVetorizar(hasTrace)}</button>
         <span class="role-note">Confira o resultado e confirme a escala física antes do nesting.</span>
       </div>
       <button class="btn btn-primary" data-act="real-approve" data-val="vetorizacao" ${traceReviewReady()?'':'disabled'}>${ICONS.check} Aprovar vetorização e avançar</button>
@@ -7272,6 +7393,14 @@ function bindRealEvents(){
   });
   const vectorizeBtn = document.querySelector('[data-act="real-vectorize"]');
   if(vectorizeBtn) vectorizeBtn.addEventListener('click', ()=>retrace());
+  const motorVetorizacaoSel = document.querySelector('[data-act="real-motor-vetorizacao"]');
+  if(motorVetorizacaoSel) motorVetorizacaoSel.addEventListener('change', e=>{ REAL.motorVetorizacao = e.target.value; render(); });
+  [['real-vetorizar-local','local'],['real-vetorizar-gpt','gpt']].forEach(([ato, motor])=>{
+    const botao = document.querySelector('[data-act="'+ato+'"]');
+    if(botao) botao.addEventListener('click', ()=>retrace({motor}));
+  });
+  const limparFundoBtn = document.querySelector('[data-act="real-limpar-fundo-gpt"]');
+  if(limparFundoBtn) limparFundoBtn.addEventListener('click', ()=>limparFundoEVetorizar());
 
   bindNumberLive('[data-act="real-scale-value"]', v=>{
     REAL.scale.valor=parseFloat(v)||0; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
