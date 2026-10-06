@@ -821,7 +821,7 @@ let traceRequestId = 0;
 function invalidarFactibilidadeReal(){
   REAL.factibilidade=null;REAL.factibilidadeErro=null;REAL.factibilidadeCarregando=false;REAL.nesting=null;REAL.nestingMateriais=[];
   REAL.nestingMateriaPrimaIds=[];REAL.nestingFormatosPendentes=[];REAL.nestingFormatosUsados=[];
-  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.composicaoKitOriginal=null;REAL.approvals.nesting=false;REAL.approvals.kit=false;REAL.svgNesting=null;
+  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.pendenciaAprovacao=null;REAL.colorAnalysis.composicaoKitOriginal=null;REAL.approvals.nesting=false;REAL.approvals.kit=false;REAL.svgNesting=null;
 }
 
 function invalidarRastreamento(){
@@ -2753,8 +2753,9 @@ function resumoCustoCoresReal(){
   const results=REAL.colorAnalysis?.resultados||[];
   const additional=results.filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso');
   return {
-    total:REAL.colorAnalysis?.aprovado?additional.reduce((sum,item)=>sum+(item.custoEstimado!=null&&Number.isFinite(Number(item.custoEstimado))?Number(item.custoEstimado):0),0):0,
-    pendencias:REAL.colorAnalysis?.aprovado?additional.filter(item=>item.custoEstimado==null||!(Number(item.areaTotalM2)>0)||!(Number(item.areaConsumoM2)>0)):[],
+    // Vale com ou sem aprovação do mapeamento: adesivo sugerido sem custo fechado é pendência (bloqueia o preço), nunca custo zero.
+    total:additional.reduce((sum,item)=>sum+(item.custoEstimado!=null&&Number.isFinite(Number(item.custoEstimado))?Number(item.custoEstimado):0),0),
+    pendencias:additional.filter(item=>item.custoEstimado==null||!(Number(item.areaTotalM2)>0)||!(Number(item.areaConsumoM2)>0)),
   };
 }
 
@@ -4131,6 +4132,7 @@ function realStepKit(){
   <div class="card">
     <div class="cardhead"><div><h3>7 · Composição — consumo das matérias-primas</h3><p>${REAL.kit.length? 'Composição carregada do cadastro do administrador para este modelo — ajuste fórmulas e multiplicadores com base no nesting.' : 'Sem composição cadastrada para este modelo ainda — busque direto no catálogo real de matérias-primas ('+catalog.materias.length+' itens), defina o papel físico e confirme. O nesting será calculado em seguida.'}</p><p class="role-note">O nesting anterior fornece área de consumo, área líquida e perímetro às fórmulas. Alterar uma matéria-prima ou camada exige novo nesting; fórmulas e multiplicadores recalculam o orçamento sem refazer o layout.</p></div></div>
     ${htmlAvisoCoresAutomaticas()}
+    ${htmlPendenciasCores()}
     <div style="position:relative;">
       <input type="text" placeholder="Buscar matéria-prima real (ex: ACM, acrílico, LED)…" value="${q}" data-act="real-mat-query" style="width:100%;">
       ${matches.length? `<div class="card" style="position:absolute; z-index:10; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
@@ -4266,7 +4268,7 @@ function construcaoFaceEfetiva(color){
 
 function invalidarAnaliseCoresReal(){
   restaurarComposicaoCoresReal();
-  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.autorizaAdesivo=false;REAL.factibilidade=null;REAL.nesting=null;REAL.nestingMateriaPrimaIds=[];REAL.approvals.nesting=false;REAL.approvals.kit=false;
+  REAL.colorAnalysis.resultados=null;REAL.colorAnalysis.aprovado=false;REAL.colorAnalysis.pendenciaAprovacao=null;REAL.colorAnalysis.autorizaAdesivo=false;REAL.factibilidade=null;REAL.nesting=null;REAL.nestingMateriaPrimaIds=[];REAL.approvals.nesting=false;REAL.approvals.kit=false;
 }
 
 function restaurarComposicaoCoresReal(){
@@ -4325,21 +4327,31 @@ function aplicarComposicaoSugeridaCoresReal(){
 async function aprovarCoresESeguirReal(){
   const color=REAL.colorAnalysis;
   if(!color.resultados?.length)return;
+  color.pendenciaAprovacao=null;
   try{
     aplicarComposicaoSugeridaCoresReal();
+  }catch(error){
+    // Não deu para aplicar a composição por cor: volta ao kit original; iniciarNestingAutomatico roda o nesting de reserva.
+    restaurarComposicaoCoresReal(); color.error=error.message||'Falha ao aplicar as sugestões de materiais.'; render(); return;
+  }
+  try{
     const response=await fetch('/api/letra-caixa/cores/aprovar',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceId:REAL.id,autorizaAdesivoSobreAcrilico:!!color.autorizaAdesivo})});
     const body=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(body.error||'Não foi possível registrar a aprovação do mapeamento de cores.');
-    color.aprovado=true;color.aprovadoPor=body.aprovadoPor||'usuário atual';render();
-    await analisarFactibilidadeReal();
-  }catch(error){restaurarComposicaoCoresReal();color.error=error.message||'Falha ao aprovar sugestões de materiais.';render();}
+    color.aprovado=true;color.aprovadoPor=body.aprovadoPor||'usuário atual';
+  }catch(error){
+    // A sugestão (face trocada, adesivo) continua na composição; a pendência fica em destaque e o nesting segue.
+    color.pendenciaAprovacao=error.message||'Falha ao aprovar as sugestões de materiais.';
+  }
+  render();
+  await analisarFactibilidadeReal();
 }
 
 /** Resumo, para o vendedor, do que o sistema decidiu sozinho a partir das cores da logo: chapa de acrílico mais
  *  parecida (ΔE00 ≤ 2) ou, sem equivalente, acrílico transparente + adesivo Imprimax. */
 function htmlAvisoCoresAutomaticas(){
   const color=REAL.colorAnalysis;
-  if(!color?.aprovado||!color.resultados?.length) return '';
+  if(!color?.resultados?.length||!(color.aprovado||color.pendenciaAprovacao)) return '';
   const nomesFace=lines=>[...new Set(lines.map(line=>materialKitAtivo(line).nome||line.nome).filter(Boolean))].join(' + ');
   const antes=nomesFace((color.composicaoKitOriginal||[]).filter(line=>camadaFisicaKit(line)==='face'));
   const depois=nomesFace((REAL.kit||[]).filter(line=>line.origemComposicaoCor));
@@ -4348,7 +4360,7 @@ function htmlAvisoCoresAutomaticas(){
     const chapa=result.tipoSugestao==='chapa'?alternativas.find(item=>Number(item.id)===Number(result.chapaId)):null;
     const adesivo=result.tipoSugestao==='imprimax'?alternativas.find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
     const de=result.deltaE00!=null?` (ΔE00 ${fmt(result.deltaE00,1)})`:'';
-    const nomeAdesivo=[adesivo?.linha,adesivo?.codigo||adesivo?.nome].filter(Boolean).join(' ');
+    const nomeAdesivo=[adesivo?.linha,adesivo?.codigo||adesivo?.nome].filter(Boolean).join(' ').replace(/^imprimax\s+/i,'');
     const texto=result.tipoSugestao==='chapa'
       ?`acrílico/chapa mais parecido: <b>${escaparHtml(chapa?.nome||'chapa cadastrada')}</b>${de}`
       :result.tipoSugestao==='imprimax'
@@ -4357,7 +4369,7 @@ function htmlAvisoCoresAutomaticas(){
     const alertas=(result.avisos||[]).filter(texto=>/Atenção|pendente|não cadastrado|Carregue/i.test(texto)).map(texto=>`<div class="role-note">${escaparHtml(texto)}</div>`).join('');
     return `<li style="margin-bottom:4px;"><span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(result.corHex||'#e2e8f0')};"></span> ${escaparHtml(result.corHex||result.pantoneCode||result.tipoCor||'cor')} → ${texto}${alertas}</li>`;
   }).join('');
-  return `<div class="banner" style="margin:10px 0;">${ICONS.info}<div><b>Cores da logo identificadas; materiais da face ajustados automaticamente.</b>
+  return `<div class="banner" style="margin:10px 0;">${ICONS.info}<div><b>Cores da logo identificadas; materiais da face ajustados automaticamente${color.aprovado?'':' (cores ainda não aprovadas)'}.</b>
     ${antes||depois?`<div style="margin-top:4px;">Face do kit: ${escaparHtml(antes||'—')} → <b>${escaparHtml(depois||'sem chapa colorida (adesivo sobre a base)')}</b></div>`:''}
     <ul style="margin:6px 0 0 18px;">${itens}</ul></div></div>`;
 }
@@ -4366,14 +4378,15 @@ function htmlAvisoCoresAutomaticas(){
  *  composição. O custo já entra no orçamento por `custoMateriaisCorTotal`; por isso não vão para REAL.kit (evita contar duas vezes). */
 function htmlLinhasAdesivoComposicao(){
   const color=REAL.colorAnalysis;
-  if(!color?.aprovado||!color.resultados?.length) return '';
+  if(!color?.resultados?.length||!(color.aprovado||color.pendenciaAprovacao)) return '';
   return color.resultados.filter(result=>result.tipoSugestao==='imprimax'||result.tipoSugestao==='impresso').map(result=>{
     const adesivo=result.tipoSugestao==='imprimax'?(result.alternativas||[]).find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
-    const nome=result.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax '+[adesivo?.linha,adesivo?.codigo||adesivo?.nome].filter(Boolean).join(' ');
+    const nome=result.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax '+[adesivo?.linha,adesivo?.codigo||adesivo?.nome].filter(Boolean).join(' ').replace(/^imprimax\s+/i,'');
     const consumo=result.areaConsumoM2;
     const custo=result.custoEstimado;
     const unit=consumo>0&&custo!=null?custo/consumo:null;
-    return `<tr style="background:var(--surface-2);">
+    const pendente=custo==null||!(consumo>0);
+    return `<tr style="background:${pendente?'rgba(245,158,11,.18)':'var(--surface-2)'};">
       <td><span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(result.corHex||'#e2e8f0')};"></span> ${escaparHtml(nome)}<div class="source-tag">${ICONS.db} Adicionado pela análise de cores · ${escaparHtml(result.corHex||result.tipoCor||'')}${result.requerChapaBase?' · sobre acrílico transparente':''}</div></td>
       <td>Face (adesivo)</td><td>Área de consumo da bobina</td><td class="num">—</td>
       <td class="num">${consumo==null?'Pendente':fmt(consumo,4)+' m²'}</td>
@@ -4383,20 +4396,59 @@ function htmlLinhasAdesivoComposicao(){
   }).join('');
 }
 
-/** O que a análise de cores diz que falta (cadastro da bobina, preços...) quando a aprovação não passa. */
-function avisosPendentesCores(){
-  const color=REAL.colorAnalysis;
-  if(!color.resultados?.length||color.aprovado) return '';
-  const textos=[...new Set(color.resultados.flatMap(r=>r.avisos||[]).filter(t=>/bobina|cadastr|pendente|largura|pre[çc]o/i.test(t)))].slice(0,4);
-  if(!textos.length) return '';
-  return `<div class="warnbox" style="margin-top:8px;"><span>${ICONS.alert}</span><div><b>O que falta para aprovar as cores:</b><ul style="margin:6px 0 0 18px;">${textos.map(t=>`<li>${escaparHtml(t)}</li>`).join('')}</ul><div class="role-note">Ajuste na Administração do CPQ (preços de impressão: largura total e útil da bobina, sangria e preço do vinil). Enquanto isso o nesting segue com a composição do kit.</div></div></div>`;
+/** Adesivos que a análise de cores pediu e que ainda não têm custo/consumo fechado (cadastro da bobina, preço do vinil...). */
+function adesivosSemCustoCores(){
+  const resultados = (REAL.colorAnalysis && REAL.colorAnalysis.resultados) || [];
+  return resultados.filter(r => (r.tipoSugestao === 'imprimax' || r.tipoSugestao === 'impresso')
+    && (r.custoEstimado == null || !(Number(r.areaTotalM2) > 0) || !(Number(r.areaConsumoM2) > 0)));
+}
+
+/** Problema destacado (passos Nesting, Composição e Orçamento) quando as cores sugerem adesivo e algo impede fechar o custo
+ *  ou aprovar o mapeamento. Nunca bloqueia o nesting: a decisão — cadastrar, trocar ou remover — é do vendedor. */
+function htmlPendenciasCores(){
+  const color = REAL.colorAnalysis;
+  if(!color || !(color.resultados || []).length) return '';
+  const semCusto = adesivosSemCustoCores();
+  if(!color.pendenciaAprovacao && !semCusto.length) return '';
+  const adesivos = color.resultados.filter(r => r.tipoSugestao === 'imprimax' || r.tipoSugestao === 'impresso');
+  const nomeAdesivo = r => {
+    const alt = r.tipoSugestao === 'imprimax' ? (r.alternativas || []).find(item => Number(item.id) === Number(r.imprimaxAdesivoId)) : null;
+    return r.tipoSugestao === 'impresso' ? 'adesivo impresso' : 'adesivo Imprimax ' + [alt && alt.linha, alt && (alt.codigo || alt.nome)].filter(Boolean).join(' ').replace(/^imprimax\s+/i,'');
+  };
+  const sugeridos = adesivos.map(r => `<li>${escaparHtml(nomeAdesivo(r))} para ${escaparHtml(r.corHex || r.tipoCor || 'cor da arte')}${r.areaTotalM2 != null ? ` · ${fmt(r.areaTotalM2, 3)} m²` : ''}</li>`).join('');
+  const avisos = [...new Set(color.resultados.flatMap(r => r.avisos || []).filter(t => /bobina|cadastr|pendente|largura|pre[çc]o/i.test(t)))].slice(0, 4);
+  return `<div class="warnbox" role="alert" style="margin:10px 0;border-width:2px;">
+    <span>${ICONS.alert}</span>
+    <div>
+      <b style="font-size:14px;">Atenção — decisão necessária: ${adesivos.length ? 'o sistema sugeriu adesivo e o custo não fecha' : 'as cores não puderam ser aprovadas'}.</b>
+      ${sugeridos ? `<div style="margin-top:6px;">Adesivo sugerido (já está na Composição, com custo pendente):</div><ul style="margin:4px 0 0 18px;">${sugeridos}</ul>` : ''}
+      ${color.pendenciaAprovacao ? `<div style="margin-top:8px;"><b>O que impede:</b> ${escaparHtml(color.pendenciaAprovacao)}</div>` : ''}
+      ${avisos.length ? `<ul style="margin:6px 0 0 18px;">${avisos.map(t => `<li>${escaparHtml(t)}</li>`).join('')}</ul>` : ''}
+      <div style="margin-top:8px;">O nesting foi feito normalmente. Enquanto isso não for resolvido, o <b>preço não pode ser aprovado nem a proposta emitida</b>. Você pode:</div>
+      <ol style="margin:4px 0 0 18px;">
+        <li>cadastrar na Administração do CPQ a largura total e útil da bobina, a sangria e o preço do vinil e clicar em <b>Refazer análise de cores e nesting</b>;</li>
+        <li>ou trocar o material da face / remover o adesivo na Composição.</li>
+      </ol>
+      <button class="btn btn-soft btn-sm" style="margin-top:10px;" data-act="cor-refazer" title="Refaz a leitura das cores e o nesting; volta a composição do kit ao original antes de aplicar as sugestões">Refazer análise de cores e nesting</button>
+    </div>
+  </div>`;
+}
+
+/** Refaz a análise de cores e o nesting (depois de cadastrar a bobina/preços). Volta ao passo do nesting. */
+async function refazerCoresENesting(){
+  if(state.tracing || REAL.factibilidadeCarregando || REAL.nestingCarregando || (REAL.colorAnalysis && REAL.colorAnalysis.loading)) return;
+  invalidarAnaliseCoresReal();
+  REAL.colorAnalysis.error = null; REAL.colorAnalysis.pendenciaAprovacao = null;
+  REAL.nestingAutoChave = null;
+  REAL.step = 6; render();
+  await iniciarNestingAutomatico();
 }
 
 function renderAnaliseCoresReal(){
   const color=REAL.colorAnalysis;
   return `<div style="margin:10px 0;">
     ${color.error?`<div class="warnbox" role="alert">${escaparHtml(color.error)}</div>`:''}
-    ${color.error?avisosPendentesCores():''}
+    ${htmlPendenciasCores()}
     ${color.loading?'<div class="empty-hint">Rastreando as cores da logo e escolhendo os materiais da face…</div>':''}
     ${htmlAvisoCoresAutomaticas()}
     ${color.error&&!color.loading?'<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-act="cor-analisar">Tentar novamente</button>':''}
@@ -4831,6 +4883,7 @@ function realStepOrcamento(){
         </tbody>
       </table>
     </div>
+    ${htmlPendenciasCores()}
     ${o.pendenciasCustoCores?.length?`<div class="warnbox" role="alert" style="margin-top:10px;"><span>${ICONS.alert}</span><div><b>Custos de adesivo incompletos.</b> Cadastre preço do vinil e impressão${REAL.colorAnalysis.laminar?' e da laminação':''} por m² antes de aprovar ou emitir a proposta. ${o.pendenciasCustoCores.map(item=>escaparHtml(item.corHex||item.regionKey)).join(', ')}</div></div>`:''}
     <div class="grid2" style="margin-top:14px;">
       <div class="card" style="background:var(--surface-2); box-shadow:none;">
@@ -7368,6 +7421,7 @@ function bindRealEvents(){
   if(corAnalisar)corAnalisar.addEventListener('click',()=>{REAL.colorAnalysis.error=null;iniciarNestingAutomatico();});
   const corAutoriza=document.querySelector('[data-act="cor-autoriza-adesivo"]');
   if(corAutoriza)corAutoriza.addEventListener('change',event=>{REAL.colorAnalysis.autorizaAdesivo=event.target.checked;render();});
+  document.querySelectorAll('[data-act="cor-refazer"]').forEach(botao=>botao.addEventListener('click',()=>refazerCoresENesting()));
   const corAprovar=document.querySelector('[data-act="cor-aprovar-seguir"]');
   if(corAprovar)corAprovar.addEventListener('click',aprovarCoresESeguirReal);
   document.querySelectorAll('[data-act="factibilidade-download"]').forEach(el=>el.addEventListener('click',()=>{
