@@ -791,7 +791,7 @@ function novaProposta(){
     analiseArte:null, analiseErro:null, analisandoArte:false,
     chatVetor:[], chatRascunho:'', chatCarregando:false, vetorAnterior:null, ajustesVetorizacao:null,
     gerarContornoCnc:true, tracedSvgCorte:null, tracedSvgCorteOriginal:null, tracedSvgCorteDe:null, corteInfo:null, corteErro:null, corteCreditos:null, svgNesting:null,
-    colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:null,transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,composicaoKitOriginal:null},
+    colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:'sem_iluminacao',transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,composicaoKitOriginal:null},
     geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], kitSource:'nenhuma', kitWarning:null, matQuery:'', precificacao:null,
@@ -3299,30 +3299,7 @@ function renderComposicaoDoModelo(kitPronto){
         </div>`:`<div class="empty-hint">Este modelo ainda não tem matérias-primas cadastradas.</div>`}
       </section>
       <section>
-        <div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Produtos que formam o kit (${(REAL.kitProdutosSel||[]).length})</div>
-        ${(REAL.kitProdutosSel||[]).length?`<div style="display:grid;gap:7px;">
-          ${(REAL.kitProdutosSel||[]).map(sel=>{
-            const [produtoId,modeloId]=sel.key.split('_').map(Number);
-            const produto=catalog.produtos.find(p=>p.id===produtoId);
-            const modelo=produto?.modelos.find(m=>m.id===modeloId);
-            const variacoes=variacoesAtivasDoModelo(modelo);
-            const qtdLinhas=(REAL.kit||[]).filter(l=>l.origemKitProduto===sel.slot).length;
-            return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
-              <div class="mono" style="font-size:10.5px;color:var(--accent-ink);">${escaparHtml(skuModeloPorKey(sel.key))}</div>
-              <div style="font-weight:600;margin-top:3px;">${escaparHtml(produto?.nome||sel.nome)}${sel.implicito?' <span class="badge b-neutral">automático</span>':''}</div>
-              ${sel.implicito?`<label style="display:flex;gap:7px;align-items:center;margin-top:6px;font-size:11.5px;cursor:pointer;"><input type="checkbox" data-act="real-gabarito-ativo" ${REAL.gabaritoAtivo!==false?'checked':''}> Incluir o gabarito neste orçamento</label>`:''}
-              ${sel.implicito&&REAL.gabaritoAtivo===false?'':`<label class="field" style="display:block;margin-top:6px;font-size:11.5px;">Modelo
-                <select data-act="real-kitproduto-modelo" data-slot="${escaparHtml(sel.slot)}" style="display:block;margin-top:4px;width:min(100%,380px);font-size:12px;">
-                  ${(produto?.modelos||[]).filter(m=>String(m.status||'').toLowerCase()!=='inativo'||m.id===modeloId).map(m=>`<option value="${m.id}" ${m.id===modeloId?'selected':''}>${escaparHtml(m.nome)}</option>`).join('')}
-                </select>
-              </label>
-              ${variacoes.length?`<div style="margin-top:6px;font-size:11.5px;">Variações
-                <div style="display:grid;gap:4px;margin-top:4px;">${variacoes.map(v=>`<label style="display:flex;gap:7px;align-items:center;"><input type="checkbox" data-act="real-kitproduto-variacao" data-slot="${escaparHtml(sel.slot)}" data-val="${v.id}" ${sel.variacaoIds.map(Number).includes(Number(v.id))?'checked':''}><span>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span></label>`).join('')}</div></div>`:''}
-              `}
-              ${produtoId===GABARITO_PRODUTO_ID&&modeloId===GABARITO_MODELO_KRAFT_ID&&(!sel.implicito||REAL.gabaritoAtivo!==false)?`<div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Kraft: comprimento = largura do letreiro aberto; bobina de ${KRAFT_LARGURA_BOBINA_M*1000} mm, repetida em faixas se a altura passar disso. O custo do papel é aplicado por m² de bobina consumida — confira a base de cobrança no cadastro da bobina.</div>`:''}
-              <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${qtdLinhas} matéria(s)-prima(s) somada(s) ao orçamento</div>
-            </div>`;}).join('')}
-        </div>`:`<div class="empty-hint">Nenhum produto vinculado a este kit.</div>`}
+        ${htmlProdutosDoKit(false)}
       </section>
     </div>
     ${kitPronto?.precificacao?`<div class="role-note" style="margin-top:10px;">${ICONS.info} A regra de precificação cadastrada para o modelo também será carregada.</div>`:''}
@@ -3987,6 +3964,43 @@ function renderPinturaBox(){
   </div>`;
 }
 
+/** Produtos que formam o kit (cartões com modelo/variações). Com `comBusca`, inclui a busca para acrescentar produtos. */
+function htmlProdutosDoKit(comBusca){
+  const q=REAL.prodKitQuery||'';
+  const achados=comBusca&&q.length>=2?catalog.produtos.filter(p=>!adminState.produtosExcluidos.has(p.id)&&normalizeSearch(`${p.nome} ${skuProduto(p.id)}`).includes(normalizeSearch(q))).flatMap(p=>p.modelos.filter(m=>String(m.status||'').toLowerCase()!=='inativo').map(m=>({p,m}))).slice(0,40):[];
+  const busca=comBusca?`<div style="position:relative;margin-bottom:10px;">
+    <input type="text" placeholder="Adicionar produto ao kit (ex: embalagem, gabarito, fonte)…" value="${escaparHtml(q)}" data-act="real-kitproduto-query" style="width:100%;">
+    ${achados.length?`<div class="card" style="position:absolute;z-index:10;width:100%;margin-top:4px;padding:6px;max-height:260px;overflow:auto;">
+      ${achados.map(({p,m})=>`<div data-act="real-kitproduto-add" data-key="${kitKey(p.id,m.id)}" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:12.5px;">${escaparHtml(p.nome)} — ${escaparHtml(m.nome)} <span class="mono" style="color:var(--text-faint);">${escaparHtml(skuModelo(p.id,m.id))}</span></div>`).join('')}
+    </div>`:''}
+  </div>`:'';
+  return `${busca}
+<div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Produtos que formam o kit (${(REAL.kitProdutosSel||[]).length})</div>
+${(REAL.kitProdutosSel||[]).length?`<div style="display:grid;gap:7px;">
+  ${(REAL.kitProdutosSel||[]).map(sel=>{
+    const [produtoId,modeloId]=sel.key.split('_').map(Number);
+    const produto=catalog.produtos.find(p=>p.id===produtoId);
+    const modelo=produto?.modelos.find(m=>m.id===modeloId);
+    const variacoes=variacoesAtivasDoModelo(modelo);
+    const qtdLinhas=(REAL.kit||[]).filter(l=>l.origemKitProduto===sel.slot).length;
+    return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
+      <div class="mono" style="font-size:10.5px;color:var(--accent-ink);">${escaparHtml(skuModeloPorKey(sel.key))}</div>
+      <div style="font-weight:600;margin-top:3px;">${escaparHtml(produto?.nome||sel.nome)}${sel.implicito?' <span class="badge b-neutral">automático</span>':`<button type="button" class="btn btn-ghost btn-sm" data-act="real-kitproduto-remove" data-slot="${escaparHtml(sel.slot)}" style="float:right;">✕ Remover</button>`}</div>
+      ${sel.implicito?`<label style="display:flex;gap:7px;align-items:center;margin-top:6px;font-size:11.5px;cursor:pointer;"><input type="checkbox" data-act="real-gabarito-ativo" ${REAL.gabaritoAtivo!==false?'checked':''}> Incluir o gabarito neste orçamento</label>`:''}
+      ${sel.implicito&&REAL.gabaritoAtivo===false?'':`<label class="field" style="display:block;margin-top:6px;font-size:11.5px;">Modelo
+        <select data-act="real-kitproduto-modelo" data-slot="${escaparHtml(sel.slot)}" style="display:block;margin-top:4px;width:min(100%,380px);font-size:12px;">
+          ${(produto?.modelos||[]).filter(m=>String(m.status||'').toLowerCase()!=='inativo'||m.id===modeloId).map(m=>`<option value="${m.id}" ${m.id===modeloId?'selected':''}>${escaparHtml(m.nome)}</option>`).join('')}
+        </select>
+      </label>
+      ${variacoes.length?`<div style="margin-top:6px;font-size:11.5px;">Variações
+        <div style="display:grid;gap:4px;margin-top:4px;">${variacoes.map(v=>`<label style="display:flex;gap:7px;align-items:center;"><input type="checkbox" data-act="real-kitproduto-variacao" data-slot="${escaparHtml(sel.slot)}" data-val="${v.id}" ${sel.variacaoIds.map(Number).includes(Number(v.id))?'checked':''}><span>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span></label>`).join('')}</div></div>`:''}
+      `}
+      ${produtoId===GABARITO_PRODUTO_ID&&modeloId===GABARITO_MODELO_KRAFT_ID&&(!sel.implicito||REAL.gabaritoAtivo!==false)?`<div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Kraft: comprimento = largura do letreiro aberto; bobina de ${KRAFT_LARGURA_BOBINA_M*1000} mm, repetida em faixas se a altura passar disso. O custo do papel é aplicado por m² de bobina consumida — confira a base de cobrança no cadastro da bobina.</div>`:''}
+      <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${qtdLinhas} matéria(s)-prima(s) somada(s) ao orçamento</div>
+    </div>`;}).join('')}
+</div>`:`<div class="empty-hint">Nenhum produto vinculado a este kit.</div>`}`;
+}
+
 function realStepKit(){
   const g = computeGeomReal();
   const q = REAL.matQuery||'';
@@ -4031,6 +4045,11 @@ function realStepKit(){
         }).join('') : `<tr><td colspan="8" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado para adicionar.</td></tr>`}
         </tbody>
       </table>
+    </div>
+    <div style="margin-top:16px;">
+      <div class="cardhead"><div><h3 style="font-size:14px;">Produtos do kit</h3><p class="role-note">Acrescente produtos do MubiSys (gabarito, embalagem, fonte…) escolhendo modelo e variações; as matérias-primas deles entram na tabela acima e recalculam o orçamento.</p></div></div>
+      ${htmlProdutosDoKit(true)}
+      <label style="display:flex;gap:7px;align-items:center;margin-top:10px;font-size:12px;cursor:pointer;"><input type="checkbox" data-act="real-embalagem" ${REAL.embalagemAtiva!==false?'checked':''}> Embalagem Acabamento (${fmt(EMBALAGEM_PCT,1)}% sobre os demais itens)</label>
     </div>
     <div class="footer-nav">
       <div class="role-note">${ICONS.info} Preço/status/unidade vêm do snapshot real do catálogo — em produção, item inativo ou custo vencido bloqueia o preço final.</div>
@@ -4117,7 +4136,8 @@ function faceDoProdutoEhAcrilico(){
   return (REAL.kit||[]).some(line=>camadaFisicaKit(line)==='face'&&/acril/.test(normalizeSearch(materialKitAtivo(line).nome||'')));
 }
 function construcaoFaceEfetiva(color){
-  return color.construcaoFace==='nao_informada'&&faceDoProdutoEhAcrilico()?'acrilico_total':color.construcaoFace;
+  if(color.construcaoFace==='nao_informada') return faceDoProdutoEhAcrilico()?'acrilico_total':'outra';
+  return color.construcaoFace;
 }
 
 function invalidarAnaliseCoresReal(){
@@ -4193,13 +4213,6 @@ async function aprovarCoresESeguirReal(){
 
 function renderAnaliseCoresReal(){
   const color=REAL.colorAnalysis;
-  const controles=`<div class="grid2" style="margin-top:12px;">
-    <label class="field">Iluminação da face<select data-act="cor-iluminacao"><option value="" ${!color.iluminacao?'selected':''}>Selecione / pergunta pendente</option><option value="sem_iluminacao" ${color.iluminacao==='sem_iluminacao'?'selected':''}>Sem iluminação</option><option value="frontlight" ${color.iluminacao==='frontlight'?'selected':''}>Frontlight / iluminação frontal</option><option value="backlight" ${color.iluminacao==='backlight'?'selected':''}>Backlight / face translúcida</option></select></label>
-    <label class="field">Transmissão mínima de luz (%)<input data-act="cor-transmissao-minima" type="number" min="0" max="100" step="0.1" value="${escaparHtml(color.transmissaoMinimaPct)}" placeholder="Obrigatório em faces iluminadas" ${color.iluminacao==='sem_iluminacao'?'disabled':''}></label>
-    <label class="field">Base para impressão digital<select data-act="cor-base-impressao"><option value="branco" ${color.baseImpressao==='branco'?'selected':''}>Vinil branco</option><option value="transparente" ${color.baseImpressao==='transparente'?'selected':''}>Vinil transparente</option></select></label>
-    <label class="field">Construção da face<select data-act="cor-construcao-face"><option value="nao_informada" ${color.construcaoFace==='nao_informada'?'selected':''}>Perguntar se houver fallback</option><option value="acrilico_total" ${color.construcaoFace==='acrilico_total'?'selected':''}>Letreiro todo em acrílico</option><option value="outra" ${color.construcaoFace==='outra'?'selected':''}>Outra composição de face</option></select></label>
-    <label class="checkrow"><input type="checkbox" data-act="cor-laminar" ${color.laminar?'checked':''}> Aplicar laminação na estimativa de impressão</label>
-  </div>`;
   const rows=(color.resultados||[]).map(result=>{
     const alternatives=result.alternativas||[];
     const chosen=result.tipoSugestao==='chapa'?alternatives.find(item=>Number(item.id)===Number(result.chapaId)):result.tipoSugestao==='imprimax'?alternatives.find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
@@ -4237,7 +4250,6 @@ function renderAnaliseCoresReal(){
   const countColors=new Set((color.resultados||[]).map(result=>result.corHex||result.pantoneCode||`${result.tipoCor}:${result.cmyk?Object.values(result.cmyk).join(','):(result.coresGradiente||[]).join(',')}`)).size;
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">
     <div class="cardhead"><div><h4>Correspondência de cores (opcional para o nesting)</h4><p>O servidor calcula a área total por Bounding Box para adesivos e mantém a área líquida separada para pintura que envolve a peça.</p></div></div>
-    ${controles}
     ${color.error?`<div class="warnbox" role="alert" style="margin-top:8px;">${escaparHtml(color.error)}</div>`:''}
     ${color.loading?'<div class="empty-hint">Extraindo regiões e comparando ΔE00 com chapas e o catálogo Imprimax…</div>':''}
     ${color.resultados?.length?`<div class="tablewrap" style="margin-top:10px;"><table><thead><tr><th>Cor da arte</th><th>Área estimada</th><th>Sugestão e revisão</th><th>Custo adicional</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -7304,6 +7316,21 @@ function bindRealEvents(){
     if(!sel) return;
     const id=Number(el.dataset.val);
     sel.variacaoIds=el.checked?[...new Set([...sel.variacaoIds.map(Number),id])]:sel.variacaoIds.map(Number).filter(x=>x!==id);
+    invalidarFactibilidadeReal(); aplicarKitProdutosNoKit(); REAL.approvals.kit=false; render();
+  }));
+  const prodKitQueryEl=document.querySelector('[data-act="real-kitproduto-query"]');
+  if(prodKitQueryEl) prodKitQueryEl.addEventListener('input',e=>{ REAL.prodKitQuery=e.target.value; renderPreservingFocus(); });
+  document.querySelectorAll('[data-act="real-kitproduto-add"]').forEach(el=>el.addEventListener('click',()=>{
+    const [produtoId,modeloId]=el.dataset.key.split('_').map(Number);
+    const produto=catalog.produtos.find(p=>p.id===produtoId);
+    const modelo=produto?.modelos.find(m=>m.id===modeloId);
+    if(!modelo) return;
+    REAL.kitProdutosSel=[...(REAL.kitProdutosSel||[]),{slot:`extra_${Date.now()}_${produtoId}`,key:el.dataset.key,nome:produto.nome,variacaoIds:variacoesPadraoDoKitProduto(null,modelo)}];
+    REAL.prodKitQuery='';
+    invalidarFactibilidadeReal(); aplicarKitProdutosNoKit(); REAL.approvals.kit=false; render();
+  }));
+  document.querySelectorAll('[data-act="real-kitproduto-remove"]').forEach(el=>el.addEventListener('click',()=>{
+    REAL.kitProdutosSel=(REAL.kitProdutosSel||[]).filter(item=>item.slot!==el.dataset.slot);
     invalidarFactibilidadeReal(); aplicarKitProdutosNoKit(); REAL.approvals.kit=false; render();
   }));
   document.querySelectorAll('[data-act="real-kit-remove"]').forEach(el=> el.addEventListener('click', ()=>{ removeKitLine(+el.dataset.idx); render(); }));
