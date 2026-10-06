@@ -4009,6 +4009,7 @@ function realStepKit(){
   return `${renderPinturaBox()}
   <div class="card">
     <div class="cardhead"><div><h3>7 · Composição — consumo das matérias-primas</h3><p>${REAL.kit.length? 'Composição carregada do cadastro do administrador para este modelo — ajuste fórmulas e multiplicadores com base no nesting.' : 'Sem composição cadastrada para este modelo ainda — busque direto no catálogo real de matérias-primas ('+catalog.materias.length+' itens), defina o papel físico e confirme. O nesting será calculado em seguida.'}</p><p class="role-note">O nesting anterior fornece área de consumo, área líquida e perímetro às fórmulas. Alterar uma matéria-prima ou camada exige novo nesting; fórmulas e multiplicadores recalculam o orçamento sem refazer o layout.</p></div></div>
+    ${htmlAvisoCoresAutomaticas()}
     <div style="position:relative;">
       <input type="text" placeholder="Buscar matéria-prima real (ex: ACM, acrílico, LED)…" value="${q}" data-act="real-mat-query" style="width:100%;">
       ${matches.length? `<div class="card" style="position:absolute; z-index:10; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
@@ -4042,7 +4043,8 @@ function realStepKit(){
             <td class="num">${money(qty*material.custo)}</td>
             <td><button class="btn btn-ghost btn-sm" data-act="real-kit-remove" data-idx="${i}">✕</button></td>
           </tr>`;
-        }).join('') : `<tr><td colspan="8" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado para adicionar.</td></tr>`}
+        }).join('') : (htmlLinhasAdesivoComposicao()?'':`<tr><td colspan="8" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado para adicionar.</td></tr>`)}
+        ${htmlLinhasAdesivoComposicao()}
         </tbody>
       </table>
     </div>
@@ -4211,29 +4213,60 @@ async function aprovarCoresESeguirReal(){
   }catch(error){restaurarComposicaoCoresReal();color.error=error.message||'Falha ao aprovar sugestões de materiais.';render();}
 }
 
-/** O mapeamento de cores roda sozinho antes do nesting (sem perguntas). Aqui só aparecem erro, andamento e a autorização
- *  obrigatória quando a face precisa de acrílico transparente + adesivo. */
+/** Resumo, para o vendedor, do que o sistema decidiu sozinho a partir das cores da logo: chapa de acrílico mais
+ *  parecida (ΔE00 ≤ 2) ou, sem equivalente, acrílico transparente + adesivo Imprimax. */
+function htmlAvisoCoresAutomaticas(){
+  const color=REAL.colorAnalysis;
+  if(!color?.aprovado||!color.resultados?.length) return '';
+  const nomesFace=lines=>[...new Set(lines.map(line=>materialKitAtivo(line).nome||line.nome).filter(Boolean))].join(' + ');
+  const antes=nomesFace((color.composicaoKitOriginal||[]).filter(line=>camadaFisicaKit(line)==='face'));
+  const depois=nomesFace((REAL.kit||[]).filter(line=>line.origemComposicaoCor));
+  const itens=color.resultados.map(result=>{
+    const alternativas=result.alternativas||[];
+    const chapa=result.tipoSugestao==='chapa'?alternativas.find(item=>Number(item.id)===Number(result.chapaId)):null;
+    const adesivo=result.tipoSugestao==='imprimax'?alternativas.find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
+    const de=result.deltaE00!=null?` (ΔE00 ${fmt(result.deltaE00,1)})`:'';
+    const nomeAdesivo=[adesivo?.linha,adesivo?.codigo||adesivo?.nome].filter(Boolean).join(' ');
+    const texto=result.tipoSugestao==='chapa'
+      ?`acrílico/chapa mais parecido: <b>${escaparHtml(chapa?.nome||'chapa cadastrada')}</b>${de}`
+      :result.tipoSugestao==='imprimax'
+        ?`sem chapa nesta cor → ${result.requerChapaBase?'<b>acrílico transparente + adesivo Imprimax</b>':'<b>adesivo Imprimax</b>'} ${escaparHtml(nomeAdesivo)}${de}`
+        :result.tipoSugestao==='impresso'?'<b>adesivo impresso</b> (gradiente ou arte complexa)':'revisão manual necessária';
+    const alertas=(result.avisos||[]).filter(texto=>/Atenção|pendente|não cadastrado|Carregue/i.test(texto)).map(texto=>`<div class="role-note">${escaparHtml(texto)}</div>`).join('');
+    return `<li style="margin-bottom:4px;"><span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(result.corHex||'#e2e8f0')};"></span> ${escaparHtml(result.corHex||result.pantoneCode||result.tipoCor||'cor')} → ${texto}${alertas}</li>`;
+  }).join('');
+  return `<div class="banner" style="margin:10px 0;">${ICONS.info}<div><b>Cores da logo identificadas; materiais da face ajustados automaticamente.</b>
+    ${antes||depois?`<div style="margin-top:4px;">Face do kit: ${escaparHtml(antes||'—')} → <b>${escaparHtml(depois||'sem chapa colorida (adesivo sobre a base)')}</b></div>`:''}
+    <ul style="margin:6px 0 0 18px;">${itens}</ul></div></div>`;
+}
+
+/** Linhas de adesivo (Imprimax/impresso) que a análise de cores concluiu serem necessárias, exibidas na tabela da
+ *  composição. O custo já entra no orçamento por `custoMateriaisCorTotal`; por isso não vão para REAL.kit (evita contar duas vezes). */
+function htmlLinhasAdesivoComposicao(){
+  const color=REAL.colorAnalysis;
+  if(!color?.aprovado||!color.resultados?.length) return '';
+  return color.resultados.filter(result=>result.tipoSugestao==='imprimax'||result.tipoSugestao==='impresso').map(result=>{
+    const adesivo=result.tipoSugestao==='imprimax'?(result.alternativas||[]).find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
+    const nome=result.tipoSugestao==='impresso'?'Adesivo impresso':'Adesivo Imprimax '+[adesivo?.linha,adesivo?.codigo||adesivo?.nome].filter(Boolean).join(' ');
+    const consumo=result.areaConsumoM2;
+    const custo=result.custoEstimado;
+    const unit=consumo>0&&custo!=null?custo/consumo:null;
+    return `<tr style="background:var(--surface-2);">
+      <td><span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(result.corHex||'#e2e8f0')};"></span> ${escaparHtml(nome)}<div class="source-tag">${ICONS.db} Adicionado pela análise de cores · ${escaparHtml(result.corHex||result.tipoCor||'')}${result.requerChapaBase?' · sobre acrílico transparente':''}</div></td>
+      <td>Face (adesivo)</td><td>Área de consumo da bobina</td><td class="num">—</td>
+      <td class="num">${consumo==null?'Pendente':fmt(consumo,4)+' m²'}</td>
+      <td class="num">${unit==null?'Pendente':money(unit)}</td>
+      <td class="num">${custo==null?'Pendente':money(custo)}</td>
+      <td></td></tr>`;
+  }).join('');
+}
+
 function renderAnaliseCoresReal(){
   const color=REAL.colorAnalysis;
-  const comAdesivoSobreAcrilico=(color.resultados||[]).filter(result=>(result.tipoSugestao==='impresso'||result.tipoSugestao==='imprimax')&&result.requerChapaBase);
-  const precisaAutorizarAdesivo=comAdesivoSobreAcrilico.length>0;
-  const impressoDoLetreiro=comAdesivoSobreAcrilico.find(result=>result.tipoSugestao==='impresso'&&result.dadosPreco);
-  const blocoAutorizacaoAdesivo=precisaAutorizarAdesivo&&!color.aprovado?`<div class="warnbox" role="alert" style="margin-top:10px;">
-        <b>Atenção, vendedor: esta composição precisa da sua autorização.</b>
-        <div style="margin-top:6px;">Há cor sem chapa de acrílico equivalente. Para essas regiões o sistema propõe <b>acrílico TRANSPARENTE + adesivo</b>:</div>
-        <ul style="margin:6px 0 6px 18px;">${comAdesivoSobreAcrilico.map(result=>{
-          const escolhido=result.tipoSugestao==='imprimax'?(result.alternativas||[]).find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
-          const nomeAdesivo=result.tipoSugestao==='impresso'?'Adesivo impresso (sem cor sólida)':`Imprimax ${[escolhido?.linha,escolhido?.nome].filter(Boolean).join(' ')}${result.deltaE00!=null?` (ΔE ${fmt(result.deltaE00,1)})`:''}`;
-          return `<li><span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(result.corHex||'#e2e8f0')};"></span> ${escaparHtml(result.corHex||result.tipoCor)} → ${escaparHtml(nomeAdesivo)}</li>`;
-        }).join('')}</ul>
-        ${impressoDoLetreiro?`<div>O adesivo impresso terá a <b>mesma dimensão do letreiro</b>: ${fmt(impressoDoLetreiro.dadosPreco.larguraMm,0)} × ${fmt(impressoDoLetreiro.dadosPreco.alturaMm,0)} mm.</div>`:''}
-        <label class="checkrow" style="margin-top:8px;"><input type="checkbox" data-act="cor-autoriza-adesivo" ${color.autorizaAdesivo?'checked':''}> Autorizo usar acrílico transparente com adesivo nesta composição</label>
-      </div>`:'';
   return `<div style="margin:10px 0;">
     ${color.error?`<div class="warnbox" role="alert">${escaparHtml(color.error)}</div>`:''}
-    ${color.loading?'<div class="empty-hint">Identificando os materiais da face a partir da arte…</div>':''}
-    ${blocoAutorizacaoAdesivo}
-    ${color.resultados?.length&&!color.aprovado&&precisaAutorizarAdesivo?`<button class="btn btn-primary btn-sm" style="margin-top:10px;" data-act="cor-aprovar-seguir" ${color.autorizaAdesivo?'':'disabled title="Autorize a composição com adesivo para continuar"'}>Autorizar e calcular nesting</button>`:''}
+    ${color.loading?'<div class="empty-hint">Rastreando as cores da logo e escolhendo os materiais da face…</div>':''}
+    ${htmlAvisoCoresAutomaticas()}
     ${color.error&&!color.loading?'<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-act="cor-analisar">Tentar novamente</button>':''}
   </div>`;
 }
@@ -4253,8 +4286,8 @@ async function iniciarNestingAutomatico(){
   if(!color.resultados?.length) await analisarCorrespondenciaCoresReal();
   if(!color.resultados?.length) return;
   if(color.aprovado){ await analisarFactibilidadeReal(); return; }
-  const precisaAutorizar=color.resultados.some(item=>(item.tipoSugestao==='impresso'||item.tipoSugestao==='imprimax')&&item.requerChapaBase);
-  if(precisaAutorizar&&!color.autorizaAdesivo){ render(); return; }
+  // Sem chapa equivalente, acrílico transparente + adesivo Imprimax entra sozinho; o vendedor é informado no aviso da tela.
+  color.autorizaAdesivo=true;
   await aprovarCoresESeguirReal();
 }
 
