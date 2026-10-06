@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { BobinaCustoConfig } from "../../shared/bobina";
 import { executarMotorInterno, GeometriaInvalidaMotorInterno } from "./cpqNestingInterno";
+import { rotacoesDoDeepnest, type ProcessoCorte, type RotacaoPermitida } from "../../shared/politica-corte";
 
 export type CpqChapa = {
   id: number;
@@ -45,6 +46,12 @@ export type CpqMaterial = {
   pecas?: CpqNestingPeca[];
   /** Bobina: como o custo do MubiSys é cobrado (cadastro local). Sem isso, deduz pela unidade de custo. */
   bobinaCusto?: BobinaCustoConfig | null;
+  /** Política de corte deste material (cadastro): espaçamento/margem próprios (mm) valem mais que o padrão do orçamento. */
+  espacamentoMm?: number | null;
+  margemBordaMm?: number | null;
+  /** Escovado: só gira 0° e 180° ("veio"). Ausente/"livre": qualquer ângulo. */
+  rotacao?: RotacaoPermitida;
+  processoCorte?: ProcessoCorte | null;
 };
 
 type DeepnestWorkerResult = {
@@ -112,6 +119,9 @@ export type CpqNestingMaterialResult = {
   comprimento_consumido_mm?: number;
   /** Só em bobina: largura do rolo, em mm. */
   largura_bobina_mm?: number;
+  /** Processo de corte e rotação que valeram neste nesting (cadastro da matéria-prima). */
+  processo_corte?: ProcessoCorte | null;
+  rotacao_permitida?: RotacaoPermitida;
   /** O desenho não coube numa chapa e foi distribuído em N chapas do mesmo material (consumo e custo já somam as N). */
   quantidade_chapas?: number;
   /** Estimativa (pela área) do tamanho, em % do atual, em que o desenho caberia numa só chapa. */
@@ -263,7 +273,7 @@ class MotorIndisponivelError extends Error {}
 
 async function executarMotorRemoto(
   url: string,
-  payload: { pecas: Array<CpqNestingPeca & { svg: string }>; larguraMm: number; alturaMm: number; espacamentoMm: number; timeoutMs: number },
+  payload: { pecas: Array<CpqNestingPeca & { svg: string }>; larguraMm: number; alturaMm: number; espacamentoMm: number; timeoutMs: number; rotacoes?: number },
 ): Promise<DeepnestWorkerResult> {
   const token = process.env.DEEPNEST_REMOTE_TOKEN?.trim();
   const controle = new AbortController();
@@ -301,18 +311,19 @@ async function executarMotor(
   alturaMm: number,
   espacamentoMm: number,
   timeoutMs: number,
-  opcoes: { bobina?: boolean } = {},
+  opcoes: { bobina?: boolean; rotacao?: RotacaoPermitida } = {},
 ): Promise<DeepnestWorkerResult> {
+  const rotacoes = rotacoesDoDeepnest(opcoes.rotacao);
   const remoto = process.env.DEEPNEST_REMOTE_URL?.trim();
   if (remoto) {
     try {
-      return { ...(await executarMotorRemoto(remoto, { pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs })), motor: "deepnest" };
+      return { ...(await executarMotorRemoto(remoto, { pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs, rotacoes })), motor: "deepnest" };
     } catch (error) {
       if (!(error instanceof MotorIndisponivelError)) throw error;
       console.warn(`[cpq-nesting] Deepnest remoto indisponível (${error.message}); usando o motor interno.`);
     }
   } else if (process.env.DEEPNEST_NODE_BIN && process.env.DEEPNEST_NODE_ENTRY) {
-    return { ...(await executarMotorLocal(pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs)), motor: "deepnest" };
+    return { ...(await executarMotorLocal(pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs, rotacoes)), motor: "deepnest" };
   }
   try {
     return { ...executarMotorInterno(pecas, larguraMm, alturaMm, espacamentoMm, opcoes), motor: "interno" };
@@ -327,7 +338,8 @@ function executarMotorLocal(
   larguraMm: number,
   alturaMm: number,
   espacamentoMm: number,
-  timeoutMs: number
+  timeoutMs: number,
+  rotacoes = 72,
 ): Promise<DeepnestWorkerResult> {
   const nodeBin = process.env.DEEPNEST_NODE_BIN;
   const deepnestEntry = process.env.DEEPNEST_NODE_ENTRY;
@@ -384,7 +396,7 @@ function executarMotorLocal(
         rejectPromise(new CpqNestingError(stderr || "O worker Deepnest não devolveu um resultado válido.", "engine"));
       }
     });
-    child.stdin.end(JSON.stringify({ pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs }));
+    child.stdin.end(JSON.stringify({ pecas, larguraMm, alturaMm, espacamentoMm, timeoutMs, rotacoes }));
   });
 }
 
@@ -510,6 +522,7 @@ function resultadoEmVariasChapas(
   pecasOriginais: CpqNestingPeca[],
   espacamentoMm: number,
   margemBordaMm: number,
+  rotacao: RotacaoPermitida = "livre",
 ): CpqNestingMaterialResult | null {
   type Folha = { placements: CpqNestingPlacement[]; larguraBlocoMm: number; alturaBlocoMm: number };
   let melhor: { chapa: CpqChapa; larguraMm: number; alturaMm: number; folhas: Folha[]; areaLiquidaMm2: number; perimetroMm: number; consumoM2: number } | null = null;
@@ -525,7 +538,7 @@ function resultadoEmVariasChapas(
     while (restantes.length) {
       if (folhas.length >= MAX_CHAPAS_POR_MATERIAL) { completo = false; break; }
       let r: ReturnType<typeof executarMotorInterno>;
-      try { r = executarMotorInterno(restantes.map(indice => pecasMaterial[indice]), larguraUtilMm, alturaUtilMm, espacamentoMm); }
+      try { r = executarMotorInterno(restantes.map(indice => pecasMaterial[indice]), larguraUtilMm, alturaUtilMm, espacamentoMm, { rotacao }); }
       catch { completo = false; break; }
       if (!folhas.length) { areaLiquidaMm2 = r.areaLiquidaMm2; perimetroMm = r.perimetroTotalMm; }
       if (!r.placements.length || !r.bounds) { completo = false; break; } // alguma peça não cabe nem sozinha numa chapa nova
@@ -604,6 +617,8 @@ function resultadoEmVariasChapas(
     chapa: { largura_mm: larguraMm, altura_mm: alturaMm },
     formato: "chapa",
     motor: "interno",
+    processo_corte: material.processoCorte ?? null,
+    rotacao_permitida: rotacao,
     quantidade_chapas: n,
     escala_para_uma_chapa_pct: escalaPct,
     instrucao_nao_coube: `O desenho de ${material.nome} não cabe em uma chapa ${chapa.nome} (${chapa.larguraMm} × ${chapa.alturaMm} mm): foi distribuído em ${n} chapas, e o consumo e o custo abaixo já somam as ${n}. Para caber em uma só: reduza o letreiro para cerca de ${escalaPct}% do tamanho atual (estimativa pela área), cadastre um formato de chapa maior ou, se o desenho tiver uma peça única maior que a chapa, aprove a emenda. Para manter o tamanho, basta seguir com as ${n} chapas.`,
@@ -644,10 +659,11 @@ export async function calcularNestingMultiMaterialParcial(input: {
     || input.materiais.some(material => (material.pecas ?? pecasGlobais).length > 100)) {
     throw new CpqNestingError("Informe entre uma e cem artes vetoriais para calcular o nesting.", "invalid_geometry");
   }
-  const espacamentoMm = input.espacamentoMm ?? 0;
-  const margemBordaMm = input.margemBordaMm ?? 0;
-  if (!Number.isFinite(espacamentoMm) || espacamentoMm < 0 || espacamentoMm > 50) throw new CpqNestingError("O espaçamento entre peças precisa ficar entre 0 e 50 mm.", "invalid_geometry");
-  if (!Number.isFinite(margemBordaMm) || margemBordaMm < 0 || margemBordaMm > 50) throw new CpqNestingError("A margem da borda precisa ficar entre 0 e 50 mm.", "invalid_geometry");
+  // Padrões do orçamento; cada material pode ter o seu (espaçamento/margem do cadastro ou do processo de corte).
+  const espacamentoPadraoMm = input.espacamentoMm ?? 0;
+  const margemBordaPadraoMm = input.margemBordaMm ?? 0;
+  if (!Number.isFinite(espacamentoPadraoMm) || espacamentoPadraoMm < 0 || espacamentoPadraoMm > 50) throw new CpqNestingError("O espaçamento entre peças precisa ficar entre 0 e 50 mm.", "invalid_geometry");
+  if (!Number.isFinite(margemBordaPadraoMm) || margemBordaPadraoMm < 0 || margemBordaPadraoMm > 50) throw new CpqNestingError("A margem da borda precisa ficar entre 0 e 50 mm.", "invalid_geometry");
   const ids = new Set<number>();
   const materiaisUnicos = input.materiais.filter(material => {
     if (ids.has(material.id)) return false;
@@ -656,6 +672,11 @@ export async function calcularNestingMultiMaterialParcial(input: {
   });
 
   const liquidados = await Promise.allSettled(materiaisUnicos.map(async (material): Promise<CpqNestingMaterialResult> => {
+    const espacamentoMm = material.espacamentoMm ?? espacamentoPadraoMm;
+    const margemBordaMm = material.margemBordaMm ?? margemBordaPadraoMm;
+    const rotacao: RotacaoPermitida = material.rotacao ?? "livre";
+    if (!Number.isFinite(espacamentoMm) || espacamentoMm < 0 || espacamentoMm > 50 || !Number.isFinite(margemBordaMm) || margemBordaMm < 0 || margemBordaMm > 50)
+      throw new CpqNestingError(`O espaçamento e a margem de ${material.nome} precisam ficar entre 0 e 50 mm.`, "invalid_geometry");
     const chapas = ordenarChapasMenoresPrimeiro(material.chapas.filter(chapa =>
       chapa.mubisysMateriaPrimaId === material.id
       && Number.isInteger(chapa.larguraMm) && chapa.larguraMm > 0
@@ -682,14 +703,14 @@ export async function calcularNestingMultiMaterialParcial(input: {
           let nesting: DeepnestWorkerResult | null = null;
           let erroMotor: string | null = null;
           try {
-            nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS, { bobina: true });
+            nesting = await executarMotor(pecasMaterial, comprimentoInicialMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS, { bobina: true, rotacao });
           } catch (error) {
             if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
             erroMotor = error.message;
           }
           if ((!nesting || !completo(nesting)) && comprimentoInicialMm < comprimentoMaximoMm) {
             try {
-              nesting = await executarMotor(pecasMaterial, comprimentoMaximoMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS, { bobina: true });
+              nesting = await executarMotor(pecasMaterial, comprimentoMaximoMm, larguraBobinaMm, espacamentoMm, TEMPO_MOTOR_MS, { bobina: true, rotacao });
               erroMotor = null;
             } catch (error) {
               if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
@@ -724,7 +745,7 @@ export async function calcularNestingMultiMaterialParcial(input: {
         const dimensoes = { larguraMm, alturaMm };
         let nesting: DeepnestWorkerResult;
         try {
-          nesting = await executarMotor(pecasMaterial, larguraUtilMm, alturaUtilMm, espacamentoMm, TEMPO_MOTOR_MS);
+          nesting = await executarMotor(pecasMaterial, larguraUtilMm, alturaUtilMm, espacamentoMm, TEMPO_MOTOR_MS, { rotacao });
         } catch (error) {
           if (!(error instanceof CpqNestingError) || error.code !== "engine") throw error;
           falhasFormatos.set(chapa.id, error.message);
@@ -761,7 +782,7 @@ export async function calcularNestingMultiMaterialParcial(input: {
       const todosFalharamNoMotor = falhasFormatos.size > 0 && chapas.every(chapa => falhasFormatos.has(chapa.id));
       // Não coube numa chapa só: usa outras chapas do mesmo material em vez de travar o orçamento.
       if (!todosFalharamNoMotor) {
-        const emVariasChapas = resultadoEmVariasChapas(material, chapas, pecasMaterial, pecasMaterialOriginal, espacamentoMm, margemBordaMm);
+        const emVariasChapas = resultadoEmVariasChapas(material, chapas, pecasMaterial, pecasMaterialOriginal, espacamentoMm, margemBordaMm, rotacao);
         if (emVariasChapas) return emVariasChapas;
       }
       throw new CpqNestingError(
@@ -841,6 +862,8 @@ export async function calcularNestingMultiMaterialParcial(input: {
       chapa: { largura_mm: dimensoes.larguraMm, altura_mm: dimensoes.alturaMm },
       formato: emBobina ? "bobina" : "chapa",
       motor: melhor.nesting.motor ?? "deepnest",
+      processo_corte: material.processoCorte ?? null,
+      rotacao_permitida: rotacao,
       ...(emBobina ? {
         comprimento_consumido_mm: melhor.comprimentoConsumidoMm,
         largura_bobina_mm: dimensoes.alturaMm,

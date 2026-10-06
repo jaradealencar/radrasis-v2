@@ -141,8 +141,12 @@ function deslocada(v: Variante, s: number): Uint32Array {
   return saida;
 }
 
-/** Ângulos de teste: os quatro lados e, se a peça for inclinada, também os que alinham a maior aresta aos eixos. */
-export function angulosDaPeca(casco: Par[]): number[] {
+/**
+ * Ângulos de teste: os quatro lados e, se a peça for inclinada, também os que alinham a maior aresta aos eixos.
+ * Com `permitidos` (material escovado: 0° e 180°) só esses ângulos são usados.
+ */
+export function angulosDaPeca(casco: Par[], permitidos?: number[] | null): number[] {
+  if (permitidos?.length) return [...new Set(permitidos)];
   const angulos = new Set<number>([0, 90, 180, 270]);
   let maior = 0, direcao = 0;
   for (let i = 0; i < casco.length; i += 1) {
@@ -155,7 +159,7 @@ export function angulosDaPeca(casco: Par[]): number[] {
   return [...angulos];
 }
 
-export type OpcoesRaster = { celulaMm?: number; prazoMs?: number };
+export type OpcoesRaster = { celulaMm?: number; prazoMs?: number; /** Ângulos permitidos (null/ausente = livre). */ angulos?: number[] | null };
 
 /**
  * Posiciona todas as peças que couberem na chapa `larguraMm × alturaMm`, avançando pelo eixo X. Devolve as posições
@@ -180,7 +184,7 @@ export function empacotarPorContorno(
   for (const peca of [...pecas].sort((a, b) => b.area - a.area || a.indice - b.indice)) {
     if (Date.now() > prazo) throw new TempoEsgotadoRaster("prazo do nesting por contorno esgotado");
     let melhor: { gx: number; gy: number; v: Variante; score: number } | null = null;
-    for (const graus of angulosDaPeca(peca.casco)) {
+    for (const graus of angulosDaPeca(peca.casco, opcoes.angulos)) {
       const v = prepararVariante(peca, graus, c, d);
       if (v.Wb > SWc || v.Hb > SHc) continue;
       const limiteX = melhor ? melhor.score - v.Wb : Infinity; // só interessa quem termina antes do melhor atual

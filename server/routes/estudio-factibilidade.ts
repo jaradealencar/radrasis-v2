@@ -7,6 +7,7 @@ import { estudioChapas, estudioMapeamentoCoresCotacao } from "../../drizzle/sche
 import { criarAlerta } from "../db/alertas-helpers";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
+import { carregarPoliticaCorte } from "../db/politicaCorte";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
   calcularFactibilidadeFabricacao,
@@ -204,6 +205,8 @@ async function analisar(req: Request, res: Response): Promise<void> {
   if (parsed.data.camadasMateriais && parsed.data.materiaPrimaIds.some(id => !camadasPorMaterial.get(id)?.length))
     return void respostaErro(res, 409, "Associe cada matéria-prima a uma camada Face, Aro ou Fundo antes de analisar.");
   const byId = new Map(catalogo.map(material => [material.id, material]));
+  // Margem de borda de cada matéria-prima (cadastro/processo de corte); o padrão do orçamento vale onde não há política.
+  const politicas = await carregarPoliticaCorte(db, parsed.data.materiaPrimaIds, { espacamentoMm: 0, margemBordaMm: parsed.data.margemBordaMm });
   const materials: CpqFactibilidadeMaterial[] = [];
   for (const id of parsed.data.materiaPrimaIds) {
     const material = byId.get(id);
@@ -241,6 +244,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
       nome: material.nome,
       lotes: camadasPorMaterial.get(id),
       chapas: chapasResolvidas,
+      margemBordaMm: politicas.get(id)?.margemBordaMm,
     });
   }
 

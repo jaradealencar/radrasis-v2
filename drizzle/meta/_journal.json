@@ -617,6 +617,13 @@
       "when": 1791240856034,
       "tag": "0087_chemical_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1791254726473,
+      "tag": "0088_sleepy_namor",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
 import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, secaoPerfilMm2, type FormatoPerfil, normalizarFormatoPerfil } from "@shared/peso";
 import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-referencia";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
+import { ehProcessoCorte, normalizarRotacao, PROCESSOS_CORTE, ROTACOES_PERMITIDAS } from "@shared/politica-corte";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -100,6 +101,10 @@ export const materiasPrimasRouter = router({
           categoriaUsaDadosBobina: categoria?.usaDadosBobina ?? false,
           statusCadastro: situacao.status,
           pendenciasCadastro: situacao.pendencias,
+          processoCorte: ehProcessoCorte(cadastro?.processoCorte) ? cadastro!.processoCorte : null,
+          rotacaoPermitida: normalizarRotacao(cadastro?.rotacaoPermitida),
+          espacamentoMm: cadastro?.espacamentoMm == null ? null : Number(cadastro.espacamentoMm),
+          margemBordaMm: cadastro?.margemBordaMm == null ? null : Number(cadastro.margemBordaMm),
           bobinaCustoBase: (BOBINA_CUSTO_BASES as readonly string[]).includes(cadastro?.bobinaCustoBase ?? "") ? (cadastro!.bobinaCustoBase as (typeof BOBINA_CUSTO_BASES)[number]) : null,
           bobinaComprimentoRoloMm: cadastro?.bobinaComprimentoRoloMm == null ? null : Number(cadastro.bobinaComprimentoRoloMm),
           categoriaUsaDadosPerfil: categoria?.usaDadosPerfil ?? false,
@@ -210,6 +215,11 @@ export const materiasPrimasRouter = router({
       bobinas: formatosBobinaInput.default([]),
       bobinaCustoBase: z.enum(BOBINA_CUSTO_BASES).nullable().default(null),
       bobinaComprimentoRoloMm: z.number().finite().positive().max(10_000_000).nullable().default(null),
+      // Política de corte (só chapa e bobina): processo, rotação permitida e espaçamento/margem próprios (nulo = padrão do processo/orçamento).
+      processoCorte: z.enum(PROCESSOS_CORTE).nullable().default(null),
+      rotacaoPermitida: z.enum(ROTACOES_PERMITIDAS).default("livre"),
+      espacamentoMm: z.number().finite().min(0).max(50).nullable().default(null),
+      margemBordaMm: z.number().finite().min(0).max(50).nullable().default(null),
     }).strict())
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -278,6 +288,11 @@ export const materiasPrimasRouter = router({
         const bobinaComprimentoRoloSalvo = usaDadosBobina && input.bobinaCustoBase === "rolo" && input.bobinaComprimentoRoloMm != null ? String(input.bobinaComprimentoRoloMm) : null;
         const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && !usaDadosBobina && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
         const perfilSalvo = (valor: number | null) => usaDadosPerfil && valor != null ? String(valor) : null;
+        const usaCorte = usaDadosChapa || usaDadosBobina;
+        const processoSalvo = usaCorte ? input.processoCorte : null;
+        const rotacaoSalva = usaCorte ? input.rotacaoPermitida : "livre";
+        const espacamentoSalvo = usaCorte && input.espacamentoMm != null ? String(input.espacamentoMm) : null;
+        const margemSalva = usaCorte && input.margemBordaMm != null ? String(input.margemBordaMm) : null;
         const espessuraSalva = input.espessuraMm && (usaDadosChapa || usaDadosBobina || (usaDadosPerfil && perfilUsaEspessura)) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
@@ -291,6 +306,10 @@ export const materiasPrimasRouter = router({
           perfilComprimentoMm: perfilSalvo(input.perfilComprimentoMm),
           bobinaCustoBase: bobinaCustoBaseSalva,
           bobinaComprimentoRoloMm: bobinaComprimentoRoloSalvo,
+          processoCorte: processoSalvo,
+          rotacaoPermitida: rotacaoSalva,
+          espacamentoMm: espacamentoSalvo,
+          margemBordaMm: margemSalva,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
@@ -305,6 +324,10 @@ export const materiasPrimasRouter = router({
             perfilComprimentoMm: perfilSalvo(input.perfilComprimentoMm),
             bobinaCustoBase: bobinaCustoBaseSalva,
             bobinaComprimentoRoloMm: bobinaComprimentoRoloSalvo,
+            processoCorte: processoSalvo,
+            rotacaoPermitida: rotacaoSalva,
+            espacamentoMm: espacamentoSalvo,
+            margemBordaMm: margemSalva,
             updatedAt: now,
           },
         });

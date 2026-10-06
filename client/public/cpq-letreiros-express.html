@@ -4499,6 +4499,24 @@ async function executarNestingFactibilidadeReal(formatosTemporarios=REAL.nesting
   }finally{ REAL.nestingCarregando=false; }
 }
 
+/* Política de corte por matéria-prima (cadastro em Administração > Produtos > Matérias-primas). Mesma precedência de
+ * shared/politica-corte.ts: valor próprio > padrão do processo > padrão do orçamento. Só o material ESCOVADO restringe a rotação
+ * (0° e 180°); os demais giram livremente. Os valores definitivos são resolvidos no servidor; aqui é só para mostrar ao vendedor. */
+const PROCESSOS_CORTE_CPQ = {laser:{rotulo:'Laser', espacamento:3, margem:8}, router:{rotulo:'Router CNC', espacamento:8, margem:12}, plasma:{rotulo:'Plasma', espacamento:10, margem:20}, faca:{rotulo:'Faca / lâmina', espacamento:3, margem:5}};
+function politicaCorteResolvida(pol, config){
+  const processo = pol && PROCESSOS_CORTE_CPQ[pol.processoCorte] ? PROCESSOS_CORTE_CPQ[pol.processoCorte] : null;
+  const proprio = valor => valor != null && Number.isFinite(Number(valor)) ? Number(valor) : null;
+  const espacamento = proprio(pol && pol.espacamentoMm) ?? (processo ? processo.espacamento : Number(config.espacamentoMm) || 0);
+  const margem = proprio(pol && pol.margemBordaMm) ?? (processo ? processo.margem : Number(config.margemBordaMm) || 0);
+  const veio = !!pol && pol.rotacaoPermitida === 'veio';
+  return {processo, espacamento, margem, veio, temPolitica: !!(processo || veio || proprio(pol && pol.espacamentoMm) != null || proprio(pol && pol.margemBordaMm) != null)};
+}
+/** ' · processo Laser · escovado: só 0° e 180°' (ou vazio) a partir do resultado do servidor. */
+function textoProcessoRotacaoNesting(material){
+  const processo = PROCESSOS_CORTE_CPQ[material.processo_corte];
+  return (processo ? ' · processo ' + processo.rotulo : '') + (material.rotacao_permitida === 'veio' ? ' · escovado: só 0° e 180°' : '');
+}
+
 function renderConfiguracaoNestingReal(){
   const config=REAL.nestingConfiguracao||{espacamentoMm:3,margemBordaMm:5};
   const idsBrutos=REAL.nestingMateriaPrimaIds?.length
@@ -4512,7 +4530,7 @@ function renderConfiguracaoNestingReal(){
   const nomes=new Map((catalog.materias||[]).map(material=>[Number(material.id),material.nome]));
   const linhas=[];
   linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">');
-  linhas.push('<div class="cardhead"><div><h4>Chapas da composição</h4><p>O nesting roda sozinho para cada chapa vinculada à Face, Aro ou Fundo do kit e calcula a área de consumo usada no preço.</p></div></div>');
+  linhas.push('<div class="cardhead"><div><h4>Chapas da composição</h4><p>O nesting roda sozinho para cada chapa vinculada à Face, Aro ou Fundo do kit e calcula a área de consumo usada no preço. O espaço e a margem abaixo são o padrão do orçamento: a matéria-prima com processo de corte cadastrado usa os valores dela (mostrados em azul na lista).</p></div></div>');
   linhas.push('<div class="grid2" style="margin-top:10px;">');
   linhas.push('<label class="field">Distanciamento entre peças (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.espacamentoMm)+'" data-act="nesting-espacamento"></label>');
   linhas.push('<label class="field">Distanciamento da borda (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.margemBordaMm)+'" data-act="nesting-margem-borda"></label>');
@@ -4532,7 +4550,9 @@ function renderConfiguracaoNestingReal(){
     const opcoes=chapas.filter(chapa=>chapa.ativo!==false&&Number(chapa.mubisysMateriaPrimaId)===id);
     if(opcoes.length){
       const resumo=opcoes.map(chapa=>escaparHtml(chapa.nome||'Formato cadastrado')+' · '+chapa.larguraMm+' × '+chapa.alturaMm+' mm').join(' / ');
-      linhas.push('<div class="role-note"><b>'+escaparHtml(nomes.get(id)||('Matéria-prima '+id))+':</b> '+resumo+'</div>');
+      const politica = politicaCorteResolvida(opcoes[0].politica, config);
+      const textoPolitica = politica.temPolitica ? '<div style="margin-top:2px;color:var(--accent-ink);">'+(politica.processo?'Processo de corte: <b>'+politica.processo.rotulo+'</b> · ':'')+'espaço entre peças <b>'+politica.espacamento+' mm</b> · margem de borda <b>'+politica.margem+' mm</b>'+(politica.veio?' · <b>escovado: só gira 0° e 180°</b>':'')+'</div>' : '';
+      linhas.push('<div class="role-note"><b>'+escaparHtml(nomes.get(id)||('Matéria-prima '+id))+':</b> '+resumo+textoPolitica+'</div>');
     }
   }
   for(const id of semFormato){
@@ -4671,7 +4691,7 @@ function pranchaNestingSvg(material, indice){
   return `<svg id="prancha-nesting-${material.id_materia_prima}-${indice}" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="width:100%;height:auto;background:#fff;border:1px solid var(--border);border-radius:8px;">
     <rect width="${width}" height="${height}" fill="#fff"/>
     <text x="${drawX}" y="70" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#0f172a">PRANCHA DE NESTING — ${titulo}</text>
-    <text x="${drawX}" y="105" font-family="Arial,sans-serif" font-size="15" fill="#475569">${nomeMat} · ${rotuloChapa} ${escaparHtml(material.nome_chapa_utilizada)}${n > 1 ? ` · chapa ${indice + 1} de ${n}` : ''} · espaçamento ${fmt(material.espacamento_pecas_mm, 1)} mm · borda ${fmt(material.margem_borda_mm, 1)} mm</text>
+    <text x="${drawX}" y="105" font-family="Arial,sans-serif" font-size="15" fill="#475569">${nomeMat} · ${rotuloChapa} ${escaparHtml(material.nome_chapa_utilizada)}${n > 1 ? ` · chapa ${indice + 1} de ${n}` : ''} · espaçamento ${fmt(material.espacamento_pecas_mm, 1)} mm · borda ${fmt(material.margem_borda_mm, 1)} mm${escaparHtml(textoProcessoRotacaoNesting(material))}</text>
     <defs><marker id="dim-arrow-n" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/></marker></defs>
     <svg x="${sx}" y="${sy}" width="${sw}" height="${sh}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${conteudoSvgNesting(material, 'prancha', indice)}${bloco}</svg>
     <line x1="${sx}" y1="${y2 + 22}" x2="${x2}" y2="${y2 + 22}" stroke="#334155" marker-start="url(#dim-arrow-n)" marker-end="url(#dim-arrow-n)"/>

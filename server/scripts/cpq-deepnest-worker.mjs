@@ -55,6 +55,8 @@ function validateInput(input) {
     throw new Error("O espaçamento precisa estar entre 0 e 50 mm.");
   if (!Number.isFinite(input.timeoutMs) || input.timeoutMs < 1_000 || input.timeoutMs > 120_000)
     throw new Error("O timeout do Deepnest precisa estar entre 1 e 120 segundos.");
+  if (input.rotacoes != null && (!Number.isInteger(input.rotacoes) || input.rotacoes < 1 || input.rotacoes > 360))
+    throw new Error("As rotações do Deepnest precisam ser um inteiro entre 1 e 360.");
   return pecas;
 }
 
@@ -231,7 +233,8 @@ function main() {
         timeout: input.timeoutMs,
         spacing: input.espacamentoMm,
         curveTolerance: 0.3,
-        rotations: 72,
+        // Escovado (veio): 2 rotações = só 0° e 180°. Sem o campo, mantém as 72 de sempre.
+        rotations: input.rotacoes ?? 72,
         populationSize: 10,
         mutationRate: 10,
         threads: 1,

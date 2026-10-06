@@ -388,6 +388,12 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   bobinaCustoBase: varchar("bobina_custo_base", { length: 8 }),
   // Bobina cobrada "por rolo": comprimento total do rolo em mm, para converter o custo do rolo em consumo.
   bobinaComprimentoRoloMm: decimal("bobina_comprimento_rolo_mm", { precision: 14, scale: 3 }),
+  // Política de corte no nesting (chapa e bobina): processo (laser/router/plasma/faca), rotação permitida (livre, quadrantes, veio
+  // 0°/180°, fixa) e espaçamento/margem próprios. Nulo = padrão do processo ou do orçamento (ver shared/politica-corte.ts).
+  processoCorte: varchar("processo_corte", { length: 12 }),
+  rotacaoPermitida: varchar("rotacao_permitida", { length: 12 }).default("livre").notNull(),
+  espacamentoMm: decimal("espacamento_mm", { precision: 6, scale: 2 }),
+  margemBordaMm: decimal("margem_borda_mm", { precision: 6, scale: 2 }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;

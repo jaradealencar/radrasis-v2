@@ -655,6 +655,14 @@ avançando pelo comprimento da chapa como quem fatia um pão; peças pequenas en
 respeitado (verificado por geometria em `cpq-nesting-contorno.test.ts`); prazo de 12 s por chamada, depois vale o de
 caixas). Entre as duas orientações da mesma chapa vale a de **menor consumo** (antes escolhia a de maior). É uma
 estimativa conservadora (máscara até 1 célula maior por borda).
+**Política de corte por matéria-prima (pedido de 05/10/2026):** `materia_prima_cadastros` (migration `0088`) ganhou
+`processo_corte` (laser/router/plasma/faca), `rotacao_permitida` (`livre` | `veio`), `espacamento_mm` e `margem_borda_mm`; edita-se
+em Administração > Produtos > Matérias-primas (só chapa e bobina). Precedência de espaçamento/margem: valor próprio > padrão
+do processo > padrão do orçamento (`shared/politica-corte.ts`, resolvido no servidor por `carregarPoliticaCorte`). **Só o material
+escovado tem regra de rotação**: `veio` limita as peças a 0° e 180° (motor interno e `rotations: 2` no Deepnest local/remoto);
+os demais ficam `livre`, como sempre. A margem própria vale também na factibilidade (`CpqFactibilidadeMaterial.margemBordaMm`)
+e cada resultado do nesting traz `espacamento_pecas_mm`, `margem_borda_mm`, `processo_corte` e `rotacao_permitida`. Valores
+iniciais dos processos são pontos de partida (laser 3/8, router 8/12, plasma 10/20, faca 3/5 mm), não normas.
 **Emendas inteligentes (pedido de 05/10/2026):** peça maior que a chapa é fatiada por `clipToSheets`
 (`cpqFactibilidadeFabricacao.ts`); as linhas de corte vão para o ponto de **menor material** (`limitesDeCorte`, janela de 70–100%
 do tamanho útil; vãos entre letras e hastes finas), cada linha informa `materialCortadoMm` e o painel REQUER_APROVACAO_EMENDA

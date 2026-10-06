@@ -93,6 +93,8 @@ export type CpqFactibilidadeMaterial = {
   chapas: CpqFactibilidadeChapa[];
   /** Ausente em fluxos antigos: mantém o comportamento de nesting da arte inteira. */
   lotes?: CpqFactibilidadeLoteMaterial[];
+  /** Margem de borda própria deste material (cadastro/processo de corte); ausente = a margem do orçamento. */
+  margemBordaMm?: number;
 };
 
 export type CpqLinhaCorte = {
@@ -1178,7 +1180,10 @@ export function calcularFactibilidadeFabricacao(input: {
   const pecasPorMaterial = new Map<number, ParsedPiece[]>();
   const avisosDeFundo: string[] = [];
   for (const material of input.materiais) {
-    const board = maiorChapa(material, margemBordaMm);
+    const margemMaterialMm = material.margemBordaMm ?? margemBordaMm;
+    if (!Number.isFinite(margemMaterialMm) || margemMaterialMm < 0 || margemMaterialMm > 50)
+      throw new CpqFactibilidadeError(`A margem de borda de ${material.nome} precisa ficar entre 0 e 50 mm.`, "invalid_geometry");
+    const board = maiorChapa(material, margemMaterialMm);
     if (!board)
       throw new CpqFactibilidadeError(
         `Não há chapa ativa cadastrada para ${material.nome} (${material.id}).`,

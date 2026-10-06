@@ -8,6 +8,7 @@ import { calcularPesoLinha, somarPesos, type DadosPesoMateria } from "../service
 import { auth } from "../_core/auth";
 import { listaPantoneValida, normalizarListaPantone } from "../../shared/pantone-referencia";
 import { carregarCustoBobina } from "../db/bobinaCusto";
+import { carregarPoliticaCorte } from "../db/politicaCorte";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
@@ -202,15 +203,21 @@ async function listarChapas(req: Request, res: Response): Promise<void> {
     );
   res.setHeader("Cache-Control", "private, no-store");
   const cadastros = rows.length
-    ? await db.select({ id: materiaPrimaCadastros.mubisysMateriaPrimaId, espessuraMm: materiaPrimaCadastros.espessuraMm, densidadeKgM3: materiaPrimaCadastros.densidadeKgM3 })
+    ? await db.select({ id: materiaPrimaCadastros.mubisysMateriaPrimaId, espessuraMm: materiaPrimaCadastros.espessuraMm, densidadeKgM3: materiaPrimaCadastros.densidadeKgM3, processoCorte: materiaPrimaCadastros.processoCorte, rotacaoPermitida: materiaPrimaCadastros.rotacaoPermitida, espacamentoMm: materiaPrimaCadastros.espacamentoMm, margemBordaMm: materiaPrimaCadastros.margemBordaMm })
         .from(materiaPrimaCadastros)
         .where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, Array.from(new Set(rows.map(row => row.mubisysMateriaPrimaId)))))
     : [];
   const dadosPorMateria = new Map(cadastros.map(item => [item.id, {
     espessuraMm: item.espessuraMm == null ? null : Number(item.espessuraMm),
     densidadeGCm3: item.densidadeKgM3 == null ? null : kgM3ParaGCm3(Number(item.densidadeKgM3)),
+    politica: {
+      processoCorte: item.processoCorte,
+      rotacaoPermitida: item.rotacaoPermitida,
+      espacamentoMm: item.espacamentoMm == null ? null : Number(item.espacamentoMm),
+      margemBordaMm: item.margemBordaMm == null ? null : Number(item.margemBordaMm),
+    },
   }]));
-  res.json({ chapas: rows.map(row => ({ ...row, espessuraMm: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.espessuraMm ?? null, densidadeGCm3: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.densidadeGCm3 ?? null })) });
+  res.json({ chapas: rows.map(row => ({ ...row, espessuraMm: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.espessuraMm ?? null, densidadeGCm3: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.densidadeGCm3 ?? null, politica: dadosPorMateria.get(row.mubisysMateriaPrimaId)?.politica ?? null })) });
 }
 
 const pesoInput = z.object({
@@ -466,6 +473,8 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
   ]);
   const byId = new Map(catalogo.map(material => [material.id, material]));
   const custosBobina = await carregarCustoBobina(db, parsed.data.materiaPrimaIds);
+  // Processo de corte, rotação (escovado: 0°/180°) e espaçamento/margem de cada matéria-prima; o padrão do orçamento vale onde não há política.
+  const politicas = await carregarPoliticaCorte(db, parsed.data.materiaPrimaIds, { espacamentoMm: parsed.data.espacamentoMm, margemBordaMm: parsed.data.margemBordaMm });
   const lotesPorMaterial = new Map((parsed.data.lotesPorMaterial ?? []).map(lote => [lote.materiaPrimaId, lote.pecas]));
   const formatosManuais = new Map(parsed.data.formatosTemporarios.map(formato => [formato.materiaPrimaId, formato]));
   const chapasAtivas = chapas.filter(chapa => chapa.ativo);
@@ -498,6 +507,10 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
         }] : [];
       })(),
       bobinaCusto: custosBobina.get(id) ?? null,
+      espacamentoMm: politicas.get(id)?.espacamentoMm,
+      margemBordaMm: politicas.get(id)?.margemBordaMm,
+      rotacao: politicas.get(id)?.rotacao,
+      processoCorte: politicas.get(id)?.processo ?? null,
       ...(lotesPorMaterial.has(id) ? { pecas: lotesPorMaterial.get(id)! } : {}),
     });
   }

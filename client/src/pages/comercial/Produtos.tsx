@@ -1,4 +1,5 @@
 import { hexesDoPantone } from "@shared/pantone-referencia";
+import { PADRAO_PROCESSO_CORTE, PROCESSOS_CORTE, ROTACOES_PERMITIDAS, ROTULO_PROCESSO_CORTE, ROTULO_ROTACAO, type ProcessoCorte, type RotacaoPermitida } from "@shared/politica-corte";
 import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaAltura, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
@@ -296,6 +297,10 @@ function DialogEditarMateriaPrima({
   const [bobinas, setBobinas] = useState<FormatoBobinaForm[]>([]);
   const [bobinaCustoBase, setBobinaCustoBase] = useState<"" | "m2" | "ml" | "rolo">("");
   const [bobinaComprimentoRolo, setBobinaComprimentoRolo] = useState("");
+  const [processoCorte, setProcessoCorte] = useState<"" | ProcessoCorte>("");
+  const [rotacaoPermitida, setRotacaoPermitida] = useState<RotacaoPermitida>("livre");
+  const [espacamentoCorte, setEspacamentoCorte] = useState("");
+  const [margemCorte, setMargemCorte] = useState("");
   const [origemBusca, setOrigemBusca] = useState("");
   const [origemId, setOrigemId] = useState("");
   const [copiarCor, setCopiarCor] = useState(false);
@@ -334,6 +339,10 @@ function DialogEditarMateriaPrima({
     })));
     setBobinaCustoBase(fonte.bobinaCustoBase ?? sugerirBaseCustoBobina((clonar ? material : fonte)?.unidadeCusto ?? ""));
     setBobinaComprimentoRolo(fonte.bobinaComprimentoRoloMm == null ? "" : String(fonte.bobinaComprimentoRoloMm));
+    setProcessoCorte(fonte.processoCorte ?? "");
+    setRotacaoPermitida(fonte.rotacaoPermitida ?? "livre");
+    setEspacamentoCorte(fonte.espacamentoMm == null ? "" : String(fonte.espacamentoMm));
+    setMargemCorte(fonte.margemBordaMm == null ? "" : String(fonte.margemBordaMm));
   };
 
   useEffect(() => {
@@ -412,6 +421,12 @@ function DialogEditarMateriaPrima({
       toast.error("Informe o comprimento do rolo em milímetros.");
       return;
     }
+    const medidaCorte = (texto: string) => (texto.trim() === "" ? null : Number(texto));
+    const espacamentoSalvo = medidaCorte(espacamentoCorte), margemSalva = medidaCorte(margemCorte);
+    if ([espacamentoSalvo, margemSalva].some(valor => valor != null && (!Number.isFinite(valor) || valor < 0 || valor > 50))) {
+      toast.error("O espaço entre peças e a margem de borda precisam ficar entre 0 e 50 mm.");
+      return;
+    }
     salvar.mutate({
       mubisysMateriaPrimaId: material.id,
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
@@ -426,6 +441,10 @@ function DialogEditarMateriaPrima({
       bobinas: categoria?.usaDadosBobina ? formatosBobina : [],
       bobinaCustoBase: categoria?.usaDadosBobina && bobinaCustoBase ? bobinaCustoBase : null,
       bobinaComprimentoRoloMm: categoria?.usaDadosBobina && bobinaCustoBase === "rolo" ? Number(bobinaComprimentoRolo) : null,
+      processoCorte: (categoria?.usaDadosChapa || categoria?.usaDadosBobina) && processoCorte ? processoCorte : null,
+      rotacaoPermitida: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? rotacaoPermitida : "livre",
+      espacamentoMm: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? espacamentoSalvo : null,
+      margemBordaMm: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? margemSalva : null,
     });
   };
 
@@ -563,6 +582,41 @@ function DialogEditarMateriaPrima({
                   </div>
                 </div>
               ))}
+            </div>
+          </div>}
+
+          {(categoria?.usaDadosChapa || categoria?.usaDadosBobina) && <div className="space-y-4 rounded-lg border p-4">
+            <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Corte e encaixe (nesting)</h3><p className="text-xs text-muted-foreground">O processo de corte define o espaçamento entre peças e a margem de borda iniciais; você pode sobrescrevê-los. Vazio = padrão do processo, ou o padrão do orçamento se não houver processo.</p></div></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Processo de corte</Label>
+                <Select value={processoCorte || "padrao"} onValueChange={valor => setProcessoCorte(valor === "padrao" ? "" : valor as ProcessoCorte)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="padrao">Padrão do orçamento</SelectItem>
+                    {PROCESSOS_CORTE.map(processo => <SelectItem key={processo} value={processo}>{ROTULO_PROCESSO_CORTE[processo]} · espaço {PADRAO_PROCESSO_CORTE[processo].espacamentoMm} mm · borda {PADRAO_PROCESSO_CORTE[processo].margemBordaMm} mm</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {processoCorte && <p className="text-xs text-muted-foreground">{PADRAO_PROCESSO_CORTE[processoCorte].dica}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>Rotação das peças</Label>
+                <Select value={rotacaoPermitida} onValueChange={valor => setRotacaoPermitida(valor as RotacaoPermitida)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ROTACOES_PERMITIDAS.map(rotacao => <SelectItem key={rotacao} value={rotacao}>{ROTULO_ROTACAO[rotacao]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Só o material <b>escovado</b> (galvanizada, acrílico ou ACM com veio) precisa de regra: o nesting passa a girar as peças apenas 0° e 180° para o veio ficar no mesmo sentido. Os demais ficam em "Livre".</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Espaço entre peças (mm)</Label>
+                <Input type="number" min="0" max="50" step="0.1" value={espacamentoCorte} onChange={event => setEspacamentoCorte(event.target.value)} placeholder={processoCorte ? `Padrão do processo: ${PADRAO_PROCESSO_CORTE[processoCorte].espacamentoMm}` : "Padrão do orçamento"} />
+              </div>
+              <div className="space-y-2">
+                <Label>Margem de borda da chapa (mm)</Label>
+                <Input type="number" min="0" max="50" step="0.1" value={margemCorte} onChange={event => setMargemCorte(event.target.value)} placeholder={processoCorte ? `Padrão do processo: ${PADRAO_PROCESSO_CORTE[processoCorte].margemBordaMm}` : "Padrão do orçamento"} />
+              </div>
             </div>
           </div>}
 

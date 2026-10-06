@@ -1,5 +1,6 @@
 import { contornosFisicosDoSvg, CpqFactibilidadeError } from "./cpqFactibilidadeFabricacao";
 import { empacotarPorContorno, TempoEsgotadoRaster } from "./cpqNestingRaster";
+import { angulosPermitidos, type RotacaoPermitida } from "../../shared/politica-corte";
 
 /**
  * Motor de nesting interno (sem addon nativo). Roda dois empacotadores e fica com o melhor:
@@ -90,7 +91,7 @@ type PecaPreparada = {
   casco: Par[];
 };
 
-function prepararPeca(peca: PecaMotorInterno, indice: number): PecaPreparada {
+function prepararPeca(peca: PecaMotorInterno, indice: number, angulosCaixa: number[] = ANGULOS): PecaPreparada {
   let poligonos: ReturnType<typeof contornosFisicosDoSvg>;
   try {
     poligonos = contornosFisicosDoSvg(peca.svg, peca.larguraMm, peca.alturaMm);
@@ -108,7 +109,7 @@ function prepararPeca(peca: PecaMotorInterno, indice: number): PecaPreparada {
     cascas.push(...casca);
   }
   const casco = envoltoria(cascas);
-  const caixas = ANGULOS.map(graus => {
+  const caixas = angulosCaixa.map(graus => {
     const rad = (graus * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
@@ -221,9 +222,10 @@ export function executarMotorInterno(
   larguraMm: number,
   alturaMm: number,
   espacamentoMm: number,
-  opcoes: { bobina?: boolean } = {},
+  opcoes: { bobina?: boolean; /** Material escovado: só 0° e 180°. */ rotacao?: RotacaoPermitida } = {},
 ): ResultadoMotorInterno {
-  const preparadas = pecas.map(prepararPeca);
+  const permitidos = angulosPermitidos(opcoes.rotacao);
+  const preparadas = pecas.map((peca, indice) => prepararPeca(peca, indice, permitidos ?? ANGULOS));
   const bobina = !!opcoes.bobina;
   const consumo = (t: { extensaoX: number; extensaoY: number }) => (bobina ? t.extensaoX : t.extensaoX * t.extensaoY);
   let melhor = tentar(preparadas, ESTRATEGIAS[0], larguraMm, alturaMm, espacamentoMm, bobina);
@@ -236,7 +238,7 @@ export function executarMotorInterno(
   try {
     const posicoes = empacotarPorContorno(
       preparadas.map(peca => ({ indice: peca.indice, aneis: peca.aneis, casco: peca.casco, area: peca.area })),
-      larguraMm, alturaMm, espacamentoMm, { prazoMs: PRAZO_CONTORNO_MS },
+      larguraMm, alturaMm, espacamentoMm, { prazoMs: PRAZO_CONTORNO_MS, angulos: permitidos },
     );
     const colocadasRaster = posicoes.map((posicao, id) => ({
       id, source: posicao.indice, xMm: posicao.xMm, yMm: posicao.yMm, larguraMm: posicao.larguraMm, alturaMm: posicao.alturaMm, rotacaoGraus: posicao.rotacaoGraus,
