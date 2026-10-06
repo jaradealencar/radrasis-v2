@@ -14,6 +14,31 @@ const R = "M300 20H400V120H300Z";
 const miolo = `<path d="${O}" fill="#000" fill-rule="evenodd"/><path d="${R}" fill="#000"/>`;
 const envolver = (corpo: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 250" width="1000" height="250">${corpo}</svg>`;
 
+describe("fundo derivado da silhueta da face", () => {
+  const pvc = { id: 4521, nome: "PVC Expandido 10mm", lotes: [{ camada: "fundo" as const }], chapas };
+
+  it("SVG só com a camada Face: o material do Fundo recebe a mesma silhueta (com o vazado) e um aviso", () => {
+    const resultado = calcularFactibilidadeFabricacao({
+      svg: envolver(`<g id="Face">${miolo}</g>`), larguraSvgMm: 1000, alturaSvgMm: 250, materiais: [material, pvc],
+    });
+    expect(resultado.status_factibilidade).toBe("APTO_NESTING");
+    const porId = new Map(resultado.materiais.map(item => [item.id_materia_prima, item]));
+    expect(porId.get(4520)!.pecas_para_nesting).toHaveLength(2);
+    const fundo = porId.get(4521)!.pecas_para_nesting;
+    expect(fundo).toHaveLength(2);
+    expect(fundo.every(peca => peca.id.startsWith("fundo-"))).toBe(true);
+    expect(resultado.avisos.some(aviso => /fundo de PVC Expandido 10mm usa a mesma silhueta da face/.test(aviso))).toBe(true);
+  });
+
+  it("com camada Fundo própria no SVG, não deriva da face", () => {
+    const resultado = calcularFactibilidadeFabricacao({
+      svg: envolver(`<g id="Face">${miolo}</g><g id="Fundo"><path d="${R}" fill="#000"/></g>`), larguraSvgMm: 1000, alturaSvgMm: 250, materiais: [pvc],
+    });
+    expect(resultado.materiais[0].pecas_para_nesting).toHaveLength(1);
+    expect(resultado.avisos.some(aviso => /fundo de/.test(aviso))).toBe(false);
+  });
+});
+
 describe("contorno de corte CNC na factibilidade", () => {
   it("SVG sem camadas não tem peças na camada Face (por isso o CPQ acrescenta o grupo)", () => {
     expect(() => calcularFactibilidadeFabricacao({ svg: envolver(miolo), larguraSvgMm: 1000, alturaSvgMm: 250, materiais: [material] }))

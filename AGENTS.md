@@ -821,7 +821,9 @@ Migrations `0075_chubby_tenebrous.sql` and `0076_reconciliar_retalho_bobina.sql`
 add the settings.
 
 The static CPQ HTML calls the factibility and nesting routes. Kit roles Face,
-Aro and Fundo select matching named SVG layers; approved color path indexes can
+Aro and Fundo select matching named SVG layers (só chapa/bobina com formato cadastrado entra no nesting; perfil não;
+SVG vetorizado de imagem só tem a camada Face, então o Fundo **deriva da silhueta da face** — `fundoSegueSilhuetaDaFace`
+em `cpqFactibilidadeFabricacao.ts`, com aviso no resultado; Aro em chapa ainda exige camada própria); approved color path indexes can
 split Face geometry across materials. Each material receives its own signed piece
 batch, and the server compares all active formats before returning the chosen
 board, placement metrics and estimated material/waste cost.

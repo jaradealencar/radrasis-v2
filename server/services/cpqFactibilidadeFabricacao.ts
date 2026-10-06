@@ -1030,6 +1030,11 @@ function updateSvgPhysicalSize(svg: string, widthMm: number, heightMm: number): 
   return svg.replace(root, nextRoot);
 }
 
+/** O SVG não tem camada Fundo, mas tem Face: o fundo é derivado da silhueta da face. */
+function fundoSegueSilhuetaDaFace(parsed: ParsedSvg): boolean {
+  return !parsed.pieces.some(piece => piece.camada === "fundo") && parsed.pieces.some(piece => piece.camada === "face");
+}
+
 function pecasDaMateriaPrima(parsed: ParsedSvg, material: CpqFactibilidadeMaterial): ParsedPiece[] {
   if (!material.lotes?.length) return parsed.pieces.map(piece => ({ ...piece, id: idPecaNesting(piece) }));
   const selecionadas = new Map<string, ParsedPiece>();
@@ -1046,6 +1051,12 @@ function pecasDaMateriaPrima(parsed: ParsedSvg, material: CpqFactibilidadeMateri
     for (const piece of parsed.pieces) {
       if (piece.camada !== lote.camada || (indexes && !indexes.has(piece.pathIndex))) continue;
       selecionadas.set(`${piece.pathIndex}:${piece.id}`, piece);
+    }
+    if (lote.camada === "fundo" && fundoSegueSilhuetaDaFace(parsed)) {
+      // SVG vetorizado a partir de imagem só tem a camada Face: a placa do fundo segue a mesma silhueta (com os vazados).
+      for (const piece of parsed.pieces) {
+        if (piece.camada === "face") selecionadas.set(`fundo:${piece.pathIndex}:${piece.id}`, { ...piece, camada: "fundo" });
+      }
     }
   }
   const pieces = [...selecionadas.values()];
@@ -1137,6 +1148,7 @@ export function calcularFactibilidadeFabricacao(input: {
   const parsed = parseSvg(input.svg, input.larguraSvgMm, input.alturaSvgMm);
   const boards = new Map<number, ReturnType<typeof canonicalBoard>>();
   const pecasPorMaterial = new Map<number, ParsedPiece[]>();
+  const avisosDeFundo: string[] = [];
   for (const material of input.materiais) {
     const board = maiorChapa(material, margemBordaMm);
     if (!board)
@@ -1146,6 +1158,8 @@ export function calcularFactibilidadeFabricacao(input: {
       );
     boards.set(material.id, board);
     pecasPorMaterial.set(material.id, pecasDaMateriaPrima(parsed, material));
+    if (material.lotes?.some(lote => lote.camada === "fundo") && fundoSegueSilhuetaDaFace(parsed))
+      avisosDeFundo.push(`O fundo de ${material.nome} usa a mesma silhueta da face (o SVG não tem camada Fundo).`);
   }
 
   let fatorEscalaNecessario = 1;
@@ -1200,6 +1214,7 @@ export function calcularFactibilidadeFabricacao(input: {
       opcoes_disponiveis: [],
       materiais,
       avisos: [
+        ...avisosDeFundo,
         `Projeto reduzido proporcionalmente em ${((1 - fatorEscala) * 100).toFixed(2)}% para caber nas chapas.`,
       ],
     };
@@ -1223,7 +1238,7 @@ export function calcularFactibilidadeFabricacao(input: {
       detalhes_corte: { pecas_afetadas: [], quantidade_emendas: 0, coordenadas_linha_corte: [] },
       opcoes_disponiveis: [],
       materiais,
-      avisos: [],
+      avisos: [...avisosDeFundo],
     };
   }
 
@@ -1347,6 +1362,7 @@ export function calcularFactibilidadeFabricacao(input: {
     opcoes_disponiveis: OPCOES_FACTIBILIDADE,
     materiais: materialResults,
     avisos: [
+      ...avisosDeFundo,
       `Cada fragmento deixa margem de segurança de ${MARGEM_CORTE_MM} mm em cada borda da chapa.`,
       "Curvas SVG são aproximadas por segmentos com tolerância física de 0,1 mm antes das operações booleanas.",
     ],
