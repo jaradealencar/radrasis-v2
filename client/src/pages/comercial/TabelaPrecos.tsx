@@ -1682,6 +1682,32 @@ function ProdutividadesSolda() {
 
       <Card>
         <CardContent className="space-y-4 p-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-md border bg-slate-50 p-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <Search
+                className="h-5 w-5 shrink-0 text-blue-600"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <label
+                  htmlFor="produtividade-solda-busca"
+                  className="mb-1 block text-sm font-semibold text-slate-700"
+                >
+                  Buscar produtividade de solda
+                </label>
+                <Input
+                  id="produtividade-solda-busca"
+                  placeholder="Digite o nome, código ou categoria MubiSys..."
+                  value={busca}
+                  onChange={event => setBusca(event.target.value)}
+                  className="bg-white"
+                />
+              </div>
+            </div>
+            <span className="shrink-0 text-sm text-muted-foreground">
+              {filtradas.length} de {produtividades.length} item(ns)
+            </span>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Material
@@ -1741,17 +1767,6 @@ function ProdutividadesSolda() {
                 {filtro.label}
               </Button>
             ))}
-          </div>
-          <div className="flex items-center gap-2 border-t pt-3">
-            <Search className="h-4 w-4 shrink-0 text-slate-400" />
-            <Input
-              placeholder="Buscar nome ou código MubiSys..."
-              value={busca}
-              onChange={event => setBusca(event.target.value)}
-            />
-            <span className="shrink-0 text-sm text-muted-foreground">
-              {filtradas.length} de {produtividades.length}
-            </span>
           </div>
         </CardContent>
       </Card>
