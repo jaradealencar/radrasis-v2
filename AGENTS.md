@@ -734,7 +734,7 @@ caixas). Entre as duas orientações da mesma chapa vale a de **menor consumo** 
 estimativa conservadora (máscara até 1 célula maior por borda).
 **Política de corte por matéria-prima (pedido de 05/10/2026):** `materia_prima_cadastros` (migration `0088`) ganhou
 `processo_corte` (laser/router/plasma/faca), `rotacao_permitida` (`livre` | `veio`), `espacamento_mm` e `margem_borda_mm`; edita-se
-em Administração > Produtos > Matérias-primas (só chapa e bobina). Precedência de espaçamento/margem: valor próprio > padrão
+em Administração > Produtos > Matérias-primas (**só chapa**: por decisão do usuário em 06/10/2026 bobina e perfil não têm o bloco "Corte e encaixe (nesting)"; salvar uma bobina zera esses campos). Precedência de espaçamento/margem: valor próprio > padrão
 do processo > padrão do orçamento (`shared/politica-corte.ts`, resolvido no servidor por `carregarPoliticaCorte`). **Só o material
 escovado tem regra de rotação**: `veio` limita as peças a 0° e 180° (motor interno e `rotations: 2` no Deepnest local/remoto);
 os demais ficam `livre`, como sempre. A margem própria vale também na factibilidade (`CpqFactibilidadeMaterial.margemBordaMm`)
@@ -815,8 +815,10 @@ largura × esse comprimento: `area_chapa_utilizada_m2` = faixa cobrada, `area_so
 `formato: "bobina"`, `comprimento_consumido_mm` e `largura_bobina_mm`. Custo em m² usa
 a faixa cobrada, em m/ml usa o comprimento consumido (não o perímetro); outra unidade
 bloqueia com alerta. Com várias larguras vence a que cobra menos material. Margem
-lateral de borda do rolo vem da política de corte da matéria-prima (`margem_borda_mm`, vale nas duas bordas do rolo e no início/fim do comprimento consumido;
-o cadastro da bobina tem uma só largura, não há "largura total × útil" separadas: a margem faz esse papel). Dimensões
+lateral de borda do rolo e o espaçamento entre peças vêm do padrão do orçamento (a bobina não tem política de corte própria desde 06/10/2026;
+a margem vale nas duas bordas do rolo e no início/fim do comprimento consumido; o cadastro da bobina tem uma só largura, não há
+"largura total × útil" separadas). Linhas de bobina gravadas antes disso podem ainda ter `margem_borda_mm`/`espacamento_mm`, que o
+nesting continua lendo até a bobina ser salva de novo na tela. Dimensões
 de material (largura, altura, espessura, comprimento) ficam sempre em mm; m²/m do
 resultado e unidades de custo do MubiSys, e as métricas de produção em metros da
 Operações (solda), seguem como estão. A bobina exige espessura (mm ou µm na tela) e densidade em g/cm³: o peso do letreiro usa área × espessura × densidade, como a chapa (sem densidade ou com fórmula que não é em área, cai no peso específico). A densidade é sempre g/cm³ na tela e kg/m³ no banco; o campo "peso específico" (kg por unidade de custo) NÃO é densidade e só aparece para categorias sem chapa, perfil ou bobina. A

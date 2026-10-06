@@ -259,7 +259,7 @@ export const materiasPrimasRouter = router({
       bobinas: formatosBobinaInput.default([]),
       bobinaCustoBase: z.enum(BOBINA_CUSTO_BASES).nullable().default(null),
       bobinaComprimentoRoloMm: z.number().finite().positive().max(10_000_000).nullable().default(null),
-      // Política de corte (só chapa e bobina): processo, rotação permitida e espaçamento/margem próprios (nulo = padrão do processo/orçamento).
+      // Política de corte (só chapa): processo, rotação permitida e espaçamento/margem próprios (nulo = padrão do processo/orçamento).
       processoCorte: z.enum(PROCESSOS_CORTE).nullable().default(null),
       rotacaoPermitida: z.enum(ROTACOES_PERMITIDAS).default("livre"),
       espacamentoMm: z.number().finite().min(0).max(50).nullable().default(null),
@@ -348,7 +348,7 @@ export const materiasPrimasRouter = router({
         const maoDeObra = ehProdutividade || ehCategoriaProdutividade(categoria?.nome);
         const pesoEspecificoSalvo = !maoDeObra && !usaDadosChapa && !usaDadosPerfil && !usaDadosBobina && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
         const perfilSalvo = (valor: number | null) => usaDadosPerfil && valor != null ? String(valor) : null;
-        const usaCorte = usaDadosChapa || usaDadosBobina;
+        const usaCorte = usaDadosChapa;
         const processoSalvo = usaCorte ? input.processoCorte : null;
         const rotacaoSalva = usaCorte ? input.rotacaoPermitida : "livre";
         const espacamentoSalvo = usaCorte && input.espacamentoMm != null ? String(input.espacamentoMm) : null;

@@ -466,10 +466,10 @@ function DialogEditarMateriaPrima({
       bobinas: categoria?.usaDadosBobina ? formatosBobina : [],
       bobinaCustoBase: categoria?.usaDadosBobina && bobinaCustoBase ? bobinaCustoBase : null,
       bobinaComprimentoRoloMm: categoria?.usaDadosBobina && bobinaCustoBase === "rolo" ? Number(bobinaComprimentoRolo) : null,
-      processoCorte: (categoria?.usaDadosChapa || categoria?.usaDadosBobina) && processoCorte ? processoCorte : null,
-      rotacaoPermitida: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? rotacaoPermitida : "livre",
-      espacamentoMm: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? espacamentoSalvo : null,
-      margemBordaMm: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? margemSalva : null,
+      processoCorte: categoria?.usaDadosChapa && processoCorte ? processoCorte : null,
+      rotacaoPermitida: categoria?.usaDadosChapa ? rotacaoPermitida : "livre",
+      espacamentoMm: categoria?.usaDadosChapa ? espacamentoSalvo : null,
+      margemBordaMm: categoria?.usaDadosChapa ? margemSalva : null,
       produtividadeTiposSolda: material.ehProdutividade ? tiposSolda : [],
       produtividadeTamanhos: material.ehProdutividade ? tamanhosProdutividade : [],
       produtividadeMateriais: material.ehProdutividade ? materiaisSolda : [],
@@ -640,7 +640,7 @@ function DialogEditarMateriaPrima({
             </div>
           </div>}
 
-          {(categoria?.usaDadosChapa || categoria?.usaDadosBobina) && <div className="space-y-4 rounded-lg border p-4">
+          {categoria?.usaDadosChapa && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Corte e encaixe (nesting)</h3><p className="text-xs text-muted-foreground">O processo de corte define o espaçamento entre peças e a margem de borda iniciais; você pode sobrescrevê-los. Vazio = padrão do processo, ou o padrão do orçamento se não houver processo.</p></div></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
