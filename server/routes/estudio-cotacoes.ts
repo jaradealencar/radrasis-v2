@@ -5,6 +5,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { estudioMapeamentoCoresCotacao, propostas } from "../../drizzle/schema";
 import { consumoGabaritoKraftM2 } from "../../shared/gabarito";
+import { MATERIAIS_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "../../shared/produtividade-solda";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import {
@@ -115,6 +116,25 @@ const snapshotSchema = z.object({
   vendedor: z.string().min(1).max(256),
   whatsappVendedor: z.string().max(32).nullable().optional().default(null),
   tituloProposta: z.string().max(256).optional().default(""),
+  // Produtividade de solda automática (06/10/2026). Sem `.default()` de propósito: cotações antigas não ganham a chave, então a
+  // assinatura delas continua a mesma. As linhas de solda vão em `materiais` como "fixo" com a quantidade (perímetro) calculada.
+  tiposFixacao: z.array(z.enum(TIPOS_SOLDA)).max(3).optional(),
+  soldaProdutividade: z.object({
+    material: z.object({
+      usado: z.enum(MATERIAIS_SOLDA),
+      origem: z.enum(["subcategoria", "tipo", "titulo", "composicao", "manual"]).nullable(),
+    }).strict().nullable(),
+    faixas: z.array(z.object({
+      faixa: z.enum(TAMANHOS_PRODUTIVIDADE),
+      elementos: z.number().int().nonnegative().max(100_000),
+      perimetroM: z.number().finite().nonnegative().max(100_000),
+      produtividadeId: z.number().int().positive().nullable(),
+      produtividadeNome: z.string().max(256).nullable(),
+      origem: z.enum(["regra", "heuristica", "manual", "nenhuma"]),
+      confianca: z.enum(["alta", "media", "baixa", "nenhuma"]),
+      regraId: z.number().int().positive().nullable(),
+    }).strict()).max(2),
+  }).strict().optional(),
   imagemReferenciaUrl: z.string().url().max(2048).nullable().optional().default(null),
   imagemRedesenhadaUrl: z.string().url().max(2048).nullable().optional().default(null),
   nestingSvg: z.string().max(1_500_000).nullable().optional().default(null),

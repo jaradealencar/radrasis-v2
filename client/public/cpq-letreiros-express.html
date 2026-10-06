@@ -795,6 +795,7 @@ function novaProposta(){
     gerarContornoCnc:true, tracedSvgCorte:null, tracedSvgCorteOriginal:null, tracedSvgCorteDe:null, corteInfo:null, corteErro:null, corteCreditos:null, svgNesting:null,
     colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:'sem_iluminacao',transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,composicaoKitOriginal:null},
     geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
+    tiposFixacao:[], solda:novoEstadoSolda(),
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
     kit:[], kitSource:'nenhuma', kitWarning:null, matQuery:'', precificacao:null,
     factibilidade:null, factibilidadeCarregando:false, factibilidadeErro:null, nestingCarregando:false, nestingMateriais:[],
@@ -907,8 +908,8 @@ function classifyGeometry(dString){
     areaPx, perimExtPx, perimIntPx,
     possivelSobreposicao,
     bboxPx:{x:bx1,y:by1,w:bx2-bx1,h:by2-by1},
-    pieces: external.map((s,i)=>({ n:i+1, bbox:s.bbox, area:s.area, d:s.d })),
-    contours:[...external.map(s=>({d:s.d,bbox:s.bbox,area:s.area,tipo:'externo'})),...internal.map(s=>({d:s.d,bbox:s.bbox,area:s.area,tipo:'vazado'}))],
+    pieces: external.map((s,i)=>({ n:i+1, bbox:s.bbox, area:s.area, len:s.len, d:s.d })),
+    contours:[...external.map(s=>({d:s.d,bbox:s.bbox,area:s.area,len:s.len,tipo:'externo'})),...internal.map(s=>({d:s.d,bbox:s.bbox,area:s.area,len:s.len,tipo:'vazado'}))],
   };
 }
 
@@ -948,14 +949,18 @@ const ALTURA_ELEMENTO_LIMITE_MM = 110;
 const ALTURA_ELEMENTO_FAIXA_PROXIMA_MM = 5;
 
 /** Classifica cada contorno externo pela altura da caixa envolvente na escala física. Compara em milímetros inteiros (o que a tela
- *  mostra: 110,4 mm continua "até 11 cm"). Cada vazado vai para a menor peça que o contém, só para o desenho. */
+ *  mostra: 110,4 mm continua "até 11 cm"). Cada vazado vai para a menor peça que o contém, para o desenho e para o perímetro:
+ *  o perímetro de um elemento é o do contorno externo mais o dos seus vazados, que é por onde a solda corre.
+ *  O resultado fica em cache pela geometria e pela escala, porque a composição o consulta a cada linha de solda. */
+let _memoAlturas = {geom:null, fator:0, resultado:null};
 function classificarAlturasElementos(geom, scaleFactor){
   if(!geom || !geom.pieces || !geom.pieces.length || !(scaleFactor>0)) return null;
+  if(_memoAlturas.geom===geom && _memoAlturas.fator===scaleFactor) return _memoAlturas.resultado;
   const mmPorPx = scaleFactor*1000;
   const itens = geom.pieces.map(p=>{
     const alturaMm = Math.round(p.bbox.height*mmPorPx);
     return {
-      n:p.n, d:p.d, bbox:p.bbox, area:p.area, vazados:[],
+      n:p.n, d:p.d, bbox:p.bbox, area:p.area, vazados:[], perimetroPx:p.len||0,
       alturaMm, larguraMm:Math.round(p.bbox.width*mmPorPx),
       grupo: alturaMm<=ALTURA_ELEMENTO_LIMITE_MM ? 'ate' : 'acima',
       proximoDoLimite: Math.abs(alturaMm-ALTURA_ELEMENTO_LIMITE_MM)<=ALTURA_ELEMENTO_FAIXA_PROXIMA_MM,
@@ -964,14 +969,24 @@ function classificarAlturasElementos(geom, scaleFactor){
   (geom.contours||[]).filter(c=>c.tipo==='vazado').forEach(vazado=>{
     let dono=null;
     itens.forEach(i=>{ if(i.area>vazado.area && bboxContains(i.bbox,vazado.bbox) && (!dono || i.area<dono.area)) dono=i; });
-    if(dono) dono.vazados.push(vazado.d);
+    if(dono){ dono.vazados.push(vazado.d); dono.perimetroPx += vazado.len||0; }
   });
-  return {
-    itens,
-    ate: itens.filter(i=>i.grupo==='ate'),
-    acima: itens.filter(i=>i.grupo==='acima'),
+  itens.forEach(i=>{ i.perimetroM = i.perimetroPx*scaleFactor; });
+  const ate = itens.filter(i=>i.grupo==='ate'), acima = itens.filter(i=>i.grupo==='acima');
+  const soma = lista => lista.reduce((total,i)=>total+i.perimetroM,0);
+  const resultado = {
+    itens, ate, acima,
     proximos: itens.filter(i=>i.proximoDoLimite),
+    perimetroAteM: soma(ate), perimetroAcimaM: soma(acima),
   };
+  _memoAlturas = {geom, fator:scaleFactor, resultado};
+  return resultado;
+}
+
+/** Perímetro total (externo + vazados), em metros, dos elementos de cada faixa de altura. */
+function perimetrosPorAltura(g=computeGeomReal()){
+  const c=classificarAlturasElementos(REAL.geomRaw, g.scaleFactor);
+  return c ? {ateM:c.perimetroAteM, acimaM:c.perimetroAcimaM, ateElementos:c.ate.length, acimaElementos:c.acima.length} : {ateM:0, acimaM:0, ateElementos:0, acimaElementos:0};
 }
 
 /* ---------- IMPORTAÇÃO DE VETOR JÁ PRONTO (SVG enviado direto, sem rastreamento) ---------- */
@@ -2520,6 +2535,10 @@ const FORMULA_TYPES = {
   perimExt: {label:'Perímetro externo', calc:(g,mult)=> g.perimExtM*mult},
   perimTotal: {label:'Perímetro total de corte (m)', calc:(g,mult)=> g.corteTotalM*mult},
   fixo: {label:'Unidade (quantidade por letreiro, ex.: brinde)', calc:(g,mult)=> mult},
+  // Produtividade de solda (linhas automáticas da Ficha técnica): perímetro total dos elementos de cada faixa de altura, em metros.
+  // No snapshot da cotação viram "fixo" com a quantidade já calculada (ver formulaParaServidor).
+  soldaPerimAte11: {label:'Solda: perímetro dos elementos de até 11 cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).ateM*mult},
+  soldaPerimAcima11: {label:'Solda: perímetro dos elementos acima de 11 cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).acimaM*mult},
   // Gabarito de kraft (shared/gabarito.ts): comprimento = largura do letreiro aberto; a altura atravessa a
   // bobina de 1,2 m e, passando dela, o papel repete em faixas. Resultado em m² de papel cobrado.
   gabaritoKraft: {label:'Gabarito kraft: faixas da bobina × largura do letreiro (m²)', calc:(g,mult)=>{
@@ -3516,7 +3535,7 @@ function realStepProposta(){
   const variacoesModelo = modeloSel ? variacoesAtivasDoModelo(modeloSel) : [];
   const variacoesSelecionadas = new Set((REAL.variacaoModeloIds||[]).map(Number));
   const kitPronto = produtoSel && modeloSel ? adminState.kits[kitKey(produtoSel.id, modeloSel.id)] : null;
-  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || variacoesSelecionadas.size>0) && REAL.vendedor;
+  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || variacoesSelecionadas.size>0) && REAL.vendedor && (!soldaFixacaoObrigatoria() || (REAL.tiposFixacao||[]).length>0);
 
   const subcatsDoFiltro = REAL.filtroCategoria ? Object.keys(CATEGORIAS_PRODUTO[REAL.filtroCategoria]) : [];
   const tiposDoFiltro = (REAL.filtroCategoria && REAL.filtroSubcategoria) ? CATEGORIAS_PRODUTO[REAL.filtroCategoria][REAL.filtroSubcategoria] : [];
@@ -3586,6 +3605,7 @@ function realStepProposta(){
         ${variacoesModelo.map(v=>`<label style="display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12px;"><input type="checkbox" data-act="real-variacao-modelo" data-val="${v.id}" ${variacoesSelecionadas.has(Number(v.id))?'checked':''}><span>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span></label>`).join('')}
       </div>
     </div><div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Você pode combinar várias variações. O consumo comum ao modelo e os materiais específicos selecionados serão somados.</div></div>`:''}
+    ${modeloSel?htmlFixacaoSolda():''}
     ${renderConexaoMubiSys()}
     ${modeloSel? `<div class="card" style="background:var(--surface-2); box-shadow:none; margin-top:12px;">
       <div style="display:flex; gap:12px; align-items:flex-start;">
@@ -4032,6 +4052,7 @@ function realStepEscala(){
       </div>
     </div>
     ${painelAlturaElementos(g)}
+    ${painelSoldaProdutividade()}
     <div class="warnbox" style="margin-top:12px;background:var(--warn-soft);border-color:color-mix(in oklab,var(--warn) 35%,var(--border));">
       <span style="color:var(--warn);">${ICONS.info}</span><div><b>Resultado geométrico aproximado por amostragem.</b> ${medidaDeRaster?'A medida parte do traçado automático; ruído, perspectiva e qualidade do redesenho podem alterar os contornos.':'A medida parte dos caminhos vetoriais lidos no SVG.'} ${g.possivelSobreposicao?'As caixas envolventes de peças se cruzam; confira sobreposições, pois áreas coincidentes podem ser contadas mais de uma vez.':''} Kerf, diâmetro da ferramenta, offsets e desperdício não estão incluídos.</div>
     </div>
@@ -4039,6 +4060,231 @@ function realStepEscala(){
       <div class="role-note">${ICONS.info} ${REAL.geomRaw?REAL.geomRaw.pieces.length:0} contorno(s) externo(s); revise vazados e sobreposições antes de usar para fabricação.</div>
       <button class="btn btn-primary" data-act="real-approve" data-val="escala">${ICONS.check} Confirmar medidas e avançar</button>
     </div>
+  </div>`;
+}
+
+/* ---------- PRODUTIVIDADE DE SOLDA AUTOMÁTICA (pedido de 06/10/2026) ----------
+ * O vendedor escolhe só o tipo de fixação (etapa 1). Na Ficha técnica o servidor (POST /api/letra-caixa/solda/sugerir) escolhe as
+ * "Produtividade Solda …" de cada faixa de altura e elas entram na composição como linhas automáticas, quantificadas pelo perímetro
+ * total (externo + vazados) dos elementos da faixa. Cada troca do vendedor vira uma correção, que o gestor transforma em regra
+ * (Administração > Produtividades de solda). Os tipos e o limite repetem shared/produtividade-solda.ts (o HTML não importa
+ * módulos); o servidor valida de novo. */
+const SOLDA_CATEGORIA='Letreiros';
+const SOLDA_MAX_FIXACOES=3;
+const SOLDA_TIPOS_FIXACAO=[['barra_roscada','Barra roscada'],['patinha_led','Patinha para LED'],['chapinha_dupla_face','Chapinha dupla-face'],['orelhinha','Orelhinha'],['sem_fixacao','Sem fixação']];
+const SOLDA_MATERIAIS=[['galvanizado','Galvanizado'],['inox','Inox'],['latao','Latão'],['aluminio','Alumínio'],['acrilico','Acrílico']];
+const SOLDA_FAIXAS={ate_11cm:{rotulo:'≤ 11 cm',formula:'soldaPerimAte11'},acima_11cm:{rotulo:'> 11 cm',formula:'soldaPerimAcima11'}};
+const SOLDA_CONFIANCA={alta:['Confiança alta','b-ok'],media:['Confiança média','b-accent'],baixa:['Confiança baixa — confira','b-warn'],nenhuma:['Sem produtividade','b-bad']};
+const SOLDA_ORIGEM_TEXTO={regra:'regra treinada',heuristica:'pontuação automática',manual:'escolha do vendedor'};
+
+function novoEstadoSolda(){
+  return {chave:'', estado:'vazio', erro:'', resposta:null, opcoes:{}, escolhas:{}, dispensadas:{}, notas:{}, enviadas:new Set(), materialManual:null};
+}
+function soldaKitAtual(){ return REAL.produtoId&&REAL.modeloId ? (adminState.kits[kitKey(REAL.produtoId,REAL.modeloId)]||null) : null; }
+function soldaFixacaoObrigatoria(){ const kit=soldaKitAtual(); return !!kit&&kit.categoria===SOLDA_CATEGORIA; }
+/** A produtividade automática só entra em jogo para Letreiros ou quando o vendedor escolheu alguma fixação. */
+function soldaAtiva(){ return (REAL.tiposFixacao||[]).length>0 || soldaFixacaoObrigatoria(); }
+function soldaEhProdutividadeNome(nome){ const n=normalizeSearch(String(nome||'')).trim(); return n.includes('produtividade')&&!n.startsWith('produtividade geral'); }
+/** Mesmas regras de shared/produtividade-solda.ts: até 3 tipos e "sem fixação" não combina com os outros. */
+function alternarFixacaoSolda(selecionados, tipo){
+  if(selecionados.includes(tipo)) return selecionados.filter(t=>t!==tipo);
+  if(tipo==='sem_fixacao') return ['sem_fixacao'];
+  const outros=selecionados.filter(t=>t!=='sem_fixacao');
+  if(outros.length>=SOLDA_MAX_FIXACOES) return [...selecionados];
+  return SOLDA_TIPOS_FIXACAO.map(([k])=>k).filter(k=>k===tipo||outros.includes(k));
+}
+function rotuloFixacaoSolda(tipos){ return (tipos||[]).map(t=>(SOLDA_TIPOS_FIXACAO.find(([k])=>k===t)||[t,t])[1]).join(' + '); }
+
+/** Seletor do tipo de fixação (etapa 1). Obrigatório só em produtos da categoria Letreiros. */
+function htmlFixacaoSolda(){
+  const sel=REAL.tiposFixacao||[];
+  const obrigatoria=soldaFixacaoObrigatoria();
+  const cheio=!sel.includes('sem_fixacao')&&sel.length>=SOLDA_MAX_FIXACOES;
+  return `<div style="max-width:680px;margin-top:12px;" data-teste="fixacao-solda"><div class="field">Tipo de fixação${obrigatoria?' (obrigatório)':''} — escolha até ${SOLDA_MAX_FIXACOES}
+    <div style="display:grid;gap:6px;margin-top:7px;">
+      ${SOLDA_TIPOS_FIXACAO.map(([k,rotulo])=>{
+        const marcado=sel.includes(k);
+        const bloqueado=!marcado&&k!=='sem_fixacao'&&cheio;
+        return `<label style="display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12px;${bloqueado?'opacity:.5;':''}"><input type="checkbox" data-act="real-fixacao-solda" data-val="${k}" ${marcado?'checked':''} ${bloqueado?'disabled':''}><span>${rotulo}</span></label>`;
+      }).join('')}
+    </div>
+  </div><div style="font-size:11px;color:${obrigatoria&&!sel.length?'var(--warn)':'var(--text-faint)'};margin-top:4px;">${obrigatoria&&!sel.length?'Escolha a fixação para avançar. ':''}Com o material do produto e as medidas da Ficha técnica, o sistema escolhe a produtividade de solda e a inclui no orçamento. "Sem fixação" não combina com os outros tipos.</div></div>`;
+}
+
+function soldaTituloProduto(){
+  const kit=soldaKitAtual();
+  return [(kit&&kit.nomeCompleto)||REAL.modeloNome||'', ...(REAL.variacaoModeloNomes||[])].filter(Boolean).join(' ').slice(0,500);
+}
+/** Dados enviados ao servidor; `null` enquanto não há geometria com escala. A chave da sugestão é o próprio pedido. */
+function soldaPedido(){
+  if(!soldaAtiva()||!REAL.geomRaw) return null;
+  const g=computeGeomReal();
+  if(!(g.scaleFactor>0)) return null;
+  const p=perimetrosPorAltura(g), arred=n=>Math.round(n*10000)/10000;
+  return {
+    chaveKit:REAL.produtoId&&REAL.modeloId?kitKey(REAL.produtoId,REAL.modeloId):null,
+    titulo:soldaTituloProduto(),
+    nomesComposicao:(REAL.kit||[]).filter(l=>!l.origemSoldaAuto).map(l=>String(materialKitAtivo(l).nome||'').slice(0,256)).slice(0,300),
+    tiposFixacao:[...(REAL.tiposFixacao||[])],
+    ...(REAL.solda.materialManual?{materialManual:REAL.solda.materialManual}:{}),
+    faixas:[{faixa:'ate_11cm',perimetroM:arred(p.ateM),elementos:p.ateElementos},{faixa:'acima_11cm',perimetroM:arred(p.acimaM),elementos:p.acimaElementos}],
+  };
+}
+
+/** Pede a sugestão quando o pedido mudou (mesmo padrão do peso: chamada dentro do render, sem repetir a mesma chave). */
+async function garantirSugestaoSolda(forcar=false){
+  const pedido=soldaPedido(), solda=REAL.solda;
+  if(!pedido){ if(solda.chave){ solda.chave=''; solda.estado='vazio'; solda.resposta=null; } return; }
+  const chave=JSON.stringify(pedido);
+  if(!forcar&&solda.chave===chave) return;
+  solda.chave=chave; solda.estado='carregando'; solda.erro='';
+  try{
+    const response=await fetch('/api/letra-caixa/solda/sugerir',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(pedido)});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(body.error||'Não foi possível escolher as produtividades de solda.');
+    if(solda!==REAL.solda||solda.chave!==chave) return; // outra proposta ou pedido mais novo
+    solda.resposta=body; solda.estado='pronto';
+    (body.faixas||[]).forEach(f=>[f.escolhida,...(f.alternativas||[])].filter(Boolean).forEach(o=>{ solda.opcoes[o.id]=o; }));
+  }catch(error){
+    if(solda!==REAL.solda||solda.chave!==chave) return;
+    solda.estado='erro'; solda.erro=error.message||'Falha ao consultar as produtividades de solda.'; solda.resposta=null;
+  }
+  if(REAL.approvals.escala) sincronizarSoldaNoKit();
+  render();
+}
+function soldaReiniciar(){
+  REAL.solda={...novoEstadoSolda(), materialManual:REAL.solda.materialManual};
+  REAL.kit=(REAL.kit||[]).filter(l=>!l.origemSoldaAuto);
+  REAL.approvals.kit=false;
+}
+function soldaFaixaResposta(faixa){ return ((REAL.solda.resposta||{}).faixas||[]).find(f=>f.faixa===faixa)||null; }
+/** Produtividade valendo para a faixa: a que o vendedor trocou ou, sem troca, a sugerida. */
+function soldaOpcaoEscolhida(f){
+  const id=REAL.solda.escolhas[f.faixa];
+  return (id!=null&&REAL.solda.opcoes[id])||f.escolhida||null;
+}
+/** Recria as linhas automáticas da composição a partir da sugestão e das trocas do vendedor (não mexe no nesting). */
+function sincronizarSoldaNoKit(){
+  REAL.kit=(REAL.kit||[]).filter(l=>!l.origemSoldaAuto);
+  const solda=REAL.solda;
+  if(!soldaAtiva()||solda.estado!=='pronto'||!solda.resposta||solda.chave!==JSON.stringify(soldaPedido())) return;
+  for(const f of solda.resposta.faixas||[]){
+    if(!f.necessaria||solda.dispensadas[f.faixa]) continue;
+    const o=soldaOpcaoEscolhida(f);
+    if(!o) continue;
+    REAL.kit.push({matId:o.id,nome:o.nome,unidade:o.unidade,custo:o.valor,atualizado:o.atualizado,status:o.status,papel:`Mão de obra · solda ${SOLDA_FAIXAS[f.faixa].rotulo}`,formulaType:SOLDA_FAIXAS[f.faixa].formula,mult:1,variantes:[],origemSoldaAuto:true,soldaFaixa:f.faixa,soldaConfianca:f.confianca,soldaOrigem:f.origem});
+  }
+}
+/** As duas fórmulas de solda viram "fixo" no snapshot, com a quantidade (perímetro) já calculada: o servidor e a importação em
+ *  Propostas continuam validando `quantidade = multiplicador` sem conhecer a fórmula nova. */
+function formulaParaServidor(linha, quantidade){
+  if(linha.formulaType==='soldaPerimAte11'||linha.formulaType==='soldaPerimAcima11') return {formulaType:'fixo',multiplicador:Math.max(0,Number.isFinite(quantidade)?quantidade:0)};
+  return {formulaType:String(linha.formulaType||'fixo'),multiplicador:Math.max(0,Number(linha.mult)||0)};
+}
+/** Resumo da escolha para o snapshot da cotação (rastreabilidade: o que foi sugerido, por quem e com qual confiança). */
+function soldaSnapshot(){
+  const r=REAL.solda.resposta;
+  if(!soldaAtiva()||!r) return undefined;
+  return {
+    material:r.material&&r.material.usado?{usado:r.material.usado,origem:r.material.manual?'manual':(r.material.origem||null)}:null,
+    faixas:(r.faixas||[]).filter(f=>f.necessaria).map(f=>{
+      const o=REAL.solda.dispensadas[f.faixa]?null:soldaOpcaoEscolhida(f);
+      const manual=!!o&&!!f.escolhida&&o.id!==f.escolhida.id;
+      return {faixa:f.faixa,elementos:f.elementos,perimetroM:f.perimetroM,produtividadeId:o?o.id:null,produtividadeNome:o?String(o.nome).slice(0,256):null,origem:o?(manual?'manual':f.origem):'nenhuma',confianca:f.confianca,regraId:manual?null:(f.regraId||null)};
+    }),
+  };
+}
+/** Troca do vendedor ≠ sugestão do sistema: envia ao servidor como correção (uma vez por combinação) para o gestor treinar as regras. */
+async function registrarCorrecoesSolda(){
+  const solda=REAL.solda, r=solda.resposta;
+  if(!soldaAtiva()||!r) return;
+  for(const f of r.faixas||[]){
+    if(!f.necessaria||solda.dispensadas[f.faixa]||!f.escolhida) continue;
+    const o=soldaOpcaoEscolhida(f);
+    if(!o||o.id===f.escolhida.id) continue;
+    const marca=[f.faixa,f.escolhida.id,o.id,(REAL.tiposFixacao||[]).join(',')].join('|');
+    if(solda.enviadas.has(marca)) continue;
+    solda.enviadas.add(marca);
+    try{
+      const response=await fetch('/api/letra-caixa/solda/correcoes',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        cotacaoRef:REAL.id?String(REAL.id).slice(0,80):null, faixa:f.faixa,
+        contexto:{chaveKit:REAL.produtoId&&REAL.modeloId?kitKey(REAL.produtoId,REAL.modeloId):null,titulo:soldaTituloProduto(),subcategoria:r.subcategoria||null,tipoProduto:r.tipoProduto||null,material:(r.material&&r.material.usado)||null,tiposFixacao:[...(REAL.tiposFixacao||[])],perimetroM:f.perimetroM,elementos:f.elementos},
+        sugeridaId:f.escolhida.id, escolhidaId:o.id, nota:(solda.notas[f.faixa]||'').trim().slice(0,500)||null,
+      })});
+      if(!response.ok) solda.enviadas.delete(marca);
+    }catch(e){ solda.enviadas.delete(marca); }
+  }
+}
+
+function soldaAvisos(){
+  if(!soldaAtiva()) return [];
+  const avisos=[], s=REAL.solda, r=s.resposta;
+  if(!(REAL.tiposFixacao||[]).length) avisos.push('Nenhum tipo de fixação foi escolhido na etapa 1: a produtividade de solda não foi incluída no orçamento.');
+  if(s.estado==='erro') avisos.push(`${s.erro} A produtividade de solda não foi incluída.`);
+  if(r){
+    if(!(r.material&&r.material.usado)) avisos.push('Não consegui identificar o material do letreiro (subcategoria, título e composição não o indicam): escolha-o na Ficha técnica para a escolha considerar o material.');
+    (r.faixas||[]).filter(f=>f.necessaria).forEach(f=>{
+      const rotulo=SOLDA_FAIXAS[f.faixa].rotulo, o=soldaOpcaoEscolhida(f);
+      if(s.dispensadas[f.faixa]) avisos.push(`A produtividade dos elementos ${rotulo} foi removida da composição: ${fmt(f.perimetroM,2)} m de solda ficam sem custo.`);
+      else if(!o) avisos.push(`Sem produtividade de solda para os elementos ${rotulo} (${fmt(f.perimetroM,2)} m de perímetro): esse trabalho está sem custo no orçamento. ${(f.avisos||[]).find(a=>a.startsWith('Nenhuma'))||'Classifique as produtividades em Produtos > Matérias-primas ou escolha uma na lista.'}`);
+      else if(f.confianca==='baixa'&&s.escolhas[f.faixa]==null) avisos.push(`Confira a produtividade dos elementos ${rotulo}: há mais de uma igualmente provável.`);
+      if(o&&/hora|quadrad|m²/i.test(String(o.unidade||''))) avisos.push(`A unidade de "${o.nome}" é ${o.unidade}, mas a quantidade é o perímetro em metros: confira o cadastro no MubiSys.`);
+    });
+  }
+  const duplicadas=(REAL.kit||[]).filter(l=>!l.origemSoldaAuto&&soldaEhProdutividadeNome(materialKitAtivo(l).nome));
+  if(duplicadas.length) avisos.push(`A composição do produto já traz produtividade de solda (${duplicadas.map(l=>materialKitAtivo(l).nome).join('; ')}): confira para não cobrar duas vezes.`);
+  return avisos;
+}
+function htmlAvisosSolda(){
+  if(!soldaAtiva()) return '';
+  garantirSugestaoSolda();
+  const avisos=soldaAvisos();
+  if(!avisos.length) return '';
+  return `<div class="warnbox" role="alert" style="margin:12px 0;" data-teste="avisos-solda"><span>${ICONS.alert}</span><div><b>Produtividade de solda</b><ul style="margin:6px 0 0 16px;">${avisos.map(a=>`<li>${escaparHtml(a)}</li>`).join('')}</ul></div></div>`;
+}
+
+/** Quadro da produtividade de solda: material, fixação e, por faixa de altura, a produtividade escolhida (com troca) e o custo. */
+function painelSoldaProdutividade(){
+  if(!soldaAtiva()) return '';
+  garantirSugestaoSolda();
+  const s=REAL.solda, r=s.resposta, tipos=REAL.tiposFixacao||[];
+  const linhaFixacao=`<div class="kv"><span>Tipo de fixação</span><span>${tipos.length?escaparHtml(rotuloFixacaoSolda(tipos)):'<span class="badge b-warn">não escolhido</span>'} <button class="btn btn-ghost btn-sm" data-act="real-goto-step" data-val="1">Alterar na etapa 1</button></span></div>`;
+  let corpo='';
+  if(s.estado==='carregando'||(s.estado==='vazio'&&tipos.length)) corpo='<div class="empty-hint">Escolhendo as produtividades de solda…</div>';
+  else if(s.estado==='erro') corpo=`<div class="warnbox" role="alert"><span>${ICONS.alert}</span><div>${escaparHtml(s.erro)} <button class="btn btn-soft btn-sm" data-act="real-solda-refazer">Tentar de novo</button></div></div>`;
+  else if(r){
+    const usado=r.material&&r.material.usado, origemMaterial=r.material&&r.material.manual?'escolhido por você':({subcategoria:'subcategoria do produto',tipo:'tipo do produto',titulo:'título do produto',composicao:'composição'}[r.material&&r.material.origem]||'');
+    const linhaMaterial=`<div class="kv"><span>Material do letreiro</span><span>${usado?`${escaparHtml((SOLDA_MATERIAIS.find(([k])=>k===usado)||[usado,usado])[1])}${origemMaterial?` <span class="source-tag" style="display:inline;">(${origemMaterial})</span>`:''}`:'<span class="badge b-warn">não identificado</span>'}
+      <select data-act="real-solda-material" style="font-size:11.5px;margin-left:6px;"><option value="">Detectar sozinho</option>${SOLDA_MATERIAIS.map(([k,rot])=>`<option value="${k}" ${s.materialManual===k?'selected':''}>${rot}</option>`).join('')}</select></span></div>`;
+    const divergencias=((r.material&&r.material.divergencias)||[]).map(d=>`<div class="role-note">${ICONS.info} ${escaparHtml(d)}</div>`).join('');
+    const necessarias=(r.faixas||[]).filter(f=>f.necessaria);
+    const linhas=necessarias.map(f=>{
+      const o=soldaOpcaoEscolhida(f), faixa=SOLDA_FAIXAS[f.faixa], dispensada=!!s.dispensadas[f.faixa];
+      const opcoes=[f.escolhida,...(f.alternativas||[])].filter(Boolean);
+      if(o&&!opcoes.some(x=>x.id===o.id)) opcoes.push(o);
+      const trocou=!!o&&!!f.escolhida&&o.id!==f.escolhida.id;
+      const [textoConfianca,classeConfianca]=SOLDA_CONFIANCA[trocou?'media':f.confianca]||SOLDA_CONFIANCA.nenhuma;
+      const origem=trocou?'manual':f.origem;
+      const motivos=o&&Array.isArray(o.motivos)&&o.motivos.length?`<details style="margin-top:4px;"><summary style="cursor:pointer;font-size:11px;color:var(--accent-ink);">Por que esta produtividade</summary><ul style="margin:4px 0 0 16px;font-size:11px;color:var(--text-dim);">${o.motivos.map(m=>`<li>${escaparHtml(m.texto)}${m.pontos?` <span class="mono">(${m.pontos>0?'+':''}${m.pontos})</span>`:''}</li>`).join('')}</ul></details>`:'';
+      const select=opcoes.length?`<select data-act="real-solda-escolha" data-faixa="${f.faixa}" style="width:100%;max-width:420px;font-size:11.5px;">${opcoes.map(x=>`<option value="${x.id}" ${o&&x.id===o.id?'selected':''}>${f.escolhida&&x.id===f.escolhida.id?'★ ':''}${escaparHtml(x.nome)} · ${money(x.valor)}</option>`).join('')}</select>`:'<span class="badge b-bad">nenhuma produtividade serve</span>';
+      const nota=trocou?`<input type="text" maxlength="500" placeholder="Por que trocou? (ajuda a treinar o sistema)" value="${escaparHtml(s.notas[f.faixa]||'')}" data-act="real-solda-nota" data-faixa="${f.faixa}" style="display:block;width:100%;max-width:420px;margin-top:6px;font-size:11.5px;">`:'';
+      return `<tr>
+        <td><span class="badge ${f.faixa==='ate_11cm'?'b-accent':'b-warn'}">${faixa.rotulo}</span></td>
+        <td class="num">${f.elementos}</td>
+        <td class="num">${fmt(f.perimetroM,2)} m</td>
+        <td>${select}${nota}<div style="margin-top:5px;"><span class="badge ${classeConfianca}">${textoConfianca}</span> <span style="font-size:11px;color:var(--text-faint);">${o?escaparHtml(SOLDA_ORIGEM_TEXTO[origem]||''):''}</span></div>${motivos}${(f.avisos||[]).filter(a=>!a.startsWith('Nenhuma')).map(a=>`<div class="role-note">${ICONS.info} ${escaparHtml(a)}</div>`).join('')}</td>
+        <td class="num">${o&&!dispensada?money(f.perimetroM*(Number(o.valor)||0)):'—'}${dispensada?`<div><button class="btn btn-ghost btn-sm" data-act="real-solda-incluir" data-faixa="${f.faixa}">Incluir de novo</button></div>`:''}</td>
+      </tr>`;
+    }).join('');
+    corpo=`${linhaMaterial}${divergencias}
+      ${necessarias.length?`<div class="tablewrap" style="margin-top:10px;"><table><thead><tr><th>Faixa</th><th>Elementos</th><th>Perímetro</th><th>Produtividade</th><th>Custo</th></tr></thead><tbody>${linhas}</tbody></table></div>`:'<div class="empty-hint" style="margin-top:10px;">Nenhum elemento medido ainda: confirme a escala acima.</div>'}
+      <div style="font-size:11px;color:var(--text-faint);margin-top:8px;">${r.lista==='relacionadas'?'Escolha entre as produtividades ligadas a este produto.':'Este produto não tem produtividades relacionadas: a escolha usa todo o cadastro.'} A quantidade é o perímetro total (contorno externo + vazados) dos elementos da faixa, em metros. Cada troca sua é registrada para o gestor treinar as regras.</div>`;
+  }
+  const avisos=soldaAvisos();
+  return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:14px;" data-teste="painel-solda">
+    <div class="cardhead" style="margin-bottom:8px;"><div><h4 style="font-size:13px;">Produtividade de solda (automática)</h4></div>${s.estado==='pronto'?'<button class="btn btn-ghost btn-sm" data-act="real-solda-refazer">Refazer sugestão</button>':''}</div>
+    ${linhaFixacao}${corpo}
+    ${avisos.length?`<div class="warnbox" role="alert" style="margin-top:10px;"><span>${ICONS.alert}</span><div><ul style="margin:0 0 0 16px;">${avisos.map(a=>`<li>${escaparHtml(a)}</li>`).join('')}</ul></div></div>`:''}
   </div>`;
 }
 
@@ -4065,6 +4311,7 @@ function painelAlturaElementos(g){
     <td class="num">${i.n}</td>
     <td class="num">${fmt(i.alturaMm/10,1)} cm</td>
     <td class="num">${fmt(i.larguraMm/10,1)} cm</td>
+    <td class="num">${fmt(i.perimetroM,2)} m</td>
     <td><span class="badge ${i.grupo==='ate'?'b-accent':'b-warn'}">${i.grupo==='ate'?'≤ 11 cm':'> 11 cm'}</span>${i.proximoDoLimite?' <span class="badge b-neutral" title="A escala tem tolerância de cerca de ±1%: confira esta peça.">perto do limite</span>':''}</td>
   </tr>`).join('');
   const limiteCm=ALTURA_ELEMENTO_LIMITE_MM/10;
@@ -4073,15 +4320,15 @@ function painelAlturaElementos(g){
       <p style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Altura dos elementos (corte em ${limiteCm} cm)</p>
       <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:10px;">Cada contorno externo é um elemento (letra, símbolo ou pedaço solto, como o ponto do “i”). A altura é a da caixa vertical da peça, na escala informada acima; letras coladas pelo vetorizador contam como um só elemento.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-accent">≤ ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-ate">${c.ate.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com ${limiteCm} cm ou menos</div></div>
-        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-warn">&gt; ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-acima">${c.acima.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com mais de ${limiteCm} cm</div></div>
+        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-accent">≤ ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-ate">${c.ate.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com ${limiteCm} cm ou menos · perímetro ${fmt(c.perimetroAteM,2)} m</div></div>
+        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-warn">&gt; ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-acima">${c.acima.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com mais de ${limiteCm} cm · perímetro ${fmt(c.perimetroAcimaM,2)} m</div></div>
       </div>
       ${c.proximos.length?`<div class="role-note" style="margin-bottom:10px;">${ICONS.info} ${c.proximos.length} elemento(s) a até ${ALTURA_ELEMENTO_FAIXA_PROXIMA_MM} mm do limite (${c.proximos.map(i=>i.n).join(', ')}): a escala tem tolerância de cerca de ±1%, então confira a medida de cada um.</div>`:''}
       <div class="grid2">
         <div class="compare" style="background:#fff;"><svg viewBox="${box.x-pad} ${box.y-pad} ${box.w+2*pad} ${box.h+2*pad}" style="display:block;width:100%;height:auto;" role="img" aria-label="Elementos numerados, coloridos por faixa de altura">${desenho}${rotulos}</svg></div>
         <div class="tablewrap" style="max-height:340px;overflow-y:auto;">
           <table>
-            <thead><tr><th>Nº</th><th>Altura</th><th>Largura</th><th>Faixa</th></tr></thead>
+            <thead><tr><th>Nº</th><th>Altura</th><th>Largura</th><th>Perímetro</th><th>Faixa</th></tr></thead>
             <tbody>${linhas}</tbody>
           </table>
         </div>
@@ -4323,6 +4570,7 @@ function realStepKit(){
     <div class="cardhead"><div><h3>7 · Composição — consumo das matérias-primas</h3><p>${REAL.kit.length? 'Composição carregada do cadastro do administrador para este modelo — ajuste fórmulas e multiplicadores com base no nesting.' : 'Sem composição cadastrada para este modelo ainda — busque direto no catálogo real de matérias-primas ('+catalog.materias.length+' itens), defina o papel físico e confirme. O nesting será calculado em seguida.'}</p><p class="role-note">O nesting anterior fornece área de consumo, área líquida e perímetro às fórmulas. Alterar uma matéria-prima ou camada exige novo nesting; fórmulas e multiplicadores recalculam o orçamento sem refazer o layout.</p></div></div>
     ${htmlAvisoCoresAutomaticas()}
     ${htmlPendenciasCores()}
+    ${painelSoldaProdutividade()}
     <div style="position:relative;">
       <input type="text" placeholder="Buscar matéria-prima real (ex: ACM, acrílico, LED)…" value="${q}" data-act="real-mat-query" style="width:100%;">
       ${matches.length? `<div class="card" style="position:absolute; z-index:10; width:100%; margin-top:4px; padding:6px; max-height:260px; overflow:auto;">
@@ -4340,7 +4588,7 @@ function realStepKit(){
           const material = materialKitAtivo(k);
           const variantes = Array.isArray(k.variantes)?k.variantes:[];
           return `<tr>
-            <td>${escaparHtml(material.nome)}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}${material.status==='Inativo'?' · <span style="color:var(--bad);">inativo</span>':''}</div>
+            <td>${escaparHtml(material.nome)}${k.origemSoldaAuto?` <span class="badge b-accent" title="Incluída pela Ficha técnica; troque a produtividade no quadro acima.">Solda automática</span>`:''}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}${material.status==='Inativo'?' · <span style="color:var(--bad);">inativo</span>':''}</div>
               ${variantes.length? `<label style="display:block;margin-top:6px;font-size:10.5px;color:var(--text-faint);">${escaparHtml(k.variacaoNome||'Variação')}
                 <select data-act="real-kit-variacao" data-idx="${i}" style="display:block;margin-top:3px;width:min(100%,300px);font-size:11px;"><option value="">Nenhuma (manter matéria-prima principal)</option>${variantes.map(v=>`<option value="${v.matId}" ${String(k.variacaoSelecionadaMatId)===String(v.matId)?'selected':''}>${escaparHtml(v.valor||v.nome)} · ${escaparHtml(v.nome)}</option>`).join('')}</select>
               </label>`:''}
@@ -5130,7 +5378,8 @@ let pesoServidor = {chave:'', estado:'vazio', itens:[], erro:''};
 function linhasParaPeso(){
   const g=computeGeomReal();
   const resultados=REAL.nestingMateriais?.length?REAL.nestingMateriais:(REAL.nesting?.materiais||[]);
-  return REAL.kit.map(linha=>{
+  // Mão de obra de solda não tem peso: fica fora da lista (e do aviso de "item sem peso").
+  return REAL.kit.filter(linha=>!linha.origemSoldaAuto).map(linha=>{
     const material=materialKitAtivo(linha);
     const nesting=resultados.find(item=>Number(item.id_materia_prima)===Number(material.matId));
     const areaLiquida=nesting&&Number.isFinite(Number(nesting.area_liquida_m2))?Number(nesting.area_liquida_m2)*(Number(linha.mult)||0):null;
@@ -5244,6 +5493,7 @@ function realStepOrcamento(){
       </table>
     </div>
     ${htmlPendenciasCores()}
+    ${htmlAvisosSolda()}
     ${o.pendenciasCustoCores?.length?`<div class="warnbox" role="alert" style="margin-top:10px;"><span>${ICONS.alert}</span><div><b>Custos de adesivo incompletos.</b> Cadastre preço do vinil e impressão${REAL.colorAnalysis.laminar?' e da laminação':''} por m² antes de aprovar ou emitir a proposta. ${o.pendenciasCustoCores.map(item=>escaparHtml(item.corHex||item.regionKey)).join(', ')}</div></div>`:''}
     <div class="grid2" style="margin-top:14px;">
       <div class="card" style="background:var(--surface-2); box-shadow:none;">
@@ -5528,8 +5778,7 @@ function snapshotCotacaoReal(){
       custoUnitario:calculoLinha.custoUnitario,
       quantidade:Number.isFinite(quantidade)?quantidade:0,
       custoTotal:Number.isFinite(quantidade)?calculoLinha.custoTotal:0,
-      formulaType:String(linha.formulaType||'fixo'),
-      multiplicador:Math.max(0,Number(linha.mult)||0),
+      ...formulaParaServidor(linha,quantidade),
       variacaoModeloId:linha.variacaoModeloId??null,
       variacaoModeloNome:linha.variacaoModeloNome||null,
       variacaoMaterial:alternativa?{nome:String(linha.variacaoNome||'Variação'),valor:String(alternativa.valor||alternativa.nome||''),materiaPrimaNome:String(alternativa.nome||'')}:null,
@@ -5539,6 +5788,8 @@ function snapshotCotacaoReal(){
   const materiais=materiaisKit;
   return {
     tituloProposta:String(REAL.tituloProposta||'').trim().slice(0,256),
+    tiposFixacao:[...(REAL.tiposFixacao||[])],
+    soldaProdutividade:soldaSnapshot(),
     imagemReferenciaUrl:REAL.imagemReferenciaUrl||null,
     imagemRedesenhadaUrl:REAL.imagemRedesenhadaUrl||null,
     nestingSvg:REAL.svgNesting||REAL.tracedSvg||null,
@@ -7706,6 +7957,7 @@ function bindRealEvents(){
     el.addEventListener('click', async ()=>{
       const val = el.dataset.val;
       if(val==='kit'){
+        registrarCorrecoesSolda();
         if(REAL.approvals.nesting){REAL.approvals.kit=true;REAL.step=8;}
         else{REAL.approvals.kit=false;REAL.step=6;}
         render();
@@ -7731,7 +7983,7 @@ function bindRealEvents(){
       }
       REAL.approvals[val]=true;
       if(val==='nesting'&&REAL.approvals.kit){REAL.step=8;render();return;}
-      if(val==='escala') invalidarFactibilidadeReal();
+      if(val==='escala'){ invalidarFactibilidadeReal(); sincronizarSoldaNoKit(); }
       const idx = STEP_DEFS_REAL.findIndex(s=>s.k===val);
       if(idx>-1 && idx<STEP_DEFS_REAL.length-1) REAL.step = STEP_DEFS_REAL[idx+1].n;
       render();
@@ -7927,6 +8179,38 @@ function bindRealEvents(){
     carregarComposicaoModeloReal(prod,mod,variacaoPadrao?[variacaoPadrao.id]:[]);
     render();
   });
+  // Produtividade de solda: fixação (etapa 1) e, na Ficha técnica/Composição, material, troca de produtividade e correções.
+  document.querySelectorAll('[data-act="real-fixacao-solda"]').forEach(el=>el.addEventListener('change',()=>{
+    REAL.tiposFixacao=alternarFixacaoSolda(REAL.tiposFixacao||[],el.dataset.val);
+    soldaReiniciar();
+    render();
+  }));
+  document.querySelectorAll('[data-act="real-solda-material"]').forEach(el=>el.addEventListener('change',()=>{
+    const novo=el.value||null;
+    if(novo===REAL.solda.materialManual) return;
+    soldaReiniciar();
+    REAL.solda.materialManual=novo;
+    render();
+  }));
+  document.querySelectorAll('[data-act="real-solda-escolha"]').forEach(el=>el.addEventListener('change',()=>{
+    const f=soldaFaixaResposta(el.dataset.faixa), id=Number(el.value);
+    if(!f||!Number.isInteger(id)) return;
+    if(f.escolhida&&f.escolhida.id===id) delete REAL.solda.escolhas[f.faixa]; else REAL.solda.escolhas[f.faixa]=id;
+    delete REAL.solda.dispensadas[f.faixa];
+    if(REAL.approvals.escala) sincronizarSoldaNoKit();
+    render();
+  }));
+  document.querySelectorAll('[data-act="real-solda-nota"]').forEach(el=>el.addEventListener('input',()=>{ REAL.solda.notas[el.dataset.faixa]=el.value; }));
+  document.querySelectorAll('[data-act="real-solda-refazer"]').forEach(el=>el.addEventListener('click',()=>{
+    REAL.solda.dispensadas={}; REAL.solda.escolhas={}; REAL.solda.notas={};
+    garantirSugestaoSolda(true);
+    render();
+  }));
+  document.querySelectorAll('[data-act="real-solda-incluir"]').forEach(el=>el.addEventListener('click',()=>{
+    delete REAL.solda.dispensadas[el.dataset.faixa];
+    sincronizarSoldaNoKit();
+    render();
+  }));
   document.querySelectorAll('[data-act="real-variacao-modelo"]').forEach(variacaoModeloEl=>variacaoModeloEl.addEventListener('change',()=>{
     invalidarFactibilidadeReal();
     const prod=catalog.produtos.find(p=>p.id===REAL.produtoId);
@@ -8138,7 +8422,15 @@ function bindRealEvents(){
     REAL.kitProdutosSel=(REAL.kitProdutosSel||[]).filter(item=>item.slot!==el.dataset.slot);
     invalidarFactibilidadeReal(); aplicarKitProdutosNoKit(); REAL.approvals.kit=false; render();
   }));
-  document.querySelectorAll('[data-act="real-kit-remove"]').forEach(el=> el.addEventListener('click', ()=>{ removeKitLine(+el.dataset.idx); render(); }));
+  document.querySelectorAll('[data-act="real-kit-remove"]').forEach(el=> el.addEventListener('click', ()=>{
+    const linha=REAL.kit[+el.dataset.idx];
+    if(linha&&linha.origemSoldaAuto){
+      // Mão de obra de solda não entra no nesting: remove sem invalidar o resultado e lembra a dispensa até "Refazer sugestão".
+      REAL.solda.dispensadas[linha.soldaFaixa]=true;
+      REAL.kit.splice(+el.dataset.idx,1);
+    }else removeKitLine(+el.dataset.idx);
+    render();
+  }));
 
   document.querySelectorAll('[data-act="real-embalagem"]').forEach(el=> el.addEventListener('change', ()=>{ REAL.embalagemAtiva=el.checked; render(); }));
   bindRangeLive('[data-act="real-margin"]', v=>{ REAL.margin=parseFloat(v); return REAL.margin; }, v=>Math.round(v*100)+'%');

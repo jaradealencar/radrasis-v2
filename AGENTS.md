@@ -686,7 +686,21 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   sugestão) para qualquer usuário logado; `regras`, `correcoes` (listar, descartar, virar regra) e `simular` só para
   gestor/admin/master. Tabelas `cpq_solda_regras` e `cpq_solda_correcoes` (migration `0091`); uma regra exige ao menos uma
   condição e a fixação dela é um conjunto exato. A unidade da produtividade no MubiSys não é conferida: a quantidade é o
-  perímetro em metros. Ainda faltam, nesta ordem: o seletor de fixação e a sugestão no CPQ e a aba de treino.
+  perímetro em metros (só avisa se a unidade for hora ou área).
+  **No CPQ (HTML):** `REAL.tiposFixacao` na etapa 1 (`htmlFixacaoSolda`; até 3, "sem fixação" exclusivo; **obrigatório só
+  quando `adminState.kits[chave].categoria === 'Letreiros'`**). `classifyGeometry` guarda `len` de peças e contornos e
+  `classificarAlturasElementos` soma o perímetro de cada elemento (contorno + vazados) por faixa
+  (`perimetrosPorAltura`). `garantirSugestaoSolda` consulta `/solda/sugerir` quando o pedido muda (mesmo padrão do peso: a
+  chave é o próprio pedido) e `painelSoldaProdutividade` aparece na Ficha técnica e na Composição, com material (detectado ou
+  escolhido), troca de produtividade por faixa, motivos, confiança e custo. As linhas entram em `REAL.kit`
+  (`origemSoldaAuto`) com as fórmulas `soldaPerimAte11`/`soldaPerimAcima11` quando a Ficha técnica é confirmada, e **no
+  snapshot viram `fixo` com a quantidade já calculada** (`formulaParaServidor`), então `estudio-cotacoes.ts` e a importação
+  em Propostas não conhecem a fórmula nova; o resumo da escolha vai em `soldaProdutividade` e a fixação em `tiposFixacao`
+  (ambos `.optional()` **sem default**, para não mudar a assinatura de cotações antigas). Remover a linha automática a
+  dispensa até "Refazer sugestão"; produtividade ausente, ambígua ou removida **só avisa** (Composição e Orçamento), não
+  bloqueia. A troca do vendedor é enviada como correção ao confirmar a composição (uma vez por combinação). Mão de obra de
+  solda fica fora do peso. Ainda falta a aba de treino (Administração > Produtividades de solda): regras, correções
+  pendentes e simulador.
 
 ## CPQ nesting backend
 
