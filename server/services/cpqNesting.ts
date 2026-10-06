@@ -41,6 +41,8 @@ export type CpqMaterial = {
   nome: string;
   custoUnitario: number;
   unidadeCusto: string;
+  /** Unidade de movimentação do MubiSys; desempata o rótulo genérico "Unidade/Gl/Lt/Kg" da unidade de custo (chapa). */
+  unidadeMovimentacao?: string | null;
   chapas: CpqChapa[];
   /** Lote geométrico isolado desta matéria-prima; sem ele usa as peças globais. */
   pecas?: CpqNestingPeca[];
@@ -409,6 +411,20 @@ function unidadeNormalizada(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/²/g, "2").toLowerCase().trim();
 }
 
+const UNIDADE_CUSTO_GENERICA_MUBISYS = "unidade/gl/lt/kg";
+
+/**
+ * Unidade em que o custo da chapa é cobrado. "Unidade/Gl/Lt/Kg" é só o rótulo genérico do MubiSys e
+ * não diz a base; nesse caso vale a unidade de movimentação quando ela é m² (ex.: Acrílico Branco 3mm
+ * e PVC 15/20/30 mm vêm assim, com R$/m²). Qualquer outra combinação continua sem conversão e pendente.
+ */
+function unidadeCustoDaChapa(material: CpqMaterial): string {
+  const custo = unidadeNormalizada(material.unidadeCusto);
+  if (custo !== UNIDADE_CUSTO_GENERICA_MUBISYS) return custo;
+  const movimentacao = unidadeNormalizada(material.unidadeMovimentacao ?? "");
+  return ["m2", "metro quadrado", "metros quadrados"].includes(movimentacao) ? movimentacao : custo;
+}
+
 function estimarCustos(
   material: CpqMaterial,
   areaUsadaM2: number,
@@ -453,7 +469,8 @@ function estimarCustos(
       alerta: `Unidade de custo "${material.unidadeCusto}" não converte em consumo de bobina; escolha em Produtos > Matérias-primas como o custo é cobrado (m², metro linear ou rolo) antes de emitir a proposta.`,
     };
   }
-  if (["m2", "m2", "metro quadrado", "metros quadrados"].includes(unidade)) {
+  const unidadeChapa = unidadeCustoDaChapa(material);
+  if (["m2", "metro quadrado", "metros quadrados"].includes(unidadeChapa)) {
     return { custo: areaUsadaM2 * material.custoUnitario, sobra: areaSobra * material.custoUnitario, unidadeMetrica: true, alerta: null };
   }
   if (["chapa", "un", "und", "unidade", "unidades"].includes(unidade)) {
@@ -471,7 +488,7 @@ function estimarCustos(
     custo: null,
     sobra: null,
     unidadeMetrica: false,
-    alerta: `Unidade de custo "${material.unidadeCusto}" sem conversão automática; revise a regra antes de emitir a proposta.`,
+    alerta: `Unidade de custo "${material.unidadeCusto}"${material.unidadeMovimentacao ? ` (movimentação "${material.unidadeMovimentacao}")` : ""} sem conversão automática; revise a regra antes de emitir a proposta.`,
   };
 }
 

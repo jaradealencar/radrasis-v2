@@ -799,7 +799,12 @@ placement, and 72 discrete rotations (5-degree increments). Cubic SVG paths are
 polygonized with a 0.3 internal-unit tolerance (about 0.106 mm at the configured
 scale), so area/perimeter are high-precision polygon approximations, not analytic
 exact values. Cost is estimated only for recognized MubiSys cost units; unsupported
-units or missing cost return an alert and null estimate.
+units or missing cost return an alert and null estimate. Fix de 06/10/2026: o
+MubiSys manda "Unidade/Gl/Lt/Kg" como **rótulo genérico** de unidade de custo (Acrílico Branco 3mm #1134 e PVC 5/15/20/30 mm
+vêm assim) e a base real está em `unidade_movimentacao`; para chapa, esse rótulo genérico passa a valer a unidade de
+movimentação **quando ela é m²** (`unidadeCustoDaChapa` em `cpqNesting.ts`, `CpqMaterial.unidadeMovimentacao`; o resultado e
+o recibo continuam com a `unidade_custo` original). Qualquer outra combinação segue pendente e bloqueia o "Confirmar nesting e
+avançar" (`custosNestCompletos` no HTML) — a bobina continua pedindo a base de cobrança no cadastro.
 
 **Bobinas (adesivo comum, papel kraft; pedido de 05/10/2026):** rolo tem só a largura
 fixa (hoje 1200 mm nos dois); o comprimento nunca é cadastrado. Em Administração >

@@ -119,6 +119,28 @@ describe("calcularNestingMultiMaterial sem Deepnest configurado", () => {
     expect(resultado.perimetro_total_m).toBeGreaterThan(0);
   });
 
+  describe("unidade de custo genérica do MubiSys (Unidade/Gl/Lt/Kg)", () => {
+    const calcular = (unidadeMovimentacao: string | null) => calcularNestingMultiMaterial({
+      pecas, espacamentoMm: 3, margemBordaMm: 5,
+      materiais: [{ ...material([{ id: 2, larguraMm: 2000, alturaMm: 1000 }]), unidadeCusto: "Unidade/Gl/Lt/Kg", unidadeMovimentacao }],
+    });
+
+    it("com movimentação em m², o custo é R$/m² sobre a área consumida (caso do Acrílico Branco 3mm)", async () => {
+      const [resultado] = await calcular("Metro quadrado");
+      expect(resultado.alerta_custo).toBeNull();
+      expect(resultado.unidade_custo).toBe("Unidade/Gl/Lt/Kg"); // o recibo continua com a unidade original do MubiSys
+      expect(resultado.custo_material_estimado).toBeCloseTo(resultado.area_chapa_utilizada_m2 * 100, 6);
+    });
+
+    it("sem movimentação em m², o custo fica pendente com o alerta (nunca vira valor assumido)", async () => {
+      for (const movimentacao of [null, "Unidade/Gl/Lt/Kg", "Hora"]) {
+        const [resultado] = await calcular(movimentacao);
+        expect(resultado.custo_material_estimado).toBeNull();
+        expect(resultado.alerta_custo).toMatch(/sem conversão automática/);
+      }
+    });
+  });
+
   it("calcula bobina: cobra largura do rolo × comprimento consumido", async () => {
     const [resultado] = await calcularNestingMultiMaterial({
       pecas: [retangulo("p1", 300, 100), retangulo("p2", 300, 100)], espacamentoMm: 0, margemBordaMm: 0,

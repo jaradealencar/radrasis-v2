@@ -510,6 +510,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       nome: material.nome,
       custoUnitario: Number(material.valor_custo) || 0,
       unidadeCusto: material.unidade_custo || "",
+      unidadeMovimentacao: material.unidade_movimentacao || null,
       chapas: (() => {
         const cadastradas = chapasAtivas.filter(chapa => chapa.mubisysMateriaPrimaId === id);
         if (cadastradas.length) return cadastradas;

@@ -778,6 +778,7 @@ export const propostasRouter = router({
             nome: material.nome,
             custoUnitario: Number(material.valor_custo) || 0,
             unidadeCusto: material.unidade_custo || "",
+            unidadeMovimentacao: material.unidade_movimentacao || null,
             chapas: chapasAtivas.filter((chapa) => chapa.mubisysMateriaPrimaId === id),
             bobinaCusto: custosBobina.get(id) ?? null,
             pecas: snapshots.map(({ peca }) => peca),
