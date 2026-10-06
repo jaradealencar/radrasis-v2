@@ -397,7 +397,10 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   // Só para as matérias-primas "Produtividade …" (ver shared/produtividade-solda.ts): até 3 tipos de solda (fixação), o tamanho
   // (menor ou igual / maior que 11 cm) e os materiais a que a solda se aplica. Vazio = ainda não classificada.
   produtividadeTiposSolda: text("produtividade_tipos_solda").array().notNull().default([]),
+  // LEGADO (um tamanho só): substituído por produtividade_tamanhos na migration 0092, que copiou os valores. Nada mais lê nem grava
+  // esta coluna; ela só continua aqui para o deploy não derrubar a versão anterior e será removida na migration seguinte.
   produtividadeTamanho: varchar("produtividade_tamanho", { length: 12 }),
+  produtividadeTamanhos: text("produtividade_tamanhos").array().notNull().default([]),
   produtividadeMateriais: text("produtividade_materiais").array().notNull().default([]),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -11,7 +11,7 @@ import { carregarCustoBobina } from "../db/bobinaCusto";
 import { idsDeMateriasPerfil, MENSAGEM_PERFIL_FORA_DO_NESTING } from "../db/materiaPerfil";
 import { carregarPoliticaCorte } from "../db/politicaCorte";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
-import { ehTamanhoProdutividade, normalizarMateriaisSolda, normalizarTiposSolda } from "../../shared/produtividade-solda";
+import { normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda } from "../../shared/produtividade-solda";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
@@ -270,7 +270,7 @@ async function listarStatusCadastro(req: Request, res: Response): Promise<void> 
         // Classificação interna das "Produtividade …" (tipo de solda, tamanho e materiais); vazia nas demais matérias-primas.
         produtividade: {
           tiposSolda: normalizarTiposSolda(cadastro.produtividadeTiposSolda),
-          tamanho: ehTamanhoProdutividade(cadastro.produtividadeTamanho) ? cadastro.produtividadeTamanho : null,
+          tamanhos: normalizarTamanhosProdutividade(cadastro.produtividadeTamanhos),
           materiais: normalizarMateriaisSolda(cadastro.produtividadeMateriais),
         },
       };

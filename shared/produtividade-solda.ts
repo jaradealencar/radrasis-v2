@@ -3,7 +3,7 @@
  *
  * As linhas "Produtividade …" do MubiSys (mão de obra da solda e afins) ganham três marcações locais, que o MubiSys não tem:
  * - tipo de solda (fixação): até 3 entre barra roscada, patinha para LED, chapinha dupla-face, orelhinha e sem fixação;
- * - tamanho: menor ou igual a 11 cm, ou maior que 11 cm;
+ * - tamanho: menor ou igual a 11 cm e/ou maior que 11 cm (uma produtividade pode valer para os dois tamanhos);
  * - materiais: a quais materiais a solda se aplica (inox, galvanizado, latão, acrílico, alumínio), sem limite.
  *
  * "Sem fixação" é o oposto das demais fixações, então não combina com elas.
@@ -57,6 +57,22 @@ export function ehTipoSolda(valor: unknown): valor is TipoSolda {
 
 export function ehTamanhoProdutividade(valor: unknown): valor is TamanhoProdutividade {
   return typeof valor === "string" && (TAMANHOS_PRODUTIVIDADE as readonly string[]).includes(valor);
+}
+
+/** Lê os tamanhos do banco: descarta desconhecidos e repetidos e devolve na ordem fixa de `TAMANHOS_PRODUTIVIDADE`. */
+export function normalizarTamanhosProdutividade(valor: unknown): TamanhoProdutividade[] {
+  if (!Array.isArray(valor)) return [];
+  return TAMANHOS_PRODUTIVIDADE.filter(tamanho => valor.includes(tamanho));
+}
+
+/** Mensagem de erro se houver tamanhos repetidos; `null` se estiver ok. */
+export function erroTamanhosProdutividade(tamanhos: readonly TamanhoProdutividade[]): string | null {
+  return new Set(tamanhos).size !== tamanhos.length ? "Há tamanhos repetidos." : null;
+}
+
+/** Marca ou desmarca um tamanho, mantendo a ordem fixa (uma produtividade pode valer para os dois). */
+export function alternarTamanhoProdutividade(selecionados: readonly TamanhoProdutividade[], tamanho: TamanhoProdutividade): TamanhoProdutividade[] {
+  return TAMANHOS_PRODUTIVIDADE.filter(item => (item === tamanho ? !selecionados.includes(item) : selecionados.includes(item)));
 }
 
 export function ehMaterialSolda(valor: unknown): valor is MaterialSolda {

@@ -10,6 +10,7 @@ import {
   ehMateriaProdutividade,
   ehMaterialSolda,
   ehTamanhoProdutividade,
+  normalizarTamanhosProdutividade,
   erroTiposSolda,
   MATERIAIS_SOLDA,
   normalizarMateriaisSolda,
@@ -190,7 +191,7 @@ async function carregarCandidatas(db: BancoDeDados, relacionadas: number[]): Pro
     ? await db.select({
         id: materiaPrimaCadastros.mubisysMateriaPrimaId,
         tipos: materiaPrimaCadastros.produtividadeTiposSolda,
-        tamanho: materiaPrimaCadastros.produtividadeTamanho,
+        tamanhos: materiaPrimaCadastros.produtividadeTamanhos,
         materiais: materiaPrimaCadastros.produtividadeMateriais,
       }).from(materiaPrimaCadastros).where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, ids))
     : [];
@@ -201,7 +202,7 @@ async function carregarCandidatas(db: BancoDeDados, relacionadas: number[]): Pro
       id: materia.id,
       nome: materia.nome,
       tiposSolda: normalizarTiposSolda(cadastro?.tipos),
-      tamanho: ehTamanhoProdutividade(cadastro?.tamanho) ? cadastro.tamanho : null,
+      tamanhos: normalizarTamanhosProdutividade(cadastro?.tamanhos),
       materiais: normalizarMateriaisSolda(cadastro?.materiais),
       unidade: String(materia.unidade_movimentacao || materia.unidade_custo || ""),
       valor: Number(materia.valor_custo) || 0,

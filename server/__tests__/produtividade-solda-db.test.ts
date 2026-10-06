@@ -47,22 +47,22 @@ describe("subclassificação das matérias-primas de produtividade (router + ban
 
   it("só marca como produtividade as linhas certas e nasce sem classificação", async () => {
     const solda = await linha(ID_SOLDA);
-    expect(solda).toMatchObject({ ehProdutividade: true, produtividadeTiposSolda: [], produtividadeTamanho: null, produtividadeMateriais: [] });
+    expect(solda).toMatchObject({ ehProdutividade: true, produtividadeTiposSolda: [], produtividadeTamanhos: [], produtividadeMateriais: [] });
     expect((await linha(ID_GERAL)).ehProdutividade).toBe(false);
     expect((await linha(ID_CHAPA)).ehProdutividade).toBe(false);
   });
 
   it("grava até 3 tipos de solda, o tamanho e os materiais, e devolve na listagem", async () => {
-    await gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["orelhinha", "barra_roscada", "patinha_led"], produtividadeTamanho: "ate_11cm", produtividadeMateriais: ["latao", "inox"] });
-    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: ["barra_roscada", "patinha_led", "orelhinha"], produtividadeTamanho: "ate_11cm", produtividadeMateriais: ["inox", "latao"] });
+    await gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["orelhinha", "barra_roscada", "patinha_led"], produtividadeTamanhos: ["acima_11cm", "ate_11cm"], produtividadeMateriais: ["latao", "inox"] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: ["barra_roscada", "patinha_led", "orelhinha"], produtividadeTamanhos: ["ate_11cm", "acima_11cm"], produtividadeMateriais: ["inox", "latao"] });
   });
 
   it("salvar de novo troca a classificação (e limpar zera)", async () => {
     // os materiais não têm limite: dá para marcar os cinco
-    await gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["sem_fixacao"], produtividadeTamanho: "acima_11cm", produtividadeMateriais: ["aluminio", "acrilico", "latao", "galvanizado", "inox"] });
-    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: ["sem_fixacao"], produtividadeTamanho: "acima_11cm", produtividadeMateriais: ["inox", "galvanizado", "latao", "acrilico", "aluminio"] });
+    await gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["sem_fixacao"], produtividadeTamanhos: ["acima_11cm"], produtividadeMateriais: ["aluminio", "acrilico", "latao", "galvanizado", "inox"] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: ["sem_fixacao"], produtividadeTamanhos: ["acima_11cm"], produtividadeMateriais: ["inox", "galvanizado", "latao", "acrilico", "aluminio"] });
     await gestor().salvar({ ...base(ID_SOLDA) });
-    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: [], produtividadeTamanho: null, produtividadeMateriais: [] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: [], produtividadeTamanhos: [], produtividadeMateriais: [] });
   });
 
   it("recusa mais de 3 tipos, repetidos, 'sem fixação' misturado e valores fora da lista", async () => {
@@ -70,15 +70,16 @@ describe("subclassificação das matérias-primas de produtividade (router + ban
     await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["orelhinha", "orelhinha"] })).rejects.toThrow(/repetidos/);
     await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["sem_fixacao", "orelhinha"] })).rejects.toThrow(/Sem fixação/);
     await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["solda_a_ponto" as any] })).rejects.toThrow();
-    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeTamanho: "12cm" as any })).rejects.toThrow();
+    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeTamanhos: ["12cm" as any] })).rejects.toThrow();
+    await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeTamanhos: ["ate_11cm", "ate_11cm"] })).rejects.toThrow(/tamanhos repetidos/);
     await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeMateriais: ["inox", "inox"] })).rejects.toThrow(/materiais repetidos/);
     await expect(gestor().salvar({ ...base(ID_SOLDA), produtividadeMateriais: ["cobre" as any] })).rejects.toThrow();
   });
 
   it("'Produtividade Geral - Hora' e matérias-primas comuns ignoram a classificação enviada", async () => {
     for (const id of [ID_GERAL, ID_CHAPA]) {
-      await gestor().salvar({ ...base(id), produtividadeTiposSolda: ["orelhinha"], produtividadeTamanho: "ate_11cm", produtividadeMateriais: ["inox"] });
-      expect(await linha(id)).toMatchObject({ produtividadeTiposSolda: [], produtividadeTamanho: null, produtividadeMateriais: [] });
+      await gestor().salvar({ ...base(id), produtividadeTiposSolda: ["orelhinha"], produtividadeTamanhos: ["ate_11cm"], produtividadeMateriais: ["inox"] });
+      expect(await linha(id)).toMatchObject({ produtividadeTiposSolda: [], produtividadeTamanhos: [], produtividadeMateriais: [] });
     }
   });
 

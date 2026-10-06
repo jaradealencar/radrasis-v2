@@ -2587,20 +2587,20 @@ function produtividadesDoCatalogo(){ return catalog.materias.filter(m=>ehMateria
 function classificacaoProdutividade(id){
   const item=cadastroMaterias&&cadastroMaterias.get(id);
   const c=item&&item.produtividade;
-  return {tipos:(c&&c.tiposSolda)||[],tamanho:(c&&c.tamanho)||null,materiais:(c&&c.materiais)||[]};
+  return {tipos:(c&&c.tiposSolda)||[],tamanhos:(c&&c.tamanhos)||[],materiais:(c&&c.materiais)||[]};
 }
 function textoContadorProdutividades(n){ return n?`${n} marcada(s)`:'nenhuma marcada'; }
 function textoBuscaClassificacao(id){
   const c=classificacaoProdutividade(id);
-  return [...c.tipos.map(t=>ROTULO_TIPO_SOLDA[t]||t),c.tamanho?(ROTULO_TAMANHO_PRODUTIVIDADE[c.tamanho]||c.tamanho):'',...c.materiais.map(x=>ROTULO_MATERIAL_SOLDA[x]||x)].join(' ');
+  return [...c.materiais.map(x=>ROTULO_MATERIAL_SOLDA[x]||x),...c.tipos.map(t=>ROTULO_TIPO_SOLDA[t]||t),...c.tamanhos.map(t=>ROTULO_TAMANHO_PRODUTIVIDADE[t]||t)].join(' ');
 }
 function chipsClassificacaoProdutividade(id){
   if(cadastroMaterias===null) return '<span class="badge b-neutral">carregando classificação…</span>';
   const c=classificacaoProdutividade(id);
   return [
+    ...(c.materiais.length?c.materiais.map(x=>`<span class="badge b-ok">${escaparHtml(ROTULO_MATERIAL_SOLDA[x]||x)}</span>`):['<span class="badge b-warn">sem material</span>']),
     ...(c.tipos.length?c.tipos.map(t=>`<span class="badge b-neutral">${escaparHtml(ROTULO_TIPO_SOLDA[t]||t)}</span>`):['<span class="badge b-warn">sem tipo de solda</span>']),
-    c.tamanho?`<span class="badge b-accent">${escaparHtml(ROTULO_TAMANHO_PRODUTIVIDADE[c.tamanho]||c.tamanho)}</span>`:'<span class="badge b-warn">sem tamanho</span>',
-    ...(c.materiais.length?c.materiais.map(x=>`<span class="badge b-ok">${escaparHtml(ROTULO_MATERIAL_SOLDA[x]||x)}</span>`):['<span class="badge b-warn">sem materiais</span>']),
+    ...(c.tamanhos.length?c.tamanhos.map(t=>`<span class="badge b-accent">${escaparHtml(ROTULO_TAMANHO_PRODUTIVIDADE[t]||t)}</span>`):['<span class="badge b-warn">sem tamanho</span>']),
   ].join(' ');
 }
 function htmlProdutividadesRelacionadas(key,kitState){

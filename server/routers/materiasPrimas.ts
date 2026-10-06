@@ -9,7 +9,7 @@ import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, sec
 import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-referencia";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { ehProcessoCorte, normalizarRotacao, PROCESSOS_CORTE, ROTACOES_PERMITIDAS } from "@shared/politica-corte";
-import { ehMateriaProdutividade, ehTamanhoProdutividade, erroMateriaisSolda, erroTiposSolda, MATERIAIS_SOLDA, normalizarMateriaisSolda, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "@shared/produtividade-solda";
+import { ehMateriaProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, MATERIAIS_SOLDA, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "@shared/produtividade-solda";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -118,7 +118,7 @@ export const materiasPrimasRouter = router({
           perfilComprimentoMm: cadastro?.perfilComprimentoMm == null ? null : Number(cadastro.perfilComprimentoMm),
           ehProdutividade: ehMateriaProdutividade(material.nome),
           produtividadeTiposSolda: normalizarTiposSolda(cadastro?.produtividadeTiposSolda),
-          produtividadeTamanho: ehTamanhoProdutividade(cadastro?.produtividadeTamanho) ? cadastro!.produtividadeTamanho : null,
+          produtividadeTamanhos: normalizarTamanhosProdutividade(cadastro?.produtividadeTamanhos),
           produtividadeMateriais: normalizarMateriaisSolda(cadastro?.produtividadeMateriais),
           bobinas: (chapasPorId.get(material.id) ?? []).filter(chapa => chapa.bobina).map(bobina => ({
             id: bobina.id,
@@ -227,7 +227,7 @@ export const materiasPrimasRouter = router({
       margemBordaMm: z.number().finite().min(0).max(50).nullable().default(null),
       // Só matérias-primas "Produtividade …" (exceto "Produtividade Geral …"): até 3 tipos de solda, o tamanho e os materiais. Ignorados nas demais.
       produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)).default([]),
-      produtividadeTamanho: z.enum(TAMANHOS_PRODUTIVIDADE).nullable().default(null),
+      produtividadeTamanhos: z.array(z.enum(TAMANHOS_PRODUTIVIDADE)).default([]),
       produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)).default([]),
     }).strict())
     .mutation(async ({ input }) => {
@@ -240,9 +240,11 @@ export const materiasPrimasRouter = router({
       if (erroSolda) throw new Error(erroSolda);
       const erroMateriais = erroMateriaisSolda(input.produtividadeMateriais);
       if (erroMateriais) throw new Error(erroMateriais);
+      const erroTamanhos = erroTamanhosProdutividade(input.produtividadeTamanhos);
+      if (erroTamanhos) throw new Error(erroTamanhos);
       const ehProdutividade = ehMateriaProdutividade(material.nome);
       const tiposSoldaSalvos = ehProdutividade ? normalizarTiposSolda(input.produtividadeTiposSolda) : [];
-      const tamanhoProdutividadeSalvo = ehProdutividade ? input.produtividadeTamanho : null;
+      const tamanhosProdutividadeSalvos = ehProdutividade ? normalizarTamanhosProdutividade(input.produtividadeTamanhos) : [];
       const materiaisSoldaSalvos = ehProdutividade ? normalizarMateriaisSolda(input.produtividadeMateriais) : [];
 
       let categoria: typeof materiaPrimaCategorias.$inferSelect | null = null;
@@ -328,7 +330,7 @@ export const materiasPrimasRouter = router({
           espacamentoMm: espacamentoSalvo,
           margemBordaMm: margemSalva,
           produtividadeTiposSolda: tiposSoldaSalvos,
-          produtividadeTamanho: tamanhoProdutividadeSalvo,
+          produtividadeTamanhos: tamanhosProdutividadeSalvos,
           produtividadeMateriais: materiaisSoldaSalvos,
           updatedAt: now,
         }).onConflictDoUpdate({
@@ -349,7 +351,7 @@ export const materiasPrimasRouter = router({
             espacamentoMm: espacamentoSalvo,
             margemBordaMm: margemSalva,
             produtividadeTiposSolda: tiposSoldaSalvos,
-            produtividadeTamanho: tamanhoProdutividadeSalvo,
+            produtividadeTamanhos: tamanhosProdutividadeSalvos,
             produtividadeMateriais: materiaisSoldaSalvos,
             updatedAt: now,
           },

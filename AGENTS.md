@@ -433,10 +433,14 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   especificações. **Produtividade (pedido de 05/10/2026):** matérias-primas cujo nome contém "produtividade"
   (exceto "Produtividade Geral …", ex.: #4373 Hora; 42 no catálogo de 05/10/2026) ganham no diálogo de edição uma
   subclassificação interna, independente da categoria: até 3 tipos de solda (barra roscada, patinha para LED,
-  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras), o tamanho (≤ 11 cm ou > 11 cm) e os
+  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras), o tamanho (≤ 11 cm e/ou > 11 cm) e os
   materiais a que a solda se aplica (inox, galvanizado, latão, acrílico, alumínio; multisseleção sem limite).
-  Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`), `produtividade_tamanho` (migration `0089`) e
-  `produtividade_materiais` (`text[]`, migration `0090`);
+  **Cada um dos três grupos aceita mais de uma marcação** (tipo de solda até 3; material e tamanho sem limite): uma produtividade
+  que serve aos dois tamanhos recebe os dois, e o motor de solda a considera válida para as duas faixas (pontua menos que a
+  marca exata de uma faixa).
+  Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`), `produtividade_tamanhos` (`text[]`, migration `0092`; substitui `produtividade_tamanho` da migration `0089`, cujos valores a 0092 copiou) e
+  `produtividade_materiais` (`text[]`, migration `0090`). A coluna antiga `produtividade_tamanho` continua no banco e no
+  `schema.ts` só como **legado** (nada a lê nem grava); remova-a numa migration futura, depois que nenhum deploy anterior a use;
   regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
   (`ehMateriaProdutividade`), ignorando o que vier para as demais. A página 5 da Tabela de Preços, Produtividades de solda, consulta o catálogo do MubiSys e permite filtrar por
   material, tipo de solda e tamanho. A classificação é manual (não deduzida do texto do nome); nenhum cálculo de custo ou
@@ -447,7 +451,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   automática do kit). O servidor (`server/routes/estudio-kits.ts`) só aceita a lista em produto de categoria Letreiros, sem
   repetidos, e só IDs que sejam produtividade no catálogo do MubiSys (`ehMateriaProdutividade`; o catálogo só é consultado
   para IDs recém-adicionados, e sem MubiSys a gravação com IDs novos responde 503). Trocar a categoria para fora de Letreiros pede
-  confirmação e apaga a lista. A rota `GET /api/letra-caixa/materias-cadastro` devolve `produtividade` (tipos, tamanho,
+  confirmação e apaga a lista. A rota `GET /api/letra-caixa/materias-cadastro` devolve `produtividade` (tipos, tamanhos,
   materiais) por matéria-prima para o HTML mostrar os chips; as regras do HTML repetem as de `shared/produtividade-solda.ts`.
   O motor de escolha automática de solda lê esta lista como conjunto de candidatas. As condições comerciais armazenadas historicamente na página 5 são apresentadas na página 6; os registros do banco não são migrados. O PDF da tabela inclui a página 5 com custos atuais do MubiSys. O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
@@ -678,7 +682,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   quantificadas pelo **perímetro total (externo + vazados, em metros) de cada faixa de altura** (≤ 11 cm e > 11 cm).
   O produto não cadastra produtividade na composição. O motor é puro, em `server/services/cpqSoldaProdutividade.ts`:
   `detectarMaterialLetreiro` (subcategoria do kit > tipo do produto > título > composição; divergência só informa) e
-  `sugerirProdutividades` (tamanho como filtro, fixação por **igualdade de conjunto**, material e estilo — cursivo, aro
+  `sugerirProdutividades` (tamanho como filtro — marca exata da faixa +30, marcada para os dois tamanhos +20, outra faixa exclui —, fixação por **igualdade de conjunto**, material e estilo — cursivo, aro
   recuado, frontlight, F/F… — pelo título/tipo contra o nome, devolvendo motivos e confiança alta/média/baixa; **regras
   treinadas vencem a heurística**). As candidatas são as produtividades relacionadas ao produto
   (`estudio_kits.dadosJson.produtividadesRelacionadas`) ou, se não houver nenhuma, todo o cadastro. Rotas em

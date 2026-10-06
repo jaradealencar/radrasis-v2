@@ -10,7 +10,7 @@ import {
 
 const candidata = (parcial: Partial<CandidataSolda> & Pick<CandidataSolda, "id" | "nome">): CandidataSolda => ({
   tiposSolda: [],
-  tamanho: null,
+  tamanhos: [],
   materiais: [],
   ...parcial,
 });
@@ -39,12 +39,12 @@ const faixaAcima = [{ faixa: "acima_11cm" as const, perimetroM: 12.5, elementos:
 const faixaAte = [{ faixa: "ate_11cm" as const, perimetroM: 3.2, elementos: 6 }];
 
 // Nomes reais do cadastro (docs/base-conheciento-agente-orçamento/tabela-precos-conteudo.md), com marcações de cadastro.
-const GAL_PADRAO = candidata({ id: 1, nome: "Produtividade Solda 1º [R$7,50] [Galvanizado Padrão]", tiposSolda: ["barra_roscada"], tamanho: "acima_11cm", materiais: ["galvanizado"] });
-const GAL_CURSIVO = candidata({ id: 2, nome: "Produtividade Solda 2º [R$9,37] [Galvanizado Cursivo]", tiposSolda: ["barra_roscada"], tamanho: "acima_11cm", materiais: ["galvanizado"] });
-const GAL_PEQUENA = candidata({ id: 33, nome: "Produtividade Solda 33º [R$18,50] [Menor ou igual a 11cm] [Gal] (Pode ser usado no frontlight)", tiposSolda: ["barra_roscada"], tamanho: "ate_11cm", materiais: ["galvanizado"] });
-const GAL_CHAPINHA = candidata({ id: 20, nome: "Produtividade Solda 20º C [R$9,75] [Galvanizado Padrão Chapinha]", tiposSolda: ["chapinha_dupla_face"], tamanho: "acima_11cm", materiais: ["galvanizado"] });
-const INOX_PADRAO = candidata({ id: 3, nome: "Produtividade Solda 3º [R$11,25] [Inox Padrão]", tiposSolda: ["barra_roscada"], tamanho: "acima_11cm", materiais: ["inox"] });
-const FRONT_FF = candidata({ id: 5, nome: "Produtividade Solda 5º - [R$15,00] Frontlight [Galvanizado] [F/F]", tiposSolda: ["barra_roscada"], tamanho: "acima_11cm", materiais: ["galvanizado"] });
+const GAL_PADRAO = candidata({ id: 1, nome: "Produtividade Solda 1º [R$7,50] [Galvanizado Padrão]", tiposSolda: ["barra_roscada"], tamanhos: ["acima_11cm"], materiais: ["galvanizado"] });
+const GAL_CURSIVO = candidata({ id: 2, nome: "Produtividade Solda 2º [R$9,37] [Galvanizado Cursivo]", tiposSolda: ["barra_roscada"], tamanhos: ["acima_11cm"], materiais: ["galvanizado"] });
+const GAL_PEQUENA = candidata({ id: 33, nome: "Produtividade Solda 33º [R$18,50] [Menor ou igual a 11cm] [Gal] (Pode ser usado no frontlight)", tiposSolda: ["barra_roscada"], tamanhos: ["ate_11cm"], materiais: ["galvanizado"] });
+const GAL_CHAPINHA = candidata({ id: 20, nome: "Produtividade Solda 20º C [R$9,75] [Galvanizado Padrão Chapinha]", tiposSolda: ["chapinha_dupla_face"], tamanhos: ["acima_11cm"], materiais: ["galvanizado"] });
+const INOX_PADRAO = candidata({ id: 3, nome: "Produtividade Solda 3º [R$11,25] [Inox Padrão]", tiposSolda: ["barra_roscada"], tamanhos: ["acima_11cm"], materiais: ["inox"] });
+const FRONT_FF = candidata({ id: 5, nome: "Produtividade Solda 5º - [R$15,00] Frontlight [Galvanizado] [F/F]", tiposSolda: ["barra_roscada"], tamanhos: ["acima_11cm"], materiais: ["galvanizado"] });
 const CATALOGO = [GAL_PADRAO, GAL_CURSIVO, GAL_PEQUENA, GAL_CHAPINHA, INOX_PADRAO, FRONT_FF];
 
 describe("normalizarTexto", () => {
@@ -132,8 +132,8 @@ describe("sugerirProdutividades — heurística", () => {
 
   it("empate entre duas variantes derruba a confiança e pede conferência", () => {
     const gemeas = [
-      candidata({ id: 50, nome: "Produtividade Solda 50º [Galvanizado]", tiposSolda: ["barra_roscada"], tamanho: "acima_11cm", materiais: ["galvanizado"] }),
-      candidata({ id: 51, nome: "Produtividade Solda 51º [Galvanizado]", tiposSolda: ["barra_roscada"], tamanho: "acima_11cm", materiais: ["galvanizado"] }),
+      candidata({ id: 50, nome: "Produtividade Solda 50º [Galvanizado]", tiposSolda: ["barra_roscada"], tamanhos: ["acima_11cm"], materiais: ["galvanizado"] }),
+      candidata({ id: 51, nome: "Produtividade Solda 51º [Galvanizado]", tiposSolda: ["barra_roscada"], tamanhos: ["acima_11cm"], materiais: ["galvanizado"] }),
     ];
     const [r] = sugerirProdutividades(contexto(), faixaAcima, gemeas);
     expect(r.confianca).toBe("baixa");

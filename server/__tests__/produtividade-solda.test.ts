@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   alternarMaterialSolda,
+  alternarTamanhoProdutividade,
   alternarTipoSolda,
   ehMateriaProdutividade,
   erroMateriaisSolda,
+  erroTamanhosProdutividade,
   erroTiposSolda,
   MATERIAIS_SOLDA,
   MAX_TIPOS_SOLDA,
   normalizarMateriaisSolda,
+  normalizarTamanhosProdutividade,
   normalizarTiposSolda,
+  TAMANHOS_PRODUTIVIDADE,
   TIPOS_SOLDA,
   type MaterialSolda,
+  type TamanhoProdutividade,
   type TipoSolda,
 } from "../../shared/produtividade-solda";
 
@@ -123,5 +128,31 @@ describe("materiais em que a solda se aplica", () => {
     expect(alternarMaterialSolda(sel, "inox")).toEqual(["aluminio"]);
     for (const material of MATERIAIS_SOLDA) sel = sel.includes(material) ? sel : alternarMaterialSolda(sel, material);
     expect(sel).toEqual([...MATERIAIS_SOLDA]);
+  });
+});
+
+describe("tamanhos: mais de um por produtividade", () => {
+  it("são dois, na ordem fixa", () => {
+    expect([...TAMANHOS_PRODUTIVIDADE]).toEqual(["ate_11cm", "acima_11cm"]);
+  });
+
+  it("leitura do banco: descarta desconhecidos e repetidos e usa a ordem fixa", () => {
+    expect(normalizarTamanhosProdutividade(["acima_11cm", "ate_11cm", "12cm", "ate_11cm"])).toEqual(["ate_11cm", "acima_11cm"]);
+    expect(normalizarTamanhosProdutividade(null)).toEqual([]);
+    expect(normalizarTamanhosProdutividade("ate_11cm")).toEqual([]);
+  });
+
+  it("aceita os dois juntos e só recusa repetidos", () => {
+    expect(erroTamanhosProdutividade([])).toBeNull();
+    expect(erroTamanhosProdutividade(["ate_11cm", "acima_11cm"])).toBeNull();
+    expect(erroTamanhosProdutividade(["ate_11cm", "ate_11cm"])).toMatch(/tamanhos repetidos/);
+  });
+
+  it("marca e desmarca na ordem fixa e deixa marcar os dois", () => {
+    let sel: TamanhoProdutividade[] = [];
+    sel = alternarTamanhoProdutividade(sel, "acima_11cm");
+    sel = alternarTamanhoProdutividade(sel, "ate_11cm");
+    expect(sel).toEqual(["ate_11cm", "acima_11cm"]);
+    expect(alternarTamanhoProdutividade(sel, "ate_11cm")).toEqual(["acima_11cm"]);
   });
 });

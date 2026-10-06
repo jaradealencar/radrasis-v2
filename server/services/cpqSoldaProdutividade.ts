@@ -21,7 +21,8 @@ export interface CandidataSolda {
   id: number;
   nome: string;
   tiposSolda: readonly TipoSolda[];
-  tamanho: TamanhoProdutividade | null;
+  /** Tamanhos marcados no cadastro (uma produtividade pode valer para os dois); vazio = não marcado. */
+  tamanhos: readonly TamanhoProdutividade[];
   materiais: readonly MaterialSolda[];
 }
 
@@ -216,10 +217,11 @@ function pontuar(candidata: CandidataSolda, contexto: ContextoSolda, faixa: Faix
   const somar = (pontos: number, texto: string) => motivos.push({ texto, pontos });
   const nome = normalizarTexto(candidata.nome);
 
-  // Tamanho: a marcação do cadastro manda; sem ela, só o nome indica.
-  if (candidata.tamanho) {
-    if (candidata.tamanho === faixa) somar(30, `Tamanho marcado como ${faixa === "ate_11cm" ? "≤ 11 cm" : "> 11 cm"}.`);
-    else excluida = true;
+  // Tamanho: a marcação do cadastro manda (pode valer para os dois tamanhos, o que pontua menos que a marca exata); sem ela, só o nome indica.
+  if (candidata.tamanhos.length) {
+    if (!candidata.tamanhos.includes(faixa)) excluida = true;
+    else if (candidata.tamanhos.length > 1) somar(20, "Cadastrada para os dois tamanhos (≤ 11 cm e > 11 cm).");
+    else somar(30, `Tamanho marcado como ${faixa === "ate_11cm" ? "≤ 11 cm" : "> 11 cm"}.`);
   } else if (nomeIndicaPequena(nome)) {
     if (faixa === "ate_11cm") somar(15, "O nome indica letras de até 11 cm.");
     else excluida = true;

@@ -136,13 +136,13 @@ describe("classificação das produtividades na rota de situação do cadastro (
     await db!.insert(materiaPrimaCadastros).values({
       mubisysMateriaPrimaId: MATERIA_CLASSIFICADA,
       produtividadeTiposSolda: ["orelhinha", "barra_roscada"],
-      produtividadeTamanho: "ate_11cm",
+      produtividadeTamanhos: ["acima_11cm", "ate_11cm"],
       produtividadeMateriais: ["latao", "inox"],
     });
     const { materias } = (await (await fetch(`${base}/api/letra-caixa/materias-cadastro`)).json()) as { materias: { id: number; produtividade: unknown }[] };
     expect(materias.find(item => item.id === MATERIA_CLASSIFICADA)?.produtividade).toEqual({
       tiposSolda: ["barra_roscada", "orelhinha"],
-      tamanho: "ate_11cm",
+      tamanhos: ["ate_11cm", "acima_11cm"],
       materiais: ["inox", "latao"],
     });
   });

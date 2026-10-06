@@ -1505,7 +1505,7 @@ function gerarPdfTabela(
         itensSolda.forEach(item => {
           const materiais = item.produtividadeMateriais.map(material => ROTULO_MATERIAL_SOLDA[material]).join(", ") || "Sem material";
           const tipos = item.produtividadeTiposSolda.map(tipo => ROTULO_TIPO_SOLDA[tipo]).join(", ") || "Sem tipo";
-          const tamanho = item.produtividadeTamanho ? ROTULO_TAMANHO_PRODUTIVIDADE[item.produtividadeTamanho] : "Sem tamanho";
+          const tamanho = item.produtividadeTamanhos.map(valor => ROTULO_TAMANHO_PRODUTIVIDADE[valor]).join(", ") || "Sem tamanho";
           html += `<tr><td>${escaparHtml(item.nome)}<br><small>Código MubiSys #${item.id}</small></td><td>${escaparHtml(materiais)}</td><td>${escaparHtml(tipos)}</td><td>${escaparHtml(tamanho)}</td><td>${escaparHtml(item.unidadeCusto || "—")}</td><td><span class="val">${fmtBrl(item.valorCusto)}</span></td></tr>`;
         });
         html += `</tbody></table>`;
@@ -1627,7 +1627,7 @@ function ProdutividadesSolda() {
       produtividades.filter(
         material =>
           material.produtividadeTiposSolda.length === 0 ||
-          material.produtividadeTamanho == null ||
+          material.produtividadeTamanhos.length === 0 ||
           material.produtividadeMateriais.length === 0
       ).length,
     [produtividades]
@@ -1650,7 +1650,7 @@ function ProdutividadesSolda() {
         material.produtividadeTiposSolda.includes(tipoAtivo);
       const correspondeTamanho =
         tamanhoAtivo === "todos" ||
-        material.produtividadeTamanho === tamanhoAtivo;
+        material.produtividadeTamanhos.includes(tamanhoAtivo);
       return (
         correspondeBusca &&
         correspondeMaterial &&
@@ -1938,10 +1938,10 @@ function ProdutividadesSolda() {
                     </div>
                   </TableCell>
                   <TableCell className="max-w-0 whitespace-normal break-words px-1.5 py-1.5 text-xs leading-tight">
-                    {material.produtividadeTamanho ? (
-                      ROTULO_TAMANHO_PRODUTIVIDADE[
-                        material.produtividadeTamanho
-                      ]
+                    {material.produtividadeTamanhos.length ? (
+                      material.produtividadeTamanhos
+                        .map(valor => ROTULO_TAMANHO_PRODUTIVIDADE[valor])
+                        .join(" · ")
                     ) : (
                       <span className="text-amber-700">Sem tamanho</span>
                     )}

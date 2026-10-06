@@ -74,7 +74,7 @@ beforeAll(async () => {
     { chave: CHAVE_SEM, produtoId: 987654701, modeloId: 2, dadosJson: kit({}) },
   ]);
   const cadastro = (id: number, tipos: string[], tamanho: string, materiais: string[]) => ({
-    mubisysMateriaPrimaId: id, produtividadeTiposSolda: tipos, produtividadeTamanho: tamanho, produtividadeMateriais: materiais,
+    mubisysMateriaPrimaId: id, produtividadeTiposSolda: tipos, produtividadeTamanhos: [tamanho], produtividadeMateriais: materiais,
   });
   await db.insert(materiaPrimaCadastros).values([
     cadastro(GAL_GRANDE, ["barra_roscada"], "acima_11cm", ["galvanizado"]),
