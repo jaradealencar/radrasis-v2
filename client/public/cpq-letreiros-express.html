@@ -438,6 +438,13 @@ async function loadCatalog(){
     catalog.baixadoEm = dados.carregadoEm || null;
     const importacaoAutomatica=preencherComposicaoMubiSysSeVazia(adminState.editingKey);
     if(importacaoAutomatica?.status==='importado') salvarKit(importacaoAutomatica.key);
+    // Conectar/atualizar o MubiSys durante uma proposta também precisa trocar
+    // a composição que já estava carregada pela ficha real das variações.
+    if(state.mode==='real'&&REAL.produtoId&&REAL.modeloId){
+      const produto=catalog.produtos.find(item=>Number(item.id)===Number(REAL.produtoId));
+      const modelo=produto?.modelos.find(item=>Number(item.id)===Number(REAL.modeloId));
+      if(produto&&modelo) carregarComposicaoModeloReal(produto,modelo,REAL.variacaoModeloIds);
+    }
   }catch(e){
     if(!jaCarregado){
       catalog.produtos = [];
@@ -2684,7 +2691,13 @@ function composicaoMubiSysDoModelo(modelo, variacaoIds){
   const variacoes=todas.filter(item=>item.variacaoId!=null&&ids.has(Number(item.variacaoId)));
   const compartilhadas=todas.filter(item=>!item.variacaoId&&Number(item.modeloId)===Number(modelo.id));
   const registros=[...compartilhadas,...variacoes];
-  if(!registros.length) return null;
+  if(!registros.length){
+    if(catalog.mubisysWebConectado&&ids.size){
+      const nomes=variacoesAtivasDoModelo(modelo).filter(v=>ids.has(Number(v.id))).map(v=>`${v.nome} (#${v.id})`);
+      return {erro:`O MubiSys não devolveu nenhuma matéria-prima para as variações selecionadas: ${nomes.join(', ')||[...ids].join(', ')}. Confira a ficha no MubiSys e atualize os consumos antes de cotar.`};
+    }
+    return null;
+  }
   const faltantes=[...ids].filter(id=>!variacoes.some(item=>Number(item.variacaoId)===id));
   if(faltantes.length){
     const nomes=variacoesAtivasDoModelo(modelo).filter(v=>faltantes.includes(Number(v.id))).map(v=>`${v.nome} (#${v.id})`);
@@ -2715,7 +2728,8 @@ function carregarComposicaoModeloReal(produto, modelo, variacaoIds){
   const base=modelo?linhasDoModelo(produto,modelo,ids):{linhas:[],fonte:'nenhuma',erro:null};
   REAL.kit=base.linhas;
   REAL.kitSource=base.fonte;
-  REAL.kitWarning=base.fonte==='mubisys'?null:(base.erro||((catalog.mubisysWebConectado&&catalog.composicoesMubiSys.length)?'Não encontrei consumo do MubiSys para esta variação; usando a composição cadastrada no Radrasys.':null));
+  const importacaoPendente=catalog.mubisysWebConectado&&REAL.variacaoModeloIds.length>0&&base.fonte!=='mubisys';
+  REAL.kitWarning=base.fonte==='mubisys'?null:(base.erro||(importacaoPendente?(catalog.erroComposicoesMubiSys||'Não foi possível confirmar a ficha de todas as variações no MubiSys. Atualize os consumos antes de cotar.'):null));
   // Troca de variação do produto principal preserva as escolhas já feitas nos produtos do kit.
   const chaveKit=modelo?kitKey(produto.id,modelo.id):null;
   if(!Array.isArray(REAL.kitProdutosSel)||REAL.kitProdutosSelDe!==chaveKit){
@@ -3546,7 +3560,7 @@ function realStepProposta(){
   const variacoesModelo = modeloSel ? variacoesAtivasDoModelo(modeloSel) : [];
   const variacoesSelecionadas = new Set((REAL.variacaoModeloIds||[]).map(Number));
   const kitPronto = produtoSel && modeloSel ? adminState.kits[kitKey(produtoSel.id, modeloSel.id)] : null;
-  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || variacoesSelecionadas.size>0) && REAL.vendedor && (!soldaFixacaoObrigatoria() || (REAL.tiposFixacao||[]).length>0);
+  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || variacoesSelecionadas.size>0) && !REAL.kitWarning && REAL.vendedor && (!soldaFixacaoObrigatoria() || (REAL.tiposFixacao||[]).length>0);
 
   const subcatsDoFiltro = REAL.filtroCategoria ? Object.keys(CATEGORIAS_PRODUTO[REAL.filtroCategoria]) : [];
   const tiposDoFiltro = (REAL.filtroCategoria && REAL.filtroSubcategoria) ? CATEGORIAS_PRODUTO[REAL.filtroCategoria][REAL.filtroSubcategoria] : [];

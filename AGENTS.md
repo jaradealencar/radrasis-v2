@@ -416,9 +416,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   unidade da matéria-prima. Perfil ausente/desconhecido ou variação ativa sem
   nenhuma linha interrompe a importação inteira, mostra o motivo ao usuário e
   não permite salvar uma ficha parcial; o perfil original fica visível ao lado
-  da fórmula para auditoria. Se a sessão expirar, o formato interno
-  mudar ou não houver composição para a variação, o fluxo preserva a composição
-  manual do CPQ como fallback. A tela autenticada é uma interface interna e
+  da fórmula para auditoria. Se a sessão estiver desconectada ou expirar, o
+  fluxo preserva a composição manual do CPQ como fallback. Enquanto conectado,
+  erro de leitura, perfil desconhecido ou variação sem ficha completa mostra o
+  motivo e bloqueia o início da cotação; conectar/atualizar durante uma proposta
+  recarrega a ficha selecionada. A tela autenticada é uma interface interna e
   não oficial do MubiSys: alterações nela podem exigir ajuste do parser e a
   conexão deve ser validada com uma sessão real após publicar a mudança.
   No editor de Produtos & kits do CPQ, abrir um cadastro sem linhas importa e

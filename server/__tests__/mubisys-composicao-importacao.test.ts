@@ -129,4 +129,14 @@ describe("cadastro de produto no CPQ", () => {
     expect(html).toContain("⚠ Incompleto (0 itens — importar ficha)");
     expect(html).toContain("incompleto(s) sem insumos");
   });
+
+  it("refreshes a selected variant after connecting and blocks missing compositions", () => {
+    expect(html).toMatch(
+      /if\(state\.mode==='real'&&REAL\.produtoId&&REAL\.modeloId\)[\s\S]{0,300}carregarComposicaoModeloReal\(produto,modelo,REAL\.variacaoModeloIds\)/
+    );
+    expect(html).toMatch(
+      /if\(catalog\.mubisysWebConectado&&ids\.size\)[\s\S]{0,300}selecionadas: /
+    );
+    expect(html).toMatch(/const podeAvancar = [^;]*&& !REAL\.kitWarning &&/);
+  });
 });
