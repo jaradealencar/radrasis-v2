@@ -488,8 +488,20 @@ function mapearPosicionamentos(avaliacao: AvaliacaoChapa, pecas: CpqNestingPeca[
   }));
 }
 
-/** Testa os formatos em ordem de área e escolhe a menor chapa que comporta todas as peças. */
-export async function calcularNestingMultiMaterial(input: {
+/** Material cujo nesting não foi possível (não coube, falha do motor...). Os demais materiais seguem normalmente. */
+export type CpqNestingFalhaMaterial = {
+  id_materia_prima: number;
+  materia_prima: string;
+  mensagem: string;
+  codigo: CpqNestingError["code"];
+  erro: CpqNestingError;
+};
+
+/**
+ * Testa os formatos em ordem de área e escolhe a menor chapa que comporta todas as peças, material por material.
+ * Cada material é independente: se um não couber, os outros continuam com o resultado (e o que falhou vem em `falhas`).
+ */
+export async function calcularNestingMultiMaterialParcial(input: {
   svg?: string;
   larguraSvgMm?: number;
   alturaSvgMm?: number;
@@ -497,7 +509,7 @@ export async function calcularNestingMultiMaterial(input: {
   espacamentoMm?: number;
   margemBordaMm?: number;
   materiais: CpqMaterial[];
-}): Promise<CpqNestingMaterialResult[]> {
+}): Promise<{ resultados: CpqNestingMaterialResult[]; falhas: CpqNestingFalhaMaterial[] }> {
   if (input.materiais.length === 0) throw new CpqNestingError("Selecione ao menos um material de chapa.", "invalid_geometry");
   const pecasGlobais = input.pecas?.length ? input.pecas : input.svg ? [{
     id: "peca-1",
@@ -520,7 +532,7 @@ export async function calcularNestingMultiMaterial(input: {
     return true;
   });
 
-  return Promise.all(materiaisUnicos.map(async (material): Promise<CpqNestingMaterialResult> => {
+  const liquidados = await Promise.allSettled(materiaisUnicos.map(async (material): Promise<CpqNestingMaterialResult> => {
     const chapas = ordenarChapasMenoresPrimeiro(material.chapas.filter(chapa =>
       chapa.mubisysMateriaPrimaId === material.id
       && Number.isInteger(chapa.larguraMm) && chapa.larguraMm > 0
@@ -708,4 +720,19 @@ export async function calcularNestingMultiMaterial(input: {
       posicionamentos: mapearPosicionamentos(melhor, pecasMaterialOriginal, margemBordaMm),
     };
   }));
+  const resultados: CpqNestingMaterialResult[] = [];
+  const falhas: CpqNestingFalhaMaterial[] = [];
+  liquidados.forEach((item, indice) => {
+    if (item.status === "fulfilled") { resultados.push(item.value); return; }
+    if (!(item.reason instanceof CpqNestingError)) throw item.reason;
+    falhas.push({ id_materia_prima: materiaisUnicos[indice].id, materia_prima: materiaisUnicos[indice].nome, mensagem: item.reason.message, codigo: item.reason.code, erro: item.reason });
+  });
+  return { resultados, falhas };
+}
+
+/** Versão que falha inteira se qualquer material falhar (mantida para quem precisa do tudo-ou-nada). */
+export async function calcularNestingMultiMaterial(input: Parameters<typeof calcularNestingMultiMaterialParcial>[0]): Promise<CpqNestingMaterialResult[]> {
+  const { resultados, falhas } = await calcularNestingMultiMaterialParcial(input);
+  if (falhas.length) throw falhas[0].erro;
+  return resultados;
 }

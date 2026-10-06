@@ -12,7 +12,7 @@ import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
-  calcularNestingMultiMaterial,
+  calcularNestingMultiMaterialParcial,
   CpqNestingError,
   emitirReciboNesting,
   type CpqMaterial,
@@ -556,7 +556,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const resultado = await calcularNestingMultiMaterial({
+    const { resultados: resultado, falhas } = await calcularNestingMultiMaterialParcial({
       svg: parsed.data.svg,
       larguraSvgMm: parsed.data.larguraSvgMm,
       alturaSvgMm: parsed.data.alturaSvgMm,
@@ -565,11 +565,14 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
       margemBordaMm: parsed.data.margemBordaMm,
       materiais,
     });
+    // Todos falharam: devolve o erro do primeiro (mesmo status de antes). Alguns falharam: devolve os que deram certo + `falhas`.
+    if (!resultado.length && falhas.length) throw falhas[0].erro;
     res.setHeader("Cache-Control", "private, no-store");
     res.json({
       motor: resultado.some(material => material.motor === "interno") ? "Estimativa interna por caixas" : "Deepnest",
       unidades: { comprimento: "mm", area: "m2", perimetro: "m" },
       calculadoEm: new Date().toISOString(),
+      falhas: falhas.map(f => ({ id_materia_prima: f.id_materia_prima, materia_prima: f.materia_prima, mensagem: f.mensagem, codigo: f.codigo })),
       materiais: resultado.map(material => ({
         ...material,
         reciboIntegridade: parsed.data.sourceId

@@ -4480,8 +4480,10 @@ async function executarNestingFactibilidadeReal(formatosTemporarios=REAL.nesting
     const body=await response.json().catch(()=>({}));
     if(!response.ok) throw new Error(body.error||'Falha no Deepnest para os materiais selecionados.');
     const resultados=body.materiais||[];
-    if(resultados.length!==lotesPorMaterial.length) throw new Error('O Deepnest nao retornou todos os materiais.');
-    REAL.nesting={materiais:resultados,algoritmo:body.motor||'Deepnest'};
+    const falhasNesting=Array.isArray(body.falhas)?body.falhas:[];
+    if(resultados.length+falhasNesting.length!==lotesPorMaterial.length) throw new Error('O nesting nao retornou todos os materiais.');
+    // Um material que não coube não derruba os outros: os que deram certo aparecem (e podem ser baixados) e a falha fica explicada.
+    REAL.nesting={materiais:resultados,falhas:falhasNesting,algoritmo:body.motor||'Deepnest'};
   }finally{ REAL.nestingCarregando=false; }
 }
 
@@ -4663,12 +4665,13 @@ function resumoNesting(){
     const total = pecasDoMaterialNesting(m.id_materia_prima).length;
     return r
       ? `<li>${ICONS.check} <b>${escaparHtml(r.materia_prima)}</b> — ${(r.posicionamentos || []).length} de ${total} peça(s) na ${r.formato === 'bobina' ? 'bobina' : 'chapa'} ${escaparHtml(r.nome_chapa_utilizada)} · aproveitamento ${fmt(r.porcentagem_aproveitamento, 1)}%</li>`
-      : `<li>${ICONS.alert} <b>${escaparHtml(m.materia_prima)}</b> — ${total} peça(s), nesting ${REAL.nestingCarregando ? 'em andamento…' : 'ainda não calculado'}</li>`;
+      : `<li>${ICONS.alert} <b>${escaparHtml(m.materia_prima)}</b> — ${total} peça(s), ${(()=>{const falha=((nesting&&nesting.falhas)||[]).find(f=>Number(f.id_materia_prima)===Number(m.id_materia_prima)); return falha?'<b>nesting não feito:</b> '+escaparHtml(falha.mensagem):(REAL.nestingCarregando?'nesting em andamento…':'nesting ainda não calculado');})()}</li>`;
   }).join('');
   const prontos = resultados.filter(r => (r.posicionamentos || []).length);
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
     <div class="cardhead"><div><h4>Resumo do nesting por material</h4><p>Cada matéria-prima de chapa da composição tem o seu nesting, calculado com as peças da camada dela.</p></div>
       ${prontos.length > 1 ? '<button class="btn btn-soft btn-sm" data-act="nesting-baixar-todos">Baixar todos (SVG único)</button>' : ''}</div>
+    ${((nesting&&nesting.falhas)||[]).length?`<div class="warnbox" role="alert" style="margin-top:8px;"><span>${ICONS.alert}</span><div>O nesting de ${((nesting&&nesting.falhas)||[]).map(f=>escaparHtml(f.materia_prima)).join(' e ')} <b>não foi feito</b>; ${prontos.length?'o de '+prontos.map(r=>escaparHtml(r.materia_prima)).join(' e ')+' foi feito e pode ser baixado abaixo':'nenhum outro material ficou pronto'}. Veja o motivo e o que fazer na lista.</div></div>`:''}
     <ul style="margin:6px 0 0 18px;line-height:1.7;">${linhas}</ul>
   </div>`;
 }
