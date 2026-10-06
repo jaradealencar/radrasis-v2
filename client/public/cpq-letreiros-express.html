@@ -4315,8 +4315,8 @@ function aplicarComposicaoSugeridaCoresReal(){
     if(!material)throw new Error(`Atualize o catálogo MubiSys para incluir a matéria-prima ${materialId} sugerida para a face.`);
     return material;
   });
-  const faces=REAL.kit.filter(line=>camadaFisicaKit(line)==='face');
-  if(faces.some(line=>line.variantes?.length))throw new Error('Remova as variações da linha Face antes de aplicar a composição por cor.');
+  // As opções de variação da linha Face não impedem a troca: a cor da arte decide a chapa. A composição original
+  // (com a variação escolhida) fica guardada e aparece no aviso "Face do kit: antes → depois".
   if(REAL.colorAnalysis.composicaoKitOriginal==null)REAL.colorAnalysis.composicaoKitOriginal=REAL.kit.map(line=>({...line}));
   REAL.kit=REAL.kit.filter(line=>camadaFisicaKit(line)!=='face'&&!line.origemComposicaoCor);
   for(const material of materiais) REAL.kit.push({matId:material.id,nome:material.nome,unidade:material.unidade,custo:material.valor,atualizado:material.atualizado,status:material.status,papel:'Face',formulaType:'areaTotal',mult:1,variantes:[],variacaoSelecionadaMatId:null,origemComposicaoCor:true});
