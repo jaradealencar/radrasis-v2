@@ -433,8 +433,10 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   especificações. **Produtividade (pedido de 05/10/2026):** matérias-primas cujo nome contém "produtividade"
   (exceto "Produtividade Geral …", ex.: #4373 Hora; 42 no catálogo de 05/10/2026) ganham no diálogo de edição uma
   subclassificação interna, independente da categoria: até 3 tipos de solda (barra roscada, patinha para LED,
-  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras) e o tamanho (≤ 11 cm ou > 11 cm).
-  Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`) e `produtividade_tamanho` (migration `0089`);
+  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras), o tamanho (≤ 11 cm ou > 11 cm) e os
+  materiais a que a solda se aplica (inox, galvanizado, latão, acrílico, alumínio; multisseleção sem limite).
+  Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`), `produtividade_tamanho` (migration `0089`) e
+  `produtividade_materiais` (`text[]`, migration `0090`);
   regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
   (`ehMateriaProdutividade`), ignorando o que vier para as demais. É só cadastro: nenhum cálculo de custo ou preço lê
   esses campos ainda, e a classificação é manual (nada é deduzido do texto entre colchetes do nome). O CPQ permite selecionar várias

@@ -1,0 +1,1 @@
+ALTER TABLE "materia_prima_cadastros" ADD COLUMN "produtividade_materiais" text[] DEFAULT '{}' NOT NULL;

@@ -9,7 +9,7 @@ import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, sec
 import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-referencia";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { ehProcessoCorte, normalizarRotacao, PROCESSOS_CORTE, ROTACOES_PERMITIDAS } from "@shared/politica-corte";
-import { ehMateriaProdutividade, ehTamanhoProdutividade, erroTiposSolda, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "@shared/produtividade-solda";
+import { ehMateriaProdutividade, ehTamanhoProdutividade, erroMateriaisSolda, erroTiposSolda, MATERIAIS_SOLDA, normalizarMateriaisSolda, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "@shared/produtividade-solda";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -119,6 +119,7 @@ export const materiasPrimasRouter = router({
           ehProdutividade: ehMateriaProdutividade(material.nome),
           produtividadeTiposSolda: normalizarTiposSolda(cadastro?.produtividadeTiposSolda),
           produtividadeTamanho: ehTamanhoProdutividade(cadastro?.produtividadeTamanho) ? cadastro!.produtividadeTamanho : null,
+          produtividadeMateriais: normalizarMateriaisSolda(cadastro?.produtividadeMateriais),
           bobinas: (chapasPorId.get(material.id) ?? []).filter(chapa => chapa.bobina).map(bobina => ({
             id: bobina.id,
             nome: bobina.nome,
@@ -224,9 +225,10 @@ export const materiasPrimasRouter = router({
       rotacaoPermitida: z.enum(ROTACOES_PERMITIDAS).default("livre"),
       espacamentoMm: z.number().finite().min(0).max(50).nullable().default(null),
       margemBordaMm: z.number().finite().min(0).max(50).nullable().default(null),
-      // Só matérias-primas "Produtividade …" (exceto "Produtividade Geral …"): até 3 tipos de solda e o tamanho. Ignorados nas demais.
+      // Só matérias-primas "Produtividade …" (exceto "Produtividade Geral …"): até 3 tipos de solda, o tamanho e os materiais. Ignorados nas demais.
       produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)).default([]),
       produtividadeTamanho: z.enum(TAMANHOS_PRODUTIVIDADE).nullable().default(null),
+      produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)).default([]),
     }).strict())
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -236,9 +238,12 @@ export const materiasPrimasRouter = router({
       if (!material) throw new Error("A matéria-prima não está no catálogo atual do MubiSys.");
       const erroSolda = erroTiposSolda(input.produtividadeTiposSolda);
       if (erroSolda) throw new Error(erroSolda);
+      const erroMateriais = erroMateriaisSolda(input.produtividadeMateriais);
+      if (erroMateriais) throw new Error(erroMateriais);
       const ehProdutividade = ehMateriaProdutividade(material.nome);
       const tiposSoldaSalvos = ehProdutividade ? normalizarTiposSolda(input.produtividadeTiposSolda) : [];
       const tamanhoProdutividadeSalvo = ehProdutividade ? input.produtividadeTamanho : null;
+      const materiaisSoldaSalvos = ehProdutividade ? normalizarMateriaisSolda(input.produtividadeMateriais) : [];
 
       let categoria: typeof materiaPrimaCategorias.$inferSelect | null = null;
       if (input.categoriaId != null) {
@@ -324,6 +329,7 @@ export const materiasPrimasRouter = router({
           margemBordaMm: margemSalva,
           produtividadeTiposSolda: tiposSoldaSalvos,
           produtividadeTamanho: tamanhoProdutividadeSalvo,
+          produtividadeMateriais: materiaisSoldaSalvos,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
@@ -344,6 +350,7 @@ export const materiasPrimasRouter = router({
             margemBordaMm: margemSalva,
             produtividadeTiposSolda: tiposSoldaSalvos,
             produtividadeTamanho: tamanhoProdutividadeSalvo,
+            produtividadeMateriais: materiaisSoldaSalvos,
             updatedAt: now,
           },
         });

@@ -1,5 +1,5 @@
 import { hexesDoPantone } from "@shared/pantone-referencia";
-import { alternarTipoSolda, MAX_TIPOS_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
+import { alternarMaterialSolda, alternarTipoSolda, MATERIAIS_SOLDA, MAX_TIPOS_SOLDA, ROTULO_MATERIAL_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type MaterialSolda, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
 import { PADRAO_PROCESSO_CORTE, PROCESSOS_CORTE, ROTACOES_PERMITIDAS, ROTULO_PROCESSO_CORTE, ROTULO_ROTACAO, type ProcessoCorte, type RotacaoPermitida } from "@shared/politica-corte";
 import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaAltura, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
@@ -202,7 +202,7 @@ function CadastroMateriasPrimas() {
                         ) : material.categoriaUsaDadosBobina ? (
                           <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${fmtEspessura(material.espessuraMm)} de espessura` : ""}{material.densidadeKgM3 != null ? ` · ${kgM3ParaGCm3(material.densidadeKgM3)} g/cm³` : ""}</span>
                         ) : material.ehProdutividade ? (
-                          <ResumoProdutividade tipos={material.produtividadeTiposSolda} tamanho={material.produtividadeTamanho} />
+                          <ResumoProdutividade tipos={material.produtividadeTiposSolda} tamanho={material.produtividadeTamanho} materiais={material.produtividadeMateriais} />
                         ) : <span className="text-muted-foreground">{material.pesoEspecificoKg != null ? `${material.pesoEspecificoKg} kg / ${material.unidadeCusto || "un."}` : material.tipo || "Sem dados técnicos adicionais"}</span>}
                       </TableCell>
                       <TableCell>
@@ -229,13 +229,14 @@ function CadastroMateriasPrimas() {
   );
 }
 
-/** Tipos de solda e tamanho da matéria-prima de produtividade; o que ainda falta aparece em âmbar. */
-function ResumoProdutividade({ tipos, tamanho }: { tipos: TipoSolda[]; tamanho: TamanhoProdutividade | null }) {
+/** Tipos de solda, tamanho e materiais da matéria-prima de produtividade; o que ainda falta aparece em âmbar. */
+function ResumoProdutividade({ tipos, tamanho, materiais }: { tipos: TipoSolda[]; tamanho: TamanhoProdutividade | null; materiais: MaterialSolda[] }) {
   const falta = "text-xs text-amber-700 dark:text-amber-300";
   return (
     <div className="flex flex-wrap items-center gap-1">
       {tipos.length ? tipos.map(tipo => <Badge key={tipo} variant="outline">{ROTULO_TIPO_SOLDA[tipo]}</Badge>) : <span className={falta}>Sem tipo de solda</span>}
       {tamanho ? <Badge variant="secondary">{ROTULO_TAMANHO_PRODUTIVIDADE[tamanho]}</Badge> : <span className={falta}>Sem tamanho</span>}
+      {materiais.length ? materiais.map(material => <Badge key={material} className="bg-sky-100 text-sky-800 hover:bg-sky-100 dark:bg-sky-900/40 dark:text-sky-200">{ROTULO_MATERIAL_SOLDA[material]}</Badge>) : <span className={falta}>Sem materiais</span>}
     </div>
   );
 }
@@ -248,7 +249,7 @@ function sugerirBaseCustoBobina(unidadeCusto: string): "" | "m2" | "ml" {
   return "";
 }
 
-const produtividadeClassificada = (item: MateriaPrimaCadastroItem) => item.ehProdutividade && (item.produtividadeTiposSolda.length > 0 || item.produtividadeTamanho != null);
+const produtividadeClassificada = (item: MateriaPrimaCadastroItem) => item.ehProdutividade && (item.produtividadeTiposSolda.length > 0 || item.produtividadeTamanho != null || item.produtividadeMateriais.length > 0);
 
 const fmtEspessura = (mm: number | null) => mm == null ? "—" : mm < 1 ? `${Number((mm * 1000).toFixed(2))} µm` : `${mm} mm`;
 
@@ -319,6 +320,7 @@ function DialogEditarMateriaPrima({
   const [margemCorte, setMargemCorte] = useState("");
   const [tiposSolda, setTiposSolda] = useState<TipoSolda[]>([]);
   const [tamanhoProdutividade, setTamanhoProdutividade] = useState<"" | TamanhoProdutividade>("");
+  const [materiaisSolda, setMateriaisSolda] = useState<MaterialSolda[]>([]);
   const [origemBusca, setOrigemBusca] = useState("");
   const [origemId, setOrigemId] = useState("");
   const [copiarCor, setCopiarCor] = useState(false);
@@ -363,6 +365,7 @@ function DialogEditarMateriaPrima({
     setMargemCorte(fonte.margemBordaMm == null ? "" : String(fonte.margemBordaMm));
     setTiposSolda(fonte.produtividadeTiposSolda);
     setTamanhoProdutividade(fonte.produtividadeTamanho ?? "");
+    setMateriaisSolda(fonte.produtividadeMateriais);
   };
 
   useEffect(() => {
@@ -467,6 +470,7 @@ function DialogEditarMateriaPrima({
       margemBordaMm: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? margemSalva : null,
       produtividadeTiposSolda: material.ehProdutividade ? tiposSolda : [],
       produtividadeTamanho: material.ehProdutividade && tamanhoProdutividade ? tamanhoProdutividade : null,
+      produtividadeMateriais: material.ehProdutividade ? materiaisSolda : [],
     });
   };
 
@@ -483,7 +487,7 @@ function DialogEditarMateriaPrima({
               <Copy className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <h3 className="text-sm font-medium">Clonar dados de outra matéria-prima</h3>
-                <p className="text-xs text-muted-foreground">Copia categoria, espessura, densidade, formatos de chapa ou larguras de bobina, perfil, peso específico e, nas de produtividade, tipo de solda e tamanho de uma matéria-prima já cadastrada. Nada é salvo até você clicar em Salvar.</p>
+                <p className="text-xs text-muted-foreground">Copia categoria, espessura, densidade, formatos de chapa ou larguras de bobina, perfil, peso específico e, nas de produtividade, tipo de solda, tamanho e materiais de uma matéria-prima já cadastrada. Nada é salvo até você clicar em Salvar.</p>
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(150px,1fr)_minmax(220px,2fr)_auto] sm:items-center">
@@ -542,6 +546,17 @@ function DialogEditarMateriaPrima({
                   {TAMANHOS_PRODUTIVIDADE.map(tamanho => <SelectItem key={tamanho} value={tamanho}>{ROTULO_TAMANHO_PRODUTIVIDADE[tamanho]}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2"><Label>Materiais em que a solda se aplica</Label><span className="text-xs text-muted-foreground">{materiaisSolda.length} marcado(s)</span></div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {MATERIAIS_SOLDA.map(materialSolda => (
+                  <label key={materialSolda} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                    <input type="checkbox" checked={materiaisSolda.includes(materialSolda)} onChange={() => setMateriaisSolda(atual => alternarMaterialSolda(atual, materialSolda))} /> {ROTULO_MATERIAL_SOLDA[materialSolda]}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Marque todos os materiais aos quais esta solda se aplica (ex.: "Galvanizado ou Inox" = os dois); não há limite.</p>
             </div>
           </div>}
 

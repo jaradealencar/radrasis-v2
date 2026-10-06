@@ -1,9 +1,10 @@
 /**
  * Subclassificação interna das matérias-primas de "Produtividade" (Produtos > Matérias-primas).
  *
- * As linhas "Produtividade …" do MubiSys (mão de obra da solda e afins) ganham duas marcações locais, que o MubiSys não tem:
+ * As linhas "Produtividade …" do MubiSys (mão de obra da solda e afins) ganham três marcações locais, que o MubiSys não tem:
  * - tipo de solda (fixação): até 3 entre barra roscada, patinha para LED, chapinha dupla-face, orelhinha e sem fixação;
- * - tamanho: menor ou igual a 11 cm, ou maior que 11 cm.
+ * - tamanho: menor ou igual a 11 cm, ou maior que 11 cm;
+ * - materiais: a quais materiais a solda se aplica (inox, galvanizado, latão, acrílico, alumínio), sem limite.
  *
  * "Sem fixação" é o oposto das demais fixações, então não combina com elas.
  */
@@ -28,7 +29,18 @@ export const ROTULO_TAMANHO_PRODUTIVIDADE: Record<TamanhoProdutividade, string> 
   acima_11cm: "Maior que 11 cm",
 };
 
-const semAcento = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+export const MATERIAIS_SOLDA = ["inox", "galvanizado", "latao", "acrilico", "aluminio"] as const;
+export type MaterialSolda = (typeof MATERIAIS_SOLDA)[number];
+
+export const ROTULO_MATERIAL_SOLDA: Record<MaterialSolda, string> = {
+  inox: "Inox",
+  galvanizado: "Galvanizado",
+  latao: "Latão",
+  acrilico: "Acrílico",
+  aluminio: "Alumínio",
+};
+
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
 /**
  * Matéria-prima de produtividade: o nome contém "produtividade", exceto as "Produtividade Geral …"
@@ -45,6 +57,26 @@ export function ehTipoSolda(valor: unknown): valor is TipoSolda {
 
 export function ehTamanhoProdutividade(valor: unknown): valor is TamanhoProdutividade {
   return typeof valor === "string" && (TAMANHOS_PRODUTIVIDADE as readonly string[]).includes(valor);
+}
+
+export function ehMaterialSolda(valor: unknown): valor is MaterialSolda {
+  return typeof valor === "string" && (MATERIAIS_SOLDA as readonly string[]).includes(valor);
+}
+
+/** Lê os materiais do banco: descarta desconhecidos e repetidos e devolve na ordem fixa de `MATERIAIS_SOLDA`. */
+export function normalizarMateriaisSolda(valor: unknown): MaterialSolda[] {
+  if (!Array.isArray(valor)) return [];
+  return MATERIAIS_SOLDA.filter(material => valor.includes(material));
+}
+
+/** Mensagem de erro se houver materiais repetidos; `null` se estiver ok. */
+export function erroMateriaisSolda(materiais: readonly MaterialSolda[]): string | null {
+  return new Set(materiais).size !== materiais.length ? "Há materiais repetidos." : null;
+}
+
+/** Marca ou desmarca um material, mantendo a ordem fixa. */
+export function alternarMaterialSolda(selecionados: readonly MaterialSolda[], material: MaterialSolda): MaterialSolda[] {
+  return MATERIAIS_SOLDA.filter(item => (item === material ? !selecionados.includes(item) : selecionados.includes(item)));
 }
 
 /** Lê o que veio do banco: descarta valores desconhecidos e repetidos e devolve na ordem fixa de `TIPOS_SOLDA`. */

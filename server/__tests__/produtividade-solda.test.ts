@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  alternarMaterialSolda,
   alternarTipoSolda,
   ehMateriaProdutividade,
+  erroMateriaisSolda,
   erroTiposSolda,
+  MATERIAIS_SOLDA,
   MAX_TIPOS_SOLDA,
+  normalizarMateriaisSolda,
   normalizarTiposSolda,
   TIPOS_SOLDA,
+  type MaterialSolda,
   type TipoSolda,
 } from "../../shared/produtividade-solda";
 
@@ -90,5 +95,33 @@ describe("alternarTipoSolda (marcação na tela)", () => {
       sel = alternarTipoSolda(sel, tipo);
       expect(erroTiposSolda(sel)).toBeNull();
     }
+  });
+});
+
+describe("materiais em que a solda se aplica", () => {
+  it("são cinco, na ordem fixa", () => {
+    expect([...MATERIAIS_SOLDA]).toEqual(["inox", "galvanizado", "latao", "acrilico", "aluminio"]);
+  });
+
+  it("leitura do banco: descarta desconhecidos e repetidos e usa a ordem fixa", () => {
+    expect(normalizarMateriaisSolda(["aluminio", "inox", "cobre", "inox"])).toEqual(["inox", "aluminio"]);
+    expect(normalizarMateriaisSolda(null)).toEqual([]);
+    expect(normalizarMateriaisSolda("inox")).toEqual([]);
+  });
+
+  it("só recusa materiais repetidos (não há limite de quantidade)", () => {
+    expect(erroMateriaisSolda([])).toBeNull();
+    expect(erroMateriaisSolda([...MATERIAIS_SOLDA])).toBeNull();
+    expect(erroMateriaisSolda(["inox", "inox"])).toMatch(/materiais repetidos/);
+  });
+
+  it("marca e desmarca na ordem fixa e deixa marcar todos", () => {
+    let sel: MaterialSolda[] = [];
+    sel = alternarMaterialSolda(sel, "aluminio");
+    sel = alternarMaterialSolda(sel, "inox");
+    expect(sel).toEqual(["inox", "aluminio"]);
+    expect(alternarMaterialSolda(sel, "inox")).toEqual(["aluminio"]);
+    for (const material of MATERIAIS_SOLDA) sel = sel.includes(material) ? sel : alternarMaterialSolda(sel, material);
+    expect(sel).toEqual([...MATERIAIS_SOLDA]);
   });
 });

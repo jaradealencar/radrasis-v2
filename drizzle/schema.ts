@@ -394,10 +394,11 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   rotacaoPermitida: varchar("rotacao_permitida", { length: 12 }).default("livre").notNull(),
   espacamentoMm: decimal("espacamento_mm", { precision: 6, scale: 2 }),
   margemBordaMm: decimal("margem_borda_mm", { precision: 6, scale: 2 }),
-  // Só para as matérias-primas "Produtividade …" (ver shared/produtividade-solda.ts): até 3 tipos de solda (fixação) e o tamanho
-  // (menor ou igual / maior que 11 cm). Vazio = ainda não classificada.
+  // Só para as matérias-primas "Produtividade …" (ver shared/produtividade-solda.ts): até 3 tipos de solda (fixação), o tamanho
+  // (menor ou igual / maior que 11 cm) e os materiais a que a solda se aplica. Vazio = ainda não classificada.
   produtividadeTiposSolda: text("produtividade_tipos_solda").array().notNull().default([]),
   produtividadeTamanho: varchar("produtividade_tamanho", { length: 12 }),
+  produtividadeMateriais: text("produtividade_materiais").array().notNull().default([]),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;
