@@ -6289,10 +6289,246 @@ function criarNovaVersao(){
   render();
 }
 
+/* ---------- ADMINISTRAÇÃO > PRODUTIVIDADES DE SOLDA (treino da escolha automática) ----------
+ * Aqui o gestor ensina o sistema: (1) as trocas que os vendedores fizeram viram regras com um clique; (2) as regras podem ser
+ * criadas e editadas à mão; (3) o simulador mostra o que o sistema escolheria e por quê. As rotas exigem gestor, admin ou master
+ * (o servidor decide; esta tela só mostra a mensagem de erro dele). */
+const soldaAdmin={
+  carregando:false, carregou:false, erro:'', mensagem:'', regras:[], correcoes:[], secao:'correcoes',
+  form:null, criando:null, salvando:false,
+  sim:{titulo:'',subcategoria:'',tipoProduto:'',materialManual:'',tiposFixacao:['barra_roscada'],perimetroAte:'',elementosAte:'',perimetroAcima:'',elementosAcima:'',resultado:null,erro:'',carregando:false},
+};
+async function soldaApi(metodo, caminho, corpo){
+  const response=await fetch('/api/letra-caixa/solda'+caminho,{method:metodo,credentials:'same-origin',cache:'no-store',headers:corpo===undefined?{}:{'Content-Type':'application/json'},body:corpo===undefined?undefined:JSON.stringify(corpo)});
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(body.error||'A operação não foi concluída.');
+  return body;
+}
+async function carregarSoldaAdmin(){
+  soldaAdmin.carregando=true; soldaAdmin.erro='';
+  if(state.tab==='admin'&&state.adminTab==='solda') render();
+  try{
+    const [regras,correcoes]=await Promise.all([soldaApi('GET','/regras'),soldaApi('GET','/correcoes?status=pendente')]);
+    soldaAdmin.regras=Array.isArray(regras.regras)?regras.regras:[];
+    soldaAdmin.correcoes=Array.isArray(correcoes.correcoes)?correcoes.correcoes:[];
+    soldaAdmin.carregou=true;
+  }catch(error){ soldaAdmin.erro=error.message||'Não foi possível carregar o treino da solda.'; }
+  finally{ soldaAdmin.carregando=false; if(state.tab==='admin'&&state.adminTab==='solda') render(); }
+}
+function soldaProdutividadesCatalogo(){
+  return catalog.materias.filter(m=>soldaEhProdutividadeNome(m.nome)&&!/inativ/i.test(String(m.status||''))).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR',{numeric:true}));
+}
+function soldaNomeProdutividade(id){ const m=catalog.materias.find(x=>Number(x.id)===Number(id)); return m?m.nome:`Matéria-prima #${id}`; }
+function soldaRotuloMaterial(k){ return (SOLDA_MATERIAIS.find(([v])=>v===k)||[k,k])[1]; }
+function soldaCondicoesHtml(r){
+  const b=[];
+  if(r.faixa) b.push(`<span class="badge ${r.faixa==='ate_11cm'?'b-accent':'b-warn'}">${SOLDA_FAIXAS[r.faixa].rotulo}</span>`);
+  if(r.material) b.push(`<span class="badge b-ok">${escaparHtml(soldaRotuloMaterial(r.material))}</span>`);
+  if(r.tipoProduto) b.push(`<span class="badge b-neutral">tipo: ${escaparHtml(r.tipoProduto)}</span>`);
+  if(r.fixacaoTipos&&r.fixacaoTipos.length) b.push(`<span class="badge b-neutral">fixação: ${escaparHtml(rotuloFixacaoSolda(r.fixacaoTipos))}</span>`);
+  (r.palavrasTitulo||[]).forEach(p=>b.push(`<span class="badge b-neutral">título tem "${escaparHtml(p)}"</span>`));
+  return b.length?b.join(' '):'<span class="badge b-warn">sem condições</span>';
+}
+function soldaCheckFixacao(selecionados, act){
+  return SOLDA_TIPOS_FIXACAO.map(([k,rot])=>`<label style="display:flex;gap:6px;align-items:center;font-size:12px;"><input type="checkbox" data-act="${act}" data-val="${k}" ${selecionados.includes(k)?'checked':''}> ${rot}</label>`).join('');
+}
+
+function htmlSoldaCorrecoes(){
+  if(!soldaAdmin.correcoes.length) return '<div class="empty-hint">Nenhuma correção pendente. Quando um vendedor trocar a produtividade sugerida, ela aparece aqui para você transformar em regra.</div>';
+  return soldaAdmin.correcoes.map(c=>{
+    const ctx=c.contextoJson||{};
+    const criando=soldaAdmin.criando&&soldaAdmin.criando.id===c.id?soldaAdmin.criando:null;
+    return `<div class="card" style="box-shadow:none;background:var(--surface);margin-bottom:10px;" data-teste="correcao-${c.id}">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+        <span class="badge ${c.faixa==='ate_11cm'?'b-accent':'b-warn'}">${SOLDA_FAIXAS[c.faixa]?SOLDA_FAIXAS[c.faixa].rotulo:escaparHtml(c.faixa)}</span>
+        ${ctx.material?`<span class="badge b-ok">${escaparHtml(soldaRotuloMaterial(ctx.material))}</span>`:'<span class="badge b-warn">material não identificado</span>'}
+        ${(ctx.tiposFixacao||[]).length?`<span class="badge b-neutral">fixação: ${escaparHtml(rotuloFixacaoSolda(ctx.tiposFixacao))}</span>`:''}
+        <span style="font-size:11px;color:var(--text-faint);">${escaparHtml(c.usuarioNome||'—')} · ${new Date(c.createdAt).toLocaleString('pt-BR')}</span>
+      </div>
+      <div style="font-size:12.5px;"><b>${escaparHtml(ctx.titulo||'(sem título)')}</b>${ctx.perimetroM!=null?` · ${fmt(Number(ctx.perimetroM),2)} m de perímetro · ${ctx.elementos??'?'} elemento(s)`:''}</div>
+      <div style="font-size:12.5px;margin-top:6px;">Sugerido: <span style="color:var(--text-dim);">${c.sugeridaMateriaPrimaId?escaparHtml(soldaNomeProdutividade(c.sugeridaMateriaPrimaId)):'nenhuma'}</span><br>Vendedor escolheu: <b>${escaparHtml(soldaNomeProdutividade(c.escolhidaMateriaPrimaId))}</b></div>
+      ${c.nota?`<div class="role-note" style="margin-top:6px;">${ICONS.info} “${escaparHtml(c.nota)}”</div>`:''}
+      ${criando?`<div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:10px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;">Criar regra: quando estas condições se repetirem, vale a produtividade escolhida</div>
+        <div class="grid2">
+          <label class="field">Nome da regra<input type="text" maxlength="160" value="${escaparHtml(criando.nome)}" data-act="solda-adm-criar-campo" data-campo="nome"></label>
+          <label class="field">Prioridade (maior vence)<input type="number" min="-1000" max="1000" value="${escaparHtml(criando.prioridade)}" data-act="solda-adm-criar-campo" data-campo="prioridade"></label>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;font-size:12px;">
+          <label><input type="checkbox" data-act="solda-adm-criar-uso" data-campo="usarMaterial" ${criando.usarMaterial?'checked':''}> Mesmo material${ctx.material?` (${escaparHtml(soldaRotuloMaterial(ctx.material))})`:''}</label>
+          <label><input type="checkbox" data-act="solda-adm-criar-uso" data-campo="usarFixacao" ${criando.usarFixacao?'checked':''}> Mesma fixação${(ctx.tiposFixacao||[]).length?` (${escaparHtml(rotuloFixacaoSolda(ctx.tiposFixacao))})`:''}</label>
+          <label><input type="checkbox" data-act="solda-adm-criar-uso" data-campo="usarFaixa" ${criando.usarFaixa?'checked':''}> Mesma faixa de altura</label>
+          <label><input type="checkbox" data-act="solda-adm-criar-uso" data-campo="usarTipoProduto" ${criando.usarTipoProduto?'checked':''}> Mesmo tipo do produto${ctx.tipoProduto?` (${escaparHtml(ctx.tipoProduto)})`:''}</label>
+        </div>
+        <label class="field">Palavras que o título do produto precisa ter (separe por vírgula; opcional)<input type="text" value="${escaparHtml(criando.palavras)}" placeholder="Ex.: frontlight, aro recuado" data-act="solda-adm-criar-campo" data-campo="palavras"></label>
+        <div style="margin-top:8px;display:flex;gap:8px;"><button class="btn btn-primary btn-sm" data-act="solda-adm-criar-confirmar" ${soldaAdmin.salvando?'disabled':''}>Criar regra</button><button class="btn btn-ghost btn-sm" data-act="solda-adm-criar-cancelar">Cancelar</button></div>
+      </div>`:`<div style="margin-top:10px;display:flex;gap:8px;"><button class="btn btn-soft btn-sm" data-act="solda-adm-criar-abrir" data-id="${c.id}">Transformar em regra</button><button class="btn btn-ghost btn-sm" data-act="solda-adm-descartar" data-id="${c.id}">Descartar</button></div>`}
+    </div>`;
+  }).join('');
+}
+
+function htmlSoldaFormRegra(){
+  const f=soldaAdmin.form;
+  if(!f) return '';
+  return `<div class="card" style="box-shadow:none;background:var(--surface);margin-bottom:12px;" data-teste="form-regra-solda">
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${f.id?'Editar regra':'Nova regra'}</div>
+    <div class="grid2">
+      <label class="field">Nome<input type="text" maxlength="160" value="${escaparHtml(f.nome)}" data-act="solda-adm-form-campo" data-campo="nome"></label>
+      <label class="field">Prioridade (maior vence)<input type="number" min="-1000" max="1000" value="${escaparHtml(f.prioridade)}" data-act="solda-adm-form-campo" data-campo="prioridade"></label>
+      <label class="field">Material<select data-act="solda-adm-form-campo" data-campo="material"><option value="">Qualquer</option>${SOLDA_MATERIAIS.map(([k,rot])=>`<option value="${k}" ${f.material===k?'selected':''}>${rot}</option>`).join('')}</select></label>
+      <label class="field">Faixa de altura<select data-act="solda-adm-form-campo" data-campo="faixa"><option value="">Qualquer</option><option value="ate_11cm" ${f.faixa==='ate_11cm'?'selected':''}>≤ 11 cm</option><option value="acima_11cm" ${f.faixa==='acima_11cm'?'selected':''}>&gt; 11 cm</option></select></label>
+      <label class="field">Tipo do produto (como no cadastro; opcional)<input type="text" maxlength="80" value="${escaparHtml(f.tipoProduto)}" placeholder="Ex.: Frontlight" data-act="solda-adm-form-campo" data-campo="tipoProduto"></label>
+      <label class="field">Palavras no título do produto (vírgula; opcional)<input type="text" value="${escaparHtml(f.palavras)}" placeholder="Ex.: cursivo" data-act="solda-adm-form-campo" data-campo="palavras"></label>
+    </div>
+    <div style="margin:8px 0;"><div style="font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Fixação (conjunto exato; nenhuma marcada = qualquer fixação)</div><div style="display:flex;gap:14px;flex-wrap:wrap;">${soldaCheckFixacao(f.fixacaoTipos,'solda-adm-form-fixacao')}</div></div>
+    <label class="field">Produtividade escolhida<select data-act="solda-adm-form-campo" data-campo="materiaPrimaId"><option value="">Selecione…</option>${soldaProdutividadesCatalogo().map(m=>`<option value="${m.id}" ${String(f.materiaPrimaId)===String(m.id)?'selected':''}>${escaparHtml(m.nome)} · ${money(m.valor)}</option>`).join('')}</select></label>
+    <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:8px;"><input type="checkbox" data-act="solda-adm-form-ativa" ${f.ativa?'checked':''}> Regra ativa</label>
+    <div style="margin-top:10px;display:flex;gap:8px;"><button class="btn btn-primary btn-sm" data-act="solda-adm-form-salvar" ${soldaAdmin.salvando?'disabled':''}>${f.id?'Salvar alterações':'Criar regra'}</button><button class="btn btn-ghost btn-sm" data-act="solda-adm-form-cancelar">Cancelar</button></div>
+  </div>`;
+}
+
+function htmlSoldaRegras(){
+  const linhas=soldaAdmin.regras.map(r=>`<tr style="${r.ativa?'':'opacity:.55;'}">
+    <td><b>${escaparHtml(r.nome)}</b><div style="font-size:11px;color:var(--text-faint);">${r.criadaPorNome?escaparHtml(r.criadaPorNome):''}</div></td>
+    <td>${soldaCondicoesHtml(r)}</td>
+    <td style="font-size:12px;">${escaparHtml(soldaNomeProdutividade(r.materiaPrimaId))}</td>
+    <td class="num">${r.prioridade}</td>
+    <td><label style="display:flex;gap:5px;align-items:center;font-size:11.5px;"><input type="checkbox" data-act="solda-adm-regra-ativa" data-id="${r.id}" ${r.ativa?'checked':''}> ativa</label></td>
+    <td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-act="solda-adm-regra-editar" data-id="${r.id}">Editar</button> <button class="btn btn-ghost btn-sm" data-act="solda-adm-regra-excluir" data-id="${r.id}">✕</button></td>
+  </tr>`).join('');
+  return `${htmlSoldaFormRegra()}
+    ${soldaAdmin.form?'':'<div style="margin-bottom:10px;"><button class="btn btn-soft btn-sm" data-act="solda-adm-regra-nova">Nova regra</button></div>'}
+    ${soldaAdmin.regras.length?`<div class="tablewrap"><table><thead><tr><th>Regra</th><th>Quando</th><th>Produtividade</th><th>Prior.</th><th></th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>`:'<div class="empty-hint">Nenhuma regra ainda. A escolha usa só a pontuação automática até você treinar o sistema.</div>'}
+    <div class="role-note" style="margin-top:8px;">${ICONS.info} A primeira regra que combina (maior prioridade; empate: a mais específica) decide a produtividade da faixa; sem regra, vale a pontuação automática.</div>`;
+}
+
+function htmlSoldaSimulador(){
+  const s=soldaAdmin.sim, r=s.resultado;
+  const resultado=r?`<div style="margin-top:12px;">
+    <div class="kv"><span>Material usado</span><span>${r.material&&r.material.usado?escaparHtml(soldaRotuloMaterial(r.material.usado)):'não identificado'}${r.material&&r.material.origem?` (${escaparHtml(r.material.manual?'escolhido':r.material.origem)})`:''}</span></div>
+    ${(r.faixas||[]).filter(f=>f.necessaria).map(f=>{
+      const [txt,cls]=SOLDA_CONFIANCA[f.confianca]||SOLDA_CONFIANCA.nenhuma;
+      const motivos=o=>(o.motivos||[]).map(m=>`<li>${escaparHtml(m.texto)}${m.pontos?` <span class="mono">(${m.pontos>0?'+':''}${m.pontos})</span>`:''}</li>`).join('');
+      return `<div class="card" style="box-shadow:none;background:var(--surface);margin-top:8px;">
+        <span class="badge ${f.faixa==='ate_11cm'?'b-accent':'b-warn'}">${SOLDA_FAIXAS[f.faixa].rotulo}</span> <span class="badge ${cls}">${txt}</span> <span style="font-size:11px;color:var(--text-faint);">${escaparHtml(SOLDA_ORIGEM_TEXTO[f.origem]||'nenhuma')}${f.regraId?` #${f.regraId}`:''}</span>
+        ${f.escolhida?`<div style="margin-top:6px;font-size:12.5px;"><b>${escaparHtml(f.escolhida.nome)}</b> · ${money(f.escolhida.valor)}</div><ul style="margin:4px 0 0 16px;font-size:11px;color:var(--text-dim);">${motivos(f.escolhida)}</ul>`:'<div style="margin-top:6px;font-size:12.5px;color:var(--bad);">Nenhuma produtividade serve.</div>'}
+        ${(f.avisos||[]).map(a=>`<div class="role-note">${ICONS.info} ${escaparHtml(a)}</div>`).join('')}
+        ${(f.alternativas||[]).length?`<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:11.5px;color:var(--accent-ink);">Alternativas (${f.alternativas.length})</summary>${f.alternativas.map(a=>`<div style="font-size:11.5px;margin-top:4px;"><b>${escaparHtml(a.nome)}</b> <span class="mono">${a.pontos} pts</span></div>`).join('')}</details>`:''}
+      </div>`;
+    }).join('')}</div>`:'';
+  return `<div class="grid2">
+      <label class="field">Título do produto<input type="text" maxlength="500" value="${escaparHtml(s.titulo)}" placeholder="Ex.: Letreiro Galvanizado Frontlight" data-act="solda-adm-sim-campo" data-campo="titulo"></label>
+      <label class="field">Material (vazio = detectar)<select data-act="solda-adm-sim-campo" data-campo="materialManual"><option value="">Detectar pelo título/subcategoria</option>${SOLDA_MATERIAIS.map(([k,rot])=>`<option value="${k}" ${s.materialManual===k?'selected':''}>${rot}</option>`).join('')}</select></label>
+      <label class="field">Subcategoria do kit (opcional)<input type="text" maxlength="100" value="${escaparHtml(s.subcategoria)}" placeholder="Ex.: Galvanizado" data-act="solda-adm-sim-campo" data-campo="subcategoria"></label>
+      <label class="field">Tipo do produto (opcional)<input type="text" maxlength="100" value="${escaparHtml(s.tipoProduto)}" placeholder="Ex.: Frontlight" data-act="solda-adm-sim-campo" data-campo="tipoProduto"></label>
+      <label class="field">Perímetro ≤ 11 cm (m) · elementos<span style="display:flex;gap:6px;"><input type="text" inputmode="decimal" value="${escaparHtml(s.perimetroAte)}" placeholder="m" data-act="solda-adm-sim-campo" data-campo="perimetroAte"><input type="text" inputmode="numeric" value="${escaparHtml(s.elementosAte)}" placeholder="un" data-act="solda-adm-sim-campo" data-campo="elementosAte" style="width:80px;"></span></label>
+      <label class="field">Perímetro &gt; 11 cm (m) · elementos<span style="display:flex;gap:6px;"><input type="text" inputmode="decimal" value="${escaparHtml(s.perimetroAcima)}" placeholder="m" data-act="solda-adm-sim-campo" data-campo="perimetroAcima"><input type="text" inputmode="numeric" value="${escaparHtml(s.elementosAcima)}" placeholder="un" data-act="solda-adm-sim-campo" data-campo="elementosAcima" style="width:80px;"></span></label>
+    </div>
+    <div style="margin:8px 0;"><div style="font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Fixação</div><div style="display:flex;gap:14px;flex-wrap:wrap;">${soldaCheckFixacao(s.tiposFixacao,'solda-adm-sim-fixacao')}</div></div>
+    <button class="btn btn-primary btn-sm" data-act="solda-adm-sim-rodar" ${s.carregando?'disabled':''}>${s.carregando?'Simulando…':'Simular'}</button>
+    ${s.erro?`<div class="warnbox" role="alert" style="margin-top:10px;">${escaparHtml(s.erro)}</div>`:''}
+    ${resultado}`;
+}
+
+function adminSolda(){
+  if(!catalog.ready) return `<div class="card"><div class="empty-hint">Carregando catálogo real do MubiSys…</div></div>`;
+  if(!soldaAdmin.carregou&&!soldaAdmin.carregando&&!soldaAdmin.erro) setTimeout(carregarSoldaAdmin,0);
+  const aba=(k,rotulo,n)=>`<button class="btn ${soldaAdmin.secao===k?'btn-primary':'btn-ghost'} btn-sm" data-act="solda-adm-secao" data-val="${k}">${rotulo}${n!=null?` (${n})`:''}</button>`;
+  const corpo=soldaAdmin.secao==='regras'?htmlSoldaRegras():soldaAdmin.secao==='simulador'?htmlSoldaSimulador():htmlSoldaCorrecoes();
+  return `<div class="card">
+    <div class="cardhead"><div><h3>Produtividades de solda — treino da escolha automática</h3><p>O sistema escolhe sozinho a produtividade de cada faixa de altura. Quando um vendedor troca a escolha, a correção chega aqui; você a transforma em regra e a próxima cotação já sai certa. Só gestor, admin ou master.</p></div><button class="btn btn-ghost btn-sm" data-act="solda-adm-atualizar">Atualizar</button></div>
+    ${soldaAdmin.erro?`<div class="warnbox" role="alert" style="margin-bottom:12px;">${escaparHtml(soldaAdmin.erro)}</div>`:''}
+    ${soldaAdmin.mensagem?`<div class="banner" style="margin-bottom:12px;">${ICONS.check}<div>${escaparHtml(soldaAdmin.mensagem)}</div></div>`:''}
+    ${soldaAdmin.carregando?'<div class="empty-hint">Carregando…</div>':''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${aba('correcoes','Correções pendentes',soldaAdmin.correcoes.length)}${aba('regras','Regras',soldaAdmin.regras.length)}${aba('simulador','Simulador')}</div>
+    ${corpo}
+  </div>`;
+}
+
+function soldaFormVazio(){ return {id:null,nome:'',ativa:true,prioridade:'0',material:'',tipoProduto:'',fixacaoTipos:[],palavras:'',faixa:'',materiaPrimaId:''}; }
+function soldaListaPalavras(texto){ return String(texto||'').split(',').map(p=>p.trim()).filter(Boolean).slice(0,10); }
+async function soldaAcao(fn, mensagem){
+  soldaAdmin.salvando=true; soldaAdmin.erro=''; soldaAdmin.mensagem='';
+  render();
+  try{ await fn(); soldaAdmin.mensagem=mensagem||''; await carregarSoldaAdmin(); }
+  catch(error){ soldaAdmin.erro=error.message||'A operação não foi concluída.'; }
+  finally{ soldaAdmin.salvando=false; render(); }
+}
+function bindSoldaAdminEvents(){
+  if(state.tab!=='admin'||state.adminTab!=='solda') return;
+  const todos=sel=>document.querySelectorAll(sel);
+  todos('[data-act="solda-adm-atualizar"]').forEach(el=>el.addEventListener('click',()=>{ soldaAdmin.mensagem=''; carregarSoldaAdmin(); }));
+  todos('[data-act="solda-adm-secao"]').forEach(el=>el.addEventListener('click',()=>{ soldaAdmin.secao=el.dataset.val; soldaAdmin.erro=''; soldaAdmin.mensagem=''; render(); }));
+  // Correções pendentes
+  todos('[data-act="solda-adm-criar-abrir"]').forEach(el=>el.addEventListener('click',()=>{
+    const id=Number(el.dataset.id);
+    soldaAdmin.criando={id,nome:`Correção #${id}`,prioridade:'10',usarMaterial:true,usarFixacao:true,usarFaixa:true,usarTipoProduto:false,palavras:''};
+    render();
+  }));
+  todos('[data-act="solda-adm-criar-campo"]').forEach(el=>el.addEventListener('input',()=>{ if(soldaAdmin.criando) soldaAdmin.criando[el.dataset.campo]=el.value; }));
+  todos('[data-act="solda-adm-criar-uso"]').forEach(el=>el.addEventListener('change',()=>{ if(soldaAdmin.criando) soldaAdmin.criando[el.dataset.campo]=el.checked; }));
+  todos('[data-act="solda-adm-criar-cancelar"]').forEach(el=>el.addEventListener('click',()=>{ soldaAdmin.criando=null; render(); }));
+  todos('[data-act="solda-adm-criar-confirmar"]').forEach(el=>el.addEventListener('click',()=>{
+    const c=soldaAdmin.criando; if(!c) return;
+    soldaAcao(async()=>{
+      await soldaApi('POST',`/correcoes/${c.id}/regra`,{nome:String(c.nome||'').trim()||`Correção #${c.id}`,prioridade:Math.trunc(Number(c.prioridade))||0,usarMaterial:!!c.usarMaterial,usarFixacao:!!c.usarFixacao,usarFaixa:!!c.usarFaixa,usarTipoProduto:!!c.usarTipoProduto,palavrasTitulo:soldaListaPalavras(c.palavras)});
+      soldaAdmin.criando=null; soldaAdmin.secao='regras';
+    },'Regra criada: as próximas cotações com essas condições já usam a produtividade escolhida.');
+  }));
+  todos('[data-act="solda-adm-descartar"]').forEach(el=>el.addEventListener('click',()=>{
+    soldaAcao(()=>soldaApi('PUT',`/correcoes/${el.dataset.id}`,{status:'descartada'}),'Correção descartada.');
+  }));
+  // Regras
+  todos('[data-act="solda-adm-regra-nova"]').forEach(el=>el.addEventListener('click',()=>{ soldaAdmin.form=soldaFormVazio(); render(); }));
+  todos('[data-act="solda-adm-regra-editar"]').forEach(el=>el.addEventListener('click',()=>{
+    const r=soldaAdmin.regras.find(x=>x.id===Number(el.dataset.id)); if(!r) return;
+    soldaAdmin.form={id:r.id,nome:r.nome,ativa:r.ativa,prioridade:String(r.prioridade),material:r.material||'',tipoProduto:r.tipoProduto||'',fixacaoTipos:[...(r.fixacaoTipos||[])],palavras:(r.palavrasTitulo||[]).join(', '),faixa:r.faixa||'',materiaPrimaId:String(r.materiaPrimaId)};
+    render();
+  }));
+  todos('[data-act="solda-adm-form-campo"]').forEach(el=>el.addEventListener(el.tagName==='SELECT'?'change':'input',()=>{ if(soldaAdmin.form) soldaAdmin.form[el.dataset.campo]=el.value; }));
+  todos('[data-act="solda-adm-form-ativa"]').forEach(el=>el.addEventListener('change',()=>{ if(soldaAdmin.form) soldaAdmin.form.ativa=el.checked; }));
+  todos('[data-act="solda-adm-form-fixacao"]').forEach(el=>el.addEventListener('change',()=>{
+    if(!soldaAdmin.form) return;
+    soldaAdmin.form.fixacaoTipos=alternarFixacaoSolda(soldaAdmin.form.fixacaoTipos,el.dataset.val);
+    render();
+  }));
+  todos('[data-act="solda-adm-form-cancelar"]').forEach(el=>el.addEventListener('click',()=>{ soldaAdmin.form=null; render(); }));
+  todos('[data-act="solda-adm-form-salvar"]').forEach(el=>el.addEventListener('click',()=>{
+    const f=soldaAdmin.form; if(!f) return;
+    const corpo={nome:String(f.nome||'').trim(),ativa:!!f.ativa,prioridade:Math.trunc(Number(f.prioridade))||0,material:f.material||null,tipoProduto:String(f.tipoProduto||'').trim()||null,fixacaoTipos:f.fixacaoTipos.length?f.fixacaoTipos:null,palavrasTitulo:soldaListaPalavras(f.palavras),faixa:f.faixa||null,materiaPrimaId:Number(f.materiaPrimaId)};
+    if(!corpo.nome){ soldaAdmin.erro='Dê um nome à regra.'; render(); return; }
+    if(!Number.isInteger(corpo.materiaPrimaId)||corpo.materiaPrimaId<=0){ soldaAdmin.erro='Escolha a produtividade da regra.'; render(); return; }
+    soldaAcao(async()=>{ await soldaApi(f.id?'PUT':'POST',f.id?`/regras/${f.id}`:'/regras',corpo); soldaAdmin.form=null; },f.id?'Regra atualizada.':'Regra criada.');
+  }));
+  todos('[data-act="solda-adm-regra-ativa"]').forEach(el=>el.addEventListener('change',()=>{
+    const r=soldaAdmin.regras.find(x=>x.id===Number(el.dataset.id)); if(!r) return;
+    soldaAcao(()=>soldaApi('PUT',`/regras/${r.id}`,{nome:r.nome,ativa:el.checked,prioridade:r.prioridade,material:r.material,tipoProduto:r.tipoProduto,fixacaoTipos:r.fixacaoTipos,palavrasTitulo:r.palavrasTitulo||[],faixa:r.faixa,materiaPrimaId:r.materiaPrimaId}),el.checked?'Regra ativada.':'Regra desativada.');
+  }));
+  todos('[data-act="solda-adm-regra-excluir"]').forEach(el=>el.addEventListener('click',()=>{
+    const r=soldaAdmin.regras.find(x=>x.id===Number(el.dataset.id)); if(!r) return;
+    if(!confirm(`Excluir a regra "${r.nome}"? As próximas cotações voltam a usar a pontuação automática.`)) return;
+    soldaAcao(()=>soldaApi('DELETE',`/regras/${r.id}`),'Regra excluída.');
+  }));
+  // Simulador
+  todos('[data-act="solda-adm-sim-campo"]').forEach(el=>el.addEventListener(el.tagName==='SELECT'?'change':'input',()=>{ soldaAdmin.sim[el.dataset.campo]=el.value; }));
+  todos('[data-act="solda-adm-sim-fixacao"]').forEach(el=>el.addEventListener('change',()=>{ soldaAdmin.sim.tiposFixacao=alternarFixacaoSolda(soldaAdmin.sim.tiposFixacao,el.dataset.val); render(); }));
+  todos('[data-act="solda-adm-sim-rodar"]').forEach(el=>el.addEventListener('click',async()=>{
+    const s=soldaAdmin.sim, num=t=>numeroBR(t);
+    const faixas=[{faixa:'ate_11cm',perimetroM:num(s.perimetroAte),elementos:Math.max(0,Math.trunc(num(s.elementosAte)))},{faixa:'acima_11cm',perimetroM:num(s.perimetroAcima),elementos:Math.max(0,Math.trunc(num(s.elementosAcima)))}];
+    s.erro=''; s.resultado=null;
+    if(!faixas.some(f=>f.perimetroM>0||f.elementos>0)){ s.erro='Informe o perímetro ou o número de elementos de ao menos uma faixa.'; render(); return; }
+    s.carregando=true; render();
+    try{
+      s.resultado=await soldaApi('POST','/simular',{titulo:s.titulo.trim(),subcategoria:s.subcategoria.trim()||null,tipoProduto:s.tipoProduto.trim()||null,nomesComposicao:[],tiposFixacao:s.tiposFixacao,...(s.materialManual?{materialManual:s.materialManual}:{}),faixas});
+    }catch(error){ s.erro=error.message||'Não foi possível simular.'; }
+    finally{ s.carregando=false; render(); }
+  }));
+}
+
 function renderAdmin(){
   const paineis = {
     produtos: adminProdutos, erp: adminMateriasAdmin, chapas: adminChapasNesting, clientes: adminClientesCadastrados,
-    propostas: adminCotacoesHistorico, config: adminConfiguracoes,
+    propostas: adminCotacoesHistorico, solda: adminSolda, config: adminConfiguracoes,
   };
   return `
   <div class="subtabs">
@@ -6301,6 +6537,7 @@ function renderAdmin(){
     <button data-act="admin-tab" data-val="clientes" class="${state.adminTab==='clientes'?'active':''}">Clientes</button>
     <button data-act="admin-tab" data-val="chapas" class="${state.adminTab==='chapas'?'active':''}">Chapas para nesting</button>
     <button data-act="admin-tab" data-val="propostas" class="${state.adminTab==='propostas'?'active':''}">Cotações</button>
+    <button data-act="admin-tab" data-val="solda" class="${state.adminTab==='solda'?'active':''}">Produtividades de solda</button>
     <button data-act="admin-tab" data-val="config" class="${state.adminTab==='config'?'active':''}">Configurações</button>
   </div>
   ${(paineis[state.adminTab]||adminProdutos)()}`;
@@ -7069,7 +7306,7 @@ function bindEvents(){
       switch(act){
         case 'tab': state.tab=val; break;
         case 'role': state.role=val; break;
-        case 'admin-tab': state.adminTab=val; if(val==='propostas') carregarCotacoesServidor(); if(val==='clientes') carregarClientesCadastrados(); if(val==='chapas') carregarChapasServidor(); if(val==='config') carregarCatalogoCorServidor(); break;
+        case 'admin-tab': state.adminTab=val; if(val==='propostas') carregarCotacoesServidor(); if(val==='clientes') carregarClientesCadastrados(); if(val==='chapas') carregarChapasServidor(); if(val==='solda') carregarSoldaAdmin(); if(val==='config') carregarCatalogoCorServidor(); break;
         case 'pick-project': resetProjectState(val); break;
         case 'back-picker': state.projectId=null; break;
         case 'goto-step': state.step=parseInt(val); break;
@@ -7118,6 +7355,7 @@ function bindEvents(){
 
   bindAdminEvents();
   bindRealEvents();
+  bindSoldaAdminEvents();
   bindClienteEvents();
   bindMubiSysConnectionEvents();
 }

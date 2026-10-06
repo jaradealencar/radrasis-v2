@@ -673,7 +673,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`shared/produtividade-solda.ts`): `contagemElementosPorAltura()` devolve
   `{ate, acima}` para isso, mas **a ligação com a composição/orçamento ainda não
   existe** — a contagem só é exibida e não entra no snapshot da cotação.
-  **Produtividade de solda automática (pedido de 06/10/2026, em andamento):** o vendedor escolhe só o tipo de
+  **Produtividade de solda automática (pedido de 06/10/2026):** o vendedor escolhe só o tipo de
   fixação (etapa 1); o sistema escolhe as "Produtividade Solda …" na Ficha técnica e as acrescenta ao orçamento,
   quantificadas pelo **perímetro total (externo + vazados, em metros) de cada faixa de altura** (≤ 11 cm e > 11 cm).
   O produto não cadastra produtividade na composição. O motor é puro, em `server/services/cpqSoldaProdutividade.ts`:
@@ -699,8 +699,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (ambos `.optional()` **sem default**, para não mudar a assinatura de cotações antigas). Remover a linha automática a
   dispensa até "Refazer sugestão"; produtividade ausente, ambígua ou removida **só avisa** (Composição e Orçamento), não
   bloqueia. A troca do vendedor é enviada como correção ao confirmar a composição (uma vez por combinação). Mão de obra de
-  solda fica fora do peso. Ainda falta a aba de treino (Administração > Produtividades de solda): regras, correções
-  pendentes e simulador.
+  solda fica fora do peso.
+  **Configurador (treino):** Administração > Produtividades de solda (`adminSolda`, `soldaAdmin` no HTML; as rotas exigem
+  gestor/admin/master e a tela só mostra o erro do servidor). Três seções: correções pendentes (transformar em regra,
+  escolhendo quais condições do contexto entram — material, fixação, faixa, tipo do produto — mais palavras do título e
+  prioridade; ou descartar), regras (criar, editar, ativar/desativar, excluir) e simulador (o que o sistema escolheria, com
+  motivos e alternativas). Regra nova é o jeito de corrigir um erro recorrente: a primeira que combina vence a pontuação.
 
 ## CPQ nesting backend
 
