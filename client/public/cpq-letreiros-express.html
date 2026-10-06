@@ -419,7 +419,7 @@ function computeOrcamento(p){
 }
 
 /* ---------- CATÁLOGO ATUAL DO MUBISYS (consultado pelo servidor) ---------- */
-const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, connectionOpen:false, connectionBusy:false, connectionMessage:null, syncWarning:null, sincronizandoKits:false, ready:false, refreshing:false, error:null, baixadoEm:null };
+const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, espelhoStatus:null, syncBusy:false, uploadBusy:false, connectionMessage:null, syncWarning:null, sincronizandoKits:false, ready:false, refreshing:false, error:null, baixadoEm:null };
 async function loadCatalog(){
   const jaCarregado=catalog.ready;
   catalog.refreshing = true;
@@ -435,6 +435,7 @@ async function loadCatalog(){
     catalog.composicoesMubiSys = Array.isArray(dados.composicoesMubiSys) ? dados.composicoesMubiSys : [];
     catalog.mubisysWebConectado = dados.mubisysWebConectado === true;
     catalog.erroComposicoesMubiSys = dados.erroComposicoesMubiSys || null;
+    catalog.espelhoStatus = dados.espelhoStatus || null;
     catalog.baixadoEm = dados.carregadoEm || null;
     const importacaoAutomatica=preencherComposicaoMubiSysSeVazia(adminState.editingKey);
     if(importacaoAutomatica?.status==='importado') salvarKit(importacaoAutomatica.key);
@@ -467,80 +468,48 @@ function catalogErrorNotice(){
 }
 
 function renderConexaoMubiSys(){
-  const linhas = catalog.composicoesMubiSys.length;
-  const estado = catalog.mubisysWebConectado
-    ? (catalog.erroComposicoesMubiSys ? catalog.erroComposicoesMubiSys : `${linhas} composição(ões) de matéria-prima carregada(s) do MubiSys.`)
-    : (catalog.erroComposicoesMubiSys || 'Conecte sua conta MubiSys uma vez neste navegador para importar o consumo de cada variação.');
+  const linhas=Number(catalog.espelhoStatus?.linhasComposicao)||catalog.composicoesMubiSys.length;
+  const ultima=catalog.espelhoStatus?.ultimaSincronizacaoEm?new Date(catalog.espelhoStatus.ultimaSincronizacaoEm).toLocaleString('pt-BR'):'ainda não sincronizado';
+  const importada=catalog.espelhoStatus?.ultimaImportacaoComposicaoEm?new Date(catalog.espelhoStatus.ultimaImportacaoComposicaoEm).toLocaleString('pt-BR'):null;
   return `<div class="role-note" style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:9px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-    <div><b>${catalog.mubisysWebConectado?'MubiSys conectado':'Consumo por variação do MubiSys'}</b><div style="margin-top:3px;">${escaparHtml(estado)} ${catalog.mubisysWebConectado?'A sessão fica neste navegador por até 8 horas.':''}</div>
-      ${catalog.connectionMessage?`<div style="margin-top:4px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
-      ${catalog.importMsg?`<div style="margin-top:4px;color:var(--ok);">${escaparHtml(catalog.importMsg)}</div>`:''}
+    <div style="min-width:260px;flex:1;"><b>Espelho local MubiSys → Radrasys</b>
+      <div style="margin-top:3px;">${catalog.produtos.length} produtos/modelos · ${catalog.materias.length} matérias-primas · ${linhas} linhas de consumo. Catálogo atualizado: ${escaparHtml(ultima)}${importada?` · Fichas importadas: ${escaparHtml(importada)}`:''}.</div>
+      <div style="margin-top:4px;color:var(--text-faint);">A API pública não fornece a ficha técnica das variações. Importe um CSV/XLSX exportado do MubiSys; os perfis são mapeados para a fórmula equivalente do CPQ e perfis desconhecidos bloqueiam a importação.</div>
+      ${catalog.espelhoStatus?.status==='erro'?`<div role="alert" style="margin-top:5px;color:var(--warn);">A última atualização falhou; o snapshot anterior foi preservado. ${escaparHtml(catalog.espelhoStatus.ultimoErro||'Confira o token da API e tente novamente.')}</div>`:''}
+      ${catalog.connectionMessage?`<div role="status" style="margin-top:5px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
       ${catalog.syncWarning?`<div role="alert" style="margin-top:4px;color:var(--warn);">${escaparHtml(catalog.syncWarning)}</div>`:''}
-      ${catalog.connectionOpen&&!catalog.mubisysWebConectado?`<form data-act="mubisys-connect-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;align-items:end;">
-        <label class="field">Código da empresa<input type="text" name="codigo" autocomplete="off" required></label>
-        <label class="field">Usuário<input type="text" name="usuario" autocomplete="off" required></label>
-        <label class="field">Senha<input type="password" name="senha" autocomplete="off" required></label>
-        <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" type="submit" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionBusy?'Conectando…':'Conectar e carregar consumos'}</button><span style="font-size:11px;color:var(--text-faint);">A senha é enviada para validar o acesso e não é salva pelo Radrasys.</span></div>
-      </form>`:''}
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${catalog.mubisysWebConectado?`<button class="btn btn-primary btn-sm" data-act="mubisys-importar-tudo" ${catalog.importando||catalog.sincronizandoKits||!linhas?'disabled':''}>${catalog.sincronizandoKits?'Sincronizando cópias…':catalog.importando?'Importando…':'Importar composições de todos os produtos'}</button><button class="btn btn-ghost btn-sm" data-act="mubisys-reload" ${catalog.sincronizandoKits?'disabled':''}>Atualizar consumos</button><button class="btn btn-ghost btn-sm" data-act="mubisys-disconnect" ${catalog.sincronizandoKits?'disabled':''}>Desconectar</button>`:`<button class="btn btn-soft btn-sm" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
+    <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" type="button" data-act="mubisys-atualizar-espelho" ${catalog.syncBusy?'disabled':''}>${catalog.syncBusy?'Sincronizando…':'Atualizar catálogo'}</button>
+      <a class="btn btn-ghost btn-sm" href="/api/letra-caixa/mubisys/composicoes/template.csv">Baixar template CSV</a>
+      <label class="btn btn-primary btn-sm" style="cursor:pointer;">${catalog.uploadBusy?'Importando…':'Importar fichas CSV/XLSX'}<input type="file" data-act="mubisys-importar-arquivo" accept=".csv,.xlsx,.xls" style="display:none" ${catalog.uploadBusy?'disabled':''}></label>
     </div>
   </div>`;
 }
 
 function bindMubiSysConnectionEvents(){
-  const abrir=document.querySelector('[data-act="mubisys-connect-open"]');
-  if(abrir) abrir.addEventListener('click',()=>{catalog.connectionOpen=!catalog.connectionOpen;catalog.connectionMessage=null;render();});
-  const form=document.querySelector('[data-act="mubisys-connect-form"]');
-  if(form) form.addEventListener('submit',async e=>{
-    e.preventDefault();
-    if(catalog.connectionBusy) return;
-    const dados=new FormData(form);
-    const credenciais={codigo:String(dados.get('codigo')||'').trim(),usuario:String(dados.get('usuario')||'').trim(),senha:String(dados.get('senha')||'')};
-    catalog.connectionBusy=true;
-    const botao=form.querySelector('button[type="submit"]');
-    if(botao){botao.disabled=true;botao.textContent='Conectando…';}
+  document.querySelectorAll('[data-act="mubisys-atualizar-espelho"]').forEach(botao=>botao.addEventListener('click',async()=>{
+    if(catalog.syncBusy)return;
+    catalog.syncBusy=true;catalog.connectionMessage=null;render();
     try{
-      const response=await fetch('/api/letra-caixa/mubisys/sessao',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(credenciais),cache:'no-store'});
+      const response=await fetch('/api/letra-caixa/mubisys/sincronizar',{method:'POST',credentials:'same-origin',cache:'no-store'});
       const body=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(body.error||`Não foi possível conectar (HTTP ${response.status}).`);
-      form.reset();
-      catalog.connectionOpen=false;
-      catalog.connectionMessage={tipo:'sucesso',texto:'Conta conectada. Atualizando as composições…'};
-      await loadCatalog();
-    }catch(error){
-      form.reset();
-      catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível conectar ao MubiSys.')};
-    }finally{
-      catalog.connectionBusy=false;
-      render();
-    }
-  });
-  const importarTudo=document.querySelector('[data-act="mubisys-importar-tudo"]');
-  if(importarTudo) importarTudo.addEventListener('click',()=>{
-    if(confirm('Importar do MubiSys a composição (comum e por variação) de todos os modelos? Modelos que já têm composição cadastrada manualmente no Radrasys serão pulados.')) importarComposicoesMubiSysEmMassa();
-  });
-  const atualizar=document.querySelector('[data-act="mubisys-reload"]');
-  if(atualizar) atualizar.addEventListener('click',()=>{catalog.connectionMessage=null;loadCatalog();});
-  const desconectar=document.querySelector('[data-act="mubisys-disconnect"]');
-  if(desconectar) desconectar.addEventListener('click',async()=>{
+      if(!response.ok)throw new Error(body.error||`Falha ao sincronizar (HTTP ${response.status}).`);
+      catalog.connectionMessage={tipo:'sucesso',texto:`Catálogo atualizado: ${body.produtos} produtos, ${body.variacoes} modelos/variações e ${body.materiasPrimas} matérias-primas.`};
+      catalog.syncBusy=false;await loadCatalog();
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível sincronizar o catálogo.')};catalog.syncBusy=false;render();}
+  }));
+  document.querySelectorAll('[data-act="mubisys-importar-arquivo"]').forEach(input=>input.addEventListener('change',async()=>{
+    const arquivo=input.files?.[0];if(!arquivo||catalog.uploadBusy)return;
+    catalog.uploadBusy=true;catalog.connectionMessage=null;render();
     try{
-      const response=await fetch('/api/letra-caixa/mubisys/sessao',{method:'DELETE',credentials:'same-origin',cache:'no-store'});
+      const response=await fetch('/api/letra-caixa/mubisys/composicoes',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(arquivo.name)},body:arquivo,cache:'no-store'});
       const body=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(body.error||'Não foi possível desconectar agora.');
-      catalog.mubisysWebConectado=false;
-      catalog.composicoesMubiSys=[];
-      catalog.erroComposicoesMubiSys=null;
-      catalog.connectionMessage={tipo:'sucesso',texto:'Conta desconectada deste navegador.'};
-      if(REAL.produtoId&&REAL.modeloId){
-        const produto=catalog.produtos.find(p=>p.id===REAL.produtoId);
-        const modelo=produto?.modelos.find(m=>m.id===REAL.modeloId);
-        carregarComposicaoModeloReal(produto,modelo,REAL.variacaoModeloIds);
-      }
-    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível desconectar agora.')};}
-    render();
-  });
+      if(!response.ok)throw new Error(body.error||`Falha ao importar (HTTP ${response.status}).`);
+      catalog.connectionMessage={tipo:'sucesso',texto:`${body.linhas} linhas de consumo importadas para ${body.variacoes} modelos/variações e ${body.materiasPrimas} matérias-primas.`};
+      catalog.uploadBusy=false;await loadCatalog();
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível importar o arquivo.')};catalog.uploadBusy=false;render();}
+  }));
 }
 
 /* ---------- TABELA DE PREÇOS REAL (margem por faixa de ticket) ---------- */
@@ -3061,10 +3030,10 @@ function banner(){
     ? 'Consultando o catálogo do MubiSys…'
     : catalog.error
       ? 'Falha ao carregar o catálogo do MubiSys.'
-      : 'Catálogo do MubiSys conectado.';
+      : 'Espelho local MubiSys disponível.';
   const detalheCatalogo = catalog.error
     ? escaparHtml(catalog.error)
-    : 'Produtos, modelos e matérias-primas são consultados pela API do ERP, e os custos vêm do cadastro do MubiSys.';
+    : 'Produtos, modelos, variações, matérias-primas e custos são lidos do espelho local; o Access-Token só é usado para atualizar o catálogo público.';
   return `<div class="banner">${ICONS.info}
     <div><b>${statusCatalogo}</b> ${detalheCatalogo} O CPQ não altera cadastros no ERP. Revise a composição e os valores antes de enviar uma proposta.</div>
   </div>`;
@@ -3089,7 +3058,7 @@ function renderProjectPicker(){
       </div>
     </div>
     <button class="btn btn-primary" data-act="start-real">📤 Iniciar proposta real</button>
-    <div class="role-note" style="margin-top:10px;">${ICONS.db} Catálogo: ${catalog.ready ? (catalog.error ? escaparHtml(catalog.error) : `${catalog.produtos.length} produtos e ${catalog.materias.length} matérias-primas carregados da API do MubiSys agora.`) : 'consultando o catálogo do MubiSys…'}</div>
+    <div class="role-note" style="margin-top:10px;">${ICONS.db} Espelho local: ${catalog.ready ? (catalog.error ? escaparHtml(catalog.error) : `${catalog.produtos.length} produtos e ${catalog.materias.length} matérias-primas disponíveis no Radrasys.`) : 'carregando o espelho local…'}</div>
   </div>`;
 }
 
@@ -3569,7 +3538,7 @@ function realStepProposta(){
 
   return `
   <div class="card">
-    <div class="cardhead"><div><h3>1 · Proposta</h3><p>Produtos e modelos vêm do catálogo atual do MubiSys (${catalog.produtos.length} produtos / ${catalog.materias.length} matérias-primas via API).</p></div></div>
+    <div class="cardhead"><div><h3>1 · Proposta</h3><p>Produtos, modelos e matérias-primas do espelho local (${catalog.produtos.length} produtos / ${catalog.materias.length} matérias-primas).</p></div></div>
     <label class="field" style="margin-bottom:12px;">Título da proposta
       <input type="text" maxlength="256" value="${escaparHtml(REAL.tituloProposta||'')}" data-act="real-titulo-proposta" placeholder="Ex.: Fachada principal — Loja Centro">
     </label>
@@ -7248,12 +7217,12 @@ function adminProdutos(){
   return `
   <div class="card">
     <div class="cardhead">
-      <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. Cada produto recebe um SKU Radrasys fixo a partir do ID MubiSys; cada modelo tem um SKU derivado do produto e do ID do modelo. Busque por nome ou SKU para localizar configurações.</p><p>As variações vêm do catálogo. Para importar a ficha de consumo de cada variação, conecte a conta do MubiSys abaixo; se não houver ficha importada, a composição manual por modelo continua disponível.</p>${catalog.baixadoEm?`<p style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Última consulta ao MubiSys: ${new Date(catalog.baixadoEm).toLocaleString('pt-BR')}</p>`:''}</div>
+      <div><h3>Produtos (espelho local MubiSys)</h3><p>${catalog.produtos.length} produtos e variações no espelho compartilhado. Busque por nome ou SKU/ID para localizar configurações.</p><p>Para preencher a ficha de consumo, importe o template CSV/XLSX no painel do espelho. O orçamento combina automaticamente as linhas comuns do modelo com as linhas da variação selecionada; nenhuma conta do MubiSys é conectada nesta tela.</p>${catalog.espelhoStatus?.ultimaSincronizacaoEm?`<p style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Última sincronização do catálogo: ${new Date(catalog.espelhoStatus.ultimaSincronizacaoEm).toLocaleString('pt-BR')}</p>`:''}</div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
         <span class="badge b-accent">${cadastrados} modelo(s) completo(s)</span>
         ${incompletos?`<span class="badge b-warn">${incompletos} incompleto(s) sem insumos</span>`:''}
         <span class="badge ${kitsApiDisponivel?'b-ok':'b-warn'}">${kitsCarregando?'Carregando cadastros…':kitsApiDisponivel?'✓ gravação no banco compartilhado':`⚠ banco indisponível${kitsApiErro?': '+escaparHtml(kitsApiErro):''}`}</span>
-        <button class="btn btn-ghost btn-sm" data-act="admin-catalogo-atualizar" ${catalog.refreshing?'disabled':''}>${catalog.refreshing?'Atualizando…':'Atualizar catálogo do MubiSys'}</button>
+        <button class="btn btn-ghost btn-sm" data-act="admin-catalogo-atualizar" ${catalog.refreshing?'disabled':''}>${catalog.refreshing?'Atualizando…':'Atualizar espelho MubiSys'}</button>
       </div>
     </div>
     ${renderConexaoMubiSys()}
@@ -7612,7 +7581,7 @@ function adminMateriasAdmin(){
   return `
   <div class="card">
     <div class="cardhead">
-      <div><h3>Matérias-primas (catálogo real do MubiSys)</h3><p>${catalog.materias.length} itens espelhados via API GET /materia-prima. Exclua os que a Letreiros Express não trabalha — eles somem da busca usada ao montar composições.</p></div>
+      <div><h3>Matérias-primas (espelho MubiSys)</h3><p>${catalog.materias.length} itens e custos copiados para o Radrasys. Exclua os que a Letreiros Express não trabalha — eles somem da busca usada ao montar composições.</p></div>
       <span class="badge ${excluidas?'b-warn':'b-neutral'}">${excluidas} excluída(s)</span>
     </div>
     ${catalogErrorNotice()}
@@ -7949,7 +7918,7 @@ function bindAdminEvents(){
   if(salvarCorPrecos)salvarCorPrecos.addEventListener('click',salvarPrecosCorServidor);
 
   const atualizarCatalogo=document.querySelector('[data-act="admin-catalogo-atualizar"]');
-  if(atualizarCatalogo) atualizarCatalogo.addEventListener('click',()=>loadCatalog());
+  if(atualizarCatalogo) atualizarCatalogo.addEventListener('click',()=>{const botao=document.querySelector('[data-act="mubisys-atualizar-espelho"]');if(botao)botao.click();else void loadCatalog();});
 
   const clientesBusca=document.querySelector('[data-act="admin-clientes-busca"]');
   if(clientesBusca){

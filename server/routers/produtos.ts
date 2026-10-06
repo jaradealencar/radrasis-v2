@@ -10,7 +10,7 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { getDb, listPriceTableSections } from "../db/db";
 import { produtos, produtoComposicaoMateriais, produtoKitItens } from "../../drizzle/schema";
 import { eq, asc } from "drizzle-orm";
-import { listarProdutos, listarMateriasPrimas } from "../integrations/mubisys-client";
+import { listarMateriasPrimasEspelhadas, listarProdutosEspelhados, prepararCatalogoEspelhado } from "../services/mubisysEspelho";
 import { UNIDADE_CONSUMO_MATERIA_PRIMA } from "../../shared/produto-composicao";
 import type { ConfigItem, MarginRow } from "../../shared/price-table";
 import { materiasPrimasRouter } from "./materiasPrimas";
@@ -57,7 +57,8 @@ export const produtosRouter = router({
     .input(z.object({ busca: z.string().optional().default("") }))
     .query(async ({ input }) => {
       const termo = input.busca.trim().toLowerCase();
-      const produtosMubisys = await listarProdutos();
+      await prepararCatalogoEspelhado();
+      const produtosMubisys = await listarProdutosEspelhados();
       return produtosMubisys
         .filter((p) => !termo || p.nome?.toLowerCase().includes(termo))
         .slice(0, 30)
@@ -75,7 +76,8 @@ export const produtosRouter = router({
     .input(z.object({ busca: z.string().optional().default("") }))
     .query(async ({ input }) => {
       const termo = input.busca.trim().toLowerCase();
-      const materiais = await listarMateriasPrimas();
+      await prepararCatalogoEspelhado();
+      const materiais = await listarMateriasPrimasEspelhadas();
       return materiais
         .filter((m) => !termo || m.nome?.toLowerCase().includes(termo))
         .slice(0, 30)
@@ -113,7 +115,8 @@ export const produtosRouter = router({
       // Uma chamada só à API cobre o custo ao vivo de todas as linhas da composição.
       let custoPorId = new Map<number, number>();
       try {
-        const materiais = await listarMateriasPrimas();
+        await prepararCatalogoEspelhado();
+        const materiais = await listarMateriasPrimasEspelhadas(db);
         custoPorId = new Map(materiais.map((m) => [m.id, Number(m.valor_custo ?? 0)]));
       } catch {
         // MubiSys fora do ar: mostra a composição sem custo ao vivo em vez de quebrar a tela.

@@ -279,8 +279,8 @@ server/
                        estudio-cotacoes.ts (cotações do HTML estático do CPQ),
                        estudio-clientes.ts (cadastro e busca autenticados de clientes do CPQ),
                        estudio-kits.ts (composições de produto por modelo, compartilhadas no Postgres),
-                       estudio-catalogo-mubisys.ts (catálogos de produtos e matérias-primas
-                       via API MubiSys, com sessão autenticada) e
+                       estudio-catalogo-mubisys.ts (catálogo local espelhado; sincroniza
+                       produtos/matérias-primas via Access-Token e recebe BOM por CSV/XLSX) e
                        estudio-configuracoes.ts (configurações compartilhadas do CPQ),
                        estudio-nesting.ts (CRUD de chapas e execução local do Deepnest),
                        estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
@@ -395,64 +395,41 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   Os protótipos mortos citados em versões anteriores desta nota
   (`server/sync/heartbeat-sync-erp.ts`, `server/routers/logistica-refactor.ts`)
   não existem mais no repo.
-- **A API pública do MubiSys não expõe composição de produto** (testado ao
-  vivo em 28/09/2026 contra `produto/{id}` e `materia-prima/{id}`): o
-  cadastro básico do produto (`produto`/`produto/{id}`, com `modelos[]` e
-  `variacoes[]`) e o custo da matéria-prima (`materia-prima`/
-  `materia-prima/{id}`, campo `valor_custo`) existem, mas o vínculo
-  produto↔matéria-prima com quantidade/unidade de consumo só existe na tela
-  logada do MubiSys, via AJAX interno
-  (`index.php?modulo=matModelos&acao=cadastrados`, autenticado por sessão de
-  usuário, não pelo `Access-Token`). O **CPQ Letreiros Express** agora tem
-  conexão opcional pelo formulário da própria tela: a senha é transitória;
-  a sessão fica cifrada com AES-256-GCM em cookie `HttpOnly` por até 8 horas,
-  por navegador, sem persistência no banco. O catálogo do CPQ lê as
-  variações pela API pública e tenta importar a ficha da variação/modelo
-  pelo AJAX interno; os custos continuam vindo ao vivo de
-  `listarMateriasPrimas()`.
-  No CPQ, cada linha importada preserva o perfil de consumo original do MubiSys
-  e o traduz explicitamente para a fórmula equivalente do Radrasys (`area`,
-  `areaTotal`, `areaGeral`, `perimExt`, `perimTotal` ou `fixo`), sem inferir pela
-  unidade da matéria-prima. Perfil ausente/desconhecido ou variação ativa sem
-  nenhuma linha interrompe a importação inteira, mostra o motivo ao usuário e
-  não permite salvar uma ficha parcial; o perfil original fica visível ao lado
-  da fórmula para auditoria. Se a sessão estiver desconectada ou expirar, o
-  fluxo preserva a composição manual do CPQ como fallback. Enquanto conectado,
-  erro de leitura, perfil desconhecido ou variação sem ficha completa mostra o
-  motivo e bloqueia o início da cotação; conectar/atualizar durante uma proposta
-  recarrega a ficha selecionada. A tela autenticada é uma interface interna e
-  não oficial do MubiSys: alterações nela podem exigir ajuste do parser e a
-  conexão deve ser validada com uma sessão real após publicar a mudança.
-  No editor de Produtos & kits do CPQ, abrir um cadastro sem linhas importa e
-  salva automaticamente a ficha do MubiSys. Modelos sem subvariações (como
-  `P.U - 1 cor`) também importam todas as linhas comuns do modelo; a ação de
-  atualizar a ficha permanece visível nesses modelos. Uma tabela HTML interna
-  desconhecida não pode ser tratada como composição vazia: o fluxo deve exibir
-  erro de formato para evitar a perda silenciosa de matérias-primas e consumos.
-  **Sincronização MubiSys → Radrasys:** ao conectar/atualizar o catálogo,
-  o CPQ sincroniza as fichas dos modelos já cadastrados localmente, incluindo
-  linhas comuns e todas as variações ativas, com perfil, quantidade, unidade e
-  custo atual. A cópia é gravada no Radrasys; não há gravação nem alteração no
-  MubiSys. O processo só consulta o ERP enquanto a sessão deste navegador está
-  válida (até 8 horas); não há sincronização em segundo plano com o CPQ fechado,
-  então abrir/atualizar o catálogo ou usar "Atualizar consumos" busca novamente
-  a fonte. Composições manuais são preservadas; fichas importadas que tenham
-  sido alteradas localmente ficam sinalizadas para revisão, sem sobrescrita
-  silenciosa. Falta de ficha, perfil sem equivalente, modelo não localizado ou
-  falha ao salvar aparecem como pendências. Uma atualização manual explícita
-  permite substituir a ficha após confirmação.
+- **Espelho BOM MubiSys → Radrasys (migration `0096`/`0097`):** a API pública
+  fornece produtos, modelos, variações, matérias-primas e custos via
+  `Access-Token`, mas não publica a composição produto↔matéria-prima (verificado
+  em `produto/{id}` e `materia-prima/{id}`). Login web, cookie de sessão e AJAX
+  interno foram removidos deliberadamente por segurança/estabilidade; não
+  reintroduzir scraping ou pedir credenciais de tela. O catálogo é espelhado em
+  `materias_primas` e `mubisys_variacoes`; `composicoes_variacoes` guarda SKU/ID
+  da variação, SKU/ID do insumo, quantidade, unidade, perfil original e fórmula
+  equivalente. `mubisys_espelho_sync_status` registra atualização e importação.
+  O primeiro acesso inicializa o cache pela API oficial; atualizações são
+  disparadas por TTL de 6 horas (stale-while-revalidate) e pela ação autenticada
+  de atualização no CPQ. Isso é atualização automática sob demanda, não cron
+  enquanto a aplicação estiver fechada.
+  Como não há endpoint público para a BOM, a fonte é arquivo CSV/XLS/XLSX. O
+  CPQ oferece template com SKUs/IDs do ERP; os endpoints autenticados
+  `/api/letra-caixa/mubisys/composicoes` e `/api/sync/import-bom` aceitam upload
+  de até 4 MB apenas de gestor/admin/master. A importação valida o arquivo
+  inteiro e substitui transacionalmente as fichas apenas dos modelos/variações
+  presentes nele; SKU/ID ambíguo, quantidade inválida ou perfil desconhecido
+  cancela o lote sem gravação parcial. Perfis mantêm o texto de origem e são
+  traduzidos sem heurística para `area`, `areaTotal`, `areaGeral`, `perimExt`,
+  `perimTotal` ou `fixo`; a fórmula guia a unidade compatível no cadastro.
+  O catálogo do CPQ (`/api/letra-caixa/catalogo`) lê somente o espelho local e
+  combina no orçamento as linhas comuns do modelo com as linhas das variações
+  selecionadas. Preço/custo de materiais, nesting, factibilidade, produtos e
+  propostas consultam o mesmo espelho; nesting recebe dados locais de custo e
+  dimensões técnicas, sem bloquear cálculos por uma requisição ao ERP. Custo
+  ausente ou fórmula sem medida continua sendo pendência visível, não zero.
   O módulo **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
   `server/routers/produtos.ts`, tabelas `produtos`/
-  `produto_composicao_materiais`/`produto_kit_itens`) importa a ficha comum do
-  modelo e as fichas de todas as variações pela mesma sessão; mostra
-  quantidade, unidade e custo atual para revisão; e grava as linhas no banco
-  local com id, nome e indicador padrão da variação. As unidades MubiSys são
-  mapeadas para o enum local (`m2`, `ml`, `perimetro`, `unidade`) com
-  possibilidade de ajuste antes de salvar. Cada linha continua podendo ser
-  removida, e a ação "Clonar composição de outro produto" mantém o produto
-  atual e substitui matérias-primas (incluindo seus vínculos de variação) e
-  itens de kit por cópias de um produto de origem. O custo continua vindo ao
-  vivo de `listarMateriasPrimas()`. Em Administração > Produtos, a aba
+  `produto_composicao_materiais`/`produto_kit_itens`) também importa do espelho,
+  mostra o perfil original e a fórmula e permite revisar quantidade/unidade.
+  O CPQ Letreiros Express usa diretamente as fichas locais por variação, sem
+  exigir copiar cada ficha para o kit comercial manualmente. Em Administração
+  > Produtos, a aba
   Matérias-primas classifica o catálogo em categorias locais editáveis
   (Iluminação, Chapas, Insumos Gerais, Elétrica, Insumos Solda e, desde 06/10/2026 — migration `0093`, só um seed idempotente —, **Produtividade para soldar**, a mão de obra de solda: sem dados técnicos de chapa/bobina/perfil, e a classificação de material, tipo de solda e tamanho continua decidida pelo nome da matéria-prima, não pela categoria). Elas e os
   dados técnicos ficam nas tabelas `materia_prima_categorias` e
@@ -497,9 +474,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   snapshot da cotação. Comercial > Propostas pode importar medidas de uma
   cotação salva no CPQ, permite ajustá-las manualmente, combinar
   variações e excluir materiais da composição daquele item.
-  A ficha é lida pela interface interna não oficial do MubiSys. Mudanças no
-  formato podem exigir ajuste no parser; valide a integração com sessão real
-  após publicar. O campo `produtos.idPrecificacao`
+  A BOM é importada por CSV/XLSX validado; o campo `produtos.idPrecificacao`
   referencia um `id` de linha/regra da Tabela de Preços (ver
   `shared/price-table.ts`) só por número — não há resolução automática de
   qual coluna/faixa de valor usar ainda.

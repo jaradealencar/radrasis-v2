@@ -13,7 +13,7 @@ import { carregarPoliticaCorte } from "../db/politicaCorte";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda } from "../../shared/produtividade-solda";
 import { getDb } from "../db/db";
-import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { listarMateriasPrimasEspelhadas } from "../services/mubisysEspelho";
 import {
   calcularNestingMultiMaterialParcial,
   CpqNestingError,
@@ -415,7 +415,7 @@ async function salvarChapa(
       "Confira material e dimensões da chapa (em milímetros)."
     );
   const { espessuraMm, densidadeGCm3, ...data } = parsed.data;
-  const materiasMubiSys = await listarMateriasPrimas();
+  const materiasMubiSys = await listarMateriasPrimasEspelhadas();
   if (
     !materiasMubiSys.some(
       material => material.id === data.mubisysMateriaPrimaId
@@ -554,7 +554,7 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
     return void erro(res, 422, MENSAGEM_PERFIL_FORA_DO_NESTING);
 
   const [catalogo, chapas] = await Promise.all([
-    listarMateriasPrimas(),
+    listarMateriasPrimasEspelhadas(db),
     db
       .select()
       .from(estudioChapas)

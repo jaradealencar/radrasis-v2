@@ -592,6 +592,177 @@ export const estudioClientes = pgTable("estudio_clientes", {
 export type EstudioCliente = typeof estudioClientes.$inferSelect;
 export type InsertEstudioCliente = typeof estudioClientes.$inferInsert;
 
+// Espelho local, somente leitura, do catálogo MubiSys usado pelo CPQ.
+// SKU recebe um identificador estável MUBISYS-* quando a API não fornece código.
+export const materiasPrimas = pgTable("materias_primas", {
+  id: serial("id").primaryKey(),
+  skuErp: varchar("sku_erp", { length: 120 }).notNull().unique(),
+  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull().unique(),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  unidadeMedida: varchar("unidade_medida", { length: 80 }).notNull().default(""),
+  custoUnitario: decimal("custo_unitario", { precision: 14, scale: 4 }),
+  larguraUtilMm: decimal("largura_util_mm", { precision: 12, scale: 3 }),
+  alturaUtilMm: decimal("altura_util_mm", { precision: 12, scale: 3 }),
+  espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
+  densidadeKgM3: decimal("densidade_kg_m3", { precision: 12, scale: 4 }),
+  categoriaErp: varchar("categoria_erp", { length: 128 }).notNull().default(""),
+  tipoErp: varchar("tipo_erp", { length: 128 }).notNull().default(""),
+  statusErp: varchar("status_erp", { length: 64 }).notNull().default(""),
+  ativa: boolean("ativa").notNull().default(true),
+  referenciaCusto: varchar("referencia_custo", { length: 80 }),
+  sincronizadoEm: timestamp("sincronizado_em").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  nomeIdx: index("materias_primas_nome_idx").on(table.nome),
+  ativaIdx: index("materias_primas_ativa_idx").on(table.ativa),
+}));
+export type MateriaPrimaEspelho = typeof materiasPrimas.$inferSelect;
+export type InsertMateriaPrimaEspelho = typeof materiasPrimas.$inferInsert;
+
+// O MubiSys expõe modelos e variações na API de catálogo, mas não uma SKU
+// universal documentada. `skuErp` é o código de origem quando existe ou a chave
+// estável MUBISYS-MOD-/MUBISYS-VAR- derivada dos IDs externos.
+export const mubisysVariacoes = pgTable("mubisys_variacoes", {
+  id: serial("id").primaryKey(),
+  skuErp: varchar("sku_erp", { length: 120 }).notNull().unique(),
+  tipo: varchar("tipo", { length: 16 }).notNull(),
+  skuProdutoErp: varchar("sku_produto_erp", { length: 120 }).notNull(),
+  skuModeloErp: varchar("sku_modelo_erp", { length: 120 }).notNull(),
+  mubisysProdutoId: integer("mubisys_produto_id").notNull(),
+  mubisysModeloId: integer("mubisys_modelo_id").notNull(),
+  mubisysVariacaoId: integer("mubisys_variacao_id"),
+  produtoNome: varchar("produto_nome", { length: 256 }).notNull(),
+  categoriaProduto: varchar("categoria_produto", { length: 128 }).notNull().default(""),
+  produtoStatus: varchar("produto_status", { length: 64 }).notNull().default(""),
+  modeloNome: varchar("modelo_nome", { length: 256 }).notNull(),
+  unidadeCobranca: varchar("unidade_cobranca", { length: 80 }).notNull().default(""),
+  modeloStatus: varchar("modelo_status", { length: 64 }).notNull().default(""),
+  modeloValorFinal: decimal("modelo_valor_final", { precision: 14, scale: 4 }),
+  variacaoNome: varchar("variacao_nome", { length: 256 }),
+  variacaoDescricao: text("variacao_descricao"),
+  variacaoStatus: varchar("variacao_status", { length: 64 }),
+  variacaoValorFinal: decimal("variacao_valor_final", { precision: 14, scale: 4 }),
+  variacaoPadrao: boolean("variacao_padrao").notNull().default(false),
+  ativa: boolean("ativa").notNull().default(true),
+  sincronizadoEm: timestamp("sincronizado_em").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  produtoModeloIdx: index("mubisys_variacoes_produto_modelo_idx").on(table.mubisysProdutoId, table.mubisysModeloId),
+  variacaoIdx: index("mubisys_variacoes_variacao_idx").on(table.mubisysVariacaoId),
+  skuModeloIdx: index("mubisys_variacoes_sku_modelo_idx").on(table.skuModeloErp),
+}));
+export type MubiSysVariacaoEspelho = typeof mubisysVariacoes.$inferSelect;
+export type InsertMubiSysVariacaoEspelho = typeof mubisysVariacoes.$inferInsert;
+
+// Cada linha guarda o consumo original e a fórmula equivalente do CPQ.
+// Linhas comuns apontam para a entidade tipo=modelo; linhas específicas apontam
+// para tipo=variacao. Ao cotar uma variação, o servidor/client combina ambas.
+export const composicoesVariacoes = pgTable("composicoes_variacoes", {
+  id: serial("id").primaryKey(),
+  variacaoSkuErp: varchar("variacao_sku_erp", { length: 120 }).notNull()
+    .references(() => mubisysVariacoes.skuErp, { onDelete: "restrict", onUpdate: "cascade" }),
+  materiaPrimaSkuErp: varchar("materia_prima_sku_erp", { length: 120 }).notNull()
+    .references(() => materiasPrimas.skuErp, { onDelete: "restrict", onUpdate: "cascade" }),
+  mubisysModeloId: integer("mubisys_modelo_id").notNull(),
+  mubisysVariacaoId: integer("mubisys_variacao_id"),
+  consumoQuantidade: decimal("consumo_quantidade", { precision: 14, scale: 6 }).notNull(),
+  unidadeConsumo: varchar("unidade_consumo", { length: 80 }).notNull(),
+  larguraMm: decimal("largura_mm", { precision: 12, scale: 3 }),
+  alturaMm: decimal("altura_mm", { precision: 12, scale: 3 }),
+  espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
+  descritivoComposicao: text("descritivo_composicao"),
+  perfilConsumoMubiSys: varchar("perfil_consumo_mubisys", { length: 160 }).notNull(),
+  formulaConsumo: varchar("formula_consumo", { length: 24 }).notNull(),
+  ordem: integer("ordem").notNull().default(0),
+  origem: varchar("origem", { length: 24 }).notNull().default("csv"),
+  importadoEm: timestamp("importado_em").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  varianteIdx: index("composicoes_variacoes_variacao_idx").on(table.variacaoSkuErp),
+  materiaPrimaIdx: index("composicoes_variacoes_materia_prima_idx").on(table.materiaPrimaSkuErp),
+  modeloIdx: index("composicoes_variacoes_modelo_idx").on(table.mubisysModeloId),
+  unicaLinhaIdx: uniqueIndex("composicoes_variacoes_linha_idx").on(table.variacaoSkuErp, table.materiaPrimaSkuErp, table.ordem),
+}));
+export type ComposicaoVariacaoEspelho = typeof composicoesVariacoes.$inferSelect;
+export type InsertComposicaoVariacaoEspelho = typeof composicoesVariacoes.$inferInsert;
+
+// Acabamentos e equipamentos importados de arquivo de engenharia. A API
+// pública não oferece esses vínculos com a composição.
+export const acabamentos = pgTable("acabamentos", {
+  id: serial("id").primaryKey(),
+  mubisysAcabamentoId: integer("mubisys_acabamento_id").notNull().unique(),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  tipo: varchar("tipo", { length: 120 }).notNull().default(""),
+  unidade: varchar("unidade", { length: 40 }).notNull().default(""),
+  custoMateriaPrima: decimal("custo_materia_prima", { precision: 14, scale: 4 }),
+  custoMaoDeObra: decimal("custo_mao_de_obra", { precision: 14, scale: 4 }),
+  custoAdicional: decimal("custo_adicional", { precision: 14, scale: 4 }),
+  produtividadeHora: decimal("produtividade_hora", { precision: 14, scale: 6 }),
+  tipoCalculo: varchar("tipo_calculo", { length: 24 }),
+  ativo: boolean("ativo").notNull().default(true),
+  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+}, table => ({ nomeIdx: index("acabamentos_nome_idx").on(table.nome) }));
+export type AcabamentoMubiSys = typeof acabamentos.$inferSelect;
+export type InsertAcabamentoMubiSys = typeof acabamentos.$inferInsert;
+
+export const composicaoItemAcabamentos = pgTable("composicao_item_acabamentos", {
+  id: serial("id").primaryKey(),
+  composicaoItemId: integer("composicao_item_id").notNull()
+    .references(() => composicoesVariacoes.id, { onDelete: "cascade" }),
+  acabamentoId: integer("acabamento_id").notNull()
+    .references(() => acabamentos.id, { onDelete: "restrict" }),
+  quantidade: decimal("quantidade", { precision: 14, scale: 6 }).notNull().default("1"),
+  unidade: varchar("unidade", { length: 80 }).notNull().default(""),
+  formulaConsumo: varchar("formula_consumo", { length: 24 }),
+  ordem: integer("ordem").notNull().default(0),
+  horasEquipamento: decimal("horas_equipamento", { precision: 12, scale: 4 }),
+}, table => ({
+  itemIdx: index("composicao_item_acabamentos_item_idx").on(table.composicaoItemId, table.ordem),
+  unicoIdx: uniqueIndex("composicao_item_acabamentos_unico_idx").on(table.composicaoItemId, table.acabamentoId, table.ordem),
+}));
+
+export const equipamentos = pgTable("equipamentos", {
+  id: serial("id").primaryKey(),
+  mubisysEquipamentoId: integer("mubisys_equipamento_id").notNull().unique(),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  tipo: varchar("tipo", { length: 120 }).notNull().default(""),
+  custoHora: decimal("custo_hora", { precision: 14, scale: 4 }),
+  ativo: boolean("ativo").notNull().default(true),
+  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+}, table => ({ nomeIdx: index("equipamentos_nome_idx").on(table.nome) }));
+export type EquipamentoMubiSys = typeof equipamentos.$inferSelect;
+export type InsertEquipamentoMubiSys = typeof equipamentos.$inferInsert;
+
+export const composicaoItemEquipamentos = pgTable("composicao_item_equipamentos", {
+  id: serial("id").primaryKey(),
+  composicaoItemId: integer("composicao_item_id").notNull()
+    .references(() => composicoesVariacoes.id, { onDelete: "cascade" }),
+  equipamentoId: integer("equipamento_id").notNull()
+    .references(() => equipamentos.id, { onDelete: "restrict" }),
+  horas: decimal("horas", { precision: 12, scale: 4 }).notNull().default("0"),
+  quantidade: decimal("quantidade", { precision: 14, scale: 6 }).notNull().default("1"),
+  ordem: integer("ordem").notNull().default(0),
+}, table => ({
+  itemIdx: index("composicao_item_equipamentos_item_idx").on(table.composicaoItemId, table.ordem),
+  unicoIdx: uniqueIndex("composicao_item_equipamentos_unico_idx").on(table.composicaoItemId, table.equipamentoId, table.ordem),
+}));
+
+export const mubisysEspelhoSyncStatus = pgTable("mubisys_espelho_sync_status", {
+  chave: varchar("chave", { length: 64 }).primaryKey(),
+  status: varchar("status", { length: 16 }).notNull().default("nunca"),
+  ultimaTentativaEm: timestamp("ultima_tentativa_em"),
+  ultimaSincronizacaoEm: timestamp("ultima_sincronizacao_em"),
+  ultimaImportacaoComposicaoEm: timestamp("ultima_importacao_composicao_em"),
+  produtosSincronizados: integer("produtos_sincronizados").notNull().default(0),
+  variacoesSincronizadas: integer("variacoes_sincronizadas").notNull().default(0),
+  materiasPrimasSincronizadas: integer("materias_primas_sincronizadas").notNull().default(0),
+  linhasComposicao: integer("linhas_composicao").notNull().default(0),
+  ultimoArquivo: varchar("ultimo_arquivo", { length: 255 }),
+  ultimoErro: text("ultimo_erro"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type MubiSysEspelhoSyncStatus = typeof mubisysEspelhoSyncStatus.$inferSelect;
+
 // Configuração de composição comercial de cada modelo do catálogo MubiSys.
 // A API do ERP não fornece a ficha técnica; este cadastro é compartilhado entre
 // vendedores no banco do Radrasys.

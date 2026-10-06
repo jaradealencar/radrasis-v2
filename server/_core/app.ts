@@ -97,6 +97,11 @@ export async function createApp(): Promise<Express> {
     await import("../routes/letra-caixa-redesenho");
   registrarRotasRedesenhoLetraCaixa(app);
 
+  // Importação do espelho em bytes CSV/XLSX (registrada antes dos parsers JSON).
+  const { registrarRotasEstudioMubiSysEspelho } =
+    await import("../routes/estudio-mubisys-espelho");
+  registrarRotasEstudioMubiSysEspelho(app);
+
   // ── Better Auth + body parser ─────────────────────────────────────────────
   // A ordem entre os dois é INVERTIDA entre os ambientes, de propósito:
   //
@@ -208,9 +213,6 @@ export async function createApp(): Promise<Express> {
     await import("../routes/estudio-catalogo-mubisys");
   registrarRotaEstudioCatalogoMubiSys(app);
 
-  const { registrarRotasEstudioMubiSysSession } =
-    await import("../routes/estudio-mubisys-session");
-  registrarRotasEstudioMubiSysSession(app);
 
   const { registrarRotasEstudioConfiguracoes } =
     await import("../routes/estudio-configuracoes");
