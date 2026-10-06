@@ -649,6 +649,18 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   ainda precisa de uma vetorização real para validar o parser e a geometria. A
   área é aproximada por amostragem; caixas de peças que se cruzam geram aviso,
   pois o protótipo não faz união booleana de formas sobrepostas.
+  **Altura dos elementos na Ficha técnica (pedido de 05/10/2026):** o passo 5 do CPQ
+  (`painelAlturaElementos`, `classificarAlturasElementos` no HTML) conta quantos
+  elementos têm até 11 cm e quantos têm mais de 11 cm de altura vertical, com
+  desenho numerado e tabela por elemento. Elemento = contorno externo de
+  `REAL.geomRaw.pieces` (o ponto do "i" e acentos contam à parte; letras coladas
+  pelo vetorizador contam como um só); altura = caixa envolvente da peça na
+  escala física, comparada em mm inteiros (110,4 mm ainda é "até 11 cm"); peça a
+  até 5 mm do limite recebe aviso, por causa da tolerância de ±1% da escala. O
+  objetivo é alimentar as linhas "Produtividade Solda" por tamanho
+  (`shared/produtividade-solda.ts`): `contagemElementosPorAltura()` devolve
+  `{ate, acima}` para isso, mas **a ligação com a composição/orçamento ainda não
+  existe** — a contagem só é exibida e não entra no snapshot da cotação.
 
 ## CPQ nesting backend
 

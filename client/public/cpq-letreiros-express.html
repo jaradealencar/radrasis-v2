@@ -940,6 +940,40 @@ function computeGeomReal(){
   };
 }
 
+/* ---------- ALTURA DOS ELEMENTOS (ficha técnica) ---------- */
+// Pedido de 05/10/2026: contar quantos elementos têm 11 cm ou menos e quantos têm mais, pela altura vertical (base das linhas
+// "Produtividade Solda" por tamanho). Elemento = contorno externo (letra, símbolo ou pedaço solto, como o ponto do "i").
+const ALTURA_ELEMENTO_LIMITE_MM = 110;
+// A escala tem tolerância de ~±1%: peça a até 5 mm do limite pede conferência.
+const ALTURA_ELEMENTO_FAIXA_PROXIMA_MM = 5;
+
+/** Classifica cada contorno externo pela altura da caixa envolvente na escala física. Compara em milímetros inteiros (o que a tela
+ *  mostra: 110,4 mm continua "até 11 cm"). Cada vazado vai para a menor peça que o contém, só para o desenho. */
+function classificarAlturasElementos(geom, scaleFactor){
+  if(!geom || !geom.pieces || !geom.pieces.length || !(scaleFactor>0)) return null;
+  const mmPorPx = scaleFactor*1000;
+  const itens = geom.pieces.map(p=>{
+    const alturaMm = Math.round(p.bbox.height*mmPorPx);
+    return {
+      n:p.n, d:p.d, bbox:p.bbox, area:p.area, vazados:[],
+      alturaMm, larguraMm:Math.round(p.bbox.width*mmPorPx),
+      grupo: alturaMm<=ALTURA_ELEMENTO_LIMITE_MM ? 'ate' : 'acima',
+      proximoDoLimite: Math.abs(alturaMm-ALTURA_ELEMENTO_LIMITE_MM)<=ALTURA_ELEMENTO_FAIXA_PROXIMA_MM,
+    };
+  });
+  (geom.contours||[]).filter(c=>c.tipo==='vazado').forEach(vazado=>{
+    let dono=null;
+    itens.forEach(i=>{ if(i.area>vazado.area && bboxContains(i.bbox,vazado.bbox) && (!dono || i.area<dono.area)) dono=i; });
+    if(dono) dono.vazados.push(vazado.d);
+  });
+  return {
+    itens,
+    ate: itens.filter(i=>i.grupo==='ate'),
+    acima: itens.filter(i=>i.grupo==='acima'),
+    proximos: itens.filter(i=>i.proximoDoLimite),
+  };
+}
+
 /* ---------- IMPORTAÇÃO DE VETOR JÁ PRONTO (SVG enviado direto, sem rastreamento) ---------- */
 /** Extrai e combina os <path> de um SVG enviado pelo usuário. Formas não-path
  *  (rect/circle/etc.) são contadas mas não entram na geometria — a maioria dos
@@ -3933,6 +3967,7 @@ function realStepEscala(){
         <button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG vetorial</button>
       </div>
     </div>
+    ${painelAlturaElementos(g)}
     <div class="warnbox" style="margin-top:12px;background:var(--warn-soft);border-color:color-mix(in oklab,var(--warn) 35%,var(--border));">
       <span style="color:var(--warn);">${ICONS.info}</span><div><b>Resultado geométrico aproximado por amostragem.</b> ${medidaDeRaster?'A medida parte do traçado automático; ruído, perspectiva e qualidade do redesenho podem alterar os contornos.':'A medida parte dos caminhos vetoriais lidos no SVG.'} ${g.possivelSobreposicao?'As caixas envolventes de peças se cruzam; confira sobreposições, pois áreas coincidentes podem ser contadas mais de uma vez.':''} Kerf, diâmetro da ferramenta, offsets e desperdício não estão incluídos.</div>
     </div>
@@ -3941,6 +3976,53 @@ function realStepEscala(){
       <button class="btn btn-primary" data-act="real-approve" data-val="escala">${ICONS.check} Confirmar medidas e avançar</button>
     </div>
   </div>`;
+}
+
+/** Contagem por faixa de altura, na escala atual da ficha técnica: `{ate, acima}` ou `null` sem geometria/escala. */
+function contagemElementosPorAltura(g=computeGeomReal()){
+  const c=classificarAlturasElementos(REAL.geomRaw, g.scaleFactor);
+  return c ? {ate:c.ate.length, acima:c.acima.length} : null;
+}
+
+/** Quadro "Altura dos elementos": contadores ≤ 11 cm / > 11 cm, desenho numerado e tabela por elemento. */
+function painelAlturaElementos(g){
+  const c=classificarAlturasElementos(REAL.geomRaw, g.scaleFactor);
+  if(!c) return '';
+  const box=REAL.geomRaw.bboxPx, unidade=Math.max(box.w,box.h,1), pad=unidade*0.03;
+  const cor=i=>i.grupo==='ate'?'var(--accent)':'var(--warn)';
+  const desenho=c.itens.map(i=>`<path d="${escaparHtml([i.d,...i.vazados].join(' '))}" fill-rule="evenodd" style="fill:${cor(i)};opacity:.85"/>`).join('');
+  const rotulos=c.itens.map(i=>{
+    const r=Math.min(Math.max(Math.min(i.bbox.width,i.bbox.height)*0.3,unidade*0.012),unidade*0.03);
+    const cx=i.bbox.x+i.bbox.width/2, cy=i.bbox.y+i.bbox.height/2;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" stroke="#0f172a" stroke-width="${r*0.12}"/><text x="${cx}" y="${cy+r*0.4}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="${r*1.15}" fill="#0f172a">${i.n}</text>`;
+  }).join('');
+  const ordenados=[...c.ate,...c.acima];
+  const linhas=ordenados.map(i=>`<tr>
+    <td class="num">${i.n}</td>
+    <td class="num">${fmt(i.alturaMm/10,1)} cm</td>
+    <td class="num">${fmt(i.larguraMm/10,1)} cm</td>
+    <td><span class="badge ${i.grupo==='ate'?'b-accent':'b-warn'}">${i.grupo==='ate'?'≤ 11 cm':'> 11 cm'}</span>${i.proximoDoLimite?' <span class="badge b-neutral" title="A escala tem tolerância de cerca de ±1%: confira esta peça.">perto do limite</span>':''}</td>
+  </tr>`).join('');
+  const limiteCm=ALTURA_ELEMENTO_LIMITE_MM/10;
+  return `
+    <div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:14px;">
+      <p style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Altura dos elementos (corte em ${limiteCm} cm)</p>
+      <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:10px;">Cada contorno externo é um elemento (letra, símbolo ou pedaço solto, como o ponto do “i”). A altura é a da caixa vertical da peça, na escala informada acima; letras coladas pelo vetorizador contam como um só elemento.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-accent">≤ ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-ate">${c.ate.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com ${limiteCm} cm ou menos</div></div>
+        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-warn">&gt; ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-acima">${c.acima.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com mais de ${limiteCm} cm</div></div>
+      </div>
+      ${c.proximos.length?`<div class="role-note" style="margin-bottom:10px;">${ICONS.info} ${c.proximos.length} elemento(s) a até ${ALTURA_ELEMENTO_FAIXA_PROXIMA_MM} mm do limite (${c.proximos.map(i=>i.n).join(', ')}): a escala tem tolerância de cerca de ±1%, então confira a medida de cada um.</div>`:''}
+      <div class="grid2">
+        <div class="compare" style="background:#fff;"><svg viewBox="${box.x-pad} ${box.y-pad} ${box.w+2*pad} ${box.h+2*pad}" style="display:block;width:100%;height:auto;" role="img" aria-label="Elementos numerados, coloridos por faixa de altura">${desenho}${rotulos}</svg></div>
+        <div class="tablewrap" style="max-height:340px;overflow-y:auto;">
+          <table>
+            <thead><tr><th>Nº</th><th>Altura</th><th>Largura</th><th>Faixa</th></tr></thead>
+            <tbody>${linhas}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
 }
 
 function pranchaTecnicaSvg(g=computeGeomReal()){
