@@ -423,7 +423,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   itens de kit por cópias de um produto de origem. O custo continua vindo ao
   vivo de `listarMateriasPrimas()`. Em Administração > Produtos, a aba
   Matérias-primas classifica o catálogo em categorias locais editáveis
-  (Iluminação, Chapas, Insumos Gerais, Elétrica e Insumos Solda). Elas e os
+  (Iluminação, Chapas, Insumos Gerais, Elétrica, Insumos Solda e, desde 06/10/2026 — migration `0093`, só um seed idempotente —, **Produtividade para soldar**, a mão de obra de solda: sem dados técnicos de chapa/bobina/perfil, e a classificação de material, tipo de solda e tamanho continua decidida pelo nome da matéria-prima, não pela categoria). Elas e os
   dados técnicos ficam nas tabelas `materia_prima_categorias` e
   `materia_prima_cadastros`; nomes, custos e unidades continuam vindo do
   MubiSys, que não oferece gravação pública para esses campos. Marcar uma

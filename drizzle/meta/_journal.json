@@ -652,6 +652,13 @@
       "when": 1791284714162,
       "tag": "0092_familiar_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1791288740562,
+      "tag": "0093_categoria_produtividade_para_soldar",
+      "breakpoints": true
     }
   ]
 }
