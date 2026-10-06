@@ -791,11 +791,14 @@ crédito: separa o fundo, agrupa cores (k-means), traça cada cor com marching s
 do Vectorizer.AI). Testado no Node (`server/__tests__/cpq-vetorizador-local.test.ts`) e num Edge real (IoU ≈ 98%).
 Fundo = tudo que é transparente ou perto da cor mais comum da borda, inclusive miolos de letras (viram vazados).
 (2) **GPT escreve o SVG**: `POST /api/letra-caixa/vetorizacao-gpt` (`server/services/cpqPlanoBArte.ts`, modelo
-`gpt-5` ou `CPQ_GPT_SVG_MODEL`, saída JSON estrita de camadas `{cor, d}`; só comandos M L H V C S Q T Z fechados,
-sem outros elementos). É aproximado e **nunca foi chamado com a API real** (OpenAI sem crédito); o SVG passa pela
-mesma validação de silhueta e pela conferência do vendedor. (3) **Limpar fundo com GPT**: `POST
-/api/letra-caixa/limpar-fundo` devolve a arte sobre branco liso (GPT Image) com novo ticket, e a vetorização roda de
-novo; também sem validação real. As duas rotas usam o mesmo ticket HMAC da vetorização.
+`gpt-5.5` ou `CPQ_GPT_SVG_MODEL`, saída JSON estrita de camadas `{cor, d}`; só comandos M L H V C S Q T Z fechados,
+sem outros elementos). **Testado com a API real em 05/10/2026** (logo sintético de 2 cores): `gpt-5.5` fez 95% de
+coincidência de silhueta em 45 s; o `gpt-5` fez só 21% em 160 s (letras deformadas) — por isso o padrão é o 5.5.
+Continua aproximado: o SVG passa pela validação de silhueta e pela conferência do vendedor. (3) **Limpar fundo com
+GPT**: `POST /api/letra-caixa/limpar-fundo` devolve a arte sobre branco liso (GPT Image, ~17 s) com novo ticket, e a
+vetorização roda de novo; testado com a API real (tirou degradê e ruído, manteve letras e cores). O `gpt-image-2.5-sunburst`
+**recusa `input_fidelity`** e a saída pode vir em outra proporção/tamanho (2170×725 de uma entrada 1024×320). As duas
+rotas usam o mesmo ticket HMAC da vetorização; a chave de teste local fica no `.env` (ignorado pelo git).
 A leitura das cores (`extrairRegioesCorSvg`) tolera o cabeçalho `<?xml?>`/DOCTYPE simples do Vectorizer.AI e
 transparência parcial; cada recusa informa o motivo exato.
 O editor vetorial direto do CPQ (`abrirEditorVetorial`) edita os caminhos do SVG sem revetorizar e obriga a

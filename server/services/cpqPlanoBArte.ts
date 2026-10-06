@@ -91,7 +91,8 @@ export async function vetorizarComGpt(params: {
   imagem.image_url.detail = "high";
   const limite = params.maxCores ? ` Use no máximo ${Math.round(params.maxCores)} cores.` : "";
   const resposta = await invokeLLM({
-    model: process.env.CPQ_GPT_SVG_MODEL?.trim() || "gpt-5",
+    // Teste real (05/10/2026, logo de 2 cores): gpt-5 → 21% de coincidência em 160 s; gpt-5.5 → 95% em 45 s.
+    model: process.env.CPQ_GPT_SVG_MODEL?.trim() || "gpt-5.5",
     reasoningEffort: "medium",
     maxCompletionTokens: 40_000,
     messages: [
@@ -118,7 +119,7 @@ export async function limparFundoComGpt(params: { imageBuffer: Buffer; mimeType:
     imageMimeType: params.mimeType,
     prompt: PROMPT_LIMPAR_FUNDO,
     background: "opaque",
-    inputFidelity: "high",
+    // Sem inputFidelity: o gpt-image-2.5-sunburst recusa o parâmetro (verificado com a API real em 05/10/2026).
     model: "gpt-image-2.5-sunburst",
     quality: "high",
     size: "auto",
