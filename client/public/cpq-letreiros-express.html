@@ -4006,7 +4006,7 @@ function realStepKit(){
   const q = REAL.matQuery||'';
   const proximoPasso=REAL.approvals.nesting?'Confirmar composição e ir ao orçamento':'Confirmar composição e voltar ao nesting';
   const matches = q.length>=2 ? catalog.materias.filter(m=>!adminState.materiasExcluidas.has(m.id) && normalizeSearch(m.nome).includes(normalizeSearch(q))).slice(0,40) : [];
-  return `
+  return `${renderPinturaBox()}
   <div class="card">
     <div class="cardhead"><div><h3>7 · Composição — consumo das matérias-primas</h3><p>${REAL.kit.length? 'Composição carregada do cadastro do administrador para este modelo — ajuste fórmulas e multiplicadores com base no nesting.' : 'Sem composição cadastrada para este modelo ainda — busque direto no catálogo real de matérias-primas ('+catalog.materias.length+' itens), defina o papel físico e confirme. O nesting será calculado em seguida.'}</p><p class="role-note">O nesting anterior fornece área de consumo, área líquida e perímetro às fórmulas. Alterar uma matéria-prima ou camada exige novo nesting; fórmulas e multiplicadores recalculam o orçamento sem refazer o layout.</p></div></div>
     <div style="position:relative;">
@@ -4211,28 +4211,10 @@ async function aprovarCoresESeguirReal(){
   }catch(error){restaurarComposicaoCoresReal();color.error=error.message||'Falha ao aprovar sugestões de materiais.';render();}
 }
 
+/** O mapeamento de cores roda sozinho antes do nesting (sem perguntas). Aqui só aparecem erro, andamento e a autorização
+ *  obrigatória quando a face precisa de acrílico transparente + adesivo. */
 function renderAnaliseCoresReal(){
   const color=REAL.colorAnalysis;
-  const rows=(color.resultados||[]).map(result=>{
-    const alternatives=result.alternativas||[];
-    const chosen=result.tipoSugestao==='chapa'?alternatives.find(item=>Number(item.id)===Number(result.chapaId)):result.tipoSugestao==='imprimax'?alternatives.find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
-    const title=result.tipoSugestao==='chapa'?`Chapa: ${chosen?.nome||'sugestão interna'}`:result.tipoSugestao==='imprimax'?`Imprimax ${chosen?.linha||''} · ${chosen?.codigo||chosen?.nome||''}`:result.tipoSugestao==='impresso'?'Adesivo impresso':'Revisão manual';
-    const rgb=result.corRgb?`RGB ${result.corRgb.r}/${result.corRgb.g}/${result.corRgb.b}`:'';
-    const cmyk=result.cmyk?`CMYK ${result.cmyk.c}/${result.cmyk.m}/${result.cmyk.y}/${result.cmyk.k}`:'';
-    const pantone=result.pantoneCode?`Pantone ${result.pantoneCode}`:'';
-    const referenciaCor=result.corHex&&color.referencias?color.referencias[result.corHex]:null;
-    const pantoneProximo=referenciaCor&&referenciaCor.pantone&&referenciaCor.pantone[0]?`Pantone aprox. ${referenciaCor.pantone[0].codigo} (ΔE ${fmt(referenciaCor.pantone[0].deltaE00,1)})`:'';
-    const cmykAproximado=referenciaCor&&referenciaCor.cmykAproximado&&!result.cmyk?`CMYK aprox. ${referenciaCor.cmykAproximado.c}/${referenciaCor.cmykAproximado.m}/${referenciaCor.cmykAproximado.y}/${referenciaCor.cmykAproximado.k}`:'';
-    const areaExibida=result.areaTotalM2??result.areaM2;
-    const rotuloArea=result.areaTotalM2!=null?'Área total da peça':'Área estimada';
-    const kitMaterialId=chosen?.mubisysMateriaPrimaId;
-    const kitTemMaterial=kitMaterialId!=null&&REAL.kit.some(line=>Number(materialKitAtivo(line).matId)===Number(kitMaterialId));
-    const materialBase=result.chapaBaseMateriaPrimaId?catalog.materias.find(item=>Number(item.id)===Number(result.chapaBaseMateriaPrimaId)):null;
-    const planoBase=result.requerChapaBase?`<div class="source-tag">Composição automática: Face em chapa transparente${materialBase?` · ${escaparHtml(materialBase.nome)}`:` · matéria-prima #${result.chapaBaseMateriaPrimaId||'pendente'}`}</div>`:'';
-    const pendenciaKit=result.tipoSugestao==='chapa'&&!kitTemMaterial?'<div class="role-note">A chapa de cor será aplicada à linha Face antes do nesting.</div>':'';
-    const coresGradiente=(result.coresGradiente||[]).length?`Gradiente: ${result.coresGradiente.join(' → ')}`:'';
-    return `<tr><td><span style="display:inline-block;width:14px;height:14px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${result.corHex||'#e2e8f0'};"></span> ${escaparHtml(result.corHex||pantone||result.tipoCor)}<div class="source-tag">${escaparHtml([pantone,pantoneProximo,rgb,cmyk,cmykAproximado,coresGradiente].filter(Boolean).join(' · ')||'Cor sem valor numérico confirmado')}</div></td><td>${areaExibida==null?'—':`${rotuloArea}: ${fmt(areaExibida,4)} m²`}</td><td>${escaparHtml(title)}${result.deltaE00!=null?`<div class="source-tag">ΔE00 ${fmt(result.deltaE00,2)}</div>`:''}${planoBase}${pendenciaKit}${(result.avisos||[]).map(message=>`<div class="role-note">${escaparHtml(message)}</div>`).join('')}</td><td>${result.custoEstimado==null?(result.tipoSugestao==='chapa'?'Composição atual':'Custo pendente'):money(result.custoEstimado)}</td></tr>`;
-  }).join('');
   const comAdesivoSobreAcrilico=(color.resultados||[]).filter(result=>(result.tipoSugestao==='impresso'||result.tipoSugestao==='imprimax')&&result.requerChapaBase);
   const precisaAutorizarAdesivo=comAdesivoSobreAcrilico.length>0;
   const impressoDoLetreiro=comAdesivoSobreAcrilico.find(result=>result.tipoSugestao==='impresso'&&result.dadosPreco);
@@ -4247,17 +4229,33 @@ function renderAnaliseCoresReal(){
         ${impressoDoLetreiro?`<div>O adesivo impresso terá a <b>mesma dimensão do letreiro</b>: ${fmt(impressoDoLetreiro.dadosPreco.larguraMm,0)} × ${fmt(impressoDoLetreiro.dadosPreco.alturaMm,0)} mm.</div>`:''}
         <label class="checkrow" style="margin-top:8px;"><input type="checkbox" data-act="cor-autoriza-adesivo" ${color.autorizaAdesivo?'checked':''}> Autorizo usar acrílico transparente com adesivo nesta composição</label>
       </div>`:'';
-  const countColors=new Set((color.resultados||[]).map(result=>result.corHex||result.pantoneCode||`${result.tipoCor}:${result.cmyk?Object.values(result.cmyk).join(','):(result.coresGradiente||[]).join(',')}`)).size;
-  return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">
-    <div class="cardhead"><div><h4>Correspondência de cores (opcional para o nesting)</h4><p>O servidor calcula a área total por Bounding Box para adesivos e mantém a área líquida separada para pintura que envolve a peça.</p></div></div>
-    ${color.error?`<div class="warnbox" role="alert" style="margin-top:8px;">${escaparHtml(color.error)}</div>`:''}
-    ${color.loading?'<div class="empty-hint">Extraindo regiões e comparando ΔE00 com chapas e o catálogo Imprimax…</div>':''}
-    ${color.resultados?.length?`<div class="tablewrap" style="margin-top:10px;"><table><thead><tr><th>Cor da arte</th><th>Área estimada</th><th>Sugestão e revisão</th><th>Custo adicional</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="role-note" style="margin-top:8px;">${countColors} grupo(s) cromático(s) em ${color.resultados.length} região(ões). Cada substrato aprovado recebe seus próprios caminhos da camada Face; vinil/impressão entra como insumo adicional. Valores ausentes e construções incertas viram perguntas e bloqueiam a aprovação.</div>
-      ${blocoAutorizacaoAdesivo}
-      ${color.aprovado?`<div class="banner" style="margin-top:8px;">${ICONS.check}<div>Composição de cores confirmada por ${escaparHtml(color.aprovadoPor||'usuário')}; a face foi atualizada no kit e o nesting pode seguir.</div></div>`:`<button class="btn btn-primary btn-sm" style="margin-top:10px;" data-act="cor-aprovar-seguir" ${precisaAutorizarAdesivo&&!color.autorizaAdesivo?'disabled title="Autorize a composição com adesivo para continuar"':''}>Aplicar composição e analisar nesting</button>`}`:
-      `<button class="btn btn-primary btn-sm" style="margin-top:10px;" data-act="cor-analisar" ${color.loading?'disabled':''}>${color.loading?'Analisando cores…':'Analisar cores e sugerir materiais'}</button>`}
+  return `<div style="margin:10px 0;">
+    ${color.error?`<div class="warnbox" role="alert">${escaparHtml(color.error)}</div>`:''}
+    ${color.loading?'<div class="empty-hint">Identificando os materiais da face a partir da arte…</div>':''}
+    ${blocoAutorizacaoAdesivo}
+    ${color.resultados?.length&&!color.aprovado&&precisaAutorizarAdesivo?`<button class="btn btn-primary btn-sm" style="margin-top:10px;" data-act="cor-aprovar-seguir" ${color.autorizaAdesivo?'':'disabled title="Autorize a composição com adesivo para continuar"'}>Autorizar e calcular nesting</button>`:''}
+    ${color.error&&!color.loading?'<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-act="cor-analisar">Tentar novamente</button>':''}
   </div>`;
+}
+
+/** Dispara sozinho (uma vez por composição/arte) a análise de cores e o nesting das chapas da composição. */
+function agendarNestingAutomatico(){
+  const color=REAL.colorAnalysis;
+  if(REAL.factibilidadeCarregando||REAL.nestingCarregando||color.loading||REAL.factibilidade||REAL.nesting||REAL.factibilidadeErro||color.error||REAL.nestingFormatosPendentes?.length) return;
+  const chave=JSON.stringify([(REAL.kit||[]).map(l=>[materialKitAtivo(l).matId,l.papel||'',l.origemPintura?1:0]),REAL.tracedSvg?.length||0,REAL.tracedW,REAL.tracedH]);
+  if(REAL.nestingAutoChave===chave) return;
+  REAL.nestingAutoChave=chave;
+  setTimeout(iniciarNestingAutomatico,0);
+}
+async function iniciarNestingAutomatico(){
+  const color=REAL.colorAnalysis;
+  if(REAL.step!==6||REAL.factibilidadeCarregando||REAL.nestingCarregando||color.loading) return;
+  if(!color.resultados?.length) await analisarCorrespondenciaCoresReal();
+  if(!color.resultados?.length) return;
+  if(color.aprovado){ await analisarFactibilidadeReal(); return; }
+  const precisaAutorizar=color.resultados.some(item=>(item.tipoSugestao==='impresso'||item.tipoSugestao==='imprimax')&&item.requerChapaBase);
+  if(precisaAutorizar&&!color.autorizaAdesivo){ render(); return; }
+  await aprovarCoresESeguirReal();
 }
 
 async function executarNestingFactibilidadeReal(formatosTemporarios=REAL.nestingFormatosUsados||[]){
@@ -4302,7 +4300,7 @@ function renderConfiguracaoNestingReal(){
   const nomes=new Map((catalog.materias||[]).map(material=>[Number(material.id),material.nome]));
   const linhas=[];
   linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">');
-  linhas.push('<div class="cardhead"><div><h4>Executar nesting nesta etapa</h4><p>Use as matérias-primas e camadas já vinculadas ao modelo. Depois do nesting, a composição aplica fórmulas e multiplicadores aos resultados.</p></div></div>');
+  linhas.push('<div class="cardhead"><div><h4>Chapas da composição</h4><p>O nesting roda sozinho para cada chapa vinculada à Face, Aro ou Fundo do kit e calcula a área de consumo usada no preço.</p></div></div>');
   linhas.push('<div class="grid2" style="margin-top:10px;">');
   linhas.push('<label class="field">Distanciamento entre peças (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.espacamentoMm)+'" data-act="nesting-espacamento"></label>');
   linhas.push('<label class="field">Distanciamento da borda (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.margemBordaMm)+'" data-act="nesting-margem-borda"></label>');
@@ -4383,8 +4381,9 @@ function realStepNestingV2(){
     return '<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;"><div class="cardhead"><div><h4>Resultados por tamanho de chapa · '+escaparHtml(material.materia_prima)+'</h4><p>O mesmo desenho foi calculado separadamente em cada formato ativo.</p></div><span class="badge b-neutral">'+formatos.length+' formatos</span></div>'+itens+'</div>';
   }).join('')||'';
   if(REAL.factibilidadeCarregando) return `<div class="card"><div class="empty-hint">Analisando chapas e preparando o nesting...</div></div>`;
-  return `${renderPinturaBox()}<div class="card">
-    <div class="cardhead"><div><h3>6 - Factibilidade e nesting por material</h3><p>Além de organizar as peças, o nesting calcula para cada matéria-prima da composição a área de consumo, a área líquida das peças e o perímetro total de corte. Nas fórmulas por área ou perímetro total, esses resultados definem a quantidade no orçamento.</p></div></div>
+  agendarNestingAutomatico();
+  return `<div class="card">
+    <div class="cardhead"><div><h3>6 - Nesting das chapas da composição</h3><p>Além de organizar as peças, o nesting calcula para cada matéria-prima da composição a área de consumo, a área líquida das peças e o perímetro total de corte. Nas fórmulas por área ou perímetro total, esses resultados definem a quantidade no orçamento.</p></div></div>
     ${renderConfiguracaoNestingReal()}
     ${renderAnaliseCoresReal()}
     ${REAL.factibilidadeErro?`<div class="warnbox" role="alert"><span>${ICONS.alert}</span><div>${escaparHtml(REAL.factibilidadeErro)}</div></div>`:''}
@@ -6999,7 +6998,7 @@ function bindRealEvents(){
   const factibilidadeRetry=document.querySelector('[data-act="real-factibilidade-retry"]');
   if(factibilidadeRetry) factibilidadeRetry.addEventListener('click',()=>analisarFactibilidadeReal());
   const nestingIniciar=document.querySelector('[data-act="real-nesting-iniciar"]');
-  if(nestingIniciar) nestingIniciar.addEventListener('click',()=>analisarFactibilidadeReal());
+  if(nestingIniciar) nestingIniciar.addEventListener('click',()=>iniciarNestingAutomatico());
   document.querySelectorAll('[data-act="nesting-kit-papel"]').forEach(el=>el.addEventListener('change',event=>{REAL.kit[Number(event.target.dataset.idx)].papel=event.target.value;invalidarFactibilidadeReal();render();}));
   const nestingComposicao=document.querySelector('[data-act="real-nesting-go-composition"]');
   if(nestingComposicao) nestingComposicao.addEventListener('click',()=>{REAL.step=7;render();});
@@ -7034,7 +7033,7 @@ function bindRealEvents(){
   const corLamina=document.querySelector('[data-act="cor-laminar"]');
   if(corLamina)corLamina.addEventListener('change',event=>{REAL.colorAnalysis.laminar=event.target.checked;invalidarAnaliseCoresReal();render();});
   const corAnalisar=document.querySelector('[data-act="cor-analisar"]');
-  if(corAnalisar)corAnalisar.addEventListener('click',analisarCorrespondenciaCoresReal);
+  if(corAnalisar)corAnalisar.addEventListener('click',()=>{REAL.colorAnalysis.error=null;iniciarNestingAutomatico();});
   const corAutoriza=document.querySelector('[data-act="cor-autoriza-adesivo"]');
   if(corAutoriza)corAutoriza.addEventListener('change',event=>{REAL.colorAnalysis.autorizaAdesivo=event.target.checked;render();});
   const corAprovar=document.querySelector('[data-act="cor-aprovar-seguir"]');

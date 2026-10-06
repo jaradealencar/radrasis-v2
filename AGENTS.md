@@ -507,7 +507,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   aberto na prancha, com faixas = ceil(altura ÷ 1200 mm); regra em `shared/gabarito.ts` e repetida em
   `FORMULA_TYPES` do HTML, validada no servidor (`estudio-cotacoes.ts`). O custo é por m² de bobina; a base de
   cobrança real do #1098 (m²/ml/rolo) ainda não é lida pelo CPQ, então confira no cadastro da bobina.
-  No passo de Composição o vendedor também acrescenta/remove produtos do kit (busca + modelo/variações, `htmlProdutosDoKit` no HTML do CPQ) e liga/desliga a embalagem. A análise de cores não faz mais perguntas de iluminação/transmissão/base/construção/laminação: usa padrões (sem iluminação, vinil branco, face acrílica detectada pelo kit, sem laminação).
+  No passo de Composição o vendedor também acrescenta/remove produtos do kit (busca + modelo/variações, `htmlProdutosDoKit` no HTML do CPQ) e liga/desliga a embalagem. O passo de Nesting só mostra as chapas da composição e roda sozinho: a análise de cores (sem perguntas; padrões: sem iluminação, vinil branco, face acrílica detectada pelo kit, sem laminação) e a aprovação automática acontecem em segundo plano (`iniciarNestingAutomatico` no HTML do CPQ), parando só para a autorização de acrílico transparente + adesivo. A caixa de Pintura fica no passo de Composição.
   **Embalagem Acabamento (MubiSys #4258, pedido de 05/10/2026):** item especial do CPQ, incluído em toda
   cotação e removível pelo vendedor (checkbox no Resumo financeiro). Não tem consumo: cobra 3,5% sobre o
   preço de todos os outros itens (`EMBALAGEM_PCT`/`aplicarEmbalagem` no HTML); o snapshot guarda
