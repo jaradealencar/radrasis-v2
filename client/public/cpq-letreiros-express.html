@@ -2546,6 +2546,15 @@ const FORMULA_TYPES = {
     return faixas*KRAFT_LARGURA_BOBINA_M*(Math.round((g.totalWidthM||0)*1000)/1000)*mult;
   }},
 };
+/** Base de cobrança do produto (pedido de 06/10/2026; shared/base-cobranca-produto.ts, validada no servidor): como o consumo da
+ *  composição escala com o letreiro quando o produto entra no kit de outro. Reusa as fórmulas das matérias-primas; com a base
+ *  definida, cada linha da composição é a quantidade POR unidade dela. Sem base, cada linha define a sua. */
+const BASES_COBRANCA_PRODUTO = ['area','areaTotal','areaGeral','perimExt','perimTotal','fixo'];
+const POR_BASE_COBRANCA = {area:'m² de área líquida',areaTotal:'m² de chapa consumida (nesting)',areaGeral:'m² de área geral',perimExt:'metro de perímetro externo',perimTotal:'metro de perímetro total de corte',fixo:'unidade do produto'};
+const ROTULO_CURTO_BASE_COBRANCA = {area:'área líquida',areaTotal:'área do nesting',areaGeral:'área geral',perimExt:'perímetro externo',perimTotal:'perímetro total',fixo:'unidade'};
+function baseCobrancaValida(valor){ return BASES_COBRANCA_PRODUTO.includes(valor)?valor:null; }
+/** Fórmula das linhas novas de um produto: a base dele; sem base, área líquida (padrão antigo do cadastro). */
+function formulaPadraoDoKit(kit){ return baseCobrancaValida(kit&&kit.baseCobranca)||'area'; }
 const GABARITO_PRODUTO_ID = 127, GABARITO_MODELO_KRAFT_ID = 570, KRAFT_MATERIA_PRIMA_ID = 1098, KRAFT_LARGURA_BOBINA_M = 1.2;
 const GABARITO_SLOT = `${GABARITO_PRODUTO_ID}_${GABARITO_MODELO_KRAFT_ID}`;
 /** Taxonomia de categoria/subcategoria/tipo do cadastro de produtos —
@@ -4773,7 +4782,8 @@ ${(REAL.kitProdutosSel||[]).length?`<div style="display:grid;gap:7px;">
         <div style="display:grid;gap:4px;margin-top:4px;">${variacoes.map(v=>`<label style="display:flex;gap:7px;align-items:center;"><input type="checkbox" data-act="real-kitproduto-variacao" data-slot="${escaparHtml(sel.slot)}" data-val="${v.id}" ${sel.variacaoIds.map(Number).includes(Number(v.id))?'checked':''}><span>${escaparHtml(v.nome)}${v.padrao?' · padrão':''}</span></label>`).join('')}</div></div>`:''}
       `}
       ${produtoId===GABARITO_PRODUTO_ID&&modeloId===GABARITO_MODELO_KRAFT_ID&&(!sel.implicito||REAL.gabaritoAtivo!==false)?`<div style="font-size:11px;color:var(--text-faint);margin-top:6px;">Kraft: comprimento = largura do letreiro aberto; bobina de ${KRAFT_LARGURA_BOBINA_M*1000} mm, repetida em faixas se a altura passar disso. O custo do papel é aplicado por m² de bobina consumida — confira a base de cobrança no cadastro da bobina.</div>`:''}
-      <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${qtdLinhas} matéria(s)-prima(s) somada(s) ao orçamento</div>
+      <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${qtdLinhas} matéria(s)-prima(s) somada(s) ao orçamento${baseCobrancaValida(adminState.kits[sel.key]?.baseCobranca)?` · cobrado por ${ROTULO_CURTO_BASE_COBRANCA[adminState.kits[sel.key].baseCobranca]} do letreiro`:''}</div>
+      ${qtdLinhas===0&&(!sel.implicito||REAL.gabaritoAtivo!==false)?`<div role="alert" class="badge b-warn" style="margin-top:6px;white-space:normal;">Sem composição cadastrada para este modelo/variação: nada será somado ao custo. Cadastre em Administração &gt; Produtos.</div>`:''}
     </div>`;}).join('')}
 </div>`:`<div class="empty-hint">Nenhum produto vinculado a este kit.</div>`}`;
 }
@@ -7161,7 +7171,7 @@ function adminModeloRow(p, m){
     <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
       <div>
         <div style="font-size:13px; font-weight:600;">${m.nome}</div>
-        <div style="font-size:11.5px; color:var(--text-faint);"><span class="mono" style="color:var(--accent-ink);">${skuModelo(p.id,m.id)}</span> · ${m.unidade||'—'}${kit && kit.categoria? ` · ${kit.categoria} ▸ ${kit.subcategoria||'—'}${kit.tipoProduto?' ▸ '+kit.tipoProduto:''}` : ''}</div>
+        <div style="font-size:11.5px; color:var(--text-faint);"><span class="mono" style="color:var(--accent-ink);">${skuModelo(p.id,m.id)}</span> · ${m.unidade||'—'}${kit && kit.categoria? ` · ${kit.categoria} ▸ ${kit.subcategoria||'—'}${kit.tipoProduto?' ▸ '+kit.tipoProduto:''}` : ''}${kit && baseCobrancaValida(kit.baseCobranca)? ` · cobrado por ${ROTULO_CURTO_BASE_COBRANCA[kit.baseCobranca]}` : ''}</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         ${kit? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':kit.precificacao.modo==='lucro'?` · lucro ${kit.precificacao.margemPct||0}%`:' · margem vinculada'):''})</span>` : `<span class="badge b-neutral">Não cadastrado</span>`}
@@ -7237,6 +7247,7 @@ function adminKitEditor(p, m, key){
     : [];
 
   const variacoesModelo = variacoesAtivasDoModelo(m);
+  const baseKit = baseCobrancaValida(kitState.baseCobranca);
   const catAtual = kitState.categoria && CATEGORIAS_PRODUTO[kitState.categoria] ? kitState.categoria : '';
   const subcatsDaCat = catAtual ? Object.keys(CATEGORIAS_PRODUTO[catAtual]) : [];
   const subcatAtual = kitState.subcategoria && subcatsDaCat.includes(kitState.subcategoria) ? kitState.subcategoria : '';
@@ -7327,7 +7338,7 @@ function adminKitEditor(p, m, key){
       </div>` : (kpq.length ? '<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum produto encontrado para esta busca.</p>' : '')}
     </div>
     ${kitProdutos.length? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
-      ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;"><span class="mono">${skuModeloPorKey(kp.key)}</span> ${kp.nome}${kp.variacaoPadraoNome?` · ${escaparHtml(kp.variacaoPadraoNome)}`:''} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
+      ${kitProdutos.map((kp,i)=>`<span class="badge b-neutral" style="gap:6px;"><span class="mono">${skuModeloPorKey(kp.key)}</span> ${kp.nome}${kp.variacaoPadraoNome?` · ${escaparHtml(kp.variacaoPadraoNome)}`:''}${baseCobrancaValida(adminState.kits[kp.key]?.baseCobranca)?` · por ${ROTULO_CURTO_BASE_COBRANCA[adminState.kits[kp.key].baseCobranca]}`:''} <button type="button" data-act="admin-kitproduto-remove" data-key="${key}" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
     </div><p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${kitProdutos.length} modelo(s) vinculado(s). Pesquise outro produto para adicionar mais.</p>` : `<p style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">Nenhum modelo vinculado. Você pode adicionar vários produtos e modelos do catálogo.</p>`}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Variações do modelo <span style="font-weight:400; text-transform:none;">— importadas do MubiSys (${variacoesModelo.length})</span></p>
@@ -7336,7 +7347,20 @@ function adminKitEditor(p, m, key){
     <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Na composição abaixo, cada matéria-prima pode valer para todas as variações (comum) ou só para uma delas. No orçamento entram as linhas comuns mais as das variações escolhidas pelo vendedor.</p>`
     : `<p style="font-size:11.5px;color:var(--text-faint);">Este modelo não tem variações ativas no MubiSys. Se acabou de cadastrá-las lá, recarregue a página para atualizar o catálogo.</p>`}
 
-    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Composição — matéria-prima real <span style="font-weight:400; text-transform:none;">(quantas quiser)</span></p>
+    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Como este produto é cobrado <span style="font-weight:400; text-transform:none;">— base de consumo quando ele entra no kit de outro produto</span></p>
+    <div class="card" style="padding:12px;box-shadow:none;background:var(--surface);" data-teste="base-cobranca-produto">
+      <label class="field" style="max-width:460px;">Base de cobrança
+        <select data-act="admin-kit-base-cobranca" data-key="${key}">
+          <option value="">Cada matéria-prima define a sua fórmula</option>
+          ${BASES_COBRANCA_PRODUTO.map(b=>`<option value="${b}" ${baseKit===b?'selected':''}>${FORMULA_TYPES[b].label}</option>`).join('')}
+        </select>
+      </label>
+      <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">${baseKit
+        ? `Cada matéria-prima abaixo é a <strong>quantidade por ${POR_BASE_COBRANCA[baseKit]}</strong> do letreiro. Ex.: ${baseKit==='fixo'?'2 unidades → 2 por letreiro':'12 → em 0,5 '+(baseKit.startsWith('perim')?'m':'m²')+' entram 6'}; o custo é essa quantidade × o custo atual da matéria-prima no MubiSys. Uma linha pode abrir exceção escolhendo outra fórmula na tabela.`
+        : 'Escolha como cobrar este produto: área líquida (ex.: pintura, iluminação LED), área geral, perímetro ou unidade. Sem escolha, a fórmula é definida linha a linha na composição.'}</p>
+    </div>
+
+    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Composição — matéria-prima real <span style="font-weight:400; text-transform:none;">(quantas quiser${baseKit?` · quantidade por ${POR_BASE_COBRANCA[baseKit]}`:''})</span></p>
     <div style="position:relative;">
       <input type="text" placeholder="Buscar matéria-prima real…" value="${q}" data-act="admin-mat-query" style="width:100%;">
       ${matches.length? `<div class="card" style="position:absolute; z-index:10; width:100%; margin-top:4px; padding:6px; max-height:280px; overflow:auto;">
@@ -7347,7 +7371,7 @@ function adminKitEditor(p, m, key){
     </div>
     <div class="tablewrap" style="margin-top:${matches.length?'60px':'10px'};">
       <table>
-        <thead><tr><th>Matéria-prima</th><th>Papel na peça</th>${variacoesModelo.length?'<th>Vale para</th>':''}<th>Fórmula de consumo</th><th>Mult.</th><th></th></tr></thead>
+        <thead><tr><th>Matéria-prima</th><th>Papel na peça</th>${variacoesModelo.length?'<th>Vale para</th>':''}<th>Fórmula de consumo</th><th>${baseKit?`Qtd. por ${baseKit==='fixo'?'unidade':baseKit.startsWith('perim')?'metro':'m²'}`:'Mult.'}</th><th></th></tr></thead>
         <tbody>
         ${kit.length? kit.map((k,i)=>`
           <tr>
@@ -7360,7 +7384,7 @@ function adminKitEditor(p, m, key){
               <option value="">Todas (comum)</option>
               ${variacoesModelo.map(v=>`<option value="${v.id}" ${String(k.variacaoModeloId)===String(v.id)?'selected':''}>${escaparHtml(v.nome)}</option>`).join('')}
             </select></td>`:''}
-            <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select></td>
+            <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select>${baseKit&&k.formulaType!==baseKit?`<div class="source-tag" title="A base do produto é ${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])}; esta linha usa outra fórmula.">≠ base do produto (${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])})</div>`:''}</td>
             <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="admin-kit-mult" data-idx="${i}" style="width:70px;"></td>
             <td><button class="btn btn-ghost btn-sm" data-act="admin-kit-remove" data-idx="${i}">✕</button></td>
           </tr>`).join('') : `<tr><td colspan="6" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado (pode adicionar quantas matérias-primas precisar).</td></tr>`}
@@ -8045,7 +8069,7 @@ function bindAdminEvents(){
       const key = el.dataset.key;
       const m = catalog.materias.find(x=>x.id===parseInt(el.dataset.val));
       if(m && adminState.kits[key]){
-        adminState.kits[key].linhas.push({ matId:m.id, nome:m.nome, unidade:m.unidade, custo:m.valor, atualizado:m.atualizado, status:m.status, papel:'', formulaType:'area', mult:1.0, variantes:[] });
+        adminState.kits[key].linhas.push({ matId:m.id, nome:m.nome, unidade:m.unidade, custo:m.valor, atualizado:m.atualizado, status:m.status, papel:'', formulaType:formulaPadraoDoKit(adminState.kits[key]), mult:1.0, variantes:[] });
         salvarKit(key);
       }
       adminState.adminMatQuery='';
@@ -8096,6 +8120,22 @@ function bindAdminEvents(){
     el.addEventListener('change', e=>{
       const kit = adminState.kits[adminState.editingKey];
       if(kit){ kit.linhas[+el.dataset.idx].formulaType = e.target.value; salvarKit(adminState.editingKey); }
+      render();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-kit-base-cobranca"]').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const key=el.dataset.key;
+      const kit=adminState.kits[key];
+      if(!kit) return;
+      const base=baseCobrancaValida(e.target.value);
+      if(base) kit.baseCobranca=base; else delete kit.baseCobranca;
+      // Só linhas com fórmula "comum" mudam; fórmulas específicas (solda, gabarito) nunca são trocadas em massa.
+      const divergentes=base?kit.linhas.filter(l=>BASES_COBRANCA_PRODUTO.includes(l.formulaType)&&l.formulaType!==base):[];
+      if(divergentes.length&&confirm(`Aplicar "${FORMULA_TYPES[base].label}" às ${divergentes.length} linha(s) da composição que usam outra fórmula?\n\nOK: essas linhas passam a seguir a base do produto.\nCancelar: só as linhas novas seguem a base; as atuais ficam como estão (aparecem marcadas como diferentes da base).`)){
+        divergentes.forEach(l=>{ l.formulaType=base; });
+      }
+      salvarKit(key);
       render();
     });
   });
@@ -8362,12 +8402,14 @@ function bindAdminEvents(){
       if(!destinoKey||!origemKey||destinoKey===origemKey||!origem) return;
       const nomeOrigem=nomeModeloPorKey(origemKey);
       const nomeDestino=nomeModeloPorKey(destinoKey);
-      const confirmou=confirm(`Copiar a configuração de "${nomeOrigem}" para "${nomeDestino}"?\n\nA composição de matérias-primas e os produtos vinculados atuais serão substituídos. Descrição, preço, categoria, prazo e foto serão mantidos.`);
+      const confirmou=confirm(`Copiar a configuração de "${nomeOrigem}" para "${nomeDestino}"?\n\nA composição de matérias-primas, a base de cobrança e os produtos vinculados atuais serão substituídos. Descrição, preço, categoria, prazo e foto serão mantidos.`);
       if(!confirmou) return;
       const destino=adminState.kits[destinoKey] || (adminState.kits[destinoKey]={linhas:[],precificacao:null,descricaoProduto:'',prazoDiasUteis:null,kitProdutos:[],fotoUrl:null,fotoAssetId:null,categoria:null,subcategoria:null,tipoProduto:null});
       const linhasOrigem=Array.isArray(origem.linhas)?origem.linhas:[];
       const vinculadosOrigem=Array.isArray(origem.kitProdutos)?origem.kitProdutos:[];
       destino.linhas=linhasOrigem.map(linha=>({...linha,variantes:Array.isArray(linha.variantes)?linha.variantes.map(variacao=>({...variacao})):[]}));
+      // A base de cobrança dá sentido às quantidades copiadas (por m², por metro…), então vai junto com a composição.
+      if(baseCobrancaValida(origem.baseCobranca)) destino.baseCobranca=origem.baseCobranca; else delete destino.baseCobranca;
       const vistos=new Set();
       destino.kitProdutos=vinculadosOrigem.filter(item=>{
         if(!item||!item.key||item.key===destinoKey||vistos.has(item.key)) return false;

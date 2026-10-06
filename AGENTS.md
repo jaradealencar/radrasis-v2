@@ -539,6 +539,18 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`variacaoPadraoId`); na cotação o vendedor troca modelo e variações de cada um (`REAL.kitProdutosSel`) e as
   matérias-primas deles entram em `REAL.kit` com `origemKitProduto`. Esses itens não passam por papel/nesting
   próprio: usam as fórmulas simples sobre a geometria do produto principal.
+  **Base de cobrança do produto (pedido de 06/10/2026):** o cadastro do kit (Administração > Produtos) tem "Como este
+  produto é cobrado" — `estudio_kits.dadosJson.baseCobranca` (sem migration; `shared/base-cobranca-produto.ts`, validada em
+  `estudio-kits.ts`, lista repetida em `BASES_COBRANCA_PRODUTO` do HTML, conferida por `kit-base-cobranca.test.ts`): área líquida,
+  área do nesting, área geral, perímetro externo, perímetro total ou unidade, as mesmas fórmulas das matérias-primas. Com a base
+  definida, cada linha da composição é a quantidade **por unidade da base** (ex.: LED = módulos por m² de área líquida × custo atual
+  da matéria-prima) e as linhas novas já nascem com essa fórmula; trocar a base oferece reaplicá-la às linhas existentes, e a
+  linha com outra fórmula fica marcada "≠ base do produto". É só uma base padrão para o cadastro: o que vai ao orçamento continua
+  sendo o `formulaType` de cada linha (nenhuma fórmula nova no snapshot/servidor de cotações). Vale para qualquer produto, inclusive
+  os de categoria Pintura, **mas o assistente de pintura do orçamento (`resolverItensPintura`) continua escolhendo matérias-primas
+  por nome, não lê os produtos cadastrados**. A API do MubiSys não traz custo por variação (`valor_final` das variações da
+  Iluminação LED, produto 208, é 0): o custo de cada variação vem das matérias-primas ligadas a ela em "Vale para". Produto vinculado
+  ao kit sem nenhuma linha de composição avisa no passo de Composição que nada será somado (antes somava zero em silêncio).
   **Gabarito de Fixação (MubiSys produto 127, pedido de 05/10/2026):** entra automaticamente no kit de todo
   produto (`kitProdutosPadrao`, slot implícito `127_570` = modelo Kraft), com checkbox para excluir
   (`REAL.gabaritoAtivo`) e troca de modelo na cotação (MDF/Eucadur e Papelão Onda B usam a composição normal).

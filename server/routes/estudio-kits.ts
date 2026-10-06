@@ -6,10 +6,13 @@ import { estudioKits } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
 import { CATEGORIA_COM_PRODUTIVIDADES, ehMateriaProdutividade, MAX_PRODUTIVIDADES_RELACIONADAS } from "../../shared/produtividade-solda";
 
-const kitSchema = z.object({
+export const kitSchema = z.object({
   linhas: z.array(z.record(z.string(), z.unknown())).max(300).default([]),
+  // Como o produto é cobrado quando entra no kit de outro (área líquida, área geral, perímetro, unidade); sem valor, cada linha decide.
+  baseCobranca: z.enum(BASES_COBRANCA_PRODUTO).nullable().optional(),
   precificacao: z.record(z.string(), z.unknown()).nullable().optional(),
   nomeCompleto: z.string().max(512).nullable().optional(),
   descricaoProduto: z.string().max(5000).optional(),
