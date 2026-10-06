@@ -8,6 +8,7 @@ import { calcularPesoLinha, somarPesos, type DadosPesoMateria } from "../service
 import { auth } from "../_core/auth";
 import { listaPantoneValida, normalizarListaPantone } from "../../shared/pantone-referencia";
 import { carregarCustoBobina } from "../db/bobinaCusto";
+import { idsDeMateriasPerfil, MENSAGEM_PERFIL_FORA_DO_NESTING } from "../db/materiaPerfil";
 import { carregarPoliticaCorte } from "../db/politicaCorte";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -363,6 +364,8 @@ async function salvarChapa(
   }
   if (await materiaPrimaEhBobina(db, data.mubisysMateriaPrimaId))
     return void erro(res, 409, MENSAGEM_BOBINA_FORA_DAQUI);
+  if ((await idsDeMateriasPerfil(db, [data.mubisysMateriaPrimaId])).length)
+    return void erro(res, 409, MENSAGEM_PERFIL_FORA_DO_NESTING);
   try {
     const record = await db.transaction(async tx => {
       const existentes = await tx
@@ -457,6 +460,9 @@ async function calcularNesting(req: Request, res: Response): Promise<void> {
     );
   const db = await getDb();
   if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  // Regra do negócio: perfil nunca participa do nesting (o consumo dele vem do perímetro já medido na prancha técnica).
+  if ((await idsDeMateriasPerfil(db, parsed.data.materiaPrimaIds)).length)
+    return void erro(res, 422, MENSAGEM_PERFIL_FORA_DO_NESTING);
 
   const [catalogo, chapas] = await Promise.all([
     listarMateriasPrimas(),

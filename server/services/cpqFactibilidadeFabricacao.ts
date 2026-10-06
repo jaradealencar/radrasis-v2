@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import type { RotacaoPermitida } from "../../shared/politica-corte";
 
 const require = createRequire(import.meta.url);
 const polygonClipping = require("polygon-clipping") as typeof import("polygon-clipping");
@@ -95,6 +96,8 @@ export type CpqFactibilidadeMaterial = {
   lotes?: CpqFactibilidadeLoteMaterial[];
   /** Margem de borda própria deste material (cadastro/processo de corte); ausente = a margem do orçamento. */
   margemBordaMm?: number;
+  /** Escovado ("veio"): a peça só gira 0°/180° em relação ao veio; ausente/"livre" = pode girar 90°. */
+  rotacao?: RotacaoPermitida;
 };
 
 export type CpqLinhaCorte = {
@@ -647,15 +650,21 @@ function maiorChapa(material: CpqFactibilidadeMaterial, margemBordaMm = 0) {
     )[0];
 }
 
-function melhorFatorDeEncaixe(bounds: Bounds, board: ReturnType<typeof canonicalBoard>): number {
+/**
+ * Quanto a peça precisa encolher (1 = já cabe) para caber na área útil. A peça pode girar 90° (inclusive na bobina: só o rolo
+ * não gira, a peça sim, e é assim que uma peça mais alta que a largura do rolo cabe deitada), exceto no escovado, em que o
+ * veio só admite 0°/180°.
+ */
+function melhorFatorDeEncaixe(bounds: Bounds, board: ReturnType<typeof canonicalBoard>, rotacao: RotacaoPermitida = "livre"): number {
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
+  const podeGirar = rotacao !== "veio";
   const normalFits = width <= board.larguraUtilMm && height <= board.alturaUtilMm;
-  const rotatedFits = !board.bobina && height <= board.larguraUtilMm && width <= board.alturaUtilMm;
+  const rotatedFits = podeGirar && height <= board.larguraUtilMm && width <= board.alturaUtilMm;
   if (normalFits || rotatedFits) return 1;
   return Math.max(
     Math.min(board.larguraUtilMm / width, board.alturaUtilMm / height),
-    board.bobina ? 0 : Math.min(board.larguraUtilMm / height, board.alturaUtilMm / width)
+    podeGirar ? Math.min(board.larguraUtilMm / height, board.alturaUtilMm / width) : 0
   );
 }
 
@@ -861,7 +870,7 @@ function clipToSheets(
   });
   const normalPlan = plan(width, height);
   const rotatedPlan = plan(height, width);
-  const useRotation = !board.bobina && rotatedPlan.cols * rotatedPlan.rows < normalPlan.cols * normalPlan.rows;
+  const useRotation = material.rotacao !== "veio" && rotatedPlan.cols * rotatedPlan.rows < normalPlan.cols * normalPlan.rows;
   // Coordenadas locais da peça (0..largura, 0..altura), girada ou não: os cortes são sempre medidos a partir do canto da peça.
   const oriented = useRotation
     ? rotateGeometry(piece.geometry, piece.bounds)
@@ -1201,7 +1210,7 @@ export function calcularFactibilidadeFabricacao(input: {
     const board = boards.get(material.id)!;
     const pieceFits = new Map<string, number>();
     for (const piece of pecasPorMaterial.get(material.id)!) {
-      const fitScale = melhorFatorDeEncaixe(piece.bounds, board);
+      const fitScale = melhorFatorDeEncaixe(piece.bounds, board, material.rotacao);
       pieceFits.set(piece.id, fitScale);
       fatorEscalaNecessario = Math.min(fatorEscalaNecessario, fitScale);
     }

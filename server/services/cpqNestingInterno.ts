@@ -128,6 +128,36 @@ function prepararPeca(peca: PecaMotorInterno, indice: number, angulosCaixa: numb
   return { indice, area, perimetro, caixas, areaMenorCaixa: Math.min(...caixas.map(c => c.largura * c.altura)), aneis: poligonos.flat(), casco };
 }
 
+/**
+ * Medidas da peça para conferir, ANTES do motor, se ela pode caber na área útil: `menorLarguraMm` é a menor largura da peça
+ * em qualquer direção (largura mínima da envoltória convexa); se passa da menor dimensão útil da chapa/bobina, a peça não
+ * cabe em ângulo nenhum. `larguraMm`/`alturaMm` são a caixa na orientação desenhada (0°/180°), a que vale no escovado.
+ */
+export function medidasDaPeca(peca: PecaMotorInterno): { menorLarguraMm: number; larguraMm: number; alturaMm: number } {
+  let poligonos: ReturnType<typeof contornosFisicosDoSvg>;
+  try {
+    poligonos = contornosFisicosDoSvg(peca.svg, peca.larguraMm, peca.alturaMm);
+  } catch (error) {
+    if (error instanceof CpqFactibilidadeError) throw new GeometriaInvalidaMotorInterno(error.message);
+    throw error;
+  }
+  const casco = envoltoria(poligonos.flatMap(([casca]) => casca));
+  if (casco.length < 3) return { menorLarguraMm: 0, larguraMm: 0, alturaMm: 0 };
+  const xs = casco.map(([x]) => x), ys = casco.map(([, y]) => y);
+  let menor = Infinity;
+  for (let i = 0; i < casco.length; i += 1) {
+    const [x1, y1] = casco[i];
+    const [x2, y2] = casco[(i + 1) % casco.length];
+    const comprimento = Math.hypot(x2 - x1, y2 - y1);
+    if (comprimento < EPS) continue;
+    const nx = -(y2 - y1) / comprimento, ny = (x2 - x1) / comprimento;
+    let maior = 0;
+    for (const [x, y] of casco) maior = Math.max(maior, Math.abs((x - x1) * nx + (y - y1) * ny));
+    menor = Math.min(menor, maior);
+  }
+  return { menorLarguraMm: Number.isFinite(menor) ? menor : 0, larguraMm: Math.max(...xs) - Math.min(...xs), alturaMm: Math.max(...ys) - Math.min(...ys) };
+}
+
 type Retangulo = { x: number; y: number; w: number; h: number };
 
 function contido(a: Retangulo, b: Retangulo): boolean {

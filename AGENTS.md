@@ -673,6 +673,16 @@ escovado tem regra de rotação**: `veio` limita as peças a 0° e 180° (motor 
 os demais ficam `livre`, como sempre. A margem própria vale também na factibilidade (`CpqFactibilidadeMaterial.margemBordaMm`)
 e cada resultado do nesting traz `espacamento_pecas_mm`, `margem_borda_mm`, `processo_corte` e `rotacao_permitida`. Valores
 iniciais dos processos são pontos de partida (laser 3/8, router 8/12, plasma 10/20, faca 3/5 mm), não normas.
+**Auditoria do nesting (05/10/2026):** (1) no escovado a **chapa também não vira 90°** (`orientacoesChapa`): virar a chapa
+giraria as peças 90° em relação ao veio, que corre pelo lado maior; só vale a orientação com o lado maior em X, e a factibilidade
+recebe a mesma regra (`CpqFactibilidadeMaterial.rotacao`: a peça não gira 90° e a emenda também não). (2) Na **bobina a peça gira 90°**
+(só o rolo não gira): antes a factibilidade tratava uma peça mais alta que o rolo como "não cabe" e pedia emenda/redução mesmo
+cabendo deitada. (3) Antes de chamar o motor, `verificarPecasCabemNaAreaUtil` recusa com aviso claro (peça, medida, área útil =
+formato − 2×margem, o que fazer) a peça que **não cabe em ângulo nenhum** (menor largura da envoltória convexa contra a menor
+dimensão útil; no escovado, a caixa a 0°/180°); o que passa dali ainda pode falhar por causa do espaçamento e o motor explica.
+(4) **Perfil nunca entra no nesting** (regra do usuário, 05/10/2026): o consumo dele vem do perímetro já medido na prancha técnica. O HTML já
+só envia chapa/bobina com formato; o servidor agora também recusa (422) perfil em `POST /api/letra-caixa/nesting` e na factibilidade, e o
+cadastro legado de formato (`/api/letra-caixa/chapas`) responde 409 para matéria-prima de perfil (`server/db/materiaPerfil.ts`).
 **Emendas inteligentes (pedido de 05/10/2026):** peça maior que a chapa é fatiada por `clipToSheets`
 (`cpqFactibilidadeFabricacao.ts`); as linhas de corte vão para o ponto de **menor material** (`limitesDeCorte`, janela de 70–100%
 do tamanho útil; vãos entre letras e hastes finas), cada linha informa `materialCortadoMm` e o painel REQUER_APROVACAO_EMENDA
@@ -738,7 +748,8 @@ largura × esse comprimento: `area_chapa_utilizada_m2` = faixa cobrada, `area_so
 `formato: "bobina"`, `comprimento_consumido_mm` e `largura_bobina_mm`. Custo em m² usa
 a faixa cobrada, em m/ml usa o comprimento consumido (não o perímetro); outra unidade
 bloqueia com alerta. Com várias larguras vence a que cobra menos material. Margem
-lateral de borda do rolo ainda não existe (só o espaçamento entre peças). Dimensões
+lateral de borda do rolo vem da política de corte da matéria-prima (`margem_borda_mm`, vale nas duas bordas do rolo e no início/fim do comprimento consumido;
+o cadastro da bobina tem uma só largura, não há "largura total × útil" separadas: a margem faz esse papel). Dimensões
 de material (largura, altura, espessura, comprimento) ficam sempre em mm; m²/m do
 resultado e unidades de custo do MubiSys, e as métricas de produção em metros da
 Operações (solda), seguem como estão. A bobina exige espessura (mm ou µm na tela) e densidade em g/cm³: o peso do letreiro usa área × espessura × densidade, como a chapa (sem densidade ou com fórmula que não é em área, cai no peso específico). A densidade é sempre g/cm³ na tela e kg/m³ no banco; o campo "peso específico" (kg por unidade de custo) NÃO é densidade e só aparece para categorias sem chapa, perfil ou bobina. A

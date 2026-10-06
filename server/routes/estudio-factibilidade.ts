@@ -7,6 +7,7 @@ import { estudioChapas, estudioMapeamentoCoresCotacao } from "../../drizzle/sche
 import { criarAlerta } from "../db/alertas-helpers";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
+import { idsDeMateriasPerfil, MENSAGEM_PERFIL_FORA_DO_NESTING } from "../db/materiaPerfil";
 import { carregarPoliticaCorte } from "../db/politicaCorte";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
@@ -205,6 +206,9 @@ async function analisar(req: Request, res: Response): Promise<void> {
   if (parsed.data.camadasMateriais && parsed.data.materiaPrimaIds.some(id => !camadasPorMaterial.get(id)?.length))
     return void respostaErro(res, 409, "Associe cada matéria-prima a uma camada Face, Aro ou Fundo antes de analisar.");
   const byId = new Map(catalogo.map(material => [material.id, material]));
+  // Regra do negócio: perfil nunca participa do nesting (o consumo dele vem do perímetro já medido na prancha técnica).
+  if ((await idsDeMateriasPerfil(db, parsed.data.materiaPrimaIds)).length)
+    return void respostaErro(res, 422, MENSAGEM_PERFIL_FORA_DO_NESTING);
   // Margem de borda de cada matéria-prima (cadastro/processo de corte); o padrão do orçamento vale onde não há política.
   const politicas = await carregarPoliticaCorte(db, parsed.data.materiaPrimaIds, { espacamentoMm: 0, margemBordaMm: parsed.data.margemBordaMm });
   const materials: CpqFactibilidadeMaterial[] = [];
@@ -245,6 +249,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
       lotes: camadasPorMaterial.get(id),
       chapas: chapasResolvidas,
       margemBordaMm: politicas.get(id)?.margemBordaMm,
+      rotacao: politicas.get(id)?.rotacao,
     });
   }
 

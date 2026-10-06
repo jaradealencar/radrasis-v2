@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { BobinaCustoConfig } from "../../shared/bobina";
-import { executarMotorInterno, GeometriaInvalidaMotorInterno } from "./cpqNestingInterno";
+import { executarMotorInterno, GeometriaInvalidaMotorInterno, medidasDaPeca } from "./cpqNestingInterno";
 import { rotacoesDoDeepnest, type ProcessoCorte, type RotacaoPermitida } from "../../shared/politica-corte";
 
 export type CpqChapa = {
@@ -204,7 +204,12 @@ export class CpqNestingError extends Error {
   }
 }
 
-function orientacoesChapa(chapa: CpqChapa): Array<{ larguraMm: number; alturaMm: number; ordemOrientacao: number }> {
+function orientacoesChapa(chapa: CpqChapa, rotacao: RotacaoPermitida = "livre"): Array<{ larguraMm: number; alturaMm: number; ordemOrientacao: number }> {
+  // Escovado: o veio corre pelo lado maior da chapa (eixo X do nesting). Virar a chapa 90° faria as peças girarem 90° em relação
+  // ao veio, o que a regra 0°/180° proíbe; por isso só vale a orientação com o lado maior em X.
+  if (rotacao === "veio" && !chapa.bobina) {
+    return [{ larguraMm: Math.max(chapa.larguraMm, chapa.alturaMm), alturaMm: Math.min(chapa.larguraMm, chapa.alturaMm), ordemOrientacao: 0 }];
+  }
   const orientacoes = [{
     larguraMm: chapa.larguraMm,
     alturaMm: chapa.alturaMm,
@@ -511,6 +516,52 @@ function mapearPosicionamentos(avaliacao: AvaliacaoChapa, pecas: CpqNestingPeca[
 const MAX_CHAPAS_POR_MATERIAL = 8;
 
 /**
+ * Aviso claro ANTES de chamar o motor: se uma peça é maior que a área útil (tamanho do formato menos a margem de borda) de TODOS os
+ * formatos do material, ela não cabe em nenhuma chapa nem em várias; o motor só devolveria "não coube" depois de rodar. A conferência
+ * é exata para o que é impossível (menor largura da peça em qualquer ângulo contra a menor dimensão útil; no escovado, a caixa a
+ * 0°/180° contra as duas); o que passa daqui ainda pode não caber por causa do espaçamento, e aí o motor explica.
+ */
+function verificarPecasCabemNaAreaUtil(material: CpqMaterial, chapas: CpqChapa[], pecas: Array<CpqNestingPeca & { svg: string }>, margemBordaMm: number, rotacao: RotacaoPermitida): void {
+  const formatos = chapas.map(chapa => {
+    const larguraMm = chapa.bobina ? chapa.larguraMm : Math.max(chapa.larguraMm, chapa.alturaMm);
+    const alturaMm = chapa.bobina ? chapa.alturaMm : Math.min(chapa.larguraMm, chapa.alturaMm);
+    return { chapa, larguraUtilMm: larguraMm - 2 * margemBordaMm, alturaUtilMm: alturaMm - 2 * margemBordaMm };
+  }).filter(formato => formato.larguraUtilMm > 0 && formato.alturaUtilMm > 0);
+  if (!formatos.length) {
+    throw new CpqNestingError(`A margem de borda de ${margemBordaMm} mm deixa sem área útil todos os formatos de ${material.nome}. Reduza a margem em Produtos > Matérias-primas (corte e encaixe).`, "no_fit");
+  }
+  const todasBobinas = formatos.every(formato => formato.chapa.bobina);
+  const maiorLarguraUtilMm = Math.max(...formatos.map(formato => Math.min(formato.larguraUtilMm, formato.alturaUtilMm)));
+  const maiorFormato = [...formatos].sort((a, b) => Math.min(b.larguraUtilMm, b.alturaUtilMm) - Math.min(a.larguraUtilMm, a.alturaUtilMm))[0];
+  const rotulo = (formato: (typeof formatos)[number]) => formato.chapa.bobina
+    ? `bobina de ${formato.chapa.alturaMm} mm`
+    : `chapa ${formato.chapa.nome} (${formato.chapa.larguraMm} × ${formato.chapa.alturaMm} mm)`;
+  for (const peca of pecas) {
+    let medidas: ReturnType<typeof medidasDaPeca>;
+    try { medidas = medidasDaPeca(peca); }
+    catch (error) {
+      // O aviso é só uma conferência antecipada: se a geometria não pode ser medida aqui, o motor (Deepnest ou interno) reporta o erro dela.
+      if (error instanceof GeometriaInvalidaMotorInterno) continue;
+      throw error;
+    }
+    if (medidas.menorLarguraMm <= 0) continue;
+    const cabe = rotacao === "veio"
+      ? formatos.some(formato => medidas.larguraMm <= formato.larguraUtilMm && medidas.alturaMm <= formato.alturaUtilMm)
+      : formatos.some(formato => medidas.menorLarguraMm <= Math.min(formato.larguraUtilMm, formato.alturaUtilMm));
+    if (cabe) continue;
+    const escalaPct = Math.max(1, Math.min(99, Math.floor(100 * (rotacao === "veio" ? Math.min(maiorFormato.larguraUtilMm / medidas.larguraMm, maiorFormato.alturaUtilMm / medidas.alturaMm) : maiorLarguraUtilMm / medidas.menorLarguraMm))));
+    const util = todasBobinas ? `largura útil de ${Math.round(maiorFormato.alturaUtilMm)} mm (rolo de ${maiorFormato.chapa.alturaMm} mm menos ${2 * margemBordaMm} mm de margem de borda)` : `área útil de ${Math.round(maiorFormato.larguraUtilMm)} × ${Math.round(maiorFormato.alturaUtilMm)} mm (formato menos ${2 * margemBordaMm} mm de margem de borda)`;
+    const medida = rotacao === "veio"
+      ? `mede ${Math.round(medidas.larguraMm)} × ${Math.round(medidas.alturaMm)} mm e o escovado só admite 0°/180° (veio)`
+      : `tem largura mínima de ${Math.round(medidas.menorLarguraMm)} mm em qualquer ângulo`;
+    throw new CpqNestingError(
+      `A peça "${peca.id}" de ${material.nome} ${medida}, mas o maior formato cadastrado (${rotulo(maiorFormato)}) tem ${util}. Ela não cabe nem em várias ${todasBobinas ? "faixas" : "chapas"}. O que fazer: aprove a emenda, reduza o letreiro para cerca de ${escalaPct}% ou ${todasBobinas ? "cadastre uma bobina mais larga" : "cadastre uma chapa maior"} para este material.`,
+      "no_fit",
+    );
+  }
+}
+
+/**
  * Quando o desenho não cabe numa chapa, distribui as peças em mais de uma chapa do mesmo formato (a que gastar menos no
  * total) e devolve um único resultado com o consumo e o custo somados. Usa o motor interno, que devolve também o layout
  * parcial; sem solução (peça maior que a chapa, mais de 8 chapas...) devolve null e quem chamou explica o problema.
@@ -686,10 +737,11 @@ export async function calcularNestingMultiMaterialParcial(input: {
 
     const pecasMaterialOriginal = material.pecas ?? pecasGlobais;
     const pecasMaterial = pecasMaterialOriginal.map(peca => ({ ...peca, svg: normalizarSvgFisico(peca) }));
+    verificarPecasCabemNaAreaUtil(material, chapas, pecasMaterial, margemBordaMm, rotacao);
     const avaliacoes: AvaliacaoChapa[] = [];
     const falhasFormatos = new Map<number, string>();
     for (const chapa of chapas) {
-      for (const { larguraMm, alturaMm, ordemOrientacao } of orientacoesChapa(chapa)) {
+      for (const { larguraMm, alturaMm, ordemOrientacao } of orientacoesChapa(chapa, rotacao)) {
         const completo = (resultado: DeepnestWorkerResult) =>
           resultado.completo && resultado.quantidadePosicionada > 0 && resultado.placements.length === resultado.quantidadePecas;
         if (chapa.bobina) {
@@ -788,7 +840,9 @@ export async function calcularNestingMultiMaterialParcial(input: {
       throw new CpqNestingError(
         todosFalharamNoMotor
           ? `O motor de nesting falhou para ${material.nome}. ${detalhesFormatos}`
-          : `As peças de ${material.nome} não couberam em nenhum formato cadastrado, nem distribuídas em até ${MAX_CHAPAS_POR_MATERIAL} chapas. ${detalhesFormatos}. O que fazer: se há uma peça maior que a chapa, aprove a emenda (ou reduza o letreiro em até 3%); senão cadastre um formato de chapa maior para este material ou reduza o tamanho do letreiro.`,
+          : chapas.every(chapa => chapa.bobina)
+            ? `As peças de ${material.nome} não couberam na bobina cadastrada (mesmo com o comprimento máximo do rolo). ${detalhesFormatos}. O que fazer: confira o espaçamento e a margem de borda deste material, reduza o letreiro ou cadastre uma bobina mais larga.`
+            : `As peças de ${material.nome} não couberam em nenhum formato cadastrado, nem distribuídas em até ${MAX_CHAPAS_POR_MATERIAL} chapas. ${detalhesFormatos}. O que fazer: se há uma peça maior que a chapa, aprove a emenda (ou reduza o letreiro em até 3%); senão cadastre um formato de chapa maior para este material ou reduza o tamanho do letreiro.`,
         todosFalharamNoMotor ? "engine" : "no_fit",
       );
     }
