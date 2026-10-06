@@ -9,7 +9,7 @@ import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, sec
 import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-referencia";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { ehProcessoCorte, normalizarRotacao, PROCESSOS_CORTE, ROTACOES_PERMITIDAS } from "@shared/politica-corte";
-import { ehMateriaProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, MATERIAIS_SOLDA, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "@shared/produtividade-solda";
+import { ehCategoriaProdutividade, ehMateriaProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, MATERIAIS_SOLDA, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "@shared/produtividade-solda";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -344,7 +344,9 @@ export const materiasPrimasRouter = router({
         const now = new Date();
         const bobinaCustoBaseSalva = usaDadosBobina ? input.bobinaCustoBase : null;
         const bobinaComprimentoRoloSalvo = usaDadosBobina && input.bobinaCustoBase === "rolo" && input.bobinaComprimentoRoloMm != null ? String(input.bobinaComprimentoRoloMm) : null;
-        const pesoEspecificoSalvo = !usaDadosChapa && !usaDadosPerfil && !usaDadosBobina && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
+        // Mão de obra (produtividade de solda) não pesa: o campo nem aparece na tela e o servidor também o ignora.
+        const maoDeObra = ehProdutividade || ehCategoriaProdutividade(categoria?.nome);
+        const pesoEspecificoSalvo = !maoDeObra && !usaDadosChapa && !usaDadosPerfil && !usaDadosBobina && input.pesoEspecificoKg != null ? String(input.pesoEspecificoKg) : null;
         const perfilSalvo = (valor: number | null) => usaDadosPerfil && valor != null ? String(valor) : null;
         const usaCorte = usaDadosChapa || usaDadosBobina;
         const processoSalvo = usaCorte ? input.processoCorte : null;

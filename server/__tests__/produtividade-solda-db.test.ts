@@ -3,8 +3,8 @@
  * simulado com ids fictícios (987_654_5xx), e tudo o que o teste grava é apagado no final.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { inArray } from "drizzle-orm";
-import { materiaPrimaCadastros } from "../../drizzle/schema";
+import { eq, inArray } from "drizzle-orm";
+import { materiaPrimaCadastros, materiaPrimaCategorias } from "../../drizzle/schema";
 
 const ID_SOLDA = 987_654_501;
 const ID_GERAL = 987_654_502;
@@ -85,5 +85,26 @@ describe("subclassificação das matérias-primas de produtividade (router + ban
 
   it("só gestor, admin e master podem salvar", async () => {
     await expect(materiasPrimasRouter.createCaller(ctxVendas).salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["orelhinha"] })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("mão de obra (produtividade) não tem peso específico", () => {
+  beforeAll(limpar);
+  afterAll(limpar);
+
+  it("produtividade ignora o peso específico enviado; matéria-prima comum continua guardando", async () => {
+    await gestor().salvar({ ...base(ID_SOLDA), pesoEspecificoKg: 0.35 });
+    expect((await linha(ID_SOLDA)).pesoEspecificoKg).toBeNull();
+    await gestor().salvar({ ...base(ID_CHAPA), pesoEspecificoKg: 0.35 });
+    expect((await linha(ID_CHAPA)).pesoEspecificoKg).toBe(0.35);
+  });
+
+  it("a categoria 'Produtividade para soldar' (migration 0093) também tira o peso, mesmo em matéria-prima de outro nome", async () => {
+    const db = await getDb();
+    const [categoria] = await db!.select().from(materiaPrimaCategorias).where(eq(materiaPrimaCategorias.nome, "Produtividade para soldar"));
+    expect(categoria).toBeDefined();
+    expect(categoria).toMatchObject({ usaDadosChapa: false, usaDadosBobina: false, usaDadosPerfil: false });
+    await gestor().salvar({ ...base(ID_CHAPA), categoriaId: categoria.id, pesoEspecificoKg: 0.35 });
+    expect((await linha(ID_CHAPA)).pesoEspecificoKg).toBeNull();
   });
 });

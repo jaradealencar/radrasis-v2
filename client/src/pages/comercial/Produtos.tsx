@@ -1,5 +1,5 @@
 import { hexesDoPantone } from "@shared/pantone-referencia";
-import { alternarMaterialSolda, alternarTamanhoProdutividade, alternarTipoSolda, MATERIAIS_SOLDA, MAX_TIPOS_SOLDA, ROTULO_MATERIAL_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type MaterialSolda, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
+import { alternarMaterialSolda, alternarTamanhoProdutividade, ehCategoriaProdutividade, alternarTipoSolda, MATERIAIS_SOLDA, MAX_TIPOS_SOLDA, ROTULO_MATERIAL_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type MaterialSolda, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
 import { PADRAO_PROCESSO_CORTE, PROCESSOS_CORTE, ROTACOES_PERMITIDAS, ROTULO_PROCESSO_CORTE, ROTULO_ROTACAO, type ProcessoCorte, type RotacaoPermitida } from "@shared/politica-corte";
 import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaAltura, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
@@ -325,6 +325,8 @@ function DialogEditarMateriaPrima({
   const [origemId, setOrigemId] = useState("");
   const [copiarCor, setCopiarCor] = useState(false);
   const categoria = categorias.find(item => String(item.id) === categoriaId);
+  // Mão de obra (produtividade de solda) não pesa: sem o campo "Peso específico".
+  const maoDeObra = material?.ehProdutividade === true || ehCategoriaProdutividade(categoria?.nome);
 
   /** Preenche o formulário com os dados de `fonte`: o próprio material ao abrir, ou outro material ao clonar (sem ids; cor só se pedido). */
   const aplicarDados = (fonte: MateriaPrimaCadastroItem, clonar: boolean) => {
@@ -455,7 +457,7 @@ function DialogEditarMateriaPrima({
       categoriaId: categoriaId === "sem-categoria" ? null : Number(categoriaId),
       espessuraMm: categoria?.usaDadosChapa || (categoria?.usaDadosPerfil && formatoPerfilUsaEspessura(perfil.formato)) || categoria?.usaDadosBobina ? espessuraParaMm(Number(espessuraMm), espessuraUnidade) : null,
       densidadeKgM3: categoria?.usaDadosChapa || categoria?.usaDadosPerfil || categoria?.usaDadosBobina ? gCm3ParaKgM3(Number(densidadeKgM3)) : null,
-      pesoEspecificoKg: !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && !categoria?.usaDadosBobina && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
+      pesoEspecificoKg: !maoDeObra && !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && !categoria?.usaDadosBobina && pesoEspecificoKg.trim() !== "" ? Number(pesoEspecificoKg) : null,
       perfilFormato: perfil.formato,
       perfilAlturaMm: categoria?.usaDadosPerfil && formatoPerfilUsaAltura(perfil.formato) ? Number(perfil.altura) : null,
       perfilLarguraMm: categoria?.usaDadosPerfil ? Number(perfil.largura) : null,
@@ -584,7 +586,7 @@ function DialogEditarMateriaPrima({
             </div>
           </div>}
 
-          {!categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && !categoria?.usaDadosBobina && <div className="space-y-2 rounded-lg border p-4">
+          {!maoDeObra && !categoria?.usaDadosChapa && !categoria?.usaDadosPerfil && !categoria?.usaDadosBobina && <div className="space-y-2 rounded-lg border p-4">
             <Label>Peso específico (kg por {material.unidadeCusto || "unidade de consumo"}) — opcional</Label>
             <Input type="number" min="0.0001" step="0.0001" className="max-w-xs" value={pesoEspecificoKg} onChange={event => setPesoEspecificoKg(event.target.value)} placeholder="Ex.: 0,35" />
             <p className="text-xs text-muted-foreground">Usado para calcular o peso do letreiro: peso = quantidade consumida × este valor. Atenção: este campo NÃO é a densidade. A densidade (sempre em g/cm³, ex.: alumínio 2,70) fica nas categorias de chapa, perfil e bobina; aqui vai só o peso de itens vendidos por unidade ou kg (ex.: um brinde de 0,35 kg).</p>

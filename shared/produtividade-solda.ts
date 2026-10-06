@@ -126,3 +126,10 @@ export const CATEGORIA_COM_PRODUTIVIDADES = "Letreiros";
 
 /** Teto de produtividades ligadas a um produto (são 42 no catálogo de 05/10/2026). */
 export const MAX_PRODUTIVIDADES_RELACIONADAS = 100;
+
+/** Categoria local (migration 0093) das matérias-primas que são mão de obra de solda ("Produtividade …" do MubiSys). */
+export const CATEGORIA_PRODUTIVIDADE_SOLDA = "Produtividade para soldar";
+
+export function ehCategoriaProdutividade(nome: string | null | undefined): boolean {
+  return semAcento(nome ?? "") === semAcento(CATEGORIA_PRODUTIVIDADE_SOLDA);
+}
