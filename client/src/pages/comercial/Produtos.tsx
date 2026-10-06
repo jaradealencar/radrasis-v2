@@ -20,6 +20,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Link2, Copy, Pencil, Settings2, Ruler, RefreshCw } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
+import { enviarArquivo } from "@/lib/upload";
 import { UNIDADE_CONSUMO_MATERIA_PRIMA, UNIDADE_CONSUMO_LABEL, type UnidadeConsumoMateriaPrima } from "@shared/produto-composicao";
 
 export default function Produtos() {
@@ -72,6 +73,8 @@ type FormatoBobinaForm = {
   ativo: boolean;
   principal: boolean;
 };
+type AparenciaModo = "nao_informada" | "cor" | "textura";
+
 type FormatoChapaForm = {
   id?: number;
   nome: string;
@@ -324,6 +327,16 @@ function DialogEditarMateriaPrima({
   const [origemBusca, setOrigemBusca] = useState("");
   const [origemId, setOrigemId] = useState("");
   const [copiarCor, setCopiarCor] = useState(false);
+  const [aparenciaModo, setAparenciaModo] = useState<AparenciaModo>("nao_informada");
+  const [aparenciaCorHex, setAparenciaCorHex] = useState("");
+  const [aparenciaCorDescricao, setAparenciaCorDescricao] = useState("");
+  const [texturaImagemUrl, setTexturaImagemUrl] = useState("");
+  const [texturaImagemKey, setTexturaImagemKey] = useState("");
+  const [texturaDescricao, setTexturaDescricao] = useState("");
+  const [texturaEnviando, setTexturaEnviando] = useState(false);
+  const [texturaProgresso, setTexturaProgresso] = useState(0);
+  const [renderTransparenciaTipo, setRenderTransparenciaTipo] = useState("");
+  const [renderTransmissaoLuzPct, setRenderTransmissaoLuzPct] = useState("");
   const categoria = categorias.find(item => String(item.id) === categoriaId);
   // Mão de obra (produtividade de solda) não pesa: sem o campo "Peso específico".
   const maoDeObra = material?.ehProdutividade === true || ehCategoriaProdutividade(categoria?.nome);
@@ -368,6 +381,16 @@ function DialogEditarMateriaPrima({
     setTiposSolda(fonte.produtividadeTiposSolda);
     setTamanhosProdutividade(fonte.produtividadeTamanhos);
     setMateriaisSolda(fonte.produtividadeMateriais);
+    const copiarAparencia = !clonar || copiarCor;
+    const modoAparenciaFonte: AparenciaModo = fonte.aparenciaModo === "cor" || fonte.aparenciaModo === "textura" ? fonte.aparenciaModo : "nao_informada";
+    setAparenciaModo(copiarAparencia ? modoAparenciaFonte : "nao_informada");
+    setAparenciaCorHex(copiarAparencia ? fonte.aparenciaCorHex ?? "" : "");
+    setAparenciaCorDescricao(copiarAparencia ? fonte.aparenciaCorDescricao ?? "" : "");
+    setTexturaImagemUrl(copiarAparencia ? fonte.texturaImagemUrl ?? "" : "");
+    setTexturaImagemKey(copiarAparencia ? fonte.texturaImagemKey ?? "" : "");
+    setTexturaDescricao(copiarAparencia ? fonte.texturaDescricao ?? "" : "");
+    setRenderTransparenciaTipo(copiarAparencia ? fonte.renderTransparenciaTipo ?? "" : "");
+    setRenderTransmissaoLuzPct(copiarAparencia && fonte.renderTransmissaoLuzPct != null ? String(fonte.renderTransmissaoLuzPct) : "");
   };
 
   useEffect(() => {
@@ -406,6 +429,19 @@ function DialogEditarMateriaPrima({
   const handleSalvar = (event: FormEvent) => {
     event.preventDefault();
     if (!material) return;
+    if (aparenciaModo === "textura" && (!texturaImagemUrl || !texturaImagemKey || !texturaDescricao.trim())) {
+      toast.error("Para usar textura, anexe a imagem e descreva o material.");
+      return;
+    }
+    if (aparenciaModo === "cor" && !aparenciaCorHex.trim() && !aparenciaCorDescricao.trim()) {
+      toast.error("Para usar cor, informe um código HEX ou uma descrição.");
+      return;
+    }
+    const transmissao = renderTransmissaoLuzPct.trim() === "" ? null : Number(renderTransmissaoLuzPct);
+    if (transmissao != null && (!Number.isFinite(transmissao) || transmissao < 0 || transmissao > 100)) {
+      toast.error("A transmissão de luz deve ficar entre 0 e 100%.");
+      return;
+    }
     const formatos = chapas.map((chapa, index) => ({
       ...(chapa.id == null ? {} : { id: chapa.id }),
       nome: chapa.nome.trim() || `${material.nome} · ${chapa.larguraMm} × ${chapa.alturaMm} mm`,
@@ -473,6 +509,14 @@ function DialogEditarMateriaPrima({
       produtividadeTiposSolda: material.ehProdutividade ? tiposSolda : [],
       produtividadeTamanhos: material.ehProdutividade ? tamanhosProdutividade : [],
       produtividadeMateriais: material.ehProdutividade ? materiaisSolda : [],
+      aparenciaModo,
+      aparenciaCorHex: aparenciaModo === "cor" ? aparenciaCorHex.trim() || null : null,
+      aparenciaCorDescricao: aparenciaModo === "cor" ? aparenciaCorDescricao.trim() || null : null,
+      texturaImagemUrl: aparenciaModo === "textura" ? texturaImagemUrl || null : null,
+      texturaImagemKey: aparenciaModo === "textura" ? texturaImagemKey || null : null,
+      texturaDescricao: aparenciaModo === "textura" ? texturaDescricao.trim() || null : null,
+      renderTransparenciaTipo: renderTransparenciaTipo ? renderTransparenciaTipo as "opaca" | "translucida" | "transparente" : null,
+      renderTransmissaoLuzPct: transmissao,
     });
   };
 
@@ -503,7 +547,7 @@ function DialogEditarMateriaPrima({
               </Select>
               <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={!origemSelecionada} onClick={clonarDeOrigem}><Copy className="h-3.5 w-3.5" /> Clonar dados</Button>
             </div>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={copiarCor} onChange={event => setCopiarCor(event.target.checked)} /> Copiar também a cor (Pantone, CMYK, transmissão): deixe desmarcado se a origem tem outra cor</label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={copiarCor} onChange={event => setCopiarCor(event.target.checked)} /> Copiar também a aparência (cor, textura e transparência): deixe desmarcado se a origem tem outra aparência</label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -520,6 +564,46 @@ function DialogEditarMateriaPrima({
               <Label>Custo no MubiSys</Label>
               <Input readOnly value={material.valorCusto > 0 ? `${fmtBrl(material.valorCusto)} / ${material.unidadeCusto || "un."}` : "Não informado"} />
             </div>
+          </div>
+
+          <div className="space-y-4 rounded-lg border p-4">
+            <div className="flex items-start gap-2"><Settings2 className="mt-0.5 h-4 w-4 text-primary" /><div><h3 className="font-medium">Aparência para o renderizador 3D</h3><p className="text-xs text-muted-foreground">Defina uma cor ou uma textura para esta matéria-prima. A imagem é uma referência visual para a IA; não é um mapa PBR calibrado. As cores por formato de chapa continuam cadastradas abaixo.</p></div></div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Tipo de aparência">
+              <Button type="button" size="sm" variant={aparenciaModo === "nao_informada" ? "default" : "outline"} aria-pressed={aparenciaModo === "nao_informada"} onClick={() => setAparenciaModo("nao_informada")}>Sem informação</Button>
+              <Button type="button" size="sm" variant={aparenciaModo === "cor" ? "default" : "outline"} aria-pressed={aparenciaModo === "cor"} onClick={() => setAparenciaModo("cor")}>Cor</Button>
+              <Button type="button" size="sm" variant={aparenciaModo === "textura" ? "default" : "outline"} aria-pressed={aparenciaModo === "textura"} onClick={() => setAparenciaModo("textura")}>Textura</Button>
+            </div>
+            {aparenciaModo === "cor" && <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1"><Label>Cor HEX (opcional se descrever abaixo)</Label><div className="flex gap-2"><Input type="color" aria-label="Selecionar cor" className="h-10 w-14 p-1" value={/^#[0-9a-fA-F]{6}$/.test(aparenciaCorHex) ? aparenciaCorHex : "#808080"} onChange={event => setAparenciaCorHex(event.target.value)} /><Input value={aparenciaCorHex} placeholder="#808080" maxLength={7} onChange={event => setAparenciaCorHex(event.target.value)} /></div></div>
+              <div className="space-y-1"><Label>Descrição visual</Label><Textarea value={aparenciaCorDescricao} maxLength={500} placeholder="Ex.: alumínio escovado prateado, acabamento fosco" onChange={event => setAparenciaCorDescricao(event.target.value)} rows={2} /></div>
+            </div>}
+            {aparenciaModo === "textura" && <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+              <div className="space-y-2"><Label>Imagem de referência da textura</Label><Input type="file" accept="image/jpeg,image/png,image/webp" disabled={texturaEnviando} onChange={async event => {
+                const arquivo = event.target.files?.[0];
+                event.target.value = "";
+                if (!arquivo) return;
+                if (!["image/jpeg", "image/png", "image/webp"].includes(arquivo.type)) { toast.error("Use uma imagem JPG, PNG ou WebP."); return; }
+                if (arquivo.size > 16 * 1024 * 1024) { toast.error("A imagem deve ter até 16 MB."); return; }
+                setTexturaEnviando(true); setTexturaProgresso(0);
+                try {
+                  const enviada = await enviarArquivo("imagem", arquivo, { onProgress: setTexturaProgresso });
+                  setTexturaImagemUrl(enviada.url); setTexturaImagemKey(enviada.key);
+                  toast.success("Imagem de textura anexada");
+                } catch (erro) { toast.error("Não foi possível enviar a imagem", { description: erro instanceof Error ? erro.message : undefined }); }
+                finally { setTexturaEnviando(false); }
+              }} />
+                {texturaEnviando && <p className="text-xs text-muted-foreground">Enviando imagem... {Math.round(texturaProgresso)}%</p>}
+                {texturaImagemUrl && <div className="flex items-start gap-3 rounded-md border p-2"><img src={texturaImagemUrl} alt="Referência da textura" className="h-24 w-24 rounded object-cover" /><div className="min-w-0 flex-1"><p className="break-all text-xs text-muted-foreground">Imagem anexada ao cadastro</p><Button type="button" size="sm" variant="ghost" className="mt-1" onClick={() => { setTexturaImagemUrl(""); setTexturaImagemKey(""); }}>Remover referência</Button></div></div>}
+                <p className="text-xs text-muted-foreground">A IA recebe esta imagem como referência visual, não como textura PBR pronta.</p>
+              </div>
+              <div className="space-y-1"><Label>Descrição da textura para a IA</Label><Textarea value={texturaDescricao} maxLength={2000} placeholder="Ex.: aço inox escovado; riscos finos horizontais, brilho acetinado, padrão repetitivo e escala aproximada" onChange={event => setTexturaDescricao(event.target.value)} rows={5} /><p className="text-xs text-muted-foreground">Descreva padrão, relevo, brilho/acabamento, direção e escala. Evite incluir informações que não possam ser vistas ou confirmadas.</p></div>
+            </div>}
+            <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
+              <div className="space-y-1"><Label>Transparência no render</Label><Select value={renderTransparenciaTipo || "nao-informada"} onValueChange={value => setRenderTransparenciaTipo(value === "nao-informada" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nao-informada">Não informada</SelectItem><SelectItem value="opaca">Opaca</SelectItem><SelectItem value="translucida">Translúcida</SelectItem><SelectItem value="transparente">Transparente / cristal</SelectItem></SelectContent></Select></div>
+              <div className="space-y-1"><Label>Transmissão de luz (%) ? opcional</Label><Input type="number" min="0" max="100" step="0.1" value={renderTransmissaoLuzPct} onChange={event => setRenderTransmissaoLuzPct(event.target.value)} placeholder="Ex.: 85" /></div>
+            </div>
+            {renderTransparenciaTipo === "transparente" && <p className="rounded-md bg-sky-50 p-2 text-xs text-sky-900">Instrução ao renderizador: representar como material transparente, com transmissão de luz e visibilidade através da peça; não aplicar aparência opaca. A transmissão cadastrada será enviada junto.</p>}
+            {renderTransparenciaTipo === "translucida" && <p className="rounded-md bg-sky-50 p-2 text-xs text-sky-900">Instrução ao renderizador: deixar passar luz difusa, sem transparência cristalina.</p>}
           </div>
 
           {material.ehProdutividade && <div className="space-y-4 rounded-lg border p-4">

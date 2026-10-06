@@ -465,6 +465,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   referencia um `id` de linha/regra da Tabela de Preços (ver
   `shared/price-table.ts`) só por número — não há resolução automática de
   qual coluna/faixa de valor usar ainda.
+- **Aparência de matérias-primas para renderização 3D (pedido de 06/10/2026; migration `0094`):** em Administração > Produtos > Matérias-primas, cada item pode informar cor (HEX/descrição), textura (imagem de referência enviada ao UploadThing e descrição para IA) ou deixar a aparência sem informação, além de opacidade/translucidez/transparência e transmissão de luz. A foto é referência visual, não mapa PBR calibrado. A rota autenticada `POST /api/letra-caixa/materias-aparencia` aceita `{ materiaPrimaIds }` (até 300) e devolve um registro por ID, inclusive sem cadastro local (`cadastroDisponivel: false`), com aparência e cores/transparências de formatos de chapa; não retorna custos. `GET /api/letra-caixa/materias-cadastro` também inclui `aparencia`. O servidor aceita URLs de imagem apenas do UploadThing.
 - **Módulo Proposta (cotação) é diferente de `crm_propostas`.** A tabela
   `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o "CRM
   de Propostas" (`client/src/pages/comercial/CRM.tsx`,

@@ -402,6 +402,15 @@ export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   produtividadeTamanho: varchar("produtividade_tamanho", { length: 12 }),
   produtividadeTamanhos: text("produtividade_tamanhos").array().notNull().default([]),
   produtividadeMateriais: text("produtividade_materiais").array().notNull().default([]),
+  // Appearance for CPQ/3D rendering. The image is a visual reference, not a calibrated PBR map.
+  aparenciaModo: varchar("aparencia_modo", { length: 16 }).notNull().default("nao_informada"),
+  aparenciaCorHex: varchar("aparencia_cor_hex", { length: 7 }),
+  aparenciaCorDescricao: text("aparencia_cor_descricao"),
+  texturaImagemUrl: text("textura_imagem_url"),
+  texturaImagemKey: varchar("textura_imagem_key", { length: 255 }),
+  texturaDescricao: text("textura_descricao"),
+  renderTransparenciaTipo: varchar("render_transparencia_tipo", { length: 16 }),
+  renderTransmissaoLuzPct: decimal("render_transmissao_luz_pct", { precision: 5, scale: 2 }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;

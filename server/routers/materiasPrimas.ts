@@ -61,6 +61,16 @@ const formatosChapaInput = z.array(z.object({
 const perfilSecaoInvalida = (input: { perfilFormato: FormatoPerfil; perfilAlturaMm: number | null; perfilLarguraMm: number | null; espessuraMm: number | null }) =>
   secaoPerfilMm2(input.perfilFormato, input.perfilAlturaMm ?? 0, input.perfilLarguraMm ?? 0, input.espessuraMm) == null;
 
+const texturaUploadUrlValida = (url: string | null) => {
+  if (url == null) return true;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return ["ufs.sh", "utfs.io", "uploadthing.com"].some(dominio => hostname === dominio || hostname.endsWith("." + dominio));
+  } catch {
+    return false;
+  }
+};
+
 export const materiasPrimasRouter = router({
   listar: protectedProcedure.query(async () => {
     const db = await getDb();
@@ -117,6 +127,14 @@ export const materiasPrimasRouter = router({
           perfilLarguraMm: cadastro?.perfilLarguraMm == null ? null : Number(cadastro.perfilLarguraMm),
           perfilComprimentoMm: cadastro?.perfilComprimentoMm == null ? null : Number(cadastro.perfilComprimentoMm),
           ehProdutividade: ehMateriaProdutividade(material.nome),
+          aparenciaModo: cadastro?.aparenciaModo ?? "nao_informada",
+          aparenciaCorHex: cadastro?.aparenciaCorHex ?? null,
+          aparenciaCorDescricao: cadastro?.aparenciaCorDescricao ?? null,
+          texturaImagemUrl: cadastro?.texturaImagemUrl ?? null,
+          texturaImagemKey: cadastro?.texturaImagemKey ?? null,
+          texturaDescricao: cadastro?.texturaDescricao ?? null,
+          renderTransparenciaTipo: cadastro?.renderTransparenciaTipo ?? null,
+          renderTransmissaoLuzPct: cadastro?.renderTransmissaoLuzPct == null ? null : Number(cadastro.renderTransmissaoLuzPct),
           produtividadeTiposSolda: normalizarTiposSolda(cadastro?.produtividadeTiposSolda),
           produtividadeTamanhos: normalizarTamanhosProdutividade(cadastro?.produtividadeTamanhos),
           produtividadeMateriais: normalizarMateriaisSolda(cadastro?.produtividadeMateriais),
@@ -268,7 +286,22 @@ export const materiasPrimasRouter = router({
       produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)).default([]),
       produtividadeTamanhos: z.array(z.enum(TAMANHOS_PRODUTIVIDADE)).default([]),
       produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)).default([]),
-    }).strict())
+      aparenciaModo: z.enum(["nao_informada", "cor", "textura"]).default("nao_informada"),
+      aparenciaCorHex: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
+      aparenciaCorDescricao: z.string().trim().max(500).nullable().default(null),
+      texturaImagemUrl: z.string().trim().url().max(2048).nullable().default(null).refine(texturaUploadUrlValida, { message: "A imagem precisa estar no armazenamento seguro do sistema." }),
+      texturaImagemKey: z.string().trim().min(1).max(255).nullable().default(null),
+      texturaDescricao: z.string().trim().max(2000).nullable().default(null),
+      renderTransparenciaTipo: z.enum(["opaca", "translucida", "transparente"]).nullable().default(null),
+      renderTransmissaoLuzPct: z.number().finite().min(0).max(100).nullable().default(null),
+    }).strict().superRefine((input, context) => {
+      if ((input.texturaImagemUrl == null) !== (input.texturaImagemKey == null))
+        context.addIssue({ code: "custom", message: "A referência da imagem está incompleta.", path: ["texturaImagemUrl"] });
+      if (input.aparenciaModo === "textura" && (!input.texturaImagemUrl || !input.texturaImagemKey || !input.texturaDescricao))
+        context.addIssue({ code: "custom", message: "Para usar textura, informe imagem e descrição.", path: ["texturaDescricao"] });
+      if (input.aparenciaModo === "cor" && !input.aparenciaCorHex && !input.aparenciaCorDescricao)
+        context.addIssue({ code: "custom", message: "Para usar cor, informe um código HEX ou uma descrição.", path: ["aparenciaCorHex"] });
+    }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
@@ -353,6 +386,13 @@ export const materiasPrimasRouter = router({
         const rotacaoSalva = usaCorte ? input.rotacaoPermitida : "livre";
         const espacamentoSalvo = usaCorte && input.espacamentoMm != null ? String(input.espacamentoMm) : null;
         const margemSalva = usaCorte && input.margemBordaMm != null ? String(input.margemBordaMm) : null;
+        const aparenciaModoSalva = input.aparenciaModo;
+        const aparenciaCorHexSalva = aparenciaModoSalva === "cor" ? input.aparenciaCorHex : null;
+        const aparenciaCorDescricaoSalva = aparenciaModoSalva === "cor" ? input.aparenciaCorDescricao : null;
+        const texturaImagemUrlSalva = aparenciaModoSalva === "textura" ? input.texturaImagemUrl : null;
+        const texturaImagemKeySalva = aparenciaModoSalva === "textura" ? input.texturaImagemKey : null;
+        const texturaDescricaoSalva = aparenciaModoSalva === "textura" ? input.texturaDescricao : null;
+        const renderTransmissaoLuzPctSalva = input.renderTransmissaoLuzPct == null ? null : String(input.renderTransmissaoLuzPct);
         const espessuraSalva = input.espessuraMm && (usaDadosChapa || usaDadosBobina || (usaDadosPerfil && perfilUsaEspessura)) ? String(input.espessuraMm) : null;
         await tx.insert(materiaPrimaCadastros).values({
           mubisysMateriaPrimaId: input.mubisysMateriaPrimaId,
@@ -373,6 +413,14 @@ export const materiasPrimasRouter = router({
           produtividadeTiposSolda: tiposSoldaSalvos,
           produtividadeTamanhos: tamanhosProdutividadeSalvos,
           produtividadeMateriais: materiaisSoldaSalvos,
+          aparenciaModo: aparenciaModoSalva,
+          aparenciaCorHex: aparenciaCorHexSalva,
+          aparenciaCorDescricao: aparenciaCorDescricaoSalva,
+          texturaImagemUrl: texturaImagemUrlSalva,
+          texturaImagemKey: texturaImagemKeySalva,
+          texturaDescricao: texturaDescricaoSalva,
+          renderTransparenciaTipo: input.renderTransparenciaTipo,
+          renderTransmissaoLuzPct: renderTransmissaoLuzPctSalva,
           updatedAt: now,
         }).onConflictDoUpdate({
           target: materiaPrimaCadastros.mubisysMateriaPrimaId,
@@ -394,6 +442,14 @@ export const materiasPrimasRouter = router({
             produtividadeTiposSolda: tiposSoldaSalvos,
             produtividadeTamanhos: tamanhosProdutividadeSalvos,
             produtividadeMateriais: materiaisSoldaSalvos,
+            aparenciaModo: aparenciaModoSalva,
+            aparenciaCorHex: aparenciaCorHexSalva,
+            aparenciaCorDescricao: aparenciaCorDescricaoSalva,
+            texturaImagemUrl: texturaImagemUrlSalva,
+            texturaImagemKey: texturaImagemKeySalva,
+            texturaDescricao: texturaDescricaoSalva,
+            renderTransparenciaTipo: input.renderTransparenciaTipo,
+            renderTransmissaoLuzPct: renderTransmissaoLuzPctSalva,
             updatedAt: now,
           },
         });

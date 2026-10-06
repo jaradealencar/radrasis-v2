@@ -2,7 +2,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { estudioChapas, materiaPrimaCadastros, materiaPrimaCategorias } from "../../drizzle/schema";
+import { estudioChapas, materiaPrimaCadastros, materiaPrimaCategorias, type EstudioChapa, type MateriaPrimaCadastro } from "../../drizzle/schema";
 import { gCm3ParaKgM3, kgM3ParaGCm3, normalizarFormatoPerfil } from "../../shared/peso";
 import { calcularPesoLinha, somarPesos, type DadosPesoMateria } from "../services/cpqPeso";
 import { auth } from "../_core/auth";
@@ -177,6 +177,7 @@ export function registrarRotasEstudioNesting(app: Express): void {
   app.post("/api/letra-caixa/nesting", capturar(calcularNesting));
   app.post("/api/letra-caixa/peso", capturar(calcularPeso));
   app.get("/api/letra-caixa/materias-cadastro", capturar(listarStatusCadastro));
+  app.post("/api/letra-caixa/materias-aparencia", capturar(consultarAparenciaMaterias));
 }
 
 async function listarChapas(req: Request, res: Response): Promise<void> {
@@ -241,6 +242,81 @@ const pesoInput = z.object({
  * Situação do cadastro (categoria e dados técnicos) de cada matéria-prima, para o selo "Atualizada"
  * da administração do CPQ. Matéria-prima sem linha no cadastro local não aparece: é "sem categoria".
  */
+function serializarAparenciaMateria(cadastro: MateriaPrimaCadastro | null, formatos: EstudioChapa[]) {
+  const modo = cadastro?.aparenciaModo === "cor" || cadastro?.aparenciaModo === "textura" ? cadastro.aparenciaModo : "nao_informada";
+  const transparenciaTipo = cadastro?.renderTransparenciaTipo ?? null;
+  const instrucoesTransparencia = transparenciaTipo === "transparente"
+    ? "Renderizar como material transparente, com transmissão de luz e visibilidade através da peça; não aplicar aparência opaca."
+    : transparenciaTipo === "translucida"
+      ? "Renderizar como material translúcido, deixando passar luz difusa sem transparência cristalina."
+      : transparenciaTipo === "opaca"
+        ? "Renderizar como material opaco, sem transmissão de luz."
+        : null;
+  return {
+    modo,
+    cor: modo === "cor" ? { hex: cadastro?.aparenciaCorHex ?? null, descricao: cadastro?.aparenciaCorDescricao ?? null } : null,
+    textura: modo === "textura" && cadastro?.texturaImagemUrl ? {
+      imagemUrl: cadastro.texturaImagemUrl,
+      imagemKey: cadastro.texturaImagemKey ?? null,
+      descricao: cadastro.texturaDescricao ?? null,
+      tipoImagem: "referencia_visual",
+      instrucaoIA: "Use a imagem anexada somente como referência visual da superfície. Interprete a descrição cadastrada; não presuma escala física nem trate a imagem como mapa PBR calibrado.",
+    } : null,
+    transparencia: {
+      tipo: transparenciaTipo,
+      transmissaoLuzPct: cadastro?.renderTransmissaoLuzPct == null ? null : Number(cadastro.renderTransmissaoLuzPct),
+      instrucaoRenderizador: instrucoesTransparencia,
+    },
+    formatosChapa: formatos.map(formato => ({
+      id: formato.id,
+      nome: formato.nome,
+      principal: formato.principal,
+      ativo: formato.ativo,
+      bobina: formato.bobina,
+      cor: formato.temCor ? {
+        pantone: formato.pantoneCode,
+        cmyk: [formato.cmykC, formato.cmykM, formato.cmykY, formato.cmykK].some(valor => valor != null)
+          ? { c: formato.cmykC == null ? null : Number(formato.cmykC), m: formato.cmykM == null ? null : Number(formato.cmykM), y: formato.cmykY == null ? null : Number(formato.cmykY), k: formato.cmykK == null ? null : Number(formato.cmykK) }
+          : null,
+      } : null,
+      transparencia: {
+        tipo: formato.transparenciaTipo,
+        transmissaoLuzPct: formato.transmissaoLuzPct == null ? null : Number(formato.transmissaoLuzPct),
+      },
+    })),
+  };
+}
+
+const materiasAparenciaInput = z.object({
+  materiaPrimaIds: z.array(z.number().int().positive()).min(1).max(300),
+}).strict();
+
+async function consultarAparenciaMaterias(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
+  const parsed = materiasAparenciaInput.safeParse(req.body);
+  if (!parsed.success) return void erro(res, 400, "Informe os IDs válidos das matérias-primas da composição.");
+  const ids = Array.from(new Set(parsed.data.materiaPrimaIds));
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const [cadastros, formatos] = await Promise.all([
+    db.select().from(materiaPrimaCadastros).where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, ids)),
+    db.select().from(estudioChapas).where(inArray(estudioChapas.mubisysMateriaPrimaId, ids)).orderBy(asc(estudioChapas.mubisysMateriaPrimaId), asc(estudioChapas.id)),
+  ]);
+  const cadastroPorId = new Map(cadastros.map(item => [item.mubisysMateriaPrimaId, item]));
+  const formatosPorId = new Map<number, EstudioChapa[]>();
+  for (const formato of formatos) {
+    const lista = formatosPorId.get(formato.mubisysMateriaPrimaId) ?? [];
+    lista.push(formato);
+    formatosPorId.set(formato.mubisysMateriaPrimaId, lista);
+  }
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ materias: ids.map(id => ({
+    id,
+    cadastroDisponivel: cadastroPorId.has(id),
+    aparencia: serializarAparenciaMateria(cadastroPorId.get(id) ?? null, formatosPorId.get(id) ?? []),
+  })) });
+}
+
 async function listarStatusCadastro(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res) || !(await sessao(req, res))) return;
   const db = await getDb();
@@ -268,6 +344,7 @@ async function listarStatusCadastro(req: Request, res: Response): Promise<void> 
         categoria: categoria?.nome ?? null,
         pendencias,
         // Classificação interna das "Produtividade …" (tipo de solda, tamanho e materiais); vazia nas demais matérias-primas.
+        aparencia: serializarAparenciaMateria(cadastro, formatosPorMateria.get(cadastro.mubisysMateriaPrimaId) ?? []),
         produtividade: {
           tiposSolda: normalizarTiposSolda(cadastro.produtividadeTiposSolda),
           tamanhos: normalizarTamanhosProdutividade(cadastro.produtividadeTamanhos),

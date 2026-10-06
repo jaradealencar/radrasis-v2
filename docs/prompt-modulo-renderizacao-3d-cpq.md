@@ -43,6 +43,8 @@ dia/noite, inspeção orbital e gerar imagens versionadas para proposta/PDF.
   Face/Aro/Fundo, mas papel ainda não entra no snapshot.
 - materia_prima_cadastros já guarda espessura, densidade e dados de perfil.
 - estudio_chapas já guarda cor, transmissão, transparência e dimensões.
+- materia_prima_cadastros também registra, desde a migration 0094, aparência global: modo cor/textura, cor HEX e descrição, imagem de referência e descrição de textura para IA, tipo de transparência e transmissão de luz.
+- O renderizador consulta `POST /api/letra-caixa/materias-aparencia` com `{ materiaPrimaIds }` da composição; a rota autenticada devolve cada ID pedido, sinaliza cadastro ausente e fornece aparência global e dados de cor/transparência por formato. Não devolve custos. Imagem de textura é referência visual, não mapa PBR nem tile com escala física garantida.
 - O snapshot usa z.object(...).strict() em server/routes/estudio-cotacoes.ts.
 - O storage oficial é UploadThing.
 - clipper-lib e @types/clipper-lib já existem para offsets de contorno.

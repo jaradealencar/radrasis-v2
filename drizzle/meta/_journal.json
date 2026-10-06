@@ -659,6 +659,13 @@
       "when": 1791288740562,
       "tag": "0093_categoria_produtividade_para_soldar",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1791302693619,
+      "tag": "0094_medical_colonel_america",
+      "breakpoints": true
     }
   ]
 }
