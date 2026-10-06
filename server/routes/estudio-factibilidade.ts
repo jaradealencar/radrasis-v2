@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { LARGURA_FAIXA_ARO_MAX_MM, LARGURA_FAIXA_ARO_MIN_MM } from "../../shared/faixa-aro";
 import { estudioChapas, estudioMapeamentoCoresCotacao } from "../../drizzle/schema";
 import { criarAlerta } from "../db/alertas-helpers";
 import { auth } from "../_core/auth";
@@ -44,6 +45,8 @@ const analisarInput = z
     camadasMateriais: z.array(z.object({
       materiaPrimaId: z.number().int().positive(),
       camada: z.enum(["face", "aro", "fundo"]),
+      /** Só no Aro: largura (mm) da faixa de borda gerada a partir da face quando o SVG não traz camada Aro. */
+      faixaMm: z.number().min(LARGURA_FAIXA_ARO_MIN_MM).max(LARGURA_FAIXA_ARO_MAX_MM).optional(),
     }).strict()).min(1).max(30).optional(),
   })
   .strict()
@@ -56,6 +59,8 @@ const analisarInput = z
     const idsManuais = input.formatosTemporarios.map(formato => formato.materiaPrimaId);
     if (new Set(idsManuais).size !== idsManuais.length || idsManuais.some(id => !input.materiaPrimaIds.includes(id)))
       context.addIssue({ code: "custom", message: "Cada formato informado precisa pertencer a uma materia-prima do nesting." });
+    if (input.camadasMateriais?.some(item => item.faixaMm != null && item.camada !== "aro"))
+      context.addIssue({ code: "custom", message: "A largura da faixa só vale para a camada Aro." });
     if (input.camadasMateriais) {
       const assignments = input.camadasMateriais.map(item => `${item.materiaPrimaId}:${item.camada}`);
       if (new Set(assignments).size !== assignments.length)
@@ -186,7 +191,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
   const facePorMaterial = new Map(faceCaminhos.map(item => [item.materiaPrimaId, parsed.data.contornoCorte ? [] : item.pathIndexes]));
   if (parsed.data.camadasMateriais && [...facePorMaterial.keys()].some(id => !parsed.data.materiaPrimaIds.includes(id)))
     return void respostaErro(res, 409, "Inclua no nesting todas as matérias-primas aprovadas para a face.");
-  const camadasPorMaterial = new Map<number, Array<{ camada: CpqNestingCamada; pathIndexes?: number[] }>>();
+  const camadasPorMaterial = new Map<number, Array<{ camada: CpqNestingCamada; pathIndexes?: number[]; faixaDaFaceMm?: number }>>();
   for (const item of parsed.data.camadasMateriais ?? []) {
     const lotes = camadasPorMaterial.get(item.materiaPrimaId) ?? [];
     if (item.camada === "face") {
@@ -194,7 +199,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
       if (pathIndexes?.length) lotes.push({ camada: item.camada, pathIndexes });
       else lotes.push({ camada: item.camada });
     } else {
-      lotes.push({ camada: item.camada });
+      lotes.push(item.camada === "aro" && item.faixaMm != null ? { camada: item.camada, faixaDaFaceMm: item.faixaMm } : { camada: item.camada });
     }
     camadasPorMaterial.set(item.materiaPrimaId, lotes);
   }

@@ -958,13 +958,24 @@ está sempre presente, logo depois de `Face` — helper `papeisDePeca` no HTML) 
 contorno de cada letra/símbolo e sustenta o acrílico da face nos letreiros *frontlight* de face iluminada. Exemplo real (Império das
 Rações, desenho do usuário): **Aro galvanizado com perfil lateral de 80 mm soldado** nele + **Face em acrílico branco** + **Fundo em
 PVC 10 mm**. Os três desenhos seguem o mesmo contorno do logo; no desenho do Aro cada letra/símbolo tem contorno duplo (a faixa de
-metal que sobra) e na Face e no Fundo o contorno é simples. A largura da faixa do Aro **não foi informada**, e hoje o nesting
-exige uma camada `Aro` própria no SVG; derivar a faixa a partir da silhueta da face (como já se faz com o Fundo) ainda não existe.
+metal que sobra) e na Face e no Fundo o contorno é simples. O usuário definiu a largura padrão da faixa em **6 mm** (06/10/2026).
+
+**Aro gerado da face (pedido de 06/10/2026):** sempre que uma linha do kit tem o papel `Aro` (só esse papel: `Lateral`, `Perfil` e
+`Contorno` também caem na camada física `aro`, mas não ganham a faixa — `papelEhAro`), o projeto ganha o aro como **faixa só das
+bordas**: aro = silhueta da face − silhueta deslocada para dentro pela largura da faixa, **6 mm por padrão** (`shared/faixa-aro.ts`,
+ajustável em Administração > Configurações, `larguraFaixaAroMm` em `config/geral`, de 1 a 50 mm). Cada contorno externo ganha a
+faixa por dentro, cada vazado (miolo do P, do O, do R) ganha a faixa em volta dele e haste mais fina que o dobro da largura vira peça
+inteira; cada anel é uma peça de metal separada no nesting (`faixaDeBorda` em `server/services/cpqFaixaAro.ts`, deslocamento pelo
+`clipper-lib`, JS puro, que por isso também entra em `includeFiles` do `vercel.json`). O HTML envia `faixaMm` em
+`camadasMateriais` só para a linha com papel Aro; o servidor repassa como `faixaDaFaceMm` ao lote e só gera a faixa se o SVG **não**
+tiver camada `Aro` própria (o desenho do usuário vence), com aviso no resultado. Área líquida, perímetro de corte e custo vêm da
+geometria da faixa pelo nesting. Testado na factibilidade e na rota; o fluxo completo do CPQ (foto → nesting → orçamento) ainda não
+foi conferido com um logo real, e a visualização 3D do projeto pronto será feita à parte.
 
 The static CPQ HTML calls the factibility and nesting routes. Kit roles Face,
 Aro and Fundo select matching named SVG layers (só chapa/bobina com formato cadastrado entra no nesting; perfil não;
 SVG vetorizado de imagem só tem a camada Face, então o Fundo **deriva da silhueta da face** — `fundoSegueSilhuetaDaFace`
-em `cpqFactibilidadeFabricacao.ts`, com aviso no resultado; Aro em chapa ainda exige camada própria); approved color path indexes can
+em `cpqFactibilidadeFabricacao.ts`, com aviso no resultado; Aro em chapa sem camada própria vira a faixa de borda da face, ver acima); approved color path indexes can
 split Face geometry across materials. Each material receives its own signed piece
 batch, and the server compares all active formats before returning the chosen
 board, placement metrics and estimated material/waste cost.

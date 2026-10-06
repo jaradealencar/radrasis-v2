@@ -2539,6 +2539,11 @@
     "@types/connect" "*"
     "@types/node" "*"
 
+"@types/clipper-lib@6.4.0":
+  version "6.4.0"
+  resolved "https://registry.yarnpkg.com/@types/clipper-lib/-/clipper-lib-6.4.0.tgz#237858c0193659389db51a6b9fa28e61981a2928"
+  integrity sha512-y8WVQWLCIJobtcxk8SJj1f7OGVbQEL7RmfGtrWDkAKFxq2U6F0/7/hLYvDWlUnBayvnRYkq+QVZaUzm13mu+Ng==
+
 "@types/connect@*":
   version "3.4.38"
   resolved "https://registry.yarnpkg.com/@types/connect/-/connect-3.4.38.tgz#5ba7f3bc4fbbdeaff8dded952e5ff2cc53f8d858"
@@ -3399,6 +3404,11 @@ class-variance-authority@^0.7.1:
   integrity sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==
   dependencies:
     clsx "^2.1.1"
+
+clipper-lib@6.4.2:
+  version "6.4.2"
+  resolved "https://registry.yarnpkg.com/clipper-lib/-/clipper-lib-6.4.2.tgz#f2444d87913aaea8312f9e26421b0843f4149e87"
+  integrity sha512-knglhjQX5ihNj/XCIs6zCHrTemdvHY3LPZP9XB2nq2/3igyYMFueFXtfp84baJvEE+f8pO1ZS4UVeEgmLnAprQ==
 
 clsx@^2.0.0, clsx@^2.1.1:
   version "2.1.1"

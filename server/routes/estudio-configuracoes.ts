@@ -6,6 +6,7 @@ import { estudioConfiguracoes } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { REGRAS_LEITURA_ARTE_PADRAO } from "../../shared/cpq-regras-leitura-padrao";
+import { LARGURA_FAIXA_ARO_MAX_MM, LARGURA_FAIXA_ARO_MIN_MM, LARGURA_FAIXA_ARO_PADRAO_MM } from "../../shared/faixa-aro";
 
 const CONFIGURACAO_PADRAO = {
   custoFixoPct: 40,
@@ -24,6 +25,7 @@ const CONFIGURACAO_PADRAO = {
     "Produtividade",
   ],
   regrasLeituraArte: REGRAS_LEITURA_ARTE_PADRAO,
+  larguraFaixaAroMm: LARGURA_FAIXA_ARO_PADRAO_MM,
 };
 
 const configuracaoSchema = z
@@ -41,6 +43,7 @@ const configuracaoSchema = z
     jurosCartaoPct: z.array(z.number().min(0).max(100)).length(6),
     papeisPeca: z.array(z.string().trim().min(1).max(120)).max(200),
     regrasLeituraArte: z.string().max(4000).default(REGRAS_LEITURA_ARTE_PADRAO),
+    larguraFaixaAroMm: z.number().min(LARGURA_FAIXA_ARO_MIN_MM).max(LARGURA_FAIXA_ARO_MAX_MM).default(LARGURA_FAIXA_ARO_PADRAO_MM),
   })
   .strict();
 

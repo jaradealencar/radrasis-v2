@@ -4672,7 +4672,7 @@ async function analisarFactibilidadeReal(){
       const materiaPrimaId=Number(materialKitAtivo(line).matId), camada=camadaFisicaKit(line);
       const key=`${materiaPrimaId}:${camada}`;
       if(!Number.isInteger(materiaPrimaId)||materiaPrimaId<=0||!camada||camadaKeys.has(key))return [];
-      camadaKeys.add(key);return [{materiaPrimaId,camada}];
+      camadaKeys.add(key);return [{materiaPrimaId,camada,...(camada==='aro'&&papelEhAro(line.papel)?{faixaMm:larguraFaixaAro()}:{})}];
     });
     const g=computeGeomReal();
     const usarContornoCorte=REAL.colorAnalysis.aprovado&&contornoCorteAplicavel();
@@ -5680,6 +5680,7 @@ const configGeral = {
   jurosCartaoPct: [0,0,0,0,0,0],
   papeisPeca: ['Face','Aro','Fundo','Lateral','Pintura','Iluminação','Fixação','Insumo fabricação','Produtividade'],
   regrasLeituraArte: '',
+  larguraFaixaAroMm: 6,
 };
 /** Papéis do campo "Papel na peça": a lista de Administração > Configurações, sempre com "Aro" (chapa metálica com o miolo cortado, que
  *  sustenta a face de acrílico nos letreiros frontlight). Se a lista salva ainda não tiver o Aro, ele entra logo depois de "Face". */
@@ -5688,6 +5689,16 @@ function papeisDePeca(){
   if(!lista.includes('Aro')){ const i=lista.indexOf('Face'); lista.splice(i>=0?i+1:lista.length,0,'Aro'); }
   return lista;
 }
+/** Largura (mm) da faixa do Aro: o aro é a chapa metálica com o miolo cortado (só as bordas) que sustenta a face de acrílico. Quando o desenho
+ *  não traz uma camada "Aro" própria, o servidor gera a faixa dessa largura a partir da face. Regras repetidas de shared/faixa-aro.ts. */
+const LARGURA_FAIXA_ARO_PADRAO_MM=6, LARGURA_FAIXA_ARO_MIN_MM=1, LARGURA_FAIXA_ARO_MAX_MM=50;
+/** A configurada em Administração > Configurações, ou 6 mm (padrão). */
+function larguraFaixaAro(){
+  const v=Number(configGeral.larguraFaixaAroMm);
+  return Number.isFinite(v)&&v>=LARGURA_FAIXA_ARO_MIN_MM&&v<=LARGURA_FAIXA_ARO_MAX_MM?v:LARGURA_FAIXA_ARO_PADRAO_MM;
+}
+/** Só o papel "Aro" ganha a faixa automática: "Lateral", "Perfil" e "Contorno" também caem na camada física aro, mas não. */
+function papelEhAro(papel){ return normalizeSearch(String(papel||'')).split(/[^a-z0-9]+/).filter(Boolean).includes('aro'); }
 let configGeralCarregada = false;
 let configGeralEstado = 'carregando';
 let configGeralErro = '';
@@ -6181,6 +6192,7 @@ async function carregarConfigGeralServidor(){
     });
     if(Array.isArray(data.papeisPeca)) configGeral.papeisPeca=data.papeisPeca;
     if(typeof data.regrasLeituraArte==='string') configGeral.regrasLeituraArte=data.regrasLeituraArte;
+    if(typeof data.larguraFaixaAroMm==='number' && data.larguraFaixaAroMm>=LARGURA_FAIXA_ARO_MIN_MM && data.larguraFaixaAroMm<=LARGURA_FAIXA_ARO_MAX_MM) configGeral.larguraFaixaAroMm=data.larguraFaixaAroMm;
     configGeral.papeisPeca=papeisDePeca();
     configGeralCarregada=true;
     configGeralEstado='pronto';
@@ -6746,6 +6758,13 @@ function adminConfiguracoes(){
     <div style="display:flex; flex-wrap:wrap; gap:6px;">
       ${configGeral.papeisPeca.map((pp,i)=>`<span class="badge b-neutral" style="gap:6px;">${pp} <button ${pp==='Aro'?'disabled title="Papel obrigatorio"':''} data-act="config-papel-remove" data-idx="${i}" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;">✕</button></span>`).join('')}
     </div>
+  </div>
+  <div class="card">
+    <div class="cardhead"><div><h3>Aro: largura da faixa</h3><p>O Aro é a chapa metálica da qual se corta o miolo, sobrando só as bordas, que sustenta a face de acrílico nos letreiros frontlight. Quando o desenho não traz uma camada "Aro" própria, o sistema gera a faixa dessa largura ao longo do contorno de cada letra, símbolo e vazado.</p></div></div>
+    <label class="field" style="max-width:220px;">Largura da faixa (mm)
+      <input type="number" min="${LARGURA_FAIXA_ARO_MIN_MM}" max="${LARGURA_FAIXA_ARO_MAX_MM}" step="0.5" value="${larguraFaixaAro()}" data-act="config-largura-aro">
+    </label>
+    <p class="role-note" style="margin-top:6px;">Padrão: ${LARGURA_FAIXA_ARO_PADRAO_MM} mm (de ${LARGURA_FAIXA_ARO_MIN_MM} a ${LARGURA_FAIXA_ARO_MAX_MM} mm). Vale só para as linhas do kit com o papel "Aro"; "Lateral", "Perfil" e "Contorno" não ganham a faixa.</p>
   </div>
   <div class="card">
     <div class="cardhead"><div><h3>Regras para a leitura da arte e a vetorização</h3><p>Já vem preenchido com regras sugeridas; edite à vontade. Escreva em palavras como o leitor de imagem deve orientar o Vectorizer.AI. Antes de vetorizar, um modelo de visão olha a arte aprovada e aplica estas regras. Ele só pode ajustar três coisas, sempre dentro de limites seguros: <b>limite de cores</b> (2 a 48), <b>área mínima das formas</b> em pixels (0,5 a 30) e <b>tolerância das curvas</b> (0,02 a 0,5).</p></div></div>
@@ -7533,6 +7552,12 @@ function bindAdminEvents(){
 
   const regrasLeituraEl = document.querySelector('[data-act="config-regras-leitura"]');
   if(regrasLeituraEl) regrasLeituraEl.addEventListener('input', e=>{ configGeral.regrasLeituraArte = e.target.value.slice(0, 4000); salvarConfigGeral(); });
+  const larguraAroEl = document.querySelector('[data-act="config-largura-aro"]');
+  if(larguraAroEl) larguraAroEl.addEventListener('change', e=>{
+    const valor = Number(String(e.target.value).replace(',','.'));
+    if(Number.isFinite(valor) && valor>=LARGURA_FAIXA_ARO_MIN_MM && valor<=LARGURA_FAIXA_ARO_MAX_MM){ configGeral.larguraFaixaAroMm = valor; salvarConfigGeral(); }
+    else { alert(`A largura da faixa do aro precisa ficar entre ${LARGURA_FAIXA_ARO_MIN_MM} e ${LARGURA_FAIXA_ARO_MAX_MM} mm.`); render(); }
+  });
   const custoFixoEl = document.querySelector('[data-act="config-custo-fixo"]');
   if(custoFixoEl) custoFixoEl.addEventListener('input', e=>{
     configGeral.custoFixoPct = parseFloat(e.target.value.replace(',','.'))||0;

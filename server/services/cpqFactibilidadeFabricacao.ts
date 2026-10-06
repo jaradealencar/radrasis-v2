@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { RotacaoPermitida } from "../../shared/politica-corte";
+import { faixaDeBorda } from "./cpqFaixaAro";
 
 const require = createRequire(import.meta.url);
 const polygonClipping = require("polygon-clipping") as typeof import("polygon-clipping");
@@ -86,6 +87,11 @@ export type CpqFactibilidadeLoteMaterial = {
   camada: CpqNestingCamada;
   /** Restringe uma camada a caminhos aprovados, como regiões cromáticas da face. */
   pathIndexes?: number[];
+  /**
+   * Só na camada `aro`: largura (mm) da faixa de borda. Quando o SVG não tem camada Aro, o aro é gerado como a faixa dessa largura ao longo
+   * do contorno de cada peça da face (ver cpqFaixaAro.ts). Ausente = o aro precisa vir numa camada própria do SVG.
+   */
+  faixaDaFaceMm?: number;
 };
 
 export type CpqFactibilidadeMaterial = {
@@ -1074,6 +1080,11 @@ function fundoSegueSilhuetaDaFace(parsed: ParsedSvg): boolean {
   return !parsed.pieces.some(piece => piece.camada === "fundo") && parsed.pieces.some(piece => piece.camada === "face");
 }
 
+/** O SVG não tem camada Aro, mas tem Face: o aro (chapa metálica com o miolo cortado) é a faixa de borda da silhueta da face. */
+function aroSegueFaixaDaFace(parsed: ParsedSvg): boolean {
+  return !parsed.pieces.some(piece => piece.camada === "aro") && parsed.pieces.some(piece => piece.camada === "face");
+}
+
 function pecasDaMateriaPrima(parsed: ParsedSvg, material: CpqFactibilidadeMaterial): ParsedPiece[] {
   if (!material.lotes?.length) return parsed.pieces.map(piece => ({ ...piece, id: idPecaNesting(piece) }));
   const selecionadas = new Map<string, ParsedPiece>();
@@ -1095,6 +1106,22 @@ function pecasDaMateriaPrima(parsed: ParsedSvg, material: CpqFactibilidadeMateri
       // SVG vetorizado a partir de imagem só tem a camada Face: a placa do fundo segue a mesma silhueta (com os vazados).
       for (const piece of parsed.pieces) {
         if (piece.camada === "face") selecionadas.set(`fundo:${piece.pathIndex}:${piece.id}`, { ...piece, camada: "fundo" });
+      }
+    }
+    if (lote.camada === "aro" && lote.faixaDaFaceMm != null && aroSegueFaixaDaFace(parsed)) {
+      // Sem camada Aro no SVG: o aro é só a faixa de borda da face (por fora de cada contorno e em volta de cada vazado).
+      // Cada polígono da faixa é uma peça de metal separada, com os furos dela, e assim vai para o nesting.
+      for (const piece of parsed.pieces) {
+        if (piece.camada !== "face") continue;
+        faixaDeBorda(piece.geometry, lote.faixaDaFaceMm).forEach((polygon, indice) => {
+          selecionadas.set(`aro:${piece.pathIndex}:${piece.id}:${indice}`, {
+            id: `${piece.id}:aro${indice + 1}`,
+            geometry: [polygon],
+            bounds: boundsOf(polygon),
+            pathIndex: piece.pathIndex,
+            camada: "aro",
+          });
+        });
       }
     }
   }
@@ -1187,7 +1214,7 @@ export function calcularFactibilidadeFabricacao(input: {
   const parsed = parseSvg(input.svg, input.larguraSvgMm, input.alturaSvgMm);
   const boards = new Map<number, ReturnType<typeof canonicalBoard>>();
   const pecasPorMaterial = new Map<number, ParsedPiece[]>();
-  const avisosDeFundo: string[] = [];
+  const avisosDeCamadasDerivadas: string[] = [];
   for (const material of input.materiais) {
     const margemMaterialMm = material.margemBordaMm ?? margemBordaMm;
     if (!Number.isFinite(margemMaterialMm) || margemMaterialMm < 0 || margemMaterialMm > 50)
@@ -1201,7 +1228,12 @@ export function calcularFactibilidadeFabricacao(input: {
     boards.set(material.id, board);
     pecasPorMaterial.set(material.id, pecasDaMateriaPrima(parsed, material));
     if (material.lotes?.some(lote => lote.camada === "fundo") && fundoSegueSilhuetaDaFace(parsed))
-      avisosDeFundo.push(`O fundo de ${material.nome} usa a mesma silhueta da face (o SVG não tem camada Fundo).`);
+      avisosDeCamadasDerivadas.push(`O fundo de ${material.nome} usa a mesma silhueta da face (o SVG não tem camada Fundo).`);
+    const loteAro = material.lotes?.find(lote => lote.camada === "aro" && lote.faixaDaFaceMm != null);
+    if (loteAro && aroSegueFaixaDaFace(parsed))
+      avisosDeCamadasDerivadas.push(
+        `O aro de ${material.nome} foi gerado como uma faixa de ${formatNum(loteAro.faixaDaFaceMm!)} mm ao longo do contorno da face, só com as bordas (o SVG não tem camada Aro).`
+      );
   }
 
   let fatorEscalaNecessario = 1;
@@ -1256,7 +1288,7 @@ export function calcularFactibilidadeFabricacao(input: {
       opcoes_disponiveis: [],
       materiais,
       avisos: [
-        ...avisosDeFundo,
+        ...avisosDeCamadasDerivadas,
         `Projeto reduzido proporcionalmente em ${((1 - fatorEscala) * 100).toFixed(2)}% para caber nas chapas.`,
       ],
     };
@@ -1280,7 +1312,7 @@ export function calcularFactibilidadeFabricacao(input: {
       detalhes_corte: { pecas_afetadas: [], quantidade_emendas: 0, coordenadas_linha_corte: [] },
       opcoes_disponiveis: [],
       materiais,
-      avisos: [...avisosDeFundo],
+      avisos: [...avisosDeCamadasDerivadas],
     };
   }
 
@@ -1404,7 +1436,7 @@ export function calcularFactibilidadeFabricacao(input: {
     opcoes_disponiveis: OPCOES_FACTIBILIDADE,
     materiais: materialResults,
     avisos: [
-      ...avisosDeFundo,
+      ...avisosDeCamadasDerivadas,
       ...(lines.length ? ["As linhas de emenda foram sugeridas nos pontos de menor material perto do limite de cada chapa (vãos entre letras, hastes finas); confira a prévia e aprove antes do corte."] : []),
       `Cada fragmento deixa margem de segurança de ${MARGEM_CORTE_MM} mm em cada borda da chapa.`,
       "Curvas SVG são aproximadas por segmentos com tolerância física de 0,1 mm antes das operações booleanas.",
