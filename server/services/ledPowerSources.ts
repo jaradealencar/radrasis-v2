@@ -7,6 +7,8 @@ import type {
 
 const CORRENTES = [10, 20, 30, 50] as const;
 const FATOR_VENDA = 0.85;
+/** Módulo 24 V: 136/272/408/680 módulos a 85% e 160/320/480/800 no limite (fontes de 10/20/30/50 A) saem de 1,5 W cada. */
+const WATTS_MODULO_24V = 1.5;
 
 function arredondarParaBaixo(valor: number, casas: number): number {
   const escala = 10 ** casas;
@@ -59,6 +61,7 @@ function criarTabelaModulos12V(
     key,
     title,
     subtitle: `Módulos por unidade · ${wattsPorModulo === 1.5 ? "1,5" : "3"} W por módulo`,
+    wattsPerModule: wattsPorModulo,
     rows: fontesParaTensao(12).map(fonte => {
       const recomendados = Math.floor(
         (fonte.potenciaW * FATOR_VENDA) / wattsPorModulo + 1e-9
@@ -76,23 +79,17 @@ function criarTabelaModulos12V(
 }
 
 export function getLedPowerSourceTables(): LedPowerSourceTables {
-  const fontes24V = fontesParaTensao(24);
-  const modulos24VPorFonte = [
-    { recommendedModules: 136, maximumModules: 160 },
-    { recommendedModules: 272, maximumModules: 320 },
-    { recommendedModules: 408, maximumModules: 480 },
-    { recommendedModules: 680, maximumModules: 800 },
-  ];
-
   const modulos24V: LedModuleTable = {
     key: "modules-24v",
     title: "Módulos LED — 24 V",
     subtitle: "Capacidade expressa em unidades de módulo",
-    rows: fontes24V.map((fonte, i): LedModuleSourceRow => ({
+    wattsPerModule: WATTS_MODULO_24V,
+    rows: fontesParaTensao(24).map((fonte): LedModuleSourceRow => ({
       source: `Fonte chaveada ${fonte.amperagemA}A`,
       voltage: "24 V",
       powerW: fonte.potenciaW,
-      ...modulos24VPorFonte[i],
+      recommendedModules: Math.floor((fonte.potenciaW * FATOR_VENDA) / WATTS_MODULO_24V + 1e-9),
+      maximumModules: Math.floor(fonte.potenciaW / WATTS_MODULO_24V + 1e-9),
     })),
   };
 

@@ -320,6 +320,11 @@ em vez de reescrever o padrão:
   categórica, `STATUS_COLORS` para semântica).
 - Estados de carregando e vazio usam `@/components/ui/spinner` e
   `@/components/ui/empty`.
+- Tabela de Preços > Pág. 4 (Fontes Chaveadas) tem a **Calculadora de fontes**: o vendedor escolhe o LED (fitas 12/24 V e módulos, as
+  mesmas tabelas da página, com os nomes editados) e a quantidade, e a lógica pura de `shared/led-fontes-calculo.ts` (testes em
+  `server/__tests__/led-fontes-calculo.test.ts`) indica quais fontes e quantas: trabalha com 85% de uso da fonte e aceita até 93% antes de
+  sugerir outra (nesse caso mostra também a opção que fica em 85%); menos fontes primeiro, depois menor potência instalada. O consumo por
+  módulo vem de `LedModuleTable.wattsPerModule` (`server/services/ledPowerSources.ts`), não do texto do subtítulo.
 - Resultado que o vendedor mostra ao cliente (simuladores de cartão e de boletos, Tabela de Preços > Pág. 6) ganha
   `@/components/BotaoCopiarImagem`: desenha um PNG em canvas (`@/lib/imagemCopia`) e o coloca na área de transferência (sem
   permissão do navegador, baixa o arquivo). Não use `html2canvas` para isso — ele não lê as cores `oklch()` do Tailwind 4.

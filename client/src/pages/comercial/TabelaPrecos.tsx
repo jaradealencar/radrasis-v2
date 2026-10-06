@@ -33,6 +33,14 @@ import { fmtBrl, fmtDate, fmtNum } from "@/lib/format";
 import { adicionarDiasUteisComFeriados } from "@shared/feriados-nacionais";
 import { ledPowerSourceTextKey } from "@shared/led-power-sources";
 import {
+  FATOR_RECOMENDADO,
+  FATOR_TOLERANCIA,
+  dimensionarFontes,
+  resumirPlano,
+  type FonteDisponivel,
+  type PlanoFontes,
+} from "@shared/led-fontes-calculo";
+import {
   MATERIAIS_SOLDA,
   ROTULO_MATERIAL_SOLDA,
   ROTULO_TAMANHO_PRODUTIVIDADE,
@@ -477,6 +485,196 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
   );
 }
 
+interface OpcaoCalculadoraLed {
+  chave: string;
+  grupo: "fita" | "modulo";
+  rotulo: string;
+  tensao: string;
+  wattsPorUnidade: number;
+  /** Menor fração pedida: 0,1 m na fita, 1 módulo. */
+  passo: number;
+  fontes: FonteDisponivel[];
+}
+
+const casasWatts = (watts: number) => (Number.isInteger(watts) ? 0 : 1);
+/** 2.380 W ou 649,4 W: sem casas decimais quando o valor é inteiro. */
+const fmtWatts = (watts: number) => `${fmtNum(watts, casasWatts(watts))} W`;
+
+/** Monta as opções do menu a partir das tabelas da própria página (mesmas fontes, mesmos nomes editados). */
+function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; texts: LedPowerSourceTextOverrides }): OpcaoCalculadoraLed[] {
+  const { tables, texts } = dimensionamento;
+  const fontesDe = (tabela: LedTapeTable | LedModuleTable): FonteDisponivel[] =>
+    tabela.rows.map((linha, indice) => ({
+      nome: getLedText(texts, ledPowerSourceTextKey.row(tabela.key, indice, "source"), linha.source),
+      potenciaW: linha.powerW,
+    }));
+  const tensaoDe = (tabela: LedTapeTable | LedModuleTable) =>
+    getLedText(texts, ledPowerSourceTextKey.row(tabela.key, 0, "voltage"), tabela.rows[0]?.voltage ?? "");
+  const tituloDe = (tabela: LedTapeTable | LedModuleTable) => getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
+  return [
+    ...tables.tapes.map((tabela): OpcaoCalculadoraLed => ({
+      chave: tabela.key,
+      grupo: "fita",
+      rotulo: `${tituloDe(tabela)} · ${fmtNum(tabela.wattsPerMeter, casasWatts(tabela.wattsPerMeter))} W/m`,
+      tensao: tensaoDe(tabela),
+      wattsPorUnidade: tabela.wattsPerMeter,
+      passo: 0.1,
+      fontes: fontesDe(tabela),
+    })),
+    ...tables.modules.map((tabela): OpcaoCalculadoraLed => ({
+      chave: tabela.key,
+      grupo: "modulo",
+      rotulo: `${tituloDe(tabela)} · ${fmtNum(tabela.wattsPerModule, casasWatts(tabela.wattsPerModule))} W/módulo`,
+      tensao: tensaoDe(tabela),
+      wattsPorUnidade: tabela.wattsPerModule,
+      passo: 1,
+      fontes: fontesDe(tabela),
+    })),
+  ];
+}
+
+function PlanoFontesCard({ titulo, plano, opcao, destaque }: { titulo: string; plano: PlanoFontes; opcao: OpcaoCalculadoraLed; destaque?: boolean }) {
+  const unidade = opcao.grupo === "fita" ? "m" : "módulos";
+  const casasQuantidade = opcao.grupo === "fita" ? 1 : 0;
+  const resumo = resumirPlano(plano).map(grupo => `${grupo.copias} × ${grupo.nome}`).join(" + ");
+  const noLimite = plano.faixa === "tolerancia";
+  return (
+    <div className={`space-y-3 rounded-md border p-3 ${destaque ? "border-blue-300 bg-blue-50/40" : "border-slate-200"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</p>
+          <p className="text-lg font-bold text-slate-900">{resumo}</p>
+          <p className="text-xs text-slate-500">
+            {opcao.tensao} · {fmtWatts(plano.potenciaInstaladaW)} instalados · {plano.totalFontes === 1 ? "1 fonte" : `${plano.totalFontes} fontes`}
+          </p>
+        </div>
+        <Badge
+          variant="outline"
+          className={noLimite ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-300 bg-emerald-50 text-emerald-800"}
+        >
+          {noLimite
+            ? `Passa de ${fmtNum(FATOR_RECOMENDADO * 100)}%, mas cabe em ${fmtNum(FATOR_TOLERANCIA * 100)}%: não precisa de outra fonte`
+            : `Dentro da margem de ${fmtNum(FATOR_RECOMENDADO * 100)}%`}
+        </Badge>
+      </div>
+      <div className="overflow-x-auto rounded-md border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-slate-50">
+              <TableHead>Fonte</TableHead>
+              <TableHead className="text-right">LED ligado a ela</TableHead>
+              <TableHead className="text-right">Carga</TableHead>
+              <TableHead className="text-right">Uso da fonte</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {plano.fontes.map((item, indice) => (
+              <TableRow key={`${item.fonte.nome}-${indice}`}>
+                <TableCell className="font-medium">
+                  {plano.totalFontes > 1 ? `${indice + 1}. ` : ""}{item.fonte.nome} <span className="text-xs font-normal text-slate-500">({fmtNum(item.fonte.potenciaW)} W)</span>
+                </TableCell>
+                <TableCell className="text-right">{fmtNum(item.quantidade, casasQuantidade)} {unidade}</TableCell>
+                <TableCell className="text-right">{fmtWatts(item.cargaW)}</TableCell>
+                <TableCell className={`text-right font-semibold ${item.faixa === "tolerancia" ? "text-amber-700" : "text-emerald-700"}`}>
+                  {fmtNum(item.utilizacao * 100, 1)}%
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: LedPowerSourceTables; texts: LedPowerSourceTextOverrides } }) {
+  const opcoes = useMemo(() => opcoesCalculadoraLed(dimensionamento), [dimensionamento]);
+  const [chave, setChave] = useState(opcoes[0]?.chave ?? "");
+  const [quantidadeInformada, setQuantidadeInformada] = useState("");
+  const opcao = opcoes.find(item => item.chave === chave) ?? opcoes[0];
+  const quantidade = Number(quantidadeInformada.replace(",", "."));
+  const preenchida = quantidadeInformada.trim() !== "";
+
+  const resultado = useMemo(
+    () =>
+      opcao && preenchida
+        ? dimensionarFontes({ fontes: opcao.fontes, wattsPorUnidade: opcao.wattsPorUnidade, passo: opcao.passo, quantidade })
+        : null,
+    [opcao, preenchida, quantidade]
+  );
+
+  if (!opcao) return null;
+  const unidadeCampo = opcao.grupo === "fita" ? "metros" : "módulos";
+  const grupos: Array<[OpcaoCalculadoraLed["grupo"], string]> = [["fita", "Fitas LED (por metro)"], ["modulo", "Módulos LED (por unidade)"]];
+
+  return (
+    <Card className="border-blue-200">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Calculator className="h-4 w-4 text-blue-600" />
+          Calculadora de fontes
+        </CardTitle>
+        <p className="text-xs text-slate-500">
+          Escolha o LED e a quantidade: o sistema indica quais fontes e quantas usar. Trabalha com {fmtNum(FATOR_RECOMENDADO * 100)}% de uso da fonte e aceita até {fmtNum(FATOR_TOLERANCIA * 100)}% antes de sugerir outra.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-[1.4fr_0.6fr]">
+          <label className="space-y-1 text-xs font-medium text-slate-600">
+            LED utilizado
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900"
+              value={opcao.chave}
+              onChange={event => setChave(event.target.value)}
+            >
+              {grupos.map(([grupo, rotuloGrupo]) => (
+                <optgroup key={grupo} label={rotuloGrupo}>
+                  {opcoes.filter(item => item.grupo === grupo).map(item => (
+                    <option key={item.chave} value={item.chave}>{item.rotulo}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-xs font-medium text-slate-600">
+            Quantidade ({unidadeCampo})
+            <Input
+              type="number"
+              min="0"
+              step={opcao.passo}
+              inputMode="decimal"
+              value={quantidadeInformada}
+              onChange={event => setQuantidadeInformada(event.target.value)}
+              placeholder={opcao.grupo === "fita" ? "Ex.: 12,5" : "Ex.: 150"}
+            />
+          </label>
+        </div>
+
+        {!resultado ? (
+          <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            Informe a quantidade de {unidadeCampo} para ver as fontes indicadas.
+          </p>
+        ) : resultado.aviso && !resultado.recomendado ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{resultado.aviso}</p>
+        ) : (
+          resultado.recomendado && (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Consumo total: <strong className="text-slate-900">{fmtWatts(resultado.consumoTotalW)}</strong>
+                <span className="text-xs text-slate-500"> ({fmtNum(quantidade, casasWatts(quantidade))} {unidadeCampo} × {fmtWatts(opcao.wattsPorUnidade)})</span>
+              </p>
+              <PlanoFontesCard titulo="Recomendado" plano={resultado.recomendado} opcao={opcao} destaque />
+              {resultado.comFolga && (
+                <PlanoFontesCard titulo={`Se preferir ficar dentro de ${fmtNum(FATOR_RECOMENDADO * 100)}%`} plano={resultado.comFolga} opcao={opcao} />
+              )}
+            </div>
+          )
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function LedPowerSourcesSection({ dimensionamento }: { dimensionamento?: { tables: LedPowerSourceTables; texts: LedPowerSourceTextOverrides } }) {
   if (!dimensionamento) {
     return <div className="h-40 animate-pulse rounded-xl bg-slate-100" />;
@@ -484,6 +682,7 @@ function LedPowerSourcesSection({ dimensionamento }: { dimensionamento?: { table
 
   return (
     <div className="space-y-3">
+    <CalculadoraFontesLed dimensionamento={dimensionamento} />
     <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
       <Pencil className="h-3.5 w-3.5 shrink-0" />
       Passe o cursor sobre um texto e clique no lápis para editá-lo.
