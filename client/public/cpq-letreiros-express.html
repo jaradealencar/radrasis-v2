@@ -2553,6 +2553,70 @@ const CATEGORIAS_PRODUTO = {
   },
 };
 
+/* ---------- PRODUTIVIDADES DE SOLDA LIGADAS AO PRODUTO (cadastro do kit; só categoria Letreiros) ---------- */
+// Pedido de 06/10/2026: o vendedor liga ao produto, numa lista fechada, todas as produtividades de solda que valem para ele; o
+// sistema só poderá escolher entre elas. Regras repetidas de shared/produtividade-solda.ts (o HTML não importa módulos) e
+// validadas de novo no servidor (estudio-kits.ts). A classificação (tipo de solda, tamanho, materiais) vem de
+// /api/letra-caixa/materias-cadastro. Os IDs ficam em kit.produtividadesRelacionadas.
+const CATEGORIA_COM_PRODUTIVIDADES='Letreiros';
+const ROTULO_TIPO_SOLDA={barra_roscada:'Barra roscada',patinha_led:'Patinha para LED',chapinha_dupla_face:'Chapinha dupla-face',orelhinha:'Orelhinha',sem_fixacao:'Sem fixação'};
+const ROTULO_TAMANHO_PRODUTIVIDADE={ate_11cm:'≤ 11 cm',acima_11cm:'> 11 cm'};
+const ROTULO_MATERIAL_SOLDA={inox:'Inox',galvanizado:'Galvanizado',latao:'Latão',acrilico:'Acrílico',aluminio:'Alumínio'};
+/** Nome com "produtividade", exceto as "Produtividade Geral …" (ex.: "Produtividade Geral - Hora"). */
+function ehMateriaProdutividade(nome){ const n=normalizeSearch(nome).trim(); return n.includes('produtividade')&&!n.startsWith('produtividade geral'); }
+function produtividadesDoCatalogo(){ return catalog.materias.filter(m=>ehMateriaProdutividade(m.nome)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR',{numeric:true})); }
+function classificacaoProdutividade(id){
+  const item=cadastroMaterias&&cadastroMaterias.get(id);
+  const c=item&&item.produtividade;
+  return {tipos:(c&&c.tiposSolda)||[],tamanho:(c&&c.tamanho)||null,materiais:(c&&c.materiais)||[]};
+}
+function textoContadorProdutividades(n){ return n?`${n} marcada(s)`:'nenhuma marcada'; }
+function textoBuscaClassificacao(id){
+  const c=classificacaoProdutividade(id);
+  return [...c.tipos.map(t=>ROTULO_TIPO_SOLDA[t]||t),c.tamanho?(ROTULO_TAMANHO_PRODUTIVIDADE[c.tamanho]||c.tamanho):'',...c.materiais.map(x=>ROTULO_MATERIAL_SOLDA[x]||x)].join(' ');
+}
+function chipsClassificacaoProdutividade(id){
+  if(cadastroMaterias===null) return '<span class="badge b-neutral">carregando classificação…</span>';
+  const c=classificacaoProdutividade(id);
+  return [
+    ...(c.tipos.length?c.tipos.map(t=>`<span class="badge b-neutral">${escaparHtml(ROTULO_TIPO_SOLDA[t]||t)}</span>`):['<span class="badge b-warn">sem tipo de solda</span>']),
+    c.tamanho?`<span class="badge b-accent">${escaparHtml(ROTULO_TAMANHO_PRODUTIVIDADE[c.tamanho]||c.tamanho)}</span>`:'<span class="badge b-warn">sem tamanho</span>',
+    ...(c.materiais.length?c.materiais.map(x=>`<span class="badge b-ok">${escaparHtml(ROTULO_MATERIAL_SOLDA[x]||x)}</span>`):['<span class="badge b-warn">sem materiais</span>']),
+  ].join(' ');
+}
+function htmlProdutividadesRelacionadas(key,kitState){
+  if(cadastroMaterias===null) carregarCadastroMaterias();
+  const selecionadas=Array.isArray(kitState.produtividadesRelacionadas)?kitState.produtividadesRelacionadas:[];
+  const marcadas=new Set(selecionadas);
+  const doCatalogo=produtividadesDoCatalogo();
+  const idsDoCatalogo=new Set(doCatalogo.map(m=>m.id));
+  const termo=normalizeSearch(String(adminState.produtividadeBusca||'')).trim();
+  const soMarcadas=!!adminState.produtividadeSoMarcadas;
+  const visiveis=doCatalogo.filter(m=>{
+    if(adminState.materiasExcluidas.has(m.id)&&!marcadas.has(m.id)) return false;
+    if(soMarcadas&&!marcadas.has(m.id)) return false;
+    return !termo||normalizeSearch(`${m.nome} ${m.id} ${textoBuscaClassificacao(m.id)}`).includes(termo);
+  });
+  // IDs salvos que não estão mais no catálogo do MubiSys: aparecem para o vendedor poder remover.
+  const ausentes=selecionadas.filter(id=>!idsDoCatalogo.has(id));
+  const linha=(id,corpo)=>`<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;"><input type="checkbox" style="margin-top:3px;" data-act="admin-produtividade-toggle" data-key="${key}" data-val="${id}" ${marcadas.has(id)?'checked':''}><span style="flex:1;min-width:0;">${corpo}</span></label>`;
+  const linhas=[
+    ...ausentes.map(id=>linha(id,`<strong>Matéria-prima #${id}</strong> <span class="badge b-warn">não está mais no catálogo do MubiSys</span><br><span style="font-size:11px;color:var(--text-faint);">Desmarque para remover deste produto.</span>`)),
+    ...visiveis.map(m=>linha(m.id,`<strong>${escaparHtml(m.nome)}</strong> <span class="mono" style="font-size:10.5px;color:var(--text-faint);">#${m.id}</span> <span style="font-size:11px;color:var(--text-faint);">· ${money(m.valor)}/${escaparHtml(m.unidade)}</span><br><span style="display:inline-flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${chipsClassificacaoProdutividade(m.id)}</span>`)),
+  ];
+  return `
+    <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Produtividades de solda relacionadas <span style="font-weight:400; text-transform:none;">— lista fechada: marque todas as que valem para este produto</span></p>
+    <div class="card" style="padding:12px;box-shadow:none;background:var(--surface);" data-teste="produtividades-relacionadas">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <input type="text" placeholder="Filtrar por nome, #código, tipo de solda, tamanho ou material…" value="${escaparHtml(adminState.produtividadeBusca||'')}" data-act="admin-produtividade-query" style="flex:1;min-width:220px;">
+        <label style="display:flex;gap:6px;align-items:center;font-size:12px;"><input type="checkbox" data-act="admin-produtividade-so-marcadas" ${soMarcadas?'checked':''}> Só as marcadas</label>
+        <span class="badge b-accent" data-prod-contador="${key}">${textoContadorProdutividades(selecionadas.length)}</span>
+      </div>
+      ${linhas.length?`<div style="max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:8px;">${linhas.join('')}</div>`:`<p style="font-size:12px;color:var(--text-faint);">${catalog.materias.length?'Nenhuma produtividade encontrada com esse filtro.':'Catálogo de matérias-primas ainda não carregado.'}</p>`}
+      <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Só entram produtividades cadastradas no MubiSys (exceto "Produtividade Geral …"). Tipo de solda, tamanho e materiais são editados em Comercial &gt; Produtos &gt; Matérias-primas. Por enquanto o vínculo só fica registrado: o orçamento ainda não usa esta lista.</p>
+    </div>`;
+}
+
 function addKitLine(materiaId){
   const m = catalog.materias.find(x=>x.id===materiaId);
   if(!m) return;
@@ -5232,7 +5296,7 @@ function realStepOrcamento(){
 /* ---- ADMIN ---- */
 /* ---------- ADMIN: catálogo real (produtos/modelos + matérias-primas do MubiSys) ---------- */
 const adminState = {
-  produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitProdutoModeloSelecionadoKey:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', kitVariacaoMaterialSelecionadoId:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
+  produtividadeBusca:'', produtividadeSoMarcadas:false, produtoQuery:'', materiaQuery:'', adminMatQuery:'', kitProdutoQuery:'', kitProdutoProdutoIdSelecionado:null, kitProdutoModeloSelecionadoKey:null, kitCopiaQuery:'', kitCopiaSelecionadoKey:null, kitVariacaoLinhaKey:null, kitVariacaoQuery:'', kitVariacaoMaterialSelecionadoId:null, precoLinhaQuery:'', filtroVendedorPropostas:'',
   filtroDataInicioPropostas:'', filtroDataFimPropostas:'', filtroNumeroPropostas:'',
   cotacoesServidor:[], cotacoesCarregando:false, cotacoesErro:'',
   clientesServidor:[], clientesCarregando:false, clientesErro:'', clientesBusca:'', clientesPagina:1, clientesTotal:0,
@@ -6392,6 +6456,7 @@ function adminKitEditor(p, m, key){
         </select>
       </label>
     </div>
+    ${catAtual===CATEGORIA_COM_PRODUTIVIDADES?htmlProdutividadesRelacionadas(key,kitState):''}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Descrição do produto <span style="font-weight:400; text-transform:none;">— aparece na proposta comercial</span></p>
     <textarea data-act="admin-descricao-produto" data-key="${key}" rows="4" maxlength="5000" placeholder="Descreva características, acabamento, materiais ou observações importantes para o cliente" style="width:100%;resize:vertical;font-family:inherit;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:400;">${escaparHtml(kitState.descricaoProduto||'')}</textarea>
@@ -7257,7 +7322,15 @@ function bindAdminEvents(){
   document.querySelectorAll('[data-act="admin-categoria"]').forEach(el=>{
     el.addEventListener('change', e=>{
       const kit = adminState.kits[el.dataset.key];
-      if(kit){ kit.categoria = e.target.value||null; kit.subcategoria=null; kit.tipoProduto=null; salvarKit(el.dataset.key); }
+      if(kit){
+        const nova = e.target.value||null;
+        const vinculadas = Array.isArray(kit.produtividadesRelacionadas)?kit.produtividadesRelacionadas.length:0;
+        if(vinculadas && nova!==CATEGORIA_COM_PRODUTIVIDADES){
+          if(!confirm(`Trocar a categoria remove as ${vinculadas} produtividade(s) de solda ligadas a este produto (só Letreiros têm essa lista). Continuar?`)){ render(); return; }
+          kit.produtividadesRelacionadas = [];
+        }
+        kit.categoria = nova; kit.subcategoria=null; kit.tipoProduto=null; salvarKit(el.dataset.key);
+      }
       render();
     });
   });
@@ -7273,6 +7346,25 @@ function bindAdminEvents(){
       const kit = adminState.kits[el.dataset.key];
       if(kit){ kit.tipoProduto = e.target.value||null; salvarKit(el.dataset.key); }
       render();
+    });
+  });
+  // Produtividades de solda ligadas ao produto (só categoria Letreiros): filtro, "só as marcadas" e marcar/desmarcar.
+  const prodQueryEl=document.querySelector('[data-act="admin-produtividade-query"]');
+  if(prodQueryEl) prodQueryEl.addEventListener('input', e=>{ adminState.produtividadeBusca=e.target.value; renderPreservingFocus(); });
+  const prodSoMarcadasEl=document.querySelector('[data-act="admin-produtividade-so-marcadas"]');
+  if(prodSoMarcadasEl) prodSoMarcadasEl.addEventListener('change', e=>{ adminState.produtividadeSoMarcadas=e.target.checked; render(); });
+  document.querySelectorAll('[data-act="admin-produtividade-toggle"]').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const kit = adminState.kits[el.dataset.key];
+      const id = parseInt(el.dataset.val);
+      if(!kit || !Number.isInteger(id)) return;
+      const atual = new Set(Array.isArray(kit.produtividadesRelacionadas)?kit.produtividadesRelacionadas:[]);
+      if(e.target.checked) atual.add(id); else atual.delete(id);
+      kit.produtividadesRelacionadas = [...atual].sort((a,b)=>a-b);
+      salvarKit(el.dataset.key);
+      // Sem render completo: preserva a rolagem da lista enquanto o vendedor marca várias seguidas.
+      const contador = document.querySelector(`[data-prod-contador="${el.dataset.key}"]`);
+      if(contador) contador.textContent = textoContadorProdutividades(kit.produtividadesRelacionadas.length);
     });
   });
   const kpqEl = document.querySelector('[data-act="admin-kitproduto-query"]');

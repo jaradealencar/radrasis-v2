@@ -1,10 +1,12 @@
 import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { estudioKits } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
+import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { CATEGORIA_COM_PRODUTIVIDADES, ehMateriaProdutividade, MAX_PRODUTIVIDADES_RELACIONADAS } from "../../shared/produtividade-solda";
 
 const kitSchema = z.object({
   linhas: z.array(z.record(z.string(), z.unknown())).max(300).default([]),
@@ -21,6 +23,8 @@ const kitSchema = z.object({
   categoria: z.string().max(100).nullable().optional(),
   subcategoria: z.string().max(100).nullable().optional(),
   tipoProduto: z.string().max(100).nullable().optional(),
+  // IDs (MubiSys) das produtividades de solda ligadas ao produto; só na categoria "Letreiros" (ver validarProdutividadesRelacionadas).
+  produtividadesRelacionadas: z.array(z.number().int().positive()).max(MAX_PRODUTIVIDADES_RELACIONADAS).optional(),
 }).passthrough();
 
 function respostaErro(res: Response, status: number, mensagem: string): void {
@@ -94,6 +98,15 @@ async function salvarKit(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const relacionadas = parsed.data.kit.produtividadesRelacionadas ?? [];
+  if (relacionadas.length) {
+    const erro = await validarProdutividadesRelacionadas(db, chave, parsed.data.kit.categoria, relacionadas);
+    if (erro) {
+      respostaErro(res, erro.status, erro.mensagem);
+      return;
+    }
+  }
+
   await db.insert(estudioKits).values({
     chave,
     produtoId,
@@ -104,4 +117,41 @@ async function salvarKit(req: Request, res: Response): Promise<void> {
     set: { produtoId, modeloId, dadosJson: parsed.data.kit, updatedAt: new Date() },
   });
   res.json({ success: true, chave });
+}
+
+type BancoDeDados = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+/**
+ * Produtividades de solda ligadas a um produto: só para a categoria Letreiros, sem repetidas e só matérias-primas que são de
+ * fato produtividade no catálogo do MubiSys. O catálogo é consultado apenas para os IDs que ainda não estavam salvos neste kit,
+ * porque a gravação do kit é automática e frequente.
+ */
+async function validarProdutividadesRelacionadas(
+  db: BancoDeDados,
+  chave: string,
+  categoria: unknown,
+  ids: number[],
+): Promise<{ status: number; mensagem: string } | null> {
+  if (categoria !== CATEGORIA_COM_PRODUTIVIDADES)
+    return { status: 400, mensagem: `Só produtos da categoria ${CATEGORIA_COM_PRODUTIVIDADES} podem ter produtividades de solda relacionadas.` };
+  if (new Set(ids).size !== ids.length) return { status: 400, mensagem: "Há produtividades repetidas na lista." };
+
+  const [existente] = await db.select({ dadosJson: estudioKits.dadosJson }).from(estudioKits).where(eq(estudioKits.chave, chave));
+  const salvas = existente?.dadosJson?.produtividadesRelacionadas;
+  const jaSalvas = new Set(Array.isArray(salvas) ? salvas : []);
+  const novas = ids.filter(id => !jaSalvas.has(id));
+  if (!novas.length) return null;
+
+  let catalogo: Awaited<ReturnType<typeof listarMateriasPrimas>>;
+  try {
+    catalogo = await listarMateriasPrimas();
+  } catch (error) {
+    console.error("[EstudioKits] Falha ao conferir produtividades no MubiSys:", error);
+    return { status: 503, mensagem: "Não foi possível confirmar as produtividades no MubiSys agora. Tente de novo em instantes." };
+  }
+  const nomePorId = new Map(catalogo.map(materia => [materia.id, materia.nome]));
+  const invalidas = novas.filter(id => !ehMateriaProdutividade(nomePorId.get(id)));
+  if (invalidas.length)
+    return { status: 400, mensagem: `Estas matérias-primas não são produtividades de solda do catálogo do MubiSys: ${invalidas.join(", ")}.` };
+  return null;
 }

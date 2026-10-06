@@ -104,3 +104,9 @@ export function alternarTipoSolda(selecionados: readonly TipoSolda[], tipo: Tipo
   if (comOutros.length >= MAX_TIPOS_SOLDA) return [...selecionados];
   return TIPOS_SOLDA.filter(item => item === tipo || comOutros.includes(item));
 }
+
+/** Categoria de produto (cadastro de kit do CPQ) que pode ligar produtividades de solda: só os Letreiros. */
+export const CATEGORIA_COM_PRODUTIVIDADES = "Letreiros";
+
+/** Teto de produtividades ligadas a um produto (são 42 no catálogo de 05/10/2026). */
+export const MAX_PRODUTIVIDADES_RELACIONADAS = 100;

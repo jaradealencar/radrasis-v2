@@ -440,7 +440,16 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
   (`ehMateriaProdutividade`), ignorando o que vier para as demais. A página 5 da Tabela de Preços, Produtividades de solda, consulta o catálogo do MubiSys e permite filtrar por
   material, tipo de solda e tamanho. A classificação é manual (não deduzida do texto do nome); nenhum cálculo de custo ou
-  preço lê esses campos ainda. As condições comerciais armazenadas historicamente na página 5 são apresentadas na página 6; os registros do banco não são migrados. O PDF da tabela inclui a página 5 com custos atuais do MubiSys. O CPQ permite selecionar várias
+  preço lê esses campos ainda. **Produtividades relacionadas ao produto (pedido de 06/10/2026):** no editor de produto do
+  CPQ (Administração > Produtos & kits), todo produto de categoria **Letreiros** tem a lista fechada "Produtividades de solda
+  relacionadas", com marcação múltipla, filtro (nome, #código, tipo de solda, tamanho, material) e a classificação de cada
+  produtividade. Os IDs ficam em `estudio_kits.dadosJson.produtividadesRelacionadas` (JSON, sem migration; salvo pela gravação
+  automática do kit). O servidor (`server/routes/estudio-kits.ts`) só aceita a lista em produto de categoria Letreiros, sem
+  repetidos, e só IDs que sejam produtividade no catálogo do MubiSys (`ehMateriaProdutividade`; o catálogo só é consultado
+  para IDs recém-adicionados, e sem MubiSys a gravação com IDs novos responde 503). Trocar a categoria para fora de Letreiros pede
+  confirmação e apaga a lista. A rota `GET /api/letra-caixa/materias-cadastro` devolve `produtividade` (tipos, tamanho,
+  materiais) por matéria-prima para o HTML mostrar os chips; as regras do HTML repetem as de `shared/produtividade-solda.ts`.
+  O motor de escolha automática de solda lê esta lista como conjunto de candidatas. As condições comerciais armazenadas historicamente na página 5 são apresentadas na página 6; os registros do banco não são migrados. O PDF da tabela inclui a página 5 com custos atuais do MubiSys. O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
   escolhidas; salva as medidas do nesting e os materiais calculados no
   snapshot da cotação. Comercial > Propostas pode importar medidas de uma

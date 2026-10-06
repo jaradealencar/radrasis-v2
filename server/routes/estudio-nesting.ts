@@ -11,6 +11,7 @@ import { carregarCustoBobina } from "../db/bobinaCusto";
 import { idsDeMateriasPerfil, MENSAGEM_PERFIL_FORA_DO_NESTING } from "../db/materiaPerfil";
 import { carregarPoliticaCorte } from "../db/politicaCorte";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
+import { ehTamanhoProdutividade, normalizarMateriaisSolda, normalizarTiposSolda } from "../../shared/produtividade-solda";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas } from "../integrations/mubisys-client";
 import {
@@ -261,7 +262,18 @@ async function listarStatusCadastro(req: Request, res: Response): Promise<void> 
     materias: cadastros.map(cadastro => {
       const categoria = cadastro.categoriaId == null ? null : categoriaPorId.get(cadastro.categoriaId) ?? null;
       const { status, pendencias } = statusCadastroDeLinhas(categoria, cadastro, formatosPorMateria.get(cadastro.mubisysMateriaPrimaId) ?? []);
-      return { id: cadastro.mubisysMateriaPrimaId, status, categoria: categoria?.nome ?? null, pendencias };
+      return {
+        id: cadastro.mubisysMateriaPrimaId,
+        status,
+        categoria: categoria?.nome ?? null,
+        pendencias,
+        // Classificação interna das "Produtividade …" (tipo de solda, tamanho e materiais); vazia nas demais matérias-primas.
+        produtividade: {
+          tiposSolda: normalizarTiposSolda(cadastro.produtividadeTiposSolda),
+          tamanho: ehTamanhoProdutividade(cadastro.produtividadeTamanho) ? cadastro.produtividadeTamanho : null,
+          materiais: normalizarMateriaisSolda(cadastro.produtividadeMateriais),
+        },
+      };
     }),
   });
 }
