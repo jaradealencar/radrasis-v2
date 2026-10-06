@@ -1,5 +1,6 @@
 import type { EstudioChapa, MateriaPrimaCadastro, MateriaPrimaCategoria } from "../../drizzle/schema";
 import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, normalizarFormatoPerfil, secaoPerfilMm2 } from "../../shared/peso";
+import { normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda } from "../../shared/produtividade-solda";
 
 /**
  * Situação do cadastro local de uma matéria-prima (Produtos > Matérias-primas):
@@ -7,6 +8,8 @@ import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, normalizarFormatoPer
  * - `incompleta`: tem categoria, mas faltam os dados técnicos que essa categoria exige;
  * - `atualizada`: categorizada e com todos os dados exigidos.
  * Categorias que não pedem dados técnicos (insumos gerais, elétrica…) ficam `atualizada` assim que classificadas.
+ * A "Produtividade …" que já teve a classificação interna salva (tipo de solda, tamanho ou material) também conta como
+ * `atualizada` mesmo sem categoria: é o jeito de o gestor ver o que já foi editado, uma a uma.
  */
 export type StatusCadastroMateria = "sem_categoria" | "incompleta" | "atualizada";
 
@@ -24,12 +27,16 @@ export type EntradaStatusCadastro = {
   } | null;
   /** Formatos de chapa ou larguras de bobina ativos. */
   formatosAtivos: number;
+  /** Há ao menos uma marcação salva de tipo de solda, tamanho ou material (só as produtividades guardam isso). */
+  produtividadeClassificada?: boolean;
 };
 
 export type ResultadoStatusCadastro = { status: StatusCadastroMateria; pendencias: string[] };
 
-export function statusCadastroMateriaPrima({ categoria, cadastro, formatosAtivos }: EntradaStatusCadastro): ResultadoStatusCadastro {
-  if (!categoria) return { status: "sem_categoria", pendencias: ["Sem categoria"] };
+export function statusCadastroMateriaPrima({ categoria, cadastro, formatosAtivos, produtividadeClassificada }: EntradaStatusCadastro): ResultadoStatusCadastro {
+  if (!categoria) {
+    return produtividadeClassificada ? { status: "atualizada", pendencias: [] } : { status: "sem_categoria", pendencias: ["Sem categoria"] };
+  }
 
   const pendencias: string[] = [];
   const positivo = (valor: number | null | undefined) => valor != null && Number.isFinite(valor) && valor > 0;
@@ -87,5 +94,11 @@ export function statusCadastroDeLinhas(
         }
       : null,
     formatosAtivos: formatos.filter(formato => formato.ativo).length,
+    produtividadeClassificada: Boolean(
+      cadastro
+      && (normalizarTiposSolda(cadastro.produtividadeTiposSolda).length
+        || normalizarTamanhosProdutividade(cadastro.produtividadeTamanhos).length
+        || normalizarMateriaisSolda(cadastro.produtividadeMateriais).length),
+    ),
   });
 }

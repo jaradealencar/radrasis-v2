@@ -836,7 +836,8 @@ comum, unidade de custo no MubiSys): `docs/cpq-bobinas-producao.md`.
 
 **Cadastro de matérias-primas (05/10/2026):** cada matéria-prima mostra o selo **Atualizada / Incompleta / Sem
 categoria** (regra única em `server/services/cpqCadastroMateria.ts`: categorizada e com os dados que a categoria
-exige — chapa, bobina ou perfil — conta como atualizada), no `listar` do tRPC (Produtos, com contadores e filtro)
+exige — chapa, bobina ou perfil — conta como atualizada; a "Produtividade …" com a classificação interna salva — tipo de
+solda, tamanho ou material — também conta como atualizada, mesmo sem categoria, para o gestor ver o que já editou), no `listar` do tRPC (Produtos, com contadores e filtro)
 e em `GET /api/letra-caixa/materias-cadastro` (lista da administração do CPQ). O diálogo de edição tem **Clonar
 dados de outra matéria-prima**: preenche o formulário com categoria, espessura, densidade, formatos/larguras,
 perfil e peso específico da origem (sem ids, nomes em branco, cor só se o vendedor marcar), sem salvar. `estudio_chapas.pantone_code` guarda até 6

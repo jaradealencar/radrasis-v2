@@ -7137,7 +7137,7 @@ function adminMateriasAdmin(){
   const seloCadastro=id=>{
     if(!cadastroMaterias) return '';
     const s=situacaoMateria(id);
-    if(s.status==='atualizada') return ` <span class="badge b-ok" style="margin-left:4px;" title="Categoria: ${escaparHtml(s.categoria||'')}">Atualizada</span>`;
+    if(s.status==='atualizada') return ` <span class="badge b-ok" style="margin-left:4px;" title="${s.categoria?`Categoria: ${escaparHtml(s.categoria)}`:'Classificação da produtividade salva (ainda sem categoria)'}">Atualizada</span>`;
     if(s.status==='incompleta') return ` <span class="badge b-warn" style="margin-left:4px;" title="Falta: ${escaparHtml(s.pendencias.join(', '))}">Incompleta</span>`;
     return ' <span class="badge b-neutral" style="margin-left:4px;" title="Ainda não categorizada no cadastro de Produtos">Sem categoria</span>';
   };

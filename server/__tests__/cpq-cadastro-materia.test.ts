@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { statusCadastroMateriaPrima, type EntradaStatusCadastro } from "../services/cpqCadastroMateria";
+import type { MateriaPrimaCadastro } from "../../drizzle/schema";
+import { statusCadastroDeLinhas, statusCadastroMateriaPrima, type EntradaStatusCadastro } from "../services/cpqCadastroMateria";
 
 const nenhuma = { usaDadosChapa: false, usaDadosBobina: false, usaDadosPerfil: false };
 const cadastroVazio: NonNullable<EntradaStatusCadastro["cadastro"]> = {
@@ -11,6 +12,24 @@ describe("situação do cadastro de matéria-prima", () => {
   it("sem categoria", () => {
     expect(statusCadastroMateriaPrima({ categoria: null, cadastro: null, formatosAtivos: 0 }))
       .toEqual({ status: "sem_categoria", pendencias: ["Sem categoria"] });
+  });
+
+  it("produtividade com classificação salva conta como atualizada mesmo sem categoria", () => {
+    expect(statusCadastroMateriaPrima({ categoria: null, cadastro: null, formatosAtivos: 0, produtividadeClassificada: true }))
+      .toEqual({ status: "atualizada", pendencias: [] });
+    expect(statusCadastroMateriaPrima({ categoria: null, cadastro: null, formatosAtivos: 0, produtividadeClassificada: false }).status)
+      .toBe("sem_categoria");
+  });
+
+  it("lê a classificação da produtividade nas linhas do banco", () => {
+    const linha = (parcial: Partial<MateriaPrimaCadastro>) => ({
+      produtividadeTiposSolda: [], produtividadeTamanhos: [], produtividadeMateriais: [], ...parcial,
+    }) as MateriaPrimaCadastro;
+    expect(statusCadastroDeLinhas(null, linha({}), []).status).toBe("sem_categoria");
+    expect(statusCadastroDeLinhas(null, linha({ produtividadeTiposSolda: ["sem_fixacao"] }), []).status).toBe("atualizada");
+    expect(statusCadastroDeLinhas(null, linha({ produtividadeTamanhos: ["ate_11cm"] }), []).status).toBe("atualizada");
+    expect(statusCadastroDeLinhas(null, linha({ produtividadeMateriais: ["inox"] }), []).status).toBe("atualizada");
+    expect(statusCadastroDeLinhas(null, null, []).status).toBe("sem_categoria");
   });
 
   it("categoria sem dados técnicos exigidos já conta como atualizada", () => {
