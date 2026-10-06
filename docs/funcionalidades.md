@@ -245,7 +245,7 @@ Cadastro de tipos de LED, lançamentos e resumo mensal (`custoLed.*`).
 Seções configuráveis, edição de itens, metadados e **histórico de alterações**
 (`price.getHistory`, `price_table_history`).
 A página 5, **Produtividades de solda**, consulta o cadastro atual do MubiSys e permite
-buscar e filtrar por material aplicável, tipo de solda e tamanho; a subclassificação
+buscar e filtrar por material aplicável, tipo de solda e tamanho; também permite editar a classificação pelo ícone de lápis na tabela. A subclassificação
 é feita em Produtos > Matérias-primas. As condições comerciais antes armazenadas na
 página 5 são exibidas como página 6, sem alterar os registros do banco. O PDF da tabela
 também inclui a página 5 com custos atuais do catálogo.

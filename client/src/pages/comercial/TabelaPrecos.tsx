@@ -35,10 +35,16 @@ import {
   ROTULO_MATERIAL_SOLDA,
   ROTULO_TAMANHO_PRODUTIVIDADE,
   ROTULO_TIPO_SOLDA,
+  TAMANHOS_PRODUTIVIDADE,
+  TIPOS_SOLDA,
+  alternarMaterialSolda,
+  alternarTamanhoProdutividade,
+  alternarTipoSolda,
   type MaterialSolda,
   type TamanhoProdutividade,
   type TipoSolda,
 } from "@shared/produtividade-solda";
+import { useAuth } from "@/hooks/useAuth";
 import type {
   LedModuleTable,
   LedPowerSourceTables,
@@ -1603,6 +1609,24 @@ const TAMANHOS_SOLDA_FILTRO: {
 
 function ProdutividadesSolda() {
   const [busca, setBusca] = useState("");
+  const [materialEditando, setMaterialEditando] =
+    useState<MateriaPrimaProdutividade | null>(null);
+  const [materiaisEditados, setMateriaisEditados] = useState<MaterialSolda[]>([]);
+  const [tiposEditados, setTiposEditados] = useState<TipoSolda[]>([]);
+  const [tamanhosEditados, setTamanhosEditados] = useState<TamanhoProdutividade[]>([]);
+  const { user } = useAuth();
+  const podeEditarClassificação =
+    user != null && ["gestor", "admin", "master"].includes(user.role ?? "");
+  const utils = trpc.useUtils();
+  const salvarClassificação =
+    trpc.produtos.materiasPrimas.produtividadeClassificacaoSalvar.useMutation({
+      onSuccess: () => {
+        void utils.produtos.materiasPrimas.listar.invalidate();
+        setMaterialEditando(null);
+        toast.success("Classificação da produtividade atualizada.");
+      },
+      onError: error => toast.error(error.message),
+    });
   const [materialAtivo, setMaterialAtivo] = useState<
     MaterialSolda | "todos" | "sem_material"
   >("todos");
@@ -1669,6 +1693,23 @@ function ProdutividadesSolda() {
       : produtividades.filter(item =>
           item.produtividadeMateriais.includes(material)
         ).length;
+
+  const abrirEdição = (material: MateriaPrimaProdutividade) => {
+    setMaterialEditando(material);
+    setMateriaisEditados([...material.produtividadeMateriais]);
+    setTiposEditados([...material.produtividadeTiposSolda]);
+    setTamanhosEditados([...material.produtividadeTamanhos]);
+  };
+
+  const confirmarEdição = () => {
+    if (!materialEditando) return;
+    salvarClassificação.mutate({
+      mubisysMateriaPrimaId: materialEditando.id,
+      produtividadeMateriais: materiaisEditados,
+      produtividadeTiposSolda: tiposEditados,
+      produtividadeTamanhos: tamanhosEditados,
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -1864,23 +1905,26 @@ function ProdutividadesSolda() {
           <Table className="table-fixed text-xs">
             <TableHeader>
               <TableRow>
-                <TableHead className="h-auto w-[35%] whitespace-normal px-2 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[32%] whitespace-normal px-2 py-2 text-xs leading-tight">
                   Matéria-prima MubiSys
                 </TableHead>
                 <TableHead className="h-auto w-[15%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Aplicável a
                 </TableHead>
-                <TableHead className="h-auto w-[16%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[15%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Tipo de solda
                 </TableHead>
-                <TableHead className="h-auto w-[12%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[11%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Tamanho
                 </TableHead>
-                <TableHead className="h-auto w-[10%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                <TableHead className="h-auto w-[9%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
                   Unidade
                 </TableHead>
-                <TableHead className="h-auto w-[12%] whitespace-normal px-1.5 py-2 text-right text-xs leading-tight">
+                <TableHead className="h-auto w-[11%] whitespace-normal px-1.5 py-2 text-right text-xs leading-tight">
                   Custo MubiSys
+                </TableHead>
+                <TableHead className="h-auto w-[7%] px-1 py-2 text-center text-xs leading-tight">
+                  Editar
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -1898,13 +1942,13 @@ function ProdutividadesSolda() {
                   <TableCell className="max-w-0 whitespace-normal px-1.5 py-1.5">
                     <div className="flex flex-wrap gap-1">
                       {material.produtividadeMateriais.length ? (
-                        material.produtividadeMateriais.map(aplicavel => (
+                        material.produtividadeMateriais.map(aplicável => (
                           <Badge
-                            key={aplicavel}
+                            key={aplicável}
                             variant="outline"
                             className="px-1.5 py-0 text-[10px] leading-4"
                           >
-                            {ROTULO_MATERIAL_SOLDA[aplicavel]}
+                            {ROTULO_MATERIAL_SOLDA[aplicável]}
                           </Badge>
                         ))
                       ) : (
@@ -1954,12 +1998,151 @@ function ProdutividadesSolda() {
                   <TableCell className="whitespace-normal px-1.5 py-1.5 text-right text-xs font-semibold leading-tight">
                     {fmtBrl(material.valorCusto)}
                   </TableCell>
+                  <TableCell className="px-1 py-1 text-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title={podeEditarClassificação ? "Editar classificação" : "Edição disponível para gestor, admin e master"}
+                      aria-label={`Editar classificação de ${material.nome}`}
+                      disabled={!podeEditarClassificação}
+                      onClick={() => abrirEdição(material)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </Card>
       )}
+      <Dialog
+        open={materialEditando != null}
+        onOpenChange={open => {
+          if (!open && !salvarClassificação.isPending) setMaterialEditando(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar classificação da produtividade</DialogTitle>
+          </DialogHeader>
+          {materialEditando && (
+            <div className="space-y-5">
+              <div>
+                <p className="font-medium">{materialEditando.nome}</p>
+                <p className="text-sm text-muted-foreground">
+                  Código MubiSys #{materialEditando.id}
+                </p>
+              </div>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Material aplicável</h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={materiaisEditados.length === 0 ? "secondary" : "outline"}
+                    onClick={() => setMateriaisEditados([])}
+                  >
+                    Sem material
+                  </Button>
+                  {MATERIAIS_SOLDA.map(material => (
+                    <Button
+                      key={material}
+                      type="button"
+                      size="sm"
+                      variant={materiaisEditados.includes(material) ? "default" : "outline"}
+                      onClick={() => setMateriaisEditados(atual => alternarMaterialSolda(atual, material))}
+                    >
+                      {ROTULO_MATERIAL_SOLDA[material]}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Tipo de solda</h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={tiposEditados.length === 0 ? "secondary" : "outline"}
+                    onClick={() => setTiposEditados([])}
+                  >
+                    Sem tipo
+                  </Button>
+                  {TIPOS_SOLDA.map(tipo => (
+                    <Button
+                      key={tipo}
+                      type="button"
+                      size="sm"
+                      variant={tiposEditados.includes(tipo) ? "default" : "outline"}
+                      onClick={() =>
+                        setTiposEditados(atual => {
+                          const proximo = alternarTipoSolda(atual, tipo);
+                          if (!atual.includes(tipo) && proximo.length === atual.length)
+                            toast.error("Selecione no máximo 3 tipos; sem fixação é exclusivo.");
+                          return proximo;
+                        })
+                      }
+                    >
+                      {ROTULO_TIPO_SOLDA[tipo]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Selecione até 3 tipos. "Sem fixação" não combina com os demais.
+                </p>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Tamanho</h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={tamanhosEditados.length === 0 ? "secondary" : "outline"}
+                    onClick={() => setTamanhosEditados([])}
+                  >
+                    Sem tamanho
+                  </Button>
+                  {TAMANHOS_PRODUTIVIDADE.map(tamanho => (
+                    <Button
+                      key={tamanho}
+                      type="button"
+                      size="sm"
+                      variant={tamanhosEditados.includes(tamanho) ? "default" : "outline"}
+                      onClick={() => setTamanhosEditados(atual => alternarTamanhoProdutividade(atual, tamanho))}
+                    >
+                      {ROTULO_TAMANHO_PRODUTIVIDADE[tamanho]}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setMaterialEditando(null)}
+                  disabled={salvarClassificação.isPending}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={confirmarEdição}
+                  disabled={salvarClassificação.isPending}
+                >
+                  {salvarClassificação.isPending ? "Salvando..." : "Salvar classificação"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2071,6 +2254,7 @@ function SimuladorBoletos() {
     </Card>
   );
 }
+
 
 export default function TabelaPrecos() {
   const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente">(

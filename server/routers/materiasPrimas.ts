@@ -147,6 +147,45 @@ export const materiasPrimasRouter = router({
       });
   }),
 
+  produtividadeClassificacaoSalvar: gestorCadastroProcedure
+    .input(z.object({
+      mubisysMateriaPrimaId: z.number().int().positive(),
+      produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)),
+      produtividadeTamanhos: z.array(z.enum(TAMANHOS_PRODUTIVIDADE)),
+      produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)),
+    }).strict())
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const catalogo = await listarMateriasPrimas();
+      const material = catalogo.find(item => item.id === input.mubisysMateriaPrimaId);
+      if (!material || !ehMateriaProdutividade(material.nome))
+        throw new Error("Esta materia-prima nao e uma produtividade de solda do catalogo atual do MubiSys.");
+      const erroSolda = erroTiposSolda(input.produtividadeTiposSolda);
+      if (erroSolda) throw new Error(erroSolda);
+      const erroMateriais = erroMateriaisSolda(input.produtividadeMateriais);
+      if (erroMateriais) throw new Error(erroMateriais);
+      const erroTamanhos = erroTamanhosProdutividade(input.produtividadeTamanhos);
+      if (erroTamanhos) throw new Error(erroTamanhos);
+      const now = new Date();
+      await db.insert(materiaPrimaCadastros).values({
+        mubisysMateriaPrimaId: material.id,
+        produtividadeTiposSolda: normalizarTiposSolda(input.produtividadeTiposSolda),
+        produtividadeTamanhos: normalizarTamanhosProdutividade(input.produtividadeTamanhos),
+        produtividadeMateriais: normalizarMateriaisSolda(input.produtividadeMateriais),
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: materiaPrimaCadastros.mubisysMateriaPrimaId,
+        set: {
+          produtividadeTiposSolda: normalizarTiposSolda(input.produtividadeTiposSolda),
+          produtividadeTamanhos: normalizarTamanhosProdutividade(input.produtividadeTamanhos),
+          produtividadeMateriais: normalizarMateriaisSolda(input.produtividadeMateriais),
+          updatedAt: now,
+        },
+      });
+      return { success: true };
+    }),
+
   categoriasListar: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
