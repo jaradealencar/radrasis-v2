@@ -236,7 +236,6 @@ function motivoArteColoridaRejeitada(svg: string): string | null {
     [/\son[a-z]+\s*=/i, "tem atributos de evento"],
     [/\btransform\s*=/i, "tem transformações (transform)"],
     [/\b(?:display|visibility)\s*=\s*["'](?:none|hidden)["']/i, "tem elementos ocultos"],
-    [/\b(?:opacity|fill-opacity|stroke-opacity)\s*=\s*["'](?!1(?:\.0*)?["'])\d*\.?\d+["']/i, "tem transparência parcial (opacity)"],
   ];
   const regra = regras.find(([padrao]) => padrao.test(svg));
   return regra ? regra[1] : null;
@@ -299,6 +298,10 @@ export function extrairRegioesCorSvg(arteOriginal: string): CpqCorAlvo[] {
     const duplicateKeyCount = seenKeys.get(key) ?? 0;
     seenKeys.set(key, duplicateKeyCount + 1);
     const uniqueKey = duplicateKeyCount ? `${key}-${pathIndex}` : key;
+    // Transparência não recusa a arte: a cor lida é a do preenchimento; só o que é quase invisível (<30%) é ignorado.
+    const opacidade = Math.min(1, ...[attrs.opacity, attrs["fill-opacity"], estiloSvg(attrs.style, "opacity"), estiloSvg(attrs.style, "fill-opacity")]
+      .map(valor => (valor == null ? NaN : Number(valor))).filter(Number.isFinite));
+    if (opacidade < 0.3) return { key: uniqueKey, pathIndex, tipoCor: "desconhecida", corHex: null, pantoneCode: null, cmyk: null };
     const gradientRef = fill.match(/^url\(\s*["']?#([\w.-]+)["']?\s*\)$/i)?.[1];
     const gradientColors = gradientRef ? gradients.get(gradientRef) ?? [] : [];
     const pantoneCode = attrs["data-pantone"] ?? attrs["data-pantone-code"] ?? null;

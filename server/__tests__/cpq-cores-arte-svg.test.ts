@@ -20,10 +20,20 @@ describe("leitura das cores da arte vetorizada", () => {
     expect(() => extrairRegioesCorSvg(svg)).toThrow(/DOCTYPE com entidades/);
   });
 
+  it("lê a cor de caminhos com transparência parcial e ignora os quase invisíveis", () => {
+    const svg = '<svg viewBox="0 0 10 10">'
+      + '<path fill="#ff0000" fill-opacity="0.5" d="M0 0 L9 0 L9 9 Z"/>'
+      + '<path fill="#00ff00" opacity="0.99" d="M0 0 L9 0 L9 9 Z"/>'
+      + '<path fill="#0000ff" style="fill-opacity:0.1" d="M0 0 L9 0 L9 9 Z"/></svg>';
+    const regioes = extrairRegioesCorSvg(svg);
+    expect(regioes.map(item => [item.corHex, item.tipoCor])).toEqual([
+      ["#ff0000", "solida"], ["#00ff00", "solida"], [null, "desconhecida"],
+    ]);
+  });
+
   it.each([
     ['<svg viewBox="0 0 10 10"><style>.a{fill:red}</style>' + corpo + "</svg>", /elementos não suportados/],
     ['<svg viewBox="0 0 10 10"><g transform="scale(2)">' + corpo + "</g></svg>", /transformações/],
-    ['<svg viewBox="0 0 10 10"><path fill="#ff0000" fill-opacity="0.5" d="M0 0 L9 0 L9 9 Z"/></svg>', /transparência parcial/],
   ])("recusa com o motivo exato: %#", (svg, motivo) => {
     expect(() => extrairRegioesCorSvg(svg)).toThrow(motivo);
   });

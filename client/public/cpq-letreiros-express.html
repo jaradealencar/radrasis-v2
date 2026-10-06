@@ -4080,7 +4080,8 @@ async function analisarFactibilidadeReal(){
     const chapas=Array.isArray(boardBody.chapas)?boardBody.chapas:[];
     REAL.nestingFormatosCadastrados=chapas;
     const configured=new Set(chapas.filter(board=>board.ativo!==false).map(board=>Number(board.mubisysMateriaPrimaId)));
-    const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line));
+    // Só entra no nesting matéria-prima classificada como chapa/bobina (com formato cadastrado); perfil, LED etc. ficam de fora.
+    const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line)&&configured.has(Number(materialKitAtivo(line).matId)));
     const mappedLineIds=new Set(physicalLines.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0));
     const linhasChapaSemCamada=(REAL.kit||[]).filter(line=>!line.origemPintura&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
     if(linhasChapaSemCamada.length){
@@ -4089,7 +4090,7 @@ async function analisarFactibilidadeReal(){
     }
     const materiaPrimaIds=[...mappedLineIds];
     REAL.nestingMateriaPrimaIds=materiaPrimaIds;
-    if(!materiaPrimaIds.length) throw new Error('Associe ao menos uma matéria-prima à Face, ao Aro ou ao Fundo antes de calcular o nesting.');
+    if(!materiaPrimaIds.length) throw new Error('Nenhuma matéria-prima de chapa ou bobina com formato cadastrado está ligada à Face, ao Aro ou ao Fundo do kit. Classifique a matéria-prima como chapa em Administração > Produtos > Matérias-primas ou ajuste o papel dela na composição.');
     if(materiaPrimaIds.length>10) throw new Error('A factibilidade aceita ate 10 materiais de chapa por projeto.');
     const missingFormats=materiaPrimaIds.filter(id=>!configured.has(id));
     const formatosTemporarios=[];
@@ -4327,13 +4328,14 @@ async function executarNestingFactibilidadeReal(formatosTemporarios=REAL.nesting
 
 function renderConfiguracaoNestingReal(){
   const config=REAL.nestingConfiguracao||{espacamentoMm:3,margemBordaMm:5};
-  const ids=REAL.nestingMateriaPrimaIds?.length
+  const idsBrutos=REAL.nestingMateriaPrimaIds?.length
     ? REAL.nestingMateriaPrimaIds
     : [...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line)).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
   const chapas=REAL.nestingFormatosCadastrados||[];
-  const semFormato=REAL.nestingFormatosPendentes?.length
-    ? REAL.nestingFormatosPendentes
-    : (chapas.length?ids.filter(id=>!chapas.some(chapa=>chapa.ativo!==false&&Number(chapa.mubisysMateriaPrimaId)===id)):[]);
+  // Só chapa/bobina com formato cadastrado entra no nesting; perfil e demais itens não pedem dimensões.
+  const idsChapa=new Set(chapas.filter(chapa=>chapa.ativo!==false).map(chapa=>Number(chapa.mubisysMateriaPrimaId)));
+  const ids=idsChapa.size?idsBrutos.filter(id=>idsChapa.has(Number(id))):idsBrutos;
+  const semFormato=[];
   const nomes=new Map((catalog.materias||[]).map(material=>[Number(material.id),material.nome]));
   const linhas=[];
   linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin:10px 0;">');
