@@ -7,11 +7,18 @@ import {
   listarProdutos,
   MubiSysError,
 } from "../integrations/mubisys-client";
-import { buscarComposicoesMubiSys, cookieSessaoMubiSys } from "./estudio-mubisys-session";
+import {
+  buscarComposicoesMubiSys,
+  cookieSessaoMubiSys,
+} from "./estudio-mubisys-session";
 import type {
   MubiSysMateriaPrima,
   MubiSysProduto,
 } from "../integrations/mubisys-client";
+import {
+  traduzirPerfilConsumoMubiSys,
+  type FormulaConsumoMubiSys,
+} from "../../shared/perfil-consumo-mubisys";
 
 function responderErroCatalogo(res: Response, erro: unknown): void {
   console.error("[EstudioCatalogoMubiSys] Falha ao carregar catálogo:", erro);
@@ -19,19 +26,22 @@ function responderErroCatalogo(res: Response, erro: unknown): void {
   if (erro instanceof MubiSysError) {
     if (erro.message.startsWith("Credenciais MubiSys não configuradas")) {
       res.status(503).json({
-        error: "As credenciais da API do MubiSys não estão configuradas no servidor.",
+        error:
+          "As credenciais da API do MubiSys não estão configuradas no servidor.",
       });
       return;
     }
     if (erro.status === 401 || erro.status === 403) {
       res.status(502).json({
-        error: "O MubiSys recusou as credenciais do servidor. O token precisa ser revisado.",
+        error:
+          "O MubiSys recusou as credenciais do servidor. O token precisa ser revisado.",
       });
       return;
     }
     if (erro.status === 0) {
       res.status(503).json({
-        error: "Não foi possível conectar à API do MubiSys. Tente novamente em instantes.",
+        error:
+          "Não foi possível conectar à API do MubiSys. Tente novamente em instantes.",
       });
       return;
     }
@@ -58,14 +68,23 @@ function mapearProduto(produto: MubiSysProduto) {
       unidade: modelo.unidade_cobranca || "",
       status: modelo.status || "",
       valorFinal: Number(modelo.valor_final) || 0,
-      variacoes: (Array.isArray(modelo.variacoes) ? modelo.variacoes : []).map(variacao => ({
-        id: Number(variacao.id),
-        nome: String(variacao.nome || ""),
-        descricao: String(variacao.descricao || ""),
-        status: String(variacao.status || ""),
-        valorFinal: Number(variacao.valor_final) || 0,
-        padrao: variacao.padrao === true || ["sim", "1", "true"].includes(String(variacao.padrao || "").toLowerCase()),
-      })).filter(variacao => Number.isInteger(variacao.id) && variacao.id > 0 && variacao.nome),
+      variacoes: (Array.isArray(modelo.variacoes) ? modelo.variacoes : [])
+        .map(variacao => ({
+          id: Number(variacao.id),
+          nome: String(variacao.nome || ""),
+          descricao: String(variacao.descricao || ""),
+          status: String(variacao.status || ""),
+          valorFinal: Number(variacao.valor_final) || 0,
+          padrao:
+            variacao.padrao === true ||
+            ["sim", "1", "true"].includes(
+              String(variacao.padrao || "").toLowerCase()
+            ),
+        }))
+        .filter(
+          variacao =>
+            Number.isInteger(variacao.id) && variacao.id > 0 && variacao.nome
+        ),
     })),
   };
 }
@@ -76,10 +95,16 @@ type ComposicaoMubiSys = {
   materiaPrimaId: number;
   quantidade: number;
   unidade: string;
+  perfilConsumo: string;
+  formulaConsumo: FormulaConsumoMubiSys | null;
 };
 
 function normalizarCampo(valor: string): string {
-  return valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return valor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function numeroValido(valor: unknown): number | null {
@@ -94,56 +119,189 @@ function numeroValido(valor: unknown): number | null {
   return Number.isFinite(numero) ? numero : null;
 }
 
-const CAMPOS_MODELO = new Set(["idmodelo", "modelo_id", "modeloId", "modeloid", "modelid", "idmod", "mod_id"]);
+const CAMPOS_MODELO = new Set([
+  "idmodelo",
+  "modelo_id",
+  "modeloId",
+  "modeloid",
+  "modelid",
+  "idmod",
+  "mod_id",
+]);
 const CAMPOS_VARIACAO = new Set([
-  "idvariacao", "variacao_id", "variacaoId", "variacaoid", "idvariante", "variante_id",
-  "idmodelo_variacao", "modelo_variacao_id", "idvariacaomodelo",
+  "idvariacao",
+  "variacao_id",
+  "variacaoId",
+  "variacaoid",
+  "idvariante",
+  "variante_id",
+  "idmodelo_variacao",
+  "modelo_variacao_id",
+  "idvariacaomodelo",
 ]);
 const CAMPOS_MATERIAL = new Set([
-  "idmateriaprima", "materia_prima_id", "materiaPrimaId", "materiaprimaid", "materia_id", "idmateria",
-  "materiais_id", "idmateriais", "materiaprimas_id", "idmateriaprimas",
-  "idmaterial", "material_id", "materialId", "materialid",
+  "idmateriaprima",
+  "materia_prima_id",
+  "materiaPrimaId",
+  "materiaprimaid",
+  "materia_id",
+  "idmateria",
+  "materiais_id",
+  "idmateriais",
+  "materiaprimas_id",
+  "idmateriaprimas",
+  "idmaterial",
+  "material_id",
+  "materialId",
+  "materialid",
 ]);
 const CAMPOS_QUANTIDADE = new Set([
-  "quantidade", "qtd", "qtde", "consumo", "quantidadeconsumo", "consumoquantidade", "quantidadeusada",
-  "quantidadeconsumida", "quantidadematerial", "qtdconsumo", "qtdeconsumo",
+  "quantidade",
+  "qtd",
+  "qtde",
+  "consumo",
+  "quantidadeconsumo",
+  "consumoquantidade",
+  "quantidadeusada",
+  "quantidadeconsumida",
+  "quantidadematerial",
+  "qtdconsumo",
+  "qtdeconsumo",
 ]);
-const CAMPOS_UNIDADE = new Set(["unidade", "unidademedida", "unidadedconsumo", "unidadeconsumo", "consumounidade"]);
+const CAMPOS_UNIDADE = new Set([
+  "unidade",
+  "unidademedida",
+  "unidadedconsumo",
+  "unidadeconsumo",
+  "consumounidade",
+]);
+const CAMPOS_PERFIL_CONSUMO = new Set([
+  "perfil",
+  "perfilconsumo",
+  "consumoperfil",
+  "tipoconsumo",
+  "formaconsumo",
+  "regraconsumo",
+  "baseconsumo",
+  "formulaconsumo",
+  "perfilcalculo",
+  "tipocalculo",
+  "formacalculo",
+  "regracalculo",
+  "basecalculo",
+  "metodoconsumo",
+  "metodocalculo",
+]);
 
-function valorPorAlias(campos: Record<string, unknown>, aliases: Set<string>): unknown {
+function valorPorAlias(
+  campos: Record<string, unknown>,
+  aliases: Set<string>
+): unknown {
   const aliasesNormalizados = new Set([...aliases].map(normalizarCampo));
   for (const [chave, valor] of Object.entries(campos)) {
     const normalizada = normalizarCampo(chave);
-    if (aliasesNormalizados.has(normalizada) || [...aliasesNormalizados].some(alias => normalizada.endsWith(alias))) return valor;
+    if (
+      aliasesNormalizados.has(normalizada) ||
+      [...aliasesNormalizados].some(alias => normalizada.endsWith(alias))
+    )
+      return valor;
   }
   return undefined;
 }
 
-function mapearLinhaComposicao(campos: Record<string, unknown>): ComposicaoMubiSys | null {
+function valorPerfilConsumo(campos: Record<string, unknown>): unknown {
+  const aliases = new Set([...CAMPOS_PERFIL_CONSUMO].map(normalizarCampo));
+  const candidatas = Object.entries(campos)
+    .map(([chave, valor]) => {
+      const normalizada = normalizarCampo(chave);
+      const exata =
+        aliases.has(normalizada) ||
+        [...aliases].some(alias => normalizada.endsWith(alias));
+      const relacionada =
+        normalizada.includes("perfilconsumo") ||
+        ((normalizada.includes("consumo") || normalizada.includes("calculo")) &&
+          [
+            "perfil",
+            "formula",
+            "regra",
+            "base",
+            "tipo",
+            "forma",
+            "metodo",
+          ].some(termo => normalizada.includes(termo)));
+      const rotulo = /(nome|descricao|titulo|rotulo|label|valor)$/.test(
+        normalizada
+      );
+      const texto = typeof valor === "string" ? valor.trim() : "";
+      const textual = texto !== "" && !/^\d+$/.test(texto);
+      return {
+        valor,
+        pontos:
+          (exata ? 100 : 0) +
+          (relacionada ? 50 : 0) +
+          (rotulo ? 20 : 0) +
+          (textual ? 10 : 0),
+      };
+    })
+    .filter(candidata => candidata.pontos >= 50 && candidata.valor != null);
+  candidatas.sort((a, b) => b.pontos - a.pontos);
+  return candidatas[0]?.valor;
+}
+
+function mapearLinhaComposicao(
+  campos: Record<string, unknown>
+): ComposicaoMubiSys | null {
   const modeloId = numeroValido(valorPorAlias(campos, CAMPOS_MODELO));
   const variacaoId = numeroValido(valorPorAlias(campos, CAMPOS_VARIACAO));
   const materiaPrimaId = numeroValido(valorPorAlias(campos, CAMPOS_MATERIAL));
   const quantidade = numeroValido(valorPorAlias(campos, CAMPOS_QUANTIDADE));
-  if (!materiaPrimaId || materiaPrimaId <= 0 || quantidade === null || quantidade < 0 || (!modeloId && !variacaoId)) return null;
+  if (
+    !materiaPrimaId ||
+    materiaPrimaId <= 0 ||
+    quantidade === null ||
+    quantidade < 0 ||
+    (!modeloId && !variacaoId)
+  )
+    return null;
   const unidade = valorPorAlias(campos, CAMPOS_UNIDADE);
+  const perfil = valorPerfilConsumo(campos);
+  const perfilConsumo =
+    typeof perfil === "string"
+      ? perfil.trim()
+      : perfil == null
+        ? ""
+        : String(perfil);
   return {
     modeloId: modeloId && modeloId > 0 ? modeloId : null,
     variacaoId: variacaoId && variacaoId > 0 ? variacaoId : null,
     materiaPrimaId: Math.trunc(materiaPrimaId),
     quantidade,
     unidade: typeof unidade === "string" ? unidade.trim() : "",
+    perfilConsumo,
+    formulaConsumo: traduzirPerfilConsumoMubiSys(perfilConsumo),
   };
 }
 
-function camposEscalares(objeto: Record<string, unknown>, prefixo = ""): Record<string, unknown> {
+function camposEscalares(
+  objeto: Record<string, unknown>,
+  prefixo = ""
+): Record<string, unknown> {
   const campos: Record<string, unknown> = {};
   for (const [chave, valor] of Object.entries(objeto)) {
     const caminho = prefixo ? `${prefixo}.${chave}` : chave;
-    if (valor === null || ["string", "number", "boolean"].includes(typeof valor)) campos[caminho] = valor;
+    if (
+      valor === null ||
+      ["string", "number", "boolean"].includes(typeof valor)
+    )
+      campos[caminho] = valor;
     else if (valor && typeof valor === "object" && !Array.isArray(valor)) {
       for (const [subChave, subValor] of Object.entries(valor)) {
         const caminhoFilho = `${caminho}.${subChave}`;
-        if (subValor === null || ["string", "number", "boolean"].includes(typeof subValor)) campos[caminhoFilho] = subValor;
+        if (
+          subValor === null ||
+          ["string", "number", "boolean"].includes(typeof subValor)
+        )
+          campos[caminhoFilho] = subValor;
       }
     }
   }
@@ -152,7 +310,11 @@ function camposEscalares(objeto: Record<string, unknown>, prefixo = ""): Record<
 
 function linhasJsonComposicao(conteudo: unknown): ComposicaoMubiSys[] {
   const linhas: ComposicaoMubiSys[] = [];
-  const visitar = (valor: unknown, herdados: Record<string, unknown> = {}, prefixo = ""): void => {
+  const visitar = (
+    valor: unknown,
+    herdados: Record<string, unknown> = {},
+    prefixo = ""
+  ): void => {
     if (Array.isArray(valor)) {
       valor.forEach(item => visitar(item, herdados, prefixo));
       return;
@@ -193,13 +355,18 @@ function linhasHtmlComposicao(html: string): ComposicaoMubiSys[] {
   for (const tabela of html.match(/<table\b[\s\S]*?<\/table>/gi) ?? []) {
     const trs = [...tabela.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
     if (trs.length < 2) continue;
-    const celulas = (row: string) => [...row.matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)].map(match => decodificarHtml(match[1]));
+    const celulas = (row: string) =>
+      [...row.matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)].map(
+        match => decodificarHtml(match[1])
+      );
     const cabecalho = celulas(trs[0][1]).map(normalizarCampo);
     if (!cabecalho.length) continue;
     for (const tr of trs.slice(1)) {
       const valores = celulas(tr[1]);
       const campos: Record<string, unknown> = {};
-      cabecalho.forEach((nome, index) => { if (nome && valores[index] !== undefined) campos[nome] = valores[index]; });
+      cabecalho.forEach((nome, index) => {
+        if (nome && valores[index] !== undefined) campos[nome] = valores[index];
+      });
       const linha = mapearLinhaComposicao(campos);
       if (linha) linhas.push(linha);
     }
@@ -210,8 +377,13 @@ function linhasHtmlComposicao(html: string): ComposicaoMubiSys[] {
 function temListaVaziaReconhecida(conteudo: unknown): boolean {
   if (Array.isArray(conteudo)) return conteudo.length === 0;
   if (!conteudo || typeof conteudo !== "object") return false;
-  return Object.entries(conteudo as Record<string, unknown>).some(([chave, valor]) =>
-    /^(data|dados|composicoes|composicao|rows|itens|materiais)$/.test(normalizarCampo(chave)) && Array.isArray(valor) && valor.length === 0,
+  return Object.entries(conteudo as Record<string, unknown>).some(
+    ([chave, valor]) =>
+      /^(data|dados|composicoes|composicao|rows|itens|materiais)$/.test(
+        normalizarCampo(chave)
+      ) &&
+      Array.isArray(valor) &&
+      valor.length === 0
   );
 }
 
@@ -219,32 +391,64 @@ function temTabelaComposicaoVazia(html: string): boolean {
   for (const tabela of html.match(/<table\b[\s\S]*?<\/table>/gi) ?? []) {
     const trs = [...tabela.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
     if (!trs.length) continue;
-    const celulas = (row: string) => [...row.matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)]
-      .map(match => normalizarCampo(decodificarHtml(match[1])));
+    const celulas = (row: string) =>
+      [...row.matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)].map(
+        match => normalizarCampo(decodificarHtml(match[1]))
+      );
     const cabecalho = celulas(trs[0][1]);
-    const temMaterial = cabecalho.some(campo => campo.includes("materiaprima") || campo === "material");
-    const temQuantidade = cabecalho.some(campo => campo.includes("quantidade") || ["qtd", "qtde", "consumo"].includes(campo));
+    const temMaterial = cabecalho.some(
+      campo => campo.includes("materiaprima") || campo === "material"
+    );
+    const temQuantidade = cabecalho.some(
+      campo =>
+        campo.includes("quantidade") ||
+        ["qtd", "qtde", "consumo"].includes(campo)
+    );
     if (!temMaterial || !temQuantidade) continue;
     if (trs.length === 1) return true;
-    const textoDados = trs.slice(1).map(tr => decodificarHtml(tr[1])).join(" ");
-    if (/\b(nenhum|nenhuma|sem)\b.*\b(registro|item|materia|material)/i.test(textoDados)) return true;
+    const textoDados = trs
+      .slice(1)
+      .map(tr => decodificarHtml(tr[1]))
+      .join(" ");
+    if (
+      /\b(nenhum|nenhuma|sem)\b.*\b(registro|item|materia|material)/i.test(
+        textoDados
+      )
+    )
+      return true;
   }
   return false;
 }
 
-export function mapearComposicoes(conteudo: unknown): { linhas: ComposicaoMubiSys[]; reconhecido: boolean } {
+export function mapearComposicoes(conteudo: unknown): {
+  linhas: ComposicaoMubiSys[];
+  reconhecido: boolean;
+} {
   const html = typeof conteudo === "string" ? conteudo : "";
-  const jsonRows = typeof conteudo === "string" ? [] : linhasJsonComposicao(conteudo);
+  const jsonRows =
+    typeof conteudo === "string" ? [] : linhasJsonComposicao(conteudo);
   const htmlRows = html ? linhasHtmlComposicao(html) : [];
   const linhas = [...jsonRows, ...htmlRows];
-  const deduplicadas = [...new Map(linhas.map(linha => [
-    `${linha.modeloId || ""}:${linha.variacaoId || ""}:${linha.materiaPrimaId}:${linha.quantidade}:${linha.unidade}`,
-    linha,
-  ])).values()];
+  const porVinculo = new Map<string, ComposicaoMubiSys>();
+  for (const linha of linhas) {
+    const chave = `${linha.modeloId || ""}:${linha.variacaoId || ""}:${linha.materiaPrimaId}:${linha.quantidade}`;
+    const anterior = porVinculo.get(chave);
+    const completude = (item: ComposicaoMubiSys) =>
+      Number(!!item.unidade) +
+      Number(!!item.perfilConsumo) * 2 +
+      Number(!!item.formulaConsumo) * 4;
+    if (!anterior || completude(linha) > completude(anterior)) {
+      porVinculo.set(chave, linha);
+    }
+  }
+  const deduplicadas = [...porVinculo.values()];
   // Uma tabela qualquer da página (layout, menu etc.) não prova que a ficha veio vazia.
   // Se houver linhas que o parser não entendeu, falhamos explicitamente em vez de dizer
   // silenciosamente que o modelo não possui matéria-prima cadastrada.
-  const reconhecido = deduplicadas.length > 0 || temListaVaziaReconhecida(conteudo) || temTabelaComposicaoVazia(html);
+  const reconhecido =
+    deduplicadas.length > 0 ||
+    temListaVaziaReconhecida(conteudo) ||
+    temTabelaComposicaoVazia(html);
   return { linhas: deduplicadas, reconhecido };
 }
 
@@ -261,7 +465,9 @@ function mapearMateriaPrima(materia: MubiSysMateriaPrima) {
   };
 }
 
-function mapearTabelaPrecos(secoes: Awaited<ReturnType<typeof listPriceTableSections>>) {
+function mapearTabelaPrecos(
+  secoes: Awaited<ReturnType<typeof listPriceTableSections>>
+) {
   return secoes.flatMap(secao => {
     let conteudo: {
       type?: string;
@@ -273,7 +479,10 @@ function mapearTabelaPrecos(secoes: Awaited<ReturnType<typeof listPriceTableSect
     } catch {
       return [];
     }
-    if (conteudo.type !== "margin_table" && conteudo.type !== "margin_table_multi") {
+    if (
+      conteudo.type !== "margin_table" &&
+      conteudo.type !== "margin_table_multi"
+    ) {
       return [];
     }
     return (conteudo.rows || []).map(linha => ({
@@ -289,7 +498,9 @@ function mapearTabelaPrecos(secoes: Awaited<ReturnType<typeof listPriceTableSect
 /** Consulta os catálogos no servidor para manter as credenciais do MubiSys protegidas. */
 export function registrarRotaEstudioCatalogoMubiSys(app: Express): void {
   app.get("/api/letra-caixa/catalogo", (req: Request, res: Response) => {
-    void carregarCatalogo(req, res).catch(erro => responderErroCatalogo(res, erro));
+    void carregarCatalogo(req, res).catch(erro =>
+      responderErroCatalogo(res, erro)
+    );
   });
 }
 
@@ -298,7 +509,9 @@ async function carregarCatalogo(req: Request, res: Response): Promise<void> {
   if (origin) {
     try {
       if (new URL(origin).host !== req.get("host")) {
-        res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." });
+        res
+          .status(403)
+          .json({ error: "A solicitação precisa vir do próprio sistema." });
         return;
       }
     } catch {
@@ -307,11 +520,15 @@ async function carregarCatalogo(req: Request, res: Response): Promise<void> {
     }
   }
 
-  const sessao = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  }).catch(() => null);
+  const sessao = await auth.api
+    .getSession({
+      headers: fromNodeHeaders(req.headers),
+    })
+    .catch(() => null);
   if (!sessao) {
-    res.status(401).json({ error: "Entre no Radrasys para carregar o catálogo do MubiSys." });
+    res.status(401).json({
+      error: "Entre no Radrasys para carregar o catálogo do MubiSys.",
+    });
     return;
   }
 
@@ -329,17 +546,20 @@ async function carregarCatalogo(req: Request, res: Response): Promise<void> {
       const resposta = await buscarComposicoesMubiSys(cookieWebMubiSys);
       if (resposta.unauthorized) {
         sessaoWebConectada = false;
-        erroComposicoesMubiSys = "A sessão do MubiSys expirou. Conecte novamente para atualizar os consumos.";
+        erroComposicoesMubiSys =
+          "A sessão do MubiSys expirou. Conecte novamente para atualizar os consumos.";
       } else {
         const resultado = mapearComposicoes(resposta.conteudo);
         if (!resultado.reconhecido) {
-          erroComposicoesMubiSys = "O MubiSys respondeu, mas o formato do cadastro de consumos mudou. A composição manual continua disponível.";
+          erroComposicoesMubiSys =
+            "O MubiSys respondeu, mas o formato do cadastro de consumos mudou. A composição manual continua disponível.";
         } else {
           composicoesMubiSys = resultado.linhas;
         }
       }
     } catch {
-      erroComposicoesMubiSys = "Não foi possível consultar os consumos no MubiSys agora.";
+      erroComposicoesMubiSys =
+        "Não foi possível consultar os consumos no MubiSys agora.";
     }
   }
 
@@ -348,7 +568,10 @@ async function carregarCatalogo(req: Request, res: Response): Promise<void> {
     margens = mapearTabelaPrecos(await listPriceTableSections());
   } catch (erro) {
     // A falha ao consultar a Tabela de Preços não deve esconder os catálogos do ERP.
-    console.error("[EstudioCatalogoMubiSys] Falha ao carregar Tabela de Preços:", erro);
+    console.error(
+      "[EstudioCatalogoMubiSys] Falha ao carregar Tabela de Preços:",
+      erro
+    );
   }
 
   res.setHeader("Cache-Control", "private, no-store");

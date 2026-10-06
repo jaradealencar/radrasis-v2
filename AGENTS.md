@@ -410,10 +410,13 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   variações pela API pública e tenta importar a ficha da variação/modelo
   pelo AJAX interno; os custos continuam vindo ao vivo de
   `listarMateriasPrimas()`.
-  No CPQ, a fórmula padrão acompanha a unidade de consumo da linha MubiSys
-  e as medidas do nesting: área usa a área total das peças, consumo linear usa
-  perímetro externo e demais unidades usam quantidade fixa; o vendedor pode
-  trocar a fórmula no cadastro do kit. Se a sessão expirar, o formato interno
+  No CPQ, cada linha importada preserva o perfil de consumo original do MubiSys
+  e o traduz explicitamente para a fórmula equivalente do Radrasys (`area`,
+  `areaTotal`, `areaGeral`, `perimExt`, `perimTotal` ou `fixo`), sem inferir pela
+  unidade da matéria-prima. Perfil ausente/desconhecido ou variação ativa sem
+  nenhuma linha interrompe a importação inteira, mostra o motivo ao usuário e
+  não permite salvar uma ficha parcial; o perfil original fica visível ao lado
+  da fórmula para auditoria. Se a sessão expirar, o formato interno
   mudar ou não houver composição para a variação, o fluxo preserva a composição
   manual do CPQ como fallback. A tela autenticada é uma interface interna e
   não oficial do MubiSys: alterações nela podem exigir ajuste do parser e a

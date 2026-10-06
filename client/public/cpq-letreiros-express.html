@@ -2678,12 +2678,6 @@ function variacoesSelecionadasCotacao(){
 function variacoesAtivasDoModelo(modelo){
   return (Array.isArray(modelo?.variacoes)?modelo.variacoes:[]).filter(v=>!['inativo','inativa','nao','não','0'].includes(normalizeSearch(String(v.status||''))));
 }
-function formulaPorUnidadeModelo(unidade){
-  const u=normalizeSearch(String(unidade||'')).replace(/²/g,'2');
-  if(u.includes('area')||u.includes('quadrad')||u.includes('m2')||u.includes('metro quadrado')) return 'areaTotal';
-  if(u.includes('perimetro')||u.includes('linear')||u.includes('comprimento')||u==='m'||u.includes('metro linear')) return 'perimExt';
-  return 'fixo';
-}
 function composicaoMubiSysDoModelo(modelo, variacaoIds){
   const todas=Array.isArray(catalog.composicoesMubiSys)?catalog.composicoesMubiSys:[];
   const ids=new Set((Array.isArray(variacaoIds)?variacaoIds:variacaoIds?[variacaoIds]:[]).map(Number));
@@ -2691,13 +2685,19 @@ function composicaoMubiSysDoModelo(modelo, variacaoIds){
   const compartilhadas=todas.filter(item=>!item.variacaoId&&Number(item.modeloId)===Number(modelo.id));
   const registros=[...compartilhadas,...variacoes];
   if(!registros.length) return null;
+  const faltantes=[...ids].filter(id=>!variacoes.some(item=>Number(item.variacaoId)===id));
+  if(faltantes.length){
+    const nomes=variacoesAtivasDoModelo(modelo).filter(v=>faltantes.includes(Number(v.id))).map(v=>`${v.nome} (#${v.id})`);
+    return {erro:`O MubiSys não devolveu matérias-primas para as variações: ${nomes.join(', ')||faltantes.join(', ')}. A importação foi interrompida para não salvar uma ficha incompleta.`};
+  }
   const linhas=[];
   for(const item of registros){
     const m=catalog.materias.find(x=>Number(x.id)===Number(item.materiaPrimaId));
     if(!m) return {erro:`A matéria-prima ${item.materiaPrimaId} desta composição não está no catálogo atual do MubiSys.`};
+    if(!item.perfilConsumo||!item.formulaConsumo||!BASES_COBRANCA_PRODUTO.includes(item.formulaConsumo)) return {erro:`A matéria-prima ${m.nome} (#${m.id}) veio com o perfil de consumo “${item.perfilConsumo||'não informado'}”, que ainda não possui equivalente seguro no Radrasys. A importação foi interrompida para evitar cálculo incorreto.`};
     const variacao=item.variacaoId==null?null:variacoesAtivasDoModelo(modelo).find(v=>Number(v.id)===Number(item.variacaoId));
     const unidadeConsumo=item.unidade||m.unidade||modelo.unidade||'unidade';
-    linhas.push({matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',formulaType:formulaPorUnidadeModelo(unidadeConsumo),mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,consumoBaseUnidade:variacao?.nome||modelo.unidade||'unidade',unidadeConsumo,variacaoModeloId:item.variacaoId??null,variacaoModeloNome:variacao?.nome||null});
+    linhas.push({matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',formulaType:item.formulaConsumo,mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,perfilConsumoMubiSys:item.perfilConsumo,consumoBaseUnidade:variacao?.nome||modelo.unidade||'unidade',unidadeConsumo,variacaoModeloId:item.variacaoId??null,variacaoModeloNome:variacao?.nome||null});
   }
   return {linhas};
 }
@@ -7139,13 +7139,16 @@ function adminProdutos(){
     .filter(p=> !q || normalizeSearch(p.nome+' '+skuProduto(p.id)+' '+p.modelos.map(m=>skuModelo(p.id,m.id)).join(' ')).includes(q))
     .slice()
     .sort((a,b)=> (adminState.produtosExcluidos.has(a.id)?1:0) - (adminState.produtosExcluidos.has(b.id)?1:0));
-  const cadastrados = Object.keys(adminState.kits).length;
+  const kitsCadastrados = Object.values(adminState.kits);
+  const cadastrados = kitsCadastrados.filter(kit=>Array.isArray(kit?.linhas)&&kit.linhas.length>0).length;
+  const incompletos = kitsCadastrados.filter(kit=>!Array.isArray(kit?.linhas)||kit.linhas.length===0).length;
   return `
   <div class="card">
     <div class="cardhead">
       <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. Cada produto recebe um SKU Radrasys fixo a partir do ID MubiSys; cada modelo tem um SKU derivado do produto e do ID do modelo. Busque por nome ou SKU para localizar configurações.</p><p>As variações vêm do catálogo. Para importar a ficha de consumo de cada variação, conecte a conta do MubiSys abaixo; se não houver ficha importada, a composição manual por modelo continua disponível.</p>${catalog.baixadoEm?`<p style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Última consulta ao MubiSys: ${new Date(catalog.baixadoEm).toLocaleString('pt-BR')}</p>`:''}</div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
-        <span class="badge b-accent">${cadastrados} modelo(s) cadastrado(s)</span>
+        <span class="badge b-accent">${cadastrados} modelo(s) completo(s)</span>
+        ${incompletos?`<span class="badge b-warn">${incompletos} incompleto(s) sem insumos</span>`:''}
         <span class="badge ${kitsApiDisponivel?'b-ok':'b-warn'}">${kitsCarregando?'Carregando cadastros…':kitsApiDisponivel?'✓ gravação no banco compartilhado':`⚠ banco indisponível${kitsApiErro?': '+escaparHtml(kitsApiErro):''}`}</span>
         <button class="btn btn-ghost btn-sm" data-act="admin-catalogo-atualizar" ${catalog.refreshing?'disabled':''}>${catalog.refreshing?'Atualizando…':'Atualizar catálogo do MubiSys'}</button>
       </div>
@@ -7162,7 +7165,8 @@ function adminProdutos(){
 function adminProdutoRow(p){
   const expanded = adminState.expandedProdutoId===p.id;
   const excluido = adminState.produtosExcluidos.has(p.id);
-  const cadastradosCount = p.modelos.filter(m=>adminState.kits[kitKey(p.id,m.id)]).length;
+  const cadastradosCount = p.modelos.filter(m=>adminState.kits[kitKey(p.id,m.id)]?.linhas?.length>0).length;
+  const incompletosCount = p.modelos.filter(m=>adminState.kits[kitKey(p.id,m.id)]&&!adminState.kits[kitKey(p.id,m.id)]?.linhas?.length).length;
   const variacoesCount = p.modelos.reduce((total,m)=>total+variacoesAtivasDoModelo(m).length,0);
   return `
   <div style="border-bottom:1px solid var(--border);">
@@ -7172,7 +7176,7 @@ function adminProdutoRow(p){
         <div>
           <div style="font-weight:600; font-size:13.5px;">${p.nome}${excluido?' <span class="badge b-bad" style="margin-left:6px;">excluído</span>':''}</div>
           <div style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">SKU do produto: <span class="mono">${skuProduto(p.id)}</span></div>
-          <div style="font-size:11.5px; color:var(--text-faint);">${p.modelos.length} modelo(s) · ${variacoesCount} variação(ões) · ${cadastradosCount} cadastrado(s) no Radrasys</div>
+          <div style="font-size:11.5px; color:var(--text-faint);">${p.modelos.length} modelo(s) · ${variacoesCount} variação(ões) · ${cadastradosCount} completo(s) no Radrasys${incompletosCount?` · ${incompletosCount} incompleto(s)`:''}</div>
         </div>
       </div>
       <button class="btn btn-ghost btn-sm" data-act="admin-excluir-produto" data-val="${p.id}">${excluido?'Reativar':'Excluir'}</button>
@@ -7193,7 +7197,7 @@ function adminModeloRow(p, m){
         <div style="font-size:11.5px; color:var(--text-faint);"><span class="mono" style="color:var(--accent-ink);">${skuModelo(p.id,m.id)}</span> · ${m.unidade||'—'}${kit && kit.categoria? ` · ${kit.categoria} ▸ ${kit.subcategoria||'—'}${kit.tipoProduto?' ▸ '+kit.tipoProduto:''}` : ''}${kit && baseCobrancaValida(kit.baseCobranca)? ` · cobrado por ${ROTULO_CURTO_BASE_COBRANCA[kit.baseCobranca]}` : ''}</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
-        ${kit? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':kit.precificacao.modo==='lucro'?` · lucro ${kit.precificacao.margemPct||0}%`:' · margem vinculada'):''})</span>` : `<span class="badge b-neutral">Não cadastrado</span>`}
+        ${kit&&kit.linhas.length? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':kit.precificacao.modo==='lucro'?` · lucro ${kit.precificacao.margemPct||0}%`:' · margem vinculada'):''})</span>` : kit?`<span class="badge b-warn">⚠ Incompleto (0 itens — importar ficha)</span>`:`<span class="badge b-neutral">Não cadastrado</span>`}
         <button class="btn btn-soft btn-sm" data-act="admin-edit-kit" data-val="${key}" data-nome="${p.nome} — ${m.nome}" ${kitsCarregando?'disabled':''}>${editing?'Fechar':'✏️ '+(kit?'Editar produto':'Cadastrar produto')}</button>
       </div>
     </div>
@@ -7405,7 +7409,7 @@ function adminKitEditor(p, m, key){
               <option value="">Todas (comum)</option>
               ${variacoesModelo.map(v=>`<option value="${v.id}" ${String(k.variacaoModeloId)===String(v.id)?'selected':''}>${escaparHtml(v.nome)}</option>`).join('')}
             </select></td>`:''}
-            <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select>${baseKit&&k.formulaType!==baseKit?`<div class="source-tag" title="A base do produto é ${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])}; esta linha usa outra fórmula.">≠ base do produto (${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])})</div>`:''}</td>
+            <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select>${k.perfilConsumoMubiSys?`<div class="source-tag" title="Perfil original recebido da ficha da matéria-prima.">Perfil MubiSys: ${escaparHtml(k.perfilConsumoMubiSys)}</div>`:''}${baseKit&&k.formulaType!==baseKit?`<div class="source-tag" title="A base do produto é ${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])}; esta linha usa outra fórmula.">≠ base do produto (${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])})</div>`:''}</td>
             <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="admin-kit-mult" data-idx="${i}" style="width:70px;"></td>
             <td><button class="btn btn-ghost btn-sm" data-act="admin-kit-remove" data-idx="${i}">✕</button></td>
           </tr>`).join('') : `<tr><td colspan="6" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado (pode adicionar quantas matérias-primas precisar).</td></tr>`}
