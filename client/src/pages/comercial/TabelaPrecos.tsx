@@ -2030,6 +2030,9 @@ function ProdutividadesSolda() {
           </DialogHeader>
           {materialEditando && (
             <div className="space-y-5">
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                <strong>Sele&ccedil;&atilde;o m&uacute;ltipla:</strong> a mesma produtividade pode receber mais de uma op&ccedil;&atilde;o em cada grupo: v&aacute;rios materiais, at&eacute; 3 tipos de solda e os dois tamanhos. &ldquo;Sem fixa&ccedil;&atilde;o&rdquo; &eacute; exclusiva dentro do grupo de tipo de solda.
+              </div>
               <div>
                 <p className="font-medium">{materialEditando.nome}</p>
                 <p className="text-sm text-muted-foreground">
