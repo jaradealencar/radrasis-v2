@@ -1858,82 +1858,104 @@ function ProdutividadesSolda() {
           )}
         </Empty>
       ) : (
-        <Card>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Matéria-prima MubiSys</TableHead>
-                  <TableHead>Aplicável a</TableHead>
-                  <TableHead>Tipo de solda</TableHead>
-                  <TableHead>Tamanho</TableHead>
-                  <TableHead>Unidade</TableHead>
-                  <TableHead className="text-right">Custo MubiSys</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtradas.map(material => (
-                  <TableRow key={material.id}>
-                    <TableCell>
-                      <div className="font-medium">{material.nome}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Código MubiSys #{material.id}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {material.produtividadeMateriais.length ? (
-                          material.produtividadeMateriais.map(aplicavel => (
-                            <Badge key={aplicavel} variant="outline">
-                              {ROTULO_MATERIAL_SOLDA[aplicavel]}
-                            </Badge>
-                          ))
-                        ) : (
+        <Card className="overflow-hidden py-0">
+          <Table className="table-fixed text-xs">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="h-auto w-[35%] whitespace-normal px-2 py-2 text-xs leading-tight">
+                  Matéria-prima MubiSys
+                </TableHead>
+                <TableHead className="h-auto w-[15%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                  Aplicável a
+                </TableHead>
+                <TableHead className="h-auto w-[16%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                  Tipo de solda
+                </TableHead>
+                <TableHead className="h-auto w-[12%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                  Tamanho
+                </TableHead>
+                <TableHead className="h-auto w-[10%] whitespace-normal px-1.5 py-2 text-xs leading-tight">
+                  Unidade
+                </TableHead>
+                <TableHead className="h-auto w-[12%] whitespace-normal px-1.5 py-2 text-right text-xs leading-tight">
+                  Custo MubiSys
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtradas.map(material => (
+                <TableRow key={material.id}>
+                  <TableCell className="max-w-0 whitespace-normal break-words px-2 py-1.5 text-xs leading-snug">
+                    <div className="break-words [overflow-wrap:anywhere] font-medium">
+                      {material.nome}
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+                      Código MubiSys #{material.id}
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-0 whitespace-normal px-1.5 py-1.5">
+                    <div className="flex flex-wrap gap-1">
+                      {material.produtividadeMateriais.length ? (
+                        material.produtividadeMateriais.map(aplicavel => (
                           <Badge
+                            key={aplicavel}
                             variant="outline"
-                            className="border-amber-400 text-amber-800"
+                            className="px-1.5 py-0 text-[10px] leading-4"
                           >
-                            Sem material
+                            {ROTULO_MATERIAL_SOLDA[aplicavel]}
                           </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {material.produtividadeTiposSolda.length ? (
-                          material.produtividadeTiposSolda.map(tipo => (
-                            <Badge key={tipo} variant="secondary">
-                              {ROTULO_TIPO_SOLDA[tipo]}
-                            </Badge>
-                          ))
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="border-amber-400 text-amber-800"
-                          >
-                            Sem tipo
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {material.produtividadeTamanho ? (
-                        ROTULO_TAMANHO_PRODUTIVIDADE[
-                          material.produtividadeTamanho
-                        ]
+                        ))
                       ) : (
-                        <span className="text-amber-700">Sem tamanho</span>
+                        <Badge
+                          variant="outline"
+                          className="border-amber-400 px-1.5 py-0 text-[10px] leading-4 text-amber-800"
+                        >
+                          Sem material
+                        </Badge>
                       )}
-                    </TableCell>
-                    <TableCell>{material.unidadeCusto || "—"}</TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {fmtBrl(material.valorCusto)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-0 whitespace-normal px-1.5 py-1.5">
+                    <div className="flex flex-wrap gap-1">
+                      {material.produtividadeTiposSolda.length ? (
+                        material.produtividadeTiposSolda.map(tipo => (
+                          <Badge
+                            key={tipo}
+                            variant="secondary"
+                            className="px-1.5 py-0 text-[10px] leading-4"
+                          >
+                            {ROTULO_TIPO_SOLDA[tipo]}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-400 px-1.5 py-0 text-[10px] leading-4 text-amber-800"
+                        >
+                          Sem tipo
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-0 whitespace-normal break-words px-1.5 py-1.5 text-xs leading-tight">
+                    {material.produtividadeTamanho ? (
+                      ROTULO_TAMANHO_PRODUTIVIDADE[
+                        material.produtividadeTamanho
+                      ]
+                    ) : (
+                      <span className="text-amber-700">Sem tamanho</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="max-w-0 whitespace-normal break-words px-1.5 py-1.5 text-xs leading-tight">
+                    {material.unidadeCusto || "—"}
+                  </TableCell>
+                  <TableCell className="whitespace-normal px-1.5 py-1.5 text-right text-xs font-semibold leading-tight">
+                    {fmtBrl(material.valorCusto)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </Card>
       )}
     </div>
