@@ -27,8 +27,17 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { fmtNum } from "@/lib/format";
+import { fmtBrl, fmtNum } from "@/lib/format";
 import { ledPowerSourceTextKey } from "@shared/led-power-sources";
+import {
+  MATERIAIS_SOLDA,
+  ROTULO_MATERIAL_SOLDA,
+  ROTULO_TAMANHO_PRODUTIVIDADE,
+  ROTULO_TIPO_SOLDA,
+  type MaterialSolda,
+  type TamanhoProdutividade,
+  type TipoSolda,
+} from "@shared/produtividade-solda";
 import type {
   LedModuleTable,
   LedPowerSourceTables,
@@ -54,6 +63,8 @@ import {
   Clock,
   Image as ImageIcon,
   Upload,
+  Hammer,
+  RefreshCw,
 } from "lucide-react";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { enviarArquivo } from "@/lib/upload";
@@ -1531,8 +1542,355 @@ function gerarPdfTabela(
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+const TIPOS_SOLDA_FILTRO: { value: TipoSolda | "todos"; label: string }[] = [
+  { value: "todos", label: "Todos os tipos" },
+  { value: "barra_roscada", label: ROTULO_TIPO_SOLDA.barra_roscada },
+  { value: "patinha_led", label: ROTULO_TIPO_SOLDA.patinha_led },
+  {
+    value: "chapinha_dupla_face",
+    label: ROTULO_TIPO_SOLDA.chapinha_dupla_face,
+  },
+  { value: "orelhinha", label: ROTULO_TIPO_SOLDA.orelhinha },
+  { value: "sem_fixacao", label: ROTULO_TIPO_SOLDA.sem_fixacao },
+];
+
+const TAMANHOS_SOLDA_FILTRO: {
+  value: TamanhoProdutividade | "todos";
+  label: string;
+}[] = [
+  { value: "todos", label: "Todos os tamanhos" },
+  { value: "ate_11cm", label: ROTULO_TAMANHO_PRODUTIVIDADE.ate_11cm },
+  { value: "acima_11cm", label: ROTULO_TAMANHO_PRODUTIVIDADE.acima_11cm },
+];
+
+function ProdutividadesSolda() {
+  const [busca, setBusca] = useState("");
+  const [materialAtivo, setMaterialAtivo] = useState<
+    MaterialSolda | "todos" | "sem_material"
+  >("todos");
+  const [tipoAtivo, setTipoAtivo] = useState<TipoSolda | "todos">("todos");
+  const [tamanhoAtivo, setTamanhoAtivo] = useState<
+    TamanhoProdutividade | "todos"
+  >("todos");
+  const {
+    data: catalogo,
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = trpc.produtos.materiasPrimas.listar.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+
+  const produtividades = useMemo(
+    () => (catalogo ?? []).filter(material => material.ehProdutividade),
+    [catalogo]
+  );
+  const incompletas = useMemo(
+    () =>
+      produtividades.filter(
+        material =>
+          material.produtividadeTiposSolda.length === 0 ||
+          material.produtividadeTamanho == null ||
+          material.produtividadeMateriais.length === 0
+      ).length,
+    [produtividades]
+  );
+  const filtradas = useMemo(() => {
+    const termo = busca.trim().toLocaleLowerCase("pt-BR");
+    return produtividades.filter(material => {
+      const correspondeBusca =
+        !termo ||
+        `${material.nome} ${material.id} ${material.categoriaMubiSys ?? ""}`
+          .toLocaleLowerCase("pt-BR")
+          .includes(termo);
+      const correspondeMaterial =
+        materialAtivo === "todos" ||
+        (materialAtivo === "sem_material"
+          ? material.produtividadeMateriais.length === 0
+          : material.produtividadeMateriais.includes(materialAtivo));
+      const correspondeTipo =
+        tipoAtivo === "todos" ||
+        material.produtividadeTiposSolda.includes(tipoAtivo);
+      const correspondeTamanho =
+        tamanhoAtivo === "todos" ||
+        material.produtividadeTamanho === tamanhoAtivo;
+      return (
+        correspondeBusca &&
+        correspondeMaterial &&
+        correspondeTipo &&
+        correspondeTamanho
+      );
+    });
+  }, [busca, materialAtivo, produtividades, tamanhoAtivo, tipoAtivo]);
+
+  const quantidadePorMaterial = (material: MaterialSolda | "sem_material") =>
+    material === "sem_material"
+      ? produtividades.filter(item => item.produtividadeMateriais.length === 0)
+          .length
+      : produtividades.filter(item =>
+          item.produtividadeMateriais.includes(material)
+        ).length;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Hammer className="h-6 w-6 text-amber-700" />
+            <h1 className="text-2xl font-bold text-slate-900">
+              Produtividades de solda
+            </h1>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            Valores atuais e cadastro de matérias-primas do MubiSys, organizados
+            pela classificação de solda.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+          />
+          Atualizar MubiSys
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        <span>
+          <strong>{produtividades.length}</strong> produtividade(s) de solda no
+          catálogo.
+        </span>
+        {incompletas > 0 && (
+          <Badge
+            variant="outline"
+            className="border-amber-400 bg-white text-amber-800"
+          >
+            {incompletas} aguardando classificação completa
+          </Badge>
+        )}
+        <span className="text-xs text-amber-800">
+          Classifique em Produtos → Matérias-primas; os nomes e valores são
+          lidos do MubiSys.
+        </span>
+      </div>
+
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Material
+            </span>
+            <Button
+              size="sm"
+              variant={materialAtivo === "todos" ? "default" : "outline"}
+              onClick={() => setMaterialAtivo("todos")}
+            >
+              Todos ({produtividades.length})
+            </Button>
+            {MATERIAIS_SOLDA.map(material => (
+              <Button
+                key={material}
+                size="sm"
+                variant={materialAtivo === material ? "default" : "outline"}
+                onClick={() => setMaterialAtivo(material)}
+              >
+                {ROTULO_MATERIAL_SOLDA[material]} (
+                {quantidadePorMaterial(material)})
+              </Button>
+            ))}
+            <Button
+              size="sm"
+              variant={materialAtivo === "sem_material" ? "default" : "outline"}
+              onClick={() => setMaterialAtivo("sem_material")}
+            >
+              Sem material ({quantidadePorMaterial("sem_material")})
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Tipo de solda
+            </span>
+            {TIPOS_SOLDA_FILTRO.map(filtro => (
+              <Button
+                key={filtro.value}
+                size="sm"
+                variant={tipoAtivo === filtro.value ? "secondary" : "ghost"}
+                onClick={() => setTipoAtivo(filtro.value)}
+              >
+                {filtro.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-24 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Tamanho
+            </span>
+            {TAMANHOS_SOLDA_FILTRO.map(filtro => (
+              <Button
+                key={filtro.value}
+                size="sm"
+                variant={tamanhoAtivo === filtro.value ? "secondary" : "ghost"}
+                onClick={() => setTamanhoAtivo(filtro.value)}
+              >
+                {filtro.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 border-t pt-3">
+            <Search className="h-4 w-4 shrink-0 text-slate-400" />
+            <Input
+              placeholder="Buscar nome ou código MubiSys..."
+              value={busca}
+              onChange={event => setBusca(event.target.value)}
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">
+              {filtradas.length} de {produtividades.length}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(item => (
+            <div
+              key={item}
+              className="h-14 animate-pulse rounded-lg bg-slate-100"
+            />
+          ))}
+        </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <p className="font-medium text-rose-700">
+                Não foi possível carregar as matérias-primas do MubiSys.
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {error.message}
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => refetch()}>
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      ) : filtradas.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Hammer />
+            </EmptyMedia>
+            <EmptyTitle>
+              {produtividades.length === 0
+                ? "Nenhuma produtividade de solda no catálogo"
+                : "Nenhum item corresponde aos filtros"}
+            </EmptyTitle>
+            <EmptyDescription>
+              {produtividades.length === 0
+                ? "O catálogo do MubiSys não retornou matérias-primas com o nome Produtividade."
+                : "Altere os filtros ou limpe a busca para ver outros itens."}
+            </EmptyDescription>
+          </EmptyHeader>
+          {busca && (
+            <EmptyContent>
+              <Button variant="outline" onClick={() => setBusca("")}>
+                Limpar busca
+              </Button>
+            </EmptyContent>
+          )}
+        </Empty>
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Matéria-prima MubiSys</TableHead>
+                  <TableHead>Aplicável a</TableHead>
+                  <TableHead>Tipo de solda</TableHead>
+                  <TableHead>Tamanho</TableHead>
+                  <TableHead>Unidade</TableHead>
+                  <TableHead className="text-right">Custo MubiSys</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtradas.map(material => (
+                  <TableRow key={material.id}>
+                    <TableCell>
+                      <div className="font-medium">{material.nome}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Código MubiSys #{material.id}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {material.produtividadeMateriais.length ? (
+                          material.produtividadeMateriais.map(aplicavel => (
+                            <Badge key={aplicavel} variant="outline">
+                              {ROTULO_MATERIAL_SOLDA[aplicavel]}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-400 text-amber-800"
+                          >
+                            Sem material
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {material.produtividadeTiposSolda.length ? (
+                          material.produtividadeTiposSolda.map(tipo => (
+                            <Badge key={tipo} variant="secondary">
+                              {ROTULO_TIPO_SOLDA[tipo]}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-400 text-amber-800"
+                          >
+                            Sem tipo
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {material.produtividadeTamanho ? (
+                        ROTULO_TAMANHO_PRODUTIVIDADE[
+                          material.produtividadeTamanho
+                        ]
+                      ) : (
+                        <span className="text-amber-700">Sem tamanho</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{material.unidadeCusto || "—"}</TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {fmtBrl(material.valorCusto)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function TabelaPrecos() {
-  const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente">(
+  const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente" | "produtividade_solda">(
     "principal"
   );
   const [activeTab, setActiveTab] = useState("1");
@@ -1631,7 +1989,7 @@ export default function TabelaPrecos() {
   return (
     <>
       {/* Navegação de Sub-abas */}
-      <div className="flex gap-2 mb-6 border-b border-slate-200 pb-0">
+      <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-200 pb-0">
         <button
           onClick={() => setTabelaAtiva("principal")}
           className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${
@@ -1654,7 +2012,20 @@ export default function TabelaPrecos() {
           <Plus className="w-4 h-4 inline mr-1.5" />
           Tabela Novo Cliente
         </button>
+        <button
+          onClick={() => setTabelaAtiva("produtividade_solda")}
+          className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${
+            tabelaAtiva === "produtividade_solda"
+              ? "bg-white border-amber-200 text-amber-800 shadow-sm -mb-px"
+              : "bg-slate-50 border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <Hammer className="w-4 h-4 inline mr-1.5" />
+          Produtividades de solda
+        </button>
       </div>
+      {tabelaAtiva === "produtividade_solda" && <ProdutividadesSolda />}
+
 
       {/* ─── ABA: TABELA NOVO CLIENTE ─── */}
       {tabelaAtiva === "novo_cliente" && (

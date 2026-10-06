@@ -438,8 +438,9 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`), `produtividade_tamanho` (migration `0089`) e
   `produtividade_materiais` (`text[]`, migration `0090`);
   regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
-  (`ehMateriaProdutividade`), ignorando o que vier para as demais. É só cadastro: nenhum cálculo de custo ou preço lê
-  esses campos ainda, e a classificação é manual (nada é deduzido do texto entre colchetes do nome). O CPQ permite selecionar várias
+  (`ehMateriaProdutividade`), ignorando o que vier para as demais. A aba Tabela de Preços > Produtividades de solda consulta o catálogo do MubiSys e permite filtrar por
+  material, tipo de solda e tamanho. A classificação é manual (não deduzida do texto do nome); nenhum cálculo de custo ou
+  preço lê esses campos ainda. O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
   escolhidas; salva as medidas do nesting e os materiais calculados no
   snapshot da cotação. Comercial > Propostas pode importar medidas de uma
