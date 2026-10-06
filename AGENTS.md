@@ -442,7 +442,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `produtividade_materiais` (`text[]`, migration `0090`). A coluna antiga `produtividade_tamanho` continua no banco e no
   `schema.ts` só como **legado** (nada a lê nem grava); remova-a numa migration futura, depois que nenhum deploy anterior a use;
   regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
-  (`ehMateriaProdutividade`), ignorando o que vier para as demais. A página 5 da Tabela de Preços, Produtividades de solda, consulta o catálogo do MubiSys e permite filtrar por
+  (`ehMateriaProdutividade`), ignorando o que vier para as demais. A página 5 da Tabela de Preços, Produtividades de solda, consulta o catálogo do MubiSys e permite filtrar e editar classificações de
   material, tipo de solda e tamanho. A classificação é manual (não deduzida do texto do nome); nenhum cálculo de custo ou
   preço lê esses campos ainda. **Produtividades relacionadas ao produto (pedido de 06/10/2026):** no editor de produto do
   CPQ (Administração > Produtos & kits), todo produto de categoria **Letreiros** tem a lista fechada "Produtividades de solda
@@ -750,6 +750,9 @@ dimensão útil; no escovado, a caixa a 0°/180°); o que passa dali ainda pode 
 (4) **Perfil nunca entra no nesting** (regra do usuário, 05/10/2026): o consumo dele vem do perímetro já medido na prancha técnica. O HTML já
 só envia chapa/bobina com formato; o servidor agora também recusa (422) perfil em `POST /api/letra-caixa/nesting` e na factibilidade, e o
 cadastro legado de formato (`/api/letra-caixa/chapas`) responde 409 para matéria-prima de perfil (`server/db/materiaPerfil.ts`).
+Como o cadastro nem sempre está classificado como perfil (o servidor só reconhece a categoria), o HTML também deixa de fora a linha cujo
+**papel ou nome da matéria-prima tem a palavra "perfil"** (`linhaEhPerfil`, fix de 06/10/2026): um perfil com formato antigo em
+`estudio_chapas` entrava como camada `aro` sem contornos no SVG ("Não há contornos fechados nas camadas aro…") e derrubava o nesting inteiro.
 **Emendas inteligentes (pedido de 05/10/2026):** peça maior que a chapa é fatiada por `clipToSheets`
 (`cpqFactibilidadeFabricacao.ts`); as linhas de corte vão para o ponto de **menor material** (`limitesDeCorte`, janela de 70–100%
 do tamanho útil; vãos entre letras e hastes finas), cada linha informa `materialCortadoMm` e o painel REQUER_APROVACAO_EMENDA
@@ -870,7 +873,15 @@ vendedor quando o ΔE00 passa de 5). Nos dois casos, se a face for de acrílico 
 ou escolhida na tela), a composição é **acrílico transparente + adesivo**, e o vendedor precisa marcar a
 autorização na tela (o servidor recusa a aprovação sem `autorizaAdesivoSobreAcrilico`). O adesivo **impresso** é
 cobrado com a dimensão do letreiro inteiro (união dos contornos da face, `caixaLetreiroMm`), uma única peça; o
-Imprimax sólido segue por contorno. O catálogo Imprimax de 05/08/2026 (155 cores sólidas) está em
+Imprimax sólido segue por contorno. **Rolo padrão do adesivo (06/10/2026):** sem largura de bobina cadastrada em
+`estudio_precos_impressao`, `calcularConsumosBobina` usa 1200 mm de largura por 5000 mm de comprimento
+(`BOBINA_ADESIVO_PADRAO`, informado pelo usuário), com aviso em cada região; layout acima de 5000 mm bloqueia o consumo. O **custo continua
+pendente** enquanto faltar o preço do vinil/impressão (nunca vira zero) e isso ainda impede aprovar o preço e emitir. **Desconsiderar adesivo
+(06/10/2026):** a leitura de adesivo pode ser erro da arte; o botão "O projeto não precisa de adesivo" (passo Nesting/Composição) manda
+`semAdesivo: true` para `POST /api/letra-caixa/cores/analisar-svg`, e `desconsiderarAdesivoDaSugestao` regrava as regiões de adesivo como
+`pendente` (sem chapa-base, custo ou consumo; a face volta à composição do kit). Como o servidor compara o snapshot com o mapeamento gravado,
+a decisão passa por ele — esconder o aviso só na tela quebraria a emissão. `REAL.colorAnalysis.semAdesivo` sobrevive a "Refazer análise";
+"Voltar a considerar o adesivo" desfaz. O catálogo Imprimax de 05/08/2026 (155 cores sólidas) está em
 `shared/imprimax-catalogo-2026-08.ts` e é carregado pelo gestor em Administração > Chapas para nesting
 (`PUT /api/letra-caixa/cores/imprimax-padrao`, preserva preço/Pantone/CMYK já cadastrados). Os códigos `IMX-…` são
 internos (o PDF não traz código Imprimax) e o hex vem da foto do catálogo, não de Pantone/CMYK oficiais.

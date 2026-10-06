@@ -11,7 +11,7 @@ import {
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { CpqFactibilidadeError, calcularMetricasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
-import { aplicarCustosBobinaAgrupados, consolidarRegioesFotograficas, type CpqCorCatalogo, extrairRegioesCorSvg, hexParaRgb, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+import { aplicarCustosBobinaAgrupados, consolidarRegioesFotograficas, type CpqCorCatalogo, desconsiderarAdesivoDaSugestao, extrairRegioesCorSvg, hexParaRgb, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
 import { listarPantone, pantoneMaisProximos, rgbParaCmykAproximado } from "../services/cpqPantone";
 import { IMPRIMAX_CATALOGO_PADRAO, IMPRIMAX_CATALOGO_VERSAO } from "../../shared/imprimax-catalogo-2026-08";
 
@@ -77,6 +77,8 @@ const analisarInput = z.object({
   construcaoFace: z.enum(["acrilico_total", "outra", "nao_informada"]).default("nao_informada"),
   laminar: z.boolean(),
   caixaLetreiroMm: boundingBoxMm.nullable().optional(),
+  // O vendedor descartou a leitura de adesivo (possível erro de leitura da arte): nenhuma região pede adesivo.
+  semAdesivo: z.boolean().optional(),
 }).strict().superRefine((input, context) => {
   if (new Set(input.regioes.map(region => region.key)).size !== input.regioes.length)
     context.addIssue({ code: "custom", message: "As regiões de cor precisam ter identificadores únicos." });
@@ -93,6 +95,7 @@ const analisarSvgInput = z.object({
   baseImpressao: z.enum(["branco", "transparente"]),
   construcaoFace: z.enum(["acrilico_total", "outra", "nao_informada"]).default("nao_informada"),
   laminar: z.boolean(),
+  semAdesivo: z.boolean().optional(),
 }).strict();
 
 const aprovarInput = z.object({
@@ -322,7 +325,8 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
     precos,
     construcaoFace: parsed.construcaoFace,
   }));
-  const resultados = aplicarCustosBobinaAgrupados(sugestoes, parsed.regioes, precos, parsed.caixaLetreiroMm ?? null);
+  const sugestoesFinais = parsed.semAdesivo ? sugestoes.map(desconsiderarAdesivoDaSugestao) : sugestoes;
+  const resultados = aplicarCustosBobinaAgrupados(sugestoesFinais, parsed.regioes, precos, parsed.caixaLetreiroMm ?? null);
   await db.transaction(async tx => {
     await tx.delete(estudioMapeamentoCoresCotacao)
       .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.sourceId));
@@ -520,6 +524,7 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
       baseImpressao: parsed.data.baseImpressao,
       laminar: parsed.data.laminar,
       construcaoFace: parsed.data.construcaoFace,
+      semAdesivo: parsed.data.semAdesivo === true,
     };
     const validated = analisarInput.safeParse(body);
     if (!validated.success)
@@ -555,7 +560,7 @@ async function aprovarCores(req: Request, res: Response): Promise<void> {
       || typeof details.areaConsumoM2 !== "number" || details.areaConsumoM2 <= 0;
   });
   if (pendenciaConsumoBobina)
-    return void erro(res, 409, "O consumo físico da bobina do adesivo está pendente: cadastre na Administração do CPQ a largura total e a largura útil da bobina, a sangria e o preço do vinil, e confira a geometria.");
+    return void erro(res, 409, "O custo do adesivo está pendente: cadastre na Administração do CPQ o preço do vinil e da impressão (e, se for o caso, a bobina real e a sangria), confira a geometria ou desconsidere o adesivo se a arte foi lida errado.");
   const pendenciaComposicao = mappings.find(row => {
     const details = row.detalhesJson as Record<string, unknown>;
     return (details.requerChapaBase === true && details.chapaBaseMateriaPrimaId == null)

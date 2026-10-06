@@ -167,6 +167,36 @@ export function agruparCaminhosFacePorMateriaPrima(
 const DELTA_E_CHAPA_DIRETA = 2;
 const DELTA_E_IMPRIMAX_SOLIDO = 5;
 
+/** Rolo de adesivo usado quando a bobina de impressão não está cadastrada (informado pelo usuário em 05/10/2026). */
+export const BOBINA_ADESIVO_PADRAO = { larguraMm: 1200, comprimentoMm: 5000 } as const;
+
+/**
+ * O vendedor descartou a leitura de adesivo (a arte pode ter sido lida errado): a região deixa de pedir adesivo e
+ * acrílico-base, não gera custo de vinil/impressão e a face segue a composição do kit. Só mexe em regiões de adesivo.
+ */
+export function desconsiderarAdesivoDaSugestao(resultado: CpqCorrespondenciaCorResult): CpqCorrespondenciaCorResult {
+  if (resultado.tipoSugestao !== "impresso" && resultado.tipoSugestao !== "imprimax") return resultado;
+  return {
+    ...resultado,
+    tipoSugestao: "pendente",
+    chapaId: null,
+    chapaMateriaPrimaId: null,
+    chapaBaseId: null,
+    chapaBaseMateriaPrimaId: null,
+    requerChapaBase: false,
+    requerConfirmacaoConstrucao: false,
+    imprimaxAdesivoId: null,
+    deltaE00: null,
+    areaConsumoM2: null,
+    custoEstimado: null,
+    unidadeCusto: null,
+    alternativas: [],
+    precificacao: null,
+    composicaoFace: null,
+    avisos: ["Adesivo desconsiderado pelo vendedor (possível erro de leitura da arte): a face segue a composição do kit, sem custo de vinil nem de impressão."],
+  };
+}
+
 const CORES_NOMEADAS: Record<string, string> = {
   black: "#000000", white: "#ffffff", red: "#ff0000", green: "#008000",
   blue: "#0000ff", yellow: "#ffff00", cyan: "#00ffff", magenta: "#ff00ff",
@@ -389,11 +419,17 @@ export function calcularConsumosBobina(
   const resultado = new Map<string, CpqConsumoBobinaResultado>();
   if (!regioes.length) return resultado;
 
-  const larguraBobinaMm = valor(precos?.larguraBobinaMm);
-  const larguraUtilBobinaMm = valor(precos?.larguraUtilBobinaMm);
+  // Sem bobina cadastrada vale o rolo padrão informado pelo usuário (05/10/2026: 1200 mm de largura por 5000 mm de comprimento).
+  // O aviso fica visível em cada região; o custo continua pendente enquanto o preço do vinil não for cadastrado.
+  const semBobinaCadastrada = valor(precos?.larguraBobinaMm) == null && valor(precos?.larguraUtilBobinaMm) == null;
+  const larguraBobinaMm = semBobinaCadastrada ? BOBINA_ADESIVO_PADRAO.larguraMm : valor(precos?.larguraBobinaMm);
+  const larguraUtilBobinaMm = semBobinaCadastrada ? BOBINA_ADESIVO_PADRAO.larguraMm : valor(precos?.larguraUtilBobinaMm);
   const sangriaPerimetralMm = valor(precos?.sangriaPerimetralMm) ?? 3;
   const retalhoReutilizavel = precos?.retalhoReutilizavel === true;
   const avisosBase: string[] = [];
+  const avisosInformativos: string[] = semBobinaCadastrada
+    ? [`Bobina do adesivo não cadastrada: usando o rolo padrão de ${BOBINA_ADESIVO_PADRAO.larguraMm} × ${BOBINA_ADESIVO_PADRAO.comprimentoMm} mm. Cadastre a bobina real no CPQ para confirmar.`]
+    : [];
   if (larguraBobinaMm == null || larguraUtilBobinaMm == null) {
     avisosBase.push("Cadastre no CPQ a largura total e a largura útil da bobina; o custo do vinil permanece pendente.");
   } else if (larguraBobinaMm <= 0 || larguraUtilBobinaMm <= 0 || larguraUtilBobinaMm > larguraBobinaMm) {
@@ -467,9 +503,14 @@ export function calcularConsumosBobina(
       comprimentoLinearMm = cabemSemRotacao && cabemRotadas
         ? Math.min(alturaLayout, larguraLayout)
         : cabemSemRotacao ? alturaLayout : larguraLayout;
-      areaTotalBobinaM2 = retalhoReutilizavel
-        ? areaRetangulosSangriaTotalM2
-        : larguraBobinaMm! * comprimentoLinearMm / 1_000_000;
+      if (semBobinaCadastrada && comprimentoLinearMm > BOBINA_ADESIVO_PADRAO.comprimentoMm) {
+        avisosBase.push(`O layout com sangria precisa de ${comprimentoLinearMm.toFixed(0)} mm de comprimento, acima dos ${BOBINA_ADESIVO_PADRAO.comprimentoMm} mm do rolo padrão do adesivo.`);
+        comprimentoLinearMm = null;
+      } else {
+        areaTotalBobinaM2 = retalhoReutilizavel
+          ? areaRetangulosSangriaTotalM2
+          : larguraBobinaMm! * comprimentoLinearMm / 1_000_000;
+      }
     }
   }
   const utilizavel = avisosBase.length === 0 && pesoTotal > 0 && areaTotalBobinaM2 != null;
@@ -503,7 +544,7 @@ export function calcularConsumosBobina(
       larguraUtilBobinaMm,
       sangriaPerimetralMm,
       retalhoReutilizavel,
-      avisos: [...avisosBase],
+      avisos: [...avisosBase, ...avisosInformativos],
     });
   }
   return resultado;

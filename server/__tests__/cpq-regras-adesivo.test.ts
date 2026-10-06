@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   aplicarCustosBobinaAgrupados,
+  BOBINA_ADESIVO_PADRAO,
+  desconsiderarAdesivoDaSugestao,
   sugerirMaterialParaCor,
   type CpqCorAlvo,
   type CpqCorCatalogo,
@@ -90,5 +92,81 @@ describe("CPQ cores — adesivo impresso com a dimensão do letreiro", () => {
     expect(soma(depois)).toBeCloseTo(0.5, 5); // 1000 × 500 mm
     expect(depois.every(item => item.dadosPreco?.larguraMm === 1000 && item.dadosPreco?.alturaMm === 500)).toBe(true);
     expect(depois.every(item => item.dadosPreco?.boundingBoxesMm.length === 1)).toBe(true);
+  });
+});
+
+describe("CPQ cores — rolo padrão do adesivo sem bobina cadastrada", () => {
+  const semBobina = { ...precos, larguraBobinaMm: null, larguraUtilBobinaMm: null, retalhoReutilizavel: false };
+
+  it("calcula o consumo no rolo de 1200 mm, avisa que é o padrão e fecha o custo quando há preço", () => {
+    expect(BOBINA_ADESIVO_PADRAO).toEqual({ larguraMm: 1200, comprimentoMm: 5000 });
+    const r = sugerirMaterialParaCor(entrada({ precos: semBobina, regiao: { key: "g1", tipoCor: "gradiente", dadosPreco: dadosPreco(0, 400, 0, 300) } }));
+    expect(r.tipoSugestao).toBe("impresso");
+    expect(r.areaConsumoM2).toBeCloseTo(0.36, 5); // 1200 mm de rolo × 300 mm de comprimento
+    expect(r.custoEstimado).toBeCloseTo(0.36 * 50, 3); // vinil 30 + impressão 20 por m²
+    expect(r.avisos.some(a => a.includes("rolo padrão de 1200 × 5000 mm"))).toBe(true);
+  });
+
+  it("mantém o custo pendente (e não assume zero) quando falta o preço do vinil", () => {
+    const r = sugerirMaterialParaCor(entrada({
+      precos: { ...semBobina, vinilBrancoM2: null, impressaoM2: null },
+      regiao: { key: "g1", tipoCor: "gradiente", dadosPreco: dadosPreco(0, 400, 0, 300) },
+    }));
+    expect(r.areaConsumoM2).toBeCloseTo(0.36, 5);
+    expect(r.custoEstimado).toBeNull();
+    expect(r.avisos.some(a => a.includes("Custo por m² do vinil"))).toBe(true);
+  });
+
+  it("recusa o consumo quando o layout passa dos 5000 mm do rolo padrão", () => {
+    const r = sugerirMaterialParaCor(entrada({
+      precos: semBobina,
+      regiao: { key: "g1", tipoCor: "gradiente", dadosPreco: dadosPreco(0, 6000, 0, 1100) },
+    }));
+    expect(r.areaConsumoM2).toBeNull();
+    expect(r.custoEstimado).toBeNull();
+    expect(r.avisos.some(a => a.includes("acima dos 5000 mm do rolo padrão"))).toBe(true);
+  });
+
+  it("bobina cadastrada continua mandando: não usa o rolo padrão", () => {
+    const r = sugerirMaterialParaCor(entrada({ regiao: { key: "g1", tipoCor: "gradiente", dadosPreco: dadosPreco(0, 400, 0, 300) } }));
+    expect(r.avisos.some(a => a.includes("rolo padrão"))).toBe(false);
+  });
+});
+
+describe("CPQ cores — vendedor desconsidera o adesivo", () => {
+  it("região de adesivo vira pendente, sem chapa-base, custo nem consumo, e a face segue o kit", () => {
+    const sugestao = sugerirMaterialParaCor(entrada({ adesivos: [imprimaxLonge], chapas: [chapaTransparente] }));
+    expect(sugestao.requerChapaBase).toBe(true);
+    const r = desconsiderarAdesivoDaSugestao(sugestao);
+    expect(r.tipoSugestao).toBe("pendente");
+    expect(r.requerChapaBase).toBe(false);
+    expect(r.requerConfirmacaoConstrucao).toBe(false);
+    expect(r.chapaBaseMateriaPrimaId).toBeNull();
+    expect(r.imprimaxAdesivoId).toBeNull();
+    expect(r.composicaoFace).toBeNull();
+    expect(r.areaConsumoM2).toBeNull();
+    expect(r.custoEstimado).toBeNull();
+    expect(r.avisos).toHaveLength(1);
+    expect(r.regionKey).toBe(sugestao.regionKey);
+  });
+
+  it("não mexe em região que casou com chapa de acrílico", () => {
+    const chapaVermelha: CpqCorCatalogo = {
+      id: 9, mubisysMateriaPrimaId: 4600, materialNome: "Acrílico vermelho 3mm", corHex: "#FF0000", principal: false, ativo: true,
+    };
+    const sugestao = sugerirMaterialParaCor(entrada({ chapas: [chapaVermelha] }));
+    expect(sugestao.tipoSugestao).toBe("chapa");
+    expect(desconsiderarAdesivoDaSugestao(sugestao)).toBe(sugestao);
+  });
+
+  it("depois de desconsiderar, o agrupamento de bobina não cobra nada", () => {
+    const regioes = [{ key: "g1", dadosPreco: dadosPreco(0, 400, 0, 300) }];
+    const sugestoes = [desconsiderarAdesivoDaSugestao(sugerirMaterialParaCor(entrada({
+      regiao: { key: "g1", tipoCor: "gradiente", dadosPreco: regioes[0].dadosPreco },
+    })))];
+    const [resultado] = aplicarCustosBobinaAgrupados(sugestoes, regioes, precos);
+    expect(resultado.tipoSugestao).toBe("pendente");
+    expect(resultado.areaConsumoM2).toBeNull();
+    expect(resultado.custoEstimado).toBeNull();
   });
 });

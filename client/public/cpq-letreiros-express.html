@@ -793,7 +793,7 @@ function novaProposta(){
     motorVetorizacao:'auto', motorUsado:null, motoresFalhas:[], fundoLimpoGpt:false,
     chatVetor:[], chatRascunho:'', chatCarregando:false, vetorAnterior:null, ajustesVetorizacao:null,
     gerarContornoCnc:true, tracedSvgCorte:null, tracedSvgCorteOriginal:null, tracedSvgCorteDe:null, corteInfo:null, corteErro:null, corteCreditos:null, svgNesting:null,
-    colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:'sem_iluminacao',transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,composicaoKitOriginal:null},
+    colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:'sem_iluminacao',transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,semAdesivo:false,composicaoKitOriginal:null},
     geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
     tiposFixacao:[], solda:novoEstadoSolda(),
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
@@ -4630,6 +4630,13 @@ function camadaFisicaKit(line){
   return matches.length===1?matches[0]:null;
 }
 
+/** Perfil nunca entra no nesting (regra do usuário, 05/10/2026): o consumo dele vem do perímetro da prancha técnica.
+ *  Vale pelo papel da linha ou pelo nome da matéria-prima, porque o cadastro pode não estar classificado como perfil. */
+function linhaEhPerfil(line){
+  const tokens=texto=>normalizeSearch(String(texto||'')).split(/[^a-z0-9]+/).filter(Boolean);
+  return tokens(line?.papel).includes('perfil')||tokens(materialKitAtivo(line)?.nome||line?.nome).includes('perfil');
+}
+
 async function analisarFactibilidadeReal(){
   if(REAL.factibilidadeCarregando||REAL.nestingCarregando) return;
   REAL.factibilidadeCarregando=true; REAL.factibilidadeErro=null; REAL.factibilidade=null; REAL.nesting=null;
@@ -4642,9 +4649,9 @@ async function analisarFactibilidadeReal(){
     REAL.nestingFormatosCadastrados=chapas;
     const configured=new Set(chapas.filter(board=>board.ativo!==false).map(board=>Number(board.mubisysMateriaPrimaId)));
     // Só entra no nesting matéria-prima classificada como chapa/bobina (com formato cadastrado); perfil, LED etc. ficam de fora.
-    const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line)&&configured.has(Number(materialKitAtivo(line).matId)));
+    const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&camadaFisicaKit(line)&&configured.has(Number(materialKitAtivo(line).matId)));
     const mappedLineIds=new Set(physicalLines.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0));
-    const linhasChapaSemCamada=(REAL.kit||[]).filter(line=>!line.origemPintura&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
+    const linhasChapaSemCamada=(REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
     if(linhasChapaSemCamada.length){
       REAL.nestingMateriaPrimaIds=[...new Set([...mappedLineIds,...linhasChapaSemCamada.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0)])];
       throw new Error('Vincule cada matéria-prima de chapa à Face, ao Aro ou ao Fundo no bloco desta etapa.');
@@ -4729,7 +4736,7 @@ async function analisarCorrespondenciaCoresReal(){
     const response=await fetch('/api/letra-caixa/cores/analisar-svg',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       sourceId:REAL.id,svgArte:REAL.tracedSvgOriginal,svgGeometria:REAL.tracedSvg,
       larguraSvgMm:REAL.tracedW*geom.scaleFactor*1000,alturaSvgMm:REAL.tracedH*geom.scaleFactor*1000,
-      iluminacao:color.iluminacao,transmissaoMinimaPct:minimum,baseImpressao:color.baseImpressao,construcaoFace:construcaoFaceEfetiva(color),laminar:color.laminar,
+      iluminacao:color.iluminacao,transmissaoMinimaPct:minimum,baseImpressao:color.baseImpressao,construcaoFace:construcaoFaceEfetiva(color),laminar:color.laminar,semAdesivo:!!color.semAdesivo,
     })});
     const body=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(body.error||'Não foi possível comparar as cores da arte com os materiais.');
@@ -4803,7 +4810,7 @@ function htmlAvisoCoresAutomaticas(){
       ?`acrílico/chapa mais parecido: <b>${escaparHtml(chapa?.nome||'chapa cadastrada')}</b>${de}`
       :result.tipoSugestao==='imprimax'
         ?`sem chapa nesta cor → ${result.requerChapaBase?'<b>acrílico transparente + adesivo Imprimax</b>':'<b>adesivo Imprimax</b>'} ${escaparHtml(nomeAdesivo)}${de}`
-        :result.tipoSugestao==='impresso'?'<b>adesivo impresso</b> (gradiente ou arte complexa)':'revisão manual necessária';
+        :result.tipoSugestao==='impresso'?'<b>adesivo impresso</b> (gradiente ou arte complexa)':color.semAdesivo?'adesivo desconsiderado — a face segue a composição do kit':'revisão manual necessária';
     const alertas=(result.avisos||[]).filter(texto=>/Atenção|pendente|não cadastrado|Carregue/i.test(texto)).map(texto=>`<div class="role-note">${escaparHtml(texto)}</div>`).join('');
     return `<li style="margin-bottom:4px;"><span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(result.corHex||'#e2e8f0')};"></span> ${escaparHtml(result.corHex||result.pantoneCode||result.tipoCor||'cor')} → ${texto}${alertas}</li>`;
   }).join('');
@@ -4865,11 +4872,30 @@ function htmlPendenciasCores(){
       <div style="margin-top:8px;">O nesting foi feito normalmente. Enquanto isso não for resolvido, o <b>preço não pode ser aprovado nem a proposta emitida</b>. Você pode:</div>
       <ol style="margin:4px 0 0 18px;">
         <li>cadastrar na Administração do CPQ a largura total e útil da bobina, a sangria e o preço do vinil e clicar em <b>Refazer análise de cores e nesting</b>;</li>
-        <li>ou trocar o material da face / remover o adesivo na Composição.</li>
+        <li>ou, se o sistema leu a arte errado e o projeto não precisa de adesivo, <b>desconsiderar o adesivo</b>: a face volta à composição do kit e nenhum custo de vinil ou impressão entra no orçamento.</li>
       </ol>
-      <button class="btn btn-soft btn-sm" style="margin-top:10px;" data-act="cor-refazer" title="Refaz a leitura das cores e o nesting; volta a composição do kit ao original antes de aplicar as sugestões">Refazer análise de cores e nesting</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn btn-soft btn-sm" data-act="cor-refazer" title="Refaz a leitura das cores e o nesting; volta a composição do kit ao original antes de aplicar as sugestões">Refazer análise de cores e nesting</button>
+        ${htmlControleSemAdesivo()}
+      </div>
     </div>
   </div>`;
+}
+
+/** Botão para o vendedor descartar a leitura de adesivo (a arte pode ter sido lida errado) e, depois, voltar atrás. A decisão
+ *  vai ao servidor (`semAdesivo`), que regrava o mapeamento de cores sem região de adesivo; o nesting roda de novo. */
+function htmlControleSemAdesivo(){
+  const color=REAL.colorAnalysis;
+  if(!color||!(color.resultados||[]).length) return '';
+  if(color.semAdesivo) return `<button class="btn btn-ghost btn-sm" data-act="cor-sem-adesivo" data-val="0" title="Volta a usar a leitura de adesivo feita pelo sistema">Voltar a considerar o adesivo</button>`;
+  if(!color.resultados.some(r=>r.tipoSugestao==='imprimax'||r.tipoSugestao==='impresso')) return '';
+  return `<button class="btn btn-ghost btn-sm" data-act="cor-sem-adesivo" data-val="1" title="O sistema pode ter lido a arte errado: a face volta à composição do kit e nenhum custo de adesivo entra no orçamento">O projeto não precisa de adesivo (desconsiderar)</button>`;
+}
+
+async function alternarSemAdesivo(desconsiderar){
+  if(state.tracing || REAL.factibilidadeCarregando || REAL.nestingCarregando || (REAL.colorAnalysis && REAL.colorAnalysis.loading)) return;
+  REAL.colorAnalysis.semAdesivo = !!desconsiderar;
+  await refazerCoresENesting();
 }
 
 /** Refaz a análise de cores e o nesting (depois de cadastrar a bobina/preços). Volta ao passo do nesting. */
@@ -4884,9 +4910,11 @@ async function refazerCoresENesting(){
 
 function renderAnaliseCoresReal(){
   const color=REAL.colorAnalysis;
+  const pendencias=htmlPendenciasCores();
   return `<div style="margin:10px 0;">
     ${color.error?`<div class="warnbox" role="alert">${escaparHtml(color.error)}</div>`:''}
-    ${htmlPendenciasCores()}
+    ${pendencias}
+    ${pendencias?'':htmlControleSemAdesivo()}
     ${color.loading?'<div class="empty-hint">Rastreando as cores da logo e escolhendo os materiais da face…</div>':''}
     ${htmlAvisoCoresAutomaticas()}
     ${color.error&&!color.loading?'<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-act="cor-analisar">Tentar novamente</button>':''}
@@ -4973,7 +5001,7 @@ function renderConfiguracaoNestingReal(){
   const config=REAL.nestingConfiguracao||{espacamentoMm:3,margemBordaMm:5};
   const idsBrutos=REAL.nestingMateriaPrimaIds?.length
     ? REAL.nestingMateriaPrimaIds
-    : [...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&camadaFisicaKit(line)).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
+    : [...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&camadaFisicaKit(line)).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
   const chapas=REAL.nestingFormatosCadastrados||[];
   // Só chapa/bobina com formato cadastrado entra no nesting; perfil e demais itens não pedem dimensões.
   const idsChapa=new Set(chapas.filter(chapa=>chapa.ativo!==false).map(chapa=>Number(chapa.mubisysMateriaPrimaId)));
@@ -4988,7 +5016,7 @@ function renderConfiguracaoNestingReal(){
   linhas.push('<label class="field">Distanciamento da borda (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.margemBordaMm)+'" data-act="nesting-margem-borda"></label>');
   linhas.push('</div>');
   const chapasAtivasIds=new Set(chapas.filter(chapa=>chapa.ativo!==false).map(chapa=>Number(chapa.mubisysMateriaPrimaId)));
-  const papeisPendentes=(REAL.kit||[]).map((linha,idx)=>({linha,idx,material:materialKitAtivo(linha)})).filter(item=>!item.linha.origemPintura&&chapasAtivasIds.has(Number(item.material.matId))&&!camadaFisicaKit(item.linha));
+  const papeisPendentes=(REAL.kit||[]).map((linha,idx)=>({linha,idx,material:materialKitAtivo(linha)})).filter(item=>!item.linha.origemPintura&&!linhaEhPerfil(item.linha)&&chapasAtivasIds.has(Number(item.material.matId))&&!camadaFisicaKit(item.linha));
   if(papeisPendentes.length){
     linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;"><b>Vincule as chapas às camadas do desenho</b><p class="role-note">Este vínculo mínimo permite separar Face, Aro e Fundo para o nesting. As fórmulas e multiplicadores ficam para a próxima etapa.</p>');
     for(const item of papeisPendentes){
@@ -8336,6 +8364,7 @@ function bindRealEvents(){
   const corAutoriza=document.querySelector('[data-act="cor-autoriza-adesivo"]');
   if(corAutoriza)corAutoriza.addEventListener('change',event=>{REAL.colorAnalysis.autorizaAdesivo=event.target.checked;render();});
   document.querySelectorAll('[data-act="cor-refazer"]').forEach(botao=>botao.addEventListener('click',()=>refazerCoresENesting()));
+  document.querySelectorAll('[data-act="cor-sem-adesivo"]').forEach(botao=>botao.addEventListener('click',()=>alternarSemAdesivo(botao.dataset.val==='1')));
   const corAprovar=document.querySelector('[data-act="cor-aprovar-seguir"]');
   if(corAprovar)corAprovar.addEventListener('click',aprovarCoresESeguirReal);
   document.querySelectorAll('[data-act="factibilidade-download"]').forEach(el=>el.addEventListener('click',()=>{
