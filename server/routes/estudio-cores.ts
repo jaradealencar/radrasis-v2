@@ -11,7 +11,10 @@ import {
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { CpqFactibilidadeError, calcularMetricasVisiveisSvgPorCaminho } from "../services/cpqFactibilidadeFabricacao";
-import { aplicarCustosBobinaAgrupados, consolidarRegioesFotograficas, type CpqCorCatalogo, desconsiderarAdesivoDaSugestao, extrairRegioesCorSvg, hexParaRgb, sugerirMaterialParaCor } from "../services/cpqCoresMateriais";
+import {
+  aplicarCustosBobinaAgrupados, consolidarRegioesFotograficas, type CpqCorCatalogo, type CpqCorrespondenciaCorInput, type CpqEscolhaCor, CpqEscolhaCorInvalida,
+  aplicarCoresManuais, desconsiderarAdesivoDaSugestao, extrairRegioesCorSvg, hexParaRgb, listarOpcoesCor, listarPaletaChapas, sugerirMaterialParaCor,
+} from "../services/cpqCoresMateriais";
 import { listarPantone, pantoneMaisProximos, rgbParaCmykAproximado } from "../services/cpqPantone";
 import { IMPRIMAX_CATALOGO_PADRAO, IMPRIMAX_CATALOGO_VERSAO } from "../../shared/imprimax-catalogo-2026-08";
 
@@ -57,8 +60,29 @@ const catalogoItem = z.object({
     context.addIssue({ code: "custom", message: "Informe HEX, Pantone ou CMYK para localizar a cor do adesivo." });
 });
 
+/** Troca manual da sugestão de material para uma cor da arte (o sistema pode errar). Casada pela chave E pela cor da região. */
+const escolhasCorInput = z.array(z.object({
+  regionKey: z.string().trim().min(1).max(80),
+  corHex: z.string().regex(/^#[\da-f]{6}$/i).nullable().optional(),
+  tipo: z.enum(["chapa", "imprimax", "impresso"]),
+  id: z.number().int().positive().nullable().optional(),
+}).strict().refine(escolha => escolha.tipo === "impresso" || escolha.id != null, { message: "Informe o material escolhido." })).max(60);
+
+function escolhaDaRegiao(
+  escolhas: z.infer<typeof escolhasCorInput> | undefined,
+  regiao: { key: string; corHex?: string | null },
+): CpqEscolhaCor | null {
+  const escolha = escolhas?.find(item => item.regionKey === regiao.key
+    && (item.corHex ?? null)?.toLowerCase() === (regiao.corHex ?? null)?.toLowerCase());
+  if (!escolha) return null;
+  if (escolha.tipo === "chapa") return { tipo: "chapa", chapaId: escolha.id! };
+  if (escolha.tipo === "imprimax") return { tipo: "imprimax", adesivoId: escolha.id! };
+  return { tipo: "impresso" };
+}
+
 const analisarInput = z.object({
   sourceId: z.string().trim().min(1).max(80),
+  escolhas: escolhasCorInput.optional(),
   regioes: z.array(z.object({
     key: z.string().trim().min(1).max(80),
     tipoCor: z.enum(["solida", "gradiente", "complexa", "desconhecida"]),
@@ -84,6 +108,12 @@ const analisarInput = z.object({
     context.addIssue({ code: "custom", message: "As regiões de cor precisam ter identificadores únicos." });
 });
 
+/** Cor que o vendedor indicou no desenho da Ficha técnica para um conjunto de peças (caminhos do SVG da arte, contados de 0). */
+const coresManuaisInput = z.array(z.object({
+  pathIndexes: z.array(z.number().int().nonnegative().max(499)).min(1).max(500),
+  corHex: z.string().regex(/^#[da-f]{6}$/i),
+}).strict()).max(60);
+
 const analisarSvgInput = z.object({
   sourceId: z.string().trim().min(1).max(80),
   svgArte: z.string().min(20).max(1_500_000),
@@ -96,6 +126,8 @@ const analisarSvgInput = z.object({
   construcaoFace: z.enum(["acrilico_total", "outra", "nao_informada"]).default("nao_informada"),
   laminar: z.boolean(),
   semAdesivo: z.boolean().optional(),
+  escolhas: escolhasCorInput.optional(),
+  coresManuais: coresManuaisInput.optional(),
 }).strict();
 
 const aprovarInput = z.object({
@@ -158,6 +190,7 @@ export function registrarRotasEstudioCores(app: Express): void {
   app.get("/api/letra-caixa/cores/catalogo", rota(carregarCatalogo));
   app.put("/api/letra-caixa/cores/catalogo-imprimax", rota(importarCatalogo));
   app.put("/api/letra-caixa/cores/precos-impressao", rota(salvarPrecos));
+  app.get("/api/letra-caixa/cores/paleta", rota(carregarPaleta));
   app.post("/api/letra-caixa/cores/analisar-svg", rota(analisarSvg));
   app.post("/api/letra-caixa/cores/aprovar", rota(aprovarCores));
   app.put("/api/letra-caixa/cores/imprimax-padrao", rota(importarCatalogoImprimaxPadrao));
@@ -215,6 +248,17 @@ async function referenciasPantone(req: Request, res: Response): Promise<void> {
   });
   res.setHeader("Cache-Control", "private, no-store");
   res.json({ referencias });
+}
+
+/** Cores de acrílico/chapa disponíveis (uma por matéria-prima) para o vendedor indicar a cor das peças no desenho. */
+async function carregarPaleta(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res) || !(await obterSessao(req, res))) return;
+  const db = await getDb();
+  if (!db) return void erro(res, 503, "O banco de dados está indisponível.");
+  const chapas = await db.select().from(estudioChapas)
+    .where(and(eq(estudioChapas.ativo, true), eq(estudioChapas.bobina, false), eq(estudioChapas.temCor, true)));
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ chapas: listarPaletaChapas(chapas as CpqCorCatalogo[]) });
 }
 
 async function carregarCatalogo(req: Request, res: Response): Promise<void> {
@@ -314,7 +358,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
     db.select().from(estudioPrecosImpressao).where(eq(estudioPrecosImpressao.id, 1)).limit(1),
   ]);
   const precos = precosRows[0] ?? null;
-  const sugestoes = parsed.regioes.map(regiao => sugerirMaterialParaCor({
+  const entradaDaRegiao = (regiao: (typeof parsed.regioes)[number]): CpqCorrespondenciaCorInput => ({
     regiao: { ...regiao, cmyk: cmykCompleto(regiao.cmyk) },
     chapas: chapas as CpqCorCatalogo[],
     adesivos: adesivos as CpqCorCatalogo[],
@@ -324,17 +368,30 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
     laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
     precos,
     construcaoFace: parsed.construcaoFace,
-  }));
-  const sugestoesFinais = parsed.semAdesivo ? sugestoes.map(desconsiderarAdesivoDaSugestao) : sugestoes;
+  });
+  const sugestoes = parsed.regioes.map(regiao => {
+    const entrada = entradaDaRegiao(regiao);
+    const escolha = escolhaDaRegiao(parsed.escolhas, regiao);
+    if (!escolha) return sugerirMaterialParaCor(entrada);
+    try {
+      return sugerirMaterialParaCor({ ...entrada, escolha });
+    } catch (error) {
+      if (!(error instanceof CpqEscolhaCorInvalida)) throw error;
+      // A escolha deixou de valer (ex.: a iluminação mudou): volta à sugestão automática e avisa, sem derrubar a análise.
+      const automatica = sugerirMaterialParaCor(entrada);
+      return { ...automatica, avisos: [`A escolha manual do vendedor para esta cor foi descartada: ${error.message}`, ...automatica.avisos] };
+    }
+  });
+  const sugestoesFinais = parsed.semAdesivo
+    ? sugestoes.map(sugestao => sugestao.escolhaManual ? sugestao : desconsiderarAdesivoDaSugestao(sugestao))
+    : sugestoes;
   const resultados = aplicarCustosBobinaAgrupados(sugestoesFinais, parsed.regioes, precos, parsed.caixaLetreiroMm ?? null);
   await db.transaction(async tx => {
     await tx.delete(estudioMapeamentoCoresCotacao)
       .where(eq(estudioMapeamentoCoresCotacao.sourceId, parsed.sourceId));
     for (const resultado of resultados) {
       const regiao = parsed.regioes.find(item => item.key === resultado.regionKey)!;
-      await tx.insert(estudioMapeamentoCoresCotacao).values({
-        sourceId: parsed.sourceId,
-        regionKey: resultado.regionKey,
+      const valores = {
         corHex: regiao.corHex ?? null,
         corRgbJson: resultado.corRgb,
         pantoneCode: regiao.pantoneCode ?? null,
@@ -370,6 +427,7 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
           requerChapaBase: resultado.requerChapaBase,
           requerConfirmacaoConstrucao: resultado.requerConfirmacaoConstrucao,
           composicaoFace: resultado.composicaoFace,
+          escolhaManual: resultado.escolhaManual === true,
           construcaoFace: parsed.construcaoFace,
           baseImpressao: parsed.baseImpressao,
           transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
@@ -381,61 +439,18 @@ async function persistirAnaliseCores(parsed: z.infer<typeof analisarInput>, res:
         aprovadoPor: null,
         aprovadoEm: null,
         updatedAt: new Date(),
-      }).onConflictDoUpdate({
-        target: [estudioMapeamentoCoresCotacao.sourceId, estudioMapeamentoCoresCotacao.regionKey],
-        set: {
-          corHex: regiao.corHex ?? null,
-          corRgbJson: resultado.corRgb,
-          pantoneCode: regiao.pantoneCode ?? null,
-          cmykC: resultado.cmyk?.c == null ? null : String(resultado.cmyk.c),
-          cmykM: resultado.cmyk?.m == null ? null : String(resultado.cmyk.m),
-          cmykY: resultado.cmyk?.y == null ? null : String(resultado.cmyk.y),
-          cmykK: resultado.cmyk?.k == null ? null : String(resultado.cmyk.k),
-          tipoCor: regiao.tipoCor,
-          areaM2: resultado.areaM2 == null ? null : String(resultado.areaM2),
-          modoIluminacao: parsed.iluminacao,
-          tipoSugestao: resultado.tipoSugestao,
-          chapaId: resultado.chapaId,
-          imprimaxAdesivoId: resultado.imprimaxAdesivoId,
-          deltaE00: resultado.deltaE00 == null ? null : String(resultado.deltaE00),
-          custoEstimado: resultado.custoEstimado == null ? null : String(resultado.custoEstimado),
-          detalhesJson: {
-            corRgb: resultado.corRgb,
-            cmyk: resultado.cmyk ?? null,
-            cmykOriginal: regiao.cmyk ?? null,
-            coresGradiente: regiao.coresGradiente ?? [],
-            pathIndexes: regiao.pathIndexes ?? [],
-            dadosPreco: regiao.dadosPreco ?? null,
-            areaConsumoM2: resultado.areaConsumoM2,
-            areaLiquidaM2: resultado.areaLiquidaM2 ?? null,
-            areaTotalM2: resultado.areaTotalM2 ?? resultado.areaM2,
-            avisos: resultado.avisos,
-            alternativas: resultado.alternativas,
-            unidadeCusto: resultado.unidadeCusto,
-            precificacao: resultado.precificacao,
-            chapaMateriaPrimaId: resultado.chapaMateriaPrimaId,
-            chapaBaseId: resultado.chapaBaseId,
-            chapaBaseMateriaPrimaId: resultado.chapaBaseMateriaPrimaId,
-            requerChapaBase: resultado.requerChapaBase,
-            requerConfirmacaoConstrucao: resultado.requerConfirmacaoConstrucao,
-            composicaoFace: resultado.composicaoFace,
-            construcaoFace: parsed.construcaoFace,
-            baseImpressao: parsed.baseImpressao,
-            transmissaoMinimaPct: parsed.transmissaoMinimaPct ?? null,
-            iluminacao: parsed.iluminacao,
-            laminar: parsed.laminar || Boolean(precos?.laminacaoPadrao),
-            fatorVersaoAlgoritmo: "ciede2000-d65-bobina-v2",
-          },
-          aprovado: false,
-          aprovadoPor: null,
-          aprovadoEm: null,
-          updatedAt: new Date(),
-        },
-      });
+      };
+      await tx.insert(estudioMapeamentoCoresCotacao).values({ sourceId: parsed.sourceId, regionKey: resultado.regionKey, ...valores })
+        .onConflictDoUpdate({
+          target: [estudioMapeamentoCoresCotacao.sourceId, estudioMapeamentoCoresCotacao.regionKey],
+          set: valores,
+        });
     }
   });
+  // Materiais que o vendedor pode escolher para cada cor (a tela mostra a sugestão e permite trocá-la); não vão ao snapshot.
+  const opcoes = Object.fromEntries(parsed.regioes.map(regiao => [regiao.key, listarOpcoesCor(entradaDaRegiao(regiao))]));
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ sourceId: parsed.sourceId, resultados });
+  res.json({ sourceId: parsed.sourceId, resultados, opcoes });
 }
 
 async function analisarSvg(req: Request, res: Response): Promise<void> {
@@ -445,7 +460,9 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
   if (parsed.data.iluminacao !== "sem_iluminacao" && parsed.data.transmissaoMinimaPct == null)
     return void erro(res, 400, "Informe a transmissão mínima definida pela engenharia para avaliar a face iluminada.");
   try {
-    const regioes = extrairRegioesCorSvg(parsed.data.svgArte);
+    const lidas = extrairRegioesCorSvg(parsed.data.svgArte);
+    // O vendedor corrige no desenho a cor lida errada (ex.: letras brancas redesenhadas em preto); a leitura automática não decide.
+    const { regioes, alterados: pecasComCorIndicada } = aplicarCoresManuais(lidas, parsed.data.coresManuais ?? []);
     const metricas = calcularMetricasVisiveisSvgPorCaminho(
       parsed.data.svgGeometria,
       parsed.data.larguraSvgMm,
@@ -465,6 +482,7 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
       coresGradiente: string[];
       areaM2: number;
       pathIndexes: number[];
+      pecasComCorIndicada: number;
       caixasMm: Array<{ minX: number; maxX: number; minY: number; maxY: number }>;
     }>();
     regioes.forEach((regiao, index) => {
@@ -488,10 +506,12 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
         coresGradiente: regiao.coresGradiente ?? [],
         areaM2: 0,
         pathIndexes: [],
+        pecasComCorIndicada: 0,
         caixasMm: [],
       };
       group.areaM2 += areaM2;
       group.pathIndexes.push(regiao.pathIndex ?? index);
+      if (pecasComCorIndicada.has(regiao.pathIndex ?? index)) group.pecasComCorIndicada += 1;
       group.caixasMm.push(...metrica.contornosBoundsMm);
       agregadas.set(signature, group);
     });
@@ -507,7 +527,8 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
     const body = {
       sourceId: parsed.data.sourceId,
       caixaLetreiroMm,
-      regioes: grupos.map(({ caixasMm, ...region }, index) => ({
+      regioes: grupos.map(({ caixasMm, pecasComCorIndicada: indicadas, ...region }, index) => ({
+        ...(indicadas > 0 ? { observacao: `Cor indicada pelo vendedor no desenho técnico para ${indicadas} peça(s) desta região (a leitura automática da arte foi corrigida).` } : {}),
         ...region,
         key: `regiao-${index + 1}`,
         areaM2: Number(region.areaM2.toFixed(6)),
@@ -525,6 +546,7 @@ async function analisarSvg(req: Request, res: Response): Promise<void> {
       laminar: parsed.data.laminar,
       construcaoFace: parsed.data.construcaoFace,
       semAdesivo: parsed.data.semAdesivo === true,
+      escolhas: parsed.data.escolhas,
     };
     const validated = analisarInput.safeParse(body);
     if (!validated.success)

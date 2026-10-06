@@ -557,6 +557,25 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   problema (passos Nesting, Composição e Orçamento) com as opções de decisão e o botão "Refazer análise de cores e
   nesting"; `resumoCustoCoresReal` conta a pendência com ou sem aprovação, o que bloqueia aprovar o preço, e o servidor
   continua exigindo o mapeamento aprovado para emitir.
+  **Cores da face indicadas no desenho (pedido de 06/10/2026):** a leitura automática das cores pode errar (ex.: letras brancas
+  redesenhadas em preto, lidas como #000000). Na **Ficha técnica (passo 5)** o cartão "Cores da face" (`htmlCartaoCoresFace`, `#cores-face-card`)
+  mostra a face com cada peça clicável: o vendedor seleciona peças (clique, "Selecionar" por cor ou "Selecionar todas") e indica a cor
+  por paleta (uma cor por matéria-prima de chapa com cor cadastrada, `GET /api/letra-caixa/cores/paleta`), pelas cores do desenho ou por
+  seletor livre. A cor é por **caminho do SVG** (mesma numeração do servidor: todo `<path>` fora de `<defs>`, de 0 em diante; o Vectorizer.AI
+  dá um caminho por forma — `group_by=none` —, o traçador local junta as formas de uma cor num caminho só). `REAL.coresFace.mapa` guarda as
+  indicações, amarradas à assinatura da arte (`assinaturaSvgArte`: outra arte descarta). Elas vão em `coresManuais` para
+  `POST /api/letra-caixa/cores/analisar-svg` (`aplicarCoresManuais` em `cpqCoresMateriais.ts`: o caminho vira região sólida da cor
+  indicada, sem Pantone/CMYK/degradê, e a região ganha o aviso "Cor indicada pelo vendedor…" no snapshot). O servidor então casa o acrílico mais
+  parecido como antes, e **cada cor de acrílico vira uma matéria-prima na Face, com o seu próprio nesting; o fundo (PVC) sempre cobre
+  o letreiro inteiro** (deriva de todas as peças da camada Face, não só das de uma cor) — coberto por `cpq-duas-cores-nesting.test.ts`.
+  Mudar uma cor invalida a análise de cores, o nesting e as aprovações dependentes (`aoMudarCoresFace`).
+  **Troca do material sugerido (mesma data):** no aviso do passo Nesting (`htmlAvisoCoresAutomaticas(true)`) cada cor sólida tem o menu
+  "Trocar o material desta cor" (chapas por matéria-prima, adesivos Imprimax e adesivo impresso; `listarOpcoesCor`, devolvido em `opcoes` ao lado
+  de `resultados`, **fora** do snapshot). A escolha segue em `escolhas` (`{regionKey, corHex, tipo, id}`, casada por chave **e** cor) e o
+  servidor a valida (`CpqEscolhaCorInvalida`: material inativo, ou incompatível com a iluminação — transmissão zero/abaixo do mínimo; sem
+  transmissão cadastrada fica escolhível **com aviso**): inválida cai na sugestão automática com aviso, sem derrubar a análise. O resultado
+  traz `escolhaManual: true` (também em `estudio_mapeamento_cores_cotacao.detalhes_json` e no schema/validação do snapshot, opcional sem default), e
+  a lista `alternativas` continua com no máximo 5 itens, com a escolhida sempre dentro. No passo Composição o aviso é só leitura.
   **Embalagem Acabamento (MubiSys #4258, pedido de 05/10/2026):** item especial do CPQ, incluído em toda
   cotação e removível pelo vendedor (checkbox no Resumo financeiro). Não tem consumo: cobra 3,5% sobre o
   preço de todos os outros itens (`EMBALAGEM_PCT`/`aplicarEmbalagem` no HTML); o snapshot guarda

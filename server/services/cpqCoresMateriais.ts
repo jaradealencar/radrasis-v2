@@ -61,6 +61,23 @@ export type CpqPrecoImpressaoCor = {
   retalhoReutilizavel?: boolean;
 } | null;
 
+/**
+ * Material que o vendedor escolheu para uma cor da arte no lugar da sugestão automática (o sistema pode errar):
+ * uma chapa colorida (`chapaId` = formato cadastrado), um adesivo Imprimax (sobre acrílico transparente) ou adesivo impresso.
+ */
+export type CpqEscolhaCor =
+  | { tipo: "chapa"; chapaId: number }
+  | { tipo: "imprimax"; adesivoId: number }
+  | { tipo: "impresso" };
+
+/** A escolha manual não vale (material inexistente, inativo, incompatível com a iluminação ou com o tipo da cor). */
+export class CpqEscolhaCorInvalida extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CpqEscolhaCorInvalida";
+  }
+}
+
 export type CpqCorrespondenciaCorInput = {
   regiao: CpqCorAlvo;
   chapas: CpqCorCatalogo[];
@@ -71,6 +88,8 @@ export type CpqCorrespondenciaCorInput = {
   laminar: boolean;
   precos: CpqPrecoImpressaoCor;
   construcaoFace?: "acrilico_total" | "outra" | "nao_informada";
+  /** Troca manual da sugestão automática para esta região. */
+  escolha?: CpqEscolhaCor | null;
 };
 
 export type CpqCorrespondenciaCorResult = {
@@ -102,6 +121,8 @@ export type CpqCorrespondenciaCorResult = {
   alternativas: Array<Record<string, unknown>>;
   precificacao: Record<string, unknown> | null;
   composicaoFace: Record<string, unknown> | null;
+  /** Presente (true) só quando o vendedor trocou a sugestão automática; a decisão fica no snapshot da cotação. */
+  escolhaManual?: boolean;
 };
 
 export type CpqGrupoCor = {
@@ -352,6 +373,35 @@ export function extrairRegioesCorSvg(arteOriginal: string): CpqCorAlvo[] {
       cmyk,
     };
   });
+}
+
+/** Cor que o vendedor indicou, no desenho, para um conjunto de peças (caminhos do SVG da arte, contados de 0). */
+export type CpqCorManual = { pathIndexes: number[]; corHex: string };
+
+/**
+ * Aplica as cores indicadas pelo vendedor sobre a leitura automática da arte (que pode errar: ex. letras brancas redesenhadas em
+ * preto). Cada caminho indicado vira uma região de cor sólida da cor escolhida, sem Pantone/CMYK/degradê da arte original.
+ * Devolve as regiões novas e o conjunto de caminhos alterados, para o aviso ao vendedor.
+ */
+export function aplicarCoresManuais(
+  regioes: CpqCorAlvo[],
+  manuais: CpqCorManual[],
+): { regioes: CpqCorAlvo[]; alterados: Set<number> } {
+  const alterados = new Set<number>();
+  const novas = regioes.slice();
+  for (const { pathIndexes, corHex } of manuais) {
+    if (!hexParaRgb(corHex)) throw new Error(`A cor ${corHex} indicada para as peças não é um hexadecimal válido.`);
+    for (const pathIndex of pathIndexes) {
+      const posicao = novas.findIndex((regiao, index) => (regiao.pathIndex ?? index) === pathIndex);
+      if (posicao < 0) throw new Error(`A peça ${pathIndex + 1} indicada não existe no desenho atual. Refaça a seleção das cores.`);
+      novas[posicao] = {
+        key: novas[posicao].key, pathIndex, tipoCor: "solida", corHex: corHex.toLowerCase(),
+        pantoneCode: null, cmyk: null, corRgb: null, coresGradiente: [],
+      };
+      alterados.add(pathIndex);
+    }
+  }
+  return { regioes: novas, alterados };
 }
 
 function valor(input: string | number | null | undefined): number | null {
@@ -752,19 +802,34 @@ function luzCompativel(material: CpqCorCatalogo, input: CpqCorrespondenciaCorInp
   return { ok: true, avisos: [] };
 }
 
+/**
+ * Iluminação para quem escolhe o material à mão: sem transmissão cadastrada o material continua escolhível (o vendedor sabe o que
+ * está pedindo), mas com aviso para a engenharia confirmar; transmissão zero, abaixo do mínimo ou mínimo ausente seguem bloqueados.
+ */
+function luzParaEscolhaManual(material: CpqCorCatalogo, input: CpqCorrespondenciaCorInput): { ok: boolean; avisos: string[] } {
+  if (input.iluminacao !== "sem_iluminacao" && valor(material.transmissaoLuzPct) == null)
+    return { ok: true, avisos: ["Transmissão de luz não cadastrada para este material; confirme com a engenharia que ele atende à face iluminada antes de aprovar."] };
+  return luzCompativel(material, input);
+}
+
 function candidatos(
   lista: CpqCorCatalogo[],
   alvo: CpqCorAlvo,
   lab: [number, number, number] | null,
   input: CpqCorrespondenciaCorInput,
-  identidade: "chapa" | "imprimax"
+  identidade: "chapa" | "imprimax",
+  /**
+   * Menu de escolha manual: lista todo material ativo, mesmo sem referência de cor (ΔE00 nulo, no fim) ou sem transmissão
+   * de luz cadastrada (escolhível, com aviso). Só o que é sabidamente incompatível com a iluminação fica `compativelIluminacao: false`.
+   */
+  modoEscolhaManual = false
 ) {
   return lista.filter(item => item.ativo !== false).map(item => {
     const chaveAlvo = chaveExataPantone(alvo.pantoneCode);
     const pantoneExato = !!chaveAlvo && separarPantones(item.pantoneCode).some(ref => chaveExataPantone(ref) === chaveAlvo);
     const labsItem = labsCatalogo(item);
     const deltaE = pantoneExato ? 0 : lab && labsItem.length ? Math.min(...labsItem.map(labDoItem => deltaE2000(lab, labDoItem))) : null;
-    const luz = luzCompativel(item, input);
+    const luz = modoEscolhaManual ? luzParaEscolhaManual(item, input) : luzCompativel(item, input);
     return {
       kind: identidade,
       id: item.id,
@@ -785,8 +850,103 @@ function candidatos(
       avisosIluminacao: luz.avisos,
       raw: item,
     };
-  }).filter(item => item.compativelIluminacao && item.deltaE00 != null)
-    .sort((a, b) => a.deltaE00! - b.deltaE00!);
+  }).filter(item => modoEscolhaManual || (item.compativelIluminacao && item.deltaE00 != null))
+    .sort((a, b) => (a.deltaE00 ?? Number.POSITIVE_INFINITY) === (b.deltaE00 ?? Number.POSITIVE_INFINITY)
+      ? 0
+      : (a.deltaE00 ?? Number.POSITIVE_INFINITY) - (b.deltaE00 ?? Number.POSITIVE_INFINITY));
+}
+
+/** Cor (#rrggbb) para mostrar a amostra do material na tela: hex, senão CMYK, senão o primeiro Pantone da lista. */
+function corRepresentativaHex(material: CpqCorCatalogo): string | null {
+  const doHex = hexParaRgb(material.corHex);
+  if (doHex) return rgbParaHex(doHex);
+  const c = valor(material.cmykC), m = valor(material.cmykM), y = valor(material.cmykY), k = valor(material.cmykK);
+  if (c != null && m != null && y != null && k != null) return rgbParaHex(cmykParaRgb({ c, m, y, k }));
+  for (const { hex } of hexesDoPantone(material.pantoneCode)) {
+    const doPantone = hexParaRgb(hex);
+    if (doPantone) return rgbParaHex(doPantone);
+  }
+  return null;
+}
+
+export type CpqOpcaoCor = {
+  tipo: "chapa" | "imprimax" | "impresso";
+  /** Chapa: id do formato cadastrado (o de menor ΔE00 do material); Imprimax: id do adesivo; impresso: nulo. */
+  id: number | null;
+  mubisysMateriaPrimaId: number | null;
+  nome: string;
+  codigo: string | null;
+  linha: string | null;
+  corHex: string | null;
+  deltaE00: number | null;
+  transparenciaTipo: string | null;
+  /** Incompatível com a iluminação do projeto: aparece no menu desabilitado, com o motivo. */
+  bloqueada: boolean;
+  motivo: string | null;
+};
+
+export type CpqCorPaleta = {
+  chapaId: number;
+  mubisysMateriaPrimaId: number;
+  /** Nome do formato cadastrado; o nome da matéria-prima vem do catálogo do MubiSys na tela. */
+  nome: string;
+  corHex: string;
+  transparenciaTipo: string | null;
+  transmissaoLuzPct: number | null;
+};
+
+/**
+ * Cores de chapa disponíveis para o vendedor indicar a cor das peças no desenho: uma entrada por matéria-prima com cor de referência
+ * cadastrada (hex, CMYK ou Pantone), em ordem estável pelo id da matéria-prima. Quem não tem cor cadastrada não aparece (sem o que mostrar).
+ */
+export function listarPaletaChapas(chapas: CpqCorCatalogo[]): CpqCorPaleta[] {
+  const porMaterial = new Map<number, CpqCorPaleta>();
+  for (const chapa of chapas) {
+    if (chapa.ativo === false || chapa.mubisysMateriaPrimaId == null) continue;
+    const materialId = Number(chapa.mubisysMateriaPrimaId);
+    const corHex = corRepresentativaHex(chapa);
+    if (!corHex || porMaterial.has(materialId)) continue;
+    porMaterial.set(materialId, {
+      chapaId: Number(chapa.id), mubisysMateriaPrimaId: materialId, nome: chapa.nome ?? "", corHex,
+      transparenciaTipo: chapa.transparenciaTipo ?? null, transmissaoLuzPct: valor(chapa.transmissaoLuzPct),
+    });
+  }
+  return [...porMaterial.values()].sort((a, b) => a.mubisysMateriaPrimaId - b.mubisysMateriaPrimaId);
+}
+
+const MAX_OPCOES_IMPRIMAX = 15;
+
+/**
+ * Materiais que o vendedor pode escolher para a cor da região, do mais parecido ao menos parecido: uma entrada por matéria-prima
+ * de chapa (os formatos do mesmo material não se repetem), os adesivos Imprimax sólidos mais próximos e o adesivo impresso.
+ * Região sem cor sólida (degradê/foto) só aceita adesivo impresso. O que é sabidamente incompatível com a iluminação do projeto
+ * vem marcado como bloqueado; material sem transmissão de luz cadastrada continua escolhível, com aviso na escolha.
+ */
+export function listarOpcoesCor(input: CpqCorrespondenciaCorInput): CpqOpcaoCor[] {
+  const opcaoImpresso: CpqOpcaoCor = { tipo: "impresso", id: null, mubisysMateriaPrimaId: null, nome: "Adesivo impresso", codigo: null, linha: null, corHex: null, deltaE00: null, transparenciaTipo: null, bloqueada: false, motivo: null };
+  if (input.regiao.tipoCor !== "solida") return [opcaoImpresso];
+  const lab = alvoLab(input.regiao);
+  const chapas: CpqOpcaoCor[] = [];
+  const materiaisVistos = new Set<number>();
+  for (const item of candidatos(input.chapas, input.regiao, lab, input, "chapa", true)) {
+    const materialId = item.mubisysMateriaPrimaId == null ? null : Number(item.mubisysMateriaPrimaId);
+    if (materialId == null || materiaisVistos.has(materialId)) continue;
+    materiaisVistos.add(materialId);
+    chapas.push({
+      tipo: "chapa", id: Number(item.id), mubisysMateriaPrimaId: materialId, nome: item.nome, codigo: null, linha: null,
+      corHex: corRepresentativaHex(item.raw), deltaE00: item.deltaE00, transparenciaTipo: item.transparenciaTipo,
+      bloqueada: !item.compativelIluminacao, motivo: item.compativelIluminacao ? null : item.avisosIluminacao.join(" "),
+    });
+  }
+  const adesivos = candidatos(input.adesivos, input.regiao, lab, input, "imprimax", true)
+    .filter(item => item.raw.tipoVinil !== "transparente" && item.deltaE00 != null)
+    .slice(0, MAX_OPCOES_IMPRIMAX)
+    .map((item): CpqOpcaoCor => ({
+      tipo: "imprimax", id: Number(item.id), mubisysMateriaPrimaId: null, nome: item.nome, codigo: item.codigo, linha: item.linha,
+      corHex: corRepresentativaHex(item.raw), deltaE00: item.deltaE00, transparenciaTipo: null,
+      bloqueada: !item.compativelIluminacao, motivo: item.compativelIluminacao ? null : item.avisosIluminacao.join(" "),
+    }));
+  return [...chapas, ...adesivos, opcaoImpresso];
 }
 
 function planoComposicaoFace(input: CpqCorrespondenciaCorInput, avisos: string[], adesivoDescricao?: string) {
@@ -918,11 +1078,18 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
     const factor = 1 - k;
     return { c: Number(((1 - r - k) / factor * 100).toFixed(2)), m: Number(((1 - g - k) / factor * 100).toFixed(2)), y: Number(((1 - b - k) / factor * 100).toFixed(2)), k: Number((k * 100).toFixed(2)) };
   })() : null);
+  const escolha = input.escolha ?? null;
   if (target.tipoCor !== "solida") {
+    if (escolha && escolha.tipo !== "impresso")
+      throw new CpqEscolhaCorInvalida("Esta região não é uma cor sólida (degradê ou arte complexa): só aceita adesivo impresso.");
     avisos.push(target.tipoCor === "gradiente"
       ? "Gradiente/degradê exige impressão digital; não há equivalência confiável em cor sólida."
       : "Região complexa ou sem cor sólida identificável: classificada para impressão digital.");
     return { ...impresso(input, avisos), corRgb, cmyk };
+  }
+  if (escolha?.tipo === "impresso") {
+    avisos.push("Adesivo impresso escolhido manualmente pelo vendedor para esta cor.");
+    return { ...impresso(input, avisos), corRgb, cmyk, escolhaManual: true };
   }
   const areaLiquidaInformada = target.dadosPreco?.areaLiquidaM2 ?? target.areaM2;
   const areaLiquida = areaLiquidaInformada != null && Number.isFinite(areaLiquidaInformada) && areaLiquidaInformada >= 0
@@ -932,11 +1099,29 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
     ? Number(areaTotalInformada.toFixed(6)) : null;
   const lab = alvoLab(target);
   const chapa = candidatos(input.chapas, target, lab, input, "chapa");
-  const direta = chapa.find(item => item.deltaE00! <= DELTA_E_CHAPA_DIRETA);
+  // Com escolha manual a sugestão automática não decide: o material escolhido tem de existir e combinar com a iluminação.
+  let direta = escolha ? undefined : chapa.find(item => item.deltaE00! <= DELTA_E_CHAPA_DIRETA);
+  if (escolha?.tipo === "chapa") {
+    direta = candidatos(input.chapas, target, lab, input, "chapa", true).find(item => Number(item.id) === escolha.chapaId);
+    if (!direta) throw new CpqEscolhaCorInvalida("A chapa escolhida não está ativa no cadastro de chapas para nesting.");
+    if (!direta.compativelIluminacao) throw new CpqEscolhaCorInvalida(direta.avisosIluminacao.join(" ") || "A chapa escolhida não é compatível com a iluminação do projeto.");
+  }
   if (direta) {
     avisos.push(...direta.avisosIluminacao);
     if (areaLiquida == null) avisos.push("Area liquida nao calculada; confirme a geometria antes de revisar a chapa.");
-    avisos.push("Correspondência interna direta por Pantone ou CIEDE2000; confirme a amostra física do lote.");
+    const alternativas = chapa.slice(0, 5);
+    if (escolha?.tipo === "chapa") {
+      avisos.push(direta.deltaE00 == null
+        ? "Chapa escolhida manualmente pelo vendedor; ela não tem referência de cor cadastrada para comparar com a arte. Confirme a amostra física."
+        : `Chapa escolhida manualmente pelo vendedor (ΔE00 ${direta.deltaE00.toFixed(1)} em relação à cor da arte). Confirme a amostra física.`);
+      if (direta.deltaE00 != null && direta.deltaE00 > DELTA_E_IMPRIMAX_SOLIDO)
+        avisos.push(`Atenção vendedor: a chapa escolhida tem diferença de cor visível em relação à arte (ΔE00 ${direta.deltaE00.toFixed(1)}). Mostre a amostra ao cliente antes de aprovar.`);
+      // O limite de 5 alternativas vale no snapshot: a escolhida sempre aparece na lista, no lugar da última.
+      const escolhida = direta;
+      if (!alternativas.some(item => Number(item.id) === Number(escolhida.id))) alternativas.splice(Math.min(alternativas.length, 4), 1, escolhida);
+    } else {
+      avisos.push("Correspondência interna direta por Pantone ou CIEDE2000; confirme a amostra física do lote.");
+    }
     return {
       regionKey: target.key, tipoCor: target.tipoCor, corHex: target.corHex ?? null,
       pantoneCode: target.pantoneCode ?? null,
@@ -949,25 +1134,41 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       chapaMateriaPrimaId: direta.mubisysMateriaPrimaId == null ? null : Number(direta.mubisysMateriaPrimaId),
       chapaBaseId: null, chapaBaseMateriaPrimaId: null, requerChapaBase: false, requerConfirmacaoConstrucao: false,
       deltaE00: direta.deltaE00, custoEstimado: null, unidadeCusto: null, avisos,
-      alternativas: chapa.slice(0, 5).map(({ raw: _raw, ...item }) => item), precificacao: null,
+      alternativas: alternativas.map(({ raw: _raw, ...item }) => item), precificacao: null,
       composicaoFace: direta.mubisysMateriaPrimaId == null ? null : {
         papel: "Face", base: "chapa_colorida", chapaId: direta.id,
         mubisysMateriaPrimaId: Number(direta.mubisysMateriaPrimaId), aplicarAutomaticamenteSeFaceUnica: true,
       },
+      ...(escolha?.tipo === "chapa" ? { escolhaManual: true } : {}),
     };
   }
 
   const vinis = candidatos(input.adesivos, target, lab, input, "imprimax");
-  const solido = vinis.find(item => item.raw.tipoVinil !== "transparente");
+  let solido = escolha ? undefined : vinis.find(item => item.raw.tipoVinil !== "transparente");
+  if (escolha?.tipo === "imprimax") {
+    solido = candidatos(input.adesivos, target, lab, input, "imprimax", true)
+      .find(item => Number(item.id) === escolha.adesivoId && item.raw.tipoVinil !== "transparente" && item.deltaE00 != null);
+    if (!solido) throw new CpqEscolhaCorInvalida("O adesivo escolhido não está ativo no catálogo Imprimax.");
+    if (!solido.compativelIluminacao) throw new CpqEscolhaCorInvalida(solido.avisosIluminacao.join(" ") || "O adesivo escolhido não é compatível com a iluminação do projeto.");
+  }
   if (solido) {
     avisos.push(...solido.avisosIluminacao);
-    avisos.push("Não há chapa de acrílico com esta cor sólida: o acrílico deve ser transparente, com o adesivo Imprimax aplicado.");
+    avisos.push(escolha?.tipo === "imprimax"
+      ? "Adesivo Imprimax escolhido manualmente pelo vendedor: o acrílico deve ser transparente, com o adesivo aplicado."
+      : "Não há chapa de acrílico com esta cor sólida: o acrílico deve ser transparente, com o adesivo Imprimax aplicado.");
     if (solido.deltaE00! > DELTA_E_IMPRIMAX_SOLIDO)
-      avisos.push(`Atenção vendedor: o adesivo Imprimax mais próximo ainda tem diferença visível (ΔE00 ${solido.deltaE00!.toFixed(1)}). Mostre a amostra ao cliente antes de aprovar.`);
+      avisos.push(`Atenção vendedor: o adesivo Imprimax ${escolha ? "escolhido" : "mais próximo"} ainda tem diferença visível (ΔE00 ${solido.deltaE00!.toFixed(1)}). Mostre a amostra ao cliente antes de aprovar.`);
     const price = valor(solido.raw.precoM2);
     if (areaTotal == null) avisos.push("Area total da peca nao calculada; confirme escala antes de fechar consumo do vinil.");
     if (price == null) avisos.push("Preço de compra do adesivo não cadastrado; o custo desta região está pendente.");
-    avisos.push("Sugestão de vinil sólido Imprimax pela menor diferença CIEDE2000; confirme código e amostra física.");
+    avisos.push(escolha?.tipo === "imprimax"
+      ? `Diferença CIEDE2000 do adesivo escolhido: ΔE00 ${solido.deltaE00!.toFixed(1)}; confirme código e amostra física.`
+      : "Sugestão de vinil sólido Imprimax pela menor diferença CIEDE2000; confirme código e amostra física.");
+    const alternativasVinil = vinis.slice(0, 5);
+    if (escolha?.tipo === "imprimax") {
+      const escolhido = solido;
+      if (!alternativasVinil.some(item => Number(item.id) === Number(escolhido.id))) alternativasVinil.splice(Math.min(alternativasVinil.length, 4), 1, escolhido);
+    }
     const consumo = calcularConsumosBobina([{ regionKey: target.key, dadosPreco: target.dadosPreco }], input.precos)
       .get(target.key);
     const planoFace = planoComposicaoFace(input, avisos, `adesivo Imprimax ${[solido.linha, solido.nome].filter(Boolean).join(" ")}`);
@@ -985,8 +1186,9 @@ export function sugerirMaterialParaCor(input: CpqCorrespondenciaCorInput): CpqCo
       deltaE00: solido.deltaE00,
       custoEstimado: consumo?.areaConsumoM2 != null && price != null ? Number((consumo.areaConsumoM2 * price).toFixed(4)) : null,
       unidadeCusto: price == null ? null : "m2", avisos,
-      alternativas: vinis.slice(0, 5).map(({ raw: _raw, ...item }) => item),
+      alternativas: alternativasVinil.map(({ raw: _raw, ...item }) => item),
       precificacao: { areaLiquidaM2: areaLiquida, areaTotalM2: areaTotal, precoM2: price, custoPodeSerCalculado: areaTotal != null && price != null },
+      ...(escolha?.tipo === "imprimax" ? { escolhaManual: true } : {}),
     };
     return aplicarConsumoBobina(resultado, consumo);
   }

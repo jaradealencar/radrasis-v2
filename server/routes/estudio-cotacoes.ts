@@ -69,6 +69,8 @@ const mapeamentoRegiaoSchema = z.object({
   alternativas: z.array(z.record(z.string(), z.unknown())).max(5),
   precificacao: z.record(z.string(), z.unknown()).nullable(),
   composicaoFace: z.record(z.string(), z.unknown()).nullable(),
+  /** Só presente quando o vendedor trocou a sugestão automática de material (sem default: cotações antigas não mudam). */
+  escolhaManual: z.boolean().optional(),
 }).strict();
 
 const factibilidadeSchema = z.object({
@@ -657,6 +659,7 @@ async function validarMapeamentoCoresPersistido(
       || region.chapaBaseMateriaPrimaId !== (details.chapaBaseMateriaPrimaId ?? null)
       || region.requerChapaBase !== (details.requerChapaBase ?? false)
       || region.requerConfirmacaoConstrucao !== (details.requerConfirmacaoConstrucao ?? false)
+      || (region.escolhaManual ?? false) !== (details.escolhaManual ?? false)
       || stableJson(region.composicaoFace) !== stableJson(details.composicaoFace ?? null)) {
       return "A composição sugerida para a face foi alterada depois da análise. Refazer o mapeamento de cores.";
     }

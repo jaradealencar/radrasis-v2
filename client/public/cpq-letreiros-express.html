@@ -793,7 +793,7 @@ function novaProposta(){
     motorVetorizacao:'auto', motorUsado:null, motoresFalhas:[], fundoLimpoGpt:false,
     chatVetor:[], chatRascunho:'', chatCarregando:false, vetorAnterior:null, ajustesVetorizacao:null,
     gerarContornoCnc:true, tracedSvgCorte:null, tracedSvgCorteOriginal:null, tracedSvgCorteDe:null, corteInfo:null, corteErro:null, corteCreditos:null, svgNesting:null,
-    colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:'sem_iluminacao',transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,semAdesivo:false,composicaoKitOriginal:null},
+    colorAnalysis:{loading:false,error:null,resultados:null,aprovado:false,iluminacao:'sem_iluminacao',transmissaoMinimaPct:'',baseImpressao:'branco',construcaoFace:'nao_informada',laminar:false,semAdesivo:false,composicaoKitOriginal:null,escolhas:{},opcoes:{},escolhasAssinatura:''},
     geomRaw:null, traceQuality:null, traceReview:{letras:false,simbolo:false,isolamento:false}, vectorizerCredits:null,
     tiposFixacao:[], solda:novoEstadoSolda(),
     scale:{ valor:1, unidade:'m', byHeight:false, reference:'arte_completa', referenceDesc:'' },
@@ -4051,6 +4051,7 @@ function realStepEscala(){
         <button class="btn btn-ghost btn-sm" data-act="download-vector-svg">Baixar SVG vetorial</button>
       </div>
     </div>
+    ${htmlCartaoCoresFace()}
     ${painelAlturaElementos(g)}
     ${painelSoldaProdutividade()}
     <div class="warnbox" style="margin-top:12px;background:var(--warn-soft);border-color:color-mix(in oklab,var(--warn) 35%,var(--border));">
@@ -4334,6 +4335,223 @@ function painelAlturaElementos(g){
         </div>
       </div>
     </div>`;
+}
+
+/* ---------- CORES DA FACE NO DESENHO (pedido de 06/10/2026) ----------
+ * A leitura automática das cores pode errar (ex.: letras brancas redesenhadas em preto). Na Ficha técnica o vendedor clica nas peças do
+ * desenho e indica a cor delas; o servidor usa essas cores no lugar da leitura (`coresManuais` em /cores/analisar-svg) e escolhe o
+ * acrílico de cada cor. Cada cor de acrílico tem o seu nesting e o fundo (PVC) cobre o letreiro inteiro. A cor é por caminho do SVG
+ * (o Vectorizer.AI gera um caminho por forma; o traçador local junta as formas da mesma cor num caminho só). A numeração dos caminhos é a
+ * mesma do servidor (`extrairRegioesCorSvg`): todo <path> fora de <defs>, na ordem do documento, de 0 em diante. */
+let _assinaturaSvgCache={svg:null,valor:''};
+/** Identifica a arte vetorial atual: indicações de cor de uma arte anterior não valem para a nova. */
+function assinaturaSvgArte(){
+  const s=REAL.tracedSvgOriginal||'';
+  if(_assinaturaSvgCache.svg===s) return _assinaturaSvgCache.valor;
+  let h=5381;
+  for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0;
+  _assinaturaSvgCache={svg:s,valor:s.length+':'+h};
+  return _assinaturaSvgCache.valor;
+}
+
+let _corCtx=null;
+/** Qualquer cor CSS opaca (#rgb, rgb(), nome) → "#rrggbb"; degradê, "none" ou cor com transparência → null. */
+function corParaHex(valor){
+  const v=String(valor==null?'':valor).trim();
+  if(!v||/^none$/i.test(v)||/^url\(/i.test(v)) return null;
+  if(!_corCtx) _corCtx=document.createElement('canvas').getContext('2d');
+  _corCtx.fillStyle='#010203';
+  _corCtx.fillStyle=v;
+  const lido=String(_corCtx.fillStyle);
+  if(lido==='#010203'&&v.toLowerCase()!=='#010203') return null;
+  return /^#[0-9a-f]{6}$/i.test(lido)?lido.toLowerCase():null;
+}
+
+let _caminhosColoridosCache={svg:null,valor:null};
+/** Caminhos da arte vetorial original com a cor lida de cada um: `{view, caminhos:[{index,d,hex,gradiente,semPreenchimento,fillRule}]}`. */
+function lerCaminhosColoridos(){
+  const svg=REAL.tracedSvgOriginal;
+  if(!svg) return null;
+  if(_caminhosColoridosCache.svg===svg) return _caminhosColoridosCache.valor;
+  let valor=null;
+  try{
+    const doc=new DOMParser().parseFromString(svg.replace(/<!doctype[^>[]*>/gi,''),'image/svg+xml');
+    const raiz=doc.querySelector('svg');
+    if(!raiz||doc.querySelector('parsererror')) throw new Error('SVG ilegível');
+    const vb=(raiz.getAttribute('viewBox')||'').trim().split(/[\s,]+/).map(Number);
+    const view=vb.length===4&&vb.every(Number.isFinite)&&vb[2]>0&&vb[3]>0
+      ? {x:vb[0],y:vb[1],w:vb[2],h:vb[3]}
+      : {x:0,y:0,w:parseFloat(raiz.getAttribute('width'))||REAL.tracedW||1000,h:parseFloat(raiz.getAttribute('height'))||REAL.tracedH||500};
+    const estiloDe=(no,prop)=>{
+      const decl=(no.getAttribute('style')||'').split(';').map(s=>s.trim()).find(s=>s.toLowerCase().startsWith(prop+':'));
+      return decl?decl.slice(prop.length+1).trim():no.getAttribute(prop);
+    };
+    const caminhos=[...doc.querySelectorAll('path')].filter(p=>!p.closest('defs')).map((p,index)=>{
+      let fill=null;
+      for(let no=p;no&&no.nodeType===1&&fill==null;no=no.parentNode) fill=estiloDe(no,'fill');
+      if(fill==null) fill='#000000';
+      return {
+        index,d:p.getAttribute('d')||'',hex:corParaHex(fill),gradiente:/^url\(/i.test(fill),
+        semPreenchimento:/^none$/i.test(String(fill).trim()),fillRule:estiloDe(p,'fill-rule')==='evenodd'?'evenodd':'nonzero',
+      };
+    });
+    valor={view,caminhos};
+  }catch(erro){ valor=null; }
+  _caminhosColoridosCache={svg,valor};
+  return valor;
+}
+
+function coresFaceEstado(){
+  if(!REAL.coresFace) REAL.coresFace={assinatura:'',mapa:{},selecao:[],paleta:null,paletaCarregando:false,paletaErro:null,personalizada:'#ff7f00'};
+  const st=REAL.coresFace, assinatura=assinaturaSvgArte();
+  if(st.assinatura!==assinatura){ st.assinatura=assinatura; st.mapa={}; st.selecao=[]; }
+  return st;
+}
+function nomeMateriaCatalogo(id){
+  const material=(catalog.materias||[]).find(item=>Number(item.id)===Number(id));
+  return material?material.nome:'';
+}
+/** Cores indicadas pelo vendedor, agrupadas por cor, no formato que o servidor espera. */
+function coresManuaisParaServidor(){
+  const st=coresFaceEstado(), porCor=new Map();
+  Object.entries(st.mapa).forEach(([indice,hex])=>{ porCor.set(hex,[...(porCor.get(hex)||[]),Number(indice)]); });
+  return [...porCor.entries()].map(([corHex,pathIndexes])=>({corHex,pathIndexes:pathIndexes.sort((a,b)=>a-b)}));
+}
+
+/** Corpo do cartão "Cores da face": desenho clicável, cores atuais, seleção e paleta. */
+function htmlCoresFaceInterior(){
+  const lido=lerCaminhosColoridos();
+  if(!lido) return '<div class="empty-hint">Não foi possível ler as cores do desenho vetorial. Use "Refazer análise de cores" no passo do nesting.</div>';
+  const st=coresFaceEstado();
+  if(!st.paleta&&!st.paletaCarregando&&!st.paletaErro) setTimeout(carregarPaletaCoresFace,0);
+  const {view}=lido, pad=Math.max(view.w,view.h)*0.02;
+  const corDe=c=>st.mapa[c.index]||c.hex||(c.gradiente?'#94a3b8':'#000000');
+  const selecionadas=new Set(st.selecao);
+  const desenhaveis=lido.caminhos.filter(c=>!c.semPreenchimento&&c.d);
+  const caminhos=desenhaveis.map(c=>{
+    const selecionada=selecionadas.has(c.index), cor=corDe(c);
+    return `<path data-act="cor-peca" data-idx="${c.index}" d="${escaparHtml(c.d)}" fill="${cor}" fill-rule="${c.fillRule}" stroke="${selecionada?'#2563eb':'#0f172a'}" stroke-width="${selecionada?3.5:1}" vector-effect="non-scaling-stroke" style="cursor:pointer;outline:none;" tabindex="0" role="button" aria-pressed="${selecionada}" aria-label="Peça ${c.index+1}, cor ${cor}${st.mapa[c.index]?', indicada por você':''}"><title>Peça ${c.index+1} · ${cor}${st.mapa[c.index]?' (indicada por você)':''}${c.gradiente&&!st.mapa[c.index]?' · degradê na arte':''}</title></path>`;
+  }).join('');
+  const grupos=new Map();
+  desenhaveis.forEach(c=>{
+    const hex=corDe(c), grupo=grupos.get(hex)||{hex,indices:[],manuais:0};
+    grupo.indices.push(c.index); if(st.mapa[c.index]) grupo.manuais+=1;
+    grupos.set(hex,grupo);
+  });
+  const chip='display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:3px 10px 3px 4px;background:var(--surface);font-size:12px;';
+  const amostra=(hex,tam=18)=>`<span style="display:inline-block;width:${tam}px;height:${tam}px;border:1px solid var(--border);border-radius:50%;background:${hex};flex:none;"></span>`;
+  const legenda=[...grupos.values()].map(g=>`<span style="${chip}">${amostra(g.hex)}<b>${g.hex}</b> · ${g.indices.length} peça(s)${g.manuais?` <span class="badge b-accent">indicada por você</span>`:''}<button class="btn btn-ghost btn-sm" style="padding:1px 8px;" data-act="cor-selecionar-cor" data-hex="${g.hex}">Selecionar</button></span>`).join('');
+  const nSel=st.selecao.length, nManuais=Object.keys(st.mapa).length;
+  const desabilitado=nSel?'':'disabled';
+  const paleta=(st.paleta||[]).map(item=>{
+    const nome=nomeMateriaCatalogo(item.mubisysMateriaPrimaId)||item.nome||'chapa';
+    return `<button type="button" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:6px;" data-act="cor-aplicar" data-hex="${item.corHex}" title="${escaparHtml(nome)} · ${item.corHex}" ${desabilitado}>${amostra(item.corHex,16)}${escaparHtml(nome)}</button>`;
+  }).join('');
+  const coresDaArte=[...grupos.values()].map(g=>`<button type="button" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:6px;" data-act="cor-aplicar" data-hex="${g.hex}" title="Usar a cor ${g.hex}" ${desabilitado}>${amostra(g.hex,16)}${g.hex}</button>`).join('');
+  return `
+    <p style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Cores da face — confira e corrija a leitura</p>
+    <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:10px;">O desenho é a face do letreiro. O sistema leu as cores abaixo a partir da arte, mas pode errar (por exemplo, letras brancas redesenhadas em preto). <b>Clique nas peças</b> para selecioná-las e indique a cor delas: com a cor certa o sistema procura o acrílico mais parecido. Cada cor de acrílico terá o seu próprio nesting, e o fundo (PVC) sempre cobre o letreiro inteiro, qualquer que seja a cor da frente.</p>
+    <div class="grid2" style="align-items:start;">
+      <div style="background:repeating-conic-gradient(#e2e8f0 0% 25%,#f8fafc 0% 50%) 0 0/16px 16px;border:1px solid var(--border);border-radius:12px;padding:6px;">
+        <svg viewBox="${view.x-pad} ${view.y-pad} ${view.w+2*pad} ${view.h+2*pad}" style="display:block;width:100%;height:auto;max-height:420px;" role="group" aria-label="Peças da face; clique para selecionar e indicar a cor">${caminhos}</svg>
+      </div>
+      <div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">${legenda}</div>
+        <div class="role-note" style="margin-bottom:8px;">${ICONS.info} ${nSel?`<b>${nSel}</b> peça(s) selecionada(s).`:'Nenhuma peça selecionada.'} <button class="btn btn-ghost btn-sm" data-act="cor-selecionar-tudo">Selecionar todas</button> <button class="btn btn-ghost btn-sm" data-act="cor-limpar-selecao" ${desabilitado}>Limpar seleção</button></div>
+        <p style="font-size:12px;font-weight:700;margin:8px 0 4px;">Indicar a cor das peças selecionadas</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+          ${paleta||(st.paletaCarregando?'<span class="role-note" style="margin:0;">Carregando as cores de acrílico cadastradas…</span>':st.paletaErro?`<span class="role-note" style="margin:0;">${escaparHtml(st.paletaErro)}</span>`:'<span class="role-note" style="margin:0;">Nenhuma chapa com cor de referência cadastrada.</span>')}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span class="role-note" style="margin:0;">Cores do desenho:</span>${coresDaArte}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin:0;"><span style="font-size:12px;">Outra cor</span><input type="color" data-act="cor-personalizada" value="${escaparHtml(st.personalizada||'#ff7f00')}" style="width:42px;height:28px;padding:0;"></label>
+          <button class="btn btn-soft btn-sm" data-act="cor-aplicar-personalizada" ${desabilitado}>Aplicar esta cor</button>
+          <button class="btn btn-ghost btn-sm" data-act="cor-restaurar" ${desabilitado} title="Volta as peças selecionadas à cor que o sistema leu na arte">Voltar à leitura automática</button>
+        </div>
+        ${nManuais?`<div class="role-note" style="margin-top:10px;">${ICONS.check} Você indicou a cor de <b>${nManuais}</b> peça(s). <button class="btn btn-ghost btn-sm" data-act="cor-restaurar-todas">Desfazer todas</button></div>`:''}
+      </div>
+    </div>`;
+}
+
+function htmlCartaoCoresFace(){
+  const lido=lerCaminhosColoridos();
+  if(!lido||!lido.caminhos.length) return '';
+  return `<div id="cores-face-card" class="card" style="background:var(--surface-2);box-shadow:none;margin-top:14px;">${htmlCoresFaceInterior()}</div>`;
+}
+
+/** Redesenha só o cartão (sem recarregar a página inteira a cada clique) e religa os eventos dele. */
+function atualizarCartaoCoresFace(){
+  const no=document.getElementById('cores-face-card');
+  if(!no) return;
+  no.innerHTML=htmlCoresFaceInterior();
+  bindCoresFaceEventos();
+}
+
+async function carregarPaletaCoresFace(){
+  const st=coresFaceEstado();
+  if(st.paletaCarregando||st.paleta) return;
+  st.paletaCarregando=true; st.paletaErro=null;
+  try{
+    const resposta=await fetch('/api/letra-caixa/cores/paleta',{credentials:'same-origin'});
+    const corpo=await resposta.json().catch(()=>({}));
+    if(!resposta.ok) throw new Error(corpo.error||'Não foi possível carregar as cores de acrílico cadastradas.');
+    st.paleta=Array.isArray(corpo.chapas)?corpo.chapas:[];
+  }catch(erro){ st.paletaErro=erro.message||'Não foi possível carregar as cores de acrílico cadastradas.'; }
+  finally{ st.paletaCarregando=false; atualizarCartaoCoresFace(); }
+}
+
+/** A cor das peças mudou: a leitura de cores, o nesting e as aprovações que dependiam dela deixam de valer. */
+function aoMudarCoresFace(){
+  invalidarAnaliseCoresReal();
+  REAL.colorAnalysis.escolhas={}; REAL.colorAnalysis.opcoes={}; REAL.colorAnalysis.error=null; REAL.nestingAutoChave=null;
+  atualizarCartaoCoresFace();
+}
+
+function aplicarCorNasPecas(hex){
+  const st=coresFaceEstado(), lido=lerCaminhosColoridos();
+  if(!st.selecao.length||!lido||!/^#[0-9a-f]{6}$/i.test(hex)) return;
+  const cor=hex.toLowerCase(), porIndice=new Map(lido.caminhos.map(c=>[c.index,c]));
+  st.selecao.forEach(indice=>{
+    const original=porIndice.get(indice);
+    if(original&&original.hex===cor&&!original.gradiente) delete st.mapa[indice]; // a mesma cor que a arte já tem: não é uma correção
+    else st.mapa[indice]=cor;
+  });
+  aoMudarCoresFace();
+}
+
+function bindCoresFaceEventos(){
+  const alternar=indice=>{
+    const st=coresFaceEstado(), i=Number(indice);
+    st.selecao=st.selecao.includes(i)?st.selecao.filter(x=>x!==i):[...st.selecao,i];
+    atualizarCartaoCoresFace();
+  };
+  document.querySelectorAll('[data-act="cor-peca"]').forEach(no=>{
+    no.addEventListener('click',()=>alternar(no.dataset.idx));
+    no.addEventListener('keydown',evento=>{ if(evento.key==='Enter'||evento.key===' '){ evento.preventDefault(); alternar(no.dataset.idx); } });
+  });
+  document.querySelectorAll('[data-act="cor-selecionar-cor"]').forEach(botao=>botao.addEventListener('click',()=>{
+    const st=coresFaceEstado(), lido=lerCaminhosColoridos();
+    if(!lido) return;
+    const novos=lido.caminhos.filter(c=>!c.semPreenchimento&&c.d&&(st.mapa[c.index]||c.hex||(c.gradiente?'#94a3b8':'#000000'))===botao.dataset.hex).map(c=>c.index);
+    st.selecao=[...new Set([...st.selecao,...novos])];
+    atualizarCartaoCoresFace();
+  }));
+  document.querySelectorAll('[data-act="cor-selecionar-tudo"]').forEach(botao=>botao.addEventListener('click',()=>{
+    const lido=lerCaminhosColoridos();
+    if(!lido) return;
+    coresFaceEstado().selecao=lido.caminhos.filter(c=>!c.semPreenchimento&&c.d).map(c=>c.index);
+    atualizarCartaoCoresFace();
+  }));
+  document.querySelectorAll('[data-act="cor-limpar-selecao"]').forEach(botao=>botao.addEventListener('click',()=>{ coresFaceEstado().selecao=[]; atualizarCartaoCoresFace(); }));
+  document.querySelectorAll('[data-act="cor-aplicar"]').forEach(botao=>botao.addEventListener('click',()=>aplicarCorNasPecas(botao.dataset.hex)));
+  document.querySelectorAll('[data-act="cor-personalizada"]').forEach(campo=>campo.addEventListener('input',()=>{ coresFaceEstado().personalizada=campo.value; }));
+  document.querySelectorAll('[data-act="cor-aplicar-personalizada"]').forEach(botao=>botao.addEventListener('click',()=>aplicarCorNasPecas(coresFaceEstado().personalizada||'#ff7f00')));
+  document.querySelectorAll('[data-act="cor-restaurar"]').forEach(botao=>botao.addEventListener('click',()=>{
+    const st=coresFaceEstado();
+    st.selecao.forEach(indice=>{ delete st.mapa[indice]; });
+    aoMudarCoresFace();
+  }));
+  document.querySelectorAll('[data-act="cor-restaurar-todas"]').forEach(botao=>botao.addEventListener('click',()=>{ coresFaceEstado().mapa={}; aoMudarCoresFace(); }));
 }
 
 function pranchaTecnicaSvg(g=computeGeomReal()){
@@ -4730,6 +4948,9 @@ async function analisarCorrespondenciaCoresReal(){
   if(!REAL.tracedSvgOriginal){color.error='A arte vetorial original com cores não está disponível. Reenvie o SVG ou gere uma nova vetorização.';render();return;}
   const geom=computeGeomReal();
   if(!geom.scaleFactor){color.error='Confirme uma escala física válida antes de calcular as áreas por cor.';render();return;}
+  // Trocas de material de outra arte não valem para esta.
+  const assinaturaArte=assinaturaSvgArte();
+  if(color.escolhasAssinatura!==assinaturaArte){color.escolhas={};color.escolhasAssinatura=assinaturaArte;}
   color.loading=true;color.error=null;color.resultados=null;color.aprovado=false;REAL.factibilidade=null;REAL.nesting=null;REAL.nestingMateriaPrimaIds=[];REAL.approvals.nesting=false;REAL.approvals.kit=false;render();
   try{
     const minimum=String(color.transmissaoMinimaPct??'').trim()===''?null:Number(color.transmissaoMinimaPct);
@@ -4737,10 +4958,12 @@ async function analisarCorrespondenciaCoresReal(){
       sourceId:REAL.id,svgArte:REAL.tracedSvgOriginal,svgGeometria:REAL.tracedSvg,
       larguraSvgMm:REAL.tracedW*geom.scaleFactor*1000,alturaSvgMm:REAL.tracedH*geom.scaleFactor*1000,
       iluminacao:color.iluminacao,transmissaoMinimaPct:minimum,baseImpressao:color.baseImpressao,construcaoFace:construcaoFaceEfetiva(color),laminar:color.laminar,semAdesivo:!!color.semAdesivo,
+      escolhas:Object.entries(color.escolhas||{}).map(([regionKey,escolha])=>({regionKey,corHex:escolha.corHex||null,tipo:escolha.tipo,...(escolha.id?{id:escolha.id}:{})})),
+      coresManuais:coresManuaisParaServidor(),
     })});
     const body=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(body.error||'Não foi possível comparar as cores da arte com os materiais.');
-    color.resultados=body.resultados||[];color.aprovado=false;
+    color.resultados=body.resultados||[];color.aprovado=false;color.opcoes=body.opcoes||{};
     await anexarReferenciasPantone(color);
   }catch(error){color.error=error.message||'Falha na análise cromática.';}
   finally{color.loading=false;render();}
@@ -4792,31 +5015,77 @@ async function aprovarCoresESeguirReal(){
   await analisarFactibilidadeReal();
 }
 
-/** Resumo, para o vendedor, do que o sistema decidiu sozinho a partir das cores da logo: chapa de acrílico mais
- *  parecida (ΔE00 ≤ 2) ou, sem equivalente, acrílico transparente + adesivo Imprimax. */
-function htmlAvisoCoresAutomaticas(){
+/** Resumo, para o vendedor, do que o sistema decidiu a partir das cores da logo: chapa de acrílico mais parecida (ΔE00 ≤ 2) ou, sem
+ *  equivalente, acrílico transparente + adesivo Imprimax. Com `editavel` (passo do Nesting) cada cor tem um menu para trocar o material
+ *  sugerido, porque a sugestão pode errar; a cor em si se corrige no desenho da Ficha técnica. */
+function htmlAvisoCoresAutomaticas(editavel=false){
   const color=REAL.colorAnalysis;
   if(!color?.resultados?.length||!(color.aprovado||color.pendenciaAprovacao)) return '';
   const nomesFace=lines=>[...new Set(lines.map(line=>materialKitAtivo(line).nome||line.nome).filter(Boolean))].join(' + ');
   const antes=nomesFace((color.composicaoKitOriginal||[]).filter(line=>camadaFisicaKit(line)==='face'));
   const depois=nomesFace((REAL.kit||[]).filter(line=>line.origemComposicaoCor));
+  const amostra=hex=>`<span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(hex||'#e2e8f0')};"></span>`;
   const itens=color.resultados.map(result=>{
+    const opcoes=(color.opcoes&&color.opcoes[result.regionKey])||[];
     const alternativas=result.alternativas||[];
     const chapa=result.tipoSugestao==='chapa'?alternativas.find(item=>Number(item.id)===Number(result.chapaId)):null;
     const adesivo=result.tipoSugestao==='imprimax'?alternativas.find(item=>Number(item.id)===Number(result.imprimaxAdesivoId)):null;
+    const opcaoAtual=opcoes.find(o=>(result.tipoSugestao==='chapa'&&o.tipo==='chapa'&&Number(o.id)===Number(result.chapaId))||(result.tipoSugestao==='imprimax'&&o.tipo==='imprimax'&&Number(o.id)===Number(result.imprimaxAdesivoId)));
     const de=result.deltaE00!=null?` (ΔE00 ${fmt(result.deltaE00,1)})`:'';
     const nomeAdesivo=[adesivo?.linha,adesivo?.codigo||adesivo?.nome].filter(Boolean).join(' ').replace(/^imprimax\s+/i,'');
+    const nomeChapa=nomeMateriaCatalogo(result.chapaMateriaPrimaId)||chapa?.nome||'chapa cadastrada';
     const texto=result.tipoSugestao==='chapa'
-      ?`acrílico/chapa mais parecido: <b>${escaparHtml(chapa?.nome||'chapa cadastrada')}</b>${de}`
+      ?`acrílico/chapa ${result.escolhaManual?'escolhido':'mais parecido'}: <b>${escaparHtml(nomeChapa)}</b>${de}`
       :result.tipoSugestao==='imprimax'
-        ?`sem chapa nesta cor → ${result.requerChapaBase?'<b>acrílico transparente + adesivo Imprimax</b>':'<b>adesivo Imprimax</b>'} ${escaparHtml(nomeAdesivo)}${de}`
-        :result.tipoSugestao==='impresso'?'<b>adesivo impresso</b> (gradiente ou arte complexa)':color.semAdesivo?'adesivo desconsiderado — a face segue a composição do kit':'revisão manual necessária';
-    const alertas=(result.avisos||[]).filter(texto=>/Atenção|pendente|não cadastrado|Carregue/i.test(texto)).map(texto=>`<div class="role-note">${escaparHtml(texto)}</div>`).join('');
-    return `<li style="margin-bottom:4px;"><span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(result.corHex||'#e2e8f0')};"></span> ${escaparHtml(result.corHex||result.pantoneCode||result.tipoCor||'cor')} → ${texto}${alertas}</li>`;
+        ?`${result.escolhaManual?'adesivo escolhido':'sem chapa nesta cor →'} ${result.requerChapaBase?'<b>acrílico transparente + adesivo Imprimax</b>':'<b>adesivo Imprimax</b>'} ${escaparHtml(nomeAdesivo)}${de}`
+        :result.tipoSugestao==='impresso'
+          ?(result.tipoCor==='solida'?'<b>adesivo impresso</b> (não há chapa nem adesivo Imprimax compatível com esta cor)':'<b>adesivo impresso</b> (degradê ou arte complexa)')
+          :color.semAdesivo?'adesivo desconsiderado — a face segue a composição do kit':'revisão manual necessária';
+    const corIndicada=(result.avisos||[]).some(aviso=>/^Cor indicada pelo vendedor/.test(aviso));
+    const marcas=(corIndicada?' <span class="badge b-accent" title="Você indicou esta cor no desenho da Ficha técnica">cor indicada por você</span>':'')+(result.escolhaManual?' <span class="badge b-accent" title="Você trocou o material sugerido">material escolhido por você</span>':'');
+    const alertas=(result.avisos||[]).filter(texto=>/Atenção|pendente|não cadastrado|Carregue|Transmissão de luz não cadastrada/i.test(texto)).map(texto=>`<div class="role-note">${escaparHtml(texto)}</div>`).join('');
+    const menu=editavel&&result.tipoCor==='solida'&&opcoes.length>1?htmlMenuMaterialDaCor(result,opcoes):'';
+    return `<li style="margin-bottom:6px;">${amostra(result.corHex)} ${escaparHtml(result.corHex||result.pantoneCode||result.tipoCor||'cor')} → ${opcaoAtual&&opcaoAtual.corHex?amostra(opcaoAtual.corHex)+' ':''}${texto}${marcas}${menu}${alertas}</li>`;
   }).join('');
   return `<div class="banner" style="margin:10px 0;">${ICONS.info}<div><b>Cores da logo identificadas; materiais da face ajustados automaticamente${color.aprovado?'':' (cores ainda não aprovadas)'}.</b>
     ${antes||depois?`<div style="margin-top:4px;">Face do kit: ${escaparHtml(antes||'—')} → <b>${escaparHtml(depois||'sem chapa colorida (adesivo sobre a base)')}</b></div>`:''}
-    <ul style="margin:6px 0 0 18px;">${itens}</ul></div></div>`;
+    <ul style="margin:6px 0 0 18px;">${itens}</ul>
+    ${editavel?'<div class="role-note" style="margin-top:8px;">A cor errada? Corrija no desenho da <b>Ficha técnica (passo 5)</b>: clique nas peças e indique a cor. Aqui você só troca o material sugerido para a cor.</div>':''}</div></div>`;
+}
+
+/** Menu das opções de material para uma cor (chapas por matéria-prima, adesivos Imprimax e adesivo impresso). */
+function htmlMenuMaterialDaCor(result,opcoes){
+  const color=REAL.colorAnalysis, atual=color.escolhas&&color.escolhas[result.regionKey];
+  const valorAtual=atual?(atual.tipo==='impresso'?'impresso':atual.tipo+':'+atual.id):'auto';
+  const rotulo=o=>{
+    const nome=o.tipo==='chapa'?(nomeMateriaCatalogo(o.mubisysMateriaPrimaId)||o.nome):[o.linha,o.codigo||o.nome].filter(Boolean).join(' ').replace(/^imprimax\s+/i,'');
+    return nome+(o.deltaE00!=null?` — ΔE00 ${fmt(o.deltaE00,1)}`:' — sem cor cadastrada')+(o.bloqueada?' (incompatível com a iluminação)':'');
+  };
+  const grupo=(titulo,tipo)=>{
+    const lista=opcoes.filter(o=>o.tipo===tipo);
+    return lista.length?`<optgroup label="${titulo}">${lista.map(o=>`<option value="${tipo}:${o.id}" ${valorAtual===tipo+':'+o.id?'selected':''} ${o.bloqueada?'disabled':''} title="${escaparHtml(o.motivo||'')}">${escaparHtml(rotulo(o))}</option>`).join('')}</optgroup>`:'';
+  };
+  return `<div style="margin-top:4px;"><label class="field" style="margin:0;">Trocar o material desta cor
+    <select data-act="cor-escolher" data-region="${escaparHtml(result.regionKey)}" style="max-width:480px;">
+      <option value="auto" ${valorAtual==='auto'?'selected':''}>Sugestão automática</option>
+      ${grupo('Chapas de acrílico (por matéria-prima)','chapa')}${grupo('Adesivo Imprimax sobre acrílico transparente','imprimax')}
+      <option value="impresso" ${valorAtual==='impresso'?'selected':''}>Adesivo impresso</option>
+    </select></label></div>`;
+}
+
+/** O vendedor trocou o material sugerido para uma cor: o servidor valida a escolha, regrava o mapeamento e o nesting é refeito. */
+async function escolherMaterialCor(regionKey,valor){
+  if(state.tracing||REAL.factibilidadeCarregando||REAL.nestingCarregando||(REAL.colorAnalysis&&REAL.colorAnalysis.loading)) return;
+  const color=REAL.colorAnalysis, result=(color.resultados||[]).find(r=>r.regionKey===regionKey);
+  if(!result) return;
+  color.escolhas=color.escolhas||{};
+  if(valor==='auto') delete color.escolhas[regionKey];
+  else{
+    const [tipo,id]=valor.split(':');
+    color.escolhas[regionKey]={tipo,id:id?Number(id):null,corHex:result.corHex||null};
+    if(tipo!=='chapa') color.semAdesivo=false; // pediu adesivo de propósito: a decisão anterior de dispensá-lo não vale mais
+  }
+  await refazerCoresENesting();
 }
 
 /** Linhas de adesivo (Imprimax/impresso) que a análise de cores concluiu serem necessárias, exibidas na tabela da
@@ -4916,7 +5185,7 @@ function renderAnaliseCoresReal(){
     ${pendencias}
     ${pendencias?'':htmlControleSemAdesivo()}
     ${color.loading?'<div class="empty-hint">Rastreando as cores da logo e escolhendo os materiais da face…</div>':''}
-    ${htmlAvisoCoresAutomaticas()}
+    ${htmlAvisoCoresAutomaticas(true)}
     ${color.error&&!color.loading?'<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-act="cor-analisar">Tentar novamente</button>':''}
   </div>`;
 }
@@ -8365,6 +8634,8 @@ function bindRealEvents(){
   if(corAutoriza)corAutoriza.addEventListener('change',event=>{REAL.colorAnalysis.autorizaAdesivo=event.target.checked;render();});
   document.querySelectorAll('[data-act="cor-refazer"]').forEach(botao=>botao.addEventListener('click',()=>refazerCoresENesting()));
   document.querySelectorAll('[data-act="cor-sem-adesivo"]').forEach(botao=>botao.addEventListener('click',()=>alternarSemAdesivo(botao.dataset.val==='1')));
+  document.querySelectorAll('[data-act="cor-escolher"]').forEach(menu=>menu.addEventListener('change',()=>escolherMaterialCor(menu.dataset.region,menu.value)));
+  bindCoresFaceEventos();
   const corAprovar=document.querySelector('[data-act="cor-aprovar-seguir"]');
   if(corAprovar)corAprovar.addEventListener('click',aprovarCoresESeguirReal);
   document.querySelectorAll('[data-act="factibilidade-download"]').forEach(el=>el.addEventListener('click',()=>{
