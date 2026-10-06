@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { BotaoCopiarImagem } from "@/components/BotaoCopiarImagem";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -2267,6 +2268,22 @@ function SimuladorCartao() {
                   <span>{fmtBrl(simulacao.totalCobrado)}</span>
                 </div>
                 <p className="text-xs text-slate-500">Em {numeroParcelas}x de {fmtBrl(simulacao.valorParcela)}</p>
+                <BotaoCopiarImagem
+                  className="w-full"
+                  nomeArquivo={`simulacao-cartao-${numeroParcelas}x.png`}
+                  montar={() => ({
+                    titulo: "Pagamento no cartão de crédito",
+                    subtitulo: numeroParcelas === 1 ? "Link de pagamento · à vista" : `Link de pagamento · em ${numeroParcelas}x`,
+                    larguraMinima: 460,
+                    blocos: [
+                      { tipo: "linha", rotulo: modo === "receber" ? "Para receber" : "Você recebe", valor: fmtBrl(simulacao.valorRecebido), forte: true },
+                      { tipo: "linha", rotulo: "Taxa por venda", detalhe: `Na hora · ${fmtNum(simulacao.percentualVenda, 2)}%`, valor: `+ ${fmtBrl(simulacao.taxaVenda)}` },
+                      { tipo: "linha", rotulo: "Taxa de parcelamento", detalhe: `${fmtNum(simulacao.percentualParcelamento, 2)}%`, valor: `+ ${fmtBrl(simulacao.taxaParcelamento)}` },
+                      { tipo: "linha", rotulo: "Cliente paga", valor: fmtBrl(simulacao.totalCobrado), forte: true },
+                      { tipo: "nota", texto: `Em ${numeroParcelas}x de ${fmtBrl(simulacao.valorParcela)}` },
+                    ],
+                  })}
+                />
               </>
             ) : (
               <p className="text-xs text-amber-700">Informe um valor positivo e selecione de 1 a 18 parcelas.</p>
@@ -2545,6 +2562,33 @@ function SimuladorBoletos() {
               <p className="text-xs text-slate-500">
                 {simulacao.parcelas.length > 1 && `Em ${simulacao.parcelas.length}x de ${fmtBrl(simulacao.total / simulacao.parcelas.length)} em média. `}As datas contam dias corridos após o faturamento.
               </p>
+              <BotaoCopiarImagem
+                nomeArquivo={`simulacao-boletos-${simulacao.parcelas.length}x.png`}
+                montar={() => ({
+                  titulo: "Condição de pagamento em boletos",
+                  subtitulo: `Pedido de ${fmtBrl(valor)} · faturamento estimado em ${fmtDate(simulacao.faturamento)}`,
+                  blocos: [
+                    {
+                      tipo: "tabela",
+                      colunas: [
+                        { titulo: "Boleto" },
+                        { titulo: "Vencimento" },
+                        { titulo: "Principal", alinhar: "dir" },
+                        { titulo: "Juros", alinhar: "dir" },
+                        { titulo: "Valor do boleto", alinhar: "dir" },
+                      ],
+                      linhas: simulacao.parcelas.map((parcela, indice) => [
+                        `${indice + 1}/${simulacao.parcelas.length} (${parcela.dias} dias)`,
+                        fmtDate(parcela.vencimento),
+                        fmtBrl(parcela.principal),
+                        `${fmtBrl(parcela.juros)} (${fmtNum(parcela.percentualJuros, 2)}%)`,
+                        fmtBrl(parcela.total),
+                      ]),
+                    },
+                    { tipo: "linha", rotulo: "Cliente paga", detalhe: `Principal ${fmtBrl(valor)} + juros ${fmtBrl(simulacao.juros)}`, valor: fmtBrl(simulacao.total), forte: true },
+                  ],
+                })}
+              />
             </>
           ) : (
             <p className="text-xs text-amber-700">

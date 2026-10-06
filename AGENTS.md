@@ -320,6 +320,9 @@ em vez de reescrever o padrão:
   categórica, `STATUS_COLORS` para semântica).
 - Estados de carregando e vazio usam `@/components/ui/spinner` e
   `@/components/ui/empty`.
+- Resultado que o vendedor mostra ao cliente (simuladores de cartão e de boletos, Tabela de Preços > Pág. 6) ganha
+  `@/components/BotaoCopiarImagem`: desenha um PNG em canvas (`@/lib/imagemCopia`) e o coloca na área de transferência (sem
+  permissão do navegador, baixa o arquivo). Não use `html2canvas` para isso — ele não lê as cores `oklch()` do Tailwind 4.
 
 ## Testes
 
