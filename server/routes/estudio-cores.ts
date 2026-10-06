@@ -555,7 +555,7 @@ async function aprovarCores(req: Request, res: Response): Promise<void> {
       || typeof details.areaConsumoM2 !== "number" || details.areaConsumoM2 <= 0;
   });
   if (pendenciaConsumoBobina)
-    return void erro(res, 409, "O consumo físico da bobina está pendente. Confira geometria, largura útil, sangria e custos antes de aprovar os materiais.");
+    return void erro(res, 409, "O consumo físico da bobina do adesivo está pendente: cadastre na Administração do CPQ a largura total e a largura útil da bobina, a sangria e o preço do vinil, e confira a geometria.");
   const pendenciaComposicao = mappings.find(row => {
     const details = row.detalhesJson as Record<string, unknown>;
     return (details.requerChapaBase === true && details.chapaBaseMateriaPrimaId == null)

@@ -3854,7 +3854,7 @@ function realStepEscala(){
         <div style="display:flex; gap:10px;">
           <label class="field" style="flex:1;">
             <span>${REAL.scale.byHeight?'Altura real conhecida':'Largura real conhecida'}</span>
-            <input type="text" inputmode="decimal" value="${REAL.scale.valor}" data-act="real-scale-value">
+            <input type="text" inputmode="decimal" value="${escaparHtml(textoNumero(REAL.scale, REAL.scale.valor))}" data-act="real-scale-value" placeholder="ex.: 1,5">
           </label>
           <label class="field" style="width:100px;">Unidade
             <select data-act="real-scale-unit">${['mm','cm','m'].map(u=>`<option value="${u}" ${REAL.scale.unidade===u?'selected':''}>${u}</option>`).join('')}</select>
@@ -4158,7 +4158,7 @@ function realStepKit(){
               ${[...new Set([...configGeral.papeisPeca,'Aro'])].map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
             </select></td>
             <td><select data-act="real-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([key,f])=>`<option value="${key}" ${k.formulaType===key?'selected':''}>${f.label}</option>`).join('')}</select></td>
-            <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="real-kit-mult" data-idx="${i}" style="width:70px;"></td>
+            <td><input type="text" inputmode="decimal" value="${escaparHtml(textoNumero(k, k.mult))}" data-act="real-kit-mult" data-idx="${i}" style="width:70px;"></td>
             <td class="num">${fmt(qty,2)} ${material.unidade}</td>
             <td class="num">${money(material.custo)}</td>
             <td class="num">${money(qty*material.custo)}</td>
@@ -4383,10 +4383,20 @@ function htmlLinhasAdesivoComposicao(){
   }).join('');
 }
 
+/** O que a análise de cores diz que falta (cadastro da bobina, preços...) quando a aprovação não passa. */
+function avisosPendentesCores(){
+  const color=REAL.colorAnalysis;
+  if(!color.resultados?.length||color.aprovado) return '';
+  const textos=[...new Set(color.resultados.flatMap(r=>r.avisos||[]).filter(t=>/bobina|cadastr|pendente|largura|pre[çc]o/i.test(t)))].slice(0,4);
+  if(!textos.length) return '';
+  return `<div class="warnbox" style="margin-top:8px;"><span>${ICONS.alert}</span><div><b>O que falta para aprovar as cores:</b><ul style="margin:6px 0 0 18px;">${textos.map(t=>`<li>${escaparHtml(t)}</li>`).join('')}</ul><div class="role-note">Ajuste na Administração do CPQ (preços de impressão: largura total e útil da bobina, sangria e preço do vinil). Enquanto isso o nesting segue com a composição do kit.</div></div></div>`;
+}
+
 function renderAnaliseCoresReal(){
   const color=REAL.colorAnalysis;
   return `<div style="margin:10px 0;">
     ${color.error?`<div class="warnbox" role="alert">${escaparHtml(color.error)}</div>`:''}
+    ${color.error?avisosPendentesCores():''}
     ${color.loading?'<div class="empty-hint">Rastreando as cores da logo e escolhendo os materiais da face…</div>':''}
     ${htmlAvisoCoresAutomaticas()}
     ${color.error&&!color.loading?'<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-act="cor-analisar">Tentar novamente</button>':''}
@@ -4415,6 +4425,8 @@ async function iniciarNestingAutomatico(){
   // Sem chapa equivalente, acrílico transparente + adesivo Imprimax entra sozinho; o vendedor é informado no aviso da tela.
   color.autorizaAdesivo=true;
   await aprovarCoresESeguirReal();
+  // Se as cores não foram aprovadas (ex.: falta cadastrar a bobina do adesivo), o nesting ainda roda com a composição do kit.
+  if(!color.aprovado&&!REAL.factibilidade&&!REAL.nesting&&!REAL.factibilidadeCarregando) await analisarFactibilidadeReal();
 }
 
 async function executarNestingFactibilidadeReal(formatosTemporarios=REAL.nestingFormatosUsados||[]){
@@ -7213,6 +7225,20 @@ function bindRangeLive(selector, setValue, formatFn, commitFn){
  *  redesenhado com o valor já convertido (ex. "0." vira "0"), apagando o
  *  ponto decimal que o usuário acabou de digitar antes de terminar o número.
  *  Só confirma o re-render completo numa pausa curta ou ao sair do campo. */
+/** Número digitado em português: aceita vírgula decimal (1,5) e ponto de milhar (1.500,5). Texto inválido vira 0. */
+function numeroBR(texto){
+  let t = String(texto == null ? '' : texto).trim().replace(/\s/g, '');
+  if(t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : 0;
+}
+/* Guarda o que a pessoa digitou ("1," ou "1,5") sem gravar campo novo no objeto; o campo só é reescrito pelo número quando o texto deixa de bater com ele. */
+const _textoDigitado = new WeakMap();
+function textoNumero(objeto, valor){
+  const texto = _textoDigitado.get(objeto);
+  return texto != null && numeroBR(texto) === Number(valor) ? texto : valor;
+}
+
 function bindNumberLive(selector, setValue, commitFn){
   commitFn = commitFn || renderPreservingFocus;
   const el = document.querySelector(selector);
@@ -7548,7 +7574,7 @@ function bindRealEvents(){
   if(limparFundoBtn) limparFundoBtn.addEventListener('click', ()=>limparFundoEVetorizar());
 
   bindNumberLive('[data-act="real-scale-value"]', v=>{
-    REAL.scale.valor=parseFloat(v)||0; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
+    _textoDigitado.set(REAL.scale, v); REAL.scale.valor=numeroBR(v); invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false;
   });
   const scaleUnitEl = document.querySelector('[data-act="real-scale-unit"]');
   if(scaleUnitEl) scaleUnitEl.addEventListener('change', e=>{ REAL.scale.unidade=e.target.value; invalidarFactibilidadeReal(); REAL.approvals.escala=false; REAL.approvals.kit=false; REAL.approvals.nesting=false; render(); });
@@ -7603,7 +7629,8 @@ function bindRealEvents(){
   document.querySelectorAll('[data-act="real-kit-formula"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].formulaType=e.target.value; REAL.approvals.kit=false; render(); }));
   document.querySelectorAll('[data-act="real-kit-mult"]').forEach(el=>{
     el.addEventListener('input', e=>{
-      REAL.kit[+el.dataset.idx].mult = parseFloat(e.target.value)||0;
+      _textoDigitado.set(REAL.kit[+el.dataset.idx], e.target.value);
+      REAL.kit[+el.dataset.idx].mult = numeroBR(e.target.value);
       REAL.approvals.kit=false;
       clearTimeout(_renderDebounceTimer);
       _renderDebounceTimer = setTimeout(renderPreservingFocus, 400);
