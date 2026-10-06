@@ -3381,48 +3381,22 @@ function modeloBateFiltro(produtoId, modeloId){
   return true;
 }
 
+/** No passo da Proposta a composição NÃO aparece: ela só é conferida e ajustada no passo 7, depois do nesting. Aqui fica um aviso
+ *  curto com o que foi carregado e os alertas de importação do MubiSys. */
 function renderComposicaoDoModelo(kitPronto){
   if(!REAL.produtoId) return '';
   if(!REAL.modeloId){
     return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
-      <div style="font-weight:700;">Composição e produtos do kit</div>
-      <p class="role-note" style="margin-top:5px;">Escolha o modelo para carregar as matérias-primas, as variações e os produtos vinculados. A composição é configurada por modelo.</p>
+      <div style="font-weight:700;">Composição do kit</div>
+      <p class="role-note" style="margin-top:5px;">Escolha o modelo. A composição (matérias-primas, produtos do kit, adesivos e pintura) é montada no passo 7, depois do nesting.</p>
     </div>`;
   }
-
-  const linhas=Array.isArray(REAL.kit)?REAL.kit:[];
-  const vinculados=Array.isArray(kitPronto?.kitProdutos)?kitPronto.kitProdutos:[];
+  const materias=(Array.isArray(REAL.kit)?REAL.kit:[]).length, produtos=(Array.isArray(REAL.kitProdutosSel)?REAL.kitProdutosSel:[]).length;
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
-    <div style="font-weight:700;">Composição e produtos do kit</div>
-    <p class="role-note" style="margin-top:5px;">Confira as matérias-primas comuns ao modelo e as específicas das variações selecionadas. O custo atual de cada matéria-prima vem do catálogo do MubiSys.</p>
-    ${REAL.kitSource==='mubisys'?`<div class="banner" style="margin:10px 0 0;">${ICONS.info}<div>Consumo importado da ficha do MubiSys para <b>${escaparHtml(REAL.variacaoModeloNome||modeloNomePorKey(kitKey(REAL.produtoId,REAL.modeloId)))}</b>. O cálculo acompanha a unidade de cobrança do modelo.</div></div>`:''}
+    <div style="font-weight:700;">Composição do kit</div>
+    <p class="role-note" style="margin-top:5px;">A composição só aparece depois do nesting (passo 7). Antes, o nesting usa as chapas ligadas à Face, ao Aro e ao Fundo do modelo. Já estão carregados ${materias} matéria(s)-prima(s) e ${produtos} produto(s) do kit; você confere e ajusta tudo no passo 7.</p>
+    ${REAL.kitSource==='mubisys'?`<div class="banner" style="margin:10px 0 0;">${ICONS.info}<div>Consumo importado da ficha do MubiSys para <b>${escaparHtml(REAL.variacaoModeloNome||modeloNomePorKey(kitKey(REAL.produtoId,REAL.modeloId)))}</b>.</div></div>`:''}
     ${REAL.kitWarning?`<div class="warnbox" style="margin-top:10px;">${escaparHtml(REAL.kitWarning)}</div>`:''}
-    <div class="grid2" style="margin-top:12px;align-items:start;">
-      <section>
-        <div style="font-size:11.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;margin-bottom:7px;">Matérias-primas (${linhas.length})</div>
-        ${linhas.length?`<div style="display:grid;gap:7px;">
-          ${linhas.map((linha,i)=>{
-            const material=materialKitAtivo(linha);
-            const variantes=Array.isArray(linha.variantes)?linha.variantes:[];
-            return `<div style="border:1px solid var(--border);border-radius:9px;padding:9px 10px;">
-              <div style="font-weight:600;">${escaparHtml(material.nome)}${material.unidade?` <span style="color:var(--text-faint);font-weight:400;">· ${escaparHtml(material.unidade)}</span>`:''}</div>
-              ${linha.origemMubiSys?`<div style="font-size:11.5px;color:var(--text-dim);margin-top:3px;">Consumo cadastrado: ${fmt(linha.mult,3)} ${escaparHtml(linha.unidadeConsumo||'')} por ${escaparHtml(linha.consumoBaseUnidade||'unidade do modelo')}</div>`:''}
-              ${linha.origemKitProduto?`<div style="font-size:11.5px;color:var(--accent-ink);margin-top:2px;">Do produto do kit: ${escaparHtml(linha.kitProdutoNome||'')}</div>`:''}
-              ${linha.papel?`<div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">Papel na peça: ${escaparHtml(linha.papel)}</div>`:''}
-              ${variantes.length?`<label class="field" style="display:block;margin-top:7px;font-size:11.5px;">${escaparHtml(linha.variacaoNome||'Variação')}
-                <select data-act="real-kit-variacao" data-idx="${i}" style="display:block;margin-top:4px;width:min(100%,380px);font-size:12px;">
-                  <option value="">Nenhuma (manter ${escaparHtml(linha.nome)})</option>
-                  ${variantes.map(v=>`<option value="${v.matId}" ${String(linha.variacaoSelecionadaMatId)===String(v.matId)?'selected':''}>${escaparHtml(v.valor||v.nome)} · ${escaparHtml(v.nome)}</option>`).join('')}
-                </select>
-              </label>`:`<div style="font-size:11.5px;color:var(--text-faint);margin-top:3px;">Sem variações cadastradas</div>`}
-            </div>`;
-          }).join('')}
-        </div>`:`<div class="empty-hint">Este modelo ainda não tem matérias-primas cadastradas.</div>`}
-      </section>
-      <section>
-        ${htmlProdutosDoKit(false)}
-      </section>
-    </div>
     ${kitPronto?.precificacao?`<div class="role-note" style="margin-top:10px;">${ICONS.info} A regra de precificação cadastrada para o modelo também será carregada.</div>`:''}
   </div>`;
 }

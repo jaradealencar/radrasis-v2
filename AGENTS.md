@@ -507,6 +507,9 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   aberto na prancha, com faixas = ceil(altura ÷ 1200 mm); regra em `shared/gabarito.ts` e repetida em
   `FORMULA_TYPES` do HTML, validada no servidor (`estudio-cotacoes.ts`). O custo é por m² de bobina; a base de
   cobrança real do #1098 (m²/ml/rolo) ainda não é lida pelo CPQ, então confira no cadastro da bobina.
+  **A composição só aparece depois do nesting** (pedido de 05/10/2026): o fluxo é Nesting (6) → Composição (7) →
+  Orçamento (8), e o passo da Proposta mostra só um aviso curto (`renderComposicaoDoModelo`), sem lista de matérias-primas,
+  produtos do kit nem variações — tudo isso é conferido e ajustado no passo 7.
   No passo de Composição o vendedor também acrescenta/remove produtos do kit (busca + modelo/variações, `htmlProdutosDoKit` no HTML do CPQ) e liga/desliga a embalagem. O passo de Nesting só mostra as chapas da composição e roda sozinho: a análise de cores (sem perguntas; padrões: sem iluminação, vinil branco, face acrílica detectada pelo kit, sem laminação) e a aprovação automática acontecem em segundo plano (`iniciarNestingAutomatico` no HTML do CPQ), sem parar: quando não há chapa de acrílico equivalente (ΔE00 ≤ 2), entra acrílico transparente + adesivo Imprimax e o cliente é avisado (`htmlAvisoCoresAutomaticas`, nos passos de Nesting e Composição; o cliente envia `autorizaAdesivoSobreAcrilico: true` sozinho, decisão do usuário 05/10/2026, que substitui a autorização manual abaixo). As linhas de adesivo aparecem na tabela da Composição (`htmlLinhasAdesivoComposicao`) só como exibição: o custo já entra no orçamento por `custoMateriaisCorTotal`, não em `REAL.kit`. A caixa de Pintura fica no passo de Composição.
   **Regra de pendência das cores (pedido de 05/10/2026):** se a análise de cores sugere adesivo, ele **entra na
   Composição** mesmo quando o custo não fecha (bobina/preço do vinil sem cadastro) — nunca é descartado nem vira
