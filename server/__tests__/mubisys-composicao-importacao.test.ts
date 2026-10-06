@@ -118,6 +118,19 @@ describe("cadastro de produto no CPQ", () => {
     );
   });
 
+  it("sincroniza as cópias locais quando o catálogo ou os kits são atualizados", () => {
+    expect(html).toContain("function sincronizarComposicoesMubiSysAutomaticamente()");
+    expect(html).toMatch(/if\(catalog\.mubisysWebConectado&&kitsApiDisponivel&&!kitsCarregando\) void sincronizarComposicoesMubiSysAutomaticamente\(\)/);
+    expect(html).toContain("Cópia MubiSys → Radrasys:");
+    expect(html).toContain("sincronizadoEm:new Date().toISOString()");
+  });
+
+  it("preserva edições locais de fichas importadas para revisão e salva substituições explícitas", () => {
+    expect(html).toContain("assinaturaLocalAtual!==baseline");
+    expect(html).toContain("status:'revisao'");
+    expect(html).toMatch(/if\(r\.status==='importado'\|\|r\.status==='atualizado'\) salvarKit\(key\)/);
+  });
+
   it("usa o perfil vindo do MubiSys e recusa variações incompletas", () => {
     expect(html).not.toContain("function formulaPorUnidadeModelo(unidade)");
     expect(html).toContain("formulaType:item.formulaConsumo");

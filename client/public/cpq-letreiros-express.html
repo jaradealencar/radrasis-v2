@@ -419,7 +419,7 @@ function computeOrcamento(p){
 }
 
 /* ---------- CATÁLOGO ATUAL DO MUBISYS (consultado pelo servidor) ---------- */
-const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, connectionOpen:false, connectionBusy:false, connectionMessage:null, ready:false, refreshing:false, error:null, baixadoEm:null };
+const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, connectionOpen:false, connectionBusy:false, connectionMessage:null, syncWarning:null, sincronizandoKits:false, ready:false, refreshing:false, error:null, baixadoEm:null };
 async function loadCatalog(){
   const jaCarregado=catalog.ready;
   catalog.refreshing = true;
@@ -459,6 +459,7 @@ async function loadCatalog(){
     catalog.refreshing = false;
     render();
   }
+  if(catalog.mubisysWebConectado&&kitsApiDisponivel&&!kitsCarregando) void sincronizarComposicoesMubiSysAutomaticamente();
 }
 function catalogErrorNotice(){
   if(!catalog.error) return '';
@@ -474,6 +475,7 @@ function renderConexaoMubiSys(){
     <div><b>${catalog.mubisysWebConectado?'MubiSys conectado':'Consumo por variação do MubiSys'}</b><div style="margin-top:3px;">${escaparHtml(estado)} ${catalog.mubisysWebConectado?'A sessão fica neste navegador por até 8 horas.':''}</div>
       ${catalog.connectionMessage?`<div style="margin-top:4px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
       ${catalog.importMsg?`<div style="margin-top:4px;color:var(--ok);">${escaparHtml(catalog.importMsg)}</div>`:''}
+      ${catalog.syncWarning?`<div role="alert" style="margin-top:4px;color:var(--warn);">${escaparHtml(catalog.syncWarning)}</div>`:''}
       ${catalog.connectionOpen&&!catalog.mubisysWebConectado?`<form data-act="mubisys-connect-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;align-items:end;">
         <label class="field">Código da empresa<input type="text" name="codigo" autocomplete="off" required></label>
         <label class="field">Usuário<input type="text" name="usuario" autocomplete="off" required></label>
@@ -482,7 +484,7 @@ function renderConexaoMubiSys(){
       </form>`:''}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${catalog.mubisysWebConectado?`<button class="btn btn-primary btn-sm" data-act="mubisys-importar-tudo" ${catalog.importando||!linhas?'disabled':''}>${catalog.importando?'Importando…':'Importar composições de todos os produtos'}</button><button class="btn btn-ghost btn-sm" data-act="mubisys-reload">Atualizar consumos</button><button class="btn btn-ghost btn-sm" data-act="mubisys-disconnect">Desconectar</button>`:`<button class="btn btn-soft btn-sm" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
+      ${catalog.mubisysWebConectado?`<button class="btn btn-primary btn-sm" data-act="mubisys-importar-tudo" ${catalog.importando||catalog.sincronizandoKits||!linhas?'disabled':''}>${catalog.sincronizandoKits?'Sincronizando cópias…':catalog.importando?'Importando…':'Importar composições de todos os produtos'}</button><button class="btn btn-ghost btn-sm" data-act="mubisys-reload" ${catalog.sincronizandoKits?'disabled':''}>Atualizar consumos</button><button class="btn btn-ghost btn-sm" data-act="mubisys-disconnect" ${catalog.sincronizandoKits?'disabled':''}>Desconectar</button>`:`<button class="btn btn-soft btn-sm" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
     </div>
   </div>`;
 }
@@ -6379,22 +6381,65 @@ async function carregarKitsServidor(){
     kitsCarregando=false;
     render();
   }
+  if(kitsApiDisponivel&&catalog.mubisysWebConectado) void sincronizarComposicoesMubiSysAutomaticamente();
 }
 
-/** Traz do MubiSys a composição comum do modelo + a de cada variação ativa para o kit do Radrasys.
- *  Linhas manuais (sem origemMubiSys) só são mantidas com substituir=false; kits com linhas manuais
- *  são pulados na importação em massa para não duplicar custo. */
+function projetarLinhaMubiSys(linha){
+  return [Number(linha.matId)||null,linha.variacaoModeloId==null?null:Number(linha.variacaoModeloId),String(linha.formulaType||''),Number(linha.mult)||0,String(linha.perfilConsumoMubiSys||''),String(linha.unidadeConsumo||''),String(linha.consumoBaseUnidade||'')];
+}
+function assinaturaLinhasMubiSys(linhas,{catalogo=false}={}){
+  const projetadas=(linhas||[]).filter(l=>l?.origemMubiSys).map(l=>{
+    const base=projetarLinhaMubiSys(l);
+    return catalogo?[base,String(l.nome||''),String(l.unidade||''),Number(l.custo)||0,String(l.status||'')]:base;
+  });
+  projetadas.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return JSON.stringify(projetadas);
+}
+function preservarAjustesImportados(novas,atuais){
+  const filas=new Map();
+  for(const linha of atuais){
+    const chave=`${Number(linha.matId)}:${linha.variacaoModeloId==null?'comum':Number(linha.variacaoModeloId)}`;
+    if(!filas.has(chave)) filas.set(chave,[]);
+    filas.get(chave).push(linha);
+  }
+  return novas.map(linha=>{
+    const chave=`${Number(linha.matId)}:${linha.variacaoModeloId==null?'comum':Number(linha.variacaoModeloId)}`;
+    const anterior=filas.get(chave)?.shift();
+    if(!anterior) return {...linha,variantes:[]};
+    return {...anterior,...linha,papel:anterior.papel??linha.papel??'',variantes:Array.isArray(anterior.variantes)?anterior.variantes.map(v=>({...v})):[],variacaoSelecionadaMatId:anterior.variacaoSelecionadaMatId??null,variacaoPadraoMatId:anterior.variacaoPadraoMatId??null};
+  });
+}
+/** Copia somente a ficha de leitura do MubiSys para o Radrasys; nunca grava no ERP.
+ *  Em sincronizações, conflitos em linhas editadas localmente são preservados para revisão. */
 function importarComposicaoMubiSysNoKit(produto, modelo, {substituir=false}={}){
   const key=kitKey(produto.id,modelo.id);
   const importada=composicaoMubiSysDoModelo(modelo,variacoesAtivasDoModelo(modelo).map(v=>v.id));
   if(!importada) return {status:'sem-composicao'};
   if(importada.erro) return {status:'erro',erro:importada.erro};
+  if(!importada.linhas.length) return {status:'sem-composicao'};
   const existente=adminState.kits[key];
-  const manuais=(existente?.linhas||[]).filter(l=>!l.origemMubiSys);
-  if(manuais.length&&!substituir) return {status:'pulado'};
+  const linhasAtuais=Array.isArray(existente?.linhas)?existente.linhas:[];
+  const linhasImportadasAtuais=linhasAtuais.filter(l=>l.origemMubiSys);
+  const linhasManuais=linhasAtuais.filter(l=>!l.origemMubiSys);
+  if(!substituir&&!linhasImportadasAtuais.length&&linhasManuais.length) return {status:'pulado'};
+
+  const assinaturaFonte=assinaturaLinhasMubiSys(importada.linhas,{catalogo:true});
+  const assinaturaLocalRecebida=assinaturaLinhasMubiSys(importada.linhas);
+  const assinaturaLocalAtual=assinaturaLinhasMubiSys(linhasImportadasAtuais);
+  const syncSalva=existente?.mubisysSync&&typeof existente.mubisysSync==='object'?existente.mubisysSync:null;
+  if(!substituir&&linhasImportadasAtuais.length){
+    const baseline=typeof syncSalva?.assinaturaLocal==='string'?syncSalva.assinaturaLocal:null;
+    if(baseline?assinaturaLocalAtual!==baseline:assinaturaLocalAtual!==assinaturaLocalRecebida)
+      return {status:'revisao',key,nome:`${produto.nome} — ${modelo.nome}`};
+    if(baseline&&syncSalva?.assinaturaFonte===assinaturaFonte)
+      return {status:'sem-alteracao',key,linhas:linhasImportadasAtuais.length};
+  }
+
   const kit=existente||(adminState.kits[key]={linhas:[],precificacao:null,descricaoProduto:'',prazoDiasUteis:null,kitProdutos:[],fotoUrl:null,fotoAssetId:null,categoria:null,subcategoria:null,tipoProduto:null,nomeCompleto:`${produto.nome} — ${modelo.nome}`});
-  kit.linhas=importada.linhas.map(l=>({...l,variantes:[]}));
-  return {status:'importado',key,linhas:kit.linhas.length};
+  const novasLinhas=preservarAjustesImportados(importada.linhas,substituir?[]:linhasImportadasAtuais);
+  kit.linhas=substituir?novasLinhas:[...linhasManuais,...novasLinhas];
+  kit.mubisysSync={versao:1,assinaturaFonte,assinaturaLocal:assinaturaLinhasMubiSys(novasLinhas),sincronizadoEm:new Date().toISOString()};
+  return {status:linhasImportadasAtuais.length?'atualizado':'importado',key,linhas:novasLinhas.length};
 }
 
 /** Ao cadastrar/abrir um modelo ainda vazio, traz a ficha do MubiSys sem exigir um clique extra.
@@ -6408,27 +6453,71 @@ function preencherComposicaoMubiSysSeVazia(key){
   const modelo=produto?.modelos.find(item=>Number(item.id)===modeloId);
   if(!produto||!modelo) return null;
   const resultado=importarComposicaoMubiSysNoKit(produto,modelo);
-  if(resultado.status==='importado'){
+  if(resultado.status==='importado'||resultado.status==='atualizado'){
     catalog.importMsg=`${resultado.linhas} matéria(s)-prima(s) do modelo ${modelo.nome} importada(s) automaticamente do MubiSys.`;
   }
   return resultado;
 }
 
 async function importarComposicoesMubiSysEmMassa(){
-  if(catalog.importando||!catalog.mubisysWebConectado) return;
+  if(catalog.importando||catalog.sincronizandoKits||!catalog.mubisysWebConectado) return;
   catalog.importando=true;catalog.importMsg='Importando…';render();
-  const total={importado:0,pulado:0,'sem-composicao':0,erro:0,falhaSalvar:0};
+  const total={importado:0,atualizado:0,'sem-alteracao':0,pulado:0,revisao:0,'sem-composicao':0,erro:0,falhaSalvar:0};
   for(const produto of catalog.produtos){
     if(adminState.produtosExcluidos.has(produto.id)) continue;
     for(const modelo of produto.modelos){
       const r=importarComposicaoMubiSysNoKit(produto,modelo);
       total[r.status]++;
-      if(r.status==='importado'&&!(await salvarKitImediato(r.key))) total.falhaSalvar++;
+      if((r.status==='importado'||r.status==='atualizado')&&!(await salvarKitImediato(r.key))) total.falhaSalvar++;
     }
   }
   catalog.importando=false;
-  catalog.importMsg=`${total.importado} modelo(s) importado(s); ${total.pulado} pulado(s) por já terem composição manual; ${total['sem-composicao']} sem composição no MubiSys${total.erro?`; ${total.erro} com matéria-prima fora do catálogo`:''}${total.falhaSalvar?`; ${total.falhaSalvar} não salvaram`:''}.`;
+  catalog.importMsg=`${total.importado} modelo(s) novo(s); ${total.atualizado} atualizado(s); ${total['sem-alteracao']} já sincronizado(s); ${total.pulado} pulado(s) com composição manual; ${total['sem-composicao']} sem composição no MubiSys${total.revisao?`; ${total.revisao} requer(em) revisão local`:''}${total.erro?`; ${total.erro} com erro de leitura`:''}${total.falhaSalvar?`; ${total.falhaSalvar} não salvaram`:''}.`;
+  catalog.syncWarning=total.revisao?`${total.revisao} composição(ões) foi/foram preservada(s) porque uma linha importada foi alterada localmente. Revise e use “Atualizar matérias-primas do MubiSys” para substituir conscientemente.`:null;
   render();
+}
+
+/** Atualiza automaticamente kits já cadastrados quando o usuário abre/atualiza o catálogo autenticado. */
+async function sincronizarComposicoesMubiSysAutomaticamente(){
+  if(catalog.sincronizandoKits||catalog.importando||!catalog.mubisysWebConectado||!kitsApiDisponivel||kitsCarregando) return;
+  const chaves=Object.keys(adminState.kits||{});
+  if(!chaves.length) return;
+  catalog.sincronizandoKits=true;
+  catalog.syncWarning=null;
+  render();
+  let importados=0,atualizados=0,semAlteracao=0,pulados=0,semComposicao=0,revisao=0,erros=0,naoEncontrados=0,falhasSalvar=0;
+  try{
+    for(const key of chaves){
+      const [produtoId,modeloId]=key.split('_').map(Number);
+      if(adminState.produtosExcluidos.has(produtoId)) continue;
+      const produto=catalog.produtos.find(item=>Number(item.id)===produtoId);
+      const modelo=produto?.modelos.find(item=>Number(item.id)===modeloId);
+      if(!produto||!modelo){naoEncontrados++;continue;}
+      const resultado=importarComposicaoMubiSysNoKit(produto,modelo);
+      if(resultado.status==='importado'||resultado.status==='atualizado'){
+        if(await salvarKitImediato(key)){
+          if(resultado.status==='importado') importados++; else atualizados++;
+        }else falhasSalvar++;
+      }else if(resultado.status==='sem-alteracao') semAlteracao++;
+      else if(resultado.status==='pulado') pulados++;
+      else if(resultado.status==='sem-composicao') semComposicao++;
+      else if(resultado.status==='revisao') revisao++;
+      else if(resultado.status==='erro') erros++;
+    }
+    catalog.importMsg=`Cópia MubiSys → Radrasys: ${importados} nova(s), ${atualizados} atualizada(s), ${semAlteracao} sem alteração, ${pulados} manual(is) preservada(s), ${semComposicao} sem ficha no MubiSys${naoEncontrados?`, ${naoEncontrados} modelo(s) não localizado(s) no catálogo`:''}${falhasSalvar?`, ${falhasSalvar} falha(s) ao salvar`:''}.`;
+    const pendencias=[];
+    if(semComposicao) pendencias.push(`${semComposicao} cadastro(s) local(is) sem composição retornada pelo MubiSys`);
+    if(revisao) pendencias.push(`${revisao} cadastro(s) com alterações locais preservado(s) para revisão`);
+    if(erros) pendencias.push(`${erros} ficha(s) com erro ou perfil sem equivalência`);
+    if(naoEncontrados) pendencias.push(`${naoEncontrados} modelo(s) local(is) não encontrado(s) no catálogo atual`);
+    if(falhasSalvar) pendencias.push(`${falhasSalvar} cadastro(s) não puderam ser salvos no Radrasys`);
+    catalog.syncWarning=pendencias.length?`${pendencias.join('; ')}.`:null;
+  }catch(error){
+    catalog.syncWarning=`Falha na sincronização MubiSys → Radrasys: ${String(error&&error.message||'erro inesperado')}.`;
+  }finally{
+    catalog.sincronizandoKits=false;
+    render();
+  }
 }
 
 async function salvarKitImediato(key){
@@ -8133,7 +8222,7 @@ function bindAdminEvents(){
       if(!modelo) return;
       if((adminState.kits[key]?.linhas||[]).length&&!confirm('Isto substitui TODA a composição atual deste modelo pela do MubiSys. Continuar?')) return;
       const r=importarComposicaoMubiSysNoKit(produto,modelo,{substituir:true});
-      if(r.status==='importado') salvarKit(key);
+      if(r.status==='importado'||r.status==='atualizado') salvarKit(key);
       else alert(r.status==='erro'?r.erro:'O MubiSys não tem composição cadastrada para este modelo ou suas variações.');
       render();
     });

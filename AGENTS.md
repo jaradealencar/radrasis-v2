@@ -429,6 +429,18 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   atualizar a ficha permanece visível nesses modelos. Uma tabela HTML interna
   desconhecida não pode ser tratada como composição vazia: o fluxo deve exibir
   erro de formato para evitar a perda silenciosa de matérias-primas e consumos.
+  **Sincronização MubiSys → Radrasys:** ao conectar/atualizar o catálogo,
+  o CPQ sincroniza as fichas dos modelos já cadastrados localmente, incluindo
+  linhas comuns e todas as variações ativas, com perfil, quantidade, unidade e
+  custo atual. A cópia é gravada no Radrasys; não há gravação nem alteração no
+  MubiSys. O processo só consulta o ERP enquanto a sessão deste navegador está
+  válida (até 8 horas); não há sincronização em segundo plano com o CPQ fechado,
+  então abrir/atualizar o catálogo ou usar "Atualizar consumos" busca novamente
+  a fonte. Composições manuais são preservadas; fichas importadas que tenham
+  sido alteradas localmente ficam sinalizadas para revisão, sem sobrescrita
+  silenciosa. Falta de ficha, perfil sem equivalente, modelo não localizado ou
+  falha ao salvar aparecem como pendências. Uma atualização manual explícita
+  permite substituir a ficha após confirmação.
   O módulo **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
   `server/routers/produtos.ts`, tabelas `produtos`/
   `produto_composicao_materiais`/`produto_kit_itens`) importa a ficha comum do
