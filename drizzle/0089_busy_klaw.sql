@@ -1,0 +1,2 @@
+ALTER TABLE "materia_prima_cadastros" ADD COLUMN "produtividade_tipos_solda" text[] DEFAULT '{}' NOT NULL;--> statement-breakpoint
+ALTER TABLE "materia_prima_cadastros" ADD COLUMN "produtividade_tamanho" varchar(12);

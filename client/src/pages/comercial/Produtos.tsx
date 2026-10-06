@@ -1,4 +1,5 @@
 import { hexesDoPantone } from "@shared/pantone-referencia";
+import { alternarTipoSolda, MAX_TIPOS_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
 import { PADRAO_PROCESSO_CORTE, PROCESSOS_CORTE, ROTACOES_PERMITIDAS, ROTULO_PROCESSO_CORTE, ROTULO_ROTACAO, type ProcessoCorte, type RotacaoPermitida } from "@shared/politica-corte";
 import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaAltura, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
@@ -200,6 +201,8 @@ function CadastroMateriasPrimas() {
                           <span>{FORMATOS_PERFIL[material.perfilFormato ?? "tubo"]} · {material.perfilAlturaMm ?? "—"} × {material.perfilLarguraMm ?? "—"} × {material.perfilComprimentoMm ?? "—"} mm · esp. {fmtEspessura(material.espessuraMm)} · {material.densidadeKgM3 == null ? "—" : Number((material.densidadeKgM3 / 1000).toFixed(4))} g/cm³</span>
                         ) : material.categoriaUsaDadosBobina ? (
                           <span>Bobina · {material.bobinas.filter(bobina => bobina.ativo).map(bobina => `${bobina.larguraMm} mm`).join(", ") || "sem largura cadastrada"}{material.espessuraMm != null ? ` · ${fmtEspessura(material.espessuraMm)} de espessura` : ""}{material.densidadeKgM3 != null ? ` · ${kgM3ParaGCm3(material.densidadeKgM3)} g/cm³` : ""}</span>
+                        ) : material.ehProdutividade ? (
+                          <ResumoProdutividade tipos={material.produtividadeTiposSolda} tamanho={material.produtividadeTamanho} />
                         ) : <span className="text-muted-foreground">{material.pesoEspecificoKg != null ? `${material.pesoEspecificoKg} kg / ${material.unidadeCusto || "un."}` : material.tipo || "Sem dados técnicos adicionais"}</span>}
                       </TableCell>
                       <TableCell>
@@ -226,6 +229,17 @@ function CadastroMateriasPrimas() {
   );
 }
 
+/** Tipos de solda e tamanho da matéria-prima de produtividade; o que ainda falta aparece em âmbar. */
+function ResumoProdutividade({ tipos, tamanho }: { tipos: TipoSolda[]; tamanho: TamanhoProdutividade | null }) {
+  const falta = "text-xs text-amber-700 dark:text-amber-300";
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {tipos.length ? tipos.map(tipo => <Badge key={tipo} variant="outline">{ROTULO_TIPO_SOLDA[tipo]}</Badge>) : <span className={falta}>Sem tipo de solda</span>}
+      {tamanho ? <Badge variant="secondary">{ROTULO_TAMANHO_PRODUTIVIDADE[tamanho]}</Badge> : <span className={falta}>Sem tamanho</span>}
+    </div>
+  );
+}
+
 /** Pré-seleção da base de cobrança pelo texto da unidade de custo do MubiSys; sem correspondência clara, fica vazio para o gestor escolher. */
 function sugerirBaseCustoBobina(unidadeCusto: string): "" | "m2" | "ml" {
   const unidade = unidadeCusto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/²/g, "2");
@@ -233,6 +247,8 @@ function sugerirBaseCustoBobina(unidadeCusto: string): "" | "m2" | "ml" {
   if (unidade.includes("linear") || unidade === "m" || unidade === "ml") return "ml";
   return "";
 }
+
+const produtividadeClassificada = (item: MateriaPrimaCadastroItem) => item.ehProdutividade && (item.produtividadeTiposSolda.length > 0 || item.produtividadeTamanho != null);
 
 const fmtEspessura = (mm: number | null) => mm == null ? "—" : mm < 1 ? `${Number((mm * 1000).toFixed(2))} µm` : `${mm} mm`;
 
@@ -301,6 +317,8 @@ function DialogEditarMateriaPrima({
   const [rotacaoPermitida, setRotacaoPermitida] = useState<RotacaoPermitida>("livre");
   const [espacamentoCorte, setEspacamentoCorte] = useState("");
   const [margemCorte, setMargemCorte] = useState("");
+  const [tiposSolda, setTiposSolda] = useState<TipoSolda[]>([]);
+  const [tamanhoProdutividade, setTamanhoProdutividade] = useState<"" | TamanhoProdutividade>("");
   const [origemBusca, setOrigemBusca] = useState("");
   const [origemId, setOrigemId] = useState("");
   const [copiarCor, setCopiarCor] = useState(false);
@@ -343,6 +361,8 @@ function DialogEditarMateriaPrima({
     setRotacaoPermitida(fonte.rotacaoPermitida ?? "livre");
     setEspacamentoCorte(fonte.espacamentoMm == null ? "" : String(fonte.espacamentoMm));
     setMargemCorte(fonte.margemBordaMm == null ? "" : String(fonte.margemBordaMm));
+    setTiposSolda(fonte.produtividadeTiposSolda);
+    setTamanhoProdutividade(fonte.produtividadeTamanho ?? "");
   };
 
   useEffect(() => {
@@ -355,7 +375,7 @@ function DialogEditarMateriaPrima({
 
   const termoOrigem = origemBusca.trim().toLocaleLowerCase("pt-BR");
   const origens = materias
-    .filter(item => item.id !== material?.id && item.categoriaId != null
+    .filter(item => item.id !== material?.id && (item.categoriaId != null || (material?.ehProdutividade && produtividadeClassificada(item)))
       && (!termoOrigem || item.nome.toLocaleLowerCase("pt-BR").includes(termoOrigem) || String(item.id).includes(termoOrigem)))
     .slice(0, 60);
   const origemSelecionada = materias.find(item => String(item.id) === origemId) ?? null;
@@ -445,6 +465,8 @@ function DialogEditarMateriaPrima({
       rotacaoPermitida: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? rotacaoPermitida : "livre",
       espacamentoMm: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? espacamentoSalvo : null,
       margemBordaMm: categoria?.usaDadosChapa || categoria?.usaDadosBobina ? margemSalva : null,
+      produtividadeTiposSolda: material.ehProdutividade ? tiposSolda : [],
+      produtividadeTamanho: material.ehProdutividade && tamanhoProdutividade ? tamanhoProdutividade : null,
     });
   };
 
@@ -461,7 +483,7 @@ function DialogEditarMateriaPrima({
               <Copy className="mt-0.5 h-4 w-4 text-primary" />
               <div>
                 <h3 className="text-sm font-medium">Clonar dados de outra matéria-prima</h3>
-                <p className="text-xs text-muted-foreground">Copia categoria, espessura, densidade, formatos de chapa ou larguras de bobina, perfil e peso específico de uma matéria-prima já cadastrada. Nada é salvo até você clicar em Salvar.</p>
+                <p className="text-xs text-muted-foreground">Copia categoria, espessura, densidade, formatos de chapa ou larguras de bobina, perfil, peso específico e, nas de produtividade, tipo de solda e tamanho de uma matéria-prima já cadastrada. Nada é salvo até você clicar em Salvar.</p>
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-[minmax(150px,1fr)_minmax(220px,2fr)_auto] sm:items-center">
@@ -470,7 +492,7 @@ function DialogEditarMateriaPrima({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="nenhuma">{origens.length ? "Escolha a matéria-prima de origem" : "Nenhuma matéria-prima categorizada encontrada"}</SelectItem>
-                  {origens.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.nome} · {item.categoriaNome}</SelectItem>)}
+                  {origens.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.nome} · {item.categoriaNome ?? "Produtividade"}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={!origemSelecionada} onClick={clonarDeOrigem}><Copy className="h-3.5 w-3.5" /> Clonar dados</Button>
@@ -493,6 +515,35 @@ function DialogEditarMateriaPrima({
               <Input readOnly value={material.valorCusto > 0 ? `${fmtBrl(material.valorCusto)} / ${material.unidadeCusto || "un."}` : "Não informado"} />
             </div>
           </div>
+
+          {material.ehProdutividade && <div className="space-y-4 rounded-lg border p-4">
+            <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Classificação da produtividade</h3><p className="text-xs text-muted-foreground">Marcações internas do Radrasys: não são enviadas nem lidas do MubiSys.</p></div></div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2"><Label>Tipo de solda (até {MAX_TIPOS_SOLDA})</Label><span className="text-xs text-muted-foreground">{tiposSolda.length} de {MAX_TIPOS_SOLDA} marcado(s)</span></div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {TIPOS_SOLDA.map(tipo => {
+                  const marcado = tiposSolda.includes(tipo);
+                  const limiteAtingido = !marcado && tipo !== "sem_fixacao" && !tiposSolda.includes("sem_fixacao") && tiposSolda.length >= MAX_TIPOS_SOLDA;
+                  return (
+                    <label key={tipo} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${limiteAtingido ? "opacity-50" : ""}`} title={limiteAtingido ? `Já há ${MAX_TIPOS_SOLDA} tipos marcados: desmarque um para escolher outro.` : undefined}>
+                      <input type="checkbox" checked={marcado} disabled={limiteAtingido} onChange={() => setTiposSolda(atual => alternarTipoSolda(atual, tipo))} /> {ROTULO_TIPO_SOLDA[tipo]}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">"Sem fixação" não combina com os outros tipos: marcá-lo desmarca os demais, e marcar outro tipo desmarca "Sem fixação".</p>
+            </div>
+            <div className="max-w-sm space-y-2">
+              <Label>Tamanho</Label>
+              <Select value={tamanhoProdutividade || "nao-informado"} onValueChange={valor => setTamanhoProdutividade(valor === "nao-informado" ? "" : valor as TamanhoProdutividade)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nao-informado">Não informado</SelectItem>
+                  {TAMANHOS_PRODUTIVIDADE.map(tamanho => <SelectItem key={tamanho} value={tamanho}>{ROTULO_TAMANHO_PRODUTIVIDADE[tamanho]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>}
 
           {categoria?.usaDadosChapa && <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /><div><h3 className="font-medium">Dados da chapa</h3><p className="text-xs text-muted-foreground">Dimensões são mantidas em orientação horizontal para o nesting.</p></div></div>

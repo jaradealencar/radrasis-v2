@@ -430,7 +430,14 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   categoria com `usa_dados_chapa` exige espessura, densidade e pelo menos um
   tamanho ativo, salvo como formato em `estudio_chapas` e normalizado para
   orientação horizontal. Categorias de perfil (migrations `0079` e `0081`) abrem altura, largura, espessura, comprimento e densidade, sem formatos; a densidade é digitada em g/cm³ e gravada em kg/m³ (×1000), e matérias-primas fora de chapa/perfil têm `peso_especifico_kg` (kg por unidade de consumo), base do cálculo de peso do letreiro, implementado no fim do orçamento do CPQ (`blocoPesoReal`, uso interno; chapa = área líquida × espessura × densidade, perfil = tubo oco, cantoneira (L) ou barra maciça conforme `perfil_formato`, migration `0084` (padrão tubo; a barra dispensa espessura), demais = quantidade × peso específico; itens sem dado ficam destacados). Espessura é digitada em mm ou µm e gravada em mm; bobina tem só altura (largura do rolo) e espessura. Gestor, admin e master podem editar categorias e
-  especificações. O CPQ permite selecionar várias
+  especificações. **Produtividade (pedido de 05/10/2026):** matérias-primas cujo nome contém "produtividade"
+  (exceto "Produtividade Geral …", ex.: #4373 Hora; 42 no catálogo de 05/10/2026) ganham no diálogo de edição uma
+  subclassificação interna, independente da categoria: até 3 tipos de solda (barra roscada, patinha para LED,
+  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras) e o tamanho (≤ 11 cm ou > 11 cm).
+  Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`) e `produtividade_tamanho` (migration `0089`);
+  regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
+  (`ehMateriaProdutividade`), ignorando o que vier para as demais. É só cadastro: nenhum cálculo de custo ou preço lê
+  esses campos ainda, e a classificação é manual (nada é deduzido do texto entre colchetes do nome). O CPQ permite selecionar várias
   variações do modelo e soma a composição comum às linhas específicas
   escolhidas; salva as medidas do nesting e os materiais calculados no
   snapshot da cotação. Comercial > Propostas pode importar medidas de uma
