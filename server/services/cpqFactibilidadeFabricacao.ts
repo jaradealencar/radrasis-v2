@@ -103,6 +103,8 @@ export type CpqLinhaCorte = {
   materiaPrimaId: number;
   materiaPrima: string;
   pecaId: string;
+  /** Quanto material (mm) a linha atravessa: quanto menor, melhor o ponto da emenda (vão entre letras = 0). */
+  materialCortadoMm?: number;
 };
 
 export type CpqFragmentoFatiado = {
@@ -779,6 +781,64 @@ export function calcularAreasVisiveisSvgPorCaminho(
   return calcularMetricasVisiveisSvgPorCaminho(svg, larguraSvgMm, alturaSvgMm).map(metrica => metrica.areaM2);
 }
 
+/** Material (mm) que uma linha de corte em `pos` atravessa: soma dos trechos da linha que caem dentro do desenho (par-ímpar). */
+function materialNaLinhaDeCorte(geometry: MultiPolygon, eixo: "x" | "y", pos: number): number {
+  const cruzamentos: number[] = [];
+  for (const polygon of geometry) {
+    for (const ring of polygon) {
+      for (let i = 0; i < ring.length; i += 1) {
+        const [ax, ay] = ring[i];
+        const [bx, by] = ring[(i + 1) % ring.length];
+        const au = eixo === "x" ? ax : ay, bu = eixo === "x" ? bx : by;
+        if ((au <= pos && bu > pos) || (bu <= pos && au > pos)) {
+          const av = eixo === "x" ? ay : ax, bv = eixo === "x" ? by : bx;
+          cruzamentos.push(av + ((pos - au) / (bu - au)) * (bv - av));
+        }
+      }
+    }
+  }
+  cruzamentos.sort((a, b) => a - b);
+  let total = 0;
+  for (let i = 0; i + 1 < cruzamentos.length; i += 2) total += cruzamentos[i + 1] - cruzamentos[i];
+  return total;
+}
+
+/** A emenda pode recuar até 30% do tamanho útil da chapa para achar um ponto com menos material (vão entre letras, haste fina). */
+const JANELA_MINIMA_CORTE = 0.7;
+const PASSOS_BUSCA_CORTE = 160;
+
+/**
+ * Posições das linhas de emenda ao longo de um eixo (coordenadas locais, 0..comprimento). Cada trecho cabe no tamanho útil
+ * da chapa e a linha vai para o ponto de MENOR material dentro da janela [70%, 100%] do trecho; empate vale a posição mais
+ * distante (menos emendas). Em desenho uniforme (um retângulo) isto reproduz o corte em intervalos iguais.
+ */
+function limitesDeCorte(geometry: MultiPolygon, eixo: "x" | "y", comprimento: number, usavel: number): number[] {
+  const limites = [0];
+  let inicio = 0;
+  while (comprimento - inicio > usavel + 1e-7) {
+    const alvo = inicio + usavel;
+    const minimo = inicio + usavel * JANELA_MINIMA_CORTE;
+    let melhor = alvo;
+    let melhorValor = Infinity;
+    for (let i = 0; i <= PASSOS_BUSCA_CORTE; i += 1) {
+      const pos = minimo + ((alvo - minimo) * i) / PASSOS_BUSCA_CORTE;
+      const valor = materialNaLinhaDeCorte(geometry, eixo, pos);
+      if (valor < melhorValor - 1e-6 || (Math.abs(valor - melhorValor) <= 1e-6 && pos > melhor)) {
+        melhorValor = valor;
+        melhor = pos;
+      }
+    }
+    limites.push(melhor);
+    inicio = melhor;
+  }
+  limites.push(comprimento);
+  return limites;
+}
+
+function translateGeometry(geometry: MultiPolygon, dx: number, dy: number): MultiPolygon {
+  return geometry.map(polygon => polygon.map(ring => ring.map(([x, y]) => [x + dx, y + dy] as Pair)));
+}
+
 function clipToSheets(
   piece: ParsedPiece,
   board: ReturnType<typeof canonicalBoard>,
@@ -800,19 +860,23 @@ function clipToSheets(
   const normalPlan = plan(width, height);
   const rotatedPlan = plan(height, width);
   const useRotation = !board.bobina && rotatedPlan.cols * rotatedPlan.rows < normalPlan.cols * normalPlan.rows;
-  const oriented = useRotation ? rotateGeometry(piece.geometry, piece.bounds) : piece.geometry;
+  // Coordenadas locais da peça (0..largura, 0..altura), girada ou não: os cortes são sempre medidos a partir do canto da peça.
+  const oriented = useRotation
+    ? rotateGeometry(piece.geometry, piece.bounds)
+    : translateGeometry(piece.geometry, -piece.bounds.minX, -piece.bounds.minY);
   const orientedWidth = useRotation ? height : width;
   const orientedHeight = useRotation ? width : height;
-  const selected = useRotation ? rotatedPlan : normalPlan;
+  const colLimites = limitesDeCorte(oriented, "x", orientedWidth, usableWidth);
+  const rowLimites = limitesDeCorte(oriented, "y", orientedHeight, usableHeight);
   const fragments: OutputFragment[] = [];
   let fragmentNumber = 0;
   try {
-    for (let row = 0; row < selected.rows; row += 1) {
-      const y1 = row * usableHeight;
-      const y2 = Math.min(orientedHeight, y1 + usableHeight);
-      for (let col = 0; col < selected.cols; col += 1) {
-        const x1 = col * usableWidth;
-        const x2 = Math.min(orientedWidth, x1 + usableWidth);
+    for (let row = 0; row + 1 < rowLimites.length; row += 1) {
+      const y1 = rowLimites[row];
+      const y2 = rowLimites[row + 1];
+      for (let col = 0; col + 1 < colLimites.length; col += 1) {
+        const x1 = colLimites[col];
+        const x2 = colLimites[col + 1];
         const clipped = polygonClipping.intersection(
           oriented,
           rect(x1, y1, x2, y2)
@@ -821,7 +885,7 @@ function clipToSheets(
           if (geometryArea([polygon]) < AREA_MINIMA_FRAGMENTO_MM2) continue;
           const geometry: MultiPolygon = useRotation
             ? unrotateGeometry([polygon], piece.bounds)
-            : [polygon];
+            : translateGeometry([polygon], piece.bounds.minX, piece.bounds.minY);
           const bounds = boundsOf(geometry.flat());
           fragments.push({
             id: `${piece.id}_parte_${++fragmentNumber}`,
@@ -846,56 +910,20 @@ function clipToSheets(
     );
 
   const lines: CpqLinhaCorte[] = [];
+  const linha = (x1: number, y1: number, x2: number, y2: number, materialCortadoMm: number): CpqLinhaCorte => ({
+    x1, y1, x2, y2, materiaPrimaId: material.id, materiaPrima: material.nome, pecaId: piece.id,
+    materialCortadoMm: Number(materialCortadoMm.toFixed(2)),
+  });
   if (!useRotation) {
-    for (let col = 1; col < selected.cols; col += 1) {
-      const x = piece.bounds.minX + col * usableWidth;
-      lines.push({
-        x1: x,
-        y1: piece.bounds.minY,
-        x2: x,
-        y2: piece.bounds.maxY,
-        materiaPrimaId: material.id,
-        materiaPrima: material.nome,
-        pecaId: piece.id,
-      });
-    }
-    for (let row = 1; row < selected.rows; row += 1) {
-      const y = piece.bounds.minY + row * usableHeight;
-      lines.push({
-        x1: piece.bounds.minX,
-        y1: y,
-        x2: piece.bounds.maxX,
-        y2: y,
-        materiaPrimaId: material.id,
-        materiaPrima: material.nome,
-        pecaId: piece.id,
-      });
-    }
+    for (const x of colLimites.slice(1, -1))
+      lines.push(linha(piece.bounds.minX + x, piece.bounds.minY, piece.bounds.minX + x, piece.bounds.maxY, materialNaLinhaDeCorte(oriented, "x", x)));
+    for (const y of rowLimites.slice(1, -1))
+      lines.push(linha(piece.bounds.minX, piece.bounds.minY + y, piece.bounds.maxX, piece.bounds.minY + y, materialNaLinhaDeCorte(oriented, "y", y)));
   } else {
-    for (let col = 1; col < selected.cols; col += 1) {
-      const y = piece.bounds.minY + col * usableWidth;
-      lines.push({
-        x1: piece.bounds.minX,
-        y1: y,
-        x2: piece.bounds.maxX,
-        y2: y,
-        materiaPrimaId: material.id,
-        materiaPrima: material.nome,
-        pecaId: piece.id,
-      });
-    }
-    for (let row = 1; row < selected.rows; row += 1) {
-      const x = piece.bounds.maxX - row * usableHeight;
-      lines.push({
-        x1: x,
-        y1: piece.bounds.minY,
-        x2: x,
-        y2: piece.bounds.maxY,
-        materiaPrimaId: material.id,
-        materiaPrima: material.nome,
-        pecaId: piece.id,
-      });
-    }
+    for (const c of colLimites.slice(1, -1))
+      lines.push(linha(piece.bounds.minX, piece.bounds.minY + c, piece.bounds.maxX, piece.bounds.minY + c, materialNaLinhaDeCorte(oriented, "x", c)));
+    for (const r of rowLimites.slice(1, -1))
+      lines.push(linha(piece.bounds.maxX - r, piece.bounds.minY, piece.bounds.maxX - r, piece.bounds.maxY, materialNaLinhaDeCorte(oriented, "y", r)));
   }
   return { fragments, lines };
 }
@@ -1363,6 +1391,7 @@ export function calcularFactibilidadeFabricacao(input: {
     materiais: materialResults,
     avisos: [
       ...avisosDeFundo,
+      ...(lines.length ? ["As linhas de emenda foram sugeridas nos pontos de menor material perto do limite de cada chapa (vãos entre letras, hastes finas); confira a prévia e aprove antes do corte."] : []),
       `Cada fragmento deixa margem de segurança de ${MARGEM_CORTE_MM} mm em cada borda da chapa.`,
       "Curvas SVG são aproximadas por segmentos com tolerância física de 0,1 mm antes das operações booleanas.",
     ],

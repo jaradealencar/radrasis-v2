@@ -655,6 +655,12 @@ avançando pelo comprimento da chapa como quem fatia um pão; peças pequenas en
 respeitado (verificado por geometria em `cpq-nesting-contorno.test.ts`); prazo de 12 s por chamada, depois vale o de
 caixas). Entre as duas orientações da mesma chapa vale a de **menor consumo** (antes escolhia a de maior). É uma
 estimativa conservadora (máscara até 1 célula maior por borda).
+**Emendas inteligentes (pedido de 05/10/2026):** peça maior que a chapa é fatiada por `clipToSheets`
+(`cpqFactibilidadeFabricacao.ts`); as linhas de corte vão para o ponto de **menor material** (`limitesDeCorte`, janela de 70–100%
+do tamanho útil; vãos entre letras e hastes finas), cada linha informa `materialCortadoMm` e o painel REQUER_APROVACAO_EMENDA
+lista as linhas antes de qualquer corte — que só acontece depois da aprovação (gestor/admin/master, recibo assinado).
+Corrigido na mesma mudança: o recorte antes partia de x=0 mesmo para peças deslocadas e **perdia material** (agora usa
+coordenadas locais da peça). A posição vem da geometria, não de IA de visão (que não mede); uma IA poderia só comentar as opções.
 **Prancha de nesting (pedido de 05/10/2026):** o resultado do nesting no CPQ segue o estilo da prancha técnica — uma prancha
 1800×1120 por chapa (`pranchaNestingSvg`: título, desenho com cotas, bloco ocupado tracejado e painel RESULTADOS com material,
 % da chapa utilizada, % com peças, áreas, **área líquida** e **perímetro de corte** calculados no navegador sobre o contorno das
