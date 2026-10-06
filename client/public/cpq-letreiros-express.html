@@ -436,6 +436,8 @@ async function loadCatalog(){
     catalog.mubisysWebConectado = dados.mubisysWebConectado === true;
     catalog.erroComposicoesMubiSys = dados.erroComposicoesMubiSys || null;
     catalog.baixadoEm = dados.carregadoEm || null;
+    const importacaoAutomatica=preencherComposicaoMubiSysSeVazia(adminState.editingKey);
+    if(importacaoAutomatica?.status==='importado') salvarKit(importacaoAutomatica.key);
   }catch(e){
     if(!jaCarregado){
       catalog.produtos = [];
@@ -6381,6 +6383,23 @@ function importarComposicaoMubiSysNoKit(produto, modelo, {substituir=false}={}){
   return {status:'importado',key,linhas:kit.linhas.length};
 }
 
+/** Ao cadastrar/abrir um modelo ainda vazio, traz a ficha do MubiSys sem exigir um clique extra.
+ *  Isto vale também para modelos sem subvariações: nesse caso entram todas as linhas comuns do modelo. */
+function preencherComposicaoMubiSysSeVazia(key){
+  if(!key||!catalog.mubisysWebConectado) return null;
+  const kit=adminState.kits[key];
+  if(!kit||!Array.isArray(kit.linhas)||kit.linhas.length) return null;
+  const [produtoId,modeloId]=String(key).split('_').map(Number);
+  const produto=catalog.produtos.find(item=>Number(item.id)===produtoId);
+  const modelo=produto?.modelos.find(item=>Number(item.id)===modeloId);
+  if(!produto||!modelo) return null;
+  const resultado=importarComposicaoMubiSysNoKit(produto,modelo);
+  if(resultado.status==='importado'){
+    catalog.importMsg=`${resultado.linhas} matéria(s)-prima(s) do modelo ${modelo.nome} importada(s) automaticamente do MubiSys.`;
+  }
+  return resultado;
+}
+
 async function importarComposicoesMubiSysEmMassa(){
   if(catalog.importando||!catalog.mubisysWebConectado) return;
   catalog.importando=true;catalog.importMsg='Importando…';render();
@@ -7343,9 +7362,11 @@ function adminKitEditor(p, m, key){
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Variações do modelo <span style="font-weight:400; text-transform:none;">— importadas do MubiSys (${variacoesModelo.length})</span></p>
     ${variacoesModelo.length? `<div style="display:flex; flex-wrap:wrap; gap:6px;">${variacoesModelo.map(v=>`<span class="badge b-neutral" title="ID MubiSys ${v.id}">${escaparHtml(v.nome)}${v.padrao?' · padrão':''}${v.valorFinal>0?` · ${money(v.valorFinal)}`:''}</span>`).join('')}</div>
-    <div style="margin-top:8px;"><button type="button" class="btn btn-soft btn-sm" data-act="admin-kit-importar-mubisys" data-key="${key}" ${catalog.mubisysWebConectado?'':'disabled'}>Importar composição do MubiSys (comum + variações)</button>${catalog.mubisysWebConectado?'':' <span style="font-size:11px;color:var(--text-faint);">Conecte o MubiSys na barra acima para habilitar.</span>'}</div>
-    <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Na composição abaixo, cada matéria-prima pode valer para todas as variações (comum) ou só para uma delas. No orçamento entram as linhas comuns mais as das variações escolhidas pelo vendedor.</p>`
-    : `<p style="font-size:11.5px;color:var(--text-faint);">Este modelo não tem variações ativas no MubiSys. Se acabou de cadastrá-las lá, recarregue a página para atualizar o catálogo.</p>`}
+    <div style="margin-top:8px;"><button type="button" class="btn btn-soft btn-sm" data-act="admin-kit-importar-mubisys" data-key="${key}" ${catalog.mubisysWebConectado?'':'disabled'}>Atualizar matérias-primas do MubiSys (modelo + variações)</button>${catalog.mubisysWebConectado?'':' <span style="font-size:11px;color:var(--text-faint);">Conecte o MubiSys na barra acima para habilitar.</span>'}</div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">A importação traz todas as matérias-primas e seus consumos: as linhas comuns do modelo e as linhas de cada variação. No orçamento entram as linhas comuns mais as das variações escolhidas pelo vendedor.</p>`
+    : `<p style="font-size:11.5px;color:var(--text-faint);">Este modelo não tem subvariações ativas. A ficha comum do próprio modelo continua sendo importada normalmente.</p>
+    <div style="margin-top:8px;"><button type="button" class="btn btn-soft btn-sm" data-act="admin-kit-importar-mubisys" data-key="${key}" ${catalog.mubisysWebConectado?'':'disabled'}>Atualizar matérias-primas do MubiSys (modelo)</button>${catalog.mubisysWebConectado?'':' <span style="font-size:11px;color:var(--text-faint);">Conecte o MubiSys na barra acima para habilitar.</span>'}</div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">A importação traz todas as matérias-primas e os respectivos consumos cadastrados na ficha deste modelo.</p>`}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Como este produto é cobrado <span style="font-weight:400; text-transform:none;">— base de consumo quando ele entra no kit de outro produto</span></p>
     <div class="card" style="padding:12px;box-shadow:none;background:var(--surface);" data-teste="base-cobranca-produto">
@@ -8040,6 +8061,8 @@ function bindAdminEvents(){
         if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
         adminState.kits[key].nomeCompleto = el.dataset.nome;
         adminState.adminMatQuery='';
+        const importacaoAutomatica=preencherComposicaoMubiSysSeVazia(key);
+        if(importacaoAutomatica?.status==='importado') salvarKit(importacaoAutomatica.key);
       }
       render();
     });

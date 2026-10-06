@@ -215,7 +215,24 @@ function temListaVaziaReconhecida(conteudo: unknown): boolean {
   );
 }
 
-function mapearComposicoes(conteudo: unknown): { linhas: ComposicaoMubiSys[]; reconhecido: boolean } {
+function temTabelaComposicaoVazia(html: string): boolean {
+  for (const tabela of html.match(/<table\b[\s\S]*?<\/table>/gi) ?? []) {
+    const trs = [...tabela.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+    if (!trs.length) continue;
+    const celulas = (row: string) => [...row.matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)]
+      .map(match => normalizarCampo(decodificarHtml(match[1])));
+    const cabecalho = celulas(trs[0][1]);
+    const temMaterial = cabecalho.some(campo => campo.includes("materiaprima") || campo === "material");
+    const temQuantidade = cabecalho.some(campo => campo.includes("quantidade") || ["qtd", "qtde", "consumo"].includes(campo));
+    if (!temMaterial || !temQuantidade) continue;
+    if (trs.length === 1) return true;
+    const textoDados = trs.slice(1).map(tr => decodificarHtml(tr[1])).join(" ");
+    if (/\b(nenhum|nenhuma|sem)\b.*\b(registro|item|materia|material)/i.test(textoDados)) return true;
+  }
+  return false;
+}
+
+export function mapearComposicoes(conteudo: unknown): { linhas: ComposicaoMubiSys[]; reconhecido: boolean } {
   const html = typeof conteudo === "string" ? conteudo : "";
   const jsonRows = typeof conteudo === "string" ? [] : linhasJsonComposicao(conteudo);
   const htmlRows = html ? linhasHtmlComposicao(html) : [];
@@ -224,7 +241,10 @@ function mapearComposicoes(conteudo: unknown): { linhas: ComposicaoMubiSys[]; re
     `${linha.modeloId || ""}:${linha.variacaoId || ""}:${linha.materiaPrimaId}:${linha.quantidade}:${linha.unidade}`,
     linha,
   ])).values()];
-  const reconhecido = deduplicadas.length > 0 || temListaVaziaReconhecida(conteudo) || /<table\b/i.test(html);
+  // Uma tabela qualquer da página (layout, menu etc.) não prova que a ficha veio vazia.
+  // Se houver linhas que o parser não entendeu, falhamos explicitamente em vez de dizer
+  // silenciosamente que o modelo não possui matéria-prima cadastrada.
+  const reconhecido = deduplicadas.length > 0 || temListaVaziaReconhecida(conteudo) || temTabelaComposicaoVazia(html);
   return { linhas: deduplicadas, reconhecido };
 }
 

@@ -418,6 +418,12 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   manual do CPQ como fallback. A tela autenticada é uma interface interna e
   não oficial do MubiSys: alterações nela podem exigir ajuste do parser e a
   conexão deve ser validada com uma sessão real após publicar a mudança.
+  No editor de Produtos & kits do CPQ, abrir um cadastro sem linhas importa e
+  salva automaticamente a ficha do MubiSys. Modelos sem subvariações (como
+  `P.U - 1 cor`) também importam todas as linhas comuns do modelo; a ação de
+  atualizar a ficha permanece visível nesses modelos. Uma tabela HTML interna
+  desconhecida não pode ser tratada como composição vazia: o fluxo deve exibir
+  erro de formato para evitar a perda silenciosa de matérias-primas e consumos.
   O módulo **Produtos** (`client/src/pages/comercial/Produtos.tsx`,
   `server/routers/produtos.ts`, tabelas `produtos`/
   `produto_composicao_materiais`/`produto_kit_itens`) importa a ficha comum do
