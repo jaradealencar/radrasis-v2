@@ -335,6 +335,8 @@ export type ImageEditParams = {
   background?: "transparent" | "opaque" | "auto";
   inputFidelity?: "low" | "high";
   model?: string;
+  /** Imagens de entrada adicionais (referências); vão depois da principal, no mesmo campo `image[]`. */
+  imagensExtras?: Array<{ buffer: Buffer; mimeType: string; filename: string }>;
 };
 
 export type ImageEditResult = {
@@ -368,6 +370,9 @@ export async function generateImageEdit(params: ImageEditParams): Promise<ImageE
     new Blob([new Uint8Array(params.imageBuffer)], { type: params.imageMimeType }),
     params.imageFilename,
   );
+  for (const extra of params.imagensExtras ?? []) {
+    form.append("image[]", new Blob([new Uint8Array(extra.buffer)], { type: extra.mimeType }), extra.filename);
+  }
 
   const response = await fetch(OPENAI_IMAGES_EDIT_URL, {
     method: "POST",

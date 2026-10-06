@@ -13,6 +13,7 @@ import {
 import { vectorizeImage, VectorizerAiError, limitarAjustesVetorizacao } from "../services/vectorizerAi";
 import { analisarArte } from "../services/cpqAnaliseArte";
 import { lerDimensoesPng, limparFundoComGpt, vetorizarComGpt } from "../services/cpqPlanoBArte";
+import { prepararReferencias } from "../services/cpqReferenciasLogo";
 import { conversarSobreVetor, entradaConversaSchema } from "../services/cpqAjusteConversa";
 import { REGRAS_LEITURA_ARTE_PADRAO } from "../../shared/cpq-regras-leitura-padrao";
 import { estudioConfiguracoes } from "../../drizzle/schema";
@@ -26,6 +27,8 @@ const imageBodyParser = express.raw({
   limit: MAX_IMAGE_BYTES,
 });
 const conversaJsonParser = express.json({ limit: "6mb" });
+/** Foto principal + até 2 referências em base64 (<= ~3,9 MB; o teto do corpo na Vercel é 4,5 MB). Fica antes dos parsers globais de 2 MB. */
+const referenciasJsonParser = express.json({ limit: "4.2mb" });
 const preprocessedImageBodyParser = express.raw({
   type: ["image/jpeg", "image/png"],
   limit: MAX_PREPROCESSED_IMAGE_BYTES,
@@ -67,6 +70,18 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
       }
 
       void executarRedesenho(req, res);
+    });
+  });
+
+  // Reconstrução com a foto principal + até 2 imagens de referência da MESMA logo (site, redes sociais...), escolhidas pelo vendedor.
+  app.post("/api/letra-caixa/redesenho-referencias", (req, res) => {
+    referenciasJsonParser(req, res, parseError => {
+      if (parseError) {
+        const status = (parseError as { status?: number }).status ?? 400;
+        res.status(status).json({ error: status === 413 ? "As imagens ficaram grandes demais. Use imagens menores (o navegador reduz automaticamente; tente menos referências)." : "Não consegui ler as imagens enviadas." });
+        return;
+      }
+      void executarRedesenhoComReferencias(req, res);
     });
   });
 
@@ -378,52 +393,57 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
       })
       .send(resultado.imageBuffer);
   } catch (error) {
-    const detalhe = error instanceof Error ? error.message : String(error);
-    console.error("[letra-caixa] falha ao gerar reconstrução:", detalhe);
-
-    if (
-      /insufficient_quota|billing_hard_limit_reached|billing_not_active|rate_limit_exceeded|\b429\b/i.test(
-        detalhe,
-      )
-    ) {
-      res.status(429).json({
-        error: "A OpenAI recusou a geração por limite de uso ou falta de crédito. Verifique o faturamento da API e tente novamente.",
-      });
-      return;
-    }
-    if (
-      /OPENAI_API_KEY|invalid_api_key|incorrect api key|\b401\b/i.test(detalhe)
-    ) {
-      res.status(503).json({ error: "A chave da OpenAI não está configurada ou não é aceita pela API." });
-      return;
-    }
-    if (
-      /organization_verification_required|organization.{0,40}verif|verif.{0,40}organization/i.test(
-        detalhe,
-      )
-    ) {
-      res.status(503).json({
-        error: "A organização da OpenAI precisa concluir a verificação da API antes de gerar imagens.",
-      });
-      return;
-    }
-    if (/moderation_blocked|content_policy_violation|safety system/i.test(detalhe)) {
-      res.status(422).json({
-        error: "A OpenAI bloqueou esta imagem ou instrução. Revise a foto e tente novamente.",
-      });
-      return;
-    }
-    if (/AbortError|TimeoutError|timed out/i.test(detalhe)) {
-      res.status(504).json({
-        error: "A reconstrução demorou mais de 2 minutos. Tente novamente.",
-      });
-      return;
-    }
-
-    res.status(502).json({
-      error: "O GPT não conseguiu gerar a reconstrução agora. Tente novamente em instantes.",
-    });
+    responderErroRedesenho(res, error);
   }
+}
+
+/** Mapeia o erro da OpenAI numa resposta clara para o vendedor (crédito, chave, verificação da organização, moderação, tempo). */
+function responderErroRedesenho(res: Response, error: unknown): void {
+  const detalhe = error instanceof Error ? error.message : String(error);
+  console.error("[letra-caixa] falha ao gerar reconstrução:", detalhe);
+
+  if (
+    /insufficient_quota|billing_hard_limit_reached|billing_not_active|rate_limit_exceeded|\b429\b/i.test(
+      detalhe,
+    )
+  ) {
+    res.status(429).json({
+      error: "A OpenAI recusou a geração por limite de uso ou falta de crédito. Verifique o faturamento da API e tente novamente.",
+    });
+    return;
+  }
+  if (
+    /OPENAI_API_KEY|invalid_api_key|incorrect api key|\b401\b/i.test(detalhe)
+  ) {
+    res.status(503).json({ error: "A chave da OpenAI não está configurada ou não é aceita pela API." });
+    return;
+  }
+  if (
+    /organization_verification_required|organization.{0,40}verif|verif.{0,40}organization/i.test(
+      detalhe,
+    )
+  ) {
+    res.status(503).json({
+      error: "A organização da OpenAI precisa concluir a verificação da API antes de gerar imagens.",
+    });
+    return;
+  }
+  if (/moderation_blocked|content_policy_violation|safety system/i.test(detalhe)) {
+    res.status(422).json({
+      error: "A OpenAI bloqueou esta imagem ou instrução. Revise a foto e tente novamente.",
+    });
+    return;
+  }
+  if (/AbortError|TimeoutError|timed out/i.test(detalhe)) {
+    res.status(504).json({
+      error: "A reconstrução demorou mais de 2 minutos. Tente novamente.",
+    });
+    return;
+  }
+
+  res.status(502).json({
+    error: "O GPT não conseguiu gerar a reconstrução agora. Tente novamente em instantes.",
+  });
 }
 
 /** Origem do próprio sistema + sessão + PNG/JPG com o ticket da reconstrução. Responde o erro e devolve null se algo falhar. */
@@ -495,5 +515,44 @@ async function executarLimpezaFundo(req: Request, res: Response): Promise<void> 
     const detalhe = error instanceof Error ? error.message : String(error);
     console.error("[letra-caixa] falha ao limpar o fundo da arte:", detalhe);
     erroOpenAi(detalhe, res, "O GPT não conseguiu limpar o fundo da arte agora. Tente novamente em instantes.");
+  }
+}
+
+/** Reconstrução com a foto principal + referências adicionais da mesma logo. Mesma segurança e mesmo ticket do redesenho simples. */
+async function executarRedesenhoComReferencias(req: Request, res: Response): Promise<void> {
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) { res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." }); return; }
+    } catch { res.status(403).json({ error: "Origem da solicitação inválida." }); return; }
+  }
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) { res.status(401).json({ error: "Entre no sistema para gerar a reconstrução com GPT." }); return; }
+  if ((process.env.JWT_SECRET?.trim().length ?? 0) < 32) { res.status(503).json({ error: "Configure JWT_SECRET com pelo menos 32 caracteres para aprovar e vetorizar a reconstrução." }); return; }
+  if (!process.env.OPENAI_API_KEY?.trim()) { res.status(503).json({ error: "A chave da OpenAI não está configurada no servidor." }); return; }
+  let entrada: ReturnType<typeof prepararReferencias>;
+  try {
+    entrada = prepararReferencias(req.body);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof z.ZodError ? "Confira o escopo, a foto principal e as referências (até 2, JPG ou PNG)." : (error instanceof Error ? error.message : "Imagens inválidas.") });
+    return;
+  }
+  if (entrada.escopo === "elementos_selecionados" && !entrada.elementosSelecionados) { res.status(400).json({ error: "Descreva os elementos que o GPT deve reconstruir." }); return; }
+  try {
+    const resultado = await redesenharLetreiro({
+      imageBuffer: entrada.principal.imageBuffer,
+      imageFilename: entrada.principal.mimeType === "image/png" ? "referencia.png" : "referencia.jpg",
+      imageMimeType: entrada.principal.mimeType,
+      escopo: entrada.escopo as EscopoRedesenho,
+      elementosSelecionados: entrada.elementosSelecionados,
+      referencias: entrada.referencias,
+    });
+    res.status(200).set({
+      "Content-Type": resultado.mimeType,
+      "Cache-Control": "no-store",
+      "X-Redesenho-Token": emitirTicketRedesenho(session.user.id, resultado.imageBuffer),
+    }).send(resultado.imageBuffer);
+  } catch (error) {
+    responderErroRedesenho(res, error);
   }
 }

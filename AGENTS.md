@@ -285,7 +285,7 @@ server/
                        estudio-nesting.ts (CRUD de chapas e execução local do Deepnest),
                        estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
                        estudio-cores.ts (catálogo local, análise e aprovação de cores antes do nesting),
-                       letra-caixa-redesenho.ts (reconstrução, vetor e upload de imagens do CPQ)
+                       letra-caixa-redesenho.ts (reconstrução com até 2 referências extras da mesma logo, vetor e upload de imagens do CPQ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
@@ -619,10 +619,20 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `server/services/letraCaixaRedesign.ts` e `generateImageEdit`
   (`server/_core/llm.ts`), endpoint `/v1/images/edits`, modelo
   `gpt-image-2.5-sunburst`, qualidade `xhigh`, tamanho automático e saída PNG.
-  A última chamada real conhecida devolveu 429
-  `insufficient_quota` em 28/09/2026. Os parâmetros atuais foram conferidos na
-  documentação oficial em 03/10/2026, mas ainda é necessária uma geração real
-  com uma foto depois de haver crédito disponível.
+  Em 28/09/2026 a chamada real devolveu 429 `insufficient_quota`; em
+  05/10/2026, já com crédito, o endpoint aceitou a foto principal + 2 imagens
+  extras (arte sintética, qualidade `low`), mas ainda falta uma reconstrução
+  real em `xhigh` com uma foto de fachada.
+  **Referências adicionais da mesma logo (05/10/2026):** o passo da foto aceita
+  até 2 imagens extras (site oficial, rede social, papelaria, outra) escolhidas
+  pelo vendedor; nada é buscado na internet (o Prompt 1 §12 proíbe busca
+  automática e a chamada não tem ferramenta web). Com extras, o navegador reduz
+  as imagens (JPEG; principal ≤ 1,3 MB, extras ≤ 0,8 MB — o corpo na Vercel é
+  limitado a 4,5 MB) e envia JSON para `POST /api/letra-caixa/redesenho-referencias`
+  (`server/services/cpqReferenciasLogo.ts` valida bytes/tipo e monta a instrução:
+  a foto principal manda na versão da logo, extras só tiram dúvidas e versões
+  diferentes não se misturam). Sem extras, o fluxo antigo (`/redesenho`, corpo
+  binário) segue igual. Ambas as rotas devolvem o mesmo ticket `X-Redesenho-Token`.
 - **Geometria dos Prompts 2 e 3 do CPQ ainda exige validação de engenharia.** Os
   PDFs do usuário foram transcritos em `docs/prompts/prompt-2-vetorizacao.md` e
   `docs/prompts/prompt-3-area-perimetro-prancha.md`. Raster aprovado é enviado

@@ -783,7 +783,7 @@ function novaProposta(){
     variacaoModeloIds:[], variacaoModeloNomes:[], descricaoProduto:'',
     sourceKind:null, // 'raster' | 'vetor' — define qual caminho de processamento
     uploadError:null, uploadWarning:null, gerandoRedesenho:false,
-    imgOriginal:null, imgReconstructed:null, imgPreview:null, redesenhoToken:null,
+    imgOriginal:null, imgReconstructed:null, imgPreview:null, redesenhoToken:null, imgsReferencia:[],
     tituloProposta:'', imagemReferenciaUrl:null, imagemRedesenhadaUrl:null,
     ajuste:{ brilho:100, contraste:100, cinza:false },
     overlayOpacity:50,
@@ -3625,6 +3625,50 @@ async function prepararImagensCotacao(){
   if(REAL.imgReconstructed&&!REAL.imagemRedesenhadaUrl) REAL.imagemRedesenhadaUrl=await enviarImagemDaCotacao(REAL.imgReconstructed,'redesenhada');
 }
 
+/* ---------- Referências adicionais da MESMA logo (opcional, até 2) ----------
+ * O vendedor anexa imagens do site, redes sociais etc. e diz o que cada uma é; o GPT Image as usa só para confirmar letras e
+ * símbolo que a foto principal não mostra bem. Nada é buscado na internet: quem escolhe as fontes é o vendedor. */
+const TIPOS_REFERENCIA_CPQ = {site:'Logotipo no site oficial', redes:'Rede social (perfil ou publicação)', papelaria:'Cartão / papelaria', outra:'Outra imagem da mesma logo'};
+const MAX_REFERENCIAS_EXTRAS_CPQ = 2;
+
+async function blobParaBase64(blob){ return (await blobParaDataUrl(blob)).split(',')[1]; }
+
+/** Reduz a imagem (JPEG) até caber em `maxBytes`: o corpo da requisição na Vercel é limitado a 4,5 MB e vão até 3 imagens em base64. */
+async function comprimirImagemAte(dataUrl, maxBytes, maxDim){
+  const original = await fetch(dataUrl).then(r => r.blob());
+  const bitmap = await createImageBitmap(original);
+  const escala = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  let w = Math.max(1, Math.round(bitmap.width * escala)), h = Math.max(1, Math.round(bitmap.height * escala));
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+  if(!ctx){ bitmap.close(); throw new Error('Não foi possível preparar a imagem no navegador.'); }
+  for(let tentativa = 0; tentativa < 8; tentativa++){
+    canvas.width = w; canvas.height = h;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', [0.9, 0.82, 0.74, 0.66, 0.58, 0.5][Math.min(tentativa, 5)]));
+    if(blob && blob.size <= maxBytes){ bitmap.close(); return {mimeType:'image/jpeg', dataBase64:await blobParaBase64(blob)}; }
+    w = Math.max(1, Math.round(w * 0.85)); h = Math.max(1, Math.round(h * 0.85));
+  }
+  bitmap.close();
+  throw new Error('Uma das imagens é grande demais para enviar. Use uma imagem menor.');
+}
+
+function htmlReferenciasAdicionais(){
+  const refs = REAL.imgsReferencia || [];
+  const itens = refs.map((ref, i) => `<div style="display:flex;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:8px;">
+      <img src="${ref.dataUrl}" alt="Referência ${i + 1}" style="width:84px;height:60px;object-fit:contain;background:#fff;border-radius:6px;">
+      <label class="field" style="flex:1;font-size:12px;">O que é esta imagem
+        <select data-act="real-ref-tipo" data-idx="${i}" style="display:block;margin-top:4px;width:100%;">${Object.entries(TIPOS_REFERENCIA_CPQ).map(([valor, rotulo]) => `<option value="${valor}" ${ref.tipo === valor ? 'selected' : ''}>${rotulo}</option>`).join('')}</select>
+      </label>
+      <button type="button" class="btn btn-ghost btn-sm" data-act="real-ref-remover" data-idx="${i}">✕ Remover</button>
+    </div>`).join('');
+  return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:12px;">
+    <div style="font-weight:700;">Mais referências da mesma logo (opcional)</div>
+    <p class="role-note" style="margin-top:5px;">Anexe até ${MAX_REFERENCIAS_EXTRAS_CPQ} imagens da <b>mesma logo</b> (site do cliente, redes sociais, cartão) e diga o que cada uma é. O GPT as usa <b>só para confirmar letras, símbolo e proporções</b> que a foto principal não mostra bem; a foto principal continua mandando na versão a reproduzir. Se a logo mudou com o tempo, envie apenas imagens da versão que está na fachada.</p>
+    ${itens ? `<div style="display:grid;gap:8px;margin-top:8px;">${itens}</div>` : ''}
+    ${refs.length < MAX_REFERENCIAS_EXTRAS_CPQ ? `<label class="btn btn-soft btn-sm" style="margin-top:8px;display:inline-block;cursor:pointer;">+ Adicionar referência<input type="file" accept="image/png,image/jpeg,.jpg,.jpeg,.png" data-act="real-ref-upload" style="display:none;"></label>` : ''}
+  </div>`;
+}
+
 async function gerarRedesenhoComGPT(){
   if(!REAL.imgOriginal || REAL.gerandoRedesenho) return;
   if(REAL.escopoRedesenho==='elementos_selecionados' && !REAL.elementosSelecionados.trim()){
@@ -3640,15 +3684,28 @@ async function gerarRedesenhoComGPT(){
   REAL.uploadError=null;
   render();
   try{
-    const imagem=await comprimirReferenciaGPT(REAL.imgOriginal);
-    const query=new URLSearchParams({escopo:REAL.escopoRedesenho});
-    if(REAL.escopoRedesenho==='elementos_selecionados') query.set('elementosSelecionados',REAL.elementosSelecionados.trim());
-    const response=await fetch('/api/letra-caixa/redesenho?'+query.toString(),{
-      method:'POST',
-      credentials:'same-origin',
-      headers:{'Content-Type':imagem.type||'image/jpeg'},
-      body:imagem
-    });
+    const extras=Array.isArray(REAL.imgsReferencia)?REAL.imgsReferencia:[];
+    let response;
+    if(extras.length){
+      // Foto principal + referências adicionais da mesma logo, em JSON (cada imagem reduzida para o corpo caber nos 4,5 MB da Vercel).
+      const principal=await comprimirImagemAte(REAL.imgOriginal,1_300_000,1600);
+      const referencias=[];
+      for(const ref of extras) referencias.push({...await comprimirImagemAte(ref.dataUrl,800_000,1400),tipo:ref.tipo});
+      response=await fetch('/api/letra-caixa/redesenho-referencias',{
+        method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({escopo:REAL.escopoRedesenho,...(REAL.escopoRedesenho==='elementos_selecionados'?{elementosSelecionados:REAL.elementosSelecionados.trim()}:{}),principal,referencias}),
+      });
+    }else{
+      const imagem=await comprimirReferenciaGPT(REAL.imgOriginal);
+      const query=new URLSearchParams({escopo:REAL.escopoRedesenho});
+      if(REAL.escopoRedesenho==='elementos_selecionados') query.set('elementosSelecionados',REAL.elementosSelecionados.trim());
+      response=await fetch('/api/letra-caixa/redesenho?'+query.toString(),{
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':imagem.type||'image/jpeg'},
+        body:imagem
+      });
+    }
     if(!response.ok){
       const body=await response.json().catch(()=>({}));
       throw new Error(body.error||'O GPT nao conseguiu gerar a reconstrução.');
@@ -3697,6 +3754,7 @@ function realStepFoto(){
     </label>
     ${REAL.escopoRedesenho==='elementos_selecionados'?`<label class="field" style="margin-top:10px;">Quais elementos?<input type="text" value="${escaparHtml(REAL.elementosSelecionados)}" data-act="real-escopo-elementos" placeholder="Ex.: símbolo e nome, sem telefone"></label>`:''}
     ${REAL.imgOriginal?`<div class="compare" style="margin-top:14px;"><img src="${REAL.imgOriginal}" alt="Foto original enviada" style="display:block;width:100%;height:auto;"></div>${uploadBox('Trocar a foto/print original','PNG ou JPG','real-photo-upload','image/png,image/jpeg,.jpg,.jpeg,.png')}`:uploadBox('Enviar foto ou print original','PNG ou JPG','real-photo-upload','image/png,image/jpeg,.jpg,.jpeg,.png')}
+    ${REAL.imgOriginal?htmlReferenciasAdicionais():''}
     ${uploadMessages()}
     <div class="checklist" style="margin-top:12px;">
       <div class="checkrow">${ICONS.check}A foto fornecida define a versão da identidade a reproduzir</div>
@@ -7710,6 +7768,25 @@ function bindRealEvents(){
       handleUploadedFile(file);
     });
   });
+  document.querySelectorAll('[data-act="real-ref-upload"]').forEach(el => el.addEventListener('change', e => {
+    const arquivo = e.target.files && e.target.files[0];
+    if(!arquivo) return;
+    if(!/^image\/(png|jpeg)$/.test(arquivo.type)){ REAL.uploadError = 'A referência precisa ser JPG ou PNG.'; render(); return; }
+    if((REAL.imgsReferencia || []).length >= MAX_REFERENCIAS_EXTRAS_CPQ) return;
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      REAL.imgsReferencia = [...(REAL.imgsReferencia || []), {dataUrl:String(leitor.result), tipo:'site'}];
+      REAL.uploadError = null; render();
+    };
+    leitor.readAsDataURL(arquivo);
+  }));
+  document.querySelectorAll('[data-act="real-ref-tipo"]').forEach(el => el.addEventListener('change', e => {
+    const ref = (REAL.imgsReferencia || [])[Number(el.dataset.idx)];
+    if(ref && TIPOS_REFERENCIA_CPQ[e.target.value]){ ref.tipo = e.target.value; render(); }
+  }));
+  document.querySelectorAll('[data-act="real-ref-remover"]').forEach(el => el.addEventListener('click', () => {
+    REAL.imgsReferencia = (REAL.imgsReferencia || []).filter((_, i) => i !== Number(el.dataset.idx)); render();
+  }));
   document.querySelectorAll('[data-act="real-photo-upload"]').forEach(el=>{
     el.addEventListener('change', e=>{ const file=e.target.files[0]; if(file) handleReferenceUpload(file,'photo'); });
   });

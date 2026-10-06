@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateImageEdit } from "../_core/llm";
+import { instrucaoReferenciasLogo, type ReferenciaDecodificada } from "./cpqReferenciasLogo";
 
 const PROMPT_1_PATH = join(process.cwd(), "docs/prompts/prompt-1-reconstrucao-visual.md");
 const PROMPT_1B_PATH = join(process.cwd(), "docs/prompts/prompt-1b-extracao-logo-vetorizacao.md");
@@ -23,6 +24,8 @@ export type RedesenharLetreiroParams = {
   escopo: EscopoRedesenho;
   /** Obrigatório quando escopo === "elementos_selecionados". */
   elementosSelecionados?: string;
+  /** Imagens adicionais da mesma logo (site, redes sociais...), no máximo 2; a foto principal continua sendo a referência. */
+  referencias?: ReferenciaDecodificada[];
 };
 
 export type RedesenharLetreiroResult = {
@@ -67,6 +70,7 @@ export async function redesenharLetreiro(
     "---",
     "",
     instrucaoEscopo(params),
+    ...(params.referencias?.length ? ["", instrucaoReferenciasLogo(params.referencias)] : []),
     "A imagem anexada é a IMAGEM-ALVO desta execução (não o exemplo da seção 21).",
   ].join("\n");
 
@@ -78,6 +82,11 @@ export async function redesenharLetreiro(
     imageBuffer: params.imageBuffer,
     imageFilename: params.imageFilename,
     imageMimeType: params.imageMimeType,
+    imagensExtras: (params.referencias ?? []).map((referencia, indice) => ({
+      buffer: referencia.imageBuffer,
+      mimeType: referencia.mimeType,
+      filename: `referencia-${indice + 2}.${referencia.mimeType === "image/png" ? "png" : "jpg"}`,
+    })),
     prompt,
     background,
     model: "gpt-image-2.5-sunburst",
