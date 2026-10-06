@@ -4545,7 +4545,8 @@ function renderConfiguracaoNestingReal(){
 /* ---------- Visualização e download do nesting ----------
  * Desenha as peças reais (não só as caixas) sobre a chapa, na posição e rotação calculadas, e permite baixar o SVG em
  * milímetros (chapa + peças) para conferir ou levar ao CNC. As peças vêm da factibilidade (SVG em mm, origem no canto
- * da caixa da peça); a rotação é em torno dessa origem e (x, y) é o canto da caixa já girada, como no motor. */
+ * da caixa da peça); a rotação é em torno dessa origem e (x, y) é o canto da caixa já girada, como no motor.
+ * Quando o desenho não cabe numa chapa, o material usa várias (material.quantidade_chapas); cada peça traz chapaIndice. */
 function pecasDoMaterialNesting(idMateria){
   const fact = REAL.factibilidade;
   const m = fact && (fact.materiais || []).find(item => Number(item.id_materia_prima) === Number(idMateria));
@@ -4580,17 +4581,21 @@ function transformacaoDaPecaNesting(d, pos){
   return {graus:r(graus), tx:r((Number(pos.xMm) || 0) - minX), ty:r((Number(pos.yMm) || 0) - minY)};
 }
 
-/** Conteúdo SVG (em mm) de um material: contorno da chapa, margem de borda e peças. `modo`: 'previa' (preenchido) ou 'corte' (só contornos). */
-function conteudoSvgNesting(material, modo){
+function quantidadeChapasNesting(material){ return Math.max(1, Number(material.quantidade_chapas) || 1); }
+function posicoesDaChapaNesting(material, indice){ return (material.posicionamentos || []).filter(pos => (Number(pos.chapaIndice) || 0) === indice); }
+
+/** Conteúdo SVG (em mm) de UMA chapa do material: contorno da chapa, margem de borda e peças. `modo`: 'previa' (preenchido) ou 'corte' (só contornos). */
+function conteudoSvgNesting(material, modo, indice){
+  indice = indice || 0;
   const W = Number(material.chapa.largura_mm), H = Number(material.chapa.altura_mm), margem = Number(material.margem_borda_mm) || 0;
   const pecas = new Map(pecasDoMaterialNesting(material.id_materia_prima).map(p => [p.id, p]));
   const espessura = modo === 'corte' ? 0.6 : Math.max(W, H) / 1400;
   const estilo = modo === 'corte' ? 'fill="none" stroke="#000000"' : 'fill="#fecb01" fill-opacity="0.85" stroke="#111827"';
-  const posicoes = (material.posicionamentos || []).map((pos, indice) => {
+  const posicoes = posicoesDaChapaNesting(material, indice).map((pos, i) => {
     const peca = pecas.get(pos.origemId), d = peca ? caminhoDaPecaNesting(peca.svg) : '';
     const t = d ? transformacaoDaPecaNesting(d, pos) : null;
-    if(!t) return `<rect x="${Number(pos.xMm) || 0}" y="${Number(pos.yMm) || 0}" width="${Number(pos.larguraMm) || 0}" height="${Number(pos.alturaMm) || 0}" ${estilo} stroke-width="${espessura}"><title>Peça ${indice + 1} (caixa)</title></rect>`;
-    return `<path d="${d}" transform="translate(${t.tx} ${t.ty}) rotate(${t.graus})" fill-rule="evenodd" ${estilo} stroke-width="${espessura}"><title>Peça ${indice + 1} · ${t.graus}°</title></path>`;
+    if(!t) return `<rect x="${Number(pos.xMm) || 0}" y="${Number(pos.yMm) || 0}" width="${Number(pos.larguraMm) || 0}" height="${Number(pos.alturaMm) || 0}" ${estilo} stroke-width="${espessura}"><title>Peça ${i + 1} (caixa)</title></rect>`;
+    return `<path d="${d}" transform="translate(${t.tx} ${t.ty}) rotate(${t.graus})" fill-rule="evenodd" ${estilo} stroke-width="${espessura}"><title>Peça ${i + 1} · ${t.graus}°</title></path>`;
   }).join('');
   const bordas = `<rect id="Chapa" x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#2563eb" stroke-width="${Math.max(espessura, 0.8)}"/>`
     + (margem > 0 && W > 2 * margem && H > 2 * margem ? `<rect id="Margem" x="${margem}" y="${margem}" width="${W - 2 * margem}" height="${H - 2 * margem}" fill="none" stroke="#94a3b8" stroke-width="${Math.max(espessura / 2, 0.4)}" stroke-dasharray="${margem * 2} ${margem}"/>` : '');
@@ -4599,25 +4604,30 @@ function conteudoSvgNesting(material, modo){
 
 function rotuloMaterialNesting(material){
   const chapa = material.formato === 'bobina' ? 'bobina' : 'chapa';
-  return `${material.materia_prima} · ${chapa} ${material.nome_chapa_utilizada} (${material.chapa.largura_mm} × ${material.chapa.altura_mm} mm) · ${(material.posicionamentos || []).length} peça(s)`;
+  const n = quantidadeChapasNesting(material);
+  return `${material.materia_prima} · ${n > 1 ? n + ' chapas' : chapa} ${material.nome_chapa_utilizada} (${material.chapa.largura_mm} × ${material.chapa.altura_mm} mm) · ${(material.posicionamentos || []).length} peça(s)`;
 }
 
-function svgDownloadNesting(material){
-  const W = Number(material.chapa.largura_mm), H = Number(material.chapa.altura_mm);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}"><title>${escaparHtml(rotuloMaterialNesting(material))}</title>${conteudoSvgNesting(material, 'corte')}</svg>`;
-}
-
-/** Todos os materiais num só SVG, um embaixo do outro, com o nome de cada um. */
+/** Todas as chapas dos materiais num só SVG, uma embaixo da outra, com o nome de cada uma. */
 function svgDownloadNestingCompleto(materiais){
   const folga = 120, altTexto = 60;
   let y = 0, larguraMax = 0;
-  const blocos = materiais.map(material => {
-    const W = Number(material.chapa.largura_mm), H = Number(material.chapa.altura_mm);
-    const bloco = `<g transform="translate(0 ${y})"><text x="0" y="${altTexto - 15}" font-size="36" font-family="Arial" fill="#111827">${escaparHtml(rotuloMaterialNesting(material))}</text><g transform="translate(0 ${altTexto})">${conteudoSvgNesting(material, 'corte')}</g></g>`;
-    y += altTexto + H + folga; larguraMax = Math.max(larguraMax, W);
-    return bloco;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${larguraMax}mm" height="${y}mm" viewBox="0 0 ${larguraMax} ${y}">${blocos}</svg>`;
+  const blocos = [];
+  materiais.forEach(material => {
+    const W = Number(material.chapa.largura_mm), H = Number(material.chapa.altura_mm), n = quantidadeChapasNesting(material);
+    for(let i = 0; i < n; i++){
+      const titulo = rotuloMaterialNesting(material) + (n > 1 ? ` · chapa ${i + 1} de ${n}` : '');
+      blocos.push(`<g transform="translate(0 ${y})"><text x="0" y="${altTexto - 15}" font-size="36" font-family="Arial" fill="#111827">${escaparHtml(titulo)}</text><g transform="translate(0 ${altTexto})">${conteudoSvgNesting(material, 'corte', i)}</g></g>`);
+      y += altTexto + H + folga; larguraMax = Math.max(larguraMax, W);
+    }
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${larguraMax}mm" height="${y}mm" viewBox="0 0 ${larguraMax} ${y}">${blocos.join('')}</svg>`;
+}
+
+function svgDownloadNesting(material){
+  if(quantidadeChapasNesting(material) > 1) return svgDownloadNestingCompleto([material]);
+  const W = Number(material.chapa.largura_mm), H = Number(material.chapa.altura_mm);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}"><title>${escaparHtml(rotuloMaterialNesting(material))}</title>${conteudoSvgNesting(material, 'corte', 0)}</svg>`;
 }
 
 function baixarTextoNesting(nome, conteudo){
@@ -4629,26 +4639,43 @@ function nomeArquivoNesting(texto){
   return String(texto || 'material').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).toLowerCase() || 'material';
 }
 
-/** Painel de um material: desenho das peças na chapa (ampliado no layout ou chapa inteira) e botão de download. */
+/** Instrução quando o desenho precisou de várias chapas (o que fazer para caber em uma só ou seguir assim). */
+function htmlInstrucaoVariasChapas(material){
+  const n = quantidadeChapasNesting(material);
+  if(n < 2) return '';
+  return `<div class="warnbox" role="alert" style="margin-top:10px;"><span>${ICONS.alert}</span><div>
+    <b>Este desenho não cabe em uma chapa: o sistema usou ${n} chapas de ${escaparHtml(material.nome_chapa_utilizada)} (${material.chapa.largura_mm} × ${material.chapa.altura_mm} mm).</b>
+    <div style="margin-top:4px;">${escaparHtml(material.instrucao_nao_coube || '')}</div>
+    <div class="role-note" style="margin-top:4px;">O consumo e o custo do material já somam as ${n} chapas.</div>
+  </div></div>`;
+}
+
+/** Painel de um material: uma vista por chapa (ampliada no layout ou chapa inteira) e o botão de download. */
 function painelVisualNesting(material){
   const W = Number(material.chapa.largura_mm), H = Number(material.chapa.altura_mm);
-  const posicoes = material.posicionamentos || [];
-  if(!(W > 0) || !(H > 0) || !posicoes.length) return '';
-  const inteira = !!REAL.nestingVerChapaInteira;
-  let vb = [0, 0, W, H];
-  if(!inteira){
-    const minX = Math.min(...posicoes.map(p => Number(p.xMm) || 0)), minY = Math.min(...posicoes.map(p => Number(p.yMm) || 0));
-    const maxX = Math.max(...posicoes.map(p => (Number(p.xMm) || 0) + (Number(p.larguraMm) || 0))), maxY = Math.max(...posicoes.map(p => (Number(p.yMm) || 0) + (Number(p.alturaMm) || 0)));
-    const pad = Math.max(maxX - minX, maxY - minY) * 0.04 + 5;
-    const x0 = Math.max(0, minX - pad), y0 = Math.max(0, minY - pad);
-    vb = [x0, y0, Math.min(W, maxX + pad) - x0, Math.min(H, maxY + pad) - y0];
-  }
+  if(!(W > 0) || !(H > 0) || !(material.posicionamentos || []).length) return '';
+  const inteira = !!REAL.nestingVerChapaInteira, n = quantidadeChapasNesting(material);
+  const vistas = Array.from({length:n}, (_, indice) => {
+    const posicoes = posicoesDaChapaNesting(material, indice);
+    if(!posicoes.length) return '';
+    let vb = [0, 0, W, H];
+    if(!inteira){
+      const minX = Math.min(...posicoes.map(p => Number(p.xMm) || 0)), minY = Math.min(...posicoes.map(p => Number(p.yMm) || 0));
+      const maxX = Math.max(...posicoes.map(p => (Number(p.xMm) || 0) + (Number(p.larguraMm) || 0))), maxY = Math.max(...posicoes.map(p => (Number(p.yMm) || 0) + (Number(p.alturaMm) || 0)));
+      const pad = Math.max(maxX - minX, maxY - minY) * 0.04 + 5;
+      const x0 = Math.max(0, minX - pad), y0 = Math.max(0, minY - pad);
+      vb = [x0, y0, Math.min(W, maxX + pad) - x0, Math.min(H, maxY + pad) - y0];
+    }
+    return `<div style="margin-top:${indice ? 10 : 0}px;">
+      ${n > 1 ? `<div style="font-size:12px;font-weight:700;margin:0 0 4px;">Chapa ${indice + 1} de ${n} · ${posicoes.length} peça(s)</div>` : ''}
+      <div style="border:1px solid var(--border);border-radius:8px;background:#fff;padding:6px;overflow:hidden;">
+        <svg viewBox="${vb.join(' ')}" style="display:block;width:100%;height:auto;max-height:340px;" preserveAspectRatio="xMidYMid meet">${conteudoSvgNesting(material, 'previa', indice)}</svg>
+      </div></div>`;
+  }).join('');
   return `<div style="margin-top:10px;">
-    <div style="border:1px solid var(--border);border-radius:8px;background:#fff;padding:6px;overflow:hidden;">
-      <svg viewBox="${vb.join(' ')}" style="display:block;width:100%;height:auto;max-height:340px;" preserveAspectRatio="xMidYMid meet">${conteudoSvgNesting(material, 'previa')}</svg>
-    </div>
+    ${vistas}
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
-      <button class="btn btn-soft btn-sm" data-act="nesting-baixar-svg" data-material-id="${material.id_materia_prima}">Baixar nesting (SVG em mm)</button>
+      <button class="btn btn-soft btn-sm" data-act="nesting-baixar-svg" data-material-id="${material.id_materia_prima}">Baixar nesting${n > 1 ? ' das ' + n + ' chapas' : ''} (SVG em mm)</button>
       <label class="checkrow" style="margin:0;"><input type="checkbox" data-act="nesting-ver-chapa" ${inteira ? 'checked' : ''}> Ver a chapa inteira</label>
       <span class="role-note" style="margin:0;">Azul: chapa · tracejado: margem de borda · amarelo: peças na posição calculada.</span>
     </div>
@@ -4663,15 +4690,18 @@ function resumoNesting(){
   const linhas = fact.materiais.map(m => {
     const r = resultados.find(item => Number(item.id_materia_prima) === Number(m.id_materia_prima));
     const total = pecasDoMaterialNesting(m.id_materia_prima).length;
-    return r
-      ? `<li>${ICONS.check} <b>${escaparHtml(r.materia_prima)}</b> — ${(r.posicionamentos || []).length} de ${total} peça(s) na ${r.formato === 'bobina' ? 'bobina' : 'chapa'} ${escaparHtml(r.nome_chapa_utilizada)} · aproveitamento ${fmt(r.porcentagem_aproveitamento, 1)}%</li>`
-      : `<li>${ICONS.alert} <b>${escaparHtml(m.materia_prima)}</b> — ${total} peça(s), ${(()=>{const falha=((nesting&&nesting.falhas)||[]).find(f=>Number(f.id_materia_prima)===Number(m.id_materia_prima)); return falha?'<b>nesting não feito:</b> '+escaparHtml(falha.mensagem):(REAL.nestingCarregando?'nesting em andamento…':'nesting ainda não calculado');})()}</li>`;
+    if(r){
+      const n = quantidadeChapasNesting(r);
+      return `<li>${n > 1 ? ICONS.alert : ICONS.check} <b>${escaparHtml(r.materia_prima)}</b> — ${(r.posicionamentos || []).length} de ${total} peça(s) ${n > 1 ? 'em <b>' + n + ' chapas</b> de' : 'na ' + (r.formato === 'bobina' ? 'bobina' : 'chapa')} ${escaparHtml(r.nome_chapa_utilizada)} (${r.chapa.largura_mm} × ${r.chapa.altura_mm} mm) · aproveitamento ${fmt(r.porcentagem_aproveitamento, 1)}%</li>`;
+    }
+    const falha = ((nesting && nesting.falhas) || []).find(f => Number(f.id_materia_prima) === Number(m.id_materia_prima));
+    return `<li>${ICONS.alert} <b>${escaparHtml(m.materia_prima)}</b> — ${total} peça(s), ${falha ? '<b>nesting não feito:</b> ' + escaparHtml(falha.mensagem) : (REAL.nestingCarregando ? 'nesting em andamento…' : 'nesting ainda não calculado')}</li>`;
   }).join('');
   const prontos = resultados.filter(r => (r.posicionamentos || []).length);
   return `<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
-    <div class="cardhead"><div><h4>Resumo do nesting por material</h4><p>Cada matéria-prima de chapa da composição tem o seu nesting, calculado com as peças da camada dela.</p></div>
-      ${prontos.length > 1 ? '<button class="btn btn-soft btn-sm" data-act="nesting-baixar-todos">Baixar todos (SVG único)</button>' : ''}</div>
-    ${((nesting&&nesting.falhas)||[]).length?`<div class="warnbox" role="alert" style="margin-top:8px;"><span>${ICONS.alert}</span><div>O nesting de ${((nesting&&nesting.falhas)||[]).map(f=>escaparHtml(f.materia_prima)).join(' e ')} <b>não foi feito</b>; ${prontos.length?'o de '+prontos.map(r=>escaparHtml(r.materia_prima)).join(' e ')+' foi feito e pode ser baixado abaixo':'nenhum outro material ficou pronto'}. Veja o motivo e o que fazer na lista.</div></div>`:''}
+    <div class="cardhead"><div><h4>Resumo do nesting por material</h4><p>Cada matéria-prima de chapa da composição tem o seu nesting, calculado com as peças da camada dela e no formato de chapa dela. Se o desenho não cabe numa chapa, o sistema usa outras do mesmo material.</p></div>
+      ${prontos.length > 1 || prontos.some(r => quantidadeChapasNesting(r) > 1) ? '<button class="btn btn-soft btn-sm" data-act="nesting-baixar-todos">Baixar todos (SVG único)</button>' : ''}</div>
+    ${((nesting && nesting.falhas) || []).length ? `<div class="warnbox" role="alert" style="margin-top:8px;"><span>${ICONS.alert}</span><div>O nesting de ${((nesting && nesting.falhas) || []).map(f => escaparHtml(f.materia_prima)).join(' e ')} <b>não foi feito</b>; ${prontos.length ? 'o de ' + prontos.map(r => escaparHtml(r.materia_prima)).join(' e ') + ' foi feito e pode ser baixado abaixo' : 'nenhum outro material ficou pronto'}. Veja o motivo e o que fazer na lista.</div></div>` : ''}
     <ul style="margin:6px 0 0 18px;line-height:1.7;">${linhas}</ul>
   </div>`;
 }
@@ -4689,6 +4719,7 @@ function realStepNestingV2(){
   </div>`).join('')||'';
   const cards=nesting?.materiais?.map(material=>`<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;">
     <div class="cardhead"><div><h4>${escaparHtml(material.materia_prima)}</h4><p>${material.formato==='bobina'?`Bobina / Rolo ${escaparHtml(material.nome_chapa_utilizada)} - largura ${material.chapa.altura_mm} mm x comprimento consumido ${material.chapa.largura_mm} mm`:`Chapa ${escaparHtml(material.nome_chapa_utilizada)} - ${material.chapa.largura_mm} x ${material.chapa.altura_mm} mm`}</p></div><span class="badge b-ok">${fmt(material.porcentagem_aproveitamento,1)}% ${material.formato==='bobina'?'aproveitamento do rolo consumido':'ocupacao da chapa'}</span></div>
+    ${htmlInstrucaoVariasChapas(material)}
     ${painelVisualNesting(material)}
     <div class="grid3"><div class="kv"><span>Área líquida das peças</span><span>${fmt(material.area_liquida_m2,4)} m2</span></div><div class="kv"><span>Área de consumo</span><span>${fmt(material.area_chapa_utilizada_m2,4)} m2</span></div><div class="kv"><span>Perímetro total de corte</span><span>${fmt(material.perimetro_total_m,2)} m</span></div></div>
     <div class="role-note">${material.posicionamentos.length} peça(s) posicionada(s) - ${material.formato==='bobina'?'bobina / rolo':'chapa'} ID ${material.id_chapa_utilizada} (${material.chapa_principal?'principal':'alternativa'}); espaço entre peças: ${material.espacamento_pecas_mm} mm; borda: ${material.margem_borda_mm} mm; critério: ${material.criterio_escolha==='menor_chapa_que_comporta'?(material.formato==='bobina'?'menor consumo de rolo':'menor chapa que comporta'):material.criterio_escolha==='menor_sobra_financeira'?'menor sobra financeira':'maior aproveitamento'}.</div>

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { calcularNestingMultiMaterial } from "../services/cpqNesting";
+import { calcularNestingMultiMaterial, calcularNestingMultiMaterialParcial } from "../services/cpqNesting";
 import { executarMotorInterno, GeometriaInvalidaMotorInterno } from "../services/cpqNestingInterno";
 
 const retangulo = (id: string, largura: number, altura: number) => ({
@@ -99,6 +99,10 @@ describe("calcularNestingMultiMaterial sem Deepnest configurado", () => {
     unidadeCusto: "m2",
     chapas: chapas.map(c => ({ ...c, mubisysMateriaPrimaId: 10, nome: `Formato ${c.id}` })),
   });
+  const comId = (id: number, chapas: Array<{ id: number; larguraMm: number; alturaMm: number }>) => ({
+    id, nome: `Material ${id}`, custoUnitario: 100, unidadeCusto: "m2",
+    chapas: chapas.map(c => ({ ...c, mubisysMateriaPrimaId: id, nome: `Formato ${c.id}` })),
+  });
   const pecas = [retangulo("p1", 200, 100), retangulo("p2", 200, 100), quadradoVazado];
 
   it("calcula o nesting da chapa menor que comporta e marca o motor interno", async () => {
@@ -125,5 +129,46 @@ describe("calcularNestingMultiMaterial sem Deepnest configurado", () => {
     // Em pé (girando 90°), as duas peças de 300×100 ficam lado a lado no eixo Y do rolo de 1200 mm: 100 mm de comprimento.
     expect(resultado.comprimento_consumido_mm).toBe(100);
     expect(resultado.area_chapa_utilizada_m2).toBeCloseTo((100 * 1200) / 1_000_000, 6);
+  });
+
+  it("se não cabe numa chapa, consome outras do mesmo material e soma consumo e custo", async () => {
+    // 12 quadrados de 400×400: numa chapa 1000×800 (útil 990×790) cabem 2 (uma fileira); precisa de 6 chapas.
+    const quadrados = Array.from({ length: 12 }, (_, i) => retangulo(`q${i}`, 400, 400));
+    const [resultado] = await calcularNestingMultiMaterial({
+      pecas: quadrados, espacamentoMm: 3, margemBordaMm: 5,
+      materiais: [{ ...material([{ id: 5, larguraMm: 1000, alturaMm: 800 }]), unidadeCusto: "chapa", custoUnitario: 100 }],
+    });
+    expect(resultado.quantidade_chapas).toBe(6);
+    expect(resultado.posicionamentos).toHaveLength(12);
+    const porChapa = new Map<number, number>();
+    for (const pos of resultado.posicionamentos) porChapa.set(pos.chapaIndice ?? 0, (porChapa.get(pos.chapaIndice ?? 0) ?? 0) + 1);
+    expect([...porChapa.keys()].sort()).toEqual([0, 1, 2, 3, 4, 5]);
+    expect([...porChapa.values()].every(qtd => qtd === 2)).toBe(true);
+    // cada peça dentro da sua chapa (1000×800)
+    for (const pos of resultado.posicionamentos) {
+      expect(pos.xMm + pos.larguraMm).toBeLessThanOrEqual(1000 + 1e-6);
+      expect(pos.yMm + pos.alturaMm).toBeLessThanOrEqual(800 + 1e-6);
+    }
+    // custo por chapa (unidade "chapa"): proporcional ao consumo somado das 6 chapas
+    const areaChapaM2 = (1000 * 800) / 1_000_000;
+    expect(resultado.custo_material_estimado).toBeCloseTo((resultado.area_chapa_utilizada_m2 / areaChapaM2) * 100, 6);
+    // cada chapa cobra o bloco ocupado + margem de borda: (803 + 10) × (400 + 10) mm de 1000 × 800 mm, 6 chapas × R$ 100
+    expect(resultado.custo_material_estimado!).toBeCloseTo(6 * ((813 * 410) / 800_000) * 100, 3);
+    expect(resultado.porcentagem_aproveitamento).toBeLessThanOrEqual(100);
+    expect(resultado.instrucao_nao_coube).toMatch(/6 chapas/);
+    expect(resultado.instrucao_nao_coube).toMatch(/reduza o letreiro/);
+  });
+
+  it("sem solução (peça maior que qualquer chapa): erro com o que fazer, sem travar os outros materiais", async () => {
+    const gigante = [retangulo("enorme", 1500, 1400)];
+    await expect(calcularNestingMultiMaterial({ pecas: gigante, materiais: [material([{ id: 6, larguraMm: 1000, alturaMm: 800 }])] }))
+      .rejects.toMatchObject({ code: "no_fit", message: expect.stringContaining("O que fazer") });
+    const { resultados, falhas } = await calcularNestingMultiMaterialParcial({
+      pecas: [retangulo("pequena", 200, 100), ...gigante],
+      materiais: [comId(7, [{ id: 71, larguraMm: 1000, alturaMm: 800 }]), comId(9, [{ id: 91, larguraMm: 2000, alturaMm: 2000 }])],
+    });
+    // o material 9 tem chapa grande e comporta tudo; o 7 não comporta a peça gigante. Cada um é independente.
+    expect(falhas.map(f => f.id_materia_prima)).toEqual([7]);
+    expect(resultados.map(r => r.id_materia_prima)).toEqual([9]);
   });
 });

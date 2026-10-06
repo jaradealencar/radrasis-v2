@@ -654,7 +654,14 @@ de células conservadora por peça e ângulo (4 lados + alinhamento da maior are
 avançando pelo comprimento da chapa como quem fatia um pão; peças pequenas entram nos vazados das grandes; espaçamento
 respeitado (verificado por geometria em `cpq-nesting-contorno.test.ts`); prazo de 12 s por chamada, depois vale o de
 caixas). Entre as duas orientações da mesma chapa vale a de **menor consumo** (antes escolhia a de maior). É uma
-estimativa conservadora (máscara até 1 célula maior por borda); o
+estimativa conservadora (máscara até 1 célula maior por borda).
+**Várias chapas (pedido de 05/10/2026):** se o desenho não cabe numa chapa de nenhum formato, `resultadoEmVariasChapas`
+(`cpqNesting.ts`) distribui as peças em até 8 chapas do mesmo formato (o de menor consumo total), com a maior dimensão ao
+longo do eixo X; o resultado é UM por material, com consumo e custo somados, `quantidade_chapas`, `chapaIndice` em cada
+posicionamento, `escala_para_uma_chapa_pct` (estimativa pela área) e `instrucao_nao_coube`; o CPQ mostra uma vista por chapa
+e baixa todas no SVG. Cada material é independente (`calcularNestingMultiMaterialParcial`): se um não coube nem assim, o outro
+segue e a falha vem em `falhas` com o que fazer. Sem solução (peça maior que qualquer chapa) o erro `no_fit` diz o que fazer.
+O
 resultado traz `motor: "interno"` e o CPQ mostra o aviso. Remoto indisponível (rede/401/404/5xx) cai no interno;
 falha de cálculo do Deepnest (tempo) continua sendo erro de motor. Nenhum fork do Deepnest com a API `nest(svgs,
 onUpdate, opts)` que o worker espera foi encontrado/validado: o worker e o serviço só foram testados com motor

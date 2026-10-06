@@ -31,6 +31,8 @@ export type CpqNestingPlacement = {
   larguraMm: number;
   alturaMm: number;
   rotacaoGraus: number;
+  /** Quando o material usa mais de uma chapa: qual (0 = primeira). Ausente = chapa única. */
+  chapaIndice?: number;
 };
 
 export type CpqMaterial = {
@@ -110,6 +112,12 @@ export type CpqNestingMaterialResult = {
   comprimento_consumido_mm?: number;
   /** Só em bobina: largura do rolo, em mm. */
   largura_bobina_mm?: number;
+  /** O desenho não coube numa chapa e foi distribuído em N chapas do mesmo material (consumo e custo já somam as N). */
+  quantidade_chapas?: number;
+  /** Estimativa (pela área) do tamanho, em % do atual, em que o desenho caberia numa só chapa. */
+  escala_para_uma_chapa_pct?: number;
+  /** Instrução ao vendedor quando foram necessárias várias chapas. */
+  instrucao_nao_coube?: string;
   posicionamentos: CpqNestingPlacement[];
 };
 
@@ -488,6 +496,121 @@ function mapearPosicionamentos(avaliacao: AvaliacaoChapa, pecas: CpqNestingPeca[
   }));
 }
 
+const MAX_CHAPAS_POR_MATERIAL = 8;
+
+/**
+ * Quando o desenho não cabe numa chapa, distribui as peças em mais de uma chapa do mesmo formato (a que gastar menos no
+ * total) e devolve um único resultado com o consumo e o custo somados. Usa o motor interno, que devolve também o layout
+ * parcial; sem solução (peça maior que a chapa, mais de 8 chapas...) devolve null e quem chamou explica o problema.
+ */
+function resultadoEmVariasChapas(
+  material: CpqMaterial,
+  chapas: CpqChapa[],
+  pecasMaterial: Array<CpqNestingPeca & { svg: string }>,
+  pecasOriginais: CpqNestingPeca[],
+  espacamentoMm: number,
+  margemBordaMm: number,
+): CpqNestingMaterialResult | null {
+  type Folha = { placements: CpqNestingPlacement[]; larguraBlocoMm: number; alturaBlocoMm: number };
+  let melhor: { chapa: CpqChapa; larguraMm: number; alturaMm: number; folhas: Folha[]; areaLiquidaMm2: number; perimetroMm: number; consumoM2: number } | null = null;
+  for (const chapa of chapas) {
+    if (chapa.bobina) continue;
+    // A maior dimensão no eixo X: o nesting avança pelo comprimento da chapa, ocupando a largura.
+    const larguraMm = Math.max(chapa.larguraMm, chapa.alturaMm), alturaMm = Math.min(chapa.larguraMm, chapa.alturaMm);
+    const larguraUtilMm = larguraMm - 2 * margemBordaMm, alturaUtilMm = alturaMm - 2 * margemBordaMm;
+    if (larguraUtilMm <= 0 || alturaUtilMm <= 0) continue;
+    let restantes = pecasMaterial.map((_, indice) => indice);
+    const folhas: Folha[] = [];
+    let areaLiquidaMm2 = 0, perimetroMm = 0, completo = true;
+    while (restantes.length) {
+      if (folhas.length >= MAX_CHAPAS_POR_MATERIAL) { completo = false; break; }
+      let r: ReturnType<typeof executarMotorInterno>;
+      try { r = executarMotorInterno(restantes.map(indice => pecasMaterial[indice]), larguraUtilMm, alturaUtilMm, espacamentoMm); }
+      catch { completo = false; break; }
+      if (!folhas.length) { areaLiquidaMm2 = r.areaLiquidaMm2; perimetroMm = r.perimetroTotalMm; }
+      if (!r.placements.length || !r.bounds) { completo = false; break; } // alguma peça não cabe nem sozinha numa chapa nova
+      const origem = restantes, limites = r.bounds, indiceFolha = folhas.length;
+      folhas.push({
+        placements: r.placements.map(p => ({
+          ...p,
+          source: origem[p.source ?? 0],
+          origemId: pecasOriginais[origem[p.source ?? 0]]?.id,
+          chapaIndice: indiceFolha,
+          xMm: p.xMm - limites.minX + margemBordaMm,
+          yMm: p.yMm - limites.minY + margemBordaMm,
+        })),
+        larguraBlocoMm: limites.maxX - limites.minX,
+        alturaBlocoMm: limites.maxY - limites.minY,
+      });
+      const usados = new Set(r.placements.map(p => p.source ?? -1));
+      restantes = restantes.filter((_, k) => !usados.has(k));
+    }
+    if (!completo || !folhas.length) continue;
+    const consumoM2 = folhas.reduce((soma, folha) => soma + ((folha.larguraBlocoMm + 2 * margemBordaMm) * (folha.alturaBlocoMm + 2 * margemBordaMm)) / 1_000_000, 0);
+    if (!melhor || consumoM2 < melhor.consumoM2 - 1e-9) melhor = { chapa, larguraMm, alturaMm, folhas, areaLiquidaMm2, perimetroMm, consumoM2 };
+  }
+  if (!melhor) return null;
+
+  const { chapa, larguraMm, alturaMm, folhas } = melhor;
+  const n = folhas.length;
+  const areaChapaM2 = (chapa.larguraMm * chapa.alturaMm) / 1_000_000;
+  const areaUtilM2 = ((larguraMm - 2 * margemBordaMm) * (alturaMm - 2 * margemBordaMm)) / 1_000_000;
+  const areaLiquidaM2 = melhor.areaLiquidaMm2 / 1_000_000;
+  const custos = estimarCustos(material, melhor.consumoM2, areaChapaM2, melhor.perimetroMm / 1000);
+  const aproveitamento = areaChapaM2 > 0 ? (melhor.consumoM2 / (n * areaChapaM2)) * 100 : 0;
+  // Estimativa pela área: uma chapa costuma comportar letras com ~50% de área real.
+  const escalaPct = areaLiquidaM2 > 0 ? Math.max(1, Math.min(99, Math.floor(100 * Math.sqrt((0.5 * areaUtilM2) / areaLiquidaM2)))) : 99;
+  const posicionamentos = folhas.flatMap(folha => folha.placements);
+  const formatos = chapas.map(outra => outra.id === chapa.id
+    ? {
+        id_chapa: outra.id, nome_chapa: outra.nome, chapa_principal: !!outra.principal,
+        largura_cadastrada_mm: outra.larguraMm, altura_cadastrada_mm: outra.alturaMm, formato: "chapa" as const,
+        status: "apto" as const, mensagem: `Distribuído em ${n} chapas`,
+        largura_nesting_mm: larguraMm, altura_nesting_mm: alturaMm,
+        quantidade_pecas: pecasOriginais.length, quantidade_posicionada: posicionamentos.length,
+        area_liquida_m2: areaLiquidaM2, area_sobra_m2: Math.max(0, n * areaChapaM2 - melhor.consumoM2),
+        perimetro_total_m: melhor.perimetroMm / 1000, area_chapa_utilizada_m2: melhor.consumoM2, porcentagem_aproveitamento: aproveitamento,
+        custo_material_estimado: custos.custo, custo_sobra_estimado: custos.sobra, alerta_custo: custos.alerta, posicionamentos,
+      }
+    : {
+        id_chapa: outra.id, nome_chapa: outra.nome, chapa_principal: !!outra.principal,
+        largura_cadastrada_mm: outra.larguraMm, altura_cadastrada_mm: outra.alturaMm,
+        formato: outra.bobina ? "bobina" as const : "chapa" as const, status: "nao_cabe" as const,
+        mensagem: "O desenho não cabe numa chapa deste formato (nem em mais chapas do formato escolhido, com menor consumo).",
+        largura_nesting_mm: null, altura_nesting_mm: null, quantidade_pecas: pecasOriginais.length, quantidade_posicionada: 0,
+        area_liquida_m2: null, area_sobra_m2: null, perimetro_total_m: null, area_chapa_utilizada_m2: null, porcentagem_aproveitamento: null,
+        custo_material_estimado: null, custo_sobra_estimado: null, alerta_custo: null, posicionamentos: [],
+      });
+  return {
+    espacamento_pecas_mm: espacamentoMm,
+    margem_borda_mm: margemBordaMm,
+    formatos_avaliados: formatos,
+    id_materia_prima: material.id,
+    materia_prima: material.nome,
+    custo_unitario: material.custoUnitario > 0 ? material.custoUnitario : null,
+    unidade_custo: material.unidadeCusto,
+    custo_material_estimado: custos.custo,
+    custo_sobra_estimado: custos.sobra,
+    alerta_custo: custos.alerta,
+    area_liquida_m2: areaLiquidaM2,
+    area_sobra_m2: Math.max(0, n * areaChapaM2 - melhor.consumoM2),
+    perimetro_total_m: melhor.perimetroMm / 1000,
+    area_chapa_utilizada_m2: melhor.consumoM2,
+    porcentagem_aproveitamento: aproveitamento,
+    criterio_escolha: "menor_chapa_que_comporta",
+    id_chapa_utilizada: chapa.id,
+    nome_chapa_utilizada: chapa.nome,
+    chapa_principal: !!chapa.principal,
+    chapa: { largura_mm: larguraMm, altura_mm: alturaMm },
+    formato: "chapa",
+    motor: "interno",
+    quantidade_chapas: n,
+    escala_para_uma_chapa_pct: escalaPct,
+    instrucao_nao_coube: `O desenho de ${material.nome} não cabe em uma chapa ${chapa.nome} (${chapa.larguraMm} × ${chapa.alturaMm} mm): foi distribuído em ${n} chapas, e o consumo e o custo abaixo já somam as ${n}. Para caber em uma só: reduza o letreiro para cerca de ${escalaPct}% do tamanho atual (estimativa pela área), cadastre um formato de chapa maior ou, se o desenho tiver uma peça única maior que a chapa, aprove a emenda. Para manter o tamanho, basta seguir com as ${n} chapas.`,
+    posicionamentos,
+  };
+}
+
 /** Material cujo nesting não foi possível (não coube, falha do motor...). Os demais materiais seguem normalmente. */
 export type CpqNestingFalhaMaterial = {
   id_materia_prima: number;
@@ -636,10 +759,15 @@ export async function calcularNestingMultiMaterialParcial(input: {
     if (!candidatas.length) {
       const detalhesFormatos = chapas.map(chapa => `${chapa.nome} (${chapa.larguraMm} × ${chapa.alturaMm} mm): ${falhasFormatos.get(chapa.id) ?? "o desenho não coube com o espaçamento e a margem selecionados"}`).join("; ");
       const todosFalharamNoMotor = falhasFormatos.size > 0 && chapas.every(chapa => falhasFormatos.has(chapa.id));
+      // Não coube numa chapa só: usa outras chapas do mesmo material em vez de travar o orçamento.
+      if (!todosFalharamNoMotor) {
+        const emVariasChapas = resultadoEmVariasChapas(material, chapas, pecasMaterial, pecasMaterialOriginal, espacamentoMm, margemBordaMm);
+        if (emVariasChapas) return emVariasChapas;
+      }
       throw new CpqNestingError(
         todosFalharamNoMotor
           ? `O motor de nesting falhou para ${material.nome}. ${detalhesFormatos}`
-          : `As peças de ${material.nome} não couberam em nenhum formato cadastrado. ${detalhesFormatos}`,
+          : `As peças de ${material.nome} não couberam em nenhum formato cadastrado, nem distribuídas em até ${MAX_CHAPAS_POR_MATERIAL} chapas. ${detalhesFormatos}. O que fazer: se há uma peça maior que a chapa, aprove a emenda (ou reduza o letreiro em até 3%); senão cadastre um formato de chapa maior para este material ou reduza o tamanho do letreiro.`,
         todosFalharamNoMotor ? "engine" : "no_fit",
       );
     }
