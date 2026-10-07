@@ -84,9 +84,11 @@ export function PriceBlockAffiliationEditor({
       if (existente?.mubisysModeloIds == null && existente)
         return atuais.filter(item => item.mubisysProdutoId !== produto.id);
       if (existente)
-        return atuais.map(item => item.mubisysProdutoId === produto.id
-          ? { ...item, mubisysModeloIds: null, modelos: produto.modelos }
-          : item);
+        return atuais.map(item =>
+          item.mubisysProdutoId === produto.id
+            ? { ...item, mubisysModeloIds: null, modelos: produto.modelos }
+            : item
+        );
       return [
         ...atuais,
         {
@@ -152,10 +154,48 @@ export function PriceBlockAffiliationEditor({
           <DialogTitle>Produtos e modelos atendidos pelo bloco</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-slate-600">
-          {sectionTitle}. Escolha o produto inteiro ou expanda para selecionar
-          modelos específicos. A seleção é compartilhada com o bloco
-          correspondente de Novo Cliente.
+          {sectionTitle}. Escolha o produto completo ou abra um produto para
+          selecionar modelos. Produtos e modelos definidos aqui tambem sao
+          aplicados ao bloco correspondente de Novo Cliente.
         </p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">
+              Selecionados ({selecionados.length})
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelecionados([])}
+              disabled={!selecionados.length}
+            >
+              Limpar
+            </Button>
+          </div>
+          {selecionados.length > 0 && (
+            <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+              {selecionados.map(item => (
+                <Badge
+                  key={item.mubisysProdutoId}
+                  variant="outline"
+                  className="max-w-full gap-1"
+                >
+                  <span className="truncate">
+                    {item.nomeProduto} · {nomesSelecionados(item)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => remover(item.mubisysProdutoId)}
+                    aria-label={`Remover ${item.nomeProduto}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <Input
@@ -285,44 +325,6 @@ export function PriceBlockAffiliationEditor({
                 </div>
               );
             })
-          )}
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">
-              Selecionados ({selecionados.length})
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelecionados([])}
-              disabled={!selecionados.length}
-            >
-              Limpar
-            </Button>
-          </div>
-          {selecionados.length > 0 && (
-            <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
-              {selecionados.map(item => (
-                <Badge
-                  key={item.mubisysProdutoId}
-                  variant="outline"
-                  className="max-w-full gap-1"
-                >
-                  <span className="truncate">
-                    {item.nomeProduto} · {nomesSelecionados(item)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => remover(item.mubisysProdutoId)}
-                    aria-label={`Remover ${item.nomeProduto}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
           )}
         </div>
         <div className="flex justify-end gap-2">
