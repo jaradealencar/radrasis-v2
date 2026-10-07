@@ -107,6 +107,7 @@ import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
 import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashboard";
+import { PriceAdjustmentCalculator } from "@/components/PriceAdjustmentCalculator";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -3088,6 +3089,7 @@ export default function TabelaPrecos() {
   const { data: dimensionamentoLed } = trpc.custoLed.getDimensionamentoFontes.useQuery();
   const [showHistory, setShowHistory] = useState(false);
   const [selectedHistoryTable, setSelectedHistoryTable] = useState<"principal" | "novo_cliente">("principal");
+  const [showPriceCalculator, setShowPriceCalculator] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionPage, setNewSectionPage] = useState(11);
@@ -3222,6 +3224,15 @@ export default function TabelaPrecos() {
                 </Badge>
               )}
               <div className="ml-auto flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => setShowPriceCalculator(true)}
+                >
+                  <Calculator className="w-4 h-4" />
+                  Simular reajuste
+                </Button>
                 {activeTabNC !== "4" && (
                   <Button
                     size="sm"
@@ -3387,6 +3398,15 @@ export default function TabelaPrecos() {
                 </Badge>
               )}
               <div className="ml-auto flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                  onClick={() => setShowPriceCalculator(true)}
+                >
+                  <Calculator className="w-4 h-4" />
+                  Simular reajuste
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -3653,6 +3673,13 @@ export default function TabelaPrecos() {
       </Dialog>
 
       {/* Painel de Histórico e Evolução das Margens */}
+      <PriceAdjustmentCalculator
+        open={showPriceCalculator}
+        onOpenChange={setShowPriceCalculator}
+        tabela={tabelaAtiva}
+        secoes={allSections ?? []}
+      />
+
       <Dialog open={showHistory} onOpenChange={setShowHistory}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
