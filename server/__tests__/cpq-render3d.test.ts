@@ -12,6 +12,7 @@ import { emitirTicketAnaliseFactibilidade } from "../services/cpqFactibilidadeFa
 import {
   CpqRender3dError,
   chaveVinculo,
+  corHexDoCadastroDeChapa,
   emitirTicketRender3d,
   hashCpqRender3dSpec,
   montarBlocoSnapshot,
@@ -259,6 +260,76 @@ describe("spec 3D: aparência cadastrada na matéria-prima (migration 0094)", ()
     const invalido = await resolver(orcamento(), fonte({ materias: { [ACRILICO]: corCadastrada("azul"), [LED]: corCadastrada(null, "nao_informada") } }));
     expect(corDaFace(invalido).overrides ?? null).toBeNull();
     expect(invalido.warnings.some(aviso => aviso.includes("Módulo LED"))).toBe(false);
+  });
+});
+
+describe("spec 3D: cor das matérias-primas além do HEX da aparência", () => {
+  const corDaFace = (spec: Awaited<ReturnType<typeof resolver>>) => spec.materials.find(m => m.role === "face")!;
+  const hexCadastrado = (corHex: string) => ({ aparencia: { modo: "cor" as const, corHex, corDescricao: null, texturaDescricao: null } });
+
+  it("corHexDoCadastroDeChapa: CMYK completo, senão o primeiro Pantone conhecido, senão nada", () => {
+    expect(corHexDoCadastroDeChapa({ cmykC: "100.00", cmykM: "0", cmykY: "0", cmykK: "0", pantoneCode: null })).toBe("#00ffff");
+    // CMYK incompleto não vale: cai no Pantone (aqui um nome da tabela de referência), ignorando códigos fora dela.
+    expect(corHexDoCadastroDeChapa({ cmykC: "10", cmykM: null, cmykY: null, cmykK: null, pantoneCode: "Process Blue" })).toBe("#0091c9");
+    expect(corHexDoCadastroDeChapa({ cmykC: null, cmykM: null, cmykY: null, cmykK: null, pantoneCode: "XYZ 999" })).toBeNull();
+    expect(corHexDoCadastroDeChapa({ cmykC: null, cmykM: null, cmykY: null, cmykK: null, pantoneCode: null })).toBeNull();
+  });
+
+  it("sem HEX na aparência, a cor do cadastro de cor da chapa vira a cor do material; o HEX da aparência vence a da chapa", async () => {
+    const daChapa = await resolver(orcamento(), fonte({ materias: { [ACRILICO]: { corChapaHex: "#C0392B" } } }));
+    expect(corDaFace(daChapa).pbr.colorHex).toBe("#c0392b");
+    expect(corDaFace(daChapa).overrides).toEqual({ colorHex: "#c0392b" });
+    expect(daChapa.warnings.some(aviso => aviso.includes("Acrílico branco"))).toBe(false);
+
+    const comHex = await resolver(orcamento(), fonte({ materias: { [ACRILICO]: { ...hexCadastrado("#1a5fb4"), corChapaHex: "#c0392b" } } }));
+    expect(corDaFace(comHex).pbr.colorHex).toBe("#1a5fb4");
+  });
+
+  it("material sem perfil visual (preview estimado) também recebe a cor cadastrada; LED e fixação mantêm o preset", async () => {
+    const spec = await resolver(orcamento(), fonte({
+      vinculos: {},
+      materias: { [ACRILICO]: hexCadastrado("#1a5fb4"), [PERFIL]: { corChapaHex: "#7a4b2a" }, [LED]: hexCadastrado("#ff0000") },
+    }));
+    expect(codigos(spec)).toContain("material_sem_vinculo");
+    expect(corDaFace(spec)).toMatchObject({ estimated: true, family: "generic_dielectric", overrides: { colorHex: "#1a5fb4" } });
+    expect(corDaFace(spec).pbr.colorHex).toBe("#1a5fb4");
+    expect(spec.materials.find(m => m.role === "profile")?.pbr.colorHex).toBe("#7a4b2a");
+    expect(spec.materials.find(m => m.role === "led")?.pbr.colorHex).toBe(presetPbr("led_module").colorHex);
+    expect(spec.materials.find(m => m.role === "led")?.overrides ?? null).toBeNull();
+  });
+
+  it("região feita de chapa usa a cor do material; região de adesivo e material sem cor cadastrada mantêm a da arte", async () => {
+    const mapeamento = {
+      aprovado: true,
+      regioes: [
+        { regionKey: "cor-1", corHex: "#0044aa", pathIndexes: [0], tipoSugestao: "chapa", chapaMateriaPrimaId: ACRILICO_AZUL },
+        { regionKey: "cor-2", corHex: "#ffffff", pathIndexes: [1], tipoSugestao: "impresso", chapaBaseMateriaPrimaId: null, requerChapaBase: false },
+      ],
+    };
+    const materiais = [
+      linha(ACRILICO, "Acrílico branco", "Face", "face"), linha(ACRILICO_AZUL, "Acrílico azul", "Face", "face"),
+      linha(PERFIL, "Perfil", "Lateral", "profile"), linha(FUNDO, "PVC", "Fundo", "back"), linha(LED, "LED", "Iluminação", "led", { unidade: "un", quantidade: 10 }),
+    ];
+    const comCor = await resolver(orcamento({ materiais, mapeamentoCores: mapeamento }), fonte({
+      materias: { [ACRILICO_AZUL]: { corChapaHex: "#123456" }, [ACRILICO]: { corChapaHex: "#eeeeee" } },
+    }));
+    expect(comCor.regions.find(regiao => regiao.regionKey === "cor-1")?.colorHex).toBe("#123456"); // chapa: cor do material
+    expect(comCor.regions.find(regiao => regiao.regionKey === "cor-2")?.colorHex).toBe("#ffffff"); // adesivo: cor do vinil (arte)
+
+    const semCor = await resolver(orcamento({ materiais, mapeamentoCores: mapeamento }), fonte());
+    expect(semCor.regions.find(regiao => regiao.regionKey === "cor-1")?.colorHex).toBe("#0044aa");
+  });
+
+  it("regiões sem adesivo (decisão do vendedor) seguem a cor da face da composição", async () => {
+    const spec = await resolver(orcamento({
+      mapeamentoCores: { aprovado: true, regioes: [{ regionKey: "cor-1", corHex: "#ff00ff", pathIndexes: [0, 1], tipoSugestao: "pendente" }] },
+    }), fonte({ materias: { [ACRILICO]: { corChapaHex: "#f5f5f5" } } }));
+    expect(spec.regions[0]).toMatchObject({ colorHex: "#f5f5f5", materialId: ACRILICO });
+  });
+
+  it("LED na composição de um kit sem iluminação avisa que o 3D mostra o letreiro aceso", async () => {
+    const spec = await resolver(orcamento(), fonte({ construcao: { ...CONSTRUCAO, kind: "non_illuminated" } }));
+    expect(spec.warnings.some(aviso => aviso.includes("mostra o letreiro aceso"))).toBe(true);
   });
 });
 

@@ -1,7 +1,8 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import * as THREE from "three";
-import type { EstadoCena } from "./estadoCena";
+import type { ParteMontagem } from "../animacaoMontagem";
+import { afastamentoDaParte, type EstadoCena } from "./estadoCena";
 
 /** Rótulo desenhado num canvas e mostrado como sprite: fica dentro do WebGL, então aparece também nos previews capturados. */
 function criarTextura(texto: string): { textura: THREE.CanvasTexture; proporcao: number } {
@@ -31,14 +32,14 @@ export interface RotuloExplodido {
   posicao: [number, number, number];
 }
 
-/** Sprites dos nomes das peças; só aparecem (fade) com a visão explodida. */
-export function ExplodedLabels({ rotulos, alturaM, estado }: { rotulos: RotuloExplodido[]; alturaM: number; estado: MutableRefObject<EstadoCena> }) {
+/** Sprites dos nomes das peças; só aparecem (fade) com a visão explodida, ou enquanto a peça (`parte`) ainda não encaixou na animação. */
+export function ExplodedLabels({ rotulos, alturaM, estado, parte }: { rotulos: RotuloExplodido[]; alturaM: number; estado: MutableRefObject<EstadoCena>; parte: ParteMontagem }) {
   const sprites = useRef<THREE.Sprite[]>([]);
   const itens = useMemo(() => rotulos.map(rotulo => ({ rotulo, ...criarTextura(rotulo.texto) })), [rotulos]);
   useEffect(() => () => itens.forEach(item => item.textura.dispose()), [itens]);
   const altura = Math.max(alturaM * 0.075, 0.012);
   useFrame(() => {
-    const opacidade = THREE.MathUtils.smoothstep(estado.current.explodido, 0.15, 0.7);
+    const opacidade = THREE.MathUtils.smoothstep(afastamentoDaParte(estado.current, parte), 0.15, 0.7);
     sprites.current.forEach(sprite => {
       if (!sprite) return;
       sprite.visible = opacidade > 0.01;

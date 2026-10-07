@@ -15,11 +15,37 @@ export function familiaAceitaCorDaRegiao(familia: CpqMaterialFamily): boolean {
   return FAMILIAS_COM_COR_DA_REGIAO.has(familia);
 }
 
+/** Emissão noturna mínima da face que acende com os LEDs (acima disso vale a do perfil visual, se for maior). */
+export const INTENSIDADE_FACE_ACESA = 1.25;
+
+/**
+ * Emissão máxima do módulo LED à noite quando ele fica atrás de uma face que deixa a luz passar: visto através do acrílico, um LED
+ * a 4× vira um ponto estourado (o bloom o espalha), enquanto num letreiro real o acrílico difunde a luz de forma uniforme.
+ */
+export const INTENSIDADE_LED_ATRAS_DA_FACE = 1.4;
+
+/**
+ * A face deixa a luz do LED atravessar (e brilha na própria cor à noite) quando é de acrílico, tem transmissão cadastrada ou ainda
+ * não tem perfil visual (preview estimado). Metal e PVC são opacos: a luz não passa e a face não acende.
+ */
+export function faceAcendeComLed(familia: CpqMaterialFamily, pbr: Pick<CpqPbrParameters, "transmission">): boolean {
+  return familia === "acrylic_translucent" || familia === "acrylic_solid" || familia === "generic_dielectric" || pbr.transmission > 0.05;
+}
+
+/** Emissão da face em função de dia→noite (0..1): sobe até a intensidade noturna, que nunca é menor que a de uma face acesa. */
+export function emissaoDaFace(pbr: Pick<CpqPbrParameters, "emissiveIntensityDay" | "emissiveIntensityNight">, noite: number, acende: boolean): number {
+  const dia = pbr.emissiveIntensityDay;
+  const alvo = acende ? Math.max(pbr.emissiveIntensityNight, INTENSIDADE_FACE_ACESA) : pbr.emissiveIntensityNight;
+  return dia + (alvo - dia) * noite;
+}
+
 export interface OpcoesMaterial {
   /** Cor aprovada da região (só vale em famílias que aceitam cor da arte). */
   corHex?: string | null;
   /** A construção é iluminada (frontlight/backlight): só então há emissão. */
   iluminada?: boolean;
+  /** Face que acende com os LEDs: emite na própria cor (ver `faceAcendeComLed`). */
+  faceAcende?: boolean;
   /** Papel LED: emite sempre que há iluminação. */
   night: boolean;
 }
@@ -39,7 +65,7 @@ export function createPhysicalMaterial(
   const cor = opcoes.corHex && familiaAceitaCorDaRegiao(resolved.family) ? opcoes.corHex : p.colorHex;
   const translucido = p.transmission > 0.05;
   const emissiva = opcoes.iluminada !== false;
-  const emissivoHex = translucido && cor !== p.colorHex ? cor : p.emissiveHex;
+  const emissivoHex = opcoes.faceAcende || (translucido && cor !== p.colorHex) ? cor : p.emissiveHex;
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(cor),
     metalness: p.metalness,
@@ -57,7 +83,7 @@ export function createPhysicalMaterial(
     attenuationDistance: p.attenuationDistanceMm == null ? Infinity : mmToWorld(p.attenuationDistanceMm),
     normalScale: new THREE.Vector2(p.normalScale[0], p.normalScale[1]),
     emissive: new THREE.Color(emissivoHex),
-    emissiveIntensity: emissiva ? (night ? p.emissiveIntensityNight : p.emissiveIntensityDay) : 0,
+    emissiveIntensity: emissiva ? emissaoDaFace(p, night ? 1 : 0, !!opcoes.faceAcende) : 0,
     map: textures.baseColor ?? null,
     normalMap: textures.normal ?? null,
     roughnessMap: textures.roughness ?? null,
