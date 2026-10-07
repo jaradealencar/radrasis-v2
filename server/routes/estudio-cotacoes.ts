@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from "crypto";
 import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { estudioMapeamentoCoresCotacao, propostas } from "../../drizzle/schema";
+import { estudioCotacaoSnapshots, estudioMapeamentoCoresCotacao, priceTableMeta, priceTableSections, propostas } from "../../drizzle/schema";
 import { render3dSnapshotSchema, renderRoleSchema } from "../../shared/cpq-render3d";
 import { consumoGabaritoKraftM2 } from "../../shared/gabarito";
 import { MATERIAIS_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "../../shared/produtividade-solda";
@@ -33,6 +33,7 @@ import {
 import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
 import { carregarCatalogoEspelhado } from "../services/mubisysEspelho";
 import { calcularComposicaoComAcabamentos } from "../services/cpqComposicao";
+import { selecionarCelulaTabelaPreco } from "../services/cpqTabelaPrecoSnapshot";
 
 const PREFIXO_ESTUDIO = "[ESTUDIO_COTACAO_V1]";
 const reacooes = [
@@ -270,6 +271,22 @@ const snapshotSchema = z.object({
   precoCalculado: z.number().finite().nonnegative(),
   modoPreco: z.enum(["margem", "fixo"]),
   linhaPrecificacaoId: z.number().int().positive().nullable().optional().default(null),
+  tabelaPrecoSnapshot: z.object({
+    tabela: z.enum(["clientes_antigos", "novo_cliente"]),
+    versao: z.string().min(1).max(16),
+    pagina: z.number().int().positive(),
+    secaoId: z.number().int().positive(),
+    secaoTitulo: z.string().max(256),
+    linhaId: z.number().int().positive(),
+    linhaLabel: z.string().max(256),
+    faixaId: z.number().int().positive(),
+    faixaIndex: z.number().int().nonnegative(),
+    faixaLabel: z.string().max(256),
+    margemPct: z.number().finite().min(0).max(99.99),
+  }).strict().nullable().optional(),
+  custoBaseInsumo: z.number().finite().nonnegative().optional(),
+  custoBaseFaixa: z.number().finite().nonnegative().optional(),
+  mubisysOsId: z.number().int().positive().nullable().optional(),
   margemAplicadaPct: z.number().finite().min(0).max(99.99).nullable(),
   precoFixo: z.number().finite().nonnegative().nullable(),
   instalacao: z.number().finite().nonnegative(),
@@ -347,6 +364,34 @@ function lerSnapshot(observacoes: string | null): Snapshot | null {
 
 function gravarSnapshot(snapshot: Snapshot): string {
   return PREFIXO_ESTUDIO + JSON.stringify(snapshot);
+}
+
+async function salvarSnapshotImutavel(tx: any, propostaId: number, snapshot: Snapshot, autor: string | null): Promise<void> {
+  const snapshotJson = JSON.stringify(snapshot);
+  const snapshotHash = createHash("sha256").update(snapshotJson).digest("hex");
+  const [duplicado] = await tx.select({ id: estudioCotacaoSnapshots.id })
+    .from(estudioCotacaoSnapshots)
+    .where(and(eq(estudioCotacaoSnapshots.propostaId, propostaId), eq(estudioCotacaoSnapshots.snapshotHash, snapshotHash)))
+    .limit(1);
+  if (duplicado) return;
+  const [ultima] = await tx.select({ revisao: estudioCotacaoSnapshots.revisao })
+    .from(estudioCotacaoSnapshots)
+    .where(eq(estudioCotacaoSnapshots.propostaId, propostaId))
+    .orderBy(desc(estudioCotacaoSnapshots.revisao))
+    .limit(1);
+  const preco = snapshot.tabelaPrecoSnapshot ?? null;
+  await tx.insert(estudioCotacaoSnapshots).values({
+    propostaId, revisao: (ultima?.revisao ?? 0) + 1, sourceId: snapshot.sourceId,
+    snapshotJson, snapshotHash, tabelaPreco: preco?.tabela ?? null,
+    tabelaPrecoVersao: preco?.versao ?? null, secaoId: preco?.secaoId ?? null,
+    secaoTitulo: preco?.secaoTitulo ?? null, linhaId: preco?.linhaId ?? null,
+    linhaLabel: preco?.linhaLabel ?? null, faixaId: preco?.faixaId ?? null,
+    faixaIndex: preco?.faixaIndex ?? null, faixaLabel: preco?.faixaLabel ?? null,
+    custoInsumos: (snapshot.custoBaseInsumo ?? snapshot.custoMateriais).toFixed(2),
+    custoBaseFaixa: (snapshot.custoBaseFaixa ?? snapshot.custoDireto).toFixed(2),
+    margemPct: preco?.margemPct != null ? preco.margemPct.toFixed(4) : snapshot.margemAplicadaPct?.toFixed(4) ?? null,
+    precoFinal: snapshot.precoFinal.toFixed(2), mubisysOsId: snapshot.mubisysOsId ?? null, criadoPor: autor,
+  });
 }
 
 function numeroCotacao(id: number): string {
@@ -515,6 +560,7 @@ export function registrarRotasEstudioCotacoes(app: Express): void {
   app.post("/api/letra-caixa/precos/sugerir", rota(sugerirPreco));
   app.post("/api/letra-caixa/precos/aprovar", rota(aprovarPreco));
   app.post("/api/letra-caixa/cotacoes", rota(criarCotacao));
+  app.post("/api/letra-caixa/cotacoes/:id/os", rota(vincularOrdemServico));
   app.get("/api/letra-caixa/cotacoes", rota(listarCotacoes));
   app.get("/api/letra-caixa/cotacoes/grupo/:grupoId", rota(obterGrupoPublico));
   app.get("/api/letra-caixa/cotacoes/grupo/:grupoId/render3d", rota(obterRender3dGrupoPublico));
@@ -522,6 +568,30 @@ export function registrarRotasEstudioCotacoes(app: Express): void {
   app.get("/api/letra-caixa/cotacoes/:token/render3d", rota(obterRender3dPublico));
   app.get("/api/letra-caixa/cotacoes/:token", rota(obterCotacaoPublica));
   app.post("/api/letra-caixa/cotacoes/:token/resposta", rota(registrarResposta));
+}
+
+async function validarTabelaPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>): Promise<string | null> {
+  const selecao = snapshot.tabelaPrecoSnapshot;
+  if (snapshot.modoPreco !== "margem" || snapshot.linhaPrecificacaoId == null) {
+    return selecao ? "A cotação contém vínculo de tabela de preço incompatível com o modo de preço." : null;
+  }
+  if (!selecao) return "A origem da linha/faixa de preço está ausente. Atualize o CPQ e refaça o cálculo.";
+  if (selecao.linhaId !== snapshot.linhaPrecificacaoId) return "A linha de preço não corresponde ao vínculo cadastrado no produto.";
+  if (snapshot.custoBaseInsumo != null && Math.abs(snapshot.custoBaseInsumo - snapshot.custoMateriais) > 0.01) return "O custo-base dos insumos diverge do custo detalhado do orçamento.";
+  if (snapshot.custoBaseFaixa != null && Math.abs(snapshot.custoBaseFaixa - snapshot.custoDireto) > 0.01) return "O custo usado para selecionar a faixa diverge do custo direto do orçamento.";
+  const db = await getDb();
+  if (!db) return "Banco indisponível para validar a Tabela de Preços.";
+  const [meta] = await db.select().from(priceTableMeta).limit(1);
+  if (!meta || selecao.versao !== meta.versao) return "A Tabela de Preços mudou desde o cálculo. Recarregue o CPQ, recalcule e aprove o preço novamente.";
+  const [secao] = await db.select().from(priceTableSections).where(eq(priceTableSections.id, selecao.secaoId)).limit(1);
+  if (!secao) return "O bloco da Tabela de Preços selecionado não existe mais.";
+  const tabelaAtual = secao.page >= 11 && secao.page <= 13 ? "novo_cliente" : secao.page >= 1 && secao.page <= 3 ? "clientes_antigos" : null;
+  if (tabelaAtual !== selecao.tabela || secao.page !== selecao.pagina || secao.sectionTitle !== selecao.secaoTitulo) return "O bloco da Tabela de Preços mudou desde o cálculo.";
+  const celula = selecionarCelulaTabelaPreco(secao.contentJson, snapshot.linhaPrecificacaoId, snapshot.custoDireto);
+  if (!celula) return "Não foi possível resolver a faixa atual da Tabela de Preços.";
+  if (celula.linhaLabel !== selecao.linhaLabel || celula.faixaId !== selecao.faixaId || celula.faixaIndex !== selecao.faixaIndex || celula.faixaLabel !== selecao.faixaLabel) return "A linha/faixa selecionada mudou. Recalcule o orçamento antes de emitir.";
+  if (Math.abs(celula.margemPct - selecao.margemPct) > 0.0001 || snapshot.margemAplicadaPct == null || Math.abs(celula.margemPct - snapshot.margemAplicadaPct) > 0.0001) return "A margem do snapshot não corresponde à margem vigente da faixa.";
+  return null;
 }
 
 function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSchema>) {
@@ -550,6 +620,9 @@ function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSc
     precoCalculado: snapshot.precoCalculado,
     modoPreco: snapshot.modoPreco,
     linhaPrecificacaoId: snapshot.linhaPrecificacaoId ?? null,
+    tabelaPrecoSnapshot: snapshot.tabelaPrecoSnapshot ?? null,
+    custoBaseInsumo: snapshot.custoBaseInsumo ?? snapshot.custoMateriais,
+    custoBaseFaixa: snapshot.custoBaseFaixa ?? snapshot.custoDireto,
     margemAplicadaPct: snapshot.margemAplicadaPct,
     precoFixo: snapshot.precoFixo,
     instalacao: snapshot.instalacao,
@@ -561,7 +634,7 @@ function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSc
 }
 
 function assinaturaSnapshotCotacao(sourceId: string, snapshot: z.infer<typeof snapshotSchema>): string {
-  const { precificacaoIA: _precificacaoIA, status: _status, render3d, ...conteudo } = snapshot;
+  const { precificacaoIA: _precificacaoIA, status: _status, render3d, mubisysOsId: _mubisysOsId, ...conteudo } = snapshot;
   // Do 3D só entra o hash da especificação aprovada (a data da aprovação e as URLs dos previews não definem a "versão comercial").
   return hashBasePreco({ sourceId, snapshot: render3d ? { ...conteudo, render3dSpecHash: render3d.specHash } : conteudo });
 }
@@ -923,6 +996,8 @@ async function sugerirPreco(req: Request, res: Response): Promise<void> {
   if (!ator) { respostaErro(res, 401, "Entre no Radrasys para analisar o preço."); return; }
   const dados = await lerSnapshotPreco(req, res);
   if (!dados) return;
+  const erroTabela = await validarTabelaPrecoSnapshot(dados.snapshot);
+  if (erroTabela) { respostaErro(res, 409, erroTabela); return; }
   try {
     const contexto = contextoPrecoSnapshot(dados.snapshot);
     const sugestao = await sugerirPrecoComGPT({
@@ -953,6 +1028,8 @@ async function aprovarPreco(req: Request, res: Response): Promise<void> {
     ticket: z.string().min(20).max(6000).nullable().default(null),
   }).strict().safeParse(req.body);
   if (!parsed.success) { respostaErro(res, 400, "Confira o preço e a configuração antes de aprovar."); return; }
+  const erroTabela = await validarTabelaPrecoSnapshot(parsed.data.snapshot);
+  if (erroTabela) { respostaErro(res, 409, erroTabela); return; }
   const erroBOM = await validarBOMComAcabamentosNoServidor(parsed.data.snapshot);
   if (erroBOM) { respostaErro(res, 409, erroBOM); return; }
   const erroCores = await validarMapeamentoCoresPersistido(parsed.data.sourceId, parsed.data.snapshot);
@@ -986,6 +1063,9 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
     return;
   }
   const dadosRecebidos = parsed.data.snapshot;
+  if (dadosRecebidos.mubisysOsId != null) { respostaErro(res, 400, "A OS é vinculada depois que o CPQ gera a cotação."); return; }
+  const erroTabela = await validarTabelaPrecoSnapshot(dadosRecebidos);
+  if (erroTabela) { respostaErro(res, 409, erroTabela); return; }
   const erroBOM = await validarBOMComAcabamentosNoServidor(dadosRecebidos);
   if (erroBOM) {
     respostaErro(res, 409, erroBOM);
@@ -1060,56 +1140,89 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
     .where(sql`left(${propostas.observacoes}, ${PREFIXO_ESTUDIO.length}) = ${PREFIXO_ESTUDIO}`);
   const existente = existentes.find((item) => lerSnapshot(item.observacoes)?.sourceId === sourceId);
   if (existente) {
-    const snapshotAnterior = lerSnapshot(existente.observacoes);
-    const assinaturaNova = dados.precificacaoIA?.auditoria?.assinaturaCotacao;
-    const assinaturaAnterior = snapshotAnterior?.precificacaoIA?.auditoria?.assinaturaCotacao;
-    const mesmaVersaoComercial = !!assinaturaNova && assinaturaNova === assinaturaAnterior
-      && snapshotAnterior?.precoFinal === dados.precoFinal;
-    const reacaoCliente = mesmaVersaoComercial ? snapshotAnterior?.reacaoCliente ?? null : null;
-    const snapshot: Snapshot = {
-      ...dados,
-      sourceId,
-      numeroCotacao: numeroCotacao(existente.id),
-      reacaoCliente,
-      grupo,
-    };
-    await db.update(propostas).set({
-      tituloProposta: dados.tituloProposta || "",
-      imagemReferenciaUrl: dados.imagemReferenciaUrl,
-      imagemRedesenhadaUrl: dados.imagemRedesenhadaUrl,
-      clienteNome: dados.cliente.razao || dados.cliente.fantasia || dados.modeloNome,
-      clienteCnpj: dados.cliente.cnpj,
-      vendedorNome: dados.vendedor,
-      observacoes: gravarSnapshot(snapshot),
-      ...(mesmaVersaoComercial ? {} : { status: "aberta" }),
-      updatedAt: new Date(),
-    }).where(eq(propostas.id, existente.id));
-    res.json({ id: existente.id, numero: snapshot.numeroCotacao, token: existente.token });
+    const ator = await obterAtor(req);
+    const salvo = await db.transaction(async tx => {
+      const [linhaAtual] = await tx.select().from(propostas).where(eq(propostas.id, existente.id)).for("update").limit(1);
+      if (!linhaAtual) throw new Error("A cotação não existe mais.");
+      const snapshotAnterior = lerSnapshot(linhaAtual.observacoes);
+      if (!snapshotAnterior || snapshotAnterior.sourceId !== sourceId) throw new Error("A cotação mudou enquanto era salva. Recarregue o CPQ.");
+      const assinaturaNova = dados.precificacaoIA?.auditoria?.assinaturaCotacao;
+      const assinaturaAnterior = snapshotAnterior.precificacaoIA?.auditoria?.assinaturaCotacao;
+      const mesmaVersaoComercial = !!assinaturaNova && assinaturaNova === assinaturaAnterior
+        && snapshotAnterior.precoFinal === dados.precoFinal;
+      const snapshot: Snapshot = {
+        ...dados, custoBaseInsumo: dados.custoMateriais, custoBaseFaixa: dados.custoDireto,
+        sourceId, numeroCotacao: numeroCotacao(linhaAtual.id),
+        reacaoCliente: mesmaVersaoComercial ? snapshotAnterior.reacaoCliente ?? null : null,
+        grupo, mubisysOsId: snapshotAnterior.mubisysOsId ?? null,
+      };
+      await tx.update(propostas).set({
+        tituloProposta: dados.tituloProposta || "", imagemReferenciaUrl: dados.imagemReferenciaUrl,
+        imagemRedesenhadaUrl: dados.imagemRedesenhadaUrl,
+        clienteNome: dados.cliente.razao || dados.cliente.fantasia || dados.modeloNome,
+        clienteCnpj: dados.cliente.cnpj, vendedorNome: dados.vendedor,
+        observacoes: gravarSnapshot(snapshot),
+        ...(mesmaVersaoComercial ? {} : { status: "aberta" }), updatedAt: new Date(),
+      }).where(eq(propostas.id, linhaAtual.id));
+      const [temSnapshot] = await tx.select({ id: estudioCotacaoSnapshots.id })
+        .from(estudioCotacaoSnapshots).where(eq(estudioCotacaoSnapshots.propostaId, linhaAtual.id)).limit(1);
+      if (!temSnapshot) await salvarSnapshotImutavel(tx, linhaAtual.id, snapshotAnterior, ator?.nome ?? null);
+      await salvarSnapshotImutavel(tx, linhaAtual.id, snapshot, ator?.nome ?? null);
+      return snapshot;
+    });
+    res.json({ id: existente.id, numero: salvo.numeroCotacao, token: existente.token });
     return;
   }
 
   const token = randomBytes(24).toString("base64url");
-  const snapshotBase = {
-    ...dados,
-    sourceId,
-    numeroCotacao: "",
-    reacaoCliente: null,
-    grupo,
-  } satisfies Snapshot;
-  const [inserida] = await db.insert(propostas).values({
-    token,
-    tituloProposta: dados.tituloProposta || "",
-    imagemReferenciaUrl: dados.imagemReferenciaUrl,
-    imagemRedesenhadaUrl: dados.imagemRedesenhadaUrl,
-    clienteNome: dados.cliente.razao || dados.cliente.fantasia || dados.modeloNome,
-    clienteCnpj: dados.cliente.cnpj,
-    vendedorNome: dados.vendedor,
-    observacoes: gravarSnapshot(snapshotBase),
-    status: "aberta",
-  }).returning({ id: propostas.id });
-  const snapshot: Snapshot = { ...snapshotBase, numeroCotacao: numeroCotacao(inserida.id) };
-  await db.update(propostas).set({ observacoes: gravarSnapshot(snapshot) }).where(eq(propostas.id, inserida.id));
-  res.status(201).json({ id: inserida.id, numero: snapshot.numeroCotacao, token });
+  const ator = await obterAtor(req);
+  const criada = await db.transaction(async tx => {
+    const snapshotBase: Snapshot = {
+      ...dados, sourceId, numeroCotacao: "", reacaoCliente: null, grupo,
+      custoBaseInsumo: dados.custoMateriais, custoBaseFaixa: dados.custoDireto, mubisysOsId: null,
+    };
+    const [inserida] = await tx.insert(propostas).values({
+      token, tituloProposta: dados.tituloProposta || "",
+      imagemReferenciaUrl: dados.imagemReferenciaUrl, imagemRedesenhadaUrl: dados.imagemRedesenhadaUrl,
+      clienteNome: dados.cliente.razao || dados.cliente.fantasia || dados.modeloNome,
+      clienteCnpj: dados.cliente.cnpj, vendedorNome: dados.vendedor,
+      observacoes: gravarSnapshot(snapshotBase), status: "aberta",
+    }).returning({ id: propostas.id });
+    const snapshot: Snapshot = { ...snapshotBase, numeroCotacao: numeroCotacao(inserida.id) };
+    await tx.update(propostas).set({ observacoes: gravarSnapshot(snapshot) }).where(eq(propostas.id, inserida.id));
+    await salvarSnapshotImutavel(tx, inserida.id, snapshot, ator?.nome ?? null);
+    return { id: inserida.id, snapshot };
+  });
+  res.status(201).json({ id: criada.id, numero: criada.snapshot.numeroCotacao, token });
+}
+
+async function vincularOrdemServico(req: Request, res: Response): Promise<void> {
+  if (!mesmaOrigem(req, res)) return;
+  const ator = await obterAtor(req);
+  if (!ator) { respostaErro(res, 401, "Entre no Radrasys para vincular uma OS."); return; }
+  if (!["gestor", "admin", "master"].includes(ator.role)) { respostaErro(res, 403, "Vincular OS está disponível para Gestor, Admin ou Master."); return; }
+  const propostaId = Number(req.params.id);
+  const parsed = z.object({ mubisysOsId: z.number().int().positive() }).strict().safeParse(req.body);
+  if (!Number.isSafeInteger(propostaId) || propostaId <= 0 || !parsed.success) { respostaErro(res, 400, "Informe o ID da cotação e um ID válido da OS MubiSys."); return; }
+  const db = await getDb();
+  if (!db) { respostaErro(res, 503, "O banco de dados está indisponível."); return; }
+  try {
+    const salvo = await db.transaction(async tx => {
+      const [linha] = await tx.select().from(propostas).where(eq(propostas.id, propostaId)).for("update").limit(1);
+      const atual = lerSnapshot(linha?.observacoes ?? null);
+      if (!linha || !atual) throw new Error("Cotação do CPQ não encontrada.");
+      if (atual.mubisysOsId != null && atual.mubisysOsId !== parsed.data.mubisysOsId) throw new Error("Esta cotação já está vinculada a outra OS; o vínculo não pode ser substituído.");
+      const novo: Snapshot = { ...atual, mubisysOsId: parsed.data.mubisysOsId };
+      const [temSnapshot] = await tx.select({ id: estudioCotacaoSnapshots.id }).from(estudioCotacaoSnapshots).where(eq(estudioCotacaoSnapshots.propostaId, propostaId)).limit(1);
+      if (!temSnapshot) await salvarSnapshotImutavel(tx, propostaId, atual, ator.nome);
+      await salvarSnapshotImutavel(tx, propostaId, novo, ator.nome);
+      await tx.update(propostas).set({ observacoes: gravarSnapshot(novo), updatedAt: new Date() }).where(eq(propostas.id, propostaId));
+      return novo;
+    });
+    res.json({ ok: true, id: propostaId, numero: salvo.numeroCotacao, mubisysOsId: salvo.mubisysOsId });
+  } catch (error) {
+    respostaErro(res, 409, error instanceof Error ? error.message : "Não foi possível vincular a OS.");
+  }
 }
 
 async function listarCotacoes(req: Request, res: Response): Promise<void> {
@@ -1160,6 +1273,7 @@ async function listarCotacoes(req: Request, res: Response): Promise<void> {
       perimTotalM: snapshot.perimTotalM ?? null,
       materiais: snapshot.materiais ?? [],
       precoFinal: snapshot.precoFinal,
+      mubisysOsId: snapshot.mubisysOsId ?? null,
       modalidadeFrete: snapshot.modalidadeFrete,
       metodoPagamento: snapshot.metodoPagamento,
       status: linha.status,

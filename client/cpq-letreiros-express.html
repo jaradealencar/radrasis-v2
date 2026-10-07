@@ -605,9 +605,11 @@ function margemDaTabela(precificacao, custoDireto){
   if(!precificacao || !precificacao.lineId) return null;
   const linha = catalog.margens.find(l=>l.lineId===precificacao.lineId);
   if(!linha) return null;
-  const idx = encontrarFaixaIndex(linha.colunas, custoDireto);
+  const offset = linha.tipoTabela==='margin_table_multi'?1:0;
+  const colunasFaixa = linha.colunas.slice(offset);
+  const idx = encontrarFaixaIndex(colunasFaixa, custoDireto);
   const pct = parseFloat((linha.valores[idx]||'0').replace('%','').replace(',','.'))/100;
-  return { percentual:pct, faixaLabel:linha.colunas[idx], rotulo:linha.rotulo, secaoTitulo:linha.secaoTitulo };
+  return { percentual:pct, faixaLabel:colunasFaixa[idx], rotulo:linha.rotulo, secaoTitulo:linha.secaoTitulo, tabelaPrecoSnapshot:{tabela:linha.tabela,versao:linha.versao,pagina:linha.pagina,secaoId:linha.secaoId,secaoTitulo:linha.secaoTitulo,linhaId:linha.lineId,linhaLabel:linha.rotulo,faixaId:linha.faixaIds?.[idx]||null,faixaIndex:idx,faixaLabel:colunasFaixa[idx],margemPct:pct*100} };
 }
 
 /** Busca linhas da Tabela de Preços por ID (prefixo numérico) ou por texto
@@ -6745,7 +6747,11 @@ function snapshotCotacaoReal(){
     custoDireto:o.custoDireto,
     precoCalculado:o.precoCalculado,
     modoPreco:o.modoFixo?'fixo':'margem',
-    linhaPrecificacaoId:Number(REAL.precificacao?.lineId)||null,
+    linhaPrecificacaoId:o.modoFixo?null:(Number(REAL.precificacao?.lineId)||null),
+    tabelaPrecoSnapshot:o.margemInfo?.tabelaPrecoSnapshot||null,
+    custoBaseInsumo:o.matTotal,
+    custoBaseFaixa:o.custoDireto,
+    mubisysOsId:null,
     margemAplicadaPct:o.margin==null?null:o.margin*100,
     precoFixo:o.modoFixo?Number(REAL.precificacao?.precoFixo)||0:null,
     instalacao:REAL.instalacao,
@@ -6790,6 +6796,9 @@ function chaveBasePrecoReal(){
     precoCalculado:snapshot.precoCalculado,
     modoPreco:snapshot.modoPreco,
     margemAplicadaPct:snapshot.margemAplicadaPct,
+    tabelaPrecoSnapshot:snapshot.tabelaPrecoSnapshot??null,
+    custoBaseInsumo:snapshot.custoBaseInsumo??snapshot.custoMateriais,
+    custoBaseFaixa:snapshot.custoBaseFaixa??snapshot.custoDireto,
     precoFixo:snapshot.precoFixo,
     instalacao:snapshot.instalacao,
     descontoPct:snapshot.descontoPct,
@@ -7691,7 +7700,7 @@ function adminPropostasReais(){
 
 function adminCotacoesHistorico(){
   const servidor = adminState.cotacoesServidor.map(p=>({
-    ...p, id:'servidor-'+p.id, numeroCotacao:p.numero, vendedor:p.vendedor,
+    ...p, propostaId:p.id, id:'servidor-'+p.id, numeroCotacao:p.numero, vendedor:p.vendedor,
     modeloNome:p.modeloNome, clienteRazao:p.clienteNome, precoFinal:p.precoFinal,
     clienteFantasia:p.clienteFantasia, clienteEndereco:p.clienteEndereco,
     clienteCnpj:p.clienteCnpj, status:p.status, criadoEm:p.criadaEm, reacaoCliente:p.reacaoCliente,
@@ -7724,7 +7733,7 @@ function adminCotacoesHistorico(){
       <label class="field">Vendedor<select data-act="admin-propostas-filtro-vendedor"><option value="">Todos</option>${vendedores.map(v=>`<option value="${escaparHtml(v)}" ${vendedor===v?'selected':''}>${escaparHtml(v)}</option>`).join('')}</select></label>
     </div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Data</th><th>Número</th><th>Vendedor</th><th>Cliente</th><th>Produto</th><th>Frete</th><th>Pagamento</th><th>Valor</th><th>Status / resposta</th><th>Link</th></tr></thead>
+      <thead><tr><th>Data</th><th>Número</th><th>Vendedor</th><th>Cliente</th><th>Produto</th><th>Frete</th><th>Pagamento</th><th>Valor</th><th>OS MubiSys</th><th>Status / resposta</th><th>Link</th></tr></thead>
       <tbody>${filtradas.length?filtradas.map(p=>{
         const reacao = p.reacaoCliente?.tipo ? REACOES_CLIENTE.find(x=>x.key===p.reacaoCliente.tipo) : null;
         const pagamentoResposta=p.reacaoCliente?.formaPagamento?`${PAGAMENTO_LABEL[p.reacaoCliente.formaPagamento]||p.reacaoCliente.formaPagamento}${p.reacaoCliente.formaPagamento==='cartao'?` ${p.reacaoCliente.parcelasCartao||1}x · ${money(p.reacaoCliente.valorPagamento||p.precoFinal||0)}`:''}`:'';
@@ -7740,10 +7749,11 @@ function adminCotacoesHistorico(){
           <td>${FRETE_LABEL[p.modalidadeFrete]||'—'}</td>
           <td>${PAGAMENTO_LABEL[p.metodoPagamento]||'—'}</td>
           <td class="num">${money(p.precoFinal||0)}</td>
+          <td>${p.mubisysOsId?`<span class="badge b-neutral">OS #${escaparHtml(p.mubisysOsId)}</span>`:`<div style="display:flex;gap:5px;align-items:center;"><input type="number" min="1" step="1" placeholder="ID da OS" aria-label="ID da Ordem de Serviço MubiSys" data-os-input="${p.propostaId}" style="width:100px"><button class="btn btn-ghost btn-sm" data-act="admin-cotacao-vincular-os" data-id="${p.propostaId}">Vincular</button></div>`}</td>
           <td><span class="badge b-neutral">${STATUS_LABEL[p.status]||p.status||'Enviada'}</span>${reacao?`<div style="font-size:11px;margin-top:4px;" title="${escaparHtml(reacao.label+(p.reacaoCliente.comentario?' — '+p.reacaoCliente.comentario:''))}">${reacao.emoji} ${escaparHtml(reacao.label)}</div>`:''}${pagamentoResposta?`<div style="font-size:10.5px;color:var(--text-dim);margin-top:3px;">Pagamento: ${escaparHtml(pagamentoResposta)}</div>`:''}</td>
           <td>${link?`<div style="display:flex;gap:6px;flex-wrap:wrap;"><a class="btn btn-ghost btn-sm" href="${escaparHtml(link)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-ghost btn-sm" data-act="admin-cotacao-copiar" data-url="${escaparHtml(link)}">Copiar link</button></div>`:'<span style="color:var(--text-faint);">Link não disponível</span>'}</td>
         </tr>`;
-      }).join(''):`<tr><td colspan="10" class="empty-hint">Nenhuma cotação encontrada para estes filtros.</td></tr>`}</tbody>
+      }).join(''):`<tr><td colspan="11" class="empty-hint">Nenhuma cotação encontrada para estes filtros.</td></tr>`}</tbody>
     </table></div>
     <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn btn-ghost btn-sm" data-act="admin-propostas-atualizar">Atualizar histórico</button></div>
   </div>`;
@@ -8598,6 +8608,19 @@ function bindAdminEvents(){
   });
   const atualizarCotacoes = document.querySelector('[data-act="admin-propostas-atualizar"]');
   if(atualizarCotacoes) atualizarCotacoes.addEventListener('click', ()=>carregarCotacoesServidor());
+  document.querySelectorAll('[data-act="admin-cotacao-vincular-os"]').forEach(botao=>botao.addEventListener('click',async()=>{
+    const propostaId=Number(botao.dataset.id);
+    const input=document.querySelector(`[data-os-input="${propostaId}"]`);
+    const mubisysOsId=Number(input?.value);
+    if(!Number.isSafeInteger(mubisysOsId)||mubisysOsId<=0){alert('Informe um ID válido da OS MubiSys.');return;}
+    botao.disabled=true;
+    try{
+      const response=await fetch(`/api/letra-caixa/cotacoes/${propostaId}/os`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({mubisysOsId})});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(body.error||'Não foi possível vincular a OS.');
+      await carregarCotacoesServidor();
+    }catch(error){alert(error.message||'Não foi possível vincular a OS.');botao.disabled=false;}
+  }));
   document.querySelectorAll('[data-act="admin-cotacao-copiar"]').forEach(botao=>botao.addEventListener('click',async()=>{
     const link=botao.dataset.url||'';
     try{
