@@ -339,6 +339,7 @@ export function PriceBlockAffiliationEditor({
                             type="button"
                             onClick={() => alternarModelo(produto, modelo.id)}
                             aria-pressed={marcado}
+                            aria-label={`${marcado ? "Desmarcar" : "Selecionar"} modelo ${modelo.nome}`}
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-white"
                           >
                             <span
@@ -351,6 +352,11 @@ export function PriceBlockAffiliationEditor({
                             </span>
                             <span className="text-xs text-slate-400">
                               ID {modelo.id}
+                            </span>
+                            <span
+                              className={`text-xs font-medium ${marcado ? "text-blue-700" : "text-slate-500"}`}
+                            >
+                              {marcado ? "Desmarcar" : "Selecionar"}
                             </span>
                           </button>
                         );
