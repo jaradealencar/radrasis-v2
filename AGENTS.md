@@ -279,8 +279,8 @@ server/
                        estudio-cotacoes.ts (cotações do HTML estático do CPQ),
                        estudio-clientes.ts (cadastro e busca autenticados de clientes do CPQ),
                        estudio-kits.ts (composições de produto por modelo, compartilhadas no Postgres),
-                       estudio-catalogo-mubisys.ts (catálogo local espelhado; sincroniza
-                       produtos/matérias-primas via Access-Token e recebe BOM por CSV/XLSX) e
+                       estudio-catalogo-mubisys.ts (catálogo local + sync da API oficial) e
+                       estudio-mubisys-session.ts (sessão ERP opcional e sync de BOM autenticada) e
                        estudio-configuracoes.ts (configurações compartilhadas do CPQ),
                        estudio-nesting.ts (CRUD de chapas e execução local do Deepnest),
                        estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
@@ -395,34 +395,37 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   Os protótipos mortos citados em versões anteriores desta nota
   (`server/sync/heartbeat-sync-erp.ts`, `server/routers/logistica-refactor.ts`)
   não existem mais no repo.
-- **Espelho BOM MubiSys → Radrasys (migration `0096`/`0097`):** a API pública
-  fornece produtos, modelos, variações, matérias-primas e custos via
-  `Access-Token`, mas não publica a composição produto↔matéria-prima (verificado
-  em `produto/{id}` e `materia-prima/{id}`). Login web, cookie de sessão e AJAX
-  interno foram removidos deliberadamente por segurança/estabilidade; não
-  reintroduzir scraping ou pedir credenciais de tela. O catálogo é espelhado em
-  `materias_primas` e `mubisys_variacoes`; `composicoes_variacoes` guarda SKU/ID
-  da variação, SKU/ID do insumo, quantidade, unidade, perfil original e fórmula
-  equivalente. `mubisys_espelho_sync_status` registra atualização e importação.
-  O primeiro acesso inicializa o cache pela API oficial; atualizações são
-  disparadas por TTL de 6 horas (stale-while-revalidate) e pela ação autenticada
-  de atualização no CPQ. Isso é atualização automática sob demanda, não cron
-  enquanto a aplicação estiver fechada.
-  Como não há endpoint público para a BOM, a fonte é arquivo CSV/XLS/XLSX. O
-  CPQ oferece template com SKUs/IDs do ERP; os endpoints autenticados
-  `/api/letra-caixa/mubisys/composicoes` e `/api/sync/import-bom` aceitam upload
-  de até 4 MB apenas de gestor/admin/master. A importação valida o arquivo
-  inteiro e substitui transacionalmente as fichas apenas dos modelos/variações
-  presentes nele; SKU/ID ambíguo, quantidade inválida ou perfil desconhecido
-  cancela o lote sem gravação parcial. Perfis mantêm o texto de origem e são
-  traduzidos sem heurística para `area`, `areaTotal`, `areaGeral`, `perimExt`,
-  `perimTotal` ou `fixo`; a fórmula guia a unidade compatível no cadastro.
-  A migration `0097` guarda acabamentos (`acabamentos`, `composicao_item_acabamentos`) e
-  equipamentos (`equipamentos`, `composicao_item_equipamentos`) adjuntos a cada linha da BOM,
-  com custo, unidade/fórmula, produtividade, horas e ordem. CSV/XLS/XLSX e JSON aceitam
-  `acabamentos_json`/`equipamentos_json`; `cpqComposicao.ts` calcula nesting, acabamentos e
-  horas no servidor. Análise, aprovação e emissão recalculam a BOM espelhada e recusam
-  snapshot divergente ou com custos/medidas pendentes.
+- **Espelho BOM MubiSys → Radrasys (migrations `0096`/`0097`):** a API pública fornece
+  produtos, modelos, variações, matérias-primas e custos via `Access-Token`, mas não publica a
+  composição produto↔matéria-prima (verificado em `produto/{id}` e `materia-prima/{id}`). A BOM
+  pode vir do importador CSV/XLS/XLSX/JSON ou do conector autenticado opcional do CPQ.
+  O formulário usa código da empresa, usuário e senha somente durante o login; a senha não é
+  persistida nem registrada em log. A sessão do ERP fica cifrada com AES-256-GCM em cookie
+  `HttpOnly`, `SameSite=Lax`, `Secure` em produção, vinculada ao usuário Radrasys e válida por até
+  8 horas. O login limita cinco tentativas por minuto por usuário e restringe redirecionamentos
+  ao domínio MubiSys.
+  A extração consulta o AJAX interno `index.php?modulo=matModelos&acao=cadastrados`, que não é
+  uma API oficial e pode mudar. O parser captura modelo/variação, matérias-primas, perfil,
+  unidade, quantidade, medidas, acabamentos adjuntos, equipamentos, custos e horas. A resposta é
+  limitada a 8 MB. Payload desconhecido, vínculo de acabamento/equipamento sem ID/nome ou ficha
+  sem linhas reconhecíveis falha sem gravação parcial; CSV/JSON permanece como alternativa. A
+  rota `/api/letra-caixa/mubisys/composicoes/sincronizar` exige gestor/admin/master porque
+  atualiza o espelho global; login/conexão é por navegador. Não há gravação no MubiSys.
+  O catálogo oficial é espelhado em `materias_primas` e `mubisys_variacoes`;
+  `composicoes_variacoes` guarda SKU/ID da variação, SKU/ID do insumo, quantidade, unidade,
+  perfil original e fórmula equivalente. `mubisys_espelho_sync_status` registra atualização e
+  importação. O primeiro acesso inicializa o cache pela API oficial; atualizações usam TTL de
+  6 horas (stale-while-revalidate) e ação autenticada no CPQ, não cron quando a aplicação está
+  fechada.
+  O importador em lote aceita até 4 MB e fica limitado a gestor/admin/master. Valida o arquivo
+  inteiro e substitui transacionalmente as fichas apenas dos modelos/variações presentes nele;
+  SKU/ID ambíguo, quantidade inválida, perfil desconhecido ou adjunto incompleto cancela o lote
+  sem gravação parcial. Perfis mantêm o texto de origem e são traduzidos para `area`, `areaTotal`,
+  `areaGeral`, `perimExt`, `perimTotal` ou `fixo`. A migration `0097` guarda acabamentos
+  (`acabamentos`, `composicao_item_acabamentos`) e equipamentos
+  (`equipamentos`, `composicao_item_equipamentos`) por linha da BOM. `cpqComposicao.ts` calcula
+  nesting, acabamentos e horas no servidor; análise, aprovação e emissão recalculam a BOM
+  espelhada e recusam snapshot divergente ou com custos/medidas pendentes.
   O catálogo do CPQ (`/api/letra-caixa/catalogo`) lê somente o espelho local e
   combina no orçamento as linhas comuns do modelo com as linhas das variações
   selecionadas. Preço/custo de materiais, nesting, factibilidade, produtos e

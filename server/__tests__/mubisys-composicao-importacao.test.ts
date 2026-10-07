@@ -7,6 +7,8 @@ const produtosPage = readFileSync("client/src/pages/comercial/Produtos.tsx", "ut
 const catalogRoute = readFileSync("server/routes/estudio-catalogo-mubisys.ts", "utf8");
 const uploadRoute = readFileSync("server/routes/estudio-mubisys-espelho.ts", "utf8");
 const espelho = readFileSync("server/services/mubisysEspelho.ts", "utf8");
+const sessionRoute = readFileSync("server/routes/estudio-mubisys-session.ts", "utf8");
+const parserBOM = readFileSync("server/services/mubisysBOMAutenticada.ts", "utf8");
 
 describe("equivalência dos perfis de consumo MubiSys", () => {
   it.each([
@@ -45,12 +47,16 @@ describe("espelho BOM do MubiSys", () => {
     expect(espelho).toContain("traduzirPerfilConsumoMubiSys(perfilInformado)");
   });
 
-  it("não solicita credenciais de tela e permite importar o template de composição", () => {
+  it("mantém importação manual e oferece conector opcional com sessão cifrada", () => {
     expect(html).toContain("mubisys/composicoes/template.csv");
     expect(html).toContain("mubisys-importar-arquivo");
     expect(html).toContain("/api/letra-caixa/mubisys/composicoes");
-    expect(html).toContain("mubisys/sincronizar");
-    expect(html).not.toContain("mubisys/sessao");
+    expect(html).toContain("mubisys/composicoes/sincronizar");
+    expect(html).toContain("mubisys/sessao");
+    expect(sessionRoute).toContain("aes-256-gcm");
+    expect(sessionRoute).toContain("HttpOnly");
+    expect(sessionRoute).toContain("ROLES_GESTAO");
+    expect(parserBOM).toContain("parsearComposicoesMubiSys");
     expect(produtosPage).toContain("Importar ficha local");
     expect(produtosPage).not.toContain("mubisys/sessao");
     expect(produtosPage).not.toContain('name="senha"');

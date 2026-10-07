@@ -484,6 +484,10 @@ export async function importarComposicaoArquivo(
           (variacaoIdInformado == null ? item.tipo === "modelo" : item.mubisysVariacaoId === variacaoIdInformado));
         variacao = resolverUnico(candidatos, `modelo/variação ${modeloIdInformado}/${variacaoIdInformado ?? "comum"}`, numeroLinha);
       }
+      if (!variacao && modeloIdInformado == null && variacaoIdInformado != null) {
+        const candidatos = cadastroVariacoes.filter(item => item.mubisysVariacaoId === variacaoIdInformado);
+        variacao = resolverUnico(candidatos, `variação ${variacaoIdInformado}`, numeroLinha);
+      }
       if (!variacao && !skuVariacao && modeloIdInformado == null) {
         const modeloNome = chaveNormalizada(valorPorChave(registro, ["modelo_nome", "modelo"]));
         const variacaoNome = chaveNormalizada(valorPorChave(registro, ["variacao_nome", "variação", "variacao"]));

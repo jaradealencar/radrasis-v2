@@ -419,7 +419,7 @@ function computeOrcamento(p){
 }
 
 /* ---------- CATÁLOGO ATUAL DO MUBISYS (consultado pelo servidor) ---------- */
-const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, espelhoStatus:null, syncBusy:false, uploadBusy:false, connectionMessage:null, syncWarning:null, sincronizandoKits:false, ready:false, refreshing:false, error:null, baixadoEm:null };
+const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, espelhoStatus:null, syncBusy:false, uploadBusy:false, sessionConnected:false, connectionOpen:false, connectionBusy:false, sessionSyncBusy:false, connectionMessage:null, syncWarning:null, sincronizandoKits:false, ready:false, refreshing:false, error:null, baixadoEm:null };
 async function loadCatalog(){
   const jaCarregado=catalog.ready;
   catalog.refreshing = true;
@@ -437,6 +437,11 @@ async function loadCatalog(){
     catalog.erroComposicoesMubiSys = dados.erroComposicoesMubiSys || null;
     catalog.espelhoStatus = dados.espelhoStatus || null;
     catalog.baixadoEm = dados.carregadoEm || null;
+    try{
+      const sessionResponse=await fetch('/api/letra-caixa/mubisys/sessao',{credentials:'same-origin',cache:'no-store'});
+      const sessionBody=await sessionResponse.json().catch(()=>({}));
+      catalog.sessionConnected=sessionResponse.ok&&sessionBody.connected===true;
+    }catch{catalog.sessionConnected=false;}
     const importacaoAutomatica=preencherComposicaoMubiSysSeVazia(adminState.editingKey);
     if(importacaoAutomatica?.status==='importado') salvarKit(importacaoAutomatica.key);
     // Conectar/atualizar o MubiSys durante uma proposta também precisa trocar
@@ -474,13 +479,21 @@ function renderConexaoMubiSys(){
   return `<div class="role-note" style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:9px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
     <div style="min-width:260px;flex:1;"><b>Espelho local MubiSys → Radrasys</b>
       <div style="margin-top:3px;">${catalog.produtos.length} produtos/modelos · ${catalog.materias.length} matérias-primas · ${linhas} linhas de consumo. Catálogo atualizado: ${escaparHtml(ultima)}${importada?` · Fichas importadas: ${escaparHtml(importada)}`:''}.</div>
-      <div style="margin-top:4px;color:var(--text-faint);">A API pública não fornece a ficha técnica das variações. Importe um CSV/XLSX exportado do MubiSys; os perfis são mapeados para a fórmula equivalente do CPQ e perfis desconhecidos bloqueiam a importação.</div>
+      <div style="margin-top:4px;color:var(--text-faint);">A API pública não fornece a BOM completa. Conecte uma sessão do MubiSys para extrair a ficha técnica; o CSV/XLSX/JSON continua disponível como alternativa. A senha é transitória e a sessão fica cifrada neste navegador por até 8 horas.</div>
+      ${catalog.sessionConnected?`<div style="margin-top:4px;color:var(--ok);">Sessão MubiSys conectada neste navegador.</div>`:''}
       ${catalog.espelhoStatus?.status==='erro'?`<div role="alert" style="margin-top:5px;color:var(--warn);">A última atualização falhou; o snapshot anterior foi preservado. ${escaparHtml(catalog.espelhoStatus.ultimoErro||'Confira o token da API e tente novamente.')}</div>`:''}
       ${catalog.connectionMessage?`<div role="status" style="margin-top:5px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
       ${catalog.syncWarning?`<div role="alert" style="margin-top:4px;color:var(--warn);">${escaparHtml(catalog.syncWarning)}</div>`:''}
+      ${catalog.connectionOpen&&!catalog.sessionConnected?`<form data-act="mubisys-connect-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;align-items:end;">
+        <label class="field">Código da empresa<input type="text" name="codigo" autocomplete="off" required></label>
+        <label class="field">Usuário<input type="text" name="usuario" autocomplete="off" required></label>
+        <label class="field">Senha<input type="password" name="senha" autocomplete="new-password" required></label>
+        <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" type="submit" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionBusy?'Conectando…':'Conectar MubiSys'}</button><span style="font-size:11px;color:var(--text-faint);">A senha é usada apenas no login e não é armazenada.</span></div>
+      </form>`:''}
     </div>
     <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
       <button class="btn btn-ghost btn-sm" type="button" data-act="mubisys-atualizar-espelho" ${catalog.syncBusy?'disabled':''}>${catalog.syncBusy?'Sincronizando…':'Atualizar catálogo'}</button>
+      ${catalog.sessionConnected?`<button class="btn btn-primary btn-sm" type="button" data-act="mubisys-sincronizar-bom" ${catalog.sessionSyncBusy?'disabled':''}>${catalog.sessionSyncBusy?'Lendo BOM…':'Sincronizar BOM do MubiSys'}</button><button class="btn btn-ghost btn-sm" type="button" data-act="mubisys-desconectar">Desconectar</button>`:`<button class="btn btn-soft btn-sm" type="button" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
       <a class="btn btn-ghost btn-sm" href="/api/letra-caixa/mubisys/composicoes/template.csv">Baixar template CSV</a>
       <label class="btn btn-primary btn-sm" style="cursor:pointer;">${catalog.uploadBusy?'Importando…':'Importar fichas CSV/XLSX'}<input type="file" data-act="mubisys-importar-arquivo" accept=".csv,.xlsx,.xls" style="display:none" ${catalog.uploadBusy?'disabled':''}></label>
     </div>
@@ -488,6 +501,44 @@ function renderConexaoMubiSys(){
 }
 
 function bindMubiSysConnectionEvents(){
+  document.querySelectorAll('[data-act="mubisys-connect-open"]').forEach(botao=>botao.addEventListener('click',()=>{catalog.connectionOpen=!catalog.connectionOpen;catalog.connectionMessage=null;render();}));
+  document.querySelectorAll('[data-act="mubisys-connect-form"]').forEach(form=>form.addEventListener('submit',async event=>{
+    event.preventDefault();if(catalog.connectionBusy)return;
+    const dados=new FormData(form);
+    const credenciais={codigo:String(dados.get('codigo')||'').trim(),usuario:String(dados.get('usuario')||'').trim(),senha:String(dados.get('senha')||'')};
+    catalog.connectionBusy=true;catalog.connectionMessage=null;render();
+    try{
+      const response=await fetch('/api/letra-caixa/mubisys/sessao',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(credenciais),cache:'no-store'});
+      const body=await response.json().catch(()=>({}));
+      credenciais.senha='';
+      if(!response.ok)throw new Error(body.error||`Não foi possível conectar (HTTP ${response.status}).`);
+      catalog.connectionOpen=false;catalog.sessionConnected=true;
+      catalog.connectionMessage={tipo:'sucesso',texto:'Conta conectada. Sincronize a BOM para atualizar o espelho local.'};
+      await loadCatalog();
+    }catch(error){credenciais.senha='';catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível conectar ao MubiSys.')}}
+    finally{catalog.connectionBusy=false;render();}
+  }));
+  document.querySelectorAll('[data-act="mubisys-sincronizar-bom"]').forEach(botao=>botao.addEventListener('click',async()=>{
+    if(catalog.sessionSyncBusy)return;
+    catalog.sessionSyncBusy=true;catalog.connectionMessage=null;render();
+    try{
+      const response=await fetch('/api/letra-caixa/mubisys/composicoes/sincronizar',{method:'POST',credentials:'same-origin',cache:'no-store'});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok){if(response.status===401)catalog.sessionConnected=false;throw new Error(body.error||`Falha ao sincronizar a BOM (HTTP ${response.status}).`)}
+      catalog.connectionMessage={tipo:'sucesso',texto:`${body.linhas} linhas da BOM sincronizadas para ${body.variacoes} modelos/variações e ${body.materiasPrimas} matérias-primas.`};
+      await loadCatalog();
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível sincronizar a BOM.')}}
+    finally{catalog.sessionSyncBusy=false;render();}
+  }));
+  document.querySelectorAll('[data-act="mubisys-desconectar"]').forEach(botao=>botao.addEventListener('click',async()=>{
+    try{
+      const response=await fetch('/api/letra-caixa/mubisys/sessao',{method:'DELETE',credentials:'same-origin',cache:'no-store'});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(body.error||'Não foi possível desconectar.');
+      catalog.sessionConnected=false;catalog.connectionMessage={tipo:'sucesso',texto:'Sessão MubiSys removida deste navegador.'};
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível desconectar.')}}
+    render();
+  }));
   document.querySelectorAll('[data-act="mubisys-atualizar-espelho"]').forEach(botao=>botao.addEventListener('click',async()=>{
     if(catalog.syncBusy)return;
     catalog.syncBusy=true;catalog.connectionMessage=null;render();
@@ -511,7 +562,6 @@ function bindMubiSysConnectionEvents(){
     }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível importar o arquivo.')};catalog.uploadBusy=false;render();}
   }));
 }
-
 /* ---------- TABELA DE PREÇOS REAL (margem por faixa de ticket) ---------- */
 /** "12k" → 12000, "4.8k" → 4800 (aqui o ponto é decimal); sem "k" o ponto é
  *  separador de milhar ("8.010" → 8010, sem casas decimais na tabela real). */
