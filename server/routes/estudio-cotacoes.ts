@@ -1193,7 +1193,7 @@ async function visao3dPublica(snapshot: Snapshot) {
   if (!snapshot.render3d) return null;
   const spec = await resolverSpecPublico(snapshot, snapshot.render3d);
   const { approval } = snapshot.render3d;
-  return visaoPublicaDoSpec(spec, { dia: approval.previewDayUrl, noite: approval.previewNightUrl, explodido: approval.previewExplodedUrl });
+  return visaoPublicaDoSpec(spec, { dia: approval.previewDayUrl, noite: approval.previewNightUrl, explodido: approval.previewExplodedUrl, animacao: approval.previewAnimationUrl ?? null });
 }
 
 async function obterRender3dPublico(req: Request, res: Response): Promise<void> {
@@ -1275,6 +1275,7 @@ function visaoPublica(linha: typeof propostas.$inferSelect, snapshot: Snapshot) 
         previewDayUrl: snapshot.render3d.approval.previewDayUrl,
         previewNightUrl: snapshot.render3d.approval.previewNightUrl,
         previewExplodedUrl: snapshot.render3d.approval.previewExplodedUrl,
+        previewAnimationUrl: snapshot.render3d.approval.previewAnimationUrl ?? null,
       }
       : null,
   };
@@ -1332,7 +1333,7 @@ async function obterGrupoPublico(req: Request, res: Response): Promise<void> {
       ? Math.max(...itens.map(item => item.prazoDiasUteis ?? 0)) : null,
     reacaoCliente: todasResponderam ? base.reacaoCliente : null,
     // O 3D interativo de um grupo é por desenho (GET .../grupo/:id/render3d); aqui só avisa que existe.
-    render3d: itens.some(item => item.render3d) ? { previewDayUrl: null, previewNightUrl: null, previewExplodedUrl: null } : null,
+    render3d: itens.some(item => item.render3d) ? { previewDayUrl: null, previewNightUrl: null, previewExplodedUrl: null, previewAnimationUrl: null } : null,
     itens: itens.map(item => ({
       render3d: item.render3d,
       numero: item.numero,

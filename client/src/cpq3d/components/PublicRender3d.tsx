@@ -36,7 +36,7 @@ export function PublicRender3d({ token, grupoId }: { token?: string; grupoId?: s
             spec={item.visao}
             publico
             altura={460}
-            imagens={{ dia: item.visao.previewDayUrl, noite: item.visao.previewNightUrl, explodido: item.visao.previewExplodedUrl }}
+            imagens={{ dia: item.visao.previewDayUrl, noite: item.visao.previewNightUrl, explodido: item.visao.previewExplodedUrl, animacao: item.visao.previewAnimationUrl ?? null }}
           />
         </div>
       ))}

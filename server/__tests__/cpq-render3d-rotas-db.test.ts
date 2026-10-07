@@ -59,6 +59,16 @@ let base = "";
 let categoriaChapa = 0, categoriaPerfil = 0;
 const idsPerfis: number[] = [];
 
+/** GIF mínimo (cabeçalho + término) com as dimensões pedidas: o servidor valida assinatura, dimensões e o byte final. */
+function gif(largura = 800, altura = 500, terminado = true): Buffer {
+  const b = Buffer.alloc(14);
+  b.write("GIF89a", 0, "ascii");
+  b.writeUInt16LE(largura, 6);
+  b.writeUInt16LE(altura, 8);
+  if (terminado) b[13] = 0x3b;
+  return b;
+}
+
 function png(largura = 64, altura = 64): Buffer {
   const b = Buffer.alloc(33);
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
@@ -237,7 +247,7 @@ describe("rotas do 3D (banco de testes)", () => {
     expect(spec.json.materials.every((m: { estimated: boolean }) => !m.estimated)).toBe(true);
     hashAprovado = spec.json.specHash;
 
-    const corpo = { sourceId: SOURCE, snapshot: rascunho(), specHash: hashAprovado, previewDayUrl: "https://teste123.ufs.sh/f/dia.png", previewNightUrl: "https://teste123.ufs.sh/f/noite.png", previewExplodedUrl: "https://teste123.ufs.sh/f/exp.png" };
+    const corpo = { sourceId: SOURCE, snapshot: rascunho(), specHash: hashAprovado, previewDayUrl: "https://teste123.ufs.sh/f/dia.png", previewNightUrl: "https://teste123.ufs.sh/f/noite.png", previewExplodedUrl: "https://teste123.ufs.sh/f/exp.png", previewAnimationUrl: "https://teste123.ufs.sh/f/montagem.gif" };
     // hash de outra versão do desenho → 409
     expect((await api("POST", "/api/letra-caixa/render3d/aprovar", { corpo: { ...corpo, specHash: "f".repeat(64) } })).status).toBe(409);
     // preview em host arbitrário → 400
@@ -248,10 +258,25 @@ describe("rotas do 3D (banco de testes)", () => {
     const comTicket = await api("POST", `/api/letra-caixa/render3d/preview/dia?sourceId=${SOURCE}&specHash=${hashAprovado}`, { bruto: png(1600, 1000), tipo: "image/png", cabecalhos: { "x-render3d-ticket": spec.json.ticket } });
     expect(comTicket.status).toBe(201);
     expect(comTicket.json.url).toMatch(/^https:\/\/teste123\.ufs\.sh\//);
+    // animação (GIF): tipo e término conferidos pelos bytes; precisa do ticket do spec como os demais previews
+    const urlGif = `/api/letra-caixa/render3d/preview/animacao?sourceId=${SOURCE}&specHash=${hashAprovado}`;
+    const cab = { "x-render3d-ticket": spec.json.ticket };
+    expect((await api("POST", urlGif, { bruto: gif(), tipo: "image/gif", cabecalhos: { "x-render3d-ticket": "lixo" } })).status).toBe(409);
+    expect((await api("POST", urlGif, { bruto: gif(800, 500, false), tipo: "image/gif", cabecalhos: cab })).status).toBe(400); // cortado
+    expect((await api("POST", urlGif, { bruto: gif(50, 50), tipo: "image/gif", cabecalhos: cab })).status).toBe(400); // pequeno demais
+    expect((await api("POST", urlGif, { bruto: png(800, 500), tipo: "image/gif", cabecalhos: cab })).status).toBe(400); // PNG com cabeçalho de GIF
+    const animacao = await api("POST", urlGif, { bruto: gif(), tipo: "image/gif", cabecalhos: cab });
+    expect(animacao.status).toBe(201);
+    expect(animacao.json.url).toMatch(/\.gif$/);
+    // GIF não é aceito nos previews estáticos (PNG/JPEG)
+    expect((await api("POST", `/api/letra-caixa/render3d/preview/dia?sourceId=${SOURCE}&specHash=${hashAprovado}`, { bruto: gif(), tipo: "image/gif", cabecalhos: cab })).status).toBe(415);
 
     const aprovado = await api("POST", "/api/letra-caixa/render3d/aprovar", { corpo });
     expect(aprovado.status).toBe(200);
-    expect(aprovado.json.approval).toMatchObject({ specHash: hashAprovado, approvedBy: { id: "u-vend", role: "vendas" } });
+    expect(aprovado.json.approval).toMatchObject({ specHash: hashAprovado, approvedBy: { id: "u-vend", role: "vendas" }, previewAnimationUrl: "https://teste123.ufs.sh/f/montagem.gif" });
+    expect(aprovado.json.render3d.approval.previewAnimationUrl).toBe("https://teste123.ufs.sh/f/montagem.gif");
+    // a animação é opcional: aprovar sem ela continua valendo, e ela só aceita URL do nosso storage
+    expect((await api("POST", "/api/letra-caixa/render3d/aprovar", { corpo: { ...corpo, previewAnimationUrl: "https://evil.example/m.gif" } })).status).toBe(400);
     blocoAprovado = aprovado.json.render3d;
     expect(blocoAprovado.materials.find((m: { role: string }) => m.role === "face")).toMatchObject({ profileVersion: 1, thicknessMm: 3 });
     const db = (await getDb())!;
@@ -304,11 +329,12 @@ describe("rotas do 3D (banco de testes)", () => {
     expect(resposta.json.construction).toMatchObject({ boxDepthMm: 80 });
     // o spec reconstruído a partir do snapshot é o MESMO que foi aprovado (mesmo hash): nenhum aviso de divergência
     expect(resposta.json.specHash).toBe(hashAprovado);
+    expect(resposta.json.previewAnimationUrl).toBe("https://teste123.ufs.sh/f/montagem.gif");
     expect(aviso).not.toHaveBeenCalled();
     aviso.mockRestore();
     // visão pública da cotação: só as imagens estáticas
     const cotacao = await api("GET", `/api/letra-caixa/cotacoes/${TOKEN}`);
-    expect(cotacao.json.render3d).toMatchObject({ previewDayUrl: "https://teste123.ufs.sh/f/dia.png" });
+    expect(cotacao.json.render3d).toMatchObject({ previewDayUrl: "https://teste123.ufs.sh/f/dia.png", previewAnimationUrl: "https://teste123.ufs.sh/f/montagem.gif" });
     expect(cotacao.texto).not.toMatch(/ticket/);
 
     await db.update(propostas).set({ observacoes: PREFIXO + JSON.stringify({ ...snapshot, render3d: undefined }) }).where(eq(propostas.token, TOKEN));

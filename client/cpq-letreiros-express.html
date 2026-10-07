@@ -118,7 +118,7 @@
   .cpq3d-estaticas figure{margin:0;} .cpq3d-estaticas img{width:100%; border-radius:10px; border:1px solid var(--border); display:block;}
   .cpq3d-estaticas figcaption{font-size:11.5px; color:var(--text-faint); margin-top:3px;}
   /* Impressão/PDF nunca executa WebGL: o 3D interativo some e ficam as imagens estáticas aprovadas. */
-  @media print{.cpq3d-interativo{display:none !important;}}
+  @media print{.cpq3d-interativo{display:none !important;} .cpq3d-animacao{display:none !important;}}
   .step-pill{flex:none; display:flex; align-items:center; gap:7px; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface); font-size:12px; font-weight:600; color:var(--text-faint); white-space:nowrap;}
   .step-pill .dot{width:19px; height:19px; border-radius:50%; background:var(--surface-2); color:var(--text-faint); display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; flex:none;}
   .step-pill.done{color:var(--text);} .step-pill.done .dot{background:var(--ok); color:#fff;}
@@ -5228,11 +5228,19 @@ function camadaFisicaKit(line){
   return matches.length===1?matches[0]:null;
 }
 
+/** Camada física (face/aro/fundo) que o NESTING usa: o texto do papel manda; sem ele vale o papel 3D (`renderRole`) já confirmado no kit
+ *  para a mesma matéria-prima, porque a ficha do MubiSys e o editor de kit criam as linhas com papel vazio (antes o nesting pedia para
+ *  vincular de novo cada chapa). `return` cai em 'aro' (a faixa gerada da face continua exigindo o papel Aro escrito). Não use no que
+ *  decide trocar linha por cor do projeto (`linhaFaceSubstituivelPorCor`): ali a linha da ficha oficial não pode sair da composição. */
+function camadaFisicaDoKit(line){
+  return camadaFisicaKit(line)||({face:'face',return:'aro',back:'fundo'})[line?.renderRole]||null;
+}
+
 /** Perfil nunca entra no nesting (regra do usuário, 05/10/2026): o consumo dele vem do perímetro da prancha técnica.
  *  Vale pelo papel da linha ou pelo nome da matéria-prima, porque o cadastro pode não estar classificado como perfil. */
 function linhaEhPerfil(line){
   const tokens=texto=>normalizeSearch(String(texto||'')).split(/[^a-z0-9]+/).filter(Boolean);
-  return tokens(line?.papel).includes('perfil')||tokens(materialKitAtivo(line)?.nome||line?.nome).includes('perfil');
+  return line?.renderRole==='profile'||tokens(line?.papel).includes('perfil')||tokens(materialKitAtivo(line)?.nome||line?.nome).includes('perfil');
 }
 
 async function analisarFactibilidadeReal(){
@@ -5247,9 +5255,9 @@ async function analisarFactibilidadeReal(){
     REAL.nestingFormatosCadastrados=chapas;
     const configured=new Set(chapas.filter(board=>board.ativo!==false).map(board=>Number(board.mubisysMateriaPrimaId)));
     // Só entra no nesting matéria-prima classificada como chapa/bobina (com formato cadastrado); perfil, LED etc. ficam de fora.
-    const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&camadaFisicaKit(line)&&configured.has(Number(materialKitAtivo(line).matId)));
+    const physicalLines=(REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&camadaFisicaDoKit(line)&&configured.has(Number(materialKitAtivo(line).matId)));
     const mappedLineIds=new Set(physicalLines.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0));
-    const linhasChapaSemCamada=(REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaKit(line));
+    const linhasChapaSemCamada=(REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&configured.has(Number(materialKitAtivo(line).matId))&&!camadaFisicaDoKit(line));
     if(linhasChapaSemCamada.length){
       REAL.nestingMateriaPrimaIds=[...new Set([...mappedLineIds,...linhasChapaSemCamada.map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0)])];
       throw new Error('Vincule cada matéria-prima de chapa à Face, ao Aro ou ao Fundo no bloco desta etapa.');
@@ -5274,7 +5282,7 @@ async function analisarFactibilidadeReal(){
     REAL.nestingFormatosUsados=formatosTemporarios;
     const camadaKeys=new Set();
     const camadasMateriais=physicalLines.flatMap(line=>{
-      const materiaPrimaId=Number(materialKitAtivo(line).matId), camada=camadaFisicaKit(line);
+      const materiaPrimaId=Number(materialKitAtivo(line).matId), camada=camadaFisicaDoKit(line);
       const key=`${materiaPrimaId}:${camada}`;
       if(!Number.isInteger(materiaPrimaId)||materiaPrimaId<=0||!camada||camadaKeys.has(key))return [];
       camadaKeys.add(key);return [{materiaPrimaId,camada,...(camada==='aro'&&papelEhAro(line.papel)?{faixaMm:larguraFaixaAro()}:{})}];
@@ -5669,7 +5677,7 @@ function renderConfiguracaoNestingReal(){
   const config=REAL.nestingConfiguracao||{espacamentoMm:3,margemBordaMm:5};
   const idsBrutos=REAL.nestingMateriaPrimaIds?.length
     ? REAL.nestingMateriaPrimaIds
-    : [...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&camadaFisicaKit(line)).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
+    : [...new Set((REAL.kit||[]).filter(line=>!line.origemPintura&&!linhaEhPerfil(line)&&camadaFisicaDoKit(line)).map(line=>Number(materialKitAtivo(line).matId)).filter(id=>Number.isInteger(id)&&id>0))];
   const chapas=REAL.nestingFormatosCadastrados||[];
   // Só chapa/bobina com formato cadastrado entra no nesting; perfil e demais itens não pedem dimensões.
   const idsChapa=new Set(chapas.filter(chapa=>chapa.ativo!==false).map(chapa=>Number(chapa.mubisysMateriaPrimaId)));
@@ -5684,7 +5692,7 @@ function renderConfiguracaoNestingReal(){
   linhas.push('<label class="field">Distanciamento da borda (mm)<input type="number" min="0" max="50" step="0.5" value="'+escaparHtml(config.margemBordaMm)+'" data-act="nesting-margem-borda"></label>');
   linhas.push('</div>');
   const chapasAtivasIds=new Set(chapas.filter(chapa=>chapa.ativo!==false).map(chapa=>Number(chapa.mubisysMateriaPrimaId)));
-  const papeisPendentes=(REAL.kit||[]).map((linha,idx)=>({linha,idx,material:materialKitAtivo(linha)})).filter(item=>!item.linha.origemPintura&&!linhaEhPerfil(item.linha)&&chapasAtivasIds.has(Number(item.material.matId))&&!camadaFisicaKit(item.linha));
+  const papeisPendentes=(REAL.kit||[]).map((linha,idx)=>({linha,idx,material:materialKitAtivo(linha)})).filter(item=>!item.linha.origemPintura&&!linhaEhPerfil(item.linha)&&chapasAtivasIds.has(Number(item.material.matId))&&!camadaFisicaDoKit(item.linha));
   if(papeisPendentes.length){
     linhas.push('<div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:10px;"><b>Vincule as chapas às camadas do desenho</b><p class="role-note">Este vínculo mínimo permite separar Face, Aro e Fundo para o nesting. As fórmulas e multiplicadores ficam para a próxima etapa.</p>');
     for(const item of papeisPendentes){
@@ -9387,7 +9395,14 @@ function bindRealEvents(){
   if(factibilidadeRetry) factibilidadeRetry.addEventListener('click',()=>analisarFactibilidadeReal());
   const nestingIniciar=document.querySelector('[data-act="real-nesting-iniciar"]');
   if(nestingIniciar) nestingIniciar.addEventListener('click',()=>iniciarNestingAutomatico());
-  document.querySelectorAll('[data-act="nesting-kit-papel"]').forEach(el=>el.addEventListener('change',event=>{REAL.kit[Number(event.target.dataset.idx)].papel=event.target.value;invalidarFactibilidadeReal();render();}));
+  document.querySelectorAll('[data-act="nesting-kit-papel"]').forEach(el=>el.addEventListener('change',event=>{
+    const linha=REAL.kit[Number(event.target.dataset.idx)];
+    linha.papel=event.target.value;
+    // Escolher a camada aqui é uma confirmação explícita do vendedor: o 3D herda o papel (sem sobrescrever um já confirmado).
+    const papel3d=({face:'face',aro:'return',fundo:'back'})[camadaFisicaKit(linha)];
+    if(papel3d&&!linha.renderRole) linha.renderRole=papel3d;
+    invalidarFactibilidadeReal();render();
+  }));
   document.querySelectorAll('[data-act="nesting-baixar-svg"]').forEach(botao => botao.addEventListener('click', () => {
     const material = ((REAL.nesting && REAL.nesting.materiais) || []).find(item => String(item.id_materia_prima) === botao.dataset.materialId);
     if(material) baixarTextoNesting('nesting-' + nomeArquivoNesting(material.materia_prima) + '.svg', svgDownloadNesting(material));
@@ -10060,10 +10075,12 @@ function htmlRender3dPublico(p){
   const token=new URLSearchParams(location.search).get('cotacao')||'';
   const alvo=p.grupoId?`data-grupo="${escaparHtml(p.grupoId)}"`:`data-token="${escaparHtml(token)}"`;
   const imagens=[['Dia',p.render3d.previewDayUrl],['Noite',p.render3d.previewNightUrl],['Montagem explodida',p.render3d.previewExplodedUrl]].filter(x=>x[1]);
+  // GIF da animação de montagem (guardado na aprovação do 3D): anima mesmo sem WebGL; na impressão sai só o 1º quadro, então fica oculto.
+  const animacao=p.render3d.previewAnimationUrl;
   return `<div class="card" style="margin-top:14px;">
     <div class="cardhead"><div><h3>Visualização 3D</h3><p>Gire, aproxime e alterne entre dia e noite. A simulação é uma aproximação: as cores na tela e a iluminação podem diferir do produto final.</p></div></div>
     <div class="cpq3d-interativo" data-cpq-3d-publico ${alvo}></div>
-    ${imagens.length?`<div class="cpq3d-estaticas">${imagens.map(([rotulo,url])=>`<figure><img src="${escaparHtml(url)}" alt="${rotulo}" loading="lazy"><figcaption>${rotulo}</figcaption></figure>`).join('')}</div>`:''}
+    ${imagens.length?`<div class="cpq3d-estaticas">${imagens.map(([rotulo,url])=>`<figure><img src="${escaparHtml(url)}" alt="${rotulo}" loading="lazy"><figcaption>${rotulo}</figcaption></figure>`).join('')}${animacao?`<figure class="cpq3d-animacao"><img src="${escaparHtml(animacao)}" alt="Animação da montagem do letreiro" loading="lazy"><figcaption>Animação de montagem</figcaption></figure>`:''}</div>`:''}
   </div>`;
 }
 

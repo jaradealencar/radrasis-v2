@@ -26,7 +26,7 @@ export async function obterSpec(sourceId: string, snapshot: CpqRender3dDraftInpu
   return ler(await fetch(`${BASE}/spec`, { ...json("POST", { sourceId, snapshot }), signal: sinal }));
 }
 
-export async function enviarPreview(entrada: { sourceId: string; specHash: string; ticket: string; tipo: "dia" | "noite" | "explodido"; imagem: Blob }): Promise<{ url: string; key: string }> {
+export async function enviarPreview(entrada: { sourceId: string; specHash: string; ticket: string; tipo: "dia" | "noite" | "explodido" | "animacao"; imagem: Blob }): Promise<{ url: string; key: string }> {
   const consulta = new URLSearchParams({ sourceId: entrada.sourceId, specHash: entrada.specHash });
   return ler(await fetch(`${BASE}/preview/${entrada.tipo}?${consulta}`, {
     method: "POST",
@@ -41,7 +41,7 @@ export interface RespostaAprovacao {
   render3d: CpqRender3dSnapshot;
 }
 
-export async function aprovarRender3d(entrada: { sourceId: string; snapshot: CpqRender3dDraftInputEntrada; specHash: string; previewDayUrl: string; previewNightUrl: string; previewExplodedUrl: string }): Promise<RespostaAprovacao> {
+export async function aprovarRender3d(entrada: { sourceId: string; snapshot: CpqRender3dDraftInputEntrada; specHash: string; previewDayUrl: string; previewNightUrl: string; previewExplodedUrl: string; previewAnimationUrl?: string | null }): Promise<RespostaAprovacao> {
   return ler(await fetch(`${BASE}/aprovar`, json("POST", entrada)));
 }
 

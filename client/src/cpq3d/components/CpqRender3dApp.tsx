@@ -30,7 +30,7 @@ function impressao(texto: string): string {
 const CODIGOS_DE_PAPEL = new Set(["papel_nao_confirmado", "papel_ambiguo", "papel_incompativel"]);
 const ROTULO_PREVIEW: Record<TipoPreview, string> = { dia: "vista diurna", noite: "vista noturna", explodido: "vista explodida" };
 
-type EtapaAprovacao = { tipo: "parado" } | { tipo: "capturando"; preview: TipoPreview } | { tipo: "enviando" } | { tipo: "aprovando" };
+type EtapaAprovacao = { tipo: "parado" } | { tipo: "capturando"; preview: TipoPreview } | { tipo: "animando"; fracao: number } | { tipo: "enviando" } | { tipo: "aprovando" };
 
 /** Cores com que a peça é desenhada: as das regiões da face que usam o material, ou a cor do próprio material. */
 function coresDaPeca(spec: CpqRender3dSpec, material: CpqRender3dSpec["materials"][number]): string[] {
@@ -61,6 +61,7 @@ export function CpqRender3dApp() {
   const [erro, setErro] = useState<string | null>(null);
   const [avisosCena, setAvisosCena] = useState<string[]>([]);
   const [etapa, setEtapa] = useState<EtapaAprovacao>({ tipo: "parado" });
+  const [avisoAnimacao, setAvisoAnimacao] = useState<string | null>(null);
   const [erroAprovacao, setErroAprovacao] = useState<{ mensagem: string; blockers: CpqRender3dBlocker[] } | null>(null);
   const rascunho = useRef(draft);
   rascunho.current = draft;
@@ -99,11 +100,30 @@ export function CpqRender3dApp() {
   const aprovar = async () => {
     if (!spec || !draft || etapa.tipo !== "parado") return;
     setErroAprovacao(null);
+    setAvisoAnimacao(null);
     try {
       const imagens = await capturarPreviews(spec, preview => setEtapa({ tipo: "capturando", preview }));
+      // A animação (GIF) é um extra: se não puder ser gerada ou enviada, a aprovação segue só com as três imagens.
+      setEtapa({ tipo: "animando", fracao: 0 });
+      let gif: Blob | null = null;
+      try {
+        const { gerarGifParaEnvio } = await import("../gifMontagem");
+        gif = await gerarGifParaEnvio(spec, { aoProgredir: fracao => setEtapa({ tipo: "animando", fracao }) });
+      } catch (falha) {
+        console.error("[CPQ 3D] Falha ao gerar a animação:", falha);
+      }
       setEtapa({ tipo: "enviando" });
       const [dia, noite, explodido] = await Promise.all((["dia", "noite", "explodido"] as const).map(tipo =>
         enviarPreview({ sourceId, specHash: spec.specHash, ticket: spec.ticket, tipo, imagem: imagens[tipo] })));
+      let urlAnimacao: string | null = null;
+      if (gif) {
+        try {
+          urlAnimacao = (await enviarPreview({ sourceId, specHash: spec.specHash, ticket: spec.ticket, tipo: "animacao", imagem: gif })).url;
+        } catch (falha) {
+          console.error("[CPQ 3D] Falha ao enviar a animação:", falha);
+        }
+      }
+      if (!urlAnimacao) setAvisoAnimacao("A animação de montagem (GIF) não pôde ser gerada ou enviada: a proposta segue com as imagens de dia, noite e vista explodida.");
       setEtapa({ tipo: "aprovando" });
       const resposta = await aprovarRender3d({
         sourceId,
@@ -112,6 +132,7 @@ export function CpqRender3dApp() {
         previewDayUrl: dia.url,
         previewNightUrl: noite.url,
         previewExplodedUrl: explodido.url,
+        previewAnimationUrl: urlAnimacao,
       });
       bridge?.setApproval(resposta.approval, resposta.render3d);
     } catch (falha) {
@@ -267,6 +288,8 @@ export function CpqRender3dApp() {
         </div>
       ) : null}
 
+      {avisoAnimacao && aprovadoVale && <div style={caixa("warn")} role="status">{avisoAnimacao}</div>}
+
       {erroAprovacao && (
         <div style={caixa("bad")} role="alert">
           {erroAprovacao.mensagem}
@@ -290,6 +313,7 @@ export function CpqRender3dApp() {
           ) : (
             <button type="button" className="btn btn-primary" disabled={!spec || spec.blockers.length > 0 || etapa.tipo !== "parado" || carregando} onClick={() => void aprovar()}>
               {etapa.tipo === "capturando" ? `Gerando ${ROTULO_PREVIEW[etapa.preview]}…`
+                : etapa.tipo === "animando" ? `Gerando a animação… ${Math.round(etapa.fracao * 100)}%`
                 : etapa.tipo === "enviando" ? "Enviando imagens…"
                 : etapa.tipo === "aprovando" ? "Registrando aprovação…"
                 : "Aprovar visualização 3D"}

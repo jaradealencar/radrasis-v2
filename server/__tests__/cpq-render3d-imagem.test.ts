@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectarImagem3d, validarImagem3d } from "../services/cpqRender3dImagem";
+import { detectarImagem3d, GIF_3D_MAX_BYTES, validarGif3d, validarImagem3d } from "../services/cpqRender3dImagem";
 
 function png(largura: number, altura: number): Buffer {
   const b = Buffer.alloc(33);
@@ -57,5 +57,31 @@ describe("validação de imagens do 3D (tipo real pelos bytes)", () => {
     expect(validarImagem3d(png(8192, 512))).toEqual({ erro: expect.stringContaining("4096") });
     expect(validarImagem3d(Buffer.concat([png(512, 512), Buffer.alloc(5 * 1024 * 1024)]))).toEqual({ erro: expect.stringContaining("4 MB") });
     expect(validarImagem3d(Buffer.concat([png(512, 512), Buffer.alloc(4000)]), { maxBytes: 1000 })).toEqual({ erro: expect.stringContaining("MB") });
+  });
+});
+
+describe("validação do GIF da animação de montagem (pelos bytes)", () => {
+  const gif = (largura: number, altura: number, opcoes: { assinatura?: string; termina?: boolean; extra?: number } = {}): Buffer => {
+    const b = Buffer.alloc(14 + (opcoes.extra ?? 0));
+    b.write(opcoes.assinatura ?? "GIF89a", 0, "ascii");
+    b.writeUInt16LE(largura, 6);
+    b.writeUInt16LE(altura, 8);
+    if (opcoes.termina !== false) b[b.length - 1] = 0x3b;
+    return b;
+  };
+
+  it("aceita GIF89a/GIF87a terminado, com dimensões sãs", () => {
+    expect(validarGif3d(gif(800, 500))).toEqual({ largura: 800, altura: 500 });
+    expect(validarGif3d(gif(640, 400, { assinatura: "GIF87a" }))).toEqual({ largura: 640, altura: 400 });
+  });
+
+  it("recusa vazio, outra assinatura, GIF cortado, dimensões fora do limite e arquivo grande demais", () => {
+    expect(validarGif3d(Buffer.alloc(0))).toHaveProperty("erro");
+    expect(validarGif3d(png(800, 500))).toHaveProperty("erro");
+    expect(validarGif3d(gif(800, 500, { termina: false }))).toHaveProperty("erro");
+    expect(validarGif3d(gif(100, 100))).toHaveProperty("erro");
+    expect(validarGif3d(gif(4000, 500))).toHaveProperty("erro");
+    expect(validarGif3d(gif(800, 500, { extra: GIF_3D_MAX_BYTES }))).toMatchObject({ erro: expect.stringContaining("passa de") });
+    expect(GIF_3D_MAX_BYTES).toBeLessThan(4.5 * 1024 * 1024); // cabe no corpo de 4,5 MB da Vercel
   });
 });

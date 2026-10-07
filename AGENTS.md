@@ -860,7 +860,12 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
 - **Kit**: `estudio_kits.dadosJson.render3dConstruction` (tipo de iluminação, profundidade, afastamento, aba, passo/clearance de LED —
   **sem valor padrão**: ausência é pendência) e `renderRole` por linha (validados em `estudio-kits.ts`; o papel é sugerido por
   `sugerirRenderRole`, mas só vale confirmado). **Produto sem construção 3D no kit dispensa a etapa** (`render3dDispensado` no HTML) e
-  emite como antes; com construção cadastrada, o link da cotação só sai com 3D aprovado.
+  emite como antes; com construção cadastrada, o link da cotação só sai com 3D aprovado. **O papel 3D confirmado também vale para o nesting**
+  (07/10/2026): a ficha do MubiSys e o editor de kit criam linhas com `papel` vazio, e o nesting pedia para vincular cada chapa à Face/Aro/Fundo
+  de novo. No HTML, `camadaFisicaDoKit` usa o texto do papel e, sem ele, o `renderRole` herdado do kit (`face`→Face, `return`→Aro, `back`→Fundo;
+  `profile` tira a linha do nesting, como "perfil" no nome); `camadaFisicaKit` (só o texto) segue decidindo a troca da face por cor do projeto, porque
+  ali a linha da ficha oficial do MubiSys não pode sair da composição. Escolher a camada no bloco "Vincule as chapas" também grava o `renderRole`
+  da linha (sem sobrescrever um já confirmado). A faixa gerada do Aro continua exigindo o papel Aro escrito.
 - **Cliente** (`client/src/cpq3d/`): ilha React 19 + React Three Fiber 9 montada pelo HTML do CPQ. O `render()` do legado recria `#shell`,
   então a ilha mantém hosts persistentes que `window.CPQ3DIsland.sync()` move para os pontos de montagem (`#cpq-render3d-root`,
   `#cpq-materiais3d-root`, `[data-cpq-3d-publico]`); o HTML fala com ela por `window.CPQ3D_BRIDGE`. O HTML mora em
@@ -882,8 +887,20 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   terminar, Dia/Noite/Explodida passam a refletir o estado final; clicar em qualquer botão interrompe. **"⬇ Baixar GIF"** (`gifMontagem.tsx`,
   carregado sob demanda) renderiza a mesma linha do tempo num canvas descartável 800×500 em passos fixos de 60 ms (`gifQuadros.ts`, ~150
   quadros), reduz cada quadro a 256 cores (`gifenc`, dependência nova, JS puro, paleta própria por quadro) e baixa
-  `montagem-do-letreiro.gif` (loop infinito, pausas de 0,7 s no início e 1,8 s no fim). **O GIF é gerado no navegador de quem clica e não é
-  guardado**: não entra no snapshot, na aprovação nem no PDF (o PDF segue com os 3 previews estáticos).
+  `montagem-do-letreiro.gif` (loop infinito, pausas de 0,7 s no início e 1,8 s no fim). **GIF guardado na aprovação (pedido de 07/10/2026)**: ao
+  aprovar o 3D, depois dos 3 previews, o navegador gera o GIF (`gerarGifParaEnvio`) e o envia por `POST /api/letra-caixa/render3d/preview/animacao`
+  (corpo `image/gif` de até 4 MB, `GIF_3D_MAX_BYTES`; `validarGif3d` confere assinatura GIF87a/89a, byte final 0x3B e lado de 240 a 1600 px; mesmo
+  ticket do spec dos outros previews). A URL do UploadThing vai em `previewAnimationUrl` (**opcional** em `approval`, no snapshot `render3d.approval`,
+  na visão pública e no JSON da cotação; sem migration — a tabela de auditoria `cpq_render3d_approvals` **não** tem coluna para o GIF). A geração é
+  um extra: se falhar ou o envio falhar, a aprovação segue só com as 3 imagens e a tela avisa. Para caber no teto de 3,8 MB (o corpo na Vercel é
+  de 4,5 MB) há degraus em `AJUSTES_GIF_ENVIO` — 800×500/60 ms/256 cores, 640×400/80 ms, 480×300/100 ms/128 cores, 400×250/120 ms/64 cores — e uma
+  tentativa é abandonada cedo (`GifGrandeDemaisError`) quando o tamanho projetado passa do teto. No link do cliente o viewer baixa o GIF guardado
+  (sem regerar; se o storage não responder, gera no navegador), usa-o no lugar das imagens quando não há WebGL, e a página mostra o GIF junto das
+  imagens estáticas (`.cpq3d-animacao`, oculto na impressão: o PDF segue com os 3 previews). Aprovações antigas não têm GIF e continuam válidas.
+  O `createRoot` do R3F **não** registra o catálogo do THREE (só o `<Canvas>` faz `extend(THREE)`): `gifMontagem.tsx` e `capture.tsx` chamam
+  `extend(THREE)` sozinhos (sem isso, sem um Canvas montado antes, a cena falha com "HemisphereLight is not part of the THREE namespace" e o GIF sairia
+  em branco — o GIF confere que a cena montou). `capturarPreview` agora reaproveita a cena do cache (`obterCenaEmCache`) em vez de triangular
+  em cada captura.
 - **Previews/PDF**: `capture.tsx` renderiza dia, noite e explodido em 1600×1000 com câmera fixa num canvas descartável. O link público e a
   impressão usam essas imagens (o CSS de impressão esconde o 3D interativo); sem WebGL cai nas imagens.
 - **Validado (07/10/2026)**: `tsc` (os dois projetos), `vite build`, testes do resolver (32), do sanitizador de SVG (21), das rotas contra
@@ -914,8 +931,12 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
 - **Validado em 07/10/2026 (montagem animada, GIF e cores)**: testes de linha do tempo/GIF/acendimento/cores (cliente e resolver) e `tsc` do
   projeto cpq3d; no Edge headless (WebGL por software) com um letreiro de teste: cores por região (vermelho/amarelo), noite acesa, quadros
   fixos da montagem e o **GIF real** (800×500, 152 quadros, 3,5 MB, loop infinito, 324 s em renderização por software — em GPU real deve ser
-  bem mais rápido, mas **não foi medido**). Não validado: o tempo do GIF em GPU real (a validação abaixo mediu só o render interativo),
-  celular, GIF de logo com centenas de caminhos, perfis PBR com mapas.
+  bem mais rápido, o que a medição seguinte confirmou). **Medido em GPU real (07/10/2026, Edge headless ANGLE/D3D11)**: o GIF 800×500 de
+  152 quadros leva **8,5 s na UHD 620 e 8,7 s na MX150** (o gargalo é o codificador na CPU, não a GPU), 3,50 MB; com a CPU limitada a 4× mais lenta
+  (só uma estimativa grosseira de celular, a GPU segue a do notebook) 22 s. Com logo mais pesado (150 formas extras de 24 vértices) o 1º degrau
+  passa do teto e o GIF sai em 640×400 (13 s, 3,39 MB); com 400 formas extras, em 480×300 (11 s, 2,36 MB). O fluxo de aprovação (previews +
+  GIF + envio + aprovar, com o servidor simulado) leva ~13 s. Não validado: celular de verdade, GIF do fluxo completo do CPQ com um logo real
+  e perfis PBR com mapas.
 - **Validação com GPU real (07/10/2026, harness isolado; sem alteração de código)**: Edge 126 headless com ANGLE/D3D11 em hardware, na
   **Intel UHD 620** (integrada) e na **NVIDIA GeForce MX150** (discreta de entrada), com a cena do viewer (sombras, HDRI, bloom, ACES,
   MSAA 4 + HalfFloat) e glifos reais das fontes do Windows (6, 16, 17, 33, 55 e 81 glifos e 432 círculos). Medido em `317f225` e conferido
@@ -928,16 +949,15 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   (1) `construirCena` roda na thread da página e trava a aba: 0,2–0,6 s para wordmarks em Arial de 6 e 16 glifos, mas 4 s (17 glifos
   Georgia Bold a 3,2 m), 9 s (33), 15 s (55), 32–42 s (81) e 16 s para 432 círculos; **~93% é `deslocarRegioes` (offset do Clipper)** em
   `buildLedLayout.ts` (recuo da margem do LED e dos fixadores; no logo de 81 glifos 20 s + 16 s), a lateral oca custa só 1–3 s; o custo
-  segue o nº de vértices, não o de glifos. `Qualidade: baixa` é 4–6× mais rápida (3–5 s). `capturarPreview` chama `construirCena` de novo
-  em cada uma das 3 capturas (previews do logo de 432 círculos: ~30 s cada; do RADRAS: 1–3 s) em vez de reaproveitar a cena
-  (`cacheDeCenas`). Candidatos: simplificar o contorno antes do recuo (tolerância ~0,5–1 mm), `jtMiter`, Web Worker e uma cena só para
+  segue o nº de vértices, não o de glifos. `Qualidade: baixa` é 4–6× mais rápida (3–5 s). `capturarPreview` chamava `construirCena` de novo
+  em cada uma das 3 capturas (previews do logo de 432 círculos: ~30 s cada; do RADRAS: 1–3 s) — **corrigido em 07/10/2026**: reaproveita a cena
+  do cache (`obterCenaEmCache`). Candidatos: simplificar o contorno antes do recuo (tolerância ~0,5–1 mm), `jtMiter`, Web Worker e uma cena só para
   as 3 capturas. (2) Primeiro frame com cache de shader frio no D3D11: 4–11 s (1,2–2 s com cache quente; compilação síncrona dos 18
   programas). (3) Memória: ao desmontar o Canvas ficam vivos 1 `WebGLRenderer` e, com o composer, ~25 render targets/texturas por ciclo
   (~8 MB por ciclo na cena IMPÉRIO, com GC forçado); **reproduz com um `<Canvas>` com uma caixa só**, então não é do código do CPQ (R3F
   9.8.1/React 19) — vale revisar o descarte no desmonte; `construirCena` sozinho não vaza. Avisos de console inofensivos: `THREE.Clock`
   deprecado e `PCFSoftShadowMap` removido do three (cai em `PCFShadowMap`, que é o que o `shadows` do R3F acaba usando).
-- **Observações do teste real, ainda abertas**: as linhas da ficha BOM do MubiSys chegam com `papel` vazio e o nesting pede vincular
-  cada chapa à Face/Fundo mesmo com o `renderRole` já herdado do kit (candidato a propagar o papel físico); o servidor local recusa
+- **Observações do teste real, ainda abertas**: o servidor local recusa
   assinar factibilidade/3D com `JWT_SECRET` menor que 32 caracteres (o `.env` local de teste tem menos; os testes definem um
   fallback, o dev server não); o DTO público ainda expõe `mubisysMateriaPrimaId` e `profileId` (IDs internos, sem nomes nem custos);
   `aprovar` aceita URL de qualquer app UploadThing (não prova que é o arquivo que subimos) e qualquer usuário logado pode aprovar o 3D;

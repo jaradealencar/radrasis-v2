@@ -162,7 +162,7 @@ export interface PropsViewer {
   spec: DesenhoSpec;
   publico?: boolean;
   /** Previews estáticos para quando o WebGL não existe ou falha. */
-  imagens?: { dia: string | null; noite: string | null; explodido: string | null };
+  imagens?: { dia: string | null; noite: string | null; explodido: string | null; animacao?: string | null };
   altura?: number | string;
   onAvisos?: (avisos: string[]) => void;
 }
@@ -210,6 +210,18 @@ function baixarArquivo(blob: Blob, nome: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** Baixa o GIF aprovado do storage; `null` se a rede ou o CORS impedirem (aí o viewer gera o GIF no navegador). */
+async function baixarGifGuardado(url: string): Promise<Blob | null> {
+  try {
+    const resposta = await fetch(url, { cache: "force-cache" });
+    if (!resposta.ok) return null;
+    const blob = await resposta.blob();
+    return blob.size > 0 ? new Blob([blob], { type: "image/gif" }) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520, onAvisos }: PropsViewer) {
   const [night, setNight] = useState(false);
   const [exploded, setExploded] = useState(false);
@@ -247,6 +259,13 @@ export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520
     setAnimando(false);
     setGif({ tipo: "gerando", fracao: 0 });
     try {
+      // Com o GIF já aprovado e guardado, baixa na hora; sem ele (ou se o storage não responder) gera no navegador.
+      const guardado = imagens?.animacao ? await baixarGifGuardado(imagens.animacao) : null;
+      if (guardado) {
+        baixarArquivo(guardado, "montagem-do-letreiro.gif");
+        setGif({ tipo: "parado" });
+        return;
+      }
       const { gerarGifMontagem } = await import("../gifMontagem");
       const arquivo = await gerarGifMontagem(spec, {
         aoProgredir: fracao => setGif(atual => (atual.tipo === "gerando" ? { tipo: "gerando", fracao } : atual)),
@@ -264,7 +283,9 @@ export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520
   const imagemEstatica = imagens && (exploded ? imagens.explodido : night ? imagens.noite : imagens.dia);
   const fallback = (mensagem: string) => (
     <div role="img" aria-label="Visualização estática do letreiro" style={{ minHeight: 220, display: "grid", placeItems: "center", textAlign: "center", padding: 16, gap: 10, background: "var(--surface-2)", borderRadius: 12 }}>
-      {imagemEstatica ? <img src={imagemEstatica} alt="Visualização do letreiro" style={{ maxWidth: "100%", maxHeight: altura, borderRadius: 8 }} /> : null}
+      {imagens?.animacao
+        ? <img src={imagens.animacao} alt="Animação da montagem do letreiro" style={{ maxWidth: "100%", maxHeight: altura, borderRadius: 8 }} />
+        : imagemEstatica ? <img src={imagemEstatica} alt="Visualização do letreiro" style={{ maxWidth: "100%", maxHeight: altura, borderRadius: 8 }} /> : null}
       <div className="role-note" style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{mensagem}</div>
     </div>
   );

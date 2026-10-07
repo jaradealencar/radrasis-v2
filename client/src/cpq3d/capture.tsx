@@ -5,10 +5,14 @@
  * o vendedor escolheu), tudo já no estado final (sem animação). `preserveDrawingBuffer` só existe nesse canvas descartável — o
  * viewer interativo nunca o liga. O PDF usa as imagens do snapshot e nunca executa WebGL.
  */
-import { createRoot, type RootState } from "@react-three/fiber";
+import { createRoot, extend, type RootState } from "@react-three/fiber";
 import * as THREE from "three";
-import { construirCena, type DesenhoSpec } from "./cena";
-import { CenaRender3d, POSE_PADRAO, type PoseCamera } from "./components/CpqRender3dViewer";
+import type { DesenhoSpec } from "./cena";
+import { CenaRender3d, obterCenaEmCache, POSE_PADRAO, type PoseCamera } from "./components/CpqRender3dViewer";
+
+// O <Canvas> do R3F registra o catálogo do THREE (`extend(THREE)`) ao montar; um root criado com `createRoot` sem Canvas antes precisa
+// fazer isso sozinho, senão o primeiro `<hemisphereLight>` falha ("is not part of the THREE namespace"). É idempotente.
+extend(THREE as never);
 
 export const PREVIEW_LARGURA = 1600;
 export const PREVIEW_ALTURA = 1000;
@@ -24,7 +28,7 @@ const POSES: Record<TipoPreview, PoseCamera> = {
 const esperar = (ms: number) => new Promise<void>(resolver => setTimeout(resolver, ms));
 
 export async function capturarPreview(spec: DesenhoSpec, tipo: TipoPreview): Promise<Blob> {
-  const cena = construirCena(spec, "alta");
+  const cena = obterCenaEmCache(spec, "alta"); // a mesma cena do viewer e das outras capturas: não triangula de novo
   const canvas = document.createElement("canvas");
   canvas.width = PREVIEW_LARGURA;
   canvas.height = PREVIEW_ALTURA;
@@ -81,8 +85,6 @@ export async function capturarPreview(spec: DesenhoSpec, tipo: TipoPreview): Pro
     const contexto = criado.estado?.gl;
     contexto?.dispose();
     contexto?.forceContextLoss();
-    cena.parede?.dispose();
-    cena.fundo?.geometrias.forEach(geometria => geometria.dispose());
   }
 }
 

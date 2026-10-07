@@ -69,6 +69,29 @@ export function extensaoDoMime(mime: MimeImagem3d): string {
   return mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
 }
 
+/** Teto do GIF da animação de montagem: abaixo do limite de 4,5 MB do corpo da requisição na Vercel (sobra para o cabeçalho). */
+export const GIF_3D_MAX_BYTES = 4_000_000;
+const GIF_3D_MIN_LADO = 240;
+const GIF_3D_MAX_LADO = 1600;
+
+/**
+ * Valida o GIF da animação de montagem pelos BYTES: assinatura GIF87a/GIF89a, dimensões do cabeçalho dentro de limites sãos e o
+ * byte final de término (0x3B) — um GIF cortado no meio do envio não passa. Não decodifica os quadros.
+ */
+export function validarGif3d(dados: Buffer, opcoes: { maxBytes?: number } = {}): { erro: string } | { largura: number; altura: number } {
+  const maxBytes = opcoes.maxBytes ?? GIF_3D_MAX_BYTES;
+  if (!dados.length) return { erro: "O GIF enviado está vazio." };
+  if (dados.length > maxBytes) return { erro: `O GIF passa de ${(maxBytes / 1_000_000).toFixed(1)} MB.` };
+  const assinatura = dados.length >= 13 ? dados.toString("ascii", 0, 6) : "";
+  if (assinatura !== "GIF89a" && assinatura !== "GIF87a") return { erro: "Envie um GIF válido (o tipo é conferido pelo conteúdo do arquivo)." };
+  if (dados[dados.length - 1] !== 0x3b) return { erro: "O GIF está incompleto (sem o byte de término)." };
+  const largura = dados.readUInt16LE(6);
+  const altura = dados.readUInt16LE(8);
+  if (largura < GIF_3D_MIN_LADO || altura < GIF_3D_MIN_LADO || largura > GIF_3D_MAX_LADO || altura > GIF_3D_MAX_LADO)
+    return { erro: `O GIF deve ter entre ${GIF_3D_MIN_LADO} e ${GIF_3D_MAX_LADO} px de lado.` };
+  return { largura, altura };
+}
+
 /** Valida tamanho e dimensões; devolve a mensagem de erro (em português) ou a info da imagem. */
 export function validarImagem3d(dados: Buffer, opcoes: { maxBytes?: number } = {}): { erro: string } | { info: InfoImagem3d } {
   const maxBytes = opcoes.maxBytes ?? IMAGEM_3D_MAX_BYTES;
