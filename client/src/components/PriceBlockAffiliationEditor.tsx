@@ -244,8 +244,8 @@ export function PriceBlockAffiliationEditor({
                       onClick={() => alternarProduto(produto)}
                       aria-label={
                         todos
-                          ? `Remover ${produto.nome}`
-                          : `Selecionar todos os modelos de ${produto.nome}`
+                          ? `Desmarcar produto inteiro ${produto.nome}`
+                          : `Selecionar produto inteiro ${produto.nome}`
                       }
                       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${todos ? "border-blue-600 bg-blue-600 text-white" : parcial ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-300"}`}
                     >
@@ -257,18 +257,33 @@ export function PriceBlockAffiliationEditor({
                     </button>
                     <button
                       type="button"
-                      onClick={() => alternarProduto(produto)}
+                      onClick={() =>
+                        setExpandidos(atual => {
+                          const proximo = new Set(atual);
+                          proximo.has(produto.id)
+                            ? proximo.delete(produto.id)
+                            : proximo.add(produto.id);
+                          return proximo;
+                        })
+                      }
+                      aria-expanded={aberto}
+                      aria-label={`${aberto ? "Ocultar" : "Ver"} modelos de ${produto.nome}`}
                       className="min-w-0 flex-1 text-left"
                     >
                       <span className="block truncate text-sm font-medium">
                         {produto.nome}
                       </span>
-                      <span className="block truncate text-xs text-slate-500">
-                        {produto.categoria || "Sem categoria"} · ID MubiSys{" "}
-                        {produto.id}
-                        {produto.modelos.length
-                          ? ` · ${produto.modelos.length} modelo(s)`
-                          : ""}
+                      <span className="flex flex-wrap items-center gap-x-1 text-xs text-slate-500">
+                        <span>
+                          {produto.categoria || "Sem categoria"} · ID MubiSys{" "}
+                          {produto.id}
+                        </span>
+                        {produto.modelos.length > 0 && (
+                          <span className="font-medium text-blue-700">
+                            · {aberto ? "Ocultar" : "Ver"}{" "}
+                            {produto.modelos.length} modelos
+                          </span>
+                        )}
                       </span>
                     </button>
                     {todos && (
@@ -292,6 +307,7 @@ export function PriceBlockAffiliationEditor({
                           })
                         }
                         aria-label={aberto ? "Recolher modelos" : "Ver modelos"}
+                        aria-expanded={aberto}
                         className="rounded p-1 text-slate-500 hover:bg-slate-200"
                       >
                         {aberto ? (
