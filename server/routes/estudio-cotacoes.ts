@@ -6,6 +6,7 @@ import { z } from "zod";
 import { estudioMapeamentoCoresCotacao, propostas } from "../../drizzle/schema";
 import { consumoGabaritoKraftM2 } from "../../shared/gabarito";
 import { MATERIAIS_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "../../shared/produtividade-solda";
+import { erroPinturaPecas, MAX_CORES_PINTURA, MAX_PECAS_PINTURA } from "../../shared/pintura-pecas";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import {
@@ -103,6 +104,23 @@ const factibilidadeSchema = z.object({
   }).strict()).min(1).max(10),
 }).strict();
 
+/**
+ * Pintura só nas peças marcadas na Ficha técnica (06/10/2026): de onde vem a área das linhas de pintura, que vão em `materiais` como
+ * "fixo". No snapshot é opcional e sem `.default()`: cotação sem peças marcadas (ou antiga) não ganha a chave, e a assinatura dela
+ * continua a mesma. A coerência com as medidas do letreiro é conferida por `erroPinturaPecas` em `contextoPrecoSnapshot`.
+ */
+export const pinturaPecasSchema = z.object({
+  areaPintadaM2: z.number().finite().nonnegative().max(100_000),
+  areaLiquidaTotalM2: z.number().finite().positive().max(100_000),
+  pecasPintadas: z.number().int().positive().max(MAX_PECAS_PINTURA),
+  pecasTotal: z.number().int().positive().max(MAX_PECAS_PINTURA),
+  cores: z.array(z.object({
+    corHex: z.string().regex(/^#[\da-f]{6}$/),
+    pecas: z.number().int().positive().max(MAX_PECAS_PINTURA),
+    areaM2: z.number().finite().nonnegative().max(100_000),
+  }).strict()).min(1).max(MAX_CORES_PINTURA),
+}).strict();
+
 const snapshotSchema = z.object({
   dataEmissao: z.string().datetime(),
   validadeDias: z.number().int().min(1).max(365),
@@ -140,6 +158,7 @@ const snapshotSchema = z.object({
       regraId: z.number().int().positive().nullable(),
     }).strict()).max(2),
   }).strict().optional(),
+  pinturaPecas: pinturaPecasSchema.optional(),
   imagemReferenciaUrl: z.string().url().max(2048).nullable().optional().default(null),
   imagemRedesenhadaUrl: z.string().url().max(2048).nullable().optional().default(null),
   nestingSvg: z.string().max(1_500_000).nullable().optional().default(null),
@@ -528,6 +547,10 @@ function assinaturaSnapshotCotacao(sourceId: string, snapshot: z.infer<typeof sn
 }
 
 function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
+  if (snapshot.pinturaPecas) {
+    const erroPintura = erroPinturaPecas(snapshot.pinturaPecas, snapshot.areaM2);
+    if (erroPintura) throw new Error(erroPintura);
+  }
   for (const linha of snapshot.materiais ?? []) {
     // Gabarito kraft: medida já em m² de papel (faixas de bobina × comprimento do letreiro).
     if (linha.formulaType === "gabaritoKraft") {
