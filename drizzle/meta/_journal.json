@@ -715,6 +715,13 @@
       "when": 1791378834147,
       "tag": "0101_afiliacao_modelos_faixa_preco",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1791380305256,
+      "tag": "0102_cpq_cotacao_snapshot_imutavel",
+      "breakpoints": true
     }
   ]
 }

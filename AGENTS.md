@@ -281,7 +281,7 @@ server/
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
-                       estudio-cotacoes.ts (cotações do HTML estático do CPQ),
+                       estudio-cotacoes.ts (cotações do HTML estático do CPQ, snapshots comerciais imutáveis e vínculo posterior com OS MubiSys),
                        estudio-clientes.ts (cadastro e busca autenticados de clientes do CPQ),
                        estudio-kits.ts (composições de produto por modelo, compartilhadas no Postgres),
                        estudio-catalogo-mubisys.ts (catálogo local + sync da API oficial) e

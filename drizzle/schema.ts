@@ -587,6 +587,38 @@ export const propostaItens = pgTable("proposta_itens", {
 export type PropostaItem = typeof propostaItens.$inferSelect;
 export type InsertPropostaItem = typeof propostaItens.$inferInsert;
 
+// Snapshots comerciais append-only do CPQ.
+export const estudioCotacaoSnapshots = pgTable("estudio_cotacao_snapshots", {
+  id: serial("id").primaryKey(),
+  propostaId: integer("proposta_id").notNull().references(() => propostas.id),
+  revisao: integer("revisao").notNull(),
+  sourceId: varchar("source_id", { length: 80 }).notNull(),
+  snapshotJson: text("snapshot_json").notNull(),
+  snapshotHash: varchar("snapshot_hash", { length: 64 }).notNull(),
+  tabelaPreco: varchar("tabela_preco", { length: 32 }),
+  tabelaPrecoVersao: varchar("tabela_preco_versao", { length: 16 }),
+  secaoId: integer("secao_id"),
+  secaoTitulo: varchar("secao_titulo", { length: 256 }),
+  linhaId: integer("linha_id"),
+  linhaLabel: varchar("linha_label", { length: 256 }),
+  faixaId: integer("faixa_id"),
+  faixaIndex: integer("faixa_index"),
+  faixaLabel: varchar("faixa_label", { length: 256 }),
+  custoInsumos: decimal("custo_insumos", { precision: 14, scale: 2 }).notNull(),
+  custoBaseFaixa: decimal("custo_base_faixa", { precision: 14, scale: 2 }).notNull(),
+  margemPct: decimal("margem_pct", { precision: 7, scale: 4 }),
+  precoFinal: decimal("preco_final", { precision: 14, scale: 2 }).notNull(),
+  mubisysOsId: integer("mubisys_os_id"),
+  criadoPor: varchar("criado_por", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  propostaRevisaoUidx: uniqueIndex("estudio_cotacao_snapshots_proposta_revisao_uidx").on(table.propostaId, table.revisao),
+  propostaHashUidx: uniqueIndex("estudio_cotacao_snapshots_proposta_hash_uidx").on(table.propostaId, table.snapshotHash),
+  osIdx: index("estudio_cotacao_snapshots_os_idx").on(table.mubisysOsId),
+}));
+export type EstudioCotacaoSnapshot = typeof estudioCotacaoSnapshots.$inferSelect;
+export type InsertEstudioCotacaoSnapshot = typeof estudioCotacaoSnapshots.$inferInsert;
+
 // Configuração global (linha única, id=1) usada por toda Proposta: PDF de
 // condições comerciais (aparece no rodapé da página pública) e tabela de
 // juros de parcelamento no cartão de crédito.
