@@ -54,11 +54,11 @@ Este é um plano de melhoria, não uma descrição de controles já concluídos.
 - O CPQ usa faixas de margem da Tabela de Preços; Propostas não usa a mesma
   regra. O modo de preço fixo do CPQ não soma instalação ao preço final, e
   o cálculo do orçamento não soma produtos associados ao kit
-  (`client/public/cpq-letreiros-express.html`).
+  (`client/cpq-letreiros-express.html`).
 - Medidas ausentes podem virar zero no cálculo de material. O nesting mostra
   uma peça maior que a chapa como se coubesse e calcula área das peças
   separadamente do número de folhas/aproveitamento. Essas aproximações ainda
-  não impedem a emissão (`client/public/cpq-letreiros-express.html`,
+  não impedem a emissão (`client/cpq-letreiros-express.html`,
   `client/src/pages/comercial/Propostas.tsx`).
 
 ## Visão futura: projeto conversacional com imagem e voz

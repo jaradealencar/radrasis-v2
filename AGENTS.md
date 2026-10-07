@@ -93,9 +93,10 @@ yarn install     # instala dependências (roda patch-package automaticamente)
 yarn dev         # servidor de desenvolvimento (Vite + Express na mesma porta)
 yarn build       # build de produção (client via Vite, server via esbuild)
 yarn start       # roda o build de produção
-yarn run check   # tsc --noEmit — precisa do "run"! `yarn check` sozinho
-                 # dispara o comando nativo do Yarn (valida lockfile), não
-                 # o script do package.json, e retorna resultado errado
+yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d,
+                 # ver "CPQ renderização 3D") — precisa do "run"! `yarn check`
+                 # sozinho dispara o comando nativo do Yarn (valida lockfile),
+                 # não o script do package.json, e retorna resultado errado
 yarn test        # vitest run
 yarn format      # prettier --write .
 yarn db:push     # drizzle-kit generate && drizzle-kit migrate
@@ -254,6 +255,8 @@ client/src/          frontend (Vite root = client/)
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
+  cpq3d/               ilha React + Three.js da Visualização 3D do CPQ (fora do tsconfig principal)
+client/cpq-letreiros-express.html  página do CPQ (HTML monolítico, entrada própria do Vite; mesma URL pública)
 server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
@@ -271,7 +274,9 @@ server/
                        cpqPrecoAssistente.ts (sugestões GPT e recibos assinados
                        de aprovação humana de preço),
                        cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)
-                       e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor)
+                       e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor),
+                       cpqRender3d.ts (resolve o spec 3D assinado a partir do orçamento) e
+                       cpqRender3dImagem.ts (valida imagens de textura/preview pelos bytes)
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
@@ -285,6 +290,7 @@ server/
                        estudio-nesting.ts (CRUD de chapas e execução local do Deepnest),
                        estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
                        estudio-cores.ts (catálogo local, análise e aprovação de cores antes do nesting),
+                       estudio-render3d.ts (spec 3D, aprovação, previews e perfis visuais PBR),
                        letra-caixa-redesenho.ts (reconstrução com até 2 referências extras da mesma logo, vetor e upload de imagens do CPQ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts
@@ -395,6 +401,10 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   Os protótipos mortos citados em versões anteriores desta nota
   (`server/sync/heartbeat-sync-erp.ts`, `server/routers/logistica-refactor.ts`)
   não existem mais no repo.
+- **Testes que já falham na `main` (conferido em 07/10/2026, sem relação com o 3D):** `cpq-aro-faixa-rota`, `cpq-solda-produtividade-db`,
+  `produtividade-solda-db` e `produtividades-relacionadas-kit` — dependem do catálogo do MubiSys no banco de teste (erros como "matéria-prima
+  … fora da listagem" / "não está no catálogo"). O resto da suíte passa; `kanban-5-estagios` e `trpc-body-limit` podem estourar timeout se a
+  suíte inteira rodar sob carga e passam rodando sozinhos.
 - **Espelho BOM MubiSys → Radrasys (migrations `0096`/`0097`):** a API pública fornece
   produtos, modelos, variações, matérias-primas e custos via `Access-Token`, mas não publica a
   composição produto↔matéria-prima (verificado em `produto/{id}` e `materia-prima/{id}`). A BOM
@@ -726,7 +736,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   store distribuído (Redis) ou regra de firewall na Vercel — nenhum dos dois
   está implementado.
 - **Pré-processamento e redesenho de letra caixa via GPT Image ainda sem validação real.**
-  `client/public/cpq-letreiros-express.html` chama a rota autenticada
+  `client/cpq-letreiros-express.html` chama a rota autenticada
   `POST /api/letra-caixa/redesenho`; a chave OpenAI fica no servidor. A
   reconstrução é obrigatória para raster antes da rota do Vectorizer; no escopo
   “somente logo”, o serviço concatena Prompt 1B. O fluxo usa
@@ -800,6 +810,80 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   escolhendo quais condições do contexto entram — material, fixação, faixa, tipo do produto — mais palavras do título e
   prioridade; ou descartar), regras (criar, editar, ativar/desativar, excluir) e simulador (o que o sistema escolheria, com
   motivos e alternativas). Regra nova é o jeito de corrigir um erro recorrente: a primeira que combina vence a pontuação.
+
+## CPQ renderização 3D (Visualização 3D, etapa 8 de 9)
+
+Fluxo do CPQ: … Nesting (6) → Composição (7) → **Visualização 3D (8)** → Orçamento (9). A aparência **não altera preço**: o 3D só
+consome o snapshot; mudou vetor, escala, nesting, cor, composição, papel, material, perfil visual, profundidade ou fixação, a
+aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo na emissão).
+
+- **Servidor decide** (`server/services/cpqRender3d.ts`; tipos em `shared/cpq-render3d.ts`, presets PBR em
+  `shared/cpq-render3d-presets.ts`, SVG seguro em `shared/cpq-render3d-svg.ts`): `resolveCpqRender3dSpec` monta o `CpqRender3dSpec`
+  (SVG aprovado + medidas + construção do kit + regiões por `pathIndexes` + materiais com perfil/versão/PBR/espessura), calcula o
+  `specHash` (avisos e pendências ficam **fora** do hash) e assina um ticket HMAC (`JWT_SECRET`). O vendedor aprova + sobe 3 previews;
+  `verificarRender3dNaEmissao` refaz o spec dos mesmos dados na emissão e recusa se o hash, a construção ou os perfis mudaram.
+  Pendências (`blockers`) respondem 422 estruturado e impedem aprovar: construção ausente, papel não confirmado/ambíguo/incompatível,
+  espessura ausente, profundidade que não comporta face+fundo, material sem perfil visual (vira preset **estimado**) e perfil genérico.
+  Perfil visual ainda não calibrado e cor/textura não cadastrada só **avisam**.
+- **Rotas** `/api/letra-caixa/render3d/*` (`server/routes/estudio-render3d.ts`): `spec`, `aprovar`, `preview/:tipo` (PNG/JPEG até 3 MB;
+  a aprovação só aceita URLs do UploadThing), `material-profiles` (+ `assets`) e `material-links/:mubisysMateriaPrimaId` — a administração
+  é de gestor/admin/master. O link público fica em `estudio-cotacoes.ts`: `GET /api/letra-caixa/cotacoes/:token/render3d` e
+  `/cotacoes/grupo/:grupoId/render3d` (sem custos, margem, fórmulas nem notas; 404 em cotação sem 3D).
+- **Tabelas (migration `0098`)**: `cpq_render_material_profiles` (versionado: `slug`+`versao` único, `calibrado`),
+  `cpq_render_material_assets` (mapas PBR no UploadThing: tipo, MIME real, SHA-256, escala física do tile, espaço de cor),
+  `cpq_render_material_links` (matéria-prima MubiSys → perfil + overrides de cor/rotação do veio) e `cpq_render3d_approvals`
+  (auditoria). **Perfil usado numa aprovação é imutável**: editar cria nova versão, reaponta os vínculos e invalida a emissão antiga;
+  o link público reconstrói a versão aprovada (`criarFonteFixada`). A foto de textura é referência, nunca mapa PBR derivado.
+- **Cor**: override do vínculo > cor HEX cadastrada na matéria-prima (aparência, migration `0094`) > cor do perfil. A cor cadastrada só
+  vale se o perfil não tem mapa `baseColor` e entra em `overrides` (logo no hash, no snapshot e no link público). Descrição sem HEX ou só
+  foto de textura geram aviso. A transmissão do acrílico ainda **não** lê `estudio_chapas`: vem do perfil.
+- **Kit**: `estudio_kits.dadosJson.render3dConstruction` (tipo de iluminação, profundidade, afastamento, aba, passo/clearance de LED —
+  **sem valor padrão**: ausência é pendência) e `renderRole` por linha (validados em `estudio-kits.ts`; o papel é sugerido por
+  `sugerirRenderRole`, mas só vale confirmado). **Produto sem construção 3D no kit dispensa a etapa** (`render3dDispensado` no HTML) e
+  emite como antes; com construção cadastrada, o link da cotação só sai com 3D aprovado.
+- **Cliente** (`client/src/cpq3d/`): ilha React 19 + React Three Fiber 9 montada pelo HTML do CPQ. O `render()` do legado recria `#shell`,
+  então a ilha mantém hosts persistentes que `window.CPQ3DIsland.sync()` move para os pontos de montagem (`#cpq-render3d-root`,
+  `#cpq-materiais3d-root`, `[data-cpq-3d-publico]`); o HTML fala com ela por `window.CPQ3D_BRIDGE`. O HTML mora em
+  `client/cpq-letreiros-express.html` (entrada `cpq` do Vite; `server/_core/vite.ts` o serve no dev; `client/public/estudio-letra-caixa.html`
+  segue redirecionando com a query). `client/src/cpq3d/**` fica **fora** do `tsconfig.json` e tem `tsconfig.cpq3d.json`, porque o R3F
+  acrescenta elementos ao JSX global que quebram a tipagem das demais páginas; `yarn run check` roda os dois. Geometria: face
+  (`ExtrudeGeometry` com vazados), lateral oca por offset do `clipper-lib`, fundo, LEDs em `InstancedMesh` (nunca uma luz por LED),
+  halo na parede; Dia/Noite e visão explodida só animam a cena. O ambiente é um HDRI procedural local
+  (`scripts/gerar-hdri-estudio.mjs` → `client/public/render3d/environments/studio-1k.hdr`), sem terceiros nem CDN.
+- **Previews/PDF**: `capture.tsx` renderiza dia, noite e explodido em 1600×1000 com câmera fixa num canvas descartável. O link público e a
+  impressão usam essas imagens (o CSS de impressão esconde o 3D interativo); sem WebGL cai nas imagens.
+- **Validado (07/10/2026)**: `tsc` (os dois projetos), `vite build`, testes do resolver (32), do sanitizador de SVG (21), das rotas contra
+  o banco de teste (6) e de geometria/cena; a migration `0098` aplicada pelo `drizzle-kit migrate`; e o **fluxo real do CPQ no Edge
+  headless** (WebGL por software, `?semabas`), com login, kit de construção 3D, perfis visuais, ficha BOM importada e um wordmark com
+  glifos reais (RADRAS, Arial Bold): proposta → foto → SVG → ficha técnica → nesting → composição → **3D** → orçamento → **emissão
+  (COT-000049)** → link público. A emissão conferiu ticket/hash/perfis/construção; o link público (consultado também sem sessão) não
+  traz custo, margem, recibo, fórmula nem nome de matéria-prima (usa "Face", "Fundo", "Iluminação", "Perfil lateral"), responde
+  `no-store` e dá 404 para token inexistente. Ponte/ilha: 0 chamadas de `render()` em 15 s de repouso; 2 por entrada/saída da etapa; em
+  20 ciclos de montagem os nós do DOM e os ouvintes ficam constantes (heap +1,2 MB, com platô); fora da etapa 3D por 25 s o host é
+  desmontado (0 canvas) e volta a montar; 30 alternâncias Dia/Noite/explodida não disparam `render()`; mudar o papel 3D de uma linha
+  invalida a aprovação e devolve à etapa 8 (1 `render()`).
+- **Desvios do teste real** (para não superestimar a cobertura): a reconstrução por GPT Image (etapa 3) foi dispensada (custa crédito
+  OpenAI; o botão foi liberado com um token fictício local) e o SVG entrou pelo caminho "enviar SVG pronto"; a validação de silhueta
+  reprovou a arte sintética (IoU 83%) e seguiu pela revisão manual; o adesivo foi desconsiderado (sem preço de vinil no banco de teste);
+  o preço foi aprovado pelo botão "Aprovar preço calculado" (sem GPT); upload de arquivo por `DataTransfer` (o `FileReader` não lê
+  pastas temporárias no Edge headless). **Não validado**: GPU real (só WebGL por software), logo com centenas de caminhos/curvas,
+  backlight e kit sem iluminação, regiões multicoloridas e mapas PBR no fluxo real, calibração contra amostra física (os presets são
+  pontos de partida; as tabelas da `0098` nascem vazias, então toda matéria-prima começa "sem perfil visual", o que bloqueia a
+  aprovação até o gestor cadastrar em Administração > Materiais 3D); o bloom noturno fica forte em materiais brancos. Cores no monitor
+  e a simulação de luz são aproximações: a amostra física aprovada é a referência final de fabricação.
+- **Achados do teste real, já corrigidos**: (1) região de cor `pendente` num mapeamento aprovado (é o que "O projeto não precisa de
+  adesivo" grava) bloqueava o 3D; agora usa a face da composição e avisa. (2) Letras com haste mais fina que folga + meio módulo
+  (Arial Bold a 17 cm: haste ~3 cm contra 5,5 cm) ficavam sem LED; o layout cai no LED central ilustrativo (`buildLedLayout`).
+  (3) `inspecionarSvgRender3d` tinha uma regex quadrática em `<defs>` sem fechamento (0,7 MB travavam o servidor ~15 s; o corpo JSON
+  aceita 2 MB): agora o limite de tamanho vem antes das regex e `semDefs` é linear; também passou a recusar `<svg/onload=…>` e
+  `animateTransform`/`animateMotion`.
+- **Observações do teste real, ainda abertas**: as linhas da ficha BOM do MubiSys chegam com `papel` vazio e o nesting pede vincular
+  cada chapa à Face/Fundo mesmo com o `renderRole` já herdado do kit (candidato a propagar o papel físico); o servidor local recusa
+  assinar factibilidade/3D com `JWT_SECRET` menor que 32 caracteres (o `.env` local de teste tem menos; os testes definem um
+  fallback, o dev server não); o DTO público ainda expõe `mubisysMateriaPrimaId` e `profileId` (IDs internos, sem nomes nem custos);
+  `aprovar` aceita URL de qualquer app UploadThing (não prova que é o arquivo que subimos) e qualquer usuário logado pode aprovar o 3D;
+  `preview/:tipo` não tem cota por ticket nem limpa os arquivos de aprovações abandonadas; o aviso do WebGL "loseContext: context
+  already lost" em cada captura é inofensivo (o `unmount` do R3F já descarta o contexto).
 
 ## CPQ nesting backend
 

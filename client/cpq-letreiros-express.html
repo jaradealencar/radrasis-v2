@@ -114,6 +114,11 @@
   .price-margin-wrap td{font-family:'JetBrains Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums;}
 
   .stepper{display:flex; gap:4px; overflow-x:auto; padding-bottom:4px; margin-block:14px;}
+  .cpq3d-estaticas{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-top:12px;}
+  .cpq3d-estaticas figure{margin:0;} .cpq3d-estaticas img{width:100%; border-radius:10px; border:1px solid var(--border); display:block;}
+  .cpq3d-estaticas figcaption{font-size:11.5px; color:var(--text-faint); margin-top:3px;}
+  /* Impressão/PDF nunca executa WebGL: o 3D interativo some e ficam as imagens estáticas aprovadas. */
+  @media print{.cpq3d-interativo{display:none !important;}}
   .step-pill{flex:none; display:flex; align-items:center; gap:7px; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface); font-size:12px; font-weight:600; color:var(--text-faint); white-space:nowrap;}
   .step-pill .dot{width:19px; height:19px; border-radius:50%; background:var(--surface-2); color:var(--text-faint); display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; flex:none;}
   .step-pill.done{color:var(--text);} .step-pill.done .dot{background:var(--ok); color:#fff;}
@@ -840,9 +845,11 @@ function novaProposta(){
     instalacao:0,
     nesting:null,
     step:1,
-    approvals:{proposta:false, foto:false, redesenho:false, vetorizacao:false, escala:false, kit:false, nesting:false},
+    approvals:{proposta:false, foto:false, redesenho:false, vetorizacao:false, escala:false, kit:false, nesting:false, render3d:false},
     orcamentoStatus:'rascunho', margin:0.35, desconto:0,
     embalagemAtiva:true, gabaritoAtivo:true,
+    // Visualização 3D: aprovação do servidor (+ bloco do snapshot com a chave local) ou dispensa (produto sem construção 3D no kit).
+    render3dApproval:null, render3dBloco:null, render3dDispensado:false, render3dDispensadoDe:null,
   };
 }
 let REAL = novaProposta();
@@ -2814,6 +2821,8 @@ function carregarComposicaoModeloReal(produto, modelo, variacaoIds){
   REAL.precificacao=kitPronto?.precificacao?{...kitPronto.precificacao}:null;
   const base=modelo?linhasDoModelo(produto,modelo,ids):{linhas:[],fonte:'nenhuma',erro:null};
   REAL.kit=base.linhas;
+  // A ficha do MubiSys não traz papel: o papel 3D já confirmado no kit do Radrasys vale para a mesma matéria-prima.
+  if(kitPronto&&Array.isArray(kitPronto.linhas)) REAL.kit.forEach(l=>{ if(l.renderRole) return; const salvo=kitPronto.linhas.find(k=>Number(k.matId)===Number(l.matId)&&k.renderRole); if(salvo) l.renderRole=salvo.renderRole; });
   REAL.kitSource=base.fonte;
   const importacaoPendente=catalog.mubisysWebConectado&&REAL.variacaoModeloIds.length>0&&base.fonte!=='mubisys';
   REAL.kitWarning=base.fonte==='mubisys'?null:(base.erro||(importacaoPendente?(catalog.erroComposicoesMubiSys||'Não foi possível confirmar a ficha de todas as variações no MubiSys. Atualize os consumos antes de cotar.'):null));
@@ -3146,6 +3155,7 @@ function renderVisaoCliente(){
 }
 
 function render(){
+  conferirRender3dReal();
   if((REAL.precoAprovacao?.localBaseKey||REAL.precoSugestao?.localBaseKey)){
     const chaveAtual=chaveBasePrecoReal();
     if(REAL.precoAprovacao?.localBaseKey && REAL.precoAprovacao.localBaseKey!==chaveAtual){
@@ -3160,6 +3170,8 @@ function render(){
   const paineisTab = { vendedor: renderVendedor, admin: renderAdmin, cliente: renderVisaoCliente };
   root.innerHTML = topbar() + (state.tab==='cliente'? '' : banner()) + (paineisTab[state.tab]||renderVendedor)();
   bindEvents();
+  // A ilha React do 3D move seus hosts persistentes para os pontos de montagem recriados por este render.
+  queueMicrotask(()=>{ if(window.CPQ3DIsland) window.CPQ3DIsland.sync(); });
 }
 
 function topbar(){
@@ -3600,7 +3612,8 @@ const STEP_DEFS_REAL = [
   {k:'escala', n:5, label:'Ficha técnica'},
   {k:'nesting', n:6, label:'Nesting'},
   {k:'kit', n:7, label:'Composição'},
-  {k:'orcamento', n:8, label:'Orçamento'},
+  {k:'render3d', n:8, label:'Visualização 3D'},
+  {k:'orcamento', n:9, label:'Orçamento'},
 ];
 
 function renderRealFlow(){
@@ -3640,7 +3653,8 @@ function renderRealStepContent(){
     case 5: return realStepEscala();
     case 6: return realStepNestingV2();
     case 7: return realStepKit();
-    case 8: return realStepOrcamento();
+    case 8: return realStepRender3d();
+    case 9: return realStepOrcamento();
     default: return '';
   }
 }
@@ -5146,7 +5160,7 @@ ${(REAL.kitProdutosSel||[]).length?`<div style="display:grid;gap:7px;">
 function realStepKit(){
   const g = computeGeomReal();
   const q = REAL.matQuery||'';
-  const proximoPasso=REAL.approvals.nesting?'Confirmar composição e ir ao orçamento':'Confirmar composição e voltar ao nesting';
+  const proximoPasso=REAL.approvals.nesting?'Confirmar composição e ir à visualização 3D':'Confirmar composição e voltar ao nesting';
   const matches = q.length>=2 ? catalog.materias.filter(m=>!adminState.materiasExcluidas.has(m.id) && normalizeSearch(m.nome).includes(normalizeSearch(q))).slice(0,40) : [];
   return `${renderPinturaBox()}
   <div class="card">
@@ -5180,7 +5194,7 @@ function realStepKit(){
             <td><select data-act="real-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
               ${papeisDePeca().map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
-            </select></td>
+            </select>${htmlSelectRenderRole(k,'real-kit-render-role',i)}</td>
             <td><select data-act="real-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([key,f])=>`<option value="${key}" ${k.formulaType===key?'selected':''}>${f.label}</option>`).join('')}</select></td>
             <td><input type="text" inputmode="decimal" value="${escaparHtml(textoNumero(k, k.mult))}" data-act="real-kit-mult" data-idx="${i}" style="width:70px;"></td>
             <td class="num">${fmt(qty,2)} ${material.unidade}</td>
@@ -6085,6 +6099,178 @@ function blocoPesoReal(){
     +'</tbody></table></div>');
 }
 
+/* ---------- VISUALIZAÇÃO 3D (ilha React em client/src/cpq3d; ponte = window.CPQ3D_BRIDGE) ----------
+ * Etapa 8 do fluxo, entre a Composição e o Orçamento. O servidor resolve o spec 3D (material, papel e profundidade); o navegador só
+ * desenha. Aparência não altera preço: nada aqui toca custo, nesting ou margem. A aprovação humana vale para um specHash: mudar vetor,
+ * escala, nesting, cor, composição, material, variação, profundidade ou fixação invalida a aprovação (chaveRender3dReal). */
+const ROTULO_RENDER_ROLE_HTML={face:'Face',return:'Retorno / lateral (chapa)',back:'Fundo',profile:'Perfil',led:'LED',fixing:'Fixação',finish:'Acabamento / pintura',ignored:'Não aparece no 3D'};
+
+function numeroEtapaReal(chave){ const etapa=STEP_DEFS_REAL.find(s=>s.k===chave); return etapa?etapa.n:1; }
+
+function hashTexto3d(texto){
+  let h1=0xdeadbeef,h2=0x41c6ce57;
+  for(let i=0;i<texto.length;i++){const c=texto.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677);}
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return (h2>>>0).toString(16)+(h1>>>0).toString(16)+':'+texto.length;
+}
+
+function kitAtualReal(){ return REAL.produtoId&&REAL.modeloId?adminState.kits[kitKey(REAL.produtoId,REAL.modeloId)]:null; }
+
+function realStepRender3d(){ return '<div id="cpq-render3d-root"></div>'; }
+
+/** O que o servidor lê do orçamento para resolver o spec 3D (um subconjunto do snapshot da cotação). */
+function draftRender3dReal(){
+  const g=computeGeomReal();
+  const materiais=(REAL.kit||[]).map(linha=>{
+    const material=materialKitAtivo(linha);
+    let quantidade=0;
+    try{ quantidade=Number(kitLineQty(linha,g)); }catch(e){ quantidade=0; }
+    return {
+      mubisysMateriaPrimaId:Number(material.matId)||null,
+      nome:String(material.nome||'').slice(0,256),
+      unidade:String(material.unidade||'').slice(0,80),
+      quantidade:Number.isFinite(quantidade)&&quantidade>0?quantidade:0,
+      papel:String(linha.papel||'').slice(0,80)||null,
+      renderRole:linha.renderRole||null,
+    };
+  });
+  const fact=REAL.factibilidade;
+  return {
+    mubisysProdutoId:REAL.produtoId||null,
+    mubisysModeloId:REAL.modeloId||null,
+    nestingSvg:REAL.svgNesting||REAL.tracedSvg||null,
+    larguraNestingMm:Number.isFinite(g.totalWidthM)&&g.totalWidthM>0?Math.round(g.totalWidthM*1000):null,
+    alturaNestingMm:Number.isFinite(g.totalHeightM)&&g.totalHeightM>0?Math.round(g.totalHeightM*1000):null,
+    factibilidade:fact&&fact.resultadoHash&&fact.ticketAnalise?{resultadoHash:fact.resultadoHash,ticketAnalise:fact.ticketAnalise}:null,
+    tiposFixacao:[...(REAL.tiposFixacao||[])],
+    materiais,
+    mapeamentoCores:{
+      aprovado:!!REAL.colorAnalysis.aprovado,
+      regioes:(REAL.colorAnalysis.resultados||[]).map(r=>({
+        regionKey:r.regionKey,tipoCor:r.tipoCor,corHex:r.corHex||null,coresGradiente:r.coresGradiente||[],pathIndexes:r.pathIndexes||[],
+        tipoSugestao:r.tipoSugestao,chapaMateriaPrimaId:r.chapaMateriaPrimaId??null,chapaBaseMateriaPrimaId:r.chapaBaseMateriaPrimaId??null,requerChapaBase:!!r.requerChapaBase,
+      })),
+    },
+  };
+}
+
+/** Impressão digital local do que o 3D aprovado representa; muda quando qualquer dado relevante muda. O servidor confere de novo na emissão. */
+function chaveRender3dReal(){
+  const kit=kitAtualReal();
+  return hashTexto3d(JSON.stringify([draftRender3dReal(),kit&&kit.render3dConstruction||null]));
+}
+
+function invalidarRender3dReal(){
+  REAL.render3dApproval=null;
+  REAL.render3dBloco=null;
+  if(!REAL.render3dDispensado) REAL.approvals.render3d=false;
+  if(REAL.step===numeroEtapaReal('orcamento')&&!REAL.approvals.render3d) REAL.step=numeroEtapaReal('render3d');
+}
+
+/** Chamado no começo de render(): a aprovação do 3D só vale enquanto o orçamento é o mesmo; a dispensa só vale sem construção 3D no kit. */
+function conferirRender3dReal(){
+  if(REAL.render3dBloco&&REAL.render3dBloco.localKey!==chaveRender3dReal()) invalidarRender3dReal();
+  if(REAL.render3dDispensado){
+    const kit=kitAtualReal();
+    if((kit&&kit.render3dConstruction)||REAL.render3dDispensadoDe!==`${REAL.produtoId}_${REAL.modeloId}`){
+      REAL.render3dDispensado=false;REAL.approvals.render3d=false;
+      if(REAL.step===numeroEtapaReal('orcamento')) REAL.step=numeroEtapaReal('render3d');
+    }
+  }
+}
+
+window.CPQ3D_BRIDGE={
+  getDraftInput(){ try{ return draftRender3dReal(); }catch(e){ console.error('[CPQ 3D] rascunho inválido',e); return null; } },
+  getApproval(){ return REAL.render3dApproval||null; },
+  setApproval(approval,bloco){
+    if(!approval||!bloco){ invalidarRender3dReal(); render(); return; }
+    REAL.render3dApproval=approval;
+    REAL.render3dBloco={bloco,localKey:chaveRender3dReal()};
+    REAL.approvals.render3d=true;
+    render();
+  },
+  invalidate(motivo){ invalidarRender3dReal(); render(); },
+  goToStep(n){ REAL.step=Number(n)||1; render(); },
+  getSourceId(){ return REAL.id; },
+  getLinhasKit(){ return (REAL.kit||[]).map((l,index)=>({index,matId:Number(materialKitAtivo(l).matId)||null,nome:String(materialKitAtivo(l).nome||''),papel:String(l.papel||''),renderRole:l.renderRole||null})); },
+  setLineRole(index,role){ const l=(REAL.kit||[])[index]; if(!l) return; if(role) l.renderRole=role; else delete l.renderRole; render(); },
+  dispensar(){
+    REAL.render3dDispensado=true;REAL.render3dDispensadoDe=`${REAL.produtoId}_${REAL.modeloId}`;
+    REAL.approvals.render3d=true;REAL.step=numeroEtapaReal('orcamento');render();
+  },
+  isDispensado(){ return !!REAL.render3dDispensado; },
+};
+
+/** Select do papel 3D de uma linha da composição: avisa (borda laranja) enquanto ele não foi confirmado. A sugestão vem da ilha. */
+function htmlSelectRenderRole(linha,acao,idx){
+  const ilha=window.CPQ3DIsland;
+  const sugerido=ilha&&ilha.sugerirRenderRole?ilha.sugerirRenderRole(linha.papel,{ehPerfil:false}):null;
+  const atual=linha.renderRole||'';
+  return `<select data-act="${acao}" data-idx="${idx}" title="Papel 3D: o que este material é na montagem (face, retorno, fundo, perfil, LED...). Sem confirmação o 3D só usa uma sugestão." style="margin-top:6px;font-size:11px;max-width:220px;${atual?'':'border-color:var(--warn);'}">
+    <option value="">${atual?'Papel 3D: limpar':sugerido?`Papel 3D: confirmar (${ROTULO_RENDER_ROLE_HTML[sugerido]})`:'Papel 3D: escolher'}</option>
+    ${Object.entries(ROTULO_RENDER_ROLE_HTML).map(([k,r])=>`<option value="${k}" ${atual===k?'selected':''}>${r}${!atual&&sugerido===k?' (sugerido)':''}</option>`).join('')}
+  </select>`;
+}
+
+/* ---- Construção 3D cadastrada no kit (Administração > Produtos & kits) ----
+ * Sem valor padrão silencioso: profundidade ausente é pendência. Só vai ao servidor quando está completa e dentro dos limites; enquanto
+ * isso fica num rascunho local (assim um campo pela metade não derruba o salvamento do kit inteiro). */
+const CONSTRUCAO3D_CAMPOS=[
+  {k:'boxDepthMm',rotulo:'Profundidade da caixa (mm)',min:5,max:1000,obrigatorio:true},
+  {k:'wallStandoffMm',rotulo:'Afastamento da parede (mm)',min:0,max:500,obrigatorio:true},
+  {k:'faceLipMm',rotulo:'Aba da face (mm)',min:0,max:100,obrigatorio:true},
+  {k:'ledPitchMm',rotulo:'Passo entre LEDs (mm)',min:5,max:500,obrigatorio:false},
+  {k:'ledEdgeClearanceMm',rotulo:'Folga dos LEDs à borda (mm)',min:0,max:500,obrigatorio:true},
+  {k:'ledModuleWidthMm',rotulo:'Módulo LED: largura no plano (mm)',min:1,max:500,obrigatorio:false},
+  {k:'ledModuleHeightMm',rotulo:'Módulo LED: altura no plano (mm)',min:0.5,max:200,obrigatorio:false},
+];
+const CONSTRUCAO3D_TIPOS={frontlight:'Frontlight (face iluminada)',backlight:'Backlight (halo na parede)',non_illuminated:'Sem iluminação'};
+
+function valoresConstrucao3dDoKit(kit){
+  const c=kit&&kit.render3dConstruction;
+  if(!c) return {ativa:false,kind:'frontlight',boxDepthMm:'',wallStandoffMm:'',faceLipMm:'',ledPitchMm:'',ledEdgeClearanceMm:'',ledModuleWidthMm:'',ledModuleHeightMm:''};
+  const v={ativa:true,kind:c.kind};
+  CONSTRUCAO3D_CAMPOS.forEach(campo=>{ v[campo.k]=c[campo.k]==null?'':String(c[campo.k]); });
+  return v;
+}
+
+function validarConstrucao3d(v){
+  const valor={kind:v.kind};
+  for(const campo of CONSTRUCAO3D_CAMPOS){
+    const bruto=String(v[campo.k]??'').trim().replace(',','.');
+    if(bruto===''){
+      if(campo.obrigatorio) return {erro:`Preencha: ${campo.rotulo}.`};
+      valor[campo.k]=null;continue;
+    }
+    const n=Number(bruto);
+    if(!Number.isFinite(n)||n<campo.min||n>campo.max) return {erro:`${campo.rotulo} precisa ficar entre ${campo.min} e ${campo.max}.`};
+    valor[campo.k]=n;
+  }
+  if(!['frontlight','backlight','non_illuminated'].includes(v.kind)) return {erro:'Escolha o tipo de iluminação.'};
+  return {valor};
+}
+
+function htmlConstrucao3dKit(key,kit){
+  const rascunho=adminState.construcao3dRascunho&&adminState.construcao3dRascunho[key];
+  const v=rascunho||valoresConstrucao3dDoKit(kit);
+  const validacao=v.ativa?validarConstrucao3d(v):null;
+  return `<p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Construção 3D <span style="font-weight:400; text-transform:none;">— medidas da caixa para a Visualização 3D (etapa 8)</span></p>
+  <div class="card" style="box-shadow:none;background:var(--surface-2);padding:12px;">
+    <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;cursor:pointer;"><input type="checkbox" data-act="admin-kit-3d-ativa" ${v.ativa?'checked':''}> Este produto tem Visualização 3D (a aprovação do 3D passa a ser obrigatória para emitir a cotação)</label>
+    ${v.ativa?`<div class="grid3" style="margin-top:10px;">
+      <label class="field">Tipo de iluminação<select data-act="admin-kit-3d-campo" data-campo="kind">${Object.entries(CONSTRUCAO3D_TIPOS).map(([k,r])=>`<option value="${k}" ${v.kind===k?'selected':''}>${r}</option>`).join('')}</select></label>
+      ${CONSTRUCAO3D_CAMPOS.map(campo=>`<label class="field">${campo.rotulo}${campo.obrigatorio?' *':''}<input type="text" inputmode="decimal" value="${escaparHtml(String(v[campo.k]??''))}" data-act="admin-kit-3d-campo" data-campo="${campo.k}"></label>`).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:8px;">As espessuras (face, retorno, fundo) vêm do cadastro das matérias-primas, não daqui. Não há valor padrão: o servidor trata a profundidade ausente como pendência. Na composição, confirme o "Papel 3D" de cada material.</p>
+    ${validacao&&validacao.erro?`<div class="warnbox" style="margin-top:8px;">${ICONS.alert}<div>Ainda não salvo: ${escaparHtml(validacao.erro)}</div></div>`:`<div class="role-note" style="margin-top:8px;">${ICONS.check} Construção salva com o cadastro do produto.</div>`}`:'<p style="font-size:11px;color:var(--text-faint);margin-top:8px;">Sem construção 3D cadastrada, a etapa 8 não se aplica a este produto e o orçamento segue sem ela.</p>'}
+  </div>`;
+}
+
+function adminMateriais3d(){
+  return `<div id="cpq-materiais3d-root"></div>`;
+}
+
 function realStepOrcamento(){
   const g = computeGeomReal();
   const o = computeOrcamentoReal();
@@ -6469,6 +6655,9 @@ function snapshotCotacaoReal(){
       variacaoModeloNome:linha.variacaoModeloNome||null,
       variacaoMaterial:alternativa?{nome:String(linha.variacaoNome||'Variação'),valor:String(alternativa.valor||alternativa.nome||''),materiaPrimaNome:String(alternativa.nome||'')}:null,
       nesting:calculoLinha.nesting,
+      // Papel na peça e papel 3D confirmado: só descrevem aparência (o servidor os mantém fora da base de preço).
+      papel:String(linha.papel||'').slice(0,80)||null,
+      renderRole:linha.renderRole||null,
     };
   });
   const materiais=materiaisKit;
@@ -6552,6 +6741,8 @@ function snapshotCotacaoReal(){
     precificacaoIA:REAL.precoAprovacao?{recibo:REAL.precoAprovacao.recibo,contexto:REAL.precoAprovacao.contexto}:undefined,
     precoFinal:o.precoFinal,
     prazoDiasUteis:kitPronto?.prazoDiasUteis ?? null,
+    // Aprovação do 3D (bloco devolvido pelo servidor); sem a chave em cotações sem 3D.
+    render3d:REAL.render3dBloco?REAL.render3dBloco.bloco:undefined,
     status:'enviado',
   };
 }
@@ -6572,7 +6763,7 @@ function chaveBasePrecoReal(){
       materiais:snapshot.factibilidade.materiais,
     }:null,
     medidas:{areaM2:snapshot.areaM2,areaGeralM2:snapshot.areaGeralM2,areaTotalNestingM2:snapshot.areaTotalNestingM2??null,perimExtM:snapshot.perimExtM??null,perimTotalM:snapshot.perimTotalM??null},
-    materiais:snapshot.materiais||[],
+    materiais:(snapshot.materiais||[]).map(({papel:_papel,renderRole:_renderRole,...linha})=>linha),
     custoDireto:snapshot.custoDireto,
     custoMateriais:snapshot.custoMateriais,
     custoFixo:snapshot.custoFixo,
@@ -6716,6 +6907,7 @@ async function criarCotacaoPublica(){
 }
 
 async function concluirOrcamentoEabrirCotacao(){
+  if(!REAL.approvals.render3d){alert('Aprove a visualização 3D (etapa '+numeroEtapaReal('render3d')+') antes de gerar o link da cotação.');REAL.step=numeroEtapaReal('render3d');render();return;}
   const pendenciasBOM=computeOrcamentoReal().pendenciasBOM||[];
   if(pendenciasBOM.length){alert("Resolva as pendências da BOM antes de emitir: "+pendenciasBOM.join(" "));return;}
   if(resumoCustoCoresReal().pendencias.length){alert('Há custos de vinil/ impressão/ laminação pendentes. Atualize o cadastro por m² e refaça a análise de cores antes de emitir.');return;}
@@ -7373,7 +7565,7 @@ function bindSoldaAdminEvents(){
 function renderAdmin(){
   const paineis = {
     produtos: adminProdutos, erp: adminMateriasAdmin, chapas: adminChapasNesting, clientes: adminClientesCadastrados,
-    propostas: adminCotacoesHistorico, solda: adminSolda, config: adminConfiguracoes,
+    propostas: adminCotacoesHistorico, solda: adminSolda, materiais3d: adminMateriais3d, config: adminConfiguracoes,
   };
   return `
   <div class="subtabs">
@@ -7383,6 +7575,7 @@ function renderAdmin(){
     <button data-act="admin-tab" data-val="chapas" class="${state.adminTab==='chapas'?'active':''}">Chapas para nesting</button>
     <button data-act="admin-tab" data-val="propostas" class="${state.adminTab==='propostas'?'active':''}">Cotações</button>
     <button data-act="admin-tab" data-val="solda" class="${state.adminTab==='solda'?'active':''}">Produtividades de solda</button>
+    <button data-act="admin-tab" data-val="materiais3d" class="${state.adminTab==='materiais3d'?'active':''}">Materiais 3D</button>
     <button data-act="admin-tab" data-val="config" class="${state.adminTab==='config'?'active':''}">Configurações</button>
   </div>
   ${(paineis[state.adminTab]||adminProdutos)()}`;
@@ -7904,7 +8097,7 @@ function adminKitEditor(p, m, key){
             <td><select data-act="admin-kit-papel" data-idx="${i}">
               <option value="">— selecione —</option>
               ${papeisDePeca().map(pp=>`<option value="${pp}" ${k.papel===pp?'selected':''}>${pp}</option>`).join('')}
-            </select></td>
+            </select>${htmlSelectRenderRole(k,'admin-kit-render-role',i)}</td>
             ${variacoesModelo.length?`<td><select data-act="admin-kit-variacao-modelo" data-idx="${i}" style="max-width:190px;">
               <option value="">Todas (comum)</option>
               ${variacoesModelo.map(v=>`<option value="${v.id}" ${String(k.variacaoModeloId)===String(v.id)?'selected':''}>${escaparHtml(v.nome)}</option>`).join('')}
@@ -7937,6 +8130,7 @@ function adminKitEditor(p, m, key){
       ${kitVariacaoMaterialSelecionado? `<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;padding:9px;box-shadow:none;"><div><strong>Opção selecionada</strong><div style="font-size:11px;color:var(--text-faint);">${escaparHtml(kitVariacaoMaterialSelecionado.nome)} · ${money(kitVariacaoMaterialSelecionado.valor)}/${escaparHtml(kitVariacaoMaterialSelecionado.unidade)}</div>${kitVariacaoMaterialSelecionado.unidade!==kitVariacaoLinha.unidade?`<p role="alert" style="font-size:11px;color:var(--text-faint);margin:5px 0 0;">A unidade (${escaparHtml(kitVariacaoMaterialSelecionado.unidade)}) difere da matéria-prima base (${escaparHtml(kitVariacaoLinha.unidade)}). O orçamento usará a quantidade calculada sem conversão.</p>`:''}</div><button type="button" class="btn btn-primary btn-sm" data-act="admin-kit-variacao-add" data-key="${key}" data-idx="${variacaoIdx}" data-mat="${kitVariacaoMaterialSelecionado.id}">${kitVariacaoMaterialSelecionado.unidade===kitVariacaoLinha.unidade?'+ Adicionar variação':'Adicionar mesmo assim'}</button></div>` : ''}
       ${kitVariacaoOpcoes.length? `<div style="display:grid;gap:6px;margin-top:10px;">${kitVariacaoOpcoes.map((opcao,opIdx)=>`<div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(180px,2fr) auto auto;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;"><input type="text" maxlength="80" placeholder="Valor da opção" value="${escaparHtml(opcao.valor||opcao.nome||"")}" data-act="admin-kit-variacao-valor" data-key="${key}" data-idx="${variacaoIdx}" data-opcao="${opIdx}"><span>${escaparHtml(opcao.nome)}</span><span class="mono">${money(opcao.custo)}/${escaparHtml(opcao.unidade)}</span><button type="button" class="btn btn-ghost btn-sm" data-act="admin-kit-variacao-remover" data-key="${key}" data-idx="${variacaoIdx}" data-opcao="${opIdx}">Remover</button></div>`).join("")}</div>` : '<p style="font-size:11px;color:var(--text-faint);margin-top:8px;">Ainda não há opções. Sem opção selecionada, o orçamento usa a matéria-prima principal.</p>'}
     </div>` : ""}
+    ${htmlConstrucao3dKit(key,kitState)}
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Precificação — linha da Tabela de Preços</p>
     <div class="segtabs" style="width:fit-content; margin-bottom:10px;">
       <button type="button" data-act="admin-preco-modo" data-key="${key}" data-val="margem" class="${modoPreco==='margem'?'active':''}">Margem por faixa (oscila com o ticket)</button>
@@ -8603,6 +8797,30 @@ function bindAdminEvents(){
       render();
     });
   });
+  document.querySelectorAll('[data-act="admin-kit-render-role"]').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const kit = adminState.kits[adminState.editingKey];
+      const linha = kit && kit.linhas[+el.dataset.idx];
+      if(linha){ if(e.target.value) linha.renderRole = e.target.value; else delete linha.renderRole; salvarKit(adminState.editingKey); }
+      render();
+    });
+  });
+  document.querySelectorAll('[data-act="admin-kit-3d-ativa"],[data-act="admin-kit-3d-campo"]').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const key = adminState.editingKey, kit = adminState.kits[key];
+      if(!kit){ alert('Adicione ao menos um material ao kit antes de configurar o 3D.'); render(); return; }
+      adminState.construcao3dRascunho = adminState.construcao3dRascunho || {};
+      const atual = {...(adminState.construcao3dRascunho[key] || valoresConstrucao3dDoKit(kit))};
+      if(el.dataset.act==='admin-kit-3d-ativa') atual.ativa = el.checked; else atual[el.dataset.campo] = el.value;
+      if(!atual.ativa){ kit.render3dConstruction = null; delete adminState.construcao3dRascunho[key]; salvarKit(key); }
+      else{
+        const r = validarConstrucao3d(atual);
+        if(r.erro) adminState.construcao3dRascunho[key] = atual;
+        else{ kit.render3dConstruction = r.valor; delete adminState.construcao3dRascunho[key]; salvarKit(key); }
+      }
+      render();
+    });
+  });
   document.querySelectorAll('[data-act="admin-kit-papel"]').forEach(el=>{
     el.addEventListener('change', e=>{
       const kit = adminState.kits[adminState.editingKey];
@@ -9094,7 +9312,7 @@ function bindRealEvents(){
       const val = el.dataset.val;
       if(val==='kit'){
         registrarCorrecoesSolda();
-        if(REAL.approvals.nesting){REAL.approvals.kit=true;REAL.step=8;}
+        if(REAL.approvals.nesting){REAL.approvals.kit=true;REAL.step=numeroEtapaReal('render3d');}
         else{REAL.approvals.kit=false;REAL.step=6;}
         render();
         return;
@@ -9118,7 +9336,7 @@ function bindRealEvents(){
         }
       }
       REAL.approvals[val]=true;
-      if(val==='nesting'&&REAL.approvals.kit){REAL.step=8;render();return;}
+      if(val==='nesting'&&REAL.approvals.kit){REAL.step=numeroEtapaReal('render3d');render();return;}
       if(val==='escala'){ invalidarFactibilidadeReal(); sincronizarSoldaNoKit(); }
       const idx = STEP_DEFS_REAL.findIndex(s=>s.k===val);
       if(idx>-1 && idx<STEP_DEFS_REAL.length-1) REAL.step = STEP_DEFS_REAL[idx+1].n;
@@ -9508,6 +9726,7 @@ function bindRealEvents(){
   const pintRemover = document.querySelector('[data-act="pintura-remover"]');
   if(pintRemover) pintRemover.addEventListener('click', ()=>{ removerPintura(); });
 
+  document.querySelectorAll('[data-act="real-kit-render-role"]').forEach(el=> el.addEventListener('change', e=>{ const l=REAL.kit[+el.dataset.idx]; if(l){ if(e.target.value) l.renderRole=e.target.value; else delete l.renderRole; } render(); }));
   document.querySelectorAll('[data-act="real-kit-papel"]').forEach(el=> el.addEventListener('change', e=>{ REAL.kit[+el.dataset.idx].papel=e.target.value; invalidarFactibilidadeReal(); render(); }));
   document.querySelectorAll('[data-act="real-kit-variacao"]').forEach(el=>el.addEventListener('change',e=>{
     REAL.kit[+el.dataset.idx].variacaoSelecionadaMatId=e.target.value?parseInt(e.target.value):null;
@@ -9720,6 +9939,7 @@ function renderCotacaoPublica(mensagemErro=''){
           ${p.areaM2!=null?`<span class="badge b-neutral">${p.areaM2.toLocaleString('pt-BR',{maximumFractionDigits:2})} m²</span>`:''}
         </div>
       </div>
+      ${htmlRender3dPublico(p)}
       <div class="card" style="margin-top:14px;">
         <div class="cardhead"><div><h3>Forma de pagamento</h3><p>O PIX é dividido em duas partes iguais (50% + 50%) sobre a cotação de <b>${money(pagamento.base)}</b>. Selecione outra forma para simular.</p></div></div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
@@ -9812,6 +10032,20 @@ function renderCotacaoPublica(mensagemErro=''){
     cotacaoPublicaAtual.reacaoCliente=null;
     renderCotacaoPublica();
   });
+  queueMicrotask(()=>{ if(window.CPQ3DIsland) window.CPQ3DIsland.sync(); });
+}
+
+/** Visualização 3D do link público (read-only, sem custos). As imagens estáticas aprovadas servem de fallback e são o que sai na impressão/PDF. */
+function htmlRender3dPublico(p){
+  if(!p.render3d) return '';
+  const token=new URLSearchParams(location.search).get('cotacao')||'';
+  const alvo=p.grupoId?`data-grupo="${escaparHtml(p.grupoId)}"`:`data-token="${escaparHtml(token)}"`;
+  const imagens=[['Dia',p.render3d.previewDayUrl],['Noite',p.render3d.previewNightUrl],['Montagem explodida',p.render3d.previewExplodedUrl]].filter(x=>x[1]);
+  return `<div class="card" style="margin-top:14px;">
+    <div class="cardhead"><div><h3>Visualização 3D</h3><p>Gire, aproxime e alterne entre dia e noite. A simulação é uma aproximação: as cores na tela e a iluminação podem diferir do produto final.</p></div></div>
+    <div class="cpq3d-interativo" data-cpq-3d-publico ${alvo}></div>
+    ${imagens.length?`<div class="cpq3d-estaticas">${imagens.map(([rotulo,url])=>`<figure><img src="${escaparHtml(url)}" alt="${rotulo}" loading="lazy"><figcaption>${rotulo}</figcaption></figure>`).join('')}</div>`:''}
+  </div>`;
 }
 
 async function iniciarCotacaoPublica(token){
@@ -9944,7 +10178,7 @@ function montarAbasOrcamento(){
     if(r && r.ocupado) return `<span class="chip ocupado">⏳ ${esc(r.ocupado)}</span>`;
     if(des.pronto && !(orc.id === ativo && orc.posAtiva === des.pos)) return '<span class="chip pronto">● pronto</span>';
     if(r && r.enviada) return `<span class="chip pronto">✔ ${esc(r.cotacaoNumero || 'enviada')}</span>`;
-    if(r && r.emAndamento) return `<span class="chip">etapa ${r.etapa}/8</span>`;
+    if(r && r.emAndamento) return `<span class="chip">etapa ${r.etapa}/9</span>`;
     return '';
   }
 
@@ -9961,7 +10195,7 @@ function montarAbasOrcamento(){
       else if(prontos) chip = '<span class="chip pronto">● pronto</span>';
       else if(enviados) chip = `<span class="chip pronto">✔ ${enviados}/${orc.desenhos.length} enviado${enviados > 1 ? 's' : ''}</span>`;
       else if(orc.desenhos.length > 1) chip = `<span class="chip">${orc.desenhos.length} desenhos</span>`;
-      else if(primeiro && primeiro.emAndamento) chip = `<span class="chip">etapa ${primeiro.etapa}/8</span>`;
+      else if(primeiro && primeiro.emAndamento) chip = `<span class="chip">etapa ${primeiro.etapa}/9</span>`;
       return `<div class="aba ${orc.id === ativo ? 'ativa' : ''}" data-aba="${orc.id}" title="Orçamento ${i + 1}"><span class="nome">${i + 1}. ${esc(nome)}</span>${chip}<button class="fechar" data-fechar="${orc.id}" title="Fechar este orçamento" type="button">×</button></div>`;
     }).join('') + `<button class="nova" data-nova="1" type="button" ${orcs.length >= MAX_ORCAMENTOS ? 'disabled title="Máximo de 6 orçamentos abertos"' : ''}>+ Novo orçamento (${orcs.length}/${MAX_ORCAMENTOS})</button>`;
 
@@ -10108,5 +10342,7 @@ if(tokenCotacaoPublica){
   initDb();
 }
 </script>
+<!-- Ilha React do 3D (Three.js/R3F carregados sob demanda) -->
+<script type="module" src="/src/cpq3d/main.tsx"></script>
 
 </body></html>

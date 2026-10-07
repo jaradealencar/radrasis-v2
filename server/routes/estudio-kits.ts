@@ -8,9 +8,16 @@ import { getDb } from "../db/db";
 import { listarMateriasPrimasEspelhadas } from "../services/mubisysEspelho";
 import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
 import { CATEGORIA_COM_PRODUTIVIDADES, ehMateriaProdutividade, MAX_PRODUTIVIDADES_RELACIONADAS } from "../../shared/produtividade-solda";
+import { render3dConstructionSchema, renderRoleSchema } from "../../shared/cpq-render3d";
+
+// `renderRole` (papel 3D confirmado da linha) é validado contra a lista fechada; o resto da linha segue livre como sempre.
+const linhaKitSchema = z.record(z.string(), z.unknown()).refine(
+  linha => linha.renderRole == null || renderRoleSchema.safeParse(linha.renderRole).success,
+  { message: "Papel 3D inválido." },
+);
 
 export const kitSchema = z.object({
-  linhas: z.array(z.record(z.string(), z.unknown())).max(300).default([]),
+  linhas: z.array(linhaKitSchema).max(300).default([]),
   // Como o produto é cobrado quando entra no kit de outro (área líquida, área geral, perímetro, unidade); sem valor, cada linha decide.
   baseCobranca: z.enum(BASES_COBRANCA_PRODUTO).nullable().optional(),
   precificacao: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -28,6 +35,8 @@ export const kitSchema = z.object({
   tipoProduto: z.string().max(100).nullable().optional(),
   // IDs (MubiSys) das produtividades de solda ligadas ao produto; só na categoria "Letreiros" (ver validarProdutividadesRelacionadas).
   produtividadesRelacionadas: z.array(z.number().int().positive()).max(MAX_PRODUTIVIDADES_RELACIONADAS).optional(),
+  // Construção paramétrica do 3D (profundidade, afastamento da parede, aba da face, LEDs). Sem valor padrão: ausência é pendência.
+  render3dConstruction: render3dConstructionSchema.nullable().optional(),
 }).passthrough();
 
 function respostaErro(res: Response, status: number, mensagem: string): void {

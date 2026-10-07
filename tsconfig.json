@@ -1,6 +1,8 @@
 {
   "include": ["client/src/**/*", "shared/**/*", "server/**/*", "api/**/*"],
-  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  // client/src/cpq3d tem o próprio tsconfig (tsconfig.cpq3d.json): o @react-three/fiber acrescenta ao JSX global dezenas de elementos
+  // (color, line, group...) que quebram a tipagem de ElementType/style das demais páginas se entrarem no mesmo programa.
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts", "client/src/cpq3d/**"],
   "compilerOptions": {
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",

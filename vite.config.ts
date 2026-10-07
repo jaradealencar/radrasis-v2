@@ -166,6 +166,14 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Duas páginas: o app React (index.html) e o CPQ Letreiros Express, que continua sendo um HTML monolítico mas agora passa pelo
+    // Vite para carregar a ilha React do 3D (client/src/cpq3d/main.tsx). A URL pública /cpq-letreiros-express.html não muda.
+    rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, "client", "index.html"),
+        cpq: path.resolve(import.meta.dirname, "client", "cpq-letreiros-express.html"),
+      },
+    },
   },
   server: {
     host: true,

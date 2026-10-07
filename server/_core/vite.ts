@@ -25,12 +25,20 @@ export async function setupVite(app: Express, server: Server) {
     const url = req.originalUrl;
 
     try {
-      const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "../..",
-        "client",
-        "index.html"
-      );
+      // Páginas HTML próprias na raiz do client (ex.: /cpq-letreiros-express.html) têm template próprio; o resto cai no index.html
+      // do app React. Só nome simples + .html (sem barras), então não há como sair da pasta.
+      const caminho = new URL(url, "http://localhost").pathname;
+      const paginaPropria = /^\/[\w-]+(?:\.[\w-]+)*\.html$/.test(caminho) && !caminho.includes("..")
+        ? path.resolve(import.meta.dirname, "../..", "client", caminho.slice(1))
+        : null;
+      const clientTemplate = paginaPropria && fs.existsSync(paginaPropria)
+        ? paginaPropria
+        : path.resolve(
+          import.meta.dirname,
+          "../..",
+          "client",
+          "index.html"
+        );
 
       // always reload the index.html file from disk incase it changes
       let template = await fs.promises.readFile(clientTemplate, "utf-8");

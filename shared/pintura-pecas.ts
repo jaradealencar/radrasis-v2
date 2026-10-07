@@ -3,7 +3,7 @@
  * pintura e a cor de cada uma (o perfil, por exemplo, já vem pintado de fábrica). As linhas de pintura do orçamento passam a ser
  * cobradas pela área líquida só dessas peças e vão ao snapshot como quantidade fixa; este resumo registra de onde ela vem.
  *
- * O HTML do CPQ (`client/public/cpq-letreiros-express.html`, `resumoPinturaPecas`) calcula o resumo; o servidor confere se ele é
+ * O HTML do CPQ (`client/cpq-letreiros-express.html`, `resumoPinturaPecas`) calcula o resumo; o servidor confere se ele é
  * coerente com as medidas do letreiro (não tem como remedir as peças, que ficam no SVG e na marcação do vendedor).
  */
 export const MAX_PECAS_PINTURA = 5000;

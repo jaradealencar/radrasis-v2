@@ -226,6 +226,11 @@ export async function createApp(): Promise<Express> {
     await import("../routes/estudio-solda-produtividade");
   registrarRotasEstudioSoldaProdutividade(app);
 
+  // Renderização 3D paramétrica do CPQ: spec assinado, aprovação humana, previews e perfis visuais (PBR) versionados.
+  const { registrarRotasEstudioRender3d } =
+    await import("../routes/estudio-render3d");
+  registrarRotasEstudioRender3d(app);
+
   // ─── CRON Job Endpoints ──────────────────────────────────────────────────
   const { handleSincronizarOS, handleStatusSincronizacao } =
     await import("../sync/scheduled-sync-os-handler");

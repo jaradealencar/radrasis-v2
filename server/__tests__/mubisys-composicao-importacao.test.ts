@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { traduzirPerfilConsumoMubiSys } from "../../shared/perfil-consumo-mubisys";
 
-const html = readFileSync("client/public/cpq-letreiros-express.html", "utf8");
+const html = readFileSync("client/cpq-letreiros-express.html", "utf8");
 const produtosPage = readFileSync("client/src/pages/comercial/Produtos.tsx", "utf8");
 const catalogRoute = readFileSync("server/routes/estudio-catalogo-mubisys.ts", "utf8");
 const uploadRoute = readFileSync("server/routes/estudio-mubisys-espelho.ts", "utf8");

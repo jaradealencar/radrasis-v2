@@ -4,6 +4,7 @@ import type { Express, Request, Response } from "express";
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { estudioMapeamentoCoresCotacao, propostas } from "../../drizzle/schema";
+import { render3dSnapshotSchema, renderRoleSchema } from "../../shared/cpq-render3d";
 import { consumoGabaritoKraftM2 } from "../../shared/gabarito";
 import { MATERIAIS_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "../../shared/produtividade-solda";
 import { erroPinturaPecas, MAX_CORES_PINTURA, MAX_NOME_TINTA, MAX_PECAS_PINTURA } from "../../shared/pintura-pecas";
@@ -22,6 +23,13 @@ import {
   verificarTicketAnaliseFactibilidade,
 } from "../services/cpqFactibilidadeFabricacao";
 import { verificarReciboNesting } from "../services/cpqNesting";
+import {
+  CpqRender3dError,
+  criarFonteBanco,
+  resolverSpecPublico,
+  verificarRender3dNaEmissao,
+  visaoPublicaDoSpec,
+} from "../services/cpqRender3d";
 import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
 import { carregarCatalogoEspelhado } from "../services/mubisysEspelho";
 import { calcularComposicaoComAcabamentos } from "../services/cpqComposicao";
@@ -192,6 +200,10 @@ const snapshotSchema = z.object({
     custoUnitario: z.number().nonnegative(),
     quantidade: z.number().nonnegative(),
     custoTotal: z.number().nonnegative(),
+    // Papel na peça (texto livre da composição) e papel 3D confirmado. Opcionais e sem default: cotações antigas não ganham a chave.
+    // Ficam FORA da base de preço (ver basePrecoSnapshot): aparência não altera preço nem a aprovação dele.
+    papel: z.string().max(80).nullable().optional(),
+    renderRole: renderRoleSchema.nullable().optional(),
     composicaoItemId: z.number().int().positive().nullable().optional().default(null),
     custoAcabamentos: z.number().nonnegative().optional().default(0),
     custoEquipamentos: z.number().nonnegative().optional().default(0),
@@ -286,6 +298,8 @@ const snapshotSchema = z.object({
   }).strict().optional(),
   precoFinal: z.number().nonnegative(),
   prazoDiasUteis: z.number().int().nonnegative().nullable(),
+  // Visualização 3D aprovada (ver server/services/cpqRender3d.ts). Opcional e sem default: cotações antigas continuam válidas.
+  render3d: render3dSnapshotSchema.optional(),
   status: z.literal("enviado"),
 }).strict();
 
@@ -503,7 +517,9 @@ export function registrarRotasEstudioCotacoes(app: Express): void {
   app.post("/api/letra-caixa/cotacoes", rota(criarCotacao));
   app.get("/api/letra-caixa/cotacoes", rota(listarCotacoes));
   app.get("/api/letra-caixa/cotacoes/grupo/:grupoId", rota(obterGrupoPublico));
+  app.get("/api/letra-caixa/cotacoes/grupo/:grupoId/render3d", rota(obterRender3dGrupoPublico));
   app.post("/api/letra-caixa/cotacoes/grupo/:grupoId/resposta", rota(registrarRespostaGrupo));
+  app.get("/api/letra-caixa/cotacoes/:token/render3d", rota(obterRender3dPublico));
   app.get("/api/letra-caixa/cotacoes/:token", rota(obterCotacaoPublica));
   app.post("/api/letra-caixa/cotacoes/:token/resposta", rota(registrarResposta));
 }
@@ -523,7 +539,8 @@ function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSc
       perimExtM: snapshot.perimExtM ?? null,
       perimTotalM: snapshot.perimTotalM ?? null,
     },
-    materiais: snapshot.materiais ?? [],
+    // Papel na peça e papel 3D descrevem aparência, não custo: ficam fora da base que o recibo de preço assina.
+    materiais: (snapshot.materiais ?? []).map(({ papel: _papel, renderRole: _renderRole, ...linha }) => linha),
     mapeamentoCores: snapshot.mapeamentoCores,
     factibilidade,
     custoDireto: snapshot.custoDireto,
@@ -544,8 +561,9 @@ function basePrecoSnapshot(sourceId: string, snapshot: z.infer<typeof snapshotSc
 }
 
 function assinaturaSnapshotCotacao(sourceId: string, snapshot: z.infer<typeof snapshotSchema>): string {
-  const { precificacaoIA: _precificacaoIA, status: _status, ...conteudo } = snapshot;
-  return hashBasePreco({ sourceId, snapshot: conteudo });
+  const { precificacaoIA: _precificacaoIA, status: _status, render3d, ...conteudo } = snapshot;
+  // Do 3D só entra o hash da especificação aprovada (a data da aprovação e as URLs dos previews não definem a "versão comercial").
+  return hashBasePreco({ sourceId, snapshot: render3d ? { ...conteudo, render3dSpecHash: render3d.specHash } : conteudo });
 }
 
 function contextoPrecoSnapshot(snapshot: z.infer<typeof snapshotSchema>) {
@@ -866,6 +884,39 @@ async function validarMapeamentoCoresPersistido(
   return null;
 }
 
+/**
+ * Emissão e 3D. Cotação com `render3d` precisa de aprovação válida (ticket, hash, perfis e construção conferidos contra os mesmos
+ * dados do orçamento). Sem `render3d`, só passa se o kit do produto NÃO tem construção 3D cadastrada (3D não se aplica a ele);
+ * o preço continua calculável antes — só o link/PDF depende da aprovação.
+ */
+async function validarRender3dNaEmissao(
+  sourceId: string,
+  snapshot: z.infer<typeof snapshotSchema>,
+  ator: Awaited<ReturnType<typeof obterAtor>>,
+): Promise<{ status: number; mensagem: string } | null> {
+  if (!ator) return { status: 401, mensagem: "Entre no Radrasys para emitir a cotação." };
+  const fonte = criarFonteBanco();
+  if (snapshot.render3d) {
+    try {
+      await verificarRender3dNaEmissao({
+        sourceId,
+        snapshot,
+        render3d: snapshot.render3d,
+        user: { id: ator.id, name: ator.nome, role: ator.role },
+        fonte,
+      });
+      return null;
+    } catch (error) {
+      if (error instanceof CpqRender3dError) return { status: error.codigo === "configuracao" ? 500 : 409, mensagem: error.message };
+      throw error;
+    }
+  }
+  const construcao = await fonte.construcaoDoKit(snapshot.mubisysProdutoId ?? null, snapshot.mubisysModeloId ?? null);
+  if (construcao)
+    return { status: 409, mensagem: "Este produto tem construção 3D cadastrada: aprove a visualização 3D (etapa 8) antes de gerar o link da cotação." };
+  return null;
+}
+
 async function sugerirPreco(req: Request, res: Response): Promise<void> {
   if (!mesmaOrigem(req, res)) return;
   const ator = await obterAtor(req);
@@ -947,6 +998,11 @@ async function criarCotacao(req: Request, res: Response): Promise<void> {
   }
   if (!dadosRecebidos.precificacaoIA?.recibo) {
     respostaErro(res, 400, "Aprovação humana obrigatória. Aprove o preço antes de gerar o link da cotação.");
+    return;
+  }
+  const erro3d = await validarRender3dNaEmissao(parsed.data.sourceId, dadosRecebidos, await obterAtor(req));
+  if (erro3d) {
+    respostaErro(res, erro3d.status, erro3d.mensagem);
     return;
   }
   let dadosComAprovacao: z.infer<typeof snapshotSchema>;
@@ -1132,6 +1188,60 @@ async function obterCotacaoPublica(req: Request, res: Response): Promise<void> {
   res.json(visaoPublica(linha, snapshot));
 }
 
+/** Visualização 3D pública (read-only): só o necessário para desenhar, sem custos, margem, fórmulas nem recibos. */
+async function visao3dPublica(snapshot: Snapshot) {
+  if (!snapshot.render3d) return null;
+  const spec = await resolverSpecPublico(snapshot, snapshot.render3d);
+  const { approval } = snapshot.render3d;
+  return visaoPublicaDoSpec(spec, { dia: approval.previewDayUrl, noite: approval.previewNightUrl, explodido: approval.previewExplodedUrl });
+}
+
+async function obterRender3dPublico(req: Request, res: Response): Promise<void> {
+  const token = typeof req.params.token === "string" ? req.params.token : "";
+  const db = await getDb();
+  if (!db) {
+    respostaErro(res, 503, "Não foi possível carregar a visualização agora.");
+    return;
+  }
+  const [linha] = await db.select().from(propostas).where(eq(propostas.token, token)).limit(1);
+  const snapshot = lerSnapshot(linha?.observacoes ?? null);
+  if (!linha || !snapshot) {
+    respostaErro(res, 404, "Cotação não encontrada ou link inválido.");
+    return;
+  }
+  const visao = await visao3dPublica(snapshot);
+  if (!visao) {
+    respostaErro(res, 404, "Esta cotação não tem visualização 3D.");
+    return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json(visao);
+}
+
+async function obterRender3dGrupoPublico(req: Request, res: Response): Promise<void> {
+  const grupoId = typeof req.params.grupoId === "string" ? req.params.grupoId : "";
+  const db = await getDb();
+  if (!db) {
+    respostaErro(res, 503, "Não foi possível carregar a visualização agora.");
+    return;
+  }
+  const membros = await carregarMembrosGrupo(db, grupoId);
+  if (!membros.length) {
+    respostaErro(res, 404, "Cotação não encontrada ou link inválido.");
+    return;
+  }
+  const itens = (await Promise.all(membros.map(async membro => {
+    const visao = await visao3dPublica(membro.snapshot);
+    return visao ? [{ numero: membro.snapshot.numeroCotacao, modeloNome: membro.snapshot.modeloNome, visao }] : [];
+  }))).flat();
+  if (!itens.length) {
+    respostaErro(res, 404, "Esta cotação não tem visualização 3D.");
+    return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ itens });
+}
+
 function visaoPublica(linha: typeof propostas.$inferSelect, snapshot: Snapshot) {
   return {
     numero: snapshot.numeroCotacao,
@@ -1159,6 +1269,14 @@ function visaoPublica(linha: typeof propostas.$inferSelect, snapshot: Snapshot) 
     prazoDiasUteis: snapshot.prazoDiasUteis,
     status: linha.status,
     reacaoCliente: snapshot.reacaoCliente,
+    // Só os previews estáticos (imagens): o 3D interativo vem de /render3d e o PDF nunca executa WebGL.
+    render3d: snapshot.render3d
+      ? {
+        previewDayUrl: snapshot.render3d.approval.previewDayUrl,
+        previewNightUrl: snapshot.render3d.approval.previewNightUrl,
+        previewExplodedUrl: snapshot.render3d.approval.previewExplodedUrl,
+      }
+      : null,
   };
 }
 
@@ -1213,7 +1331,10 @@ async function obterGrupoPublico(req: Request, res: Response): Promise<void> {
     prazoDiasUteis: itens.some(item => item.prazoDiasUteis != null)
       ? Math.max(...itens.map(item => item.prazoDiasUteis ?? 0)) : null,
     reacaoCliente: todasResponderam ? base.reacaoCliente : null,
+    // O 3D interativo de um grupo é por desenho (GET .../grupo/:id/render3d); aqui só avisa que existe.
+    render3d: itens.some(item => item.render3d) ? { previewDayUrl: null, previewNightUrl: null, previewExplodedUrl: null } : null,
     itens: itens.map(item => ({
+      render3d: item.render3d,
       numero: item.numero,
       tituloProposta: item.tituloProposta,
       modeloNome: item.modeloNome,

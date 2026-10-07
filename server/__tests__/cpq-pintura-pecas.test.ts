@@ -70,7 +70,7 @@ describe("pinturaPecasSchema (snapshot da cotação)", () => {
 });
 
 describe("HTML do CPQ: linhas de pintura por área das peças marcadas", () => {
-  const html = readFileSync("client/public/cpq-letreiros-express.html", "utf8");
+  const html = readFileSync("client/cpq-letreiros-express.html", "utf8");
 
   it("a fórmula areaPintada existe e as linhas de pintura do assistente a usam (menos o adicional de PVC, que é fixo)", () => {
     expect(html).toMatch(/\n  areaPintada: \{label:/);

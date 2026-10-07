@@ -887,6 +887,92 @@ export const estudioMapeamentoCoresCotacao = pgTable("estudio_mapeamento_cores_c
 }));
 export type EstudioMapeamentoCorCotacao = typeof estudioMapeamentoCoresCotacao.$inferSelect;
 
+// ─── 3D do CPQ: materiais visuais (PBR) ─────────────────────────────────────
+// Perfil visual de um material para a renderização 3D (ver server/services/cpqRender3d.ts). Cada linha é UMA VERSÃO do perfil:
+// um perfil usado numa aprovação 3D é imutável (a edição relevante cria nova versão com o mesmo slug) e a cotação emitida guarda
+// profile_id + versão. `ativo` marca a versão corrente do slug (a que novos vínculos usam).
+export const cpqRenderMaterialProfiles = pgTable("cpq_render_material_profiles", {
+  id: serial("id").primaryKey(),
+  slug: varchar("slug", { length: 80 }).notNull(),
+  versao: integer("versao").notNull().default(1),
+  nome: varchar("nome", { length: 160 }).notNull(),
+  familia: varchar("familia", { length: 32 }).notNull(),
+  ativo: boolean("ativo").notNull().default(true),
+  // Acabamento descritivo (ex.: "escovado 180 grit", "PU fosco"); o veio vai em pbr_json.anisotropyRotationRad.
+  acabamento: varchar("acabamento", { length: 160 }),
+  // Marcado por um gestor depois de comparar o shader com a amostra física. Falso = aparência ainda aproximada.
+  calibrado: boolean("calibrado").notNull().default(false),
+  pbrJson: jsonb("pbr_json").$type<Record<string, unknown>>().notNull(),
+  notas: text("notas"),
+  autorNome: varchar("autor_nome", { length: 160 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  slugVersaoUidx: uniqueIndex("cpq_render_profiles_slug_versao_uidx").on(table.slug, table.versao),
+  ativoIdx: index("cpq_render_profiles_ativo_idx").on(table.ativo, table.familia),
+}));
+export type CpqRenderMaterialProfile = typeof cpqRenderMaterialProfiles.$inferSelect;
+export type InsertCpqRenderMaterialProfile = typeof cpqRenderMaterialProfiles.$inferInsert;
+
+// Mapas de textura de um perfil. Foto de referência (kind = "reference") é só para comparação humana; baseColor sem luz gravada;
+// normal/roughness/metalness/anisotropy/ao são mapas de dados. O arquivo vive no UploadThing (nunca base64 no banco).
+export const cpqRenderMaterialAssets = pgTable("cpq_render_material_assets", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").notNull().references(() => cpqRenderMaterialProfiles.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 16 }).notNull(),
+  url: text("url").notNull(),
+  storageKey: varchar("storage_key", { length: 256 }),
+  mimeType: varchar("mime_type", { length: 32 }).notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  widthPx: integer("width_px"),
+  heightPx: integer("height_px"),
+  // Quantos milímetros reais o tile (a imagem inteira) representa — base do repeat calculado pela dimensão física da peça.
+  tileWidthMm: decimal("tile_width_mm", { precision: 10, scale: 3 }),
+  tileHeightMm: decimal("tile_height_mm", { precision: 10, scale: 3 }),
+  colorSpace: varchar("color_space", { length: 8 }).notNull().default("none"),
+  sourceNote: text("source_note"),
+  calibrated: boolean("calibrated").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  profileIdx: index("cpq_render_assets_profile_idx").on(table.profileId, table.kind),
+}));
+export type CpqRenderMaterialAsset = typeof cpqRenderMaterialAssets.$inferSelect;
+export type InsertCpqRenderMaterialAsset = typeof cpqRenderMaterialAssets.$inferInsert;
+
+// Vínculo matéria-prima do MubiSys → versão do perfil visual, com overrides limitados (cor, direção do veio).
+export const cpqRenderMaterialLinks = pgTable("cpq_render_material_links", {
+  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").primaryKey(),
+  profileId: integer("profile_id").notNull().references(() => cpqRenderMaterialProfiles.id, { onDelete: "restrict" }),
+  overridesJson: jsonb("overrides_json").$type<Record<string, unknown>>(),
+  atualizadoPor: varchar("atualizado_por", { length: 160 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  profileIdx: index("cpq_render_links_profile_idx").on(table.profileId),
+}));
+export type CpqRenderMaterialLink = typeof cpqRenderMaterialLinks.$inferSelect;
+
+// Auditoria das aprovações humanas do 3D, por orçamento (source_id) e hash da especificação. `profile_ids` trava os perfis usados
+// (um perfil citado aqui deixa de ser editável: edição cria nova versão).
+export const cpqRender3dApprovals = pgTable("cpq_render3d_approvals", {
+  id: serial("id").primaryKey(),
+  sourceId: varchar("source_id", { length: 80 }).notNull(),
+  specHash: varchar("spec_hash", { length: 64 }).notNull(),
+  vectorHash: varchar("vector_hash", { length: 64 }).notNull(),
+  approvedById: varchar("approved_by_id", { length: 80 }).notNull(),
+  approvedByName: varchar("approved_by_name", { length: 160 }).notNull(),
+  approvedByRole: varchar("approved_by_role", { length: 32 }).notNull(),
+  previewDayUrl: text("preview_day_url"),
+  previewNightUrl: text("preview_night_url"),
+  previewExplodedUrl: text("preview_exploded_url"),
+  profileIds: integer("profile_ids").array().notNull().default([]),
+  materiaisJson: jsonb("materiais_json").$type<unknown[]>().notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  sourceIdx: index("cpq_render3d_approvals_source_idx").on(table.sourceId, table.createdAt),
+  specIdx: index("cpq_render3d_approvals_spec_idx").on(table.specHash),
+}));
+export type CpqRender3dApprovalRow = typeof cpqRender3dApprovals.$inferSelect;
+
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 
 // Tipos de role do sistema

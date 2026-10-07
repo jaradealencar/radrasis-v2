@@ -29,7 +29,7 @@ describe("base de cobrança do produto", () => {
   });
 
   it("o HTML do CPQ repete exatamente a mesma lista de bases e todas existem em FORMULA_TYPES", () => {
-    const html = readFileSync("client/public/cpq-letreiros-express.html", "utf8");
+    const html = readFileSync("client/cpq-letreiros-express.html", "utf8");
     const lista = /const BASES_COBRANCA_PRODUTO = \[([^\]]+)\];/.exec(html)?.[1];
     expect(lista).toBeDefined();
     const doHtml = [...lista!.matchAll(/'([A-Za-z]+)'/g)].map(item => item[1]);
