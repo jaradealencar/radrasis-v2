@@ -5,7 +5,7 @@ import { z } from "zod";
 import { estudioKits } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
-import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { listarMateriasPrimasEspelhadas } from "../services/mubisysEspelho";
 import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
 import { CATEGORIA_COM_PRODUTIVIDADES, ehMateriaProdutividade, MAX_PRODUTIVIDADES_RELACIONADAS } from "../../shared/produtividade-solda";
 
@@ -145,9 +145,9 @@ async function validarProdutividadesRelacionadas(
   const novas = ids.filter(id => !jaSalvas.has(id));
   if (!novas.length) return null;
 
-  let catalogo: Awaited<ReturnType<typeof listarMateriasPrimas>>;
+  let catalogo: Awaited<ReturnType<typeof listarMateriasPrimasEspelhadas>>;
   try {
-    catalogo = await listarMateriasPrimas();
+    catalogo = await listarMateriasPrimasEspelhadas(db);
   } catch (error) {
     console.error("[EstudioKits] Falha ao conferir produtividades no MubiSys:", error);
     return { status: 503, mensagem: "Não foi possível confirmar as produtividades no MubiSys agora. Tente de novo em instantes." };

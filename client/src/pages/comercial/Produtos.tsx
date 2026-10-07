@@ -18,7 +18,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Link2, Copy, Pencil, Settings2, Ruler, RefreshCw } from "lucide-react";
+import { Package, Plus, Search, Trash2, ArrowLeft, Boxes, Layers, Download, Copy, Pencil, Settings2, Ruler, RefreshCw } from "lucide-react";
 import { fmtBrl } from "@/lib/format";
 import { enviarArquivo } from "@/lib/upload";
 import { UNIDADE_CONSUMO_MATERIA_PRIMA, UNIDADE_CONSUMO_LABEL, type UnidadeConsumoMateriaPrima } from "@shared/produto-composicao";
@@ -1505,25 +1505,16 @@ type CatalogoComposicaoMubiSys = {
     materiaPrimaId: number;
     quantidade: number;
     unidade: string;
+    perfilConsumo: string;
+    formulaConsumo: "area" | "areaTotal" | "areaGeral" | "perimExt" | "perimTotal" | "fixo";
   }>;
   mubisysWebConectado: boolean;
   erroComposicoesMubiSys: string | null;
 };
 
-function normalizarUnidadeConsumo(valor: string): string {
-  return valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/²/g, "2").replace(/[^a-z0-9]/g, "");
-}
-
-function inferirUnidadeConsumo(unidadeMubiSys: string, unidadeModelo: string): UnidadeConsumoMateriaPrima {
-  const unidade = normalizarUnidadeConsumo(unidadeMubiSys);
-  if (["m2", "metroquadrado", "metrosquadrados", "areadequadrada"].some((s) => unidade.includes(s))) return "m2";
-  if (["ml", "metrolinear", "metroslineares", "metro", "metros"].some((s) => unidade.includes(s))) return "ml";
-  if (["perimetro", "comprimento", "linear"].some((s) => unidade.includes(s))) return "perimetro";
-  if (["un", "und", "unidade", "unidades", "peca", "pecas"].some((s) => unidade === s || unidade.startsWith(s))) return "unidade";
-
-  const unidadeBase = normalizarUnidadeConsumo(unidadeModelo);
-  if (["m2", "area", "quadrad"].some((s) => unidadeBase.includes(s))) return "m2";
-  if (["perimetro", "linear", "comprimento"].some((s) => unidadeBase.includes(s)) || unidadeBase === "m") return "perimetro";
+function unidadePorFormula(formula: CatalogoComposicaoMubiSys["composicoesMubiSys"][number]["formulaConsumo"]): UnidadeConsumoMateriaPrima {
+  if (["area", "areaTotal", "areaGeral"].includes(formula)) return "m2";
+  if (["perimExt", "perimTotal"].includes(formula)) return "perimetro";
   return "unidade";
 }
 
@@ -1543,9 +1534,6 @@ function MubiSysCompositionImporter({
   mubisysModeloId: number;
 }) {
   const utils = trpc.useUtils();
-  const [conectado, setConectado] = useState<boolean | null>(null);
-  const [mostrarConexao, setMostrarConexao] = useState(false);
-  const [conectando, setConectando] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [catalogo, setCatalogo] = useState<CatalogoComposicaoMubiSys | null>(null);
@@ -1553,19 +1541,6 @@ function MubiSysCompositionImporter({
   const [unidadesEditadas, setUnidadesEditadas] = useState<Record<string, UnidadeConsumoMateriaPrima>>({});
   const [quantidadesEditadas, setQuantidadesEditadas] = useState<Record<string, string>>({});
   const [erro, setErro] = useState("");
-
-  useEffect(() => {
-    let ativo = true;
-    fetch("/api/letra-caixa/mubisys/sessao", { credentials: "same-origin", cache: "no-store" })
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Falha ao verificar a sessão MubiSys.");
-        return body as { connected?: boolean };
-      })
-      .then((body) => { if (ativo) setConectado(Boolean(body.connected)); })
-      .catch(() => { if (ativo) setConectado(false); });
-    return () => { ativo = false; };
-  }, []);
 
   const importar = trpc.produtos.composicaoImportarMubisys.useMutation({
     onSuccess: (resultado) => {
@@ -1595,12 +1570,8 @@ function MubiSysCompositionImporter({
 
       const dados = body as CatalogoComposicaoMubiSys;
       setCatalogo(dados);
-      setConectado(Boolean(dados.mubisysWebConectado));
-      if (!dados.mubisysWebConectado) {
-        setMostrarConexao(true);
-        throw new Error(dados.erroComposicoesMubiSys || "Conecte sua conta MubiSys para ler a ficha de materiais.");
-      }
       if (dados.erroComposicoesMubiSys) throw new Error(dados.erroComposicoesMubiSys);
+      if (!dados.mubisysWebConectado) throw new Error("O espelho do MubiSys ainda não foi sincronizado. Atualize o catálogo antes de importar a ficha.");
 
       const modelo = dados.produtos.find((produto) => produto.id === mubisysProdutoId)
         ?.modelos.find((item) => item.id === mubisysModeloId);
@@ -1625,40 +1596,6 @@ function MubiSysCompositionImporter({
     }
   };
 
-  const conectar = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const dados = new FormData(form);
-    setConectando(true);
-    setErro("");
-    try {
-      const response = await fetch("/api/letra-caixa/mubisys/sessao", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          codigo: String(dados.get("codigo") || ""),
-          usuario: String(dados.get("usuario") || ""),
-          senha: String(dados.get("senha") || ""),
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      form.reset();
-      if (!response.ok) throw new Error(body.error || "Não foi possível conectar ao MubiSys.");
-      setConectado(true);
-      setMostrarConexao(false);
-      toast.success("MubiSys conectado. Lendo a ficha do modelo.");
-      await carregarFicha();
-    } catch (cause) {
-      form.reset();
-      const mensagem = cause instanceof Error ? cause.message : "Não foi possível conectar ao MubiSys.";
-      setErro(mensagem);
-      toast.error("Falha na conexão com o MubiSys", { description: mensagem });
-    } finally {
-      setConectando(false);
-    }
-  };
-
   const modelo = catalogo?.produtos.find((produto) => produto.id === mubisysProdutoId)
     ?.modelos.find((item) => item.id === mubisysModeloId);
   const variationIds = new Set((modelo?.variacoes ?? []).map((item) => item.id));
@@ -1678,13 +1615,13 @@ function MubiSysCompositionImporter({
       materia,
       variacao,
       chave,
-      unidade: unidadesEditadas[chave] ?? inferirUnidadeConsumo(linha.unidade || materia?.unidade || "", modelo?.unidade || ""),
+      unidade: unidadesEditadas[chave] ?? unidadePorFormula(linha.formulaConsumo),
       quantidade: quantidadesEditadas[chave] ?? String(linha.quantidade),
     };
   });
   const previewValido = preview.length > 0 && preview.every((item) => {
     const quantidade = numeroPtBr(item.quantidade);
-    return item.materia != null && Number.isFinite(quantidade) && quantidade >= 0 && quantidade <= 99999999.9999;
+    return item.materia != null && Number.isFinite(quantidade) && quantidade > 0 && quantidade <= 99999999.9999;
   });
 
   const confirmarImportacao = () => {
@@ -1721,52 +1658,38 @@ function MubiSysCompositionImporter({
     <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-medium">Ficha de matéria-prima do MubiSys</p>
+          <p className="text-sm font-medium">Ficha técnica espelhada do MubiSys</p>
           <p className="text-xs text-muted-foreground">
-            {conectado === null ? "Verificando conexão..." : conectado ? "Conectado" : "Conecte sua conta para importar os materiais do modelo."}
+            "Consumos locais compartilhados no Radrasys; nenhuma credencial de tela é solicitada."
           </p>
         </div>
         <Button
           size="sm"
           variant="outline"
-          onClick={conectado ? carregarFicha : () => setMostrarConexao((aberto) => !aberto)}
-          disabled={carregando || conectado === null}
+          onClick={carregarFicha}
+          disabled={carregando}
           className="gap-1.5"
         >
-          {carregando ? <Spinner className="h-4 w-4" /> : conectado ? <Download className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
-          {carregando ? "Consultando..." : conectado ? "Importar composição" : "Conectar MubiSys"}
+          {carregando ? <Spinner className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+          {carregando ? "Lendo espelho..." : "Importar ficha local"}
         </Button>
       </div>
 
-      {mostrarConexao && conectado !== true && (
-        <form onSubmit={conectar} className="space-y-3 rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Informe código da empresa, usuário e senha. A senha será usada apenas para abrir a sessão e não será salva. A sessão fica protegida por até 8 horas.</p>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <div className="space-y-1"><Label className="text-xs">Código da empresa</Label><Input name="codigo" autoComplete="off" required /></div>
-            <div className="space-y-1"><Label className="text-xs">Usuário</Label><Input name="usuario" autoComplete="username" required /></div>
-            <div className="space-y-1"><Label className="text-xs">Senha</Label><Input name="senha" type="password" autoComplete="current-password" required /></div>
-          </div>
-          {erro && <p className="text-xs text-destructive">{erro}</p>}
-          <div className="flex gap-2">
-            <Button size="sm" type="submit" disabled={conectando}>{conectando ? "Conectando..." : "Conectar e importar"}</Button>
-            <Button size="sm" type="button" variant="ghost" onClick={() => setMostrarConexao(false)}>Cancelar</Button>
-          </div>
-        </form>
-      )}
+      {erro && <p className="text-xs text-destructive">{erro}</p>}
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader><DialogTitle>Importar composição do MubiSys</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">O Radrasys importa a composição comum do modelo e a ficha de cada variação. Na cotação, você escolhe quais variações entram e pode remover materiais quando necessário.</p>
+          <DialogHeader><DialogTitle>Importar composição do espelho local</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">A ficha comum ao modelo e as fichas de todas as variações vêm do espelho local. Na cotação, as variações selecionadas são usadas diretamente pela composição do CPQ.</p>
           <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
-            Quantidade e unidade informadas na ficha vêm do MubiSys. Quando falta unidade, a sugestão usa a unidade do modelo. Revise a unidade de consumo antes de salvar.
+            Cada linha mantém o perfil original do MubiSys e sua fórmula equivalente. A unidade Radrasys é sugerida pela fórmula, não por inferência do nome da unidade.
           </div>
           {preview.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Não há matérias-primas cadastradas para esta opção no MubiSys.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">Não há matérias-primas importadas para este modelo/variações no espelho local.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border">
               <Table>
-                <TableHeader><TableRow><TableHead>Variação</TableHead><TableHead>Matéria-prima</TableHead><TableHead>Quantidade</TableHead><TableHead>Unidade MubiSys</TableHead><TableHead>Consumo Radrasys</TableHead><TableHead>Custo atual</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Variação</TableHead><TableHead>Matéria-prima</TableHead><TableHead>Quantidade</TableHead><TableHead>Unidade MubiSys</TableHead><TableHead>Perfil → fórmula</TableHead><TableHead>Consumo Radrasys</TableHead><TableHead>Custo do espelho</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {preview.map((item) => (
                     <TableRow key={item.chave}>
@@ -1774,6 +1697,7 @@ function MubiSysCompositionImporter({
                       <TableCell className="font-medium">{item.materia?.nome ?? `Matéria-prima #${item.linha.materiaPrimaId} não encontrada`}</TableCell>
                       <TableCell><Input className="h-8 w-24" inputMode="decimal" value={item.quantidade} onChange={(event) => setQuantidadesEditadas((atual) => ({ ...atual, [item.chave]: event.target.value }))} /></TableCell>
                       <TableCell className="text-xs text-muted-foreground">{item.linha.unidade || item.materia?.unidade || "—"}</TableCell>
+                      <TableCell className="text-xs">{item.linha.perfilConsumo} → <span className="font-medium">{item.linha.formulaConsumo}</span></TableCell>
                       <TableCell>
                         <Select value={item.unidade} onValueChange={(value) => setUnidadesEditadas((atual) => ({ ...atual, [item.chave]: value as UnidadeConsumoMateriaPrima }))}>
                           <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
@@ -1787,7 +1711,7 @@ function MubiSysCompositionImporter({
               </Table>
             </div>
           )}
-          {!previewValido && preview.length > 0 && <p className="text-sm text-destructive">Há material ausente ou quantidade inválida. Corrija antes de importar.</p>}
+          {!previewValido && preview.length > 0 && <p className="text-sm text-destructive">Há material ausente ou quantidade menor/igual a zero. Corrija antes de importar.</p>}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setDialogAberto(false)}>Cancelar</Button>
             <Button onClick={confirmarImportacao} disabled={!previewValido || importando || importar.isPending}>

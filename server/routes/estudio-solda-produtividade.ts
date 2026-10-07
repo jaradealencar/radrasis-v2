@@ -5,7 +5,7 @@ import { z } from "zod";
 import { cpqSoldaCorrecoes, cpqSoldaRegras, estudioKits, materiaPrimaCadastros } from "../../drizzle/schema";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
-import { listarMateriasPrimas, type MubiSysMateriaPrima } from "../integrations/mubisys-client";
+import { listarMateriasPrimasEspelhadas } from "../services/mubisysEspelho";
 import {
   ehMateriaProdutividade,
   ehMaterialSolda,
@@ -149,14 +149,9 @@ function mensagemZod(falha: z.ZodError): string {
 }
 
 // O catálogo do MubiSys é paginado e lento; a escolha é refeita a cada mudança de escala ou de fixação.
-const VALIDADE_CATALOGO_MS = 60_000;
-let catalogoEmCache: { em: number; itens: MubiSysMateriaPrima[] } | null = null;
-
-async function catalogoDeProdutividades(): Promise<MubiSysMateriaPrima[]> {
-  if (catalogoEmCache && Date.now() - catalogoEmCache.em < VALIDADE_CATALOGO_MS) return catalogoEmCache.itens;
-  const todas = await listarMateriasPrimas();
+async function catalogoDeProdutividades() {
+  const todas = await listarMateriasPrimasEspelhadas();
   const itens = todas.filter(materia => ehMateriaProdutividade(materia.nome) && !/inativ/i.test(String(materia.status ?? "")));
-  catalogoEmCache = { em: Date.now(), itens };
   return itens;
 }
 
@@ -206,7 +201,7 @@ async function carregarCandidatas(db: BancoDeDados, relacionadas: number[]): Pro
       materiais: normalizarMateriaisSolda(cadastro?.materiais),
       unidade: String(materia.unidade_movimentacao || materia.unidade_custo || ""),
       valor: Number(materia.valor_custo) || 0,
-      atualizado: String(materia.data_referencia || ""),
+      atualizado: String(materia.atualizado || ""),
       status: String(materia.status || ""),
     };
   });
@@ -317,7 +312,7 @@ async function registrarCorrecao(req: Request, res: Response): Promise<void> {
   const { contexto, faixa, sugeridaId, escolhidaId, nota, cotacaoRef } = parsed.data;
   if (sugeridaId != null && sugeridaId === escolhidaId) return void erro(res, 400, "A produtividade escolhida é a mesma que foi sugerida.");
 
-  let catalogo: MubiSysMateriaPrima[];
+  let catalogo: Awaited<ReturnType<typeof catalogoDeProdutividades>>;
   try {
     catalogo = await catalogoDeProdutividades();
   } catch (falha) {

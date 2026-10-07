@@ -419,7 +419,7 @@ function computeOrcamento(p){
 }
 
 /* ---------- CATÁLOGO ATUAL DO MUBISYS (consultado pelo servidor) ---------- */
-const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, connectionOpen:false, connectionBusy:false, connectionMessage:null, ready:false, refreshing:false, error:null, baixadoEm:null };
+const catalog = { produtos:[], materias:[], margens:[], composicoesMubiSys:[], mubisysWebConectado:false, erroComposicoesMubiSys:null, espelhoStatus:null, syncBusy:false, uploadBusy:false, sessionConnected:false, connectionOpen:false, connectionBusy:false, sessionSyncBusy:false, connectionMessage:null, syncWarning:null, sincronizandoKits:false, ready:false, refreshing:false, error:null, baixadoEm:null };
 async function loadCatalog(){
   const jaCarregado=catalog.ready;
   catalog.refreshing = true;
@@ -435,7 +435,22 @@ async function loadCatalog(){
     catalog.composicoesMubiSys = Array.isArray(dados.composicoesMubiSys) ? dados.composicoesMubiSys : [];
     catalog.mubisysWebConectado = dados.mubisysWebConectado === true;
     catalog.erroComposicoesMubiSys = dados.erroComposicoesMubiSys || null;
+    catalog.espelhoStatus = dados.espelhoStatus || null;
     catalog.baixadoEm = dados.carregadoEm || null;
+    try{
+      const sessionResponse=await fetch('/api/letra-caixa/mubisys/sessao',{credentials:'same-origin',cache:'no-store'});
+      const sessionBody=await sessionResponse.json().catch(()=>({}));
+      catalog.sessionConnected=sessionResponse.ok&&sessionBody.connected===true;
+    }catch{catalog.sessionConnected=false;}
+    const importacaoAutomatica=preencherComposicaoMubiSysSeVazia(adminState.editingKey);
+    if(importacaoAutomatica?.status==='importado') salvarKit(importacaoAutomatica.key);
+    // Conectar/atualizar o MubiSys durante uma proposta também precisa trocar
+    // a composição que já estava carregada pela ficha real das variações.
+    if(state.mode==='real'&&REAL.produtoId&&REAL.modeloId){
+      const produto=catalog.produtos.find(item=>Number(item.id)===Number(REAL.produtoId));
+      const modelo=produto?.modelos.find(item=>Number(item.id)===Number(REAL.modeloId));
+      if(produto&&modelo) carregarComposicaoModeloReal(produto,modelo,REAL.variacaoModeloIds);
+    }
   }catch(e){
     if(!jaCarregado){
       catalog.produtos = [];
@@ -450,6 +465,7 @@ async function loadCatalog(){
     catalog.refreshing = false;
     render();
   }
+  if(catalog.mubisysWebConectado&&kitsApiDisponivel&&!kitsCarregando) void sincronizarComposicoesMubiSysAutomaticamente();
 }
 function catalogErrorNotice(){
   if(!catalog.error) return '';
@@ -457,81 +473,95 @@ function catalogErrorNotice(){
 }
 
 function renderConexaoMubiSys(){
-  const linhas = catalog.composicoesMubiSys.length;
-  const estado = catalog.mubisysWebConectado
-    ? (catalog.erroComposicoesMubiSys ? catalog.erroComposicoesMubiSys : `${linhas} composição(ões) de matéria-prima carregada(s) do MubiSys.`)
-    : (catalog.erroComposicoesMubiSys || 'Conecte sua conta MubiSys uma vez neste navegador para importar o consumo de cada variação.');
+  const linhas=Number(catalog.espelhoStatus?.linhasComposicao)||catalog.composicoesMubiSys.length;
+  const ultima=catalog.espelhoStatus?.ultimaSincronizacaoEm?new Date(catalog.espelhoStatus.ultimaSincronizacaoEm).toLocaleString('pt-BR'):'ainda não sincronizado';
+  const importada=catalog.espelhoStatus?.ultimaImportacaoComposicaoEm?new Date(catalog.espelhoStatus.ultimaImportacaoComposicaoEm).toLocaleString('pt-BR'):null;
   return `<div class="role-note" style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:9px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-    <div><b>${catalog.mubisysWebConectado?'MubiSys conectado':'Consumo por variação do MubiSys'}</b><div style="margin-top:3px;">${escaparHtml(estado)} ${catalog.mubisysWebConectado?'A sessão fica neste navegador por até 8 horas.':''}</div>
-      ${catalog.connectionMessage?`<div style="margin-top:4px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
-      ${catalog.importMsg?`<div style="margin-top:4px;color:var(--ok);">${escaparHtml(catalog.importMsg)}</div>`:''}
-      ${catalog.connectionOpen&&!catalog.mubisysWebConectado?`<form data-act="mubisys-connect-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;align-items:end;">
+    <div style="min-width:260px;flex:1;"><b>Espelho local MubiSys → Radrasys</b>
+      <div style="margin-top:3px;">${catalog.produtos.length} produtos/modelos · ${catalog.materias.length} matérias-primas · ${linhas} linhas de consumo. Catálogo atualizado: ${escaparHtml(ultima)}${importada?` · Fichas importadas: ${escaparHtml(importada)}`:''}.</div>
+      <div style="margin-top:4px;color:var(--text-faint);">A API pública não fornece a BOM completa. Conecte uma sessão do MubiSys para extrair a ficha técnica; o CSV/XLSX/JSON continua disponível como alternativa. A senha é transitória e a sessão fica cifrada neste navegador por até 8 horas.</div>
+      ${catalog.sessionConnected?`<div style="margin-top:4px;color:var(--ok);">Sessão MubiSys conectada neste navegador.</div>`:''}
+      ${catalog.espelhoStatus?.status==='erro'?`<div role="alert" style="margin-top:5px;color:var(--warn);">A última atualização falhou; o snapshot anterior foi preservado. ${escaparHtml(catalog.espelhoStatus.ultimoErro||'Confira o token da API e tente novamente.')}</div>`:''}
+      ${catalog.connectionMessage?`<div role="status" style="margin-top:5px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
+      ${catalog.syncWarning?`<div role="alert" style="margin-top:4px;color:var(--warn);">${escaparHtml(catalog.syncWarning)}</div>`:''}
+      ${catalog.connectionOpen&&!catalog.sessionConnected?`<form data-act="mubisys-connect-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;align-items:end;">
         <label class="field">Código da empresa<input type="text" name="codigo" autocomplete="off" required></label>
         <label class="field">Usuário<input type="text" name="usuario" autocomplete="off" required></label>
-        <label class="field">Senha<input type="password" name="senha" autocomplete="off" required></label>
-        <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" type="submit" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionBusy?'Conectando…':'Conectar e carregar consumos'}</button><span style="font-size:11px;color:var(--text-faint);">A senha é enviada para validar o acesso e não é salva pelo Radrasys.</span></div>
+        <label class="field">Senha<input type="password" name="senha" autocomplete="new-password" required></label>
+        <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" type="submit" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionBusy?'Conectando…':'Conectar MubiSys'}</button><span style="font-size:11px;color:var(--text-faint);">A senha é usada apenas no login e não é armazenada.</span></div>
       </form>`:''}
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${catalog.mubisysWebConectado?`<button class="btn btn-primary btn-sm" data-act="mubisys-importar-tudo" ${catalog.importando||!linhas?'disabled':''}>${catalog.importando?'Importando…':'Importar composições de todos os produtos'}</button><button class="btn btn-ghost btn-sm" data-act="mubisys-reload">Atualizar consumos</button><button class="btn btn-ghost btn-sm" data-act="mubisys-disconnect">Desconectar</button>`:`<button class="btn btn-soft btn-sm" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
+    <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" type="button" data-act="mubisys-atualizar-espelho" ${catalog.syncBusy?'disabled':''}>${catalog.syncBusy?'Sincronizando…':'Atualizar catálogo'}</button>
+      ${catalog.sessionConnected?`<button class="btn btn-primary btn-sm" type="button" data-act="mubisys-sincronizar-bom" ${catalog.sessionSyncBusy?'disabled':''}>${catalog.sessionSyncBusy?'Lendo BOM…':'Sincronizar BOM do MubiSys'}</button><button class="btn btn-ghost btn-sm" type="button" data-act="mubisys-desconectar">Desconectar</button>`:`<button class="btn btn-soft btn-sm" type="button" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
+      <a class="btn btn-ghost btn-sm" href="/api/letra-caixa/mubisys/composicoes/template.csv">Baixar template CSV</a>
+      <label class="btn btn-primary btn-sm" style="cursor:pointer;">${catalog.uploadBusy?'Importando…':'Importar fichas CSV/XLSX'}<input type="file" data-act="mubisys-importar-arquivo" accept=".csv,.xlsx,.xls" style="display:none" ${catalog.uploadBusy?'disabled':''}></label>
     </div>
   </div>`;
 }
 
 function bindMubiSysConnectionEvents(){
-  const abrir=document.querySelector('[data-act="mubisys-connect-open"]');
-  if(abrir) abrir.addEventListener('click',()=>{catalog.connectionOpen=!catalog.connectionOpen;catalog.connectionMessage=null;render();});
-  const form=document.querySelector('[data-act="mubisys-connect-form"]');
-  if(form) form.addEventListener('submit',async e=>{
-    e.preventDefault();
-    if(catalog.connectionBusy) return;
+  document.querySelectorAll('[data-act="mubisys-connect-open"]').forEach(botao=>botao.addEventListener('click',()=>{catalog.connectionOpen=!catalog.connectionOpen;catalog.connectionMessage=null;render();}));
+  document.querySelectorAll('[data-act="mubisys-connect-form"]').forEach(form=>form.addEventListener('submit',async event=>{
+    event.preventDefault();if(catalog.connectionBusy)return;
     const dados=new FormData(form);
     const credenciais={codigo:String(dados.get('codigo')||'').trim(),usuario:String(dados.get('usuario')||'').trim(),senha:String(dados.get('senha')||'')};
-    catalog.connectionBusy=true;
-    const botao=form.querySelector('button[type="submit"]');
-    if(botao){botao.disabled=true;botao.textContent='Conectando…';}
+    catalog.connectionBusy=true;catalog.connectionMessage=null;render();
     try{
       const response=await fetch('/api/letra-caixa/mubisys/sessao',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(credenciais),cache:'no-store'});
       const body=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(body.error||`Não foi possível conectar (HTTP ${response.status}).`);
-      form.reset();
-      catalog.connectionOpen=false;
-      catalog.connectionMessage={tipo:'sucesso',texto:'Conta conectada. Atualizando as composições…'};
+      credenciais.senha='';
+      if(!response.ok)throw new Error(body.error||`Não foi possível conectar (HTTP ${response.status}).`);
+      catalog.connectionOpen=false;catalog.sessionConnected=true;
+      catalog.connectionMessage={tipo:'sucesso',texto:'Conta conectada. Sincronize a BOM para atualizar o espelho local.'};
       await loadCatalog();
-    }catch(error){
-      form.reset();
-      catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível conectar ao MubiSys.')};
-    }finally{
-      catalog.connectionBusy=false;
-      render();
-    }
-  });
-  const importarTudo=document.querySelector('[data-act="mubisys-importar-tudo"]');
-  if(importarTudo) importarTudo.addEventListener('click',()=>{
-    if(confirm('Importar do MubiSys a composição (comum e por variação) de todos os modelos? Modelos que já têm composição cadastrada manualmente no Radrasys serão pulados.')) importarComposicoesMubiSysEmMassa();
-  });
-  const atualizar=document.querySelector('[data-act="mubisys-reload"]');
-  if(atualizar) atualizar.addEventListener('click',()=>{catalog.connectionMessage=null;loadCatalog();});
-  const desconectar=document.querySelector('[data-act="mubisys-disconnect"]');
-  if(desconectar) desconectar.addEventListener('click',async()=>{
+    }catch(error){credenciais.senha='';catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível conectar ao MubiSys.')}}
+    finally{catalog.connectionBusy=false;render();}
+  }));
+  document.querySelectorAll('[data-act="mubisys-sincronizar-bom"]').forEach(botao=>botao.addEventListener('click',async()=>{
+    if(catalog.sessionSyncBusy)return;
+    catalog.sessionSyncBusy=true;catalog.connectionMessage=null;render();
+    try{
+      const response=await fetch('/api/letra-caixa/mubisys/composicoes/sincronizar',{method:'POST',credentials:'same-origin',cache:'no-store'});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok){if(response.status===401)catalog.sessionConnected=false;throw new Error(body.error||`Falha ao sincronizar a BOM (HTTP ${response.status}).`)}
+      catalog.connectionMessage={tipo:'sucesso',texto:`${body.linhas} linhas da BOM sincronizadas para ${body.variacoes} modelos/variações e ${body.materiasPrimas} matérias-primas.`};
+      await loadCatalog();
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível sincronizar a BOM.')}}
+    finally{catalog.sessionSyncBusy=false;render();}
+  }));
+  document.querySelectorAll('[data-act="mubisys-desconectar"]').forEach(botao=>botao.addEventListener('click',async()=>{
     try{
       const response=await fetch('/api/letra-caixa/mubisys/sessao',{method:'DELETE',credentials:'same-origin',cache:'no-store'});
       const body=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(body.error||'Não foi possível desconectar agora.');
-      catalog.mubisysWebConectado=false;
-      catalog.composicoesMubiSys=[];
-      catalog.erroComposicoesMubiSys=null;
-      catalog.connectionMessage={tipo:'sucesso',texto:'Conta desconectada deste navegador.'};
-      if(REAL.produtoId&&REAL.modeloId){
-        const produto=catalog.produtos.find(p=>p.id===REAL.produtoId);
-        const modelo=produto?.modelos.find(m=>m.id===REAL.modeloId);
-        carregarComposicaoModeloReal(produto,modelo,REAL.variacaoModeloIds);
-      }
-    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível desconectar agora.')};}
+      if(!response.ok)throw new Error(body.error||'Não foi possível desconectar.');
+      catalog.sessionConnected=false;catalog.connectionMessage={tipo:'sucesso',texto:'Sessão MubiSys removida deste navegador.'};
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível desconectar.')}}
     render();
-  });
+  }));
+  document.querySelectorAll('[data-act="mubisys-atualizar-espelho"]').forEach(botao=>botao.addEventListener('click',async()=>{
+    if(catalog.syncBusy)return;
+    catalog.syncBusy=true;catalog.connectionMessage=null;render();
+    try{
+      const response=await fetch('/api/letra-caixa/mubisys/sincronizar',{method:'POST',credentials:'same-origin',cache:'no-store'});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(body.error||`Falha ao sincronizar (HTTP ${response.status}).`);
+      catalog.connectionMessage={tipo:'sucesso',texto:`Catálogo atualizado: ${body.produtos} produtos, ${body.variacoes} modelos/variações e ${body.materiasPrimas} matérias-primas.`};
+      catalog.syncBusy=false;await loadCatalog();
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível sincronizar o catálogo.')};catalog.syncBusy=false;render();}
+  }));
+  document.querySelectorAll('[data-act="mubisys-importar-arquivo"]').forEach(input=>input.addEventListener('change',async()=>{
+    const arquivo=input.files?.[0];if(!arquivo||catalog.uploadBusy)return;
+    catalog.uploadBusy=true;catalog.connectionMessage=null;render();
+    try{
+      const response=await fetch('/api/letra-caixa/mubisys/composicoes',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(arquivo.name)},body:arquivo,cache:'no-store'});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(body.error||`Falha ao importar (HTTP ${response.status}).`);
+      catalog.connectionMessage={tipo:'sucesso',texto:`${body.linhas} linhas de consumo importadas para ${body.variacoes} modelos/variações e ${body.materiasPrimas} matérias-primas.`};
+      catalog.uploadBusy=false;await loadCatalog();
+    }catch(error){catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível importar o arquivo.')};catalog.uploadBusy=false;render();}
+  }));
 }
-
 /* ---------- TABELA DE PREÇOS REAL (margem por faixa de ticket) ---------- */
 /** "12k" → 12000, "4.8k" → 4800 (aqui o ponto é decimal); sem "k" o ponto é
  *  separador de milhar ("8.010" → 8010, sem casas decimais na tabela real). */
@@ -2679,6 +2709,39 @@ function materialKitAtivo(line){
   const variacao=(Array.isArray(line.variantes)?line.variantes:[]).find(item=>String(item.matId)===String(line.variacaoSelecionadaMatId));
   return variacao?{...line,...variacao}:line;
 }
+function formulaAcabamentoCpq(acabamento){
+  if(acabamento.formulaType&&FORMULA_TYPES[acabamento.formulaType]) return acabamento.formulaType;
+  const tipo=String(acabamento.tipoCalculo||'').replace(/²/g,'2').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(tipo.includes('m2')||tipo.includes('area')||tipo.includes('metro quadrado')) return 'area';
+  if(tipo.includes('ml')||tipo.includes('metro linear')||tipo.includes('perimetro')||tipo.includes('comprimento')) return 'perimExt';
+  if(tipo.includes('peca')||tipo.includes('unidade')||tipo.includes('fixo')) return 'fixo';
+  return null;
+}
+function custosAdicionaisComposicao(linha,geom){
+  const acabamentos=[],equipamentos=[],pendencias=[];
+  let custoAcabamentos=0,custoEquipamentos=0;
+  (Array.isArray(linha.acabamentos)?linha.acabamentos:[]).forEach(a=>{
+    const formula=formulaAcabamentoCpq(a);
+    if(!formula){pendencias.push('Tipo de cálculo ausente ou desconhecido no acabamento '+(a.nome||a.id)+'.');return;}
+    const quantidade=Math.max(0,kitLineQty({matId:linha.matId,formulaType:formula,mult:Number(a.mult)||0},geom));
+    const mp=a.custoMateriaPrima,mo=a.custoMaoDeObra,adicional=a.custoAdicional;
+    const unit=adicional!=null&&Number.isFinite(Number(adicional))?Number(adicional):(mp!=null&&mo!=null?Number(mp)+Number(mo):null);
+    const custo=unit==null?null:quantidade*unit;
+    const horas=a.horasEquipamento!=null?Number(a.horasEquipamento)*(Number(a.mult)||0):(Number(a.produtividadeHora)>0?quantidade/Number(a.produtividadeHora):0);
+    if(quantidade>0&&(unit==null||unit<=0)) pendencias.push('Custo ausente ou inválido no acabamento '+(a.nome||a.id)+'.');
+    if(custo!=null)custoAcabamentos+=custo;
+    acabamentos.push({id:Number(a.id)||0,nome:String(a.nome||''),quantidade,custoUnitario:unit,custoTotal:custo,horas,formulaType:formula,multiplicador:Number(a.mult)||0});
+  });
+  (Array.isArray(linha.equipamentos)?linha.equipamentos:[]).forEach(e=>{
+    const horas=Math.max(0,Number(e.horas)||0)*Math.max(0,Number(e.mult)||0);
+    const unit=e.custoHora==null?null:Number(e.custoHora),custo=unit==null?null:horas*unit;
+    if(horas>0&&(unit==null||unit<=0)) pendencias.push('Custo por hora ausente ou inválido no equipamento '+(e.nome||e.id)+'.');
+    if(custo!=null)custoEquipamentos+=custo;
+    equipamentos.push({id:Number(e.id)||0,nome:String(e.nome||''),horas,custoHora:unit,custoTotal:custo});
+  });
+  return {acabamentos,equipamentos,custoAcabamentos:pendencias.some(p=>p.includes('acabamento'))?null:custoAcabamentos,
+    custoEquipamentos:pendencias.some(p=>p.includes('equipamento'))?null:custoEquipamentos,pendencias};
+}
 function variacoesSelecionadasCotacao(){
   const variacoesModelo = (REAL.variacaoModeloNomes||[]).map(nome=>({nome:'Variação do modelo',valor:String(nome).slice(0,120)}));
   return [...variacoesModelo,...REAL.kit.flatMap(line=>{
@@ -2690,26 +2753,51 @@ function variacoesSelecionadasCotacao(){
 function variacoesAtivasDoModelo(modelo){
   return (Array.isArray(modelo?.variacoes)?modelo.variacoes:[]).filter(v=>!['inativo','inativa','nao','não','0'].includes(normalizeSearch(String(v.status||''))));
 }
-function formulaPorUnidadeModelo(unidade){
-  const u=normalizeSearch(String(unidade||'')).replace(/²/g,'2');
-  if(u.includes('area')||u.includes('quadrad')||u.includes('m2')||u.includes('metro quadrado')) return 'areaTotal';
-  if(u.includes('perimetro')||u.includes('linear')||u.includes('comprimento')||u==='m'||u.includes('metro linear')) return 'perimExt';
-  return 'fixo';
-}
 function composicaoMubiSysDoModelo(modelo, variacaoIds){
   const todas=Array.isArray(catalog.composicoesMubiSys)?catalog.composicoesMubiSys:[];
   const ids=new Set((Array.isArray(variacaoIds)?variacaoIds:variacaoIds?[variacaoIds]:[]).map(Number));
   const variacoes=todas.filter(item=>item.variacaoId!=null&&ids.has(Number(item.variacaoId)));
   const compartilhadas=todas.filter(item=>!item.variacaoId&&Number(item.modeloId)===Number(modelo.id));
   const registros=[...compartilhadas,...variacoes];
-  if(!registros.length) return null;
+  if(!registros.length){
+    if(catalog.mubisysWebConectado&&ids.size){
+      const nomes=variacoesAtivasDoModelo(modelo).filter(v=>ids.has(Number(v.id))).map(v=>`${v.nome} (#${v.id})`);
+      return {erro:`O MubiSys não devolveu nenhuma matéria-prima para as variações selecionadas: ${nomes.join(', ')||[...ids].join(', ')}. Confira a ficha no MubiSys e atualize os consumos antes de cotar.`};
+    }
+    return null;
+  }
+  const faltantes=[...ids].filter(id=>!variacoes.some(item=>Number(item.variacaoId)===id));
+  if(faltantes.length){
+    const nomes=variacoesAtivasDoModelo(modelo).filter(v=>faltantes.includes(Number(v.id))).map(v=>`${v.nome} (#${v.id})`);
+    return {erro:`O MubiSys não devolveu matérias-primas para as variações: ${nomes.join(', ')||faltantes.join(', ')}. A importação foi interrompida para não salvar uma ficha incompleta.`};
+  }
   const linhas=[];
   for(const item of registros){
     const m=catalog.materias.find(x=>Number(x.id)===Number(item.materiaPrimaId));
     if(!m) return {erro:`A matéria-prima ${item.materiaPrimaId} desta composição não está no catálogo atual do MubiSys.`};
+    if(!item.perfilConsumo||!item.formulaConsumo||!BASES_COBRANCA_PRODUTO.includes(item.formulaConsumo)) return {erro:`A matéria-prima ${m.nome} (#${m.id}) veio com o perfil de consumo “${item.perfilConsumo||'não informado'}”, que ainda não possui equivalente seguro no Radrasys. A importação foi interrompida para evitar cálculo incorreto.`};
     const variacao=item.variacaoId==null?null:variacoesAtivasDoModelo(modelo).find(v=>Number(v.id)===Number(item.variacaoId));
     const unidadeConsumo=item.unidade||m.unidade||modelo.unidade||'unidade';
-    linhas.push({matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',formulaType:formulaPorUnidadeModelo(unidadeConsumo),mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,consumoBaseUnidade:variacao?.nome||modelo.unidade||'unidade',unidadeConsumo,variacaoModeloId:item.variacaoId??null,variacaoModeloNome:variacao?.nome||null});
+    linhas.push({
+      matId:m.id,nome:m.nome,unidade:m.unidade,custo:m.valor,atualizado:m.atualizado,status:m.status,papel:'',
+      formulaType:item.formulaConsumo,mult:Number(item.quantidade)||0,variantes:[],origemMubiSys:true,
+      composicaoItemId:Number(item.itemId)||null,perfilConsumoMubiSys:item.perfilConsumo,
+      consumoBaseUnidade:variacao?.nome||modelo.unidade||'unidade',unidadeConsumo,
+      variacaoModeloId:item.variacaoId??null,variacaoModeloNome:variacao?.nome||null,
+      acabamentos:(Array.isArray(item.acabamentos)?item.acabamentos:[]).map(a=>({
+        id:Number(a.id)||0,nome:String(a.nome||''),tipoCalculo:String(a.tipoCalculo||''),
+        formulaType:a.formulaConsumo||null,mult:Number(a.quantidade)||1,
+        custoAdicional:a.custoAdicional==null?null:Number(a.custoAdicional),
+        custoMateriaPrima:a.custoMateriaPrima==null?null:Number(a.custoMateriaPrima),
+        custoMaoDeObra:a.custoMaoDeObra==null?null:Number(a.custoMaoDeObra),
+        produtividadeHora:a.produtividadeHora==null?null:Number(a.produtividadeHora),
+        horasEquipamento:a.horasEquipamento==null?null:Number(a.horasEquipamento),
+      })),
+      equipamentos:(Array.isArray(item.equipamentos)?item.equipamentos:[]).map(e=>({
+        id:Number(e.id)||0,nome:String(e.nome||''),horas:Number(e.horas)||0,
+        mult:Number(e.quantidade)||1,custoHora:e.custoHora==null?null:Number(e.custoHora),
+      })),
+    });
   }
   return {linhas};
 }
@@ -2727,7 +2815,8 @@ function carregarComposicaoModeloReal(produto, modelo, variacaoIds){
   const base=modelo?linhasDoModelo(produto,modelo,ids):{linhas:[],fonte:'nenhuma',erro:null};
   REAL.kit=base.linhas;
   REAL.kitSource=base.fonte;
-  REAL.kitWarning=base.fonte==='mubisys'?null:(base.erro||((catalog.mubisysWebConectado&&catalog.composicoesMubiSys.length)?'Não encontrei consumo do MubiSys para esta variação; usando a composição cadastrada no Radrasys.':null));
+  const importacaoPendente=catalog.mubisysWebConectado&&REAL.variacaoModeloIds.length>0&&base.fonte!=='mubisys';
+  REAL.kitWarning=base.fonte==='mubisys'?null:(base.erro||(importacaoPendente?(catalog.erroComposicoesMubiSys||'Não foi possível confirmar a ficha de todas as variações no MubiSys. Atualize os consumos antes de cotar.'):null));
   // Troca de variação do produto principal preserva as escolhas já feitas nos produtos do kit.
   const chaveKit=modelo?kitKey(produto.id,modelo.id):null;
   if(!Array.isArray(REAL.kitProdutosSel)||REAL.kitProdutosSelDe!==chaveKit){
@@ -2916,17 +3005,26 @@ function linhaComCustoNesting(linha, geom=computeGeomReal()){
   const resultadosNesting=REAL.nestingMateriais?.length?REAL.nestingMateriais:(REAL.nesting?.materiais||[]);
   const nesting=resultadosNesting.find(item=>Number(item.id_materia_prima)===Number(material.matId));
   const quantidade=Math.max(0,kitLineQty(linha,geom));
-  const custoBase=quantidade*(Number(material.custo)||0);
-  if(!nesting) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:null};
+  const custoUnitCatalogo=Number(material.custo)||0;
+  const extras=custosAdicionaisComposicao({...linha,matId:material.matId},geom);
+  const pendencias=[...extras.pendencias];
+  if(quantidade>0&&custoUnitCatalogo<=0) pendencias.push('Custo unitário ausente ou inválido para '+(material.nome||'matéria-prima')+'.');
+  const fechar=(custoMateriaPrima,custoUnitario,metadados)=>{
+    const custoTotal=pendencias.length?null:custoMateriaPrima+extras.custoAcabamentos+extras.custoEquipamentos;
+    return {quantidade,custoMateriaPrima,custoAcabamentos:extras.custoAcabamentos,custoEquipamentos:extras.custoEquipamentos,
+      acabamentos:extras.acabamentos,equipamentos:extras.equipamentos,pendencias,custoTotal,
+      custoUnitario,nesting:metadados};
+  };
+  const custoBase=quantidade*custoUnitCatalogo;
+  if(!nesting) return fechar(custoBase,custoUnitCatalogo,null);
   const metadados={idChapa:nesting.id_chapa_utilizada,nomeChapa:nesting.nome_chapa_utilizada,larguraMm:nesting.chapa.largura_mm,alturaMm:nesting.chapa.altura_mm,areaChapaM2:nesting.chapa.largura_mm*nesting.chapa.altura_mm/1e6,areaUtilizadaM2:nesting.area_chapa_utilizada_m2,areaLiquidaM2:nesting.area_liquida_m2,areaSobraM2:nesting.area_sobra_m2,perimetroTotalM:nesting.perimetro_total_m,aproveitamentoPct:nesting.porcentagem_aproveitamento,criterio:nesting.criterio_escolha,custoUnitarioCatalogo:Number(nesting.custo_unitario)||0,unidadeCusto:nesting.unidade_custo,custoMaterialEstimado:nesting.custo_material_estimado,custoSobraEstimado:nesting.custo_sobra_estimado,alertaCusto:nesting.alerta_custo,chapaPrincipal:nesting.chapa_principal,espacamentoPecasMm:nesting.espacamento_pecas_mm,margemBordaMm:nesting.margem_borda_mm,reciboIntegridade:nesting.reciboIntegridade};
-  if(nesting.custo_material_estimado==null||!Number.isFinite(Number(nesting.custo_material_estimado))) return {quantidade,custoTotal:custoBase,custoUnitario:Number(material.custo)||0,nesting:metadados};
+  if(nesting.custo_material_estimado==null||!Number.isFinite(Number(nesting.custo_material_estimado))) return fechar(custoBase,custoUnitCatalogo,metadados);
   const linhasMesmoMaterial=(REAL.kit||[]).filter(item=>Number(materialKitAtivo(item).matId)===Number(material.matId));
   const custoBaseTotal=linhasMesmoMaterial.reduce((total,item)=>{const atual=materialKitAtivo(item);return total+Math.max(0,kitLineQty(item,geom))*(Number(atual.custo)||0);},0);
-  const parcela=custoBaseTotal>0?custoBase/ custoBaseTotal:1/Math.max(1,linhasMesmoMaterial.length);
-  const custoTotal=Math.max(0,Number(nesting.custo_material_estimado)*parcela);
-  return {quantidade,custoTotal,custoUnitario:quantidade>0?custoTotal/quantidade:0,nesting:metadados};
+  const parcela=custoBaseTotal>0?custoBase/custoBaseTotal:1/Math.max(1,linhasMesmoMaterial.length);
+  const custoMateriaPrima=Math.max(0,Number(nesting.custo_material_estimado)*parcela);
+  return fechar(custoMateriaPrima,quantidade>0?custoMateriaPrima/quantidade:0,metadados);
 }
-
 function resumoCustoCoresReal(){
   const results=REAL.colorAnalysis?.resultados||[];
   const additional=results.filter(item=>item.tipoSugestao==='imprimax'||item.tipoSugestao==='impresso');
@@ -2949,7 +3047,9 @@ function aplicarEmbalagem(precoSemEmbalagem){
 
 function computeOrcamentoReal(){
   const g = computeGeomReal();
-  const matKitTotal = REAL.kit.reduce((a,k)=>a+linhaComCustoNesting(k,g).custoTotal,0);
+  const custosKit=REAL.kit.map(linha=>linhaComCustoNesting(linha,g));
+  const pendenciasBOM=[...new Set(custosKit.flatMap(linha=>linha.pendencias||[]))];
+  const matKitTotal=custosKit.reduce((total,linha)=>total+(Number(linha.custoTotal)||0),0);
   const corCusto=resumoCustoCoresReal();
   const matTotal = matKitTotal+corCusto.total;
   const servTotal = REAL.servicos.reduce((a,s)=>a+s.v,0);
@@ -2969,7 +3069,7 @@ function computeOrcamentoReal(){
     const emb = aplicarEmbalagem(REAL.precificacao.precoFixo*(1-descontoFrac));
     const precoCalculado = emb.precoCalculado;
     const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
-    return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoCalculado, precoFinal, margemInfo:null, margin:null, modoFixo:true, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
+    return {matTotal, matKitTotal, pendenciasBOM, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase:REAL.precificacao.precoFixo, precoComInstalacao:REAL.precificacao.precoFixo, precoCalculado, precoFinal, margemInfo:null, margin:null, modoFixo:true, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
   }
 
   const margemInfo = REAL.precificacao ? margemDaTabela(REAL.precificacao, custoDireto) : null;
@@ -2979,7 +3079,7 @@ function computeOrcamentoReal(){
   const emb = aplicarEmbalagem(precoComInstalacao*(1-descontoFrac));
   const precoCalculado = emb.precoCalculado;
   const precoFinal = Number.isFinite(REAL.precoAprovadoFinal)?REAL.precoAprovadoFinal:precoCalculado;
-  return {matTotal, matKitTotal, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoCalculado, precoFinal, margemInfo, margin, modoFixo:false, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
+  return {matTotal, matKitTotal, pendenciasBOM, custoMateriaisCorTotal:corCusto.total, pendenciasCustoCores:corCusto.pendencias, servTotal, custoFixo, custoDireto, precoBase, precoComInstalacao, precoCalculado, precoFinal, margemInfo, margin, modoFixo:false, embalagemPct:emb.embalagemPct, embalagemValor:emb.embalagemValor};
 }
 
 /* ---------- RENDER ---------- */
@@ -3095,10 +3195,10 @@ function banner(){
     ? 'Consultando o catálogo do MubiSys…'
     : catalog.error
       ? 'Falha ao carregar o catálogo do MubiSys.'
-      : 'Catálogo do MubiSys conectado.';
+      : 'Espelho local MubiSys disponível.';
   const detalheCatalogo = catalog.error
     ? escaparHtml(catalog.error)
-    : 'Produtos, modelos e matérias-primas são consultados pela API do ERP, e os custos vêm do cadastro do MubiSys.';
+    : 'Produtos, modelos, variações, matérias-primas e custos são lidos do espelho local; o Access-Token só é usado para atualizar o catálogo público.';
   return `<div class="banner">${ICONS.info}
     <div><b>${statusCatalogo}</b> ${detalheCatalogo} O CPQ não altera cadastros no ERP. Revise a composição e os valores antes de enviar uma proposta.</div>
   </div>`;
@@ -3123,7 +3223,7 @@ function renderProjectPicker(){
       </div>
     </div>
     <button class="btn btn-primary" data-act="start-real">📤 Iniciar proposta real</button>
-    <div class="role-note" style="margin-top:10px;">${ICONS.db} Catálogo: ${catalog.ready ? (catalog.error ? escaparHtml(catalog.error) : `${catalog.produtos.length} produtos e ${catalog.materias.length} matérias-primas carregados da API do MubiSys agora.`) : 'consultando o catálogo do MubiSys…'}</div>
+    <div class="role-note" style="margin-top:10px;">${ICONS.db} Espelho local: ${catalog.ready ? (catalog.error ? escaparHtml(catalog.error) : `${catalog.produtos.length} produtos e ${catalog.materias.length} matérias-primas disponíveis no Radrasys.`) : 'carregando o espelho local…'}</div>
   </div>`;
 }
 
@@ -3596,14 +3696,14 @@ function realStepProposta(){
   const variacoesModelo = modeloSel ? variacoesAtivasDoModelo(modeloSel) : [];
   const variacoesSelecionadas = new Set((REAL.variacaoModeloIds||[]).map(Number));
   const kitPronto = produtoSel && modeloSel ? adminState.kits[kitKey(produtoSel.id, modeloSel.id)] : null;
-  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || variacoesSelecionadas.size>0) && REAL.vendedor && (!soldaFixacaoObrigatoria() || (REAL.tiposFixacao||[]).length>0);
+  const podeAvancar = validarDocumento(REAL.cliente.cnpj) && REAL.produtoId && REAL.modeloId && (!variacoesModelo.length || variacoesSelecionadas.size>0) && !REAL.kitWarning && REAL.vendedor && (!soldaFixacaoObrigatoria() || (REAL.tiposFixacao||[]).length>0);
 
   const subcatsDoFiltro = REAL.filtroCategoria ? Object.keys(CATEGORIAS_PRODUTO[REAL.filtroCategoria]) : [];
   const tiposDoFiltro = (REAL.filtroCategoria && REAL.filtroSubcategoria) ? CATEGORIAS_PRODUTO[REAL.filtroCategoria][REAL.filtroSubcategoria] : [];
 
   return `
   <div class="card">
-    <div class="cardhead"><div><h3>1 · Proposta</h3><p>Produtos e modelos vêm do catálogo atual do MubiSys (${catalog.produtos.length} produtos / ${catalog.materias.length} matérias-primas via API).</p></div></div>
+    <div class="cardhead"><div><h3>1 · Proposta</h3><p>Produtos, modelos e matérias-primas do espelho local (${catalog.produtos.length} produtos / ${catalog.materias.length} matérias-primas).</p></div></div>
     <label class="field" style="margin-bottom:12px;">Título da proposta
       <input type="text" maxlength="256" value="${escaparHtml(REAL.tituloProposta||'')}" data-act="real-titulo-proposta" placeholder="Ex.: Fachada principal — Loja Centro">
     </label>
@@ -6354,11 +6454,16 @@ function snapshotCotacaoReal(){
     const alternativa=(Array.isArray(linha.variantes)?linha.variantes:[]).find(item=>String(item.matId)===String(linha.variacaoSelecionadaMatId));
     return {
       mubisysMateriaPrimaId:Number(material.matId)||null,
+      composicaoItemId:Number(linha.composicaoItemId)||null,
       nome:String(material.nome||''),
       unidade:String(material.unidade||''),
       custoUnitario:calculoLinha.custoUnitario,
       quantidade:Number.isFinite(quantidade)?quantidade:0,
-      custoTotal:Number.isFinite(quantidade)?calculoLinha.custoTotal:0,
+      custoTotal:Number.isFinite(quantidade)?(calculoLinha.custoMateriaPrima??0):0,
+      custoAcabamentos:calculoLinha.custoAcabamentos??0,
+      custoEquipamentos:calculoLinha.custoEquipamentos??0,
+      acabamentos:calculoLinha.acabamentos||[],
+      equipamentos:calculoLinha.equipamentos||[],
       ...formulaParaServidor(linha,quantidade),
       variacaoModeloId:linha.variacaoModeloId??null,
       variacaoModeloNome:linha.variacaoModeloNome||null,
@@ -6413,6 +6518,7 @@ function snapshotCotacaoReal(){
     vendedor:REAL.vendedor || '',
     whatsappVendedor:normalizarTelefoneWhatsApp(configGeral.whatsappVendedores[REAL.vendedor]) || null,
     mubisysProdutoId:REAL.produtoId,
+    origemComposicao:String(REAL.kitSource||'nenhuma'),
     mubisysModeloId:REAL.modeloId,
     variacoesModelo:(REAL.variacaoModeloIds||[]).map((id,index)=>({id,nome:REAL.variacaoModeloNomes?.[index]||''})),
     modeloNome:(REAL.variacaoModeloNome ? `${REAL.modeloNome || ''} — ${REAL.variacaoModeloNome}` : (REAL.modeloNome || '')).slice(0,256),
@@ -6540,9 +6646,59 @@ async function aprovarPrecoReal(origem){
   }
 }
 
+async function validarComposicaoBOMNoServidor(snapshot){
+  if(REAL.kitSource!=="mubisys") return;
+  const linhas=(snapshot.materiais||[]).filter(linha=>Number(linha.composicaoItemId)>0);
+  if(!linhas.length) return;
+  const response=await fetch("/api/letra-caixa/mubisys/composicoes/calcular",{
+    method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      produtoId:Number(REAL.produtoId),modeloId:Number(REAL.modeloId),
+      variacaoIds:[...new Set((REAL.variacaoModeloIds||[]).map(Number).filter(Number.isInteger))],
+      composicaoItemIds:linhas.map(linha=>Number(linha.composicaoItemId)),
+      medidas:{areaM2:snapshot.areaM2,areaGeralM2:snapshot.areaGeralM2,
+        areaTotalNestingM2:snapshot.areaTotalNestingM2,perimExtM:snapshot.perimExtM,perimTotalM:snapshot.perimTotalM},
+      nestings:linhas.filter(linha=>linha.nesting).map(linha=>({
+        materiaPrimaId:Number(linha.mubisysMateriaPrimaId),
+        areaLiquidaM2:linha.nesting.areaLiquidaM2,areaUtilizadaM2:linha.nesting.areaUtilizadaM2,
+        perimetroTotalM:linha.nesting.perimetroTotalM,custoMaterialEstimado:linha.nesting.custoMaterialEstimado,
+      })),
+    }),
+  });
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(body.error||"O servidor não conseguiu validar a composição MubiSys.");
+  const porId=new Map((body.linhas||[]).map(linha=>[Number(linha.itemId),linha]));
+  const perto=(a,b)=>Math.abs(Number(a||0)-Number(b||0))<=0.02;
+  for(const linha of linhas){
+    const oficial=porId.get(Number(linha.composicaoItemId));
+    if(!oficial) throw new Error("Uma linha da composição MubiSys não foi encontrada no recálculo do servidor.");
+    if(!perto(linha.quantidade,oficial.quantidade)||
+       !perto(linha.custoTotal,oficial.custoMateriaPrima)||
+       !perto(linha.custoAcabamentos,oficial.custoAcabamentos)||
+       !perto(linha.custoEquipamentos,oficial.custoEquipamentos)){
+      throw new Error("A composição ou os custos foram alterados desde o último cálculo. Recalcule o orçamento antes de emitir.");
+    }
+    const acabamentos=new Map((oficial.acabamentos||[]).map(item=>[Number(item.id),item]));
+    if((linha.acabamentos||[]).length!==acabamentos.size) throw new Error("A lista de acabamentos mudou desde o último cálculo.");
+    for(const acabamento of linha.acabamentos||[]){
+      const atual=acabamentos.get(Number(acabamento.id));
+      if(!atual||!perto(acabamento.quantidade,atual.quantidade)||!perto(acabamento.custoTotal,atual.custo)||!perto(acabamento.horas,atual.horas))
+        throw new Error("O custo ou consumo do acabamento "+(acabamento.nome||"selecionado")+" não corresponde à ficha MubiSys.");
+    }
+    const equipamentos=new Map((oficial.equipamentos||[]).map(item=>[Number(item.id),item]));
+    if((linha.equipamentos||[]).length!==equipamentos.size) throw new Error("A lista de equipamentos mudou desde o último cálculo.");
+    for(const equipamento of linha.equipamentos||[]){
+      const atual=equipamentos.get(Number(equipamento.id));
+      if(!atual||!perto(equipamento.horas,atual.horas)||!perto(equipamento.custoTotal,atual.custo))
+        throw new Error("O custo ou as horas do equipamento "+(equipamento.nome||"selecionado")+" não correspondem à ficha MubiSys.");
+    }
+  }
+}
+
 async function criarCotacaoPublica(){
   await salvarClienteCadastrado();
   await prepararImagensCotacao();
+  await validarComposicaoBOMNoServidor(snapshotCotacaoReal());
   const response = await fetch('/api/letra-caixa/cotacoes', {
     method:'POST',
     credentials:'same-origin',
@@ -6560,6 +6716,8 @@ async function criarCotacaoPublica(){
 }
 
 async function concluirOrcamentoEabrirCotacao(){
+  const pendenciasBOM=computeOrcamentoReal().pendenciasBOM||[];
+  if(pendenciasBOM.length){alert("Resolva as pendências da BOM antes de emitir: "+pendenciasBOM.join(" "));return;}
   if(resumoCustoCoresReal().pendencias.length){alert('Há custos de vinil/ impressão/ laminação pendentes. Atualize o cadastro por m² e refaça a análise de cores antes de emitir.');return;}
   if(cotacaoEmCriacao) return;
   cotacaoEmCriacao=true;
@@ -6620,39 +6778,143 @@ async function carregarKitsServidor(){
     kitsCarregando=false;
     render();
   }
+  if(kitsApiDisponivel&&catalog.mubisysWebConectado) void sincronizarComposicoesMubiSysAutomaticamente();
 }
 
-/** Traz do MubiSys a composição comum do modelo + a de cada variação ativa para o kit do Radrasys.
- *  Linhas manuais (sem origemMubiSys) só são mantidas com substituir=false; kits com linhas manuais
- *  são pulados na importação em massa para não duplicar custo. */
+function projetarLinhaMubiSys(linha){
+  return [Number(linha.matId)||null,linha.variacaoModeloId==null?null:Number(linha.variacaoModeloId),String(linha.formulaType||''),Number(linha.mult)||0,String(linha.perfilConsumoMubiSys||''),String(linha.unidadeConsumo||''),String(linha.consumoBaseUnidade||'')];
+}
+function assinaturaLinhasMubiSys(linhas,{catalogo=false}={}){
+  const projetadas=(linhas||[]).filter(l=>l?.origemMubiSys).map(l=>{
+    const base=projetarLinhaMubiSys(l);
+    return catalogo?[base,String(l.nome||''),String(l.unidade||''),Number(l.custo)||0,String(l.status||'')]:base;
+  });
+  projetadas.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return JSON.stringify(projetadas);
+}
+function preservarAjustesImportados(novas,atuais){
+  const filas=new Map();
+  for(const linha of atuais){
+    const chave=`${Number(linha.matId)}:${linha.variacaoModeloId==null?'comum':Number(linha.variacaoModeloId)}`;
+    if(!filas.has(chave)) filas.set(chave,[]);
+    filas.get(chave).push(linha);
+  }
+  return novas.map(linha=>{
+    const chave=`${Number(linha.matId)}:${linha.variacaoModeloId==null?'comum':Number(linha.variacaoModeloId)}`;
+    const anterior=filas.get(chave)?.shift();
+    if(!anterior) return {...linha,variantes:[]};
+    return {...anterior,...linha,papel:anterior.papel??linha.papel??'',variantes:Array.isArray(anterior.variantes)?anterior.variantes.map(v=>({...v})):[],variacaoSelecionadaMatId:anterior.variacaoSelecionadaMatId??null,variacaoPadraoMatId:anterior.variacaoPadraoMatId??null};
+  });
+}
+/** Copia somente a ficha de leitura do MubiSys para o Radrasys; nunca grava no ERP.
+ *  Em sincronizações, conflitos em linhas editadas localmente são preservados para revisão. */
 function importarComposicaoMubiSysNoKit(produto, modelo, {substituir=false}={}){
   const key=kitKey(produto.id,modelo.id);
   const importada=composicaoMubiSysDoModelo(modelo,variacoesAtivasDoModelo(modelo).map(v=>v.id));
   if(!importada) return {status:'sem-composicao'};
   if(importada.erro) return {status:'erro',erro:importada.erro};
+  if(!importada.linhas.length) return {status:'sem-composicao'};
   const existente=adminState.kits[key];
-  const manuais=(existente?.linhas||[]).filter(l=>!l.origemMubiSys);
-  if(manuais.length&&!substituir) return {status:'pulado'};
+  const linhasAtuais=Array.isArray(existente?.linhas)?existente.linhas:[];
+  const linhasImportadasAtuais=linhasAtuais.filter(l=>l.origemMubiSys);
+  const linhasManuais=linhasAtuais.filter(l=>!l.origemMubiSys);
+  if(!substituir&&!linhasImportadasAtuais.length&&linhasManuais.length) return {status:'pulado'};
+
+  const assinaturaFonte=assinaturaLinhasMubiSys(importada.linhas,{catalogo:true});
+  const assinaturaLocalRecebida=assinaturaLinhasMubiSys(importada.linhas);
+  const assinaturaLocalAtual=assinaturaLinhasMubiSys(linhasImportadasAtuais);
+  const syncSalva=existente?.mubisysSync&&typeof existente.mubisysSync==='object'?existente.mubisysSync:null;
+  if(!substituir&&linhasImportadasAtuais.length){
+    const baseline=typeof syncSalva?.assinaturaLocal==='string'?syncSalva.assinaturaLocal:null;
+    if(baseline?assinaturaLocalAtual!==baseline:assinaturaLocalAtual!==assinaturaLocalRecebida)
+      return {status:'revisao',key,nome:`${produto.nome} — ${modelo.nome}`};
+    if(baseline&&syncSalva?.assinaturaFonte===assinaturaFonte)
+      return {status:'sem-alteracao',key,linhas:linhasImportadasAtuais.length};
+  }
+
   const kit=existente||(adminState.kits[key]={linhas:[],precificacao:null,descricaoProduto:'',prazoDiasUteis:null,kitProdutos:[],fotoUrl:null,fotoAssetId:null,categoria:null,subcategoria:null,tipoProduto:null,nomeCompleto:`${produto.nome} — ${modelo.nome}`});
-  kit.linhas=importada.linhas.map(l=>({...l,variantes:[]}));
-  return {status:'importado',key,linhas:kit.linhas.length};
+  const novasLinhas=preservarAjustesImportados(importada.linhas,substituir?[]:linhasImportadasAtuais);
+  kit.linhas=substituir?novasLinhas:[...linhasManuais,...novasLinhas];
+  kit.mubisysSync={versao:1,assinaturaFonte,assinaturaLocal:assinaturaLinhasMubiSys(novasLinhas),sincronizadoEm:new Date().toISOString()};
+  return {status:linhasImportadasAtuais.length?'atualizado':'importado',key,linhas:novasLinhas.length};
+}
+
+/** Ao cadastrar/abrir um modelo ainda vazio, traz a ficha do MubiSys sem exigir um clique extra.
+ *  Isto vale também para modelos sem subvariações: nesse caso entram todas as linhas comuns do modelo. */
+function preencherComposicaoMubiSysSeVazia(key){
+  if(!key||!catalog.mubisysWebConectado) return null;
+  const kit=adminState.kits[key];
+  if(!kit||!Array.isArray(kit.linhas)||kit.linhas.length) return null;
+  const [produtoId,modeloId]=String(key).split('_').map(Number);
+  const produto=catalog.produtos.find(item=>Number(item.id)===produtoId);
+  const modelo=produto?.modelos.find(item=>Number(item.id)===modeloId);
+  if(!produto||!modelo) return null;
+  const resultado=importarComposicaoMubiSysNoKit(produto,modelo);
+  if(resultado.status==='importado'||resultado.status==='atualizado'){
+    catalog.importMsg=`${resultado.linhas} matéria(s)-prima(s) do modelo ${modelo.nome} importada(s) automaticamente do MubiSys.`;
+  }
+  return resultado;
 }
 
 async function importarComposicoesMubiSysEmMassa(){
-  if(catalog.importando||!catalog.mubisysWebConectado) return;
+  if(catalog.importando||catalog.sincronizandoKits||!catalog.mubisysWebConectado) return;
   catalog.importando=true;catalog.importMsg='Importando…';render();
-  const total={importado:0,pulado:0,'sem-composicao':0,erro:0,falhaSalvar:0};
+  const total={importado:0,atualizado:0,'sem-alteracao':0,pulado:0,revisao:0,'sem-composicao':0,erro:0,falhaSalvar:0};
   for(const produto of catalog.produtos){
     if(adminState.produtosExcluidos.has(produto.id)) continue;
     for(const modelo of produto.modelos){
       const r=importarComposicaoMubiSysNoKit(produto,modelo);
       total[r.status]++;
-      if(r.status==='importado'&&!(await salvarKitImediato(r.key))) total.falhaSalvar++;
+      if((r.status==='importado'||r.status==='atualizado')&&!(await salvarKitImediato(r.key))) total.falhaSalvar++;
     }
   }
   catalog.importando=false;
-  catalog.importMsg=`${total.importado} modelo(s) importado(s); ${total.pulado} pulado(s) por já terem composição manual; ${total['sem-composicao']} sem composição no MubiSys${total.erro?`; ${total.erro} com matéria-prima fora do catálogo`:''}${total.falhaSalvar?`; ${total.falhaSalvar} não salvaram`:''}.`;
+  catalog.importMsg=`${total.importado} modelo(s) novo(s); ${total.atualizado} atualizado(s); ${total['sem-alteracao']} já sincronizado(s); ${total.pulado} pulado(s) com composição manual; ${total['sem-composicao']} sem composição no MubiSys${total.revisao?`; ${total.revisao} requer(em) revisão local`:''}${total.erro?`; ${total.erro} com erro de leitura`:''}${total.falhaSalvar?`; ${total.falhaSalvar} não salvaram`:''}.`;
+  catalog.syncWarning=total.revisao?`${total.revisao} composição(ões) foi/foram preservada(s) porque uma linha importada foi alterada localmente. Revise e use “Atualizar matérias-primas do MubiSys” para substituir conscientemente.`:null;
   render();
+}
+
+/** Atualiza automaticamente kits já cadastrados quando o usuário abre/atualiza o catálogo autenticado. */
+async function sincronizarComposicoesMubiSysAutomaticamente(){
+  if(catalog.sincronizandoKits||catalog.importando||!catalog.mubisysWebConectado||!kitsApiDisponivel||kitsCarregando) return;
+  const chaves=Object.keys(adminState.kits||{});
+  if(!chaves.length) return;
+  catalog.sincronizandoKits=true;
+  catalog.syncWarning=null;
+  render();
+  let importados=0,atualizados=0,semAlteracao=0,pulados=0,semComposicao=0,revisao=0,erros=0,naoEncontrados=0,falhasSalvar=0;
+  try{
+    for(const key of chaves){
+      const [produtoId,modeloId]=key.split('_').map(Number);
+      if(adminState.produtosExcluidos.has(produtoId)) continue;
+      const produto=catalog.produtos.find(item=>Number(item.id)===produtoId);
+      const modelo=produto?.modelos.find(item=>Number(item.id)===modeloId);
+      if(!produto||!modelo){naoEncontrados++;continue;}
+      const resultado=importarComposicaoMubiSysNoKit(produto,modelo);
+      if(resultado.status==='importado'||resultado.status==='atualizado'){
+        if(await salvarKitImediato(key)){
+          if(resultado.status==='importado') importados++; else atualizados++;
+        }else falhasSalvar++;
+      }else if(resultado.status==='sem-alteracao') semAlteracao++;
+      else if(resultado.status==='pulado') pulados++;
+      else if(resultado.status==='sem-composicao') semComposicao++;
+      else if(resultado.status==='revisao') revisao++;
+      else if(resultado.status==='erro') erros++;
+    }
+    catalog.importMsg=`Cópia MubiSys → Radrasys: ${importados} nova(s), ${atualizados} atualizada(s), ${semAlteracao} sem alteração, ${pulados} manual(is) preservada(s), ${semComposicao} sem ficha no MubiSys${naoEncontrados?`, ${naoEncontrados} modelo(s) não localizado(s) no catálogo`:''}${falhasSalvar?`, ${falhasSalvar} falha(s) ao salvar`:''}.`;
+    const pendencias=[];
+    if(semComposicao) pendencias.push(`${semComposicao} cadastro(s) local(is) sem composição retornada pelo MubiSys`);
+    if(revisao) pendencias.push(`${revisao} cadastro(s) com alterações locais preservado(s) para revisão`);
+    if(erros) pendencias.push(`${erros} ficha(s) com erro ou perfil sem equivalência`);
+    if(naoEncontrados) pendencias.push(`${naoEncontrados} modelo(s) local(is) não encontrado(s) no catálogo atual`);
+    if(falhasSalvar) pendencias.push(`${falhasSalvar} cadastro(s) não puderam ser salvos no Radrasys`);
+    catalog.syncWarning=pendencias.length?`${pendencias.join('; ')}.`:null;
+  }catch(error){
+    catalog.syncWarning=`Falha na sincronização MubiSys → Radrasys: ${String(error&&error.message||'erro inesperado')}.`;
+  }finally{
+    catalog.sincronizandoKits=false;
+    render();
+  }
 }
 
 async function salvarKitImediato(key){
@@ -7377,15 +7639,18 @@ function adminProdutos(){
     .filter(p=> !q || normalizeSearch(p.nome+' '+skuProduto(p.id)+' '+p.modelos.map(m=>skuModelo(p.id,m.id)).join(' ')).includes(q))
     .slice()
     .sort((a,b)=> (adminState.produtosExcluidos.has(a.id)?1:0) - (adminState.produtosExcluidos.has(b.id)?1:0));
-  const cadastrados = Object.keys(adminState.kits).length;
+  const kitsCadastrados = Object.values(adminState.kits);
+  const cadastrados = kitsCadastrados.filter(kit=>Array.isArray(kit?.linhas)&&kit.linhas.length>0).length;
+  const incompletos = kitsCadastrados.filter(kit=>!Array.isArray(kit?.linhas)||kit.linhas.length===0).length;
   return `
   <div class="card">
     <div class="cardhead">
-      <div><h3>Produtos (catálogo real do MubiSys)</h3><p>${catalog.produtos.length} produtos espelhados via API GET /produto. Cada produto recebe um SKU Radrasys fixo a partir do ID MubiSys; cada modelo tem um SKU derivado do produto e do ID do modelo. Busque por nome ou SKU para localizar configurações.</p><p>As variações vêm do catálogo. Para importar a ficha de consumo de cada variação, conecte a conta do MubiSys abaixo; se não houver ficha importada, a composição manual por modelo continua disponível.</p>${catalog.baixadoEm?`<p style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Última consulta ao MubiSys: ${new Date(catalog.baixadoEm).toLocaleString('pt-BR')}</p>`:''}</div>
+      <div><h3>Produtos (espelho local MubiSys)</h3><p>${catalog.produtos.length} produtos e variações no espelho compartilhado. Busque por nome ou SKU/ID para localizar configurações.</p><p>Para preencher a ficha de consumo, importe o template CSV/XLSX no painel do espelho. O orçamento combina automaticamente as linhas comuns do modelo com as linhas da variação selecionada; nenhuma conta do MubiSys é conectada nesta tela.</p>${catalog.espelhoStatus?.ultimaSincronizacaoEm?`<p style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Última sincronização do catálogo: ${new Date(catalog.espelhoStatus.ultimaSincronizacaoEm).toLocaleString('pt-BR')}</p>`:''}</div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
-        <span class="badge b-accent">${cadastrados} modelo(s) cadastrado(s)</span>
+        <span class="badge b-accent">${cadastrados} modelo(s) completo(s)</span>
+        ${incompletos?`<span class="badge b-warn">${incompletos} incompleto(s) sem insumos</span>`:''}
         <span class="badge ${kitsApiDisponivel?'b-ok':'b-warn'}">${kitsCarregando?'Carregando cadastros…':kitsApiDisponivel?'✓ gravação no banco compartilhado':`⚠ banco indisponível${kitsApiErro?': '+escaparHtml(kitsApiErro):''}`}</span>
-        <button class="btn btn-ghost btn-sm" data-act="admin-catalogo-atualizar" ${catalog.refreshing?'disabled':''}>${catalog.refreshing?'Atualizando…':'Atualizar catálogo do MubiSys'}</button>
+        <button class="btn btn-ghost btn-sm" data-act="admin-catalogo-atualizar" ${catalog.refreshing?'disabled':''}>${catalog.refreshing?'Atualizando…':'Atualizar espelho MubiSys'}</button>
       </div>
     </div>
     ${renderConexaoMubiSys()}
@@ -7400,7 +7665,8 @@ function adminProdutos(){
 function adminProdutoRow(p){
   const expanded = adminState.expandedProdutoId===p.id;
   const excluido = adminState.produtosExcluidos.has(p.id);
-  const cadastradosCount = p.modelos.filter(m=>adminState.kits[kitKey(p.id,m.id)]).length;
+  const cadastradosCount = p.modelos.filter(m=>adminState.kits[kitKey(p.id,m.id)]?.linhas?.length>0).length;
+  const incompletosCount = p.modelos.filter(m=>adminState.kits[kitKey(p.id,m.id)]&&!adminState.kits[kitKey(p.id,m.id)]?.linhas?.length).length;
   const variacoesCount = p.modelos.reduce((total,m)=>total+variacoesAtivasDoModelo(m).length,0);
   return `
   <div style="border-bottom:1px solid var(--border);">
@@ -7410,7 +7676,7 @@ function adminProdutoRow(p){
         <div>
           <div style="font-weight:600; font-size:13.5px;">${p.nome}${excluido?' <span class="badge b-bad" style="margin-left:6px;">excluído</span>':''}</div>
           <div style="font-size:10.5px;color:var(--accent-ink);margin-top:2px;">SKU do produto: <span class="mono">${skuProduto(p.id)}</span></div>
-          <div style="font-size:11.5px; color:var(--text-faint);">${p.modelos.length} modelo(s) · ${variacoesCount} variação(ões) · ${cadastradosCount} cadastrado(s) no Radrasys</div>
+          <div style="font-size:11.5px; color:var(--text-faint);">${p.modelos.length} modelo(s) · ${variacoesCount} variação(ões) · ${cadastradosCount} completo(s) no Radrasys${incompletosCount?` · ${incompletosCount} incompleto(s)`:''}</div>
         </div>
       </div>
       <button class="btn btn-ghost btn-sm" data-act="admin-excluir-produto" data-val="${p.id}">${excluido?'Reativar':'Excluir'}</button>
@@ -7431,7 +7697,7 @@ function adminModeloRow(p, m){
         <div style="font-size:11.5px; color:var(--text-faint);"><span class="mono" style="color:var(--accent-ink);">${skuModelo(p.id,m.id)}</span> · ${m.unidade||'—'}${kit && kit.categoria? ` · ${kit.categoria} ▸ ${kit.subcategoria||'—'}${kit.tipoProduto?' ▸ '+kit.tipoProduto:''}` : ''}${kit && baseCobrancaValida(kit.baseCobranca)? ` · cobrado por ${ROTULO_CURTO_BASE_COBRANCA[kit.baseCobranca]}` : ''}</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
-        ${kit? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':kit.precificacao.modo==='lucro'?` · lucro ${kit.precificacao.margemPct||0}%`:' · margem vinculada'):''})</span>` : `<span class="badge b-neutral">Não cadastrado</span>`}
+        ${kit&&kit.linhas.length? `<span class="badge b-ok">${ICONS.check} Cadastrado (${kit.linhas.length} item${kit.linhas.length===1?'':'s'}${kit.precificacao?(kit.precificacao.modo==='fixo'?' · preço fixo':kit.precificacao.modo==='lucro'?` · lucro ${kit.precificacao.margemPct||0}%`:' · margem vinculada'):''})</span>` : kit?`<span class="badge b-warn">⚠ Incompleto (0 itens — importar ficha)</span>`:`<span class="badge b-neutral">Não cadastrado</span>`}
         <button class="btn btn-soft btn-sm" data-act="admin-edit-kit" data-val="${key}" data-nome="${p.nome} — ${m.nome}" ${kitsCarregando?'disabled':''}>${editing?'Fechar':'✏️ '+(kit?'Editar produto':'Cadastrar produto')}</button>
       </div>
     </div>
@@ -7600,9 +7866,11 @@ function adminKitEditor(p, m, key){
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Variações do modelo <span style="font-weight:400; text-transform:none;">— importadas do MubiSys (${variacoesModelo.length})</span></p>
     ${variacoesModelo.length? `<div style="display:flex; flex-wrap:wrap; gap:6px;">${variacoesModelo.map(v=>`<span class="badge b-neutral" title="ID MubiSys ${v.id}">${escaparHtml(v.nome)}${v.padrao?' · padrão':''}${v.valorFinal>0?` · ${money(v.valorFinal)}`:''}</span>`).join('')}</div>
-    <div style="margin-top:8px;"><button type="button" class="btn btn-soft btn-sm" data-act="admin-kit-importar-mubisys" data-key="${key}" ${catalog.mubisysWebConectado?'':'disabled'}>Importar composição do MubiSys (comum + variações)</button>${catalog.mubisysWebConectado?'':' <span style="font-size:11px;color:var(--text-faint);">Conecte o MubiSys na barra acima para habilitar.</span>'}</div>
-    <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">Na composição abaixo, cada matéria-prima pode valer para todas as variações (comum) ou só para uma delas. No orçamento entram as linhas comuns mais as das variações escolhidas pelo vendedor.</p>`
-    : `<p style="font-size:11.5px;color:var(--text-faint);">Este modelo não tem variações ativas no MubiSys. Se acabou de cadastrá-las lá, recarregue a página para atualizar o catálogo.</p>`}
+    <div style="margin-top:8px;"><button type="button" class="btn btn-soft btn-sm" data-act="admin-kit-importar-mubisys" data-key="${key}" ${catalog.mubisysWebConectado?'':'disabled'}>Atualizar matérias-primas do MubiSys (modelo + variações)</button>${catalog.mubisysWebConectado?'':' <span style="font-size:11px;color:var(--text-faint);">Conecte o MubiSys na barra acima para habilitar.</span>'}</div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">A importação traz todas as matérias-primas e seus consumos: as linhas comuns do modelo e as linhas de cada variação. No orçamento entram as linhas comuns mais as das variações escolhidas pelo vendedor.</p>`
+    : `<p style="font-size:11.5px;color:var(--text-faint);">Este modelo não tem subvariações ativas. A ficha comum do próprio modelo continua sendo importada normalmente.</p>
+    <div style="margin-top:8px;"><button type="button" class="btn btn-soft btn-sm" data-act="admin-kit-importar-mubisys" data-key="${key}" ${catalog.mubisysWebConectado?'':'disabled'}>Atualizar matérias-primas do MubiSys (modelo)</button>${catalog.mubisysWebConectado?'':' <span style="font-size:11px;color:var(--text-faint);">Conecte o MubiSys na barra acima para habilitar.</span>'}</div>
+    <p style="font-size:11px;color:var(--text-faint);margin-top:6px;">A importação traz todas as matérias-primas e os respectivos consumos cadastrados na ficha deste modelo.</p>`}
 
     <p style="font-size:11.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:16px 0 6px;">Como este produto é cobrado <span style="font-weight:400; text-transform:none;">— base de consumo quando ele entra no kit de outro produto</span></p>
     <div class="card" style="padding:12px;box-shadow:none;background:var(--surface);" data-teste="base-cobranca-produto">
@@ -7641,7 +7909,7 @@ function adminKitEditor(p, m, key){
               <option value="">Todas (comum)</option>
               ${variacoesModelo.map(v=>`<option value="${v.id}" ${String(k.variacaoModeloId)===String(v.id)?'selected':''}>${escaparHtml(v.nome)}</option>`).join('')}
             </select></td>`:''}
-            <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select>${baseKit&&k.formulaType!==baseKit?`<div class="source-tag" title="A base do produto é ${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])}; esta linha usa outra fórmula.">≠ base do produto (${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])})</div>`:''}</td>
+            <td><select data-act="admin-kit-formula" data-idx="${i}">${Object.entries(FORMULA_TYPES).map(([fk,f])=>`<option value="${fk}" ${k.formulaType===fk?'selected':''}>${f.label}</option>`).join('')}</select>${k.perfilConsumoMubiSys?`<div class="source-tag" title="Perfil original recebido da ficha da matéria-prima.">Perfil MubiSys: ${escaparHtml(k.perfilConsumoMubiSys)}</div>`:''}${baseKit&&k.formulaType!==baseKit?`<div class="source-tag" title="A base do produto é ${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])}; esta linha usa outra fórmula.">≠ base do produto (${escaparHtml(ROTULO_CURTO_BASE_COBRANCA[baseKit])})</div>`:''}</td>
             <td><input type="text" inputmode="decimal" value="${k.mult}" data-act="admin-kit-mult" data-idx="${i}" style="width:70px;"></td>
             <td><button class="btn btn-ghost btn-sm" data-act="admin-kit-remove" data-idx="${i}">✕</button></td>
           </tr>`).join('') : `<tr><td colspan="6" class="empty-hint">Nenhum item ainda — busque acima e clique num resultado (pode adicionar quantas matérias-primas precisar).</td></tr>`}
@@ -7741,7 +8009,7 @@ function adminMateriasAdmin(){
   return `
   <div class="card">
     <div class="cardhead">
-      <div><h3>Matérias-primas (catálogo real do MubiSys)</h3><p>${catalog.materias.length} itens espelhados via API GET /materia-prima. Exclua os que a Letreiros Express não trabalha — eles somem da busca usada ao montar composições.</p></div>
+      <div><h3>Matérias-primas (espelho MubiSys)</h3><p>${catalog.materias.length} itens e custos copiados para o Radrasys. Exclua os que a Letreiros Express não trabalha — eles somem da busca usada ao montar composições.</p></div>
       <span class="badge ${excluidas?'b-warn':'b-neutral'}">${excluidas} excluída(s)</span>
     </div>
     ${catalogErrorNotice()}
@@ -8078,7 +8346,7 @@ function bindAdminEvents(){
   if(salvarCorPrecos)salvarCorPrecos.addEventListener('click',salvarPrecosCorServidor);
 
   const atualizarCatalogo=document.querySelector('[data-act="admin-catalogo-atualizar"]');
-  if(atualizarCatalogo) atualizarCatalogo.addEventListener('click',()=>loadCatalog());
+  if(atualizarCatalogo) atualizarCatalogo.addEventListener('click',()=>{const botao=document.querySelector('[data-act="mubisys-atualizar-espelho"]');if(botao)botao.click();else void loadCatalog();});
 
   const clientesBusca=document.querySelector('[data-act="admin-clientes-busca"]');
   if(clientesBusca){
@@ -8297,6 +8565,8 @@ function bindAdminEvents(){
         if(!adminState.kits[key]) adminState.kits[key]={linhas:[], precificacao:null, descricaoProduto:'', prazoDiasUteis:null, kitProdutos:[], fotoUrl:null, fotoAssetId:null, categoria:null, subcategoria:null, tipoProduto:null};
         adminState.kits[key].nomeCompleto = el.dataset.nome;
         adminState.adminMatQuery='';
+        const importacaoAutomatica=preencherComposicaoMubiSysSeVazia(key);
+        if(importacaoAutomatica?.status==='importado') salvarKit(importacaoAutomatica.key);
       }
       render();
     });
@@ -8349,7 +8619,7 @@ function bindAdminEvents(){
       if(!modelo) return;
       if((adminState.kits[key]?.linhas||[]).length&&!confirm('Isto substitui TODA a composição atual deste modelo pela do MubiSys. Continuar?')) return;
       const r=importarComposicaoMubiSysNoKit(produto,modelo,{substituir:true});
-      if(r.status==='importado') salvarKit(key);
+      if(r.status==='importado'||r.status==='atualizado') salvarKit(key);
       else alert(r.status==='erro'?r.erro:'O MubiSys não tem composição cadastrada para este modelo ou suas variações.');
       render();
     });

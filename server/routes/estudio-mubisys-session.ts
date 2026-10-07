@@ -4,11 +4,14 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { auth } from "../_core/auth";
 import { ENV } from "../_core/env";
+import { importarComposicaoJson } from "../services/mubisysEspelho";
+import { parsearComposicoesMubiSys } from "../services/mubisysBOMAutenticada";
 
 const MUBISYS_HOST = "https://mubisys.com";
 const MUBISYS_COMPOSICAO_URL = `${MUBISYS_HOST}/index.php?modulo=matModelos&acao=cadastrados`;
 const COOKIE_NAME = "radrasys_mubisys_session";
 const SESSAO_MAX_AGE_SEGUNDOS = 8 * 60 * 60;
+const LIMITE_RESPOSTA_BOM_BYTES = 8 * 1024 * 1024;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
@@ -284,8 +287,35 @@ export async function buscarComposicoesMubiSys(cookie: string): Promise<{
       "X-Requested-With": "XMLHttpRequest",
     },
   });
-  const text = await response.text();
-  const unauthorized = !response.ok || pareceTelaDeLogin(text);
+  const tamanhoInformado = Number(response.headers.get("content-length"));
+  if (Number.isFinite(tamanhoInformado) && tamanhoInformado > LIMITE_RESPOSTA_BOM_BYTES) {
+    throw new Error("A ficha técnica do MubiSys excedeu o limite de 8 MB.");
+  }
+  const leitor = response.body?.getReader();
+  const partes: Uint8Array[] = [];
+  let totalBytes = 0;
+  if (leitor) {
+    try {
+      while (true) {
+        const { done, value } = await leitor.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > LIMITE_RESPOSTA_BOM_BYTES) {
+          await leitor.cancel().catch(() => undefined);
+          throw new Error("A ficha técnica do MubiSys excedeu o limite de 8 MB.");
+        }
+        partes.push(value);
+      }
+    } finally {
+      leitor.releaseLock();
+    }
+  }
+  const bytes = Buffer.concat(partes.map(parte => Buffer.from(parte)), totalBytes);
+  const text = new TextDecoder().decode(bytes);
+  const unauthorized = response.status === 401 || response.status === 403 || pareceTelaDeLogin(text);
+  if (!response.ok && !unauthorized) {
+    throw new Error(`O MubiSys respondeu HTTP ${response.status} ao consultar a ficha técnica.`);
+  }
   let conteudo: unknown = text;
   if (!unauthorized) {
     try {
@@ -302,6 +332,30 @@ export async function buscarComposicoesMubiSys(cookie: string): Promise<{
   };
 }
 
+const ROLES_GESTAO = new Set(["admin", "master", "gestor"]);
+
+async function exigirGestao(req: Request, res: Response): Promise<string | null> {
+  const sessao = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!sessao) { erro(res, 401, "Entre no Radrasys para sincronizar a BOM."); return null; }
+  if (!ROLES_GESTAO.has(String(sessao.user.role ?? ""))) {
+    erro(res, 403, "Somente gestor, admin ou master pode atualizar a BOM compartilhada.");
+    return null;
+  }
+  return sessao.user.id;
+}
+
+const tentativasLoginMubiSys = new Map<string, { inicio: number; total: number }>();
+function permitirTentativaLogin(userId: string): boolean {
+  const agora = Date.now();
+  const atual = tentativasLoginMubiSys.get(userId);
+  if (!atual || agora - atual.inicio >= 60_000) {
+    tentativasLoginMubiSys.set(userId, { inicio: agora, total: 1 });
+    return true;
+  }
+  if (atual.total >= 5) return false;
+  atual.total++;
+  return true;
+}
 const credenciaisSchema = z
   .object({
     codigo: z.string().trim().min(1).max(80),
@@ -330,6 +384,7 @@ export function registrarRotasEstudioMubiSysSession(app: Express): void {
       if (!mesmaOrigem(req, res)) return;
       const radrasysUserId = await exigirSessaoRadrasys(req, res);
       if (!radrasysUserId) return;
+      if (!permitirTentativaLogin(radrasysUserId)) { erro(res, 429, "Muitas tentativas de conexão. Aguarde um minuto."); return; }
       const parsed = credenciaisSchema.safeParse(req.body);
       if (!parsed.success) {
         erro(res, 400, "Informe o código da empresa, usuário e senha do MubiSys.");
@@ -364,6 +419,34 @@ export function registrarRotasEstudioMubiSysSession(app: Express): void {
     });
   });
 
+  app.post("/api/letra-caixa/mubisys/composicoes/sincronizar", (req: Request, res: Response) => {
+    void (async () => {
+      if (!mesmaOrigem(req, res)) return;
+      const radrasysUserId = await exigirGestao(req, res);
+      if (!radrasysUserId) return;
+      const cookie = cookieSessaoMubiSys(req, radrasysUserId);
+      if (!cookie) { erro(res, 409, "Conecte o MubiSys neste navegador antes de sincronizar a BOM."); return; }
+      let resposta: Awaited<ReturnType<typeof buscarComposicoesMubiSys>>;
+      try { resposta = await buscarComposicoesMubiSys(cookie); }
+      catch (error) {
+        erro(res, 502, error instanceof Error ? error.message : "Falha ao consultar a ficha técnica no MubiSys.");
+        return;
+      }
+      if (resposta.unauthorized) {
+        limparCookieSessao(req, res);
+        erro(res, 401, "A sessão do MubiSys expirou. Conecte novamente para atualizar a BOM.");
+        return;
+      }
+      const linhas = parsearComposicoesMubiSys(resposta.conteudo);
+      const resultado = await importarComposicaoJson({ items: linhas }, "mubisys-sessao.json");
+      gravarCookieSessao(req, res, resposta.cookie || cookie, radrasysUserId);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ ok: true, ...resultado, origem: "sessao-autenticada" });
+    })().catch(error => {
+      console.error("[EstudioMubiSys] Falha ao sincronizar BOM autenticada:", error instanceof Error ? error.name : "erro");
+      if (!res.headersSent) erro(res, 422, error instanceof Error ? error.message : "A sincronização da BOM falhou sem substituir o espelho.");
+    });
+  });
   app.delete("/api/letra-caixa/mubisys/sessao", (req: Request, res: Response) => {
     void (async () => {
       if (!mesmaOrigem(req, res)) return;

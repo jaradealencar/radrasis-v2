@@ -673,6 +673,20 @@
       "when": 1791303206189,
       "tag": "0095_watery_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1791311004052,
+      "tag": "0096_parallel_blazing_skull",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1791311309584,
+      "tag": "0097_vengeful_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

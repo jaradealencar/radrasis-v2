@@ -10,7 +10,7 @@ import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-refe
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { ehProcessoCorte, normalizarRotacao, PROCESSOS_CORTE, ROTACOES_PERMITIDAS } from "@shared/politica-corte";
 import { AROS_FRONTLIGHT, CATEGORIAS_PRODUTIVIDADE, ehCategoriaProdutividade, ehMateriaProdutividade, erroEstiloProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, ESTILO_PRODUTIVIDADE_VAZIO, FORMATOS_PRODUTIVIDADE, FUNDOS_PRODUTIVIDADE, MATERIAIS_SOLDA, normalizarEstiloProdutividade, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type EstiloProdutividade } from "@shared/produtividade-solda";
-import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { listarMateriasPrimasEspelhadas, prepararCatalogoEspelhado } from "../services/mubisysEspelho";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
@@ -108,8 +108,9 @@ export const materiasPrimasRouter = router({
   listar: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new Error("DB unavailable");
+    await prepararCatalogoEspelhado();
     const [catalogo, cadastros, categorias, chapas] = await Promise.all([
-      listarMateriasPrimas(),
+      listarMateriasPrimasEspelhadas(db),
       db.select().from(materiaPrimaCadastros),
       db.select().from(materiaPrimaCategorias).orderBy(asc(materiaPrimaCategorias.nome)),
       db.select().from(estudioChapas).orderBy(asc(estudioChapas.larguraMm), asc(estudioChapas.alturaMm), asc(estudioChapas.id)),
@@ -213,7 +214,8 @@ export const materiasPrimasRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      const catalogo = await listarMateriasPrimas();
+      await prepararCatalogoEspelhado();
+      const catalogo = await listarMateriasPrimasEspelhadas(db);
       const material = catalogo.find(item => item.id === input.mubisysMateriaPrimaId);
       if (!material || !ehMateriaProdutividade(material.nome))
         throw new Error("Esta materia-prima nao e uma produtividade de solda do catalogo atual do MubiSys.");
@@ -347,7 +349,8 @@ export const materiasPrimasRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      const catalogo = await listarMateriasPrimas();
+      await prepararCatalogoEspelhado();
+      const catalogo = await listarMateriasPrimasEspelhadas(db);
       const material = catalogo.find(item => item.id === input.mubisysMateriaPrimaId);
       if (!material) throw new Error("A matéria-prima não está no catálogo atual do MubiSys.");
       const erroSolda = erroTiposSolda(input.produtividadeTiposSolda);

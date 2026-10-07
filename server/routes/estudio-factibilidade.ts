@@ -10,7 +10,7 @@ import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import { idsDeMateriasPerfil, MENSAGEM_PERFIL_FORA_DO_NESTING } from "../db/materiaPerfil";
 import { carregarPoliticaCorte } from "../db/politicaCorte";
-import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { listarMateriasPrimasEspelhadas } from "../services/mubisysEspelho";
 import {
   calcularFactibilidadeFabricacao,
   calcularHashFactibilidade,
@@ -149,7 +149,7 @@ async function analisar(req: Request, res: Response): Promise<void> {
   if (!db) return void respostaErro(res, 503, "O banco de dados está indisponível.");
 
   const [catalogo, chapas, mapeamentosCor] = await Promise.all([
-    listarMateriasPrimas(),
+    listarMateriasPrimasEspelhadas(db),
     db
       .select()
       .from(estudioChapas)

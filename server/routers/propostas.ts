@@ -22,7 +22,7 @@ import {
   verificarAprovacaoPreco,
   type ResultadoAprovacaoPreco,
 } from "../services/cpqPrecoAssistente";
-import { listarMateriasPrimas } from "../integrations/mubisys-client";
+import { listarMateriasPrimasEspelhadas, prepararCatalogoEspelhado } from "../services/mubisysEspelho";
 import { calcularNestingMultiMaterial, type CpqNestingPeca } from "../services/cpqNesting";
 import { decuparPreco, type DecupagemPreco } from "../services/decupadorPreco";
 
@@ -108,8 +108,9 @@ async function validarCustosCatalogo(
   const linhas = configuracao.materiais.filter((material) => material.incluir);
   if (!linhas.length) return;
   const linhasCatalogo = linhas.filter((linha) => linha.mubisysMateriaPrimaId != null);
+  if (linhasCatalogo.length && !catalogoAtual) await prepararCatalogoEspelhado();
   const catalogo = linhasCatalogo.length
-    ? catalogoAtual ?? new Map((await listarMateriasPrimas()).map((material) => [material.id, Number(material.valor_custo)]))
+    ? catalogoAtual ?? new Map((await listarMateriasPrimasEspelhadas()).map((material) => [material.id, Number(material.valor_custo)]))
     : new Map<number, number>();
   let materiaisOrigem: z.infer<typeof materialConfiguracaoSchema>[] = [];
   if (linhas.some((linha) => linha.nesting)) {
@@ -149,7 +150,8 @@ async function validarCustosCatalogo(
 
 async function carregarCustosCatalogoAtual(configuracao: z.infer<typeof configuracaoItemSchema>): Promise<ReadonlyMap<number, number>> {
   if (!configuracao.materiais.some((material) => material.incluir && material.mubisysMateriaPrimaId != null)) return new Map();
-  return new Map((await listarMateriasPrimas()).map((material) => [material.id, Number(material.valor_custo)]));
+  await prepararCatalogoEspelhado();
+  return new Map((await listarMateriasPrimasEspelhadas()).map((material) => [material.id, Number(material.valor_custo)]));
 }
 
 function calcularContextoPrecoProposta(args: {
@@ -761,7 +763,7 @@ export const propostasRouter = router({
       const comuns = [...materialIdsComuns[0]].filter((id) => materialIdsComuns.every((ids) => ids.has(id)));
       if (!comuns.length) throw new Error("As propostas não compartilham uma matéria-prima para corte em chapa.");
       const [catalogo, chapasAtivas] = await Promise.all([
-        listarMateriasPrimas(),
+        prepararCatalogoEspelhado().then(() => listarMateriasPrimasEspelhadas(db)),
         db.select().from(estudioChapas).where(and(inArray(estudioChapas.mubisysMateriaPrimaId, comuns), eq(estudioChapas.ativo, true))),
       ]);
       const idsComChapas = comuns.filter((id) => chapasAtivas.some((chapa) => chapa.mubisysMateriaPrimaId === id));
