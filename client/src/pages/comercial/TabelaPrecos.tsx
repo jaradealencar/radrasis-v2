@@ -96,7 +96,6 @@ import {
   Check,
   Download,
   History,
-  Clock,
   Image as ImageIcon,
   Upload,
   Hammer,
@@ -107,6 +106,7 @@ import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
+import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashboard";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -3087,6 +3087,7 @@ export default function TabelaPrecos() {
   const { data: meta } = trpc.price.getMeta.useQuery();
   const { data: dimensionamentoLed } = trpc.custoLed.getDimensionamentoFontes.useQuery();
   const [showHistory, setShowHistory] = useState(false);
+  const [selectedHistoryTable, setSelectedHistoryTable] = useState<"principal" | "novo_cliente">("principal");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionPage, setNewSectionPage] = useState(11);
@@ -3107,8 +3108,8 @@ export default function TabelaPrecos() {
     },
     onError: () => toast.error("Erro ao remover seção"),
   });
-  const { data: history } = trpc.price.getHistory.useQuery(
-    { limit: 100 },
+  const { data: history, isLoading: isHistoryLoading, error: historyError } = trpc.price.getHistory.useQuery(
+    { limit: 1000 },
     { enabled: showHistory }
   );
 
@@ -3235,6 +3236,15 @@ export default function TabelaPrecos() {
                     Nova Seção
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => { setSelectedHistoryTable("novo_cliente"); setShowHistory(true); }}
+                >
+                  <History className="w-4 h-4" />
+                  Histórico
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -3381,7 +3391,7 @@ export default function TabelaPrecos() {
                   size="sm"
                   variant="outline"
                   className="flex items-center gap-2 border-slate-300 text-slate-600 hover:bg-slate-50"
-                  onClick={() => setShowHistory(true)}
+                  onClick={() => { setSelectedHistoryTable("principal"); setShowHistory(true); }}
                 >
                   <History className="w-4 h-4" />
                   Histórico
@@ -3642,75 +3652,23 @@ export default function TabelaPrecos() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Histórico de Versões */}
+      {/* Painel de Histórico e Evolução das Margens */}
       <Dialog open={showHistory} onOpenChange={setShowHistory}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="w-5 h-5 text-blue-600" />
-              Histórico de Versões da Tabela Clientes Antigos
+              Histórico e evolução das margens
             </DialogTitle>
           </DialogHeader>
-          {!history || history.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <History />
-                </EmptyMedia>
-                <EmptyTitle>Nenhuma alteração registrada ainda.</EmptyTitle>
-                <EmptyDescription>
-                  As próximas edições aparecerão aqui.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
-            <div className="space-y-2">
-              {history.map(h => (
-                <div
-                  key={h.id}
-                  className="border border-slate-200 rounded-lg p-3 bg-slate-50 text-sm"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-blue-600 text-white text-xs px-2 py-0.5">
-                        v{h.versao}
-                      </Badge>
-                      <span className="font-medium text-slate-700">
-                        {h.sectionTitle}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-slate-400 text-xs">
-                      <Clock className="w-3 h-3" />
-                      {new Date(h.createdAt).toLocaleString("pt-BR")}
-                    </div>
-                  </div>
-                  <div className="text-slate-500 text-xs">
-                    <span className="font-medium text-slate-600">Por:</span>{" "}
-                    {h.autor ?? "sistema"} &nbsp;|&nbsp;
-                    <span className="font-medium text-slate-600">
-                      Campo:
-                    </span>{" "}
-                    {h.campoAlterado}
-                  </div>
-                  {h.campoAlterado === "contentJson" ? (
-                    <div className="mt-1 text-xs text-slate-400 italic">
-                      Conteúdo da seção atualizado
-                    </div>
-                  ) : (
-                    <div className="mt-1 flex gap-2 text-xs">
-                      <span className="text-red-500 line-through">
-                        {h.valorAnterior?.slice(0, 60)}
-                      </span>
-                      <span className="text-slate-400">→</span>
-                      <span className="text-green-600">
-                        {h.valorNovo?.slice(0, 60)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <PriceTableHistoryDashboard
+            key={selectedHistoryTable}
+            history={history}
+            sections={(allSections ?? []).map(section => ({ id: section.id, page: section.page }))}
+            isLoading={isHistoryLoading}
+            error={historyError?.message}
+            initialTable={selectedHistoryTable}
+          />
         </DialogContent>
       </Dialog>
     </>

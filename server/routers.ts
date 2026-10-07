@@ -1392,7 +1392,7 @@ O POP deve:
         return { ok: true };
       }),
     getHistory: protectedProcedure
-      .input(z.object({ limit: z.number().optional() }))
+      .input(z.object({ limit: z.number().int().min(1).max(1000).optional() }))
       .query(async ({ input }) => {
         return listPriceTableHistory(input.limit ?? 100);
       }),
