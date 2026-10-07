@@ -8,11 +8,14 @@
  */
 export const MAX_PECAS_PINTURA = 5000;
 export const MAX_CORES_PINTURA = 50;
+export const MAX_NOME_TINTA = 60;
 
 export interface CorPinturaPecas {
   corHex: string;
   pecas: number;
   areaM2: number;
+  /** Nome/código da tinta digitado pelo vendedor, ou o nome do metal escolhido (Prata, Azul Bic…). */
+  nome?: string;
 }
 
 export interface ResumoPinturaPecas {

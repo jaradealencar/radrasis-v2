@@ -6,7 +6,7 @@ import { z } from "zod";
 import { estudioMapeamentoCoresCotacao, propostas } from "../../drizzle/schema";
 import { consumoGabaritoKraftM2 } from "../../shared/gabarito";
 import { MATERIAIS_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "../../shared/produtividade-solda";
-import { erroPinturaPecas, MAX_CORES_PINTURA, MAX_PECAS_PINTURA } from "../../shared/pintura-pecas";
+import { erroPinturaPecas, MAX_CORES_PINTURA, MAX_NOME_TINTA, MAX_PECAS_PINTURA } from "../../shared/pintura-pecas";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
 import {
@@ -118,6 +118,8 @@ export const pinturaPecasSchema = z.object({
     corHex: z.string().regex(/^#[\da-f]{6}$/),
     pecas: z.number().int().positive().max(MAX_PECAS_PINTURA),
     areaM2: z.number().finite().nonnegative().max(100_000),
+    // Nome ou código da tinta digitado pelo vendedor (ex.: "RAL 9010"), ou o nome do metal escolhido; só informativo.
+    nome: z.string().trim().min(1).max(MAX_NOME_TINTA).optional(),
   }).strict()).min(1).max(MAX_CORES_PINTURA),
 }).strict();
 
