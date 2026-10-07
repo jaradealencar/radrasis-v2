@@ -163,7 +163,7 @@ export function PriceBlockAffiliationEditor({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="grid-cols-1 min-w-0 w-[calc(100vw-2rem)] max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Produtos e modelos atendidos pelo bloco</DialogTitle>
         </DialogHeader>
@@ -188,14 +188,14 @@ export function PriceBlockAffiliationEditor({
             </Button>
           </div>
           {selecionados.length > 0 && (
-            <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+            <div className="min-w-0 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
               {selecionados.map(item => (
                 <Badge
                   key={item.mubisysProdutoId}
                   variant="outline"
-                  className="max-w-full gap-1"
+                  className="max-w-full min-w-0 gap-1"
                 >
-                  <span className="truncate">
+                  <span className="min-w-0 truncate">
                     {item.nomeProduto} · {nomesSelecionados(item)}
                   </span>
                   <button
@@ -210,7 +210,7 @@ export function PriceBlockAffiliationEditor({
             </div>
           )}
         </div>
-        <div className="relative">
+        <div className="relative min-w-0">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <Input
             value={busca}
@@ -220,7 +220,7 @@ export function PriceBlockAffiliationEditor({
             autoFocus
           />
         </div>
-        <div className="max-h-80 overflow-y-auto rounded-md border">
+        <div className="min-w-0 w-full max-h-[min(55vh,28rem)] overflow-y-auto overflow-x-hidden rounded-md border">
           {isFetching && resultados.length === 0 ? (
             <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-500">
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -242,7 +242,10 @@ export function PriceBlockAffiliationEditor({
                 return Number(selecionado(b.id)) - Number(selecionado(a.id));
               });
               return (
-                <div key={produto.id} className="border-b last:border-b-0">
+                <div
+                  key={produto.id}
+                  className="min-w-0 border-b last:border-b-0"
+                >
                   <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
                     <button
                       type="button"
