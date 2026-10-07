@@ -9,7 +9,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db/db";
 import { obterCurvaVendasMubiSys } from "./mubisysVendas";
-import { filtrarVendasPorProdutosAfiliados } from "./priceTableAffiliationImpact";
+import { filtrarVendasPorModelosAfiliados } from "./priceTableAffiliationImpact";
 
 const percentual = (s: unknown): number | null => {
   if (typeof s !== "string") return null;
@@ -35,14 +35,15 @@ export async function obterImpactoHistoricoTabela(mes: number, ano: number, tabe
   const paginaPorSecao = new Map(secoes.map(s => [s.id, s.page]));
   const parPorSecao = new Map<number, number>();
   for (const par of pares) parPorSecao.set(tabela === "novo_cliente" ? par.novoClienteSectionId : par.principalSectionId, par.id);
-  const idsProdutoPorPar = new Map<number, Set<number>>();
+  const produtosPorPar = new Map<number, Map<number, Set<number> | null>>();
   for (const item of afiliacoes) {
-    const ids = idsProdutoPorPar.get(item.blockPairId) ?? new Set<number>();
-    ids.add(item.mubisysProdutoId);
-    idsProdutoPorPar.set(item.blockPairId, ids);
+    const produtos = produtosPorPar.get(item.blockPairId) ?? new Map<number, Set<number> | null>();
+    produtos.set(item.mubisysProdutoId, item.mubisysModeloIds == null ? null : new Set(item.mubisysModeloIds));
+    produtosPorPar.set(item.blockPairId, produtos);
   }
   const produtoPorModelo = new Map(catalogo.map(item => [item.modeloId, item.produtoId]));
   const produtoPorVariacao = new Map(catalogo.flatMap(item => item.variacaoId == null ? [] : [[item.variacaoId, item.produtoId] as const]));
+  const modeloPorVariacao = new Map(catalogo.flatMap(item => item.variacaoId == null ? [] : [[item.variacaoId, item.modeloId] as const]));
   const classePorVariacao = new Map(curva.itens.flatMap(i => i.variacaoId == null ? [] : [[i.variacaoId, i.classe] as const]));
   const classePorModelo = new Map(curva.itens.flatMap(i => i.modeloId == null ? [] : [[i.modeloId, i.classe] as const]));
   const classePorProduto = new Map(curva.itens.flatMap(i => i.produtoId == null ? [] : [[i.produtoId, i.classe] as const]));
@@ -67,12 +68,13 @@ export async function obterImpactoHistoricoTabela(mes: number, ano: number, tabe
     });
     if (!mudancas.length) continue;
     const parId = parPorSecao.get(evento.sectionId);
-    const idsProduto = parId == null ? new Set<number>() : (idsProdutoPorPar.get(parId) ?? new Set<number>());
-    const vendasCorrespondentes = filtrarVendasPorProdutosAfiliados(
+    const produtosAfiliados = parId == null ? new Map<number, Set<number> | null>() : (produtosPorPar.get(parId) ?? new Map<number, Set<number> | null>());
+    const vendasCorrespondentes = filtrarVendasPorModelosAfiliados(
       vendas,
-      idsProduto,
+      produtosAfiliados,
       produtoPorVariacao,
       produtoPorModelo,
+      modeloPorVariacao,
     );
     const receita = vendasCorrespondentes.reduce((s, v) => s + Number(v.faturamento), 0);
     const classes = vendasCorrespondentes.map(v =>
@@ -83,7 +85,7 @@ export async function obterImpactoHistoricoTabela(mes: number, ano: number, tabe
     const classe = classes.includes("A") ? "A" : classes.includes("B") ? "B" : classes.includes("C") ? "C" : null;
     const fatores = mudancas.map(({ anterior, nova }) => anterior < 100 && nova < 100 ? (1 - anterior / 100) / (1 - nova / 100) - 1 : Number.NaN).filter(Number.isFinite);
     const impactos = fatores.map(f => receita * f);
-    const correspondencia = !parId ? "bloco sem par" : !idsProduto.size ? "sem produtos vinculados" : vendasCorrespondentes.length ? "afiliacao explicita por produto" : "produto vinculado sem venda no periodo";
+    const correspondencia = !parId ? "bloco sem par" : !produtosAfiliados.size ? "sem produtos vinculados" : vendasCorrespondentes.length ? "afiliacao explicita por produto" : "produto vinculado sem venda no periodo";
     itens.push({
       versao: evento.versao,
       data: evento.createdAt,

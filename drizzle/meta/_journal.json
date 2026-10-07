@@ -708,6 +708,13 @@
       "when": 1791375395195,
       "tag": "0100_afiliacao_blocos_tabela_preco",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1791378834147,
+      "tag": "0101_afiliacao_modelos_faixa_preco",
+      "breakpoints": true
     }
   ]
 }

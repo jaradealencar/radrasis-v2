@@ -1396,16 +1396,21 @@ O POP deve:
     listBlockAffiliations: protectedProcedure.query(async () => {
       const db = await getDb();
       if (!db) return [];
-      const [pares, afiliacoes] = await Promise.all([
+      const [pares, afiliacoes, catalogo] = await Promise.all([
         db.select().from(priceTableBlockPairs),
         db.select().from(priceTableAffiliations),
+        listarProdutosEspelhados(db),
       ]);
+      const produtoPorId = new Map(catalogo.map(produto => [produto.id, produto]));
       return pares.map(par => ({
         id: par.id,
         principalSectionId: par.principalSectionId,
         novoClienteSectionId: par.novoClienteSectionId,
         produtos: afiliacoes.filter(item => item.blockPairId === par.id)
-          .map(({ id, mubisysProdutoId, nomeProduto, categoria }) => ({ id, mubisysProdutoId, nomeProduto, categoria })),
+          .map(({ id, mubisysProdutoId, mubisysModeloIds, nomeProduto, categoria }) => ({
+            id, mubisysProdutoId, mubisysModeloIds, nomeProduto, categoria,
+            modelos: produtoPorId.get(mubisysProdutoId)?.modelos.map(({ id: modeloId, nome }) => ({ id: modeloId, nome })) ?? [],
+          })),
       }));
     }),
     replaceBlockProducts: protectedProcedure
@@ -1414,6 +1419,7 @@ O POP deve:
         principalSectionId: z.number().int().positive(),
         produtos: z.array(z.object({
           mubisysProdutoId: z.number().int().positive(),
+          mubisysModeloIds: z.array(z.number().int().positive()).min(1).max(500).nullable().optional(),
           nomeProduto: z.string().min(1).max(256),
           categoria: z.string().max(128).optional().nullable(),
         })).max(500),
@@ -1430,20 +1436,24 @@ O POP deve:
         const produtosValidos = input.produtos.map(item => {
           const produto = produtoPorId.get(item.mubisysProdutoId);
           if (!produto) throw new TRPCError({ code: "BAD_REQUEST", message: "Um dos produtos nao esta mais disponivel no espelho MubiSys." });
-          return { mubisysProdutoId: produto.id, nomeProduto: produto.nome, categoria: produto.categoria || null };
+          const modeloIds = item.mubisysModeloIds ?? null;
+          if (modeloIds && new Set(modeloIds).size !== modeloIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Remova modelos duplicados antes de salvar." });
+          if (modeloIds && modeloIds.some(id => !produto.modelos.some(modelo => modelo.id === id))) throw new TRPCError({ code: "BAD_REQUEST", message: "Um dos modelos não pertence mais ao produto selecionado." });
+          return { mubisysProdutoId: produto.id, mubisysModeloIds: modeloIds, nomeProduto: produto.nome, categoria: produto.categoria || null };
         });
         const ator = ctx.user.name ?? ctx.user.email ?? "usuario";
         await db.transaction(async tx => {
           const [par] = await tx.select().from(priceTableBlockPairs)
             .where(eq(priceTableBlockPairs.principalSectionId, input.principalSectionId)).limit(1);
           if (!par) throw new TRPCError({ code: "NOT_FOUND", message: "Este bloco nao possui par cadastrado entre as tabelas." });
-          const antes = await tx.select({ mubisysProdutoId: priceTableAffiliations.mubisysProdutoId, nomeProduto: priceTableAffiliations.nomeProduto, categoria: priceTableAffiliations.categoria })
+          const antes = await tx.select({ mubisysProdutoId: priceTableAffiliations.mubisysProdutoId, mubisysModeloIds: priceTableAffiliations.mubisysModeloIds, nomeProduto: priceTableAffiliations.nomeProduto, categoria: priceTableAffiliations.categoria })
             .from(priceTableAffiliations).where(eq(priceTableAffiliations.blockPairId, par.id));
           await tx.delete(priceTableAffiliations).where(eq(priceTableAffiliations.blockPairId, par.id));
           if (produtosValidos.length) {
             await tx.insert(priceTableAffiliations).values(produtosValidos.map(item => ({
               blockPairId: par.id,
               mubisysProdutoId: item.mubisysProdutoId,
+              mubisysModeloIds: item.mubisysModeloIds,
               nomeProduto: item.nomeProduto.trim(),
               categoria: item.categoria?.trim() || null,
               createdBy: ator,

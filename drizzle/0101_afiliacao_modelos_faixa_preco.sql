@@ -1,0 +1,1 @@
+ALTER TABLE "price_table_affiliations" ADD COLUMN "mubisys_modelo_ids" jsonb;
