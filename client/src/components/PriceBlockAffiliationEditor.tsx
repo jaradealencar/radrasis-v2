@@ -55,6 +55,15 @@ export function PriceBlockAffiliationEditor({
     () => new Map(resultados.map(produto => [produto.id, produto.modelos])),
     [resultados]
   );
+  const produtosOrdenados = useMemo(() => {
+    const selecionadosIds = new Set(
+      selecionados.map(item => item.mubisysProdutoId)
+    );
+    return [...resultados].sort(
+      (a, b) =>
+        Number(selecionadosIds.has(b.id)) - Number(selecionadosIds.has(a.id))
+    );
+  }, [resultados, selecionados]);
   const salvar = trpc.price.replaceBlockProducts.useMutation({
     onSuccess: async () => {
       await utils.price.listBlockAffiliations.invalidate();
@@ -217,11 +226,16 @@ export function PriceBlockAffiliationEditor({
               Nenhum produto encontrado.
             </p>
           ) : (
-            resultados.map(produto => {
+            produtosOrdenados.map(produto => {
               const afiliado = obter(produto);
               const todos = afiliado?.mubisysModeloIds == null && !!afiliado;
               const parcial = !!afiliado && !todos;
               const aberto = expandidos.has(produto.id);
+              const modelosOrdenados = [...produto.modelos].sort((a, b) => {
+                const selecionado = (id: number) =>
+                  todos || !!afiliado?.mubisysModeloIds?.includes(id);
+                return Number(selecionado(b.id)) - Number(selecionado(a.id));
+              });
               return (
                 <div key={produto.id} className="border-b last:border-b-0">
                   <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
@@ -294,7 +308,7 @@ export function PriceBlockAffiliationEditor({
                         Marque modelos individuais ou selecione o produto para
                         incluir todos.
                       </p>
-                      {produto.modelos.map(modelo => {
+                      {modelosOrdenados.map(modelo => {
                         const marcado =
                           todos ||
                           !!afiliado?.mubisysModeloIds?.includes(modelo.id);
