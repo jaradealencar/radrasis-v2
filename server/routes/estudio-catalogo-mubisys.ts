@@ -1,7 +1,7 @@
 import { fromNodeHeaders } from "better-auth/node";
 import type { Express, Request, Response } from "express";
 import { auth } from "../_core/auth";
-import { listPriceTableSections } from "../db/db";
+import { getPriceTableMeta, listPriceTableSections } from "../db/db";
 import {
   carregarCatalogoEspelhado,
   catalogoPrecisaSincronizar,
@@ -10,14 +10,18 @@ import {
 
 function erro(res: Response, status: number, mensagem: string): void { res.status(status).json({ error: mensagem }); }
 
-function mapearTabelaPrecos(secoes: Awaited<ReturnType<typeof listPriceTableSections>>) {
+function mapearTabelaPrecos(secoes: Awaited<ReturnType<typeof listPriceTableSections>>, versao: string) {
   return secoes.flatMap(secao => {
-    let conteudo: { type?: string; columns?: string[]; rows?: Array<{ id: number; label: string; values: string[] }> };
+    let conteudo: { type?: string; columns?: string[]; faixaIds?: number[]; rows?: Array<{ id: number; label: string; values: string[] }> };
     try { conteudo = JSON.parse(secao.contentJson); } catch { return []; }
     if (conteudo.type !== "margin_table" && conteudo.type !== "margin_table_multi") return [];
+    const tabela = secao.page >= 11 && secao.page <= 13 ? "novo_cliente" : secao.page >= 1 && secao.page <= 3 ? "clientes_antigos" : null;
+    if (!tabela) return [];
     return (conteudo.rows || []).map(linha => ({
-      lineId: linha.id, secaoTitulo: secao.sectionTitle, rotulo: linha.label,
-      colunas: conteudo.columns || [], valores: linha.values || [],
+      lineId: linha.id, secaoId: secao.id, pagina: secao.page, tabela, versao,
+      secaoTitulo: secao.sectionTitle, rotulo: linha.label,
+      colunas: conteudo.columns || [], faixaIds: conteudo.faixaIds || [], valores: linha.values || [],
+      tipoTabela: conteudo.type,
     }));
   });
 }
@@ -54,8 +58,12 @@ async function carregarCatalogo(req: Request, res: Response): Promise<void> {
   }
 
   let margens: ReturnType<typeof mapearTabelaPrecos> = [];
-  try { margens = mapearTabelaPrecos(await listPriceTableSections()); }
-  catch (error) { console.error("[EstudioCatalogoMubiSys] Falha ao carregar Tabela de Preços:", error); }
+  let versaoTabela: string | null = null;
+  try {
+    const [meta, secoes] = await Promise.all([getPriceTableMeta(), listPriceTableSections()]);
+    versaoTabela = meta?.versao ?? null;
+    margens = mapearTabelaPrecos(secoes, versaoTabela ?? "");
+  } catch (error) { console.error("[EstudioCatalogoMubiSys] Falha ao carregar Tabela de Preços:", error); }
 
   const disponivel = !!catalogo.espelhoStatus?.ultimaSincronizacaoEm;
   res.setHeader("Cache-Control", "private, no-store");
@@ -64,6 +72,7 @@ async function carregarCatalogo(req: Request, res: Response): Promise<void> {
     mubisysWebConectado: disponivel,
     erroComposicoesMubiSys: null,
     margens,
+    versaoTabela,
     carregadoEm: new Date().toISOString(),
   });
 }
