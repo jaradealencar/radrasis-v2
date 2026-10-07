@@ -108,6 +108,7 @@ import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
 import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashboard";
+import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
 import { PriceAdjustmentCalculator } from "@/components/PriceAdjustmentCalculator";
 import { PriceBlockAffiliationEditor } from "@/components/PriceBlockAffiliationEditor";
 import { Link2 } from "lucide-react";
@@ -3482,6 +3483,7 @@ export default function TabelaPrecos() {
               </Button>
             </div>
           </div>
+          <PriceRevenueDashboard />
           <PriceTableHistoryDashboard
             key="dashboard-precos"
             history={history}
