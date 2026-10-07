@@ -38,6 +38,7 @@ import { auth } from "./_core/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { invokeLLM } from "./_core/llm";
 import { TRPCError } from "@trpc/server";
+import { obterImpactoHistoricoTabela } from "./services/priceTableImpact";
 import type { TrpcContext } from "./_core/context";
 import { APP_ROLES, PAGE_KEYS, user as userTable } from "../drizzle/schema";
 import { asc, eq, isNull, or, count as sqlCount } from "drizzle-orm";
@@ -1391,6 +1392,9 @@ O POP deve:
         await deletePriceTableSection(input.id, ctx.user.name ?? ctx.user.email ?? "usuário");
         return { ok: true };
       }),
+    getHistoricalImpact: protectedProcedure
+      .input(z.object({ mes: z.number().int().min(1).max(12), ano: z.number().int().min(2020).max(2030), tabela: z.enum(["principal", "novo_cliente"]) }))
+      .query(async ({ input }) => obterImpactoHistoricoTabela(input.mes, input.ano, input.tabela)),
     getHistory: protectedProcedure
       .input(z.object({ limit: z.number().int().min(1).max(1000).optional() }))
       .query(async ({ input }) => {

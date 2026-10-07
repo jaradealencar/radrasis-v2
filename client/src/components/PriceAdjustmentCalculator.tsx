@@ -32,6 +32,10 @@ type ItemAbc = {
   pct: string;
   pctAcum: string;
   classe: "A" | "B" | "C";
+  produtoId?: number | null;
+  modeloId?: number | null;
+  variacaoId?: number | null;
+  skuErp?: string | null;
 };
 type ConteudoTabela = {
   type?: string;
@@ -116,12 +120,14 @@ export function PriceAdjustmentCalculator({
     error: abcErro,
     refetch: refazerAbc,
   } = trpc.performanceAbc.getAbc.useQuery(
-    { mes, ano, tipo: "produtos", forceRefresh: forcarAtualizacao },
+    { mes, ano, tipo: "produtos", forceRefresh: forcarAtualizacao, detalhado: true },
     { enabled: open }
   );
   const { data: produtos, isLoading: produtosCarregando } =
     trpc.produtos.listar.useQuery(undefined, { enabled: open });
   const atualizarSecao = trpc.price.update.useMutation();
+  const { data: impactoHistorico, isLoading: historicoCarregando, error: historicoErro } =
+    trpc.price.getHistoricalImpact.useQuery({ mes, ano, tabela }, { enabled: open });
 
   const base = pageBase(tabela);
   const secoesAtivas = useMemo(
@@ -216,7 +222,11 @@ export function PriceAdjustmentCalculator({
     if (escolha !== undefined)
       return escolha ? linhasPorId.get(Number(escolha)) : undefined;
     const nome = normalizarNome(item.nome);
-    const matches = produtosAtivos.filter(
+    const porModelo = item.modeloId == null ? [] : produtosAtivos.filter(
+      produto => produto.mubisysModeloId === item.modeloId &&
+        produto.idPrecificacao != null && linhasPorId.has(produto.idPrecificacao)
+    );
+    const matches = porModelo.length ? porModelo : produtosAtivos.filter(
       produto =>
         normalizarNome(produto.nome) === nome &&
         produto.idPrecificacao != null &&
@@ -427,6 +437,11 @@ export function PriceAdjustmentCalculator({
             </label>
           </div>
 
+          {abc?.stale && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              Atualização MubiSys indisponível. Exibindo Curva ABC salva em {new Date(abc.updatedAt).toLocaleString("pt-BR")} sem descartar dados. {abc.syncError}
+            </div>
+          )}
           {invalida && (
             <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">
               Este reajuste levaria uma ou mais margens para fora do intervalo
@@ -600,6 +615,43 @@ export function PriceAdjustmentCalculator({
             </Card>
           )}
 
+          <Card className="gap-0 py-0">
+            <CardHeader className="border-b px-4 py-3">
+              <CardTitle className="text-base">Histórico de alterações × vendas reais e Curva ABC</CardTitle>
+              <p className="text-xs text-slate-500">Versões registradas da tabela selecionada, cruzadas com o faturamento MubiSys do mês escolhido.</p>
+            </CardHeader>
+            {historicoCarregando ? (
+              <div className="m-4 h-20 animate-pulse rounded bg-slate-100" />
+            ) : historicoErro ? (
+              <p className="p-4 text-sm text-amber-800">Não foi possível carregar o cruzamento histórico: {historicoErro.message}</p>
+            ) : !impactoHistorico?.itens.length ? (
+              <p className="p-4 text-sm text-slate-500">Sem alterações de margem e vendas vinculáveis neste período. O histórico antigo sem snapshots completos não permite reconstruir diferenças.</p>
+            ) : (
+              <>
+                <div className="overflow-auto">
+                  <Table>
+                    <TableHeader><TableRow>
+                      <TableHead>Versão / data</TableHead><TableHead>Seção / item</TableHead><TableHead>ABC</TableHead>
+                      <TableHead className="text-right">Ajuste</TableHead><TableHead className="text-right">Faturamento do mês</TableHead>
+                      <TableHead className="text-right">Impacto estimado</TableHead><TableHead>Vínculo</TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>{impactoHistorico.itens.map((item, index) => (
+                      <TableRow key={`${item.versao}-${item.item}-${index}`}>
+                        <TableCell><Badge variant="outline">v{item.versao}</Badge><div className="text-xs text-slate-500">{new Date(item.data).toLocaleDateString("pt-BR")}</div></TableCell>
+                        <TableCell className="min-w-[220px]"><div className="font-medium">{item.item}</div><div className="text-xs text-slate-500">{item.secao}</div></TableCell>
+                        <TableCell>{item.classe === "—" ? "—" : <Badge variant={item.classe === "A" ? "default" : "outline"} className={item.classe === "A" ? "bg-emerald-600" : item.classe === "B" ? "border-amber-400 text-amber-700" : "text-slate-500"}>{item.classe}</Badge>}</TableCell>
+                        <TableCell className="text-right">{item.deltaPp > 0 ? "+" : ""}{fmtNum(item.deltaPp, 2)} p.p.</TableCell>
+                        <TableCell className="text-right">{fmtBrl(item.faturamento)}</TableCell>
+                        <TableCell className="text-right">{fmtBrl(item.impactoMin)} a {fmtBrl(item.impactoMax)}</TableCell>
+                        <TableCell><Badge variant={item.correspondencia === "sem venda compatível" ? "outline" : "secondary"}>{item.correspondencia}</Badge></TableCell>
+                      </TableRow>
+                    ))}</TableBody>
+                  </Table>
+                </div>
+                <p className="border-t p-3 text-xs text-slate-500">{impactoHistorico.observacao} As versões antigas recuperadas pelo painel anterior podem guardar apenas “conteúdo da seção atualizado”; nesse caso, não há snapshot para reconstruir o antes/depois.</p>
+              </>
+            )}
+          </Card>
           <details className="rounded-lg border">
             <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-700">
               Prévia das {linhasSimuladas.length} linhas de preço que serão

@@ -4,7 +4,9 @@ import { getDb } from "../db/db";
 import { abcCache } from "../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { ENV } from "../_core/env";
-import { listarOSMubiSys, listarProdutos } from "../integrations/mubisys-client";
+import { TRPCError } from "@trpc/server";
+import { listarOSMubiSys, listarProdutos, MubiSysError } from "../integrations/mubisys-client";
+import { obterCurvaVendasMubiSys } from "../services/mubisysVendas";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -209,13 +211,50 @@ export const performanceAbcRouter = router({
         ano: z.number().min(2020).max(2030),
         tipo: z.enum(["clientes", "produtos"]),
         forceRefresh: z.boolean().optional().default(false),
+        detalhado: z.boolean().optional().default(false),
       })
     )
     .query(async ({ input }) => {
-      const { mes, ano, tipo, forceRefresh } = input;
+      const { mes, ano, tipo, forceRefresh, detalhado } = input;
 
       const dbClient = await getDb();
       if (!dbClient) return { items: [], totalOs: 0, faturamento: 0, fromCache: false, updatedAt: new Date() };
+      if (tipo === "produtos") {
+        try {
+          const curva = await obterCurvaVendasMubiSys(mes, ano, forceRefresh);
+          return {
+            items: detalhado ? curva.itens : curva.itens.slice(0, 50),
+            totalOs: curva.ordens,
+            faturamento: curva.faturamento,
+            fromCache: curva.fromCache,
+            updatedAt: curva.sincronizadoEm,
+            stale: curva.stale,
+            syncError: curva.syncError,
+          };
+        } catch (error) {
+          if (error instanceof MubiSysError) {
+            const code = error.status === 401 || error.status === 403
+              ? "UNAUTHORIZED"
+              : error.status === 429
+                ? "TOO_MANY_REQUESTS"
+                : error.status >= 500
+                  ? "BAD_GATEWAY"
+                  : "SERVICE_UNAVAILABLE";
+            throw new TRPCError({
+              code,
+              message: error.status === 401 || error.status === 403
+                ? "MubiSys recusou a credencial configurada; renove o Access-Token no painel do ERP."
+                : error.status === 429
+                  ? "MubiSys limitou as consultas; os dados locais anteriores foram preservados."
+                  : error.status >= 500
+                    ? `MubiSys respondeu HTTP ${error.status}; os dados locais anteriores foram preservados.`
+                    : "MubiSys está indisponível ou excedeu o tempo de resposta; os dados locais anteriores foram preservados.",
+              cause: error,
+            });
+          }
+          throw error;
+        }
+      }
 
       // Check cache first
       if (!forceRefresh) {

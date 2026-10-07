@@ -1804,6 +1804,50 @@ export const abcCache = pgTable("abc_cache", {
 });
 export type AbcCache = typeof abcCache.$inferSelect;
 export type InsertAbcCache = typeof abcCache.$inferInsert;
+// Linhas de OS faturadas do MubiSys, preservadas para Curva ABC e impacto de preços.
+export const mubisysVendasItens = pgTable("mubisys_vendas_itens", {
+  id: serial("id").primaryKey(),
+  osId: integer("os_id").notNull(),
+  osNumero: integer("os_numero"),
+  itemId: integer("item_id").notNull(),
+  faturadaEm: varchar("faturada_em", { length: 32 }).notNull(),
+  mes: integer("mes").notNull(),
+  ano: integer("ano").notNull(),
+  produtoId: integer("produto_id"),
+  modeloId: integer("modelo_id"),
+  variacaoId: integer("variacao_id"),
+  skuErp: varchar("sku_erp", { length: 120 }),
+  nome: varchar("nome", { length: 256 }).notNull(),
+  modeloNome: varchar("modelo_nome", { length: 256 }),
+  variacaoNome: varchar("variacao_nome", { length: 256 }),
+  quantidade: decimal("quantidade", { precision: 14, scale: 6 }).notNull().default("1"),
+  faturamento: decimal("faturamento", { precision: 14, scale: 2 }).notNull().default("0"),
+  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+}, table => ({
+  osItemIdx: uniqueIndex("mubisys_vendas_itens_os_item_idx").on(table.osId, table.itemId),
+  periodoSkuIdx: index("mubisys_vendas_itens_periodo_sku_idx").on(table.ano, table.mes, table.skuErp),
+  periodoModeloIdx: index("mubisys_vendas_itens_periodo_modelo_idx").on(table.ano, table.mes, table.modeloId),
+  periodoVariacaoIdx: index("mubisys_vendas_itens_periodo_variacao_idx").on(table.ano, table.mes, table.variacaoId),
+  faturadaIdx: index("mubisys_vendas_itens_faturada_idx").on(table.faturadaEm),
+}));
+export type MubisysVendasItem = typeof mubisysVendasItens.$inferSelect;
+export type InsertMubisysVendasItem = typeof mubisysVendasItens.$inferInsert;
+
+export const mubisysVendasSyncStatus = pgTable("mubisys_vendas_sync_status", {
+  chave: varchar("chave", { length: 16 }).primaryKey(),
+  mes: integer("mes").notNull(),
+  ano: integer("ano").notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("nunca"),
+  ultimaTentativaEm: timestamp("ultima_tentativa_em"),
+  ultimaSincronizacaoEm: timestamp("ultima_sincronizacao_em"),
+  ordensSincronizadas: integer("ordens_sincronizadas").notNull().default(0),
+  linhasSincronizadas: integer("linhas_sincronizadas").notNull().default(0),
+  linhasSemValor: integer("linhas_sem_valor").notNull().default(0),
+  faturamentoTotal: decimal("faturamento_total", { precision: 16, scale: 2 }).notNull().default("0"),
+  ultimoErro: text("ultimo_erro"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type MubisysVendasSyncStatus = typeof mubisysVendasSyncStatus.$inferSelect;
 
 // ─── METAS OPERACIONAIS ──────────────────────────────────────────────────────
 export const metasOperacionais = pgTable("metas_operacionais", {

@@ -351,3 +351,33 @@ produção. O trabalho pendente é de consolidação e correção, não de const
    acertar a documentação (A12).
 
 Cada item vira uma fase em [`docs/sprint-mubisys/`](sprint-mubisys/README.md).
+
+## 4. Vendas faturadas e Curva ABC para a Tabela de Preços (07/10/2026)
+
+A Curva ABC de produtos agora é derivada das OS faturadas consultadas pelo
+cliente central `mubisys-client.ts` (`status=TODOS`, `filtrodata=FATURAMENTO`).
+O serviço `server/services/mubisysVendas.ts` grava as linhas e IDs de
+produto/modelo/variação em `mubisys_vendas_itens`, mantém o status mensal em
+`mubisys_vendas_sync_status` e atualiza `abc_cache` com o resultado completo.
+A classificação usa faturamento acumulado (A até 80%, B até 95%, C restante).
+Falha de API ou paginação incompleta preserva o cache anterior; o painel tenta
+atualizar de novo após 6 horas quando consultado. Não há upload manual.
+
+`performanceAbc.getAbc` expõe os dados detalhados à calculadora; o endpoint
+protegido `price.getHistoricalImpact` cruza snapshots `contentJson` de
+`price_table_history` com vendas mensais pela descrição/IDs e mostra versão,
+variação de margem, faturamento exposto e faixa de impacto estimado. O cálculo
+pressupõe custo, volume e conversão constantes. A API de vendas não informa a
+faixa da tabela efetivamente usada nem se a venda foi para Cliente MS ou Brasil;
+exposições de mudanças repetidas ou das duas tabelas podem se sobrepor e não
+são somáveis como resultado líquido.
+
+**Sincronização validada em 07/10/2026:** setembro/2026: 186 OS, 313 linhas,
+R$ 393.938,07; outubro/2026 até o dia 7: 25 OS, 45 linhas, R$ 71.960,79.
+Ambos os meses foram persistidos com status `sucesso` e ABC local.
+
+**Access-Token:** validação de leitura em 07/10/2026 aceitou o token atual,
+embora o `exp` do JWT seja 12/09/2026 11:30:45 UTC. A API não oferece
+renovação programática conhecida; emita/atualize o token no painel MubiSys e
+substitua `MUBISYS_ACCESS_TOKEN` no ambiente de execução antes de a API
+recusá-lo. O painel não confirma que um token renovado está instalado.
