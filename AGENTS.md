@@ -581,6 +581,21 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   parecido como antes, e **cada cor de acrílico vira uma matéria-prima na Face, com o seu próprio nesting; o fundo (PVC) sempre cobre
   o letreiro inteiro** (deriva de todas as peças da camada Face, não só das de uma cor) — coberto por `cpq-duas-cores-nesting.test.ts`.
   Mudar uma cor invalida a análise de cores, o nesting e as aprovações dependentes (`aoMudarCoresFace`).
+  **Pintura só em parte do letreiro (pedido de 06/10/2026):** nem tudo leva tinta (ex.: o perfil já vem pintado de fábrica na cor certa).
+  No mesmo cartão, o bloco "Pintura das peças" reaproveita a seleção de peças: o vendedor escolhe a **cor da tinta** das selecionadas
+  (cores já usadas, cores do desenho ou seletor livre; "Sem pintura nas selecionadas" e "Desfazer toda a pintura"), e o seletor
+  "Ver cores da face / Ver pintura" mostra o desenho com a cor de pintura de cada peça (cinza claro = sem pintura). `REAL.coresFace.pintura`
+  guarda caminho do SVG → cor, preso à mesma assinatura da arte; marcar a primeira peça habilita `REAL.pintura` (o tipo — tradicional,
+  metalizada, poliéster — continua sendo escolhido na Composição). As linhas de pintura do assistente (`resolverItensPintura`; o
+  adicional de PVC segue `fixo`) usam a fórmula **`areaPintada`** = área líquida só das peças marcadas, medida por peça com a mesma
+  `classifyGeometry` e escalada à área líquida do letreiro (`resumoPinturaPecas`); **sem nenhuma peça marcada, ou sem conseguir medir
+  (aviso no cartão), vale o letreiro inteiro**, como antes. No snapshot a linha vira `fixo` com a área já calculada (mesmo recurso da
+  solda, `formulaParaServidor`) — ou `area` quando não há marcação, que o servidor segue conferindo — e o resumo vai em `pinturaPecas`
+  (opcional **sem default**: áreas, nº de peças e cor/área/peças por cor; `pinturaPecasSchema`). O servidor só confere a coerência
+  (`erroPinturaPecas` em `shared/pintura-pecas.ts`: área pintada ≤ área líquida, somas por cor e área total iguais à medida do
+  snapshot), não remede as peças. **Limites conhecidos:** a cor da tinta é hex aproximado, sem catálogo de tintas nem código de fabricante, e
+  **não escolhe a matéria-prima** (o tipo e o nº de cores do assistente é que escolhem; o nº de cores distintas marcadas na Ficha técnica ainda
+  não pré-preenche "Quantas cores?"); a medição por peça assume formas recortadas entre si (`shape_stacking=cutouts`), como o vetor do CNC.
   **Troca do material sugerido (mesma data):** no aviso do passo Nesting (`htmlAvisoCoresAutomaticas(true)`) cada cor sólida tem o menu
   "Trocar o material desta cor" (chapas por matéria-prima, adesivos Imprimax e adesivo impresso; `listarOpcoesCor`, devolvido em `opcoes` ao lado
   de `resultados`, **fora** do snapshot). A escolha segue em `escolhas` (`{regionKey, corHex, tipo, id}`, casada por chave **e** cor) e o
