@@ -57,18 +57,26 @@ export function registrarRotasEstudioMubiSysEspelho(app: Express): void {
     res.send("\uFEFF" + await gerarTemplateComposicaoCsv());
   }));
 
-  // Esta rota é registrada antes dos parsers JSON globais: CSV/XLSX chega como bytes,
+  // Esta rota é registrada antes dos parsers JSON globais: CSV/XLSX/JSON chega como bytes,
   // com limite explícito e sem multipart/serviço externo de upload.
   app.put("/api/letra-caixa/mubisys/composicoes", express.raw({ type: "*/*", limit: "4mb" }), rota(async (req, res) => {
     if (!(await exigirGestao(req, res))) return;
     if (!Buffer.isBuffer(req.body)) {
-      res.status(400).json({ error: "Envie o arquivo CSV/XLSX diretamente no corpo da requisição." });
+      res.status(400).json({ error: "Envie CSV/XLSX ou JSON diretamente no corpo da requisição." });
       return;
     }
     let nomeArquivo = req.get("x-file-name") || "composicoes.csv";
     try { nomeArquivo = decodeURIComponent(nomeArquivo); } catch { /* validação do formato abaixo */ }
     nomeArquivo = nomeArquivo.replace(/[\\/\x00-\x1f]/g, "_").slice(-255);
-    const resultado = await importarComposicaoArquivo(req.body, nomeArquivo);
+    let resultado;
+    if (nomeArquivo.toLowerCase().endsWith(".json")) {
+      let conteudo: unknown;
+      try { conteudo = JSON.parse(req.body.toString("utf8").replace(/^\uFEFF/, "")); }
+      catch { res.status(400).json({ error: "JSON da BOM inválido." }); return; }
+      resultado = await importarComposicaoJson(conteudo, nomeArquivo);
+    } else {
+      resultado = await importarComposicaoArquivo(req.body, nomeArquivo);
+    }
     res.setHeader("Cache-Control", "no-store");
     res.json({ ok: true, ...resultado });
   }));
@@ -79,7 +87,7 @@ export function registrarRotasEstudioMubiSysEspelho(app: Express): void {
       const tipoConteudo = req.get("content-type") || "";
       if (tipoConteudo.includes("application/json")) {
         let conteudoJson: unknown;
-        try { conteudoJson = JSON.parse(req.body.toString("utf8")); }
+        try { conteudoJson = JSON.parse(req.body.toString("utf8").replace(/^\uFEFF/, "")); }
         catch { res.status(400).json({ error: "JSON da BOM inválido." }); return; }
         const body = conteudoJson && typeof conteudoJson === "object" ? conteudoJson as Record<string, unknown> : null;
         if (body && (typeof body.content === "string" || typeof body.contentBase64 === "string")) {

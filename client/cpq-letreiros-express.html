@@ -500,7 +500,7 @@ function renderConexaoMubiSys(){
       <button class="btn btn-ghost btn-sm" type="button" data-act="mubisys-atualizar-espelho" ${catalog.syncBusy?'disabled':''}>${catalog.syncBusy?'Sincronizando…':'Atualizar catálogo'}</button>
       ${catalog.sessionConnected?`<button class="btn btn-primary btn-sm" type="button" data-act="mubisys-sincronizar-bom" ${catalog.sessionSyncBusy?'disabled':''}>${catalog.sessionSyncBusy?'Lendo BOM…':'Sincronizar BOM do MubiSys'}</button><button class="btn btn-ghost btn-sm" type="button" data-act="mubisys-desconectar">Desconectar</button>`:`<button class="btn btn-soft btn-sm" type="button" data-act="mubisys-connect-open" ${catalog.connectionBusy?'disabled':''}>${catalog.connectionOpen?'Fechar':'Conectar MubiSys'}</button>`}
       <a class="btn btn-ghost btn-sm" href="/api/letra-caixa/mubisys/composicoes/template.csv">Baixar template CSV</a>
-      <label class="btn btn-primary btn-sm" style="cursor:pointer;">${catalog.uploadBusy?'Importando…':'Importar fichas CSV/XLSX'}<input type="file" data-act="mubisys-importar-arquivo" accept=".csv,.xlsx,.xls" style="display:none" ${catalog.uploadBusy?'disabled':''}></label>
+      <label class="btn btn-primary btn-sm" style="cursor:pointer;">${catalog.uploadBusy?'Importando…':'Importar fichas CSV/XLSX/JSON'}<input type="file" data-act="mubisys-importar-arquivo" accept=".csv,.xlsx,.xls,.json,application/json" style="display:none" ${catalog.uploadBusy?'disabled':''}></label>
     </div>
   </div>`;
 }
