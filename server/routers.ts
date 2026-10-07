@@ -39,6 +39,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import { invokeLLM } from "./_core/llm";
 import { TRPCError } from "@trpc/server";
 import { obterImpactoHistoricoTabela } from "./services/priceTableImpact";
+import { obterAnaliseReceitaTabela } from "./services/priceTableRevenueAnalysis";
 import { listarProdutosEspelhados } from "./services/mubisysEspelho";
 import type { TrpcContext } from "./_core/context";
 import { APP_ROLES, PAGE_KEYS, user as userTable, priceTableBlockPairs, priceTableAffiliations, priceTableAffiliationHistory } from "../drizzle/schema";
@@ -1470,6 +1471,13 @@ O POP deve:
         });
         return { ok: true };
       }),
+    getRevenueAnalysis: protectedProcedure
+      .input(z.object({
+        mes: z.number().int().min(1).max(12), ano: z.number().int().min(2020).max(2030),
+        tabela: z.enum(["principal", "novo_cliente"]).optional(), sectionId: z.number().int().positive().optional(),
+        produtoId: z.number().int().positive().optional(), modeloId: z.number().int().positive().optional(),
+      }))
+      .query(async ({ input }) => obterAnaliseReceitaTabela(input)),
     getHistoricalImpact: protectedProcedure
       .input(z.object({ mes: z.number().int().min(1).max(12), ano: z.number().int().min(2020).max(2030), tabela: z.enum(["principal", "novo_cliente"]) }))
       .query(async ({ input }) => obterImpactoHistoricoTabela(input.mes, input.ano, input.tabela)),

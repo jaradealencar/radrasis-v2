@@ -30,6 +30,7 @@ import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
 import MarketingFinanceiro from "@/pages/financeiro/MarketingFinanceiro";
 import VistaRetencao from "@/pages/comercial/VistaRetencao";
 import PainelMeta from "@/pages/comercial/PainelMeta";
+import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1255,6 +1256,7 @@ function VistaPrevisoes({ onIrPara, destinosDisponiveis }: { onIrPara: (v: Vista
 
   return (
     <div className="space-y-5">
+      <PriceRevenueDashboard />
       <PainelMeta onIrPara={onIrPara} destinosDisponiveis={destinosDisponiveis.filter((v): v is "clientes" | "fila" | "retencao" | "funil" | "crescimento" => v === "clientes" || v === "fila" || v === "retencao" || v === "funil" || v === "crescimento")} />
 
       <details className="bg-white rounded-xl border border-slate-200 shadow-sm">
