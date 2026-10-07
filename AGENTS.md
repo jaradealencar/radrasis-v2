@@ -587,15 +587,28 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   "Ver cores da face / Ver pintura" mostra o desenho com a cor de pintura de cada peça (cinza claro = sem pintura). `REAL.coresFace.pintura`
   guarda caminho do SVG → cor, preso à mesma assinatura da arte; marcar a primeira peça habilita `REAL.pintura` (o tipo — tradicional,
   metalizada, poliéster — continua sendo escolhido na Composição). As linhas de pintura do assistente (`resolverItensPintura`; o
-  adicional de PVC segue `fixo`) usam a fórmula **`areaPintada`** = área líquida só das peças marcadas, medida por peça com a mesma
-  `classifyGeometry` e escalada à área líquida do letreiro (`resumoPinturaPecas`); **sem nenhuma peça marcada, ou sem conseguir medir
-  (aviso no cartão), vale o letreiro inteiro**, como antes. No snapshot a linha vira `fixo` com a área já calculada (mesmo recurso da
-  solda, `formulaParaServidor`) — ou `area` quando não há marcação, que o servidor segue conferindo — e o resumo vai em `pinturaPecas`
-  (opcional **sem default**: áreas, nº de peças e cor/área/peças por cor; `pinturaPecasSchema`). O servidor só confere a coerência
-  (`erroPinturaPecas` em `shared/pintura-pecas.ts`: área pintada ≤ área líquida, somas por cor e área total iguais à medida do
-  snapshot), não remede as peças. **Limites conhecidos:** a cor da tinta é hex aproximado, sem catálogo de tintas nem código de fabricante, e
-  **não escolhe a matéria-prima** (o tipo e o nº de cores do assistente é que escolhem; o nº de cores distintas marcadas na Ficha técnica ainda
-  não pré-preenche "Quantas cores?"); a medição por peça assume formas recortadas entre si (`shape_stacking=cutouts`), como o vetor do CNC.
+  adicional de PVC segue `fixo`) usam a fórmula **`areaPintada`** = área líquida só das peças marcadas, escalada à área líquida do letreiro
+  (`resumoPinturaPecas`); **sem nenhuma peça marcada, ou sem conseguir medir (aviso no cartão), vale o letreiro inteiro**, como antes. A
+  área por peça (`areasLiquidasPorCaminho`) aplica a regra da `classifyGeometry` a todos os caminhos juntos: cada contorno externo soma ao
+  caminho dele e cada vazado desconta do menor contorno que o contém, **mesmo que seja de outro caminho** — então formas empilhadas em
+  caminhos diferentes não são contadas duas vezes e a soma das peças fecha com a área líquida do letreiro (a peça que é "furo" de outra
+  vale 0). `measureSubpath` guarda o resultado por contorno (limite de 4000) para a geometria geral e a por peça não medirem duas vezes.
+  **A cor da tinta escolhe a matéria-prima** (decisão de 07/10/2026): as cores **diferentes** marcadas decidem o item do catálogo —
+  tinta PU tradicional = "Tinta PU [N cores]" com N = nº de cores marcadas (teto 4, `MAX_CORES_TINTA_PU`; acima disso o assistente avisa que o
+  catálogo não tem), metalizada = **uma linha por matéria-prima de metal** (`PINTURAS_METALICAS`: Bronze, Prata, Azul Bic e Dourado Vila
+  Rica; Azul Bic e Vila Rica têm item próprio, e Bronze, Prata e qualquer cor sem metal escolhido caem em "dourado/prata/bronze"), cada
+  uma com `coresPintura` e cobrada **só pela área das peças dessas cores** (a soma das linhas fecha com a área pintada), poliéster = uma
+  linha. Os hex dos metais são aproximações para o desenho (o metal é reconhecido pelo hex exato); quem manda no que é cobrado é o
+  catálogo. Com peças marcadas o assistente da Composição **não pergunta** "Quantas cores?", "Cores adicionais?" nem "Cor do metal?"
+  (`podeConfirmarPintura`); só o acabamento/verniz da tradicional continua sendo perguntado. Mudar peças ou cores depois de a pintura estar
+  no orçamento **refaz as linhas na hora** (`reaplicarPinturaSeConcluida`; se as respostas deixarem de bastar, a pintura volta a pedir
+  confirmação e as linhas saem). Cada cor aceita um **nome/código da tinta** digitado (ex.: "RAL 9010"; sem texto vale o nome do metal) em
+  `REAL.coresFace.nomesTinta`, só informativo. No snapshot a linha vira `fixo` com a área já calculada (mesmo recurso da solda,
+  `formulaParaServidor`; a linha de metal é sempre `fixo`) — ou `area` quando não há marcação, que o servidor segue conferindo — e o
+  resumo vai em `pinturaPecas` (opcional **sem default**: áreas, nº de peças e cor/nome/área/peças por cor; `pinturaPecasSchema`). O
+  servidor só confere a coerência (`erroPinturaPecas` em `shared/pintura-pecas.ts`: área pintada ≤ área líquida, somas por cor e área
+  total iguais à medida do snapshot), não remede as peças. **Limites:** não há catálogo de tintas com código de fabricante (o código é
+  texto livre); o verniz e o adicional de PVC são os mesmos para todas as cores; a medida é por amostragem, como o resto da geometria.
   **Troca do material sugerido (mesma data):** no aviso do passo Nesting (`htmlAvisoCoresAutomaticas(true)`) cada cor sólida tem o menu
   "Trocar o material desta cor" (chapas por matéria-prima, adesivos Imprimax e adesivo impresso; `listarOpcoesCor`, devolvido em `opcoes` ao lado
   de `resultados`, **fora** do snapshot). A escolha segue em `escolhas` (`{regionKey, corHex, tipo, id}`, casada por chave **e** cor) e o

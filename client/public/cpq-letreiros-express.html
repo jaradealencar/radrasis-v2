@@ -859,7 +859,18 @@ function workPath(){
   return path;
 }
 
+// Medir é a parte cara (amostragem ponto a ponto); a mesma geometria é lida pela área geral e pela área por peça da pintura,
+// então o resultado de cada contorno fica guardado (limitado, para uma sessão longa não acumular).
+const _memoSubpaths = new Map();
 function measureSubpath(dStr){
+  const memo = _memoSubpaths.get(dStr);
+  if(memo) return memo;
+  const medido = medirSubpathSemMemo(dStr);
+  if(_memoSubpaths.size>=4000) _memoSubpaths.clear();
+  _memoSubpaths.set(dStr, medido);
+  return medido;
+}
+function medirSubpathSemMemo(dStr){
   const path = workPath();
   path.setAttribute('d', dStr);
   let len=0, bbox={x:0,y:0,width:0,height:0};
@@ -2537,7 +2548,7 @@ const FORMULA_TYPES = {
   fixo: {label:'Unidade (quantidade por letreiro, ex.: brinde)', calc:(g,mult)=> mult},
   // Pintura só em parte do letreiro (pedido de 06/10/2026): área líquida das peças marcadas na Ficha técnica (Cores da face > Pintura das
   // peças). Sem nenhuma peça marcada vale a área líquida do letreiro inteiro, como a fórmula "area". No snapshot vira "fixo" (ver formulaParaServidor).
-  areaPintada: {label:'Pintura: área líquida só das peças marcadas para pintar (m²)', calc:(g,mult)=> areaPintadaM2(g)*mult},
+  areaPintada: {label:'Pintura: área líquida só das peças marcadas para pintar (m²)', calc:(g,mult,linha)=> areaPintadaM2(g,linha)*mult},
   // Produtividade de solda (linhas automáticas da Ficha técnica): perímetro total dos elementos de cada faixa de altura, em metros.
   // No snapshot da cotação viram "fixo" com a quantidade já calculada (ver formulaParaServidor).
   soldaPerimAte11: {label:'Solda: perímetro dos elementos de até 11 cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).ateM*mult},
@@ -2662,7 +2673,7 @@ function kitLineQty(line, geom){
   if(nesting&&line.formulaType==='areaTotal') return Math.max(0,Number(nesting.area_chapa_utilizada_m2)||0)*(Number(line.mult)||0);
   if(nesting&&line.formulaType==='area') return Math.max(0,Number(nesting.area_liquida_m2)||0)*(Number(line.mult)||0);
   if(nesting&&line.formulaType==='perimTotal') return Math.max(0,Number(nesting.perimetro_total_m)||0)*(Number(line.mult)||0);
-  return (FORMULA_TYPES[line.formulaType]||FORMULA_TYPES.fixo).calc(geom, line.mult);
+  return (FORMULA_TYPES[line.formulaType]||FORMULA_TYPES.fixo).calc(geom, line.mult, line);
 }
 function materialKitAtivo(line){
   const variacao=(Array.isArray(line.variantes)?line.variantes:[]).find(item=>String(item.matId)===String(line.variacaoSelecionadaMatId));
@@ -2794,13 +2805,17 @@ function aplicarKitProdutosNoKit(){
  * sempre por área líquida (m²) — pintura cobre a superfície da peça. */
 function podeConfirmarPintura(p){
   if(!p.substrato || !p.tipo) return false;
+  // Com peças marcadas na Ficha técnica, as cores da pintura vêm delas: o assistente não pergunta nº de cores nem cor do metal.
+  const porPecas = coresMarcadasPintura().length>0;
   if(p.tipo==='tradicional'){
-    if(!p.cores) return false;
-    if(p.temCoresAdicionais==null) return false;
-    if(p.temCoresAdicionais && !p.coresAdicionais) return false;
+    if(!porPecas){
+      if(!p.cores) return false;
+      if(p.temCoresAdicionais==null) return false;
+      if(p.temCoresAdicionais && !p.coresAdicionais) return false;
+    }
     if(!p.acabamento) return false;
   }
-  if(p.tipo==='metalizada' && !p.corMetal) return false;
+  if(p.tipo==='metalizada' && !porPecas && !p.corMetal) return false;
   return true;
 }
 
@@ -2813,11 +2828,21 @@ function totalCoresPintura(p){
 function resolverItensPintura(p){
   const itens = [];
   // `areaPintada` = área líquida das peças marcadas para pintura na Ficha técnica; sem marcação, a do letreiro inteiro (igual a "area").
+  // Com peças marcadas, as cores diferentes delas decidem o item: nº de cores da tinta PU, e um item por metal na metalizada.
+  const marcadas = coresMarcadasPintura(), porPecas = marcadas.length>0;
   if(p.tipo==='tradicional'){
-    const n = totalCoresPintura(p);
+    const n = porPecas ? Math.min(MAX_CORES_TINTA_PU, marcadas.length) : totalCoresPintura(p);
     itens.push({termo:`tinta pu [${n} cor${n>1?'es':''}]`, papel:'Pintura', formulaType:'areaPintada'});
     if(p.acabamento==='fosco') itens.push({termo:'verniz fosco', papel:'Verniz', formulaType:'areaPintada'});
     else if(p.acabamento==='brilhante') itens.push({termo:'verniz brilho', papel:'Verniz', formulaType:'areaPintada'});
+  } else if(p.tipo==='metalizada' && porPecas){
+    // Um item por matéria-prima de metal; cada linha cobra só a área das peças das cores que usam esse item.
+    const porTermo = new Map();
+    marcadas.forEach(c=>{
+      const termo = TERMO_TINTA_METALICA[c.metal] || 'dourado/prata/bronze';
+      porTermo.set(termo, [...(porTermo.get(termo)||[]), c.hex]);
+    });
+    porTermo.forEach((hexes,termo)=>itens.push({termo, papel:'Pintura metalizada', formulaType:'areaPintada', coresPintura:hexes}));
   } else if(p.tipo==='metalizada'){
     if(p.corMetal==='azulbic') itens.push({termo:'azul bic', papel:'Pintura metalizada', formulaType:'areaPintada'});
     else if(p.corMetal==='douradovillarica') itens.push({termo:'vila rica', papel:'Pintura metalizada', formulaType:'areaPintada'});
@@ -2837,21 +2862,44 @@ function resolverItensPintura(p){
 function aplicarPintura(){
   const p = REAL.pintura;
   if(!podeConfirmarPintura(p)) return;
-  const specs = resolverItensPintura(p);
-  const adicionados = [], naoEncontrados = [];
-  specs.forEach(spec=>{
-    const m = catalog.materias.find(x=>!adminState.materiasExcluidas.has(x.id) && normalizeSearch(x.nome).includes(normalizeSearch(spec.termo)));
-    if(m){
-      REAL.kit.push({ matId:m.id, nome:m.nome, unidade:m.unidade, custo:m.valor, atualizado:m.atualizado, status:m.status, papel:spec.papel, formulaType:spec.formulaType, mult:1.0, origemPintura:true });
-      adicionados.push(m.nome);
-    } else naoEncontrados.push(spec.termo);
-  });
+  const naoEncontrados = montarLinhasPintura();
   REAL.approvals.kit=false;
   p.habilitada = true;
   p.concluida = true;
-  p.itensAdicionados = adicionados;
   if(naoEncontrados.length) alert('Não encontrei no catálogo: '+naoEncontrados.join(', ')+' — adicione manualmente na composição.');
   render();
+}
+
+/** Recompõe, em REAL.kit, as linhas da pintura a partir das respostas do assistente e das peças marcadas (troca as que já existiam).
+ *  Devolve os termos que não existem no catálogo. */
+function montarLinhasPintura(){
+  const p = REAL.pintura;
+  REAL.kit = REAL.kit.filter(k=>!k.origemPintura);
+  const adicionados = [], naoEncontrados = [];
+  resolverItensPintura(p).forEach(spec=>{
+    const m = catalog.materias.find(x=>!adminState.materiasExcluidas.has(x.id) && normalizeSearch(x.nome).includes(normalizeSearch(spec.termo)));
+    if(m){
+      REAL.kit.push({ matId:m.id, nome:m.nome, unidade:m.unidade, custo:m.valor, atualizado:m.atualizado, status:m.status, papel:spec.papel, formulaType:spec.formulaType, mult:1.0, origemPintura:true, ...(spec.coresPintura?{coresPintura:[...spec.coresPintura]}:{}) });
+      adicionados.push(m.nome);
+    } else naoEncontrados.push(spec.termo);
+  });
+  p.itensAdicionados = adicionados;
+  return naoEncontrados;
+}
+
+/** As peças marcadas para pintura (ou as cores delas) mudaram depois de a pintura estar no orçamento: as linhas são refeitas na hora, para
+ *  o nº de cores da tinta, os metais e as áreas nunca ficarem desatualizados. Se as respostas deixarem de bastar, volta a pedir a confirmação. */
+function reaplicarPinturaSeConcluida(){
+  const p = REAL.pintura;
+  if(!p||!p.concluida) return;
+  if(!podeConfirmarPintura(p)){
+    REAL.kit = REAL.kit.filter(k=>!k.origemPintura);
+    p.itensAdicionados = [];
+    p.concluida = false;
+    return;
+  }
+  const naoEncontrados = montarLinhasPintura();
+  if(naoEncontrados.length) alert('Não encontrei no catálogo: '+naoEncontrados.join(', ')+' — adicione manualmente na composição.');
 }
 
 /** Desabilita a pintura e remove do kit tudo que ela tinha adicionado —
@@ -4197,7 +4245,8 @@ function formulaParaServidor(linha, quantidade){
   // sem conseguir medir, a quantidade é a área líquida do letreiro inteiro e o servidor a confere como a fórmula "area".
   if(linha.formulaType==='areaPintada'){
     const r=resumoPinturaPecas();
-    if(r&&!r.erro) return {formulaType:'fixo',multiplicador:Math.max(0,Number.isFinite(quantidade)?quantidade:0)};
+    // Linha de uma tinta específica (cada metal) nunca vale o letreiro inteiro, nem sem medida: a quantidade já calculada vai como "fixo".
+    if((r&&!r.erro)||Array.isArray(linha.coresPintura)) return {formulaType:'fixo',multiplicador:Math.max(0,Number.isFinite(quantidade)?quantidade:0)};
     return {formulaType:'area',multiplicador:Math.max(0,Number(linha.mult)||0)};
   }
   return {formulaType:String(linha.formulaType||'fixo'),multiplicador:Math.max(0,Number(linha.mult)||0)};
@@ -4422,9 +4471,10 @@ function lerCaminhosColoridos(){
 }
 
 function coresFaceEstado(){
-  if(!REAL.coresFace) REAL.coresFace={assinatura:'',mapa:{},selecao:[],paleta:null,paletaCarregando:false,paletaErro:null,personalizada:'#ff7f00',pintura:{},pinturaCor:'#1d4ed8',pinturaAberta:false,modo:'face'};
+  if(!REAL.coresFace) REAL.coresFace={assinatura:'',mapa:{},selecao:[],paleta:null,paletaCarregando:false,paletaErro:null,personalizada:'#ff7f00',pintura:{},nomesTinta:{},pinturaCor:'#1d4ed8',pinturaAberta:false,modo:'face'};
   const st=REAL.coresFace, assinatura=assinaturaSvgArte();
-  if(st.assinatura!==assinatura){ st.assinatura=assinatura; st.mapa={}; st.selecao=[]; st.pintura={}; }
+  if(st.assinatura!==assinatura){ st.assinatura=assinatura; st.mapa={}; st.selecao=[]; st.pintura={}; st.nomesTinta={}; }
+  if(!st.nomesTinta) st.nomesTinta={};
   return st;
 }
 
@@ -4433,13 +4483,28 @@ function coresFaceEstado(){
  * as peças que serão pintadas e a cor de cada uma (`st.pintura`: caminho do SVG → "#rrggbb"). A pintura do orçamento passa a ser cobrada
  * pela área líquida SÓ dessas peças (fórmula `areaPintada`). Sem nenhuma peça marcada, a pintura cobre o letreiro inteiro, como antes. */
 let _areasCaminhosCache={svg:null,valor:null};
-/** Área líquida (px², vazados descontados) de cada peça clicável do desenho, medida como a geometria geral do letreiro (classifyGeometry). */
+/** Área líquida (px², vazados descontados) de cada peça clicável do desenho. Usa a MESMA regra da geometria geral (classifyGeometry:
+ *  contorno com profundidade par é material, ímpar é vazado), mas sobre todos os caminhos juntos: cada contorno externo soma a sua área ao
+ *  caminho a que pertence e cada vazado desconta do menor contorno externo que o contém, mesmo que esse seja de outro caminho. Assim, com formas
+ *  empilhadas (uma dentro da outra, em caminhos diferentes), a soma das peças continua igual à área líquida do letreiro. */
 function areasLiquidasPorCaminho(){
   const svg=REAL.tracedSvgOriginal, lido=lerCaminhosColoridos();
   if(!svg||!lido) return null;
   if(_areasCaminhosCache.svg===svg) return _areasCaminhosCache.valor;
-  const mapa=new Map();
-  lido.caminhos.filter(c=>!c.semPreenchimento&&c.d).forEach(c=>mapa.set(c.index,classifyGeometry(c.d).areaPx));
+  const mapa=new Map(), contornos=[];
+  lido.caminhos.filter(c=>!c.semPreenchimento&&c.d).forEach(c=>{
+    mapa.set(c.index,0);
+    splitSubpaths(c.d).map(measureSubpath).filter(s=>s.area>3&&s.len>0).forEach(s=>contornos.push({indice:c.index,area:s.area,bbox:s.bbox}));
+  });
+  contornos.forEach((s,i)=>{ s.vazado=contornos.filter((o,j)=>j!==i&&o.area>s.area&&bboxContains(o.bbox,s.bbox)).length%2===1; });
+  const externos=contornos.filter(s=>!s.vazado);
+  externos.forEach(s=>mapa.set(s.indice,mapa.get(s.indice)+s.area));
+  contornos.filter(s=>s.vazado).forEach(vazado=>{
+    let dono=null;
+    externos.forEach(e=>{ if(e.area>vazado.area&&bboxContains(e.bbox,vazado.bbox)&&(!dono||e.area<dono.area)) dono=e; });
+    if(dono) mapa.set(dono.indice,mapa.get(dono.indice)-vazado.area);
+  });
+  mapa.forEach((valor,indice)=>mapa.set(indice,Math.max(0,valor)));
   _areasCaminhosCache={svg,valor:mapa};
   return mapa;
 }
@@ -4461,20 +4526,48 @@ function resumoPinturaPecas(g=computeGeomReal()){
   return {
     pecasPintadas:indices.length, pecasTotal:areas.size,
     areaPintadaM2:g.areaM2*fracao, areaLiquidaTotalM2:g.areaM2,
-    cores:[...porCor.values()].map(c=>({corHex:c.corHex,pecas:c.pecas,areaM2:g.areaM2*Math.min(1,c.px/totalPx)})).sort((a,b)=>b.areaM2-a.areaM2||a.corHex.localeCompare(b.corHex)),
+    cores:[...porCor.values()].map(c=>({corHex:c.corHex,pecas:c.pecas,areaM2:g.areaM2*Math.min(1,c.px/totalPx),nome:nomeTintaDaCor(c.corHex)})).sort((a,b)=>b.areaM2-a.areaM2||a.corHex.localeCompare(b.corHex)),
   };
 }
-/** Área (m²) que a pintura cobra: a das peças marcadas; sem marcação (ou sem conseguir medir), o letreiro inteiro. */
-function areaPintadaM2(g=computeGeomReal()){
-  const r=resumoPinturaPecas(g);
-  return r&&!r.erro?r.areaPintadaM2:g.areaM2;
+/** Área (m²) que a linha de pintura cobra: a das peças marcadas (só as das cores da linha, quando ela é de uma tinta específica, como
+ *  cada metal da pintura metalizada); sem marcação, o letreiro inteiro. Se as peças marcadas não puderam ser medidas, uma linha por cor
+ *  divide o letreiro inteiro pelas cores, para a soma não cobrar a mesma área duas vezes. */
+function areaPintadaM2(g=computeGeomReal(), linha=null){
+  const r=resumoPinturaPecas(g), cores=linha&&Array.isArray(linha.coresPintura)?linha.coresPintura:null;
+  if(!r) return g.areaM2;
+  if(r.erro) return cores?g.areaM2*cores.length/Math.max(1,coresMarcadasPintura().length):g.areaM2;
+  return cores?r.cores.filter(c=>cores.includes(c.corHex)).reduce((soma,c)=>soma+c.areaM2,0):r.areaPintadaM2;
 }
 /** Linha do snapshot da cotação: só existe quando alguma linha do orçamento usa `areaPintada` e há peças marcadas e medidas. */
 function pinturaPecasSnapshot(){
   if(!(REAL.kit||[]).some(l=>l.formulaType==='areaPintada')) return undefined;
   const r=resumoPinturaPecas();
   if(!r||r.erro) return undefined;
-  return {areaPintadaM2:r.areaPintadaM2,areaLiquidaTotalM2:r.areaLiquidaTotalM2,pecasPintadas:r.pecasPintadas,pecasTotal:r.pecasTotal,cores:r.cores.map(c=>({corHex:c.corHex,pecas:c.pecas,areaM2:c.areaM2}))};
+  return {areaPintadaM2:r.areaPintadaM2,areaLiquidaTotalM2:r.areaLiquidaTotalM2,pecasPintadas:r.pecasPintadas,pecasTotal:r.pecasTotal,cores:r.cores.map(c=>({corHex:c.corHex,pecas:c.pecas,areaM2:c.areaM2,...(c.nome?{nome:c.nome}:{})}))};
+}
+
+/* A cor da tinta escolhe a matéria-prima do catálogo: tinta PU tradicional é uma só, com o nº de cores = cores diferentes marcadas
+ * ("Tinta PU [N cores]", no máximo 4); na metalizada, cada metal tem a sua (Azul Bic e Vila Rica têm item próprio; bronze, prata e qualquer cor sem
+ * metal escolhido caem no item "dourado/prata/bronze") e cada linha cobra só a área das peças dessas cores; poliéster é uma só.
+ * Os hex dos metais são aproximações para o desenho; o catálogo de matérias-primas é quem manda no que é cobrado. */
+const PINTURAS_METALICAS = {
+  bronze:{nome:'Bronze',hex:'#a97142'}, prata:{nome:'Prata',hex:'#c0c0c0'},
+  azulbic:{nome:'Azul Bic',hex:'#1f3f99'}, douradovillarica:{nome:'Dourado Vila Rica',hex:'#c9a227'},
+};
+const TERMO_TINTA_METALICA = {azulbic:'azul bic', douradovillarica:'vila rica'};
+const MAX_CORES_TINTA_PU = 4;
+function metalDaCorPintura(hex){ return Object.keys(PINTURAS_METALICAS).find(k=>PINTURAS_METALICAS[k].hex===hex)||null; }
+/** Cores de tinta diferentes marcadas nas peças, em ordem estável: `[{hex, metal}]` (`metal` = chave de PINTURAS_METALICAS ou null). */
+function coresMarcadasPintura(){
+  const st=coresFaceEstado();
+  return [...new Set(Object.values(st.pintura||{}))].sort().map(hex=>({hex,metal:metalDaCorPintura(hex)}));
+}
+/** Nome/código da tinta que o vendedor digitou para a cor (ex.: "RAL 9010"); sem texto, o nome do metal, se a cor for um deles. */
+function nomeTintaDaCor(hex){
+  const st=coresFaceEstado(), digitado=String((st.nomesTinta||{})[hex]||'').trim();
+  if(digitado) return digitado;
+  const metal=metalDaCorPintura(hex);
+  return metal?PINTURAS_METALICAS[metal].nome:'';
 }
 /** Texto curto da área a pintar, para o passo de Composição (onde a pintura é habilitada e configurada). */
 function htmlResumoPinturaPecas(){
@@ -4482,7 +4575,7 @@ function htmlResumoPinturaPecas(){
   if(!(g.areaM2>0)) return '';
   if(!r) return `<p style="font-size:11.5px;color:var(--text-faint);margin-top:6px;">Área a pintar: o letreiro inteiro (${fmt(g.areaM2,3)} m²). Para pintar só parte dele, marque as peças em Ficha técnica &gt; Pintura das peças.</p>`;
   if(r.erro) return `<p role="alert" style="font-size:11.5px;color:var(--warn);margin-top:6px;">${escaparHtml(r.erro)}</p>`;
-  return `<p style="font-size:11.5px;color:var(--text-dim);margin-top:6px;">Área a pintar: <b>${fmt(r.areaPintadaM2,3)} m²</b> de ${fmt(r.areaLiquidaTotalM2,3)} m² — ${r.pecasPintadas} de ${r.pecasTotal} peça(s) marcadas na Ficha técnica (${r.cores.map(c=>c.corHex).join(', ')}). O restante não entra no custo da pintura.</p>`;
+  return `<p style="font-size:11.5px;color:var(--text-dim);margin-top:6px;">Área a pintar: <b>${fmt(r.areaPintadaM2,3)} m²</b> de ${fmt(r.areaLiquidaTotalM2,3)} m² — ${r.pecasPintadas} de ${r.pecasTotal} peça(s) marcadas na Ficha técnica (${r.cores.map(c=>escaparHtml(c.nome?`${c.nome} ${c.corHex}`:c.corHex)).join(', ')}). O restante não entra no custo da pintura.</p>`;
 }
 function nomeMateriaCatalogo(id){
   const material=(catalog.materias||[]).find(item=>Number(item.id)===Number(id));
@@ -4572,7 +4665,8 @@ function htmlBlocoPinturaPecas(st,grupos,amostra,desabilitado){
   const resumo=!r?`<div class="role-note" style="margin-bottom:8px;">${ICONS.info} <div style="min-width:0;">Nenhuma peça marcada: com a pintura habilitada, o <b>letreiro inteiro</b> (${fmt(g.areaM2,3)} m²) é pintado.</div></div>`
     :r.erro?`<div class="role-note" role="alert" style="margin-bottom:8px;color:var(--warn);">${ICONS.alert||ICONS.info} <div style="min-width:0;">${escaparHtml(r.erro)}</div></div>`
     :`<div class="role-note" style="margin-bottom:8px;">${ICONS.check} <div style="min-width:0;"><b>${r.pecasPintadas}</b> de ${r.pecasTotal} peça(s) com pintura · <b>${fmt(r.areaPintadaM2,3)} m²</b> de ${fmt(r.areaLiquidaTotalM2,3)} m² (${fmt(100*r.areaPintadaM2/(r.areaLiquidaTotalM2||1),0)}%). O resto não é pintado e não entra no custo.
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${r.cores.map(c=>`<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:2px 10px 2px 4px;background:var(--surface);font-size:12px;">${amostra(c.corHex,16)}<b>${c.corHex}</b> · ${c.pecas} peça(s) · ${fmt(c.areaM2,3)} m²</span>`).join('')}</div></div></div>`;
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${r.cores.map(c=>`<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:2px 10px 2px 4px;background:var(--surface);font-size:12px;">${amostra(c.corHex,16)}<b>${c.corHex}</b> · ${c.pecas} peça(s) · ${fmt(c.areaM2,3)} m²<input type="text" data-act="pintura-pecas-nome" data-hex="${c.corHex}" maxlength="60" placeholder="${escaparHtml(metalDaCorPintura(c.corHex)?PINTURAS_METALICAS[metalDaCorPintura(c.corHex)].nome:'nome/código da tinta')}" value="${escaparHtml(st.nomesTinta[c.corHex]||'')}" title="Nome ou código da tinta (ex.: RAL 9010, código do fabricante). Vai no registro da cotação." style="width:150px;font-size:11.5px;padding:2px 6px;"></span>`).join('')}</div>
+      <div style="margin-top:6px;">${coresMarcadasPintura().length} cor(es) de tinta diferente(s): a tinta PU tradicional é cobrada pelo nº de cores (de 1 a ${MAX_CORES_TINTA_PU}); na metalizada, cada metal vira uma linha.${coresMarcadasPintura().length>MAX_CORES_TINTA_PU?` <b style="color:var(--warn);">O catálogo só tem tinta PU de até ${MAX_CORES_TINTA_PU} cores.</b>`:''}</div></div></div>`;
   return `<div style="${caixa}">
     <p style="font-size:12px;font-weight:700;margin-bottom:4px;">Pintura das peças</p>
     <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:8px;">Selecione as peças no desenho e indique a cor da tinta. Peça sem cor de pintura <b>não é pintada</b> (ex.: perfil que já vem na cor certa de fábrica).</p>
@@ -4582,6 +4676,7 @@ function htmlBlocoPinturaPecas(st,grupos,amostra,desabilitado){
     </div>
     ${resumo}
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span class="role-note" style="margin:0;">Pintar as selecionadas com:</span>${sugeridas.map(chip).join('')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span class="role-note" style="margin:0;" title="Cada metal tem matéria-prima própria no catálogo (os tons no desenho são aproximados)">Metalizadas:</span>${Object.values(PINTURAS_METALICAS).map(m=>`<button type="button" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:6px;" data-act="pintura-pecas-aplicar" data-hex="${m.hex}" title="Pintar as peças selecionadas com ${m.nome}" ${desabilitado}>${amostra(m.hex,16)}${m.nome}</button>`).join('')}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin:0;"><span style="font-size:12px;">Cor da tinta</span><input type="color" data-act="pintura-pecas-cor" value="${escaparHtml(st.pinturaCor||'#1d4ed8')}" style="width:42px;height:28px;padding:0;"></label>
       <button class="btn btn-soft btn-sm" data-act="pintura-pecas-aplicar-personalizada" ${desabilitado}>Pintar com esta cor</button>
@@ -4683,11 +4778,20 @@ function bindCoresFaceEventos(){
     aoMudarPinturaPecas();
   }));
   document.querySelectorAll('[data-act="pintura-pecas-limpar"]').forEach(botao=>botao.addEventListener('click',()=>{ coresFaceEstado().pintura={}; aoMudarPinturaPecas(); }));
+  // Nome/código da tinta: grava ao sair do campo (re-desenhar a cada tecla tiraria o foco).
+  document.querySelectorAll('[data-act="pintura-pecas-nome"]').forEach(campo=>campo.addEventListener('change',()=>{
+    const st=coresFaceEstado(), texto=campo.value.trim().slice(0,60);
+    if(texto) st.nomesTinta[campo.dataset.hex]=texto; else delete st.nomesTinta[campo.dataset.hex];
+    REAL.approvals.kit=false;
+    atualizarCartaoCoresFace();
+  }));
 }
 
-/** A área pintada mudou: a composição precisa ser conferida de novo; a leitura de cores e o nesting não dependem da pintura. */
+/** A pintura por peça mudou (peças ou cores): a composição precisa ser conferida de novo e, se a pintura já estiver no orçamento, as
+ *  linhas dela são refeitas na hora. A leitura de cores da face e o nesting não dependem da pintura. */
 function aoMudarPinturaPecas(){
   REAL.approvals.kit=false;
+  reaplicarPinturaSeConcluida();
   atualizarCartaoCoresFace();
 }
 /** Marca as peças selecionadas como pintadas com a cor dada. Marcar a primeira peça habilita a pintura do orçamento (o tipo é escolhido na Composição). */
@@ -4805,6 +4909,9 @@ async function copiarInstrucaoRedesenho(){
 
 function renderPinturaBox(){
   const p = REAL.pintura || (REAL.pintura = { habilitada:false, concluida:false, substrato:null, tipo:null, acabamento:null, corMetal:null, itensAdicionados:[] });
+  const marcadas = coresMarcadasPintura(), porPecas = marcadas.length>0;
+  const nomeCorMarcada = c => escaparHtml(c.metal?PINTURAS_METALICAS[c.metal].nome:(nomeTintaDaCor(c.hex)||c.hex));
+  const bolinha = hex => `<span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:50%;background:${hex};vertical-align:-1px;"></span>`;
   if(!p.habilitada){
     return `<div class="card" style="background:var(--surface-2); opacity:.65; box-shadow:none;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
@@ -4837,13 +4944,18 @@ function renderPinturaBox(){
           <button type="button" data-act="pintura-tipo" data-val="poliester" class="${p.tipo==='poliester'?'active':''}">Poliéster</button>
         </div>
       </div>` : ''}
-      ${p.tipo==='tradicional'? `<div style="margin-bottom:14px;">
+      ${p.tipo==='tradicional'&&porPecas? `<div style="margin-bottom:14px;" data-teste="pintura-cores-das-pecas">
+        <p style="font-size:12px; font-weight:600; margin-bottom:6px;">Cores da pintura: ${Math.min(MAX_CORES_TINTA_PU,marcadas.length)}</p>
+        <p style="font-size:11.5px; color:var(--text-dim);">Definidas pelas peças marcadas na Ficha técnica: ${marcadas.map(c=>`${bolinha(c.hex)} ${nomeCorMarcada(c)}`).join(' · ')}. A tinta cobrada é a "Tinta PU [${Math.min(MAX_CORES_TINTA_PU,marcadas.length)} cor${marcadas.length>1?'es':''}]".</p>
+        ${marcadas.length>MAX_CORES_TINTA_PU?`<p role="alert" style="font-size:11.5px; color:var(--warn); margin-top:4px;">O catálogo só tem tinta PU de até ${MAX_CORES_TINTA_PU} cores e o desenho tem ${marcadas.length}: a cobrança usa ${MAX_CORES_TINTA_PU}. Junte cores parecidas na Ficha técnica ou confira o custo da cor extra.</p>`:''}
+      </div>` : ''}
+      ${p.tipo==='tradicional'&&!porPecas? `<div style="margin-bottom:14px;">
         <p style="font-size:12px; font-weight:600; margin-bottom:6px;">Quantas cores?</p>
         <div class="segtabs" style="width:fit-content;">
           ${[1,2,3,4].map(n=>`<button type="button" data-act="pintura-cores" data-val="${n}" class="${p.cores===n?'active':''}">${n}</button>`).join('')}
         </div>
       </div>` : ''}
-      ${p.tipo==='tradicional' && p.cores? `<div style="margin-bottom:14px;">
+      ${p.tipo==='tradicional' && !porPecas && p.cores? `<div style="margin-bottom:14px;">
         <p style="font-size:12px; font-weight:600; margin-bottom:6px;">Tem cores adicionais?</p>
         <div class="segtabs" style="width:fit-content;">
           <button type="button" data-act="pintura-tem-cores-add" data-val="sim" class="${p.temCoresAdicionais===true?'active':''}">Sim</button>
@@ -4856,7 +4968,7 @@ function renderPinturaBox(){
           </div>
         </div>` : ''}
       </div>` : ''}
-      ${p.tipo==='tradicional' && p.cores && p.temCoresAdicionais!=null && (!p.temCoresAdicionais || p.coresAdicionais)? `<div style="margin-bottom:14px;">
+      ${p.tipo==='tradicional' && (porPecas || (p.cores && p.temCoresAdicionais!=null && (!p.temCoresAdicionais || p.coresAdicionais)))? `<div style="margin-bottom:14px;">
         <p style="font-size:12px; font-weight:600; margin-bottom:6px;">Acabamento?</p>
         <div class="segtabs" style="width:fit-content;">
           <button type="button" data-act="pintura-acabamento" data-val="fosco" class="${p.acabamento==='fosco'?'active':''}">Verniz fosco</button>
@@ -4864,7 +4976,11 @@ function renderPinturaBox(){
           <button type="button" data-act="pintura-acabamento" data-val="sem" class="${p.acabamento==='sem'?'active':''}">Sem verniz</button>
         </div>
       </div>` : ''}
-      ${p.tipo==='metalizada'? `<div style="margin-bottom:14px;">
+      ${p.tipo==='metalizada'&&porPecas? `<div style="margin-bottom:14px;" data-teste="pintura-metais-das-pecas">
+        <p style="font-size:12px; font-weight:600; margin-bottom:6px;">Metais da pintura</p>
+        <p style="font-size:11.5px; color:var(--text-dim);">Definidos pelas peças marcadas na Ficha técnica: ${marcadas.map(c=>`${bolinha(c.hex)} ${nomeCorMarcada(c)}${c.metal?'':' (sem metal escolhido: item "dourado/prata/bronze")'}`).join(' · ')}. Cada metal vira uma linha, cobrada só pela área das peças dele.</p>
+      </div>` : ''}
+      ${p.tipo==='metalizada'&&!porPecas? `<div style="margin-bottom:14px;">
         <p style="font-size:12px; font-weight:600; margin-bottom:6px;">Cor do metal?</p>
         <div class="segtabs" style="width:fit-content; flex-wrap:wrap;">
           <button type="button" data-act="pintura-cormetal" data-val="outro" class="${p.corMetal==='outro'?'active':''}">Outro</button>
@@ -4956,6 +5072,7 @@ function realStepKit(){
           const variantes = Array.isArray(k.variantes)?k.variantes:[];
           return `<tr>
             <td>${escaparHtml(material.nome)}${k.origemSoldaAuto?` <span class="badge b-accent" title="Incluída pela Ficha técnica; troque a produtividade no quadro acima.">Solda automática</span>`:''}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}${material.status==='Inativo'?' · <span style="color:var(--bad);">inativo</span>':''}</div>
+              ${Array.isArray(k.coresPintura)&&k.coresPintura.length?`<div class="source-tag" title="Cobrada só pela área das peças marcadas com estas cores na Ficha técnica.">🎨 peças ${k.coresPintura.map(hex=>escaparHtml(nomeTintaDaCor(hex)?`${nomeTintaDaCor(hex)} ${hex}`:hex)).join(', ')}</div>`:''}
               ${variantes.length? `<label style="display:block;margin-top:6px;font-size:10.5px;color:var(--text-faint);">${escaparHtml(k.variacaoNome||'Variação')}
                 <select data-act="real-kit-variacao" data-idx="${i}" style="display:block;margin-top:3px;width:min(100%,300px);font-size:11px;"><option value="">Nenhuma (manter matéria-prima principal)</option>${variantes.map(v=>`<option value="${v.matId}" ${String(k.variacaoSelecionadaMatId)===String(v.matId)?'selected':''}>${escaparHtml(v.valor||v.nome)} · ${escaparHtml(v.nome)}</option>`).join('')}</select>
               </label>`:''}
