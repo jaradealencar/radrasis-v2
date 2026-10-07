@@ -413,7 +413,8 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   O formulário usa código da empresa, usuário e senha somente durante o login; a senha não é
   persistida nem registrada em log. A sessão do ERP fica cifrada com AES-256-GCM em cookie
   `HttpOnly`, `SameSite=Lax`, `Secure` em produção, vinculada ao usuário Radrasys e válida por até
-  8 horas. O login limita cinco tentativas por minuto por usuário e restringe redirecionamentos
+  um ano sem uso, renovada em cada acesso ao Radrasys enquanto o MubiSys aceitar a sessão; respostas 401/403 encerram a conexão.
+  O login limita cinco tentativas por minuto por usuário e restringe redirecionamentos
   ao domínio MubiSys.
   A extração consulta o AJAX interno `index.php?modulo=matModelos&acao=cadastrados`, que não é
   uma API oficial e pode mudar. O parser captura modelo/variação, matérias-primas, perfil,

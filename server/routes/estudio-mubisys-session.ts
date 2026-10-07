@@ -10,7 +10,8 @@ import { parsearComposicoesMubiSys } from "../services/mubisysBOMAutenticada";
 const MUBISYS_HOST = "https://mubisys.com";
 const MUBISYS_COMPOSICAO_URL = `${MUBISYS_HOST}/index.php?modulo=matModelos&acao=cadastrados`;
 const COOKIE_NAME = "radrasys_mubisys_session";
-const SESSAO_MAX_AGE_SEGUNDOS = 8 * 60 * 60;
+// Persist for a year and renew on use while MubiSys still accepts its session.
+const SESSAO_MAX_AGE_SEGUNDOS = 365 * 24 * 60 * 60;
 const LIMITE_RESPOSTA_BOM_BYTES = 8 * 1024 * 1024;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
@@ -259,11 +260,9 @@ async function obterCookieMubiSys(credenciais: {
     throw new Error("O MubiSys não aceitou o acesso. Confira os dados e tente novamente.");
   }
 
-  const respostaComposicao = await buscarComposicoesMubiSys(serializarCookies(jar));
-  if (respostaComposicao.unauthorized) {
-    throw new Error("O MubiSys não manteve a sessão para consultar os consumos.");
-  }
-  const cookie = respostaComposicao.cookie || serializarCookies(jar);
+  // Login e leitura da BOM são etapas distintas. Uma falha HTTP 500 no endpoint da ficha
+  // não deve descartar a sessão criada com sucesso.
+  const cookie = serializarCookies(jar);
   if (!cookie) throw new Error("O MubiSys não forneceu uma sessão reutilizável.");
   return cookie;
 }
@@ -372,7 +371,9 @@ export function registrarRotasEstudioMubiSysSession(app: Express): void {
       const radrasysUserId = await exigirSessaoRadrasys(req, res);
       if (!radrasysUserId) return;
       res.setHeader("Cache-Control", "private, no-store");
-      res.json({ connected: !!lerCookieDoRadrasys(req, radrasysUserId) });
+      const sessaoMubiSys = lerCookieDoRadrasys(req, radrasysUserId);
+      if (sessaoMubiSys) gravarCookieSessao(req, res, sessaoMubiSys.cookie, radrasysUserId);
+      res.json({ connected: !!sessaoMubiSys });
     })().catch(error => {
       console.error("[EstudioMubiSys] Falha ao consultar a sessão.", error);
       if (!res.headersSent) erro(res, 500, "Não foi possível consultar a conexão com o MubiSys.");

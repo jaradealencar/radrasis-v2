@@ -484,7 +484,7 @@ function renderConexaoMubiSys(){
   return `<div class="role-note" style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:9px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
     <div style="min-width:260px;flex:1;"><b>Espelho local MubiSys → Radrasys</b>
       <div style="margin-top:3px;">${catalog.produtos.length} produtos/modelos · ${catalog.materias.length} matérias-primas · ${linhas} linhas de consumo. Catálogo atualizado: ${escaparHtml(ultima)}${importada?` · Fichas importadas: ${escaparHtml(importada)}`:''}.</div>
-      <div style="margin-top:4px;color:var(--text-faint);">A API pública não fornece a BOM completa. Conecte uma sessão do MubiSys para extrair a ficha técnica; o CSV/XLSX/JSON continua disponível como alternativa. A senha é transitória e a sessão fica cifrada neste navegador por até 8 horas.</div>
+      <div style="margin-top:4px;color:var(--text-faint);">A API pública não fornece a BOM completa. Conecte uma sessão do MubiSys para extrair a ficha técnica; o CSV/XLSX/JSON continua disponível como alternativa. A senha é transitória e a sessão fica cifrada neste navegador por até um ano sem uso, renovada em cada acesso ao Radrasys enquanto o MubiSys aceitar a sess&atilde;o.</div>
       ${catalog.sessionConnected?`<div style="margin-top:4px;color:var(--ok);">Sessão MubiSys conectada neste navegador.</div>`:''}
       ${catalog.espelhoStatus?.status==='erro'?`<div role="alert" style="margin-top:5px;color:var(--warn);">A última atualização falhou; o snapshot anterior foi preservado. ${escaparHtml(catalog.espelhoStatus.ultimoErro||'Confira o token da API e tente novamente.')}</div>`:''}
       ${catalog.connectionMessage?`<div role="status" style="margin-top:5px;color:${catalog.connectionMessage.tipo==='erro'?'var(--bad)':'var(--ok)'};">${escaparHtml(catalog.connectionMessage.texto)}</div>`:''}
@@ -518,7 +518,7 @@ function bindMubiSysConnectionEvents(){
       credenciais.senha='';
       if(!response.ok)throw new Error(body.error||`Não foi possível conectar (HTTP ${response.status}).`);
       catalog.connectionOpen=false;catalog.sessionConnected=true;
-      catalog.connectionMessage={tipo:'sucesso',texto:'Conta conectada. Sincronize a BOM para atualizar o espelho local.'};
+      catalog.connectionMessage={tipo:'sucesso',texto:'Conta conectada. A sess\u00e3o persistente foi salva neste navegador; sincronize a BOM para atualizar o espelho local.'};
       await loadCatalog();
     }catch(error){credenciais.senha='';catalog.connectionMessage={tipo:'erro',texto:String(error?.message||'Não foi possível conectar ao MubiSys.')}}
     finally{catalog.connectionBusy=false;render();}
