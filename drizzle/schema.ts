@@ -296,6 +296,8 @@ export const priceTableAffiliations = pgTable("price_table_affiliations", {
   id: serial("id").primaryKey(),
   blockPairId: integer("block_pair_id").notNull().references(() => priceTableBlockPairs.id, { onDelete: "cascade" }),
   mubisysProdutoId: integer("mubisys_produto_id").notNull(),
+  // null = produto inteiro; lista preenchida = somente os modelos selecionados.
+  mubisysModeloIds: jsonb("mubisys_modelo_ids").$type<number[] | null>(),
   nomeProduto: varchar("nome_produto", { length: 256 }).notNull(),
   categoria: varchar("categoria", { length: 128 }),
   createdBy: varchar("created_by", { length: 128 }),
