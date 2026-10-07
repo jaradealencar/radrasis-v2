@@ -276,6 +276,46 @@ export const priceTableHistory = pgTable("price_table_history", {
 });
 export type PriceTableHistory = typeof priceTableHistory.$inferSelect;
 export type InsertPriceTableHistory = typeof priceTableHistory.$inferInsert;
+// Afiliação explícita entre faixa de preço e produtos do espelho MubiSys.
+// Os IDs externos não têm FK porque o catálogo pode ser reimportado.
+export const priceTableAffiliations = pgTable("price_table_affiliations", {
+  id: serial("id").primaryKey(),
+  sectionId: integer("section_id").notNull().references(() => priceTableSections.id, { onDelete: "cascade" }),
+  rowId: integer("row_id").notNull(),
+  faixaId: integer("faixa_id").notNull(),
+  targetType: varchar("target_type", { length: 24 }).notNull(),
+  mubisysProdutoId: integer("mubisys_produto_id"),
+  mubisysModeloId: integer("mubisys_modelo_id"),
+  mubisysVariacaoId: integer("mubisys_variacao_id"),
+  categoriaKey: varchar("categoria_key", { length: 128 }),
+  createdBy: varchar("created_by", { length: 128 }),
+  updatedBy: varchar("updated_by", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  faixaIdx: index("price_table_affiliations_faixa_idx").on(table.sectionId, table.rowId, table.faixaId),
+  produtoIdx: index("price_table_affiliations_produto_idx").on(table.mubisysProdutoId),
+  modeloIdx: index("price_table_affiliations_modelo_idx").on(table.mubisysModeloId),
+  variacaoIdx: index("price_table_affiliations_variacao_idx").on(table.mubisysVariacaoId),
+}));
+export type PriceTableAffiliation = typeof priceTableAffiliations.$inferSelect;
+export type InsertPriceTableAffiliation = typeof priceTableAffiliations.$inferInsert;
+
+export const priceTableAffiliationHistory = pgTable("price_table_affiliation_history", {
+  id: serial("id").primaryKey(),
+  sectionId: integer("section_id").notNull(),
+  rowId: integer("row_id").notNull(),
+  faixaId: integer("faixa_id").notNull(),
+  action: varchar("action", { length: 16 }).notNull(),
+  beforeJson: text("before_json"),
+  afterJson: text("after_json"),
+  actor: varchar("actor", { length: 128 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  faixaDataIdx: index("price_table_affiliation_history_faixa_data_idx").on(table.sectionId, table.rowId, table.faixaId, table.createdAt),
+}));
+export type PriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferSelect;
+export type InsertPriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferInsert;
 
 // ─── CADASTRO DE PRODUTOS (composição de matéria-prima, kit, precificação) ──
 // A API pública do MubiSys não expõe composição de produto (só o cadastro

@@ -381,3 +381,7 @@ embora o `exp` do JWT seja 12/09/2026 11:30:45 UTC. A API não oferece
 renovação programática conhecida; emita/atualize o token no painel MubiSys e
 substitua `MUBISYS_ACCESS_TOKEN` no ambiente de execução antes de a API
 recusá-lo. O painel não confirma que um token renovado está instalado.
+
+### Afiliação explícita da Tabela de Preços (migration 0099)
+
+Cada faixa das tabelas de margem recebe um ID persistente (`faixaIds`), alinhado às células `MarginRow.values`. A migration faz backfill determinístico nas seções existentes. `price_table_affiliations` relaciona seção, linha e faixa a produto, modelo, variação ou categoria do espelho; `price_table_affiliation_history` registra estado anterior/novo e ator. Nesta etapa foram entregues schema, migration e normalização de IDs. A edição de afiliações pela interface, o vínculo do snapshot emitido à OS e a troca do cálculo de impacto para usar esses vínculos ficam para a próxima etapa.

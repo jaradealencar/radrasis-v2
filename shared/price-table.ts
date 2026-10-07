@@ -29,6 +29,8 @@ export interface MarginRow {
 export interface ContentJson {
   type: "config" | "margin_table" | "margin_table_multi" | "list" | "rich_text";
   columns?: string[];
+  /** IDs persistentes das faixas, na mesma ordem das células de MarginRow.values. */
+  faixaIds?: number[];
   rows?: MarginRow[];
   items?: ConfigItem[] | string[];
   html?: string;
