@@ -155,7 +155,17 @@ export async function createApp(): Promise<Express> {
   // que inviabilizava o upload via base64 no payload do tRPC.
   const { createRouteHandler } = await import("uploadthing/express");
   const { uploadRouter } = await import("./uploadthing");
-  app.use("/api/uploadthing", createRouteHandler({ router: uploadRouter }));
+  const { uploadThingToken, uploadThingTokenHasV7Shape } = await import("./uploadthing-token");
+  const token = uploadThingToken();
+  if (!uploadThingTokenHasV7Shape(token)) {
+    console.error(
+      "[UploadThing] UPLOADTHING_TOKEN ausente ou fora do formato V7. Confira a variável deste ambiente; o valor não foi registrado.",
+    );
+  }
+  app.use(
+    "/api/uploadthing",
+    createRouteHandler({ router: uploadRouter, config: token ? { token } : undefined }),
+  );
 
   // tRPC API
   app.use(

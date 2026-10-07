@@ -2,8 +2,9 @@
 // storagePut uploads a file and returns its permanent public URL.
 
 import { UTApi } from "uploadthing/server";
+import { uploadThingToken } from "../_core/uploadthing-token";
 
-const utapi = new UTApi();
+const utapi = new UTApi({ token: uploadThingToken() });
 
 export async function storagePut(
   relKey: string,
