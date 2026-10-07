@@ -4736,7 +4736,7 @@ function htmlCoresFaceInterior(){
   const coresDaArte=[...grupos.values()].map(g=>`<button type="button" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:6px;" data-act="cor-aplicar" data-hex="${g.hex}" title="Usar a cor ${g.hex}" ${desabilitado}>${amostra(g.hex,16)}${g.hex}</button>`).join('');
   return `
     <p style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Cores da face — confira e corrija a leitura</p>
-    <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:10px;">O desenho é a face do letreiro. O sistema leu as cores abaixo a partir da arte, mas pode errar (por exemplo, letras brancas redesenhadas em preto). <b>Clique nas peças</b> para selecioná-las e indique a cor delas: com a cor certa o sistema procura o acrílico mais parecido. Cada cor de acrílico terá o seu próprio nesting, e o fundo (PVC) sempre cobre o letreiro inteiro, qualquer que seja a cor da frente.</p>
+    <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:10px;">O desenho é a face do letreiro. O sistema leu as cores abaixo a partir da arte, mas pode errar (por exemplo, letras brancas redesenhadas em preto). <b>Clique nas peças</b> para selecioná-las e indique a cor delas: com a cor certa o sistema procura o acrílico mais parecido. Cada cor de acrílico terá o seu próprio nesting, e o fundo (PVC) sempre cobre o letreiro inteiro, qualquer que seja a cor da frente. <b>Na Composição</b>, o acrílico padrão do cadastro (por exemplo, o branco) é trocado pelos acrílicos das cores do projeto, um por cor; o que não pertence ao projeto sai.</p>
     <div class="grid2" style="align-items:start;">
       <div style="background:repeating-conic-gradient(#e2e8f0 0% 25%,#f8fafc 0% 50%) 0 0/16px 16px;border:1px solid var(--border);border-radius:12px;padding:6px;">
         <svg viewBox="${view.x-pad} ${view.y-pad} ${view.w+2*pad} ${view.h+2*pad}" style="display:block;width:100%;height:auto;max-height:420px;" role="group" aria-label="Peças da face; clique para selecionar e indicar a cor">${caminhos}</svg>
@@ -5185,7 +5185,7 @@ function realStepKit(){
           const material = materialKitAtivo(k);
           const variantes = Array.isArray(k.variantes)?k.variantes:[];
           return `<tr>
-            <td>${escaparHtml(material.nome)}${k.origemSoldaAuto?` <span class="badge b-accent" title="Incluída pela Ficha técnica; troque a produtividade no quadro acima.">Solda automática</span>`:''}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}${material.status==='Inativo'?' · <span style="color:var(--bad);">inativo</span>':''}</div>
+            <td>${escaparHtml(material.nome)}${k.origemSoldaAuto?` <span class="badge b-accent" title="Incluída pela Ficha técnica; troque a produtividade no quadro acima.">Solda automática</span>`:''}${k.origemComposicaoCor?` <span class="badge b-accent" title="Esta chapa entrou no lugar do acrílico padrão do cadastro, pela cor indicada para as peças na Ficha técnica. Para mudar, corrija a cor lá ou troque o material no passo Nesting.">Cor da arte${Array.isArray(k.coresDaFace)&&k.coresDaFace.length?` · ${k.coresDaFace.map(escaparHtml).join(', ')}`:''}</span>`:''}<div class="source-tag">${ICONS.db} MubiSys real · ${material.atualizado||'—'}${material.status==='Inativo'?' · <span style="color:var(--bad);">inativo</span>':''}</div>
               ${Array.isArray(k.coresPintura)&&k.coresPintura.length?`<div class="source-tag" title="Cobrada só pela área das peças marcadas com estas cores na Ficha técnica.">🎨 peças ${k.coresPintura.map(hex=>escaparHtml(nomeTintaDaCor(hex)?`${nomeTintaDaCor(hex)} ${hex}`:hex)).join(', ')}</div>`:''}
               ${variantes.length? `<label style="display:block;margin-top:6px;font-size:10.5px;color:var(--text-faint);">${escaparHtml(k.variacaoNome||'Variação')}
                 <select data-act="real-kit-variacao" data-idx="${i}" style="display:block;margin-top:3px;width:min(100%,300px);font-size:11px;"><option value="">Nenhuma (manter matéria-prima principal)</option>${variantes.map(v=>`<option value="${v.matId}" ${String(k.variacaoSelecionadaMatId)===String(v.matId)?'selected':''}>${escaparHtml(v.valor||v.nome)} · ${escaparHtml(v.nome)}</option>`).join('')}</select>
@@ -5300,9 +5300,23 @@ async function analisarFactibilidadeReal(){
   finally{ REAL.factibilidadeCarregando=false; render(); }
 }
 
-/** O produto tem face em acrílico? Vale quando a linha Face do kit é uma matéria-prima de acrílico. */
+/** Linha da composição que faz o papel de Face e, por isso, segue a cor indicada para as peças: a linha que a própria análise de cores
+ *  colocou, a de papel Face e — pedido de 07/10/2026 — o acrílico sem papel informado (o editor de kit e a ficha do MubiSys criam as
+ *  linhas com papel vazio), senão o acrílico padrão do cadastro ficava na composição ao lado das cores do projeto e o nesting pedia para
+ *  vinculá-lo. Fora disso nada é tocado: papel de outra camada (Fundo, Aro…), `renderRole` de outra peça, linha automática (pintura, solda,
+ *  produto do kit) e linha da ficha oficial do MubiSys (`composicaoItemId`: o servidor confere todas contra o espelho na emissão e recusa
+ *  o snapshot que omite uma delas). */
+function linhaFaceSubstituivelPorCor(line){
+  if(!line) return false;
+  if(line.origemComposicaoCor||camadaFisicaKit(line)==='face') return true;
+  if(String(line.papel||'').trim()||line.composicaoItemId||line.origemMubiSys||line.origemKitProduto||line.origemPintura||line.origemSoldaAuto) return false;
+  if(line.renderRole&&line.renderRole!=='face') return false;
+  return /acril/.test(normalizeSearch(materialKitAtivo(line).nome||''));
+}
+
+/** O produto tem face em acrílico? Vale quando a linha de Face do kit é uma matéria-prima de acrílico. */
 function faceDoProdutoEhAcrilico(){
-  return (REAL.kit||[]).some(line=>camadaFisicaKit(line)==='face'&&/acril/.test(normalizeSearch(materialKitAtivo(line).nome||'')));
+  return (REAL.kit||[]).some(line=>linhaFaceSubstituivelPorCor(line)&&/acril/.test(normalizeSearch(materialKitAtivo(line).nome||'')));
 }
 function construcaoFaceEfetiva(color){
   if(color.construcaoFace==='nao_informada') return faceDoProdutoEhAcrilico()?'acrilico_total':'outra';
@@ -5368,8 +5382,13 @@ function aplicarComposicaoSugeridaCoresReal(){
   // As opções de variação da linha Face não impedem a troca: a cor da arte decide a chapa. A composição original
   // (com a variação escolhida) fica guardada e aparece no aviso "Face do kit: antes → depois".
   if(REAL.colorAnalysis.composicaoKitOriginal==null)REAL.colorAnalysis.composicaoKitOriginal=REAL.kit.map(line=>({...line}));
-  REAL.kit=REAL.kit.filter(line=>camadaFisicaKit(line)!=='face'&&!line.origemComposicaoCor);
-  for(const material of materiais) REAL.kit.push({matId:material.id,nome:material.nome,unidade:material.unidade,custo:material.valor,atualizado:material.atualizado,status:material.status,papel:'Face',formulaType:'areaTotal',mult:1,variantes:[],variacaoSelecionadaMatId:null,origemComposicaoCor:true});
+  // O acrílico padrão do cadastro sai e entra um por cor do projeto (o que não pertence ao projeto não fica), inclusive o acrílico sem papel informado.
+  REAL.kit=REAL.kit.filter(line=>!linhaFaceSubstituivelPorCor(line));
+  for(const material of materiais){
+    // Cores da arte que esta chapa atende (a de adesivo sobre base transparente não tem cor própria); só informativo, aparece na tabela da Composição.
+    const cores=[...new Set(resultados.filter(item=>item.tipoSugestao==='chapa'&&Number(item.chapaMateriaPrimaId)===Number(material.id)&&item.corHex).map(item=>item.corHex))];
+    REAL.kit.push({matId:material.id,nome:material.nome,unidade:material.unidade,custo:material.valor,atualizado:material.atualizado,status:material.status,papel:'Face',formulaType:'areaTotal',mult:1,variantes:[],variacaoSelecionadaMatId:null,origemComposicaoCor:true,...(cores.length?{coresDaFace:cores}:{})});
+  }
 }
 
 async function aprovarCoresESeguirReal(){
@@ -5402,7 +5421,7 @@ function htmlAvisoCoresAutomaticas(editavel=false){
   const color=REAL.colorAnalysis;
   if(!color?.resultados?.length||!(color.aprovado||color.pendenciaAprovacao)) return '';
   const nomesFace=lines=>[...new Set(lines.map(line=>materialKitAtivo(line).nome||line.nome).filter(Boolean))].join(' + ');
-  const antes=nomesFace((color.composicaoKitOriginal||[]).filter(line=>camadaFisicaKit(line)==='face'));
+  const antes=nomesFace((color.composicaoKitOriginal||[]).filter(linhaFaceSubstituivelPorCor));
   const depois=nomesFace((REAL.kit||[]).filter(line=>line.origemComposicaoCor));
   const amostra=hex=>`<span style="display:inline-block;width:12px;height:12px;border:1px solid var(--border);border-radius:3px;vertical-align:middle;background:${escaparHtml(hex||'#e2e8f0')};"></span>`;
   const itens=color.resultados.map(result=>{

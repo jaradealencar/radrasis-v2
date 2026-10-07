@@ -609,6 +609,18 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   parecido como antes, e **cada cor de acrílico vira uma matéria-prima na Face, com o seu próprio nesting; o fundo (PVC) sempre cobre
   o letreiro inteiro** (deriva de todas as peças da camada Face, não só das de uma cor) — coberto por `cpq-duas-cores-nesting.test.ts`.
   Mudar uma cor invalida a análise de cores, o nesting e as aprovações dependentes (`aoMudarCoresFace`).
+  **Composição segue as cores do projeto (pedido de 07/10/2026):** ao seguir para o nesting, `aplicarComposicaoSugeridaCoresReal` tira da
+  Composição o acrílico padrão do cadastro (ex.: branco) e põe uma chapa por cor do projeto (amarelo no lugar do branco; duas ou três cores =
+  duas ou três chapas, e a que o projeto não usa sai), com o selo "Cor da arte" na tabela. Quem é "Face" para essa troca é decidido por
+  `linhaFaceSubstituivelPorCor` (HTML): a linha de papel Face **e o acrílico sem papel informado** — o editor de kit e a ficha do MubiSys
+  criam as linhas com papel vazio, e antes o acrílico branco ficava ao lado das cores e o nesting pedia para vinculá-lo. Não são tocados:
+  acrílico de outro papel (Fundo…), `renderRole` de outra peça, linhas automáticas (pintura, solda, produto do kit) e **linhas da ficha
+  oficial do MubiSys (`composicaoItemId`)** — o servidor confere todas contra o espelho na emissão (`validarBOMComAcabamentosNoServidor`) e
+  recusa o snapshot que omite uma. Limitação aberta: uma linha de BOM oficial com papel Face é removida pela troca e a emissão é recusada
+  com "A BOM mudou…"; resolver exige o servidor aceitar a substituição por cor declarada no snapshot (e decidir o destino dos acabamentos e
+  equipamentos da linha trocada). A paleta do cartão envia só o hex: duas chapas com a mesma cor (ex.: Acrílico Branco e Transparente, as
+  duas brancas) empatam no ΔE00 e o servidor fica com a primeira; o vendedor troca no menu do passo Nesting. Testes:
+  `cpq-composicao-face-cor.test.ts` (extrai as funções do HTML e roda sobre kits simulados).
   **Pintura só em parte do letreiro (pedido de 06/10/2026):** nem tudo leva tinta (ex.: o perfil já vem pintado de fábrica na cor certa).
   No mesmo cartão, o bloco "Pintura das peças" reaproveita a seleção de peças: o vendedor escolhe a **cor da tinta** das selecionadas
   (cores já usadas, cores do desenho ou seletor livre; "Sem pintura nas selecionadas" e "Desfazer toda a pintura"), e o seletor
