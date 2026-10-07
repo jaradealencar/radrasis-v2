@@ -31,7 +31,6 @@ export default function ArquivosCampanhaPopover({ campanhaId }: { campanhaId: nu
 
   const adicionar = trpc.campanhasWhatsapp.adicionarArquivo.useMutation({
     onSuccess: invalidar,
-    onError: e => toast.error(e.message),
   });
   const remover = trpc.campanhasWhatsapp.removerArquivo.useMutation({
     onSuccess: invalidar,
@@ -41,12 +40,20 @@ export default function ArquivosCampanhaPopover({ campanhaId }: { campanhaId: nu
   async function handleFile(file: File | undefined) {
     if (!file) return;
     setEnviando(true);
+    let uploadConcluido = false;
     try {
       const up = await enviarArquivo("documento", file);
+      uploadConcluido = true;
       await adicionar.mutateAsync({ campanhaId, nome: file.name, url: up.url, tamanhoBytes: file.size });
       toast.success("Arquivo salvo.");
-    } catch {
-      toast.error("Não consegui enviar o arquivo. Tente de novo.");
+    } catch (erro) {
+      const detalhe = erro instanceof Error ? erro.message : "Tente novamente.";
+      toast.error(
+        uploadConcluido
+          ? `O arquivo foi enviado, mas não consegui vinculá-lo à campanha. ${detalhe}`
+          : `Não consegui enviar o arquivo. ${detalhe}`,
+        { duration: 8000 },
+      );
     } finally {
       setEnviando(false);
     }
