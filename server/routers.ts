@@ -39,8 +39,9 @@ import { fromNodeHeaders } from "better-auth/node";
 import { invokeLLM } from "./_core/llm";
 import { TRPCError } from "@trpc/server";
 import { obterImpactoHistoricoTabela } from "./services/priceTableImpact";
+import { listarProdutosEspelhados } from "./services/mubisysEspelho";
 import type { TrpcContext } from "./_core/context";
-import { APP_ROLES, PAGE_KEYS, user as userTable } from "../drizzle/schema";
+import { APP_ROLES, PAGE_KEYS, user as userTable, priceTableBlockPairs, priceTableAffiliations, priceTableAffiliationHistory } from "../drizzle/schema";
 import { asc, eq, isNull, or, count as sqlCount } from "drizzle-orm";
 import { getDb } from "./db/db";
 import {
@@ -1390,6 +1391,73 @@ O POP deve:
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input, ctx }) => {
         await deletePriceTableSection(input.id, ctx.user.name ?? ctx.user.email ?? "usuário");
+        return { ok: true };
+      }),
+    listBlockAffiliations: protectedProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      const [pares, afiliacoes] = await Promise.all([
+        db.select().from(priceTableBlockPairs),
+        db.select().from(priceTableAffiliations),
+      ]);
+      return pares.map(par => ({
+        id: par.id,
+        principalSectionId: par.principalSectionId,
+        novoClienteSectionId: par.novoClienteSectionId,
+        produtos: afiliacoes.filter(item => item.blockPairId === par.id)
+          .map(({ id, mubisysProdutoId, nomeProduto, categoria }) => ({ id, mubisysProdutoId, nomeProduto, categoria })),
+      }));
+    }),
+    replaceBlockProducts: protectedProcedure
+      .use(requireRole("gestor", "admin", "master"))
+      .input(z.object({
+        principalSectionId: z.number().int().positive(),
+        produtos: z.array(z.object({
+          mubisysProdutoId: z.number().int().positive(),
+          nomeProduto: z.string().min(1).max(256),
+          categoria: z.string().max(128).optional().nullable(),
+        })).max(500),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponivel." });
+        const ids = input.produtos.map(item => item.mubisysProdutoId);
+        if (new Set(ids).size !== ids.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Remova produtos duplicados antes de salvar." });
+        }
+        const catalogo = await listarProdutosEspelhados(db);
+        const produtoPorId = new Map(catalogo.map(produto => [produto.id, produto]));
+        const produtosValidos = input.produtos.map(item => {
+          const produto = produtoPorId.get(item.mubisysProdutoId);
+          if (!produto) throw new TRPCError({ code: "BAD_REQUEST", message: "Um dos produtos nao esta mais disponivel no espelho MubiSys." });
+          return { mubisysProdutoId: produto.id, nomeProduto: produto.nome, categoria: produto.categoria || null };
+        });
+        const ator = ctx.user.name ?? ctx.user.email ?? "usuario";
+        await db.transaction(async tx => {
+          const [par] = await tx.select().from(priceTableBlockPairs)
+            .where(eq(priceTableBlockPairs.principalSectionId, input.principalSectionId)).limit(1);
+          if (!par) throw new TRPCError({ code: "NOT_FOUND", message: "Este bloco nao possui par cadastrado entre as tabelas." });
+          const antes = await tx.select({ mubisysProdutoId: priceTableAffiliations.mubisysProdutoId, nomeProduto: priceTableAffiliations.nomeProduto, categoria: priceTableAffiliations.categoria })
+            .from(priceTableAffiliations).where(eq(priceTableAffiliations.blockPairId, par.id));
+          await tx.delete(priceTableAffiliations).where(eq(priceTableAffiliations.blockPairId, par.id));
+          if (produtosValidos.length) {
+            await tx.insert(priceTableAffiliations).values(produtosValidos.map(item => ({
+              blockPairId: par.id,
+              mubisysProdutoId: item.mubisysProdutoId,
+              nomeProduto: item.nomeProduto.trim(),
+              categoria: item.categoria?.trim() || null,
+              createdBy: ator,
+              updatedBy: ator,
+            })));
+          }
+          await tx.insert(priceTableAffiliationHistory).values({
+            blockPairId: par.id,
+            action: antes.length ? "replace" : "create",
+            beforeJson: JSON.stringify(antes),
+            afterJson: JSON.stringify(produtosValidos),
+            actor: ator,
+          });
+        });
         return { ok: true };
       }),
     getHistoricalImpact: protectedProcedure

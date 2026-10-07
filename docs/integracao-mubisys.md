@@ -365,23 +365,8 @@ atualizar de novo após 6 horas quando consultado. Não há upload manual.
 
 `performanceAbc.getAbc` expõe os dados detalhados à calculadora; o endpoint
 protegido `price.getHistoricalImpact` cruza snapshots `contentJson` de
-`price_table_history` com vendas mensais pela descrição/IDs e mostra versão,
-variação de margem, faturamento exposto e faixa de impacto estimado. O cálculo
-pressupõe custo, volume e conversão constantes. A API de vendas não informa a
-faixa da tabela efetivamente usada nem se a venda foi para Cliente MS ou Brasil;
-exposições de mudanças repetidas ou das duas tabelas podem se sobrepor e não
-são somáveis como resultado líquido.
+`price_table_history` com vendas mensais pelos IDs explícitos dos produtos afiliados ao bloco pareado e mostra versão, variação de margem, faturamento exposto e faixa de impacto estimado. O cálculo pressupõe custo, volume e conversão constantes. A API de vendas não informa a faixa da tabela efetivamente usada nem se a venda foi para Cliente MS ou Brasil; exposições de mudanças repetidas ou das duas tabelas podem se sobrepor e não são somáveis como resultado líquido.
 
-**Sincronização validada em 07/10/2026:** setembro/2026: 186 OS, 313 linhas,
-R$ 393.938,07; outubro/2026 até o dia 7: 25 OS, 45 linhas, R$ 71.960,79.
-Ambos os meses foram persistidos com status `sucesso` e ABC local.
+### Afiliação explícita da Tabela de Preços (migration 0100)
 
-**Access-Token:** validação de leitura em 07/10/2026 aceitou o token atual,
-embora o `exp` do JWT seja 12/09/2026 11:30:45 UTC. A API não oferece
-renovação programática conhecida; emita/atualize o token no painel MubiSys e
-substitua `MUBISYS_ACCESS_TOKEN` no ambiente de execução antes de a API
-recusá-lo. O painel não confirma que um token renovado está instalado.
-
-### Afiliação explícita da Tabela de Preços (migration 0099)
-
-Cada faixa das tabelas de margem recebe um ID persistente (`faixaIds`), alinhado às células `MarginRow.values`. A migration faz backfill determinístico nas seções existentes. `price_table_affiliations` relaciona seção, linha e faixa a produto, modelo, variação ou categoria do espelho; `price_table_affiliation_history` registra estado anterior/novo e ator. Nesta etapa foram entregues schema, migration e normalização de IDs. A edição de afiliações pela interface, o vínculo do snapshot emitido à OS e a troca do cálculo de impacto para usar esses vínculos ficam para a próxima etapa.
+Cada bloco de Clientes Antigos é pareado por IDs persistentes ao bloco correspondente de Novo Cliente (migration faz o backfill usando página deslocada em 10 e ordem da seção). A lista de produtos do espelho MubiSys fica associada ao par: a edição acontece somente em Clientes Antigos e aparece nas duas tabelas. `price_table_affiliations` guarda os IDs e nomes canônicos dos produtos; `price_table_affiliation_history` registra as substituições e o ator. `faixaIds` persistentes são mantidos em `contentJson` para identificar as faixas nos snapshots. O Painel de Impacto cruza vendas por ID de produto/modelo/variação no espelho e deixa faturamento zerado quando o bloco não tem produtos associados; não usa correspondência por texto.

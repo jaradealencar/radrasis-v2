@@ -698,8 +698,15 @@
     {
       "idx": 99,
       "version": "7",
-      "when": 1791373233726,
-      "tag": "0099_giant_zaladane",
+      "when": 1791370698797,
+      "tag": "0099_precos_vendas_mubisys",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1791375395195,
+      "tag": "0100_afiliacao_blocos_tabela_preco",
       "breakpoints": true
     }
   ]

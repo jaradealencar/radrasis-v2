@@ -1,6 +1,6 @@
 {
-  "id": "918c789e-6df4-45bd-9b8c-f35d6c9cdc33",
-  "prevId": "c0a1bf67-78ab-4bb0-8a67-1e9c3dc02f03",
+  "id": "207bbb68-789f-42fa-a60b-23a22b374c68",
+  "prevId": "918c789e-6df4-45bd-9b8c-f35d6c9cdc33",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14073,6 +14073,314 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.price_table_affiliation_history": {
+      "name": "price_table_affiliation_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "block_pair_id": {
+          "name": "block_pair_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "before_json": {
+          "name": "before_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after_json": {
+          "name": "after_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor": {
+          "name": "actor",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "price_table_affiliation_history_pair_data_idx": {
+          "name": "price_table_affiliation_history_pair_data_idx",
+          "columns": [
+            {
+              "expression": "block_pair_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "price_table_affiliation_history_block_pair_id_price_table_block_pairs_id_fk": {
+          "name": "price_table_affiliation_history_block_pair_id_price_table_block_pairs_id_fk",
+          "tableFrom": "price_table_affiliation_history",
+          "tableTo": "price_table_block_pairs",
+          "columnsFrom": [
+            "block_pair_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.price_table_affiliations": {
+      "name": "price_table_affiliations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "block_pair_id": {
+          "name": "block_pair_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mubisys_produto_id": {
+          "name": "mubisys_produto_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nome_produto": {
+          "name": "nome_produto",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "categoria": {
+          "name": "categoria",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "price_table_affiliations_pair_produto_idx": {
+          "name": "price_table_affiliations_pair_produto_idx",
+          "columns": [
+            {
+              "expression": "block_pair_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "mubisys_produto_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "price_table_affiliations_produto_idx": {
+          "name": "price_table_affiliations_produto_idx",
+          "columns": [
+            {
+              "expression": "mubisys_produto_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "price_table_affiliations_block_pair_id_price_table_block_pairs_id_fk": {
+          "name": "price_table_affiliations_block_pair_id_price_table_block_pairs_id_fk",
+          "tableFrom": "price_table_affiliations",
+          "tableTo": "price_table_block_pairs",
+          "columnsFrom": [
+            "block_pair_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.price_table_block_pairs": {
+      "name": "price_table_block_pairs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_section_id": {
+          "name": "principal_section_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "novo_cliente_section_id": {
+          "name": "novo_cliente_section_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "price_table_block_pairs_principal_section_idx": {
+          "name": "price_table_block_pairs_principal_section_idx",
+          "columns": [
+            {
+              "expression": "principal_section_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "price_table_block_pairs_novo_cliente_section_idx": {
+          "name": "price_table_block_pairs_novo_cliente_section_idx",
+          "columns": [
+            {
+              "expression": "novo_cliente_section_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "price_table_block_pairs_principal_section_id_price_table_sections_id_fk": {
+          "name": "price_table_block_pairs_principal_section_id_price_table_sections_id_fk",
+          "tableFrom": "price_table_block_pairs",
+          "tableTo": "price_table_sections",
+          "columnsFrom": [
+            "principal_section_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "price_table_block_pairs_novo_cliente_section_id_price_table_sections_id_fk": {
+          "name": "price_table_block_pairs_novo_cliente_section_id_price_table_sections_id_fk",
+          "tableFrom": "price_table_block_pairs",
+          "tableTo": "price_table_sections",
+          "columnsFrom": [
+            "novo_cliente_section_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

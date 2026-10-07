@@ -639,11 +639,11 @@ export function PriceAdjustmentCalculator({
                       <TableRow key={`${item.versao}-${item.item}-${index}`}>
                         <TableCell><Badge variant="outline">v{item.versao}</Badge><div className="text-xs text-slate-500">{new Date(item.data).toLocaleDateString("pt-BR")}</div></TableCell>
                         <TableCell className="min-w-[220px]"><div className="font-medium">{item.item}</div><div className="text-xs text-slate-500">{item.secao}</div></TableCell>
-                        <TableCell>{item.classe === "—" ? "—" : <Badge variant={item.classe === "A" ? "default" : "outline"} className={item.classe === "A" ? "bg-emerald-600" : item.classe === "B" ? "border-amber-400 text-amber-700" : "text-slate-500"}>{item.classe}</Badge>}</TableCell>
+                        <TableCell>{item.classe == null ? "—" : <Badge variant={item.classe === "A" ? "default" : "outline"} className={item.classe === "A" ? "bg-emerald-600" : item.classe === "B" ? "border-amber-400 text-amber-700" : "text-slate-500"}>{item.classe}</Badge>}</TableCell>
                         <TableCell className="text-right">{item.deltaPp > 0 ? "+" : ""}{fmtNum(item.deltaPp, 2)} p.p.</TableCell>
                         <TableCell className="text-right">{fmtBrl(item.faturamento)}</TableCell>
                         <TableCell className="text-right">{fmtBrl(item.impactoMin)} a {fmtBrl(item.impactoMax)}</TableCell>
-                        <TableCell><Badge variant={item.correspondencia === "sem venda compatível" ? "outline" : "secondary"}>{item.correspondencia}</Badge></TableCell>
+                        <TableCell><Badge variant={item.correspondencia.startsWith("sem ") || item.correspondencia.includes("sem venda") ? "outline" : "secondary"}>{item.correspondencia}</Badge></TableCell>
                       </TableRow>
                     ))}</TableBody>
                   </Table>

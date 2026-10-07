@@ -16,7 +16,8 @@
 
 import { timingSafeEqual } from "crypto";
 import type { Express, NextFunction, Request, Response } from "express";
-import { listPriceTableSections, getPriceTableMeta } from "../db/db";
+import { getDb, listPriceTableSections, getPriceTableMeta } from "../db/db";
+import { priceTableAffiliations, priceTableBlockPairs } from "../../drizzle/schema";
 import type { ConfigItem, MarginRow } from "../../shared/price-table";
 
 function chaveConfere(recebida: string, esperada: string): boolean {
@@ -60,10 +61,25 @@ function abaDaPagina(
 export function registrarRotasPriceTableApi(app: Express) {
   app.get("/api/v1/price-table/export", exigirChaveApi, async (_req, res) => {
     try {
-      const [secoes, meta] = await Promise.all([
+      const db = await getDb();
+      if (!db) throw new Error("Banco local indisponivel.");
+      const [secoes, meta, pares, afiliacoes] = await Promise.all([
         listPriceTableSections(),
         getPriceTableMeta(),
+        db.select().from(priceTableBlockPairs),
+        db.select().from(priceTableAffiliations),
       ]);
+      const parPorSecao = new Map<number, typeof pares[number]>();
+      const produtosPorPar = new Map<number, Array<{ id: number; mubisys_produto_id: number; nome: string; categoria: string | null }>>();
+      for (const par of pares) {
+        parPorSecao.set(par.principalSectionId, par);
+        parPorSecao.set(par.novoClienteSectionId, par);
+      }
+      for (const produto of afiliacoes) {
+        const lista = produtosPorPar.get(produto.blockPairId) ?? [];
+        lista.push({ id: produto.id, mubisys_produto_id: produto.mubisysProdutoId, nome: produto.nomeProduto, categoria: produto.categoria });
+        produtosPorPar.set(produto.blockPairId, lista);
+      }
 
       const resultado = secoes.map(sec => {
         let conteudo: {
@@ -90,6 +106,13 @@ export function registrarRotasPriceTableApi(app: Express) {
           pagina,
           aba: abaDaPagina(pagina),
           titulo: sec.sectionTitle,
+          bloco_pareado: parPorSecao.has(sec.id) ? {
+            id: parPorSecao.get(sec.id)!.id,
+            secao_clientes_antigos_id: parPorSecao.get(sec.id)!.principalSectionId,
+            secao_novo_cliente_id: parPorSecao.get(sec.id)!.novoClienteSectionId,
+            produtos: produtosPorPar.get(parPorSecao.get(sec.id)!.id) ?? [],
+          } : null,
+          faixa_ids: Array.isArray((conteudo as { faixaIds?: unknown }).faixaIds) ? (conteudo as { faixaIds: number[] }).faixaIds : null,
           tipo: conteudo.type ?? null,
           colunas: isMargin ? (conteudo.columns ?? []) : null,
           linhas: isMargin

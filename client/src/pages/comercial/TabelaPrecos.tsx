@@ -101,6 +101,7 @@ import {
   Hammer,
   RefreshCw,
   Calculator,
+  BarChart3,
 } from "lucide-react";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { enviarArquivo } from "@/lib/upload";
@@ -108,8 +109,12 @@ import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
 import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashboard";
 import { PriceAdjustmentCalculator } from "@/components/PriceAdjustmentCalculator";
+import { PriceBlockAffiliationEditor } from "@/components/PriceBlockAffiliationEditor";
+import { Link2 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+type BlockAffiliation = RouterOutputs["price"]["listBlockAffiliations"][number];
 
 interface Section {
   id: number;
@@ -1286,9 +1291,17 @@ function LedImageLink({
 function EditableSection({
   section,
   highlight,
+  products = [],
+  showProducts = false,
+  canEditProducts = false,
+  onEditProducts,
 }: {
   section: Section;
   highlight?: string;
+  products?: BlockAffiliation["produtos"];
+  showProducts?: boolean;
+  canEditProducts?: boolean;
+  onEditProducts?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(section.sectionTitle);
@@ -1384,6 +1397,11 @@ function EditableSection({
             </CardTitle>
           )}
           <div className="flex gap-1 shrink-0">
+            {canEditProducts && onEditProducts && (
+              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={onEditProducts}>
+                <Link2 className="mr-1 h-3 w-3" />Produtos ({products.length})
+              </Button>
+            )}
             {editing ? (
               <>
                 <Button
@@ -1417,6 +1435,14 @@ function EditableSection({
           </div>
         </div>
       </CardHeader>
+      {(showProducts || products.length > 0 || canEditProducts) && (
+        <div className="border-t border-slate-100 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-medium text-slate-500">Produtos atendidos:</span>
+            {products.length ? products.map(product => <Badge key={product.mubisysProdutoId} variant="secondary" className="text-[11px]">{product.nomeProduto}</Badge>) : <span className="text-xs text-slate-400">Nenhum produto vinculado</span>}
+          </div>
+        </div>
+      )}
       <CardContent className="px-4 pb-4 space-y-3">
         {editing ? (
           <div className="space-y-4">
@@ -1471,9 +1497,15 @@ const PAGE_LABELS: Record<number, string> = {
 function SearchResults({
   sections,
   query,
+  affiliations,
+  canEditProducts,
+  onEditProducts,
 }: {
   sections: Section[];
   query: string;
+  affiliations: Map<number, BlockAffiliation>;
+  canEditProducts: boolean;
+  onEditProducts: (sectionId: number) => void;
 }) {
   const q = query.toLowerCase();
   const matches = sections.filter(s => {
@@ -1519,7 +1551,7 @@ function SearchResults({
               {PAGE_LABELS[section.page] ?? `Pág. ${section.page}`}
             </Badge>
           </div>
-          <EditableSection section={section} highlight={query} />
+          <EditableSection section={section} highlight={query} products={affiliations.get(section.id)?.produtos ?? []} showProducts={affiliations.has(section.id)} canEditProducts={canEditProducts && section.page >= 1 && section.page <= 3 && affiliations.has(section.id)} onEditProducts={() => onEditProducts(section.id)} />
         </div>
       ))}
     </div>
@@ -3075,21 +3107,35 @@ function SimuladorBoletos() {
 }
 
 export default function TabelaPrecos() {
-  const [tabelaAtiva, setTabelaAtiva] = useState<"principal" | "novo_cliente">(
+  const [tabelaAtiva, setTabelaAtiva] = useState<
+    "principal" | "novo_cliente" | "dashboard"
+  >(
     "principal"
   );
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("1");
   const [activeTabNC, setActiveTabNC] = useState("11");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterPage, setFilterPage] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
   const { data: allSections, isLoading } = trpc.price.list.useQuery({});
+  const { data: blockAffiliations } = trpc.price.listBlockAffiliations.useQuery();
+  const [affiliationEditingSectionId, setAffiliationEditingSectionId] = useState<number | null>(null);
+  const canEditBlockProducts = !!user && ["gestor", "admin", "master"].includes(user.role ?? "");
+  const affiliationsBySection = useMemo(() => {
+    const map = new Map<number, BlockAffiliation>();
+    for (const pair of blockAffiliations ?? []) { map.set(pair.principalSectionId, pair); map.set(pair.novoClienteSectionId, pair); }
+    return map;
+  }, [blockAffiliations]);
   const isLoadingNC = isLoading;
   const { data: meta } = trpc.price.getMeta.useQuery();
   const { data: dimensionamentoLed } = trpc.custoLed.getDimensionamentoFontes.useQuery();
   const [showHistory, setShowHistory] = useState(false);
   const [selectedHistoryTable, setSelectedHistoryTable] = useState<"principal" | "novo_cliente">("principal");
   const [showPriceCalculator, setShowPriceCalculator] = useState(false);
+  const [tabelaCalculadora, setTabelaCalculadora] = useState<"principal" | "novo_cliente">(
+    "principal"
+  );
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionPage, setNewSectionPage] = useState(11);
@@ -3112,7 +3158,7 @@ export default function TabelaPrecos() {
   });
   const { data: history, isLoading: isHistoryLoading, error: historyError } = trpc.price.getHistory.useQuery(
     { limit: 1000 },
-    { enabled: showHistory }
+    { enabled: showHistory || tabelaAtiva === "dashboard" }
   );
 
   function adicionarSecao() {
@@ -3205,6 +3251,17 @@ export default function TabelaPrecos() {
           <Plus className="w-4 h-4 inline mr-1.5" />
           Tabela Novo Cliente
         </button>
+        <button
+          onClick={() => setTabelaAtiva("dashboard")}
+          className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg border border-b-0 transition-colors ${
+            tabelaAtiva === "dashboard"
+              ? "bg-white border-slate-200 text-violet-700 shadow-sm -mb-px"
+              : "bg-slate-50 border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 inline mr-1.5" />
+          Dashboard
+        </button>
       </div>
 
 
@@ -3228,7 +3285,10 @@ export default function TabelaPrecos() {
                   size="sm"
                   variant="outline"
                   className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                  onClick={() => setShowPriceCalculator(true)}
+                  onClick={() => {
+                    setTabelaCalculadora("novo_cliente");
+                    setShowPriceCalculator(true);
+                  }}
                 >
                   <Calculator className="w-4 h-4" />
                   Simular reajuste
@@ -3353,7 +3413,7 @@ export default function TabelaPrecos() {
                       <div className="space-y-4">
                         {sectionsNCForPage(Number(p.key)).map(section => (
                           <div key={section.id} className="relative group">
-                            <EditableSection section={section as Section} />
+                            <EditableSection section={section as Section} products={affiliationsBySection.get(section.id)?.produtos ?? []} showProducts={affiliationsBySection.has(section.id)} />
                             <button
                               onClick={() => {
                                 if (
@@ -3382,6 +3442,59 @@ export default function TabelaPrecos() {
       )}
 
       {/* ─── ABA: TABELA DE PREÇOS (PRINCIPAL) ─── */}
+      {tabelaAtiva === "dashboard" && (
+        <section className="space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <BarChart3 className="h-6 w-6 text-violet-600" />
+                <h1 className="text-2xl font-bold text-slate-900">
+                  Dashboard das Tabelas de Preço
+                </h1>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                Acompanhe os reajustes registrados nas tabelas de Clientes Antigos
+                e Novo Cliente.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  setTabelaCalculadora("principal");
+                  setShowPriceCalculator(true);
+                }}
+              >
+                <Calculator className="h-4 w-4" />
+                Impacto e Curva ABC · Clientes Antigos
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  setTabelaCalculadora("novo_cliente");
+                  setShowPriceCalculator(true);
+                }}
+              >
+                <Calculator className="h-4 w-4" />
+                Impacto e Curva ABC · Novo Cliente
+              </Button>
+            </div>
+          </div>
+          <PriceTableHistoryDashboard
+            key="dashboard-precos"
+            history={history}
+            sections={(allSections ?? []).map(section => ({
+              id: section.id,
+              page: section.page,
+            }))}
+            isLoading={isHistoryLoading}
+            error={historyError?.message}
+            initialTable="todas"
+          />
+        </section>
+      )}
       {tabelaAtiva === "principal" && (
         <div>
           {/* Header */}
@@ -3402,7 +3515,10 @@ export default function TabelaPrecos() {
                   size="sm"
                   variant="outline"
                   className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
-                  onClick={() => setShowPriceCalculator(true)}
+                  onClick={() => {
+                    setTabelaCalculadora("principal");
+                    setShowPriceCalculator(true);
+                  }}
                 >
                   <Calculator className="w-4 h-4" />
                   Simular reajuste
@@ -3551,6 +3667,9 @@ export default function TabelaPrecos() {
                 <SearchResults
                   sections={filteredSections}
                   query={searchQuery.trim()}
+                  affiliations={affiliationsBySection}
+                  canEditProducts={canEditBlockProducts}
+                  onEditProducts={setAffiliationEditingSectionId}
                 />
               )}
             </div>
@@ -3617,6 +3736,10 @@ export default function TabelaPrecos() {
                         <EditableSection
                           key={section.id}
                           section={section as Section}
+                          products={affiliationsBySection.get(section.id)?.produtos ?? []}
+                          showProducts={affiliationsBySection.has(section.id)}
+                          canEditProducts={canEditBlockProducts && section.page >= 1 && section.page <= 3 && affiliationsBySection.has(section.id)}
+                          onEditProducts={() => setAffiliationEditingSectionId(section.id)}
                         />
                       ))
                     )}
@@ -3673,10 +3796,15 @@ export default function TabelaPrecos() {
       </Dialog>
 
       {/* Painel de Histórico e Evolução das Margens */}
+      {(() => {
+        const pair = (blockAffiliations ?? []).find(item => item.principalSectionId === affiliationEditingSectionId);
+        const section = (allSections ?? []).find(item => item.id === affiliationEditingSectionId);
+        return pair && section ? <PriceBlockAffiliationEditor open={true} onOpenChange={open => { if (!open) setAffiliationEditingSectionId(null); }} principalSectionId={pair.principalSectionId} sectionTitle={section.sectionTitle} produtosAtuais={pair.produtos} /> : null;
+      })()}
       <PriceAdjustmentCalculator
         open={showPriceCalculator}
         onOpenChange={setShowPriceCalculator}
-        tabela={tabelaAtiva}
+        tabela={tabelaCalculadora}
         secoes={allSections ?? []}
       />
 
@@ -3691,7 +3819,10 @@ export default function TabelaPrecos() {
           <PriceTableHistoryDashboard
             key={selectedHistoryTable}
             history={history}
-            sections={(allSections ?? []).map(section => ({ id: section.id, page: section.page }))}
+            sections={(allSections ?? []).map(section => ({
+              id: section.id,
+              page: section.page,
+            }))}
             isLoading={isHistoryLoading}
             error={historyError?.message}
             initialTable={selectedHistoryTable}

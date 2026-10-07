@@ -278,52 +278,52 @@ export type PriceTableHistory = typeof priceTableHistory.$inferSelect;
 export type InsertPriceTableHistory = typeof priceTableHistory.$inferInsert;
 // Afiliação explícita entre faixa de preço e produtos do espelho MubiSys.
 // Os IDs externos não têm FK porque o catálogo pode ser reimportado.
+// Cada se??o de Clientes Antigos ? pareada explicitamente ? se??o equivalente
+// de Novo Cliente. As afilia??es ficam no par, portanto s?o compartilhadas.
+export const priceTableBlockPairs = pgTable("price_table_block_pairs", {
+  id: serial("id").primaryKey(),
+  principalSectionId: integer("principal_section_id").notNull().references(() => priceTableSections.id, { onDelete: "cascade" }),
+  novoClienteSectionId: integer("novo_cliente_section_id").notNull().references(() => priceTableSections.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  principalSectionIdx: uniqueIndex("price_table_block_pairs_principal_section_idx").on(table.principalSectionId),
+  novoClienteSectionIdx: uniqueIndex("price_table_block_pairs_novo_cliente_section_idx").on(table.novoClienteSectionId),
+}));
+export type PriceTableBlockPair = typeof priceTableBlockPairs.$inferSelect;
+
+// IDs externos n?o t?m FK porque o cat?logo do MubiSys pode ser reimportado.
 export const priceTableAffiliations = pgTable("price_table_affiliations", {
   id: serial("id").primaryKey(),
-  sectionId: integer("section_id").notNull().references(() => priceTableSections.id, { onDelete: "cascade" }),
-  rowId: integer("row_id").notNull(),
-  faixaId: integer("faixa_id").notNull(),
-  targetType: varchar("target_type", { length: 24 }).notNull(),
-  mubisysProdutoId: integer("mubisys_produto_id"),
-  mubisysModeloId: integer("mubisys_modelo_id"),
-  mubisysVariacaoId: integer("mubisys_variacao_id"),
-  categoriaKey: varchar("categoria_key", { length: 128 }),
+  blockPairId: integer("block_pair_id").notNull().references(() => priceTableBlockPairs.id, { onDelete: "cascade" }),
+  mubisysProdutoId: integer("mubisys_produto_id").notNull(),
+  nomeProduto: varchar("nome_produto", { length: 256 }).notNull(),
+  categoria: varchar("categoria", { length: 128 }),
   createdBy: varchar("created_by", { length: 128 }),
   updatedBy: varchar("updated_by", { length: 128 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, table => ({
-  faixaIdx: index("price_table_affiliations_faixa_idx").on(table.sectionId, table.rowId, table.faixaId),
+  pairProdutoIdx: uniqueIndex("price_table_affiliations_pair_produto_idx").on(table.blockPairId, table.mubisysProdutoId),
   produtoIdx: index("price_table_affiliations_produto_idx").on(table.mubisysProdutoId),
-  modeloIdx: index("price_table_affiliations_modelo_idx").on(table.mubisysModeloId),
-  variacaoIdx: index("price_table_affiliations_variacao_idx").on(table.mubisysVariacaoId),
 }));
 export type PriceTableAffiliation = typeof priceTableAffiliations.$inferSelect;
 export type InsertPriceTableAffiliation = typeof priceTableAffiliations.$inferInsert;
 
 export const priceTableAffiliationHistory = pgTable("price_table_affiliation_history", {
   id: serial("id").primaryKey(),
-  sectionId: integer("section_id").notNull(),
-  rowId: integer("row_id").notNull(),
-  faixaId: integer("faixa_id").notNull(),
+  blockPairId: integer("block_pair_id").notNull().references(() => priceTableBlockPairs.id, { onDelete: "cascade" }),
   action: varchar("action", { length: 16 }).notNull(),
   beforeJson: text("before_json"),
   afterJson: text("after_json"),
   actor: varchar("actor", { length: 128 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, table => ({
-  faixaDataIdx: index("price_table_affiliation_history_faixa_data_idx").on(table.sectionId, table.rowId, table.faixaId, table.createdAt),
+  pairDataIdx: index("price_table_affiliation_history_pair_data_idx").on(table.blockPairId, table.createdAt),
 }));
 export type PriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferSelect;
 export type InsertPriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferInsert;
 
-// ─── CADASTRO DE PRODUTOS (composição de matéria-prima, kit, precificação) ──
-// A API pública do MubiSys não expõe composição de produto (só o cadastro
-// básico em `produto`/`produto/{id}` e o custo em `materia-prima/{id}`) — ver
-// AGENTS.md "Pontas soltas conhecidas". Por isso o produto é cadastrado aqui
-// (vinculado ao produto/modelo do MubiSys só para nome/categoria) e a
-// composição é digitada manualmente, escolhendo a matéria-prima real do
-// MubiSys (para puxar o custo ao vivo) e a unidade de consumo à mão.
+
 export const produtos = pgTable("produtos", {
   id: serial("id").primaryKey(),
   mubisysProdutoId: integer("mubisysProdutoId").notNull(),
