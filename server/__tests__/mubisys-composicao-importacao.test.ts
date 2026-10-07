@@ -56,6 +56,8 @@ describe("espelho BOM do MubiSys", () => {
     expect(sessionRoute).toContain("aes-256-gcm");
     expect(sessionRoute).toContain("HttpOnly");
     expect(sessionRoute).toContain("ROLES_GESTAO");
+    expect(sessionRoute).toContain("response.status === 401 || response.status === 403 || pareceTelaDeLogin(text)");
+    expect(sessionRoute).toContain("respondeu HTTP ${response.status}");
     expect(parserBOM).toContain("parsearComposicoesMubiSys");
     expect(produtosPage).toContain("Importar ficha local");
     expect(produtosPage).not.toContain("mubisys/sessao");

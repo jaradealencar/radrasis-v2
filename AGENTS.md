@@ -411,6 +411,15 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   sem linhas reconhecíveis falha sem gravação parcial; CSV/JSON permanece como alternativa. A
   rota `/api/letra-caixa/mubisys/composicoes/sincronizar` exige gestor/admin/master porque
   atualiza o espelho global; login/conexão é por navegador. Não há gravação no MubiSys.
+  **Limitação verificada em 07/10/2026:** teste somente de leitura autenticou no MubiSys,
+  mas a rota interna de ficha técnica respondeu HTTP 500 sem conteúdo; nenhuma BOM foi
+  importada. O espelho tinha 360 matérias-primas, 71 produtos, 642 variações e zero linhas de
+  BOM; o modelo Frontlight de Iluminação LED tinha seis variações, também sem composição.
+  Não interpretar 5xx como sessão expirada nem insistir em tentativas ou contornar proteções
+  do ERP. O espelho continua dependendo de uma resposta válida da rota ou do arquivo exportado
+  pelo MubiSys via CSV/XLS/XLSX/JSON; solicitar suporte ao fornecedor para corrigir a rota
+  antes de prometer sincronização automática. O Access-Token configurado indicava expiração em
+  12/09/2026, embora a API ainda o aceitasse em 07/10/2026; renová-lo antes de depender dele.
   O catálogo oficial é espelhado em `materias_primas` e `mubisys_variacoes`;
   `composicoes_variacoes` guarda SKU/ID da variação, SKU/ID do insumo, quantidade, unidade,
   perfil original e fórmula equivalente. `mubisys_espelho_sync_status` registra atualização e

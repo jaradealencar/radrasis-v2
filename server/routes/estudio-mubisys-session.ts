@@ -312,7 +312,10 @@ export async function buscarComposicoesMubiSys(cookie: string): Promise<{
   }
   const bytes = Buffer.concat(partes.map(parte => Buffer.from(parte)), totalBytes);
   const text = new TextDecoder().decode(bytes);
-  const unauthorized = !response.ok || pareceTelaDeLogin(text);
+  const unauthorized = response.status === 401 || response.status === 403 || pareceTelaDeLogin(text);
+  if (!response.ok && !unauthorized) {
+    throw new Error(`O MubiSys respondeu HTTP ${response.status} ao consultar a ficha técnica.`);
+  }
   let conteudo: unknown = text;
   if (!unauthorized) {
     try {
