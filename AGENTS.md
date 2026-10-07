@@ -848,9 +848,15 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   `cpq_render_material_links` (matéria-prima MubiSys → perfil + overrides de cor/rotação do veio) e `cpq_render3d_approvals`
   (auditoria). **Perfil usado numa aprovação é imutável**: editar cria nova versão, reaponta os vínculos e invalida a emissão antiga;
   o link público reconstrói a versão aprovada (`criarFonteFixada`). A foto de textura é referência, nunca mapa PBR derivado.
-- **Cor**: override do vínculo > cor HEX cadastrada na matéria-prima (aparência, migration `0094`) > cor do perfil. A cor cadastrada só
-  vale se o perfil não tem mapa `baseColor` e entra em `overrides` (logo no hash, no snapshot e no link público). Descrição sem HEX ou só
-  foto de textura geram aviso. A transmissão do acrílico ainda **não** lê `estudio_chapas`: vem do perfil.
+- **Cor** (o 3D desenha cada peça na cor da matéria-prima, pedido de 07/10/2026): override do vínculo > cor HEX cadastrada na matéria-prima
+  (aparência, migration `0094`) > **cor de amostra do cadastro de cor da chapa** (`estudio_chapas`: CMYK completo, senão o primeiro Pantone
+  da lista que existe na tabela de referência — o formato principal, `corHexDoCadastroDeChapa`; formato com `temCor` falso é ignorado) > cor
+  do perfil. A cor só vira `overrides` (logo no hash, no snapshot e no link público) se o perfil não tem mapa `baseColor`, e **vale também
+  para material sem perfil visual** (preview estimado; só face/retorno/fundo/perfil — LED e fixação mantêm o preset). Região da face feita
+  de **chapa** (ou "sem adesivo", que segue a face da composição) usa a cor do material; região de **adesivo** (Imprimax/impresso) mantém a
+  cor da arte, que é a do vinil; sem cor cadastrada a arte segue como aproximação. Sem HEX nem cadastro de cor o 3D avisa e usa a cor do
+  perfil. A tabela "Materiais e perfis visuais" do passo 8 mostra a cor usada em cada peça (e "aproximada" quando não é a cadastrada).
+  A transmissão do acrílico ainda **não** lê `estudio_chapas`: vem do perfil.
 - **Kit**: `estudio_kits.dadosJson.render3dConstruction` (tipo de iluminação, profundidade, afastamento, aba, passo/clearance de LED —
   **sem valor padrão**: ausência é pendência) e `renderRole` por linha (validados em `estudio-kits.ts`; o papel é sugerido por
   `sugerirRenderRole`, mas só vale confirmado). **Produto sem construção 3D no kit dispensa a etapa** (`render3dDispensado` no HTML) e
@@ -862,8 +868,22 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   segue redirecionando com a query). `client/src/cpq3d/**` fica **fora** do `tsconfig.json` e tem `tsconfig.cpq3d.json`, porque o R3F
   acrescenta elementos ao JSX global que quebram a tipagem das demais páginas; `yarn run check` roda os dois. Geometria: face
   (`ExtrudeGeometry` com vazados), lateral oca por offset do `clipper-lib`, fundo, LEDs em `InstancedMesh` (nunca uma luz por LED),
-  halo na parede; Dia/Noite e visão explodida só animam a cena. O ambiente é um HDRI procedural local
+  halo na parede (forte no backlight, só um respingo no frontlight); Dia/Noite e visão explodida só animam a cena. **Letreiro aceso à
+  noite** (`cenaIluminada` em `cena.ts`): acende quando a construção é iluminada **ou quando a composição tem material com papel LED**,
+  mesmo que o kit esteja "sem iluminação" (o servidor só avisa); a face de acrílico, com transmissão ou ainda sem perfil visual
+  (`faceAcendeComLed`) emite na própria cor com emissão mínima de `INTENSIDADE_FACE_ACESA`, e o LED visto através da face é limitado
+  (`INTENSIDADE_LED_ATRAS_DA_FACE`) para não virar ponto estourado; face de metal/PVC opaco não acende. **Não há luzes pontuais à noite**
+  (o verniz do acrílico refletia cada uma como um ponto estourado). O ambiente é um HDRI procedural local
   (`scripts/gerar-hdri-estudio.mjs` → `client/public/render3d/environments/studio-1k.hdr`), sem terceiros nem CDN.
+- **Animação de montagem e GIF** (pedido de 07/10/2026): botão "▶ Animação de montagem" no viewer (passo 8 e link público — o mesmo
+  `CpqRender3dViewer`). A linha do tempo é pura (`animacaoMontagem.ts`, função do tempo): peças abertas → encaixam de trás para a frente
+  (fixadores, fundo, LEDs, retorno/perfil, face; cada uma com o seu afastamento, `EstadoCena.partes`) com a câmera girando, e em letreiro
+  iluminado acende no fim (~9 s). O `useEstadoCena` (prioridade -10, antes das peças) aplica o quadro e a `Controles` move a câmera; ao
+  terminar, Dia/Noite/Explodida passam a refletir o estado final; clicar em qualquer botão interrompe. **"⬇ Baixar GIF"** (`gifMontagem.tsx`,
+  carregado sob demanda) renderiza a mesma linha do tempo num canvas descartável 800×500 em passos fixos de 60 ms (`gifQuadros.ts`, ~150
+  quadros), reduz cada quadro a 256 cores (`gifenc`, dependência nova, JS puro, paleta própria por quadro) e baixa
+  `montagem-do-letreiro.gif` (loop infinito, pausas de 0,7 s no início e 1,8 s no fim). **O GIF é gerado no navegador de quem clica e não é
+  guardado**: não entra no snapshot, na aprovação nem no PDF (o PDF segue com os 3 previews estáticos).
 - **Previews/PDF**: `capture.tsx` renderiza dia, noite e explodido em 1600×1000 com câmera fixa num canvas descartável. O link público e a
   impressão usam essas imagens (o CSS de impressão esconde o 3D interativo); sem WebGL cai nas imagens.
 - **Validado (07/10/2026)**: `tsc` (os dois projetos), `vite build`, testes do resolver (32), do sanitizador de SVG (21), das rotas contra
@@ -891,6 +911,10 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   (3) `inspecionarSvgRender3d` tinha uma regex quadrática em `<defs>` sem fechamento (0,7 MB travavam o servidor ~15 s; o corpo JSON
   aceita 2 MB): agora o limite de tamanho vem antes das regex e `semDefs` é linear; também passou a recusar `<svg/onload=…>` e
   `animateTransform`/`animateMotion`.
+- **Validado em 07/10/2026 (montagem animada, GIF e cores)**: testes de linha do tempo/GIF/acendimento/cores (cliente e resolver) e `tsc` do
+  projeto cpq3d; no Edge headless (WebGL por software) com um letreiro de teste: cores por região (vermelho/amarelo), noite acesa, quadros
+  fixos da montagem e o **GIF real** (800×500, 152 quadros, 3,5 MB, loop infinito, 324 s em renderização por software — em GPU real deve ser
+  bem mais rápido, mas **não foi medido**). Não validado: GPU real, celular, GIF de logo com centenas de caminhos, perfis PBR com mapas.
 - **Observações do teste real, ainda abertas**: as linhas da ficha BOM do MubiSys chegam com `papel` vazio e o nesting pede vincular
   cada chapa à Face/Fundo mesmo com o `renderRole` já herdado do kit (candidato a propagar o papel físico); o servidor local recusa
   assinar factibilidade/3D com `JWT_SECRET` menor que 32 caracteres (o `.env` local de teste tem menos; os testes definem um

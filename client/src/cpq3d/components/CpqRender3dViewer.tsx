@@ -2,12 +2,13 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, ToneMapping } from "@react-three/postprocessing";
 import { ToneMappingMode, type BloomEffect } from "postprocessing";
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import * as THREE from "three";
-import { construirCena, ProfundidadeAusenteError, type CenaDados, type DesenhoSpec, type Qualidade } from "../cena";
+import { novoControleAnimacao, type ControleAnimacao } from "../animacaoMontagem";
+import { cenaIluminada, construirCena, ProfundidadeAusenteError, type CenaDados, type DesenhoSpec, type Qualidade } from "../cena";
 import { SvgInvalidoError } from "../svgToShapes";
 import { AmbienteEstudio } from "./AmbienteEstudio";
-import { useEstadoCena } from "./estadoCena";
+import { useEstadoCena, type EstadoCena } from "./estadoCena";
 import { LetterBoxAssembly } from "./LetterBoxAssembly";
 import { LightingRig } from "./LightingRig";
 
@@ -49,7 +50,7 @@ export interface PoseCamera {
 }
 export const POSE_PADRAO: PoseCamera = { azimute: 0.3, elevacao: 0.17 };
 
-function Controles({ cena, exploded, reenquadrar, pose, travado }: { cena: CenaDados; exploded: boolean; reenquadrar: number; pose: PoseCamera; travado: boolean }) {
+function Controles({ cena, exploded, reenquadrar, pose, travado, estado }: { cena: CenaDados; exploded: boolean; reenquadrar: number; pose: PoseCamera; travado: boolean; estado: MutableRefObject<EstadoCena> }) {
   const { camera, size, invalidate } = useThree();
   const aspecto = size.width / Math.max(size.height, 1);
   const distancia = distanciaDeEnquadramento(cena, aspecto, exploded, pose);
@@ -70,6 +71,26 @@ function Controles({ cena, exploded, reenquadrar, pose, travado }: { cena: CenaD
     controles.current?.update();
     invalidate();
   }, [camera, distancia, alvoZ, pose.azimute, pose.elevacao, reenquadrar, invalidate]);
+  // Animação de montagem: a câmera segue a linha do tempo (gira e se afasta conforme as peças se abrem); fora dela, o OrbitControls manda.
+  useFrame(() => {
+    const quadro = estado.current.camera;
+    if (!quadro) return;
+    const posicao = { azimute: quadro.azimute, elevacao: quadro.elevacao };
+    const abertura = THREE.MathUtils.clamp(estado.current.explodido, 0, 1);
+    const distanciaAtual = THREE.MathUtils.lerp(
+      distanciaDeEnquadramento(cena, aspecto, false, posicao),
+      distanciaDeEnquadramento(cena, aspecto, true, posicao),
+      abertura,
+    );
+    const alvo = cena.profundidadeM * (0.5 + 0.05 * abertura);
+    camera.position.set(
+      distanciaAtual * Math.sin(posicao.azimute) * Math.cos(posicao.elevacao),
+      distanciaAtual * Math.sin(posicao.elevacao),
+      alvo + distanciaAtual * Math.cos(posicao.azimute) * Math.cos(posicao.elevacao),
+    );
+    camera.lookAt(0, 0, alvo);
+    controles.current?.target.set(0, 0, alvo);
+  }, -5);
   return (
     <OrbitControls
       ref={controles as never}
@@ -93,7 +114,7 @@ function Controles({ cena, exploded, reenquadrar, pose, travado }: { cena: CenaD
 function Efeitos({ estado, iluminada }: { estado: ReturnType<typeof useEstadoCena>; iluminada: boolean }) {
   const bloom = useRef<BloomEffect>(null);
   useFrame(() => {
-    if (bloom.current) bloom.current.intensity = iluminada ? estado.current.noite * 1.1 : 0;
+    if (bloom.current) bloom.current.intensity = iluminada ? estado.current.noite * 0.8 : 0;
   });
   return (
     <EffectComposer multisampling={4} frameBufferType={THREE.HalfFloatType}>
@@ -113,21 +134,25 @@ export interface PropsCena {
   imediato?: boolean;
   pose?: PoseCamera;
   reenquadrar?: number;
+  /** Animação de montagem (player ao vivo ou exportação em GIF); ver `animacaoMontagem.ts`. */
+  animacao?: MutableRefObject<ControleAnimacao>;
+  /** A animação está rodando: o OrbitControls fica desligado para não disputar a câmera. */
+  animando?: boolean;
   onCarregandoTexturas?: (carregando: boolean) => void;
 }
 
 /** Tudo o que vive dentro do Canvas (também usado, com `imediato`, pela captura dos previews). */
-export function CenaRender3d({ spec, cena, night, exploded, publico, imediato = false, pose = POSE_PADRAO, reenquadrar = 0, onCarregandoTexturas }: PropsCena) {
-  const estado = useEstadoCena(night, exploded, imediato);
-  const iluminada = spec.construction.kind !== "non_illuminated";
+export function CenaRender3d({ spec, cena, night, exploded, publico, imediato = false, pose = POSE_PADRAO, reenquadrar = 0, animacao, animando = false, onCarregandoTexturas }: PropsCena) {
+  const iluminada = cenaIluminada(spec);
+  const estado = useEstadoCena(night, exploded, imediato, animacao, iluminada);
   return (
     <>
       <AmbienteEstudio />
-      <LightingRig estado={estado} cena={cena} iluminada={iluminada} />
+      <LightingRig estado={estado} cena={cena} />
       <Suspense fallback={null}>
         <LetterBoxAssembly spec={spec} cena={cena} estado={estado} publico={publico} onCarregandoTexturas={onCarregandoTexturas} />
       </Suspense>
-      <Controles cena={cena} exploded={exploded} reenquadrar={reenquadrar} pose={pose} travado={imediato} />
+      <Controles cena={cena} exploded={exploded} reenquadrar={reenquadrar} pose={pose} travado={imediato || animando} estado={estado} />
       <Efeitos estado={estado} iluminada={iluminada} />
     </>
   );
@@ -148,15 +173,20 @@ type ResultadoCena = { cena: CenaDados } | { erro: string; pendencia: boolean };
 const cacheDeCenas = new Map<string, CenaDados>();
 const MAXIMO_CENAS_EM_CACHE = 3;
 
-function calcularCena(spec: DesenhoSpec, qualidade: Qualidade): ResultadoCena {
+/** Cena triangulada do spec (com cache): usada pelo viewer e pela exportação do GIF, que não precisam repetir o trabalho. */
+export function obterCenaEmCache(spec: DesenhoSpec, qualidade: Qualidade = "alta"): CenaDados {
   const chave = `${spec.specHash}:${qualidade}`;
   const guardada = cacheDeCenas.get(chave);
-  if (guardada) return { cena: guardada };
+  if (guardada) return guardada;
+  const cena = construirCena(spec, qualidade);
+  cacheDeCenas.set(chave, cena);
+  if (cacheDeCenas.size > MAXIMO_CENAS_EM_CACHE) cacheDeCenas.delete(cacheDeCenas.keys().next().value as string);
+  return cena;
+}
+
+function calcularCena(spec: DesenhoSpec, qualidade: Qualidade): ResultadoCena {
   try {
-    const cena = construirCena(spec, qualidade);
-    cacheDeCenas.set(chave, cena);
-    if (cacheDeCenas.size > MAXIMO_CENAS_EM_CACHE) cacheDeCenas.delete(cacheDeCenas.keys().next().value as string);
-    return { cena };
+    return { cena: obterCenaEmCache(spec, qualidade) };
   } catch (falha) {
     if (falha instanceof ProfundidadeAusenteError) return { erro: falha.message, pendencia: true };
     if (falha instanceof SvgInvalidoError) return { erro: falha.message, pendencia: true };
@@ -167,9 +197,29 @@ function calcularCena(spec: DesenhoSpec, qualidade: Qualidade): ResultadoCena {
 
 const estiloBotao = (ativo: boolean) => ({ ...(ativo ? { background: "var(--accent-soft)", color: "var(--accent-ink)", borderColor: "var(--accent)" } : {}) });
 
+type EstadoGif = { tipo: "parado" } | { tipo: "gerando"; fracao: number } | { tipo: "erro"; mensagem: string };
+
+function baixarArquivo(blob: Blob, nome: string): void {
+  const url = URL.createObjectURL(blob);
+  const ancora = document.createElement("a");
+  ancora.href = url;
+  ancora.download = nome;
+  document.body.appendChild(ancora);
+  ancora.click();
+  ancora.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520, onAvisos }: PropsViewer) {
   const [night, setNight] = useState(false);
   const [exploded, setExploded] = useState(false);
+  const [animando, setAnimando] = useState(false);
+  const [gif, setGif] = useState<EstadoGif>({ tipo: "parado" });
+  const animacao = useRef<ControleAnimacao>(novoControleAnimacao());
+  const gifCancelado = useRef(false);
+  useEffect(() => () => { gifCancelado.current = true; }, []);
+  // Ao encerrar a animação (fim ou clique), o player solta a câmera e os valores voltam a seguir os botões Dia/Noite e Explodida.
+  useEffect(() => { if (!animando) animacao.current.ativa = false; }, [animando]);
   const [qualidade, setQualidade] = useState<Qualidade>("alta");
   const [reenquadrar, setReenquadrar] = useState(0);
   const [carregandoTexturas, setCarregandoTexturas] = useState(false);
@@ -177,6 +227,39 @@ export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520
   const [semWebgl] = useState(() => !webglDisponivel());
   const resultado = useMemo(() => calcularCena(spec, qualidade), [spec, qualidade]);
   useEffect(() => { if ("cena" in resultado) onAvisos?.(resultado.cena.avisos); }, [resultado, onAvisos]);
+
+  const iluminada = cenaIluminada(spec);
+  const iniciarAnimacao = () => {
+    animacao.current = {
+      ativa: true,
+      t: 0,
+      avanca: true,
+      // No fim o letreiro fica montado (e aceso, se tiver iluminação): os botões passam a refletir esse estado.
+      aoTerminar: () => { setNight(iluminada); setExploded(false); setAnimando(false); },
+    };
+    setNight(false);
+    setExploded(false);
+    setAnimando(true);
+  };
+  const baixarGif = async () => {
+    if (gif.tipo === "gerando") return;
+    gifCancelado.current = false;
+    setAnimando(false);
+    setGif({ tipo: "gerando", fracao: 0 });
+    try {
+      const { gerarGifMontagem } = await import("../gifMontagem");
+      const arquivo = await gerarGifMontagem(spec, {
+        aoProgredir: fracao => setGif(atual => (atual.tipo === "gerando" ? { tipo: "gerando", fracao } : atual)),
+        cancelado: () => gifCancelado.current,
+      });
+      baixarArquivo(arquivo, "montagem-do-letreiro.gif");
+      setGif({ tipo: "parado" });
+    } catch (falha) {
+      if (gifCancelado.current) return;
+      console.error("[CPQ 3D] Falha ao gerar o GIF:", falha);
+      setGif({ tipo: "erro", mensagem: "Não foi possível gerar o GIF neste navegador." });
+    }
+  };
 
   const imagemEstatica = imagens && (exploded ? imagens.explodido : night ? imagens.noite : imagens.dia);
   const fallback = (mensagem: string) => (
@@ -193,13 +276,32 @@ export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div role="toolbar" aria-label="Controles da visualização 3D" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" className="btn btn-ghost btn-sm" aria-pressed={night} style={estiloBotao(night)} onClick={() => setNight(valor => !valor)}>
+        <button type="button" className="btn btn-ghost btn-sm" aria-pressed={night} style={estiloBotao(night)} onClick={() => { setAnimando(false); setNight(valor => !valor); }}>
           {night ? "☾ Noite" : "☀ Dia"}
         </button>
-        <button type="button" className="btn btn-ghost btn-sm" aria-pressed={exploded} style={estiloBotao(exploded)} onClick={() => setExploded(valor => !valor)}>
+        <button type="button" className="btn btn-ghost btn-sm" aria-pressed={exploded} style={estiloBotao(exploded)} onClick={() => { setAnimando(false); setExploded(valor => !valor); }}>
           Visão explodida
         </button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReenquadrar(valor => valor + 1)}>Recentralizar</button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          aria-pressed={animando}
+          style={estiloBotao(animando)}
+          title="As peças se encaixam, da fixação até a face"
+          onClick={() => (animando ? setAnimando(false) : iniciarAnimacao())}
+        >
+          {animando ? "■ Parar animação" : "▶ Animação de montagem"}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAnimando(false); setReenquadrar(valor => valor + 1); }}>Recentralizar</button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={gif.tipo === "gerando"}
+          title="Baixa a animação de montagem como imagem GIF"
+          onClick={() => void baixarGif()}
+        >
+          {gif.tipo === "gerando" ? `Gerando GIF… ${Math.round(gif.fracao * 100)}%` : "⬇ Baixar GIF"}
+        </button>
         {!publico && (
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-dim)" }}>
             Qualidade
@@ -210,6 +312,7 @@ export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520
           </label>
         )}
         {carregandoTexturas && <span className="badge b-neutral">Carregando texturas…</span>}
+        {gif.tipo === "erro" && <span className="badge b-bad" role="alert">{gif.mensagem}</span>}
       </div>
       <div style={{ height: altura, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", touchAction: "none" }}>
         <LimiteDeErro fallback={() => fallback("O 3D interativo não pôde ser iniciado neste navegador.")}>
@@ -223,7 +326,7 @@ export function CpqRender3dViewer({ spec, publico = false, imagens, altura = 520
               gl.domElement.addEventListener("webglcontextlost", evento => { evento.preventDefault(); setContextoPerdido(true); });
             }}
           >
-            <CenaRender3d spec={spec} cena={resultado.cena} night={night} exploded={exploded} publico={publico} reenquadrar={reenquadrar} onCarregandoTexturas={setCarregandoTexturas} />
+            <CenaRender3d spec={spec} cena={resultado.cena} night={night} exploded={exploded} publico={publico} reenquadrar={reenquadrar} animacao={animacao} animando={animando} onCarregandoTexturas={setCarregandoTexturas} />
           </Canvas>
         </LimiteDeErro>
       </div>

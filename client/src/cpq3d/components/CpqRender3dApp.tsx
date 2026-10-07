@@ -32,6 +32,15 @@ const ROTULO_PREVIEW: Record<TipoPreview, string> = { dia: "vista diurna", noite
 
 type EtapaAprovacao = { tipo: "parado" } | { tipo: "capturando"; preview: TipoPreview } | { tipo: "enviando" } | { tipo: "aprovando" };
 
+/** Cores com que a peça é desenhada: as das regiões da face que usam o material, ou a cor do próprio material. */
+function coresDaPeca(spec: CpqRender3dSpec, material: CpqRender3dSpec["materials"][number]): string[] {
+  if (material.role === "face") {
+    const doDesenho = [...new Set(spec.regions.filter(regiao => regiao.materialId === material.mubisysMateriaPrimaId && regiao.colorHex).map(regiao => regiao.colorHex!))];
+    if (doDesenho.length) return doDesenho;
+  }
+  return [material.pbr.colorHex];
+}
+
 const caixa = (cor: "warn" | "bad" | "ok") => ({
   background: `var(--${cor}-soft)`,
   border: `1px solid color-mix(in oklab, var(--${cor}) 35%, var(--border))`,
@@ -218,12 +227,25 @@ export function CpqRender3dApp() {
           <div className="cardhead"><div><h3>Materiais e perfis visuais</h3><p>O que o servidor resolveu para cada peça. As espessuras vêm do cadastro das matérias-primas.</p></div></div>
           <div className="tablewrap">
             <table>
-              <thead><tr><th>Peça</th><th>Material</th><th>Perfil visual</th><th>Espessura</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Peça</th><th>Material</th><th>Cor no 3D</th><th>Perfil visual</th><th>Espessura</th><th>Situação</th></tr></thead>
               <tbody>
                 {spec.materials.map(material => (
                   <tr key={`${material.role}-${material.mubisysMateriaPrimaId}`}>
                     <td>{ROTULO_RENDER_ROLE[material.role]}</td>
                     <td>{material.materialName}</td>
+                    <td>
+                      {material.role === "led" || material.role === "fixing" ? "—" : (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }} title={material.overrides?.colorHex ? "Cor cadastrada na matéria-prima" : "Sem cor cadastrada na matéria-prima: cor aproximada do perfil visual (ou da arte aprovada)"}>
+                          {coresDaPeca(spec, material).map(cor => (
+                            <span key={cor} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <i style={{ width: 14, height: 14, borderRadius: 4, background: cor, border: "1px solid var(--border)", display: "inline-block" }} aria-hidden />
+                              <span style={{ fontSize: 11.5 }}>{cor.toUpperCase()}</span>
+                            </span>
+                          ))}
+                          {!material.overrides?.colorHex && <span className="badge b-neutral" style={{ fontSize: 10.5 }}>aproximada</span>}
+                        </span>
+                      )}
+                    </td>
                     <td>{material.profileId > 0 ? `${material.profileName} (v${material.profileVersion}) · ${ROTULO_MATERIAL_FAMILY[material.family]}` : "—"}</td>
                     <td className="num">{material.thicknessMm ? `${material.thicknessMm} mm` : "—"}</td>
                     <td>{material.estimated ? <span className="badge b-warn">Estimado</span> : <span className="badge b-ok">Perfil cadastrado</span>}</td>

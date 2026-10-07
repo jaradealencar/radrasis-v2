@@ -10,19 +10,16 @@ const FUNDO_NOITE = new THREE.Color("#080b12");
 /**
  * Luz da cena. Dia e noite NÃO são só o fundo: de dia o ambiente (HDRI) e a luz principal dominam e a emissão cai; à noite o
  * ambiente quase some, entra só uma luz mínima e a emissão (face, LEDs, halo) passa a ser a fonte. Uma única luz principal com
- * sombra; nunca uma luz por módulo LED.
+ * sombra; nunca uma luz por módulo LED. À noite NÃO há luzes pontuais "do letreiro": na face de acrílico com verniz elas deixavam
+ * pontos estourados (reflexo especular); o brilho na parede vem do halo aditivo (`LetterBoxAssembly`).
  */
-export function LightingRig({ estado, cena, iluminada }: { estado: MutableRefObject<EstadoCena>; cena: CenaDados; iluminada: boolean }) {
+export function LightingRig({ estado, cena }: { estado: MutableRefObject<EstadoCena>; cena: CenaDados }) {
   const { scene, invalidate } = useThree();
   const principal = useRef<THREE.DirectionalLight>(null);
   const hemisferio = useRef<THREE.HemisphereLight>(null);
   const preenchimento = useRef<THREE.DirectionalLight>(null);
-  const pontos = useRef<THREE.PointLight[]>([]);
   const escala = Math.max(cena.larguraM, cena.alturaM, 0.2);
   const fundo = useMemo(() => new THREE.Color(FUNDO_DIA), []);
-
-  // Uma luz pontual por GRUPO de face (agrega a emissão da peça), no máximo 6.
-  const grupos = useMemo(() => cena.grupos.slice(0, 6), [cena.grupos]);
 
   useEffect(() => {
     scene.background = fundo;
@@ -37,9 +34,6 @@ export function LightingRig({ estado, cena, iluminada }: { estado: MutableRefObj
     if (principal.current) principal.current.intensity = interpolar(1.5, 0.08, noite);
     if (preenchimento.current) preenchimento.current.intensity = interpolar(0.25, 0.02, noite);
     if (hemisferio.current) hemisferio.current.intensity = interpolar(0.25, 0.03, noite);
-    pontos.current.forEach((luz, indice) => {
-      if (luz) luz.intensity = iluminada ? noite * Math.min(1.5, 0.35 + (grupos[indice]?.areaM2 ?? 0) * 6) : 0;
-    });
   });
 
   return (
@@ -60,17 +54,6 @@ export function LightingRig({ estado, cena, iluminada }: { estado: MutableRefObj
         shadow-camera-far={escala * 6}
       />
       <directionalLight ref={preenchimento} position={[-escala, escala * 0.3, escala]} intensity={0.6} />
-      {grupos.map((grupo, indice) => (
-        <pointLight
-          key={grupo.chave}
-          ref={luz => { if (luz) pontos.current[indice] = luz; }}
-          position={[0, 0, cena.profundidadeM + Math.max(cena.alturaM, cena.larguraM) * 0.25]}
-          color={grupo.colorHex ?? "#fff4e0"}
-          intensity={0}
-          distance={escala * 3}
-          decay={2}
-        />
-      ))}
     </>
   );
 }

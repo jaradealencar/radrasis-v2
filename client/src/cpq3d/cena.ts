@@ -68,7 +68,7 @@ export interface CenaDados {
   leds: LayoutLeds | null;
   moduloLedM: [number, number, number];
   fixadores: PontoFixador[];
-  /** Camadas do halo do backlight, da mais próxima da silhueta para a mais distante. */
+  /** Camadas do halo na parede (forte no backlight, só um respingo de luz no frontlight), da mais próxima da silhueta para a mais distante. */
   halo: Regiao[][];
   materiais: {
     face: MaterialDoSpec[];
@@ -82,6 +82,14 @@ export interface CenaDados {
 
 export function materialDoPapel(spec: Pick<DesenhoSpec, "materials">, role: MaterialDoSpec["role"]): MaterialDoSpec | null {
   return spec.materials.find(material => material.role === role) ?? null;
+}
+
+/**
+ * O letreiro acende à noite quando a construção é iluminada OU quando a composição traz módulos de LED (papel `led`), mesmo que o
+ * kit esteja marcado "sem iluminação": o LED na composição é o que o vendedor vai orçar e instalar, então a visão noturna o mostra aceso.
+ */
+export function cenaIluminada(spec: Pick<DesenhoSpec, "construction" | "materials">): boolean {
+  return spec.construction.kind !== "non_illuminated" || spec.materials.some(material => material.role === "led");
 }
 
 /** Tamanho real (m) de uma repetição da textura da parede: o tile do primeiro mapa de textura cadastrado, ou 0,2 m. */
@@ -157,7 +165,9 @@ export function construirCena(spec: DesenhoSpec, qualidade: Qualidade = "alta"):
   if (fundo?.semRecuo) avisos.push(`${fundo.semRecuo} região(ões) do fundo são finas demais para o recuo da lateral e usam o contorno sem recuo.`);
 
   /* --- LEDs, fixadores e halo --- */
-  const iluminada = construction.kind !== "non_illuminated";
+  const iluminada = cenaIluminada(spec);
+  if (construction.kind === "non_illuminated" && iluminada)
+    avisos.push("O kit está marcado sem iluminação, mas a composição tem módulos de LED: o 3D mostra o letreiro aceso (frontlight).");
   const [moduloLarguraMm, moduloAlturaMm] = [construction.ledModuleWidthMm ?? MODULO_LED_PADRAO_MM[0], construction.ledModuleHeightMm ?? MODULO_LED_PADRAO_MM[1]];
   const base = fundo?.regioes ?? silhueta;
   const leds = iluminada && materialLed
@@ -175,7 +185,7 @@ export function construirCena(spec: DesenhoSpec, qualidade: Qualidade = "alta"):
 
   const standoffM = mmToWorld(construction.wallStandoffMm);
   const alcance = Math.max(standoffM, 0.02) * 1.6;
-  const halo = construction.kind === "backlight"
+  const halo = iluminada
     ? [0.12, 0.3, 0.55, 0.8, 1, 1.2].map(fator => deslocarRegioes(silhueta, alcance * fator)).filter(camada => camada.length)
     : [];
 

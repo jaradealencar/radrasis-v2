@@ -52,7 +52,9 @@ import {
   type CpqRenderLinkOverrides,
 } from "../../shared/cpq-render3d-presets";
 import { inspecionarSvgRender3d } from "../../shared/cpq-render3d-svg";
+import { hexesDoPantone } from "../../shared/pantone-referencia";
 import { getDb } from "../db/db";
+import { cmykParaRgb, hexParaRgb } from "./cpqCoresMateriais";
 import { contornosFisicosDoSvg, verificarTicketAnaliseFactibilidade } from "./cpqFactibilidadeFabricacao";
 
 export class CpqRender3dError extends Error {
@@ -84,6 +86,23 @@ export interface DadosMateriaRender {
   perfilLarguraMm: number | null;
   /** Ausente na fonte "fixada" (link público): lá a cor já vem gravada em `overrides` do snapshot. */
   aparencia?: AparenciaCadastradaMateria;
+  /**
+   * Cor (#rrggbb) do cadastro de cor da chapa (CMYK ou, na falta, o primeiro Pantone da lista de `estudio_chapas`), a mesma que a
+   * análise de cores usa para casar a arte. Vale quando a aparência da matéria-prima não tem HEX. Ausente na fonte "fixada".
+   */
+  corChapaHex?: string | null;
+}
+
+/** Cor de amostra do cadastro de cor da chapa: CMYK completo, senão o primeiro Pantone da lista que existe na tabela de referência. */
+export function corHexDoCadastroDeChapa(chapa: { cmykC: unknown; cmykM: unknown; cmykY: unknown; cmykK: unknown; pantoneCode: string | null | undefined }): string | null {
+  const [c, m, y, k] = [chapa.cmykC, chapa.cmykM, chapa.cmykY, chapa.cmykK].map(valor => numero(valor));
+  let rgb: [number, number, number] | null = null;
+  if (c != null && m != null && y != null && k != null) rgb = cmykParaRgb({ c, m, y, k });
+  else for (const { hex } of hexesDoPantone(chapa.pantoneCode)) {
+    rgb = hexParaRgb(hex);
+    if (rgb) break;
+  }
+  return rgb ? `#${rgb.map(canal => canal.toString(16).padStart(2, "0")).join("")}` : null;
 }
 
 export interface PerfilVisualResolvido {
@@ -117,22 +136,25 @@ export const chaveVinculo = (materiaPrimaId: number, role: CpqRenderRole) => `${
 const HEX_COR = /^#[\da-f]{6}$/i;
 
 /**
- * Cor efetiva do material: override explícito do vínculo > cor cadastrada na matéria-prima > cor do perfil visual. A cor cadastrada
- * vira um `colorHex` em `overrides` (e por isso entra no hash, no snapshot e no link público), mas só quando o perfil não tem mapa
- * de cor próprio (a foto/mapa já traz a cor; tingir por cima a distorceria).
+ * Cor efetiva do material: override explícito do vínculo > cor (HEX) cadastrada na aparência da matéria-prima > cor do cadastro de
+ * cor da chapa (CMYK/Pantone) > cor do perfil visual. A cor cadastrada vira um `colorHex` em `overrides` (e por isso entra no hash,
+ * no snapshot e no link público), mas só quando o perfil não tem mapa de cor próprio (a foto/mapa já traz a cor; tingir por cima a
+ * distorceria).
  */
 export function overridesComAparencia(
   overrides: CpqRenderLinkOverrides | null,
   perfil: Pick<PerfilVisualResolvido, "assets">,
   aparencia: AparenciaCadastradaMateria | undefined,
+  corChapaHex?: string | null,
 ): CpqRenderLinkOverrides | null {
   if (overrides?.colorHex) return overrides;
-  if (aparencia?.modo !== "cor" || !aparencia.corHex || !HEX_COR.test(aparencia.corHex)) return overrides;
   if (perfil.assets.some(asset => asset.kind === "baseColor")) return overrides;
-  return { ...overrides, colorHex: aparencia.corHex.toLowerCase() };
+  if (aparencia?.modo === "cor" && aparencia.corHex && HEX_COR.test(aparencia.corHex)) return { ...overrides, colorHex: aparencia.corHex.toLowerCase() };
+  if (corChapaHex && HEX_COR.test(corChapaHex)) return { ...overrides, colorHex: corChapaHex.toLowerCase() };
+  return overrides;
 }
 
-/** Aviso (nunca bloqueio) quando a aparência cadastrada não define a cor do desenho. */
+/** Aviso (nunca bloqueio) quando nem a aparência nem o cadastro de cor da chapa definem a cor do material. */
 function avisoDeAparencia(nome: string, aparencia: AparenciaCadastradaMateria | undefined, overrides: CpqRenderLinkOverrides | null): string | null {
   if (overrides?.colorHex || !aparencia) return null;
   if (aparencia.modo === "nao_informada") return `"${nome}" não tem cor/textura cadastrada na matéria-prima: o 3D usa a cor do perfil visual.`;
@@ -412,6 +434,8 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
   const faceLinhas = comPapel.filter(linha => linha.role === "face");
   const faceDeclarada = faceLinhas.find(linha => linha.confirmado) ?? faceLinhas[0] ?? null;
   const regioes: CpqRenderRegion[] = [];
+  /** Como cada região da face é atendida (chapa, adesivo, pendente): decide se a cor vem do material ou da arte. */
+  const tipoDaRegiao = new Map<string, string>();
   const idsFaceExtras = new Set<number>();
   const mapeamento = draft.mapeamentoCores;
   const pathCount = inspecao.pathCount;
@@ -441,6 +465,7 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
       const cor = regiao.corHex ?? regiao.coresGradiente[0] ?? null;
       if (!regiao.corHex && cor) warnings.push(`A região ${regiao.regionKey} é um degradê/arte complexa: o 3D usa uma cor representativa (${cor}).`);
       regiao.pathIndexes.forEach(indice => indicesCobertos.add(indice));
+      tipoDaRegiao.set(regiao.regionKey, regiao.tipoSugestao);
       regioes.push({ regionKey: regiao.regionKey, pathIndexes: [...regiao.pathIndexes].sort((a, b) => a - b), colorHex: cor?.toLowerCase() ?? null, materialId, profileId: null });
     }
     if (pathCount > 0 && indicesCobertos.size < pathCount)
@@ -450,6 +475,7 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
     if (primeira) {
       const materialId = primeira.tipoSugestao === "chapa" ? primeira.chapaMateriaPrimaId : primeira.requerChapaBase ? primeira.chapaBaseMateriaPrimaId : faceDeclarada?.materiaPrimaId ?? null;
       if (materialId != null) idsFaceExtras.add(materialId);
+      tipoDaRegiao.set(primeira.regionKey, primeira.tipoSugestao);
       regioes.push({ regionKey: primeira.regionKey, pathIndexes: [], colorHex: (primeira.corHex ?? primeira.coresGradiente[0] ?? null)?.toLowerCase() ?? null, materialId, profileId: null });
     }
   }
@@ -495,7 +521,7 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
     if (PAPEIS_ESTRUTURAIS.includes(role) && espessura == null && !fixada)
       blockers.push(bloqueio("espessura_ausente", `A espessura de "${nome}" não está cadastrada (Administração > Produtos > Matérias-primas).`, "espessuraMm", materiaPrimaId));
     if (vinculo) {
-      const overrides = overridesComAparencia(vinculo.overrides, vinculo.perfil, dados?.aparencia);
+      const overrides = overridesComAparencia(vinculo.overrides, vinculo.perfil, dados?.aparencia, dados?.corChapaHex);
       const pbr = aplicarOverridesPbr(vinculo.perfil.pbr, overrides);
       const avisoAparencia = !fixada && ["face", "return", "back", "profile"].includes(role) ? avisoDeAparencia(nome, dados?.aparencia, overrides) : null;
       if (avisoAparencia) warnings.push(avisoAparencia);
@@ -527,6 +553,12 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
     } else {
       const familia = familiaPresetSemVinculo(role);
       avisos.push("Sem perfil visual cadastrado: aparência estimada por um preset genérico.");
+      // A cor cadastrada da matéria-prima vale mesmo sem perfil (só para peças do corpo; módulo LED e fixação mantêm o preset).
+      const overrides = ["face", "return", "back", "profile"].includes(role) ? overridesComAparencia(null, { assets: [] }, dados?.aparencia, dados?.corChapaHex) : null;
+      if (!fixada && ["face", "return", "back", "profile"].includes(role)) {
+        const avisoAparencia = avisoDeAparencia(nome, dados?.aparencia, overrides);
+        if (avisoAparencia) warnings.push(avisoAparencia);
+      }
       materiais.push({
         mubisysMateriaPrimaId: materiaPrimaId,
         materialName: nome,
@@ -536,10 +568,11 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
         profileName: "Preset estimado (sem perfil visual)",
         family: familia,
         thicknessMm: espessura,
-        pbr: presetPbr(familia),
+        pbr: aplicarOverridesPbr(presetPbr(familia), overrides),
         assets: [],
         estimated: true,
         warnings: avisos,
+        ...(overrides ? { overrides } : {}),
       });
       if (!fixada && role !== "fixing")
         blockers.push(bloqueio("material_sem_vinculo", `"${nome}" não tem perfil visual (Administração > Materiais 3D). O preview é estimado e não pode ser aprovado.`, "profileId", materiaPrimaId));
@@ -550,6 +583,11 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
   for (const regiao of regioes) {
     const perfil = regiao.materialId == null ? null : materiais.find(material => material.role === "face" && material.mubisysMateriaPrimaId === regiao.materialId);
     regiao.profileId = perfil && perfil.profileId > 0 ? perfil.profileId : null;
+    // Região feita da própria chapa (ou sem adesivo, na face da composição): o letreiro sai do material, então a cor é a cadastrada
+    // dele. Em região de adesivo vale a cor da arte, que é a do vinil. Sem cor cadastrada, a arte segue como aproximação.
+    const tipo = tipoDaRegiao.get(regiao.regionKey);
+    const corDoMaterial = perfil?.overrides?.colorHex;
+    if ((tipo === "chapa" || tipo === "pendente") && corDoMaterial) regiao.colorHex = corDoMaterial.toLowerCase();
   }
 
   /* --- espessuras e profundidade --- */
@@ -582,7 +620,7 @@ export async function montarSpec(entrada: EntradaMontagem): Promise<CpqRender3dS
       warnings.push("O tamanho do módulo LED não está cadastrado no kit: os módulos são desenhados com tamanho ilustrativo.");
   }
   if (construcaoKit?.kind === "non_illuminated" && linhasLed.length)
-    warnings.push("O kit é sem iluminação, mas a composição tem LED: o 3D não ilumina nada.");
+    warnings.push("O kit é sem iluminação, mas a composição tem módulos de LED: o 3D mostra o letreiro aceso (frontlight) na visão noturna.");
 
   const fixingTypes = draft.tiposFixacao.filter(tipo => tipo !== "sem_fixacao");
 
@@ -906,12 +944,30 @@ export function criarFonteBanco(): CpqRender3dFonte {
           .from(materiaPrimaCadastros)
           .leftJoin(materiaPrimaCategorias, eq(materiaPrimaCadastros.categoriaId, materiaPrimaCategorias.id))
           .where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, ids)),
-        db.select({ materiaPrimaId: estudioChapas.mubisysMateriaPrimaId }).from(estudioChapas)
+        db.select({
+          id: estudioChapas.id,
+          materiaPrimaId: estudioChapas.mubisysMateriaPrimaId,
+          principal: estudioChapas.principal,
+          temCor: estudioChapas.temCor,
+          pantoneCode: estudioChapas.pantoneCode,
+          cmykC: estudioChapas.cmykC,
+          cmykM: estudioChapas.cmykM,
+          cmykY: estudioChapas.cmykY,
+          cmykK: estudioChapas.cmykK,
+        }).from(estudioChapas)
           .where(and(inArray(estudioChapas.mubisysMateriaPrimaId, ids), eq(estudioChapas.ativo, true))),
       ]);
       const comFormato = new Set(formatos.map(linha => linha.materiaPrimaId));
+      // Um formato por matéria-prima define a cor de amostra: o principal e, entre iguais, o de menor id. Formato marcado "sem
+      // configuração de cor" (`temCor` falso) não tem cor de amostra confiável.
+      const corChapa = new Map<number, string>();
+      for (const formato of [...formatos].sort((a, b) => Number(b.principal) - Number(a.principal) || a.id - b.id)) {
+        if (corChapa.has(formato.materiaPrimaId) || !formato.temCor) continue;
+        const cor = corHexDoCadastroDeChapa(formato);
+        if (cor) corChapa.set(formato.materiaPrimaId, cor);
+      }
       for (const id of ids)
-        mapa.set(id, { id, usaChapa: false, usaBobina: false, usaPerfil: false, temFormatoChapa: comFormato.has(id), espessuraMm: null, perfilAlturaMm: null, perfilLarguraMm: null });
+        mapa.set(id, { id, usaChapa: false, usaBobina: false, usaPerfil: false, temFormatoChapa: comFormato.has(id), espessuraMm: null, perfilAlturaMm: null, perfilLarguraMm: null, corChapaHex: corChapa.get(id) ?? null });
       for (const { cadastro, categoria } of cadastros)
         mapa.set(cadastro.mubisysMateriaPrimaId, {
           id: cadastro.mubisysMateriaPrimaId,
@@ -922,6 +978,7 @@ export function criarFonteBanco(): CpqRender3dFonte {
           espessuraMm: numero(cadastro.espessuraMm),
           perfilAlturaMm: numero(cadastro.perfilAlturaMm),
           perfilLarguraMm: numero(cadastro.perfilLarguraMm),
+          corChapaHex: corChapa.get(cadastro.mubisysMateriaPrimaId) ?? null,
           aparencia: {
             modo: cadastro.aparenciaModo === "cor" || cadastro.aparenciaModo === "textura" ? cadastro.aparenciaModo : "nao_informada",
             corHex: cadastro.aparenciaCorHex ?? null,

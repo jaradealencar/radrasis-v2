@@ -4,11 +4,12 @@ import * as THREE from "three";
 import type { CpqTextureKind } from "@shared/cpq-render3d";
 import { mesclarFaces, mesclarSimples, construirGeometriasFace } from "../geometry/buildFaceGeometry";
 import { regiaoParaShape } from "../geometry/geometryUtils";
-import { descartarMaterial, createEdgeMaterial, createPhysicalMaterial, familiaAceitaCorDaRegiao, presetPbr } from "../materialLibrary";
-import type { CenaDados, DesenhoSpec, MaterialDoSpec } from "../cena";
+import { descartarMaterial, createEdgeMaterial, createPhysicalMaterial, emissaoDaFace, faceAcendeComLed, familiaAceitaCorDaRegiao, INTENSIDADE_LED_ATRAS_DA_FACE, presetPbr } from "../materialLibrary";
+import { cenaIluminada, type CenaDados, type DesenhoSpec, type MaterialDoSpec } from "../cena";
 import { carregarMapasDoMaterial, type MapasCarregados } from "../textureLoader";
 import { ExplodedLabels, type RotuloExplodido } from "./ExplodedLabels";
-import type { EstadoCena } from "./estadoCena";
+import type { ParteMontagem } from "../animacaoMontagem";
+import { afastamentoDaParte, type EstadoCena } from "./estadoCena";
 
 /** Deslocamento em Z de cada componente na visão explodida, em múltiplos da distância base (parede fica fixa). */
 const FATOR_EXPLOSAO = { face: 2.0, retorno: 0.7, perfil: 0, leds: -0.5, fundo: -1.2, fixadores: -1.7 } as const;
@@ -58,8 +59,8 @@ function criarMateriais(cena: CenaDados, mapas: MapasPorMaterial, iluminada: boo
   for (const grupo of cena.grupos) {
     const base = cena.materiais.face.find(item => item.mubisysMateriaPrimaId === grupo.materialId) ?? cena.materiais.face[0] ?? null;
     const material = base
-      ? para(base, grupo.colorHex)!
-      : registrar(createPhysicalMaterial({ pbr: presetPbr("generic_dielectric"), family: "generic_dielectric", thicknessMm: null }, {}, false, { corHex: grupo.colorHex, iluminada: false }));
+      ? registrar(createPhysicalMaterial(base, mapas.get(chaveMaterial(base)) ?? ({} as Partial<Record<CpqTextureKind, THREE.Texture>>), false, { corHex: grupo.colorHex, iluminada, faceAcende: iluminada && faceAcendeComLed(base.family, base.pbr) }))
+      : registrar(createPhysicalMaterial({ pbr: presetPbr("generic_dielectric"), family: "generic_dielectric", thicknessMm: null }, {}, false, { corHex: grupo.colorHex, iluminada, faceAcende: iluminada }));
     const acrilico = base?.family === "acrylic_translucent" || base?.family === "acrylic_solid";
     face.set(grupo.chave, { material, borda: acrilico ? registrar(createEdgeMaterial(material)) : null });
   }
@@ -75,19 +76,27 @@ function criarMateriais(cena: CenaDados, mapas: MapasPorMaterial, iluminada: boo
 
 /** Parâmetros de emissão que o `useFrame` interpola entre dia e noite. */
 function aplicarEmissao(materiais: MateriaisCena, cena: CenaDados, iluminada: boolean, noite: number) {
-  const ajustar = (material: THREE.MeshPhysicalMaterial | null, base: MaterialDoSpec | null, multiplicador = 1) => {
+  const ajustar = (material: THREE.MeshPhysicalMaterial | null, base: Pick<MaterialDoSpec, "pbr"> | null, acende: boolean, multiplicador = 1) => {
     if (!material || !base) return;
-    const { emissiveIntensityDay: dia, emissiveIntensityNight: noturna } = base.pbr;
-    material.emissiveIntensity = iluminada ? (dia + (noturna - dia) * noite) * multiplicador : 0;
+    material.emissiveIntensity = iluminada ? emissaoDaFace(base.pbr, noite, acende) * multiplicador : 0;
   };
   for (const grupo of cena.grupos) {
     const entrada = materiais.face.get(grupo.chave);
     const base = cena.materiais.face.find(item => item.mubisysMateriaPrimaId === grupo.materialId) ?? cena.materiais.face[0] ?? null;
-    if (!entrada || !base) continue;
-    ajustar(entrada.material, base);
-    ajustar(entrada.borda, base, 1.35); // a borda do acrílico guia a luz e acende um pouco mais
+    if (!entrada) continue;
+    // Sem material de face na composição (preview estimado) a face é o dielétrico genérico, que também acende com os LEDs.
+    const referencia = base ?? { pbr: presetPbr("generic_dielectric") };
+    const acende = base ? faceAcendeComLed(base.family, base.pbr) : true;
+    ajustar(entrada.material, referencia, acende);
+    ajustar(entrada.borda, referencia, acende, 1.35); // a borda do acrílico guia a luz e acende um pouco mais
   }
-  ajustar(materiais.led, cena.materiais.led);
+  if (materiais.led && cena.materiais.led) {
+    // O LED visto através da face difusa não vira um ponto estourado: o brilho forte fica para o LED à mostra (visão explodida).
+    const atrasDaFace = cena.materiais.face.length === 0 || cena.materiais.face.some(item => faceAcendeComLed(item.family, item.pbr));
+    const cheio = emissaoDaFace(cena.materiais.led.pbr, noite, false);
+    const limite = atrasDaFace ? THREE.MathUtils.lerp(cena.materiais.led.pbr.emissiveIntensityDay, INTENSIDADE_LED_ATRAS_DA_FACE, noite) : Infinity;
+    materiais.led.emissiveIntensity = iluminada ? Math.min(cheio, Math.max(limite, 0)) : 0;
+  }
 }
 
 export interface PropsAssembly {
@@ -107,7 +116,7 @@ export function LetterBoxAssembly({ spec, cena, estado, publico, onCarregandoTex
   const invalidate = useThree(estadoR3f => estadoR3f.invalidate);
   const { mapas, carregando } = useMapas(spec);
   useEffect(() => { onCarregandoTexturas?.(carregando); }, [carregando, onCarregandoTexturas]);
-  const iluminada = spec.construction.kind !== "non_illuminated";
+  const iluminada = cenaIluminada(spec);
   const backlight = spec.construction.kind === "backlight";
 
   const materiais = useMemo(() => criarMateriais(cena, mapas, iluminada), [cena, mapas, iluminada]);
@@ -148,19 +157,22 @@ export function LetterBoxAssembly({ spec, cena, estado, publico, onCarregandoTex
 
   useFrame(() => {
     const { explodido, noite } = estado.current;
-    const z = (fator: number) => fator * distancia * explodido;
-    if (refs.face.current) refs.face.current.position.z = z(FATOR_EXPLOSAO.face);
-    if (refs.retorno.current) refs.retorno.current.position.z = z(fatorRetorno);
-    if (refs.leds.current) refs.leds.current.position.z = z(FATOR_EXPLOSAO.leds);
-    if (refs.fundo.current) refs.fundo.current.position.z = z(FATOR_EXPLOSAO.fundo);
-    if (refs.fixadores.current) refs.fixadores.current.position.z = z(FATOR_EXPLOSAO.fixadores);
+    // Cada peça segue o seu próprio afastamento: o da animação de montagem, ou o geral da visão explodida.
+    const z = (fator: number, parte: ParteMontagem) => fator * distancia * afastamentoDaParte(estado.current, parte);
+    if (refs.face.current) refs.face.current.position.z = z(FATOR_EXPLOSAO.face, "face");
+    if (refs.retorno.current) refs.retorno.current.position.z = z(fatorRetorno, "retorno");
+    if (refs.leds.current) refs.leds.current.position.z = z(FATOR_EXPLOSAO.leds, "leds");
+    if (refs.fundo.current) refs.fundo.current.position.z = z(FATOR_EXPLOSAO.fundo, "fundo");
+    if (refs.fixadores.current) refs.fixadores.current.position.z = z(FATOR_EXPLOSAO.fixadores, "fixadores");
     if (planoParede.current) {
       const material = planoParede.current.material as THREE.MeshStandardMaterial;
       material.opacity = 1 - 0.88 * explodido; // a parede não se move: some quando o conjunto se abre
       material.color.set("#bdb9b0").lerp(new THREE.Color("#15171d"), noite);
     }
+    // Backlight: a luz vai para a parede, halo forte. Frontlight: a luz sai pela face e só respinga de leve na parede.
+    const forcaHalo = backlight ? 0.1 : 0.04;
     halos.current.forEach((malha, indice) => {
-      if (malha) (malha.material as THREE.MeshBasicMaterial).opacity = backlight ? noite * (0.1 - indice * 0.008) : 0;
+      if (malha) (malha.material as THREE.MeshBasicMaterial).opacity = iluminada ? noite * Math.max(forcaHalo - indice * forcaHalo * 0.08, 0) : 0;
     });
     aplicarEmissao(materiais, cena, iluminada, noite);
   });
@@ -233,7 +245,7 @@ export function LetterBoxAssembly({ spec, cena, estado, publico, onCarregandoTex
       {/* fundo */}
       <group ref={refs.fundo}>
         {fundoGeometria && materiais.fundo && <mesh geometry={fundoGeometria} material={materiais.fundo} castShadow receiveShadow />}
-        <ExplodedLabels rotulos={rotuloPorTexto("Fundo")} alturaM={cena.alturaM} estado={estado} />
+        <ExplodedLabels rotulos={rotuloPorTexto("Fundo")} alturaM={cena.alturaM} estado={estado} parte="fundo" />
       </group>
 
       {/* fixadores (atrás do fundo) */}
@@ -241,7 +253,7 @@ export function LetterBoxAssembly({ spec, cena, estado, publico, onCarregandoTex
         {fixacao.map(item => (
           <Instancias key={item.tipo} geometria={item.geometria} material={materiais.fixacao!} pontos={item.pontos} z={0} />
         ))}
-        <ExplodedLabels rotulos={rotuloPorTexto("Fixação")} alturaM={cena.alturaM} estado={estado} />
+        <ExplodedLabels rotulos={rotuloPorTexto("Fixação")} alturaM={cena.alturaM} estado={estado} parte="fixadores" />
       </group>
 
       {/* LEDs instanciados: uma malha, nunca uma luz por módulo */}
@@ -251,13 +263,13 @@ export function LetterBoxAssembly({ spec, cena, estado, publico, onCarregandoTex
             <boxGeometry args={cena.moduloLedM} />
           </instancedMesh>
         )}
-        <ExplodedLabels rotulos={rotuloPorTexto(publico ? "Iluminação" : "LEDs")} alturaM={cena.alturaM} estado={estado} />
+        <ExplodedLabels rotulos={rotuloPorTexto(publico ? "Iluminação" : "LEDs")} alturaM={cena.alturaM} estado={estado} parte="leds" />
       </group>
 
       {/* lateral oca */}
       <group ref={refs.retorno}>
         {cena.parede && materiais.parede && <mesh geometry={cena.parede} material={materiais.parede} castShadow receiveShadow />}
-        <ExplodedLabels rotulos={[...rotuloPorTexto("Retorno"), ...rotuloPorTexto("Perfil lateral")]} alturaM={cena.alturaM} estado={estado} />
+        <ExplodedLabels rotulos={[...rotuloPorTexto("Retorno"), ...rotuloPorTexto("Perfil lateral")]} alturaM={cena.alturaM} estado={estado} parte="retorno" />
       </group>
 
       {/* face, por grupo de cor/material */}
@@ -276,7 +288,7 @@ export function LetterBoxAssembly({ spec, cena, estado, publico, onCarregandoTex
             />
           );
         })}
-        <ExplodedLabels rotulos={rotuloPorTexto("Face")} alturaM={cena.alturaM} estado={estado} />
+        <ExplodedLabels rotulos={rotuloPorTexto("Face")} alturaM={cena.alturaM} estado={estado} parte="face" />
       </group>
     </group>
   );

@@ -44,7 +44,7 @@ describe("montagem da cena a partir do spec", () => {
     expect(cena.fundo?.regioes.length).toBe(2);
     expect(cena.leds?.pontos.length).toBeGreaterThan(0);
     expect(cena.fixadores.length).toBeGreaterThan(0);
-    expect(cena.halo).toEqual([]); // só o backlight tem halo
+    expect(cena.halo.length).toBeGreaterThan(0); // frontlight: respingo de luz na parede (o halo forte é do backlight)
     expect(cena.avisos).toEqual([]);
   });
 
@@ -61,12 +61,22 @@ describe("montagem da cena a partir do spec", () => {
     expect(azul.regioes[0].holes).toHaveLength(1); // o vazado da primeira letra continua no grupo
   });
 
-  it("backlight gera o halo seguindo a silhueta (camadas deslocadas); sem iluminação não há LED", () => {
+  it("o halo segue a silhueta (camadas deslocadas) e só existe com iluminação; sem iluminação e sem LED na composição não há LED", () => {
     const backlight = construirCena(spec({}, { kind: "backlight" }));
     expect(backlight.halo.length).toBeGreaterThan(3);
-    const apagado = construirCena(spec({}, { kind: "non_illuminated" }));
+    const semLed = spec({}, { kind: "non_illuminated" });
+    semLed.materials = semLed.materials.filter(item => item.role !== "led");
+    const apagado = construirCena(semLed);
     expect(apagado.leds).toBeNull();
     expect(apagado.halo).toEqual([]);
+    expect(apagado.avisos).toEqual([]);
+  });
+
+  it("composição com módulos de LED num kit sem iluminação: os LEDs aparecem (letreiro aceso à noite), com respingo de luz na parede e aviso", () => {
+    const cena = construirCena(spec({}, { kind: "non_illuminated" }));
+    expect(cena.leds?.pontos.length).toBeGreaterThan(0);
+    expect(cena.halo.length).toBeGreaterThan(0); // composição com LED acende: respingo de luz na parede
+    expect(cena.avisos.some(aviso => aviso.includes("mostra o letreiro aceso"))).toBe(true);
   });
 
   it("quantidade física de LEDs da composição é respeitada exatamente", () => {
