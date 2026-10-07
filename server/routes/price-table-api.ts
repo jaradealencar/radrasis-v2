@@ -70,14 +70,14 @@ export function registrarRotasPriceTableApi(app: Express) {
         db.select().from(priceTableAffiliations),
       ]);
       const parPorSecao = new Map<number, typeof pares[number]>();
-      const produtosPorPar = new Map<number, Array<{ id: number; mubisys_produto_id: number; nome: string; categoria: string | null }>>();
+      const produtosPorPar = new Map<number, Array<{ id: number; mubisys_produto_id: number; mubisys_modelo_ids: number[] | null; nome: string; categoria: string | null }>>();
       for (const par of pares) {
         parPorSecao.set(par.principalSectionId, par);
         parPorSecao.set(par.novoClienteSectionId, par);
       }
       for (const produto of afiliacoes) {
         const lista = produtosPorPar.get(produto.blockPairId) ?? [];
-        lista.push({ id: produto.id, mubisys_produto_id: produto.mubisysProdutoId, nome: produto.nomeProduto, categoria: produto.categoria });
+        lista.push({ id: produto.id, mubisys_produto_id: produto.mubisysProdutoId, mubisys_modelo_ids: produto.mubisysModeloIds, nome: produto.nomeProduto, categoria: produto.categoria });
         produtosPorPar.set(produto.blockPairId, lista);
       }
 
