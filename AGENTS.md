@@ -900,7 +900,7 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   OpenAI; o botão foi liberado com um token fictício local) e o SVG entrou pelo caminho "enviar SVG pronto"; a validação de silhueta
   reprovou a arte sintética (IoU 83%) e seguiu pela revisão manual; o adesivo foi desconsiderado (sem preço de vinil no banco de teste);
   o preço foi aprovado pelo botão "Aprovar preço calculado" (sem GPT); upload de arquivo por `DataTransfer` (o `FileReader` não lê
-  pastas temporárias no Edge headless). **Não validado**: GPU real (só WebGL por software), logo com centenas de caminhos/curvas,
+  pastas temporárias no Edge headless). **Não validado**: o fluxo completo em GPU real (a GPU só foi exercitada num harness isolado, ver "Validação com GPU real"), logo com centenas de caminhos/curvas no fluxo real,
   backlight e kit sem iluminação, regiões multicoloridas e mapas PBR no fluxo real, calibração contra amostra física (os presets são
   pontos de partida; as tabelas da `0098` nascem vazias, então toda matéria-prima começa "sem perfil visual", o que bloqueia a
   aprovação até o gestor cadastrar em Administração > Materiais 3D); o bloom noturno fica forte em materiais brancos. Cores no monitor
@@ -914,7 +914,28 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
 - **Validado em 07/10/2026 (montagem animada, GIF e cores)**: testes de linha do tempo/GIF/acendimento/cores (cliente e resolver) e `tsc` do
   projeto cpq3d; no Edge headless (WebGL por software) com um letreiro de teste: cores por região (vermelho/amarelo), noite acesa, quadros
   fixos da montagem e o **GIF real** (800×500, 152 quadros, 3,5 MB, loop infinito, 324 s em renderização por software — em GPU real deve ser
-  bem mais rápido, mas **não foi medido**). Não validado: GPU real, celular, GIF de logo com centenas de caminhos, perfis PBR com mapas.
+  bem mais rápido, mas **não foi medido**). Não validado: o tempo do GIF em GPU real (a validação abaixo mediu só o render interativo),
+  celular, GIF de logo com centenas de caminhos, perfis PBR com mapas.
+- **Validação com GPU real (07/10/2026, harness isolado; sem alteração de código)**: Edge 126 headless com ANGLE/D3D11 em hardware, na
+  **Intel UHD 620** (integrada) e na **NVIDIA GeForce MX150** (discreta de entrada), com a cena do viewer (sombras, HDRI, bloom, ACES,
+  MSAA 4 + HalfFloat) e glifos reais das fontes do Windows (6, 16, 17, 33, 55 e 81 glifos e 432 círculos). Medido em `317f225` e conferido
+  de novo no `8e93687` (render); `buildLedLayout.ts`, `clipper.ts` e `capture.tsx` são idênticos nos dois. O harness não está no repositório.
+  **Render ok**: sombra ativa (1 luz direcional, mapa 2048², 4–5 malhas projetam e recebem; desligá-la muda 6–12% dos pixels), LEDs e bloom à
+  noite, visão explodida com rótulos, duas cores por região. Na caixa real do viewer (1000×520, noite, GPU sincronizada, sem vsync):
+  UHD 620 = 16–20 ms (49–62 fps) no DPR 1 e 45–50 ms (20–22 fps) no DPR 1,75; MX150 = 5–8 ms (122–187 fps) e 12–32 ms (31–83 fps). É
+  limitado pela GPU (JS 1–4 ms/quadro) e pelos pixels (custo ~linear na área; um canvas de 1400×800 em DPR 1,75 cai a 7–13 fps nas duas),
+  então um teto de DPR/MSAA menor é a alavanca se faltar fôlego em tela de alta densidade. **Gargalos abertos (CPU/inicialização, não GPU)**:
+  (1) `construirCena` roda na thread da página e trava a aba: 0,2–0,6 s para wordmarks em Arial de 6 e 16 glifos, mas 4 s (17 glifos
+  Georgia Bold a 3,2 m), 9 s (33), 15 s (55), 32–42 s (81) e 16 s para 432 círculos; **~93% é `deslocarRegioes` (offset do Clipper)** em
+  `buildLedLayout.ts` (recuo da margem do LED e dos fixadores; no logo de 81 glifos 20 s + 16 s), a lateral oca custa só 1–3 s; o custo
+  segue o nº de vértices, não o de glifos. `Qualidade: baixa` é 4–6× mais rápida (3–5 s). `capturarPreview` chama `construirCena` de novo
+  em cada uma das 3 capturas (previews do logo de 432 círculos: ~30 s cada; do RADRAS: 1–3 s) em vez de reaproveitar a cena
+  (`cacheDeCenas`). Candidatos: simplificar o contorno antes do recuo (tolerância ~0,5–1 mm), `jtMiter`, Web Worker e uma cena só para
+  as 3 capturas. (2) Primeiro frame com cache de shader frio no D3D11: 4–11 s (1,2–2 s com cache quente; compilação síncrona dos 18
+  programas). (3) Memória: ao desmontar o Canvas ficam vivos 1 `WebGLRenderer` e, com o composer, ~25 render targets/texturas por ciclo
+  (~8 MB por ciclo na cena IMPÉRIO, com GC forçado); **reproduz com um `<Canvas>` com uma caixa só**, então não é do código do CPQ (R3F
+  9.8.1/React 19) — vale revisar o descarte no desmonte; `construirCena` sozinho não vaza. Avisos de console inofensivos: `THREE.Clock`
+  deprecado e `PCFSoftShadowMap` removido do three (cai em `PCFShadowMap`, que é o que o `shadows` do R3F acaba usando).
 - **Observações do teste real, ainda abertas**: as linhas da ficha BOM do MubiSys chegam com `papel` vazio e o nesting pede vincular
   cada chapa à Face/Fundo mesmo com o `renderRole` já herdado do kit (candidato a propagar o papel físico); o servidor local recusa
   assinar factibilidade/3D com `JWT_SECRET` menor que 32 caracteres (o `.env` local de teste tem menos; os testes definem um
