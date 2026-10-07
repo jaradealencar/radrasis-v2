@@ -116,9 +116,11 @@ export function PriceBlockAffiliationEditor({
         item => item.mubisysProdutoId === produto.id
       );
       const ids =
-        existente?.mubisysModeloIds == null
+        existente == null
           ? []
-          : [...existente.mubisysModeloIds];
+          : existente.mubisysModeloIds == null
+            ? produto.modelos.map(modelo => modelo.id)
+            : [...existente.mubisysModeloIds];
       const novosIds = ids.includes(modeloId)
         ? ids.filter(id => id !== modeloId)
         : [...ids, modeloId];
@@ -126,13 +128,16 @@ export function PriceBlockAffiliationEditor({
         item => item.mubisysProdutoId !== produto.id
       );
       if (novosIds.length === 0) return semProduto;
+      const todosSelecionados =
+        produto.modelos.length > 0 &&
+        novosIds.length === produto.modelos.length;
       return [
         ...semProduto,
         {
           mubisysProdutoId: produto.id,
           nomeProduto: produto.nome,
           categoria: produto.categoria || null,
-          mubisysModeloIds: novosIds,
+          mubisysModeloIds: todosSelecionados ? null : novosIds,
           modelos: produto.modelos,
         },
       ];
@@ -163,9 +168,9 @@ export function PriceBlockAffiliationEditor({
           <DialogTitle>Produtos e modelos atendidos pelo bloco</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-slate-600">
-          {sectionTitle}. Escolha o produto completo ou abra um produto para
-          selecionar modelos. Produtos e modelos definidos aqui tambem sao
-          aplicados ao bloco correspondente de Novo Cliente.
+          {sectionTitle}. O checkbox do produto seleciona todos os modelos. Abra
+          o produto para desmarcar os que não se aplicam. A seleção é
+          compartilhada com o bloco correspondente de Novo Cliente.
         </p>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -321,8 +326,8 @@ export function PriceBlockAffiliationEditor({
                   {aberto && (
                     <div className="space-y-1 border-t bg-slate-50 px-4 py-2 pl-12">
                       <p className="pb-1 text-xs text-slate-500">
-                        Marque modelos individuais ou selecione o produto para
-                        incluir todos.
+                        Desmarque os modelos que não se aplicam. O checkbox do
+                        produto seleciona todos novamente.
                       </p>
                       {modelosOrdenados.map(modelo => {
                         const marcado =
@@ -333,8 +338,8 @@ export function PriceBlockAffiliationEditor({
                             key={modelo.id}
                             type="button"
                             onClick={() => alternarModelo(produto, modelo.id)}
-                            disabled={todos}
-                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left enabled:hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                            aria-pressed={marcado}
+                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-white"
                           >
                             <span
                               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${marcado ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}
