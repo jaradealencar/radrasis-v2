@@ -2,6 +2,19 @@ type Recorde = Record<string, unknown>;
 
 const normalizarChave = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const escalar = (valor: unknown) => valor == null || ["string", "number", "boolean"].includes(typeof valor);
+const CHAVES_ANEXO_ACABAMENTO = new Set(["acabamento", "acabamentos", "finish", "finishes", "finishings", "adjunto", "adjuntos", "servico", "servicos", "service", "services", "processo", "processos", "processes", "itensacabamento", "composicaoacabamento", "composicaoacabamentos"]);
+const CHAVES_ANEXO_EQUIPAMENTO = new Set(["equipamento", "equipamentos", "maquina", "maquinas", "machine", "machines", "recurso", "recursos", "resource", "resources"]);
+function campoEhAnexo(chave: string, tipo: "acabamento" | "equipamento", valor: unknown): boolean {
+  const normalizada = normalizarChave(chave);
+  const conhecidas = tipo === "acabamento" ? CHAVES_ANEXO_ACABAMENTO : CHAVES_ANEXO_EQUIPAMENTO;
+  if (conhecidas.has(normalizada)) return true;
+  const marcador = tipo === "acabamento"
+    ? /(acabamento|finish|adjunto|servico|processo|aplicacao|usinagem|dobra|produtividade|maodeobra)/.test(normalizada)
+    : /(equipamento|maquina|machine|recurso)/.test(normalizada);
+  const estruturado = Array.isArray(valor) || (!!valor && typeof valor === "object") ||
+    (typeof valor === "string" && /^[\[{]/.test(valor.trim()));
+  return marcador && estruturado;
+}
 
 function numero(valor: unknown): number | null {
   if (typeof valor === "number") return Number.isFinite(valor) ? valor : null;
@@ -41,9 +54,6 @@ function campo(campos: Record<string, unknown>, aliases: string[]): unknown {
 }
 
 function listaAnexa(registro: Recorde, tipo: "acabamento" | "equipamento"): unknown[] {
-  const chavesAnexo = tipo === "acabamento"
-    ? new Set(["acabamento", "acabamentos", "finish", "finishes", "finishings", "adjunto", "adjuntos", "servico", "servicos", "service", "services", "processo", "processos", "processes", "itensacabamento", "composicaoacabamento", "composicaoacabamentos"])
-    : new Set(["equipamento", "equipamentos", "maquina", "maquinas", "machine", "machines", "recurso", "recursos", "resource", "resources"]);
   const encontrados: unknown[] = [];
   const adicionar = (valor: unknown, nivel = 0) => {
     if (nivel > 4) return;
@@ -59,8 +69,7 @@ function listaAnexa(registro: Recorde, tipo: "acabamento" | "equipamento"): unkn
   const visitar = (objeto: Recorde, nivel: number) => {
     if (nivel > 2) return;
     for (const [chave, valor] of Object.entries(objeto)) {
-      const normalizada = normalizarChave(chave);
-      if (chavesAnexo.has(normalizada)) {
+      if (campoEhAnexo(chave, tipo, valor)) {
         if (typeof valor === "string" && valor.trim()) {
           try { adicionar(JSON.parse(valor)); } catch { adicionar(valor); }
         } else adicionar(valor);
@@ -148,8 +157,6 @@ export function parsearComposicoesMubiSys(conteudo: unknown): Recorde[] {
     catch { raiz = registrosHtml(html); }
   }
   const saida: Recorde[] = [];
-  const chavesAcabamento = new Set(["acabamento", "acabamentos", "finish", "finishings", "adjuntos", "processos", "servicos", "itensacabamento"]);
-  const chavesEquipamento = new Set(["equipamento", "equipamentos", "maquina", "maquinas", "machines", "recursos"]);
   const visitar = (valor: unknown, herdados: Record<string, unknown> = {}, nivel = 0) => {
     if (nivel > 12) return;
     if (Array.isArray(valor)) { for (const item of valor) visitar(item, herdados, nivel + 1); return; }
@@ -185,7 +192,7 @@ export function parsearComposicoesMubiSys(conteudo: unknown): Recorde[] {
       return;
     }
     for (const [chave, filho] of Object.entries(registro)) {
-      if (chavesAcabamento.has(normalizarChave(chave)) || chavesEquipamento.has(normalizarChave(chave))) continue;
+      if (campoEhAnexo(chave, "acabamento", filho) || campoEhAnexo(chave, "equipamento", filho)) continue;
       if (filho && typeof filho === "object") visitar(filho, campos, nivel + 1);
     }
   };
