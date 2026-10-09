@@ -18,13 +18,15 @@ export async function enviarTemplatePrimeiraCompra(telefone: string): Promise<Wt
     throw new Error("Configure WTS_CHAT_AUTHORIZATION nos segredos do servidor antes de enviar campanhas.");
   }
 
+  const authorizationHeader = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
+
   try {
     const response = await fetch(WTS_CHAT_SEND_TEMPLATE_URL, {
       method: "POST",
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        Authorization: authorization,
+        Authorization: authorizationHeader,
       },
       body: JSON.stringify({
         to: telefone,
