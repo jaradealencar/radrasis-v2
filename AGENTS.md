@@ -264,7 +264,7 @@ server/
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
-                       opencnpj-client.ts (consulta de CNPJ, sem chave)
+                       opencnpj-client.ts (consulta de CNPJ, sem chave), wts-chat-client.ts (envio do template de marketing WTS.Chat para clientes de primeira compra)
   services/            lógica de domínio reutilizada por routers; manter funções
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
@@ -350,6 +350,7 @@ nem mocks da camada de dados.
 ## docs/ — quais valem como fonte de verdade
 
 - **Vendas/ABC do MubiSys na Tabela de Preços (07/10/2026):** `server/services/mubisysVendas.ts` sincroniza OS faturadas por mês ao abrir a calculadora, com TTL de 6 h, grava as linhas em `mubisys_vendas_itens`, status em `mubisys_vendas_sync_status` e ABC em `abc_cache`; `server/services/priceTableImpact.ts` cruza snapshots do histórico com vendas pelos IDs de produtos e modelos afiliados. Migrações `0099_precos_vendas_mubisys` e `0100_afiliacao_blocos_tabela_preco` criam tabelas de vendas, pareamento, afiliações e histórico; `0101_afiliacao_modelos_faixa_preco` permite afiliar o produto inteiro ou modelos específicos (`null` significa todos). A edição pode começar em qualquer uma das tabelas e é espelhada no bloco pareado. Sincronização externa de setembro e outubro/2026 foi validada; token MubiSys ainda é renovação manual. Detalhes em `docs/integracao-mubisys.md`.
+- **Campanhas WhatsApp via WTS.Chat (09/10/2026):** a fonte ERP `novos_do_mes` identifica clientes pela primeira compra; o diálogo de contatos permite seleção individual e envio confirmado de até 15 contatos pelo template oficial. `server/integrations/wts-chat-client.ts` chama `POST /chat/v1/send/template`; configure `WTS_CHAT_AUTHORIZATION` como segredo no servidor. Resposta HTTP 200 indica aceite para processamento pelo provedor, não entrega final.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração
   MySQL→Postgres/Better Auth (ver aviso no topo deste arquivo). **O doc mais
   importante pra entender o estado real do banco/auth agora.**

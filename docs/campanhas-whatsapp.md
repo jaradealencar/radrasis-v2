@@ -323,6 +323,12 @@ cega. Envie `"apply_quarantine": true` para o comportamento da tela (descartar o
 inválido/data futura/campanha pausada, 401 chave inválida, 404 campanha inexistente, 503 API desligada. Limites: 20.000
 contatos por `log-send`, 5.000 telefones por `check-quarantine`.
 
+## Envio de primeira compra via WTS.Chat
+
+A campanha usa a fonte ERP `novos_do_mes` (primeira compra da vida no período selecionado). Em **Ver contatos**, os contatos aprovados podem ser selecionados individualmente e enviados após confirmação, em lotes de até 15 por chamada. O servidor revalida a elegibilidade, opt-out, quarentena e cadência antes do envio.
+
+O envio usa `POST https://api.wts.chat/chat/v1/send/template` com o template Marketing `e87c7_primeiracompra` (sem parâmetros) e o canal `551194266377`. `WTS_CHAT_AUTHORIZATION` deve conter o valor completo do header Authorization, configurado somente como segredo do servidor; `WTS_CHAT_FROM` e `WTS_CHAT_TEMPLATE_ID` permitem sobrescrever canal e template. A resposta aceita pelo endpoint representa enfileiramento para processamento, não confirmação de entrega. Ainda não há callback persistido de entrega/falha por contato.
+
 ## Limitações conhecidas
 
 - A quarentena só enxerga envios registrados **neste módulo** (upload, "vendas pendentes", Fontes ou API). Os
