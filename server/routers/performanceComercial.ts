@@ -350,6 +350,65 @@ export function classificarClientePorRecencia(
   return { status: "reativado", mesesSemComprar: (ano - ultima.ano) * 12 + (mes - ultima.mes) };
 }
 
+export type GrupoDesempenhoDiario = { cotacoes: number; valorOrcado: number; vendas: number; faturamento: number };
+export type DesempenhoDiario = {
+  novos: GrupoDesempenhoDiario;
+  reativados: GrupoDesempenhoDiario;
+  /** Clientes que não são novos nem reativados (compraram nos últimos 6 meses). */
+  recorrentes: GrupoDesempenhoDiario;
+  /** Todos os clientes, inclusive os sem nome na API: é a soma dos três grupos acima. */
+  geral: GrupoDesempenhoDiario;
+};
+
+const STATUS_ORCAMENTO_EXCLUIDOS = ["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido"];
+
+/** Desempenho de UM dia por família de cliente (novo / reativado / recorrente), a partir de
+ * orçamentos e OS crus da API MubiSys. Mesmas regras do mês (getMes/getClientesNovosMes): OS
+ * normais (isOsNormalApi), valor líquido da OS (valorLiquidoOs), cotações sem canceladas/
+ * excluídas e valor orçado com o fallback custo + margem para orçamento em aberto. A
+ * classificação do cliente é injetada (granularidade de MÊS — ver classificarClientePorRecencia),
+ * então um cliente que comprou no começo do mês continua "novo" no resto do mês, igual ao card
+ * mensal. Cliente sem nome na API entra só em `geral` (e em `recorrentes`, para a soma fechar). */
+export function agregarDesempenhoDiario(
+  orcamentos: any[],
+  oss: any[],
+  classificar: (nomeCliente: string) => "novo" | "reativado" | null,
+): DesempenhoDiario {
+  const novoGrupo = (): GrupoDesempenhoDiario => ({ cotacoes: 0, valorOrcado: 0, vendas: 0, faturamento: 0 });
+  const out: DesempenhoDiario = { novos: novoGrupo(), reativados: novoGrupo(), recorrentes: novoGrupo(), geral: novoGrupo() };
+  const grupoDe = (nome: string): GrupoDesempenhoDiario => {
+    const status = nome.trim() ? classificar(nome) : null;
+    return status === "novo" ? out.novos : status === "reativado" ? out.reativados : out.recorrentes;
+  };
+
+  for (const orc of orcamentos) {
+    if (STATUS_ORCAMENTO_EXCLUIDOS.includes((orc.status ?? "").toLowerCase())) continue;
+    const vt = parseFloat(String(orc.valor_total ?? "0")) || 0;
+    const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
+    const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
+    const valor = vt > 0 ? vt : (vc + vm);
+    for (const g of [grupoDe(nomeClienteDaOsApi(orc)), out.geral]) {
+      g.cotacoes++;
+      g.valorOrcado += valor;
+    }
+  }
+
+  for (const os of oss) {
+    if (!isOsNormalApi(os)) continue;
+    const valor = valorLiquidoOs(os);
+    for (const g of [grupoDe(nomeClienteDaOsApi(os)), out.geral]) {
+      g.vendas++;
+      g.faturamento += valor;
+    }
+  }
+
+  for (const g of Object.values(out)) {
+    g.valorOrcado = parseFloat(g.valorOrcado.toFixed(2));
+    g.faturamento = parseFloat(g.faturamento.toFixed(2));
+  }
+  return out;
+}
+
 async function getMesFromDb(mes: number, ano: number) {
   const db = await getDb();
   if (!db) return null;
@@ -1881,6 +1940,46 @@ export const performanceComercialRouter = router({
         vendedores: Object.entries(porVendedor)
           .map(([vendedor, turnos]) => ({ vendedor, ...turnos }))
           .sort((a, b) => a.vendedor.localeCompare(b.vendedor)),
+      };
+    }),
+
+  // Desempenho ao vivo de UM dia, separado em Novos / Reativados / Recorrentes / Geral —
+  // aba "Análise Diária" da Performance Comercial. Busca a janela de 1 dia direto na API
+  // (sem o cache mensal de 60 min), como getResumoDiario, e classifica o cliente pela
+  // mesma "Lógica do Cliente Novo e Reativado" do mês (histórico em historico_os, com os
+  // overrides manuais), então o diário e o card mensal concordam sobre quem é novo.
+  getDesempenhoDiario: publicProcedure
+    .input(z.object({ data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })) // "YYYY-MM-DD", default hoje (Brasília)
+    .query(async ({ input }) => {
+      const dataStr = input.data ?? dataHojeBrasilia();
+      const [ano, mes] = dataStr.split("-").map(Number);
+
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível" });
+
+      // Histórico e overrides primeiro (banco, rápido) — se a API falhar depois, o erro é só dela.
+      const overrides = await db.select().from(clienteOverrides);
+      const overrideMap = new Map<string, "recorrente" | "novo">();
+      for (const ov of overrides) overrideMap.set(ov.empresa, ov.status);
+      const compras = await buscarTodasComprasValidas(db);
+      // Nome do cliente vem da API ao vivo: casa com o histórico só pela chave normalizada.
+      const ultimaPorCliente = reindexarPorChaveNormalizada(ultimaCompraAntesDe(compras, mes, ano));
+
+      // Sequencial, nunca em paralelo — mesma regra de toda integração MubiSys do projeto.
+      const orcResult = await listarOrcamentosMubiSys({ datainicial: dataStr, datafinal: dataStr, perPage: 50 });
+      const osResult = await listarOSMubiSys({ status: "TODOS", filtrodata: "APROVACAO", datainicial: dataStr, datafinal: dataStr });
+
+      const grupos = agregarDesempenhoDiario(orcResult.itens as any[], osResult.itens as any[], (nome) => {
+        const chave = normalizeEmpresaKey(nome);
+        return classificarClientePorRecencia(ultimaPorCliente.get(chave), overrideMap.get(chave), mes, ano).status;
+      });
+
+      return {
+        data: dataStr,
+        // false = a API devolveu lista parcial (timeout no meio da paginação): os números
+        // podem estar abaixo do real e a tela avisa.
+        completo: orcResult.completo && osResult.completo,
+        ...grupos,
       };
     }),
 
