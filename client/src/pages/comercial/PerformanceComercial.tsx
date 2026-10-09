@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import type { MetaComercial } from "../../../../drizzle/schema";
 import EvolucaoVendedor from "./EvolucaoVendedor";
 import EvolucaoDiariaVendedor from "./EvolucaoDiariaVendedor";
+import DesempenhoDiario from "./DesempenhoDiario";
 import InteligenteClientes from "./InteligenteClientes";
 import PropostasAltoValor from "./PropostasAltoValor";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -358,7 +359,7 @@ type MesAno = { mes: number; ano: number };
 export default function PerformanceComercial() {
   const [mesSelecionado, setMesSelecionado] = useState(MES_ATUAL);
   const [anoSelecionado, setAnoSelecionado] = useState(ANO_ATUAL);
-  const [abaAtiva, setAbaAtiva] = useState<"visao-geral" | "mes-vigente" | "evolucao" | "inteligente">("visao-geral");
+  const [abaAtiva, setAbaAtiva] = useState<"visao-geral" | "diaria" | "mes-vigente" | "evolucao" | "inteligente">("visao-geral");
   const [showComparativo, setShowComparativo] = useState(true);
   const [showClientesNovos, setShowClientesNovos] = useState(true);
   const [showClientesReativados, setShowClientesReativados] = useState(true);
@@ -815,6 +816,7 @@ export default function PerformanceComercial() {
         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
           {([
             { id: "visao-geral" as const, label: "Visão Geral", icon: "📊" },
+            { id: "diaria" as const, label: "Análise Diária", icon: "⚡" },
             { id: "mes-vigente" as const, label: "Mês Vigente", icon: "📅" },
             { id: "evolucao" as const, label: "Evolução por Vendedor", icon: "📈" },
             { id: "inteligente" as const, label: "Inteligência de Clientes", icon: "🧠" },
@@ -833,6 +835,9 @@ export default function PerformanceComercial() {
             </button>
           ))}
         </div>
+
+        {/* ─── Aba: Análise Diária (ao vivo, independe do mês/ano selecionados) ──── */}
+        {abaAtiva === "diaria" && <DesempenhoDiario />}
 
         {/* ─── Aba: Mês Vigente ─────────────────────────────────────────────────── */}
         {abaAtiva === "mes-vigente" && (
