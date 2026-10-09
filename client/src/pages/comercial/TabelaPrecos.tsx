@@ -111,6 +111,7 @@ import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashbo
 import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
 import { PriceAdjustmentCalculator } from "@/components/PriceAdjustmentCalculator";
 import { PriceBlockAffiliationEditor } from "@/components/PriceBlockAffiliationEditor";
+import { PriceTableModelMappings } from "@/components/PriceTableModelMappings";
 import { Link2 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -3211,6 +3212,7 @@ export default function TabelaPrecos() {
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
     { key: "5", label: "Pág. 5 — Produtividades de solda" },
     { key: "6", label: "Pág. 6 — Condições Comerciais" },
+    { key: "7", label: "Produtos e Modelos" },
   ];
 
   // Seções da Tabela Novo Cliente (pages 11, 12, 13)
@@ -3224,6 +3226,7 @@ export default function TabelaPrecos() {
     { key: "12", label: "Pág. 2" },
     { key: "13", label: "Pág. 3" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
+    { key: "14", label: "Produtos e Modelos" },
   ];
 
   return (
@@ -3294,7 +3297,7 @@ export default function TabelaPrecos() {
                   <Calculator className="w-4 h-4" />
                   Simular reajuste
                 </Button>
-                {activeTabNC !== "4" && (
+                {activeTabNC !== "4" && activeTabNC !== "14" && (
                   <Button
                     size="sm"
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -3362,7 +3365,9 @@ export default function TabelaPrecos() {
 
             {allPagesNC.map(p => (
               <TabsContent key={p.key} value={p.key}>
-                {p.key === "4" ? (
+                {p.key === "14" ? (
+                  <PriceTableModelMappings tabela="novo_cliente" secoes={(allSections ?? []) as { id: number; page: number; sectionTitle: string; contentJson: string }[]} podeEditar={canEditBlockProducts} />
+                ) : p.key === "4" ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-end gap-2 text-xs text-slate-500">
                       <span>Nome da aba:</span>
@@ -3693,7 +3698,9 @@ export default function TabelaPrecos() {
 
             {allPages.map(p => (
               <TabsContent key={p.key} value={p.key}>
-                {p.key === "5" ? (
+                {p.key === "7" ? (
+                  <PriceTableModelMappings tabela="principal" secoes={(allSections ?? []) as { id: number; page: number; sectionTitle: string; contentJson: string }[]} podeEditar={canEditBlockProducts} />
+                ) : p.key === "5" ? (
                   <ProdutividadesSolda />
                 ) : p.key === "4" ? (
                   <div className="space-y-4">

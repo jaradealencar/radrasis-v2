@@ -40,11 +40,12 @@ import { invokeLLM } from "./_core/llm";
 import { TRPCError } from "@trpc/server";
 import { obterImpactoHistoricoTabela } from "./services/priceTableImpact";
 import { obterAnaliseReceitaTabela } from "./services/priceTableRevenueAnalysis";
-import { listarProdutosEspelhados } from "./services/mubisysEspelho";
+import { listarMateriasPrimasEspelhadas, listarProdutosEspelhados } from "./services/mubisysEspelho";
 import type { TrpcContext } from "./_core/context";
-import { APP_ROLES, PAGE_KEYS, user as userTable, priceTableBlockPairs, priceTableAffiliations, priceTableAffiliationHistory } from "../drizzle/schema";
-import { asc, eq, isNull, or, count as sqlCount } from "drizzle-orm";
+import { APP_ROLES, PAGE_KEYS, user as userTable, priceTableBlockPairs, priceTableAffiliations, priceTableAffiliationHistory, priceTableModelMappings, estudioKits, produtos } from "../drizzle/schema";
+import { asc, eq, and, isNull, or, count as sqlCount } from "drizzle-orm";
 import { getDb } from "./db/db";
+import { ehMateriaProdutividade } from "../shared/produtividade-solda";
 import {
   getAllRolePermissions, setRolePermission, getPermissionsForRole,
   getFinanceiros, getFinanceiroByMesAno, upsertFinanceiro,
@@ -1356,6 +1357,87 @@ O POP deve:
   }),
 
   price: router({
+    listModelCatalog: protectedProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return { produtos: [], mapeamentos: [], produtividades: [] };
+      const [catalogo, salvos, materiais, kits, produtosLocais] = await Promise.all([
+        listarProdutosEspelhados(db),
+        db.select().from(priceTableModelMappings),
+        listarMateriasPrimasEspelhadas(db),
+        db.select().from(estudioKits),
+        db.select().from(produtos),
+      ]);
+      const nomesPorId = new Map(materiais.map(item => [item.id, item.nome]));
+      const idsProdutividade = new Set([...nomesPorId].filter(([, nome]) => ehMateriaProdutividade(nome)).map(([id]) => id));
+      const salvosPorModelo = new Map(salvos.map(item => [`${item.mubisysProdutoId}_${item.mubisysModeloId}`, item]));
+      const kitsPorModelo = new Map(kits.map(item => [item.chave, item.dadosJson]));
+      const produtosLocaisPorModelo = new Map(produtosLocais.map(item => [`${item.mubisysProdutoId}_${item.mubisysModeloId}`, item]));
+      const mapeamentos = catalogo.flatMap(produto => produto.modelos.map(modelo => {
+        const chave = `${produto.id}_${modelo.id}`;
+        const salvo = salvosPorModelo.get(chave);
+        const kit = kitsPorModelo.get(chave);
+        const produtividadeKit = Array.isArray(kit?.produtividadesRelacionadas)
+          ? kit.produtividadesRelacionadas.filter((id): id is number => typeof id === "number" && idsProdutividade.has(id))
+          : [];
+        const produtoLocal = produtosLocaisPorModelo.get(chave);
+        return {
+          mubisysProdutoId: produto.id,
+          mubisysModeloId: modelo.id,
+          produtividadeIds: salvo?.produtividadeIds ?? produtividadeKit,
+          principalPriceId: salvo ? salvo.principalPriceId : produtoLocal?.idPrecificacao ?? null,
+          novoClientePriceId: salvo?.novoClientePriceId ?? null,
+        };
+      }));
+      return {
+        produtos: catalogo.map(produto => ({ id: produto.id, nome: produto.nome, categoria: produto.categoria, modelos: produto.modelos.map(modelo => ({ id: modelo.id, nome: modelo.nome })) })),
+        mapeamentos,
+        produtividades: materiais.filter(item => idsProdutividade.has(item.id)).map(item => ({ id: item.id, nome: item.nome })),
+      };
+    }),
+    saveModelMapping: protectedProcedure
+      .use(requireRole("gestor", "admin", "master"))
+      .input(z.object({
+        produtoId: z.number().int().positive(), modeloId: z.number().int().positive(),
+        tabela: z.enum(["principal", "novo_cliente"]),
+        priceId: z.number().int().positive().nullable(),
+        produtividadeIds: z.array(z.number().int().positive()).max(100),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+        const catalogo = await listarProdutosEspelhados(db);
+        const produto = catalogo.find(item => item.id === input.produtoId);
+        if (!produto?.modelos.some(item => item.id === input.modeloId)) throw new TRPCError({ code: "BAD_REQUEST", message: "O modelo não pertence ao catálogo atual do MubiSys." });
+        if (new Set(input.produtividadeIds).size !== input.produtividadeIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Remova produtividades repetidas." });
+        if (input.priceId != null) {
+          const paginas = input.tabela === "principal" ? [1, 2, 3] : [11, 12, 13];
+          const secoes = await listPriceTableSections();
+          const faixaExiste = secoes.some(secao => {
+            if (!paginas.includes(secao.page)) return false;
+            try {
+              const conteudo = JSON.parse(secao.contentJson) as { rows?: Array<{ id?: number }>; items?: Array<{ id?: number }> };
+              return [...(conteudo.rows ?? []), ...(conteudo.items ?? [])].some(item => item.id === input.priceId);
+            } catch { return false; }
+          });
+          if (!faixaExiste) throw new TRPCError({ code: "BAD_REQUEST", message: "A faixa selecionada não existe nesta tabela." });
+        }
+        const atuais = await listarMateriasPrimasEspelhadas(db);
+        const idsPermitidos = new Set(atuais.filter(item => ehMateriaProdutividade(item.nome)).map(item => item.id));
+        if (input.produtividadeIds.some(id => !idsPermitidos.has(id))) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione apenas produtividades de solda cadastradas na Tabela de Preços." });
+        const [existente] = await db.select().from(priceTableModelMappings).where(and(eq(priceTableModelMappings.mubisysProdutoId, input.produtoId), eq(priceTableModelMappings.mubisysModeloId, input.modeloId))).limit(1);
+        const valores = {
+          mubisysProdutoId: input.produtoId, mubisysModeloId: input.modeloId,
+          produtividadeIds: input.produtividadeIds,
+          principalPriceId: input.tabela === "principal" ? input.priceId : existente?.principalPriceId ?? null,
+          novoClientePriceId: input.tabela === "novo_cliente" ? input.priceId : existente?.novoClientePriceId ?? null,
+          updatedBy: ctx.user.name ?? ctx.user.email ?? "usuário", updatedAt: new Date(),
+        };
+        await db.insert(priceTableModelMappings).values(valores).onConflictDoUpdate({
+          target: [priceTableModelMappings.mubisysProdutoId, priceTableModelMappings.mubisysModeloId],
+          set: valores,
+        });
+        return { ok: true };
+      }),
     list: protectedProcedure
       .input(z.object({ page: z.number().optional() }))
       .query(async ({ input }) => {

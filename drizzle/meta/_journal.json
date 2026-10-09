@@ -722,6 +722,13 @@
       "when": 1791380305256,
       "tag": "0102_cpq_cotacao_snapshot_imutavel",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1791563121805,
+      "tag": "0103_curly_roxanne_simpson",
+      "breakpoints": true
     }
   ]
 }

@@ -324,6 +324,23 @@ export const priceTableAffiliationHistory = pgTable("price_table_affiliation_his
 }));
 export type PriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferSelect;
 export type InsertPriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferInsert;
+// Configuração comercial e produtividades de solda por modelo do MubiSys.
+// Cada modelo mantém IDs de faixa independentes para clientes antigos e novos;
+// IDs externos do catálogo não são FKs porque o espelho pode ser reimportado.
+export const priceTableModelMappings = pgTable("price_table_model_mappings", {
+  id: serial("id").primaryKey(),
+  mubisysProdutoId: integer("mubisys_produto_id").notNull(),
+  mubisysModeloId: integer("mubisys_modelo_id").notNull(),
+  produtividadeIds: jsonb("produtividade_ids").$type<number[]>().notNull().default([]),
+  principalPriceId: integer("principal_price_id"),
+  novoClientePriceId: integer("novo_cliente_price_id"),
+  updatedBy: varchar("updated_by", { length: 128 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => ({
+  produtoModeloIdx: uniqueIndex("price_table_model_mappings_produto_modelo_idx").on(table.mubisysProdutoId, table.mubisysModeloId),
+}));
+export type PriceTableModelMapping = typeof priceTableModelMappings.$inferSelect;
+export type InsertPriceTableModelMapping = typeof priceTableModelMappings.$inferInsert;
 
 
 export const produtos = pgTable("produtos", {

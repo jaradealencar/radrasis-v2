@@ -259,6 +259,7 @@ client/src/          frontend (Vite root = client/)
 client/cpq-letreiros-express.html  página do CPQ (HTML monolítico, entrada própria do Vite; mesma URL pública)
 server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
+                       `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
