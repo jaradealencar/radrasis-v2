@@ -48,8 +48,8 @@ export function PriceTableModelMappings({ tabela, secoes, podeEditar }: { tabela
   const nomeProdutividade = new Map((data?.produtividades ?? []).map(item => [item.id, item.nome]));
   const totalModelos = (data?.produtos ?? []).reduce((total, produto) => total + produto.modelos.length, 0);
 
-  function salvarModelo(produtoId: number, modeloId: number, priceId: number | null, produtividadeIds: number[]) {
-    salvar.mutate({ produtoId, modeloId, tabela, priceId, produtividadeIds });
+  function salvarModelo(produtoId: number, modeloId: number, priceId: number | null, produtividadeIds: number[], produtividadeObservacao: string) {
+    salvar.mutate({ produtoId, modeloId, tabela, priceId, produtividadeIds, produtividadeObservacao });
   }
 
   if (isLoading) return <div className="h-40 animate-pulse rounded-lg bg-slate-100" />;
@@ -74,7 +74,8 @@ export function PriceTableModelMappings({ tabela, secoes, podeEditar }: { tabela
               const vinculados = existente?.produtividadeIds ?? [];
               const priceId = tabela === "principal" ? existente?.principalPriceId : existente?.novoClientePriceId;
               const listaProdutividades = vinculados.map(id => nomeProdutividade.get(id) ?? `Produtividade ${id}`).join(", ");
-              return <ModeloRow key={modelo.id} modeloId={modelo.id} modeloNome={modelo.nome} produtividades={data?.produtividades ?? []} vinculados={vinculados} listaProdutividades={listaProdutividades} priceId={priceId ?? null} faixas={faixas} podeEditar={podeEditar} salvando={salvar.isPending} aoSalvar={(ids, id) => salvarModelo(produto.id, modelo.id, id, ids)} />;
+              const observacao = existente?.produtividadeObservacao ?? "";
+              return <ModeloRow key={modelo.id} modeloId={modelo.id} modeloNome={modelo.nome} produtividades={data?.produtividades ?? []} vinculados={vinculados} listaProdutividades={listaProdutividades} observacao={observacao} priceId={priceId ?? null} faixas={faixas} podeEditar={podeEditar} salvando={salvar.isPending} aoSalvar={(ids, id, nota) => salvarModelo(produto.id, modelo.id, id, ids, nota)} />;
             })}
           </div>
         </section>)}
@@ -84,29 +85,33 @@ export function PriceTableModelMappings({ tabela, secoes, podeEditar }: { tabela
   </Card>;
 }
 
-function ModeloRow({ modeloId, modeloNome, produtividades, vinculados, listaProdutividades, priceId, faixas, podeEditar, salvando, aoSalvar }: {
-  modeloId: number; modeloNome: string; produtividades: Catalogo["produtividades"]; vinculados: number[]; listaProdutividades: string; priceId: number | null; faixas: Faixa[]; podeEditar: boolean; salvando: boolean; aoSalvar: (ids: number[], priceId: number | null) => void;
+function ModeloRow({ modeloId, modeloNome, produtividades, vinculados, listaProdutividades, observacao, priceId, faixas, podeEditar, salvando, aoSalvar }: {
+  modeloId: number; modeloNome: string; produtividades: Catalogo["produtividades"]; vinculados: number[]; listaProdutividades: string; observacao: string; priceId: number | null; faixas: Faixa[]; podeEditar: boolean; salvando: boolean; aoSalvar: (ids: number[], priceId: number | null, observacao: string) => void;
 }) {
   const [selecionadas, setSelecionadas] = useState<number[]>(vinculados);
   const [idsAnteriores, setIdsAnteriores] = useState(vinculados.join(","));
   const faixaAnterior = priceId == null ? "" : String(priceId);
   const [faixaAtual, setFaixaAtual] = useState(faixaAnterior);
   const [faixaBase, setFaixaBase] = useState(faixaAnterior);
+  const [observacaoAtual, setObservacaoAtual] = useState(observacao);
+  const [observacaoBase, setObservacaoBase] = useState(observacao);
   if (idsAnteriores !== vinculados.join(",")) { setIdsAnteriores(vinculados.join(",")); setSelecionadas(vinculados); }
   if (faixaBase !== faixaAnterior) { setFaixaBase(faixaAnterior); setFaixaAtual(faixaAnterior); }
-  const sujo = selecionadas.join(",") !== vinculados.join(",") || faixaAtual !== faixaAnterior;
-  return <div className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(150px,0.8fr)_minmax(240px,1.2fr)_minmax(240px,1.2fr)_auto] lg:items-center">
+  if (observacaoBase !== observacao) { setObservacaoBase(observacao); setObservacaoAtual(observacao); }
+  const sujo = selecionadas.join(",") !== vinculados.join(",") || faixaAtual !== faixaAnterior || observacaoAtual !== observacao;
+  return <div className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(130px,0.7fr)_minmax(220px,1.1fr)_minmax(180px,0.9fr)_minmax(220px,1.2fr)_auto] lg:items-center">
     <div><div className="font-medium text-sm">{modeloNome}</div><div className="text-xs text-slate-400">Modelo {modeloId}</div></div>
     <label className="space-y-1 text-xs text-slate-500"><span className="flex items-center gap-1"><Hammer className="h-3 w-3" />Produtividades da pág. 5</span>
       <select aria-label={`Produtividades de solda de ${modeloNome}`} multiple size={Math.min(4, Math.max(2, produtividades.length))} disabled={!podeEditar} value={selecionadas.map(String)} onChange={event => setSelecionadas(Array.from(event.currentTarget.selectedOptions, option => Number(option.value)))} className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm disabled:bg-slate-50">
         {produtividades.map(item => <option key={item.id} value={item.id}>{item.nome} · ID {item.id}</option>)}
       </select><span>Selecione várias com Ctrl ou Command. {vinculados.length ? `Salvas: ${listaProdutividades}` : "Nenhuma produtividade vinculada."}</span>
     </label>
+    <label className="space-y-1 text-xs text-slate-500"><span>Solda correspondente (se nao cadastrada)</span><Input maxLength={500} disabled={!podeEditar} value={observacaoAtual} onChange={event => setObservacaoAtual(event.target.value)} placeholder="Descreva a solda que falta" /></label>
     <label className="space-y-1 text-xs text-slate-500"><span>Faixa de preço · ID</span>
       <select aria-label={`Faixa de preço de ${modeloNome}`} disabled={!podeEditar} value={faixaAtual} onChange={event => setFaixaAtual(event.target.value)} className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm disabled:bg-slate-50">
         <option value="">Sem vínculo</option>{faixas.map(faixa => <option key={`${faixa.id}-${faixa.secao}`} value={faixa.id}>ID {faixa.id} · {faixa.secao} · {faixa.rotulo}</option>)}
       </select>
     </label>
-    <Button size="sm" variant="outline" disabled={!podeEditar || !sujo || salvando} onClick={() => { aoSalvar(selecionadas, faixaAtual ? Number(faixaAtual) : null); }}><Save className="mr-1 h-3.5 w-3.5" />Salvar</Button>
+    <Button size="sm" variant="outline" disabled={!podeEditar || !sujo || salvando} onClick={() => { aoSalvar(selecionadas, faixaAtual ? Number(faixaAtual) : null, observacaoAtual); }}><Save className="mr-1 h-3.5 w-3.5" />Salvar</Button>
   </div>;
 }

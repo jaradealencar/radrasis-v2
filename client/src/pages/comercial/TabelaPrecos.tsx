@@ -3211,8 +3211,8 @@ export default function TabelaPrecos() {
     { key: "3", label: "Pág. 3 — Pintura" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
     { key: "5", label: "Pág. 5 — Produtividades de solda" },
-    { key: "6", label: "Pág. 6 — Condições Comerciais" },
     { key: "7", label: "Produtos e Modelos" },
+    { key: "6", label: "Pág. 6 — Condições Comerciais" },
   ];
 
   // Seções da Tabela Novo Cliente (pages 11, 12, 13)
@@ -3225,8 +3225,8 @@ export default function TabelaPrecos() {
     { key: "11", label: "Pág. 1" },
     { key: "12", label: "Pág. 2" },
     { key: "13", label: "Pág. 3" },
-    { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
     { key: "14", label: "Produtos e Modelos" },
+    { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
   ];
 
   return (

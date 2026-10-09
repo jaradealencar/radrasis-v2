@@ -332,6 +332,7 @@ export const priceTableModelMappings = pgTable("price_table_model_mappings", {
   mubisysProdutoId: integer("mubisys_produto_id").notNull(),
   mubisysModeloId: integer("mubisys_modelo_id").notNull(),
   produtividadeIds: jsonb("produtividade_ids").$type<number[]>().notNull().default([]),
+  produtividadeObservacao: text("produtividade_observacao"),
   principalPriceId: integer("principal_price_id"),
   novoClientePriceId: integer("novo_cliente_price_id"),
   updatedBy: varchar("updated_by", { length: 128 }),

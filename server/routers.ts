@@ -1384,6 +1384,7 @@ O POP deve:
           mubisysProdutoId: produto.id,
           mubisysModeloId: modelo.id,
           produtividadeIds: salvo?.produtividadeIds ?? produtividadeKit,
+          produtividadeObservacao: salvo?.produtividadeObservacao ?? null,
           principalPriceId: salvo ? salvo.principalPriceId : produtoLocal?.idPrecificacao ?? null,
           novoClientePriceId: salvo?.novoClientePriceId ?? null,
         };
@@ -1401,6 +1402,7 @@ O POP deve:
         tabela: z.enum(["principal", "novo_cliente"]),
         priceId: z.number().int().positive().nullable(),
         produtividadeIds: z.array(z.number().int().positive()).max(100),
+        produtividadeObservacao: z.string().max(500).nullable().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const db = await getDb();
@@ -1428,6 +1430,7 @@ O POP deve:
         const valores = {
           mubisysProdutoId: input.produtoId, mubisysModeloId: input.modeloId,
           produtividadeIds: input.produtividadeIds,
+          produtividadeObservacao: input.produtividadeObservacao?.trim() || null,
           principalPriceId: input.tabela === "principal" ? input.priceId : existente?.principalPriceId ?? null,
           novoClientePriceId: input.tabela === "novo_cliente" ? input.priceId : existente?.novoClientePriceId ?? null,
           updatedBy: ctx.user.name ?? ctx.user.email ?? "usuário", updatedAt: new Date(),

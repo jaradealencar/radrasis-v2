@@ -1,0 +1,1 @@
+ALTER TABLE "price_table_model_mappings" ADD COLUMN "produtividade_observacao" text;
