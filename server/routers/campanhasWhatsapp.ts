@@ -18,6 +18,7 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
+import { enviarTemplatePrimeiraCompra, WTS_CHAT_PRIMEIRA_COMPRA } from "../integrations/wts-chat-client";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
@@ -702,6 +703,86 @@ export const campanhasWhatsappRouter = router({
         .orderBy(desc(campanhasWhatsappDisparos.enviadoEm), desc(campanhasWhatsappDisparos.id))
         .limit(input.limite);
       return { campanha: { id: campanha.id, nome: campanha.nome }, disparos };
+    }),
+
+  enviarPrimeiraCompraWts: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int().positive(),
+      periodo: z.object({ inicio: dataIsoSchema.nullable(), fim: dataIsoSchema.nullable() }).optional(),
+      contatos: z.array(z.object({ telefone: z.string().max(40), nome: z.string().max(200) })).min(1).max(15),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      if (!process.env.WTS_CHAT_AUTHORIZATION?.trim()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A integração WTS.Chat ainda não está configurada no servidor." });
+      }
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      if (campanha.status !== "ativa") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Reative a campanha antes de enviar." });
+      }
+      validarPeriodo(input.periodo?.inicio, input.periodo?.fim);
+
+      const fontes = await db.select({ tipo: campanhasWhatsappFontes.tipo, consultaErp: campanhasWhatsappFontes.consultaErp })
+        .from(campanhasWhatsappCampanhaFontes)
+        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+        .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, campanha.id), eq(campanhasWhatsappFontes.ativo, true)));
+      if (fontes.length !== 1 || fontes[0].tipo !== "erp" || fontes[0].consultaErp !== "novos_do_mes") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Este envio exige somente a fonte ERP “Novos clientes do mês”." });
+      }
+
+      const dataEnvio = hojeCampoGrande();
+      const lista = await montarListaCampanha(db, campanha, { dataEnvio, periodo: input.periodo });
+      const elegiveis = new Map(lista.aprovados.map(contato => [normalizarTelefone(contato.telefone), contato] as const));
+      const selecionados = new Map<string, { telefone: string; nome: string }>();
+      for (const contato of input.contatos) {
+        const telefone = normalizarTelefone(contato.telefone);
+        if (!telefone || !elegiveis.has(telefone)) continue;
+        selecionados.set(telefone, { telefone, nome: elegiveis.get(telefone)!.nome || contato.nome });
+      }
+      if (selecionados.size === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contato selecionado continua elegível para envio." });
+      }
+
+      const tentativas = [...selecionados.values()];
+      const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string }> = new Array(tentativas.length);
+      let proximo = 0;
+      const trabalhadores = Array.from({ length: Math.min(5, tentativas.length) }, async () => {
+        while (true) {
+          const indice = proximo++;
+          if (indice >= tentativas.length) return;
+          const contato = tentativas[indice];
+          const resultado = await enviarTemplatePrimeiraCompra(contato.telefone);
+          resultados[indice] = { contato, ok: resultado.ok, erro: resultado.erro };
+        }
+      });
+      await Promise.all(trabalhadores);
+
+      const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
+      let disparoId: number | null = null;
+      if (aceitos.length > 0) {
+        const registro = await registrarDisparoNoBanco({
+          campanhaId: campanha.id,
+          dataEnvio,
+          contatos: aceitos,
+          observacoes: `Template WTS.Chat ${process.env.WTS_CHAT_TEMPLATE_ID?.trim() || WTS_CHAT_PRIMEIRA_COMPRA.templateId}; aceito para processamento pelo provedor.`,
+          origem: "api",
+          registradoPor: ctx.user.name ?? ctx.user.email ?? "WTS.Chat",
+          aplicarQuarentena: false,
+        });
+        disparoId = registro.disparoId;
+      }
+
+      return {
+        disparoId,
+        enfileirados: aceitos.length,
+        falhas: resultados.filter(resultado => !resultado.ok).map(resultado => ({
+          nome: resultado.contato.nome,
+          telefone: resultado.contato.telefone,
+          erro: resultado.erro ?? "Falha ao enfileirar mensagem.",
+        })),
+        totalSelecionado: tentativas.length,
+        templateId: process.env.WTS_CHAT_TEMPLATE_ID?.trim() || WTS_CHAT_PRIMEIRA_COMPRA.templateId,
+      };
     }),
 
   registrarDisparo: campanhasProcedure
