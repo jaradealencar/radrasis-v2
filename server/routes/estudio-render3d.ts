@@ -41,16 +41,17 @@ import {
   resumoMateriaisParaSnapshot,
   verifyCpqRender3dTicket,
 } from "../services/cpqRender3d";
-import { IMAGEM_3D_MAX_BYTES, extensaoDoMime, validarImagem3d } from "../services/cpqRender3dImagem";
+import { GIF_3D_MAX_BYTES, IMAGEM_3D_MAX_BYTES, extensaoDoMime, validarGif3d, validarImagem3d } from "../services/cpqRender3dImagem";
 
 const PAPEIS_ADMIN = ["gestor", "admin", "master"];
 const PREVIEW_MAX_BYTES = 3 * 1024 * 1024;
-const TIPOS_PREVIEW = ["dia", "noite", "explodido"] as const;
+const TIPOS_PREVIEW = ["dia", "noite", "explodido", "animacao"] as const;
 /** Previews só podem apontar para arquivos do nosso storage (UploadThing): nunca uma URL arbitrária no snapshot. */
 const HOST_STORAGE = /^https:\/\/([a-z0-9-]+\.)*(ufs\.sh|utfs\.io|uploadthing\.com)\//i;
 
 const rawImagem = express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: IMAGEM_3D_MAX_BYTES });
 const rawPreview = express.raw({ type: ["image/png", "image/jpeg"], limit: PREVIEW_MAX_BYTES });
+const rawAnimacao = express.raw({ type: ["image/gif"], limit: GIF_3D_MAX_BYTES });
 
 type Ator = { id: string; nome: string; role: string };
 
@@ -106,10 +107,11 @@ export function registrarRotasEstudioRender3d(app: Express): void {
   app.post("/api/letra-caixa/render3d/spec", rota(resolverSpec));
   app.post("/api/letra-caixa/render3d/aprovar", rota(aprovar));
   app.post("/api/letra-caixa/render3d/preview/:tipo", (req, res) => {
-    rawPreview(req, res, falha => {
+    const animacao = req.params.tipo === "animacao";
+    (animacao ? rawAnimacao : rawPreview)(req, res, falha => {
       if (falha) {
         const status = (falha as { status?: number }).status ?? 400;
-        erro(res, status, status === 413 ? "O preview passa de 3 MB." : "Envie o preview como PNG ou JPEG.");
+        erro(res, status, status === 413 ? (animacao ? "O GIF passa de 4 MB." : "O preview passa de 3 MB.") : animacao ? "Envie a animação como GIF." : "Envie o preview como PNG ou JPEG.");
         return;
       }
       void rota(enviarPreview)(req, res);
@@ -168,6 +170,8 @@ const aprovarInputSchema = z.object({
   previewDayUrl: z.string().url().max(2048),
   previewNightUrl: z.string().url().max(2048),
   previewExplodedUrl: z.string().url().max(2048),
+  /** GIF da animação de montagem: opcional (a geração roda no navegador e pode falhar sem impedir a aprovação). */
+  previewAnimationUrl: z.string().url().max(2048).nullish(),
 }).strict();
 
 async function aprovar(req: Request, res: Response): Promise<void> {
@@ -176,7 +180,7 @@ async function aprovar(req: Request, res: Response): Promise<void> {
   const parsed = aprovarInputSchema.safeParse(req.body);
   if (!parsed.success) { erro(res, 400, "Confira o orçamento, o hash da especificação e as três imagens de preview (dia, noite e explodida)."); return; }
   const { sourceId, specHash } = parsed.data;
-  for (const url of [parsed.data.previewDayUrl, parsed.data.previewNightUrl, parsed.data.previewExplodedUrl])
+  for (const url of [parsed.data.previewDayUrl, parsed.data.previewNightUrl, parsed.data.previewExplodedUrl, ...(parsed.data.previewAnimationUrl ? [parsed.data.previewAnimationUrl] : [])])
     if (!HOST_STORAGE.test(url)) { erro(res, 400, "Os previews precisam ser enviados pelo próprio sistema."); return; }
 
   let spec;
@@ -214,6 +218,7 @@ async function aprovar(req: Request, res: Response): Promise<void> {
     previewDayUrl: parsed.data.previewDayUrl,
     previewNightUrl: parsed.data.previewNightUrl,
     previewExplodedUrl: parsed.data.previewExplodedUrl,
+    previewAnimationUrl: parsed.data.previewAnimationUrl ?? null,
   };
   const materiais = resumoMateriaisParaSnapshot(spec);
   await db.insert(cpqRender3dApprovals).values({
@@ -246,6 +251,20 @@ async function enviarPreview(req: Request, res: Response): Promise<void> {
   } catch (falha) {
     if (falha instanceof CpqRender3dError) { erro(res, 409, falha.message); return; }
     throw falha;
+  }
+  if (tipo === "animacao") {
+    if (!Buffer.isBuffer(req.body)) { erro(res, 415, "Envie a animação como GIF."); return; }
+    const gif = validarGif3d(req.body);
+    if ("erro" in gif) { erro(res, 400, gif.erro); return; }
+    try {
+      const guardado = await storagePut(`cpq-render3d/${ator.id}/${specHash.slice(0, 12)}-animacao-${randomUUID()}.gif`, req.body, "image/gif");
+      res.setHeader("Cache-Control", "private, no-store");
+      res.status(201).json({ url: guardado.url, key: guardado.key });
+    } catch (falha) {
+      console.error("[EstudioRender3d] Falha ao guardar a animação:", falha);
+      erro(res, 502, "Não foi possível guardar a animação agora.");
+    }
+    return;
   }
   if (!Buffer.isBuffer(req.body)) { erro(res, 415, "Envie o preview como PNG ou JPEG."); return; }
   const validada = validarImagem3d(req.body, { maxBytes: PREVIEW_MAX_BYTES });

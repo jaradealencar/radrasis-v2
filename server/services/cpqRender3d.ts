@@ -806,12 +806,13 @@ export function montarBlocoSnapshot(spec: CpqRender3dSpec, approval: CpqRender3d
       previewDayUrl: approval.previewDayUrl,
       previewNightUrl: approval.previewNightUrl,
       previewExplodedUrl: approval.previewExplodedUrl,
+      ...(approval.previewAnimationUrl ? { previewAnimationUrl: approval.previewAnimationUrl } : {}),
     },
   };
 }
 
 /** Visão pública: só o necessário para desenhar (sem custos, margem, fórmulas, recibos, notas nem nomes de perfil/fornecedor). */
-export function visaoPublicaDoSpec(spec: CpqRender3dSpec, previews: { dia: string | null; noite: string | null; explodido: string | null }): CpqRender3dPublicView {
+export function visaoPublicaDoSpec(spec: CpqRender3dSpec, previews: { dia: string | null; noite: string | null; explodido: string | null; animacao?: string | null }): CpqRender3dPublicView {
   return {
     specHash: spec.specHash,
     svg: spec.svg,
@@ -836,6 +837,7 @@ export function visaoPublicaDoSpec(spec: CpqRender3dSpec, previews: { dia: strin
     previewDayUrl: previews.dia,
     previewNightUrl: previews.noite,
     previewExplodedUrl: previews.explodido,
+    previewAnimationUrl: previews.animacao ?? null,
   };
 }
 

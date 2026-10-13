@@ -194,6 +194,8 @@ export interface CpqRender3dApproval {
   previewDayUrl: string | null;
   previewNightUrl: string | null;
   previewExplodedUrl: string | null;
+  /** GIF da animação de montagem (opcional: aprovações antigas ou geração que falhou não têm). */
+  previewAnimationUrl?: string | null;
 }
 
 /** Visão pública (link do cliente): sem custos, margem, fórmulas, recibos nem nomes internos de matéria-prima. */
@@ -209,6 +211,7 @@ export interface CpqRender3dPublicView {
   previewDayUrl: string | null;
   previewNightUrl: string | null;
   previewExplodedUrl: string | null;
+  previewAnimationUrl?: string | null;
 }
 
 /** Ponte entre o HTML legado do CPQ e a ilha React. */
@@ -335,6 +338,7 @@ export const render3dSnapshotSchema = z.object({
     previewDayUrl: z.string().url().max(2048).nullable(),
     previewNightUrl: z.string().url().max(2048).nullable(),
     previewExplodedUrl: z.string().url().max(2048).nullable(),
+    previewAnimationUrl: z.string().url().max(2048).nullable().optional(),
   }).strict(),
 }).strict();
 export type CpqRender3dSnapshot = z.infer<typeof render3dSnapshotSchema>;
