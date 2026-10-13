@@ -1,9 +1,7 @@
 const WTS_CHAT_SEND_TEMPLATE_URL = "https://api.wts.chat/chat/v1/send/template";
 
-export const WTS_CHAT_PRIMEIRA_COMPRA = {
-  from: "551194266377",
-  templateId: "e87c7_primeiracompra",
-} as const;
+/** Número de origem padrão (canal WhatsApp na WTS.Chat); `WTS_CHAT_FROM` sobrescreve. */
+export const WTS_CHAT_FROM_PADRAO = "551194266377";
 
 export interface WtsChatResultadoEnvio {
   ok: boolean;
@@ -11,8 +9,15 @@ export interface WtsChatResultadoEnvio {
   erro?: string;
 }
 
-/** Enfileira um template aprovado da WTS.Chat para um único destinatário. */
-export async function enviarTemplatePrimeiraCompra(telefone: string): Promise<WtsChatResultadoEnvio> {
+export function wtsChatConfigurado(): boolean {
+  return !!process.env.WTS_CHAT_AUTHORIZATION?.trim();
+}
+
+/**
+ * Enfileira um template aprovado pela Meta (cadastrado na WTS.Chat) para um único destinatário.
+ * `templateId` é o ID que a WTS.Chat mostra no cadastro do modelo de mensagem.
+ */
+export async function enviarTemplateWts(telefone: string, templateId: string): Promise<WtsChatResultadoEnvio> {
   const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
   if (!authorization) {
     throw new Error("Configure WTS_CHAT_AUTHORIZATION nos segredos do servidor antes de enviar campanhas.");
@@ -30,8 +35,8 @@ export async function enviarTemplatePrimeiraCompra(telefone: string): Promise<Wt
       },
       body: JSON.stringify({
         to: telefone,
-        from: process.env.WTS_CHAT_FROM?.trim() || WTS_CHAT_PRIMEIRA_COMPRA.from,
-        templateId: process.env.WTS_CHAT_TEMPLATE_ID?.trim() || WTS_CHAT_PRIMEIRA_COMPRA.templateId,
+        from: process.env.WTS_CHAT_FROM?.trim() || WTS_CHAT_FROM_PADRAO,
+        templateId,
       }),
       signal: AbortSignal.timeout(15_000),
     });

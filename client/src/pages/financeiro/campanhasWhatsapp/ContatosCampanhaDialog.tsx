@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import CompletarTelefones from "./CompletarTelefones";
 import PeriodoApuracao from "./PeriodoApuracao";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatarTelefone, hojeCampoGrande } from "@shared/campanhas-whatsapp";
+import { MAX_DISPARO_WTS, formatarTelefone, hojeCampoGrande } from "@shared/campanhas-whatsapp";
 import { rotuloMotivoInvalido, slugArquivo, type CampanhaLinha } from "./comuns";
 
 interface Props {
@@ -43,9 +43,11 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const [fimAteHoje, setFimAteHoje] = useState(true);
   const [fim, setFim] = useState(hoje);
   const [selecionadosWts, setSelecionadosWts] = useState<Set<string>>(new Set());
-  const [confirmandoWts, setConfirmandoWts] = useState(false);
+  // `selecionados` = só os marcados; `todos` = a lista de prontos inteira (até MAX_DISPARO_WTS por clique).
+  const [confirmandoWts, setConfirmandoWts] = useState<"selecionados" | "todos" | null>(null);
   const [resultadoWts, setResultadoWts] = useState<{
-    enfileirados: number; totalSelecionado: number; falhas: Array<{ nome: string; telefone: string; erro: string }>;
+    enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
+    falhas: Array<{ nome: string; telefone: string; erro: string }>;
   } | null>(null);
   // Reinicia a partir do que está gravado sempre que o diálogo abre para uma campanha (não herda a escolha da anterior).
   useEffect(() => {
@@ -83,25 +85,29 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
     onError: e => toast.error(e.message),
   });
 
-  const enviarWts = trpc.campanhasWhatsapp.enviarPrimeiraCompraWts.useMutation({
+  const enviarWts = trpc.campanhasWhatsapp.dispararWts.useMutation({
     onSuccess: resultado => {
       setResultadoWts(resultado);
-      setConfirmandoWts(false);
+      setConfirmandoWts(null);
       setSelecionadosWts(new Set());
       utils.campanhasWhatsapp.listar.invalidate();
       utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate();
       utils.campanhasWhatsapp.contagemAudiencias.invalidate();
-      if (resultado.falhas.length > 0) toast.warning(
+      utils.campanhasWhatsapp.historico.invalidate();
+      if (resultado.erroRegistro) toast.error(
+        `${fmtNum(resultado.enfileirados)} mensagens saíram, mas o disparo NÃO foi registrado: ${resultado.erroRegistro}`,
+      );
+      else if (resultado.falhas.length > 0) toast.warning(
         `${fmtNum(resultado.enfileirados)} enfileiradas; ${fmtNum(resultado.falhas.length)} falharam.`,
       );
-      else toast.success(`${fmtNum(resultado.enfileirados)} mensagens enfileiradas pela WTS.Chat.`);
+      else toast.success(`${fmtNum(resultado.enfileirados)} mensagens enfileiradas pela WTS.Chat e disparo registrado.`);
     },
     onError: e => toast.error(e.message),
   });
 
   useEffect(() => {
     setSelecionadosWts(new Set());
-    setConfirmandoWts(false);
+    setConfirmandoWts(null);
     setResultadoWts(null);
   }, [campanha?.id, periodo.inicio, periodo.fim]);
 
@@ -109,19 +115,29 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
     setSelecionadosWts(atual => {
       const nova = new Set(atual);
       if (nova.has(contato.telefone)) nova.delete(contato.telefone);
-      else if (nova.size < 15) nova.add(contato.telefone);
-      else toast.error("Selecione no máximo 15 clientes por envio.");
+      else if (nova.size < MAX_DISPARO_WTS) nova.add(contato.telefone);
+      else toast.error(`Selecione no máximo ${MAX_DISPARO_WTS} clientes por envio.`);
       return nova;
     });
   };
 
   const confirmarEnvioWts = () => {
-    if (!campanha || !data || selecionadosWts.size === 0) return;
+    if (!campanha || !data || !confirmandoWts) return;
+    if (confirmandoWts === "todos") {
+      enviarWts.mutate({ campanhaId: campanha.id, periodo });
+      return;
+    }
     const escolhidos = data.aprovados.filter(contato => selecionadosWts.has(contato.telefone));
+    if (escolhidos.length === 0) return;
     enviarWts.mutate({ campanhaId: campanha.id, periodo, contatos: escolhidos });
   };
 
-  const podeEnviarWts = !!data && data.porFonte.length === 1 && data.porFonte[0].fonte === "Novos clientes do mês";
+  // Só campanhas com ID de template cadastrado disparam pelo sistema (pós-venda por gatilho segue manual).
+  const templateWts = campanha?.wtsTemplateId?.trim() || "";
+  const podeEnviarWts = !!data && !!templateWts && campanha?.tipo !== "gatilho_venda";
+  const quantosNoDisparo = confirmandoWts === "todos" && data
+    ? Math.min(data.aprovados.length, MAX_DISPARO_WTS)
+    : selecionadosWts.size;
   const linhas = !data ? []
     : aba === "aprovados" ? data.aprovados
     : aba === "ignorados" ? [...data.ignoradosQuarentenaGlobal, ...data.ignoradosCadenciaCampanha]
@@ -237,19 +253,33 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
               </Button>
             </div>
 
+            {aba === "aprovados" && !templateWts && campanha?.tipo !== "gatilho_venda" && (
+              <p className="rounded-md border border-dashed p-3 text-[11px] text-muted-foreground">
+                Para disparar por aqui, informe o ID do template da WTS.Chat em “Editar campanha”.
+              </p>
+            )}
+
             {aba === "aprovados" && podeEnviarWts && (
               <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/50 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span>{fmtNum(selecionadosWts.size)} selecionado(s) · limite de 15 por envio</span>
+                  <span>
+                    {fmtNum(selecionadosWts.size)} selecionado(s) · template <code>{templateWts}</code> · até {MAX_DISPARO_WTS} por envio
+                  </span>
                   {!confirmandoWts ? (
-                    <Button size="sm" className="gap-1.5" disabled={selecionadosWts.size === 0 || enviarWts.isPending}
-                      onClick={() => setConfirmandoWts(true)}>
-                      <Send size={14} /> Enviar selecionados via WhatsApp
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" className="gap-1.5" disabled={selecionadosWts.size === 0 || enviarWts.isPending}
+                        onClick={() => setConfirmandoWts("selecionados")}>
+                        <Send size={14} /> Disparar selecionados
+                      </Button>
+                      <Button size="sm" className="gap-1.5" disabled={data.aprovados.length === 0 || enviarWts.isPending}
+                        onClick={() => setConfirmandoWts("todos")}>
+                        <Send size={14} /> Disparar prontos ({fmtNum(Math.min(data.aprovados.length, MAX_DISPARO_WTS))})
+                      </Button>
+                    </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">Enviar o template “primeira compra” para {selecionadosWts.size} cliente(s)?</span>
-                      <Button size="sm" variant="outline" disabled={enviarWts.isPending} onClick={() => setConfirmandoWts(false)}>Cancelar</Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs">Enviar o template <code>{templateWts}</code> para {fmtNum(quantosNoDisparo)} cliente(s)?</span>
+                      <Button size="sm" variant="outline" disabled={enviarWts.isPending} onClick={() => setConfirmandoWts(null)}>Cancelar</Button>
                       <Button size="sm" className="gap-1.5" disabled={enviarWts.isPending} onClick={confirmarEnvioWts}>
                         {enviarWts.isPending ? <Spinner className="size-3.5" /> : <Send size={14} />}
                         {enviarWts.isPending ? "Enviando..." : "Confirmar envio"}
@@ -260,6 +290,12 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
                 {resultadoWts && (
                   <div className="text-xs text-slate-700">
                     {fmtNum(resultadoWts.enfileirados)} de {fmtNum(resultadoWts.totalSelecionado)} aceitos para processamento pela WTS.Chat.
+                    {resultadoWts.erroRegistro
+                      ? <span className="block text-red-700">As mensagens saíram, mas o disparo não foi registrado ({resultadoWts.erroRegistro}). Registre-o à mão para a quarentena valer.</span>
+                      : resultadoWts.enfileirados > 0 && <span className="block text-emerald-700">Disparo registrado: cadência e quarentena já atualizadas.</span>}
+                    {resultadoWts.restantes > 0 && (
+                      <span className="block">Ainda há {fmtNum(resultadoWts.restantes)} contato(s) pronto(s): clique em Disparar de novo para continuar.</span>
+                    )}
                     {resultadoWts.falhas.length > 0 && (
                       <ul className="mt-1 list-disc pl-5 text-red-700">
                         {resultadoWts.falhas.slice(0, 5).map((falha, i) => <li key={i}>{falha.nome}: {falha.erro}</li>)}
@@ -286,7 +322,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
                     <TableRow><TableCell colSpan={aba === "invalidos" || (aba === "aprovados" && podeEnviarWts) ? 3 : 2} className="text-center text-muted-foreground py-6">Nenhum contato nesta lista.</TableCell></TableRow>
                   ) : linhas.slice(0, MAX_LISTA_TELA).map((c: any, i: number) => (
                     <TableRow key={i}>
-                      {aba === "aprovados" && podeEnviarWts && <TableCell><Checkbox checked={selecionadosWts.has(c.telefone)} disabled={!selecionadosWts.has(c.telefone) && selecionadosWts.size >= 15 || enviarWts.isPending} onCheckedChange={() => alternarSelecaoWts(c)} aria-label={`Selecionar ${c.nome}`} /></TableCell>}
+                      {aba === "aprovados" && podeEnviarWts && <TableCell><Checkbox checked={selecionadosWts.has(c.telefone)} disabled={!selecionadosWts.has(c.telefone) && selecionadosWts.size >= MAX_DISPARO_WTS || enviarWts.isPending} onCheckedChange={() => alternarSelecaoWts(c)} aria-label={`Selecionar ${c.nome}`} /></TableCell>}
                       <TableCell className="whitespace-nowrap">{formatarTelefone(c.telefone ?? c.telefoneOriginal ?? "")}</TableCell>
                       <TableCell>{c.nome}</TableCell>
                       {aba === "invalidos" && <TableCell className="text-[11px] text-muted-foreground">{rotuloMotivoInvalido(c.motivo)}</TableCell>}

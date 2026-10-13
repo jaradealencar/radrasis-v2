@@ -323,12 +323,17 @@ cega. Envie `"apply_quarantine": true` para o comportamento da tela (descartar o
 inválido/data futura/campanha pausada, 401 chave inválida, 404 campanha inexistente, 503 API desligada. Limites: 20.000
 contatos por `log-send`, 5.000 telefones por `check-quarantine`.
 
-## Envio de primeira compra via WTS.Chat
+## Disparo via WTS.Chat (13/10/2026)
 
-A campanha usa a fonte ERP `novos_do_mes` (primeira compra da vida no período selecionado). Em **Ver contatos**, os contatos aprovados podem ser selecionados individualmente e enviados após confirmação, em lotes de até 15 por chamada. O servidor revalida a elegibilidade, opt-out, quarentena e cadência antes do envio.
+Cada campanha tem o campo **ID do template na WTS.Chat** (Editar campanha; coluna `campanhas_whatsapp.wts_template_id`, migration `0105`): é o ID do modelo de mensagem aprovado pela Meta e cadastrado na WTS.Chat (marketing, atendimento ou sequência). O texto continua sendo o da WTS.Chat; o sistema só guarda o ID. Em branco, a campanha só aceita **Registrar disparo** à mão.
 
-O envio usa `POST https://api.wts.chat/chat/v1/send/template` com o template Marketing `e87c7_primeiracompra` (sem parâmetros) e o canal `551194266377`. `WTS_CHAT_AUTHORIZATION` deve conter o token permanente copiado em Ajustes > Integrações > Integrações Via API (configure somente como segredo do servidor); o servidor envia `Authorization: Bearer <token>` e também aceita o prefixo `Bearer` já incluído; `WTS_CHAT_FROM` e `WTS_CHAT_TEMPLATE_ID` permitem sobrescrever canal e template. A resposta aceita pelo endpoint representa enfileiramento para processamento, não confirmação de entrega. Ainda não há callback persistido de entrega/falha por contato.
+Em **Ver contatos > Prontos para envio**, campanhas com ID cadastrado mostram **Disparar selecionados** e **Disparar prontos** (até 100 por clique; `MAX_DISPARO_WTS` em `shared/campanhas-whatsapp.ts`). Quem foi enviado sai da lista pela quarentena/cadência, então repetir o clique continua de onde parou. A procedure `campanhasWhatsapp.dispararWts` revalida elegibilidade, opt-out, quarentena e cadência, envia com 8 chamadas em paralelo e **registra o disparo sozinho** (`origem = api`, observação com o ID do template usado), atualizando próximo envio, quarentena e histórico. Se as mensagens saírem e o registro falhar, a resposta traz `erroRegistro` e a tela avisa para registrar à mão. Campanhas de gatilho de venda ainda não disparam pelo sistema.
 
+O envio usa `POST https://api.wts.chat/chat/v1/send/template` (sem parâmetros de template) e o canal `551194266377`. `WTS_CHAT_AUTHORIZATION` deve conter o token permanente copiado em Ajustes > Integrações > Integrações Via API (configure somente como segredo do servidor); o servidor envia `Authorization: Bearer <token>` e também aceita o prefixo `Bearer` já incluído; `WTS_CHAT_FROM` sobrescreve o canal (`WTS_CHAT_TEMPLATE_ID` não é mais lido: o ID vem da campanha). A resposta aceita pelo endpoint representa enfileiramento para processamento, não confirmação de entrega. Ainda não há callback persistido de entrega/falha por contato.
+
+## Listas enviadas por arquivo (processador)
+
+O upload de lista (Registrar disparo e fontes por arquivo) aceita `.csv`, `.xlsx`, `.xls` e `.xml` (planilha XML do Excel) e ajusta o formato sozinho (`shared/lista-contatos.ts`, `extrairContatosDeMatriz`): procura o cabeçalho nas 20 primeiras linhas (título/linhas em branco antes não atrapalham), aceita vários nomes de coluna (telefone, celular, whatsapp, fone, `telefone_1`…; cliente, nome, razão social…), usa a primeira coluna de telefone preenchida da linha e trata o nome como opcional. A padronização do telefone (DDD + 55) e a limpeza de inválidos/repetidos/quarentena continuam em `server/services/campanhasWhatsapp.ts`. O disparo pela WTS.Chat ainda parte da lista de **fontes** da campanha; enviar direto uma lista subida por arquivo é o passo seguinte.
 ## Limitações conhecidas
 
 - A quarentena só enxerga envios registrados **neste módulo** (upload, "vendas pendentes", Fontes ou API). Os

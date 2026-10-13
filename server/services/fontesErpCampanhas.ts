@@ -17,7 +17,7 @@ import { parseDataFlexivel, STATUS_GANHO } from "./inteligenciaClientes";
 import { dataLocalParaIso } from "./campanhasWhatsapp";
 import { carregarTelefonesClientes, completarTelefonesPeloCadastro } from "../sync/clientes-mubisys";
 import { diasEntre, hojeCampoGrande, somarDias } from "../../shared/campanhas-whatsapp";
-import { extrairContatos, detectarSeparadorCsv, type LeituraLista } from "../../shared/lista-contatos";
+import { extrairContatosDeMatriz, detectarSeparadorCsv, type LeituraLista } from "../../shared/lista-contatos";
 
 export interface ContatoFonte {
   /** `null` quando a empresa nunca teve telefone gravado localmente (mesma limitação já documentada no
@@ -463,8 +463,8 @@ export async function lerArquivoDeUrl(url: string, nomeArquivo: string): Promise
       : XLSX.read(buffer, { type: "buffer" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     if (!ws) return { ok: false, erro: "Não encontrei nenhuma aba na planilha." };
-    return extrairContatos(XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: true }));
+    return extrairContatosDeMatriz(XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", raw: true }));
   } catch {
-    return { ok: false, erro: "Não consegui ler esse arquivo. Confira se é um .csv ou .xlsx válido." };
+    return { ok: false, erro: "Não consegui ler esse arquivo. Confira se é um .csv, .xlsx ou .xml válido." };
   }
 }

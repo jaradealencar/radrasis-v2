@@ -52,6 +52,13 @@ const AJUDA_FREQUENCIA = (
       pós-venda: 30 dias.</p>
   </>
 );
+const AJUDA_WTS_TEMPLATE = (
+  <>
+    <p><strong>O que é:</strong> o ID do modelo de mensagem que você cadastrou na WTS.Chat e que a Meta já aprovou.</p>
+    <p><strong>Onde achar:</strong> na WTS.Chat, no cadastro do modelo (marketing, atendimento ou sequência).
+      Copie só o ID — o texto da mensagem continua sendo o que está lá.</p>
+  </>
+);
 const AJUDA_QUARENTENA = (
   <>
     <p><strong>O que é:</strong> período de "blindagem" do telefone — quem recebeu esta campanha fica de fora
@@ -86,6 +93,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   const [frequencia, setFrequencia] = useState("30");
   const [quarentena, setQuarentena] = useState("0");
   const [status, setStatus] = useState<StatusCampanha>("ativa");
+  const [wtsTemplateId, setWtsTemplateId] = useState("");
   const hoje = hojeCampoGrande();
   const [inicio, setInicio] = useState("");
   const [fimAutomatico, setFimAutomatico] = useState(true);
@@ -100,6 +108,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
     setFrequencia(String(campanha?.frequenciaDias ?? 30));
     setQuarentena(String(campanha?.quarentenaDias ?? 0));
     setStatus(campanha?.status ?? "ativa");
+    setWtsTemplateId(campanha?.wtsTemplateId ?? "");
     // O corte antigo do pós-venda (gatilhoAPartirDe) aparece como início da apuração.
     setInicio(campanha?.periodoInicio ?? campanha?.gatilhoAPartirDe ?? "");
     setFimAutomatico(!campanha?.periodoFim);
@@ -139,12 +148,14 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
     : quar === null || quar > 365 ? "A quarentena deve ser um número de 0 a 365 dias."
     : !fimAutomatico && !fim ? "Escolha a data final da apuração ou deixe no automático."
     : !fimAutomatico && inicio && inicio > fim ? "O início da apuração não pode ser depois da data final."
+    : !/^[\w.-]*$/.test(wtsTemplateId.trim()) ? "O ID do template só pode ter letras, números, _ , - e ."
     : null;
 
   const salvar = () => {
     if (erro || freq === null || quar === null) return toast.error(erro ?? "Confira os campos.");
     const base = {
       nome: nome.trim(), descricao: descricao.trim() || null, categoria, frequenciaDias: freq, quarentenaDias: quar,
+      wtsTemplateId: wtsTemplateId.trim() || null,
       // Início/final da apuração valem para todos os tipos; o corte antigo do pós-venda é migrado para cá.
       periodoInicio: inicio || null,
       periodoFim: fimAutomatico ? null : fim || null,
@@ -234,6 +245,15 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
                 Descanso mínimo de um telefone desde qualquer campanha. 0 = sem trava.
               </p>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <LabelComAjuda htmlFor="camp-wts" texto="ID do template na WTS.Chat" ajuda={AJUDA_WTS_TEMPLATE} />
+            <Input id="camp-wts" value={wtsTemplateId} onChange={e => setWtsTemplateId(e.target.value)} maxLength={120}
+              autoComplete="off" spellCheck={false} placeholder="Ex.: e87c7_primeiracompra" />
+            <p className="text-[11px] text-muted-foreground">
+              É o que o botão "Disparar" envia. Em branco, a campanha só aceita registrar o disparo à mão.
+            </p>
           </div>
 
           <div className="space-y-2 rounded-lg border p-3">

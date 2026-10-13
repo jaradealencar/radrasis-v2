@@ -20,6 +20,9 @@ export const TIPO_CAMPANHA_LABEL: Record<TipoCampanha, string> = {
 };
 
 export const STATUS_CAMPANHA = ["ativa", "pausada", "arquivada"] as const;
+
+/** Máximo de mensagens por clique em "Disparar" (cada uma é uma chamada à WTS.Chat dentro do tempo da função). */
+export const MAX_DISPARO_WTS = 100;
 export type StatusCampanha = (typeof STATUS_CAMPANHA)[number];
 export const STATUS_CAMPANHA_LABEL: Record<StatusCampanha, string> = {
   ativa: "Ativa",

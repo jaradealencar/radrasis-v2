@@ -1,0 +1,1 @@
+ALTER TABLE "campanhas_whatsapp" ADD COLUMN "wts_template_id" varchar(120);

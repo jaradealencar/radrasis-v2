@@ -18,7 +18,7 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
-import { enviarTemplatePrimeiraCompra, WTS_CHAT_PRIMEIRA_COMPRA } from "../integrations/wts-chat-client";
+import { enviarTemplateWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
@@ -33,7 +33,7 @@ import {
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
-  STATUS_AGENDAMENTO, STATUS_CAMPANHA, TIPOS_CAMPANHA,
+  MAX_DISPARO_WTS, STATUS_AGENDAMENTO, STATUS_CAMPANHA, TIPOS_CAMPANHA,
   calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, gerarChaveCategoria, hojeCampoGrande,
   normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
@@ -89,7 +89,14 @@ const campanhaBaseSchema = z.object({
   // Período "fixado" da lista de contatos (ver comentário em drizzle/schema.ts). null = automático.
   periodoInicio: dataIsoSchema.nullish(),
   periodoFim: dataIsoSchema.nullish(),
+  // ID do template aprovado pela Meta, como aparece na WTS.Chat. Vazio = a campanha não dispara pelo sistema.
+  wtsTemplateId: z.string().trim().max(120).regex(/^[\w.-]*$/, "O ID do template só pode ter letras, números, _ , - e .").nullish(),
 });
+
+/** Lê o ID do template já limpo (vazio vira `null`; `undefined` = campo não enviado, não mexe no que está gravado). */
+function templateIdLimpo(v: string | null | undefined): string | null | undefined {
+  return v === undefined ? undefined : (v?.trim() || null);
+}
 
 function validarPeriodo(inicio: string | null | undefined, fim: string | null | undefined): void {
   if (inicio && fim && inicio > fim) {
@@ -533,6 +540,7 @@ export const campanhasWhatsappRouter = router({
         periodoInicio: input.periodoInicio ?? null,
         periodoFim: input.periodoFim ?? null,
         descricao: input.descricao?.trim() || null,
+        wtsTemplateId: templateIdLimpo(input.wtsTemplateId) ?? null,
         gatilhoAPartirDe: input.tipo === "gatilho_venda" ? input.gatilhoAPartirDe ?? null : null,
       }).returning();
       return row;
@@ -554,6 +562,7 @@ export const campanhasWhatsappRouter = router({
       await db.update(campanhasWhatsapp).set({
         ...campos,
         descricao: campos.descricao === undefined ? undefined : (campos.descricao?.trim() || null),
+        wtsTemplateId: templateIdLimpo(campos.wtsTemplateId),
         gatilhoAPartirDe: tipo === "gatilho_venda"
           ? (campos.gatilhoAPartirDe === undefined ? atual.gatilhoAPartirDe : campos.gatilhoAPartirDe)
           : null,
@@ -586,6 +595,7 @@ export const campanhasWhatsappRouter = router({
         gatilhoAPartirDe: original.tipo === "gatilho_venda" ? original.gatilhoAPartirDe : null,
         periodoInicio: original.periodoInicio,
         periodoFim: original.periodoFim,
+        wtsTemplateId: original.wtsTemplateId,
       }).returning();
 
       const [fontes, scripts] = await Promise.all([
@@ -705,14 +715,20 @@ export const campanhasWhatsappRouter = router({
       return { campanha: { id: campanha.id, nome: campanha.nome }, disparos };
     }),
 
-  enviarPrimeiraCompraWts: campanhasProcedure
+  /**
+   * "Disparar": envia o template aprovado (ID cadastrado na campanha) pela WTS.Chat aos contatos prontos da
+   * campanha e, em seguida, registra o disparo sozinho (cadência, quarentena e histórico) com o ID usado.
+   * Sem `contatos`, vale a lista de prontos inteira, até `MAX_DISPARO_WTS` por chamada — quem foi enviado sai da
+   * lista (quarentena/cadência), então repetir o clique continua de onde parou.
+   */
+  dispararWts: campanhasProcedure
     .input(z.object({
       campanhaId: z.number().int().positive(),
       periodo: z.object({ inicio: dataIsoSchema.nullable(), fim: dataIsoSchema.nullable() }).optional(),
-      contatos: z.array(z.object({ telefone: z.string().max(40), nome: z.string().max(200) })).min(1).max(15),
+      contatos: z.array(z.object({ telefone: z.string().max(40), nome: z.string().max(200) })).min(1).max(MAX_DISPARO_WTS).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      if (!process.env.WTS_CHAT_AUTHORIZATION?.trim()) {
+      if (!wtsChatConfigurado()) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A integração WTS.Chat ainda não está configurada no servidor." });
       }
       const db = await obterDb();
@@ -720,38 +736,46 @@ export const campanhasWhatsappRouter = router({
       if (campanha.status !== "ativa") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Reative a campanha antes de enviar." });
       }
-      validarPeriodo(input.periodo?.inicio, input.periodo?.fim);
-
-      const fontes = await db.select({ tipo: campanhasWhatsappFontes.tipo, consultaErp: campanhasWhatsappFontes.consultaErp })
-        .from(campanhasWhatsappCampanhaFontes)
-        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
-        .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, campanha.id), eq(campanhasWhatsappFontes.ativo, true)));
-      if (fontes.length !== 1 || fontes[0].tipo !== "erp" || fontes[0].consultaErp !== "novos_do_mes") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Este envio exige somente a fonte ERP “Novos clientes do mês”." });
+      if (campanha.tipo === "gatilho_venda") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Campanhas de gatilho de venda ainda não disparam pelo sistema — use \"Registrar disparo\"." });
       }
+      const templateId = campanha.wtsTemplateId?.trim();
+      if (!templateId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o ID do template WTS.Chat em \"Editar campanha\" antes de disparar." });
+      }
+      validarPeriodo(input.periodo?.inicio, input.periodo?.fim);
 
       const dataEnvio = hojeCampoGrande();
       const lista = await montarListaCampanha(db, campanha, { dataEnvio, periodo: input.periodo });
       const elegiveis = new Map(lista.aprovados.map(contato => [normalizarTelefone(contato.telefone), contato] as const));
-      const selecionados = new Map<string, { telefone: string; nome: string }>();
-      for (const contato of input.contatos) {
-        const telefone = normalizarTelefone(contato.telefone);
-        if (!telefone || !elegiveis.has(telefone)) continue;
-        selecionados.set(telefone, { telefone, nome: elegiveis.get(telefone)!.nome || contato.nome });
+      let selecionados: Array<{ telefone: string; nome: string }>;
+      if (input.contatos) {
+        const escolhidos = new Map<string, { telefone: string; nome: string }>();
+        for (const contato of input.contatos) {
+          const telefone = normalizarTelefone(contato.telefone);
+          if (!telefone || !elegiveis.has(telefone)) continue;
+          escolhidos.set(telefone, { telefone, nome: elegiveis.get(telefone)!.nome || contato.nome });
+        }
+        selecionados = [...escolhidos.values()];
+      } else {
+        selecionados = lista.aprovados
+          .map(contato => ({ telefone: normalizarTelefone(contato.telefone), nome: contato.nome }))
+          .filter((contato): contato is { telefone: string; nome: string } => !!contato.telefone);
       }
-      if (selecionados.size === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contato selecionado continua elegível para envio." });
+      if (selecionados.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contato continua elegível para envio." });
       }
+      const restantes = Math.max(0, selecionados.length - MAX_DISPARO_WTS);
+      const tentativas = selecionados.slice(0, MAX_DISPARO_WTS);
 
-      const tentativas = [...selecionados.values()];
       const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string }> = new Array(tentativas.length);
       let proximo = 0;
-      const trabalhadores = Array.from({ length: Math.min(5, tentativas.length) }, async () => {
+      const trabalhadores = Array.from({ length: Math.min(8, tentativas.length) }, async () => {
         while (true) {
           const indice = proximo++;
           if (indice >= tentativas.length) return;
           const contato = tentativas[indice];
-          const resultado = await enviarTemplatePrimeiraCompra(contato.telefone);
+          const resultado = await enviarTemplateWts(contato.telefone, templateId);
           resultados[indice] = { contato, ok: resultado.ok, erro: resultado.erro };
         }
       });
@@ -759,21 +783,29 @@ export const campanhasWhatsappRouter = router({
 
       const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
       let disparoId: number | null = null;
+      let erroRegistro: string | null = null;
       if (aceitos.length > 0) {
-        const registro = await registrarDisparoNoBanco({
-          campanhaId: campanha.id,
-          dataEnvio,
-          contatos: aceitos,
-          observacoes: `Template WTS.Chat ${process.env.WTS_CHAT_TEMPLATE_ID?.trim() || WTS_CHAT_PRIMEIRA_COMPRA.templateId}; aceito para processamento pelo provedor.`,
-          origem: "api",
-          registradoPor: ctx.user.name ?? ctx.user.email ?? "WTS.Chat",
-          aplicarQuarentena: false,
-        });
-        disparoId = registro.disparoId;
+        // As mensagens já saíram: se o registro falhar, não escondemos isso atrás de um erro genérico — o
+        // operador precisa saber que o envio aconteceu e que o disparo ficou sem registro.
+        try {
+          const registro = await registrarDisparoNoBanco({
+            campanhaId: campanha.id,
+            dataEnvio,
+            contatos: aceitos,
+            observacoes: `Template WTS.Chat ${templateId}; aceito para processamento pelo provedor.`,
+            origem: "api",
+            registradoPor: ctx.user.name ?? ctx.user.email ?? "WTS.Chat",
+            aplicarQuarentena: false,
+          });
+          disparoId = registro.disparoId;
+        } catch (error) {
+          erroRegistro = error instanceof Error ? error.message : "Falha ao registrar o disparo.";
+        }
       }
 
       return {
         disparoId,
+        erroRegistro,
         enfileirados: aceitos.length,
         falhas: resultados.filter(resultado => !resultado.ok).map(resultado => ({
           nome: resultado.contato.nome,
@@ -781,7 +813,8 @@ export const campanhasWhatsappRouter = router({
           erro: resultado.erro ?? "Falha ao enfileirar mensagem.",
         })),
         totalSelecionado: tentativas.length,
-        templateId: process.env.WTS_CHAT_TEMPLATE_ID?.trim() || WTS_CHAT_PRIMEIRA_COMPRA.templateId,
+        restantes,
+        templateId,
       };
     }),
 

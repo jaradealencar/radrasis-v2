@@ -3433,6 +3433,9 @@ export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   // sozinha quem vai entrando). Só uma data final escolhida fica congelada.
   periodoInicio: date("periodo_inicio"),
   periodoFim: date("periodo_fim"),
+  // ID do template aprovado pela Meta, cadastrado na WTS.Chat. É o que o botão "Disparar" envia; nulo = a
+  // campanha ainda não pode disparar pelo sistema (só registrar o disparo à mão).
+  wtsTemplateId: varchar("wts_template_id", { length: 120 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -222,8 +222,8 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
 
             {fonte === "arquivo" ? (
               <div className="space-y-2">
-                <Label>Lista de contatos (.csv ou .xlsx)</Label>
-                <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+                <Label>Lista de contatos (.csv, .xlsx ou .xml)</Label>
+                <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls,.xml" className="hidden"
                   onChange={e => { escolherArquivo(e.target.files?.[0]); e.target.value = ""; }} />
                 <div className="flex items-center gap-3 flex-wrap">
                   <Button variant="outline" size="sm" className="gap-1.5" onClick={() => inputRef.current?.click()} disabled={processando}>
@@ -232,7 +232,11 @@ export default function RegistrarDisparoDialog({ campanha, hoje, onClose }: Prop
                   {arquivo && <span className="text-sm text-muted-foreground truncate max-w-xs">{arquivo.name}</span>}
                   {lendo && <Spinner />}
                 </div>
-                <p className="text-[11px] text-muted-foreground">Colunas obrigatórias: <code>telefone</code> e <code>nome_cliente</code>.</p>
+                <p className="text-[11px] text-muted-foreground">
+                  O sistema ajusta a lista sozinho: procura o cabeçalho, aceita <code>telefone</code>, <code>celular</code> ou <code>whatsapp</code>
+                  (se houver mais de uma coluna, usa a primeira preenchida) e <code>nome_cliente</code>/<code>cliente</code>/<code>nome</code>
+                  (opcional). Telefones são padronizados com DDD e 55 no envio.
+                </p>
 
                 {leitura && !leitura.ok && (
                   <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">

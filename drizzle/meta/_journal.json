@@ -736,6 +736,13 @@
       "when": 1791563604388,
       "tag": "0104_omniscient_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1791921463588,
+      "tag": "0105_campanhas_wts_template_id",
+      "breakpoints": true
     }
   ]
 }
