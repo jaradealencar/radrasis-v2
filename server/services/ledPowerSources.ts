@@ -86,7 +86,7 @@ function criarTabelaModulos12V(
   return {
     key,
     title,
-    subtitle: `Módulos por unidade · ${wattsPorModulo === 1.5 ? "1,5" : "3"} W por módulo`,
+    subtitle: `Módulos por unidade · ${String(wattsPorModulo).replace(".", ",")} W por módulo`,
     wattsPerModule: wattsPorModulo,
     rows: fontesParaTensao(12).map(fonte => {
       const recomendados = Math.floor(
@@ -209,7 +209,7 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
       criarTabelaModulos12V(
         "modules-7025-12v",
         "MÓDULO LED 7025 (12V)",
-        1.5
+        1.7
       ),
       criarTabelaModulos12V("modules-3030-12v", "MÓDULO 3030 3W (12V)", 3),
       criarTabelaModulos12V(

@@ -530,6 +530,7 @@ interface OpcaoCalculadoraLed {
 const casasWatts = (watts: number) => (Number.isInteger(watts) ? 0 : 1);
 /** 2.380 W ou 649,4 W: sem casas decimais quando o valor é inteiro. */
 const fmtWatts = (watts: number) => `${fmtNum(watts, casasWatts(watts))} W`;
+const tensaoNumerica = (tensao: string) => Number(tensao.match(/\d+(?:[.,]\d+)?/)?.[0].replace(",", "."));
 
 /** Monta as opções do menu a partir das tabelas da própria página (mesmas fontes, mesmos nomes editados). */
 function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; texts: LedPowerSourceTextOverrides }): OpcaoCalculadoraLed[] {
@@ -609,12 +610,14 @@ function PlanoFontesCard({
   opcao,
   mostrarPreco,
   comparacaoVendaDireta,
+  exibirCargaEmWatts = false,
 }: {
   titulo: string;
   plano: PlanoFontes;
   opcao: OpcaoCalculadoraLed;
   mostrarPreco: boolean;
   comparacaoVendaDireta?: { texto: string; positiva: boolean } | null;
+  exibirCargaEmWatts?: boolean;
 }) {
   const unidade = opcao.grupo === "fita" ? "m" : "módulos";
   const casasQuantidade = opcao.grupo === "fita" ? 1 : 0;
@@ -675,7 +678,7 @@ function PlanoFontesCard({
             <TableRow className="bg-slate-50">
               <TableHead>Fonte</TableHead>
               <TableHead className="text-right">Quantidade</TableHead>
-              <TableHead className="text-right">LED por fonte</TableHead>
+              <TableHead className="text-right">{exibirCargaEmWatts ? "Carga por fonte" : "LED por fonte"}</TableHead>
               <TableHead className="text-right">Uso por fonte</TableHead>
             </TableRow>
           </TableHeader>
@@ -686,7 +689,9 @@ function PlanoFontesCard({
                   {item.fonte.nome} <span className="text-xs font-normal text-slate-500">({fmtNum(item.fonte.potenciaW)} W)</span>
                 </TableCell>
                 <TableCell className="text-right font-semibold">{copias}</TableCell>
-                <TableCell className="text-right">{fmtNum(item.quantidade, casasQuantidade)} {unidade}</TableCell>
+                <TableCell className="text-right">
+                  {exibirCargaEmWatts ? fmtWatts(item.cargaW) : `${fmtNum(item.quantidade, casasQuantidade)} ${unidade}`}
+                </TableCell>
                 <TableCell className={`text-right font-semibold ${item.faixa === "tolerancia" ? "text-amber-700" : "text-emerald-700"}`}>
                   {fmtNum(item.utilizacao * 100, 1)}%
                 </TableCell>
@@ -701,48 +706,66 @@ function PlanoFontesCard({
 
 function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: LedPowerSourceTables; texts: LedPowerSourceTextOverrides } }) {
   const opcoes = useMemo(() => opcoesCalculadoraLed(dimensionamento), [dimensionamento]);
-  const [chave, setChave] = useState(opcoes[0]?.chave ?? "");
-  const [quantidadeInformada, setQuantidadeInformada] = useState("");
-  const opcao = opcoes.find(item => item.chave === chave) ?? opcoes[0];
-  const quantidade = Number(quantidadeInformada.replace(",", "."));
-  const preenchida = quantidadeInformada.trim() !== "";
-
-  const resultados = useMemo(
-    () =>
-      opcao && preenchida
-        ? opcao.alternativas.map(alternativa => ({
-            alternativa,
-            resultado: dimensionarFontes({ fontes: alternativa.fontes, wattsPorUnidade: opcao.wattsPorUnidade, passo: opcao.passo, quantidade }),
-          }))
-        : null,
-    [opcao, preenchida, quantidade]
-  );
-
-  if (!opcao) return null;
-  const unidadeCampo = opcao.grupo === "fita" ? "metros" : "módulos";
+  const [entradas, setEntradas] = useState([
+    { chave: opcoes[0]?.chave ?? "", quantidadeInformada: "" },
+    { chave: "", quantidadeInformada: "" },
+  ]);
   const grupos: Array<[OpcaoCalculadoraLed["grupo"], string]> = [["fita", "Fitas LED (por metro)"], ["modulo", "Módulos LED (por unidade)"]];
-  const planoChaveado = resultados?.find(item => ["modules-24v", "tape-24v"].includes(item.alternativa.chave))?.resultado.recomendado ?? null;
-  const planoBlindado = resultados?.find(item => ["modules-shielded-24v", "tape-shielded-24v"].includes(item.alternativa.chave))?.resultado.recomendado ?? null;
-  const compararVendaDireta = planoChaveado?.valorVendaDiretaTotal != null && planoBlindado?.valorVendaDiretaTotal != null;
-  const diferencaPercentual = compararVendaDireta
-    ? ((planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!) / planoChaveado.valorVendaDiretaTotal!) * 100
-    : null;
-  const diferencaValor = compararVendaDireta
-    ? planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!
-    : null;
-  const comparacaoBlindada = diferencaPercentual == null || diferencaValor == null
-    ? null
-    : Math.abs(diferencaPercentual) < 0.005
-      ? { texto: "Mesmo preço da chaveada", positiva: false }
-      : diferencaPercentual > 0
-        ? {
-            texto: `${fmtNum(diferencaPercentual, 1)}% mais cara que a chaveada · ${fmtBrl(diferencaValor)} a mais`,
-            positiva: true,
-          }
-        : {
-            texto: `${fmtNum(Math.abs(diferencaPercentual), 1)}% mais barata que a chaveada · ${fmtBrl(Math.abs(diferencaValor))} a menos`,
-            positiva: false,
-          };
+
+  const atualizarEntrada = (indice: number, campo: "chave" | "quantidadeInformada", valor: string) => {
+    setEntradas(atuais => atuais.map((entrada, posicao) => {
+      if (posicao !== indice) return entrada;
+      if (campo === "chave") return { chave: valor, quantidadeInformada: "" };
+      return { ...entrada, quantidadeInformada: valor };
+    }));
+  };
+
+  const entradasAtivas = entradas.flatMap((entrada, indice) => {
+    const opcao = opcoes.find(item => item.chave === entrada.chave);
+    if (!opcao) return [];
+    const quantidade = Number(entrada.quantidadeInformada.replace(",", "."));
+    return [{ ...entrada, indice, opcao, quantidade }];
+  });
+  const todasQuantidadesValidas = entradasAtivas.length > 0
+    && entradasAtivas.every(entrada => entrada.quantidadeInformada.trim() !== "" && Number.isFinite(entrada.quantidade) && entrada.quantidade > 0);
+
+  const resultadosPorTensao = useMemo(() => {
+    if (!todasQuantidadesValidas) return null;
+    const gruposPorTensao = entradasAtivas.reduce((mapa, entrada) => {
+      const tensao = tensaoNumerica(entrada.opcao.tensao);
+      const chaveTensao = Number.isFinite(tensao) ? tensao : entrada.opcao.tensao;
+      const existentes = mapa.get(chaveTensao) ?? [];
+      existentes.push(entrada);
+      mapa.set(chaveTensao, existentes);
+      return mapa;
+    }, new Map<number | string, typeof entradasAtivas>());
+
+    return Array.from(gruposPorTensao.entries()).map(([chaveTensao, itens]) => {
+      const opcaoBase = itens[0].opcao;
+      const tiposDiferentes = new Set(itens.map(item => item.opcao.chave)).size > 1;
+      const quantidadeSomada = itens.reduce((soma, item) => soma + item.quantidade, 0);
+      const consumoTotalW = itens.reduce((soma, item) => soma + item.quantidade * item.opcao.wattsPorUnidade, 0);
+      const entradaCombinada = tiposDiferentes
+        ? { wattsPorUnidade: 1, passo: 0.01, quantidade: consumoTotalW }
+        : { wattsPorUnidade: opcaoBase.wattsPorUnidade, passo: opcaoBase.passo, quantidade: quantidadeSomada };
+      const resultados = opcaoBase.alternativas.map(alternativa => ({
+        alternativa,
+        resultado: dimensionarFontes({ fontes: alternativa.fontes, ...entradaCombinada }),
+      }));
+      return {
+        chaveTensao,
+        tensao: Number.isFinite(Number(chaveTensao)) ? `${chaveTensao} V` : String(chaveTensao),
+        itens,
+        opcao: opcaoBase,
+        tiposDiferentes,
+        consumoTotalW,
+        resultados,
+      };
+    });
+  }, [entradasAtivas, todasQuantidadesValidas]);
+
+  if (!opcoes.length) return null;
+  const consumoTotalLetreiro = resultadosPorTensao?.reduce((soma, grupo) => soma + grupo.consumoTotalW, 0) ?? 0;
 
   return (
     <Card className="border-blue-200">
@@ -752,72 +775,113 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
           Calculadora de fontes
         </CardTitle>
         <p className="text-xs text-slate-500">
-          A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%. A sobra usa a menor fonte possível, com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%. Para módulos e fitas 24 V, o sistema compara as opções chaveada e blindada pelos preços de venda direta do MubiSys.
+          Escolha até dois tipos de LED usados no mesmo letreiro. Cargas da mesma tensão são somadas; tensões diferentes recebem circuitos e fontes separados. A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%, e a sobra usa a menor fonte possível com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-[1.4fr_0.6fr]">
-          <label className="space-y-1 text-xs font-medium text-slate-600">
-            LED utilizado
-            <select
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900"
-              value={opcao.chave}
-              onChange={event => setChave(event.target.value)}
-            >
-              {grupos.map(([grupo, rotuloGrupo]) => (
-                <optgroup key={grupo} label={rotuloGrupo}>
-                  {opcoes.filter(item => item.grupo === grupo).map(item => (
-                    <option key={item.chave} value={item.chave}>{item.rotulo}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-xs font-medium text-slate-600">
-            Quantidade ({unidadeCampo})
-            <Input
-              type="number"
-              min="0"
-              step={opcao.passo}
-              inputMode="decimal"
-              value={quantidadeInformada}
-              onChange={event => setQuantidadeInformada(event.target.value)}
-              placeholder={opcao.grupo === "fita" ? "Ex.: 12,5" : "Ex.: 150"}
-            />
-          </label>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {entradas.map((entrada, indice) => {
+            const opcao = opcoes.find(item => item.chave === entrada.chave);
+            const unidadeCampo = opcao?.grupo === "fita" ? "metros" : "módulos";
+            return (
+              <div key={indice} className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-[1.4fr_0.6fr] lg:grid-cols-1 xl:grid-cols-[1.4fr_0.6fr]">
+                <label className="space-y-1 text-xs font-medium text-slate-600">
+                  Tipo de LED {indice + 1}{indice === 1 ? " (opcional)" : ""}
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-slate-900"
+                    value={entrada.chave}
+                    onChange={event => atualizarEntrada(indice, "chave", event.target.value)}
+                  >
+                    {indice === 1 && <option value="">Sem segundo LED</option>}
+                    {grupos.map(([grupo, rotuloGrupo]) => (
+                      <optgroup key={grupo} label={rotuloGrupo}>
+                        {opcoes.filter(item => item.grupo === grupo).map(item => (
+                          <option key={item.chave} value={item.chave}>{item.rotulo}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1 text-xs font-medium text-slate-600">
+                  Quantidade{opcao ? ` (${unidadeCampo})` : ""}
+                  <Input
+                    type="number"
+                    min="0"
+                    step={opcao?.passo ?? 1}
+                    inputMode="decimal"
+                    value={entrada.quantidadeInformada}
+                    onChange={event => atualizarEntrada(indice, "quantidadeInformada", event.target.value)}
+                    placeholder={!opcao ? "—" : opcao.grupo === "fita" ? "Ex.: 12,5" : "Ex.: 150"}
+                    disabled={!opcao}
+                  />
+                </label>
+              </div>
+            );
+          })}
         </div>
 
-        {!resultados ? (
+        {!resultadosPorTensao ? (
           <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            Informe a quantidade de {unidadeCampo} para ver as fontes indicadas.
+            Informe a quantidade de cada LED selecionado para ver as fontes indicadas.
           </p>
         ) : (
           <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/30 p-3">
-            {resultados.some(({ resultado }) => resultado.recomendado) && (
-              <p className="text-sm text-slate-600">
-                Consumo total: <strong className="text-slate-900">{fmtWatts(resultados[0]?.resultado.consumoTotalW ?? 0)}</strong>
-                <span className="text-xs text-slate-500"> ({fmtNum(quantidade, casasWatts(quantidade))} {unidadeCampo} × {fmtWatts(opcao.wattsPorUnidade)})</span>
-              </p>
-            )}
-            <div className={`grid gap-3 ${resultados.length > 1 ? "lg:grid-cols-2" : ""}`}>
-              {resultados.map(({ alternativa, resultado }) => (
-                <div key={alternativa.chave}>
-                  {resultado.recomendado ? (
-                    <PlanoFontesCard
-                      titulo={alternativa.rotulo || "Fontes recomendadas"}
-                      plano={resultado.recomendado}
-                      opcao={opcao}
-                      mostrarPreco={alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
-                      comparacaoVendaDireta={["modules-shielded-24v", "tape-shielded-24v"].includes(alternativa.chave) ? comparacaoBlindada : null}
-                    />
-                  ) : (
-                    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      {alternativa.rotulo && <strong>{alternativa.rotulo}: </strong>}{resultado.aviso}
-                    </p>
+            <p className="text-sm text-slate-600">
+              Consumo total do letreiro: <strong className="text-slate-900">{fmtWatts(consumoTotalLetreiro)}</strong>
+              <span className="text-xs text-slate-500">
+                {" "}({entradasAtivas.map(item => `${fmtNum(item.quantidade, item.opcao.grupo === "fita" ? 1 : 0)} ${item.opcao.grupo === "fita" ? "m" : "módulos"} × ${fmtWatts(item.opcao.wattsPorUnidade)}`).join(" + ")})
+              </span>
+            </p>
+
+            {resultadosPorTensao.map(grupoResultado => {
+              const planoChaveado = grupoResultado.resultados.find(item => ["modules-24v", "tape-24v"].includes(item.alternativa.chave))?.resultado.recomendado ?? null;
+              const planoBlindado = grupoResultado.resultados.find(item => ["modules-shielded-24v", "tape-shielded-24v"].includes(item.alternativa.chave))?.resultado.recomendado ?? null;
+              const compararVendaDireta = planoChaveado?.valorVendaDiretaTotal != null && planoBlindado?.valorVendaDiretaTotal != null;
+              const diferencaPercentual = compararVendaDireta
+                ? ((planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!) / planoChaveado.valorVendaDiretaTotal!) * 100
+                : null;
+              const diferencaValor = compararVendaDireta
+                ? planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!
+                : null;
+              const comparacaoBlindada = diferencaPercentual == null || diferencaValor == null
+                ? null
+                : Math.abs(diferencaPercentual) < 0.005
+                  ? { texto: "Mesmo preço da chaveada", positiva: false }
+                  : diferencaPercentual > 0
+                    ? { texto: `${fmtNum(diferencaPercentual, 1)}% mais cara que a chaveada · ${fmtBrl(diferencaValor)} a mais`, positiva: true }
+                    : { texto: `${fmtNum(Math.abs(diferencaPercentual), 1)}% mais barata que a chaveada · ${fmtBrl(Math.abs(diferencaValor))} a menos`, positiva: false };
+
+              return (
+                <div key={String(grupoResultado.chaveTensao)} className="space-y-3">
+                  {resultadosPorTensao.length > 1 && (
+                    <div className="flex items-center gap-2 border-b border-blue-200 pb-2">
+                      <Badge variant="outline" className="border-blue-300 bg-white text-blue-800">Circuito {grupoResultado.tensao}</Badge>
+                      <span className="text-xs text-slate-500">{fmtWatts(grupoResultado.consumoTotalW)}</span>
+                    </div>
                   )}
+                  <div className={`grid gap-3 ${grupoResultado.resultados.length > 1 ? "lg:grid-cols-2" : ""}`}>
+                    {grupoResultado.resultados.map(({ alternativa, resultado }) => (
+                      <div key={alternativa.chave}>
+                        {resultado.recomendado ? (
+                          <PlanoFontesCard
+                            titulo={alternativa.rotulo || "Fontes recomendadas"}
+                            plano={resultado.recomendado}
+                            opcao={grupoResultado.opcao}
+                            mostrarPreco={alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
+                            comparacaoVendaDireta={["modules-shielded-24v", "tape-shielded-24v"].includes(alternativa.chave) ? comparacaoBlindada : null}
+                            exibirCargaEmWatts={grupoResultado.tiposDiferentes}
+                          />
+                        ) : (
+                          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            {alternativa.rotulo && <strong>{alternativa.rotulo}: </strong>}{resultado.aviso}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

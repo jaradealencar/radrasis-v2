@@ -39,6 +39,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
   const [resultado, setResultado] = useState<{
     enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
     falhas: Array<{ nome: string; telefone: string; erro: string }>;
+    amostraResposta: string | null;
   } | null>(null);
 
   const templateWts = campanha?.wtsTemplateId?.trim() || "";
@@ -130,6 +131,11 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   : resultado.enfileirados > 0 && <p className="text-emerald-700">Disparo registrado: cadência e histórico atualizados.</p>}
                 {resultado.restantes > 0 && (
                   <p>Ainda há {fmtNum(resultado.restantes)} contato(s) pronto(s): efetue outro disparo para continuar.</p>
+                )}
+                {resultado.amostraResposta && (
+                  <p className="break-all rounded bg-white/70 p-2 text-[11px] text-slate-600">
+                    Resposta da WTS.Chat ao primeiro envio: <code>{resultado.amostraResposta}</code>
+                  </p>
                 )}
                 {resultado.falhas.length > 0 && (
                   <ul className="list-disc pl-5 text-xs text-red-700">

@@ -17,12 +17,18 @@ const ledTextKeyPattern = /^(page\.(tableTabLabel|tapesTab|modulesTab|pdfTitle|p
 export const custoLedRouter = router({
   getDimensionamentoFontes: publicProcedure.query(async () => {
     const textsPromise = getLedPowerSourceTextOverrides().then(async texts => {
-      const subtitleKey = "modules-24v.subtitle";
-      const subtitleAtual = texts[subtitleKey];
-      if (subtitleAtual && /1,5\s*W?/i.test(subtitleAtual)) {
-        const subtitleCorrigido = subtitleAtual.replace(/1,5\s*W?/i, "1,7 W");
-        await saveLedPowerSourceTextOverride(subtitleKey, subtitleCorrigido);
-        texts[subtitleKey] = subtitleCorrigido;
+      const subtitlesRecalculados = [
+        "modules-24v.subtitle",
+        "modules-shielded-24v.subtitle",
+        "modules-7025-12v.subtitle",
+      ];
+      for (const subtitleKey of subtitlesRecalculados) {
+        const subtitleAtual = texts[subtitleKey];
+        if (subtitleAtual && /1,5\s*W?/i.test(subtitleAtual)) {
+          const subtitleCorrigido = subtitleAtual.replace(/1,5\s*W?/i, "1,7 W");
+          await saveLedPowerSourceTextOverride(subtitleKey, subtitleCorrigido);
+          texts[subtitleKey] = subtitleCorrigido;
+        }
       }
       return texts;
     });

@@ -7,6 +7,22 @@ export interface WtsChatResultadoEnvio {
   ok: boolean;
   status: number;
   erro?: string;
+  /** Corpo devolvido pela WTS.Chat (cortado em 500 caracteres): é onde aparece o motivo de uma rejeição. */
+  resposta?: string;
+}
+
+/** Detecta recusa declarada no corpo mesmo com HTTP 2xx (`success:false`, `error`/`errors` preenchidos). */
+function motivoRecusaNoCorpo(corpo: string): string | null {
+  let json: unknown;
+  try { json = JSON.parse(corpo); } catch { return null; }
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  if (o.success === false || o.ok === false) return String(o.message ?? o.error ?? "A WTS.Chat recusou o envio.");
+  for (const chave of ["error", "errors", "erro"]) {
+    const v = o[chave];
+    if (v && (typeof v !== "object" || Object.keys(v as object).length > 0)) return typeof v === "string" ? v : JSON.stringify(v);
+  }
+  return null;
 }
 
 export function wtsChatConfigurado(): boolean {
@@ -41,8 +57,13 @@ export async function enviarTemplateWts(telefone: string, templateId: string): P
       signal: AbortSignal.timeout(15_000),
     });
 
-    if (!response.ok) return { ok: false, status: response.status, erro: `WTS.Chat respondeu HTTP ${response.status}.` };
-    return { ok: true, status: response.status };
+    const corpo = (await response.text().catch(() => "")).slice(0, 500);
+    if (!response.ok) {
+      return { ok: false, status: response.status, erro: `WTS.Chat respondeu HTTP ${response.status}${corpo ? `: ${corpo}` : "."}`, resposta: corpo };
+    }
+    const recusa = motivoRecusaNoCorpo(corpo);
+    if (recusa) return { ok: false, status: response.status, erro: `WTS.Chat recusou: ${recusa}`, resposta: corpo };
+    return { ok: true, status: response.status, resposta: corpo };
   } catch (error) {
     const message = error instanceof Error && error.name === "TimeoutError"
       ? "Tempo esgotado ao conectar à WTS.Chat."

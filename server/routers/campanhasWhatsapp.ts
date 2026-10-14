@@ -771,7 +771,7 @@ export const campanhasWhatsappRouter = router({
       const restantes = Math.max(0, selecionados.length - MAX_DISPARO_WTS);
       const tentativas = selecionados.slice(0, MAX_DISPARO_WTS);
 
-      const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string }> = new Array(tentativas.length);
+      const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string; resposta?: string }> = new Array(tentativas.length);
       let proximo = 0;
       const trabalhadores = Array.from({ length: Math.min(8, tentativas.length) }, async () => {
         while (true) {
@@ -779,7 +779,7 @@ export const campanhasWhatsappRouter = router({
           if (indice >= tentativas.length) return;
           const contato = tentativas[indice];
           const resultado = await enviarTemplateWts(contato.telefone, templateId);
-          resultados[indice] = { contato, ok: resultado.ok, erro: resultado.erro };
+          resultados[indice] = { contato, ok: resultado.ok, erro: resultado.erro, resposta: resultado.resposta };
         }
       });
       await Promise.all(trabalhadores);
@@ -818,6 +818,8 @@ export const campanhasWhatsappRouter = router({
         totalSelecionado: tentativas.length,
         restantes,
         templateId,
+        // Resposta crua da WTS.Chat ao primeiro envio: mostra o que o provedor de fato devolveu.
+        amostraResposta: resultados[0]?.resposta ?? null,
       };
     }),
 
