@@ -9,6 +9,8 @@ const CORRENTES = [10, 20, 30, 50] as const;
 const FATOR_VENDA = 0.85;
 /** Módulo IP68 24 V: 120/240/360/600 módulos a 85% e 141/282/423/705 no limite (fontes de 10/20/30/50 A) saem de 1,7 W cada. */
 const WATTS_MODULO_24V = 1.7;
+/** Módulo 7025 12 V recalculado pela mesma referência comercial de 1,7 W por módulo. */
+const WATTS_MODULO_7025_12V = 1.7;
 
 export interface LedDirectSaleData {
   enabled: boolean | null;
@@ -209,7 +211,7 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
       criarTabelaModulos12V(
         "modules-7025-12v",
         "MÓDULO LED 7025 (12V)",
-        1.7
+        WATTS_MODULO_7025_12V
       ),
       criarTabelaModulos12V("modules-3030-12v", "MÓDULO 3030 3W (12V)", 3),
       criarTabelaModulos12V(

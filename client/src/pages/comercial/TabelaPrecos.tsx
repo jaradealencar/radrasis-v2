@@ -775,7 +775,7 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
           Calculadora de fontes
         </CardTitle>
         <p className="text-xs text-slate-500">
-          Escolha até dois tipos de LED usados no mesmo letreiro. Cargas da mesma tensão são somadas; tensões diferentes recebem circuitos e fontes separados. A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%, e a sobra usa a menor fonte possível com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%.
+          Escolha até dois tipos de LED usados no mesmo letreiro. Cargas da mesma tensão são somadas; tensões diferentes recebem circuitos e fontes separados. A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%, e a sobra usa a menor fonte possível com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%. Em 24 V, o sistema compara as opções chaveada e blindada pelos preços de venda direta.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
