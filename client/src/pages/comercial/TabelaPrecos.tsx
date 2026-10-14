@@ -606,6 +606,74 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
   return [...gruposFitas.values(), ...gruposModulos.values()];
 }
 
+function ComparacaoPrecoFontes({
+  comparacao,
+}: {
+  comparacao: { diferencaValor: number; diferencaPercentual: number };
+}) {
+  const [copiado, setCopiado] = useState(false);
+  const diferencaAbsoluta = Math.abs(comparacao.diferencaValor);
+  const percentualAbsoluto = Math.abs(comparacao.diferencaPercentual);
+  const blindadaMaisCara = comparacao.diferencaValor > 0.005;
+  const mesmoPreco = diferencaAbsoluta <= 0.005;
+  const situacao = mesmoPreco
+    ? "As duas opções têm o mesmo preço de venda direta."
+    : blindadaMaisCara
+      ? `A fonte blindada fica ${fmtBrl(diferencaAbsoluta)} mais cara (${fmtNum(percentualAbsoluto, 1)}%).`
+      : `A fonte blindada fica ${fmtBrl(diferencaAbsoluta)} mais barata (${fmtNum(percentualAbsoluto, 1)}%).`;
+  const mensagem = mesmoPreco
+    ? "A fonte chaveada e a fonte blindada têm o mesmo preço neste projeto. A fonte blindada oferece proteção contra água, possui uma estrutura muito mais robusta e tem uma durabilidade muito maior."
+    : blindadaMaisCara
+      ? `A diferença de preço entre a fonte chaveada e a fonte blindada é de ${fmtBrl(diferencaAbsoluta)}. A fonte blindada tem um custo maior, pois tem proteção contra água, possui uma estrutura muito mais robusta e tem uma durabilidade muito maior.`
+      : `A diferença de preço entre a fonte chaveada e a fonte blindada é de ${fmtBrl(diferencaAbsoluta)}. Neste projeto, a fonte blindada fica mais barata e ainda oferece proteção contra água, uma estrutura muito mais robusta e uma durabilidade muito maior.`;
+
+  const copiarMensagem = async () => {
+    try {
+      await navigator.clipboard.writeText(mensagem);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = mensagem;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 1500);
+  };
+
+  return (
+    <div className={`rounded-md border px-3 py-2 ${blindadaMaisCara ? "border-orange-300 bg-orange-50" : "border-emerald-300 bg-emerald-50"}`}>
+      <p className={`text-[11px] font-semibold uppercase tracking-wide ${blindadaMaisCara ? "text-orange-800" : "text-emerald-800"}`}>
+        Diferença de preço
+      </p>
+      <p className={`text-lg font-bold ${blindadaMaisCara ? "text-orange-950" : "text-emerald-900"}`}>
+        {fmtBrl(diferencaAbsoluta)}
+      </p>
+      <p className={`text-[11px] ${blindadaMaisCara ? "text-orange-800" : "text-emerald-800"}`}>{situacao}</p>
+      <div className="mt-2 flex items-start gap-1 border-t border-current/15 pt-1.5">
+        <details className="group min-w-0 flex-1">
+          <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-950">
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+            Ver texto para o cliente
+          </summary>
+          <p className="mt-2 text-xs leading-relaxed text-slate-700">{mensagem}</p>
+        </details>
+        <button
+          type="button"
+          onClick={copiarMensagem}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-orange-300 bg-white px-2 py-1 text-xs font-semibold text-orange-900 shadow-sm hover:bg-orange-100"
+          title="Copiar texto para enviar pelo WhatsApp"
+          aria-label="Copiar texto para enviar pelo WhatsApp"
+        >
+          {copiado ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+          <span className="hidden sm:inline">{copiado ? "Copiado" : "Copiar"}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PlanoFontesCard({
   titulo,
   plano,
@@ -618,7 +686,10 @@ function PlanoFontesCard({
   plano: PlanoFontes;
   opcao: OpcaoCalculadoraLed;
   mostrarPreco: boolean;
-  comparacaoVendaDireta?: { texto: string; positiva: boolean } | null;
+  comparacaoVendaDireta?: {
+    diferencaValor: number;
+    diferencaPercentual: number;
+  } | null;
   exibirCargaEmWatts?: boolean;
 }) {
   const unidade = opcao.grupo === "fita" ? "m" : "módulos";
@@ -647,24 +718,8 @@ function PlanoFontesCard({
           <p className="text-xs text-slate-500">
             {opcao.tensao} · {fmtWatts(plano.potenciaInstaladaW)} instalados · {plano.totalFontes === 1 ? "1 fonte" : `${plano.totalFontes} fontes`}
           </p>
-          {mostrarPreco && plano.valorVendaDiretaTotal != null && (
-            <p className="mt-1 text-sm font-semibold text-blue-700">
-              Venda direta: {fmtBrl(plano.valorVendaDiretaTotal)}
-              {plano.precoPorDemandaAplicado && <span className="font-normal text-slate-500"> · preço por demanda aplicado</span>}
-            </p>
-          )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          {comparacaoVendaDireta && (
-            <Badge
-              variant="outline"
-              className={comparacaoVendaDireta.positiva
-                ? "max-w-sm whitespace-normal border-amber-300 bg-amber-50 text-right text-amber-900"
-                : "max-w-sm whitespace-normal border-emerald-300 bg-emerald-50 text-right text-emerald-900"}
-            >
-              {comparacaoVendaDireta.texto}
-            </Badge>
-          )}
           <Badge
             variant="outline"
             className={noLimite ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-300 bg-emerald-50 text-emerald-800"}
@@ -675,6 +730,18 @@ function PlanoFontesCard({
           </Badge>
         </div>
       </div>
+      {mostrarPreco && plano.valorVendaDiretaTotal != null && (
+        <div className={`grid gap-2 ${comparacaoVendaDireta ? "sm:grid-cols-2" : ""}`}>
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Venda direta</p>
+            <p className="text-lg font-bold text-blue-800">{fmtBrl(plano.valorVendaDiretaTotal)}</p>
+            {plano.precoPorDemandaAplicado && <p className="text-[11px] text-slate-500">Preço por demanda aplicado</p>}
+          </div>
+          {comparacaoVendaDireta && (
+            <ComparacaoPrecoFontes comparacao={comparacaoVendaDireta} />
+          )}
+        </div>
+      )}
       {mostrarPreco && plano.precosVendaDiretaPendentes.length > 0 && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           Preço de venda direta pendente no MubiSys: <strong>{plano.precosVendaDiretaPendentes.join(", ")}</strong>. O sistema não assume preço zero.
@@ -853,11 +920,7 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
                 : null;
               const comparacaoBlindada = diferencaPercentual == null || diferencaValor == null
                 ? null
-                : Math.abs(diferencaPercentual) < 0.005
-                  ? { texto: "Mesmo preço da chaveada", positiva: false }
-                  : diferencaPercentual > 0
-                    ? { texto: `${fmtNum(diferencaPercentual, 1)}% mais cara que a chaveada · ${fmtBrl(diferencaValor)} a mais`, positiva: true }
-                    : { texto: `${fmtNum(Math.abs(diferencaPercentual), 1)}% mais barata que a chaveada · ${fmtBrl(Math.abs(diferencaValor))} a menos`, positiva: false };
+                : { diferencaValor, diferencaPercentual };
               const numerosTipos = grupoResultado.itens.map(item => item.indice + 1);
               const rotuloTipos = numerosTipos.length === 1
                 ? `Para o Tipo de LED ${numerosTipos[0]}`
