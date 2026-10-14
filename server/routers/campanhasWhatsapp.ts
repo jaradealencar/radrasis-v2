@@ -716,10 +716,38 @@ export const campanhasWhatsappRouter = router({
     }),
 
   /**
+   * Repara um "Desfazer" antigo (feito antes de ele limpar a quarentena): libera os telefones que ficaram em
+   * quarentena/cadência por um disparo desta campanha naquele dia que já não existe no histórico. Só mexe em
+   * registro órfão — se ainda houver disparo da campanha no dia, não apaga nada.
+   */
+  liberarContatosOrfaos: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive(), dia: dataIsoSchema.optional() }))
+    .mutation(async ({ input }) => {
+      const dia = input.dia ?? hojeCampoGrande();
+      const r = await getPool().query(
+        `WITH ha_disparo AS (
+           SELECT 1 FROM campanhas_whatsapp_disparos WHERE campanha_id = $1 AND enviado_em = $2::date LIMIT 1
+         ), quarentena AS (
+           DELETE FROM campanhas_whatsapp_quarentena
+           WHERE ultima_campanha_id = $1 AND ultimo_contato_em = $2::date AND NOT EXISTS (SELECT 1 FROM ha_disparo)
+           RETURNING 1
+         ), cadencia AS (
+           DELETE FROM campanhas_whatsapp_contatos_historico
+           WHERE campanha_id = $1 AND ultimo_envio_em = $2::date AND disparo_id IS NULL AND NOT EXISTS (SELECT 1 FROM ha_disparo)
+           RETURNING 1
+         )
+         SELECT (SELECT count(*) FROM quarentena)::int AS quarentena, (SELECT count(*) FROM cadencia)::int AS cadencia`,
+        [input.campanhaId, dia],
+      );
+      const linha = r.rows[0] as { quarentena: number; cadencia: number };
+      return { quarentenaLiberada: linha.quarentena, cadenciaLiberada: linha.cadencia };
+    }),
+
+  /**
    * Desfaz um disparo feito pelo sistema (origem "api") que não chegou aos clientes: apaga o registro do
-   * histórico e a cadência por contato gravada por ele, devolvendo os telefones à lista de "prontos". Um único
-   * statement (o driver HTTP não tem transação). A quarentena global não é tocada: o disparo pela API não a
-   * grava. Disparos "app" (upload/registro manual) não podem ser desfeitos aqui porque gravam quarentena.
+   * histórico, a cadência por contato e a quarentena global gravadas por ele, devolvendo os telefones à lista de
+   * "prontos". Um único statement (o driver HTTP não tem transação). Disparos "app" (upload/registro manual)
+   * não podem ser desfeitos aqui.
    */
   excluirDisparoApi: campanhasProcedure
     .input(z.object({ disparoId: z.number().int().positive() }))
@@ -727,6 +755,12 @@ export const campanhasWhatsappRouter = router({
       const r = await getPool().query(
         `WITH alvo AS (
            SELECT id FROM campanhas_whatsapp_disparos WHERE id = $1 AND origem = 'api'
+         ), quarentena AS (
+           DELETE FROM campanhas_whatsapp_quarentena q
+           USING campanhas_whatsapp_disparos d
+           WHERE d.id IN (SELECT id FROM alvo) AND q.ultima_campanha_id = d.campanha_id AND q.ultimo_contato_em = d.enviado_em
+             AND q.telefone IN (SELECT telefone FROM campanhas_whatsapp_contatos_historico WHERE disparo_id = d.id)
+           RETURNING 1
          ), cadencia AS (
            DELETE FROM campanhas_whatsapp_contatos_historico WHERE disparo_id IN (SELECT id FROM alvo) RETURNING 1
          ), apagado AS (

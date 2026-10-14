@@ -70,6 +70,16 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
     onError: e => { setConfirmando(false); toast.error(e.message); },
   });
 
+  const liberar = trpc.campanhasWhatsapp.liberarContatosOrfaos.useMutation({
+    onSuccess: r => {
+      utils.campanhasWhatsapp.invalidate();
+      const total = Math.max(r.quarentenaLiberada, r.cadenciaLiberada);
+      if (total > 0) toast.success(`${fmtNum(total)} contato(s) liberados para o próximo disparo.`);
+      else toast.info("Nada preso por disparo desfeito hoje: o resto está em espera por outro motivo (ver “Ver contatos”).");
+    },
+    onError: e => toast.error(e.message),
+  });
+
   const emEspera = data ? data.ignoradosQuarentenaGlobal.length + data.ignoradosCadenciaCampanha.length : 0;
   const semTelefone = data ? data.invalidosOuDuplicados.length : 0;
 
@@ -145,9 +155,21 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 )}
               </div>
             ) : prontos === 0 ? (
-              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                Nenhum contato está pronto para receber agora. Veja os motivos em “Ver contatos”.
-              </p>
+              <div className="space-y-2 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                <p>Nenhum contato está pronto para receber agora. Veja os motivos em “Ver contatos”.</p>
+                {emEspera > 0 && (
+                  <>
+                    <p className="text-[11px]">
+                      Desfez um disparo que não chegou e os contatos continuam em espera? Este botão libera só os contatos
+                      que ficaram presos hoje por um disparo que já não existe no histórico.
+                    </p>
+                    <Button size="sm" variant="outline" disabled={liberar.isPending}
+                      onClick={() => liberar.mutate({ campanhaId: campanha!.id })}>
+                      {liberar.isPending && <Spinner className="size-3.5" />} Liberar contatos presos por disparo desfeito
+                    </Button>
+                  </>
+                )}
+              </div>
             ) : (
               <div className="space-y-1.5">
                 <Label htmlFor="disparo-quantidade">Quantos contatos disparar agora</Label>
