@@ -217,7 +217,10 @@ export default function MarketingCampanhasWhatsapp() {
                                 <DropdownMenuItem onSelect={() => setVendas(c)}><ListChecks size={14} /> Ver vendas do pós-venda</DropdownMenuItem>
                               )}
                               <DropdownMenuItem onSelect={() => setHistorico(c)}><History size={14} /> Ver histórico</DropdownMenuItem>
-                              <DropdownMenuItem disabled={c.status !== "ativa"} onSelect={() => setRegistrar(c)}><ClipboardList size={14} /> Registrar disparo manual</DropdownMenuItem>
+                              {/* Só o pós-venda ainda não dispara pelo sistema; as recorrentes disparam por "Efetuar disparo". */}
+                              {c.tipo === "gatilho_venda" && (
+                                <DropdownMenuItem disabled={c.status !== "ativa"} onSelect={() => setRegistrar(c)}><ClipboardList size={14} /> Registrar disparo manual</DropdownMenuItem>
+                              )}
                               <DropdownMenuItem onSelect={() => setDuplicar(c)}><Copy size={14} /> Duplicar campanha</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem variant="destructive" onSelect={() => setExcluir(c)}><Trash2 size={14} /> Excluir campanha</DropdownMenuItem>
