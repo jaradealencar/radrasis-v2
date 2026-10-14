@@ -716,6 +716,33 @@ export const campanhasWhatsappRouter = router({
     }),
 
   /**
+   * Desfaz um disparo feito pelo sistema (origem "api") que não chegou aos clientes: apaga o registro do
+   * histórico e a cadência por contato gravada por ele, devolvendo os telefones à lista de "prontos". Um único
+   * statement (o driver HTTP não tem transação). A quarentena global não é tocada: o disparo pela API não a
+   * grava. Disparos "app" (upload/registro manual) não podem ser desfeitos aqui porque gravam quarentena.
+   */
+  excluirDisparoApi: campanhasProcedure
+    .input(z.object({ disparoId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const r = await getPool().query(
+        `WITH alvo AS (
+           SELECT id FROM campanhas_whatsapp_disparos WHERE id = $1 AND origem = 'api'
+         ), cadencia AS (
+           DELETE FROM campanhas_whatsapp_contatos_historico WHERE disparo_id IN (SELECT id FROM alvo) RETURNING 1
+         ), apagado AS (
+           DELETE FROM campanhas_whatsapp_disparos WHERE id IN (SELECT id FROM alvo) RETURNING id
+         )
+         SELECT (SELECT count(*) FROM apagado)::int AS disparos, (SELECT count(*) FROM cadencia)::int AS contatos`,
+        [input.disparoId],
+      );
+      const linha = r.rows[0] as { disparos: number; contatos: number };
+      if (!linha.disparos) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Disparo não encontrado ou não foi feito pelo sistema (API)." });
+      }
+      return { contatosLiberados: linha.contatos };
+    }),
+
+  /**
    * "Disparar": envia o template aprovado (ID cadastrado na campanha) pela WTS.Chat aos contatos prontos da
    * campanha e, em seguida, registra o disparo sozinho (cadência, quarentena e histórico) com o ID usado.
    * Sem `contatos`, vale a lista de prontos inteira, até `MAX_DISPARO_WTS` por chamada — quem foi enviado sai da

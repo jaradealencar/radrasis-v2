@@ -1,5 +1,7 @@
-import { ExternalLink, History } from "lucide-react";
+import { toast } from "sonner";
+import { ExternalLink, History, Undo2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
 import { fmtDateTime, fmtNum } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,10 +18,18 @@ interface Props {
 }
 
 export default function HistoricoDialog({ campanha, onClose }: Props) {
+  const utils = trpc.useUtils();
   const { data, isLoading, isError, error } = trpc.campanhasWhatsapp.historico.useQuery(
     { campanhaId: campanha?.id ?? 0 },
     { enabled: !!campanha },
   );
+  const desfazer = trpc.campanhasWhatsapp.excluirDisparoApi.useMutation({
+    onSuccess: r => {
+      utils.campanhasWhatsapp.invalidate();
+      toast.success(`Disparo desfeito: ${fmtNum(r.contatosLiberados)} contato(s) voltaram para a lista de prontos.`);
+    },
+    onError: e => toast.error(e.message),
+  });
 
   return (
     <Dialog open={!!campanha} onOpenChange={v => { if (!v) onClose(); }}>
@@ -53,6 +63,7 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
                   <TableHead>Próximo previsto</TableHead>
                   <TableHead>Registrado por</TableHead>
                   <TableHead>Observações</TableHead>
+                  <TableHead className="w-24" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -77,6 +88,21 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
                       )}
                       {d.observacoes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{d.observacoes}</p>}
                       {!d.arquivoUrl && !d.observacoes && "—"}
+                    </TableCell>
+                    <TableCell>
+                      {d.origem === "api" && (
+                        <Button
+                          size="sm" variant="outline" className="gap-1 text-xs" disabled={desfazer.isPending}
+                          title="Use quando as mensagens não chegaram: o registro some e os contatos voltam para a lista de prontos."
+                          onClick={() => {
+                            if (window.confirm(`Desfazer este disparo de ${fmtNum(d.contatosEnviados)} contato(s)? Eles voltam para a lista de prontos. Isso NÃO cancela mensagens que já tenham sido entregues.`)) {
+                              desfazer.mutate({ disparoId: d.id });
+                            }
+                          }}
+                        >
+                          <Undo2 size={12} /> Desfazer
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
