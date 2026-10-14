@@ -7,8 +7,8 @@ import type {
 
 const CORRENTES = [10, 20, 30, 50] as const;
 const FATOR_VENDA = 0.85;
-/** Módulo 24 V: 136/272/408/680 módulos a 85% e 160/320/480/800 no limite (fontes de 10/20/30/50 A) saem de 1,5 W cada. */
-const WATTS_MODULO_24V = 1.5;
+/** Módulo IP68 24 V: 120/240/360/600 módulos a 85% e 141/282/423/705 no limite (fontes de 10/20/30/50 A) saem de 1,7 W cada. */
+const WATTS_MODULO_24V = 1.7;
 
 export interface LedDirectSaleData {
   enabled: boolean | null;
@@ -175,7 +175,7 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
   const fontesBlindadas24V: LedModuleTable = {
     key: "modules-shielded-24v",
     title: "Fontes Blindadas — 24 V",
-    subtitle: "Módulo LED de referência: 1,5 W em 24 V",
+    subtitle: "Módulo LED de referência: 1,7 W em 24 V",
     sourceLabel: "Fonte Blindada",
     imageSubject: "fonte",
     calculatorGroup: "modules-led-24v",
