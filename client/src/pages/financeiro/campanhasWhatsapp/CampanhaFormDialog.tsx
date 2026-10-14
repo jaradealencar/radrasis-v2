@@ -252,7 +252,7 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
             <Input id="camp-wts" value={wtsTemplateId} onChange={e => setWtsTemplateId(e.target.value)} maxLength={120}
               autoComplete="off" spellCheck={false} placeholder="Ex.: e87c7_primeiracompra" />
             <p className="text-[11px] text-muted-foreground">
-              É o que o botão "Disparar" envia. Em branco, a campanha só aceita registrar o disparo à mão.
+              É o que o botão "Efetuar disparo" envia (o ID aparece no modelo, na WTS.Chat). Em branco, a campanha não dispara pelo sistema; só dá para registrar o disparo à mão, pelo menu "⋯".
             </p>
           </div>
 

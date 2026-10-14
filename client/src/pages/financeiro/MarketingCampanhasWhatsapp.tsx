@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BanIcon, BarChart3, CalendarDays, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
+import { AlertTriangle, BanIcon, BarChart3, CalendarDays, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import AtualizarClientesAuto from "./campanhasWhatsapp/AtualizarClientesAuto";
 import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
 import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
 import ContatosCampanhaDialog from "./campanhasWhatsapp/ContatosCampanhaDialog";
+import DispararCampanhaDialog from "./campanhasWhatsapp/DispararCampanhaDialog";
 import DuplicarCampanhaDialog from "./campanhasWhatsapp/DuplicarCampanhaDialog";
 import ExcluirCampanhaDialog from "./campanhasWhatsapp/ExcluirCampanhaDialog";
 import NaoReceberMensagens from "./campanhasWhatsapp/NaoReceberMensagens";
@@ -48,6 +49,7 @@ export default function MarketingCampanhasWhatsapp() {
 
   // `undefined` = diálogo fechado; `null` no formulário = nova campanha.
   const [formulario, setFormulario] = useState<CampanhaLinha | null | undefined>(undefined);
+  const [disparar, setDisparar] = useState<CampanhaLinha | null>(null);
   const [registrar, setRegistrar] = useState<CampanhaLinha | null>(null);
   const [historico, setHistorico] = useState<CampanhaLinha | null>(null);
   const [vendas, setVendas] = useState<CampanhaLinha | null>(null);
@@ -191,9 +193,9 @@ export default function MarketingCampanhasWhatsapp() {
                         <div className="flex items-center justify-end gap-1">
                           <Button
                             size="sm" variant="outline" className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            disabled={c.status !== "ativa"} onClick={() => setRegistrar(c)}
+                            disabled={c.status !== "ativa"} onClick={() => setDisparar(c)}
                           >
-                            <Send size={13} /> Registrar disparo
+                            <Send size={13} /> Efetuar disparo
                           </Button>
                           <BotaoIcone rotulo="Ver contatos" onClick={() => (c.tipo === "gatilho_venda" ? setVendas(c) : setVerContatos(c))}><Users size={15} /></BotaoIcone>
                           <BotaoIcone rotulo="Editar campanha" onClick={() => setFormulario(c)}><Pencil size={15} /></BotaoIcone>
@@ -207,6 +209,7 @@ export default function MarketingCampanhasWhatsapp() {
                                 <DropdownMenuItem onSelect={() => setVendas(c)}><ListChecks size={14} /> Ver vendas do pós-venda</DropdownMenuItem>
                               )}
                               <DropdownMenuItem onSelect={() => setHistorico(c)}><History size={14} /> Ver histórico</DropdownMenuItem>
+                              <DropdownMenuItem disabled={c.status !== "ativa"} onSelect={() => setRegistrar(c)}><ClipboardList size={14} /> Registrar disparo manual</DropdownMenuItem>
                               <DropdownMenuItem onSelect={() => setDuplicar(c)}><Copy size={14} /> Duplicar campanha</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem variant="destructive" onSelect={() => setExcluir(c)}><Trash2 size={14} /> Excluir campanha</DropdownMenuItem>
@@ -240,6 +243,7 @@ export default function MarketingCampanhasWhatsapp() {
         onOpenChange={v => { if (!v) setFormulario(undefined); }}
         campanha={formulario ?? null}
       />
+      <DispararCampanhaDialog campanha={disparar} onClose={() => setDisparar(null)} />
       <RegistrarDisparoDialog campanha={registrar} hoje={hoje} onClose={() => setRegistrar(null)} />
       <HistoricoDialog campanha={historico} onClose={() => setHistorico(null)} />
       <VendasPosVendaDialog campanha={vendas} onClose={() => setVendas(null)} />

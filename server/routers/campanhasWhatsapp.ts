@@ -726,6 +726,8 @@ export const campanhasWhatsappRouter = router({
       campanhaId: z.number().int().positive(),
       periodo: z.object({ inicio: dataIsoSchema.nullable(), fim: dataIsoSchema.nullable() }).optional(),
       contatos: z.array(z.object({ telefone: z.string().max(40), nome: z.string().max(200) })).min(1).max(MAX_DISPARO_WTS).optional(),
+      // Só vale sem `contatos`: dispara para os N primeiros da lista de prontos (tela "Efetuar disparo").
+      quantidade: z.number().int().min(1).max(MAX_DISPARO_WTS).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       if (!wtsChatConfigurado()) {
@@ -737,7 +739,7 @@ export const campanhasWhatsappRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Reative a campanha antes de enviar." });
       }
       if (campanha.tipo === "gatilho_venda") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Campanhas de gatilho de venda ainda não disparam pelo sistema — use \"Registrar disparo\"." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Campanhas de gatilho de venda ainda não disparam pelo sistema — use \"Registrar disparo manual\" no menu da campanha." });
       }
       const templateId = campanha.wtsTemplateId?.trim();
       if (!templateId) {
@@ -761,6 +763,7 @@ export const campanhasWhatsappRouter = router({
         selecionados = lista.aprovados
           .map(contato => ({ telefone: normalizarTelefone(contato.telefone), nome: contato.nome }))
           .filter((contato): contato is { telefone: string; nome: string } => !!contato.telefone);
+        if (input.quantidade) selecionados = selecionados.slice(0, input.quantidade);
       }
       if (selecionados.length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contato continua elegível para envio." });

@@ -38,7 +38,7 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
             <EmptyHeader>
               <EmptyMedia variant="icon"><History /></EmptyMedia>
               <EmptyTitle>Nenhum disparo registrado</EmptyTitle>
-              <EmptyDescription>Use "Registrar disparo" na tabela para lançar o primeiro envio desta campanha.</EmptyDescription>
+              <EmptyDescription>Use "Efetuar disparo" na tabela para fazer o primeiro envio desta campanha.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
