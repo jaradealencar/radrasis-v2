@@ -23,6 +23,11 @@ export interface LedModuleSourceRow {
   mubisysMateriaPrimaId?: number;
   directSaleEnabled?: boolean | null;
   directSalePrice?: number | null;
+  directSaleDemandPrices?: Array<{
+    minQuantity: number;
+    maxQuantity: number;
+    unitPrice: number;
+  }>;
   recommendedModules: number;
   maximumModules: number;
 }

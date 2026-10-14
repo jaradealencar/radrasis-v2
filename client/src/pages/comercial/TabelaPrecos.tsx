@@ -539,6 +539,13 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
       mubisysMateriaPrimaId: "mubisysMateriaPrimaId" in linha ? linha.mubisysMateriaPrimaId : undefined,
       vendaDireta: "directSaleEnabled" in linha ? linha.directSaleEnabled : undefined,
       precoVendaDireta: "directSalePrice" in linha ? linha.directSalePrice : undefined,
+      precosVendaDiretaPorDemanda: "directSaleDemandPrices" in linha
+        ? linha.directSaleDemandPrices?.map(faixa => ({
+            quantidadeMinima: faixa.minQuantity,
+            quantidadeMaxima: faixa.maxQuantity,
+            precoUnitario: faixa.unitPrice,
+          }))
+        : undefined,
     }));
   const tensaoDe = (tabela: LedTapeTable | LedModuleTable) =>
     getLedText(texts, ledPowerSourceTextKey.row(tabela.key, 0, "voltage"), tabela.rows[0]?.voltage ?? "");
@@ -580,7 +587,19 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
   return [...fitas, ...gruposModulos.values()];
 }
 
-function PlanoFontesCard({ titulo, plano, opcao, mostrarPreco }: { titulo: string; plano: PlanoFontes; opcao: OpcaoCalculadoraLed; mostrarPreco: boolean }) {
+function PlanoFontesCard({
+  titulo,
+  plano,
+  opcao,
+  mostrarPreco,
+  comparacaoVendaDireta,
+}: {
+  titulo: string;
+  plano: PlanoFontes;
+  opcao: OpcaoCalculadoraLed;
+  mostrarPreco: boolean;
+  comparacaoVendaDireta?: { texto: string; positiva: boolean } | null;
+}) {
   const unidade = opcao.grupo === "fita" ? "m" : "módulos";
   const casasQuantidade = opcao.grupo === "fita" ? 1 : 0;
   const resumo = resumirPlano(plano).map(grupo => `${grupo.copias} × ${grupo.nome}`).join(" + ");
@@ -602,17 +621,32 @@ function PlanoFontesCard({ titulo, plano, opcao, mostrarPreco }: { titulo: strin
             {opcao.tensao} · {fmtWatts(plano.potenciaInstaladaW)} instalados · {plano.totalFontes === 1 ? "1 fonte" : `${plano.totalFontes} fontes`}
           </p>
           {mostrarPreco && plano.valorVendaDiretaTotal != null && (
-            <p className="mt-1 text-sm font-semibold text-blue-700">Venda direta: {fmtBrl(plano.valorVendaDiretaTotal)}</p>
+            <p className="mt-1 text-sm font-semibold text-blue-700">
+              Venda direta: {fmtBrl(plano.valorVendaDiretaTotal)}
+              {plano.precoPorDemandaAplicado && <span className="font-normal text-slate-500"> · preço por demanda aplicado</span>}
+            </p>
           )}
         </div>
-        <Badge
-          variant="outline"
-          className={noLimite ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-300 bg-emerald-50 text-emerald-800"}
-        >
-          {noLimite
-            ? `Fonte da sobra dentro do limite de ${fmtNum(FATOR_TOLERANCIA * 100)}%`
-            : `Fontes dentro da margem de ${fmtNum(FATOR_RECOMENDADO * 100)}%`}
-        </Badge>
+        <div className="flex flex-col items-end gap-1.5">
+          {comparacaoVendaDireta && (
+            <Badge
+              variant="outline"
+              className={comparacaoVendaDireta.positiva
+                ? "max-w-sm whitespace-normal border-amber-300 bg-amber-50 text-right text-amber-900"
+                : "max-w-sm whitespace-normal border-emerald-300 bg-emerald-50 text-right text-emerald-900"}
+            >
+              {comparacaoVendaDireta.texto}
+            </Badge>
+          )}
+          <Badge
+            variant="outline"
+            className={noLimite ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-300 bg-emerald-50 text-emerald-800"}
+          >
+            {noLimite
+              ? `Fonte da sobra dentro do limite de ${fmtNum(FATOR_TOLERANCIA * 100)}%`
+              : `Fontes dentro da margem de ${fmtNum(FATOR_RECOMENDADO * 100)}%`}
+          </Badge>
+        </div>
       </div>
       {mostrarPreco && plano.precosVendaDiretaPendentes.length > 0 && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -680,6 +714,19 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
   const diferencaValor = compararVendaDireta
     ? planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!
     : null;
+  const comparacaoBlindada = diferencaPercentual == null || diferencaValor == null
+    ? null
+    : Math.abs(diferencaPercentual) < 0.005
+      ? { texto: "Mesmo preço da chaveada", positiva: false }
+      : diferencaPercentual > 0
+        ? {
+            texto: `${fmtNum(diferencaPercentual, 1)}% mais cara que a chaveada · ${fmtBrl(diferencaValor)} a mais`,
+            positiva: true,
+          }
+        : {
+            texto: `${fmtNum(Math.abs(diferencaPercentual), 1)}% mais barata que a chaveada · ${fmtBrl(Math.abs(diferencaValor))} a menos`,
+            positiva: false,
+          };
 
   return (
     <Card className="border-blue-200">
@@ -745,6 +792,7 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
                       plano={resultado.recomendado}
                       opcao={opcao}
                       mostrarPreco={opcao.grupo === "modulo" && alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
+                      comparacaoVendaDireta={alternativa.chave === "modules-shielded-24v" ? comparacaoBlindada : null}
                     />
                   ) : (
                     <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -754,15 +802,6 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
                 </div>
               ))}
             </div>
-            {diferencaPercentual != null && diferencaValor != null && (
-              <div className={`rounded-md border px-3 py-2 text-sm font-semibold ${diferencaPercentual > 0 ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
-                {Math.abs(diferencaPercentual) < 0.005
-                  ? "As opções chaveada e blindada têm o mesmo valor de venda direta."
-                  : diferencaPercentual > 0
-                    ? `A opção blindada custa ${fmtNum(diferencaPercentual, 1)}% a mais que a chaveada (${fmtBrl(diferencaValor)} a mais).`
-                    : `A opção blindada custa ${fmtNum(Math.abs(diferencaPercentual), 1)}% a menos que a chaveada (${fmtBrl(Math.abs(diferencaValor))} a menos).`}
-              </div>
-            )}
           </div>
         )}
       </CardContent>

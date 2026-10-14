@@ -20,6 +20,22 @@ export const LED_24V_MUBISYS_IDS = {
   shielded: { "2.5": 4533, 5: 4531, 6: 4532, 15: 4528, 25: 4529, 30: 4530 },
 } as const;
 
+/** A API publica do MubiSys informa preco final zero para estes dois itens e
+ * nao expoe as faixas cadastradas em "Precos por demanda". Valores conferidos
+ * no cadastro comercial em 14/10/2026. */
+const LED_24V_PRECOS_POR_DEMANDA: Partial<Record<number, LedModuleSourceRow["directSaleDemandPrices"]>> = {
+  [LED_24V_MUBISYS_IDS.switched[30]]: [
+    { minQuantity: 1, maxQuantity: 2, unitPrice: 213.40 },
+    { minQuantity: 3, maxQuantity: 5, unitPrice: 190.00 },
+    { minQuantity: 6, maxQuantity: 8, unitPrice: 180.00 },
+  ],
+  [LED_24V_MUBISYS_IDS.switched[50]]: [
+    { minQuantity: 1, maxQuantity: 2, unitPrice: 262.00 },
+    { minQuantity: 3, maxQuantity: 5, unitPrice: 240.00 },
+    { minQuantity: 6, maxQuantity: 8, unitPrice: 230.00 },
+  ],
+};
+
 function arredondarParaBaixo(valor: number, casas: number): number {
   const escala = 10 ** casas;
   return Math.floor((valor + Number.EPSILON * 8) * escala) / escala;
@@ -95,6 +111,7 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
       mubisysMateriaPrimaId,
       directSaleEnabled: commercial?.enabled ?? null,
       directSalePrice: commercial?.price ?? null,
+      directSaleDemandPrices: LED_24V_PRECOS_POR_DEMANDA[mubisysMateriaPrimaId],
     };
   };
   const modulos24V: LedModuleTable = {

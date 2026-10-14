@@ -18,6 +18,11 @@ export interface FonteDisponivel {
   mubisysMateriaPrimaId?: number;
   vendaDireta?: boolean | null;
   precoVendaDireta?: number | null;
+  precosVendaDiretaPorDemanda?: Array<{
+    quantidadeMinima: number;
+    quantidadeMaxima: number;
+    precoUnitario: number;
+  }>;
 }
 
 export interface EntradaDimensionamento {
@@ -51,6 +56,8 @@ export interface PlanoFontes {
   valorVendaDiretaTotal: number | null;
   /** Fontes selecionadas sem venda direta válida/preço maior que zero no MubiSys. */
   precosVendaDiretaPendentes: string[];
+  /** Indica que pelo menos um item usou uma faixa de preco por quantidade. */
+  precoPorDemandaAplicado: boolean;
 }
 
 export interface ResultadoDimensionamento {
@@ -111,11 +118,30 @@ function montarPlano(entrada: EntradaDimensionamento): PlanoFontes | null {
   });
 
   const fontesComCadastroComercial = itens.filter(item => item.fonte.mubisysMateriaPrimaId != null);
-  const precosVendaDiretaPendentes = [...new Set(fontesComCadastroComercial
-    .filter(item => item.fonte.vendaDireta !== true || !(Number(item.fonte.precoVendaDireta) > 0))
-    .map(item => item.fonte.nome))];
-  const valorVendaDiretaTotal = fontesComCadastroComercial.length > 0 && precosVendaDiretaPendentes.length === 0
-    ? arredondar(fontesComCadastroComercial.reduce((total, item) => total + Number(item.fonte.precoVendaDireta), 0), 2)
+  const gruposComerciais = fontesComCadastroComercial.reduce((grupos, item) => {
+    const chave = String(item.fonte.mubisysMateriaPrimaId);
+    const atual = grupos.get(chave);
+    if (atual) atual.quantidade++;
+    else grupos.set(chave, { fonte: item.fonte, quantidade: 1 });
+    return grupos;
+  }, new Map<string, { fonte: FonteDisponivel; quantidade: number }>());
+  const precosVendaDiretaPendentes: string[] = [];
+  let totalVendaDireta = 0;
+  let precoPorDemandaAplicado = false;
+  for (const { fonte, quantidade } of gruposComerciais.values()) {
+    const faixaDemanda = fonte.precosVendaDiretaPorDemanda?.find(faixa =>
+      quantidade >= faixa.quantidadeMinima && quantidade <= faixa.quantidadeMaxima
+    );
+    const precoUnitario = faixaDemanda?.precoUnitario ?? Number(fonte.precoVendaDireta);
+    if (fonte.vendaDireta !== true || !(precoUnitario > 0)) {
+      precosVendaDiretaPendentes.push(fonte.nome);
+      continue;
+    }
+    totalVendaDireta += precoUnitario * quantidade;
+    if (faixaDemanda) precoPorDemandaAplicado = true;
+  }
+  const valorVendaDiretaTotal = gruposComerciais.size > 0 && precosVendaDiretaPendentes.length === 0
+    ? arredondar(totalVendaDireta, 2)
     : null;
   const maiorUtilizacao = Math.max(...itens.map(item => item.utilizacao));
   return {
@@ -126,6 +152,7 @@ function montarPlano(entrada: EntradaDimensionamento): PlanoFontes | null {
     faixa: maiorUtilizacao <= FATOR_RECOMENDADO + EPS ? "ideal" : "tolerancia",
     valorVendaDiretaTotal,
     precosVendaDiretaPendentes,
+    precoPorDemandaAplicado,
   };
 }
 
