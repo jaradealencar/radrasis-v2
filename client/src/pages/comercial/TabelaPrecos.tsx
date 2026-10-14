@@ -469,12 +469,11 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
 }
 
 function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts: LedPowerSourceTextOverrides }) {
-  const columns: Array<["source" | "voltage" | "power" | "amperage" | "priceRange" | "recommended" | "maximum", string]> = [
+  const columns: Array<["source" | "voltage" | "power" | "amperage" | "recommended" | "maximum", string]> = [
     ["source", tabela.sourceLabel ?? "Fonte"],
     ["voltage", "Tensão"],
     ["power", "Potência da fonte"],
     ...(tabela.rows.some(row => row.amperage !== undefined) ? [["amperage", "Amperagem"] as ["amperage", string]] : []),
-    ...(tabela.rows.some(row => row.priceRange !== undefined) ? [["priceRange", tabela.priceLabel ?? "Faixa de preço"] as ["priceRange", string]] : []),
     ["recommended", "Recomendado para vendas (85%)"],
     ["maximum", "Limite máximo (100%)"],
   ];
@@ -504,7 +503,6 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
                 <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage")} value={row.voltage} texts={texts} /></TableCell>
                 <TableCell>{fmtNum(row.powerW)} <EditableLedText textKey={ledPowerSourceTextKey.common("powerUnit")} value="W" texts={texts} /></TableCell>
                 {row.amperage !== undefined && <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "amperage")} value={row.amperage} texts={texts} /></TableCell>}
-                {row.priceRange !== undefined && <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "priceRange")} value={row.priceRange} texts={texts} /></TableCell>}
                 <TableCell><EditableLedText textKey={ledPowerSourceTextKey.common("moduleRecommendedPrefix")} value="Até" texts={texts} /> {fmtNum(row.recommendedModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
                 <TableCell>{fmtNum(row.maximumModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
               </TableRow>
@@ -794,10 +792,9 @@ function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: Led
 }
 
 function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts: LedPowerSourceTextOverrides) {
-  const columns: Array<["source" | "voltage" | "power" | "amperage" | "priceRange" | "recommended" | "maximum", string]> = [
+  const columns: Array<["source" | "voltage" | "power" | "amperage" | "recommended" | "maximum", string]> = [
     ["source", tabela.sourceLabel ?? "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
     ...(tabela.rows.some(row => row.amperage !== undefined) ? [["amperage", "Amperagem"] as ["amperage", string]] : []),
-    ...(tabela.rows.some(row => row.priceRange !== undefined) ? [["priceRange", tabela.priceLabel ?? "Faixa de preço"] as ["priceRange", string]] : []),
     ["recommended", "Recomendado para vendas (85%)"],
     ["maximum", "Limite máximo (100%)"],
   ];
@@ -810,7 +807,6 @@ function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts:
       <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage"), row.voltage))}</td>
       <td>${fmtNum(row.powerW)} ${escapeHtml(powerUnit)}</td>
       ${row.amperage !== undefined ? `<td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "amperage"), row.amperage))}</td>` : ""}
-      ${row.priceRange !== undefined ? `<td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "priceRange"), row.priceRange))}</td>` : ""}
       <td>${escapeHtml(recommendedPrefix)} ${fmtNum(row.recommendedModules)} ${escapeHtml(moduleUnit)}</td>
       <td>${fmtNum(row.maximumModules)} ${escapeHtml(moduleUnit)}</td>
     </tr>`).join("");

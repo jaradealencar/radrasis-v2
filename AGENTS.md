@@ -327,7 +327,7 @@ em vez de reescrever o padrão:
   categórica, `STATUS_COLORS` para semântica).
 - Estados de carregando e vazio usam `@/components/ui/spinner` e
   `@/components/ui/empty`.
-- Tabela de Preços > Pág. 4 (Fontes Chaveadas), compartilhada pelas abas Clientes Antigos e Novo Cliente, tem a **Calculadora de fontes**: o vendedor escolhe o LED (fitas 12/24 V e módulos) e a quantidade, usando as mesmas tabelas da página, com os nomes editados. A tabela de fontes blindadas 24 V tem modelos de 2,5/5/6/15/25/30 A e preços unitários de compra final, sem observações de kit. Para módulos 24 V, a calculadora mostra lado a lado as opções chaveada e blindada para a mesma carga. A lógica pura de `shared/led-fontes-calculo.ts` (testes em
+- Tabela de Preços > Pág. 4 (Fontes Chaveadas), compartilhada pelas abas Clientes Antigos e Novo Cliente, tem a **Calculadora de fontes**: o vendedor escolhe o LED (fitas 12/24 V e módulos) e a quantidade, usando as mesmas tabelas da página, com os nomes editados. A tabela de fontes blindadas 24 V tem modelos de 2,5/5/6/15/25/30 A, sem preços e sem observações de kit. Para módulos 24 V, a calculadora mostra lado a lado as opções chaveada e blindada para a mesma carga. A lógica pura de `shared/led-fontes-calculo.ts` (testes em
   `server/__tests__/led-fontes-calculo.test.ts`) indica quais fontes e quantas: trabalha com 85% de uso da fonte e aceita até 93% antes de
   sugerir outra (nesse caso mostra também a opção que fica em 85%); menos fontes primeiro, depois menor potência instalada. O consumo por
   módulo vem de `LedModuleTable.wattsPerModule` (`server/services/ledPowerSources.ts`), não do texto do subtítulo.
