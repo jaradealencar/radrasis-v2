@@ -3,7 +3,7 @@ import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { ledTipos, custoLedLancamentos } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
-import { getLedPowerSourceTables, LED_24V_MUBISYS_IDS, type LedDirectSaleData } from "../services/ledPowerSources";
+import { getLedPowerSourceTables, LED_12V_MUBISYS_IDS, LED_24V_MUBISYS_IDS, type LedDirectSaleData } from "../services/ledPowerSources";
 import { listarMateriasPrimasEspelhadas, prepararCatalogoEspelhado, sincronizarCatalogoMubiSys } from "../services/mubisysEspelho";
 import {
   getLedPowerSourceTextOverrides,
@@ -35,6 +35,7 @@ export const custoLedRouter = router({
     const requiredIds = new Set<number>([
       ...Object.values(LED_24V_MUBISYS_IDS.switched),
       ...Object.values(LED_24V_MUBISYS_IDS.shielded),
+      ...Object.values(LED_12V_MUBISYS_IDS.switched),
     ]);
     let directSaleByMubisysId = new Map<number, LedDirectSaleData>();
     try {

@@ -775,7 +775,7 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
           Calculadora de fontes
         </CardTitle>
         <p className="text-xs text-slate-500">
-          Escolha até dois tipos de LED usados no mesmo letreiro. Cargas da mesma tensão são somadas; tensões diferentes recebem circuitos e fontes separados. A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%, e a sobra usa a menor fonte possível com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%. Em 24 V, o sistema compara as opções chaveada e blindada pelos preços de venda direta.
+          Escolha até dois tipos de LED usados no mesmo letreiro. Cada LED usa somente fontes da sua tensão: cargas iguais são somadas e tensões diferentes recebem circuitos separados. O sistema procura a combinação de menor preço de venda direta, mantendo {fmtNum(FATOR_RECOMENDADO * 100)}% de uso e tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}% em uma fonte. Em 24 V, compara as opções chaveada e blindada; em 12 V, usa somente fontes chaveadas.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -853,10 +853,13 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
 
               return (
                 <div key={String(grupoResultado.chaveTensao)} className="space-y-3">
-                  {resultadosPorTensao.length > 1 && (
-                    <div className="flex items-center gap-2 border-b border-blue-200 pb-2">
+                  {entradasAtivas.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-2 border-b border-blue-200 pb-2">
                       <Badge variant="outline" className="border-blue-300 bg-white text-blue-800">Circuito {grupoResultado.tensao}</Badge>
                       <span className="text-xs text-slate-500">{fmtWatts(grupoResultado.consumoTotalW)}</span>
+                      <span className="text-xs text-slate-600">
+                        {grupoResultado.itens.map(item => `${fmtNum(item.quantidade, item.opcao.grupo === "fita" ? 1 : 0)} ${item.opcao.grupo === "fita" ? "m" : "módulos"} de ${item.opcao.rotulo}`).join(" + ")}
+                      </span>
                     </div>
                   )}
                   <div className={`grid gap-3 ${grupoResultado.resultados.length > 1 ? "lg:grid-cols-2" : ""}`}>

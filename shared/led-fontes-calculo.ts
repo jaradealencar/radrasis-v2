@@ -82,28 +82,68 @@ function capacidadeEmPassos(potenciaW: number, wattsPorPasso: number, fator: num
   return Math.floor((potenciaW * fator) / wattsPorPasso + EPS);
 }
 
-function montarPlano(entrada: EntradaDimensionamento): PlanoFontes | null {
-  const { wattsPorUnidade, passo, quantidade } = entrada;
-  const wattsPorPasso = arredondar(wattsPorUnidade * passo, 6);
-  const passosTotais = Math.ceil(quantidade / passo - EPS);
-  const fontes = entrada.fontes
-    .filter(fonte => capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, FATOR_RECOMENDADO) >= 1)
+function calcularVendaDireta(fontes: FonteDisponivel[]): Pick<PlanoFontes, "valorVendaDiretaTotal" | "precosVendaDiretaPendentes" | "precoPorDemandaAplicado"> {
+  const grupos = fontes.reduce((mapa, fonte) => {
+    const chave = fonte.mubisysMateriaPrimaId == null ? `sem-cadastro:${fonte.nome}` : String(fonte.mubisysMateriaPrimaId);
+    const atual = mapa.get(chave);
+    if (atual) atual.quantidade++;
+    else mapa.set(chave, { fonte, quantidade: 1 });
+    return mapa;
+  }, new Map<string, { fonte: FonteDisponivel; quantidade: number }>());
+  const precosVendaDiretaPendentes: string[] = [];
+  let totalVendaDireta = 0;
+  let precoPorDemandaAplicado = false;
+  for (const { fonte, quantidade } of grupos.values()) {
+    const faixaDemanda = fonte.precosVendaDiretaPorDemanda?.find(faixa =>
+      quantidade >= faixa.quantidadeMinima && quantidade <= faixa.quantidadeMaxima
+    );
+    const precoUnitario = faixaDemanda?.precoUnitario ?? Number(fonte.precoVendaDireta);
+    if (fonte.mubisysMateriaPrimaId == null || fonte.vendaDireta !== true || !(precoUnitario > 0)) {
+      precosVendaDiretaPendentes.push(fonte.nome);
+      continue;
+    }
+    totalVendaDireta += precoUnitario * quantidade;
+    if (faixaDemanda) precoPorDemandaAplicado = true;
+  }
+  return {
+    valorVendaDiretaTotal: precosVendaDiretaPendentes.length === 0 ? arredondar(totalVendaDireta, 2) : null,
+    precosVendaDiretaPendentes: Array.from(new Set(precosVendaDiretaPendentes)),
+    precoPorDemandaAplicado,
+  };
+}
+
+function montarPlanoDaCombinacao(
+  fontes: FonteDisponivel[],
+  passosTotais: number,
+  passo: number,
+  wattsPorPasso: number,
+): PlanoFontes | null {
+  if (!fontes.length || passosTotais < fontes.length) return null;
+  const distribuicao = fontes
     .slice()
-    .sort((a, b) => a.potenciaW - b.potenciaW);
-  if (!fontes.length) return null;
+    .sort((a, b) => b.potenciaW - a.potenciaW)
+    .map(fonte => ({
+      fonte,
+      passos: 1,
+      ideal: capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, FATOR_RECOMENDADO),
+      tolerado: capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, FATOR_TOLERANCIA),
+    }));
+  const capacidadeIdealTotal = distribuicao.reduce((soma, item) => soma + item.ideal, 0);
+  const maiorFolgaTolerada = Math.max(...distribuicao.map(item => item.tolerado - item.ideal));
+  if (passosTotais > capacidadeIdealTotal + maiorFolgaTolerada) return null;
 
-  const maiorFonte = fontes[fontes.length - 1];
-  const capacidadeIdealMaior = capacidadeEmPassos(maiorFonte.potenciaW, wattsPorPasso, FATOR_RECOMENDADO);
-  const capacidadeToleradaMaior = capacidadeEmPassos(maiorFonte.potenciaW, wattsPorPasso, FATOR_TOLERANCIA);
-  const fontesPrincipais = Math.max(0, Math.ceil((passosTotais - capacidadeToleradaMaior) / capacidadeIdealMaior));
-  const passosRestantes = passosTotais - fontesPrincipais * capacidadeIdealMaior;
-  const fonteDaSobra = fontes.find(fonte => capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, FATOR_TOLERANCIA) >= passosRestantes);
-  if (!fonteDaSobra || fontesPrincipais + 1 > MAX_FONTES_NO_PLANO) return null;
+  let passosRestantes = passosTotais - distribuicao.length;
+  for (const item of distribuicao) {
+    const adicionais = Math.min(passosRestantes, item.ideal - item.passos);
+    item.passos += adicionais;
+    passosRestantes -= adicionais;
+  }
+  if (passosRestantes > 0) {
+    const fonteTolerada = distribuicao.find(item => item.tolerado - item.passos >= passosRestantes);
+    if (!fonteTolerada) return null;
+    fonteTolerada.passos += passosRestantes;
+  }
 
-  const distribuicao = [
-    ...Array.from({ length: fontesPrincipais }, () => ({ fonte: maiorFonte, passos: capacidadeIdealMaior })),
-    { fonte: fonteDaSobra, passos: passosRestantes },
-  ];
   const casas = casasDoPasso(passo);
   const itens: FonteDoPlano[] = distribuicao.map(({ fonte, passos }) => {
     const cargaW = arredondar(passos * wattsPorPasso, 2);
@@ -116,33 +156,7 @@ function montarPlano(entrada: EntradaDimensionamento): PlanoFontes | null {
       faixa: utilizacao <= FATOR_RECOMENDADO + EPS ? "ideal" : "tolerancia",
     };
   });
-
-  const fontesComCadastroComercial = itens.filter(item => item.fonte.mubisysMateriaPrimaId != null);
-  const gruposComerciais = fontesComCadastroComercial.reduce((grupos, item) => {
-    const chave = String(item.fonte.mubisysMateriaPrimaId);
-    const atual = grupos.get(chave);
-    if (atual) atual.quantidade++;
-    else grupos.set(chave, { fonte: item.fonte, quantidade: 1 });
-    return grupos;
-  }, new Map<string, { fonte: FonteDisponivel; quantidade: number }>());
-  const precosVendaDiretaPendentes: string[] = [];
-  let totalVendaDireta = 0;
-  let precoPorDemandaAplicado = false;
-  for (const { fonte, quantidade } of gruposComerciais.values()) {
-    const faixaDemanda = fonte.precosVendaDiretaPorDemanda?.find(faixa =>
-      quantidade >= faixa.quantidadeMinima && quantidade <= faixa.quantidadeMaxima
-    );
-    const precoUnitario = faixaDemanda?.precoUnitario ?? Number(fonte.precoVendaDireta);
-    if (fonte.vendaDireta !== true || !(precoUnitario > 0)) {
-      precosVendaDiretaPendentes.push(fonte.nome);
-      continue;
-    }
-    totalVendaDireta += precoUnitario * quantidade;
-    if (faixaDemanda) precoPorDemandaAplicado = true;
-  }
-  const valorVendaDiretaTotal = gruposComerciais.size > 0 && precosVendaDiretaPendentes.length === 0
-    ? arredondar(totalVendaDireta, 2)
-    : null;
+  const vendaDireta = calcularVendaDireta(fontes);
   const maiorUtilizacao = Math.max(...itens.map(item => item.utilizacao));
   return {
     fontes: itens,
@@ -150,10 +164,48 @@ function montarPlano(entrada: EntradaDimensionamento): PlanoFontes | null {
     potenciaInstaladaW: itens.reduce((soma, item) => soma + item.fonte.potenciaW, 0),
     maiorUtilizacao,
     faixa: maiorUtilizacao <= FATOR_RECOMENDADO + EPS ? "ideal" : "tolerancia",
-    valorVendaDiretaTotal,
-    precosVendaDiretaPendentes,
-    precoPorDemandaAplicado,
+    ...vendaDireta,
   };
+}
+
+function montarPlano(entrada: EntradaDimensionamento): PlanoFontes | null {
+  const { wattsPorUnidade, passo, quantidade } = entrada;
+  const wattsPorPasso = arredondar(wattsPorUnidade * passo, 6);
+  const passosTotais = Math.ceil(quantidade / passo - EPS);
+  const fontes = entrada.fontes
+    .filter(fonte => capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, FATOR_RECOMENDADO) >= 1)
+    .slice()
+    .sort((a, b) => a.potenciaW - b.potenciaW);
+  if (!fontes.length) return null;
+
+  const candidatos: PlanoFontes[] = [];
+  const quantidades = Array.from({ length: fontes.length }, () => 0);
+  const enumerar = (indice: number, fontesRestantes: number) => {
+    if (indice === fontes.length) {
+      const fontesDaCombinacao = fontes.flatMap((fonte, posicao) =>
+        Array.from({ length: quantidades[posicao] }, () => fonte)
+      );
+      const plano = montarPlanoDaCombinacao(fontesDaCombinacao, passosTotais, passo, wattsPorPasso);
+      if (plano) candidatos.push(plano);
+      return;
+    }
+    for (let quantidadeFonte = 0; quantidadeFonte <= fontesRestantes; quantidadeFonte++) {
+      quantidades[indice] = quantidadeFonte;
+      enumerar(indice + 1, fontesRestantes - quantidadeFonte);
+    }
+  };
+  enumerar(0, MAX_FONTES_NO_PLANO);
+  if (!candidatos.length) return null;
+
+  const candidatosComPreco = candidatos.filter(plano => plano.valorVendaDiretaTotal != null);
+  const ordenados = (candidatosComPreco.length ? candidatosComPreco : candidatos).slice().sort((a, b) => {
+    if (a.valorVendaDiretaTotal != null && b.valorVendaDiretaTotal != null && a.valorVendaDiretaTotal !== b.valorVendaDiretaTotal) {
+      return a.valorVendaDiretaTotal - b.valorVendaDiretaTotal;
+    }
+    if (a.totalFontes !== b.totalFontes) return a.totalFontes - b.totalFontes;
+    return a.potenciaInstaladaW - b.potenciaInstaladaW;
+  });
+  return ordenados[0];
 }
 
 export function dimensionarFontes(entrada: EntradaDimensionamento): ResultadoDimensionamento {

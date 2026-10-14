@@ -21,6 +21,9 @@ export const LED_24V_MUBISYS_IDS = {
   switched: { 10: 4513, 20: 4514, 30: 4515, 50: 4516 },
   shielded: { "2.5": 4533, 5: 4531, 6: 4532, 15: 4528, 25: 4529, 30: 4530 },
 } as const;
+export const LED_12V_MUBISYS_IDS = {
+  switched: { 10: 1015, 20: 1017, 30: 1018, 50: 1020 },
+} as const;
 
 /** A API publica do MubiSys informa preco final zero para estes dois itens e
  * nao expoe as faixas cadastradas em "Precos por demanda". Valores conferidos
@@ -116,6 +119,14 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
       directSaleDemandPrices: LED_24V_PRECOS_POR_DEMANDA[mubisysMateriaPrimaId],
     };
   };
+  const adicionarVendaDireta12V = (tabela: LedModuleTable): LedModuleTable => ({
+    ...tabela,
+    sourceFamilyLabel: "Fontes chaveadas",
+    rows: tabela.rows.map(row => {
+      const amperagemA = (row.powerW / 12) as keyof typeof LED_12V_MUBISYS_IDS.switched;
+      return { ...directSaleFields(LED_12V_MUBISYS_IDS.switched[amperagemA]), ...row };
+    }),
+  });
   const fita24VBase = criarTabelaFitas(24, 17, 1, false);
   const fita24VChaveada: LedTapeTable = {
     ...fita24VBase,
@@ -199,26 +210,36 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
     })),
   };
 
+  const fita12VBase = criarTabelaFitas(12, 8, 2, true);
+  const fita12V: LedTapeTable = {
+    ...fita12VBase,
+    sourceFamilyLabel: "Fontes chaveadas",
+    rows: fita12VBase.rows.map(row => {
+      const amperagemA = (row.powerW / 12) as keyof typeof LED_12V_MUBISYS_IDS.switched;
+      return { ...directSaleFields(LED_12V_MUBISYS_IDS.switched[amperagemA]), ...row };
+    }),
+  };
+
   return {
     tapes: [
       fita24VChaveada,
       fita24VBlindada,
-      criarTabelaFitas(12, 8, 2, true),
+      fita12V,
     ],
     modules: [
       modulos24V,
       fontesBlindadas24V,
-      criarTabelaModulos12V(
+      adicionarVendaDireta12V(criarTabelaModulos12V(
         "modules-7025-12v",
         "MÓDULO LED 7025 (12V)",
         WATTS_MODULO_7025_12V
-      ),
-      criarTabelaModulos12V("modules-3030-12v", "MÓDULO 3030 3W (12V)", 3),
-      criarTabelaModulos12V(
+      )),
+      adicionarVendaDireta12V(criarTabelaModulos12V("modules-3030-12v", "MÓDULO 3030 3W (12V)", 3)),
+      adicionarVendaDireta12V(criarTabelaModulos12V(
         "micro-2835-12v",
         "MICRO MÓDULO 2835 1,5W (12V)",
         1.5
-      ),
+      )),
     ],
   };
 }
