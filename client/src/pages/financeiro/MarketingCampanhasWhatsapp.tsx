@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BanIcon, BarChart3, CalendarDays, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
+import { AlertTriangle, BanIcon, BarChart3, CalendarDays, CheckCircle2, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -138,6 +138,14 @@ export default function MarketingCampanhasWhatsapp() {
                     <TableRow key={c.id} className={c.status !== "ativa" ? "opacity-60" : undefined}>
                       <TableCell className="font-medium min-w-[13rem] max-w-[16rem] align-top whitespace-normal">
                         <div title={c.descricao ?? undefined}>{c.nome}</div>
+                        {c.wtsTemplateId?.trim() && (
+                          <span
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                            title={`Template WTS.Chat: ${c.wtsTemplateId.trim()}`}
+                          >
+                            <CheckCircle2 size={10} /> Template WTS.Chat configurado
+                          </span>
+                        )}
                         <div className="mt-0.5 text-[11px] font-normal leading-snug text-muted-foreground">
                           {labelCategoria(c.categoria)} · {c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
                           {c.quarentenaDias > 0 && ` · quarentena ${c.quarentenaDias}d`}
