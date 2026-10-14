@@ -536,6 +536,9 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
     tabela.rows.map((linha, indice) => ({
       nome: getLedText(texts, ledPowerSourceTextKey.row(tabela.key, indice, "source"), linha.source),
       potenciaW: linha.powerW,
+      mubisysMateriaPrimaId: "mubisysMateriaPrimaId" in linha ? linha.mubisysMateriaPrimaId : undefined,
+      vendaDireta: "directSaleEnabled" in linha ? linha.directSaleEnabled : undefined,
+      precoVendaDireta: "directSalePrice" in linha ? linha.directSalePrice : undefined,
     }));
   const tensaoDe = (tabela: LedTapeTable | LedModuleTable) =>
     getLedText(texts, ledPowerSourceTextKey.row(tabela.key, 0, "voltage"), tabela.rows[0]?.voltage ?? "");
@@ -577,13 +580,20 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
   return [...fitas, ...gruposModulos.values()];
 }
 
-function PlanoFontesCard({ titulo, plano, opcao, destaque }: { titulo: string; plano: PlanoFontes; opcao: OpcaoCalculadoraLed; destaque?: boolean }) {
+function PlanoFontesCard({ titulo, plano, opcao, mostrarPreco }: { titulo: string; plano: PlanoFontes; opcao: OpcaoCalculadoraLed; mostrarPreco: boolean }) {
   const unidade = opcao.grupo === "fita" ? "m" : "módulos";
   const casasQuantidade = opcao.grupo === "fita" ? 1 : 0;
   const resumo = resumirPlano(plano).map(grupo => `${grupo.copias} × ${grupo.nome}`).join(" + ");
   const noLimite = plano.faixa === "tolerancia";
+  const linhas = Array.from(plano.fontes.reduce((grupos, item) => {
+    const chave = `${item.fonte.nome}|${item.quantidade}|${item.utilizacao}`;
+    const atual = grupos.get(chave);
+    if (atual) atual.copias++;
+    else grupos.set(chave, { item, copias: 1 });
+    return grupos;
+  }, new Map<string, { item: PlanoFontes["fontes"][number]; copias: number }>()).values());
   return (
-    <div className={`space-y-3 rounded-md border p-3 ${destaque ? "border-blue-300 bg-blue-50/40" : "border-slate-200"}`}>
+    <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</p>
@@ -591,34 +601,42 @@ function PlanoFontesCard({ titulo, plano, opcao, destaque }: { titulo: string; p
           <p className="text-xs text-slate-500">
             {opcao.tensao} · {fmtWatts(plano.potenciaInstaladaW)} instalados · {plano.totalFontes === 1 ? "1 fonte" : `${plano.totalFontes} fontes`}
           </p>
+          {mostrarPreco && plano.valorVendaDiretaTotal != null && (
+            <p className="mt-1 text-sm font-semibold text-blue-700">Venda direta: {fmtBrl(plano.valorVendaDiretaTotal)}</p>
+          )}
         </div>
         <Badge
           variant="outline"
           className={noLimite ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-300 bg-emerald-50 text-emerald-800"}
         >
           {noLimite
-            ? `Passa de ${fmtNum(FATOR_RECOMENDADO * 100)}%, mas cabe em ${fmtNum(FATOR_TOLERANCIA * 100)}%: não precisa de outra fonte`
-            : `Dentro da margem de ${fmtNum(FATOR_RECOMENDADO * 100)}%`}
+            ? `Fonte da sobra dentro do limite de ${fmtNum(FATOR_TOLERANCIA * 100)}%`
+            : `Fontes dentro da margem de ${fmtNum(FATOR_RECOMENDADO * 100)}%`}
         </Badge>
       </div>
+      {mostrarPreco && plano.precosVendaDiretaPendentes.length > 0 && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Preço de venda direta pendente no MubiSys: <strong>{plano.precosVendaDiretaPendentes.join(", ")}</strong>. O sistema não assume preço zero.
+        </p>
+      )}
       <div className="overflow-x-auto rounded-md border bg-white">
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50">
               <TableHead>Fonte</TableHead>
-              <TableHead className="text-right">LED ligado a ela</TableHead>
-              <TableHead className="text-right">Carga</TableHead>
-              <TableHead className="text-right">Uso da fonte</TableHead>
+              <TableHead className="text-right">Quantidade</TableHead>
+              <TableHead className="text-right">LED por fonte</TableHead>
+              <TableHead className="text-right">Uso por fonte</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {plano.fontes.map((item, indice) => (
-              <TableRow key={`${item.fonte.nome}-${indice}`}>
+            {linhas.map(({ item, copias }) => (
+              <TableRow key={`${item.fonte.nome}-${item.quantidade}-${item.utilizacao}`}>
                 <TableCell className="font-medium">
-                  {plano.totalFontes > 1 ? `${indice + 1}. ` : ""}{item.fonte.nome} <span className="text-xs font-normal text-slate-500">({fmtNum(item.fonte.potenciaW)} W)</span>
+                  {item.fonte.nome} <span className="text-xs font-normal text-slate-500">({fmtNum(item.fonte.potenciaW)} W)</span>
                 </TableCell>
+                <TableCell className="text-right font-semibold">{copias}</TableCell>
                 <TableCell className="text-right">{fmtNum(item.quantidade, casasQuantidade)} {unidade}</TableCell>
-                <TableCell className="text-right">{fmtWatts(item.cargaW)}</TableCell>
                 <TableCell className={`text-right font-semibold ${item.faixa === "tolerancia" ? "text-amber-700" : "text-emerald-700"}`}>
                   {fmtNum(item.utilizacao * 100, 1)}%
                 </TableCell>
@@ -653,6 +671,15 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
   if (!opcao) return null;
   const unidadeCampo = opcao.grupo === "fita" ? "metros" : "módulos";
   const grupos: Array<[OpcaoCalculadoraLed["grupo"], string]> = [["fita", "Fitas LED (por metro)"], ["modulo", "Módulos LED (por unidade)"]];
+  const planoChaveado = resultados?.find(item => item.alternativa.chave === "modules-24v")?.resultado.recomendado ?? null;
+  const planoBlindado = resultados?.find(item => item.alternativa.chave === "modules-shielded-24v")?.resultado.recomendado ?? null;
+  const compararVendaDireta = planoChaveado?.valorVendaDiretaTotal != null && planoBlindado?.valorVendaDiretaTotal != null;
+  const diferencaPercentual = compararVendaDireta
+    ? ((planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!) / planoChaveado.valorVendaDiretaTotal!) * 100
+    : null;
+  const diferencaValor = compararVendaDireta
+    ? planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!
+    : null;
 
   return (
     <Card className="border-blue-200">
@@ -662,7 +689,7 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
           Calculadora de fontes
         </CardTitle>
         <p className="text-xs text-slate-500">
-          Escolha o LED e a quantidade: o sistema indica quais fontes e quantas usar. Para módulos 24 V, mostra as alternativas chaveada e blindada para a mesma carga. Trabalha com {fmtNum(FATOR_RECOMENDADO * 100)}% de uso da fonte e aceita até {fmtNum(FATOR_TOLERANCIA * 100)}% antes de sugerir outra.
+          A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%. A sobra usa a menor fonte possível, com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%. Para módulos 24 V, o sistema compara as opções chaveada e blindada pelos preços de venda direta do MubiSys.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -702,32 +729,40 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
             Informe a quantidade de {unidadeCampo} para ver as fontes indicadas.
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/30 p-3">
             {resultados.some(({ resultado }) => resultado.recomendado) && (
               <p className="text-sm text-slate-600">
                 Consumo total: <strong className="text-slate-900">{fmtWatts(resultados[0]?.resultado.consumoTotalW ?? 0)}</strong>
                 <span className="text-xs text-slate-500"> ({fmtNum(quantidade, casasWatts(quantidade))} {unidadeCampo} × {fmtWatts(opcao.wattsPorUnidade)})</span>
               </p>
             )}
-            {resultados.map(({ alternativa, resultado }) => {
-              const prefixo = opcao.alternativas.length > 1 ? `${alternativa.rotulo} — ` : "";
-              return (
-                <div key={alternativa.chave} className="space-y-2">
+            <div className={`grid gap-3 ${resultados.length > 1 ? "lg:grid-cols-2" : ""}`}>
+              {resultados.map(({ alternativa, resultado }) => (
+                <div key={alternativa.chave}>
                   {resultado.recomendado ? (
-                    <>
-                      <PlanoFontesCard titulo={`${prefixo}Recomendado`} plano={resultado.recomendado} opcao={opcao} destaque />
-                      {resultado.comFolga && (
-                        <PlanoFontesCard titulo={`${prefixo}Se preferir ficar dentro de ${fmtNum(FATOR_RECOMENDADO * 100)}%`} plano={resultado.comFolga} opcao={opcao} />
-                      )}
-                    </>
+                    <PlanoFontesCard
+                      titulo={alternativa.rotulo || "Fontes recomendadas"}
+                      plano={resultado.recomendado}
+                      opcao={opcao}
+                      mostrarPreco={opcao.grupo === "modulo" && alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
+                    />
                   ) : (
-                    <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      {prefixo && <strong>{alternativa.rotulo}: </strong>}{resultado.aviso}
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {alternativa.rotulo && <strong>{alternativa.rotulo}: </strong>}{resultado.aviso}
                     </p>
                   )}
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            {diferencaPercentual != null && diferencaValor != null && (
+              <div className={`rounded-md border px-3 py-2 text-sm font-semibold ${diferencaPercentual > 0 ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                {Math.abs(diferencaPercentual) < 0.005
+                  ? "As opções chaveada e blindada têm o mesmo valor de venda direta."
+                  : diferencaPercentual > 0
+                    ? `A opção blindada custa ${fmtNum(diferencaPercentual, 1)}% a mais que a chaveada (${fmtBrl(diferencaValor)} a mais).`
+                    : `A opção blindada custa ${fmtNum(Math.abs(diferencaPercentual), 1)}% a menos que a chaveada (${fmtBrl(Math.abs(diferencaValor))} a menos).`}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

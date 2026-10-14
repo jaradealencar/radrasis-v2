@@ -3,7 +3,8 @@ import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import { ledTipos, custoLedLancamentos } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
-import { getLedPowerSourceTables } from "../services/ledPowerSources";
+import { getLedPowerSourceTables, LED_24V_MUBISYS_IDS, type LedDirectSaleData } from "../services/ledPowerSources";
+import { listarMateriasPrimasEspelhadas, prepararCatalogoEspelhado, sincronizarCatalogoMubiSys } from "../services/mubisysEspelho";
 import {
   getLedPowerSourceTextOverrides,
   saveLedPowerSourceTextOverride,
@@ -15,9 +16,36 @@ const ledTextKeyPattern = /^(page\.(tableTabLabel|tapesTab|modulesTab|pdfTitle|p
 
 export const custoLedRouter = router({
   getDimensionamentoFontes: publicProcedure.query(async () => {
+    const textsPromise = getLedPowerSourceTextOverrides();
+    const requiredIds = new Set<number>([
+      ...Object.values(LED_24V_MUBISYS_IDS.switched),
+      ...Object.values(LED_24V_MUBISYS_IDS.shielded),
+    ]);
+    let directSaleByMubisysId = new Map<number, LedDirectSaleData>();
+    try {
+      await prepararCatalogoEspelhado();
+      let catalog = await listarMateriasPrimasEspelhadas();
+      const catalogById = new Map(catalog.map(item => [Number(item.id), item]));
+      const missingCommercialData = [...requiredIds].some(id => {
+        const item = catalogById.get(id);
+        return !item || item.venda_direta == null || item.valor_preco_final == null;
+      });
+      if (missingCommercialData) {
+        await sincronizarCatalogoMubiSys();
+        catalog = await listarMateriasPrimasEspelhadas();
+      }
+      directSaleByMubisysId = new Map(catalog
+        .filter(item => requiredIds.has(Number(item.id)))
+        .map(item => [Number(item.id), {
+          enabled: item.venda_direta === true || item.venda_direta === 1 || item.venda_direta === "1",
+          price: item.valor_preco_final == null ? null : Number(item.valor_preco_final),
+        }]));
+    } catch (error) {
+      console.error("[CalculadoraFontes] Não foi possível atualizar os preços de venda direta do MubiSys.", error);
+    }
     const [tables, texts] = await Promise.all([
-      Promise.resolve(getLedPowerSourceTables()),
-      getLedPowerSourceTextOverrides(),
+      Promise.resolve(getLedPowerSourceTables(directSaleByMubisysId)),
+      textsPromise,
     ]);
     return { tables, texts };
   }),

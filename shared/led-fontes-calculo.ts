@@ -1,22 +1,23 @@
 /**
- * Dimensionamento de fontes chaveadas para LED (Tabela de Preços > Pág. 4).
+ * Dimensionamento de fontes para LED (Tabela de Preços > Pág. 4).
  *
- * Regra comercial: a fonte trabalha com 85% da potência (margem de venda). Se a carga passar um pouco disso, até 93%,
- * ainda cabe na mesma fonte e NÃO se sugere outra; acima de 93% entra uma fonte maior ou mais uma fonte. Quando o plano
- * recomendado usa a faixa entre 85% e 93%, o cálculo também devolve a opção que mantém tudo dentro dos 85%.
- *
- * Escolha do plano: menos fontes; depois menor potência instalada; depois a maior fonte do plano é a menor (carga mais
- * repartida). A carga é repartida entre as fontes na proporção da capacidade de cada uma.
+ * Regra comercial: usa a fonte de maior potência repetidamente a 85% da
+ * capacidade. Quando resta uma carga menor, escolhe a menor fonte que suporta
+ * essa sobra; somente essa última fonte pode chegar a 92%. Assim o plano evita
+ * repartir a carga por igual e prioriza a menor quantidade prática de fontes.
  */
 
 export const FATOR_RECOMENDADO = 0.85;
-export const FATOR_TOLERANCIA = 0.93;
+export const FATOR_TOLERANCIA = 0.92;
 /** Acima disso a calculadora não decide: o projeto precisa ser dividido em circuitos pela engenharia. */
 export const MAX_FONTES_NO_PLANO = 10;
 
 export interface FonteDisponivel {
   nome: string;
   potenciaW: number;
+  mubisysMateriaPrimaId?: number;
+  vendaDireta?: boolean | null;
+  precoVendaDireta?: number | null;
 }
 
 export interface EntradaDimensionamento {
@@ -46,19 +47,20 @@ export interface PlanoFontes {
   potenciaInstaladaW: number;
   maiorUtilizacao: number;
   faixa: FaixaCarga;
+  /** Total pelos preços de venda direta do MubiSys; null quando algum preço está pendente. */
+  valorVendaDiretaTotal: number | null;
+  /** Fontes selecionadas sem venda direta válida/preço maior que zero no MubiSys. */
+  precosVendaDiretaPendentes: string[];
 }
 
 export interface ResultadoDimensionamento {
   consumoTotalW: number;
-  /** Plano recomendado (até 93% por fonte). */
   recomendado: PlanoFontes | null;
-  /** Só existe se o recomendado passa de 85% e há um plano que fica em até 85%. */
+  /** Mantido no contrato para compatibilidade; a calculadora agora apresenta um único plano. */
   comFolga: PlanoFontes | null;
-  /** Por que não há plano (quantidade inválida ou grande demais). */
   aviso: string | null;
 }
 
-/** Evita que ruído de ponto flutuante (0,1 × 17 = 1,7000000000000002) vire um passo a mais ou a menos. */
 const EPS = 1e-9;
 
 const arredondar = (valor: number, casas: number) => {
@@ -73,103 +75,48 @@ function capacidadeEmPassos(potenciaW: number, wattsPorPasso: number, fator: num
   return Math.floor((potenciaW * fator) / wattsPorPasso + EPS);
 }
 
-interface Candidato {
-  contagens: number[];
-  total: number;
-  potencia: number;
-  maior: number;
-}
-
-function melhorQue(candidato: Candidato, atual: Candidato | null): boolean {
-  if (!atual) return true;
-  if (candidato.total !== atual.total) return candidato.total < atual.total;
-  if (candidato.potencia !== atual.potencia) return candidato.potencia < atual.potencia;
-  return candidato.maior < atual.maior;
-}
-
-/** Cópias de cada fonte (na ordem de `fontes`) que cobrem `passosTotais`, ou `null` se passar do limite de fontes. */
-function melhorCombinacao(
-  fontes: readonly FonteDisponivel[],
-  capacidades: readonly number[],
-  passosTotais: number
-): number[] | null {
-  const estado: { melhor: Candidato | null } = { melhor: null };
-  const contagens = new Array<number>(fontes.length).fill(0);
-
-  const percorrer = (indice: number, restante: number, usadas: number) => {
-    if (restante <= 0) {
-      const instaladas = contagens.map((copias, i) => ({ copias, potenciaW: fontes[i].potenciaW }));
-      const candidato: Candidato = {
-        contagens: [...contagens],
-        total: usadas,
-        potencia: instaladas.reduce((soma, item) => soma + item.copias * item.potenciaW, 0),
-        maior: Math.max(0, ...instaladas.filter(item => item.copias > 0).map(item => item.potenciaW)),
-      };
-      if (melhorQue(candidato, estado.melhor)) estado.melhor = candidato;
-      return;
-    }
-    if (indice >= fontes.length) return;
-    for (let copias = 0; copias <= MAX_FONTES_NO_PLANO - usadas; copias++) {
-      contagens[indice] = copias;
-      percorrer(indice + 1, restante - copias * capacidades[indice], usadas + copias);
-      // Esta fonte já cobre o que falta: mais cópias dela só pioram o plano.
-      if (copias * capacidades[indice] >= restante) break;
-    }
-    contagens[indice] = 0;
-  };
-
-  percorrer(0, passosTotais, 0);
-  return estado.melhor ? estado.melhor.contagens : null;
-}
-
-/** Reparte os passos entre as fontes na proporção da capacidade de cada uma (maiores restos), sem estourar nenhuma. */
-function repartir(capacidades: readonly number[], passosTotais: number): number[] {
-  const somaCapacidades = capacidades.reduce((a, b) => a + b, 0);
-  const brutos = capacidades.map(capacidade => (passosTotais * capacidade) / somaCapacidades);
-  const base = brutos.map(Math.floor);
-  let faltam = passosTotais - base.reduce((a, b) => a + b, 0);
-  const porResto = brutos
-    .map((valor, i) => ({ i, resto: valor - Math.floor(valor) }))
-    .sort((a, b) => b.resto - a.resto || capacidades[b.i] - capacidades[a.i]);
-  for (const { i } of porResto) {
-    if (faltam <= 0) break;
-    if (base[i] < capacidades[i]) {
-      base[i]++;
-      faltam--;
-    }
-  }
-  return base;
-}
-
-function montarPlano(entrada: EntradaDimensionamento, fator: number): PlanoFontes | null {
+function montarPlano(entrada: EntradaDimensionamento): PlanoFontes | null {
   const { wattsPorUnidade, passo, quantidade } = entrada;
   const wattsPorPasso = arredondar(wattsPorUnidade * passo, 6);
   const passosTotais = Math.ceil(quantidade / passo - EPS);
-  // Fonte que não aguenta nem um passo de LED não entra na conta.
   const fontes = entrada.fontes
-    .filter(fonte => capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, fator) >= 1)
+    .filter(fonte => capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, FATOR_RECOMENDADO) >= 1)
+    .slice()
     .sort((a, b) => a.potenciaW - b.potenciaW);
-  const capacidades = fontes.map(fonte => capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, fator));
-  const contagens = melhorCombinacao(fontes, capacidades, passosTotais);
-  if (!contagens) return null;
+  if (!fontes.length) return null;
 
-  // Uma entrada por fonte física, da menor para a maior.
-  const fisicas = contagens.flatMap((copias, i) => Array.from({ length: copias }, () => i));
-  const passosPorFonte = repartir(fisicas.map(i => capacidades[i]), passosTotais);
+  const maiorFonte = fontes[fontes.length - 1];
+  const capacidadeIdealMaior = capacidadeEmPassos(maiorFonte.potenciaW, wattsPorPasso, FATOR_RECOMENDADO);
+  const capacidadeToleradaMaior = capacidadeEmPassos(maiorFonte.potenciaW, wattsPorPasso, FATOR_TOLERANCIA);
+  const fontesPrincipais = Math.max(0, Math.ceil((passosTotais - capacidadeToleradaMaior) / capacidadeIdealMaior));
+  const passosRestantes = passosTotais - fontesPrincipais * capacidadeIdealMaior;
+  const fonteDaSobra = fontes.find(fonte => capacidadeEmPassos(fonte.potenciaW, wattsPorPasso, FATOR_TOLERANCIA) >= passosRestantes);
+  if (!fonteDaSobra || fontesPrincipais + 1 > MAX_FONTES_NO_PLANO) return null;
+
+  const distribuicao = [
+    ...Array.from({ length: fontesPrincipais }, () => ({ fonte: maiorFonte, passos: capacidadeIdealMaior })),
+    { fonte: fonteDaSobra, passos: passosRestantes },
+  ];
   const casas = casasDoPasso(passo);
-
-  const itens: FonteDoPlano[] = fisicas.map((i, posicao) => {
-    const fonte = fontes[i];
-    const cargaW = arredondar(passosPorFonte[posicao] * wattsPorPasso, 2);
+  const itens: FonteDoPlano[] = distribuicao.map(({ fonte, passos }) => {
+    const cargaW = arredondar(passos * wattsPorPasso, 2);
     const utilizacao = cargaW / fonte.potenciaW;
     return {
       fonte,
-      quantidade: arredondar(passosPorFonte[posicao] * passo, casas),
+      quantidade: arredondar(passos * passo, casas),
       cargaW,
       utilizacao,
       faixa: utilizacao <= FATOR_RECOMENDADO + EPS ? "ideal" : "tolerancia",
     };
   });
+
+  const fontesComCadastroComercial = itens.filter(item => item.fonte.mubisysMateriaPrimaId != null);
+  const precosVendaDiretaPendentes = [...new Set(fontesComCadastroComercial
+    .filter(item => item.fonte.vendaDireta !== true || !(Number(item.fonte.precoVendaDireta) > 0))
+    .map(item => item.fonte.nome))];
+  const valorVendaDiretaTotal = fontesComCadastroComercial.length > 0 && precosVendaDiretaPendentes.length === 0
+    ? arredondar(fontesComCadastroComercial.reduce((total, item) => total + Number(item.fonte.precoVendaDireta), 0), 2)
+    : null;
   const maiorUtilizacao = Math.max(...itens.map(item => item.utilizacao));
   return {
     fontes: itens,
@@ -177,6 +124,8 @@ function montarPlano(entrada: EntradaDimensionamento, fator: number): PlanoFonte
     potenciaInstaladaW: itens.reduce((soma, item) => soma + item.fonte.potenciaW, 0),
     maiorUtilizacao,
     faixa: maiorUtilizacao <= FATOR_RECOMENDADO + EPS ? "ideal" : "tolerancia",
+    valorVendaDiretaTotal,
+    precosVendaDiretaPendentes,
   };
 }
 
@@ -187,8 +136,7 @@ export function dimensionarFontes(entrada: EntradaDimensionamento): ResultadoDim
     return { consumoTotalW: 0, recomendado: null, comFolga: null, aviso: "Informe uma quantidade maior que zero." };
   }
   const consumoTotalW = arredondar(quantidade * wattsPorUnidade, 2);
-
-  const recomendado = montarPlano(entrada, FATOR_TOLERANCIA);
+  const recomendado = montarPlano(entrada);
   if (!recomendado) {
     return {
       consumoTotalW,
@@ -197,11 +145,10 @@ export function dimensionarFontes(entrada: EntradaDimensionamento): ResultadoDim
       aviso: `Esta carga pede mais de ${MAX_FONTES_NO_PLANO} fontes. Divida o projeto em circuitos e dimensione cada um, ou consulte a engenharia.`,
     };
   }
-  const comFolga = recomendado.faixa === "tolerancia" ? montarPlano(entrada, FATOR_RECOMENDADO) : null;
-  return { consumoTotalW, recomendado, comFolga, aviso: null };
+  return { consumoTotalW, recomendado, comFolga: null, aviso: null };
 }
 
-/** "2 × Fonte 20A" a partir do plano (agrupa fontes iguais, da menor para a maior). */
+/** Agrupa fontes iguais na ordem em que aparecem no plano. */
 export function resumirPlano(plano: PlanoFontes): { nome: string; copias: number }[] {
   const grupos = new Map<string, { nome: string; copias: number }>();
   for (const { fonte } of plano.fontes) {

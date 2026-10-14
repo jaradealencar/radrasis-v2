@@ -10,6 +10,16 @@ const FATOR_VENDA = 0.85;
 /** Módulo 24 V: 136/272/408/680 módulos a 85% e 160/320/480/800 no limite (fontes de 10/20/30/50 A) saem de 1,5 W cada. */
 const WATTS_MODULO_24V = 1.5;
 
+export interface LedDirectSaleData {
+  enabled: boolean | null;
+  price: number | null;
+}
+
+export const LED_24V_MUBISYS_IDS = {
+  switched: { 10: 4513, 20: 4514, 30: 4515, 50: 4516 },
+  shielded: { "2.5": 4533, 5: 4531, 6: 4532, 15: 4528, 25: 4529, 30: 4530 },
+} as const;
+
 function arredondarParaBaixo(valor: number, casas: number): number {
   const escala = 10 ** casas;
   return Math.floor((valor + Number.EPSILON * 8) * escala) / escala;
@@ -78,7 +88,15 @@ function criarTabelaModulos12V(
   };
 }
 
-export function getLedPowerSourceTables(): LedPowerSourceTables {
+export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<number, LedDirectSaleData> = new Map()): LedPowerSourceTables {
+  const directSaleFields = (mubisysMateriaPrimaId: number) => {
+    const commercial = directSaleByMubisysId.get(mubisysMateriaPrimaId);
+    return {
+      mubisysMateriaPrimaId,
+      directSaleEnabled: commercial?.enabled ?? null,
+      directSalePrice: commercial?.price ?? null,
+    };
+  };
   const modulos24V: LedModuleTable = {
     key: "modules-24v",
     title: "Módulos LED — 24 V",
@@ -87,6 +105,7 @@ export function getLedPowerSourceTables(): LedPowerSourceTables {
     sourceFamilyLabel: "Fontes chaveadas",
     wattsPerModule: WATTS_MODULO_24V,
     rows: fontesParaTensao(24).map((fonte): LedModuleSourceRow => ({
+      ...directSaleFields(LED_24V_MUBISYS_IDS.switched[fonte.amperagemA]),
       source: `Fonte chaveada ${fonte.amperagemA}A`,
       voltage: "24 V",
       powerW: fonte.potenciaW,
@@ -105,14 +124,15 @@ export function getLedPowerSourceTables(): LedPowerSourceTables {
     sourceFamilyLabel: "Fontes blindadas",
     wattsPerModule: WATTS_MODULO_24V,
     rows: [
-      { source: "Fonte Blindada 2,5 A", amperage: "2,5 A", powerW: 60 },
-      { source: "Fonte Blindada 5 A", amperage: "5,0 A", powerW: 120 },
-      { source: "Fonte Blindada 6 A", amperage: "6,0 A", powerW: 150 },
-      { source: "Fonte Blindada 15 A", amperage: "15,0 A", powerW: 360 },
-      { source: "Fonte Blindada 25 A", amperage: "25,0 A", powerW: 600 },
-      { source: "Fonte Blindada 30 A", amperage: "30,0 A", powerW: 720 },
+      { source: "Fonte Blindada 2,5 A", amperage: "2,5 A", powerW: 60, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded["2.5"] },
+      { source: "Fonte Blindada 5 A", amperage: "5,0 A", powerW: 120, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[5] },
+      { source: "Fonte Blindada 6 A", amperage: "6,0 A", powerW: 150, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[6] },
+      { source: "Fonte Blindada 15 A", amperage: "15,0 A", powerW: 360, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[15] },
+      { source: "Fonte Blindada 25 A", amperage: "25,0 A", powerW: 600, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[25] },
+      { source: "Fonte Blindada 30 A", amperage: "30,0 A", powerW: 720, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[30] },
     ].map(row => ({
       ...row,
+      ...directSaleFields(row.mubisysMateriaPrimaId),
       voltage: "24 V",
       recommendedModules: Math.floor((row.powerW * FATOR_VENDA) / WATTS_MODULO_24V + 1e-9),
       maximumModules: Math.floor(row.powerW / WATTS_MODULO_24V + 1e-9),

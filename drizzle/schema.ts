@@ -693,6 +693,8 @@ export const materiasPrimas = pgTable("materias_primas", {
   nome: varchar("nome", { length: 256 }).notNull(),
   unidadeMedida: varchar("unidade_medida", { length: 80 }).notNull().default(""),
   custoUnitario: decimal("custo_unitario", { precision: 14, scale: 4 }),
+  vendaDireta: boolean("venda_direta"),
+  precoVendaDireta: decimal("preco_venda_direta", { precision: 14, scale: 4 }),
   larguraUtilMm: decimal("largura_util_mm", { precision: 12, scale: 3 }),
   alturaUtilMm: decimal("altura_util_mm", { precision: 12, scale: 3 }),
   espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),

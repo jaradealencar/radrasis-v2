@@ -157,6 +157,8 @@ export interface MubiSysMateriaPrima {
   unidade_custo: string;
   unidade_movimentacao: string;
   valor_custo: number;
+  venda_direta?: number | string | boolean | null;
+  valor_preco_final?: number | null;
   data_referencia: string;
   status: string;
   [k: string]: unknown;

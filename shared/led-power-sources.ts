@@ -20,6 +20,9 @@ export interface LedModuleSourceRow {
   voltage: string;
   powerW: number;
   amperage?: string;
+  mubisysMateriaPrimaId?: number;
+  directSaleEnabled?: boolean | null;
+  directSalePrice?: number | null;
   recommendedModules: number;
   maximumModules: number;
 }

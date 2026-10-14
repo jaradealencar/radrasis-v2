@@ -743,6 +743,13 @@
       "when": 1791921463588,
       "tag": "0105_campanhas_wts_template_id",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1791984768375,
+      "tag": "0106_sticky_wrecker",
+      "breakpoints": true
     }
   ]
 }

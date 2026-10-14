@@ -51,20 +51,18 @@ describe("dimensionarFontes", () => {
     expect(resultado.recomendado!.faixa).toBe("ideal");
   });
 
-  it("entre 85% e 93% mantém a mesma fonte e só avisa; a opção com folga vem à parte", () => {
+  it("entre 85% e 92% mantém a mesma fonte da sobra e apresenta um único plano", () => {
     const resultado = dimensionarFontes(modulos(140)); // 210 W de 240 W = 87,5%
     expect(nomes(resultado)).toEqual(["1x Fonte chaveada 10A"]);
     expect(resultado.recomendado!.faixa).toBe("tolerancia");
     expect(resultado.recomendado!.fontes[0].utilizacao).toBeCloseTo(0.875, 5);
-    expect(resultado.comFolga).not.toBeNull();
-    expect(resumirPlano(resultado.comFolga!).map(grupo => `${grupo.copias}x ${grupo.nome}`)).toEqual(["1x Fonte chaveada 20A"]);
-    expect(resultado.comFolga!.faixa).toBe("ideal");
+    expect(resultado.comFolga).toBeNull();
   });
 
-  it("93% ainda cabe; acima disso sobe para a fonte seguinte", () => {
-    const noLimite = dimensionarFontes(modulos(148)); // 222 W = 92,5%
+  it("92% ainda cabe; acima disso sobe para a fonte seguinte", () => {
+    const noLimite = dimensionarFontes(modulos(147)); // 220,5 W = 91,875%
     expect(nomes(noLimite)).toEqual(["1x Fonte chaveada 10A"]);
-    const acima = dimensionarFontes(modulos(149)); // 223,5 W = 93,1%
+    const acima = dimensionarFontes(modulos(148)); // 222 W = 92,5%
     expect(nomes(acima)).toEqual(["1x Fonte chaveada 20A"]);
     expect(acima.recomendado!.faixa).toBe("ideal");
   });
@@ -75,31 +73,32 @@ describe("dimensionarFontes", () => {
     expect(resultado.recomendado!.faixa).toBe("tolerancia");
   });
 
-  it("carga maior que a maior fonte divide entre fontes iguais, com a carga repartida por igual", () => {
-    const resultado = dimensionarFontes(modulos(800)); // 1.200 W
-    expect(nomes(resultado)).toEqual(["2x Fonte chaveada 30A"]);
-    expect(resultado.recomendado!.fontes.map(item => item.quantidade)).toEqual([400, 400]);
-    expect(resultado.recomendado!.fontes.every(item => item.faixa === "ideal")).toBe(true);
+  it("repete a maior fonte a 85% e usa a menor fonte possível para a sobra", () => {
+    const resultado = dimensionarFontes(modulos(3000));
+    expect(nomes(resultado)).toEqual(["4x Fonte chaveada 50A", "1x Fonte chaveada 20A"]);
+    expect(resultado.recomendado!.fontes.map(item => item.quantidade)).toEqual([680, 680, 680, 680, 280]);
+    expect(resultado.recomendado!.fontes.slice(0, 4).every(item => item.faixa === "ideal")).toBe(true);
+    expect(resultado.recomendado!.fontes[4].faixa).toBe("tolerancia");
   });
 
-  it("a soma repartida entre as fontes é sempre a quantidade pedida e nenhuma passa de 93%", () => {
+  it("a soma entre as fontes é sempre a quantidade pedida e nenhuma passa de 92%", () => {
     for (const quantidade of [1, 7, 149, 333, 801, 1234, 2500, 3999]) {
       const resultado = dimensionarFontes(modulos(quantidade));
       const plano = resultado.recomendado!;
       expect(plano.fontes.reduce((soma, item) => soma + item.quantidade, 0)).toBe(quantidade);
-      for (const item of plano.fontes) expect(item.utilizacao).toBeLessThanOrEqual(0.93 + 1e-9);
+      for (const item of plano.fontes) expect(item.utilizacao).toBeLessThanOrEqual(0.92 + 1e-9);
     }
   });
 
-  it("fita LED usa 0,1 m de passo e confere a fronteira dos 93%", () => {
+  it("fita LED usa 0,1 m de passo e confere a fronteira dos 92%", () => {
     const pequena = dimensionarFontes(fita(10)); // 170 W de 240 W
     expect(pequena.consumoTotalW).toBe(170);
     expect(nomes(pequena)).toEqual(["1x Fonte 10A"]);
     expect(pequena.recomendado!.fontes[0].quantidade).toBe(10);
 
-    // 13,1 m x 17 W/m = 222,7 W = 92,8% (cabe); 13,2 m = 224,4 W = 93,5% (não cabe).
-    expect(nomes(dimensionarFontes(fita(13.1)))).toEqual(["1x Fonte 10A"]);
-    expect(nomes(dimensionarFontes(fita(13.2)))).toEqual(["1x Fonte 20A"]);
+    // 12,9 m x 17 W/m = 219,3 W = 91,4% (cabe); 13 m = 221 W = 92,1% (não cabe).
+    expect(nomes(dimensionarFontes(fita(12.9)))).toEqual(["1x Fonte 10A"]);
+    expect(nomes(dimensionarFontes(fita(13))).toEqual(["1x Fonte 20A"]);
   });
 
   it("não se perde com ruído de ponto flutuante (0,1 + 0,2)", () => {

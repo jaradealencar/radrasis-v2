@@ -43,6 +43,10 @@ function codigoOrigem(objeto: Record<string, unknown>, prefixo: string, id: numb
 function registroAtivo(status: unknown): boolean {
   return !["inativo", "inativa", "nao", "0", "false", "cancelado", "cancelada"].includes(normalizarChave(texto(status)));
 }
+function valorBooleano(valor: unknown): boolean | null {
+  if (valor == null || texto(valor) === "") return null;
+  return ["sim", "1", "true"].includes(normalizarChave(texto(valor)));
+}
 function emLotes<T>(linhas: T[], tamanho = TAMANHO_LOTE): T[][] {
   const lotes: T[][] = [];
   for (let i = 0; i < linhas.length; i += tamanho) lotes.push(linhas.slice(i, i + tamanho));
@@ -62,6 +66,7 @@ function mapearMateria(materia: MubiSysMateriaPrima, existente?: typeof materias
   return {
     skuErp: codigoOrigem(bruto, `MUBISYS-MP-${id}`, id), mubisysMateriaPrimaId: id,
     nome: texto(materia.nome).slice(0, 256), unidadeMedida: unidade.slice(0, 80), custoUnitario: decimal(custo),
+    vendaDireta: valorBooleano(materia.venda_direta), precoVendaDireta: decimal(numero(materia.valor_preco_final)),
     larguraUtilMm: decimal(largura ?? (existente?.larguraUtilMm == null ? null : Number(existente.larguraUtilMm))),
     alturaUtilMm: decimal(altura ?? (existente?.alturaUtilMm == null ? null : Number(existente.alturaUtilMm))),
     espessuraMm: decimal(espessura ?? (existente?.espessuraMm == null ? null : Number(existente.espessuraMm))),
@@ -139,6 +144,7 @@ async function executarSincronizacaoCatalogo(): Promise<{ produtos: number; vari
         target: materiasPrimas.mubisysMateriaPrimaId,
         set: {
           skuErp: sql`excluded.sku_erp`, nome: sql`excluded.nome`, unidadeMedida: sql`excluded.unidade_medida`, custoUnitario: sql`excluded.custo_unitario`,
+          vendaDireta: sql`excluded.venda_direta`, precoVendaDireta: sql`excluded.preco_venda_direta`,
           larguraUtilMm: sql`excluded.largura_util_mm`, alturaUtilMm: sql`excluded.altura_util_mm`, espessuraMm: sql`excluded.espessura_mm`, densidadeKgM3: sql`excluded.densidade_kg_m3`,
           categoriaErp: sql`excluded.categoria_erp`, tipoErp: sql`excluded.tipo_erp`, statusErp: sql`excluded.status_erp`, ativa: sql`excluded.ativa`,
           referenciaCusto: sql`excluded.referencia_custo`, sincronizadoEm: agora, updatedAt: agora,
@@ -204,6 +210,7 @@ export async function listarMateriasPrimasEspelhadas(db?: Db): Promise<MubiSysMa
     id: item.mubisysMateriaPrimaId, sku: item.skuErp, nome: item.nome,
     categoria: item.categoriaErp, tipo: item.tipoErp, unidade: item.unidadeMedida,
     valor: item.custoUnitario == null ? 0 : Number(item.custoUnitario),
+    venda_direta: item.vendaDireta, valor_preco_final: item.precoVendaDireta == null ? null : Number(item.precoVendaDireta),
     atualizado: item.referenciaCusto ?? "", data_referencia: item.referenciaCusto ?? "", status: item.statusErp,
     unidade_custo: item.unidadeMedida, unidade_movimentacao: item.unidadeMedida,
     valor_custo: item.custoUnitario == null ? 0 : Number(item.custoUnitario),
