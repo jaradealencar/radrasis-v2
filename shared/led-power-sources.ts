@@ -2,13 +2,27 @@ export interface LedTapeSourceRow {
   source: string;
   voltage: string;
   powerW: number;
+  amperage?: string;
+  mubisysMateriaPrimaId?: number;
+  directSaleEnabled?: boolean | null;
+  directSalePrice?: number | null;
+  directSaleDemandPrices?: Array<{
+    minQuantity: number;
+    maxQuantity: number;
+    unitPrice: number;
+  }>;
   recommendedMeters: number;
   maximumMeters: number;
 }
 
 export interface LedTapeTable {
-  key: "tape-24v" | "tape-12v";
+  key: "tape-24v" | "tape-shielded-24v" | "tape-12v";
   title: string;
+  subtitle?: string;
+  sourceLabel?: string;
+  imageSubject?: "LED" | "fonte";
+  calculatorGroup?: string;
+  sourceFamilyLabel?: string;
   wattsPerMeter: number;
   decimals: number;
   fixedDecimals: boolean;

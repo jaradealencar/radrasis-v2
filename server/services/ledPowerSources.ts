@@ -114,6 +114,47 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
       directSaleDemandPrices: LED_24V_PRECOS_POR_DEMANDA[mubisysMateriaPrimaId],
     };
   };
+  const fita24VBase = criarTabelaFitas(24, 17, 1, false);
+  const fita24VChaveada: LedTapeTable = {
+    ...fita24VBase,
+    calculatorGroup: "tape-led-24v",
+    sourceFamilyLabel: "Fontes chaveadas",
+    rows: fita24VBase.rows.map(row => {
+      const amperagemA = (row.powerW / 24) as keyof typeof LED_24V_MUBISYS_IDS.switched;
+      return {
+        ...directSaleFields(LED_24V_MUBISYS_IDS.switched[amperagemA]),
+        ...row,
+      };
+    }),
+  };
+
+  const fita24VBlindada: LedTapeTable = {
+    key: "tape-shielded-24v",
+    title: "Fita LED 3030s — 24 V (Fontes Blindadas)",
+    subtitle: "Branco Frio · Fita LED 3030s · Consumo de 17 W por metro",
+    sourceLabel: "Fonte Blindada",
+    imageSubject: "fonte",
+    calculatorGroup: "tape-led-24v",
+    sourceFamilyLabel: "Fontes blindadas",
+    wattsPerMeter: 17,
+    decimals: 1,
+    fixedDecimals: true,
+    rows: [
+      { source: "2,5 A", amperage: "2,5 A", powerW: 60, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded["2.5"] },
+      { source: "5 A", amperage: "5,0 A", powerW: 120, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[5] },
+      { source: "6 A", amperage: "6,0 A", powerW: 150, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[6] },
+      { source: "15 A", amperage: "15,0 A", powerW: 360, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[15] },
+      { source: "25 A", amperage: "25,0 A", powerW: 600, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[25] },
+      { source: "30 A", amperage: "30,0 A", powerW: 720, mubisysMateriaPrimaId: LED_24V_MUBISYS_IDS.shielded[30] },
+    ].map(row => ({
+      ...row,
+      ...directSaleFields(row.mubisysMateriaPrimaId),
+      voltage: "24 V",
+      recommendedMeters: arredondarParaBaixo((row.powerW * FATOR_VENDA) / 17, 1),
+      maximumMeters: arredondarParaBaixo(row.powerW / 17, 1),
+    })),
+  };
+
   const modulos24V: LedModuleTable = {
     key: "modules-24v",
     title: "Módulos LED — 24 V",
@@ -158,7 +199,8 @@ export function getLedPowerSourceTables(directSaleByMubisysId: ReadonlyMap<numbe
 
   return {
     tapes: [
-      criarTabelaFitas(24, 17, 1, false),
+      fita24VChaveada,
+      fita24VBlindada,
       criarTabelaFitas(12, 8, 2, true),
     ],
     modules: [

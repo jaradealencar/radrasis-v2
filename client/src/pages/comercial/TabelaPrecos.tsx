@@ -423,14 +423,15 @@ function formatarMetrosLed(valor: number, tabela: LedTapeTable, unit: string): s
 }
 
 function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: LedPowerSourceTextOverrides }) {
-  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
-    ["source", "Fonte"],
+  const columns: Array<["source" | "voltage" | "power" | "amperage" | "recommended" | "maximum", string]> = [
+    ["source", tabela.sourceLabel ?? "Fonte"],
     ["voltage", "Tensão"],
     ["power", "Potência da fonte"],
+    ...(tabela.rows.some(row => row.amperage !== undefined) ? [["amperage", "Amperagem"] as ["amperage", string]] : []),
     ["recommended", `Fita LED ${tabela.wattsPerMeter} W/m — recomendado (85%)`],
     ["maximum", `Fita LED ${tabela.wattsPerMeter} W/m — limite máximo (100%)`],
   ];
-  const subtitle = `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
+  const subtitle = tabela.subtitle ?? `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
 
   return (
@@ -442,7 +443,7 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
         <span className="block w-fit max-w-full rounded border border-sky-200 bg-sky-100 px-2.5 py-1 text-sm font-semibold text-sky-800">
           <EditableLedText textKey={ledPowerSourceTextKey.subtitle(tabela.key)} value={subtitle} texts={texts} />
         </span>
-        <LedImageLink tableKey={tabela.key} title={title} texts={texts} imageSubject="LED" />
+        <LedImageLink tableKey={tabela.key} title={title} texts={texts} imageSubject={tabela.imageSubject ?? "LED"} />
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
@@ -457,6 +458,7 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
                 <TableCell className="font-medium"><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "source")} value={row.source} texts={texts} /></TableCell>
                 <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage")} value={row.voltage} texts={texts} /></TableCell>
                 <TableCell>{fmtNum(row.powerW)} <EditableLedText textKey={ledPowerSourceTextKey.common("powerUnit")} value="W" texts={texts} /></TableCell>
+                {row.amperage !== undefined && <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "amperage")} value={row.amperage} texts={texts} /></TableCell>}
                 <TableCell>{fmtNum(row.recommendedMeters, tabela.fixedDecimals || !Number.isInteger(row.recommendedMeters) ? tabela.decimals : 0)} <EditableLedText textKey={ledPowerSourceTextKey.common("meterUnit")} value="m" texts={texts} /></TableCell>
                 <TableCell>{fmtNum(row.maximumMeters, tabela.fixedDecimals || !Number.isInteger(row.maximumMeters) ? tabela.decimals : 0)} <EditableLedText textKey={ledPowerSourceTextKey.common("meterUnit")} value="m" texts={texts} /></TableCell>
               </TableRow>
@@ -550,15 +552,29 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
   const tensaoDe = (tabela: LedTapeTable | LedModuleTable) =>
     getLedText(texts, ledPowerSourceTextKey.row(tabela.key, 0, "voltage"), tabela.rows[0]?.voltage ?? "");
   const tituloDe = (tabela: LedTapeTable | LedModuleTable) => getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
-  const fitas: OpcaoCalculadoraLed[] = tables.tapes.map(tabela => ({
-    chave: tabela.key,
-    grupo: "fita",
-    rotulo: `${tituloDe(tabela)} · ${fmtNum(tabela.wattsPerMeter, casasWatts(tabela.wattsPerMeter))} W/m`,
-    tensao: tensaoDe(tabela),
-    wattsPorUnidade: tabela.wattsPerMeter,
-    passo: 0.1,
-    alternativas: [{ chave: tabela.key, rotulo: "", fontes: fontesDe(tabela) }],
-  }));
+  const gruposFitas = new Map<string, OpcaoCalculadoraLed>();
+  for (const tabela of tables.tapes) {
+    const grupo = tabela.calculatorGroup ?? tabela.key;
+    const alternativa = {
+      chave: tabela.key,
+      rotulo: tabela.sourceFamilyLabel ?? "Fontes chaveadas",
+      fontes: fontesDe(tabela),
+    };
+    const opcaoExistente = gruposFitas.get(grupo);
+    if (opcaoExistente) {
+      opcaoExistente.alternativas.push(alternativa);
+      continue;
+    }
+    gruposFitas.set(grupo, {
+      chave: grupo,
+      grupo: "fita",
+      rotulo: `${tituloDe(tabela)} · ${fmtNum(tabela.wattsPerMeter, casasWatts(tabela.wattsPerMeter))} W/m`,
+      tensao: tensaoDe(tabela),
+      wattsPorUnidade: tabela.wattsPerMeter,
+      passo: 0.1,
+      alternativas: [alternativa],
+    });
+  }
 
   const gruposModulos = new Map<string, OpcaoCalculadoraLed>();
   for (const tabela of tables.modules) {
@@ -584,7 +600,7 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
     });
   }
 
-  return [...fitas, ...gruposModulos.values()];
+  return [...gruposFitas.values(), ...gruposModulos.values()];
 }
 
 function PlanoFontesCard({
@@ -705,8 +721,8 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
   if (!opcao) return null;
   const unidadeCampo = opcao.grupo === "fita" ? "metros" : "módulos";
   const grupos: Array<[OpcaoCalculadoraLed["grupo"], string]> = [["fita", "Fitas LED (por metro)"], ["modulo", "Módulos LED (por unidade)"]];
-  const planoChaveado = resultados?.find(item => item.alternativa.chave === "modules-24v")?.resultado.recomendado ?? null;
-  const planoBlindado = resultados?.find(item => item.alternativa.chave === "modules-shielded-24v")?.resultado.recomendado ?? null;
+  const planoChaveado = resultados?.find(item => ["modules-24v", "tape-24v"].includes(item.alternativa.chave))?.resultado.recomendado ?? null;
+  const planoBlindado = resultados?.find(item => ["modules-shielded-24v", "tape-shielded-24v"].includes(item.alternativa.chave))?.resultado.recomendado ?? null;
   const compararVendaDireta = planoChaveado?.valorVendaDiretaTotal != null && planoBlindado?.valorVendaDiretaTotal != null;
   const diferencaPercentual = compararVendaDireta
     ? ((planoBlindado.valorVendaDiretaTotal! - planoChaveado.valorVendaDiretaTotal!) / planoChaveado.valorVendaDiretaTotal!) * 100
@@ -736,7 +752,7 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
           Calculadora de fontes
         </CardTitle>
         <p className="text-xs text-slate-500">
-          A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%. A sobra usa a menor fonte possível, com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%. Para módulos 24 V, o sistema compara as opções chaveada e blindada pelos preços de venda direta do MubiSys.
+          A maior fonte atende primeiro a carga trabalhando com {fmtNum(FATOR_RECOMENDADO * 100)}%. A sobra usa a menor fonte possível, com tolerância de até {fmtNum(FATOR_TOLERANCIA * 100)}%. Para módulos e fitas 24 V, o sistema compara as opções chaveada e blindada pelos preços de venda direta do MubiSys.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -791,8 +807,8 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
                       titulo={alternativa.rotulo || "Fontes recomendadas"}
                       plano={resultado.recomendado}
                       opcao={opcao}
-                      mostrarPreco={opcao.grupo === "modulo" && alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
-                      comparacaoVendaDireta={alternativa.chave === "modules-shielded-24v" ? comparacaoBlindada : null}
+                      mostrarPreco={alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
+                      comparacaoVendaDireta={["modules-shielded-24v", "tape-shielded-24v"].includes(alternativa.chave) ? comparacaoBlindada : null}
                     />
                   ) : (
                     <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -844,8 +860,9 @@ function LedPowerSourcesSection({ dimensionamento }: { dimensionamento?: { table
 }
 
 function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: LedPowerSourceTextOverrides) {
-  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
-    ["source", "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
+  const columns: Array<["source" | "voltage" | "power" | "amperage" | "recommended" | "maximum", string]> = [
+    ["source", tabela.sourceLabel ?? "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
+    ...(tabela.rows.some(row => row.amperage !== undefined) ? [["amperage", "Amperagem"] as ["amperage", string]] : []),
     ["recommended", `Fita LED ${tabela.wattsPerMeter} W/m — recomendado (85%)`],
     ["maximum", `Fita LED ${tabela.wattsPerMeter} W/m — limite máximo (100%)`],
   ];
@@ -856,10 +873,11 @@ function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: Led
       <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "source"), row.source))}</td>
       <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage"), row.voltage))}</td>
       <td>${fmtNum(row.powerW)} ${escapeHtml(powerUnit)}</td>
+      ${row.amperage !== undefined ? `<td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "amperage"), row.amperage))}</td>` : ""}
       <td>${escapeHtml(formatarMetrosLed(row.recommendedMeters, tabela, meterUnit))}</td>
       <td>${escapeHtml(formatarMetrosLed(row.maximumMeters, tabela, meterUnit))}</td>
     </tr>`).join("");
-  const subtitle = `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
+  const subtitle = tabela.subtitle ?? `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
   const subtitleText = getLedText(texts, ledPowerSourceTextKey.subtitle(tabela.key), subtitle);
   return `<div class="section-block"><div class="section-title">${escapeHtml(title)}</div><div style="display:inline-block;margin:4px 0 6px;padding:4px 9px;border:1px solid #bae6fd;border-radius:4px;background:#e0f2fe;color:#075985;font-weight:600">${escapeHtml(subtitleText)}</div>${gerarHtmlLinkImagemLed(tabela.key, texts)}<table><thead><tr style="background:${color}">${columns.map(([key, fallback]) => `<th>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.column(tabela.key, key), fallback))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
