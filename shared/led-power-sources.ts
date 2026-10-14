@@ -19,6 +19,7 @@ export interface LedModuleSourceRow {
   source: string;
   voltage: string;
   powerW: number;
+  amperage?: string;
   recommendedModules: number;
   maximumModules: number;
   priceRange?: string;
@@ -29,6 +30,7 @@ export interface LedModuleTable {
   title: string;
   subtitle: string;
   sourceLabel?: string;
+  priceLabel?: string;
   imageSubject?: "LED" | "fonte";
   calculatorGroup?: string;
   sourceFamilyLabel?: string;
@@ -52,11 +54,11 @@ export const ledPowerSourceTextKey = {
   image: (tableKey: LedTapeTable["key"] | LedModuleTable["key"]) => `${tableKey}.imageUrl`,
   column: (
     tableKey: LedTapeTable["key"] | LedModuleTable["key"],
-    column: "source" | "voltage" | "power" | "priceRange" | "recommended" | "maximum"
+    column: "source" | "voltage" | "power" | "amperage" | "priceRange" | "recommended" | "maximum"
   ) => `${tableKey}.column.${column}`,
   row: (
     tableKey: LedTapeTable["key"] | LedModuleTable["key"],
     rowIndex: number,
-    field: "source" | "voltage" | "priceRange"
+    field: "source" | "voltage" | "amperage" | "priceRange"
   ) => `${tableKey}.row.${rowIndex}.${field}`,
 } as const;
