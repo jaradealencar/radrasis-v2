@@ -103,7 +103,7 @@ import {
   Calculator,
   BarChart3,
 } from "lucide-react";
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { Fragment, useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
@@ -433,10 +433,11 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
   ];
   const subtitle = tabela.subtitle ?? `Fita LED linear · consumo de ${tabela.wattsPerMeter} W por metro`;
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
+  const blindada = tabela.key === "tape-shielded-24v";
 
   return (
-    <Card className="border border-slate-200 shadow-sm">
-      <CardHeader className="items-start gap-1 pb-3 pt-3 text-left">
+    <Card className={blindada ? "border border-l-4 border-orange-300 shadow-sm" : "border border-slate-200 shadow-sm"}>
+      <CardHeader className={blindada ? "items-start gap-1 border-b border-orange-200 bg-gradient-to-r from-orange-100 via-orange-50 to-white pb-3 pt-3 text-left" : "items-start gap-1 pb-3 pt-3 text-left"}>
         <CardTitle className="text-left text-base font-semibold text-slate-800">
           <EditableLedText textKey={ledPowerSourceTextKey.title(tabela.key)} value={tabela.title} texts={texts} />
         </CardTitle>
@@ -480,9 +481,10 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
     ["maximum", "Limite máximo (100%)"],
   ];
   const title = getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
+  const blindada = tabela.key === "modules-shielded-24v";
   return (
-    <Card className="border border-slate-200 shadow-sm">
-      <CardHeader className="items-start gap-1 pb-3 pt-3 text-left">
+    <Card className={blindada ? "border border-l-4 border-orange-300 shadow-sm" : "border border-slate-200 shadow-sm"}>
+      <CardHeader className={blindada ? "items-start gap-1 border-b border-orange-200 bg-gradient-to-r from-orange-100 via-orange-50 to-white pb-3 pt-3 text-left" : "items-start gap-1 pb-3 pt-3 text-left"}>
         <CardTitle className="text-left text-base font-semibold text-slate-800">
           <EditableLedText textKey={ledPowerSourceTextKey.title(tabela.key)} value={tabela.title} texts={texts} />
         </CardTitle>
@@ -623,6 +625,7 @@ function PlanoFontesCard({
   const casasQuantidade = opcao.grupo === "fita" ? 1 : 0;
   const resumo = resumirPlano(plano).map(grupo => `${grupo.copias} × ${grupo.nome}`).join(" + ");
   const noLimite = plano.faixa === "tolerancia";
+  const blindada = /blindad/i.test(titulo);
   const linhas = Array.from(plano.fontes.reduce((grupos, item) => {
     const chave = `${item.fonte.nome}|${item.quantidade}|${item.utilizacao}`;
     const atual = grupos.get(chave);
@@ -631,10 +634,15 @@ function PlanoFontesCard({
     return grupos;
   }, new Map<string, { item: PlanoFontes["fontes"][number]; copias: number }>()).values());
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
+    <div className={`h-full space-y-3 rounded-md border bg-white p-3 ${blindada ? "border-l-4 border-orange-300" : "border-slate-200"}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</p>
+          <p className={blindada
+            ? "-ml-3 inline-flex rounded-r-md border-y border-r border-orange-300 bg-orange-200 px-3 py-1 text-xs font-bold uppercase tracking-wide text-orange-950"
+            : "text-xs font-semibold uppercase tracking-wide text-slate-500"}
+          >
+            {titulo}
+          </p>
           <p className="text-lg font-bold text-slate-900">{resumo}</p>
           <p className="text-xs text-slate-500">
             {opcao.tensao} · {fmtWatts(plano.potenciaInstaladaW)} instalados · {plano.totalFontes === 1 ? "1 fonte" : `${plano.totalFontes} fontes`}
@@ -850,36 +858,48 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
                   : diferencaPercentual > 0
                     ? { texto: `${fmtNum(diferencaPercentual, 1)}% mais cara que a chaveada · ${fmtBrl(diferencaValor)} a mais`, positiva: true }
                     : { texto: `${fmtNum(Math.abs(diferencaPercentual), 1)}% mais barata que a chaveada · ${fmtBrl(Math.abs(diferencaValor))} a menos`, positiva: false };
+              const numerosTipos = grupoResultado.itens.map(item => item.indice + 1);
+              const rotuloTipos = numerosTipos.length === 1
+                ? `Para o Tipo de LED ${numerosTipos[0]}`
+                : `Para os Tipos de LED ${numerosTipos.join(" e ")} — carga combinada`;
 
               return (
                 <div key={String(grupoResultado.chaveTensao)} className="space-y-3">
-                  {entradasAtivas.length > 1 && (
-                    <div className="flex flex-wrap items-center gap-2 border-b border-blue-200 pb-2">
+                  <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="text-sm uppercase tracking-wide text-blue-950">{rotuloTipos}</strong>
                       <Badge variant="outline" className="border-blue-300 bg-white text-blue-800">Circuito {grupoResultado.tensao}</Badge>
                       <span className="text-xs text-slate-500">{fmtWatts(grupoResultado.consumoTotalW)}</span>
-                      <span className="text-xs text-slate-600">
-                        {grupoResultado.itens.map(item => `${fmtNum(item.quantidade, item.opcao.grupo === "fita" ? 1 : 0)} ${item.opcao.grupo === "fita" ? "m" : "módulos"} de ${item.opcao.rotulo}`).join(" + ")}
-                      </span>
                     </div>
-                  )}
-                  <div className={`grid gap-3 ${grupoResultado.resultados.length > 1 ? "lg:grid-cols-2" : ""}`}>
-                    {grupoResultado.resultados.map(({ alternativa, resultado }) => (
-                      <div key={alternativa.chave}>
-                        {resultado.recomendado ? (
-                          <PlanoFontesCard
-                            titulo={alternativa.rotulo || "Fontes recomendadas"}
-                            plano={resultado.recomendado}
-                            opcao={grupoResultado.opcao}
-                            mostrarPreco={alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
-                            comparacaoVendaDireta={["modules-shielded-24v", "tape-shielded-24v"].includes(alternativa.chave) ? comparacaoBlindada : null}
-                            exibirCargaEmWatts={grupoResultado.tiposDiferentes}
-                          />
-                        ) : (
-                          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                            {alternativa.rotulo && <strong>{alternativa.rotulo}: </strong>}{resultado.aviso}
-                          </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {grupoResultado.itens.map(item => `${fmtNum(item.quantidade, item.opcao.grupo === "fita" ? 1 : 0)} ${item.opcao.grupo === "fita" ? "m" : "módulos"} de ${item.opcao.rotulo}`).join(" + ")}
+                    </p>
+                  </div>
+                  <div className={`grid gap-3 ${grupoResultado.resultados.length > 1 ? "lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-stretch" : ""}`}>
+                    {grupoResultado.resultados.map(({ alternativa, resultado }, indiceAlternativa) => (
+                      <Fragment key={alternativa.chave}>
+                        {indiceAlternativa > 0 && (
+                          <div className="flex items-center justify-center">
+                            <span className="rounded-full border border-blue-300 bg-white px-2.5 py-1 text-xs font-extrabold text-blue-700 shadow-sm">OU</span>
+                          </div>
                         )}
-                      </div>
+                        <div>
+                          {resultado.recomendado ? (
+                            <PlanoFontesCard
+                              titulo={alternativa.rotulo || "Fontes recomendadas"}
+                              plano={resultado.recomendado}
+                              opcao={grupoResultado.opcao}
+                              mostrarPreco={alternativa.fontes.some(fonte => fonte.mubisysMateriaPrimaId != null)}
+                              comparacaoVendaDireta={["modules-shielded-24v", "tape-shielded-24v"].includes(alternativa.chave) ? comparacaoBlindada : null}
+                              exibirCargaEmWatts={grupoResultado.tiposDiferentes}
+                            />
+                          ) : (
+                            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                              {alternativa.rotulo && <strong>{alternativa.rotulo}: </strong>}{resultado.aviso}
+                            </p>
+                          )}
+                        </div>
+                      </Fragment>
                     ))}
                   </div>
                 </div>
