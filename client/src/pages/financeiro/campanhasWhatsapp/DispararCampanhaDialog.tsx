@@ -40,6 +40,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
     enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
     falhas: Array<{ nome: string; telefone: string; erro: string }>;
     amostraResposta: string | null;
+    estadoAmostra: { estado: string | null; detalhe: string } | null;
   } | null>(null);
 
   const templateWts = campanha?.wtsTemplateId?.trim() || "";
@@ -141,6 +142,13 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   : resultado.enfileirados > 0 && <p className="text-emerald-700">Disparo registrado: cadência e histórico atualizados.</p>}
                 {resultado.restantes > 0 && (
                   <p>Ainda há {fmtNum(resultado.restantes)} contato(s) pronto(s): efetue outro disparo para continuar.</p>
+                )}
+                {resultado.estadoAmostra && (
+                  <p className={`rounded p-2 text-xs ${/FAIL|ERROR|REJECT|UNDELIVER/i.test(resultado.estadoAmostra.estado ?? "") ? "bg-red-50 text-red-800" : "bg-white/70 text-slate-700"}`}>
+                    <strong>Estado do 1º envio agora: {resultado.estadoAmostra.estado ?? "não informado"}.</strong>{" "}
+                    {/QUEUE|PEND/i.test(resultado.estadoAmostra.estado ?? "") && "Ainda na fila da WTS.Chat — confira no WhatsApp em instantes. "}
+                    {!resultado.estadoAmostra.estado && <code className="break-all">{resultado.estadoAmostra.detalhe}</code>}
+                  </p>
                 )}
                 {resultado.amostraResposta && (
                   <p className="break-all rounded bg-white/70 p-2 text-[11px] text-slate-600">

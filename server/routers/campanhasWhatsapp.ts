@@ -18,7 +18,7 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
-import { enviarTemplateWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
+import { consultarEstadoMensagemWts, enviarTemplateWts, idMensagemWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
@@ -845,6 +845,15 @@ export const campanhasWhatsappRouter = router({
       });
       await Promise.all(trabalhadores);
 
+      // Estado real do primeiro envio (a WTS.Chat responde QUEUED no aceite): espera a fila andar e consulta.
+      // Só informativo — nunca muda o resultado nem o registro do disparo.
+      const idAmostra = resultados[0]?.ok ? idMensagemWts(resultados[0].resposta) : null;
+      let estadoAmostra: { estado: string | null; detalhe: string } | null = null;
+      if (idAmostra) {
+        await new Promise(r => setTimeout(r, 4000));
+        estadoAmostra = await consultarEstadoMensagemWts(idAmostra);
+      }
+
       const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
       let disparoId: number | null = null;
       let erroRegistro: string | null = null;
@@ -881,6 +890,7 @@ export const campanhasWhatsappRouter = router({
         templateId,
         // Resposta crua da WTS.Chat ao primeiro envio: mostra o que o provedor de fato devolveu.
         amostraResposta: resultados[0]?.resposta ?? null,
+        estadoAmostra,
       };
     }),
 
