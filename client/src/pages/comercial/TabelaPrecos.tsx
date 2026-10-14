@@ -522,7 +522,7 @@ interface OpcaoCalculadoraLed {
   wattsPorUnidade: number;
   /** Menor fração pedida: 0,1 m na fita, 1 módulo. */
   passo: number;
-  fontes: FonteDisponivel[];
+  alternativas: Array<{ chave: string; rotulo: string; fontes: FonteDisponivel[] }>;
 }
 
 const casasWatts = (watts: number) => (Number.isInteger(watts) ? 0 : 1);
@@ -540,26 +540,41 @@ function opcoesCalculadoraLed(dimensionamento: { tables: LedPowerSourceTables; t
   const tensaoDe = (tabela: LedTapeTable | LedModuleTable) =>
     getLedText(texts, ledPowerSourceTextKey.row(tabela.key, 0, "voltage"), tabela.rows[0]?.voltage ?? "");
   const tituloDe = (tabela: LedTapeTable | LedModuleTable) => getLedText(texts, ledPowerSourceTextKey.title(tabela.key), tabela.title);
-  return [
-    ...tables.tapes.map((tabela): OpcaoCalculadoraLed => ({
+  const fitas: OpcaoCalculadoraLed[] = tables.tapes.map(tabela => ({
+    chave: tabela.key,
+    grupo: "fita",
+    rotulo: `${tituloDe(tabela)} · ${fmtNum(tabela.wattsPerMeter, casasWatts(tabela.wattsPerMeter))} W/m`,
+    tensao: tensaoDe(tabela),
+    wattsPorUnidade: tabela.wattsPerMeter,
+    passo: 0.1,
+    alternativas: [{ chave: tabela.key, rotulo: "", fontes: fontesDe(tabela) }],
+  }));
+
+  const gruposModulos = new Map<string, OpcaoCalculadoraLed>();
+  for (const tabela of tables.modules) {
+    const grupo = tabela.calculatorGroup ?? tabela.key;
+    const alternativa = {
       chave: tabela.key,
-      grupo: "fita",
-      rotulo: `${tituloDe(tabela)} · ${fmtNum(tabela.wattsPerMeter, casasWatts(tabela.wattsPerMeter))} W/m`,
-      tensao: tensaoDe(tabela),
-      wattsPorUnidade: tabela.wattsPerMeter,
-      passo: 0.1,
+      rotulo: tabela.sourceFamilyLabel ?? "Fontes chaveadas",
       fontes: fontesDe(tabela),
-    })),
-    ...tables.modules.map((tabela): OpcaoCalculadoraLed => ({
-      chave: tabela.key,
+    };
+    const opcaoExistente = gruposModulos.get(grupo);
+    if (opcaoExistente) {
+      opcaoExistente.alternativas.push(alternativa);
+      continue;
+    }
+    gruposModulos.set(grupo, {
+      chave: grupo,
       grupo: "modulo",
       rotulo: `${tituloDe(tabela)} · ${fmtNum(tabela.wattsPerModule, casasWatts(tabela.wattsPerModule))} W/módulo`,
       tensao: tensaoDe(tabela),
       wattsPorUnidade: tabela.wattsPerModule,
       passo: 1,
-      fontes: fontesDe(tabela),
-    })),
-  ];
+      alternativas: [alternativa],
+    });
+  }
+
+  return [...fitas, ...gruposModulos.values()];
 }
 
 function PlanoFontesCard({ titulo, plano, opcao, destaque }: { titulo: string; plano: PlanoFontes; opcao: OpcaoCalculadoraLed; destaque?: boolean }) {
@@ -624,10 +639,13 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
   const quantidade = Number(quantidadeInformada.replace(",", "."));
   const preenchida = quantidadeInformada.trim() !== "";
 
-  const resultado = useMemo(
+  const resultados = useMemo(
     () =>
       opcao && preenchida
-        ? dimensionarFontes({ fontes: opcao.fontes, wattsPorUnidade: opcao.wattsPorUnidade, passo: opcao.passo, quantidade })
+        ? opcao.alternativas.map(alternativa => ({
+            alternativa,
+            resultado: dimensionarFontes({ fontes: alternativa.fontes, wattsPorUnidade: opcao.wattsPorUnidade, passo: opcao.passo, quantidade }),
+          }))
         : null,
     [opcao, preenchida, quantidade]
   );
@@ -644,7 +662,7 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
           Calculadora de fontes
         </CardTitle>
         <p className="text-xs text-slate-500">
-          Escolha o LED e a quantidade: o sistema indica quais fontes e quantas usar. Trabalha com {fmtNum(FATOR_RECOMENDADO * 100)}% de uso da fonte e aceita até {fmtNum(FATOR_TOLERANCIA * 100)}% antes de sugerir outra.
+          Escolha o LED e a quantidade: o sistema indica quais fontes e quantas usar. Para módulos 24 V, mostra as alternativas chaveada e blindada para a mesma carga. Trabalha com {fmtNum(FATOR_RECOMENDADO * 100)}% de uso da fonte e aceita até {fmtNum(FATOR_TOLERANCIA * 100)}% antes de sugerir outra.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -679,25 +697,38 @@ function CalculadoraFontesLed({ dimensionamento }: { dimensionamento: { tables: 
           </label>
         </div>
 
-        {!resultado ? (
+        {!resultados ? (
           <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
             Informe a quantidade de {unidadeCampo} para ver as fontes indicadas.
           </p>
-        ) : resultado.aviso && !resultado.recomendado ? (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{resultado.aviso}</p>
         ) : (
-          resultado.recomendado && (
-            <div className="space-y-3">
+          <div className="space-y-3">
+            {resultados.some(({ resultado }) => resultado.recomendado) && (
               <p className="text-sm text-slate-600">
-                Consumo total: <strong className="text-slate-900">{fmtWatts(resultado.consumoTotalW)}</strong>
+                Consumo total: <strong className="text-slate-900">{fmtWatts(resultados[0]?.resultado.consumoTotalW ?? 0)}</strong>
                 <span className="text-xs text-slate-500"> ({fmtNum(quantidade, casasWatts(quantidade))} {unidadeCampo} × {fmtWatts(opcao.wattsPorUnidade)})</span>
               </p>
-              <PlanoFontesCard titulo="Recomendado" plano={resultado.recomendado} opcao={opcao} destaque />
-              {resultado.comFolga && (
-                <PlanoFontesCard titulo={`Se preferir ficar dentro de ${fmtNum(FATOR_RECOMENDADO * 100)}%`} plano={resultado.comFolga} opcao={opcao} />
-              )}
-            </div>
-          )
+            )}
+            {resultados.map(({ alternativa, resultado }) => {
+              const prefixo = opcao.alternativas.length > 1 ? `${alternativa.rotulo} — ` : "";
+              return (
+                <div key={alternativa.chave} className="space-y-2">
+                  {resultado.recomendado ? (
+                    <>
+                      <PlanoFontesCard titulo={`${prefixo}Recomendado`} plano={resultado.recomendado} opcao={opcao} destaque />
+                      {resultado.comFolga && (
+                        <PlanoFontesCard titulo={`${prefixo}Se preferir ficar dentro de ${fmtNum(FATOR_RECOMENDADO * 100)}%`} plano={resultado.comFolga} opcao={opcao} />
+                      )}
+                    </>
+                  ) : (
+                    <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {prefixo && <strong>{alternativa.rotulo}: </strong>}{resultado.aviso}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </CardContent>
     </Card>

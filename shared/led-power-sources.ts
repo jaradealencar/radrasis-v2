@@ -30,6 +30,8 @@ export interface LedModuleTable {
   subtitle: string;
   sourceLabel?: string;
   imageSubject?: "LED" | "fonte";
+  calculatorGroup?: string;
+  sourceFamilyLabel?: string;
   /** Consumo de cada módulo (W): base das colunas de capacidade e da calculadora de fontes. */
   wattsPerModule: number;
   rows: LedModuleSourceRow[];

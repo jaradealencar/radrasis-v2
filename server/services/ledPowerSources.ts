@@ -83,6 +83,8 @@ export function getLedPowerSourceTables(): LedPowerSourceTables {
     key: "modules-24v",
     title: "Módulos LED — 24 V",
     subtitle: "Capacidade expressa em unidades de módulo",
+    calculatorGroup: "modules-led-24v",
+    sourceFamilyLabel: "Fontes chaveadas",
     wattsPerModule: WATTS_MODULO_24V,
     rows: fontesParaTensao(24).map((fonte): LedModuleSourceRow => ({
       source: `Fonte chaveada ${fonte.amperagemA}A`,
@@ -99,6 +101,8 @@ export function getLedPowerSourceTables(): LedPowerSourceTables {
     subtitle: "Módulo LED de referência: 1,5 W em 24 V",
     sourceLabel: "Modelo",
     imageSubject: "fonte",
+    calculatorGroup: "modules-led-24v",
+    sourceFamilyLabel: "Fontes blindadas",
     wattsPerModule: WATTS_MODULO_24V,
     rows: [
       { source: "Fonte Blindada 2,5A", powerW: 60, priceRange: "R$ 45,00 – R$ 58,00" },
