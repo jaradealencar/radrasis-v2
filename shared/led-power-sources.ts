@@ -21,12 +21,15 @@ export interface LedModuleSourceRow {
   powerW: number;
   recommendedModules: number;
   maximumModules: number;
+  priceRange?: string;
 }
 
 export interface LedModuleTable {
-  key: "modules-24v" | "modules-7025-12v" | "modules-3030-12v" | "micro-2835-12v";
+  key: "modules-24v" | "modules-shielded-24v" | "modules-7025-12v" | "modules-3030-12v" | "micro-2835-12v";
   title: string;
   subtitle: string;
+  sourceLabel?: string;
+  imageSubject?: "LED" | "fonte";
   /** Consumo de cada módulo (W): base das colunas de capacidade e da calculadora de fontes. */
   wattsPerModule: number;
   rows: LedModuleSourceRow[];
@@ -47,11 +50,11 @@ export const ledPowerSourceTextKey = {
   image: (tableKey: LedTapeTable["key"] | LedModuleTable["key"]) => `${tableKey}.imageUrl`,
   column: (
     tableKey: LedTapeTable["key"] | LedModuleTable["key"],
-    column: "source" | "voltage" | "power" | "recommended" | "maximum"
+    column: "source" | "voltage" | "power" | "priceRange" | "recommended" | "maximum"
   ) => `${tableKey}.column.${column}`,
   row: (
     tableKey: LedTapeTable["key"] | LedModuleTable["key"],
     rowIndex: number,
-    field: "source" | "voltage"
+    field: "source" | "voltage" | "priceRange"
   ) => `${tableKey}.row.${rowIndex}.${field}`,
 } as const;

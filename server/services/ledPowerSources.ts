@@ -93,6 +93,28 @@ export function getLedPowerSourceTables(): LedPowerSourceTables {
     })),
   };
 
+  const fontesBlindadas24V: LedModuleTable = {
+    key: "modules-shielded-24v",
+    title: "Fontes Blindadas — 24 V",
+    subtitle: "Módulo LED de referência: 1,5 W em 24 V",
+    sourceLabel: "Modelo",
+    imageSubject: "fonte",
+    wattsPerModule: WATTS_MODULO_24V,
+    rows: [
+      { source: "Fonte Blindada 2,5A", powerW: 60, priceRange: "R$ 45,00 – R$ 58,00" },
+      { source: "Fonte Blindada 5A", powerW: 120, priceRange: "R$ 85,00 – R$ 90,00" },
+      { source: "Fonte Blindada 8,3A", powerW: 200, priceRange: "R$ 108,00 – R$ 120,00" },
+      { source: "Fonte Blindada 10A", powerW: 240, priceRange: "R$ 170,00 – R$ 187,00" },
+      { source: "Fonte Blindada 15A", powerW: 360, priceRange: "R$ 194,00 – R$ 230,00" },
+      { source: "Fonte Blindada 25A", powerW: 600, priceRange: "R$ 230,00 – R$ 260,00" },
+    ].map(row => ({
+      ...row,
+      voltage: "24 V",
+      recommendedModules: Math.floor((row.powerW * FATOR_VENDA) / WATTS_MODULO_24V + 1e-9),
+      maximumModules: Math.floor(row.powerW / WATTS_MODULO_24V + 1e-9),
+    })),
+  };
+
   return {
     tapes: [
       criarTabelaFitas(24, 17, 1, false),
@@ -100,6 +122,7 @@ export function getLedPowerSourceTables(): LedPowerSourceTables {
     ],
     modules: [
       modulos24V,
+      fontesBlindadas24V,
       criarTabelaModulos12V(
         "modules-7025-12v",
         "MÓDULO LED 7025 (12V)",

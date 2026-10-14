@@ -442,7 +442,7 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
         <span className="block w-fit max-w-full rounded border border-sky-200 bg-sky-100 px-2.5 py-1 text-sm font-semibold text-sky-800">
           <EditableLedText textKey={ledPowerSourceTextKey.subtitle(tabela.key)} value={subtitle} texts={texts} />
         </span>
-        <LedImageLink tableKey={tabela.key} title={title} texts={texts} />
+        <LedImageLink tableKey={tabela.key} title={title} texts={texts} imageSubject="LED" />
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
@@ -469,10 +469,11 @@ function LedTapePowerTable({ tabela, texts }: { tabela: LedTapeTable; texts: Led
 }
 
 function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts: LedPowerSourceTextOverrides }) {
-  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
-    ["source", "Fonte"],
+  const columns: Array<["source" | "voltage" | "power" | "priceRange" | "recommended" | "maximum", string]> = [
+    ["source", tabela.sourceLabel ?? "Fonte"],
     ["voltage", "Tensão"],
     ["power", "Potência da fonte"],
+    ...(tabela.rows.some(row => row.priceRange !== undefined) ? [["priceRange", "Faixa de preço"] as ["priceRange", string]] : []),
     ["recommended", "Recomendado para vendas (85%)"],
     ["maximum", "Limite máximo (100%)"],
   ];
@@ -486,7 +487,7 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
         <span className="block w-fit max-w-full rounded border border-violet-200 bg-violet-100 px-2.5 py-1 text-sm font-semibold text-violet-800">
           <EditableLedText textKey={ledPowerSourceTextKey.subtitle(tabela.key)} value={tabela.subtitle} texts={texts} />
         </span>
-        <LedImageLink tableKey={tabela.key} title={title} texts={texts} />
+        <LedImageLink tableKey={tabela.key} title={title} texts={texts} imageSubject={tabela.imageSubject ?? "LED"} />
       </CardHeader>
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
@@ -501,6 +502,7 @@ function LedModulePowerTable({ tabela, texts }: { tabela: LedModuleTable; texts:
                 <TableCell className="font-medium"><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "source")} value={row.source} texts={texts} /></TableCell>
                 <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage")} value={row.voltage} texts={texts} /></TableCell>
                 <TableCell>{fmtNum(row.powerW)} <EditableLedText textKey={ledPowerSourceTextKey.common("powerUnit")} value="W" texts={texts} /></TableCell>
+                {row.priceRange !== undefined && <TableCell><EditableLedText textKey={ledPowerSourceTextKey.row(tabela.key, rowIndex, "priceRange")} value={row.priceRange} texts={texts} /></TableCell>}
                 <TableCell><EditableLedText textKey={ledPowerSourceTextKey.common("moduleRecommendedPrefix")} value="Até" texts={texts} /> {fmtNum(row.recommendedModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
                 <TableCell>{fmtNum(row.maximumModules)} <EditableLedText textKey={ledPowerSourceTextKey.common("moduleUnit")} value="módulos" texts={texts} /></TableCell>
               </TableRow>
@@ -759,8 +761,9 @@ function gerarHtmlTabelaFitasLed(color: string, tabela: LedTapeTable, texts: Led
 }
 
 function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts: LedPowerSourceTextOverrides) {
-  const columns: Array<["source" | "voltage" | "power" | "recommended" | "maximum", string]> = [
-    ["source", "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
+  const columns: Array<["source" | "voltage" | "power" | "priceRange" | "recommended" | "maximum", string]> = [
+    ["source", tabela.sourceLabel ?? "Fonte"], ["voltage", "Tensão"], ["power", "Potência da fonte"],
+    ...(tabela.rows.some(row => row.priceRange !== undefined) ? [["priceRange", "Faixa de preço"] as ["priceRange", string]] : []),
     ["recommended", "Recomendado para vendas (85%)"],
     ["maximum", "Limite máximo (100%)"],
   ];
@@ -772,6 +775,7 @@ function gerarHtmlTabelaModulosLed(color: string, tabela: LedModuleTable, texts:
       <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "source"), row.source))}</td>
       <td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "voltage"), row.voltage))}</td>
       <td>${fmtNum(row.powerW)} ${escapeHtml(powerUnit)}</td>
+      ${row.priceRange !== undefined ? `<td>${escapeHtml(getLedText(texts, ledPowerSourceTextKey.row(tabela.key, rowIndex, "priceRange"), row.priceRange))}</td>` : ""}
       <td>${escapeHtml(recommendedPrefix)} ${fmtNum(row.recommendedModules)} ${escapeHtml(moduleUnit)}</td>
       <td>${fmtNum(row.maximumModules)} ${escapeHtml(moduleUnit)}</td>
     </tr>`).join("");
@@ -1166,10 +1170,12 @@ function LedImageLink({
   tableKey,
   title,
   texts,
+  imageSubject = "LED",
 }: {
   tableKey: LedTapeTable["key"] | LedModuleTable["key"];
   title: string;
   texts: LedPowerSourceTextOverrides;
+  imageSubject?: "LED" | "fonte";
 }) {
   const imageKey = ledPowerSourceTextKey.image(tableKey);
   const imageUrl = getLedText(texts, imageKey, "");
@@ -1178,6 +1184,7 @@ function LedImageLink({
   const [uploading, setUploading] = useState(false);
   const utils = trpc.useUtils();
   const saveImage = trpc.custoLed.saveDimensionamentoTexto.useMutation();
+  const imageSubjectLabel = imageSubject === "fonte" ? "da fonte" : "do LED";
 
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
@@ -1199,7 +1206,7 @@ function LedImageLink({
         uploaded = await enviarArquivo("imagem", file);
         if (!uploaded?.url) throw new Error("O serviço não retornou uma URL para a imagem.");
       } catch (error) {
-        console.error("[Tabela de Preços] Falha no upload da imagem de LED:", error);
+        console.error(`[Tabela de Preços] Falha no upload da imagem ${imageSubjectLabel}:`, error);
         const reason = error instanceof Error ? error.message : String(error);
         toast.error(`Falha ao enviar a imagem ao serviço de arquivos: ${reason}`, { duration: 10000 });
         return;
@@ -1217,7 +1224,7 @@ function LedImageLink({
       void utils.custoLed.getDimensionamentoFontes.invalidate().catch(error => {
         console.error("[Tabela de Preços] Imagem salva, mas não foi possível atualizar a tabela:", error);
       });
-      toast.success("Imagem do LED salva.");
+      toast.success(`Imagem ${imageSubjectLabel} salva.`);
     } finally {
       setUploading(false);
     }
@@ -1251,7 +1258,7 @@ function LedImageLink({
         className="inline-flex items-center gap-1 text-slate-500 hover:text-sky-700 disabled:opacity-50"
       >
         <Upload className="h-3.5 w-3.5" />
-        {uploading ? "Enviando imagem…" : imageUrl ? "Trocar imagem" : "Adicionar imagem do LED"}
+        {uploading ? "Enviando imagem…" : imageUrl ? "Trocar imagem" : `Adicionar imagem ${imageSubjectLabel}`}
       </button>
       {imageUrl && (
         <button
