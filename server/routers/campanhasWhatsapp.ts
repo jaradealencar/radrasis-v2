@@ -59,6 +59,7 @@ const campanhasProcedure = protectedProcedure.use(requireRole("admin", "master",
 
 export const MAX_CONTATOS_POR_DISPARO = 20_000;
 const MAX_LISTA_TELA = 500;
+const MAX_STATUS_WTS_POR_DISPARO = 10;
 /** Pós-venda devolve todos os clientes (a tela rola e o botão de baixar exporta a lista inteira). */
 const MAX_CLIENTES_POS_VENDA_TELA = 5000;
 const MAX_JANELA_CALENDARIO_DIAS = 62;
@@ -845,13 +846,21 @@ export const campanhasWhatsappRouter = router({
       });
       await Promise.all(trabalhadores);
 
-      // Estado real do primeiro envio (a WTS.Chat responde QUEUED no aceite): espera a fila andar e consulta.
-      // Só informativo — nunca muda o resultado nem o registro do disparo.
-      const idAmostra = resultados[0]?.ok ? idMensagemWts(resultados[0].resposta) : null;
-      let estadoAmostra: { estado: string | null; detalhe: string } | null = null;
-      if (idAmostra) {
+      // O aceite é assíncrono. Consulta até dez IDs de mensagem para conferir cada destinatário do teste
+      // sem fazer uma rajada de até cem consultas no provedor. Isso é só informativo: não altera o registro.
+      const mensagensComId = resultados.flatMap(resultado => {
+        const id = resultado.ok ? idMensagemWts(resultado.resposta) : null;
+        return id ? [{ contato: resultado.contato, id }] : [];
+      });
+      const mensagensParaConsultar = mensagensComId.slice(0, MAX_STATUS_WTS_POR_DISPARO);
+      let estadosAmostra: Array<{ nome: string; telefone: string; estado: string | null; detalhe: string }> = [];
+      if (mensagensParaConsultar.length > 0) {
         await new Promise(r => setTimeout(r, 4000));
-        estadoAmostra = await consultarEstadoMensagemWts(idAmostra);
+        estadosAmostra = await Promise.all(mensagensParaConsultar.map(async ({ contato, id }) => ({
+          nome: contato.nome,
+          telefone: contato.telefone,
+          ...(await consultarEstadoMensagemWts(id)),
+        })));
       }
 
       const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
@@ -888,9 +897,10 @@ export const campanhasWhatsappRouter = router({
         totalSelecionado: tentativas.length,
         restantes,
         templateId,
-        // Resposta crua da WTS.Chat ao primeiro envio: mostra o que o provedor de fato devolveu.
-        amostraResposta: resultados[0]?.resposta ?? null,
-        estadoAmostra,
+        // Prioriza uma resposta aceita para que o diagnóstico mostre o ID/status que o provedor devolveu.
+        amostraResposta: resultados.find(resultado => resultado.ok)?.resposta ?? resultados[0]?.resposta ?? null,
+        estadosAmostra,
+        totalMensagensComId: mensagensComId.length,
       };
     }),
 

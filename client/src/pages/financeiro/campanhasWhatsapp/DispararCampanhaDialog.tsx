@@ -40,7 +40,8 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
     enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
     falhas: Array<{ nome: string; telefone: string; erro: string }>;
     amostraResposta: string | null;
-    estadoAmostra: { estado: string | null; detalhe: string } | null;
+    estadosAmostra: Array<{ nome: string; telefone: string; estado: string | null; detalhe: string }>;
+    totalMensagensComId: number;
   } | null>(null);
 
   const templateWts = campanha?.wtsTemplateId?.trim() || "";
@@ -146,11 +147,28 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 {resultado.restantes > 0 && (
                   <p>Ainda há {fmtNum(resultado.restantes)} contato(s) pronto(s): efetue outro disparo para continuar.</p>
                 )}
-                {resultado.estadoAmostra && (
-                  <p className={`rounded p-2 text-xs ${/FAIL|ERROR|REJECT|UNDELIVER/i.test(resultado.estadoAmostra.estado ?? "") ? "bg-red-50 text-red-800" : "bg-white/70 text-slate-700"}`}>
-                    <strong>Estado do 1º envio agora: {resultado.estadoAmostra.estado ?? "não informado"}.</strong>{" "}
-                    {/QUEUE|PEND/i.test(resultado.estadoAmostra.estado ?? "") && "Ainda na fila da WTS.Chat — confira no WhatsApp em instantes. "}
-                    {!resultado.estadoAmostra.estado && <code className="break-all">{resultado.estadoAmostra.detalhe}</code>}
+                {resultado.estadosAmostra.length > 0 && (
+                  <div className="space-y-1 rounded bg-white/70 p-2 text-xs text-slate-700">
+                    <p className="font-medium">Status consultado após 4 segundos:</p>
+                    {resultado.estadosAmostra.map(amostra => (
+                      <div key={amostra.telefone} className={/FAIL|ERROR|REJECT|UNDELIVER/i.test(amostra.estado ?? "") ? "text-red-800" : ""}>
+                        <p>
+                          <strong>{amostra.nome || amostra.telefone} ({amostra.telefone}): {amostra.estado ?? "não informado"}.</strong>{" "}
+                          {/QUEUE|PEND/i.test(amostra.estado ?? "") && "Ainda na fila da WTS.Chat. "}
+                        </p>
+                        {(/FAIL|ERROR|REJECT|UNDELIVER/i.test(amostra.estado ?? "") || !amostra.estado) && (
+                          <code className="break-all">{amostra.detalhe}</code>
+                        )}
+                      </div>
+                    ))}
+                    {resultado.totalMensagensComId > resultado.estadosAmostra.length && (
+                      <p>Consulta limitada às primeiras {resultado.estadosAmostra.length} mensagens; consulte o restante na Ceci.Chat.</p>
+                    )}
+                  </div>
+                )}
+                {resultado.enfileirados > 0 && resultado.estadosAmostra.length === 0 && (
+                  <p className="text-xs text-amber-800">
+                    A WTS.Chat aceitou o envio, mas não foi possível consultar o status porque a resposta não trouxe um ID de mensagem reconhecido.
                   </p>
                 )}
                 {resultado.amostraResposta && (
