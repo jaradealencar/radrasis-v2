@@ -905,6 +905,47 @@ export const campanhasWhatsappRouter = router({
       };
     }),
 
+  /** Envia um template para um número informado pelo usuário, fora da audiência e sem gravar cadência/histórico. */
+  testarNumeroWts: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive(), telefone: z.string().trim().min(8).max(40) }))
+    .mutation(async ({ input }) => {
+      if (!wtsChatConfigurado()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A integração WTS.Chat ainda não está configurada no servidor." });
+      }
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      if (campanha.status !== "ativa") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A campanha precisa estar ativa para testar o template." });
+      }
+      if (campanha.tipo === "gatilho_venda") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Campanhas de gatilho de venda ainda não enviam templates pelo sistema." });
+      }
+      const templateId = campanha.wtsTemplateId?.trim();
+      if (!templateId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o ID do template WTS.Chat em \"Editar campanha\" antes de testar." });
+      }
+      const telefone = normalizarTelefone(input.telefone);
+      if (!telefone) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe um número brasileiro válido com DDD." });
+      }
+
+      const envio = await enviarTemplateWts(telefone, templateId);
+      const id = envio.ok ? idMensagemWts(envio.resposta) : null;
+      let estado: { estado: string | null; detalhe: string } | null = null;
+      if (id) {
+        await new Promise(resolve => setTimeout(resolve, 4000));
+        estado = await consultarEstadoMensagemWts(id, urlStatusMensagemWts(envio.resposta, id));
+      }
+      return {
+        telefone,
+        enfileirado: envio.ok,
+        erro: envio.erro ?? null,
+        resposta: envio.resposta ?? null,
+        estado: estado?.estado ?? null,
+        detalhe: estado?.detalhe ?? null,
+      };
+    }),
+
   registrarDisparo: campanhasProcedure
     .input(z.object({
       campanhaId: z.number().int(),

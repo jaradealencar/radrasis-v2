@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { MAX_DISPARO_WTS, formatarDataBr } from "@shared/campanhas-whatsapp";
+import { MAX_DISPARO_WTS, formatarDataBr, formatarTelefone, normalizarTelefone } from "@shared/campanhas-whatsapp";
 import type { CampanhaLinha } from "./comuns";
 
 interface Props {
@@ -36,6 +36,12 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
   const utils = trpc.useUtils();
   const [quantidade, setQuantidade] = useState("");
   const [confirmando, setConfirmando] = useState(false);
+  const [telefoneTeste, setTelefoneTeste] = useState("");
+  const [confirmandoTeste, setConfirmandoTeste] = useState(false);
+  const [resultadoTeste, setResultadoTeste] = useState<{
+    telefone: string; enfileirado: boolean; erro: string | null; resposta: string | null;
+    estado: string | null; detalhe: string | null;
+  } | null>(null);
   const [resultado, setResultado] = useState<{
     enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
     falhas: Array<{ nome: string; telefone: string; erro: string }>;
@@ -53,6 +59,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
 
   useEffect(() => {
     setQuantidade(""); setConfirmando(false); setResultado(null);
+    setTelefoneTeste(""); setConfirmandoTeste(false); setResultadoTeste(null);
   }, [campanha?.id]);
 
   const prontos = data?.aprovados.length ?? 0;
@@ -72,6 +79,19 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
     onError: e => { setConfirmando(false); toast.error(e.message); },
   });
 
+  const testarWts = trpc.campanhasWhatsapp.testarNumeroWts.useMutation({
+    onSuccess: r => {
+      setResultadoTeste(r);
+      setConfirmandoTeste(false);
+      if (r.enfileirado) toast.success(`Teste aceito pela WTS.Chat para ${formatarTelefone(r.telefone)}.`);
+      else toast.error(r.erro ?? "A WTS.Chat não aceitou o teste.");
+    },
+    onError: e => { setConfirmandoTeste(false); toast.error(e.message); },
+  });
+
+  const telefoneTesteNormalizado = normalizarTelefone(telefoneTeste);
+  const mutacaoPendente = disparar.isPending || testarWts.isPending;
+
   const liberar = trpc.campanhasWhatsapp.liberarContatosOrfaos.useMutation({
     onSuccess: r => {
       utils.campanhasWhatsapp.invalidate();
@@ -86,12 +106,76 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
   const semTelefone = data ? data.invalidosOuDuplicados.length : 0;
 
   return (
-    <Dialog open={!!campanha} onOpenChange={v => { if (!v && !disparar.isPending) onClose(); }}>
+    <Dialog open={!!campanha} onOpenChange={v => { if (!v && !mutacaoPendente) onClose(); }}>
       <DialogContent className="sm:max-w-lg max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Send size={18} className="text-emerald-600" /> Efetuar disparo</DialogTitle>
           <DialogDescription>{campanha?.nome}</DialogDescription>
         </DialogHeader>
+
+        {!ehGatilho && !!templateWts && (
+          <section className="space-y-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+            <div>
+              <h3 className="text-sm font-semibold text-sky-950">Testar o template em um número</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Envia somente para o número informado, fora da audiência. O teste não altera cadência, quarentena ou histórico dos clientes.
+                A aceitação pela WTS.Chat não confirma a entrega.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="disparo-numero-teste">Seu número com DDD</Label>
+              <Input
+                id="disparo-numero-teste" type="tel" inputMode="tel" autoComplete="tel"
+                placeholder="(67) 99999-0000" value={telefoneTeste}
+                disabled={mutacaoPendente}
+                onChange={e => { setTelefoneTeste(e.target.value); setConfirmandoTeste(false); setResultadoTeste(null); }}
+              />
+              {telefoneTeste.trim() && !telefoneTesteNormalizado && (
+                <p className="text-[11px] text-red-600">Digite um telefone brasileiro válido com DDD.</p>
+              )}
+            </div>
+            {confirmandoTeste && telefoneTesteNormalizado ? (
+              <div className="space-y-2 rounded-md bg-white/70 p-2 text-sm">
+                <p>Será enviada uma mensagem real para <strong>{formatarTelefone(telefoneTesteNormalizado)}</strong>.</p>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button size="sm" variant="outline" disabled={testarWts.isPending} onClick={() => setConfirmandoTeste(false)}>
+                    Voltar
+                  </Button>
+                  <Button size="sm" className="gap-1.5" disabled={mutacaoPendente}
+                    onClick={() => testarWts.mutate({ campanhaId: campanha!.id, telefone: telefoneTesteNormalizado })}>
+                    {testarWts.isPending ? <Spinner className="size-3.5" /> : <Send size={14} />}
+                    {testarWts.isPending ? "Enviando teste..." : "Confirmar teste"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" className="gap-1.5"
+                disabled={!telefoneTesteNormalizado || mutacaoPendente}
+                onClick={() => { setResultadoTeste(null); setConfirmandoTeste(true); }}>
+                <Send size={14} /> Testar neste número
+              </Button>
+            )}
+            {resultadoTeste && (
+              <div aria-live="polite" className={`space-y-1 rounded-md border p-2 text-xs ${resultadoTeste.enfileirado ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}>
+                <p className="font-medium">
+                  {resultadoTeste.enfileirado
+                    ? `WTS.Chat aceitou o teste para ${formatarTelefone(resultadoTeste.telefone)}.`
+                    : `A WTS.Chat não aceitou o teste: ${resultadoTeste.erro ?? "motivo não informado"}`}
+                </p>
+                {resultadoTeste.enfileirado && (
+                  <p>Status consultado: <strong>{resultadoTeste.estado ?? "não informado"}</strong>. Confirme também se a mensagem chegou ao aparelho.</p>
+                )}
+                {(resultadoTeste.detalhe || resultadoTeste.resposta) && (
+                  <details className="rounded bg-white/70 p-2">
+                    <summary className="cursor-pointer">Detalhes técnicos</summary>
+                    {resultadoTeste.detalhe && <code className="mt-1 block break-all">Status: {resultadoTeste.detalhe}</code>}
+                    {resultadoTeste.resposta && <code className="mt-1 block break-all">Envio: {resultadoTeste.resposta}</code>}
+                  </details>
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
         {ehGatilho ? (
           <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -220,16 +304,16 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={disparar.isPending}>{resultado ? "Fechar" : "Cancelar"}</Button>
+          <Button variant="outline" onClick={onClose} disabled={mutacaoPendente}>{resultado ? "Fechar" : "Cancelar"}</Button>
           {!resultado && !ehGatilho && !!templateWts && prontos > 0 && (
             confirmando ? (
-              <Button className="gap-1.5" disabled={disparar.isPending || !quantidadeValida}
+              <Button className="gap-1.5" disabled={mutacaoPendente || !quantidadeValida}
                 onClick={() => disparar.mutate({ campanhaId: campanha!.id, quantidade: n })}>
                 {disparar.isPending ? <Spinner className="size-3.5" /> : <Send size={14} />}
                 {disparar.isPending ? "Enviando..." : `Confirmar envio para ${fmtNum(n)}`}
               </Button>
             ) : (
-              <Button className="gap-1.5" disabled={!quantidadeValida} onClick={() => setConfirmando(true)}>
+              <Button className="gap-1.5" disabled={!quantidadeValida || mutacaoPendente} onClick={() => setConfirmando(true)}>
                 <Send size={14} /> Revisar e disparar
               </Button>
             )
