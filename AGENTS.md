@@ -306,6 +306,7 @@ scripts/              scripts de seed/importação reutilizáveis (rodar com `no
                        — scripts de migração/ajuste pontuais já aplicados foram removidos;
                        só ficou o que serve pra popular um banco novo
 docs/                 documentação viva + docs/archive (ver abaixo)
+artifacts/            relatórios locais gerados para análise/consulta; não entram no build do app
 ```
 
 Import aliases (`vite.config.ts` / `tsconfig.json`): `@/` → `client/src/`,
