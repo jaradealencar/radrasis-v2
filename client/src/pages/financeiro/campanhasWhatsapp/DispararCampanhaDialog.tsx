@@ -140,6 +140,9 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 {resultado.erroRegistro
                   ? <p className="text-red-700">As mensagens saíram, mas o disparo não foi registrado ({resultado.erroRegistro}). Registre-o à mão para a quarentena valer.</p>
                   : resultado.enfileirados > 0 && <p className="text-emerald-700">Disparo registrado: cadência e histórico atualizados.</p>}
+                {resultado.enfileirados > 0 && (
+                  <p className="text-xs text-slate-600">Este registro fica no Radrasis. O envio via API não cria uma campanha no menu “Campanhas” da Ceci.Chat.</p>
+                )}
                 {resultado.restantes > 0 && (
                   <p>Ainda há {fmtNum(resultado.restantes)} contato(s) pronto(s): efetue outro disparo para continuar.</p>
                 )}

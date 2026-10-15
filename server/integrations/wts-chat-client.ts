@@ -89,32 +89,25 @@ export interface WtsChatEstadoMensagem {
   detalhe: string;
 }
 
-/**
- * Consulta o estado de uma mensagem já enfileirada. O endereço devolvido no envio é `/v1/send/message/{id}`;
- * como o envio usa o prefixo `/chat`, tenta os dois caminhos. É só informativo: falha aqui nunca desfaz o envio.
- */
+/** Consulta o estado de uma mensagem já enfileirada. Falha aqui nunca desfaz o envio. */
 export async function consultarEstadoMensagemWts(id: string): Promise<WtsChatEstadoMensagem> {
   const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
   if (!authorization) return { estado: null, detalhe: "WTS_CHAT_AUTHORIZATION não configurado." };
   const header = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
-  let ultimo = "Sem resposta.";
-  for (const caminho of [`/chat/v1/send/message/${id}`, `/v1/send/message/${id}`]) {
+  try {
+    const r = await fetch(`https://api.wts.chat/chat/v1/message/${encodeURIComponent(id)}/status`, {
+      headers: { accept: "application/json", Authorization: header },
+      signal: AbortSignal.timeout(8_000),
+    });
+    const corpo = (await r.text().catch(() => "")).slice(0, 500);
+    if (!r.ok) return { estado: null, detalhe: `HTTP ${r.status}${corpo ? `: ${corpo}` : ""}` };
+    let estado: string | null = null;
     try {
-      const r = await fetch(`https://api.wts.chat${caminho}`, {
-        headers: { accept: "application/json", Authorization: header },
-        signal: AbortSignal.timeout(8_000),
-      });
-      const corpo = (await r.text().catch(() => "")).slice(0, 500);
-      if (!r.ok) { ultimo = `HTTP ${r.status}${corpo ? `: ${corpo}` : ""}`; continue; }
-      let estado: string | null = null;
-      try {
-        const s = (JSON.parse(corpo) as { status?: unknown }).status;
-        if (typeof s === "string") estado = s;
-      } catch { /* corpo não-JSON: devolve cru */ }
-      return { estado, detalhe: corpo };
-    } catch {
-      ultimo = "Falha de conexão ou tempo esgotado na consulta.";
-    }
+      const s = (JSON.parse(corpo) as { status?: unknown }).status;
+      if (typeof s === "string") estado = s;
+    } catch { /* corpo não-JSON: devolve cru */ }
+    return { estado, detalhe: corpo };
+  } catch {
+    return { estado: null, detalhe: "Falha de conexão ou tempo esgotado na consulta." };
   }
-  return { estado: null, detalhe: ultimo };
 }
