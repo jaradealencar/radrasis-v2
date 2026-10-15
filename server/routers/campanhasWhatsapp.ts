@@ -18,7 +18,7 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
-import { consultarEstadoMensagemWts, enviarTemplateWts, idMensagemWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
+import { consultarEstadoMensagemWts, enviarTemplateWts, idMensagemWts, urlStatusMensagemWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
@@ -850,16 +850,17 @@ export const campanhasWhatsappRouter = router({
       // sem fazer uma rajada de até cem consultas no provedor. Isso é só informativo: não altera o registro.
       const mensagensComId = resultados.flatMap(resultado => {
         const id = resultado.ok ? idMensagemWts(resultado.resposta) : null;
-        return id ? [{ contato: resultado.contato, id }] : [];
+        const statusUrl = id ? urlStatusMensagemWts(resultado.resposta, id) : null;
+        return id ? [{ contato: resultado.contato, id, statusUrl }] : [];
       });
       const mensagensParaConsultar = mensagensComId.slice(0, MAX_STATUS_WTS_POR_DISPARO);
       let estadosAmostra: Array<{ nome: string; telefone: string; estado: string | null; detalhe: string }> = [];
       if (mensagensParaConsultar.length > 0) {
         await new Promise(r => setTimeout(r, 4000));
-        estadosAmostra = await Promise.all(mensagensParaConsultar.map(async ({ contato, id }) => ({
+        estadosAmostra = await Promise.all(mensagensParaConsultar.map(async ({ contato, id, statusUrl }) => ({
           nome: contato.nome,
           telefone: contato.telefone,
-          ...(await consultarEstadoMensagemWts(id)),
+          ...(await consultarEstadoMensagemWts(id, statusUrl)),
         })));
       }
 

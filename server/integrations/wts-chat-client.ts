@@ -82,6 +82,19 @@ export function idMensagemWts(resposta: string | undefined): string | null {
   }
 }
 
+/** Usa a URL de status que veio no próprio aceite, se pertencer ao host e ao ID esperados. */
+export function urlStatusMensagemWts(resposta: string | undefined, id: string): string | null {
+  try {
+    const statusUrl = (JSON.parse(resposta ?? "") as { statusUrl?: unknown }).statusUrl;
+    if (typeof statusUrl !== "string" || !statusUrl.trim()) return null;
+    const url = new URL(statusUrl, "https://api.wts.chat");
+    if (url.origin !== "https://api.wts.chat" || url.pathname !== `/v1/send/message/${encodeURIComponent(id)}`) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export interface WtsChatEstadoMensagem {
   /** Valor do campo `status` devolvido pela WTS.Chat (ex.: QUEUED, SENT, DELIVERED, FAILED); `null` se não veio. */
   estado: string | null;
@@ -89,25 +102,37 @@ export interface WtsChatEstadoMensagem {
   detalhe: string;
 }
 
-/** Consulta o estado de uma mensagem já enfileirada. Falha aqui nunca desfaz o envio. */
-export async function consultarEstadoMensagemWts(id: string): Promise<WtsChatEstadoMensagem> {
+/** Consulta primeiro a URL devolvida no aceite; mantém a rota documentada como alternativa. */
+export async function consultarEstadoMensagemWts(id: string, statusUrl?: string | null): Promise<WtsChatEstadoMensagem> {
   const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
   if (!authorization) return { estado: null, detalhe: "WTS_CHAT_AUTHORIZATION não configurado." };
   const header = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
-  try {
-    const r = await fetch(`https://api.wts.chat/chat/v1/message/${encodeURIComponent(id)}/status`, {
-      headers: { accept: "application/json", Authorization: header },
-      signal: AbortSignal.timeout(8_000),
-    });
-    const corpo = (await r.text().catch(() => "")).slice(0, 500);
-    if (!r.ok) return { estado: null, detalhe: `HTTP ${r.status}${corpo ? `: ${corpo}` : ""}` };
-    let estado: string | null = null;
+  const urlAceita = statusUrl ? urlStatusMensagemWts(JSON.stringify({ statusUrl }), id) : null;
+  const endpoints = [
+    ...(urlAceita ? [urlAceita] : []),
+    `https://api.wts.chat/chat/v1/message/${encodeURIComponent(id)}/status`,
+  ];
+  const falhas: string[] = [];
+  for (const url of endpoints) {
     try {
-      const s = (JSON.parse(corpo) as { status?: unknown }).status;
-      if (typeof s === "string") estado = s;
-    } catch { /* corpo não-JSON: devolve cru */ }
-    return { estado, detalhe: corpo };
-  } catch {
-    return { estado: null, detalhe: "Falha de conexão ou tempo esgotado na consulta." };
+      const r = await fetch(url, {
+        headers: { accept: "application/json", Authorization: header },
+        signal: AbortSignal.timeout(8_000),
+      });
+      const corpo = (await r.text().catch(() => "")).slice(0, 500);
+      if (!r.ok) {
+        falhas.push(`${new URL(url).pathname}: HTTP ${r.status}${corpo ? `: ${corpo}` : ""}`);
+        continue;
+      }
+      let estado: string | null = null;
+      try {
+        const s = (JSON.parse(corpo) as { status?: unknown }).status;
+        if (typeof s === "string") estado = s;
+      } catch { /* corpo não-JSON: devolve cru */ }
+      return { estado, detalhe: corpo };
+    } catch {
+      falhas.push(`${new URL(url).pathname}: falha de conexão ou tempo esgotado`);
+    }
   }
+  return { estado: null, detalhe: falhas.join(" | ").slice(0, 500) || "Sem resposta da WTS.Chat." };
 }
