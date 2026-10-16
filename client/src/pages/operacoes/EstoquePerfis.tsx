@@ -125,6 +125,9 @@ export default function EstoquePerfis() {
   const [kgPorMetro, setKgPorMetro] = useState("");
   const [horizonteMeses, setHorizonteMeses] = useState("2");
   const [estoqueMinimo, setEstoqueMinimo] = useState("");
+  const [estoqueMedio, setEstoqueMedio] = useState("");
+  const [minimoManual, setMinimoManual] = useState(false);
+  const [medioManual, setMedioManual] = useState(false);
   const [observacao, setObservacao] = useState("");
 
   const aposSalvar = async (mensagem: string) => {
@@ -135,6 +138,9 @@ export default function EstoquePerfis() {
     setKgPorMetro("");
     setHorizonteMeses("2");
     setEstoqueMinimo("");
+    setEstoqueMedio("");
+    setMinimoManual(false);
+    setMedioManual(false);
     setObservacao("");
     await utils.perfilEstoque.painel.invalidate();
   };
@@ -200,6 +206,12 @@ export default function EstoquePerfis() {
     setEstoqueMinimo(
       minimoSugerido == null ? "" : String(minimoSugerido).replace(".", ",")
     );
+    const medioSugerido = item.estoqueMedioConfigurado ?? item.estoqueMedio;
+    setEstoqueMedio(
+      medioSugerido == null ? "" : String(medioSugerido).replace(".", ",")
+    );
+    setMinimoManual(item.estoqueMinimoConfigurado != null);
+    setMedioManual(item.estoqueMedioConfigurado != null);
   };
   const salvar = () => {
     if (!selecionado || !acao) return;
@@ -236,11 +248,25 @@ export default function EstoquePerfis() {
         );
         return;
       }
+      const medio = estoqueMedio.trim() ? parseNumero(estoqueMedio) : null;
+      if (estoqueMedio.trim() && (medio == null || medio < 0)) {
+        toast.error("Informe um estoque médio válido e não negativo.");
+        return;
+      }
+      if (medio != null && minimo != null && medio < minimo) {
+        toast.error("O nível médio não pode ser menor que o estoque mínimo.");
+        return;
+      }
+      if (medio != null && medio > numero) {
+        toast.error("O nível médio não pode superar o nível ideal.");
+        return;
+      }
       atualizarAlvo.mutate({
         perfilItemId: selecionado.id,
         alvoDoisMeses: (numero * 2) / meses,
         horizonteMeses: meses,
-        estoqueMinimo: minimo,
+        estoqueMinimo: minimoManual ? minimo : null,
+        estoqueMedio: medioManual ? medio : null,
         kgPorMetro: peso,
       });
     }
@@ -831,14 +857,30 @@ export default function EstoquePerfis() {
               <Label htmlFor="quantidade-perfil">
                 {acao === "saldo"
                   ? "Saldo físico contado"
-                  : `Consumo base para ${horizonteMeses || "…"} ${horizonteMeses === "1" ? "mês" : "meses"}`}{" "}
+                  : `Ideal para ${horizonteMeses || "…"} ${horizonteMeses === "1" ? "mês" : "meses"}`}{" "}
                 ({selecionado?.unidade})
               </Label>
               <Input
                 id="quantidade-perfil"
                 inputMode="decimal"
                 value={valor}
-                onChange={event => setValor(event.target.value)}
+                onChange={event => {
+                  const novoValor = event.target.value;
+                  setValor(novoValor);
+                  const ideal = parseNumero(novoValor);
+                  const meses = Number(horizonteMeses);
+                  if (ideal == null || meses <= 0) return;
+                  const consumoMensal = ideal / meses;
+                  const minimoAtual = minimoManual
+                    ? parseNumero(estoqueMinimo)
+                    : consumoMensal;
+                  if (!minimoManual)
+                    setEstoqueMinimo(String(consumoMensal).replace(".", ","));
+                  if (!medioManual && minimoAtual != null)
+                    setEstoqueMedio(
+                      String(minimoAtual + consumoMensal).replace(".", ",")
+                    );
+                }}
                 placeholder="0,00"
                 className="mt-1.5"
               />
@@ -866,10 +908,25 @@ export default function EstoquePerfis() {
                       novo > 0
                     ) {
                       const atual = parseNumero(valor);
-                      if (atual != null)
-                        setValor(
-                          String((atual / anterior) * novo).replace(".", ",")
-                        );
+                      if (atual != null) {
+                        const idealNovo = (atual / anterior) * novo;
+                        const consumoMensal = atual / anterior;
+                        setValor(String(idealNovo).replace(".", ","));
+                        const minimoAtual = minimoManual
+                          ? parseNumero(estoqueMinimo)
+                          : consumoMensal;
+                        if (!minimoManual)
+                          setEstoqueMinimo(
+                            String(consumoMensal).replace(".", ",")
+                          );
+                        if (!medioManual && minimoAtual != null)
+                          setEstoqueMedio(
+                            String(minimoAtual + consumoMensal).replace(
+                              ".",
+                              ","
+                            )
+                          );
+                      }
                     }
                     setHorizonteMeses(novoHorizonte);
                   }}
@@ -883,6 +940,32 @@ export default function EstoquePerfis() {
             )}
             {acao === "alvo" && (
               <div>
+                <Label htmlFor="estoque-medio-perfil">
+                  Médio / iniciar compra ({selecionado?.unidade})
+                </Label>
+                <Input
+                  id="estoque-medio-perfil"
+                  inputMode="decimal"
+                  value={estoqueMedio}
+                  onChange={event => {
+                    setEstoqueMedio(event.target.value);
+                    setMedioManual(true);
+                  }}
+                  placeholder={
+                    selecionado?.estoqueMedio == null
+                      ? "Informe o consumo base para sugerir"
+                      : `Sugestão: ${fmtNum(selecionado.estoqueMedio, 2)}`
+                  }
+                  className="mt-1.5"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Sugestão automática: mínimo mais 1 mês de consumo para cobrir
+                  o prazo de chegada do slitter. Você pode alterar.
+                </p>
+              </div>
+            )}
+            {acao === "alvo" && (
+              <div>
                 <Label htmlFor="estoque-minimo-perfil">
                   Estoque mínimo que devo manter ({selecionado?.unidade})
                 </Label>
@@ -890,7 +973,21 @@ export default function EstoquePerfis() {
                   id="estoque-minimo-perfil"
                   inputMode="decimal"
                   value={estoqueMinimo}
-                  onChange={event => setEstoqueMinimo(event.target.value)}
+                  onChange={event => {
+                    setEstoqueMinimo(event.target.value);
+                    setMinimoManual(true);
+                    const minimo = parseNumero(event.target.value);
+                    const idealAtual = parseNumero(valor);
+                    const mesesAtual = Number(horizonteMeses);
+                    const consumoMensal =
+                      idealAtual != null && mesesAtual > 0
+                        ? idealAtual / mesesAtual
+                        : (selecionado?.consumoMensal ?? null);
+                    if (!medioManual && minimo != null && consumoMensal != null)
+                      setEstoqueMedio(
+                        String(minimo + consumoMensal).replace(".", ",")
+                      );
+                  }}
                   placeholder={
                     selecionado?.consumoMensal == null
                       ? "Informe o mínimo"

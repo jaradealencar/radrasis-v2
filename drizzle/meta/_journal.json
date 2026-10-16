@@ -792,6 +792,13 @@
       "when": 1792178200212,
       "tag": "0112_red_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1792179930888,
+      "tag": "0113_remarkable_ultimates",
+      "breakpoints": true
     }
   ]
 }

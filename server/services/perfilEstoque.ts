@@ -70,10 +70,13 @@ export async function listarEstoquePerfis() {
     const estoqueMinimoConfigurado =
       item.estoqueMinimo == null ? null : Number(item.estoqueMinimo);
     const estoqueMinimo = estoqueMinimoConfigurado ?? consumoMensal;
-    const estoqueMedio =
+    const estoqueMedioCalculado =
       estoqueMinimo == null || consumoMensal == null
         ? null
         : estoqueMinimo + consumoMensal;
+    const estoqueMedioConfigurado =
+      item.estoqueMedio == null ? null : Number(item.estoqueMedio);
+    const estoqueMedio = estoqueMedioConfigurado ?? estoqueMedioCalculado;
     const kgPorMetro = item.kgPorMetro == null ? null : Number(item.kgPorMetro);
     const sugestaoCompra = alvo == null ? null : Math.max(0, alvo - saldo);
     const statusCompra =
@@ -96,6 +99,7 @@ export async function listarEstoquePerfis() {
       consumoMensal,
       estoqueMinimoConfigurado,
       estoqueMinimo,
+      estoqueMedioConfigurado,
       estoqueMedio,
       statusCompra,
       kgPorMetro,
@@ -200,6 +204,7 @@ export async function atualizarAlvoPerfil(input: {
   alvoDoisMeses: number | null;
   horizonteMeses: number;
   estoqueMinimo?: number | null;
+  estoqueMedio?: number | null;
   kgPorMetro?: number | null;
   usuario: string;
 }) {
@@ -216,6 +221,12 @@ export async function atualizarAlvoPerfil(input: {
         : {
             estoqueMinimo:
               input.estoqueMinimo == null ? null : String(input.estoqueMinimo),
+          }),
+      ...(input.estoqueMedio === undefined
+        ? {}
+        : {
+            estoqueMedio:
+              input.estoqueMedio == null ? null : String(input.estoqueMedio),
           }),
       ...(input.kgPorMetro === undefined
         ? {}
