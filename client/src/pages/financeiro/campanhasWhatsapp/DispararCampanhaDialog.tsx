@@ -252,15 +252,11 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 {resultado.erroRegistro
                   ? <p className="text-red-700">As mensagens saíram, mas o disparo não foi registrado ({resultado.erroRegistro}). Registre-o à mão para a quarentena valer.</p>
                   : resultado.enfileirados > 0 && <p className="text-emerald-700">Disparo registrado: cadência e histórico atualizados.</p>}
-                {resultado.campanhaCeciId ? (
-                  <p className="text-xs font-medium text-emerald-800">
-                    ✓ Campanha #{resultado.campanhaCeciId} gerada no menu “Campanhas” da Ceci.Chat.
-                  </p>
-                ) : resultado.enfileirados > 0 ? (
+                {resultado.enfileirados > 0 && (
                   <p className="text-xs text-slate-600">
-                    Mensagens aceitas pela WTS/Ceci API para processamento.
+                    Mensagens enviadas diretamente pelo canal oficial do WhatsApp via Ceci API. Respostas dos clientes aparecerão no atendimento da Ceci.Chat.
                   </p>
-                ) : null}
+                )}
                 {resultado.restantes > 0 && (
                   <p>Ainda há {fmtNum(resultado.restantes)} contato(s) pronto(s): efetue outro disparo para continuar.</p>
                 )}
@@ -297,11 +293,6 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   <div className="rounded bg-red-100 p-2 text-xs text-red-900 font-medium">
                     ⚠️ Atenção: A Ceci aceitou a mensagem mas com <code>senderId: null</code>. O número configurado em <code>WTS_CHAT_FROM</code> ({diagCeci?.canalConfiguradoEnv}) não corresponde ao canal ativo da sua conta na Ceci, impedindo a entrega ao aparelho.
                   </div>
-                )}
-                {resultado.erroCampanhaCeci && (
-                  <p className="text-[11px] text-amber-800">
-                    Aviso Ceci Campanhas: {resultado.erroCampanhaCeci}
-                  </p>
                 )}
                 {resultado.falhas.length > 0 && (
                   <ul className="list-disc pl-5 text-xs text-red-700">

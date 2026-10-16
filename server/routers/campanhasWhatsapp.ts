@@ -870,35 +870,15 @@ export const campanhasWhatsappRouter = router({
       const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
       let disparoId: number | null = null;
       let erroRegistro: string | null = null;
-      let campanhaCeciId: string | null = null;
-      let erroCampanhaCeci: string | null = null;
 
       if (aceitos.length > 0) {
-        // Tenta registrar a campanha no painel da Ceci.Chat / WTS.Chat para visualização no menu de Campanhas
+        // As mensagens já saíram pelo canal oficial: registra o lote no Radrasys (cadência, quarentena e histórico).
         try {
-          const resCampanhaCeci = await criarCampanhaWts(
-            `${campanha.nome} (${dataEnvio})`,
-            templateId,
-            aceitos.map(c => c.telefone),
-          );
-          if (resCampanhaCeci.ok && resCampanhaCeci.campanhaId) {
-            campanhaCeciId = resCampanhaCeci.campanhaId;
-          } else if (resCampanhaCeci.erro) {
-            erroCampanhaCeci = resCampanhaCeci.erro;
-          }
-        } catch (e) {
-          erroCampanhaCeci = e instanceof Error ? e.message : "Erro ao conectar com API de campanhas";
-        }
-
-        // As mensagens já saíram: se o registro falhar, não escondemos isso atrás de um erro genérico — o
-        // operador precisa saber que o envio aconteceu e que o disparo ficou sem registro.
-        try {
-          const obsCeci = campanhaCeciId ? ` | Campanha Ceci: #${campanhaCeciId}` : "";
           const registro = await registrarDisparoNoBanco({
             campanhaId: campanha.id,
             dataEnvio,
             contatos: aceitos,
-            observacoes: `Template WTS.Chat ${templateId}; aceito para processamento pelo provedor${obsCeci}.`,
+            observacoes: `Template WTS.Chat ${templateId}; aceito para processamento pelo provedor.`,
             origem: "api",
             registradoPor: ctx.user.name ?? ctx.user.email ?? "WTS.Chat",
             aplicarQuarentena: false,
@@ -911,8 +891,8 @@ export const campanhasWhatsappRouter = router({
 
       return {
         disparoId,
-        campanhaCeciId,
-        erroCampanhaCeci,
+        campanhaCeciId: null,
+        erroCampanhaCeci: null,
         erroRegistro,
         enfileirados: aceitos.length,
         falhas: resultados.filter(resultado => !resultado.ok).map(resultado => ({
