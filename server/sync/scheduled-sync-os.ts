@@ -15,6 +15,7 @@
 import { selectQuery, mutationQuery } from '../db/db-connection';
 import { listarOSMubiSys, MubiSysOS } from '../integrations/mubisys-client';
 import { normalizarData } from '../utils/date-utils';
+import { sincronizarConsumoPerfisDasOs } from '../services/perfilEstoque';
 
 export interface SyncLogEntry {
   dataExecucao: Date;
@@ -131,6 +132,18 @@ export async function sincronizarOSDoMubiSys(opts: SincronizarOSOpts = {}): Prom
         console.error(`❌ [SYNC-OS] Erro ao processar OS:`, erro.message);
         // Continuar com próxima OS
       }
+    }
+
+    // A mesma janela alimenta o estoque de perfis. A rotina é idempotente:
+    // cada O.S./item/perfil possui uma chave única, então lotes sobrepostos
+    // atualizam a baixa existente em vez de consumir novamente.
+    try {
+      const estoque = await sincronizarConsumoPerfisDasOs(osLista as MubiSysOS[]);
+      console.log(`✅ [SYNC-OS] Estoque de perfis: ${estoque.movimentos} baixas, ${estoque.pendencias} O.S. com pendência`);
+    } catch (erro: any) {
+      // O cache principal de O.S. continua válido mesmo se a composição/BOM
+      // estiver indisponível; a pendência pode ser retomada pelo painel.
+      console.error(`❌ [SYNC-OS] Falha ao sincronizar estoque de perfis:`, erro?.message || erro);
     }
 
     const tempoExecucaoMs = Date.now() - inicio;

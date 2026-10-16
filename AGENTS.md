@@ -277,7 +277,11 @@ server/
                        cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)
                        e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor),
                        cpqRender3d.ts (resolve o spec 3D assinado a partir do orçamento) e
-                       cpqRender3dImagem.ts (valida imagens de textura/preview pelos bytes)
+                       cpqRender3dImagem.ts (valida imagens de textura/preview pelos bytes),
+                       perfilEstoque.ts (ledger de estoque de perfis, sugestão em metros/kg,
+                       horizonte de compra configurável por perfil, catálogo sincronizado com o
+                       MubiSys, contagem de múltiplas bobinas por câmera/diâmetros/peso/metros e
+                       baixa idempotente pelas O.S. e BOM espelhada)
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
                        espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
@@ -294,7 +298,8 @@ server/
                        estudio-render3d.ts (spec 3D, aprovação, previews e perfis visuais PBR),
                        letra-caixa-redesenho.ts (reconstrução com até 2 referências extras da mesma logo, vetor e upload de imagens do CPQ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
-                       scheduled-sync-os-handler.ts
+                       scheduled-sync-os-handler.ts; o sync de O.S. também atualiza as
+                       baixas do estoque de perfis e registra pendências de BOM/medidas
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
   scripts/             scripts de seed do server (seed.mjs, seed-operacoes.mjs)
   __tests__/           testes do server (*.test.ts)

@@ -1,0 +1,2 @@
+ALTER TABLE "perfil_estoque_itens" ADD COLUMN "horizonte_meses" integer DEFAULT 2 NOT NULL;--> statement-breakpoint
+ALTER TABLE "perfil_estoque_itens" ADD COLUMN "status_catalogo" varchar(24) DEFAULT 'ativo' NOT NULL;

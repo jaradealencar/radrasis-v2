@@ -4,12 +4,13 @@ import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
 import { traduzirPerfilConsumoMubiSys } from "../../shared/perfil-consumo-mubisys";
 import {
   acabamentos, composicaoItemAcabamentos, composicaoItemEquipamentos, composicoesVariacoes,
-  equipamentos, materiasPrimas, mubisysEspelhoSyncStatus, mubisysVariacoes,
+  equipamentos, materiasPrimas, mubisysEspelhoSyncStatus, mubisysVariacoes, perfilEstoqueItens,
   type InsertAcabamentoMubiSys, type InsertComposicaoVariacaoEspelho,
   type InsertEquipamentoMubiSys, type InsertMateriaPrimaEspelho, type InsertMubiSysVariacaoEspelho,
 } from "../../drizzle/schema";
 import { getDb } from "../db/db";
 import { listarMateriasPrimas, listarProdutos, type MubiSysMateriaPrima, type MubiSysProduto } from "../integrations/mubisys-client";
+import { familiaDoPerfil, pesoTeoricoKgPorMetro } from './perfilEstoque';
 
 export const CHAVE_SYNC_CATALOGO = "catalogo";
 export const TTL_SYNC_CATALOGO_MS = 6 * 60 * 60 * 1000;
@@ -136,6 +137,12 @@ async function executarSincronizacaoCatalogo(): Promise<{ produtos: number; vari
     const existentes = await db.select().from(materiasPrimas);
     const existentePorId = new Map(existentes.map(item => [item.mubisysMateriaPrimaId, item]));
     const materiais = materiaisApi.map(item => mapearMateria(item, existentePorId.get(Number(item.id)), agora));
+    const inventario = await db.select().from(perfilEstoqueItens);
+    const perfisPorId = new Map(inventario.filter(item => item.mubisysMateriaPrimaId != null).map(item => [item.mubisysMateriaPrimaId!, item]));
+    const catalogoPerfis = materiaisApi.filter(item => {
+      const chave = normalizarChave(`${item.nome} ${item.categoria} ${item.tipo}`);
+      return chave.includes("perfil") || perfisPorId.has(Number(item.id));
+    });
     const variacoes = mapearVariacoes(produtos, agora);
     await db.transaction(async tx => {
       await tx.update(materiasPrimas).set({ ativa: false, updatedAt: agora });
@@ -161,6 +168,38 @@ async function executarSincronizacaoCatalogo(): Promise<{ produtos: number; vari
           variacaoValorFinal: sql`excluded.variacao_valor_final`, variacaoPadrao: sql`excluded.variacao_padrao`, ativa: sql`excluded.ativa`, sincronizadoEm: agora, updatedAt: agora,
         },
       });
+      const idsPerfisAtuais = new Set(catalogoPerfis.map(item => Number(item.id)));
+      for (const material of catalogoPerfis) {
+        const id = Number(material.id);
+        const existente = perfisPorId.get(id);
+        const peso = pesoTeoricoKgPorMetro(material.nome);
+        if (existente) {
+          await tx.update(perfilEstoqueItens).set({
+            nome: texto(material.nome).slice(0, 320),
+            familia: familiaDoPerfil(material.nome),
+            statusCatalogo: registroAtivo(material.status) ? "ativo" : "descontinuado",
+            ...(existente.kgPorMetro == null && peso != null ? { kgPorMetro: String(peso) } : {}),
+            updatedAt: agora,
+          }).where(eq(perfilEstoqueItens.id, existente.id));
+        } else {
+          await tx.insert(perfilEstoqueItens).values({
+            chave: `mubisys-${id}`,
+            mubisysMateriaPrimaId: id,
+            nome: texto(material.nome).slice(0, 320),
+            familia: familiaDoPerfil(material.nome),
+            unidade: "m",
+            kgPorMetro: peso == null ? null : String(peso),
+            statusCatalogo: registroAtivo(material.status) ? "ativo" : "descontinuado",
+            observacao: "Incluído automaticamente pelo catálogo MubiSys; faça a contagem física e defina o alvo de compra.",
+          }).onConflictDoNothing({ target: perfilEstoqueItens.chave });
+        }
+      }
+      for (const item of inventario) {
+        if (item.mubisysMateriaPrimaId != null && !idsPerfisAtuais.has(item.mubisysMateriaPrimaId)) {
+          await tx.update(perfilEstoqueItens).set({ statusCatalogo: "descontinuado", updatedAt: agora })
+            .where(eq(perfilEstoqueItens.id, item.id));
+        }
+      }
       await tx.insert(mubisysEspelhoSyncStatus).values({ chave: CHAVE_SYNC_CATALOGO, status: "sucesso", ultimaTentativaEm: agora, ultimaSincronizacaoEm: agora,
         produtosSincronizados: produtos.length, variacoesSincronizadas: variacoes.length, materiasPrimasSincronizadas: materiais.length, updatedAt: agora,
       }).onConflictDoUpdate({ target: mubisysEspelhoSyncStatus.chave, set: { status: "sucesso", ultimaTentativaEm: agora, ultimaSincronizacaoEm: agora,

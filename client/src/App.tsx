@@ -71,6 +71,7 @@ import SincronizacaoCache from "./pages/admin/SincronizacaoCache";
 import Performance from "./pages/operacoes/Performance";
 import CustoSolda from "./pages/operacoes/CustoSolda";
 import CustoLed from "./pages/operacoes/CustoLed";
+import EstoquePerfis from "./pages/operacoes/EstoquePerfis";
 import MetasOperacionais from "./pages/operacoes/MetasOperacionais";
 import AcessoNegado from "./pages/AcessoNegado";
 import Auditoria from "./pages/Auditoria";
@@ -197,6 +198,11 @@ function Router() {
       <Route path="/operacoes/custo-led">
         <ProtectedRoute pageKey="operacoes-custo-led">
           <L><CustoLed /></L>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/operacoes/estoque-perfis">
+        <ProtectedRoute pageKey="operacoes-estoque-perfis">
+          <L><EstoquePerfis /></L>
         </ProtectedRoute>
       </Route>
       {/* Auditoria */}

@@ -270,6 +270,10 @@ export async function createApp(): Promise<Express> {
     await import("../sync/scheduled-sync-perfil-cnpj-handler");
   app.post("/api/scheduled/sincronizarPerfilCnpj", handleSincronizarPerfilCnpj);
 
+  const { handleSincronizarPerfisMubiSys } =
+    await import("../sync/scheduled-sync-perfis-mubisys-handler");
+  app.post("/api/scheduled/sincronizarPerfisMubiSys", handleSincronizarPerfisMubiSys);
+
   const { handleRelatorioCrmDiario } =
     await import("../sync/scheduled-relatorio-crm-diario-handler");
   app.post("/api/scheduled/relatorioCrmDiario", handleRelatorioCrmDiario);

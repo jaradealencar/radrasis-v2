@@ -2042,6 +2042,149 @@ export const desempenhoColaboradorMensal = pgTable("desempenho_colaborador_mensa
 export type DesempenhoColaboradorMensal = typeof desempenhoColaboradorMensal.$inferSelect;
 export type InsertDesempenhoColaboradorMensal = typeof desempenhoColaboradorMensal.$inferInsert;
 
+// Estoque operacional de perfis. O saldo corrente é sempre calculado como
+// estoqueInicial + soma dos movimentos, mantendo ajustes e baixas de O.S.
+// rastreáveis. `mubisysMateriaPrimaId` fica opcional porque existem perfis
+// observados nas composições que ainda não têm cadastro correspondente no ERP.
+export const perfilEstoqueItens = pgTable(
+  "perfil_estoque_itens",
+  {
+    id: serial("id").primaryKey(),
+    chave: varchar("chave", { length: 160 }).notNull().unique(),
+    mubisysMateriaPrimaId: integer("mubisys_materia_prima_id"),
+    nome: varchar("nome", { length: 320 }).notNull(),
+    familia: varchar("familia", { length: 64 }).notNull(),
+    unidade: varchar("unidade", { length: 8 }).notNull().default("m"),
+    estoqueInicial: decimal("estoque_inicial", { precision: 16, scale: 4 })
+      .notNull()
+      .default("0"),
+    alvoDoisMeses: decimal("alvo_dois_meses", { precision: 16, scale: 4 }),
+    horizonteMeses: integer("horizonte_meses").notNull().default(2),
+    kgPorMetro: decimal("kg_por_metro", { precision: 14, scale: 6 }),
+    statusCatalogo: varchar("status_catalogo", { length: 24 })
+      .notNull()
+      .default("ativo"),
+    ativo: boolean("ativo").notNull().default(true),
+    observacao: text("observacao"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    familiaIdx: index("perfil_estoque_itens_familia_idx").on(
+      table.familia,
+      table.ativo
+    ),
+    materiaPrimaIdx: index("perfil_estoque_itens_materia_prima_idx").on(
+      table.mubisysMateriaPrimaId
+    ),
+  })
+);
+export type PerfilEstoqueItem = typeof perfilEstoqueItens.$inferSelect;
+export type InsertPerfilEstoqueItem = typeof perfilEstoqueItens.$inferInsert;
+
+export const perfilEstoqueMovimentos = pgTable(
+  "perfil_estoque_movimentos",
+  {
+    id: serial("id").primaryKey(),
+    perfilItemId: integer("perfil_item_id")
+      .notNull()
+      .references(() => perfilEstoqueItens.id, { onDelete: "restrict" }),
+    tipo: varchar("tipo", { length: 24 }).notNull(),
+    quantidade: decimal("quantidade", { precision: 16, scale: 4 }).notNull(),
+    unidade: varchar("unidade", { length: 8 }).notNull(),
+    osMubisysId: integer("os_mubisys_id"),
+    osNumero: varchar("os_numero", { length: 32 }),
+    osItemId: integer("os_item_id"),
+    origemChave: varchar("origem_chave", { length: 220 }).notNull().unique(),
+    descricao: text("descricao"),
+    criadoPor: varchar("criado_por", { length: 160 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    perfilDataIdx: index("perfil_estoque_movimentos_perfil_data_idx").on(
+      table.perfilItemId,
+      table.createdAt
+    ),
+    osIdx: index("perfil_estoque_movimentos_os_idx").on(table.osMubisysId),
+  })
+);
+export type PerfilEstoqueMovimento =
+  typeof perfilEstoqueMovimentos.$inferSelect;
+export type InsertPerfilEstoqueMovimento =
+  typeof perfilEstoqueMovimentos.$inferInsert;
+
+// Bobinas/slitters medidos durante um inventário físico. Várias bobinas podem
+// pertencer ao mesmo perfil; a soma pode ser aplicada ao ledger como um novo
+// saldo físico sem perder as baixas de O.S. posteriores.
+export const perfilEstoqueBobinas = pgTable(
+  "perfil_estoque_bobinas",
+  {
+    id: serial("id").primaryKey(),
+    perfilItemId: integer("perfil_item_id")
+      .notNull()
+      .references(() => perfilEstoqueItens.id, { onDelete: "restrict" }),
+    identificacao: varchar("identificacao", { length: 120 }).notNull(),
+    metodo: varchar("metodo", { length: 24 }).notNull(),
+    diametroExternoMm: decimal("diametro_externo_mm", {
+      precision: 12,
+      scale: 3,
+    }),
+    diametroInternoMm: decimal("diametro_interno_mm", {
+      precision: 12,
+      scale: 3,
+    }),
+    espessuraMm: decimal("espessura_mm", { precision: 10, scale: 4 }),
+    pesoKg: decimal("peso_kg", { precision: 14, scale: 4 }),
+    comprimentoMetros: decimal("comprimento_metros", {
+      precision: 16,
+      scale: 4,
+    }).notNull(),
+    observacao: text("observacao"),
+    ativo: boolean("ativo").notNull().default(true),
+    contadoPor: varchar("contado_por", { length: 160 }),
+    contadoEm: timestamp("contado_em").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    perfilAtivoIdx: index("perfil_estoque_bobinas_perfil_ativo_idx").on(
+      table.perfilItemId,
+      table.ativo
+    ),
+  })
+);
+export type PerfilEstoqueBobina = typeof perfilEstoqueBobinas.$inferSelect;
+export type InsertPerfilEstoqueBobina =
+  typeof perfilEstoqueBobinas.$inferInsert;
+
+// Uma linha por O.S. vista pelo sincronizador. Pendências ficam explícitas
+// para o comprador corrigir o vínculo/BOM antes de considerar o estoque exato.
+export const perfilEstoqueOs = pgTable(
+  "perfil_estoque_os",
+  {
+    osMubisysId: integer("os_mubisys_id").primaryKey(),
+    osNumero: varchar("os_numero", { length: 32 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    itensTotal: integer("itens_total").notNull().default(0),
+    itensMapeados: integer("itens_mapeados").notNull().default(0),
+    linhasConsumo: integer("linhas_consumo").notNull().default(0),
+    pendenciasJson: jsonb("pendencias_json")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    processadoEm: timestamp("processado_em").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    statusDataIdx: index("perfil_estoque_os_status_data_idx").on(
+      table.status,
+      table.processadoEm
+    ),
+  })
+);
+export type PerfilEstoqueOs = typeof perfilEstoqueOs.$inferSelect;
+
 // ─── METAS DE PRODUTOS ────────────────────────────────────────────────────────
 export const metaProdutos = pgTable("meta_produtos", {
   id: serial("id").primaryKey(),

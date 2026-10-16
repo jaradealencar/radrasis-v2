@@ -1,16 +1,17 @@
 # CRON: sincronização de OS via Upstash QStash
 
-Existem **sete** jobs agendados pelo **Upstash QStash** (não pelo Vercel
+Existem **oito** jobs agendados pelo **Upstash QStash** (não pelo Vercel
 Cron); nenhum agendador vive dentro do repositório:
 
 | Job | Alimenta | Propósito |
 |---|---|---|
-| `POST /api/scheduled/sincronizarOS` | `erp_os_cache` | janela rolante curta (~32 dias), dados "quentes" pra funcionalidades que só precisam do recente |
+| `POST /api/scheduled/sincronizarOS` | `erp_os_cache` + estoque de perfis | janela rolante curta (~32 dias), dados quentes e baixas idempotentes de perfis calculadas pela BOM espelhada; O.S. sem BOM/medidas ficam como pendência no painel |
 | `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
 | `POST /api/scheduled/completarTelefones?di=&df=` | `historico_os.telefone` | uso manual/pontual: preenche o telefone (só onde está NULL) das O.S. aprovadas numa janela de até 7 dias, dentro dos últimos 24 meses (ver `MESES_BACKFILL_PADRAO`, aumentado de 13 em 28/09/2026 para as fontes ERP de Campanhas WhatsApp). Completa o histórico antigo para o Guia de Fornecedores e para as Campanhas WhatsApp; o cron diário só cobre mês corrente + anterior |
 | `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave `crm_abertos_15d`) | orçamentos "em aberto" (15 dias) que o CRM de Propostas mostra — ver seção "Sincronização de abertos do CRM" mais abaixo |
 | `POST /api/scheduled/sincronizarCrmFechados` | `mubisys_api_cache` (chave `crm_fechados_45d`) | orçamentos "fechados" (45 dias) usados nas estatísticas do período selecionado no CRM — mesma seção |
 | `POST /api/scheduled/sincronizarPerfilCnpj` | `clientes_perfil_cnpj` | enriquece automaticamente o CNPJ de clientes novos que aparecem em `historico_os` (porte, idade, sócios) — ver seção "Sincronização do Perfil de Clientes por CNPJ" mais abaixo |
+| `POST /api/scheduled/sincronizarPerfisMubiSys` | espelho de matérias-primas + estoque de perfis | consulta o catálogo MubiSys, adiciona perfis novos e marca inativos/ausentes como descontinuados, preservando saldos e movimentos |
 | `POST /api/scheduled/relatorioCrmDiario` | e-mail (Resend) | resumo comercial + uso do CRM do dia anterior — ver seção "Relatórios de monitoramento do CRM" mais abaixo |
 | `POST /api/scheduled/relatorioCrmSemanal` | e-mail (Resend) | mesmo resumo, da última semana completa (segunda a domingo) — mesma seção |
 
@@ -307,3 +308,25 @@ deliberado. Fazer o perfil de CNPJ "participar da análise de preditividade"
 (porte, idade da empresa, sócios como fator do score) é uma mudança de
 metodologia do score já calibrado e usado tanto no CRM quanto na Performance
 Comercial — decisão pendente do usuário, não implementada neste job.
+
+## Sincronização automática do catálogo de perfis
+
+O endpoint `POST /api/scheduled/sincronizarPerfisMubiSys` executa uma atualização
+completa do catálogo oficial de matérias-primas. Perfis recém-cadastrados são
+adicionados ao estoque com saldo zero e alvo pendente; materiais inativos ou
+removidos da listagem são marcados como descontinuados sem apagar saldo,
+contagens ou movimentos. Itens descontinuados continuam visíveis para consulta.
+
+Agendar no QStash duas vezes ao dia (08:00 e 20:00 UTC, equivalentes a 04:00 e
+16:00 no fuso America/Cuiaba):
+
+```bash
+curl -X POST "https://qstash.upstash.io/v2/schedules/https://SEU-DOMINIO.com/api/scheduled/sincronizarPerfisMubiSys" \
+  -H "Authorization: Bearer $QSTASH_TOKEN" \
+  -H "Upstash-Cron: 0 8,20 * * *" \
+  -H "Upstash-Retries: 2"
+```
+
+O agendamento precisa apontar para o domínio publicado do Radrasys e ser criado
+uma vez com o `QSTASH_TOKEN` da conta Upstash. O endpoint também pode ser
+chamado manualmente para conferir o catálogo antes de ativar o cron.

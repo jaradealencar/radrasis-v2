@@ -31,6 +31,7 @@ import { planosAcaoComercialRouter } from "./routers/planosAcaoComercial";
 import { campanhasWhatsappRouter } from "./routers/campanhasWhatsapp";
 import { radarMercadoRouter } from "./routers/radarMercado";
 import { custoLedRouter } from "./routers/custoLed";
+import { perfilEstoqueRouter } from "./routers/perfilEstoque";
 import { adminRouter } from "./routers/admin";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, requireRole, router } from "./_core/trpc";
@@ -1590,6 +1591,7 @@ O POP deve:
   campanhasWhatsapp: campanhasWhatsappRouter,
   radarMercado: radarMercadoRouter,
   custoLed: custoLedRouter,
+  perfilEstoque: perfilEstoqueRouter,
   auditoria: auditoriaRouter,
   cargos: cargosRouter,
   curriculos: curriculosRouter,

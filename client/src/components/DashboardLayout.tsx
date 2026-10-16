@@ -100,6 +100,7 @@ const navSections: NavSection[] = [
       { label: "Cargos e Funções", href: "/cargos-funcoes", icon: <Briefcase size={15} />, pageKey: "cargos-funcoes" },
       { label: "Custo de Solda", href: "/operacoes/custo-solda", icon: <DollarSign size={15} />, pageKey: "operacoes-custo-solda" },
       { label: "Custos de LED", href: "/operacoes/custo-led", icon: <Zap size={15} />, pageKey: "operacoes-custo-led" },
+      { label: "Estoque de Perfis", href: "/operacoes/estoque-perfis", icon: <Boxes size={15} />, pageKey: "operacoes-estoque-perfis" },
     ],
   },
   {
