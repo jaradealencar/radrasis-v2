@@ -18,7 +18,7 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
-import { consultarEstadoMensagemWts, enviarTemplateWts, idMensagemWts, urlStatusMensagemWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
+import { consultarEstadoMensagemWts, criarCampanhaWts, enviarTemplateWts, idMensagemWts, urlStatusMensagemWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
@@ -867,15 +867,32 @@ export const campanhasWhatsappRouter = router({
       const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
       let disparoId: number | null = null;
       let erroRegistro: string | null = null;
+      let campanhaCeciId: string | null = null;
+
       if (aceitos.length > 0) {
+        // Tenta registrar a campanha no painel da Ceci.Chat / WTS.Chat para visualização no menu de Campanhas
+        try {
+          const resCampanhaCeci = await criarCampanhaWts(
+            `${campanha.nome} (${dataEnvio})`,
+            templateId,
+            aceitos.map(c => c.telefone),
+          );
+          if (resCampanhaCeci.ok && resCampanhaCeci.campanhaId) {
+            campanhaCeciId = resCampanhaCeci.campanhaId;
+          }
+        } catch {
+          // Registro na Ceci é complementar; falha não bloqueia o registro no Radrasys
+        }
+
         // As mensagens já saíram: se o registro falhar, não escondemos isso atrás de um erro genérico — o
         // operador precisa saber que o envio aconteceu e que o disparo ficou sem registro.
         try {
+          const obsCeci = campanhaCeciId ? ` | Campanha Ceci: #${campanhaCeciId}` : "";
           const registro = await registrarDisparoNoBanco({
             campanhaId: campanha.id,
             dataEnvio,
             contatos: aceitos,
-            observacoes: `Template WTS.Chat ${templateId}; aceito para processamento pelo provedor.`,
+            observacoes: `Template WTS.Chat ${templateId}; aceito para processamento pelo provedor${obsCeci}.`,
             origem: "api",
             registradoPor: ctx.user.name ?? ctx.user.email ?? "WTS.Chat",
             aplicarQuarentena: false,
@@ -888,6 +905,7 @@ export const campanhasWhatsappRouter = router({
 
       return {
         disparoId,
+        campanhaCeciId,
         erroRegistro,
         enfileirados: aceitos.length,
         falhas: resultados.filter(resultado => !resultado.ok).map(resultado => ({
@@ -907,7 +925,11 @@ export const campanhasWhatsappRouter = router({
 
   /** Envia um template para um número informado pelo usuário, fora da audiência e sem gravar cadência/histórico. */
   testarNumeroWts: campanhasProcedure
-    .input(z.object({ campanhaId: z.number().int().positive(), telefone: z.string().trim().min(8).max(40) }))
+    .input(z.object({
+      campanhaId: z.number().int().positive(),
+      telefone: z.string().trim().min(8).max(40),
+      nomeParametro: z.string().trim().max(100).optional(),
+    }))
     .mutation(async ({ input }) => {
       if (!wtsChatConfigurado()) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A integração WTS.Chat ainda não está configurada no servidor." });
@@ -929,7 +951,8 @@ export const campanhasWhatsappRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Informe um número brasileiro válido com DDD." });
       }
 
-      const envio = await enviarTemplateWts(telefone, templateId);
+      const params = input.nomeParametro?.trim() ? [input.nomeParametro.trim()] : undefined;
+      const envio = await enviarTemplateWts(telefone, templateId, params);
       const id = envio.ok ? idMensagemWts(envio.resposta) : null;
       let estado: { estado: string | null; detalhe: string } | null = null;
       if (id) {

@@ -1,9 +1,84 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { consultarEstadoMensagemWts, urlStatusMensagemWts } from "../integrations/wts-chat-client";
+import {
+  consultarEstadoMensagemWts, criarCampanhaWts, enviarTemplateWts, idMensagemWts, urlStatusMensagemWts,
+} from "../integrations/wts-chat-client";
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+
+describe("enviarTemplateWts", () => {
+  it("envia payload como array List<RequestMessageQuickSendDTO>", async () => {
+    vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
+    vi.stubEnv("WTS_CHAT_FROM", "5511999990000");
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify([{ id: "msg-001", status: "QUEUED" }]),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await enviarTemplateWts("5567999990001", "template-teste");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.wts.chat/chat/v1/send/template");
+    const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(Array.isArray(bodyEnviado)).toBe(true);
+    expect(bodyEnviado[0]).toMatchObject({
+      to: "5567999990001",
+      from: "5511999990000",
+      templateId: "template-teste",
+    });
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("inclui parameters quando fornecido", async () => {
+    vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: "msg-002", status: "QUEUED" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await enviarTemplateWts("5567999990001", "template-teste", ["Daniel"]);
+
+    const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(bodyEnviado[0].parameters).toEqual(["Daniel"]);
+  });
+});
+
+describe("idMensagemWts", () => {
+  it("extrai ID de resposta em formato objeto", () => {
+    expect(idMensagemWts(JSON.stringify({ id: "msg-12345678" }))).toBe("msg-12345678");
+  });
+
+  it("extrai ID de resposta em formato array", () => {
+    expect(idMensagemWts(JSON.stringify([{ id: "msg-12345678", status: "QUEUED" }]))).toBe("msg-12345678");
+  });
+});
+
+describe("criarCampanhaWts", () => {
+  it("chama endpoint de campanhas com nome, template e contatos", async () => {
+    vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: "camp-999" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await criarCampanhaWts("Campanha Teste", "template-123", ["5567999990001"]);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.wts.chat/chat/v1/campaigns");
+    expect(res.ok).toBe(true);
+    expect(res.campanhaId).toBe("camp-999");
+  });
 });
 
 describe("consultarEstadoMensagemWts", () => {

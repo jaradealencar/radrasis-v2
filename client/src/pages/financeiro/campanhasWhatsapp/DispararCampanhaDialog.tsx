@@ -44,6 +44,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
   } | null>(null);
   const [resultado, setResultado] = useState<{
     enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
+    campanhaCeciId?: string | null;
     falhas: Array<{ nome: string; telefone: string; erro: string }>;
     amostraResposta: string | null;
     estadosAmostra: Array<{ nome: string; telefone: string; estado: string | null; detalhe: string }>;
@@ -225,9 +226,15 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 {resultado.erroRegistro
                   ? <p className="text-red-700">As mensagens saíram, mas o disparo não foi registrado ({resultado.erroRegistro}). Registre-o à mão para a quarentena valer.</p>
                   : resultado.enfileirados > 0 && <p className="text-emerald-700">Disparo registrado: cadência e histórico atualizados.</p>}
-                {resultado.enfileirados > 0 && (
-                  <p className="text-xs text-slate-600">Este registro fica no Radrasis. O envio via API não cria uma campanha no menu “Campanhas” da Ceci.Chat.</p>
-                )}
+                {resultado.campanhaCeciId ? (
+                  <p className="text-xs font-medium text-emerald-800">
+                    ✓ Campanha #{resultado.campanhaCeciId} gerada no menu “Campanhas” da Ceci.Chat.
+                  </p>
+                ) : resultado.enfileirados > 0 ? (
+                  <p className="text-xs text-slate-600">
+                    Mensagens aceitas pela WTS/Ceci API para processamento.
+                  </p>
+                ) : null}
                 {resultado.restantes > 0 && (
                   <p>Ainda há {fmtNum(resultado.restantes)} contato(s) pronto(s): efetue outro disparo para continuar.</p>
                 )}
