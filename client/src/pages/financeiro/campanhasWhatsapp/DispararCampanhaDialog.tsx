@@ -224,6 +224,11 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                       (Canais encontrados na Ceci: {diagCeci.canais.map((c: any) => c.phoneNumber || c.phone || c.name || c.id).join(", ")})
                     </span>
                   )}
+                  {diagCeci.erroCanais && (
+                    <span className="ml-2 text-amber-700 font-normal">
+                      · Status canais: {diagCeci.erroCanais}
+                    </span>
+                  )}
                 </div>
               )}
             </div>

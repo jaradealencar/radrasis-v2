@@ -38,6 +38,14 @@ export function wtsChatConfigurado(): boolean {
   return !!process.env.WTS_CHAT_AUTHORIZATION?.trim();
 }
 
+/** Retorna o canal remetente higienizado com DDI 55, caindo com segurança no canal padrão (551194266377). */
+export function obterCanalRemetente(): string {
+  let digits = (process.env.WTS_CHAT_FROM ?? "").replace(/\D/g, "");
+  if (!digits || digits.length < 10) return WTS_CHAT_FROM_PADRAO;
+  if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
+  return digits;
+}
+
 /**
  * Enfileira um template aprovado pela Meta (cadastrado na WTS.Chat) para um único destinatário.
  * A API da WTS.Chat (Helena) espera um array de DTOs: List<RequestMessageQuickSendDTO>.
@@ -57,7 +65,7 @@ export async function enviarTemplateWts(
 
   const payloadItem: Record<string, unknown> = {
     to: telefone,
-    from: process.env.WTS_CHAT_FROM?.trim() || WTS_CHAT_FROM_PADRAO,
+    from: obterCanalRemetente(),
     templateId,
   };
   if (parameters && parameters.length > 0) {
@@ -107,7 +115,7 @@ export async function criarCampanhaWts(
   }
 
   const authorizationHeader = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
-  const from = process.env.WTS_CHAT_FROM?.trim() || WTS_CHAT_FROM_PADRAO;
+  const from = obterCanalRemetente();
 
   const endpoints = [
     "https://api.wts.chat/chat/v1/campaigns",
@@ -168,7 +176,7 @@ export interface InfoCeciDiagnostico {
  * Consulta canais e campanhas conectados na Ceci.Chat para diagnóstico de canal remetente e permissões.
  */
 export async function consultarDiagnosticoCeci(): Promise<InfoCeciDiagnostico> {
-  const canalConfiguradoEnv = process.env.WTS_CHAT_FROM?.trim() || WTS_CHAT_FROM_PADRAO;
+  const canalConfiguradoEnv = obterCanalRemetente();
   const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
   if (!authorization) {
     return {
