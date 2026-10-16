@@ -1,8 +1,8 @@
 const CECI_API_BASE_URL = "https://api.app.ceci.chat";
 const WTS_API_BASE_URL = "https://api.wts.chat";
 
-/** Número de origem padrão (canal WhatsApp na Ceci.Chat); `WTS_CHAT_FROM` sobrescreve. */
-export const WTS_CHAT_FROM_PADRAO = "551194266377";
+/** Número de origem padrão oficial da Letreiros Express (11 94266-6377); `WTS_CHAT_FROM` sobrescreve. */
+export const WTS_CHAT_FROM_PADRAO = "5511942666377";
 
 /** ID único do canal WhatsApp da Letreiros Express na Ceci.Chat. */
 export const CECI_CANAL_ID_PADRAO = "b13d2257-af6d-4cbb-a4fd-fa73069ae863";
@@ -61,7 +61,8 @@ export function obterCanalId(): string {
 
 /**
  * Retorna o número de telefone do canal remetente com DDI 55.
- * Se `WTS_CHAT_FROM` for um UUID, cai com segurança no telefone padrão (551194266377).
+ * Se `WTS_CHAT_FROM` for um UUID, cai com segurança no telefone padrão (5511942666377).
+ * Se contiver o número antigo com 1 dígito '6' a menos (551194266377), corrige automaticamente para o canal real.
  */
 export function obterCanalTelefone(): string {
   const fromVal = (process.env.WTS_CHAT_FROM ?? "").trim();
@@ -69,6 +70,10 @@ export function obterCanalTelefone(): string {
     return WTS_CHAT_FROM_PADRAO;
   }
   let digits = fromVal.replace(/\D/g, "");
+  // Corrige o erro de digitação histórico que faltava o terceiro '6'
+  if (digits === "551194266377" || digits === "1194266377" || digits === "94266377") {
+    return WTS_CHAT_FROM_PADRAO;
+  }
   if (!digits || digits.length < 10) return WTS_CHAT_FROM_PADRAO;
   if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
   return digits;
