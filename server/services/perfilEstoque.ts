@@ -66,8 +66,26 @@ export async function listarEstoquePerfis() {
       item.alvoDoisMeses == null ? null : Number(item.alvoDoisMeses);
     const horizonteMeses = item.horizonteMeses ?? 2;
     const alvo = alvoBase == null ? null : (alvoBase / 2) * horizonteMeses;
+    const consumoMensal = alvoBase == null ? null : alvoBase / 2;
+    const estoqueMinimoConfigurado =
+      item.estoqueMinimo == null ? null : Number(item.estoqueMinimo);
+    const estoqueMinimo = estoqueMinimoConfigurado ?? consumoMensal;
+    const estoqueMedio =
+      estoqueMinimo == null || consumoMensal == null
+        ? null
+        : estoqueMinimo + consumoMensal;
     const kgPorMetro = item.kgPorMetro == null ? null : Number(item.kgPorMetro);
     const sugestaoCompra = alvo == null ? null : Math.max(0, alvo - saldo);
+    const statusCompra =
+      alvo == null
+        ? "configurar"
+        : estoqueMinimo != null && saldo <= estoqueMinimo
+          ? "critico"
+          : estoqueMedio != null && saldo <= estoqueMedio
+            ? "comprar"
+            : saldo < alvo
+              ? "abaixo_ideal"
+              : "ideal";
     return {
       ...item,
       estoqueInicial: Number(item.estoqueInicial),
@@ -75,6 +93,11 @@ export async function listarEstoquePerfis() {
       alvoBaseDoisMeses: alvoBase,
       horizonteMeses,
       alvoAtual: alvo,
+      consumoMensal,
+      estoqueMinimoConfigurado,
+      estoqueMinimo,
+      estoqueMedio,
+      statusCompra,
       kgPorMetro,
       saldoAtual: saldo,
       saldoKg:
@@ -202,6 +225,7 @@ export async function atualizarAlvoPerfil(input: {
   perfilItemId: number;
   alvoDoisMeses: number | null;
   horizonteMeses: number;
+  estoqueMinimo?: number | null;
   kgPorMetro?: number | null;
   usuario: string;
 }) {
@@ -213,6 +237,12 @@ export async function atualizarAlvoPerfil(input: {
       alvoDoisMeses:
         input.alvoDoisMeses == null ? null : String(input.alvoDoisMeses),
       horizonteMeses: input.horizonteMeses,
+      ...(input.estoqueMinimo === undefined
+        ? {}
+        : {
+            estoqueMinimo:
+              input.estoqueMinimo == null ? null : String(input.estoqueMinimo),
+          }),
       ...(input.kgPorMetro === undefined
         ? {}
         : {
@@ -335,25 +365,28 @@ export async function registrarBobinaPerfil(input: {
   const comprimentoPorBobina = Number(comprimento.toFixed(4));
   const bobinas = await db
     .insert(perfilEstoqueBobinas)
-    .values(Array.from({ length: quantidadeBobinas }, (_, indice) => ({
-      perfilItemId: input.perfilItemId,
-      identificacao:
-        input.identificacao?.trim() || `Bobina ${(total ?? 0) + indice + 1}`,
-      metodo: input.metodo,
-      diametroExternoMm:
-        input.diametroExternoMm == null
-          ? null
-          : String(input.diametroExternoMm),
-      diametroInternoMm:
-        input.diametroInternoMm == null
-          ? null
-          : String(input.diametroInternoMm),
-      espessuraMm: input.espessuraMm == null ? null : String(input.espessuraMm),
-      pesoKg: input.pesoKg == null ? null : String(input.pesoKg),
-      comprimentoMetros: String(comprimentoPorBobina),
-      observacao: input.observacao?.trim() || null,
-      contadoPor: input.usuario,
-    })))
+    .values(
+      Array.from({ length: quantidadeBobinas }, (_, indice) => ({
+        perfilItemId: input.perfilItemId,
+        identificacao:
+          input.identificacao?.trim() || `Bobina ${(total ?? 0) + indice + 1}`,
+        metodo: input.metodo,
+        diametroExternoMm:
+          input.diametroExternoMm == null
+            ? null
+            : String(input.diametroExternoMm),
+        diametroInternoMm:
+          input.diametroInternoMm == null
+            ? null
+            : String(input.diametroInternoMm),
+        espessuraMm:
+          input.espessuraMm == null ? null : String(input.espessuraMm),
+        pesoKg: input.pesoKg == null ? null : String(input.pesoKg),
+        comprimentoMetros: String(comprimentoPorBobina),
+        observacao: input.observacao?.trim() || null,
+        contadoPor: input.usuario,
+      }))
+    )
     .returning();
   const [bobina] = bobinas;
   return {

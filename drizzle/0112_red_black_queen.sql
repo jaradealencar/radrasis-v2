@@ -1,0 +1,1 @@
+ALTER TABLE "perfil_estoque_itens" ADD COLUMN "estoque_minimo" numeric(16, 4);

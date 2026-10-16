@@ -785,6 +785,13 @@
       "when": 1792150444549,
       "tag": "0111_stiff_rattler",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1792178200212,
+      "tag": "0112_red_black_queen",
+      "breakpoints": true
     }
   ]
 }

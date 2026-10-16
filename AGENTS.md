@@ -279,7 +279,9 @@ server/
                        cpqRender3d.ts (resolve o spec 3D assinado a partir do orçamento) e
                        cpqRender3dImagem.ts (valida imagens de textura/preview pelos bytes),
                        perfilEstoque.ts (ledger de estoque de perfis, sugestão em metros/kg,
-                       horizonte de compra configurável por perfil, catálogo sincronizado com o
+                       horizonte de compra configurável por perfil, níveis mínimo/médio/ideal
+                       (ponto médio = estoque mínimo + demanda do prazo de 1 mês do slitter), filtro
+                       de compra crítica, catálogo sincronizado com o
                        MubiSys, contagem de múltiplas bobinas por câmera/diâmetros/peso/metros e
                        baixa idempotente pelas O.S. e BOM espelhada)
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site

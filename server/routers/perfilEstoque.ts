@@ -99,6 +99,7 @@ export const perfilEstoqueRouter = router({
           perfilItemId: z.number().int().positive(),
           alvoDoisMeses: z.number().finite().min(0).nullable(),
           horizonteMeses: z.number().int().min(1).max(24),
+          estoqueMinimo: z.number().finite().min(0).nullable().optional(),
           kgPorMetro: z.number().finite().positive().nullable().optional(),
         })
         .strict()
