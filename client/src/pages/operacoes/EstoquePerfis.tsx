@@ -258,7 +258,7 @@ export default function EstoquePerfis() {
 
   const { resumo } = painel.data;
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-4 sm:space-y-5">
       <PageHeader
         title="Estoque de Perfis"
         description="Saldo físico, baixas automáticas por O.S. e planejamento de compras."
@@ -266,12 +266,12 @@ export default function EstoquePerfis() {
       />
 
       <Card className="border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20">
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <CardContent className="flex min-w-0 flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="text-sm text-blue-950 dark:text-blue-100">
             <div className="font-semibold">
               Baixa automática vinculada à sincronização do MubiSys
             </div>
-            <p className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/80">
+            <p className="mt-1 text-xs leading-relaxed text-blue-800/80 dark:text-blue-200/80 sm:text-sm">
               Cada O.S. usa a BOM espelhada do modelo e da variação. O.S. sem
               composição ou medidas ficam em Pendências e não baixam material
               silenciosamente.
@@ -281,7 +281,7 @@ export default function EstoquePerfis() {
             <Button
               onClick={() => sincronizar.mutate({ dias: 8 })}
               disabled={sincronizar.isPending}
-              className="shrink-0 gap-2"
+              className="w-full shrink-0 gap-2 sm:w-auto"
             >
               <RefreshCw
                 className={`h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
@@ -292,12 +292,13 @@ export default function EstoquePerfis() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard
           label="Perfis controlados"
           value={fmtNum(resumo.perfis)}
           icon={Boxes}
           color="#176e9b"
+          className="min-w-0 p-3 sm:p-5 [&_.metric-value]:text-xl sm:[&_.metric-value]:text-2xl"
         />
         <KpiCard
           label="Sem estoque"
@@ -305,6 +306,7 @@ export default function EstoquePerfis() {
           sub="com alvo acima de zero"
           icon={AlertTriangle}
           color="#b3463b"
+          className="min-w-0 p-3 sm:p-5 [&_.metric-value]:text-xl sm:[&_.metric-value]:text-2xl"
         />
         <KpiCard
           label="Abaixo do alvo"
@@ -312,6 +314,7 @@ export default function EstoquePerfis() {
           sub="abaixo do horizonte configurado por perfil"
           icon={ShoppingCart}
           color="#d78d32"
+          className="min-w-0 p-3 sm:p-5 [&_.metric-value]:text-xl sm:[&_.metric-value]:text-2xl"
         />
         <KpiCard
           label="Compra sugerida"
@@ -319,6 +322,7 @@ export default function EstoquePerfis() {
           sub={`${fmtNum(resumo.compraSugeridaKg, 2)} kg teóricos`}
           icon={PackageCheck}
           color="#178b82"
+          className="min-w-0 p-3 sm:p-5 [&_.metric-value]:text-xl sm:[&_.metric-value]:text-2xl"
         />
         <KpiCard
           label="O.S. pendentes"
@@ -326,31 +330,35 @@ export default function EstoquePerfis() {
           sub="exigem revisão da BOM"
           icon={ClipboardCheck}
           color="#805ad5"
+          className="min-w-0 p-3 sm:p-5 [&_.metric-value]:text-xl sm:[&_.metric-value]:text-2xl"
         />
       </div>
 
-      <Tabs defaultValue="estoque" className="space-y-4">
-        <TabsList className="h-auto flex-wrap">
-          <TabsTrigger value="estoque">Estoque e compras</TabsTrigger>
-          <TabsTrigger value="movimentos">Movimentações</TabsTrigger>
-          <TabsTrigger value="pendencias">
+      <Tabs defaultValue="estoque" className="min-w-0 space-y-3 sm:space-y-4">
+        <TabsList className="flex h-auto w-full max-w-full flex-nowrap justify-start overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsTrigger className="shrink-0 px-3 text-xs sm:text-sm" value="estoque">Estoque e compras</TabsTrigger>
+          <TabsTrigger className="shrink-0 px-3 text-xs sm:text-sm" value="movimentos">Movimentações</TabsTrigger>
+          <TabsTrigger className="shrink-0 px-3 text-xs sm:text-sm" value="pendencias">
             Pendências ({resumo.osPendentes})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="estoque" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Perfis</CardTitle>
+          <Card className="min-w-0">
+            <CardHeader className="px-3 pb-3 pt-4 sm:px-6">
+              <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
+                <span>Perfis</span>
+                <Badge variant="secondary">{itens.length} exibido(s)</Badge>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-2 sm:grid-cols-[minmax(240px,1fr)_220px]">
-                <div className="relative">
+            <CardContent className="min-w-0 space-y-3 px-3 pb-4 sm:space-y-4 sm:px-6">
+              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="relative min-w-0">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     value={busca}
                     onChange={event => setBusca(event.target.value)}
-                    className="pl-9"
+                    className="min-w-0 pl-9"
                     placeholder="Buscar liga, largura ou acabamento..."
                   />
                 </div>
@@ -369,7 +377,7 @@ export default function EstoquePerfis() {
                 </Select>
               </div>
 
-              <div className="hidden overflow-x-auto rounded-md border md:block">
+              <div className="hidden overflow-x-auto rounded-md border lg:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -453,10 +461,10 @@ export default function EstoquePerfis() {
                 </Table>
               </div>
 
-              <div className="space-y-3 md:hidden">
+              <div className="space-y-2 sm:space-y-3 lg:hidden">
                 {itens.map(item => (
                   <Card key={item.id} className="overflow-hidden">
-                    <CardContent className="space-y-3 p-4">
+                    <CardContent className="space-y-3 p-3 sm:p-4">
                       <div>
                         <div className="font-semibold leading-snug">
                           {tituloCurto(item.nome)}
@@ -487,7 +495,7 @@ export default function EstoquePerfis() {
                         </div>
                         <div>
                           <span className="block text-xs text-muted-foreground">
-                            Alvo
+                            Meta · {item.horizonteMeses} {item.horizonteMeses === 1 ? "mês" : "meses"}
                           </span>
                           <b>
                             {item.alvoAtual == null
@@ -555,7 +563,8 @@ export default function EstoquePerfis() {
                   </EmptyHeader>
                 </Empty>
               ) : (
-                <div className="overflow-x-auto rounded-md border">
+                <>
+                <div className="hidden overflow-x-auto rounded-md border lg:block">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -606,6 +615,35 @@ export default function EstoquePerfis() {
                     </TableBody>
                   </Table>
                 </div>
+                <div className="space-y-2 lg:hidden">
+                  {painel.data.movimentos.map(movimento => (
+                    <Card key={movimento.id} className="min-w-0">
+                      <CardContent className="space-y-2 p-3">
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold">{tituloCurto(movimento.perfilNome)}</div>
+                            <div className="text-xs text-muted-foreground">{fmtDateTime(movimento.updatedAt)}</div>
+                          </div>
+                          <span className={`shrink-0 text-right font-semibold ${movimento.quantidade < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                            {movimento.quantidade > 0 ? "+" : ""}{fmtNum(movimento.quantidade, 2)} {movimento.unidade}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {movimento.tipo === "saida_os" ? (
+                            <Badge variant="outline">O.S. {movimento.osNumero}</Badge>
+                          ) : movimento.tipo === "entrada_manual" ? (
+                            <Badge className="bg-emerald-100 text-emerald-800">Entrada</Badge>
+                          ) : (
+                            <Badge variant="secondary">Inventário</Badge>
+                          )}
+                          {movimento.criadoPor && <span className="text-xs text-muted-foreground">{movimento.criadoPor}</span>}
+                        </div>
+                        {movimento.descricao && <p className="break-words text-xs text-muted-foreground">{movimento.descricao}</p>}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -817,47 +855,47 @@ function Acoes({
     );
   return (
     <div
-      className={`${mobile ? "grid grid-cols-2" : "flex flex-wrap"} gap-1.5`}
+      className={`${mobile ? "grid grid-cols-2" : "flex flex-wrap"} gap-2`}
     >
       {podeContar && (
         <Button
           size="sm"
           variant="outline"
-          className="gap-1 px-2"
+          className={`${mobile ? "h-auto min-h-10 w-full justify-start whitespace-normal px-2 py-2 text-xs" : "gap-1 px-2"}`}
           onClick={() => abrirBobinas(item)}
           disabled={item.unidade !== "m"}
         >
-          <CircleDot className="h-3.5 w-3.5" /> Bobinas
+          <CircleDot className="h-3.5 w-3.5 shrink-0" /> Bobinas
         </Button>
       )}
       {podeGerir && (
         <Button
           size="sm"
           variant="outline"
-          className="gap-1 px-2"
+          className={`${mobile ? "h-auto min-h-10 w-full justify-start whitespace-normal px-2 py-2 text-xs" : "gap-1 px-2"}`}
           onClick={() => abrir(item, "saldo")}
         >
-          <ClipboardCheck className="h-3.5 w-3.5" /> Inventário
+          <ClipboardCheck className="h-3.5 w-3.5 shrink-0" /> Inventário
         </Button>
       )}
       {podeGerir && (
         <Button
           size="sm"
           variant="outline"
-          className="gap-1 px-2"
+          className={`${mobile ? "h-auto min-h-10 w-full justify-start whitespace-normal px-2 py-2 text-xs" : "gap-1 px-2"}`}
           onClick={() => abrir(item, "entrada")}
         >
-          <ArrowDownToLine className="h-3.5 w-3.5" /> Entrada
+          <ArrowDownToLine className="h-3.5 w-3.5 shrink-0" /> Entrada
         </Button>
       )}
       {podeGerir && (
         <Button
           size="sm"
           variant="outline"
-          className="gap-1 px-2"
+          className={`${mobile ? "h-auto min-h-10 w-full justify-start whitespace-normal px-2 py-2 text-xs" : "gap-1 px-2"}`}
           onClick={() => abrir(item, "alvo")}
         >
-          <Pencil className="h-3.5 w-3.5" /> Alvo
+          <Pencil className="h-3.5 w-3.5 shrink-0" /> Alvo
         </Button>
       )}
     </div>
