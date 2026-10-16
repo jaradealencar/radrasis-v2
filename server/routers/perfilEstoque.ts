@@ -104,7 +104,7 @@ export const perfilEstoqueRouter = router({
           perfilItemId: z.number().int().positive(),
           quantidadeBobinas: z.number().int().min(1).max(100).default(1),
           identificacao: z.string().trim().max(120).nullable().optional(),
-          metodo: z.enum(["diametros", "foto", "peso", "metros"]),
+          metodo: z.enum(["diametros", "peso", "metros"]),
           diametroExternoMm: z
             .number()
             .finite()

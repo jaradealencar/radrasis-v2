@@ -355,7 +355,12 @@ export async function registrarBobinaPerfil(input: {
             : String(input.diametroInternoMm),
         espessuraMm:
           input.espessuraMm == null ? null : String(input.espessuraMm),
-        pesoKg: input.pesoKg == null ? null : String(input.pesoKg),
+        pesoKg:
+          input.pesoKg != null
+            ? String(input.pesoKg)
+            : item.kgPorMetro != null
+              ? String(comprimentoPorBobina * Number(item.kgPorMetro))
+              : null,
         comprimentoMetros: String(comprimentoPorBobina),
         observacao: input.observacao?.trim() || null,
         contadoPor: input.usuario,

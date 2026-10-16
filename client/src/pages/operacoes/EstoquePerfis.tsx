@@ -245,9 +245,7 @@ export default function EstoquePerfis() {
       });
     }
   };
-  const pendente =
-    definirSaldo.isPending ||
-    atualizarAlvo.isPending;
+  const pendente = definirSaldo.isPending || atualizarAlvo.isPending;
 
   if (painel.isLoading)
     return (
@@ -437,9 +435,7 @@ export default function EstoquePerfis() {
                         Ideal · horizonte
                       </TableHead>
                       <TableHead className="text-right">Comprar</TableHead>
-                      <TableHead className="text-right">
-                        Equivalente kg
-                      </TableHead>
+                      <TableHead className="text-right">Comprar (kg)</TableHead>
                       <TableHead className="w-[270px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -502,7 +498,9 @@ export default function EstoquePerfis() {
                         </TableCell>
                         <TableCell className="text-right">
                           {item.sugestaoCompraKg == null
-                            ? "—"
+                            ? item.kgPorMetro == null
+                              ? "Cadastre kg/m"
+                              : "—"
                             : `${fmtNum(item.sugestaoCompraKg, 2)} kg`}
                         </TableCell>
                         <TableCell>
@@ -595,11 +593,13 @@ export default function EstoquePerfis() {
                         </div>
                         <div>
                           <span className="block text-xs text-muted-foreground">
-                            Peso da compra
+                            Comprar (kg)
                           </span>
                           <b>
                             {item.sugestaoCompraKg == null
-                              ? "—"
+                              ? item.kgPorMetro == null
+                                ? "Cadastre kg/m"
+                                : "—"
                               : `${fmtNum(item.sugestaoCompraKg, 2)} kg`}
                           </b>
                         </div>
@@ -831,7 +831,7 @@ export default function EstoquePerfis() {
               <Label htmlFor="quantidade-perfil">
                 {acao === "saldo"
                   ? "Saldo físico contado"
-                    : `Consumo base para ${horizonteMeses || "…"} ${horizonteMeses === "1" ? "mês" : "meses"}`}{" "}
+                  : `Consumo base para ${horizonteMeses || "…"} ${horizonteMeses === "1" ? "mês" : "meses"}`}{" "}
                 ({selecionado?.unidade})
               </Label>
               <Input

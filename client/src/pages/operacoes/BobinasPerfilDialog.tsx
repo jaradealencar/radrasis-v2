@@ -22,11 +22,10 @@ import {
 import { fmtDateTime, fmtNum } from "@/lib/format";
 import { CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import MedidorBobinaFoto from "./MedidorBobinaFoto";
 
 type Painel = RouterOutputs["perfilEstoque"]["painel"];
 type Perfil = Painel["itens"][number];
-type Metodo = "diametros" | "foto" | "peso" | "metros";
+type Metodo = "diametros" | "peso" | "metros";
 
 const parseNumero = (valor: string) => {
   const texto = valor.trim().replace(/\s/g, "");
@@ -93,6 +92,16 @@ export default function BobinasPerfilDialog({
   }, [metodo, metros, peso, perfil.kgPorMetro, externo, interno, espessura]);
   const comprimentoTotal =
     estimativa != null && quantidadeValida ? estimativa * quantidade : null;
+  const pesoPorBobina =
+    estimativa != null && perfil.kgPorMetro != null
+      ? estimativa * perfil.kgPorMetro
+      : metodo === "peso"
+        ? parseNumero(peso)
+        : null;
+  const pesoTotal =
+    pesoPorBobina != null && quantidadeValida
+      ? pesoPorBobina * quantidade
+      : null;
 
   const limparMedida = () => {
     setQuantidadeBobinas("1");
@@ -135,15 +144,9 @@ export default function BobinasPerfilDialog({
       perfilItemId: perfil.id,
       quantidadeBobinas: quantidade,
       metodo,
-      diametroExternoMm: ["diametros", "foto"].includes(metodo)
-        ? parseNumero(externo)
-        : null,
-      diametroInternoMm: ["diametros", "foto"].includes(metodo)
-        ? parseNumero(interno)
-        : null,
-      espessuraMm: ["diametros", "foto"].includes(metodo)
-        ? parseNumero(espessura)
-        : null,
+      diametroExternoMm: metodo === "diametros" ? parseNumero(externo) : null,
+      diametroInternoMm: metodo === "diametros" ? parseNumero(interno) : null,
+      espessuraMm: metodo === "diametros" ? parseNumero(espessura) : null,
       pesoKg: metodo === "peso" ? parseNumero(peso) : null,
       comprimentoMetros: metodo === "metros" ? parseNumero(metros) : null,
       observacao: observacao || null,
@@ -173,9 +176,6 @@ export default function BobinasPerfilDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="diametros">Diâmetros medidos</SelectItem>
-                  <SelectItem value="foto">
-                    Foto com cartão de referência
-                  </SelectItem>
                   <SelectItem value="peso">Peso da bobina</SelectItem>
                   <SelectItem value="metros">Metros conhecidos</SelectItem>
                 </SelectContent>
@@ -201,19 +201,7 @@ export default function BobinasPerfilDialog({
               </p>
             </div>
 
-            {metodo === "foto" && (
-              <MedidorBobinaFoto
-                onUsar={({ externoMm, internoMm }) => {
-                  setExterno(externoMm.toFixed(1).replace(".", ","));
-                  setInterno(internoMm.toFixed(1).replace(".", ","));
-                  toast.success(
-                    "Medidas da foto preenchidas. Confira antes de salvar."
-                  );
-                }}
-              />
-            )}
-
-            {["diametros", "foto"].includes(metodo) && (
+            {metodo === "diametros" && (
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
                   <Label>Diâmetro externo (mm)</Label>
@@ -290,7 +278,7 @@ export default function BobinasPerfilDialog({
                 className="mt-1.5"
               />
             </div>
-            <div className="grid gap-3 rounded-lg bg-blue-50 p-3 text-sm sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+            <div className="grid gap-3 rounded-lg bg-blue-50 p-3 text-sm sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-center">
               <div className="min-w-0">
                 <span className="block text-xs text-blue-700">
                   Comprimento por bobina
@@ -303,17 +291,37 @@ export default function BobinasPerfilDialog({
               </div>
               <div className="min-w-0">
                 <span className="block text-xs text-blue-700">
+                  Peso estimado por bobina
+                </span>
+                <b className="text-lg text-blue-950">
+                  {pesoPorBobina != null && pesoPorBobina > 0
+                    ? `${fmtNum(pesoPorBobina, 2)} kg`
+                    : perfil.kgPorMetro == null
+                      ? "Cadastre kg/m"
+                      : "—"}
+                </b>
+              </div>
+              <div className="min-w-0">
+                <span className="block text-xs text-blue-700">
                   Total ({quantidadeValida ? quantidade : 0} bobinas)
                 </span>
                 <b className="text-lg text-blue-950">
                   {comprimentoTotal != null && comprimentoTotal > 0
                     ? `${fmtNum(comprimentoTotal, 2)} m`
                     : "—"}
+                  {pesoTotal != null && pesoTotal > 0
+                    ? ` · ${fmtNum(pesoTotal, 2)} kg`
+                    : ""}
                 </b>
               </div>
               <Button
                 onClick={salvar}
-                disabled={!estimativa || estimativa <= 0 || !quantidadeValida || registrar.isPending}
+                disabled={
+                  !estimativa ||
+                  estimativa <= 0 ||
+                  !quantidadeValida ||
+                  registrar.isPending
+                }
                 className="w-full gap-2 sm:w-auto"
               >
                 <Plus className="h-4 w-4" />
@@ -393,10 +401,9 @@ export default function BobinasPerfilDialog({
         </div>
 
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          A foto calcula uma estimativa geométrica. Mantenha o cartão e a face
-          da bobina no mesmo plano, fotografe perpendicularmente e confira os
-          diâmetros antes de salvar. O peso costuma ser a opção mais confiável
-          quando a balança informa o peso líquido do perfil.
+          O peso é calculado com o kg/m cadastrado para o perfil. Se essa
+          conversão não estiver disponível, cadastre-a em “Alvo” para ver o peso
+          estimado e a necessidade de compra em kg.
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
