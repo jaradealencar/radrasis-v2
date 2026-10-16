@@ -62,7 +62,6 @@ export default function BobinasPerfilDialog({
     { enabled: aberto }
   );
   const [metodo, setMetodo] = useState<Metodo>("diametros");
-  const [identificacao, setIdentificacao] = useState("");
   const [externo, setExterno] = useState("");
   const [interno, setInterno] = useState("");
   const [espessura, setEspessura] = useState(() =>
@@ -90,7 +89,6 @@ export default function BobinasPerfilDialog({
   }, [metodo, metros, peso, perfil.kgPorMetro, externo, interno, espessura]);
 
   const limparMedida = () => {
-    setIdentificacao("");
     setExterno("");
     setInterno("");
     setPeso("");
@@ -128,7 +126,6 @@ export default function BobinasPerfilDialog({
   const salvar = () => {
     registrar.mutate({
       perfilItemId: perfil.id,
-      identificacao: identificacao || null,
       metodo,
       diametroExternoMm: ["diametros", "foto"].includes(metodo)
         ? parseNumero(externo)
@@ -157,35 +154,27 @@ export default function BobinasPerfilDialog({
 
         <div className="grid gap-4 lg:grid-cols-[1.05fr_.95fr]">
           <div className="space-y-4 rounded-lg border p-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <Label>Identificação da bobina</Label>
-                <Input
-                  value={identificacao}
-                  onChange={event => setIdentificacao(event.target.value)}
-                  placeholder="Ex.: Bobina A, prateleira 2"
-                  className="mt-1.5"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Label>Método de contagem</Label>
-                <Select
-                  value={metodo}
-                  onValueChange={valor => setMetodo(valor as Metodo)}
-                >
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="diametros">Diâmetros medidos</SelectItem>
-                    <SelectItem value="foto">
-                      Foto com cartão de referência
-                    </SelectItem>
-                    <SelectItem value="peso">Peso da bobina</SelectItem>
-                    <SelectItem value="metros">Metros conhecidos</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <Label>Método de contagem</Label>
+              <Select
+                value={metodo}
+                onValueChange={valor => setMetodo(valor as Metodo)}
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="diametros">Diâmetros medidos</SelectItem>
+                  <SelectItem value="foto">
+                    Foto com cartão de referência
+                  </SelectItem>
+                  <SelectItem value="peso">Peso da bobina</SelectItem>
+                  <SelectItem value="metros">Metros conhecidos</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                O sistema numera cada bobina automaticamente neste perfil.
+              </p>
             </div>
 
             {metodo === "foto" && (
