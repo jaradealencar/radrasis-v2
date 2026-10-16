@@ -18,7 +18,10 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
-import { consultarEstadoMensagemWts, criarCampanhaWts, enviarTemplateWts, idMensagemWts, urlStatusMensagemWts, wtsChatConfigurado } from "../integrations/wts-chat-client";
+import {
+  consultarDiagnosticoCeci, consultarEstadoMensagemWts, criarCampanhaWts, enviarTemplateWts, idMensagemWts,
+  urlStatusMensagemWts, wtsChatConfigurado,
+} from "../integrations/wts-chat-client";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
@@ -868,6 +871,7 @@ export const campanhasWhatsappRouter = router({
       let disparoId: number | null = null;
       let erroRegistro: string | null = null;
       let campanhaCeciId: string | null = null;
+      let erroCampanhaCeci: string | null = null;
 
       if (aceitos.length > 0) {
         // Tenta registrar a campanha no painel da Ceci.Chat / WTS.Chat para visualização no menu de Campanhas
@@ -879,9 +883,11 @@ export const campanhasWhatsappRouter = router({
           );
           if (resCampanhaCeci.ok && resCampanhaCeci.campanhaId) {
             campanhaCeciId = resCampanhaCeci.campanhaId;
+          } else if (resCampanhaCeci.erro) {
+            erroCampanhaCeci = resCampanhaCeci.erro;
           }
-        } catch {
-          // Registro na Ceci é complementar; falha não bloqueia o registro no Radrasys
+        } catch (e) {
+          erroCampanhaCeci = e instanceof Error ? e.message : "Erro ao conectar com API de campanhas";
         }
 
         // As mensagens já saíram: se o registro falhar, não escondemos isso atrás de um erro genérico — o
@@ -906,6 +912,7 @@ export const campanhasWhatsappRouter = router({
       return {
         disparoId,
         campanhaCeciId,
+        erroCampanhaCeci,
         erroRegistro,
         enfileirados: aceitos.length,
         falhas: resultados.filter(resultado => !resultado.ok).map(resultado => ({
@@ -968,6 +975,11 @@ export const campanhasWhatsappRouter = router({
         detalhe: estado?.detalhe ?? null,
       };
     }),
+
+  /** Retorna os canais e conexões ativos na Ceci para diagnóstico do canal remetente e campanhas. */
+  diagnosticoCeci: campanhasProcedure.query(async () => {
+    return consultarDiagnosticoCeci();
+  }),
 
   registrarDisparo: campanhasProcedure
     .input(z.object({

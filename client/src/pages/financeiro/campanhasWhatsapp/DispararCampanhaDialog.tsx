@@ -45,6 +45,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
   const [resultado, setResultado] = useState<{
     enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
     campanhaCeciId?: string | null;
+    erroCampanhaCeci?: string | null;
     falhas: Array<{ nome: string; telefone: string; erro: string }>;
     amostraResposta: string | null;
     estadosAmostra: Array<{ nome: string; telefone: string; estado: string | null; detalhe: string }>;
@@ -53,6 +54,11 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
 
   const templateWts = campanha?.wtsTemplateId?.trim() || "";
   const ehGatilho = campanha?.tipo === "gatilho_venda";
+
+  const { data: diagCeci } = trpc.campanhasWhatsapp.diagnosticoCeci.useQuery(undefined, {
+    enabled: !!campanha,
+    staleTime: 60_000,
+  });
 
   const { data, isFetching, isError, error } = trpc.campanhasWhatsapp.gerarListaDaCampanha.useQuery(
     { campanhaId: campanha?.id ?? 0 }, { enabled: !!campanha && !ehGatilho, retry: false },
@@ -166,6 +172,11 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 {resultadoTeste.enfileirado && (
                   <p>Status consultado: <strong>{resultadoTeste.estado ?? "não informado"}</strong>. Confirme também se a mensagem chegou ao aparelho.</p>
                 )}
+                {resultadoTeste.enfileirado && resultadoTeste.resposta?.includes('"senderId":null') && (
+                  <p className="text-red-700 font-medium">
+                    ⚠️ Atenção: A Ceci registrou <code>senderId: null</code>. O número configurado em <code>WTS_CHAT_FROM</code> ({diagCeci?.canalConfiguradoEnv}) não corresponde a nenhum canal ativo na Ceci, impedindo a entrega ao aparelho.
+                  </p>
+                )}
                 {(resultadoTeste.detalhe || resultadoTeste.resposta) && (
                   <details className="rounded bg-white/70 p-2">
                     <summary className="cursor-pointer">Detalhes técnicos</summary>
@@ -205,6 +216,16 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   ? `${campanha.periodoInicio ? formatarDataBr(campanha.periodoInicio) : "início do histórico"} a ${campanha.periodoFim ? formatarDataBr(campanha.periodoFim) : "hoje"}`
                   : "padrão da fonte de dados"}
               </div>
+              {diagCeci && (
+                <div className="pt-1 text-[11px] text-muted-foreground border-t mt-1">
+                  <span>Canal configurado: <strong>{diagCeci.canalConfiguradoEnv}</strong></span>
+                  {diagCeci.canais && diagCeci.canais.length > 0 && (
+                    <span className="ml-2 text-slate-700">
+                      (Canais encontrados na Ceci: {diagCeci.canais.map((c: any) => c.phoneNumber || c.phone || c.name || c.id).join(", ")})
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -265,6 +286,16 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 {resultado.amostraResposta && (
                   <p className="break-all rounded bg-white/70 p-2 text-[11px] text-slate-600">
                     Resposta da WTS.Chat ao primeiro envio: <code>{resultado.amostraResposta}</code>
+                  </p>
+                )}
+                {resultado.amostraResposta && resultado.amostraResposta.includes('"senderId":null') && (
+                  <div className="rounded bg-red-100 p-2 text-xs text-red-900 font-medium">
+                    ⚠️ Atenção: A Ceci aceitou a mensagem mas com <code>senderId: null</code>. O número configurado em <code>WTS_CHAT_FROM</code> ({diagCeci?.canalConfiguradoEnv}) não corresponde ao canal ativo da sua conta na Ceci, impedindo a entrega ao aparelho.
+                  </div>
+                )}
+                {resultado.erroCampanhaCeci && (
+                  <p className="text-[11px] text-amber-800">
+                    Aviso Ceci Campanhas: {resultado.erroCampanhaCeci}
                   </p>
                 )}
                 {resultado.falhas.length > 0 && (

@@ -122,6 +122,8 @@ export async function criarCampanhaWts(
     phones: telefones,
   };
 
+  let ultimoErro = "Não foi possível registrar a campanha no menu da Ceci.Chat.";
+
   for (const url of endpoints) {
     try {
       const response = await fetch(url, {
@@ -143,13 +145,86 @@ export async function criarCampanhaWts(
           id = json.id || json.campaignId || json.value;
         } catch { /* corpo não JSON */ }
         return { ok: true, campanhaId: id ? String(id) : undefined, status: response.status, resposta: corpo };
+      } else {
+        ultimoErro = `${new URL(url).pathname}: HTTP ${response.status} - ${corpo}`;
       }
-    } catch {
-      // Tenta próximo endpoint
+    } catch (e) {
+      ultimoErro = `${new URL(url).pathname}: ${e instanceof Error ? e.message : "falha de conexão"}`;
     }
   }
 
-  return { ok: false, erro: "Não foi possível registrar a campanha no menu da Ceci.Chat." };
+  return { ok: false, erro: ultimoErro };
+}
+
+export interface InfoCeciDiagnostico {
+  canais: Array<Record<string, unknown>>;
+  erroCanais?: string;
+  campanhas: unknown;
+  erroCampanhas?: string;
+  canalConfiguradoEnv: string;
+}
+
+/**
+ * Consulta canais e campanhas conectados na Ceci.Chat para diagnóstico de canal remetente e permissões.
+ */
+export async function consultarDiagnosticoCeci(): Promise<InfoCeciDiagnostico> {
+  const canalConfiguradoEnv = process.env.WTS_CHAT_FROM?.trim() || WTS_CHAT_FROM_PADRAO;
+  const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
+  if (!authorization) {
+    return {
+      canais: [],
+      erroCanais: "WTS_CHAT_AUTHORIZATION não configurado.",
+      campanhas: [],
+      canalConfiguradoEnv,
+    };
+  }
+
+  const authorizationHeader = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
+
+  let canais: Array<Record<string, unknown>> = [];
+  let erroCanais: string | undefined;
+  try {
+    const res = await fetch("https://api.wts.chat/chat/v1/channels", {
+      headers: { accept: "application/json", Authorization: authorizationHeader },
+      signal: AbortSignal.timeout(8000),
+    });
+    const text = await res.text();
+    if (res.ok) {
+      try {
+        const json = JSON.parse(text);
+        canais = Array.isArray(json) ? json : ((json.items || json.data || [json]) as Array<Record<string, unknown>>);
+      } catch {
+        erroCanais = text.slice(0, 300);
+      }
+    } else {
+      erroCanais = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+    }
+  } catch (e) {
+    erroCanais = e instanceof Error ? e.message : "Erro ao consultar canais";
+  }
+
+  let campanhas: unknown = [];
+  let erroCampanhas: string | undefined;
+  try {
+    const res = await fetch("https://api.wts.chat/chat/v1/campaigns", {
+      headers: { accept: "application/json", Authorization: authorizationHeader },
+      signal: AbortSignal.timeout(8000),
+    });
+    const text = await res.text();
+    if (res.ok) {
+      try {
+        campanhas = JSON.parse(text);
+      } catch {
+        erroCampanhas = text.slice(0, 300);
+      }
+    } else {
+      erroCampanhas = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+    }
+  } catch (e) {
+    erroCampanhas = e instanceof Error ? e.message : "Erro ao consultar campanhas";
+  }
+
+  return { canais, erroCanais, campanhas, erroCampanhas, canalConfiguradoEnv };
 }
 
 /** Extrai o ID da mensagem enfileirada da resposta do envio (`{"id": "...", "status": "QUEUED"}` ou `[{"id": "..."}]`). */
