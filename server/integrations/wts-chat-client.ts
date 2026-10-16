@@ -72,8 +72,8 @@ export async function enviarTemplateWts(
         "content-type": "application/json",
         Authorization: authorizationHeader,
       },
-      // A API espera System.Collections.Generic.List<RequestMessageQuickSendDTO>
-      body: JSON.stringify([payloadItem]),
+      // O endpoint /chat/v1/send/template espera o objeto PublicReqSendTemplateSingleDTO
+      body: JSON.stringify(payloadItem),
       signal: AbortSignal.timeout(15_000),
     });
 

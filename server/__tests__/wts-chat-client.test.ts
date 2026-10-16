@@ -9,14 +9,14 @@ afterEach(() => {
 });
 
 describe("enviarTemplateWts", () => {
-  it("envia payload como array List<RequestMessageQuickSendDTO>", async () => {
+  it("envia payload como objeto PublicReqSendTemplateSingleDTO", async () => {
     vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
     vi.stubEnv("WTS_CHAT_FROM", "5511999990000");
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify([{ id: "msg-001", status: "QUEUED" }]),
+      text: async () => JSON.stringify({ id: "msg-001", status: "QUEUED" }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -25,8 +25,8 @@ describe("enviarTemplateWts", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.wts.chat/chat/v1/send/template");
     const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(Array.isArray(bodyEnviado)).toBe(true);
-    expect(bodyEnviado[0]).toMatchObject({
+    expect(Array.isArray(bodyEnviado)).toBe(false);
+    expect(bodyEnviado).toMatchObject({
       to: "5567999990001",
       from: "5511999990000",
       templateId: "template-teste",
@@ -47,7 +47,7 @@ describe("enviarTemplateWts", () => {
     await enviarTemplateWts("5567999990001", "template-teste", ["Daniel"]);
 
     const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(bodyEnviado[0].parameters).toEqual(["Daniel"]);
+    expect(bodyEnviado.parameters).toEqual(["Daniel"]);
   });
 });
 
