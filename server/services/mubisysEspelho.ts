@@ -4,7 +4,8 @@ import { BASES_COBRANCA_PRODUTO } from "../../shared/base-cobranca-produto";
 import { traduzirPerfilConsumoMubiSys } from "../../shared/perfil-consumo-mubisys";
 import {
   acabamentos, composicaoItemAcabamentos, composicaoItemEquipamentos, composicoesVariacoes,
-  equipamentos, materiasPrimas, mubisysEspelhoSyncStatus, mubisysVariacoes, perfilEstoqueItens,
+  equipamentos, materiasPrimas, mubisysEspelhoSyncStatus, mubisysVariacoes, perfilEstoqueBobinas,
+  perfilEstoqueItens, perfilEstoqueMovimentos,
   type InsertAcabamentoMubiSys, type InsertComposicaoVariacaoEspelho,
   type InsertEquipamentoMubiSys, type InsertMateriaPrimaEspelho, type InsertMubiSysVariacaoEspelho,
 } from "../../drizzle/schema";
@@ -172,20 +173,72 @@ async function executarSincronizacaoCatalogo(): Promise<{ produtos: number; vari
       for (const material of catalogoPerfis) {
         const id = Number(material.id);
         const existente = perfisPorId.get(id);
+        const nomeMaterial = texto(material.nome).slice(0, 320);
+        const chaveNome = normalizarChave(nomeMaterial);
+        const legadosMesmoNome = inventario.filter(item =>
+          item.ativo && item.mubisysMateriaPrimaId == null &&
+          normalizarChave(item.nome.split("|")[0]) === chaveNome
+        );
+        const legado = legadosMesmoNome.length === 1 ? legadosMesmoNome[0] : null;
         const peso = pesoTeoricoKgPorMetro(material.nome);
         if (existente) {
+          if (legado && legado.id !== existente.id) {
+            await tx.update(perfilEstoqueMovimentos)
+              .set({ perfilItemId: existente.id })
+              .where(eq(perfilEstoqueMovimentos.perfilItemId, legado.id));
+            await tx.update(perfilEstoqueBobinas)
+              .set({ perfilItemId: existente.id })
+              .where(eq(perfilEstoqueBobinas.perfilItemId, legado.id));
+            const observacoes = [existente.observacao, legado.observacao]
+              .filter((valor): valor is string => Boolean(valor?.trim()))
+              .filter(valor => !valor.startsWith("Incluído automaticamente pelo catálogo MubiSys"));
+            await tx.update(perfilEstoqueItens).set({
+              estoqueInicial: sql`${existente.estoqueInicial}::numeric + ${legado.estoqueInicial}::numeric`,
+              alvoDoisMeses: existente.alvoDoisMeses ?? legado.alvoDoisMeses,
+              horizonteMeses: existente.alvoDoisMeses == null && legado.alvoDoisMeses != null
+                ? legado.horizonteMeses
+                : existente.horizonteMeses,
+              kgPorMetro: existente.kgPorMetro ?? legado.kgPorMetro ?? (peso == null ? null : String(peso)),
+              observacao: observacoes.length ? [...new Set(observacoes)].join(" | ") : null,
+              updatedAt: agora,
+            }).where(eq(perfilEstoqueItens.id, existente.id));
+            await tx.update(perfilEstoqueItens).set({
+              ativo: false,
+              statusCatalogo: "consolidado",
+              observacao: `Consolidado no perfil MubiSys ${id}. ${legado.observacao ?? ""}`.trim(),
+              updatedAt: agora,
+            }).where(eq(perfilEstoqueItens.id, legado.id));
+            legado.ativo = false;
+          } else if (legadosMesmoNome.length > 1) {
+            console.warn(`Perfil MubiSys ${id}: consolidação por nome ignorada; há ${legadosMesmoNome.length} registros legados com o mesmo nome.`);
+          }
           await tx.update(perfilEstoqueItens).set({
-            nome: texto(material.nome).slice(0, 320),
+            nome: nomeMaterial,
             familia: familiaDoPerfil(material.nome),
             statusCatalogo: registroAtivo(material.status) ? "ativo" : "descontinuado",
-            ...(existente.kgPorMetro == null && peso != null ? { kgPorMetro: String(peso) } : {}),
+            ...((existente.kgPorMetro == null && peso != null) || (legado?.kgPorMetro != null && existente.kgPorMetro == null)
+              ? { kgPorMetro: String(peso ?? legado?.kgPorMetro) }
+              : {}),
             updatedAt: agora,
           }).where(eq(perfilEstoqueItens.id, existente.id));
+        } else if (legado) {
+          await tx.update(perfilEstoqueItens).set({
+            chave: `mubisys-${id}`,
+            mubisysMateriaPrimaId: id,
+            nome: nomeMaterial,
+            familia: familiaDoPerfil(material.nome),
+            statusCatalogo: registroAtivo(material.status) ? "ativo" : "descontinuado",
+            ...(legado.kgPorMetro == null && peso != null ? { kgPorMetro: String(peso) } : {}),
+            updatedAt: agora,
+          }).where(eq(perfilEstoqueItens.id, legado.id));
+          legado.mubisysMateriaPrimaId = id;
+          legado.chave = `mubisys-${id}`;
+          perfisPorId.set(id, legado);
         } else {
           await tx.insert(perfilEstoqueItens).values({
             chave: `mubisys-${id}`,
             mubisysMateriaPrimaId: id,
-            nome: texto(material.nome).slice(0, 320),
+            nome: nomeMaterial,
             familia: familiaDoPerfil(material.nome),
             unidade: "m",
             kgPorMetro: peso == null ? null : String(peso),
