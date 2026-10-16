@@ -9,7 +9,6 @@ import {
   listarEstoquePerfis,
   listarMovimentosPerfis,
   listarPendenciasEstoquePerfis,
-  registrarEntradaPerfil,
   registrarBobinaPerfil,
   removerBobinaPerfil,
   sincronizarConsumoPerfisDasOs,
@@ -70,23 +69,6 @@ export const perfilEstoqueRouter = router({
     )
     .mutation(({ input, ctx }) =>
       definirSaldoFisicoPerfil({
-        ...input,
-        usuario: ctx.user.name || ctx.user.id,
-      })
-    ),
-
-  registrarEntrada: gestaoProcedure
-    .input(
-      z
-        .object({
-          perfilItemId: z.number().int().positive(),
-          quantidade: z.number().finite().positive(),
-          observacao: z.string().trim().max(500).nullable().optional(),
-        })
-        .strict()
-    )
-    .mutation(({ input, ctx }) =>
-      registrarEntradaPerfil({
         ...input,
         usuario: ctx.user.name || ctx.user.id,
       })

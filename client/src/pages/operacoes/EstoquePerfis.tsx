@@ -43,7 +43,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fmtDateTime, fmtNum } from "@/lib/format";
 import {
   AlertTriangle,
-  ArrowDownToLine,
   Boxes,
   CircleDot,
   ClipboardCheck,
@@ -58,7 +57,7 @@ import BobinasPerfilDialog from "./BobinasPerfilDialog";
 
 type Painel = RouterOutputs["perfilEstoque"]["painel"];
 type Perfil = Painel["itens"][number];
-type Acao = "saldo" | "entrada" | "alvo";
+type Acao = "saldo" | "alvo";
 
 const parseNumero = (valor: string) => {
   const texto = valor.trim().replace(/\s/g, "");
@@ -143,10 +142,6 @@ export default function EstoquePerfis() {
     onSuccess: () => void aposSalvar("Inventário físico registrado."),
     onError: error => toast.error(error.message),
   });
-  const registrarEntrada = trpc.perfilEstoque.registrarEntrada.useMutation({
-    onSuccess: () => void aposSalvar("Entrada de estoque registrada."),
-    onError: error => toast.error(error.message),
-  });
   const atualizarAlvo = trpc.perfilEstoque.atualizarAlvo.useMutation({
     onSuccess: () => void aposSalvar("Alvo de estoque atualizado."),
     onError: error => toast.error(error.message),
@@ -209,7 +204,7 @@ export default function EstoquePerfis() {
   const salvar = () => {
     if (!selecionado || !acao) return;
     const numero = parseNumero(valor);
-    if (numero == null || numero < 0 || (acao === "entrada" && numero <= 0)) {
+    if (numero == null || numero < 0) {
       toast.error("Informe uma quantidade válida.");
       return;
     }
@@ -217,12 +212,6 @@ export default function EstoquePerfis() {
       definirSaldo.mutate({
         perfilItemId: selecionado.id,
         saldo: numero,
-        observacao: observacao || null,
-      });
-    if (acao === "entrada")
-      registrarEntrada.mutate({
-        perfilItemId: selecionado.id,
-        quantidade: numero,
         observacao: observacao || null,
       });
     if (acao === "alvo") {
@@ -258,7 +247,6 @@ export default function EstoquePerfis() {
   };
   const pendente =
     definirSaldo.isPending ||
-    registrarEntrada.isPending ||
     atualizarAlvo.isPending;
 
   if (painel.isLoading)
@@ -832,9 +820,7 @@ export default function EstoquePerfis() {
             <DialogTitle>
               {acao === "saldo"
                 ? "Registrar inventário físico"
-                : acao === "entrada"
-                  ? "Registrar entrada"
-                  : "Revisar alvo de estoque"}
+                : "Revisar alvo de estoque"}
             </DialogTitle>
             <DialogDescription>
               {selecionado ? tituloCurto(selecionado.nome) : ""}
@@ -845,8 +831,6 @@ export default function EstoquePerfis() {
               <Label htmlFor="quantidade-perfil">
                 {acao === "saldo"
                   ? "Saldo físico contado"
-                  : acao === "entrada"
-                    ? "Quantidade recebida"
                     : `Consumo base para ${horizonteMeses || "…"} ${horizonteMeses === "1" ? "mês" : "meses"}`}{" "}
                 ({selecionado?.unidade})
               </Label>
@@ -939,18 +923,14 @@ export default function EstoquePerfis() {
                 </p>
               </div>
             )}
-            {acao !== "alvo" && (
+            {acao === "saldo" && (
               <div>
                 <Label htmlFor="observacao-perfil">Observação</Label>
                 <Input
                   id="observacao-perfil"
                   value={observacao}
                   onChange={event => setObservacao(event.target.value)}
-                  placeholder={
-                    acao === "entrada"
-                      ? "Fornecedor, nota fiscal ou lote"
-                      : "Contagem realizada por..."
-                  }
+                  placeholder="Contagem realizada por..."
                   className="mt-1.5"
                 />
               </div>
@@ -1028,16 +1008,6 @@ function Acoes({
           onClick={() => abrir(item, "saldo")}
         >
           <ClipboardCheck className="h-3.5 w-3.5 shrink-0" /> Inventário
-        </Button>
-      )}
-      {podeGerir && (
-        <Button
-          size="sm"
-          variant="outline"
-          className={`${mobile ? "h-auto min-h-10 w-full justify-start whitespace-normal px-2 py-2 text-xs" : "gap-1 px-2"}`}
-          onClick={() => abrir(item, "entrada")}
-        >
-          <ArrowDownToLine className="h-3.5 w-3.5 shrink-0" /> Entrada
         </Button>
       )}
       {podeGerir && (

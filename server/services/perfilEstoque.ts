@@ -195,32 +195,6 @@ export async function definirSaldoFisicoPerfil(input: {
   });
 }
 
-export async function registrarEntradaPerfil(input: {
-  perfilItemId: number;
-  quantidade: number;
-  observacao?: string | null;
-  usuario: string;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const [item] = await db
-    .select()
-    .from(perfilEstoqueItens)
-    .where(eq(perfilEstoqueItens.id, input.perfilItemId))
-    .limit(1);
-  if (!item) throw new Error("Perfil não encontrado.");
-  await db.insert(perfilEstoqueMovimentos).values({
-    perfilItemId: item.id,
-    tipo: "entrada_manual",
-    quantidade: String(input.quantidade),
-    unidade: item.unidade,
-    origemChave: `entrada:${randomUUID()}`,
-    descricao: input.observacao?.trim() || "Entrada manual de estoque",
-    criadoPor: input.usuario,
-  });
-  return { success: true };
-}
-
 export async function atualizarAlvoPerfil(input: {
   perfilItemId: number;
   alvoDoisMeses: number | null;
