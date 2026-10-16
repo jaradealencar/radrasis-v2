@@ -62,6 +62,7 @@ export default function BobinasPerfilDialog({
     { enabled: aberto }
   );
   const [metodo, setMetodo] = useState<Metodo>("diametros");
+  const [quantidadeBobinas, setQuantidadeBobinas] = useState("1");
   const [externo, setExterno] = useState("");
   const [interno, setInterno] = useState("");
   const [espessura, setEspessura] = useState(() =>
@@ -75,6 +76,9 @@ export default function BobinasPerfilDialog({
     (total, bobina) => total + bobina.comprimentoMetros,
     0
   );
+  const quantidade = Number(quantidadeBobinas);
+  const quantidadeValida =
+    Number.isInteger(quantidade) && quantidade >= 1 && quantidade <= 100;
   const estimativa = useMemo(() => {
     if (metodo === "metros") return parseNumero(metros);
     if (metodo === "peso") {
@@ -87,8 +91,11 @@ export default function BobinasPerfilDialog({
     if (!dExterno || !dInterno || !t || dExterno <= dInterno) return null;
     return (Math.PI * (dExterno ** 2 - dInterno ** 2)) / (4 * t * 1000);
   }, [metodo, metros, peso, perfil.kgPorMetro, externo, interno, espessura]);
+  const comprimentoTotal =
+    estimativa != null && quantidadeValida ? estimativa * quantidade : null;
 
   const limparMedida = () => {
+    setQuantidadeBobinas("1");
     setExterno("");
     setInterno("");
     setPeso("");
@@ -98,7 +105,7 @@ export default function BobinasPerfilDialog({
   const registrar = trpc.perfilEstoque.registrarBobina.useMutation({
     onSuccess: async resultado => {
       toast.success(
-        `Bobina registrada com ${fmtNum(resultado.comprimentoMetros, 2)} m.`
+        `${resultado.quantidadeBobinas} bobina(s) registrada(s): ${fmtNum(resultado.totalMetros, 2)} m no total (${fmtNum(resultado.comprimentoMetros, 2)} m cada).`
       );
       limparMedida();
       await utils.perfilEstoque.bobinas.invalidate({ perfilItemId: perfil.id });
@@ -126,6 +133,7 @@ export default function BobinasPerfilDialog({
   const salvar = () => {
     registrar.mutate({
       perfilItemId: perfil.id,
+      quantidadeBobinas: quantidade,
       metodo,
       diametroExternoMm: ["diametros", "foto"].includes(metodo)
         ? parseNumero(externo)
@@ -174,6 +182,22 @@ export default function BobinasPerfilDialog({
               </Select>
               <p className="mt-1 text-xs text-muted-foreground">
                 O sistema numera cada bobina automaticamente neste perfil.
+              </p>
+            </div>
+            <div className="max-w-52">
+              <Label>Quantidade de bobinas iguais</Label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={100}
+                step={1}
+                value={quantidadeBobinas}
+                onChange={event => setQuantidadeBobinas(event.target.value)}
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Todas usarão as medidas informadas abaixo.
               </p>
             </div>
 
@@ -266,10 +290,10 @@ export default function BobinasPerfilDialog({
                 className="mt-1.5"
               />
             </div>
-            <div className="flex flex-col gap-3 rounded-lg bg-blue-50 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <div>
+            <div className="grid gap-3 rounded-lg bg-blue-50 p-3 text-sm sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+              <div className="min-w-0">
                 <span className="block text-xs text-blue-700">
-                  Comprimento calculado
+                  Comprimento por bobina
                 </span>
                 <b className="text-lg text-blue-950">
                   {estimativa && estimativa > 0
@@ -277,12 +301,23 @@ export default function BobinasPerfilDialog({
                     : "Aguardando medidas"}
                 </b>
               </div>
+              <div className="min-w-0">
+                <span className="block text-xs text-blue-700">
+                  Total ({quantidadeValida ? quantidade : 0} bobinas)
+                </span>
+                <b className="text-lg text-blue-950">
+                  {comprimentoTotal != null && comprimentoTotal > 0
+                    ? `${fmtNum(comprimentoTotal, 2)} m`
+                    : "—"}
+                </b>
+              </div>
               <Button
                 onClick={salvar}
-                disabled={!estimativa || estimativa <= 0 || registrar.isPending}
-                className="gap-2"
+                disabled={!estimativa || estimativa <= 0 || !quantidadeValida || registrar.isPending}
+                className="w-full gap-2 sm:w-auto"
               >
-                <Plus className="h-4 w-4" /> Adicionar bobina
+                <Plus className="h-4 w-4" />
+                Adicionar {quantidade > 1 ? "bobinas" : "bobina"}
               </Button>
             </div>
           </div>

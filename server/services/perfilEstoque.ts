@@ -281,6 +281,7 @@ function calcularComprimentoBobina(input: {
 
 export async function registrarBobinaPerfil(input: {
   perfilItemId: number;
+  quantidadeBobinas?: number;
   identificacao?: string | null;
   metodo: MetodoContagemBobina;
   diametroExternoMm?: number | null;
@@ -330,12 +331,14 @@ export async function registrarBobinaPerfil(input: {
         eq(perfilEstoqueBobinas.ativo, true)
       )
     );
-  const [bobina] = await db
+  const quantidadeBobinas = input.quantidadeBobinas ?? 1;
+  const comprimentoPorBobina = Number(comprimento.toFixed(4));
+  const bobinas = await db
     .insert(perfilEstoqueBobinas)
-    .values({
+    .values(Array.from({ length: quantidadeBobinas }, (_, indice) => ({
       perfilItemId: input.perfilItemId,
       identificacao:
-        input.identificacao?.trim() || `Bobina ${(total ?? 0) + 1}`,
+        input.identificacao?.trim() || `Bobina ${(total ?? 0) + indice + 1}`,
       metodo: input.metodo,
       diametroExternoMm:
         input.diametroExternoMm == null
@@ -347,12 +350,18 @@ export async function registrarBobinaPerfil(input: {
           : String(input.diametroInternoMm),
       espessuraMm: input.espessuraMm == null ? null : String(input.espessuraMm),
       pesoKg: input.pesoKg == null ? null : String(input.pesoKg),
-      comprimentoMetros: String(Number(comprimento.toFixed(4))),
+      comprimentoMetros: String(comprimentoPorBobina),
       observacao: input.observacao?.trim() || null,
       contadoPor: input.usuario,
-    })
+    })))
     .returning();
-  return { ...bobina, comprimentoMetros: Number(bobina.comprimentoMetros) };
+  const [bobina] = bobinas;
+  return {
+    ...bobina,
+    comprimentoMetros: Number(bobina.comprimentoMetros),
+    quantidadeBobinas: bobinas.length,
+    totalMetros: Number((comprimentoPorBobina * bobinas.length).toFixed(4)),
+  };
 }
 
 export async function removerBobinaPerfil(id: number, usuario: string) {
