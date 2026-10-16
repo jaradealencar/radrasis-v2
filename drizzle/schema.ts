@@ -2062,6 +2062,10 @@ export const perfilEstoqueItens = pgTable(
     horizonteMeses: integer("horizonte_meses").notNull().default(2),
     estoqueMinimo: decimal("estoque_minimo", { precision: 16, scale: 4 }),
     estoqueMedio: decimal("estoque_medio", { precision: 16, scale: 4 }),
+    consumoMensalHistorico: decimal("consumo_mensal_historico", {
+      precision: 16,
+      scale: 4,
+    }),
     kgPorMetro: decimal("kg_por_metro", { precision: 14, scale: 6 }),
     statusCatalogo: varchar("status_catalogo", { length: 24 })
       .notNull()

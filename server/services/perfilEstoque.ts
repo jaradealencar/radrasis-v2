@@ -62,11 +62,18 @@ export async function listarEstoquePerfis() {
   return itens.map(item => {
     const saldo =
       Number(item.estoqueInicial) + (totalPorItem.get(item.id) ?? 0);
-    const alvoBase =
+    const consumoHistorico =
+      item.consumoMensalHistorico == null
+        ? null
+        : Number(item.consumoMensalHistorico);
+    const alvoManual =
       item.alvoDoisMeses == null ? null : Number(item.alvoDoisMeses);
+    const alvoBase =
+      alvoManual ?? (consumoHistorico == null ? null : consumoHistorico * 2);
     const horizonteMeses = item.horizonteMeses ?? 2;
     const alvo = alvoBase == null ? null : (alvoBase / 2) * horizonteMeses;
-    const consumoMensal = alvoBase == null ? null : alvoBase / 2;
+    const consumoMensal =
+      alvoManual == null ? consumoHistorico : alvoManual / 2;
     const estoqueMinimoConfigurado =
       item.estoqueMinimo == null ? null : Number(item.estoqueMinimo);
     const estoqueMinimo = estoqueMinimoConfigurado ?? consumoMensal;
@@ -92,6 +99,13 @@ export async function listarEstoquePerfis() {
     return {
       ...item,
       estoqueInicial: Number(item.estoqueInicial),
+      consumoMensalHistorico: consumoHistorico,
+      consumoFonte:
+        alvoManual != null
+          ? "manual"
+          : consumoHistorico != null
+            ? "historico_2026"
+            : "sem_base",
       alvoDoisMeses: alvo,
       alvoBaseDoisMeses: alvoBase,
       horizonteMeses,

@@ -126,6 +126,7 @@ export default function EstoquePerfis() {
   const [horizonteMeses, setHorizonteMeses] = useState("2");
   const [estoqueMinimo, setEstoqueMinimo] = useState("");
   const [estoqueMedio, setEstoqueMedio] = useState("");
+  const [idealManual, setIdealManual] = useState(false);
   const [minimoManual, setMinimoManual] = useState(false);
   const [medioManual, setMedioManual] = useState(false);
   const [observacao, setObservacao] = useState("");
@@ -139,6 +140,7 @@ export default function EstoquePerfis() {
     setHorizonteMeses("2");
     setEstoqueMinimo("");
     setEstoqueMedio("");
+    setIdealManual(false);
     setMinimoManual(false);
     setMedioManual(false);
     setObservacao("");
@@ -210,6 +212,7 @@ export default function EstoquePerfis() {
     setEstoqueMedio(
       medioSugerido == null ? "" : String(medioSugerido).replace(".", ",")
     );
+    setIdealManual(item.consumoFonte === "manual");
     setMinimoManual(item.estoqueMinimoConfigurado != null);
     setMedioManual(item.estoqueMedioConfigurado != null);
   };
@@ -263,7 +266,7 @@ export default function EstoquePerfis() {
       }
       atualizarAlvo.mutate({
         perfilItemId: selecionado.id,
-        alvoDoisMeses: (numero * 2) / meses,
+        alvoDoisMeses: idealManual ? (numero * 2) / meses : null,
         horizonteMeses: meses,
         estoqueMinimo: minimoManual ? minimo : null,
         estoqueMedio: medioManual ? medio : null,
@@ -867,6 +870,7 @@ export default function EstoquePerfis() {
                 onChange={event => {
                   const novoValor = event.target.value;
                   setValor(novoValor);
+                  setIdealManual(true);
                   const ideal = parseNumero(novoValor);
                   const meses = Number(horizonteMeses);
                   if (ideal == null || meses <= 0) return;
@@ -884,6 +888,15 @@ export default function EstoquePerfis() {
                 placeholder="0,00"
                 className="mt-1.5"
               />
+              {acao === "alvo" && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {selecionado?.consumoFonte === "historico_2026"
+                    ? "Sugestão baseada na Qtd. Prevista das O.S. concluídas/entregues entre 01/01 e 15/10/2026; você pode ajustar."
+                    : selecionado?.consumoFonte === "manual"
+                      ? "Sugestão baseada no consumo mensal que já foi configurado para este perfil."
+                      : "Sem histórico convertível em metros para este perfil; informe o nível ideal manualmente."}
+                </p>
+              )}
             </div>
             {acao === "alvo" && (
               <div>

@@ -799,6 +799,13 @@
       "when": 1792179930888,
       "tag": "0113_remarkable_ultimates",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1792182233111,
+      "tag": "0114_confused_crusher_hogan",
+      "breakpoints": true
     }
   ]
 }
