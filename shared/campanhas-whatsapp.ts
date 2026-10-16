@@ -116,9 +116,31 @@ export function normalizarTelefone(bruto: unknown): string | null {
 }
 
 function normalizarUmTelefone(bruto: string): string | null {
-  const digitos = bruto.replace(/\D/g, "").replace(/^0+/, "");
+  const digitos = String(bruto ?? "").replace(/\D/g, "").replace(/^0+/, "");
   if (!digitos) return null;
-  const completo = digitos.length >= 12 && digitos.startsWith("55") ? digitos : `55${digitos}`;
+
+  let ddd = "";
+  let corpo = "";
+
+  if (digitos.startsWith("55") && digitos.length >= 12) {
+    ddd = digitos.slice(2, 4);
+    corpo = digitos.slice(4);
+  } else if (digitos.length === 10 || digitos.length === 11) {
+    ddd = digitos.slice(0, 2);
+    corpo = digitos.slice(2);
+  } else {
+    return null;
+  }
+
+  // DDD válido brasileiro: 2 dígitos entre 11 e 99 (sem dígito 0)
+  if (!/^[1-9][1-9]$/.test(ddd)) return null;
+
+  // Celular com 8 dígitos (começando com 6, 7, 8 ou 9): insere o 9º dígito obrigatório do WhatsApp
+  if (corpo.length === 8 && /^[6-9]/.test(corpo)) {
+    corpo = `9${corpo}`;
+  }
+
+  const completo = `55${ddd}${corpo}`;
   return /^55[1-9][1-9](9\d{8}|[2-9]\d{7})$/.test(completo) ? completo : null;
 }
 

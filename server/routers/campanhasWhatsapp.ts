@@ -63,6 +63,8 @@ const campanhasProcedure = protectedProcedure.use(requireRole("admin", "master",
 export const MAX_CONTATOS_POR_DISPARO = 20_000;
 const MAX_LISTA_TELA = 500;
 const MAX_STATUS_WTS_POR_DISPARO = 10;
+/** Intervalo entre cada envio sequencial à Ceci.Chat: disparo em rajada paralela não chegava ao WhatsApp (16/10/2026). */
+const INTERVALO_DISPARO_WTS_MS = 1200;
 /** Pós-venda devolve todos os clientes (a tela rola e o botão de baixar exporta a lista inteira). */
 const MAX_CLIENTES_POS_VENDA_TELA = 5000;
 const MAX_JANELA_CALENDARIO_DIAS = 62;
@@ -836,18 +838,17 @@ export const campanhasWhatsappRouter = router({
       const restantes = Math.max(0, selecionados.length - MAX_DISPARO_WTS);
       const tentativas = selecionados.slice(0, MAX_DISPARO_WTS);
 
-      const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string; resposta?: string }> = new Array(tentativas.length);
-      let proximo = 0;
-      const trabalhadores = Array.from({ length: Math.min(8, tentativas.length) }, async () => {
-        while (true) {
-          const indice = proximo++;
-          if (indice >= tentativas.length) return;
-          const contato = tentativas[indice];
-          const resultado = await enviarTemplateWts(contato.telefone, templateId);
-          resultados[indice] = { contato, ok: resultado.ok, erro: resultado.erro, resposta: resultado.resposta };
-        }
-      });
-      await Promise.all(trabalhadores);
+      // Envio sequencial (1 por vez, com intervalo) em vez de paralelo: igual ao caminho do "Testar neste número",
+      // que sempre entregou de verdade. O disparo em paralelo (8 workers simultâneos) era aceito pela Ceci
+      // (HTTP 200/QUEUED/READ) mas não chegava ao WhatsApp do destinatário — confirmado em teste real
+      // (16/10/2026): a mesma mensagem enviada em rajada não chegou, e enviada isolada chegou sempre.
+      const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string; resposta?: string }> = [];
+      for (let indice = 0; indice < tentativas.length; indice++) {
+        const contato = tentativas[indice];
+        const resultado = await enviarTemplateWts(contato.telefone, templateId);
+        resultados.push({ contato, ok: resultado.ok, erro: resultado.erro, resposta: resultado.resposta });
+        if (indice < tentativas.length - 1) await new Promise(r => setTimeout(r, INTERVALO_DISPARO_WTS_MS));
+      }
 
       // O aceite é assíncrono. Consulta até dez IDs de mensagem para conferir cada destinatário do teste
       // sem fazer uma rajada de até cem consultas no provedor. Isso é só informativo: não altera o registro.

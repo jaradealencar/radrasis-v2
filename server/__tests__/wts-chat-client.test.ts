@@ -125,7 +125,7 @@ describe("consultarEstadoMensagemWts", () => {
     expect(resultado).toMatchObject({ estado: "DELIVERED" });
   });
 
-  it("preserva o detalhe HTTP quando a consulta falha", async () => {
+  it("preserva o detalhe HTTP quando a consulta falha nos dois domínios (Ceci e WTS)", async () => {
     vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
@@ -135,6 +135,11 @@ describe("consultarEstadoMensagemWts", () => {
 
     const resultado = await consultarEstadoMensagemWts("id-inexistente");
 
-    expect(resultado).toEqual({ estado: null, detalhe: "/chat/v1/message/id-inexistente/status: HTTP 404: not found" });
+    // Sem statusUrl, tenta a rota documentada nos dois domínios (api.app.ceci.chat e api.wts.chat);
+    // as duas falham igual no mock, então a mensagem concatena as duas tentativas.
+    expect(resultado).toEqual({
+      estado: null,
+      detalhe: "/chat/v1/message/id-inexistente/status: HTTP 404: not found | /chat/v1/message/id-inexistente/status: HTTP 404: not found",
+    });
   });
 });

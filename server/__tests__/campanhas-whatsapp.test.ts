@@ -19,6 +19,14 @@ describe("normalizarTelefone", () => {
     expect(normalizarTelefone("(67) 3333-1234")).toBe("556733331234");
   });
 
+  it("acrescenta automaticamente o 9º dígito em celulares antigos de 8 dígitos", () => {
+    expect(normalizarTelefone("(67) 9278-4664")).toBe("5567992784664");
+    expect(normalizarTelefone("556792784664")).toBe("5567992784664");
+    expect(normalizarTelefone("(47) 9131-7116")).toBe("5547991317116");
+    expect(normalizarTelefone("(65) 9962-6810")).toBe("5565999626810");
+    expect(normalizarTelefone("(48) 9622-6383")).toBe("5548996226383");
+  });
+
   it("distingue DDD 55 (RS) do DDI 55 pelo comprimento", () => {
     expect(normalizarTelefone("(55) 99999-0000")).toBe("5555999990000");
     expect(normalizarTelefone("55 55 99999-0000")).toBe("5555999990000");
@@ -465,7 +473,8 @@ describe("pós-venda por cliente único e período pela data da compra", () => {
 
 describe("telefone: vários números no mesmo campo e 'sem telefone' x 'inválido'", () => {
   it("usa o primeiro número válido quando o cadastro guarda mais de um", () => {
-    expect(normalizarTelefone("(67) 8405-8895 / (0000) 0000-0")).toBe("556784058895");
+    // "8405-8895" é celular antigo de 8 dígitos (começa em 8): ganha o 9º dígito automaticamente (ver describe acima).
+    expect(normalizarTelefone("(67) 8405-8895 / (0000) 0000-0")).toBe("5567984058895");
     expect(normalizarTelefone("(67) 2109-8708 / (67) 99393-2345")).toBe("556721098708");
     expect(normalizarTelefone("0000-0000; (67) 99999-0000")).toBe("5567999990000");
     expect(normalizarTelefone("(67) 3333-4444 e (67) 99999-0000")).toBe("556733334444");
