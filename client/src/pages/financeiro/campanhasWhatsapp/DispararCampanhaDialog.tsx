@@ -218,7 +218,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
               </div>
               {diagCeci && (
                 <div className="pt-1 text-[11px] text-muted-foreground border-t mt-1">
-                  <span>Canal configurado: <strong>{diagCeci.canalConfiguradoEnv}</strong></span>
+                  <span>Canal configurado: <strong>{diagCeci.canalConfiguradoEnv}</strong> {diagCeci.canalIdConfigurado && <span className="text-slate-500">(ID: <code className="text-[10px]">{diagCeci.canalIdConfigurado.slice(0, 8)}...</code>)</span>}</span>
                   {diagCeci.canais && diagCeci.canais.length > 0 && (
                     <span className="ml-2 text-slate-700">
                       (Canais encontrados na Ceci: {diagCeci.canais.map((c: any) => c.phoneNumber || c.phone || c.name || c.id).join(", ")})

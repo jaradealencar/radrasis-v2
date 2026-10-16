@@ -23,12 +23,13 @@ describe("enviarTemplateWts", () => {
     const resultado = await enviarTemplateWts("5567999990001", "template-teste");
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0][0]).toBe("https://api.wts.chat/chat/v1/send/template");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.app.ceci.chat/chat/v1/send/template");
     const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(Array.isArray(bodyEnviado)).toBe(false);
     expect(bodyEnviado).toMatchObject({
       to: "5567999990001",
       from: "5511999990000",
+      senderId: "b13d2257-af6d-4cbb-a4fd-fa73069ae863",
       templateId: "template-teste",
     });
     expect(resultado.ok).toBe(true);
@@ -75,7 +76,7 @@ describe("criarCampanhaWts", () => {
     const res = await criarCampanhaWts("Campanha Teste", "template-123", ["5567999990001"]);
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0][0]).toBe("https://api.wts.chat/chat/v1/campaigns");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.app.ceci.chat/chat/v1/campaigns");
     expect(res.ok).toBe(true);
     expect(res.campanhaId).toBe("camp-999");
   });
@@ -95,7 +96,7 @@ describe("consultarEstadoMensagemWts", () => {
     const resultado = await consultarEstadoMensagemWts("mensagem-123", statusUrl);
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0][0]).toBe("https://api.wts.chat/v1/send/message/mensagem-123");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.app.ceci.chat/v1/send/message/mensagem-123");
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       headers: {
         accept: "application/json",
@@ -117,10 +118,10 @@ describe("consultarEstadoMensagemWts", () => {
       .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ status: "DELIVERED" }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    const resultado = await consultarEstadoMensagemWts("mensagem-123", "https://api.wts.chat/v1/send/message/mensagem-123");
+    const resultado = await consultarEstadoMensagemWts("mensagem-123", "https://api.app.ceci.chat/v1/send/message/mensagem-123");
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][0]).toBe("https://api.wts.chat/chat/v1/message/mensagem-123/status");
+    expect(fetchMock.mock.calls[1][0]).toBe("https://api.app.ceci.chat/chat/v1/message/mensagem-123/status");
     expect(resultado).toMatchObject({ estado: "DELIVERED" });
   });
 

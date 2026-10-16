@@ -1,7 +1,11 @@
-const WTS_CHAT_SEND_TEMPLATE_URL = "https://api.wts.chat/chat/v1/send/template";
+const CECI_API_BASE_URL = "https://api.app.ceci.chat";
+const WTS_API_BASE_URL = "https://api.wts.chat";
 
-/** Número de origem padrão (canal WhatsApp na WTS.Chat); `WTS_CHAT_FROM` sobrescreve. */
+/** Número de origem padrão (canal WhatsApp na Ceci.Chat); `WTS_CHAT_FROM` sobrescreve. */
 export const WTS_CHAT_FROM_PADRAO = "551194266377";
+
+/** ID único do canal WhatsApp da Letreiros Express na Ceci.Chat. */
+export const CECI_CANAL_ID_PADRAO = "b13d2257-af6d-4cbb-a4fd-fa73069ae863";
 
 export interface WtsChatResultadoEnvio {
   ok: boolean;
@@ -38,18 +42,46 @@ export function wtsChatConfigurado(): boolean {
   return !!process.env.WTS_CHAT_AUTHORIZATION?.trim();
 }
 
-/** Retorna o canal remetente higienizado com DDI 55, caindo com segurança no canal padrão (551194266377). */
-export function obterCanalRemetente(): string {
-  let digits = (process.env.WTS_CHAT_FROM ?? "").replace(/\D/g, "");
+/**
+ * Retorna o ID único do canal na Ceci.Chat (UUID do canal físico do WhatsApp).
+ * Pode ser configurado via `CECI_CHANNEL_ID` ou `WTS_CHAT_CHANNEL_ID`.
+ * Se `WTS_CHAT_FROM` contiver um UUID, é utilizado diretamente.
+ * Caso contrário, utiliza o canal padrão oficial da Letreiros Express (b13d2257-af6d-4cbb-a4fd-fa73069ae863).
+ */
+export function obterCanalId(): string {
+  const directId = (process.env.CECI_CHANNEL_ID ?? process.env.WTS_CHAT_CHANNEL_ID ?? "").trim();
+  if (directId) return directId;
+
+  const fromVal = (process.env.WTS_CHAT_FROM ?? "").trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fromVal)) {
+    return fromVal;
+  }
+  return CECI_CANAL_ID_PADRAO;
+}
+
+/**
+ * Retorna o número de telefone do canal remetente com DDI 55.
+ * Se `WTS_CHAT_FROM` for um UUID, cai com segurança no telefone padrão (551194266377).
+ */
+export function obterCanalTelefone(): string {
+  const fromVal = (process.env.WTS_CHAT_FROM ?? "").trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fromVal)) {
+    return WTS_CHAT_FROM_PADRAO;
+  }
+  let digits = fromVal.replace(/\D/g, "");
   if (!digits || digits.length < 10) return WTS_CHAT_FROM_PADRAO;
   if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
   return digits;
 }
 
+/** Retorna o canal remetente higienizado com DDI 55, caindo com segurança no canal padrão (551194266377). */
+export function obterCanalRemetente(): string {
+  return obterCanalTelefone();
+}
+
 /**
- * Enfileira um template aprovado pela Meta (cadastrado na WTS.Chat) para um único destinatário.
- * A API da WTS.Chat (Helena) espera um array de DTOs: List<RequestMessageQuickSendDTO>.
- * `templateId` é o ID que a WTS.Chat mostra no cadastro do modelo de mensagem.
+ * Enfileira um template aprovado pela Meta (cadastrado na Ceci.Chat) para um único destinatário.
+ * `templateId` é o ID que a Ceci.Chat mostra no cadastro do modelo de mensagem.
  */
 export async function enviarTemplateWts(
   telefone: string,
@@ -62,42 +94,63 @@ export async function enviarTemplateWts(
   }
 
   const authorizationHeader = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
+  const canalId = obterCanalId();
+  const canalTelefone = obterCanalTelefone();
 
   const payloadItem: Record<string, unknown> = {
     to: telefone,
-    from: obterCanalRemetente(),
+    from: canalTelefone,
+    senderId: canalId,
+    channelId: canalId,
     templateId,
   };
   if (parameters && parameters.length > 0) {
     payloadItem.parameters = parameters;
   }
 
-  try {
-    const response = await fetch(WTS_CHAT_SEND_TEMPLATE_URL, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        Authorization: authorizationHeader,
-      },
-      // O endpoint /chat/v1/send/template espera o objeto PublicReqSendTemplateSingleDTO
-      body: JSON.stringify(payloadItem),
-      signal: AbortSignal.timeout(15_000),
-    });
+  const endpoints = [
+    `${CECI_API_BASE_URL}/chat/v1/send/template`,
+    `${WTS_API_BASE_URL}/chat/v1/send/template`,
+  ];
 
-    const corpo = (await response.text().catch(() => "")).slice(0, 500);
-    if (!response.ok) {
-      return { ok: false, status: response.status, erro: `WTS.Chat respondeu HTTP ${response.status}${corpo ? `: ${corpo}` : "."}`, resposta: corpo };
+  let ultimoErro = "Falha de conexão com a Ceci.Chat.";
+  let ultimoStatus = 0;
+  let ultimaResposta = "";
+
+  for (const url of endpoints) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          Authorization: authorizationHeader,
+        },
+        body: JSON.stringify(payloadItem),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      const corpo = (await response.text().catch(() => "")).slice(0, 500);
+      ultimoStatus = response.status;
+      ultimaResposta = corpo;
+
+      if (!response.ok) {
+        ultimoErro = `Ceci.Chat respondeu HTTP ${response.status}${corpo ? `: ${corpo}` : "."}`;
+        // Se deu 404 de rota não encontrada na Ceci, tenta a URL da WTS
+        if (response.status === 404) continue;
+        return { ok: false, status: response.status, erro: ultimoErro, resposta: corpo };
+      }
+      const recusa = motivoRecusaNoCorpo(corpo);
+      if (recusa) return { ok: false, status: response.status, erro: `Ceci.Chat recusou: ${recusa}`, resposta: corpo };
+      return { ok: true, status: response.status, resposta: corpo };
+    } catch (error) {
+      ultimoErro = error instanceof Error && error.name === "TimeoutError"
+        ? "Tempo esgotado ao conectar à Ceci.Chat."
+        : "Falha de conexão com a Ceci.Chat.";
     }
-    const recusa = motivoRecusaNoCorpo(corpo);
-    if (recusa) return { ok: false, status: response.status, erro: `WTS.Chat recusou: ${recusa}`, resposta: corpo };
-    return { ok: true, status: response.status, resposta: corpo };
-  } catch (error) {
-    const message = error instanceof Error && error.name === "TimeoutError"
-      ? "Tempo esgotado ao conectar à WTS.Chat."
-      : "Falha de conexão com a WTS.Chat.";
-    return { ok: false, status: 0, erro: message };
   }
+
+  return { ok: false, status: ultimoStatus, erro: ultimoErro, resposta: ultimaResposta };
 }
 
 /**
@@ -115,17 +168,22 @@ export async function criarCampanhaWts(
   }
 
   const authorizationHeader = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
-  const from = obterCanalRemetente();
+  const canalId = obterCanalId();
+  const canalTelefone = obterCanalTelefone();
 
   const endpoints = [
-    "https://api.wts.chat/chat/v1/campaigns",
-    "https://api.wts.chat/chat/v1/campaign",
+    `${CECI_API_BASE_URL}/chat/v1/campaigns`,
+    `${WTS_API_BASE_URL}/chat/v1/campaigns`,
+    `${CECI_API_BASE_URL}/chat/v1/campaign`,
+    `${WTS_API_BASE_URL}/chat/v1/campaign`,
   ];
 
   const payload = {
     name: nomeCampanha,
     templateId,
-    from,
+    from: canalTelefone,
+    senderId: canalId,
+    channelId: canalId,
     contacts: telefones.map(t => ({ phone: t, to: t })),
     phones: telefones,
   };
@@ -155,6 +213,8 @@ export async function criarCampanhaWts(
         return { ok: true, campanhaId: id ? String(id) : undefined, status: response.status, resposta: corpo };
       } else {
         ultimoErro = `${new URL(url).pathname}: HTTP ${response.status} - ${corpo}`;
+        // Se 404 em rota de um domínio, tenta a do próximo endpoint
+        if (response.status === 404) continue;
       }
     } catch (e) {
       ultimoErro = `${new URL(url).pathname}: ${e instanceof Error ? e.message : "falha de conexão"}`;
@@ -170,13 +230,15 @@ export interface InfoCeciDiagnostico {
   campanhas: unknown;
   erroCampanhas?: string;
   canalConfiguradoEnv: string;
+  canalIdConfigurado: string;
 }
 
 /**
  * Consulta canais e campanhas conectados na Ceci.Chat para diagnóstico de canal remetente e permissões.
  */
 export async function consultarDiagnosticoCeci(): Promise<InfoCeciDiagnostico> {
-  const canalConfiguradoEnv = obterCanalRemetente();
+  const canalConfiguradoEnv = obterCanalTelefone();
+  const canalIdConfigurado = obterCanalId();
   const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
   if (!authorization) {
     return {
@@ -184,6 +246,7 @@ export async function consultarDiagnosticoCeci(): Promise<InfoCeciDiagnostico> {
       erroCanais: "WTS_CHAT_AUTHORIZATION não configurado.",
       campanhas: [],
       canalConfiguradoEnv,
+      canalIdConfigurado,
     };
   }
 
@@ -191,48 +254,64 @@ export async function consultarDiagnosticoCeci(): Promise<InfoCeciDiagnostico> {
 
   let canais: Array<Record<string, unknown>> = [];
   let erroCanais: string | undefined;
-  try {
-    const res = await fetch("https://api.wts.chat/chat/v1/channels", {
-      headers: { accept: "application/json", Authorization: authorizationHeader },
-      signal: AbortSignal.timeout(8000),
-    });
-    const text = await res.text();
-    if (res.ok) {
-      try {
-        const json = JSON.parse(text);
-        canais = Array.isArray(json) ? json : ((json.items || json.data || [json]) as Array<Record<string, unknown>>);
-      } catch {
-        erroCanais = text.slice(0, 300);
+  const endpointsCanais = [
+    `${CECI_API_BASE_URL}/chat/v1/channels`,
+    `${WTS_API_BASE_URL}/chat/v1/channels`,
+  ];
+  for (const url of endpointsCanais) {
+    try {
+      const res = await fetch(url, {
+        headers: { accept: "application/json", Authorization: authorizationHeader },
+        signal: AbortSignal.timeout(8000),
+      });
+      const text = await res.text();
+      if (res.ok) {
+        try {
+          const json = JSON.parse(text);
+          canais = Array.isArray(json) ? json : ((json.items || json.data || [json]) as Array<Record<string, unknown>>);
+          erroCanais = undefined;
+          break;
+        } catch {
+          erroCanais = text.slice(0, 300);
+        }
+      } else {
+        erroCanais = `HTTP ${res.status}: ${text.slice(0, 300)}`;
       }
-    } else {
-      erroCanais = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+    } catch (e) {
+      erroCanais = e instanceof Error ? e.message : "Erro ao consultar canais";
     }
-  } catch (e) {
-    erroCanais = e instanceof Error ? e.message : "Erro ao consultar canais";
   }
 
   let campanhas: unknown = [];
   let erroCampanhas: string | undefined;
-  try {
-    const res = await fetch("https://api.wts.chat/chat/v1/campaigns", {
-      headers: { accept: "application/json", Authorization: authorizationHeader },
-      signal: AbortSignal.timeout(8000),
-    });
-    const text = await res.text();
-    if (res.ok) {
-      try {
-        campanhas = JSON.parse(text);
-      } catch {
-        erroCampanhas = text.slice(0, 300);
+  const endpointsCampanhas = [
+    `${CECI_API_BASE_URL}/chat/v1/campaigns`,
+    `${WTS_API_BASE_URL}/chat/v1/campaigns`,
+  ];
+  for (const url of endpointsCampanhas) {
+    try {
+      const res = await fetch(url, {
+        headers: { accept: "application/json", Authorization: authorizationHeader },
+        signal: AbortSignal.timeout(8000),
+      });
+      const text = await res.text();
+      if (res.ok) {
+        try {
+          campanhas = JSON.parse(text);
+          erroCampanhas = undefined;
+          break;
+        } catch {
+          erroCampanhas = text.slice(0, 300);
+        }
+      } else {
+        erroCampanhas = `HTTP ${res.status}: ${text.slice(0, 300)}`;
       }
-    } else {
-      erroCampanhas = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+    } catch (e) {
+      erroCampanhas = e instanceof Error ? e.message : "Erro ao consultar campanhas";
     }
-  } catch (e) {
-    erroCampanhas = e instanceof Error ? e.message : "Erro ao consultar campanhas";
   }
 
-  return { canais, erroCanais, campanhas, erroCampanhas, canalConfiguradoEnv };
+  return { canais, erroCanais, campanhas, erroCampanhas, canalConfiguradoEnv, canalIdConfigurado };
 }
 
 /** Extrai o ID da mensagem enfileirada da resposta do envio (`{"id": "...", "status": "QUEUED"}` ou `[{"id": "..."}]`). */
@@ -254,8 +333,11 @@ export function urlStatusMensagemWts(resposta: string | undefined, id: string): 
     const obj = Array.isArray(json) ? json[0] : json;
     const statusUrl = (obj as { statusUrl?: unknown })?.statusUrl;
     if (typeof statusUrl !== "string" || !statusUrl.trim()) return null;
-    const url = new URL(statusUrl, "https://api.wts.chat");
-    if (url.origin !== "https://api.wts.chat" || url.pathname !== `/v1/send/message/${encodeURIComponent(id)}`) return null;
+    const url = new URL(statusUrl, CECI_API_BASE_URL);
+    if (
+      (url.origin !== "https://api.app.ceci.chat" && url.origin !== "https://api.wts.chat") ||
+      url.pathname !== `/v1/send/message/${encodeURIComponent(id)}`
+    ) return null;
     return url.toString();
   } catch {
     return null;
@@ -277,7 +359,8 @@ export async function consultarEstadoMensagemWts(id: string, statusUrl?: string 
   const urlAceita = statusUrl ? urlStatusMensagemWts(JSON.stringify({ statusUrl }), id) : null;
   const endpoints = [
     ...(urlAceita ? [urlAceita] : []),
-    `https://api.wts.chat/chat/v1/message/${encodeURIComponent(id)}/status`,
+    `${CECI_API_BASE_URL}/chat/v1/message/${encodeURIComponent(id)}/status`,
+    `${WTS_API_BASE_URL}/chat/v1/message/${encodeURIComponent(id)}/status`,
   ];
   const falhas: string[] = [];
   for (const url of endpoints) {
