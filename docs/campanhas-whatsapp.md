@@ -354,9 +354,12 @@ O upload de lista (Registrar disparo e fontes por arquivo) aceita `.csv`, `.xlsx
 - As procedures exigem admin/master/gestor no servidor; o restante do acesso é o da tela de Inteligência de Clientes.
 - A aba mora dentro de `MarketingFinanceiro.tsx`, mas **não depende** do relatório de marketing (busca ao vivo no
   MubiSys): só as abas que leem esse relatório esperam por ele.
-- `gerarListaDaCampanha` recarrega **todo** `historico_os`/`historico_orcamentos` a cada chamada (mesmo custo de
-  `construirBaseClientes` em outros módulos) — aceitável no volume atual, mas é o ponto a otimizar primeiro se o
-  histórico crescer muito (ex.: cachear por alguns minutos, como já existe noutros relatórios do Comercial).
+- **Cache em memória do histórico ERP (otimizado em 17/10/2026)**: `carregarContextoErp` agora usa cache
+  em memória com TTL de 3 minutos (`server/services/fontesErpCampanhas.ts`), evitando recarregar
+  `historico_os`/`historico_orcamentos` inteiros a cada consulta. Invalidação automática em
+  `atualizarDadosErp` (quando o usuário clica em "Atualizar do MubiSys") e em `completarTelefonesHistorico`/
+  `orcamentosTelefoneLote` (quando novos telefones são preenchidos). Reduz a latência de consultas repetidas
+  (ex.: contagem de audiências + abrir "Ver contatos" da mesma campanha em sequência).
 - Várias fontes ficam sem telefone quando a venda/empresa é anterior a 21/09/2026 (mesma limitação já
   documentada no pós-venda) — confirmado em teste manual: de 990 inativos resolvidos, 857 vieram sem telefone,
   mesmo o cadastro do cliente tendo telefone no Mubisys (o problema é a cópia local antiga, não o ERP). Backfill:

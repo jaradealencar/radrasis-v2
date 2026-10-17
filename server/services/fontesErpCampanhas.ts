@@ -608,6 +608,24 @@ export interface ContextoErp {
   _volumePorJanelaCache?: Map<string, VolumePorJanela>;
 }
 
+// ─── Cache em memória de carregarContextoErp (ponto de otimização apontado em docs/campanhas-whatsapp.md,
+// "Limitações conhecidas": "gerarListaDaCampanha recarrega todo historico_os/historico_orcamentos a cada
+// chamada"). Mesmo padrão já validado em server/routers/performanceComercial.ts (Map module-level + TTL):
+// sobrevive entre invocações da mesma instância "morna" do Node (dev/start tradicional) e, em serverless
+// (Vercel), não piora nada — sem cache cada chamada já ia direto ao banco; com cache, chamadas dentro da
+// mesma instância/janela de TTL são servidas em memória. Nunca é a ÚNICA fonte de verdade: expira sozinho em
+// TTL_CONTEXTO_ERP_MS e pode ser invalidado explicitamente (invalidarCacheContextoErp), chamado pelo botão
+// "Atualizar do MubiSys" (campanhasWhatsapp.atualizarDadosErp) depois de um sincronizarHistoricoRecente real,
+// para a tela nunca mostrar dado visivelmente velho logo após o usuário pedir atualização. */
+const TTL_CONTEXTO_ERP_MS = 3 * 60_000; // 3 min — janela pequena: suficiente para absorver "contagemAudiencias" + "gerarListaDaCampanha" do mesmo carregamento de tela, sem deixar o painel desatualizado por muito tempo.
+let contextoErpCache: { ctx: ContextoErp; ts: number } | null = null;
+
+/** Descarta o cache em memória de carregarContextoErp — chamado após uma sincronização real com o MubiSys
+ * (atualizarDadosErp) para a próxima leitura não servir dado anterior à atualização. */
+export function invalidarCacheContextoErp(): void {
+  contextoErpCache = null;
+}
+
 function obterComprasPorCliente(
   ctx: ContextoErp
 ): Map<string, HistoricoComprasCliente> {
@@ -627,9 +645,24 @@ function obterVolumePorJanela(
   return ctx._volumePorJanelaCache;
 }
 
-/** Carrega historico_os + historico_orcamentos uma única vez para resolver quantas fontes ERP forem pedidas
- * (evita 1 SELECT por fonte quando uma campanha combina várias). */
-export async function carregarContextoErp(): Promise<ContextoErp> {
+/**
+ * Carrega historico_os + historico_orcamentos uma única vez para resolver quantas fontes ERP forem pedidas
+ * (evita 1 SELECT por fonte quando uma campanha combina várias). Cacheado em memória por
+ * TTL_CONTEXTO_ERP_MS (3 min): o painel costuma chamar isso várias vezes em sequência rápida (contagem de
+ * audiências de todas as campanhas + "Ver contatos" de uma delas + trocar de aba) — ver nota do cache acima.
+ * `forcarRecarga` ignora o cache mesmo que ainda válido (usado por quem sabe que o dado mudou, ex. logo
+ * depois de `sincronizarHistoricoRecente`).
+ */
+export async function carregarContextoErp(
+  forcarRecarga = false
+): Promise<ContextoErp> {
+  if (
+    !forcarRecarga &&
+    contextoErpCache &&
+    Date.now() - contextoErpCache.ts < TTL_CONTEXTO_ERP_MS
+  ) {
+    return contextoErpCache.ctx;
+  }
   const db = await getDb();
   if (!db) throw new Error("DB indisponível");
   const [osRows, orcamentos, cadastro] = await Promise.all([
@@ -640,7 +673,13 @@ export async function carregarContextoErp(): Promise<ContextoErp> {
   // Telefone que o histórico não tem (OS antigas, orçamentos) vem do espelho do cadastro de clientes do MubiSys.
   completarTelefonesPeloCadastro(osRows, cadastro);
   completarTelefonesPeloCadastro(orcamentos, cadastro);
-  return { base: construirBaseComTelefone(osRows), orcamentos, osRows };
+  const ctx: ContextoErp = {
+    base: construirBaseComTelefone(osRows),
+    orcamentos,
+    osRows,
+  };
+  contextoErpCache = { ctx, ts: Date.now() };
+  return ctx;
 }
 
 /** `ctx` opcional: quem resolve várias fontes de uma vez carrega o histórico uma só vez e reaproveita. */

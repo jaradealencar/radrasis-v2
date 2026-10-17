@@ -114,6 +114,7 @@ import {
   JANELA_PADRAO_DIAS,
   carregarContextoErp,
   filtrarPorPeriodo,
+  invalidarCacheContextoErp,
   lerArquivoDeUrl,
   primeiroRegistroErp,
   resolverFonteErp,
@@ -2205,6 +2206,8 @@ export const campanhasWhatsappRouter = router({
       });
     }
     ultimaAtualizacaoErp = agora;
+    // O usuário clicou justamente para ver dado novo agora — não esperar o TTL de carregarContextoErp vencer.
+    invalidarCacheContextoErp();
     return {
       atualizado: true,
       motivo: null,
@@ -2237,6 +2240,9 @@ export const campanhasWhatsappRouter = router({
         const r = await completarTelefonesJanela(janela);
         encontrados = r.encontrados;
         atualizadas = r.atualizadas;
+        // Telefone é um dos campos que carregarContextoErp agrega (ClienteComTelefone); sem invalidar, a
+        // próxima tela de contatos continuaria servindo o cache sem os telefones recém-preenchidos.
+        if (atualizadas > 0) invalidarCacheContextoErp();
       } catch (e) {
         console.error(
           `[TELEFONE-OS] Falha na janela ${janela.di}..${janela.df}:`,
@@ -2447,9 +2453,16 @@ export const campanhasWhatsappRouter = router({
         limitePorLote: z.number().int().min(1).max(12).default(12),
       })
     )
-    .mutation(({ input }) =>
-      completarTelefonesClientesOrcamentos(input.pagina, input.limitePorLote)
-    ),
+    .mutation(async ({ input }) => {
+      const r = await completarTelefonesClientesOrcamentos(
+        input.pagina,
+        input.limitePorLote
+      );
+      // Mesmo motivo de completarTelefonesHistorico acima: telefone de orçamento também entra em
+      // carregarContextoErp (base de "orçaram e não compraram" etc.).
+      if (r.atualizadas > 0) invalidarCacheContextoErp();
+      return r;
+    }),
 
   /** O botão "disparada"/"não disparada"/"voltar a planejado" do calendário e do relatório. */
   marcarAgendamento: campanhasProcedure

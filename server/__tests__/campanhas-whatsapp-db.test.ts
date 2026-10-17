@@ -22,6 +22,7 @@ import {
   checarQuarentenaNoBanco,
   registrarDisparoNoBanco,
 } from "../routers/campanhasWhatsapp";
+import { invalidarCacheContextoErp } from "../services/fontesErpCampanhas";
 
 const hoje = hojeCampoGrande();
 const dia = (n: number) => somarDias(hoje, n);
@@ -526,6 +527,9 @@ describe("Fontes de Dados (ERP local + arquivo)", () => {
       mes: Number(dataAntiga.slice(5, 7)),
       ano: Number(dataAntiga.slice(0, 4)),
     });
+    // carregarContextoErp agora cacheia em memória (ver server/services/fontesErpCampanhas.ts) — sem isto,
+    // um describe anterior que já tivesse chamado gerarListaDaCampanha deixaria o cache sem esta linha nova.
+    invalidarCacheContextoErp();
 
     const campanha = await admin().criar({
       nome: "TESTE campanha com fontes",
@@ -1053,4 +1057,55 @@ describe("Quarentena Global Unificada (CRM + Retenção + Campanhas)", () => {
     expect(resDisparo.ignorados).toBe(1);
     expect(resDisparo.ignoradosQuarentena[0].telefone).toBe(norm(telUnificado));
   });
+});
+
+describe("Cache de carregarContextoErp (otimização de performance)", () => {
+  const osTeste = "TESTE-CACHE-CTX-ERP";
+  const limpar = () =>
+    getPool().query(`DELETE FROM historico_os WHERE "osNumero" = $1`, [
+      osTeste,
+    ]);
+  afterAll(limpar);
+
+  it("serve do cache dentro do TTL (não enxerga escrita feita por fora) e reflete após invalidarCacheContextoErp", async () => {
+    await limpar();
+    const { carregarContextoErp } =
+      await import("../services/fontesErpCampanhas");
+    invalidarCacheContextoErp(); // começa limpo, sem depender da ordem de outros describes deste arquivo
+
+    const antes = await carregarContextoErp();
+    expect(antes.osRows.some(r => r.osNumero === osTeste)).toBe(false);
+
+    const db = await getDb();
+    if (!db) throw new Error("DB indisponível");
+    const dataRecente = somarDias(hoje, -1);
+    await db.insert(historicoOs).values({
+      osNumero: osTeste,
+      tipoOs: "produto",
+      status: "aprovada",
+      empresa: "TESTE Cache Contexto ERP",
+      dataAprovacao: dataRecente.split("-").reverse().join("/"),
+      telefone: "(67) 99000-9966",
+      mes: Number(dataRecente.slice(5, 7)),
+      ano: Number(dataRecente.slice(0, 4)),
+    });
+
+    // Ainda dentro do TTL (3 min): uma nova chamada sem invalidar continua servindo o snapshot cacheado —
+    // é exatamente isto que elimina o SELECT completo repetido em historico_os/historico_orcamentos.
+    const aindaCacheado = await carregarContextoErp();
+    expect(aindaCacheado.osRows.some(r => r.osNumero === osTeste)).toBe(false);
+
+    // forcarRecarga=true ignora o cache mesmo válido.
+    const forcado = await carregarContextoErp(true);
+    expect(forcado.osRows.some(r => r.osNumero === osTeste)).toBe(true);
+
+    // invalidarCacheContextoErp() tem o mesmo efeito para a próxima chamada normal.
+    invalidarCacheContextoErp();
+    const depoisDeInvalidar = await carregarContextoErp();
+    expect(depoisDeInvalidar.osRows.some(r => r.osNumero === osTeste)).toBe(
+      true
+    );
+  }, 30_000); // 4 chamadas a carregarContextoErp sem cache (1 delas de propósito) — cada uma recarrega
+  // historico_os + historico_orcamentos + carregarTelefonesClientes() inteiros, igual aos outros testes
+  // pesados deste arquivo que recarregam o histórico (ver timeouts estendidos acima).
 });
