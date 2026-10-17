@@ -408,7 +408,7 @@ export async function removerBobinaPerfil(id: number, usuario: string) {
     .update(perfilEstoqueBobinas)
     .set({
       ativo: false,
-      observacao: sql`concat_ws(' | ', nullif(${perfilEstoqueBobinas.observacao}, ''), ${`Removida por ${usuario}`})`,
+      observacao: sql`coalesce(nullif(${perfilEstoqueBobinas.observacao}, '') || ' | ', '') || ${`Removida por ${usuario}`}`,
       updatedAt: new Date(),
     })
     .where(eq(perfilEstoqueBobinas.id, id))
