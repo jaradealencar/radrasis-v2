@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BanIcon, BarChart3, CalendarDays, CheckCircle2, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
+import { AlertTriangle, BanIcon, BarChart3, Brain, CalendarDays, CheckCircle2, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import ExcluirCampanhaDialog from "./campanhasWhatsapp/ExcluirCampanhaDialog";
 import NaoReceberMensagens from "./campanhasWhatsapp/NaoReceberMensagens";
 import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
 import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
+import QualificacaoIaDialog from "./campanhasWhatsapp/QualificacaoIaDialog";
 import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
 import VendasPosVendaDialog from "./campanhasWhatsapp/VendasPosVendaDialog";
 import { StatusCampanhaBadge, type CampanhaLinha } from "./campanhasWhatsapp/comuns";
@@ -55,6 +56,7 @@ export default function MarketingCampanhasWhatsapp() {
   const [vendas, setVendas] = useState<CampanhaLinha | null>(null);
   const [duplicar, setDuplicar] = useState<CampanhaLinha | null>(null);
   const [verContatos, setVerContatos] = useState<CampanhaLinha | null>(null);
+  const [qualificacaoIa, setQualificacaoIa] = useState<CampanhaLinha | null>(null);
   // Contatos das campanhas recorrentes: cálculo mais pesado, por isso numa consulta à parte.
   const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(undefined, { staleTime: 5 * 60_000, refetchOnWindowFocus: false });
   const [excluir, setExcluir] = useState<CampanhaLinha | null>(null);
@@ -217,6 +219,7 @@ export default function MarketingCampanhasWhatsapp() {
                                 <DropdownMenuItem onSelect={() => setVendas(c)}><ListChecks size={14} /> Ver vendas do pós-venda</DropdownMenuItem>
                               )}
                               <DropdownMenuItem onSelect={() => setHistorico(c)}><History size={14} /> Ver histórico</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setQualificacaoIa(c)}><Brain size={14} /> Qualificação por IA (Gemini)</DropdownMenuItem>
                               {/* Só o pós-venda ainda não dispara pelo sistema; as recorrentes disparam por "Efetuar disparo". */}
                               {c.tipo === "gatilho_venda" && (
                                 <DropdownMenuItem disabled={c.status !== "ativa"} onSelect={() => setRegistrar(c)}><ClipboardList size={14} /> Registrar disparo manual</DropdownMenuItem>
@@ -260,6 +263,7 @@ export default function MarketingCampanhasWhatsapp() {
       <VendasPosVendaDialog campanha={vendas} onClose={() => setVendas(null)} />
       <DuplicarCampanhaDialog campanha={duplicar} onClose={() => setDuplicar(null)} />
       <ContatosCampanhaDialog campanha={verContatos} onClose={() => setVerContatos(null)} />
+      <QualificacaoIaDialog campanha={qualificacaoIa} onClose={() => setQualificacaoIa(null)} />
       <ExcluirCampanhaDialog campanha={excluir} onClose={() => setExcluir(null)} />
     </div>
   );

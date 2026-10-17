@@ -187,6 +187,12 @@ export async function createApp(): Promise<Express> {
     await import("../routes/campanhas-whatsapp-api");
   registrarRotasCampanhasWhatsappApi(app);
 
+  // ─── Campanhas WhatsApp: webhook de mensagens RECEBIDAS (gatilho da qualificação por IA/Gemini) +
+  // endpoint de consolidação do buffer de debounce. Ver docs/campanhas-whatsapp-ia.md.
+  const { registrarRotasCampanhasWhatsappInbound } =
+    await import("../routes/campanhas-whatsapp-inbound");
+  registrarRotasCampanhasWhatsappInbound(app);
+
   // ─── Tabela de Preços: export REST (GET /api/v1/price-table/export) para o precificador
   // automatizado externo, protegido por PRICE_TABLE_API_KEY. Ver server/routes/price-table-api.ts.
   const { registrarRotasPriceTableApi } =

@@ -32,7 +32,8 @@ import {
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
   campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
-  campanhasWhatsappGatilhos, campanhasWhatsappOptout, campanhasWhatsappScripts, historicoOs,
+  campanhasWhatsappGatilhos, campanhasWhatsappLeadsQualificados, campanhasWhatsappMensagensInbound,
+  campanhasWhatsappOptout, campanhasWhatsappScripts, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
@@ -40,6 +41,9 @@ import {
   calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, gerarChaveCategoria, hojeCampoGrande,
   normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
+import {
+  CLUSTERS_LEAD, MOTIVOS_OBJECAO, classificarFaixaIcp, formatarFaixaHeatmap,
+} from "../../shared/campanhas-whatsapp-ia";
 import {
   agruparPorCliente, expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
   resumirCampanhas, resumirVendas,
@@ -1623,5 +1627,156 @@ Script 2: [Título]
         },
         porCampanha,
       };
+    }),
+
+  // ─── Qualificação de leads por IA (Gemini) ──────────────────────────────────────────────────────
+  // Ver docs/campanhas-whatsapp-ia.md. Leitura das tabelas gravadas por
+  // server/services/campanhasWhatsappInboundBuffer.ts (webhook → debounce → Gemini).
+
+  /** Painel/dashboard: KPIs de engajamento real de uma campanha (Parte 2, bloco 1). Distingue mensagem humana
+   * de bot a partir de campanhas_whatsapp_mensagens_inbound — não depende de a IA já ter rodado. */
+  kpisEngajamento: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const [disparo, inbound, leads] = await Promise.all([
+        db.select({
+          disparos: count(),
+          contatosEnviados: sql<number>`coalesce(sum(${campanhasWhatsappDisparos.contatosEnviados}), 0)::int`,
+        }).from(campanhasWhatsappDisparos).where(eq(campanhasWhatsappDisparos.campanhaId, input.campanhaId)),
+        db.select({
+          telefone: campanhasWhatsappMensagensInbound.telefone,
+          tipoMensagem: campanhasWhatsappMensagensInbound.tipoMensagem,
+          ehBot: campanhasWhatsappMensagensInbound.ehBot,
+        }).from(campanhasWhatsappMensagensInbound).where(eq(campanhasWhatsappMensagensInbound.campanhaId, input.campanhaId)),
+        db.select({ telefone: campanhasWhatsappLeadsQualificados.telefone, total: campanhasWhatsappLeadsQualificados.totalMensagensTrocas })
+          .from(campanhasWhatsappLeadsQualificados).where(eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)),
+      ]);
+
+      const contatosEnviados = disparo[0]?.contatosEnviados ?? 0;
+      const telefonesHumanos = new Set(inbound.filter(m => !m.ehBot).map(m => m.telefone));
+      const telefonesBot = new Set(inbound.filter(m => m.ehBot).map(m => m.telefone));
+      const cliquesBotao = inbound.filter(m => !m.ehBot && (m.tipoMensagem === "button_reply" || m.tipoMensagem === "list_reply")).length;
+      const profundos = leads.filter(l => l.total >= 3).length;
+
+      return {
+        totalDisparado: contatosEnviados,
+        respostaHumana: telefonesHumanos.size,
+        respostaBot: telefonesBot.size,
+        taxaRespostaHumanaPct: contatosEnviados > 0 ? Math.round((telefonesHumanos.size / contatosEnviados) * 1000) / 10 : 0,
+        cliquesBotaoCta: cliquesBotao,
+        taxaCliqueCtaPct: contatosEnviados > 0 ? Math.round((cliquesBotao / contatosEnviados) * 1000) / 10 : 0,
+        indiceProfundidadePct: telefonesHumanos.size > 0 ? Math.round((profundos / telefonesHumanos.size) * 1000) / 10 : 0,
+      };
+    }),
+
+  /** Lista de leads qualificados por IA, com filtro por cluster/objeção/ICP mínimo — base da tabela do
+   * dashboard (Parte 2, bloco 3) e da exportação para retargeting. */
+  listarLeadsQualificados: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int().positive(),
+      cluster: z.enum(CLUSTERS_LEAD).optional(),
+      motivoObjecao: z.enum(MOTIVOS_OBJECAO).optional(),
+      icpMinimo: z.number().int().min(1).max(100).optional(),
+      ordenarPor: z.enum(["icp", "recente"]).default("icp"),
+    }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const condicoes = [eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)];
+      if (input.cluster) condicoes.push(eq(campanhasWhatsappLeadsQualificados.cluster, input.cluster));
+      if (input.motivoObjecao) condicoes.push(eq(campanhasWhatsappLeadsQualificados.motivoObjecao, input.motivoObjecao));
+      if (input.icpMinimo) condicoes.push(gte(campanhasWhatsappLeadsQualificados.icpFitScore, input.icpMinimo));
+
+      const linhas = await db.select().from(campanhasWhatsappLeadsQualificados)
+        .where(and(...condicoes))
+        .orderBy(input.ordenarPor === "icp" ? desc(campanhasWhatsappLeadsQualificados.icpFitScore) : desc(campanhasWhatsappLeadsQualificados.analisadoEm));
+
+      return linhas.map(l => ({
+        ...l,
+        faixaIcp: classificarFaixaIcp(l.icpFitScore),
+      }));
+    }),
+
+  /** Agregados do dashboard (Parte 2, blocos 2 e 4 / Parte 3): distribuição de clusters, objeções e o
+   * heatmap de dia-da-semana × hora da primeira resposta humana, com o tempo médio de reação (Lead Velocity). */
+  estatisticasQualificacao: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const leads = await db.select().from(campanhasWhatsappLeadsQualificados)
+        .where(eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId));
+
+      const porCluster = Object.fromEntries(CLUSTERS_LEAD.map(c => [c, 0])) as Record<string, number>;
+      const porObjecao = Object.fromEntries(MOTIVOS_OBJECAO.map(m => [m, 0])) as Record<string, number>;
+      const heatmap = new Map<string, number>(); // "dia-hora" -> contagem
+      const temposReacao: number[] = [];
+
+      for (const l of leads) {
+        porCluster[l.cluster] = (porCluster[l.cluster] ?? 0) + 1;
+        porObjecao[l.motivoObjecao] = (porObjecao[l.motivoObjecao] ?? 0) + 1;
+        if (l.diaSemanaPrimeiraResposta !== null && l.horaPrimeiraResposta !== null) {
+          const chave = `${l.diaSemanaPrimeiraResposta}-${l.horaPrimeiraResposta}`;
+          heatmap.set(chave, (heatmap.get(chave) ?? 0) + 1);
+        }
+        if (l.tempoReacaoSegundos !== null) temposReacao.push(l.tempoReacaoSegundos);
+      }
+
+      const total = leads.length;
+      const clusters = CLUSTERS_LEAD.map(cluster => ({
+        cluster, total: porCluster[cluster], percentual: total > 0 ? Math.round((porCluster[cluster] / total) * 1000) / 10 : 0,
+      }));
+      const objecoes = MOTIVOS_OBJECAO.filter(m => m !== "NENHUMA").map(motivo => ({
+        motivo, total: porObjecao[motivo], percentual: total > 0 ? Math.round((porObjecao[motivo] / total) * 1000) / 10 : 0,
+      })).filter(o => o.total > 0).sort((a, b) => b.total - a.total);
+
+      const heatmapCelulas = [...heatmap.entries()].map(([chave, totalRespostas]) => {
+        const [dia, hora] = chave.split("-").map(Number);
+        return { diaSemana: dia, hora, total: totalRespostas, faixa: formatarFaixaHeatmap(dia, hora) };
+      }).sort((a, b) => b.total - a.total);
+
+      const melhorFaixa = heatmapCelulas[0] ?? null;
+      const tempoMedioReacaoSegundos = temposReacao.length > 0
+        ? Math.round(temposReacao.reduce((s, v) => s + v, 0) / temposReacao.length)
+        : null;
+
+      // Frases de objeção para o card de feedback de copy/vendas (Parte 3, bloco 2).
+      const frasesObjecao = leads
+        .filter(l => l.motivoObjecao !== "NENHUMA" && l.resumoObjecao)
+        .map(l => ({ motivo: l.motivoObjecao, resumo: l.resumoObjecao as string, telefone: l.telefone }))
+        .slice(0, 20);
+
+      return {
+        totalLeadsQualificados: total,
+        clusters,
+        objecoes,
+        heatmap: heatmapCelulas,
+        melhorFaixaConversao: melhorFaixa,
+        tempoMedioReacaoSegundos,
+        frasesObjecao,
+      };
+    }),
+
+  /** Exporta telefone+nome dos leads que casam com o filtro, para alimentar o disparo de retargeting
+   * (mesmo formato aceito por `dispararWts.contatos` e pelo "Registrar disparo" manual). */
+  exportarLeadsParaRetargeting: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int().positive(),
+      cluster: z.enum(CLUSTERS_LEAD).optional(),
+      motivoObjecao: z.enum(MOTIVOS_OBJECAO).optional(),
+      icpMinimo: z.number().int().min(1).max(100).optional(),
+    }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const condicoes = [eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)];
+      if (input.cluster) condicoes.push(eq(campanhasWhatsappLeadsQualificados.cluster, input.cluster));
+      if (input.motivoObjecao) condicoes.push(eq(campanhasWhatsappLeadsQualificados.motivoObjecao, input.motivoObjecao));
+      if (input.icpMinimo) condicoes.push(gte(campanhasWhatsappLeadsQualificados.icpFitScore, input.icpMinimo));
+
+      const linhas = await db.select({
+        telefone: campanhasWhatsappLeadsQualificados.telefone,
+        nome: campanhasWhatsappLeadsQualificados.nome,
+      }).from(campanhasWhatsappLeadsQualificados).where(and(...condicoes));
+
+      return linhas.map(l => ({ telefone: l.telefone, nome: l.nome ?? "" }));
     }),
 });

@@ -806,6 +806,20 @@
       "when": 1792182233111,
       "tag": "0114_confused_crusher_hogan",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1792251003133,
+      "tag": "0115_redundant_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1792251827190,
+      "tag": "0116_spicy_boomerang",
+      "breakpoints": true
     }
   ]
 }

@@ -3774,3 +3774,73 @@ export const campanhasWhatsappAgendamentos = pgTable("campanhas_whatsapp_agendam
 }));
 export type CampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferSelect;
 export type InsertCampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferInsert;
+
+// ─── Mensagens Inbound & Buffer com Debounce (Gatilho IA) ───────────────────────────
+// Recebe webhooks de mensagens da Meta / Ceci.Chat para aplicar filtro de bots,
+// consolidação com debounce de 60 segundos por contato e encaminhamento ao Gemini Flash.
+export const campanhasWhatsappMensagensInbound = pgTable("campanhas_whatsapp_mensagens_inbound", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").references(() => campanhasWhatsapp.id, { onDelete: "set null" }),
+  disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
+  telefone: varchar("telefone", { length: 20 }).notNull(),
+  nome: varchar("nome", { length: 200 }),
+  tipoMensagem: varchar("tipo_mensagem", { length: 32 }).notNull().default("text"), // 'text' | 'button_reply' | 'list_reply'
+  texto: text("texto"),
+  payloadRaw: text("payload_raw"),
+  // ID da mensagem no provedor (Ceci/Meta), quando o payload trouxer um. Único (nulos não colidem entre si no
+  // Postgres) — evita gravar a mesma mensagem duas vezes quando o provedor reentrega o mesmo webhook (retry).
+  mensagemIdExterno: varchar("mensagem_id_externo", { length: 128 }),
+  ehBot: boolean("eh_bot").notNull().default(false),
+  motivoBot: varchar("motivo_bot", { length: 64 }), // 'resposta_rapida_4s' | 'blacklist_semantica'
+  tempoRespostaSegundos: integer("tempo_resposta_segundos"),
+  recebidoEm: timestamp("recebido_em").defaultNow().notNull(),
+  bufferAte: timestamp("buffer_ate").notNull(), // recebidoEm + 60s
+  processado: boolean("processado").notNull().default(false),
+  processadoEm: timestamp("processado_em"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({
+  telBufferIdx: index("campanhas_whatsapp_inbound_tel_buffer_idx").on(t.telefone, t.bufferAte, t.processado),
+  campanhaRecebidoIdx: index("campanhas_whatsapp_inbound_campanha_recebido_idx").on(t.campanhaId, t.recebidoEm),
+  mensagemIdExternoUnico: uniqueIndex("campanhas_whatsapp_inbound_mensagem_id_unique").on(t.mensagemIdExterno),
+}));
+export type CampanhaWhatsappMensagemInbound = typeof campanhasWhatsappMensagensInbound.$inferSelect;
+export type InsertCampanhaWhatsappMensagemInbound = typeof campanhasWhatsappMensagensInbound.$inferInsert;
+
+// ─── Leads Qualificados por IA (Gemini Flash: Clusters, ICP Score & Objeções) ──────
+// Armazena a qualificação semântica dos contatos que responderam a campanhas.
+// Cada lead é qualificado uma única vez por campanha para controle de custos de tokens.
+export const campanhasWhatsappLeadsQualificados = pgTable("campanhas_whatsapp_leads_qualificados", {
+  id: serial("id").primaryKey(),
+  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
+  telefone: varchar("telefone", { length: 20 }).notNull(),
+  nome: varchar("nome", { length: 200 }),
+  // Cluster semântico: ORCAMENTO_DIRETO | DUVIDA_TECNICA | OBJECAO_FORNECEDOR | DESQUALIFICADO_OUTROS
+  cluster: varchar("cluster", { length: 40 }).notNull(),
+  resumoIntencao: varchar("resumo_intencao", { length: 255 }).notNull(),
+  nivelInteresse: integer("nivel_interesse").notNull(), // 1 a 5
+  palavrasChave: text("palavras_chave").array().notNull().default([]),
+  icpFitScore: integer("icp_fit_score").notNull().default(50), // 1 a 100
+  // Perfil: DECISOR_SOCIO | COMPRADOR_TECNICO | INTERMEDIARIO_ATENDENTE | DESCONHECIDO
+  perfilInterlocutor: varchar("perfil_interlocutor", { length: 40 }).notNull().default("DESCONHECIDO"),
+  parametrosProjeto: text("parametros_projeto").array().notNull().default([]),
+  // Objeção: PRECO_ORCAMENTO | PRAZO_ENTREGA | FORNECEDOR_FIXO | TIMING_INADEQUADO | FORA_DE_ESCOPO | NENHUMA
+  motivoObjecao: varchar("motivo_objecao", { length: 40 }).notNull().default("NENHUMA"),
+  resumoObjecao: varchar("resumo_objecao", { length: 255 }),
+  mensagensConsolidadas: text("mensagens_consolidadas").array().notNull().default([]),
+  totalMensagensTrocas: integer("total_mensagens_trocas").notNull().default(1),
+  tempoReacaoSegundos: integer("tempo_reacao_segundos"),
+  diaSemanaPrimeiraResposta: integer("dia_semana_primeira_resposta"), // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+  horaPrimeiraResposta: integer("hora_primeira_resposta"), // 0 a 23
+  provedorLlm: varchar("provedor_llm", { length: 32 }).notNull().default("gemini"),
+  modeloLlm: varchar("modelo_llm", { length: 64 }).notNull().default("gemini-1.5-flash"),
+  analisadoEm: timestamp("analisado_em").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  campanhaTelefoneUnico: uniqueIndex("campanhas_whatsapp_leads_campanha_tel_unique").on(t.campanhaId, t.telefone),
+  campanhaClusterIdx: index("campanhas_whatsapp_leads_campanha_cluster_idx").on(t.campanhaId, t.cluster),
+  campanhaIcpIdx: index("campanhas_whatsapp_leads_campanha_icp_idx").on(t.campanhaId, t.icpFitScore),
+}));
+export type CampanhaWhatsappLeadQualificado = typeof campanhasWhatsappLeadsQualificados.$inferSelect;
+export type InsertCampanhaWhatsappLeadQualificado = typeof campanhasWhatsappLeadsQualificados.$inferInsert;

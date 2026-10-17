@@ -1,0 +1,2 @@
+ALTER TABLE "campanhas_whatsapp_mensagens_inbound" ADD COLUMN "mensagem_id_externo" varchar(128);--> statement-breakpoint
+CREATE UNIQUE INDEX "campanhas_whatsapp_inbound_mensagem_id_unique" ON "campanhas_whatsapp_mensagens_inbound" USING btree ("mensagem_id_externo");
