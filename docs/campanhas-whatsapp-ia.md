@@ -125,17 +125,27 @@ respostas, não a de maior taxa de conversão em valor — não há dado de vend
 
 ## Dashboard (`QualificacaoIaDialog.tsx`)
 
-Acessado por "⋮ → Qualificação por IA (Gemini)" na tabela de campanhas. Consome 3 procedures:
+Acessado por "⋮ → Qualificação por IA (Gemini)" na tabela de campanhas. Consome as seguintes procedures:
 
+- `campanhasWhatsapp.resumoExecutivoIa` — Síntese executiva automatizada via Gemini Flash (Structured Output):
+  avalia a tração geral da campanha, atribui temperatura da audiência (`MUITO_AQUECIDA`, `INTERESSE_MODERADO`,
+  `FRIA_RESISTENTE`, `DESALINHADA`), diagnostica pontos fortes da oferta, principais travas/objeções com citações
+  reais de clientes e entrega recomendações práticas para o próximo disparo.
+- `campanhasWhatsapp.atribuicaoReceita` — Atribuição comercial de O.S. faturadas/aprovadas no ERP MubiSys
+  (`historico_os`) decorrentes dos disparos da campanha em janelas configuráveis (7, 15, 30 ou 60 dias). Calcula
+  Receita Total Atribuída, O.S. Fechadas, Ticket Médio, Custo Estimado dos Disparos e ROI Real / Multiplicador de
+  Retorno (ex: 18.5x o custo), além de quebrar a receita gerada por cluster de IA.
 - `campanhasWhatsapp.kpisEngajamento` — Total disparado, resposta humana, resposta bot, cliques em
   botão/CTA, índice de profundidade (% de respondentes com 3+ trocas). "Taxa de abertura real" do prompt
   original **não foi implementada**: a WTS.Chat/Ceci não expõe confirmação de leitura (read receipt) separada
   do status de entrega no endpoint hoje usado (`consultarEstadoMensagemWts`, ver
   `server/integrations/wts-chat-client.ts`) — o indicador ficaria baseado em um dado que o sistema não tem.
 - `campanhasWhatsapp.estatisticasQualificacao` — distribuição de clusters (pizza), objeções (barras +
-  frases capturadas), heatmap dia×hora, tempo médio de reação.
+  frases capturadas), heatmap dia×hora, tempo médio e mediana de reação (Lead Velocity), além da Curva de Latência
+  de Resposta em 6 faixas temporais (< 5 min, 5-15 min, 15-60 min, 1-4h, 4-24h, > 24h).
 - `campanhasWhatsapp.listarLeadsQualificados` / `exportarLeadsParaRetargeting` — tabela filtrável por
-  cluster/objeção/ICP mínimo, com export `.xlsx` (mesmo padrão de `exportRowsToXlsx` usado em "Ver contatos").
+  cluster/objeção/ICP mínimo, com toggle para "🔥 Leads Quentes (ICP ≥ 80)", exibição de chips com parâmetros de
+  projeto (medidas/materiais citados pelo cliente) e export `.xlsx`.
 - **Retargeting com 1 clique (implementado em 17/10/2026)**: botão "Criar audiência (1 clique)" no cabeçalho
   da tabela de leads qualificados. Cria dinamicamente uma Fonte de Dados tipo `retargeting`
   (`campanhas_whatsapp_fontes.tipo = 'retargeting'`, migration `0117`) apontando para a campanha de origem e

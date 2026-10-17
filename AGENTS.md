@@ -383,9 +383,11 @@ nem mocks da camada de dados.
   `IntegerSchema` do SDK não tem `minimum`/`maximum` (só array tem `minItems`/`maxItems`) — um teste real
   devolveu `nivel_interesse=9` fora do range 1-5 pedido só em texto, corrigido com clamp
   (`sanearRespostaGemini` em `campanhasWhatsappIa.ts`) em vez de deixar o Zod rejeitar e descartar um lead
-  quente de verdade no fallback. **Retargeting com 1 clique (17/10/2026, migration `0117`)**: botão direto no
-  dashboard cria audiência dinâmica (`campanhas_whatsapp_fontes.tipo = 'retargeting'`) alimentada pelos leads
-  filtrados por cluster/objeção/ICP, pronta para ser vinculada em qualquer campanha. **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
+  quente de verdade no fallback. **Inteligência analítica completa (17/10/2026, migration `0117`)**:
+  (1) Resumo executivo da campanha por IA (`resumoExecutivoIa`, Gemini Flash com Structured Output: temperatura da audiência, pontos fortes, dores com citações reais e recomendações práticas);
+  (2) Atribuição de receita & ROI real (`atribuicaoReceita`: cruza contatos disparados com O.S. faturadas no MubiSys em 7/15/30/60 dias, receita total, ticket médio, multiplicador de retorno e quebra por cluster de IA);
+  (3) Lead Velocity com Curva de Latência de Resposta (6 faixas de tempo) e mediana de reação;
+  (4) Retargeting com 1 clique (cria audiência dinâmica `campanhas_whatsapp_fontes.tipo = 'retargeting'` filtrada por cluster/objeção/ICP) e visualização de parâmetros técnicos do projeto por lead. **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
   painel deles, fora deste repo) para replicar mensagens recebidas para essa URL — hoje elas só chegam na
   caixa de entrada da Ceci. Detalhes em `docs/campanhas-whatsapp-ia.md`.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração

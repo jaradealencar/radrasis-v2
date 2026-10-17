@@ -1,16 +1,22 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   Bot,
   Brain,
+  CheckCircle2,
+  Clock,
+  DollarSign,
   Download,
   Flame,
   MessageSquareQuote,
   MousePointerClick,
+  RefreshCw,
   Snowflake,
   Sparkles,
   Target,
   Thermometer,
+  TrendingUp,
 } from "lucide-react";
 import {
   Bar,
@@ -27,7 +33,7 @@ import {
 } from "recharts";
 import { trpc } from "@/lib/trpc";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
-import { fmtNum, fmtPct } from "@/lib/format";
+import { fmtBrl, fmtNum, fmtPct } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,12 +67,15 @@ import ChartTooltip from "@/components/ChartTooltip";
 import {
   COR_CLUSTER,
   COR_FAIXA_ICP,
+  COR_TEMPERATURA_AUDIENCIA,
   CLUSTERS_LEAD,
   MOTIVOS_OBJECAO,
   ROTULO_CLUSTER,
   ROTULO_FAIXA_ICP,
+  ROTULO_FAIXA_LATENCIA,
   ROTULO_MOTIVO_OBJECAO,
   ROTULO_PERFIL_INTERLOCUTOR,
+  ROTULO_TEMPERATURA_AUDIENCIA,
   type ClusterLead,
   type MotivoObjecao,
 } from "@shared/campanhas-whatsapp-ia";
@@ -82,9 +91,12 @@ interface Props {
 const TODOS = "__todos__";
 
 /**
- * Dashboard de qualificação de leads por IA (Gemini): KPIs de engajamento real, distribuição de clusters
- * semânticos, diagnóstico de objeções, heatmap de janelas de atividade e tabela de leads com filtro/export
- * para retargeting. Ver docs/campanhas-whatsapp-ia.md.
+ * Dashboard de qualificação de leads por IA (Gemini):
+ * 1. Resumo Executivo de Alto Nível (Gemini Flash)
+ * 2. Atribuição de Receita & ROI Comercial (MubiSys ERP)
+ * 3. KPIs de engajamento real e Curva de Latência de Resposta (Lead Velocity)
+ * 4. Distribuição de clusters semânticos e diagnóstico de objeções
+ * 5. Tabela de leads com parâmetros de projeto, filtro de leads quentes e criação direta de audiência de retargeting.
  */
 export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
   const [filtroCluster, setFiltroCluster] = useState<
@@ -93,6 +105,8 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
   const [filtroObjecao, setFiltroObjecao] = useState<
     MotivoObjecao | typeof TODOS
   >(TODOS);
+  const [apenasQuentes, setApenasQuentes] = useState<boolean>(false);
+  const [janelaDiasAtribuicao, setJanelaDiasAtribuicao] = useState<number>(30);
 
   const campanhaId = campanha?.id ?? 0;
   const habilitado = !!campanha;
@@ -110,9 +124,34 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
       campanhaId,
       cluster: filtroCluster === TODOS ? undefined : filtroCluster,
       motivoObjecao: filtroObjecao === TODOS ? undefined : filtroObjecao,
+      icpMinimo: apenasQuentes ? 80 : undefined,
     },
     { enabled: habilitado }
   );
+  const resumoIa = trpc.campanhasWhatsapp.resumoExecutivoIa.useQuery(
+    { campanhaId },
+    { enabled: habilitado, staleTime: 1000 * 60 * 15, retry: false }
+  );
+  const atribuicao = trpc.campanhasWhatsapp.atribuicaoReceita.useQuery(
+    { campanhaId, janelaDias: janelaDiasAtribuicao },
+    { enabled: habilitado }
+  );
+
+  const utils = trpc.useUtils();
+  const [modalRetargeting, setModalRetargeting] = useState(false);
+  const [nomeFonte, setNomeFonte] = useState("");
+  const [descricaoFonte, setDescricaoFonte] = useState("");
+
+  const criarFonte = trpc.campanhasWhatsapp.criarFonteRetargeting.useMutation({
+    onSuccess: f => {
+      toast.success(
+        `Audiência "${f.label}" criada com sucesso! Já está disponível em Fontes de Dados.`
+      );
+      setModalRetargeting(false);
+      utils.campanhasWhatsapp.listarFontes.invalidate();
+    },
+    onError: e => toast.error(e.message),
+  });
 
   const dadosClusters = useMemo(
     () =>
@@ -121,6 +160,7 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
         .map(c => ({ ...c, label: ROTULO_CLUSTER[c.cluster] })),
     [stats.data]
   );
+
   const dadosObjecoes = useMemo(
     () =>
       (stats.data?.objecoes ?? []).map(o => ({
@@ -129,6 +169,42 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
       })),
     [stats.data]
   );
+
+  function abrirRetargeting() {
+    if (!campanha) return;
+    const sufixos: string[] = [];
+    if (filtroCluster !== TODOS) sufixos.push(ROTULO_CLUSTER[filtroCluster]);
+    if (filtroObjecao !== TODOS)
+      sufixos.push(ROTULO_MOTIVO_OBJECAO[filtroObjecao]);
+    if (apenasQuentes) sufixos.push("Leads Quentes");
+    const sufixoTexto = sufixos.length ? ` · ${sufixos.join(" · ")}` : "";
+
+    setNomeFonte(`Retargeting: ${campanha.nome}${sufixoTexto}`.slice(0, 120));
+    setDescricaoFonte(
+      `Audiência dinâmica extraída da campanha #${campanha.id} (${campanha.nome}) com os filtros: Cluster = ${
+        filtroCluster !== TODOS ? ROTULO_CLUSTER[filtroCluster] : "Todos"
+      }, Objeção = ${filtroObjecao !== TODOS ? ROTULO_MOTIVO_OBJECAO[filtroObjecao] : "Todas"}, Apenas Quentes = ${
+        apenasQuentes ? "Sim (ICP ≥ 80)" : "Não"
+      }.`
+    );
+    setModalRetargeting(true);
+  }
+
+  function confirmarCriacaoFonte() {
+    if (!campanha || !nomeFonte.trim()) {
+      toast.error("Informe um nome para a nova audiência.");
+      return;
+    }
+    criarFonte.mutate({
+      label: nomeFonte.trim(),
+      origemCampanhaId: campanha.id,
+      origemCampanhaNome: campanha.nome,
+      cluster: filtroCluster !== TODOS ? filtroCluster : null,
+      motivoObjecao: filtroObjecao !== TODOS ? filtroObjecao : null,
+      icpMinimo: apenasQuentes ? 80 : null,
+      descricao: descricaoFonte.trim() || undefined,
+    });
+  }
 
   function exportar() {
     if (!leads.data || !campanha) return;
@@ -156,8 +232,13 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
           largura: 40,
         },
         {
+          header: "Parâmetros do projeto",
+          valor: l => (l.parametrosProjeto ?? []).join(", "),
+          largura: 35,
+        },
+        {
           header: "Palavras-chave",
-          valor: l => l.palavrasChave.join(", "),
+          valor: l => (l.palavrasChave ?? []).join(", "),
           largura: 30,
         },
         {
@@ -175,64 +256,17 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
     );
   }
 
-  const utils = trpc.useUtils();
-  const [modalRetargeting, setModalRetargeting] = useState(false);
-  const [nomeFonte, setNomeFonte] = useState("");
-  const [descricaoFonte, setDescricaoFonte] = useState("");
-
-  const criarFonte = trpc.campanhasWhatsapp.criarFonteRetargeting.useMutation({
-    onSuccess: f => {
-      toast.success(
-        `Audiência "${f.label}" criada com sucesso! Já está disponível em Fontes de Dados.`
-      );
-      setModalRetargeting(false);
-      utils.campanhasWhatsapp.listarFontes.invalidate();
-    },
-    onError: e => toast.error(e.message),
-  });
-
-  function abrirRetargeting() {
-    if (!campanha) return;
-    const sufixoFiltro =
-      filtroCluster !== TODOS
-        ? ` · ${ROTULO_CLUSTER[filtroCluster]}`
-        : filtroObjecao !== TODOS
-          ? ` · ${ROTULO_MOTIVO_OBJECAO[filtroObjecao]}`
-          : "";
-    setNomeFonte(`Retargeting: ${campanha.nome}${sufixoFiltro}`.slice(0, 120));
-    setDescricaoFonte(
-      `Audiência dinâmica extraída da campanha #${campanha.id} (${campanha.nome}) com os filtros: Cluster = ${
-        filtroCluster !== TODOS ? ROTULO_CLUSTER[filtroCluster] : "Todos"
-      }, Objeção = ${filtroObjecao !== TODOS ? ROTULO_MOTIVO_OBJECAO[filtroObjecao] : "Todas"}.`
-    );
-    setModalRetargeting(true);
-  }
-
-  function confirmarCriacaoFonte() {
-    if (!campanha || !nomeFonte.trim()) {
-      toast.error("Informe um nome para a nova audiência.");
-      return;
-    }
-    criarFonte.mutate({
-      label: nomeFonte.trim(),
-      origemCampanhaId: campanha.id,
-      origemCampanhaNome: campanha.nome,
-      cluster: filtroCluster !== TODOS ? filtroCluster : null,
-      motivoObjecao: filtroObjecao !== TODOS ? filtroObjecao : null,
-      descricao: descricaoFonte.trim() || undefined,
-    });
-  }
-
   return (
     <Dialog open={!!campanha} onOpenChange={v => !v && onClose()}>
       <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Brain size={18} className="text-violet-600" /> Qualificação de
-            leads por IA
+          <DialogTitle className="flex items-center gap-2 text-slate-800">
+            <Brain size={20} className="text-violet-600" /> Inteligência &
+            Qualificação de Campanhas (Gemini AI)
           </DialogTitle>
           <DialogDescription>
-            {campanha?.nome} — análise semântica das respostas via Gemini.
+            {campanha?.nome} — síntese executiva por IA, atribuição de receita e
+            qualificação semântica de leads.
           </DialogDescription>
         </DialogHeader>
 
@@ -242,7 +276,343 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Bloco 1: KPIs de engajamento real */}
+            {/* ─── BLOCO 0: RESUMO EXECUTIVO DA IA (GEMINI FLASH) ───────────────── */}
+            <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/70 via-white to-slate-50 p-4 shadow-sm space-y-3.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center justify-center size-7 rounded-lg bg-violet-600 text-white shadow-sm">
+                    <Sparkles size={16} />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-800">
+                      Resumo Executivo da Campanha (Gemini Flash)
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Análise estratégica automatizada da resposta da audiência
+                      e tração comercial
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {resumoIa.data && (
+                    <Badge
+                      className="border font-medium text-xs px-2.5 py-0.5"
+                      style={{
+                        backgroundColor: `${COR_TEMPERATURA_AUDIENCIA[resumoIa.data.temperaturaAudiencia]}15`,
+                        color:
+                          COR_TEMPERATURA_AUDIENCIA[
+                            resumoIa.data.temperaturaAudiencia
+                          ],
+                        borderColor: `${COR_TEMPERATURA_AUDIENCIA[resumoIa.data.temperaturaAudiencia]}40`,
+                      }}
+                    >
+                      {
+                        ROTULO_TEMPERATURA_AUDIENCIA[
+                          resumoIa.data.temperaturaAudiencia
+                        ]
+                      }
+                    </Badge>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-100/60"
+                    onClick={() => resumoIa.refetch()}
+                    disabled={resumoIa.isFetching}
+                  >
+                    <RefreshCw
+                      size={12}
+                      className={resumoIa.isFetching ? "animate-spin" : ""}
+                    />
+                    {resumoIa.isFetching ? "Gerando..." : "Atualizar Síntese"}
+                  </Button>
+                </div>
+              </div>
+
+              {resumoIa.isLoading ? (
+                <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
+                  <Spinner className="size-4" /> Consolidando visão executiva
+                  com o Gemini Flash...
+                </div>
+              ) : resumoIa.data ? (
+                <div className="space-y-3 pt-1">
+                  <p className="text-sm text-slate-700 leading-relaxed bg-white/80 border border-violet-100 rounded-lg p-3">
+                    {resumoIa.data.visaoGeral}
+                  </p>
+
+                  <div className="grid md:grid-cols-2 gap-3 text-xs">
+                    {/* Pontos Fortes */}
+                    <div className="rounded-lg border bg-emerald-50/50 border-emerald-200/60 p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-semibold text-emerald-800">
+                        <CheckCircle2 size={14} className="text-emerald-600" />{" "}
+                        Pontos Fortes & Tração da Oferta
+                      </div>
+                      <ul className="space-y-1 text-slate-700 list-disc list-inside">
+                        {resumoIa.data.pontosFortesOferta.map((pt, i) => (
+                          <li key={i}>{pt}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Dores & Objeções */}
+                    <div className="rounded-lg border bg-amber-50/50 border-amber-200/60 p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-semibold text-amber-800">
+                        <AlertTriangle size={14} className="text-amber-600" />{" "}
+                        Principais Travas & Objeções
+                      </div>
+                      <ul className="space-y-1.5 text-slate-700">
+                        {resumoIa.data.principaisDoresObjecoes.map((dor, i) => (
+                          <li key={i} className="text-xs">
+                            <span className="font-medium text-slate-900">
+                              {dor.objecao}:
+                            </span>{" "}
+                            {dor.impacto}
+                            {dor.citacaoReal && (
+                              <span className="block text-[11px] text-slate-500 italic mt-0.5">
+                                "{dor.citacaoReal}"
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Recomendações acionáveis */}
+                  <div className="rounded-lg border bg-slate-900 text-slate-100 p-3 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap font-semibold text-amber-300">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles size={13} /> Recomendações Estratégicas para o
+                        Próximo Disparo
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        Perfil predominante:{" "}
+                        <strong className="text-slate-200">
+                          {resumoIa.data.perfilPredominante}
+                        </strong>
+                      </span>
+                    </div>
+                    <ul className="space-y-1 text-slate-300 list-disc list-inside">
+                      {resumoIa.data.recomendacoesProximaCampanha.map(
+                        (rec, i) => (
+                          <li key={i}>{rec}</li>
+                        )
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* ─── BLOCO 1: ATRIBUIÇÃO DE RECEITA & ROI REAL (MUBISYS ERP) ──────── */}
+            <div className="rounded-xl border p-4 space-y-3.5 bg-white shadow-sm">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <DollarSign size={16} className="text-emerald-600" />{" "}
+                    Atribuição de Receita & ROI Real (MubiSys)
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    O.S. faturadas ou aprovadas de contatos que receberam
+                    disparo desta campanha
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Janela de conversão:
+                  </span>
+                  <Select
+                    value={String(janelaDiasAtribuicao)}
+                    onValueChange={v => setJanelaDiasAtribuicao(Number(v))}
+                  >
+                    <SelectTrigger className="h-7 w-28 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">7 dias</SelectItem>
+                      <SelectItem value="15">15 dias</SelectItem>
+                      <SelectItem value="30">30 dias</SelectItem>
+                      <SelectItem value="60">60 dias</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {atribuicao.isLoading ? (
+                <div className="flex justify-center py-6">
+                  <Spinner className="size-5 text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div className="rounded-lg border bg-emerald-50/40 border-emerald-200/80 p-3">
+                      <div className="text-[11px] font-medium text-emerald-800">
+                        Receita Faturada Atribuída
+                      </div>
+                      <div className="text-lg font-bold text-emerald-700 mt-0.5">
+                        {fmtBrl(atribuicao.data?.receitaTotal ?? 0)}
+                      </div>
+                      <div className="text-[10px] text-emerald-900/70 mt-0.5">
+                        {atribuicao.data?.taxaConversaoDisparosPct ?? 0}%
+                        conversão dos disparos
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border p-3 bg-slate-50/70">
+                      <div className="text-[11px] font-medium text-slate-600">
+                        O.S. Convertidas
+                      </div>
+                      <div className="text-lg font-bold text-slate-800 mt-0.5">
+                        {fmtNum(atribuicao.data?.totalOs ?? 0)}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        {atribuicao.data?.clientesConvertidos ?? 0} cliente(s)
+                        único(s)
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border p-3 bg-slate-50/70">
+                      <div className="text-[11px] font-medium text-slate-600">
+                        Ticket Médio / O.S.
+                      </div>
+                      <div className="text-lg font-bold text-slate-800 mt-0.5">
+                        {fmtBrl(atribuicao.data?.ticketMedio ?? 0)}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        Média de valor por venda
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border bg-indigo-50/40 border-indigo-200/80 p-3">
+                      <div className="text-[11px] font-medium text-indigo-800">
+                        Retorno do Investimento (ROI)
+                      </div>
+                      <div className="text-lg font-bold text-indigo-700 mt-0.5">
+                        {atribuicao.data?.multiplicadorRetorno !== null &&
+                        atribuicao.data?.multiplicadorRetorno !== undefined
+                          ? `${atribuicao.data.multiplicadorRetorno}x`
+                          : "—"}
+                      </div>
+                      <div className="text-[10px] text-indigo-900/70 mt-0.5">
+                        Custo de envio:{" "}
+                        {fmtBrl(atribuicao.data?.custoTotalEstimado ?? 0)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Breakdown de Receita por Cluster de IA */}
+                  {atribuicao.data &&
+                    atribuicao.data.receitaPorCluster.length > 0 && (
+                      <div className="rounded-lg border bg-slate-50 p-2.5 text-xs flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-medium text-slate-700">
+                          Origem da Receita por Cluster de IA:
+                        </span>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {atribuicao.data.receitaPorCluster.map((rc, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1.5"
+                            >
+                              <span
+                                className="size-2 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    rc.cluster !== "NAO_QUALIFICADO"
+                                      ? COR_CLUSTER[rc.cluster as ClusterLead]
+                                      : "#94a3b8",
+                                }}
+                              />
+                              <strong>{rc.label}:</strong> {fmtBrl(rc.receita)}{" "}
+                              ({rc.percentualReceita}%)
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Tabela de O.S. convertidas */}
+                  {atribuicao.data &&
+                    atribuicao.data.ordensServico.length > 0 && (
+                      <div className="border rounded-lg overflow-x-auto max-h-48 overflow-y-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="text-[11px]">
+                              <TableHead className="py-1.5">
+                                O.S. / Cliente
+                              </TableHead>
+                              <TableHead className="py-1.5">
+                                Data Compra
+                              </TableHead>
+                              <TableHead className="py-1.5">
+                                Dias após Disparo
+                              </TableHead>
+                              <TableHead className="py-1.5">
+                                Cluster IA
+                              </TableHead>
+                              <TableHead className="py-1.5 text-right">
+                                Valor Faturado
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {atribuicao.data.ordensServico.map((os, i) => (
+                              <TableRow key={i} className="text-xs">
+                                <TableCell className="py-1.5 font-medium">
+                                  <div>
+                                    O.S. #{os.osNumero} — {os.empresa}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground">
+                                    {formatarTelefone(os.telefone)}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-1.5">
+                                  {os.dataCompra}
+                                </TableCell>
+                                <TableCell className="py-1.5">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Clock
+                                      size={11}
+                                      className="text-muted-foreground"
+                                    />
+                                    {os.diasAposDisparo === 0
+                                      ? "Mesmo dia"
+                                      : `${os.diasAposDisparo} dia(s)`}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="py-1.5">
+                                  {os.clusterIa ? (
+                                    <Badge
+                                      className="text-[10px] py-0 px-1.5 border"
+                                      style={{
+                                        backgroundColor: `${COR_CLUSTER[os.clusterIa]}15`,
+                                        color: COR_CLUSTER[os.clusterIa],
+                                        borderColor: `${COR_CLUSTER[os.clusterIa]}40`,
+                                      }}
+                                    >
+                                      {ROTULO_CLUSTER[os.clusterIa]}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      Direto s/ chat
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="py-1.5 text-right font-semibold text-emerald-700">
+                                  {fmtBrl(os.valor)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                </div>
+              )}
+            </div>
+
+            {/* ─── BLOCO 2: KPIS DE ENGAJAMENTO REAL & CURVA DE LATÊNCIA ───────── */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <KpiCard
                 variant="border"
@@ -285,25 +655,73 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
               />
             </div>
 
-            {stats.data && stats.data.tempoMedioReacaoSegundos !== null && (
-              <div className="rounded-lg border bg-sky-50 border-sky-200 px-4 py-2.5 text-sm text-sky-900 flex items-center justify-between gap-3 flex-wrap">
-                <span>
-                  ⏱️ Tempo médio de reação comercial (Lead Velocity):{" "}
-                  <strong>
-                    {formatarDuracao(stats.data.tempoMedioReacaoSegundos)}
-                  </strong>
-                </span>
-                {stats.data.melhorFaixaConversao && (
-                  <span>
-                    📅 Melhor horário de conversão desta campanha:{" "}
-                    <strong>{stats.data.melhorFaixaConversao.faixa}</strong> (
-                    {stats.data.melhorFaixaConversao.total} respostas)
-                  </span>
-                )}
-              </div>
-            )}
+            {/* Lead Velocity e Curva de Latência de Resposta */}
+            {stats.data &&
+              (stats.data.tempoMedioReacaoSegundos !== null ||
+                stats.data.curvaLatencia) && (
+                <div className="rounded-lg border bg-sky-50 border-sky-200 p-3.5 text-sm text-sky-950 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Clock size={16} className="text-sky-700" />
+                      <span>
+                        Lead Velocity: Média de{" "}
+                        <strong>
+                          {formatarDuracao(
+                            stats.data.tempoMedioReacaoSegundos ?? 0
+                          )}
+                        </strong>
+                        {stats.data.medianaReacaoSegundos !== null && (
+                          <span className="text-xs text-sky-800 ml-1">
+                            (Mediana:{" "}
+                            <strong>
+                              {formatarDuracao(
+                                stats.data.medianaReacaoSegundos
+                              )}
+                            </strong>
+                            )
+                          </span>
+                        )}
+                      </span>
+                    </div>
 
-            {/* Bloco 2: distribuição de clusters semânticos */}
+                    {stats.data.melhorFaixaConversao && (
+                      <span className="text-xs">
+                        📅 Melhor horário de conversão:{" "}
+                        <strong>{stats.data.melhorFaixaConversao.faixa}</strong>{" "}
+                        ({stats.data.melhorFaixaConversao.total} respostas)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Barras de Curva de Latência */}
+                  {stats.data.curvaLatencia &&
+                    stats.data.curvaLatencia.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 pt-1">
+                        {stats.data.curvaLatencia.map((cl, i) => (
+                          <div
+                            key={i}
+                            className="rounded border bg-white/90 p-2 text-center"
+                          >
+                            <div
+                              className="text-[10px] text-muted-foreground truncate"
+                              title={cl.label}
+                            >
+                              {cl.label}
+                            </div>
+                            <div className="text-sm font-bold text-slate-800 mt-0.5">
+                              {cl.total}
+                            </div>
+                            <div className="text-[10px] text-sky-700 font-medium">
+                              {cl.percentual}%
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+              )}
+
+            {/* ─── BLOCO 3: CLUSTERS SEMÂNTICOS & OBJEÇÕES ───────────────────────── */}
             <div className="grid md:grid-cols-2 gap-4">
               <div className="rounded-lg border p-4">
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">
@@ -407,12 +825,26 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
               </div>
             )}
 
-            {/* Tabela de leads + filtros + export (retargeting) */}
+            {/* ─── BLOCO 4: TABELA DE LEADS + FILTROS + RETARGETING ─────────────── */}
             <div className="rounded-lg border p-4">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-                <h3 className="text-sm font-semibold text-slate-700">
-                  Leads qualificados ({fmtNum(leads.data?.length ?? 0)})
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-700">
+                    Leads qualificados ({fmtNum(leads.data?.length ?? 0)})
+                  </h3>
+                  <Button
+                    size="sm"
+                    variant={apenasQuentes ? "default" : "outline"}
+                    className={`h-7 text-xs gap-1 ${apenasQuentes ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
+                    onClick={() => setApenasQuentes(!apenasQuentes)}
+                  >
+                    <Flame size={12} />
+                    {apenasQuentes
+                      ? "Mostrando Leads Quentes"
+                      : "Filtrar Leads Quentes (ICP ≥ 80)"}
+                  </Button>
+                </div>
+
                 <div className="flex items-center gap-2 flex-wrap">
                   <Select
                     value={filtroCluster}
@@ -432,6 +864,7 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                       ))}
                     </SelectContent>
                   </Select>
+
                   <Select
                     value={filtroObjecao}
                     onValueChange={v =>
@@ -450,6 +883,7 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                       ))}
                     </SelectContent>
                   </Select>
+
                   <Button
                     size="sm"
                     variant="outline"
@@ -459,9 +893,10 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                   >
                     <Download size={13} /> Exportar XLSX
                   </Button>
+
                   <Button
                     size="sm"
-                    className="h-8 gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+                    className="h-8 gap-1.5 bg-violet-600 hover:bg-violet-700 text-white shadow-sm"
                     onClick={abrirRetargeting}
                     disabled={!leads.data?.length}
                   >
@@ -488,6 +923,7 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                         <TableHead>ICP</TableHead>
                         <TableHead>Perfil</TableHead>
                         <TableHead>Resumo da intenção</TableHead>
+                        <TableHead>Parâmetros do projeto</TableHead>
                         <TableHead>Palavras-chave</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -495,14 +931,16 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                       {leads.data.map(l => (
                         <TableRow key={l.id}>
                           <TableCell>
-                            <div className="font-medium">{l.nome || "—"}</div>
+                            <div className="font-medium text-slate-900">
+                              {l.nome || "—"}
+                            </div>
                             <div className="text-xs text-slate-500">
                               {formatarTelefone(l.telefone)}
                             </div>
                           </TableCell>
                           <TableCell>
                             <Badge
-                              className="border"
+                              className="border text-xs"
                               style={{
                                 backgroundColor: `${COR_CLUSTER[l.cluster as ClusterLead]}1a`,
                                 color: COR_CLUSTER[l.cluster as ClusterLead],
@@ -526,7 +964,32 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                             }
                           </TableCell>
                           <TableCell className="text-xs max-w-[220px]">
-                            {l.resumoIntencao}
+                            <div>{l.resumoIntencao}</div>
+                            {l.motivoObjecao !== "NENHUMA" &&
+                              l.resumoObjecao && (
+                                <div className="text-[11px] text-amber-700 mt-0.5">
+                                  <strong>Objeção:</strong> {l.resumoObjecao}
+                                </div>
+                              )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1 max-w-[180px]">
+                              {(l.parametrosProjeto ?? []).length > 0 ? (
+                                l.parametrosProjeto.map((p, i) => (
+                                  <Badge
+                                    key={i}
+                                    variant="secondary"
+                                    className="text-[10px] bg-sky-50 text-sky-800 border-sky-200"
+                                  >
+                                    {p}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-[11px] text-slate-400">
+                                  —
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1 max-w-[180px]">
@@ -600,6 +1063,12 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                   {filtroObjecao !== TODOS
                     ? ROTULO_MOTIVO_OBJECAO[filtroObjecao]
                     : "Todas"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Apenas Leads Quentes:</span>
+                <span className="font-medium text-slate-800">
+                  {apenasQuentes ? "Sim (ICP ≥ 80)" : "Não"}
                 </span>
               </div>
               <div className="flex justify-between border-t pt-1 font-semibold text-slate-900">
