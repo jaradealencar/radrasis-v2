@@ -4,6 +4,7 @@ import {
   DEBOUNCE_BUFFER_SEGUNDOS,
   LIMITE_RESPOSTA_BOT_SEGUNDOS,
   classificarFaixaIcp,
+  classificarFaixaLatencia,
   detectarBot,
   formatarFaixaHeatmap,
 } from "../../shared/campanhas-whatsapp-ia";
@@ -11,11 +12,15 @@ import {
   extrairMensagensDoPayload,
   whatsappInboundWebhookSchema,
 } from "../routes/campanhas-whatsapp-inbound";
+import { resolverFonteRetargeting } from "../services/fontesErpCampanhas";
 import {
   analisarRespostaComGemini,
   criarFallbackPadrao,
+  criarFallbackResumoExecutivo,
   montarPayloadPrompt,
+  montarPayloadResumoExecutivo,
   resultadoAnaliseGeminiSchema,
+  resumoExecutivoGeminiSchema,
   sanearRespostaGemini,
 } from "../services/campanhasWhatsappIa";
 
@@ -326,6 +331,73 @@ describe("extrairMensagensDoPayload (webhook Meta/WhatsApp Cloud API)", () => {
   it("payload totalmente vazio (entry ausente) também é aceito", () => {
     const payload = whatsappInboundWebhookSchema.parse({});
     expect(extrairMensagensDoPayload(payload)).toEqual([]);
+  });
+});
+
+describe("resolverFonteRetargeting", () => {
+  it("devolve lista vazia quando config for nulo ou sem origemCampanhaId", async () => {
+    expect(await resolverFonteRetargeting(null)).toEqual([]);
+    expect(await resolverFonteRetargeting(undefined)).toEqual([]);
+    expect(await resolverFonteRetargeting({})).toEqual([]);
+    expect(
+      await resolverFonteRetargeting({ cluster: "DUVIDA_TECNICA" })
+    ).toEqual([]);
+  });
+});
+
+describe("classificarFaixaLatencia", () => {
+  it("classifica corretamente faixas de resposta humana", () => {
+    expect(classificarFaixaLatencia(30)).toBe("ATE_5MIN");
+    expect(classificarFaixaLatencia(300)).toBe("ATE_5MIN");
+    expect(classificarFaixaLatencia(301)).toBe("DE_5_A_15MIN");
+    expect(classificarFaixaLatencia(900)).toBe("DE_5_A_15MIN");
+    expect(classificarFaixaLatencia(1800)).toBe("DE_15_A_60MIN");
+    expect(classificarFaixaLatencia(7200)).toBe("DE_1_A_4H");
+    expect(classificarFaixaLatencia(36000)).toBe("DE_4_A_24H");
+    expect(classificarFaixaLatencia(100000)).toBe("ACIMA_24H");
+  });
+});
+
+describe("resumoExecutivoGeminiSchema e fallback", () => {
+  it("valida payload do resumo executivo", () => {
+    const payload = montarPayloadResumoExecutivo({
+      nomeCampanha: "Reativação Outubro",
+      totalDisparado: 100,
+      respostasHumanas: 15,
+      taxaRespostaPct: 15,
+      cliquesCta: 4,
+      totalLeadsQualificados: 15,
+      clusters: [{ cluster: "ORCAMENTO_DIRETO", total: 10, percentual: 66.7 }],
+      objecoes: [{ motivo: "PRECO_ORCAMENTO", total: 3, percentual: 20 }],
+      amostraIntencoes: ["Quero cotação para fachada em ACM"],
+      amostraObjecoes: [{ motivo: "PRECO_ORCAMENTO", resumo: "Achou valor acima do concorrente" }],
+      distribuicaoIcp: { quente: 8, morno: 5, frio: 2 },
+      tempoMedioReacaoMinutos: 18,
+    });
+    expect(payload).toContain("Reativação Outubro");
+    expect(payload).toContain("15%");
+  });
+
+  it("cria fallback robusto de resumo executivo com indicadores", () => {
+    const fallback = criarFallbackResumoExecutivo("API indisponível no momento", {
+      nomeCampanha: "Campanha Teste",
+      totalDisparado: 50,
+      respostasHumanas: 6,
+      taxaRespostaPct: 12,
+      cliquesCta: 2,
+      totalLeadsQualificados: 6,
+      clusters: [{ cluster: "ORCAMENTO_DIRETO", total: 4, percentual: 66.7 }],
+      objecoes: [{ motivo: "PRAZO_ENTREGA", total: 2, percentual: 33.3 }],
+      amostraIntencoes: ["Preciso de orçamento urgente"],
+      amostraObjecoes: [{ motivo: "PRAZO_ENTREGA", resumo: "Precisa em 5 dias" }],
+      distribuicaoIcp: { quente: 4, morno: 2, frio: 0 },
+    });
+
+    expect(fallback.temperaturaAudiencia).toBe("INTERESSE_MODERADO");
+    expect(fallback.visaoGeral).toContain("6 respostas humanas");
+    expect(fallback.pontosFortesOferta.length).toBeGreaterThanOrEqual(1);
+    expect(fallback.principaisDoresObjecoes.length).toBe(1);
+    expect(fallback.recomendacoesProximaCampanha.length).toBeGreaterThan(0);
   });
 });
 

@@ -88,6 +88,16 @@ export const COR_FAIXA_ICP: Record<FaixaIcp, string> = {
   frio: "#ef4444",
 };
 
+// ─── Configuração de Fonte de Retargeting ────────────────────────────────────
+
+export interface FonteRetargetingConfig {
+  origemCampanhaId: number;
+  origemCampanhaNome?: string;
+  cluster?: ClusterLead | null;
+  motivoObjecao?: MotivoObjecao | null;
+  icpMinimo?: number | null;
+}
+
 // ─── Filtro de bot (Prompt 2, parte 1) ──────────────────────────────────────
 
 /** Abaixo deste intervalo entre o disparo e a resposta, a mensagem é tratada como resposta automática
@@ -173,4 +183,120 @@ export const DIAS_SEMANA_LABEL = [
 export function formatarFaixaHeatmap(diaSemana: number, hora: number): string {
   const dia = DIAS_SEMANA_LABEL[diaSemana] ?? "?";
   return `${dia}, ${String(hora).padStart(2, "0")}h`;
+}
+
+// ─── Curva de Latência de Resposta (Lead Velocity detalhado) ────────────────
+
+export const FAIXAS_LATENCIA = [
+  "ATE_5MIN",
+  "DE_5_A_15MIN",
+  "DE_15_A_60MIN",
+  "DE_1_A_4H",
+  "DE_4_A_24H",
+  "ACIMA_24H",
+] as const;
+export type FaixaLatencia = (typeof FAIXAS_LATENCIA)[number];
+
+export const ROTULO_FAIXA_LATENCIA: Record<FaixaLatencia, string> = {
+  ATE_5MIN: "Imediata (< 5 min)",
+  DE_5_A_15MIN: "Rápida (5 a 15 min)",
+  DE_15_A_60MIN: "Moderada (15 a 60 min)",
+  DE_1_A_4H: "Mesmo turno (1 a 4 h)",
+  DE_4_A_24H: "Mesmo dia (4 a 24 h)",
+  ACIMA_24H: "Tardia (> 24 h)",
+};
+
+export function classificarFaixaLatencia(segundos: number): FaixaLatencia {
+  if (segundos <= 300) return "ATE_5MIN";
+  if (segundos <= 900) return "DE_5_A_15MIN";
+  if (segundos <= 3600) return "DE_15_A_60MIN";
+  if (segundos <= 14400) return "DE_1_A_4H";
+  if (segundos <= 86400) return "DE_4_A_24H";
+  return "ACIMA_24H";
+}
+
+export interface CurvaLatenciaItem {
+  faixa: FaixaLatencia;
+  label: string;
+  total: number;
+  percentual: number;
+}
+
+// ─── Resumo Executivo da Campanha por IA ─────────────────────────────────────
+
+export const TEMPERATURAS_AUDIENCIA = [
+  "MUITO_AQUECIDA",
+  "INTERESSE_MODERADO",
+  "FRIA_RESISTENTE",
+  "DESALINHADA",
+] as const;
+export type TemperaturaAudiencia = (typeof TEMPERATURAS_AUDIENCIA)[number];
+
+export const ROTULO_TEMPERATURA_AUDIENCIA: Record<
+  TemperaturaAudiencia,
+  string
+> = {
+  MUITO_AQUECIDA: "🔥 Muito Aquecida",
+  INTERESSE_MODERADO: "⚡ Interesse Moderado",
+  FRIA_RESISTENTE: "🧊 Fria / Resistente",
+  DESALINHADA: "⚠️ Desalinhada da Oferta",
+};
+
+export const COR_TEMPERATURA_AUDIENCIA: Record<TemperaturaAudiencia, string> = {
+  MUITO_AQUECIDA: "#22c55e",
+  INTERESSE_MODERADO: "#3b82f6",
+  FRIA_RESISTENTE: "#f59e0b",
+  DESALINHADA: "#ef4444",
+};
+
+export interface DorObjecaoExecutiva {
+  objecao: string;
+  impacto: string;
+  citacaoReal?: string | null;
+}
+
+export interface ResumoExecutivoIa {
+  visaoGeral: string;
+  temperaturaAudiencia: TemperaturaAudiencia;
+  justificativaTemperatura: string;
+  pontosFortesOferta: string[];
+  principaisDoresObjecoes: DorObjecaoExecutiva[];
+  perfilPredominante: string;
+  recomendacoesProximaCampanha: string[];
+  geradoEm: string;
+}
+
+// ─── Atribuição de Receita & ROI (Campanha ↔ MubiSys O.S.) ──────────────────
+
+export interface OsAtribuidaReceita {
+  osNumero: string;
+  empresa: string;
+  telefone: string;
+  dataAprovacao: string | null;
+  dataFaturamento: string | null;
+  dataCompra: string;
+  diasAposDisparo: number;
+  valor: number;
+  vendedor: string | null;
+  clusterIa: ClusterLead | null;
+}
+
+export interface AtribuicaoReceitaResultado {
+  janelaDias: number;
+  receitaTotal: number;
+  totalOs: number;
+  ticketMedio: number;
+  clientesConvertidos: number;
+  taxaConversaoDisparosPct: number;
+  custoTotalEstimado: number;
+  roiEstimadoPct: number | null;
+  multiplicadorRetorno: number | null;
+  receitaPorCluster: Array<{
+    cluster: ClusterLead | "NAO_QUALIFICADO";
+    label: string;
+    totalOs: number;
+    receita: number;
+    percentualReceita: number;
+  }>;
+  ordensServico: OsAtribuidaReceita[];
 }

@@ -135,8 +135,8 @@ Toda mudança de estrutura (coluna, tipo, enum, índice) segue este fluxo:
 4. Aplique com `npx drizzle-kit migrate` (ou `yarn db:push`, que já faz
    generate + migrate).
 
-Scripts one-off pra *dado* (backfill pontual, copiar de uma tabela legada)
-são aceitáveis fora desse fluxo — a regra é sobre *estrutura*. Migration
+Scripts one-off pra _dado_ (backfill pontual, copiar de uma tabela legada)
+são aceitáveis fora desse fluxo — a regra é sobre _estrutura_. Migration
 sempre vai commitada junto com a mudança de `schema.ts` que a gerou.
 
 ⚠️ **Se criar uma migration à mão** (ex: só um `INSERT` de seed, sem passar
@@ -383,7 +383,9 @@ nem mocks da camada de dados.
   `IntegerSchema` do SDK não tem `minimum`/`maximum` (só array tem `minItems`/`maxItems`) — um teste real
   devolveu `nivel_interesse=9` fora do range 1-5 pedido só em texto, corrigido com clamp
   (`sanearRespostaGemini` em `campanhasWhatsappIa.ts`) em vez de deixar o Zod rejeitar e descartar um lead
-  quente de verdade no fallback. **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
+  quente de verdade no fallback. **Retargeting com 1 clique (17/10/2026, migration `0117`)**: botão direto no
+  dashboard cria audiência dinâmica (`campanhas_whatsapp_fontes.tipo = 'retargeting'`) alimentada pelos leads
+  filtrados por cluster/objeção/ICP, pronta para ser vinculada em qualquer campanha. **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
   painel deles, fora deste repo) para replicar mensagens recebidas para essa URL — hoje elas só chegam na
   caixa de entrada da Ceci. Detalhes em `docs/campanhas-whatsapp-ia.md`.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração
@@ -499,54 +501,54 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   O CPQ Letreiros Express usa diretamente as fichas locais por variação, sem
   exigir copiar cada ficha para o kit comercial manualmente. Em Administração
   > Produtos, a aba
-  Matérias-primas classifica o catálogo em categorias locais editáveis
-  (Iluminação, Chapas, Insumos Gerais, Elétrica, Insumos Solda e, desde 06/10/2026 — migration `0093`, só um seed idempotente —, **Produtividade para soldar**, a mão de obra de solda: sem dados técnicos de chapa/bobina/perfil, e a classificação de material, tipo de solda e tamanho continua decidida pelo nome da matéria-prima, não pela categoria). Elas e os
-  dados técnicos ficam nas tabelas `materia_prima_categorias` e
-  `materia_prima_cadastros`; nomes, custos e unidades continuam vindo do
-  MubiSys, que não oferece gravação pública para esses campos. Marcar uma
-  categoria com `usa_dados_chapa` exige espessura, densidade e pelo menos um
-  tamanho ativo, salvo como formato em `estudio_chapas` e normalizado para
-  orientação horizontal. Categorias de perfil (migrations `0079` e `0081`) abrem altura, largura, espessura, comprimento e densidade, sem formatos; a densidade é digitada em g/cm³ e gravada em kg/m³ (×1000), e matérias-primas fora de chapa/perfil têm `peso_especifico_kg` (kg por unidade de consumo), base do cálculo de peso do letreiro, implementado no fim do orçamento do CPQ (`blocoPesoReal`, uso interno; chapa = área líquida × espessura × densidade, perfil = tubo oco, cantoneira (L) ou barra maciça conforme `perfil_formato`, migration `0084` (padrão tubo; a barra dispensa espessura), demais = quantidade × peso específico; itens sem dado ficam destacados). Espessura é digitada em mm ou µm e gravada em mm; bobina tem só altura (largura do rolo) e espessura. Gestor, admin e master podem editar categorias e
-  especificações. **Produtividade (pedido de 05/10/2026):** matérias-primas cujo nome contém "produtividade"
-  (exceto "Produtividade Geral …", ex.: #4373 Hora; 42 no catálogo de 05/10/2026) ganham no diálogo de edição uma
-  subclassificação interna, independente da categoria: até 3 tipos de solda (barra roscada, patinha para LED,
-  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras), o tamanho (≤ 11 cm e/ou > 11 cm) e os
-  materiais a que a solda se aplica (inox, galvanizado, latão, acrílico, alumínio; multisseleção sem limite).
-  **Cada um dos três grupos aceita mais de uma marcação** (tipo de solda até 3; material e tamanho sem limite): uma produtividade
-  que serve aos dois tamanhos recebe os dois, e o motor de solda a considera válida para as duas faixas (pontua menos que a
-  marca exata de uma faixa).
-  Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`), `produtividade_tamanhos` (`text[]`, migration `0092`; substitui `produtividade_tamanho` da migration `0089`, cujos valores a 0092 copiou) e
-  `produtividade_materiais` (`text[]`, migration `0090`). A coluna antiga `produtividade_tamanho` continua no banco e no
-  `schema.ts` só como **legado** (nada a lê nem grava); remova-a numa migration futura, depois que nenhum deploy anterior a use;
-  regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
-  (`ehMateriaProdutividade`), ignorando o que vier para as demais. A página 5 da Tabela de Preços, Produtividades de solda, consulta o catálogo do MubiSys e permite filtrar e editar classificações de
-  material, tipo de solda e tamanho. A classificação é manual (não deduzida do texto do nome); nenhum cálculo de custo ou
-  preço lê esses campos ainda. **Estilo do letreiro (pedido de 06/10/2026, migration `0095`):** quatro grupos a mais, também
-  de marcação múltipla — categoria (Frontlight ou Tradicionais), aro (normal ou recuado; só existe junto de Frontlight, e o servidor
-  recusa aro sem ele), formato (cursiva ou tradicional) e fundo (com ou sem fundo) —, em `materia_prima_cadastros.produtividade_categorias`,
-  `produtividade_aros`, `produtividade_formatos` e `produtividade_fundos` (`text[]`). Filtros (o de aro só aparece com Frontlight
-  escolhido), coluna "Estilo" e edição estão na página 5 da Tabela de Preços e no cadastro de Produtos > Matérias-primas; os campos são
-  opcionais no `salvar`/`produtividadeClassificacaoSalvar` (tela antiga que não os envia não apaga o que está marcado). O motor de
-  escolha de solda do CPQ **ainda não lê** esses quatro grupos (continua usando o nome/título para cursivo, aro recuado e frontlight): ligá-los
-  ao `sugerirProdutividades` é o passo seguinte. **Produtividades relacionadas ao produto (pedido de 06/10/2026):** no editor de produto do
-  CPQ (Administração > Produtos & kits), todo produto de categoria **Letreiros** tem a lista fechada "Produtividades de solda
-  relacionadas", com marcação múltipla, filtro (nome, #código, tipo de solda, tamanho, material) e a classificação de cada
-  produtividade. Os IDs ficam em `estudio_kits.dadosJson.produtividadesRelacionadas` (JSON, sem migration; salvo pela gravação
-  automática do kit). O servidor (`server/routes/estudio-kits.ts`) só aceita a lista em produto de categoria Letreiros, sem
-  repetidos, e só IDs que sejam produtividade no catálogo do MubiSys (`ehMateriaProdutividade`; o catálogo só é consultado
-  para IDs recém-adicionados, e sem MubiSys a gravação com IDs novos responde 503). Trocar a categoria para fora de Letreiros pede
-  confirmação e apaga a lista. A rota `GET /api/letra-caixa/materias-cadastro` devolve `produtividade` (tipos, tamanhos,
-  materiais) por matéria-prima para o HTML mostrar os chips; as regras do HTML repetem as de `shared/produtividade-solda.ts`.
-  O motor de escolha automática de solda lê esta lista como conjunto de candidatas. As condições comerciais armazenadas historicamente na página 5 são apresentadas na página 6; os registros do banco não são migrados. O PDF da tabela inclui a página 5 com custos atuais do MubiSys. O CPQ permite selecionar várias
-  variações do modelo e soma a composição comum às linhas específicas
-  escolhidas; salva as medidas do nesting e os materiais calculados no
-  snapshot da cotação. Comercial > Propostas pode importar medidas de uma
-  cotação salva no CPQ, permite ajustá-las manualmente, combinar
-  variações e excluir materiais da composição daquele item.
-  A BOM é importada por CSV/XLSX validado; o campo `produtos.idPrecificacao`
-  referencia um `id` de linha/regra da Tabela de Preços (ver
-  `shared/price-table.ts`) só por número — não há resolução automática de
-  qual coluna/faixa de valor usar ainda.
+  > Matérias-primas classifica o catálogo em categorias locais editáveis
+  > (Iluminação, Chapas, Insumos Gerais, Elétrica, Insumos Solda e, desde 06/10/2026 — migration `0093`, só um seed idempotente —, **Produtividade para soldar**, a mão de obra de solda: sem dados técnicos de chapa/bobina/perfil, e a classificação de material, tipo de solda e tamanho continua decidida pelo nome da matéria-prima, não pela categoria). Elas e os
+  > dados técnicos ficam nas tabelas `materia_prima_categorias` e
+  > `materia_prima_cadastros`; nomes, custos e unidades continuam vindo do
+  > MubiSys, que não oferece gravação pública para esses campos. Marcar uma
+  > categoria com `usa_dados_chapa` exige espessura, densidade e pelo menos um
+  > tamanho ativo, salvo como formato em `estudio_chapas` e normalizado para
+  > orientação horizontal. Categorias de perfil (migrations `0079` e `0081`) abrem altura, largura, espessura, comprimento e densidade, sem formatos; a densidade é digitada em g/cm³ e gravada em kg/m³ (×1000), e matérias-primas fora de chapa/perfil têm `peso_especifico_kg` (kg por unidade de consumo), base do cálculo de peso do letreiro, implementado no fim do orçamento do CPQ (`blocoPesoReal`, uso interno; chapa = área líquida × espessura × densidade, perfil = tubo oco, cantoneira (L) ou barra maciça conforme `perfil_formato`, migration `0084` (padrão tubo; a barra dispensa espessura), demais = quantidade × peso específico; itens sem dado ficam destacados). Espessura é digitada em mm ou µm e gravada em mm; bobina tem só altura (largura do rolo) e espessura. Gestor, admin e master podem editar categorias e
+  > especificações. **Produtividade (pedido de 05/10/2026):** matérias-primas cujo nome contém "produtividade"
+  > (exceto "Produtividade Geral …", ex.: #4373 Hora; 42 no catálogo de 05/10/2026) ganham no diálogo de edição uma
+  > subclassificação interna, independente da categoria: até 3 tipos de solda (barra roscada, patinha para LED,
+  > chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras), o tamanho (≤ 11 cm e/ou > 11 cm) e os
+  > materiais a que a solda se aplica (inox, galvanizado, latão, acrílico, alumínio; multisseleção sem limite).
+  > **Cada um dos três grupos aceita mais de uma marcação** (tipo de solda até 3; material e tamanho sem limite): uma produtividade
+  > que serve aos dois tamanhos recebe os dois, e o motor de solda a considera válida para as duas faixas (pontua menos que a
+  > marca exata de uma faixa).
+  > Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`), `produtividade_tamanhos` (`text[]`, migration `0092`; substitui `produtividade_tamanho` da migration `0089`, cujos valores a 0092 copiou) e
+  > `produtividade_materiais` (`text[]`, migration `0090`). A coluna antiga `produtividade_tamanho` continua no banco e no
+  > `schema.ts` só como **legado** (nada a lê nem grava); remova-a numa migration futura, depois que nenhum deploy anterior a use;
+  > regras e rótulos em `shared/produtividade-solda.ts`; o servidor valida e decide pelo nome vindo do catálogo
+  > (`ehMateriaProdutividade`), ignorando o que vier para as demais. A página 5 da Tabela de Preços, Produtividades de solda, consulta o catálogo do MubiSys e permite filtrar e editar classificações de
+  > material, tipo de solda e tamanho. A classificação é manual (não deduzida do texto do nome); nenhum cálculo de custo ou
+  > preço lê esses campos ainda. **Estilo do letreiro (pedido de 06/10/2026, migration `0095`):** quatro grupos a mais, também
+  > de marcação múltipla — categoria (Frontlight ou Tradicionais), aro (normal ou recuado; só existe junto de Frontlight, e o servidor
+  > recusa aro sem ele), formato (cursiva ou tradicional) e fundo (com ou sem fundo) —, em `materia_prima_cadastros.produtividade_categorias`,
+  > `produtividade_aros`, `produtividade_formatos` e `produtividade_fundos` (`text[]`). Filtros (o de aro só aparece com Frontlight
+  > escolhido), coluna "Estilo" e edição estão na página 5 da Tabela de Preços e no cadastro de Produtos > Matérias-primas; os campos são
+  > opcionais no `salvar`/`produtividadeClassificacaoSalvar` (tela antiga que não os envia não apaga o que está marcado). O motor de
+  > escolha de solda do CPQ **ainda não lê** esses quatro grupos (continua usando o nome/título para cursivo, aro recuado e frontlight): ligá-los
+  > ao `sugerirProdutividades` é o passo seguinte. **Produtividades relacionadas ao produto (pedido de 06/10/2026):** no editor de produto do
+  > CPQ (Administração > Produtos & kits), todo produto de categoria **Letreiros** tem a lista fechada "Produtividades de solda
+  > relacionadas", com marcação múltipla, filtro (nome, #código, tipo de solda, tamanho, material) e a classificação de cada
+  > produtividade. Os IDs ficam em `estudio_kits.dadosJson.produtividadesRelacionadas` (JSON, sem migration; salvo pela gravação
+  > automática do kit). O servidor (`server/routes/estudio-kits.ts`) só aceita a lista em produto de categoria Letreiros, sem
+  > repetidos, e só IDs que sejam produtividade no catálogo do MubiSys (`ehMateriaProdutividade`; o catálogo só é consultado
+  > para IDs recém-adicionados, e sem MubiSys a gravação com IDs novos responde 503). Trocar a categoria para fora de Letreiros pede
+  > confirmação e apaga a lista. A rota `GET /api/letra-caixa/materias-cadastro` devolve `produtividade` (tipos, tamanhos,
+  > materiais) por matéria-prima para o HTML mostrar os chips; as regras do HTML repetem as de `shared/produtividade-solda.ts`.
+  > O motor de escolha automática de solda lê esta lista como conjunto de candidatas. As condições comerciais armazenadas historicamente na página 5 são apresentadas na página 6; os registros do banco não são migrados. O PDF da tabela inclui a página 5 com custos atuais do MubiSys. O CPQ permite selecionar várias
+  > variações do modelo e soma a composição comum às linhas específicas
+  > escolhidas; salva as medidas do nesting e os materiais calculados no
+  > snapshot da cotação. Comercial > Propostas pode importar medidas de uma
+  > cotação salva no CPQ, permite ajustá-las manualmente, combinar
+  > variações e excluir materiais da composição daquele item.
+  > A BOM é importada por CSV/XLSX validado; o campo `produtos.idPrecificacao`
+  > referencia um `id` de linha/regra da Tabela de Preços (ver
+  > `shared/price-table.ts`) só por número — não há resolução automática de
+  > qual coluna/faixa de valor usar ainda.
 - **Aparência de matérias-primas para renderização 3D (pedido de 06/10/2026; migration `0094`):** em Administração > Produtos > Matérias-primas, cada item pode informar cor (HEX/descrição), textura (imagem de referência enviada ao UploadThing e descrição para IA) ou deixar a aparência sem informação, além de opacidade/translucidez/transparência e transmissão de luz. A foto é referência visual, não mapa PBR calibrado. A rota autenticada `POST /api/letra-caixa/materias-aparencia` aceita `{ materiaPrimaIds }` (até 300) e devolve um registro por ID, inclusive sem cadastro local (`cadastroDisponivel: false`), com aparência e cores/transparências de formatos de chapa; não retorna custos. `GET /api/letra-caixa/materias-cadastro` também inclui `aparencia`. O servidor aceita URLs de imagem apenas do UploadThing.
 - **Módulo Proposta (cotação) é diferente de `crm_propostas`.** A tabela
   `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o "CRM
@@ -1145,7 +1147,7 @@ e em `GET /api/letra-caixa/materias-cadastro` (lista da administração do CPQ).
 dados de outra matéria-prima**: preenche o formulário com categoria, espessura, densidade, formatos/larguras,
 perfil e peso específico da origem (sem ids, nomes em branco, cor só se o vendedor marcar), sem salvar. `estudio_chapas.pantone_code` guarda até 6
 referências Pantone separadas por vírgula (migration 0085; `separarPantones`/`normalizarListaPantone` em
-`shared/pantone-referencia.ts` aceitam também "021 C  804 C", "+", "/", "e", "ou"). O casamento de cor
+`shared/pantone-referencia.ts` aceitam também "021 C 804 C", "+", "/", "e", "ou"). O casamento de cor
 (`labsCatalogo` em `cpqCoresMateriais.ts`) considera cor hex, CMYK e cada Pantone da lista e usa a mais próxima
 (ΔE00); código fora da tabela de amostras (ex.: 804 C) só casa pelo código exato da arte.
 
@@ -1248,25 +1250,26 @@ reconfirmar o tamanho real do letreiro antes do nesting.
 `shared/pantone-referencia.ts` guarda a tabela Pantone de referência (guia da Promobrace, 925 cores com
 amostra em hex) e `server/services/cpqPantone.ts` sugere o Pantone mais próximo (CIEDE2000) e um CMYK
 aproximado. Em Administração > Chapas para nesting, o gestor escolhe o Pantone de cada chapa (lista, ou cor
-+ "Sugerir Pantone mais próximo"); a matéria-prima da chapa sem CMYK passa a usar a amostra do Pantone no
-cálculo de cor. A análise de cores da arte mostra Pantone e CMYK **aproximados** (rotas
-`/api/letra-caixa/cores/pantone` e `/pantone/referencias`); eles não substituem o catálogo físico e não
-entram no custo nem na decisão de material.
-Printed and solid-vinyl costs also use each visible closed contour's bounding box
-with configurable per-edge bleed (default 3 mm). The approved quote snapshot
-retains the individual boxes, billed area, and roll parameters. Admin settings store roll width,
-usable width, and bleed in `estudio_precos_impressao`; default charged consumption
-is full roll width times the shortest fitting linear length across either orientation.
-Only an explicit reusable-scrap setting charges the union of expanded contour boxes.
-Missing width/geometry or an unfit layout leaves cost pending and blocks approval.
-Migrations `0075_chubby_tenebrous.sql` and `0076_reconciliar_retalho_bobina.sql`
-add the settings.
+
+- "Sugerir Pantone mais próximo"); a matéria-prima da chapa sem CMYK passa a usar a amostra do Pantone no
+  cálculo de cor. A análise de cores da arte mostra Pantone e CMYK **aproximados** (rotas
+  `/api/letra-caixa/cores/pantone` e `/pantone/referencias`); eles não substituem o catálogo físico e não
+  entram no custo nem na decisão de material.
+  Printed and solid-vinyl costs also use each visible closed contour's bounding box
+  with configurable per-edge bleed (default 3 mm). The approved quote snapshot
+  retains the individual boxes, billed area, and roll parameters. Admin settings store roll width,
+  usable width, and bleed in `estudio_precos_impressao`; default charged consumption
+  is full roll width times the shortest fitting linear length across either orientation.
+  Only an explicit reusable-scrap setting charges the union of expanded contour boxes.
+  Missing width/geometry or an unfit layout leaves cost pending and blocks approval.
+  Migrations `0075_chubby_tenebrous.sql` and `0076_reconciliar_retalho_bobina.sql`
+  add the settings.
 
 **Papéis das peças e como os materiais de um letreiro se combinam (informação do usuário, 06/10/2026):** o select "Papel na
 peça" (composição do CPQ, cadastro do kit e vínculo das camadas do nesting; as opções vêm de Administração > Configurações, e `Aro`
 está sempre presente, logo depois de `Face` — helper `papeisDePeca` no HTML) diz o que cada matéria-prima faz no produto.
 **Aro** é sempre uma chapa metálica (ex.: galvanizada) da qual se corta o miolo, sobrando só as bordas: uma faixa que acompanha o
-contorno de cada letra/símbolo e sustenta o acrílico da face nos letreiros *frontlight* de face iluminada. Exemplo real (Império das
+contorno de cada letra/símbolo e sustenta o acrílico da face nos letreiros _frontlight_ de face iluminada. Exemplo real (Império das
 Rações, desenho do usuário): **Aro galvanizado com perfil lateral de 80 mm soldado** nele + **Face em acrílico branco** + **Fundo em
 PVC 10 mm**. Os três desenhos seguem o mesmo contorno do logo; no desenho do Aro cada letra/símbolo tem contorno duplo (a faixa de
 metal que sobra) e na Face e no Fundo o contorno é simples. O usuário definiu a largura padrão da faixa em **6 mm** (06/10/2026).

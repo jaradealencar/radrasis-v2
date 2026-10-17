@@ -820,6 +820,13 @@
       "when": 1792251827190,
       "tag": "0116_spicy_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1792262473114,
+      "tag": "0117_jittery_argent",
+      "breakpoints": true
     }
   ]
 }

@@ -89,17 +89,17 @@ mesma campanha é um passo futuro, não implementado.
 **Schema de saída** (Structured Output nativo do SDK `@google/generative-ai`, `SchemaType`/`responseSchema`,
 não JSON solto no prompt):
 
-| Campo | Tipo | Observação |
-|---|---|---|
-| `cluster` | enum | `ORCAMENTO_DIRETO` \| `DUVIDA_TECNICA` \| `OBJECAO_FORNECEDOR` \| `DESQUALIFICADO_OUTROS` |
-| `resumo_intencao` | string | ≤ 12 palavras |
-| `nivel_interesse` | integer 1-5 | 1 = nulo/negativo, 5 = pronto para fechar |
-| `palavras_chave` | string[] | até 4 termos |
-| `icp_fit_score` | integer 1-100 | 80-100 quente, 50-79 morno, 1-49 frio (`classificarFaixaIcp`) |
-| `perfil_interlocutor` | enum | `DECISOR_SOCIO` \| `COMPRADOR_TECNICO` \| `INTERMEDIARIO_ATENDENTE` \| `DESCONHECIDO` |
-| `parametros_projeto` | string[] | medidas/materiais/prazos citados pelo cliente |
-| `motivo_objecao` | enum | `PRECO_ORCAMENTO` \| `PRAZO_ENTREGA` \| `FORNECEDOR_FIXO` \| `TIMING_INADEQUADO` \| `FORA_DE_ESCOPO` \| `NENHUMA` |
-| `resumo_objecao` | string \| null | ≤ 10 palavras, só quando há objeção |
+| Campo                 | Tipo           | Observação                                                                                                        |
+| --------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `cluster`             | enum           | `ORCAMENTO_DIRETO` \| `DUVIDA_TECNICA` \| `OBJECAO_FORNECEDOR` \| `DESQUALIFICADO_OUTROS`                         |
+| `resumo_intencao`     | string         | ≤ 12 palavras                                                                                                     |
+| `nivel_interesse`     | integer 1-5    | 1 = nulo/negativo, 5 = pronto para fechar                                                                         |
+| `palavras_chave`      | string[]       | até 4 termos                                                                                                      |
+| `icp_fit_score`       | integer 1-100  | 80-100 quente, 50-79 morno, 1-49 frio (`classificarFaixaIcp`)                                                     |
+| `perfil_interlocutor` | enum           | `DECISOR_SOCIO` \| `COMPRADOR_TECNICO` \| `INTERMEDIARIO_ATENDENTE` \| `DESCONHECIDO`                             |
+| `parametros_projeto`  | string[]       | medidas/materiais/prazos citados pelo cliente                                                                     |
+| `motivo_objecao`      | enum           | `PRECO_ORCAMENTO` \| `PRAZO_ENTREGA` \| `FORNECEDOR_FIXO` \| `TIMING_INADEQUADO` \| `FORA_DE_ESCOPO` \| `NENHUMA` |
+| `resumo_objecao`      | string \| null | ≤ 10 palavras, só quando há objeção                                                                               |
 
 `analisarRespostaComGemini(campanhaTexto, respostasCliente)`: monta o payload (`montarPayloadPrompt`, no
 formato pedido — `mensagem_campanha_enviada` + `mensagens_resposta_cliente[]`), chama
@@ -136,17 +136,19 @@ Acessado por "⋮ → Qualificação por IA (Gemini)" na tabela de campanhas. Co
   frases capturadas), heatmap dia×hora, tempo médio de reação.
 - `campanhasWhatsapp.listarLeadsQualificados` / `exportarLeadsParaRetargeting` — tabela filtrável por
   cluster/objeção/ICP mínimo, com export `.xlsx` (mesmo padrão de `exportRowsToXlsx` usado em "Ver contatos").
-  O export devolve telefone+nome no mesmo formato aceito por `dispararWts.contatos` e pelo "Registrar
-  disparo" manual — o encadeamento efetivo para uma campanha de retargeting ainda é: exportar aqui → importar
-  como lista na campanha de destino. Não há um botão "criar campanha de retargeting" direto a partir do
-  filtro; seria o próximo passo de integração.
+- **Retargeting com 1 clique (implementado em 17/10/2026)**: botão "Criar audiência (1 clique)" no cabeçalho
+  da tabela de leads qualificados. Cria dinamicamente uma Fonte de Dados tipo `retargeting`
+  (`campanhas_whatsapp_fontes.tipo = 'retargeting'`, migration `0117`) apontando para a campanha de origem e
+  preservando os filtros aplicados (cluster, objeção e ICP). A nova audiência aparece imediatamente no seletor
+  de Fontes de Dados de qualquer campanha e se retroalimenta dinamicamente conforme novos leads são qualificados.
 
-## Modelo de dados (migrations `0115`, `0116`)
+## Modelo de dados (migrations `0115`, `0116`, `0117`)
 
-| Tabela | Papel |
-|---|---|
-| `campanhas_whatsapp_mensagens_inbound` | toda mensagem recebida (texto/button_reply/list_reply), com classificação de bot, tempo de resposta e janela de buffer |
+| Tabela                                  | Papel                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `campanhas_whatsapp_mensagens_inbound`  | toda mensagem recebida (texto/button_reply/list_reply), com classificação de bot, tempo de resposta e janela de buffer          |
 | `campanhas_whatsapp_leads_qualificados` | 1 linha por (campanha, telefone): resultado consolidado do Gemini — cluster, ICP, perfil, objeção, heatmap, mensagens de origem |
+| `campanhas_whatsapp_fontes`             | expandida com `tipo = 'retargeting'` e coluna `retargeting_config` (jsonb) para audiências dinâmicas                            |
 
 `campanhas_whatsapp_mensagens_inbound.mensagem_id_externo` é único (nulos não colidem) — evita gravar a mesma
 mensagem duas vezes quando o provedor reenvia o webhook (retry comum em infra de webhook).
@@ -166,7 +168,6 @@ custo "só qualifica quem ainda não tem lead nesta campanha" sem corrida.
   ver histórico de testes abaixo para o resultado exato.
 - **"Taxa de abertura real"** do pedido original não foi implementada (ver seção Dashboard acima) — a API da
   WTS.Chat/Ceci hoje usada não distingue leitura de entrega.
-- **Sem botão direto "retargeting"**: o fluxo é exportar a lista filtrada e importar manualmente numa
   campanha nova/existente, reaproveitando o upload de lista já existente — não um clique único.
 - **Heatmap e Lead Velocity dependem de `tempo_reacao_segundos`/`dia_semana`/`hora`, que só são confiáveis
   quando o disparo de origem foi `origem = "api"`** (ver Parte 1) — para campanhas disparadas manualmente

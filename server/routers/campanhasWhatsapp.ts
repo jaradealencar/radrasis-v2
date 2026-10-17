@@ -13,56 +13,129 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, count, desc, eq, gte, inArray, isNotNull, lte, max, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lte,
+  max,
+  sql,
+} from "drizzle-orm";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
 import {
-  consultarDiagnosticoCeci, consultarEstadoMensagemWts, criarCampanhaWts, enviarTemplateWts, idMensagemWts,
-  urlStatusMensagemWts, wtsChatConfigurado,
+  consultarDiagnosticoCeci,
+  consultarEstadoMensagemWts,
+  criarCampanhaWts,
+  enviarTemplateWts,
+  idMensagemWts,
+  urlStatusMensagemWts,
+  wtsChatConfigurado,
 } from "../integrations/wts-chat-client";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
-  completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
+  completarTelefonesClientesOrcamentos,
+  completarTelefonesJanela,
+  ErroConsultaMubiSysBackfill,
   gravarClienteIdOrcamentosJanela,
-  janelaValida, planoBackfillTelefone, planoClienteIdOrcamentos,
+  janelaValida,
+  planoBackfillTelefone,
+  planoClienteIdOrcamentos,
   type MesOrcamentoSemCliente,
 } from "../sync/telefone-historico";
 import {
-  campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
-  campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
-  campanhasWhatsappGatilhos, campanhasWhatsappLeadsQualificados, campanhasWhatsappMensagensInbound,
-  campanhasWhatsappOptout, campanhasWhatsappScripts, historicoOs,
+  campanhasWhatsapp,
+  campanhasWhatsappAgendamentos,
+  campanhasWhatsappArquivos,
+  campanhasWhatsappCampanhaFontes,
+  campanhasWhatsappCategorias,
+  campanhasWhatsappContatosHistorico,
+  campanhasWhatsappDisparos,
+  campanhasWhatsappFontes,
+  campanhasWhatsappGatilhos,
+  campanhasWhatsappLeadsQualificados,
+  campanhasWhatsappMensagensInbound,
+  campanhasWhatsappOptout,
+  campanhasWhatsappScripts,
+  historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
-  MAX_DISPARO_WTS, STATUS_AGENDAMENTO, STATUS_CAMPANHA, TIPOS_CAMPANHA,
-  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, gerarChaveCategoria, hojeCampoGrande,
-  normalizarTelefone, somarDias,
+  MAX_DISPARO_WTS,
+  STATUS_AGENDAMENTO,
+  STATUS_CAMPANHA,
+  TIPOS_CAMPANHA,
+  calcularProximoEnvio,
+  classificarSemaforo,
+  dataIsoValida,
+  diasEntre,
+  gerarChaveCategoria,
+  hojeCampoGrande,
+  normalizarTelefone,
+  somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
-  CLUSTERS_LEAD, MOTIVOS_OBJECAO, classificarFaixaIcp, formatarFaixaHeatmap,
+  CLUSTERS_LEAD,
+  MOTIVOS_OBJECAO,
+  ROTULO_CLUSTER,
+  FAIXAS_LATENCIA,
+  ROTULO_FAIXA_LATENCIA,
+  classificarFaixaIcp,
+  classificarFaixaLatencia,
+  formatarFaixaHeatmap,
+  type ClusterLead,
+  type MotivoObjecao,
+  type CurvaLatenciaItem,
+  type OsAtribuidaReceita,
 } from "../../shared/campanhas-whatsapp-ia";
+import { gerarResumoExecutivoComGemini } from "../services/campanhasWhatsappIa";
 import {
-  agruparPorCliente, expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
-  resumirCampanhas, resumirVendas,
-  type ContatoIgnorado, type ContatoInvalido, type VendaPosVenda,
+  agruparPorCliente,
+  dataLocalParaIso,
+  expandirPrevistos,
+  filtrarPorCadenciaCampanha,
+  higienizarLista,
+  listarVendasPosVenda,
+  montarStatusCampanha,
+  resumirCampanhas,
+  resumirVendas,
+  type ContatoIgnorado,
+  type ContatoInvalido,
+  type VendaPosVenda,
 } from "../services/campanhasWhatsapp";
+import { parseDataFlexivel } from "../services/inteligenciaClientes";
 import {
-  JANELA_PADRAO_DIAS, carregarContextoErp, filtrarPorPeriodo, lerArquivoDeUrl, primeiroRegistroErp, resolverFonteErp,
-  type ContatoFonte, type ContextoErp,
+  JANELA_PADRAO_DIAS,
+  carregarContextoErp,
+  filtrarPorPeriodo,
+  lerArquivoDeUrl,
+  primeiroRegistroErp,
+  resolverFonteErp,
+  resolverFonteRetargeting,
+  type ContatoFonte,
+  type ContextoErp,
 } from "../services/fontesErpCampanhas";
 import { isOsNormalDb } from "./performanceComercial";
 import {
-  carregarTelefonesClientes, completarTelefonesPeloCadastro, sincronizarClientesLote, statusCacheClientes,
+  carregarTelefonesClientes,
+  completarTelefonesPeloCadastro,
+  sincronizarClientesLote,
+  statusCacheClientes,
 } from "../sync/clientes-mubisys";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 
 /** Mesmo público da área de Crescimento (Inteligência de Clientes): a aba fica ao lado do ROI Marketing e a lista
  * guarda telefones de clientes, então o gate de role vale também no servidor, não só na tela. */
-const campanhasProcedure = protectedProcedure.use(requireRole("admin", "master", "gestor"));
+const campanhasProcedure = protectedProcedure.use(
+  requireRole("admin", "master", "gestor")
+);
 
 export const MAX_CONTATOS_POR_DISPARO = 20_000;
 const MAX_LISTA_TELA = 500;
@@ -75,15 +148,29 @@ const MAX_JANELA_CALENDARIO_DIAS = 62;
 
 // ─── Schemas de entrada (exportados: o REST valida com os mesmos) ───────────
 
-export const dataIsoSchema = z.string().refine(dataIsoValida, "Data inválida (use AAAA-MM-DD)");
+export const dataIsoSchema = z
+  .string()
+  .refine(dataIsoValida, "Data inválida (use AAAA-MM-DD)");
 
-export const contatosSchema = z.array(z.object({
-  telefone: z.union([z.string().max(40), z.number()]),
-  nome: z.string().max(200).nullish(),
-  osNumero: z.string().max(32).nullish(),
-})).min(1, "A lista está vazia").max(MAX_CONTATOS_POR_DISPARO, `Máximo de ${MAX_CONTATOS_POR_DISPARO} contatos por disparo`);
+export const contatosSchema = z
+  .array(
+    z.object({
+      telefone: z.union([z.string().max(40), z.number()]),
+      nome: z.string().max(200).nullish(),
+      osNumero: z.string().max(32).nullish(),
+    })
+  )
+  .min(1, "A lista está vazia")
+  .max(
+    MAX_CONTATOS_POR_DISPARO,
+    `Máximo de ${MAX_CONTATOS_POR_DISPARO} contatos por disparo`
+  );
 
-const categoriaLabelSchema = z.string().trim().min(1, "Informe o nome da categoria").max(80);
+const categoriaLabelSchema = z
+  .string()
+  .trim()
+  .min(1, "Informe o nome da categoria")
+  .max(80);
 
 const campanhaBaseSchema = z.object({
   nome: z.string().trim().min(1, "Informe o nome").max(160),
@@ -100,17 +187,33 @@ const campanhaBaseSchema = z.object({
   periodoInicio: dataIsoSchema.nullish(),
   periodoFim: dataIsoSchema.nullish(),
   // ID do template aprovado pela Meta, como aparece na WTS.Chat. Vazio = a campanha não dispara pelo sistema.
-  wtsTemplateId: z.string().trim().max(120).regex(/^[\w.-]*$/, "O ID do template só pode ter letras, números, _ , - e .").nullish(),
+  wtsTemplateId: z
+    .string()
+    .trim()
+    .max(120)
+    .regex(
+      /^[\w.-]*$/,
+      "O ID do template só pode ter letras, números, _ , - e ."
+    )
+    .nullish(),
 });
 
 /** Lê o ID do template já limpo (vazio vira `null`; `undefined` = campo não enviado, não mexe no que está gravado). */
-function templateIdLimpo(v: string | null | undefined): string | null | undefined {
-  return v === undefined ? undefined : (v?.trim() || null);
+function templateIdLimpo(
+  v: string | null | undefined
+): string | null | undefined {
+  return v === undefined ? undefined : v?.trim() || null;
 }
 
-function validarPeriodo(inicio: string | null | undefined, fim: string | null | undefined): void {
+function validarPeriodo(
+  inicio: string | null | undefined,
+  fim: string | null | undefined
+): void {
   if (inicio && fim && inicio > fim) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "A data inicial não pode ser depois da data final." });
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "A data inicial não pode ser depois da data final.",
+    });
   }
 }
 
@@ -118,7 +221,9 @@ function validarPeriodo(inicio: string | null | undefined, fim: string | null | 
 
 /** `date` do Postgres chega como string via drizzle; defensivo caso algum driver devolva `Date`. */
 function iso(v: unknown): string {
-  return v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+  return v instanceof Date
+    ? v.toISOString().slice(0, 10)
+    : String(v).slice(0, 10);
 }
 
 /** Início da apuração do pós-venda: o período novo vale; o corte antigo (`gatilhoAPartirDe`) continua honrado. */
@@ -134,24 +239,44 @@ async function obterDb(): Promise<Db> {
 }
 
 async function buscarCampanha(db: Db, id: number): Promise<CampanhaWhatsapp> {
-  const [c] = await db.select().from(campanhasWhatsapp).where(eq(campanhasWhatsapp.id, id)).limit(1);
-  if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "Campanha não encontrada" });
+  const [c] = await db
+    .select()
+    .from(campanhasWhatsapp)
+    .where(eq(campanhasWhatsapp.id, id))
+    .limit(1);
+  if (!c)
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Campanha não encontrada",
+    });
   return c;
 }
 
 /** A categoria pode estar arquivada (permitido: uma campanha antiga mantém a categoria) mas precisa existir. */
 async function validarCategoria(db: Db, chave: string): Promise<void> {
-  const [c] = await db.select({ id: campanhasWhatsappCategorias.id }).from(campanhasWhatsappCategorias)
-    .where(eq(campanhasWhatsappCategorias.chave, chave)).limit(1);
-  if (!c) throw new TRPCError({ code: "BAD_REQUEST", message: "Categoria inválida — atualize a página e tente de novo." });
+  const [c] = await db
+    .select({ id: campanhasWhatsappCategorias.id })
+    .from(campanhasWhatsappCategorias)
+    .where(eq(campanhasWhatsappCategorias.chave, chave))
+    .limit(1);
+  if (!c)
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Categoria inválida — atualize a página e tente de novo.",
+    });
 }
 
 async function ultimosEnvios(db: Db): Promise<Map<number, string>> {
   const rows = await db
-    .select({ campanhaId: campanhasWhatsappDisparos.campanhaId, ultimo: max(campanhasWhatsappDisparos.enviadoEm) })
+    .select({
+      campanhaId: campanhasWhatsappDisparos.campanhaId,
+      ultimo: max(campanhasWhatsappDisparos.enviadoEm),
+    })
     .from(campanhasWhatsappDisparos)
     .groupBy(campanhasWhatsappDisparos.campanhaId);
-  return new Map(rows.filter(r => r.ultimo).map(r => [r.campanhaId, iso(r.ultimo)]));
+  return new Map(
+    rows.filter(r => r.ultimo).map(r => [r.campanhaId, iso(r.ultimo)])
+  );
 }
 
 /**
@@ -159,7 +284,9 @@ async function ultimosEnvios(db: Db): Promise<Map<number, string>> {
  * e cada campanha aplica seu próprio corte; venda já contatada sai da lista.
  */
 async function carregarPosVenda(
-  db: Db, campanhas: CampanhaWhatsapp[], hoje: string,
+  db: Db,
+  campanhas: CampanhaWhatsapp[],
+  hoje: string
 ): Promise<Map<number, ReturnType<typeof listarVendasPosVenda>>> {
   const resultado = new Map<number, ReturnType<typeof listarVendasPosVenda>>();
   const gatilho = campanhas.filter(c => c.tipo === "gatilho_venda");
@@ -170,49 +297,82 @@ async function carregarPosVenda(
     ? null
     : Math.min(...gatilho.map(c => Number(inicioApuracao(c)!.slice(0, 4)))) - 1;
 
-  const linhas = (await db
-    .select({
-      osNumero: historicoOs.osNumero, empresa: historicoOs.empresa, telefone: historicoOs.telefone,
-      dataFaturamento: historicoOs.dataFaturamento, dataAprovacao: historicoOs.dataAprovacao, vendedor: historicoOs.vendedor, valorOs: historicoOs.valorOs,
-      tipoOs: historicoOs.tipoOs, status: historicoOs.status,
-    })
-    .from(historicoOs)
-    .where(and(
-      isNotNull(historicoOs.osNumero),
-      anoMinimo === null ? undefined : gte(historicoOs.ano, anoMinimo),
-    ))).filter(isOsNormalDb);
+  const linhas = (
+    await db
+      .select({
+        osNumero: historicoOs.osNumero,
+        empresa: historicoOs.empresa,
+        telefone: historicoOs.telefone,
+        dataFaturamento: historicoOs.dataFaturamento,
+        dataAprovacao: historicoOs.dataAprovacao,
+        vendedor: historicoOs.vendedor,
+        valorOs: historicoOs.valorOs,
+        tipoOs: historicoOs.tipoOs,
+        status: historicoOs.status,
+      })
+      .from(historicoOs)
+      .where(
+        and(
+          isNotNull(historicoOs.osNumero),
+          anoMinimo === null ? undefined : gte(historicoOs.ano, anoMinimo)
+        )
+      )
+  ).filter(isOsNormalDb);
   completarTelefonesPeloCadastro(linhas, await carregarTelefonesClientes());
 
   const contatadas = await db
-    .select({ campanhaId: campanhasWhatsappGatilhos.campanhaId, osNumero: campanhasWhatsappGatilhos.osNumero })
+    .select({
+      campanhaId: campanhasWhatsappGatilhos.campanhaId,
+      osNumero: campanhasWhatsappGatilhos.osNumero,
+    })
     .from(campanhasWhatsappGatilhos)
-    .where(inArray(campanhasWhatsappGatilhos.campanhaId, gatilho.map(c => c.id)));
+    .where(
+      inArray(
+        campanhasWhatsappGatilhos.campanhaId,
+        gatilho.map(c => c.id)
+      )
+    );
   const contatadasPorCampanha = new Map<number, Set<string>>();
   for (const r of contatadas) {
-    if (!contatadasPorCampanha.has(r.campanhaId)) contatadasPorCampanha.set(r.campanhaId, new Set());
+    if (!contatadasPorCampanha.has(r.campanhaId))
+      contatadasPorCampanha.set(r.campanhaId, new Set());
     contatadasPorCampanha.get(r.campanhaId)!.add(r.osNumero);
   }
 
   for (const c of gatilho) {
-    resultado.set(c.id, listarVendasPosVenda(
-      linhas,
-      { frequenciaDias: c.frequenciaDias, gatilhoAPartirDe: inicioApuracao(c), gatilhoAte: c.periodoFim ? iso(c.periodoFim) : null },
-      hoje,
-      contatadasPorCampanha.get(c.id) ?? new Set(),
-    ));
+    resultado.set(
+      c.id,
+      listarVendasPosVenda(
+        linhas,
+        {
+          frequenciaDias: c.frequenciaDias,
+          gatilhoAPartirDe: inicioApuracao(c),
+          gatilhoAte: c.periodoFim ? iso(c.periodoFim) : null,
+        },
+        hoje,
+        contatadasPorCampanha.get(c.id) ?? new Set()
+      )
+    );
   }
   return resultado;
 }
 
 /** Último contato de cada telefone informado (telefones já normalizados). Uma ida ao banco. */
-async function buscarQuarentena(telefones: string[]): Promise<Map<string, string>> {
+async function buscarQuarentena(
+  telefones: string[]
+): Promise<Map<string, string>> {
   if (telefones.length === 0) return new Map();
   const r = await getPool().query(
     `SELECT telefone, ultimo_contato_em::text AS ultimo
        FROM campanhas_whatsapp_quarentena WHERE telefone = ANY($1::text[])`,
-    [telefones],
+    [telefones]
   );
-  return new Map(r.rows.map((row: { telefone: string; ultimo: string }) => [row.telefone, row.ultimo]));
+  return new Map(
+    r.rows.map((row: { telefone: string; ultimo: string }) => [
+      row.telefone,
+      row.ultimo,
+    ])
+  );
 }
 
 /** Telefones (já normalizados) que pediram para não receber mais mensagens. Uma ida ao banco. */
@@ -220,7 +380,7 @@ async function buscarBloqueados(telefones: string[]): Promise<Set<string>> {
   if (telefones.length === 0) return new Set();
   const r = await getPool().query(
     `SELECT telefone FROM campanhas_whatsapp_optout WHERE telefone = ANY($1::text[])`,
-    [telefones],
+    [telefones]
   );
   return new Set(r.rows.map((row: { telefone: string }) => row.telefone));
 }
@@ -237,25 +397,38 @@ export interface ResultadoVerificacao {
     ultimoContatoEm: string | null;
     disponivelEm: string | null;
   }>;
-  resumo: { total: number; emQuarentena: number; disponiveis: number; invalidos: number };
+  resumo: {
+    total: number;
+    emQuarentena: number;
+    disponiveis: number;
+    invalidos: number;
+  };
 }
 
 export async function checarQuarentenaNoBanco(
-  telefones: Array<string | number>, quarentenaDias: number, dataReferencia: string = hojeCampoGrande(),
+  telefones: Array<string | number>,
+  quarentenaDias: number,
+  dataReferencia: string = hojeCampoGrande()
 ): Promise<ResultadoVerificacao> {
   const normalizados = telefones.map(t => normalizarTelefone(t));
-  const mapa = await buscarQuarentena([...new Set(normalizados.filter((t): t is string => !!t))]);
+  const mapa = await buscarQuarentena([
+    ...new Set(normalizados.filter((t): t is string => !!t)),
+  ]);
 
   const resultados = telefones.map((original, i) => {
     const telefone = normalizados[i];
-    const ultimo = telefone ? mapa.get(telefone) ?? null : null;
-    const emQuarentena = !!ultimo && quarentenaDias > 0 && Math.abs(diasEntre(ultimo, dataReferencia)) < quarentenaDias;
+    const ultimo = telefone ? (mapa.get(telefone) ?? null) : null;
+    const emQuarentena =
+      !!ultimo &&
+      quarentenaDias > 0 &&
+      Math.abs(diasEntre(ultimo, dataReferencia)) < quarentenaDias;
     return {
       original: String(original),
       telefone,
       emQuarentena,
       ultimoContatoEm: ultimo,
-      disponivelEm: ultimo && quarentenaDias > 0 ? somarDias(ultimo, quarentenaDias) : null,
+      disponivelEm:
+        ultimo && quarentenaDias > 0 ? somarDias(ultimo, quarentenaDias) : null,
     };
   });
 
@@ -264,7 +437,12 @@ export async function checarQuarentenaNoBanco(
   return {
     quarentenaDias,
     resultados,
-    resumo: { total: resultados.length, emQuarentena, invalidos, disponiveis: resultados.length - emQuarentena - invalidos },
+    resumo: {
+      total: resultados.length,
+      emQuarentena,
+      invalidos,
+      disponiveis: resultados.length - emQuarentena - invalidos,
+    },
   };
 }
 
@@ -304,31 +482,52 @@ export interface ResultadoDisparo {
   invalidosLista: ContatoInvalido[];
 }
 
-export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<ResultadoDisparo> {
+export async function registrarDisparoNoBanco(
+  p: ParametrosDisparo
+): Promise<ResultadoDisparo> {
   const db = await obterDb();
   const campanha = await buscarCampanha(db, p.campanhaId);
   if (campanha.status !== "ativa") {
-    throw new TRPCError({ code: "BAD_REQUEST", message: `A campanha está ${campanha.status}; reative-a para registrar disparos.` });
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `A campanha está ${campanha.status}; reative-a para registrar disparos.`,
+    });
   }
   if (p.dataEnvio > hojeCampoGrande()) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "A data do envio não pode estar no futuro." });
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "A data do envio não pode estar no futuro.",
+    });
   }
 
-  const telefonesDaLista = [...new Set(p.contatos.map(c => normalizarTelefone(c.telefone)).filter((t): t is string => !!t))];
+  const telefonesDaLista = [
+    ...new Set(
+      p.contatos
+        .map(c => normalizarTelefone(c.telefone))
+        .filter((t): t is string => !!t)
+    ),
+  ];
   const quarentena = await buscarQuarentena(telefonesDaLista);
   // Lista de "não quer receber": vale em todo disparo montado aqui. No webhook (`aplicarQuarentena: false`) a lista
   // já foi enviada, então só reportamos quantos bloqueados ela continha, sem tirá-los do registro.
   const bloqueados = await buscarBloqueados(telefonesDaLista);
 
   const limpeza = higienizarLista(
-    p.contatos, quarentena, p.dataEnvio, p.aplicarQuarentena ? campanha.quarentenaDias : 0,
-    p.aplicarQuarentena ? bloqueados : new Set(),
+    p.contatos,
+    quarentena,
+    p.dataEnvio,
+    p.aplicarQuarentena ? campanha.quarentenaDias : 0,
+    p.aplicarQuarentena ? bloqueados : new Set()
   );
   const enviados = new Set(limpeza.enviar.map(e => e.telefone));
   const violacoesQuarentena = p.aplicarQuarentena
     ? 0
-    : higienizarLista(p.contatos, quarentena, p.dataEnvio, campanha.quarentenaDias)
-        .ignoradosQuarentena.filter(i => enviados.has(i.telefone)).length;
+    : higienizarLista(
+        p.contatos,
+        quarentena,
+        p.dataEnvio,
+        campanha.quarentenaDias
+      ).ignoradosQuarentena.filter(i => enviados.has(i.telefone)).length;
 
   const base = {
     recebidos: p.contatos.length,
@@ -343,14 +542,23 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
     ignoradosQuarentena: limpeza.ignoradosQuarentena,
     invalidosLista: limpeza.invalidos,
   };
-  if (limpeza.enviar.length === 0) return { registrado: false, disparoId: null, proximaData: null, ...base };
+  if (limpeza.enviar.length === 0)
+    return { registrado: false, disparoId: null, proximaData: null, ...base };
 
-  const proximaData = campanha.tipo === "recorrente" ? calcularProximoEnvio(p.dataEnvio, campanha.frequenciaDias) : null;
+  const proximaData =
+    campanha.tipo === "recorrente"
+      ? calcularProximoEnvio(p.dataEnvio, campanha.frequenciaDias)
+      : null;
 
   // OS cobertas pelos contatos enviados (só faz sentido em gatilho_venda); ignoradas por quarentena continuam pendentes.
-  const vendas = campanha.tipo === "gatilho_venda"
-    ? new Map(limpeza.enviar.flatMap(c => c.osNumeros.map(os => [os, c.telefone] as const)))
-    : new Map<string, string>();
+  const vendas =
+    campanha.tipo === "gatilho_venda"
+      ? new Map(
+          limpeza.enviar.flatMap(c =>
+            c.osNumeros.map(os => [os, c.telefone] as const)
+          )
+        )
+      : new Map<string, string>();
 
   const r = await getPool().query(
     `WITH novo AS (
@@ -387,15 +595,30 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
      )
      SELECT id FROM novo`,
     [
-      campanha.id, p.dataEnvio, proximaData,
-      base.recebidos, base.enviados, base.ignorados, base.invalidos,
-      p.arquivoUrl ?? null, p.arquivoNome ?? null, p.origem, p.observacoes?.trim() || null, p.registradoPor,
+      campanha.id,
+      p.dataEnvio,
+      proximaData,
+      base.recebidos,
+      base.enviados,
+      base.ignorados,
+      base.invalidos,
+      p.arquivoUrl ?? null,
+      p.arquivoNome ?? null,
+      p.origem,
+      p.observacoes?.trim() || null,
+      p.registradoPor,
       limpeza.enviar.map(c => c.telefone),
-      [...vendas.keys()], [...vendas.values()],
-    ],
+      [...vendas.keys()],
+      [...vendas.values()],
+    ]
   );
 
-  return { registrado: true, disparoId: r.rows[0].id as number, proximaData, ...base };
+  return {
+    registrado: true,
+    disparoId: r.rows[0].id as number,
+    proximaData,
+    ...base,
+  };
 }
 
 let ultimaAtualizacaoErp = 0;
@@ -414,78 +637,160 @@ const MESES_COMPLETAR_TELEFONES = 48;
 async function montarListaCampanha(
   db: Db,
   campanha: CampanhaWhatsapp,
-  input: { dataEnvio?: string; periodo?: { inicio: string | null; fim: string | null } },
-  ctxCompartilhado?: ContextoErp | null,
+  input: {
+    dataEnvio?: string;
+    periodo?: { inicio: string | null; fim: string | null };
+  },
+  ctxCompartilhado?: ContextoErp | null
 ) {
   const dataEnvio = input.dataEnvio ?? hojeCampoGrande();
-  const periodoInicio = input.periodo ? input.periodo.inicio : (campanha.periodoInicio ? iso(campanha.periodoInicio) : null);
-  const periodoFim = input.periodo ? input.periodo.fim : (campanha.periodoFim ? iso(campanha.periodoFim) : null);
+  const periodoInicio = input.periodo
+    ? input.periodo.inicio
+    : campanha.periodoInicio
+      ? iso(campanha.periodoInicio)
+      : null;
+  const periodoFim = input.periodo
+    ? input.periodo.fim
+    : campanha.periodoFim
+      ? iso(campanha.periodoFim)
+      : null;
   validarPeriodo(periodoInicio, periodoFim);
   // Data final = "como se hoje fosse" para as regras do ERP (inativo há 6 meses etc.); sem ela, vale hoje.
   const dataReferencia = periodoFim ?? dataEnvio;
 
-  const fontes = await db.select({ fonte: campanhasWhatsappFontes })
+  const fontes = await db
+    .select({ fonte: campanhasWhatsappFontes })
     .from(campanhasWhatsappCampanhaFontes)
-    .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
-    .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, campanha.id), eq(campanhasWhatsappFontes.ativo, true)));
+    .innerJoin(
+      campanhasWhatsappFontes,
+      eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId)
+    )
+    .where(
+      and(
+        eq(campanhasWhatsappCampanhaFontes.campanhaId, campanha.id),
+        eq(campanhasWhatsappFontes.ativo, true)
+      )
+    );
   if (fontes.length === 0) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma fonte vinculada a esta campanha. Vincule ao menos uma em \"Fontes de dados\"." });
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        'Nenhuma fonte vinculada a esta campanha. Vincule ao menos uma em "Fontes de dados".',
+    });
   }
 
-  const porFonte: Array<{ fonte: string; total: number; semTelefone: number }> = [];
+  const porFonte: Array<{ fonte: string; total: number; semTelefone: number }> =
+    [];
   const brutos: Array<{ telefone: unknown; nome: string }> = [];
   // Histórico carregado uma só vez para todas as fontes do ERP da campanha.
   let ctxErp: ContextoErp | null = ctxCompartilhado ?? null;
-  if (!ctxErp && fontes.some(f => f.fonte.tipo === "erp" && f.fonte.consultaErp)) ctxErp = await carregarContextoErp();
+  if (
+    !ctxErp &&
+    fontes.some(f => f.fonte.tipo === "erp" && f.fonte.consultaErp)
+  )
+    ctxErp = await carregarContextoErp();
   for (const { fonte } of fontes) {
     let contatos: ContatoFonte[];
     if (fonte.tipo === "erp") {
       if (!fonte.consultaErp) continue;
       // Fonte sem data inicial escolhida pode ter uma janela padrão (ex.: primeira compra = últimos 60 dias).
       const janelaPadrao = JANELA_PADRAO_DIAS[fonte.consultaErp];
-      const inicioDaFonte = periodoInicio ?? (janelaPadrao !== undefined ? somarDias(dataReferencia, -janelaPadrao) : null);
+      const inicioDaFonte =
+        periodoInicio ??
+        (janelaPadrao !== undefined
+          ? somarDias(dataReferencia, -janelaPadrao)
+          : null);
       contatos = filtrarPorPeriodo(
-        await resolverFonteErp(fonte.consultaErp, dataReferencia, ctxErp ?? undefined), inicioDaFonte, periodoFim,
+        await resolverFonteErp(
+          fonte.consultaErp,
+          dataReferencia,
+          ctxErp ?? undefined
+        ),
+        inicioDaFonte,
+        periodoFim
       );
     } else if (fonte.tipo === "campanha_arquivos") {
       // Fonte sem arquivo próprio: vale o que foi anexado na pasta DESTA campanha (uma lista por campanha).
-      const arquivos = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.campanhaId, campanha.id));
+      const arquivos = await db
+        .select()
+        .from(campanhasWhatsappArquivos)
+        .where(eq(campanhasWhatsappArquivos.campanhaId, campanha.id));
       contatos = [];
       for (const arquivo of arquivos) {
         const leitura = await lerArquivoDeUrl(arquivo.url, arquivo.nome);
-        if (leitura.ok) contatos.push(...leitura.contatos.map(c => ({ telefone: c.telefone || null, nome: c.nome })));
+        if (leitura.ok)
+          contatos.push(
+            ...leitura.contatos.map(c => ({
+              telefone: c.telefone || null,
+              nome: c.nome,
+            }))
+          );
       }
+    } else if (fonte.tipo === "retargeting") {
+      // Fonte dinâmica de retargeting: consulta leads qualificados por IA de uma campanha prévia.
+      contatos = await resolverFonteRetargeting(fonte.retargetingConfig);
     } else {
       if (!fonte.arquivoId) continue;
-      const [arquivo] = await db.select().from(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId)).limit(1);
+      const [arquivo] = await db
+        .select()
+        .from(campanhasWhatsappArquivos)
+        .where(eq(campanhasWhatsappArquivos.id, fonte.arquivoId))
+        .limit(1);
       if (!arquivo) continue;
       const leitura = await lerArquivoDeUrl(arquivo.url, arquivo.nome);
       if (!leitura.ok) {
         porFonte.push({ fonte: fonte.label, total: 0, semTelefone: 0 });
         continue;
       }
-      contatos = leitura.contatos.map(c => ({ telefone: c.telefone || null, nome: c.nome }));
+      contatos = leitura.contatos.map(c => ({
+        telefone: c.telefone || null,
+        nome: c.nome,
+      }));
     }
-    porFonte.push({ fonte: fonte.label, total: contatos.length, semTelefone: contatos.filter(c => !c.telefone).length });
-    for (const c of contatos) brutos.push({ telefone: c.telefone, nome: c.nome });
+    porFonte.push({
+      fonte: fonte.label,
+      total: contatos.length,
+      semTelefone: contatos.filter(c => !c.telefone).length,
+    });
+    for (const c of contatos)
+      brutos.push({ telefone: c.telefone, nome: c.nome });
   }
 
   // Quarentena global (0 dias = sem trava, mesma convenção do resto do módulo).
-  const telefonesNormalizados = [...new Set(brutos.map(c => normalizarTelefone(c.telefone)).filter((t): t is string => !!t))];
+  const telefonesNormalizados = [
+    ...new Set(
+      brutos
+        .map(c => normalizarTelefone(c.telefone))
+        .filter((t): t is string => !!t)
+    ),
+  ];
   const quarentenaGlobal = await buscarQuarentena(telefonesNormalizados);
   const bloqueados = await buscarBloqueados(telefonesNormalizados);
-  const higienizado = higienizarLista(brutos, quarentenaGlobal, dataEnvio, campanha.quarentenaDias, bloqueados);
+  const higienizado = higienizarLista(
+    brutos,
+    quarentenaGlobal,
+    dataEnvio,
+    campanha.quarentenaDias,
+    bloqueados
+  );
 
   // Cadência DESTA campanha — só aqui, não no registrarDisparo genérico (ver comentário na migration/schema).
   const historicoRows = telefonesNormalizados.length
     ? await getPool().query(
         `SELECT telefone, ultimo_envio_em::text AS ultimo FROM campanhas_whatsapp_contatos_historico
            WHERE campanha_id = $1 AND telefone = ANY($2::text[])`,
-        [campanha.id, telefonesNormalizados],
+        [campanha.id, telefonesNormalizados]
       )
     : { rows: [] as Array<{ telefone: string; ultimo: string }> };
-  const historicoCampanha = new Map(historicoRows.rows.map(r => [r.telefone, r.ultimo]));
-  const { aprovados, descartadosCadencia } = filtrarPorCadenciaCampanha(higienizado.enviar, historicoCampanha, dataEnvio, campanha.frequenciaDias);
+  const historicoCampanha = new Map(
+    historicoRows.rows.map(r => [r.telefone, r.ultimo])
+  );
+  const { aprovados, descartadosCadencia } = filtrarPorCadenciaCampanha(
+    higienizado.enviar,
+    historicoCampanha,
+    dataEnvio,
+    campanha.frequenciaDias
+  );
 
   return {
     dataEnvio,
@@ -507,34 +812,56 @@ export const campanhasWhatsappRouter = router({
   listar: campanhasProcedure.query(async () => {
     const db = await obterDb();
     const hoje = hojeCampoGrande();
-    const campanhas = await db.select().from(campanhasWhatsapp).orderBy(desc(campanhasWhatsapp.createdAt));
+    const campanhas = await db
+      .select()
+      .from(campanhasWhatsapp)
+      .orderBy(desc(campanhasWhatsapp.createdAt));
     const [ultimos, posVenda] = await Promise.all([
       ultimosEnvios(db),
-      carregarPosVenda(db, campanhas.filter(c => c.status === "ativa"), hoje),
+      carregarPosVenda(
+        db,
+        campanhas.filter(c => c.status === "ativa"),
+        hoje
+      ),
     ]);
 
     const rank = { vermelho: 0, amarelo: 1, verde: 2 } as const;
-    const linhas = campanhas.map(c => {
-      const vendas = posVenda.get(c.id);
-      const status = montarStatusCampanha(
-        { tipo: c.tipo, status: c.status, frequenciaDias: c.frequenciaDias, criadaEm: hojeCampoGrande(c.createdAt) },
-        ultimos.get(c.id) ?? null, hoje, vendas ? resumirVendas(vendas) : undefined,
+    const linhas = campanhas
+      .map(c => {
+        const vendas = posVenda.get(c.id);
+        const status = montarStatusCampanha(
+          {
+            tipo: c.tipo,
+            status: c.status,
+            frequenciaDias: c.frequenciaDias,
+            criadaEm: hojeCampoGrande(c.createdAt),
+          },
+          ultimos.get(c.id) ?? null,
+          hoje,
+          vendas ? resumirVendas(vendas) : undefined
+        );
+        return {
+          ...c,
+          gatilhoAPartirDe: c.gatilhoAPartirDe ? iso(c.gatilhoAPartirDe) : null,
+          periodoInicio: c.periodoInicio ? iso(c.periodoInicio) : null,
+          periodoFim: c.periodoFim ? iso(c.periodoFim) : null,
+          ...status,
+          // Clientes únicos (não OS): o pós-venda manda uma mensagem por cliente.
+          clientesPendentes: vendas ? resumirVendas(vendas).pendentes : null,
+          clientesAguardando: vendas ? resumirVendas(vendas).aguardando : null,
+          clientesSemTelefone: vendas
+            ? agruparPorCliente(vendas.pendentes).filter(c => !c.telefone)
+                .length
+            : null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          (a.semaforo ? rank[a.semaforo] : 3) -
+            (b.semaforo ? rank[b.semaforo] : 3) ||
+          (a.proximoEnvio ?? "9999").localeCompare(b.proximoEnvio ?? "9999") ||
+          a.nome.localeCompare(b.nome)
       );
-      return {
-        ...c,
-        gatilhoAPartirDe: c.gatilhoAPartirDe ? iso(c.gatilhoAPartirDe) : null,
-        periodoInicio: c.periodoInicio ? iso(c.periodoInicio) : null,
-        periodoFim: c.periodoFim ? iso(c.periodoFim) : null,
-        ...status,
-        // Clientes únicos (não OS): o pós-venda manda uma mensagem por cliente.
-        clientesPendentes: vendas ? resumirVendas(vendas).pendentes : null,
-        clientesAguardando: vendas ? resumirVendas(vendas).aguardando : null,
-        clientesSemTelefone: vendas ? agruparPorCliente(vendas.pendentes).filter(c => !c.telefone).length : null,
-      };
-    }).sort((a, b) =>
-      (a.semaforo ? rank[a.semaforo] : 3) - (b.semaforo ? rank[b.semaforo] : 3)
-      || (a.proximoEnvio ?? "9999").localeCompare(b.proximoEnvio ?? "9999")
-      || a.nome.localeCompare(b.nome));
 
     return { hoje, campanhas: linhas, resumo: resumirCampanhas(linhas, hoje) };
   }),
@@ -545,39 +872,64 @@ export const campanhasWhatsappRouter = router({
       const db = await obterDb();
       await validarCategoria(db, input.categoria);
       validarPeriodo(input.periodoInicio, input.periodoFim);
-      const [row] = await db.insert(campanhasWhatsapp).values({
-        ...input,
-        periodoInicio: input.periodoInicio ?? null,
-        periodoFim: input.periodoFim ?? null,
-        descricao: input.descricao?.trim() || null,
-        wtsTemplateId: templateIdLimpo(input.wtsTemplateId) ?? null,
-        gatilhoAPartirDe: input.tipo === "gatilho_venda" ? input.gatilhoAPartirDe ?? null : null,
-      }).returning();
+      const [row] = await db
+        .insert(campanhasWhatsapp)
+        .values({
+          ...input,
+          periodoInicio: input.periodoInicio ?? null,
+          periodoFim: input.periodoFim ?? null,
+          descricao: input.descricao?.trim() || null,
+          wtsTemplateId: templateIdLimpo(input.wtsTemplateId) ?? null,
+          gatilhoAPartirDe:
+            input.tipo === "gatilho_venda"
+              ? (input.gatilhoAPartirDe ?? null)
+              : null,
+        })
+        .returning();
       return row;
     }),
 
   /** Edita campos e também pausa/reativa/arquiva (`status`). */
   atualizar: campanhasProcedure
-    .input(campanhaBaseSchema.partial().extend({ id: z.number().int(), status: z.enum(STATUS_CAMPANHA).optional() }))
+    .input(
+      campanhaBaseSchema
+        .partial()
+        .extend({
+          id: z.number().int(),
+          status: z.enum(STATUS_CAMPANHA).optional(),
+        })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
       const { id, ...campos } = input;
       const atual = await buscarCampanha(db, id);
-      if (campos.categoria !== undefined) await validarCategoria(db, campos.categoria);
+      if (campos.categoria !== undefined)
+        await validarCategoria(db, campos.categoria);
       validarPeriodo(
-        campos.periodoInicio === undefined ? atual.periodoInicio : campos.periodoInicio,
-        campos.periodoFim === undefined ? atual.periodoFim : campos.periodoFim,
+        campos.periodoInicio === undefined
+          ? atual.periodoInicio
+          : campos.periodoInicio,
+        campos.periodoFim === undefined ? atual.periodoFim : campos.periodoFim
       );
       const tipo = campos.tipo ?? atual.tipo;
-      await db.update(campanhasWhatsapp).set({
-        ...campos,
-        descricao: campos.descricao === undefined ? undefined : (campos.descricao?.trim() || null),
-        wtsTemplateId: templateIdLimpo(campos.wtsTemplateId),
-        gatilhoAPartirDe: tipo === "gatilho_venda"
-          ? (campos.gatilhoAPartirDe === undefined ? atual.gatilhoAPartirDe : campos.gatilhoAPartirDe)
-          : null,
-        updatedAt: new Date(),
-      }).where(eq(campanhasWhatsapp.id, id));
+      await db
+        .update(campanhasWhatsapp)
+        .set({
+          ...campos,
+          descricao:
+            campos.descricao === undefined
+              ? undefined
+              : campos.descricao?.trim() || null,
+          wtsTemplateId: templateIdLimpo(campos.wtsTemplateId),
+          gatilhoAPartirDe:
+            tipo === "gatilho_venda"
+              ? campos.gatilhoAPartirDe === undefined
+                ? atual.gatilhoAPartirDe
+                : campos.gatilhoAPartirDe
+              : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(campanhasWhatsapp.id, id));
       return { ok: true };
     }),
 
@@ -590,38 +942,66 @@ export const campanhasWhatsappRouter = router({
    * sem nenhum envio ainda).
    */
   duplicarCampanha: campanhasProcedure
-    .input(z.object({ id: z.number().int(), novoNome: z.string().trim().min(1, "Informe o nome da cópia").max(160) }))
+    .input(
+      z.object({
+        id: z.number().int(),
+        novoNome: z.string().trim().min(1, "Informe o nome da cópia").max(160),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
       const original = await buscarCampanha(db, input.id);
-      const [copia] = await db.insert(campanhasWhatsapp).values({
-        nome: input.novoNome,
-        categoria: original.categoria,
-        descricao: original.descricao,
-        tipo: original.tipo,
-        frequenciaDias: original.frequenciaDias,
-        quarentenaDias: original.quarentenaDias,
-        status: "ativa",
-        gatilhoAPartirDe: original.tipo === "gatilho_venda" ? original.gatilhoAPartirDe : null,
-        periodoInicio: original.periodoInicio,
-        periodoFim: original.periodoFim,
-        wtsTemplateId: original.wtsTemplateId,
-      }).returning();
+      const [copia] = await db
+        .insert(campanhasWhatsapp)
+        .values({
+          nome: input.novoNome,
+          categoria: original.categoria,
+          descricao: original.descricao,
+          tipo: original.tipo,
+          frequenciaDias: original.frequenciaDias,
+          quarentenaDias: original.quarentenaDias,
+          status: "ativa",
+          gatilhoAPartirDe:
+            original.tipo === "gatilho_venda"
+              ? original.gatilhoAPartirDe
+              : null,
+          periodoInicio: original.periodoInicio,
+          periodoFim: original.periodoFim,
+          wtsTemplateId: original.wtsTemplateId,
+        })
+        .returning();
 
       const [fontes, scripts] = await Promise.all([
-        db.select({ fonteId: campanhasWhatsappCampanhaFontes.fonteId }).from(campanhasWhatsappCampanhaFontes)
+        db
+          .select({ fonteId: campanhasWhatsappCampanhaFontes.fonteId })
+          .from(campanhasWhatsappCampanhaFontes)
           .where(eq(campanhasWhatsappCampanhaFontes.campanhaId, original.id)),
-        db.select().from(campanhasWhatsappScripts)
-          .where(and(eq(campanhasWhatsappScripts.campanhaId, original.id), eq(campanhasWhatsappScripts.ativo, true))),
+        db
+          .select()
+          .from(campanhasWhatsappScripts)
+          .where(
+            and(
+              eq(campanhasWhatsappScripts.campanhaId, original.id),
+              eq(campanhasWhatsappScripts.ativo, true)
+            )
+          ),
       ]);
       if (fontes.length) {
-        await db.insert(campanhasWhatsappCampanhaFontes)
-          .values(fontes.map(f => ({ campanhaId: copia.id, fonteId: f.fonteId })));
+        await db
+          .insert(campanhasWhatsappCampanhaFontes)
+          .values(
+            fontes.map(f => ({ campanhaId: copia.id, fonteId: f.fonteId }))
+          );
       }
       if (scripts.length) {
-        await db.insert(campanhasWhatsappScripts).values(scripts.map(s => ({
-          campanhaId: copia.id, ordem: s.ordem, titulo: s.titulo, conteudo: s.conteudo,
-        })));
+        await db.insert(campanhasWhatsappScripts).values(
+          scripts.map(s => ({
+            campanhaId: copia.id,
+            ordem: s.ordem,
+            titulo: s.titulo,
+            conteudo: s.conteudo,
+          }))
+        );
       }
       return copia;
     }),
@@ -639,7 +1019,9 @@ export const campanhasWhatsappRouter = router({
     .mutation(async ({ input }) => {
       const db = await obterDb();
       await buscarCampanha(db, input.id); // 404 se não existe
-      await db.delete(campanhasWhatsapp).where(eq(campanhasWhatsapp.id, input.id));
+      await db
+        .delete(campanhasWhatsapp)
+        .where(eq(campanhasWhatsapp.id, input.id));
       return { ok: true };
     }),
 
@@ -649,27 +1031,43 @@ export const campanhasWhatsappRouter = router({
   listarCategorias: campanhasProcedure.query(async () => {
     const db = await obterDb();
     const [categorias, usos] = await Promise.all([
-      db.select().from(campanhasWhatsappCategorias)
-        .orderBy(campanhasWhatsappCategorias.ordem, campanhasWhatsappCategorias.id),
-      db.select({ categoria: campanhasWhatsapp.categoria, total: count() })
-        .from(campanhasWhatsapp).groupBy(campanhasWhatsapp.categoria),
+      db
+        .select()
+        .from(campanhasWhatsappCategorias)
+        .orderBy(
+          campanhasWhatsappCategorias.ordem,
+          campanhasWhatsappCategorias.id
+        ),
+      db
+        .select({ categoria: campanhasWhatsapp.categoria, total: count() })
+        .from(campanhasWhatsapp)
+        .groupBy(campanhasWhatsapp.categoria),
     ]);
     const usoPorChave = new Map(usos.map(u => [u.categoria, Number(u.total)]));
-    return categorias.map(c => ({ ...c, emUso: usoPorChave.get(c.chave) ?? 0 }));
+    return categorias.map(c => ({
+      ...c,
+      emUso: usoPorChave.get(c.chave) ?? 0,
+    }));
   }),
 
   criarCategoria: campanhasProcedure
     .input(z.object({ label: categoriaLabelSchema }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      const existentes = await db.select({ chave: campanhasWhatsappCategorias.chave }).from(campanhasWhatsappCategorias);
+      const existentes = await db
+        .select({ chave: campanhasWhatsappCategorias.chave })
+        .from(campanhasWhatsappCategorias);
       const chaves = new Set(existentes.map(e => e.chave));
       const base = gerarChaveCategoria(input.label);
       let chave = base;
       for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
-      const [{ maxOrdem }] = await db.select({ maxOrdem: max(campanhasWhatsappCategorias.ordem) }).from(campanhasWhatsappCategorias);
-      const [row] = await db.insert(campanhasWhatsappCategorias)
-        .values({ chave, label: input.label, ordem: (maxOrdem ?? 0) + 1 }).returning();
+      const [{ maxOrdem }] = await db
+        .select({ maxOrdem: max(campanhasWhatsappCategorias.ordem) })
+        .from(campanhasWhatsappCategorias);
+      const [row] = await db
+        .insert(campanhasWhatsappCategorias)
+        .values({ chave, label: input.label, ordem: (maxOrdem ?? 0) + 1 })
+        .returning();
       return row;
     }),
 
@@ -678,7 +1076,8 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int(), label: categoriaLabelSchema }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.update(campanhasWhatsappCategorias)
+      await db
+        .update(campanhasWhatsappCategorias)
         .set({ label: input.label, updatedAt: new Date() })
         .where(eq(campanhasWhatsappCategorias.id, input.id));
       return { ok: true };
@@ -689,7 +1088,8 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int(), ativo: z.boolean() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.update(campanhasWhatsappCategorias)
+      await db
+        .update(campanhasWhatsappCategorias)
         .set({ ativo: input.ativo, updatedAt: new Date() })
         .where(eq(campanhasWhatsappCategorias.id, input.id));
       return { ok: true };
@@ -700,27 +1100,50 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      const [cat] = await db.select().from(campanhasWhatsappCategorias).where(eq(campanhasWhatsappCategorias.id, input.id)).limit(1);
-      if (!cat) throw new TRPCError({ code: "NOT_FOUND", message: "Categoria não encontrada" });
-      const [{ total }] = await db.select({ total: count() }).from(campanhasWhatsapp).where(eq(campanhasWhatsapp.categoria, cat.chave));
+      const [cat] = await db
+        .select()
+        .from(campanhasWhatsappCategorias)
+        .where(eq(campanhasWhatsappCategorias.id, input.id))
+        .limit(1);
+      if (!cat)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Categoria não encontrada",
+        });
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(campanhasWhatsapp)
+        .where(eq(campanhasWhatsapp.categoria, cat.chave));
       if (Number(total) > 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `${total} campanha(s) usam "${cat.label}" — arquive em vez de excluir.`,
         });
       }
-      await db.delete(campanhasWhatsappCategorias).where(eq(campanhasWhatsappCategorias.id, input.id));
+      await db
+        .delete(campanhasWhatsappCategorias)
+        .where(eq(campanhasWhatsappCategorias.id, input.id));
       return { ok: true };
     }),
 
   historico: campanhasProcedure
-    .input(z.object({ campanhaId: z.number().int(), limite: z.number().int().min(1).max(200).default(100) }))
+    .input(
+      z.object({
+        campanhaId: z.number().int(),
+        limite: z.number().int().min(1).max(200).default(100),
+      })
+    )
     .query(async ({ input }) => {
       const db = await obterDb();
       const campanha = await buscarCampanha(db, input.campanhaId);
-      const disparos = await db.select().from(campanhasWhatsappDisparos)
+      const disparos = await db
+        .select()
+        .from(campanhasWhatsappDisparos)
         .where(eq(campanhasWhatsappDisparos.campanhaId, input.campanhaId))
-        .orderBy(desc(campanhasWhatsappDisparos.enviadoEm), desc(campanhasWhatsappDisparos.id))
+        .orderBy(
+          desc(campanhasWhatsappDisparos.enviadoEm),
+          desc(campanhasWhatsappDisparos.id)
+        )
         .limit(input.limite);
       return { campanha: { id: campanha.id, nome: campanha.nome }, disparos };
     }),
@@ -731,7 +1154,12 @@ export const campanhasWhatsappRouter = router({
    * registro órfão — se ainda houver disparo da campanha no dia, não apaga nada.
    */
   liberarContatosOrfaos: campanhasProcedure
-    .input(z.object({ campanhaId: z.number().int().positive(), dia: dataIsoSchema.optional() }))
+    .input(
+      z.object({
+        campanhaId: z.number().int().positive(),
+        dia: dataIsoSchema.optional(),
+      })
+    )
     .mutation(async ({ input }) => {
       const dia = input.dia ?? hojeCampoGrande();
       const r = await getPool().query(
@@ -747,10 +1175,13 @@ export const campanhasWhatsappRouter = router({
            RETURNING 1
          )
          SELECT (SELECT count(*) FROM quarentena)::int AS quarentena, (SELECT count(*) FROM cadencia)::int AS cadencia`,
-        [input.campanhaId, dia],
+        [input.campanhaId, dia]
       );
       const linha = r.rows[0] as { quarentena: number; cadencia: number };
-      return { quarentenaLiberada: linha.quarentena, cadenciaLiberada: linha.cadencia };
+      return {
+        quarentenaLiberada: linha.quarentena,
+        cadenciaLiberada: linha.cadencia,
+      };
     }),
 
   /**
@@ -777,11 +1208,15 @@ export const campanhasWhatsappRouter = router({
            DELETE FROM campanhas_whatsapp_disparos WHERE id IN (SELECT id FROM alvo) RETURNING id
          )
          SELECT (SELECT count(*) FROM apagado)::int AS disparos, (SELECT count(*) FROM cadencia)::int AS contatos`,
-        [input.disparoId],
+        [input.disparoId]
       );
       const linha = r.rows[0] as { disparos: number; contatos: number };
       if (!linha.disparos) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Disparo não encontrado ou não foi feito pelo sistema (API)." });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message:
+            "Disparo não encontrado ou não foi feito pelo sistema (API).",
+        });
       }
       return { contatosLiberados: linha.contatos };
     }),
@@ -793,51 +1228,105 @@ export const campanhasWhatsappRouter = router({
    * lista (quarentena/cadência), então repetir o clique continua de onde parou.
    */
   dispararWts: campanhasProcedure
-    .input(z.object({
-      campanhaId: z.number().int().positive(),
-      periodo: z.object({ inicio: dataIsoSchema.nullable(), fim: dataIsoSchema.nullable() }).optional(),
-      contatos: z.array(z.object({ telefone: z.string().max(40), nome: z.string().max(200) })).min(1).max(MAX_DISPARO_WTS).optional(),
-      // Só vale sem `contatos`: dispara para os N primeiros da lista de prontos (tela "Efetuar disparo").
-      quantidade: z.number().int().min(1).max(MAX_DISPARO_WTS).optional(),
-    }))
+    .input(
+      z.object({
+        campanhaId: z.number().int().positive(),
+        periodo: z
+          .object({
+            inicio: dataIsoSchema.nullable(),
+            fim: dataIsoSchema.nullable(),
+          })
+          .optional(),
+        contatos: z
+          .array(
+            z.object({
+              telefone: z.string().max(40),
+              nome: z.string().max(200),
+            })
+          )
+          .min(1)
+          .max(MAX_DISPARO_WTS)
+          .optional(),
+        // Só vale sem `contatos`: dispara para os N primeiros da lista de prontos (tela "Efetuar disparo").
+        quantidade: z.number().int().min(1).max(MAX_DISPARO_WTS).optional(),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
       if (!wtsChatConfigurado()) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A integração WTS.Chat ainda não está configurada no servidor." });
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "A integração WTS.Chat ainda não está configurada no servidor.",
+        });
       }
       const db = await obterDb();
       const campanha = await buscarCampanha(db, input.campanhaId);
       if (campanha.status !== "ativa") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Reative a campanha antes de enviar." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Reative a campanha antes de enviar.",
+        });
       }
       if (campanha.tipo === "gatilho_venda") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Campanhas de gatilho de venda ainda não disparam pelo sistema — use \"Registrar disparo manual\" no menu da campanha." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            'Campanhas de gatilho de venda ainda não disparam pelo sistema — use "Registrar disparo manual" no menu da campanha.',
+        });
       }
       const templateId = campanha.wtsTemplateId?.trim();
       if (!templateId) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o ID do template WTS.Chat em \"Editar campanha\" antes de disparar." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            'Informe o ID do template WTS.Chat em "Editar campanha" antes de disparar.',
+        });
       }
       validarPeriodo(input.periodo?.inicio, input.periodo?.fim);
 
       const dataEnvio = hojeCampoGrande();
-      const lista = await montarListaCampanha(db, campanha, { dataEnvio, periodo: input.periodo });
-      const elegiveis = new Map(lista.aprovados.map(contato => [normalizarTelefone(contato.telefone), contato] as const));
+      const lista = await montarListaCampanha(db, campanha, {
+        dataEnvio,
+        periodo: input.periodo,
+      });
+      const elegiveis = new Map(
+        lista.aprovados.map(
+          contato => [normalizarTelefone(contato.telefone), contato] as const
+        )
+      );
       let selecionados: Array<{ telefone: string; nome: string }>;
       if (input.contatos) {
-        const escolhidos = new Map<string, { telefone: string; nome: string }>();
+        const escolhidos = new Map<
+          string,
+          { telefone: string; nome: string }
+        >();
         for (const contato of input.contatos) {
           const telefone = normalizarTelefone(contato.telefone);
           if (!telefone || !elegiveis.has(telefone)) continue;
-          escolhidos.set(telefone, { telefone, nome: elegiveis.get(telefone)!.nome || contato.nome });
+          escolhidos.set(telefone, {
+            telefone,
+            nome: elegiveis.get(telefone)!.nome || contato.nome,
+          });
         }
         selecionados = [...escolhidos.values()];
       } else {
         selecionados = lista.aprovados
-          .map(contato => ({ telefone: normalizarTelefone(contato.telefone), nome: contato.nome }))
-          .filter((contato): contato is { telefone: string; nome: string } => !!contato.telefone);
-        if (input.quantidade) selecionados = selecionados.slice(0, input.quantidade);
+          .map(contato => ({
+            telefone: normalizarTelefone(contato.telefone),
+            nome: contato.nome,
+          }))
+          .filter(
+            (contato): contato is { telefone: string; nome: string } =>
+              !!contato.telefone
+          );
+        if (input.quantidade)
+          selecionados = selecionados.slice(0, input.quantidade);
       }
       if (selecionados.length === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contato continua elegível para envio." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Nenhum contato continua elegível para envio.",
+        });
       }
       const restantes = Math.max(0, selecionados.length - MAX_DISPARO_WTS);
       const tentativas = selecionados.slice(0, MAX_DISPARO_WTS);
@@ -846,33 +1335,58 @@ export const campanhasWhatsappRouter = router({
       // que sempre entregou de verdade. O disparo em paralelo (8 workers simultâneos) era aceito pela Ceci
       // (HTTP 200/QUEUED/READ) mas não chegava ao WhatsApp do destinatário — confirmado em teste real
       // (16/10/2026): a mesma mensagem enviada em rajada não chegou, e enviada isolada chegou sempre.
-      const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string; resposta?: string }> = [];
+      const resultados: Array<{
+        contato: { telefone: string; nome: string };
+        ok: boolean;
+        erro?: string;
+        resposta?: string;
+      }> = [];
       for (let indice = 0; indice < tentativas.length; indice++) {
         const contato = tentativas[indice];
         const resultado = await enviarTemplateWts(contato.telefone, templateId);
-        resultados.push({ contato, ok: resultado.ok, erro: resultado.erro, resposta: resultado.resposta });
-        if (indice < tentativas.length - 1) await new Promise(r => setTimeout(r, INTERVALO_DISPARO_WTS_MS));
+        resultados.push({
+          contato,
+          ok: resultado.ok,
+          erro: resultado.erro,
+          resposta: resultado.resposta,
+        });
+        if (indice < tentativas.length - 1)
+          await new Promise(r => setTimeout(r, INTERVALO_DISPARO_WTS_MS));
       }
 
       // O aceite é assíncrono. Consulta até dez IDs de mensagem para conferir cada destinatário do teste
       // sem fazer uma rajada de até cem consultas no provedor. Isso é só informativo: não altera o registro.
       const mensagensComId = resultados.flatMap(resultado => {
         const id = resultado.ok ? idMensagemWts(resultado.resposta) : null;
-        const statusUrl = id ? urlStatusMensagemWts(resultado.resposta, id) : null;
+        const statusUrl = id
+          ? urlStatusMensagemWts(resultado.resposta, id)
+          : null;
         return id ? [{ contato: resultado.contato, id, statusUrl }] : [];
       });
-      const mensagensParaConsultar = mensagensComId.slice(0, MAX_STATUS_WTS_POR_DISPARO);
-      let estadosAmostra: Array<{ nome: string; telefone: string; estado: string | null; detalhe: string }> = [];
+      const mensagensParaConsultar = mensagensComId.slice(
+        0,
+        MAX_STATUS_WTS_POR_DISPARO
+      );
+      let estadosAmostra: Array<{
+        nome: string;
+        telefone: string;
+        estado: string | null;
+        detalhe: string;
+      }> = [];
       if (mensagensParaConsultar.length > 0) {
         await new Promise(r => setTimeout(r, 4000));
-        estadosAmostra = await Promise.all(mensagensParaConsultar.map(async ({ contato, id, statusUrl }) => ({
-          nome: contato.nome,
-          telefone: contato.telefone,
-          ...(await consultarEstadoMensagemWts(id, statusUrl)),
-        })));
+        estadosAmostra = await Promise.all(
+          mensagensParaConsultar.map(async ({ contato, id, statusUrl }) => ({
+            nome: contato.nome,
+            telefone: contato.telefone,
+            ...(await consultarEstadoMensagemWts(id, statusUrl)),
+          }))
+        );
       }
 
-      const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
+      const aceitos = resultados
+        .filter(resultado => resultado.ok)
+        .map(resultado => resultado.contato);
       let disparoId: number | null = null;
       let erroRegistro: string | null = null;
 
@@ -890,7 +1404,10 @@ export const campanhasWhatsappRouter = router({
           });
           disparoId = registro.disparoId;
         } catch (error) {
-          erroRegistro = error instanceof Error ? error.message : "Falha ao registrar o disparo.";
+          erroRegistro =
+            error instanceof Error
+              ? error.message
+              : "Falha ao registrar o disparo.";
         }
       }
 
@@ -900,16 +1417,21 @@ export const campanhasWhatsappRouter = router({
         erroCampanhaCeci: null,
         erroRegistro,
         enfileirados: aceitos.length,
-        falhas: resultados.filter(resultado => !resultado.ok).map(resultado => ({
-          nome: resultado.contato.nome,
-          telefone: resultado.contato.telefone,
-          erro: resultado.erro ?? "Falha ao enfileirar mensagem.",
-        })),
+        falhas: resultados
+          .filter(resultado => !resultado.ok)
+          .map(resultado => ({
+            nome: resultado.contato.nome,
+            telefone: resultado.contato.telefone,
+            erro: resultado.erro ?? "Falha ao enfileirar mensagem.",
+          })),
         totalSelecionado: tentativas.length,
         restantes,
         templateId,
         // Prioriza uma resposta aceita para que o diagnóstico mostre o ID/status que o provedor devolveu.
-        amostraResposta: resultados.find(resultado => resultado.ok)?.resposta ?? resultados[0]?.resposta ?? null,
+        amostraResposta:
+          resultados.find(resultado => resultado.ok)?.resposta ??
+          resultados[0]?.resposta ??
+          null,
         estadosAmostra,
         totalMensagensComId: mensagensComId.length,
       };
@@ -917,39 +1439,64 @@ export const campanhasWhatsappRouter = router({
 
   /** Envia um template para um número informado pelo usuário, fora da audiência e sem gravar cadência/histórico. */
   testarNumeroWts: campanhasProcedure
-    .input(z.object({
-      campanhaId: z.number().int().positive(),
-      telefone: z.string().trim().min(8).max(40),
-      nomeParametro: z.string().trim().max(100).optional(),
-    }))
+    .input(
+      z.object({
+        campanhaId: z.number().int().positive(),
+        telefone: z.string().trim().min(8).max(40),
+        nomeParametro: z.string().trim().max(100).optional(),
+      })
+    )
     .mutation(async ({ input }) => {
       if (!wtsChatConfigurado()) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A integração WTS.Chat ainda não está configurada no servidor." });
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "A integração WTS.Chat ainda não está configurada no servidor.",
+        });
       }
       const db = await obterDb();
       const campanha = await buscarCampanha(db, input.campanhaId);
       if (campanha.status !== "ativa") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "A campanha precisa estar ativa para testar o template." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A campanha precisa estar ativa para testar o template.",
+        });
       }
       if (campanha.tipo === "gatilho_venda") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Campanhas de gatilho de venda ainda não enviam templates pelo sistema." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Campanhas de gatilho de venda ainda não enviam templates pelo sistema.",
+        });
       }
       const templateId = campanha.wtsTemplateId?.trim();
       if (!templateId) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o ID do template WTS.Chat em \"Editar campanha\" antes de testar." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            'Informe o ID do template WTS.Chat em "Editar campanha" antes de testar.',
+        });
       }
       const telefone = normalizarTelefone(input.telefone);
       if (!telefone) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe um número brasileiro válido com DDD." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Informe um número brasileiro válido com DDD.",
+        });
       }
 
-      const params = input.nomeParametro?.trim() ? [input.nomeParametro.trim()] : undefined;
+      const params = input.nomeParametro?.trim()
+        ? [input.nomeParametro.trim()]
+        : undefined;
       const envio = await enviarTemplateWts(telefone, templateId, params);
       const id = envio.ok ? idMensagemWts(envio.resposta) : null;
       let estado: { estado: string | null; detalhe: string } | null = null;
       if (id) {
         await new Promise(resolve => setTimeout(resolve, 4000));
-        estado = await consultarEstadoMensagemWts(id, urlStatusMensagemWts(envio.resposta, id));
+        estado = await consultarEstadoMensagemWts(
+          id,
+          urlStatusMensagemWts(envio.resposta, id)
+        );
       }
       return {
         telefone,
@@ -967,34 +1514,48 @@ export const campanhasWhatsappRouter = router({
   }),
 
   registrarDisparo: campanhasProcedure
-    .input(z.object({
-      campanhaId: z.number().int(),
-      dataEnvio: dataIsoSchema.optional(),
-      contatos: contatosSchema,
-      observacoes: z.string().max(2000).nullish(),
-      arquivoUrl: z.string().url().max(512).nullish(),
-      arquivoNome: z.string().max(256).nullish(),
-    }))
-    .mutation(({ input, ctx }) => registrarDisparoNoBanco({
-      ...input,
-      dataEnvio: input.dataEnvio ?? hojeCampoGrande(),
-      origem: "app",
-      registradoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
-      aplicarQuarentena: true,
-    })),
+    .input(
+      z.object({
+        campanhaId: z.number().int(),
+        dataEnvio: dataIsoSchema.optional(),
+        contatos: contatosSchema,
+        observacoes: z.string().max(2000).nullish(),
+        arquivoUrl: z.string().url().max(512).nullish(),
+        arquivoNome: z.string().max(256).nullish(),
+      })
+    )
+    .mutation(({ input, ctx }) =>
+      registrarDisparoNoBanco({
+        ...input,
+        dataEnvio: input.dataEnvio ?? hojeCampoGrande(),
+        origem: "app",
+        registradoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+        aplicarQuarentena: true,
+      })
+    ),
 
   /** Consulta a trava sem registrar nada: usa a quarentena da campanha ou um número de dias avulso. */
   verificarQuarentena: campanhasProcedure
-    .input(z.object({
-      telefones: z.array(z.union([z.string().max(40), z.number()])).min(1).max(5000),
-      campanhaId: z.number().int().optional(),
-      quarentenaDias: z.number().int().min(0).max(365).optional(),
-    }))
+    .input(
+      z.object({
+        telefones: z
+          .array(z.union([z.string().max(40), z.number()]))
+          .min(1)
+          .max(5000),
+        campanhaId: z.number().int().optional(),
+        quarentenaDias: z.number().int().min(0).max(365).optional(),
+      })
+    )
     .query(async ({ input }) => {
       let dias = input.quarentenaDias;
       if (dias === undefined) {
-        if (input.campanhaId === undefined) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe campanhaId ou quarentenaDias" });
-        dias = (await buscarCampanha(await obterDb(), input.campanhaId)).quarentenaDias;
+        if (input.campanhaId === undefined)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Informe campanhaId ou quarentenaDias",
+          });
+        dias = (await buscarCampanha(await obterDb(), input.campanhaId))
+          .quarentenaDias;
       }
       return checarQuarentenaNoBanco(input.telefones, dias);
     }),
@@ -1006,13 +1567,20 @@ export const campanhasWhatsappRouter = router({
       const db = await obterDb();
       const campanha = await buscarCampanha(db, input.campanhaId);
       if (campanha.tipo !== "gatilho_venda") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Só campanhas de gatilho de venda têm lista de vendas." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Só campanhas de gatilho de venda têm lista de vendas.",
+        });
       }
-      const listas = (await carregarPosVenda(db, [campanha], hojeCampoGrande())).get(campanha.id)!;
+      const listas = (
+        await carregarPosVenda(db, [campanha], hojeCampoGrande())
+      ).get(campanha.id)!;
       const prontos = agruparPorCliente(listas.pendentes);
       const chavesProntas = new Set(prontos.map(c => c.chave));
-      const aguardando = agruparPorCliente(listas.proximas).filter(c => !chavesProntas.has(c.chave));
-      const recorte = <T,>(vs: T[]) => vs.slice(0, MAX_CLIENTES_POS_VENDA_TELA);
+      const aguardando = agruparPorCliente(listas.proximas).filter(
+        c => !chavesProntas.has(c.chave)
+      );
+      const recorte = <T>(vs: T[]) => vs.slice(0, MAX_CLIENTES_POS_VENDA_TELA);
       return {
         // Tudo em CLIENTES únicos; `totalVendas*` guarda quantas OS há por trás.
         totalPendentes: prontos.length,
@@ -1020,7 +1588,13 @@ export const campanhasWhatsappRouter = router({
         pendentesSemTelefone: prontos.filter(c => !c.telefone).length,
         pendentes: recorte(prontos),
         /** Para "Usar vendas pendentes" no disparo: todas as pendentes com telefone, sem o recorte da tela. */
-        contatosDisparo: listas.pendentes.filter(v => v.telefone).map(v => ({ telefone: v.telefone!, nome: v.empresa, osNumero: v.osNumero })),
+        contatosDisparo: listas.pendentes
+          .filter(v => v.telefone)
+          .map(v => ({
+            telefone: v.telefone!,
+            nome: v.empresa,
+            osNumero: v.osNumero,
+          })),
         totalProximas: aguardando.length,
         proximas: recorte(aguardando),
       };
@@ -1030,8 +1604,14 @@ export const campanhasWhatsappRouter = router({
   calendario: campanhasProcedure
     .input(z.object({ inicio: dataIsoSchema, fim: dataIsoSchema }))
     .query(async ({ input }) => {
-      if (input.fim < input.inicio || diasEntre(input.inicio, input.fim) > MAX_JANELA_CALENDARIO_DIAS) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: `Intervalo inválido (máximo ${MAX_JANELA_CALENDARIO_DIAS} dias).` });
+      if (
+        input.fim < input.inicio ||
+        diasEntre(input.inicio, input.fim) > MAX_JANELA_CALENDARIO_DIAS
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Intervalo inválido (máximo ${MAX_JANELA_CALENDARIO_DIAS} dias).`,
+        });
       }
       const db = await obterDb();
       const hoje = hojeCampoGrande();
@@ -1042,47 +1622,101 @@ export const campanhasWhatsappRouter = router({
       const [ultimos, posVenda, disparos] = await Promise.all([
         ultimosEnvios(db),
         carregarPosVenda(db, ativas, hoje),
-        db.select().from(campanhasWhatsappDisparos)
-          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, input.inicio), lte(campanhasWhatsappDisparos.enviadoEm, input.fim)))
+        db
+          .select()
+          .from(campanhasWhatsappDisparos)
+          .where(
+            and(
+              gte(campanhasWhatsappDisparos.enviadoEm, input.inicio),
+              lte(campanhasWhatsappDisparos.enviadoEm, input.fim)
+            )
+          )
           .orderBy(campanhasWhatsappDisparos.enviadoEm),
       ]);
 
       type Evento = {
-        data: string; campanhaId: number; nome: string; categoria: CampanhaWhatsapp["categoria"]; tipo: CampanhaWhatsapp["tipo"];
-        evento: "executado" | "previsto"; semaforo: ReturnType<typeof classificarSemaforo> | null;
+        data: string;
+        campanhaId: number;
+        nome: string;
+        categoria: CampanhaWhatsapp["categoria"];
+        tipo: CampanhaWhatsapp["tipo"];
+        evento: "executado" | "previsto";
+        semaforo: ReturnType<typeof classificarSemaforo> | null;
         /** Contatos enviados (executado) ou vendas com prazo no dia (previsto de gatilho). */
         quantidade: number | null;
       };
       const eventos: Evento[] = [];
-      const base = (c: CampanhaWhatsapp) => ({ campanhaId: c.id, nome: c.nome, categoria: c.categoria, tipo: c.tipo });
+      const base = (c: CampanhaWhatsapp) => ({
+        campanhaId: c.id,
+        nome: c.nome,
+        categoria: c.categoria,
+        tipo: c.tipo,
+      });
 
       for (const d of disparos) {
         const c = porId.get(d.campanhaId);
-        if (c) eventos.push({ ...base(c), data: iso(d.enviadoEm), evento: "executado", semaforo: null, quantidade: d.contatosEnviados });
+        if (c)
+          eventos.push({
+            ...base(c),
+            data: iso(d.enviadoEm),
+            evento: "executado",
+            semaforo: null,
+            quantidade: d.contatosEnviados,
+          });
       }
 
       for (const c of ativas) {
         if (c.tipo === "recorrente") {
           const st = montarStatusCampanha(
-            { tipo: c.tipo, status: c.status, frequenciaDias: c.frequenciaDias, criadaEm: hojeCampoGrande(c.createdAt) },
-            ultimos.get(c.id) ?? null, hoje,
+            {
+              tipo: c.tipo,
+              status: c.status,
+              frequenciaDias: c.frequenciaDias,
+              criadaEm: hojeCampoGrande(c.createdAt),
+            },
+            ultimos.get(c.id) ?? null,
+            hoje
           );
-          for (const data of expandirPrevistos(st.proximoEnvio!, c.frequenciaDias, hoje, input.inicio, input.fim)) {
-            eventos.push({ ...base(c), data, evento: "previsto", semaforo: classificarSemaforo(data, hoje), quantidade: null });
+          for (const data of expandirPrevistos(
+            st.proximoEnvio!,
+            c.frequenciaDias,
+            hoje,
+            input.inicio,
+            input.fim
+          )) {
+            eventos.push({
+              ...base(c),
+              data,
+              evento: "previsto",
+              semaforo: classificarSemaforo(data, hoje),
+              quantidade: null,
+            });
           }
         } else {
           const listas = posVenda.get(c.id);
           const porDia = new Map<string, number>();
-          for (const v of [...(listas?.pendentes ?? []), ...(listas?.proximas ?? [])]) {
-            if (v.prazo >= input.inicio && v.prazo <= input.fim) porDia.set(v.prazo, (porDia.get(v.prazo) ?? 0) + 1);
+          for (const v of [
+            ...(listas?.pendentes ?? []),
+            ...(listas?.proximas ?? []),
+          ]) {
+            if (v.prazo >= input.inicio && v.prazo <= input.fim)
+              porDia.set(v.prazo, (porDia.get(v.prazo) ?? 0) + 1);
           }
           for (const [data, qtd] of porDia) {
-            eventos.push({ ...base(c), data, evento: "previsto", semaforo: classificarSemaforo(data, hoje), quantidade: qtd });
+            eventos.push({
+              ...base(c),
+              data,
+              evento: "previsto",
+              semaforo: classificarSemaforo(data, hoje),
+              quantidade: qtd,
+            });
           }
         }
       }
 
-      eventos.sort((a, b) => a.data.localeCompare(b.data) || a.nome.localeCompare(b.nome));
+      eventos.sort(
+        (a, b) => a.data.localeCompare(b.data) || a.nome.localeCompare(b.nome)
+      );
       return { hoje, eventos };
     }),
 
@@ -1092,34 +1726,62 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ campanhaId: z.number().int() }))
     .query(async ({ input }) => {
       const db = await obterDb();
-      return db.select().from(campanhasWhatsappScripts)
-        .where(and(eq(campanhasWhatsappScripts.campanhaId, input.campanhaId), eq(campanhasWhatsappScripts.ativo, true)))
+      return db
+        .select()
+        .from(campanhasWhatsappScripts)
+        .where(
+          and(
+            eq(campanhasWhatsappScripts.campanhaId, input.campanhaId),
+            eq(campanhasWhatsappScripts.ativo, true)
+          )
+        )
         .orderBy(campanhasWhatsappScripts.ordem);
     }),
 
   addScript: campanhasProcedure
-    .input(z.object({
-      campanhaId: z.number().int(),
-      titulo: z.string().trim().max(128).optional(),
-      conteudo: z.string().trim().min(1, "Escreva o texto do script"),
-    }))
+    .input(
+      z.object({
+        campanhaId: z.number().int(),
+        titulo: z.string().trim().max(128).optional(),
+        conteudo: z.string().trim().min(1, "Escreva o texto do script"),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
       await buscarCampanha(db, input.campanhaId); // 404 se a campanha não existe
-      const [{ maxOrdem }] = await db.select({ maxOrdem: max(campanhasWhatsappScripts.ordem) })
-        .from(campanhasWhatsappScripts).where(eq(campanhasWhatsappScripts.campanhaId, input.campanhaId));
-      const [row] = await db.insert(campanhasWhatsappScripts).values({
-        campanhaId: input.campanhaId, titulo: input.titulo || null, conteudo: input.conteudo, ordem: (maxOrdem ?? 0) + 1,
-      }).returning();
+      const [{ maxOrdem }] = await db
+        .select({ maxOrdem: max(campanhasWhatsappScripts.ordem) })
+        .from(campanhasWhatsappScripts)
+        .where(eq(campanhasWhatsappScripts.campanhaId, input.campanhaId));
+      const [row] = await db
+        .insert(campanhasWhatsappScripts)
+        .values({
+          campanhaId: input.campanhaId,
+          titulo: input.titulo || null,
+          conteudo: input.conteudo,
+          ordem: (maxOrdem ?? 0) + 1,
+        })
+        .returning();
       return row;
     }),
 
   updateScript: campanhasProcedure
-    .input(z.object({ id: z.number().int(), titulo: z.string().trim().max(128).optional(), conteudo: z.string().trim().min(1) }))
+    .input(
+      z.object({
+        id: z.number().int(),
+        titulo: z.string().trim().max(128).optional(),
+        conteudo: z.string().trim().min(1),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.update(campanhasWhatsappScripts)
-        .set({ titulo: input.titulo || null, conteudo: input.conteudo, updatedAt: new Date() })
+      await db
+        .update(campanhasWhatsappScripts)
+        .set({
+          titulo: input.titulo || null,
+          conteudo: input.conteudo,
+          updatedAt: new Date(),
+        })
         .where(eq(campanhasWhatsappScripts.id, input.id));
       return { ok: true };
     }),
@@ -1129,7 +1791,10 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.update(campanhasWhatsappScripts).set({ ativo: false, updatedAt: new Date() }).where(eq(campanhasWhatsappScripts.id, input.id));
+      await db
+        .update(campanhasWhatsappScripts)
+        .set({ ativo: false, updatedAt: new Date() })
+        .where(eq(campanhasWhatsappScripts.id, input.id));
       return { ok: true };
     }),
 
@@ -1137,17 +1802,29 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.execute(sql`UPDATE campanhas_whatsapp_scripts SET copia_count = copia_count + 1 WHERE id = ${input.id}`);
+      await db.execute(
+        sql`UPDATE campanhas_whatsapp_scripts SET copia_count = copia_count + 1 WHERE id = ${input.id}`
+      );
       return { ok: true };
     }),
 
   reorderScripts: campanhasProcedure
-    .input(z.object({ campanhaId: z.number().int(), orderedIds: z.array(z.number().int()) }))
+    .input(
+      z.object({
+        campanhaId: z.number().int(),
+        orderedIds: z.array(z.number().int()),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await Promise.all(input.orderedIds.map((id, index) =>
-        db.update(campanhasWhatsappScripts).set({ ordem: index }).where(eq(campanhasWhatsappScripts.id, id))
-      ));
+      await Promise.all(
+        input.orderedIds.map((id, index) =>
+          db
+            .update(campanhasWhatsappScripts)
+            .set({ ordem: index })
+            .where(eq(campanhasWhatsappScripts.id, id))
+        )
+      );
       return { ok: true };
     }),
 
@@ -1160,27 +1837,42 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ campanhaId: z.number().int() }))
     .query(async ({ input }) => {
       const db = await obterDb();
-      return db.select().from(campanhasWhatsappArquivos)
+      return db
+        .select()
+        .from(campanhasWhatsappArquivos)
         .where(eq(campanhasWhatsappArquivos.campanhaId, input.campanhaId))
         .orderBy(desc(campanhasWhatsappArquivos.createdAt));
     }),
 
   adicionarArquivo: campanhasProcedure
-    .input(z.object({
-      // Opcional: um arquivo pode nascer "solto" (cadastrado direto na tela de Fontes, sem pertencer a
-      // nenhuma campanha) para servir de audiência reutilizável — ver campanhas_whatsapp_fontes.
-      campanhaId: z.number().int().nullish(),
-      nome: z.string().trim().min(1).max(256),
-      url: z.string().url().max(1024),
-      tamanhoBytes: z.number().int().min(0).max(64 * 1024 * 1024).default(0),
-    }))
+    .input(
+      z.object({
+        // Opcional: um arquivo pode nascer "solto" (cadastrado direto na tela de Fontes, sem pertencer a
+        // nenhuma campanha) para servir de audiência reutilizável — ver campanhas_whatsapp_fontes.
+        campanhaId: z.number().int().nullish(),
+        nome: z.string().trim().min(1).max(256),
+        url: z.string().url().max(1024),
+        tamanhoBytes: z
+          .number()
+          .int()
+          .min(0)
+          .max(64 * 1024 * 1024)
+          .default(0),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
       const db = await obterDb();
       if (input.campanhaId != null) await buscarCampanha(db, input.campanhaId);
-      const [row] = await db.insert(campanhasWhatsappArquivos).values({
-        campanhaId: input.campanhaId ?? null, nome: input.nome, url: input.url, tamanhoBytes: input.tamanhoBytes,
-        enviadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
-      }).returning();
+      const [row] = await db
+        .insert(campanhasWhatsappArquivos)
+        .values({
+          campanhaId: input.campanhaId ?? null,
+          nome: input.nome,
+          url: input.url,
+          tamanhoBytes: input.tamanhoBytes,
+          enviadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+        })
+        .returning();
       return row;
     }),
 
@@ -1189,7 +1881,9 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.delete(campanhasWhatsappArquivos).where(eq(campanhasWhatsappArquivos.id, input.id));
+      await db
+        .delete(campanhasWhatsappArquivos)
+        .where(eq(campanhasWhatsappArquivos.id, input.id));
       return { ok: true };
     }),
 
@@ -1199,50 +1893,144 @@ export const campanhasWhatsappRouter = router({
   /** Todas as fontes (as 4 "erp" são seed fixo da migration 0049; "arquivo" são criadas pelo usuário). */
   listarFontes: campanhasProcedure.query(async () => {
     const db = await obterDb();
-    const fontes = await db.select().from(campanhasWhatsappFontes).orderBy(campanhasWhatsappFontes.tipo, campanhasWhatsappFontes.id);
-    const arquivoIds = fontes.map(f => f.arquivoId).filter((id): id is number => id !== null);
+    const fontes = await db
+      .select()
+      .from(campanhasWhatsappFontes)
+      .orderBy(campanhasWhatsappFontes.tipo, campanhasWhatsappFontes.id);
+    const arquivoIds = fontes
+      .map(f => f.arquivoId)
+      .filter((id): id is number => id !== null);
     const arquivos = arquivoIds.length
-      ? await db.select().from(campanhasWhatsappArquivos).where(inArray(campanhasWhatsappArquivos.id, arquivoIds))
+      ? await db
+          .select()
+          .from(campanhasWhatsappArquivos)
+          .where(inArray(campanhasWhatsappArquivos.id, arquivoIds))
       : [];
     const arquivoPorId = new Map(arquivos.map(a => [a.id, a]));
-    return fontes.map(f => ({ ...f, arquivo: f.arquivoId ? arquivoPorId.get(f.arquivoId) ?? null : null }));
+    return fontes.map(f => ({
+      ...f,
+      arquivo: f.arquivoId ? (arquivoPorId.get(f.arquivoId) ?? null) : null,
+    }));
   }),
 
   /** Cria uma fonte tipo "arquivo" apontando para um arquivo já salvo (solto ou de qualquer campanha) —
    * o client sobe/registra o arquivo primeiro via adicionarArquivo, depois chama isto com o id retornado. */
   criarFonteArquivo: campanhasProcedure
-    .input(z.object({ label: z.string().trim().min(1).max(120), descricao: z.string().trim().max(500).nullish(), arquivoId: z.number().int() }))
+    .input(
+      z.object({
+        label: z.string().trim().min(1).max(120),
+        descricao: z.string().trim().max(500).nullish(),
+        arquivoId: z.number().int(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      const [arquivo] = await db.select({ id: campanhasWhatsappArquivos.id }).from(campanhasWhatsappArquivos)
-        .where(eq(campanhasWhatsappArquivos.id, input.arquivoId)).limit(1);
-      if (!arquivo) throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado" });
-      const existentes = await db.select({ chave: campanhasWhatsappFontes.chave }).from(campanhasWhatsappFontes);
+      const [arquivo] = await db
+        .select({ id: campanhasWhatsappArquivos.id })
+        .from(campanhasWhatsappArquivos)
+        .where(eq(campanhasWhatsappArquivos.id, input.arquivoId))
+        .limit(1);
+      if (!arquivo)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Arquivo não encontrado",
+        });
+      const existentes = await db
+        .select({ chave: campanhasWhatsappFontes.chave })
+        .from(campanhasWhatsappFontes);
       const chaves = new Set(existentes.map(e => e.chave));
       const base = gerarChaveCategoria(input.label); // mesmo slugify de categorias — serve igual aqui
       let chave = base;
       for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
-      const [row] = await db.insert(campanhasWhatsappFontes).values({
-        tipo: "arquivo", chave, label: input.label, descricao: input.descricao || null, arquivoId: input.arquivoId,
-      }).returning();
+      const [row] = await db
+        .insert(campanhasWhatsappFontes)
+        .values({
+          tipo: "arquivo",
+          chave,
+          label: input.label,
+          descricao: input.descricao || null,
+          arquivoId: input.arquivoId,
+        })
+        .returning();
       return row;
     }),
 
   /** Cria uma fonte tipo "campanha_arquivos": sem arquivo vinculado — cada campanha anexa a sua própria lista
    * na pasta de arquivos (ex.: "Prospecção Nacional" reutilizada em várias campanhas, uma planilha em cada). */
   criarFonteCampanhaArquivos: campanhasProcedure
-    .input(z.object({ label: z.string().trim().min(1).max(120), descricao: z.string().trim().max(500).nullish() }))
+    .input(
+      z.object({
+        label: z.string().trim().min(1).max(120),
+        descricao: z.string().trim().max(500).nullish(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      const existentes = await db.select({ chave: campanhasWhatsappFontes.chave }).from(campanhasWhatsappFontes);
+      const existentes = await db
+        .select({ chave: campanhasWhatsappFontes.chave })
+        .from(campanhasWhatsappFontes);
       const chaves = new Set(existentes.map(e => e.chave));
       const base = gerarChaveCategoria(input.label);
       let chave = base;
       for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
-      const [row] = await db.insert(campanhasWhatsappFontes).values({
-        tipo: "campanha_arquivos", chave, label: input.label,
-        descricao: input.descricao || "Cada campanha usa a lista anexada na sua própria pasta de arquivos.",
-      }).returning();
+      const [row] = await db
+        .insert(campanhasWhatsappFontes)
+        .values({
+          tipo: "campanha_arquivos",
+          chave,
+          label: input.label,
+          descricao:
+            input.descricao ||
+            "Cada campanha usa a lista anexada na sua própria pasta de arquivos.",
+        })
+        .returning();
+      return row;
+    }),
+
+  /** Cria uma fonte tipo "retargeting": audiência alimentada dinamicamente pelos leads qualificados por IA. */
+  criarFonteRetargeting: campanhasProcedure
+    .input(
+      z.object({
+        label: z.string().trim().min(1).max(120),
+        origemCampanhaId: z.number().int().positive(),
+        origemCampanhaNome: z.string().trim().max(160).optional(),
+        cluster: z.enum(CLUSTERS_LEAD).nullish(),
+        motivoObjecao: z.enum(MOTIVOS_OBJECAO).nullish(),
+        icpMinimo: z.number().int().min(1).max(100).nullish(),
+        descricao: z.string().trim().max(500).nullish(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      await buscarCampanha(db, input.origemCampanhaId);
+      const existentes = await db
+        .select({ chave: campanhasWhatsappFontes.chave })
+        .from(campanhasWhatsappFontes);
+      const chaves = new Set(existentes.map(e => e.chave));
+      const base = gerarChaveCategoria(input.label);
+      let chave = base;
+      for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
+
+      const config = {
+        origemCampanhaId: input.origemCampanhaId,
+        origemCampanhaNome: input.origemCampanhaNome,
+        cluster: input.cluster || null,
+        motivoObjecao: input.motivoObjecao || null,
+        icpMinimo: input.icpMinimo || null,
+      };
+
+      const [row] = await db
+        .insert(campanhasWhatsappFontes)
+        .values({
+          tipo: "retargeting",
+          chave,
+          label: input.label,
+          descricao:
+            input.descricao ||
+            `Retargeting dinâmico via IA a partir da campanha #${input.origemCampanhaId}.`,
+          retargetingConfig: config,
+        })
+        .returning();
       return row;
     }),
 
@@ -1251,20 +2039,38 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int(), ativo: z.boolean() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.update(campanhasWhatsappFontes).set({ ativo: input.ativo, updatedAt: new Date() }).where(eq(campanhasWhatsappFontes.id, input.id));
+      await db
+        .update(campanhasWhatsappFontes)
+        .set({ ativo: input.ativo, updatedAt: new Date() })
+        .where(eq(campanhasWhatsappFontes.id, input.id));
       return { ok: true };
     }),
 
   /** Substitui o conjunto de fontes vinculadas a uma campanha (multi-seleção: ERP + externas ao mesmo tempo). */
   vincularFontes: campanhasProcedure
-    .input(z.object({ campanhaId: z.number().int(), fonteIds: z.array(z.number().int()).max(50) }))
+    .input(
+      z.object({
+        campanhaId: z.number().int(),
+        fonteIds: z.array(z.number().int()).max(50),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
       await buscarCampanha(db, input.campanhaId);
-      await db.delete(campanhasWhatsappCampanhaFontes).where(eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId));
+      await db
+        .delete(campanhasWhatsappCampanhaFontes)
+        .where(
+          eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId)
+        );
       if (input.fonteIds.length) {
-        await db.insert(campanhasWhatsappCampanhaFontes)
-          .values(input.fonteIds.map(fonteId => ({ campanhaId: input.campanhaId, fonteId })));
+        await db
+          .insert(campanhasWhatsappCampanhaFontes)
+          .values(
+            input.fonteIds.map(fonteId => ({
+              campanhaId: input.campanhaId,
+              fonteId,
+            }))
+          );
       }
       return { ok: true };
     }),
@@ -1273,9 +2079,16 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ campanhaId: z.number().int() }))
     .query(async ({ input }) => {
       const db = await obterDb();
-      return db.select({ fonte: campanhasWhatsappFontes })
+      return db
+        .select({ fonte: campanhasWhatsappFontes })
         .from(campanhasWhatsappCampanhaFontes)
-        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+        .innerJoin(
+          campanhasWhatsappFontes,
+          eq(
+            campanhasWhatsappFontes.id,
+            campanhasWhatsappCampanhaFontes.fonteId
+          )
+        )
         .where(eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId))
         .then(rows => rows.map(r => r.fonte));
     }),
@@ -1287,12 +2100,19 @@ export const campanhasWhatsappRouter = router({
    * nada; o client passa o resultado (`aprovados`) para `registrarDisparo` como faz hoje com "vendas pendentes".
    */
   gerarListaDaCampanha: campanhasProcedure
-    .input(z.object({
-      campanhaId: z.number().int(),
-      dataEnvio: dataIsoSchema.optional(),
-      // Prévia de um período ainda não salvo (tela de contatos). Ausente = usa o período gravado na campanha.
-      periodo: z.object({ inicio: dataIsoSchema.nullable(), fim: dataIsoSchema.nullable() }).optional(),
-    }))
+    .input(
+      z.object({
+        campanhaId: z.number().int(),
+        dataEnvio: dataIsoSchema.optional(),
+        // Prévia de um período ainda não salvo (tela de contatos). Ausente = usa o período gravado na campanha.
+        periodo: z
+          .object({
+            inicio: dataIsoSchema.nullable(),
+            fim: dataIsoSchema.nullable(),
+          })
+          .optional(),
+      })
+    )
     .query(async ({ input }) => {
       const db = await obterDb();
       const campanha = await buscarCampanha(db, input.campanhaId);
@@ -1306,17 +2126,23 @@ export const campanhasWhatsappRouter = router({
    */
   contagemAudiencias: campanhasProcedure.query(async () => {
     const db = await obterDb();
-    const campanhas = (await db.select().from(campanhasWhatsapp))
-      .filter(c => c.status === "ativa" && c.tipo === "recorrente");
+    const campanhas = (await db.select().from(campanhasWhatsapp)).filter(
+      c => c.status === "ativa" && c.tipo === "recorrente"
+    );
     const ctx = campanhas.length ? await carregarContextoErp() : null;
-    const resultado: Record<number, { paraContatar: number; emEspera: number } | null> = {};
+    const resultado: Record<
+      number,
+      { paraContatar: number; emEspera: number } | null
+    > = {};
     for (const c of campanhas) {
       try {
         const r = await montarListaCampanha(db, c, {}, ctx);
         resultado[c.id] = {
           paraContatar: r.aprovados.length,
           // Quarentena de outra campanha + cadência desta: voltam sozinhos quando o prazo passa.
-          emEspera: r.ignoradosQuarentenaGlobal.length + r.ignoradosCadenciaCampanha.length,
+          emEspera:
+            r.ignoradosQuarentenaGlobal.length +
+            r.ignoradosCadenciaCampanha.length,
         };
       } catch {
         resultado[c.id] = null;
@@ -1334,42 +2160,71 @@ export const campanhasWhatsappRouter = router({
   atualizarDadosErp: campanhasProcedure.mutation(async () => {
     const agora = Date.now();
     if (agora - ultimaAtualizacaoErp < 2 * 60_000) {
-      return { atualizado: false, motivo: "Os dados foram atualizados há menos de 2 minutos.", osProcessadas: 0, orcamentosProcessados: 0 };
+      return {
+        atualizado: false,
+        motivo: "Os dados foram atualizados há menos de 2 minutos.",
+        osProcessadas: 0,
+        orcamentosProcessados: 0,
+      };
     }
     const resultados = await sincronizarHistoricoRecente(1);
     const erro = resultados.find(r => r.status === "ERRO");
     if (erro) {
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Não consegui atualizar pelo MubiSys: ${erro.mensagemErro ?? "erro desconhecido"}` });
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Não consegui atualizar pelo MubiSys: ${erro.mensagemErro ?? "erro desconhecido"}`,
+      });
     }
     ultimaAtualizacaoErp = agora;
     return {
-      atualizado: true, motivo: null,
+      atualizado: true,
+      motivo: null,
       osProcessadas: resultados.reduce((t, r) => t + r.osProcessadas, 0),
-      orcamentosProcessados: resultados.reduce((t, r) => t + r.orcamentosProcessados, 0),
+      orcamentosProcessados: resultados.reduce(
+        (t, r) => t + r.orcamentosProcessados,
+        0
+      ),
     };
   }),
 
   /** Uma janela de O.S. por chamada: a listagem do ERP pode consumir dezenas de segundos. */
   completarTelefonesHistorico: campanhasProcedure
-    .input(z.object({ ignorar: z.array(z.string().max(32)).max(1000).default([]) }))
+    .input(
+      z.object({ ignorar: z.array(z.string().max(32)).max(1000).default([]) })
+    )
     .mutation(async ({ input }) => {
       const plano = await planoBackfillTelefone(MESES_COMPLETAR_TELEFONES);
       const janelas = plano.filter(m => m.precisa).flatMap(m => m.janelas);
-      const disponiveis = janelas.filter(j => !input.ignorar.includes(`${j.di}|${j.df}`));
+      const disponiveis = janelas.filter(
+        j => !input.ignorar.includes(`${j.di}|${j.df}`)
+      );
       const janela = disponiveis[0];
       if (!janela) return { processado: null, janelasRestantes: 0 };
 
-      let encontrados = 0, atualizadas = 0, erro: string | null = null;
+      let encontrados = 0,
+        atualizadas = 0,
+        erro: string | null = null;
       try {
         const r = await completarTelefonesJanela(janela);
         encontrados = r.encontrados;
         atualizadas = r.atualizadas;
       } catch (e) {
-        console.error(`[TELEFONE-OS] Falha na janela ${janela.di}..${janela.df}:`, e);
-        erro = "O MubiSys não concluiu esta janela; ela será tentada novamente em outra execução.";
+        console.error(
+          `[TELEFONE-OS] Falha na janela ${janela.di}..${janela.df}:`,
+          e
+        );
+        erro =
+          "O MubiSys não concluiu esta janela; ela será tentada novamente em outra execução.";
       }
       return {
-        processado: { chave: `${janela.di}|${janela.df}`, di: janela.di, df: janela.df, encontrados, atualizadas, erro },
+        processado: {
+          chave: `${janela.di}|${janela.df}`,
+          di: janela.di,
+          df: janela.df,
+          encontrados,
+          atualizadas,
+          erro,
+        },
         janelasRestantes: disponiveis.length - 1,
       };
     }),
@@ -1380,41 +2235,65 @@ export const campanhasWhatsappRouter = router({
 
   listarOptOut: campanhasProcedure.query(async () => {
     const db = await obterDb();
-    const rows = await db.select().from(campanhasWhatsappOptout).orderBy(desc(campanhasWhatsappOptout.createdAt));
+    const rows = await db
+      .select()
+      .from(campanhasWhatsappOptout)
+      .orderBy(desc(campanhasWhatsappOptout.createdAt));
     return rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() }));
   }),
 
   adicionarOptOut: campanhasProcedure
-    .input(z.object({
-      telefones: z.array(z.union([z.string().max(40), z.number()])).min(1, "Informe ao menos um número").max(5000),
-      nome: z.string().trim().max(200).nullish(),
-      motivo: z.string().trim().max(300).nullish(),
-    }))
+    .input(
+      z.object({
+        telefones: z
+          .array(z.union([z.string().max(40), z.number()]))
+          .min(1, "Informe ao menos um número")
+          .max(5000),
+        nome: z.string().trim().max(200).nullish(),
+        motivo: z.string().trim().max(300).nullish(),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
       const db = await obterDb();
       const validos = new Set<string>();
       const invalidos: string[] = [];
       for (const bruto of input.telefones) {
         const tel = normalizarTelefone(bruto);
-        if (tel) validos.add(tel); else invalidos.push(String(bruto).trim());
+        if (tel) validos.add(tel);
+        else invalidos.push(String(bruto).trim());
       }
       // O nome só faz sentido quando é um número isolado; em lote cada linha fica sem nome.
       const nome = validos.size === 1 ? input.nome?.trim() || null : null;
-      const inseridos = validos.size === 0 ? [] : await db.insert(campanhasWhatsappOptout)
-        .values([...validos].map(telefone => ({
-          telefone, nome, motivo: input.motivo?.trim() || null,
-          registradoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
-        })))
-        .onConflictDoNothing({ target: campanhasWhatsappOptout.telefone })
-        .returning({ id: campanhasWhatsappOptout.id });
-      return { adicionados: inseridos.length, jaExistiam: validos.size - inseridos.length, invalidos };
+      const inseridos =
+        validos.size === 0
+          ? []
+          : await db
+              .insert(campanhasWhatsappOptout)
+              .values(
+                [...validos].map(telefone => ({
+                  telefone,
+                  nome,
+                  motivo: input.motivo?.trim() || null,
+                  registradoPor:
+                    ctx.user.name ?? ctx.user.email ?? "desconhecido",
+                }))
+              )
+              .onConflictDoNothing({ target: campanhasWhatsappOptout.telefone })
+              .returning({ id: campanhasWhatsappOptout.id });
+      return {
+        adicionados: inseridos.length,
+        jaExistiam: validos.size - inseridos.length,
+        invalidos,
+      };
     }),
 
   removerOptOut: campanhasProcedure
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.delete(campanhasWhatsappOptout).where(eq(campanhasWhatsappOptout.id, input.id));
+      await db
+        .delete(campanhasWhatsappOptout)
+        .where(eq(campanhasWhatsappOptout.id, input.id));
       return { ok: true };
     }),
 
@@ -1428,30 +2307,50 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ inicio: dataIsoSchema, fim: dataIsoSchema }))
     .query(async ({ input }) => {
       const db = await obterDb();
-      const rows = await db.select({
-        id: campanhasWhatsappAgendamentos.id,
-        campanhaId: campanhasWhatsappAgendamentos.campanhaId,
-        nome: campanhasWhatsapp.nome,
-        categoria: campanhasWhatsapp.categoria,
-        dataAgendada: campanhasWhatsappAgendamentos.dataAgendada,
-        status: campanhasWhatsappAgendamentos.status,
-        observacoes: campanhasWhatsappAgendamentos.observacoes,
-      })
+      const rows = await db
+        .select({
+          id: campanhasWhatsappAgendamentos.id,
+          campanhaId: campanhasWhatsappAgendamentos.campanhaId,
+          nome: campanhasWhatsapp.nome,
+          categoria: campanhasWhatsapp.categoria,
+          dataAgendada: campanhasWhatsappAgendamentos.dataAgendada,
+          status: campanhasWhatsappAgendamentos.status,
+          observacoes: campanhasWhatsappAgendamentos.observacoes,
+        })
         .from(campanhasWhatsappAgendamentos)
-        .innerJoin(campanhasWhatsapp, eq(campanhasWhatsapp.id, campanhasWhatsappAgendamentos.campanhaId))
-        .where(and(gte(campanhasWhatsappAgendamentos.dataAgendada, input.inicio), lte(campanhasWhatsappAgendamentos.dataAgendada, input.fim)))
+        .innerJoin(
+          campanhasWhatsapp,
+          eq(campanhasWhatsapp.id, campanhasWhatsappAgendamentos.campanhaId)
+        )
+        .where(
+          and(
+            gte(campanhasWhatsappAgendamentos.dataAgendada, input.inicio),
+            lte(campanhasWhatsappAgendamentos.dataAgendada, input.fim)
+          )
+        )
         .orderBy(campanhasWhatsappAgendamentos.dataAgendada);
       return rows.map(r => ({ ...r, dataAgendada: iso(r.dataAgendada) }));
     }),
 
   criarAgendamento: campanhasProcedure
-    .input(z.object({ campanhaId: z.number().int(), dataAgendada: dataIsoSchema, observacoes: z.string().trim().max(500).nullish() }))
+    .input(
+      z.object({
+        campanhaId: z.number().int(),
+        dataAgendada: dataIsoSchema,
+        observacoes: z.string().trim().max(500).nullish(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
       await buscarCampanha(db, input.campanhaId);
-      const [row] = await db.insert(campanhasWhatsappAgendamentos).values({
-        campanhaId: input.campanhaId, dataAgendada: input.dataAgendada, observacoes: input.observacoes || null,
-      }).returning();
+      const [row] = await db
+        .insert(campanhasWhatsappAgendamentos)
+        .values({
+          campanhaId: input.campanhaId,
+          dataAgendada: input.dataAgendada,
+          observacoes: input.observacoes || null,
+        })
+        .returning();
       return row;
     }),
 
@@ -1462,21 +2361,35 @@ export const campanhasWhatsappRouter = router({
    */
   orcamentosClienteIdPlano: campanhasProcedure.query(async () => {
     const plano = await planoClienteIdOrcamentos(MESES_COMPLETAR_TELEFONES);
-    return plano.map((m: MesOrcamentoSemCliente) => ({ mes: m.mes, ano: m.ano, pendentes: m.pendentes, janelas: m.janelas }));
+    return plano.map((m: MesOrcamentoSemCliente) => ({
+      mes: m.mes,
+      ano: m.ano,
+      pendentes: m.pendentes,
+      janelas: m.janelas,
+    }));
   }),
 
   orcamentosClienteIdJanela: campanhasProcedure
     .input(z.object({ di: dataIsoSchema, df: dataIsoSchema }))
     .mutation(async ({ input }) => {
       if (!janelaValida(input, new Date(), MESES_COMPLETAR_TELEFONES)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Janela de datas inválida." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Janela de datas inválida.",
+        });
       }
       try {
         return await gravarClienteIdOrcamentosJanela(input);
       } catch (erro) {
-        console.error(`❌ [TELEFONE-ORC] janela ${input.di}..${input.df}:`, erro);
+        console.error(
+          `❌ [TELEFONE-ORC] janela ${input.di}..${input.df}:`,
+          erro
+        );
         if (!(erro instanceof ErroConsultaMubiSysBackfill)) throw erro;
-        throw new TRPCError({ code: "BAD_GATEWAY", message: `O MubiSys não respondeu para ${input.di} a ${input.df}. Tente de novo.` });
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: `O MubiSys não respondeu para ${input.di} a ${input.df}. Tente de novo.`,
+        });
       }
     }),
 
@@ -1490,20 +2403,34 @@ export const campanhasWhatsappRouter = router({
       try {
         return await sincronizarClientesLote(input.pagina);
       } catch (erro) {
-        throw new TRPCError({ code: "BAD_GATEWAY", message: erro instanceof Error ? erro.message : "O MubiSys não respondeu." });
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message:
+            erro instanceof Error ? erro.message : "O MubiSys não respondeu.",
+        });
       }
     }),
 
   orcamentosTelefoneLote: campanhasProcedure
-    .input(z.object({ pagina: z.number().int().min(1).default(1), limitePorLote: z.number().int().min(1).max(12).default(12) }))
-    .mutation(({ input }) => completarTelefonesClientesOrcamentos(input.pagina, input.limitePorLote)),
+    .input(
+      z.object({
+        pagina: z.number().int().min(1).default(1),
+        limitePorLote: z.number().int().min(1).max(12).default(12),
+      })
+    )
+    .mutation(({ input }) =>
+      completarTelefonesClientesOrcamentos(input.pagina, input.limitePorLote)
+    ),
 
   /** O botão "disparada"/"não disparada"/"voltar a planejado" do calendário e do relatório. */
   marcarAgendamento: campanhasProcedure
-    .input(z.object({ id: z.number().int(), status: z.enum(STATUS_AGENDAMENTO) }))
+    .input(
+      z.object({ id: z.number().int(), status: z.enum(STATUS_AGENDAMENTO) })
+    )
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.update(campanhasWhatsappAgendamentos)
+      await db
+        .update(campanhasWhatsappAgendamentos)
         .set({ status: input.status, updatedAt: new Date() })
         .where(eq(campanhasWhatsappAgendamentos.id, input.id));
       return { ok: true };
@@ -1513,7 +2440,9 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await db.delete(campanhasWhatsappAgendamentos).where(eq(campanhasWhatsappAgendamentos.id, input.id));
+      await db
+        .delete(campanhasWhatsappAgendamentos)
+        .where(eq(campanhasWhatsappAgendamentos.id, input.id));
       return { ok: true };
     }),
 
@@ -1521,13 +2450,25 @@ export const campanhasWhatsappRouter = router({
   // Chat interativo para sugerir mensagens/scripts usando Claude
 
   gerarScriptComIA: campanhasProcedure
-    .input(z.object({
-      descricao: z.string().min(10).max(2000),
-      contextoMensagens: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).max(10).optional(),
-    }))
+    .input(
+      z.object({
+        descricao: z.string().min(10).max(2000),
+        contextoMensagens: z
+          .array(
+            z.object({
+              role: z.enum(["user", "assistant"]),
+              content: z.string(),
+            })
+          )
+          .max(10)
+          .optional(),
+      })
+    )
     .mutation(async ({ input }) => {
       const contextoAnterior = (input.contextoMensagens ?? [])
-        .map(m => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
+        .map(
+          m => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`
+        )
         .join("\n\n");
 
       const prompt = `Você é um especialista em copywriting para WhatsApp e campanhas de marketing.
@@ -1550,14 +2491,22 @@ Script 2: [Título]
 
       const response = await invokeLLM({
         messages: [
-          { role: "system", content: "Você é um especialista em WhatsApp marketing que gera scripts efetivos." },
+          {
+            role: "system",
+            content:
+              "Você é um especialista em WhatsApp marketing que gera scripts efetivos.",
+          },
           { role: "user", content: prompt },
         ],
         maxCompletionTokens: 1000,
       });
 
       const resposta = response?.choices?.[0]?.message?.content ?? "";
-      if (!resposta) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Nenhuma resposta da IA" });
+      if (!resposta)
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Nenhuma resposta da IA",
+        });
 
       return { resposta };
     }),
@@ -1569,33 +2518,68 @@ Script 2: [Título]
   relatorioPeriodo: campanhasProcedure
     .input(z.object({ inicio: dataIsoSchema, fim: dataIsoSchema }))
     .query(async ({ input }) => {
-      if (input.fim < input.inicio || diasEntre(input.inicio, input.fim) > 366) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Período inválido (máximo 366 dias)." });
+      if (
+        input.fim < input.inicio ||
+        diasEntre(input.inicio, input.fim) > 366
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Período inválido (máximo 366 dias).",
+        });
       }
       const db = await obterDb();
-      const [campanhas, disparosPeriodo, agendamentosPeriodo, contatosDistintos] = await Promise.all([
+      const [
+        campanhas,
+        disparosPeriodo,
+        agendamentosPeriodo,
+        contatosDistintos,
+      ] = await Promise.all([
         db.select().from(campanhasWhatsapp),
-        db.select().from(campanhasWhatsappDisparos)
-          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, input.inicio), lte(campanhasWhatsappDisparos.enviadoEm, input.fim))),
-        db.select().from(campanhasWhatsappAgendamentos)
-          .where(and(gte(campanhasWhatsappAgendamentos.dataAgendada, input.inicio), lte(campanhasWhatsappAgendamentos.dataAgendada, input.fim))),
+        db
+          .select()
+          .from(campanhasWhatsappDisparos)
+          .where(
+            and(
+              gte(campanhasWhatsappDisparos.enviadoEm, input.inicio),
+              lte(campanhasWhatsappDisparos.enviadoEm, input.fim)
+            )
+          ),
+        db
+          .select()
+          .from(campanhasWhatsappAgendamentos)
+          .where(
+            and(
+              gte(campanhasWhatsappAgendamentos.dataAgendada, input.inicio),
+              lte(campanhasWhatsappAgendamentos.dataAgendada, input.fim)
+            )
+          ),
         getPool().query<{ total: number }>(
           `SELECT COUNT(DISTINCT telefone)::int AS total FROM campanhas_whatsapp_contatos_historico
              WHERE ultimo_envio_em BETWEEN $1 AND $2`,
-          [input.inicio, input.fim],
+          [input.inicio, input.fim]
         ),
       ]);
 
-      const porCampanhaAgg = new Map<number, { disparos: number; contatosEnviados: number }>();
+      const porCampanhaAgg = new Map<
+        number,
+        { disparos: number; contatosEnviados: number }
+      >();
       for (const d of disparosPeriodo) {
-        const atual = porCampanhaAgg.get(d.campanhaId) ?? { disparos: 0, contatosEnviados: 0 };
+        const atual = porCampanhaAgg.get(d.campanhaId) ?? {
+          disparos: 0,
+          contatosEnviados: 0,
+        };
         atual.disparos++;
         atual.contatosEnviados += d.contatosEnviados;
         porCampanhaAgg.set(d.campanhaId, atual);
       }
-      const agendamentosPorCampanha = new Map<number, typeof agendamentosPeriodo>();
+      const agendamentosPorCampanha = new Map<
+        number,
+        typeof agendamentosPeriodo
+      >();
       for (const a of agendamentosPeriodo) {
-        if (!agendamentosPorCampanha.has(a.campanhaId)) agendamentosPorCampanha.set(a.campanhaId, []);
+        if (!agendamentosPorCampanha.has(a.campanhaId))
+          agendamentosPorCampanha.set(a.campanhaId, []);
         agendamentosPorCampanha.get(a.campanhaId)!.push(a);
       }
 
@@ -1606,12 +2590,23 @@ Script 2: [Título]
           categoria: c.categoria,
           status: c.status,
           disparosNoPeriodo: porCampanhaAgg.get(c.id)?.disparos ?? 0,
-          contatosEnviadosNoPeriodo: porCampanhaAgg.get(c.id)?.contatosEnviados ?? 0,
+          contatosEnviadosNoPeriodo:
+            porCampanhaAgg.get(c.id)?.contatosEnviados ?? 0,
           agendamentos: (agendamentosPorCampanha.get(c.id) ?? [])
-            .map(a => ({ id: a.id, dataAgendada: iso(a.dataAgendada), status: a.status, observacoes: a.observacoes }))
+            .map(a => ({
+              id: a.id,
+              dataAgendada: iso(a.dataAgendada),
+              status: a.status,
+              observacoes: a.observacoes,
+            }))
             .sort((x, y) => x.dataAgendada.localeCompare(y.dataAgendada)),
         }))
-        .sort((a, b) => b.disparosNoPeriodo - a.disparosNoPeriodo || b.agendamentos.length - a.agendamentos.length || a.nome.localeCompare(b.nome));
+        .sort(
+          (a, b) =>
+            b.disparosNoPeriodo - a.disparosNoPeriodo ||
+            b.agendamentos.length - a.agendamentos.length ||
+            a.nome.localeCompare(b.nome)
+        );
 
       return {
         periodo: { inicio: input.inicio, fim: input.fim },
@@ -1623,7 +2618,10 @@ Script 2: [Título]
           // campanhas_whatsapp_contatos_historico só guarda o envio mais recente por (campanha, telefone).
           contatosCadastradosNoPeriodo: contatosDistintos.rows[0]?.total ?? 0,
           disparosRealizadosNoPeriodo: disparosPeriodo.length,
-          contatosEnviadosNoPeriodo: disparosPeriodo.reduce((soma, d) => soma + d.contatosEnviados, 0),
+          contatosEnviadosNoPeriodo: disparosPeriodo.reduce(
+            (soma, d) => soma + d.contatosEnviados,
+            0
+          ),
         },
         porCampanha,
       };
@@ -1640,56 +2638,110 @@ Script 2: [Título]
     .query(async ({ input }) => {
       const db = await obterDb();
       const [disparo, inbound, leads] = await Promise.all([
-        db.select({
-          disparos: count(),
-          contatosEnviados: sql<number>`coalesce(sum(${campanhasWhatsappDisparos.contatosEnviados}), 0)::int`,
-        }).from(campanhasWhatsappDisparos).where(eq(campanhasWhatsappDisparos.campanhaId, input.campanhaId)),
-        db.select({
-          telefone: campanhasWhatsappMensagensInbound.telefone,
-          tipoMensagem: campanhasWhatsappMensagensInbound.tipoMensagem,
-          ehBot: campanhasWhatsappMensagensInbound.ehBot,
-        }).from(campanhasWhatsappMensagensInbound).where(eq(campanhasWhatsappMensagensInbound.campanhaId, input.campanhaId)),
-        db.select({ telefone: campanhasWhatsappLeadsQualificados.telefone, total: campanhasWhatsappLeadsQualificados.totalMensagensTrocas })
-          .from(campanhasWhatsappLeadsQualificados).where(eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)),
+        db
+          .select({
+            disparos: count(),
+            contatosEnviados: sql<number>`coalesce(sum(${campanhasWhatsappDisparos.contatosEnviados}), 0)::int`,
+          })
+          .from(campanhasWhatsappDisparos)
+          .where(eq(campanhasWhatsappDisparos.campanhaId, input.campanhaId)),
+        db
+          .select({
+            telefone: campanhasWhatsappMensagensInbound.telefone,
+            tipoMensagem: campanhasWhatsappMensagensInbound.tipoMensagem,
+            ehBot: campanhasWhatsappMensagensInbound.ehBot,
+          })
+          .from(campanhasWhatsappMensagensInbound)
+          .where(
+            eq(campanhasWhatsappMensagensInbound.campanhaId, input.campanhaId)
+          ),
+        db
+          .select({
+            telefone: campanhasWhatsappLeadsQualificados.telefone,
+            total: campanhasWhatsappLeadsQualificados.totalMensagensTrocas,
+          })
+          .from(campanhasWhatsappLeadsQualificados)
+          .where(
+            eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)
+          ),
       ]);
 
       const contatosEnviados = disparo[0]?.contatosEnviados ?? 0;
-      const telefonesHumanos = new Set(inbound.filter(m => !m.ehBot).map(m => m.telefone));
-      const telefonesBot = new Set(inbound.filter(m => m.ehBot).map(m => m.telefone));
-      const cliquesBotao = inbound.filter(m => !m.ehBot && (m.tipoMensagem === "button_reply" || m.tipoMensagem === "list_reply")).length;
+      const telefonesHumanos = new Set(
+        inbound.filter(m => !m.ehBot).map(m => m.telefone)
+      );
+      const telefonesBot = new Set(
+        inbound.filter(m => m.ehBot).map(m => m.telefone)
+      );
+      const cliquesBotao = inbound.filter(
+        m =>
+          !m.ehBot &&
+          (m.tipoMensagem === "button_reply" || m.tipoMensagem === "list_reply")
+      ).length;
       const profundos = leads.filter(l => l.total >= 3).length;
 
       return {
         totalDisparado: contatosEnviados,
         respostaHumana: telefonesHumanos.size,
         respostaBot: telefonesBot.size,
-        taxaRespostaHumanaPct: contatosEnviados > 0 ? Math.round((telefonesHumanos.size / contatosEnviados) * 1000) / 10 : 0,
+        taxaRespostaHumanaPct:
+          contatosEnviados > 0
+            ? Math.round((telefonesHumanos.size / contatosEnviados) * 1000) / 10
+            : 0,
         cliquesBotaoCta: cliquesBotao,
-        taxaCliqueCtaPct: contatosEnviados > 0 ? Math.round((cliquesBotao / contatosEnviados) * 1000) / 10 : 0,
-        indiceProfundidadePct: telefonesHumanos.size > 0 ? Math.round((profundos / telefonesHumanos.size) * 1000) / 10 : 0,
+        taxaCliqueCtaPct:
+          contatosEnviados > 0
+            ? Math.round((cliquesBotao / contatosEnviados) * 1000) / 10
+            : 0,
+        indiceProfundidadePct:
+          telefonesHumanos.size > 0
+            ? Math.round((profundos / telefonesHumanos.size) * 1000) / 10
+            : 0,
       };
     }),
 
   /** Lista de leads qualificados por IA, com filtro por cluster/objeção/ICP mínimo — base da tabela do
    * dashboard (Parte 2, bloco 3) e da exportação para retargeting. */
   listarLeadsQualificados: campanhasProcedure
-    .input(z.object({
-      campanhaId: z.number().int().positive(),
-      cluster: z.enum(CLUSTERS_LEAD).optional(),
-      motivoObjecao: z.enum(MOTIVOS_OBJECAO).optional(),
-      icpMinimo: z.number().int().min(1).max(100).optional(),
-      ordenarPor: z.enum(["icp", "recente"]).default("icp"),
-    }))
+    .input(
+      z.object({
+        campanhaId: z.number().int().positive(),
+        cluster: z.enum(CLUSTERS_LEAD).optional(),
+        motivoObjecao: z.enum(MOTIVOS_OBJECAO).optional(),
+        icpMinimo: z.number().int().min(1).max(100).optional(),
+        ordenarPor: z.enum(["icp", "recente"]).default("icp"),
+      })
+    )
     .query(async ({ input }) => {
       const db = await obterDb();
-      const condicoes = [eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)];
-      if (input.cluster) condicoes.push(eq(campanhasWhatsappLeadsQualificados.cluster, input.cluster));
-      if (input.motivoObjecao) condicoes.push(eq(campanhasWhatsappLeadsQualificados.motivoObjecao, input.motivoObjecao));
-      if (input.icpMinimo) condicoes.push(gte(campanhasWhatsappLeadsQualificados.icpFitScore, input.icpMinimo));
+      const condicoes = [
+        eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId),
+      ];
+      if (input.cluster)
+        condicoes.push(
+          eq(campanhasWhatsappLeadsQualificados.cluster, input.cluster)
+        );
+      if (input.motivoObjecao)
+        condicoes.push(
+          eq(
+            campanhasWhatsappLeadsQualificados.motivoObjecao,
+            input.motivoObjecao
+          )
+        );
+      if (input.icpMinimo)
+        condicoes.push(
+          gte(campanhasWhatsappLeadsQualificados.icpFitScore, input.icpMinimo)
+        );
 
-      const linhas = await db.select().from(campanhasWhatsappLeadsQualificados)
+      const linhas = await db
+        .select()
+        .from(campanhasWhatsappLeadsQualificados)
         .where(and(...condicoes))
-        .orderBy(input.ordenarPor === "icp" ? desc(campanhasWhatsappLeadsQualificados.icpFitScore) : desc(campanhasWhatsappLeadsQualificados.analisadoEm));
+        .orderBy(
+          input.ordenarPor === "icp"
+            ? desc(campanhasWhatsappLeadsQualificados.icpFitScore)
+            : desc(campanhasWhatsappLeadsQualificados.analisadoEm)
+        );
 
       return linhas.map(l => ({
         ...l,
@@ -1703,46 +2755,113 @@ Script 2: [Título]
     .input(z.object({ campanhaId: z.number().int().positive() }))
     .query(async ({ input }) => {
       const db = await obterDb();
-      const leads = await db.select().from(campanhasWhatsappLeadsQualificados)
-        .where(eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId));
+      const leads = await db
+        .select()
+        .from(campanhasWhatsappLeadsQualificados)
+        .where(
+          eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)
+        );
 
-      const porCluster = Object.fromEntries(CLUSTERS_LEAD.map(c => [c, 0])) as Record<string, number>;
-      const porObjecao = Object.fromEntries(MOTIVOS_OBJECAO.map(m => [m, 0])) as Record<string, number>;
+      const porCluster = Object.fromEntries(
+        CLUSTERS_LEAD.map(c => [c, 0])
+      ) as Record<string, number>;
+      const porObjecao = Object.fromEntries(
+        MOTIVOS_OBJECAO.map(m => [m, 0])
+      ) as Record<string, number>;
       const heatmap = new Map<string, number>(); // "dia-hora" -> contagem
       const temposReacao: number[] = [];
 
       for (const l of leads) {
         porCluster[l.cluster] = (porCluster[l.cluster] ?? 0) + 1;
         porObjecao[l.motivoObjecao] = (porObjecao[l.motivoObjecao] ?? 0) + 1;
-        if (l.diaSemanaPrimeiraResposta !== null && l.horaPrimeiraResposta !== null) {
+        if (
+          l.diaSemanaPrimeiraResposta !== null &&
+          l.horaPrimeiraResposta !== null
+        ) {
           const chave = `${l.diaSemanaPrimeiraResposta}-${l.horaPrimeiraResposta}`;
           heatmap.set(chave, (heatmap.get(chave) ?? 0) + 1);
         }
-        if (l.tempoReacaoSegundos !== null) temposReacao.push(l.tempoReacaoSegundos);
+        if (l.tempoReacaoSegundos !== null)
+          temposReacao.push(l.tempoReacaoSegundos);
       }
 
       const total = leads.length;
       const clusters = CLUSTERS_LEAD.map(cluster => ({
-        cluster, total: porCluster[cluster], percentual: total > 0 ? Math.round((porCluster[cluster] / total) * 1000) / 10 : 0,
+        cluster,
+        total: porCluster[cluster],
+        percentual:
+          total > 0 ? Math.round((porCluster[cluster] / total) * 1000) / 10 : 0,
       }));
-      const objecoes = MOTIVOS_OBJECAO.filter(m => m !== "NENHUMA").map(motivo => ({
-        motivo, total: porObjecao[motivo], percentual: total > 0 ? Math.round((porObjecao[motivo] / total) * 1000) / 10 : 0,
-      })).filter(o => o.total > 0).sort((a, b) => b.total - a.total);
+      const objecoes = MOTIVOS_OBJECAO.filter(m => m !== "NENHUMA")
+        .map(motivo => ({
+          motivo,
+          total: porObjecao[motivo],
+          percentual:
+            total > 0
+              ? Math.round((porObjecao[motivo] / total) * 1000) / 10
+              : 0,
+        }))
+        .filter(o => o.total > 0)
+        .sort((a, b) => b.total - a.total);
 
-      const heatmapCelulas = [...heatmap.entries()].map(([chave, totalRespostas]) => {
-        const [dia, hora] = chave.split("-").map(Number);
-        return { diaSemana: dia, hora, total: totalRespostas, faixa: formatarFaixaHeatmap(dia, hora) };
-      }).sort((a, b) => b.total - a.total);
+      const heatmapCelulas = [...heatmap.entries()]
+        .map(([chave, totalRespostas]) => {
+          const [dia, hora] = chave.split("-").map(Number);
+          return {
+            diaSemana: dia,
+            hora,
+            total: totalRespostas,
+            faixa: formatarFaixaHeatmap(dia, hora),
+          };
+        })
+        .sort((a, b) => b.total - a.total);
 
       const melhorFaixa = heatmapCelulas[0] ?? null;
-      const tempoMedioReacaoSegundos = temposReacao.length > 0
-        ? Math.round(temposReacao.reduce((s, v) => s + v, 0) / temposReacao.length)
-        : null;
+      const tempoMedioReacaoSegundos =
+        temposReacao.length > 0
+          ? Math.round(
+              temposReacao.reduce((s, v) => s + v, 0) / temposReacao.length
+            )
+          : null;
+
+      // Curva de Latência de Resposta (Lead Velocity detalhado)
+      const latenciaContagem = Object.fromEntries(
+        FAIXAS_LATENCIA.map(f => [f, 0])
+      ) as Record<string, number>;
+      for (const seg of temposReacao) {
+        const faixa = classificarFaixaLatencia(seg);
+        latenciaContagem[faixa] = (latenciaContagem[faixa] ?? 0) + 1;
+      }
+      const totalComTempo = temposReacao.length;
+      const curvaLatencia: CurvaLatenciaItem[] = FAIXAS_LATENCIA.map(faixa => ({
+        faixa,
+        label: ROTULO_FAIXA_LATENCIA[faixa],
+        total: latenciaContagem[faixa],
+        percentual:
+          totalComTempo > 0
+            ? Math.round((latenciaContagem[faixa] / totalComTempo) * 1000) / 10
+            : 0,
+      }));
+
+      // Mediana real de tempo de reação
+      let medianaReacaoSegundos: number | null = null;
+      if (temposReacao.length > 0) {
+        const ordenados = [...temposReacao].sort((a, b) => a - b);
+        const meio = Math.floor(ordenados.length / 2);
+        medianaReacaoSegundos =
+          ordenados.length % 2 === 0
+            ? Math.round((ordenados[meio - 1] + ordenados[meio]) / 2)
+            : ordenados[meio];
+      }
 
       // Frases de objeção para o card de feedback de copy/vendas (Parte 3, bloco 2).
       const frasesObjecao = leads
         .filter(l => l.motivoObjecao !== "NENHUMA" && l.resumoObjecao)
-        .map(l => ({ motivo: l.motivoObjecao, resumo: l.resumoObjecao as string, telefone: l.telefone }))
+        .map(l => ({
+          motivo: l.motivoObjecao,
+          resumo: l.resumoObjecao as string,
+          telefone: l.telefone,
+        }))
         .slice(0, 20);
 
       return {
@@ -1752,30 +2871,351 @@ Script 2: [Título]
         heatmap: heatmapCelulas,
         melhorFaixaConversao: melhorFaixa,
         tempoMedioReacaoSegundos,
+        medianaReacaoSegundos,
+        curvaLatencia,
         frasesObjecao,
+      };
+    }),
+
+  /** Resumo executivo da campanha gerado por IA (Gemini Flash) com Structured Output. */
+  resumoExecutivoIa: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+
+      const [disparo, inbound, leads] = await Promise.all([
+        db
+          .select({
+            disparos: count(),
+            contatosEnviados: sql<number>`coalesce(sum(${campanhasWhatsappDisparos.contatosEnviados}), 0)::int`,
+          })
+          .from(campanhasWhatsappDisparos)
+          .where(eq(campanhasWhatsappDisparos.campanhaId, input.campanhaId)),
+        db
+          .select({
+            telefone: campanhasWhatsappMensagensInbound.telefone,
+            tipoMensagem: campanhasWhatsappMensagensInbound.tipoMensagem,
+            ehBot: campanhasWhatsappMensagensInbound.ehBot,
+          })
+          .from(campanhasWhatsappMensagensInbound)
+          .where(
+            eq(campanhasWhatsappMensagensInbound.campanhaId, input.campanhaId)
+          ),
+        db
+          .select()
+          .from(campanhasWhatsappLeadsQualificados)
+          .where(
+            eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)
+          ),
+      ]);
+
+      const contatosEnviados = disparo[0]?.contatosEnviados ?? 0;
+      const telefonesHumanos = new Set(
+        inbound.filter(m => !m.ehBot).map(m => m.telefone)
+      );
+      const cliquesBotao = inbound.filter(
+        m =>
+          !m.ehBot &&
+          (m.tipoMensagem === "button_reply" || m.tipoMensagem === "list_reply")
+      ).length;
+
+      const porCluster = Object.fromEntries(
+        CLUSTERS_LEAD.map(c => [c, 0])
+      ) as Record<string, number>;
+      const porObjecao = Object.fromEntries(
+        MOTIVOS_OBJECAO.map(m => [m, 0])
+      ) as Record<string, number>;
+      const temposReacao: number[] = [];
+      const amostraIntencoes: string[] = [];
+      const amostraObjecoes: Array<{ motivo: string; resumo: string }> = [];
+      const icp = { quente: 0, morno: 0, frio: 0 };
+
+      for (const l of leads) {
+        porCluster[l.cluster] = (porCluster[l.cluster] ?? 0) + 1;
+        porObjecao[l.motivoObjecao] = (porObjecao[l.motivoObjecao] ?? 0) + 1;
+        if (l.tempoReacaoSegundos !== null)
+          temposReacao.push(l.tempoReacaoSegundos);
+        if (l.resumoIntencao) amostraIntencoes.push(l.resumoIntencao);
+        if (l.motivoObjecao !== "NENHUMA" && l.resumoObjecao) {
+          amostraObjecoes.push({
+            motivo: l.motivoObjecao,
+            resumo: l.resumoObjecao,
+          });
+        }
+        const faixa = classificarFaixaIcp(l.icpFitScore);
+        icp[faixa]++;
+      }
+
+      const total = leads.length;
+      const clusters = CLUSTERS_LEAD.map(cluster => ({
+        cluster,
+        total: porCluster[cluster],
+        percentual:
+          total > 0 ? Math.round((porCluster[cluster] / total) * 1000) / 10 : 0,
+      }));
+      const objecoes = MOTIVOS_OBJECAO.filter(m => m !== "NENHUMA")
+        .map(motivo => ({
+          motivo,
+          total: porObjecao[motivo],
+          percentual:
+            total > 0
+              ? Math.round((porObjecao[motivo] / total) * 1000) / 10
+              : 0,
+        }))
+        .filter(o => o.total > 0)
+        .sort((a, b) => b.total - a.total);
+
+      const tempoMedioMinutos =
+        temposReacao.length > 0
+          ? Math.round(
+              temposReacao.reduce((s, v) => s + v, 0) / temposReacao.length / 60
+            )
+          : null;
+
+      return gerarResumoExecutivoComGemini({
+        nomeCampanha: campanha.nome,
+        templateEnviado: campanha.wtsTemplateId,
+        totalDisparado: contatosEnviados,
+        respostasHumanas: telefonesHumanos.size,
+        taxaRespostaPct:
+          contatosEnviados > 0
+            ? Math.round((telefonesHumanos.size / contatosEnviados) * 1000) / 10
+            : 0,
+        cliquesCta: cliquesBotao,
+        totalLeadsQualificados: total,
+        clusters,
+        objecoes,
+        amostraIntencoes,
+        amostraObjecoes,
+        distribuicaoIcp: icp,
+        tempoMedioReacaoMinutos: tempoMedioMinutos,
+      });
+    }),
+
+  /** Atribuição de Receita & ROI Real: cruza contatos disparados com O.S. aprovadas/faturadas no MubiSys (historico_os). */
+  atribuicaoReceita: campanhasProcedure
+    .input(
+      z.object({
+        campanhaId: z.number().int().positive(),
+        janelaDias: z.number().int().min(1).max(180).default(30),
+      })
+    )
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      await buscarCampanha(db, input.campanhaId);
+
+      // 1. Contatos que receberam disparo desta campanha + data do envio
+      const contatosHist = await db
+        .select({
+          telefone: campanhasWhatsappContatosHistorico.telefone,
+          ultimoEnvioEm: campanhasWhatsappContatosHistorico.ultimoEnvioEm,
+        })
+        .from(campanhasWhatsappContatosHistorico)
+        .where(
+          eq(campanhasWhatsappContatosHistorico.campanhaId, input.campanhaId)
+        );
+
+      const mapaDisparos = new Map<string, string>(); // tel normalizado -> data envio ISO
+      for (const c of contatosHist) {
+        const telNorm = normalizarTelefone(c.telefone);
+        if (telNorm) mapaDisparos.set(telNorm, c.ultimoEnvioEm);
+      }
+
+      // Se nenhum contato no histórico, retorna métricas zeradas
+      if (mapaDisparos.size === 0) {
+        return {
+          janelaDias: input.janelaDias,
+          receitaTotal: 0,
+          totalOs: 0,
+          ticketMedio: 0,
+          clientesConvertidos: 0,
+          taxaConversaoDisparosPct: 0,
+          custoTotalEstimado: 0,
+          roiEstimadoPct: null,
+          multiplicadorRetorno: null,
+          receitaPorCluster: [],
+          ordensServico: [],
+        };
+      }
+
+      // 2. Mapeamento de Cluster de IA dos leads desta campanha
+      const leads = await db
+        .select({
+          telefone: campanhasWhatsappLeadsQualificados.telefone,
+          cluster: campanhasWhatsappLeadsQualificados.cluster,
+        })
+        .from(campanhasWhatsappLeadsQualificados)
+        .where(
+          eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)
+        );
+
+      const clusterPorTelefone = new Map<string, ClusterLead>();
+      for (const l of leads) {
+        const telNorm = normalizarTelefone(l.telefone);
+        if (telNorm) clusterPorTelefone.set(telNorm, l.cluster as ClusterLead);
+      }
+
+      // 3. Carrega O.S. e completa telefones pelo espelho do cadastro do MubiSys
+      const [osRows, cadastro] = await Promise.all([
+        db.select().from(historicoOs),
+        carregarTelefonesClientes(),
+      ]);
+      completarTelefonesPeloCadastro(osRows, cadastro);
+
+      const ordensServico: OsAtribuidaReceita[] = [];
+      const clientesConvertidosSet = new Set<string>();
+
+      for (const os of osRows) {
+        if (!isOsNormalDb(os)) continue;
+        const telNorm = normalizarTelefone(os.telefone);
+        if (!telNorm || !mapaDisparos.has(telNorm)) continue;
+
+        const dataDisparo = mapaDisparos.get(telNorm)!;
+        const dtAprov = parseDataFlexivel(os.dataAprovacao);
+        const dtFat = parseDataFlexivel(os.dataFaturamento);
+        const dataCompra = dtAprov
+          ? dataLocalParaIso(dtAprov)
+          : dtFat
+            ? dataLocalParaIso(dtFat)
+            : null;
+        if (!dataCompra) continue;
+
+        const diferencaDias = diasEntre(dataDisparo, dataCompra);
+        // O.S. aprovada ou faturada no mesmo dia ou até N dias após o disparo
+        if (diferencaDias >= 0 && diferencaDias <= input.janelaDias) {
+          const valor = Number(os.valorOs || os.valorTotal || 0);
+          const clusterIa = clusterPorTelefone.get(telNorm) ?? null;
+
+          ordensServico.push({
+            osNumero: os.osNumero ?? "S/N",
+            empresa: os.empresa ?? "Cliente",
+            telefone: telNorm,
+            dataAprovacao: dtAprov ? dataLocalParaIso(dtAprov) : null,
+            dataFaturamento: dtFat ? dataLocalParaIso(dtFat) : null,
+            dataCompra,
+            diasAposDisparo: diferencaDias,
+            valor,
+            vendedor: os.vendedor ?? null,
+            clusterIa,
+          });
+          clientesConvertidosSet.add(telNorm);
+        }
+      }
+
+      ordensServico.sort(
+        (a, b) => b.dataCompra.localeCompare(a.dataCompra) || b.valor - a.valor
+      );
+
+      const receitaTotal =
+        Math.round(ordensServico.reduce((acc, o) => acc + o.valor, 0) * 100) /
+        100;
+      const totalOs = ordensServico.length;
+      const clientesConvertidos = clientesConvertidosSet.size;
+      const ticketMedio =
+        totalOs > 0 ? Math.round((receitaTotal / totalOs) * 100) / 100 : 0;
+      const taxaConversaoDisparosPct =
+        mapaDisparos.size > 0
+          ? Math.round((clientesConvertidos / mapaDisparos.size) * 1000) / 10
+          : 0;
+
+      // Custo estimado: R$ 0,35 por contato enviado via WhatsApp Business API / Ceci
+      const custoTotalEstimado =
+        Math.round(mapaDisparos.size * 0.35 * 100) / 100;
+      const roiEstimadoPct =
+        custoTotalEstimado > 0
+          ? Math.round(
+              ((receitaTotal - custoTotalEstimado) / custoTotalEstimado) * 1000
+            ) / 10
+          : null;
+      const multiplicadorRetorno =
+        custoTotalEstimado > 0
+          ? Math.round((receitaTotal / custoTotalEstimado) * 10) / 10
+          : null;
+
+      // Receita por Cluster
+      const porClusterMapa = new Map<
+        string,
+        { totalOs: number; receita: number }
+      >();
+      for (const o of ordensServico) {
+        const chave = o.clusterIa ?? "NAO_QUALIFICADO";
+        const cur = porClusterMapa.get(chave) ?? { totalOs: 0, receita: 0 };
+        cur.totalOs++;
+        cur.receita += o.valor;
+        porClusterMapa.set(chave, cur);
+      }
+
+      const receitaPorCluster = [...porClusterMapa.entries()]
+        .map(([cluster, dados]) => ({
+          cluster: cluster as ClusterLead | "NAO_QUALIFICADO",
+          label:
+            cluster === "NAO_QUALIFICADO"
+              ? "Sem resposta / Compra direta"
+              : ROTULO_CLUSTER[cluster as ClusterLead],
+          totalOs: dados.totalOs,
+          receita: Math.round(dados.receita * 100) / 100,
+          percentualReceita:
+            receitaTotal > 0
+              ? Math.round((dados.receita / receitaTotal) * 1000) / 10
+              : 0,
+        }))
+        .sort((a, b) => b.receita - a.receita);
+
+      return {
+        janelaDias: input.janelaDias,
+        receitaTotal,
+        totalOs,
+        ticketMedio,
+        clientesConvertidos,
+        taxaConversaoDisparosPct,
+        custoTotalEstimado,
+        roiEstimadoPct,
+        multiplicadorRetorno,
+        receitaPorCluster,
+        ordensServico,
       };
     }),
 
   /** Exporta telefone+nome dos leads que casam com o filtro, para alimentar o disparo de retargeting
    * (mesmo formato aceito por `dispararWts.contatos` e pelo "Registrar disparo" manual). */
   exportarLeadsParaRetargeting: campanhasProcedure
-    .input(z.object({
-      campanhaId: z.number().int().positive(),
-      cluster: z.enum(CLUSTERS_LEAD).optional(),
-      motivoObjecao: z.enum(MOTIVOS_OBJECAO).optional(),
-      icpMinimo: z.number().int().min(1).max(100).optional(),
-    }))
+    .input(
+      z.object({
+        campanhaId: z.number().int().positive(),
+        cluster: z.enum(CLUSTERS_LEAD).optional(),
+        motivoObjecao: z.enum(MOTIVOS_OBJECAO).optional(),
+        icpMinimo: z.number().int().min(1).max(100).optional(),
+      })
+    )
     .query(async ({ input }) => {
       const db = await obterDb();
-      const condicoes = [eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId)];
-      if (input.cluster) condicoes.push(eq(campanhasWhatsappLeadsQualificados.cluster, input.cluster));
-      if (input.motivoObjecao) condicoes.push(eq(campanhasWhatsappLeadsQualificados.motivoObjecao, input.motivoObjecao));
-      if (input.icpMinimo) condicoes.push(gte(campanhasWhatsappLeadsQualificados.icpFitScore, input.icpMinimo));
+      const condicoes = [
+        eq(campanhasWhatsappLeadsQualificados.campanhaId, input.campanhaId),
+      ];
+      if (input.cluster)
+        condicoes.push(
+          eq(campanhasWhatsappLeadsQualificados.cluster, input.cluster)
+        );
+      if (input.motivoObjecao)
+        condicoes.push(
+          eq(
+            campanhasWhatsappLeadsQualificados.motivoObjecao,
+            input.motivoObjecao
+          )
+        );
+      if (input.icpMinimo)
+        condicoes.push(
+          gte(campanhasWhatsappLeadsQualificados.icpFitScore, input.icpMinimo)
+        );
 
-      const linhas = await db.select({
-        telefone: campanhasWhatsappLeadsQualificados.telefone,
-        nome: campanhasWhatsappLeadsQualificados.nome,
-      }).from(campanhasWhatsappLeadsQualificados).where(and(...condicoes));
+      const linhas = await db
+        .select({
+          telefone: campanhasWhatsappLeadsQualificados.telefone,
+          nome: campanhasWhatsappLeadsQualificados.nome,
+        })
+        .from(campanhasWhatsappLeadsQualificados)
+        .where(and(...condicoes));
 
       return linhas.map(l => ({ telefone: l.telefone, nome: l.nome ?? "" }));
     }),

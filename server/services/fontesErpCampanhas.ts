@@ -10,14 +10,36 @@
  */
 
 import * as XLSX from "xlsx";
+import { and, eq, gte } from "drizzle-orm";
 import { getDb } from "../db/db";
-import { historicoOs, historicoOrcamentos, type HistoricoOs, type HistoricoOrcamento } from "../../drizzle/schema";
-import { isClienteNovoPorRecencia, isOsNormalDb, normalizeEmpresaKey } from "../routers/performanceComercial";
+import {
+  campanhasWhatsappLeadsQualificados,
+  historicoOs,
+  historicoOrcamentos,
+  type HistoricoOs,
+  type HistoricoOrcamento,
+} from "../../drizzle/schema";
+import {
+  isClienteNovoPorRecencia,
+  isOsNormalDb,
+  normalizeEmpresaKey,
+} from "../routers/performanceComercial";
 import { parseDataFlexivel, STATUS_GANHO } from "./inteligenciaClientes";
 import { dataLocalParaIso } from "./campanhasWhatsapp";
-import { carregarTelefonesClientes, completarTelefonesPeloCadastro } from "../sync/clientes-mubisys";
-import { diasEntre, hojeCampoGrande, somarDias } from "../../shared/campanhas-whatsapp";
-import { extrairContatosDeMatriz, detectarSeparadorCsv, type LeituraLista } from "../../shared/lista-contatos";
+import {
+  carregarTelefonesClientes,
+  completarTelefonesPeloCadastro,
+} from "../sync/clientes-mubisys";
+import {
+  diasEntre,
+  hojeCampoGrande,
+  somarDias,
+} from "../../shared/campanhas-whatsapp";
+import {
+  extrairContatosDeMatriz,
+  detectarSeparadorCsv,
+  type LeituraLista,
+} from "../../shared/lista-contatos";
 
 export interface ContatoFonte {
   /** `null` quando a empresa nunca teve telefone gravado localmente (mesma limitação já documentada no
@@ -32,15 +54,26 @@ export interface ContatoFonte {
 }
 
 /** Mantém o contato sem `dataEntrada` e os que entraram dentro de [inicio, fim] (extremos nulos = sem limite). */
-export function filtrarPorPeriodo<T extends { dataEntrada?: string | null }>(contatos: T[], inicio: string | null, fim: string | null): T[] {
+export function filtrarPorPeriodo<T extends { dataEntrada?: string | null }>(
+  contatos: T[],
+  inicio: string | null,
+  fim: string | null
+): T[] {
   if (!inicio && !fim) return contatos;
-  return contatos.filter(c => !c.dataEntrada || ((!inicio || c.dataEntrada >= inicio) && (!fim || c.dataEntrada <= fim)));
+  return contatos.filter(
+    c =>
+      !c.dataEntrada ||
+      ((!inicio || c.dataEntrada >= inicio) && (!fim || c.dataEntrada <= fim))
+  );
 }
 
 /** Data da primeira compra registrada no histórico local — padrão da data inicial na tela de contatos. */
-export function primeiroRegistroErp(base: Map<string, ClienteComTelefone>): string | null {
+export function primeiroRegistroErp(
+  base: Map<string, ClienteComTelefone>
+): string | null {
   let menor: string | null = null;
-  for (const c of base.values()) if (!menor || c.primeiraCompra < menor) menor = c.primeiraCompra;
+  for (const c of base.values())
+    if (!menor || c.primeiraCompra < menor) menor = c.primeiraCompra;
   return menor;
 }
 
@@ -55,7 +88,9 @@ export interface ClienteComTelefone {
   totalCompras: number;
 }
 
-export function construirBaseComTelefone(rows: HistoricoOs[]): Map<string, ClienteComTelefone> {
+export function construirBaseComTelefone(
+  rows: HistoricoOs[]
+): Map<string, ClienteComTelefone> {
   const base = new Map<string, ClienteComTelefone>();
   for (const r of rows) {
     if (!isOsNormalDb(r)) continue;
@@ -68,7 +103,14 @@ export function construirBaseComTelefone(rows: HistoricoOs[]): Map<string, Clien
 
     let cliente = base.get(key);
     if (!cliente) {
-      cliente = { empresaKey: key, empresa: empresaBruta, telefone: null, primeiraCompra: dataIso, ultimaCompra: dataIso, totalCompras: 0 };
+      cliente = {
+        empresaKey: key,
+        empresa: empresaBruta,
+        telefone: null,
+        primeiraCompra: dataIso,
+        ultimaCompra: dataIso,
+        totalCompras: 0,
+      };
       base.set(key, cliente);
     }
     cliente.totalCompras++;
@@ -87,10 +129,19 @@ export function construirBaseComTelefone(rows: HistoricoOs[]): Map<string, Clien
 // ─── Fontes automáticas (funções puras — recebem a base já carregada) ───────────────────────────────────
 
 /** Clientes ativos: última compra dentro da janela (padrão 180 dias / ~6 meses). */
-export function resolverClientesAtivos(base: Map<string, ClienteComTelefone>, hoje: string, janelaDias = 180): ContatoFonte[] {
+export function resolverClientesAtivos(
+  base: Map<string, ClienteComTelefone>,
+  hoje: string,
+  janelaDias = 180
+): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (diasEntre(c.ultimaCompra, hoje) <= janelaDias) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.ultimaCompra });
+    if (diasEntre(c.ultimaCompra, hoje) <= janelaDias)
+      resultado.push({
+        telefone: c.telefone,
+        nome: c.empresa,
+        dataEntrada: c.ultimaCompra,
+      });
   }
   return resultado;
 }
@@ -101,12 +152,24 @@ export function resolverClientesAtivos(base: Map<string, ClienteComTelefone>, ho
  * mundo com a primeira compra até `hoje`; o recorte vem do filtro por período (`dataEntrada`), e quando nenhum
  * período é informado o roteador aplica a janela padrão de `JANELA_PADRAO_DIAS`.
  */
-export function resolverPrimeiraCompra(base: Map<string, ClienteComTelefone>, hoje: string, janelaDias?: number): ContatoFonte[] {
+export function resolverPrimeiraCompra(
+  base: Map<string, ClienteComTelefone>,
+  hoje: string,
+  janelaDias?: number
+): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
     if (c.primeiraCompra > hoje) continue;
-    if (janelaDias !== undefined && diasEntre(c.primeiraCompra, hoje) > janelaDias) continue;
-    resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.primeiraCompra });
+    if (
+      janelaDias !== undefined &&
+      diasEntre(c.primeiraCompra, hoje) > janelaDias
+    )
+      continue;
+    resultado.push({
+      telefone: c.telefone,
+      nome: c.empresa,
+      dataEntrada: c.primeiraCompra,
+    });
   }
   return resultado;
 }
@@ -116,9 +179,22 @@ export function resolverPrimeiraCompra(base: Map<string, ClienteComTelefone>, ho
  * (padrão 5 em 180 dias ≈ 6 meses). `dataEntrada` = dia da compra que completou a 5ª na janela, então o grupo
  * cresce sozinho conforme o cliente compra mais.
  */
-export function resolverAtivosCincoMais(osRows: HistoricoOs[], hoje: string, janelaDias = 180, minCompras = 5): ContatoFonte[] {
+export function resolverAtivosCincoMais(
+  osRows: HistoricoOs[],
+  hoje: string,
+  janelaDias = 180,
+  minCompras = 5
+): ContatoFonte[] {
   const inicioJanela = somarDias(hoje, -janelaDias);
-  const porCliente = new Map<string, { empresa: string; telefone: string | null; datas: string[]; ultima: string }>();
+  const porCliente = new Map<
+    string,
+    {
+      empresa: string;
+      telefone: string | null;
+      datas: string[];
+      ultima: string;
+    }
+  >();
   for (const r of osRows) {
     if (!isOsNormalDb(r)) continue;
     const empresaBruta = (r.empresa ?? "").trim();
@@ -129,16 +205,26 @@ export function resolverAtivosCincoMais(osRows: HistoricoOs[], hoje: string, jan
     if (dataIso < inicioJanela || dataIso > hoje) continue;
     const key = normalizeEmpresaKey(empresaBruta);
     let c = porCliente.get(key);
-    if (!c) { c = { empresa: empresaBruta, telefone: null, datas: [], ultima: dataIso }; porCliente.set(key, c); }
+    if (!c) {
+      c = { empresa: empresaBruta, telefone: null, datas: [], ultima: dataIso };
+      porCliente.set(key, c);
+    }
     c.datas.push(dataIso);
-    if (dataIso >= c.ultima) { c.ultima = dataIso; c.empresa = empresaBruta; }
+    if (dataIso >= c.ultima) {
+      c.ultima = dataIso;
+      c.empresa = empresaBruta;
+    }
     if (r.telefone) c.telefone = r.telefone;
   }
   const resultado: ContatoFonte[] = [];
   for (const c of porCliente.values()) {
     if (c.datas.length < minCompras) continue;
     c.datas.sort();
-    resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.datas[minCompras - 1] });
+    resultado.push({
+      telefone: c.telefone,
+      nome: c.empresa,
+      dataEntrada: c.datas[minCompras - 1],
+    });
   }
   return resultado;
 }
@@ -150,13 +236,22 @@ export function resolverAtivosCincoMais(osRows: HistoricoOs[], hoje: string, jan
  * backfill de telefone (`MESES_BACKFILL_PADRAO` em telefone-historico.ts) — sem o teto, a fonte trazia
  * clientes tão antigos que nunca teriam telefone preenchido mesmo depois do backfill rodar.
  */
-export function resolverInativos(base: Map<string, ClienteComTelefone>, hoje: string, minDias = 180, maxDias?: number): ContatoFonte[] {
+export function resolverInativos(
+  base: Map<string, ClienteComTelefone>,
+  hoje: string,
+  minDias = 180,
+  maxDias?: number
+): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
     const dias = diasEntre(c.ultimaCompra, hoje);
     if (dias < minDias) continue;
     if (maxDias !== undefined && dias > maxDias) continue;
-    resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: somarDias(c.ultimaCompra, minDias) });
+    resultado.push({
+      telefone: c.telefone,
+      nome: c.empresa,
+      dataEntrada: somarDias(c.ultimaCompra, minDias),
+    });
   }
   return resultado;
 }
@@ -172,23 +267,35 @@ export function resolverInativos(base: Map<string, ClienteComTelefone>, hoje: st
  * quiser restringir a um recorte mais recente num uso futuro; a fonte ERP seedada não passa esse parâmetro.
  */
 export function resolverOrcaramNaoCompraram(
-  orcamentos: HistoricoOrcamento[], base: Map<string, ClienteComTelefone>, hoje: string, janelaDias?: number,
+  orcamentos: HistoricoOrcamento[],
+  base: Map<string, ClienteComTelefone>,
+  hoje: string,
+  janelaDias?: number
 ): ContatoFonte[] {
   // 1 contato por empresa; `dataEntrada` = orçamento não ganho mais recente dela.
-  const porEmpresa = new Map<string, { empresaBruta: string; dataEntrada: string; telefone: string | null }>();
+  const porEmpresa = new Map<
+    string,
+    { empresaBruta: string; dataEntrada: string; telefone: string | null }
+  >();
   for (const o of orcamentos) {
     const status = (o.status ?? "").trim().toLowerCase();
     if (STATUS_GANHO.has(status)) continue;
     const data = parseDataFlexivel(o.dataCadastro);
     if (!data) continue;
     const dataIso = dataLocalParaIso(data);
-    if (janelaDias !== undefined && diasEntre(dataIso, hoje) > janelaDias) continue;
+    if (janelaDias !== undefined && diasEntre(dataIso, hoje) > janelaDias)
+      continue;
     const empresaBruta = (o.empresa ?? "").trim();
     if (!empresaBruta) continue;
     const key = normalizeEmpresaKey(empresaBruta);
     const telefoneOrc = o.telefone?.trim() || null; // '' = cadastro consultado sem número
     const atual = porEmpresa.get(key);
-    if (!atual) porEmpresa.set(key, { empresaBruta, dataEntrada: dataIso, telefone: telefoneOrc });
+    if (!atual)
+      porEmpresa.set(key, {
+        empresaBruta,
+        dataEntrada: dataIso,
+        telefone: telefoneOrc,
+      });
     else {
       if (dataIso > atual.dataEntrada) atual.dataEntrada = dataIso;
       if (!atual.telefone && telefoneOrc) atual.telefone = telefoneOrc;
@@ -197,7 +304,11 @@ export function resolverOrcaramNaoCompraram(
   const resultado: ContatoFonte[] = [];
   for (const [key, { empresaBruta, dataEntrada, telefone }] of porEmpresa) {
     const cliente = base.get(key);
-    resultado.push({ telefone: cliente?.telefone ?? telefone, nome: cliente?.empresa ?? empresaBruta, dataEntrada });
+    resultado.push({
+      telefone: cliente?.telefone ?? telefone,
+      nome: cliente?.empresa ?? empresaBruta,
+      dataEntrada,
+    });
   }
   return resultado;
 }
@@ -209,10 +320,19 @@ export function resolverOrcaramNaoCompraram(
  * há uns seis meses"), não coberto pelas 4 fontes anteriores: "Inativos" pega qualquer última compra velha
  * (mesmo quem já comprou várias vezes antes de parar); esta é o subconjunto mais estrito (só 1 compra na vida).
  */
-export function resolverCompraramUmaVezESumiram(base: Map<string, ClienteComTelefone>, hoje: string, minDias = 180): ContatoFonte[] {
+export function resolverCompraramUmaVezESumiram(
+  base: Map<string, ClienteComTelefone>,
+  hoje: string,
+  minDias = 180
+): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) >= minDias) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: somarDias(c.primeiraCompra, minDias) });
+    if (c.totalCompras === 1 && diasEntre(c.primeiraCompra, hoje) >= minDias)
+      resultado.push({
+        telefone: c.telefone,
+        nome: c.empresa,
+        dataEntrada: somarDias(c.primeiraCompra, minDias),
+      });
   }
   return resultado;
 }
@@ -222,10 +342,17 @@ export function resolverCompraramUmaVezESumiram(base: Map<string, ClienteComTele
  * diferente de "Compraram 1 vez e sumiram", que só pega quem já esfriou há 6+ meses). Útil como base geral
  * de "clientes que nunca recompraram", independente de quando foi a única compra.
  */
-export function resolverCompraramUmaVez(base: Map<string, ClienteComTelefone>): ContatoFonte[] {
+export function resolverCompraramUmaVez(
+  base: Map<string, ClienteComTelefone>
+): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of base.values()) {
-    if (c.totalCompras === 1) resultado.push({ telefone: c.telefone, nome: c.empresa, dataEntrada: c.primeiraCompra });
+    if (c.totalCompras === 1)
+      resultado.push({
+        telefone: c.telefone,
+        nome: c.empresa,
+        dataEntrada: c.primeiraCompra,
+      });
   }
   return resultado;
 }
@@ -244,7 +371,9 @@ export interface HistoricoComprasCliente {
   compras: Array<{ mes: number; ano: number }>;
 }
 
-export function construirHistoricoComprasPorCliente(rows: HistoricoOs[]): Map<string, HistoricoComprasCliente> {
+export function construirHistoricoComprasPorCliente(
+  rows: HistoricoOs[]
+): Map<string, HistoricoComprasCliente> {
   const mapa = new Map<string, HistoricoComprasCliente>();
   for (const r of rows) {
     if (!isOsNormalDb(r)) continue;
@@ -252,32 +381,56 @@ export function construirHistoricoComprasPorCliente(rows: HistoricoOs[]): Map<st
     if (!empresaBruta) continue;
     const key = normalizeEmpresaKey(empresaBruta);
     let c = mapa.get(key);
-    if (!c) { c = { empresaKey: key, empresa: empresaBruta, telefone: null, compras: [] }; mapa.set(key, c); }
+    if (!c) {
+      c = {
+        empresaKey: key,
+        empresa: empresaBruta,
+        telefone: null,
+        compras: [],
+      };
+      mapa.set(key, c);
+    }
     c.compras.push({ mes: r.mes, ano: r.ano });
     if (r.telefone) c.telefone = r.telefone;
   }
   return mapa;
 }
 
-function ultimaCompraAntesDoMes(compras: Array<{ mes: number; ano: number }>, mes: number, ano: number): { mes: number; ano: number } | undefined {
+function ultimaCompraAntesDoMes(
+  compras: Array<{ mes: number; ano: number }>,
+  mes: number,
+  ano: number
+): { mes: number; ano: number } | undefined {
   let melhor: { mes: number; ano: number } | undefined;
   for (const c of compras) {
     if (c.ano > ano || (c.ano === ano && c.mes >= mes)) continue;
-    if (!melhor || c.ano > melhor.ano || (c.ano === melhor.ano && c.mes > melhor.mes)) melhor = c;
+    if (
+      !melhor ||
+      c.ano > melhor.ano ||
+      (c.ano === melhor.ano && c.mes > melhor.mes)
+    )
+      melhor = c;
   }
   return melhor;
 }
 
-const comprouNoMes = (compras: Array<{ mes: number; ano: number }>, mes: number, ano: number) =>
-  compras.some(c => c.mes === mes && c.ano === ano);
+const comprouNoMes = (
+  compras: Array<{ mes: number; ano: number }>,
+  mes: number,
+  ano: number
+) => compras.some(c => c.mes === mes && c.ano === ano);
 
 /**
  * Novos clientes do mês: primeira compra da vida caiu dentro do mês corrente (diferente de "Primeira
  * compra/onboarding", que usa uma janela corrida de 60 dias e pode cruzar 2 meses-calendário). Pedido do
  * usuário 28/09/2026: campanha mensal de agradecimento, disponível no último dia de cada mês.
  */
-export function resolverNovosDoMes(comprasPorCliente: Map<string, HistoricoComprasCliente>, hoje: string): ContatoFonte[] {
-  const ano = Number(hoje.slice(0, 4)), mes = Number(hoje.slice(5, 7));
+export function resolverNovosDoMes(
+  comprasPorCliente: Map<string, HistoricoComprasCliente>,
+  hoje: string
+): ContatoFonte[] {
+  const ano = Number(hoje.slice(0, 4)),
+    mes = Number(hoje.slice(5, 7));
   const resultado: ContatoFonte[] = [];
   for (const c of comprasPorCliente.values()) {
     if (!comprouNoMes(c.compras, mes, ano)) continue;
@@ -294,8 +447,12 @@ export function resolverNovosDoMes(comprasPorCliente: Map<string, HistoricoCompr
  * mesma regra de "novo/reativado" do Performance Comercial (isClienteNovoPorRecencia), aqui filtrando só o
  * subconjunto "reativado" (tinha compra anterior, ao contrário de "novo puro"). Pedido do usuário 28/09/2026.
  */
-export function resolverReativadosDoMes(comprasPorCliente: Map<string, HistoricoComprasCliente>, hoje: string): ContatoFonte[] {
-  const ano = Number(hoje.slice(0, 4)), mes = Number(hoje.slice(5, 7));
+export function resolverReativadosDoMes(
+  comprasPorCliente: Map<string, HistoricoComprasCliente>,
+  hoje: string
+): ContatoFonte[] {
+  const ano = Number(hoje.slice(0, 4)),
+    mes = Number(hoje.slice(5, 7));
   const resultado: ContatoFonte[] = [];
   for (const c of comprasPorCliente.values()) {
     if (!comprouNoMes(c.compras, mes, ano)) continue;
@@ -320,7 +477,11 @@ export interface VolumePorJanela {
   valorAnterior: number;
 }
 
-export function construirVolumePorJanela(rows: HistoricoOs[], hoje: string, diasPorJanela = 90): Map<string, VolumePorJanela> {
+export function construirVolumePorJanela(
+  rows: HistoricoOs[],
+  hoje: string,
+  diasPorJanela = 90
+): Map<string, VolumePorJanela> {
   const fimRecente = hoje;
   const inicioRecente = somarDias(hoje, -(diasPorJanela - 1));
   const fimAnterior = somarDias(inicioRecente, -1);
@@ -336,23 +497,39 @@ export function construirVolumePorJanela(rows: HistoricoOs[], hoje: string, dias
     const dataIso = dataLocalParaIso(data);
     const key = normalizeEmpresaKey(empresaBruta);
     let c = mapa.get(key);
-    if (!c) { c = { empresaKey: key, empresa: empresaBruta, telefone: null, valorRecente: 0, valorAnterior: 0 }; mapa.set(key, c); }
+    if (!c) {
+      c = {
+        empresaKey: key,
+        empresa: empresaBruta,
+        telefone: null,
+        valorRecente: 0,
+        valorAnterior: 0,
+      };
+      mapa.set(key, c);
+    }
     if (r.telefone) c.telefone = r.telefone;
     const valor = Number(r.valorOs) || 0;
-    if (dataIso >= inicioRecente && dataIso <= fimRecente) c.valorRecente += valor;
-    else if (dataIso >= inicioAnterior && dataIso <= fimAnterior) c.valorAnterior += valor;
+    if (dataIso >= inicioRecente && dataIso <= fimRecente)
+      c.valorRecente += valor;
+    else if (dataIso >= inicioAnterior && dataIso <= fimAnterior)
+      c.valorAnterior += valor;
   }
   return mapa;
 }
 
 /** Queda mínima padrão: 30% — sugestão razoável na ausência de um número definido pelo usuário; ajustável
  * por parâmetro se um dia precisar ficar mais/menos sensível. */
-export function resolverReducaoDeVolume(mapa: Map<string, VolumePorJanela>, quedaMinimaPct = 30): ContatoFonte[] {
+export function resolverReducaoDeVolume(
+  mapa: Map<string, VolumePorJanela>,
+  quedaMinimaPct = 30
+): ContatoFonte[] {
   const resultado: ContatoFonte[] = [];
   for (const c of mapa.values()) {
     if (c.valorAnterior <= 0) continue; // sem base de comparação — não é "queda", pode até ser cliente novo
-    const quedaPct = ((c.valorAnterior - c.valorRecente) / c.valorAnterior) * 100;
-    if (quedaPct >= quedaMinimaPct) resultado.push({ telefone: c.telefone, nome: c.empresa });
+    const quedaPct =
+      ((c.valorAnterior - c.valorRecente) / c.valorAnterior) * 100;
+    if (quedaPct >= quedaMinimaPct)
+      resultado.push({ telefone: c.telefone, nome: c.empresa });
   }
   return resultado;
 }
@@ -366,8 +543,10 @@ function subtrairMesesIso(iso: string, meses: number): string {
   const [ano, mes, dia] = iso.split("-").map(Number);
   const totalMeses = ano * 12 + (mes - 1) - meses;
   const novoAno = Math.floor(totalMeses / 12);
-  const novoMes = (totalMeses % 12 + 12) % 12; // 0-indexado
-  const ultimoDiaDoNovoMes = new Date(Date.UTC(novoAno, novoMes + 1, 0)).getUTCDate();
+  const novoMes = ((totalMeses % 12) + 12) % 12; // 0-indexado
+  const ultimoDiaDoNovoMes = new Date(
+    Date.UTC(novoAno, novoMes + 1, 0)
+  ).getUTCDate();
   const novoDia = Math.min(dia, ultimoDiaDoNovoMes);
   return `${novoAno}-${String(novoMes + 1).padStart(2, "0")}-${String(novoDia).padStart(2, "0")}`;
 }
@@ -387,17 +566,31 @@ const MESES_TETO_INATIVOS_SEED = 24;
  * em vez de recalcular `hojeCampoGrande()` aqui dentro é o que permite ao usuário escolher outro mês/dia de
  * referência na tela (ex.: "novos_do_mes"/"reativados_do_mes" com uma data de setembro para ver os novos
  * clientes DE SETEMBRO, não só do mês corrente). Pedido do usuário 28/09/2026. */
-export const RESOLVEDORES_ERP: Record<string, (ctx: ContextoErp, hoje: string) => ContatoFonte[]> = {
+export const RESOLVEDORES_ERP: Record<
+  string,
+  (ctx: ContextoErp, hoje: string) => ContatoFonte[]
+> = {
   clientes_ativos: (ctx, hoje) => resolverClientesAtivos(ctx.base, hoje),
   primeira_compra: (ctx, hoje) => resolverPrimeiraCompra(ctx.base, hoje),
   ativos_5_mais_6m: (ctx, hoje) => resolverAtivosCincoMais(ctx.osRows, hoje),
-  inativos_6m: (ctx, hoje) => resolverInativos(ctx.base, hoje, 180, diasEntre(subtrairMesesIso(hoje, MESES_TETO_INATIVOS_SEED), hoje)),
-  orcaram_nao_compraram: (ctx, hoje) => resolverOrcaramNaoCompraram(ctx.orcamentos, ctx.base, hoje),
-  compraram_uma_vez_sumiram: (ctx, hoje) => resolverCompraramUmaVezESumiram(ctx.base, hoje),
+  inativos_6m: (ctx, hoje) =>
+    resolverInativos(
+      ctx.base,
+      hoje,
+      180,
+      diasEntre(subtrairMesesIso(hoje, MESES_TETO_INATIVOS_SEED), hoje)
+    ),
+  orcaram_nao_compraram: (ctx, hoje) =>
+    resolverOrcaramNaoCompraram(ctx.orcamentos, ctx.base, hoje),
+  compraram_uma_vez_sumiram: (ctx, hoje) =>
+    resolverCompraramUmaVezESumiram(ctx.base, hoje),
   compraram_uma_vez: ctx => resolverCompraramUmaVez(ctx.base),
-  novos_do_mes: (ctx, hoje) => resolverNovosDoMes(obterComprasPorCliente(ctx), hoje),
-  reativados_do_mes: (ctx, hoje) => resolverReativadosDoMes(obterComprasPorCliente(ctx), hoje),
-  reducao_volume: (ctx, hoje) => resolverReducaoDeVolume(obterVolumePorJanela(ctx, hoje)),
+  novos_do_mes: (ctx, hoje) =>
+    resolverNovosDoMes(obterComprasPorCliente(ctx), hoje),
+  reativados_do_mes: (ctx, hoje) =>
+    resolverReativadosDoMes(obterComprasPorCliente(ctx), hoje),
+  reducao_volume: (ctx, hoje) =>
+    resolverReducaoDeVolume(obterVolumePorJanela(ctx, hoje)),
 };
 
 /** Janela (dias antes da data final) usada quando a campanha não tem data inicial, para fontes que sem recorte
@@ -415,13 +608,22 @@ export interface ContextoErp {
   _volumePorJanelaCache?: Map<string, VolumePorJanela>;
 }
 
-function obterComprasPorCliente(ctx: ContextoErp): Map<string, HistoricoComprasCliente> {
-  if (!ctx._comprasPorClienteCache) ctx._comprasPorClienteCache = construirHistoricoComprasPorCliente(ctx.osRows);
+function obterComprasPorCliente(
+  ctx: ContextoErp
+): Map<string, HistoricoComprasCliente> {
+  if (!ctx._comprasPorClienteCache)
+    ctx._comprasPorClienteCache = construirHistoricoComprasPorCliente(
+      ctx.osRows
+    );
   return ctx._comprasPorClienteCache;
 }
 
-function obterVolumePorJanela(ctx: ContextoErp, hoje: string): Map<string, VolumePorJanela> {
-  if (!ctx._volumePorJanelaCache) ctx._volumePorJanelaCache = construirVolumePorJanela(ctx.osRows, hoje);
+function obterVolumePorJanela(
+  ctx: ContextoErp,
+  hoje: string
+): Map<string, VolumePorJanela> {
+  if (!ctx._volumePorJanelaCache)
+    ctx._volumePorJanelaCache = construirVolumePorJanela(ctx.osRows, hoje);
   return ctx._volumePorJanelaCache;
 }
 
@@ -442,29 +644,109 @@ export async function carregarContextoErp(): Promise<ContextoErp> {
 }
 
 /** `ctx` opcional: quem resolve várias fontes de uma vez carrega o histórico uma só vez e reaproveita. */
-export async function resolverFonteErp(consultaErp: string, dataReferencia: string = hojeCampoGrande(), ctx?: ContextoErp): Promise<ContatoFonte[]> {
+export async function resolverFonteErp(
+  consultaErp: string,
+  dataReferencia: string = hojeCampoGrande(),
+  ctx?: ContextoErp
+): Promise<ContatoFonte[]> {
   const resolvedor = RESOLVEDORES_ERP[consultaErp];
-  if (!resolvedor) throw new Error(`Consulta ERP desconhecida: "${consultaErp}"`);
-  return resolvedor(ctx ?? await carregarContextoErp(), dataReferencia);
+  if (!resolvedor)
+    throw new Error(`Consulta ERP desconhecida: "${consultaErp}"`);
+  return resolvedor(ctx ?? (await carregarContextoErp()), dataReferencia);
 }
 
 // ─── Fonte tipo "arquivo": lê o arquivo salvo (campanhas_whatsapp_arquivos) sob demanda ──────────────────
 // Mesma extração pura de client/src/lib/listaContatos.ts (shared/lista-contatos.ts) — não duplica dado: o
 // arquivo pode ter sido enviado solto ou dentro de qualquer campanha, a fonte só referencia a URL.
 
-export async function lerArquivoDeUrl(url: string, nomeArquivo: string): Promise<LeituraLista> {
+export async function lerArquivoDeUrl(
+  url: string,
+  nomeArquivo: string
+): Promise<LeituraLista> {
   try {
     const resp = await fetch(url);
-    if (!resp.ok) return { ok: false, erro: `Não consegui baixar o arquivo (HTTP ${resp.status}).` };
+    if (!resp.ok)
+      return {
+        ok: false,
+        erro: `Não consegui baixar o arquivo (HTTP ${resp.status}).`,
+      };
     const buffer = Buffer.from(await resp.arrayBuffer());
     const ehCsv = /\.(csv|txt)$/i.test(nomeArquivo);
     const wb = ehCsv
-      ? XLSX.read(buffer.toString("utf-8"), { type: "string", raw: true, FS: detectarSeparadorCsv(buffer.toString("utf-8").split(/\r?\n/, 1)[0] ?? "") })
+      ? XLSX.read(buffer.toString("utf-8"), {
+          type: "string",
+          raw: true,
+          FS: detectarSeparadorCsv(
+            buffer.toString("utf-8").split(/\r?\n/, 1)[0] ?? ""
+          ),
+        })
       : XLSX.read(buffer, { type: "buffer" });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    if (!ws) return { ok: false, erro: "Não encontrei nenhuma aba na planilha." };
-    return extrairContatosDeMatriz(XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", raw: true }));
+    if (!ws)
+      return { ok: false, erro: "Não encontrei nenhuma aba na planilha." };
+    return extrairContatosDeMatriz(
+      XLSX.utils.sheet_to_json<unknown[]>(ws, {
+        header: 1,
+        defval: "",
+        raw: true,
+      })
+    );
   } catch {
-    return { ok: false, erro: "Não consegui ler esse arquivo. Confira se é um .csv, .xlsx ou .xml válido." };
+    return {
+      ok: false,
+      erro: "Não consegui ler esse arquivo. Confira se é um .csv, .xlsx ou .xml válido.",
+    };
   }
+}
+
+// ─── Fonte tipo "retargeting": lê leads qualificados por IA de uma campanha prévia ───────────────────────
+// Permite que qualquer campanha use como audiência os contatos filtrados por cluster (ex: DUVIDA_TECNICA),
+// objeção ou ICP score de uma campanha anterior, sem precisar exportar/importar planilha manualmente.
+
+export async function resolverFonteRetargeting(
+  config: Record<string, unknown> | null | undefined
+): Promise<ContatoFonte[]> {
+  if (!config || typeof config.origemCampanhaId !== "number") return [];
+  const db = await getDb();
+  if (!db) return [];
+
+  const condicoes = [
+    eq(campanhasWhatsappLeadsQualificados.campanhaId, config.origemCampanhaId),
+  ];
+  if (typeof config.cluster === "string" && config.cluster) {
+    condicoes.push(
+      eq(campanhasWhatsappLeadsQualificados.cluster, config.cluster)
+    );
+  }
+  if (typeof config.motivoObjecao === "string" && config.motivoObjecao) {
+    condicoes.push(
+      eq(campanhasWhatsappLeadsQualificados.motivoObjecao, config.motivoObjecao)
+    );
+  }
+  if (typeof config.icpMinimo === "number" && config.icpMinimo > 0) {
+    condicoes.push(
+      gte(campanhasWhatsappLeadsQualificados.icpFitScore, config.icpMinimo)
+    );
+  }
+
+  const rows = await db
+    .select({
+      telefone: campanhasWhatsappLeadsQualificados.telefone,
+      nome: campanhasWhatsappLeadsQualificados.nome,
+      analisadoEm: campanhasWhatsappLeadsQualificados.analisadoEm,
+    })
+    .from(campanhasWhatsappLeadsQualificados)
+    .where(and(...condicoes));
+
+  return rows.map(r => ({
+    telefone: r.telefone,
+    nome: r.nome || "",
+    dataEntrada: r.analisadoEm
+      ? dataLocalParaIso(
+          r.analisadoEm instanceof Date
+            ? r.analisadoEm
+            : new Date(r.analisadoEm)
+        )
+      : null,
+  }));
 }

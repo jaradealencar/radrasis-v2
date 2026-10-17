@@ -30,9 +30,12 @@ import {
   CLUSTERS_LEAD,
   MOTIVOS_OBJECAO,
   PERFIS_INTERLOCUTOR,
+  TEMPERATURAS_AUDIENCIA,
   type ClusterLead,
   type MotivoObjecao,
   type PerfilInterlocutor,
+  type TemperaturaAudiencia,
+  type ResumoExecutivoIa,
 } from "../../shared/campanhas-whatsapp-ia";
 
 export const resultadoAnaliseGeminiSchema = z.object({
@@ -273,3 +276,198 @@ export async function analisarRespostaComGemini(
     );
   }
 }
+
+// ─── Resumo Executivo Geral da Campanha por IA (Gemini Flash) ───────────────
+
+export const resumoExecutivoGeminiSchema = z.object({
+  visao_geral: z.string().max(800),
+  temperatura_audiencia: z.enum(TEMPERATURAS_AUDIENCIA),
+  justificativa_temperatura: z.string().max(300),
+  pontos_fortes_oferta: z.array(z.string().max(200)).min(1).max(5),
+  principais_dores_objecoes: z.array(
+    z.object({
+      objecao: z.string().max(120),
+      impacto: z.string().max(250),
+      citacao_real: z.string().max(250).nullish(),
+    })
+  ).max(5),
+  perfil_predominante: z.string().max(160),
+  recomendacoes_proxima_campanha: z.array(z.string().max(250)).min(1).max(5),
+});
+
+export const GEMINI_RESUMO_EXECUTIVO_SCHEMA: Schema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    visao_geral: {
+      type: SchemaType.STRING,
+      description: "Síntese executiva densa (1 a 2 parágrafos) avaliando a receptividade da campanha, qualidade dos leads e taxa de conversão esperada.",
+    },
+    temperatura_audiencia: {
+      type: SchemaType.STRING,
+      format: "enum",
+      enum: [...TEMPERATURAS_AUDIENCIA],
+      description: "Avaliação sintética da temperatura geral do público atingido.",
+    },
+    justificativa_temperatura: {
+      type: SchemaType.STRING,
+      description: "Por que esta temperatura foi atribuída, com base nos números e no teor das respostas.",
+    },
+    pontos_fortes_oferta: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
+      description: "De 2 a 4 pontos da copy, oferta ou posicionamento que geraram interesse e orçamentos.",
+    },
+    principais_dores_objecoes: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          objecao: { type: SchemaType.STRING, description: "Nome da trava (ex: Preço elevado, Prazo incompatível)." },
+          impacto: { type: SchemaType.STRING, description: "Explicação objetiva de como isso travou vendas." },
+          citacao_real: { type: SchemaType.STRING, nullable: true, description: "Exemplo ou frase representativa dita pelos clientes." },
+        },
+        required: ["objecao", "impacto"],
+      },
+      description: "Até 4 maiores objeções diagnosticadas no lote de respostas.",
+    },
+    perfil_predominante: {
+      type: SchemaType.STRING,
+      description: "Descrição de quem mais respondeu (ex: Donos de gráficas rápidas buscando terceirização de letra caixa).",
+    },
+    recomendacoes_proxima_campanha: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING },
+      description: "De 2 a 4 ações comerciais ou de copy práticas e imediatas para o próximo disparo.",
+    },
+  },
+  required: [
+    "visao_geral",
+    "temperatura_audiencia",
+    "justificativa_temperatura",
+    "pontos_fortes_oferta",
+    "principais_dores_objecoes",
+    "perfil_predominante",
+    "recomendacoes_proxima_campanha",
+  ],
+};
+
+const SYSTEM_INSTRUCTION_RESUMO_EXECUTIVO = `Você é o Diretor Comercial e Estrategista Sênior de Marketing B2B da Letreiros Express / Radrasys (fábrica de comunicação visual, fachadas e letra caixa).
+Sua tarefa é analisar os resultados consolidados de uma campanha de WhatsApp (KPIs de envio, taxas de resposta humana vs bot, clusters semânticos, principais objeções e frases literais dos clientes) e redigir um Resumo Executivo de Alto Nível para a diretoria.
+
+Seja extremamente objetivo, técnico e orientado a negócios:
+1. Avalie honestamente se a oferta funcionou ou se houve atrito comercial.
+2. Identifique os padrões reais do mercado (o que o cliente valorizou vs onde ele travou).
+3. Entregue recomendações acionáveis sobre preço, prazo, abordagem comercial e público-alvo para o próximo disparo.`;
+
+export interface DadosParaResumoExecutivo {
+  nomeCampanha: string;
+  templateEnviado?: string | null;
+  totalDisparado: number;
+  respostasHumanas: number;
+  taxaRespostaPct: number;
+  cliquesCta: number;
+  totalLeadsQualificados: number;
+  clusters: Array<{ cluster: string; total: number; percentual: number }>;
+  objecoes: Array<{ motivo: string; total: number; percentual: number }>;
+  amostraIntencoes: string[];
+  amostraObjecoes: Array<{ motivo: string; resumo: string }>;
+  distribuicaoIcp: { quente: number; morno: number; frio: number };
+  tempoMedioReacaoMinutos?: number | null;
+}
+
+export function montarPayloadResumoExecutivo(dados: DadosParaResumoExecutivo): string {
+  return JSON.stringify(
+    {
+      campanha: dados.nomeCampanha,
+      template_usado: dados.templateEnviado || "[Template institucional/comercial via WhatsApp]",
+      metricas_gerais: {
+        total_disparos: dados.totalDisparado,
+        respostas_humanas_reais: dados.respostasHumanas,
+        taxa_resposta_humana_pct: `${dados.taxaRespostaPct}%`,
+        cliques_em_botoes_cta: dados.cliquesCta,
+        tempo_medio_resposta_minutos: dados.tempoMedioReacaoMinutos ?? "Não apurado",
+      },
+      distribuicao_leads: {
+        clusters: dados.clusters,
+        objecoes_frequentes: dados.objecoes,
+        qualidade_icp: dados.distribuicaoIcp,
+      },
+      amostra_resumos_intencao_clientes: dados.amostraIntencoes.slice(0, 15),
+      amostra_frases_objecao_reais: dados.amostraObjecoes.slice(0, 15),
+    },
+    null,
+    2
+  );
+}
+
+export function criarFallbackResumoExecutivo(
+  motivo: string,
+  dados: DadosParaResumoExecutivo
+): ResumoExecutivoIa {
+  const temRespostas = dados.respostasHumanas > 0;
+  return {
+    visaoGeral: temRespostas
+      ? `A campanha obteve ${dados.respostasHumanas} respostas humanas (${dados.taxaRespostaPct}% de taxa de resposta). ${motivo}`
+      : `Campanha sem respostas humanas registradas até o momento. ${motivo}`,
+    temperaturaAudiencia: dados.distribuicaoIcp.quente > 0 ? "INTERESSE_MODERADO" : "FRIA_RESISTENTE",
+    justificativaTemperatura: `Baseado em ${dados.respostasHumanas} resposta(s) humana(s) e ${dados.distribuicaoIcp.quente} lead(s) de alta prioridade.`,
+    pontosFortesOferta: [
+      dados.cliquesCta > 0 ? "Geração de cliques nos botões de ação rápida" : "Disparo oficial entregue pela API",
+      dados.distribuicaoIcp.quente > 0 ? "Identificação de contatos com alta propensão de cotação" : "Validação do canal de comunicação",
+    ],
+    principaisDoresObjecoes: dados.objecoes.slice(0, 3).map(o => ({
+      objecao: o.motivo,
+      impacto: `${o.total} cliente(s) mencionaram este fator (${o.percentual}% das objeções).`,
+      citacaoReal: dados.amostraObjecoes.find(a => a.motivo === o.motivo)?.resumo ?? null,
+    })),
+    perfilPredominante: "Contatos de carteira comercial e prospects B2B.",
+    recomendacoesProximaCampanha: [
+      "Manter cadência de atendimento rápido aos leads quentes com cotação direta.",
+      "Segmentar contatos com objeção de fornecedor para campanhas de apresentação comparativa.",
+    ],
+    geradoEm: new Date().toISOString(),
+  };
+}
+
+export async function gerarResumoExecutivoComGemini(
+  dados: DadosParaResumoExecutivo,
+  opcoes: AnalisarRespostaOpcoes = {}
+): Promise<ResumoExecutivoIa> {
+  const prompt = montarPayloadResumoExecutivo(dados);
+  try {
+    const raw = await chamarGeminiJson<z.infer<typeof resumoExecutivoGeminiSchema>>({
+      systemInstruction: SYSTEM_INSTRUCTION_RESUMO_EXECUTIVO,
+      prompt,
+      responseSchema: GEMINI_RESUMO_EXECUTIVO_SCHEMA,
+      model: opcoes.model,
+      temperature: 0.2,
+      maxOutputTokens: 1024,
+    });
+    const parsed = resumoExecutivoGeminiSchema.parse(raw);
+    return {
+      visaoGeral: parsed.visao_geral,
+      temperaturaAudiencia: parsed.temperatura_audiencia,
+      justificativaTemperatura: parsed.justificativa_temperatura,
+      pontosFortesOferta: parsed.pontos_fortes_oferta,
+      principaisDoresObjecoes: parsed.principais_dores_objecoes.map(d => ({
+        objecao: d.objecao,
+        impacto: d.impacto,
+        citacaoReal: d.citacao_real ?? null,
+      })),
+      perfilPredominante: parsed.perfil_predominante,
+      recomendacoesProximaCampanha: parsed.recomendacoes_proxima_campanha,
+      geradoEm: new Date().toISOString(),
+    };
+  } catch (erro) {
+    console.error(
+      "[campanhas-whatsapp-ia] Falha ao gerar resumo executivo com Gemini:",
+      (erro as Error)?.message ?? erro
+    );
+    if (opcoes.lancarErro) throw erro;
+    return criarFallbackResumoExecutivo(
+      "Síntese automática preliminar consolidada localmente.",
+      dados
+    );
+  }
+}
+

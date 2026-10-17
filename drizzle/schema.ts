@@ -17,56 +17,246 @@ import {
 // ─── ENUMS (Postgres exige tipos nomeados; MySQL permitia enum inline) ───────
 
 export const tipoRegistroEnum = pgEnum("tipo_registro", ["retrabalho", "cnq"]);
-export const retrabalhoTipoEnum = pgEnum("retrabalho_tipo", ["INTERNO", "EXTERNO"]);
-export const tipoResponsavelEnum = pgEnum("tipo_responsavel", ["operador", "gestor"]);
-export const retrabalhoClasseEnum = pgEnum("retrabalho_classe", ["EVITÁVEL", "INEVITÁVEL"]);
+export const retrabalhoTipoEnum = pgEnum("retrabalho_tipo", [
+  "INTERNO",
+  "EXTERNO",
+]);
+export const tipoResponsavelEnum = pgEnum("tipo_responsavel", [
+  "operador",
+  "gestor",
+]);
+export const retrabalhoClasseEnum = pgEnum("retrabalho_classe", [
+  "EVITÁVEL",
+  "INEVITÁVEL",
+]);
 export const simNaoEnum = pgEnum("sim_nao", ["sim", "nao"]);
-export const routineFrequencyEnum = pgEnum("routine_frequency", ["diaria", "semanal", "quinzenal", "mensal", "esporadico", "daily", "weekly", "monthly", "quarterly", "yearly", "custom"]);
-export const routineStatusEnum = pgEnum("routine_status", ["pendente", "em_dia", "atrasada"]);
-export const regulationTypeEnum = pgEnum("regulation_type", ["regulamento", "memorando", "politica", "procedimento"]);
-export const popAcessoTipoEnum = pgEnum("pop_acesso_tipo", ["visualizacao", "download"]);
-export const formaCotacaoEnum = pgEnum("forma_cotacao", ["site", "whatsapp", "telefone", "email"]);
+export const routineFrequencyEnum = pgEnum("routine_frequency", [
+  "diaria",
+  "semanal",
+  "quinzenal",
+  "mensal",
+  "esporadico",
+  "daily",
+  "weekly",
+  "monthly",
+  "quarterly",
+  "yearly",
+  "custom",
+]);
+export const routineStatusEnum = pgEnum("routine_status", [
+  "pendente",
+  "em_dia",
+  "atrasada",
+]);
+export const regulationTypeEnum = pgEnum("regulation_type", [
+  "regulamento",
+  "memorando",
+  "politica",
+  "procedimento",
+]);
+export const popAcessoTipoEnum = pgEnum("pop_acesso_tipo", [
+  "visualizacao",
+  "download",
+]);
+export const formaCotacaoEnum = pgEnum("forma_cotacao", [
+  "site",
+  "whatsapp",
+  "telefone",
+  "email",
+]);
 // Vocabulário do Kanban de fretes (client/src/pages/logistica/Solicitacoes.tsx) — mesmo do MySQL/TiDB original.
-export const cotacaoStatusEnum = pgEnum("cotacao_status", ["aberta", "cotando", "selecao", "cotada", "enviada", "cancelada"]);
+export const cotacaoStatusEnum = pgEnum("cotacao_status", [
+  "aberta",
+  "cotando",
+  "selecao",
+  "cotada",
+  "enviada",
+  "cancelada",
+]);
 export const tipoPrazoEnum = pgEnum("tipo_prazo", ["uteis", "corridos"]);
 export const modalidadeFreteEnum = pgEnum("modalidade_frete", ["cif", "fob"]);
-export const auditoriaAcaoEnum = pgEnum("auditoria_acao", ["CRIACAO", "EDICAO", "EXCLUSAO"]);
-export const kanbanStatusEnum = pgEnum("kanban_status", ["aguardando", "embalando", "patio", "abandonado"]);
-export const acaoCorretivaStatusEnum = pgEnum("acao_corretiva_status", ["aberto", "em_tratamento", "resolvido"]);
-export const planoAcaoStatusEnum = pgEnum("plano_acao_status", ["pendente", "em_andamento", "concluido", "monitorando"]);
-export const ishikawaCategoriaEnum = pgEnum("ishikawa_categoria", ["maquina", "mao_de_obra", "material", "metodo", "medida", "meio_ambiente"]);
+export const auditoriaAcaoEnum = pgEnum("auditoria_acao", [
+  "CRIACAO",
+  "EDICAO",
+  "EXCLUSAO",
+]);
+export const kanbanStatusEnum = pgEnum("kanban_status", [
+  "aguardando",
+  "embalando",
+  "patio",
+  "abandonado",
+]);
+export const acaoCorretivaStatusEnum = pgEnum("acao_corretiva_status", [
+  "aberto",
+  "em_tratamento",
+  "resolvido",
+]);
+export const planoAcaoStatusEnum = pgEnum("plano_acao_status", [
+  "pendente",
+  "em_andamento",
+  "concluido",
+  "monitorando",
+]);
+export const ishikawaCategoriaEnum = pgEnum("ishikawa_categoria", [
+  "maquina",
+  "mao_de_obra",
+  "material",
+  "metodo",
+  "medida",
+  "meio_ambiente",
+]);
 export const prioridadeEnum = pgEnum("prioridade", ["alta", "media", "baixa"]);
-export const acao5w2hStatusEnum = pgEnum("acao_5w2h_status", ["pendente", "em_andamento", "concluido"]);
-export const alertaTipoEnum = pgEnum("alerta_tipo", ["reincidencia", "meta_excedida", "sem_acao", "prazo_vencido", "novo_retrabalho", "atraso_expedicao", "manual"]);
-export const alertaSeveridadeEnum = pgEnum("alerta_severidade", ["info", "aviso", "critico"]);
-export const alertaStatusEnum = pgEnum("alerta_status", ["ativo", "lido", "arquivado"]);
+export const acao5w2hStatusEnum = pgEnum("acao_5w2h_status", [
+  "pendente",
+  "em_andamento",
+  "concluido",
+]);
+export const alertaTipoEnum = pgEnum("alerta_tipo", [
+  "reincidencia",
+  "meta_excedida",
+  "sem_acao",
+  "prazo_vencido",
+  "novo_retrabalho",
+  "atraso_expedicao",
+  "manual",
+]);
+export const alertaSeveridadeEnum = pgEnum("alerta_severidade", [
+  "info",
+  "aviso",
+  "critico",
+]);
+export const alertaStatusEnum = pgEnum("alerta_status", [
+  "ativo",
+  "lido",
+  "arquivado",
+]);
 export const abcTipoEnum = pgEnum("abc_tipo", ["clientes", "produtos"]);
-export const crmCanalEnum = pgEnum("crm_canal", ["whatsapp", "telefone", "email", "visita", "outro", "perdida", "nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]);
-export const clienteOverrideStatusEnum = pgEnum("cliente_override_status", ["recorrente", "novo"]);
-export const statusValidacaoEnum = pgEnum("status_validacao", ["pendente", "validado", "corrigido_excel"]);
+export const crmCanalEnum = pgEnum("crm_canal", [
+  "whatsapp",
+  "telefone",
+  "email",
+  "visita",
+  "outro",
+  "perdida",
+  "nao_retornou",
+  "esperando_cliente",
+  "garantiu_fechamento",
+  "aguardando_resposta",
+]);
+export const clienteOverrideStatusEnum = pgEnum("cliente_override_status", [
+  "recorrente",
+  "novo",
+]);
+export const statusValidacaoEnum = pgEnum("status_validacao", [
+  "pendente",
+  "validado",
+  "corrigido_excel",
+]);
 export const turnoEnum = pgEnum("turno", ["manha", "tarde", "noite"]);
-export const analiseCurriculoStatusEnum = pgEnum("analise_curriculo_status", ["pendente", "analisando", "concluido", "erro"]);
-export const syncStatusEnum = pgEnum("sync_status", ["SUCESSO", "ERRO", "PENDENTE"]);
+export const analiseCurriculoStatusEnum = pgEnum("analise_curriculo_status", [
+  "pendente",
+  "analisando",
+  "concluido",
+  "erro",
+]);
+export const syncStatusEnum = pgEnum("sync_status", [
+  "SUCESSO",
+  "ERRO",
+  "PENDENTE",
+]);
 // Enums das 13 tabelas que não estavam declaradas no schema (existem no banco real)
-export const clienteCadastroStatusEnum = pgEnum("cliente_cadastro_status", ["ativo", "inativo", "prospect"]);
-export const crmPropostaStatusEnum = pgEnum("crm_proposta_status", ["prospeccao", "proposta_enviada", "negociacao", "ganho", "perdido", "cancelado"]);
+export const clienteCadastroStatusEnum = pgEnum("cliente_cadastro_status", [
+  "ativo",
+  "inativo",
+  "prospect",
+]);
+export const crmPropostaStatusEnum = pgEnum("crm_proposta_status", [
+  "prospeccao",
+  "proposta_enviada",
+  "negociacao",
+  "ganho",
+  "perdido",
+  "cancelado",
+]);
 export const cnqTipoEnum = pgEnum("cnq_tipo", ["interno", "externo"]);
-export const abcClassificacaoEnum = pgEnum("abc_classificacao", ["A", "B", "C"]);
-export const planoAcaoComercialStatusEnum = pgEnum("plano_acao_comercial_status", ["pendente", "em_andamento", "concluido", "cancelado"]);
-export const prioridadeComCriticaEnum = pgEnum("prioridade_com_critica", ["baixa", "media", "alta", "critica"]);
-export const inteligenciaAcaoTipoEnum = pgEnum("inteligencia_acao_tipo", ["primeira_sem_segunda", "atraso_recompra", "alto_volume_baixa_margem"]);
-export const inteligenciaAcaoStatusEnum = pgEnum("inteligencia_acao_status", ["pendente", "concluida", "adiada", "descartada"]);
-export const inteligenciaAcaoResultadoEnum = pgEnum("inteligencia_acao_resultado", ["contato_realizado", "sem_resposta", "projeto_futuro", "orcamento_solicitado", "compra", "adiamento", "sem_interesse"]);
-export const scoreLeadCnpjEnum = pgEnum("score_lead_cnpj", ["A", "B", "C", "D"]);
-export const nivelConfiancaSinalEnum = pgEnum("nivel_confianca_sinal", ["confirmado", "inferencia"]);
-export const statusSinalMercadoEnum = pgEnum("status_sinal_mercado", ["novo", "qualificando", "oportunidade", "associado_cliente", "descartado", "expirado"]);
+export const abcClassificacaoEnum = pgEnum("abc_classificacao", [
+  "A",
+  "B",
+  "C",
+]);
+export const planoAcaoComercialStatusEnum = pgEnum(
+  "plano_acao_comercial_status",
+  ["pendente", "em_andamento", "concluido", "cancelado"]
+);
+export const prioridadeComCriticaEnum = pgEnum("prioridade_com_critica", [
+  "baixa",
+  "media",
+  "alta",
+  "critica",
+]);
+export const inteligenciaAcaoTipoEnum = pgEnum("inteligencia_acao_tipo", [
+  "primeira_sem_segunda",
+  "atraso_recompra",
+  "alto_volume_baixa_margem",
+]);
+export const inteligenciaAcaoStatusEnum = pgEnum("inteligencia_acao_status", [
+  "pendente",
+  "concluida",
+  "adiada",
+  "descartada",
+]);
+export const inteligenciaAcaoResultadoEnum = pgEnum(
+  "inteligencia_acao_resultado",
+  [
+    "contato_realizado",
+    "sem_resposta",
+    "projeto_futuro",
+    "orcamento_solicitado",
+    "compra",
+    "adiamento",
+    "sem_interesse",
+  ]
+);
+export const scoreLeadCnpjEnum = pgEnum("score_lead_cnpj", [
+  "A",
+  "B",
+  "C",
+  "D",
+]);
+export const nivelConfiancaSinalEnum = pgEnum("nivel_confianca_sinal", [
+  "confirmado",
+  "inferencia",
+]);
+export const statusSinalMercadoEnum = pgEnum("status_sinal_mercado", [
+  "novo",
+  "qualificando",
+  "oportunidade",
+  "associado_cliente",
+  "descartado",
+  "expirado",
+]);
 // Jornada de retenção de clientes novos — ver server/services/retencaoClientesNovos.ts.
 // Enum mantém d60/d270/d365 (valores antigos, de quando a jornada era de 7 marcos/1 ano —
 // Postgres não permite encolher um enum sem recriar o tipo) mas a aplicação só gera/aceita
 // mais 4 deles (d16u/d30/d90/d180 — 4 mensagens em 6 meses, decisão do usuário em 24/09/2026).
-export const retencaoJornadaEstagioEnum = pgEnum("retencao_jornada_estagio", ["d16u", "d30", "d60", "d90", "d180", "d270", "d365"]);
-export const retencaoDisparoStatusEnum = pgEnum("retencao_disparo_status", ["pendente", "disparado", "descartado"]);
-export const unidadeConsumoMateriaPrimaEnum = pgEnum("unidade_consumo_materia_prima", ["m2", "ml", "perimetro", "unidade"]);
+export const retencaoJornadaEstagioEnum = pgEnum("retencao_jornada_estagio", [
+  "d16u",
+  "d30",
+  "d60",
+  "d90",
+  "d180",
+  "d270",
+  "d365",
+]);
+export const retencaoDisparoStatusEnum = pgEnum("retencao_disparo_status", [
+  "pendente",
+  "disparado",
+  "descartado",
+]);
+export const unidadeConsumoMateriaPrimaEnum = pgEnum(
+  "unidade_consumo_materia_prima",
+  ["m2", "ml", "perimetro", "unidade"]
+);
 
 // Biblioteca de classificação de erros
 export const errorLibrary = pgTable("error_library", {
@@ -77,7 +267,9 @@ export const errorLibrary = pgTable("error_library", {
   correction: text("correction").notNull(),
   imageUrl: text("imageUrl"), // URL da imagem de referência (S3)
   imageKey: text("imageKey"), // chave S3
-  tipoRegistro: tipoRegistroEnum("tipoRegistro").default("retrabalho").notNull(), // Retrabalho ou Custo da Não-Qualidade
+  tipoRegistro: tipoRegistroEnum("tipoRegistro")
+    .default("retrabalho")
+    .notNull(), // Retrabalho ou Custo da Não-Qualidade
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -103,7 +295,9 @@ export const retrabalhos = pgTable("retrabalhos", {
   classe: retrabalhoClasseEnum("classe").notNull(),
   horasImpacto: decimal("horasImpacto", { precision: 6, scale: 2 }),
   mes: varchar("mes", { length: 20 }),
-  tipoRegistro: tipoRegistroEnum("tipoRegistro").default("retrabalho").notNull(), // Retrabalho ou Custo da Não-Qualidade
+  tipoRegistro: tipoRegistroEnum("tipoRegistro")
+    .default("retrabalho")
+    .notNull(), // Retrabalho ou Custo da Não-Qualidade
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -112,17 +306,24 @@ export type Retrabalho = typeof retrabalhos.$inferSelect;
 export type InsertRetrabalho = typeof retrabalhos.$inferInsert;
 
 // Faturamento mensal para cálculo de KPIs
-export const faturamento = pgTable("faturamento", {
-  id: serial("id").primaryKey(),
-  mes: varchar("mes", { length: 20 }).notNull(),
-  ano: integer("ano").notNull(),
-  valorFaturado: decimal("valorFaturado", { precision: 14, scale: 2 }).notNull(),
-  totalPedidos: integer("totalPedidos").notNull().default(0),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (t) => ({
-  mesAnoUnique: uniqueIndex("faturamento_mes_ano_unique").on(t.mes, t.ano),
-}));
+export const faturamento = pgTable(
+  "faturamento",
+  {
+    id: serial("id").primaryKey(),
+    mes: varchar("mes", { length: 20 }).notNull(),
+    ano: integer("ano").notNull(),
+    valorFaturado: decimal("valorFaturado", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    totalPedidos: integer("totalPedidos").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  t => ({
+    mesAnoUnique: uniqueIndex("faturamento_mes_ano_unique").on(t.mes, t.ano),
+  })
+);
 export type Faturamento = typeof faturamento.$inferSelect;
 export type InsertFaturamento = typeof faturamento.$inferInsert;
 
@@ -280,69 +481,114 @@ export type InsertPriceTableHistory = typeof priceTableHistory.$inferInsert;
 // Os IDs externos não têm FK porque o catálogo pode ser reimportado.
 // Cada se??o de Clientes Antigos ? pareada explicitamente ? se??o equivalente
 // de Novo Cliente. As afilia??es ficam no par, portanto s?o compartilhadas.
-export const priceTableBlockPairs = pgTable("price_table_block_pairs", {
-  id: serial("id").primaryKey(),
-  principalSectionId: integer("principal_section_id").notNull().references(() => priceTableSections.id, { onDelete: "cascade" }),
-  novoClienteSectionId: integer("novo_cliente_section_id").notNull().references(() => priceTableSections.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, table => ({
-  principalSectionIdx: uniqueIndex("price_table_block_pairs_principal_section_idx").on(table.principalSectionId),
-  novoClienteSectionIdx: uniqueIndex("price_table_block_pairs_novo_cliente_section_idx").on(table.novoClienteSectionId),
-}));
+export const priceTableBlockPairs = pgTable(
+  "price_table_block_pairs",
+  {
+    id: serial("id").primaryKey(),
+    principalSectionId: integer("principal_section_id")
+      .notNull()
+      .references(() => priceTableSections.id, { onDelete: "cascade" }),
+    novoClienteSectionId: integer("novo_cliente_section_id")
+      .notNull()
+      .references(() => priceTableSections.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  table => ({
+    principalSectionIdx: uniqueIndex(
+      "price_table_block_pairs_principal_section_idx"
+    ).on(table.principalSectionId),
+    novoClienteSectionIdx: uniqueIndex(
+      "price_table_block_pairs_novo_cliente_section_idx"
+    ).on(table.novoClienteSectionId),
+  })
+);
 export type PriceTableBlockPair = typeof priceTableBlockPairs.$inferSelect;
 
 // IDs externos n?o t?m FK porque o cat?logo do MubiSys pode ser reimportado.
-export const priceTableAffiliations = pgTable("price_table_affiliations", {
-  id: serial("id").primaryKey(),
-  blockPairId: integer("block_pair_id").notNull().references(() => priceTableBlockPairs.id, { onDelete: "cascade" }),
-  mubisysProdutoId: integer("mubisys_produto_id").notNull(),
-  // null = produto inteiro; lista preenchida = somente os modelos selecionados.
-  mubisysModeloIds: jsonb("mubisys_modelo_ids").$type<number[] | null>(),
-  nomeProduto: varchar("nome_produto", { length: 256 }).notNull(),
-  categoria: varchar("categoria", { length: 128 }),
-  createdBy: varchar("created_by", { length: 128 }),
-  updatedBy: varchar("updated_by", { length: 128 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  pairProdutoIdx: uniqueIndex("price_table_affiliations_pair_produto_idx").on(table.blockPairId, table.mubisysProdutoId),
-  produtoIdx: index("price_table_affiliations_produto_idx").on(table.mubisysProdutoId),
-}));
+export const priceTableAffiliations = pgTable(
+  "price_table_affiliations",
+  {
+    id: serial("id").primaryKey(),
+    blockPairId: integer("block_pair_id")
+      .notNull()
+      .references(() => priceTableBlockPairs.id, { onDelete: "cascade" }),
+    mubisysProdutoId: integer("mubisys_produto_id").notNull(),
+    // null = produto inteiro; lista preenchida = somente os modelos selecionados.
+    mubisysModeloIds: jsonb("mubisys_modelo_ids").$type<number[] | null>(),
+    nomeProduto: varchar("nome_produto", { length: 256 }).notNull(),
+    categoria: varchar("categoria", { length: 128 }),
+    createdBy: varchar("created_by", { length: 128 }),
+    updatedBy: varchar("updated_by", { length: 128 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    pairProdutoIdx: uniqueIndex("price_table_affiliations_pair_produto_idx").on(
+      table.blockPairId,
+      table.mubisysProdutoId
+    ),
+    produtoIdx: index("price_table_affiliations_produto_idx").on(
+      table.mubisysProdutoId
+    ),
+  })
+);
 export type PriceTableAffiliation = typeof priceTableAffiliations.$inferSelect;
-export type InsertPriceTableAffiliation = typeof priceTableAffiliations.$inferInsert;
+export type InsertPriceTableAffiliation =
+  typeof priceTableAffiliations.$inferInsert;
 
-export const priceTableAffiliationHistory = pgTable("price_table_affiliation_history", {
-  id: serial("id").primaryKey(),
-  blockPairId: integer("block_pair_id").notNull().references(() => priceTableBlockPairs.id, { onDelete: "cascade" }),
-  action: varchar("action", { length: 16 }).notNull(),
-  beforeJson: text("before_json"),
-  afterJson: text("after_json"),
-  actor: varchar("actor", { length: 128 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, table => ({
-  pairDataIdx: index("price_table_affiliation_history_pair_data_idx").on(table.blockPairId, table.createdAt),
-}));
-export type PriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferSelect;
-export type InsertPriceTableAffiliationHistory = typeof priceTableAffiliationHistory.$inferInsert;
+export const priceTableAffiliationHistory = pgTable(
+  "price_table_affiliation_history",
+  {
+    id: serial("id").primaryKey(),
+    blockPairId: integer("block_pair_id")
+      .notNull()
+      .references(() => priceTableBlockPairs.id, { onDelete: "cascade" }),
+    action: varchar("action", { length: 16 }).notNull(),
+    beforeJson: text("before_json"),
+    afterJson: text("after_json"),
+    actor: varchar("actor", { length: 128 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  table => ({
+    pairDataIdx: index("price_table_affiliation_history_pair_data_idx").on(
+      table.blockPairId,
+      table.createdAt
+    ),
+  })
+);
+export type PriceTableAffiliationHistory =
+  typeof priceTableAffiliationHistory.$inferSelect;
+export type InsertPriceTableAffiliationHistory =
+  typeof priceTableAffiliationHistory.$inferInsert;
 // Configuração comercial e produtividades de solda por modelo do MubiSys.
 // Cada modelo mantém IDs de faixa independentes para clientes antigos e novos;
 // IDs externos do catálogo não são FKs porque o espelho pode ser reimportado.
-export const priceTableModelMappings = pgTable("price_table_model_mappings", {
-  id: serial("id").primaryKey(),
-  mubisysProdutoId: integer("mubisys_produto_id").notNull(),
-  mubisysModeloId: integer("mubisys_modelo_id").notNull(),
-  produtividadeIds: jsonb("produtividade_ids").$type<number[]>().notNull().default([]),
-  produtividadeObservacao: text("produtividade_observacao"),
-  principalPriceId: integer("principal_price_id"),
-  novoClientePriceId: integer("novo_cliente_price_id"),
-  updatedBy: varchar("updated_by", { length: 128 }),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  produtoModeloIdx: uniqueIndex("price_table_model_mappings_produto_modelo_idx").on(table.mubisysProdutoId, table.mubisysModeloId),
-}));
-export type PriceTableModelMapping = typeof priceTableModelMappings.$inferSelect;
-export type InsertPriceTableModelMapping = typeof priceTableModelMappings.$inferInsert;
-
+export const priceTableModelMappings = pgTable(
+  "price_table_model_mappings",
+  {
+    id: serial("id").primaryKey(),
+    mubisysProdutoId: integer("mubisys_produto_id").notNull(),
+    mubisysModeloId: integer("mubisys_modelo_id").notNull(),
+    produtividadeIds: jsonb("produtividade_ids")
+      .$type<number[]>()
+      .notNull()
+      .default([]),
+    produtividadeObservacao: text("produtividade_observacao"),
+    principalPriceId: integer("principal_price_id"),
+    novoClientePriceId: integer("novo_cliente_price_id"),
+    updatedBy: varchar("updated_by", { length: 128 }),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    produtoModeloIdx: uniqueIndex(
+      "price_table_model_mappings_produto_modelo_idx"
+    ).on(table.mubisysProdutoId, table.mubisysModeloId),
+  })
+);
+export type PriceTableModelMapping =
+  typeof priceTableModelMappings.$inferSelect;
+export type InsertPriceTableModelMapping =
+  typeof priceTableModelMappings.$inferInsert;
 
 export const produtos = pgTable("produtos", {
   id: serial("id").primaryKey(),
@@ -354,7 +600,12 @@ export const produtos = pgTable("produtos", {
   // Percentual do custo fixo (overhead) que reflete sobre o custo de
   // matéria-prima do produto — ex: 30 = custo final de MP é multiplicado
   // por 1,30. Definido manualmente pelo usuário, não vem do MubiSys.
-  percentualCustoFixo: decimal("percentualCustoFixo", { precision: 6, scale: 2 }).notNull().default("0"),
+  percentualCustoFixo: decimal("percentualCustoFixo", {
+    precision: 6,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
   // Custo direto de mão de obra por unidade do produto. NULL significa que
   // ainda não foi levantado; decupagem não pode assumir custo zero.
   custoMaoObra: decimal("custoMaoObra", { precision: 12, scale: 2 }),
@@ -381,38 +632,60 @@ export type InsertProduto = typeof produtos.$inferInsert;
 
 // Composição de matéria-prima de um produto (equivalente à aba "Matéria
 // prima" do cadastro de produto no MubiSys).
-export const produtoComposicaoMateriais = pgTable("produto_composicao_materiais", {
-  id: serial("id").primaryKey(),
-  produtoId: integer("produtoId").notNull().references(() => produtos.id, { onDelete: "cascade" }),
-  mubisysMateriaPrimaId: integer("mubisysMateriaPrimaId").notNull(),
-  materialNome: varchar("materialNome", { length: 256 }).notNull(),
-  // Linhas sem variação são comuns ao modelo; linhas com id são consumos
-  // específicos de uma variação comercial do MubiSys.
-  mubisysVariacaoId: integer("mubisysVariacaoId"),
-  variacaoNome: varchar("variacaoNome", { length: 256 }),
-  variacaoPadrao: boolean("variacaoPadrao").notNull().default(false),
-  unidadeConsumo: unidadeConsumoMateriaPrimaEnum("unidadeConsumo").notNull(),
-  quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("0"),
-  ordem: integer("ordem").notNull().default(0),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (table) => ({
-  produtoIdx: index("produto_composicao_materiais_produtoId_idx").on(table.produtoId),
-}));
-export type ProdutoComposicaoMaterial = typeof produtoComposicaoMateriais.$inferSelect;
-export type InsertProdutoComposicaoMaterial = typeof produtoComposicaoMateriais.$inferInsert;
+export const produtoComposicaoMateriais = pgTable(
+  "produto_composicao_materiais",
+  {
+    id: serial("id").primaryKey(),
+    produtoId: integer("produtoId")
+      .notNull()
+      .references(() => produtos.id, { onDelete: "cascade" }),
+    mubisysMateriaPrimaId: integer("mubisysMateriaPrimaId").notNull(),
+    materialNome: varchar("materialNome", { length: 256 }).notNull(),
+    // Linhas sem variação são comuns ao modelo; linhas com id são consumos
+    // específicos de uma variação comercial do MubiSys.
+    mubisysVariacaoId: integer("mubisysVariacaoId"),
+    variacaoNome: varchar("variacaoNome", { length: 256 }),
+    variacaoPadrao: boolean("variacaoPadrao").notNull().default(false),
+    unidadeConsumo: unidadeConsumoMateriaPrimaEnum("unidadeConsumo").notNull(),
+    quantidade: decimal("quantidade", { precision: 12, scale: 4 })
+      .notNull()
+      .default("0"),
+    ordem: integer("ordem").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => ({
+    produtoIdx: index("produto_composicao_materiais_produtoId_idx").on(
+      table.produtoId
+    ),
+  })
+);
+export type ProdutoComposicaoMaterial =
+  typeof produtoComposicaoMateriais.$inferSelect;
+export type InsertProdutoComposicaoMaterial =
+  typeof produtoComposicaoMateriais.$inferInsert;
 
 // Kit: outros produtos (já cadastrados aqui) que acompanham a venda deste
 // produto — ex: vende o letreiro, vai junto o gabarito e a fita dupla-face.
-export const produtoKitItens = pgTable("produto_kit_itens", {
-  id: serial("id").primaryKey(),
-  produtoId: integer("produtoId").notNull().references(() => produtos.id, { onDelete: "cascade" }),
-  produtoAssociadoId: integer("produtoAssociadoId").notNull().references(() => produtos.id, { onDelete: "cascade" }),
-  quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("1"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => ({
-  produtoIdx: index("produto_kit_itens_produtoId_idx").on(table.produtoId),
-}));
+export const produtoKitItens = pgTable(
+  "produto_kit_itens",
+  {
+    id: serial("id").primaryKey(),
+    produtoId: integer("produtoId")
+      .notNull()
+      .references(() => produtos.id, { onDelete: "cascade" }),
+    produtoAssociadoId: integer("produtoAssociadoId")
+      .notNull()
+      .references(() => produtos.id, { onDelete: "cascade" }),
+    quantidade: decimal("quantidade", { precision: 12, scale: 4 })
+      .notNull()
+      .default("1"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => ({
+    produtoIdx: index("produto_kit_itens_produtoId_idx").on(table.produtoId),
+  })
+);
 export type ProdutoKitItem = typeof produtoKitItens.$inferSelect;
 export type InsertProdutoKitItem = typeof produtoKitItens.$inferInsert;
 
@@ -429,99 +702,155 @@ export const materiaPrimaCategorias = pgTable("materia_prima_categorias", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type MateriaPrimaCategoria = typeof materiaPrimaCategorias.$inferSelect;
-export type InsertMateriaPrimaCategoria = typeof materiaPrimaCategorias.$inferInsert;
+export type InsertMateriaPrimaCategoria =
+  typeof materiaPrimaCategorias.$inferInsert;
 
 export const materiaPrimaCadastros = pgTable("materia_prima_cadastros", {
   mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").primaryKey(),
-  categoriaId: integer("categoria_id").references(() => materiaPrimaCategorias.id, { onDelete: "restrict" }),
+  categoriaId: integer("categoria_id").references(
+    () => materiaPrimaCategorias.id,
+    { onDelete: "restrict" }
+  ),
   espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
   densidadeKgM3: decimal("densidade_kg_m3", { precision: 12, scale: 4 }),
   // Peso por unidade de consumo (a unidade de custo do MubiSys: kg/m², kg/m, kg/un...), para matérias-primas que não são chapa nem perfil.
   pesoEspecificoKg: decimal("peso_especifico_kg", { precision: 12, scale: 4 }),
   // Dimensões da barra de perfil (seção e comprimento), necessárias para calcular o peso com a densidade.
   // Formato da seção: define a fórmula da área (tubo oco, cantoneira em L ou barra maciça).
-  perfilFormato: varchar("perfil_formato", { length: 16 }).default("tubo").notNull(),
+  perfilFormato: varchar("perfil_formato", { length: 16 })
+    .default("tubo")
+    .notNull(),
   perfilAlturaMm: decimal("perfil_altura_mm", { precision: 10, scale: 3 }),
   perfilLarguraMm: decimal("perfil_largura_mm", { precision: 10, scale: 3 }),
-  perfilComprimentoMm: decimal("perfil_comprimento_mm", { precision: 12, scale: 3 }),
+  perfilComprimentoMm: decimal("perfil_comprimento_mm", {
+    precision: 12,
+    scale: 3,
+  }),
   // Bobina: como o custo do MubiSys é cobrado ("m2", "ml" ou "rolo"); o MubiSys nem sempre traz unidade de área/comprimento.
   bobinaCustoBase: varchar("bobina_custo_base", { length: 8 }),
   // Bobina cobrada "por rolo": comprimento total do rolo em mm, para converter o custo do rolo em consumo.
-  bobinaComprimentoRoloMm: decimal("bobina_comprimento_rolo_mm", { precision: 14, scale: 3 }),
+  bobinaComprimentoRoloMm: decimal("bobina_comprimento_rolo_mm", {
+    precision: 14,
+    scale: 3,
+  }),
   // Política de corte no nesting (chapa e bobina): processo (laser/router/plasma/faca), rotação permitida (livre, quadrantes, veio
   // 0°/180°, fixa) e espaçamento/margem próprios. Nulo = padrão do processo ou do orçamento (ver shared/politica-corte.ts).
   processoCorte: varchar("processo_corte", { length: 12 }),
-  rotacaoPermitida: varchar("rotacao_permitida", { length: 12 }).default("livre").notNull(),
+  rotacaoPermitida: varchar("rotacao_permitida", { length: 12 })
+    .default("livre")
+    .notNull(),
   espacamentoMm: decimal("espacamento_mm", { precision: 6, scale: 2 }),
   margemBordaMm: decimal("margem_borda_mm", { precision: 6, scale: 2 }),
   // Só para as matérias-primas "Produtividade …" (ver shared/produtividade-solda.ts): até 3 tipos de solda (fixação), o tamanho
   // (menor ou igual / maior que 11 cm) e os materiais a que a solda se aplica. Vazio = ainda não classificada.
-  produtividadeTiposSolda: text("produtividade_tipos_solda").array().notNull().default([]),
+  produtividadeTiposSolda: text("produtividade_tipos_solda")
+    .array()
+    .notNull()
+    .default([]),
   // LEGADO (um tamanho só): substituído por produtividade_tamanhos na migration 0092, que copiou os valores. Nada mais lê nem grava
   // esta coluna; ela só continua aqui para o deploy não derrubar a versão anterior e será removida na migration seguinte.
   produtividadeTamanho: varchar("produtividade_tamanho", { length: 12 }),
-  produtividadeTamanhos: text("produtividade_tamanhos").array().notNull().default([]),
-  produtividadeMateriais: text("produtividade_materiais").array().notNull().default([]),
+  produtividadeTamanhos: text("produtividade_tamanhos")
+    .array()
+    .notNull()
+    .default([]),
+  produtividadeMateriais: text("produtividade_materiais")
+    .array()
+    .notNull()
+    .default([]),
   // Estilo do letreiro (06/10/2026), marcação múltipla em cada grupo. Os aros só valem junto de "frontlight"; o servidor limpa os aros sem ele.
-  produtividadeCategorias: text("produtividade_categorias").array().notNull().default([]),
+  produtividadeCategorias: text("produtividade_categorias")
+    .array()
+    .notNull()
+    .default([]),
   produtividadeAros: text("produtividade_aros").array().notNull().default([]),
-  produtividadeFormatos: text("produtividade_formatos").array().notNull().default([]),
-  produtividadeFundos: text("produtividade_fundos").array().notNull().default([]),
+  produtividadeFormatos: text("produtividade_formatos")
+    .array()
+    .notNull()
+    .default([]),
+  produtividadeFundos: text("produtividade_fundos")
+    .array()
+    .notNull()
+    .default([]),
   // Appearance for CPQ/3D rendering. The image is a visual reference, not a calibrated PBR map.
-  aparenciaModo: varchar("aparencia_modo", { length: 16 }).notNull().default("nao_informada"),
+  aparenciaModo: varchar("aparencia_modo", { length: 16 })
+    .notNull()
+    .default("nao_informada"),
   aparenciaCorHex: varchar("aparencia_cor_hex", { length: 7 }),
   aparenciaCorDescricao: text("aparencia_cor_descricao"),
   texturaImagemUrl: text("textura_imagem_url"),
   texturaImagemKey: varchar("textura_imagem_key", { length: 255 }),
   texturaDescricao: text("textura_descricao"),
   renderTransparenciaTipo: varchar("render_transparencia_tipo", { length: 16 }),
-  renderTransmissaoLuzPct: decimal("render_transmissao_luz_pct", { precision: 5, scale: 2 }),
+  renderTransmissaoLuzPct: decimal("render_transmissao_luz_pct", {
+    precision: 5,
+    scale: 2,
+  }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type MateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferSelect;
-export type InsertMateriaPrimaCadastro = typeof materiaPrimaCadastros.$inferInsert;
+export type InsertMateriaPrimaCadastro =
+  typeof materiaPrimaCadastros.$inferInsert;
 
 // Treino da escolha automática de "Produtividade Solda …" no CPQ (ver server/services/cpqSoldaProdutividade.ts).
 // Regra: condições (nulo/vazio = qualquer) que, batendo com o orçamento, fixam a produtividade escolhida; vence a pontuação automática.
-export const cpqSoldaRegras = pgTable("cpq_solda_regras", {
-  id: serial("id").primaryKey(),
-  nome: varchar("nome", { length: 160 }).notNull(),
-  ativa: boolean("ativa").notNull().default(true),
-  prioridade: integer("prioridade").notNull().default(0),
-  material: varchar("material", { length: 16 }),
-  tipoProduto: varchar("tipo_produto", { length: 80 }),
-  /** Conjunto exato de tipos de fixação (ver shared/produtividade-solda.ts); nulo = qualquer. */
-  fixacaoTipos: text("fixacao_tipos").array(),
-  /** Palavras que precisam aparecer no título do produto. */
-  palavrasTitulo: text("palavras_titulo").array().notNull().default([]),
-  faixa: varchar("faixa", { length: 12 }),
-  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull(),
-  criadaPorNome: varchar("criada_por_nome", { length: 160 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, t => ({
-  ativaPrioridadeIdx: index("cpq_solda_regras_ativa_prioridade_idx").on(t.ativa, t.prioridade),
-}));
+export const cpqSoldaRegras = pgTable(
+  "cpq_solda_regras",
+  {
+    id: serial("id").primaryKey(),
+    nome: varchar("nome", { length: 160 }).notNull(),
+    ativa: boolean("ativa").notNull().default(true),
+    prioridade: integer("prioridade").notNull().default(0),
+    material: varchar("material", { length: 16 }),
+    tipoProduto: varchar("tipo_produto", { length: 80 }),
+    /** Conjunto exato de tipos de fixação (ver shared/produtividade-solda.ts); nulo = qualquer. */
+    fixacaoTipos: text("fixacao_tipos").array(),
+    /** Palavras que precisam aparecer no título do produto. */
+    palavrasTitulo: text("palavras_titulo").array().notNull().default([]),
+    faixa: varchar("faixa", { length: 12 }),
+    mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull(),
+    criadaPorNome: varchar("criada_por_nome", { length: 160 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    ativaPrioridadeIdx: index("cpq_solda_regras_ativa_prioridade_idx").on(
+      t.ativa,
+      t.prioridade
+    ),
+  })
+);
 export type CpqSoldaRegra = typeof cpqSoldaRegras.$inferSelect;
 
 // Correções: o vendedor trocou a produtividade sugerida. O gestor revisa e pode transformar a correção numa regra.
-export const cpqSoldaCorrecoes = pgTable("cpq_solda_correcoes", {
-  id: serial("id").primaryKey(),
-  cotacaoRef: varchar("cotacao_ref", { length: 80 }),
-  faixa: varchar("faixa", { length: 12 }).notNull(),
-  /** Contexto do orçamento no momento da troca: título, tipo, material, fixação, perímetro e elementos da faixa. */
-  contextoJson: jsonb("contexto_json").$type<Record<string, unknown>>().notNull(),
-  sugeridaMateriaPrimaId: integer("sugerida_materia_prima_id"),
-  escolhidaMateriaPrimaId: integer("escolhida_materia_prima_id").notNull(),
-  nota: varchar("nota", { length: 500 }),
-  /** pendente | virou_regra | descartada */
-  status: varchar("status", { length: 16 }).notNull().default("pendente"),
-  regraId: integer("regra_id").references(() => cpqSoldaRegras.id, { onDelete: "set null" }),
-  usuarioNome: varchar("usuario_nome", { length: 160 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, t => ({
-  statusDataIdx: index("cpq_solda_correcoes_status_data_idx").on(t.status, t.createdAt),
-}));
+export const cpqSoldaCorrecoes = pgTable(
+  "cpq_solda_correcoes",
+  {
+    id: serial("id").primaryKey(),
+    cotacaoRef: varchar("cotacao_ref", { length: 80 }),
+    faixa: varchar("faixa", { length: 12 }).notNull(),
+    /** Contexto do orçamento no momento da troca: título, tipo, material, fixação, perímetro e elementos da faixa. */
+    contextoJson: jsonb("contexto_json")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    sugeridaMateriaPrimaId: integer("sugerida_materia_prima_id"),
+    escolhidaMateriaPrimaId: integer("escolhida_materia_prima_id").notNull(),
+    nota: varchar("nota", { length: 500 }),
+    /** pendente | virou_regra | descartada */
+    status: varchar("status", { length: 16 }).notNull().default("pendente"),
+    regraId: integer("regra_id").references(() => cpqSoldaRegras.id, {
+      onDelete: "set null",
+    }),
+    usuarioNome: varchar("usuario_nome", { length: 160 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    statusDataIdx: index("cpq_solda_correcoes_status_data_idx").on(
+      t.status,
+      t.createdAt
+    ),
+  })
+);
 export type CpqSoldaCorrecao = typeof cpqSoldaCorrecoes.$inferSelect;
 
 // ─── PROPOSTA (cotação gerada a partir do catálogo de Produtos) ────────────
@@ -530,14 +859,21 @@ export type CpqSoldaCorrecao = typeof cpqSoldaCorrecoes.$inferSelect;
 // é uma cotação nova, montada aqui escolhendo produtos já cadastrados
 // (decisão do usuário 28/09/2026), com link público (token) pro cliente ver,
 // ligar/desligar item e simular o valor.
-export const propostaStatusEnum = pgEnum("proposta_status", ["aberta", "aceita", "recusada", "expirada"]);
+export const propostaStatusEnum = pgEnum("proposta_status", [
+  "aberta",
+  "aceita",
+  "recusada",
+  "expirada",
+]);
 
 // Cadastro comercial local: nome vinculado às propostas e taxa de comissão
 // versionada no snapshot de cada item ao calcular a decupagem.
 export const vendedoresComerciais = pgTable("vendedores_comerciais", {
   id: serial("id").primaryKey(),
   nome: varchar("nome", { length: 256 }).notNull().unique(),
-  comissaoPct: decimal("comissao_pct", { precision: 7, scale: 4 }).notNull().default("0"),
+  comissaoPct: decimal("comissao_pct", { precision: 7, scale: 4 })
+    .notNull()
+    .default("0"),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -547,7 +883,9 @@ export type InsertVendedorComercial = typeof vendedoresComerciais.$inferInsert;
 
 export const propostas = pgTable("propostas", {
   id: serial("id").primaryKey(),
-  tituloProposta: varchar("titulo_proposta", { length: 256 }).notNull().default(""),
+  tituloProposta: varchar("titulo_proposta", { length: 256 })
+    .notNull()
+    .default(""),
   imagemReferenciaUrl: text("imagem_referencia_url"),
   imagemRedesenhadaUrl: text("imagem_redesenhada_url"),
   // Token de acesso público — posse do link é a autorização (mesmo modelo
@@ -558,7 +896,10 @@ export const propostas = pgTable("propostas", {
   clienteCnpj: varchar("clienteCnpj", { length: 20 }),
   clienteContato: varchar("clienteContato", { length: 256 }),
   vendedorNome: varchar("vendedorNome", { length: 256 }).notNull(),
-  vendedorComercialId: integer("vendedor_comercial_id").references(() => vendedoresComerciais.id, { onDelete: "set null" }),
+  vendedorComercialId: integer("vendedor_comercial_id").references(
+    () => vendedoresComerciais.id,
+    { onDelete: "set null" }
+  ),
   // JSON (string[]) das formas de pagamento habilitadas nesta proposta —
   // mesmo padrão de `priceTableSections.contentJson`: texto, não jsonb.
   formasPagamentoJson: text("formasPagamentoJson").notNull().default("[]"),
@@ -576,66 +917,105 @@ export type InsertProposta = typeof propostas.$inferInsert;
 // habilitador que o cliente liga/desliga na página pública pra simular o
 // impacto no valor total — decisão do usuário 28/09/2026: a escolha do
 // cliente fica salva, não é só um estado visual descartável.
-export const propostaItens = pgTable("proposta_itens", {
-  id: serial("id").primaryKey(),
-  propostaId: integer("propostaId").notNull().references(() => propostas.id, { onDelete: "cascade" }),
-  produtoId: integer("produtoId").notNull().references(() => produtos.id),
-  produtoNome: varchar("produtoNome", { length: 256 }).notNull(),
-  // Texto livre do vendedor sobre este item, exibido na cotação pública e no PDF.
-  descricao: text("descricao").notNull().default(""),
-  // Snapshot da nesting, variações selecionadas e consumo de cada matéria-prima.
-  configuracaoJson: jsonb("configuracaoJson").$type<Record<string, unknown>>().notNull().default({}),
-  // Decupagem privada, calculada no servidor e preservada como snapshot.
-  // Não incluir em consultas públicas nem no PDF da proposta.
-  decupagemJson: jsonb("decupagem_json").$type<Record<string, unknown>>(),
-  custoMaoObraUnitario: decimal("custo_mao_obra_unitario", { precision: 12, scale: 2 }),
-  // Componentes seguem separados para custo/cálculo, mas podem ser exibidos
-  // como um único conjunto na proposta pública.
-  grupoId: varchar("grupoId", { length: 36 }),
-  grupoDescricao: text("grupoDescricao").notNull().default(""),
-  quantidade: decimal("quantidade", { precision: 12, scale: 4 }).notNull().default("1"),
-  precoUnitario: decimal("precoUnitario", { precision: 12, scale: 2 }).notNull().default("0"),
-  ativo: boolean("ativo").notNull().default(true),
-  ordem: integer("ordem").notNull().default(0),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => ({
-  propostaIdx: index("proposta_itens_propostaId_idx").on(table.propostaId),
-  propostaGrupoIdx: index("proposta_itens_propostaId_grupoId_idx").on(table.propostaId, table.grupoId),
-}));
+export const propostaItens = pgTable(
+  "proposta_itens",
+  {
+    id: serial("id").primaryKey(),
+    propostaId: integer("propostaId")
+      .notNull()
+      .references(() => propostas.id, { onDelete: "cascade" }),
+    produtoId: integer("produtoId")
+      .notNull()
+      .references(() => produtos.id),
+    produtoNome: varchar("produtoNome", { length: 256 }).notNull(),
+    // Texto livre do vendedor sobre este item, exibido na cotação pública e no PDF.
+    descricao: text("descricao").notNull().default(""),
+    // Snapshot da nesting, variações selecionadas e consumo de cada matéria-prima.
+    configuracaoJson: jsonb("configuracaoJson")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    // Decupagem privada, calculada no servidor e preservada como snapshot.
+    // Não incluir em consultas públicas nem no PDF da proposta.
+    decupagemJson: jsonb("decupagem_json").$type<Record<string, unknown>>(),
+    custoMaoObraUnitario: decimal("custo_mao_obra_unitario", {
+      precision: 12,
+      scale: 2,
+    }),
+    // Componentes seguem separados para custo/cálculo, mas podem ser exibidos
+    // como um único conjunto na proposta pública.
+    grupoId: varchar("grupoId", { length: 36 }),
+    grupoDescricao: text("grupoDescricao").notNull().default(""),
+    quantidade: decimal("quantidade", { precision: 12, scale: 4 })
+      .notNull()
+      .default("1"),
+    precoUnitario: decimal("precoUnitario", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    ativo: boolean("ativo").notNull().default(true),
+    ordem: integer("ordem").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => ({
+    propostaIdx: index("proposta_itens_propostaId_idx").on(table.propostaId),
+    propostaGrupoIdx: index("proposta_itens_propostaId_grupoId_idx").on(
+      table.propostaId,
+      table.grupoId
+    ),
+  })
+);
 export type PropostaItem = typeof propostaItens.$inferSelect;
 export type InsertPropostaItem = typeof propostaItens.$inferInsert;
 
 // Snapshots comerciais append-only do CPQ.
-export const estudioCotacaoSnapshots = pgTable("estudio_cotacao_snapshots", {
-  id: serial("id").primaryKey(),
-  propostaId: integer("proposta_id").notNull().references(() => propostas.id),
-  revisao: integer("revisao").notNull(),
-  sourceId: varchar("source_id", { length: 80 }).notNull(),
-  snapshotJson: text("snapshot_json").notNull(),
-  snapshotHash: varchar("snapshot_hash", { length: 64 }).notNull(),
-  tabelaPreco: varchar("tabela_preco", { length: 32 }),
-  tabelaPrecoVersao: varchar("tabela_preco_versao", { length: 16 }),
-  secaoId: integer("secao_id"),
-  secaoTitulo: varchar("secao_titulo", { length: 256 }),
-  linhaId: integer("linha_id"),
-  linhaLabel: varchar("linha_label", { length: 256 }),
-  faixaId: integer("faixa_id"),
-  faixaIndex: integer("faixa_index"),
-  faixaLabel: varchar("faixa_label", { length: 256 }),
-  custoInsumos: decimal("custo_insumos", { precision: 14, scale: 2 }).notNull(),
-  custoBaseFaixa: decimal("custo_base_faixa", { precision: 14, scale: 2 }).notNull(),
-  margemPct: decimal("margem_pct", { precision: 7, scale: 4 }),
-  precoFinal: decimal("preco_final", { precision: 14, scale: 2 }).notNull(),
-  mubisysOsId: integer("mubisys_os_id"),
-  criadoPor: varchar("criado_por", { length: 128 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, table => ({
-  propostaRevisaoUidx: uniqueIndex("estudio_cotacao_snapshots_proposta_revisao_uidx").on(table.propostaId, table.revisao),
-  propostaHashUidx: uniqueIndex("estudio_cotacao_snapshots_proposta_hash_uidx").on(table.propostaId, table.snapshotHash),
-  osIdx: index("estudio_cotacao_snapshots_os_idx").on(table.mubisysOsId),
-}));
-export type EstudioCotacaoSnapshot = typeof estudioCotacaoSnapshots.$inferSelect;
-export type InsertEstudioCotacaoSnapshot = typeof estudioCotacaoSnapshots.$inferInsert;
+export const estudioCotacaoSnapshots = pgTable(
+  "estudio_cotacao_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    propostaId: integer("proposta_id")
+      .notNull()
+      .references(() => propostas.id),
+    revisao: integer("revisao").notNull(),
+    sourceId: varchar("source_id", { length: 80 }).notNull(),
+    snapshotJson: text("snapshot_json").notNull(),
+    snapshotHash: varchar("snapshot_hash", { length: 64 }).notNull(),
+    tabelaPreco: varchar("tabela_preco", { length: 32 }),
+    tabelaPrecoVersao: varchar("tabela_preco_versao", { length: 16 }),
+    secaoId: integer("secao_id"),
+    secaoTitulo: varchar("secao_titulo", { length: 256 }),
+    linhaId: integer("linha_id"),
+    linhaLabel: varchar("linha_label", { length: 256 }),
+    faixaId: integer("faixa_id"),
+    faixaIndex: integer("faixa_index"),
+    faixaLabel: varchar("faixa_label", { length: 256 }),
+    custoInsumos: decimal("custo_insumos", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    custoBaseFaixa: decimal("custo_base_faixa", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    margemPct: decimal("margem_pct", { precision: 7, scale: 4 }),
+    precoFinal: decimal("preco_final", { precision: 14, scale: 2 }).notNull(),
+    mubisysOsId: integer("mubisys_os_id"),
+    criadoPor: varchar("criado_por", { length: 128 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  table => ({
+    propostaRevisaoUidx: uniqueIndex(
+      "estudio_cotacao_snapshots_proposta_revisao_uidx"
+    ).on(table.propostaId, table.revisao),
+    propostaHashUidx: uniqueIndex(
+      "estudio_cotacao_snapshots_proposta_hash_uidx"
+    ).on(table.propostaId, table.snapshotHash),
+    osIdx: index("estudio_cotacao_snapshots_os_idx").on(table.mubisysOsId),
+  })
+);
+export type EstudioCotacaoSnapshot =
+  typeof estudioCotacaoSnapshots.$inferSelect;
+export type InsertEstudioCotacaoSnapshot =
+  typeof estudioCotacaoSnapshots.$inferInsert;
 
 // Configuração global (linha única, id=1) usada por toda Proposta: PDF de
 // condições comerciais (aparece no rodapé da página pública) e tabela de
@@ -647,9 +1027,15 @@ export const configuracoesComerciais = pgTable("configuracoes_comerciais", {
   // JSON de { parcelas: number, jurosPct: number }[], ordenado por parcelas.
   jurosParcelamentoJson: text("jurosParcelamentoJson").notNull().default("[]"),
   // Taxa incidente sobre o preço bruto; regras por categoria substituem o padrão.
-  impostoPct: decimal("imposto_pct", { precision: 7, scale: 4 }).notNull().default("0"),
-  custoFixoPct: decimal("custo_fixo_pct", { precision: 7, scale: 4 }).notNull().default("0"),
-  impostosPorCategoriaJson: text("impostos_por_categoria_json").notNull().default("[]"),
+  impostoPct: decimal("imposto_pct", { precision: 7, scale: 4 })
+    .notNull()
+    .default("0"),
+  custoFixoPct: decimal("custo_fixo_pct", { precision: 7, scale: 4 })
+    .notNull()
+    .default("0"),
+  impostosPorCategoriaJson: text("impostos_por_categoria_json")
+    .notNull()
+    .default("[]"),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type ConfiguracaoComercial = typeof configuracoesComerciais.$inferSelect;
@@ -659,187 +1045,307 @@ export type ConfiguracaoComercial = typeof configuracoesComerciais.$inferSelect;
 // no deploy da Vercel.
 export const estudioConfiguracoes = pgTable("estudio_configuracoes", {
   id: integer("id").primaryKey().default(1),
-  configuracaoJson: jsonb("configuracaoJson").$type<Record<string, unknown>>().notNull().default({}),
+  configuracaoJson: jsonb("configuracaoJson")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type EstudioConfiguracao = typeof estudioConfiguracoes.$inferSelect;
 
 // Cadastro compartilhado de clientes do CPQ, independente dos snapshots
 // imutáveis de cada cotação.
-export const estudioClientes = pgTable("estudio_clientes", {
-  id: serial("id").primaryKey(),
-  documento: varchar("documento", { length: 14 }).notNull(),
-  razao: varchar("razao", { length: 256 }),
-  fantasia: varchar("fantasia", { length: 256 }),
-  endereco: varchar("endereco", { length: 1000 }),
-  email: varchar("email", { length: 320 }),
-  whatsapp: varchar("whatsapp", { length: 40 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (table) => ({
-  documentoIdx: uniqueIndex("estudio_clientes_documento_idx").on(table.documento),
-  nomeIdx: index("estudio_clientes_razao_idx").on(table.razao),
-  updatedIdx: index("estudio_clientes_updated_at_idx").on(table.updatedAt),
-}));
+export const estudioClientes = pgTable(
+  "estudio_clientes",
+  {
+    id: serial("id").primaryKey(),
+    documento: varchar("documento", { length: 14 }).notNull(),
+    razao: varchar("razao", { length: 256 }),
+    fantasia: varchar("fantasia", { length: 256 }),
+    endereco: varchar("endereco", { length: 1000 }),
+    email: varchar("email", { length: 320 }),
+    whatsapp: varchar("whatsapp", { length: 40 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => ({
+    documentoIdx: uniqueIndex("estudio_clientes_documento_idx").on(
+      table.documento
+    ),
+    nomeIdx: index("estudio_clientes_razao_idx").on(table.razao),
+    updatedIdx: index("estudio_clientes_updated_at_idx").on(table.updatedAt),
+  })
+);
 export type EstudioCliente = typeof estudioClientes.$inferSelect;
 export type InsertEstudioCliente = typeof estudioClientes.$inferInsert;
 
 // Espelho local, somente leitura, do catálogo MubiSys usado pelo CPQ.
 // SKU recebe um identificador estável MUBISYS-* quando a API não fornece código.
-export const materiasPrimas = pgTable("materias_primas", {
-  id: serial("id").primaryKey(),
-  skuErp: varchar("sku_erp", { length: 120 }).notNull().unique(),
-  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull().unique(),
-  nome: varchar("nome", { length: 256 }).notNull(),
-  unidadeMedida: varchar("unidade_medida", { length: 80 }).notNull().default(""),
-  custoUnitario: decimal("custo_unitario", { precision: 14, scale: 4 }),
-  vendaDireta: boolean("venda_direta"),
-  precoVendaDireta: decimal("preco_venda_direta", { precision: 14, scale: 4 }),
-  larguraUtilMm: decimal("largura_util_mm", { precision: 12, scale: 3 }),
-  alturaUtilMm: decimal("altura_util_mm", { precision: 12, scale: 3 }),
-  espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
-  densidadeKgM3: decimal("densidade_kg_m3", { precision: 12, scale: 4 }),
-  categoriaErp: varchar("categoria_erp", { length: 128 }).notNull().default(""),
-  tipoErp: varchar("tipo_erp", { length: 128 }).notNull().default(""),
-  statusErp: varchar("status_erp", { length: 64 }).notNull().default(""),
-  ativa: boolean("ativa").notNull().default(true),
-  referenciaCusto: varchar("referencia_custo", { length: 80 }),
-  sincronizadoEm: timestamp("sincronizado_em").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  nomeIdx: index("materias_primas_nome_idx").on(table.nome),
-  ativaIdx: index("materias_primas_ativa_idx").on(table.ativa),
-}));
+export const materiasPrimas = pgTable(
+  "materias_primas",
+  {
+    id: serial("id").primaryKey(),
+    skuErp: varchar("sku_erp", { length: 120 }).notNull().unique(),
+    mubisysMateriaPrimaId: integer("mubisys_materia_prima_id")
+      .notNull()
+      .unique(),
+    nome: varchar("nome", { length: 256 }).notNull(),
+    unidadeMedida: varchar("unidade_medida", { length: 80 })
+      .notNull()
+      .default(""),
+    custoUnitario: decimal("custo_unitario", { precision: 14, scale: 4 }),
+    vendaDireta: boolean("venda_direta"),
+    precoVendaDireta: decimal("preco_venda_direta", {
+      precision: 14,
+      scale: 4,
+    }),
+    larguraUtilMm: decimal("largura_util_mm", { precision: 12, scale: 3 }),
+    alturaUtilMm: decimal("altura_util_mm", { precision: 12, scale: 3 }),
+    espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
+    densidadeKgM3: decimal("densidade_kg_m3", { precision: 12, scale: 4 }),
+    categoriaErp: varchar("categoria_erp", { length: 128 })
+      .notNull()
+      .default(""),
+    tipoErp: varchar("tipo_erp", { length: 128 }).notNull().default(""),
+    statusErp: varchar("status_erp", { length: 64 }).notNull().default(""),
+    ativa: boolean("ativa").notNull().default(true),
+    referenciaCusto: varchar("referencia_custo", { length: 80 }),
+    sincronizadoEm: timestamp("sincronizado_em").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    nomeIdx: index("materias_primas_nome_idx").on(table.nome),
+    ativaIdx: index("materias_primas_ativa_idx").on(table.ativa),
+  })
+);
 export type MateriaPrimaEspelho = typeof materiasPrimas.$inferSelect;
 export type InsertMateriaPrimaEspelho = typeof materiasPrimas.$inferInsert;
 
 // O MubiSys expõe modelos e variações na API de catálogo, mas não uma SKU
 // universal documentada. `skuErp` é o código de origem quando existe ou a chave
 // estável MUBISYS-MOD-/MUBISYS-VAR- derivada dos IDs externos.
-export const mubisysVariacoes = pgTable("mubisys_variacoes", {
-  id: serial("id").primaryKey(),
-  skuErp: varchar("sku_erp", { length: 120 }).notNull().unique(),
-  tipo: varchar("tipo", { length: 16 }).notNull(),
-  skuProdutoErp: varchar("sku_produto_erp", { length: 120 }).notNull(),
-  skuModeloErp: varchar("sku_modelo_erp", { length: 120 }).notNull(),
-  mubisysProdutoId: integer("mubisys_produto_id").notNull(),
-  mubisysModeloId: integer("mubisys_modelo_id").notNull(),
-  mubisysVariacaoId: integer("mubisys_variacao_id"),
-  produtoNome: varchar("produto_nome", { length: 256 }).notNull(),
-  categoriaProduto: varchar("categoria_produto", { length: 128 }).notNull().default(""),
-  produtoStatus: varchar("produto_status", { length: 64 }).notNull().default(""),
-  modeloNome: varchar("modelo_nome", { length: 256 }).notNull(),
-  unidadeCobranca: varchar("unidade_cobranca", { length: 80 }).notNull().default(""),
-  modeloStatus: varchar("modelo_status", { length: 64 }).notNull().default(""),
-  modeloValorFinal: decimal("modelo_valor_final", { precision: 14, scale: 4 }),
-  variacaoNome: varchar("variacao_nome", { length: 256 }),
-  variacaoDescricao: text("variacao_descricao"),
-  variacaoStatus: varchar("variacao_status", { length: 64 }),
-  variacaoValorFinal: decimal("variacao_valor_final", { precision: 14, scale: 4 }),
-  variacaoPadrao: boolean("variacao_padrao").notNull().default(false),
-  ativa: boolean("ativa").notNull().default(true),
-  sincronizadoEm: timestamp("sincronizado_em").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  produtoModeloIdx: index("mubisys_variacoes_produto_modelo_idx").on(table.mubisysProdutoId, table.mubisysModeloId),
-  variacaoIdx: index("mubisys_variacoes_variacao_idx").on(table.mubisysVariacaoId),
-  skuModeloIdx: index("mubisys_variacoes_sku_modelo_idx").on(table.skuModeloErp),
-}));
+export const mubisysVariacoes = pgTable(
+  "mubisys_variacoes",
+  {
+    id: serial("id").primaryKey(),
+    skuErp: varchar("sku_erp", { length: 120 }).notNull().unique(),
+    tipo: varchar("tipo", { length: 16 }).notNull(),
+    skuProdutoErp: varchar("sku_produto_erp", { length: 120 }).notNull(),
+    skuModeloErp: varchar("sku_modelo_erp", { length: 120 }).notNull(),
+    mubisysProdutoId: integer("mubisys_produto_id").notNull(),
+    mubisysModeloId: integer("mubisys_modelo_id").notNull(),
+    mubisysVariacaoId: integer("mubisys_variacao_id"),
+    produtoNome: varchar("produto_nome", { length: 256 }).notNull(),
+    categoriaProduto: varchar("categoria_produto", { length: 128 })
+      .notNull()
+      .default(""),
+    produtoStatus: varchar("produto_status", { length: 64 })
+      .notNull()
+      .default(""),
+    modeloNome: varchar("modelo_nome", { length: 256 }).notNull(),
+    unidadeCobranca: varchar("unidade_cobranca", { length: 80 })
+      .notNull()
+      .default(""),
+    modeloStatus: varchar("modelo_status", { length: 64 })
+      .notNull()
+      .default(""),
+    modeloValorFinal: decimal("modelo_valor_final", {
+      precision: 14,
+      scale: 4,
+    }),
+    variacaoNome: varchar("variacao_nome", { length: 256 }),
+    variacaoDescricao: text("variacao_descricao"),
+    variacaoStatus: varchar("variacao_status", { length: 64 }),
+    variacaoValorFinal: decimal("variacao_valor_final", {
+      precision: 14,
+      scale: 4,
+    }),
+    variacaoPadrao: boolean("variacao_padrao").notNull().default(false),
+    ativa: boolean("ativa").notNull().default(true),
+    sincronizadoEm: timestamp("sincronizado_em").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    produtoModeloIdx: index("mubisys_variacoes_produto_modelo_idx").on(
+      table.mubisysProdutoId,
+      table.mubisysModeloId
+    ),
+    variacaoIdx: index("mubisys_variacoes_variacao_idx").on(
+      table.mubisysVariacaoId
+    ),
+    skuModeloIdx: index("mubisys_variacoes_sku_modelo_idx").on(
+      table.skuModeloErp
+    ),
+  })
+);
 export type MubiSysVariacaoEspelho = typeof mubisysVariacoes.$inferSelect;
 export type InsertMubiSysVariacaoEspelho = typeof mubisysVariacoes.$inferInsert;
 
 // Cada linha guarda o consumo original e a fórmula equivalente do CPQ.
 // Linhas comuns apontam para a entidade tipo=modelo; linhas específicas apontam
 // para tipo=variacao. Ao cotar uma variação, o servidor/client combina ambas.
-export const composicoesVariacoes = pgTable("composicoes_variacoes", {
-  id: serial("id").primaryKey(),
-  variacaoSkuErp: varchar("variacao_sku_erp", { length: 120 }).notNull()
-    .references(() => mubisysVariacoes.skuErp, { onDelete: "restrict", onUpdate: "cascade" }),
-  materiaPrimaSkuErp: varchar("materia_prima_sku_erp", { length: 120 }).notNull()
-    .references(() => materiasPrimas.skuErp, { onDelete: "restrict", onUpdate: "cascade" }),
-  mubisysModeloId: integer("mubisys_modelo_id").notNull(),
-  mubisysVariacaoId: integer("mubisys_variacao_id"),
-  consumoQuantidade: decimal("consumo_quantidade", { precision: 14, scale: 6 }).notNull(),
-  unidadeConsumo: varchar("unidade_consumo", { length: 80 }).notNull(),
-  larguraMm: decimal("largura_mm", { precision: 12, scale: 3 }),
-  alturaMm: decimal("altura_mm", { precision: 12, scale: 3 }),
-  espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
-  descritivoComposicao: text("descritivo_composicao"),
-  perfilConsumoMubiSys: varchar("perfil_consumo_mubisys", { length: 160 }).notNull(),
-  formulaConsumo: varchar("formula_consumo", { length: 24 }).notNull(),
-  ordem: integer("ordem").notNull().default(0),
-  origem: varchar("origem", { length: 24 }).notNull().default("csv"),
-  importadoEm: timestamp("importado_em").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  varianteIdx: index("composicoes_variacoes_variacao_idx").on(table.variacaoSkuErp),
-  materiaPrimaIdx: index("composicoes_variacoes_materia_prima_idx").on(table.materiaPrimaSkuErp),
-  modeloIdx: index("composicoes_variacoes_modelo_idx").on(table.mubisysModeloId),
-  unicaLinhaIdx: uniqueIndex("composicoes_variacoes_linha_idx").on(table.variacaoSkuErp, table.materiaPrimaSkuErp, table.ordem),
-}));
-export type ComposicaoVariacaoEspelho = typeof composicoesVariacoes.$inferSelect;
-export type InsertComposicaoVariacaoEspelho = typeof composicoesVariacoes.$inferInsert;
+export const composicoesVariacoes = pgTable(
+  "composicoes_variacoes",
+  {
+    id: serial("id").primaryKey(),
+    variacaoSkuErp: varchar("variacao_sku_erp", { length: 120 })
+      .notNull()
+      .references(() => mubisysVariacoes.skuErp, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    materiaPrimaSkuErp: varchar("materia_prima_sku_erp", { length: 120 })
+      .notNull()
+      .references(() => materiasPrimas.skuErp, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    mubisysModeloId: integer("mubisys_modelo_id").notNull(),
+    mubisysVariacaoId: integer("mubisys_variacao_id"),
+    consumoQuantidade: decimal("consumo_quantidade", {
+      precision: 14,
+      scale: 6,
+    }).notNull(),
+    unidadeConsumo: varchar("unidade_consumo", { length: 80 }).notNull(),
+    larguraMm: decimal("largura_mm", { precision: 12, scale: 3 }),
+    alturaMm: decimal("altura_mm", { precision: 12, scale: 3 }),
+    espessuraMm: decimal("espessura_mm", { precision: 10, scale: 3 }),
+    descritivoComposicao: text("descritivo_composicao"),
+    perfilConsumoMubiSys: varchar("perfil_consumo_mubisys", {
+      length: 160,
+    }).notNull(),
+    formulaConsumo: varchar("formula_consumo", { length: 24 }).notNull(),
+    ordem: integer("ordem").notNull().default(0),
+    origem: varchar("origem", { length: 24 }).notNull().default("csv"),
+    importadoEm: timestamp("importado_em").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    varianteIdx: index("composicoes_variacoes_variacao_idx").on(
+      table.variacaoSkuErp
+    ),
+    materiaPrimaIdx: index("composicoes_variacoes_materia_prima_idx").on(
+      table.materiaPrimaSkuErp
+    ),
+    modeloIdx: index("composicoes_variacoes_modelo_idx").on(
+      table.mubisysModeloId
+    ),
+    unicaLinhaIdx: uniqueIndex("composicoes_variacoes_linha_idx").on(
+      table.variacaoSkuErp,
+      table.materiaPrimaSkuErp,
+      table.ordem
+    ),
+  })
+);
+export type ComposicaoVariacaoEspelho =
+  typeof composicoesVariacoes.$inferSelect;
+export type InsertComposicaoVariacaoEspelho =
+  typeof composicoesVariacoes.$inferInsert;
 
 // Acabamentos e equipamentos importados de arquivo de engenharia. A API
 // pública não oferece esses vínculos com a composição.
-export const acabamentos = pgTable("acabamentos", {
-  id: serial("id").primaryKey(),
-  mubisysAcabamentoId: integer("mubisys_acabamento_id").notNull().unique(),
-  nome: varchar("nome", { length: 256 }).notNull(),
-  tipo: varchar("tipo", { length: 120 }).notNull().default(""),
-  unidade: varchar("unidade", { length: 40 }).notNull().default(""),
-  custoMateriaPrima: decimal("custo_materia_prima", { precision: 14, scale: 4 }),
-  custoMaoDeObra: decimal("custo_mao_de_obra", { precision: 14, scale: 4 }),
-  custoAdicional: decimal("custo_adicional", { precision: 14, scale: 4 }),
-  produtividadeHora: decimal("produtividade_hora", { precision: 14, scale: 6 }),
-  tipoCalculo: varchar("tipo_calculo", { length: 24 }),
-  ativo: boolean("ativo").notNull().default(true),
-  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
-}, table => ({ nomeIdx: index("acabamentos_nome_idx").on(table.nome) }));
+export const acabamentos = pgTable(
+  "acabamentos",
+  {
+    id: serial("id").primaryKey(),
+    mubisysAcabamentoId: integer("mubisys_acabamento_id").notNull().unique(),
+    nome: varchar("nome", { length: 256 }).notNull(),
+    tipo: varchar("tipo", { length: 120 }).notNull().default(""),
+    unidade: varchar("unidade", { length: 40 }).notNull().default(""),
+    custoMateriaPrima: decimal("custo_materia_prima", {
+      precision: 14,
+      scale: 4,
+    }),
+    custoMaoDeObra: decimal("custo_mao_de_obra", { precision: 14, scale: 4 }),
+    custoAdicional: decimal("custo_adicional", { precision: 14, scale: 4 }),
+    produtividadeHora: decimal("produtividade_hora", {
+      precision: 14,
+      scale: 6,
+    }),
+    tipoCalculo: varchar("tipo_calculo", { length: 24 }),
+    ativo: boolean("ativo").notNull().default(true),
+    atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+  },
+  table => ({ nomeIdx: index("acabamentos_nome_idx").on(table.nome) })
+);
 export type AcabamentoMubiSys = typeof acabamentos.$inferSelect;
 export type InsertAcabamentoMubiSys = typeof acabamentos.$inferInsert;
 
-export const composicaoItemAcabamentos = pgTable("composicao_item_acabamentos", {
-  id: serial("id").primaryKey(),
-  composicaoItemId: integer("composicao_item_id").notNull()
-    .references(() => composicoesVariacoes.id, { onDelete: "cascade" }),
-  acabamentoId: integer("acabamento_id").notNull()
-    .references(() => acabamentos.id, { onDelete: "restrict" }),
-  quantidade: decimal("quantidade", { precision: 14, scale: 6 }).notNull().default("1"),
-  unidade: varchar("unidade", { length: 80 }).notNull().default(""),
-  formulaConsumo: varchar("formula_consumo", { length: 24 }),
-  ordem: integer("ordem").notNull().default(0),
-  horasEquipamento: decimal("horas_equipamento", { precision: 12, scale: 4 }),
-}, table => ({
-  itemIdx: index("composicao_item_acabamentos_item_idx").on(table.composicaoItemId, table.ordem),
-  unicoIdx: uniqueIndex("composicao_item_acabamentos_unico_idx").on(table.composicaoItemId, table.acabamentoId, table.ordem),
-}));
+export const composicaoItemAcabamentos = pgTable(
+  "composicao_item_acabamentos",
+  {
+    id: serial("id").primaryKey(),
+    composicaoItemId: integer("composicao_item_id")
+      .notNull()
+      .references(() => composicoesVariacoes.id, { onDelete: "cascade" }),
+    acabamentoId: integer("acabamento_id")
+      .notNull()
+      .references(() => acabamentos.id, { onDelete: "restrict" }),
+    quantidade: decimal("quantidade", { precision: 14, scale: 6 })
+      .notNull()
+      .default("1"),
+    unidade: varchar("unidade", { length: 80 }).notNull().default(""),
+    formulaConsumo: varchar("formula_consumo", { length: 24 }),
+    ordem: integer("ordem").notNull().default(0),
+    horasEquipamento: decimal("horas_equipamento", { precision: 12, scale: 4 }),
+  },
+  table => ({
+    itemIdx: index("composicao_item_acabamentos_item_idx").on(
+      table.composicaoItemId,
+      table.ordem
+    ),
+    unicoIdx: uniqueIndex("composicao_item_acabamentos_unico_idx").on(
+      table.composicaoItemId,
+      table.acabamentoId,
+      table.ordem
+    ),
+  })
+);
 
-export const equipamentos = pgTable("equipamentos", {
-  id: serial("id").primaryKey(),
-  mubisysEquipamentoId: integer("mubisys_equipamento_id").notNull().unique(),
-  nome: varchar("nome", { length: 256 }).notNull(),
-  tipo: varchar("tipo", { length: 120 }).notNull().default(""),
-  custoHora: decimal("custo_hora", { precision: 14, scale: 4 }),
-  ativo: boolean("ativo").notNull().default(true),
-  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
-}, table => ({ nomeIdx: index("equipamentos_nome_idx").on(table.nome) }));
+export const equipamentos = pgTable(
+  "equipamentos",
+  {
+    id: serial("id").primaryKey(),
+    mubisysEquipamentoId: integer("mubisys_equipamento_id").notNull().unique(),
+    nome: varchar("nome", { length: 256 }).notNull(),
+    tipo: varchar("tipo", { length: 120 }).notNull().default(""),
+    custoHora: decimal("custo_hora", { precision: 14, scale: 4 }),
+    ativo: boolean("ativo").notNull().default(true),
+    atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+  },
+  table => ({ nomeIdx: index("equipamentos_nome_idx").on(table.nome) })
+);
 export type EquipamentoMubiSys = typeof equipamentos.$inferSelect;
 export type InsertEquipamentoMubiSys = typeof equipamentos.$inferInsert;
 
-export const composicaoItemEquipamentos = pgTable("composicao_item_equipamentos", {
-  id: serial("id").primaryKey(),
-  composicaoItemId: integer("composicao_item_id").notNull()
-    .references(() => composicoesVariacoes.id, { onDelete: "cascade" }),
-  equipamentoId: integer("equipamento_id").notNull()
-    .references(() => equipamentos.id, { onDelete: "restrict" }),
-  horas: decimal("horas", { precision: 12, scale: 4 }).notNull().default("0"),
-  quantidade: decimal("quantidade", { precision: 14, scale: 6 }).notNull().default("1"),
-  ordem: integer("ordem").notNull().default(0),
-}, table => ({
-  itemIdx: index("composicao_item_equipamentos_item_idx").on(table.composicaoItemId, table.ordem),
-  unicoIdx: uniqueIndex("composicao_item_equipamentos_unico_idx").on(table.composicaoItemId, table.equipamentoId, table.ordem),
-}));
+export const composicaoItemEquipamentos = pgTable(
+  "composicao_item_equipamentos",
+  {
+    id: serial("id").primaryKey(),
+    composicaoItemId: integer("composicao_item_id")
+      .notNull()
+      .references(() => composicoesVariacoes.id, { onDelete: "cascade" }),
+    equipamentoId: integer("equipamento_id")
+      .notNull()
+      .references(() => equipamentos.id, { onDelete: "restrict" }),
+    horas: decimal("horas", { precision: 12, scale: 4 }).notNull().default("0"),
+    quantidade: decimal("quantidade", { precision: 14, scale: 6 })
+      .notNull()
+      .default("1"),
+    ordem: integer("ordem").notNull().default(0),
+  },
+  table => ({
+    itemIdx: index("composicao_item_equipamentos_item_idx").on(
+      table.composicaoItemId,
+      table.ordem
+    ),
+    unicoIdx: uniqueIndex("composicao_item_equipamentos_unico_idx").on(
+      table.composicaoItemId,
+      table.equipamentoId,
+      table.ordem
+    ),
+  })
+);
 
 export const mubisysEspelhoSyncStatus = pgTable("mubisys_espelho_sync_status", {
   chave: varchar("chave", { length: 64 }).primaryKey(),
@@ -848,102 +1354,150 @@ export const mubisysEspelhoSyncStatus = pgTable("mubisys_espelho_sync_status", {
   ultimaSincronizacaoEm: timestamp("ultima_sincronizacao_em"),
   ultimaImportacaoComposicaoEm: timestamp("ultima_importacao_composicao_em"),
   produtosSincronizados: integer("produtos_sincronizados").notNull().default(0),
-  variacoesSincronizadas: integer("variacoes_sincronizadas").notNull().default(0),
-  materiasPrimasSincronizadas: integer("materias_primas_sincronizadas").notNull().default(0),
+  variacoesSincronizadas: integer("variacoes_sincronizadas")
+    .notNull()
+    .default(0),
+  materiasPrimasSincronizadas: integer("materias_primas_sincronizadas")
+    .notNull()
+    .default(0),
   linhasComposicao: integer("linhas_composicao").notNull().default(0),
   ultimoArquivo: varchar("ultimo_arquivo", { length: 255 }),
   ultimoErro: text("ultimo_erro"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-export type MubiSysEspelhoSyncStatus = typeof mubisysEspelhoSyncStatus.$inferSelect;
+export type MubiSysEspelhoSyncStatus =
+  typeof mubisysEspelhoSyncStatus.$inferSelect;
 
 // Configuração de composição comercial de cada modelo do catálogo MubiSys.
 // A API do ERP não fornece a ficha técnica; este cadastro é compartilhado entre
 // vendedores no banco do Radrasys.
-export const estudioKits = pgTable("estudio_kits", {
-  chave: varchar("chave", { length: 80 }).primaryKey(),
-  produtoId: integer("produto_id").notNull(),
-  modeloId: integer("modelo_id").notNull(),
-  dadosJson: jsonb("dados_json").$type<Record<string, unknown>>().notNull().default({}),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  produtoModeloIdx: uniqueIndex("estudio_kits_produto_modelo_idx").on(table.produtoId, table.modeloId),
-}));
+export const estudioKits = pgTable(
+  "estudio_kits",
+  {
+    chave: varchar("chave", { length: 80 }).primaryKey(),
+    produtoId: integer("produto_id").notNull(),
+    modeloId: integer("modelo_id").notNull(),
+    dadosJson: jsonb("dados_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    produtoModeloIdx: uniqueIndex("estudio_kits_produto_modelo_idx").on(
+      table.produtoId,
+      table.modeloId
+    ),
+  })
+);
 export type EstudioKit = typeof estudioKits.$inferSelect;
 export type InsertEstudioKit = typeof estudioKits.$inferInsert;
 
 // Formatos de chapa por matéria-prima do catálogo MubiSys. O ERP fornece custo
 // e identificação do material, mas não expõe dimensões de chapa; os formatos
 // usados pelo nesting ficam cadastrados localmente e podem ter vários tamanhos.
-export const estudioChapas = pgTable("estudio_chapas", {
-  id: serial("id").primaryKey(),
-  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull(),
-  nome: varchar("nome", { length: 256 }).notNull(),
-  larguraMm: integer("largura_mm").notNull(),
-  alturaMm: integer("altura_mm").notNull(),
-  // Uma ou mais referências Pantone da mesma chapa, separadas por vírgula (ex.: "021 C, 804 C").
-  pantoneCode: varchar("pantone_code", { length: 200 }),
-  cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
-  cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
-  cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
-  cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
-  transmissaoLuzPct: decimal("transmissao_luz_pct", { precision: 5, scale: 2 }),
-  transparenciaTipo: varchar("transparencia_tipo", { length: 20 }),
-  /** Bobina: altura_mm é a largura fixa; largura_mm guarda só o comprimento máximo (teto) do rolo. */
-  bobina: boolean("bobina").notNull().default(false),
-  /** Falso = a matéria-prima não tem configuração de cor e fica fora da análise de cores. */
-  temCor: boolean("tem_cor").notNull().default(true),
-  principal: boolean("principal").notNull().default(false),
-  ativo: boolean("ativo").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  materialIdx: index("estudio_chapas_material_idx").on(table.mubisysMateriaPrimaId, table.ativo),
-}));
+export const estudioChapas = pgTable(
+  "estudio_chapas",
+  {
+    id: serial("id").primaryKey(),
+    mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").notNull(),
+    nome: varchar("nome", { length: 256 }).notNull(),
+    larguraMm: integer("largura_mm").notNull(),
+    alturaMm: integer("altura_mm").notNull(),
+    // Uma ou mais referências Pantone da mesma chapa, separadas por vírgula (ex.: "021 C, 804 C").
+    pantoneCode: varchar("pantone_code", { length: 200 }),
+    cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
+    cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
+    cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
+    cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
+    transmissaoLuzPct: decimal("transmissao_luz_pct", {
+      precision: 5,
+      scale: 2,
+    }),
+    transparenciaTipo: varchar("transparencia_tipo", { length: 20 }),
+    /** Bobina: altura_mm é a largura fixa; largura_mm guarda só o comprimento máximo (teto) do rolo. */
+    bobina: boolean("bobina").notNull().default(false),
+    /** Falso = a matéria-prima não tem configuração de cor e fica fora da análise de cores. */
+    temCor: boolean("tem_cor").notNull().default(true),
+    principal: boolean("principal").notNull().default(false),
+    ativo: boolean("ativo").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    materialIdx: index("estudio_chapas_material_idx").on(
+      table.mubisysMateriaPrimaId,
+      table.ativo
+    ),
+  })
+);
 export type EstudioChapa = typeof estudioChapas.$inferSelect;
 export type InsertEstudioChapa = typeof estudioChapas.$inferInsert;
 
 // Catálogo de cores sólidas e translúcidas Imprimax. Os registros são
 // importados de catálogo/planilha validada; não há API pública documentada.
-export const estudioImprimaxAdesivos = pgTable("estudio_imprimax_adesivos", {
-  id: serial("id").primaryKey(),
-  codigo: varchar("codigo", { length: 80 }).notNull(),
-  linha: varchar("linha", { length: 120 }).notNull(),
-  nomeCor: varchar("nome_cor", { length: 160 }).notNull(),
-  tipoVinil: varchar("tipo_vinil", { length: 24 }).notNull(),
-  acabamento: varchar("acabamento", { length: 40 }),
-  corHex: varchar("cor_hex", { length: 7 }),
-  pantoneCode: varchar("pantone_code", { length: 32 }),
-  cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
-  cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
-  cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
-  cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
-  transmissaoLuzPct: decimal("transmissao_luz_pct", { precision: 5, scale: 2 }),
-  precoM2: decimal("preco_m2", { precision: 12, scale: 4 }),
-  catalogoVersao: varchar("catalogo_versao", { length: 60 }),
-  origemUrl: text("origem_url"),
-  ativo: boolean("ativo").notNull().default(true),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  codigoUidx: uniqueIndex("estudio_imprimax_codigo_uidx").on(table.codigo),
-  ativoIdx: index("estudio_imprimax_ativo_idx").on(table.ativo, table.linha),
-}));
-export type EstudioImprimaxAdesivo = typeof estudioImprimaxAdesivos.$inferSelect;
-export type InsertEstudioImprimaxAdesivo = typeof estudioImprimaxAdesivos.$inferInsert;
+export const estudioImprimaxAdesivos = pgTable(
+  "estudio_imprimax_adesivos",
+  {
+    id: serial("id").primaryKey(),
+    codigo: varchar("codigo", { length: 80 }).notNull(),
+    linha: varchar("linha", { length: 120 }).notNull(),
+    nomeCor: varchar("nome_cor", { length: 160 }).notNull(),
+    tipoVinil: varchar("tipo_vinil", { length: 24 }).notNull(),
+    acabamento: varchar("acabamento", { length: 40 }),
+    corHex: varchar("cor_hex", { length: 7 }),
+    pantoneCode: varchar("pantone_code", { length: 32 }),
+    cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
+    cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
+    cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
+    cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
+    transmissaoLuzPct: decimal("transmissao_luz_pct", {
+      precision: 5,
+      scale: 2,
+    }),
+    precoM2: decimal("preco_m2", { precision: 12, scale: 4 }),
+    catalogoVersao: varchar("catalogo_versao", { length: 60 }),
+    origemUrl: text("origem_url"),
+    ativo: boolean("ativo").notNull().default(true),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    codigoUidx: uniqueIndex("estudio_imprimax_codigo_uidx").on(table.codigo),
+    ativoIdx: index("estudio_imprimax_ativo_idx").on(table.ativo, table.linha),
+  })
+);
+export type EstudioImprimaxAdesivo =
+  typeof estudioImprimaxAdesivos.$inferSelect;
+export type InsertEstudioImprimaxAdesivo =
+  typeof estudioImprimaxAdesivos.$inferInsert;
 
 // Custos unitários de impressão. Valores nulos são pendências comerciais,
 // nunca custo zero presumido.
 export const estudioPrecosImpressao = pgTable("estudio_precos_impressao", {
   id: integer("id").primaryKey().default(1),
   vinilBrancoM2: decimal("vinil_branco_m2", { precision: 12, scale: 4 }),
-  vinilBrancoTransmissaoPct: decimal("vinil_branco_transmissao_pct", { precision: 5, scale: 2 }),
-  vinilTransparenteM2: decimal("vinil_transparente_m2", { precision: 12, scale: 4 }),
-  vinilTransparenteTransmissaoPct: decimal("vinil_transparente_transmissao_pct", { precision: 5, scale: 2 }),
+  vinilBrancoTransmissaoPct: decimal("vinil_branco_transmissao_pct", {
+    precision: 5,
+    scale: 2,
+  }),
+  vinilTransparenteM2: decimal("vinil_transparente_m2", {
+    precision: 12,
+    scale: 4,
+  }),
+  vinilTransparenteTransmissaoPct: decimal(
+    "vinil_transparente_transmissao_pct",
+    { precision: 5, scale: 2 }
+  ),
   impressaoM2: decimal("impressao_m2", { precision: 12, scale: 4 }),
   laminacaoM2: decimal("laminacao_m2", { precision: 12, scale: 4 }),
   larguraBobinaMm: integer("largura_bobina_mm"),
   larguraUtilBobinaMm: integer("largura_util_bobina_mm"),
-  sangriaPerimetralMm: decimal("sangria_perimetral_mm", { precision: 6, scale: 2 }).notNull().default("3.00"),
+  sangriaPerimetralMm: decimal("sangria_perimetral_mm", {
+    precision: 6,
+    scale: 2,
+  })
+    .notNull()
+    .default("3.00"),
   retalhoReutilizavel: boolean("retalho_reutilizavel").notNull().default(false),
   laminacaoPadrao: boolean("laminacao_padrao").notNull().default(false),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -951,150 +1505,242 @@ export const estudioPrecosImpressao = pgTable("estudio_precos_impressao", {
 export type EstudioPrecoImpressao = typeof estudioPrecosImpressao.$inferSelect;
 
 // Snapshot por região de cor para auditoria e recálculo da proposta.
-export const estudioMapeamentoCoresCotacao = pgTable("estudio_mapeamento_cores_cotacao", {
-  id: serial("id").primaryKey(),
-  sourceId: varchar("source_id", { length: 80 }).notNull(),
-  regionKey: varchar("region_key", { length: 80 }).notNull(),
-  corHex: varchar("cor_hex", { length: 7 }),
-  corRgbJson: jsonb("cor_rgb_json").$type<{ r: number; g: number; b: number } | null>(),
-  pantoneCode: varchar("pantone_code", { length: 32 }),
-  cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
-  cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
-  cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
-  cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
-  tipoCor: varchar("tipo_cor", { length: 24 }).notNull(),
-  areaM2: decimal("area_m2", { precision: 12, scale: 6 }),
-  modoIluminacao: varchar("modo_iluminacao", { length: 24 }).notNull().default("sem_iluminacao"),
-  tipoSugestao: varchar("tipo_sugestao", { length: 24 }).notNull(),
-  chapaId: integer("chapa_id"),
-  imprimaxAdesivoId: integer("imprimax_adesivo_id"),
-  deltaE00: decimal("delta_e00", { precision: 8, scale: 3 }),
-  custoEstimado: decimal("custo_estimado", { precision: 12, scale: 4 }),
-  detalhesJson: jsonb("detalhes_json").$type<Record<string, unknown>>().notNull().default({}),
-  aprovado: boolean("aprovado").notNull().default(false),
-  aprovadoPor: varchar("aprovado_por", { length: 80 }),
-  aprovadoEm: timestamp("aprovado_em"),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  sourceRegionUidx: uniqueIndex("estudio_cores_cotacao_source_region_uidx").on(table.sourceId, table.regionKey),
-  sourceIdx: index("estudio_cores_cotacao_source_idx").on(table.sourceId),
-}));
-export type EstudioMapeamentoCorCotacao = typeof estudioMapeamentoCoresCotacao.$inferSelect;
+export const estudioMapeamentoCoresCotacao = pgTable(
+  "estudio_mapeamento_cores_cotacao",
+  {
+    id: serial("id").primaryKey(),
+    sourceId: varchar("source_id", { length: 80 }).notNull(),
+    regionKey: varchar("region_key", { length: 80 }).notNull(),
+    corHex: varchar("cor_hex", { length: 7 }),
+    corRgbJson: jsonb("cor_rgb_json").$type<{
+      r: number;
+      g: number;
+      b: number;
+    } | null>(),
+    pantoneCode: varchar("pantone_code", { length: 32 }),
+    cmykC: decimal("cmyk_c", { precision: 5, scale: 2 }),
+    cmykM: decimal("cmyk_m", { precision: 5, scale: 2 }),
+    cmykY: decimal("cmyk_y", { precision: 5, scale: 2 }),
+    cmykK: decimal("cmyk_k", { precision: 5, scale: 2 }),
+    tipoCor: varchar("tipo_cor", { length: 24 }).notNull(),
+    areaM2: decimal("area_m2", { precision: 12, scale: 6 }),
+    modoIluminacao: varchar("modo_iluminacao", { length: 24 })
+      .notNull()
+      .default("sem_iluminacao"),
+    tipoSugestao: varchar("tipo_sugestao", { length: 24 }).notNull(),
+    chapaId: integer("chapa_id"),
+    imprimaxAdesivoId: integer("imprimax_adesivo_id"),
+    deltaE00: decimal("delta_e00", { precision: 8, scale: 3 }),
+    custoEstimado: decimal("custo_estimado", { precision: 12, scale: 4 }),
+    detalhesJson: jsonb("detalhes_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    aprovado: boolean("aprovado").notNull().default(false),
+    aprovadoPor: varchar("aprovado_por", { length: 80 }),
+    aprovadoEm: timestamp("aprovado_em"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    sourceRegionUidx: uniqueIndex(
+      "estudio_cores_cotacao_source_region_uidx"
+    ).on(table.sourceId, table.regionKey),
+    sourceIdx: index("estudio_cores_cotacao_source_idx").on(table.sourceId),
+  })
+);
+export type EstudioMapeamentoCorCotacao =
+  typeof estudioMapeamentoCoresCotacao.$inferSelect;
 
 // ─── 3D do CPQ: materiais visuais (PBR) ─────────────────────────────────────
 // Perfil visual de um material para a renderização 3D (ver server/services/cpqRender3d.ts). Cada linha é UMA VERSÃO do perfil:
 // um perfil usado numa aprovação 3D é imutável (a edição relevante cria nova versão com o mesmo slug) e a cotação emitida guarda
 // profile_id + versão. `ativo` marca a versão corrente do slug (a que novos vínculos usam).
-export const cpqRenderMaterialProfiles = pgTable("cpq_render_material_profiles", {
-  id: serial("id").primaryKey(),
-  slug: varchar("slug", { length: 80 }).notNull(),
-  versao: integer("versao").notNull().default(1),
-  nome: varchar("nome", { length: 160 }).notNull(),
-  familia: varchar("familia", { length: 32 }).notNull(),
-  ativo: boolean("ativo").notNull().default(true),
-  // Acabamento descritivo (ex.: "escovado 180 grit", "PU fosco"); o veio vai em pbr_json.anisotropyRotationRad.
-  acabamento: varchar("acabamento", { length: 160 }),
-  // Marcado por um gestor depois de comparar o shader com a amostra física. Falso = aparência ainda aproximada.
-  calibrado: boolean("calibrado").notNull().default(false),
-  pbrJson: jsonb("pbr_json").$type<Record<string, unknown>>().notNull(),
-  notas: text("notas"),
-  autorNome: varchar("autor_nome", { length: 160 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  slugVersaoUidx: uniqueIndex("cpq_render_profiles_slug_versao_uidx").on(table.slug, table.versao),
-  ativoIdx: index("cpq_render_profiles_ativo_idx").on(table.ativo, table.familia),
-}));
-export type CpqRenderMaterialProfile = typeof cpqRenderMaterialProfiles.$inferSelect;
-export type InsertCpqRenderMaterialProfile = typeof cpqRenderMaterialProfiles.$inferInsert;
+export const cpqRenderMaterialProfiles = pgTable(
+  "cpq_render_material_profiles",
+  {
+    id: serial("id").primaryKey(),
+    slug: varchar("slug", { length: 80 }).notNull(),
+    versao: integer("versao").notNull().default(1),
+    nome: varchar("nome", { length: 160 }).notNull(),
+    familia: varchar("familia", { length: 32 }).notNull(),
+    ativo: boolean("ativo").notNull().default(true),
+    // Acabamento descritivo (ex.: "escovado 180 grit", "PU fosco"); o veio vai em pbr_json.anisotropyRotationRad.
+    acabamento: varchar("acabamento", { length: 160 }),
+    // Marcado por um gestor depois de comparar o shader com a amostra física. Falso = aparência ainda aproximada.
+    calibrado: boolean("calibrado").notNull().default(false),
+    pbrJson: jsonb("pbr_json").$type<Record<string, unknown>>().notNull(),
+    notas: text("notas"),
+    autorNome: varchar("autor_nome", { length: 160 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    slugVersaoUidx: uniqueIndex("cpq_render_profiles_slug_versao_uidx").on(
+      table.slug,
+      table.versao
+    ),
+    ativoIdx: index("cpq_render_profiles_ativo_idx").on(
+      table.ativo,
+      table.familia
+    ),
+  })
+);
+export type CpqRenderMaterialProfile =
+  typeof cpqRenderMaterialProfiles.$inferSelect;
+export type InsertCpqRenderMaterialProfile =
+  typeof cpqRenderMaterialProfiles.$inferInsert;
 
 // Mapas de textura de um perfil. Foto de referência (kind = "reference") é só para comparação humana; baseColor sem luz gravada;
 // normal/roughness/metalness/anisotropy/ao são mapas de dados. O arquivo vive no UploadThing (nunca base64 no banco).
-export const cpqRenderMaterialAssets = pgTable("cpq_render_material_assets", {
-  id: serial("id").primaryKey(),
-  profileId: integer("profile_id").notNull().references(() => cpqRenderMaterialProfiles.id, { onDelete: "cascade" }),
-  kind: varchar("kind", { length: 16 }).notNull(),
-  url: text("url").notNull(),
-  storageKey: varchar("storage_key", { length: 256 }),
-  mimeType: varchar("mime_type", { length: 32 }).notNull(),
-  sha256: varchar("sha256", { length: 64 }).notNull(),
-  widthPx: integer("width_px"),
-  heightPx: integer("height_px"),
-  // Quantos milímetros reais o tile (a imagem inteira) representa — base do repeat calculado pela dimensão física da peça.
-  tileWidthMm: decimal("tile_width_mm", { precision: 10, scale: 3 }),
-  tileHeightMm: decimal("tile_height_mm", { precision: 10, scale: 3 }),
-  colorSpace: varchar("color_space", { length: 8 }).notNull().default("none"),
-  sourceNote: text("source_note"),
-  calibrated: boolean("calibrated").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, table => ({
-  profileIdx: index("cpq_render_assets_profile_idx").on(table.profileId, table.kind),
-}));
-export type CpqRenderMaterialAsset = typeof cpqRenderMaterialAssets.$inferSelect;
-export type InsertCpqRenderMaterialAsset = typeof cpqRenderMaterialAssets.$inferInsert;
+export const cpqRenderMaterialAssets = pgTable(
+  "cpq_render_material_assets",
+  {
+    id: serial("id").primaryKey(),
+    profileId: integer("profile_id")
+      .notNull()
+      .references(() => cpqRenderMaterialProfiles.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    url: text("url").notNull(),
+    storageKey: varchar("storage_key", { length: 256 }),
+    mimeType: varchar("mime_type", { length: 32 }).notNull(),
+    sha256: varchar("sha256", { length: 64 }).notNull(),
+    widthPx: integer("width_px"),
+    heightPx: integer("height_px"),
+    // Quantos milímetros reais o tile (a imagem inteira) representa — base do repeat calculado pela dimensão física da peça.
+    tileWidthMm: decimal("tile_width_mm", { precision: 10, scale: 3 }),
+    tileHeightMm: decimal("tile_height_mm", { precision: 10, scale: 3 }),
+    colorSpace: varchar("color_space", { length: 8 }).notNull().default("none"),
+    sourceNote: text("source_note"),
+    calibrated: boolean("calibrated").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  table => ({
+    profileIdx: index("cpq_render_assets_profile_idx").on(
+      table.profileId,
+      table.kind
+    ),
+  })
+);
+export type CpqRenderMaterialAsset =
+  typeof cpqRenderMaterialAssets.$inferSelect;
+export type InsertCpqRenderMaterialAsset =
+  typeof cpqRenderMaterialAssets.$inferInsert;
 
 // Vínculo matéria-prima do MubiSys → versão do perfil visual, com overrides limitados (cor, direção do veio).
-export const cpqRenderMaterialLinks = pgTable("cpq_render_material_links", {
-  mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").primaryKey(),
-  profileId: integer("profile_id").notNull().references(() => cpqRenderMaterialProfiles.id, { onDelete: "restrict" }),
-  overridesJson: jsonb("overrides_json").$type<Record<string, unknown>>(),
-  atualizadoPor: varchar("atualizado_por", { length: 160 }),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, table => ({
-  profileIdx: index("cpq_render_links_profile_idx").on(table.profileId),
-}));
+export const cpqRenderMaterialLinks = pgTable(
+  "cpq_render_material_links",
+  {
+    mubisysMateriaPrimaId: integer("mubisys_materia_prima_id").primaryKey(),
+    profileId: integer("profile_id")
+      .notNull()
+      .references(() => cpqRenderMaterialProfiles.id, { onDelete: "restrict" }),
+    overridesJson: jsonb("overrides_json").$type<Record<string, unknown>>(),
+    atualizadoPor: varchar("atualizado_por", { length: 160 }),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  table => ({
+    profileIdx: index("cpq_render_links_profile_idx").on(table.profileId),
+  })
+);
 export type CpqRenderMaterialLink = typeof cpqRenderMaterialLinks.$inferSelect;
 
 // Auditoria das aprovações humanas do 3D, por orçamento (source_id) e hash da especificação. `profile_ids` trava os perfis usados
 // (um perfil citado aqui deixa de ser editável: edição cria nova versão).
-export const cpqRender3dApprovals = pgTable("cpq_render3d_approvals", {
-  id: serial("id").primaryKey(),
-  sourceId: varchar("source_id", { length: 80 }).notNull(),
-  specHash: varchar("spec_hash", { length: 64 }).notNull(),
-  vectorHash: varchar("vector_hash", { length: 64 }).notNull(),
-  approvedById: varchar("approved_by_id", { length: 80 }).notNull(),
-  approvedByName: varchar("approved_by_name", { length: 160 }).notNull(),
-  approvedByRole: varchar("approved_by_role", { length: 32 }).notNull(),
-  previewDayUrl: text("preview_day_url"),
-  previewNightUrl: text("preview_night_url"),
-  previewExplodedUrl: text("preview_exploded_url"),
-  profileIds: integer("profile_ids").array().notNull().default([]),
-  materiaisJson: jsonb("materiais_json").$type<unknown[]>().notNull().default([]),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, table => ({
-  sourceIdx: index("cpq_render3d_approvals_source_idx").on(table.sourceId, table.createdAt),
-  specIdx: index("cpq_render3d_approvals_spec_idx").on(table.specHash),
-}));
+export const cpqRender3dApprovals = pgTable(
+  "cpq_render3d_approvals",
+  {
+    id: serial("id").primaryKey(),
+    sourceId: varchar("source_id", { length: 80 }).notNull(),
+    specHash: varchar("spec_hash", { length: 64 }).notNull(),
+    vectorHash: varchar("vector_hash", { length: 64 }).notNull(),
+    approvedById: varchar("approved_by_id", { length: 80 }).notNull(),
+    approvedByName: varchar("approved_by_name", { length: 160 }).notNull(),
+    approvedByRole: varchar("approved_by_role", { length: 32 }).notNull(),
+    previewDayUrl: text("preview_day_url"),
+    previewNightUrl: text("preview_night_url"),
+    previewExplodedUrl: text("preview_exploded_url"),
+    profileIds: integer("profile_ids").array().notNull().default([]),
+    materiaisJson: jsonb("materiais_json")
+      .$type<unknown[]>()
+      .notNull()
+      .default([]),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  table => ({
+    sourceIdx: index("cpq_render3d_approvals_source_idx").on(
+      table.sourceId,
+      table.createdAt
+    ),
+    specIdx: index("cpq_render3d_approvals_spec_idx").on(table.specHash),
+  })
+);
 export type CpqRender3dApprovalRow = typeof cpqRender3dApprovals.$inferSelect;
 
 // ─── SISTEMA DE USUÁRIOS LOCAIS E PERMISSÕES ────────────────────────────────
 
 // Tipos de role do sistema
-export const APP_ROLES = ["master", "admin", "gestor", "vendas", "logistica", "producao", "financeiro", "empacotamento"] as const;
-export type AppRole = typeof APP_ROLES[number];
+export const APP_ROLES = [
+  "master",
+  "admin",
+  "gestor",
+  "vendas",
+  "logistica",
+  "producao",
+  "financeiro",
+  "empacotamento",
+] as const;
+export type AppRole = (typeof APP_ROLES)[number];
 export const appRoleEnum = pgEnum("app_role", APP_ROLES);
 
 // Chaves de todas as páginas/abas do sistema
 export const PAGE_KEYS = [
-  "painel", "retrabalhos", "inserir", "biblioteca", "reincidencia",
-  "relatorio", "insights", "conhecimento", "fornecedores", "rotinas",
-  "regulamentos", "pops", "tabela-preco",
-  "logistica-dashboard", "logistica-solicitacoes", "logistica-minhas-cotacoes",
-  "logistica-transportadoras", "logistica-consulta", "logistica-importar-cte",
-  "logistica-assertividade", "logistica-empacotamento",
-  "operacoes-performance", "operacoes-custo-solda", "operacoes-custo-led",
-  "biblioteca-arquivos", "sugestoes-conhecimento",
+  "painel",
+  "retrabalhos",
+  "inserir",
+  "biblioteca",
+  "reincidencia",
+  "relatorio",
+  "insights",
+  "conhecimento",
+  "fornecedores",
+  "rotinas",
+  "regulamentos",
+  "pops",
+  "tabela-preco",
+  "logistica-dashboard",
+  "logistica-solicitacoes",
+  "logistica-minhas-cotacoes",
+  "logistica-transportadoras",
+  "logistica-consulta",
+  "logistica-importar-cte",
+  "logistica-assertividade",
+  "logistica-empacotamento",
+  "operacoes-performance",
+  "operacoes-custo-solda",
+  "operacoes-custo-led",
+  "biblioteca-arquivos",
+  "sugestoes-conhecimento",
   "auditoria",
   "cargos-funcoes",
   "financeiro",
-  "admin", "admin-usuarios", "admin-permissoes",
-  "comercial-performance", "comercial-metas", "comercial-crm", "comercial-crm-config",
-  "comercial-tabela-preco", "comercial-planos-acao", "comercial-geografia", "comercial-insights-ia",
-  "qualidade-planos", "qualidade-desempenho",
-  "logistica-cte", "logistica-insights-ia",
+  "admin",
+  "admin-usuarios",
+  "admin-permissoes",
+  "comercial-performance",
+  "comercial-metas",
+  "comercial-crm",
+  "comercial-crm-config",
+  "comercial-tabela-preco",
+  "comercial-planos-acao",
+  "comercial-geografia",
+  "comercial-insights-ia",
+  "qualidade-planos",
+  "qualidade-desempenho",
+  "logistica-cte",
+  "logistica-insights-ia",
   "metricas",
 ] as const;
-export type PageKey = typeof PAGE_KEYS[number];
+export type PageKey = (typeof PAGE_KEYS)[number];
 
 // ─── BETTER AUTH (Fase 3 da migração) ───────────────────────────────────────
 // Nomes de tabela/export em singular (user/session/account/verification) não
@@ -1123,25 +1769,45 @@ export type InsertBetterAuthUser = typeof user.$inferInsert;
 
 // Trilha append-only das exceções de margem aplicadas a itens de propostas.
 // A auditoria conserva o itemId mesmo se a linha comercial for removida.
-export const propostasExcecoesMargem = pgTable("propostas_excecoes_margem", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  propostaId: integer("proposta_id").notNull().references(() => propostas.id),
-  itemId: integer("item_id").notNull(),
-  gestorId: text("gestor_id").notNull().references(() => user.id),
-  gestorNome: varchar("gestor_nome", { length: 128 }).notNull(),
-  gestorRole: varchar("gestor_role", { length: 32 }).notNull(),
-  produtoId: integer("produto_id").notNull(),
-  precoAprovado: decimal("preco_aprovado", { precision: 12, scale: 2 }).notNull(),
-  precoMinimoTecnico: decimal("preco_minimo_tecnico", { precision: 12, scale: 2 }).notNull(),
-  motivoJustificativa: text("motivo_justificativa").notNull(),
-  reciboAssinado: text("recibo_assinado").notNull(),
-  dadosJson: jsonb("dados_json").$type<Record<string, unknown>>().notNull(),
-  criadoEm: timestamp("criado_em").defaultNow().notNull(),
-}, table => ({
-  propostaIdx: index("propostas_excecoes_margem_proposta_idx").on(table.propostaId, table.criadoEm),
-  itemIdx: index("propostas_excecoes_margem_item_idx").on(table.itemId, table.criadoEm),
-  gestorIdx: index("propostas_excecoes_margem_gestor_idx").on(table.gestorId),
-}));
+export const propostasExcecoesMargem = pgTable(
+  "propostas_excecoes_margem",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    propostaId: integer("proposta_id")
+      .notNull()
+      .references(() => propostas.id),
+    itemId: integer("item_id").notNull(),
+    gestorId: text("gestor_id")
+      .notNull()
+      .references(() => user.id),
+    gestorNome: varchar("gestor_nome", { length: 128 }).notNull(),
+    gestorRole: varchar("gestor_role", { length: 32 }).notNull(),
+    produtoId: integer("produto_id").notNull(),
+    precoAprovado: decimal("preco_aprovado", {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+    precoMinimoTecnico: decimal("preco_minimo_tecnico", {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
+    motivoJustificativa: text("motivo_justificativa").notNull(),
+    reciboAssinado: text("recibo_assinado").notNull(),
+    dadosJson: jsonb("dados_json").$type<Record<string, unknown>>().notNull(),
+    criadoEm: timestamp("criado_em").defaultNow().notNull(),
+  },
+  table => ({
+    propostaIdx: index("propostas_excecoes_margem_proposta_idx").on(
+      table.propostaId,
+      table.criadoEm
+    ),
+    itemIdx: index("propostas_excecoes_margem_item_idx").on(
+      table.itemId,
+      table.criadoEm
+    ),
+    gestorIdx: index("propostas_excecoes_margem_gestor_idx").on(table.gestorId),
+  })
+);
 export type PropostaExcecaoMargem = typeof propostasExcecoesMargem.$inferSelect;
 
 export const session = pgTable("session", {
@@ -1150,7 +1816,9 @@ export const session = pgTable("session", {
   token: text("token").notNull().unique(),
   ipAddress: text("ipAddress"),
   userAgent: text("userAgent"),
-  userId: text("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  userId: text("userId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   impersonatedBy: text("impersonatedBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -1160,7 +1828,9 @@ export const account = pgTable("account", {
   id: text("id").primaryKey(),
   accountId: text("accountId").notNull(),
   providerId: text("providerId").notNull(),
-  userId: text("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  userId: text("userId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   accessToken: text("accessToken"),
   refreshToken: text("refreshToken"),
   idToken: text("idToken"),
@@ -1255,8 +1925,10 @@ export const transportadoraAvaliacoes = pgTable("transportadora_avaliacoes", {
   autor: varchar("autor", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
-export type TransportadoraAvaliacao = typeof transportadoraAvaliacoes.$inferSelect;
-export type InsertTransportadoraAvaliacao = typeof transportadoraAvaliacoes.$inferInsert;
+export type TransportadoraAvaliacao =
+  typeof transportadoraAvaliacoes.$inferSelect;
+export type InsertTransportadoraAvaliacao =
+  typeof transportadoraAvaliacoes.$inferInsert;
 
 // Filiais das transportadoras
 export const transportadoraFiliais = pgTable("transportadora_filiais", {
@@ -1270,7 +1942,8 @@ export const transportadoraFiliais = pgTable("transportadora_filiais", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type TransportadoraFilial = typeof transportadoraFiliais.$inferSelect;
-export type InsertTransportadoraFilial = typeof transportadoraFiliais.$inferInsert;
+export type InsertTransportadoraFilial =
+  typeof transportadoraFiliais.$inferInsert;
 
 // Cidades/regiões atendidas por cada transportadora
 export const transportadoraCidades = pgTable("transportadora_cidades", {
@@ -1286,7 +1959,8 @@ export const transportadoraCidades = pgTable("transportadora_cidades", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type TransportadoraCidade = typeof transportadoraCidades.$inferSelect;
-export type InsertTransportadoraCidade = typeof transportadoraCidades.$inferInsert;
+export type InsertTransportadoraCidade =
+  typeof transportadoraCidades.$inferInsert;
 
 // Solicitações de cotação de frete
 export const cotacoesFrete = pgTable("cotacoes_frete", {
@@ -1302,14 +1976,19 @@ export const cotacoesFrete = pgTable("cotacoes_frete", {
   modalidadeFrete: modalidadeFreteEnum("modalidadeFrete"),
   dimensoesLargura: decimal("dimensoesLargura", { precision: 8, scale: 2 }),
   dimensoesAltura: decimal("dimensoesAltura", { precision: 8, scale: 2 }),
-  dimensoesComprimento: decimal("dimensoesComprimento", { precision: 8, scale: 2 }),
+  dimensoesComprimento: decimal("dimensoesComprimento", {
+    precision: 8,
+    scale: 2,
+  }),
   pesoKg: decimal("pesoKg", { precision: 8, scale: 2 }),
   valorNf: decimal("valorNf", { precision: 12, scale: 2 }),
   observacoes: text("observacoes"),
   observacaoGol: text("observacaoGol"),
   fotoUrl: text("fotoUrl"),
   empacotamentoPedidoId: integer("empacotamentoPedidoId"),
-  empacotamentoPedidoNumero: varchar("empacotamentoPedidoNumero", { length: 64 }),
+  empacotamentoPedidoNumero: varchar("empacotamentoPedidoNumero", {
+    length: 64,
+  }),
   status: cotacaoStatusEnum("status").default("aberta").notNull(),
   quantidadeVolumes: integer("quantidadeVolumes").default(1),
   volumesJson: text("volumesJson"),
@@ -1395,9 +2074,15 @@ export const performanceMensal = pgTable("performance_mensal", {
   capacidadeOsDiaMax: decimal("capacidadeOsDiaMax", { precision: 6, scale: 2 }),
   deficitFinalizacao: decimal("deficitFinalizacao", { precision: 5, scale: 2 }),
   metaEmbalagemDia: decimal("metaEmbalagemDia", { precision: 6, scale: 2 }),
-  producaoEmbalagemDia: decimal("producaoEmbalagemDia", { precision: 6, scale: 2 }),
+  producaoEmbalagemDia: decimal("producaoEmbalagemDia", {
+    precision: 6,
+    scale: 2,
+  }),
   metaAcabamentoDia: decimal("metaAcabamentoDia", { precision: 6, scale: 2 }),
-  capacidadeAcabamentoDia: decimal("capacidadeAcabamentoDia", { precision: 6, scale: 2 }),
+  capacidadeAcabamentoDia: decimal("capacidadeAcabamentoDia", {
+    precision: 6,
+    scale: 2,
+  }),
   capacidadeNominalSolda: integer("capacidadeNominalSolda"),
   producaoInternaSolda: integer("producaoInternaSolda"),
   demandaTotalSolda: integer("demandaTotalSolda"),
@@ -1406,25 +2091,58 @@ export const performanceMensal = pgTable("performance_mensal", {
   metaOsGeradas: integer("metaOsGeradas"),
   metaOsExpedicao: integer("metaOsExpedicao"),
   metaProducaoSolda: integer("metaProducaoSolda"),
-  metaPercTerceirizacao: decimal("metaPercTerceirizacao", { precision: 5, scale: 2 }),
+  metaPercTerceirizacao: decimal("metaPercTerceirizacao", {
+    precision: 5,
+    scale: 2,
+  }),
   numSoldadores: integer("numSoldadores"),
-  soldadorSalarioBase: decimal("soldadorSalarioBase", { precision: 10, scale: 2 }),
-  soldadorHorasExtras: decimal("soldadorHorasExtras", { precision: 8, scale: 2 }),
-  soldadorValorHoraExtra: decimal("soldadorValorHoraExtra", { precision: 8, scale: 2 }),
-  soldadorOutrosCustos: decimal("soldadorOutrosCustos", { precision: 10, scale: 2 }),
-  custoProdutividadeSolda: decimal("custoProdutividadeSolda", { precision: 12, scale: 2 }),
+  soldadorSalarioBase: decimal("soldadorSalarioBase", {
+    precision: 10,
+    scale: 2,
+  }),
+  soldadorHorasExtras: decimal("soldadorHorasExtras", {
+    precision: 8,
+    scale: 2,
+  }),
+  soldadorValorHoraExtra: decimal("soldadorValorHoraExtra", {
+    precision: 8,
+    scale: 2,
+  }),
+  soldadorOutrosCustos: decimal("soldadorOutrosCustos", {
+    precision: 10,
+    scale: 2,
+  }),
+  custoProdutividadeSolda: decimal("custoProdutividadeSolda", {
+    precision: 12,
+    scale: 2,
+  }),
   gestorSalarioBase: decimal("gestorSalarioBase", { precision: 10, scale: 2 }),
   gestorHorasExtras: decimal("gestorHorasExtras", { precision: 8, scale: 2 }),
-  gestorValorHoraExtra: decimal("gestorValorHoraExtra", { precision: 8, scale: 2 }),
-  gestorOutrosCustos: decimal("gestorOutrosCustos", { precision: 10, scale: 2 }),
-  custoMetroTerceirizado: decimal("custoMetroTerceirizado", { precision: 8, scale: 2 }),
+  gestorValorHoraExtra: decimal("gestorValorHoraExtra", {
+    precision: 8,
+    scale: 2,
+  }),
+  gestorOutrosCustos: decimal("gestorOutrosCustos", {
+    precision: 10,
+    scale: 2,
+  }),
+  custoMetroTerceirizado: decimal("custoMetroTerceirizado", {
+    precision: 8,
+    scale: 2,
+  }),
   precoVendaMetro: decimal("precoVendaMetro", { precision: 8, scale: 2 }),
-  faturamentoRealizado: decimal("faturamentoRealizado", { precision: 14, scale: 2 }),
+  faturamentoRealizado: decimal("faturamentoRealizado", {
+    precision: 14,
+    scale: 2,
+  }),
   metaFaturamento: decimal("metaFaturamento", { precision: 14, scale: 2 }),
   projetosEntregues: integer("projetosEntregues"),
   projetosNoPrazo: integer("projetosNoPrazo"),
   projetosForaPrazo: integer("projetosForaPrazo"),
-  metaEntregaNoPrazoPct: decimal("metaEntregaNoPrazoPct", { precision: 5, scale: 2 }),
+  metaEntregaNoPrazoPct: decimal("metaEntregaNoPrazoPct", {
+    precision: 5,
+    scale: 2,
+  }),
   metaRetrabalhoPct: decimal("metaRetrabalhoPct", { precision: 5, scale: 2 }),
   totalPedidos: integer("totalPedidos"),
   observacoes: text("observacoes"),
@@ -1450,7 +2168,8 @@ export const auditoriaRetrabalhos = pgTable("auditoria_retrabalhos", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type AuditoriaRetrabalho = typeof auditoriaRetrabalhos.$inferSelect;
-export type InsertAuditoriaRetrabalho = typeof auditoriaRetrabalhos.$inferInsert;
+export type InsertAuditoriaRetrabalho =
+  typeof auditoriaRetrabalhos.$inferInsert;
 
 // ─── Cargos e Funções ─────────────────────────────────────────────────────────
 export const cargosFuncoes = pgTable("cargos_funcoes", {
@@ -1484,56 +2203,87 @@ export const empacotamentoModelos = pgTable("empacotamento_modelos", {
   descricao: text("descricao"),
   modeloCaixaIdPadrao: integer("modeloCaixaIdPadrao"),
   tempoPorM2Min: decimal("tempoPorM2Min", { precision: 8, scale: 2 }),
-  valorProdutividadePorMinLetreiro: decimal("valorProdutividadePorMinLetreiro", { precision: 10, scale: 4 }),
+  valorProdutividadePorMinLetreiro: decimal(
+    "valorProdutividadePorMinLetreiro",
+    { precision: 10, scale: 4 }
+  ),
   ativo: integer("ativo").notNull().default(1),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type EmpacotamentoModelo = typeof empacotamentoModelos.$inferSelect;
-export type InsertEmpacotamentoModelo = typeof empacotamentoModelos.$inferInsert;
+export type InsertEmpacotamentoModelo =
+  typeof empacotamentoModelos.$inferInsert;
 
-export const empacotamentoTabelaPrecos = pgTable("empacotamento_tabela_precos", {
-  id: serial("id").primaryKey(),
-  modeloId: integer("modeloId").notNull(),
-  tipoCaixa: varchar("tipoCaixa", { length: 64 }).notNull(),
-  valorComissao: decimal("valorComissao", { precision: 8, scale: 2 }).notNull().default("0"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type EmpacotamentoTabelaPreco = typeof empacotamentoTabelaPrecos.$inferSelect;
-export type InsertEmpacotamentoTabelaPreco = typeof empacotamentoTabelaPrecos.$inferInsert;
+export const empacotamentoTabelaPrecos = pgTable(
+  "empacotamento_tabela_precos",
+  {
+    id: serial("id").primaryKey(),
+    modeloId: integer("modeloId").notNull(),
+    tipoCaixa: varchar("tipoCaixa", { length: 64 }).notNull(),
+    valorComissao: decimal("valorComissao", { precision: 8, scale: 2 })
+      .notNull()
+      .default("0"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoTabelaPreco =
+  typeof empacotamentoTabelaPrecos.$inferSelect;
+export type InsertEmpacotamentoTabelaPreco =
+  typeof empacotamentoTabelaPrecos.$inferInsert;
 
-export const empacotamentoModelosCaixa = pgTable("empacotamento_modelos_caixa", {
-  id: serial("id").primaryKey(),
-  nome: varchar("nome", { length: 128 }).notNull(),
-  descricao: text("descricao"),
-  tipoCaixa: varchar("tipoCaixa", { length: 32 }).notNull().default("padronizada"),
-  larguraCm: decimal("larguraCm", { precision: 8, scale: 2 }),
-  alturaCm: decimal("alturaCm", { precision: 8, scale: 2 }),
-  profundidadeCm: decimal("profundidadeCm", { precision: 8, scale: 2 }),
-  custoAquisicao: decimal("custoAquisicao", { precision: 10, scale: 2 }).notNull().default("0"),
-  custoAquisicaoAtualizadoEm: timestamp("custoAquisicaoAtualizadoEm"),
-  tempoPorM2Min: decimal("tempoPorM2Min", { precision: 8, scale: 2 }),
-  tempoPorM3Min: decimal("tempoPorM3Min", { precision: 8, scale: 2 }),
-  tempoPorMetroArestaMin: decimal("tempoPorMetroArestaMin", { precision: 8, scale: 2 }),
-  valorProdutividadePorCm2: decimal("valorProdutividadePorCm2", { precision: 10, scale: 6 }),
-  ativo: integer("ativo").notNull().default(1),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type EmpacotamentoModeloCaixa = typeof empacotamentoModelosCaixa.$inferSelect;
-export type InsertEmpacotamentoModeloCaixa = typeof empacotamentoModelosCaixa.$inferInsert;
+export const empacotamentoModelosCaixa = pgTable(
+  "empacotamento_modelos_caixa",
+  {
+    id: serial("id").primaryKey(),
+    nome: varchar("nome", { length: 128 }).notNull(),
+    descricao: text("descricao"),
+    tipoCaixa: varchar("tipoCaixa", { length: 32 })
+      .notNull()
+      .default("padronizada"),
+    larguraCm: decimal("larguraCm", { precision: 8, scale: 2 }),
+    alturaCm: decimal("alturaCm", { precision: 8, scale: 2 }),
+    profundidadeCm: decimal("profundidadeCm", { precision: 8, scale: 2 }),
+    custoAquisicao: decimal("custoAquisicao", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
+    custoAquisicaoAtualizadoEm: timestamp("custoAquisicaoAtualizadoEm"),
+    tempoPorM2Min: decimal("tempoPorM2Min", { precision: 8, scale: 2 }),
+    tempoPorM3Min: decimal("tempoPorM3Min", { precision: 8, scale: 2 }),
+    tempoPorMetroArestaMin: decimal("tempoPorMetroArestaMin", {
+      precision: 8,
+      scale: 2,
+    }),
+    valorProdutividadePorCm2: decimal("valorProdutividadePorCm2", {
+      precision: 10,
+      scale: 6,
+    }),
+    ativo: integer("ativo").notNull().default(1),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoModeloCaixa =
+  typeof empacotamentoModelosCaixa.$inferSelect;
+export type InsertEmpacotamentoModeloCaixa =
+  typeof empacotamentoModelosCaixa.$inferInsert;
 
-export const empacotamentoChecklistItens = pgTable("empacotamento_checklist_itens", {
-  id: serial("id").primaryKey(),
-  modeloCaixaId: integer("modeloCaixaId").notNull(),
-  ordem: integer("ordem").notNull().default(0),
-  descricao: varchar("descricao", { length: 256 }).notNull(),
-  obrigatorio: integer("obrigatorio").notNull().default(1),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-export type EmpacotamentoChecklistItem = typeof empacotamentoChecklistItens.$inferSelect;
-export type InsertEmpacotamentoChecklistItem = typeof empacotamentoChecklistItens.$inferInsert;
+export const empacotamentoChecklistItens = pgTable(
+  "empacotamento_checklist_itens",
+  {
+    id: serial("id").primaryKey(),
+    modeloCaixaId: integer("modeloCaixaId").notNull(),
+    ordem: integer("ordem").notNull().default(0),
+    descricao: varchar("descricao", { length: 256 }).notNull(),
+    obrigatorio: integer("obrigatorio").notNull().default(1),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoChecklistItem =
+  typeof empacotamentoChecklistItens.$inferSelect;
+export type InsertEmpacotamentoChecklistItem =
+  typeof empacotamentoChecklistItens.$inferInsert;
 
 // Pedidos de empacotamento (fila de despacho)
 export const empacotamentoPedidos = pgTable("empacotamento_pedidos", {
@@ -1548,7 +2298,9 @@ export const empacotamentoPedidos = pgTable("empacotamento_pedidos", {
   arquivoUrl: text("arquivoUrl"),
   arquivoKey: text("arquivoKey"),
   arquivoTipo: varchar("arquivoTipo", { length: 16 }),
-  kanbanStatus: kanbanStatusEnum("kanbanStatus").notNull().default("aguardando"),
+  kanbanStatus: kanbanStatusEnum("kanbanStatus")
+    .notNull()
+    .default("aguardando"),
   prazoEntrega: timestamp("prazoEntrega"),
   horarioMaximo: varchar("horarioMaximo", { length: 8 }),
   finalizadoEm: timestamp("finalizadoEm"),
@@ -1570,21 +2322,27 @@ export const empacotamentoPedidos = pgTable("empacotamento_pedidos", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type EmpacotamentoPedido = typeof empacotamentoPedidos.$inferSelect;
-export type InsertEmpacotamentoPedido = typeof empacotamentoPedidos.$inferInsert;
+export type InsertEmpacotamentoPedido =
+  typeof empacotamentoPedidos.$inferInsert;
 
-export const empacotamentoPedidoUsuarios = pgTable("empacotamento_pedido_usuarios", {
-  id: serial("id").primaryKey(),
-  pedidoId: integer("pedidoId").notNull(),
-  usuarioId: text("usuarioId"), // user.id (Better Auth)
-  usuarioNome: varchar("usuarioNome", { length: 128 }).notNull(),
-  iniciadoEm: timestamp("iniciadoEm"),
-  finalizadoEm: timestamp("finalizadoEm"),
-  tempoSegundos: integer("tempoSegundos").default(0),
-  ativo: integer("ativo").notNull().default(1),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-export type EmpacotamentoPedidoUsuario = typeof empacotamentoPedidoUsuarios.$inferSelect;
-export type InsertEmpacotamentoPedidoUsuario = typeof empacotamentoPedidoUsuarios.$inferInsert;
+export const empacotamentoPedidoUsuarios = pgTable(
+  "empacotamento_pedido_usuarios",
+  {
+    id: serial("id").primaryKey(),
+    pedidoId: integer("pedidoId").notNull(),
+    usuarioId: text("usuarioId"), // user.id (Better Auth)
+    usuarioNome: varchar("usuarioNome", { length: 128 }).notNull(),
+    iniciadoEm: timestamp("iniciadoEm"),
+    finalizadoEm: timestamp("finalizadoEm"),
+    tempoSegundos: integer("tempoSegundos").default(0),
+    ativo: integer("ativo").notNull().default(1),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoPedidoUsuario =
+  typeof empacotamentoPedidoUsuarios.$inferSelect;
+export type InsertEmpacotamentoPedidoUsuario =
+  typeof empacotamentoPedidoUsuarios.$inferInsert;
 
 export const empacotamentoPedidoFotos = pgTable("empacotamento_pedido_fotos", {
   id: serial("id").primaryKey(),
@@ -1594,19 +2352,26 @@ export const empacotamentoPedidoFotos = pgTable("empacotamento_pedido_fotos", {
   usuarioNome: varchar("usuarioNome", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
-export type EmpacotamentoPedidoFoto = typeof empacotamentoPedidoFotos.$inferSelect;
-export type InsertEmpacotamentoPedidoFoto = typeof empacotamentoPedidoFotos.$inferInsert;
+export type EmpacotamentoPedidoFoto =
+  typeof empacotamentoPedidoFotos.$inferSelect;
+export type InsertEmpacotamentoPedidoFoto =
+  typeof empacotamentoPedidoFotos.$inferInsert;
 
-export const empacotamentoPedidoChecklist = pgTable("empacotamento_pedido_checklist", {
-  id: serial("id").primaryKey(),
-  pedidoId: integer("pedidoId").notNull(),
-  itemId: integer("itemId").notNull(),
-  marcado: integer("marcado").notNull().default(0),
-  marcadoPor: varchar("marcadoPor", { length: 128 }),
-  marcadoEm: timestamp("marcadoEm"),
-});
-export type EmpacotamentoPedidoChecklistItem = typeof empacotamentoPedidoChecklist.$inferSelect;
-export type InsertEmpacotamentoPedidoChecklistItem = typeof empacotamentoPedidoChecklist.$inferInsert;
+export const empacotamentoPedidoChecklist = pgTable(
+  "empacotamento_pedido_checklist",
+  {
+    id: serial("id").primaryKey(),
+    pedidoId: integer("pedidoId").notNull(),
+    itemId: integer("itemId").notNull(),
+    marcado: integer("marcado").notNull().default(0),
+    marcadoPor: varchar("marcadoPor", { length: 128 }),
+    marcadoEm: timestamp("marcadoEm"),
+  }
+);
+export type EmpacotamentoPedidoChecklistItem =
+  typeof empacotamentoPedidoChecklist.$inferSelect;
+export type InsertEmpacotamentoPedidoChecklistItem =
+  typeof empacotamentoPedidoChecklist.$inferInsert;
 
 // ─── Empacotamento v3: Insumos, Precificação e Custo de Funcionário ───────────
 
@@ -1614,7 +2379,9 @@ export const empacotamentoInsumos = pgTable("empacotamento_insumos", {
   id: serial("id").primaryKey(),
   nome: varchar("nome", { length: 128 }).notNull(),
   unidadeMedida: varchar("unidadeMedida", { length: 32 }).notNull(),
-  custoUnitario: decimal("custoUnitario", { precision: 10, scale: 4 }).notNull().default("0"),
+  custoUnitario: decimal("custoUnitario", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
   precoAtualizadoEm: timestamp("precoAtualizadoEm"),
   categoria: varchar("categoria", { length: 64 }),
   ativo: integer("ativo").notNull().default(1),
@@ -1622,90 +2389,148 @@ export const empacotamentoInsumos = pgTable("empacotamento_insumos", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type EmpacotamentoInsumo = typeof empacotamentoInsumos.$inferSelect;
-export type InsertEmpacotamentoInsumo = typeof empacotamentoInsumos.$inferInsert;
+export type InsertEmpacotamentoInsumo =
+  typeof empacotamentoInsumos.$inferInsert;
 
-export const empacotamentoConsumoCaixa = pgTable("empacotamento_consumo_caixa", {
-  id: serial("id").primaryKey(),
-  modeloCaixaId: integer("modeloCaixaId").notNull(),
-  insumoId: integer("insumoId").notNull(),
-  quantidadePorCaixa: decimal("quantidadePorCaixa", { precision: 10, scale: 4 }).notNull().default("0"),
-  formulaConsumo: varchar("formulaConsumo", { length: 32 }).notNull().default("fixo"),
-  fator: decimal("fator", { precision: 8, scale: 4 }).notNull().default("1"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type EmpacotamentoConsumoCaixa = typeof empacotamentoConsumoCaixa.$inferSelect;
-export type InsertEmpacotamentoConsumoCaixa = typeof empacotamentoConsumoCaixa.$inferInsert;
+export const empacotamentoConsumoCaixa = pgTable(
+  "empacotamento_consumo_caixa",
+  {
+    id: serial("id").primaryKey(),
+    modeloCaixaId: integer("modeloCaixaId").notNull(),
+    insumoId: integer("insumoId").notNull(),
+    quantidadePorCaixa: decimal("quantidadePorCaixa", {
+      precision: 10,
+      scale: 4,
+    })
+      .notNull()
+      .default("0"),
+    formulaConsumo: varchar("formulaConsumo", { length: 32 })
+      .notNull()
+      .default("fixo"),
+    fator: decimal("fator", { precision: 8, scale: 4 }).notNull().default("1"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoConsumoCaixa =
+  typeof empacotamentoConsumoCaixa.$inferSelect;
+export type InsertEmpacotamentoConsumoCaixa =
+  typeof empacotamentoConsumoCaixa.$inferInsert;
 
-export const empacotamentoCustoFuncionario = pgTable("empacotamento_custo_funcionario", {
-  id: serial("id").primaryKey(),
-  nome: varchar("nome", { length: 128 }).notNull().default("Padrão"),
-  salarioMensal: decimal("salarioMensal", { precision: 10, scale: 2 }).notNull().default("0"),
-  horasMes: decimal("horasMes", { precision: 6, scale: 2 }).notNull().default("220"),
-  custoHora: decimal("custoHora", { precision: 10, scale: 4 }),
-  ativo: integer("ativo").notNull().default(1),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type EmpacotamentoCustoFuncionario = typeof empacotamentoCustoFuncionario.$inferSelect;
-export type InsertEmpacotamentoCustoFuncionario = typeof empacotamentoCustoFuncionario.$inferInsert;
+export const empacotamentoCustoFuncionario = pgTable(
+  "empacotamento_custo_funcionario",
+  {
+    id: serial("id").primaryKey(),
+    nome: varchar("nome", { length: 128 }).notNull().default("Padrão"),
+    salarioMensal: decimal("salarioMensal", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
+    horasMes: decimal("horasMes", { precision: 6, scale: 2 })
+      .notNull()
+      .default("220"),
+    custoHora: decimal("custoHora", { precision: 10, scale: 4 }),
+    ativo: integer("ativo").notNull().default(1),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoCustoFuncionario =
+  typeof empacotamentoCustoFuncionario.$inferSelect;
+export type InsertEmpacotamentoCustoFuncionario =
+  typeof empacotamentoCustoFuncionario.$inferInsert;
 
-export const empacotamentoInsumosLetreiro = pgTable("empacotamento_insumos_letreiro", {
-  id: serial("id").primaryKey(),
-  modeloLetreiId: integer("modeloLetreiId").notNull(),
-  insumoId: integer("insumoId").notNull(),
-  quantidade: decimal("quantidade", { precision: 10, scale: 4 }).notNull().default("1"),
-  fatorM2: decimal("fatorM2", { precision: 10, scale: 4 }),
-  observacao: varchar("observacao", { length: 255 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type EmpacotamentoInsumoLetreiro = typeof empacotamentoInsumosLetreiro.$inferSelect;
-export type InsertEmpacotamentoInsumoLetreiro = typeof empacotamentoInsumosLetreiro.$inferInsert;
+export const empacotamentoInsumosLetreiro = pgTable(
+  "empacotamento_insumos_letreiro",
+  {
+    id: serial("id").primaryKey(),
+    modeloLetreiId: integer("modeloLetreiId").notNull(),
+    insumoId: integer("insumoId").notNull(),
+    quantidade: decimal("quantidade", { precision: 10, scale: 4 })
+      .notNull()
+      .default("1"),
+    fatorM2: decimal("fatorM2", { precision: 10, scale: 4 }),
+    observacao: varchar("observacao", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoInsumoLetreiro =
+  typeof empacotamentoInsumosLetreiro.$inferSelect;
+export type InsertEmpacotamentoInsumoLetreiro =
+  typeof empacotamentoInsumosLetreiro.$inferInsert;
 
-export const empacotamentoCronometroPausas = pgTable("empacotamento_cronometro_pausas", {
-  id: serial("id").primaryKey(),
-  pedidoUsuarioId: integer("pedidoUsuarioId").notNull(),
-  pausadoEm: timestamp("pausadoEm").notNull(),
-  retomadoEm: timestamp("retomadoEm"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-export type EmpacotamentoCronometroPausa = typeof empacotamentoCronometroPausas.$inferSelect;
-export type InsertEmpacotamentoCronometroPausa = typeof empacotamentoCronometroPausas.$inferInsert;
+export const empacotamentoCronometroPausas = pgTable(
+  "empacotamento_cronometro_pausas",
+  {
+    id: serial("id").primaryKey(),
+    pedidoUsuarioId: integer("pedidoUsuarioId").notNull(),
+    pausadoEm: timestamp("pausadoEm").notNull(),
+    retomadoEm: timestamp("retomadoEm"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoCronometroPausa =
+  typeof empacotamentoCronometroPausas.$inferSelect;
+export type InsertEmpacotamentoCronometroPausa =
+  typeof empacotamentoCronometroPausas.$inferInsert;
 
-export const empacotamentoConfigProdutividade = pgTable("empacotamento_config_produtividade", {
-  id: serial("id").primaryKey(),
-  valorPorMinuto: decimal("valorPorMinuto", { precision: 10, scale: 4 }).notNull().default("0.15"),
-  bonusPorcentagem: decimal("bonusPorcentagem", { precision: 5, scale: 2 }).notNull().default("20.00"),
-  penalidadePorcentagem: decimal("penalidadePorcentagem", { precision: 5, scale: 2 }).notNull().default("30.00"),
-  descricao: varchar("descricao", { length: 255 }),
-  ativo: integer("ativo").notNull().default(1),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type EmpacotamentoConfigProdutividade = typeof empacotamentoConfigProdutividade.$inferSelect;
-export type InsertEmpacotamentoConfigProdutividade = typeof empacotamentoConfigProdutividade.$inferInsert;
+export const empacotamentoConfigProdutividade = pgTable(
+  "empacotamento_config_produtividade",
+  {
+    id: serial("id").primaryKey(),
+    valorPorMinuto: decimal("valorPorMinuto", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0.15"),
+    bonusPorcentagem: decimal("bonusPorcentagem", { precision: 5, scale: 2 })
+      .notNull()
+      .default("20.00"),
+    penalidadePorcentagem: decimal("penalidadePorcentagem", {
+      precision: 5,
+      scale: 2,
+    })
+      .notNull()
+      .default("30.00"),
+    descricao: varchar("descricao", { length: 255 }),
+    ativo: integer("ativo").notNull().default(1),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoConfigProdutividade =
+  typeof empacotamentoConfigProdutividade.$inferSelect;
+export type InsertEmpacotamentoConfigProdutividade =
+  typeof empacotamentoConfigProdutividade.$inferInsert;
 
-export const empacotamentoChecklistLetreitoItens = pgTable("empacotamento_checklist_letreiro_itens", {
-  id: serial("id").primaryKey(),
-  modeloLetreitoId: integer("modeloLetreitoId").notNull(),
-  ordem: integer("ordem").notNull().default(0),
-  descricao: varchar("descricao", { length: 512 }).notNull(),
-  obrigatorio: integer("obrigatorio").notNull().default(1),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-export type EmpacotamentoChecklistLetreitoItem = typeof empacotamentoChecklistLetreitoItens.$inferSelect;
-export type InsertEmpacotamentoChecklistLetreitoItem = typeof empacotamentoChecklistLetreitoItens.$inferInsert;
+export const empacotamentoChecklistLetreitoItens = pgTable(
+  "empacotamento_checklist_letreiro_itens",
+  {
+    id: serial("id").primaryKey(),
+    modeloLetreitoId: integer("modeloLetreitoId").notNull(),
+    ordem: integer("ordem").notNull().default(0),
+    descricao: varchar("descricao", { length: 512 }).notNull(),
+    obrigatorio: integer("obrigatorio").notNull().default(1),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  }
+);
+export type EmpacotamentoChecklistLetreitoItem =
+  typeof empacotamentoChecklistLetreitoItens.$inferSelect;
+export type InsertEmpacotamentoChecklistLetreitoItem =
+  typeof empacotamentoChecklistLetreitoItens.$inferInsert;
 
-export const empacotamentoPedidoChecklistLetreiro = pgTable("empacotamento_pedido_checklist_letreiro", {
-  id: serial("id").primaryKey(),
-  pedidoId: integer("pedidoId").notNull(),
-  itemId: integer("itemId").notNull(),
-  marcado: integer("marcado").notNull().default(0),
-  marcadoPor: varchar("marcadoPor", { length: 128 }),
-  marcadoEm: timestamp("marcadoEm"),
-});
-export type EmpacotamentoPedidoChecklistLetreiro = typeof empacotamentoPedidoChecklistLetreiro.$inferSelect;
-export type InsertEmpacotamentoPedidoChecklistLetreiro = typeof empacotamentoPedidoChecklistLetreiro.$inferInsert;
+export const empacotamentoPedidoChecklistLetreiro = pgTable(
+  "empacotamento_pedido_checklist_letreiro",
+  {
+    id: serial("id").primaryKey(),
+    pedidoId: integer("pedidoId").notNull(),
+    itemId: integer("itemId").notNull(),
+    marcado: integer("marcado").notNull().default(0),
+    marcadoPor: varchar("marcadoPor", { length: 128 }),
+    marcadoEm: timestamp("marcadoEm"),
+  }
+);
+export type EmpacotamentoPedidoChecklistLetreiro =
+  typeof empacotamentoPedidoChecklistLetreiro.$inferSelect;
+export type InsertEmpacotamentoPedidoChecklistLetreiro =
+  typeof empacotamentoPedidoChecklistLetreiro.$inferInsert;
 
 export const empacotamentoSessoes = pgTable("empacotamento_sessoes", {
   id: serial("id").primaryKey(),
@@ -1722,16 +2547,22 @@ export const empacotamentoSessoes = pgTable("empacotamento_sessoes", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type EmpacotamentoSessao = typeof empacotamentoSessoes.$inferSelect;
-export type InsertEmpacotamentoSessao = typeof empacotamentoSessoes.$inferInsert;
+export type InsertEmpacotamentoSessao =
+  typeof empacotamentoSessoes.$inferInsert;
 
-export const empacotamentoSessoesPausas = pgTable("empacotamento_sessoes_pausas", {
-  id: serial("id").primaryKey(),
-  sessaoId: integer("sessaoId").notNull(),
-  pausadoEm: integer("pausadoEm").notNull(),
-  retomadoEm: integer("retomadoEm"),
-});
-export type EmpacotamentoSessaoPausa = typeof empacotamentoSessoesPausas.$inferSelect;
-export type InsertEmpacotamentoSessaoPausa = typeof empacotamentoSessoesPausas.$inferInsert;
+export const empacotamentoSessoesPausas = pgTable(
+  "empacotamento_sessoes_pausas",
+  {
+    id: serial("id").primaryKey(),
+    sessaoId: integer("sessaoId").notNull(),
+    pausadoEm: integer("pausadoEm").notNull(),
+    retomadoEm: integer("retomadoEm"),
+  }
+);
+export type EmpacotamentoSessaoPausa =
+  typeof empacotamentoSessoesPausas.$inferSelect;
+export type InsertEmpacotamentoSessaoPausa =
+  typeof empacotamentoSessoesPausas.$inferInsert;
 
 // ─── SUGESTÕES DE INCORPORAÇÃO NA BASE DE CONHECIMENTO ──────────────────────
 export const knowledgeSuggestions = pgTable("knowledge_suggestions", {
@@ -1749,7 +2580,8 @@ export const knowledgeSuggestions = pgTable("knowledge_suggestions", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type KnowledgeSuggestion = typeof knowledgeSuggestions.$inferSelect;
-export type InsertKnowledgeSuggestion = typeof knowledgeSuggestions.$inferInsert;
+export type InsertKnowledgeSuggestion =
+  typeof knowledgeSuggestions.$inferInsert;
 
 // ─── Ações Corretivas de Retrabalho ──────────────────────────────────────────
 export const acoesCorretivas = pgTable("acoes_corretivas", {
@@ -1760,7 +2592,10 @@ export const acoesCorretivas = pgTable("acoes_corretivas", {
   responsavel: varchar("responsavel", { length: 128 }),
   prazoResolucao: timestamp("prazoResolucao"),
   dataResolucao: timestamp("dataResolucao"),
-  custoAdicional: decimal("custoAdicional", { precision: 10, scale: 2 }).default("0"),
+  custoAdicional: decimal("custoAdicional", {
+    precision: 10,
+    scale: 2,
+  }).default("0"),
   observacoes: text("observacoes"),
   registradoPor: varchar("registradoPor", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1831,8 +2666,14 @@ export const metasRetrabalho = pgTable("metas_retrabalho", {
   mes: integer("mes"),
   metaMaxRetrabalhosMes: integer("metaMaxRetrabalhosMes"),
   metaMaxCustoMes: decimal("metaMaxCustoMes", { precision: 12, scale: 2 }),
-  metaMaxPercFaturamento: decimal("metaMaxPercFaturamento", { precision: 5, scale: 2 }),
-  metaMaxPercEvitaveis: decimal("metaMaxPercEvitaveis", { precision: 5, scale: 2 }),
+  metaMaxPercFaturamento: decimal("metaMaxPercFaturamento", {
+    precision: 5,
+    scale: 2,
+  }),
+  metaMaxPercEvitaveis: decimal("metaMaxPercEvitaveis", {
+    precision: 5,
+    scale: 2,
+  }),
   metaMinResolucaoDias: integer("metaMinResolucaoDias"),
   metaMaxReincidencias: integer("metaMaxReincidencias"),
   metasPorSetor: text("metasPorSetor"),
@@ -1899,31 +2740,56 @@ export const abcCache = pgTable("abc_cache", {
 export type AbcCache = typeof abcCache.$inferSelect;
 export type InsertAbcCache = typeof abcCache.$inferInsert;
 // Linhas de OS faturadas do MubiSys, preservadas para Curva ABC e impacto de preços.
-export const mubisysVendasItens = pgTable("mubisys_vendas_itens", {
-  id: serial("id").primaryKey(),
-  osId: integer("os_id").notNull(),
-  osNumero: integer("os_numero"),
-  itemId: integer("item_id").notNull(),
-  faturadaEm: varchar("faturada_em", { length: 32 }).notNull(),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  produtoId: integer("produto_id"),
-  modeloId: integer("modelo_id"),
-  variacaoId: integer("variacao_id"),
-  skuErp: varchar("sku_erp", { length: 120 }),
-  nome: varchar("nome", { length: 256 }).notNull(),
-  modeloNome: varchar("modelo_nome", { length: 256 }),
-  variacaoNome: varchar("variacao_nome", { length: 256 }),
-  quantidade: decimal("quantidade", { precision: 14, scale: 6 }).notNull().default("1"),
-  faturamento: decimal("faturamento", { precision: 14, scale: 2 }).notNull().default("0"),
-  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
-}, table => ({
-  osItemIdx: uniqueIndex("mubisys_vendas_itens_os_item_idx").on(table.osId, table.itemId),
-  periodoSkuIdx: index("mubisys_vendas_itens_periodo_sku_idx").on(table.ano, table.mes, table.skuErp),
-  periodoModeloIdx: index("mubisys_vendas_itens_periodo_modelo_idx").on(table.ano, table.mes, table.modeloId),
-  periodoVariacaoIdx: index("mubisys_vendas_itens_periodo_variacao_idx").on(table.ano, table.mes, table.variacaoId),
-  faturadaIdx: index("mubisys_vendas_itens_faturada_idx").on(table.faturadaEm),
-}));
+export const mubisysVendasItens = pgTable(
+  "mubisys_vendas_itens",
+  {
+    id: serial("id").primaryKey(),
+    osId: integer("os_id").notNull(),
+    osNumero: integer("os_numero"),
+    itemId: integer("item_id").notNull(),
+    faturadaEm: varchar("faturada_em", { length: 32 }).notNull(),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    produtoId: integer("produto_id"),
+    modeloId: integer("modelo_id"),
+    variacaoId: integer("variacao_id"),
+    skuErp: varchar("sku_erp", { length: 120 }),
+    nome: varchar("nome", { length: 256 }).notNull(),
+    modeloNome: varchar("modelo_nome", { length: 256 }),
+    variacaoNome: varchar("variacao_nome", { length: 256 }),
+    quantidade: decimal("quantidade", { precision: 14, scale: 6 })
+      .notNull()
+      .default("1"),
+    faturamento: decimal("faturamento", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+  },
+  table => ({
+    osItemIdx: uniqueIndex("mubisys_vendas_itens_os_item_idx").on(
+      table.osId,
+      table.itemId
+    ),
+    periodoSkuIdx: index("mubisys_vendas_itens_periodo_sku_idx").on(
+      table.ano,
+      table.mes,
+      table.skuErp
+    ),
+    periodoModeloIdx: index("mubisys_vendas_itens_periodo_modelo_idx").on(
+      table.ano,
+      table.mes,
+      table.modeloId
+    ),
+    periodoVariacaoIdx: index("mubisys_vendas_itens_periodo_variacao_idx").on(
+      table.ano,
+      table.mes,
+      table.variacaoId
+    ),
+    faturadaIdx: index("mubisys_vendas_itens_faturada_idx").on(
+      table.faturadaEm
+    ),
+  })
+);
 export type MubisysVendasItem = typeof mubisysVendasItens.$inferSelect;
 export type InsertMubisysVendasItem = typeof mubisysVendasItens.$inferInsert;
 
@@ -1937,37 +2803,79 @@ export const mubisysVendasSyncStatus = pgTable("mubisys_vendas_sync_status", {
   ordensSincronizadas: integer("ordens_sincronizadas").notNull().default(0),
   linhasSincronizadas: integer("linhas_sincronizadas").notNull().default(0),
   linhasSemValor: integer("linhas_sem_valor").notNull().default(0),
-  faturamentoTotal: decimal("faturamento_total", { precision: 16, scale: 2 }).notNull().default("0"),
+  faturamentoTotal: decimal("faturamento_total", { precision: 16, scale: 2 })
+    .notNull()
+    .default("0"),
   ultimoErro: text("ultimo_erro"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-export type MubisysVendasSyncStatus = typeof mubisysVendasSyncStatus.$inferSelect;
+export type MubisysVendasSyncStatus =
+  typeof mubisysVendasSyncStatus.$inferSelect;
 
 // ─── METAS OPERACIONAIS ──────────────────────────────────────────────────────
 export const metasOperacionais = pgTable("metas_operacionais", {
   id: serial("id").primaryKey(),
   anoVigencia: integer("anoVigencia"),
-  metaEntregaNoPrazoPct: decimal("metaEntregaNoPrazoPct", { precision: 5, scale: 2 }).default("90.00"),
+  metaEntregaNoPrazoPct: decimal("metaEntregaNoPrazoPct", {
+    precision: 5,
+    scale: 2,
+  }).default("90.00"),
   metaMaxRetrabalhosMes: integer("metaMaxRetrabalhosMes"),
-  metaMaxRetrabalhoPct: decimal("metaMaxRetrabalhoPct", { precision: 5, scale: 2 }).default("5.00"),
-  metaFaturamentoMensal: decimal("metaFaturamentoMensal", { precision: 14, scale: 2 }).default("425000.00"),
-  metaFaturamentoAnual: decimal("metaFaturamentoAnual", { precision: 16, scale: 2 }),
-  metaLucratividadePct: decimal("metaLucratividadePct", { precision: 5, scale: 2 }),
-  metaLucratividadeValor: decimal("metaLucratividadeValor", { precision: 14, scale: 2 }),
-  metaLucratividadeAnual: decimal("metaLucratividadeAnual", { precision: 16, scale: 2 }),
+  metaMaxRetrabalhoPct: decimal("metaMaxRetrabalhoPct", {
+    precision: 5,
+    scale: 2,
+  }).default("5.00"),
+  metaFaturamentoMensal: decimal("metaFaturamentoMensal", {
+    precision: 14,
+    scale: 2,
+  }).default("425000.00"),
+  metaFaturamentoAnual: decimal("metaFaturamentoAnual", {
+    precision: 16,
+    scale: 2,
+  }),
+  metaLucratividadePct: decimal("metaLucratividadePct", {
+    precision: 5,
+    scale: 2,
+  }),
+  metaLucratividadeValor: decimal("metaLucratividadeValor", {
+    precision: 14,
+    scale: 2,
+  }),
+  metaLucratividadeAnual: decimal("metaLucratividadeAnual", {
+    precision: 16,
+    scale: 2,
+  }),
   metaMetrosSoldadosMes: integer("metaMetrosSoldadosMes"),
   metaCapacidadeSoldaMin: integer("metaCapacidadeSoldaMin"),
   metaCapacidadeSoldaMax: integer("metaCapacidadeSoldaMax"),
   numSoldadores: integer("numSoldadores"),
-  metaMediaSoldaPorSoldador: decimal("metaMediaSoldaPorSoldador", { precision: 10, scale: 2 }),
-  metaMaxPrejuizoRetrabalhoMes: decimal("metaMaxPrejuizoRetrabalhoMes", { precision: 12, scale: 2 }),
-  metaMaxPrejuizoRetrabalhoPct: decimal("metaMaxPrejuizoRetrabalhoPct", { precision: 5, scale: 2 }),
-  metaOsPorColaboradorDia: decimal("metaOsPorColaboradorDia", { precision: 6, scale: 2 }),
+  metaMediaSoldaPorSoldador: decimal("metaMediaSoldaPorSoldador", {
+    precision: 10,
+    scale: 2,
+  }),
+  metaMaxPrejuizoRetrabalhoMes: decimal("metaMaxPrejuizoRetrabalhoMes", {
+    precision: 12,
+    scale: 2,
+  }),
+  metaMaxPrejuizoRetrabalhoPct: decimal("metaMaxPrejuizoRetrabalhoPct", {
+    precision: 5,
+    scale: 2,
+  }),
+  metaOsPorColaboradorDia: decimal("metaOsPorColaboradorDia", {
+    precision: 6,
+    scale: 2,
+  }),
   metaRetrabalhosPorColaboradorMes: integer("metaRetrabalhosPorColaboradorMes"),
-  metaTicketMedio: decimal("metaTicketMedio", { precision: 10, scale: 2 }).default("3000.00"),
+  metaTicketMedio: decimal("metaTicketMedio", {
+    precision: 10,
+    scale: 2,
+  }).default("3000.00"),
   metaOsGeradasMes: integer("metaOsGeradasMes"),
   metaMaxMetrosTerceirizadosMes: integer("metaMaxMetrosTerceirizadosMes"),
-  metaMaxPercTerceirizacao: decimal("metaMaxPercTerceirizacao", { precision: 5, scale: 2 }),
+  metaMaxPercTerceirizacao: decimal("metaMaxPercTerceirizacao", {
+    precision: 5,
+    scale: 2,
+  }),
   observacoes: text("observacoes"),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1981,7 +2889,10 @@ export const financeiroMensal = pgTable("financeiro_mensal", {
   id: serial("id").primaryKey(),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
-  faturamentoOficial: decimal("faturamentoOficial", { precision: 14, scale: 2 }),
+  faturamentoOficial: decimal("faturamentoOficial", {
+    precision: 14,
+    scale: 2,
+  }),
   despesasFixas: decimal("despesasFixas", { precision: 14, scale: 2 }),
   despesasVariaveis: decimal("despesasVariaveis", { precision: 14, scale: 2 }),
   numColaboradores: integer("numColaboradores"),
@@ -1991,10 +2902,16 @@ export const financeiroMensal = pgTable("financeiro_mensal", {
   impostoIcmsDifal: decimal("impostoIcmsDifal", { precision: 14, scale: 2 }),
   impostoDaems: decimal("impostoDaems", { precision: 14, scale: 2 }),
   comissoesBv: decimal("comissoesBv", { precision: 14, scale: 2 }),
-  produtividadeSolda: decimal("produtividadeSolda", { precision: 14, scale: 2 }),
+  produtividadeSolda: decimal("produtividadeSolda", {
+    precision: 14,
+    scale: 2,
+  }),
   freteRetrabalho: decimal("freteRetrabalho", { precision: 14, scale: 2 }),
   devSoftware: decimal("devSoftware", { precision: 14, scale: 2 }),
-  receitaOperacionalOs: decimal("receitaOperacionalOs", { precision: 14, scale: 2 }),
+  receitaOperacionalOs: decimal("receitaOperacionalOs", {
+    precision: 14,
+    scale: 2,
+  }),
   resultadoEfetivo: decimal("resultadoEfetivo", { precision: 14, scale: 2 }),
   saldoMes: decimal("saldoMes", { precision: 14, scale: 2 }),
   tl1: decimal("tl1", { precision: 14, scale: 2 }),
@@ -2008,39 +2925,54 @@ export type FinanceiroMensal = typeof financeiroMensal.$inferSelect;
 export type InsertFinanceiroMensal = typeof financeiroMensal.$inferInsert;
 
 // ─── OBSERVAÇÕES FINANCEIRAS MENSAIS ─────────────────────────────────────────
-export const observacoesFinanceirasMensais = pgTable("observacoes_financeiras_mensais", {
-  id: serial("id").primaryKey(),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  observacoesManuais: text("observacoes_manuais"),
-  analiseIa: text("analise_ia"),
-  contextosEspecificos: text("contextos_especificos"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type ObservacoesFinanceirasMensais = typeof observacoesFinanceirasMensais.$inferSelect;
+export const observacoesFinanceirasMensais = pgTable(
+  "observacoes_financeiras_mensais",
+  {
+    id: serial("id").primaryKey(),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    observacoesManuais: text("observacoes_manuais"),
+    analiseIa: text("analise_ia"),
+    contextosEspecificos: text("contextos_especificos"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type ObservacoesFinanceirasMensais =
+  typeof observacoesFinanceirasMensais.$inferSelect;
 
 // ─── DESEMPENHO POR COLABORADOR MENSAL ───────────────────────────────────────
-export const desempenhoColaboradorMensal = pgTable("desempenho_colaborador_mensal", {
-  id: serial("id").primaryKey(),
-  nome: varchar("nome", { length: 120 }).notNull(),
-  categoria: varchar("categoria", { length: 40 }).notNull(),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  numFaltas: integer("numFaltas").default(0),
-  metrosSoldados: decimal("metrosSoldados", { precision: 10, scale: 2 }),
-  numRetrabalhos: integer("numRetrabalhos").default(0),
-  numPropostas: integer("numPropostas").default(0),
-  numVendas: integer("numVendas").default(0),
-  faturamentoVendedor: decimal("faturamentoVendedor", { precision: 14, scale: 2 }),
-  ticketMedioVendedor: decimal("ticketMedioVendedor", { precision: 12, scale: 2 }),
-  numTrabalhos: integer("numTrabalhos").default(0),
-  notas: text("notas"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type DesempenhoColaboradorMensal = typeof desempenhoColaboradorMensal.$inferSelect;
-export type InsertDesempenhoColaboradorMensal = typeof desempenhoColaboradorMensal.$inferInsert;
+export const desempenhoColaboradorMensal = pgTable(
+  "desempenho_colaborador_mensal",
+  {
+    id: serial("id").primaryKey(),
+    nome: varchar("nome", { length: 120 }).notNull(),
+    categoria: varchar("categoria", { length: 40 }).notNull(),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    numFaltas: integer("numFaltas").default(0),
+    metrosSoldados: decimal("metrosSoldados", { precision: 10, scale: 2 }),
+    numRetrabalhos: integer("numRetrabalhos").default(0),
+    numPropostas: integer("numPropostas").default(0),
+    numVendas: integer("numVendas").default(0),
+    faturamentoVendedor: decimal("faturamentoVendedor", {
+      precision: 14,
+      scale: 2,
+    }),
+    ticketMedioVendedor: decimal("ticketMedioVendedor", {
+      precision: 12,
+      scale: 2,
+    }),
+    numTrabalhos: integer("numTrabalhos").default(0),
+    notas: text("notas"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type DesempenhoColaboradorMensal =
+  typeof desempenhoColaboradorMensal.$inferSelect;
+export type InsertDesempenhoColaboradorMensal =
+  typeof desempenhoColaboradorMensal.$inferInsert;
 
 // Estoque operacional de perfis. O saldo corrente é sempre calculado como
 // estoqueInicial + soma dos movimentos, mantendo ajustes e baixas de O.S.
@@ -2196,7 +3128,12 @@ export const metaProdutos = pgTable("meta_produtos", {
   id: serial("id").primaryKey(),
   nomeProduto: varchar("nomeProduto", { length: 256 }).notNull(),
   codigoProduto: varchar("codigoProduto", { length: 64 }),
-  metaParticipacaoPct: decimal("metaParticipacaoPct", { precision: 5, scale: 2 }).notNull().default("0"),
+  metaParticipacaoPct: decimal("metaParticipacaoPct", {
+    precision: 5,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
   ativo: boolean("ativo").default(true).notNull(),
   observacao: text("observacao"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -2220,11 +3157,23 @@ export const metasComerciais = pgTable("metas_comerciais", {
   metaClientesNovos: integer("metaClientesNovos"),
   metaOsNovos: integer("metaOsNovos"),
   metaCotacoesNovos: integer("metaCotacoesNovos"),
-  metaFaturamentoNovos: decimal("metaFaturamentoNovos", { precision: 14, scale: 2 }),
-  metaTaxaFaturamento: decimal("metaTaxaFaturamento", { precision: 5, scale: 2 }),
-  metaTaxaFaturamentoNovos: decimal("metaTaxaFaturamentoNovos", { precision: 5, scale: 2 }),
+  metaFaturamentoNovos: decimal("metaFaturamentoNovos", {
+    precision: 14,
+    scale: 2,
+  }),
+  metaTaxaFaturamento: decimal("metaTaxaFaturamento", {
+    precision: 5,
+    scale: 2,
+  }),
+  metaTaxaFaturamentoNovos: decimal("metaTaxaFaturamentoNovos", {
+    precision: 5,
+    scale: 2,
+  }),
   metaConversaoNovos: decimal("metaConversaoNovos", { precision: 5, scale: 2 }),
-  metaTicketMedioNovos: decimal("metaTicketMedioNovos", { precision: 12, scale: 2 }),
+  metaTicketMedioNovos: decimal("metaTicketMedioNovos", {
+    precision: 12,
+    scale: 2,
+  }),
   metaValorOrcado: decimal("metaValorOrcado", { precision: 14, scale: 2 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -2233,81 +3182,103 @@ export type MetaComercial = typeof metasComerciais.$inferSelect;
 export type InsertMetaComercial = typeof metasComerciais.$inferInsert;
 
 // ─── HISTÓRICO DE OS (Relatório de Vendas) ───────────────────────────────────
-export const historicoOs = pgTable("historico_os", {
-  id: serial("id").primaryKey(),
-  osNumero: varchar("osNumero", { length: 32 }),
-  tipoOs: varchar("tipoOs", { length: 64 }),
-  empresa: varchar("empresa", { length: 256 }),
-  trabalho: text("trabalho"),
-  logistica: varchar("logistica", { length: 128 }),
-  dataAprovacao: varchar("dataAprovacao", { length: 32 }),
-  dataEntrega: varchar("dataEntrega", { length: 32 }),
-  dataFaturamento: varchar("dataFaturamento", { length: 32 }),
-  status: varchar("status", { length: 64 }),
-  vendedor: varchar("vendedor", { length: 256 }),
-  valorTotal: decimal("valorTotal", { precision: 14, scale: 2 }),
-  descontos: decimal("descontos", { precision: 14, scale: 2 }),
-  valorOs: decimal("valorOs", { precision: 14, scale: 2 }),
-  materiaPrima: decimal("materiaPrima", { precision: 14, scale: 2 }),
-  custoFixo: decimal("custoFixo", { precision: 14, scale: 2 }),
-  maoDeObra: decimal("maoDeObra", { precision: 14, scale: 2 }),
-  tarifasFinanceiras: decimal("tarifasFinanceiras", { precision: 14, scale: 2 }),
-  comissoesInternas: decimal("comissoesInternas", { precision: 14, scale: 2 }),
-  comissoesExternas: decimal("comissoesExternas", { precision: 14, scale: 2 }),
-  terceirizados: decimal("terceirizados", { precision: 14, scale: 2 }),
-  tributos: decimal("tributos", { precision: 14, scale: 2 }),
-  custosTotal: decimal("custosTotal", { precision: 14, scale: 2 }),
-  resultadoReais: decimal("resultadoReais", { precision: 14, scale: 2 }),
-  resultadoPct: decimal("resultadoPct", { precision: 7, scale: 2 }),
-  contribuicaoReais: decimal("contribuicaoReais", { precision: 14, scale: 2 }),
-  contribuicaoPct: decimal("contribuicaoPct", { precision: 7, scale: 2 }),
-  // Cidade/Estado do cliente, resolvidos por cruzamento com o cadastro de
-  // clientes na importação (o relatório de vendas do ERP não traz endereço)
-  // — usados pela Análise Geográfica em comercial/geografia.
-  cidade: varchar("cidade", { length: 128 }),
-  estado: varchar("estado", { length: 2 }),
-  // Celular do primeiro contato ativo do cliente (os.cliente_contato[0] da API MubiSys, mesmo
-  // campo de onde vem cidade/estado acima) — adicionado em 2026-09-21 para o Guia de
-  // Fornecedores (server/routers/guiaFornecedores.ts). Populado por scheduled-sync-historico.ts
-  // dali pra frente; OS mais antigas ficam NULL até o backfill (server/scripts/backfill-telefone-historico.ts).
-  telefone: varchar("telefone", { length: 32 }),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (t) => ({
-  mesAnoIdx: index("historico_os_mes_ano_idx").on(t.mes, t.ano),
-  estadoIdx: index("historico_os_estado_idx").on(t.estado),
-  // Permite upsert idempotente por OS (sync incremental) — sem isso, rodar o
-  // sync duas vezes pro mesmo mês duplicava toda OS já importada.
-  osNumeroIdx: uniqueIndex("historico_os_os_numero_idx").on(t.osNumero),
-}));
+export const historicoOs = pgTable(
+  "historico_os",
+  {
+    id: serial("id").primaryKey(),
+    osNumero: varchar("osNumero", { length: 32 }),
+    tipoOs: varchar("tipoOs", { length: 64 }),
+    empresa: varchar("empresa", { length: 256 }),
+    trabalho: text("trabalho"),
+    logistica: varchar("logistica", { length: 128 }),
+    dataAprovacao: varchar("dataAprovacao", { length: 32 }),
+    dataEntrega: varchar("dataEntrega", { length: 32 }),
+    dataFaturamento: varchar("dataFaturamento", { length: 32 }),
+    status: varchar("status", { length: 64 }),
+    vendedor: varchar("vendedor", { length: 256 }),
+    valorTotal: decimal("valorTotal", { precision: 14, scale: 2 }),
+    descontos: decimal("descontos", { precision: 14, scale: 2 }),
+    valorOs: decimal("valorOs", { precision: 14, scale: 2 }),
+    materiaPrima: decimal("materiaPrima", { precision: 14, scale: 2 }),
+    custoFixo: decimal("custoFixo", { precision: 14, scale: 2 }),
+    maoDeObra: decimal("maoDeObra", { precision: 14, scale: 2 }),
+    tarifasFinanceiras: decimal("tarifasFinanceiras", {
+      precision: 14,
+      scale: 2,
+    }),
+    comissoesInternas: decimal("comissoesInternas", {
+      precision: 14,
+      scale: 2,
+    }),
+    comissoesExternas: decimal("comissoesExternas", {
+      precision: 14,
+      scale: 2,
+    }),
+    terceirizados: decimal("terceirizados", { precision: 14, scale: 2 }),
+    tributos: decimal("tributos", { precision: 14, scale: 2 }),
+    custosTotal: decimal("custosTotal", { precision: 14, scale: 2 }),
+    resultadoReais: decimal("resultadoReais", { precision: 14, scale: 2 }),
+    resultadoPct: decimal("resultadoPct", { precision: 7, scale: 2 }),
+    contribuicaoReais: decimal("contribuicaoReais", {
+      precision: 14,
+      scale: 2,
+    }),
+    contribuicaoPct: decimal("contribuicaoPct", { precision: 7, scale: 2 }),
+    // Cidade/Estado do cliente, resolvidos por cruzamento com o cadastro de
+    // clientes na importação (o relatório de vendas do ERP não traz endereço)
+    // — usados pela Análise Geográfica em comercial/geografia.
+    cidade: varchar("cidade", { length: 128 }),
+    estado: varchar("estado", { length: 2 }),
+    // Celular do primeiro contato ativo do cliente (os.cliente_contato[0] da API MubiSys, mesmo
+    // campo de onde vem cidade/estado acima) — adicionado em 2026-09-21 para o Guia de
+    // Fornecedores (server/routers/guiaFornecedores.ts). Populado por scheduled-sync-historico.ts
+    // dali pra frente; OS mais antigas ficam NULL até o backfill (server/scripts/backfill-telefone-historico.ts).
+    telefone: varchar("telefone", { length: 32 }),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  t => ({
+    mesAnoIdx: index("historico_os_mes_ano_idx").on(t.mes, t.ano),
+    estadoIdx: index("historico_os_estado_idx").on(t.estado),
+    // Permite upsert idempotente por OS (sync incremental) — sem isso, rodar o
+    // sync duas vezes pro mesmo mês duplicava toda OS já importada.
+    osNumeroIdx: uniqueIndex("historico_os_os_numero_idx").on(t.osNumero),
+  })
+);
 export type HistoricoOs = typeof historicoOs.$inferSelect;
 export type InsertHistoricoOs = typeof historicoOs.$inferInsert;
 
 // ─── HISTÓRICO DE ORÇAMENTOS ──────────────────────────────────────────────────
-export const historicoOrcamentos = pgTable("historico_orcamentos", {
-  id: serial("id").primaryKey(),
-  orcNumero: varchar("orcNumero", { length: 32 }),
-  empresa: varchar("empresa", { length: 256 }),
-  trabalho: text("trabalho"),
-  dataCadastro: varchar("dataCadastro", { length: 32 }),
-  validade: varchar("validade", { length: 32 }),
-  vendedor: varchar("vendedor", { length: 256 }),
-  status: varchar("status", { length: 64 }),
-  motivoCancelamento: text("motivoCancelamento"),
-  total: decimal("total", { precision: 14, scale: 2 }),
-  custosTotal: decimal("custosTotal", { precision: 14, scale: 2 }),
-  margemLiquida: decimal("margemLiquida", { precision: 14, scale: 2 }),
-  // id do cliente no MubiSys (gravado pela sync) e telefone do cadastro dele (gravado só pelo backfill).
-  clienteId: integer("clienteId"),
-  telefone: varchar("telefone", { length: 32 }),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (t) => ({
-  mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t.mes, t.ano),
-  orcNumeroIdx: uniqueIndex("historico_orcamentos_orc_numero_idx").on(t.orcNumero),
-}));
+export const historicoOrcamentos = pgTable(
+  "historico_orcamentos",
+  {
+    id: serial("id").primaryKey(),
+    orcNumero: varchar("orcNumero", { length: 32 }),
+    empresa: varchar("empresa", { length: 256 }),
+    trabalho: text("trabalho"),
+    dataCadastro: varchar("dataCadastro", { length: 32 }),
+    validade: varchar("validade", { length: 32 }),
+    vendedor: varchar("vendedor", { length: 256 }),
+    status: varchar("status", { length: 64 }),
+    motivoCancelamento: text("motivoCancelamento"),
+    total: decimal("total", { precision: 14, scale: 2 }),
+    custosTotal: decimal("custosTotal", { precision: 14, scale: 2 }),
+    margemLiquida: decimal("margemLiquida", { precision: 14, scale: 2 }),
+    // id do cliente no MubiSys (gravado pela sync) e telefone do cadastro dele (gravado só pelo backfill).
+    clienteId: integer("clienteId"),
+    telefone: varchar("telefone", { length: 32 }),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  t => ({
+    mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t.mes, t.ano),
+    orcNumeroIdx: uniqueIndex("historico_orcamentos_orc_numero_idx").on(
+      t.orcNumero
+    ),
+  })
+);
 // Espelho do cadastro de clientes do MubiSys (id, nomes e o melhor telefone de WhatsApp), mantido pela sync
 // server/sync/clientes-mubisys.ts. As campanhas usam para completar o telefone de OS/orçamentos antigos.
 export const mubisysClientesCache = pgTable("mubisys_clientes_cache", {
@@ -2329,7 +3300,9 @@ export const crmMetas = pgTable("crm_metas", {
   vendedor: varchar("vendedor", { length: 128 }).notNull(),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
-  metaValor: decimal("metaValor", { precision: 14, scale: 2 }).default("0").notNull(),
+  metaValor: decimal("metaValor", { precision: 14, scale: 2 })
+    .default("0")
+    .notNull(),
   metaQtdOs: integer("metaQtdOs").default(0).notNull(),
   usuarioVinculadoId: text("usuarioVinculadoId"), // user.id (Better Auth)
   usuarioVinculadoNome: varchar("usuarioVinculadoNome", { length: 128 }),
@@ -2380,8 +3353,14 @@ export const custoMarketing = pgTable("custo_marketing", {
   id: serial("id").primaryKey(),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
-  investimentoAquisicao: decimal("investimento_aquisicao", { precision: 14, scale: 2 }),
-  investimentoReativacao: decimal("investimento_reativacao", { precision: 14, scale: 2 }),
+  investimentoAquisicao: decimal("investimento_aquisicao", {
+    precision: 14,
+    scale: 2,
+  }),
+  investimentoReativacao: decimal("investimento_reativacao", {
+    precision: 14,
+    scale: 2,
+  }),
   // Soma de investimentoAquisicao + investimentoReativacao, mantida por compatibilidade com consumidores existentes.
   // null somente se os dois componentes forem null.
   investimento: decimal("investimento", { precision: 14, scale: 2 }),
@@ -2409,15 +3388,19 @@ export const auditoriaCustoMarketing = pgTable("auditoria_custo_marketing", {
   valoresNovos: text("valoresNovos"), // JSON: snapshot depois da alteração (null em EXCLUSAO)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
-export type AuditoriaCustoMarketing = typeof auditoriaCustoMarketing.$inferSelect;
-export type InsertAuditoriaCustoMarketing = typeof auditoriaCustoMarketing.$inferInsert;
+export type AuditoriaCustoMarketing =
+  typeof auditoriaCustoMarketing.$inferSelect;
+export type InsertAuditoriaCustoMarketing =
+  typeof auditoriaCustoMarketing.$inferInsert;
 
 // ─── Lançamentos detalhados de Marketing (linhas do relatório de contas a pagar) ──
 export const custoMarketingItens = pgTable("custo_marketing_itens", {
   id: serial("id").primaryKey(),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
-  categoria: varchar("categoria", { length: 32 }).notNull().default("aquisicao"), // "aquisicao" | "reativacao"
+  categoria: varchar("categoria", { length: 32 })
+    .notNull()
+    .default("aquisicao"), // "aquisicao" | "reativacao"
   fornecedor: varchar("fornecedor", { length: 256 }).notNull(),
   tipo: varchar("tipo", { length: 128 }),
   despesa: varchar("despesa", { length: 256 }),
@@ -2444,17 +3427,30 @@ export const marketingConfig = pgTable("marketing_config", {
   // (performanceComercial.ts) — de propósito: mudar este valor não pode
   // afetar Performance Comercial/Inteligência de Clientes/snapshots já
   // auditados, só o relatório de Marketing. Ver server/services/marketingFinanceiroClientes.ts.
-  mesesInatividadeReativacao: integer("mesesInatividadeReativacao").notNull().default(6),
+  mesesInatividadeReativacao: integer("mesesInatividadeReativacao")
+    .notNull()
+    .default(6),
   // Usado só como fallback quando o pedido não tem historico_os.contribuicaoReais
   // preenchido — o método primário de margem é o valor real por pedido.
-  percentualMargemFallback: decimal("percentualMargemFallback", { precision: 5, scale: 2 }).notNull().default("51.00"),
+  percentualMargemFallback: decimal("percentualMargemFallback", {
+    precision: 5,
+    scale: 2,
+  })
+    .notNull()
+    .default("51.00"),
   cacMaximo: decimal("cacMaximo", { precision: 14, scale: 2 }),
-  custoReativacaoMaximo: decimal("custoReativacaoMaximo", { precision: 14, scale: 2 }),
+  custoReativacaoMaximo: decimal("custoReativacaoMaximo", {
+    precision: 14,
+    scale: 2,
+  }),
   roiMinimoPct: decimal("roiMinimoPct", { precision: 7, scale: 2 }),
   ticketMedioMinimo: decimal("ticketMedioMinimo", { precision: 14, scale: 2 }),
   metaClientesNovosMes: integer("metaClientesNovosMes"),
   metaClientesReativadosMes: integer("metaClientesReativadosMes"),
-  aumentoMaximoCacMensalPct: decimal("aumentoMaximoCacMensalPct", { precision: 7, scale: 2 }),
+  aumentoMaximoCacMensalPct: decimal("aumentoMaximoCacMensalPct", {
+    precision: 7,
+    scale: 2,
+  }),
   // 0 = sem janela (atribui todo o faturamento do mês calendário ao grupo do
   // cliente naquele mês — comportamento atual/padrão). 30/60/90 = atribui só
   // o faturamento do cliente dentro de N dias da data em que ele virou
@@ -2466,13 +3462,19 @@ export const marketingConfig = pgTable("marketing_config", {
   // financeiro_mensal.despesasFixas real). Valores válidos: "pedidos" |
   // "faturamento" | "custo_direto" | "rateio_erp" | "personalizado".
   // "rateio_erp" reaproveita historico_os.custoFixo (já calculado pelo MubiSys).
-  direcionadorRateio: varchar("direcionadorRateio", { length: 32 }).notNull().default("faturamento"),
+  direcionadorRateio: varchar("direcionadorRateio", { length: 32 })
+    .notNull()
+    .default("faturamento"),
   // Documenta a suposição de que despesasFixas/despesasFinanceiras de
   // financeiro_mensal NÃO incluem o investimento de custo_marketing (fontes
   // diferentes) — se marcado true, o investimento de marketing não é
   // subtraído de novo como linha própria na ponte de resultado, para não
   // contar 2x.
-  custosFinanceirosIncluemMarketing: boolean("custosFinanceirosIncluemMarketing").notNull().default(false),
+  custosFinanceirosIncluemMarketing: boolean(
+    "custosFinanceirosIncluemMarketing"
+  )
+    .notNull()
+    .default(false),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type MarketingConfig = typeof marketingConfig.$inferSelect;
@@ -2491,8 +3493,10 @@ export const marketingConfigAuditoria = pgTable("marketing_config_auditoria", {
   valoresNovos: text("valoresNovos"), // JSON: snapshot depois da alteração (null em EXCLUSAO)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
-export type MarketingConfigAuditoria = typeof marketingConfigAuditoria.$inferSelect;
-export type InsertMarketingConfigAuditoria = typeof marketingConfigAuditoria.$inferInsert;
+export type MarketingConfigAuditoria =
+  typeof marketingConfigAuditoria.$inferSelect;
+export type InsertMarketingConfigAuditoria =
+  typeof marketingConfigAuditoria.$inferInsert;
 
 // ─── Custos Fixos Mensais ─────────────────────────────────────────────────────
 export const custosFixos = pgTable("custos_fixos", {
@@ -2544,31 +3548,58 @@ export const dreMensal = pgTable("dre_mensal", {
   id: serial("id").primaryKey(),
   ano: integer("ano").notNull(),
   mes: integer("mes").notNull(),
-  receitaOperacionalBruta: decimal("receita_operacional_bruta", { precision: 14, scale: 2 }),
+  receitaOperacionalBruta: decimal("receita_operacional_bruta", {
+    precision: 14,
+    scale: 2,
+  }),
   receitaFinanceira: decimal("receita_financeira", { precision: 14, scale: 2 }),
-  receitaNaoOperacional: decimal("receita_nao_operacional", { precision: 14, scale: 2 }),
+  receitaNaoOperacional: decimal("receita_nao_operacional", {
+    precision: 14,
+    scale: 2,
+  }),
   totalEntradas: decimal("total_entradas", { precision: 14, scale: 2 }),
   impostosVendas: decimal("impostos_vendas", { precision: 14, scale: 2 }),
   despesaVariavel: decimal("despesa_variavel", { precision: 14, scale: 2 }),
-  despesaOperacional: decimal("despesa_operacional", { precision: 14, scale: 2 }),
+  despesaOperacional: decimal("despesa_operacional", {
+    precision: 14,
+    scale: 2,
+  }),
   materiaPrima: decimal("materia_prima", { precision: 14, scale: 2 }),
-  gastosGeraisFabricacao: decimal("gastos_gerais_fabricacao", { precision: 14, scale: 2 }),
+  gastosGeraisFabricacao: decimal("gastos_gerais_fabricacao", {
+    precision: 14,
+    scale: 2,
+  }),
   despesasPessoal: decimal("despesas_pessoal", { precision: 14, scale: 2 }),
   despesasFixas: decimal("despesas_fixas", { precision: 14, scale: 2 }),
-  despesasFinanceiras: decimal("despesas_financeiras", { precision: 14, scale: 2 }),
-  despesasNaoOperacionais: decimal("despesas_nao_operacionais", { precision: 14, scale: 2 }),
+  despesasFinanceiras: decimal("despesas_financeiras", {
+    precision: 14,
+    scale: 2,
+  }),
+  despesasNaoOperacionais: decimal("despesas_nao_operacionais", {
+    precision: 14,
+    scale: 2,
+  }),
   totalSaidas: decimal("total_saidas", { precision: 14, scale: 2 }),
-  receitaBrutaOperacional: decimal("receita_bruta_operacional", { precision: 14, scale: 2 }),
+  receitaBrutaOperacional: decimal("receita_bruta_operacional", {
+    precision: 14,
+    scale: 2,
+  }),
   lucroBruto: decimal("lucro_bruto", { precision: 14, scale: 2 }),
   lucroOperacional: decimal("lucro_operacional", { precision: 14, scale: 2 }),
   lucroLiquido: decimal("lucro_liquido", { precision: 14, scale: 2 }),
   valorPedidos: decimal("valor_pedidos", { precision: 14, scale: 2 }),
   resultadoEfetivo: decimal("resultado_efetivo", { precision: 14, scale: 2 }),
-  margemResultadoEfetivo: decimal("margem_resultado_efetivo", { precision: 8, scale: 4 }),
+  margemResultadoEfetivo: decimal("margem_resultado_efetivo", {
+    precision: 8,
+    scale: 4,
+  }),
   percMateriaPrima: decimal("perc_materia_prima", { precision: 8, scale: 4 }),
   percFixoRateado: decimal("perc_fixo_rateado", { precision: 8, scale: 4 }),
   percTributos: decimal("perc_tributos", { precision: 8, scale: 4 }),
-  percComissaoInterna: decimal("perc_comissao_interna", { precision: 8, scale: 4 }),
+  percComissaoInterna: decimal("perc_comissao_interna", {
+    precision: 8,
+    scale: 4,
+  }),
   percDescontos: decimal("perc_descontos", { precision: 8, scale: 4 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -2599,34 +3630,45 @@ export type InsertCrmScript = typeof crmScripts.$inferInsert;
 // Fila de ações sugeridas (recompra, atraso, margem baixa) — gerada por regra
 // determinística a partir de historico_os, persistida para permitir atribuir,
 // concluir, adiar ou descartar sem recriar a mesma ação a cada carregamento.
-export const inteligenciaAcoesClientes = pgTable("inteligencia_acoes_clientes", {
-  id: serial("id").primaryKey(),
-  tipo: inteligenciaAcaoTipoEnum("tipo").notNull(),
-  empresaKey: varchar("empresa_key", { length: 256 }).notNull(), // normalizeEmpresaKey(empresa) — chave de idempotência
-  empresa: varchar("empresa", { length: 256 }).notNull(), // nome de exibição (grafia mais recente observada)
-  vendedor: varchar("vendedor", { length: 128 }), // vendedor da compra mais recente do cliente — para filtrar a fila por responsável
-  titulo: varchar("titulo", { length: 256 }).notNull(),
-  motivo: text("motivo").notNull(),
-  evidenciaJson: text("evidencia_json").notNull(), // fatos que sustentam a ação (datas, valores, cálculo)
-  prioridade: integer("prioridade").notNull().default(0), // 0-100, prioridade operacional (não é probabilidade de compra)
-  prioridadeFatoresJson: text("prioridade_fatores_json"), // componentes/pesos que formaram a prioridade
-  status: inteligenciaAcaoStatusEnum("status").notNull().default("pendente"),
-  responsavel: varchar("responsavel", { length: 128 }),
-  proximoPasso: text("proximo_passo"),
-  prazo: date("prazo"),
-  resultado: inteligenciaAcaoResultadoEnum("resultado"),
-  resultadoObservacao: text("resultado_observacao"),
-  versaoRegra: varchar("versao_regra", { length: 16 }).notNull().default("v1"),
-  dataAnalise: timestamp("data_analise").defaultNow().notNull(), // quando a evidência foi calculada
-  resolvidoEm: timestamp("resolvido_em"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (t) => ({
-  tipoEmpresaUnique: uniqueIndex("inteligencia_acoes_tipo_empresa_unique").on(t.tipo, t.empresaKey),
-  statusIdx: index("inteligencia_acoes_status_idx").on(t.status),
-}));
-export type InteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferSelect;
-export type InsertInteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$inferInsert;
+export const inteligenciaAcoesClientes = pgTable(
+  "inteligencia_acoes_clientes",
+  {
+    id: serial("id").primaryKey(),
+    tipo: inteligenciaAcaoTipoEnum("tipo").notNull(),
+    empresaKey: varchar("empresa_key", { length: 256 }).notNull(), // normalizeEmpresaKey(empresa) — chave de idempotência
+    empresa: varchar("empresa", { length: 256 }).notNull(), // nome de exibição (grafia mais recente observada)
+    vendedor: varchar("vendedor", { length: 128 }), // vendedor da compra mais recente do cliente — para filtrar a fila por responsável
+    titulo: varchar("titulo", { length: 256 }).notNull(),
+    motivo: text("motivo").notNull(),
+    evidenciaJson: text("evidencia_json").notNull(), // fatos que sustentam a ação (datas, valores, cálculo)
+    prioridade: integer("prioridade").notNull().default(0), // 0-100, prioridade operacional (não é probabilidade de compra)
+    prioridadeFatoresJson: text("prioridade_fatores_json"), // componentes/pesos que formaram a prioridade
+    status: inteligenciaAcaoStatusEnum("status").notNull().default("pendente"),
+    responsavel: varchar("responsavel", { length: 128 }),
+    proximoPasso: text("proximo_passo"),
+    prazo: date("prazo"),
+    resultado: inteligenciaAcaoResultadoEnum("resultado"),
+    resultadoObservacao: text("resultado_observacao"),
+    versaoRegra: varchar("versao_regra", { length: 16 })
+      .notNull()
+      .default("v1"),
+    dataAnalise: timestamp("data_analise").defaultNow().notNull(), // quando a evidência foi calculada
+    resolvidoEm: timestamp("resolvido_em"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  t => ({
+    tipoEmpresaUnique: uniqueIndex("inteligencia_acoes_tipo_empresa_unique").on(
+      t.tipo,
+      t.empresaKey
+    ),
+    statusIdx: index("inteligencia_acoes_status_idx").on(t.status),
+  })
+);
+export type InteligenciaAcaoCliente =
+  typeof inteligenciaAcoesClientes.$inferSelect;
+export type InsertInteligenciaAcaoCliente =
+  typeof inteligenciaAcoesClientes.$inferInsert;
 
 // ─── Inteligência de Clientes — acesso ao painel e confirmação de contato ────
 // Pedido do gestor (13/09/2026): saber se os vendedores estão de fato usando a
@@ -2636,30 +3678,48 @@ export type InsertInteligenciaAcaoCliente = typeof inteligenciaAcoesClientes.$in
 // porque aquelas são específicas do módulo CRM de propostas (aderência de
 // rotina manhã/tarde, contato por orçamento) — misturar mudaria a semântica
 // dos cálculos de auditoria já existentes ali.
-export const inteligenciaClientesAcessos = pgTable("inteligencia_clientes_acessos", {
-  id: serial("id").primaryKey(),
-  userId: text("user_id").notNull(), // user.id (Better Auth)
-  userName: varchar("user_name", { length: 128 }).notNull(),
-  acessadoEm: timestamp("acessado_em").defaultNow().notNull(),
-}, (t) => ({
-  userIdx: index("inteligencia_clientes_acessos_user_idx").on(t.userId, t.acessadoEm),
-}));
-export type InteligenciaClientesAcesso = typeof inteligenciaClientesAcessos.$inferSelect;
-export type InsertInteligenciaClientesAcesso = typeof inteligenciaClientesAcessos.$inferInsert;
+export const inteligenciaClientesAcessos = pgTable(
+  "inteligencia_clientes_acessos",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull(), // user.id (Better Auth)
+    userName: varchar("user_name", { length: 128 }).notNull(),
+    acessadoEm: timestamp("acessado_em").defaultNow().notNull(),
+  },
+  t => ({
+    userIdx: index("inteligencia_clientes_acessos_user_idx").on(
+      t.userId,
+      t.acessadoEm
+    ),
+  })
+);
+export type InteligenciaClientesAcesso =
+  typeof inteligenciaClientesAcessos.$inferSelect;
+export type InsertInteligenciaClientesAcesso =
+  typeof inteligenciaClientesAcessos.$inferInsert;
 
-export const inteligenciaClientesContatos = pgTable("inteligencia_clientes_contatos", {
-  id: serial("id").primaryKey(),
-  empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
-  empresa: varchar("empresa", { length: 256 }).notNull(),
-  userId: text("user_id").notNull(), // user.id (Better Auth)
-  vendedor: varchar("vendedor", { length: 128 }).notNull(), // nome de exibição no momento do registro
-  observacao: text("observacao"),
-  contatadoEm: timestamp("contatado_em").defaultNow().notNull(),
-}, (t) => ({
-  empresaIdx: index("inteligencia_clientes_contatos_empresa_idx").on(t.empresaKey, t.contatadoEm),
-}));
-export type InteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferSelect;
-export type InsertInteligenciaClientesContato = typeof inteligenciaClientesContatos.$inferInsert;
+export const inteligenciaClientesContatos = pgTable(
+  "inteligencia_clientes_contatos",
+  {
+    id: serial("id").primaryKey(),
+    empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
+    empresa: varchar("empresa", { length: 256 }).notNull(),
+    userId: text("user_id").notNull(), // user.id (Better Auth)
+    vendedor: varchar("vendedor", { length: 128 }).notNull(), // nome de exibição no momento do registro
+    observacao: text("observacao"),
+    contatadoEm: timestamp("contatado_em").defaultNow().notNull(),
+  },
+  t => ({
+    empresaIdx: index("inteligencia_clientes_contatos_empresa_idx").on(
+      t.empresaKey,
+      t.contatadoEm
+    ),
+  })
+);
+export type InteligenciaClientesContato =
+  typeof inteligenciaClientesContatos.$inferSelect;
+export type InsertInteligenciaClientesContato =
+  typeof inteligenciaClientesContatos.$inferInsert;
 
 // ─── Retenção de Clientes Novos — 4 mensagens em 6 meses ─────────────────────
 // Ver server/services/retencaoClientesNovos.ts. Clientes com só 1 compra
@@ -2667,31 +3727,42 @@ export type InsertInteligenciaClientesContato = typeof inteligenciaClientesConta
 // (16 dias úteis, 30, 90 e 180 dias corridos desde a 1ª compra). Uma linha por
 // (cliente, estágio) — idempotente, sincronizada a cada carregamento da tela,
 // igual ao padrão já usado em inteligencia_acoes_clientes.
-export const retencaoDisparos = pgTable("retencao_disparos", {
-  id: serial("id").primaryKey(),
-  empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
-  empresa: varchar("empresa", { length: 256 }).notNull(),
-  osNumero: varchar("os_numero", { length: 32 }), // da 1ª compra — usado para buscar contato ao vivo
-  vendedor: varchar("vendedor", { length: 128 }),
-  valorPrimeiraCompra: decimal("valor_primeira_compra", { precision: 14, scale: 2 }),
-  dataPrimeiraCompra: date("data_primeira_compra").notNull(),
-  estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
-  dataAgendada: date("data_agendada").notNull(),
-  status: retencaoDisparoStatusEnum("status").notNull().default("pendente"),
-  // Campanha (lote de disparo em massa) à qual este marco foi atribuído quando
-  // disparado — null enquanto pendente/descartado. Ver retencao_campanhas.
-  campanhaId: integer("campanha_id"),
-  disparadoEm: timestamp("disparado_em"),
-  disparadoPor: varchar("disparado_por", { length: 128 }),
-  observacao: text("observacao"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (t) => ({
-  empresaEstagioUnique: uniqueIndex("retencao_disparos_empresa_estagio_unique").on(t.empresaKey, t.estagio),
-  dataAgendadaIdx: index("retencao_disparos_data_agendada_idx").on(t.dataAgendada),
-  statusIdx: index("retencao_disparos_status_idx").on(t.status),
-  campanhaIdx: index("retencao_disparos_campanha_idx").on(t.campanhaId),
-}));
+export const retencaoDisparos = pgTable(
+  "retencao_disparos",
+  {
+    id: serial("id").primaryKey(),
+    empresaKey: varchar("empresa_key", { length: 256 }).notNull(),
+    empresa: varchar("empresa", { length: 256 }).notNull(),
+    osNumero: varchar("os_numero", { length: 32 }), // da 1ª compra — usado para buscar contato ao vivo
+    vendedor: varchar("vendedor", { length: 128 }),
+    valorPrimeiraCompra: decimal("valor_primeira_compra", {
+      precision: 14,
+      scale: 2,
+    }),
+    dataPrimeiraCompra: date("data_primeira_compra").notNull(),
+    estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
+    dataAgendada: date("data_agendada").notNull(),
+    status: retencaoDisparoStatusEnum("status").notNull().default("pendente"),
+    // Campanha (lote de disparo em massa) à qual este marco foi atribuído quando
+    // disparado — null enquanto pendente/descartado. Ver retencao_campanhas.
+    campanhaId: integer("campanha_id"),
+    disparadoEm: timestamp("disparado_em"),
+    disparadoPor: varchar("disparado_por", { length: 128 }),
+    observacao: text("observacao"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  t => ({
+    empresaEstagioUnique: uniqueIndex(
+      "retencao_disparos_empresa_estagio_unique"
+    ).on(t.empresaKey, t.estagio),
+    dataAgendadaIdx: index("retencao_disparos_data_agendada_idx").on(
+      t.dataAgendada
+    ),
+    statusIdx: index("retencao_disparos_status_idx").on(t.status),
+    campanhaIdx: index("retencao_disparos_campanha_idx").on(t.campanhaId),
+  })
+);
 export type RetencaoDisparo = typeof retencaoDisparos.$inferSelect;
 export type InsertRetencaoDisparo = typeof retencaoDisparos.$inferInsert;
 
@@ -2700,16 +3771,22 @@ export type InsertRetencaoDisparo = typeof retencaoDisparos.$inferInsert;
 // sugerir os contatos da campanha 1, 2, 3... é você" — o sistema numera
 // automaticamente por estágio e registra o histórico de quando cada lote foi
 // enviado, sem precisar que o usuário monte a lista manualmente).
-export const retencaoCampanhas = pgTable("retencao_campanhas", {
-  id: serial("id").primaryKey(),
-  estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
-  numero: integer("numero").notNull(), // sequencial por estágio (1, 2, 3... dentro do mesmo estágio)
-  quantidadeClientes: integer("quantidade_clientes").notNull(),
-  disparadaEm: timestamp("disparada_em").defaultNow().notNull(),
-  disparadoPor: varchar("disparado_por", { length: 128 }),
-}, (t) => ({
-  estagioNumeroUnique: uniqueIndex("retencao_campanhas_estagio_numero_unique").on(t.estagio, t.numero),
-}));
+export const retencaoCampanhas = pgTable(
+  "retencao_campanhas",
+  {
+    id: serial("id").primaryKey(),
+    estagio: retencaoJornadaEstagioEnum("estagio").notNull(),
+    numero: integer("numero").notNull(), // sequencial por estágio (1, 2, 3... dentro do mesmo estágio)
+    quantidadeClientes: integer("quantidade_clientes").notNull(),
+    disparadaEm: timestamp("disparada_em").defaultNow().notNull(),
+    disparadoPor: varchar("disparado_por", { length: 128 }),
+  },
+  t => ({
+    estagioNumeroUnique: uniqueIndex(
+      "retencao_campanhas_estagio_numero_unique"
+    ).on(t.estagio, t.numero),
+  })
+);
 export type RetencaoCampanha = typeof retencaoCampanhas.$inferSelect;
 export type InsertRetencaoCampanha = typeof retencaoCampanhas.$inferInsert;
 
@@ -2726,7 +3803,8 @@ export const retencaoContatoCache = pgTable("retencao_contato_cache", {
   atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
 });
 export type RetencaoContatoCache = typeof retencaoContatoCache.$inferSelect;
-export type InsertRetencaoContatoCache = typeof retencaoContatoCache.$inferInsert;
+export type InsertRetencaoContatoCache =
+  typeof retencaoContatoCache.$inferInsert;
 
 // Scripts de mensagem sugeridos por estágio da jornada — mesmo padrão de
 // crm_scripts (faixas do funil do CRM), trocando "faixa" por "estagio".
@@ -2776,7 +3854,8 @@ export const leadsCnpjQualificados = pgTable("leads_cnpj_qualificados", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type LeadCnpjQualificado = typeof leadsCnpjQualificados.$inferSelect;
-export type InsertLeadCnpjQualificado = typeof leadsCnpjQualificados.$inferInsert;
+export type InsertLeadCnpjQualificado =
+  typeof leadsCnpjQualificados.$inferInsert;
 
 // ─── Perfil de clientes por CNPJ (Inteligência de Clientes) ──────────────────
 // Enriquecimento do cadastro de clientes (historico_os.empresa, texto livre,
@@ -2785,7 +3864,11 @@ export type InsertLeadCnpjQualificado = typeof leadsCnpjQualificados.$inferInser
 // cotação de frete); o restante depende de vínculo manual, um cliente de cada
 // vez. Por isso todo relatório agregado precisa mostrar cobertura (mapeados/
 // total), nunca ser lido como um retrato de 100% da carteira.
-export const origemVinculoCnpjEnum = pgEnum("origem_vinculo_cnpj", ["erp_os_cache", "manual", "mubisys"]);
+export const origemVinculoCnpjEnum = pgEnum("origem_vinculo_cnpj", [
+  "erp_os_cache",
+  "manual",
+  "mubisys",
+]);
 
 export const clientesPerfilCnpj = pgTable("clientes_perfil_cnpj", {
   id: serial("id").primaryKey(),
@@ -2823,16 +3906,24 @@ export type InsertClientePerfilCnpj = typeof clientesPerfilCnpj.$inferInsert;
 // clientesPerfilCnpj (que exige cnpj/dadosJson preenchidos e alimenta a
 // cobertura mostrada no painel) para não contaminar as estatísticas de
 // "clientes vinculados" com quem não tem CNPJ nenhum.
-export const motivoDescarteCnpjEnum = pgEnum("motivo_descarte_cnpj", ["pessoa_fisica", "sem_documento", "cnpj_nao_encontrado"]);
+export const motivoDescarteCnpjEnum = pgEnum("motivo_descarte_cnpj", [
+  "pessoa_fisica",
+  "sem_documento",
+  "cnpj_nao_encontrado",
+]);
 
-export const clientesPerfilCnpjDescartados = pgTable("clientes_perfil_cnpj_descartados", {
-  id: serial("id").primaryKey(),
-  empresaKey: varchar("empresa_key", { length: 256 }).notNull().unique(),
-  empresaExibicao: varchar("empresa_exibicao", { length: 256 }).notNull(),
-  motivo: motivoDescarteCnpjEnum("motivo").notNull(),
-  descartadoEm: timestamp("descartado_em").defaultNow().notNull(),
-});
-export type ClientePerfilCnpjDescartado = typeof clientesPerfilCnpjDescartados.$inferSelect;
+export const clientesPerfilCnpjDescartados = pgTable(
+  "clientes_perfil_cnpj_descartados",
+  {
+    id: serial("id").primaryKey(),
+    empresaKey: varchar("empresa_key", { length: 256 }).notNull().unique(),
+    empresaExibicao: varchar("empresa_exibicao", { length: 256 }).notNull(),
+    motivo: motivoDescarteCnpjEnum("motivo").notNull(),
+    descartadoEm: timestamp("descartado_em").defaultNow().notNull(),
+  }
+);
+export type ClientePerfilCnpjDescartado =
+  typeof clientesPerfilCnpjDescartados.$inferSelect;
 
 // ─── Radar de Mercado (sinais externos) ──────────────────────────────────────
 // Ver docs/radar-mercado.md. Configuração definida com o usuário em 2026-09:
@@ -2844,7 +3935,9 @@ export const radarMercadoConfig = pgTable("radar_mercado_config", {
   id: serial("id").primaryKey(), // single-row: sempre id=1
   regioesJson: text("regioes_json").notNull(), // array de UF, ex: ["MS","MT","GO","DF","SP",...]
   segmentosAlvoJson: text("segmentos_alvo_json").notNull(), // ex: ["Gráficas","Comunicação visual"]
-  concorrentesConhecidosJson: text("concorrentes_conhecidos_json").notNull().default("[]"),
+  concorrentesConhecidosJson: text("concorrentes_conhecidos_json")
+    .notNull()
+    .default("[]"),
   termosBuscaJson: text("termos_busca_json").notNull(), // templates de busca, ex: "gráfica nova {cidade}"
   exclusoesJson: text("exclusoes_json").notNull().default("[]"), // termos/domínios a ignorar
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -2852,32 +3945,38 @@ export const radarMercadoConfig = pgTable("radar_mercado_config", {
 export type RadarMercadoConfig = typeof radarMercadoConfig.$inferSelect;
 export type InsertRadarMercadoConfig = typeof radarMercadoConfig.$inferInsert;
 
-export const sinaisMercado = pgTable("sinais_mercado", {
-  id: serial("id").primaryKey(),
-  empresa: varchar("empresa", { length: 256 }),
-  localizacaoTexto: varchar("localizacao_texto", { length: 256 }),
-  uf: varchar("uf", { length: 2 }),
-  municipio: varchar("municipio", { length: 128 }),
-  tipoEvento: varchar("tipo_evento", { length: 64 }), // inauguração, reforma, expansão, edital, concorrente, outro
-  evidenciaTrecho: text("evidencia_trecho").notNull(), // trecho/síntese da fonte, nunca a página inteira
-  url: text("url").notNull(),
-  urlHash: varchar("url_hash", { length: 64 }).notNull().unique(), // sha256(url) — deduplicação
-  publicador: varchar("publicador", { length: 256 }),
-  dataPublicacao: varchar("data_publicacao", { length: 32 }), // texto — nem toda fonte dá data ISO
-  dataEvento: varchar("data_evento", { length: 32 }),
-  dataColeta: timestamp("data_coleta").defaultNow().notNull(),
-  nivelConfianca: nivelConfiancaSinalEnum("nivel_confianca").notNull().default("inferencia"),
-  relacaoProdutos: text("relacao_produtos"), // por que isso interessa ao nosso catálogo — null se não avaliado
-  proximoPasso: text("proximo_passo"),
-  validadeAte: date("validade_ate"), // sinal deixa de ser considerado novo depois dessa data
-  jaClienteEmpresaKey: varchar("ja_cliente_empresa_key", { length: 256 }), // vínculo com historico_os, se identificado
-  status: statusSinalMercadoEnum("status").notNull().default("novo"),
-  termoBuscaOrigem: varchar("termo_busca_origem", { length: 256 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (t) => ({
-  statusIdx: index("sinais_mercado_status_idx").on(t.status),
-}));
+export const sinaisMercado = pgTable(
+  "sinais_mercado",
+  {
+    id: serial("id").primaryKey(),
+    empresa: varchar("empresa", { length: 256 }),
+    localizacaoTexto: varchar("localizacao_texto", { length: 256 }),
+    uf: varchar("uf", { length: 2 }),
+    municipio: varchar("municipio", { length: 128 }),
+    tipoEvento: varchar("tipo_evento", { length: 64 }), // inauguração, reforma, expansão, edital, concorrente, outro
+    evidenciaTrecho: text("evidencia_trecho").notNull(), // trecho/síntese da fonte, nunca a página inteira
+    url: text("url").notNull(),
+    urlHash: varchar("url_hash", { length: 64 }).notNull().unique(), // sha256(url) — deduplicação
+    publicador: varchar("publicador", { length: 256 }),
+    dataPublicacao: varchar("data_publicacao", { length: 32 }), // texto — nem toda fonte dá data ISO
+    dataEvento: varchar("data_evento", { length: 32 }),
+    dataColeta: timestamp("data_coleta").defaultNow().notNull(),
+    nivelConfianca: nivelConfiancaSinalEnum("nivel_confianca")
+      .notNull()
+      .default("inferencia"),
+    relacaoProdutos: text("relacao_produtos"), // por que isso interessa ao nosso catálogo — null se não avaliado
+    proximoPasso: text("proximo_passo"),
+    validadeAte: date("validade_ate"), // sinal deixa de ser considerado novo depois dessa data
+    jaClienteEmpresaKey: varchar("ja_cliente_empresa_key", { length: 256 }), // vínculo com historico_os, se identificado
+    status: statusSinalMercadoEnum("status").notNull().default("novo"),
+    termoBuscaOrigem: varchar("termo_busca_origem", { length: 256 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  t => ({
+    statusIdx: index("sinais_mercado_status_idx").on(t.status),
+  })
+);
 export type SinalMercado = typeof sinaisMercado.$inferSelect;
 export type InsertSinalMercado = typeof sinaisMercado.$inferInsert;
 
@@ -2885,7 +3984,9 @@ export const ledTipos = pgTable("led_tipos", {
   id: serial("id").primaryKey(),
   nome: varchar("nome", { length: 128 }).notNull(),
   descricao: text("descricao"),
-  custoUnitario: decimal("custo_unitario", { precision: 10, scale: 4 }).notNull().default("0"),
+  custoUnitario: decimal("custo_unitario", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
   unidade: varchar("unidade", { length: 16 }).notNull().default("un"),
   ativo: varchar("ativo", { length: 4 }).notNull().default("sim"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -2909,7 +4010,9 @@ export const custoLedLancamentos = pgTable("custo_led_lancamentos", {
   os: varchar("os", { length: 64 }).notNull(),
   ledTipoId: integer("led_tipo_id").notNull(),
   ledTipoEfetivoId: integer("led_tipo_efetivo_id"),
-  qtdPrevista: decimal("qtd_prevista", { precision: 10, scale: 4 }).notNull().default("0"),
+  qtdPrevista: decimal("qtd_prevista", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
   qtdEfetiva: decimal("qtd_efetiva", { precision: 10, scale: 4 }),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
@@ -2933,32 +4036,50 @@ export type CrmFaixaEtiqueta = typeof crmFaixaEtiquetas.$inferSelect;
 export type InsertCrmFaixaEtiqueta = typeof crmFaixaEtiquetas.$inferInsert;
 
 // Auditoria e congelamento de dados da Performance Comercial
-export const performanceAuditada = pgTable("performance_auditada", {
-  id: serial("id").primaryKey(),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  cotacoes: integer("cotacoes").notNull().default(0),
-  osNormais: integer("os_normais").notNull().default(0),
-  taxaConversao: decimal("taxa_conversao", { precision: 5, scale: 2 }).notNull().default("0"),
-  faturamento: decimal("faturamento", { precision: 14, scale: 2 }).notNull().default("0"),
-  valorOrcado: decimal("valor_orcado", { precision: 14, scale: 2 }).notNull().default("0"),
-  clientesNovos: integer("clientes_novos").notNull().default(0),
-  cotacoesNovos: integer("cotacoes_novos").notNull().default(0),
-  taxaConvNovos: decimal("taxa_conv_novos", { precision: 5, scale: 2 }).notNull().default("0"),
-  faturamentoNovos: decimal("faturamento_novos", { precision: 14, scale: 2 }).notNull().default("0"),
-  statusValidacao: statusValidacaoEnum("status_validacao").notNull().default("pendente"),
-  congelado: boolean("congelado").notNull().default(false),
-  fonteExcel: varchar("fonte_excel", { length: 512 }),
-  observacoes: text("observacoes"),
-  auditadoPor: varchar("auditado_por", { length: 128 }).notNull().default("sistema"),
-  dataAuditoria: timestamp("data_auditoria").defaultNow().notNull(),
-  dataCongelamento: timestamp("data_congelamento"),
-  listaClientesNovos: text("lista_clientes_novos"), // mediumtext → text
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (t) => ({
-  mesAnoIdx: index("performance_auditada_mes_ano_idx").on(t.mes, t.ano),
-}));
+export const performanceAuditada = pgTable(
+  "performance_auditada",
+  {
+    id: serial("id").primaryKey(),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    cotacoes: integer("cotacoes").notNull().default(0),
+    osNormais: integer("os_normais").notNull().default(0),
+    taxaConversao: decimal("taxa_conversao", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    faturamento: decimal("faturamento", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    valorOrcado: decimal("valor_orcado", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    clientesNovos: integer("clientes_novos").notNull().default(0),
+    cotacoesNovos: integer("cotacoes_novos").notNull().default(0),
+    taxaConvNovos: decimal("taxa_conv_novos", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    faturamentoNovos: decimal("faturamento_novos", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    statusValidacao: statusValidacaoEnum("status_validacao")
+      .notNull()
+      .default("pendente"),
+    congelado: boolean("congelado").notNull().default(false),
+    fonteExcel: varchar("fonte_excel", { length: 512 }),
+    observacoes: text("observacoes"),
+    auditadoPor: varchar("auditado_por", { length: 128 })
+      .notNull()
+      .default("sistema"),
+    dataAuditoria: timestamp("data_auditoria").defaultNow().notNull(),
+    dataCongelamento: timestamp("data_congelamento"),
+    listaClientesNovos: text("lista_clientes_novos"), // mediumtext → text
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  t => ({
+    mesAnoIdx: index("performance_auditada_mes_ano_idx").on(t.mes, t.ano),
+  })
+);
 export type PerformanceAuditada = typeof performanceAuditada.$inferSelect;
 export type InsertPerformanceAuditada = typeof performanceAuditada.$inferInsert;
 
@@ -2980,42 +4101,60 @@ export type InsertClienteNovosContato = typeof clienteNovosContato.$inferInsert;
 // Histórico de contatos feitos em propostas acima do valor de corte (padrão
 // R$ 8.000): cada linha é UM contato registrado (não um checkbox), permitindo
 // múltiplas tentativas de follow-up por proposta com motivo e usuário de cada uma.
-export const performancePropostasFollowup = pgTable("performance_propostas_followup", {
-  id: serial("id").primaryKey(),
-  orcNumero: varchar("orcNumero", { length: 32 }).notNull(),
-  empresa: varchar("empresa", { length: 256 }).notNull(),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  usuarioId: text("usuarioId"),
-  usuarioNome: varchar("usuarioNome", { length: 128 }).notNull(),
-  motivo: text("motivo").notNull(),
-  contatadoEm: timestamp("contatadoEm").defaultNow().notNull(),
-}, (t) => ({
-  orcNumeroIdx: index("performance_propostas_followup_orc_idx").on(t.orcNumero),
-  mesAnoIdx: index("performance_propostas_followup_mes_ano_idx").on(t.mes, t.ano),
-}));
-export type PerformancePropostaFollowup = typeof performancePropostasFollowup.$inferSelect;
-export type InsertPerformancePropostaFollowup = typeof performancePropostasFollowup.$inferInsert;
+export const performancePropostasFollowup = pgTable(
+  "performance_propostas_followup",
+  {
+    id: serial("id").primaryKey(),
+    orcNumero: varchar("orcNumero", { length: 32 }).notNull(),
+    empresa: varchar("empresa", { length: 256 }).notNull(),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    usuarioId: text("usuarioId"),
+    usuarioNome: varchar("usuarioNome", { length: 128 }).notNull(),
+    motivo: text("motivo").notNull(),
+    contatadoEm: timestamp("contatadoEm").defaultNow().notNull(),
+  },
+  t => ({
+    orcNumeroIdx: index("performance_propostas_followup_orc_idx").on(
+      t.orcNumero
+    ),
+    mesAnoIdx: index("performance_propostas_followup_mes_ano_idx").on(
+      t.mes,
+      t.ano
+    ),
+  })
+);
+export type PerformancePropostaFollowup =
+  typeof performancePropostasFollowup.$inferSelect;
+export type InsertPerformancePropostaFollowup =
+  typeof performancePropostasFollowup.$inferInsert;
 
 // Caixinha "Contatado" das propostas de alto valor: marca rápida (sem motivo) de quais
 // propostas já foram conversadas. Uma linha por orçamento — o número do orçamento no
 // MubiSys é único, então orcNumero é a chave. Complementa o log de follow-ups acima
 // (que registra cada tentativa com motivo), não o substitui.
-export const performancePropostasContatado = pgTable("performance_propostas_contatado", {
-  id: serial("id").primaryKey(),
-  orcNumero: varchar("orcNumero", { length: 32 }).notNull().unique(),
-  empresa: varchar("empresa", { length: 256 }).notNull(),
-  mes: integer("mes").notNull(),
-  ano: integer("ano").notNull(),
-  contatado: boolean("contatado").notNull().default(false),
-  usuarioId: text("usuarioId"),
-  usuarioNome: varchar("usuarioNome", { length: 128 }),
-  contatadoEm: timestamp("contatadoEm"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (t) => ({
-  mesAnoIdx: index("performance_propostas_contatado_mes_ano_idx").on(t.mes, t.ano),
-}));
+export const performancePropostasContatado = pgTable(
+  "performance_propostas_contatado",
+  {
+    id: serial("id").primaryKey(),
+    orcNumero: varchar("orcNumero", { length: 32 }).notNull().unique(),
+    empresa: varchar("empresa", { length: 256 }).notNull(),
+    mes: integer("mes").notNull(),
+    ano: integer("ano").notNull(),
+    contatado: boolean("contatado").notNull().default(false),
+    usuarioId: text("usuarioId"),
+    usuarioNome: varchar("usuarioNome", { length: 128 }),
+    contatadoEm: timestamp("contatadoEm"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  t => ({
+    mesAnoIdx: index("performance_propostas_contatado_mes_ano_idx").on(
+      t.mes,
+      t.ano
+    ),
+  })
+);
 // Imagem que acompanha a mensagem padrão do botão de WhatsApp (ex.: relatório de propostas de
 // alto valor): o usuário escolhe/troca pelo próprio painel. Uma linha por `chave`; sem linha, o
 // front usa a imagem padrão empacotada em client/public/whatsapp. Guardada no banco (PNG em
@@ -3053,66 +4192,90 @@ export const guiaFornecedoresCliques = pgTable("guia_fornecedores_cliques", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-export type GuiaFornecedoresClique = typeof guiaFornecedoresCliques.$inferSelect;
-export type InsertGuiaFornecedoresClique = typeof guiaFornecedoresCliques.$inferInsert;
+export type GuiaFornecedoresClique =
+  typeof guiaFornecedoresCliques.$inferSelect;
+export type InsertGuiaFornecedoresClique =
+  typeof guiaFornecedoresCliques.$inferInsert;
 
 // Um evento por clique (granular, com a cidade/estado do fornecedor no momento) — permite
 // filtrar por período (dia/mês) e montar o ranking de indicações por estado. Criada em
 // 26/09/2026; guiaFornecedoresCliques continua sendo o acumulado desde o início (mais barato de
 // ler na tela principal) e não é substituída — cliques anteriores a esta tabela não têm evento.
-export const guiaFornecedoresCliqueEventos = pgTable("guia_fornecedores_clique_eventos", {
-  id: serial("id").primaryKey(),
-  empresaChave: varchar("empresaChave", { length: 256 }).notNull(),
-  empresaNome: varchar("empresaNome", { length: 256 }).notNull(),
-  cidade: varchar("cidade", { length: 128 }),
-  estado: varchar("estado", { length: 2 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (t) => ({
-  empresaIdx: index("guia_fornecedores_clique_eventos_empresa_idx").on(t.empresaChave),
-  dataIdx: index("guia_fornecedores_clique_eventos_data_idx").on(t.createdAt),
-}));
-export type GuiaFornecedoresCliqueEvento = typeof guiaFornecedoresCliqueEventos.$inferSelect;
+export const guiaFornecedoresCliqueEventos = pgTable(
+  "guia_fornecedores_clique_eventos",
+  {
+    id: serial("id").primaryKey(),
+    empresaChave: varchar("empresaChave", { length: 256 }).notNull(),
+    empresaNome: varchar("empresaNome", { length: 256 }).notNull(),
+    cidade: varchar("cidade", { length: 128 }),
+    estado: varchar("estado", { length: 2 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  t => ({
+    empresaIdx: index("guia_fornecedores_clique_eventos_empresa_idx").on(
+      t.empresaChave
+    ),
+    dataIdx: index("guia_fornecedores_clique_eventos_data_idx").on(t.createdAt),
+  })
+);
+export type GuiaFornecedoresCliqueEvento =
+  typeof guiaFornecedoresCliqueEventos.$inferSelect;
 
 // Uma linha por carregamento da página pública do Guia de Fornecedores — visitanteId é um
 // UUID gerado pelo navegador (localStorage, sem login/IP), só para diferenciar "quantas vezes
 // a página abriu" (COUNT) de "quantas pessoas diferentes abriram" (COUNT DISTINCT visitanteId).
-export const guiaFornecedoresVisitas = pgTable("guia_fornecedores_visitas", {
-  id: serial("id").primaryKey(),
-  visitanteId: varchar("visitanteId", { length: 64 }).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (t) => ({
-  visitanteIdx: index("guia_fornecedores_visitas_visitante_idx").on(t.visitanteId),
-  dataIdx: index("guia_fornecedores_visitas_data_idx").on(t.createdAt),
-}));
-export type GuiaFornecedoresVisita = typeof guiaFornecedoresVisitas.$inferSelect;
+export const guiaFornecedoresVisitas = pgTable(
+  "guia_fornecedores_visitas",
+  {
+    id: serial("id").primaryKey(),
+    visitanteId: varchar("visitanteId", { length: 64 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  t => ({
+    visitanteIdx: index("guia_fornecedores_visitas_visitante_idx").on(
+      t.visitanteId
+    ),
+    dataIdx: index("guia_fornecedores_visitas_data_idx").on(t.createdAt),
+  })
+);
+export type GuiaFornecedoresVisita =
+  typeof guiaFornecedoresVisitas.$inferSelect;
 
 // Ajuste manual do Daniel sobre a lista calculada automaticamente (2+ compras válidas nos
 // últimos 12 meses, sem sumir há 4+): "excluir" tira um fornecedor que qualificaria; "incluir"
 // força um fornecedor que não qualificaria a aparecer (telefone/cidade/estado manuais, já que
 // pode não ter OS recente pra tirar isso do historico_os). Mesmo espírito de `clienteOverrides`
 // em performanceComercial.ts, mas tabela própria — motivo de negócio diferente.
-export const guiaFornecedoresOverrideAcaoEnum = pgEnum("guia_fornecedores_override_acao", ["incluir", "excluir"]);
-export const guiaFornecedoresOverrides = pgTable("guia_fornecedores_overrides", {
-  id: serial("id").primaryKey(),
-  empresaChave: varchar("empresaChave", { length: 256 }).notNull().unique(),
-  empresaNome: varchar("empresaNome", { length: 256 }).notNull(),
-  acao: guiaFornecedoresOverrideAcaoEnum("acao").notNull(),
-  telefone: varchar("telefone", { length: 32 }),
-  cidade: varchar("cidade", { length: 128 }),
-  estado: varchar("estado", { length: 2 }),
-  // Força o troféu de "mais procurada" para este fornecedor na cidade dele, ignorando a
-  // contagem automática de pedidos — usado quando o Daniel sabe que o cálculo (baseado em
-  // historico_os) não reflete a realidade (ex.: nome do fornecedor gravado com grafias
-  // diferentes em O.S. diferentes, fragmentando a contagem). Só um por cidade faz sentido;
-  // não há checagem de unicidade no banco — é responsabilidade de quem grava.
-  destaqueForcado: boolean("destaqueForcado").notNull().default(false),
-  usuarioId: text("usuarioId"),
-  usuarioNome: varchar("usuarioNome", { length: 128 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-export type GuiaFornecedoresOverride = typeof guiaFornecedoresOverrides.$inferSelect;
-export type InsertGuiaFornecedoresOverride = typeof guiaFornecedoresOverrides.$inferInsert;
+export const guiaFornecedoresOverrideAcaoEnum = pgEnum(
+  "guia_fornecedores_override_acao",
+  ["incluir", "excluir"]
+);
+export const guiaFornecedoresOverrides = pgTable(
+  "guia_fornecedores_overrides",
+  {
+    id: serial("id").primaryKey(),
+    empresaChave: varchar("empresaChave", { length: 256 }).notNull().unique(),
+    empresaNome: varchar("empresaNome", { length: 256 }).notNull(),
+    acao: guiaFornecedoresOverrideAcaoEnum("acao").notNull(),
+    telefone: varchar("telefone", { length: 32 }),
+    cidade: varchar("cidade", { length: 128 }),
+    estado: varchar("estado", { length: 2 }),
+    // Força o troféu de "mais procurada" para este fornecedor na cidade dele, ignorando a
+    // contagem automática de pedidos — usado quando o Daniel sabe que o cálculo (baseado em
+    // historico_os) não reflete a realidade (ex.: nome do fornecedor gravado com grafias
+    // diferentes em O.S. diferentes, fragmentando a contagem). Só um por cidade faz sentido;
+    // não há checagem de unicidade no banco — é responsabilidade de quem grava.
+    destaqueForcado: boolean("destaqueForcado").notNull().default(false),
+    usuarioId: text("usuarioId"),
+    usuarioNome: varchar("usuarioNome", { length: 128 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  }
+);
+export type GuiaFornecedoresOverride =
+  typeof guiaFornecedoresOverrides.$inferSelect;
+export type InsertGuiaFornecedoresOverride =
+  typeof guiaFornecedoresOverrides.$inferInsert;
 
 // Configuração do Guia de Fornecedores — linha única (id sempre 1). Por ora só a mensagem do
 // WhatsApp, editável pela aba interna sem precisar de deploy; dá pra crescer com mais campos
@@ -3143,33 +4306,41 @@ export const midiasGalerias = pgTable("midias_galerias", {
 });
 export type MidiaGaleria = typeof midiasGalerias.$inferSelect;
 
-export const midiasBiblioteca = pgTable("midias_biblioteca", {
-  id: serial("id").primaryKey(),
-  titulo: varchar("titulo", { length: 160 }).notNull(),
-  galeriaId: integer("galeriaId").references(() => midiasGalerias.id, { onDelete: "set null" }),
-  // LEGADO: antes das galerias a organização era esta categoria em texto livre. A migration 0036
-  // converteu cada categoria em uma galeria; a coluna fica sem uso (não foi apagada de propósito).
-  categoria: varchar("categoria", { length: 64 }),
-  nomeArquivo: varchar("nomeArquivo", { length: 256 }).notNull(),
-  base64: text("base64").notNull(), // PNG em base64, sem o prefixo "data:image/png;base64,"
-  miniatura: text("miniatura").notNull(), // data URL completo (JPEG/PNG) de até ~240px
-  tamanhoBytes: integer("tamanhoBytes").notNull(),
-  largura: integer("largura").notNull(),
-  altura: integer("altura").notNull(),
-  usos: integer("usos").notNull().default(0), // quantas vezes foi copiada
-  usuarioId: text("usuarioId"),
-  usuarioNome: varchar("usuarioNome", { length: 128 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-}, (t) => ({
-  categoriaIdx: index("midias_biblioteca_categoria_idx").on(t.categoria),
-  galeriaIdx: index("midias_biblioteca_galeria_idx").on(t.galeriaId),
-}));
+export const midiasBiblioteca = pgTable(
+  "midias_biblioteca",
+  {
+    id: serial("id").primaryKey(),
+    titulo: varchar("titulo", { length: 160 }).notNull(),
+    galeriaId: integer("galeriaId").references(() => midiasGalerias.id, {
+      onDelete: "set null",
+    }),
+    // LEGADO: antes das galerias a organização era esta categoria em texto livre. A migration 0036
+    // converteu cada categoria em uma galeria; a coluna fica sem uso (não foi apagada de propósito).
+    categoria: varchar("categoria", { length: 64 }),
+    nomeArquivo: varchar("nomeArquivo", { length: 256 }).notNull(),
+    base64: text("base64").notNull(), // PNG em base64, sem o prefixo "data:image/png;base64,"
+    miniatura: text("miniatura").notNull(), // data URL completo (JPEG/PNG) de até ~240px
+    tamanhoBytes: integer("tamanhoBytes").notNull(),
+    largura: integer("largura").notNull(),
+    altura: integer("altura").notNull(),
+    usos: integer("usos").notNull().default(0), // quantas vezes foi copiada
+    usuarioId: text("usuarioId"),
+    usuarioNome: varchar("usuarioNome", { length: 128 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  t => ({
+    categoriaIdx: index("midias_biblioteca_categoria_idx").on(t.categoria),
+    galeriaIdx: index("midias_biblioteca_galeria_idx").on(t.galeriaId),
+  })
+);
 export type MidiaBiblioteca = typeof midiasBiblioteca.$inferSelect;
 export type InsertMidiaBiblioteca = typeof midiasBiblioteca.$inferInsert;
 
-export type PerformancePropostaContatado = typeof performancePropostasContatado.$inferSelect;
-export type InsertPerformancePropostaContatado = typeof performancePropostasContatado.$inferInsert;
+export type PerformancePropostaContatado =
+  typeof performancePropostasContatado.$inferSelect;
+export type InsertPerformancePropostaContatado =
+  typeof performancePropostasContatado.$inferInsert;
 
 // Cache persistente de dados brutos da API MubiSys
 export const mubisysApiCache = pgTable("mubisys_api_cache", {
@@ -3208,21 +4379,55 @@ export const financeirosMensais = pgTable("financeiros_mensais", {
   id: serial("id").primaryKey(),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
-  receitaBruta: decimal("receita_bruta", { precision: 14, scale: 2 }).notNull().default("0"),
-  receitaOperacional: decimal("receita_operacional", { precision: 14, scale: 2 }).notNull().default("0"),
-  receitaFinanceira: decimal("receita_financeira", { precision: 14, scale: 2 }).notNull().default("0"),
-  despesasTotal: decimal("despesas_total", { precision: 14, scale: 2 }).notNull().default("0"),
-  despesasFixas: decimal("despesas_fixas", { precision: 14, scale: 2 }).notNull().default("0"),
-  despesasVariaveis: decimal("despesas_variaveis", { precision: 14, scale: 2 }).notNull().default("0"),
-  despesasPessoal: decimal("despesas_pessoal", { precision: 14, scale: 2 }).notNull().default("0"),
-  despesasFinanceiras: decimal("despesas_financeiras", { precision: 14, scale: 2 }).notNull().default("0"),
-  despesasImpostos: decimal("despesas_impostos", { precision: 14, scale: 2 }).notNull().default("0"),
-  lucroGruto: decimal("lucro_gruto", { precision: 14, scale: 2 }).notNull().default("0"),
-  lucroOperacional: decimal("lucro_operacional", { precision: 14, scale: 2 }).notNull().default("0"),
-  lucroLiquido: decimal("lucro_liquido", { precision: 14, scale: 2 }).notNull().default("0"),
-  entradas: decimal("entradas", { precision: 14, scale: 2 }).notNull().default("0"),
+  receitaBruta: decimal("receita_bruta", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  receitaOperacional: decimal("receita_operacional", {
+    precision: 14,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
+  receitaFinanceira: decimal("receita_financeira", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  despesasTotal: decimal("despesas_total", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  despesasFixas: decimal("despesas_fixas", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  despesasVariaveis: decimal("despesas_variaveis", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  despesasPessoal: decimal("despesas_pessoal", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  despesasFinanceiras: decimal("despesas_financeiras", {
+    precision: 14,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
+  despesasImpostos: decimal("despesas_impostos", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  lucroGruto: decimal("lucro_gruto", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  lucroOperacional: decimal("lucro_operacional", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  lucroLiquido: decimal("lucro_liquido", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  entradas: decimal("entradas", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
   saidas: decimal("saidas", { precision: 14, scale: 2 }).notNull().default("0"),
-  saldoMes: decimal("saldo_mes", { precision: 14, scale: 2 }).notNull().default("0"),
+  saldoMes: decimal("saldo_mes", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
   fonte: varchar("fonte", { length: 64 }).default("manual"),
   fonteArquivo: varchar("fonte_arquivo", { length: 256 }),
   observacoes: text("observacoes"),
@@ -3255,18 +4460,23 @@ export type InsertCargo = typeof cargos.$inferInsert;
 
 export const responsabilidadesCargo = pgTable("responsabilidades_cargo", {
   id: serial("id").primaryKey(),
-  cargoId: integer("cargo_id").notNull().references(() => cargos.id, { onDelete: "cascade" }),
+  cargoId: integer("cargo_id")
+    .notNull()
+    .references(() => cargos.id, { onDelete: "cascade" }),
   titulo: varchar("titulo", { length: 256 }).notNull(),
   descricao: text("descricao").notNull(),
   ordem: integer("ordem").notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type ResponsabilidadeCargo = typeof responsabilidadesCargo.$inferSelect;
-export type InsertResponsabilidadeCargo = typeof responsabilidadesCargo.$inferInsert;
+export type InsertResponsabilidadeCargo =
+  typeof responsabilidadesCargo.$inferInsert;
 
 export const kpisCargo = pgTable("kpis_cargo", {
   id: serial("id").primaryKey(),
-  cargoId: integer("cargo_id").notNull().references(() => cargos.id, { onDelete: "cascade" }),
+  cargoId: integer("cargo_id")
+    .notNull()
+    .references(() => cargos.id, { onDelete: "cascade" }),
   titulo: varchar("titulo", { length: 256 }).notNull(),
   descricao: text("descricao").notNull(),
   meta: varchar("meta", { length: 256 }),
@@ -3279,7 +4489,9 @@ export type InsertKpiCargo = typeof kpisCargo.$inferInsert;
 // ─── Análise de Currículos com IA ─────────────────────────────────────────────
 export const analiseCurriculos = pgTable("analise_curriculos", {
   id: serial("id").primaryKey(),
-  cargoId: integer("cargoId").notNull().references(() => cargosFuncoes.id, { onDelete: "cascade" }),
+  cargoId: integer("cargoId")
+    .notNull()
+    .references(() => cargosFuncoes.id, { onDelete: "cascade" }),
   curriculoFileName: varchar("curriculoFileName", { length: 256 }).notNull(),
   curriculoUrl: text("curriculoUrl").notNull(),
   curriculoKey: text("curriculoKey").notNull(),
@@ -3299,7 +4511,9 @@ export type InsertAnaliseCurriculo = typeof analiseCurriculos.$inferInsert;
 export const syncLogs = pgTable("sync_logs", {
   id: serial("id").primaryKey(),
   dataExecucao: timestamp("dataExecucao").defaultNow().notNull(),
-  quantidadeOsImportadas: integer("quantidadeOsImportadas").default(0).notNull(),
+  quantidadeOsImportadas: integer("quantidadeOsImportadas")
+    .default(0)
+    .notNull(),
   status: syncStatusEnum("status").default("PENDENTE").notNull(),
   mensagemErro: text("mensagemErro"),
   tempoExecucaoMs: integer("tempoExecucaoMs"),
@@ -3310,30 +4524,36 @@ export type SyncLog = typeof syncLogs.$inferSelect;
 export type InsertSyncLog = typeof syncLogs.$inferInsert;
 
 // Tabela de Cache Local de OSs do ERP
-export const erpOsCache = pgTable("erp_os_cache", {
-  id: serial("id").primaryKey(),
-  numeroOs: varchar("numeroOs", { length: 32 }).notNull().unique(),
-  razaoSocial: varchar("razaoSocial", { length: 256 }),
-  cnpj: varchar("cnpj", { length: 20 }),
-  email: varchar("email", { length: 320 }),
-  cep: varchar("cep", { length: 10 }),
-  municipio: varchar("municipio", { length: 128 }),
-  estado: varchar("estado", { length: 2 }),
-  endereco: text("endereco"),
-  telefone: varchar("telefone", { length: 20 }),
-  dataEmissao: date("dataEmissao"),
-  dataAprovacao: varchar("dataAprovacao", { length: 64 }),
-  dataEntregaPrevista: date("dataEntregaPrevista"),
-  vendedor: varchar("vendedor", { length: 128 }),
-  status: varchar("status", { length: 32 }),
-  valorTotal: decimal("valorTotal", { precision: 12, scale: 2 }),
-  descricao: text("descricao"),
-  dataUltimaAtualizacao: timestamp("dataUltimaAtualizacao").defaultNow().notNull(),
-  sincronizadoEm: timestamp("sincronizadoEm").defaultNow().notNull(),
-  criadoEm: timestamp("criadoEm").defaultNow().notNull(),
-}, (t) => ({
-  numeroOsIndex: uniqueIndex("erp_os_cache_numero_os_idx").on(t.numeroOs),
-}));
+export const erpOsCache = pgTable(
+  "erp_os_cache",
+  {
+    id: serial("id").primaryKey(),
+    numeroOs: varchar("numeroOs", { length: 32 }).notNull().unique(),
+    razaoSocial: varchar("razaoSocial", { length: 256 }),
+    cnpj: varchar("cnpj", { length: 20 }),
+    email: varchar("email", { length: 320 }),
+    cep: varchar("cep", { length: 10 }),
+    municipio: varchar("municipio", { length: 128 }),
+    estado: varchar("estado", { length: 2 }),
+    endereco: text("endereco"),
+    telefone: varchar("telefone", { length: 20 }),
+    dataEmissao: date("dataEmissao"),
+    dataAprovacao: varchar("dataAprovacao", { length: 64 }),
+    dataEntregaPrevista: date("dataEntregaPrevista"),
+    vendedor: varchar("vendedor", { length: 128 }),
+    status: varchar("status", { length: 32 }),
+    valorTotal: decimal("valorTotal", { precision: 12, scale: 2 }),
+    descricao: text("descricao"),
+    dataUltimaAtualizacao: timestamp("dataUltimaAtualizacao")
+      .defaultNow()
+      .notNull(),
+    sincronizadoEm: timestamp("sincronizadoEm").defaultNow().notNull(),
+    criadoEm: timestamp("criadoEm").defaultNow().notNull(),
+  },
+  t => ({
+    numeroOsIndex: uniqueIndex("erp_os_cache_numero_os_idx").on(t.numeroOs),
+  })
+);
 export type ErpOsCache = typeof erpOsCache.$inferSelect;
 export type InsertErpOsCache = typeof erpOsCache.$inferInsert;
 
@@ -3382,7 +4602,9 @@ export const performanceComercial = pgTable("performance_comercial", {
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
   vendedor: varchar("vendedor", { length: 128 }).notNull(),
-  faturamento: decimal("faturamento", { precision: 14, scale: 2 }).notNull().default("0"),
+  faturamento: decimal("faturamento", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
   quantidadeOs: integer("quantidadeOs").notNull().default(0),
   novosClientes: integer("novosClientes").notNull().default(0),
   ticketMedio: decimal("ticketMedio", { precision: 10, scale: 2 }),
@@ -3390,7 +4612,8 @@ export const performanceComercial = pgTable("performance_comercial", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type PerformanceComercial = typeof performanceComercial.$inferSelect;
-export type InsertPerformanceComercial = typeof performanceComercial.$inferInsert;
+export type InsertPerformanceComercial =
+  typeof performanceComercial.$inferInsert;
 
 export const custoLed = pgTable("custo_led", {
   id: serial("id").primaryKey(),
@@ -3398,8 +4621,12 @@ export const custoLed = pgTable("custo_led", {
   ano: integer("ano").notNull(),
   produto: varchar("produto", { length: 128 }).notNull(),
   quantidade: integer("quantidade").notNull().default(0),
-  custoUnitario: decimal("custoUnitario", { precision: 10, scale: 2 }).notNull().default("0"),
-  custoTotal: decimal("custoTotal", { precision: 12, scale: 2 }).notNull().default("0"),
+  custoUnitario: decimal("custoUnitario", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0"),
+  custoTotal: decimal("custoTotal", { precision: 12, scale: 2 })
+    .notNull()
+    .default("0"),
   fornecedor: varchar("fornecedor", { length: 128 }),
   observacoes: text("observacoes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -3468,7 +4695,9 @@ export const performanceAbc = pgTable("performance_abc", {
   ano: integer("ano").notNull(),
   tipo: abcTipoEnum("tipo").notNull(),
   entidade: varchar("entidade", { length: 256 }).notNull(),
-  faturamento: decimal("faturamento", { precision: 14, scale: 2 }).notNull().default("0"),
+  faturamento: decimal("faturamento", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
   quantidade: integer("quantidade").notNull().default(0),
   classificacao: abcClassificacaoEnum("classificacao").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -3545,22 +4774,34 @@ export type InsertMetrica = typeof metricas.$inferInsert;
 // categorias pela própria tela, então virou uma tabela (`campanhasWhatsappCategorias`) com "chave" (slug
 // imutável, é o que fica gravado em `campanhasWhatsapp.categoria`) e "label" (editável). Arquivar em vez de
 // excluir preserva o rótulo de campanhas antigas; exclusão física só é permitida sem nenhuma campanha usando.
-export const campanhasWhatsappCategorias = pgTable("campanhas_whatsapp_categorias", {
-  id: serial("id").primaryKey(),
-  chave: varchar("chave", { length: 64 }).notNull().unique(),
-  label: varchar("label", { length: 80 }).notNull(),
-  ativo: boolean("ativo").notNull().default(true),
-  ordem: integer("ordem").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-export type CampanhaWhatsappCategoria = typeof campanhasWhatsappCategorias.$inferSelect;
-export type InsertCampanhaWhatsappCategoria = typeof campanhasWhatsappCategorias.$inferInsert;
+export const campanhasWhatsappCategorias = pgTable(
+  "campanhas_whatsapp_categorias",
+  {
+    id: serial("id").primaryKey(),
+    chave: varchar("chave", { length: 64 }).notNull().unique(),
+    label: varchar("label", { length: 80 }).notNull(),
+    ativo: boolean("ativo").notNull().default(true),
+    ordem: integer("ordem").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  }
+);
+export type CampanhaWhatsappCategoria =
+  typeof campanhasWhatsappCategorias.$inferSelect;
+export type InsertCampanhaWhatsappCategoria =
+  typeof campanhasWhatsappCategorias.$inferInsert;
 
 // recorrente = lote periódico (próximo envio = último + frequência);
 // gatilho_venda = pós-venda (prazo individual: data de faturamento da venda + frequência).
-export const campanhaWhatsappTipoEnum = pgEnum("campanha_whatsapp_tipo", ["recorrente", "gatilho_venda"]);
-export const campanhaWhatsappStatusEnum = pgEnum("campanha_whatsapp_status", ["ativa", "pausada", "arquivada"]);
+export const campanhaWhatsappTipoEnum = pgEnum("campanha_whatsapp_tipo", [
+  "recorrente",
+  "gatilho_venda",
+]);
+export const campanhaWhatsappStatusEnum = pgEnum("campanha_whatsapp_status", [
+  "ativa",
+  "pausada",
+  "arquivada",
+]);
 
 export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   id: serial("id").primaryKey(),
@@ -3590,45 +4831,66 @@ export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-export type CampanhaWhatsapp =typeof campanhasWhatsapp.$inferSelect;
+export type CampanhaWhatsapp = typeof campanhasWhatsapp.$inferSelect;
 export type InsertCampanhaWhatsapp = typeof campanhasWhatsapp.$inferInsert;
 
 // Um registro por disparo feito. `proximaData` = enviadoEm + frequência VIGENTE naquele momento (fato histórico,
 // alimenta o calendário); o "próximo envio" exibido na tela é recalculado com a frequência atual da campanha.
-export const campanhasWhatsappDisparos = pgTable("campanhas_whatsapp_disparos", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
-  enviadoEm: date("enviado_em").notNull(),
-  proximaData: date("proxima_data"),
-  contatosRecebidos: integer("contatos_recebidos").notNull().default(0),
-  contatosEnviados: integer("contatos_enviados").notNull().default(0),
-  contatosIgnorados: integer("contatos_ignorados").notNull().default(0), // ignorados por quarentena
-  contatosInvalidos: integer("contatos_invalidos").notNull().default(0), // telefone inválido ou repetido na lista
-  arquivoUrl: varchar("arquivo_url", { length: 512 }),
-  arquivoNome: varchar("arquivo_nome", { length: 256 }),
-  origem: varchar("origem", { length: 8 }).notNull().default("app"), // "app" | "api"
-  observacoes: text("observacoes"),
-  registradoPor: varchar("registrado_por", { length: 128 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (t) => ({
-  campanhaEnviadoIdx: index("campanhas_whatsapp_disparos_campanha_enviado_idx").on(t.campanhaId, t.enviadoEm),
-}));
-export type CampanhaWhatsappDisparo = typeof campanhasWhatsappDisparos.$inferSelect;
-export type InsertCampanhaWhatsappDisparo = typeof campanhasWhatsappDisparos.$inferInsert;
+export const campanhasWhatsappDisparos = pgTable(
+  "campanhas_whatsapp_disparos",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    enviadoEm: date("enviado_em").notNull(),
+    proximaData: date("proxima_data"),
+    contatosRecebidos: integer("contatos_recebidos").notNull().default(0),
+    contatosEnviados: integer("contatos_enviados").notNull().default(0),
+    contatosIgnorados: integer("contatos_ignorados").notNull().default(0), // ignorados por quarentena
+    contatosInvalidos: integer("contatos_invalidos").notNull().default(0), // telefone inválido ou repetido na lista
+    arquivoUrl: varchar("arquivo_url", { length: 512 }),
+    arquivoNome: varchar("arquivo_nome", { length: 256 }),
+    origem: varchar("origem", { length: 8 }).notNull().default("app"), // "app" | "api"
+    observacoes: text("observacoes"),
+    registradoPor: varchar("registrado_por", { length: 128 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    campanhaEnviadoIdx: index(
+      "campanhas_whatsapp_disparos_campanha_enviado_idx"
+    ).on(t.campanhaId, t.enviadoEm),
+  })
+);
+export type CampanhaWhatsappDisparo =
+  typeof campanhasWhatsappDisparos.$inferSelect;
+export type InsertCampanhaWhatsappDisparo =
+  typeof campanhasWhatsappDisparos.$inferInsert;
 
 // Trava anti-spam: uma linha por telefone (só dígitos, com DDI 55) com o ÚLTIMO contato recebido de qualquer
 // campanha. Só enxerga envios registrados neste módulo (upload ou API) — Retenção de Clientes Novos e CRM não alimentam.
-export const campanhasWhatsappQuarentena = pgTable("campanhas_whatsapp_quarentena", {
-  id: serial("id").primaryKey(),
-  telefone: varchar("telefone", { length: 20 }).notNull().unique(),
-  ultimaCampanhaId: integer("ultima_campanha_id").references(() => campanhasWhatsapp.id, { onDelete: "set null" }),
-  ultimoContatoEm: date("ultimo_contato_em").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (t) => ({
-  ultimoContatoIdx: index("campanhas_whatsapp_quarentena_ultimo_contato_idx").on(t.ultimoContatoEm),
-}));
-export type CampanhaWhatsappQuarentena = typeof campanhasWhatsappQuarentena.$inferSelect;
-export type InsertCampanhaWhatsappQuarentena = typeof campanhasWhatsappQuarentena.$inferInsert;
+export const campanhasWhatsappQuarentena = pgTable(
+  "campanhas_whatsapp_quarentena",
+  {
+    id: serial("id").primaryKey(),
+    telefone: varchar("telefone", { length: 20 }).notNull().unique(),
+    ultimaCampanhaId: integer("ultima_campanha_id").references(
+      () => campanhasWhatsapp.id,
+      { onDelete: "set null" }
+    ),
+    ultimoContatoEm: date("ultimo_contato_em").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    ultimoContatoIdx: index(
+      "campanhas_whatsapp_quarentena_ultimo_contato_idx"
+    ).on(t.ultimoContatoEm),
+  })
+);
+export type CampanhaWhatsappQuarentena =
+  typeof campanhasWhatsappQuarentena.$inferSelect;
+export type InsertCampanhaWhatsappQuarentena =
+  typeof campanhasWhatsappQuarentena.$inferInsert;
 
 // Telefones que pediram para não receber mais mensagens. Vale para TODAS as campanhas e é consultado em toda
 // geração de lista e registro de disparo (diferente da quarentena, que é só um descanso de N dias).
@@ -3640,27 +4902,42 @@ export const campanhasWhatsappOptout = pgTable("campanhas_whatsapp_optout", {
   registradoPor: varchar("registrado_por", { length: 128 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-export type CampanhaWhatsappOptout = typeof campanhasWhatsappOptout.$inferSelect;
+export type CampanhaWhatsappOptout =
+  typeof campanhasWhatsappOptout.$inferSelect;
 
 // Vendas (OS) de campanhas gatilho_venda que já foram contatadas — sem isto o pós-venda re-listaria a mesma venda.
-export const campanhasWhatsappGatilhos = pgTable("campanhas_whatsapp_gatilhos", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
-  disparoId: integer("disparo_id").notNull().references(() => campanhasWhatsappDisparos.id, { onDelete: "cascade" }),
-  osNumero: varchar("os_numero", { length: 32 }).notNull(),
-  telefone: varchar("telefone", { length: 20 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (t) => ({
-  campanhaOsUnique: uniqueIndex("campanhas_whatsapp_gatilhos_campanha_os_unique").on(t.campanhaId, t.osNumero),
-}));
-export type CampanhaWhatsappGatilho = typeof campanhasWhatsappGatilhos.$inferSelect;
-export type InsertCampanhaWhatsappGatilho = typeof campanhasWhatsappGatilhos.$inferInsert;
+export const campanhasWhatsappGatilhos = pgTable(
+  "campanhas_whatsapp_gatilhos",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    disparoId: integer("disparo_id")
+      .notNull()
+      .references(() => campanhasWhatsappDisparos.id, { onDelete: "cascade" }),
+    osNumero: varchar("os_numero", { length: 32 }).notNull(),
+    telefone: varchar("telefone", { length: 20 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    campanhaOsUnique: uniqueIndex(
+      "campanhas_whatsapp_gatilhos_campanha_os_unique"
+    ).on(t.campanhaId, t.osNumero),
+  })
+);
+export type CampanhaWhatsappGatilho =
+  typeof campanhasWhatsappGatilhos.$inferSelect;
+export type InsertCampanhaWhatsappGatilho =
+  typeof campanhasWhatsappGatilhos.$inferInsert;
 
 // Modelos de mensagem sugeridos por campanha — mesmo padrão de crm_scripts/retencao_scripts (faixa/estágio
 // trocado por campanha). "Excluir" é soft delete (ativo=false), como nos dois padrões acima.
 export const campanhasWhatsappScripts = pgTable("campanhas_whatsapp_scripts", {
   id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+  campanhaId: integer("campanha_id")
+    .notNull()
+    .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
   ordem: integer("ordem").notNull().default(0),
   titulo: varchar("titulo", { length: 128 }),
   conteudo: text("conteudo").notNull(),
@@ -3669,8 +4946,10 @@ export const campanhasWhatsappScripts = pgTable("campanhas_whatsapp_scripts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-export type CampanhaWhatsappScript = typeof campanhasWhatsappScripts.$inferSelect;
-export type InsertCampanhaWhatsappScript = typeof campanhasWhatsappScripts.$inferInsert;
+export type CampanhaWhatsappScript =
+  typeof campanhasWhatsappScripts.$inferSelect;
+export type InsertCampanhaWhatsappScript =
+  typeof campanhasWhatsappScripts.$inferInsert;
 
 // "Pasta" de arquivos da campanha (pedido do usuário: um lugar para salvar listas de contatos) — o arquivo em
 // si sobe direto para o UploadThing (client/src/lib/upload.ts, rota "documento", mesma do Registrar Disparo);
@@ -3681,17 +4960,24 @@ export type InsertCampanhaWhatsappScript = typeof campanhasWhatsappScripts.$infe
 // campanhaId é opcional (desde a Fonte de Dados abaixo): um arquivo pode nascer "solto", cadastrado direto
 // na tela de Fontes (sem pertencer a nenhuma campanha específica), para servir de audiência reutilizável por
 // qualquer campanha via campanhas_whatsapp_fontes — não só como anexo de uma campanha específica.
-export const campanhasWhatsappArquivos = pgTable("campanhas_whatsapp_arquivos", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
-  nome: varchar("nome", { length: 256 }).notNull(),
-  url: varchar("url", { length: 1024 }).notNull(),
-  tamanhoBytes: integer("tamanho_bytes").notNull().default(0),
-  enviadoPor: varchar("enviado_por", { length: 128 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export type CampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$inferSelect;
-export type InsertCampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$inferInsert;
+export const campanhasWhatsappArquivos = pgTable(
+  "campanhas_whatsapp_arquivos",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id").references(() => campanhasWhatsapp.id, {
+      onDelete: "cascade",
+    }),
+    nome: varchar("nome", { length: 256 }).notNull(),
+    url: varchar("url", { length: 1024 }).notNull(),
+    tamanhoBytes: integer("tamanho_bytes").notNull().default(0),
+    enviadoPor: varchar("enviado_por", { length: 128 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  }
+);
+export type CampanhaWhatsappArquivo =
+  typeof campanhasWhatsappArquivos.$inferSelect;
+export type InsertCampanhaWhatsappArquivo =
+  typeof campanhasWhatsappArquivos.$inferInsert;
 
 // ─── Fontes de Dados (Data Sources): audiências reutilizáveis entre campanhas ───────────────────────
 // Pedido do usuário: unificar públicos automáticos do ERP (histórico local, sem chamada à API) com listas
@@ -3701,7 +4987,13 @@ export type InsertCampanhaWhatsappArquivo = typeof campanhasWhatsappArquivos.$in
 // guardado à parte). Ver server/services/fontesErpCampanhas.ts.
 // "campanha_arquivos": fonte sem arquivo próprio — cada campanha que a vincula usa os arquivos anexados na sua
 // própria pasta (campanhas_whatsapp_arquivos.campanha_id), ex.: "Prospecção Nacional" com uma lista por campanha.
-export const campanhaFonteTipoEnum = pgEnum("campanha_fonte_tipo", ["erp", "arquivo", "campanha_arquivos"]);
+// "retargeting": audiência resolvida dinamicamente a partir dos leads qualificados por IA de uma campanha prévia.
+export const campanhaFonteTipoEnum = pgEnum("campanha_fonte_tipo", [
+  "erp",
+  "arquivo",
+  "campanha_arquivos",
+  "retargeting",
+]);
 
 export const campanhasWhatsappFontes = pgTable("campanhas_whatsapp_fontes", {
   id: serial("id").primaryKey(),
@@ -3714,44 +5006,78 @@ export const campanhasWhatsappFontes = pgTable("campanhas_whatsapp_fontes", {
   // Só para tipo="erp": qual função de resolução chamar (ver RESOLVEDORES_ERP em fontesErpCampanhas.ts).
   consultaErp: varchar("consulta_erp", { length: 64 }),
   // Só para tipo="arquivo": de onde vêm os contatos (parseado sob demanda, não duplicado nesta tabela).
-  arquivoId: integer("arquivo_id").references(() => campanhasWhatsappArquivos.id, { onDelete: "cascade" }),
+  arquivoId: integer("arquivo_id").references(
+    () => campanhasWhatsappArquivos.id,
+    { onDelete: "cascade" }
+  ),
+  // Só para tipo="retargeting": armazena filtros como { origemCampanhaId, cluster, motivoObjecao, icpMinimo }.
+  retargetingConfig:
+    jsonb("retargeting_config").$type<Record<string, unknown>>(),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type CampanhaWhatsappFonte = typeof campanhasWhatsappFontes.$inferSelect;
-export type InsertCampanhaWhatsappFonte = typeof campanhasWhatsappFontes.$inferInsert;
+export type InsertCampanhaWhatsappFonte =
+  typeof campanhasWhatsappFontes.$inferInsert;
 
 // Join N:N — quais fontes uma campanha combina (multi-seleção: ex. "Reativação" = Inativos do ERP + lista
 // fria de Google Maps ao mesmo tempo).
-export const campanhasWhatsappCampanhaFontes = pgTable("campanhas_whatsapp_campanha_fontes", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
-  fonteId: integer("fonte_id").notNull().references(() => campanhasWhatsappFontes.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, t => ({
-  unico: uniqueIndex("campanhas_whatsapp_campanha_fontes_unique").on(t.campanhaId, t.fonteId),
-}));
-export type CampanhaWhatsappCampanhaFonte = typeof campanhasWhatsappCampanhaFontes.$inferSelect;
-export type InsertCampanhaWhatsappCampanhaFonte = typeof campanhasWhatsappCampanhaFontes.$inferInsert;
+export const campanhasWhatsappCampanhaFontes = pgTable(
+  "campanhas_whatsapp_campanha_fontes",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    fonteId: integer("fonte_id")
+      .notNull()
+      .references(() => campanhasWhatsappFontes.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    unico: uniqueIndex("campanhas_whatsapp_campanha_fontes_unique").on(
+      t.campanhaId,
+      t.fonteId
+    ),
+  })
+);
+export type CampanhaWhatsappCampanhaFonte =
+  typeof campanhasWhatsappCampanhaFontes.$inferSelect;
+export type InsertCampanhaWhatsappCampanhaFonte =
+  typeof campanhasWhatsappCampanhaFontes.$inferInsert;
 
 // Histórico granular por (campanha, telefone) — resolve a "Checagem de Cadência da Campanha" pedida pelo
 // usuário: diferente da quarentena global (campanhas_whatsapp_quarentena, "qualquer campanha"), aqui é
 // "ESTA campanha especificamente". Mesmo padrão de upsert que nunca recua no tempo. Só é CONSULTADO no
 // fluxo novo de geração de lista a partir de Fontes (gerarListaDaCampanha) — não é uma trava adicional no
 // registrarDisparo genérico (upload manual continua exatamente como antes); é gravado sempre, sem custo.
-export const campanhasWhatsappContatosHistorico = pgTable("campanhas_whatsapp_contatos_historico", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
-  telefone: varchar("telefone", { length: 20 }).notNull(),
-  ultimoEnvioEm: date("ultimo_envio_em").notNull(),
-  disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, t => ({
-  unico: uniqueIndex("campanhas_whatsapp_contatos_historico_unique").on(t.campanhaId, t.telefone),
-}));
-export type CampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferSelect;
-export type InsertCampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferInsert;
+export const campanhasWhatsappContatosHistorico = pgTable(
+  "campanhas_whatsapp_contatos_historico",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    telefone: varchar("telefone", { length: 20 }).notNull(),
+    ultimoEnvioEm: date("ultimo_envio_em").notNull(),
+    disparoId: integer("disparo_id").references(
+      () => campanhasWhatsappDisparos.id,
+      { onDelete: "set null" }
+    ),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    unico: uniqueIndex("campanhas_whatsapp_contatos_historico_unique").on(
+      t.campanhaId,
+      t.telefone
+    ),
+  })
+);
+export type CampanhaWhatsappContatoHistorico =
+  typeof campanhasWhatsappContatosHistorico.$inferSelect;
+export type InsertCampanhaWhatsappContatoHistorico =
+  typeof campanhasWhatsappContatosHistorico.$inferInsert;
 
 // ─── Agendamentos (Planner): "eu planejo disparar esta campanha neste dia" ──────────────────────────────
 // Pedido do usuário 27/09/2026: calendário visual pra AGENDAR (não só ver a previsão calculada pela
@@ -3759,88 +5085,155 @@ export type InsertCampanhaWhatsappContatoHistorico = typeof campanhasWhatsappCon
 // Independente de campanhas_whatsapp_disparos: um agendamento é só um plano/lembrete, não substitui o
 // registro formal de disparo (que continua exigindo a lista de contatos) — por isso não tem `disparo_id`
 // nem qualquer outro vínculo automático com o log real; é o usuário quem marca "disparado"/"não disparado".
-export const campanhaWhatsappAgendamentoStatusEnum = pgEnum("campanha_whatsapp_agendamento_status", ["planejado", "disparado", "nao_disparado"]);
+export const campanhaWhatsappAgendamentoStatusEnum = pgEnum(
+  "campanha_whatsapp_agendamento_status",
+  ["planejado", "disparado", "nao_disparado"]
+);
 
-export const campanhasWhatsappAgendamentos = pgTable("campanhas_whatsapp_agendamentos", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
-  dataAgendada: date("data_agendada").notNull(),
-  status: campanhaWhatsappAgendamentoStatusEnum("status").notNull().default("planejado"),
-  observacoes: text("observacoes"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, t => ({
-  campanhaDataIdx: index("campanhas_whatsapp_agendamentos_campanha_data_idx").on(t.campanhaId, t.dataAgendada),
-}));
-export type CampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferSelect;
-export type InsertCampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferInsert;
+export const campanhasWhatsappAgendamentos = pgTable(
+  "campanhas_whatsapp_agendamentos",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    dataAgendada: date("data_agendada").notNull(),
+    status: campanhaWhatsappAgendamentoStatusEnum("status")
+      .notNull()
+      .default("planejado"),
+    observacoes: text("observacoes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    campanhaDataIdx: index(
+      "campanhas_whatsapp_agendamentos_campanha_data_idx"
+    ).on(t.campanhaId, t.dataAgendada),
+  })
+);
+export type CampanhaWhatsappAgendamento =
+  typeof campanhasWhatsappAgendamentos.$inferSelect;
+export type InsertCampanhaWhatsappAgendamento =
+  typeof campanhasWhatsappAgendamentos.$inferInsert;
 
 // ─── Mensagens Inbound & Buffer com Debounce (Gatilho IA) ───────────────────────────
 // Recebe webhooks de mensagens da Meta / Ceci.Chat para aplicar filtro de bots,
 // consolidação com debounce de 60 segundos por contato e encaminhamento ao Gemini Flash.
-export const campanhasWhatsappMensagensInbound = pgTable("campanhas_whatsapp_mensagens_inbound", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").references(() => campanhasWhatsapp.id, { onDelete: "set null" }),
-  disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
-  telefone: varchar("telefone", { length: 20 }).notNull(),
-  nome: varchar("nome", { length: 200 }),
-  tipoMensagem: varchar("tipo_mensagem", { length: 32 }).notNull().default("text"), // 'text' | 'button_reply' | 'list_reply'
-  texto: text("texto"),
-  payloadRaw: text("payload_raw"),
-  // ID da mensagem no provedor (Ceci/Meta), quando o payload trouxer um. Único (nulos não colidem entre si no
-  // Postgres) — evita gravar a mesma mensagem duas vezes quando o provedor reentrega o mesmo webhook (retry).
-  mensagemIdExterno: varchar("mensagem_id_externo", { length: 128 }),
-  ehBot: boolean("eh_bot").notNull().default(false),
-  motivoBot: varchar("motivo_bot", { length: 64 }), // 'resposta_rapida_4s' | 'blacklist_semantica'
-  tempoRespostaSegundos: integer("tempo_resposta_segundos"),
-  recebidoEm: timestamp("recebido_em").defaultNow().notNull(),
-  bufferAte: timestamp("buffer_ate").notNull(), // recebidoEm + 60s
-  processado: boolean("processado").notNull().default(false),
-  processadoEm: timestamp("processado_em"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, t => ({
-  telBufferIdx: index("campanhas_whatsapp_inbound_tel_buffer_idx").on(t.telefone, t.bufferAte, t.processado),
-  campanhaRecebidoIdx: index("campanhas_whatsapp_inbound_campanha_recebido_idx").on(t.campanhaId, t.recebidoEm),
-  mensagemIdExternoUnico: uniqueIndex("campanhas_whatsapp_inbound_mensagem_id_unique").on(t.mensagemIdExterno),
-}));
-export type CampanhaWhatsappMensagemInbound = typeof campanhasWhatsappMensagensInbound.$inferSelect;
-export type InsertCampanhaWhatsappMensagemInbound = typeof campanhasWhatsappMensagensInbound.$inferInsert;
+export const campanhasWhatsappMensagensInbound = pgTable(
+  "campanhas_whatsapp_mensagens_inbound",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id").references(() => campanhasWhatsapp.id, {
+      onDelete: "set null",
+    }),
+    disparoId: integer("disparo_id").references(
+      () => campanhasWhatsappDisparos.id,
+      { onDelete: "set null" }
+    ),
+    telefone: varchar("telefone", { length: 20 }).notNull(),
+    nome: varchar("nome", { length: 200 }),
+    tipoMensagem: varchar("tipo_mensagem", { length: 32 })
+      .notNull()
+      .default("text"), // 'text' | 'button_reply' | 'list_reply'
+    texto: text("texto"),
+    payloadRaw: text("payload_raw"),
+    // ID da mensagem no provedor (Ceci/Meta), quando o payload trouxer um. Único (nulos não colidem entre si no
+    // Postgres) — evita gravar a mesma mensagem duas vezes quando o provedor reentrega o mesmo webhook (retry).
+    mensagemIdExterno: varchar("mensagem_id_externo", { length: 128 }),
+    ehBot: boolean("eh_bot").notNull().default(false),
+    motivoBot: varchar("motivo_bot", { length: 64 }), // 'resposta_rapida_4s' | 'blacklist_semantica'
+    tempoRespostaSegundos: integer("tempo_resposta_segundos"),
+    recebidoEm: timestamp("recebido_em").defaultNow().notNull(),
+    bufferAte: timestamp("buffer_ate").notNull(), // recebidoEm + 60s
+    processado: boolean("processado").notNull().default(false),
+    processadoEm: timestamp("processado_em"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    telBufferIdx: index("campanhas_whatsapp_inbound_tel_buffer_idx").on(
+      t.telefone,
+      t.bufferAte,
+      t.processado
+    ),
+    campanhaRecebidoIdx: index(
+      "campanhas_whatsapp_inbound_campanha_recebido_idx"
+    ).on(t.campanhaId, t.recebidoEm),
+    mensagemIdExternoUnico: uniqueIndex(
+      "campanhas_whatsapp_inbound_mensagem_id_unique"
+    ).on(t.mensagemIdExterno),
+  })
+);
+export type CampanhaWhatsappMensagemInbound =
+  typeof campanhasWhatsappMensagensInbound.$inferSelect;
+export type InsertCampanhaWhatsappMensagemInbound =
+  typeof campanhasWhatsappMensagensInbound.$inferInsert;
 
 // ─── Leads Qualificados por IA (Gemini Flash: Clusters, ICP Score & Objeções) ──────
 // Armazena a qualificação semântica dos contatos que responderam a campanhas.
 // Cada lead é qualificado uma única vez por campanha para controle de custos de tokens.
-export const campanhasWhatsappLeadsQualificados = pgTable("campanhas_whatsapp_leads_qualificados", {
-  id: serial("id").primaryKey(),
-  campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
-  disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
-  telefone: varchar("telefone", { length: 20 }).notNull(),
-  nome: varchar("nome", { length: 200 }),
-  // Cluster semântico: ORCAMENTO_DIRETO | DUVIDA_TECNICA | OBJECAO_FORNECEDOR | DESQUALIFICADO_OUTROS
-  cluster: varchar("cluster", { length: 40 }).notNull(),
-  resumoIntencao: varchar("resumo_intencao", { length: 255 }).notNull(),
-  nivelInteresse: integer("nivel_interesse").notNull(), // 1 a 5
-  palavrasChave: text("palavras_chave").array().notNull().default([]),
-  icpFitScore: integer("icp_fit_score").notNull().default(50), // 1 a 100
-  // Perfil: DECISOR_SOCIO | COMPRADOR_TECNICO | INTERMEDIARIO_ATENDENTE | DESCONHECIDO
-  perfilInterlocutor: varchar("perfil_interlocutor", { length: 40 }).notNull().default("DESCONHECIDO"),
-  parametrosProjeto: text("parametros_projeto").array().notNull().default([]),
-  // Objeção: PRECO_ORCAMENTO | PRAZO_ENTREGA | FORNECEDOR_FIXO | TIMING_INADEQUADO | FORA_DE_ESCOPO | NENHUMA
-  motivoObjecao: varchar("motivo_objecao", { length: 40 }).notNull().default("NENHUMA"),
-  resumoObjecao: varchar("resumo_objecao", { length: 255 }),
-  mensagensConsolidadas: text("mensagens_consolidadas").array().notNull().default([]),
-  totalMensagensTrocas: integer("total_mensagens_trocas").notNull().default(1),
-  tempoReacaoSegundos: integer("tempo_reacao_segundos"),
-  diaSemanaPrimeiraResposta: integer("dia_semana_primeira_resposta"), // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
-  horaPrimeiraResposta: integer("hora_primeira_resposta"), // 0 a 23
-  provedorLlm: varchar("provedor_llm", { length: 32 }).notNull().default("gemini"),
-  modeloLlm: varchar("modelo_llm", { length: 64 }).notNull().default("gemini-1.5-flash"),
-  analisadoEm: timestamp("analisado_em").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, t => ({
-  campanhaTelefoneUnico: uniqueIndex("campanhas_whatsapp_leads_campanha_tel_unique").on(t.campanhaId, t.telefone),
-  campanhaClusterIdx: index("campanhas_whatsapp_leads_campanha_cluster_idx").on(t.campanhaId, t.cluster),
-  campanhaIcpIdx: index("campanhas_whatsapp_leads_campanha_icp_idx").on(t.campanhaId, t.icpFitScore),
-}));
-export type CampanhaWhatsappLeadQualificado = typeof campanhasWhatsappLeadsQualificados.$inferSelect;
-export type InsertCampanhaWhatsappLeadQualificado = typeof campanhasWhatsappLeadsQualificados.$inferInsert;
+export const campanhasWhatsappLeadsQualificados = pgTable(
+  "campanhas_whatsapp_leads_qualificados",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    disparoId: integer("disparo_id").references(
+      () => campanhasWhatsappDisparos.id,
+      { onDelete: "set null" }
+    ),
+    telefone: varchar("telefone", { length: 20 }).notNull(),
+    nome: varchar("nome", { length: 200 }),
+    // Cluster semântico: ORCAMENTO_DIRETO | DUVIDA_TECNICA | OBJECAO_FORNECEDOR | DESQUALIFICADO_OUTROS
+    cluster: varchar("cluster", { length: 40 }).notNull(),
+    resumoIntencao: varchar("resumo_intencao", { length: 255 }).notNull(),
+    nivelInteresse: integer("nivel_interesse").notNull(), // 1 a 5
+    palavrasChave: text("palavras_chave").array().notNull().default([]),
+    icpFitScore: integer("icp_fit_score").notNull().default(50), // 1 a 100
+    // Perfil: DECISOR_SOCIO | COMPRADOR_TECNICO | INTERMEDIARIO_ATENDENTE | DESCONHECIDO
+    perfilInterlocutor: varchar("perfil_interlocutor", { length: 40 })
+      .notNull()
+      .default("DESCONHECIDO"),
+    parametrosProjeto: text("parametros_projeto").array().notNull().default([]),
+    // Objeção: PRECO_ORCAMENTO | PRAZO_ENTREGA | FORNECEDOR_FIXO | TIMING_INADEQUADO | FORA_DE_ESCOPO | NENHUMA
+    motivoObjecao: varchar("motivo_objecao", { length: 40 })
+      .notNull()
+      .default("NENHUMA"),
+    resumoObjecao: varchar("resumo_objecao", { length: 255 }),
+    mensagensConsolidadas: text("mensagens_consolidadas")
+      .array()
+      .notNull()
+      .default([]),
+    totalMensagensTrocas: integer("total_mensagens_trocas")
+      .notNull()
+      .default(1),
+    tempoReacaoSegundos: integer("tempo_reacao_segundos"),
+    diaSemanaPrimeiraResposta: integer("dia_semana_primeira_resposta"), // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+    horaPrimeiraResposta: integer("hora_primeira_resposta"), // 0 a 23
+    provedorLlm: varchar("provedor_llm", { length: 32 })
+      .notNull()
+      .default("gemini"),
+    modeloLlm: varchar("modelo_llm", { length: 64 })
+      .notNull()
+      .default("gemini-1.5-flash"),
+    analisadoEm: timestamp("analisado_em").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    campanhaTelefoneUnico: uniqueIndex(
+      "campanhas_whatsapp_leads_campanha_tel_unique"
+    ).on(t.campanhaId, t.telefone),
+    campanhaClusterIdx: index(
+      "campanhas_whatsapp_leads_campanha_cluster_idx"
+    ).on(t.campanhaId, t.cluster),
+    campanhaIcpIdx: index("campanhas_whatsapp_leads_campanha_icp_idx").on(
+      t.campanhaId,
+      t.icpFitScore
+    ),
+  })
+);
+export type CampanhaWhatsappLeadQualificado =
+  typeof campanhasWhatsappLeadsQualificados.$inferSelect;
+export type InsertCampanhaWhatsappLeadQualificado =
+  typeof campanhasWhatsappLeadsQualificados.$inferInsert;

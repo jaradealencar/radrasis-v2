@@ -19,14 +19,14 @@ isomórfico), `server/routes/campanhas-whatsapp-api.ts` (webhooks).
 locais `new Date()` já é o dia seguinte). Para exibir uma data ISO use `formatarDataBr` — `new Date("2026-09-26")`
 é lido como meia-noite UTC e no Brasil apareceria um dia antes.
 
-**Próximo envio (campanha recorrente).** `último envio + frequência`, sempre com a frequência *atual* da campanha
+**Próximo envio (campanha recorrente).** `último envio + frequência`, sempre com a frequência _atual_ da campanha
 (editar a frequência muda o prazo na hora). O `proxima_data` gravado em cada disparo é o fato histórico daquele
 momento e alimenta o calendário. Campanha nunca disparada nasce **vermelha** ("1º disparo pendente"), com prazo na
 data de criação.
 
 **Semáforo.** 🔴 `hoje >= próximo envio` (atrasada ou disparar hoje) · 🟡 faltam até 3 dias · 🟢 faltam mais de 3.
-Pausada/arquivada não tem semáforo e sai dos contadores. Cartões do topo: *Ativas*; *Pendentes para hoje* (vermelhas);
-*Da semana* (prazo entre amanhã e +7 dias).
+Pausada/arquivada não tem semáforo e sai dos contadores. Cartões do topo: _Ativas_; _Pendentes para hoje_ (vermelhas);
+_Da semana_ (prazo entre amanhã e +7 dias).
 
 **Quarentena.** Ao registrar um disparo, cada telefone é normalizado (só dígitos, DDI 55) e comparado com o último
 contato que recebeu de **qualquer** campanha registrada aqui. É ignorado se o último contato está a **menos de
@@ -40,7 +40,7 @@ lista são separados e reportados. Só o **último** contato por telefone é gua
 
 **Pós-venda (`gatilho_venda`).** Prazo de cada venda = **data de faturamento** (`historico_os.dataFaturamento`, formatos
 dd/mm/aaaa e ISO) + `frequencia_dias`. Só OS "normais" (mesma regra `isOsNormalDb`: sem retrabalho, amostra, cortesia
-ou cancelada). *Para contatar* = prazo vencido e ainda não contatada, **sem limite de atraso**; o campo opcional
+ou cancelada). _Para contatar_ = prazo vencido e ainda não contatada, **sem limite de atraso**; o campo opcional
 **"só vendas faturadas a partir de"** existe para conter a 1ª lista (sem ele, a primeira lista pode trazer o histórico
 inteiro — em teste local vieram vendas de 2023). O diálogo de disparo mostra a data da venda pendente mais antiga.
 Venda de contato **ignorado por quarentena continua pendente** e reaparece quando a quarentena vence. Vendas sem
@@ -70,18 +70,18 @@ campanha (multi-seleção com autosave a cada clique — `FontesDadosPopover.tsx
 **10 fontes automáticas do ERP** (seed fixo das migrations `0049`/`0050`/`0053`, calculadas do histórico local —
 sem chamada à API MubiSys, mesmo espírito de `inteligenciaClientes.ts`):
 
-| Fonte | Regra |
-|---|---|
-| Clientes ativos | última compra ≤ 180 dias |
-| Primeira compra | primeira compra da vida dentro do período escolhido (sem período: últimos 60 dias — `JANELA_PADRAO_DIAS`); quem já recomprou continua no grupo daquele período (mudou em 03/10/2026; antes exigia 1 única compra) |
-| Ativos com 5+ compras (6 meses) | 5 ou mais OS válidas nos últimos 180 dias; entra no dia da 5ª compra (`resolverAtivosCincoMais`, fonte nova em 03/10/2026) |
-| Inativos 6+ meses | última compra entre 180 dias e **24 meses** (teto adicionado 28/09/2026 — ver nota abaixo) |
-| Orçaram e não compraram | status que não é venda ganha, em **todo o histórico** (sem limite de janela — decisão do usuário 27/09/2026) |
-| Compraram 1 vez e sumiram | só 1 compra na vida **e** ela já esfriou (180+ dias) |
-| Compraram apenas 1 vez (todo o histórico) | só 1 compra na vida, **sem** filtro de data (pedido 28/09/2026 — mais abrangente que a anterior) |
-| Novos clientes do mês | primeira compra da vida caiu no **mês corrente** (diferente de "Primeira compra", que usa janela de 60 dias corridos) |
-| Reativados do mês | já compravam antes, mas a compra deste mês veio depois de 6+ meses parados — mesma regra `isClienteNovoPorRecencia` do Performance Comercial (`server/routers/performanceComercial.ts`), reaproveitada em vez de duplicada |
-| Redução de volume (3 meses) | valor comprado caiu 30%+ nos últimos 90 dias vs. os 90 dias anteriores (decisão do usuário 28/09/2026: comparar 3 meses recentes com os 3 anteriores) |
+| Fonte                                     | Regra                                                                                                                                                                                                                      |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clientes ativos                           | última compra ≤ 180 dias                                                                                                                                                                                                   |
+| Primeira compra                           | primeira compra da vida dentro do período escolhido (sem período: últimos 60 dias — `JANELA_PADRAO_DIAS`); quem já recomprou continua no grupo daquele período (mudou em 03/10/2026; antes exigia 1 única compra)          |
+| Ativos com 5+ compras (6 meses)           | 5 ou mais OS válidas nos últimos 180 dias; entra no dia da 5ª compra (`resolverAtivosCincoMais`, fonte nova em 03/10/2026)                                                                                                 |
+| Inativos 6+ meses                         | última compra entre 180 dias e **24 meses** (teto adicionado 28/09/2026 — ver nota abaixo)                                                                                                                                 |
+| Orçaram e não compraram                   | status que não é venda ganha, em **todo o histórico** (sem limite de janela — decisão do usuário 27/09/2026)                                                                                                               |
+| Compraram 1 vez e sumiram                 | só 1 compra na vida **e** ela já esfriou (180+ dias)                                                                                                                                                                       |
+| Compraram apenas 1 vez (todo o histórico) | só 1 compra na vida, **sem** filtro de data (pedido 28/09/2026 — mais abrangente que a anterior)                                                                                                                           |
+| Novos clientes do mês                     | primeira compra da vida caiu no **mês corrente** (diferente de "Primeira compra", que usa janela de 60 dias corridos)                                                                                                      |
+| Reativados do mês                         | já compravam antes, mas a compra deste mês veio depois de 6+ meses parados — mesma regra `isClienteNovoPorRecencia` do Performance Comercial (`server/routers/performanceComercial.ts`), reaproveitada em vez de duplicada |
+| Redução de volume (3 meses)               | valor comprado caiu 30%+ nos últimos 90 dias vs. os 90 dias anteriores (decisão do usuário 28/09/2026: comparar 3 meses recentes com os 3 anteriores)                                                                      |
 
 Implementação: `server/services/fontesErpCampanhas.ts` (`RESOLVEDORES_ERP`), sem alterar
 `construirBaseClientes`/`ClienteBase` (não carregam telefone — foi criada uma agregação própria,
@@ -95,8 +95,7 @@ O recorte da lista limita a idade da venda; o backfill do histórico roda por at
 registros antigos usados por outras fontes. Ver "Limitações conhecidas" abaixo.
 
 **Os 7 grupos de clientes** (pedido do usuário 03/10/2026, migration `0072`; substituem as categorias antigas, `novo_lead`
-fica arquivada e `orcamento_perdido` virou `orcaram_nao_compraram`): 1) Outbound (listas externas, sem fonte do ERP),
-2) Primeira compra, 3) Pós-venda, 4) Reativação de inativos, 5) Orçaram e não compraram, 6) Uma só compra
+fica arquivada e `orcamento_perdido` virou `orcaram_nao_compraram`): 1) Outbound (listas externas, sem fonte do ERP), 2) Primeira compra, 3) Pós-venda, 4) Reativação de inativos, 5) Orçaram e não compraram, 6) Uma só compra
 (`erp_compraram_uma_vez`), 7) Ativos com 5+ compras (5 ou mais em 6 meses; a regra "< 5" do pedido foi esclarecida
 como "5 ou mais"). A migration cria uma campanha inicial para cada grupo que ainda não tinha uma (cadência 30/30/60/30
 dias e quarentena de 15 dias, ponto de partida editável) e vincula a fonte do ERP. Campanhas recorrentes têm o
@@ -179,6 +178,13 @@ Em "Gerenciar fontes" > "Criar sem arquivo" nasce uma fonte (ex.: "Prospecção 
 que a vincula usa **todos os arquivos anexados na sua própria pasta** (Arquivos da campanha, `campanha_id`), lidos sob
 demanda em `montarListaCampanha`. Assim várias campanhas compartilham a classificação e cada uma sobe a sua planilha.
 
+**Fonte de Retargeting dinâmico via IA** (pedido do usuário 17/10/2026, migration `0117`): tipo `retargeting`.
+Criada em 1 clique a partir do painel "Qualificação de leads por IA" (`QualificacaoIaDialog.tsx`), salva em
+`campanhas_whatsapp_fontes.retargeting_config` a campanha de origem e os filtros aplicados (cluster, objeção e ICP).
+É resolvida dinamicamente lendo direto de `campanhas_whatsapp_leads_qualificados`: qualquer campanha que vincule
+essa fonte tem sua audiência preenchida e atualizada automaticamente conforme novos leads são qualificados.
+Ver `docs/campanhas-whatsapp-ia.md`.
+
 **Pipeline de resolução (`gerarListaDaCampanha`, só leitura — não grava nada):** resolve cada fonte vinculada →
 concatena os contatos brutos de todas → `higienizarLista` (normaliza telefone, desduplica **entre** fontes por
 telefone normalizado, aplica a quarentena global) → `filtrarPorCadenciaCampanha` (nova checagem, só aqui — ver
@@ -211,19 +217,19 @@ duplicar é o atalho para criá-las rapidamente sem precisar reconfigurar tudo.
 
 ## Modelo de dados (migrations `0045`–`0053`)
 
-| Tabela | Papel |
-|---|---|
-| `campanhas_whatsapp` | campanha: nome, `descricao` (livre, opcional, sem regra de negócio), categoria, tipo, `frequencia_dias`, `quarentena_dias`, status, `gatilho_a_partir_de` |
-| `campanhas_whatsapp_categorias` | categorias editáveis: `chave` (slug imutável), `label`, `ativo`, `ordem` |
-| `campanhas_whatsapp_disparos` | log de cada disparo (contagens, próxima data, arquivo, observações, origem `app`/`api`) |
-| `campanhas_whatsapp_quarentena` | último contato por telefone, de **qualquer** campanha (`telefone` único) |
-| `campanhas_whatsapp_contatos_historico` | último contato por (campanha, telefone) — cadência **desta** campanha |
-| `campanhas_whatsapp_gatilhos` | OS de pós-venda já contatadas por campanha (`campanha_id`+`os_numero` único) |
-| `campanhas_whatsapp_scripts` | modelos de mensagem por campanha (`titulo`, `conteudo`, `ordem`, `ativo`, `copia_count`) |
-| `campanhas_whatsapp_arquivos` | arquivos salvos (por campanha **ou soltos**, `campanha_id` nullable): `nome`, `url`, `tamanho_bytes`, `enviado_por` — só o registro; exclusão não apaga o arquivo do UploadThing (mesmo padrão de `biblioteca_arquivos`) |
-| `campanhas_whatsapp_fontes` | fonte de audiência: `tipo` (`erp`/`arquivo`), `chave`, `label`, `consulta_erp` ou `arquivo_id` |
-| `campanhas_whatsapp_campanha_fontes` | join N:N — quais fontes uma campanha combina (`campanha_id`+`fonte_id` único) |
-| `campanhas_whatsapp_agendamentos` | Planner: plano "disparar esta campanha neste dia" (`data_agendada`, `status` `planejado`/`disparado`/`nao_disparado`, `observacoes`) — independente do log real de disparo |
+| Tabela                                  | Papel                                                                                                                                                                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `campanhas_whatsapp`                    | campanha: nome, `descricao` (livre, opcional, sem regra de negócio), categoria, tipo, `frequencia_dias`, `quarentena_dias`, status, `gatilho_a_partir_de`                                                                |
+| `campanhas_whatsapp_categorias`         | categorias editáveis: `chave` (slug imutável), `label`, `ativo`, `ordem`                                                                                                                                                 |
+| `campanhas_whatsapp_disparos`           | log de cada disparo (contagens, próxima data, arquivo, observações, origem `app`/`api`)                                                                                                                                  |
+| `campanhas_whatsapp_quarentena`         | último contato por telefone, de **qualquer** campanha (`telefone` único)                                                                                                                                                 |
+| `campanhas_whatsapp_contatos_historico` | último contato por (campanha, telefone) — cadência **desta** campanha                                                                                                                                                    |
+| `campanhas_whatsapp_gatilhos`           | OS de pós-venda já contatadas por campanha (`campanha_id`+`os_numero` único)                                                                                                                                             |
+| `campanhas_whatsapp_scripts`            | modelos de mensagem por campanha (`titulo`, `conteudo`, `ordem`, `ativo`, `copia_count`)                                                                                                                                 |
+| `campanhas_whatsapp_arquivos`           | arquivos salvos (por campanha **ou soltos**, `campanha_id` nullable): `nome`, `url`, `tamanho_bytes`, `enviado_por` — só o registro; exclusão não apaga o arquivo do UploadThing (mesmo padrão de `biblioteca_arquivos`) |
+| `campanhas_whatsapp_fontes`             | fonte de audiência: `tipo` (`erp`/`arquivo`), `chave`, `label`, `consulta_erp` ou `arquivo_id`                                                                                                                           |
+| `campanhas_whatsapp_campanha_fontes`    | join N:N — quais fontes uma campanha combina (`campanha_id`+`fonte_id` único)                                                                                                                                            |
+| `campanhas_whatsapp_agendamentos`       | Planner: plano "disparar esta campanha neste dia" (`data_agendada`, `status` `planejado`/`disparado`/`nao_disparado`, `observacoes`) — independente do log real de disparo                                               |
 
 O registro de um disparo (log + quarentena + vendas contatadas) é **um único statement SQL com CTEs** — atômico no
 Postgres. `db.transaction` não serve aqui: o driver Neon roda em modo HTTP (`server/db/db-connection.ts`).
@@ -254,12 +260,12 @@ com a campanha pré-selecionada). Agendamentos aparecem no grid como um chip azu
 agendamento é uma camada manual por cima, não substitui nem altera esse cálculo).
 
 **Relatório por período (`RelatorioPeriodo.tsx`, procedure `relatorioPeriodo({inicio,fim})`)**: atalhos rápidos
-(Este mês/Mês passado/Últimos 30 dias/Este ano) + intervalo livre. KPIs: *Campanhas ativas*/*inativas* (estado
+(Este mês/Mês passado/Últimos 30 dias/Este ano) + intervalo livre. KPIs: _Campanhas ativas_/_inativas_ (estado
 **atual**, não histórico do período — rastrear status ao longo do tempo exigiria uma tabela de histórico que
-não existe), *Contatos alcançados* (telefones distintos cujo **último** envio, de qualquer campanha, caiu
+não existe), _Contatos alcançados_ (telefones distintos cujo **último** envio, de qualquer campanha, caiu
 dentro do período — decisão do usuário: acompanha o filtro, não é a base acumulada total; limitação: um
 telefone só aparece no período do envio mais recente dele, já que `campanhas_whatsapp_contatos_historico` só
-guarda 1 linha por campanha+telefone), *Disparos realizados* e *Mensagens enviadas* no período. Tabela por
+guarda 1 linha por campanha+telefone), _Disparos realizados_ e _Mensagens enviadas_ no período. Tabela por
 campanha com disparos/contatos do período + os agendamentos que caem no período, cada um com os mesmos botões
 de marcar disparado/não disparado do calendário (`AgendamentoItem`, em `comuns.tsx`, reaproveitado nos dois
 lugares) — e um botão "Agendar" por linha.
@@ -271,15 +277,16 @@ fontes de dados, sem precisar passar pelo fluxo de "Registrar disparo" (que já 
 Botão "Ver contatos" (ícone de pessoas) na tabela do painel → `ContatosCampanhaDialog.tsx` → reaproveita a
 mesma query só-leitura `gerarListaDaCampanha` do disparo (nada aqui grava quarentena, cadência nem qualquer
 outro registro). Mostra 3 abas (Prontos para envio / Em quarentena / Inválidos-repetidos), tabela com telefone
-+ nome (recorte de 200 linhas na tela, aviso para baixar a lista completa) e um botão "Baixar esta lista
-(.xlsx)" por aba, via `exportRowsToXlsx` (mesma função do disparo).
+
+- nome (recorte de 200 linhas na tela, aviso para baixar a lista completa) e um botão "Baixar esta lista
+  (.xlsx)" por aba, via `exportRowsToXlsx` (mesma função do disparo).
 
 ## Fluxo "Registrar disparo" (tela)
 
 Arquivo `.csv` (UTF-8, `;` `,` ou tab) ou `.xlsx`, com colunas **`telefone`** e **`nome_cliente`** (aceita apelidos:
 celular, whatsapp, cliente, nome…). Lido no navegador (`client/src/lib/listaContatos.ts` → parser puro em
-`shared/lista-contatos.ts`, até 20.000 linhas). "Processar" higieniza, grava e mostra *"X contatos processados, Y
-contatos ignorados por estarem em período de quarentena de comunicação"*, com download da **lista higienizada**
+`shared/lista-contatos.ts`, até 20.000 linhas). "Processar" higieniza, grava e mostra _"X contatos processados, Y
+contatos ignorados por estarem em período de quarentena de comunicação"_, com download da **lista higienizada**
 (é ela que deve ser enviada), dos ignorados e dos inválidos. O arquivo original é anexado no UploadThing (falha
 no anexo não impede o registro). Duas fontes alternativas ao upload manual, cada uma com sua própria checagem
 antes de processar: **"Usar vendas pendentes"** (só pós-venda) e **"Usar fontes de dados"** (quando a campanha
@@ -336,6 +343,7 @@ A janela **Efetuar disparo** também permite **Testar o template em um número**
 ## Listas enviadas por arquivo (processador)
 
 O upload de lista (Registrar disparo e fontes por arquivo) aceita `.csv`, `.xlsx`, `.xls` e `.xml` (planilha XML do Excel) e ajusta o formato sozinho (`shared/lista-contatos.ts`, `extrairContatosDeMatriz`): procura o cabeçalho nas 20 primeiras linhas (título/linhas em branco antes não atrapalham), aceita vários nomes de coluna (telefone, celular, whatsapp, fone, `telefone_1`…; cliente, nome, razão social…), usa a primeira coluna de telefone preenchida da linha e trata o nome como opcional. A padronização do telefone (DDD + 55) e a limpeza de inválidos/repetidos/quarentena continuam em `server/services/campanhasWhatsapp.ts`. O disparo pela WTS.Chat ainda parte da lista de **fontes** da campanha; enviar direto uma lista subida por arquivo é o passo seguinte.
+
 ## Limitações conhecidas
 
 - A quarentena só enxerga envios registrados **neste módulo** (upload, "vendas pendentes", Fontes ou API). Os

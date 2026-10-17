@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   Bot,
   Brain,
@@ -7,6 +8,7 @@ import {
   MessageSquareQuote,
   MousePointerClick,
   Snowflake,
+  Sparkles,
   Target,
   Thermometer,
 } from "lucide-react";
@@ -28,10 +30,13 @@ import { exportRowsToXlsx } from "@/lib/exportXlsx";
 import { fmtNum, fmtPct } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -168,6 +173,54 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
       `leads-${campanha.nome.replace(/\W+/g, "-")}.xlsx`,
       "Leads qualificados"
     );
+  }
+
+  const utils = trpc.useUtils();
+  const [modalRetargeting, setModalRetargeting] = useState(false);
+  const [nomeFonte, setNomeFonte] = useState("");
+  const [descricaoFonte, setDescricaoFonte] = useState("");
+
+  const criarFonte = trpc.campanhasWhatsapp.criarFonteRetargeting.useMutation({
+    onSuccess: f => {
+      toast.success(
+        `Audiência "${f.label}" criada com sucesso! Já está disponível em Fontes de Dados.`
+      );
+      setModalRetargeting(false);
+      utils.campanhasWhatsapp.listarFontes.invalidate();
+    },
+    onError: e => toast.error(e.message),
+  });
+
+  function abrirRetargeting() {
+    if (!campanha) return;
+    const sufixoFiltro =
+      filtroCluster !== TODOS
+        ? ` · ${ROTULO_CLUSTER[filtroCluster]}`
+        : filtroObjecao !== TODOS
+          ? ` · ${ROTULO_MOTIVO_OBJECAO[filtroObjecao]}`
+          : "";
+    setNomeFonte(`Retargeting: ${campanha.nome}${sufixoFiltro}`.slice(0, 120));
+    setDescricaoFonte(
+      `Audiência dinâmica extraída da campanha #${campanha.id} (${campanha.nome}) com os filtros: Cluster = ${
+        filtroCluster !== TODOS ? ROTULO_CLUSTER[filtroCluster] : "Todos"
+      }, Objeção = ${filtroObjecao !== TODOS ? ROTULO_MOTIVO_OBJECAO[filtroObjecao] : "Todas"}.`
+    );
+    setModalRetargeting(true);
+  }
+
+  function confirmarCriacaoFonte() {
+    if (!campanha || !nomeFonte.trim()) {
+      toast.error("Informe um nome para a nova audiência.");
+      return;
+    }
+    criarFonte.mutate({
+      label: nomeFonte.trim(),
+      origemCampanhaId: campanha.id,
+      origemCampanhaNome: campanha.nome,
+      cluster: filtroCluster !== TODOS ? filtroCluster : null,
+      motivoObjecao: filtroObjecao !== TODOS ? filtroObjecao : null,
+      descricao: descricaoFonte.trim() || undefined,
+    });
   }
 
   return (
@@ -404,7 +457,15 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                     onClick={exportar}
                     disabled={!leads.data?.length}
                   >
-                    <Download size={13} /> Exportar p/ retargeting
+                    <Download size={13} /> Exportar XLSX
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-8 gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+                    onClick={abrirRetargeting}
+                    disabled={!leads.data?.length}
+                  >
+                    <Sparkles size={13} /> Criar audiência (1 clique)
                   </Button>
                 </div>
               </div>
@@ -490,6 +551,94 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
           </div>
         )}
       </DialogContent>
+
+      {/* Modal de criação rápida de audiência de retargeting */}
+      <Dialog open={modalRetargeting} onOpenChange={setModalRetargeting}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-violet-700">
+              <Sparkles size={18} /> Salvar audiência de retargeting
+            </DialogTitle>
+            <DialogDescription>
+              Cria uma nova Fonte de Dados dinâmica alimentada pelos{" "}
+              {leads.data?.length ?? 0} leads filtrados desta campanha.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-sm">
+            <div className="space-y-1">
+              <Label htmlFor="nome-fonte" className="text-xs font-semibold">
+                Nome da audiência
+              </Label>
+              <Input
+                id="nome-fonte"
+                value={nomeFonte}
+                onChange={e => setNomeFonte(e.target.value)}
+                placeholder="Ex.: Retargeting: Dúvida Técnica"
+                maxLength={120}
+              />
+            </div>
+
+            <div className="rounded-md border bg-slate-50 p-2.5 space-y-1 text-xs text-slate-600">
+              <div className="flex justify-between">
+                <span>Campanha de origem:</span>
+                <span className="font-medium text-slate-800">
+                  {campanha?.nome}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Cluster filtrado:</span>
+                <span className="font-medium text-slate-800">
+                  {filtroCluster !== TODOS
+                    ? ROTULO_CLUSTER[filtroCluster]
+                    : "Todos"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Objeção filtrada:</span>
+                <span className="font-medium text-slate-800">
+                  {filtroObjecao !== TODOS
+                    ? ROTULO_MOTIVO_OBJECAO[filtroObjecao]
+                    : "Todas"}
+                </span>
+              </div>
+              <div className="flex justify-between border-t pt-1 font-semibold text-slate-900">
+                <span>Total de contatos:</span>
+                <span>{fmtNum(leads.data?.length ?? 0)}</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              💡 Esta audiência ficará disponível imediatamente em{" "}
+              <strong>Fontes de dados</strong> para ser vinculada em campanhas
+              complementares de follow-up ou reativação.
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setModalRetargeting(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
+              onClick={confirmarCriacaoFonte}
+              disabled={criarFonte.isPending || !nomeFonte.trim()}
+            >
+              {criarFonte.isPending ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                <Target size={14} />
+              )}
+              Salvar audiência
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
