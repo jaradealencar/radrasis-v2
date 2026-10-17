@@ -4803,6 +4803,16 @@ export const campanhaWhatsappStatusEnum = pgEnum("campanha_whatsapp_status", [
   "arquivada",
 ]);
 
+// Regras de cadência para campanhas recorrentes:
+// dias_corridos = a cada N dias corridos (ex: a cada 30 dias);
+// fim_de_mes = sempre no último dia do mês calendário (28/29 fev, 30 abr/jun/set/nov, 31 jan/mar/mai/jul/ago/out/dez);
+// dia_fixo_mes = todo dia X do mês (ex: todo dia 5; se o mês tiver menos dias que X, usa o último dia do mês).
+export const campanhaRegraCadenciaEnum = pgEnum("campanha_regra_cadencia", [
+  "dias_corridos",
+  "fim_de_mes",
+  "dia_fixo_mes",
+]);
+
 export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   id: serial("id").primaryKey(),
   nome: varchar("nome", { length: 160 }).notNull(),
@@ -4813,6 +4823,12 @@ export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   // nenhuma regra de negócio.
   descricao: text("descricao"),
   tipo: campanhaWhatsappTipoEnum("tipo").notNull().default("recorrente"),
+  // Regra de cadência de envio (calendário natural vs. dias corridos). Padrão dias_corridos mantém 100% retrocompatibilidade.
+  regraCadencia: campanhaRegraCadenciaEnum("regra_cadencia")
+    .notNull()
+    .default("dias_corridos"),
+  // Para regraCadencia = "dia_fixo_mes": dia do mês de 1 a 31 (ex.: 5, 10, 20).
+  diaFixoMes: integer("dia_fixo_mes"),
   frequenciaDias: integer("frequencia_dias").notNull(),
   // Descanso mínimo (dias) que um telefone precisa ter desde QUALQUER campanha antes de entrar nesta. 0 = sem trava.
   quarentenaDias: integer("quarentena_dias").notNull().default(0),

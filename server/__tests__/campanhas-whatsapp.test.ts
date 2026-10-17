@@ -1,14 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, formatarTelefone, gerarChaveCategoria,
-  hojeCampoGrande, formatarDataBr, normalizarTelefone, semNumeroDeTelefone, somarDias,
+  calcularProximoEnvio,
+  classificarSemaforo,
+  dataIsoValida,
+  diasEntre,
+  formatarTelefone,
+  gerarChaveCategoria,
+  hojeCampoGrande,
+  formatarDataBr,
+  normalizarTelefone,
+  semNumeroDeTelefone,
+  somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
-  expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
-  agruparPorCliente, resumirCampanhas, resumirVendas,
-  type ContatoLimpo, type LinhaVenda,
+  expandirPrevistos,
+  filtrarPorCadenciaCampanha,
+  higienizarLista,
+  listarVendasPosVenda,
+  montarStatusCampanha,
+  agruparPorCliente,
+  resumirCampanhas,
+  resumirVendas,
+  type ContatoLimpo,
+  type LinhaVenda,
 } from "../services/campanhasWhatsapp";
-import { checkQuarantineBodySchema, exigirChaveApi, logSendBodySchema } from "../routes/campanhas-whatsapp-api";
+import {
+  checkQuarantineBodySchema,
+  exigirChaveApi,
+  logSendBodySchema,
+} from "../routes/campanhas-whatsapp-api";
 
 describe("normalizarTelefone", () => {
   it("normaliza máscara, +55, zero de tronco e número puro", () => {
@@ -33,7 +53,17 @@ describe("normalizarTelefone", () => {
   });
 
   it("rejeita o que não parece telefone brasileiro", () => {
-    for (const ruim of ["", "   ", "abc", "12345", "(67) 999-000", "(00) 99999-0000", "+1 415 555 2671", null, undefined]) {
+    for (const ruim of [
+      "",
+      "   ",
+      "abc",
+      "12345",
+      "(67) 999-000",
+      "(00) 99999-0000",
+      "+1 415 555 2671",
+      null,
+      undefined,
+    ]) {
       expect(normalizarTelefone(ruim)).toBeNull();
     }
   });
@@ -47,7 +77,9 @@ describe("normalizarTelefone", () => {
 describe("gerarChaveCategoria", () => {
   it("normaliza acentos, espaços e caixa", () => {
     expect(gerarChaveCategoria("Pós-venda 60 dias")).toBe("pos_venda_60_dias");
-    expect(gerarChaveCategoria("  Reativação de Inativos  ")).toBe("reativacao_de_inativos");
+    expect(gerarChaveCategoria("  Reativação de Inativos  ")).toBe(
+      "reativacao_de_inativos"
+    );
     expect(gerarChaveCategoria("Follow-up")).toBe("follow_up");
   });
 
@@ -88,6 +120,50 @@ describe("datas", () => {
     expect(calcularProximoEnvio("2026-12-20", 30)).toBe("2027-01-19");
   });
 
+  it("próximo envio com regra fim_de_mes projeta sempre para o último dia do mês", () => {
+    // Se o envio foi antes do fim do mês, o próximo é o fim do próprio mês
+    expect(calcularProximoEnvio("2026-09-15", 30, "fim_de_mes")).toBe(
+      "2026-09-30"
+    );
+    // Se o envio foi no último dia do mês, avança para o fim do mês seguinte
+    expect(calcularProximoEnvio("2026-09-30", 30, "fim_de_mes")).toBe(
+      "2026-10-31"
+    );
+    expect(calcularProximoEnvio("2026-10-31", 30, "fim_de_mes")).toBe(
+      "2026-11-30"
+    );
+    // Virada de ano
+    expect(calcularProximoEnvio("2026-12-31", 30, "fim_de_mes")).toBe(
+      "2027-01-31"
+    );
+    // Fevereiro bissexto (2024)
+    expect(calcularProximoEnvio("2024-01-31", 30, "fim_de_mes")).toBe(
+      "2024-02-29"
+    );
+    // Fevereiro não bissexto (2025)
+    expect(calcularProximoEnvio("2025-01-31", 30, "fim_de_mes")).toBe(
+      "2025-02-28"
+    );
+  });
+
+  it("próximo envio com regra dia_fixo_mes projeta para o dia alvo respeitando o mês", () => {
+    // Dia 5: se enviou dia 2, projeta para o dia 5 do mesmo mês
+    expect(calcularProximoEnvio("2026-09-02", 30, "dia_fixo_mes", 5)).toBe(
+      "2026-09-05"
+    );
+    // Se enviou no dia 5 ou depois, projeta para o dia 5 do próximo mês
+    expect(calcularProximoEnvio("2026-09-05", 30, "dia_fixo_mes", 5)).toBe(
+      "2026-10-05"
+    );
+    expect(calcularProximoEnvio("2026-09-20", 30, "dia_fixo_mes", 5)).toBe(
+      "2026-10-05"
+    );
+    // Dia 31 em mês com menos dias (fevereiro não bissexto) ajusta para o último dia
+    expect(calcularProximoEnvio("2025-01-31", 30, "dia_fixo_mes", 31)).toBe(
+      "2025-02-28"
+    );
+  });
+
   it("formatarDataBr não desloca o dia (sem passar por Date/UTC)", () => {
     expect(formatarDataBr("2026-09-26")).toBe("26/09/2026");
     expect(formatarDataBr("2026-01-01")).toBe("01/01/2026");
@@ -97,9 +173,15 @@ describe("datas", () => {
   });
 
   it("hojeCampoGrande usa o calendário de Campo Grande (UTC-4), não o do servidor", () => {
-    expect(hojeCampoGrande(new Date("2026-09-27T02:00:00Z"))).toBe("2026-09-26"); // 22h locais
-    expect(hojeCampoGrande(new Date("2026-09-26T04:00:00Z"))).toBe("2026-09-26"); // 00h locais
-    expect(hojeCampoGrande(new Date("2026-09-26T03:59:59Z"))).toBe("2026-09-25");
+    expect(hojeCampoGrande(new Date("2026-09-27T02:00:00Z"))).toBe(
+      "2026-09-26"
+    ); // 22h locais
+    expect(hojeCampoGrande(new Date("2026-09-26T04:00:00Z"))).toBe(
+      "2026-09-26"
+    ); // 00h locais
+    expect(hojeCampoGrande(new Date("2026-09-26T03:59:59Z"))).toBe(
+      "2026-09-25"
+    );
   });
 });
 
@@ -127,21 +209,38 @@ describe("higienizarLista", () => {
   ]);
 
   it("ignora quem está dentro do período e libera quem já completou os dias", () => {
-    const r = higienizarLista([
-      { telefone: "(67) 99000-0001", nome: "Ana" },
-      { telefone: "(67) 99000-0002", nome: "Bia" },
-      { telefone: "(67) 99000-0003", nome: "Caio" },
-      { telefone: "(67) 99000-0004", nome: "Duda" },
-      { telefone: "(67) 99000-0005", nome: "Edu" },
-    ], quarentena, envio, 30);
+    const r = higienizarLista(
+      [
+        { telefone: "(67) 99000-0001", nome: "Ana" },
+        { telefone: "(67) 99000-0002", nome: "Bia" },
+        { telefone: "(67) 99000-0003", nome: "Caio" },
+        { telefone: "(67) 99000-0004", nome: "Duda" },
+        { telefone: "(67) 99000-0005", nome: "Edu" },
+      ],
+      quarentena,
+      envio,
+      30
+    );
 
     expect(r.enviar.map(c => c.nome)).toEqual(["Bia", "Edu"]);
-    expect(r.ignoradosQuarentena.map(c => c.nome)).toEqual(["Ana", "Caio", "Duda"]);
-    expect(r.ignoradosQuarentena[0]).toMatchObject({ ultimoContatoEm: "2026-09-10", disponivelEm: "2026-10-10" });
+    expect(r.ignoradosQuarentena.map(c => c.nome)).toEqual([
+      "Ana",
+      "Caio",
+      "Duda",
+    ]);
+    expect(r.ignoradosQuarentena[0]).toMatchObject({
+      ultimoContatoEm: "2026-09-10",
+      disponivelEm: "2026-10-10",
+    });
   });
 
   it("quarentenaDias = 0 desliga a trava", () => {
-    const r = higienizarLista([{ telefone: "67990000001" }], quarentena, envio, 0);
+    const r = higienizarLista(
+      [{ telefone: "67990000001" }],
+      quarentena,
+      envio,
+      0
+    );
     expect(r.enviar).toHaveLength(1);
     expect(r.ignoradosQuarentena).toHaveLength(0);
   });
@@ -157,23 +256,39 @@ describe("higienizarLista", () => {
     const r = higienizarLista(contatos, quarentena, envio, 30);
     expect(r.enviar).toHaveLength(1);
     expect(r.ignoradosQuarentena).toHaveLength(1);
-    expect(r.invalidos.map(i => i.motivo)).toEqual(["duplicado", "telefone_invalido", "sem_telefone"]);
-    expect(r.enviar.length + r.ignoradosQuarentena.length + r.invalidos.length).toBe(contatos.length);
+    expect(r.invalidos.map(i => i.motivo)).toEqual([
+      "duplicado",
+      "telefone_invalido",
+      "sem_telefone",
+    ]);
+    expect(
+      r.enviar.length + r.ignoradosQuarentena.length + r.invalidos.length
+    ).toBe(contatos.length);
   });
 
   it("soma as OS do telefone repetido ao contato mantido (a venda extra não fica pendente para sempre)", () => {
-    const r = higienizarLista([
-      { telefone: "67990000005", nome: "Edu", osNumero: "100" },
-      { telefone: "(67) 99000-0005", nome: "Edu", osNumero: "101" },
-      { telefone: "(67) 99000-0005", nome: "Edu", osNumero: "100" },
-    ], new Map(), envio, 30);
+    const r = higienizarLista(
+      [
+        { telefone: "67990000005", nome: "Edu", osNumero: "100" },
+        { telefone: "(67) 99000-0005", nome: "Edu", osNumero: "101" },
+        { telefone: "(67) 99000-0005", nome: "Edu", osNumero: "100" },
+      ],
+      new Map(),
+      envio,
+      30
+    );
     expect(r.enviar).toHaveLength(1);
     expect(r.enviar[0].osNumeros).toEqual(["100", "101"]);
     expect(r.invalidos).toHaveLength(2);
   });
 
   it("OS de contato ignorado por quarentena não vai para a lista de enviados", () => {
-    const r = higienizarLista([{ telefone: "67990000001", osNumero: "200" }], quarentena, envio, 30);
+    const r = higienizarLista(
+      [{ telefone: "67990000001", osNumero: "200" }],
+      quarentena,
+      envio,
+      30
+    );
     expect(r.enviar).toHaveLength(0);
     expect(r.ignoradosQuarentena).toHaveLength(1);
   });
@@ -181,8 +296,18 @@ describe("higienizarLista", () => {
 
 describe("listarVendasPosVenda (hoje = 2026-09-26, frequência 30)", () => {
   const hoje = "2026-09-26";
-  const venda = (osNumero: string | null, dataFaturamento: string | null, extra: Partial<LinhaVenda> = {}): LinhaVenda => ({
-    osNumero, dataFaturamento, empresa: `Empresa ${osNumero}`, telefone: "(67) 99999-0000", vendedor: "Ana", valorOs: "1500.50", ...extra,
+  const venda = (
+    osNumero: string | null,
+    dataFaturamento: string | null,
+    extra: Partial<LinhaVenda> = {}
+  ): LinhaVenda => ({
+    osNumero,
+    dataFaturamento,
+    empresa: `Empresa ${osNumero}`,
+    telefone: "(67) 99999-0000",
+    vendedor: "Ana",
+    valorOs: "1500.50",
+    ...extra,
   });
   const linhas = [
     venda("A", "28/08/2026"), // prazo 27/09 → ainda vai vencer
@@ -197,99 +322,225 @@ describe("listarVendasPosVenda (hoje = 2026-09-26, frequência 30)", () => {
   ];
 
   it("separa vencidas de a vencer, aceita os dois formatos de data e ordena do prazo mais antigo", () => {
-    const { pendentes, proximas } = listarVendasPosVenda(linhas, { frequenciaDias: 30, gatilhoAPartirDe: null }, hoje, new Set(["D"]));
+    const { pendentes, proximas } = listarVendasPosVenda(
+      linhas,
+      { frequenciaDias: 30, gatilhoAPartirDe: null },
+      hoje,
+      new Set(["D"])
+    );
     expect(pendentes.map(v => [v.osNumero, v.prazo, v.diasAtraso])).toEqual([
-      ["B", "2026-09-19", 7], ["E", "2026-09-23", 3], ["C", "2026-09-25", 1],
+      ["B", "2026-09-19", 7],
+      ["E", "2026-09-23", 3],
+      ["C", "2026-09-25", 1],
     ]);
-    expect(proximas.map(v => [v.osNumero, v.prazo, v.diasAtraso])).toEqual([["A", "2026-09-27", -1]]);
+    expect(proximas.map(v => [v.osNumero, v.prazo, v.diasAtraso])).toEqual([
+      ["A", "2026-09-27", -1],
+    ]);
     expect(pendentes.find(v => v.osNumero === "E")!.telefone).toBeNull();
-    expect(pendentes[0]).toMatchObject({ telefone: "5567999990000", valor: 1500.5, empresa: "Empresa B" });
+    expect(pendentes[0]).toMatchObject({
+      telefone: "5567999990000",
+      valor: 1500.5,
+      empresa: "Empresa B",
+    });
   });
 
   it("gatilhoAPartirDe descarta vendas faturadas antes da data", () => {
-    const { pendentes } = listarVendasPosVenda(linhas, { frequenciaDias: 30, gatilhoAPartirDe: "2026-08-21" }, hoje, new Set());
+    const { pendentes } = listarVendasPosVenda(
+      linhas,
+      { frequenciaDias: 30, gatilhoAPartirDe: "2026-08-21" },
+      hoje,
+      new Set()
+    );
     expect(pendentes.map(v => v.osNumero)).toEqual(["E", "C"]);
   });
 
   it("resumirVendas: prazo mais próximo é o da pendente mais atrasada; sem pendentes, o da próxima", () => {
-    const com = listarVendasPosVenda(linhas, { frequenciaDias: 30, gatilhoAPartirDe: null }, hoje, new Set());
+    const com = listarVendasPosVenda(
+      linhas,
+      { frequenciaDias: 30, gatilhoAPartirDe: null },
+      hoje,
+      new Set()
+    );
     // 4 OS vencidas, mas só 2 clientes únicos (B, C e D têm o mesmo telefone; E não tem telefone).
-    expect(resumirVendas(com)).toEqual({ pendentes: 2, aguardando: 0, prazoMaisProximo: "2026-08-31" });
-    const sem = listarVendasPosVenda([venda("A", "28/08/2026")], { frequenciaDias: 30, gatilhoAPartirDe: null }, hoje, new Set());
-    expect(resumirVendas(sem)).toEqual({ pendentes: 0, aguardando: 1, prazoMaisProximo: "2026-09-27" });
-    expect(resumirVendas({ pendentes: [], proximas: [] })).toEqual({ pendentes: 0, aguardando: 0, prazoMaisProximo: null });
+    expect(resumirVendas(com)).toEqual({
+      pendentes: 2,
+      aguardando: 0,
+      prazoMaisProximo: "2026-08-31",
+    });
+    const sem = listarVendasPosVenda(
+      [venda("A", "28/08/2026")],
+      { frequenciaDias: 30, gatilhoAPartirDe: null },
+      hoje,
+      new Set()
+    );
+    expect(resumirVendas(sem)).toEqual({
+      pendentes: 0,
+      aguardando: 1,
+      prazoMaisProximo: "2026-09-27",
+    });
+    expect(resumirVendas({ pendentes: [], proximas: [] })).toEqual({
+      pendentes: 0,
+      aguardando: 0,
+      prazoMaisProximo: null,
+    });
   });
 });
 
 describe("montarStatusCampanha (hoje = 2026-09-26)", () => {
   const hoje = "2026-09-26";
-  const recorrente = { tipo: "recorrente", status: "ativa", frequenciaDias: 15, criadaEm: "2026-09-01" } as const;
+  const recorrente = {
+    tipo: "recorrente",
+    status: "ativa",
+    frequenciaDias: 15,
+    criadaEm: "2026-09-01",
+  } as const;
 
   it("recorrente: último envio + frequência", () => {
-    expect(montarStatusCampanha(recorrente, "2026-09-10", hoje)).toMatchObject({ proximoEnvio: "2026-09-25", semaforo: "vermelho" });
-    expect(montarStatusCampanha(recorrente, "2026-09-20", hoje)).toMatchObject({ proximoEnvio: "2026-10-05", semaforo: "verde" });
-    expect(montarStatusCampanha(recorrente, "2026-09-14", hoje)).toMatchObject({ proximoEnvio: "2026-09-29", semaforo: "amarelo" });
+    expect(montarStatusCampanha(recorrente, "2026-09-10", hoje)).toMatchObject({
+      proximoEnvio: "2026-09-25",
+      semaforo: "vermelho",
+    });
+    expect(montarStatusCampanha(recorrente, "2026-09-20", hoje)).toMatchObject({
+      proximoEnvio: "2026-10-05",
+      semaforo: "verde",
+    });
+    expect(montarStatusCampanha(recorrente, "2026-09-14", hoje)).toMatchObject({
+      proximoEnvio: "2026-09-29",
+      semaforo: "amarelo",
+    });
   });
 
   it("editar a frequência muda o próximo envio na hora", () => {
-    expect(montarStatusCampanha({ ...recorrente, frequenciaDias: 60 }, "2026-09-10", hoje))
-      .toMatchObject({ proximoEnvio: "2026-11-09", semaforo: "verde" });
+    expect(
+      montarStatusCampanha(
+        { ...recorrente, frequenciaDias: 60 },
+        "2026-09-10",
+        hoje
+      )
+    ).toMatchObject({ proximoEnvio: "2026-11-09", semaforo: "verde" });
   });
 
   it("recorrente nunca disparada nasce vermelha, com prazo na data de criação", () => {
-    expect(montarStatusCampanha(recorrente, null, hoje))
-      .toMatchObject({ proximoEnvio: "2026-09-01", semaforo: "vermelho", primeiroDisparoPendente: true });
+    expect(montarStatusCampanha(recorrente, null, hoje)).toMatchObject({
+      proximoEnvio: "2026-09-01",
+      semaforo: "vermelho",
+      primeiroDisparoPendente: true,
+    });
   });
 
   it("pausada/arquivada não tem semáforo nem próximo envio", () => {
-    expect(montarStatusCampanha({ ...recorrente, status: "pausada" }, "2026-09-10", hoje))
-      .toEqual({ semaforo: null, ultimoEnvio: "2026-09-10", proximoEnvio: null, primeiroDisparoPendente: false });
+    expect(
+      montarStatusCampanha(
+        { ...recorrente, status: "pausada" },
+        "2026-09-10",
+        hoje
+      )
+    ).toEqual({
+      semaforo: null,
+      ultimoEnvio: "2026-09-10",
+      proximoEnvio: null,
+      primeiroDisparoPendente: false,
+    });
   });
 
   it("gatilho: vermelho com vendas vencidas; senão semáforo do menor prazo futuro; sem vendas, verde", () => {
-    const gatilho = { tipo: "gatilho_venda", status: "ativa", frequenciaDias: 30, criadaEm: "2026-09-01" } as const;
-    expect(montarStatusCampanha(gatilho, null, hoje, { pendentes: 2, prazoMaisProximo: "2026-09-19" }))
-      .toMatchObject({ semaforo: "vermelho", proximoEnvio: "2026-09-19" });
-    expect(montarStatusCampanha(gatilho, null, hoje, { pendentes: 0, prazoMaisProximo: "2026-09-28" }))
-      .toMatchObject({ semaforo: "amarelo", proximoEnvio: "2026-09-28" });
-    expect(montarStatusCampanha(gatilho, null, hoje, { pendentes: 0, prazoMaisProximo: null }))
-      .toMatchObject({ semaforo: "verde", proximoEnvio: null });
+    const gatilho = {
+      tipo: "gatilho_venda",
+      status: "ativa",
+      frequenciaDias: 30,
+      criadaEm: "2026-09-01",
+    } as const;
+    expect(
+      montarStatusCampanha(gatilho, null, hoje, {
+        pendentes: 2,
+        prazoMaisProximo: "2026-09-19",
+      })
+    ).toMatchObject({ semaforo: "vermelho", proximoEnvio: "2026-09-19" });
+    expect(
+      montarStatusCampanha(gatilho, null, hoje, {
+        pendentes: 0,
+        prazoMaisProximo: "2026-09-28",
+      })
+    ).toMatchObject({ semaforo: "amarelo", proximoEnvio: "2026-09-28" });
+    expect(
+      montarStatusCampanha(gatilho, null, hoje, {
+        pendentes: 0,
+        prazoMaisProximo: null,
+      })
+    ).toMatchObject({ semaforo: "verde", proximoEnvio: null });
   });
 
   it("resumirCampanhas conta ativas, vermelhas e as que vencem entre amanhã e +7 dias", () => {
-    const r = resumirCampanhas([
-      { status: "ativa", semaforo: "vermelho", proximoEnvio: "2026-09-20" },
-      { status: "ativa", semaforo: "vermelho", proximoEnvio: "2026-09-26" },
-      { status: "ativa", semaforo: "amarelo", proximoEnvio: "2026-09-28" },
-      { status: "ativa", semaforo: "verde", proximoEnvio: "2026-10-03" }, // +7 → entra
-      { status: "ativa", semaforo: "verde", proximoEnvio: "2026-10-04" }, // +8 → fora
-      { status: "ativa", semaforo: "verde", proximoEnvio: null },
-      { status: "pausada", semaforo: null, proximoEnvio: null },
-    ], hoje);
+    const r = resumirCampanhas(
+      [
+        { status: "ativa", semaforo: "vermelho", proximoEnvio: "2026-09-20" },
+        { status: "ativa", semaforo: "vermelho", proximoEnvio: "2026-09-26" },
+        { status: "ativa", semaforo: "amarelo", proximoEnvio: "2026-09-28" },
+        { status: "ativa", semaforo: "verde", proximoEnvio: "2026-10-03" }, // +7 → entra
+        { status: "ativa", semaforo: "verde", proximoEnvio: "2026-10-04" }, // +8 → fora
+        { status: "ativa", semaforo: "verde", proximoEnvio: null },
+        { status: "pausada", semaforo: null, proximoEnvio: null },
+      ],
+      hoje
+    );
     expect(r).toEqual({ ativas: 6, pendentesHoje: 2, daSemana: 2 });
   });
 });
 
 describe("expandirPrevistos", () => {
   it("projeta a cadeia dentro do intervalo", () => {
-    expect(expandirPrevistos("2026-09-30", 15, "2026-09-26", "2026-09-01", "2026-11-15"))
-      .toEqual(["2026-09-30", "2026-10-15", "2026-10-30", "2026-11-14"]);
+    expect(
+      expandirPrevistos(
+        "2026-09-30",
+        15,
+        "2026-09-26",
+        "2026-09-01",
+        "2026-11-15"
+      )
+    ).toEqual(["2026-09-30", "2026-10-15", "2026-10-30", "2026-11-14"]);
   });
 
   it("prazo vencido: mantém a data vencida e recomeça a cadeia de hoje", () => {
-    expect(expandirPrevistos("2026-09-20", 15, "2026-09-26", "2026-09-01", "2026-10-31"))
-      .toEqual(["2026-09-20", "2026-10-11", "2026-10-26"]);
+    expect(
+      expandirPrevistos(
+        "2026-09-20",
+        15,
+        "2026-09-26",
+        "2026-09-01",
+        "2026-10-31"
+      )
+    ).toEqual(["2026-09-20", "2026-10-11", "2026-10-26"]);
   });
 
   it("respeita o início do intervalo e ignora frequência inválida", () => {
-    expect(expandirPrevistos("2026-09-30", 15, "2026-09-26", "2026-10-10", "2026-10-31")).toEqual(["2026-10-15", "2026-10-30"]);
-    expect(expandirPrevistos("2026-09-30", 0, "2026-09-26", "2026-09-01", "2026-10-31")).toEqual([]);
+    expect(
+      expandirPrevistos(
+        "2026-09-30",
+        15,
+        "2026-09-26",
+        "2026-10-10",
+        "2026-10-31"
+      )
+    ).toEqual(["2026-10-15", "2026-10-30"]);
+    expect(
+      expandirPrevistos(
+        "2026-09-30",
+        0,
+        "2026-09-26",
+        "2026-09-01",
+        "2026-10-31"
+      )
+    ).toEqual([]);
   });
 });
 
 describe("filtrarPorCadenciaCampanha (Fontes de Dados — 'Checagem de Cadência da Campanha')", () => {
   const envio = "2026-09-26";
-  const contato = (telefone: string, nome = "Ana"): ContatoLimpo => ({ telefone, nome, osNumeros: [] });
+  const contato = (telefone: string, nome = "Ana"): ContatoLimpo => ({
+    telefone,
+    nome,
+    osNumeros: [],
+  });
 
   it("bloqueia quem recebeu ESTA campanha há menos dias que a frequência; libera quem já completou", () => {
     const historico = new Map([
@@ -297,16 +548,34 @@ describe("filtrarPorCadenciaCampanha (Fontes de Dados — 'Checagem de Cadência
       ["5567990000002", "2026-08-27"], // exatamente 30 dias
     ]);
     const r = filtrarPorCadenciaCampanha(
-      [contato("5567990000001", "Recente"), contato("5567990000002", "NoLimite"), contato("5567990000003", "NuncaRecebeu")],
-      historico, envio, 30,
+      [
+        contato("5567990000001", "Recente"),
+        contato("5567990000002", "NoLimite"),
+        contato("5567990000003", "NuncaRecebeu"),
+      ],
+      historico,
+      envio,
+      30
     );
     expect(r.aprovados.map(c => c.nome)).toEqual(["NoLimite", "NuncaRecebeu"]);
-    expect(r.descartadosCadencia).toEqual([{ telefone: "5567990000001", nome: "Recente", ultimoEnvioNaCampanha: "2026-09-10", disponivelEm: "2026-10-10" }]);
+    expect(r.descartadosCadencia).toEqual([
+      {
+        telefone: "5567990000001",
+        nome: "Recente",
+        ultimoEnvioNaCampanha: "2026-09-10",
+        disponivelEm: "2026-10-10",
+      },
+    ]);
   });
 
   it("frequenciaDias <= 0 desliga a checagem (não deveria acontecer na prática, mas não trava tudo)", () => {
     const historico = new Map([["5567990000001", "2026-09-25"]]);
-    const r = filtrarPorCadenciaCampanha([contato("5567990000001")], historico, envio, 0);
+    const r = filtrarPorCadenciaCampanha(
+      [contato("5567990000001")],
+      historico,
+      envio,
+      0
+    );
     expect(r.aprovados).toHaveLength(1);
     expect(r.descartadosCadencia).toHaveLength(0);
   });
@@ -314,7 +583,12 @@ describe("filtrarPorCadenciaCampanha (Fontes de Dados — 'Checagem de Cadência
   it("é independente da quarentena global — só olha o histórico DESTA campanha", () => {
     // Mesmo telefone pode estar liberado da quarentena global e ainda assim preso pela cadência da campanha, ou vice-versa.
     const historico = new Map<string, string>(); // nunca recebeu esta campanha
-    const r = filtrarPorCadenciaCampanha([contato("5567990000009")], historico, envio, 60);
+    const r = filtrarPorCadenciaCampanha(
+      [contato("5567990000009")],
+      historico,
+      envio,
+      60
+    );
     expect(r.aprovados).toHaveLength(1);
   });
 });
@@ -322,8 +596,14 @@ describe("filtrarPorCadenciaCampanha (Fontes de Dados — 'Checagem de Cadência
 describe("webhooks REST — autenticação e validação", () => {
   const resFalso = () => {
     const res: any = { statusCode: 0, body: undefined };
-    res.status = (c: number) => { res.statusCode = c; return res; };
-    res.json = (b: unknown) => { res.body = b; return res; };
+    res.status = (c: number) => {
+      res.statusCode = c;
+      return res;
+    };
+    res.json = (b: unknown) => {
+      res.body = b;
+      return res;
+    };
     return res;
   };
   const chamar = (headers: Record<string, string>) => {
@@ -333,9 +613,12 @@ describe("webhooks REST — autenticação e validação", () => {
     return { res, next };
   };
   let original: string | undefined;
-  beforeEach(() => { original = process.env.CAMPANHAS_API_KEY; });
+  beforeEach(() => {
+    original = process.env.CAMPANHAS_API_KEY;
+  });
   afterEach(() => {
-    if (original === undefined) delete process.env.CAMPANHAS_API_KEY; else process.env.CAMPANHAS_API_KEY = original;
+    if (original === undefined) delete process.env.CAMPANHAS_API_KEY;
+    else process.env.CAMPANHAS_API_KEY = original;
   });
 
   it("503 quando CAMPANHAS_API_KEY não está configurada (nunca fica aberto)", () => {
@@ -347,7 +630,12 @@ describe("webhooks REST — autenticação e validação", () => {
 
   it("401 sem chave ou com chave errada", () => {
     process.env.CAMPANHAS_API_KEY = "segredo-de-teste";
-    for (const headers of [{}, { authorization: "Bearer errada" }, { authorization: "segredo-de-teste" }, { "x-api-key": "segredo-de-teste-" }]) {
+    for (const headers of [
+      {},
+      { authorization: "Bearer errada" },
+      { authorization: "segredo-de-teste" },
+      { "x-api-key": "segredo-de-teste-" },
+    ]) {
       const { res, next } = chamar(headers);
       expect(res.statusCode).toBe(401);
       expect(next).not.toHaveBeenCalled();
@@ -356,7 +644,10 @@ describe("webhooks REST — autenticação e validação", () => {
 
   it("aceita Bearer e x-api-key corretos", () => {
     process.env.CAMPANHAS_API_KEY = "segredo-de-teste";
-    for (const headers of [{ authorization: "Bearer segredo-de-teste" }, { "x-api-key": "segredo-de-teste" }]) {
+    for (const headers of [
+      { authorization: "Bearer segredo-de-teste" },
+      { "x-api-key": "segredo-de-teste" },
+    ]) {
       const { next } = chamar(headers);
       expect(next).toHaveBeenCalledOnce();
     }
@@ -364,11 +655,26 @@ describe("webhooks REST — autenticação e validação", () => {
 
   it("valida o corpo de log-send e check-quarantine", () => {
     expect(logSendBodySchema.safeParse({ contacts: [] }).success).toBe(false);
-    expect(logSendBodySchema.safeParse({ contacts: [{ phone: "67999990000" }], sent_at: "2026-02-30" }).success).toBe(false);
-    const ok = logSendBodySchema.parse({ contacts: [{ phone: 67999990000, name: "Ana" }], sent_at: "2026-09-26" });
+    expect(
+      logSendBodySchema.safeParse({
+        contacts: [{ phone: "67999990000" }],
+        sent_at: "2026-02-30",
+      }).success
+    ).toBe(false);
+    const ok = logSendBodySchema.parse({
+      contacts: [{ phone: 67999990000, name: "Ana" }],
+      sent_at: "2026-09-26",
+    });
     expect(ok.apply_quarantine).toBe(false); // a lista já foi enviada: registra tudo que é válido
-    expect(checkQuarantineBodySchema.safeParse({ phones: [] }).success).toBe(false);
-    expect(checkQuarantineBodySchema.safeParse({ phones: ["67999990000"], quarantine_days: 30 }).success).toBe(true);
+    expect(checkQuarantineBodySchema.safeParse({ phones: [] }).success).toBe(
+      false
+    );
+    expect(
+      checkQuarantineBodySchema.safeParse({
+        phones: ["67999990000"],
+        quarantine_days: 30,
+      }).success
+    ).toBe(true);
   });
 });
 
@@ -376,10 +682,19 @@ describe("higienizarLista — não quer receber (opt-out)", () => {
   it("descarta o bloqueado antes da quarentena, mesmo repetido, e libera os demais", () => {
     const bloqueados = new Set(["5567990000001"]);
     const r = higienizarLista(
-      [{ telefone: "67990000001", nome: "Saiu" }, { telefone: "(67) 99000-0001", nome: "Saiu de novo" }, { telefone: "67990000002", nome: "Fica" }],
-      new Map([["5567990000001", "2026-09-26"]]), "2026-09-26", 30, bloqueados,
+      [
+        { telefone: "67990000001", nome: "Saiu" },
+        { telefone: "(67) 99000-0001", nome: "Saiu de novo" },
+        { telefone: "67990000002", nome: "Fica" },
+      ],
+      new Map([["5567990000001", "2026-09-26"]]),
+      "2026-09-26",
+      30,
+      bloqueados
     );
-    expect(r.ignoradosBloqueados).toEqual([{ telefone: "5567990000001", nome: "Saiu" }]);
+    expect(r.ignoradosBloqueados).toEqual([
+      { telefone: "5567990000001", nome: "Saiu" },
+    ]);
     expect(r.ignoradosQuarentena).toEqual([]);
     expect(r.invalidos.map(i => i.motivo)).toEqual(["duplicado"]);
     expect(r.enviar.map(c => c.telefone)).toEqual(["5567990000002"]);
@@ -388,21 +703,45 @@ describe("higienizarLista — não quer receber (opt-out)", () => {
 
 describe("listarVendasPosVenda — piso de 16 dias úteis após a aprovação", () => {
   const hoje = "2026-09-26";
-  const venda = (osNumero: string, dataAprovacao: string | null, dataFaturamento: string): LinhaVenda => ({
-    osNumero, dataAprovacao, dataFaturamento, empresa: `Empresa ${osNumero}`, telefone: "(67) 99999-0000", vendedor: "Ana", valorOs: "1000",
+  const venda = (
+    osNumero: string,
+    dataAprovacao: string | null,
+    dataFaturamento: string
+  ): LinhaVenda => ({
+    osNumero,
+    dataAprovacao,
+    dataFaturamento,
+    empresa: `Empresa ${osNumero}`,
+    telefone: "(67) 99999-0000",
+    vendedor: "Ana",
+    valorOs: "1000",
   });
 
   it("nunca vence antes de 16 dias úteis da aprovação, mesmo com a frequência curta já cumprida", () => {
-    const { pendentes, proximas } = listarVendasPosVenda([
-      venda("A", "01/09/2026", "01/09/2026"), // 16 úteis (sem o feriado de 07/09) = 24/09 → vencida
-      venda("B", "10/09/2026", "10/09/2026"), // 16 úteis = 02/10 → ainda não pode
-    ], { frequenciaDias: 5, gatilhoAPartirDe: null }, hoje, new Set());
-    expect(pendentes.map(v => [v.osNumero, v.prazo])).toEqual([["A", "2026-09-24"]]);
-    expect(proximas.map(v => [v.osNumero, v.prazo])).toEqual([["B", "2026-10-02"]]);
+    const { pendentes, proximas } = listarVendasPosVenda(
+      [
+        venda("A", "01/09/2026", "01/09/2026"), // 16 úteis (sem o feriado de 07/09) = 24/09 → vencida
+        venda("B", "10/09/2026", "10/09/2026"), // 16 úteis = 02/10 → ainda não pode
+      ],
+      { frequenciaDias: 5, gatilhoAPartirDe: null },
+      hoje,
+      new Set()
+    );
+    expect(pendentes.map(v => [v.osNumero, v.prazo])).toEqual([
+      ["A", "2026-09-24"],
+    ]);
+    expect(proximas.map(v => [v.osNumero, v.prazo])).toEqual([
+      ["B", "2026-10-02"],
+    ]);
   });
 
   it("sem data de aprovação vale só faturamento + frequência", () => {
-    const { pendentes } = listarVendasPosVenda([venda("C", null, "01/09/2026")], { frequenciaDias: 5, gatilhoAPartirDe: null }, hoje, new Set());
+    const { pendentes } = listarVendasPosVenda(
+      [venda("C", null, "01/09/2026")],
+      { frequenciaDias: 5, gatilhoAPartirDe: null },
+      hoje,
+      new Set()
+    );
     expect(pendentes.map(v => v.prazo)).toEqual(["2026-09-06"]);
   });
 });
@@ -410,26 +749,74 @@ describe("listarVendasPosVenda — piso de 16 dias úteis após a aprovação", 
 describe("listarVendasPosVenda — período de apuração (início e data final)", () => {
   const hoje = "2026-09-26";
   const venda = (osNumero: string, dataFaturamento: string): LinhaVenda => ({
-    osNumero, dataFaturamento, empresa: `Empresa ${osNumero}`, telefone: "(67) 99999-0000", vendedor: "Ana", valorOs: "1000",
+    osNumero,
+    dataFaturamento,
+    empresa: `Empresa ${osNumero}`,
+    telefone: "(67) 99999-0000",
+    vendedor: "Ana",
+    valorOs: "1000",
   });
-  const linhas = [venda("A", "01/07/2026"), venda("B", "01/08/2026"), venda("C", "01/09/2026")];
-  const os = (r: ReturnType<typeof listarVendasPosVenda>) => [...r.pendentes, ...r.proximas].map(v => v.osNumero).sort();
+  const linhas = [
+    venda("A", "01/07/2026"),
+    venda("B", "01/08/2026"),
+    venda("C", "01/09/2026"),
+  ];
+  const os = (r: ReturnType<typeof listarVendasPosVenda>) =>
+    [...r.pendentes, ...r.proximas].map(v => v.osNumero).sort();
 
   it("sem data final (automático) entram todas as vendas a partir do início, inclusive as novas", () => {
-    expect(os(listarVendasPosVenda(linhas, { frequenciaDias: 5, gatilhoAPartirDe: "2026-08-01" }, hoje, new Set()))).toEqual(["B", "C"]);
+    expect(
+      os(
+        listarVendasPosVenda(
+          linhas,
+          { frequenciaDias: 5, gatilhoAPartirDe: "2026-08-01" },
+          hoje,
+          new Set()
+        )
+      )
+    ).toEqual(["B", "C"]);
   });
 
   it("com data final, vendas faturadas depois dela ficam de fora", () => {
-    expect(os(listarVendasPosVenda(linhas, { frequenciaDias: 5, gatilhoAPartirDe: "2026-07-15", gatilhoAte: "2026-08-15" }, hoje, new Set()))).toEqual(["B"]);
+    expect(
+      os(
+        listarVendasPosVenda(
+          linhas,
+          {
+            frequenciaDias: 5,
+            gatilhoAPartirDe: "2026-07-15",
+            gatilhoAte: "2026-08-15",
+          },
+          hoje,
+          new Set()
+        )
+      )
+    ).toEqual(["B"]);
   });
 });
 
 describe("pós-venda por cliente único e período pela data da compra", () => {
   const hoje = "2026-10-03";
-  const venda = (osNumero: string, empresa: string, telefone: string | null, dataAprovacao: string, dataFaturamento: string | null): LinhaVenda => ({
-    osNumero, empresa, telefone, dataAprovacao, dataFaturamento, vendedor: "Ana", valorOs: "1000",
+  const venda = (
+    osNumero: string,
+    empresa: string,
+    telefone: string | null,
+    dataAprovacao: string,
+    dataFaturamento: string | null
+  ): LinhaVenda => ({
+    osNumero,
+    empresa,
+    telefone,
+    dataAprovacao,
+    dataFaturamento,
+    vendedor: "Ana",
+    valorOs: "1000",
   });
-  const setembro = { frequenciaDias: 16, gatilhoAPartirDe: "2026-09-01", gatilhoAte: "2026-09-30" };
+  const setembro = {
+    frequenciaDias: 16,
+    gatilhoAPartirDe: "2026-09-01",
+    gatilhoAte: "2026-09-30",
+  };
 
   it("o período filtra pela data da compra (aprovação) e inclui venda ainda não faturada", () => {
     const linhas = [
@@ -438,7 +825,12 @@ describe("pós-venda por cliente único e período pela data da compra", () => {
       venda("3", "Gráfica C", "(67) 99999-0003", "25/08/2026", "02/09/2026"), // comprou em agosto, faturou em setembro
       venda("4", "Gráfica D", "(67) 99999-0004", "02/10/2026", "03/10/2026"), // outubro
     ];
-    const { pendentes, proximas } = listarVendasPosVenda(linhas, setembro, hoje, new Set());
+    const { pendentes, proximas } = listarVendasPosVenda(
+      linhas,
+      setembro,
+      hoje,
+      new Set()
+    );
     const todas = [...pendentes, ...proximas].map(v => v.osNumero).sort();
     expect(todas).toEqual(["1", "2"]); // 3 (compra em agosto) e 4 (outubro) ficam fora
     // 1: aprovada 02/09 → 16 úteis = 24/09 (feriado 07/09) → pendente; 2: aprovada 10/09 → 02/10 → pendente hoje (03/10).
@@ -453,11 +845,22 @@ describe("pós-venda por cliente único e período pela data da compra", () => {
       venda("3", "Sem Fone", null, "04/09/2026", "07/09/2026"),
       venda("4", "Sem Fone", null, "05/09/2026", "08/09/2026"),
     ];
-    const { pendentes } = listarVendasPosVenda(linhas, setembro, hoje, new Set());
+    const { pendentes } = listarVendasPosVenda(
+      linhas,
+      setembro,
+      hoje,
+      new Set()
+    );
     const clientes = agruparPorCliente(pendentes);
     expect(clientes).toHaveLength(2);
-    expect(clientes.find(c => c.telefone)!.osNumeros.sort()).toEqual(["1", "2"]);
-    expect(clientes.find(c => !c.telefone)!.osNumeros.sort()).toEqual(["3", "4"]);
+    expect(clientes.find(c => c.telefone)!.osNumeros.sort()).toEqual([
+      "1",
+      "2",
+    ]);
+    expect(clientes.find(c => !c.telefone)!.osNumeros.sort()).toEqual([
+      "3",
+      "4",
+    ]);
     expect(clientes.find(c => c.telefone)!.valor).toBe(2000);
   });
 
@@ -467,17 +870,27 @@ describe("pós-venda por cliente único e período pela data da compra", () => {
       venda("2", "Gráfica A", "(67) 99999-0001", "25/09/2026", null), // mesma cliente, ainda no prazo
       venda("3", "Gráfica B", "(67) 99999-0002", "25/09/2026", null), // outra cliente, aguardando
     ];
-    expect(resumirVendas(listarVendasPosVenda(linhas, setembro, hoje, new Set()))).toMatchObject({ pendentes: 1, aguardando: 1 });
+    expect(
+      resumirVendas(listarVendasPosVenda(linhas, setembro, hoje, new Set()))
+    ).toMatchObject({ pendentes: 1, aguardando: 1 });
   });
 });
 
 describe("telefone: vários números no mesmo campo e 'sem telefone' x 'inválido'", () => {
   it("usa o primeiro número válido quando o cadastro guarda mais de um", () => {
     // "8405-8895" é celular antigo de 8 dígitos (começa em 8): ganha o 9º dígito automaticamente (ver describe acima).
-    expect(normalizarTelefone("(67) 8405-8895 / (0000) 0000-0")).toBe("5567984058895");
-    expect(normalizarTelefone("(67) 2109-8708 / (67) 99393-2345")).toBe("556721098708");
-    expect(normalizarTelefone("0000-0000; (67) 99999-0000")).toBe("5567999990000");
-    expect(normalizarTelefone("(67) 3333-4444 e (67) 99999-0000")).toBe("556733334444");
+    expect(normalizarTelefone("(67) 8405-8895 / (0000) 0000-0")).toBe(
+      "5567984058895"
+    );
+    expect(normalizarTelefone("(67) 2109-8708 / (67) 99393-2345")).toBe(
+      "556721098708"
+    );
+    expect(normalizarTelefone("0000-0000; (67) 99999-0000")).toBe(
+      "5567999990000"
+    );
+    expect(normalizarTelefone("(67) 3333-4444 e (67) 99999-0000")).toBe(
+      "556733334444"
+    );
   });
 
   it("número impossível continua inválido (DDD errado, dígito a mais, só zeros)", () => {
@@ -496,10 +909,21 @@ describe("telefone: vários números no mesmo campo e 'sem telefone' x 'inválid
 
   it("higienizarLista separa 'sem telefone' de 'telefone inválido'", () => {
     const r = higienizarLista(
-      [{ telefone: null, nome: "A" }, { telefone: "(00) 00000-0000", nome: "B" }, { telefone: "12345", nome: "C" }, { telefone: "(67) 99999-0000", nome: "D" }],
-      new Map(), "2026-10-03", 0,
+      [
+        { telefone: null, nome: "A" },
+        { telefone: "(00) 00000-0000", nome: "B" },
+        { telefone: "12345", nome: "C" },
+        { telefone: "(67) 99999-0000", nome: "D" },
+      ],
+      new Map(),
+      "2026-10-03",
+      0
     );
-    expect(r.invalidos.map(i => [i.nome, i.motivo])).toEqual([["A", "sem_telefone"], ["B", "sem_telefone"], ["C", "telefone_invalido"]]);
+    expect(r.invalidos.map(i => [i.nome, i.motivo])).toEqual([
+      ["A", "sem_telefone"],
+      ["B", "sem_telefone"],
+      ["C", "telefone_invalido"],
+    ]);
     expect(r.enviar.map(c => c.nome)).toEqual(["D"]);
   });
 });

@@ -1,14 +1,58 @@
 import { useState } from "react";
-import { AlertTriangle, BanIcon, BarChart3, Brain, CalendarDays, CheckCircle2, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  BanIcon,
+  BarChart3,
+  Brain,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Copy,
+  History,
+  ListChecks,
+  Megaphone,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Send,
+  Siren,
+  CalendarClock,
+  LayoutList,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import KpiCard from "@/components/KpiCard";
 import { formatarDataBr } from "@shared/campanhas-whatsapp";
 import AtualizarClientesAuto from "./campanhasWhatsapp/AtualizarClientesAuto";
@@ -24,13 +68,32 @@ import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
 import QualificacaoIaDialog from "./campanhasWhatsapp/QualificacaoIaDialog";
 import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
 import VendasPosVendaDialog from "./campanhasWhatsapp/VendasPosVendaDialog";
-import { StatusCampanhaBadge, type CampanhaLinha } from "./campanhasWhatsapp/comuns";
+import {
+  StatusCampanhaBadge,
+  type CampanhaLinha,
+} from "./campanhasWhatsapp/comuns";
 
-function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: () => void; children: React.ReactNode }) {
+function BotaoIcone({
+  rotulo,
+  onClick,
+  children,
+}: {
+  rotulo: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8" onClick={onClick} aria-label={rotulo}>{children}</Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={onClick}
+          aria-label={rotulo}
+        >
+          {children}
+        </Button>
       </TooltipTrigger>
       <TooltipContent>{rotulo}</TooltipContent>
     </Tooltip>
@@ -42,34 +105,53 @@ function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: ()
  * quarentena anti-spam por telefone e pós-venda por data da venda. Ver docs/campanhas-whatsapp.md.
  */
 export default function MarketingCampanhasWhatsapp() {
-  const { data, isLoading, isError, error, refetch } = trpc.campanhasWhatsapp.listar.useQuery();
-  const { data: categorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery();
+  const { data, isLoading, isError, error, refetch } =
+    trpc.campanhasWhatsapp.listar.useQuery();
+  const { data: categorias } =
+    trpc.campanhasWhatsapp.listarCategorias.useQuery();
   // Fallback pra própria chave: só aconteceria se a categoria tivesse sido excluída fisicamente por fora
   // (a tela nunca permite excluir uma em uso) — nunca deixa a coluna em branco.
-  const labelCategoria = (chave: string) => categorias?.find(c => c.chave === chave)?.label ?? chave;
+  const labelCategoria = (chave: string) =>
+    categorias?.find(c => c.chave === chave)?.label ?? chave;
 
   // `undefined` = diálogo fechado; `null` no formulário = nova campanha.
-  const [formulario, setFormulario] = useState<CampanhaLinha | null | undefined>(undefined);
+  const [formulario, setFormulario] = useState<
+    CampanhaLinha | null | undefined
+  >(undefined);
   const [disparar, setDisparar] = useState<CampanhaLinha | null>(null);
   const [registrar, setRegistrar] = useState<CampanhaLinha | null>(null);
   const [historico, setHistorico] = useState<CampanhaLinha | null>(null);
   const [vendas, setVendas] = useState<CampanhaLinha | null>(null);
   const [duplicar, setDuplicar] = useState<CampanhaLinha | null>(null);
   const [verContatos, setVerContatos] = useState<CampanhaLinha | null>(null);
-  const [qualificacaoIa, setQualificacaoIa] = useState<CampanhaLinha | null>(null);
+  const [qualificacaoIa, setQualificacaoIa] = useState<CampanhaLinha | null>(
+    null
+  );
   // Contatos das campanhas recorrentes: cálculo mais pesado, por isso numa consulta à parte.
-  const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(undefined, { staleTime: 5 * 60_000, refetchOnWindowFocus: false });
+  const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(
+    undefined,
+    { staleTime: 5 * 60_000, refetchOnWindowFocus: false }
+  );
   const [excluir, setExcluir] = useState<CampanhaLinha | null>(null);
 
   if (isLoading) {
-    return <div className="flex justify-center py-20"><Spinner className="size-7 text-muted-foreground" /></div>;
+    return (
+      <div className="flex justify-center py-20">
+        <Spinner className="size-7 text-muted-foreground" />
+      </div>
+    );
   }
   if (isError || !data) {
     return (
       <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
         <AlertTriangle size={28} className="text-amber-500" />
-        <p className="text-sm">Não foi possível carregar as campanhas{error ? `: ${error.message}` : "."}</p>
-        <Button size="sm" variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
+        <p className="text-sm">
+          Não foi possível carregar as campanhas
+          {error ? `: ${error.message}` : "."}
+        </p>
+        <Button size="sm" variant="outline" onClick={() => refetch()}>
+          Tentar novamente
+        </Button>
       </div>
     );
   }
@@ -81,34 +163,60 @@ export default function MarketingCampanhasWhatsapp() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Megaphone size={18} className="text-emerald-600" /> Campanhas e cadência no WhatsApp
+            <Megaphone size={18} className="text-emerald-600" /> Campanhas e
+            cadência no WhatsApp
           </h2>
           <p className="text-sm text-muted-foreground">
-            Controle de frequência dos disparos, alerta de prazo e trava anti-spam por telefone.
+            Controle de frequência dos disparos, alerta de prazo e trava
+            anti-spam por telefone.
           </p>
         </div>
-        <Button className="gap-1.5" onClick={() => setFormulario(null)}><Plus size={15} /> Nova campanha</Button>
+        <Button className="gap-1.5" onClick={() => setFormulario(null)}>
+          <Plus size={15} /> Nova campanha
+        </Button>
       </div>
 
       <AtualizarClientesAuto />
 
       <Tabs defaultValue="painel">
         <TabsList>
-          <TabsTrigger value="painel" className="gap-1.5"><LayoutList size={14} /> Painel</TabsTrigger>
-          <TabsTrigger value="calendario" className="gap-1.5"><CalendarDays size={14} /> Calendário</TabsTrigger>
-          <TabsTrigger value="relatorios" className="gap-1.5"><BarChart3 size={14} /> Relatórios</TabsTrigger>
-          <TabsTrigger value="nao-receber" className="gap-1.5"><BanIcon size={14} /> Não quer receber</TabsTrigger>
+          <TabsTrigger value="painel" className="gap-1.5">
+            <LayoutList size={14} /> Painel
+          </TabsTrigger>
+          <TabsTrigger value="calendario" className="gap-1.5">
+            <CalendarDays size={14} /> Calendário
+          </TabsTrigger>
+          <TabsTrigger value="relatorios" className="gap-1.5">
+            <BarChart3 size={14} /> Relatórios
+          </TabsTrigger>
+          <TabsTrigger value="nao-receber" className="gap-1.5">
+            <BanIcon size={14} /> Não quer receber
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="painel" className="space-y-4 pt-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <KpiCard variant="border" label="Campanhas ativas" value={resumo.ativas} icon={Megaphone} color="#1e6fd9" />
             <KpiCard
-              variant="border" label="Pendentes para hoje" value={resumo.pendentesHoje} icon={Siren} color="#dc2626"
+              variant="border"
+              label="Campanhas ativas"
+              value={resumo.ativas}
+              icon={Megaphone}
+              color="#1e6fd9"
+            />
+            <KpiCard
+              variant="border"
+              label="Pendentes para hoje"
+              value={resumo.pendentesHoje}
+              icon={Siren}
+              color="#dc2626"
               sub="Disparar hoje ou atrasadas"
             />
             <KpiCard
-              variant="border" label="Campanhas da semana" value={resumo.daSemana} icon={CalendarClock} color="#d97706"
+              variant="border"
+              label="Campanhas da semana"
+              value={resumo.daSemana}
+              icon={CalendarClock}
+              color="#d97706"
               sub="Vencem nos próximos 7 dias"
             />
           </div>
@@ -116,11 +224,18 @@ export default function MarketingCampanhasWhatsapp() {
           {campanhas.length === 0 ? (
             <Empty className="border">
               <EmptyHeader>
-                <EmptyMedia variant="icon"><Megaphone /></EmptyMedia>
+                <EmptyMedia variant="icon">
+                  <Megaphone />
+                </EmptyMedia>
                 <EmptyTitle>Nenhuma campanha cadastrada</EmptyTitle>
-                <EmptyDescription>Crie a primeira para acompanhar prazos e evitar disparos repetidos para o mesmo contato.</EmptyDescription>
+                <EmptyDescription>
+                  Crie a primeira para acompanhar prazos e evitar disparos
+                  repetidos para o mesmo contato.
+                </EmptyDescription>
               </EmptyHeader>
-              <Button className="gap-1.5" onClick={() => setFormulario(null)}><Plus size={15} /> Nova campanha</Button>
+              <Button className="gap-1.5" onClick={() => setFormulario(null)}>
+                <Plus size={15} /> Nova campanha
+              </Button>
             </Empty>
           ) : (
             <div className="rounded-lg border bg-white overflow-x-auto">
@@ -132,12 +247,19 @@ export default function MarketingCampanhasWhatsapp() {
                     <TableHead>Envios</TableHead>
                     <TableHead>Contatos</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right sticky right-0 bg-white">Ações</TableHead>
+                    <TableHead className="text-right sticky right-0 bg-white">
+                      Ações
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {campanhas.map(c => (
-                    <TableRow key={c.id} className={c.status !== "ativa" ? "opacity-60" : undefined}>
+                    <TableRow
+                      key={c.id}
+                      className={
+                        c.status !== "ativa" ? "opacity-60" : undefined
+                      }
+                    >
                       <TableCell className="font-medium min-w-[13rem] max-w-[16rem] align-top whitespace-normal">
                         <div title={c.descricao ?? undefined}>{c.nome}</div>
                         {c.wtsTemplateId?.trim() && (
@@ -145,32 +267,92 @@ export default function MarketingCampanhasWhatsapp() {
                             className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
                             title={`Template WTS.Chat: ${c.wtsTemplateId.trim()}`}
                           >
-                            <CheckCircle2 size={10} /> Template WTS.Chat configurado
+                            <CheckCircle2 size={10} /> Template WTS.Chat
+                            configurado
                           </span>
                         )}
                         <div className="mt-0.5 text-[11px] font-normal leading-snug text-muted-foreground">
-                          {labelCategoria(c.categoria)} · {c.tipo === "gatilho_venda" ? "Gatilho de venda" : "Recorrente"}
-                          {c.quarentenaDias > 0 && ` · quarentena ${c.quarentenaDias}d`}
+                          {labelCategoria(c.categoria)} ·{" "}
+                          {c.tipo === "gatilho_venda"
+                            ? "Gatilho de venda"
+                            : "Recorrente"}
+                          {c.quarentenaDias > 0 &&
+                            ` · quarentena ${c.quarentenaDias}d`}
                         </div>
                       </TableCell>
                       <TableCell className="align-top">
-                        <span className="whitespace-nowrap">{c.frequenciaDias} dias</span>
-                        {c.tipo === "gatilho_venda" && <div className="text-[11px] text-muted-foreground">após a venda</div>}
+                        {c.tipo === "gatilho_venda" ? (
+                          <>
+                            <span className="whitespace-nowrap">
+                              {c.frequenciaDias} dias
+                            </span>
+                            <div className="text-[11px] text-muted-foreground">
+                              após a venda
+                            </div>
+                          </>
+                        ) : c.regraCadencia === "fim_de_mes" ? (
+                          <>
+                            <span className="whitespace-nowrap font-medium text-slate-800">
+                              Fim de mês
+                            </span>
+                            <div className="text-[11px] text-muted-foreground">
+                              último dia
+                            </div>
+                          </>
+                        ) : c.regraCadencia === "dia_fixo_mes" ? (
+                          <>
+                            <span className="whitespace-nowrap font-medium text-slate-800">
+                              Todo dia {c.diaFixoMes ?? 1}
+                            </span>
+                            <div className="text-[11px] text-muted-foreground">
+                              dia fixo
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span className="whitespace-nowrap">
+                              {c.frequenciaDias} dias
+                            </span>
+                            <div className="text-[11px] text-muted-foreground">
+                              corridos
+                            </div>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap align-top text-sm">
-                        <div><span className="text-[11px] text-muted-foreground">Último: </span>{c.ultimoEnvio ? formatarDataBr(c.ultimoEnvio) : "—"}</div>
-                        <div><span className="text-[11px] text-muted-foreground">Próximo: </span>{c.proximoEnvio ? formatarDataBr(c.proximoEnvio) : "—"}</div>
+                        <div>
+                          <span className="text-[11px] text-muted-foreground">
+                            Último:{" "}
+                          </span>
+                          {c.ultimoEnvio ? formatarDataBr(c.ultimoEnvio) : "—"}
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-muted-foreground">
+                            Próximo:{" "}
+                          </span>
+                          {c.proximoEnvio
+                            ? formatarDataBr(c.proximoEnvio)
+                            : "—"}
+                        </div>
                       </TableCell>
                       <TableCell className="align-top whitespace-nowrap text-sm">
                         {c.tipo === "gatilho_venda" && c.status === "ativa" ? (
                           <div className="space-y-0.5">
                             <div title="Clientes que já podem receber a mensagem">
-                              <span className="font-semibold">{fmtNum(c.clientesPendentes ?? 0)}</span>{" "}
-                              <span className="text-[11px] text-muted-foreground">para contatar</span>
+                              <span className="font-semibold">
+                                {fmtNum(c.clientesPendentes ?? 0)}
+                              </span>{" "}
+                              <span className="text-[11px] text-muted-foreground">
+                                para contatar
+                              </span>
                             </div>
                             <div title="Compraram há menos de 16 dias úteis: ainda não podem receber a mensagem.">
-                              <span className="font-semibold text-amber-700">{fmtNum(c.clientesAguardando ?? 0)}</span>{" "}
-                              <span className="text-[11px] text-muted-foreground">aguardando prazo</span>
+                              <span className="font-semibold text-amber-700">
+                                {fmtNum(c.clientesAguardando ?? 0)}
+                              </span>{" "}
+                              <span className="text-[11px] text-muted-foreground">
+                                aguardando prazo
+                              </span>
                             </div>
                           </div>
                         ) : c.tipo === "recorrente" && c.status === "ativa" ? (
@@ -179,54 +361,117 @@ export default function MarketingCampanhasWhatsapp() {
                           ) : contagens.data?.[c.id] ? (
                             <div className="space-y-0.5">
                               <div title="Contatos que já podem receber agora (fontes + período, sem quarentena, cadência ou bloqueados)">
-                                <span className="font-semibold">{fmtNum(contagens.data[c.id]!.paraContatar)}</span>{" "}
-                                <span className="text-[11px] text-muted-foreground">para contatar</span>
+                                <span className="font-semibold">
+                                  {fmtNum(contagens.data[c.id]!.paraContatar)}
+                                </span>{" "}
+                                <span className="text-[11px] text-muted-foreground">
+                                  para contatar
+                                </span>
                               </div>
                               {contagens.data[c.id]!.emEspera > 0 && (
                                 <div title="Em quarentena (outra campanha) ou já receberam esta campanha há pouco: voltam sozinhos quando o prazo passa.">
-                                  <span className="font-semibold text-amber-700">{fmtNum(contagens.data[c.id]!.emEspera)}</span>{" "}
-                                  <span className="text-[11px] text-muted-foreground">em espera</span>
+                                  <span className="font-semibold text-amber-700">
+                                    {fmtNum(contagens.data[c.id]!.emEspera)}
+                                  </span>{" "}
+                                  <span className="text-[11px] text-muted-foreground">
+                                    em espera
+                                  </span>
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <span className="text-[11px] text-muted-foreground" title="Vincule uma fonte de dados à campanha para ver os contatos.">sem fonte</span>
+                            <span
+                              className="text-[11px] text-muted-foreground"
+                              title="Vincule uma fonte de dados à campanha para ver os contatos."
+                            >
+                              sem fonte
+                            </span>
                           )
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="align-top min-w-[10rem]">
-                        <div className="whitespace-nowrap"><StatusCampanhaBadge campanha={c} hoje={hoje} /></div>
+                        <div className="whitespace-nowrap">
+                          <StatusCampanhaBadge campanha={c} hoje={hoje} />
+                        </div>
                       </TableCell>
                       <TableCell className="sticky right-0 bg-white align-top shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
                         <div className="flex items-center justify-end gap-1">
                           <Button
-                            size="sm" variant="outline" className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            disabled={c.status !== "ativa"} onClick={() => setDisparar(c)}
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            disabled={c.status !== "ativa"}
+                            onClick={() => setDisparar(c)}
                           >
                             <Send size={13} /> Efetuar disparo
                           </Button>
-                          <BotaoIcone rotulo="Ver contatos" onClick={() => (c.tipo === "gatilho_venda" ? setVendas(c) : setVerContatos(c))}><Users size={15} /></BotaoIcone>
-                          <BotaoIcone rotulo="Editar campanha" onClick={() => setFormulario(c)}><Pencil size={15} /></BotaoIcone>
+                          <BotaoIcone
+                            rotulo="Ver contatos"
+                            onClick={() =>
+                              c.tipo === "gatilho_venda"
+                                ? setVendas(c)
+                                : setVerContatos(c)
+                            }
+                          >
+                            <Users size={15} />
+                          </BotaoIcone>
+                          <BotaoIcone
+                            rotulo="Editar campanha"
+                            onClick={() => setFormulario(c)}
+                          >
+                            <Pencil size={15} />
+                          </BotaoIcone>
                           {/* Ações secundárias num menu: a coluna fica estreita e os ícones sempre alinhados. */}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="size-8" aria-label="Mais ações"><MoreHorizontal size={16} /></Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                aria-label="Mais ações"
+                              >
+                                <MoreHorizontal size={16} />
+                              </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               {c.tipo === "gatilho_venda" && (
-                                <DropdownMenuItem onSelect={() => setVendas(c)}><ListChecks size={14} /> Ver vendas do pós-venda</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setVendas(c)}>
+                                  <ListChecks size={14} /> Ver vendas do
+                                  pós-venda
+                                </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onSelect={() => setHistorico(c)}><History size={14} /> Ver histórico</DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => setQualificacaoIa(c)}><Brain size={14} /> Qualificação por IA (Gemini)</DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => setHistorico(c)}
+                              >
+                                <History size={14} /> Ver histórico
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => setQualificacaoIa(c)}
+                              >
+                                <Brain size={14} /> Qualificação por IA (Gemini)
+                              </DropdownMenuItem>
                               {/* Só o pós-venda ainda não dispara pelo sistema; as recorrentes disparam por "Efetuar disparo". */}
                               {c.tipo === "gatilho_venda" && (
-                                <DropdownMenuItem disabled={c.status !== "ativa"} onSelect={() => setRegistrar(c)}><ClipboardList size={14} /> Registrar disparo manual</DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={c.status !== "ativa"}
+                                  onSelect={() => setRegistrar(c)}
+                                >
+                                  <ClipboardList size={14} /> Registrar disparo
+                                  manual
+                                </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onSelect={() => setDuplicar(c)}><Copy size={14} /> Duplicar campanha</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setDuplicar(c)}>
+                                <Copy size={14} /> Duplicar campanha
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem variant="destructive" onSelect={() => setExcluir(c)}><Trash2 size={14} /> Excluir campanha</DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => setExcluir(c)}
+                              >
+                                <Trash2 size={14} /> Excluir campanha
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -254,17 +499,41 @@ export default function MarketingCampanhasWhatsapp() {
 
       <CampanhaFormDialog
         open={formulario !== undefined}
-        onOpenChange={v => { if (!v) setFormulario(undefined); }}
+        onOpenChange={v => {
+          if (!v) setFormulario(undefined);
+        }}
         campanha={formulario ?? null}
       />
-      <DispararCampanhaDialog campanha={disparar} onClose={() => setDisparar(null)} />
-      <RegistrarDisparoDialog campanha={registrar} hoje={hoje} onClose={() => setRegistrar(null)} />
-      <HistoricoDialog campanha={historico} onClose={() => setHistorico(null)} />
+      <DispararCampanhaDialog
+        campanha={disparar}
+        onClose={() => setDisparar(null)}
+      />
+      <RegistrarDisparoDialog
+        campanha={registrar}
+        hoje={hoje}
+        onClose={() => setRegistrar(null)}
+      />
+      <HistoricoDialog
+        campanha={historico}
+        onClose={() => setHistorico(null)}
+      />
       <VendasPosVendaDialog campanha={vendas} onClose={() => setVendas(null)} />
-      <DuplicarCampanhaDialog campanha={duplicar} onClose={() => setDuplicar(null)} />
-      <ContatosCampanhaDialog campanha={verContatos} onClose={() => setVerContatos(null)} />
-      <QualificacaoIaDialog campanha={qualificacaoIa} onClose={() => setQualificacaoIa(null)} />
-      <ExcluirCampanhaDialog campanha={excluir} onClose={() => setExcluir(null)} />
+      <DuplicarCampanhaDialog
+        campanha={duplicar}
+        onClose={() => setDuplicar(null)}
+      />
+      <ContatosCampanhaDialog
+        campanha={verContatos}
+        onClose={() => setVerContatos(null)}
+      />
+      <QualificacaoIaDialog
+        campanha={qualificacaoIa}
+        onClose={() => setQualificacaoIa(null)}
+      />
+      <ExcluirCampanhaDialog
+        campanha={excluir}
+        onClose={() => setExcluir(null)}
+      />
     </div>
   );
 }

@@ -389,7 +389,8 @@ nem mocks da camada de dados.
   (3) Lead Velocity com Curva de Latência de Resposta (6 faixas de tempo) e mediana de reação;
   (4) Retargeting com 1 clique (cria audiência dinâmica `campanhas_whatsapp_fontes.tipo = 'retargeting'` filtrada por cluster/objeção/ICP) e visualização de parâmetros técnicos do projeto por lead;
   (5) Quarentena unificada central (`alimentarQuarentenaGlobal`: contatos da Retenção de Clientes Novos e CRM de Propostas agora alimentam a quarentena global de comunicação do WhatsApp, eliminando disparos duplicados ou simultâneos);
-  (6) Cache em memória de `carregarContextoErp` (TTL 3 min, `server/services/fontesErpCampanhas.ts`) — elimina releituras repetidas de `historico_os`/`historico_orcamentos` inteiros a cada chamada; invalidado automaticamente em `atualizarDadosErp`, `completarTelefonesHistorico` e `orcamentosTelefoneLote`. **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
+  (6) Cache em memória de `carregarContextoErp` (TTL 3 min, `server/services/fontesErpCampanhas.ts`) — elimina releituras repetidas de `historico_os`/`historico_orcamentos` inteiros a cada chamada; invalidado automaticamente em `atualizarDadosErp`, `completarTelefonesHistorico` e `orcamentosTelefoneLote`;
+  (7) Cadência nativa de calendário (`regra_cadencia` e `dia_fixo_mes`, migration `0118`) — campanhas recorrentes podem ser programadas para "Fim de mês" automático ou "Dia fixo do mês", projetando semáforo e calendário sem aproximações arbitrárias de 30 dias. **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
   painel deles, fora deste repo) para replicar mensagens recebidas para essa URL — hoje elas só chegam na
   caixa de entrada da Ceci. Detalhes em `docs/campanhas-whatsapp-ia.md`.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração

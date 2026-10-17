@@ -2,16 +2,36 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import PeriodoApuracao from "./PeriodoApuracao";
 import {
-  STATUS_CAMPANHA, STATUS_CAMPANHA_LABEL, TIPO_CAMPANHA_LABEL, TIPOS_CAMPANHA, hojeCampoGrande,
-  type StatusCampanha, type TipoCampanha,
+  REGRAS_CADENCIA,
+  REGRA_CADENCIA_LABEL,
+  STATUS_CAMPANHA,
+  STATUS_CAMPANHA_LABEL,
+  TIPO_CAMPANHA_LABEL,
+  TIPOS_CAMPANHA,
+  hojeCampoGrande,
+  type RegraCadencia,
+  type StatusCampanha,
+  type TipoCampanha,
 } from "@shared/campanhas-whatsapp";
 import ArquivosCampanhaPopover from "./ArquivosCampanhaPopover";
 import FontesDadosPopover from "./FontesDadosPopover";
@@ -24,48 +44,102 @@ import { LabelComAjuda, type CampanhaLinha } from "./comuns";
 // nenhuma regra de negócio: os valores citados ("15 dias", "60-90 dias"...) são sugestão, não são impostos.
 const AJUDA_NOME = (
   <>
-    <p><strong>O que é:</strong> nome interno para organizar o painel — não é enviado ao cliente.</p>
-    <p><strong>Dica:</strong> inclua o público-alvo ou objetivo (ex.: "Reativação — Inativos +6 meses",
-      "Pós-venda — 30 dias", "Orçamentos parados").</p>
+    <p>
+      <strong>O que é:</strong> nome interno para organizar o painel — não é
+      enviado ao cliente.
+    </p>
+    <p>
+      <strong>Dica:</strong> inclua o público-alvo ou objetivo (ex.: "Reativação
+      — Inativos +6 meses", "Pós-venda — 30 dias", "Orçamentos parados").
+    </p>
   </>
 );
 const AJUDA_CATEGORIA = (
   <>
-    <p><strong>O que é:</strong> classificação da estratégia, usada para organizar e filtrar o painel.</p>
-    <p><strong>Dica:</strong> categorias comuns são reativação de inativos, orçamentos parados, pós-venda,
-      outbound/prospecção e promoção/geral — crie as suas em "Gerenciar categorias".</p>
+    <p>
+      <strong>O que é:</strong> classificação da estratégia, usada para
+      organizar e filtrar o painel.
+    </p>
+    <p>
+      <strong>Dica:</strong> categorias comuns são reativação de inativos,
+      orçamentos parados, pós-venda, outbound/prospecção e promoção/geral — crie
+      as suas em "Gerenciar categorias".
+    </p>
   </>
 );
 const AJUDA_TIPO = (
   <>
-    <p><strong>O que é:</strong> define a lógica do disparo.</p>
-    <p><strong>Recorrente:</strong> lote enviado periodicamente para uma lista (ex.: a cada 60 dias).</p>
-    <p><strong>Gatilho de venda:</strong> disparo individual calculado a partir da data de faturamento de cada
-      venda (ex.: pós-venda 30 dias depois da compra).</p>
+    <p>
+      <strong>O que é:</strong> define a lógica do disparo.
+    </p>
+    <p>
+      <strong>Recorrente:</strong> lote enviado periodicamente para uma lista
+      (ex.: a cada 60 dias).
+    </p>
+    <p>
+      <strong>Gatilho de venda:</strong> disparo individual calculado a partir
+      da data de faturamento de cada venda (ex.: pós-venda 30 dias depois da
+      compra).
+    </p>
   </>
 );
 const AJUDA_FREQUENCIA = (
   <>
-    <p><strong>O que é:</strong> intervalo que faz a campanha voltar a ficar vermelha/pendente após um disparo
-      (no gatilho de venda, é quantos dias depois da venda o contato deve acontecer).</p>
-    <p><strong>Valores usuais:</strong> inativos +6 meses: 60 a 90 dias · orçamentos parados: 15 a 30 dias ·
-      pós-venda: 30 dias.</p>
+    <p>
+      <strong>O que é:</strong> intervalo que faz a campanha voltar a ficar
+      vermelha/pendente após um disparo (no gatilho de venda, é quantos dias
+      depois da venda o contato deve acontecer).
+    </p>
+    <p>
+      <strong>Valores usuais:</strong> inativos +6 meses: 60 a 90 dias ·
+      orçamentos parados: 15 a 30 dias · pós-venda: 30 dias.
+    </p>
+  </>
+);
+const AJUDA_REGRA_CADENCIA = (
+  <>
+    <p>
+      <strong>Dias corridos:</strong> próximo envio = último envio + N dias
+      corridos.
+    </p>
+    <p>
+      <strong>Fim de mês:</strong> sempre no último dia do mês (28/29 fev, 30
+      abr/jun/set/nov, 31 demais) — ideal para campanhas mensais de fechamento
+      ou agradecimento.
+    </p>
+    <p>
+      <strong>Dia fixo do mês:</strong> sempre no dia X de cada mês (ex.: todo
+      dia 5 para faturamento ou lembrete recorrente).
+    </p>
   </>
 );
 const AJUDA_WTS_TEMPLATE = (
   <>
-    <p><strong>O que é:</strong> o ID do modelo de mensagem que você cadastrou na WTS.Chat e que a Meta já aprovou.</p>
-    <p><strong>Onde achar:</strong> na WTS.Chat, no cadastro do modelo (marketing, atendimento ou sequência).
-      Copie só o ID — o texto da mensagem continua sendo o que está lá.</p>
+    <p>
+      <strong>O que é:</strong> o ID do modelo de mensagem que você cadastrou na
+      WTS.Chat e que a Meta já aprovou.
+    </p>
+    <p>
+      <strong>Onde achar:</strong> na WTS.Chat, no cadastro do modelo
+      (marketing, atendimento ou sequência). Copie só o ID — o texto da mensagem
+      continua sendo o que está lá.
+    </p>
   </>
 );
 const AJUDA_QUARENTENA = (
   <>
-    <p><strong>O que é:</strong> período de "blindagem" do telefone — quem recebeu esta campanha fica de fora
-      de <strong>qualquer outra</strong> campanha durante esses dias.</p>
-    <p><strong>Por quê:</strong> protege a reputação do número no WhatsApp e evita mensagens repetidas ao
-      mesmo cliente em pouco tempo.</p>
-    <p><strong>Recomendado:</strong> 15 dias (0 desliga a trava).</p>
+    <p>
+      <strong>O que é:</strong> período de "blindagem" do telefone — quem
+      recebeu esta campanha fica de fora de <strong>qualquer outra</strong>{" "}
+      campanha durante esses dias.
+    </p>
+    <p>
+      <strong>Por quê:</strong> protege a reputação do número no WhatsApp e
+      evita mensagens repetidas ao mesmo cliente em pouco tempo.
+    </p>
+    <p>
+      <strong>Recomendado:</strong> 15 dias (0 desliga a trava).
+    </p>
   </>
 );
 
@@ -80,16 +154,26 @@ function inteiro(v: string): number | null {
   return /^\d+$/.test(v.trim()) ? Number(v.trim()) : null;
 }
 
-export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Props) {
+export default function CampanhaFormDialog({
+  open,
+  onOpenChange,
+  campanha,
+}: Props) {
   const utils = trpc.useUtils();
   const editando = !!campanha;
 
-  const { data: categorias, isLoading: carregandoCategorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery(undefined, { enabled: open });
+  const { data: categorias, isLoading: carregandoCategorias } =
+    trpc.campanhasWhatsapp.listarCategorias.useQuery(undefined, {
+      enabled: open,
+    });
 
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState("");
   const [tipo, setTipo] = useState<TipoCampanha>("recorrente");
+  const [regraCadencia, setRegraCadencia] =
+    useState<RegraCadencia>("dias_corridos");
+  const [diaFixoMes, setDiaFixoMes] = useState("5");
   const [frequencia, setFrequencia] = useState("30");
   const [quarentena, setQuarentena] = useState("0");
   const [status, setStatus] = useState<StatusCampanha>("ativa");
@@ -105,6 +189,8 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
     setDescricao(campanha?.descricao ?? "");
     setCategoria(campanha?.categoria ?? "");
     setTipo(campanha?.tipo ?? "recorrente");
+    setRegraCadencia((campanha as any)?.regraCadencia ?? "dias_corridos");
+    setDiaFixoMes(String((campanha as any)?.diaFixoMes ?? 5));
     setFrequencia(String(campanha?.frequenciaDias ?? 30));
     setQuarentena(String(campanha?.quarentenaDias ?? 0));
     setStatus(campanha?.status ?? "ativa");
@@ -127,7 +213,9 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   const opcoesCategoria = useMemo(() => {
     if (!categorias) return [];
     const ativas = categorias.filter(c => c.ativo);
-    const arquivadaEmUso = campanha ? categorias.find(c => c.chave === campanha.categoria && !c.ativo) : undefined;
+    const arquivadaEmUso = campanha
+      ? categorias.find(c => c.chave === campanha.categoria && !c.ativo)
+      : undefined;
     return arquivadaEmUso ? [...ativas, arquivadaEmUso] : ativas;
   }, [categorias, campanha]);
 
@@ -136,25 +224,58 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
     toast.success(editando ? "Campanha atualizada." : "Campanha criada.");
     onOpenChange(false);
   };
-  const criar = trpc.campanhasWhatsapp.criar.useMutation({ onSuccess: aoSalvar, onError: e => toast.error(e.message) });
-  const atualizar = trpc.campanhasWhatsapp.atualizar.useMutation({ onSuccess: aoSalvar, onError: e => toast.error(e.message) });
+  const criar = trpc.campanhasWhatsapp.criar.useMutation({
+    onSuccess: aoSalvar,
+    onError: e => toast.error(e.message),
+  });
+  const atualizar = trpc.campanhasWhatsapp.atualizar.useMutation({
+    onSuccess: aoSalvar,
+    onError: e => toast.error(e.message),
+  });
   const salvando = criar.isPending || atualizar.isPending;
 
   const freq = inteiro(frequencia);
   const quar = inteiro(quarentena);
-  const erro = !nome.trim() ? "Informe o nome da campanha."
-    : !categoria ? "Selecione a categoria."
-    : freq === null || freq < 1 || freq > 730 ? "A frequência deve ser um número de 1 a 730 dias."
-    : quar === null || quar > 365 ? "A quarentena deve ser um número de 0 a 365 dias."
-    : !fimAutomatico && !fim ? "Escolha a data final da apuração ou deixe no automático."
-    : !fimAutomatico && inicio && inicio > fim ? "O início da apuração não pode ser depois da data final."
-    : !/^[\w.-]*$/.test(wtsTemplateId.trim()) ? "O ID do template só pode ter letras, números, _ , - e ."
-    : null;
+  const diaFixo = inteiro(diaFixoMes);
+  const erro = !nome.trim()
+    ? "Informe o nome da campanha."
+    : !categoria
+      ? "Selecione a categoria."
+      : tipo === "recorrente" &&
+          regraCadencia === "dias_corridos" &&
+          (freq === null || freq < 1 || freq > 730)
+        ? "A frequência deve ser um número de 1 a 730 dias."
+        : tipo === "recorrente" &&
+            regraCadencia === "dia_fixo_mes" &&
+            (diaFixo === null || diaFixo < 1 || diaFixo > 31)
+          ? "O dia do mês deve ser entre 1 e 31."
+          : tipo === "gatilho_venda" &&
+              (freq === null || freq < 1 || freq > 730)
+            ? "Os dias após a venda devem ser de 1 a 730."
+            : quar === null || quar > 365
+              ? "A quarentena deve ser um número de 0 a 365 dias."
+              : !fimAutomatico && !fim
+                ? "Escolha a data final da apuração ou deixe no automático."
+                : !fimAutomatico && inicio && inicio > fim
+                  ? "O início da apuração não pode ser depois da data final."
+                  : !/^[\w.-]*$/.test(wtsTemplateId.trim())
+                    ? "O ID do template só pode ter letras, números, _ , - e ."
+                    : null;
 
   const salvar = () => {
-    if (erro || freq === null || quar === null) return toast.error(erro ?? "Confira os campos.");
+    if (erro || quar === null) return toast.error(erro ?? "Confira os campos.");
+    const frequenciaFinal = regraCadencia === "fim_de_mes" ? 30 : (freq ?? 30);
     const base = {
-      nome: nome.trim(), descricao: descricao.trim() || null, categoria, frequenciaDias: freq, quarentenaDias: quar,
+      nome: nome.trim(),
+      descricao: descricao.trim() || null,
+      categoria,
+      frequenciaDias: frequenciaFinal,
+      regraCadencia: tipo === "recorrente" ? regraCadencia : "dias_corridos",
+      diaFixoMes:
+        tipo === "recorrente" && regraCadencia === "dia_fixo_mes"
+          ? diaFixo
+          : null,
+      quarentenaDias: quar,
       wtsTemplateId: wtsTemplateId.trim() || null,
       // Início/final da apuração valem para todos os tipos; o corte antigo do pós-venda é migrado para cá.
       periodoInicio: inicio || null,
@@ -166,23 +287,45 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
   };
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!salvando) onOpenChange(v); }}>
+    <Dialog
+      open={open}
+      onOpenChange={v => {
+        if (!salvando) onOpenChange(v);
+      }}
+    >
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editando ? "Editar campanha" : "Nova campanha"}</DialogTitle>
+          <DialogTitle>
+            {editando ? "Editar campanha" : "Nova campanha"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <LabelComAjuda htmlFor="camp-nome" texto="Nome da campanha" ajuda={AJUDA_NOME} />
-            <Input id="camp-nome" value={nome} onChange={e => setNome(e.target.value)} maxLength={160}
-              placeholder="Ex.: Reativação — orçamentos parados" />
+            <LabelComAjuda
+              htmlFor="camp-nome"
+              texto="Nome da campanha"
+              ajuda={AJUDA_NOME}
+            />
+            <Input
+              id="camp-nome"
+              value={nome}
+              onChange={e => setNome(e.target.value)}
+              maxLength={160}
+              placeholder="Ex.: Reativação — orçamentos parados"
+            />
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="camp-descricao">Descrição (opcional)</Label>
-            <Textarea id="camp-descricao" value={descricao} onChange={e => setDescricao(e.target.value)} maxLength={2000}
-              rows={3} placeholder="Objetivo da campanha, público-alvo, roteiro combinado..." />
+            <Textarea
+              id="camp-descricao"
+              value={descricao}
+              onChange={e => setDescricao(e.target.value)}
+              maxLength={2000}
+              rows={3}
+              placeholder="Objetivo da campanha, público-alvo, roteiro combinado..."
+            />
           </div>
 
           {/* Fontes/modelos de mensagem/arquivos pertencem a uma campanha já salva (têm campanhaId) — pedido do
@@ -197,7 +340,8 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
             </div>
           ) : (
             <p className="text-[11px] text-muted-foreground -mt-1">
-              Crie a campanha para depois vincular fontes de dados, modelos de mensagem e salvar listas de contatos.
+              Crie a campanha para depois vincular fontes de dados, modelos de
+              mensagem e salvar listas de contatos.
             </p>
           )}
 
@@ -207,85 +351,250 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
                 <LabelComAjuda texto="Categoria" ajuda={AJUDA_CATEGORIA} />
                 <GerenciarCategoriasPopover />
               </div>
-              <Select value={categoria} onValueChange={setCategoria} disabled={carregandoCategorias}>
-                <SelectTrigger><SelectValue placeholder={carregandoCategorias ? "Carregando..." : "Selecione"} /></SelectTrigger>
+              <Select
+                value={categoria}
+                onValueChange={setCategoria}
+                disabled={carregandoCategorias}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      carregandoCategorias ? "Carregando..." : "Selecione"
+                    }
+                  />
+                </SelectTrigger>
                 <SelectContent>
                   {opcoesCategoria.map(c => (
-                    <SelectItem key={c.chave} value={c.chave}>{c.label}{!c.ativo && " (arquivada)"}</SelectItem>
+                    <SelectItem key={c.chave} value={c.chave}>
+                      {c.label}
+                      {!c.ativo && " (arquivada)"}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <LabelComAjuda texto="Tipo" ajuda={AJUDA_TIPO} />
-              <Select value={tipo} onValueChange={v => setTipo(v as TipoCampanha)} disabled={editando}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={tipo}
+                onValueChange={v => setTipo(v as TipoCampanha)}
+                disabled={editando}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {TIPOS_CAMPANHA.map(t => <SelectItem key={t} value={t}>{TIPO_CAMPANHA_LABEL[t]}</SelectItem>)}
+                  {TIPOS_CAMPANHA.map(t => (
+                    <SelectItem key={t} value={t}>
+                      {TIPO_CAMPANHA_LABEL[t]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              {editando && <p className="text-[11px] text-muted-foreground">O tipo não muda depois de criada.</p>}
+              {editando && (
+                <p className="text-[11px] text-muted-foreground">
+                  O tipo não muda depois de criada.
+                </p>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {tipo === "recorrente" ? (
+              <div className="space-y-1.5 sm:col-span-2 rounded-lg border bg-slate-50/60 p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                  <div className="space-y-1.5">
+                    <LabelComAjuda
+                      texto="Regra de cadência"
+                      ajuda={AJUDA_REGRA_CADENCIA}
+                    />
+                    <Select
+                      value={regraCadencia}
+                      onValueChange={v => setRegraCadencia(v as RegraCadencia)}
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REGRAS_CADENCIA.map(r => (
+                          <SelectItem key={r} value={r}>
+                            {REGRA_CADENCIA_LABEL[r]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {regraCadencia === "dias_corridos" && (
+                    <div className="space-y-1.5">
+                      <LabelComAjuda
+                        htmlFor="camp-freq"
+                        texto="Intervalo (dias entre envios)"
+                        ajuda={AJUDA_FREQUENCIA}
+                      />
+                      <Input
+                        id="camp-freq"
+                        className="bg-white"
+                        inputMode="numeric"
+                        value={frequencia}
+                        onChange={e => setFrequencia(e.target.value)}
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Próximo envio = último envio + este número de dias.
+                      </p>
+                    </div>
+                  )}
+
+                  {regraCadencia === "dia_fixo_mes" && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="camp-dia-fixo">Dia do mês (1 a 31)</Label>
+                      <Input
+                        id="camp-dia-fixo"
+                        className="bg-white"
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={diaFixoMes}
+                        onChange={e => setDiaFixoMes(e.target.value)}
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Dispara todo dia {diaFixoMes || "X"} do mês.
+                      </p>
+                    </div>
+                  )}
+
+                  {regraCadencia === "fim_de_mes" && (
+                    <div className="text-xs text-slate-600 bg-white border rounded p-2.5 space-y-0.5">
+                      <span className="font-semibold text-slate-800 block">
+                        📅 Fechamento de mês automático
+                      </span>
+                      <span>
+                        Dispara no último dia do mês (28/29 fev, 30
+                        abr/jun/set/nov, 31 demais).
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <LabelComAjuda
+                  htmlFor="camp-freq"
+                  texto="Dias após a venda"
+                  ajuda={AJUDA_FREQUENCIA}
+                />
+                <Input
+                  id="camp-freq"
+                  inputMode="numeric"
+                  value={frequencia}
+                  onChange={e => setFrequencia(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Contato individual: faturamento da venda + este número de
+                  dias, e nunca antes de 16 dias úteis após a aprovação.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1.5">
-              <LabelComAjuda htmlFor="camp-freq" texto={tipo === "gatilho_venda" ? "Dias após a venda" : "Cadência (dias entre envios)"} ajuda={AJUDA_FREQUENCIA} />
-              <Input id="camp-freq" inputMode="numeric" value={frequencia} onChange={e => setFrequencia(e.target.value)} />
+              <LabelComAjuda
+                htmlFor="camp-quar"
+                texto="Quarentena (dias)"
+                ajuda={AJUDA_QUARENTENA}
+              />
+              <Input
+                id="camp-quar"
+                inputMode="numeric"
+                value={quarentena}
+                onChange={e => setQuarentena(e.target.value)}
+              />
               <p className="text-[11px] text-muted-foreground">
-                {tipo === "gatilho_venda"
-                  ? "Contato individual: faturamento da venda + este número de dias, e nunca antes de 16 dias úteis após a aprovação."
-                  : "Próximo envio = último envio + este número de dias."}
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <LabelComAjuda htmlFor="camp-quar" texto="Quarentena (dias)" ajuda={AJUDA_QUARENTENA} />
-              <Input id="camp-quar" inputMode="numeric" value={quarentena} onChange={e => setQuarentena(e.target.value)} />
-              <p className="text-[11px] text-muted-foreground">
-                Descanso mínimo de um telefone desde qualquer campanha. 0 = sem trava.
+                Descanso mínimo de um telefone desde qualquer campanha. 0 = sem
+                trava.
               </p>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <LabelComAjuda htmlFor="camp-wts" texto="ID do template na WTS.Chat" ajuda={AJUDA_WTS_TEMPLATE} />
-            <Input id="camp-wts" value={wtsTemplateId} onChange={e => setWtsTemplateId(e.target.value)} maxLength={120}
-              autoComplete="off" spellCheck={false} placeholder="Ex.: e87c7_primeiracompra" />
+            <LabelComAjuda
+              htmlFor="camp-wts"
+              texto="ID do template na WTS.Chat"
+              ajuda={AJUDA_WTS_TEMPLATE}
+            />
+            <Input
+              id="camp-wts"
+              value={wtsTemplateId}
+              onChange={e => setWtsTemplateId(e.target.value)}
+              maxLength={120}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Ex.: e87c7_primeiracompra"
+            />
             <p className="text-[11px] text-muted-foreground">
-              É o que o botão "Efetuar disparo" envia (o ID aparece no modelo, na WTS.Chat). Em branco, a campanha não dispara pelo sistema; só dá para registrar o disparo à mão, pelo menu "⋯".
+              É o que o botão "Efetuar disparo" envia (o ID aparece no modelo,
+              na WTS.Chat). Em branco, a campanha não dispara pelo sistema; só
+              dá para registrar o disparo à mão, pelo menu "⋯".
             </p>
           </div>
 
           <div className="space-y-2 rounded-lg border p-3">
             <Label>Período de apuração</Label>
-            <PeriodoApuracao id="camp" inicio={inicio} onInicio={setInicio} fimAutomatico={fimAutomatico}
-              onFimAutomatico={setFimAutomatico} fim={fim} onFim={setFim} hoje={hoje} />
+            <PeriodoApuracao
+              id="camp"
+              inicio={inicio}
+              onInicio={setInicio}
+              fimAutomatico={fimAutomatico}
+              onFimAutomatico={setFimAutomatico}
+              fim={fim}
+              onFim={setFim}
+              hoje={hoje}
+            />
             <p className="text-[11px] text-muted-foreground">
               {tipo === "gatilho_venda"
                 ? "Só entram vendas faturadas dentro do período. Sem início, toda venda com prazo vencido entra (a primeira lista pode trazer o histórico inteiro). "
                 : "Conta a data em que cada cliente entrou no grupo (ex.: completou 6 meses sem comprar). Sem início, vale desde o primeiro registro. "}
-              No modo automático não há data final: a lista é permanente e se retroalimenta, com quem for entrando.
+              No modo automático não há data final: a lista é permanente e se
+              retroalimenta, com quem for entrando.
             </p>
           </div>
 
           {editando && (
             <div className="space-y-1.5">
               <Label>Situação</Label>
-              <Select value={status} onValueChange={v => setStatus(v as StatusCampanha)}>
-                <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
+              <Select
+                value={status}
+                onValueChange={v => setStatus(v as StatusCampanha)}
+              >
+                <SelectTrigger className="sm:w-48">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {STATUS_CAMPANHA.map(s => <SelectItem key={s} value={s}>{STATUS_CAMPANHA_LABEL[s]}</SelectItem>)}
+                  {STATUS_CAMPANHA.map(s => (
+                    <SelectItem key={s} value={s}>
+                      {STATUS_CAMPANHA_LABEL[s]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">Pausada e arquivada saem do semáforo e dos contadores; o histórico é mantido.</p>
+              <p className="text-[11px] text-muted-foreground">
+                Pausada e arquivada saem do semáforo e dos contadores; o
+                histórico é mantido.
+              </p>
             </div>
           )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={salvando}>Cancelar</Button>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={salvando}
+          >
+            Cancelar
+          </Button>
           <Button onClick={salvar} disabled={salvando}>
-            {salvando && <Spinner className="mr-2" />}{editando ? "Salvar" : "Criar campanha"}
+            {salvando && <Spinner className="mr-2" />}
+            {editando ? "Salvar" : "Criar campanha"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1109,3 +1109,95 @@ describe("Cache de carregarContextoErp (otimização de performance)", () => {
   // historico_os + historico_orcamentos + carregarTelefonesClientes() inteiros, igual aos outros testes
   // pesados deste arquivo que recarregam o histórico (ver timeouts estendidos acima).
 });
+
+describe("Cadência Nativa de Calendário (Fim de Mês / Dia Fixo)", () => {
+  it("campanha fim_de_mes projeta proximaData exatamente no último dia do mês seguinte ao disparo", async () => {
+    const cat = await admin().criarCategoria({
+      label: "TESTE Cadencia Fim Mes",
+    });
+    categoriasCriadas.push(cat.id);
+
+    // Campanha com regra fim_de_mes
+    const camp = await admin().criar({
+      nome: "TESTE Novos do Mês - Fim de Mês",
+      categoria: cat.chave,
+      tipo: "recorrente",
+      regraCadencia: "fim_de_mes",
+      frequenciaDias: 30,
+      quarentenaDias: 0,
+    });
+    criadas.push(camp.id);
+    expect(camp.regraCadencia).toBe("fim_de_mes");
+
+    // Registrar disparo simulado no dia 2026-09-15
+    const tel = "(67) 99000-9944";
+    const res = await disparo(
+      camp.id,
+      "2026-09-15",
+      [{ telefone: tel, nome: "Cliente Fim Mes" }],
+      false
+    );
+    expect(res.registrado).toBe(true);
+    // Como foi em 15/09, o próximo fim de mês é 30/09/2026
+    expect(res.proximaData).toBe("2026-09-30");
+
+    // Registrar disparo simulado no último dia (2026-09-30)
+    const res2 = await disparo(
+      camp.id,
+      "2026-09-30",
+      [{ telefone: tel, nome: "Cliente Fim Mes" }],
+      false
+    );
+    expect(res2.registrado).toBe(true);
+    // Como foi no último dia de setembro (30/09), projeta para o último dia de outubro (31/10/2026)
+    expect(res2.proximaData).toBe("2026-10-31");
+
+    await getPool().query(
+      `DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1`,
+      [norm(tel)]
+    );
+  });
+
+  it("campanha dia_fixo_mes projeta proximaData para o dia escolhido", async () => {
+    const cat = await admin().criarCategoria({
+      label: "TESTE Cadencia Dia Fixo",
+    });
+    categoriasCriadas.push(cat.id);
+
+    // Campanha todo dia 10
+    const camp = await admin().criar({
+      nome: "TESTE Dia Fixo 10",
+      categoria: cat.chave,
+      tipo: "recorrente",
+      regraCadencia: "dia_fixo_mes",
+      diaFixoMes: 10,
+      frequenciaDias: 30,
+      quarentenaDias: 0,
+    });
+    criadas.push(camp.id);
+
+    const tel = "(67) 99000-9945";
+    // Disparo em 05/09/2026 -> próximo é 10/09/2026
+    const res = await disparo(
+      camp.id,
+      "2026-09-05",
+      [{ telefone: tel, nome: "Cliente Dia 10" }],
+      false
+    );
+    expect(res.proximaData).toBe("2026-09-10");
+
+    // Disparo em 10/09/2026 -> próximo é 10/10/2026
+    const res2 = await disparo(
+      camp.id,
+      "2026-09-10",
+      [{ telefone: tel, nome: "Cliente Dia 10" }],
+      false
+    );
+    expect(res2.proximaData).toBe("2026-10-10");
+
+    await getPool().query(
+      `DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1`,
+      [norm(tel)]
+    );
+  });
+});

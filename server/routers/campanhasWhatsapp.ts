@@ -68,6 +68,7 @@ import {
 } from "../../drizzle/schema";
 import {
   MAX_DISPARO_WTS,
+  REGRAS_CADENCIA,
   STATUS_AGENDAMENTO,
   STATUS_CAMPANHA,
   TIPOS_CAMPANHA,
@@ -181,6 +182,9 @@ const campanhaBaseSchema = z.object({
   // Anotação livre (objetivo, público-alvo, roteiro combinado...); não entra em nenhuma regra de negócio.
   descricao: z.string().trim().max(2000).nullish(),
   tipo: z.enum(TIPOS_CAMPANHA),
+  // Regra de cadência de envio (calendário vs dias corridos). Padrão dias_corridos.
+  regraCadencia: z.enum(REGRAS_CADENCIA).default("dias_corridos"),
+  diaFixoMes: z.number().int().min(1).max(31).nullish(),
   frequenciaDias: z.number().int().min(1).max(730),
   quarentenaDias: z.number().int().min(0).max(365),
   gatilhoAPartirDe: dataIsoSchema.nullish(),
@@ -581,7 +585,12 @@ export async function registrarDisparoNoBanco(
 
   const proximaData =
     campanha.tipo === "recorrente"
-      ? calcularProximoEnvio(p.dataEnvio, campanha.frequenciaDias)
+      ? calcularProximoEnvio(
+          p.dataEnvio,
+          campanha.frequenciaDias,
+          campanha.regraCadencia,
+          campanha.diaFixoMes
+        )
       : null;
 
   // OS cobertas pelos contatos enviados (só faz sentido em gatilho_venda); ignoradas por quarentena continuam pendentes.
@@ -868,6 +877,8 @@ export const campanhasWhatsappRouter = router({
             tipo: c.tipo,
             status: c.status,
             frequenciaDias: c.frequenciaDias,
+            regraCadencia: c.regraCadencia,
+            diaFixoMes: c.diaFixoMes,
             criadaEm: hojeCampoGrande(c.createdAt),
           },
           ultimos.get(c.id) ?? null,
@@ -990,6 +1001,8 @@ export const campanhasWhatsappRouter = router({
           categoria: original.categoria,
           descricao: original.descricao,
           tipo: original.tipo,
+          regraCadencia: original.regraCadencia,
+          diaFixoMes: original.diaFixoMes,
           frequenciaDias: original.frequenciaDias,
           quarentenaDias: original.quarentenaDias,
           status: "ativa",
@@ -1704,6 +1717,8 @@ export const campanhasWhatsappRouter = router({
               tipo: c.tipo,
               status: c.status,
               frequenciaDias: c.frequenciaDias,
+              regraCadencia: c.regraCadencia,
+              diaFixoMes: c.diaFixoMes,
               criadaEm: hojeCampoGrande(c.createdAt),
             },
             ultimos.get(c.id) ?? null,
@@ -1714,7 +1729,10 @@ export const campanhasWhatsappRouter = router({
             c.frequenciaDias,
             hoje,
             input.inicio,
-            input.fim
+            input.fim,
+            120,
+            c.regraCadencia,
+            c.diaFixoMes
           )) {
             eventos.push({
               ...base(c),

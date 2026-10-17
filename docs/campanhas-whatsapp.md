@@ -370,9 +370,11 @@ O upload de lista (Registrar disparo e fontes por arquivo) aceita `.csv`, `.xlsx
   O botão só roda com a credencial de produção (precisa ser clicado por quem está logado no app publicado).
 - Sem hierarquia formal de "subcampanha" no banco (ver seção "Duplicar campanha" acima) — é convenção de nome,
   não uma coluna de relacionamento.
-- "Novos clientes do mês" e "Reativados do mês" não têm frequência "todo fim de mês" no schema (só dias fixos)
-  — nasceram como recorrente/30 dias (aproximação); o usuário usa o Planner (calendário) para agendar
-  explicitamente o último dia de cada mês e confirmar disparado/não disparado.
+- **Cadência nativa de calendário (implementado em 17/10/2026, migration `0118`)**: a coluna `regra_cadencia`
+  (`dias_corridos` | `fim_de_mes` | `dia_fixo_mes`) e `dia_fixo_mes` (1..31) permitem que campanhas mensais
+  como "Novos clientes do mês" e "Reativados do mês" projetem seu próximo envio automaticamente para o último
+  dia de cada mês (28/29 fev, 30 abr/jun/set/nov, 31 demais) ou para um dia fixo (ex: todo dia 5), sem depender
+  de agendamento manual no Planner nem de aproximação imprecisa de 30 dias corridos.
 
 ## Script de seed das campanhas iniciais
 

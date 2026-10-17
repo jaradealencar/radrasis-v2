@@ -31,12 +31,29 @@ export const STATUS_CAMPANHA_LABEL: Record<StatusCampanha, string> = {
 };
 
 // Agendamento (Planner): "planejo disparar esta campanha neste dia" — independente do log real de disparo.
-export const STATUS_AGENDAMENTO = ["planejado", "disparado", "nao_disparado"] as const;
+export const STATUS_AGENDAMENTO = [
+  "planejado",
+  "disparado",
+  "nao_disparado",
+] as const;
 export type StatusAgendamento = (typeof STATUS_AGENDAMENTO)[number];
 export const STATUS_AGENDAMENTO_LABEL: Record<StatusAgendamento, string> = {
   planejado: "Planejado",
   disparado: "Disparado",
   nao_disparado: "Não disparado",
+};
+
+// Regras de cadência de envio de campanhas recorrentes:
+export const REGRAS_CADENCIA = [
+  "dias_corridos",
+  "fim_de_mes",
+  "dia_fixo_mes",
+] as const;
+export type RegraCadencia = (typeof REGRAS_CADENCIA)[number];
+export const REGRA_CADENCIA_LABEL: Record<RegraCadencia, string> = {
+  dias_corridos: "Intervalo em dias corridos",
+  fim_de_mes: "Último dia de cada mês (Fim de mês)",
+  dia_fixo_mes: "Dia fixo do mês",
 };
 
 export type SemaforoCampanha = "vermelho" | "amarelo" | "verde";
@@ -55,7 +72,10 @@ export const DIAS_UTEIS_MINIMOS_POS_VENDA = 16;
 export function hojeCampoGrande(agora: Date = new Date()): string {
   // en-CA formata como YYYY-MM-DD.
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: FUSO_CAMPANHAS, year: "numeric", month: "2-digit", day: "2-digit",
+    timeZone: FUSO_CAMPANHAS,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).format(agora);
 }
 
@@ -73,7 +93,9 @@ export function dataIsoValida(iso: unknown): iso is string {
 
 /** Soma (ou subtrai, com `dias` negativo) dias corridos a uma data ISO. */
 export function somarDias(iso: string, dias: number): string {
-  return new Date(isoParaUtcMs(iso) + dias * 86_400_000).toISOString().slice(0, 10);
+  return new Date(isoParaUtcMs(iso) + dias * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 }
 
 /** Dias corridos de `de` até `ate` (positivo quando `ate` é posterior). */
@@ -81,8 +103,49 @@ export function diasEntre(de: string, ate: string): number {
   return Math.round((isoParaUtcMs(ate) - isoParaUtcMs(de)) / 86_400_000);
 }
 
-/** Próximo envio de uma campanha recorrente: `último envio + frequência`. */
-export function calcularProximoEnvio(ultimoEnvio: string, frequenciaDias: number): string {
+/**
+ * Próximo envio de uma campanha recorrente.
+ * Suporta:
+ * - `dias_corridos` (padrão): `último envio + frequência em dias`.
+ * - `fim_de_mes`: sempre no último dia do mês calendário (28/29 fev, 30 abr/jun/set/nov, 31 demais).
+ * - `dia_fixo_mes`: sempre no dia X do mês (ex.: todo dia 5; ajusta para o último dia se o mês for menor).
+ */
+export function calcularProximoEnvio(
+  ultimoEnvio: string,
+  frequenciaDias: number,
+  regraCadencia: RegraCadencia = "dias_corridos",
+  diaFixoMes?: number | null
+): string {
+  if (regraCadencia === "fim_de_mes") {
+    const m = ISO_DATA.exec(ultimoEnvio);
+    if (!m) return somarDias(ultimoEnvio, frequenciaDias || 30);
+    const ano = Number(m[1]);
+    const mes = Number(m[2]); // 1-indexado (1 a 12)
+    const dia = Number(m[3]);
+    const ultimoDiaMesAtual = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+    // Se o envio foi feito exatamente no último dia do mês ou depois dele, avança para o mês seguinte.
+    const alvoAno =
+      dia >= ultimoDiaMesAtual ? (mes === 12 ? ano + 1 : ano) : ano;
+    const alvoMes = dia >= ultimoDiaMesAtual ? (mes === 12 ? 1 : mes + 1) : mes;
+    const ultimoDiaAlvo = new Date(Date.UTC(alvoAno, alvoMes, 0)).getUTCDate();
+    return `${alvoAno}-${String(alvoMes).padStart(2, "0")}-${String(ultimoDiaAlvo).padStart(2, "0")}`;
+  }
+
+  if (regraCadencia === "dia_fixo_mes") {
+    const m = ISO_DATA.exec(ultimoEnvio);
+    if (!m) return somarDias(ultimoEnvio, frequenciaDias || 30);
+    const ano = Number(m[1]);
+    const mes = Number(m[2]);
+    const dia = Number(m[3]);
+    const diaAlvo = Math.max(1, Math.min(31, diaFixoMes ?? 1));
+    // Se o envio foi feito no dia alvo ou depois dele, projeta para o mês seguinte.
+    const alvoAno = dia >= diaAlvo ? (mes === 12 ? ano + 1 : ano) : ano;
+    const alvoMes = dia >= diaAlvo ? (mes === 12 ? 1 : mes + 1) : mes;
+    const ultimoDiaAlvo = new Date(Date.UTC(alvoAno, alvoMes, 0)).getUTCDate();
+    const diaEfetivo = Math.min(diaAlvo, ultimoDiaAlvo);
+    return `${alvoAno}-${String(alvoMes).padStart(2, "0")}-${String(diaEfetivo).padStart(2, "0")}`;
+  }
+
   return somarDias(ultimoEnvio, frequenciaDias);
 }
 
@@ -92,7 +155,10 @@ export function calcularProximoEnvio(ultimoEnvio: string, frequenciaDias: number
  * - amarelo: faltam até 3 dias;
  * - verde: faltam mais de 3 dias.
  */
-export function classificarSemaforo(proxima: string, hoje: string): SemaforoCampanha {
+export function classificarSemaforo(
+  proxima: string,
+  hoje: string
+): SemaforoCampanha {
   const faltam = diasEntre(hoje, proxima);
   if (faltam <= 0) return "vermelho";
   if (faltam <= LIMITE_ALERTA_DIAS) return "amarelo";
@@ -116,7 +182,9 @@ export function normalizarTelefone(bruto: unknown): string | null {
 }
 
 function normalizarUmTelefone(bruto: string): string | null {
-  const digitos = String(bruto ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  const digitos = String(bruto ?? "")
+    .replace(/\D/g, "")
+    .replace(/^0+/, "");
   if (!digitos) return null;
 
   let ddd = "";
@@ -162,7 +230,8 @@ export function formatarTelefone(normalizado: string): string {
  */
 export function gerarChaveCategoria(label: string): string {
   const slug = label
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "_")
