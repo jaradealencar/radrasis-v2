@@ -3,25 +3,47 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
-import { crmMetas, crmContatos, historicoOs, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
+import {
+  crmMetas,
+  crmContatos,
+  historicoOs,
+  clienteOverrides,
+  crmScripts,
+  crmFaixaEtiquetas,
+  crmAtividadeLog,
+  inteligenciaAcoesClientes,
+  mubisysClientesCache,
+} from "../../drizzle/schema";
 import type { CrmContato } from "../../drizzle/schema";
 import {
-  CACHE_KEY_ABERTOS_PADRAO, CACHE_KEY_ABERTOS_ESTENDIDO,
-  JANELA_ABERTOS_DIAS_PADRAO, JANELA_ABERTOS_DIAS_MAX,
-  getCrmAbertosCache, refreshCrmAbertosCache,
-  CACHE_KEY_FECHADOS, refreshCrmFechadosCache, inicioJanelaFechadosCache,
+  CACHE_KEY_ABERTOS_PADRAO,
+  CACHE_KEY_ABERTOS_ESTENDIDO,
+  JANELA_ABERTOS_DIAS_PADRAO,
+  JANELA_ABERTOS_DIAS_MAX,
+  getCrmAbertosCache,
+  refreshCrmAbertosCache,
+  CACHE_KEY_FECHADOS,
+  refreshCrmFechadosCache,
+  inicioJanelaFechadosCache,
   filtrarPorDiaDeCadastro,
 } from "../sync/crm-abertos-cache";
 import type { TrpcContext } from "../_core/context";
 import {
-  construirMapaConversaoClientes, normalizeEmpresaKey,
-  construirModeloBayesiano, calcularProbabilidadeBayesiana,
+  construirMapaConversaoClientes,
+  normalizeEmpresaKey,
+  construirModeloBayesiano,
+  calcularProbabilidadeBayesiana,
 } from "../services/probabilidadeCompra";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 import { diasUteisEntre } from "../../shared/dias-uteis";
 
 // ─── Faixas de follow-up (config compartilhada) ──────────────────────────────
-export type FaixaConfig = { faixa: 1 | 2 | 3; label: string; diasInicio: number; diasFim: number };
+export type FaixaConfig = {
+  faixa: 1 | 2 | 3;
+  label: string;
+  diasInicio: number;
+  diasFim: number;
+};
 
 export const FAIXA_DEFAULTS: Record<1 | 2 | 3, FaixaConfig> = {
   1: { faixa: 1, label: "Faixa 1 (1-2 du)", diasInicio: 1, diasFim: 2 },
@@ -33,20 +55,23 @@ export const FAIXA_DEFAULTS: Record<1 | 2 | 3, FaixaConfig> = {
 function calcTurno(date: Date): "manha" | "tarde" | "noite" {
   const h = date.getHours(); // UTC-3 (Brasília) = UTC - 3
   // Ajusta para horário de Brasília (UTC-3)
-  const hBrasilia = ((h - 3) + 24) % 24;
+  const hBrasilia = (h - 3 + 24) % 24;
   if (hBrasilia >= 6 && hBrasilia < 12) return "manha";
   if (hBrasilia >= 12 && hBrasilia < 18) return "tarde";
   return "noite";
 }
 
 // ─── Helper: registrar atividade no log ──────────────────────────────────────
-async function logAtividade(ctx: TrpcContext, opts: {
-  vendedor: string;
-  acao: string;
-  orcamentoId?: string;
-  empresa?: string;
-  detalhe?: string;
-}) {
+async function logAtividade(
+  ctx: TrpcContext,
+  opts: {
+    vendedor: string;
+    acao: string;
+    orcamentoId?: string;
+    empresa?: string;
+    detalhe?: string;
+  }
+) {
   try {
     const db = (await getDb())!;
     const agora = new Date();
@@ -65,8 +90,9 @@ async function logAtividade(ctx: TrpcContext, opts: {
   }
 }
 
-import { eq, and, desc, sql, inArray, gte } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, gte, or } from "drizzle-orm";
 import { listarOrcamentosMubiSys } from "../integrations/mubisys-client";
+import { alimentarQuarentenaGlobal } from "./campanhasWhatsapp";
 // ─── Helpers Mubisys ──────────────────────────────────────────────────────────
 
 // Próxima vaga de contato (1 ou 2) livre para a proposta — mesma regra do
@@ -75,12 +101,19 @@ import { listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 // numeroContato fixo, invisível na grade de datas e no filtro por resposta.
 // Sem vaga livre (já esgotou as 2 tentativas regulares), mantém o valor "fora
 // da faixa" de antes — nesse caso a proposta já foi para o Histórico mesmo.
-async function numeroContatoParaStatusFinal(db: Awaited<ReturnType<typeof getDb>>, orcamentoId: string): Promise<number> {
-  const regulares = await db!.select().from(crmContatos)
-    .where(and(
-      eq(crmContatos.orcamentoId, orcamentoId),
-      sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`,
-    ));
+async function numeroContatoParaStatusFinal(
+  db: Awaited<ReturnType<typeof getDb>>,
+  orcamentoId: string
+): Promise<number> {
+  const regulares = await db!
+    .select()
+    .from(crmContatos)
+    .where(
+      and(
+        eq(crmContatos.orcamentoId, orcamentoId),
+        sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
+      )
+    );
   return regulares.length < 2 ? regulares.length + 1 : 99;
 }
 
@@ -90,8 +123,8 @@ function normalizeEmpresa(nome: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // remove acentos
-    .replace(/[^a-z0-9\s]/g, "")    // remove pontuação
-    .replace(/\s+/g, " ")            // colapsa espaços
+    .replace(/[^a-z0-9\s]/g, "") // remove pontuação
+    .replace(/\s+/g, " ") // colapsa espaços
     .trim();
 }
 
@@ -115,13 +148,20 @@ function parseDate(str: string | null | undefined): Date | null {
  * antigo — raro), busca ao vivo só para esse caso, aceitando o risco de demora
  * que já existia antes desta correção.
  */
-export async function buscarOrcamentosPeriodo(di: string, df: string): Promise<any[]> {
+export async function buscarOrcamentosPeriodo(
+  di: string,
+  df: string
+): Promise<any[]> {
   if (di >= inicioJanelaFechadosCache()) {
     const cacheHit = await getCrmAbertosCache(CACHE_KEY_FECHADOS);
     const todos = cacheHit ? cacheHit.itens : await refreshCrmFechadosCache();
     return filtrarPorDiaDeCadastro(todos, di, df);
   }
-  const { itens } = await listarOrcamentosMubiSys({ datainicial: di, datafinal: df, perPage: 50 });
+  const { itens } = await listarOrcamentosMubiSys({
+    datainicial: di,
+    datafinal: df,
+    perPage: 50,
+  });
   return itens;
 }
 
@@ -133,11 +173,11 @@ export async function buscarOrcamentosPeriodo(di: string, df: string): Promise<a
 // comercial/CRM.tsx`) — mantido como está para não alterar comportamento não
 // solicitado; considerar remoção ou realinhamento numa limpeza futura.
 function janelaSugerida(diasCriado: number): string {
-  if (diasCriado <= 3) return "urgente";      // dentro da janela de 60%
-  if (diasCriado <= 7) return "atencao";      // janela de 13,6%
-  if (diasCriado <= 15) return "risco";       // janela de 11,1%
-  if (diasCriado <= 30) return "critico";     // janela de 7,9%
-  return "perdido";                            // >30 dias
+  if (diasCriado <= 3) return "urgente"; // dentro da janela de 60%
+  if (diasCriado <= 7) return "atencao"; // janela de 13,6%
+  if (diasCriado <= 15) return "risco"; // janela de 11,1%
+  if (diasCriado <= 30) return "critico"; // janela de 7,9%
+  return "perdido"; // >30 dias
 }
 
 // Enriquece um orçamento "aberto" (formato bruto do MubiSys/cache) com os dados de
@@ -148,22 +188,33 @@ function janelaSugerida(diasCriado: number): string {
 export function enriquecerPropostaComContatos(o: any, contatos: CrmContato[]) {
   const orcId = String(o.id);
   const dataCriacaoDate = parseDate(o.data_cadastro);
-  const diasCriado = dataCriacaoDate ? diasUteisEntre(dataCriacaoDate, new Date()) : 0;
+  const diasCriado = dataCriacaoDate
+    ? diasUteisEntre(dataCriacaoDate, new Date())
+    : 0;
   const primeiroContato = contatos.find(c => c.numeroContato === 1);
   const segundoContato = contatos.find(c => c.numeroContato === 2);
   // 'perdida'/'garantiu_fechamento' são status finais (não tentativas de contato — ver
   // registrarContato, que já os exclui do limite de 2) e não devem, sozinhos, mandar a
   // proposta para o Histórico: senão ela some da aba Ativas (e do filtro por resposta,
   // que só existe lá) assim que "Garantiu fechamento" é registrado como 2º contato.
-  const contatosRegulares = contatos.filter(c => c.canal !== "perdida" && c.canal !== "garantiu_fechamento");
+  const contatosRegulares = contatos.filter(
+    c => c.canal !== "perdida" && c.canal !== "garantiu_fechamento"
+  );
   const diasAteContato1 = primeiroContato
-    ? Math.floor((new Date(primeiroContato.contatadoEm).getTime() - new Date(o.data_cadastro).getTime()) / (1000 * 60 * 60 * 24))
+    ? Math.floor(
+        (new Date(primeiroContato.contatadoEm).getTime() -
+          new Date(o.data_cadastro).getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
     : null;
 
   // Extrair nome do contato do orçamento
-  const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : [];
+  const contatosOrc: any[] = Array.isArray(o.cliente_contato)
+    ? o.cliente_contato
+    : [];
   const primeiroContatoOrc = contatosOrc[0];
-  const nomeContato = primeiroContatoOrc?.nome_contato ?? primeiroContatoOrc?.nome ?? "";
+  const nomeContato =
+    primeiroContatoOrc?.nome_contato ?? primeiroContatoOrc?.nome ?? "";
   return {
     id: orcId,
     sequencial: o.sequencial_orcamento,
@@ -174,16 +225,20 @@ export function enriquecerPropostaComContatos(o: any, contatos: CrmContato[]) {
     dataCriacao: o.data_cadastro,
     diasAberto: diasCriado,
     janela: janelaSugerida(diasCriado),
-    contato1: primeiroContato ? {
-      data: primeiroContato.contatadoEm,
-      canal: primeiroContato.canal,
-      obs: primeiroContato.observacao,
-    } : null,
-    contato2: segundoContato ? {
-      data: segundoContato.contatadoEm,
-      canal: segundoContato.canal,
-      obs: segundoContato.observacao,
-    } : null,
+    contato1: primeiroContato
+      ? {
+          data: primeiroContato.contatadoEm,
+          canal: primeiroContato.canal,
+          obs: primeiroContato.observacao,
+        }
+      : null,
+    contato2: segundoContato
+      ? {
+          data: segundoContato.contatadoEm,
+          canal: segundoContato.canal,
+          obs: segundoContato.observacao,
+        }
+      : null,
     qtdContatos: contatos.length,
     contato1NoPrazo: diasAteContato1 !== null ? diasAteContato1 <= 3 : null,
     meta2Contatos: contatosRegulares.length >= 2,
@@ -201,37 +256,51 @@ const MOTIVACIONAL_PROMPTS = [
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const crmRouter = router({
-
   // Buscar propostas abertas do vendedor logado (ou de um vendedor específico para diretor)
   getPropostas: protectedProcedure
-    .input(z.object({
-      vendedor: z.string().optional(), // se omitido, usa o nome do usuário logado
-      mes: z.number().min(1).max(12).optional(),
-      ano: z.number().optional(),
-      dataInicio: z.string().optional(), // YYYY-MM-DD — filtro manual de datas
-      dataFim: z.string().optional(),
-      preset: z.enum(["hoje", "7dias", "15dias", "mes", "personalizado"]).optional(),
-      buscarAntigas: z.boolean().optional(), // true = janela de 30 dias em vez de 15 (caso raro de proposta antiga ainda aberta)
-    }))
+    .input(
+      z.object({
+        vendedor: z.string().optional(), // se omitido, usa o nome do usuário logado
+        mes: z.number().min(1).max(12).optional(),
+        ano: z.number().optional(),
+        dataInicio: z.string().optional(), // YYYY-MM-DD — filtro manual de datas
+        dataFim: z.string().optional(),
+        preset: z
+          .enum(["hoje", "7dias", "15dias", "mes", "personalizado"])
+          .optional(),
+        buscarAntigas: z.boolean().optional(), // true = janela de 30 dias em vez de 15 (caso raro de proposta antiga ainda aberta)
+      })
+    )
     .query(async ({ ctx, input }) => {
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
-      const fmtDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      const fmtDate = (d: Date) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
       // Calcular datas com base no preset
       let di: string;
       let df: string;
       const preset = input.preset ?? "mes";
       if (preset === "hoje") {
-        di = fmtDate(now); df = fmtDate(now);
+        di = fmtDate(now);
+        df = fmtDate(now);
       } else if (preset === "7dias") {
-        const d7 = new Date(now); d7.setDate(now.getDate() - 7);
-        di = fmtDate(d7); df = fmtDate(now);
+        const d7 = new Date(now);
+        d7.setDate(now.getDate() - 7);
+        di = fmtDate(d7);
+        df = fmtDate(now);
       } else if (preset === "15dias") {
-        const d15 = new Date(now); d15.setDate(now.getDate() - 15);
-        di = fmtDate(d15); df = fmtDate(now);
-      } else if (preset === "personalizado" && input.dataInicio && input.dataFim) {
-        di = input.dataInicio; df = input.dataFim;
+        const d15 = new Date(now);
+        d15.setDate(now.getDate() - 15);
+        di = fmtDate(d15);
+        df = fmtDate(now);
+      } else if (
+        preset === "personalizado" &&
+        input.dataInicio &&
+        input.dataFim
+      ) {
+        di = input.dataInicio;
+        df = input.dataFim;
       } else {
         // mes (default)
         const mes = input.mes ?? now.getMonth() + 1;
@@ -248,27 +317,42 @@ export const crmRouter = router({
       // Para o caso raro de proposta antiga ainda aberta, o front pode pedir buscarAntigas=true.
       // O cache padrão é mantido quente por um job agendado (ver import no topo do arquivo)
       // — na imensa maioria das vezes esta rota só lê do banco, sem bater no MubiSys.
-      const janelaDias = input.buscarAntigas ? JANELA_ABERTOS_DIAS_MAX : JANELA_ABERTOS_DIAS_PADRAO;
-      const cacheKey = input.buscarAntigas ? CACHE_KEY_ABERTOS_ESTENDIDO : CACHE_KEY_ABERTOS_PADRAO;
+      const janelaDias = input.buscarAntigas
+        ? JANELA_ABERTOS_DIAS_MAX
+        : JANELA_ABERTOS_DIAS_PADRAO;
+      const cacheKey = input.buscarAntigas
+        ? CACHE_KEY_ABERTOS_ESTENDIDO
+        : CACHE_KEY_ABERTOS_PADRAO;
 
       const cacheHit = await getCrmAbertosCache(cacheKey);
       // IMPORTANTE: as buscas ao MubiSys rodam sempre sequenciais (nunca em paralelo).
       // Testado: 2 requisições simultâneas já triplicam o tempo por página (4s → 16-18s)
       // e 8 simultâneas fazem TODAS estourarem o timeout de 45s — a API parece serializar
       // por trás. Paralelizar pareceria uma otimização óbvia, mas piora ou quebra tudo.
-      const todosAbertos = cacheHit ? cacheHit.itens : await refreshCrmAbertosCache(cacheKey, janelaDias);
-      const abertosAtualizadoEm = (cacheHit?.fetchedAt ?? new Date()).toISOString();
+      const todosAbertos = cacheHit
+        ? cacheHit.itens
+        : await refreshCrmAbertosCache(cacheKey, janelaDias);
+      const abertosAtualizadoEm = (
+        cacheHit?.fetchedAt ?? new Date()
+      ).toISOString();
       const todosPeriodo = await buscarOrcamentosPeriodo(di, df);
       // O cache de abertos é a janela rolante inteira (21/30 dias); o período De/Até da tela
       // precisa recortar por data de cadastro, senão "17/09 a 18/09" mostrava todas as
       // abertas dos últimos 21 dias (159) em vez das geradas nesses dois dias (37).
-      const abertos = filtrarPorDiaDeCadastro(todosAbertos, di, df).filter((o: any) => {
-        const s = (o.status || "").toLowerCase();
-        return s === "em aberto" || s === "em andamento" || s === "pendente";
-      });
+      const abertos = filtrarPorDiaDeCadastro(todosAbertos, di, df).filter(
+        (o: any) => {
+          const s = (o.status || "").toLowerCase();
+          return s === "em aberto" || s === "em andamento" || s === "pendente";
+        }
+      );
       const fechados = todosPeriodo.filter((o: any) => {
         const s = (o.status || "").toLowerCase();
-        return s === "aprovado" || s === "faturado" || s === "concluido" || s === "concluído";
+        return (
+          s === "aprovado" ||
+          s === "faturado" ||
+          s === "concluido" ||
+          s === "concluído"
+        );
       });
 
       // Filtrar por vendedor
@@ -276,7 +360,11 @@ export const crmRouter = router({
       const vendedorFiltro = input.vendedor ?? "";
       const filtrar = (list: any[]) =>
         vendedorFiltro
-          ? list.filter(o => (o.vendedor || "").toLowerCase().includes(vendedorFiltro.toLowerCase()))
+          ? list.filter(o =>
+              (o.vendedor || "")
+                .toLowerCase()
+                .includes(vendedorFiltro.toLowerCase())
+            )
           : list;
 
       const propostasAbertas = filtrar(abertos);
@@ -286,10 +374,13 @@ export const crmRouter = router({
       const idsAbertos = propostasAbertas.map((o: any) => String(o.id));
       const db = (await getDb())!;
       // Buscar contatos de todas as propostas abertas (sem filtro de vendedor no DB)
-      const contatosDb = idsAbertos.length > 0
-        ? await db.select().from(crmContatos)
-            .orderBy(desc(crmContatos.contatadoEm))
-        : [];
+      const contatosDb =
+        idsAbertos.length > 0
+          ? await db
+              .select()
+              .from(crmContatos)
+              .orderBy(desc(crmContatos.contatadoEm))
+          : [];
 
       // Mapear contatos por orcamentoId
       const contatosPorOrc: Record<string, CrmContato[]> = {};
@@ -304,18 +395,23 @@ export const crmRouter = router({
       );
 
       // Estatísticas do mês
-      const totalFechado = propostasFechadas.reduce((s: number, o: any) => s + parseFloat(o.valor_total ?? "0"), 0);
+      const totalFechado = propostasFechadas.reduce(
+        (s: number, o: any) => s + parseFloat(o.valor_total ?? "0"),
+        0
+      );
       const qtdFechadas = propostasFechadas.length;
 
       // Propostas de ontem (para mensagem motivacional)
       const ontem = new Date();
       ontem.setDate(ontem.getDate() - 1);
       const ontemStr = `${ontem.getFullYear()}-${pad(ontem.getMonth() + 1)}-${pad(ontem.getDate())}`;
-      const propostasOntem = propostasAbertas.filter((o: any) =>
-        (o.data_cadastro ?? "").startsWith(ontemStr)
-      ).length + propostasFechadas.filter((o: any) =>
-        (o.data_aprovacao ?? "").startsWith(ontemStr)
-      ).length;
+      const propostasOntem =
+        propostasAbertas.filter((o: any) =>
+          (o.data_cadastro ?? "").startsWith(ontemStr)
+        ).length +
+        propostasFechadas.filter((o: any) =>
+          (o.data_aprovacao ?? "").startsWith(ontemStr)
+        ).length;
 
       // Pendentes de follow-up (abertas sem 2 contatos)
       const pendentesFollowup = propostas.filter(p => p.qtdContatos < 2).length;
@@ -323,19 +419,25 @@ export const crmRouter = router({
       // Extrair telefone direto do campo cliente_contato (array embutido no orçamento)
       const telefonesMap: Record<string, string> = {};
       for (const o of propostasAbertas) {
-        const contatos: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : [];
+        const contatos: any[] = Array.isArray(o.cliente_contato)
+          ? o.cliente_contato
+          : [];
         const tel = contatos.find((c: any) => c.celular || c.telefone);
         if (tel) telefonesMap[String(o.id)] = tel.celular || tel.telefone;
       }
       // Contador de contatos feitos hoje
       const hoje = new Date();
-      const hojeStr = `${hoje.getFullYear()}-${pad(hoje.getMonth()+1)}-${pad(hoje.getDate())}`;
+      const hojeStr = `${hoje.getFullYear()}-${pad(hoje.getMonth() + 1)}-${pad(hoje.getDate())}`;
       const contatosHoje = contatosDb.filter(c => {
         const d = new Date(c.contatadoEm);
-        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` === hojeStr;
+        return (
+          `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` ===
+          hojeStr
+        );
       }).length;
       // Buscar propostas perdidas (excluídas manualmente)
-      const perdidasDb = await db.select({ orcamentoId: crmContatos.orcamentoId })
+      const perdidasDb = await db
+        .select({ orcamentoId: crmContatos.orcamentoId })
         .from(crmContatos)
         .where(
           vendedorFiltro
@@ -350,7 +452,9 @@ export const crmRouter = router({
       const clientesComCompra = new Set<string>();
       const overrideMap = new Map<string, "recorrente" | "novo">();
       try {
-        const osEntregues = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
+        const osEntregues = await db
+          .select({ empresa: historicoOs.empresa })
+          .from(historicoOs);
         for (const row of osEntregues) {
           const nome = (row.empresa ?? "").trim();
           if (nome) clientesComCompra.add(nome.toLowerCase());
@@ -372,8 +476,12 @@ export const crmRouter = router({
       // MubiSys. Se falhar, todas as propostas ficam sem probabilidade em vez
       // de quebrar a listagem inteira. mapaConversao continua sendo usado só
       // para qtdComprasCliente (não para o score).
-      let mapaConversao: Awaited<ReturnType<typeof construirMapaConversaoClientes>> | null = null;
-      let modeloBayesiano: Awaited<ReturnType<typeof construirModeloBayesiano>> | null = null;
+      let mapaConversao: Awaited<
+        ReturnType<typeof construirMapaConversaoClientes>
+      > | null = null;
+      let modeloBayesiano: Awaited<
+        ReturnType<typeof construirModeloBayesiano>
+      > | null = null;
       try {
         mapaConversao = await construirMapaConversaoClientes(db);
         modeloBayesiano = await construirModeloBayesiano(db);
@@ -389,37 +497,79 @@ export const crmRouter = router({
         // Na API MubiSys: 'empresa' = empresa emissora (RADRA), 'cliente' = cliente do orçamento
         const clienteRaw = orc?.cliente;
         const empresaRaw = orc?.empresa; // emissora — não usar para exibir
-        const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null
-          ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
-          : String(clienteRaw ?? empresaRaw ?? "");
+        const nomeCliente =
+          typeof clienteRaw === "object" && clienteRaw !== null
+            ? ((clienteRaw as any)?.nome ??
+              (clienteRaw as any)?.razao_social ??
+              String(clienteRaw))
+            : String(clienteRaw ?? empresaRaw ?? "");
         const clienteKey = (nomeCliente || "").toLowerCase().trim();
         // Verificar override manual: "recorrente" exclui estrela; "novo" força estrela
         const overrideStatus = overrideMap.get(clienteKey);
-        const isNovoByHistory = clientesComCompra.size > 0 && !clientesComCompra.has(clienteKey);
-        const clienteNovo = overrideStatus === "recorrente" ? false
-          : overrideStatus === "novo" ? true
-          : isNovoByHistory;
+        const isNovoByHistory =
+          clientesComCompra.size > 0 && !clientesComCompra.has(clienteKey);
+        const clienteNovo =
+          overrideStatus === "recorrente"
+            ? false
+            : overrideStatus === "novo"
+              ? true
+              : isNovoByHistory;
         // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —
         // mesmo formato do endereço em MubiSysOS, apesar de não estar no tipo MubiSysOrcamento.
         // normalizarUf rejeita lixo (variações, texto vazio) — melhor null do que uma UF inválida.
-        const estadoCliente: string | null = Array.isArray((orc as any)?.cliente_endereco)
+        const estadoCliente: string | null = Array.isArray(
+          (orc as any)?.cliente_endereco
+        )
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
-        const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloBayesiano
-          ? calcularProbabilidadeBayesiana({ clienteNovo, nomeCliente, valorProposta: p.valor, modelo: modeloBayesiano, regiaoCliente })
-          : { probabilidade: null as number | null, explicacao: [] as string[] };
-        const conversaoCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente));
+        const regiaoCliente = estadoCliente
+          ? (UF_PARA_REGIAO[estadoCliente] ?? null)
+          : null;
+        const {
+          probabilidade: probabilidadeCompra,
+          explicacao: probabilidadeExplicacao,
+        } = modeloBayesiano
+          ? calcularProbabilidadeBayesiana({
+              clienteNovo,
+              nomeCliente,
+              valorProposta: p.valor,
+              modelo: modeloBayesiano,
+              regiaoCliente,
+            })
+          : {
+              probabilidade: null as number | null,
+              explicacao: [] as string[],
+            };
+        const conversaoCliente = mapaConversao?.porCliente.get(
+          normalizeEmpresaKey(nomeCliente)
+        );
         const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
         const diasSemComprar = conversaoCliente?.ultimaCompra
-          ? Math.floor((Date.now() - conversaoCliente.ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
+          ? Math.floor(
+              (Date.now() - conversaoCliente.ultimaCompra.getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
           : null;
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, diasSemComprar, estadoCliente, regiaoCliente };
+        return {
+          ...p,
+          telefone,
+          nomeCliente,
+          nomeContato: p.nomeContato ?? "",
+          clienteNovo,
+          probabilidadeCompra,
+          probabilidadeExplicacao,
+          qtdComprasCliente,
+          diasSemComprar,
+          estadoCliente,
+          regiaoCliente,
+        };
       });
       return {
-        propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
+        propostas: propostasComTelefone.sort(
+          (a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto
+        ),
         abertosAtualizadoEm,
         stats: {
           totalAberto: propostasComTelefone.length,
@@ -428,81 +578,139 @@ export const crmRouter = router({
           pendentesFollowup,
           propostasOntem,
           contatosHoje,
-          semContato: propostasComTelefone.filter(p => p.qtdContatos === 0).length,
-          com1Contato: propostasComTelefone.filter(p => p.qtdContatos === 1).length,
-          com2Contatos: propostasComTelefone.filter(p => p.qtdContatos >= 2).length,
-          urgente: propostasComTelefone.filter(p => p.janela === "urgente").length,
-          atencao: propostasComTelefone.filter(p => p.janela === "atencao").length,
+          semContato: propostasComTelefone.filter(p => p.qtdContatos === 0)
+            .length,
+          com1Contato: propostasComTelefone.filter(p => p.qtdContatos === 1)
+            .length,
+          com2Contatos: propostasComTelefone.filter(p => p.qtdContatos >= 2)
+            .length,
+          urgente: propostasComTelefone.filter(p => p.janela === "urgente")
+            .length,
+          atencao: propostasComTelefone.filter(p => p.janela === "atencao")
+            .length,
           risco: propostasComTelefone.filter(p => p.janela === "risco").length,
-          critico: propostasComTelefone.filter(p => p.janela === "critico").length,
+          critico: propostasComTelefone.filter(p => p.janela === "critico")
+            .length,
         },
       };
     }),
   // Desfazer contato registrado
   desfazarContato: protectedProcedure
-    .input(z.object({
-      orcamentoId: z.string(),
-      data: z.string(), // ISO string da data do contato a remover
-    }))
+    .input(
+      z.object({
+        orcamentoId: z.string(),
+        data: z.string(), // ISO string da data do contato a remover
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const db = (await getDb())!;
-      const todos = await db.select().from(crmContatos)
+      const todos = await db
+        .select()
+        .from(crmContatos)
         .where(eq(crmContatos.orcamentoId, input.orcamentoId))
         .orderBy(desc(crmContatos.contatadoEm));
       const dataAlvo = new Date(input.data);
       const alvo = todos.find(c => {
         const d = new Date(c.contatadoEm);
-        return d.getFullYear() === dataAlvo.getFullYear() &&
+        return (
+          d.getFullYear() === dataAlvo.getFullYear() &&
           d.getMonth() === dataAlvo.getMonth() &&
-          d.getDate() === dataAlvo.getDate();
+          d.getDate() === dataAlvo.getDate()
+        );
       });
-      if (!alvo) throw new TRPCError({ code: "NOT_FOUND", message: "Contato não encontrado para essa data." });
+      if (!alvo)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Contato não encontrado para essa data.",
+        });
       await db.delete(crmContatos).where(eq(crmContatos.id, alvo.id));
       const vendedor = ctx.user?.name ?? "desconhecido";
-      await logAtividade(ctx, { vendedor, acao: "desfazarContato", orcamentoId: input.orcamentoId, detalhe: `contato de ${input.data} removido` });
+      await logAtividade(ctx, {
+        vendedor,
+        acao: "desfazarContato",
+        orcamentoId: input.orcamentoId,
+        detalhe: `contato de ${input.data} removido`,
+      });
       return { ok: true };
     }),
   // Alterar a resposta de um contato já registrado (ex.: estava "aguardando_resposta"
   // e o cliente respondeu). Atualiza o mesmo registro em vez de apagar e recriar —
   // não consome uma nova vaga de contato (máximo 2 por proposta em registrarContato).
   alterarContato: protectedProcedure
-    .input(z.object({
-      orcamentoId: z.string(),
-      data: z.string(), // ISO string da data do contato a alterar (mesmo lookup de desfazarContato)
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
-      observacao: z.string().nullable().optional(),
-    }))
+    .input(
+      z.object({
+        orcamentoId: z.string(),
+        data: z.string(), // ISO string da data do contato a alterar (mesmo lookup de desfazarContato)
+        canal: z.enum([
+          "nao_retornou",
+          "esperando_cliente",
+          "garantiu_fechamento",
+          "aguardando_resposta",
+        ]),
+        observacao: z.string().nullable().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const db = (await getDb())!;
-      const todos = await db.select().from(crmContatos)
+      const todos = await db
+        .select()
+        .from(crmContatos)
         .where(eq(crmContatos.orcamentoId, input.orcamentoId))
         .orderBy(desc(crmContatos.contatadoEm));
       const dataAlvo = new Date(input.data);
       const alvo = todos.find(c => {
         const d = new Date(c.contatadoEm);
-        return d.getFullYear() === dataAlvo.getFullYear() &&
+        return (
+          d.getFullYear() === dataAlvo.getFullYear() &&
           d.getMonth() === dataAlvo.getMonth() &&
-          d.getDate() === dataAlvo.getDate();
+          d.getDate() === dataAlvo.getDate()
+        );
       });
-      if (!alvo) throw new TRPCError({ code: "NOT_FOUND", message: "Contato não encontrado para essa data." });
-      await db.update(crmContatos)
-        .set({ canal: input.canal as any, observacao: input.observacao ?? null })
+      if (!alvo)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Contato não encontrado para essa data.",
+        });
+      await db
+        .update(crmContatos)
+        .set({
+          canal: input.canal as any,
+          observacao: input.observacao ?? null,
+        })
         .where(eq(crmContatos.id, alvo.id));
       const vendedor = ctx.user?.name ?? "desconhecido";
-      await logAtividade(ctx, { vendedor, acao: "alterarContato", orcamentoId: input.orcamentoId, detalhe: `canal alterado para ${input.canal} (contato de ${input.data})` });
+      await logAtividade(ctx, {
+        vendedor,
+        acao: "alterarContato",
+        orcamentoId: input.orcamentoId,
+        detalhe: `canal alterado para ${input.canal} (contato de ${input.data})`,
+      });
       return { ok: true };
     }),
   // Marcar proposta como ganha
   marcarGanha: protectedProcedure
-    .input(z.object({ orcamentoId: z.string(), vendedor: z.string(), empresa: z.string() }))
+    .input(
+      z.object({
+        orcamentoId: z.string(),
+        vendedor: z.string(),
+        empresa: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const db = (await getDb())!;
       // Registra como contato com canal 'garantiu_fechamento' para histórico
-      const existing = await db.select().from(crmContatos)
-        .where(sql`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'garantiu_fechamento'`)
+      const existing = await db
+        .select()
+        .from(crmContatos)
+        .where(
+          sql`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'garantiu_fechamento'`
+        )
         .limit(1);
       if (existing.length === 0) {
-        const numeroContato = await numeroContatoParaStatusFinal(db, input.orcamentoId);
+        const numeroContato = await numeroContatoParaStatusFinal(
+          db,
+          input.orcamentoId
+        );
         await db.insert(crmContatos).values({
           orcamentoId: input.orcamentoId,
           vendedor: input.vendedor,
@@ -512,21 +720,39 @@ export const crmRouter = router({
           observacao: "Proposta marcada como ganha",
         } as any);
       }
-      await logAtividade(ctx, { vendedor: input.vendedor, acao: "marcarGanha", orcamentoId: input.orcamentoId, empresa: input.empresa });
+      await logAtividade(ctx, {
+        vendedor: input.vendedor,
+        acao: "marcarGanha",
+        orcamentoId: input.orcamentoId,
+        empresa: input.empresa,
+      });
       return { ok: true };
     }),
 
   // Marcar proposta como perdida
   marcarPerdida: protectedProcedure
-    .input(z.object({ orcamentoId: z.string(), vendedor: z.string(), empresa: z.string() }))
+    .input(
+      z.object({
+        orcamentoId: z.string(),
+        vendedor: z.string(),
+        empresa: z.string(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const db = (await getDb())!;
       // Verifica se já existe
-      const existing = await db.select().from(crmContatos)
-        .where(sql`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'perdida'`)
+      const existing = await db
+        .select()
+        .from(crmContatos)
+        .where(
+          sql`${crmContatos.orcamentoId} = ${input.orcamentoId} AND ${crmContatos.canal} = 'perdida'`
+        )
         .limit(1);
       if (existing.length === 0) {
-        const numeroContato = await numeroContatoParaStatusFinal(db, input.orcamentoId);
+        const numeroContato = await numeroContatoParaStatusFinal(
+          db,
+          input.orcamentoId
+        );
         await db.insert(crmContatos).values({
           orcamentoId: input.orcamentoId,
           vendedor: input.vendedor,
@@ -536,19 +762,30 @@ export const crmRouter = router({
           observacao: "Proposta marcada como perdida",
         } as any);
       }
-      await logAtividade(ctx, { vendedor: input.vendedor, acao: "descartar", orcamentoId: input.orcamentoId, empresa: input.empresa, detalhe: "proposta marcada como perdida" });
+      await logAtividade(ctx, {
+        vendedor: input.vendedor,
+        acao: "descartar",
+        orcamentoId: input.orcamentoId,
+        empresa: input.empresa,
+        detalhe: "proposta marcada como perdida",
+      });
       return { ok: true };
     }),
 
   // Mensagem motivacional via Gemini
   getMensagemMotivacional: protectedProcedure
-    .input(z.object({
-      propostasOntem: z.number(),
-      pendentesFollowup: z.number(),
-      nomeVendedor: z.string(),
-    }))
+    .input(
+      z.object({
+        propostasOntem: z.number(),
+        pendentesFollowup: z.number(),
+        nomeVendedor: z.string(),
+      })
+    )
     .query(async ({ input }) => {
-      const promptTemplate = MOTIVACIONAL_PROMPTS[Math.floor(Math.random() * MOTIVACIONAL_PROMPTS.length)];
+      const promptTemplate =
+        MOTIVACIONAL_PROMPTS[
+          Math.floor(Math.random() * MOTIVACIONAL_PROMPTS.length)
+        ];
       const prompt = promptTemplate
         .replace("{propostas}", String(input.propostasOntem))
         .replace("{pendentes}", String(input.pendentesFollowup));
@@ -556,40 +793,62 @@ export const crmRouter = router({
       try {
         const resp: any = await invokeLLM({
           messages: [
-            { role: "system", content: `Você é um coach de vendas motivacional. Responda APENAS com a mensagem, sem aspas, sem prefixo. Personalize para ${input.nomeVendedor}.` },
+            {
+              role: "system",
+              content: `Você é um coach de vendas motivacional. Responda APENAS com a mensagem, sem aspas, sem prefixo. Personalize para ${input.nomeVendedor}.`,
+            },
             { role: "user", content: prompt },
           ],
         });
         const msg = resp?.choices?.[0]?.message?.content ?? "";
         return { mensagem: msg.trim() };
       } catch {
-        return { mensagem: `${input.nomeVendedor}, você tem ${input.pendentesFollowup} propostas esperando seu contato. Cada ligação pode ser o fechamento que falta! 🚀` };
+        return {
+          mensagem: `${input.nomeVendedor}, você tem ${input.pendentesFollowup} propostas esperando seu contato. Cada ligação pode ser o fechamento que falta! 🚀`,
+        };
       }
     }),
 
   // Registrar contato
   registrarContato: protectedProcedure
-    .input(z.object({
-      orcamentoId: z.string(),
-      empresa: z.string(),
-      vendedor: z.string(),
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
-      observacao: z.string().nullable().optional(),
-      dataContato: z.string().optional(), // ISO string da data clicada
-    }))
+    .input(
+      z.object({
+        orcamentoId: z.string(),
+        empresa: z.string(),
+        vendedor: z.string(),
+        canal: z.enum([
+          "nao_retornou",
+          "esperando_cliente",
+          "garantiu_fechamento",
+          "aguardando_resposta",
+        ]),
+        observacao: z.string().nullable().optional(),
+        dataContato: z.string().optional(), // ISO string da data clicada
+        telefone: z.string().optional(), // Telefone do cliente (para trava anti-spam unificada)
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const db = (await getDb())!;
       // Determinar número do contato (1 ou 2) baseado em quantos já existem
-      const existentes = await db.select().from(crmContatos)
-        .where(and(
-          eq(crmContatos.orcamentoId, input.orcamentoId),
-          sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`,
-        ));
+      const existentes = await db
+        .select()
+        .from(crmContatos)
+        .where(
+          and(
+            eq(crmContatos.orcamentoId, input.orcamentoId),
+            sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
+          )
+        );
       const numeroContato = existentes.length + 1;
       if (numeroContato > 2) {
-        throw new TRPCError({ code: "CONFLICT", message: "Máximo de 2 contatos já registrados para esta proposta." });
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Máximo de 2 contatos já registrados para esta proposta.",
+        });
       }
-      const contatadoEm = input.dataContato ? new Date(input.dataContato) : new Date();
+      const contatadoEm = input.dataContato
+        ? new Date(input.dataContato)
+        : new Date();
       await db.insert(crmContatos).values({
         orcamentoId: input.orcamentoId,
         vendedor: input.vendedor,
@@ -599,6 +858,34 @@ export const crmRouter = router({
         observacao: input.observacao ?? null,
         contatadoEm,
       } as any);
+
+      // Trava anti-spam unificada: alimenta a quarentena global de comunicação do WhatsApp
+      try {
+        const dataIso = contatadoEm.toISOString().slice(0, 10);
+        if (input.telefone) {
+          await alimentarQuarentenaGlobal([input.telefone], dataIso);
+        } else if (input.empresa) {
+          const [cli] = await db
+            .select({ telefone: mubisysClientesCache.telefone })
+            .from(mubisysClientesCache)
+            .where(
+              or(
+                eq(mubisysClientesCache.nomeFantasia, input.empresa),
+                eq(mubisysClientesCache.razaoSocial, input.empresa)
+              )
+            )
+            .limit(1);
+          if (cli?.telefone) {
+            await alimentarQuarentenaGlobal([cli.telefone], dataIso);
+          }
+        }
+      } catch (errQuarentena) {
+        console.error(
+          "[crm] Falha ao alimentar quarentena global no contato:",
+          errQuarentena
+        );
+      }
+
       // Determinar faixa com base na data de criação do orçamento (diasCriado)
       // O frontend passa o orcamentoId; a faixa é calculada no log pelo painel de auditoria
       await logAtividade(ctx, {
@@ -616,34 +903,48 @@ export const crmRouter = router({
     .input(z.object({ vendedor: z.string(), mes: z.number(), ano: z.number() }))
     .query(async ({ input }) => {
       const db = (await getDb())!;
-      const rows = await db.select().from(crmMetas)
-        .where(and(
-          eq(crmMetas.vendedor, input.vendedor),
-          eq(crmMetas.mes, input.mes),
-          eq(crmMetas.ano, input.ano),
-        ));
+      const rows = await db
+        .select()
+        .from(crmMetas)
+        .where(
+          and(
+            eq(crmMetas.vendedor, input.vendedor),
+            eq(crmMetas.mes, input.mes),
+            eq(crmMetas.ano, input.ano)
+          )
+        );
       return rows[0] ?? null;
     }),
 
   saveMeta: protectedProcedure
-    .input(z.object({
-      vendedor: z.string(),
-      mes: z.number(),
-      ano: z.number(),
-      metaValor: z.number(),
-      metaQtdOs: z.number(),
-    }))
+    .input(
+      z.object({
+        vendedor: z.string(),
+        mes: z.number(),
+        ano: z.number(),
+        metaValor: z.number(),
+        metaQtdOs: z.number(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      const existing = await db.select().from(crmMetas)
-        .where(and(
-          eq(crmMetas.vendedor, input.vendedor),
-          eq(crmMetas.mes, input.mes),
-          eq(crmMetas.ano, input.ano),
-        ));
+      const existing = await db
+        .select()
+        .from(crmMetas)
+        .where(
+          and(
+            eq(crmMetas.vendedor, input.vendedor),
+            eq(crmMetas.mes, input.mes),
+            eq(crmMetas.ano, input.ano)
+          )
+        );
       if (existing.length > 0) {
-        await db.update(crmMetas)
-          .set({ metaValor: String(input.metaValor), metaQtdOs: input.metaQtdOs })
+        await db
+          .update(crmMetas)
+          .set({
+            metaValor: String(input.metaValor),
+            metaQtdOs: input.metaQtdOs,
+          })
           .where(eq(crmMetas.id, existing[0].id));
       } else {
         await db.insert(crmMetas).values({
@@ -670,31 +971,69 @@ export const crmRouter = router({
     // mesma busca (status=ABERTO, 15 dias), então reaproveita a mesma linha em vez de
     // duplicar a busca/gravação no MubiSys.
     const cacheHit = await getCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO);
-    const todosAbertos = cacheHit ? cacheHit.itens : await refreshCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO, JANELA_ABERTOS_DIAS_PADRAO);
+    const todosAbertos = cacheHit
+      ? cacheHit.itens
+      : await refreshCrmAbertosCache(
+          CACHE_KEY_ABERTOS_PADRAO,
+          JANELA_ABERTOS_DIAS_PADRAO
+        );
     const todosPeriodo = await buscarOrcamentosPeriodo(di, df);
-    const abertos = todosAbertos.filter((o: any) => { const s = (o.status||"").toLowerCase(); return s==="em aberto"||s==="em andamento"||s==="pendente"; });
-    const fechados = todosPeriodo.filter((o: any) => { const s = (o.status||"").toLowerCase(); return s==="aprovado"||s==="faturado"||s==="concluido"||s==="concluído"; });
+    const abertos = todosAbertos.filter((o: any) => {
+      const s = (o.status || "").toLowerCase();
+      return s === "em aberto" || s === "em andamento" || s === "pendente";
+    });
+    const fechados = todosPeriodo.filter((o: any) => {
+      const s = (o.status || "").toLowerCase();
+      return (
+        s === "aprovado" ||
+        s === "faturado" ||
+        s === "concluido" ||
+        s === "concluído"
+      );
+    });
 
     // Agrupar por vendedor
-    const vendedores: Record<string, { abertos: number; valorAberto: number; fechados: number; valorFechado: number }> = {};
+    const vendedores: Record<
+      string,
+      {
+        abertos: number;
+        valorAberto: number;
+        fechados: number;
+        valorFechado: number;
+      }
+    > = {};
     for (const o of abertos as any[]) {
       const v = o.vendedor || "Sem Vendedor";
-      if (!vendedores[v]) vendedores[v] = { abertos: 0, valorAberto: 0, fechados: 0, valorFechado: 0 };
+      if (!vendedores[v])
+        vendedores[v] = {
+          abertos: 0,
+          valorAberto: 0,
+          fechados: 0,
+          valorFechado: 0,
+        };
       vendedores[v].abertos++;
       vendedores[v].valorAberto += parseFloat(o.valor_total ?? "0");
     }
     for (const o of fechados as any[]) {
       const v = o.vendedor || "Sem Vendedor";
-      if (!vendedores[v]) vendedores[v] = { abertos: 0, valorAberto: 0, fechados: 0, valorFechado: 0 };
+      if (!vendedores[v])
+        vendedores[v] = {
+          abertos: 0,
+          valorAberto: 0,
+          fechados: 0,
+          valorFechado: 0,
+        };
       vendedores[v].fechados++;
       vendedores[v].valorFechado += parseFloat(o.valor_total ?? "0");
     }
 
     // Buscar metas do mês
     const db = (await getDb())!;
-    const metas = await db.select().from(crmMetas)
+    const metas = await db
+      .select()
+      .from(crmMetas)
       .where(and(eq(crmMetas.mes, mes), eq(crmMetas.ano, ano)));
-    const metaMap: Record<string, typeof metas[0]> = {};
+    const metaMap: Record<string, (typeof metas)[0]> = {};
     for (const m of metas) metaMap[m.vendedor] = m;
 
     return Object.entries(vendedores)
@@ -703,7 +1042,11 @@ export const crmRouter = router({
         ...dados,
         meta: metaMap[nome] ?? null,
         pctMeta: metaMap[nome]
-          ? Math.round((dados.valorFechado / parseFloat(String(metaMap[nome].metaValor))) * 100)
+          ? Math.round(
+              (dados.valorFechado /
+                parseFloat(String(metaMap[nome].metaValor))) *
+                100
+            )
           : null,
       }))
       .sort((a, b) => b.valorFechado - a.valorFechado);
@@ -714,7 +1057,9 @@ export const crmRouter = router({
     .input(z.object({ orcamentoId: z.string() }))
     .query(async ({ input }) => {
       const db = (await getDb())!;
-      return db.select().from(crmContatos)
+      return db
+        .select()
+        .from(crmContatos)
         .where(eq(crmContatos.orcamentoId, input.orcamentoId))
         .orderBy(crmContatos.numeroContato);
     }),
@@ -725,31 +1070,53 @@ export const crmRouter = router({
     .query(async ({ input }) => {
       const db = (await getDb())!;
       const now = new Date();
-      const mes = input.mes ?? (now.getMonth() + 1);
+      const mes = input.mes ?? now.getMonth() + 1;
       const ano = input.ano ?? now.getFullYear();
-      return db.select().from(crmMetas)
+      return db
+        .select()
+        .from(crmMetas)
         .where(and(eq(crmMetas.mes, mes), eq(crmMetas.ano, ano)))
         .orderBy(crmMetas.vendedor);
     }),
 
   // Salvar meta (cria ou atualiza)
   salvarMeta: protectedProcedure
-    .input(z.object({
-      vendedor: z.string(),
-      mes: z.number(),
-      ano: z.number(),
-      metaValor: z.number().optional(),
-      metaQtdOs: z.number().optional(),
-    }))
+    .input(
+      z.object({
+        vendedor: z.string(),
+        mes: z.number(),
+        ano: z.number(),
+        metaValor: z.number().optional(),
+        metaQtdOs: z.number().optional(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      const existing = await db.select().from(crmMetas)
-        .where(and(eq(crmMetas.vendedor, input.vendedor), eq(crmMetas.mes, input.mes), eq(crmMetas.ano, input.ano)))
+      const existing = await db
+        .select()
+        .from(crmMetas)
+        .where(
+          and(
+            eq(crmMetas.vendedor, input.vendedor),
+            eq(crmMetas.mes, input.mes),
+            eq(crmMetas.ano, input.ano)
+          )
+        )
         .limit(1);
       if (existing.length > 0) {
-        await db.update(crmMetas)
-          .set({ metaValor: String(input.metaValor ?? 0), metaQtdOs: input.metaQtdOs ?? 0 })
-          .where(and(eq(crmMetas.vendedor, input.vendedor), eq(crmMetas.mes, input.mes), eq(crmMetas.ano, input.ano)));
+        await db
+          .update(crmMetas)
+          .set({
+            metaValor: String(input.metaValor ?? 0),
+            metaQtdOs: input.metaQtdOs ?? 0,
+          })
+          .where(
+            and(
+              eq(crmMetas.vendedor, input.vendedor),
+              eq(crmMetas.mes, input.mes),
+              eq(crmMetas.ano, input.ano)
+            )
+          );
       } else {
         await db.insert(crmMetas).values({
           vendedor: input.vendedor,
@@ -764,22 +1131,42 @@ export const crmRouter = router({
 
   // Vincular usuário do sistema a um vendedor
   vincularUsuarioMeta: protectedProcedure
-    .input(z.object({
-      vendedor: z.string(),
-      mes: z.number(),
-      ano: z.number(),
-      usuarioId: z.string().nullable(),
-      usuarioNome: z.string().nullable(),
-    }))
+    .input(
+      z.object({
+        vendedor: z.string(),
+        mes: z.number(),
+        ano: z.number(),
+        usuarioId: z.string().nullable(),
+        usuarioNome: z.string().nullable(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      const existing = await db.select().from(crmMetas)
-        .where(and(eq(crmMetas.vendedor, input.vendedor), eq(crmMetas.mes, input.mes), eq(crmMetas.ano, input.ano)))
+      const existing = await db
+        .select()
+        .from(crmMetas)
+        .where(
+          and(
+            eq(crmMetas.vendedor, input.vendedor),
+            eq(crmMetas.mes, input.mes),
+            eq(crmMetas.ano, input.ano)
+          )
+        )
         .limit(1);
       if (existing.length > 0) {
-        await db.update(crmMetas)
-          .set({ usuarioVinculadoId: input.usuarioId, usuarioVinculadoNome: input.usuarioNome })
-          .where(and(eq(crmMetas.vendedor, input.vendedor), eq(crmMetas.mes, input.mes), eq(crmMetas.ano, input.ano)));
+        await db
+          .update(crmMetas)
+          .set({
+            usuarioVinculadoId: input.usuarioId,
+            usuarioVinculadoNome: input.usuarioNome,
+          })
+          .where(
+            and(
+              eq(crmMetas.vendedor, input.vendedor),
+              eq(crmMetas.mes, input.mes),
+              eq(crmMetas.ano, input.ano)
+            )
+          );
       } else {
         await db.insert(crmMetas).values({
           vendedor: input.vendedor,
@@ -799,8 +1186,15 @@ export const crmRouter = router({
     .input(z.object({ vendedor: z.string(), mes: z.number(), ano: z.number() }))
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      await db.delete(crmMetas)
-        .where(and(eq(crmMetas.vendedor, input.vendedor), eq(crmMetas.mes, input.mes), eq(crmMetas.ano, input.ano)));
+      await db
+        .delete(crmMetas)
+        .where(
+          and(
+            eq(crmMetas.vendedor, input.vendedor),
+            eq(crmMetas.mes, input.mes),
+            eq(crmMetas.ano, input.ano)
+          )
+        );
       return { ok: true };
     }),
 
@@ -813,49 +1207,66 @@ export const crmRouter = router({
     .input(z.object({ faixa: z.number().min(0).max(20) }))
     .query(async ({ input }) => {
       const db = (await getDb())!;
-      return db.select().from(crmScripts)
-        .where(and(eq(crmScripts.faixa, input.faixa), eq(crmScripts.ativo, true)))
+      return db
+        .select()
+        .from(crmScripts)
+        .where(
+          and(eq(crmScripts.faixa, input.faixa), eq(crmScripts.ativo, true))
+        )
         .orderBy(crmScripts.ordem);
     }),
 
   updateScript: protectedProcedure
-    .input(z.object({
-      id: z.number(),
-      titulo: z.string().max(128).optional(),
-      conteudo: z.string().min(1),
-      conteudo_voz: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        id: z.number(),
+        titulo: z.string().max(128).optional(),
+        conteudo: z.string().min(1),
+        conteudo_voz: z.string().optional(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      await db.update(crmScripts)
-        .set({ titulo: input.titulo, conteudo: input.conteudo, conteudo_voz: input.conteudo_voz ?? null })
+      await db
+        .update(crmScripts)
+        .set({
+          titulo: input.titulo,
+          conteudo: input.conteudo,
+          conteudo_voz: input.conteudo_voz ?? null,
+        })
         .where(eq(crmScripts.id, input.id));
       return { ok: true };
     }),
 
   addScript: protectedProcedure
-    .input(z.object({
-      faixa: z.number().min(0).max(20),
-      titulo: z.string().max(128).optional(),
-      conteudo: z.string().min(1),
-      conteudo_voz: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        faixa: z.number().min(0).max(20),
+        titulo: z.string().max(128).optional(),
+        conteudo: z.string().min(1),
+        conteudo_voz: z.string().optional(),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
       // Pega a maior ordem atual para essa faixa
-      const existing = await db.select({ ordem: crmScripts.ordem })
+      const existing = await db
+        .select({ ordem: crmScripts.ordem })
         .from(crmScripts)
         .where(eq(crmScripts.faixa, input.faixa))
         .orderBy(desc(crmScripts.ordem))
         .limit(1);
       const nextOrdem = (existing[0]?.ordem ?? 0) + 1;
-      const [inserted] = await db.insert(crmScripts).values({
-        faixa: input.faixa,
-        ordem: nextOrdem,
-        titulo: input.titulo,
-        conteudo: input.conteudo,
-        conteudo_voz: input.conteudo_voz ?? null,
-      }).returning({ id: crmScripts.id });
+      const [inserted] = await db
+        .insert(crmScripts)
+        .values({
+          faixa: input.faixa,
+          ordem: nextOrdem,
+          titulo: input.titulo,
+          conteudo: input.conteudo,
+          conteudo_voz: input.conteudo_voz ?? null,
+        })
+        .returning({ id: crmScripts.id });
       return { ok: true, id: inserted.id };
     }),
 
@@ -863,7 +1274,8 @@ export const crmRouter = router({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      await db.update(crmScripts)
+      await db
+        .update(crmScripts)
         .set({ ativo: false })
         .where(eq(crmScripts.id, input.id));
       return { ok: true };
@@ -873,20 +1285,25 @@ export const crmRouter = router({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      await db.execute(sql`UPDATE crm_scripts SET copia_count = copia_count + 1 WHERE id = ${input.id}`);
+      await db.execute(
+        sql`UPDATE crm_scripts SET copia_count = copia_count + 1 WHERE id = ${input.id}`
+      );
       return { ok: true };
     }),
 
   reorderScripts: protectedProcedure
-    .input(z.object({
-      faixa: z.number().min(0).max(20),
-      orderedIds: z.array(z.number()),
-    }))
+    .input(
+      z.object({
+        faixa: z.number().min(0).max(20),
+        orderedIds: z.array(z.number()),
+      })
+    )
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
       await Promise.all(
         input.orderedIds.map((id, index) =>
-          db.update(crmScripts)
+          db
+            .update(crmScripts)
             .set({ ordem: index })
             .where(eq(crmScripts.id, id))
         )
@@ -901,37 +1318,59 @@ export const crmRouter = router({
   // calibrados em setembro/2026 pela distribuição real de dias úteis até o
   // fechamento (calcularTempoOrcamentoPedido): cum. 0-2du≈67%, 0-5du≈79%,
   // 0-10du≈89% dos orçamentos ganhos observados.
-  getFaixaEtiquetas: protectedProcedure
-    .query(async () => {
-      const db = (await getDb())!;
-      const rows = await db.select().from(crmFaixaEtiquetas).orderBy(crmFaixaEtiquetas.faixa);
-      const result: Record<1 | 2 | 3, FaixaConfig> = { ...FAIXA_DEFAULTS };
-      for (const row of rows) {
-        if (row.faixa === 1 || row.faixa === 2 || row.faixa === 3) {
-          result[row.faixa] = { faixa: row.faixa, label: row.label, diasInicio: row.diasInicio, diasFim: row.diasFim };
-        }
+  getFaixaEtiquetas: protectedProcedure.query(async () => {
+    const db = (await getDb())!;
+    const rows = await db
+      .select()
+      .from(crmFaixaEtiquetas)
+      .orderBy(crmFaixaEtiquetas.faixa);
+    const result: Record<1 | 2 | 3, FaixaConfig> = { ...FAIXA_DEFAULTS };
+    for (const row of rows) {
+      if (row.faixa === 1 || row.faixa === 2 || row.faixa === 3) {
+        result[row.faixa] = {
+          faixa: row.faixa,
+          label: row.label,
+          diasInicio: row.diasInicio,
+          diasFim: row.diasFim,
+        };
       }
-      return result;
-    }),
+    }
+    return result;
+  }),
 
   saveFaixas: protectedProcedure
-    .input(z.object({
-      faixas: z.array(z.object({
-        faixa: z.number().int().min(1).max(3),
-        label: z.string().min(1).max(128),
-        diasInicio: z.number().int().min(1),
-        diasFim: z.number().int().min(1),
-      })).length(3),
-    }))
+    .input(
+      z.object({
+        faixas: z
+          .array(
+            z.object({
+              faixa: z.number().int().min(1).max(3),
+              label: z.string().min(1).max(128),
+              diasInicio: z.number().int().min(1),
+              diasFim: z.number().int().min(1),
+            })
+          )
+          .length(3),
+      })
+    )
     .mutation(async ({ input }) => {
       const ordenadas = [...input.faixas].sort((a, b) => a.faixa - b.faixa);
       const faixasVistas = new Set(ordenadas.map(f => f.faixa));
-      if (faixasVistas.size !== 3 || ![1, 2, 3].every(f => faixasVistas.has(f))) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "É necessário enviar exatamente as faixas 1, 2 e 3." });
+      if (
+        faixasVistas.size !== 3 ||
+        ![1, 2, 3].every(f => faixasVistas.has(f))
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "É necessário enviar exatamente as faixas 1, 2 e 3.",
+        });
       }
       for (const f of ordenadas) {
         if (f.diasFim < f.diasInicio) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: `Faixa ${f.faixa}: o dia final não pode ser menor que o dia inicial.` });
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Faixa ${f.faixa}: o dia final não pode ser menor que o dia inicial.`,
+          });
         }
       }
       for (let i = 1; i < ordenadas.length; i++) {
@@ -944,13 +1383,28 @@ export const crmRouter = router({
       }
       const db = (await getDb())!;
       for (const f of ordenadas) {
-        const existing = await db.select().from(crmFaixaEtiquetas).where(eq(crmFaixaEtiquetas.faixa, f.faixa));
+        const existing = await db
+          .select()
+          .from(crmFaixaEtiquetas)
+          .where(eq(crmFaixaEtiquetas.faixa, f.faixa));
         if (existing.length > 0) {
-          await db.update(crmFaixaEtiquetas)
-            .set({ label: f.label, diasInicio: f.diasInicio, diasFim: f.diasFim })
+          await db
+            .update(crmFaixaEtiquetas)
+            .set({
+              label: f.label,
+              diasInicio: f.diasInicio,
+              diasFim: f.diasFim,
+            })
             .where(eq(crmFaixaEtiquetas.faixa, f.faixa));
         } else {
-          await db.insert(crmFaixaEtiquetas).values({ faixa: f.faixa, label: f.label, diasInicio: f.diasInicio, diasFim: f.diasFim });
+          await db
+            .insert(crmFaixaEtiquetas)
+            .values({
+              faixa: f.faixa,
+              label: f.label,
+              diasInicio: f.diasInicio,
+              diasFim: f.diasFim,
+            });
         }
       }
       return { ok: true };
@@ -960,14 +1414,21 @@ export const crmRouter = router({
   // Mesmo serviço usado pelos crons de e-mail diário/semanal (ver
   // server/services/relatorioComercialCrm.ts e server/sync/scheduled-relatorio-crm-*).
   getRelatorioMonitoramento: protectedProcedure
-    .input(z.object({
-      dataInicio: z.string(), // "YYYY-MM-DD"
-      dataFim: z.string(),    // "YYYY-MM-DD"
-      tipo: z.enum(["dia", "semana"]),
-    }))
+    .input(
+      z.object({
+        dataInicio: z.string(), // "YYYY-MM-DD"
+        dataFim: z.string(), // "YYYY-MM-DD"
+        tipo: z.enum(["dia", "semana"]),
+      })
+    )
     .query(async ({ input }) => {
-      const { gerarRelatorioComercialCrm } = await import("../services/relatorioComercialCrm");
-      return gerarRelatorioComercialCrm(input.dataInicio, input.dataFim, input.tipo);
+      const { gerarRelatorioComercialCrm } =
+        await import("../services/relatorioComercialCrm");
+      return gerarRelatorioComercialCrm(
+        input.dataInicio,
+        input.dataFim,
+        input.tipo
+      );
     }),
 
   // ─── Sugestão de Contato (reengajamento mensal da carteira) ─────────────────
@@ -997,24 +1458,38 @@ export const crmRouter = router({
     .query(async ({ input }) => {
       const db = (await getDb())!;
 
-      const tiposReengajamento: Array<"atraso_recompra" | "primeira_sem_segunda"> = ["atraso_recompra", "primeira_sem_segunda"];
+      const tiposReengajamento: Array<
+        "atraso_recompra" | "primeira_sem_segunda"
+      > = ["atraso_recompra", "primeira_sem_segunda"];
       const filtrosPendentes = [
         inArray(inteligenciaAcoesClientes.tipo, tiposReengajamento),
         eq(inteligenciaAcoesClientes.status, "pendente"),
       ];
-      if (input.vendedor) filtrosPendentes.push(eq(inteligenciaAcoesClientes.vendedor, input.vendedor));
-      const pendentesRows = await db.select().from(inteligenciaAcoesClientes)
+      if (input.vendedor)
+        filtrosPendentes.push(
+          eq(inteligenciaAcoesClientes.vendedor, input.vendedor)
+        );
+      const pendentesRows = await db
+        .select()
+        .from(inteligenciaAcoesClientes)
         .where(and(...filtrosPendentes))
         .orderBy(desc(inteligenciaAcoesClientes.prioridade));
 
-      const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0);
+      const inicioMes = new Date();
+      inicioMes.setDate(1);
+      inicioMes.setHours(0, 0, 0, 0);
       const filtrosContatadas = [
         inArray(inteligenciaAcoesClientes.tipo, tiposReengajamento),
         eq(inteligenciaAcoesClientes.status, "concluida"),
         gte(inteligenciaAcoesClientes.resolvidoEm, inicioMes),
       ];
-      if (input.vendedor) filtrosContatadas.push(eq(inteligenciaAcoesClientes.vendedor, input.vendedor));
-      const contatadasEsteMes = await db.select().from(inteligenciaAcoesClientes)
+      if (input.vendedor)
+        filtrosContatadas.push(
+          eq(inteligenciaAcoesClientes.vendedor, input.vendedor)
+        );
+      const contatadasEsteMes = await db
+        .select()
+        .from(inteligenciaAcoesClientes)
         .where(and(...filtrosContatadas));
 
       return {
@@ -1039,13 +1514,16 @@ export const crmRouter = router({
     .input(z.object({ id: z.number(), vendedor: z.string() }))
     .mutation(async ({ input }) => {
       const db = (await getDb())!;
-      await db.update(inteligenciaAcoesClientes).set({
-        status: "concluida",
-        resultado: "contato_realizado",
-        responsavel: input.vendedor,
-        resolvidoEm: new Date(),
-        updatedAt: new Date(),
-      }).where(eq(inteligenciaAcoesClientes.id, input.id));
+      await db
+        .update(inteligenciaAcoesClientes)
+        .set({
+          status: "concluida",
+          resultado: "contato_realizado",
+          responsavel: input.vendedor,
+          resolvidoEm: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(inteligenciaAcoesClientes.id, input.id));
       return { ok: true };
     }),
 
@@ -1057,11 +1535,13 @@ export const crmRouter = router({
    * ranking e diagnóstico.
    */
   getAuditoria: protectedProcedure
-    .input(z.object({
-      dataInicio: z.string(), // ISO date "YYYY-MM-DD"
-      dataFim: z.string(),    // ISO date "YYYY-MM-DD"
-      vendedor: z.string().optional(), // undefined = todos
-    }))
+    .input(
+      z.object({
+        dataInicio: z.string(), // ISO date "YYYY-MM-DD"
+        dataFim: z.string(), // ISO date "YYYY-MM-DD"
+        vendedor: z.string().optional(), // undefined = todos
+      })
+    )
     .query(async ({ input }) => {
       const db = (await getDb())!;
 
@@ -1071,26 +1551,36 @@ export const crmRouter = router({
       // corrigido em 14/09/2026, quebrava esta query com "invalid input syntax for
       // type timestamp"). Em vez disso, soma 24h-1ms ao início do dia seguinte.
       const inicio = new Date(input.dataInicio + "T03:00:00.000Z");
-      const fim = new Date(new Date(input.dataFim + "T03:00:00.000Z").getTime() + 24 * 60 * 60 * 1000 - 1);
+      const fim = new Date(
+        new Date(input.dataFim + "T03:00:00.000Z").getTime() +
+          24 * 60 * 60 * 1000 -
+          1
+      );
 
       // Buscar todos os logs no período (com filtro opcional de vendedor)
       const logsWhere = input.vendedor
         ? and(
             sql`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
             sql`${crmAtividadeLog.realizadaEm} <= ${fim}`,
-            eq(crmAtividadeLog.vendedor, input.vendedor),
+            eq(crmAtividadeLog.vendedor, input.vendedor)
           )
         : and(
             sql`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
-            sql`${crmAtividadeLog.realizadaEm} <= ${fim}`,
+            sql`${crmAtividadeLog.realizadaEm} <= ${fim}`
           );
-      const logs = await db.select().from(crmAtividadeLog)
+      const logs = await db
+        .select()
+        .from(crmAtividadeLog)
         .where(logsWhere)
         .orderBy(crmAtividadeLog.realizadaEm);
 
       // Buscar todos os orçamentos do CRM para calcular limbo
-      const contatos = await db.select().from(crmContatos)
-        .where(sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`);
+      const contatos = await db
+        .select()
+        .from(crmContatos)
+        .where(
+          sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
+        );
 
       // ── BLOCO A: Cumprimento de rotina manhã/tarde por dia por vendedor ──────
       // Gerar lista de dias no período
@@ -1105,48 +1595,85 @@ export const crmRouter = router({
       }
 
       // Agrupar logs por vendedor + dia + turno
-      const rotinaPorVendedorDiaTurno: Record<string, Record<string, { manha: boolean; tarde: boolean; acoes: number }>> = {};
+      const rotinaPorVendedorDiaTurno: Record<
+        string,
+        Record<string, { manha: boolean; tarde: boolean; acoes: number }>
+      > = {};
       for (const log of logs) {
         const dt = new Date(log.realizadaEm);
         // Ajusta para Brasília (UTC-3)
-        const hBrasilia = ((dt.getUTCHours() - 3) + 24) % 24;
+        const hBrasilia = (dt.getUTCHours() - 3 + 24) % 24;
         const dtBrasilia = new Date(dt.getTime() - 3 * 60 * 60 * 1000);
         const diaStr = `${dtBrasilia.getUTCFullYear()}-${String(dtBrasilia.getUTCMonth() + 1).padStart(2, "0")}-${String(dtBrasilia.getUTCDate()).padStart(2, "0")}`;
-        const turno = hBrasilia >= 6 && hBrasilia < 12 ? "manha" : hBrasilia >= 12 && hBrasilia < 18 ? "tarde" : "noite";
+        const turno =
+          hBrasilia >= 6 && hBrasilia < 12
+            ? "manha"
+            : hBrasilia >= 12 && hBrasilia < 18
+              ? "tarde"
+              : "noite";
         const v = log.vendedor;
         if (!rotinaPorVendedorDiaTurno[v]) rotinaPorVendedorDiaTurno[v] = {};
-        if (!rotinaPorVendedorDiaTurno[v][diaStr]) rotinaPorVendedorDiaTurno[v][diaStr] = { manha: false, tarde: false, acoes: 0 };
-        if (turno === "manha") rotinaPorVendedorDiaTurno[v][diaStr].manha = true;
-        if (turno === "tarde") rotinaPorVendedorDiaTurno[v][diaStr].tarde = true;
+        if (!rotinaPorVendedorDiaTurno[v][diaStr])
+          rotinaPorVendedorDiaTurno[v][diaStr] = {
+            manha: false,
+            tarde: false,
+            acoes: 0,
+          };
+        if (turno === "manha")
+          rotinaPorVendedorDiaTurno[v][diaStr].manha = true;
+        if (turno === "tarde")
+          rotinaPorVendedorDiaTurno[v][diaStr].tarde = true;
         rotinaPorVendedorDiaTurno[v][diaStr].acoes++;
       }
 
       // Calcular aderência por vendedor
       const vendedores = Array.from(new Set(logs.map(l => l.vendedor))).sort();
       const blocoA = vendedores.map(v => {
-        let manhasOk = 0, tardesOk = 0;
-        const diasDetalhes: Record<string, { manha: boolean; tarde: boolean; acoes: number }> = {};
+        let manhasOk = 0,
+          tardesOk = 0;
+        const diasDetalhes: Record<
+          string,
+          { manha: boolean; tarde: boolean; acoes: number }
+        > = {};
         for (const dia of dias) {
-          const r = rotinaPorVendedorDiaTurno[v]?.[dia] ?? { manha: false, tarde: false, acoes: 0 };
+          const r = rotinaPorVendedorDiaTurno[v]?.[dia] ?? {
+            manha: false,
+            tarde: false,
+            acoes: 0,
+          };
           diasDetalhes[dia] = r;
           if (r.manha) manhasOk++;
           if (r.tarde) tardesOk++;
         }
         const totalDias = dias.length;
-        const aderencia = totalDias > 0 ? Math.round(((manhasOk + tardesOk) / (totalDias * 2)) * 100) : 0;
-        return { vendedor: v, manhasOk, tardesOk, totalDias, aderencia, dias: diasDetalhes };
+        const aderencia =
+          totalDias > 0
+            ? Math.round(((manhasOk + tardesOk) / (totalDias * 2)) * 100)
+            : 0;
+        return {
+          vendedor: v,
+          manhasOk,
+          tardesOk,
+          totalDias,
+          aderencia,
+          dias: diasDetalhes,
+        };
       });
 
       // ── BLOCO B: Volume por faixa ─────────────────────────────────────────────
       // Faixa é determinada pela ação registrarContato e o detalhe "faixa=X"
       // Como não temos a faixa no log diretamente, usamos a tabela crm_contatos
       // e calculamos a faixa com base nos dias desde a criação do orçamento
-      const contatosNoPeriodo = await db.select().from(crmContatos)
-        .where(and(
-          sql`${crmContatos.contatadoEm} >= ${inicio}`,
-          sql`${crmContatos.contatadoEm} <= ${fim}`,
-          sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`,
-        ));
+      const contatosNoPeriodo = await db
+        .select()
+        .from(crmContatos)
+        .where(
+          and(
+            sql`${crmContatos.contatadoEm} >= ${inicio}`,
+            sql`${crmContatos.contatadoEm} <= ${fim}`,
+            sql`${crmContatos.canal} NOT IN ('perdida', 'garantiu_fechamento')`
+          )
+        );
 
       // Para calcular a faixa, precisamos do orçamento original
       // Faixa 1: 0-3 dias, Faixa 2: 4-15 dias, Faixa 3: 16-30 dias
@@ -1154,9 +1681,13 @@ export const crmRouter = router({
       // numeroContato=1 ≈ Faixa 1, numeroContato=2 ≈ Faixa 2+
       // Melhor: usar o log com detalhe para extrair a faixa
       const blocoB = vendedores.map(v => {
-        const logsFaixa = logs.filter(l => l.vendedor === v && l.acao === "registrarContato");
+        const logsFaixa = logs.filter(
+          l => l.vendedor === v && l.acao === "registrarContato"
+        );
         // Extrair faixa do detalhe: "canal=xxx contato#N"
-        let faixa1 = 0, faixa2 = 0, faixa3 = 0;
+        let faixa1 = 0,
+          faixa2 = 0,
+          faixa3 = 0;
         for (const l of logsFaixa) {
           const match = (l.detalhe ?? "").match(/contato#(\d+)/);
           const numContato = match ? parseInt(match[1]) : 1;
@@ -1164,12 +1695,20 @@ export const crmRouter = router({
           else if (numContato === 2) faixa2++;
           else faixa3++;
         }
-        return { vendedor: v, faixa1, faixa2, faixa3, total: faixa1 + faixa2 + faixa3 };
+        return {
+          vendedor: v,
+          faixa1,
+          faixa2,
+          faixa3,
+          total: faixa1 + faixa2 + faixa3,
+        };
       });
 
       // ── BLOCO C: Descartes ────────────────────────────────────────────────────
       const blocoC = vendedores.map(v => {
-        const descartes = logs.filter(l => l.vendedor === v && l.acao === "descartar").length;
+        const descartes = logs.filter(
+          l => l.vendedor === v && l.acao === "descartar"
+        ).length;
         return { vendedor: v, descartes };
       });
 
@@ -1177,31 +1716,57 @@ export const crmRouter = router({
       // Propostas com 0 contatos registrados há mais de 3 dias
       // Busca orçamentos do CRM que não têm contato há mais de 3 dias
       const agora = new Date();
-      const orcamentosComContato = new Map<string, { ultimoContato: Date; vendedor: string; empresa: string }>();
+      const orcamentosComContato = new Map<
+        string,
+        { ultimoContato: Date; vendedor: string; empresa: string }
+      >();
       for (const c of contatos) {
         const prev = orcamentosComContato.get(c.orcamentoId);
         const dt = new Date(c.contatadoEm);
         if (!prev || dt > prev.ultimoContato) {
-          orcamentosComContato.set(c.orcamentoId, { ultimoContato: dt, vendedor: c.vendedor, empresa: c.empresa });
+          orcamentosComContato.set(c.orcamentoId, {
+            ultimoContato: dt,
+            vendedor: c.vendedor,
+            empresa: c.empresa,
+          });
         }
       }
       // Buscar orçamentos sem nenhum contato (nunca foram contatados)
       const orcamentosComContatoIds = new Set(contatos.map(c => c.orcamentoId));
       // Buscar todos os orçamentos do CRM (incluindo os sem contato)
-      const todosOrcamentos = await db.select().from(crmContatos)
-        .where(sql`${crmContatos.canal} = 'perdida' OR ${crmContatos.canal} = 'garantiu_fechamento'`)
+      const todosOrcamentos = await db
+        .select()
+        .from(crmContatos)
+        .where(
+          sql`${crmContatos.canal} = 'perdida' OR ${crmContatos.canal} = 'garantiu_fechamento'`
+        )
         .limit(0); // apenas para ter o tipo
       void todosOrcamentos;
 
-      const limbo: Array<{ orcamentoId: string; empresa: string; vendedor: string; diasSemContato: number; risco: string }> = [];
+      const limbo: Array<{
+        orcamentoId: string;
+        empresa: string;
+        vendedor: string;
+        diasSemContato: number;
+        risco: string;
+      }> = [];
       for (const [orcId, info] of orcamentosComContato.entries()) {
-        const diasSemContato = Math.floor((agora.getTime() - info.ultimoContato.getTime()) / (1000 * 60 * 60 * 24));
+        const diasSemContato = Math.floor(
+          (agora.getTime() - info.ultimoContato.getTime()) /
+            (1000 * 60 * 60 * 24)
+        );
         if (diasSemContato > 3) {
           let risco = "baixo";
           if (diasSemContato >= 16) risco = "critico";
           else if (diasSemContato >= 7) risco = "alto";
           else if (diasSemContato >= 4) risco = "medio";
-          limbo.push({ orcamentoId: orcId, empresa: info.empresa, vendedor: info.vendedor, diasSemContato, risco });
+          limbo.push({
+            orcamentoId: orcId,
+            empresa: info.empresa,
+            vendedor: info.vendedor,
+            diasSemContato,
+            risco,
+          });
         }
       }
       limbo.sort((a, b) => b.diasSemContato - a.diasSemContato);
@@ -1210,24 +1775,40 @@ export const crmRouter = router({
       // Detecta vendedores que registraram >= 15 ações em < 10 minutos
       const JANELA_MS = 10 * 60 * 1000; // 10 minutos
       const LIMITE_ACOES = 15;
-      const alertasVelocidade: Array<{ vendedor: string; dataHora: string; qtdAcoes: number; intervaloMedioSeg: number }> = [];
+      const alertasVelocidade: Array<{
+        vendedor: string;
+        dataHora: string;
+        qtdAcoes: number;
+        intervaloMedioSeg: number;
+      }> = [];
       for (const v of vendedores) {
         const logsV = logs
           .filter(l => l.vendedor === v)
-          .sort((a, b) => new Date(a.realizadaEm).getTime() - new Date(b.realizadaEm).getTime());
+          .sort(
+            (a, b) =>
+              new Date(a.realizadaEm).getTime() -
+              new Date(b.realizadaEm).getTime()
+          );
         // Janela deslizante
         for (let i = 0; i < logsV.length; i++) {
           const tInicio = new Date(logsV[i].realizadaEm).getTime();
           let count = 1;
           let j = i + 1;
-          while (j < logsV.length && new Date(logsV[j].realizadaEm).getTime() - tInicio <= JANELA_MS) {
+          while (
+            j < logsV.length &&
+            new Date(logsV[j].realizadaEm).getTime() - tInicio <= JANELA_MS
+          ) {
             count++;
             j++;
           }
           if (count >= LIMITE_ACOES) {
-            const intervaloMedioSeg = count > 1
-              ? Math.round((new Date(logsV[j - 1].realizadaEm).getTime() - tInicio) / ((count - 1) * 1000))
-              : 0;
+            const intervaloMedioSeg =
+              count > 1
+                ? Math.round(
+                    (new Date(logsV[j - 1].realizadaEm).getTime() - tInicio) /
+                      ((count - 1) * 1000)
+                  )
+                : 0;
             alertasVelocidade.push({
               vendedor: v,
               dataHora: logsV[i].realizadaEm.toISOString(),
@@ -1240,17 +1821,31 @@ export const crmRouter = router({
       }
 
       // ── BLOCO F: Ranking de engajamento ───────────────────────────────────────
-      const blocoF = vendedores.map(v => {
-        const totalContatos = logs.filter(l => l.vendedor === v && l.acao === "registrarContato").length;
-        const totalDescartes = logs.filter(l => l.vendedor === v && l.acao === "descartar").length;
-        const aderencia = blocoA.find(b => b.vendedor === v)?.aderencia ?? 0;
-        const score = totalContatos * 2 + totalDescartes + aderencia;
-        return { vendedor: v, totalContatos, totalDescartes, aderencia, score };
-      }).sort((a, b) => b.score - a.score);
+      const blocoF = vendedores
+        .map(v => {
+          const totalContatos = logs.filter(
+            l => l.vendedor === v && l.acao === "registrarContato"
+          ).length;
+          const totalDescartes = logs.filter(
+            l => l.vendedor === v && l.acao === "descartar"
+          ).length;
+          const aderencia = blocoA.find(b => b.vendedor === v)?.aderencia ?? 0;
+          const score = totalContatos * 2 + totalDescartes + aderencia;
+          return {
+            vendedor: v,
+            totalContatos,
+            totalDescartes,
+            aderencia,
+            score,
+          };
+        })
+        .sort((a, b) => b.score - a.score);
 
       // ── BLOCO G: Diagnóstico executivo ───────────────────────────────────────
       // Identifica o principal gargalo
-      const menorAderencia = [...blocoA].sort((a, b) => a.aderencia - b.aderencia)[0];
+      const menorAderencia = [...blocoA].sort(
+        (a, b) => a.aderencia - b.aderencia
+      )[0];
       const maiorLimbo = limbo.length;
       const temAlertaVelocidade = alertasVelocidade.length > 0;
       let diagnostico = "";
@@ -1269,46 +1864,82 @@ export const crmRouter = router({
       const logsExclusao = logs.filter(l => l.acao === "desfazer_contato");
       // Para cada exclusão, verificar quantas faixas o orçamento tinha preenchidas
       // Buscar todos os contatos dos orçamentos excluídos
-      const orcIdsExcluidos = Array.from(new Set(logsExclusao.map(l => l.orcamentoId).filter(Boolean))) as string[];
-      const contatosExcluidos = orcIdsExcluidos.length > 0
-        ? await db.select().from(crmContatos)
-            .where(sql`${crmContatos.orcamentoId} IN (${sql.join(orcIdsExcluidos.map(id => sql`${id}`), sql`, `)})`)
-        : [];
+      const orcIdsExcluidos = Array.from(
+        new Set(logsExclusao.map(l => l.orcamentoId).filter(Boolean))
+      ) as string[];
+      const contatosExcluidos =
+        orcIdsExcluidos.length > 0
+          ? await db
+              .select()
+              .from(crmContatos)
+              .where(
+                sql`${crmContatos.orcamentoId} IN (${sql.join(
+                  orcIdsExcluidos.map(id => sql`${id}`),
+                  sql`, `
+                )})`
+              )
+          : [];
       // Mapear contatos por orcamentoId
-      const contatosPorOrcExcluido: Record<string, typeof contatosExcluidos> = {};
+      const contatosPorOrcExcluido: Record<string, typeof contatosExcluidos> =
+        {};
       for (const c of contatosExcluidos) {
-        if (!contatosPorOrcExcluido[c.orcamentoId]) contatosPorOrcExcluido[c.orcamentoId] = [];
+        if (!contatosPorOrcExcluido[c.orcamentoId])
+          contatosPorOrcExcluido[c.orcamentoId] = [];
         contatosPorOrcExcluido[c.orcamentoId].push(c);
       }
       // Montar lista de exclusões com detalhe de faixas
-      const blocoH = logsExclusao.map(l => {
-        const orcId = l.orcamentoId ?? "";
-        const contatosDoOrc = contatosPorOrcExcluido[orcId] ?? [];
-        // Calcular quais faixas tinham contato (faixa = numeroContato: 1=F1, 2=F2, 3=F3)
-        const numContatos = contatosDoOrc.filter(c => !['perdida','garantiu_fechamento'].includes(c.canal)).length;
-        const temFaixa1 = contatosDoOrc.some(c => c.numeroContato === 1 && !['perdida','garantiu_fechamento'].includes(c.canal));
-        const temFaixa2 = contatosDoOrc.some(c => c.numeroContato === 2 && !['perdida','garantiu_fechamento'].includes(c.canal));
-        const temFaixa3 = contatosDoOrc.some(c => c.numeroContato >= 3 && !['perdida','garantiu_fechamento'].includes(c.canal));
-        const faixasCompletas = [temFaixa1, temFaixa2, temFaixa3].filter(Boolean).length;
-        return {
-          orcamentoId: orcId,
-          empresa: l.empresa ?? "",
-          vendedor: l.vendedor,
-          dataExclusao: l.realizadaEm.toISOString(),
-          detalhe: l.detalhe ?? "",
-          numContatosAntes: numContatos + 1, // +1 porque o excluído já foi removido
-          temFaixa1,
-          temFaixa2,
-          temFaixa3,
-          faixasCompletas,
-          todasFaixas: temFaixa1 && temFaixa2 && temFaixa3,
-        };
-      }).sort((a, b) => new Date(b.dataExclusao).getTime() - new Date(a.dataExclusao).getTime());
+      const blocoH = logsExclusao
+        .map(l => {
+          const orcId = l.orcamentoId ?? "";
+          const contatosDoOrc = contatosPorOrcExcluido[orcId] ?? [];
+          // Calcular quais faixas tinham contato (faixa = numeroContato: 1=F1, 2=F2, 3=F3)
+          const numContatos = contatosDoOrc.filter(
+            c => !["perdida", "garantiu_fechamento"].includes(c.canal)
+          ).length;
+          const temFaixa1 = contatosDoOrc.some(
+            c =>
+              c.numeroContato === 1 &&
+              !["perdida", "garantiu_fechamento"].includes(c.canal)
+          );
+          const temFaixa2 = contatosDoOrc.some(
+            c =>
+              c.numeroContato === 2 &&
+              !["perdida", "garantiu_fechamento"].includes(c.canal)
+          );
+          const temFaixa3 = contatosDoOrc.some(
+            c =>
+              c.numeroContato >= 3 &&
+              !["perdida", "garantiu_fechamento"].includes(c.canal)
+          );
+          const faixasCompletas = [temFaixa1, temFaixa2, temFaixa3].filter(
+            Boolean
+          ).length;
+          return {
+            orcamentoId: orcId,
+            empresa: l.empresa ?? "",
+            vendedor: l.vendedor,
+            dataExclusao: l.realizadaEm.toISOString(),
+            detalhe: l.detalhe ?? "",
+            numContatosAntes: numContatos + 1, // +1 porque o excluído já foi removido
+            temFaixa1,
+            temFaixa2,
+            temFaixa3,
+            faixasCompletas,
+            todasFaixas: temFaixa1 && temFaixa2 && temFaixa3,
+          };
+        })
+        .sort(
+          (a, b) =>
+            new Date(b.dataExclusao).getTime() -
+            new Date(a.dataExclusao).getTime()
+        );
 
       // Totais de exclusões
       const totalExclusoes = blocoH.length;
       const exclusoesComTodasFaixas = blocoH.filter(e => e.todasFaixas).length;
-      const exclusoesSemNenhumaFaixa = blocoH.filter(e => !e.temFaixa1 && !e.temFaixa2 && !e.temFaixa3).length;
+      const exclusoesSemNenhumaFaixa = blocoH.filter(
+        e => !e.temFaixa1 && !e.temFaixa2 && !e.temFaixa3
+      ).length;
 
       return {
         periodo: { inicio: input.dataInicio, fim: input.dataFim },
@@ -1323,7 +1954,11 @@ export const crmRouter = router({
         blocoF,
         blocoG: diagnostico,
         blocoH,
-        resumoExclusoes: { total: totalExclusoes, comTodasFaixas: exclusoesComTodasFaixas, semNenhumaFaixa: exclusoesSemNenhumaFaixa },
+        resumoExclusoes: {
+          total: totalExclusoes,
+          comTodasFaixas: exclusoesComTodasFaixas,
+          semNenhumaFaixa: exclusoesSemNenhumaFaixa,
+        },
       };
     }),
 
@@ -1332,28 +1967,38 @@ export const crmRouter = router({
    * Usado para drill-down no calendário.
    */
   getLogDia: protectedProcedure
-    .input(z.object({
-      vendedor: z.string(),
-      data: z.string(), // "YYYY-MM-DD"
-    }))
+    .input(
+      z.object({
+        vendedor: z.string(),
+        data: z.string(), // "YYYY-MM-DD"
+      })
+    )
     .query(async ({ input }) => {
       const db = (await getDb())!;
       const inicio = new Date(input.data + "T03:00:00.000Z"); // 00:00 Brasília = 03:00 UTC
       // Ver comentário em getAuditoria acima sobre por que não usar "T26:59:59.999Z" direto.
-      const fim = new Date(new Date(input.data + "T03:00:00.000Z").getTime() + 24 * 60 * 60 * 1000 - 1);
-      const logs = await db.select().from(crmAtividadeLog)
-        .where(and(
-          eq(crmAtividadeLog.vendedor, input.vendedor),
-          sql`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
-          sql`${crmAtividadeLog.realizadaEm} <= ${fim}`,
-        ))
+      const fim = new Date(
+        new Date(input.data + "T03:00:00.000Z").getTime() +
+          24 * 60 * 60 * 1000 -
+          1
+      );
+      const logs = await db
+        .select()
+        .from(crmAtividadeLog)
+        .where(
+          and(
+            eq(crmAtividadeLog.vendedor, input.vendedor),
+            sql`${crmAtividadeLog.realizadaEm} >= ${inicio}`,
+            sql`${crmAtividadeLog.realizadaEm} <= ${fim}`
+          )
+        )
         .orderBy(crmAtividadeLog.realizadaEm);
       return logs.map(l => ({
         ...l,
         realizadaEm: l.realizadaEm.toISOString(),
         horaBrasilia: (() => {
           const dt = new Date(l.realizadaEm);
-          const hBr = ((dt.getUTCHours() - 3) + 24) % 24;
+          const hBr = (dt.getUTCHours() - 3 + 24) % 24;
           const mBr = dt.getUTCMinutes();
           return `${String(hBr).padStart(2, "0")}:${String(mBr).padStart(2, "0")}`;
         })(),

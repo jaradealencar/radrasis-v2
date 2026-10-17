@@ -346,9 +346,10 @@ O upload de lista (Registrar disparo e fontes por arquivo) aceita `.csv`, `.xlsx
 
 ## Limitações conhecidas
 
-- A quarentena só enxerga envios registrados **neste módulo** (upload, "vendas pendentes", Fontes ou API). Os
-  disparos da Retenção de Clientes Novos e os cliques de WhatsApp do CRM **não** a alimentam — eles trabalham por
-  empresa, sem telefone gravado.
+- **Quarentena unificada entre módulos (atualizado em 17/10/2026)**: a função `alimentarQuarentenaGlobal`
+  centraliza a proteção anti-spam em `campanhas_whatsapp_quarentena`. Disparos da Retenção de Clientes Novos
+  (`marcarDisparado` e `dispararCampanha`) e contatos registrados no CRM de Propostas (`registrarContato`)
+  agora alimentam a quarentena automaticamente, protegendo os clientes contra disparos duplicados ou imediatos.
 - Não há histórico por contato (só o último) e nem status de entrega/resposta.
 - As procedures exigem admin/master/gestor no servidor; o restante do acesso é o da tela de Inteligência de Clientes.
 - A aba mora dentro de `MarketingFinanceiro.tsx`, mas **não depende** do relatório de marketing (busca ao vivo no

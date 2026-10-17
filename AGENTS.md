@@ -387,7 +387,8 @@ nem mocks da camada de dados.
   (1) Resumo executivo da campanha por IA (`resumoExecutivoIa`, Gemini Flash com Structured Output: temperatura da audiência, pontos fortes, dores com citações reais e recomendações práticas);
   (2) Atribuição de receita & ROI real (`atribuicaoReceita`: cruza contatos disparados com O.S. faturadas no MubiSys em 7/15/30/60 dias, receita total, ticket médio, multiplicador de retorno e quebra por cluster de IA);
   (3) Lead Velocity com Curva de Latência de Resposta (6 faixas de tempo) e mediana de reação;
-  (4) Retargeting com 1 clique (cria audiência dinâmica `campanhas_whatsapp_fontes.tipo = 'retargeting'` filtrada por cluster/objeção/ICP) e visualização de parâmetros técnicos do projeto por lead. **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
+  (4) Retargeting com 1 clique (cria audiência dinâmica `campanhas_whatsapp_fontes.tipo = 'retargeting'` filtrada por cluster/objeção/ICP) e visualização de parâmetros técnicos do projeto por lead;
+  (5) Quarentena unificada central (`alimentarQuarentenaGlobal`: contatos da Retenção de Clientes Novos e CRM de Propostas agora alimentam a quarentena global de comunicação do WhatsApp, eliminando disparos duplicados ou simultâneos). **Webhook sem tráfego real ainda**: a Ceci.Chat precisa ser configurada (no
   painel deles, fora deste repo) para replicar mensagens recebidas para essa URL — hoje elas só chegam na
   caixa de entrada da Ceci. Detalhes em `docs/campanhas-whatsapp-ia.md`.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração

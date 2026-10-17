@@ -17,6 +17,7 @@ import {
 } from "../../drizzle/schema";
 import { hojeCampoGrande, somarDias } from "../../shared/campanhas-whatsapp";
 import {
+  alimentarQuarentenaGlobal,
   campanhasWhatsappRouter,
   checarQuarentenaNoBanco,
   registrarDisparoNoBanco,
@@ -999,5 +1000,57 @@ describe("Retargeting via IA (Fontes de dados dinâmicas)", () => {
       .where(
         like(campanhasWhatsappLeadsQualificados.telefone, "556799000998%")
       );
+  });
+});
+
+describe("Quarentena Global Unificada (CRM + Retenção + Campanhas)", () => {
+  const telUnificado = "(67) 99000-9977";
+
+  afterAll(async () => {
+    await getPool().query(
+      "DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1",
+      [norm(telUnificado)]
+    );
+  });
+
+  it("alimentarQuarentenaGlobal registra telefone na quarentena e bloqueia envio de campanha geral", async () => {
+    await getPool().query(
+      "DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1",
+      [norm(telUnificado)]
+    );
+
+    // 1. Simular contato feito fora do módulo de campanhas (ex.: CRM ou Retenção)
+    const inseridos = await alimentarQuarentenaGlobal([telUnificado], hoje);
+    expect(inseridos).toBe(1);
+
+    // 2. Verificar que o telefone está de fato na quarentena global
+    const checagem = await checarQuarentenaNoBanco([telUnificado], 30);
+    expect(checagem.resultados[0].emQuarentena).toBe(true);
+    expect(checagem.resultados[0].ultimoContatoEm).toBe(hoje);
+
+    // 3. Tentar registrar disparo manual para esse telefone em campanha com quarentena de 30 dias: deve ser ignorado!
+    const cat = await admin().criarCategoria({
+      label: "TESTE Quarentena Unificada",
+    });
+    categoriasCriadas.push(cat.id);
+    const camp = await admin().criar({
+      nome: "TESTE Campanha Quarentena 30d",
+      categoria: cat.chave,
+      tipo: "recorrente",
+      frequenciaDias: 30,
+      quarentenaDias: 30,
+    });
+    criadas.push(camp.id);
+
+    const resDisparo = await disparo(
+      camp.id,
+      hoje,
+      [{ telefone: telUnificado, nome: "Cliente Protegido" }],
+      true
+    );
+    // Como era o único contato e estava em quarentena, não deve ser registrado!
+    expect(resDisparo.registrado).toBe(false);
+    expect(resDisparo.ignorados).toBe(1);
+    expect(resDisparo.ignoradosQuarentena[0].telefone).toBe(norm(telUnificado));
   });
 });

@@ -446,6 +446,39 @@ export async function checarQuarentenaNoBanco(
   };
 }
 
+/**
+ * Registra um ou mais telefones diretamente na quarentena global de comunicação
+ * (campanhas_whatsapp_quarentena). Permite que contatos e disparos feitos por outros módulos
+ * (como Retenção de Clientes Novos e CRM de Propostas) protejam o cliente contra reabordagens
+ * imediatas e disparos em massa desordenados pelas Campanhas WhatsApp.
+ *
+ * Idempotente: atualiza `ultimo_contato_em` apenas se a nova data for maior ou igual à existente.
+ */
+export async function alimentarQuarentenaGlobal(
+  telefones: Array<string | number>,
+  dataContato: string = hojeCampoGrande(),
+  campanhaId?: number | null
+): Promise<number> {
+  const normais = [
+    ...new Set(
+      telefones.map(t => normalizarTelefone(t)).filter((t): t is string => !!t)
+    ),
+  ];
+  if (normais.length === 0) return 0;
+
+  await getPool().query(
+    `INSERT INTO campanhas_whatsapp_quarentena AS q (telefone, ultima_campanha_id, ultimo_contato_em, updated_at)
+     SELECT t, $1::int, $2::date, now() FROM unnest($3::text[]) AS t
+     ON CONFLICT (telefone) DO UPDATE
+       SET ultima_campanha_id = COALESCE(EXCLUDED.ultima_campanha_id, q.ultima_campanha_id),
+           ultimo_contato_em = EXCLUDED.ultimo_contato_em,
+           updated_at = now()
+       WHERE q.ultimo_contato_em <= EXCLUDED.ultimo_contato_em`,
+    [campanhaId ?? null, dataContato, normais]
+  );
+  return normais.length;
+}
+
 // ─── Registro de disparo (tRPC e REST) ──────────────────────────────────────
 
 export interface ParametrosDisparo {
@@ -892,12 +925,10 @@ export const campanhasWhatsappRouter = router({
   /** Edita campos e também pausa/reativa/arquiva (`status`). */
   atualizar: campanhasProcedure
     .input(
-      campanhaBaseSchema
-        .partial()
-        .extend({
-          id: z.number().int(),
-          status: z.enum(STATUS_CAMPANHA).optional(),
-        })
+      campanhaBaseSchema.partial().extend({
+        id: z.number().int(),
+        status: z.enum(STATUS_CAMPANHA).optional(),
+      })
     )
     .mutation(async ({ input }) => {
       const db = await obterDb();
@@ -2063,14 +2094,12 @@ export const campanhasWhatsappRouter = router({
           eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId)
         );
       if (input.fonteIds.length) {
-        await db
-          .insert(campanhasWhatsappCampanhaFontes)
-          .values(
-            input.fonteIds.map(fonteId => ({
-              campanhaId: input.campanhaId,
-              fonteId,
-            }))
-          );
+        await db.insert(campanhasWhatsappCampanhaFontes).values(
+          input.fonteIds.map(fonteId => ({
+            campanhaId: input.campanhaId,
+            fonteId,
+          }))
+        );
       }
       return { ok: true };
     }),
