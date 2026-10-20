@@ -29,10 +29,27 @@ describe("enviarTemplateWts", () => {
     expect(bodyEnviado).toMatchObject({
       to: "5567999990001",
       from: "5511999990000",
-      senderId: "b13d2257-af6d-4cbb-a4fd-fa73069ae863",
       templateId: "template-teste",
     });
+    expect(bodyEnviado.senderId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(bodyEnviado.senderId).not.toBe("b13d2257-af6d-4cbb-a4fd-fa73069ae863");
     expect(resultado.ok).toBe(true);
+  });
+
+  it("gera um senderId diferente para cada mensagem", async () => {
+    vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: "msg-unique", status: "QUEUED" }),
+    }));
+
+    await enviarTemplateWts("5567999990001", "template-teste");
+    await enviarTemplateWts("5567999990001", "template-teste");
+
+    const fetchMock = vi.mocked(fetch);
+    const senderIds = fetchMock.mock.calls.map(call => JSON.parse(call[1]!.body as string).senderId);
+    expect(senderIds[0]).not.toBe(senderIds[1]);
   });
 
   it("inclui parameters quando fornecido", async () => {
@@ -45,11 +62,11 @@ describe("enviarTemplateWts", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await enviarTemplateWts("5567999990001", "template-teste", ["Daniel"]);
+    await enviarTemplateWts("5567999990001", "template-teste", { "1": "Daniel" });
 
     const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(Array.isArray(bodyEnviado)).toBe(false);
-    expect(bodyEnviado.parameters).toEqual(["Daniel"]);
+    expect(bodyEnviado.parameters).toEqual({ "1": "Daniel" });
   });
 });
 
