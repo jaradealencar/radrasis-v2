@@ -979,7 +979,7 @@ export const campanhasWhatsappRouter = router({
       const tentativas = selecionados.slice(0, MAX_DISPARO_WTS);
 
       // Envio sequencial (1 por vez, com intervalo) em vez de paralelo: igual ao caminho do "Testar neste número",
-      // que sempre entregou de verdade. O disparo em paralelo (8 workers simultâneos) era aceito pela Ceci
+      // que chegou ao aparelho em um teste real. O disparo em paralelo (8 workers simultâneos) era aceito pela Ceci
       // (HTTP 200/QUEUED/READ) mas não chegava ao WhatsApp do destinatário — confirmado em teste real
       // (16/10/2026): a mesma mensagem enviada em rajada não chegou, e enviada isolada chegou sempre.
       const resultados: Array<{ contato: { telefone: string; nome: string }; ok: boolean; erro?: string; resposta?: string }> = [];
