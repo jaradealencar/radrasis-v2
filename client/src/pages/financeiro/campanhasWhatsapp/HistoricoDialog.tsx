@@ -39,7 +39,7 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
 
   return (
     <Dialog open={!!campanha} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-4xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><History size={18} className="text-slate-600" /> Histórico de disparos</DialogTitle>
           <DialogDescription>{campanha?.nome}</DialogDescription>
@@ -69,7 +69,7 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
                   <TableHead>Próximo previsto</TableHead>
                   <TableHead>Registrado por</TableHead>
                   <TableHead>Observações</TableHead>
-                  <TableHead className="w-24" />
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -86,17 +86,17 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
                     <TableCell className="whitespace-nowrap">
                       {d.registradoPor ?? "—"} {d.origem === "api" && <Badge variant="outline" className="ml-1">API</Badge>}
                     </TableCell>
-                    <TableCell className="max-w-xs">
+                    <TableCell className="max-w-[220px] min-w-[140px]">
                       {d.arquivoUrl && (
                         <a href={d.arquivoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">
                           <ExternalLink size={12} /> {d.arquivoNome ?? "arquivo"}
                         </a>
                       )}
-                      {d.observacoes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{d.observacoes}</p>}
+                      {d.observacoes && <p className="text-xs text-muted-foreground break-words">{d.observacoes}</p>}
                       {!d.arquivoUrl && !d.observacoes && "—"}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1.5">
+                    <TableCell className="text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
                         <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setEnvios(d)}>
                           <ListChecks size={12} /> Ver envios
                         </Button>

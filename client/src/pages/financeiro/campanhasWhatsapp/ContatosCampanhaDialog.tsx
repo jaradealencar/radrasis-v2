@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarRange, Database, Download, Pin, RefreshCw, Send, Users } from "lucide-react";
+import { AlertTriangle, CalendarRange, Clock, Database, Download, Pin, RefreshCw, Send, Users } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
@@ -11,7 +11,10 @@ import { Spinner } from "@/components/ui/spinner";
 import CompletarTelefones from "./CompletarTelefones";
 import PeriodoApuracao from "./PeriodoApuracao";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MAX_DISPARO_WTS, formatarTelefone, hojeCampoGrande } from "@shared/campanhas-whatsapp";
+import {
+  MAX_DISPARO_WTS, formatarTelefone, hojeCampoGrande,
+  estimarTempoDisparoSegundos, formatarSegundos,
+} from "@shared/campanhas-whatsapp";
 import { rotuloMotivoInvalido, slugArquivo, type CampanhaLinha } from "./comuns";
 
 interface Props {
@@ -138,6 +141,23 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const quantosNoDisparo = confirmandoWts === "todos" && data
     ? Math.min(data.aprovados.length, MAX_DISPARO_WTS)
     : selecionadosWts.size;
+
+  const [segundosDecorridosWts, setSegundosDecorridosWts] = useState(0);
+  useEffect(() => {
+    if (!enviarWts.isPending) {
+      setSegundosDecorridosWts(0);
+      return;
+    }
+    setSegundosDecorridosWts(0);
+    const inicio = Date.now();
+    const timer = setInterval(() => {
+      setSegundosDecorridosWts(Math.floor((Date.now() - inicio) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [enviarWts.isPending]);
+
+  const tempoEstimadoWts = estimarTempoDisparoSegundos(quantosNoDisparo);
+
   const linhas = !data ? []
     : aba === "aprovados" ? data.aprovados
     : aba === "ignorados" ? [...data.ignoradosQuarentenaGlobal, ...data.ignoradosCadenciaCampanha]
@@ -174,7 +194,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
 
   return (
     <Dialog open={!!campanha} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl max-h-[88vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[88vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Users size={18} className="text-blue-600" /> Contatos da campanha</DialogTitle>
           <DialogDescription>{campanha?.nome} — audiência resolvida pelas fontes de dados vinculadas na data de referência abaixo</DialogDescription>
@@ -261,32 +281,77 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
 
             {aba === "aprovados" && podeEnviarWts && (
               <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span>
-                    {fmtNum(selecionadosWts.size)} selecionado(s) · template <code>{templateWts}</code> · até {MAX_DISPARO_WTS} por envio
-                  </span>
-                  {!confirmandoWts ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button size="sm" variant="outline" className="gap-1.5" disabled={selecionadosWts.size === 0 || enviarWts.isPending}
-                        onClick={() => setConfirmandoWts("selecionados")}>
-                        <Send size={14} /> Disparar selecionados
-                      </Button>
-                      <Button size="sm" className="gap-1.5" disabled={data.aprovados.length === 0 || enviarWts.isPending}
-                        onClick={() => setConfirmandoWts("todos")}>
-                        <Send size={14} /> Disparar prontos ({fmtNum(Math.min(data.aprovados.length, MAX_DISPARO_WTS))})
-                      </Button>
+                {enviarWts.isPending ? (
+                  <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Spinner className="size-4 text-blue-600 shrink-0" />
+                      <div>
+                        <h4 className="font-semibold text-blue-950">Enviando mensagens via Ceci WhatsApp...</h4>
+                        <p className="text-xs text-blue-800">
+                          Disparo em andamento para <strong>{fmtNum(quantosNoDisparo)} contato(s)</strong>.
+                        </p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs">Enviar o template <code>{templateWts}</code> para {fmtNum(quantosNoDisparo)} cliente(s)?</span>
-                      <Button size="sm" variant="outline" disabled={enviarWts.isPending} onClick={() => setConfirmandoWts(null)}>Cancelar</Button>
-                      <Button size="sm" className="gap-1.5" disabled={enviarWts.isPending} onClick={confirmarEnvioWts}>
-                        {enviarWts.isPending ? <Spinner className="size-3.5" /> : <Send size={14} />}
-                        {enviarWts.isPending ? "Enviando..." : "Confirmar envio"}
-                      </Button>
+                    <div className="rounded-md border border-blue-200 bg-white/90 p-2.5 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-medium">
+                        <span className="inline-flex items-center gap-1.5 text-slate-700">
+                          <Clock size={13} className="text-blue-600 animate-pulse" />
+                          Tempo decorrido: <strong className="font-mono text-sm text-blue-900">{formatarSegundos(segundosDecorridosWts)}</strong>
+                        </span>
+                        <span className="text-slate-500">
+                          Estimativa: ~{formatarSegundos(tempoEstimadoWts)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
+                        <div
+                          className="bg-blue-600 h-1.5 rounded-full transition-all duration-1000 ease-linear"
+                          style={{
+                            width: `${Math.min(95, Math.max(5, Math.round((segundosDecorridosWts / Math.max(1, tempoEstimadoWts)) * 100)))}%`,
+                          }}
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
+                    <p className="text-[11px] text-blue-900/80 leading-tight">
+                      ℹ️ O envio é sequencial (1 mensagem a cada 1,2s) para garantir que cada mensagem seja aceita e entregue pelo WhatsApp sem bloqueio da conta.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span>
+                      {fmtNum(selecionadosWts.size)} selecionado(s) · template <code>{templateWts}</code> · até {MAX_DISPARO_WTS} por envio
+                    </span>
+                    {!confirmandoWts ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button size="sm" variant="outline" className="gap-1.5" disabled={selecionadosWts.size === 0 || enviarWts.isPending}
+                          onClick={() => setConfirmandoWts("selecionados")}>
+                          <Send size={14} /> Disparar selecionados
+                          {selecionadosWts.size > 0 && <span className="text-xs text-muted-foreground">(~{formatarSegundos(estimarTempoDisparoSegundos(selecionadosWts.size))})</span>}
+                        </Button>
+                        <Button size="sm" className="gap-1.5" disabled={data.aprovados.length === 0 || enviarWts.isPending}
+                          onClick={() => setConfirmandoWts("todos")}>
+                          <Send size={14} /> Disparar prontos ({fmtNum(Math.min(data.aprovados.length, MAX_DISPARO_WTS))})
+                          {data.aprovados.length > 0 && (
+                            <span className="text-xs text-emerald-100">
+                              (~{formatarSegundos(estimarTempoDisparoSegundos(Math.min(data.aprovados.length, MAX_DISPARO_WTS)))})
+                            </span>
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs">
+                          Enviar o template <code>{templateWts}</code> para {fmtNum(quantosNoDisparo)} cliente(s)?
+                          <span className="ml-1 text-slate-500 font-medium">(estimado: ~{formatarSegundos(tempoEstimadoWts)})</span>
+                        </span>
+                        <Button size="sm" variant="outline" disabled={enviarWts.isPending} onClick={() => setConfirmandoWts(null)}>Cancelar</Button>
+                        <Button size="sm" className="gap-1.5" disabled={enviarWts.isPending} onClick={confirmarEnvioWts}>
+                          {enviarWts.isPending ? <Spinner className="size-3.5" /> : <Send size={14} />}
+                          {enviarWts.isPending ? `Enviando... (${formatarSegundos(segundosDecorridosWts)} / ~${formatarSegundos(tempoEstimadoWts)})` : "Confirmar envio"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {resultadoWts && (
                   <div className="text-xs text-slate-700">
                     {fmtNum(resultadoWts.enfileirados)} de {fmtNum(resultadoWts.totalSelecionado)} aceitos para processamento pela WTS.Chat.

@@ -43,9 +43,9 @@ function StatusBadge({ status }: { status: string | null }) {
 
 function Numero({ rotulo, valor, cor }: { rotulo: string; valor: number; cor: string }) {
   return (
-    <div className="rounded-lg border p-2 text-center">
+    <div className="rounded-lg border p-2 text-center min-w-0">
       <div className={`text-lg font-bold ${cor}`}>{fmtNum(valor)}</div>
-      <div className="text-[10px] text-muted-foreground mt-0.5">{rotulo}</div>
+      <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight break-words">{rotulo}</div>
     </div>
   );
 }
@@ -104,7 +104,7 @@ export default function DisparoEnviosDialog({ disparo, campanhaNome, onClose }: 
 
   return (
     <Dialog open={!!disparo} onOpenChange={v => { if (!v) { onClose(); setMostrarManual(false); setTextoManual(""); } }}>
-      <DialogContent className="sm:max-w-2xl max-h-[88vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[88vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><ListChecks size={18} className="text-slate-600" /> Envios do disparo</DialogTitle>
           <DialogDescription>

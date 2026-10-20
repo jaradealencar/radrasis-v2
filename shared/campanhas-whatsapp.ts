@@ -23,6 +23,28 @@ export const STATUS_CAMPANHA = ["ativa", "pausada", "arquivada"] as const;
 
 /** Máximo de mensagens por clique em "Disparar" (cada uma é uma chamada à WTS.Chat dentro do tempo da função). */
 export const MAX_DISPARO_WTS = 100;
+
+/** Intervalo em milissegundos entre cada envio sequencial (evita perda de mensagens e bloqueios na Meta/Ceci). */
+export const INTERVALO_DISPARO_WTS_MS = 1200;
+
+/**
+ * Estima a duração do envio de N contatos em segundos.
+ * Considera latência de rede por chamada HTTP (~350ms), intervalo de 1,2s entre disparos,
+ * espera pós-envio para consulta de status de amostra (4s) e persistência de dados.
+ */
+export function estimarTempoDisparoSegundos(contatos: number): number {
+  if (contatos <= 0) return 0;
+  return Math.max(3, Math.ceil(contatos * 1.55 + 5));
+}
+
+/** Formata segundos em texto legível (ex: "45s", "1m 30s", "2m 40s"). */
+export function formatarSegundos(segundos: number): string {
+  const s = Math.max(0, Math.floor(segundos));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const restS = s % 60;
+  return restS > 0 ? `${m}m ${restS}s` : `${m}m`;
+}
 export type StatusCampanha = (typeof STATUS_CAMPANHA)[number];
 export const STATUS_CAMPANHA_LABEL: Record<StatusCampanha, string> = {
   ativa: "Ativa",
