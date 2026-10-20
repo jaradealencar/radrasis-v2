@@ -38,7 +38,7 @@ import {
 import {
   MAX_DISPARO_WTS, STATUS_AGENDAMENTO, STATUS_CAMPANHA, TIPOS_CAMPANHA,
   calcularProximoEnvio, classificarSemaforo, classificarStatusWts, dataIsoValida, diasEntre, gerarChaveCategoria,
-  hojeCampoGrande, normalizarTelefone, somarDias,
+  hojeCampoGrande, normalizarTelefone, somarDias, INTERVALO_DISPARO_WTS_MS,
 } from "../../shared/campanhas-whatsapp";
 import {
   agruparPorCliente, expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
@@ -63,8 +63,6 @@ const campanhasProcedure = protectedProcedure.use(requireRole("admin", "master",
 export const MAX_CONTATOS_POR_DISPARO = 20_000;
 const MAX_LISTA_TELA = 500;
 const MAX_STATUS_WTS_POR_DISPARO = 10;
-/** Intervalo entre cada envio sequencial à Ceci.Chat: disparo em rajada paralela não chegava ao WhatsApp (16/10/2026). */
-const INTERVALO_DISPARO_WTS_MS = 1200;
 /** Pós-venda devolve todos os clientes (a tela rola e o botão de baixar exporta a lista inteira). */
 const MAX_CLIENTES_POS_VENDA_TELA = 5000;
 const MAX_JANELA_CALENDARIO_DIAS = 62;

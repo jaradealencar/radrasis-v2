@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, formatarTelefone, gerarChaveCategoria,
   hojeCampoGrande, formatarDataBr, normalizarTelefone, semNumeroDeTelefone, somarDias,
+  estimarTempoDisparoSegundos, formatarSegundos,
 } from "../../shared/campanhas-whatsapp";
 import {
   expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
@@ -503,3 +504,22 @@ describe("telefone: vários números no mesmo campo e 'sem telefone' x 'inválid
     expect(r.enviar.map(c => c.nome)).toEqual(["D"]);
   });
 });
+
+describe("estimativa e formatação de tempo de disparo WTS", () => {
+  it("estimarTempoDisparoSegundos calcula tempo coerente com envio sequencial de 1,2s", () => {
+    expect(estimarTempoDisparoSegundos(0)).toBe(0);
+    expect(estimarTempoDisparoSegundos(1)).toBe(7); // 1 * 1.55 + 5 = 6.55 -> 7s
+    expect(estimarTempoDisparoSegundos(10)).toBe(21); // 10 * 1.55 + 5 = 20.5 -> 21s
+    expect(estimarTempoDisparoSegundos(50)).toBe(83); // 50 * 1.55 + 5 = 82.5 -> 83s (~1m 23s)
+    expect(estimarTempoDisparoSegundos(100)).toBe(160); // 100 * 1.55 + 5 = 160s (2m 40s)
+  });
+
+  it("formatarSegundos exibe formato legível", () => {
+    expect(formatarSegundos(0)).toBe("0s");
+    expect(formatarSegundos(45)).toBe("45s");
+    expect(formatarSegundos(60)).toBe("1m");
+    expect(formatarSegundos(75)).toBe("1m 15s");
+    expect(formatarSegundos(160)).toBe("2m 40s");
+  });
+});
+

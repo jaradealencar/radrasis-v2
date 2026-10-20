@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Send } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Send } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { MAX_DISPARO_WTS, formatarDataBr, formatarTelefone, normalizarTelefone } from "@shared/campanhas-whatsapp";
+import {
+  MAX_DISPARO_WTS, formatarDataBr, formatarTelefone, normalizarTelefone,
+  estimarTempoDisparoSegundos, formatarSegundos,
+} from "@shared/campanhas-whatsapp";
 import type { CampanhaLinha } from "./comuns";
 
 interface Props {
@@ -19,9 +22,9 @@ interface Props {
 
 function Numero({ rotulo, valor, cor }: { rotulo: string; valor: number; cor: string }) {
   return (
-    <div className="rounded-lg border p-3 text-center">
+    <div className="rounded-lg border p-3 text-center min-w-0">
       <div className={`text-2xl font-bold ${cor}`}>{fmtNum(valor)}</div>
-      <div className="text-[11px] text-muted-foreground mt-0.5">{rotulo}</div>
+      <div className="text-[11px] text-muted-foreground mt-0.5 leading-tight break-words">{rotulo}</div>
     </div>
   );
 }
@@ -99,6 +102,23 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
   const telefoneTesteNormalizado = normalizarTelefone(telefoneTeste);
   const mutacaoPendente = disparar.isPending || testarWts.isPending;
 
+  const [segundosDecorridos, setSegundosDecorridos] = useState(0);
+  useEffect(() => {
+    if (!mutacaoPendente) {
+      setSegundosDecorridos(0);
+      return;
+    }
+    setSegundosDecorridos(0);
+    const inicio = Date.now();
+    const timer = setInterval(() => {
+      setSegundosDecorridos(Math.floor((Date.now() - inicio) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [mutacaoPendente]);
+
+  const tempoEstimadoSegundos = estimarTempoDisparoSegundos(n);
+  const tempoEstimadoTesteSegundos = estimarTempoDisparoSegundos(1);
+
   const liberar = trpc.campanhasWhatsapp.liberarContatosOrfaos.useMutation({
     onSuccess: r => {
       utils.campanhasWhatsapp.invalidate();
@@ -114,7 +134,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
 
   return (
     <Dialog open={!!campanha} onOpenChange={v => { if (!v && !mutacaoPendente) onClose(); }}>
-      <DialogContent className="sm:max-w-lg max-h-[88vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[88vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Send size={18} className="text-emerald-600" /> Efetuar disparo</DialogTitle>
           <DialogDescription>{campanha?.nome}</DialogDescription>
@@ -151,7 +171,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   <Button size="sm" className="gap-1.5" disabled={mutacaoPendente}
                     onClick={() => testarWts.mutate({ campanhaId: campanha!.id, telefone: telefoneTesteNormalizado })}>
                     {testarWts.isPending ? <Spinner className="size-3.5" /> : <Send size={14} />}
-                    {testarWts.isPending ? "Enviando teste..." : "Confirmar teste"}
+                    {testarWts.isPending ? `Enviando teste... (${formatarSegundos(segundosDecorridos)})` : "Confirmar teste"}
                   </Button>
                 </div>
               </div>
@@ -173,7 +193,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   <p>Status consultado: <strong>{resultadoTeste.estado ?? "não informado"}</strong>. Confirme também se a mensagem chegou ao aparelho.</p>
                 )}
                 {resultadoTeste.enfileirado && resultadoTeste.resposta?.includes('"senderId":null') && (
-                  <p className="text-red-700 font-medium">
+                  <p className="text-red-700 font-medium break-words">
                     ⚠️ Atenção: A Ceci registrou <code>senderId: null</code>. O número configurado em <code>WTS_CHAT_FROM</code> ({diagCeci?.canalConfiguradoEnv}) não corresponde a nenhum canal ativo na Ceci, impedindo a entrega ao aparelho.
                   </p>
                 )}
@@ -207,7 +227,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
         ) : data ? (
           <div className="space-y-4">
             <div className="rounded-lg border p-3 text-sm space-y-1">
-              <div><span className="text-muted-foreground">Template WTS.Chat: </span><code>{templateWts}</code></div>
+              <div><span className="text-muted-foreground">Template WTS.Chat: </span><code className="break-all">{templateWts}</code></div>
               <div><span className="text-muted-foreground">Último disparo: </span>{campanha?.ultimoEnvio ? formatarDataBr(campanha.ultimoEnvio) : "nunca"}</div>
               <div><span className="text-muted-foreground">Quarentena: </span>{campanha?.quarentenaDias ? `${campanha.quarentenaDias} dias após o envio` : "sem quarentena"}</div>
               <div>
@@ -217,23 +237,32 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   : "padrão da fonte de dados"}
               </div>
               {diagCeci && (
-                <div className="pt-1 text-[11px] text-muted-foreground border-t mt-1">
-                  <span>Canal configurado: <strong>{diagCeci.canalConfiguradoEnv}</strong> {diagCeci.canalIdConfigurado && <span className="text-slate-500">(ID: <code className="text-[10px]">{diagCeci.canalIdConfigurado.slice(0, 8)}...</code>)</span>}</span>
-                  {diagCeci.canais && diagCeci.canais.length > 0 && (
-                    <span className="ml-2 text-slate-700">
-                      (Canais encontrados na Ceci: {diagCeci.canais.map((c: any) => c.phoneNumber || c.phone || c.name || c.id).join(", ")})
+                <div className="pt-2 text-[11px] text-muted-foreground border-t mt-2 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span>
+                      Canal configurado: <strong>{diagCeci.canalConfiguradoEnv}</strong>{" "}
+                      {diagCeci.canalIdConfigurado && (
+                        <span className="text-slate-500">
+                          (ID: <code className="text-[10px]">{diagCeci.canalIdConfigurado.slice(0, 8)}...</code>)
+                        </span>
+                      )}
                     </span>
-                  )}
+                    {diagCeci.canais && diagCeci.canais.length > 0 && (
+                      <span className="text-slate-700">
+                        (Canais encontrados na Ceci: {diagCeci.canais.map((c: any) => c.phoneNumber || c.phone || c.name || c.id).join(", ")})
+                      </span>
+                    )}
+                  </div>
                   {diagCeci.erroCanais && (
-                    <span className="ml-2 text-amber-700 font-normal">
-                      · Status canais: {diagCeci.erroCanais}
-                    </span>
+                    <div className="rounded bg-amber-50 border border-amber-200/80 p-2 text-amber-900 break-all text-[11px] leading-relaxed">
+                      <strong>Status dos canais:</strong> {diagCeci.erroCanais}
+                    </div>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <Numero rotulo="prontos para envio" valor={prontos} cor="text-emerald-700" />
               <Numero rotulo="em espera (quarentena/cadência)" valor={emEspera} cor="text-amber-700" />
               <Numero rotulo="sem telefone / inválidos" valor={semTelefone} cor="text-slate-600" />
@@ -244,7 +273,44 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
               </p>
             )}
 
-            {resultado ? (
+            {disparar.isPending ? (
+              <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-4 text-sm">
+                <div className="flex items-center gap-2.5">
+                  <Spinner className="size-5 text-blue-600 shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-blue-950">Enviando mensagens via Ceci WhatsApp...</h4>
+                    <p className="text-xs text-blue-800">
+                      Disparo em andamento para <strong>{fmtNum(n)} contato(s)</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-blue-200 bg-white/90 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5 text-slate-700">
+                      <Clock size={14} className="text-blue-600 animate-pulse" />
+                      Tempo decorrido: <strong className="font-mono text-sm text-blue-900">{formatarSegundos(segundosDecorridos)}</strong>
+                    </span>
+                    <span className="text-slate-500">
+                      Estimativa total: ~{formatarSegundos(tempoEstimadoSegundos)}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-1000 ease-linear"
+                      style={{
+                        width: `${Math.min(95, Math.max(5, Math.round((segundosDecorridos / Math.max(1, tempoEstimadoSegundos)) * 100)))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded border border-blue-200/60 bg-blue-100/40 p-2.5 text-[11px] text-blue-900/90 leading-relaxed">
+                  ℹ️ <strong>Por que esse tempo?</strong> O envio é 100% sequencial (1 mensagem por vez com intervalo de 1,2s).
+                  Esse ritmo seguro é necessário para evitar que a Meta/WhatsApp bloqueie o canal ou descarte mensagens em fila.
+                </div>
+              </div>
+            ) : resultado ? (
               <div className="space-y-1 rounded-md border border-emerald-200 bg-emerald-50/50 p-3 text-sm">
                 <p className="flex items-center gap-1.5 font-medium text-emerald-800">
                   <CheckCircle2 size={15} /> {fmtNum(resultado.enfileirados)} de {fmtNum(resultado.totalSelecionado)} aceitos para processamento pela WTS.Chat
@@ -290,7 +356,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   </p>
                 )}
                 {resultado.amostraResposta && resultado.amostraResposta.includes('"senderId":null') && (
-                  <div className="rounded bg-red-100 p-2 text-xs text-red-900 font-medium">
+                  <div className="rounded bg-red-100 p-2 text-xs text-red-900 font-medium break-words">
                     ⚠️ Atenção: A Ceci aceitou a mensagem mas com <code>senderId: null</code>. O número configurado em <code>WTS_CHAT_FROM</code> ({diagCeci?.canalConfiguradoEnv}) não corresponde ao canal ativo da sua conta na Ceci, impedindo a entrega ao aparelho.
                   </div>
                 )}
@@ -326,11 +392,19 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                   disabled={disparar.isPending}
                   onChange={e => { setQuantidade(e.target.value); setConfirmando(false); }}
                 />
-                <p className="text-[11px] text-muted-foreground">
-                  Cada envio leva no máximo {MAX_DISPARO_WTS} contatos
-                  {prontos > MAX_DISPARO_WTS && `; os outros ${fmtNum(prontos - MAX_DISPARO_WTS)} ficam prontos para o próximo disparo`}.
-                  Quem recebe sai da lista (cadência e quarentena).
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted-foreground">
+                  <span>
+                    Cada envio leva no máximo {MAX_DISPARO_WTS} contatos
+                    {prontos > MAX_DISPARO_WTS && `; os outros ${fmtNum(prontos - MAX_DISPARO_WTS)} ficam prontos para o próximo disparo`}.
+                    Quem recebe sai da lista (cadência e quarentena).
+                  </span>
+                  {quantidadeValida && (
+                    <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      <Clock size={12} className="text-slate-500" />
+                      Estimativa: ~{formatarSegundos(tempoEstimadoSegundos)}
+                    </span>
+                  )}
+                </div>
                 {!quantidadeValida && <p className="text-[11px] text-red-600">Informe um número de 1 a {fmtNum(maximo)}.</p>}
               </div>
             )}
@@ -344,7 +418,9 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
               <Button className="gap-1.5" disabled={mutacaoPendente || !quantidadeValida}
                 onClick={() => disparar.mutate({ campanhaId: campanha!.id, quantidade: n })}>
                 {disparar.isPending ? <Spinner className="size-3.5" /> : <Send size={14} />}
-                {disparar.isPending ? "Enviando..." : `Confirmar envio para ${fmtNum(n)}`}
+                {disparar.isPending
+                  ? `Enviando... (${formatarSegundos(segundosDecorridos)} / ~${formatarSegundos(tempoEstimadoSegundos)})`
+                  : `Confirmar envio para ${fmtNum(n)} (~${formatarSegundos(tempoEstimadoSegundos)})`}
               </Button>
             ) : (
               <Button className="gap-1.5" disabled={!quantidadeValida || mutacaoPendente} onClick={() => setConfirmando(true)}>
