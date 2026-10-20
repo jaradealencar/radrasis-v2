@@ -25,8 +25,8 @@ describe("enviarTemplateWts", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.app.ceci.chat/chat/v1/send/template");
     const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(Array.isArray(bodyEnviado)).toBe(false);
-    expect(bodyEnviado).toMatchObject({
+    expect(Array.isArray(bodyEnviado)).toBe(true);
+    expect(bodyEnviado[0]).toMatchObject({
       to: "5567999990001",
       from: "5511999990000",
       senderId: "b13d2257-af6d-4cbb-a4fd-fa73069ae863",
@@ -48,7 +48,8 @@ describe("enviarTemplateWts", () => {
     await enviarTemplateWts("5567999990001", "template-teste", ["Daniel"]);
 
     const bodyEnviado = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(bodyEnviado.parameters).toEqual(["Daniel"]);
+    expect(Array.isArray(bodyEnviado)).toBe(true);
+    expect(bodyEnviado[0].parameters).toEqual(["Daniel"]);
   });
 });
 

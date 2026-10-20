@@ -131,7 +131,8 @@ export async function enviarTemplateWts(
           "content-type": "application/json",
           Authorization: authorizationHeader,
         },
-        body: JSON.stringify(payloadItem),
+        // A API da Helena/Ceci/WTS exige System.Collections.Generic.List<RequestMessageQuickSendDTO> (array JSON)
+        body: JSON.stringify([payloadItem]),
         signal: AbortSignal.timeout(15_000),
       });
 

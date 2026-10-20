@@ -732,9 +732,45 @@ export const campanhasWhatsappRouter = router({
         .where(eq(campanhasWhatsappDisparos.id, input.disparoId)).limit(1);
       if (!disparo) throw new TRPCError({ code: "NOT_FOUND", message: "Disparo não encontrado." });
       const campanha = await buscarCampanha(db, disparo.campanhaId);
-      const itens = await db.select().from(campanhasWhatsappDisparoItens)
+      let itens = await db.select().from(campanhasWhatsappDisparoItens)
         .where(eq(campanhasWhatsappDisparoItens.disparoId, input.disparoId))
         .orderBy(campanhasWhatsappDisparoItens.nome, campanhasWhatsappDisparoItens.telefone);
+
+      // Se a tabela de itens ainda estiver vazia para este disparo (ex.: disparos anteriores à migration 0115),
+      // busca automaticamente os contatos que foram registrados em campanhas_whatsapp_contatos_historico
+      // para este disparo e os cruza com o cadastro de clientes/OS para recuperar os nomes.
+      if (itens.length === 0) {
+        const historicos = await getPool().query(
+          `SELECT
+             h.telefone,
+             COALESCE(NULLIF(btrim(c.nome_fantasia), ''), NULLIF(btrim(c.razao_social), ''), NULLIF(btrim(os.empresa), ''), '') AS nome
+           FROM campanhas_whatsapp_contatos_historico h
+           LEFT JOIN mubisys_clientes_cache c ON c.telefone = h.telefone
+           LEFT JOIN LATERAL (
+             SELECT empresa FROM historico_os WHERE telefone = h.telefone ORDER BY "dataAprovacao" DESC NULLS LAST LIMIT 1
+           ) os ON true
+           WHERE h.disparo_id = $1
+           ORDER BY nome ASC, h.telefone ASC`,
+          [input.disparoId],
+        );
+        if (historicos.rows.length > 0) {
+          const rows = historicos.rows as Array<{ telefone: string; nome: string }>;
+          await getPool().query(
+            `INSERT INTO campanhas_whatsapp_disparo_itens (disparo_id, telefone, nome, origem)
+             SELECT $1::int, t, NULLIF(n, ''), 'auto'
+             FROM unnest($2::text[], $3::text[]) AS u(t, n)`,
+            [
+              input.disparoId,
+              rows.map(r => r.telefone),
+              rows.map(r => r.nome),
+            ],
+          );
+          itens = await db.select().from(campanhasWhatsappDisparoItens)
+            .where(eq(campanhasWhatsappDisparoItens.disparoId, input.disparoId))
+            .orderBy(campanhasWhatsappDisparoItens.nome, campanhasWhatsappDisparoItens.telefone);
+        }
+      }
+
       const resumo = { lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 };
       for (const item of itens) resumo[classificarStatusWts(item.status)]++;
       return { campanha: { id: campanha.id, nome: campanha.nome }, disparo, itens, resumo };
