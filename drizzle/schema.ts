@@ -3753,6 +3753,33 @@ export const campanhasWhatsappContatosHistorico = pgTable("campanhas_whatsapp_co
 export type CampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferSelect;
 export type InsertCampanhaWhatsappContatoHistorico = typeof campanhasWhatsappContatosHistorico.$inferInsert;
 
+// Um item por contato efetivamente enviado num disparo — pedido do usuário (19/10/2026): "Ver envios" no
+// Histórico mostra número + status de cada mensagem. `dispararWts` grava estes itens sozinho (origem "auto"),
+// com o ID de mensagem da Ceci/WTS.Chat quando a resposta trouxe um reconhecível (`idMensagemWts`); disparos
+// antigos ou registrados por outra via (upload, webhook REST) não têm itens até alguém preencher manualmente
+// (origem "manual") — sem ID de mensagem, o status desse item nunca pode ser consultado na API. O status em si
+// só é preenchido por consulta explícita (botão "Atualizar status"), não automaticamente ao abrir a lista.
+export const campanhasWhatsappDisparoItens = pgTable("campanhas_whatsapp_disparo_itens", {
+  id: serial("id").primaryKey(),
+  disparoId: integer("disparo_id").notNull().references(() => campanhasWhatsappDisparos.id, { onDelete: "cascade" }),
+  telefone: varchar("telefone", { length: 20 }).notNull(),
+  nome: varchar("nome", { length: 200 }),
+  // UUID que a Ceci/WTS.Chat devolve no aceite (`idMensagemWts`). Null = item manual sem ID: nunca consultável.
+  wtsMensagemId: varchar("wts_mensagem_id", { length: 64 }),
+  // statusUrl que veio junto no aceite (`urlStatusMensagemWts`), quando houver — prioridade na consulta.
+  statusUrl: varchar("status_url", { length: 256 }),
+  // Último status cru devolvido pela API: QUEUED, SENT, DELIVERED, READ, FAILED... (vocabulário da própria Ceci).
+  status: varchar("status", { length: 32 }),
+  statusDetalhe: text("status_detalhe"),
+  statusConsultadoEm: timestamp("status_consultado_em"),
+  origem: varchar("origem", { length: 8 }).notNull().default("auto"), // "auto" (dispararWts) | "manual"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({
+  disparoIdx: index("campanhas_whatsapp_disparo_itens_disparo_idx").on(t.disparoId),
+}));
+export type CampanhaWhatsappDisparoItem = typeof campanhasWhatsappDisparoItens.$inferSelect;
+export type InsertCampanhaWhatsappDisparoItem = typeof campanhasWhatsappDisparoItens.$inferInsert;
+
 // ─── Agendamentos (Planner): "eu planejo disparar esta campanha neste dia" ──────────────────────────────
 // Pedido do usuário 27/09/2026: calendário visual pra AGENDAR (não só ver a previsão calculada pela
 // cadência) + um botão simples pra depois confirmar se aquele disparo agendado realmente aconteceu.

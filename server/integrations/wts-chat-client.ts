@@ -356,7 +356,11 @@ export interface WtsChatEstadoMensagem {
   detalhe: string;
 }
 
-/** Consulta primeiro a URL devolvida no aceite; mantém a rota documentada como alternativa. */
+/**
+ * Consulta primeiro a URL devolvida no aceite, depois `GET /chat/v1/send/message/{id}` (endpoint confirmado
+ * pelo usuário — 19/10/2026 — como o que a Ceci/WTS.Chat realmente usa para reconsultar um envio já feito) e
+ * por fim a rota documentada `/chat/v1/message/{id}/status` como último fallback.
+ */
 export async function consultarEstadoMensagemWts(id: string, statusUrl?: string | null): Promise<WtsChatEstadoMensagem> {
   const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
   if (!authorization) return { estado: null, detalhe: "WTS_CHAT_AUTHORIZATION não configurado." };
@@ -364,6 +368,8 @@ export async function consultarEstadoMensagemWts(id: string, statusUrl?: string 
   const urlAceita = statusUrl ? urlStatusMensagemWts(JSON.stringify({ statusUrl }), id) : null;
   const endpoints = [
     ...(urlAceita ? [urlAceita] : []),
+    `${WTS_API_BASE_URL}/chat/v1/send/message/${encodeURIComponent(id)}`,
+    `${CECI_API_BASE_URL}/chat/v1/send/message/${encodeURIComponent(id)}`,
     `${CECI_API_BASE_URL}/chat/v1/message/${encodeURIComponent(id)}/status`,
     `${WTS_API_BASE_URL}/chat/v1/message/${encodeURIComponent(id)}/status`,
   ];

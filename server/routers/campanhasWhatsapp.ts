@@ -31,14 +31,14 @@ import {
 } from "../sync/telefone-historico";
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
-  campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparos, campanhasWhatsappFontes,
-  campanhasWhatsappGatilhos, campanhasWhatsappOptout, campanhasWhatsappScripts, historicoOs,
+  campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparoItens, campanhasWhatsappDisparos,
+  campanhasWhatsappFontes, campanhasWhatsappGatilhos, campanhasWhatsappOptout, campanhasWhatsappScripts, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
 import {
   MAX_DISPARO_WTS, STATUS_AGENDAMENTO, STATUS_CAMPANHA, TIPOS_CAMPANHA,
-  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, gerarChaveCategoria, hojeCampoGrande,
-  normalizarTelefone, somarDias,
+  calcularProximoEnvio, classificarSemaforo, classificarStatusWts, dataIsoValida, diasEntre, gerarChaveCategoria,
+  hojeCampoGrande, normalizarTelefone, somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
   agruparPorCliente, expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
@@ -722,6 +722,112 @@ export const campanhasWhatsappRouter = router({
     }),
 
   /**
+   * "Ver envios" (pedido do usuário, 19/10/2026): lista os contatos de um disparo específico com o status de
+   * cada mensagem. `dispararWts` já preenche isso sozinho; disparos antigos ou registrados por outra via
+   * (upload, webhook REST) aparecem vazios até alguém usar `salvarItensDisparoManual`.
+   */
+  listarItensDisparo: campanhasProcedure
+    .input(z.object({ disparoId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const [disparo] = await db.select().from(campanhasWhatsappDisparos)
+        .where(eq(campanhasWhatsappDisparos.id, input.disparoId)).limit(1);
+      if (!disparo) throw new TRPCError({ code: "NOT_FOUND", message: "Disparo não encontrado." });
+      const campanha = await buscarCampanha(db, disparo.campanhaId);
+      const itens = await db.select().from(campanhasWhatsappDisparoItens)
+        .where(eq(campanhasWhatsappDisparoItens.disparoId, input.disparoId))
+        .orderBy(campanhasWhatsappDisparoItens.nome, campanhasWhatsappDisparoItens.telefone);
+      const resumo = { lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 };
+      for (const item of itens) resumo[classificarStatusWts(item.status)]++;
+      return { campanha: { id: campanha.id, nome: campanha.nome }, disparo, itens, resumo };
+    }),
+
+  /**
+   * Reconsulta na Ceci/WTS.Chat o status dos itens informados (ou de todos os itens com ID de mensagem do
+   * disparo, se `itemIds` não vier). Sob demanda — nunca automático ao abrir a lista, para não gastar consultas
+   * à API toda vez que alguém só quer ver os números já salvos.
+   */
+  atualizarStatusItensDisparo: campanhasProcedure
+    .input(z.object({
+      disparoId: z.number().int().positive(),
+      itemIds: z.array(z.number().int().positive()).max(MAX_DISPARO_WTS).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (!wtsChatConfigurado()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A integração WTS.Chat ainda não está configurada no servidor." });
+      }
+      const db = await obterDb();
+      const condicoes = [
+        eq(campanhasWhatsappDisparoItens.disparoId, input.disparoId),
+        isNotNull(campanhasWhatsappDisparoItens.wtsMensagemId),
+      ];
+      if (input.itemIds) condicoes.push(inArray(campanhasWhatsappDisparoItens.id, input.itemIds));
+      const alvos = await db.select().from(campanhasWhatsappDisparoItens).where(and(...condicoes));
+      if (alvos.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum item com ID de mensagem para consultar — adicione o ID na lista manual." });
+      }
+
+      // Consulta em paralelo (é leitura, não envio — a trava de "só sequencial" do dispararWts foi
+      // especificamente sobre a Ceci engasgar ENVIOS em rajada, não consultas de status), em lotes de 8.
+      const atualizados: typeof alvos = [];
+      for (let i = 0; i < alvos.length; i += 8) {
+        const lote = alvos.slice(i, i + 8);
+        const estados = await Promise.all(lote.map(item =>
+          consultarEstadoMensagemWts(item.wtsMensagemId!, item.statusUrl)));
+        await Promise.all(lote.map(async (item, j) => {
+          const estado = estados[j];
+          await db.update(campanhasWhatsappDisparoItens)
+            .set({ status: estado.estado, statusDetalhe: estado.detalhe, statusConsultadoEm: new Date() })
+            .where(eq(campanhasWhatsappDisparoItens.id, item.id));
+          atualizados.push({ ...item, status: estado.estado, statusDetalhe: estado.detalhe, statusConsultadoEm: new Date() });
+        }));
+      }
+
+      const todosOsItens = await db.select().from(campanhasWhatsappDisparoItens)
+        .where(eq(campanhasWhatsappDisparoItens.disparoId, input.disparoId))
+        .orderBy(campanhasWhatsappDisparoItens.nome, campanhasWhatsappDisparoItens.telefone);
+      const resumo = { lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 };
+      for (const item of todosOsItens) resumo[classificarStatusWts(item.status)]++;
+      return { itens: todosOsItens, resumo, consultados: atualizados.length };
+    }),
+
+  /**
+   * Preenche à mão a lista de envios de um disparo que não tem itens (ou está incompleta): disparos antigos
+   * (de antes desta feature), upload manual ou webhook REST nunca capturaram o ID de mensagem por contato.
+   * Telefone é obrigatório; nome e ID de mensagem são opcionais (sem ID, o item nunca pode ter status
+   * consultado na API). Não mexe em quarentena/cadência — isso já aconteceu quando o disparo foi registrado.
+   */
+  salvarItensDisparoManual: campanhasProcedure
+    .input(z.object({
+      disparoId: z.number().int().positive(),
+      itens: z.array(z.object({
+        telefone: z.union([z.string().max(40), z.number()]),
+        nome: z.string().trim().max(200).nullish(),
+        wtsMensagemId: z.string().trim().regex(/^[\w-]{8,64}$/).nullish(),
+      })).min(1, "Informe ao menos um item").max(MAX_DISPARO_WTS),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const [disparo] = await db.select({ id: campanhasWhatsappDisparos.id }).from(campanhasWhatsappDisparos)
+        .where(eq(campanhasWhatsappDisparos.id, input.disparoId)).limit(1);
+      if (!disparo) throw new TRPCError({ code: "NOT_FOUND", message: "Disparo não encontrado." });
+
+      const validos: Array<{ telefone: string; nome: string | null; wtsMensagemId: string | null }> = [];
+      const invalidos: string[] = [];
+      for (const item of input.itens) {
+        const telefone = normalizarTelefone(item.telefone);
+        if (!telefone) { invalidos.push(String(item.telefone).trim()); continue; }
+        validos.push({ telefone, nome: item.nome?.trim() || null, wtsMensagemId: item.wtsMensagemId?.trim() || null });
+      }
+      if (validos.length > 0) {
+        await db.insert(campanhasWhatsappDisparoItens).values(validos.map(v => ({
+          disparoId: input.disparoId, telefone: v.telefone, nome: v.nome, wtsMensagemId: v.wtsMensagemId, origem: "manual",
+        })));
+      }
+      return { adicionados: validos.length, invalidos };
+    }),
+
+  /**
    * Repara um "Desfazer" antigo (feito antes de ele limpar a quarentena): libera os telefones que ficaram em
    * quarentena/cadência por um disparo desta campanha naquele dia que já não existe no histórico. Só mexe em
    * registro órfão — se ainda houver disparo da campanha no dia, não apaga nada.
@@ -887,6 +993,37 @@ export const campanhasWhatsappRouter = router({
           disparoId = registro.disparoId;
         } catch (error) {
           erroRegistro = error instanceof Error ? error.message : "Falha ao registrar o disparo.";
+        }
+      }
+
+      // Um item por contato aceito — guarda o ID de mensagem da Ceci/WTS.Chat (quando reconhecível) e, para
+      // quem entrou na amostra consultada acima, já grava o status também. O resto fica sem status até
+      // "Atualizar status" ser clicado no diálogo "Ver envios" do Histórico (pedido do usuário, 19/10/2026).
+      // Falha aqui não derruba o disparo (já registrado acima) — só fica sem a lista detalhada até alguém
+      // preencher manualmente.
+      if (disparoId) {
+        const idPorTelefone = new Map(mensagensComId.map(m => [m.contato.telefone, m] as const));
+        const estadoPorTelefone = new Map(estadosAmostra.map(e => [e.telefone, e] as const));
+        try {
+          await getPool().query(
+            `INSERT INTO campanhas_whatsapp_disparo_itens
+               (disparo_id, telefone, nome, wts_mensagem_id, status_url, status, status_detalhe, status_consultado_em, origem)
+             SELECT $1::int, t, n, msgid, surl, st, det, consultado::timestamp, 'auto'
+             FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[])
+               AS u(t, n, msgid, surl, st, det, consultado)`,
+            [
+              disparoId,
+              aceitos.map(c => c.telefone),
+              aceitos.map(c => c.nome),
+              aceitos.map(c => idPorTelefone.get(c.telefone)?.id ?? null),
+              aceitos.map(c => idPorTelefone.get(c.telefone)?.statusUrl ?? null),
+              aceitos.map(c => estadoPorTelefone.get(c.telefone)?.estado ?? null),
+              aceitos.map(c => estadoPorTelefone.get(c.telefone)?.detalhe ?? null),
+              aceitos.map(c => (estadoPorTelefone.has(c.telefone) ? new Date().toISOString() : null)),
+            ],
+          );
+        } catch {
+          // Tolerado — ver comentário acima.
         }
       }
 

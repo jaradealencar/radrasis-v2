@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, History, Undo2 } from "lucide-react";
-import { trpc } from "@/lib/trpc";
+import { ExternalLink, History, ListChecks, Undo2 } from "lucide-react";
+import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { fmtDateTime, fmtNum } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatarDataBr } from "@shared/campanhas-whatsapp";
+import DisparoEnviosDialog from "./DisparoEnviosDialog";
 import type { CampanhaLinha } from "./comuns";
+
+type DisparoLinha = RouterOutputs["campanhasWhatsapp"]["historico"]["disparos"][number];
 
 interface Props {
   /** `null` = fechado. */
@@ -19,6 +23,8 @@ interface Props {
 
 export default function HistoricoDialog({ campanha, onClose }: Props) {
   const utils = trpc.useUtils();
+  const [envios, setEnvios] = useState<DisparoLinha | null>(null);
+  useEffect(() => { if (!campanha) setEnvios(null); }, [campanha]);
   const { data, isLoading, isError, error } = trpc.campanhasWhatsapp.historico.useQuery(
     { campanhaId: campanha?.id ?? 0 },
     { enabled: !!campanha },
@@ -90,19 +96,24 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
                       {!d.arquivoUrl && !d.observacoes && "—"}
                     </TableCell>
                     <TableCell>
-                      {d.origem === "api" && (
-                        <Button
-                          size="sm" variant="outline" className="gap-1 text-xs" disabled={desfazer.isPending}
-                          title="Use quando as mensagens não chegaram: o registro some e os contatos voltam para a lista de prontos."
-                          onClick={() => {
-                            if (window.confirm(`Desfazer este disparo de ${fmtNum(d.contatosEnviados)} contato(s)? Eles voltam para a lista de prontos. Isso NÃO cancela mensagens que já tenham sido entregues.`)) {
-                              desfazer.mutate({ disparoId: d.id });
-                            }
-                          }}
-                        >
-                          <Undo2 size={12} /> Desfazer
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setEnvios(d)}>
+                          <ListChecks size={12} /> Ver envios
                         </Button>
-                      )}
+                        {d.origem === "api" && (
+                          <Button
+                            size="sm" variant="outline" className="gap-1 text-xs" disabled={desfazer.isPending}
+                            title="Use quando as mensagens não chegaram: o registro some e os contatos voltam para a lista de prontos."
+                            onClick={() => {
+                              if (window.confirm(`Desfazer este disparo de ${fmtNum(d.contatosEnviados)} contato(s)? Eles voltam para a lista de prontos. Isso NÃO cancela mensagens que já tenham sido entregues.`)) {
+                                desfazer.mutate({ disparoId: d.id });
+                              }
+                            }}
+                          >
+                            <Undo2 size={12} /> Desfazer
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -111,6 +122,8 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
           </div>
         )}
       </DialogContent>
+
+      <DisparoEnviosDialog disparo={envios} campanhaNome={data?.campanha.nome} onClose={() => setEnvios(null)} />
     </Dialog>
   );
 }

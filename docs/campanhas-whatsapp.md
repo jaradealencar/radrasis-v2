@@ -333,6 +333,33 @@ O envio usa o endpoint oficial `POST https://api.app.ceci.chat/chat/v1/send/temp
 
 A janela **Efetuar disparo** também permite **Testar o template em um número**. `campanhasWhatsapp.testarNumeroWts` valida e normaliza o telefone brasileiro, envia uma única mensagem ao número digitado e consulta o status pelo ID/URL retornados. Esse teste fica fora da audiência e não registra disparo nem altera cadência, quarentena ou histórico; o usuário confirma no próprio aparelho se recebeu.
 
+## Envios por disparo ("Ver envios", 19/10/2026)
+
+Cada linha do Histórico (`HistoricoDialog.tsx`) tem o botão **"Ver envios"**, que abre `DisparoEnviosDialog.tsx`
+com a lista de contatos daquele disparo e o status de cada mensagem. A tabela `campanhas_whatsapp_disparo_itens`
+(migration `0115`, FK em cascata para `campanhas_whatsapp_disparos`) guarda um item por contato: telefone, nome,
+`wts_mensagem_id` (o ID que a Ceci/WTS.Chat devolve no aceite de cada envio), `status_url`, o último `status`
+consultado e quando foi consultado. `dispararWts` grava esses itens sozinho (`origem = "auto"`) assim que o envio
+termina — com status já preenchido para quem entrou na amostra de 10 consultada 4s depois, e `sem_consulta` para
+o resto, até alguém clicar em **"Atualizar status"**. Disparos de antes desta feature, ou registrados por
+upload/webhook (que nunca tiveram ID de mensagem capturado), aparecem sem itens.
+
+A consulta de status é **sempre sob demanda**, nunca automática ao abrir a lista (`atualizarStatusItensDisparo`,
+só itens com `wtsMensagemId`, em lotes de 8 em paralelo — a trava de "só sequencial" do `dispararWts` é
+especificamente sobre **envio** em rajada, não consulta de status). `consultarEstadoMensagemWts`
+(`server/integrations/wts-chat-client.ts`) tenta, nesta ordem: a `statusUrl` do aceite, depois
+`GET /chat/v1/send/message/{id}` (endpoint confirmado pelo usuário em 19/10/2026 — `https://api.wts.chat/...` e
+o equivalente em `api.app.ceci.chat`) e por fim a rota documentada `/chat/v1/message/{id}/status` como último
+fallback. O status cru (READ/DELIVERED/SENT/QUEUED/PENDING/FAILED/ERROR/REJECTED/UNDELIVERED...) é classificado
+em 5 classes por `classificarStatusWts` (`shared/campanhas-whatsapp.ts`): lido, entregue, na_fila, falha,
+sem_consulta — mesma função usada no resumo em badges do diálogo e na amostra pós-disparo.
+
+**Lista manual** (`salvarItensDisparoManual`): cobre disparos sem itens (antigos ou de outra via). No próprio
+diálogo "Ver envios", aceita colar linhas `telefone`, `telefone, nome` ou `telefone, nome, idDaMensagem`; telefone
+é obrigatório e é normalizado/validado (linhas inválidas são reportadas, não derrubam o lote), nome e ID de
+mensagem são opcionais. Sem ID de mensagem, aquele item nunca pode ter status consultado na API. Não mexe em
+quarentena/cadência — isso já aconteceu quando o disparo foi originalmente registrado.
+
 ## Listas enviadas por arquivo (processador)
 
 O upload de lista (Registrar disparo e fontes por arquivo) aceita `.csv`, `.xlsx`, `.xls` e `.xml` (planilha XML do Excel) e ajusta o formato sozinho (`shared/lista-contatos.ts`, `extrairContatosDeMatriz`): procura o cabeçalho nas 20 primeiras linhas (título/linhas em branco antes não atrapalham), aceita vários nomes de coluna (telefone, celular, whatsapp, fone, `telefone_1`…; cliente, nome, razão social…), usa a primeira coluna de telefone preenchida da linha e trata o nome como opcional. A padronização do telefone (DDD + 55) e a limpeza de inválidos/repetidos/quarentena continuam em `server/services/campanhasWhatsapp.ts`. O disparo pela WTS.Chat ainda parte da lista de **fontes** da campanha; enviar direto uma lista subida por arquivo é o passo seguinte.

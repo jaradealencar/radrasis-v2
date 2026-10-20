@@ -111,21 +111,41 @@ describe("consultarEstadoMensagemWts", () => {
     expect(urlStatusMensagemWts(JSON.stringify({ statusUrl: "/v1/send/message/outra-mensagem" }), "mensagem-123")).toBeNull();
   });
 
-  it("usa a rota documentada quando a statusUrl do aceite falha", async () => {
+  it("consulta GET /chat/v1/send/message/{id} quando não há statusUrl do aceite (endpoint confirmado pelo usuário 19/10/2026)", async () => {
+    vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ status: "READ" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await consultarEstadoMensagemWts("mensagem-456");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.wts.chat/chat/v1/send/message/mensagem-456");
+    expect(resultado).toMatchObject({ estado: "READ" });
+  });
+
+  it("desce pela lista de fallback (send/message Ceci, depois a rota documentada) quando a statusUrl e o send/message da WTS falham", async () => {
     vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => "Message not found" })
-      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ status: "DELIVERED" }) });
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => "Message not found" }) // statusUrl do aceite
+      .mockResolvedValueOnce({ ok: false, status: 404, text: async () => "not found" }) // GET send/message na WTS
+      .mockResolvedValueOnce({ ok: false, status: 404, text: async () => "not found" }) // GET send/message na Ceci
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ status: "DELIVERED" }) }); // rota documentada
     vi.stubGlobal("fetch", fetchMock);
 
     const resultado = await consultarEstadoMensagemWts("mensagem-123", "https://api.app.ceci.chat/v1/send/message/mensagem-123");
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][0]).toBe("https://api.app.ceci.chat/chat/v1/message/mensagem-123/status");
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://api.wts.chat/chat/v1/send/message/mensagem-123");
+    expect(fetchMock.mock.calls[2][0]).toBe("https://api.app.ceci.chat/chat/v1/send/message/mensagem-123");
+    expect(fetchMock.mock.calls[3][0]).toBe("https://api.app.ceci.chat/chat/v1/message/mensagem-123/status");
     expect(resultado).toMatchObject({ estado: "DELIVERED" });
   });
 
-  it("preserva o detalhe HTTP quando a consulta falha nos dois domínios (Ceci e WTS)", async () => {
+  it("preserva o detalhe HTTP quando a consulta falha em todos os domínios/endpoints", async () => {
     vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
@@ -135,11 +155,16 @@ describe("consultarEstadoMensagemWts", () => {
 
     const resultado = await consultarEstadoMensagemWts("id-inexistente");
 
-    // Sem statusUrl, tenta a rota documentada nos dois domínios (api.app.ceci.chat e api.wts.chat);
-    // as duas falham igual no mock, então a mensagem concatena as duas tentativas.
+    // Sem statusUrl, tenta send/message (WTS, Ceci) e depois a rota documentada (Ceci, WTS); as quatro falham
+    // igual no mock, então a mensagem concatena as quatro tentativas.
     expect(resultado).toEqual({
       estado: null,
-      detalhe: "/chat/v1/message/id-inexistente/status: HTTP 404: not found | /chat/v1/message/id-inexistente/status: HTTP 404: not found",
+      detalhe: [
+        "/chat/v1/send/message/id-inexistente: HTTP 404: not found",
+        "/chat/v1/send/message/id-inexistente: HTTP 404: not found",
+        "/chat/v1/message/id-inexistente/status: HTTP 404: not found",
+        "/chat/v1/message/id-inexistente/status: HTTP 404: not found",
+      ].join(" | "),
     });
   });
 });

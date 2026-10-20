@@ -178,3 +178,30 @@ export function formatarDataBr(iso: string | null | undefined): string {
   const m = iso ? ISO_DATA.exec(iso.slice(0, 10)) : null;
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
 }
+
+// ─── Status de envio WTS.Chat/Ceci (por item de disparo) ────────────────────
+
+export const STATUS_WTS_CLASSES = ["lido", "entregue", "na_fila", "falha", "sem_consulta"] as const;
+export type StatusWtsClasse = (typeof STATUS_WTS_CLASSES)[number];
+export const STATUS_WTS_LABEL: Record<StatusWtsClasse, string> = {
+  lido: "Lido",
+  entregue: "Entregue/enviado",
+  na_fila: "Na fila",
+  falha: "Falha",
+  sem_consulta: "Sem consulta",
+};
+
+/**
+ * Classifica o campo `status` cru devolvido pela Ceci/WTS.Chat (READ, DELIVERED, SENT, QUEUED, PENDING,
+ * FAILED, ERROR, REJECTED, UNDELIVERED...) em uma das 5 classes acima. Extraído de `DispararCampanhaDialog.tsx`
+ * (onde a regra vivia duplicada, só para colorir a amostra pós-disparo) para ser reaproveitado também no
+ * resumo da lista "Ver envios" do Histórico e nos badges por item.
+ */
+export function classificarStatusWts(status: string | null | undefined): StatusWtsClasse {
+  if (!status) return "sem_consulta";
+  if (/READ/i.test(status)) return "lido";
+  if (/FAIL|ERROR|REJECT|UNDELIVER/i.test(status)) return "falha";
+  if (/QUEUE|PEND/i.test(status)) return "na_fila";
+  if (/DELIVER|SENT/i.test(status)) return "entregue";
+  return "sem_consulta";
+}
