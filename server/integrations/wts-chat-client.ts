@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 const CECI_API_BASE_URL = "https://api.app.ceci.chat";
 const WTS_API_BASE_URL = "https://api.wts.chat";
 
@@ -91,7 +93,7 @@ export function obterCanalRemetente(): string {
 export async function enviarTemplateWts(
   telefone: string,
   templateId: string,
-  parameters?: string[],
+  parameters?: Record<string, unknown>,
 ): Promise<WtsChatResultadoEnvio> {
   const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
   if (!authorization) {
@@ -105,11 +107,12 @@ export async function enviarTemplateWts(
   const payloadItem: Record<string, unknown> = {
     to: telefone,
     from: canalTelefone,
-    senderId: canalId,
+    // The API defines senderId as a caller-system tracking ID; use a new UUID for each send.
+    senderId: randomUUID(),
     channelId: canalId,
     templateId,
   };
-  if (parameters && parameters.length > 0) {
+  if (parameters && Object.keys(parameters).length > 0) {
     payloadItem.parameters = parameters;
   }
 
