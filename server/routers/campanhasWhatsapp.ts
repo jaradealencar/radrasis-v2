@@ -1087,7 +1087,7 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({
       campanhaId: z.number().int().positive(),
       telefone: z.string().trim().min(8).max(40),
-      nomeParametro: z.string().trim().max(100).optional(),
+      parameters: z.record(z.string(), z.unknown()).optional(),
     }))
     .mutation(async ({ input }) => {
       if (!wtsChatConfigurado()) {
@@ -1110,8 +1110,7 @@ export const campanhasWhatsappRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Informe um número brasileiro válido com DDD." });
       }
 
-      const params = input.nomeParametro?.trim() ? [input.nomeParametro.trim()] : undefined;
-      const envio = await enviarTemplateWts(telefone, templateId, params);
+      const envio = await enviarTemplateWts(telefone, templateId, input.parameters);
       const id = envio.ok ? idMensagemWts(envio.resposta) : null;
       let estado: { estado: string | null; detalhe: string } | null = null;
       if (id) {
