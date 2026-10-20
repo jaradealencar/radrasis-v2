@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { calcularNovosDoMesLocal, type CompraMinima } from "../routers/performanceComercial";
 import {
-  classificarMes, agregarMes, calcularReativacaoAnual,
+  classificarMes, agregarMes, calcularReativacaoAnual, calcularMetricasClientes,
   type OsBrutaMarketing,
 } from "../services/marketingFinanceiroClientes";
 import { conciliar } from "../../shared/marketing-financeiro";
@@ -145,5 +145,41 @@ describe("marketingFinanceiroClientes: eventos de reativação vs. clientes úni
     const r = calcularReativacaoAnual(todas);
     expect(r.clientesReativadosUnicosAno).toBe(1);
     expect(r.eventosReativacaoAno).toBe(2);
+  });
+});
+
+describe("marketingFinanceiroClientes: calcularMetricasClientes (deduplicação real no período)", () => {
+  it("deduplica clientes recorrentes e reativados e calcula frequência de pedidos", () => {
+    const comprasAno: CompraMinima[] = [
+      { empresa: "reativado ltda", mes: 5, ano: 2025 },
+      { empresa: "recorrente 1 ltda", mes: 11, ano: 2025 },
+    ];
+    const osAno: OsBrutaMarketing[] = [
+      { osNumero: "10", empresa: "Novo 1 Ltda", tipoOs: "Normal", status: "Entregue", mes: 1, ano: 2026, valorOs: "1000", valorTotal: null, contribuicaoReais: null, vendedor: null, cidade: null, estado: null, dataAprovacao: null },
+      { osNumero: "11", empresa: "Recorrente 1 Ltda", tipoOs: "Normal", status: "Entregue", mes: 1, ano: 2026, valorOs: "1000", valorTotal: null, contribuicaoReais: null, vendedor: null, cidade: null, estado: null, dataAprovacao: null },
+      { osNumero: "12", empresa: "Recorrente 1 Ltda", tipoOs: "Normal", status: "Entregue", mes: 2, ano: 2026, valorOs: "1000", valorTotal: null, contribuicaoReais: null, vendedor: null, cidade: null, estado: null, dataAprovacao: null },
+      { osNumero: "13", empresa: "Reativado Ltda", tipoOs: "Normal", status: "Entregue", mes: 1, ano: 2026, valorOs: "1000", valorTotal: null, contribuicaoReais: null, vendedor: null, cidade: null, estado: null, dataAprovacao: null },
+      { osNumero: "14", empresa: "Reativado Ltda", tipoOs: "Normal", status: "Entregue", mes: 8, ano: 2026, valorOs: "1000", valorTotal: null, contribuicaoReais: null, vendedor: null, cidade: null, estado: null, dataAprovacao: null },
+    ];
+    const overrides = new Map<string, "recorrente" | "novo">();
+    const c1 = classificarMes(1, 2026, osAno, comprasAno, overrides, 6);
+    const c2 = classificarMes(2, 2026, osAno, [...comprasAno, { empresa: "recorrente 1 ltda", mes: 1, ano: 2026 }], overrides, 6);
+    const c8 = classificarMes(8, 2026, osAno, [...comprasAno, { empresa: "reativado ltda", mes: 1, ano: 2026 }], overrides, 6);
+    const todas = [...c1, ...c2, ...c8];
+
+    const metricas = calcularMetricasClientes(todas);
+
+    // Novo 1 comprou 1x em mes 1
+    expect(metricas.clientesNovosUnicos).toBe(1);
+    // Recorrente 1 comprou em mes 1 e mes 2 -> deve contar 1 único, não 2
+    expect(metricas.clientesRecorrentesUnicos).toBe(1);
+    // Reativado comprou em mes 1 e mes 8 -> 1 único cliente reativado, 2 eventos
+    expect(metricas.clientesReativadosUnicos).toBe(1);
+    expect(metricas.eventosReativacao).toBe(2);
+    // Total de clientes únicos = 3 (Novo 1, Recorrente 1, Reativado)
+    expect(metricas.clientesTotalUnicos).toBe(3);
+    // 5 pedidos no total de 3 clientes únicos -> 5 / 3 = 1.67 pedidos por cliente
+    expect(metricas.pedidosTotal).toBe(5);
+    expect(metricas.pedidosPorCliente).toBe(1.67);
   });
 });

@@ -243,19 +243,30 @@ export async function classificarAno(db: Db, ano: number, mesesInatividade: numb
     buscarOverrideMap(db),
   ]);
 
+  const todasCompras = [...todasComprasValidas];
   const resultado: OsClassificadaMarketing[] = [];
   for (const mes of meses) {
     const ehMesVigente = ano === anoAtual && mes === mesAtualNum;
+    let osClassificadasDoMes: OsClassificadaMarketing[] = [];
     if (ehMesVigente) {
       try {
-        resultado.push(...await classificarMesAoVivo(mes, ano, todasComprasValidas, overrideMap, mesesInatividade));
-        continue;
+        osClassificadasDoMes = await classificarMesAoVivo(mes, ano, todasCompras, overrideMap, mesesInatividade);
       } catch {
         // API MubiSys indisponível — cai para historico_os abaixo (mesmo
         // comportamento de antes desta mudança, melhor que travar a tela toda).
+        osClassificadasDoMes = classificarMes(mes, ano, osDoAno, todasCompras, overrideMap, mesesInatividade);
+      }
+    } else {
+      osClassificadasDoMes = classificarMes(mes, ano, osDoAno, todasCompras, overrideMap, mesesInatividade);
+    }
+    resultado.push(...osClassificadasDoMes);
+
+    // Registra compras deste mês em todasCompras para alimentar a recência dos meses subsequentes
+    for (const c of osClassificadasDoMes) {
+      if (c.empresaOriginal) {
+        todasCompras.push({ empresa: c.empresaOriginal.toLowerCase().trim(), mes, ano });
       }
     }
-    resultado.push(...classificarMes(mes, ano, osDoAno, todasComprasValidas, overrideMap, mesesInatividade));
   }
   return resultado;
 }
@@ -317,4 +328,59 @@ export function calcularReativacaoAnual(classificadas: OsClassificadaMarketing[]
     clientesUnicos.add(c.clienteKey);
   }
   return { clientesReativadosUnicosAno: clientesUnicos.size, eventosReativacaoAno: porClienteMes.size };
+}
+
+export interface MetricasClientesPeriodo {
+  clientesNovosUnicos: number;
+  clientesRecorrentesUnicos: number;
+  clientesReativadosUnicos: number;
+  clientesTotalUnicos: number;
+  eventosReativacao: number;
+  pedidosTotal: number;
+  pedidosPorCliente: number | null;
+}
+
+/** Calcula métricas consolidadas com deduplicação real de clientes entre meses.
+ * Evita inflar a contagem de recorrentes somando clientes-mês (ex: 594 em vez da
+ * base única real) e garante coerência entre clientes reativados únicos e eventos. */
+export function calcularMetricasClientes(classificadas: OsClassificadaMarketing[]): MetricasClientesPeriodo {
+  const novosSet = new Set<string>();
+  const reativadosSet = new Set<string>();
+  const recorrentesSet = new Set<string>();
+  const todosSet = new Set<string>();
+  const eventosReativacaoSet = new Set<string>();
+  let pedidosTotal = 0;
+
+  for (const c of classificadas) {
+    if (!c.clienteKey) continue;
+    pedidosTotal++;
+    todosSet.add(c.clienteKey);
+
+    if (c.categoria === "novo") {
+      novosSet.add(c.clienteKey);
+    } else if (c.categoria === "reativado") {
+      reativadosSet.add(c.clienteKey);
+      eventosReativacaoSet.add(`${c.clienteKey}|${c.mes}`);
+    } else if (c.categoria === "recorrenteAtivo") {
+      recorrentesSet.add(c.clienteKey);
+    }
+  }
+
+  // Clientes adquiridos como novo ou que reativaram no ano têm sua categoria
+  // primária no ano preservada (não duplicam como recorrente anual).
+  for (const k of novosSet) recorrentesSet.delete(k);
+  for (const k of reativadosSet) recorrentesSet.delete(k);
+
+  const clientesTotalUnicos = todosSet.size;
+  const pedidosPorCliente = clientesTotalUnicos > 0 ? Math.round((pedidosTotal / clientesTotalUnicos) * 100) / 100 : null;
+
+  return {
+    clientesNovosUnicos: novosSet.size,
+    clientesRecorrentesUnicos: recorrentesSet.size,
+    clientesReativadosUnicos: reativadosSet.size,
+    clientesTotalUnicos,
+    eventosReativacao: eventosReativacaoSet.size,
+    pedidosTotal,
+    pedidosPorCliente,
+  };
 }

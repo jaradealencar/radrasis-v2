@@ -113,6 +113,7 @@ export default function MarketingFinanceiro({ anoSel, abrirCACRequest = 0 }: Pro
                   <FiltrosMarketing
                     state={filtros} onChange={setFiltros} mesesComDados={mesesComDados}
                     vendedoresDisponiveis={opcoesFiltro?.vendedores ?? []} cidadesDisponiveis={opcoesFiltro?.cidades ?? []}
+                    ocultarClassificacao
                   />
                   <MarketingVisaoGeral
                     ano={anoSel} relatorio={dados.relatorio} config={dados.config} mesFiltro={filtros.mesFiltro}

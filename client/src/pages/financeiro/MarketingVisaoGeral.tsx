@@ -97,6 +97,30 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
     };
   }, [mesesCompletos]);
 
+  // Quando mesFiltro está ativo (ex: Março), os clientes únicos reativados e recorrentes
+  // são os daquele mês. Quando mesFiltro é null ("Todos"), usa as métricas deduplicadas
+  // dos meses completos calculadas pelo backend (metricasCompletas).
+  const clientesReativadosPeriodo = useMemo(() => {
+    if (mesFiltro != null) {
+      return totais.eventosReativados;
+    }
+    return (relatorio as any).metricasCompletas?.clientesReativadosUnicos ?? totais.eventosReativados;
+  }, [mesFiltro, totais.eventosReativados, relatorio]);
+
+  const clientesRecorrentesPeriodo = useMemo(() => {
+    if (mesFiltro != null) {
+      return totais.clientesRecorrentes;
+    }
+    return (relatorio as any).metricasCompletas?.clientesRecorrentesUnicos ?? totais.clientesRecorrentes;
+  }, [mesFiltro, totais.clientesRecorrentes, relatorio]);
+
+  const pedidosPorClientePeriodo = useMemo(() => {
+    if (mesFiltro != null) {
+      return totais.pedidosPorCliente;
+    }
+    return (relatorio as any).metricasCompletas?.pedidosPorCliente ?? totais.pedidosPorCliente;
+  }, [mesFiltro, totais.pedidosPorCliente, relatorio]);
+
   const dadosGrafico = useMemo(() => mesesCompletos.map(m => ({
     mes: MESES_ABREV[m.mes - 1],
     "Aquisição": m.investimentoAquisicao ?? 0,
@@ -195,14 +219,26 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
           <KpiCard
             variant="border" color="#2563eb" icon={<Users size={18} />}
             label="Clientes Novos" value={fmtNum(totais.clientesNovos)}
-            sub={`${fmtNum(totais.clientesRecorrentes)} recorrentes ativos · ${fmtNum(totais.eventosReativados)} eventos de reativação`}
-            tooltip="Clientes cuja compra no período é a primeira de todo o histórico do ERP. Categoria mutuamente exclusiva de Recorrente Ativo e Reativado."
+            sub={mesFiltro != null
+              ? `${fmtNum(totais.clientesRecorrentes)} recorrentes ativos · ${fmtNum(totais.eventosReativados)} eventos de reativação`
+              : `${fmtNum(clientesRecorrentesPeriodo)} recorrentes únicos · ${fmtNum(totais.eventosReativados)} eventos de reativação`
+            }
+            tooltip="Clientes cuja compra no período é a primeira de todo o histórico do ERP. Categoria mutuamente exclusiva de Recorrente Ativo e Reativado. Clique para ver a lista de clientes."
+            onClick={() => onDrillDown({ mes: mesFiltro, categoria: "novo", titulo: `Clientes Novos — ${labelPeriodo}` })}
           />
           <KpiCard
             variant="border" color={COR_RECORRENTE} icon={<Users size={18} />}
-            label="Clientes Reativados (únicos no ano)" value={fmtNum(relatorio.reativacaoAnual.clientesReativadosUnicosAno)}
-            sub={`${fmtNum(relatorio.reativacaoAnual.eventosReativacaoAno)} eventos de reativação no ano`}
-            tooltip="Clientes distintos que reativaram ao menos 1x no ano inteiro (não afetado pelo filtro de mês). 'Eventos' conta cada reativação separadamente — o mesmo cliente pode reativar mais de uma vez."
+            label={mesFiltro != null ? "Clientes Reativados" : "Clientes Reativados (únicos no período)"}
+            value={fmtNum(clientesReativadosPeriodo)}
+            sub={mesFiltro != null
+              ? `${fmtNum(totais.eventosReativados)} eventos de reativação em ${labelPeriodo}`
+              : `${fmtNum(totais.eventosReativados)} eventos de reativação no período`
+            }
+            tooltip={mesFiltro != null
+              ? `Clientes distintos que reativaram em ${labelPeriodo}. 'Eventos' conta cada reativação separadamente.`
+              : `Clientes distintos que reativaram ao menos 1x nos meses completos do período (${labelPeriodo}). 'Eventos' (${totais.eventosReativados}) conta cada reativação separadamente — o mesmo cliente pode reativar mais de uma vez. Clique para ver a lista de clientes.`
+            }
+            onClick={() => onDrillDown({ mes: mesFiltro, categoria: "reativado", titulo: `Clientes Reativados — ${labelPeriodo}` })}
           />
           <KpiCard
             variant="border" color="#ea580c" icon={<Target size={18} />}
@@ -240,8 +276,12 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
           />
           <KpiCard
             variant="border" color="#475569" icon={<Users size={18} />}
-            label="Pedidos por Cliente" value={totais.pedidosPorCliente != null ? totais.pedidosPorCliente.toFixed(2) : "—"}
-            tooltip="Total de pedidos (novos + recorrentes + reativados) ÷ total de clientes ativos no período (soma das 3 categorias, sem deduplicar entre meses)."
+            label="Pedidos por Cliente" value={pedidosPorClientePeriodo != null ? pedidosPorClientePeriodo.toFixed(2) : "—"}
+            sub={mesFiltro == null && totais.pedidosPorCliente != null ? `Média mensal: ${totais.pedidosPorCliente.toFixed(2)} ped/mês por ativo` : undefined}
+            tooltip={mesFiltro != null
+              ? "Total de pedidos (novos + recorrentes + reativados) ÷ clientes ativos no mês."
+              : `Frequência de compra real: total de pedidos (${fmtNum((relatorio as any).metricasCompletas?.pedidosTotal ?? 0)}) ÷ clientes únicos no período (${fmtNum((relatorio as any).metricasCompletas?.clientesTotalUnicos ?? 0)}). Média mensal por cliente ativo: ${totais.pedidosPorCliente?.toFixed(2)}.`
+            }
           />
         </div>
       </div>

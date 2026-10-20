@@ -5,7 +5,7 @@ import { getDb, insertAuditLogMarketingConfig } from "../db/db";
 import { marketingConfig, custoMarketing, historicoOs, financeiroMensal, dreMensal } from "../../drizzle/schema";
 import { isOsNormalDb, normalizeEmpresaKey } from "./performanceComercial";
 import { calcularRadarMargens } from "./financeiro";
-import { classificarAno, agregarMes, calcularReativacaoAnual } from "../services/marketingFinanceiroClientes";
+import { classificarAno, agregarMes, calcularReativacaoAnual, calcularMetricasClientes } from "../services/marketingFinanceiroClientes";
 import {
   cacPonderado, custoReativacaoPonderado, calcularResultadoGrupo, calcularResultadoConsolidado,
   mediana, participacaoTopN, conciliar,
@@ -160,7 +160,23 @@ export const marketingFinanceiroRouter = router({
       const db = await getDb();
       const config = await buscarConfig(db);
       if (!db) {
-        return { meses: [], reativacaoAnual: { clientesReativadosUnicosAno: 0, eventosReativacaoAno: 0 }, config, origem: "indisponivel" as const };
+        const metricasVazias = {
+          clientesNovosUnicos: 0,
+          clientesRecorrentesUnicos: 0,
+          clientesReativadosUnicos: 0,
+          clientesTotalUnicos: 0,
+          eventosReativacao: 0,
+          pedidosTotal: 0,
+          pedidosPorCliente: null,
+        };
+        return {
+          meses: [],
+          reativacaoAnual: { clientesReativadosUnicosAno: 0, eventosReativacaoAno: 0 },
+          metricasCompletas: metricasVazias,
+          metricasAno: metricasVazias,
+          config,
+          origem: "indisponivel" as const,
+        };
       }
 
       const [classificadasBrutas, custoMarketingRows] = await Promise.all([
@@ -205,7 +221,10 @@ export const marketingFinanceiroRouter = router({
       }
 
       const reativacaoAnual = calcularReativacaoAnual(classificadas);
-      return { meses, reativacaoAnual, config, origem: "local" as const };
+      const classificadasCompletas = classificadas.filter(c => !(input.ano === now.getFullYear() && c.mes === now.getMonth() + 1));
+      const metricasCompletas = calcularMetricasClientes(classificadasCompletas);
+      const metricasAno = calcularMetricasClientes(classificadas);
+      return { meses, reativacaoAnual, metricasCompletas, metricasAno, config, origem: "local" as const };
     }),
 
   // ─── Opções de filtro (vendedor/cidade disponíveis no ano) ─────────────────

@@ -42,7 +42,9 @@ export default function MarketingReativacao({ ano, relatorio, mesFiltro, onDrill
     return { investimento, eventosReativacao, pedidos, faturamento, margem, custoPonderado, resultado, ticketMedio };
   }, [mesesFiltrados]);
 
-  const clientesUnicosNoPeriodo = mesFiltro != null ? totais.eventosReativacao : relatorio.reativacaoAnual.clientesReativadosUnicosAno;
+  const clientesUnicosNoPeriodo = mesFiltro != null
+    ? totais.eventosReativacao
+    : ((relatorio as any).metricasCompletas?.clientesReativadosUnicos ?? relatorio.reativacaoAnual.clientesReativadosUnicosAno);
 
   const dadosGrafico = useMemo(() => mesesFiltrados.map(m => ({
     mes: MESES_ABREV[m.mes - 1],
