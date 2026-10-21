@@ -269,6 +269,8 @@ server/
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
+                       e campanhasContatoTracking.ts (identidade E.164, tentativas
+                       por campanha e origem das tentativas de contatos WhatsApp),
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),
@@ -371,6 +373,7 @@ sintéticos, gravando apenas catálogo e histórico nas tabelas próprias do Aud
   importante pra entender o estado real do banco/auth agora.**
 - `docs/campanhas-whatsapp.md` — módulo Campanhas WhatsApp (aba ao lado de ROI Marketing): regras de
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
+- **Rastreamento de contatos de campanhas (Subfase 1, 20/10/2026):** `campanhasWhatsapp.contatos` e a aba Contatos mantêm identidade E.164, telefones originais/secundários, tentativas por campanha e vínculos manuais auditáveis a clientes, orçamentos e O.S. A migration de contato marca o legado como parcial quando só havia o último envio; detalhes e critérios estão em `docs/campanhas-whatsapp.md` e CAMP-007/026–031 no catálogo do Auditor.
 - `docs/robo-auditor-campanhas-whatsapp.md` — catálogo CAMP-001…084, estados,
   execução manual segura, histórico, CI isolada e limites do Robô Auditor.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.

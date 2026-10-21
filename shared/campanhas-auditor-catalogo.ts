@@ -123,6 +123,7 @@ export const CAMPANHAS_AUDITOR_CATALOGO = [
     associatedTests: [
       "server/__tests__/campanhas-whatsapp.test.ts",
       "server/__tests__/campanhas-whatsapp-db.test.ts",
+      "server/__tests__/campanhas-contatos.test.ts",
     ],
     criticality: "alta",
     initialStatus: "implementado_nao_testado",
@@ -465,7 +466,7 @@ export const CAMPANHAS_AUDITOR_CATALOGO = [
     module: "Integração com MubiSys",
     acceptanceCriteria:
       "Usar telefone normalizado como chave inicial do lead e preservar a origem do dado, sem exigir CNPJ na primeira prospecção.",
-    associatedTests: ["server/__tests__/campanhas-whatsapp.test.ts"],
+    associatedTests: ["server/__tests__/campanhas-contatos.test.ts"],
     criticality: "alta",
     initialStatus: "implementado_nao_testado",
     initialEvidence: {
@@ -483,7 +484,7 @@ export const CAMPANHAS_AUDITOR_CATALOGO = [
     module: "Integração com MubiSys",
     acceptanceCriteria:
       "Normalizar números e associá-los a cadastro/lead com trilha de origem, conflitos detectáveis e sem fundir pessoas por coincidência de telefone.",
-    associatedTests: ["server/__tests__/campanhas-whatsapp.test.ts"],
+    associatedTests: ["server/__tests__/campanhas-contatos.test.ts"],
     criticality: "critica",
     initialStatus: "implementado_nao_testado",
     initialEvidence: {
@@ -501,13 +502,13 @@ export const CAMPANHAS_AUDITOR_CATALOGO = [
     module: "Integração com MubiSys",
     acceptanceCriteria:
       "Quando lead externo entrar no ERP, reconhecer o vínculo com histórico verificável e sem duplicar lead, mesmo após sincronização tardia.",
-    associatedTests: [],
+    associatedTests: ["server/__tests__/campanhas-contatos.test.ts"],
     criticality: "critica",
-    initialStatus: "nao_implementado",
+    initialStatus: "implementado_nao_testado",
     initialEvidence: {
       source:
         "docs/auditoria-tecnica-campanhas-whatsapp-2026-10-20.md#catalogo",
-      observedStatus: "Ausente",
+      observedStatus: "Parcial",
       note: "Evidência de inspeção do repositório; não comprova execução ou publicação.",
     },
   },
@@ -519,7 +520,7 @@ export const CAMPANHAS_AUDITOR_CATALOGO = [
     module: "Integração com MubiSys",
     acceptanceCriteria:
       "Relacionar lead a cadastro de cliente por ID estável ou associação humana aprovada; mostrar confiança e permitir desfazer.",
-    associatedTests: [],
+    associatedTests: ["server/__tests__/campanhas-contatos.test.ts"],
     criticality: "critica",
     initialStatus: "implementado_nao_testado",
     initialEvidence: {
@@ -537,7 +538,7 @@ export const CAMPANHAS_AUDITOR_CATALOGO = [
     module: "Integração com MubiSys",
     acceptanceCriteria:
       "Associar propostas/orçamentos por ID e telefone/cliente com trilha de evidência; não inferir vínculo apenas pelo nome aproximado.",
-    associatedTests: [],
+    associatedTests: ["server/__tests__/campanhas-contatos.test.ts"],
     criticality: "critica",
     initialStatus: "implementado_nao_testado",
     initialEvidence: {
@@ -555,7 +556,7 @@ export const CAMPANHAS_AUDITOR_CATALOGO = [
     module: "Integração com MubiSys",
     acceptanceCriteria:
       "Associar OS por identificador e registrar cliente, datas e campanha candidata; cobrir OS sem telefone e OS repetida.",
-    associatedTests: [],
+    associatedTests: ["server/__tests__/campanhas-contatos.test.ts"],
     criticality: "critica",
     initialStatus: "implementado_nao_testado",
     initialEvidence: {

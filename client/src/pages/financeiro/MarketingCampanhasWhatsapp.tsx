@@ -25,6 +25,7 @@ import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
 import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
 import VendasPosVendaDialog from "./campanhasWhatsapp/VendasPosVendaDialog";
 import CampanhasAuditor from "./campanhasWhatsapp/CampanhasAuditor";
+import CampanhasContatos from "./campanhasWhatsapp/CampanhasContatos";
 import { StatusCampanhaBadge, type CampanhaLinha } from "./campanhasWhatsapp/comuns";
 
 function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: () => void; children: React.ReactNode }) {
@@ -99,6 +100,7 @@ export default function MarketingCampanhasWhatsapp() {
           <TabsTrigger value="painel" className="gap-1.5"><LayoutList size={14} /> Painel</TabsTrigger>
           <TabsTrigger value="calendario" className="gap-1.5"><CalendarDays size={14} /> Calendário</TabsTrigger>
           <TabsTrigger value="relatorios" className="gap-1.5"><BarChart3 size={14} /> Relatórios</TabsTrigger>
+          <TabsTrigger value="contatos" className="gap-1.5"><Users size={14} /> Contatos</TabsTrigger>
           <TabsTrigger value="nao-receber" className="gap-1.5"><BanIcon size={14} /> Não quer receber</TabsTrigger>
           {podeAuditar && <TabsTrigger value="auditor" className="gap-1.5"><ShieldCheck size={14} /> Robô Auditor</TabsTrigger>}
         </TabsList>
@@ -247,6 +249,10 @@ export default function MarketingCampanhasWhatsapp() {
 
         <TabsContent value="relatorios" className="pt-3">
           <RelatorioPeriodo />
+        </TabsContent>
+
+        <TabsContent value="contatos" className="pt-3">
+          <CampanhasContatos campanhas={campanhas.map(c => ({ id: c.id, nome: c.nome }))} />
         </TabsContent>
 
         <TabsContent value="nao-receber" className="pt-3">

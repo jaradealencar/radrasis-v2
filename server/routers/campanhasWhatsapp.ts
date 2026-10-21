@@ -41,6 +41,7 @@ import {
   calcularProximoEnvio, classificarSemaforo, classificarStatusWts, dataIsoValida, diasEntre, gerarChaveCategoria,
   hojeCampoGrande, normalizarTelefone, somarDias, INTERVALO_DISPARO_WTS_MS,
 } from "../../shared/campanhas-whatsapp";
+import { normalizarTelefoneContato } from "../../shared/campanhas-contatos";
 import {
   agruparPorCliente, expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
   resumirCampanhas, resumirVendas,
@@ -51,6 +52,8 @@ import {
   type ContatoFonte, type ContextoErp,
 } from "../services/fontesErpCampanhas";
 import { isOsNormalDb } from "./performanceComercial";
+import { registrarTentativasDeContatos } from "../services/campanhasContatoTracking";
+import { campanhasWhatsappContatosRouter } from "./campanhasWhatsappContatos";
 import {
   carregarTelefonesClientes, completarTelefonesPeloCadastro, sincronizarClientesLote, statusCacheClientes,
 } from "../sync/clientes-mubisys";
@@ -280,6 +283,8 @@ export interface ParametrosDisparo {
    * (`violacoesQuarentena`), porque descartar do registro quem de fato recebeu deixaria a trava cega.
    */
   aplicarQuarentena: boolean;
+  /** Sinalização do envio nativo; demais origens ficam como registro informado. */
+  resultadoContato?: "registrado" | "aceito_provedor";
 }
 
 export interface ResultadoDisparo {
@@ -291,6 +296,7 @@ export interface ResultadoDisparo {
   enviados: number;
   ignorados: number;
   invalidos: number;
+  rastreamentoContatos: "gravado" | "falhou" | "nao_aplicavel";
   /** Telefones da lista de "não quer receber": descartados no disparo manual, só reportados no webhook. */
   bloqueados: number;
   violacoesQuarentena: number;
@@ -338,7 +344,7 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
     ignoradosQuarentena: limpeza.ignoradosQuarentena,
     invalidosLista: limpeza.invalidos,
   };
-  if (limpeza.enviar.length === 0) return { registrado: false, disparoId: null, proximaData: null, ...base };
+  if (limpeza.enviar.length === 0) return { registrado: false, disparoId: null, proximaData: null, rastreamentoContatos: "nao_aplicavel", ...base };
 
   const proximaData = campanha.tipo === "recorrente" ? calcularProximoEnvio(p.dataEnvio, campanha.frequenciaDias) : null;
 
@@ -390,7 +396,37 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
     ],
   );
 
-  return { registrado: true, disparoId: r.rows[0].id as number, proximaData, ...base };
+  const disparoId = r.rows[0].id as number;
+  const originaisPorTelefone = new Map<string, Set<string>>();
+  for (const contato of p.contatos) {
+    const numeroBr = normalizarTelefone(contato.telefone);
+    const chave = numeroBr ? `+${numeroBr}` : normalizarTelefoneContato(contato.telefone);
+    if (!chave) continue;
+    const valores = originaisPorTelefone.get(chave) ?? new Set<string>();
+    valores.add(String(contato.telefone));
+    originaisPorTelefone.set(chave, valores);
+  }
+  let rastreamentoContatos: ResultadoDisparo["rastreamentoContatos"] = "gravado";
+  try {
+    await registrarTentativasDeContatos({
+      campanhaId: campanha.id,
+      campanhaNome: campanha.nome,
+      dataEnvio: p.dataEnvio,
+      disparoId,
+      origem: p.origem,
+      resultado: p.resultadoContato ?? "registrado",
+      contatos: limpeza.enviar.map(contato => ({
+        telefone: contato.telefone,
+        nome: contato.nome,
+        valoresOriginais: [...(originaisPorTelefone.get(`+${contato.telefone}`) ?? [contato.telefone])],
+      })),
+    });
+  } catch (error) {
+    rastreamentoContatos = "falhou";
+    console.error("[CampanhasContatoTracking] não foi possível gravar a identidade/histórico do disparo", error);
+  }
+
+  return { registrado: true, disparoId, proximaData, rastreamentoContatos, ...base };
 }
 
 let ultimaAtualizacaoErp = 0;
@@ -498,6 +534,7 @@ async function montarListaCampanha(
 }
 
 export const campanhasWhatsappRouter = router({
+  contatos: campanhasWhatsappContatosRouter,
   /** Painel: campanhas com último/próximo envio, semáforo e os 3 contadores do topo. */
   listar: campanhasProcedure.query(async () => {
     const db = await obterDb();
@@ -843,21 +880,40 @@ export const campanhasWhatsappRouter = router({
     }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      const [disparo] = await db.select({ id: campanhasWhatsappDisparos.id }).from(campanhasWhatsappDisparos)
+      const [disparo] = await db.select({
+        id: campanhasWhatsappDisparos.id,
+        campanhaId: campanhasWhatsappDisparos.campanhaId,
+        dataEnvio: campanhasWhatsappDisparos.enviadoEm,
+        campanhaNome: campanhasWhatsapp.nome,
+      }).from(campanhasWhatsappDisparos)
+        .innerJoin(campanhasWhatsapp, eq(campanhasWhatsapp.id, campanhasWhatsappDisparos.campanhaId))
         .where(eq(campanhasWhatsappDisparos.id, input.disparoId)).limit(1);
       if (!disparo) throw new TRPCError({ code: "NOT_FOUND", message: "Disparo não encontrado." });
 
-      const validos: Array<{ telefone: string; nome: string | null; wtsMensagemId: string | null }> = [];
+      const validos: Array<{ telefone: string; telefoneOriginal: string; nome: string | null; wtsMensagemId: string | null }> = [];
       const invalidos: string[] = [];
       for (const item of input.itens) {
         const telefone = normalizarTelefone(item.telefone);
         if (!telefone) { invalidos.push(String(item.telefone).trim()); continue; }
-        validos.push({ telefone, nome: item.nome?.trim() || null, wtsMensagemId: item.wtsMensagemId?.trim() || null });
+        validos.push({ telefone, telefoneOriginal: String(item.telefone), nome: item.nome?.trim() || null, wtsMensagemId: item.wtsMensagemId?.trim() || null });
       }
       if (validos.length > 0) {
         await db.insert(campanhasWhatsappDisparoItens).values(validos.map(v => ({
           disparoId: input.disparoId, telefone: v.telefone, nome: v.nome, wtsMensagemId: v.wtsMensagemId, origem: "manual",
         })));
+        try {
+          await registrarTentativasDeContatos({
+            campanhaId: disparo.campanhaId,
+            campanhaNome: disparo.campanhaNome,
+            dataEnvio: disparo.dataEnvio,
+            disparoId: disparo.id,
+            origem: "itens_manuais",
+            resultado: "registrado",
+            contatos: validos.map(v => ({ telefone: v.telefone, nome: v.nome, valoresOriginais: [v.telefoneOriginal] })),
+          });
+        } catch (error) {
+          console.error("[CampanhasContatoTracking] não foi possível completar o histórico de itens manuais", error);
+        }
       }
       return { adicionados: validos.length, invalidos };
     }),
@@ -1012,6 +1068,7 @@ export const campanhasWhatsappRouter = router({
       const aceitos = resultados.filter(resultado => resultado.ok).map(resultado => resultado.contato);
       let disparoId: number | null = null;
       let erroRegistro: string | null = null;
+      let erroRastreamento: string | null = null;
 
       if (aceitos.length > 0) {
         // As mensagens já saíram pelo canal oficial: registra o lote no Radrasys (cadência, quarentena e histórico).
@@ -1024,8 +1081,12 @@ export const campanhasWhatsappRouter = router({
             origem: "api",
             registradoPor: ctx.user.name ?? ctx.user.email ?? "WTS.Chat",
             aplicarQuarentena: false,
+            resultadoContato: "aceito_provedor",
           });
           disparoId = registro.disparoId;
+          if (registro.rastreamentoContatos === "falhou") {
+            erroRastreamento = "O disparo foi gravado, mas o histórico de contatos não foi atualizado.";
+          }
         } catch (error) {
           erroRegistro = error instanceof Error ? error.message : "Falha ao registrar o disparo.";
         }
@@ -1062,11 +1123,33 @@ export const campanhasWhatsappRouter = router({
         }
       }
 
+      const falhasWts = resultados.filter(resultado => !resultado.ok);
+      if (falhasWts.length > 0) {
+        try {
+          await registrarTentativasDeContatos({
+            campanhaId: campanha.id,
+            campanhaNome: campanha.nome,
+            dataEnvio,
+            disparoId,
+            origem: "wts_chat",
+            resultado: "falha_provedor",
+            contatos: falhasWts.map(({ contato }) => ({
+              telefone: contato.telefone,
+              nome: contato.nome,
+              valoresOriginais: [contato.telefone],
+            })),
+          });
+        } catch (error) {
+          console.error("[CampanhasContatoTracking] não foi possível gravar tentativas recusadas pela WTS.Chat", error);
+        }
+      }
+
       return {
         disparoId,
         campanhaCeciId: null,
         erroCampanhaCeci: null,
         erroRegistro,
+        erroRastreamento,
         enfileirados: aceitos.length,
         falhas: resultados.filter(resultado => !resultado.ok).map(resultado => ({
           nome: resultado.contato.nome,

@@ -403,6 +403,18 @@ do ambiente (`node scripts/seed-campanhas-whatsapp-iniciais.mjs`) — validado c
 revertido em seguida; para existir em produção precisa rodar de novo com a `DATABASE_URL` de produção (o
 agente não tem essa credencial) ou, mais simples, criar cada campanha pela própria tela.
 
+## Identidade e histórico de contatos (Subfase 1 do Gestor Inteligente)
+
+A aba **Contatos** mantém uma identidade interna estável por telefone E.164 e aceita vários telefones para o mesmo lead. Telefones brasileiros sem DDI usam a validação brasileira já existente; números de outros países precisam vir com `+` ou `00` e respeitar o formato E.164. A normalização internacional valida apenas o formato e o comprimento, não confirma operadora nem linha ativa. O número digitado fica preservado junto da forma canônica.
+
+O registro de disparo cria ou atualiza o contato e grava uma tentativa por campanha com origem, resultado e vínculo ao disparo quando disponível. O aceite do provedor aparece como `aceito_provedor`, separado de entrega/leitura; falhas do envio WTS ficam como `falha_provedor`. Registro manual e API ficam marcados como informados, sem afirmar entrega. O histórico tem participação por campanha, contador de tentativas, primeira e última data. Envios preenchidos manualmente em disparos antigos completam as tentativas faltantes sem duplicar as que já foram gravadas.
+
+Vínculos a cliente MubiSys, orçamento e O.S. usam seus IDs/números estáveis e guardam ator, justificativa, data e desfazimento em trilha append-only. A tela oferece sugestões por correspondência exata de telefone após sincronização do cache, incluindo a variante brasileira legada sem o nono dígito; o usuário confirma cada vínculo. Nome aproximado não cria associação. O número não é usado como prova de que duas pessoas são a mesma pessoa e não exige CNPJ.
+
+A migration `0117_curved_sharon_ventura` reconstrói o estado anterior a partir dos itens granulares de envio e do último histórico disponível, preservando as grafias disponíveis. Telefones legados sem formato numérico válido são ignorados no vínculo automático. Como o schema antigo guardava só o último contato por campanha/telefone, as contagens importadas são marcadas como **mínimos conhecidos** (`historico_completo = false`) e a tela usa `≥`; não é possível recuperar tentativas antigas que nunca foram persistidas. As tentativas novas ficam completas após a aplicação da migration. Nenhuma migration foi aplicada a banco real durante a implementação.
+
+Testes: `server/__tests__/campanhas-contatos.test.ts` cobre a normalização pura; o cenário PostgreSQL só executa quando `AUDITOR_TEST_DATABASE=1` e é habilitado na workflow com banco efêmero.
+
 ## Testes
 
 `server/__tests__/campanhas-whatsapp.test.ts` (regras puras, incl. `filtrarPorCadenciaCampanha`, + autenticação/

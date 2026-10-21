@@ -46,7 +46,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
     estado: string | null; detalhe: string | null;
   } | null>(null);
   const [resultado, setResultado] = useState<{
-    enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null;
+    enfileirados: number; totalSelecionado: number; restantes: number; erroRegistro: string | null; erroRastreamento?: string | null;
     campanhaCeciId?: string | null;
     erroCampanhaCeci?: string | null;
     falhas: Array<{ nome: string; telefone: string; erro: string }>;
@@ -83,6 +83,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
       setConfirmando(false);
       utils.campanhasWhatsapp.invalidate();
       if (r.erroRegistro) toast.error(`${fmtNum(r.enfileirados)} mensagens saíram, mas o disparo NÃO foi registrado: ${r.erroRegistro}`);
+      else if (r.erroRastreamento) toast.warning(`${fmtNum(r.enfileirados)} mensagens aceitas; histórico de contatos não atualizado: ${r.erroRastreamento}`);
       else if (r.falhas.length > 0) toast.warning(`${fmtNum(r.enfileirados)} enfileiradas; ${fmtNum(r.falhas.length)} falharam.`);
       else toast.success(`${fmtNum(r.enfileirados)} mensagens enfileiradas pela WTS.Chat e disparo registrado.`);
     },
@@ -318,6 +319,7 @@ export default function DispararCampanhaDialog({ campanha, onClose }: Props) {
                 {resultado.erroRegistro
                   ? <p className="text-red-700">As mensagens saíram, mas o disparo não foi registrado ({resultado.erroRegistro}). Registre-o à mão para a quarentena valer.</p>
                   : resultado.enfileirados > 0 && <p className="text-emerald-700">Disparo registrado: cadência e histórico atualizados.</p>}
+                {resultado.erroRastreamento && <p className="text-amber-800">O lote foi registrado, mas o histórico de identidades não foi atualizado ({resultado.erroRastreamento}).</p>}
                 {resultado.enfileirados > 0 && (
                   <p className="text-xs text-slate-600">
                     Mensagens enviadas diretamente pelo canal oficial do WhatsApp via Ceci API. Respostas dos clientes aparecerão no atendimento da Ceci.Chat.

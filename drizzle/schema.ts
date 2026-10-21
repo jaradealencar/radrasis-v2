@@ -7,12 +7,14 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ─── ENUMS (Postgres exige tipos nomeados; MySQL permitia enum inline) ───────
 
@@ -3786,6 +3788,113 @@ export type InsertCampanhaWhatsappDisparoItem = typeof campanhasWhatsappDisparoI
 // Independente de campanhas_whatsapp_disparos: um agendamento é só um plano/lembrete, não substitui o
 // registro formal de disparo (que continua exigindo a lista de contatos) — por isso não tem `disparo_id`
 // nem qualquer outro vínculo automático com o log real; é o usuário quem marca "disparado"/"não disparado".
+// Identidade persistente de leads do módulo. O número canônico é uma chave de
+// busca, não uma prova de que duas pessoas são a mesma pessoa; por isso números
+// em conflito são apresentados ao usuário e nunca fundem contatos sozinhos.
+export const campanhasWhatsappContatos = pgTable("campanhas_whatsapp_contatos", {
+  id: serial("id").primaryKey(),
+  telefoneInicialE164: varchar("telefone_inicial_e164", { length: 16 }).notNull().unique(),
+  nome: varchar("nome", { length: 200 }),
+  origem: varchar("origem", { length: 32 }).notNull(),
+  campanhaOrigemId: integer("campanha_origem_id"),
+  campanhaOrigemNome: varchar("campanha_origem_nome", { length: 160 }),
+  criadoPorId: text("criado_por_id"),
+  criadoPorNome: varchar("criado_por_nome", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CampanhaWhatsappContato = typeof campanhasWhatsappContatos.$inferSelect;
+
+export const campanhasWhatsappContatoTelefones = pgTable("campanhas_whatsapp_contato_telefones", {
+  id: serial("id").primaryKey(),
+  contatoId: integer("contato_id").notNull().references(() => campanhasWhatsappContatos.id, { onDelete: "cascade" }),
+  telefoneE164: varchar("telefone_e164", { length: 16 }).notNull().unique(),
+  valoresOriginais: jsonb("valores_originais").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  origem: varchar("origem", { length: 32 }).notNull(),
+  criadoPorId: text("criado_por_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({
+  contatoIdx: index("campanhas_whatsapp_contato_telefones_contato_idx").on(t.contatoId),
+}));
+export type CampanhaWhatsappContatoTelefone = typeof campanhasWhatsappContatoTelefones.$inferSelect;
+
+// Snapshot sem FK para a campanha: excluir uma campanha não apaga a origem do lead.
+export const campanhasWhatsappContatoCampanhas = pgTable("campanhas_whatsapp_contato_campanhas", {
+  contatoId: integer("contato_id").notNull().references(() => campanhasWhatsappContatos.id, { onDelete: "cascade" }),
+  campanhaId: integer("campanha_id").notNull(),
+  campanhaNome: varchar("campanha_nome", { length: 160 }).notNull(),
+  primeiraTentativaEm: timestamp("primeira_tentativa_em").notNull(),
+  ultimaTentativaEm: timestamp("ultima_tentativa_em").notNull(),
+  tentativas: integer("tentativas").notNull().default(0),
+  historicoCompleto: boolean("historico_completo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  pk: primaryKey({ columns: [t.contatoId, t.campanhaId], name: "campanhas_whatsapp_contato_campanhas_pk" }),
+  campanhaIdx: index("campanhas_whatsapp_contato_campanhas_campanha_idx").on(t.campanhaId),
+}));
+
+export const campanhasWhatsappContatoTentativas = pgTable("campanhas_whatsapp_contato_tentativas", {
+  id: serial("id").primaryKey(),
+  contatoId: integer("contato_id").notNull().references(() => campanhasWhatsappContatos.id, { onDelete: "cascade" }),
+  telefoneId: integer("telefone_id").notNull().references(() => campanhasWhatsappContatoTelefones.id, { onDelete: "restrict" }),
+  telefoneE164: varchar("telefone_e164", { length: 16 }).notNull(),
+  telefoneOriginal: text("telefone_original").notNull(),
+  campanhaId: integer("campanha_id").notNull(),
+  campanhaNome: varchar("campanha_nome", { length: 160 }).notNull(),
+  disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
+  resultado: varchar("resultado", { length: 24 }).notNull(),
+  origem: varchar("origem", { length: 32 }).notNull(),
+  idempotencyKey: varchar("idempotency_key", { length: 160 }).unique(),
+  ocorridoEm: timestamp("ocorrido_em").defaultNow().notNull(),
+  dataEnvio: date("data_envio"),
+}, t => ({
+  contatoDataIdx: index("campanhas_whatsapp_contato_tentativas_contato_idx").on(t.contatoId, t.ocorridoEm),
+  campanhaIdx: index("campanhas_whatsapp_contato_tentativas_campanha_idx").on(t.campanhaId, t.ocorridoEm),
+  disparoIdx: index("campanhas_whatsapp_contato_tentativas_disparo_idx").on(t.disparoId),
+  disparoTelefoneUnique: uniqueIndex("campanhas_whatsapp_contato_tentativas_disparo_telefone_unique")
+    .on(t.disparoId, t.telefoneE164).where(sql`${t.disparoId} IS NOT NULL`),
+}));
+export type CampanhaWhatsappContatoTentativa = typeof campanhasWhatsappContatoTentativas.$inferSelect;
+
+// Links humanos para IDs estáveis do MubiSys/histórico. Um registro ERP só pode
+// estar associado a um contato ativo; telefones adicionais ficam no contato.
+export const campanhasWhatsappContatoVinculos = pgTable("campanhas_whatsapp_contato_vinculos", {
+  id: serial("id").primaryKey(),
+  contatoId: integer("contato_id").notNull().references(() => campanhasWhatsappContatos.id, { onDelete: "cascade" }),
+  tipoEntidade: varchar("tipo_entidade", { length: 24 }).notNull(),
+  chaveEntidade: varchar("chave_entidade", { length: 80 }).notNull(),
+  rotuloEntidade: varchar("rotulo_entidade", { length: 256 }).notNull(),
+  ativo: boolean("ativo").notNull().default(true),
+  metodo: varchar("metodo", { length: 16 }).notNull().default("manual"),
+  confianca: integer("confianca"),
+  justificativa: text("justificativa").notNull(),
+  vinculadoPorId: text("vinculado_por_id"),
+  vinculadoPorNome: varchar("vinculado_por_nome", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  contatoIdx: index("campanhas_whatsapp_contato_vinculos_contato_idx").on(t.contatoId, t.ativo),
+  entidadeAtivaUnique: uniqueIndex("campanhas_whatsapp_contato_vinculos_entidade_ativa_unique")
+    .on(t.contatoId, t.tipoEntidade, t.chaveEntidade).where(sql`${t.ativo} = true`),
+}));
+
+// Trilha append-only para associações humanas e respectivos desfazimentos.
+export const campanhasWhatsappContatoVinculoAuditoria = pgTable("campanhas_whatsapp_contato_vinculo_auditoria", {
+  id: serial("id").primaryKey(),
+  contatoId: integer("contato_id").notNull().references(() => campanhasWhatsappContatos.id, { onDelete: "restrict" }),
+  vinculoId: integer("vinculo_id"),
+  tipoEntidade: varchar("tipo_entidade", { length: 24 }).notNull(),
+  chaveEntidade: varchar("chave_entidade", { length: 80 }).notNull(),
+  acao: varchar("acao", { length: 16 }).notNull(),
+  justificativa: text("justificativa").notNull(),
+  usuarioId: text("usuario_id"),
+  usuarioNome: varchar("usuario_nome", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({
+  contatoIdx: index("campanhas_whatsapp_contato_vinculo_auditoria_contato_idx").on(t.contatoId, t.createdAt),
+}));
+
 export const campanhaWhatsappAgendamentoStatusEnum = pgEnum("campanha_whatsapp_agendamento_status", ["planejado", "disparado", "nao_disparado"]);
 
 export const campanhasWhatsappAgendamentos = pgTable("campanhas_whatsapp_agendamentos", {
