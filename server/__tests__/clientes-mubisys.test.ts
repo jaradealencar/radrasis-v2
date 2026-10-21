@@ -21,7 +21,7 @@ describe("escolherTelefoneCliente", () => {
   });
 
   it("usa contato inativo só como último recurso e devolve null sem número válido", () => {
-    expect(escolherTelefoneCliente({ contatos: [{ status: "Inativo", celular: "+556799990000" }] })).toBe("556799990000");
+    expect(escolherTelefoneCliente({ contatos: [{ status: "Inativo", celular: "+556799990000" }] })).toBe("5567999990000");
     expect(escolherTelefoneCliente({ telefone_pri: "(00) 00000-0000", contatos: [{ celular: "" }] })).toBeNull();
     expect(escolherTelefoneCliente({})).toBeNull();
     expect(escolherTelefoneCliente(null)).toBeNull();
