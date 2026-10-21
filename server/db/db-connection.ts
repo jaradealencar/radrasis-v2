@@ -12,7 +12,8 @@
  * `{ rows, rowCount }`), então nada abaixo desta função precisou mudar.
  */
 
-import { Pool, neonConfig, type QueryResult } from '@neondatabase/serverless';
+import { Pool as NeonPool, neonConfig, type QueryResult } from '@neondatabase/serverless';
+import { Pool as PostgresPool } from "pg";
 
 // Consultas avulsas via `pool.query()` usam HTTP (fetch). O Drizzle executa
 // `db.transaction(...)` fazendo `pool.connect()` e usa o PoolClient por
@@ -20,21 +21,45 @@ import { Pool, neonConfig, type QueryResult } from '@neondatabase/serverless';
 // runtime Node com suporte a WebSocket; use exclusivamente o `tx` recebido
 // dentro do callback para que todas as queries participem da mesma transação.
 
-// O CI usa PostgreSQL local efêmero para testes destrutivos isolados; fora
-// desse modo, o caminho padrão de produção continua usando HTTP via Neon.
-neonConfig.poolQueryViaFetch = process.env.AUDITOR_TEST_DATABASE !== "1";
+// O Neon usa HTTP nas consultas avulsas de produção. O banco efêmero do CI é
+// PostgreSQL comum (não fala o protocolo WebSocket do proxy Neon), por isso o
+// modo de auditoria usa o driver pg, já presente nas dependências do servidor.
+const auditorTestDatabase = process.env.AUDITOR_TEST_DATABASE === "1";
+neonConfig.poolQueryViaFetch = true;
 
-let pool: Pool | null = null;
+let pool: NeonPool | null = null;
 
-export function getPool(): Pool {
+function validarBancoEfemero(connectionString: string): void {
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    throw new Error("AUDITOR_TEST_DATABASE exige uma DATABASE_URL de PostgreSQL local isolado.");
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const hostLocal = ["localhost", "127.0.0.1", "::1"].includes(hostname);
+  const nomeBanco = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  const nomeDeTeste = /_(?:test|tests|ci)$/i.test(nomeBanco);
+  if (!hostLocal || !nomeDeTeste) {
+    throw new Error("AUDITOR_TEST_DATABASE só pode usar host local e banco com sufixo _test, _tests ou _ci.");
+  }
+}
+
+export function getPool(): NeonPool {
   if (pool) {
     return pool;
   }
 
   try {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) throw new Error("DATABASE_URL é obrigatória.");
+    if (auditorTestDatabase) {
+      validarBancoEfemero(connectionString);
+      pool = new PostgresPool({ connectionString, max: 5, idleTimeoutMillis: 1_000 }) as unknown as NeonPool;
+      console.log("✅ [DB-CONNECTION] Pool pg criado para PostgreSQL efêmero de teste");
+      return pool;
+    }
+    pool = new NeonPool({ connectionString });
 
     console.log('✅ [DB-CONNECTION] Pool (Neon serverless) criado com sucesso');
     return pool;

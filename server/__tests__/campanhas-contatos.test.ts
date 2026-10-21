@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { normalizarTelefoneContato, chaveTelefoneContato, juntarTelefonesOriginais, variantesTelefoneContato } from "../../shared/campanhas-contatos";
 
 describe("normalizarTelefoneContato", () => {
@@ -34,6 +34,23 @@ describe("normalizarTelefoneContato", () => {
     expect(variantesTelefoneContato(["+5567990009811"])).toEqual(expect.arrayContaining([
       "5567990009811", "67990009811", "556790009811", "6790009811",
     ]));
+  });
+});
+
+describe("pool do banco isolado", () => {
+  it("recusa DATABASE_URL remota quando o modo de teste está ativo", async () => {
+    vi.stubEnv("AUDITOR_TEST_DATABASE", "1");
+    vi.stubEnv("DATABASE_URL", "postgresql://tester:secret@example.invalid/radrasys_ci");
+    vi.resetModules();
+    const logErro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { getPool } = await import("../db/db-connection");
+      expect(() => getPool()).toThrow("só pode usar host local");
+    } finally {
+      logErro.mockRestore();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 });
 

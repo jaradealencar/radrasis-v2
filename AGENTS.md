@@ -355,9 +355,16 @@ suítes que tocam banco falham na conexão, não só pulam. Vários testes usam
 o banco real (Neon) via fixtures de SQL cru — não há banco de teste isolado
 nem mocks da camada de dados.
 
+Exceção para a workflow isolada de CI: `AUDITOR_TEST_DATABASE=1` troca o
+pool por `pg` somente quando `DATABASE_URL` aponta para `localhost`, `127.0.0.1`
+ou `::1` e o banco termina em `_test`, `_tests` ou `_ci`. A validação recusa
+URLs remotas antes de abrir conexão. Use esse modo apenas com PostgreSQL
+efêmero; a workflow `campaigns-quality.yml` cria e descarta seu próprio banco.
+
 O workflow `.github/workflows/campaigns-quality.yml` usa PostgreSQL 16 efêmero
-para migrations e testes de integração, com `AUDITOR_TEST_DATABASE=1` para
-desabilitar o caminho HTTP do driver Neon apenas nesse ambiente local de CI.
+para migrations e testes de integração. `AUDITOR_TEST_DATABASE=1` seleciona o
+pool `pg` nativo, porque o serviço PostgreSQL local não implementa o proxy
+WebSocket do Neon.
 O teste de imutabilidade do histórico do Robô Auditor exige esse modo e o banco
 `radrasys_campaigns_ci`; não o habilite contra uma conexão de produção. O painel
 manual do Auditor não executa Vitest: faz probes somente de leitura e autotestes

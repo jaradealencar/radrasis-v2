@@ -413,7 +413,7 @@ Vínculos a cliente MubiSys, orçamento e O.S. usam seus IDs/números estáveis 
 
 A migration `0117_curved_sharon_ventura` reconstrói o estado anterior a partir dos itens granulares de envio e do último histórico disponível, preservando as grafias disponíveis. Telefones legados sem formato numérico válido são ignorados no vínculo automático. Como o schema antigo guardava só o último contato por campanha/telefone, as contagens importadas são marcadas como **mínimos conhecidos** (`historico_completo = false`) e a tela usa `≥`; não é possível recuperar tentativas antigas que nunca foram persistidas. As tentativas novas ficam completas após a aplicação da migration. Nenhuma migration foi aplicada a banco real durante a implementação.
 
-Testes: `server/__tests__/campanhas-contatos.test.ts` cobre a normalização pura; o cenário PostgreSQL só executa quando `AUDITOR_TEST_DATABASE=1` e é habilitado na workflow com banco efêmero.
+Testes: `server/__tests__/campanhas-contatos.test.ts` cobre a normalização pura e a compatibilidade do nono dígito legado. O cenário PostgreSQL só executa quando `AUDITOR_TEST_DATABASE=1`; esse modo aceita apenas PostgreSQL local com nome de banco de teste/CI e usa o driver `pg`. A workflow cria seu banco efêmero antes das migrations e dos testes.
 
 ## Testes
 
