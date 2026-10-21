@@ -15,6 +15,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, count, desc, eq, gte, inArray, isNotNull, lte, max, sql } from "drizzle-orm";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
+import { campanhasWhatsappAuditorRouter } from "./campanhasWhatsappAuditor";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
@@ -1795,4 +1796,5 @@ Script 2: [Título]
         porCampanha,
       };
     }),
+  auditor: campanhasWhatsappAuditorRouter,
 });

@@ -1,0 +1,76 @@
+name: Campanhas WhatsApp — qualidade
+
+on:
+  push:
+    branches:
+      - main
+      - codex/marketing-financeiro-metricas
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "17 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: campaigns-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-quality:
+    name: Typecheck, migrations, testes e build isolados
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/radrasys_campaigns_ci
+      AUDITOR_TEST_DATABASE: "1"
+      NODE_ENV: test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: radrasys_campaigns_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d radrasys_campaigns_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+      - name: Preparar Node.js e cache Yarn
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - name: Ativar Corepack
+        run: corepack enable
+      - name: Instalar dependências travadas
+        run: yarn install --frozen-lockfile
+      - name: Verificar tipos
+        run: yarn run check
+      - name: Aplicar migrations no PostgreSQL efêmero
+        run: yarn db:migrate
+      - name: Executar a suíte completa e gerar relatório
+        run: yarn vitest run --reporter=default --reporter=json --outputFile=vitest-report.json
+      - name: Bloquear testes críticos ausentes, ignorados ou reprovados
+        run: node scripts/auditor/verify-critical-tests.mjs vitest-report.json
+      - name: Build de produção
+        run: yarn build
+        env:
+          NODE_ENV: production
+      - name: Guardar relatório de testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: campanhas-vitest-${{ github.run_id }}
+          path: vitest-report.json
+          if-no-files-found: ignore
+          retention-days: 14

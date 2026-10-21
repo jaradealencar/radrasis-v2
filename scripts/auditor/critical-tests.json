@@ -1,0 +1,9 @@
+{
+  "tests": [
+    "AUDITOR-CRITICAL: importa os 74 requisitos e não reutiliza IDs",
+    "AUDITOR-CRITICAL: detecta cada falha sintética sem dados reais",
+    "AUDITOR-CRITICAL: sanitiza credenciais, e-mail e telefone fictícios",
+    "AUDITOR-CRITICAL: o botão inicia a auditoria completa",
+    "AUDITOR-CRITICAL: protege execuções concluídas contra edição e exclusão"
+  ]
+}

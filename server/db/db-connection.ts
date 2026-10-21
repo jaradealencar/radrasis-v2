@@ -20,7 +20,9 @@ import { Pool, neonConfig, type QueryResult } from '@neondatabase/serverless';
 // runtime Node com suporte a WebSocket; use exclusivamente o `tx` recebido
 // dentro do callback para que todas as queries participem da mesma transação.
 
-neonConfig.poolQueryViaFetch = true;
+// O CI usa PostgreSQL local efêmero para testes destrutivos isolados; fora
+// desse modo, o caminho padrão de produção continua usando HTTP via Neon.
+neonConfig.poolQueryViaFetch = process.env.AUDITOR_TEST_DATABASE !== "1";
 
 let pool: Pool | null = null;
 

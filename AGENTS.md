@@ -353,6 +353,14 @@ suítes que tocam banco falham na conexão, não só pulam. Vários testes usam
 o banco real (Neon) via fixtures de SQL cru — não há banco de teste isolado
 nem mocks da camada de dados.
 
+O workflow `.github/workflows/campaigns-quality.yml` usa PostgreSQL 16 efêmero
+para migrations e testes de integração, com `AUDITOR_TEST_DATABASE=1` para
+desabilitar o caminho HTTP do driver Neon apenas nesse ambiente local de CI.
+O teste de imutabilidade do histórico do Robô Auditor exige esse modo e o banco
+`radrasys_campaigns_ci`; não o habilite contra uma conexão de produção. O painel
+manual do Auditor não executa Vitest: faz probes somente de leitura e autotestes
+sintéticos, gravando apenas catálogo e histórico nas tabelas próprias do Auditor.
+
 ## docs/ — quais valem como fonte de verdade
 
 - **Vendas/ABC do MubiSys na Tabela de Preços (07/10/2026):** `server/services/mubisysVendas.ts` sincroniza OS faturadas por mês ao abrir a calculadora, com TTL de 6 h, grava as linhas em `mubisys_vendas_itens`, status em `mubisys_vendas_sync_status` e ABC em `abc_cache`; `server/services/priceTableImpact.ts` cruza snapshots do histórico com vendas pelos IDs de produtos e modelos afiliados. Migrações `0099_precos_vendas_mubisys` e `0100_afiliacao_blocos_tabela_preco` criam tabelas de vendas, pareamento, afiliações e histórico; `0101_afiliacao_modelos_faixa_preco` permite afiliar o produto inteiro ou modelos específicos (`null` significa todos). A edição pode começar em qualquer uma das tabelas e é espelhada no bloco pareado. Sincronização externa de setembro e outubro/2026 foi validada; token MubiSys ainda é renovação manual. Detalhes em `docs/integracao-mubisys.md`.
@@ -363,6 +371,8 @@ nem mocks da camada de dados.
   importante pra entender o estado real do banco/auth agora.**
 - `docs/campanhas-whatsapp.md` — módulo Campanhas WhatsApp (aba ao lado de ROI Marketing): regras de
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
+- `docs/robo-auditor-campanhas-whatsapp.md` — catálogo CAMP-001…084, estados,
+  execução manual segura, histórico, CI isolada e limites do Robô Auditor.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias

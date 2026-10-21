@@ -3801,3 +3801,45 @@ export const campanhasWhatsappAgendamentos = pgTable("campanhas_whatsapp_agendam
 }));
 export type CampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferSelect;
 export type InsertCampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferInsert;
+
+// Catálogo e trilha append-only das auditorias do módulo Campanhas WhatsApp.
+// Os detalhes guardam apenas evidências sanitizadas; nunca mensagens/telefones.
+export const campanhasAuditorRequisitos = pgTable("campanhas_auditor_requisitos", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  nome: text("nome").notNull(),
+  descricao: text("descricao").notNull(),
+  modulo: varchar("modulo", { length: 120 }).notNull(),
+  criteriosAceite: text("criterios_aceite").notNull(),
+  testesAssociados: jsonb("testes_associados").$type<string[]>().notNull().default([]),
+  criticidade: varchar("criticidade", { length: 16 }).notNull(),
+  statusAtual: varchar("status_atual", { length: 32 }).notNull(),
+  evidencia: jsonb("evidencia").$type<Record<string, unknown>>().notNull().default({}),
+  ultimaVerificacao: timestamp("ultima_verificacao"),
+  versaoSoftware: varchar("versao_software", { length: 128 }),
+  atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
+}, t => ({
+  moduloIdx: index("campanhas_auditor_requisitos_modulo_idx").on(t.modulo),
+  statusIdx: index("campanhas_auditor_requisitos_status_idx").on(t.statusAtual),
+}));
+export type CampanhasAuditorRequisito = typeof campanhasAuditorRequisitos.$inferSelect;
+
+export const campanhasAuditorExecucoes = pgTable("campanhas_auditor_execucoes", {
+  id: serial("id").primaryKey(),
+  escopo: varchar("escopo", { length: 16 }).notNull(),
+  modulo: varchar("modulo", { length: 120 }),
+  modo: varchar("modo", { length: 24 }).notNull(),
+  usuarioId: text("usuario_id"),
+  commitSha: varchar("commit_sha", { length: 128 }),
+  branch: varchar("branch", { length: 256 }),
+  ambiente: varchar("ambiente", { length: 32 }),
+  publishedSha: varchar("published_sha", { length: 128 }),
+  resumo: jsonb("resumo").$type<Record<string, unknown>>().notNull(),
+  resultados: jsonb("resultados").$type<unknown[]>().notNull(),
+  finalizada: boolean("finalizada").notNull().default(false),
+  iniciadoEm: timestamp("iniciado_em").defaultNow().notNull(),
+  concluidoEm: timestamp("concluido_em").defaultNow().notNull(),
+}, t => ({
+  inicioIdx: index("campanhas_auditor_execucoes_inicio_idx").on(t.iniciadoEm),
+  commitIdx: index("campanhas_auditor_execucoes_commit_idx").on(t.commitSha),
+}));
+export type CampanhasAuditorExecucao = typeof campanhasAuditorExecucoes.$inferSelect;

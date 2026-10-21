@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { AlertTriangle, BanIcon, BarChart3, CalendarDays, CheckCircle2, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, Trash2, Users } from "lucide-react";
+import { AlertTriangle, BanIcon, BarChart3, CalendarDays, CheckCircle2, ClipboardList, Copy, History, ListChecks, Megaphone, MoreHorizontal, Pencil, Plus, Send, Siren, CalendarClock, LayoutList, ShieldCheck, Trash2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -23,6 +24,7 @@ import HistoricoDialog from "./campanhasWhatsapp/HistoricoDialog";
 import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
 import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
 import VendasPosVendaDialog from "./campanhasWhatsapp/VendasPosVendaDialog";
+import CampanhasAuditor from "./campanhasWhatsapp/CampanhasAuditor";
 import { StatusCampanhaBadge, type CampanhaLinha } from "./campanhasWhatsapp/comuns";
 
 function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: () => void; children: React.ReactNode }) {
@@ -41,6 +43,8 @@ function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: ()
  * quarentena anti-spam por telefone e pós-venda por data da venda. Ver docs/campanhas-whatsapp.md.
  */
 export default function MarketingCampanhasWhatsapp() {
+  const { user } = useAuth();
+  const podeAuditar = user?.role === "admin" || user?.role === "master";
   const { data, isLoading, isError, error, refetch } = trpc.campanhasWhatsapp.listar.useQuery();
   const { data: categorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery();
   // Fallback pra própria chave: só aconteceria se a categoria tivesse sido excluída fisicamente por fora
@@ -96,6 +100,7 @@ export default function MarketingCampanhasWhatsapp() {
           <TabsTrigger value="calendario" className="gap-1.5"><CalendarDays size={14} /> Calendário</TabsTrigger>
           <TabsTrigger value="relatorios" className="gap-1.5"><BarChart3 size={14} /> Relatórios</TabsTrigger>
           <TabsTrigger value="nao-receber" className="gap-1.5"><BanIcon size={14} /> Não quer receber</TabsTrigger>
+          {podeAuditar && <TabsTrigger value="auditor" className="gap-1.5"><ShieldCheck size={14} /> Robô Auditor</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="painel" className="space-y-4 pt-3">
@@ -247,6 +252,8 @@ export default function MarketingCampanhasWhatsapp() {
         <TabsContent value="nao-receber" className="pt-3">
           <NaoReceberMensagens />
         </TabsContent>
+
+        {podeAuditar && <TabsContent value="auditor" className="pt-0"><CampanhasAuditor /></TabsContent>}
       </Tabs>
 
       <CampanhaFormDialog
