@@ -39,12 +39,13 @@ async function ultimoContato(telefone: string): Promise<string | null> {
 const disparo = (campanhaId: number, dataEnvio: string, contatos: Array<{ telefone: string; nome?: string; osNumero?: string }>, aplicarQuarentena = true) =>
   registrarDisparoNoBanco({ campanhaId, dataEnvio, contatos, origem: "app", registradoPor: "Teste", aplicarQuarentena });
 
-async function criarDisparoDeTeste(campanhaId: number, dataEnvio: string): Promise<number> {
+async function criarDisparoDeTeste(campanhaId: number): Promise<number> {
   const r = await getPool().query(
     `INSERT INTO campanhas_whatsapp_disparos
        (campanha_id, enviado_em, contatos_recebidos, contatos_enviados, registrado_por)
      VALUES ($1, $2, 1, 1, 'Teste de itens') RETURNING id`,
-    [campanhaId, dataEnvio],
+    // Não altera a data do último disparo usada pelos testes de calendário abaixo.
+    [campanhaId, dia(-90)],
   );
   return Number(r.rows[0].id);
 }
@@ -134,14 +135,14 @@ describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", (
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
   it("listarItensDisparo começa vazio (resumo zerado) para um disparo que nunca teve itens gravados", async () => {
-    const disparoId = await criarDisparoDeTeste(recorrenteId, dia(-3));
+    const disparoId = await criarDisparoDeTeste(recorrenteId);
     const { itens, resumo } = await admin().listarItensDisparo({ disparoId });
     expect(itens).toHaveLength(0);
     expect(resumo).toEqual({ lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 });
   });
 
   it("salvarItensDisparoManual grava os válidos, rejeita telefone inválido e classifica o resumo sem_consulta", async () => {
-    const disparoId = await criarDisparoDeTeste(recorrenteId, dia(-2));
+    const disparoId = await criarDisparoDeTeste(recorrenteId);
     const salvo = await admin().salvarItensDisparoManual({
       disparoId,
       itens: [
@@ -160,14 +161,14 @@ describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", (
   });
 
   it("atualizarStatusItensDisparo recusa quando nenhum item tem ID de mensagem", async () => {
-    const disparoId = await criarDisparoDeTeste(recorrenteId, dia(-1));
+    const disparoId = await criarDisparoDeTeste(recorrenteId);
     await admin().salvarItensDisparoManual({ disparoId, itens: [{ telefone: TEL.E, nome: "Eva" }] });
     vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
     await expect(admin().atualizarStatusItensDisparo({ disparoId })).rejects.toThrow(/ID de mensagem/);
   });
 
   it("atualizarStatusItensDisparo consulta a API, grava o status e recalcula o resumo", async () => {
-    const disparoId = await criarDisparoDeTeste(recorrenteId, hoje);
+    const disparoId = await criarDisparoDeTeste(recorrenteId);
     await admin().atualizar({ id: recorrenteId, status: "ativa" }); // garante que a campanha não ficou pausada de um teste anterior
     await admin().salvarItensDisparoManual({
       disparoId, itens: [{ telefone: TEL.E, nome: "Eva", wtsMensagemId: "msg-teste-123" }],
@@ -188,7 +189,7 @@ describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", (
   });
 
   it("dispararWts falha sem WTS_CHAT_AUTHORIZATION (integração não configurada) — listarItensDisparo não quebra para disparo sem nenhum item", async () => {
-    const disparoId = await criarDisparoDeTeste(recorrenteId, dia(-4));
+    const disparoId = await criarDisparoDeTeste(recorrenteId);
     await expect(admin().listarItensDisparo({ disparoId })).resolves.toMatchObject({
       itens: [], resumo: { lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 },
     });
