@@ -112,7 +112,8 @@ suiteBanco("rastreamento de contatos no PostgreSQL isolado", () => {
       [String(clienteTesteId)],
     );
     expect(linksCliente.rows[0]?.total).toBe(2);
-    const vinculo = (await caller.detalhar({ contatoId: first.id })).vinculos[0];
+    const vinculo = (await caller.detalhar({ contatoId: first.id })).vinculos.find(row => row.tipo === "mubisys_cliente");
+    expect(vinculo).toBeDefined();
     expect(vinculo?.chave).toBe(String(clienteTesteId));
     await caller.desvincularEntidade({ vinculoId: vinculo.id, justificativa: "Correção solicitada no cenário de teste." });
     const audit = (await caller.detalhar({ contatoId: first.id })).auditoria;
