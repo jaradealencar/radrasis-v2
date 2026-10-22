@@ -85,6 +85,13 @@ interface, proposta e documentação atual.
 
 ## Gerenciador de pacotes
 
+Os builds completos (`yarn build` e `yarn build:vercel`) gravam
+`dist/public/build-info.json` com o SHA completo do commit de origem e o estado
+da árvore-fonte (`clean`, `dirty` ou `unknown`), e registram ambos no log do
+build. Na Vercel usam `VERCEL_GIT_COMMIT_SHA`; no GitHub
+Actions usam `GITHUB_SHA`; localmente usam `git rev-parse HEAD`. O arquivo não
+contém variáveis de ambiente nem credenciais.
+
 **Yarn (classic, 1.x)** — não use `npm install` nem `pnpm`. O projeto foi
 migrado de pnpm para yarn; o lockfile é `yarn.lock`.
 
@@ -116,10 +123,17 @@ Ver `docs/protecao-ambientes-banco-publicacao.md`.
 
 ## Banco de dados — sempre via migration
 
-Consultas avulsas por `getPool().query()` usam HTTP via Neon. Transações
-Drizzle (`db.transaction`) reservam um `PoolClient` por WebSocket e exigem
-runtime Node com suporte a WebSocket. Dentro do callback, use apenas o `tx`
-recebido para garantir que todas as queries participem da mesma transação.
+No runtime normal, consultas avulsas por `getPool().query()` usam HTTP via
+Neon. Transações Drizzle (`db.transaction`) reservam um `PoolClient` por
+WebSocket e exigem runtime Node com suporte a WebSocket. Dentro do callback,
+use apenas o `tx` recebido para garantir que todas as queries participem da
+mesma transação. O wrapper `yarn test` valida `TEST_DATABASE_URL` e seleciona
+`pg` com o adapter `node-postgres` somente no processo de teste; essa conexão
+deve apontar ao mesmo PostgreSQL local descartável validado pelo wrapper.
+
+Logs de banco devem usar `safeErrorType()` (`server/db/db-connection.ts`) para
+registrar apenas a categoria segura do erro. Não registre SQL, parâmetros,
+payloads de clientes nem objetos de erro do driver.
 
 Dialeto: **PostgreSQL** (`drizzle.config.ts` tem `dialect: "postgresql"`).
 Nunca altere o schema do banco rodando SQL direto (`psql`, script one-off,
@@ -359,7 +373,9 @@ em vez de reescrever o padrão:
 `yarn test` roda a suíte completa em `server/**/*.test.ts`, mas exige
 `TEST_DATABASE_URL` apontando para `localhost`, `127.0.0.1` ou `::1` e um nome
 de banco contendo `_ci`, `_test` ou `_tests`. O runner injeta essa URL como
-`DATABASE_URL` no processo Vitest. Não use um banco de produção para testes.
+`DATABASE_URL` e ativa o adapter PostgreSQL nativo nesse processo. Não execute a
+suíte completa com `vitest run` direto, pois isso ignora o wrapper e sua guarda.
+Não use um banco de produção para testes.
 Os testes com banco usam fixtures SQL reais e devem rodar apenas num banco
 descartável isolado, como o serviço Postgres do workflow de qualidade.
 

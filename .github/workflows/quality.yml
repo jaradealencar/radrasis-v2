@@ -28,6 +28,8 @@ jobs:
         run: corepack prepare yarn@1.22.22 --activate
       - name: Install dependencies
         run: yarn install --frozen-lockfile
+      - name: Verify migration, build, workflow, and schema safety
+        run: yarn test:safety
       - name: Typecheck
         run: yarn run check
       - name: Build without database credentials
@@ -35,6 +37,7 @@ jobs:
 
   isolated-database-tests:
     name: isolated-database-tests
+    needs: [build-and-typecheck]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -71,8 +74,6 @@ jobs:
         run: corepack prepare yarn@1.22.22 --activate
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Verify migration and test safety guards
-        run: yarn test:safety
       - name: Apply migrations to disposable CI database
         run: yarn db:migrate
       - name: Run test suite against disposable CI database

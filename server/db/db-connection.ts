@@ -1,6 +1,7 @@
 /**
- * Conexão com banco de dados PostgreSQL (Neon) usando o driver serverless.
- * Usa DATABASE_URL para conexão (mesma variável do Drizzle).
+ * Conexão PostgreSQL da aplicação. O runtime normal usa o driver serverless
+ * do Neon; a suíte protegida de testes pode selecionar `pg` para PostgreSQL
+ * local descartável.
  *
  * Por que o driver serverless e não o `pg`: em ambiente serverless (Vercel)
  * cada instância fria abriria conexões TCP novas no caminho crítico da
@@ -12,34 +13,96 @@
  * `{ rows, rowCount }`), então nada abaixo desta função precisou mudar.
  */
 
-import { Pool, neonConfig, type QueryResult } from '@neondatabase/serverless';
+import { Pool as NeonPool, neonConfig, type QueryResult } from '@neondatabase/serverless';
+import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless';
+import { drizzle as drizzlePostgres } from 'drizzle-orm/node-postgres';
+import { Pool as PostgresPool, type Pool as NodePostgresPool } from 'pg';
+import { assertSafeTestDatabase, databaseIdentity } from '../scripts/migration-safety';
 
-// Consultas avulsas via `pool.query()` usam HTTP (fetch). O Drizzle executa
-// `db.transaction(...)` fazendo `pool.connect()` e usa o PoolClient por
-// WebSocket durante BEGIN/COMMIT/ROLLBACK. Endpoints transacionais exigem
-// runtime Node com suporte a WebSocket; use exclusivamente o `tx` recebido
-// dentro do callback para que todas as queries participem da mesma transação.
+// No runtime normal, consultas avulsas via `pool.query()` usam HTTP (fetch).
+// O wrapper `yarn test` seleciona `pg` somente depois de validar a URL
+// descartável local. No runtime Neon, transações Drizzle usam WebSocket;
+// dentro do callback, use exclusivamente o `tx` recebido.
 
 neonConfig.poolQueryViaFetch = true;
 
-let pool: Pool | null = null;
+type DatabasePool = NeonPool | PostgresPool;
 
-export function getPool(): Pool {
+let pool: DatabasePool | null = null;
+
+const SAFE_ERROR_CATEGORIES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'ReferenceError',
+  'URIError',
+  'AggregateError',
+  'AbortError',
+  'TimeoutError',
+  'DatabaseError',
+  'NeonDbError',
+  'PostgresError',
+  'DrizzleError',
+]);
+
+export function shouldUseNativePostgresTestDriver(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (environment.RADRASYS_TEST_DB_DRIVER !== 'pg') {
+    return false;
+  }
+
+  if (environment.APP_ENV !== 'test' || environment.NODE_ENV !== 'test') {
+    throw new Error('The native PostgreSQL test driver requires APP_ENV=test and NODE_ENV=test.');
+  }
+
+  const testIdentity = assertSafeTestDatabase(environment);
+  const databaseUrlIdentity = databaseIdentity(environment.DATABASE_URL);
+  if (
+    databaseUrlIdentity.host !== testIdentity.host ||
+    databaseUrlIdentity.port !== testIdentity.port ||
+    databaseUrlIdentity.database !== testIdentity.database
+  ) {
+    throw new Error('DATABASE_URL must match the validated TEST_DATABASE_URL for database tests.');
+  }
+
+  return true;
+}
+
+export function getPool(): DatabasePool {
   if (pool) {
     return pool;
   }
 
   try {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
+    const poolConfig = { connectionString: process.env.DATABASE_URL };
+    pool = shouldUseNativePostgresTestDriver()
+      ? new PostgresPool(poolConfig)
+      : new NeonPool(poolConfig);
 
-    console.log('✅ [DB-CONNECTION] Pool (Neon serverless) criado com sucesso');
+    console.log(
+      `[DB-CONNECTION] Pool (${pool instanceof PostgresPool ? 'PostgreSQL de teste' : 'Neon serverless'}) criado`,
+    );
     return pool;
   } catch (error) {
-    console.error('❌ [DB-CONNECTION] Erro ao criar pool:', error);
+    console.error('[DB-CONNECTION] Falha ao criar pool:', safeErrorType(error));
     throw error;
   }
+}
+
+export function safeErrorType(error: unknown): string {
+  return error instanceof Error && SAFE_ERROR_CATEGORIES.has(error.name) ? error.name : 'UnknownError';
+}
+
+export function createAppDatabase(
+  databasePool: DatabasePool = getPool(),
+): ReturnType<typeof drizzleNeon> {
+  if (databasePool instanceof PostgresPool) {
+    return drizzlePostgres(databasePool as NodePostgresPool) as unknown as ReturnType<typeof drizzleNeon>;
+  }
+
+  return drizzleNeon(databasePool);
 }
 
 /**
@@ -62,15 +125,14 @@ export async function executeQuery(
   const pool = getPool();
 
   try {
-    console.log('📝 [QUERY] SQL:', sql);
-    console.log('📝 [QUERY] Values:', values);
+    const postgresSql = toPgPlaceholders(sql);
+    if (pool instanceof PostgresPool) {
+      return (await pool.query(postgresSql, values)) as QueryResult;
+    }
 
-    const result = await pool.query(toPgPlaceholders(sql), values);
-
-    console.log('✅ [QUERY] Sucesso');
-    return result;
+    return await pool.query(postgresSql, values);
   } catch (error) {
-    console.error('❌ [QUERY] Erro:', error);
+    console.error('[QUERY] Falha na consulta:', safeErrorType(error));
     throw error;
   }
 }
