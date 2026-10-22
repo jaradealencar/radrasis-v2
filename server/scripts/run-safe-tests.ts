@@ -11,6 +11,7 @@ const result = spawnSync(process.execPath, [cliPath, "run", ...process.argv.slic
     APP_ENV: "test",
     NODE_ENV: "test",
     DATABASE_URL: process.env.TEST_DATABASE_URL,
+    RADRASYS_TEST_DB_DRIVER: "pg",
   },
 });
 
