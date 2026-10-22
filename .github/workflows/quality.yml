@@ -1,0 +1,79 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-typecheck:
+    name: build-and-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - name: Activate Yarn classic
+        run: corepack prepare yarn@1.22.22 --activate
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Typecheck
+        run: yarn run check
+      - name: Build without database credentials
+        run: yarn build:vercel
+
+  isolated-database-tests:
+    name: isolated-database-tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: radrasys_ci_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d radrasys_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: ci
+      NODE_ENV: test
+      CI: "true"
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/radrasys_ci_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/radrasys_ci_test
+      DB_MIGRATION_TARGET: ci
+      DB_MIGRATION_EXPECTED_HOST: 127.0.0.1
+      DB_MIGRATION_EXPECTED_PORT: "5432"
+      DB_MIGRATION_EXPECTED_DATABASE: radrasys_ci_test
+      DB_MIGRATION_CONFIRMATION: MIGRATE:ci:127.0.0.1:5432/radrasys_ci_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - name: Activate Yarn classic
+        run: corepack prepare yarn@1.22.22 --activate
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Verify migration and test safety guards
+        run: yarn test:safety
+      - name: Apply migrations to disposable CI database
+        run: yarn db:migrate
+      - name: Run test suite against disposable CI database
+        run: yarn test

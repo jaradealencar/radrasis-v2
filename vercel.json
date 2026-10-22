@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "yarn db:migrate && yarn build:client && yarn build:api",
+  "buildCommand": "yarn build:vercel",
   "outputDirectory": "dist/public",
   "functions": {
     "api/index.js": {
