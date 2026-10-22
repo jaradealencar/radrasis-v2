@@ -8,15 +8,20 @@
 --
 -- ─── Como o dado é identificado (leia antes de confiar no número) ──────────
 --
--- 1. "Inox" é detectado por TEXTO no nome do trabalho (historico_os.trabalho,
---    que vem de nome_trabalho na API MubiSys — é o título digitado pelo
---    vendedor, ex. "Letreiro Caixa Inox", "Fachada Inox Escovado"). NÃO existe
---    hoje um campo estruturado de "material" na OS/histórico do MubiSys (isso
---    só existe para o CPQ Letreiros Express, via matéria-prima/composição —
---    ver AGENTS.md seção "CPQ renderização 3D"/"Cadastro de matérias-primas").
---    Se o vendedor não escreveu "inox" no título do trabalho, essa OS NÃO
---    entra na contagem, mesmo que o letreiro seja de inox. Isso provavelmente
---    SUBESTIMA o total real.
+-- 1. Critério pedido pelo usuário: "inox" quando o NOME DO TRABALHO tiver
+--    "inox" no texto (historico_os.trabalho, que vem de nome_trabalho na API
+--    MubiSys — é o título digitado pelo vendedor na OS, ex. "Letreiro Caixa
+--    Inox", "Fachada Inox Escovado"). Busca por substring, sem diferenciar
+--    maiúscula/minúscula (ILIKE), então já cobre "Inox", "INOX", "aço inox",
+--    "inoxidável" etc. automaticamente. NÃO existe hoje um campo estruturado
+--    de "material" na OS/histórico do MubiSys (isso só existe para o CPQ
+--    Letreiros Express, via matéria-prima/composição — ver AGENTS.md seção
+--    "CPQ renderização 3D"/"Cadastro de matérias-primas"); o único jeito de
+--    identificar o material aqui é por texto no título. Se o vendedor não
+--    escreveu "inox" no título do trabalho, essa OS NÃO entra na contagem,
+--    mesmo que o letreiro seja de inox — isso provavelmente SUBESTIMA o total
+--    real, mas é o critério pedido (não busca em observação/descrição/outros
+--    campos).
 -- 2. "Últimos 3 meses" = mês de aprovação atual + 2 meses anteriores
 --    (historico_os.mes/ano vêm do sync filtrado por filtrodata=APROVACAO,
 --    ver server/sync/scheduled-sync-historico.ts). Não é uma janela rolante
