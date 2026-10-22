@@ -27,7 +27,14 @@ function callerAnonimo() {
 }
 
 export function registrarRotasPublicoGuiaFornecedores(app: Express) {
-  app.options(["/api/publico/guia-fornecedores", "/api/publico/guia-fornecedores/clique", "/api/publico/guia-fornecedores/visita"], permitirCors, (_req, res) => res.sendStatus(204));
+  app.options([
+    "/api/publico/guia-fornecedores",
+    "/api/publico/guia-fornecedores/proximos",
+    "/api/publico/guia-fornecedores/clique",
+    "/api/publico/guia-fornecedores/visita",
+    "/api/publico/guia-fornecedores/questionario/:token",
+    "/api/publico/guia-fornecedores/questionario/:token/logo",
+  ], permitirCors, (_req, res) => res.sendStatus(204));
 
   app.get("/api/publico/guia-fornecedores", permitirCors, async (_req, res) => {
     try {
@@ -36,6 +43,77 @@ export function registrarRotasPublicoGuiaFornecedores(app: Express) {
     } catch (erro: any) {
       console.error("[publico/guia-fornecedores] erro ao listar:", erro);
       res.status(500).json({ erro: "Não foi possível carregar o guia." });
+    }
+  });
+
+  app.get("/api/publico/guia-fornecedores/proximos", permitirCors, async (req, res) => {
+    const cep = String(req.query.cep ?? "").trim();
+    const raio = Number(req.query.raio ?? 300);
+    if (!cep) {
+      res.status(400).json({ erro: "CEP é obrigatório." });
+      return;
+    }
+    try {
+      const dados = await callerAnonimo().guiaFornecedores.buscarPorCep({
+        cep,
+        raioKm: isNaN(raio) ? 300 : raio,
+      });
+      res.json(dados);
+    } catch (erro: any) {
+      console.error("[publico/guia-fornecedores/proximos] erro:", erro);
+      const msg = erro?.message || "Não foi possível buscar fornecedores por proximidade.";
+      res.status(erro?.code === "NOT_FOUND" ? 404 : 500).json({ erro: msg });
+    }
+  });
+
+  app.get("/api/publico/guia-fornecedores/questionario/:token", permitirCors, async (req, res) => {
+    const token = String(req.params.token ?? "").trim();
+    if (!token) {
+      res.status(400).json({ erro: "Token obrigatório." });
+      return;
+    }
+    try {
+      const dados = await callerAnonimo().guiaFornecedores.obterQuestionarioPublico({ token });
+      res.json(dados);
+    } catch (erro: any) {
+      res.status(erro?.code === "NOT_FOUND" ? 404 : 500).json({ erro: erro?.message || "Erro ao consultar questionário." });
+    }
+  });
+
+  app.post("/api/publico/guia-fornecedores/questionario/:token", permitirCors, async (req, res) => {
+    const token = String(req.params.token ?? "").trim();
+    if (!token) {
+      res.status(400).json({ erro: "Token obrigatório." });
+      return;
+    }
+    try {
+      const resp = await callerAnonimo().guiaFornecedores.responderQuestionarioPublico({
+        token,
+        ...req.body,
+      });
+      res.json(resp);
+    } catch (erro: any) {
+      res.status(erro?.code === "NOT_FOUND" ? 404 : 500).json({ erro: erro?.message || "Erro ao salvar questionário." });
+    }
+  });
+
+  app.post("/api/publico/guia-fornecedores/questionario/:token/logo", permitirCors, async (req, res) => {
+    const token = String(req.params.token ?? "").trim();
+    const { base64, contentType, nomeArquivo } = req.body ?? {};
+    if (!token || !base64) {
+      res.status(400).json({ erro: "Token e imagem base64 são obrigatórios." });
+      return;
+    }
+    try {
+      const resp = await callerAnonimo().guiaFornecedores.uploadLogoPublico({
+        token,
+        base64,
+        contentType: contentType || "image/png",
+        nomeArquivo: nomeArquivo || "logo.png",
+      });
+      res.json(resp);
+    } catch (erro: any) {
+      res.status(erro?.code === "BAD_REQUEST" ? 400 : 500).json({ erro: erro?.message || "Erro no upload da logo." });
     }
   });
 

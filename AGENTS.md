@@ -294,7 +294,9 @@ server/
                        MubiSys, contagem de múltiplas bobinas por câmera/diâmetros/peso/metros e
                        baixa idempotente pelas O.S. e BOM espelhada)
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
-                       espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
+                       espelho: listagem pública, busca por CEP em raio de 300km com cálculo Haversine e fallback dos 2 mais próximos,
+                       questionário público de enriquecimento de parceiros por token com logo, cidades vizinhas e produtos fabricados;
+                       tabela `guia_fornecedores_questionarios` na migration 0116), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
                        estudio-cotacoes.ts (cotações do HTML estático do CPQ, snapshots comerciais imutáveis e vínculo posterior com OS MubiSys),

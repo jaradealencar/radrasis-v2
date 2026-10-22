@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
@@ -5,10 +6,18 @@ import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import {
   historicoOs, guiaFornecedoresCliques, guiaFornecedoresCliqueEventos, guiaFornecedoresVisitas,
-  guiaFornecedoresOverrides, guiaFornecedoresConfig,
+  guiaFornecedoresOverrides, guiaFornecedoresConfig, guiaFornecedoresQuestionarios,
 } from "../../drizzle/schema";
 import { isOsNormalDb, normalizeEmpresaKey, isClienteNovoPorRecencia, formatarLinkWhatsApp } from "./performanceComercial";
 import { planoBackfillTelefone, completarTelefonesJanela, janelaValida } from "../sync/telefone-historico";
+import {
+  obterCoordenadasMunicipio,
+  calcularDistanciaHaversineKm,
+  consultarDadosCep,
+  type ResultadoConsultaCep,
+} from "../utils/geolocalizacao";
+import { storagePut } from "../db/storage";
+import { uploadThingToken } from "../_core/uploadthing-token";
 
 /**
  * Guia de Fornecedores — página pública (sem login) que indica a consumidor final os clientes
@@ -273,17 +282,204 @@ export interface FornecedorGuia {
    * mesma cidade e não há empate no topo — nunca expõe a quantidade em si (ver `pedidosJanela`
    * em `FornecedorCalculado`). */
   destaque?: boolean;
+  // Campos enriquecidos pelo questionário de parceiros:
+  logoUrl?: string | null;
+  atendeCidadesVizinhas?: boolean;
+  raioAtendimentoKm?: number | null;
+  produtos?: string[];
+  outrosProdutos?: string[];
+  instagram?: string | null;
+  site?: string | null;
+}
+export interface CidadeGuia {
+  cidade: string;
+  lat?: number | null;
+  lng?: number | null;
+  fornecedores: FornecedorGuia[];
 }
 export interface EstadoGuia {
   uf: string;
   nome: string;
   total: number;
-  cidades: Array<{ cidade: string; fornecedores: FornecedorGuia[] }>;
+  cidades: CidadeGuia[];
 }
 export interface GuiaFornecedoresResultado {
   geradoEm: string;
   totalFornecedores: number;
   estados: EstadoGuia[];
+}
+
+export interface FornecedorProximoGuia {
+  nome: string;
+  cidade: string;
+  estado: string;
+  telefone: string | null;
+  whatsapp: string | null;
+  destaque?: boolean;
+  distanciaKm: number;
+  mesmaCidade: boolean;
+  // Campos enriquecidos pelo questionário de parceiros:
+  logoUrl?: string | null;
+  atendeCidadesVizinhas?: boolean;
+  raioAtendimentoKm?: number | null;
+  produtos?: string[];
+  outrosProdutos?: string[];
+  instagram?: string | null;
+  site?: string | null;
+}
+
+export interface ResultadoBuscaCepGuia {
+  cliente: {
+    cep: string;
+    cidade: string;
+    uf: string;
+    lat: number;
+    lng: number;
+  };
+  raioMaximoKm: number;
+  houveNoRaio: boolean;
+  totalNoRaio: number;
+  fornecedores: FornecedorProximoGuia[];
+}
+
+/**
+ * Monta o texto de mensagem do WhatsApp incluindo a cidade/estado do cliente,
+ * para o fornecedor já saber de onde o contato está vindo ao abrir a conversa.
+ */
+export function gerarMensagemWhatsAppComCidade(mensagemBase: string, cidade?: string, uf?: string): string {
+  if (!cidade) return mensagemBase;
+  const localizacao = uf ? `${cidade}/${uf}` : cidade;
+  if (mensagemBase.includes("{{cidade}}")) {
+    return mensagemBase.replaceAll("{{cidade}}", localizacao);
+  }
+  if (mensagemBase.includes("Preciso de um orçamento")) {
+    return mensagemBase.replace("Preciso de um orçamento", `Sou de ${localizacao} e preciso de um orçamento`);
+  }
+  return `${mensagemBase} (Sou de ${localizacao})`;
+}
+
+export function parseJsonArraySafe(jsonStr: string | null | undefined): string[] {
+  if (!jsonStr) return [];
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Calcula fornecedores ordenados pela distância geodésica até o cliente (CEP).
+ * Regras:
+ *  - 1º: fornecedores dentro do raio de 300 km, ordenados do mais próximo ao mais distante.
+ *  - Fallback quando não há ninguém em 300 km: indica os DOIS contatos mais próximos de todo o guia.
+ *  - Mensagem do WhatsApp inclui a cidade/UF do cliente.
+ */
+export function calcularFornecedoresPorProximidade(
+  fornecedores: FornecedorCalculado[],
+  cliente: { cidade: string; uf: string; lat: number; lng: number },
+  mensagemWhatsapp: string,
+  raioKm = 300,
+  questionariosMap: Map<string, any> = new Map(),
+): { fornecedores: FornecedorProximoGuia[]; houveNoRaio: boolean; totalNoRaio: number } {
+  const comLocal = fornecedores.filter(f => f.estado && f.cidade);
+
+  // Determina quem tem destaque por cidade para manter a mesma coerência
+  const porCidadeEstado = new Map<string, FornecedorCalculado[]>();
+  for (const f of comLocal) {
+    const k = `${f.estado.toUpperCase()}|${f.cidade.toLowerCase()}`;
+    if (!porCidadeEstado.has(k)) porCidadeEstado.set(k, []);
+    porCidadeEstado.get(k)!.push(f);
+  }
+
+  const destaquesSet = new Set<string>();
+  for (const [_, lista] of porCidadeEstado) {
+    if (lista.length >= 2) {
+      const ordenados = ordenarComDestaque(
+        lista.map(f => ({
+          nome: f.nome,
+          cidade: f.cidade,
+          telefone: f.telefone,
+          whatsapp: null,
+          pedidosJanela: f.pedidosJanela,
+          destaqueForcado: f.destaqueForcado,
+        }))
+      );
+      const v = ordenados.find(o => o.destaque);
+      if (v) destaquesSet.add(`${v.nome}|${v.cidade}`);
+    }
+  }
+
+  const msgPersonalizada = gerarMensagemWhatsAppComCidade(mensagemWhatsapp, cliente.cidade, cliente.uf);
+
+  const listaComDistancia: Array<FornecedorProximoGuia & { pedidosJanela: number; destaqueForcado: boolean }> = [];
+  const cidadeClienteNorm = cliente.cidade.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const ufClienteNorm = cliente.uf.toUpperCase().trim();
+
+  for (const f of comLocal) {
+    const coords = obterCoordenadasMunicipio(f.cidade, f.estado);
+    if (!coords) continue;
+
+    const distanciaKm = calcularDistanciaHaversineKm(cliente.lat, cliente.lng, coords.lat, coords.lng);
+    const fCidadeNorm = f.cidade.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const mesmaCidade = fCidadeNorm === cidadeClienteNorm && f.estado.toUpperCase().trim() === ufClienteNorm;
+
+    const link = f.telefone ? formatarLinkWhatsApp(f.telefone) : "";
+    const ehDestaque = f.destaqueForcado || destaquesSet.has(`${f.nome}|${f.cidade}`);
+    const q = questionariosMap.get(f.chave);
+
+    listaComDistancia.push({
+      nome: f.nome,
+      cidade: f.cidade,
+      estado: f.estado.toUpperCase(),
+      telefone: f.telefone,
+      whatsapp: link ? `${link}?text=${encodeURIComponent(msgPersonalizada)}` : null,
+      destaque: ehDestaque ? true : undefined,
+      distanciaKm,
+      mesmaCidade,
+      pedidosJanela: f.pedidosJanela,
+      destaqueForcado: f.destaqueForcado,
+      logoUrl: q?.logoUrl ?? null,
+      atendeCidadesVizinhas: q?.atendeCidadesVizinhas ?? false,
+      raioAtendimentoKm: q?.raioAtendimentoKm ?? null,
+      produtos: parseJsonArraySafe(q?.produtos),
+      outrosProdutos: parseJsonArraySafe(q?.outrosProdutos),
+      instagram: q?.instagram ?? null,
+      site: q?.site ?? null,
+    });
+  }
+
+  // Ordena por distância crescente; desempate por destaque, pedidos e nome
+  listaComDistancia.sort((a, b) => {
+    if (a.distanciaKm !== b.distanciaKm) return a.distanciaKm - b.distanciaKm;
+    if (a.destaque && !b.destaque) return -1;
+    if (!a.destaque && b.destaque) return 1;
+    if (b.pedidosJanela !== a.pedidosJanela) return b.pedidosJanela - a.pedidosJanela;
+    return a.nome.localeCompare(b.nome, "pt-BR");
+  });
+
+  const dentroDoRaio = listaComDistancia.filter(f => f.distanciaKm <= raioKm);
+  const semInternos = (f: typeof listaComDistancia[number]): FornecedorProximoGuia => {
+    const { pedidosJanela, destaqueForcado, ...pub } = f;
+    return pub;
+  };
+
+  if (dentroDoRaio.length > 0) {
+    return {
+      houveNoRaio: true,
+      totalNoRaio: dentroDoRaio.length,
+      fornecedores: dentroDoRaio.map(semInternos),
+    };
+  }
+
+  // Regra de fallback quando não tem ninguém em 300 km:
+  // indica os DOIS contatos mais próximos, não importa a distância
+  const doisMaisProximos = listaComDistancia.slice(0, 2);
+  return {
+    houveNoRaio: false,
+    totalNoRaio: 0,
+    fornecedores: doisMaisProximos.map(semInternos),
+  };
 }
 
 /** Ordena a lista inteira da cidade por nº de pedidos na janela (decrescente, desempate por
@@ -322,7 +518,11 @@ export function ordenarComDestaque(lista: Array<FornecedorGuia & { pedidosJanela
 /** Agrupa por estado > cidade (unificando grafias com/sem acento da mesma cidade) e monta o
  * formato final da resposta, na mesma ordem/estrutura usada pelo guia. `mensagemWhatsapp` vai
  * já embutida no link (`?text=`), para o consumidor final não precisar digitar nada. */
-function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWhatsapp: string): GuiaFornecedoresResultado {
+function agruparPorEstadoCidade(
+  fornecedores: FornecedorCalculado[],
+  mensagemWhatsapp: string,
+  questionariosMap: Map<string, any> = new Map(),
+): GuiaFornecedoresResultado {
   const comLocal = fornecedores.filter(f => f.estado);
 
   // Unifica grafias de cidade dentro do mesmo estado (ex.: "Varzea Grande"/"Várzea Grande")
@@ -348,21 +548,34 @@ function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWha
     const porCidade = porEstado.get(f.estado)!;
     if (!porCidade.has(cidadeFinal)) porCidade.set(cidadeFinal, []);
     const link = f.telefone ? formatarLinkWhatsApp(f.telefone) : "";
+    const q = questionariosMap.get(f.chave);
     porCidade.get(cidadeFinal)!.push({
       nome: f.nome, cidade: cidadeFinal, telefone: f.telefone,
       whatsapp: link ? `${link}?text=${encodeURIComponent(mensagemWhatsapp)}` : null,
       pedidosJanela: f.pedidosJanela,
       destaqueForcado: f.destaqueForcado,
+      logoUrl: q?.logoUrl ?? null,
+      atendeCidadesVizinhas: q?.atendeCidadesVizinhas ?? false,
+      raioAtendimentoKm: q?.raioAtendimentoKm ?? null,
+      produtos: parseJsonArraySafe(q?.produtos),
+      outrosProdutos: parseJsonArraySafe(q?.outrosProdutos),
+      instagram: q?.instagram ?? null,
+      site: q?.site ?? null,
     });
   }
 
   const ufsOrdenadas = [...porEstado.keys()].sort((a, b) => (ESTADOS_NOME[a] ?? a).localeCompare(ESTADOS_NOME[b] ?? b, "pt-BR"));
   const estados: EstadoGuia[] = ufsOrdenadas.map(uf => {
     const porCidade = porEstado.get(uf)!;
-    const cidades = [...porCidade.keys()].sort((a, b) => a.localeCompare(b, "pt-BR")).map(cidade => ({
-      cidade,
-      fornecedores: ordenarComDestaque(porCidade.get(cidade)!),
-    }));
+    const cidades: CidadeGuia[] = [...porCidade.keys()].sort((a, b) => a.localeCompare(b, "pt-BR")).map(cidade => {
+      const coords = obterCoordenadasMunicipio(cidade, uf);
+      return {
+        cidade,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+        fornecedores: ordenarComDestaque(porCidade.get(cidade)!),
+      };
+    });
     return { uf, nome: ESTADOS_NOME[uf] ?? uf, total: cidades.reduce((s, c) => s + c.fornecedores.length, 0), cidades };
   });
 
@@ -376,6 +589,16 @@ function agruparPorEstadoCidade(fornecedores: FornecedorCalculado[], mensagemWha
 async function obterMensagemWhatsapp(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<string> {
   const [linha] = await db.select().from(guiaFornecedoresConfig).where(eq(guiaFornecedoresConfig.id, 1)).limit(1);
   return linha?.mensagemWhatsapp || MENSAGEM_WHATSAPP_PADRAO;
+}
+
+async function carregarQuestionariosMap(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<Map<string, typeof guiaFornecedoresQuestionarios.$inferSelect>> {
+  try {
+    const rows = await db.select().from(guiaFornecedoresQuestionarios);
+    return new Map(rows.map(r => [r.empresaChave, r]));
+  } catch (e) {
+    console.error("[guiaFornecedores] erro ao carregar questionarios:", e);
+    return new Map();
+  }
 }
 
 /** Lê historico_os + overrides e calcula os fornecedores (regra completa, ver
@@ -399,17 +622,71 @@ async function montarGuia(): Promise<GuiaFornecedoresResultado> {
   const db = await getDb();
   if (!db) return { geradoEm: new Date().toISOString(), totalFornecedores: 0, estados: [] };
 
-  const [fornecedores, mensagemWhatsapp] = await Promise.all([
+  const [fornecedores, mensagemWhatsapp, qMap] = await Promise.all([
     carregarFornecedoresCalculados(db),
     obterMensagemWhatsapp(db),
+    carregarQuestionariosMap(db),
   ]);
-  return agruparPorEstadoCidade(fornecedores, mensagemWhatsapp);
+  return agruparPorEstadoCidade(fornecedores, mensagemWhatsapp, qMap);
 }
 
 export const guiaFornecedoresRouter = router({
   /** Lista pública — usada pela aba interna (preview) e pelo site espelho. Sem dado sensível:
    * nem contagem de compras, nem valor, nem cliques — só nome/cidade/telefone. */
   listarPublico: publicProcedure.query(() => montarGuia()),
+
+  /** Busca fornecedores por CEP e raio de proximidade (padrão 300 km).
+   * Se não houver nenhum em 300 km, retorna os 2 mais próximos de todo o guia.
+   * Já injeta a cidade/UF do cliente no texto da mensagem do WhatsApp. */
+  buscarPorCep: publicProcedure
+    .input(z.object({
+      cep: z.string().trim().min(8).max(10),
+      raioKm: z.number().int().min(10).max(2000).default(300),
+    }))
+    .query(async ({ input }) => {
+      const dadosCep = await consultarDadosCep(input.cep);
+      if (!dadosCep) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Não foi possível localizar o CEP informado. Verifique os números digitados.",
+        });
+      }
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Banco de dados indisponível no momento.",
+        });
+      }
+
+      const [fornecedores, mensagemWhatsapp, qMap] = await Promise.all([
+        carregarFornecedoresCalculados(db),
+        obterMensagemWhatsapp(db),
+        carregarQuestionariosMap(db),
+      ]);
+
+      const resultado = calcularFornecedoresPorProximidade(
+        fornecedores,
+        {
+          cidade: dadosCep.cidade,
+          uf: dadosCep.uf,
+          lat: dadosCep.lat,
+          lng: dadosCep.lng,
+        },
+        mensagemWhatsapp,
+        input.raioKm,
+        qMap
+      );
+
+      return {
+        cliente: dadosCep,
+        raioMaximoKm: input.raioKm,
+        houveNoRaio: resultado.houveNoRaio,
+        totalNoRaio: resultado.totalNoRaio,
+        fornecedores: resultado.fornecedores,
+      };
+    }),
 
   /** Uma linha por carregamento de página; front-end manda um id anônimo gerado no navegador
    * (localStorage), nunca IP ou dado que identifique a pessoa. */
@@ -662,5 +939,285 @@ export const guiaFornecedoresRouter = router({
       if (!db) throw new Error("DB indisponível");
       await db.delete(guiaFornecedoresOverrides).where(eq(guiaFornecedoresOverrides.id, input.id));
       return { ok: true };
+    }),
+
+  // ─── Questionários de Fornecedores Parceiros ────────────────────────────────
+
+  /** Lista todos os questionários dos parceiros ativos, gerando tokens automaticamente
+   * para quem ainda não tem link gerado, e consolidando métricas para o painel. */
+  listarQuestionarios: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) {
+      return {
+        metricas: { total: 0, enviados: 0, preenchidos: 0, pendentes: 0, taxaAdesaoPct: 0 },
+        lista: [],
+      };
+    }
+
+    const [fornecedores, questionariosExistentes] = await Promise.all([
+      carregarFornecedoresCalculados(db),
+      db.select().from(guiaFornecedoresQuestionarios),
+    ]);
+
+    const mapaQ = new Map(questionariosExistentes.map(q => [q.empresaChave, q]));
+    const novosParaInserir: Array<typeof guiaFornecedoresQuestionarios.$inferInsert> = [];
+
+    for (const f of fornecedores) {
+      if (!mapaQ.has(f.chave)) {
+        const token = crypto.randomBytes(16).toString("hex");
+        novosParaInserir.push({
+          empresaChave: f.chave,
+          empresaNome: f.nome,
+          token,
+          status: "pendente",
+          telefoneContato: f.telefone,
+          whatsapp: f.telefone,
+        });
+      }
+    }
+
+    if (novosParaInserir.length > 0) {
+      const inseridos = await db.insert(guiaFornecedoresQuestionarios)
+        .values(novosParaInserir)
+        .onConflictDoNothing()
+        .returning();
+      for (const item of inseridos) {
+        mapaQ.set(item.empresaChave, item);
+      }
+    }
+
+    const lista = fornecedores.map(f => {
+      const q = mapaQ.get(f.chave);
+      const produtos = parseJsonArraySafe(q?.produtos);
+      const outrosProdutos = parseJsonArraySafe(q?.outrosProdutos);
+      return {
+        empresaChave: f.chave,
+        empresaNome: f.nome,
+        cidade: f.cidade,
+        estado: f.estado,
+        telefone: f.telefone,
+        token: q?.token ?? "",
+        status: (q?.status ?? "pendente") as "pendente" | "enviado" | "preenchido",
+        logoUrl: q?.logoUrl ?? null,
+        atendeCidadesVizinhas: q?.atendeCidadesVizinhas ?? false,
+        raioAtendimentoKm: q?.raioAtendimentoKm ?? null,
+        cidadesAtendidas: q?.cidadesAtendidas ?? null,
+        produtos,
+        outrosProdutos,
+        telefoneContato: q?.telefoneContato ?? f.telefone,
+        whatsapp: q?.whatsapp ?? f.telefone,
+        instagram: q?.instagram ?? null,
+        site: q?.site ?? null,
+        descricao: q?.descricao ?? null,
+        enviadoEm: q?.enviadoEm ?? null,
+        preenchidoEm: q?.preenchidoEm ?? null,
+      };
+    });
+
+    const total = lista.length;
+    const preenchidos = lista.filter(i => i.status === "preenchido").length;
+    const enviados = lista.filter(i => i.status === "enviado").length;
+    const pendentes = lista.filter(i => i.status === "pendente").length;
+    const taxaAdesaoPct = total > 0 ? Math.round((preenchidos / total) * 100) : 0;
+
+    return {
+      metricas: { total, enviados, preenchidos, pendentes, taxaAdesaoPct },
+      lista,
+    };
+  }),
+
+  /** Marca o questionário como "enviado" quando o Daniel envia o link para o parceiro. */
+  marcarQuestionarioEnviado: protectedProcedure
+    .input(z.object({ empresaChave: z.string().trim().min(1) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const agora = new Date();
+      await db.update(guiaFornecedoresQuestionarios)
+        .set({ status: "enviado", enviadoEm: agora, updatedAt: agora })
+        .where(eq(guiaFornecedoresQuestionarios.empresaChave, input.empresaChave));
+      return { ok: true };
+    }),
+
+  /** Permite ao administrador editar/salvar os dados de perfil do parceiro diretamente pelo Radrasys. */
+  salvarQuestionarioAdmin: protectedProcedure
+    .input(z.object({
+      empresaChave: z.string().trim().min(1),
+      logoUrl: z.string().nullable().optional(),
+      atendeCidadesVizinhas: z.boolean(),
+      raioAtendimentoKm: z.number().int().min(0).max(2000).nullable().optional(),
+      cidadesAtendidas: z.string().nullable().optional(),
+      produtos: z.array(z.string()),
+      outrosProdutos: z.array(z.string()).optional(),
+      telefoneContato: z.string().nullable().optional(),
+      whatsapp: z.string().nullable().optional(),
+      instagram: z.string().nullable().optional(),
+      site: z.string().nullable().optional(),
+      descricao: z.string().nullable().optional(),
+      marcarComoPreenchido: z.boolean().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+      const agora = new Date();
+      await db.update(guiaFornecedoresQuestionarios)
+        .set({
+          logoUrl: input.logoUrl || null,
+          atendeCidadesVizinhas: input.atendeCidadesVizinhas,
+          raioAtendimentoKm: input.raioAtendimentoKm ?? null,
+          cidadesAtendidas: input.cidadesAtendidas || null,
+          produtos: JSON.stringify(input.produtos),
+          outrosProdutos: JSON.stringify(input.outrosProdutos ?? []),
+          telefoneContato: input.telefoneContato || null,
+          whatsapp: input.whatsapp || null,
+          instagram: input.instagram || null,
+          site: input.site || null,
+          descricao: input.descricao || null,
+          status: input.marcarComoPreenchido ? "preenchido" : undefined,
+          preenchidoEm: input.marcarComoPreenchido ? agora : undefined,
+          updatedAt: agora,
+        })
+        .where(eq(guiaFornecedoresQuestionarios.empresaChave, input.empresaChave));
+      return { ok: true };
+    }),
+
+  /** Consulta pública do questionário pelo token exclusivo do parceiro (sem login). */
+  obterQuestionarioPublico: publicProcedure
+    .input(z.object({ token: z.string().trim().min(8) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+
+      const [q] = await db.select().from(guiaFornecedoresQuestionarios)
+        .where(eq(guiaFornecedoresQuestionarios.token, input.token))
+        .limit(1);
+
+      if (!q) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Questionário não encontrado ou link inválido.",
+        });
+      }
+
+      const fornecedores = await carregarFornecedoresCalculados(db);
+      const achado = fornecedores.find(f => f.chave === q.empresaChave);
+
+      return {
+        empresaNome: q.empresaNome,
+        cidade: achado?.cidade ?? "",
+        estado: achado?.estado ?? "",
+        token: q.token,
+        status: q.status,
+        logoUrl: q.logoUrl,
+        atendeCidadesVizinhas: q.atendeCidadesVizinhas,
+        raioAtendimentoKm: q.raioAtendimentoKm,
+        cidadesAtendidas: q.cidadesAtendidas,
+        produtos: parseJsonArraySafe(q.produtos),
+        outrosProdutos: parseJsonArraySafe(q.outrosProdutos),
+        telefoneContato: q.telefoneContato ?? achado?.telefone ?? null,
+        whatsapp: q.whatsapp ?? achado?.telefone ?? null,
+        instagram: q.instagram,
+        site: q.site,
+        descricao: q.descricao,
+        preenchidoEm: q.preenchidoEm,
+      };
+    }),
+
+  /** Submissão pública do questionário pelo fornecedor parceiro. */
+  responderQuestionarioPublico: publicProcedure
+    .input(z.object({
+      token: z.string().trim().min(8),
+      logoUrl: z.string().nullable().optional(),
+      atendeCidadesVizinhas: z.boolean(),
+      raioAtendimentoKm: z.number().int().min(0).max(2000).nullable().optional(),
+      cidadesAtendidas: z.string().nullable().optional(),
+      produtos: z.array(z.string()),
+      outrosProdutos: z.array(z.string()).optional(),
+      telefoneContato: z.string().nullable().optional(),
+      whatsapp: z.string().nullable().optional(),
+      instagram: z.string().nullable().optional(),
+      site: z.string().nullable().optional(),
+      descricao: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+
+      const [q] = await db.select().from(guiaFornecedoresQuestionarios)
+        .where(eq(guiaFornecedoresQuestionarios.token, input.token))
+        .limit(1);
+
+      if (!q) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Questionário não encontrado." });
+      }
+
+      const agora = new Date();
+      await db.update(guiaFornecedoresQuestionarios)
+        .set({
+          logoUrl: input.logoUrl || q.logoUrl || null,
+          atendeCidadesVizinhas: input.atendeCidadesVizinhas,
+          raioAtendimentoKm: input.raioAtendimentoKm ?? null,
+          cidadesAtendidas: input.cidadesAtendidas || null,
+          produtos: JSON.stringify(input.produtos),
+          outrosProdutos: JSON.stringify(input.outrosProdutos ?? []),
+          telefoneContato: input.telefoneContato || null,
+          whatsapp: input.whatsapp || null,
+          instagram: input.instagram || null,
+          site: input.site || null,
+          descricao: input.descricao || null,
+          status: "preenchido",
+          preenchidoEm: agora,
+          updatedAt: agora,
+        })
+        .where(eq(guiaFornecedoresQuestionarios.token, input.token));
+
+      return { ok: true, preenchidoEm: agora };
+    }),
+
+  /** Upload seguro de logo pelo parceiro para o UploadThing. */
+  uploadLogoPublico: publicProcedure
+    .input(z.object({
+      token: z.string().trim().min(8),
+      base64: z.string().min(10),
+      contentType: z.string().default("image/png"),
+      nomeArquivo: z.string().default("logo.png"),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+
+      const [q] = await db.select().from(guiaFornecedoresQuestionarios)
+        .where(eq(guiaFornecedoresQuestionarios.token, input.token))
+        .limit(1);
+
+      if (!q) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Questionário não encontrado." });
+      }
+
+      const limpo = input.base64.replace(/^data:[^;]+;base64,/, "");
+      const buffer = Buffer.from(limpo, "base64");
+
+      if (buffer.length > 5 * 1024 * 1024) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Arquivo excede o limite máximo de 5MB." });
+      }
+
+      const tokenUt = uploadThingToken();
+      let logoUrl = "";
+
+      if (tokenUt) {
+        const ext = input.nomeArquivo.split(".").pop() || "png";
+        const relKey = `guia-parceiros/logo-${q.token}.${ext}`;
+        const upload = await storagePut(relKey, buffer, input.contentType);
+        logoUrl = upload.url;
+      } else {
+        // Fallback para data URL se UploadThing não estiver configurado em desenvolvimento
+        logoUrl = `data:${input.contentType};base64,${limpo}`;
+      }
+
+      await db.update(guiaFornecedoresQuestionarios)
+        .set({ logoUrl, updatedAt: new Date() })
+        .where(eq(guiaFornecedoresQuestionarios.token, input.token));
+
+      return { logoUrl };
     }),
 });
