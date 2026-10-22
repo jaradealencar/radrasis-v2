@@ -1,0 +1,92 @@
+name: Controlled database migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Vercel project whose database is being migrated
+        type: choice
+        required: true
+        options:
+          - radrasis-v2
+          - radrasis-v2-wts-deploy
+      target:
+        description: Database environment
+        type: choice
+        required: true
+        options:
+          - staging
+          - production
+      release_sha:
+        description: Full main commit SHA selected for this release
+        type: string
+        required: true
+      confirmation:
+        description: MIGRATE:<target>:<host>:<port>/<database>
+        type: string
+        required: true
+      production_approval:
+        description: AUTHORIZE_PRODUCTION_MIGRATION:<host>:<port>/<database> (production only)
+        type: string
+        required: false
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: migration-${{ inputs.target }}-${{ inputs.project }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: migrate-${{ inputs.target }}-${{ inputs.project }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target }}-${{ inputs.project }}
+    env:
+      APP_ENV: ${{ inputs.target }}
+      NODE_ENV: production
+      DB_MIGRATION_TARGET: ${{ inputs.target }}
+      DB_MIGRATION_EXPECTED_HOST: ${{ vars.DB_MIGRATION_EXPECTED_HOST }}
+      DB_MIGRATION_EXPECTED_PORT: ${{ vars.DB_MIGRATION_EXPECTED_PORT }}
+      DB_MIGRATION_EXPECTED_DATABASE: ${{ vars.DB_MIGRATION_EXPECTED_DATABASE }}
+      DB_MIGRATION_CONFIRMATION: ${{ inputs.confirmation }}
+      DB_MIGRATION_PRODUCTION_APPROVAL: ${{ inputs.production_approval }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GIT_COMMIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require the selected main release commit
+        env:
+          SELECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main" || { echo "Select the validated main branch."; exit 1; }
+          test "$SELECTED_RELEASE_SHA" = "$GITHUB_SHA" || { echo "The selected release SHA does not match this workflow run."; exit 1; }
+          echo "Migration source commit: $GITHUB_SHA"
+      - name: Require successful quality workflow for this commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "quality.yml",
+              branch: "main",
+              head_sha: context.sha,
+              status: "completed",
+              per_page: 20,
+            });
+            if (!data.workflow_runs.some((run) => run.conclusion === "success")) {
+              throw new Error("No successful Quality workflow was found for this exact commit.");
+            }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - name: Activate Yarn classic
+        run: corepack prepare yarn@1.22.22 --activate
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply only after environment approval and target confirmation
+        run: yarn db:migrate

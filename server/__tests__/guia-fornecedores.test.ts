@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { calcularFornecedoresAtivos, calcularFornecedoresFallbackEstadosVazios, ordenarComDestaque } from "../routers/guiaFornecedores";
+import {
+  calcularFornecedoresAtivos,
+  calcularFornecedoresFallbackEstadosVazios,
+  ordenarComDestaque,
+  gerarMensagemWhatsAppComCidade,
+  calcularFornecedoresPorProximidade,
+  MENSAGEM_WHATSAPP_PADRAO,
+} from "../routers/guiaFornecedores";
+import { calcularDistanciaHaversineKm } from "../utils/geolocalizacao";
 
 // "Hoje" fixo para os testes: 21/09/2026 (mesma data desta sprint)
 const HOJE = new Date(2026, 8, 21); // mês 0-indexado no Date nativo
@@ -207,5 +215,105 @@ describe("calcularFornecedoresFallbackEstadosVazios", () => {
     const linhas = [os({ empresa: "Antiga MS", mes: 8, ano: 2025 })]; // 13 meses atrás — fora
     const fallback = calcularFornecedoresFallbackEstadosVazios(linhas, [], [], HOJE);
     expect(fallback).toHaveLength(0);
+  });
+});
+
+describe("gerarMensagemWhatsAppComCidade", () => {
+  it("injeta a cidade e estado na frase padrão de forma natural", () => {
+    const msg = gerarMensagemWhatsAppComCidade(MENSAGEM_WHATSAPP_PADRAO, "Limeira", "SP");
+    expect(msg).toContain("Sou de Limeira/SP e preciso de um orçamento de letreiro");
+    expect(msg).toContain("Letreiros Express");
+  });
+
+  it("substitui placeholder {{cidade}} se presente no template", () => {
+    const template = "Olá! Vim pelo Guia da Letreiros Express. Moro em {{cidade}} e quero um orçamento.";
+    const msg = gerarMensagemWhatsAppComCidade(template, "Campinas", "SP");
+    expect(msg).toBe("Olá! Vim pelo Guia da Letreiros Express. Moro em Campinas/SP e quero um orçamento.");
+  });
+});
+
+describe("calcularDistanciaHaversineKm", () => {
+  it("calcula 0 km para o mesmo ponto", () => {
+    expect(calcularDistanciaHaversineKm(-23.55, -46.63, -23.55, -46.63)).toBe(0);
+  });
+
+  it("calcula distância real aproximada entre São Paulo e Campinas (~85-95 km)", () => {
+    // São Paulo: -23.5475, -46.6361 | Campinas: -22.9056, -47.0608
+    const d = calcularDistanciaHaversineKm(-23.5475, -46.6361, -22.9056, -47.0608);
+    expect(d).toBeGreaterThan(80);
+    expect(d).toBeLessThan(100);
+  });
+});
+
+describe("calcularFornecedoresPorProximidade", () => {
+  const fornecedoresBase = [
+    {
+      chave: "empresa-campinas",
+      nome: "Empresa Campinas",
+      cidade: "Campinas",
+      estado: "SP",
+      telefone: "19999990001",
+      origem: "automatico" as const,
+      pedidosJanela: 10,
+      destaqueForcado: false,
+    },
+    {
+      chave: "empresa-sao-paulo",
+      nome: "Empresa São Paulo",
+      cidade: "São Paulo",
+      estado: "SP",
+      telefone: "11999990002",
+      origem: "automatico" as const,
+      pedidosJanela: 5,
+      destaqueForcado: false,
+    },
+    {
+      chave: "empresa-rio",
+      nome: "Empresa Rio",
+      cidade: "Rio de Janeiro",
+      estado: "RJ",
+      telefone: "21999990003",
+      origem: "automatico" as const,
+      pedidosJanela: 8,
+      destaqueForcado: false,
+    },
+    {
+      chave: "empresa-manaus",
+      nome: "Empresa Manaus",
+      cidade: "Manaus",
+      estado: "AM",
+      telefone: "92999990004",
+      origem: "automatico" as const,
+      pedidosJanela: 12,
+      destaqueForcado: false,
+    },
+  ];
+
+  it("ordena fornecedores do mais próximo ao mais distante dentro do raio de 300 km", () => {
+    // Cliente em Sumaré/SP (muito perto de Campinas, ~20 km, e de SP ~100 km)
+    const cliente = { cidade: "Sumaré", uf: "SP", lat: -22.8211, lng: -47.2667 };
+    const r = calcularFornecedoresPorProximidade(fornecedoresBase, cliente, MENSAGEM_WHATSAPP_PADRAO, 300);
+
+    expect(r.houveNoRaio).toBe(true);
+    expect(r.fornecedores.length).toBeGreaterThanOrEqual(2);
+    // Campinas é mais perto de Sumaré que São Paulo
+    expect(r.fornecedores[0].nome).toBe("Empresa Campinas");
+    expect(r.fornecedores[1].nome).toBe("Empresa São Paulo");
+    expect(r.fornecedores[0].distanciaKm).toBeLessThan(r.fornecedores[1].distanciaKm);
+    expect(r.fornecedores[0].whatsapp).toContain("Sumar%C3%A9%2FSP");
+  });
+
+  it("quando não há ninguém no raio de 300 km, retorna exatamente os 2 mais próximos", () => {
+    // Cliente em Boa Vista/RR (distante de todas, a mais próxima é Manaus ~660 km, depois Rio/SP/Campinas > 3000 km)
+    const cliente = { cidade: "Boa Vista", uf: "RR", lat: 2.8235, lng: -60.6758 };
+    const r = calcularFornecedoresPorProximidade(fornecedoresBase, cliente, MENSAGEM_WHATSAPP_PADRAO, 300);
+
+    expect(r.houveNoRaio).toBe(false);
+    expect(r.totalNoRaio).toBe(0);
+    // Regra explícita do Daniel: "para aqueles que não tem ninguém dentro de 300km, o sistema indica os dois contatos mais próximos, nao importa distância"
+    expect(r.fornecedores).toHaveLength(2);
+    expect(r.fornecedores[0].nome).toBe("Empresa Manaus"); // ~660 km
+    expect(r.fornecedores[0].distanciaKm).toBeGreaterThan(300);
+    expect(r.fornecedores[1].distanciaKm).toBeGreaterThan(r.fornecedores[0].distanciaKm);
   });
 });

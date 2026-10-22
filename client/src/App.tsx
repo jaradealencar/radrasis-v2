@@ -77,6 +77,7 @@ import AcessoNegado from "./pages/AcessoNegado";
 import Auditoria from "./pages/Auditoria";
 import LocalLogin from "./pages/LocalLogin";
 import PropostaPublica from "./pages/PropostaPublica";
+import QuestionarioFornecedorPublico from "./pages/QuestionarioFornecedorPublico";
 import CargoseFuncoes from "./pages/operacoes/CargoseFuncoes";
 import ProtectedRoute from "./components/ProtectedRoute";
 import IdleTimeoutWarning from "./components/IdleTimeoutWarning";
@@ -222,6 +223,8 @@ function Router() {
       <Route path="/login" component={LocalLogin} />
       {/* Proposta pública — tela cheia, sem sidebar, sem login (link com token) */}
       <Route path="/proposta/:token" component={PropostaPublica} />
+      {/* Questionário público do parceiro — tela cheia, sem sidebar, sem login (link com token) */}
+      <Route path="/fornecedor/:token" component={QuestionarioFornecedorPublico} />
       {/* Legacy */}
       <Route path="/home"><L><Home /></L></Route>
       {/* Não encontrado — tela cheia, sem sidebar */}
@@ -244,7 +247,10 @@ function VendedorAlertasWatcher() {
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
-  const rotaPublica = location === "/login" || location.startsWith("/proposta/");
+  const rotaPublica =
+    location === "/login" ||
+    location.startsWith("/proposta/") ||
+    location.startsWith("/fornecedor/");
 
   if (isLoading) return <DashboardLayoutSkeleton />;
   if (!user && !rotaPublica) return <Redirect to="/login" />;

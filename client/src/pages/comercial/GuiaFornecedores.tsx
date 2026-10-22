@@ -6,13 +6,16 @@ import {
 } from "recharts";
 import {
   Store, Eye, Users, MousePointerClick, MessageCircle, Plus, Trash2, ExternalLink, Loader2, Phone, RefreshCw,
-  CalendarRange, Copy, Megaphone,
+  CalendarRange, Copy, Megaphone, MapPin, Search, FileText, Send, CheckCircle2, Clock, Building2, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tabs, TabsList, TabsTrigger, TabsContent,
+} from "@/components/ui/tabs";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
@@ -30,6 +33,7 @@ import {
 import ChartTooltip from "@/components/ChartTooltip";
 import { CHART_COLORS } from "@/lib/chartColors";
 import { MESES } from "@/lib/format";
+import { PRODUTOS_FORNECEDOR_PADRAO } from "@shared/guia-fornecedores";
 
 // Site espelho (projeto Vercel separado, "guia-letreiros-express"). Se ganhar domínio próprio,
 // trocar aqui.
@@ -118,6 +122,30 @@ export default function GuiaFornecedores() {
   const { data: relatorio, isLoading: carregandoRelatorio } = trpc.guiaFornecedores.getRelatorioMensal.useQuery({ mes: relMes, ano: relAno });
   const [mensagemRelatorio, setMensagemRelatorio] = useState<string | null>(null);
   const mensagemRelatorioAtual = mensagemRelatorio ?? config?.mensagemRelatorioMensal ?? "";
+
+  // Simulador de busca por CEP (raio 300 km)
+  const [cepSimulacao, setCepSimulacao] = useState("");
+  const [resultadoCep, setResultadoCep] = useState<any>(null);
+  const [carregandoCep, setCarregandoCep] = useState(false);
+
+  async function executarSimulacaoCep() {
+    const limpo = cepSimulacao.replace(/\D/g, "");
+    if (limpo.length !== 8) {
+      toast.error("Digite um CEP válido com 8 números.");
+      return;
+    }
+    setCarregandoCep(true);
+    try {
+      const res = await utils.client.guiaFornecedores.buscarPorCep.query({ cep: limpo, raioKm: 300 });
+      setResultadoCep(res);
+      toast.success(`CEP localizado: ${res.cliente.cidade}/${res.cliente.uf}`);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao consultar CEP.");
+      setResultadoCep(null);
+    } finally {
+      setCarregandoCep(false);
+    }
+  }
   async function copiarTexto(texto: string, sucesso: string) {
     try { await navigator.clipboard.writeText(texto); toast.success(sucesso); }
     catch { toast.error("Não foi possível copiar — copie manualmente."); }
@@ -201,6 +229,70 @@ export default function GuiaFornecedores() {
     onError: e => toast.error(e.message),
   });
 
+  // ─── Questionários de Fornecedores Parceiros ──────────────────────────
+  const { data: qData, isLoading: carregandoQ } = trpc.guiaFornecedores.listarQuestionarios.useQuery();
+  const [filtroStatusQ, setFiltroStatusQ] = useState<"todos" | "pendente" | "enviado" | "preenchido">("todos");
+  const [buscaQ, setBuscaQ] = useState("");
+  const [editandoQ, setEditandoQ] = useState<any | null>(null);
+  const [novoOutroItemModal, setNovoOutroItemModal] = useState("");
+
+  const marcarEnviadoMutation = trpc.guiaFornecedores.marcarQuestionarioEnviado.useMutation({
+    onSuccess: () => {
+      utils.guiaFornecedores.listarQuestionarios.invalidate();
+    },
+  });
+
+  const salvarAdminQMutation = trpc.guiaFornecedores.salvarQuestionarioAdmin.useMutation({
+    onSuccess: () => {
+      utils.guiaFornecedores.listarQuestionarios.invalidate();
+      utils.guiaFornecedores.listarPublico.invalidate();
+      setEditandoQ(null);
+      toast.success("Perfil do parceiro atualizado com sucesso.");
+    },
+    onError: e => toast.error(e.message),
+  });
+
+  function gerarLinkQuestionario(token: string) {
+    const origin = window.location.origin;
+    return `${origin}/fornecedor/${token}`;
+  }
+
+  function gerarMensagemWhatsAppQuestionario(empresaNome: string, token: string) {
+    const link = gerarLinkQuestionario(token);
+    return (
+      `Olá, equipe da *${empresaNome}*! Tudo bem? 🙌\n\n` +
+      `Aqui é da equipe da *Letreiros Express*.\n\n` +
+      `Estamos atualizando o nosso *Guia de Fornecedores parceiros*, que indicamos diariamente para clientes finais de todo o Brasil.\n\n` +
+      `Gostaríamos de cadastrar a *logo oficial da sua empresa*, confirmar se vocês atendem cidades vizinhas e destacar os produtos que vocês fabricam (letreiros, totens, adesivos, placas, luminosos, etc.).\n\n` +
+      `Leva menos de 1 minuto para preencher no link exclusivo abaixo:\n` +
+      `👉 ${link}\n\n` +
+      `Assim que preencher, seu perfil já entra em destaque para clientes que buscarem parceiros na sua região!`
+    );
+  }
+
+  function enviarConviteWhatsApp(parceiro: any) {
+    const texto = gerarMensagemWhatsAppQuestionario(parceiro.empresaNome, parceiro.token);
+    copiarTexto(texto, "Mensagem e link exclusivo copiados!");
+    if (parceiro.telefone) {
+      const urlWhats = `https://wa.me/${numeroComDdi(parceiro.telefone).replace(/\+/g, "")}?text=${encodeURIComponent(texto)}`;
+      window.open(urlWhats, "_blank", "noopener,noreferrer");
+    }
+    marcarEnviadoMutation.mutate({ empresaChave: parceiro.empresaChave });
+  }
+
+  // Filtragem da tabela de questionários
+  const parceirosFiltrados = (qData?.lista ?? []).filter(p => {
+    if (filtroStatusQ !== "todos" && p.status !== filtroStatusQ) return false;
+    if (buscaQ.trim()) {
+      const termo = buscaQ.toLowerCase().trim();
+      const bateNome = p.empresaNome.toLowerCase().includes(termo);
+      const bateCidade = (p.cidade || "").toLowerCase().includes(termo);
+      const bateEstado = (p.estado || "").toLowerCase().includes(termo);
+      if (!bateNome && !bateCidade && !bateEstado) return false;
+    }
+    return true;
+  });
+
   return (
     <div className="mx-auto max-w-[1100px] space-y-5 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -235,8 +327,220 @@ export default function GuiaFornecedores() {
         sai sozinho assim que passar dos 4 meses sem comprar. Os ajustes abaixo funcionam por cima dessa regra.
       </p>
 
-      {/* Estatísticas por período (dia ou mês) + indicações por estado */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      {/* Navegação Principal por Abas */}
+      <Tabs defaultValue="questionarios" className="space-y-4">
+        <div className="border-b border-slate-200 pb-2">
+          <TabsList className="bg-slate-100 p-1">
+            <TabsTrigger value="questionarios" className="text-xs font-semibold gap-1.5 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs">
+              <FileText className="h-3.5 w-3.5" /> Questionários & Perfis
+              {qData && (
+                <Badge variant="secondary" className="ml-1 bg-blue-50 px-1.5 py-0 text-[10px] text-blue-700 font-bold border border-blue-200">
+                  {qData.metricas.preenchidos}/{qData.metricas.total}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="visao-geral" className="text-xs font-semibold gap-1.5 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs">
+              <Store className="h-3.5 w-3.5" /> Visão Geral & Métricas
+            </TabsTrigger>
+            <TabsTrigger value="cep-simulador" className="text-xs font-semibold gap-1.5 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs">
+              <MapPin className="h-3.5 w-3.5" /> Busca por CEP (300 km)
+            </TabsTrigger>
+            <TabsTrigger value="config-ajustes" className="text-xs font-semibold gap-1.5 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs">
+              <Plus className="h-3.5 w-3.5" /> Ajustes & Telefones
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* ─── ABA 1: QUESTIONÁRIOS DOS PARCEIROS ─────────────────────────────── */}
+        <TabsContent value="questionarios" className="space-y-4">
+          {/* KPIs de Adesão ao Questionário */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <StatCard icon={Store} label="Total de Parceiros" value={carregandoQ ? "…" : String(qData?.metricas.total ?? 0)} />
+            <StatCard icon={Send} label="Convites Enviados" value={carregandoQ ? "…" : String(qData?.metricas.enviados ?? 0)} />
+            <StatCard icon={CheckCircle2} label="Perfis Preenchidos" value={carregandoQ ? "…" : String(qData?.metricas.preenchidos ?? 0)} />
+            <StatCard icon={Clock} label="Pendentes" value={carregandoQ ? "…" : String(qData?.metricas.pendentes ?? 0)} />
+            <StatCard icon={Users} label="Taxa de Adesão" value={carregandoQ ? "…" : `${qData?.metricas.taxaAdesaoPct ?? 0}%`} sub="preenchidos / total" />
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">
+                  Questionário para Enriquecimento dos Parceiros
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Envie o questionário via WhatsApp para que os clientes parceiros cadastrem sua <strong>logo PNG</strong>, se <strong>atendem cidades vizinhas</strong> e os <strong>produtos que fabricam</strong>.
+                </p>
+              </div>
+
+              {/* Filtros */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  placeholder="Filtrar por nome ou cidade..."
+                  value={buscaQ}
+                  onChange={e => setBuscaQ(e.target.value)}
+                  className="h-8 w-48 text-xs"
+                />
+                <Select value={filtroStatusQ} onValueChange={(v: any) => setFiltroStatusQ(v)}>
+                  <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos ({qData?.metricas.total ?? 0})</SelectItem>
+                    <SelectItem value="preenchido">Preenchidos ({qData?.metricas.preenchidos ?? 0})</SelectItem>
+                    <SelectItem value="enviado">Enviados ({qData?.metricas.enviados ?? 0})</SelectItem>
+                    <SelectItem value="pendente">Pendentes ({qData?.metricas.pendentes ?? 0})</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {carregandoQ ? (
+              <div className="flex items-center justify-center py-12 text-slate-400">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : parceirosFiltrados.length === 0 ? (
+              <Empty><EmptyHeader><EmptyTitle>Nenhum parceiro encontrado para este filtro.</EmptyTitle></EmptyHeader></Empty>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">Logo</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Localização</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Atende Vizinhas?</TableHead>
+                      <TableHead>Produtos que Fabrica</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {parceirosFiltrados.map((p) => {
+                      const link = gerarLinkQuestionario(p.token);
+                      return (
+                        <TableRow key={p.empresaChave}>
+                          <TableCell>
+                            {p.logoUrl ? (
+                              <img
+                                src={p.logoUrl}
+                                alt={p.empresaNome}
+                                className="h-8 w-8 rounded-md border border-slate-200 object-contain p-0.5"
+                              />
+                            ) : (
+                              <div className="flex h-8 w-8 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-[10px] font-bold text-slate-400">
+                                {p.empresaNome.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="font-medium text-slate-800">
+                            <div>{p.empresaNome}</div>
+                            {p.telefone && (
+                              <div className="text-[11px] text-slate-400">{numeroComDdi(p.telefone)}</div>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="text-slate-500 whitespace-nowrap">
+                            {p.cidade ? `${p.cidade} / ${p.estado}` : "—"}
+                          </TableCell>
+
+                          <TableCell>
+                            {p.status === "preenchido" ? (
+                              <Badge variant="outline" className="gap-1 border-emerald-300 bg-emerald-50 text-emerald-800">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Preenchido
+                              </Badge>
+                            ) : p.status === "enviado" ? (
+                              <Badge variant="outline" className="gap-1 border-blue-300 bg-blue-50 text-blue-800">
+                                <Send className="h-3 w-3 text-blue-600" /> Enviado
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="gap-1 border-slate-300 bg-slate-50 text-slate-500">
+                                <Clock className="h-3 w-3" /> Pendente
+                              </Badge>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            {p.atendeCidadesVizinhas ? (
+                              <Badge variant="outline" className="border-green-300 text-green-700">
+                                Sim {p.raioAtendimentoKm ? `(${p.raioAtendimentoKm}km)` : ""}
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">Não</span>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="max-w-[260px]">
+                            {p.produtos.length > 0 || (p.outrosProdutos && p.outrosProdutos.length > 0) ? (
+                              <div className="flex flex-wrap gap-1">
+                                {p.produtos.slice(0, 3).map(prod => (
+                                  <span key={prod} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                                    {prod}
+                                  </span>
+                                ))}
+                                {p.produtos.length > 3 && (
+                                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400">
+                                    +{p.produtos.length - 3}
+                                  </span>
+                                )}
+                                {p.outrosProdutos?.map(op => (
+                                  <span key={op} className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                                    {op}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">Nenhum cadastrado</span>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="text-right whitespace-nowrap">
+                            <div className="flex justify-end items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+                                onClick={() => enviarConviteWhatsApp(p)}
+                                title="Enviar convite com link pelo WhatsApp"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                                <span>WhatsApp</span>
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 gap-1 text-blue-700 hover:bg-blue-50"
+                                onClick={() => copiarTexto(link, "Link do questionário copiado!")}
+                                title="Copiar link exclusivo do questionário"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-slate-600 hover:bg-slate-100"
+                                onClick={() => setEditandoQ({ ...p, produtos: [...p.produtos], outrosProdutos: [...(p.outrosProdutos ?? [])] })}
+                                title="Visualizar ou editar dados do questionário"
+                              >
+                                Ver / Editar
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ─── ABA 2: VISÃO GERAL & MÉTRICAS ───────────────────────────────────── */}
+        <TabsContent value="visao-geral" className="space-y-4">
+          {/* Estatísticas por período (dia ou mês) + indicações por estado */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <CalendarRange className="h-4 w-4 text-blue-700" />
@@ -561,6 +865,102 @@ export default function GuiaFornecedores() {
         )}
       </div>
 
+      {/* Simulador de busca por proximidade / CEP (raio 300 km) */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-2 flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-blue-700" />
+          <h2 className="text-sm font-semibold text-slate-700">Simulador de busca por CEP (Raio de 300 km)</h2>
+        </div>
+        <p className="mb-3 text-xs text-slate-500">
+          Simule a experiência do cliente final: busca por proximidade em 300 km, ou os 2 mais próximos caso não haja ninguém no raio.
+        </p>
+
+        <form
+          className="mb-3 flex max-w-md gap-2"
+          onSubmit={e => {
+            e.preventDefault();
+            void executarSimulacaoCep();
+          }}
+        >
+          <Input
+            placeholder="Digite o CEP (ex: 13480-000)"
+            value={cepSimulacao}
+            onChange={e => setCepSimulacao(e.target.value)}
+            className="text-xs"
+          />
+          <Button type="submit" size="sm" disabled={carregandoCep} className="gap-1.5 shrink-0 bg-blue-700 hover:bg-blue-800">
+            {carregandoCep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            Buscar
+          </Button>
+          {resultadoCep && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setResultadoCep(null);
+                setCepSimulacao("");
+              }}
+            >
+              Limpar
+            </Button>
+          )}
+        </form>
+
+        {resultadoCep && (
+          <div className="space-y-3">
+            <div className={`p-3 rounded-lg border text-xs ${resultadoCep.houveNoRaio ? "bg-blue-50 border-blue-200 text-blue-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}>
+              {resultadoCep.houveNoRaio ? (
+                <div>
+                  📍 Localização do cliente: <strong>{resultadoCep.cliente.cidade} - {resultadoCep.cliente.uf}</strong> (CEP {resultadoCep.cliente.cep}) — <strong>{resultadoCep.totalNoRaio} parceiro(s)</strong> encontrados em até 300 km.
+                </div>
+              ) : (
+                <div>
+                  ⚠️ Nenhum parceiro encontrado em até 300 km de <strong>{resultadoCep.cliente.cidade} - {resultadoCep.cliente.uf}</strong>. Indicando abaixo os <strong>2 parceiros mais próximos</strong> de toda a base:
+                </div>
+              )}
+            </div>
+
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Distância</TableHead>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Cidade/UF</TableHead>
+                  <TableHead>WhatsApp com Cidade</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {resultadoCep.fornecedores.map((f: any, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-mono font-semibold">
+                      {f.mesmaCidade ? (
+                        <Badge variant="outline" className="border-green-300 text-green-700">Na mesma cidade</Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-blue-300 text-blue-700">{f.distanciaKm} km</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {f.destaque ? "🏆 " : ""}{f.nome}
+                    </TableCell>
+                    <TableCell className="text-slate-500">{f.cidade} - {f.estado}</TableCell>
+                    <TableCell>
+                      {f.whatsapp ? (
+                        <a href={f.whatsapp} target="_blank" rel="noopener noreferrer" className="text-green-700 hover:underline flex items-center gap-1">
+                          <MessageCircle className="h-3.5 w-3.5" /> Testar link
+                        </a>
+                      ) : (
+                        <span className="text-slate-400 italic">Sem WhatsApp</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
       {/* Prévia do guia (o que o site público mostra) */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Prévia — o que o site público mostra agora</h2>
@@ -589,8 +989,10 @@ export default function GuiaFornecedores() {
           </div>
         )}
       </div>
+    </TabsContent>
+  </Tabs>
 
-      {/* Diálogo: novo ajuste manual */}
+  {/* Diálogo: novo ajuste manual */}
       <Dialog open={!!novoOverride} onOpenChange={aberto => { if (!aberto) setNovoOverride(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Novo ajuste manual</DialogTitle></DialogHeader>

@@ -92,20 +92,27 @@ migrado de pnpm para yarn; o lockfile é `yarn.lock`.
 yarn install     # instala dependências (roda patch-package automaticamente)
 yarn dev         # servidor de desenvolvimento (Vite + Express na mesma porta)
 yarn build       # build de produção (client via Vite, server via esbuild)
+yarn build:vercel # build do client e API para Vercel; não aplica migrations
 yarn start       # roda o build de produção
 yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d,
                  # ver "CPQ renderização 3D") — precisa do "run"! `yarn check`
                  # sozinho dispara o comando nativo do Yarn (valida lockfile),
                  # não o script do package.json, e retorna resultado errado
-yarn test        # vitest run
+yarn test        # wrapper seguro; exige TEST_DATABASE_URL local de teste
+yarn test:safety # testes unitários de guardas; não acessa banco
 yarn format      # prettier --write .
-yarn db:push     # drizzle-kit generate && drizzle-kit migrate
+yarn db:generate # drizzle-kit generate, sem alterar banco
+yarn db:migrate  # migration protegida por alvo, identidade e confirmação
+yarn db:push     # gera e aplica; aplicação passa pela mesma proteção
 ```
 
 Variáveis de ambiente: ver `.env.example`. `DATABASE_URL` (string de conexão
 **PostgreSQL**, ex: `postgresql://user:pass@host/db?sslmode=require` — o
-projeto roda contra Neon) é obrigatória para rodar o server ou os scripts em
-`scripts/`.
+projeto roda contra Neon) é obrigatória para rodar o server ou scripts de
+banco. Migrations exigem também `DB_MIGRATION_TARGET`, ambiente coerente,
+identidade esperada (host/porta/banco) e confirmação específica do alvo. Os
+testes exigem `TEST_DATABASE_URL` em loopback e com nome de banco de teste/CI.
+Ver `docs/protecao-ambientes-banco-publicacao.md`.
 
 ## Banco de dados — sempre via migration
 
@@ -126,8 +133,10 @@ Toda mudança de estrutura (coluna, tipo, enum, índice) segue este fluxo:
    com tudo (ex: mudar os valores de um enum já em uso exige editar a
    migration à mão para adicionar um `USING CASE ...` que remapeia os
    dados já gravados; senão o `ALTER TYPE` quebra contra linhas existentes).
-4. Aplique com `npx drizzle-kit migrate` (ou `yarn db:push`, que já faz
-   generate + migrate).
+4. Aplique com `yarn db:migrate`, depois de declarar e conferir o alvo. O
+   comando `drizzle-kit migrate` também é protegido pela configuração.
+   `yarn db:push` gera e aplica, mas exige as mesmas confirmações; migrations de
+   produção devem usar o workflow manual protegido.
 
 Scripts one-off pra *dado* (backfill pontual, copiar de uma tabela legada)
 são aceitáveis fora desse fluxo — a regra é sobre *estrutura*. Migration
@@ -285,7 +294,9 @@ server/
                        MubiSys, contagem de múltiplas bobinas por câmera/diâmetros/peso/metros e
                        baixa idempotente pelas O.S. e BOM espelhada)
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
-                       espelho), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
+                       espelho: listagem pública, busca por CEP em raio de 300km com cálculo Haversine e fallback dos 2 mais próximos,
+                       questionário público de enriquecimento de parceiros por token com logo, cidades vizinhas e produtos fabricados;
+                       tabela `guia_fornecedores_questionarios` na migration 0116), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
                        estudio-cotacoes.ts (cotações do HTML estático do CPQ, snapshots comerciais imutáveis e vínculo posterior com OS MubiSys),
@@ -344,14 +355,13 @@ em vez de reescrever o padrão:
 
 ## Testes
 
-`yarn test` (vitest, `environment: "node"`) roda tudo que casar com
-`server/**/*.test.ts` (config em `vitest.config.ts`). **`DATABASE_URL`
-precisa estar exportada no shell antes de rodar** — os testes importam os
-módulos de `server/db/` direto e pulam `server/_core/index.ts` (que é quem
-normalmente carrega `dotenv/config`), então sem a env var no ambiente as
-suítes que tocam banco falham na conexão, não só pulam. Vários testes usam
-o banco real (Neon) via fixtures de SQL cru — não há banco de teste isolado
-nem mocks da camada de dados.
+`yarn test:safety` roda os testes unitários das proteções sem conexão ao banco.
+`yarn test` roda a suíte completa em `server/**/*.test.ts`, mas exige
+`TEST_DATABASE_URL` apontando para `localhost`, `127.0.0.1` ou `::1` e um nome
+de banco contendo `_ci`, `_test` ou `_tests`. O runner injeta essa URL como
+`DATABASE_URL` no processo Vitest. Não use um banco de produção para testes.
+Os testes com banco usam fixtures SQL reais e devem rodar apenas num banco
+descartável isolado, como o serviço Postgres do workflow de qualidade.
 
 ## docs/ — quais valem como fonte de verdade
 
@@ -363,6 +373,8 @@ nem mocks da camada de dados.
   importante pra entender o estado real do banco/auth agora.**
 - `docs/campanhas-whatsapp.md` — módulo Campanhas WhatsApp (aba ao lado de ROI Marketing): regras de
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
+- `docs/protecao-ambientes-banco-publicacao.md` — separação entre build,
+  migrations e testes; confirmações locais e configurações externas de Vercel/GitHub pendentes.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias

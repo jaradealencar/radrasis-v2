@@ -3129,6 +3129,44 @@ export const guiaFornecedoresConfig = pgTable("guia_fornecedores_config", {
 });
 export type GuiaFornecedoresConfig = typeof guiaFornecedoresConfig.$inferSelect;
 
+// ─── Questionários de Fornecedores Parceiros ──────────────────────────────────
+// Permite ao Daniel enviar um link público para o parceiro enriquecer o perfil:
+// logo PNG, se atende cidades vizinhas, e os produtos que fabrica (letreiro,
+// banner, adesivos, totens, placas, luminosos, PDV, envelopamento, etc.).
+export const guiaFornecedoresQuestionarioStatusEnum = pgEnum("guia_fornecedores_questionario_status", [
+  "pendente",
+  "enviado",
+  "preenchido",
+]);
+
+export const guiaFornecedoresQuestionarios = pgTable("guia_fornecedores_questionarios", {
+  id: serial("id").primaryKey(),
+  empresaChave: varchar("empresa_chave", { length: 256 }).notNull().unique(),
+  empresaNome: varchar("empresa_nome", { length: 256 }).notNull(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  status: guiaFornecedoresQuestionarioStatusEnum("status").notNull().default("pendente"),
+  logoUrl: text("logo_url"),
+  atendeCidadesVizinhas: boolean("atende_cidades_vizinhas").notNull().default(false),
+  raioAtendimentoKm: integer("raio_atendimento_km"),
+  cidadesAtendidas: text("cidades_atendidas"),
+  produtos: text("produtos"), // JSON array: ["letreiro", "adesivos", ...]
+  outrosProdutos: text("outros_produtos"),
+  telefoneContato: varchar("telefone_contato", { length: 32 }),
+  whatsapp: varchar("whatsapp", { length: 32 }),
+  instagram: varchar("instagram", { length: 128 }),
+  site: varchar("site", { length: 256 }),
+  descricao: text("descricao"),
+  enviadoEm: timestamp("enviado_em"),
+  preenchidoEm: timestamp("preenchido_em"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (t) => ({
+  tokenIdx: index("guia_fornecedores_questionarios_token_idx").on(t.token),
+  statusIdx: index("guia_fornecedores_questionarios_status_idx").on(t.status),
+}));
+export type GuiaFornecedoresQuestionario = typeof guiaFornecedoresQuestionarios.$inferSelect;
+export type InsertGuiaFornecedoresQuestionario = typeof guiaFornecedoresQuestionarios.$inferInsert;
+
 // Biblioteca de mídias do CRM: o "arsenal" de imagens que a equipe copia e cola nas conversas
 // de WhatsApp. Cada linha guarda a imagem inteira (PNG em base64, já reduzida no navegador) e uma
 // miniatura pequena separada, para a listagem não precisar carregar as imagens inteiras — a
