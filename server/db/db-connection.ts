@@ -13,7 +13,7 @@
  * `{ rows, rowCount }`), então nada abaixo desta função precisou mudar.
  */
 
-import { Pool as NeonPool, neonConfig, type QueryResult } from '@neondatabase/serverless';
+import { Pool as NeonPool, neonConfig, type QueryResult, type QueryResultRow } from '@neondatabase/serverless';
 import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless';
 import { drizzle as drizzlePostgres } from 'drizzle-orm/node-postgres';
 import { Pool as PostgresPool, type Pool as NodePostgresPool } from 'pg';
@@ -27,6 +27,11 @@ import { assertSafeTestDatabase, databaseIdentity } from '../scripts/migration-s
 neonConfig.poolQueryViaFetch = true;
 
 type DatabasePool = NeonPool | PostgresPool;
+
+export interface DatabaseQueryResult<Row extends QueryResultRow = Record<string, unknown>> {
+  rows: Row[];
+  rowCount: number | null;
+}
 
 let pool: DatabasePool | null = null;
 
@@ -93,6 +98,27 @@ export function getPool(): DatabasePool {
 
 export function safeErrorType(error: unknown): string {
   return error instanceof Error && SAFE_ERROR_CATEGORIES.has(error.name) ? error.name : 'UnknownError';
+}
+
+/** Executes PostgreSQL SQL without rewriting its text, through the selected runtime driver. */
+export async function queryDatabase<Row extends QueryResultRow = Record<string, unknown>>(
+  queryText: string,
+  values: unknown[] = [],
+): Promise<DatabaseQueryResult<Row>> {
+  const databasePool = getPool();
+
+  try {
+    if (databasePool instanceof PostgresPool) {
+      const result = await databasePool.query<Row, unknown[]>(queryText, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    }
+
+    const result = await databasePool.query<Row, unknown[]>(queryText, values);
+    return { rows: result.rows, rowCount: result.rowCount };
+  } catch (error) {
+    console.error('[QUERY] Falha na consulta:', safeErrorType(error));
+    throw error;
+  }
 }
 
 export function createAppDatabase(

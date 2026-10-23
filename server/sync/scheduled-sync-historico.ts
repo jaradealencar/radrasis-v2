@@ -26,7 +26,7 @@
  * DRE granular linha a linha.
  */
 
-import { getPool } from '../db/db-connection';
+import { queryDatabase } from '../db/db-connection';
 import { listarOSMubiSys, listarOrcamentosMubiSys, type MubiSysOS, type MubiSysOrcamento } from '../integrations/mubisys-client';
 
 export interface SincronizarHistoricoResultado {
@@ -143,7 +143,6 @@ function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<s
 /** Upsert em lotes por `INSERT ... ON CONFLICT DO UPDATE` — ver nota de topo sobre maxDuration. */
 async function upsertEmLotes(table: string, cols: string[], linhas: Record<string, unknown>[], conflictCol: string, batchSize = 150) {
   if (linhas.length === 0) return 0;
-  const pool = getPool();
   const colList = cols.map(c => `"${c}"`).join(', ');
   const updateSet = cols.filter(c => c !== conflictCol).map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
 
@@ -158,7 +157,7 @@ async function upsertEmLotes(table: string, cols: string[], linhas: Record<strin
     });
     const sql = `INSERT INTO ${table} (${colList}) VALUES ${tuplas.join(', ')}
       ON CONFLICT ("${conflictCol}") DO UPDATE SET ${updateSet}`;
-    await pool.query(sql, values as any[]);
+    await queryDatabase(sql, values);
     processadas += lote.length;
   }
   return processadas;
