@@ -15,7 +15,7 @@ import { campanhasWhatsappRouter, checarQuarentenaNoBanco, registrarDisparoNoBan
 
 const hoje = hojeCampoGrande();
 const dia = (n: number) => somarDias(hoje, n);
-const TEL = { A: "(67) 99000-9901", B: "(67) 99000-9902", C: "(67) 99000-9903", D: "(67) 99000-9904", E: "(67) 99000-9905", F: "(67) 99000-9906", G: "(67) 99000-9907", H: "(67) 99000-9908", I: "(67) 99000-9909", J: "(67) 99000-9910", K: "(67) 99000-9911" };
+const TEL = { A: "(67) 99000-9901", B: "(67) 99000-9902", C: "(67) 99000-9903", D: "(67) 99000-9904", E: "(67) 99000-9905", F: "(67) 99000-9906", G: "(67) 99000-9907", H: "(67) 99000-9908", I: "(67) 99000-9909", J: "(67) 99000-9910", K: "(67) 99000-9911", L: "(67) 99000-9912", M: "(67) 99000-9913" };
 const norm = (t: string) => `55${t.replace(/\D/g, "")}`;
 
 const ctxAdmin: any = { user: { id: "t1", name: "Teste Admin", email: "t@x.com", role: "admin" }, req: {}, res: {} };
@@ -38,6 +38,18 @@ async function ultimoContato(telefone: string): Promise<string | null> {
 
 const disparo = (campanhaId: number, dataEnvio: string, contatos: Array<{ telefone: string; nome?: string; osNumero?: string }>, aplicarQuarentena = true) =>
   registrarDisparoNoBanco({ campanhaId, dataEnvio, contatos, origem: "app", registradoPor: "Teste", aplicarQuarentena });
+
+async function criarCampanhaRecorrente(nome: string, frequenciaDias = 15): Promise<number> {
+  const campanha = await admin().criar({
+    nome,
+    categoria: "reativacao_inativo",
+    tipo: "recorrente",
+    frequenciaDias,
+    quarentenaDias: 0,
+  });
+  criadas.push(campanha.id);
+  return campanha.id;
+}
 
 beforeAll(async () => {
   const a = await admin().criar({ nome: "TESTE recorrente", categoria: "reativacao_inativo", tipo: "recorrente", frequenciaDias: 15, quarentenaDias: 30 });
@@ -123,11 +135,27 @@ describe("registrarDisparoNoBanco", () => {
 describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
-  it("listarItensDisparo começa vazio (resumo zerado) para um disparo que nunca teve itens gravados", async () => {
+  it("listarItensDisparo recupera itens automáticos do histórico e preserva o disparo de origem", async () => {
     const r = await disparo(recorrenteId, dia(-3), [{ telefone: TEL.F, nome: "Eva" }]);
+    const antes = await getPool().query(
+      "SELECT id FROM campanhas_whatsapp_disparo_itens WHERE disparo_id = $1",
+      [r.disparoId],
+    );
+    expect(antes.rows).toHaveLength(0);
+    const historico = await getPool().query(
+      "SELECT telefone, disparo_id FROM campanhas_whatsapp_contatos_historico WHERE disparo_id = $1",
+      [r.disparoId],
+    );
+    expect(historico.rows).toEqual([{ telefone: norm(TEL.F), disparo_id: r.disparoId }]);
+
     const { itens, resumo } = await admin().listarItensDisparo({ disparoId: r.disparoId! });
-    expect(itens).toHaveLength(0);
-    expect(resumo).toEqual({ lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 });
+    expect(itens).toHaveLength(1);
+    expect(itens[0]).toMatchObject({
+      disparoId: r.disparoId,
+      telefone: norm(TEL.F),
+      origem: "auto",
+    });
+    expect(resumo).toEqual({ lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 1 });
   });
 
   it("salvarItensDisparoManual grava os válidos, rejeita telefone inválido e classifica o resumo sem_consulta", async () => {
@@ -177,10 +205,23 @@ describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", (
     expect(itens[0].statusConsultadoEm).not.toBeNull();
   });
 
-  it("dispararWts falha sem WTS_CHAT_AUTHORIZATION (integração não configurada) — listarItensDisparo não quebra para disparo sem nenhum item", async () => {
+  it("listarItensDisparo permanece vazio quando o disparo não tem itens nem histórico granular", async () => {
     const r = await disparo(recorrenteId, dia(-4), [{ telefone: TEL.J, nome: "Eva" }]);
-    await expect(admin().listarItensDisparo({ disparoId: r.disparoId! })).resolves.toMatchObject({
-      itens: [], resumo: { lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 },
+    const removidos = await getPool().query(
+      "DELETE FROM campanhas_whatsapp_contatos_historico WHERE disparo_id = $1",
+      [r.disparoId],
+    );
+    expect(removidos.rowCount).toBe(1);
+
+    const { itens, resumo } = await admin().listarItensDisparo({ disparoId: r.disparoId! });
+    expect(itens).toHaveLength(0);
+    expect(resumo).toEqual({ lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 });
+  });
+
+  it("dispararWts falha sem WTS_CHAT_AUTHORIZATION antes de acessar a integração", async () => {
+    vi.stubEnv("WTS_CHAT_AUTHORIZATION", "");
+    await expect(admin().dispararWts({ campanhaId: recorrenteId })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
     });
   });
 });
@@ -201,8 +242,12 @@ describe("checarQuarentenaNoBanco", () => {
 
 describe("router (tRPC)", () => {
   it("listar traz a campanha recorrente com o último envio e a frequência aplicada", async () => {
+    const campanhaId = await criarCampanhaRecorrente("TESTE recorrência com envio isolado");
+    const registrado = await disparo(campanhaId, dia(-5), [{ telefone: TEL.L, nome: "Lia" }]);
+    expect(registrado).toMatchObject({ registrado: true, proximaData: dia(10) });
+
     const { campanhas, resumo } = await admin().listar();
-    const c = campanhas.find(x => x.id === recorrenteId)!;
+    const c = campanhas.find(x => x.id === campanhaId)!;
     expect(c.ultimoEnvio).toBe(dia(-5));
     expect(c.proximoEnvio).toBe(dia(10)); // último envio + 15
     expect(c.semaforo).toBe("verde");
@@ -211,9 +256,14 @@ describe("router (tRPC)", () => {
   });
 
   it("editar a frequência muda o próximo envio e o semáforo na hora", async () => {
-    await admin().atualizar({ id: recorrenteId, frequenciaDias: 5 });
+    const campanhaId = await criarCampanhaRecorrente("TESTE recorrência com frequência editada");
+    const registrado = await disparo(campanhaId, dia(-5), [{ telefone: TEL.M, nome: "Mia" }]);
+    expect(registrado).toMatchObject({ registrado: true, proximaData: dia(10) });
+
+    await admin().atualizar({ id: campanhaId, frequenciaDias: 5 });
     const { campanhas } = await admin().listar();
-    const c = campanhas.find(x => x.id === recorrenteId)!;
+    const c = campanhas.find(x => x.id === campanhaId)!;
+    expect(c.ultimoEnvio).toBe(dia(-5));
     expect(c.proximoEnvio).toBe(hoje);
     expect(c.semaforo).toBe("vermelho");
   });
