@@ -3,11 +3,11 @@ import type { AddressInfo } from "net";
 import type { Server } from "http";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cpqSoldaCorrecoes, cpqSoldaRegras, estudioKits, materiaPrimaCadastros } from "../../drizzle/schema";
+import { cpqSoldaCorrecoes, cpqSoldaRegras, estudioKits, materiaPrimaCadastros, materiasPrimas } from "../../drizzle/schema";
 
 /**
- * Rotas de produtividade de solda do CPQ contra o banco de testes do .env (ids fictícios 987_654_7xx, apagados no final).
- * A sessão e o catálogo do MubiSys são simulados.
+ * Tests CPQ solder productivity routes against a disposable PostgreSQL catalog
+ * mirror with fake IDs. Session is simulated; MubiSys calls fail fast.
  */
 const simulado = vi.hoisted(() => ({
   sessao: null as null | { user: { id: string; name: string; role: string } },
@@ -28,7 +28,16 @@ const GAL_GRANDE = 987_654_711;
 const GAL_PEQUENA = 987_654_712;
 const INOX_GRANDE = 987_654_713;
 const FORA_DO_PRODUTO = 987_654_714; // melhor encaixe, mas o produto não a relaciona
-const IDS = [GAL_GRANDE, GAL_PEQUENA, INOX_GRANDE, FORA_DO_PRODUTO];
+const ID_CHAPA = 987_654_717;
+const ID_GERAL = 987_654_718;
+const ID_INATIVA = 987_654_719;
+const IDS = [GAL_GRANDE, GAL_PEQUENA, INOX_GRANDE, FORA_DO_PRODUTO, ID_CHAPA, ID_GERAL, ID_INATIVA];
+
+const espelho = (id: number, nome: string, unidadeMedida: string, custoUnitario: number, statusErp = "Ativo") => ({
+  skuErp: `TESTE-MP-${id}`, mubisysMateriaPrimaId: id, nome, unidadeMedida, custoUnitario: String(custoUnitario),
+  categoriaErp: nome.startsWith("Produtividade") ? "M\u00e3o de obra" : "Chapas",
+  tipoErp: nome.startsWith("Produtividade") ? "Servi\u00e7o" : "Insumo", statusErp, ativa: statusErp === "Ativo",
+});
 
 const vendedor = { user: { id: "u-vendas", name: "Vendedora Teste", role: "vendas" } };
 const gestor = { user: { id: "u-gestor", name: "Gestor Teste", role: "gestor" } };
@@ -62,12 +71,22 @@ const limpar = async () => {
   await db.delete(cpqSoldaRegras).where(inArray(cpqSoldaRegras.mubisysMateriaPrimaId, IDS));
   await db.delete(estudioKits).where(inArray(estudioKits.chave, [CHAVE_COM, CHAVE_SEM]));
   await db.delete(materiaPrimaCadastros).where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, IDS));
+  await db.delete(materiasPrimas).where(inArray(materiasPrimas.mubisysMateriaPrimaId, IDS));
 };
 
 beforeAll(async () => {
   const db = await getDb();
   if (!db) throw new Error("banco indisponível");
   await limpar();
+  await db.insert(materiasPrimas).values([
+    espelho(GAL_GRANDE, "Produtividade Solda 1\u00ba [R$7,50] [Galvanizado Padr\u00e3o]", "Unidade/Gl/Lt/Kg", 7.5),
+    espelho(GAL_PEQUENA, "Produtividade Solda 33\u00ba [R$18,50] [Menor ou igual a 11cm] [Gal]", "Unidade/Gl/Lt/Kg", 18.5),
+    espelho(INOX_GRANDE, "Produtividade Solda 3\u00ba [R$11,25] [Inox Padr\u00e3o]", "Unidade/Gl/Lt/Kg", 11.25),
+    espelho(FORA_DO_PRODUTO, "Produtividade Solda 98\u00ba [R$7,00] [Galvanizado Padr\u00e3o]", "Unidade/Gl/Lt/Kg", 7),
+    espelho(ID_INATIVA, "Produtividade Solda 97\u00ba [Inativa]", "Unidade/Gl/Lt/Kg", 1, "Inativo"),
+    espelho(ID_GERAL, "Produtividade Geral - Hora", "Hora", 18.5),
+    espelho(ID_CHAPA, "Chapa de teste", "Metro quadrado", 100),
+  ]);
   const kit = (extra: Record<string, unknown>) => ({ linhas: [], categoria: "Letreiros", subcategoria: "Galvanizado", ...extra });
   await db.insert(estudioKits).values([
     { chave: CHAVE_COM, produtoId: 987654701, modeloId: 1, dadosJson: kit({ produtividadesRelacionadas: [GAL_GRANDE, GAL_PEQUENA, INOX_GRANDE] }) },
@@ -97,15 +116,7 @@ afterAll(async () => {
 beforeEach(() => {
   simulado.sessao = vendedor;
   simulado.listar.mockReset();
-  simulado.listar.mockResolvedValue([
-    { id: GAL_GRANDE, nome: "Produtividade Solda 1º [R$7,50] [Galvanizado Padrão]", unidade_custo: "Unidade/Gl/Lt/Kg", unidade_movimentacao: "Unidade/Gl/Lt/Kg", valor_custo: 7.5, data_referencia: "2026-10-01", status: "Ativo" },
-    { id: GAL_PEQUENA, nome: "Produtividade Solda 33º [R$18,50] [Menor ou igual a 11cm] [Gal]", unidade_custo: "Unidade/Gl/Lt/Kg", unidade_movimentacao: "Unidade/Gl/Lt/Kg", valor_custo: 18.5, data_referencia: "2026-10-01", status: "Ativo" },
-    { id: INOX_GRANDE, nome: "Produtividade Solda 3º [R$11,25] [Inox Padrão]", unidade_custo: "Unidade/Gl/Lt/Kg", unidade_movimentacao: "Unidade/Gl/Lt/Kg", valor_custo: 11.25, data_referencia: "2026-10-01", status: "Ativo" },
-    { id: FORA_DO_PRODUTO, nome: "Produtividade Solda 98º [R$7,00] [Galvanizado Padrão]", unidade_custo: "Unidade/Gl/Lt/Kg", unidade_movimentacao: "Unidade/Gl/Lt/Kg", valor_custo: 7, data_referencia: "2026-10-01", status: "Ativo" },
-    { id: 987_654_719, nome: "Produtividade Solda 97º [Inativa]", unidade_custo: "Unidade/Gl/Lt/Kg", unidade_movimentacao: "Unidade/Gl/Lt/Kg", valor_custo: 1, data_referencia: "2026-10-01", status: "Inativo" },
-    { id: 987_654_718, nome: "Produtividade Geral - Hora", unidade_custo: "Hora", unidade_movimentacao: "Hora", valor_custo: 18.5, data_referencia: "2026-10-01", status: "Ativo" },
-    { id: 987_654_717, nome: "Chapa de teste", unidade_custo: "Metro quadrado", unidade_movimentacao: "Metro quadrado", valor_custo: 100, data_referencia: "2026-10-01", status: "Ativo" },
-  ]);
+  simulado.listar.mockRejectedValue(new Error("This test uses the local PostgreSQL mirror."));
 });
 
 describe("POST /solda/sugerir", () => {

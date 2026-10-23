@@ -15,7 +15,7 @@ import { campanhasWhatsappRouter, checarQuarentenaNoBanco, registrarDisparoNoBan
 
 const hoje = hojeCampoGrande();
 const dia = (n: number) => somarDias(hoje, n);
-const TEL = { A: "(67) 99000-9901", B: "(67) 99000-9902", C: "(67) 99000-9903", D: "(67) 99000-9904", E: "(67) 99000-9905" };
+const TEL = { A: "(67) 99000-9901", B: "(67) 99000-9902", C: "(67) 99000-9903", D: "(67) 99000-9904", E: "(67) 99000-9905", F: "(67) 99000-9906", G: "(67) 99000-9907", H: "(67) 99000-9908", I: "(67) 99000-9909", J: "(67) 99000-9910", K: "(67) 99000-9911" };
 const norm = (t: string) => `55${t.replace(/\D/g, "")}`;
 
 const ctxAdmin: any = { user: { id: "t1", name: "Teste Admin", email: "t@x.com", role: "admin" }, req: {}, res: {} };
@@ -124,18 +124,18 @@ describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", (
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
   it("listarItensDisparo começa vazio (resumo zerado) para um disparo que nunca teve itens gravados", async () => {
-    const r = await disparo(recorrenteId, dia(-3), [{ telefone: TEL.E, nome: "Eva" }]);
+    const r = await disparo(recorrenteId, dia(-3), [{ telefone: TEL.F, nome: "Eva" }]);
     const { itens, resumo } = await admin().listarItensDisparo({ disparoId: r.disparoId! });
     expect(itens).toHaveLength(0);
     expect(resumo).toEqual({ lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 });
   });
 
   it("salvarItensDisparoManual grava os válidos, rejeita telefone inválido e classifica o resumo sem_consulta", async () => {
-    const r = await disparo(recorrenteId, dia(-2), [{ telefone: TEL.E, nome: "Eva" }]);
+    const r = await disparo(recorrenteId, dia(-2), [{ telefone: TEL.G, nome: "Eva" }]);
     const salvo = await admin().salvarItensDisparoManual({
       disparoId: r.disparoId!,
       itens: [
-        { telefone: TEL.E, nome: "Eva" },
+        { telefone: TEL.G, nome: "Eva" },
         { telefone: TEL.A, nome: "Ana", wtsMensagemId: "abc12345-id" },
         { telefone: "123", nome: "Lixo" },
       ],
@@ -150,17 +150,17 @@ describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", (
   });
 
   it("atualizarStatusItensDisparo recusa quando nenhum item tem ID de mensagem", async () => {
-    const r = await disparo(recorrenteId, dia(-1), [{ telefone: TEL.E, nome: "Eva" }]);
-    await admin().salvarItensDisparoManual({ disparoId: r.disparoId!, itens: [{ telefone: TEL.E, nome: "Eva" }] });
+    const r = await disparo(recorrenteId, dia(-1), [{ telefone: TEL.H, nome: "Eva" }]);
+    await admin().salvarItensDisparoManual({ disparoId: r.disparoId!, itens: [{ telefone: TEL.H, nome: "Eva" }] });
     vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
     await expect(admin().atualizarStatusItensDisparo({ disparoId: r.disparoId! })).rejects.toThrow(/ID de mensagem/);
   });
 
   it("atualizarStatusItensDisparo consulta a API, grava o status e recalcula o resumo", async () => {
-    const r = await disparo(recorrenteId, hoje, [{ telefone: TEL.E, nome: "Eva" }]);
+    const r = await disparo(recorrenteId, hoje, [{ telefone: TEL.I, nome: "Eva" }]);
     await admin().atualizar({ id: recorrenteId, status: "ativa" }); // garante que a campanha não ficou pausada de um teste anterior
     await admin().salvarItensDisparoManual({
-      disparoId: r.disparoId!, itens: [{ telefone: TEL.E, nome: "Eva", wtsMensagemId: "msg-teste-123" }],
+      disparoId: r.disparoId!, itens: [{ telefone: TEL.I, nome: "Eva", wtsMensagemId: "msg-teste-123" }],
     });
     vi.stubEnv("WTS_CHAT_AUTHORIZATION", "token-de-teste");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
@@ -178,7 +178,7 @@ describe("itens de disparo (\"Ver envios\" + lista manual + status WTS/Ceci)", (
   });
 
   it("dispararWts falha sem WTS_CHAT_AUTHORIZATION (integração não configurada) — listarItensDisparo não quebra para disparo sem nenhum item", async () => {
-    const r = await disparo(recorrenteId, dia(-4), [{ telefone: TEL.E, nome: "Eva" }]);
+    const r = await disparo(recorrenteId, dia(-4), [{ telefone: TEL.J, nome: "Eva" }]);
     await expect(admin().listarItensDisparo({ disparoId: r.disparoId! })).resolves.toMatchObject({
       itens: [], resumo: { lido: 0, entregue: 0, na_fila: 0, falha: 0, sem_consulta: 0 },
     });
@@ -544,7 +544,7 @@ describe("Planner (agendamentos) e relatório por período", () => {
     // Isolado num período bem no passado para não colidir com disparos de outros testes deste arquivo.
     const inicio = dia(-400);
     const fim = dia(-395);
-    await disparo(campanhaId, dia(-398), [{ telefone: TEL.E, nome: "Eva" }]);
+    await disparo(campanhaId, dia(-398), [{ telefone: TEL.K, nome: "Eva" }]);
     const novoAgendamento = await admin().criarAgendamento({ campanhaId, dataAgendada: dia(-397) });
 
     const r = await admin().relatorioPeriodo({ inicio, fim });
@@ -555,7 +555,7 @@ describe("Planner (agendamentos) e relatório por período", () => {
     expect(linha).toMatchObject({ nome: "TESTE Relatório Período", disparosNoPeriodo: 1, contatosEnviadosNoPeriodo: 1 });
     expect(linha.agendamentos).toEqual([{ id: novoAgendamento.id, dataAgendada: dia(-397), status: "planejado", observacoes: null }]);
 
-    await getPool().query("DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1", [norm(TEL.E)]); // limpeza extra
+    await getPool().query("DELETE FROM campanhas_whatsapp_quarentena WHERE telefone = $1", [norm(TEL.K)]); // limpeza extra
   });
 
   it("relatorioPeriodo recusa período invertido", async () => {

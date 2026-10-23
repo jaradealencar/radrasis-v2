@@ -1,22 +1,28 @@
 /**
- * Router de matérias-primas contra o banco real de teste (o `.env` local nunca aponta para produção). O catálogo do MubiSys é
- * simulado com ids fictícios (987_654_5xx), e tudo o que o teste grava é apagado no final.
+ * Tests the materials productivity router against a disposable PostgreSQL database.
+ * The local MubiSys mirror is seeded with fake IDs and removed after each suite.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, inArray } from "drizzle-orm";
-import { materiaPrimaCadastros, materiaPrimaCategorias } from "../../drizzle/schema";
+import { materiaPrimaCadastros, materiaPrimaCategorias, materiasPrimas } from "../../drizzle/schema";
 
 const ID_SOLDA = 987_654_501;
 const ID_GERAL = 987_654_502;
 const ID_CHAPA = 987_654_503;
 const IDS = [ID_SOLDA, ID_GERAL, ID_CHAPA];
+const espelho = (id: number, nome: string, unidadeMedida: string, custoUnitario: number, categoriaErp: string, tipoErp: string) => ({
+  skuErp: `TESTE-MP-${id}`, mubisysMateriaPrimaId: id, nome, unidadeMedida, custoUnitario: String(custoUnitario),
+  categoriaErp, tipoErp, statusErp: "Ativo", ativa: true,
+});
+const materiaisFixture = [
+  espelho(ID_SOLDA, "Produtividade Solda 99\u00ba [R$10,00] [Teste]", "Unidade/Gl/Lt/Kg", 10, "M\u00e3o de obra", "Servi\u00e7o"),
+  espelho(ID_GERAL, "Produtividade Geral - Hora", "Unidade/Gl/Lt/Kg", 18.5, "M\u00e3o de obra", "Servi\u00e7o"),
+  espelho(ID_CHAPA, "Chapa de teste", "Metro quadrado", 100, "Chapas", "Insumo"),
+];
 
-vi.mock("../integrations/mubisys-client", () => ({
-  listarMateriasPrimas: async () => [
-    { id: 987_654_501, nome: "Produtividade Solda 99º [R$10,00] [Teste]", categoria: "Mão de obra", tipo: "Serviço", unidade_custo: "Unidade/Gl/Lt/Kg", unidade_movimentacao: "Unidade/Gl/Lt/Kg", valor_custo: 10, data_referencia: null, status: "Ativo" },
-    { id: 987_654_502, nome: "Produtividade Geral - Hora", categoria: "Mão de obra", tipo: "Serviço", unidade_custo: "Unidade/Gl/Lt/Kg", unidade_movimentacao: "Unidade/Gl/Lt/Kg", valor_custo: 18.5, data_referencia: null, status: "Ativo" },
-    { id: 987_654_503, nome: "Chapa de teste", categoria: "Chapas", tipo: "Insumo", unidade_custo: "Metro quadrado", unidade_movimentacao: "Metro quadrado", valor_custo: 100, data_referencia: null, status: "Ativo" },
-  ],
+vi.mock("../services/mubisysEspelho", async importOriginal => ({
+  ...(await importOriginal<typeof import("../services/mubisysEspelho")>()),
+  prepararCatalogoEspelhado: vi.fn(async () => {}),
 }));
 
 const { getDb } = await import("../db/db");
@@ -31,7 +37,14 @@ const base = (id: number) => ({ mubisysMateriaPrimaId: id, categoriaId: null, es
 
 const limpar = async () => {
   const db = await getDb();
-  if (db) await db.delete(materiaPrimaCadastros).where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, IDS));
+  if (!db) return;
+  await db.delete(materiaPrimaCadastros).where(inArray(materiaPrimaCadastros.mubisysMateriaPrimaId, IDS));
+  await db.delete(materiasPrimas).where(inArray(materiasPrimas.mubisysMateriaPrimaId, IDS));
+};
+const preparar = async () => {
+  await limpar();
+  const db = await getDb();
+  if (db) await db.insert(materiasPrimas).values(materiaisFixture);
 };
 
 const linha = async (id: number) => {
@@ -42,7 +55,7 @@ const linha = async (id: number) => {
 };
 
 describe("subclassificação das matérias-primas de produtividade (router + banco)", () => {
-  beforeAll(limpar);
+  beforeAll(preparar);
   afterAll(limpar);
 
   it("só marca como produtividade as linhas certas e nasce sem classificação", async () => {
@@ -89,7 +102,7 @@ describe("subclassificação das matérias-primas de produtividade (router + ban
 });
 
 describe("estilo do letreiro (categoria, aro, formato e fundo) no router + banco", () => {
-  beforeAll(limpar);
+  beforeAll(preparar);
   afterAll(limpar);
 
   it("nasce vazio e grava os quatro grupos, devolvendo na ordem fixa", async () => {
@@ -145,7 +158,7 @@ describe("estilo do letreiro (categoria, aro, formato e fundo) no router + banco
 });
 
 describe("mão de obra (produtividade) não tem peso específico", () => {
-  beforeAll(limpar);
+  beforeAll(preparar);
   afterAll(limpar);
 
   it("produtividade ignora o peso específico enviado; matéria-prima comum continua guardando", async () => {

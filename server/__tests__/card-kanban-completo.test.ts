@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { selectQuery, mutationQuery } from '../db/db-connection';
 import { listarCotacoesFrete, normalizarOpcao, adicionarOpcaoFrete, atualizarOpcaoFrete } from '../db/db-helpers-select';
 
+const OS_CACHE_TESTE = 'TEST-CARD-CACHE-9911';
+
 /**
  * Garante os requisitos explícitos do card do Kanban:
  * - transportadoras selecionadas chegam ao frontend em TODOS os estágios;
@@ -104,6 +106,20 @@ describe('Card do Kanban — dados completos em todos os estágios', () => {
 });
 
 describe('Cache de OS e log de sincronização', () => {
+  beforeAll(async () => {
+    await mutationQuery(
+      `INSERT INTO erp_os_cache ("numeroOs", "dataAprovacao", vendedor, status)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT ("numeroOs") DO UPDATE SET "dataAprovacao" = EXCLUDED."dataAprovacao",
+         vendedor = EXCLUDED.vendedor, status = EXCLUDED.status`,
+      [OS_CACHE_TESTE, "2026-10-01", "Vendedora Teste", "APROVADA"],
+    );
+  });
+
+  afterAll(async () => {
+    await mutationQuery("DELETE FROM erp_os_cache WHERE \"numeroOs\" = ?", [OS_CACHE_TESTE]);
+  });
+
   it('grava log de sincronização nas colunas reais de sync_logs', async () => {
     const { registrarLogSincronizacao, obterStatusSincronizacao } = await import('../sync/scheduled-sync-os');
     await registrarLogSincronizacao({
@@ -131,9 +147,9 @@ describe('Cache de OS e log de sincronização', () => {
   it('cache tem OS com aprovação e vendedor preenchidos pela sincronização', async () => {
     const rows = await selectQuery(
       `SELECT COUNT(*) AS "comDados" FROM erp_os_cache
-       WHERE "dataAprovacao" IS NOT NULL AND "dataAprovacao" <> ''
+       WHERE "numeroOs" = ? AND "dataAprovacao" IS NOT NULL AND "dataAprovacao" <> ''
          AND vendedor IS NOT NULL AND vendedor <> ''`,
-      [],
+      [OS_CACHE_TESTE],
     );
     expect(Number(rows[0].comDados)).toBeGreaterThan(0);
   });
