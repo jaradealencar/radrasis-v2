@@ -12,7 +12,7 @@
  * e não estoura a API do MubiSys — rajadas de janelas em paralelo geraram timeouts em cadeia
  * em 21/09/2026. Idempotente: só grava onde telefone ainda é NULL.
  */
-import { getPool } from "../db/db-connection";
+import { queryDatabase } from "../db/db-connection";
 import { getDb } from "../db/db";
 import { and, asc, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { historicoOrcamentos } from "../../drizzle/schema";
@@ -65,7 +65,7 @@ export function fatiarMesEmJanelas(mes: number, ano: number, hoje: Date = new Da
 export async function planoBackfillTelefone(totalMeses = MESES_BACKFILL_PADRAO, hoje: Date = new Date()): Promise<MesBackfill[]> {
   const chaveAtual = hoje.getFullYear() * 12 + hoje.getMonth() + 1;
   const chaveInicial = chaveAtual - (totalMeses - 1);
-  const { rows } = await getPool().query(
+  const { rows } = await queryDatabase<{ mes: number; ano: number; total: number; pendentes: number }>(
     `SELECT mes, ano, count(*)::int AS total, (count(*) FILTER (WHERE telefone IS NULL))::int AS pendentes
        FROM historico_os WHERE (ano * 12 + mes) BETWEEN $1 AND $2 GROUP BY mes, ano`,
     [chaveInicial, chaveAtual],
@@ -100,7 +100,7 @@ export async function gravarTelefones(mapa: Map<string, string>): Promise<number
   if (mapa.size === 0) return 0;
   const numeros = [...mapa.keys()];
   const telefones = numeros.map(n => mapa.get(n)!);
-  const r = await getPool().query(
+  const r = await queryDatabase(
     `UPDATE historico_os h SET telefone = v.tel
        FROM unnest($1::text[], $2::text[]) AS v(os, tel)
       WHERE h."osNumero" = v.os AND h.telefone IS NULL`,
@@ -159,7 +159,7 @@ export class ErroConsultaMubiSysBackfill extends Error {
 /** Meses (do mais recente ao mais antigo) com orçamentos sem `clienteId`, cada um com suas janelas de 2 dias. */
 export async function planoClienteIdOrcamentos(totalMeses = MESES_BACKFILL_PADRAO, hoje: Date = new Date()): Promise<MesOrcamentoSemCliente[]> {
   const chaveAtual = hoje.getFullYear() * 12 + hoje.getMonth() + 1;
-  const { rows } = await getPool().query(
+  const { rows } = await queryDatabase<{ mes: number; ano: number; total: number; pendentes: number }>(
     `SELECT mes, ano, count(*)::int AS total, (count(*) FILTER (WHERE "clienteId" IS NULL))::int AS pendentes
        FROM historico_orcamentos WHERE (ano * 12 + mes) BETWEEN $1 AND $2 GROUP BY mes, ano`,
     [chaveAtual - (totalMeses - 1), chaveAtual],
@@ -198,7 +198,7 @@ export async function gravarClienteIdOrcamentosJanela(j: JanelaBackfill): Promis
   }
   if (mapa.size === 0) return { listados: itens.length, atualizadas: 0 };
   const numeros = [...mapa.keys()];
-  const r = await getPool().query(
+  const r = await queryDatabase(
     `UPDATE historico_orcamentos h SET "clienteId" = v.cid
        FROM unnest($1::text[], $2::int[]) AS v(orc, cid)
       WHERE h."orcNumero" = v.orc AND h."clienteId" IS NULL`,

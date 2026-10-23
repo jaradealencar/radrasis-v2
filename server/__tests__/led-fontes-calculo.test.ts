@@ -15,13 +15,13 @@ const fita = (quantidade: number, tabela = fita24V): EntradaDimensionamento => (
 const nomes = (resultado: ReturnType<typeof dimensionarFontes>) => (resultado.recomendado ? resumirPlano(resultado.recomendado).map(grupo => `${grupo.copias}x ${grupo.nome}`) : []);
 
 describe("tabelas de fontes (base da calculadora)", () => {
-  it("a tabela de módulos 24 V continua com os mesmos números, agora derivados de 1,5 W por módulo", () => {
-    expect(modulos24V.wattsPerModule).toBe(1.5);
+  it("a tabela de m\u00f3dulos 24 V deriva limites de capacidade de 1,7 W por m\u00f3dulo", () => {
+    expect(modulos24V.wattsPerModule).toBe(1.7);
     expect(modulos24V.rows.map(linha => [linha.recommendedModules, linha.maximumModules])).toEqual([
-      [136, 160],
-      [272, 320],
-      [408, 480],
-      [680, 800],
+      [120, 141],
+      [240, 282],
+      [360, 423],
+      [600, 705],
     ]);
   });
 
@@ -38,47 +38,47 @@ describe("tabelas de fontes (base da calculadora)", () => {
 describe("dimensionarFontes", () => {
   it("carga pequena fica na menor fonte, dentro dos 85%", () => {
     const resultado = dimensionarFontes(modulos(100));
-    expect(resultado.consumoTotalW).toBe(150);
+    expect(resultado.consumoTotalW).toBe(170);
     expect(nomes(resultado)).toEqual(["1x Fonte chaveada 10A"]);
     expect(resultado.recomendado!.faixa).toBe("ideal");
-    expect(resultado.recomendado!.fontes[0].utilizacao).toBeCloseTo(0.625, 5);
+    expect(resultado.recomendado!.fontes[0].utilizacao).toBeCloseTo(170 / 240, 5);
     expect(resultado.comFolga).toBeNull();
   });
 
-  it("no limite exato dos 85% (136 módulos na 10 A) ainda é ideal", () => {
-    const resultado = dimensionarFontes(modulos(136));
+  it("no limite exato dos 85% (120 módulos na 10 A) ainda é ideal", () => {
+    const resultado = dimensionarFontes(modulos(120));
     expect(nomes(resultado)).toEqual(["1x Fonte chaveada 10A"]);
     expect(resultado.recomendado!.faixa).toBe("ideal");
   });
 
   it("entre 85% e 92% mantém a mesma fonte da sobra e apresenta um único plano", () => {
-    const resultado = dimensionarFontes(modulos(140)); // 210 W de 240 W = 87,5%
+    const resultado = dimensionarFontes(modulos(129)); // 219,3 W de 240 W = 91,375%
     expect(nomes(resultado)).toEqual(["1x Fonte chaveada 10A"]);
     expect(resultado.recomendado!.faixa).toBe("tolerancia");
-    expect(resultado.recomendado!.fontes[0].utilizacao).toBeCloseTo(0.875, 5);
+    expect(resultado.recomendado!.fontes[0].utilizacao).toBeCloseTo(0.91375, 5);
     expect(resultado.comFolga).toBeNull();
   });
 
   it("92% ainda cabe; acima disso sobe para a fonte seguinte", () => {
-    const noLimite = dimensionarFontes(modulos(147)); // 220,5 W = 91,875%
+    const noLimite = dimensionarFontes(modulos(129)); // 219,3 W = 91,375%
     expect(nomes(noLimite)).toEqual(["1x Fonte chaveada 10A"]);
-    const acima = dimensionarFontes(modulos(148)); // 222 W = 92,5%
+    const acima = dimensionarFontes(modulos(130)); // 221 W = 92,08%
     expect(nomes(acima)).toEqual(["1x Fonte chaveada 20A"]);
     expect(acima.recomendado!.faixa).toBe("ideal");
   });
 
-  it("prefere uma fonte grande a duas pequenas quando cabe em 93%", () => {
-    const resultado = dimensionarFontes(modulos(700)); // 1.050 W: a 50 A (1.200 W) fica em 87,5%
-    expect(nomes(resultado)).toEqual(["1x Fonte chaveada 50A"]);
-    expect(resultado.recomendado!.faixa).toBe("tolerancia");
+  it("prefere duas fontes menores quando a maior ultrapassa 92%", () => {
+    const resultado = dimensionarFontes(modulos(700)); // 1.190 W: a 50 A (1.200 W) passa de 92%
+    expect(nomes(resultado)).toEqual(["2x Fonte chaveada 30A"]);
+    expect(resultado.recomendado!.faixa).toBe("ideal");
   });
 
   it("repete a maior fonte a 85% e usa a menor fonte possível para a sobra", () => {
     const resultado = dimensionarFontes(modulos(3000));
-    expect(nomes(resultado)).toEqual(["4x Fonte chaveada 50A", "1x Fonte chaveada 20A"]);
-    expect(resultado.recomendado!.fontes.map(item => item.quantidade)).toEqual([680, 680, 680, 680, 280]);
+    expect(nomes(resultado)).toEqual(["5x Fonte chaveada 50A"]);
+    expect(resultado.recomendado!.fontes.map(item => item.quantidade)).toEqual([600, 600, 600, 600, 600]);
     expect(resultado.recomendado!.fontes.slice(0, 4).every(item => item.faixa === "ideal")).toBe(true);
-    expect(resultado.recomendado!.fontes[4].faixa).toBe("tolerancia");
+    expect(resultado.recomendado!.fontes[4].faixa).toBe("ideal");
   });
 
   it("a soma entre as fontes é sempre a quantidade pedida e nenhuma passa de 92%", () => {
@@ -98,7 +98,7 @@ describe("dimensionarFontes", () => {
 
     // 12,9 m x 17 W/m = 219,3 W = 91,4% (cabe); 13 m = 221 W = 92,1% (não cabe).
     expect(nomes(dimensionarFontes(fita(12.9)))).toEqual(["1x Fonte 10A"]);
-    expect(nomes(dimensionarFontes(fita(13))).toEqual(["1x Fonte 20A"]);
+    expect(nomes(dimensionarFontes(fita(13)))).toEqual(["1x Fonte 20A"]);
   });
 
   it("não se perde com ruído de ponto flutuante (0,1 + 0,2)", () => {
@@ -109,7 +109,7 @@ describe("dimensionarFontes", () => {
 
   it("módulo de 12 V usa as fontes de 12 V", () => {
     const resultado = dimensionarFontes({ fontes: fontesDe(modulos7025.rows), wattsPorUnidade: modulos7025.wattsPerModule, passo: 1, quantidade: 80 });
-    // 80 x 1,5 W = 120 W: a 10 A de 12 V (120 W) estoura; a 20 A (240 W) fica a 50%.
+    // 80 x 1,7 W = 136 W: a fonte 10 A (120 W) excede 92%; a de 20 A (240 W) fica a 56,7%.
     expect(nomes(resultado)).toEqual(["1x Fonte 20A"]);
   });
 
@@ -120,6 +120,6 @@ describe("dimensionarFontes", () => {
     const enorme = dimensionarFontes(modulos(100_000));
     expect(enorme.recomendado).toBeNull();
     expect(enorme.aviso).toMatch(/mais de 10 fontes/);
-    expect(enorme.consumoTotalW).toBe(150_000);
+    expect(enorme.consumoTotalW).toBe(170_000);
   });
 });

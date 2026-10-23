@@ -13,8 +13,7 @@ import {
   selecionarOpcaoFrete,
   normalizarOpcao,
 } from '../db/db-helpers-select';
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { getPool } from "../db/db-connection";
+import { createAppDatabase } from "../db/db-connection";
 import { buscarDadosOSParaFrete, obterCotacoesFreteSimuladas } from "../integrations/mubisys-frete";
 import { buscarOSPorNumero, buscarClientePorId } from "../integrations/mubisys-client";
 import * as https from "https";
@@ -36,9 +35,9 @@ import {
   CteImportacao,
 } from "../../drizzle/schema";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: ReturnType<typeof createAppDatabase> | null = null;
 function getDb() {
-  if (!_db) _db = drizzle(getPool());
+  if (!_db) _db = createAppDatabase();
   return _db;
 }
 const db = {

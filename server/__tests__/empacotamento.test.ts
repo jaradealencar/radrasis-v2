@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { getPool } from "../db/db-connection";
+import { createAppDatabase } from "../db/db-connection";
 import {
   empacotamentoModelos,
   empacotamentoModelosCaixa,
@@ -35,7 +34,7 @@ let createdPrecoId: number | null = null;
 let createdChecklistItemId: number | null = null;
 
 beforeAll(() => {
-  db = drizzle(getPool());
+  db = createAppDatabase();
 });
 
 afterAll(async () => {
