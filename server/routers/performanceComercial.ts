@@ -3607,6 +3607,24 @@ export const performanceComercialRouter = router({
       const overrideMapClientes = new Map<string, "recorrente" | "novo">();
       for (const ov of overridesClientes) overrideMapClientes.set(ov.empresa, ov.status);
 
+      // Contagem total de cotações já feitas por cada cliente em todo o histórico
+      const cotacoesTodasRows = await db.select({
+        empresa: historicoOrcamentos.empresa,
+        orcNumero: historicoOrcamentos.orcNumero,
+      }).from(historicoOrcamentos);
+
+      const cotacoesPorCliente = new Map<string, Set<string>>();
+      for (const r of cotacoesTodasRows) {
+        const chave = normalizeEmpresaKey(r.empresa ?? "");
+        if (!chave) continue;
+        let set = cotacoesPorCliente.get(chave);
+        if (!set) {
+          set = new Set<string>();
+          cotacoesPorCliente.set(chave, set);
+        }
+        if (r.orcNumero) set.add(String(r.orcNumero));
+      }
+
       const propostas = candidatas.map(orc => {
         const numero = orc.orcNumero ?? "";
         const tel = telefonePorOrcNumero.get(numero);
@@ -3619,6 +3637,11 @@ export const performanceComercialRouter = router({
         const classe = chaveCliente
           ? classificarClientePorRecencia(ultimaCompra, overrideMapClientes.get(chaveCliente), mes, ano)
           : { status: null, mesesSemComprar: null };
+
+        const orcsSet = chaveCliente ? cotacoesPorCliente.get(chaveCliente) : undefined;
+        if (orcsSet && numero) orcsSet.add(numero);
+        const totalCotacoes = orcsSet ? Math.max(1, orcsSet.size) : 1;
+
         return {
           orcNumero: numero,
           mubisysLink: mubisysId ? urlOrcamentoMubiSys(mubisysId) : null,
@@ -3635,6 +3658,7 @@ export const performanceComercialRouter = router({
           ultimaCompra: classe.status === "reativado" && ultimaCompra
             ? `${String(ultimaCompra.mes).padStart(2, "0")}/${ultimaCompra.ano}`
             : null,
+          totalCotacoes,
           contatado: marca?.contatado ?? false,
           contatadoPor: marca?.contatado ? marca.usuarioNome : null,
           contatadoEm: marca?.contatado ? marca.contatadoEm : null,

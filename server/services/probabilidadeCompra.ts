@@ -104,6 +104,8 @@ export interface ConversaoCliente {
    * o cliente não tem nenhuma compra registrada localmente. Usada para
    * mostrar "há N dias sem comprar" no CRM. */
   ultimaCompra: Date | null;
+  /** Números dos orçamentos conhecidos no histórico (para deduplicar com abertos e contar cotações). */
+  orcNumeros?: Set<string>;
 }
 
 export interface MapaConversaoClientes {
@@ -125,13 +127,14 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     status: historicoOrcamentos.status,
     total: historicoOrcamentos.total,
     dataCadastro: historicoOrcamentos.dataCadastro,
+    orcNumero: historicoOrcamentos.orcNumero,
   }).from(historicoOrcamentos);
 
-  const porCliente = new Map<string, { total: number; fechados: number; somaValor: number; qtdComValor: number; ultimaCompra: Date | null }>();
+  const porCliente = new Map<string, { total: number; fechados: number; somaValor: number; qtdComValor: number; ultimaCompra: Date | null; orcNumeros: Set<string> }>();
   let totalGeral = 0;
   let fechadosGeral = 0;
 
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null }>) {
+  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null; orcNumero: string | null }>) {
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     if (!empresaKey) continue;
     const fechou = STATUS_GANHO.has((r.status ?? "").trim().toLowerCase());
@@ -139,10 +142,11 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
 
     let acc = porCliente.get(empresaKey);
     if (!acc) {
-      acc = { total: 0, fechados: 0, somaValor: 0, qtdComValor: 0, ultimaCompra: null };
+      acc = { total: 0, fechados: 0, somaValor: 0, qtdComValor: 0, ultimaCompra: null, orcNumeros: new Set<string>() };
       porCliente.set(empresaKey, acc);
     }
     acc.total++;
+    if (r.orcNumero) acc.orcNumeros.add(String(r.orcNumero));
     if (fechou) {
       acc.fechados++;
       // Sem data de fechamento própria em historico_orcamentos — usa a data
@@ -193,13 +197,14 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
       ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
       qtdCompras: (qtdComprasPorCliente.get(empresaKey) ?? 0) + acc.fechados,
       ultimaCompra,
+      orcNumeros: acc.orcNumeros,
     });
   }
   // Clientes com OS mas sem nenhum orçamento correspondente em historico_orcamentos
   // (bases diferentes, cobertura não é 100% igual) — ainda entram no mapa só com qtdCompras.
   for (const [empresaKey, qtd] of qtdComprasPorCliente.entries()) {
     if (!resultado.has(empresaKey)) {
-      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd, ultimaCompra: ultimaCompraOsPorCliente.get(empresaKey) ?? null });
+      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd, ultimaCompra: ultimaCompraOsPorCliente.get(empresaKey) ?? null, orcNumeros: new Set<string>() });
     }
   }
 
