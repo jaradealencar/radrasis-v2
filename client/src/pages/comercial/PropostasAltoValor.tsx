@@ -430,14 +430,35 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                           <span
                             className="shrink-0 mt-0.5"
                             title={p.clienteStatus === "novo"
-                              ? "Cliente novo — nenhuma compra registrada no sistema antes deste mês"
-                              : `Cliente reativado — sem comprar há ${p.mesesSemComprar} meses${p.ultimaCompra ? ` (última compra em ${p.ultimaCompra})` : ""}`}
+                              ? `Cliente novo — sem compras anteriores (${(p as any).totalCotacoes || 1} ${((p as any).totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"})`
+                              : `Cliente reativado — sem comprar há ${p.mesesSemComprar} ${p.mesesSemComprar === 1 ? "mês" : "meses"}${p.ultimaCompra ? ` (última compra em ${p.ultimaCompra})` : ""}`}
                           >
                             <Star className={`w-4 h-4 ${p.clienteStatus === "novo" ? ESTRELA_NOVO : ESTRELA_REATIVADO}`} />
                           </span>
                         )}
-                        <div>
-                          {p.empresa}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{p.empresa}</span>
+                            {p.clienteStatus === "novo" && (
+                              <span
+                                className="inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                title={`Cliente novo — realizou ${(p as any).totalCotacoes || 1} ${((p as any).totalCotacoes || 1) === 1 ? "cotação" : "cotações"} no sistema`}
+                              >
+                                {(p as any).totalCotacoes || 1} {((p as any).totalCotacoes || 1) === 1 ? "cotação" : "cotações"}
+                              </span>
+                            )}
+                            {p.clienteStatus === "reativado" && p.mesesSemComprar && (
+                              <span
+                                className="inline-flex items-center text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                title={p.ultimaCompra ? `Última compra registrada em ${p.ultimaCompra}` : undefined}
+                              >
+                                sem comprar há {p.mesesSemComprar} {p.mesesSemComprar === 1 ? "mês" : "meses"}
+                                {p.ultimaCompra && (
+                                  <span className="text-red-500 font-normal ml-1">({p.ultimaCompra})</span>
+                                )}
+                              </span>
+                            )}
+                          </div>
                           {p.contato && <div className="text-xs text-slate-400">{p.contato}</div>}
                         </div>
                       </div>

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { crmMetas, crmContatos, historicoOs, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
@@ -8,7 +8,7 @@ import type { CrmContato } from "../../drizzle/schema";
 import {
   CACHE_KEY_ABERTOS_PADRAO, CACHE_KEY_ABERTOS_ESTENDIDO,
   JANELA_ABERTOS_DIAS_PADRAO, JANELA_ABERTOS_DIAS_MAX,
-  getCrmAbertosCache, refreshCrmAbertosCache,
+  getCrmAbertosCache, refreshCrmAbertosCache, refreshCrmAbertosFatia,
   CACHE_KEY_FECHADOS, refreshCrmFechadosCache, inicioJanelaFechadosCache,
   filtrarPorDiaDeCadastro,
 } from "../sync/crm-abertos-cache";
@@ -201,6 +201,30 @@ const MOTIVACIONAL_PROMPTS = [
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const crmRouter = router({
+  // Atualização manual de emergência quando o schedule externo do QStash para.
+  // Busca só a fatia mais recente (hoje + ontem), mantendo o limite de duração
+  // e a chamada sequencial ao MubiSys usados pelo job agendado.
+  sincronizarPropostasRecentes: protectedProcedure
+    .use(requireRole("admin", "master", "gestor"))
+    .mutation(async () => {
+      try {
+        const resultado = await refreshCrmAbertosFatia(
+          CACHE_KEY_ABERTOS_PADRAO,
+          JANELA_ABERTOS_DIAS_PADRAO,
+          0,
+        );
+        return {
+          di: resultado.di,
+          df: resultado.df,
+          quantidade: resultado.naFatia,
+        };
+      } catch {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "Não foi possível sincronizar propostas com o MubiSys. Tente novamente em alguns minutos.",
+        });
+      }
+    }),
 
   // Buscar propostas abertas do vendedor logado (ou de um vendedor específico para diretor)
   getPropostas: protectedProcedure
@@ -381,6 +405,25 @@ export const crmRouter = router({
         mapaConversao = null;
         modeloBayesiano = null;
       }
+      // Mapear números de orçamentos de todos os orçamentos abertos por cliente (para unir com o histórico)
+      const orcsAbertosPorCliente = new Map<string, Set<string>>();
+      for (const o of todosAbertos) {
+        const clienteRaw = o.cliente;
+        const nome = typeof clienteRaw === "object" && clienteRaw !== null
+          ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
+          : String(clienteRaw ?? o.empresa ?? "");
+        const chave = normalizeEmpresaKey(nome);
+        if (!chave) continue;
+        const num = String(o.sequencial_orcamento ?? o.numero ?? o.id ?? "");
+        if (!num) continue;
+        let s = orcsAbertosPorCliente.get(chave);
+        if (!s) {
+          s = new Set<string>();
+          orcsAbertosPorCliente.set(chave, s);
+        }
+        s.add(num);
+      }
+
       // Enriquecer com telefone e clienteNovo
       const propostasComTelefone = propostasFiltradas.map(p => {
         const telefone = telefonesMap[p.id] ?? null;
@@ -409,14 +452,21 @@ export const crmRouter = router({
         const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloBayesiano
           ? calcularProbabilidadeBayesiana({ clienteNovo, nomeCliente, valorProposta: p.valor, modelo: modeloBayesiano, regiaoCliente })
           : { probabilidade: null as number | null, explicacao: [] as string[] };
-        const conversaoCliente = mapaConversao?.porCliente.get(normalizeEmpresaKey(nomeCliente));
+        const chaveCliente = normalizeEmpresaKey(nomeCliente);
+        const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
         const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
         const diasSemComprar = conversaoCliente?.ultimaCompra
           ? Math.floor((Date.now() - conversaoCliente.ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
           : null;
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, diasSemComprar, estadoCliente, regiaoCliente };
+        const orcsHist = conversaoCliente?.orcNumeros ?? new Set<string>();
+        const orcsAbertos = (chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) : undefined) ?? new Set<string>();
+        const todosOrcsDoCliente = new Set<string>([...orcsHist, ...orcsAbertos]);
+        if (p.sequencial) todosOrcsDoCliente.add(String(p.sequencial));
+        if (p.id) todosOrcsDoCliente.add(String(p.id));
+        const totalCotacoes = Math.max(1, todosOrcsDoCliente.size);
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, diasSemComprar, totalCotacoes, estadoCliente, regiaoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
