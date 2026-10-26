@@ -1,14 +1,14 @@
 import express from "express";
 import type { AddressInfo } from "net";
 import type { Server } from "http";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { estudioKits, materiaPrimaCadastros } from "../../drizzle/schema";
+import { estudioKits, materiaPrimaCadastros, materiasPrimas } from "../../drizzle/schema";
 
 /**
- * Produtividades de solda ligadas ao produto (cadastro de kit do CPQ): só na categoria Letreiros, sem repetidas, só
- * matérias-primas que são produtividade no catálogo do MubiSys, e o catálogo só é consultado para IDs novos. Usa o banco de
- * testes do .env (ids fictícios, apagados no final); a sessão e o catálogo do MubiSys são simulados.
+ * Tests the related productivity kit routes against PostgreSQL's local
+ * materias_primas mirror, using disposable fake IDs cleaned up at the end.
+ * Session and MubiSys calls are stubbed so the test stays local.
  */
 const catalogo = vi.hoisted(() => ({ listar: vi.fn() }));
 vi.mock("../_core/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: "teste" } }) } } }));
@@ -27,6 +27,11 @@ const SOLDA_B = 987_654_622;
 const GERAL = 987_654_623;
 const CHAPA = 987_654_624;
 const MATERIA_CLASSIFICADA = 987_654_631;
+const IDS_MATERIAS = [SOLDA_A, SOLDA_B, GERAL, CHAPA, MATERIA_CLASSIFICADA];
+const espelho = (id: number, nome: string, categoriaErp: string, tipoErp: string) => ({
+  skuErp: `TESTE-KIT-MP-${id}`, mubisysMateriaPrimaId: id, nome, unidadeMedida: "Unidade/Gl/Lt/Kg",
+  categoriaErp, tipoErp, statusErp: "Ativo", ativa: true,
+});
 
 let servidor: Server;
 let base = "";
@@ -44,10 +49,20 @@ const limpar = async () => {
   if (!db) return;
   await db.delete(estudioKits).where(eq(estudioKits.chave, CHAVE));
   await db.delete(materiaPrimaCadastros).where(eq(materiaPrimaCadastros.mubisysMateriaPrimaId, MATERIA_CLASSIFICADA));
+  await db.delete(materiasPrimas).where(inArray(materiasPrimas.mubisysMateriaPrimaId, IDS_MATERIAS));
 };
 
 beforeAll(async () => {
   await limpar();
+  const db = await getDb();
+  if (!db) throw new Error("test database unavailable");
+  await db.insert(materiasPrimas).values([
+    espelho(SOLDA_A, "Produtividade Solda 98\u00ba [R$10,00] [Teste]", "M\u00e3o de obra", "Servi\u00e7o"),
+    espelho(SOLDA_B, "Produtividade Solda 99\u00ba [R$12,00] [Teste]", "M\u00e3o de obra", "Servi\u00e7o"),
+    espelho(GERAL, "Produtividade Geral - Hora", "M\u00e3o de obra", "Servi\u00e7o"),
+    espelho(CHAPA, "Chapa de teste", "Chapas", "Insumo"),
+    espelho(MATERIA_CLASSIFICADA, "Material classificado", "Chapas", "Insumo"),
+  ]);
   const app = express();
   app.use(express.json());
   registrarRotasEstudioKits(app);
@@ -65,12 +80,7 @@ beforeEach(async () => {
   const db = await getDb();
   await db!.delete(estudioKits).where(eq(estudioKits.chave, CHAVE));
   catalogo.listar.mockReset();
-  catalogo.listar.mockResolvedValue([
-    { id: SOLDA_A, nome: "Produtividade Solda 98º [R$10,00] [Teste]" },
-    { id: SOLDA_B, nome: "Produtividade Solda 99º [R$12,00] [Teste]" },
-    { id: GERAL, nome: "Produtividade Geral - Hora" },
-    { id: CHAPA, nome: "Chapa de teste" },
-  ]);
+  catalogo.listar.mockRejectedValue(new Error("This test uses the local PostgreSQL mirror."));
 });
 
 describe("produtividades relacionadas no cadastro do produto", () => {
@@ -106,27 +116,24 @@ describe("produtividades relacionadas no cadastro do produto", () => {
     expect((await salvarKit({ categoria: "Letreiros", produtividadesRelacionadas: Array.from({ length: 101 }, (_, i) => i + 1) })).status).toBe(400);
   });
 
-  it("só consulta o MubiSys para IDs novos (a gravação do kit é automática e frequente)", async () => {
+  it("validates new IDs against the local mirror without querying MubiSys", async () => {
     await salvarKit({ categoria: "Letreiros", produtividadesRelacionadas: [SOLDA_A] });
-    expect(catalogo.listar).toHaveBeenCalledTimes(1);
-    // mesma lista de novo (ex.: outro campo do kit mudou): nenhuma consulta
-    await salvarKit({ categoria: "Letreiros", descricaoProduto: "mudou", produtividadesRelacionadas: [SOLDA_A] });
-    expect(catalogo.listar).toHaveBeenCalledTimes(1);
-    // acrescentar uma nova: consulta
+    expect(catalogo.listar).not.toHaveBeenCalled();
+    await salvarKit({ categoria: "Letreiros", descricaoProduto: "changed", produtividadesRelacionadas: [SOLDA_A] });
+    expect(catalogo.listar).not.toHaveBeenCalled();
     expect((await salvarKit({ categoria: "Letreiros", produtividadesRelacionadas: [SOLDA_A, SOLDA_B] })).status).toBe(200);
-    expect(catalogo.listar).toHaveBeenCalledTimes(2);
-    // só remover uma: nenhuma consulta
+    expect(catalogo.listar).not.toHaveBeenCalled();
     expect((await salvarKit({ categoria: "Letreiros", produtividadesRelacionadas: [SOLDA_B] })).status).toBe(200);
-    expect(catalogo.listar).toHaveBeenCalledTimes(2);
     expect((await kitSalvo())?.produtividadesRelacionadas).toEqual([SOLDA_B]);
   });
 
-  it("sem conseguir confirmar no MubiSys, responde 503 e mantém o que já estava salvo", async () => {
+  it("rejects an unknown ID without changing the saved kit", async () => {
     await salvarKit({ categoria: "Letreiros", produtividadesRelacionadas: [SOLDA_A] });
-    catalogo.listar.mockRejectedValue(new Error("MubiSys fora do ar"));
-    const resposta = await salvarKit({ categoria: "Letreiros", produtividadesRelacionadas: [SOLDA_A, SOLDA_B] });
-    expect(resposta.status).toBe(503);
+    const resposta = await salvarKit({ categoria: "Letreiros", produtividadesRelacionadas: [SOLDA_A, 987_654_699] });
+    expect(resposta.status).toBe(400);
+    expect(((await resposta.json()) as { error: string }).error).toContain("987654699");
     expect((await kitSalvo())?.produtividadesRelacionadas).toEqual([SOLDA_A]);
+    expect(catalogo.listar).not.toHaveBeenCalled();
   });
 });
 

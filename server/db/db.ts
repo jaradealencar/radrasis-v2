@@ -11,8 +11,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { getPool } from "./db-connection";
+import { createAppDatabase, getPool, safeErrorType } from "./db-connection";
 import {
   errorLibrary,
   faturamento,
@@ -59,14 +58,14 @@ import {
 import { resumirDiffTabelaPrecos } from "../integrations/priceTableDiff";
 import { normalizarIdsTabelaPrecos } from "../integrations/priceTableIds";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: ReturnType<typeof createAppDatabase> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(getPool());
+      _db = createAppDatabase(getPool());
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      console.warn("[Database] Failed to connect:", safeErrorType(error));
       _db = null;
     }
   }
@@ -1638,7 +1637,7 @@ export async function createAnaliseCurriculo(
       .returning({ id: analiseCurriculos.id });
     return getAnaliseCurriculoById(result.id);
   } catch (error) {
-    console.error("[DB] Error creating analise_curriculo:", error);
+    console.error("[DB] Error creating analise_curriculo:", safeErrorType(error));
     return null;
   }
 }
@@ -1656,7 +1655,7 @@ export async function getAnaliseCurriculoById(
       .limit(1);
     return result[0] || null;
   } catch (error) {
-    console.error("[DB] Error fetching analise_curriculo:", error);
+    console.error("[DB] Error fetching analise_curriculo:", safeErrorType(error));
     return null;
   }
 }
@@ -1673,7 +1672,7 @@ export async function getAnaliseCurriculosByCargo(
       .where(eq(analiseCurriculos.cargoId, cargoId))
       .orderBy(desc(analiseCurriculos.createdAt));
   } catch (error) {
-    console.error("[DB] Error fetching analise_curriculos by cargo:", error);
+    console.error("[DB] Error fetching analise_curriculos by cargo:", safeErrorType(error));
     return [];
   }
 }
@@ -1691,7 +1690,7 @@ export async function updateAnaliseCurriculo(
       .where(eq(analiseCurriculos.id, id));
     return getAnaliseCurriculoById(id);
   } catch (error) {
-    console.error("[DB] Error updating analise_curriculo:", error);
+    console.error("[DB] Error updating analise_curriculo:", safeErrorType(error));
     return null;
   }
 }

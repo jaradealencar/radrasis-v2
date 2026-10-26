@@ -10,6 +10,10 @@ on:
         options:
           - radrasis-v2
           - radrasis-v2-wts-deploy
+      database_resource_id:
+        description: Stable, non-secret ID assigned to this exact PostgreSQL resource
+        type: string
+        required: true
       target:
         description: Database environment
         type: choice
@@ -35,7 +39,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: migration-${{ inputs.target }}-${{ inputs.project }}
+  group: migration-database-${{ inputs.database_resource_id }}
+  queue: max
   cancel-in-progress: false
 
 jobs:
@@ -51,11 +56,24 @@ jobs:
       DB_MIGRATION_EXPECTED_HOST: ${{ vars.DB_MIGRATION_EXPECTED_HOST }}
       DB_MIGRATION_EXPECTED_PORT: ${{ vars.DB_MIGRATION_EXPECTED_PORT }}
       DB_MIGRATION_EXPECTED_DATABASE: ${{ vars.DB_MIGRATION_EXPECTED_DATABASE }}
+      DB_MIGRATION_RESOURCE_ID: ${{ vars.DB_MIGRATION_RESOURCE_ID }}
       DB_MIGRATION_CONFIRMATION: ${{ inputs.confirmation }}
       DB_MIGRATION_PRODUCTION_APPROVAL: ${{ inputs.production_approval }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GIT_COMMIT_SHA: ${{ github.sha }}
     steps:
+      - name: Require a provisioned GitHub Environment and matching database resource
+        env:
+          CONFIGURED_RESOURCE_ID: ${{ vars.DB_MIGRATION_RESOURCE_ID }}
+          ENVIRONMENT_READY: ${{ vars.DB_MIGRATION_ENVIRONMENT_READY }}
+          REQUESTED_RESOURCE_ID: ${{ inputs.database_resource_id }}
+          MIGRATION_TARGET: ${{ inputs.target }}
+          VERCEL_PROJECT: ${{ inputs.project }}
+        run: |
+          [[ "$REQUESTED_RESOURCE_ID" =~ ^[A-Za-z0-9._:-]{3,128}$ ]] || { echo "Database resource ID is missing or invalid."; exit 1; }
+          test "$CONFIGURED_RESOURCE_ID" = "$REQUESTED_RESOURCE_ID" || { echo "Database resource ID does not match the GitHub Environment."; exit 1; }
+          expected="MIGRATION_ENVIRONMENT_READY:${MIGRATION_TARGET}:${VERCEL_PROJECT}:${REQUESTED_RESOURCE_ID}"
+          test "$ENVIRONMENT_READY" = "$expected" || { echo "GitHub Environment is not explicitly provisioned for this migration target."; exit 1; }
       - uses: actions/checkout@v4
       - name: Require the selected main release commit
         env:
