@@ -83,6 +83,8 @@ type Proposta = {
    * o cliente é novo (sem nenhuma compra anterior) ou não há data disponível. */
   diasSemComprar: number | null;
   totalCotacoes?: number;
+  totalCompras?: number;
+  taxaConversao?: number | null;
   estadoCliente: string | null;
 };
 
@@ -516,6 +518,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                           : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
                         <br />
                         <span className="text-gray-400">Histórico local (2024 em diante); nov-dez/2025 não sincronizados, pode faltar alguma compra desse período.</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {p.taxaConversao != null && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold bg-emerald-50 text-emerald-800 border-emerald-300 cursor-default">
+                          {p.taxaConversao}% conv.
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs max-w-[220px]">
+                        Taxa de conversão: {p.qtdComprasCliente} compras em {p.totalCotacoes || 1} cotações registradas.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>

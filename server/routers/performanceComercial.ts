@@ -3607,7 +3607,14 @@ export const performanceComercialRouter = router({
       const overrideMapClientes = new Map<string, "recorrente" | "novo">();
       for (const ov of overridesClientes) overrideMapClientes.set(ov.empresa, ov.status);
 
-      // Contagem total de cotações já feitas por cada cliente em todo o histórico
+      // Contagem total de cotações e histórico de conversão/compras por cliente
+      let mapaConversao: Awaited<ReturnType<typeof construirMapaConversaoClientes>> | null = null;
+      try {
+        mapaConversao = await construirMapaConversaoClientes(db);
+      } catch {
+        mapaConversao = null;
+      }
+
       const cotacoesTodasRows = await db.select({
         empresa: historicoOrcamentos.empresa,
         orcNumero: historicoOrcamentos.orcNumero,
@@ -3640,7 +3647,17 @@ export const performanceComercialRouter = router({
 
         const orcsSet = chaveCliente ? cotacoesPorCliente.get(chaveCliente) : undefined;
         if (orcsSet && numero) orcsSet.add(numero);
-        const totalCotacoes = orcsSet ? Math.max(1, orcsSet.size) : 1;
+        const conversao = chaveCliente ? mapaConversao?.porCliente.get(chaveCliente) : undefined;
+        const totalCompras = conversao?.qtdCompras ?? 0;
+        const totalCotacoes = Math.max(conversao?.totalOrcamentos ?? 0, orcsSet ? orcsSet.size : 1);
+
+        const cotacoesBase = Math.max(conversao?.totalOrcamentos ?? 0, totalCotacoes);
+        const fechados = (conversao?.orcamentosFechados && conversao.orcamentosFechados > 0)
+          ? conversao.orcamentosFechados
+          : Math.min(totalCompras, cotacoesBase);
+        const taxaConversao = cotacoesBase > 0 && totalCompras > 0
+          ? Math.min(100, Math.round((fechados / cotacoesBase) * 100))
+          : null;
 
         return {
           orcNumero: numero,
@@ -3659,6 +3676,8 @@ export const performanceComercialRouter = router({
             ? `${String(ultimaCompra.mes).padStart(2, "0")}/${ultimaCompra.ano}`
             : null,
           totalCotacoes,
+          totalCompras,
+          taxaConversao,
           contatado: marca?.contatado ?? false,
           contatadoPor: marca?.contatado ? marca.usuarioNome : null,
           contatadoEm: marca?.contatado ? marca.contatadoEm : null,

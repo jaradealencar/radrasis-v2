@@ -466,7 +466,16 @@ export const crmRouter = router({
         if (p.sequencial) todosOrcsDoCliente.add(String(p.sequencial));
         if (p.id) todosOrcsDoCliente.add(String(p.id));
         const totalCotacoes = Math.max(1, todosOrcsDoCliente.size);
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, diasSemComprar, totalCotacoes, estadoCliente, regiaoCliente };
+
+        const cotacoesBase = Math.max(conversaoCliente?.totalOrcamentos ?? 0, totalCotacoes);
+        const fechados = (conversaoCliente?.orcamentosFechados && conversaoCliente.orcamentosFechados > 0)
+          ? conversaoCliente.orcamentosFechados
+          : Math.min(qtdComprasCliente, cotacoesBase);
+        const taxaConversao = cotacoesBase > 0 && qtdComprasCliente > 0
+          ? Math.min(100, Math.round((fechados / cotacoesBase) * 100))
+          : null;
+
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, taxaConversao, estadoCliente, regiaoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),

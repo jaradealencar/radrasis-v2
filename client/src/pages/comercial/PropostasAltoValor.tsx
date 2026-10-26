@@ -80,6 +80,15 @@ function extrairDiaDoMes(dataStr: string | null | undefined): number | null {
   return isNaN(dt.getTime()) ? null : dt.getDate();
 }
 
+function chaveEmpresaAgrupamento(nome: string): string {
+  return (nome ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
 export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: number }) {
   const [listaAberta, setListaAberta] = useState(false);
   const [propostaFollowup, setPropostaFollowup] = useState<{ orcNumero: string; empresa: string } | null>(null);
@@ -225,14 +234,46 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   const propostasFiltradas = useMemo(() => {
     const de = diaDe ? parseInt(diaDe, 10) : null;
     const ate = diaAte ? parseInt(diaAte, 10) : null;
-    if (de == null && ate == null) return propostas;
-    return propostas.filter(p => {
+    const filtradas = propostas.filter(p => {
       const dia = extrairDiaDoMes(p.dataCadastro);
       if (dia == null) return true;
       if (de != null && dia < de) return false;
       if (ate != null && dia > ate) return false;
       return true;
     });
+
+    // Agrupa propostas do mesmo cliente para deixá-las em linhas consecutivas (uma debaixo da outra)
+    const grupos = new Map<string, typeof propostas>();
+    for (const p of filtradas) {
+      const chave = chaveEmpresaAgrupamento(p.empresa);
+      const lista = grupos.get(chave);
+      if (!lista) {
+        grupos.set(chave, [p]);
+      } else {
+        lista.push(p);
+      }
+    }
+
+    // Ordena as propostas dentro do grupo por valor decrescente
+    for (const lista of grupos.values()) {
+      lista.sort((a, b) => b.valor - a.valor);
+    }
+
+    // Ordena os grupos pelo maior valor de proposta de cada cliente (maiores orçamentos primeiro)
+    const gruposOrdenados = Array.from(grupos.values()).sort((a, b) => {
+      const maxA = a[0]?.valor ?? 0;
+      const maxB = b[0]?.valor ?? 0;
+      return maxB - maxA;
+    });
+
+    // Achata a lista mantendo metadados de agrupamento
+    return gruposOrdenados.flatMap(grupo =>
+      grupo.map((p, idx) => ({
+        ...p,
+        posicaoNoGrupo: idx + 1,
+        totalNoGrupo: grupo.length,
+      }))
+    );
   }, [propostas, diaDe, diaAte]);
 
   // Telefone e link do MubiSys só vêm do cache de orçamentos do MubiSys, que pode ainda estar
@@ -404,7 +445,24 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
               </TableHeader>
               <TableBody>
                 {propostasFiltradas.map(p => (
-                  <TableRow key={p.orcNumero} className={p.contatado ? "bg-green-50 hover:bg-green-100" : ""}>
+                  <TableRow
+                    key={p.orcNumero}
+                    className={`${
+                      p.contatado
+                        ? "bg-green-50 hover:bg-green-100"
+                        : (p as any).totalNoGrupo > 1
+                          ? (p as any).posicaoNoGrupo === 1
+                            ? "bg-blue-50/25 hover:bg-blue-50/40"
+                            : "bg-blue-50/10 hover:bg-blue-50/30"
+                          : ""
+                    } ${
+                      (p as any).totalNoGrupo > 1
+                        ? (p as any).posicaoNoGrupo === 1
+                          ? "border-l-4 border-l-blue-500"
+                          : "border-l-4 border-l-blue-300"
+                        : ""
+                    }`}
+                  >
                     <TableCell className="font-mono">
                       {p.mubisysLink ? (
                         <a
@@ -439,6 +497,22 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{p.empresa}</span>
+                            {(p as any).totalNoGrupo > 1 && (p as any).posicaoNoGrupo === 1 && (
+                              <span
+                                className="inline-flex items-center text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                title={`Este cliente possui ${(p as any).totalNoGrupo} propostas em aberto neste filtro`}
+                              >
+                                {(p as any).totalNoGrupo} propostas
+                              </span>
+                            )}
+                            {(p as any).totalNoGrupo > 1 && (p as any).posicaoNoGrupo > 1 && (
+                              <span
+                                className="inline-flex items-center text-[10px] font-medium text-blue-600 bg-blue-50/60 border border-blue-200 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                title={`Proposta ${(p as any).posicaoNoGrupo} de ${(p as any).totalNoGrupo} deste cliente`}
+                              >
+                                ↳ {(p as any).posicaoNoGrupo}ª de {(p as any).totalNoGrupo} propostas
+                              </span>
+                            )}
                             {p.clienteStatus === "novo" && (
                               <span
                                 className="inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 whitespace-nowrap"
@@ -457,6 +531,24 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                                   <span className="text-red-500 font-normal ml-1">({p.ultimaCompra})</span>
                                 )}
                               </span>
+                            )}
+                            {!p.clienteStatus && (
+                              <>
+                                <span
+                                  className="inline-flex items-center text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                  title={`Cliente recorrente — ${(p as any).totalCompras || 0} ${((p as any).totalCompras || 0) === 1 ? "compra realizada" : "compras realizadas"} de nós`}
+                                >
+                                  {(p as any).totalCompras || 0} {((p as any).totalCompras || 0) === 1 ? "compra" : "compras"}
+                                </span>
+                                {(p as any).taxaConversao != null && (
+                                  <span
+                                    className="inline-flex items-center text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 whitespace-nowrap"
+                                    title={`Taxa de conversão: ${(p as any).taxaConversao}% (${(p as any).totalCompras || 0} compras vs ${(p as any).totalCotacoes || 1} orçamentos)`}
+                                  >
+                                    {(p as any).taxaConversao}% conv. ({(p as any).totalCotacoes || 1} {((p as any).totalCotacoes || 1) === 1 ? "orç." : "orçs."})
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                           {p.contato && <div className="text-xs text-slate-400">{p.contato}</div>}
