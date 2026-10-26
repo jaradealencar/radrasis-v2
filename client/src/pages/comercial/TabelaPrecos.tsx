@@ -118,6 +118,36 @@ import { Link2 } from "lucide-react";
 
 type BlockAffiliation = RouterOutputs["price"]["listBlockAffiliations"][number];
 
+function adicionarQuinzePontosPercentuaisDesdeFaixa2(contentJson: string): string {
+  const content = JSON.parse(contentJson) as ContentJson;
+  if (
+    (content.type !== "margin_table" && content.type !== "margin_table_multi") ||
+    !content.rows?.length
+  ) {
+    throw new Error("O modelo do ID #9 não contém uma tabela de margens válida.");
+  }
+
+  const rows = content.rows.map(row => ({
+    ...row,
+    values: row.values.map((value, index) => {
+      if (index === 0 || !value.trim()) return value;
+      const trimmed = value.trim();
+      const match = trimmed.match(/^(-?\d+(?:[.,]\d+)?)\s*(%)?$/);
+      if (!match) {
+        throw new Error("Não foi possível ajustar um valor do modelo do ID #9.");
+      }
+      const decimalPlaces = match[1].split(/[.,]/)[1]?.length ?? 0;
+      const separator = match[1].includes(",") ? "," : ".";
+      const adjusted = (Number(match[1].replace(",", ".")) + 15)
+        .toFixed(decimalPlaces)
+        .replace(".", separator);
+      return `${adjusted}${match[2] ?? ""}`;
+    }),
+  }));
+
+  return JSON.stringify({ ...content, rows });
+}
+
 interface Section {
   id: number;
   page: number;
@@ -3461,12 +3491,24 @@ export default function TabelaPrecos() {
       toast.error("Não foi possível localizar o modelo do ID #9.");
       return;
     }
+    let contentJson = template?.contentJson ??
+      JSON.stringify({ type: "rich_text", html: "<p></p>" });
+    if (template) {
+      try {
+        contentJson = adicionarQuinzePontosPercentuaisDesdeFaixa2(contentJson);
+      } catch (erro) {
+        toast.error(
+          erro instanceof Error
+            ? erro.message
+            : "Não foi possível ajustar as margens do ID #9."
+        );
+        return;
+      }
+    }
     addSectionMut.mutate({
       page,
       sectionTitle,
-      contentJson:
-        template?.contentJson ??
-        JSON.stringify({ type: "rich_text", html: "<p></p>" }),
+      contentJson,
       notes: template?.notes ?? null,
     }, {
       onSuccess: () => {
@@ -4107,7 +4149,7 @@ export default function TabelaPrecos() {
               checked={newSectionCopyFromId9}
               onChange={e => setNewSectionCopyFromId9(e.target.checked)}
             />
-            <span>Copiar faixas, valores e observação do ID #9</span>
+            <span>Copiar o ID #9 e somar 15 p.p. da faixa 2 em diante</span>
           </label>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowAddModal(false)}>
