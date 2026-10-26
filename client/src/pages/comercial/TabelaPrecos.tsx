@@ -3421,12 +3421,14 @@ export default function TabelaPrecos() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionPage, setNewSectionPage] = useState(11);
+  const [newSectionCopyFromId9, setNewSectionCopyFromId9] = useState(false);
   const utils = trpc.useUtils();
   const addSectionMut = trpc.price.addSection.useMutation({
     onSuccess: () => {
       utils.price.list.invalidate();
       setShowAddModal(false);
       setNewSectionTitle("");
+      setNewSectionCopyFromId9(false);
       toast.success("Seção adicionada com sucesso!");
     },
     onError: () => toast.error("Erro ao adicionar seção"),
@@ -3450,11 +3452,22 @@ export default function TabelaPrecos() {
       return;
     }
     const page = newSectionPage;
+    const template = newSectionCopyFromId9
+      ? (allSections ?? []).find(section =>
+          section.sectionTitle.startsWith("Inox - Fixação barra roscada")
+        )
+      : undefined;
+    if (newSectionCopyFromId9 && !template) {
+      toast.error("Não foi possível localizar o modelo do ID #9.");
+      return;
+    }
     addSectionMut.mutate({
       page,
       sectionTitle,
-      contentJson: JSON.stringify({ type: "rich_text", html: "<p></p>" }),
-      notes: null,
+      contentJson:
+        template?.contentJson ??
+        JSON.stringify({ type: "rich_text", html: "<p></p>" }),
+      notes: template?.notes ?? null,
     }, {
       onSuccess: () => {
         if (page >= 11) setActiveTabNC(String(page));
@@ -3584,6 +3597,7 @@ export default function TabelaPrecos() {
                     onClick={() => {
                       setNewSectionPage(Number(activeTabNC));
                       setNewSectionTitle("");
+                      setNewSectionCopyFromId9(false);
                       setShowAddModal(true);
                     }}
                   >
@@ -3798,6 +3812,21 @@ export default function TabelaPrecos() {
                 </Badge>
               )}
               <div className="ml-auto flex gap-2">
+                {Number(activeTab) >= 1 && Number(activeTab) <= 3 && (
+                  <Button
+                    size="sm"
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => {
+                      setNewSectionPage(Number(activeTab));
+                      setNewSectionTitle("");
+                      setNewSectionCopyFromId9(false);
+                      setShowAddModal(true);
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Nova Seção
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -4045,7 +4074,10 @@ export default function TabelaPrecos() {
         open={showAddModal}
         onOpenChange={open => {
           setShowAddModal(open);
-          if (!open) setNewSectionTitle("");
+          if (!open) {
+            setNewSectionTitle("");
+            setNewSectionCopyFromId9(false);
+          }
         }}
       >
         <DialogContent className="max-w-md">
@@ -4068,6 +4100,15 @@ export default function TabelaPrecos() {
               Depois de criar, use Editar para inserir uma tabela ou descrição.
             </p>
           </div>
+          <label className="mb-3 flex items-start gap-2 rounded-md border border-slate-200 p-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={newSectionCopyFromId9}
+              onChange={e => setNewSectionCopyFromId9(e.target.checked)}
+            />
+            <span>Copiar faixas, valores e observação do ID #9</span>
+          </label>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowAddModal(false)}>
               Cancelar
