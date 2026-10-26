@@ -1,15 +1,14 @@
 import { and, count, desc, eq, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { getPool } from "./db-connection";
+import { createAppDatabase, getPool } from "./db-connection";
 import { cotacoesFrete, cotacaoOpcoes, cotacaoComentarios, InsertCotacaoOpcao } from "../../drizzle/schema";
 import { ENV } from "../_core/env";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: ReturnType<typeof createAppDatabase> | null = null;
 
 async function getDb() {
   if (_db) return _db;
   if (!ENV.databaseUrl) throw new Error("DATABASE_URL not set");
-  _db = drizzle(getPool());
+  _db = createAppDatabase(getPool());
   return _db;
 }
 

@@ -2,23 +2,23 @@ import express from "express";
 import type { AddressInfo } from "net";
 import type { Server } from "http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { inArray } from "drizzle-orm";
+import { materiasPrimas } from "../../drizzle/schema";
 
 /**
- * Rota POST /api/letra-caixa/factibilidade: a camada Aro pode trazer `faixaMm` (padrão do CPQ 6 mm) e a rota repassa ao serviço,
- * que gera o aro como faixa de borda da face. Sessão e catálogo do MubiSys simulados; as chapas vêm de formatos temporários
- * (nada é gravado), e o banco só é consultado para ids fictícios (987_654_7xx).
+ * Tests the Aro factibility route with temporary board dimensions and fake
+ * materials seeded in the local PostgreSQL mirror.
  */
 if ((process.env.JWT_SECRET ?? "").length < 32) process.env.JWT_SECRET = "segredo-de-teste-com-mais-de-trinta-e-dois-caracteres";
 vi.mock("../_core/auth", () => ({ auth: { api: { getSession: async () => ({ user: { id: "teste", name: "Teste", role: "vendas" } }) } } }));
+const catalogo = vi.hoisted(() => ({ listar: vi.fn() }));
 vi.mock("../integrations/mubisys-client", async importOriginal => ({
   ...(await importOriginal<typeof import("../integrations/mubisys-client")>()),
-  listarMateriasPrimas: async () => [
-    { id: 987_654_701, nome: "Acrílico branco 3 mm (teste)" },
-    { id: 987_654_702, nome: "Chapa galvanizada 1,2 mm (teste)" },
-  ],
+  listarMateriasPrimas: catalogo.listar,
 }));
 
 const { registrarRotasEstudioFactibilidade } = await import("../routes/estudio-factibilidade");
+const { getDb } = await import("../db/db");
 
 const FACE = 987_654_701;
 const ARO = 987_654_702;
@@ -44,19 +44,32 @@ const analisar = (camadasMateriais: unknown[]) =>
     }),
   });
 
-beforeAll(() => {
+beforeAll(async () => {
+  const db = await getDb();
+  if (!db) throw new Error("test database unavailable");
+  await db.delete(materiasPrimas).where(inArray(materiasPrimas.mubisysMateriaPrimaId, [FACE, ARO]));
+  await db.insert(materiasPrimas).values([
+    { skuErp: "TESTE-ARO-FACE", mubisysMateriaPrimaId: FACE, nome: "Acr\u00edlico branco 3 mm (teste)", unidadeMedida: "Metro quadrado", categoriaErp: "Chapas", tipoErp: "Insumo", statusErp: "Ativo", ativa: true },
+    { skuErp: "TESTE-ARO-ARO", mubisysMateriaPrimaId: ARO, nome: "Chapa galvanizada 1,2 mm (teste)", unidadeMedida: "Metro quadrado", categoriaErp: "Chapas", tipoErp: "Insumo", statusErp: "Ativo", ativa: true },
+  ]);
+  catalogo.listar.mockRejectedValue(new Error("This test uses the local PostgreSQL mirror."));
   const app = express();
   app.use(express.json());
   registrarRotasEstudioFactibilidade(app);
   servidor = app.listen(0);
   base = `http://127.0.0.1:${(servidor.address() as AddressInfo).port}`;
 });
-afterAll(() => servidor?.close());
+afterAll(async () => {
+  servidor?.close();
+  const db = await getDb();
+  if (db) await db.delete(materiasPrimas).where(inArray(materiasPrimas.mubisysMateriaPrimaId, [FACE, ARO]));
+});
 
 describe("faixa do aro pela rota de factibilidade", () => {
   it("camada Aro com faixaMm 6: o aro vira as bordas da face (3 peças) e o aviso diz a largura", async () => {
     const resposta = await analisar([{ materiaPrimaId: FACE, camada: "face" }, { materiaPrimaId: ARO, camada: "aro", faixaMm: 6 }]);
     expect(resposta.status).toBe(200);
+    expect(catalogo.listar).not.toHaveBeenCalled();
     const corpo = await resposta.json() as { status_factibilidade: string; avisos: string[]; materiais: Array<{ id_materia_prima: number; pecas_para_nesting: Array<{ id: string }> }> };
     expect(corpo.status_factibilidade).toBe("APTO_NESTING");
     const aro = corpo.materiais.find(item => item.id_materia_prima === ARO)!;
@@ -68,6 +81,7 @@ describe("faixa do aro pela rota de factibilidade", () => {
   it("outra largura chega ao serviço (10 mm)", async () => {
     const resposta = await analisar([{ materiaPrimaId: FACE, camada: "face" }, { materiaPrimaId: ARO, camada: "aro", faixaMm: 10 }]);
     expect(resposta.status).toBe(200);
+    expect(catalogo.listar).not.toHaveBeenCalled();
     expect(((await resposta.json()) as { avisos: string[] }).avisos.some(aviso => /faixa de 10 mm/.test(aviso))).toBe(true);
   });
 

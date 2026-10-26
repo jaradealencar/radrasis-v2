@@ -1,20 +1,19 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { getPool } from "../db/db-connection";
+import { createAppDatabase } from "../db/db-connection";
 import { performanceMensal, retrabalhos as retrabalhosTable, faturamento as faturamentoTable } from "../../drizzle/schema";
 import { eq, and, asc, sql } from "drizzle-orm";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: ReturnType<typeof createAppDatabase> | null = null;
 function getDb() {
-  if (!_db) _db = drizzle(getPool());
+  if (!_db) _db = createAppDatabase();
   return _db;
 }
 const db = {
   select: () => getDb().select(),
-  insert: (t: Parameters<ReturnType<typeof drizzle>["insert"]>[0]) => getDb().insert(t),
-  update: (t: Parameters<ReturnType<typeof drizzle>["update"]>[0]) => getDb().update(t),
-  delete: (t: Parameters<ReturnType<typeof drizzle>["delete"]>[0]) => getDb().delete(t),
+  insert: (t: Parameters<ReturnType<typeof createAppDatabase>["insert"]>[0]) => getDb().insert(t),
+  update: (t: Parameters<ReturnType<typeof createAppDatabase>["update"]>[0]) => getDb().update(t),
+  delete: (t: Parameters<ReturnType<typeof createAppDatabase>["delete"]>[0]) => getDb().delete(t),
 };
 
 export const performanceRouter = router({

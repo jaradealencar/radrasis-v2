@@ -3,17 +3,16 @@
  */
 
 import { desc, eq, gte, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { getPool } from "./db-connection";
+import { createAppDatabase, getPool, safeErrorType } from "./db-connection";
 import { cotacoesFrete, InsertCotacaoFrete } from "../../drizzle/schema";
 import { ENV } from "../_core/env";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: ReturnType<typeof createAppDatabase> | null = null;
 
 async function getDb() {
   if (_db) return _db;
   if (!ENV.databaseUrl) throw new Error("DATABASE_URL not set");
-  _db = drizzle(getPool());
+  _db = createAppDatabase(getPool());
   return _db;
 }
 
@@ -56,7 +55,6 @@ export async function criarCotacaoFrete(
 ): Promise<CotacaoFreteResult> {
   try {
     console.log('📝 [CRIAR-COTACAO] Iniciando criação de cotação...');
-    console.log('📝 [CRIAR-COTACAO] Dados:', dados);
 
     const db = await getDb();
     const insertData: InsertCotacaoFrete = {
@@ -80,7 +78,6 @@ export async function criarCotacaoFrete(
       osVendedor: dados.osVendedor ?? null,
     };
 
-    console.log('📝 [CRIAR-COTACAO] Insert:', insertData);
 
     const [result] = await db.insert(cotacoesFrete).values(insertData).returning({ id: cotacoesFrete.id });
     const insertId = result.id;
@@ -93,10 +90,10 @@ export async function criarCotacaoFrete(
       message: `Cotação criada com sucesso! ID: ${insertId}`
     };
   } catch (error: any) {
-    console.error('❌ [CRIAR-COTACAO] Erro:', error);
+    console.error('[CRIAR-COTACAO] Falha:', safeErrorType(error));
     return {
       success: false,
-      error: error.message || 'Erro ao criar cotação'
+      error: 'Erro ao criar cotação'
     };
   }
 }
@@ -110,7 +107,7 @@ export async function buscarCotacaoPorId(id: number) {
     const [result] = await db.select().from(cotacoesFrete).where(eq(cotacoesFrete.id, id));
     return result ?? null;
   } catch (error: any) {
-    console.error('❌ [BUSCAR-COTACAO] Erro:', error);
+    console.error('[BUSCAR-COTACAO] Falha:', safeErrorType(error));
     return null;
   }
 }
@@ -143,7 +140,7 @@ export async function listarCotacoes(page: number = 1, pageSize: number = 15) {
 
     return result;
   } catch (error: any) {
-    console.error('❌ [LISTAR-COTACOES] Erro:', error);
+    console.error('[LISTAR-COTACOES] Falha:', safeErrorType(error));
     return [];
   }
 }
@@ -161,7 +158,7 @@ export async function contarCotacoes() {
       .where(gte(cotacoesFrete.createdAt, trintaDiasAtras));
     return Number(result?.total ?? 0);
   } catch (error: any) {
-    console.error('❌ [CONTAR-COTACOES] Erro:', error);
+    console.error('[CONTAR-COTACOES] Falha:', safeErrorType(error));
     return 0;
   }
 }
@@ -179,7 +176,7 @@ export async function atualizarStatusCotacao(id: number, status: InsertCotacaoFr
       .returning({ id: cotacoesFrete.id });
     return result.length > 0;
   } catch (error: any) {
-    console.error('❌ [ATUALIZAR-STATUS] Erro:', error);
+    console.error('[ATUALIZAR-STATUS] Falha:', safeErrorType(error));
     return false;
   }
 }

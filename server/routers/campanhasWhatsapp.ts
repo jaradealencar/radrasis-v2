@@ -17,7 +17,7 @@ import { and, count, desc, eq, gte, inArray, isNotNull, lte, max, sql } from "dr
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
-import { getPool } from "../db/db-connection";
+import { queryDatabase } from "../db/db-connection";
 import {
   consultarDiagnosticoCeci, consultarEstadoMensagemWts, criarCampanhaWts, enviarTemplateWts, idMensagemWts,
   urlStatusMensagemWts, wtsChatConfigurado,
@@ -201,7 +201,7 @@ async function carregarPosVenda(
 /** Último contato de cada telefone informado (telefones já normalizados). Uma ida ao banco. */
 async function buscarQuarentena(telefones: string[]): Promise<Map<string, string>> {
   if (telefones.length === 0) return new Map();
-  const r = await getPool().query(
+  const r = await queryDatabase<{ telefone: string; ultimo: string }>(
     `SELECT telefone, ultimo_contato_em::text AS ultimo
        FROM campanhas_whatsapp_quarentena WHERE telefone = ANY($1::text[])`,
     [telefones],
@@ -212,7 +212,7 @@ async function buscarQuarentena(telefones: string[]): Promise<Map<string, string
 /** Telefones (já normalizados) que pediram para não receber mais mensagens. Uma ida ao banco. */
 async function buscarBloqueados(telefones: string[]): Promise<Set<string>> {
   if (telefones.length === 0) return new Set();
-  const r = await getPool().query(
+  const r = await queryDatabase<{ telefone: string }>(
     `SELECT telefone FROM campanhas_whatsapp_optout WHERE telefone = ANY($1::text[])`,
     [telefones],
   );
@@ -346,7 +346,7 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
     ? new Map(limpeza.enviar.flatMap(c => c.osNumeros.map(os => [os, c.telefone] as const)))
     : new Map<string, string>();
 
-  const r = await getPool().query(
+  const r = await queryDatabase<{ id: number }>(
     `WITH novo AS (
        INSERT INTO campanhas_whatsapp_disparos
          (campanha_id, enviado_em, proxima_data, contatos_recebidos, contatos_enviados, contatos_ignorados,
@@ -472,7 +472,7 @@ async function montarListaCampanha(
 
   // Cadência DESTA campanha — só aqui, não no registrarDisparo genérico (ver comentário na migration/schema).
   const historicoRows = telefonesNormalizados.length
-    ? await getPool().query(
+    ? await queryDatabase<{ telefone: string; ultimo: string }>(
         `SELECT telefone, ultimo_envio_em::text AS ultimo FROM campanhas_whatsapp_contatos_historico
            WHERE campanha_id = $1 AND telefone = ANY($2::text[])`,
         [campanha.id, telefonesNormalizados],
@@ -740,7 +740,7 @@ export const campanhasWhatsappRouter = router({
       // busca automaticamente os contatos que foram registrados em campanhas_whatsapp_contatos_historico
       // para este disparo e os cruza com o cadastro de clientes/OS para recuperar os nomes.
       if (itens.length === 0) {
-        const historicos = await getPool().query(
+        const historicos = await queryDatabase<{ telefone: string; nome: string }>(
           `SELECT
              h.telefone,
              COALESCE(NULLIF(btrim(c.nome_fantasia), ''), NULLIF(btrim(c.razao_social), ''), NULLIF(btrim(os.empresa), ''), '') AS nome
@@ -754,8 +754,8 @@ export const campanhasWhatsappRouter = router({
           [input.disparoId],
         );
         if (historicos.rows.length > 0) {
-          const rows = historicos.rows as Array<{ telefone: string; nome: string }>;
-          await getPool().query(
+          const rows = historicos.rows;
+          await queryDatabase(
             `INSERT INTO campanhas_whatsapp_disparo_itens (disparo_id, telefone, nome, origem)
              SELECT $1::int, t, NULLIF(n, ''), 'auto'
              FROM unnest($2::text[], $3::text[]) AS u(t, n)`,
@@ -870,7 +870,7 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ campanhaId: z.number().int().positive(), dia: dataIsoSchema.optional() }))
     .mutation(async ({ input }) => {
       const dia = input.dia ?? hojeCampoGrande();
-      const r = await getPool().query(
+      const r = await queryDatabase<{ quarentena: number; cadencia: number }>(
         `WITH ha_disparo AS (
            SELECT 1 FROM campanhas_whatsapp_disparos WHERE campanha_id = $1 AND enviado_em = $2::date LIMIT 1
          ), quarentena AS (
@@ -885,7 +885,7 @@ export const campanhasWhatsappRouter = router({
          SELECT (SELECT count(*) FROM quarentena)::int AS quarentena, (SELECT count(*) FROM cadencia)::int AS cadencia`,
         [input.campanhaId, dia],
       );
-      const linha = r.rows[0] as { quarentena: number; cadencia: number };
+      const linha = r.rows[0];
       return { quarentenaLiberada: linha.quarentena, cadenciaLiberada: linha.cadencia };
     }),
 
@@ -898,7 +898,7 @@ export const campanhasWhatsappRouter = router({
   excluirDisparoApi: campanhasProcedure
     .input(z.object({ disparoId: z.number().int().positive() }))
     .mutation(async ({ input }) => {
-      const r = await getPool().query(
+      const r = await queryDatabase<{ disparos: number; contatos: number }>(
         `WITH alvo AS (
            SELECT id FROM campanhas_whatsapp_disparos WHERE id = $1 AND origem = 'api'
          ), quarentena AS (
@@ -915,7 +915,7 @@ export const campanhasWhatsappRouter = router({
          SELECT (SELECT count(*) FROM apagado)::int AS disparos, (SELECT count(*) FROM cadencia)::int AS contatos`,
         [input.disparoId],
       );
-      const linha = r.rows[0] as { disparos: number; contatos: number };
+      const linha = r.rows[0];
       if (!linha.disparos) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Disparo não encontrado ou não foi feito pelo sistema (API)." });
       }
@@ -1039,7 +1039,7 @@ export const campanhasWhatsappRouter = router({
         const idPorTelefone = new Map(mensagensComId.map(m => [m.contato.telefone, m] as const));
         const estadoPorTelefone = new Map(estadosAmostra.map(e => [e.telefone, e] as const));
         try {
-          await getPool().query(
+          await queryDatabase(
             `INSERT INTO campanhas_whatsapp_disparo_itens
                (disparo_id, telefone, nome, wts_mensagem_id, status_url, status, status_detalhe, status_consultado_em, origem)
              SELECT $1::int, t, n, msgid, surl, st, det, consultado::timestamp, 'auto'
@@ -1745,7 +1745,7 @@ Script 2: [Título]
           .where(and(gte(campanhasWhatsappDisparos.enviadoEm, input.inicio), lte(campanhasWhatsappDisparos.enviadoEm, input.fim))),
         db.select().from(campanhasWhatsappAgendamentos)
           .where(and(gte(campanhasWhatsappAgendamentos.dataAgendada, input.inicio), lte(campanhasWhatsappAgendamentos.dataAgendada, input.fim))),
-        getPool().query<{ total: number }>(
+        queryDatabase<{ total: number }>(
           `SELECT COUNT(DISTINCT telefone)::int AS total FROM campanhas_whatsapp_contatos_historico
              WHERE ultimo_envio_em BETWEEN $1 AND $2`,
           [input.inicio, input.fim],
