@@ -280,6 +280,7 @@ client/src/          frontend (Vite root = client/)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
   cpq3d/               ilha React + Three.js da Visualização 3D do CPQ (fora do tsconfig principal)
 client/cpq-letreiros-express.html  página do CPQ (HTML monolítico, entrada própria do Vite; mesma URL pública)
+client/cpq-redesenho-vetorizacao.html  ferramenta independente de redesenho e vetorização, com traçador local e aba de arquitetura/custos
 server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
@@ -323,7 +324,7 @@ server/
                        estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
                        estudio-cores.ts (catálogo local, análise e aprovação de cores antes do nesting),
                        estudio-render3d.ts (spec 3D, aprovação, previews e perfis visuais PBR),
-                       letra-caixa-redesenho.ts (reconstrução com até 2 referências extras da mesma logo, vetor e upload de imagens do CPQ),
+                       letra-caixa-redesenho.ts (redesenho autenticado, tickets assinados para imagem original, vetorização local/paga e imagens do CPQ),
                        cpq-servicos-status.ts (status autenticado de disponibilidade da API, assinatura/créditos Vectorizer.AI e validação da chave OpenAI)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts; o sync de O.S. também atualiza as

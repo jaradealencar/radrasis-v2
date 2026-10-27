@@ -41,6 +41,7 @@ const proposalImageBodyParser = express.raw({
 const inputSchema = z.object({
   escopo: z.enum(["somente_logo", "letreiro_completo", "elementos_selecionados"]),
   elementosSelecionados: z.string().trim().max(500).optional(),
+  qualidade: z.enum(["high", "xhigh"]).optional(),
 });
 
 /** Edição de imagem autenticada; a chave da OpenAI nunca sai do servidor. */
@@ -70,6 +71,18 @@ export function registrarRotasRedesenhoLetraCaixa(app: Express): void {
       }
 
       void executarRedesenho(req, res);
+    });
+  });
+
+  // Libera provedores pagos para a imagem original somente após escolha explícita no client.
+  app.post("/api/letra-caixa/aprovar-imagem-original", (req, res) => {
+    imageBodyParser(req, res, parseError => {
+      if (parseError) {
+        const status = (parseError as { status?: number }).status ?? 400;
+        res.status(status).json({ error: status === 413 ? "A imagem precisa ter até 4 MB." : "Envie uma imagem JPG ou PNG." });
+        return;
+      }
+      void aprovarImagemOriginal(req, res);
     });
   });
 
@@ -319,6 +332,56 @@ async function executarVetorizacao(req: Request, res: Response): Promise<void> {
   }
 }
 
+async function aprovarImagemOriginal(req: Request, res: Response): Promise<void> {
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) {
+        res.status(403).json({ error: "A solicitação precisa vir do próprio sistema." });
+        return;
+      }
+    } catch {
+      res.status(403).json({ error: "Origem da solicitação inválida." });
+      return;
+    }
+  }
+
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) }).catch(() => null);
+  if (!session) {
+    res.status(401).json({ error: "Entre no sistema para usar um provedor pago." });
+    return;
+  }
+  if ((process.env.JWT_SECRET?.trim().length ?? 0) < 32) {
+    res.status(503).json({ error: "A aprovação segura da imagem não está configurada no servidor." });
+    return;
+  }
+  const mimeType = req.get("content-type")?.split(";")[0].toLowerCase();
+  if (mimeType !== "image/jpeg" && mimeType !== "image/png") {
+    res.status(415).json({ error: "Envie uma imagem JPG ou PNG." });
+    return;
+  }
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    res.status(400).json({ error: "A imagem enviada está vazia." });
+    return;
+  }
+  const imagemValida = mimeType === "image/png"
+    ? req.body.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    : req.body.length >= 3 && req.body[0] === 0xff && req.body[1] === 0xd8 && req.body[2] === 0xff;
+  if (!imagemValida) {
+    res.status(415).json({ error: "O conteúdo não corresponde a uma imagem JPG ou PNG válida." });
+    return;
+  }
+
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Redesenho-Token", emitirTicketRedesenho(session.user.id, req.body));
+    res.status(204).end();
+  } catch (error) {
+    console.error("[letra-caixa] falha ao aprovar imagem original:", error instanceof Error ? error.name : "erro desconhecido");
+    res.status(503).json({ error: "Não foi possível aprovar a imagem para o provedor pago." });
+  }
+}
+
 async function executarRedesenho(req: Request, res: Response): Promise<void> {
   const origin = req.get("origin");
   if (origin) {
@@ -352,6 +415,7 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
   const params = inputSchema.safeParse({
     escopo: req.query.escopo,
     elementosSelecionados: req.query.elementosSelecionados,
+    qualidade: req.query.qualidade,
   });
   if (!params.success) {
     res.status(400).json({ error: "Selecione um escopo válido para a reconstrução." });
@@ -382,6 +446,7 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
       imageMimeType: mimeType,
       escopo: params.data.escopo as EscopoRedesenho,
       elementosSelecionados: params.data.elementosSelecionados,
+      quality: params.data.qualidade,
     });
 
     res

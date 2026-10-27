@@ -75,6 +75,23 @@
       .step-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: rgba(24, 34, 53, .72); color: #c5d3e8; font-size: 12px; }
       .step-number { display: grid; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #283e5d; color: #9ec6ff; font-size: 10px; font-weight: 800; }
 
+      .tabs { display: flex; gap: 8px; margin: 0 0 18px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: rgba(24, 34, 53, .72); }
+      .tab { min-height: 40px; padding: 0 15px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #aebbd0; font-size: 12px; font-weight: 750; cursor: pointer; }
+      .tab[aria-selected="true"] { border-color: #45648d; background: #243751; color: #eef5ff; }
+      .explain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .explain-card { padding: 17px; border: 1px solid rgba(142, 163, 197, .2); border-radius: 11px; background: rgba(13, 20, 32, .34); }
+      .explain-card h3 { margin: 0 0 8px; color: #eaf2ff; font-size: 14px; }
+      .explain-card p, .explain-card li { color: #aab8ce; font-size: 12px; line-height: 1.65; }
+      .explain-card p { margin: 0; }
+      .explain-card ul { margin: 8px 0 0; padding-left: 18px; }
+      .flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin: 0; padding: 0; list-style: none; }
+      .flow li { min-height: 104px; padding: 13px; border: 1px solid rgba(142, 163, 197, .2); border-radius: 10px; background: rgba(13, 20, 32, .34); }
+      .flow strong { display: block; margin-bottom: 7px; color: #cfe2ff; font-size: 12px; }
+      .flow span { color: #9eacc2; font-size: 11px; line-height: 1.55; }
+      .cost-free { color: var(--success) !important; }
+      .explain-note { margin: 14px 0 0; padding: 13px 15px; border: 1px solid #3a557a; border-radius: 10px; background: rgba(47, 91, 146, .14); color: #c4d7f2; font-size: 12px; line-height: 1.6; }
+      .explain-note a { color: #a7ceff; }
+
       .workspace { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); gap: 16px; align-items: start; }
       .panel { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(160deg, rgba(29, 43, 66, .98), rgba(22, 31, 48, .98)); box-shadow: 0 16px 42px rgba(0, 0, 0, .16); }
       .panel-head { padding: 21px 22px 17px; border-bottom: 1px solid rgba(142, 163, 197, .16); }
@@ -185,6 +202,9 @@
         .health-panel .button-row { width: 100%; }
         .health-panel .button { width: 100%; }
         .service-grid { grid-template-columns: 1fr; }
+        .flow { grid-template-columns: 1fr; }
+        .flow li { min-height: 0; }
+        .explain-grid { grid-template-columns: 1fr; }
       }
 
       @media (max-width: 480px) {
@@ -213,14 +233,20 @@
       <section class="intro" aria-labelledby="page-title">
         <div class="eyebrow">Ferramenta de arte</div>
         <h1 id="page-title">Da imagem ao vetor</h1>
-        <p>Envie uma imagem, confira o redesenho e gere um arquivo vetorial SVG para baixar.</p>
+        <p>Redesenhe quando precisar. Para economizar, tente primeiro a vetorização local gratuita e baixe o SVG.</p>
         <div class="steps" aria-label="Etapas">
           <span class="step-chip"><span class="step-number">1</span>Enviar imagem</span>
-          <span class="step-chip"><span class="step-number">2</span>Redesenhar</span>
+          <span class="step-chip"><span class="step-number">2</span>Redesenhar opcional</span>
           <span class="step-chip"><span class="step-number">3</span>Baixar SVG</span>
         </div>
       </section>
 
+      <div class="tabs" role="tablist" aria-label="Seções da ferramenta">
+        <button class="tab" id="tool-tab" type="button" role="tab" aria-selected="true" aria-controls="tool-content">Criar vetor</button>
+        <button class="tab" id="architecture-tab" type="button" role="tab" aria-selected="false" aria-controls="architecture-content" tabindex="-1">Como funciona e economizar</button>
+      </div>
+
+      <div id="tool-content" role="tabpanel" aria-labelledby="tool-tab">
       <section class="panel health-panel" aria-labelledby="health-title">
         <div class="panel-head">
           <div class="health-copy">
@@ -258,9 +284,9 @@
       <div class="workspace">
         <section class="panel" aria-labelledby="source-title">
           <div class="panel-head">
-            <div class="panel-kicker">Etapas 1 e 2</div>
-            <h2 id="source-title">Enviar e redesenhar</h2>
-            <p>Escolha uma imagem PNG ou JPG. O redesenho prioriza preservar letras, símbolos e proporções da logo.</p>
+            <div class="panel-kicker">Imagem</div>
+            <h2 id="source-title">Enviar e preparar a imagem</h2>
+            <p>Escolha uma imagem PNG ou JPG. Use o original para tentar o traçador local sem custo de API, ou peça o redesenho por IA se precisar.</p>
           </div>
           <div class="panel-body">
             <label class="dropzone" id="dropzone" for="image-file" tabindex="0">
@@ -280,9 +306,12 @@
             <div class="button-row">
               <button class="button" id="redraw-button" type="button" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 4v6M17 14v6M4 17h16"/><path d="m9 12 2 2 4-4"/></svg>
-                <span>Redesenhar imagem</span>
+                <span>Redesenhar com GPT Image (pago)</span>
               </button>
+              <button class="button secondary" id="original-button" type="button" disabled>Usar original sem redesenho</button>
+              <button class="button secondary" id="quality-button" type="button" hidden>Refazer em qualidade máxima (pode custar mais)</button>
             </div>
+            <p class="hint">Redesenhar chama a API da OpenAI. Se a imagem já estiver boa, use o original e tente primeiro a vetorização local gratuita.</p>
 
             <div class="compare" id="comparison" hidden>
               <div class="image-card">
@@ -290,7 +319,7 @@
                 <div class="image-frame"><img id="compare-original" alt="Comparação da imagem original" /></div>
               </div>
               <div class="image-card">
-                <div class="image-card-label"><span>Redesenho</span><span>Revise antes de vetorizar</span></div>
+                <div class="image-card-label"><span>Imagem que será vetorizada</span><span>Revise antes de vetorizar</span></div>
                 <div class="image-frame"><img id="redrawn-image" alt="Imagem redesenhada" /></div>
               </div>
             </div>
@@ -300,23 +329,25 @@
 
         <section class="panel" aria-labelledby="vector-title">
           <div class="panel-head">
-            <div class="panel-kicker">Etapa 3</div>
+            <div class="panel-kicker">Vetorização</div>
             <h2 id="vector-title">Vetorizar e baixar</h2>
-            <p>Depois de conferir o redesenho, gere a arte vetorial e baixe o SVG.</p>
+            <p>Tente primeiro o traçador local. Se precisar de outro resultado, escolha explicitamente um serviço que pode consumir créditos ou saldo de API.</p>
           </div>
           <div class="panel-body">
             <div class="image-card vector-preview">
               <div class="image-card-label"><span>Prévia do vetor</span><span id="vector-format">SVG</span></div>
               <div class="image-frame" id="vector-frame">
-                <div class="vector-empty" id="vector-empty">A prévia vetorial aparecerá aqui depois que você aprovar o redesenho e iniciar a vetorização.</div>
+                <div class="vector-empty" id="vector-empty">A prévia do SVG aparecerá aqui depois que você vetorizar uma imagem.</div>
                 <img id="vector-image" alt="Prévia da imagem vetorizada" hidden />
               </div>
             </div>
             <div class="button-row">
               <button class="button" id="vectorize-button" type="button" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19 19 4M7 4h12v12"/><path d="M4 4v4m0-4h4M4 12v8h8"/></svg>
-                <span>Aprovar redesenho e vetorizar</span>
+                <span>Vetorizar localmente (grátis)</span>
               </button>
+              <button class="button secondary" id="vectorizer-button" type="button" disabled>Vectorizer.AI (usa créditos)</button>
+              <button class="button secondary" id="gpt-button" type="button" disabled>Vetorizar com GPT (usa API)</button>
               <button class="button secondary" id="download-button" type="button" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 17v3h14v-3"/></svg>
                 <span>Baixar SVG</span>
@@ -328,7 +359,55 @@
         </section>
       </div>
 
-      <p class="bottom-note">O arquivo vetorial é gerado a partir do redesenho exibido nesta página.</p>
+      <p class="bottom-note">As ações pagas só são iniciadas quando você clica no botão correspondente.</p>
+      </div>
+
+      <section id="architecture-content" role="tabpanel" aria-labelledby="architecture-tab" hidden>
+        <section class="panel" aria-labelledby="architecture-title">
+          <div class="panel-head">
+            <div class="panel-kicker">Visão geral</div>
+            <h2 id="architecture-title">Como esta ferramenta é estruturada</h2>
+            <p>A página organiza a imagem e as escolhas; o servidor protege as credenciais e encaminha apenas as ações solicitadas aos serviços externos.</p>
+          </div>
+          <div class="panel-body">
+            <ol class="flow" aria-label="Fluxo da imagem">
+              <li><strong>1. Navegador</strong><span>Recebe a imagem, mostra as prévias e pode gerar um SVG localmente, sem enviar a imagem a um provedor.</span></li>
+              <li><strong>2. Redesenho opcional</strong><span>Ao clicar em redesenhar, o servidor envia a imagem e instruções à OpenAI Image API.</span></li>
+              <li><strong>3. Vetorização local</strong><span>O traçador do navegador transforma pixels em caminhos SVG. Não usa créditos de Vectorizer.AI nem tokens de GPT.</span></li>
+              <li><strong>4. Provedor escolhido</strong><span>Vectorizer.AI usa créditos da assinatura. A opção GPT usa a API da OpenAI. Nenhum deles inicia sozinho.</span></li>
+              <li><strong>5. Download</strong><span>O SVG fica na página e é baixado por você; não é enviado ao MubiSys nem salvo em uma proposta.</span></li>
+            </ol>
+            <div class="explain-grid" style="margin-top: 14px">
+              <article class="explain-card">
+                <h3>Onde o custo pode acontecer</h3>
+                <ul>
+                  <li class="cost-free"><strong>Grátis:</strong> usar o original e vetorizar localmente no navegador.</li>
+                  <li><strong>OpenAI Image:</strong> cada redesenho é uma nova geração; qualidade máxima é uma nova chamada.</li>
+                  <li><strong>Vectorizer.AI:</strong> cada tentativa pode consumir créditos do plano.</li>
+                  <li><strong>GPT para SVG:</strong> cada tentativa usa a API da OpenAI e pode gerar cobrança por uso.</li>
+                </ul>
+              </article>
+              <article class="explain-card">
+                <h3>Como o sistema protege o fluxo</h3>
+                <p>As chaves dos provedores ficam no servidor. Para as opções pagas, o servidor exige login e um comprovante assinado ligado à imagem exata que você escolheu. O comprovante não chama o provedor nem gera cobrança por si só.</p>
+              </article>
+              <article class="explain-card">
+                <h3>O que verificar quando parar</h3>
+                <p>O painel de status mostra resposta da API, estado da assinatura e créditos informados pela Vectorizer.AI, além de validar a chave da OpenAI. A chave aceita não revela saldo nem garante acesso a todos os modelos; consulte também o uso da conta.</p>
+              </article>
+              <article class="explain-card">
+                <h3>Uma boa sequência para economizar</h3>
+                <p>1) Tente o original no traçador local. 2) Se a foto estiver ruim, redesenhe em qualidade alta. 3) Confira o resultado antes de tentar qualidade máxima. 4) Recorra a Vectorizer.AI ou GPT somente quando o resultado local não servir.</p>
+              </article>
+              <article class="explain-card">
+                <h3>Peças do sistema</h3>
+                <p>A tela e as abas ficam em <code>client/cpq-redesenho-vetorizacao.html</code>; o traçador local em <code>client/cpq-vetorizador-local.js</code>; as rotas que protegem e chamam os provedores em <code>server/routes/letra-caixa-redesenho.ts</code>. Assim, a chave da OpenAI e as credenciais da Vectorizer.AI não vão para o navegador.</p>
+              </article>
+            </div>
+            <p class="explain-note">“Tokens” e “créditos” são medidores diferentes. O GPT para SVG usa a API da OpenAI; a geração de imagem também pode ter cobrança própria. O painel do sistema não mostra o saldo financeiro da OpenAI. <a href="https://platform.openai.com/usage" target="_blank" rel="noopener">Ver uso da OpenAI</a>.</p>
+          </div>
+        </section>
+      </section>
     </main>
 
     <script>
@@ -344,8 +423,16 @@
         const comparison = document.getElementById('comparison');
         const fileName = document.getElementById('file-name');
         const redrawButton = document.getElementById('redraw-button');
+        const originalButton = document.getElementById('original-button');
+        const qualityButton = document.getElementById('quality-button');
         const vectorizeButton = document.getElementById('vectorize-button');
+        const vectorizerButton = document.getElementById('vectorizer-button');
+        const gptButton = document.getElementById('gpt-button');
         const downloadButton = document.getElementById('download-button');
+        const toolTab = document.getElementById('tool-tab');
+        const architectureTab = document.getElementById('architecture-tab');
+        const toolContent = document.getElementById('tool-content');
+        const architectureContent = document.getElementById('architecture-content');
         const vectorImage = document.getElementById('vector-image');
         const vectorEmpty = document.getElementById('vector-empty');
         const vectorNote = document.getElementById('vector-note');
@@ -373,6 +460,7 @@
           svgUrl: null,
           redrawing: false,
           vectorizing: false,
+          maxQualityAvailable: false,
         };
 
         function revoke(url) {
@@ -494,7 +582,12 @@
 
         function updateButtons() {
           redrawButton.disabled = !state.file || state.redrawing || state.vectorizing;
+          originalButton.disabled = !state.file || state.redrawing || state.vectorizing;
+          qualityButton.hidden = !state.maxQualityAvailable;
+          qualityButton.disabled = state.redrawing || state.vectorizing;
           vectorizeButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
+          vectorizerButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
+          gptButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
           downloadButton.disabled = !state.svg || state.vectorizing;
         }
 
@@ -523,6 +616,8 @@
           state.redrawToken = null;
           state.redrawing = false;
           state.vectorizing = false;
+          state.maxQualityAvailable = false;
+          qualityButton.hidden = true;
           comparison.hidden = true;
           resetVector();
           originalImage.src = state.originalUrl;
@@ -590,11 +685,13 @@
           throw new Error('A imagem ficou grande demais para enviar. Escolha uma imagem menor.');
         }
 
-        async function redrawImage() {
+        async function redrawImage(quality = 'high') {
           if (!state.file || state.redrawing || state.vectorizing) return;
           state.redrawing = true;
           state.redrawnBlob = null;
           state.redrawToken = null;
+          state.maxQualityAvailable = false;
+          qualityButton.hidden = true;
           comparison.hidden = true;
           revoke(state.redrawnUrl);
           state.redrawnUrl = null;
@@ -605,7 +702,7 @@
 
           try {
             const image = await prepareImage(state.file);
-            const response = await fetch('/api/letra-caixa/redesenho?escopo=somente_logo', {
+            const response = await fetch(`/api/letra-caixa/redesenho?escopo=somente_logo&qualidade=${quality}`, {
               method: 'POST',
               credentials: 'same-origin',
               headers: { 'Content-Type': image.type || 'image/jpeg' },
@@ -620,6 +717,7 @@
             state.redrawnBlob = result;
             state.redrawnUrl = URL.createObjectURL(result);
             state.redrawToken = token;
+            state.maxQualityAvailable = quality === 'high';
             redrawnImage.src = state.redrawnUrl;
             comparison.hidden = false;
             showStatus(redrawStatus, 'Redesenho pronto. Confira a comparação antes de seguir.', 'success');
@@ -628,7 +726,7 @@
             showStatus(redrawStatus, needsLogin ? 'Sua sessão não está ativa.' : (error?.message || 'Falha ao redesenhar a imagem.'), 'error', needsLogin);
           } finally {
             state.redrawing = false;
-            redrawButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 4v6M17 14v6M4 17h16"/><path d="m9 12 2 2 4-4"/></svg><span>Redesenhar imagem</span>';
+            redrawButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 4v6M17 14v6M4 17h16"/><path d="m9 12 2 2 4-4"/></svg><span>Redesenhar com GPT Image (pago)</span>';
             updateButtons();
           }
         }
@@ -674,57 +772,150 @@
           return validateSvg(await response.text());
         }
 
-        async function vectorizeImage() {
-          if (!state.redrawnBlob || !state.redrawToken || state.vectorizing || state.redrawing) return;
-          state.vectorizing = true;
+        async function useOriginalImage() {
+          if (!state.file || state.redrawing || state.vectorizing) return;
+          state.redrawing = true;
+          revoke(state.redrawnUrl);
+          state.redrawnUrl = null;
+          state.redrawnBlob = null;
+          state.redrawToken = null;
+          state.maxQualityAvailable = false;
+          qualityButton.hidden = true;
           resetVector();
-          vectorizeButton.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Vetorizando…</span>';
-          clearStatus(vectorStatus);
+          clearStatus(redrawStatus);
+          originalButton.textContent = 'Preparando imagem…';
           updateButtons();
-
-          const failures = [];
-          let svg = null;
-          let motor = '';
-          const steps = [
-            ['Vectorizer.AI', () => vectorizerAi(state.redrawnBlob, state.redrawToken)],
-            ['Traçador local', () => vectorizeLocally(state.redrawnBlob)],
-            ['GPT', () => vectorizeWithGpt(state.redrawnBlob, state.redrawToken)],
-          ];
           try {
-            for (const [label, run] of steps) {
-              vectorizeButton.querySelector('span:last-child').textContent = `Vetorizando com ${label}…`;
-              try {
-                svg = await run();
-                motor = label;
-                break;
-              } catch (error) {
-                failures.push(`${label}: ${error?.message || 'falha ao gerar o vetor'}`);
-              }
-            }
-
-            if (!svg) {
-              const loginFailure = failures.some(message => /sessão|entre no sistema|faça login/i.test(message));
-              throw Object.assign(new Error(loginFailure ? 'Sua sessão não está ativa.' : (failures.at(-1) || 'Nenhum método conseguiu vetorizar a imagem.')), { needsLogin: loginFailure });
-            }
-
-            state.svg = svg;
-            state.svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-            vectorImage.src = state.svgUrl;
-            vectorImage.hidden = false;
-            vectorEmpty.hidden = true;
-            vectorNote.textContent = motor === 'Vectorizer.AI'
-              ? 'Vetorização automática concluída.'
-              : motor === 'GPT'
-                ? 'Plano B utilizado: GPT. O vetor é aproximado; confira letras e contornos na prévia.'
-                : `Plano B utilizado: ${motor}. Confira os contornos na prévia.`;
-            showStatus(vectorStatus, 'SVG pronto para baixar.', 'success');
+            const image = await prepareImage(state.file);
+            state.redrawnBlob = image;
+            state.redrawnUrl = URL.createObjectURL(image);
+            redrawnImage.src = state.redrawnUrl;
+            comparison.hidden = false;
+            showStatus(redrawStatus, 'Imagem original selecionada. Nenhum redesenho por IA foi chamado.', 'success');
           } catch (error) {
-            showStatus(vectorStatus, error?.message || 'Não foi possível vetorizar a imagem.', 'error', !!error?.needsLogin);
+            showStatus(redrawStatus, error?.message || 'Não foi possível preparar a imagem.', 'error');
           } finally {
-            state.vectorizing = false;
-            vectorizeButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19 19 4M7 4h12v12"/><path d="M4 4v4m0-4h4M4 12v8h8"/></svg><span>Aprovar redesenho e vetorizar</span>';
+            state.redrawing = false;
+            originalButton.textContent = 'Usar original sem redesenho';
             updateButtons();
           }
+        }
+
+        async function ensureApprovalToken(image) {
+          if (state.redrawToken) return state.redrawToken;
+          const response = await fetch('/api/letra-caixa/aprovar-imagem-original', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': image.type || 'image/png' },
+            body: image,
+          });
+          if (!response.ok) throw await readResponseError(response, 'Não foi possível autorizar esta imagem para o provedor pago.');
+          const token = response.headers.get('X-Redesenho-Token');
+          if (!token) throw new Error('O servidor não confirmou a imagem para uso pago.');
+          state.redrawToken = token;
+          return token;
+        }
+
+        function displayVector(svg, motor) {
+          state.svg = svg;
+          state.svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+          vectorImage.src = state.svgUrl;
+          vectorImage.hidden = false;
+          vectorEmpty.hidden = true;
+          vectorNote.textContent = motor === 'GPT'
+            ? 'Vetor aproximado gerado com GPT. Confira letras e contornos na prévia.'
+            : motor === 'Vectorizer.AI'
+              ? 'Vetor gerado pelo Vectorizer.AI.'
+              : 'Vetor gerado localmente no navegador, sem chamada a provedor.';
+          showStatus(vectorStatus, 'SVG pronto para baixar.', 'success');
+        }
+
+        async function vectorizeImage() {
+          if (!state.redrawnBlob || state.vectorizing || state.redrawing) return;
+          state.vectorizing = true;
+          resetVector();
+          vectorizeButton.textContent = 'Vetorizando localmente…';
+          clearStatus(vectorStatus);
+          updateButtons();
+          try {
+            const svg = await vectorizeLocally(state.redrawnBlob);
+            displayVector(svg, 'Traçador local');
+          } catch (error) {
+            showStatus(vectorStatus, error?.message || 'Não foi possível vetorizar localmente. Você pode escolher um provedor pago abaixo.', 'error');
+          } finally {
+            state.vectorizing = false;
+            vectorizeButton.textContent = 'Vetorizar localmente (grátis)';
+            updateButtons();
+          }
+        }
+
+        async function convertToPng(image) {
+          if (image.type === 'image/png') return image;
+          const bitmap = await createImageBitmap(image);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext('2d');
+          if (!context) {
+            bitmap.close();
+            throw new Error('Não foi possível preparar o PNG para o GPT.');
+          }
+          context.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          if (!png) throw new Error('Não foi possível converter a imagem para PNG.');
+          return png;
+        }
+
+        async function vectorizeWithProvider(provider) {
+          if (!state.redrawnBlob || state.vectorizing || state.redrawing) return;
+          state.vectorizing = true;
+          resetVector();
+          const button = provider === 'vectorizer' ? vectorizerButton : gptButton;
+          const idleLabel = provider === 'vectorizer' ? 'Vectorizer.AI (usa créditos)' : 'Vetorizar com GPT (usa API)';
+          button.textContent = 'Conectando ao provedor…';
+          clearStatus(vectorStatus);
+          updateButtons();
+          try {
+            let image = state.redrawnBlob;
+            if (provider === 'gpt') image = await convertToPng(image);
+            if (image !== state.redrawnBlob) {
+              state.redrawnBlob = image;
+              state.redrawToken = null;
+              revoke(state.redrawnUrl);
+              state.redrawnUrl = URL.createObjectURL(image);
+              redrawnImage.src = state.redrawnUrl;
+              comparison.hidden = false;
+            }
+            const token = await ensureApprovalToken(image);
+            button.textContent = 'Gerando vetor…';
+            const svg = provider === 'vectorizer'
+              ? await vectorizerAi(image, token)
+              : await vectorizeWithGpt(image, token);
+            displayVector(svg, provider === 'vectorizer' ? 'Vectorizer.AI' : 'GPT');
+          } catch (error) {
+            showStatus(vectorStatus, error?.message || 'O provedor não conseguiu vetorizar a imagem.', 'error', error?.status === 401);
+          } finally {
+            state.vectorizing = false;
+            button.textContent = idleLabel;
+            updateButtons();
+          }
+        }
+
+        function retryMaximumQuality() {
+          if (!state.maxQualityAvailable || state.redrawing || state.vectorizing) return;
+          const approved = window.confirm('A qualidade máxima fará outra chamada paga à OpenAI Image API. Deseja continuar?');
+          if (approved) void redrawImage('xhigh');
+        }
+
+        function selectTab(selected) {
+          const showTool = selected === toolTab;
+          toolTab.setAttribute('aria-selected', String(showTool));
+          toolTab.tabIndex = showTool ? 0 : -1;
+          architectureTab.setAttribute('aria-selected', String(!showTool));
+          architectureTab.tabIndex = showTool ? -1 : 0;
+          toolContent.hidden = !showTool;
+          architectureContent.hidden = showTool;
         }
 
         function downloadSvg() {
@@ -738,9 +929,26 @@
         }
 
         fileInput.addEventListener('change', event => selectFile(event.target.files?.[0]));
-        redrawButton.addEventListener('click', redrawImage);
+        redrawButton.addEventListener('click', () => void redrawImage('high'));
+        originalButton.addEventListener('click', useOriginalImage);
+        qualityButton.addEventListener('click', retryMaximumQuality);
         vectorizeButton.addEventListener('click', vectorizeImage);
+        vectorizerButton.addEventListener('click', () => void vectorizeWithProvider('vectorizer'));
+        gptButton.addEventListener('click', () => void vectorizeWithProvider('gpt'));
         downloadButton.addEventListener('click', downloadSvg);
+        toolTab.addEventListener('click', () => selectTab(toolTab));
+        architectureTab.addEventListener('click', () => selectTab(architectureTab));
+        for (const [tab, nextTab] of [[toolTab, architectureTab], [architectureTab, toolTab]]) {
+          tab.addEventListener('keydown', event => {
+            if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const target = event.key === 'Home' ? toolTab
+              : event.key === 'End' ? architectureTab
+                : nextTab;
+            target.focus();
+            selectTab(target);
+          });
+        }
         checkServicesButton.addEventListener('click', checkServiceStatus);
         dropzone.addEventListener('keydown', event => {
           if (event.key === 'Enter' || event.key === ' ') {

@@ -26,6 +26,8 @@ export type RedesenharLetreiroParams = {
   elementosSelecionados?: string;
   /** Imagens adicionais da mesma logo (site, redes sociais...), no máximo 2; a foto principal continua sendo a referência. */
   referencias?: ReferenciaDecodificada[];
+  /** Mantém xhigh para consumidores existentes; o artefato econômico solicita high. */
+  quality?: "high" | "xhigh";
 };
 
 export type RedesenharLetreiroResult = {
@@ -90,7 +92,7 @@ export async function redesenharLetreiro(
     prompt,
     background,
     model: "gpt-image-2.5-sunburst",
-    quality: "xhigh",
+    quality: params.quality ?? "xhigh",
     size: "auto",
   });
 
