@@ -159,11 +159,32 @@
 
       .bottom-note { margin-top: 17px; color: #8090a8; font-size: 10.5px; line-height: 1.5; text-align: center; }
 
+      .health-panel { margin-bottom: 16px; }
+      .health-panel .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+      .health-copy { max-width: 690px; }
+      .health-panel .button-row { flex: 0 0 auto; margin-top: 0; }
+      .service-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+      .service-card { min-width: 0; padding: 16px; border: 1px solid rgba(142, 163, 197, .2); border-radius: 11px; background: rgba(13, 20, 32, .34); }
+      .service-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .service-name { color: #eaf2ff; font-size: 13px; font-weight: 750; }
+      .service-state { padding: 5px 8px; border: 1px solid #42536d; border-radius: 999px; color: #c5d3e8; font-size: 10px; font-weight: 750; white-space: nowrap; }
+      .service-card[data-state="active"] .service-state { border-color: rgba(91, 190, 151, .42); color: #8ee0bd; }
+      .service-card[data-state="warning"] .service-state { border-color: rgba(241, 187, 94, .42); color: #ffd387; }
+      .service-card[data-state="error"] .service-state { border-color: rgba(219, 103, 103, .45); color: #ffc0b8; }
+      .service-detail { min-height: 38px; margin: 11px 0 0; color: #a2b0c8; font-size: 11.5px; line-height: 1.55; overflow-wrap: anywhere; }
+      .service-footnote { margin: 13px 0 0; color: #8697b1; font-size: 10.5px; line-height: 1.55; }
+      .service-footnote a { color: #a7ceff; }
+      .service-updated { min-height: 16px; margin-top: 12px; color: #8e9eb6; font-size: 10.5px; }
+
       @media (max-width: 780px) {
         .page { width: min(100% - 28px, 620px); padding-top: 19px; }
         .intro { padding-top: 31px; }
         .workspace { grid-template-columns: 1fr; }
         .vector-preview .image-frame { min-height: 240px; }
+        .health-panel .panel-head { align-items: flex-start; flex-direction: column; }
+        .health-panel .button-row { width: 100%; }
+        .health-panel .button { width: 100%; }
+        .service-grid { grid-template-columns: 1fr; }
       }
 
       @media (max-width: 480px) {
@@ -197,6 +218,40 @@
           <span class="step-chip"><span class="step-number">1</span>Enviar imagem</span>
           <span class="step-chip"><span class="step-number">2</span>Redesenhar</span>
           <span class="step-chip"><span class="step-number">3</span>Baixar SVG</span>
+        </div>
+      </section>
+
+      <section class="panel health-panel" aria-labelledby="health-title">
+        <div class="panel-head">
+          <div class="health-copy">
+            <div class="panel-kicker">Monitoramento</div>
+            <h2 id="health-title">Status dos serviços e créditos</h2>
+            <p>Veja se a API do Radrasys respondeu, consulte os créditos da Vectorizer.AI e confirme se a chave da OpenAI está sendo aceita. A consulta é manual e não mostra nenhuma chave.</p>
+          </div>
+          <div class="button-row">
+            <button class="button secondary" id="check-services-button" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.9-2L20 12M4 12l2.5 5a7 7 0 0 0 11.9-2"/></svg>
+              <span>Verificar agora</span>
+            </button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="service-grid">
+            <article class="service-card" id="system-service-card" data-state="neutral" aria-live="polite">
+              <div class="service-card-top"><span class="service-name">Radrasys / API</span><span class="service-state" id="system-service-state">Aguardando consulta</span></div>
+              <p class="service-detail" id="system-service-detail">A consulta informa se a API respondeu neste momento.</p>
+            </article>
+            <article class="service-card" id="vectorizer-service-card" data-state="neutral" aria-live="polite">
+              <div class="service-card-top"><span class="service-name">Vectorizer.AI</span><span class="service-state" id="vectorizer-service-state">Aguardando consulta</span></div>
+              <p class="service-detail" id="vectorizer-service-detail">Clique em “Verificar agora” para consultar o plano e os créditos restantes.</p>
+            </article>
+            <article class="service-card" id="openai-service-card" data-state="neutral" aria-live="polite">
+              <div class="service-card-top"><span class="service-name">OpenAI / GPT</span><span class="service-state" id="openai-service-state">Aguardando consulta</span></div>
+              <p class="service-detail" id="openai-service-detail">A verificação confirma a autenticação da chave da API.</p>
+            </article>
+          </div>
+          <p class="service-footnote">A verificação do GPT não gera imagens nem consome tokens de modelo. A chave comum da API não informa saldo pré-pago ou limite financeiro; quando uma chamada real é bloqueada por cobrança ou limite, o painel não consegue antecipar esse bloqueio. <a href="https://platform.openai.com/usage" target="_blank" rel="noopener">Consultar uso na OpenAI</a>.</p>
+          <div class="service-updated" id="service-updated" role="status" aria-live="polite">Painel restrito aos perfis administrador e master.</div>
         </div>
       </section>
 
@@ -296,6 +351,17 @@
         const vectorNote = document.getElementById('vector-note');
         const redrawStatus = document.getElementById('redraw-status');
         const vectorStatus = document.getElementById('vector-status');
+        const checkServicesButton = document.getElementById('check-services-button');
+        const systemServiceCard = document.getElementById('system-service-card');
+        const systemServiceState = document.getElementById('system-service-state');
+        const systemServiceDetail = document.getElementById('system-service-detail');
+        const vectorizerServiceCard = document.getElementById('vectorizer-service-card');
+        const vectorizerServiceState = document.getElementById('vectorizer-service-state');
+        const vectorizerServiceDetail = document.getElementById('vectorizer-service-detail');
+        const openaiServiceCard = document.getElementById('openai-service-card');
+        const openaiServiceState = document.getElementById('openai-service-state');
+        const openaiServiceDetail = document.getElementById('openai-service-detail');
+        const serviceUpdated = document.getElementById('service-updated');
 
         const state = {
           file: null,
@@ -331,6 +397,86 @@
             link.textContent = 'Entrar no Radrasys';
             element.append(link);
             element.append(document.createTextNode(' e depois volte a esta página.'));
+          }
+        }
+
+        function updateServiceCard(card, stateElement, detailElement, status, detail) {
+          card.dataset.state = ['active'].includes(status) ? 'active'
+            : ['no_credits', 'past_due', 'rate_limited'].includes(status) ? 'warning'
+              : ['not_configured', 'ended', 'invalid_credentials', 'access_denied', 'unavailable', 'provider_error'].includes(status) ? 'error' : 'neutral';
+          stateElement.textContent = detail.label;
+          detailElement.textContent = detail.message;
+        }
+
+        function describeVectorizer(service) {
+          const credits = typeof service.credits === 'number'
+            ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(service.credits)
+            : null;
+          const plan = service.plan ? ` Plano: ${service.plan}.` : '';
+          const activeMessage = credits == null
+            ? `A assinatura está ativa, mas o provedor não informou o saldo de créditos.${plan}`
+            : `${credits} créditos disponíveis.${plan}`;
+          const descriptions = {
+            not_configured: ['Não configurada', 'As credenciais da Vectorizer.AI não estão configuradas no servidor.'],
+            active: ['Ativa', activeMessage],
+            no_credits: ['Sem créditos', 'A assinatura está ativa, mas a conta informou zero crédito disponível.'],
+            past_due: ['Pagamento pendente', `A conta informou pagamento pendente.${credits ? ` Créditos disponíveis: ${credits}.` : ''}${plan}`],
+            ended: ['Encerrada', 'A Vectorizer.AI informou que não há assinatura ativa.'],
+            invalid_credentials: ['Credenciais rejeitadas', 'A Vectorizer.AI não aceitou as credenciais configuradas.'],
+            access_denied: ['Acesso negado', 'A conta não autorizou a consulta de status.'],
+            rate_limited: ['Consulta limitada', 'O provedor limitou temporariamente esta consulta; tente novamente mais tarde.'],
+            unavailable: ['Sem resposta', 'Não foi possível alcançar a Vectorizer.AI agora.'],
+            provider_error: ['Erro de consulta', 'A Vectorizer.AI respondeu com um erro ao consultar a conta.'],
+            unknown: ['Status inconclusivo', 'A resposta da Vectorizer.AI não trouxe um estado de assinatura reconhecido.'],
+          };
+          const [label, message] = descriptions[service.status] || descriptions.unknown;
+          updateServiceCard(vectorizerServiceCard, vectorizerServiceState, vectorizerServiceDetail, service.status, { label, message });
+        }
+
+        function describeOpenAi(service) {
+          const descriptions = {
+            not_configured: ['Não configurada', 'A chave OPENAI_API_KEY não está configurada no servidor.'],
+            active: ['Chave aceita', 'A autenticação foi aceita. Isso não confirma saldo, limite financeiro nem permissão para cada modelo.'],
+            invalid_credentials: ['Chave inválida', 'A OpenAI rejeitou a chave configurada no servidor.'],
+            access_denied: ['Acesso negado', 'A OpenAI não autorizou a consulta desta chave.'],
+            rate_limited: ['Consulta limitada', 'A OpenAI limitou temporariamente esta consulta; isso não confirma falta de saldo.'],
+            unavailable: ['Sem resposta', 'Não foi possível alcançar a OpenAI agora.'],
+            provider_error: ['Erro de consulta', 'A OpenAI respondeu com um erro ao validar a chave.'],
+          };
+          const [label, message] = descriptions[service.status] || ['Status inconclusivo', 'Não foi possível confirmar o estado da chave.'];
+          updateServiceCard(openaiServiceCard, openaiServiceState, openaiServiceDetail, service.status, { label, message });
+        }
+
+        async function checkServiceStatus() {
+          if (checkServicesButton.disabled) return;
+          checkServicesButton.disabled = true;
+          checkServicesButton.querySelector('span').textContent = 'Consultando…';
+          serviceUpdated.textContent = 'Consultando os provedores…';
+          try {
+            const response = await fetch('/api/letra-caixa/servicos-status', { credentials: 'same-origin', cache: 'no-store' });
+            const apiResponse = response.status < 500;
+            updateServiceCard(systemServiceCard, systemServiceState, systemServiceDetail, apiResponse ? 'active' : 'provider_error', {
+              label: apiResponse ? 'Online' : 'Erro na API',
+              message: apiResponse ? 'A API do Radrasys respondeu nesta consulta.' : `A API do Radrasys respondeu com erro HTTP ${response.status}.`,
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              if (response.status === 401) throw new Error('Sua sessão não está ativa. Entre no Radrasys para consultar.');
+              if (response.status === 403) throw new Error('Apenas os perfis administrador e master podem consultar este painel.');
+              throw new Error(data.error || 'Não foi possível consultar o status dos serviços.');
+            }
+            describeVectorizer(data.vectorizer || {});
+            describeOpenAi(data.openai || {});
+            const checkedAt = new Date(data.checkedAt);
+            serviceUpdated.textContent = `Última consulta: ${Number.isNaN(checkedAt.getTime()) ? 'agora' : checkedAt.toLocaleString('pt-BR')}.`;
+          } catch (error) {
+            if (error instanceof TypeError) {
+              updateServiceCard(systemServiceCard, systemServiceState, systemServiceDetail, 'unavailable', { label: 'Sem resposta', message: 'Não foi possível alcançar a API do Radrasys.' });
+            }
+            serviceUpdated.textContent = error?.message || 'Não foi possível consultar o status dos serviços.';
+          } finally {
+            checkServicesButton.disabled = false;
+            checkServicesButton.querySelector('span').textContent = 'Verificar agora';
           }
         }
 
@@ -595,6 +741,7 @@
         redrawButton.addEventListener('click', redrawImage);
         vectorizeButton.addEventListener('click', vectorizeImage);
         downloadButton.addEventListener('click', downloadSvg);
+        checkServicesButton.addEventListener('click', checkServiceStatus);
         dropzone.addEventListener('keydown', event => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();

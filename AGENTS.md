@@ -323,7 +323,8 @@ server/
                        estudio-factibilidade.ts (validação geométrica e decisões de fabricação),
                        estudio-cores.ts (catálogo local, análise e aprovação de cores antes do nesting),
                        estudio-render3d.ts (spec 3D, aprovação, previews e perfis visuais PBR),
-                       letra-caixa-redesenho.ts (reconstrução com até 2 referências extras da mesma logo, vetor e upload de imagens do CPQ)
+                       letra-caixa-redesenho.ts (reconstrução com até 2 referências extras da mesma logo, vetor e upload de imagens do CPQ),
+                       cpq-servicos-status.ts (status autenticado de disponibilidade da API, assinatura/créditos Vectorizer.AI e validação da chave OpenAI)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts; o sync de O.S. também atualiza as
                        baixas do estoque de perfis e registra pendências de BOM/medidas

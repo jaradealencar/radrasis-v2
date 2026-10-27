@@ -97,6 +97,10 @@ export async function createApp(): Promise<Express> {
     await import("../routes/letra-caixa-redesenho");
   registrarRotasRedesenhoLetraCaixa(app);
 
+  const { registrarRotaStatusServicosCpq } =
+    await import("../routes/cpq-servicos-status");
+  registrarRotaStatusServicosCpq(app);
+
   // Importação do espelho em bytes CSV/XLSX (registrada antes dos parsers JSON).
   const { registrarRotasEstudioMubiSysEspelho } =
     await import("../routes/estudio-mubisys-espelho");
