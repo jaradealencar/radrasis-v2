@@ -19,6 +19,8 @@ import { REGRAS_LEITURA_ARTE_PADRAO } from "../../shared/cpq-regras-leitura-padr
 import { estudioConfiguracoes } from "../../drizzle/schema";
 import { getDb } from "../db/db";
 import { eq } from "drizzle-orm";
+import { lerInstrucoesArte } from "../services/arteInstrucoes";
+import { informarUsoArte } from "../services/arteUsage";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_PREPROCESSED_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -447,7 +449,10 @@ async function executarRedesenho(req: Request, res: Response): Promise<void> {
       escopo: params.data.escopo as EscopoRedesenho,
       elementosSelecionados: params.data.elementosSelecionados,
       quality: params.data.qualidade,
+      instrucoes: lerInstrucoesArte(req),
     });
+
+    informarUsoArte(res, resultado.usage);
 
     res
       .status(200)
@@ -551,6 +556,8 @@ async function executarVetorizacaoGpt(req: Request, res: Response): Promise<void
     const svg = await vetorizarComGpt({
       imageBuffer: dados.imagem, mimeType: dados.mimeType, largura: dimensoes.largura, altura: dimensoes.altura,
       maxCores: Number.isFinite(maxCores) && maxCores >= 1 ? maxCores : null,
+      instrucoes: lerInstrucoesArte(req),
+      onUsage: usage => informarUsoArte(res, usage),
     });
     res.status(200).set({
       "Content-Type": "image/svg+xml; charset=utf-8",

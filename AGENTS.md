@@ -101,6 +101,9 @@ yarn dev         # servidor de desenvolvimento (Vite + Express na mesma porta)
 yarn build       # build de produção (client via Vite, server via esbuild)
 yarn build:vercel # build do client e API para Vercel; não aplica migrations
 yarn start       # roda o build de produção
+corepack yarn dev:arte   # ferramenta de arte independente, porta 4320; lê só .env.arte
+corepack yarn build:arte # gera dist/arte para hospedagem/domínio próprios, sem publicar
+corepack yarn check:arte # typecheck isolado da ferramenta e de seus serviços
 yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d,
                  # ver "CPQ renderização 3D") — precisa do "run"! `yarn check`
                  # sozinho dispara o comando nativo do Yarn (valida lockfile),
@@ -281,6 +284,7 @@ client/src/          frontend (Vite root = client/)
   cpq3d/               ilha React + Three.js da Visualização 3D do CPQ (fora do tsconfig principal)
 client/cpq-letreiros-express.html  página do CPQ (HTML monolítico, entrada própria do Vite; mesma URL pública)
 client/cpq-redesenho-vetorizacao.html  ferramenta independente de redesenho, vetor e nesting opcional por grupos; editor em client/src/arte-nesting.ts
+server/arte/        servidor independente do Estúdio de Arte (sem auth/banco/ERP); build em vite.arte.config.ts + scripts/build-arte.mjs
 server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
@@ -1005,6 +1009,8 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   already lost" em cada captura é inofensivo (o `unmount` do R3F já descarta o contexto).
 
 ## CPQ nesting backend
+
+**Entrega com domínio próprio:** `corepack yarn build:arte` gera `dist/arte/` com página inicial `/`, servidor Node, função/API Vercel, configuração própria, prompts e dependências mínimas. `server/arte/` não importa auth, banco ou rotas do Radrasys; o build confere esse isolamento. Usa `ARTE_PUBLIC_URL`, `ARTE_ACCESS_PASSWORD` (16+), `ARTE_SESSION_SECRET` (32+) e `ARTE_INTEGRATION_API_KEY` opcional (32+) próprios. `dev:arte` lê somente `.env.arte`; nunca reutilizar o `.env` do ERP. A API dedicada `/api/v1/*` tem contrato OpenAPI autenticado e mantém aliases `/api/letra-caixa/*` para reaproveitar o frontend. Não há CORS externo, secrets visíveis ou criação de chaves pela interface. Guia: `docs/estudio-arte-independente.md`. A aba de projetos/custos (`client/src/arte-painel.ts`) salva indicadores e valores em localStorage; imagens/SVG/grupos de trabalho ficam em memória, não há persistência compartilhada. Estimativas são manuais em R$/chamada; campo vazio/falha paga são custo desconhecido. Correções textuais são transmitidas em `X-Arte-Instrucoes` (encodeURIComponent, até 2000 caracteres), aplicadas em redesenho/GPT. `X-Arte-Uso` só retorna contagens numéricas disponíveis. Publicar esse artefato ou configurar domínio/secrets remotos continua exigindo autorização.
 
 A ferramenta independente `client/cpq-redesenho-vetorizacao.html` tem a aba opcional de nesting (`client/src/arte-nesting.ts` e `.css`): escala física obrigatória, seleção de peças/cores, até 10 grupos reordenáveis e até 100 peças por grupo. Formatos de chapa são presets no `localStorage` deste navegador, sem migração ou vínculo com o ERP. A referência rápida usa o redesenho/original do vetor atual. A rota autenticada `server/routes/cpq-nesting-arte.ts` expõe `POST /api/letra-caixa/nesting-arte/preparar` e `/calcular`; `cpqNestingArte.ts` reutiliza o motor do CPQ e calcula métricas por chapa e somas (área da chapa, bloco ocupado com margens, área líquida e perímetro). Downloads são SVGs em mm com somente os caminhos das peças; contorno da chapa e textos de medição não viram linhas de corte. `extrairPecasNestingArte` separa ilhas, preserva vazados/nonzero/evenodd e desconta cores sobrepostas. `client/src/lib/arte-svg.ts` normaliza formas/transforms antes da geometria. Alterações na escala, peças, formato ou folgas invalidam os resultados. Testes sem banco em `cpq-nesting-arte*.test.ts`.
 

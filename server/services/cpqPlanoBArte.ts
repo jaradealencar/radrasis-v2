@@ -86,6 +86,8 @@ export async function vetorizarComGpt(params: {
   largura: number;
   altura: number;
   maxCores?: number | null;
+  instrucoes?: string;
+  onUsage?: (usage: InvokeResultUsage | undefined) => void;
 }): Promise<string> {
   const imagem = buildImageContent(params.imageBuffer.toString("base64"), params.mimeType);
   imagem.image_url.detail = "high";
@@ -97,12 +99,15 @@ export async function vetorizarComGpt(params: {
     maxCompletionTokens: 40_000,
     messages: [
       { role: "system", content: INSTRUCOES_SVG },
-      { role: "user", content: [{ type: "text", text: `A imagem tem ${params.largura} × ${params.altura} px.${limite} Vetorize a arte.` }, imagem] },
+      { role: "user", content: [{ type: "text", text: `A imagem tem ${params.largura} × ${params.altura} px.${limite} Vetorize a arte.${params.instrucoes?.trim() ? " Ajustes desta versão: " + params.instrucoes.trim().slice(0, 2000) : ""}` }, imagem] },
     ],
     responseFormat: { type: "json_schema", json_schema: CAMADAS_GPT_JSON_SCHEMA },
   });
+  params.onUsage?.(resposta.usage);
   return montarSvgDeCamadas(extrairJsonResposta(resposta.choices?.[0]?.message?.content), params.largura, params.altura);
 }
+
+type InvokeResultUsage = { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 
 export const PROMPT_LIMPAR_FUNDO = [
   "Limpe esta arte de letreiro para vetorização.",

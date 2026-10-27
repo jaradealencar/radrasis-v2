@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101522" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233988f4'/%3E%3Cpath d='M8 24 24 8M10 8h14v14' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E" />
     <title>Redesenho, vetor e nesting · CPQ Letreiros Express</title>
     <style>
       :root {
@@ -218,6 +219,7 @@
     </style>
     <script src="/cpq-vetorizador-local.js"></script>
     <script type="module" src="/src/arte-nesting.ts"></script>
+    <script type="module" src="/src/arte-painel.ts"></script>
   </head>
   <body>
     <main class="page">
@@ -242,9 +244,12 @@
         </div>
       </section>
 
+      <section id="arte-project" aria-label="Projeto atual"></section>
       <div class="tabs" role="tablist" aria-label="Seções da ferramenta">
         <button class="tab" id="tool-tab" type="button" role="tab" aria-selected="true" aria-controls="tool-content">Criar vetor</button>
         <button class="tab" id="nesting-tab" type="button" role="tab" aria-selected="false" aria-controls="nesting-content" tabindex="-1">Nesting opcional</button>
+        <button class="tab" id="dashboard-tab" type="button" role="tab" aria-selected="false" aria-controls="dashboard-content" tabindex="-1">Custos e projetos</button>
+        <button class="tab" id="integration-tab" type="button" role="tab" aria-selected="false" aria-controls="integration-content" tabindex="-1">Integração / API</button>
         <button class="tab" id="architecture-tab" type="button" role="tab" aria-selected="false" aria-controls="architecture-content" tabindex="-1">Como funciona e economizar</button>
       </div>
 
@@ -305,6 +310,9 @@
               <div class="image-frame"><img id="original-image" alt="Imagem original enviada" /></div>
             </div>
 
+            <label class="arte-field" for="redraw-instructions">O que precisa ser corrigido no redesenho?</label>
+            <textarea class="arte-input" id="redraw-instructions" rows="3" maxlength="2000" placeholder="Ex.: manter a tipografia original, corrigir a letra R e remover a sombra."></textarea>
+            <p class="hint">Opcional. Ao redesenhar novamente com uma descrição, a imagem atual será a referência. Cada tentativa com IA pode ter cobrança.</p>
             <div class="button-row">
               <button class="button" id="redraw-button" type="button" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 4v6M17 14v6M4 17h16"/><path d="m9 12 2 2 4-4"/></svg>
@@ -343,6 +351,9 @@
                 <img id="vector-image" alt="Prévia da imagem vetorizada" hidden />
               </div>
             </div>
+            <label class="arte-field" for="vector-instructions">O que precisa ser corrigido no vetor?</label>
+            <textarea class="arte-input" id="vector-instructions" rows="3" maxlength="2000" placeholder="Ex.: preservar os vazados das letras e separar o símbolo das letras."></textarea>
+            <p class="hint">O texto é aplicado ao usar “Vetorizar com GPT”, que refaz o SVG a partir da imagem aprovada. O traçador local e o Vectorizer.AI não interpretam instruções por texto.</p>
             <div class="button-row">
               <button class="button" id="vectorize-button" type="button" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19 19 4M7 4h12v12"/><path d="M4 4v4m0-4h4M4 12v8h8"/></svg>
@@ -368,6 +379,9 @@
       <section id="nesting-content" role="tabpanel" aria-labelledby="nesting-tab" hidden>
         <div id="arte-nesting"></div>
       </section>
+
+      <section id="dashboard-content" role="tabpanel" aria-labelledby="dashboard-tab" hidden></section>
+      <section id="integration-content" role="tabpanel" aria-labelledby="integration-tab" hidden></section>
 
       <section id="architecture-content" role="tabpanel" aria-labelledby="architecture-tab" hidden>
         <section class="panel" aria-labelledby="architecture-title">
@@ -601,12 +615,14 @@
         }
 
         function updateButtons() {
+          document.dispatchEvent(new CustomEvent('arte:work-state', { detail: { busy: state.redrawing || state.vectorizing } }));
           redrawButton.disabled = !state.file || state.redrawing || state.vectorizing;
           originalButton.disabled = !state.file || state.redrawing || state.vectorizing;
           qualityButton.hidden = !state.maxQualityAvailable;
           qualityButton.disabled = state.redrawing || state.vectorizing;
-          vectorizeButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
-          vectorizerButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
+          const hasVectorInstructions = !!document.getElementById('vector-instructions').value.trim();
+          vectorizeButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing || hasVectorInstructions;
+          vectorizerButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing || hasVectorInstructions;
           gptButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
           downloadButton.disabled = !state.svg || state.vectorizing;
           openNestingButton.disabled = !state.svg || state.vectorizing;
@@ -639,6 +655,8 @@
           state.vectorizing = false;
           state.maxQualityAvailable = false;
           state.imageWasRedrawn = false;
+          document.getElementById('redraw-instructions').value = '';
+          document.getElementById('vector-instructions').value = '';
           qualityButton.hidden = true;
           comparison.hidden = true;
           resetVector();
@@ -709,6 +727,8 @@
 
         async function redrawImage(quality = 'high') {
           if (!state.file || state.redrawing || state.vectorizing) return;
+          const instructions = document.getElementById('redraw-instructions').value.trim();
+          const source = instructions && state.redrawnBlob ? state.redrawnBlob : state.file;
           state.redrawing = true;
           state.redrawnBlob = null;
           state.redrawToken = null;
@@ -723,11 +743,11 @@
           updateButtons();
 
           try {
-            const image = await prepareImage(state.file);
+            const image = await prepareImage(source);
             const response = await fetch(`/api/letra-caixa/redesenho?escopo=somente_logo&qualidade=${quality}`, {
               method: 'POST',
               credentials: 'same-origin',
-              headers: { 'Content-Type': image.type || 'image/jpeg' },
+              headers: { 'Content-Type': image.type || 'image/jpeg', 'X-Arte-Instrucoes': encodeURIComponent(instructions) },
               body: image,
             });
             if (!response.ok) throw await readResponseError(response, 'O redesenho não pôde ser gerado agora.');
@@ -786,7 +806,7 @@
           const response = await fetch('/api/letra-caixa/vetorizacao-gpt', {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'Content-Type': image.type || 'image/png', 'X-Redesenho-Token': token },
+            headers: { 'Content-Type': image.type || 'image/png', 'X-Redesenho-Token': token, 'X-Arte-Instrucoes': encodeURIComponent(document.getElementById('vector-instructions').value.trim()) },
             body: image,
           });
           if (!response.ok) throw await readResponseError(response, 'O plano B de vetorização não conseguiu gerar um SVG.');
@@ -860,6 +880,9 @@
 
         async function vectorizeImage() {
           if (!state.redrawnBlob || state.vectorizing || state.redrawing) return;
+          const operationStarted = performance.now();
+          document.dispatchEvent(new CustomEvent('arte:local-start'));
+          let operationOk = false;
           state.vectorizing = true;
           resetVector();
           vectorizeButton.textContent = 'Vetorizando localmente…';
@@ -868,9 +891,11 @@
           try {
             const svg = await vectorizeLocally(state.redrawnBlob);
             displayVector(svg, 'Traçador local');
+            operationOk = true;
           } catch (error) {
             showStatus(vectorStatus, error?.message || 'Não foi possível vetorizar localmente. Você pode escolher um provedor pago abaixo.', 'error');
           } finally {
+            document.dispatchEvent(new CustomEvent('arte:local-end', { detail: { durationMs: performance.now() - operationStarted, ok: operationOk } }));
             state.vectorizing = false;
             vectorizeButton.textContent = 'Vetorizar localmente (grátis)';
             updateButtons();
@@ -937,7 +962,8 @@
         }
 
         function selectTab(selected) {
-          for (const [tab, panel] of [[toolTab, toolContent], [nestingTab, nestingContent], [architectureTab, architectureContent]]) {
+          for (const tab of document.querySelectorAll('.tabs [role="tab"]')) {
+            const panel = document.getElementById(tab.getAttribute('aria-controls'));
             tab.setAttribute('aria-selected', String(tab === selected));
             tab.tabIndex = tab === selected ? 0 : -1;
             panel.hidden = tab !== selected;
@@ -966,19 +992,32 @@
         toolTab.addEventListener('click', () => selectTab(toolTab));
         nestingTab.addEventListener('click', () => selectTab(nestingTab));
         architectureTab.addEventListener('click', () => selectTab(architectureTab));
-        const tabs = [toolTab, nestingTab, architectureTab];
+        const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
         for (const [index, tab] of tabs.entries()) {
+          tab.addEventListener('click', () => selectTab(tab));
           tab.addEventListener('keydown', event => {
             if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
             const target = event.key === 'Home' ? toolTab
-              : event.key === 'End' ? architectureTab
+              : event.key === 'End' ? tabs[tabs.length - 1]
                 : tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
             target.focus();
             selectTab(target);
           });
         }
         checkServicesButton.addEventListener('click', checkServiceStatus);
+        document.getElementById('vector-instructions').addEventListener('input', updateButtons);
+        document.addEventListener('arte:project-change', () => {
+          revoke(state.originalUrl); revoke(state.redrawnUrl);
+          Object.assign(state, { file: null, originalUrl: null, redrawnBlob: null, redrawnUrl: null, redrawToken: null, maxQualityAvailable: false, imageWasRedrawn: false });
+          originalImage.removeAttribute('src'); compareOriginal.removeAttribute('src'); redrawnImage.removeAttribute('src');
+          originalCard.hidden = true; comparison.hidden = true; qualityButton.hidden = true;
+          document.getElementById('redraw-instructions').value = '';
+          document.getElementById('vector-instructions').value = '';
+          dropTitle.textContent = 'Clique para enviar uma imagem';
+          dropHint.textContent = 'PNG ou JPG';
+          resetVector(); clearStatus(redrawStatus); clearStatus(vectorStatus); updateButtons();
+        });
         dropzone.addEventListener('keydown', event => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();

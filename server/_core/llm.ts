@@ -341,6 +341,7 @@ export type ImageEditParams = {
 
 export type ImageEditResult = {
   buffer: Buffer;
+  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   /** GPT Image devolve base64; esta chamada força a saída no formato PNG. */
   mimeType: string;
 };
@@ -388,13 +389,13 @@ export async function generateImageEdit(params: ImageEditParams): Promise<ImageE
     );
   }
 
-  const data = (await response.json()) as { data?: Array<{ b64_json?: string }> };
+  const data = (await response.json()) as { data?: Array<{ b64_json?: string }>; usage?: ImageEditResult["usage"] };
   const b64 = data.data?.[0]?.b64_json;
   if (!b64) {
     throw new Error("OpenAI image edit response missing data[0].b64_json");
   }
 
-  return { buffer: Buffer.from(b64, "base64"), mimeType: "image/png" };
+  return { buffer: Buffer.from(b64, "base64"), mimeType: "image/png", usage: data.usage };
 }
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {

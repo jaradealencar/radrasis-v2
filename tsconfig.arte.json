@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "server/arte/**/*.ts",
+    "client/src/arte-*.ts",
+    "client/src/types/svg-pathdata.d.ts",
+    "vite.arte.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"],
+  "compilerOptions": { "incremental": false }
+}

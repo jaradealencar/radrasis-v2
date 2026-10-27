@@ -1,0 +1,184 @@
+.arte-field {
+  display: block;
+  margin: 17px 0 8px;
+  font-size: 12px;
+  color: #cbd8eb;
+  font-weight: 650;
+}
+.arte-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #415675;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #111c2e;
+  color: #edf4ff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.arte-input:focus-visible {
+  outline: 2px solid #5ba2ff;
+  outline-offset: 2px;
+}
+.arte-project-row {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #182235;
+}
+.arte-project-row label {
+  flex: 1;
+  min-width: 160px;
+  font-size: 12px;
+  color: #a2b0c8;
+}
+.arte-project-row input,
+.arte-project-row select {
+  margin-top: 7px;
+}
+.arte-project-note {
+  width: 100%;
+  margin: 0;
+  color: #91a1ba;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.arte-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.arte-kpi {
+  padding: 16px;
+  border: 1px solid #31425f;
+  border-radius: 10px;
+  background: #131e30;
+}
+.arte-kpi dt {
+  color: #a2b0c8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.arte-kpi dd {
+  margin: 8px 0 0;
+  font-size: 24px;
+  font-weight: 750;
+  color: #eef5ff;
+}
+.arte-rates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.arte-rates label {
+  font-size: 11px;
+  color: #b6c6df;
+}
+.arte-rates input {
+  margin-top: 7px;
+}
+.arte-history {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+.arte-history li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #31425f;
+  border-radius: 9px;
+  font-size: 12px;
+}
+.arte-history span {
+  color: #a2b0c8;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.arte-history strong {
+  font-weight: 650;
+}
+.arte-history .arte-record-cost {
+  text-align: right;
+  color: #83dbb7;
+}
+.arte-pre {
+  padding: 15px;
+  background: #101a29;
+  border: 1px solid #31425f;
+  border-radius: 9px;
+  overflow: auto;
+  white-space: pre;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #bfd9ff;
+}
+.arte-api-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #b9c9e1;
+  font-size: 12px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.arte-login {
+  width: min(430px, calc(100% - 30px));
+  border: 1px solid #415675;
+  border-radius: 14px;
+  background: #182235;
+  color: #eef5ff;
+  padding: 25px;
+}
+.arte-login::backdrop {
+  background: rgba(5, 11, 22, 0.92);
+}
+.arte-login h2 {
+  margin-top: 0;
+}
+.arte-login p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a2b0c8;
+}
+.arte-login .button {
+  margin-top: 16px;
+  width: 100%;
+}
+@media (max-width: 780px) {
+  .arte-grid,
+  .arte-rates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .arte-project-row .button {
+    flex: 1;
+  }
+  .arte-history li {
+    grid-template-columns: 1fr;
+  }
+  .arte-history .arte-record-cost {
+    text-align: left;
+  }
+}
+@media (max-width: 400px) {
+  .arte-rates {
+    grid-template-columns: 1fr;
+  }
+  .arte-kpi {
+    padding: 12px;
+  }
+  .arte-kpi dd {
+    font-size: 21px;
+  }
+}

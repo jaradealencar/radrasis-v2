@@ -28,11 +28,13 @@ export type RedesenharLetreiroParams = {
   referencias?: ReferenciaDecodificada[];
   /** Mantém xhigh para consumidores existentes; o artefato econômico solicita high. */
   quality?: "high" | "xhigh";
+  instrucoes?: string;
 };
 
 export type RedesenharLetreiroResult = {
   imageBuffer: Buffer;
   mimeType: string;
+  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
 };
 
 function instrucaoEscopo(params: RedesenharLetreiroParams): string {
@@ -72,6 +74,7 @@ export async function redesenharLetreiro(
     "---",
     "",
     instrucaoEscopo(params),
+    ...(params.instrucoes?.trim() ? ["Ajustes solicitados pelo operador nesta versão (preserve o restante da arte):", params.instrucoes.trim().slice(0, 2000)] : []),
     ...(params.referencias?.length ? ["", instrucaoReferenciasLogo(params.referencias)] : []),
     "A imagem anexada é a IMAGEM-ALVO desta execução (não o exemplo da seção 21).",
   ].join("\n");
@@ -80,7 +83,7 @@ export async function redesenharLetreiro(
   // letreiro completo preserva o fundo gráfico do painel quando aplicável.
   const background = params.escopo === "somente_logo" ? "transparent" : "opaque";
 
-  const { buffer, mimeType } = await generateImageEdit({
+  const { buffer, mimeType, usage } = await generateImageEdit({
     imageBuffer: params.imageBuffer,
     imageFilename: params.imageFilename,
     imageMimeType: params.imageMimeType,
@@ -99,5 +102,5 @@ export async function redesenharLetreiro(
   // A prévia fica no navegador durante a revisão. O upload persistente ocorre
   // quando a cotação é salva; uma falha temporária do storage não deve bloquear
   // uma reconstrução já gerada pela OpenAI.
-  return { imageBuffer: buffer, mimeType };
+  return { imageBuffer: buffer, mimeType, usage };
 }
