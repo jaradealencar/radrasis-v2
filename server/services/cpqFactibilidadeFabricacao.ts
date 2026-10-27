@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { RotacaoPermitida } from "../../shared/politica-corte";
 import { faixaDeBorda } from "./cpqFaixaAro";
+import type { PreparacaoNestingArte } from "../../shared/arte-nesting";
 
 const require = createRequire(import.meta.url);
 const polygonClipping = require("polygon-clipping") as typeof import("polygon-clipping");
@@ -1512,6 +1513,74 @@ export function contornosFisicosDoSvg(
   alturaMm: number,
 ): Array<Array<Array<[number, number]>>> {
   return parseSvg(svg, larguraMm, alturaMm).pieces.flatMap(piece => piece.geometry);
+}
+
+/** Separa ilhas físicas e preserva vazados; desconta regiões cobertas por cores acima. */
+export function extrairPecasNestingArte(svg: string, larguraMm: number, alturaMm: number): PreparacaoNestingArte {
+  const parsed = parseSvg(svg, larguraMm, alturaMm);
+  const atributos = [...svg.matchAll(/<path\b([^>]*)\/?\s*>/gi)].map(match => attrs(match[1]));
+  const cores = atributos.map(attributes => {
+    const fill = attributes.fill;
+    if (!fill || !/^#[a-f0-9]{6}$/i.test(fill))
+      throw new CpqFactibilidadeError("As cores precisam estar normalizadas antes de separar as peças.", "invalid_geometry");
+    return fill.toLowerCase();
+  });
+  const geometrias = parsed.paths.map((path, pathIndex): MultiPolygon => {
+    if (atributos[pathIndex]["fill-rule"] === "evenodd") return parsed.pieces.filter(piece => piece.pathIndex === pathIndex).flatMap(piece => piece.geometry);
+    // Em nonzero, um anel interno com o mesmo sentido não é um vazado.
+    const rings = pathContours(path.d, parsed.viewBox, parsed.mmPerUnitX, parsed.mmPerUnitY, 0.1);
+    const areas = rings.map(signedArea);
+    const parents = rings.map((ring, index) => {
+      let parent = -1;
+      for (let j = 0; j < rings.length; j++) if (Math.abs(areas[j]) > Math.abs(areas[index]) && pointInRing(ring[0], rings[j])
+        && (parent < 0 || Math.abs(areas[j]) < Math.abs(areas[parent]))) parent = j;
+      return parent;
+    });
+    const estados = rings.map((_, index) => {
+      let winding = 0;
+      for (let parent = parents[index]; parent >= 0; parent = parents[parent]) winding += Math.sign(areas[parent]);
+      return { fora: winding !== 0, dentro: winding + Math.sign(areas[index]) !== 0 };
+    });
+    const cascas = estados.flatMap((estado, index) => !estado.fora && estado.dentro ? [index] : []);
+    return cascas.map(casca => [rings[casca], ...rings.filter((_, index) => {
+      if (!estados[index].fora || estados[index].dentro) return false;
+      let parent = parents[index];
+      while (parent >= 0 && !cascas.includes(parent)) parent = parents[parent];
+      return parent === casca;
+    })]);
+  });
+  const visiveis: Array<{ geometry: MultiPolygon; pathIndex: number }> = [];
+  let cobertura: MultiPolygon = [];
+  try {
+    for (let i = parsed.paths.length - 1; i >= 0; i--) {
+      if (!geometrias[i].length) continue;
+      const geometria = polygonClipping.union(geometrias[i]) as MultiPolygon;
+      const visivel = cobertura.length ? polygonClipping.difference(geometria, cobertura) as MultiPolygon : geometria;
+      for (const polygon of visivel) {
+        if (geometryArea([polygon]) > AREA_MINIMA_FRAGMENTO_MM2) visiveis.push({ geometry: [polygon], pathIndex: i });
+      }
+      cobertura = cobertura.length ? polygonClipping.union(cobertura, geometria) as MultiPolygon : geometria;
+    }
+  } catch {
+    throw new CpqFactibilidadeError("Não foi possível separar os contornos visíveis. Revise sobreposições no SVG.", "boolean_failure");
+  }
+  if (!visiveis.length || visiveis.length > 300)
+    throw new CpqFactibilidadeError("O editor aceita entre 1 e 300 peças visíveis. Simplifique o vetor se necessário.", "invalid_geometry");
+  visiveis.sort((a, b) => a.pathIndex - b.pathIndex);
+  const pecas = visiveis.map(({ geometry, pathIndex }, index) => {
+    const id = `peca-${index + 1}`;
+    const bounds = boundsOf(geometry.flat());
+    const peca = fragmentSvg({ id, pecaId: id, geometry, bounds });
+    const dProjeto = geometry.flat().map(ring => `M ${ring.slice(0, -1).map(point => point.map(formatNum).join(" ")).join(" L ")} Z`).join(" ");
+    let perimetroMm = 0;
+    for (const ring of geometry.flat()) for (let i = 1; i < ring.length; i++)
+      perimetroMm += Math.hypot(ring[i][0] - ring[i - 1][0], ring[i][1] - ring[i - 1][1]);
+    return { ...peca, cor: cores[pathIndex], xMm: bounds.minX, yMm: bounds.minY,
+      dProjeto, areaLiquidaM2: geometryArea(geometry) / 1e6, perimetroM: perimetroMm / 1000 };
+  });
+  if (pecas.reduce((sum, piece) => sum + piece.svg.length + piece.dProjeto.length, 0) > 3_000_000)
+    throw new CpqFactibilidadeError("As peças excedem o limite do editor. Simplifique os caminhos do vetor.", "invalid_geometry");
+  return { larguraMm, alturaMm, pecas };
 }
 
 function sha256(value: string): string {

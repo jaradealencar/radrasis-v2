@@ -51,6 +51,10 @@ pids
 coverage/
 *.lcov
 
+# Verificações locais de interface (Playwright)
+.playwright-cli/
+output/playwright/
+
 # nyc test coverage
 .nyc_output
 

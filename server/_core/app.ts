@@ -215,6 +215,9 @@ export async function createApp(): Promise<Express> {
     await import("../routes/estudio-nesting");
   registrarRotasEstudioNesting(app);
 
+  const { registrarRotasNestingArte } = await import("../routes/cpq-nesting-arte");
+  registrarRotasNestingArte(app);
+
   const { registrarRotasEstudioFactibilidade } =
     await import("../routes/estudio-factibilidade");
   registrarRotasEstudioFactibilidade(app);

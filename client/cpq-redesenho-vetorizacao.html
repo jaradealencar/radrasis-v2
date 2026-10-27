@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101522" />
-    <title>Redesenho e vetorização · CPQ Letreiros Express</title>
+    <title>Redesenho, vetor e nesting · CPQ Letreiros Express</title>
     <style>
       :root {
         color-scheme: dark;
@@ -75,7 +75,7 @@
       .step-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: rgba(24, 34, 53, .72); color: #c5d3e8; font-size: 12px; }
       .step-number { display: grid; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #283e5d; color: #9ec6ff; font-size: 10px; font-weight: 800; }
 
-      .tabs { display: flex; gap: 8px; margin: 0 0 18px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: rgba(24, 34, 53, .72); }
+      .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: rgba(24, 34, 53, .72); }
       .tab { min-height: 40px; padding: 0 15px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #aebbd0; font-size: 12px; font-weight: 750; cursor: pointer; }
       .tab[aria-selected="true"] { border-color: #45648d; background: #243751; color: #eef5ff; }
       .explain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -217,6 +217,7 @@
       }
     </style>
     <script src="/cpq-vetorizador-local.js"></script>
+    <script type="module" src="/src/arte-nesting.ts"></script>
   </head>
   <body>
     <main class="page">
@@ -226,7 +227,7 @@
         </div>
         <div>
           <div class="brand-name">CPQ Letreiros Express</div>
-          <div class="brand-caption">Redesenho e vetorização de imagens</div>
+          <div class="brand-caption">Redesenho, vetorização e nesting opcional</div>
         </div>
       </header>
 
@@ -243,6 +244,7 @@
 
       <div class="tabs" role="tablist" aria-label="Seções da ferramenta">
         <button class="tab" id="tool-tab" type="button" role="tab" aria-selected="true" aria-controls="tool-content">Criar vetor</button>
+        <button class="tab" id="nesting-tab" type="button" role="tab" aria-selected="false" aria-controls="nesting-content" tabindex="-1">Nesting opcional</button>
         <button class="tab" id="architecture-tab" type="button" role="tab" aria-selected="false" aria-controls="architecture-content" tabindex="-1">Como funciona e economizar</button>
       </div>
 
@@ -352,6 +354,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 17v3h14v-3"/></svg>
                 <span>Baixar SVG</span>
               </button>
+              <button class="button secondary" id="open-nesting-button" type="button" disabled>Selecionar peças para nesting</button>
             </div>
             <div class="motor-note" id="vector-note" aria-live="polite"></div>
             <div class="status" id="vector-status" role="status" aria-live="polite"></div>
@@ -361,6 +364,10 @@
 
       <p class="bottom-note">As ações pagas só são iniciadas quando você clica no botão correspondente.</p>
       </div>
+
+      <section id="nesting-content" role="tabpanel" aria-labelledby="nesting-tab" hidden>
+        <div id="arte-nesting"></div>
+      </section>
 
       <section id="architecture-content" role="tabpanel" aria-labelledby="architecture-tab" hidden>
         <section class="panel" aria-labelledby="architecture-title">
@@ -400,6 +407,14 @@
                 <p>1) Tente o original no traçador local. 2) Se a foto estiver ruim, redesenhe em qualidade alta. 3) Confira o resultado antes de tentar qualidade máxima. 4) Recorra a Vectorizer.AI ou GPT somente quando o resultado local não servir.</p>
               </article>
               <article class="explain-card">
+                <h3>Nesting opcional por grupo</h3>
+                <p>Na aba Nesting, confirme a medida real do desenho em mm. O editor separa peças e vazados e permite selecionar por peça ou cor. Distribua em grupos e escolha uma chapa para cada um; as setas mudam a ordem. A referência rápida permite consultar o redesenho ampliado. Os formatos ficam salvos neste navegador.</p>
+              </article>
+              <article class="explain-card">
+                <h3>Medidas e arquivos do nesting</h3>
+                <p>O servidor reutiliza o motor geométrico do CPQ, sem chamadas a GPT ou Vectorizer.AI. Cada chapa mostra área total, bloco ocupado com margens, área líquida e perímetro, com somas por grupo e no projeto. O SVG de cada chapa contém as peças em milímetros e preserva os vazados. Alterar escala, peças, tamanho ou folgas exige novo cálculo.</p>
+              </article>
+              <article class="explain-card">
                 <h3>Peças do sistema</h3>
                 <p>A tela e as abas ficam em <code>client/cpq-redesenho-vetorizacao.html</code>; o traçador local em <code>client/cpq-vetorizador-local.js</code>; as rotas que protegem e chamam os provedores em <code>server/routes/letra-caixa-redesenho.ts</code>. Assim, a chave da OpenAI e as credenciais da Vectorizer.AI não vão para o navegador.</p>
               </article>
@@ -429,9 +444,12 @@
         const vectorizerButton = document.getElementById('vectorizer-button');
         const gptButton = document.getElementById('gpt-button');
         const downloadButton = document.getElementById('download-button');
+        const openNestingButton = document.getElementById('open-nesting-button');
         const toolTab = document.getElementById('tool-tab');
+        const nestingTab = document.getElementById('nesting-tab');
         const architectureTab = document.getElementById('architecture-tab');
         const toolContent = document.getElementById('tool-content');
+        const nestingContent = document.getElementById('nesting-content');
         const architectureContent = document.getElementById('architecture-content');
         const vectorImage = document.getElementById('vector-image');
         const vectorEmpty = document.getElementById('vector-empty');
@@ -461,6 +479,7 @@
           redrawing: false,
           vectorizing: false,
           maxQualityAvailable: false,
+          imageWasRedrawn: false,
         };
 
         function revoke(url) {
@@ -569,6 +588,7 @@
         }
 
         function resetVector() {
+          document.dispatchEvent(new CustomEvent('cpq:vector-reset'));
           state.svg = null;
           revoke(state.svgUrl);
           state.svgUrl = null;
@@ -589,6 +609,7 @@
           vectorizerButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
           gptButton.disabled = !state.redrawnBlob || state.redrawing || state.vectorizing;
           downloadButton.disabled = !state.svg || state.vectorizing;
+          openNestingButton.disabled = !state.svg || state.vectorizing;
         }
 
         function selectFile(file) {
@@ -617,6 +638,7 @@
           state.redrawing = false;
           state.vectorizing = false;
           state.maxQualityAvailable = false;
+          state.imageWasRedrawn = false;
           qualityButton.hidden = true;
           comparison.hidden = true;
           resetVector();
@@ -718,6 +740,7 @@
             state.redrawnUrl = URL.createObjectURL(result);
             state.redrawToken = token;
             state.maxQualityAvailable = quality === 'high';
+            state.imageWasRedrawn = true;
             redrawnImage.src = state.redrawnUrl;
             comparison.hidden = false;
             showStatus(redrawStatus, 'Redesenho pronto. Confira a comparação antes de seguir.', 'success');
@@ -780,6 +803,7 @@
           state.redrawnBlob = null;
           state.redrawToken = null;
           state.maxQualityAvailable = false;
+          state.imageWasRedrawn = false;
           qualityButton.hidden = true;
           resetVector();
           clearStatus(redrawStatus);
@@ -828,6 +852,10 @@
               ? 'Vetor gerado pelo Vectorizer.AI.'
               : 'Vetor gerado localmente no navegador, sem chamada a provedor.';
           showStatus(vectorStatus, 'SVG pronto para baixar.', 'success');
+          document.dispatchEvent(new CustomEvent('cpq:vector-ready', { detail: {
+            svg, referenceUrl: state.redrawnUrl, originalUrl: state.originalUrl,
+            referenceLabel: state.imageWasRedrawn ? 'Redesenho' : 'Original preparado',
+          } }));
         }
 
         async function vectorizeImage() {
@@ -909,13 +937,11 @@
         }
 
         function selectTab(selected) {
-          const showTool = selected === toolTab;
-          toolTab.setAttribute('aria-selected', String(showTool));
-          toolTab.tabIndex = showTool ? 0 : -1;
-          architectureTab.setAttribute('aria-selected', String(!showTool));
-          architectureTab.tabIndex = showTool ? -1 : 0;
-          toolContent.hidden = !showTool;
-          architectureContent.hidden = showTool;
+          for (const [tab, panel] of [[toolTab, toolContent], [nestingTab, nestingContent], [architectureTab, architectureContent]]) {
+            tab.setAttribute('aria-selected', String(tab === selected));
+            tab.tabIndex = tab === selected ? 0 : -1;
+            panel.hidden = tab !== selected;
+          }
         }
 
         function downloadSvg() {
@@ -936,15 +962,18 @@
         vectorizerButton.addEventListener('click', () => void vectorizeWithProvider('vectorizer'));
         gptButton.addEventListener('click', () => void vectorizeWithProvider('gpt'));
         downloadButton.addEventListener('click', downloadSvg);
+        openNestingButton.addEventListener('click', () => { selectTab(nestingTab); nestingTab.focus(); });
         toolTab.addEventListener('click', () => selectTab(toolTab));
+        nestingTab.addEventListener('click', () => selectTab(nestingTab));
         architectureTab.addEventListener('click', () => selectTab(architectureTab));
-        for (const [tab, nextTab] of [[toolTab, architectureTab], [architectureTab, toolTab]]) {
+        const tabs = [toolTab, nestingTab, architectureTab];
+        for (const [index, tab] of tabs.entries()) {
           tab.addEventListener('keydown', event => {
             if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
             const target = event.key === 'Home' ? toolTab
               : event.key === 'End' ? architectureTab
-                : nextTab;
+                : tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
             target.focus();
             selectTab(target);
           });

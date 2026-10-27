@@ -280,7 +280,7 @@ client/src/          frontend (Vite root = client/)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
   cpq3d/               ilha React + Three.js da Visualização 3D do CPQ (fora do tsconfig principal)
 client/cpq-letreiros-express.html  página do CPQ (HTML monolítico, entrada própria do Vite; mesma URL pública)
-client/cpq-redesenho-vetorizacao.html  ferramenta independente de redesenho e vetorização, com traçador local e aba de arquitetura/custos
+client/cpq-redesenho-vetorizacao.html  ferramenta independente de redesenho, vetor e nesting opcional por grupos; editor em client/src/arte-nesting.ts
 server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
@@ -325,7 +325,8 @@ server/
                        estudio-cores.ts (catálogo local, análise e aprovação de cores antes do nesting),
                        estudio-render3d.ts (spec 3D, aprovação, previews e perfis visuais PBR),
                        letra-caixa-redesenho.ts (redesenho autenticado, tickets assinados para imagem original, vetorização local/paga e imagens do CPQ),
-                       cpq-servicos-status.ts (status autenticado de disponibilidade da API, assinatura/créditos Vectorizer.AI e validação da chave OpenAI)
+                       cpq-servicos-status.ts (status autenticado de disponibilidade da API, assinatura/créditos Vectorizer.AI e validação da chave OpenAI),
+                       cpq-nesting-arte.ts (preparação de peças e nesting autenticado da ferramenta independente, sem catálogo ou gravação no banco)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts; o sync de O.S. também atualiza as
                        baixas do estoque de perfis e registra pendências de BOM/medidas
@@ -1004,6 +1005,8 @@ aprovação 3D cai (`invalidarRender3dReal` no HTML; o servidor confere de novo 
   already lost" em cada captura é inofensivo (o `unmount` do R3F já descarta o contexto).
 
 ## CPQ nesting backend
+
+A ferramenta independente `client/cpq-redesenho-vetorizacao.html` tem a aba opcional de nesting (`client/src/arte-nesting.ts` e `.css`): escala física obrigatória, seleção de peças/cores, até 10 grupos reordenáveis e até 100 peças por grupo. Formatos de chapa são presets no `localStorage` deste navegador, sem migração ou vínculo com o ERP. A referência rápida usa o redesenho/original do vetor atual. A rota autenticada `server/routes/cpq-nesting-arte.ts` expõe `POST /api/letra-caixa/nesting-arte/preparar` e `/calcular`; `cpqNestingArte.ts` reutiliza o motor do CPQ e calcula métricas por chapa e somas (área da chapa, bloco ocupado com margens, área líquida e perímetro). Downloads são SVGs em mm com somente os caminhos das peças; contorno da chapa e textos de medição não viram linhas de corte. `extrairPecasNestingArte` separa ilhas, preserva vazados/nonzero/evenodd e desconta cores sobrepostas. `client/src/lib/arte-svg.ts` normaliza formas/transforms antes da geometria. Alterações na escala, peças, formato ou folgas invalidam os resultados. Testes sem banco em `cpq-nesting-arte*.test.ts`.
 
 `server/routes/estudio-nesting.ts` exposes authenticated `POST /api/letra-caixa/nesting`
 and manager-only CRUD for chapa formats at `/api/letra-caixa/chapas`. Chapa dimensions
