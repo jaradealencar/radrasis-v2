@@ -106,6 +106,7 @@ const TERMOS_MATERIAL: Record<MaterialSolda, readonly string[]> = {
   latao: ["latao"],
   acrilico: ["acrilico"],
   aluminio: ["aluminio"],
+  acm: ["acm"],
 };
 
 /** Materiais citados no texto, na ordem em que aparecem. */
@@ -136,10 +137,11 @@ const ROTULO_MATERIAL: Record<MaterialSolda, string> = {
   latao: "Latão",
   acrilico: "Acrílico",
   aluminio: "Alumínio",
+  acm: "ACM",
 };
 
 /**
- * Material do letreiro. Ordem de confiança: subcategoria cadastrada no kit (Galvanizado, Inox, Latão, Alumínio), tipo do produto
+ * Material do letreiro. Ordem de confiança: subcategoria cadastrada no kit (Galvanizado, Inox, Latão, Alumínio, ACM), tipo do produto
  * (ex.: Acrílico montado), título e, por último, o que a composição mais cita. Divergências entre as fontes são só informadas:
  * um letreiro de inox pode ter fundo galvanizado na composição.
  */

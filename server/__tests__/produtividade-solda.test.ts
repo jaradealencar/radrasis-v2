@@ -111,8 +111,8 @@ describe("alternarTipoSolda (marcação na tela)", () => {
 });
 
 describe("materiais em que a solda se aplica", () => {
-  it("são cinco, na ordem fixa", () => {
-    expect([...MATERIAIS_SOLDA]).toEqual(["inox", "galvanizado", "latao", "acrilico", "aluminio"]);
+  it("são seis, na ordem fixa", () => {
+    expect([...MATERIAIS_SOLDA]).toEqual(["inox", "galvanizado", "latao", "acrilico", "aluminio", "acm"]);
   });
 
   it("leitura do banco: descarta desconhecidos e repetidos e usa a ordem fixa", () => {
