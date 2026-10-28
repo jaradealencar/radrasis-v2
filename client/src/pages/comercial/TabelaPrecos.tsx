@@ -324,9 +324,11 @@ function MarginTable({
           {(rows.length > 1 ? columns.slice(1) : columns).map((col, i) => (
             <TableHead
               key={i}
-              className="text-center border border-slate-300 text-slate-800 font-semibold"
+              className={`text-center border border-slate-300 text-slate-800 font-semibold ${
+                separarCabecalhoPoliester(col) ? "whitespace-normal" : ""
+              }`}
             >
-              {col}
+              {renderCabecalhoMargem(col)}
             </TableHead>
           ))}
         </TableRow>
@@ -361,6 +363,32 @@ function MarginTable({
       </TableBody>
     </Table>
   );
+}
+
+function separarCabecalhoPoliester(label: string): [string, string] | null {
+  const match = label.match(
+    /^(Poliéster Ouro, prata e Bronze,)\s*(Azul Bic 1 cor)$/i
+  );
+  return match ? [match[1], match[2]] : null;
+}
+
+function renderCabecalhoMargem(label: string) {
+  const partes = separarCabecalhoPoliester(label);
+  if (!partes) return label;
+  return (
+    <span className="block w-[220px] whitespace-normal text-center leading-tight">
+      {partes[0]}
+      <br />
+      {partes[1]}
+    </span>
+  );
+}
+
+function renderCabecalhoMargemHtml(label: string): string {
+  const partes = separarCabecalhoPoliester(label);
+  return partes
+    ? `${escapeHtml(partes[0])}<br>${escapeHtml(partes[1])}`
+    : escapeHtml(label);
 }
 
 function EditableLedText({
@@ -1193,9 +1221,11 @@ function ListEditor({
 function MarginTableEditor({
   value,
   onChange,
+  sectionTitle,
 }: {
   value: string;
   onChange: (v: string) => void;
+  sectionTitle?: string;
 }) {
   const parsed = useMemo(() => {
     try {
@@ -1243,6 +1273,78 @@ function MarginTableEditor({
     };
     onChange(JSON.stringify({ ...parsed, rows: [...rows, newRow] }));
   }
+
+  function addWhitePaintColumn() {
+    if (!parsed) return;
+    if (cols.some(column => column.trim().toLowerCase() === "tinta branca")) {
+      toast.info("A coluna Tinta Branca já existe nesta tabela.");
+      return;
+    }
+
+    const sourceColumnIndex = cols.findIndex(
+      column => column.trim().toLowerCase() === "1 cor"
+    );
+    if (sourceColumnIndex < 0) {
+      toast.error('Não encontrei a coluna "1 cor" para calcular Tinta Branca.');
+      return;
+    }
+
+    const sourceValueIndex =
+      rows.length > 1 ? sourceColumnIndex - 1 : sourceColumnIndex;
+    try {
+      const updatedRows = rows.map(row => {
+        const sourceValue = row.values[sourceValueIndex];
+        const match = sourceValue
+          ?.trim()
+          .match(/^(-?\d+(?:[.,]\d+)?)\s*(%)?$/);
+        if (!match) {
+          throw new Error(
+            `O valor "${sourceValue ?? ""}" da coluna 1 cor não é um percentual válido.`
+          );
+        }
+        const decimalPlaces = match[1].split(/[.,]/)[1]?.length ?? 0;
+        const separator = match[1].includes(",") ? "," : ".";
+        const adjusted = (Number(match[1].replace(",", ".")) - 5)
+          .toFixed(decimalPlaces)
+          .replace(".", separator);
+        const values = [...row.values];
+        values.splice(
+          sourceValueIndex + 1,
+          0,
+          `${adjusted}${match[2] ?? ""}`
+        );
+        return { ...row, values };
+      });
+      const updatedColumns = [...cols];
+      updatedColumns.splice(sourceColumnIndex + 1, 0, "Tinta Branca");
+      const updatedFaixaIds = parsed.faixaIds
+        ? [...parsed.faixaIds]
+        : undefined;
+      updatedFaixaIds?.splice(sourceValueIndex + 1, 0, 0);
+      onChange(JSON.stringify({
+        ...parsed,
+        columns: updatedColumns,
+        rows: updatedRows,
+        ...(updatedFaixaIds ? { faixaIds: updatedFaixaIds } : {}),
+      }));
+      toast.info(
+        'Coluna adicionada ao rascunho. Clique em "Salvar" para registrar.'
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível calcular Tinta Branca."
+      );
+    }
+  }
+
+  const isPinturaGalvanizado = sectionTitle?.includes(
+    "Serviço de Pintura Galvanizado - PU (Poliuretano)"
+  );
+  const hasWhitePaintColumn = cols.some(
+    column => column.trim().toLowerCase() === "tinta branca"
+  );
 
   function removeRow(rowIdx: number) {
     onChange(
@@ -1329,6 +1431,18 @@ function MarginTableEditor({
       >
         <Plus size={12} /> Adicionar linha
       </button>
+      {isPinturaGalvanizado && (
+        <button
+          onClick={addWhitePaintColumn}
+          disabled={hasWhitePaintColumn}
+          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-2 disabled:cursor-not-allowed disabled:text-slate-400"
+        >
+          <Plus size={12} />
+          {hasWhitePaintColumn
+            ? "Tinta Branca já adicionada"
+            : "Adicionar Tinta Branca (1 cor − 5 p.p.)"}
+        </button>
+      )}
     </div>
   );
 }
@@ -1410,9 +1524,11 @@ function ConfigEditor({
 function SmartEditor({
   value,
   onChange,
+  sectionTitle,
 }: {
   value: string;
   onChange: (v: string) => void;
+  sectionTitle?: string;
 }) {
   const type = useMemo(() => {
     try {
@@ -1424,7 +1540,13 @@ function SmartEditor({
 
   if (type === "list") return <ListEditor value={value} onChange={onChange} />;
   if (type === "margin_table" || type === "margin_table_multi")
-    return <MarginTableEditor value={value} onChange={onChange} />;
+    return (
+      <MarginTableEditor
+        value={value}
+        onChange={onChange}
+        sectionTitle={sectionTitle}
+      />
+    );
   if (type === "config")
     return <ConfigEditor value={value} onChange={onChange} />;
   if (type === "rich_text") {
@@ -1762,7 +1884,11 @@ function EditableSection({
               <label className="text-xs font-medium text-slate-500 mb-2 block">
                 Conteúdo
               </label>
-              <SmartEditor value={contentJson} onChange={setContentJson} />
+              <SmartEditor
+                value={contentJson}
+                onChange={setContentJson}
+                sectionTitle={section.sectionTitle}
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1 block">
@@ -2101,7 +2227,7 @@ function gerarPdfTabela(
             ? (c.columns ?? []).slice(1)
             : (c.columns ?? [])
           ).forEach(col => {
-            html += `<th>${col}</th>`;
+            html += `<th>${renderCabecalhoMargemHtml(col)}</th>`;
           });
           html += `</tr></thead><tbody>`;
           (c.rows ?? []).forEach((row, ri) => {
