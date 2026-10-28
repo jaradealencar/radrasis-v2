@@ -72,7 +72,7 @@ const HISTORICO_OS_COLS = [
   'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'telefone', 'mes', 'ano',
 ];
 
-const HISTORICO_ORC_COLS = [
+export const HISTORICO_ORC_COLS = [
   'orcNumero', 'empresa', 'trabalho', 'dataCadastro', 'validade', 'vendedor', 'status', 'motivoCancelamento',
   'total', 'custosTotal', 'margemLiquida', 'clienteId', 'mes', 'ano',
 ];
@@ -121,7 +121,7 @@ function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, un
   };
 }
 
-function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<string, unknown> {
+export function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<string, unknown> {
   return {
     orcNumero: String(orc.sequencial_orcamento || orc.id || ''),
     empresa: nomeCliente(orc.cliente),
@@ -141,7 +141,7 @@ function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<s
 }
 
 /** Upsert em lotes por `INSERT ... ON CONFLICT DO UPDATE` — ver nota de topo sobre maxDuration. */
-async function upsertEmLotes(table: string, cols: string[], linhas: Record<string, unknown>[], conflictCol: string, batchSize = 150) {
+export async function upsertEmLotes(table: string, cols: string[], linhas: Record<string, unknown>[], conflictCol: string, batchSize = 150) {
   if (linhas.length === 0) return 0;
   const colList = cols.map(c => `"${c}"`).join(', ');
   const updateSet = cols.filter(c => c !== conflictCol).map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
@@ -297,4 +297,82 @@ export async function sincronizarHistoricoRecente(mesesAtras = 1): Promise<Sincr
     resultados.push(await sincronizarHistoricoDoMubiSys(d.getMonth() + 1, d.getFullYear()));
   }
   return resultados;
+}
+
+export interface SincronizarOrcamentosResultado {
+  mes: number;
+  ano: number;
+  /** Orçamentos distintos devolvidos pela API no mês. */
+  encontrados: number;
+  /** Quantos desses já estão em historico_orcamentos (leitura; null se a consulta falhou). */
+  jaExistiam: number | null;
+  /** Linhas gravadas (0 em simulação). */
+  gravados: number;
+  /** false se alguma listagem bateu no teto de páginas — o mês pode estar incompleto. */
+  completo: boolean;
+  /** Janelas que não fecharam mesmo com tentativas; rodar de novo refaz só o que faltou (upsert). */
+  janelasFalhadas: string[];
+  porStatus: Record<string, number>;
+}
+
+/**
+ * Orçamentos de um mês do MubiSys → `historico_orcamentos`, SEM tocar em `historico_os`.
+ *
+ * Existe para o backfill de meses antigos (ver server/scripts/backfill-historico-orcamentos.ts):
+ * `sincronizarHistoricoDoMubiSys` também regrava as OS do mês, e o upsert sobrescreve todas as colunas —
+ * inclusive `telefone`, que um backfill anterior pode ter preenchido e que a API nem sempre devolve.
+ * Aqui só entram orçamentos, idempotente por `orcNumero` (nunca apaga linha).
+ *
+ * Com `gravar: false` só lê (API do ERP + um SELECT de contagem) e não escreve em lugar nenhum.
+ */
+export async function sincronizarSoOrcamentosDoMubiSys(
+  mes: number,
+  ano: number,
+  opts: { gravar: boolean },
+): Promise<SincronizarOrcamentosResultado> {
+  const di = `${ano}-${pad(mes)}-01`;
+  const df = `${ano}-${pad(mes)}-${pad(new Date(ano, mes, 0).getDate())}`;
+  const linhas = new Map<string, Record<string, unknown>>();
+  const janelasFalhadas: string[] = [];
+  let completo = true;
+
+  // Uma janela por vez, como em sincronizarHistoricoDoMubiSys: a API do ERP serializa as requisições.
+  for (const janela of fatiarEmJanelas(di, df, DIAS_POR_JANELA)) {
+    try {
+      const r = await comTentativas(() => listarOrcamentosMubiSys({ status: 'TODOS', datainicial: janela.di, datafinal: janela.df }));
+      if (!r.completo) completo = false;
+      for (const orc of r.itens) {
+        const linha = orcParaLinha(orc, mes, ano);
+        // Chave por número: um orçamento repetido no mesmo INSERT faria o ON CONFLICT falhar.
+        if (linha.orcNumero) linhas.set(String(linha.orcNumero), linha);
+      }
+    } catch {
+      janelasFalhadas.push(`${janela.di}..${janela.df}`);
+    }
+  }
+
+  const lista = [...linhas.values()];
+  const porStatus: Record<string, number> = {};
+  for (const l of lista) {
+    const s = String(l.status ?? '(sem status)');
+    porStatus[s] = (porStatus[s] ?? 0) + 1;
+  }
+
+  let jaExistiam: number | null = null;
+  if (lista.length > 0) {
+    try {
+      const r = await queryDatabase<{ n: number }>(
+        'SELECT count(*)::int AS n FROM historico_orcamentos WHERE "orcNumero" = ANY($1::text[])',
+        [lista.map(l => String(l.orcNumero))],
+      );
+      jaExistiam = r.rows[0]?.n ?? 0;
+    } catch {
+      jaExistiam = null;
+    }
+  } else {
+    jaExistiam = 0;
+  }
+
+  const gravados = opts.gravar ? await upsertEmLotes('historico_orcamentos', HISTORICO_ORC_COLS, lista, 'orcNumero') : 0;
+  return { mes, ano, encontrados: lista.length, jaExistiam, gravados, completo, janelasFalhadas, porStatus };
 }

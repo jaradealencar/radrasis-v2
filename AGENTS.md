@@ -326,7 +326,11 @@ server/
                        letra-caixa-redesenho.ts (reconstrução com até 2 referências extras da mesma logo, vetor e upload de imagens do CPQ)
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts; o sync de O.S. também atualiza as
-                       baixas do estoque de perfis e registra pendências de BOM/medidas
+                       baixas do estoque de perfis e registra pendências de BOM/medidas;
+                       scheduled-sync-historico.ts mantém historico_os/historico_orcamentos, e
+                       backfill-historico-orcamentos.ts guarda as regras do backfill de orçamentos
+                       antigos (`server/scripts/backfill-historico-orcamentos.ts`, ver docs/cron-qstash.md:
+                       simula por padrão, grava só com `--confirmo-alvo`; o ERP não tem nada antes de 03/2023)
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts, os-valida.ts
                        (`isOsNormalDb`: regra única de "compra válida"; o número de compras do CRM e
                        das Propostas de Alto Valor conta só essas OS, e orçamento ganho só entra nos meses

@@ -161,6 +161,29 @@ Retries:    2
 > parar de funcionar sem aviso — renove no painel do MubiSys antes de
 > depender deste cron em produção.
 
+### Backfill de orçamentos antigos (`historico_orcamentos` desde 03/2023)
+
+`historico_orcamentos` só tinha 2026, enquanto `historico_os` vai desde 05/2023: a taxa de conversão e a
+contagem de cotações por cliente (CRM e Propostas de Alto Valor) olhavam um período bem menor que o número
+de compras. O script `server/scripts/backfill-historico-orcamentos.ts` carrega os meses antigos **só de
+orçamentos** (não toca em `historico_os`, que o sync normal regrava inteira, inclusive `telefone`).
+
+- **O MubiSys não tem dados antes de meados de 03/2023** (medido em 27/10/2026: jan e fev/2023 vêm vazios, 6
+  orçamentos em mar/2023, 78 em abr/2023). Por isso o padrão é `2023-03` a `2025-12`, não 01/2023.
+- **Simula por padrão:** sem `--gravar` só lê a API do ERP e conta; nada é gravado.
+- **Trava contra o banco errado:** com `--gravar` é obrigatório `--confirmo-alvo=host/banco` igual ao do
+  `DATABASE_URL` em uso (o script imprime o alvo, nunca usuário nem senha). Um `.env` local pode apontar para uma
+  cópia desatualizada de desenvolvimento: confira o alvo antes de gravar.
+- **Idempotente e retomável:** upsert por `orcNumero`, nunca apaga linha. Mês incompleto ou janela que falhou
+  sai com código 2; rodar de novo refaz o que faltou.
+
+```
+npx tsx server/scripts/backfill-historico-orcamentos.ts                                   # simula 2023-03..2025-12
+npx tsx server/scripts/backfill-historico-orcamentos.ts --gravar --confirmo-alvo=host/banco
+```
+
+Gravar em produção exige autorização explícita (ver AGENTS.md).
+
 ## Sincronização de abertos do CRM (`mubisys_api_cache`, chave `crm_abertos_15d`)
 
 Criado em 12/09/2026 para corrigir o CRM de Propostas (`client/src/pages/comercial/CRM.tsx`

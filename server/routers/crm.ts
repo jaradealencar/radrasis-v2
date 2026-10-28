@@ -473,7 +473,7 @@ export const crmRouter = router({
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, orcamentosFechados, taxaConversao, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),

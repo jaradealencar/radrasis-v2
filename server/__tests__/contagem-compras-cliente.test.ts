@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   contarComprasPorCliente,
   calcularTaxaConversaoCliente,
+  primeiroMesDoHistorico,
   type OsParaContagem,
   type OrcGanhoParaContagem,
 } from "../services/probabilidadeCompra";
@@ -89,5 +90,32 @@ describe("calcularTaxaConversaoCliente", () => {
 
   it("cliente com orçamentos mas nenhum fechado tem 0%", () => {
     expect(calcularTaxaConversaoCliente(4, 0, 4)).toBe(0);
+  });
+});
+
+describe("primeiroMesDoHistorico", () => {
+  it("devolve o mês mais antigo no formato MM/AAAA, atravessando anos", () => {
+    expect(primeiroMesDoHistorico([
+      { mes: 3, ano: 2026 }, { mes: 11, ano: 2025 }, { mes: 1, ano: 2026 },
+    ])).toBe("11/2025");
+  });
+
+  it("completa o mês com zero à esquerda", () => {
+    expect(primeiroMesDoHistorico([{ mes: 1, ano: 2026 }, { mes: 9, ano: 2026 }])).toBe("01/2026");
+  });
+
+  it("sem linhas não há data: null", () => {
+    expect(primeiroMesDoHistorico([])).toBeNull();
+  });
+});
+
+describe("conversão por cliente — casos medidos no banco (27/10/2026)", () => {
+  it("cliente com compras nas OS mas nenhum orçamento ganho tem 0%, não os 100% da fórmula antiga", () => {
+    // ex.: 'grafika impressao rapida' — 4 compras (OS), 4 orçamentos, 0 ganhos
+    expect(calcularTaxaConversaoCliente(4, 0, 4)).toBe(0);
+  });
+
+  it("CARRA: 20 orçamentos ganhos de 45 = 44%, e não depende das 50 compras das OS", () => {
+    expect(calcularTaxaConversaoCliente(45, 20, 45)).toBe(44);
   });
 });
