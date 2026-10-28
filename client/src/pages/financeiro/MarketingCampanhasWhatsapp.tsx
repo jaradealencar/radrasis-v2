@@ -41,12 +41,12 @@ function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: ()
  * quarentena anti-spam por telefone e pós-venda por data da venda. Ver docs/campanhas-whatsapp.md.
  */
 export default function MarketingCampanhasWhatsapp() {
-  const { data, isLoading, isError, error, refetch } = trpc.campanhasWhatsapp.listar.useQuery();
+  const { data, isLoading, isFetching, isError, error, refetch } = trpc.campanhasWhatsapp.listar.useQuery();
   const { data: categorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery();
   const campanhasBase = data?.campanhas ?? [];
   const temGatilhoAtivo = campanhasBase.some(c => c.tipo === "gatilho_venda" && c.status === "ativa");
   const contagemPosVenda = trpc.campanhasWhatsapp.contagemPosVenda.useQuery(undefined, {
-    enabled: !!data && temGatilhoAtivo,
+    enabled: !!data && !isFetching && temGatilhoAtivo,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
@@ -67,7 +67,7 @@ export default function MarketingCampanhasWhatsapp() {
   // Evita ler O.S., orçamentos e cache de clientes ao mesmo tempo que a apuração de pós-venda.
   const posVendaTerminou = !temGatilhoAtivo || (contagemPosVenda.isFetched && !contagemPosVenda.isFetching);
   const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(undefined, {
-    enabled: !!data && temRecorrenteAtiva && posVendaTerminou,
+    enabled: !!data && !isFetching && temRecorrenteAtiva && posVendaTerminou,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
