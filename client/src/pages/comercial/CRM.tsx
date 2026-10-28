@@ -86,6 +86,7 @@ type Proposta = {
   totalCompras?: number;
   orcamentosFechados?: number;
   taxaConversao?: number | null;
+  orcamentosDesde?: string | null;
   estadoCliente: string | null;
 };
 
@@ -518,7 +519,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                           ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras no histórico)`
                           : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
                         <br />
-                        <span className="text-gray-400">Histórico local (2024 em diante); nov-dez/2025 não sincronizados, pode faltar alguma compra desse período.</span>
+                        <span className="text-gray-400">Conta as O.S. válidas do histórico local (a partir de 2023), sem retrabalho, amostra, cortesia nem cancelada.</span>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -532,7 +533,8 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
-                        Taxa de conversão: {p.orcamentosFechados ?? 0} orçamento{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} fechado{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} em {p.totalCotacoes || 1} cotações registradas.
+                        Taxa de conversão: {p.orcamentosFechados ?? 0} orçamento{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} fechado{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} em {p.totalCotacoes || 1} cotações registradas
+                        {p.orcamentosDesde ? ` desde ${p.orcamentosDesde}` : ""}. O número de compras pode ser maior porque as O.S. começam antes do histórico de orçamentos.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>

@@ -543,7 +543,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                                 {(p as any).taxaConversao != null && (
                                   <span
                                     className="inline-flex items-center text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 whitespace-nowrap"
-                                    title={`Taxa de conversão: ${(p as any).taxaConversao}% (${(p as any).orcamentosFechados ?? 0} orçamentos fechados de ${(p as any).totalCotacoes || 1})`}
+                                    title={`Taxa de conversão: ${(p as any).taxaConversao}% (${(p as any).orcamentosFechados ?? 0} orçamentos fechados de ${(p as any).totalCotacoes || 1}${data?.orcamentosDesde ? `, desde ${data.orcamentosDesde}` : ""}). O número de compras pode ser maior porque as O.S. começam antes do histórico de orçamentos.`}
                                   >
                                     {(p as any).taxaConversao}% conv. ({(p as any).totalCotacoes || 1} {((p as any).totalCotacoes || 1) === 1 ? "orç." : "orçs."})
                                   </span>

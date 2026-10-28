@@ -94,9 +94,8 @@ export interface ConversaoCliente {
   taxaIndividual: number | null;
   /** null quando não há nenhum orçamento com valor registrado. */
   ticketMedio: number | null;
-  /** Número de compras em todo o histórico local disponível (historico_os +
-   * historico_orcamentos fechados — ver nota em construirMapaConversaoClientes
-   * sobre o buraco de nov/dez de 2025 não coberto por nenhuma tabela local).
+  /** Número de compras em todo o histórico local disponível (OS válidas de
+   * historico_os + orçamentos ganhos de meses sem OS — ver contarComprasPorCliente).
    * Usado por ex. para elegibilidade de parcelamento (clientes com mais de
    * N compras). */
   qtdCompras: number;
@@ -113,6 +112,22 @@ export interface MapaConversaoClientes {
   porCliente: Map<string, ConversaoCliente>;
   /** Taxa de conversão agregada de toda a carteira (fallback para amostra pequena). */
   taxaGeral: number;
+  /** Mês ("MM/AAAA") do orçamento mais antigo em historico_orcamentos — a taxa de conversão
+   * e a contagem de cotações só enxergam daí em diante, enquanto o número de compras vem
+   * das OS e começa antes (medido em 27/10/2026: orçamentos desde 01/2026, OS desde 05/2023).
+   * null quando não há nenhum orçamento no histórico. */
+  orcamentosDesde: string | null;
+}
+
+/** Menor mês/ano entre as linhas, no formato "MM/AAAA" (null sem linhas). */
+export function primeiroMesDoHistorico(linhas: Array<{ mes: number; ano: number }>): string | null {
+  let menor: number | null = null;
+  for (const l of linhas) {
+    const chave = l.ano * 100 + l.mes;
+    if (menor === null || chave < menor) menor = chave;
+  }
+  if (menor === null) return null;
+  return `${String(menor % 100).padStart(2, "0")}/${Math.floor(menor / 100)}`;
 }
 
 /**
@@ -154,8 +169,10 @@ export interface OrcGanhoParaContagem {
  * vira compra nos meses em que historico_os NÃO tem nenhuma linha: o sync grava as duas
  * tabelas no mesmo mês, e toda compra de lá aparece como OS e como orçamento ganho —
  * somar as duas fontes contava a mesma compra duas vezes. Nos meses sem OS sincronizada
- * (buraco de nov/dez/2025 e eventual atraso do sync) o orçamento ganho é o único
- * registro da compra, então entra.
+ * (falha ou atraso do sync) o orçamento ganho é o único registro da compra, então entra.
+ * Hoje nenhum mês fica sem OS: nov/dez/2025, que já foram um buraco, estão preenchidos
+ * (181 e 129 OS, conferido em 27/10/2026) e historico_orcamentos só começa em 01/2026 —
+ * o fallback existe para o sync futuro falhar sem zerar a contagem do cliente.
  */
 export function contarComprasPorCliente(
   os: OsParaContagem[],
@@ -238,8 +255,6 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
   // tabelas não se sobrepunham no tempo — premissa que deixou de valer quando o sync de
   // historico_os voltou a rodar (o sync grava as duas no mesmo mês), e a mesma compra
   // passou a contar duas vezes; retrabalho, amostra, cortesia e cancelada também entravam.
-  // Buraco histórico: nov/dez/2025 ficaram sem OS (3 tentativas de sincronizar deram
-  // timeout em produção); ali vale o orçamento ganho.
   const osRows = await db.select({
     empresa: historicoOs.empresa,
     dataAprovacao: historicoOs.dataAprovacao,
@@ -286,7 +301,7 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
   }
 
   const taxaGeral = totalGeral > 0 ? (fechadosGeral / totalGeral) * 100 : 0;
-  return { porCliente: resultado, taxaGeral };
+  return { porCliente: resultado, taxaGeral, orcamentosDesde: primeiroMesDoHistorico(linhas as Array<{ mes: number; ano: number }>) };
 }
 
 /** Amostra mínima (ganhos+perdidos) para confiar na taxa de conversão de uma
@@ -421,9 +436,8 @@ export interface RegiaoConversao {
  * de cada orçamento é derivada cruzando pelo mesmo `empresaKey`
  * (normalizeEmpresaKey) com o Estado mais recente daquele cliente em
  * `historico_os` (que tem `estado`, preenchido direto do MubiSys no sync).
- * Cliente sem nenhum registro em historico_os (nunca teve OS, ou caiu no
- * buraco de sincronização de nov-dez/2025) fica de fora da contagem — mesmo
- * critério de "sem dado suficiente" usado no resto do módulo.
+ * Cliente sem nenhum registro em historico_os (nunca teve OS) fica de fora da
+ * contagem — mesmo critério de "sem dado suficiente" usado no resto do módulo.
  */
 export async function construirMapaConversaoPorRegiao(db: any): Promise<Map<string, RegiaoConversao>> {
   const osRows = await db.select({

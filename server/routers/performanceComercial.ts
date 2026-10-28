@@ -3680,7 +3680,9 @@ export const performanceComercialRouter = router({
         };
       }).sort((a, b) => b.valor - a.valor);
 
-      return { propostas };
+      // orcamentosDesde: a conversão e a contagem de cotações só enxergam orçamentos a partir
+      // deste mês (historico_orcamentos é mais curto que historico_os); a tela avisa isso.
+      return { propostas, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null };
     }),
 
   /** Marca ou desmarca uma proposta de alto valor como "contatada" (caixinha rápida, sem motivo). */
