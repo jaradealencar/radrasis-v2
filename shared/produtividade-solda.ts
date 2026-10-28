@@ -4,7 +4,7 @@
  * As linhas "Produtividade …" do MubiSys (mão de obra da solda e afins) ganham três marcações locais, que o MubiSys não tem:
  * - tipo de solda (fixação): até 3 entre barra roscada, patinha para LED, chapinha dupla-face, orelhinha e sem fixação;
  * - tamanho: menor que 8 cm, entre 8 e 11 cm e/ou maior que 11 cm (uma produtividade pode valer para mais de um tamanho);
- * - materiais: a quais materiais a solda se aplica (inox, galvanizado, latão, acrílico, alumínio), sem limite;
+ * - materiais: a quais materiais a solda se aplica (inox, galvanizado, latão, acrílico, alumínio, ACM), sem limite;
  * - estilo do letreiro (pedido de 06/10/2026), cada grupo com marcação múltipla: categoria (Frontlight ou Tradicionais, e o aro do
  *   Frontlight: normal ou recuado), formato (cursiva ou tradicional) e fundo (com ou sem fundo).
  *
@@ -35,7 +35,7 @@ export const ROTULO_TAMANHO_PRODUTIVIDADE: Record<TamanhoProdutividade, string> 
   ate_11cm: "Até 11 cm (regra legada)",
 };
 
-export const MATERIAIS_SOLDA = ["inox", "galvanizado", "latao", "acrilico", "aluminio"] as const;
+export const MATERIAIS_SOLDA = ["inox", "galvanizado", "latao", "acrilico", "aluminio", "acm"] as const;
 export type MaterialSolda = (typeof MATERIAIS_SOLDA)[number];
 
 export const ROTULO_MATERIAL_SOLDA: Record<MaterialSolda, string> = {
@@ -44,6 +44,7 @@ export const ROTULO_MATERIAL_SOLDA: Record<MaterialSolda, string> = {
   latao: "Latão",
   acrilico: "Acrílico",
   aluminio: "Alumínio",
+  acm: "ACM",
 };
 
 const semAcento = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
