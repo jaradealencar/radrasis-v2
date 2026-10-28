@@ -350,7 +350,15 @@ export function classificarClientePorRecencia(
   return { status: "reativado", mesesSemComprar: (ano - ultima.ano) * 12 + (mes - ultima.mes) };
 }
 
-export type GrupoDesempenhoDiario = { cotacoes: number; valorOrcado: number; vendas: number; faturamento: number };
+export type ContagemVendedorDiaria = { cotacoes: number; vendas: number };
+export type GrupoDesempenhoDiario = {
+  cotacoes: number;
+  valorOrcado: number;
+  vendas: number;
+  faturamento: number;
+  /** Presente na consulta do painel diário quando solicitado. */
+  porVendedor?: Record<string, ContagemVendedorDiaria>;
+};
 export type DesempenhoDiario = {
   novos: GrupoDesempenhoDiario;
   reativados: GrupoDesempenhoDiario;
@@ -373,12 +381,24 @@ export function agregarDesempenhoDiario(
   orcamentos: any[],
   oss: any[],
   classificar: (nomeCliente: string) => "novo" | "reativado" | null,
+  incluirPorVendedor = false,
 ): DesempenhoDiario {
-  const novoGrupo = (): GrupoDesempenhoDiario => ({ cotacoes: 0, valorOrcado: 0, vendas: 0, faturamento: 0 });
+  const novoGrupo = (): GrupoDesempenhoDiario => ({
+    cotacoes: 0,
+    valorOrcado: 0,
+    vendas: 0,
+    faturamento: 0,
+    ...(incluirPorVendedor ? { porVendedor: {} } : {}),
+  });
   const out: DesempenhoDiario = { novos: novoGrupo(), reativados: novoGrupo(), recorrentes: novoGrupo(), geral: novoGrupo() };
   const grupoDe = (nome: string): GrupoDesempenhoDiario => {
     const status = nome.trim() ? classificar(nome) : null;
     return status === "novo" ? out.novos : status === "reativado" ? out.reativados : out.recorrentes;
+  };
+  const contarPorVendedor = (grupo: GrupoDesempenhoDiario, vendedor: string, metrica: "cotacoes" | "vendas") => {
+    if (!grupo.porVendedor) return;
+    const contagem = grupo.porVendedor[vendedor] ??= { cotacoes: 0, vendas: 0 };
+    contagem[metrica]++;
   };
 
   for (const orc of orcamentos) {
@@ -387,18 +407,22 @@ export function agregarDesempenhoDiario(
     const vc = parseFloat(String(orc.valor_custo ?? "0")) || 0;
     const vm = parseFloat(String(orc.valor_margem ?? "0")) || 0;
     const valor = vt > 0 ? vt : (vc + vm);
+    const vendedor = String(orc.vendedor || orc.nome_vendedor || "Sem Vendedor").trim() || "Sem Vendedor";
     for (const g of [grupoDe(nomeClienteDaOsApi(orc)), out.geral]) {
       g.cotacoes++;
       g.valorOrcado += valor;
+      contarPorVendedor(g, vendedor, "cotacoes");
     }
   }
 
   for (const os of oss) {
     if (!isOsNormalApi(os)) continue;
     const valor = valorLiquidoOs(os);
+    const vendedor = String(os.vendedor || os.nome_vendedor || "Sem Vendedor").trim() || "Sem Vendedor";
     for (const g of [grupoDe(nomeClienteDaOsApi(os)), out.geral]) {
       g.vendas++;
       g.faturamento += valor;
+      contarPorVendedor(g, vendedor, "vendas");
     }
   }
 
@@ -1972,7 +1996,7 @@ export const performanceComercialRouter = router({
       const grupos = agregarDesempenhoDiario(orcResult.itens as any[], osResult.itens as any[], (nome) => {
         const chave = normalizeEmpresaKey(nome);
         return classificarClientePorRecencia(ultimaPorCliente.get(chave), overrideMap.get(chave), mes, ano).status;
-      });
+      }, true);
 
       return {
         data: dataStr,
